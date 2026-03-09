@@ -1,0 +1,45 @@
+# usr001 favorites (3 posts)
+- user_id: usr001
+  post_id: post001
+  created_at: '2025-06-01 10:00:00'
+- user_id: usr001
+  post_id: post002
+  created_at: '2025-06-01 10:01:00'
+- user_id: usr001
+  post_id: post003
+  created_at: '2025-06-01 10:02:00'
+
+# usr002 favorites (3 posts, overlaps with usr001 on post001)
+- user_id: usr002
+  post_id: post001
+  created_at: '2025-06-02 09:00:00'
+- user_id: usr002
+  post_id: post004
+  created_at: '2025-06-02 09:01:00'
+- user_id: usr002
+  post_id: post005
+  created_at: '2025-06-02 09:02:00'
+
+# usr003 favorites (2 posts)
+- user_id: usr003
+  post_id: post002
+  created_at: '2025-06-03 08:00:00'
+- user_id: usr003
+  post_id: post006
+  created_at: '2025-06-03 08:01:00'
+
+# usr004 favorites (2 posts)
+- user_id: usr004
+  post_id: post003
+  created_at: '2025-06-04 11:00:00'
+- user_id: usr004
+  post_id: post007
+  created_at: '2025-06-04 11:01:00'
+
+# usr005 favorites (2 posts)
+- user_id: usr005
+  post_id: post001
+  created_at: '2025-06-05 12:00:00'
+- user_id: usr005
+  post_id: post008
+  created_at: '2025-06-05 12:01:00'

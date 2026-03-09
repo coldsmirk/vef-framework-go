@@ -1,0 +1,269 @@
+# Post "Introduction to Go" (post001) - 6 comments, max depth 2
+- id: cmt001
+  created_at: '2025-01-25 10:00:00'
+  created_by: usr002
+  updated_at: '2025-01-25 10:00:00'
+  updated_by: usr002
+  content: Great introduction! Very clear and concise.
+  post_id: post001
+  user_id: usr002
+  likes: 12
+
+- id: cmt002
+  created_at: '2025-01-25 14:30:00'
+  created_by: usr001
+  updated_at: '2025-01-25 14:30:00'
+  updated_by: usr001
+  content: Thanks Bob! Glad you found it helpful.
+  post_id: post001
+  user_id: usr001
+  parent_id: cmt001
+  likes: 5
+
+- id: cmt003
+  created_at: '2025-01-26 09:15:00'
+  created_by: usr003
+  updated_at: '2025-01-26 09:15:00'
+  updated_by: usr003
+  content: I learned a lot from this too. The examples are practical.
+  post_id: post001
+  user_id: usr003
+  parent_id: cmt002
+  likes: 3
+
+- id: cmt004
+  created_at: '2025-01-26 11:00:00'
+  created_by: usr004
+  updated_at: '2025-01-26 11:00:00'
+  updated_by: usr004
+  content: Very helpful for beginners like me.
+  post_id: post001
+  user_id: usr004
+  parent_id: cmt001
+  likes: 8
+
+- id: cmt005
+  created_at: '2025-01-27 08:45:00'
+  created_by: usr005
+  updated_at: '2025-01-27 08:45:00'
+  updated_by: usr005
+  content: Would love to see more examples with error handling.
+  post_id: post001
+  user_id: usr005
+  likes: 15
+
+- id: cmt006
+  created_at: '2025-01-28 16:20:00'
+  created_by: usr001
+  updated_at: '2025-01-28 16:20:00'
+  updated_by: usr001
+  content: Will add more error handling examples in the next update.
+  post_id: post001
+  user_id: usr001
+  parent_id: cmt005
+  likes: 7
+
+# Post "Database Design Basics" (post002) - 8 comments, max depth 4
+- id: cmt007
+  created_at: '2025-02-10 09:00:00'
+  created_by: usr001
+  updated_at: '2025-02-10 09:00:00'
+  updated_by: usr001
+  content: Normalization is key to good database design.
+  post_id: post002
+  user_id: usr001
+  likes: 20
+
+- id: cmt008
+  created_at: '2025-02-10 13:45:00'
+  created_by: usr003
+  updated_at: '2025-02-10 13:45:00'
+  updated_by: usr003
+  content: What about denormalization for read-heavy workloads?
+  post_id: post002
+  user_id: usr003
+  parent_id: cmt007
+  likes: 14
+
+- id: cmt009
+  created_at: '2025-02-11 08:30:00'
+  created_by: usr001
+  updated_at: '2025-02-11 08:30:00'
+  updated_by: usr001
+  content: Good point. It depends on the use case and access patterns.
+  post_id: post002
+  user_id: usr001
+  parent_id: cmt008
+  likes: 9
+
+- id: cmt010
+  created_at: '2025-02-11 15:00:00'
+  created_by: usr002
+  updated_at: '2025-02-11 15:00:00'
+  updated_by: usr002
+  content: Performance vs consistency is always a trade-off.
+  post_id: post002
+  user_id: usr002
+  parent_id: cmt009
+  likes: 11
+
+- id: cmt011
+  created_at: '2025-02-12 10:15:00'
+  created_by: usr005
+  updated_at: '2025-02-12 10:15:00'
+  updated_by: usr005
+  content: Always benchmark first before deciding on denormalization.
+  post_id: post002
+  user_id: usr005
+  parent_id: cmt010
+  likes: 18
+
+- id: cmt012
+  created_at: '2025-02-12 14:30:00'
+  created_by: usr004
+  updated_at: '2025-02-12 14:30:00'
+  updated_by: usr004
+  content: NoSQL databases handle this differently with document models.
+  post_id: post002
+  user_id: usr004
+  parent_id: cmt008
+  likes: 6
+
+- id: cmt013
+  created_at: '2025-02-13 09:00:00'
+  created_by: usr006
+  updated_at: '2025-02-13 09:00:00'
+  updated_by: usr006
+  content: Great discussion thread here. Very informative.
+  post_id: post002
+  user_id: usr006
+  parent_id: cmt007
+  likes: 4
+
+- id: cmt014
+  created_at: '2025-02-14 11:30:00'
+  created_by: usr007
+  updated_at: '2025-02-14 11:30:00'
+  updated_by: usr007
+  content: Foreign keys are essential for data integrity.
+  post_id: post002
+  user_id: usr007
+  likes: 10
+
+# Post "Cloud Security Best Practices" (post010) - 4 comments, max depth 1
+- id: cmt015
+  created_at: '2025-05-28 10:00:00'
+  created_by: usr007
+  updated_at: '2025-05-28 10:00:00'
+  updated_by: usr007
+  content: IAM policies can be tricky. Great breakdown.
+  post_id: post010
+  user_id: usr007
+  likes: 9
+
+- id: cmt016
+  created_at: '2025-05-28 14:15:00'
+  created_by: usr005
+  updated_at: '2025-05-28 14:15:00'
+  updated_by: usr005
+  content: Thanks! Least privilege is the foundation of good IAM.
+  post_id: post010
+  user_id: usr005
+  parent_id: cmt015
+  likes: 13
+
+- id: cmt017
+  created_at: '2025-05-29 09:30:00'
+  created_by: usr011
+  updated_at: '2025-05-29 09:30:00'
+  updated_by: usr011
+  content: We should also cover secrets management tools.
+  post_id: post010
+  user_id: usr011
+  likes: 7
+
+- id: cmt018
+  created_at: '2025-05-30 11:00:00'
+  created_by: usr019
+  updated_at: '2025-05-30 11:00:00'
+  updated_by: usr019
+  content: Vault and AWS Secrets Manager are solid choices.
+  post_id: post010
+  user_id: usr019
+  parent_id: cmt017
+  likes: 5
+
+# Post "Kubernetes in Production" (post013) - 3 comments, max depth 1
+- id: cmt019
+  created_at: '2025-07-05 08:00:00'
+  created_by: usr005
+  updated_at: '2025-07-05 08:00:00'
+  updated_by: usr005
+  content: Monitoring is crucial. Prometheus + Grafana is our go-to stack.
+  post_id: post013
+  user_id: usr005
+  likes: 16
+
+- id: cmt020
+  created_at: '2025-07-06 10:30:00'
+  created_by: usr007
+  updated_at: '2025-07-06 10:30:00'
+  updated_by: usr007
+  content: Agreed! We also use Jaeger for distributed tracing.
+  post_id: post013
+  user_id: usr007
+  parent_id: cmt019
+  likes: 11
+
+- id: cmt021
+  created_at: '2025-07-07 14:00:00'
+  created_by: usr013
+  updated_at: '2025-07-07 14:00:00'
+  updated_by: usr013
+  content: How do you handle persistent storage in K8s?
+  post_id: post013
+  user_id: usr013
+  likes: 8
+
+# Post "Neural Network Architectures" (post019) - 4 comments, max depth 2
+- id: cmt022
+  created_at: '2025-09-20 09:15:00'
+  created_by: usr008
+  updated_at: '2025-09-20 09:15:00'
+  updated_by: usr008
+  content: Transformers have really changed the landscape of NLP.
+  post_id: post019
+  user_id: usr008
+  likes: 22
+
+- id: cmt023
+  created_at: '2025-09-21 11:45:00'
+  created_by: usr013
+  updated_at: '2025-09-21 11:45:00'
+  updated_by: usr013
+  content: Attention is all you need! The paper that started it all.
+  post_id: post019
+  user_id: usr013
+  parent_id: cmt022
+  likes: 17
+
+- id: cmt024
+  created_at: '2025-09-22 08:30:00'
+  created_by: usr009
+  updated_at: '2025-09-22 08:30:00'
+  updated_by: usr009
+  content: CNNs are still superior for image classification tasks.
+  post_id: post019
+  user_id: usr009
+  likes: 10
+
+- id: cmt025
+  created_at: '2025-09-23 15:00:00'
+  created_by: usr013
+  updated_at: '2025-09-23 15:00:00'
+  updated_by: usr013
+  content: Vision Transformers are catching up quickly though.
+  post_id: post019
+  user_id: usr013
+  parent_id: cmt024
+  likes: 14

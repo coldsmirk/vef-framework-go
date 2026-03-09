@@ -1,0 +1,99 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test with Testcontainers
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Pull Docker images in parallel
+        run: |
+          docker pull postgres:18-alpine &
+          docker pull mysql:lts &
+          docker pull redis:8-alpine &
+          docker pull minio/minio:latest &
+          wait
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Run Tests with Coverage
+        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic -timeout 30m ./...
+        env:
+          TZ: Asia/Shanghai
+          VEF_I18N_LANGUAGE: en
+          VEF_LOG_LEVEL: error
+          TESTCONTAINERS_RYUK_DISABLED: false
+          DOCKER_HOST: unix:///var/run/docker.sock
+
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.txt
+          flags: unittests
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Cleanup Docker resources
+        if: always()
+        run: |
+          docker system prune -af --volumes || true
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          args: --timeout=5m
+
+  modernize:
+    name: Modernize
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Run modernize analyzer
+        run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./...

@@ -1,0 +1,47 @@
+- id: tag001
+  name: programming
+  description: Programming related content
+
+- id: tag002
+  name: database
+  description: Database related content
+
+- id: tag003
+  name: go
+  description: Go language topics
+
+- id: tag004
+  name: tutorial
+  description: Tutorials and guides
+
+- id: tag005
+  name: advanced
+  description: Advanced topics
+
+- id: tag006
+  name: machine-learning
+  description: Machine learning and AI
+
+- id: tag007
+  name: cloud
+  description: Cloud computing and infrastructure
+
+- id: tag008
+  name: security
+  description: Cybersecurity and best practices
+
+- id: tag009
+  name: mobile
+  description: Mobile app development
+
+- id: tag010
+  name: data-science
+  description: Data science and analytics
+
+- id: tag011
+  name: design
+  description: UI/UX and system design
+
+- id: tag012
+  name: devops
+  description: DevOps and CI/CD practices

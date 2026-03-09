@@ -1,0 +1,224 @@
+# post001: Introduction to Go
+- id: pt001
+  post_id: post001
+  tag_id: tag001
+- id: pt002
+  post_id: post001
+  tag_id: tag003
+- id: pt003
+  post_id: post001
+  tag_id: tag004
+
+# post002: Database Design Basics
+- id: pt004
+  post_id: post002
+  tag_id: tag002
+- id: pt005
+  post_id: post002
+  tag_id: tag004
+
+# post003: Machine Learning Basics
+- id: pt006
+  post_id: post003
+  tag_id: tag006
+- id: pt007
+  post_id: post003
+  tag_id: tag004
+
+# post004: Business Strategy Fundamentals
+- id: pt008
+  post_id: post004
+  tag_id: tag005
+
+# post005: Advanced Go Patterns
+- id: pt009
+  post_id: post005
+  tag_id: tag003
+- id: pt010
+  post_id: post005
+  tag_id: tag001
+- id: pt011
+  post_id: post005
+  tag_id: tag005
+
+# post006: Latest Trends in Science
+- id: pt012
+  post_id: post006
+  tag_id: tag010
+
+# post007: Practical Tech Tutorials
+- id: pt013
+  post_id: post007
+  tag_id: tag004
+- id: pt014
+  post_id: post007
+  tag_id: tag001
+
+# post008: Startup Finance 101
+- id: pt015
+  post_id: post008
+  tag_id: tag005
+
+# post009: React Performance Optimization
+- id: pt016
+  post_id: post009
+  tag_id: tag001
+- id: pt017
+  post_id: post009
+  tag_id: tag011
+
+# post010: Cloud Security Best Practices
+- id: pt018
+  post_id: post010
+  tag_id: tag007
+- id: pt019
+  post_id: post010
+  tag_id: tag008
+
+# post011: CSS Grid vs Flexbox
+- id: pt020
+  post_id: post011
+  tag_id: tag011
+- id: pt021
+  post_id: post011
+  tag_id: tag004
+
+# post012: Online Learning Platforms Compared
+- id: pt022
+  post_id: post012
+  tag_id: tag004
+
+# post013: Kubernetes in Production
+- id: pt023
+  post_id: post013
+  tag_id: tag007
+- id: pt024
+  post_id: post013
+  tag_id: tag012
+
+# post014: Data Visualization with Python
+- id: pt025
+  post_id: post014
+  tag_id: tag010
+- id: pt026
+  post_id: post014
+  tag_id: tag001
+
+# post015: DevOps Pipeline Automation
+- id: pt027
+  post_id: post015
+  tag_id: tag012
+- id: pt028
+  post_id: post015
+  tag_id: tag007
+
+# post016: Quantum Computing Explained
+- id: pt029
+  post_id: post016
+  tag_id: tag005
+- id: pt030
+  post_id: post016
+  tag_id: tag004
+
+# post017: Flutter Cross-Platform Development
+- id: pt031
+  post_id: post017
+  tag_id: tag009
+- id: pt032
+  post_id: post017
+  tag_id: tag001
+
+# post018: Microservices Architecture Patterns
+- id: pt033
+  post_id: post018
+  tag_id: tag005
+- id: pt034
+  post_id: post018
+  tag_id: tag007
+
+# post019: Neural Network Architectures
+- id: pt035
+  post_id: post019
+  tag_id: tag006
+- id: pt036
+  post_id: post019
+  tag_id: tag005
+
+# post020: Music Theory for Developers
+- id: pt037
+  post_id: post020
+  tag_id: tag004
+
+# post021: Test-Driven Development in Practice
+- id: pt038
+  post_id: post021
+  tag_id: tag001
+- id: pt039
+  post_id: post021
+  tag_id: tag004
+
+# post022: The History of Computing
+- id: pt040
+  post_id: post022
+  tag_id: tag004
+
+# post023: Blockchain Beyond Cryptocurrency
+- id: pt041
+  post_id: post023
+  tag_id: tag008
+- id: pt042
+  post_id: post023
+  tag_id: tag005
+
+# post024: Game Engine Design Principles
+- id: pt043
+  post_id: post024
+  tag_id: tag001
+- id: pt044
+  post_id: post024
+  tag_id: tag011
+
+# post025: Computational Photography
+- id: pt045
+  post_id: post025
+  tag_id: tag010
+
+# post026: Network Protocol Deep Dive
+- id: pt046
+  post_id: post026
+  tag_id: tag005
+- id: pt047
+  post_id: post026
+  tag_id: tag008
+
+# post027: Accessible Web Design
+- id: pt048
+  post_id: post027
+  tag_id: tag011
+- id: pt049
+  post_id: post027
+  tag_id: tag004
+
+# post028: Go Fiber Web Framework Guide
+- id: pt050
+  post_id: post028
+  tag_id: tag003
+- id: pt051
+  post_id: post028
+  tag_id: tag001
+
+# post029: Genetics and Bioinformatics
+- id: pt052
+  post_id: post029
+  tag_id: tag010
+- id: pt053
+  post_id: post029
+  tag_id: tag001
+
+# post030: Digital Marketing Analytics
+- id: pt054
+  post_id: post030
+  tag_id: tag010
+- id: pt055
+  post_id: post030
+  tag_id: tag005

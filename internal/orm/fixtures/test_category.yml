@@ -1,0 +1,99 @@
+- id: cat001
+  created_at: '2025-01-05 08:00:00'
+  created_by: system
+  name: Technology
+  description: Tech-related posts
+
+- id: cat002
+  created_at: '2025-02-10 10:30:00'
+  created_by: system
+  name: Science
+  description: Scientific articles
+
+- id: cat003
+  created_at: '2025-03-15 09:15:00'
+  created_by: system
+  name: Business
+  description: Business and economics
+
+- id: cat004
+  created_at: '2025-04-01 11:00:00'
+  created_by: system
+  name: GoLang
+  description: Go language programming
+  parent_id: cat001
+
+- id: cat005
+  created_at: '2025-04-20 14:30:00'
+  created_by: system
+  name: AI & Machine Learning
+  description: Artificial intelligence and ML topics
+  parent_id: cat001
+
+- id: cat006
+  created_at: '2025-05-12 08:45:00'
+  created_by: system
+  name: Health & Fitness
+  description: Health, wellness, and fitness
+
+- id: cat007
+  created_at: '2025-06-08 16:00:00'
+  created_by: system
+  name: Education
+  description: Learning and educational resources
+
+- id: cat008
+  created_at: '2025-06-25 10:15:00'
+  created_by: system
+  name: Startups
+  description: Startup ecosystem and entrepreneurship
+  parent_id: cat003
+
+- id: cat009
+  created_at: '2025-07-10 13:30:00'
+  created_by: system
+  name: Cloud Computing
+  description: Cloud platforms and infrastructure
+  parent_id: cat001
+
+- id: cat010
+  created_at: '2025-08-05 09:00:00'
+  created_by: system
+  name: Online Courses
+  description: MOOCs and e-learning platforms
+  parent_id: cat007
+
+- id: cat011
+  created_at: '2025-08-22 15:45:00'
+  created_by: system
+  name: Go Web Frameworks
+  description: Web frameworks built with Go
+  parent_id: cat004
+
+- id: cat012
+  created_at: '2025-09-10 11:30:00'
+  created_by: system
+  name: Deep Learning
+  description: Neural networks and deep learning
+  parent_id: cat005
+
+- id: cat013
+  created_at: '2025-09-28 08:15:00'
+  created_by: system
+  name: Physics
+  description: Physics research and discoveries
+  parent_id: cat002
+
+- id: cat014
+  created_at: '2025-10-15 14:00:00'
+  created_by: system
+  name: Biology
+  description: Biology and life sciences
+  parent_id: cat002
+
+- id: cat015
+  created_at: '2025-11-01 10:45:00'
+  created_by: system
+  name: Marketing
+  description: Marketing strategies and analytics
+  parent_id: cat003

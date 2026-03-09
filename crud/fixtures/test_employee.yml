@@ -1,0 +1,331 @@
+# 25 employees: active=18, inactive=4, on_leave=3
+# Ages: 22-50, all unique
+# Positions: Senior Engineer(5), Engineer(4), Designer(3), Product Manager(3), Analyst(3), Intern(3), Team Lead(2), Director(2)
+# Departments: spread across all 18, Engineering family heaviest
+# Description: 20 non-empty, 5 empty (emp05,emp10,emp15,emp20,emp25)
+# created_by/updated_by: evenly distributed op001-op008, always different from each other
+
+- id: emp001
+  name: Wei Zhang
+  email: wei.zhang@company.com
+  age: 35
+  position: Senior Engineer
+  department_id: dept005
+  status: active
+  description: Backend architecture specialist with 10+ years experience
+  created_at: '2025-03-15 09:00:00'
+  created_by: op001
+  updated_at: '2025-06-20 14:30:00'
+  updated_by: op003
+
+- id: emp002
+  name: Maria Garcia
+  email: maria.garcia@company.com
+  age: 28
+  position: Engineer
+  department_id: dept006
+  status: active
+  description: Frontend developer focused on React and TypeScript
+  created_at: '2025-04-01 10:00:00'
+  created_by: op002
+  updated_at: '2025-08-15 11:00:00'
+  updated_by: op004
+
+- id: emp003
+  name: Yuki Tanaka
+  email: yuki.tanaka@company.com
+  age: 31
+  position: Designer
+  department_id: dept007
+  status: active
+  description: UI/UX designer specializing in mobile interfaces
+  created_at: '2025-04-10 09:30:00'
+  created_by: op003
+  updated_at: '2025-09-01 16:00:00'
+  updated_by: op005
+
+- id: emp004
+  name: James Wilson
+  email: james.wilson@company.com
+  age: 42
+  position: Director
+  department_id: dept001
+  status: active
+  description: Engineering Director overseeing all technical teams
+  created_at: '2025-03-01 08:00:00'
+  created_by: op001
+  updated_at: '2025-07-10 10:00:00'
+  updated_by: op007
+
+- id: emp005
+  name: Lin Chen
+  email: lin.chen@company.com
+  age: 24
+  position: Intern
+  department_id: dept010
+  status: active
+  description:
+  created_at: '2025-06-01 09:00:00'
+  created_by: op004
+  updated_at: '2025-06-01 09:00:00'
+  updated_by: op002
+
+- id: emp006
+  name: Sophie Martin
+  email: sophie.martin@company.com
+  age: 33
+  position: Product Manager
+  department_id: dept002
+  status: active
+  description: Leading product strategy for the core platform
+  created_at: '2025-05-15 10:00:00'
+  created_by: op005
+  updated_at: '2025-10-01 09:00:00'
+  updated_by: op001
+
+- id: emp007
+  name: Ahmed Hassan
+  email: ahmed.hassan@company.com
+  age: 29
+  position: Engineer
+  department_id: dept011
+  status: active
+  description: Data pipeline engineer working with Kafka and Spark
+  created_at: '2025-07-01 09:00:00'
+  created_by: op006
+  updated_at: '2025-11-15 14:00:00'
+  updated_by: op003
+
+- id: emp008
+  name: Elena Petrova
+  email: elena.petrova@company.com
+  age: 38
+  position: Team Lead
+  department_id: dept013
+  status: active
+  description: DevOps team lead managing CI/CD infrastructure
+  created_at: '2025-03-20 08:30:00'
+  created_by: op007
+  updated_at: '2025-08-01 11:00:00'
+  updated_by: op006
+
+- id: emp009
+  name: Kevin Park
+  email: kevin.park@company.com
+  age: 26
+  position: Analyst
+  department_id: dept015
+  status: inactive
+  description: Product research analyst
+  created_at: '2025-08-01 09:00:00'
+  created_by: op008
+  updated_at: '2025-10-15 10:00:00'
+  updated_by: op002
+
+- id: emp010
+  name: Isabella Rossi
+  email: isabella.rossi@company.com
+  age: 45
+  position: Director
+  department_id: dept003
+  status: active
+  description:
+  created_at: '2025-03-05 08:00:00'
+  created_by: op001
+  updated_at: '2025-09-20 15:00:00'
+  updated_by: op008
+
+- id: emp011
+  name: Raj Patel
+  email: raj.patel@company.com
+  age: 27
+  position: Engineer
+  department_id: dept014
+  status: active
+  description: QA automation engineer specializing in Selenium
+  created_at: '2025-09-01 09:00:00'
+  created_by: op002
+  updated_at: '2025-11-01 10:00:00'
+  updated_by: op005
+
+- id: emp012
+  name: Anna Kowalski
+  email: anna.kowalski@company.com
+  age: 30
+  position: Designer
+  department_id: dept007
+  status: active
+  description: Visual designer creating brand identity systems
+  created_at: '2025-10-01 09:30:00'
+  created_by: op003
+  updated_at: '2025-12-01 11:00:00'
+  updated_by: op006
+
+- id: emp013
+  name: Carlos Rodriguez
+  email: carlos.rodriguez@company.com
+  age: 50
+  position: Senior Engineer
+  department_id: dept005
+  status: active
+  description: Principal engineer and system architect
+  created_at: '2025-03-10 08:00:00'
+  created_by: op004
+  updated_at: '2025-12-01 14:00:00'
+  updated_by: op007
+
+- id: emp014
+  name: Hana Kim
+  email: hana.kim@company.com
+  age: 23
+  position: Intern
+  department_id: dept008
+  status: inactive
+  description: Content marketing intern
+  created_at: '2025-11-01 09:00:00'
+  created_by: op005
+  updated_at: '2025-12-15 16:00:00'
+  updated_by: op001
+
+- id: emp015
+  name: Thomas Mueller
+  email: thomas.mueller@company.com
+  age: 36
+  position: Senior Engineer
+  department_id: dept010
+  status: active
+  description:
+  created_at: '2025-01-10 09:00:00'
+  created_by: op006
+  updated_at: '2025-04-01 10:00:00'
+  updated_by: op008
+
+- id: emp016
+  name: Fatima Al-Rashid
+  email: fatima.alrashid@company.com
+  age: 32
+  position: Product Manager
+  department_id: dept002
+  status: active
+  description: Mobile product manager driving user engagement
+  created_at: '2025-02-01 09:00:00'
+  created_by: op007
+  updated_at: '2025-05-15 11:00:00'
+  updated_by: op004
+
+- id: emp017
+  name: Lucas Silva
+  email: lucas.silva@company.com
+  age: 25
+  position: Engineer
+  department_id: dept012
+  status: on_leave
+  description: Mobile developer working on iOS and Android apps
+  created_at: '2025-03-01 09:00:00'
+  created_by: op008
+  updated_at: '2025-06-01 10:00:00'
+  updated_by: op003
+
+- id: emp018
+  name: Mei Wang
+  email: mei.wang@company.com
+  age: 40
+  position: Team Lead
+  department_id: dept004
+  status: active
+  description: HR team lead responsible for talent strategy
+  created_at: '2025-04-15 08:30:00'
+  created_by: op001
+  updated_at: '2025-07-10 14:00:00'
+  updated_by: op005
+
+- id: emp019
+  name: Daniel Brown
+  email: daniel.brown@company.com
+  age: 34
+  position: Senior Engineer
+  department_id: dept006
+  status: inactive
+  description: Former frontend tech lead
+  created_at: '2025-05-01 09:00:00'
+  created_by: op002
+  updated_at: '2025-08-15 16:00:00'
+  updated_by: op006
+
+- id: emp020
+  name: Priya Sharma
+  email: priya.sharma@company.com
+  age: 22
+  position: Intern
+  department_id: dept009
+  status: active
+  description:
+  created_at: '2025-04-01 09:00:00'
+  created_by: op003
+  updated_at: '2025-04-01 09:00:00'
+  updated_by: op007
+
+- id: emp021
+  name: Oliver Taylor
+  email: oliver.taylor@company.com
+  age: 44
+  position: Senior Engineer
+  department_id: dept013
+  status: active
+  description: Infrastructure architect with cloud expertise
+  created_at: '2025-05-01 08:00:00'
+  created_by: op004
+  updated_at: '2025-07-01 10:00:00'
+  updated_by: op008
+
+- id: emp022
+  name: Sakura Yamamoto
+  email: sakura.yamamoto@company.com
+  age: 37
+  position: Product Manager
+  department_id: dept016
+  status: inactive
+  description: Growth marketing product manager
+  created_at: '2025-06-01 09:00:00'
+  created_by: op005
+  updated_at: '2025-09-01 15:00:00'
+  updated_by: op002
+
+- id: emp023
+  name: Noah Anderson
+  email: noah.anderson@company.com
+  age: 39
+  position: Analyst
+  department_id: dept017
+  status: active
+  description: Brand analytics specialist
+  created_at: '2025-07-01 09:00:00'
+  created_by: op006
+  updated_at: '2025-08-15 11:00:00'
+  updated_by: op001
+
+- id: emp024
+  name: Zara Okonkwo
+  email: zara.okonkwo@company.com
+  age: 41
+  position: Designer
+  department_id: dept007
+  status: on_leave
+  description: Senior product designer on parental leave
+  created_at: '2025-08-01 09:00:00'
+  created_by: op007
+  updated_at: '2025-10-01 10:00:00'
+  updated_by: op004
+
+- id: emp025
+  name: Ryan Mitchell
+  email: ryan.mitchell@company.com
+  age: 46
+  position: Analyst
+  department_id: dept018
+  status: on_leave
+  description:
+  created_at: '2025-09-01 09:00:00'
+  created_by: op008
+  updated_at: '2025-11-01 14:00:00'
+  updated_by: op003

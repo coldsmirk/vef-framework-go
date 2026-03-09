@@ -1,0 +1,40 @@
+# If you prefer the allow list template instead of the deny list, see community template:
+# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+#
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Go workspace file
+go.work
+go.work.sum
+
+# env file
+.env
+
+# IDE files
+.idea/
+
+# macOS files
+**/.DS_Store
+
+.cursor/
+.windsurf/
+.claude/
+CLAUDE.md
+AGENTS.md
+TESTING.md
+cmd/CMD_DEV.md
+docs/plans/
+
+# shell scripts
+*.sh

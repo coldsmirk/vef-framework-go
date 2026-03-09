@@ -1,0 +1,212 @@
+# 18 departments: 4 root nodes, max depth 3
+# Root: Engineering(dept001), Product(dept002), Marketing(dept003), HR(dept004)
+# Hierarchical codes: ENG, ENG-BE, ENG-BE-API, etc.
+# created_by/updated_by reference operator IDs
+
+# === Root Nodes ===
+
+- id: dept001
+  name: Engineering
+  code: ENG
+  description: Software engineering and technical operations
+  sort: 1
+  created_at: '2025-01-01 08:00:00'
+  created_by: op001
+  updated_at: '2025-06-01 10:00:00'
+  updated_by: op007
+
+- id: dept002
+  name: Product
+  code: PRD
+  description: Product management and design
+  sort: 2
+  created_at: '2025-01-01 08:01:00'
+  created_by: op001
+  updated_at: '2025-06-01 10:01:00'
+  updated_by: op005
+
+- id: dept003
+  name: Marketing
+  code: MKT
+  description: Marketing and brand communications
+  sort: 3
+  created_at: '2025-01-01 08:02:00'
+  created_by: op002
+  updated_at: '2025-06-01 10:02:00'
+  updated_by: op008
+
+- id: dept004
+  name: HR
+  code: HR
+  description: Human resources and talent management
+  sort: 4
+  created_at: '2025-01-01 08:03:00'
+  created_by: op002
+  updated_at: '2025-06-01 10:03:00'
+  updated_by: op006
+
+# === Engineering Children (depth 2) ===
+
+- id: dept005
+  name: Backend
+  code: ENG-BE
+  description: Backend services and API development
+  parent_id: dept001
+  sort: 1
+  created_at: '2025-01-15 09:00:00'
+  created_by: op003
+  updated_at: '2025-07-01 11:00:00'
+  updated_by: op004
+
+- id: dept006
+  name: Frontend
+  code: ENG-FE
+  description: Frontend and web application development
+  parent_id: dept001
+  sort: 2
+  created_at: '2025-01-15 09:01:00'
+  created_by: op003
+  updated_at: '2025-07-01 11:01:00'
+  updated_by: op004
+
+- id: dept013
+  name: DevOps
+  code: ENG-DEVOPS
+  description: Infrastructure and deployment automation
+  parent_id: dept001
+  sort: 3
+  created_at: '2025-02-01 09:00:00'
+  created_by: op004
+  updated_at: '2025-08-01 10:00:00'
+  updated_by: op003
+
+- id: dept014
+  name: QA
+  code: ENG-QA
+  description: Quality assurance and testing
+  parent_id: dept001
+  sort: 4
+  created_at: '2025-02-01 09:01:00'
+  created_by: op004
+  updated_at: '2025-08-01 10:01:00'
+  updated_by: op003
+
+# === Backend Children (depth 3) ===
+
+- id: dept010
+  name: API Team
+  code: ENG-BE-API
+  description: RESTful and GraphQL API design
+  parent_id: dept005
+  sort: 1
+  created_at: '2025-03-01 09:00:00'
+  created_by: op005
+  updated_at: '2025-09-01 14:00:00'
+  updated_by: op006
+
+- id: dept011
+  name: Data Team
+  code: ENG-BE-DATA
+  description: Data pipeline and storage systems
+  parent_id: dept005
+  sort: 2
+  created_at: '2025-03-01 09:01:00'
+  created_by: op005
+  updated_at: '2025-09-01 14:01:00'
+  updated_by: op006
+
+# === Frontend Children (depth 3) ===
+
+- id: dept012
+  name: Mobile Team
+  code: ENG-FE-MOB
+  description: iOS and Android mobile development
+  parent_id: dept006
+  sort: 1
+  created_at: '2025-03-15 09:00:00'
+  created_by: op006
+  updated_at: '2025-10-01 11:00:00'
+  updated_by: op005
+
+# === Product Children (depth 2) ===
+
+- id: dept007
+  name: Design
+  code: PRD-DSN
+  description: UI/UX and visual design
+  parent_id: dept002
+  sort: 1
+  created_at: '2025-01-20 09:00:00'
+  created_by: op007
+  updated_at: '2025-07-15 10:00:00'
+  updated_by: op008
+
+- id: dept015
+  name: Research
+  code: PRD-RES
+  description: User research and market analysis
+  parent_id: dept002
+  sort: 2
+  created_at: '2025-02-15 09:00:00'
+  created_by: op007
+  updated_at: '2025-08-15 10:00:00'
+  updated_by: op008
+
+# === Marketing Children (depth 2) ===
+
+- id: dept008
+  name: Content
+  code: MKT-CNT
+  description: Content creation and editorial
+  parent_id: dept003
+  sort: 1
+  created_at: '2025-01-25 09:00:00'
+  created_by: op008
+  updated_at: '2025-07-20 11:00:00'
+  updated_by: op001
+
+- id: dept016
+  name: Growth
+  code: MKT-GRW
+  description: Growth hacking and user acquisition
+  parent_id: dept003
+  sort: 2
+  created_at: '2025-02-20 09:00:00'
+  created_by: op008
+  updated_at: '2025-08-20 11:00:00'
+  updated_by: op001
+
+- id: dept017
+  name: Brand
+  code: MKT-BRD
+  description: Brand strategy and visual identity
+  parent_id: dept003
+  sort: 3
+  created_at: '2025-02-20 09:01:00'
+  created_by: op001
+  updated_at: '2025-08-20 11:01:00'
+  updated_by: op002
+
+# === HR Children (depth 2) ===
+
+- id: dept009
+  name: Recruitment
+  code: HR-REC
+  description: Talent acquisition and hiring
+  parent_id: dept004
+  sort: 1
+  created_at: '2025-01-28 09:00:00'
+  created_by: op002
+  updated_at: '2025-07-28 10:00:00'
+  updated_by: op007
+
+- id: dept018
+  name: Training
+  code: HR-TRN
+  description: Employee training and development
+  parent_id: dept004
+  sort: 2
+  created_at: '2025-01-28 09:01:00'
+  created_by: op002
+  updated_at: '2025-07-28 10:01:00'
+  updated_by: op007

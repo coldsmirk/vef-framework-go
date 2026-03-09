@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["Test"]
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    # Only run if: Test workflow succeeded AND triggered by a version tag
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v') &&
+      contains(github.event.workflow_run.head_branch, '.')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 50
+
+      - name: Generate Changelog
+        id: changelog
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          # Get the most recent release tag (excluding the current one being created)
+          # Since this workflow runs before the release is created, head -1 gives us the previous release
+          PREVIOUS_TAG=$(gh api repos/${{ github.repository }}/releases \
+            --jq '.[].tag_name | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))' \
+            | head -1)
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            git fetch --shallow-since="$(gh api repos/${{ github.repository }}/releases/tags/${PREVIOUS_TAG} --jq '.published_at')" || git fetch --unshallow
+          fi
+
+          echo "Generating changelog from ${PREVIOUS_TAG} to ${CURRENT_TAG}"
+
+          FEATURES=""
+          FIXES=""
+          DOCS=""
+          CHORE=""
+          REFACTOR=""
+          TEST=""
+          CI=""
+          OTHER=""
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"%s" $CURRENT_TAG)
+          else
+            COMMITS=$(git log --pretty=format:"%s" ${PREVIOUS_TAG}..${CURRENT_TAG})
+          fi
+
+          while IFS= read -r commit; do
+            case "$commit" in
+              feat:*|feat\(*)
+                FEATURES="${FEATURES}- ${commit#feat*: }\n"
+                ;;
+              fix:*|fix\(*)
+                FIXES="${FIXES}- ${commit#fix*: }\n"
+                ;;
+              docs:*|docs\(*)
+                DOCS="${DOCS}- ${commit#docs*: }\n"
+                ;;
+              chore:*|chore\(*)
+                CHORE="${CHORE}- ${commit#chore*: }\n"
+                ;;
+              refactor:*|refactor\(*)
+                REFACTOR="${REFACTOR}- ${commit#refactor*: }\n"
+                ;;
+              test:*|test\(*)
+                TEST="${TEST}- ${commit#test*: }\n"
+                ;;
+              ci:*|ci\(*)
+                CI="${CI}- ${commit#ci*: }\n"
+                ;;
+              *)
+                OTHER="${OTHER}- ${commit}\n"
+                ;;
+            esac
+          done <<< "$COMMITS"
+
+          CHANGELOG="## What's Changed\n\n"
+
+          [ -n "$FEATURES" ] && CHANGELOG="${CHANGELOG}### 🚀 New Features\n${FEATURES}\n"
+          [ -n "$FIXES" ] && CHANGELOG="${CHANGELOG}### 🐛 Bug Fixes\n${FIXES}\n"
+          [ -n "$REFACTOR" ] && CHANGELOG="${CHANGELOG}### ♻️ Refactoring\n${REFACTOR}\n"
+          [ -n "$CI" ] && CHANGELOG="${CHANGELOG}### 🔄 CI/CD\n${CI}\n"
+          [ -n "$TEST" ] && CHANGELOG="${CHANGELOG}### ✅ Testing\n${TEST}\n"
+          [ -n "$DOCS" ] && CHANGELOG="${CHANGELOG}### 📝 Documentation\n${DOCS}\n"
+          [ -n "$CHORE" ] && CHANGELOG="${CHANGELOG}### 🔧 Maintenance\n${CHORE}\n"
+          [ -n "$OTHER" ] && CHANGELOG="${CHANGELOG}### Other Changes\n${OTHER}\n"
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.workflow_run.head_branch }}
+          name: Release ${{ github.event.workflow_run.head_branch }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false

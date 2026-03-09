@@ -1,0 +1,12 @@
+# 1 import employee — minimal seed for import table
+# Pure data struct — no audit fields, only id + business fields
+
+- id: imp001
+  name: Import Seed User
+  email: import.seed@company.com
+  age: 30
+  status: active
+  created_at: '2025-01-10 09:00:00'
+  created_by: system
+  updated_at: '2025-01-10 09:00:00'
+  updated_by: system

@@ -1,0 +1,389 @@
+- id: post001
+  created_at: '2025-01-20 10:00:00'
+  created_by: usr001
+  updated_at: '2025-01-22 15:30:00'
+  updated_by: usr001
+  title: Introduction to Go
+  content: Go is a programming language designed at Google.
+  description: Getting started with Go
+  user_id: usr001
+  category_id: cat004
+  status: published
+  view_count: 423
+
+- id: post002
+  created_at: '2025-02-05 09:15:00'
+  created_by: usr002
+  updated_at: '2025-02-08 11:45:00'
+  updated_by: usr002
+  title: Database Design Basics
+  content: Good database design principles.
+  description: Normalization and relationships
+  user_id: usr002
+  category_id: cat001
+  status: published
+  view_count: 287
+
+- id: post003
+  created_at: '2025-02-18 14:30:00'
+  created_by: usr001
+  updated_at: '2025-02-20 08:00:00'
+  updated_by: usr001
+  title: Machine Learning Basics
+  content: An introduction to ML concepts and workflows.
+  description: Supervised vs unsupervised learning
+  user_id: usr001
+  category_id: cat005
+  status: draft
+  view_count: 145
+
+- id: post004
+  created_at: '2025-03-08 11:00:00'
+  created_by: usr003
+  updated_at: '2025-03-10 16:20:00'
+  updated_by: usr003
+  title: Business Strategy Fundamentals
+  content: Effective business strategies and frameworks.
+  description: Strategic planning overview
+  user_id: usr003
+  category_id: cat003
+  status: published
+  view_count: 164
+
+- id: post005
+  created_at: '2025-03-22 08:45:00'
+  created_by: usr001
+  updated_at: '2025-03-25 13:15:00'
+  updated_by: usr001
+  title: Advanced Go Patterns
+  content: Exploring advanced patterns and best practices in Go.
+  description: Idiomatic Go techniques
+  user_id: usr001
+  category_id: cat004
+  status: review
+  view_count: 198
+
+- id: post006
+  created_at: '2025-04-02 16:30:00'
+  created_by: usr002
+  updated_at: '2025-04-05 09:00:00'
+  updated_by: usr002
+  title: Latest Trends in Science
+  content: A survey of recent scientific advancements.
+  description: Interdisciplinary highlights
+  user_id: usr002
+  category_id: cat002
+  status: published
+  view_count: 177
+
+- id: post007
+  created_at: '2025-04-15 10:15:00'
+  created_by: usr003
+  updated_at: '2025-04-18 14:45:00'
+  updated_by: usr003
+  title: Practical Tech Tutorials
+  content: Hands-on guides for modern technology stacks.
+  description: Step-by-step tutorials
+  user_id: usr003
+  category_id: cat001
+  status: published
+  view_count: 152
+
+- id: post008
+  created_at: '2025-04-28 07:30:00'
+  created_by: usr001
+  updated_at: '2025-05-01 11:00:00'
+  updated_by: usr001
+  title: Startup Finance 101
+  content: Financial basics for early-stage startups.
+  description: Cash flow, runway, and budgeting
+  user_id: usr001
+  category_id: cat008
+  status: published
+  view_count: 269
+
+- id: post009
+  created_at: '2025-05-10 13:00:00'
+  created_by: usr004
+  updated_at: '2025-05-12 17:30:00'
+  updated_by: usr004
+  title: React Performance Optimization
+  content: Techniques for building faster React applications.
+  description: Memoization, code splitting, and lazy loading
+  user_id: usr004
+  category_id: cat001
+  status: published
+  view_count: 356
+
+- id: post010
+  created_at: '2025-05-22 09:45:00'
+  created_by: usr005
+  updated_at: '2025-05-25 14:15:00'
+  updated_by: usr005
+  title: Cloud Security Best Practices
+  content: Essential security measures for cloud deployments.
+  description: IAM, encryption, and network security
+  user_id: usr005
+  category_id: cat009
+  status: published
+  view_count: 412
+
+- id: post011
+  created_at: '2025-06-03 11:30:00'
+  created_by: usr004
+  updated_at: '2025-06-05 08:00:00'
+  updated_by: usr004
+  title: CSS Grid vs Flexbox
+  content: When to use Grid layout vs Flexbox in modern web design.
+  description: Layout comparison guide
+  user_id: usr004
+  category_id: cat001
+  status: draft
+  view_count: 34
+
+- id: post012
+  created_at: '2025-06-18 15:00:00'
+  created_by: usr006
+  updated_at: '2025-06-20 10:30:00'
+  updated_by: usr006
+  title: Online Learning Platforms Compared
+  content: A comprehensive comparison of popular e-learning platforms.
+  description: Coursera, Udemy, and edX review
+  user_id: usr006
+  category_id: cat010
+  status: review
+  view_count: 112
+
+- id: post013
+  created_at: '2025-07-01 08:15:00'
+  created_by: usr007
+  updated_at: '2025-07-03 16:45:00'
+  updated_by: usr007
+  title: Kubernetes in Production
+  content: Lessons learned from running Kubernetes at scale.
+  description: Scaling, monitoring, and troubleshooting
+  user_id: usr007
+  category_id: cat009
+  status: published
+  view_count: 389
+
+- id: post014
+  created_at: '2025-07-16 12:30:00'
+  created_by: usr008
+  updated_at: '2025-07-18 09:00:00'
+  updated_by: usr008
+  title: Data Visualization with Python
+  content: Creating compelling visualizations using matplotlib and seaborn.
+  description: Charts, plots, and dashboards
+  user_id: usr008
+  category_id: cat002
+  status: published
+  view_count: 234
+
+- id: post015
+  created_at: '2025-07-28 14:45:00'
+  created_by: usr005
+  updated_at: '2025-07-30 10:00:00'
+  updated_by: usr005
+  title: DevOps Pipeline Automation
+  content: Building CI/CD pipelines with modern tooling.
+  description: Jenkins, GitHub Actions, and ArgoCD
+  user_id: usr005
+  category_id: cat001
+  status: draft
+  view_count: 28
+
+- id: post016
+  created_at: '2025-08-08 10:00:00'
+  created_by: usr009
+  updated_at: '2025-08-10 15:30:00'
+  updated_by: usr009
+  title: Quantum Computing Explained
+  content: A beginner-friendly guide to quantum mechanics in computing.
+  description: Qubits, superposition, and entanglement
+  user_id: usr009
+  category_id: cat013
+  status: published
+  view_count: 467
+
+- id: post017
+  created_at: '2025-08-20 07:45:00'
+  created_by: usr010
+  updated_at: '2025-08-22 13:15:00'
+  updated_by: usr010
+  title: Flutter Cross-Platform Development
+  content: Building beautiful apps for iOS and Android with Flutter.
+  description: Widgets, state management, and platform channels
+  user_id: usr010
+  category_id: cat001
+  status: published
+  view_count: 301
+
+- id: post018
+  created_at: '2025-09-02 16:00:00'
+  created_by: usr011
+  updated_at: '2025-09-05 08:30:00'
+  updated_by: usr011
+  title: Microservices Architecture Patterns
+  content: Design patterns for building resilient microservices.
+  description: Circuit breaker, saga, and event sourcing
+  user_id: usr011
+  category_id: cat001
+  status: published
+  view_count: 445
+
+- id: post019
+  created_at: '2025-09-15 11:15:00'
+  created_by: usr013
+  updated_at: '2025-09-17 17:00:00'
+  updated_by: usr013
+  title: Neural Network Architectures
+  content: Overview of CNN, RNN, and Transformer architectures.
+  description: From perceptrons to attention mechanisms
+  user_id: usr013
+  category_id: cat012
+  status: published
+  view_count: 378
+
+- id: post020
+  created_at: '2025-09-28 08:30:00'
+  created_by: usr012
+  updated_at: '2025-10-01 14:00:00'
+  updated_by: usr012
+  title: Music Theory for Developers
+  content: Understanding music through a programmer's lens.
+  description: Algorithms in composition
+  user_id: usr012
+  category_id: cat007
+  status: review
+  view_count: 89
+
+- id: post021
+  created_at: '2025-10-05 13:45:00'
+  created_by: usr014
+  updated_at: '2025-10-08 09:15:00'
+  updated_by: usr014
+  title: Test-Driven Development in Practice
+  content: Real-world TDD workflows and common pitfalls.
+  description: Red-green-refactor cycle
+  user_id: usr014
+  category_id: cat001
+  status: published
+  view_count: 256
+
+- id: post022
+  created_at: '2025-10-18 10:30:00'
+  created_by: usr015
+  updated_at: '2025-10-20 16:00:00'
+  updated_by: usr015
+  title: The History of Computing
+  content: From Babbage to modern processors.
+  description: Key milestones in computing history
+  user_id: usr015
+  category_id: cat007
+  status: published
+  view_count: 134
+
+- id: post023
+  created_at: '2025-10-28 15:00:00'
+  created_by: usr016
+  updated_at: '2025-10-30 11:30:00'
+  updated_by: usr016
+  title: Blockchain Beyond Cryptocurrency
+  content: Enterprise use cases for blockchain technology.
+  description: Supply chain, voting, and identity
+  user_id: usr016
+  category_id: cat001
+  status: draft
+  view_count: 67
+
+- id: post024
+  created_at: '2025-11-05 09:00:00'
+  created_by: usr017
+  updated_at: '2025-11-07 14:30:00'
+  updated_by: usr017
+  title: Game Engine Design Principles
+  content: Core concepts behind modern game engines.
+  description: ECS, rendering pipeline, and physics
+  user_id: usr017
+  category_id: cat001
+  status: published
+  view_count: 189
+
+- id: post025
+  created_at: '2025-11-15 12:15:00'
+  created_by: usr018
+  updated_at: '2025-11-18 08:45:00'
+  updated_by: usr018
+  title: Computational Photography
+  content: How software is revolutionizing camera technology.
+  description: HDR, night mode, and portrait effects
+  user_id: usr018
+  category_id: cat002
+  status: review
+  view_count: 156
+
+- id: post026
+  created_at: '2025-11-22 07:30:00'
+  created_by: usr019
+  updated_at: '2025-11-25 15:00:00'
+  updated_by: usr019
+  title: Network Protocol Deep Dive
+  content: Understanding TCP/IP, HTTP/3, and QUIC protocols.
+  description: From OSI model to modern protocols
+  user_id: usr019
+  category_id: cat001
+  status: published
+  view_count: 312
+
+- id: post027
+  created_at: '2025-11-30 14:00:00'
+  created_by: usr020
+  updated_at: '2025-12-02 10:30:00'
+  updated_by: usr020
+  title: Accessible Web Design
+  content: Building websites that work for everyone.
+  description: WCAG guidelines and ARIA best practices
+  user_id: usr020
+  category_id: cat001
+  status: published
+  view_count: 223
+
+- id: post028
+  created_at: '2025-12-05 11:45:00'
+  created_by: usr007
+  updated_at: '2025-12-08 08:15:00'
+  updated_by: usr007
+  title: Go Fiber Web Framework Guide
+  content: Building high-performance APIs with Fiber.
+  description: Routing, middleware, and best practices
+  user_id: usr007
+  category_id: cat011
+  status: published
+  view_count: 345
+
+- id: post029
+  created_at: '2025-12-10 09:30:00'
+  created_by: usr008
+  updated_at: '2025-12-12 16:00:00'
+  updated_by: usr008
+  title: Genetics and Bioinformatics
+  content: How computing is transforming biological research.
+  description: DNA sequencing and protein folding
+  user_id: usr008
+  category_id: cat014
+  status: draft
+  view_count: 78
+
+- id: post030
+  created_at: '2025-12-15 13:15:00'
+  created_by: usr011
+  updated_at: '2025-12-18 09:45:00'
+  updated_by: usr011
+  title: Digital Marketing Analytics
+  content: Using data to drive marketing decisions.
+  description: SEO, conversion funnels, and A/B testing
+  user_id: usr011
+  category_id: cat015
+  status: review
+  view_count: 198

@@ -1,0 +1,102 @@
+# 10 export employees: active=7, inactive=2, on_leave=1
+# Pure data struct — no audit fields, only id + business fields
+
+- id: exp001
+  name: Export Alice Chen
+  email: export.alice@company.com
+  age: 28
+  status: active
+  created_at: '2025-01-10 09:00:00'
+  created_by: system
+  updated_at: '2025-01-10 09:00:00'
+  updated_by: system
+
+- id: exp002
+  name: Export Bob Smith
+  email: export.bob@company.com
+  age: 35
+  status: active
+  created_at: '2025-01-10 09:00:00'
+  created_by: system
+  updated_at: '2025-01-10 09:00:00'
+  updated_by: system
+
+- id: exp003
+  name: Export Charlie Wang
+  email: export.charlie@company.com
+  age: 30
+  status: inactive
+  created_at: '2025-01-10 09:00:00'
+  created_by: system
+  updated_at: '2025-01-10 09:00:00'
+  updated_by: system
+
+- id: exp004
+  name: Export Diana Lee
+  email: export.diana@company.com
+  age: 27
+  status: active
+  created_at: '2025-01-10 09:00:00'
+  created_by: system
+  updated_at: '2025-01-10 09:00:00'
+  updated_by: system
+
+- id: exp005
+  name: Export Edward Kim
+  email: export.edward@company.com
+  age: 32
+  status: active
+  created_at: '2025-01-10 09:00:00'
+  created_by: system
+  updated_at: '2025-01-10 09:00:00'
+  updated_by: system
+
+- id: exp006
+  name: Export Fiona Zhang
+  email: export.fiona@company.com
+  age: 24
+  status: active
+  created_at: '2025-01-10 09:00:00'
+  created_by: system
+  updated_at: '2025-01-10 09:00:00'
+  updated_by: system
+
+- id: exp007
+  name: Export George Park
+  email: export.george@company.com
+  age: 41
+  status: on_leave
+  created_at: '2025-01-10 09:00:00'
+  created_by: system
+  updated_at: '2025-01-10 09:00:00'
+  updated_by: system
+
+- id: exp008
+  name: Export Hannah Liu
+  email: export.hannah@company.com
+  age: 29
+  status: active
+  created_at: '2025-01-10 09:00:00'
+  created_by: system
+  updated_at: '2025-01-10 09:00:00'
+  updated_by: system
+
+- id: exp009
+  name: Export Ivan Torres
+  email: export.ivan@company.com
+  age: 38
+  status: inactive
+  created_at: '2025-01-10 09:00:00'
+  created_by: system
+  updated_at: '2025-01-10 09:00:00'
+  updated_by: system
+
+- id: exp010
+  name: Export Julia Davis
+  email: export.julia@company.com
+  age: 33
+  status: active
+  created_at: '2025-01-10 09:00:00'
+  created_by: system
+  updated_at: '2025-01-10 09:00:00'
+  updated_by: system

@@ -1,0 +1,132 @@
+# 15 project assignments: 4 projects (alpha/beta/gamma/delta)
+# status: active=11, completed=4
+# emp001 appears in 2 projects (alpha + gamma)
+# roles: developer(5), reviewer(4), lead(4), architect(2)
+
+# === proj-alpha (live product, started 2025-06) — 4 members ===
+
+- project_code: proj-alpha
+  employee_id: emp001
+  role: developer
+  hours_per_week: 40
+  status: active
+  created_at: '2025-06-01 09:00:00'
+  created_by: op005
+
+- project_code: proj-alpha
+  employee_id: emp003
+  role: reviewer
+  hours_per_week: 20
+  status: active
+  created_at: '2025-06-01 09:01:00'
+  created_by: op005
+
+- project_code: proj-alpha
+  employee_id: emp005
+  role: lead
+  hours_per_week: 30
+  status: active
+  created_at: '2025-06-01 09:02:00'
+  created_by: op005
+
+- project_code: proj-alpha
+  employee_id: emp009
+  role: architect
+  hours_per_week: 15
+  status: active
+  created_at: '2025-06-01 09:03:00'
+  created_by: op005
+
+# === proj-beta (in development, started 2025-09) — 4 members ===
+
+- project_code: proj-beta
+  employee_id: emp002
+  role: developer
+  hours_per_week: 40
+  status: active
+  created_at: '2025-09-01 09:00:00'
+  created_by: op003
+
+- project_code: proj-beta
+  employee_id: emp004
+  role: developer
+  hours_per_week: 35
+  status: active
+  created_at: '2025-09-01 09:01:00'
+  created_by: op003
+
+- project_code: proj-beta
+  employee_id: emp007
+  role: lead
+  hours_per_week: 25
+  status: active
+  created_at: '2025-09-01 09:02:00'
+  created_by: op003
+
+- project_code: proj-beta
+  employee_id: emp011
+  role: reviewer
+  hours_per_week: 10
+  status: active
+  created_at: '2025-09-01 09:03:00'
+  created_by: op003
+
+# === proj-gamma (completed, started 2025-01) — 4 members ===
+
+- project_code: proj-gamma
+  employee_id: emp001
+  role: reviewer
+  hours_per_week: 15
+  status: completed
+  created_at: '2025-01-15 09:00:00'
+  created_by: op007
+
+- project_code: proj-gamma
+  employee_id: emp006
+  role: developer
+  hours_per_week: 40
+  status: completed
+  created_at: '2025-01-15 09:01:00'
+  created_by: op007
+
+- project_code: proj-gamma
+  employee_id: emp008
+  role: lead
+  hours_per_week: 30
+  status: completed
+  created_at: '2025-01-15 09:02:00'
+  created_by: op007
+
+- project_code: proj-gamma
+  employee_id: emp013
+  role: architect
+  hours_per_week: 20
+  status: completed
+  created_at: '2025-01-15 09:03:00'
+  created_by: op007
+
+# === proj-delta (newly started, started 2025-03) — 3 members ===
+
+- project_code: proj-delta
+  employee_id: emp010
+  role: developer
+  hours_per_week: 40
+  status: active
+  created_at: '2025-03-01 09:00:00'
+  created_by: op004
+
+- project_code: proj-delta
+  employee_id: emp012
+  role: reviewer
+  hours_per_week: 20
+  status: active
+  created_at: '2025-03-01 09:01:00'
+  created_by: op004
+
+- project_code: proj-delta
+  employee_id: emp015
+  role: lead
+  hours_per_week: 35
+  status: active
+  created_at: '2025-03-01 09:02:00'
+  created_by: op004

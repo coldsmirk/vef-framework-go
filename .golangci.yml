@@ -1,0 +1,271 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+  allow-serial-runners: true
+
+severity:
+  default: error
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - revive
+
+    - inamedparam
+    - asciicheck
+    - gocyclo
+    - misspell
+    - unconvert
+    - unparam
+    - noctx
+    - mirror
+    - bidichk
+    - bodyclose
+    - rowserrcheck
+    - sqlclosecheck
+    - whitespace
+    - godot
+    - wsl_v5
+    - gosec
+    - errorlint
+    - err113
+    - nilerr
+    - nilnesserr
+    - nlreturn
+
+    - dupl
+    - dupword
+    - durationcheck
+    - embeddedstructfieldcheck
+
+    - tagliatelle
+    - tagalign
+
+  settings:
+    revive:
+      severity: error
+      enable-all-rules: true
+      rules:
+        - name: line-length-limit
+          arguments: [600]
+        - name: max-public-structs
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: exported
+          disabled: true
+        - name: add-constant
+          disabled: true
+        - name: struct-tag
+          arguments:
+            [
+              "json,inline",
+              "validate,alphanum_us,dec_min,dec_max,phone_number,alphanum_us_dot,alphanum_us_slash",
+            ]
+        - name: var-naming
+          arguments:
+            - ["API", "HTML"]
+            - []
+            - [
+                {
+                  skip-initialism-name-checks: false,
+                  upper-case-const: false,
+                  skip-package-name-checks: true,
+                },
+              ]
+        - name: function-length
+          disabled: true
+        - name: cognitive-complexity
+          disabled: true
+        - name: cyclomatic
+          disabled: true
+        - name: enforce-switch-style
+          arguments: ["allowNoDefault"]
+        - name: import-shadowing
+          disabled: true
+        - name: unhandled-error
+          arguments:
+            - "^fmt\\.Print(f|ln)?$"
+            - "^(bytes\\.Buffer|strings\\.Builder)\\.Write(Byte|Rune|String)?$"
+        - name: unchecked-type-assertion
+          disabled: true
+        - name: context-as-argument
+          arguments:
+            - { allow-types-before: "*testing.T" }
+        - name: flag-parameter
+          disabled: true
+        - name: nested-structs
+          disabled: true
+        - name: early-return
+          arguments: ["preserve-scope"]
+        - name: function-result-limit
+          arguments: [4]
+        - name: bare-return
+          disabled: true
+        - name: confusing-naming
+          disabled: true
+
+    inamedparam:
+      skip-single-param: true
+
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+      verbose: true
+      exclude-functions:
+        - io.Copy(*bytes.Buffer)
+        - io.Copy(os.Stdout)
+        - (*strings.Builder).WriteString
+        - (*strings.Builder).Write
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
+
+    gocyclo:
+      min-complexity: 32
+
+    misspell:
+      locale: US
+
+    gosec:
+      severity: high
+      confidence: high
+
+    godot:
+      scope: declarations
+      exclude:
+        - "^@"
+      capital: true
+
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+
+    whitespace:
+      multi-if: false
+      multi-func: true
+
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: true
+      branch-max-lines: 6
+      case-max-lines: 4
+
+    embeddedstructfieldcheck:
+      empty-line: true
+      forbid-mutex: true
+
+    dupl:
+      threshold: 200
+
+    tagliatelle:
+      case:
+        rules:
+          json: camel
+          xml: camel
+          config: snake
+
+    tagalign:
+      align: false
+      sort: true
+      order:
+        [
+          json,
+          xml,
+          yaml,
+          yml,
+          toml,
+          query,
+          form,
+          config,
+          tabular,
+          search,
+          bun,
+          mold,
+          validate,
+          label,
+          label_i18n,
+        ]
+      strict: false
+
+  exclusions:
+    rules:
+      - path: '(.+)_test\.go'
+        linters:
+          - bodyclose
+          - errcheck
+          - err113
+          - dupl
+          - unparam
+      - path: 'internal/orm/aggregate\.go'
+        linters:
+          - dupl
+      - path: 'null/(date|date_time|time)\.go'
+        linters:
+          - dupl
+
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+    - golines
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/coldsmirk/vef-framework-go)
+        - blank
+        - dot
+        - alias
+        - localmodule
+      no-inline-comments: false
+      no-prefix-comments: false
+      custom-order: false
+      no-lex-order: false
+    gofmt:
+      simplify: false
+      rewrite-rules:
+        - pattern: "interface{}"
+          replacement: "any"
+        - pattern: "a[b:len(a)]"
+          replacement: "a[b:]"
+    gofumpt:
+      module-path: github.com/coldsmirk/vef-framework-go
+      extra-rules: true
+    goimports:
+      local-prefixes:
+        - github.com/coldsmirk/vef-framework-go
+    golines:
+      max-len: 200
+      tab-len: 8
+      shorten-comments: false
+      reformat-tags: false
+      chain-split-dots: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  fix: true
+  whole-files: true
+
+output:
+  formats:
+    text:
+      print-linter-name: true
+      print-issued-lines: true
+      colors: true
