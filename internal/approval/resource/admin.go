@@ -48,13 +48,13 @@ func NewAdminResource(bus cqrs.Bus, deptResolver approval.PrincipalDeptResolver)
 type AdminFindInstancesParams struct {
 	api.P
 
-	TenantID    string `json:"tenantId"`
-	ApplicantID string `json:"applicantId"`
-	Status      string `json:"status"`
-	FlowID      string `json:"flowId"`
-	Keyword     string `json:"keyword"`
-	Page        int    `json:"page"`
-	PageSize    int    `json:"pageSize"`
+	TenantID    *string                  `json:"tenantId"`
+	ApplicantID *string                  `json:"applicantId"`
+	Status      *approval.InstanceStatus `json:"status"`
+	FlowID      *string                  `json:"flowId"`
+	Keyword     *string                  `json:"keyword"`
+	Page        int                      `json:"page"`
+	PageSize    int                      `json:"pageSize"`
 }
 
 // FindInstances queries instances for admin management.
@@ -78,12 +78,12 @@ func (r *AdminResource) FindInstances(ctx fiber.Ctx, _ *security.Principal, para
 type AdminFindTasksParams struct {
 	api.P
 
-	TenantID   string `json:"tenantId"`
-	AssigneeID string `json:"assigneeId"`
-	InstanceID string `json:"instanceId"`
-	Status     string `json:"status"`
-	Page       int    `json:"page"`
-	PageSize   int    `json:"pageSize"`
+	TenantID   *string              `json:"tenantId"`
+	AssigneeID *string              `json:"assigneeId"`
+	InstanceID *string              `json:"instanceId"`
+	Status     *approval.TaskStatus `json:"status"`
+	Page       int                  `json:"page"`
+	PageSize   int                  `json:"pageSize"`
 }
 
 // FindTasks queries tasks for admin management.
@@ -125,10 +125,10 @@ func (r *AdminResource) GetInstanceDetail(ctx fiber.Ctx, _ *security.Principal, 
 type AdminFindActionLogsParams struct {
 	api.P
 
-	InstanceID string `json:"instanceId" validate:"required"`
-	TenantID   string `json:"tenantId"`
-	Page       int    `json:"page"`
-	PageSize   int    `json:"pageSize"`
+	InstanceID string  `json:"instanceId" validate:"required"`
+	TenantID   *string `json:"tenantId"`
+	Page       int     `json:"page"`
+	PageSize   int     `json:"pageSize"`
 }
 
 // FindActionLogs queries action logs for an instance with pagination.

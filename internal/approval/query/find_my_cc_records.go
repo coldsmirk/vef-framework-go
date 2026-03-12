@@ -18,7 +18,7 @@ type FindMyCCRecordsQuery struct {
 	page.Pageable
 
 	UserID   string
-	TenantID string
+	TenantID *string
 	IsRead   *bool
 }
 
@@ -39,16 +39,7 @@ func (h *FindMyCCRecordsHandler) Handle(ctx context.Context, query FindMyCCRecor
 
 	sq := db.NewSelect().Model(&records).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("cc_user_id", query.UserID).
-				ApplyIf(query.TenantID != "", func(cb orm.ConditionBuilder) {
-					cb.In("instance_id", db.NewSelect().
-						Model((*approval.Instance)(nil)).
-						Select("id").
-						Where(func(cb orm.ConditionBuilder) {
-							cb.Equals("tenant_id", query.TenantID)
-						}),
-					)
-				})
+			cb.Equals("cc_user_id", query.UserID)
 
 			if query.IsRead != nil {
 				if *query.IsRead {
@@ -57,6 +48,14 @@ func (h *FindMyCCRecordsHandler) Handle(ctx context.Context, query FindMyCCRecor
 					cb.IsNull("read_at")
 				}
 			}
+		}).
+		ApplyIf(query.TenantID != nil, func(sq orm.SelectQuery) {
+			sq.Join((*approval.Instance)(nil), func(cb orm.ConditionBuilder) {
+				cb.EqualsColumn("instance_id", "i.id")
+			}, "i").
+				Where(func(cb orm.ConditionBuilder) {
+					cb.Equals("i.tenant_id", *query.TenantID)
+				})
 		}).
 		OrderByDesc("created_at")
 

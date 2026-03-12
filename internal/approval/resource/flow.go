@@ -187,12 +187,12 @@ func (r *FlowResource) GetGraph(ctx fiber.Ctx, params GetGraphParams) error {
 type FindFlowsParams struct {
 	api.P
 
-	TenantID   string `json:"tenantId"`
-	CategoryID string `json:"categoryId"`
-	Keyword    string `json:"keyword"`
-	IsActive   *bool  `json:"isActive"`
-	Page       int    `json:"page"`
-	PageSize   int    `json:"pageSize"`
+	TenantID   *string `json:"tenantId"`
+	CategoryID *string `json:"categoryId"`
+	Keyword    *string `json:"keyword"`
+	IsActive   *bool   `json:"isActive"`
+	Page       int     `json:"page"`
+	PageSize   int     `json:"pageSize"`
 }
 
 // FindFlows queries flows for admin management.
@@ -288,8 +288,8 @@ func (r *FlowResource) ToggleActive(ctx fiber.Ctx, params ToggleActiveParams) er
 type FindVersionsParams struct {
 	api.P
 
-	FlowID   string `json:"flowId" validate:"required"`
-	TenantID string `json:"tenantId"`
+	FlowID   string  `json:"flowId" validate:"required"`
+	TenantID *string `json:"tenantId"`
 }
 
 // FindVersions queries flow versions for a specific flow.

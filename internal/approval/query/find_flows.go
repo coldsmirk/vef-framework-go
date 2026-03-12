@@ -16,9 +16,9 @@ type FindFlowsQuery struct {
 	cqrs.BaseQuery
 	page.Pageable
 
-	TenantID   string
-	CategoryID string
-	Keyword    string
+	TenantID   *string
+	CategoryID *string
+	Keyword    *string
 	IsActive   *bool
 }
 
@@ -39,17 +39,17 @@ func (h *FindFlowsHandler) Handle(ctx context.Context, query FindFlowsQuery) (*p
 
 	sq := db.NewSelect().Model(&flows).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.ApplyIf(query.TenantID != "", func(cb orm.ConditionBuilder) {
-				cb.Equals("tenant_id", query.TenantID)
+			cb.ApplyIf(query.TenantID != nil, func(cb orm.ConditionBuilder) {
+				cb.Equals("tenant_id", *query.TenantID)
 			}).
-				ApplyIf(query.CategoryID != "", func(cb orm.ConditionBuilder) {
-					cb.Equals("category_id", query.CategoryID)
+				ApplyIf(query.CategoryID != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("category_id", *query.CategoryID)
 				}).
 				ApplyIf(query.IsActive != nil, func(cb orm.ConditionBuilder) {
 					cb.Equals("is_active", *query.IsActive)
 				}).
-				ApplyIf(query.Keyword != "", func(cb orm.ConditionBuilder) {
-					cb.Contains("name", query.Keyword)
+				ApplyIf(query.Keyword != nil, func(cb orm.ConditionBuilder) {
+					cb.Contains("name", *query.Keyword)
 				})
 		}).
 		OrderBy("name")

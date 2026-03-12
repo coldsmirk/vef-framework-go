@@ -16,7 +16,7 @@ type FindFlowVersionsQuery struct {
 	cqrs.BaseQuery
 
 	FlowID   string
-	TenantID string
+	TenantID *string
 }
 
 // FindFlowVersionsHandler handles the FindFlowVersionsQuery.
@@ -32,12 +32,12 @@ func NewFindFlowVersionsHandler(db orm.DB) *FindFlowVersionsHandler {
 func (h *FindFlowVersionsHandler) Handle(ctx context.Context, query FindFlowVersionsQuery) ([]approval.FlowVersion, error) {
 	db := contextx.DB(ctx, h.db)
 
-	if query.TenantID != "" {
+	if query.TenantID != nil {
 		exists, err := db.NewSelect().
 			Model((*approval.Flow)(nil)).
 			Where(func(cb orm.ConditionBuilder) {
 				cb.PKEquals(query.FlowID).
-					Equals("tenant_id", query.TenantID)
+					Equals("tenant_id", *query.TenantID)
 			}).
 			Exists(ctx)
 		if err != nil {

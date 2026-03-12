@@ -17,11 +17,11 @@ type FindAdminInstancesQuery struct {
 	cqrs.BaseQuery
 	page.Pageable
 
-	TenantID    string
-	ApplicantID string
-	Status      string
-	FlowID      string
-	Keyword     string
+	TenantID    *string
+	ApplicantID *string
+	Status      *approval.InstanceStatus
+	FlowID      *string
+	Keyword     *string
 }
 
 // FindAdminInstancesHandler handles the FindAdminInstancesQuery.
@@ -41,20 +41,20 @@ func (h *FindAdminInstancesHandler) Handle(ctx context.Context, query FindAdminI
 
 	sq := db.NewSelect().Model(&instances).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.ApplyIf(query.TenantID != "", func(cb orm.ConditionBuilder) {
-				cb.Equals("tenant_id", query.TenantID)
+			cb.ApplyIf(query.TenantID != nil, func(cb orm.ConditionBuilder) {
+				cb.Equals("tenant_id", *query.TenantID)
 			}).
-				ApplyIf(query.ApplicantID != "", func(cb orm.ConditionBuilder) {
-					cb.Equals("applicant_id", query.ApplicantID)
+				ApplyIf(query.ApplicantID != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("applicant_id", *query.ApplicantID)
 				}).
-				ApplyIf(query.Status != "", func(cb orm.ConditionBuilder) {
-					cb.Equals("status", query.Status)
+				ApplyIf(query.Status != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("status", *query.Status)
 				}).
-				ApplyIf(query.FlowID != "", func(cb orm.ConditionBuilder) {
-					cb.Equals("flow_id", query.FlowID)
+				ApplyIf(query.FlowID != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("flow_id", *query.FlowID)
 				}).
-				ApplyIf(query.Keyword != "", func(cb orm.ConditionBuilder) {
-					cb.Contains("title", query.Keyword)
+				ApplyIf(query.Keyword != nil, func(cb orm.ConditionBuilder) {
+					cb.Contains("title", *query.Keyword)
 				})
 		}).
 		OrderByDesc("created_at")

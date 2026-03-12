@@ -65,7 +65,7 @@ func (s *FindAdminTasksTestSuite) TestFindAll() {
 
 func (s *FindAdminTasksTestSuite) TestFilterByAssignee() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminTasksQuery{
-		AssigneeID: "user-a",
+		AssigneeID: new("user-a"),
 		Pageable:   page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")
@@ -74,7 +74,7 @@ func (s *FindAdminTasksTestSuite) TestFilterByAssignee() {
 
 func (s *FindAdminTasksTestSuite) TestFilterByStatus() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminTasksQuery{
-		Status:   string(approval.TaskPending),
+		Status:   new(approval.TaskPending),
 		Pageable: page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")
@@ -83,7 +83,7 @@ func (s *FindAdminTasksTestSuite) TestFilterByStatus() {
 
 func (s *FindAdminTasksTestSuite) TestNoResults() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminTasksQuery{
-		AssigneeID: "non-existent-user",
+		AssigneeID: new("non-existent-user"),
 		Pageable:   page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")

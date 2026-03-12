@@ -87,16 +87,20 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 		return nil, fmt.Errorf("insert flow: %w", err)
 	}
 
-	for _, init := range cmd.Initiators {
-		initiator := approval.FlowInitiator{
-			FlowID: flow.ID,
-			Kind:   init.Kind,
-			IDs:    init.IDs,
+	if len(cmd.Initiators) > 0 {
+		initiators := make([]approval.FlowInitiator, len(cmd.Initiators))
+		for i, init := range cmd.Initiators {
+			initiators[i] = approval.FlowInitiator{
+				FlowID: flow.ID,
+				Kind:   init.Kind,
+				IDs:    init.IDs,
+			}
 		}
+
 		if _, err := db.NewInsert().
-			Model(&initiator).
+			Model(&initiators).
 			Exec(ctx); err != nil {
-			return nil, fmt.Errorf("insert flow initiator: %w", err)
+			return nil, fmt.Errorf("insert flow initiators: %w", err)
 		}
 	}
 

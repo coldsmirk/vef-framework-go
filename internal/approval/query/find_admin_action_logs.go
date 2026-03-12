@@ -19,7 +19,7 @@ type FindAdminActionLogsQuery struct {
 	page.Pageable
 
 	InstanceID string
-	TenantID   string
+	TenantID   *string
 }
 
 // FindAdminActionLogsHandler handles the FindAdminActionLogsQuery.
@@ -35,12 +35,12 @@ func NewFindAdminActionLogsHandler(db orm.DB) *FindAdminActionLogsHandler {
 func (h *FindAdminActionLogsHandler) Handle(ctx context.Context, query FindAdminActionLogsQuery) (*page.Page[admin.ActionLog], error) {
 	db := contextx.DB(ctx, h.db)
 
-	if query.TenantID != "" {
+	if query.TenantID != nil {
 		exists, err := db.NewSelect().
 			Model((*approval.Instance)(nil)).
 			Where(func(cb orm.ConditionBuilder) {
 				cb.PKEquals(query.InstanceID).
-					Equals("tenant_id", query.TenantID)
+					Equals("tenant_id", *query.TenantID)
 			}).
 			Exists(ctx)
 		if err != nil {

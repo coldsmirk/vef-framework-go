@@ -81,25 +81,16 @@ func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Uni
 		return cqrs.Unit{}, fmt.Errorf("load flow version: %w", err)
 	}
 
-	mergedFormData := maps.Clone(instance.FormData)
-	if mergedFormData == nil {
-		mergedFormData = make(map[string]any, len(cmd.FormData))
+	if instance.FormData == nil {
+		instance.FormData = make(map[string]any, len(cmd.FormData))
 	}
 
 	if len(cmd.FormData) > 0 {
-		maps.Copy(mergedFormData, cmd.FormData)
-	}
-
-	if err := h.validationSvc.ValidateFormData(version.FormSchema, mergedFormData); err != nil {
-		return cqrs.Unit{}, err
-	}
-
-	if len(cmd.FormData) > 0 {
-		if instance.FormData == nil {
-			instance.FormData = make(map[string]any, len(cmd.FormData))
-		}
-
 		maps.Copy(instance.FormData, cmd.FormData)
+	}
+
+	if err := h.validationSvc.ValidateFormData(version.FormSchema, instance.FormData); err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	instance.Status = approval.InstanceRunning

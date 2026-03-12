@@ -18,9 +18,9 @@ type FindMyInitiatedQuery struct {
 	page.Pageable
 
 	UserID   string
-	TenantID string
-	Status   string
-	Keyword  string
+	TenantID *string
+	Status   *approval.InstanceStatus
+	Keyword  *string
 }
 
 // FindMyInitiatedHandler handles the FindMyInitiatedQuery.
@@ -41,14 +41,14 @@ func (h *FindMyInitiatedHandler) Handle(ctx context.Context, query FindMyInitiat
 	sq := db.NewSelect().Model(&instances).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("applicant_id", query.UserID).
-				ApplyIf(query.TenantID != "", func(cb orm.ConditionBuilder) {
-					cb.Equals("tenant_id", query.TenantID)
+				ApplyIf(query.TenantID != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("tenant_id", *query.TenantID)
 				}).
-				ApplyIf(query.Status != "", func(cb orm.ConditionBuilder) {
-					cb.Equals("status", query.Status)
+				ApplyIf(query.Status != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("status", *query.Status)
 				}).
-				ApplyIf(query.Keyword != "", func(cb orm.ConditionBuilder) {
-					cb.Contains("title", query.Keyword)
+				ApplyIf(query.Keyword != nil, func(cb orm.ConditionBuilder) {
+					cb.Contains("title", *query.Keyword)
 				})
 		}).
 		OrderByDesc("created_at")
@@ -117,47 +117,4 @@ func (h *FindMyInitiatedHandler) Handle(ctx context.Context, query FindMyInitiat
 	result := page.New(query.Pageable, count, items)
 
 	return &result, nil
-}
-
-// loadFlowMap loads flows by IDs and returns a map keyed by flow ID.
-func loadFlowMap(ctx context.Context, db orm.DB, flowIDs []string) (map[string]*approval.Flow, error) {
-	if len(flowIDs) == 0 {
-		return nil, nil
-	}
-
-	var flows []approval.Flow
-	if err := db.NewSelect().Model(&flows).
-		Where(func(cb orm.ConditionBuilder) { cb.In("id", flowIDs) }).
-		Scan(ctx); err != nil {
-		return nil, fmt.Errorf("query flows: %w", err)
-	}
-
-	m := make(map[string]*approval.Flow, len(flows))
-	for i := range flows {
-		m[flows[i].ID] = &flows[i]
-	}
-
-	return m, nil
-}
-
-// loadNodeNameMap loads flow node names by IDs and returns a map keyed by node ID.
-func loadNodeNameMap(ctx context.Context, db orm.DB, nodeIDs []string) (map[string]string, error) {
-	if len(nodeIDs) == 0 {
-		return nil, nil
-	}
-
-	var nodes []approval.FlowNode
-	if err := db.NewSelect().Model(&nodes).
-		Select("id", "name").
-		Where(func(cb orm.ConditionBuilder) { cb.In("id", nodeIDs) }).
-		Scan(ctx); err != nil {
-		return nil, fmt.Errorf("query flow nodes: %w", err)
-	}
-
-	m := make(map[string]string, len(nodes))
-	for _, n := range nodes {
-		m[n.ID] = n.Name
-	}
-
-	return m, nil
 }

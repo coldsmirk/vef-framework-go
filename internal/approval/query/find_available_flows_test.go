@@ -302,7 +302,7 @@ func (s *FindAvailableFlowsTestSuite) TestExcludesFlowsWithoutPublishedVersion()
 func (s *FindAvailableFlowsTestSuite) TestFilterByKeyword() {
 	result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
 		UserID:   "user-z",
-		Keyword:  "All Allowed",
+		Keyword:  new("All Allowed"),
 		Pageable: page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")
@@ -312,7 +312,7 @@ func (s *FindAvailableFlowsTestSuite) TestFilterByKeyword() {
 func (s *FindAvailableFlowsTestSuite) TestNoResults() {
 	result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
 		UserID:   "user-z",
-		Keyword:  "NonExistentFlow",
+		Keyword:  new("NonExistentFlow"),
 		Pageable: page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")

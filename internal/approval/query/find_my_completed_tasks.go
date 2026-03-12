@@ -27,7 +27,7 @@ type FindMyCompletedTasksQuery struct {
 	page.Pageable
 
 	UserID   string
-	TenantID string
+	TenantID *string
 }
 
 // FindMyCompletedTasksHandler handles the FindMyCompletedTasksQuery.
@@ -49,8 +49,8 @@ func (h *FindMyCompletedTasksHandler) Handle(ctx context.Context, query FindMyCo
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("assignee_id", query.UserID).
 				In("status", completedStatuses).
-				ApplyIf(query.TenantID != "", func(cb orm.ConditionBuilder) {
-					cb.Equals("tenant_id", query.TenantID)
+				ApplyIf(query.TenantID != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("tenant_id", *query.TenantID)
 				})
 		}).
 		OrderByDesc("finished_at")

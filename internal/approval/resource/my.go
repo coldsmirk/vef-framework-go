@@ -45,10 +45,10 @@ func NewMyResource(bus cqrs.Bus, deptResolver approval.PrincipalDeptResolver) ap
 type FindAvailableFlowsParams struct {
 	api.P
 
-	TenantID string `json:"tenantId"`
-	Keyword  string `json:"keyword"`
-	Page     int    `json:"page"`
-	PageSize int    `json:"pageSize"`
+	TenantID *string `json:"tenantId"`
+	Keyword  *string `json:"keyword"`
+	Page     int     `json:"page"`
+	PageSize int     `json:"pageSize"`
 }
 
 // FindAvailableFlows queries flows the current user is allowed to initiate.
@@ -76,11 +76,11 @@ func (r *MyResource) FindAvailableFlows(ctx fiber.Ctx, principal *security.Princ
 type FindInitiatedParams struct {
 	api.P
 
-	TenantID string `json:"tenantId"`
-	Status   string `json:"status"`
-	Keyword  string `json:"keyword"`
-	Page     int    `json:"page"`
-	PageSize int    `json:"pageSize"`
+	TenantID *string                  `json:"tenantId"`
+	Status   *approval.InstanceStatus `json:"status"`
+	Keyword  *string                  `json:"keyword"`
+	Page     int                      `json:"page"`
+	PageSize int                      `json:"pageSize"`
 }
 
 // FindInitiated queries instances initiated by the current user.
@@ -103,9 +103,9 @@ func (r *MyResource) FindInitiated(ctx fiber.Ctx, principal *security.Principal,
 type FindPendingTasksParams struct {
 	api.P
 
-	TenantID string `json:"tenantId"`
-	Page     int    `json:"page"`
-	PageSize int    `json:"pageSize"`
+	TenantID *string `json:"tenantId"`
+	Page     int     `json:"page"`
+	PageSize int     `json:"pageSize"`
 }
 
 // FindPendingTasks queries pending tasks assigned to the current user.
@@ -126,9 +126,9 @@ func (r *MyResource) FindPendingTasks(ctx fiber.Ctx, principal *security.Princip
 type FindCompletedTasksParams struct {
 	api.P
 
-	TenantID string `json:"tenantId"`
-	Page     int    `json:"page"`
-	PageSize int    `json:"pageSize"`
+	TenantID *string `json:"tenantId"`
+	Page     int     `json:"page"`
+	PageSize int     `json:"pageSize"`
 }
 
 // FindCompletedTasks queries tasks already processed by the current user.
@@ -149,10 +149,10 @@ func (r *MyResource) FindCompletedTasks(ctx fiber.Ctx, principal *security.Princ
 type FindCCRecordsParams struct {
 	api.P
 
-	TenantID string `json:"tenantId"`
-	IsRead   *bool  `json:"isRead"`
-	Page     int    `json:"page"`
-	PageSize int    `json:"pageSize"`
+	TenantID *string `json:"tenantId"`
+	IsRead   *bool   `json:"isRead"`
+	Page     int     `json:"page"`
+	PageSize int     `json:"pageSize"`
 }
 
 // FindCCRecords queries CC records addressed to the current user.

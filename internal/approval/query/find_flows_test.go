@@ -71,7 +71,7 @@ func (s *FindFlowsTestSuite) TestFindAll() {
 
 func (s *FindFlowsTestSuite) TestFilterByTenant() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
-		TenantID: "t1",
+		TenantID: new("t1"),
 		Pageable: page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")
@@ -80,7 +80,7 @@ func (s *FindFlowsTestSuite) TestFilterByTenant() {
 
 func (s *FindFlowsTestSuite) TestFilterByCategory() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
-		CategoryID: s.categoryID1,
+		CategoryID: new(s.categoryID1),
 		Pageable:   page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")
@@ -99,7 +99,7 @@ func (s *FindFlowsTestSuite) TestFilterByIsActive() {
 
 func (s *FindFlowsTestSuite) TestKeywordSearch() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
-		Keyword:  "Flow",
+		Keyword:  new("Flow"),
 		Pageable: page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")
@@ -117,7 +117,7 @@ func (s *FindFlowsTestSuite) TestPagination() {
 
 func (s *FindFlowsTestSuite) TestEmpty() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
-		TenantID: "non-existent-tenant",
+		TenantID: new("non-existent-tenant"),
 		Pageable: page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")

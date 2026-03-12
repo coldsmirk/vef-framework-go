@@ -21,9 +21,9 @@ type FindAvailableFlowsQuery struct {
 	page.Pageable
 
 	UserID          string
-	TenantID        string
+	TenantID        *string
 	ApplicantDeptID *string
-	Keyword         string
+	Keyword         *string
 }
 
 // FindAvailableFlowsHandler handles the FindAvailableFlowsQuery.
@@ -48,11 +48,11 @@ func (h *FindAvailableFlowsHandler) Handle(ctx context.Context, query FindAvaila
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("is_active", true).
 				Equals("is_all_initiation_allowed", true).
-				ApplyIf(query.TenantID != "", func(cb orm.ConditionBuilder) {
-					cb.Equals("tenant_id", query.TenantID)
+				ApplyIf(query.TenantID != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("tenant_id", *query.TenantID)
 				}).
-				ApplyIf(query.Keyword != "", func(cb orm.ConditionBuilder) {
-					cb.Contains("name", query.Keyword)
+				ApplyIf(query.Keyword != nil, func(cb orm.ConditionBuilder) {
+					cb.Contains("name", *query.Keyword)
 				})
 		}).
 		Scan(ctx, &allAllowedIDs); err != nil {
@@ -63,12 +63,12 @@ func (h *FindAvailableFlowsHandler) Handle(ctx context.Context, query FindAvaila
 	// Load all initiators and filter in Go since JSON/array containment varies across dialects.
 	// Scope initiator query to tenant's flows when TenantID is specified.
 	var tenantFlowIDs []string
-	if query.TenantID != "" {
+	if query.TenantID != nil {
 		if err := db.NewSelect().
 			Model((*approval.Flow)(nil)).
 			Select("id").
 			Where(func(cb orm.ConditionBuilder) {
-				cb.Equals("tenant_id", query.TenantID).
+				cb.Equals("tenant_id", *query.TenantID).
 					Equals("is_active", true)
 			}).
 			Scan(ctx, &tenantFlowIDs); err != nil {
@@ -132,11 +132,11 @@ func (h *FindAvailableFlowsHandler) Handle(ctx context.Context, query FindAvaila
 		Where(func(cb orm.ConditionBuilder) {
 			cb.In("id", publishedFlowIDs).
 				Equals("is_active", true).
-				ApplyIf(query.TenantID != "", func(cb orm.ConditionBuilder) {
-					cb.Equals("tenant_id", query.TenantID)
+				ApplyIf(query.TenantID != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("tenant_id", *query.TenantID)
 				}).
-				ApplyIf(query.Keyword != "", func(cb orm.ConditionBuilder) {
-					cb.Contains("name", query.Keyword)
+				ApplyIf(query.Keyword != nil, func(cb orm.ConditionBuilder) {
+					cb.Contains("name", *query.Keyword)
 				})
 		}).
 		OrderBy("name")

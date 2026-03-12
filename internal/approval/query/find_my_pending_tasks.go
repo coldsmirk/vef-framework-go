@@ -18,7 +18,7 @@ type FindMyPendingTasksQuery struct {
 	page.Pageable
 
 	UserID   string
-	TenantID string
+	TenantID *string
 }
 
 // FindMyPendingTasksHandler handles the FindMyPendingTasksQuery.
@@ -40,8 +40,8 @@ func (h *FindMyPendingTasksHandler) Handle(ctx context.Context, query FindMyPend
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("assignee_id", query.UserID).
 				Equals("status", string(approval.TaskPending)).
-				ApplyIf(query.TenantID != "", func(cb orm.ConditionBuilder) {
-					cb.Equals("tenant_id", query.TenantID)
+				ApplyIf(query.TenantID != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("tenant_id", *query.TenantID)
 				})
 		}).
 		OrderByDesc("created_at")
@@ -116,25 +116,4 @@ func (h *FindMyPendingTasksHandler) Handle(ctx context.Context, query FindMyPend
 	result := page.New(query.Pageable, count, items)
 
 	return &result, nil
-}
-
-// loadInstanceMap loads instances by IDs and returns a map keyed by instance ID.
-func loadInstanceMap(ctx context.Context, db orm.DB, instanceIDs []string) (map[string]*approval.Instance, error) {
-	if len(instanceIDs) == 0 {
-		return nil, nil
-	}
-
-	var instances []approval.Instance
-	if err := db.NewSelect().Model(&instances).
-		Where(func(cb orm.ConditionBuilder) { cb.In("id", instanceIDs) }).
-		Scan(ctx); err != nil {
-		return nil, fmt.Errorf("query instances: %w", err)
-	}
-
-	m := make(map[string]*approval.Instance, len(instances))
-	for i := range instances {
-		m[instances[i].ID] = &instances[i]
-	}
-
-	return m, nil
 }

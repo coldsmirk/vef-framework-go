@@ -1,5 +1,3 @@
-// Package decimal provides a wrapper around github.com/shopspring/decimal
-// for arbitrary-precision fixed-point decimal numbers.
 package decimal
 
 import "github.com/shopspring/decimal"

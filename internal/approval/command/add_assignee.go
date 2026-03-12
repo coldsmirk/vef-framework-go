@@ -116,6 +116,7 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	if cmd.AddType == approval.AddAssigneeBefore &&
 		engine.TaskStateMachine.CanTransition(task.Status, approval.TaskWaiting) {
 		task.Status = approval.TaskWaiting
+
 		task.Deadline = nil
 		if _, err := db.NewUpdate().
 			Model(task).

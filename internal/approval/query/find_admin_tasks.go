@@ -17,10 +17,10 @@ type FindAdminTasksQuery struct {
 	cqrs.BaseQuery
 	page.Pageable
 
-	TenantID   string
-	AssigneeID string
-	InstanceID string
-	Status     string
+	TenantID   *string
+	AssigneeID *string
+	InstanceID *string
+	Status     *approval.TaskStatus
 }
 
 // FindAdminTasksHandler handles the FindAdminTasksQuery.
@@ -40,17 +40,17 @@ func (h *FindAdminTasksHandler) Handle(ctx context.Context, query FindAdminTasks
 
 	sq := db.NewSelect().Model(&tasks).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.ApplyIf(query.TenantID != "", func(cb orm.ConditionBuilder) {
-				cb.Equals("tenant_id", query.TenantID)
+			cb.ApplyIf(query.TenantID != nil, func(cb orm.ConditionBuilder) {
+				cb.Equals("tenant_id", *query.TenantID)
 			}).
-				ApplyIf(query.AssigneeID != "", func(cb orm.ConditionBuilder) {
-					cb.Equals("assignee_id", query.AssigneeID)
+				ApplyIf(query.AssigneeID != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("assignee_id", *query.AssigneeID)
 				}).
-				ApplyIf(query.InstanceID != "", func(cb orm.ConditionBuilder) {
-					cb.Equals("instance_id", query.InstanceID)
+				ApplyIf(query.InstanceID != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("instance_id", *query.InstanceID)
 				}).
-				ApplyIf(query.Status != "", func(cb orm.ConditionBuilder) {
-					cb.Equals("status", query.Status)
+				ApplyIf(query.Status != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("status", *query.Status)
 				})
 		}).
 		OrderByDesc("created_at")

@@ -73,7 +73,7 @@ func (s *FindAdminInstancesTestSuite) TestFindAll() {
 
 func (s *FindAdminInstancesTestSuite) TestFilterByTenant() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminInstancesQuery{
-		TenantID: "t1",
+		TenantID: new("t1"),
 		Pageable: page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")
@@ -82,7 +82,7 @@ func (s *FindAdminInstancesTestSuite) TestFilterByTenant() {
 
 func (s *FindAdminInstancesTestSuite) TestFilterByStatus() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminInstancesQuery{
-		Status:   string(approval.InstanceRunning),
+		Status:   new(approval.InstanceRunning),
 		Pageable: page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")
@@ -100,7 +100,7 @@ func (s *FindAdminInstancesTestSuite) TestPagination() {
 
 func (s *FindAdminInstancesTestSuite) TestNoResults() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminInstancesQuery{
-		TenantID: "non-existent-tenant",
+		TenantID: new("non-existent-tenant"),
 		Pageable: page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")

@@ -71,7 +71,7 @@ func (s *FindMyInitiatedTestSuite) TestFindAllForUser() {
 func (s *FindMyInitiatedTestSuite) TestFilterByStatus() {
 	result, err := s.handler.Handle(s.ctx, query.FindMyInitiatedQuery{
 		UserID:   "user-a",
-		Status:   string(approval.InstanceRunning),
+		Status:   new(approval.InstanceRunning),
 		Pageable: page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")
@@ -81,7 +81,7 @@ func (s *FindMyInitiatedTestSuite) TestFilterByStatus() {
 func (s *FindMyInitiatedTestSuite) TestFilterByKeyword() {
 	result, err := s.handler.Handle(s.ctx, query.FindMyInitiatedQuery{
 		UserID:   "user-a",
-		Keyword:  "Expense",
+		Keyword:  new("Expense"),
 		Pageable: page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")
@@ -92,7 +92,7 @@ func (s *FindMyInitiatedTestSuite) TestFilterByKeyword() {
 func (s *FindMyInitiatedTestSuite) TestCurrentNodeName() {
 	result, err := s.handler.Handle(s.ctx, query.FindMyInitiatedQuery{
 		UserID:   "user-a",
-		Status:   string(approval.InstanceRunning),
+		Status:   new(approval.InstanceRunning),
 		Pageable: page.Pageable{Page: 1, Size: 10},
 	})
 	s.Require().NoError(err, "Should query without error")
