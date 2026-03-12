@@ -12,16 +12,3 @@ comment:
   layout: "reach,diff,flags,tree"
   behavior: default
   require_changes: false
-
-ignore:
-  - "**/*_test.go"
-  - "**/test/**"
-  - "cmd/**"
-  - "config/**"
-  - "log/**"
-  - "middleware/**"
-  - "null/**"
-  - "internal/config/**"
-  - "internal/middleware/**"
-  - "internal/apptest/**"
-  - "internal/testhelpers/**"
