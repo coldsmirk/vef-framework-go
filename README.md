@@ -1,20 +1,36 @@
-# VEF Framework Go
+<h1 align="center">VEF Framework Go</h1>
 
 <p align="center">
-  <img src="./mascot.png" alt="VEF Framework Mascot" width="200">
+  <img src="./mascot.png" alt="VEF Framework Mascot" width="180">
 </p>
 
-📖 [English](./README.md) | [简体中文](./README.zh-CN.md)
+<p align="center">
+  An opinionated Go framework for enterprise applications, built with Fiber, Uber FX, and Bun.
+</p>
 
-[![GitHub Release](https://img.shields.io/github/v/release/coldsmirk/vef-framework-go)](https://github.com/coldsmirk/vef-framework-go/releases)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/coldsmirk/vef-framework-go/test.yml?branch=main)](https://github.com/coldsmirk/vef-framework-go/actions/workflows/test.yml)
-[![Coverage](https://img.shields.io/codecov/c/github/coldsmirk/vef-framework-go)](https://codecov.io/gh/coldsmirk/vef-framework-go)
-[![Go Reference](https://pkg.go.dev/badge/github.com/coldsmirk/vef-framework-go.svg)](https://pkg.go.dev/github.com/coldsmirk/vef-framework-go)
-[![Go Report Card](https://goreportcard.com/badge/github.com/coldsmirk/vef-framework-go)](https://goreportcard.com/report/github.com/coldsmirk/vef-framework-go)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/coldsmirk/vef-framework-go)
-[![License](https://img.shields.io/github/license/coldsmirk/vef-framework-go)](https://github.com/coldsmirk/vef-framework-go/blob/main/LICENSE)
+<p align="center">
+  Unified API resources, generic CRUD, authentication, RBAC, validation, caching, events, storage, MCP, and more.
+</p>
 
-VEF Framework Go is an opinionated Go framework for enterprise applications. It combines Uber FX for dependency injection, Fiber for HTTP handling, and Bun for data access, with built-in support for API resources, authentication, RBAC, validation, caching, events, storage, MCP, and more.
+<p align="center">
+  <a href="./README.md">English</a> |
+  <a href="./README.zh-CN.md">简体中文</a> |
+  <a href="#quick-start">Quick Start</a> |
+  <a href="https://coldsmirk.github.io/vef-framework-go-docs">Documentation</a> |
+  <a href="https://pkg.go.dev/github.com/coldsmirk/vef-framework-go">API Reference</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/coldsmirk/vef-framework-go/releases"><img src="https://img.shields.io/github/v/release/coldsmirk/vef-framework-go" alt="GitHub Release"></a>
+  <a href="https://github.com/coldsmirk/vef-framework-go/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/coldsmirk/vef-framework-go/test.yml?branch=main" alt="Build Status"></a>
+  <a href="https://codecov.io/gh/coldsmirk/vef-framework-go"><img src="https://img.shields.io/codecov/c/github/coldsmirk/vef-framework-go" alt="Coverage"></a>
+  <a href="https://pkg.go.dev/github.com/coldsmirk/vef-framework-go"><img src="https://pkg.go.dev/badge/github.com/coldsmirk/vef-framework-go.svg" alt="Go Reference"></a>
+  <a href="https://goreportcard.com/report/github.com/coldsmirk/vef-framework-go"><img src="https://goreportcard.com/badge/github.com/coldsmirk/vef-framework-go" alt="Go Report Card"></a>
+  <a href="https://deepwiki.com/coldsmirk/vef-framework-go"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+  <a href="https://github.com/coldsmirk/vef-framework-go/blob/main/LICENSE"><img src="https://img.shields.io/github/license/coldsmirk/vef-framework-go" alt="License"></a>
+</p>
+
+VEF Framework Go combines dependency injection, HTTP routing, and data access into a cohesive application framework, with built-in support for API resources, authentication, RBAC, validation, caching, events, storage, MCP, and more.
 
 > This README is intentionally brief. Detailed tutorials and reference material are available on the [documentation site](https://coldsmirk.github.io/vef-framework-go-docs).
 
@@ -22,26 +38,21 @@ VEF Framework Go is an opinionated Go framework for enterprise applications. It 
 
 ## Why VEF
 
-- Unified API model for both RPC and REST resources
-- Generic CRUD building blocks for common backend workflows
-- Modular bootstrapping based on Uber FX
-- Built-in authentication, RBAC, rate limiting, and audit support
-- Integrated infrastructure modules such as event, CQRS, cron, redis, storage, schema, monitor, MCP, and more
+- One resource model for both RPC and REST APIs
+- Generic CRUD primitives that reduce repetitive backend code
+- Modular composition with Uber FX for clean wiring and extension
+- Built-in auth, RBAC, rate limiting, audit, caching, events, storage, MCP, and other infrastructure you would otherwise assemble yourself
 
 ## Quick Start
 
-### Requirements
-
+Requirements:
 - Go 1.26.0 or newer
 - A supported database such as PostgreSQL, MySQL, or SQLite
 
-### Install
-
+Install:
 ```bash
 go get github.com/coldsmirk/vef-framework-go
 ```
-
-### Minimal app
 
 Create `main.go`:
 
@@ -67,9 +78,9 @@ type = "sqlite"
 path = "./my-app.db"
 ```
 
-This is a minimal configuration example. Additional sections include `vef.monitor`, `vef.mcp`, and `vef.approval`.
+This is the smallest runnable configuration. Sections such as `vef.monitor`, `vef.mcp`, and `vef.approval` are optional.
 
-Run the app:
+Run:
 
 ```bash
 go run main.go
