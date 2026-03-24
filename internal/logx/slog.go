@@ -109,7 +109,7 @@ func formatAttr(attr slog.Attr) string {
 	return attr.Key + ": " + value
 }
 
-func NewSLogHandler(name string, callerSkip int, levelFilter ...logx.Level) slog.Handler {
+func NewSlogHandler(name string, callerSkip int, levelFilter ...logx.Level) slog.Handler {
 	level := logx.LevelInfo
 	if len(levelFilter) > 0 {
 		level = levelFilter[0]
@@ -122,5 +122,5 @@ func NewSLogHandler(name string, callerSkip int, levelFilter ...logx.Level) slog
 }
 
 func NewSLogger(name string, callerSkip int, levelFilter ...logx.Level) *slog.Logger {
-	return slog.New(NewSLogHandler(name, callerSkip, levelFilter...))
+	return slog.New(NewSlogHandler(name, callerSkip, levelFilter...))
 }
