@@ -67,7 +67,7 @@ func (*ExpressionConditionEvaluator) Evaluate(_ context.Context, cond approval.C
 
 	boolResult, ok := result.(bool)
 	if !ok {
-		return false, fmt.Errorf("expression returned non-bool type: %T", result)
+		return false, fmt.Errorf("%w: %T", ErrExpressionReturnedNonBool, result)
 	}
 
 	return boolResult, nil

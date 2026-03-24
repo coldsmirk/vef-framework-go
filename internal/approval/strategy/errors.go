@@ -14,4 +14,7 @@ var (
 	// Registry lookup errors.
 	ErrPassRuleNotFound           = errors.New("pass rule strategy not found")
 	ErrConditionEvaluatorNotFound = errors.New("condition evaluator not found")
+
+	// Expression evaluation errors.
+	ErrExpressionReturnedNonBool = errors.New("expression returned non-bool type")
 )
