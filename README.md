@@ -125,13 +125,7 @@ Common verification commands:
 go test ./...
 go test -race ./...
 golangci-lint run
-```
-
-Release scripts are available in the repository root, but they should only be used intentionally:
-
-```bash
-./release.sh vX.Y.Z "description"
-./unrelease.sh vX.Y.Z
+go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./...
 ```
 
 ## License

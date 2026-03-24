@@ -29,10 +29,6 @@ go.work.sum
 
 .cursor/
 .windsurf/
-.claude/
-CLAUDE.md
-AGENTS.md
-TESTING.md
 cmd/CMD_DEV.md
 docs/plans/
 

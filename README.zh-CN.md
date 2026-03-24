@@ -125,13 +125,7 @@ my-app/
 go test ./...
 go test -race ./...
 golangci-lint run
-```
-
-仓库根目录提供了发布脚本，但请在明确需要时再使用：
-
-```bash
-./release.sh vX.Y.Z "description"
-./unrelease.sh vX.Y.Z
+go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./...
 ```
 
 ## 许可证
