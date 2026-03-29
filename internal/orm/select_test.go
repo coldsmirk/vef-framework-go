@@ -2938,7 +2938,7 @@ func (suite *SelectTestSuite) TestWhereDeleted() {
 
 	type SoftDeleteArticle struct {
 		bun.BaseModel `bun:"table:test_select_soft_delete,alias:tssd"`
-		orm.Model
+		orm.FullAuditedModel
 
 		Title     string    `json:"title" bun:"title,notnull"`
 		Status    string    `json:"status" bun:"status,notnull"`

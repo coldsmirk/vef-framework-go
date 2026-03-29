@@ -237,7 +237,7 @@ func (suite *UpdateTestSuite) TestSelectionMethods() {
 
 		// Create a NEW user instance (not from database query)
 		user := User{
-			Model: orm.Model{ID: tu.ID},
+			FullAuditedModel: orm.FullAuditedModel{ID: tu.ID},
 			Name:  "UT Alice Updated",
 			Age:   99,
 		}
@@ -475,7 +475,7 @@ func (suite *UpdateTestSuite) TestFilterOperations() {
 	suite.Run("WhereDeletedAndIncludeDeleted", func() {
 		type SoftDeleteArticle struct {
 			bun.BaseModel `bun:"table:test_update_soft_delete,alias:tusd"`
-			orm.Model
+			orm.FullAuditedModel
 
 			Title     string    `json:"title" bun:"title,notnull"`
 			Status    string    `json:"status" bun:"status,notnull"`
@@ -732,7 +732,7 @@ func (suite *UpdateTestSuite) TestUpdateFlags() {
 
 		// Update with a full User model but only set Name, leave Age as zero
 		partialUpdate := &User{
-			Model: orm.Model{ID: tu.ID},
+			FullAuditedModel: orm.FullAuditedModel{ID: tu.ID},
 			Name:  "UT Alice Updated with OmitZero",
 			// Age will be zero, OmitZero should skip it
 		}

@@ -28,7 +28,7 @@ type UserFavorite struct {
 // User represents a user in the system.
 type User struct {
 	bun.BaseModel `bun:"table:test_user,alias:u"`
-	orm.Model
+	orm.FullAuditedModel
 
 	Name     string         `json:"name"     bun:"name,notnull"`
 	Email    string         `json:"email"    bun:"email,notnull,unique"`
@@ -43,7 +43,7 @@ type User struct {
 // Post represents a blog post or article.
 type Post struct {
 	bun.BaseModel `bun:"table:test_post,alias:p"`
-	orm.Model
+	orm.FullAuditedModel
 
 	Title       string  `json:"title"       bun:"title,notnull"`
 	Content     string  `json:"content"     bun:"content,notnull"`
@@ -61,7 +61,7 @@ type Post struct {
 // Tag represents a content tag (uses IDModel only, no audit fields).
 type Tag struct {
 	bun.BaseModel `bun:"table:test_tag,alias:t"`
-	orm.IDModel
+	orm.Model
 
 	Name        string  `json:"name"        bun:"name,notnull,unique"`
 	Description *string `json:"description" bun:"description"`
@@ -70,7 +70,7 @@ type Tag struct {
 // PostTag represents the many-to-many relationship between posts and tags (uses IDModel only).
 type PostTag struct {
 	bun.BaseModel `bun:"table:test_post_tag,alias:pt"`
-	orm.IDModel
+	orm.Model
 
 	PostID string `json:"postId" bun:"post_id,notnull"`
 	TagID  string `json:"tagId"  bun:"tag_id,notnull"`
@@ -83,8 +83,8 @@ type PostTag struct {
 // Category represents a content category (uses IDModel + CreatedModel, no update audit).
 type Category struct {
 	bun.BaseModel `bun:"table:test_category,alias:c"`
-	orm.IDModel
-	orm.CreatedModel
+	orm.Model
+	orm.CreationTrackedModel
 
 	Name        string  `json:"name"        bun:"name,notnull,unique"`
 	Description *string `json:"description" bun:"description"`
@@ -99,7 +99,7 @@ type Category struct {
 // Comment represents a user comment on a post with tree structure for replies.
 type Comment struct {
 	bun.BaseModel `bun:"table:test_comment,alias:cm"`
-	orm.Model
+	orm.FullAuditedModel
 
 	Content  string  `json:"content"  bun:"content,notnull"`
 	PostID   string  `json:"postId"   bun:"post_id,notnull"`

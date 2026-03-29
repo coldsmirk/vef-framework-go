@@ -2,20 +2,22 @@ package orm
 
 import "github.com/coldsmirk/vef-framework-go/timex"
 
-// IDModel contains only the primary key field.
-type IDModel struct {
+// Model contains only the primary key field.
+type Model struct {
 	ID string `json:"id" bun:"id,pk"`
 }
 
-// CreatedModel contains creation tracking fields.
-type CreatedModel struct {
+// CreationTrackedModel contains creation tracking fields without an ID.
+// Use this for models with composite primary keys that need creation audit tracking.
+type CreationTrackedModel struct {
 	CreatedAt     timex.DateTime `json:"createdAt" bun:",notnull,type:timestamp,default:CURRENT_TIMESTAMP,skipupdate"`
 	CreatedBy     string         `json:"createdBy" bun:",notnull,skipupdate" mold:"translate=user?"`
 	CreatedByName string         `json:"createdByName" bun:",scanonly"`
 }
 
-// AuditedModel contains full audit tracking fields (create + update).
-type AuditedModel struct {
+// FullTrackedModel contains full audit tracking fields (create + update) without an ID.
+// Use this for models with composite primary keys that need full audit tracking.
+type FullTrackedModel struct {
 	CreatedAt     timex.DateTime `json:"createdAt" bun:",notnull,type:timestamp,default:CURRENT_TIMESTAMP,skipupdate"`
 	CreatedBy     string         `json:"createdBy" bun:",notnull,skipupdate" mold:"translate=user?"`
 	CreatedByName string         `json:"createdByName" bun:",scanonly"`
@@ -24,8 +26,16 @@ type AuditedModel struct {
 	UpdatedByName string         `json:"updatedByName" bun:",scanonly"`
 }
 
-// Model is the base model with primary key and full audit tracking.
-type Model struct {
+// CreationAuditedModel contains primary key and creation tracking fields.
+type CreationAuditedModel struct {
+	ID            string         `json:"id" bun:"id,pk"`
+	CreatedAt     timex.DateTime `json:"createdAt" bun:",notnull,type:timestamp,default:CURRENT_TIMESTAMP,skipupdate"`
+	CreatedBy     string         `json:"createdBy" bun:",notnull,skipupdate" mold:"translate=user?"`
+	CreatedByName string         `json:"createdByName" bun:",scanonly"`
+}
+
+// FullAuditedModel contains primary key and full audit tracking fields (create + update).
+type FullAuditedModel struct {
 	ID            string         `json:"id" bun:"id,pk"`
 	CreatedAt     timex.DateTime `json:"createdAt" bun:",notnull,type:timestamp,default:CURRENT_TIMESTAMP,skipupdate"`
 	CreatedBy     string         `json:"createdBy" bun:",notnull,skipupdate" mold:"translate=user?"`

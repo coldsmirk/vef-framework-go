@@ -39,7 +39,7 @@ func init() {
 // ImportEmployee is the test model for import tests (uses tabular tags).
 type ImportEmployee struct {
 	bun.BaseModel `bun:"table:import_employee,alias:ie"`
-	orm.Model     `tabular:"-" bun:"extend"`
+	orm.FullAuditedModel     `tabular:"-" bun:"extend"`
 
 	Name   string `json:"name"   tabular:"姓名,width=20" bun:",notnull"                  validate:"required"`
 	Email  string `json:"email"  tabular:"邮箱,width=25" bun:",notnull"                  validate:"required,email"`

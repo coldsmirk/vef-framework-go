@@ -36,9 +36,10 @@ type (
 	DateTimeUnit                = orm.DateTimeUnit
 	ColumnInfo                  = orm.ColumnInfo
 	Model                       = orm.Model
-	IDModel                     = orm.IDModel
-	CreatedModel                = orm.CreatedModel
-	AuditedModel                = orm.AuditedModel
+	CreationTrackedModel        = orm.CreationTrackedModel
+	FullTrackedModel            = orm.FullTrackedModel
+	CreationAuditedModel        = orm.CreationAuditedModel
+	FullAuditedModel            = orm.FullAuditedModel
 	PKField                     = orm.PKField
 	ExprBuilder                 = orm.ExprBuilder
 	OrderBuilder                = orm.OrderBuilder

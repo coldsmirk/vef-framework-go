@@ -53,7 +53,7 @@ RPC uses `POST /api`; REST routes are mounted under `/api/<resource>`.
 ## Data Access
 
 - `orm.DB` for queries and `db.NewRaw(...)` for raw SQL when needed.
-- Models embed `bun.BaseModel` (table tag) + `orm.Model` (id + audit: `created_at/by`, `updated_at/by`). Variants: `orm.IDModel`, `orm.CreatedModel`, `orm.AuditedModel`. IDs: `id.Generate()` → 20-char XID.
+- Models embed `bun.BaseModel` (table tag) + `orm.FullAuditedModel` (id + audit: `created_at/by`, `updated_at/by`). Variants: `orm.Model` (id only), `orm.CreationTrackedModel` (creation audit, no id), `orm.FullTrackedModel` (full audit, no id), `orm.CreationAuditedModel` (id + creation audit). IDs: `id.Generate()` → 20-char XID.
 - Transactions: `db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error { ... })`.
 - Search: `search.Applier[T]` with struct tags.
 

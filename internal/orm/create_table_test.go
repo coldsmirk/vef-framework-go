@@ -17,7 +17,7 @@ func init() {
 // DDLModel is a dedicated test model for DDL operations, shared across DDL test suites.
 type DDLModel struct {
 	bun.BaseModel `bun:"table:test_ddl_model,alias:dm"`
-	orm.IDModel
+	orm.Model
 
 	Label string `json:"label" bun:"label,notnull"`
 	Score int    `json:"score" bun:"score,notnull,default:0"`

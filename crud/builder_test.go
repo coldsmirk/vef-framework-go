@@ -15,26 +15,26 @@ import (
 // TestBuilderMethods tests the baseBuilder configuration methods.
 func TestBuilderMethods(t *testing.T) {
 	t.Run("EnableAudit", func(t *testing.T) {
-		c := crud.NewCreate[orm.Model, orm.Model]().EnableAudit()
+		c := crud.NewCreate[orm.FullAuditedModel, orm.FullAuditedModel]().EnableAudit()
 		specs := c.Provide()
 		require.Len(t, specs, 1, "Should return exactly 1 operation spec")
 		assert.True(t, specs[0].EnableAudit, "EnableAudit should set enableAudit to true")
 	})
 
 	t.Run("Timeout", func(t *testing.T) {
-		c := crud.NewCreate[orm.Model, orm.Model]().Timeout(5 * time.Second)
+		c := crud.NewCreate[orm.FullAuditedModel, orm.FullAuditedModel]().Timeout(5 * time.Second)
 		specs := c.Provide()
 		assert.Equal(t, 5*time.Second, specs[0].Timeout, "Timeout should be set")
 	})
 
 	t.Run("PermToken", func(t *testing.T) {
-		c := crud.NewCreate[orm.Model, orm.Model]().PermToken("admin:create")
+		c := crud.NewCreate[orm.FullAuditedModel, orm.FullAuditedModel]().PermToken("admin:create")
 		specs := c.Provide()
 		assert.Equal(t, "admin:create", specs[0].PermToken, "PermToken should be set")
 	})
 
 	t.Run("RateLimit", func(t *testing.T) {
-		c := crud.NewCreate[orm.Model, orm.Model]().RateLimit(100, 1*time.Minute)
+		c := crud.NewCreate[orm.FullAuditedModel, orm.FullAuditedModel]().RateLimit(100, 1*time.Minute)
 		specs := c.Provide()
 		assert.NotNil(t, specs[0].RateLimit, "RateLimit should be set")
 		assert.Equal(t, 100, specs[0].RateLimit.Max, "RateLimit max should be set")
@@ -42,12 +42,12 @@ func TestBuilderMethods(t *testing.T) {
 	})
 
 	t.Run("ResourceKind", func(t *testing.T) {
-		c := crud.NewCreate[orm.Model, orm.Model]().ResourceKind(api.KindREST)
+		c := crud.NewCreate[orm.FullAuditedModel, orm.FullAuditedModel]().ResourceKind(api.KindREST)
 		assert.NotNil(t, c, "ResourceKind should return the builder")
 	})
 
 	t.Run("CombinedOptions", func(t *testing.T) {
-		c := crud.NewCreate[orm.Model, orm.Model]().
+		c := crud.NewCreate[orm.FullAuditedModel, orm.FullAuditedModel]().
 			EnableAudit().
 			Timeout(10*time.Second).
 			PermToken("user:write").
@@ -79,7 +79,7 @@ func TestAction(t *testing.T) {
 		for _, tc := range validActions {
 			t.Run(tc.name, func(t *testing.T) {
 				assert.NotPanics(t, func() {
-					_ = crud.NewCreate[orm.Model, orm.Model]().Action(tc.action)
+					_ = crud.NewCreate[orm.FullAuditedModel, orm.FullAuditedModel]().Action(tc.action)
 				}, "Should accept valid snake_case action name")
 			})
 		}
@@ -107,7 +107,7 @@ func TestAction(t *testing.T) {
 		for _, tc := range invalidActions {
 			t.Run(tc.name, func(t *testing.T) {
 				assert.Panics(t, func() {
-					_ = crud.NewCreate[orm.Model, orm.Model]().Action(tc.action)
+					_ = crud.NewCreate[orm.FullAuditedModel, orm.FullAuditedModel]().Action(tc.action)
 				}, "Should panic for invalid action name format")
 			})
 		}

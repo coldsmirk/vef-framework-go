@@ -20,7 +20,7 @@ import (
 // Operator is the audit user model referenced by created_by/updated_by.
 type Operator struct {
 	bun.BaseModel `bun:"table:test_operator,alias:op"`
-	orm.IDModel
+	orm.Model
 
 	Name string `json:"name" bun:",notnull"`
 }
@@ -28,7 +28,7 @@ type Operator struct {
 // Employee is the primary test model for CRUD tests.
 type Employee struct {
 	bun.BaseModel `bun:"table:test_employee,alias:te"`
-	orm.Model
+	orm.FullAuditedModel
 
 	Name         string `json:"name"         bun:",notnull"`
 	Email        string `json:"email"        bun:",unique,notnull"`
@@ -55,7 +55,7 @@ type EmployeeSearch struct {
 // Department is the tree-based test model.
 type Department struct {
 	bun.BaseModel `bun:"table:test_department,alias:td"`
-	orm.Model
+	orm.FullAuditedModel
 
 	Name        string  `json:"name"               bun:",notnull"`
 	Code        string  `json:"code"               bun:",unique,notnull"`

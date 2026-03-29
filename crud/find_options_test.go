@@ -108,7 +108,7 @@ func NewMetaUserFindOptionsResource() api.Resource {
 // OptionItem is a model with value/label/description fields to cover column matching branches.
 type OptionItem struct {
 	bun.BaseModel `bun:"table:test_option_item,alias:toi"`
-	orm.IDModel
+	orm.Model
 
 	Value       string `json:"value"       bun:",notnull"`
 	Label       string `json:"label"       bun:",notnull"`

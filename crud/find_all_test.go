@@ -1102,7 +1102,7 @@ func TestSetupErrAuditUserCompositePK(t *testing.T) {
 
 // TestFindWithOptions covers find.go WithOptions method.
 func TestFindWithOptions(t *testing.T) {
-	fa := crud.NewFindAll[orm.Model, struct{}]().
+	fa := crud.NewFindAll[orm.FullAuditedModel, struct{}]().
 		WithOptions(&crud.FindOperationOption{
 			Parts: []crud.QueryPart{crud.QueryRoot},
 		}).

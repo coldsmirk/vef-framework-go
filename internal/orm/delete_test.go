@@ -468,7 +468,7 @@ func (suite *DeleteTestSuite) TestSoftDelete() {
 
 	type SoftDeleteArticle struct {
 		bun.BaseModel `bun:"table:test_delete_soft_delete,alias:tdsd"`
-		orm.Model
+		orm.FullAuditedModel
 
 		Title     string    `json:"title" bun:"title,notnull"`
 		Status    string    `json:"status" bun:"status,notnull"`

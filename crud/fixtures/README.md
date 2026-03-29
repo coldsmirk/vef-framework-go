@@ -29,9 +29,9 @@ ImportEmployee (import_employee)      ← Pure import data struct
 
 | Model | Table | Records | Base Model | Key Traits |
 |-------|-------|---------|------------|------------|
-| Operator | test_operator | 8 | `orm.IDModel` | id + name only, audit lookup |
-| Employee | test_employee | 25 | `orm.Model` | Full audit, status: active(17)/inactive(5)/on_leave(3), ages 22–50 unique |
-| Department | test_department | 18 | `orm.Model` | Tree: 4 roots, max depth 3, hierarchical codes |
+| Operator | test_operator | 8 | `orm.Model` | id + name only, audit lookup |
+| Employee | test_employee | 25 | `orm.FullAuditedModel` | Full audit, status: active(17)/inactive(5)/on_leave(3), ages 22–50 unique |
+| Department | test_department | 18 | `orm.FullAuditedModel` | Tree: 4 roots, max depth 3, hierarchical codes |
 | ProjectAssignment | test_project_assignment | 15 | None | Composite PK, 4 projects, emp001 in 2 projects |
 | ExportEmployee | export_employee | 10 | None | Pure data struct with tabular tags |
 | ImportEmployee | import_employee | 1 | None | Pure data struct with tabular + validate tags |

@@ -519,27 +519,27 @@ func (suite *FindTreeTestSuite) TestFindTreeErrorQueryApplier() {
 
 // TestFindTreeWrapperMethods covers find_tree.go WithSelect/WithSelectAs/WithRelation wrapper methods.
 func TestFindTreeWrapperMethods(t *testing.T) {
-	treeBuilder := func(flat []orm.Model) []orm.Model { return flat }
+	treeBuilder := func(flat []orm.FullAuditedModel) []orm.FullAuditedModel { return flat }
 
 	t.Run("WithSelect", func(t *testing.T) {
-		ft := crud.NewFindTree[orm.Model, struct{}](treeBuilder).WithSelect("col1")
+		ft := crud.NewFindTree[orm.FullAuditedModel, struct{}](treeBuilder).WithSelect("col1")
 		assert.NotNil(t, ft, "WithSelect should return non-nil builder")
 	})
 
 	t.Run("WithSelectAs", func(t *testing.T) {
-		ft := crud.NewFindTree[orm.Model, struct{}](treeBuilder).WithSelectAs("col1", "alias1")
+		ft := crud.NewFindTree[orm.FullAuditedModel, struct{}](treeBuilder).WithSelectAs("col1", "alias1")
 		assert.NotNil(t, ft, "WithSelectAs should return non-nil builder")
 	})
 
 	t.Run("WithRelation", func(t *testing.T) {
-		ft := crud.NewFindTree[orm.Model, struct{}](treeBuilder).WithRelation(&orm.RelationSpec{
-			Model: (*orm.Model)(nil),
+		ft := crud.NewFindTree[orm.FullAuditedModel, struct{}](treeBuilder).WithRelation(&orm.RelationSpec{
+			Model: (*orm.FullAuditedModel)(nil),
 		})
 		assert.NotNil(t, ft, "WithRelation should return non-nil builder")
 	})
 
 	t.Run("WithQueryApplier", func(t *testing.T) {
-		ft := crud.NewFindTree[orm.Model, struct{}](treeBuilder).WithQueryApplier(nil)
+		ft := crud.NewFindTree[orm.FullAuditedModel, struct{}](treeBuilder).WithQueryApplier(nil)
 		assert.NotNil(t, ft, "WithQueryApplier should return non-nil builder")
 	})
 }

@@ -16,7 +16,7 @@ const DBStoreTableName = "sys_sequence_rule"
 // RuleModel is the internal ORM model for the sys_sequence_rule table.
 type RuleModel struct {
 	orm.BaseModel `bun:"table:sys_sequence_rule,alias:ssr"`
-	orm.Model
+	orm.FullAuditedModel
 
 	Key              string           `bun:"key,notnull,unique"`
 	Name             string           `bun:"name,notnull"`

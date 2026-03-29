@@ -147,7 +147,7 @@ func NewQueryApplierDepartmentFindTreeOptionsResource() api.Resource {
 // TreeOptionItem is a tree model with value/label/description fields to cover column matching branches.
 type TreeOptionItem struct {
 	bun.BaseModel `bun:"table:test_tree_option_item,alias:ttoi"`
-	orm.IDModel
+	orm.Model
 
 	Value       string  `json:"value"       bun:",notnull"`
 	Label       string  `json:"label"       bun:",notnull"`

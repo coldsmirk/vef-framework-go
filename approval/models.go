@@ -31,7 +31,7 @@ func (o OperatorInfo) NewActionLog(instanceID string, action ActionType) *Action
 // Flow represents a flow definition.
 type Flow struct {
 	orm.BaseModel `bun:"table:apv_flow,alias:af"`
-	orm.Model
+	orm.FullAuditedModel
 
 	TenantID               string      `json:"tenantId" bun:"tenant_id"`
 	CategoryID             string      `json:"categoryId" bun:"category_id"`
@@ -54,7 +54,7 @@ type Flow struct {
 // FlowCategory represents a category for grouping flows.
 type FlowCategory struct {
 	orm.BaseModel `bun:"table:apv_flow_category,alias:afc"`
-	orm.Model
+	orm.FullAuditedModel
 
 	TenantID  string         `json:"tenantId" bun:"tenant_id"`
 	Code      string         `json:"code" bun:"code"`
@@ -70,7 +70,7 @@ type FlowCategory struct {
 // FlowVersion represents a versioned snapshot of a flow definition.
 type FlowVersion struct {
 	orm.BaseModel `bun:"table:apv_flow_version,alias:afv"`
-	orm.Model
+	orm.FullAuditedModel
 
 	FlowID      string          `json:"flowId" bun:"flow_id"`
 	Version     int             `json:"version" bun:"version"`
@@ -86,7 +86,7 @@ type FlowVersion struct {
 // FlowNode represents a node within a flow version.
 type FlowNode struct {
 	orm.BaseModel `bun:"table:apv_flow_node,alias:afn"`
-	orm.Model
+	orm.FullAuditedModel
 
 	FlowVersionID             string                    `json:"flowVersionId" bun:"flow_version_id"`
 	Key                       string                    `json:"key" bun:"key"`
@@ -124,7 +124,7 @@ type FlowNode struct {
 // FlowEdge represents a directed edge between two flow nodes.
 type FlowEdge struct {
 	orm.BaseModel `bun:"table:apv_flow_edge,alias:afe"`
-	orm.IDModel
+	orm.Model
 
 	FlowVersionID string  `json:"flowVersionId" bun:"flow_version_id"`
 	Key           string  `json:"key" bun:"key,nullzero"`
@@ -138,7 +138,7 @@ type FlowEdge struct {
 // FlowNodeAssignee represents a node assignee configuration.
 type FlowNodeAssignee struct {
 	orm.BaseModel `bun:"table:apv_flow_node_assignee,alias:afna"`
-	orm.IDModel
+	orm.Model
 
 	NodeID    string       `json:"nodeId" bun:"node_id"`
 	Kind      AssigneeKind `json:"kind" bun:"kind"`
@@ -150,7 +150,7 @@ type FlowNodeAssignee struct {
 // FlowNodeCC represents a node CC configuration.
 type FlowNodeCC struct {
 	orm.BaseModel `bun:"table:apv_flow_node_cc,alias:afnc"`
-	orm.IDModel
+	orm.Model
 
 	NodeID    string   `json:"nodeId" bun:"node_id"`
 	Kind      CCKind   `json:"kind" bun:"kind"`
@@ -162,7 +162,7 @@ type FlowNodeCC struct {
 // FlowFormField represents a flow form field definition.
 type FlowFormField struct {
 	orm.BaseModel `bun:"table:apv_flow_form_field,alias:afff"`
-	orm.IDModel
+	orm.Model
 
 	FlowVersionID string         `json:"flowVersionId" bun:"flow_version_id"`
 	Name          string         `json:"name" bun:"name"`
@@ -180,7 +180,7 @@ type FlowFormField struct {
 // FlowInitiator represents a flow initiator configuration.
 type FlowInitiator struct {
 	orm.BaseModel `bun:"table:apv_flow_initiator,alias:afi"`
-	orm.IDModel
+	orm.Model
 
 	FlowID string        `json:"flowId" bun:"flow_id"`
 	Kind   InitiatorKind `json:"kind" bun:"kind"`
@@ -192,7 +192,7 @@ type FlowInitiator struct {
 // Instance represents a flow instance.
 type Instance struct {
 	orm.BaseModel `bun:"table:apv_instance,alias:ai"`
-	orm.Model
+	orm.FullAuditedModel
 
 	TenantID                string          `json:"tenantId" bun:"tenant_id"`
 	FlowID                  string          `json:"flowId" bun:"flow_id"`
@@ -213,7 +213,7 @@ type Instance struct {
 // Task represents an approval task.
 type Task struct {
 	orm.BaseModel `bun:"table:apv_task,alias:at"`
-	orm.Model
+	orm.FullAuditedModel
 
 	TenantID         string           `json:"tenantId" bun:"tenant_id"`
 	InstanceID       string           `json:"instanceId" bun:"instance_id"`
@@ -236,8 +236,8 @@ type Task struct {
 // FormSnapshot represents a form snapshot for rollback strategies.
 type FormSnapshot struct {
 	orm.BaseModel `bun:"table:apv_form_snapshot,alias:afs"`
-	orm.IDModel
-	orm.CreatedModel
+	orm.Model
+	orm.CreationTrackedModel
 
 	InstanceID string         `json:"instanceId" bun:"instance_id"`
 	NodeID     string         `json:"nodeId" bun:"node_id"`
@@ -249,8 +249,8 @@ type FormSnapshot struct {
 // ActionLog represents an action log entry.
 type ActionLog struct {
 	orm.BaseModel `bun:"table:apv_action_log,alias:aal"`
-	orm.IDModel
-	orm.CreatedModel
+	orm.Model
+	orm.CreationTrackedModel
 
 	InstanceID             string           `json:"instanceId" bun:"instance_id"`
 	NodeID                 *string          `json:"nodeId" bun:"node_id,nullzero"`
@@ -277,8 +277,8 @@ type ActionLog struct {
 // CCRecord represents a CC notification record.
 type CCRecord struct {
 	orm.BaseModel `bun:"table:apv_cc_record,alias:acr"`
-	orm.IDModel
-	orm.CreatedModel
+	orm.Model
+	orm.CreationTrackedModel
 
 	InstanceID string          `json:"instanceId" bun:"instance_id"`
 	NodeID     *string         `json:"nodeId" bun:"node_id,nullzero"`
@@ -292,8 +292,8 @@ type CCRecord struct {
 // ParallelRecord represents a parallel approval decision record.
 type ParallelRecord struct {
 	orm.BaseModel `bun:"table:apv_parallel_record,alias:apr"`
-	orm.IDModel
-	orm.CreatedModel
+	orm.Model
+	orm.CreationTrackedModel
 
 	InstanceID string  `json:"instanceId" bun:"instance_id"`
 	NodeID     string  `json:"nodeId" bun:"node_id"`
@@ -306,7 +306,7 @@ type ParallelRecord struct {
 // Delegation represents an approval delegation.
 type Delegation struct {
 	orm.BaseModel `bun:"table:apv_delegation,alias:ad"`
-	orm.Model
+	orm.FullAuditedModel
 
 	DelegatorID    string         `json:"delegatorId" bun:"delegator_id"`
 	DelegateeID    string         `json:"delegateeId" bun:"delegatee_id"`
@@ -321,8 +321,8 @@ type Delegation struct {
 // EventOutbox represents an event outbox entry for transactional event publishing.
 type EventOutbox struct {
 	orm.BaseModel `bun:"table:apv_event_outbox,alias:aeo"`
-	orm.IDModel
-	orm.CreatedModel
+	orm.Model
+	orm.CreationTrackedModel
 
 	EventID     string            `json:"eventId" bun:"event_id"`
 	EventType   string            `json:"eventType" bun:"event_type"`
@@ -337,8 +337,8 @@ type EventOutbox struct {
 // UrgeRecord represents an urge/reminder record.
 type UrgeRecord struct {
 	orm.BaseModel `bun:"table:apv_urge_record,alias:aur"`
-	orm.IDModel
-	orm.CreatedModel
+	orm.Model
+	orm.CreationTrackedModel
 
 	InstanceID     string  `json:"instanceId" bun:"instance_id"`
 	NodeID         string  `json:"nodeId" bun:"node_id"`
