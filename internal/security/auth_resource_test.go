@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/fx"
@@ -761,13 +760,13 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoSuccess() {
 				Type: security.UserMenuTypeDirectory,
 				Path: "/system",
 				Name: "System Management",
-				Icon: lo.ToPtr("setting"),
+				Icon: new("setting"),
 				Children: []security.UserMenu{
 					{
 						Type: security.UserMenuTypeMenu,
 						Path: "/system/users",
 						Name: "User Management",
-						Icon: lo.ToPtr("user"),
+						Icon: new("user"),
 					},
 				},
 			},

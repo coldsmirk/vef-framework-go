@@ -3,7 +3,6 @@ package validator
 import (
 	"testing"
 
-	"github.com/samber/lo"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,7 +47,7 @@ func TestValidate(t *testing.T) {
 			Name *string `validate:"required" label:"Name"`
 		}
 
-		err := Validate(&Input{Name: lo.ToPtr("John")})
+		err := Validate(&Input{Name: new("John")})
 		assert.NoError(t, err, "Valid *string should pass")
 	})
 
@@ -67,7 +66,7 @@ func TestValidate(t *testing.T) {
 			Age *int `validate:"required" label:"Age"`
 		}
 
-		err := Validate(&Input{Age: lo.ToPtr(25)})
+		err := Validate(&Input{Age: new(25)})
 		assert.NoError(t, err, "Valid *int should pass")
 	})
 
@@ -76,7 +75,7 @@ func TestValidate(t *testing.T) {
 			Active *bool `validate:"required" label:"Active"`
 		}
 
-		err := Validate(&Input{Active: lo.ToPtr(true)})
+		err := Validate(&Input{Active: new(true)})
 		assert.NoError(t, err, "Valid *bool should pass")
 	})
 
@@ -85,7 +84,7 @@ func TestValidate(t *testing.T) {
 			Score *float64 `validate:"required" label:"Score"`
 		}
 
-		err := Validate(&Input{Score: lo.ToPtr(9.5)})
+		err := Validate(&Input{Score: new(9.5)})
 		assert.NoError(t, err, "Valid *float64 should pass")
 	})
 

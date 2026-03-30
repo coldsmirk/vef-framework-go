@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -39,7 +38,7 @@ func TestCSVExportImport(t *testing.T) {
 			Salary:   10000.50,
 			Birthday: time.Date(1994, 1, 15, 0, 0, 0, 0, time.UTC),
 			Active:   true,
-			Remark:   lo.ToPtr("测试用户1"),
+			Remark:   new("测试用户1"),
 		},
 		{
 			ID:       "2",
@@ -539,7 +538,7 @@ func TestExportNullValues(t *testing.T) {
 			Salary:   8000.00,
 			Birthday: time.Now(),
 			Active:   false,
-			Remark:   lo.ToPtr("有备注"),
+			Remark:   new("有备注"),
 		},
 	}
 
@@ -572,7 +571,7 @@ func TestRoundTrip(t *testing.T) {
 			Salary:   10000.50,
 			Birthday: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			Active:   true,
-			Remark:   lo.ToPtr("测试用户1"),
+			Remark:   new("测试用户1"),
 		},
 		{
 			ID:       "2",

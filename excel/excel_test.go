@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xuri/excelize/v2"
@@ -40,7 +39,7 @@ func TestExporterExportToFile(t *testing.T) {
 			Salary:    10000.50,
 			CreatedAt: now,
 			Status:    1,
-			Remark:    lo.ToPtr("测试用户1"),
+			Remark:    new("测试用户1"),
 			Password:  "secret123",
 		},
 		{
@@ -85,7 +84,7 @@ func TestImporterImportFromFile(t *testing.T) {
 			Salary:    10000.50,
 			CreatedAt: now,
 			Status:    1,
-			Remark:    lo.ToPtr("测试用户1"),
+			Remark:    new("测试用户1"),
 		},
 		{
 			ID:        "2",
@@ -274,7 +273,7 @@ func TestExportCustomFormatter(t *testing.T) {
 			Salary:    10000.50,
 			CreatedAt: time.Date(2024, 1, 1, 12, 0, 0, 0, time.Local),
 			Status:    1,
-			Remark:    lo.ToPtr("测试用户"),
+			Remark:    new("测试用户"),
 		},
 	}
 
@@ -307,7 +306,7 @@ func TestExportToBuffer(t *testing.T) {
 			Salary:    10000.50,
 			CreatedAt: time.Now(),
 			Status:    1,
-			Remark:    lo.ToPtr("测试"),
+			Remark:    new("测试"),
 		},
 	}
 
@@ -395,7 +394,7 @@ func TestImportCustomParser(t *testing.T) {
 			Salary:    10000.50,
 			CreatedAt: now,
 			Status:    1,
-			Remark:    lo.ToPtr("测试"),
+			Remark:    new("测试"),
 		},
 	}
 
@@ -672,7 +671,7 @@ func TestExportNullValues(t *testing.T) {
 			Salary:    8000.00,
 			CreatedAt: time.Now(),
 			Status:    2,
-			Remark:    lo.ToPtr("有备注"),
+			Remark:    new("有备注"),
 		},
 	}
 
@@ -714,7 +713,7 @@ func TestRoundTrip(t *testing.T) {
 			Salary:    10000.50,
 			CreatedAt: now,
 			Status:    1,
-			Remark:    lo.ToPtr("测试用户1"),
+			Remark:    new("测试用户1"),
 		},
 		{
 			ID:        "2",

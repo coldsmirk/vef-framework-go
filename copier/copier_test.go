@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -254,7 +253,8 @@ func TestCopyValueToPtr(t *testing.T) {
 		require.NoError(t, Copy(Src{V: v}, &dst), "timex.Time → *timex.Time should succeed")
 		require.NotNil(t, dst.V, "pointer should not be nil")
 		assert.Equal(t, v, *dst.V, "value should match")
-	})}
+	})
+}
 
 // TestCopyPtrToValue tests pointer → value converters (non-nil and nil).
 func TestCopyPtrToValue(t *testing.T) {
@@ -264,7 +264,7 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V string }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: lo.ToPtr("hello")}, &dst), "*string → string should succeed")
+		require.NoError(t, Copy(Src{V: new("hello")}, &dst), "*string → string should succeed")
 		assert.Equal(t, "hello", dst.V, "value should match")
 	})
 
@@ -284,7 +284,7 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V bool }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: lo.ToPtr(true)}, &dst), "*bool → bool should succeed")
+		require.NoError(t, Copy(Src{V: new(true)}, &dst), "*bool → bool should succeed")
 		assert.True(t, dst.V, "value should match")
 	})
 
@@ -304,7 +304,7 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V int64 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: lo.ToPtr(int64(42))}, &dst), "*int64 → int64 should succeed")
+		require.NoError(t, Copy(Src{V: new(int64(42))}, &dst), "*int64 → int64 should succeed")
 		assert.Equal(t, int64(42), dst.V, "value should match")
 	})
 
@@ -324,7 +324,7 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V float64 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: lo.ToPtr(3.14)}, &dst), "*float64 → float64 should succeed")
+		require.NoError(t, Copy(Src{V: new(3.14)}, &dst), "*float64 → float64 should succeed")
 		assert.Equal(t, 3.14, dst.V, "value should match")
 	})
 
@@ -402,7 +402,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		var dst Dst
 		require.NoError(t, Copy(Src{V: nil}, &dst), "nil *timex.DateTime → timex.DateTime should use zero value")
 		assert.True(t, time.Time(dst.V).IsZero(), "nil pointer should produce zero value")
-	})}
+	})
+}
 
 // TestCopyOptions tests copy options like IgnoreEmpty and CaseInsensitive.
 func TestCopyOptions(t *testing.T) {
