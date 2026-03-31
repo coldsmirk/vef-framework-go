@@ -1,4 +1,3 @@
-// Package ptr provides generic utility functions for pointer operations.
 package ptr
 
 // Of returns a pointer to v, or nil if v is the zero value.
