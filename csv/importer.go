@@ -4,7 +4,9 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
@@ -145,7 +147,9 @@ func (i *importer) parseRow(
 
 	columns := schema.Columns()
 
-	for csvIndex, schemaIndex := range columnMapping {
+	// Iterate by sorted source index so per-row error order is deterministic.
+	for _, csvIndex := range slices.Sorted(maps.Keys(columnMapping)) {
+		schemaIndex := columnMapping[csvIndex]
 		col := columns[schemaIndex]
 
 		var cellValue string

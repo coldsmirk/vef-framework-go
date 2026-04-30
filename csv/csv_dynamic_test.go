@@ -31,7 +31,7 @@ func TestDynamicCSVRoundTrip(t *testing.T) {
 	exp, err := NewMapExporter(baseDynamicSpecs())
 	require.NoError(t, err, "NewMapExporter should accept valid specs")
 
-	imp, err := NewMapImporter(baseDynamicSpecs())
+	imp, err := NewMapImporter(baseDynamicSpecs(), nil)
 	require.NoError(t, err, "NewMapImporter should accept valid specs")
 
 	birthday := time.Date(2000, 1, 15, 0, 0, 0, 0, time.Local)
@@ -65,7 +65,7 @@ func TestDynamicCSVRoundTrip(t *testing.T) {
 // TestDynamicCSVRequiredMissing ensures Required specs enforce non-empty cells
 // and the error is surfaced via ImportError rather than aborting the import.
 func TestDynamicCSVRequiredMissing(t *testing.T) {
-	imp, err := NewMapImporter(baseDynamicSpecs())
+	imp, err := NewMapImporter(baseDynamicSpecs(), nil)
 	require.NoError(t, err, "NewMapImporter should accept valid specs")
 
 	content := "用户ID,姓名,生日,激活\n,张三,2000-01-15,true\n"
@@ -84,17 +84,17 @@ func TestDynamicCSVRequiredMissing(t *testing.T) {
 // TestDynamicCSVCustomFormatterAndParser confirms that FormatterFn / ParserFn
 // are honored for both export and import.
 func TestDynamicCSVCustomFormatterAndParser(t *testing.T) {
-	formatter := tabular.Formatter(FormatterFunc(func(v any) (string, error) {
+	formatter := tabular.FormatterFunc(func(v any) (string, error) {
 		if v == nil {
 			return "", nil
 		}
 
 		return "prefix:" + v.(string), nil
-	}))
+	})
 
-	parser := tabular.ValueParser(ParserFunc(func(s string, _ reflect.Type) (any, error) {
+	parser := tabular.ParserFunc(func(s string, _ reflect.Type) (any, error) {
 		return strings.TrimPrefix(s, "prefix:"), nil
-	}))
+	})
 
 	specs := []tabular.ColumnSpec{
 		{Key: "label", Name: "Label", Type: reflect.TypeFor[string](), FormatterFn: formatter, ParserFn: parser},
@@ -103,7 +103,7 @@ func TestDynamicCSVCustomFormatterAndParser(t *testing.T) {
 	exp, err := NewMapExporter(specs)
 	require.NoError(t, err, "NewMapExporter should accept valid specs")
 
-	imp, err := NewMapImporter(specs)
+	imp, err := NewMapImporter(specs, nil)
 	require.NoError(t, err, "NewMapImporter should accept valid specs")
 
 	buf, err := exp.Export([]map[string]any{{"label": "hello"}})
@@ -124,7 +124,7 @@ func TestDynamicCSVCustomFormatterAndParser(t *testing.T) {
 // TestDynamicCSVIgnoresUnknownAndMissingColumns verifies tolerance of missing
 // schema columns (cell remains zero) and extra source columns (ignored).
 func TestDynamicCSVIgnoresUnknownAndMissingColumns(t *testing.T) {
-	imp, err := NewMapImporter(baseDynamicSpecs())
+	imp, err := NewMapImporter(baseDynamicSpecs(), nil)
 	require.NoError(t, err, "NewMapImporter should accept valid specs")
 
 	// Header drops birthday/active but includes an unknown Extra column.
@@ -154,7 +154,7 @@ func TestDynamicCSVIgnoresUnknownAndMissingColumns(t *testing.T) {
 // TestDynamicCSVRowValidatorReportsError verifies that injected RowValidator
 // failures are surfaced as ImportError entries.
 func TestDynamicCSVRowValidatorReportsError(t *testing.T) {
-	imp, err := NewMapImporterWithOptions(
+	imp, err := NewMapImporter(
 		baseDynamicSpecs(),
 		[]tabular.MapOption{tabular.WithRowValidator(func(row map[string]any) error {
 			if row["name"] == "BAD" {
@@ -164,7 +164,7 @@ func TestDynamicCSVRowValidatorReportsError(t *testing.T) {
 			return nil
 		})},
 	)
-	require.NoError(t, err, "NewMapImporterWithOptions should accept valid specs")
+	require.NoError(t, err, "NewMapImporter should accept valid specs")
 
 	content := "用户ID,姓名,生日,激活\n1,BAD,2000-01-15,true\n"
 
@@ -190,7 +190,7 @@ func TestDynamicCSVMapExporterRejectsBadSpecs(t *testing.T) {
 // TestDynamicCSVParseErrorReportedPerCell ensures each parse failure becomes
 // a dedicated ImportError with column / field populated.
 func TestDynamicCSVParseErrorReportedPerCell(t *testing.T) {
-	imp, err := NewMapImporter(baseDynamicSpecs())
+	imp, err := NewMapImporter(baseDynamicSpecs(), nil)
 	require.NoError(t, err, "NewMapImporter should accept valid specs")
 
 	content := "用户ID,姓名,生日,激活\nabc,张三,not-a-date,not-a-bool\n"
@@ -210,18 +210,4 @@ func TestDynamicCSVParseErrorReportedPerCell(t *testing.T) {
 	assert.Contains(t, columns, "用户ID", "Invalid id should produce an ImportError")
 	assert.Contains(t, columns, "生日", "Invalid birthday should produce an ImportError")
 	assert.Contains(t, columns, "激活", "Invalid active flag should produce an ImportError")
-}
-
-// FormatterFunc adapts a plain function to the Formatter interface.
-type FormatterFunc func(any) (string, error)
-
-// Format calls the wrapped function.
-func (f FormatterFunc) Format(value any) (string, error) { return f(value) }
-
-// ParserFunc adapts a plain function to the ValueParser interface.
-type ParserFunc func(string, reflect.Type) (any, error)
-
-// Parse calls the wrapped function.
-func (p ParserFunc) Parse(cellValue string, targetType reflect.Type) (any, error) {
-	return p(cellValue, targetType)
 }

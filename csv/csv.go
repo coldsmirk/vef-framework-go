@@ -15,23 +15,12 @@ func NewExporterFor[T any](opts ...ExportOption) tabular.Exporter {
 }
 
 // NewMapImporter creates a CSV importer that parses rows into []map[string]any
-// using the provided dynamic column specs.
+// using the provided dynamic column specs. Pass nil for mapOpts when no
+// MapAdapter options (e.g. row validators) are needed.
 func NewMapImporter(
-	specs []tabular.ColumnSpec, opts ...ImportOption,
-) (tabular.Importer, error) {
-	adapter, err := buildMapAdapter(specs, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewImporter(adapter, opts...), nil
-}
-
-// NewMapImporterWithOptions allows passing MapAdapter options (e.g. row validators).
-func NewMapImporterWithOptions(
 	specs []tabular.ColumnSpec, mapOpts []tabular.MapOption, opts ...ImportOption,
 ) (tabular.Importer, error) {
-	adapter, err := buildMapAdapter(specs, mapOpts)
+	adapter, err := tabular.NewMapAdapterFromSpecs(specs, mapOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -44,20 +33,10 @@ func NewMapImporterWithOptions(
 func NewMapExporter(
 	specs []tabular.ColumnSpec, opts ...ExportOption,
 ) (tabular.Exporter, error) {
-	adapter, err := buildMapAdapter(specs, nil)
+	adapter, err := tabular.NewMapAdapterFromSpecs(specs)
 	if err != nil {
 		return nil, err
 	}
 
 	return NewExporter(adapter, opts...), nil
-}
-
-// buildMapAdapter constructs a schema from specs and wraps it in a MapAdapter.
-func buildMapAdapter(specs []tabular.ColumnSpec, mapOpts []tabular.MapOption) (tabular.RowAdapter, error) {
-	schema, err := tabular.NewSchemaFromSpecs(specs)
-	if err != nil {
-		return nil, err
-	}
-
-	return tabular.NewMapAdapter(schema, mapOpts...), nil
 }
