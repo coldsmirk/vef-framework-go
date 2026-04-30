@@ -24,6 +24,7 @@ func NewImporter(adapter tabular.RowAdapter, opts ...ImportOption) tabular.Impor
 	options := importConfig{
 		sheetIndex: 0,
 		hasHeader:  true,
+		trimSpace:  true,
 	}
 	for _, opt := range opts {
 		opt(&options)
@@ -77,7 +78,7 @@ func (i *importer) doImport(f *excelize.File) (any, []tabular.ImportError, error
 	sheetName := i.options.sheetName
 	if sheetName == "" {
 		sheets := f.GetSheetList()
-		if i.options.sheetIndex >= len(sheets) {
+		if i.options.sheetIndex < 0 || i.options.sheetIndex >= len(sheets) {
 			return nil, nil, fmt.Errorf("%w: %d (total sheets: %d)",
 				ErrSheetIndexOutOfRange, i.options.sheetIndex, len(sheets))
 		}
@@ -103,20 +104,20 @@ func (i *importer) doImport(f *excelize.File) (any, []tabular.ImportError, error
 	schema := i.adapter.Schema()
 	dataStartIndex := i.options.skipRows
 
-	var columnMapping map[int]int
+	var columnMapping tabular.ColumnMapping
 
 	if i.options.hasHeader {
-		mapping, mappingErr := tabular.BuildHeaderMapping(
-			rows[i.options.skipRows], schema, tabular.MappingOptions{TrimSpace: true},
+		rawMapping, mappingErr := tabular.BuildHeaderMapping(
+			rows[i.options.skipRows], schema, tabular.MappingOptions{TrimSpace: i.options.trimSpace},
 		)
 		if mappingErr != nil {
 			return nil, nil, fmt.Errorf("build column mapping: %w", mappingErr)
 		}
 
-		columnMapping = mapping
+		columnMapping = tabular.NewColumnMapping(rawMapping)
 		dataStartIndex++
 	} else {
-		columnMapping = tabular.DefaultPositionalMapping(schema)
+		columnMapping = tabular.NewColumnMapping(tabular.DefaultPositionalMapping(schema))
 	}
 
 	dataRows := rows[dataStartIndex:]
@@ -124,16 +125,20 @@ func (i *importer) doImport(f *excelize.File) (any, []tabular.ImportError, error
 
 	var importErrors []tabular.ImportError
 
-	for rowIdx, row := range dataRows {
-		excelRow := dataStartIndex + rowIdx + 1
+	for rowIndex, row := range dataRows {
+		// 1-based row number that accounts for skipped rows and the header row,
+		// matching what a user sees in a spreadsheet.
+		excelRow := dataStartIndex + rowIndex + 1
 
-		if tabular.IsEmptyRow(row, false) {
+		// Trim whitespace for empty-row detection so that rows containing only
+		// spaces are skipped.
+		if tabular.IsEmptyRow(row, i.options.trimSpace) {
 			continue
 		}
 
 		builder := writer.NewRow()
 
-		rowErrors := tabular.ParseRow(row, columnMapping, schema, builder, i.parsers, excelRow, tabular.ParseRowOptions{})
+		rowErrors := tabular.ParseRow(row, columnMapping, schema, builder, i.parsers, excelRow, tabular.ParseRowOptions{TrimSpace: i.options.trimSpace})
 		if len(rowErrors) > 0 {
 			importErrors = append(importErrors, rowErrors...)
 

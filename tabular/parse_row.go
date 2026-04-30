@@ -7,6 +7,22 @@ import (
 	"strings"
 )
 
+// ColumnMapping holds a header-to-schema index mapping together with a
+// pre-sorted key list so that ParseRow does not re-sort on every row.
+type ColumnMapping struct {
+	entries    map[int]int
+	sortedKeys []int
+}
+
+// NewColumnMapping creates a ColumnMapping from a raw map, sorting the source
+// indices once at construction time.
+func NewColumnMapping(m map[int]int) ColumnMapping {
+	return ColumnMapping{
+		entries:    m,
+		sortedKeys: slices.Sorted(maps.Keys(m)),
+	}
+}
+
 // ParseRowOptions controls cell-level normalization performed by ParseRow.
 type ParseRowOptions struct {
 	// TrimSpace strips leading/trailing whitespace from each source cell
@@ -24,9 +40,13 @@ type ParseRowOptions struct {
 // the column Default; cells that remain empty are skipped so that adapters
 // (e.g. MapAdapter) can distinguish absent values from explicit zeroes and
 // enforce Required.
+//
+// When the returned slice is non-empty the row builder is in a partial state
+// and should NOT be committed. Callers should skip Commit and collect the
+// errors instead.
 func ParseRow(
 	cells []string,
-	mapping map[int]int,
+	mapping ColumnMapping,
 	schema *Schema,
 	builder RowBuilder,
 	parsers map[string]ValueParser,
@@ -37,10 +57,13 @@ func ParseRow(
 
 	columns := schema.Columns()
 
-	for _, srcIndex := range slices.Sorted(maps.Keys(mapping)) {
-		column := columns[mapping[srcIndex]]
+	for _, srcIndex := range mapping.sortedKeys {
+		column := columns[mapping.entries[srcIndex]]
 
 		var cellValue string
+		// Source rows may have fewer columns than the mapping expects (e.g.
+		// trailing columns omitted in CSV). Treat out-of-range indices as
+		// empty cells so that Default and Required logic still apply.
 		if srcIndex < len(cells) {
 			cellValue = cells[srcIndex]
 			if opts.TrimSpace {

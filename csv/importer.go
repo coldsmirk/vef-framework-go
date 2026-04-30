@@ -64,7 +64,6 @@ func (i *importer) ImportFromFile(filename string) (any, []tabular.ImportError, 
 func (i *importer) Import(reader io.Reader) (any, []tabular.ImportError, error) {
 	csvReader := csv.NewReader(reader)
 	csvReader.Comma = i.options.delimiter
-	csvReader.TrimLeadingSpace = i.options.trimSpace
 	csvReader.Comment = i.options.comment
 	csvReader.FieldsPerRecord = -1
 
@@ -86,20 +85,20 @@ func (i *importer) Import(reader io.Reader) (any, []tabular.ImportError, error) 
 	schema := i.adapter.Schema()
 	dataStartIndex := i.options.skipRows
 
-	var columnMapping map[int]int
+	var columnMapping tabular.ColumnMapping
 
 	if i.options.hasHeader {
 		mappingOpts := tabular.MappingOptions{TrimSpace: i.options.trimSpace}
 
-		mapping, mappingErr := tabular.BuildHeaderMapping(rows[i.options.skipRows], schema, mappingOpts)
+		rawMapping, mappingErr := tabular.BuildHeaderMapping(rows[i.options.skipRows], schema, mappingOpts)
 		if mappingErr != nil {
 			return nil, nil, fmt.Errorf("build column mapping: %w", mappingErr)
 		}
 
-		columnMapping = mapping
+		columnMapping = tabular.NewColumnMapping(rawMapping)
 		dataStartIndex++
 	} else {
-		columnMapping = tabular.DefaultPositionalMapping(schema)
+		columnMapping = tabular.NewColumnMapping(tabular.DefaultPositionalMapping(schema))
 	}
 
 	dataRows := rows[dataStartIndex:]
@@ -109,8 +108,10 @@ func (i *importer) Import(reader io.Reader) (any, []tabular.ImportError, error) 
 
 	var importErrors []tabular.ImportError
 
-	for rowIdx, row := range dataRows {
-		csvRow := dataStartIndex + rowIdx + 1
+	for rowIndex, row := range dataRows {
+		// 1-based row number that accounts for skipped rows and the header row,
+		// matching what a user sees in a spreadsheet or text editor.
+		csvRow := dataStartIndex + rowIndex + 1
 
 		if tabular.IsEmptyRow(row, i.options.trimSpace) {
 			continue
