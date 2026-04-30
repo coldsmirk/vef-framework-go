@@ -147,18 +147,25 @@ func TestImporter(t *testing.T) {
 	})
 
 	t.Run("CustomParserRegistration", func(t *testing.T) {
-		csvContent := "用户ID,姓名,邮箱\nID: 1,张三,zhang@example.com"
+		csvContent := "用户ID,姓名,邮箱\nPFX:1,张三,zhang@example.com"
 
-		importer := NewImporterFor[ImporterTestUser]()
+		type PrefixUser struct {
+			ID    string `tabular:"用户ID,parser=prefix_parser"`
+			Name  string `tabular:"姓名"`
+			Email string `tabular:"邮箱"`
+		}
+
+		importer := NewImporterFor[PrefixUser]()
 		importer.RegisterParser("prefix_parser", &prefixParser{})
 
 		result, importErrors, err := importer.Import(strings.NewReader(csvContent))
 		require.NoError(t, err, "Import should succeed when a custom parser is registered")
 		assert.Empty(t, importErrors, "Custom parser should not produce per-row errors")
 
-		imported, ok := result.([]ImporterTestUser)
-		require.True(t, ok, "Result should be []ImporterTestUser")
-		assert.Len(t, imported, 1, "One row should be imported")
+		imported, ok := result.([]PrefixUser)
+		require.True(t, ok, "Result should be []PrefixUser")
+		require.Len(t, imported, 1, "One row should be imported")
+		assert.Equal(t, "1", imported[0].ID, "Custom parser should strip the 4-char prefix from the cell value")
 	})
 
 	t.Run("ImportFromFile", func(t *testing.T) {

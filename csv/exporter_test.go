@@ -114,19 +114,23 @@ func TestExporter(t *testing.T) {
 	})
 
 	t.Run("CustomFormatterRegistration", func(t *testing.T) {
-		users := []ExporterTestUser{
-			{
-				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30,
-				Salary: 10000.50, Birthday: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), Active: true,
-			},
+		type PrefixUser struct {
+			ID   string `tabular:"用户ID,formatter=prefix"`
+			Name string `tabular:"姓名"`
 		}
 
-		exporter := NewExporterFor[ExporterTestUser]()
+		users := []PrefixUser{
+			{ID: "1", Name: "张三"},
+		}
+
+		exporter := NewExporterFor[PrefixUser]()
 		exporter.RegisterFormatter("prefix", &prefixFormatter{prefix: "ID:"})
 
 		buf, err := exporter.Export(users)
 		require.NoError(t, err, "Export should succeed with a registered custom formatter")
-		assert.NotNil(t, buf, "Export should return a non-nil buffer")
+
+		csvContent := buf.String()
+		assert.Contains(t, csvContent, "ID: 1", "Custom formatter should prepend the prefix to the cell value")
 	})
 
 	t.Run("NullPointerValuesEmitEmptyCells", func(t *testing.T) {

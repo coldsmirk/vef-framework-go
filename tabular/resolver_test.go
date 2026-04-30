@@ -3,6 +3,7 @@ package tabular
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,11 +85,24 @@ func TestResolveParser(t *testing.T) {
 		assert.Equal(t, "named", result, "Named registry parser should be used")
 	})
 
-	t.Run("DefaultsToFormatTemplate", func(t *testing.T) {
-		col := &Column{Format: "2006-01-02"}
+	t.Run("UnknownNameFallsBackToDefault", func(t *testing.T) {
+		col := &Column{Parser: "unknown"}
 
-		result, err := ResolveParser(col, nil).Parse("2024-01-15", reflect.TypeFor[string]())
-		require.NoError(t, err, "Default parser should succeed for string target")
-		assert.Equal(t, "2024-01-15", result, "Default parser should return the raw string")
+		result, err := ResolveParser(col, nil).Parse("hello", reflect.TypeFor[string]())
+		require.NoError(t, err, "Default parser should still work when name is unknown")
+		assert.Equal(t, "hello", result, "Default parser should return the raw string")
+	})
+
+	t.Run("DefaultsToFormatTemplate", func(t *testing.T) {
+		col := &Column{Format: "2006-01-02", Type: reflect.TypeFor[time.Time]()}
+
+		result, err := ResolveParser(col, nil).Parse("2024-01-15", reflect.TypeFor[time.Time]())
+		require.NoError(t, err, "Default parser should succeed for time target with format template")
+
+		parsed, ok := result.(time.Time)
+		require.True(t, ok, "Result should be time.Time")
+		assert.Equal(t, 2024, parsed.Year(), "Parsed year should match the input")
+		assert.Equal(t, time.January, parsed.Month(), "Parsed month should match the input")
+		assert.Equal(t, 15, parsed.Day(), "Parsed day should match the input")
 	})
 }

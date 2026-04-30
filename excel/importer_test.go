@@ -107,25 +107,30 @@ func TestImporter(t *testing.T) {
 	})
 
 	t.Run("CustomParserRegistration", func(t *testing.T) {
-		users := []ExcelTestUser{
-			{
-				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
-				CreatedAt: time.Now(), Status: 1, Remark: new("测试"),
-			},
+		type PrefixUser struct {
+			ID   string `tabular:"ID,parser=prefix_parser"`
+			Name string `tabular:"姓名"`
 		}
 
-		filename := exportToTemp(t, NewExporterFor[ExcelTestUser](), users, "test_custom_parser_*.xlsx")
+		filename := buildSheet(t, "test_custom_parser_*.xlsx", func(f *excelize.File) {
+			sheet := "Sheet1"
+			require.NoError(t, f.SetCellValue(sheet, "A1", "ID"), "Setting header A1 should succeed")
+			require.NoError(t, f.SetCellValue(sheet, "B1", "姓名"), "Setting header B1 should succeed")
+			require.NoError(t, f.SetCellValue(sheet, "A2", "PFX:1"), "Setting prefixed ID should succeed")
+			require.NoError(t, f.SetCellValue(sheet, "B2", "张三"), "Setting Name should succeed")
+		})
 
-		importer := NewImporterFor[ExcelTestUser]()
+		importer := NewImporterFor[PrefixUser]()
 		importer.RegisterParser("prefix_parser", &excelPrefixParser{})
 
 		importedAny, importErrors, err := importer.ImportFromFile(filename)
 		require.NoError(t, err, "Import should succeed when a custom parser is registered")
 		assert.Empty(t, importErrors, "Custom parser should not produce per-row errors")
 
-		imported, ok := importedAny.([]ExcelTestUser)
-		require.True(t, ok, "Result should be []ExcelTestUser")
-		assert.Len(t, imported, 1, "One row should be imported")
+		imported, ok := importedAny.([]PrefixUser)
+		require.True(t, ok, "Result should be []PrefixUser")
+		require.Len(t, imported, 1, "One row should be imported")
+		assert.Equal(t, "1", imported[0].ID, "Custom parser should strip the 4-char prefix from the cell value")
 	})
 
 	t.Run("WithImportSheetName", func(t *testing.T) {

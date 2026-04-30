@@ -211,6 +211,31 @@ func TestMapAdapterWriter(t *testing.T) {
 		require.NoError(t, writer.Commit(row), "Commit should succeed when row validator passes")
 	})
 
+	t.Run("RowValidatorRejects", func(t *testing.T) {
+		schema := newMapUserSchema(t)
+
+		rowValidator := func(row map[string]any) error {
+			if row["name"] == "bad" {
+				return errors.New("name is blocked")
+			}
+
+			return nil
+		}
+
+		adapter := NewMapAdapter(schema, WithRowValidator(rowValidator))
+		columns := schema.Columns()
+
+		writer := adapter.Writer(1)
+
+		row := writer.NewRow()
+		require.NoError(t, row.Set(columns[0], 1), "Set id should succeed")
+		require.NoError(t, row.Set(columns[1], "bad"), "Set name should succeed")
+
+		err := writer.Commit(row)
+		require.Error(t, err, "Commit should fail when row validator rejects")
+		assert.Contains(t, err.Error(), "name is blocked", "Error should include the validator's message")
+	})
+
 	t.Run("SetRejectsEmptyKey", func(t *testing.T) {
 		schema := newMapUserSchema(t)
 		adapter := NewMapAdapter(schema)
