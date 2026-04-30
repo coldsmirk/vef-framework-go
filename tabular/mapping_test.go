@@ -68,7 +68,7 @@ func TestBuildHeaderMapping(t *testing.T) {
 
 		_, err := BuildHeaderMapping([]string{"ID", "ID"}, schema, MappingOptions{})
 		require.Error(t, err, "Duplicate headers should fail")
-		assert.ErrorIs(t, err, ErrDuplicateColumnName, "Error should wrap ErrDuplicateColumnName")
+		assert.ErrorIs(t, err, ErrDuplicateHeaderName, "Error should wrap ErrDuplicateHeaderName")
 	})
 }
 

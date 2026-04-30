@@ -13,7 +13,7 @@ type MappingOptions struct {
 
 // BuildHeaderMapping resolves a header row against the schema and returns a
 // map from source column index to schema column index. Unknown headers are
-// skipped; duplicate non-empty headers produce ErrDuplicateColumnName.
+// skipped; duplicate non-empty headers produce ErrDuplicateHeaderName.
 func BuildHeaderMapping(
 	headerRow []string, schema *Schema, opts MappingOptions,
 ) (map[int]int, error) {
@@ -37,7 +37,7 @@ func BuildHeaderMapping(
 		}
 
 		if seen[headerName] {
-			return nil, fmt.Errorf("%w: %s", ErrDuplicateColumnName, headerName)
+			return nil, fmt.Errorf("%w: %s", ErrDuplicateHeaderName, headerName)
 		}
 
 		seen[headerName] = true

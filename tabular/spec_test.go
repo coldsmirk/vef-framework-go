@@ -62,7 +62,16 @@ func TestNewSchemaFromSpecs(t *testing.T) {
 			{Key: "id", Type: reflect.TypeFor[int]()},
 		})
 		require.Error(t, err, "Schema construction should reject duplicate keys")
-		assert.ErrorIs(t, err, ErrDuplicateColumnName, "Error should wrap ErrDuplicateColumnName")
+		assert.ErrorIs(t, err, ErrDuplicateColumnKey, "Error should wrap ErrDuplicateColumnKey")
+	})
+
+	t.Run("RejectsDuplicateName", func(t *testing.T) {
+		_, err := NewSchemaFromSpecs([]ColumnSpec{
+			{Key: "a", Name: "ID", Type: reflect.TypeFor[int]()},
+			{Key: "b", Name: "ID", Type: reflect.TypeFor[string]()},
+		})
+		require.Error(t, err, "Schema construction should reject duplicate names")
+		assert.ErrorIs(t, err, ErrDuplicateHeaderName, "Error should wrap ErrDuplicateHeaderName")
 	})
 }
 

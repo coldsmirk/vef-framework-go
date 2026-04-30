@@ -12,8 +12,10 @@ var (
 	ErrDataMustBeSlice = errors.New("data must be a slice")
 	// ErrNoDataRowsFound indicates the source contains no usable data rows.
 	ErrNoDataRowsFound = errors.New("no data rows found")
-	// ErrDuplicateColumnName indicates a duplicate header name during mapping.
-	ErrDuplicateColumnName = errors.New("duplicate column name")
+	// ErrDuplicateColumnKey indicates a duplicate Key in a []ColumnSpec.
+	ErrDuplicateColumnKey = errors.New("duplicate column key")
+	// ErrDuplicateHeaderName indicates a duplicate header name during mapping.
+	ErrDuplicateHeaderName = errors.New("duplicate header name")
 	// ErrUnsetField indicates a struct field cannot be set (usually unexported).
 	ErrUnsetField = errors.New("field is not settable")
 	// ErrRequiredMissing indicates a required cell is empty.
@@ -50,9 +52,9 @@ func formatRowError(row int, column, field string, err error) string {
 //
 // Err may carry multiple leaf errors joined via errors.Join when a single
 // row produces several failures (e.g. multiple Required misses or both a
-// cell validator and a row validator failing). Use errors.Is to match a
-// specific cause and an interface{ Unwrap() []error } assertion to enumerate
-// all leaves.
+// cell validator and a row validator failing). Use errors.Is on the
+// ImportError to match a specific cause; to enumerate all leaves, assert
+// Err against the interface{ Unwrap() []error } interface.
 type ImportError struct {
 	Row    int
 	Column string

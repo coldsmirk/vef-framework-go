@@ -52,10 +52,11 @@ func NewMapAdapterFromSpecs(specs []ColumnSpec, opts ...MapOption) (RowAdapter, 
 
 // NewSchemaFromSpecs builds a Schema from a slice of dynamic column specs.
 // It validates that every spec has a non-empty Key and Type, and that keys
-// are unique.
+// and resolved names are unique.
 func NewSchemaFromSpecs(specs []ColumnSpec) (*Schema, error) {
 	columns := make([]*Column, len(specs))
-	seen := collections.NewHashSet[string]()
+	seenKeys := collections.NewHashSet[string]()
+	seenNames := collections.NewHashSet[string]()
 
 	for i, spec := range specs {
 		if spec.Key == "" {
@@ -66,16 +67,22 @@ func NewSchemaFromSpecs(specs []ColumnSpec) (*Schema, error) {
 			return nil, fmt.Errorf("%w: %s", ErrMissingColumnType, spec.Key)
 		}
 
-		if seen.Contains(spec.Key) {
-			return nil, fmt.Errorf("%w: %s", ErrDuplicateColumnName, spec.Key)
+		if seenKeys.Contains(spec.Key) {
+			return nil, fmt.Errorf("%w: %s", ErrDuplicateColumnKey, spec.Key)
 		}
 
-		seen.Add(spec.Key)
+		seenKeys.Add(spec.Key)
 
 		name := spec.Name
 		if name == "" {
 			name = spec.Key
 		}
+
+		if seenNames.Contains(name) {
+			return nil, fmt.Errorf("%w: %s", ErrDuplicateHeaderName, name)
+		}
+
+		seenNames.Add(name)
 
 		columns[i] = &Column{
 			Key:         spec.Key,
