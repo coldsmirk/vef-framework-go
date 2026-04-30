@@ -35,12 +35,14 @@ func (i TypedImporter[T]) RegisterParser(name string, parser ValueParser) {
 // ImportFromFile imports rows from disk and returns them as []T.
 func (i TypedImporter[T]) ImportFromFile(filename string) ([]T, []ImportError, error) {
 	v, errs, err := i.inner.ImportFromFile(filename)
+
 	return assertTypedRows[T](v, errs, err)
 }
 
 // Import imports rows from reader and returns them as []T.
 func (i TypedImporter[T]) Import(reader io.Reader) ([]T, []ImportError, error) {
 	v, errs, err := i.inner.Import(reader)
+
 	return assertTypedRows[T](v, errs, err)
 }
 
@@ -48,14 +50,18 @@ func assertTypedRows[T any](v any, errs []ImportError, err error) ([]T, []Import
 	if err != nil {
 		return nil, errs, err
 	}
+
 	if v == nil {
 		return nil, errs, nil
 	}
+
 	rows, ok := v.([]T)
 	if !ok {
 		var zero T
-		return nil, errs, fmt.Errorf("tabular: importer returned %T, expected []%T", v, zero)
+
+		return nil, errs, fmt.Errorf("%w: got %T, expected []%T", ErrTypedRowMismatch, v, zero)
 	}
+
 	return rows, errs, nil
 }
 

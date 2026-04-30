@@ -27,6 +27,9 @@ var (
 	ErrMissingColumnType = errors.New("column type is required")
 	// ErrMissingColumnKey indicates a dynamic column spec has no Key.
 	ErrMissingColumnKey = errors.New("column key is required")
+	// ErrTypedRowMismatch indicates a TypedImporter received rows whose element
+	// type does not match the requested generic parameter.
+	ErrTypedRowMismatch = errors.New("importer returned unexpected row type")
 )
 
 func formatRowError(row int, column, field string, err error) string {
