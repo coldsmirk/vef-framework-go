@@ -5,24 +5,23 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
 	"strings"
 
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/tabular"
-	"github.com/coldsmirk/vef-framework-go/validator"
 )
 
 var logger = logx.Named("csv")
 
+// importer reads CSV rows into values produced by a tabular.RowAdapter.
 type importer struct {
-	schema  *tabular.Schema
+	adapter tabular.RowAdapter
 	parsers map[string]tabular.ValueParser
 	options importConfig
-	typ     reflect.Type
 }
 
-func NewImporter(typ reflect.Type, opts ...ImportOption) tabular.Importer {
+// NewImporter creates a CSV importer driven by the provided RowAdapter.
+func NewImporter(adapter tabular.RowAdapter, opts ...ImportOption) tabular.Importer {
 	options := importConfig{
 		delimiter: ',',
 		hasHeader: true,
@@ -35,17 +34,18 @@ func NewImporter(typ reflect.Type, opts ...ImportOption) tabular.Importer {
 	}
 
 	return &importer{
-		schema:  tabular.NewSchema(typ),
+		adapter: adapter,
 		parsers: make(map[string]tabular.ValueParser),
 		options: options,
-		typ:     typ,
 	}
 }
 
+// RegisterParser registers a named parser referenced by Column.Parser.
 func (i *importer) RegisterParser(name string, parser tabular.ValueParser) {
 	i.parsers[name] = parser
 }
 
+// ImportFromFile reads CSV data from a file and parses it via the adapter.
 func (i *importer) ImportFromFile(filename string) (any, []tabular.ImportError, error) {
 	f, err := os.Open(filename)
 	if err != nil {
@@ -61,6 +61,7 @@ func (i *importer) ImportFromFile(filename string) (any, []tabular.ImportError, 
 	return i.Import(f)
 }
 
+// Import reads CSV data from an io.Reader.
 func (i *importer) Import(reader io.Reader) (any, []tabular.ImportError, error) {
 	csvReader := csv.NewReader(reader)
 	csvReader.Comma = i.options.delimiter
@@ -80,30 +81,30 @@ func (i *importer) Import(reader io.Reader) (any, []tabular.ImportError, error) 
 
 	if len(rows) <= minRows {
 		return nil, nil, fmt.Errorf("%w (total rows: %d, skip rows: %d, has header: %v)",
-			ErrNoDataRowsFound, len(rows), i.options.skipRows, i.options.hasHeader)
+			tabular.ErrNoDataRowsFound, len(rows), i.options.skipRows, i.options.hasHeader)
 	}
+
+	schema := i.adapter.Schema()
+	dataStartIdx := i.options.skipRows
 
 	var columnMapping map[int]int
 
-	dataStartIdx := i.options.skipRows
-
 	if i.options.hasHeader {
-		headerRow := rows[i.options.skipRows]
+		mappingOpts := tabular.MappingOptions{TrimSpace: i.options.trimSpace}
 
-		var mappingErr error
-
-		columnMapping, mappingErr = i.buildColumnMapping(headerRow)
+		mapping, mappingErr := tabular.BuildHeaderMapping(rows[i.options.skipRows], schema, mappingOpts)
 		if mappingErr != nil {
 			return nil, nil, fmt.Errorf("build column mapping: %w", mappingErr)
 		}
 
+		columnMapping = mapping
 		dataStartIdx++
 	} else {
-		columnMapping = i.buildDefaultMapping()
+		columnMapping = tabular.DefaultPositionalMapping(schema)
 	}
 
 	dataRows := rows[dataStartIdx:]
-	resultSlice := reflect.MakeSlice(reflect.SliceOf(i.typ), 0, len(dataRows))
+	writer := i.adapter.Writer(len(dataRows))
 
 	var importErrors []tabular.ImportError
 
@@ -114,14 +115,16 @@ func (i *importer) Import(reader io.Reader) (any, []tabular.ImportError, error) 
 			continue
 		}
 
-		item, rowErrors := i.parseRow(row, columnMapping, csvRow)
+		builder := writer.NewRow()
+
+		rowErrors := i.parseRow(row, columnMapping, schema, builder, csvRow)
 		if len(rowErrors) > 0 {
 			importErrors = append(importErrors, rowErrors...)
 
 			continue
 		}
 
-		if err := validator.Validate(item); err != nil {
+		if err := writer.Commit(builder); err != nil {
 			importErrors = append(importErrors, tabular.ImportError{
 				Row: csvRow,
 				Err: fmt.Errorf("validation failed: %w", err),
@@ -129,63 +132,18 @@ func (i *importer) Import(reader io.Reader) (any, []tabular.ImportError, error) 
 
 			continue
 		}
-
-		resultSlice = reflect.Append(resultSlice, reflect.ValueOf(item))
 	}
 
-	return resultSlice.Interface(), importErrors, nil
+	return writer.Build(), importErrors, nil
 }
 
-func (i *importer) buildColumnMapping(headerRow []string) (map[int]int, error) {
-	columns := i.schema.Columns()
-	mapping := make(map[int]int)
-
-	nameToSchemaIdx := make(map[string]int, len(columns))
-	for idx, col := range columns {
-		nameToSchemaIdx[col.Name] = idx
-	}
-
-	seen := make(map[string]bool)
-	for csvIdx, headerName := range headerRow {
-		if i.options.trimSpace {
-			headerName = strings.TrimSpace(headerName)
-		}
-
-		if headerName == "" {
-			continue
-		}
-
-		if seen[headerName] {
-			return nil, fmt.Errorf("%w: %s", ErrDuplicateColumnName, headerName)
-		}
-
-		seen[headerName] = true
-
-		if schemaIdx, ok := nameToSchemaIdx[headerName]; ok {
-			mapping[csvIdx] = schemaIdx
-		}
-	}
-
-	return mapping, nil
-}
-
-func (i *importer) buildDefaultMapping() map[int]int {
-	columns := i.schema.Columns()
-
-	mapping := make(map[int]int)
-	for idx := range columns {
-		mapping[idx] = idx
-	}
-
-	return mapping
-}
-
-func (i *importer) parseRow(row []string, columnMapping map[int]int, csvRow int) (any, []tabular.ImportError) {
-	result := reflect.New(i.typ).Elem()
-
+func (i *importer) parseRow(
+	row []string, columnMapping map[int]int, schema *tabular.Schema,
+	builder tabular.RowBuilder, csvRow int,
+) []tabular.ImportError {
 	var errors []tabular.ImportError
 
-	columns := i.schema.Columns()
+	columns := schema.Columns()
 
 	for csvIdx, schemaIdx := range columnMapping {
 		col := columns[schemaIdx]
@@ -202,50 +160,37 @@ func (i *importer) parseRow(row []string, columnMapping map[int]int, csvRow int)
 			cellValue = col.Default
 		}
 
-		field := result.FieldByIndex(col.Index)
-		if !field.CanSet() {
-			errors = append(errors, tabular.ImportError{
-				Row:    csvRow,
-				Column: col.Name,
-				Field:  field.Type().Name(),
-				Err:    ErrFieldNotSettable,
-			})
-
+		// Skip truly empty cells so adapters (e.g. MapAdapter) can distinguish
+		// absent values from explicitly zero ones and enforce Required.
+		if cellValue == "" {
 			continue
 		}
 
-		value, err := i.parseValue(cellValue, field.Type(), col)
+		value, err := tabular.ResolveParser(col, i.parsers).Parse(cellValue, col.Type)
 		if err != nil {
 			errors = append(errors, tabular.ImportError{
 				Row:    csvRow,
 				Column: col.Name,
-				Field:  field.Type().Name(),
+				Field:  col.Key,
 				Err:    fmt.Errorf("parse value: %w", err),
 			})
 
 			continue
 		}
 
-		field.Set(reflect.ValueOf(value))
-	}
+		if err := builder.Set(col, value); err != nil {
+			errors = append(errors, tabular.ImportError{
+				Row:    csvRow,
+				Column: col.Name,
+				Field:  col.Key,
+				Err:    err,
+			})
 
-	return result.Interface(), errors
-}
-
-// parseValue falls back to default parser when custom parser is missing,
-// preventing import failures due to configuration errors.
-func (i *importer) parseValue(cellValue string, targetType reflect.Type, col *tabular.Column) (any, error) {
-	if col.Parser != "" {
-		if parser, ok := i.parsers[col.Parser]; ok {
-			return parser.Parse(cellValue, targetType)
+			continue
 		}
-
-		logger.Warnf("Parser %s not found, using default parser", col.Parser)
 	}
 
-	parser := tabular.NewDefaultParser(col.Format)
-
-	return parser.Parse(cellValue, targetType)
+	return errors
 }
 
 func (i *importer) isEmptyRow(row []string) bool {
