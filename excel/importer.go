@@ -3,8 +3,9 @@ package excel
 import (
 	"fmt"
 	"io"
+	"maps"
+	"slices"
 
-	"github.com/coldsmirk/go-streams"
 	"github.com/xuri/excelize/v2"
 
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
@@ -24,6 +25,7 @@ type importer struct {
 func NewImporter(adapter tabular.RowAdapter, opts ...ImportOption) tabular.Importer {
 	options := importConfig{
 		sheetIndex: 0,
+		hasHeader:  true,
 	}
 	for _, opt := range opts {
 		opt(&options)
@@ -90,27 +92,42 @@ func (i *importer) doImport(f *excelize.File) (any, []tabular.ImportError, error
 		return nil, nil, fmt.Errorf("get rows: %w", err)
 	}
 
-	if len(rows) <= i.options.skipRows+1 {
-		return nil, nil, fmt.Errorf("%w (total rows: %d, skip rows: %d)",
-			tabular.ErrNoDataRowsFound, len(rows), i.options.skipRows)
+	minRows := i.options.skipRows
+	if i.options.hasHeader {
+		minRows++
+	}
+
+	if len(rows) <= minRows {
+		return nil, nil, fmt.Errorf("%w (total rows: %d, skip rows: %d, has header: %v)",
+			tabular.ErrNoDataRowsFound, len(rows), i.options.skipRows, i.options.hasHeader)
 	}
 
 	schema := i.adapter.Schema()
-	headerRowIndex := i.options.skipRows
-	headerRow := rows[headerRowIndex]
+	dataStartIndex := i.options.skipRows
 
-	columnMapping, err := tabular.BuildHeaderMapping(headerRow, schema, tabular.MappingOptions{})
-	if err != nil {
-		return nil, nil, fmt.Errorf("build column mapping: %w", err)
+	var columnMapping map[int]int
+
+	if i.options.hasHeader {
+		mapping, mappingErr := tabular.BuildHeaderMapping(
+			rows[i.options.skipRows], schema, tabular.MappingOptions{TrimSpace: true},
+		)
+		if mappingErr != nil {
+			return nil, nil, fmt.Errorf("build column mapping: %w", mappingErr)
+		}
+
+		columnMapping = mapping
+		dataStartIndex++
+	} else {
+		columnMapping = tabular.DefaultPositionalMapping(schema)
 	}
 
-	dataRows := rows[headerRowIndex+1:]
+	dataRows := rows[dataStartIndex:]
 	writer := i.adapter.Writer(len(dataRows))
 
 	var importErrors []tabular.ImportError
 
-	for rowIndex, row := range dataRows {
-		excelRow := headerRowIndex + rowIndex + 2
+	for rowIdx, row := range dataRows {
+		excelRow := dataStartIndex + rowIdx + 1
 
 		if i.isEmptyRow(row) {
 			continue
@@ -146,7 +163,9 @@ func (i *importer) parseRow(
 
 	columns := schema.Columns()
 
-	for excelIndex, schemaIndex := range columnMapping {
+	// Iterate by sorted source index so per-row error order is deterministic.
+	for _, excelIndex := range slices.Sorted(maps.Keys(columnMapping)) {
+		schemaIndex := columnMapping[excelIndex]
 		column := columns[schemaIndex]
 
 		var cellValue string
@@ -192,7 +211,11 @@ func (i *importer) parseRow(
 }
 
 func (*importer) isEmptyRow(row []string) bool {
-	return streams.FromSlice(row).AllMatch(func(cell string) bool {
-		return cell == ""
-	})
+	for _, cell := range row {
+		if cell != "" {
+			return false
+		}
+	}
+
+	return true
 }

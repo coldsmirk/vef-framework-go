@@ -109,21 +109,27 @@ func (e *exporter) doExport(data any) (*excelize.File, error) {
 func (e *exporter) writeHeader(f *excelize.File, sheetName string) error {
 	columns := e.adapter.Schema().Columns()
 
-	for columnIndex, column := range columns {
-		colLetter, err := excelize.ColumnNumberToName(columnIndex + 1)
+	headerRow := make([]any, len(columns))
+	for i, column := range columns {
+		headerRow[i] = column.Name
+	}
+
+	if err := f.SetSheetRow(sheetName, "A1", &headerRow); err != nil {
+		return fmt.Errorf("write header row: %w", err)
+	}
+
+	for i, column := range columns {
+		if column.Width <= 0 {
+			continue
+		}
+
+		colLetter, err := excelize.ColumnNumberToName(i + 1)
 		if err != nil {
 			return fmt.Errorf("convert column number to name: %w", err)
 		}
 
-		cell := fmt.Sprintf("%s1", colLetter)
-		if err := f.SetCellValue(sheetName, cell, column.Name); err != nil {
-			return fmt.Errorf("set header cell %s: %w", cell, err)
-		}
-
-		if column.Width > 0 {
-			if err := f.SetColWidth(sheetName, colLetter, colLetter, column.Width); err != nil {
-				return fmt.Errorf("set column width for %s: %w", colLetter, err)
-			}
+		if err := f.SetColWidth(sheetName, colLetter, colLetter, column.Width); err != nil {
+			return fmt.Errorf("set column width for %s: %w", colLetter, err)
 		}
 	}
 
@@ -140,6 +146,8 @@ func (e *exporter) writeData(f *excelize.File, sheetName string, data any) error
 
 	for rowIndex, view := range reader.All() {
 		excelRow := rowIndex + 2
+
+		rowValues := make([]any, len(columns))
 
 		for columnIndex, column := range columns {
 			raw, err := view.Get(column)
@@ -162,15 +170,12 @@ func (e *exporter) writeData(f *excelize.File, sheetName string, data any) error
 				}
 			}
 
-			colLetter, err := excelize.ColumnNumberToName(columnIndex + 1)
-			if err != nil {
-				return fmt.Errorf("convert column number to name: %w", err)
-			}
+			rowValues[columnIndex] = cellValue
+		}
 
-			cell := fmt.Sprintf("%s%d", colLetter, excelRow)
-			if err := f.SetCellValue(sheetName, cell, cellValue); err != nil {
-				return fmt.Errorf("set cell %s: %w", cell, err)
-			}
+		startCell := fmt.Sprintf("A%d", excelRow)
+		if err := f.SetSheetRow(sheetName, startCell, &rowValues); err != nil {
+			return fmt.Errorf("set row %d: %w", excelRow, err)
 		}
 	}
 

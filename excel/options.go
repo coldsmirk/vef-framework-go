@@ -16,6 +16,7 @@ type importConfig struct {
 	sheetName  string
 	sheetIndex int
 	skipRows   int
+	hasHeader  bool
 }
 
 type ImportOption func(*importConfig)
@@ -35,5 +36,13 @@ func WithImportSheetIndex(index int) ImportOption {
 func WithSkipRows(rows int) ImportOption {
 	return func(o *importConfig) {
 		o.skipRows = rows
+	}
+}
+
+// WithoutHeader treats the first non-skipped row as data instead of headers.
+// Columns are mapped to source positions in schema order.
+func WithoutHeader() ImportOption {
+	return func(o *importConfig) {
+		o.hasHeader = false
 	}
 }

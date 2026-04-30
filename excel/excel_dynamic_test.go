@@ -32,7 +32,7 @@ func TestDynamicExcelRoundTrip(t *testing.T) {
 	exp, err := NewMapExporter(baseDynamicSpecs(), WithSheetName("Users"))
 	require.NoError(t, err, "NewMapExporter should accept valid specs")
 
-	imp, err := NewMapImporter(baseDynamicSpecs(), WithImportSheetName("Users"))
+	imp, err := NewMapImporter(baseDynamicSpecs(), nil, WithImportSheetName("Users"))
 	require.NoError(t, err, "NewMapImporter should accept valid specs")
 
 	birthday := time.Date(2000, 1, 15, 0, 0, 0, 0, time.Local)
@@ -104,7 +104,7 @@ func TestDynamicExcelRequiredMissing(t *testing.T) {
 	require.NoError(t, f.SaveAs(tmp.Name()), "Saving the workbook should succeed")
 	require.NoError(t, f.Close(), "Closing the workbook should succeed")
 
-	imp, err := NewMapImporter(baseDynamicSpecs())
+	imp, err := NewMapImporter(baseDynamicSpecs(), nil)
 	require.NoError(t, err, "NewMapImporter should accept valid specs")
 
 	result, importErrors, err := imp.ImportFromFile(tmp.Name())
@@ -129,7 +129,7 @@ func TestDynamicExcelRowValidatorReportsError(t *testing.T) {
 	})
 	require.NoError(t, err, "Export should succeed")
 
-	imp, err := NewMapImporterWithOptions(
+	imp, err := NewMapImporter(
 		baseDynamicSpecs(),
 		[]tabular.MapOption{tabular.WithRowValidator(func(row map[string]any) error {
 			if row["name"] == "BAD" {
@@ -139,7 +139,7 @@ func TestDynamicExcelRowValidatorReportsError(t *testing.T) {
 			return nil
 		})},
 	)
-	require.NoError(t, err, "NewMapImporterWithOptions should accept valid specs")
+	require.NoError(t, err, "NewMapImporter should accept valid specs")
 
 	result, importErrors, err := imp.Import(bytes.NewReader(buf.Bytes()))
 	require.NoError(t, err, "Import should not return a top-level error")
@@ -154,21 +154,21 @@ func TestDynamicExcelRowValidatorReportsError(t *testing.T) {
 // TestDynamicExcelCustomFormatterAndParser verifies FormatterFn / ParserFn
 // override the named registry on excel.
 func TestDynamicExcelCustomFormatterAndParser(t *testing.T) {
-	formatter := tabular.Formatter(FormatterFunc(func(v any) (string, error) {
+	formatter := tabular.FormatterFunc(func(v any) (string, error) {
 		if v == nil {
 			return "", nil
 		}
 
 		return "prefix:" + v.(string), nil
-	}))
+	})
 
-	parser := tabular.ValueParser(ParserFunc(func(s string, _ reflect.Type) (any, error) {
+	parser := tabular.ParserFunc(func(s string, _ reflect.Type) (any, error) {
 		if len(s) <= len("prefix:") {
 			return s, nil
 		}
 
 		return s[len("prefix:"):], nil
-	}))
+	})
 
 	specs := []tabular.ColumnSpec{
 		{Key: "label", Name: "Label", Type: reflect.TypeFor[string](), FormatterFn: formatter, ParserFn: parser},
@@ -177,7 +177,7 @@ func TestDynamicExcelCustomFormatterAndParser(t *testing.T) {
 	exp, err := NewMapExporter(specs)
 	require.NoError(t, err, "NewMapExporter should accept valid specs")
 
-	imp, err := NewMapImporter(specs)
+	imp, err := NewMapImporter(specs, nil)
 	require.NoError(t, err, "NewMapImporter should accept valid specs")
 
 	buf, err := exp.Export([]map[string]any{{"label": "hello"}})
@@ -216,7 +216,7 @@ func TestDynamicExcelIgnoresUnknownAndMissingColumns(t *testing.T) {
 	require.NoError(t, f.SaveAs(tmp.Name()), "Saving the workbook should succeed")
 	require.NoError(t, f.Close(), "Closing the workbook should succeed")
 
-	imp, err := NewMapImporter(baseDynamicSpecs())
+	imp, err := NewMapImporter(baseDynamicSpecs(), nil)
 	require.NoError(t, err, "NewMapImporter should accept valid specs")
 
 	result, importErrors, err := imp.ImportFromFile(tmp.Name())
@@ -235,18 +235,4 @@ func TestDynamicExcelIgnoresUnknownAndMissingColumns(t *testing.T) {
 
 	_, hasBirthday := row["birthday"]
 	assert.False(t, hasBirthday, "Missing schema columns should stay out of the map")
-}
-
-// FormatterFunc adapts a plain function to the Formatter interface.
-type FormatterFunc func(any) (string, error)
-
-// Format calls the wrapped function.
-func (f FormatterFunc) Format(value any) (string, error) { return f(value) }
-
-// ParserFunc adapts a plain function to the ValueParser interface.
-type ParserFunc func(string, reflect.Type) (any, error)
-
-// Parse calls the wrapped function.
-func (p ParserFunc) Parse(cellValue string, targetType reflect.Type) (any, error) {
-	return p(cellValue, targetType)
 }
