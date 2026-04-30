@@ -85,7 +85,7 @@ func (i *importer) Import(reader io.Reader) (any, []tabular.ImportError, error) 
 	}
 
 	schema := i.adapter.Schema()
-	dataStartIdx := i.options.skipRows
+	dataStartIndex := i.options.skipRows
 
 	var columnMapping map[int]int
 
@@ -98,18 +98,18 @@ func (i *importer) Import(reader io.Reader) (any, []tabular.ImportError, error) 
 		}
 
 		columnMapping = mapping
-		dataStartIdx++
+		dataStartIndex++
 	} else {
 		columnMapping = tabular.DefaultPositionalMapping(schema)
 	}
 
-	dataRows := rows[dataStartIdx:]
+	dataRows := rows[dataStartIndex:]
 	writer := i.adapter.Writer(len(dataRows))
 
 	var importErrors []tabular.ImportError
 
 	for rowIdx, row := range dataRows {
-		csvRow := dataStartIdx + rowIdx + 1
+		csvRow := dataStartIndex + rowIdx + 1
 
 		if i.isEmptyRow(row) {
 			continue
@@ -145,12 +145,12 @@ func (i *importer) parseRow(
 
 	columns := schema.Columns()
 
-	for csvIdx, schemaIdx := range columnMapping {
-		col := columns[schemaIdx]
+	for csvIndex, schemaIndex := range columnMapping {
+		col := columns[schemaIndex]
 
 		var cellValue string
-		if csvIdx < len(row) {
-			cellValue = row[csvIdx]
+		if csvIndex < len(row) {
+			cellValue = row[csvIndex]
 			if i.options.trimSpace {
 				cellValue = strings.TrimSpace(cellValue)
 			}

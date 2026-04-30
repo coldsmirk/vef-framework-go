@@ -109,19 +109,19 @@ func (e *exporter) doExport(data any) (*excelize.File, error) {
 func (e *exporter) writeHeader(f *excelize.File, sheetName string) error {
 	columns := e.adapter.Schema().Columns()
 
-	for colIdx, col := range columns {
-		colLetter, err := excelize.ColumnNumberToName(colIdx + 1)
+	for columnIndex, column := range columns {
+		colLetter, err := excelize.ColumnNumberToName(columnIndex + 1)
 		if err != nil {
 			return fmt.Errorf("convert column number to name: %w", err)
 		}
 
 		cell := fmt.Sprintf("%s1", colLetter)
-		if err := f.SetCellValue(sheetName, cell, col.Name); err != nil {
+		if err := f.SetCellValue(sheetName, cell, column.Name); err != nil {
 			return fmt.Errorf("set header cell %s: %w", cell, err)
 		}
 
-		if col.Width > 0 {
-			if err := f.SetColWidth(sheetName, colLetter, colLetter, col.Width); err != nil {
+		if column.Width > 0 {
+			if err := f.SetColWidth(sheetName, colLetter, colLetter, column.Width); err != nil {
 				return fmt.Errorf("set column width for %s: %w", colLetter, err)
 			}
 		}
@@ -138,31 +138,31 @@ func (e *exporter) writeData(f *excelize.File, sheetName string, data any) error
 		return err
 	}
 
-	for rowIdx, view := range reader.All() {
-		excelRow := rowIdx + 2
+	for rowIndex, view := range reader.All() {
+		excelRow := rowIndex + 2
 
-		for colIdx, col := range columns {
-			raw, err := view.Get(col)
+		for columnIndex, column := range columns {
+			raw, err := view.Get(column)
 			if err != nil {
 				return tabular.ExportError{
-					Row:    rowIdx,
-					Column: col.Name,
-					Field:  col.Key,
+					Row:    rowIndex,
+					Column: column.Name,
+					Field:  column.Key,
 					Err:    fmt.Errorf("read cell: %w", err),
 				}
 			}
 
-			cellValue, err := tabular.ResolveFormatter(col, e.formatters).Format(raw)
+			cellValue, err := tabular.ResolveFormatter(column, e.formatters).Format(raw)
 			if err != nil {
 				return tabular.ExportError{
-					Row:    rowIdx,
-					Column: col.Name,
-					Field:  col.Key,
+					Row:    rowIndex,
+					Column: column.Name,
+					Field:  column.Key,
 					Err:    fmt.Errorf("format value: %w", err),
 				}
 			}
 
-			colLetter, err := excelize.ColumnNumberToName(colIdx + 1)
+			colLetter, err := excelize.ColumnNumberToName(columnIndex + 1)
 			if err != nil {
 				return fmt.Errorf("convert column number to name: %w", err)
 			}

@@ -96,21 +96,21 @@ func (i *importer) doImport(f *excelize.File) (any, []tabular.ImportError, error
 	}
 
 	schema := i.adapter.Schema()
-	headerRowIdx := i.options.skipRows
-	headerRow := rows[headerRowIdx]
+	headerRowIndex := i.options.skipRows
+	headerRow := rows[headerRowIndex]
 
 	columnMapping, err := tabular.BuildHeaderMapping(headerRow, schema, tabular.MappingOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("build column mapping: %w", err)
 	}
 
-	dataRows := rows[headerRowIdx+1:]
+	dataRows := rows[headerRowIndex+1:]
 	writer := i.adapter.Writer(len(dataRows))
 
 	var importErrors []tabular.ImportError
 
-	for rowIdx, row := range dataRows {
-		excelRow := headerRowIdx + rowIdx + 2
+	for rowIndex, row := range dataRows {
+		excelRow := headerRowIndex + rowIndex + 2
 
 		if i.isEmptyRow(row) {
 			continue
@@ -146,16 +146,16 @@ func (i *importer) parseRow(
 
 	columns := schema.Columns()
 
-	for excelIdx, schemaIdx := range columnMapping {
-		col := columns[schemaIdx]
+	for excelIndex, schemaIndex := range columnMapping {
+		column := columns[schemaIndex]
 
 		var cellValue string
-		if excelIdx < len(row) {
-			cellValue = row[excelIdx]
+		if excelIndex < len(row) {
+			cellValue = row[excelIndex]
 		}
 
-		if cellValue == "" && col.Default != "" {
-			cellValue = col.Default
+		if cellValue == "" && column.Default != "" {
+			cellValue = column.Default
 		}
 
 		// Skip truly empty cells so adapters (e.g. MapAdapter) can distinguish
@@ -164,23 +164,23 @@ func (i *importer) parseRow(
 			continue
 		}
 
-		value, err := tabular.ResolveParser(col, i.parsers).Parse(cellValue, col.Type)
+		value, err := tabular.ResolveParser(column, i.parsers).Parse(cellValue, column.Type)
 		if err != nil {
 			errors = append(errors, tabular.ImportError{
 				Row:    excelRow,
-				Column: col.Name,
-				Field:  col.Key,
+				Column: column.Name,
+				Field:  column.Key,
 				Err:    fmt.Errorf("parse value: %w", err),
 			})
 
 			continue
 		}
 
-		if err := builder.Set(col, value); err != nil {
+		if err := builder.Set(column, value); err != nil {
 			errors = append(errors, tabular.ImportError{
 				Row:    excelRow,
-				Column: col.Name,
-				Field:  col.Key,
+				Column: column.Name,
+				Field:  column.Key,
 				Err:    err,
 			})
 

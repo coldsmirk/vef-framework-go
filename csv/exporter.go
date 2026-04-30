@@ -112,14 +112,14 @@ func (e *exporter) writeData(csvWriter *csv.Writer, data any) error {
 		return err
 	}
 
-	for rowIdx, view := range reader.All() {
+	for rowIndex, view := range reader.All() {
 		row := make([]string, len(columns))
 
 		for colIdx, col := range columns {
 			raw, err := view.Get(col)
 			if err != nil {
 				return tabular.ExportError{
-					Row:    rowIdx,
+					Row:    rowIndex,
 					Column: col.Name,
 					Field:  col.Key,
 					Err:    fmt.Errorf("read cell: %w", err),
@@ -129,7 +129,7 @@ func (e *exporter) writeData(csvWriter *csv.Writer, data any) error {
 			cellValue, err := tabular.ResolveFormatter(col, e.formatters).Format(raw)
 			if err != nil {
 				return tabular.ExportError{
-					Row:    rowIdx,
+					Row:    rowIndex,
 					Column: col.Name,
 					Field:  col.Key,
 					Err:    fmt.Errorf("format value: %w", err),
@@ -140,7 +140,7 @@ func (e *exporter) writeData(csvWriter *csv.Writer, data any) error {
 		}
 
 		if err := csvWriter.Write(row); err != nil {
-			return fmt.Errorf("write row %d: %w", rowIdx, err)
+			return fmt.Errorf("write row %d: %w", rowIndex, err)
 		}
 	}
 
