@@ -14,7 +14,7 @@ import (
 // ExcelTestUser is the shared struct fixture used across the importer,
 // exporter and factory tests in this package.
 type ExcelTestUser struct {
-	ID        string    `tabular:"width=15"                                      validate:"required"`
+	ID        string    `tabular:"ID,width=15"                                   validate:"required"`
 	Name      string    `tabular:"姓名,width=20"                                   validate:"required"`
 	Email     string    `tabular:"邮箱,width=25"                                   validate:"email"`
 	Age       int       `tabular:"name=年龄,width=10"                              validate:"gte=0,lte=150"`
