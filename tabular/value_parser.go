@@ -17,6 +17,14 @@ type ValueParser interface {
 	Parse(cellValue string, targetType reflect.Type) (any, error)
 }
 
+// ParserFunc adapts a plain function to the ValueParser interface.
+type ParserFunc func(cellValue string, targetType reflect.Type) (any, error)
+
+// Parse calls the wrapped function.
+func (p ParserFunc) Parse(cellValue string, targetType reflect.Type) (any, error) {
+	return p(cellValue, targetType)
+}
+
 var (
 	// Cached reflect types for performance.
 	typeTime    = reflect.TypeFor[time.Time]()

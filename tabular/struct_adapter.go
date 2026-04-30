@@ -36,9 +36,11 @@ func (a *structAdapter) Schema() *Schema {
 }
 
 // Reader iterates a slice of struct values, yielding structRowView for each row.
+// Element types must match the adapter's struct type, a pointer to it, or be an
+// interface (in which case per-row types are validated during iteration).
 func (a *structAdapter) Reader(data any) (RowReader, error) {
 	if data == nil {
-		return &structReader{}, nil
+		return &structReader{typ: a.typ}, nil
 	}
 
 	dataValue := reflect.ValueOf(data)
@@ -46,9 +48,17 @@ func (a *structAdapter) Reader(data any) (RowReader, error) {
 		return nil, fmt.Errorf("%w, got %s", ErrDataMustBeSlice, dataValue.Kind())
 	}
 
-	// Element type must be assignable to the adapter's struct type (or a
-	// pointer to it). We allow []any when the underlying element values can
-	// still be resolved via reflection at read time.
+	elemType := dataValue.Type().Elem()
+	switch {
+	case elemType == a.typ:
+	case elemType.Kind() == reflect.Pointer && elemType.Elem() == a.typ:
+	case elemType.Kind() == reflect.Interface:
+		// []any — element types are validated per row when Get is called.
+	default:
+		return nil, fmt.Errorf("%w: slice element type %s, want %s or *%s",
+			ErrSchemaMismatch, elemType, a.typ, a.typ)
+	}
+
 	return &structReader{values: dataValue, typ: a.typ}, nil
 }
 
@@ -90,7 +100,7 @@ func (r *structReader) All() iter.Seq2[int, RowView] {
 				elem = elem.Elem()
 			}
 
-			if !yield(i, &structRowView{elem: elem}) {
+			if !yield(i, &structRowView{elem: elem, typ: r.typ}) {
 				return
 			}
 		}
@@ -100,6 +110,7 @@ func (r *structReader) All() iter.Seq2[int, RowView] {
 // structRowView exposes struct fields using Column.Index.
 type structRowView struct {
 	elem reflect.Value
+	typ  reflect.Type
 }
 
 // Get reads the struct field addressed by col.Index.
@@ -108,8 +119,19 @@ func (v *structRowView) Get(column *Column) (any, error) {
 		return nil, nil
 	}
 
+	if v.elem.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("%w: row element kind %s, want struct",
+			ErrSchemaMismatch, v.elem.Kind())
+	}
+
+	if v.typ != nil && v.elem.Type() != v.typ {
+		return nil, fmt.Errorf("%w: row element type %s, want %s",
+			ErrSchemaMismatch, v.elem.Type(), v.typ)
+	}
+
 	if len(column.Index) == 0 {
-		return nil, fmt.Errorf("%w: struct column %q has no Index", ErrSchemaMismatch, column.Key)
+		return nil, fmt.Errorf("%w: struct column %q has no Index",
+			ErrSchemaMismatch, column.Key)
 	}
 
 	field := v.elem.FieldByIndex(column.Index)
@@ -155,7 +177,8 @@ type structRowBuilder struct {
 	value reflect.Value
 }
 
-// Set assigns the parsed value to the field addressed by col.Index.
+// Set assigns the parsed value to the field addressed by col.Index. Passing
+// nil is a no-op because new rows already start at the zero value.
 func (b *structRowBuilder) Set(column *Column, value any) error {
 	if len(column.Index) == 0 {
 		return fmt.Errorf("%w: struct column %q has no Index", ErrSchemaMismatch, column.Key)
@@ -167,8 +190,6 @@ func (b *structRowBuilder) Set(column *Column, value any) error {
 	}
 
 	if value == nil {
-		field.Set(reflect.Zero(field.Type()))
-
 		return nil
 	}
 

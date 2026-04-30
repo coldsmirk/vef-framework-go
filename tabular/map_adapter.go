@@ -19,7 +19,8 @@ func WithRowValidator(validator RowValidator) MapOption {
 }
 
 // mapAdapter bridges []map[string]any rows with the tabular engine. Columns
-// are addressed via their Key.
+// are addressed via their Key. Reader accepts the concrete []map[string]any
+// directly or any []T whose elements satisfy map[string]any (e.g. []any).
 type mapAdapter struct {
 	schema       *Schema
 	rowValidator RowValidator
@@ -42,6 +43,8 @@ func (a *mapAdapter) Schema() *Schema {
 }
 
 // Reader accepts []map[string]any (or compatible wrappers) and yields row views.
+// Element types are validated eagerly; iteration over the underlying slice
+// happens lazily so the adapter does not pre-allocate a copy.
 func (*mapAdapter) Reader(data any) (RowReader, error) {
 	if data == nil {
 		return &mapReader{}, nil
@@ -57,21 +60,15 @@ func (*mapAdapter) Reader(data any) (RowReader, error) {
 		return nil, fmt.Errorf("%w, got %s", ErrDataMustBeSlice, dataValue.Kind())
 	}
 
-	rows := make([]map[string]any, dataValue.Len())
-
 	for i := range dataValue.Len() {
 		elem := dataValue.Index(i).Interface()
-		m, ok := elem.(map[string]any)
-
-		if !ok {
+		if _, ok := elem.(map[string]any); !ok {
 			return nil, fmt.Errorf("%w: element %d is %T, want map[string]any",
 				ErrSchemaMismatch, i, elem)
 		}
-
-		rows[i] = m
 	}
 
-	return &mapReader{rows: rows}, nil
+	return &mapReader{values: dataValue}, nil
 }
 
 // Writer allocates an empty []map[string]any accumulator.
@@ -87,15 +84,33 @@ func (a *mapAdapter) Writer(capacity int) RowWriter {
 	}
 }
 
-// mapReader iterates the pre-collected slice of maps.
+// mapReader iterates the input slice. Either rows (fast path for the concrete
+// []map[string]any) or values (reflect.Value of any other map-typed slice) is
+// populated; the other stays nil/invalid.
 type mapReader struct {
-	rows []map[string]any
+	rows   []map[string]any
+	values reflect.Value
 }
 
 // All yields each map wrapped as a mapRowView.
 func (r *mapReader) All() iter.Seq2[int, RowView] {
 	return func(yield func(int, RowView) bool) {
-		for i, row := range r.rows {
+		if r.rows != nil {
+			for i, row := range r.rows {
+				if !yield(i, &mapRowView{row: row}) {
+					return
+				}
+			}
+
+			return
+		}
+
+		if !r.values.IsValid() {
+			return
+		}
+
+		for i := range r.values.Len() {
+			row := r.values.Index(i).Interface().(map[string]any)
 			if !yield(i, &mapRowView{row: row}) {
 				return
 			}

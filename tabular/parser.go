@@ -2,21 +2,20 @@ package tabular
 
 import (
 	"reflect"
+	"strings"
 
 	"github.com/samber/lo"
 	"github.com/spf13/cast"
-	"github.com/uptrace/bun/schema"
 
 	"github.com/coldsmirk/vef-framework-go/reflectx"
 	"github.com/coldsmirk/vef-framework-go/strx"
 )
 
-var baseModelType = reflect.TypeFor[schema.BaseModel]()
-
 // parseStruct parses the tabular columns from a struct using visitor pattern.
 func parseStruct(t reflect.Type) []*Column {
-	if t = reflectx.Indirect(t); t.Kind() != reflect.Struct {
-		logger.Warnf("Invalid value type, expected struct, got %s", t.Name())
+	rootType := reflectx.Indirect(t)
+	if rootType.Kind() != reflect.Struct {
+		logger.Warnf("Invalid value type, expected struct, got %s", rootType.Name())
 
 		return nil
 	}
@@ -26,10 +25,6 @@ func parseStruct(t reflect.Type) []*Column {
 
 	visitor := reflectx.TypeVisitor{
 		VisitFieldType: func(field reflect.StructField, _ int) reflectx.VisitAction {
-			if field.Anonymous && field.Type == baseModelType {
-				return reflectx.SkipChildren
-			}
-
 			tag, hasTag := field.Tag.Lookup(TagTabular)
 			if !hasTag {
 				if field.Anonymous {
@@ -37,6 +32,7 @@ func parseStruct(t reflect.Type) []*Column {
 				}
 
 				column := buildColumn(field, make(map[string]string), columnOrder)
+				column.Key = buildFieldKey(rootType, field.Index)
 				columns = append(columns, column)
 				columnOrder++
 
@@ -53,6 +49,7 @@ func parseStruct(t reflect.Type) []*Column {
 
 			attrs := strx.ParseTag(tag)
 			column := buildColumn(field, attrs, columnOrder)
+			column.Key = buildFieldKey(rootType, field.Index)
 			columns = append(columns, column)
 			columnOrder++
 
@@ -61,7 +58,7 @@ func parseStruct(t reflect.Type) []*Column {
 	}
 
 	reflectx.VisitType(
-		t, visitor,
+		rootType, visitor,
 		reflectx.WithDiveTag(TagTabular, AttrDive),
 		reflectx.WithTraversalMode(reflectx.DepthFirst),
 	)
@@ -69,7 +66,9 @@ func parseStruct(t reflect.Type) []*Column {
 	return columns
 }
 
-// buildColumn builds a Column from a struct field and attributes.
+// buildColumn builds a Column from a struct field and attributes. Key is left
+// empty here and is populated by parseStruct using the full field path so that
+// nested dive fields produce unique keys.
 func buildColumn(field reflect.StructField, attrs map[string]string, autoOrder int) *Column {
 	name := attrs[AttrName]
 	if name == "" {
@@ -87,7 +86,6 @@ func buildColumn(field reflect.StructField, attrs map[string]string, autoOrder i
 	}
 
 	return &Column{
-		Key:       field.Name,
 		Name:      name,
 		Type:      field.Type,
 		Order:     order,
@@ -98,4 +96,32 @@ func buildColumn(field reflect.StructField, attrs map[string]string, autoOrder i
 		Parser:    attrs[AttrParser],
 		Index:     field.Index,
 	}
+}
+
+// buildFieldKey assembles the dotted path of struct field names for the given
+// index path. Top-level fields collapse to a single segment so the common case
+// matches the field name verbatim.
+func buildFieldKey(rootType reflect.Type, indexPath []int) string {
+	if len(indexPath) == 0 {
+		return ""
+	}
+
+	parts := make([]string, len(indexPath))
+	t := rootType
+
+	for i, idx := range indexPath {
+		for t.Kind() == reflect.Pointer {
+			t = t.Elem()
+		}
+
+		f := t.Field(idx)
+		parts[i] = f.Name
+		t = f.Type
+	}
+
+	if len(parts) == 1 {
+		return parts[0]
+	}
+
+	return strings.Join(parts, ".")
 }

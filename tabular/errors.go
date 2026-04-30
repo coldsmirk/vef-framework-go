@@ -44,6 +44,12 @@ func formatRowError(row int, column, field string, err error) string {
 
 // ImportError represents an error that occurred during data import.
 // Row is 1-based and includes the header row.
+//
+// Err may carry multiple leaf errors joined via errors.Join when a single
+// row produces several failures (e.g. multiple Required misses or both a
+// cell validator and a row validator failing). Use errors.Is to match a
+// specific cause and an interface{ Unwrap() []error } assertion to enumerate
+// all leaves.
 type ImportError struct {
 	Row    int
 	Column string

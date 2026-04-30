@@ -39,6 +39,17 @@ type ColumnSpec struct {
 	Validators []CellValidator
 }
 
+// NewMapAdapterFromSpecs is a convenience helper that turns dynamic column
+// specs directly into a MapAdapter, applying any MapAdapter options.
+func NewMapAdapterFromSpecs(specs []ColumnSpec, opts ...MapOption) (RowAdapter, error) {
+	schema, err := NewSchemaFromSpecs(specs)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewMapAdapter(schema, opts...), nil
+}
+
 // NewSchemaFromSpecs builds a Schema from a slice of dynamic column specs.
 // It validates that every spec has a non-empty Key and Type, and that keys
 // are unique.

@@ -17,6 +17,14 @@ type Formatter interface {
 	Format(value any) (string, error)
 }
 
+// FormatterFunc adapts a plain function to the Formatter interface.
+type FormatterFunc func(value any) (string, error)
+
+// Format calls the wrapped function.
+func (f FormatterFunc) Format(value any) (string, error) {
+	return f(value)
+}
+
 // defaultFormatter is the built-in formatter that handles common Go types.
 type defaultFormatter struct {
 	format string
