@@ -115,7 +115,7 @@ func (e *exporter) writeData(csvWriter *csv.Writer, data any) error {
 	for rowIndex, view := range reader.All() {
 		row := make([]string, len(columns))
 
-		for colIdx, col := range columns {
+		for colIndex, col := range columns {
 			raw, err := view.Get(col)
 			if err != nil {
 				return tabular.ExportError{
@@ -136,7 +136,7 @@ func (e *exporter) writeData(csvWriter *csv.Writer, data any) error {
 				}
 			}
 
-			row[colIdx] = cellValue
+			row[colIndex] = cellValue
 		}
 
 		if err := csvWriter.Write(row); err != nil {

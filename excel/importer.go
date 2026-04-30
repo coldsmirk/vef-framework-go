@@ -3,8 +3,6 @@ package excel
 import (
 	"fmt"
 	"io"
-	"maps"
-	"slices"
 
 	"github.com/xuri/excelize/v2"
 
@@ -129,13 +127,13 @@ func (i *importer) doImport(f *excelize.File) (any, []tabular.ImportError, error
 	for rowIdx, row := range dataRows {
 		excelRow := dataStartIndex + rowIdx + 1
 
-		if i.isEmptyRow(row) {
+		if tabular.IsEmptyRow(row, false) {
 			continue
 		}
 
 		builder := writer.NewRow()
 
-		rowErrors := i.parseRow(row, columnMapping, schema, builder, excelRow)
+		rowErrors := tabular.ParseRow(row, columnMapping, schema, builder, i.parsers, excelRow, tabular.ParseRowOptions{})
 		if len(rowErrors) > 0 {
 			importErrors = append(importErrors, rowErrors...)
 
@@ -153,69 +151,4 @@ func (i *importer) doImport(f *excelize.File) (any, []tabular.ImportError, error
 	}
 
 	return writer.Build(), importErrors, nil
-}
-
-func (i *importer) parseRow(
-	row []string, columnMapping map[int]int, schema *tabular.Schema,
-	builder tabular.RowBuilder, excelRow int,
-) []tabular.ImportError {
-	var errors []tabular.ImportError
-
-	columns := schema.Columns()
-
-	// Iterate by sorted source index so per-row error order is deterministic.
-	for _, excelIndex := range slices.Sorted(maps.Keys(columnMapping)) {
-		schemaIndex := columnMapping[excelIndex]
-		column := columns[schemaIndex]
-
-		var cellValue string
-		if excelIndex < len(row) {
-			cellValue = row[excelIndex]
-		}
-
-		if cellValue == "" && column.Default != "" {
-			cellValue = column.Default
-		}
-
-		// Skip truly empty cells so adapters (e.g. MapAdapter) can distinguish
-		// absent values from explicitly zero ones and enforce Required.
-		if cellValue == "" {
-			continue
-		}
-
-		value, err := tabular.ResolveParser(column, i.parsers).Parse(cellValue, column.Type)
-		if err != nil {
-			errors = append(errors, tabular.ImportError{
-				Row:    excelRow,
-				Column: column.Name,
-				Field:  column.Key,
-				Err:    fmt.Errorf("parse value: %w", err),
-			})
-
-			continue
-		}
-
-		if err := builder.Set(column, value); err != nil {
-			errors = append(errors, tabular.ImportError{
-				Row:    excelRow,
-				Column: column.Name,
-				Field:  column.Key,
-				Err:    err,
-			})
-
-			continue
-		}
-	}
-
-	return errors
-}
-
-func (*importer) isEmptyRow(row []string) bool {
-	for _, cell := range row {
-		if cell != "" {
-			return false
-		}
-	}
-
-	return true
 }

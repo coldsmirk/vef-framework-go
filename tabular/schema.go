@@ -4,11 +4,7 @@ import (
 	"cmp"
 	"reflect"
 	"slices"
-
-	"github.com/coldsmirk/vef-framework-go/internal/logx"
 )
-
-var logger = logx.Named("tabular")
 
 // CellValidator validates a single cell value within the context of a column.
 // It is primarily used by dynamic (map-based) schemas; struct schemas typically
@@ -28,8 +24,12 @@ type Schema struct {
 	byName  map[string]*Column
 }
 
-// Column represents metadata for a single column in tabular data.
-// Columns are shared between struct-based and dynamic schemas.
+// Column represents metadata for a single column in tabular data. Columns are
+// shared between struct-based and dynamic schemas.
+//
+// External code should construct Column instances through schema factories
+// (NewSchema, NewSchemaFor, NewSchemaFromSpecs); fields are exported so that
+// adapters can populate them, not for direct mutation by callers.
 type Column struct {
 	// Key is the logical identifier of the column. For struct schemas it is the
 	// field name; for dynamic schemas it is the map key that addresses the cell.
