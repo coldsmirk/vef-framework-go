@@ -27,10 +27,10 @@ func TestImportOptions(t *testing.T) {
 		assert.Equal(t, 3, cfg.skipRows, "WithSkipRows should set the skipRows count")
 	})
 
-	t.Run("WithSkipRowsAcceptsNegative", func(t *testing.T) {
+	t.Run("WithSkipRowsClampsNegative", func(t *testing.T) {
 		cfg := importConfig{skipRows: 5}
 		WithSkipRows(-1)(&cfg)
-		assert.Equal(t, -1, cfg.skipRows, "WithSkipRows should pass negative values through verbatim")
+		assert.Equal(t, 0, cfg.skipRows, "WithSkipRows should clamp negative values to zero")
 	})
 
 	t.Run("WithoutTrimSpace", func(t *testing.T) {
@@ -68,10 +68,10 @@ func TestExportOptions(t *testing.T) {
 		assert.False(t, cfg.writeHeader, "WithoutWriteHeader should clear the writeHeader flag")
 	})
 
-	t.Run("WithCrlf", func(t *testing.T) {
+	t.Run("WithCRLF", func(t *testing.T) {
 		cfg := exportConfig{}
-		WithCrlf()(&cfg)
-		assert.True(t, cfg.useCRLF, "WithCrlf should enable Windows-style line endings")
+		WithCRLF()(&cfg)
+		assert.True(t, cfg.useCRLF, "WithCRLF should enable Windows-style line endings")
 	})
 
 	t.Run("LaterOptionOverridesEarlier", func(t *testing.T) {

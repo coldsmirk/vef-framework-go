@@ -27,16 +27,22 @@ func TestImportOptions(t *testing.T) {
 		assert.Equal(t, 3, cfg.skipRows, "WithSkipRows should set the skipRows count")
 	})
 
-	t.Run("WithSkipRowsAcceptsNegative", func(t *testing.T) {
+	t.Run("WithSkipRowsClampsNegative", func(t *testing.T) {
 		cfg := importConfig{skipRows: 5}
 		WithSkipRows(-1)(&cfg)
-		assert.Equal(t, -1, cfg.skipRows, "WithSkipRows should pass negative values through verbatim")
+		assert.Equal(t, 0, cfg.skipRows, "WithSkipRows should clamp negative values to zero")
 	})
 
 	t.Run("WithoutHeader", func(t *testing.T) {
 		cfg := importConfig{hasHeader: true}
 		WithoutHeader()(&cfg)
 		assert.False(t, cfg.hasHeader, "WithoutHeader should clear the hasHeader flag")
+	})
+
+	t.Run("WithoutTrimSpace", func(t *testing.T) {
+		cfg := importConfig{trimSpace: true}
+		WithoutTrimSpace()(&cfg)
+		assert.False(t, cfg.trimSpace, "WithoutTrimSpace should disable trimming")
 	})
 
 	t.Run("LaterOptionOverridesEarlier", func(t *testing.T) {
