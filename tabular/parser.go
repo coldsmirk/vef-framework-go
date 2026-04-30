@@ -87,13 +87,15 @@ func buildColumn(field reflect.StructField, attrs map[string]string, autoOrder i
 	}
 
 	return &Column{
-		Index:     field.Index,
+		Key:       field.Name,
 		Name:      name,
-		Width:     width,
+		Type:      field.Type,
 		Order:     order,
+		Width:     width,
 		Default:   attrs[AttrDefault],
 		Format:    attrs[AttrFormat],
 		Formatter: attrs[AttrFormatter],
 		Parser:    attrs[AttrParser],
+		Index:     field.Index,
 	}
 }

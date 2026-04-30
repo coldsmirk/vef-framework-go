@@ -5,8 +5,29 @@ import (
 	"fmt"
 )
 
-// ErrUnsupportedType indicates the target type is not supported by the parser.
-var ErrUnsupportedType = errors.New("unsupported type")
+var (
+	// ErrUnsupportedType indicates the target type is not supported by the parser.
+	ErrUnsupportedType = errors.New("unsupported type")
+	// ErrDataMustBeSlice indicates the input data for export is not a slice.
+	ErrDataMustBeSlice = errors.New("data must be a slice")
+	// ErrNoDataRowsFound indicates the source contains no usable data rows.
+	ErrNoDataRowsFound = errors.New("no data rows found")
+	// ErrDuplicateColumnName indicates a duplicate header name during mapping.
+	ErrDuplicateColumnName = errors.New("duplicate column name")
+	// ErrUnsetField indicates a struct field cannot be set (usually unexported).
+	ErrUnsetField = errors.New("field is not settable")
+	// ErrRequiredMissing indicates a required cell is empty.
+	ErrRequiredMissing = errors.New("required value is missing")
+	// ErrUnknownColumn indicates a column key is not present in the schema.
+	ErrUnknownColumn = errors.New("unknown column")
+	// ErrSchemaMismatch indicates the provided data does not match the schema
+	// required by the adapter (e.g. wrong element type).
+	ErrSchemaMismatch = errors.New("schema mismatch")
+	// ErrMissingColumnType indicates a dynamic column spec has no target Type.
+	ErrMissingColumnType = errors.New("column type is required")
+	// ErrMissingColumnKey indicates a dynamic column spec has no Key.
+	ErrMissingColumnKey = errors.New("column key is required")
+)
 
 func formatRowError(row int, column, field string, err error) string {
 	switch {
