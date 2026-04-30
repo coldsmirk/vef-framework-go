@@ -14,6 +14,18 @@ func NewExporterFor[T any](opts ...ExportOption) tabular.Exporter {
 	return NewExporter(tabular.NewStructAdapterFor[T](), opts...)
 }
 
+// NewTypedImporterFor creates an Excel importer bound to struct type T that
+// returns []T directly, eliminating the need for a type assertion.
+func NewTypedImporterFor[T any](opts ...ImportOption) tabular.TypedImporter[T] {
+	return tabular.NewTypedImporter[T](NewImporterFor[T](opts...))
+}
+
+// NewTypedExporterFor creates an Excel exporter bound to struct type T that
+// accepts []T directly, eliminating the need for an any-typed argument.
+func NewTypedExporterFor[T any](opts ...ExportOption) tabular.TypedExporter[T] {
+	return tabular.NewTypedExporter[T](NewExporterFor[T](opts...))
+}
+
 // NewMapImporter creates an Excel importer that parses rows into
 // []map[string]any using the provided dynamic column specs. Pass nil for
 // mapOpts when no MapAdapter options (e.g. row validators) are needed.
