@@ -73,20 +73,28 @@ func TestExporter(t *testing.T) {
 	})
 
 	t.Run("CustomFormatterRegistration", func(t *testing.T) {
-		users := []ExcelTestUser{
-			{
-				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
-				CreatedAt: time.Date(2024, 1, 1, 12, 0, 0, 0, time.Local), Status: 1, Remark: new("测试用户"),
-			},
+		type PrefixUser struct {
+			ID   string `tabular:"ID,formatter=prefix"`
+			Name string `tabular:"姓名"`
 		}
 
-		exporter := NewExporterFor[ExcelTestUser]()
+		users := []PrefixUser{
+			{ID: "1", Name: "张三"},
+		}
+
+		exporter := NewExporterFor[PrefixUser]()
 		exporter.RegisterFormatter("prefix", &excelPrefixFormatter{prefix: "ID:"})
 
-		filename := exportToTemp(t, exporter, users, "test_custom_formatter_*.xlsx")
+		buf, err := exporter.Export(users)
+		require.NoError(t, err, "Export should succeed with a registered custom formatter")
 
-		_, err := os.Stat(filename)
-		assert.NoError(t, err, "Output file should exist after exporting with a custom formatter")
+		f, err := excelize.OpenReader(buf)
+		require.NoError(t, err, "Opening the exported workbook should succeed")
+		t.Cleanup(func() { _ = f.Close() })
+
+		cell, err := f.GetCellValue("Sheet1", "A2")
+		require.NoError(t, err, "Reading cell A2 should succeed")
+		assert.Equal(t, "ID: 1", cell, "Custom formatter should prepend the prefix to the cell value")
 	})
 
 	t.Run("WithSheetName", func(t *testing.T) {
@@ -108,6 +116,7 @@ func TestExporter(t *testing.T) {
 
 		sheets := f.GetSheetList()
 		assert.Contains(t, sheets, "用户数据", "WithSheetName should rename the default sheet")
+		assert.Len(t, sheets, 1, "Workbook should contain exactly one sheet after rename")
 	})
 
 	t.Run("NullPointerValuesRoundTripAsNil", func(t *testing.T) {

@@ -87,9 +87,14 @@ func (e *exporter) doExport(data any) (*excelize.File, error) {
 	}
 
 	if sheetIndex == -1 {
-		sheetIndex, err = f.NewSheet(e.options.sheetName)
+		// Rename the default sheet rather than creating a second one.
+		if err := f.SetSheetName("Sheet1", e.options.sheetName); err != nil {
+			return nil, fmt.Errorf("rename sheet: %w", err)
+		}
+
+		sheetIndex, err = f.GetSheetIndex(e.options.sheetName)
 		if err != nil {
-			return nil, fmt.Errorf("create sheet: %w", err)
+			return nil, fmt.Errorf("get sheet index: %w", err)
 		}
 	}
 
