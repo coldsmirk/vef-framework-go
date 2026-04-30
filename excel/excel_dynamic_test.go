@@ -232,6 +232,7 @@ func TestDynamicExcelIgnoresUnknownAndMissingColumns(t *testing.T) {
 	assert.Equal(t, "张三", row["name"], "name should round-trip")
 	_, hasExtra := row["Extra"]
 	assert.False(t, hasExtra, "Unknown header should not leak into the map")
+
 	_, hasBirthday := row["birthday"]
 	assert.False(t, hasBirthday, "Missing schema columns should stay out of the map")
 }

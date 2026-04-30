@@ -146,6 +146,7 @@ func TestDynamicCSVIgnoresUnknownAndMissingColumns(t *testing.T) {
 	// Schema columns not present in the source header stay out of the map.
 	_, hasBirthday := row["birthday"]
 	assert.False(t, hasBirthday, "Absent schema columns should not appear in the map")
+
 	_, hasActive := row["active"]
 	assert.False(t, hasActive, "Defaults only apply to empty cells within mapped columns")
 }
@@ -196,6 +197,7 @@ func TestDynamicCSVParseErrorReportedPerCell(t *testing.T) {
 
 	result, importErrors, err := imp.Import(strings.NewReader(content))
 	require.NoError(t, err, "Import should not return a top-level error")
+
 	_, ok := result.([]map[string]any)
 	require.True(t, ok, "Import should return map rows")
 	require.NotEmpty(t, importErrors, "Parse errors should surface per cell")

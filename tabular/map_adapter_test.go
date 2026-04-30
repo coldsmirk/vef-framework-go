@@ -41,6 +41,7 @@ func TestMapAdapterReaderAcceptsSliceOfMaps(t *testing.T) {
 		for _, col := range schema.Columns() {
 			value, err := view.Get(col)
 			require.NoError(t, err, "Get should succeed for known columns")
+
 			row[col.Key] = value
 		}
 
