@@ -103,16 +103,16 @@ type structRowView struct {
 }
 
 // Get reads the struct field addressed by col.Index.
-func (v *structRowView) Get(col *Column) (any, error) {
+func (v *structRowView) Get(column *Column) (any, error) {
 	if !v.elem.IsValid() {
 		return nil, nil
 	}
 
-	if len(col.Index) == 0 {
-		return nil, fmt.Errorf("%w: struct column %q has no Index", ErrSchemaMismatch, col.Key)
+	if len(column.Index) == 0 {
+		return nil, fmt.Errorf("%w: struct column %q has no Index", ErrSchemaMismatch, column.Key)
 	}
 
-	field := v.elem.FieldByIndex(col.Index)
+	field := v.elem.FieldByIndex(column.Index)
 
 	return field.Interface(), nil
 }
@@ -156,14 +156,14 @@ type structRowBuilder struct {
 }
 
 // Set assigns the parsed value to the field addressed by col.Index.
-func (b *structRowBuilder) Set(col *Column, value any) error {
-	if len(col.Index) == 0 {
-		return fmt.Errorf("%w: struct column %q has no Index", ErrSchemaMismatch, col.Key)
+func (b *structRowBuilder) Set(column *Column, value any) error {
+	if len(column.Index) == 0 {
+		return fmt.Errorf("%w: struct column %q has no Index", ErrSchemaMismatch, column.Key)
 	}
 
-	field := b.value.FieldByIndex(col.Index)
+	field := b.value.FieldByIndex(column.Index)
 	if !field.CanSet() {
-		return fmt.Errorf("%w: %s", ErrUnsetField, col.Key)
+		return fmt.Errorf("%w: %s", ErrUnsetField, column.Key)
 	}
 
 	if value == nil {

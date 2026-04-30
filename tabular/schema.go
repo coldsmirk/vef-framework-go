@@ -37,7 +37,7 @@ var logger = logx.Named("tabular")
 // CellValidator validates a single cell value within the context of a column.
 // It is primarily used by dynamic (map-based) schemas; struct schemas typically
 // rely on the standard `validate` tag via the framework validator.
-type CellValidator func(col *Column, value any) error
+type CellValidator func(column *Column, value any) error
 
 // RowValidator validates a complete map-shaped row after all cells have been set.
 // It is used by MapAdapter; struct schemas validate the whole struct instead.
@@ -114,13 +114,13 @@ func newSchema(columns []*Column) *Schema {
 	byKey := make(map[string]*Column, len(columns))
 	byName := make(map[string]*Column, len(columns))
 
-	for _, col := range columns {
-		if col.Key != "" {
-			byKey[col.Key] = col
+	for _, column := range columns {
+		if column.Key != "" {
+			byKey[column.Key] = column
 		}
 
-		if col.Name != "" {
-			byName[col.Name] = col
+		if column.Name != "" {
+			byName[column.Name] = column
 		}
 	}
 
@@ -140,8 +140,8 @@ func (s *Schema) ColumnCount() int {
 // ColumnNames returns all column header names.
 func (s *Schema) ColumnNames() []string {
 	names := make([]string, len(s.columns))
-	for i, col := range s.columns {
-		names[i] = col.Name
+	for i, column := range s.columns {
+		names[i] = column.Name
 	}
 
 	return names
@@ -149,14 +149,14 @@ func (s *Schema) ColumnNames() []string {
 
 // ColumnByKey returns the column addressed by the given logical key.
 func (s *Schema) ColumnByKey(key string) (*Column, bool) {
-	col, ok := s.byKey[key]
+	column, ok := s.byKey[key]
 
-	return col, ok
+	return column, ok
 }
 
 // ColumnByName returns the column with the given header name.
 func (s *Schema) ColumnByName(name string) (*Column, bool) {
-	col, ok := s.byName[name]
+	column, ok := s.byName[name]
 
-	return col, ok
+	return column, ok
 }

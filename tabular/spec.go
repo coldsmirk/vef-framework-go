@@ -43,7 +43,7 @@ type ColumnSpec struct {
 // It validates that every spec has a non-empty Key and Type, and that keys
 // are unique.
 func NewSchemaFromSpecs(specs []ColumnSpec) (*Schema, error) {
-	columns := make([]*Column, 0, len(specs))
+	columns := make([]*Column, len(specs))
 	seen := collections.NewHashSet[string]()
 
 	for i, spec := range specs {
@@ -66,7 +66,7 @@ func NewSchemaFromSpecs(specs []ColumnSpec) (*Schema, error) {
 			name = spec.Key
 		}
 
-		columns = append(columns, &Column{
+		columns[i] = &Column{
 			Key:         spec.Key,
 			Name:        name,
 			Type:        spec.Type,
@@ -80,7 +80,7 @@ func NewSchemaFromSpecs(specs []ColumnSpec) (*Schema, error) {
 			ParserFn:    spec.ParserFn,
 			Required:    spec.Required,
 			Validators:  spec.Validators,
-		})
+		}
 	}
 
 	return newSchema(columns), nil

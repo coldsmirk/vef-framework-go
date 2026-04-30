@@ -27,7 +27,7 @@ type RowReader interface {
 type RowView interface {
 	// Get returns the raw Go value held for the column. It may be nil for
 	// missing map keys or zero struct fields.
-	Get(col *Column) (any, error)
+	Get(column *Column) (any, error)
 }
 
 // RowWriter accumulates imported rows and produces the final result.
@@ -43,7 +43,7 @@ type RowWriter interface {
 // RowBuilder represents a single row under construction during import.
 type RowBuilder interface {
 	// Set writes a parsed value for the given column.
-	Set(col *Column, value any) error
+	Set(column *Column, value any) error
 	// Validate runs adapter-specific validation hooks (e.g. struct validator
 	// or per-column cell validators plus row validators for maps).
 	Validate() error

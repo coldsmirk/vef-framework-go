@@ -13,8 +13,8 @@ type MapOption func(*mapAdapter)
 // WithRowValidator registers a validator that runs after all cells have been
 // populated for a map-shaped row.
 func WithRowValidator(validator RowValidator) MapOption {
-	return func(a *mapAdapter) {
-		a.rowValidator = validator
+	return func(adapter *mapAdapter) {
+		adapter.rowValidator = validator
 	}
 }
 
@@ -28,12 +28,12 @@ type mapAdapter struct {
 // NewMapAdapter creates a RowAdapter driven by the supplied Schema. The schema
 // is typically built from a []ColumnSpec via NewSchemaFromSpecs.
 func NewMapAdapter(schema *Schema, opts ...MapOption) RowAdapter {
-	a := &mapAdapter{schema: schema}
+	adapter := &mapAdapter{schema: schema}
 	for _, opt := range opts {
-		opt(a)
+		opt(adapter)
 	}
 
-	return a
+	return adapter
 }
 
 // Schema returns the columns the adapter operates on.
@@ -57,7 +57,7 @@ func (*mapAdapter) Reader(data any) (RowReader, error) {
 		return nil, fmt.Errorf("%w, got %s", ErrDataMustBeSlice, dataValue.Kind())
 	}
 
-	rows := make([]map[string]any, 0, dataValue.Len())
+	rows := make([]map[string]any, dataValue.Len())
 
 	for i := range dataValue.Len() {
 		elem := dataValue.Index(i).Interface()
@@ -68,7 +68,7 @@ func (*mapAdapter) Reader(data any) (RowReader, error) {
 				ErrSchemaMismatch, i, elem)
 		}
 
-		rows = append(rows, m)
+		rows[i] = m
 	}
 
 	return &mapReader{rows: rows}, nil
@@ -109,12 +109,12 @@ type mapRowView struct {
 }
 
 // Get returns the map entry for col.Key or nil when the key is missing.
-func (v *mapRowView) Get(col *Column) (any, error) {
-	if col.Key == "" {
+func (v *mapRowView) Get(column *Column) (any, error) {
+	if column.Key == "" {
 		return nil, fmt.Errorf("%w: dynamic column has empty Key", ErrSchemaMismatch)
 	}
 
-	value, ok := v.row[col.Key]
+	value, ok := v.row[column.Key]
 	if !ok {
 		return nil, nil
 	}
@@ -167,12 +167,12 @@ type mapRowBuilder struct {
 }
 
 // Set writes value into the map at col.Key.
-func (b *mapRowBuilder) Set(col *Column, value any) error {
-	if col.Key == "" {
+func (b *mapRowBuilder) Set(column *Column, value any) error {
+	if column.Key == "" {
 		return fmt.Errorf("%w: dynamic column has empty Key", ErrSchemaMismatch)
 	}
 
-	b.row[col.Key] = value
+	b.row[column.Key] = value
 
 	return nil
 }
@@ -182,18 +182,18 @@ func (b *mapRowBuilder) Set(col *Column, value any) error {
 func (b *mapRowBuilder) Validate() error {
 	var errs []error
 
-	for _, col := range b.schema.Columns() {
-		value, present := b.row[col.Key]
+	for _, column := range b.schema.Columns() {
+		value, present := b.row[column.Key]
 
-		if col.Required && isEmptyValue(value, present) {
-			errs = append(errs, fmt.Errorf("%w: %s", ErrRequiredMissing, col.Key))
+		if column.Required && isEmptyValue(value, present) {
+			errs = append(errs, fmt.Errorf("%w: %s", ErrRequiredMissing, column.Key))
 
 			continue
 		}
 
-		for _, validate := range col.Validators {
-			if err := validate(col, value); err != nil {
-				errs = append(errs, fmt.Errorf("%s: %w", col.Key, err))
+		for _, validate := range column.Validators {
+			if err := validate(column, value); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", column.Key, err))
 			}
 		}
 	}

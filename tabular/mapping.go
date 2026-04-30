@@ -21,13 +21,13 @@ func BuildHeaderMapping(
 	mapping := make(map[int]int)
 
 	nameToSchemaIdx := make(map[string]int, len(columns))
-	for idx, col := range columns {
-		nameToSchemaIdx[col.Name] = idx
+	for i, column := range columns {
+		nameToSchemaIdx[column.Name] = i
 	}
 
 	seen := make(map[string]bool, len(headerRow))
 
-	for srcIdx, headerName := range headerRow {
+	for srcIndex, headerName := range headerRow {
 		if opts.TrimSpace {
 			headerName = strings.TrimSpace(headerName)
 		}
@@ -42,8 +42,8 @@ func BuildHeaderMapping(
 
 		seen[headerName] = true
 
-		if schemaIdx, ok := nameToSchemaIdx[headerName]; ok {
-			mapping[srcIdx] = schemaIdx
+		if schemaIndex, ok := nameToSchemaIdx[headerName]; ok {
+			mapping[srcIndex] = schemaIndex
 		}
 	}
 
@@ -54,8 +54,8 @@ func BuildHeaderMapping(
 // has no header row.
 func DefaultPositionalMapping(schema *Schema) map[int]int {
 	mapping := make(map[int]int, schema.ColumnCount())
-	for idx := range schema.Columns() {
-		mapping[idx] = idx
+	for i := range schema.ColumnCount() {
+		mapping[i] = i
 	}
 
 	return mapping
