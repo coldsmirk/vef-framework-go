@@ -8,6 +8,8 @@ import (
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 // TestDefaultParser exercises the default ValueParser implementation across
@@ -228,6 +230,57 @@ func TestDefaultParser(t *testing.T) {
 
 		_, err := parser.Parse("not_a_time", typeTime)
 		require.Error(t, err, "Parse should reject input that does not match the configured time layout")
+	})
+
+	t.Run("TimexTypes", func(t *testing.T) {
+		t.Run("DateTimeDefaultLayout", func(t *testing.T) {
+			parser := NewDefaultParser("")
+
+			result, err := parser.Parse("2024-01-15 14:30:45", typeDateTime)
+			require.NoError(t, err, "Parse should accept default DateTime layout")
+
+			parsed, ok := result.(timex.DateTime)
+			require.True(t, ok, "Result should be timex.DateTime")
+
+			expected := time.Date(2024, 1, 15, 14, 30, 45, 0, time.Local)
+			assert.Equal(t, expected, parsed.Unwrap(), "DateTime should parse to the correct instant")
+		})
+
+		t.Run("DateDefaultLayout", func(t *testing.T) {
+			parser := NewDefaultParser("")
+
+			result, err := parser.Parse("2024-01-15", typeDate)
+			require.NoError(t, err, "Parse should accept default Date layout")
+
+			parsed, ok := result.(timex.Date)
+			require.True(t, ok, "Result should be timex.Date")
+
+			expected := time.Date(2024, 1, 15, 0, 0, 0, 0, time.Local)
+			assert.Equal(t, expected, parsed.Unwrap(), "Date should parse to midnight")
+		})
+
+		t.Run("TimeDefaultLayout", func(t *testing.T) {
+			parser := NewDefaultParser("")
+
+			result, err := parser.Parse("14:30:45", typeTimexTime)
+			require.NoError(t, err, "Parse should accept default Time layout")
+
+			parsed, ok := result.(timex.Time)
+			require.True(t, ok, "Result should be timex.Time")
+			assert.Equal(t, "14:30:45", parsed.Unwrap().Format(time.TimeOnly),
+				"Time should parse to the correct time-of-day")
+		})
+
+		t.Run("DateTimeCustomFormat", func(t *testing.T) {
+			parser := NewDefaultParser("2006/01/02 15:04")
+
+			result, err := parser.Parse("2024/01/15 14:30", typeDateTime)
+			require.NoError(t, err, "Parse should accept custom DateTime format")
+
+			parsed, ok := result.(timex.DateTime)
+			require.True(t, ok, "Result should be timex.DateTime")
+			assert.Equal(t, 2024, parsed.Unwrap().Year(), "Custom format should preserve year")
+		})
 	})
 
 	t.Run("Decimal", func(t *testing.T) {

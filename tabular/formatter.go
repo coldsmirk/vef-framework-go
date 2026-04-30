@@ -67,6 +67,18 @@ func (f *defaultFormatter) Format(value any) (string, error) {
 		return v.Format(time.DateTime), nil
 	}
 
+	if v, ok := value.(timex.DateTime); ok {
+		return v.Format(time.DateTime), nil
+	}
+
+	if v, ok := value.(timex.Date); ok {
+		return v.Format(time.DateOnly), nil
+	}
+
+	if v, ok := value.(timex.Time); ok {
+		return v.Format(time.TimeOnly), nil
+	}
+
 	return cast.ToStringE(value)
 }
 

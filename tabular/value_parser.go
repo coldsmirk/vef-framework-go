@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cast"
 
 	"github.com/coldsmirk/vef-framework-go/decimal"
+	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 // ValueParser defines the interface for custom value parsers.
@@ -27,8 +28,11 @@ func (p ParserFunc) Parse(cellValue string, targetType reflect.Type) (any, error
 
 var (
 	// Cached reflect types for performance.
-	typeTime    = reflect.TypeFor[time.Time]()
-	typeDecimal = reflect.TypeFor[decimal.Decimal]()
+	typeTime      = reflect.TypeFor[time.Time]()
+	typeDateTime  = reflect.TypeFor[timex.DateTime]()
+	typeDate      = reflect.TypeFor[timex.Date]()
+	typeTimexTime = reflect.TypeFor[timex.Time]()
+	typeDecimal   = reflect.TypeFor[decimal.Decimal]()
 )
 
 // defaultParser is the built-in parser that handles common Go types.
@@ -84,6 +88,36 @@ func (p *defaultParser) parseStructType(cellValue string, targetType reflect.Typ
 		v, err := time.ParseInLocation(format, cellValue, time.Local)
 
 		return v, true, err
+
+	case typeDateTime:
+		format := p.format
+		if format == "" {
+			format = time.DateTime
+		}
+
+		v, err := time.ParseInLocation(format, cellValue, time.Local)
+
+		return timex.DateTime(v), true, err
+
+	case typeDate:
+		format := p.format
+		if format == "" {
+			format = time.DateOnly
+		}
+
+		v, err := time.ParseInLocation(format, cellValue, time.Local)
+
+		return timex.Date(v), true, err
+
+	case typeTimexTime:
+		format := p.format
+		if format == "" {
+			format = time.TimeOnly
+		}
+
+		v, err := time.ParseInLocation(format, cellValue, time.Local)
+
+		return timex.Time(v), true, err
 
 	case typeDecimal:
 		v, err := decimal.NewFromString(cellValue)

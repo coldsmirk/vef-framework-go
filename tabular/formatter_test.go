@@ -110,6 +110,31 @@ func TestDefaultFormatter(t *testing.T) {
 		assert.Equal(t, "2024-01-15 14:30:45", result, "Default time layout should be 2006-01-02 15:04:05")
 	})
 
+	t.Run("TimexDefaultLayouts", func(t *testing.T) {
+		formatter := NewDefaultFormatter("")
+
+		testLocation := time.FixedZone("UTC+8", 8*60*60)
+		testTime := time.Date(2024, 1, 15, 14, 30, 45, 0, testLocation)
+
+		t.Run("DateTime", func(t *testing.T) {
+			result, err := formatter.Format(timex.DateTime(testTime))
+			require.NoError(t, err, "Format should succeed for timex.DateTime")
+			assert.Equal(t, "2024-01-15 14:30:45", result, "Default DateTime layout should be time.DateTime")
+		})
+
+		t.Run("Date", func(t *testing.T) {
+			result, err := formatter.Format(timex.Date(testTime))
+			require.NoError(t, err, "Format should succeed for timex.Date")
+			assert.Equal(t, "2024-01-15", result, "Default Date layout should be time.DateOnly")
+		})
+
+		t.Run("Time", func(t *testing.T) {
+			result, err := formatter.Format(timex.Time(testTime))
+			require.NoError(t, err, "Format should succeed for timex.Time")
+			assert.Equal(t, "14:30:45", result, "Default Time layout should be time.TimeOnly")
+		})
+	})
+
 	t.Run("TimeWithFormat", func(t *testing.T) {
 		testLocation := time.FixedZone("UTC+8", 8*60*60)
 		testTime := time.Date(2024, 1, 15, 14, 30, 45, 0, testLocation)
