@@ -43,8 +43,8 @@ func (a *mapAdapter) Schema() *Schema {
 }
 
 // Reader accepts []map[string]any (or compatible wrappers) and yields row views.
-// Element types are validated eagerly; iteration over the underlying slice
-// happens lazily so the adapter does not pre-allocate a copy.
+// Element types are validated eagerly; []any inputs are converted to
+// []map[string]any during validation so that All() uses the fast path.
 func (*mapAdapter) Reader(data any) (RowReader, error) {
 	if data == nil {
 		return &mapReader{}, nil
@@ -60,15 +60,19 @@ func (*mapAdapter) Reader(data any) (RowReader, error) {
 		return nil, fmt.Errorf("%w, got %s", ErrDataMustBeSlice, dataValue.Kind())
 	}
 
+	// Convert []any (or similar) to []map[string]any so All() avoids reflect.
+	rows := make([]map[string]any, dataValue.Len())
 	for i := range dataValue.Len() {
-		elem := dataValue.Index(i).Interface()
-		if _, ok := elem.(map[string]any); !ok {
+		m, ok := dataValue.Index(i).Interface().(map[string]any)
+		if !ok {
 			return nil, fmt.Errorf("%w: element %d is %T, want map[string]any",
-				ErrSchemaMismatch, i, elem)
+				ErrSchemaMismatch, i, dataValue.Index(i).Interface())
 		}
+
+		rows[i] = m
 	}
 
-	return &mapReader{values: dataValue}, nil
+	return &mapReader{rows: rows}, nil
 }
 
 // Writer allocates an empty []map[string]any accumulator.
@@ -84,33 +88,15 @@ func (a *mapAdapter) Writer(capacity int) RowWriter {
 	}
 }
 
-// mapReader iterates the input slice. Either rows (fast path for the concrete
-// []map[string]any) or values (reflect.Value of any other map-typed slice) is
-// populated; the other stays nil/invalid.
+// mapReader iterates the input slice.
 type mapReader struct {
-	rows   []map[string]any
-	values reflect.Value
+	rows []map[string]any
 }
 
 // All yields each map wrapped as a mapRowView.
 func (r *mapReader) All() iter.Seq2[int, RowView] {
 	return func(yield func(int, RowView) bool) {
-		if r.rows != nil {
-			for i, row := range r.rows {
-				if !yield(i, &mapRowView{row: row}) {
-					return
-				}
-			}
-
-			return
-		}
-
-		if !r.values.IsValid() {
-			return
-		}
-
-		for i := range r.values.Len() {
-			row := r.values.Index(i).Interface().(map[string]any)
+		for i, row := range r.rows {
 			if !yield(i, &mapRowView{row: row}) {
 				return
 			}
@@ -203,6 +189,8 @@ func (b *mapRowBuilder) Validate() error {
 		if column.Required && isEmptyValue(value, present) {
 			errs = append(errs, fmt.Errorf("%w: %s", ErrRequiredMissing, column.Key))
 
+			// Skip Validators for this column: running cell validators on an
+			// absent value is meaningless and would produce confusing errors.
 			continue
 		}
 
