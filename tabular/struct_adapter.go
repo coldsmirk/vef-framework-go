@@ -100,6 +100,12 @@ func (r *structReader) All() iter.Seq2[int, RowView] {
 				elem = elem.Elem()
 			}
 
+			// Skip nil interface / pointer elements rather than yielding a
+			// zero-valued row that callers cannot distinguish from real data.
+			if !elem.IsValid() || elem.Kind() != reflect.Struct {
+				continue
+			}
+
 			if !yield(i, &structRowView{elem: elem, typ: r.typ}) {
 				return
 			}
