@@ -99,19 +99,19 @@ var (
 	decimalToDecimalPtrConverter = makeValueToPtrConverter[decimal.Decimal]()
 	decimalPtrToDecimalConverter = makePtrToValueConverter[decimal.Decimal]()
 
-	// time.Time converters.
+	// Time.Time converters.
 	timeToTimePtrConverter = makeValueToPtrConverter[time.Time]()
 	timePtrToTimeConverter = makePtrToValueConverter[time.Time]()
 
-	// timex.DateTime converters.
+	// Timex.DateTime converters.
 	dateTimeToDateTimePtrConverter = makeValueToPtrConverter[timex.DateTime]()
 	dateTimePtrToDateTimeConverter = makePtrToValueConverter[timex.DateTime]()
 
-	// timex.Date converters.
+	// Timex.Date converters.
 	dateToDatePtrConverter = makeValueToPtrConverter[timex.Date]()
 	datePtrToDateConverter = makePtrToValueConverter[timex.Date]()
 
-	// timex.Time converters.
+	// Timex.Time converters.
 	timexTimeToTimexTimePtrConverter = makeValueToPtrConverter[timex.Time]()
 	timexTimePtrToTimexTimeConverter = makePtrToValueConverter[timex.Time]()
 )
