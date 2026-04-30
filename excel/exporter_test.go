@@ -32,10 +32,14 @@ func TestExporter(t *testing.T) {
 	t.Run("ExportToFile", func(t *testing.T) {
 		now := time.Now()
 		users := []ExcelTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
-				CreatedAt: now, Status: 1, Remark: new("测试用户1"), Password: "secret123"},
-			{ID: "2", Name: "李四", Email: "li@example.com", Age: 25, Salary: 8000.75,
-				CreatedAt: now, Status: 2, Remark: nil, Password: "secret456"},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
+				CreatedAt: now, Status: 1, Remark: new("测试用户1"), Password: "secret123",
+			},
+			{
+				ID: "2", Name: "李四", Email: "li@example.com", Age: 25, Salary: 8000.75,
+				CreatedAt: now, Status: 2, Remark: nil, Password: "secret456",
+			},
 		}
 
 		filename := exportToTemp(t, NewExporterFor[ExcelTestUser](), users, "test_users_*.xlsx")
@@ -46,8 +50,10 @@ func TestExporter(t *testing.T) {
 
 	t.Run("ExportToBuffer", func(t *testing.T) {
 		users := []ExcelTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
-				CreatedAt: time.Now(), Status: 1, Remark: new("测试")},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
+				CreatedAt: time.Now(), Status: 1, Remark: new("测试"),
+			},
 		}
 
 		exporter := NewExporterFor[ExcelTestUser]()
@@ -68,8 +74,10 @@ func TestExporter(t *testing.T) {
 
 	t.Run("CustomFormatterRegistration", func(t *testing.T) {
 		users := []ExcelTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
-				CreatedAt: time.Date(2024, 1, 1, 12, 0, 0, 0, time.Local), Status: 1, Remark: new("测试用户")},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
+				CreatedAt: time.Date(2024, 1, 1, 12, 0, 0, 0, time.Local), Status: 1, Remark: new("测试用户"),
+			},
 		}
 
 		exporter := NewExporterFor[ExcelTestUser]()
@@ -83,8 +91,10 @@ func TestExporter(t *testing.T) {
 
 	t.Run("WithSheetName", func(t *testing.T) {
 		users := []ExcelTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
-				CreatedAt: time.Now(), Status: 1},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
+				CreatedAt: time.Now(), Status: 1,
+			},
 		}
 
 		exporter := NewExporterFor[ExcelTestUser](WithSheetName("用户数据"))
@@ -102,10 +112,14 @@ func TestExporter(t *testing.T) {
 
 	t.Run("NullPointerValuesRoundTripAsNil", func(t *testing.T) {
 		users := []ExcelTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
-				CreatedAt: time.Now(), Status: 1, Remark: nil},
-			{ID: "2", Name: "李四", Email: "li@example.com", Age: 25, Salary: 8000.00,
-				CreatedAt: time.Now(), Status: 2, Remark: new("有备注")},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
+				CreatedAt: time.Now(), Status: 1, Remark: nil,
+			},
+			{
+				ID: "2", Name: "李四", Email: "li@example.com", Age: 25, Salary: 8000.00,
+				CreatedAt: time.Now(), Status: 2, Remark: new("有备注"),
+			},
 		}
 
 		filename := exportToTemp(t, NewExporterFor[ExcelTestUser](), users, "test_null_values_*.xlsx")

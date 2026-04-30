@@ -59,10 +59,14 @@ func (*prefixParser) Parse(cellValue string, _ reflect.Type) (any, error) {
 func TestImporter(t *testing.T) {
 	t.Run("ImportRoundTripWithExporter", func(t *testing.T) {
 		users := []ImporterTestUser{
-			{ID: "1", Name: "张三", Email: "zhangsan@example.com", Age: 30, Salary: 10000.50,
-				Birthday: time.Date(1994, 1, 15, 0, 0, 0, 0, time.UTC), Active: true, Remark: new("测试用户1")},
-			{ID: "2", Name: "李四", Email: "lisi@example.com", Age: 25, Salary: 8000.75,
-				Birthday: time.Date(1999, 5, 20, 0, 0, 0, 0, time.UTC), Active: false, Remark: nil},
+			{
+				ID: "1", Name: "张三", Email: "zhangsan@example.com", Age: 30, Salary: 10000.50,
+				Birthday: time.Date(1994, 1, 15, 0, 0, 0, 0, time.UTC), Active: true, Remark: new("测试用户1"),
+			},
+			{
+				ID: "2", Name: "李四", Email: "lisi@example.com", Age: 25, Salary: 8000.75,
+				Birthday: time.Date(1999, 5, 20, 0, 0, 0, 0, time.UTC), Active: false, Remark: nil,
+			},
 		}
 
 		exporter := NewExporterFor[ImporterTestUser]()
@@ -159,8 +163,10 @@ func TestImporter(t *testing.T) {
 
 	t.Run("ImportFromFile", func(t *testing.T) {
 		users := []ImporterTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
-				Birthday: time.Now(), Active: true},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
+				Birthday: time.Now(), Active: true,
+			},
 		}
 
 		exporter := NewExporterFor[ImporterTestUser]()
@@ -169,6 +175,7 @@ func TestImporter(t *testing.T) {
 
 		filename := tmpFile.Name()
 		require.NoError(t, tmpFile.Close(), "Closing temp file should succeed")
+
 		defer os.Remove(filename)
 
 		require.NoError(t, exporter.ExportToFile(users, filename), "Seeding the temp file should succeed")
@@ -244,6 +251,7 @@ func TestImporter(t *testing.T) {
 
 		filename := tmpFile.Name()
 		require.NoError(t, tmpFile.Close(), "Closing temp file should succeed")
+
 		defer os.Remove(filename)
 
 		require.NoError(t, exporter.ExportToFile(users, filename), "ExportToFile should succeed for 1k rows")
@@ -261,10 +269,14 @@ func TestImporter(t *testing.T) {
 
 	t.Run("RoundTripPreservesAllFields", func(t *testing.T) {
 		original := []ImporterTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
-				Birthday: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), Active: true, Remark: new("测试用户1")},
-			{ID: "2", Name: "李四", Email: "li@example.com", Age: 25, Salary: 8000.75,
-				Birthday: time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC), Active: false, Remark: nil},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
+				Birthday: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), Active: true, Remark: new("测试用户1"),
+			},
+			{
+				ID: "2", Name: "李四", Email: "li@example.com", Age: 25, Salary: 8000.75,
+				Birthday: time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC), Active: false, Remark: nil,
+			},
 		}
 
 		exporter := NewExporterFor[ImporterTestUser]()
@@ -438,8 +450,10 @@ func TestMapImporter(t *testing.T) {
 		assert.Equal(t, "张三", row["name"], "name should parse")
 		_, hasExtra := row["Extra"]
 		assert.False(t, hasExtra, "Unknown columns should not leak into the row")
+
 		_, hasBirthday := row["birthday"]
 		assert.False(t, hasBirthday, "Absent schema columns should not appear in the map")
+
 		_, hasActive := row["active"]
 		assert.False(t, hasActive, "Defaults only apply to empty cells within mapped columns")
 	})

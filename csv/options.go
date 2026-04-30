@@ -43,7 +43,7 @@ func WithComment(comment rune) ImportOption {
 type exportConfig struct {
 	delimiter   rune
 	writeHeader bool
-	useCrlf     bool
+	useCRLF     bool
 }
 
 type ExportOption func(*exportConfig)
@@ -63,6 +63,6 @@ func WithoutWriteHeader() ExportOption {
 // WithCrlf enables Windows-style line endings for compatibility with legacy systems.
 func WithCrlf() ExportOption {
 	return func(o *exportConfig) {
-		o.useCrlf = true
+		o.useCRLF = true
 	}
 }

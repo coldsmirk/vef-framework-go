@@ -37,10 +37,14 @@ func TestImporter(t *testing.T) {
 	t.Run("ImportFromFile", func(t *testing.T) {
 		now := time.Now()
 		users := []ExcelTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
-				CreatedAt: now, Status: 1, Remark: new("测试用户1")},
-			{ID: "2", Name: "李四", Email: "li@example.com", Age: 25, Salary: 8000.75,
-				CreatedAt: now, Status: 2, Remark: nil},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
+				CreatedAt: now, Status: 1, Remark: new("测试用户1"),
+			},
+			{
+				ID: "2", Name: "李四", Email: "li@example.com", Age: 25, Salary: 8000.75,
+				CreatedAt: now, Status: 2, Remark: nil,
+			},
 		}
 
 		filename := exportToTemp(t, NewExporterFor[ExcelTestUser](), users, "test_import_users_*.xlsx")
@@ -64,8 +68,10 @@ func TestImporter(t *testing.T) {
 
 	t.Run("ImportFromReader", func(t *testing.T) {
 		users := []ExcelTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
-				CreatedAt: time.Now(), Status: 1},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
+				CreatedAt: time.Now(), Status: 1,
+			},
 		}
 
 		exporter := NewExporterFor[ExcelTestUser]()
@@ -102,8 +108,10 @@ func TestImporter(t *testing.T) {
 
 	t.Run("CustomParserRegistration", func(t *testing.T) {
 		users := []ExcelTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
-				CreatedAt: time.Now(), Status: 1, Remark: new("测试")},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
+				CreatedAt: time.Now(), Status: 1, Remark: new("测试"),
+			},
 		}
 
 		filename := exportToTemp(t, NewExporterFor[ExcelTestUser](), users, "test_custom_parser_*.xlsx")
@@ -122,8 +130,10 @@ func TestImporter(t *testing.T) {
 
 	t.Run("WithImportSheetName", func(t *testing.T) {
 		users := []ExcelTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
-				CreatedAt: time.Now(), Status: 1},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
+				CreatedAt: time.Now(), Status: 1,
+			},
 		}
 
 		exporter := NewExporterFor[ExcelTestUser](WithSheetName("用户数据"))
@@ -242,10 +252,14 @@ func TestImporter(t *testing.T) {
 	t.Run("RoundTripPreservesAllFields", func(t *testing.T) {
 		now := time.Date(2024, 1, 1, 12, 0, 0, 0, time.Local)
 		original := []ExcelTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
-				CreatedAt: now, Status: 1, Remark: new("测试用户1")},
-			{ID: "2", Name: "李四", Email: "li@example.com", Age: 25, Salary: 8000.75,
-				CreatedAt: now, Status: 2, Remark: nil},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30, Salary: 10000.50,
+				CreatedAt: now, Status: 1, Remark: new("测试用户1"),
+			},
+			{
+				ID: "2", Name: "李四", Email: "li@example.com", Age: 25, Salary: 8000.75,
+				CreatedAt: now, Status: 2, Remark: nil,
+			},
 		}
 
 		filename := exportToTemp(t, NewExporterFor[ExcelTestUser](), original, "test_roundtrip_*.xlsx")
@@ -416,6 +430,7 @@ func TestMapImporter(t *testing.T) {
 		assert.Equal(t, "张三", row["name"], "name should round-trip")
 		_, hasExtra := row["Extra"]
 		assert.False(t, hasExtra, "Unknown header should not leak into the map")
+
 		_, hasBirthday := row["birthday"]
 		assert.False(t, hasBirthday, "Missing schema columns should stay out of the map")
 	})

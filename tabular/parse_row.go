@@ -19,7 +19,7 @@ type ParseRowOptions struct {
 // Cells are read in sorted source-index order so that per-row import errors
 // are deterministic.
 //
-// rowNumber is the human-facing row number (1-based, including the header
+// RowNumber is the human-facing row number (1-based, including the header
 // row) used when constructing ImportError entries. Empty cells fall back to
 // the column Default; cells that remain empty are skipped so that adapters
 // (e.g. MapAdapter) can distinguish absent values from explicit zeroes and

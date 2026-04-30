@@ -194,6 +194,7 @@ func TestDefaultParser(t *testing.T) {
 				validate: func(t *testing.T, result any) {
 					parsed, ok := result.(time.Time)
 					require.True(t, ok, "Result should be time.Time")
+
 					expected := time.Date(2024, 1, 15, 0, 0, 0, 0, time.Local)
 					assert.Equal(t, expected, parsed, "Date-only layout should yield midnight in time.Local")
 				},

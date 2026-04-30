@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-// Importer reads tabular data (CSV, Excel, ...) into a slice of rows produced
+// Importer reads tabular data (CSV, Excel, ...) Into a slice of rows produced
 // by a RowAdapter. The shape of the returned data depends on the adapter:
 // struct adapters return []T, map adapters return []map[string]any.
 type Importer interface {
@@ -18,7 +18,7 @@ type Importer interface {
 }
 
 // Exporter writes a slice of rows (struct or map) to a tabular destination
-// (CSV, Excel, ...) using a RowAdapter to read from the input.
+// (CSV, Excel, ...) Using a RowAdapter to read from the input.
 type Exporter interface {
 	// RegisterFormatter registers a custom formatter referenced by Column.Formatter.
 	RegisterFormatter(name string, formatter Formatter)

@@ -47,8 +47,10 @@ func (f *prefixFormatter) Format(value any) (string, error) {
 func TestExporter(t *testing.T) {
 	t.Run("DefaultExportContainsHeader", func(t *testing.T) {
 		users := []ExporterTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30,
-				Salary: 10000.50, Birthday: time.Now(), Active: true},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30,
+				Salary: 10000.50, Birthday: time.Now(), Active: true,
+			},
 		}
 
 		exporter := NewExporterFor[ExporterTestUser]()
@@ -90,8 +92,10 @@ func TestExporter(t *testing.T) {
 
 	t.Run("ExportToFile", func(t *testing.T) {
 		users := []ExporterTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30,
-				Salary: 10000.50, Birthday: time.Now(), Active: true},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30,
+				Salary: 10000.50, Birthday: time.Now(), Active: true,
+			},
 		}
 
 		exporter := NewExporterFor[ExporterTestUser]()
@@ -100,6 +104,7 @@ func TestExporter(t *testing.T) {
 
 		filename := tmpFile.Name()
 		require.NoError(t, tmpFile.Close(), "Closing temp file should succeed")
+
 		defer os.Remove(filename)
 
 		require.NoError(t, exporter.ExportToFile(users, filename), "ExportToFile should succeed")
@@ -110,8 +115,10 @@ func TestExporter(t *testing.T) {
 
 	t.Run("CustomFormatterRegistration", func(t *testing.T) {
 		users := []ExporterTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30,
-				Salary: 10000.50, Birthday: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), Active: true},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30,
+				Salary: 10000.50, Birthday: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), Active: true,
+			},
 		}
 
 		exporter := NewExporterFor[ExporterTestUser]()
@@ -124,8 +131,10 @@ func TestExporter(t *testing.T) {
 
 	t.Run("NullPointerValuesEmitEmptyCells", func(t *testing.T) {
 		users := []ExporterTestUser{
-			{ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30,
-				Salary: 10000.50, Birthday: time.Now(), Active: true, Remark: nil},
+			{
+				ID: "1", Name: "张三", Email: "zhang@example.com", Age: 30,
+				Salary: 10000.50, Birthday: time.Now(), Active: true, Remark: nil,
+			},
 		}
 
 		exporter := NewExporterFor[ExporterTestUser]()

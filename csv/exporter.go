@@ -21,7 +21,7 @@ func NewExporter(adapter tabular.RowAdapter, opts ...ExportOption) tabular.Expor
 	options := exportConfig{
 		delimiter:   ',',
 		writeHeader: true,
-		useCrlf:     false,
+		useCRLF:     false,
 	}
 	for _, opt := range opts {
 		opt(&options)
@@ -67,7 +67,7 @@ func (e *exporter) Export(data any) (*bytes.Buffer, error) {
 
 func (e *exporter) writeToWriter(csvWriter *csv.Writer, data any) error {
 	csvWriter.Comma = e.options.delimiter
-	csvWriter.UseCRLF = e.options.useCrlf
+	csvWriter.UseCRLF = e.options.useCRLF
 
 	if err := e.doExport(csvWriter, data); err != nil {
 		return err
@@ -115,28 +115,28 @@ func (e *exporter) writeData(csvWriter *csv.Writer, data any) error {
 	for rowIndex, view := range reader.All() {
 		row := make([]string, len(columns))
 
-		for colIndex, col := range columns {
-			raw, err := view.Get(col)
+		for columnIndex, column := range columns {
+			raw, err := view.Get(column)
 			if err != nil {
 				return tabular.ExportError{
 					Row:    rowIndex,
-					Column: col.Name,
-					Field:  col.Key,
+					Column: column.Name,
+					Field:  column.Key,
 					Err:    fmt.Errorf("read cell: %w", err),
 				}
 			}
 
-			cellValue, err := tabular.ResolveFormatter(col, e.formatters).Format(raw)
+			cellValue, err := tabular.ResolveFormatter(column, e.formatters).Format(raw)
 			if err != nil {
 				return tabular.ExportError{
 					Row:    rowIndex,
-					Column: col.Name,
-					Field:  col.Key,
+					Column: column.Name,
+					Field:  column.Key,
 					Err:    fmt.Errorf("format value: %w", err),
 				}
 			}
 
-			row[colIndex] = cellValue
+			row[columnIndex] = cellValue
 		}
 
 		if err := csvWriter.Write(row); err != nil {

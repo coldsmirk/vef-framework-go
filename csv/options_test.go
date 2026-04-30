@@ -71,7 +71,7 @@ func TestExportOptions(t *testing.T) {
 	t.Run("WithCrlf", func(t *testing.T) {
 		cfg := exportConfig{}
 		WithCrlf()(&cfg)
-		assert.True(t, cfg.useCrlf, "WithCrlf should enable Windows-style line endings")
+		assert.True(t, cfg.useCRLF, "WithCrlf should enable Windows-style line endings")
 	})
 
 	t.Run("LaterOptionOverridesEarlier", func(t *testing.T) {

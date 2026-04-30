@@ -34,11 +34,13 @@ func (f *TypedFakeImporter) RegisterParser(name string, _ ValueParser) {
 
 func (f *TypedFakeImporter) ImportFromFile(filename string) (any, []ImportError, error) {
 	f.importFromFile = filename
+
 	return f.value, f.errs, f.err
 }
 
 func (f *TypedFakeImporter) Import(_ io.Reader) (any, []ImportError, error) {
 	f.importedFromIO = true
+
 	return f.value, f.errs, f.err
 }
 
@@ -60,6 +62,7 @@ func (f *TypedFakeExporter) RegisterFormatter(name string, _ Formatter) {
 func (f *TypedFakeExporter) ExportToFile(data any, filename string) error {
 	f.receivedRows = data
 	f.exportToFile = filename
+
 	return f.err
 }
 
@@ -68,9 +71,11 @@ func (f *TypedFakeExporter) Export(data any) (*bytes.Buffer, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
+
 	if f.buf == nil {
 		f.buf = bytes.NewBuffer(nil)
 	}
+
 	return f.buf, nil
 }
 
