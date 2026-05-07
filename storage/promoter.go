@@ -17,7 +17,7 @@ import (
 
 // Promoter defines the interface for automatic file field promotion and cleanup.
 // It supports three types of meta information fields:
-// - uploaded_file: Direct file fields (string, *string, []string)
+// - uploaded_file: Direct file fields (string, *string, []string, map[string]string)
 // - richtext: Rich text fields (string, *string), automatically extracts and processes resource references in HTML
 // - markdown: Markdown fields (string, *string), automatically extracts and processes resource references in Markdown.
 type Promoter[T any] interface {
@@ -32,7 +32,7 @@ type Promoter[T any] interface {
 type MetaType string
 
 const (
-	// MetaTypeUploadedFile indicates a direct file field (string or []string).
+	// MetaTypeUploadedFile indicates a direct file field (string, []string, or map[string]string).
 	MetaTypeUploadedFile MetaType = "uploaded_file"
 	// MetaTypeRichText indicates a rich text field containing HTML with resource references.
 	MetaTypeRichText MetaType = "richtext"
@@ -44,84 +44,23 @@ const (
 	tagMeta = "meta"
 )
 
-func getStringValue(fieldValue reflect.Value) (string, bool) {
-	fieldType := fieldValue.Type()
+// fieldKind classifies the storage shape of an uploaded_file meta field.
+type fieldKind int
 
-	if fieldType.Kind() == reflect.String {
-		return fieldValue.String(), true
-	}
-
-	if fieldType.Kind() == reflect.Pointer && fieldType.Elem().Kind() == reflect.String {
-		if fieldValue.IsNil() {
-			return "", false
-		}
-
-		return fieldValue.Elem().String(), true
-	}
-
-	return "", false
-}
-
-func setStringValue(fieldValue reflect.Value, value string) {
-	fieldType := fieldValue.Type()
-
-	if fieldType.Kind() == reflect.String {
-		fieldValue.SetString(value)
-
-		return
-	}
-
-	if fieldType.Kind() == reflect.Pointer && fieldType.Elem().Kind() == reflect.String {
-		strValue := value
-		fieldValue.Set(reflect.ValueOf(&strValue))
-	}
-}
-
-func getStringSliceValue(fieldValue reflect.Value) ([]string, bool) {
-	fieldType := fieldValue.Type()
-
-	if fieldType.Kind() == reflect.Slice && fieldType.Elem().Kind() == reflect.String {
-		if fieldValue.IsNil() {
-			return nil, false
-		}
-
-		return fieldValue.Interface().([]string), true
-	}
-
-	return nil, false
-}
-
-func setStringSliceValue(fieldValue reflect.Value, value []string) {
-	fieldType := fieldValue.Type()
-
-	if fieldType.Kind() == reflect.Slice && fieldType.Elem().Kind() == reflect.String {
-		fieldValue.Set(reflect.ValueOf(value))
-	}
-}
+const (
+	fieldKindScalar fieldKind = iota // string / *string
+	fieldKindSlice                   // []string
+	fieldKindMap                     // map[string]string
+)
 
 // metaField represents the configuration of a meta information field.
 type metaField struct {
-	// Field index in the struct
 	index []int
-	// Meta type
-	typ MetaType
-	// Whether it's a []string (only valid for uploaded_file)
-	isArray bool
-	// Parsed attributes from the meta tag
+	typ   MetaType
+	// Storage shape of the field (only meaningful for uploaded_file; always
+	// fieldKindScalar for richtext / markdown).
+	kind  fieldKind
 	attrs map[string]string
-}
-
-func isStringType(fieldType reflect.Type) bool {
-	if fieldType.Kind() == reflect.String {
-		return true
-	}
-
-	return fieldType.Kind() == reflect.Pointer && fieldType.Elem().Kind() == reflect.String
-}
-
-func isStringSliceType(fieldType reflect.Type) bool {
-	return fieldType.Kind() == reflect.Slice &&
-		fieldType.Elem().Kind() == reflect.String
 }
 
 type defaultPromoter[T any] struct {
@@ -193,30 +132,37 @@ func parseMetaFields(typ reflect.Type) []metaField {
 				strx.WithValueDelimiter(':'),
 			)
 
-			var (
-				fieldType = field.Type
-				isArray   bool
-			)
+			fieldType := field.Type
 
-			// For "uploaded_file", support both scalar (string/ptr/null) and array ([]string) types.
-			// For "richtext" and "markdown", only scalar types are allowed.
+			var kind fieldKind
+
+			// For "uploaded_file", support scalar (string/*string), slice ([]string)
+			// and named map (map[string]string). For "richtext"/"markdown", only
+			// scalar types are allowed.
 			if metaType == MetaTypeUploadedFile {
-				if isStringSliceType(fieldType) {
-					isArray = true
-				} else if !isStringType(fieldType) {
+				switch {
+				case reflectx.IsStringSliceType(fieldType):
+					kind = fieldKindSlice
+				case reflectx.IsStringMapType(fieldType):
+					kind = fieldKindMap
+				case reflectx.IsStringType(fieldType):
+					kind = fieldKindScalar
+				default:
 					return reflectx.SkipChildren
 				}
 			} else {
-				if !isStringType(fieldType) {
+				if !reflectx.IsStringType(fieldType) {
 					return reflectx.SkipChildren
 				}
+
+				kind = fieldKindScalar
 			}
 
 			fields = append(fields, metaField{
-				index:   field.Index,
-				typ:     metaType,
-				isArray: isArray,
-				attrs:   attrs,
+				index: field.Index,
+				typ:   metaType,
+				kind:  kind,
+				attrs: attrs,
 			})
 
 			return reflectx.SkipChildren
@@ -277,7 +223,7 @@ func (p *defaultPromoter[T]) promoteFiles(ctx context.Context, model *T) error {
 
 		switch field.typ {
 		case MetaTypeUploadedFile:
-			return p.promoteUploadedFileField(ctx, fieldValue, field.isArray, field.typ, field.attrs)
+			return p.promoteUploadedFileField(ctx, fieldValue, field.kind, field.typ, field.attrs)
 
 		case MetaTypeRichText:
 			return p.promoteContentField(ctx, fieldValue, extractHtmlURLs, replaceHtmlURLs, field.typ, field.attrs)
@@ -291,43 +237,10 @@ func (p *defaultPromoter[T]) promoteFiles(ctx context.Context, model *T) error {
 	})
 }
 
-func (p *defaultPromoter[T]) promoteUploadedFileField(ctx context.Context, fieldValue reflect.Value, isArray bool, metaType MetaType, attrs map[string]string) error {
-	if isArray {
-		keys, valid := getStringSliceValue(fieldValue)
-		if !valid || len(keys) == 0 {
-			return nil
-		}
-
-		// Use streams to filter and transform keys
-		var promoteErr error
-
-		promotedKeys := streams.MapTo(
-			streams.FromSlice(keys).
-				Map(func(key string) string { return strings.TrimSpace(key) }).
-				Filter(func(key string) bool { return key != "" }),
-			func(key string) string {
-				if promoteErr != nil {
-					return ""
-				}
-
-				promotedKey, err := p.promoteSingleFile(ctx, key, metaType, attrs)
-				if err != nil {
-					promoteErr = err
-
-					return ""
-				}
-
-				return promotedKey
-			},
-		).Collect()
-
-		if promoteErr != nil {
-			return promoteErr
-		}
-
-		setStringSliceValue(fieldValue, promotedKeys)
-	} else {
-		key, valid := getStringValue(fieldValue)
+func (p *defaultPromoter[T]) promoteUploadedFileField(ctx context.Context, fieldValue reflect.Value, kind fieldKind, metaType MetaType, attrs map[string]string) error {
+	switch kind {
+	case fieldKindScalar:
+		key, valid := reflectx.GetStringValue(fieldValue)
 		if !valid || key == "" {
 			return nil
 		}
@@ -337,7 +250,55 @@ func (p *defaultPromoter[T]) promoteUploadedFileField(ctx context.Context, field
 			return err
 		}
 
-		setStringValue(fieldValue, promotedKey)
+		reflectx.SetStringValue(fieldValue, promotedKey)
+
+	case fieldKindSlice:
+		keys, valid := reflectx.GetStringSliceValue(fieldValue)
+		if !valid || len(keys) == 0 {
+			return nil
+		}
+
+		promoted := make([]string, 0, len(keys))
+
+		for _, key := range keys {
+			key = strings.TrimSpace(key)
+			if key == "" {
+				continue
+			}
+
+			promotedKey, err := p.promoteSingleFile(ctx, key, metaType, attrs)
+			if err != nil {
+				return err
+			}
+
+			promoted = append(promoted, promotedKey)
+		}
+
+		reflectx.SetStringSliceValue(fieldValue, promoted)
+
+	case fieldKindMap:
+		entries, valid := reflectx.GetStringMapValue(fieldValue)
+		if !valid || len(entries) == 0 {
+			return nil
+		}
+
+		promoted := make(map[string]string, len(entries))
+
+		for name, key := range entries {
+			key = strings.TrimSpace(key)
+			if key == "" {
+				continue
+			}
+
+			promotedKey, err := p.promoteSingleFile(ctx, key, metaType, attrs)
+			if err != nil {
+				return err
+			}
+
+			promoted[name] = promotedKey
+		}
+
+		reflectx.SetStringMapValue(fieldValue, promoted)
 	}
 
 	return nil
@@ -351,7 +312,7 @@ func (p *defaultPromoter[T]) promoteContentField(
 	metaType MetaType,
 	attrs map[string]string,
 ) error {
-	content, valid := getStringValue(fieldValue)
+	content, valid := reflectx.GetStringValue(fieldValue)
 	if !valid || content == "" {
 		return nil
 	}
@@ -386,7 +347,7 @@ func (p *defaultPromoter[T]) promoteContentField(
 
 	if len(replacements) > 0 {
 		newContent := replaceFunc(content, replacements)
-		setStringValue(fieldValue, newContent)
+		reflectx.SetStringValue(fieldValue, newContent)
 	}
 
 	return nil
@@ -484,8 +445,18 @@ func (p *defaultPromoter[T]) extractAllFileKeysWithInfo(model *T) []fileInfo {
 
 		switch field.typ {
 		case MetaTypeUploadedFile:
-			if field.isArray {
-				if keys, valid := getStringSliceValue(fieldValue); valid {
+			switch field.kind {
+			case fieldKindScalar:
+				if key, valid := reflectx.GetStringValue(fieldValue); valid && key != "" {
+					allFiles = append(allFiles, fileInfo{
+						key:      key,
+						metaType: field.typ,
+						attrs:    field.attrs,
+					})
+				}
+
+			case fieldKindSlice:
+				if keys, valid := reflectx.GetStringSliceValue(fieldValue); valid {
 					for _, key := range keys {
 						allFiles = append(allFiles, fileInfo{
 							key:      key,
@@ -494,18 +465,21 @@ func (p *defaultPromoter[T]) extractAllFileKeysWithInfo(model *T) []fileInfo {
 						})
 					}
 				}
-			} else {
-				if key, valid := getStringValue(fieldValue); valid && key != "" {
-					allFiles = append(allFiles, fileInfo{
-						key:      key,
-						metaType: field.typ,
-						attrs:    field.attrs,
-					})
+
+			case fieldKindMap:
+				if entries, valid := reflectx.GetStringMapValue(fieldValue); valid {
+					for _, key := range entries {
+						allFiles = append(allFiles, fileInfo{
+							key:      key,
+							metaType: field.typ,
+							attrs:    field.attrs,
+						})
+					}
 				}
 			}
 
 		case MetaTypeRichText:
-			if content, valid := getStringValue(fieldValue); valid && content != "" {
+			if content, valid := reflectx.GetStringValue(fieldValue); valid && content != "" {
 				urls := extractHtmlURLs(content)
 				for _, url := range urls {
 					allFiles = append(allFiles, fileInfo{
@@ -517,7 +491,7 @@ func (p *defaultPromoter[T]) extractAllFileKeysWithInfo(model *T) []fileInfo {
 			}
 
 		case MetaTypeMarkdown:
-			if content, valid := getStringValue(fieldValue); valid && content != "" {
+			if content, valid := reflectx.GetStringValue(fieldValue); valid && content != "" {
 				urls := extractMarkdownURLs(content)
 				for _, url := range urls {
 					allFiles = append(allFiles, fileInfo{
@@ -534,48 +508,12 @@ func (p *defaultPromoter[T]) extractAllFileKeysWithInfo(model *T) []fileInfo {
 }
 
 func (p *defaultPromoter[T]) extractAllFileKeys(model *T) []string {
-	if model == nil {
-		return nil
+	files := p.extractAllFileKeysWithInfo(model)
+
+	keys := make([]string, len(files))
+	for i, f := range files {
+		keys[i] = f.key
 	}
 
-	value := reflect.Indirect(reflect.ValueOf(model))
-	if value.Kind() != reflect.Struct {
-		return nil
-	}
-
-	allKeys := make([]string, 0)
-
-	for _, field := range p.fields {
-		fieldValue := value.FieldByIndex(field.index)
-		if !fieldValue.IsValid() {
-			continue
-		}
-
-		switch field.typ {
-		case MetaTypeUploadedFile:
-			if field.isArray {
-				if keys, valid := getStringSliceValue(fieldValue); valid {
-					allKeys = append(allKeys, keys...)
-				}
-			} else {
-				if key, valid := getStringValue(fieldValue); valid && key != "" {
-					allKeys = append(allKeys, key)
-				}
-			}
-
-		case MetaTypeRichText:
-			if content, valid := getStringValue(fieldValue); valid && content != "" {
-				urls := extractHtmlURLs(content)
-				allKeys = append(allKeys, urls...)
-			}
-
-		case MetaTypeMarkdown:
-			if content, valid := getStringValue(fieldValue); valid && content != "" {
-				urls := extractMarkdownURLs(content)
-				allKeys = append(allKeys, urls...)
-			}
-		}
-	}
-
-	return allKeys
+	return keys
 }

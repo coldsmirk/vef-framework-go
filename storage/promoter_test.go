@@ -106,10 +106,11 @@ func (m *MockPublisher) GetFileEvents() []*FileEvent {
 }
 
 type TestModel struct {
-	Avatar      string   `meta:"uploaded_file"`
-	Attachments []string `meta:"uploaded_file"`
-	Content     string   `meta:"richtext"`
-	Summary     string   `meta:"markdown"`
+	Avatar      string            `meta:"uploaded_file"`
+	Attachments []string          `meta:"uploaded_file"`
+	Documents   map[string]string `meta:"uploaded_file"`
+	Content     string            `meta:"richtext"`
+	Summary     string            `meta:"markdown"`
 	Ignored     string
 }
 
@@ -149,27 +150,32 @@ func TestParseMetaFields(t *testing.T) {
 	t.Run("BasicParsing", func(t *testing.T) {
 		fields := parseMetaFields(testModelType())
 
-		assert.Len(t, fields, 4, "Should parse all 4 meta-tagged fields")
+		assert.Len(t, fields, 5, "Should parse all 5 meta-tagged fields")
 
 		avatarField := findField(fields, []int{0})
 		require.NotNil(t, avatarField, "Avatar field should be found")
 		assert.Equal(t, MetaTypeUploadedFile, avatarField.typ, "Avatar should be uploaded_file type")
-		assert.False(t, avatarField.isArray, "Avatar should not be array")
+		assert.Equal(t, fieldKindScalar, avatarField.kind, "Avatar should be scalar kind")
 
 		attachmentsField := findField(fields, []int{1})
 		require.NotNil(t, attachmentsField, "Attachments field should be found")
 		assert.Equal(t, MetaTypeUploadedFile, attachmentsField.typ, "Attachments should be uploaded_file type")
-		assert.True(t, attachmentsField.isArray, "Attachments should be array")
+		assert.Equal(t, fieldKindSlice, attachmentsField.kind, "Attachments should be slice kind")
 
-		contentField := findField(fields, []int{2})
+		documentsField := findField(fields, []int{2})
+		require.NotNil(t, documentsField, "Documents field should be found")
+		assert.Equal(t, MetaTypeUploadedFile, documentsField.typ, "Documents should be uploaded_file type")
+		assert.Equal(t, fieldKindMap, documentsField.kind, "Documents should be map kind")
+
+		contentField := findField(fields, []int{3})
 		require.NotNil(t, contentField, "Content field should be found")
 		assert.Equal(t, MetaTypeRichText, contentField.typ, "Content should be richtext type")
-		assert.False(t, contentField.isArray, "Content should not be array")
+		assert.Equal(t, fieldKindScalar, contentField.kind, "Content should be scalar kind")
 
-		summaryField := findField(fields, []int{3})
+		summaryField := findField(fields, []int{4})
 		require.NotNil(t, summaryField, "Summary field should be found")
 		assert.Equal(t, MetaTypeMarkdown, summaryField.typ, "Summary should be markdown type")
-		assert.False(t, summaryField.isArray, "Summary should not be array")
+		assert.Equal(t, fieldKindScalar, summaryField.kind, "Summary should be scalar kind")
 	})
 
 	t.Run("WithAttrs", func(t *testing.T) {
@@ -186,21 +192,21 @@ func TestParseMetaFields(t *testing.T) {
 		avatarField := findField(fields, []int{0})
 		require.NotNil(t, avatarField, "Avatar field should be found")
 		assert.Equal(t, MetaTypeUploadedFile, avatarField.typ, "Avatar should be uploaded_file type")
-		assert.False(t, avatarField.isArray, "Avatar should not be array")
+		assert.Equal(t, fieldKindScalar, avatarField.kind, "Avatar should be scalar kind")
 		assert.Equal(t, map[string]string{"category": "avatar", "public": "true"}, avatarField.attrs,
 			"Avatar attrs should be parsed correctly")
 
 		galleryField := findField(fields, []int{1})
 		require.NotNil(t, galleryField, "Gallery field should be found")
 		assert.Equal(t, MetaTypeUploadedFile, galleryField.typ, "Gallery should be uploaded_file type")
-		assert.True(t, galleryField.isArray, "Gallery should be array")
+		assert.Equal(t, fieldKindSlice, galleryField.kind, "Gallery should be slice kind")
 		assert.Equal(t, map[string]string{"category": "gallery"}, galleryField.attrs,
 			"Gallery attrs should be parsed correctly")
 
 		contentField := findField(fields, []int{2})
 		require.NotNil(t, contentField, "Content field should be found")
 		assert.Equal(t, MetaTypeRichText, contentField.typ, "Content should be richtext type")
-		assert.False(t, contentField.isArray, "Content should not be array")
+		assert.Equal(t, fieldKindScalar, contentField.kind, "Content should be scalar kind")
 		assert.Equal(t, map[string]string{"sanitize": "true", "max_size": "10MB"}, contentField.attrs,
 			"Content attrs should be parsed correctly")
 	})
@@ -236,26 +242,34 @@ func TestParseMetaFields(t *testing.T) {
 
 	t.Run("InvalidFieldTypes", func(t *testing.T) {
 		type InvalidFieldTypesModel struct {
-			IntField       int      `meta:"uploaded_file"`
-			ArrayRichtext  []string `meta:"richtext"`
-			ArrayMarkdown  []string `meta:"markdown"`
-			ValidField     string   `meta:"uploaded_file"`
-			ValidArrayFile []string `meta:"uploaded_file"`
+			IntField       int               `meta:"uploaded_file"`
+			ArrayRichtext  []string          `meta:"richtext"`
+			ArrayMarkdown  []string          `meta:"markdown"`
+			MapRichtext    map[string]string `meta:"richtext"`
+			MapMarkdown    map[string]string `meta:"markdown"`
+			ValidField     string            `meta:"uploaded_file"`
+			ValidArrayFile []string          `meta:"uploaded_file"`
+			ValidMapFile   map[string]string `meta:"uploaded_file"`
 		}
 
 		fields := parseMetaFields(reflect.TypeFor[InvalidFieldTypesModel]())
 
-		assert.Len(t, fields, 2, "Should only parse valid field type combinations")
+		assert.Len(t, fields, 3, "Should only parse valid field type combinations")
 
-		validField := findField(fields, []int{3})
+		validField := findField(fields, []int{5})
 		require.NotNil(t, validField, "Valid string field should be found")
 		assert.Equal(t, MetaTypeUploadedFile, validField.typ, "Should be uploaded_file type")
-		assert.False(t, validField.isArray, "Should not be array")
+		assert.Equal(t, fieldKindScalar, validField.kind, "Should be scalar kind")
 
-		validArrayField := findField(fields, []int{4})
+		validArrayField := findField(fields, []int{6})
 		require.NotNil(t, validArrayField, "Valid array field should be found")
 		assert.Equal(t, MetaTypeUploadedFile, validArrayField.typ, "Should be uploaded_file type")
-		assert.True(t, validArrayField.isArray, "Should be array")
+		assert.Equal(t, fieldKindSlice, validArrayField.kind, "Should be slice kind")
+
+		validMapField := findField(fields, []int{7})
+		require.NotNil(t, validMapField, "Valid map field should be found")
+		assert.Equal(t, MetaTypeUploadedFile, validMapField.typ, "Should be uploaded_file type")
+		assert.Equal(t, fieldKindMap, validMapField.kind, "Should be map kind")
 	})
 
 	t.Run("MultipleMetaTypes", func(t *testing.T) {
@@ -268,6 +282,23 @@ func TestParseMetaFields(t *testing.T) {
 		assert.Len(t, fields, 1, "Should parse field with multiple meta types")
 		assert.True(t, fields[0].typ == MetaTypeUploadedFile || fields[0].typ == MetaTypeRichText,
 			"Should use first found meta type (map iteration order is random)")
+	})
+
+	t.Run("MapType", func(t *testing.T) {
+		type ModelWithMap struct {
+			Documents map[string]string `meta:"uploaded_file=category:idcard public:false"`
+		}
+
+		fields := parseMetaFields(reflect.TypeFor[ModelWithMap]())
+
+		require.Len(t, fields, 1, "Should parse the map field")
+
+		documentsField := findField(fields, []int{0})
+		require.NotNil(t, documentsField, "Documents field should be found")
+		assert.Equal(t, MetaTypeUploadedFile, documentsField.typ, "Documents should be uploaded_file type")
+		assert.Equal(t, fieldKindMap, documentsField.kind, "Documents should be map kind")
+		assert.Equal(t, map[string]string{"category": "idcard", "public": "false"}, documentsField.attrs,
+			"Documents attrs should be parsed correctly")
 	})
 }
 
@@ -606,6 +637,169 @@ func TestPromote(t *testing.T) {
 
 		assert.Empty(t, service.files, "No files should be affected when both models are nil")
 	})
+
+	t.Run("CreateUploadedFileMap", func(t *testing.T) {
+		t.Log("Testing file promotion for map[string]string uploaded_file fields")
+
+		service := NewMockService()
+		promoter := NewPromoter[TestModel](service)
+
+		model := &TestModel{
+			Documents: map[string]string{
+				"front": "temp/2025/01/15/idcard_front.jpg",
+				"back":  "temp/2025/01/15/idcard_back.jpg",
+			},
+		}
+
+		err := promoter.Promote(context.Background(), model, nil)
+		require.NoError(t, err, "Map promotion should succeed")
+
+		assert.Equal(t, map[string]string{
+			"front": "2025/01/15/idcard_front.jpg",
+			"back":  "2025/01/15/idcard_back.jpg",
+		}, model.Documents, "Map values should be promoted with keys preserved")
+
+		assert.True(t, service.files["2025/01/15/idcard_front.jpg"],
+			"Front file should exist in storage")
+		assert.True(t, service.files["2025/01/15/idcard_back.jpg"],
+			"Back file should exist in storage")
+	})
+
+	t.Run("UpdateMapReplaceFiles", func(t *testing.T) {
+		t.Log("Testing map value replacement during update")
+
+		service := NewMockService()
+		promoter := NewPromoter[TestModel](service)
+
+		service.files["2025/01/15/old_front.jpg"] = true
+		service.files["2025/01/15/old_back.jpg"] = true
+
+		oldModel := &TestModel{
+			Documents: map[string]string{
+				"front": "2025/01/15/old_front.jpg",
+				"back":  "2025/01/15/old_back.jpg",
+			},
+		}
+
+		newModel := &TestModel{
+			Documents: map[string]string{
+				"front": "temp/2025/01/16/new_front.jpg",
+				"back":  "temp/2025/01/16/new_back.jpg",
+			},
+		}
+
+		err := promoter.Promote(context.Background(), newModel, oldModel)
+		require.NoError(t, err, "Map update should succeed")
+
+		assert.Equal(t, map[string]string{
+			"front": "2025/01/16/new_front.jpg",
+			"back":  "2025/01/16/new_back.jpg",
+		}, newModel.Documents, "New map values should be promoted")
+
+		assert.True(t, service.files["2025/01/16/new_front.jpg"], "New front should exist")
+		assert.True(t, service.files["2025/01/16/new_back.jpg"], "New back should exist")
+		assert.False(t, service.files["2025/01/15/old_front.jpg"], "Old front should be deleted")
+		assert.False(t, service.files["2025/01/15/old_back.jpg"], "Old back should be deleted")
+	})
+
+	t.Run("UpdateMapPartialChange", func(t *testing.T) {
+		t.Log("Testing partial map updates")
+
+		service := NewMockService()
+		promoter := NewPromoter[TestModel](service)
+
+		service.files["2025/01/15/front.jpg"] = true
+		service.files["2025/01/15/back.jpg"] = true
+
+		oldModel := &TestModel{
+			Documents: map[string]string{
+				"front": "2025/01/15/front.jpg",
+				"back":  "2025/01/15/back.jpg",
+			},
+		}
+
+		newModel := &TestModel{
+			Documents: map[string]string{
+				"front": "2025/01/15/front.jpg",
+				"back":  "temp/2025/01/16/new_back.jpg",
+			},
+		}
+
+		err := promoter.Promote(context.Background(), newModel, oldModel)
+		require.NoError(t, err, "Partial map update should succeed")
+
+		assert.Equal(t, map[string]string{
+			"front": "2025/01/15/front.jpg",
+			"back":  "2025/01/16/new_back.jpg",
+		}, newModel.Documents, "Unchanged value should remain, replaced value should be promoted")
+
+		assert.True(t, service.files["2025/01/15/front.jpg"], "Unchanged front should remain")
+		assert.True(t, service.files["2025/01/16/new_back.jpg"], "New back should exist")
+		assert.False(t, service.files["2025/01/15/back.jpg"], "Old back should be deleted")
+	})
+
+	t.Run("DeleteMap", func(t *testing.T) {
+		t.Log("Testing deletion of all map values when model is deleted")
+
+		service := NewMockService()
+		promoter := NewPromoter[TestModel](service)
+
+		service.files["2025/01/15/front.jpg"] = true
+		service.files["2025/01/15/back.jpg"] = true
+
+		oldModel := &TestModel{
+			Documents: map[string]string{
+				"front": "2025/01/15/front.jpg",
+				"back":  "2025/01/15/back.jpg",
+			},
+		}
+
+		err := promoter.Promote(context.Background(), nil, oldModel)
+		require.NoError(t, err, "Delete with map field should succeed")
+
+		assert.False(t, service.files["2025/01/15/front.jpg"], "Front should be deleted")
+		assert.False(t, service.files["2025/01/15/back.jpg"], "Back should be deleted")
+	})
+
+	t.Run("MapWithEmptyValues", func(t *testing.T) {
+		t.Log("Testing map with empty/whitespace values")
+
+		service := NewMockService()
+		promoter := NewPromoter[TestModel](service)
+
+		model := &TestModel{
+			Documents: map[string]string{
+				"front": "temp/2025/01/15/front.jpg",
+				"back":  "",
+				"side":  "  ",
+			},
+		}
+
+		err := promoter.Promote(context.Background(), model, nil)
+		require.NoError(t, err, "Map with empty values should be cleaned")
+
+		assert.Equal(t, map[string]string{
+			"front": "2025/01/15/front.jpg",
+		}, model.Documents, "Only keys with non-empty values should remain")
+
+		assert.True(t, service.files["2025/01/15/front.jpg"], "Front should be promoted")
+	})
+
+	t.Run("NilMap", func(t *testing.T) {
+		t.Log("Testing nil map handling")
+
+		service := NewMockService()
+		promoter := NewPromoter[TestModel](service)
+
+		model := &TestModel{
+			Documents: nil,
+		}
+
+		err := promoter.Promote(context.Background(), model, nil)
+		require.NoError(t, err, "Nil map should be handled gracefully")
+
+		assert.Nil(t, model.Documents, "Nil map should remain nil")
+	})
 }
 
 // TestPromoterTypes tests promoter types functionality.
@@ -852,5 +1046,41 @@ func TestPromoterEvents(t *testing.T) {
 			"Event file key should be the promoted path")
 		assert.Equal(t, map[string]string{"sanitize": "true", "max_size": "10MB"}, evt.Attrs,
 			"Event attrs should match field attrs")
+	})
+
+	t.Run("MapPromoteEvents", func(t *testing.T) {
+		t.Log("Testing event publishing for map[string]string promotion")
+
+		service := NewMockService()
+		publisher := &MockPublisher{}
+		promoter := NewPromoter[TestModel](service, publisher)
+
+		model := &TestModel{
+			Documents: map[string]string{
+				"front": "temp/2025/01/15/front.jpg",
+				"back":  "temp/2025/01/15/back.jpg",
+			},
+		}
+
+		err := promoter.Promote(context.Background(), model, nil)
+		require.NoError(t, err, "Map promotion with publisher should succeed")
+
+		events := publisher.GetFileEvents()
+		assert.Len(t, events, 2, "Should publish one promote event per map entry")
+
+		promotedKeys := make(map[string]bool, len(events))
+		for _, evt := range events {
+			assert.Equal(t, OperationPromote, evt.Operation,
+				"Event operation should be promote")
+			assert.Equal(t, MetaTypeUploadedFile, evt.MetaType,
+				"Event meta type should be uploaded_file")
+			assert.NotEmpty(t, evt.FileKey, "Event file key should not be empty")
+			assert.False(t, strings.HasPrefix(evt.FileKey, TempPrefix),
+				"Event file key should not have temp prefix")
+			promotedKeys[evt.FileKey] = true
+		}
+
+		assert.True(t, promotedKeys["2025/01/15/front.jpg"], "Front event should be published")
+		assert.True(t, promotedKeys["2025/01/15/back.jpg"], "Back event should be published")
 	})
 }
