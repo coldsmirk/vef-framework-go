@@ -54,7 +54,7 @@ type UpdateColumnHandler interface {
 
 // processAutoColumns applies auto column handlers to a model before insert/update operations.
 func processAutoColumns(query any, table *schema.Table, modelValue any, mv reflect.Value) {
-	if !mv.IsValid() || (mv.Kind() == reflect.Ptr && mv.IsNil()) {
+	if !mv.IsValid() || (mv.Kind() == reflect.Pointer && mv.IsNil()) {
 		return
 	}
 
