@@ -103,6 +103,7 @@ func TestGetStringValue(t *testing.T) {
 
 	t.Run("NilStringPointer", func(t *testing.T) {
 		var s *string
+
 		v, ok := GetStringValue(reflect.ValueOf(s))
 		assert.False(t, ok, "Reading nil *string should report not-ok")
 		assert.Empty(t, v, "Should return zero string for nil pointer")
@@ -119,6 +120,7 @@ func TestGetStringValue(t *testing.T) {
 func TestSetStringValue(t *testing.T) {
 	t.Run("String", func(t *testing.T) {
 		type holder struct{ S string }
+
 		h := &holder{}
 		SetStringValue(reflect.ValueOf(h).Elem().FieldByName("S"), "abc")
 		assert.Equal(t, "abc", h.S, "String field should be updated")
@@ -126,6 +128,7 @@ func TestSetStringValue(t *testing.T) {
 
 	t.Run("StringPointer", func(t *testing.T) {
 		type holder struct{ S *string }
+
 		h := &holder{}
 		SetStringValue(reflect.ValueOf(h).Elem().FieldByName("S"), "xyz")
 		require.NotNil(t, h.S, "Pointer should be allocated")
@@ -134,6 +137,7 @@ func TestSetStringValue(t *testing.T) {
 
 	t.Run("StringPointerAllocatesFreshPointer", func(t *testing.T) {
 		type holder struct{ S *string }
+
 		original := "old"
 		h := &holder{S: &original}
 
@@ -145,6 +149,7 @@ func TestSetStringValue(t *testing.T) {
 
 	t.Run("UnsupportedTypeIsNoop", func(t *testing.T) {
 		type holder struct{ N int }
+
 		h := &holder{N: 7}
 		SetStringValue(reflect.ValueOf(h).Elem().FieldByName("N"), "ignored")
 		assert.Equal(t, 7, h.N, "Int field must remain unchanged")
@@ -168,6 +173,7 @@ func TestGetStringSliceValue(t *testing.T) {
 
 	t.Run("NilSlice", func(t *testing.T) {
 		var s []string
+
 		v, ok := GetStringSliceValue(reflect.ValueOf(s))
 		assert.False(t, ok, "Reading nil slice should report not-ok")
 		assert.Nil(t, v, "Should return nil for nil slice")
@@ -184,6 +190,7 @@ func TestGetStringSliceValue(t *testing.T) {
 func TestSetStringSliceValue(t *testing.T) {
 	t.Run("Slice", func(t *testing.T) {
 		type holder struct{ S []string }
+
 		h := &holder{}
 		SetStringSliceValue(reflect.ValueOf(h).Elem().FieldByName("S"), []string{"x", "y"})
 		assert.Equal(t, []string{"x", "y"}, h.S, "Slice field should be updated")
@@ -191,6 +198,7 @@ func TestSetStringSliceValue(t *testing.T) {
 
 	t.Run("UnsupportedTypeIsNoop", func(t *testing.T) {
 		type holder struct{ N []int }
+
 		h := &holder{N: []int{1}}
 		SetStringSliceValue(reflect.ValueOf(h).Elem().FieldByName("N"), []string{"ignored"})
 		assert.Equal(t, []int{1}, h.N, "Int slice must remain unchanged")
@@ -214,6 +222,7 @@ func TestGetStringMapValue(t *testing.T) {
 
 	t.Run("NilMap", func(t *testing.T) {
 		var m map[string]string
+
 		v, ok := GetStringMapValue(reflect.ValueOf(m))
 		assert.False(t, ok, "Reading nil map should report not-ok")
 		assert.Nil(t, v, "Should return nil for nil map")
@@ -232,6 +241,7 @@ func TestSetStringMapValue(t *testing.T) {
 		type holder struct {
 			M map[string]string
 		}
+
 		h := &holder{}
 		SetStringMapValue(reflect.ValueOf(h).Elem().FieldByName("M"), map[string]string{"k": "v"})
 		assert.Equal(t, map[string]string{"k": "v"}, h.M, "Map field should be updated")
@@ -241,6 +251,7 @@ func TestSetStringMapValue(t *testing.T) {
 		type holder struct {
 			M map[string]string
 		}
+
 		h := &holder{M: map[string]string{"old": "1"}}
 		SetStringMapValue(reflect.ValueOf(h).Elem().FieldByName("M"), map[string]string{"new": "2"})
 		assert.Equal(t, map[string]string{"new": "2"}, h.M, "Map field should be replaced")
@@ -250,6 +261,7 @@ func TestSetStringMapValue(t *testing.T) {
 		type holder struct {
 			M map[string]int
 		}
+
 		h := &holder{M: map[string]int{"a": 1}}
 		SetStringMapValue(reflect.ValueOf(h).Elem().FieldByName("M"), map[string]string{"ignored": "x"})
 		assert.Equal(t, map[string]int{"a": 1}, h.M, "Map must remain unchanged")
