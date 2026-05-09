@@ -109,7 +109,7 @@ func (t *MoldTransformer) RegisterInterceptor(fn mold.InterceptorFunc, types ...
 // Struct applies transformations against the provided struct.
 func (t *MoldTransformer) Struct(ctx context.Context, v any) error {
 	orig := reflect.ValueOf(v)
-	if orig.Kind() != reflect.Ptr || orig.IsNil() {
+	if orig.Kind() != reflect.Pointer || orig.IsNil() {
 		return &ErrInvalidTransformValue{typ: reflect.TypeOf(v), fn: "Struct"}
 	}
 
