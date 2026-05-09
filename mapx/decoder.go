@@ -16,6 +16,7 @@ var (
 	DecoderHook = mapstructure.ComposeDecodeHookFunc(
 		convertJSONRawMessage,
 		convertFileHeader,
+		convertSliceToCollectionSet,
 		mapstructure.TextUnmarshallerHookFunc(),
 		mapstructure.StringToTimeHookFunc(time.DateTime),
 		mapstructure.StringToTimeLocationHookFunc(),
