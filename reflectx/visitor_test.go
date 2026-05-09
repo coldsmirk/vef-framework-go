@@ -1248,7 +1248,7 @@ func TestVisitFieldIndexPathPointerFields(t *testing.T) {
 
 	// Verify we can access the value through the index path
 	cacheValue := reflect.ValueOf(testStruct).FieldByIndex(cacheFieldIndex)
-	assert.Equal(t, reflect.Ptr, cacheValue.Kind(), "Should equal expected value")
+	assert.Equal(t, reflect.Pointer, cacheValue.Kind(), "Should equal expected value")
 	assert.False(t, cacheValue.IsNil(), "Should be false")
 
 	sizeValue := reflect.ValueOf(testStruct).FieldByIndex(sizeFieldIndex)
