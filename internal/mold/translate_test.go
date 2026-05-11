@@ -490,6 +490,301 @@ func (suite *TranslateTransformerTestSuite) TestTranslateIntegration() {
 			test.Status, test.StatusName,
 			*test.Priority, *test.PriorityName)
 	})
+
+	suite.Run("ScalarAndSliceMixedFields", func() {
+		type MixedStruct struct {
+			Status       string `mold:"translate=dict:status"`
+			StatusName   string
+			Tags         []string `mold:"translate=dict:status"`
+			TagsName     []string
+			Priority     *string `mold:"translate=dict:priority"`
+			PriorityName *string
+		}
+
+		priority := "high"
+		test := &MixedStruct{
+			Status:   "active",
+			Tags:     []string{"inactive", "pending"},
+			Priority: &priority,
+		}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.NoError(err, "Translation should succeed for mixed scalar and slice fields")
+		suite.Equal("Active Status", test.StatusName, "Scalar StatusName should be translated")
+		suite.Equal([]string{"Inactive Status", "Pending Status"}, test.TagsName, "Slice TagsName should be translated element-wise")
+		suite.Require().NotNil(test.PriorityName, "Pointer PriorityName should be initialized")
+		suite.Equal("High Priority", *test.PriorityName, "Pointer PriorityName should be translated")
+
+		suite.T().Logf("Mixed translation: Status=%s->%s, Tags=%v->%v, Priority=%s->%s",
+			test.Status, test.StatusName,
+			test.Tags, test.TagsName,
+			*test.Priority, *test.PriorityName)
+	})
+}
+
+// TestTranslateStringSlice tests translation with []string source field type.
+func (suite *TranslateTransformerTestSuite) TestTranslateStringSlice() {
+	suite.T().Log("Testing translate transformer with []string field type")
+
+	suite.Run("TranslateNonEmptyStringSlice", func() {
+		type TestStruct struct {
+			Statuses     []string `mold:"translate=dict:status"`
+			StatusesName []string
+		}
+
+		test := &TestStruct{
+			Statuses: []string{"active", "inactive", "pending"},
+		}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.NoError(err, "Translation should succeed for []string field")
+		suite.Equal([]string{"Active Status", "Inactive Status", "Pending Status"}, test.StatusesName, "StatusesName should be translated element-wise")
+
+		suite.T().Logf("Statuses: %v -> StatusesName: %v", test.Statuses, test.StatusesName)
+	})
+
+	suite.Run("TranslateEmptyStringSlice", func() {
+		type TestStruct struct {
+			Statuses     []string `mold:"translate=dict:status"`
+			StatusesName []string
+		}
+
+		test := &TestStruct{
+			Statuses: []string{},
+		}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.NoError(err, "Translation should succeed for empty []string source")
+		suite.NotNil(test.StatusesName, "StatusesName should be initialized to a non-nil slice")
+		suite.Empty(test.StatusesName, "StatusesName should be an empty slice")
+
+		suite.T().Log("Empty source slice translated to empty target slice")
+	})
+
+	suite.Run("TranslateNilStringSlice", func() {
+		type TestStruct struct {
+			Statuses     []string `mold:"translate=dict:status"`
+			StatusesName []string
+		}
+
+		test := &TestStruct{
+			Statuses: nil,
+		}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.NoError(err, "Translation should skip nil []string source")
+		suite.Nil(test.StatusesName, "StatusesName should remain nil when source is nil")
+
+		suite.T().Log("Nil source slice skipped, target slice untouched")
+	})
+
+	suite.Run("TranslateSliceWithEmptyElement", func() {
+		type TestStruct struct {
+			Statuses     []string `mold:"translate=dict:status"`
+			StatusesName []string
+		}
+
+		test := &TestStruct{
+			Statuses: []string{"active", "", "pending"},
+		}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.NoError(err, "Translation should succeed even with empty element")
+		// Resolver returns empty string for empty code, preserving index alignment.
+		suite.Equal([]string{"Active Status", "", "Pending Status"}, test.StatusesName, "Empty element should map to empty translation while keeping index alignment")
+
+		suite.T().Logf("Mixed slice: %v -> %v", test.Statuses, test.StatusesName)
+	})
+
+	suite.Run("TranslateSliceOverwritesPreviousTarget", func() {
+		type TestStruct struct {
+			Statuses     []string `mold:"translate=dict:status"`
+			StatusesName []string
+		}
+
+		test := &TestStruct{
+			Statuses:     []string{"active"},
+			StatusesName: []string{"stale-1", "stale-2"},
+		}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.NoError(err, "Translation should overwrite the existing target slice")
+		suite.Equal([]string{"Active Status"}, test.StatusesName, "StatusesName should be replaced wholesale, not merged")
+
+		suite.T().Logf("Overwrote target: %v", test.StatusesName)
+	})
+
+	suite.Run("TranslateMultipleStringSliceFields", func() {
+		type TestStruct struct {
+			Statuses       []string `mold:"translate=dict:status"`
+			StatusesName   []string
+			Priorities     []string `mold:"translate=dict:priority"`
+			PrioritiesName []string
+		}
+
+		test := &TestStruct{
+			Statuses:   []string{"active", "pending"},
+			Priorities: []string{"high", "low"},
+		}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.NoError(err, "Translation should succeed for multiple []string fields")
+		suite.Equal([]string{"Active Status", "Pending Status"}, test.StatusesName, "StatusesName should be translated independently")
+		suite.Equal([]string{"High Priority", "Low Priority"}, test.PrioritiesName, "PrioritiesName should be translated independently")
+
+		suite.T().Logf("Statuses: %v -> %v, Priorities: %v -> %v",
+			test.Statuses, test.StatusesName,
+			test.Priorities, test.PrioritiesName)
+	})
+}
+
+// TestTranslateStringSliceErrors tests error handling for []string source fields.
+func (suite *TranslateTransformerTestSuite) TestTranslateStringSliceErrors() {
+	suite.T().Log("Testing translate transformer error handling for []string fields")
+
+	suite.Run("MissingTargetField", func() {
+		type TestStruct struct {
+			Statuses []string `mold:"translate=dict:status"`
+			// StatusesName intentionally missing.
+		}
+
+		test := &TestStruct{Statuses: []string{"active"}}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.Error(err, "Should fail when sibling target field is missing")
+		suite.Contains(err.Error(), "target translated field not found", "Error should indicate missing sibling")
+
+		suite.T().Logf("Error (expected): %v", err)
+	})
+
+	suite.Run("UnsupportedTargetType", func() {
+		type TestStruct struct {
+			Statuses     []string `mold:"translate=dict:status"`
+			StatusesName string
+		}
+
+		test := &TestStruct{Statuses: []string{"active"}}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.Error(err, "Should fail when target type is not []string")
+		suite.Contains(err.Error(), "unsupported field type", "Error should indicate unsupported target type")
+
+		suite.T().Logf("Error (expected): %v", err)
+	})
+
+	suite.Run("MissingKind", func() {
+		type TestStruct struct {
+			Statuses     []string `mold:"translate"`
+			StatusesName []string
+		}
+
+		test := &TestStruct{Statuses: []string{"active"}}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.Error(err, "Should fail when kind parameter is missing")
+		suite.Contains(err.Error(), "translation kind parameter is empty", "Error should indicate missing kind")
+
+		suite.T().Logf("Error (expected): %v", err)
+	})
+
+	suite.Run("OptionalKindNoTranslator", func() {
+		type TestStruct struct {
+			Statuses     []string `mold:"translate=nonexistent:slice?"`
+			StatusesName []string
+		}
+
+		test := &TestStruct{Statuses: []string{"active", "pending"}}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.NoError(err, "Optional kind should silently skip when no translator supports it")
+		suite.Nil(test.StatusesName, "StatusesName should remain untouched for optional skip")
+
+		suite.T().Log("Optional kind skipped silently for slice source")
+	})
+
+	suite.Run("ResolverErrorReportsElementIndex", func() {
+		ctx := context.Background()
+
+		var transformer mold.Transformer
+
+		_, stop := apptest.NewTestApp(
+			suite.T(),
+			fx.Replace(&config.DataSourceConfig{
+				Kind: config.SQLite,
+			}),
+			fx.Provide(func() mold.DataDictLoader {
+				return &MockDataDictLoader{shouldError: true}
+			}),
+			fx.Populate(&transformer),
+		)
+		defer stop()
+
+		suite.Require().NotNil(transformer, "Transformer should be initialized")
+
+		type TestStruct struct {
+			Statuses     []string `mold:"translate=dict:status"`
+			StatusesName []string
+		}
+
+		test := &TestStruct{Statuses: []string{"active", "pending"}}
+
+		err := transformer.Struct(ctx, test)
+		suite.Error(err, "Should fail when resolver returns error")
+		suite.Contains(err.Error(), "element[0]", "Error should include failing element index")
+		suite.Contains(err.Error(), "Statuses", "Error should include source field name")
+
+		suite.T().Logf("Error (expected): %v", err)
+	})
+
+	suite.Run("RequiredKindNoTranslator", func() {
+		type TestStruct struct {
+			Statuses     []string `mold:"translate=nonexistent:status"`
+			StatusesName []string
+		}
+
+		test := &TestStruct{Statuses: []string{"active"}}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.Error(err, "Should fail when required kind has no supporting translator")
+		suite.Contains(err.Error(), "no translator supports the given kind", "Error should indicate unsupported kind")
+		suite.Contains(err.Error(), "nonexistent:status", "Error should include the unsupported kind value")
+		suite.Contains(err.Error(), "Statuses", "Error should include source field name")
+		suite.Nil(test.StatusesName, "StatusesName should remain untouched on translator lookup failure")
+
+		suite.T().Logf("Error (expected): %v", err)
+	})
+
+	suite.Run("MissingResolverReportsElementIndex", func() {
+		ctx := context.Background()
+
+		var transformer mold.Transformer
+
+		_, stop := apptest.NewTestApp(
+			suite.T(),
+			fx.Replace(&config.DataSourceConfig{
+				Kind: config.SQLite,
+			}),
+			fx.Populate(&transformer),
+		)
+		defer stop()
+
+		suite.Require().NotNil(transformer, "Transformer should be initialized")
+
+		type TestStruct struct {
+			Statuses     []string `mold:"translate=dict:status"`
+			StatusesName []string
+		}
+
+		test := &TestStruct{Statuses: []string{"active", "pending"}}
+
+		err := transformer.Struct(ctx, test)
+		suite.Error(err, "Should fail when resolver is not configured")
+		suite.Contains(err.Error(), "data dictionary resolver is not configured", "Error should indicate missing resolver")
+		suite.Contains(err.Error(), "element[0]", "Error should include failing element index")
+		suite.Contains(err.Error(), "Statuses", "Error should include source field name")
+
+		suite.T().Logf("Error (expected): %v", err)
+	})
 }
 
 // TestTranslateTransformerTestSuite runs the test suite.
