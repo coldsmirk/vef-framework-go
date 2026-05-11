@@ -183,7 +183,7 @@ func parseModelFile(filename string) ([]*ModelSchemaInfo, error) {
 
 			schemaInfo := &ModelSchemaInfo{
 				ModelName:      modelName,
-				SchemaTypeName: modelName + "Schema",
+				SchemaTypeName: lo.CamelCase(modelName + "Schema"),
 				VarName:        modelName,
 				TableName:      tableName,
 				AliasName:      aliasName,

@@ -162,9 +162,14 @@ func TestFieldTag(t *testing.T) {
 // TestGenerateFile_Integration covers parsing + code generation end-to-end
 // against testdata/models/sample.go, asserting the most important behaviors:
 // scanonly retention with Columns() exclusion, rel skipping, embed prefixes,
-// label preservation, reserved name handling, and exported type naming.
+// label preservation, reserved name handling, and the unexported-type /
+// exported-var contract.
 //
 // Note on naming convention in the generated code:
+//   - Schema type names are unexported (e.g. `userSchema`). The generator
+//     exposes each model only through the exported instance variable
+//     (e.g. `User`), so the concrete type stays an implementation detail of
+//     the schemas package and callers cannot construct or alias it directly.
 //   - Schema struct field names go through lo.CamelCase, producing
 //     **unexported** identifiers (e.g. `id`, `addrCity`, `__type`).
 //     Users access columns through methods (e.g. `User.ID()`), not field reads.
@@ -190,13 +195,16 @@ func TestGenerateFile_Integration(t *testing.T) {
 	require.Equal(t, "schemas", parsedFile.Name.Name, "Package name should match -p flag")
 
 	t.Run("OnlyModelsWithBaseModelAreEmitted", func(t *testing.T) {
-		assert.Contains(t, code, "type UserSchema struct", "User should be emitted")
-		assert.Contains(t, code, "type ProfileSchema struct", "Profile should be emitted")
+		assert.Contains(t, code, "type userSchema struct", "User should be emitted as an unexported schema type")
+		assert.Contains(t, code, "type profileSchema struct", "Profile should be emitted as an unexported schema type")
 		assert.NotContains(t, code, "NotAModel", "Structs without orm.BaseModel must be skipped")
 	})
 
-	t.Run("SchemaTypeNameIsExportedWhenModelIsExported", func(t *testing.T) {
-		assert.Contains(t, code, "var User = &UserSchema{", "Variable should reference exported schema type")
+	t.Run("SchemaTypeIsUnexportedAndOnlyVarIsExported", func(t *testing.T) {
+		assert.Contains(t, code, "var User = &userSchema{", "Exported var should reference the unexported schema type")
+		assert.Contains(t, code, "var Profile = &profileSchema{", "Exported var should reference the unexported schema type")
+		assert.NotRegexp(t, `\btype\s+UserSchema\b`, code, "Schema type must not be exported")
+		assert.NotRegexp(t, `\btype\s+ProfileSchema\b`, code, "Schema type must not be exported")
 	})
 
 	t.Run("RelationFieldsSkipped", func(t *testing.T) {
@@ -215,11 +223,11 @@ func TestGenerateFile_Integration(t *testing.T) {
 
 	t.Run("ScanonlyAppearsAsAccessor", func(t *testing.T) {
 		assert.Contains(t, code, `computed: "computed"`, "scanonly column name should default to snake_case fieldName")
-		assert.Contains(t, code, "func (s *UserSchema) Computed(raw ...bool) string", "scanonly accessor must be generated")
+		assert.Contains(t, code, "func (s *userSchema) Computed(raw ...bool) string", "scanonly accessor must be generated")
 	})
 
 	t.Run("ScanonlyExcludedFromColumns", func(t *testing.T) {
-		columnsBody := methodBodyText(t, fset, parsedFile, "UserSchema", "Columns")
+		columnsBody := methodBodyText(t, fset, parsedFile, "userSchema", "Columns")
 		assert.NotContains(t, columnsBody, "s.computed", "Computed must not be returned by Columns()")
 		assert.NotContains(t, columnsBody, "s.createdByName", "Embedded scanonly CreatedByName must not be returned by Columns()")
 		assert.Contains(t, columnsBody, "s.id", "Real columns should still be returned by Columns()")
@@ -230,7 +238,7 @@ func TestGenerateFile_Integration(t *testing.T) {
 		assert.Contains(t, code, `addrCity:`, "embed:addr_ should produce camelCase struct field addrCity")
 		assert.Contains(t, code, `"addr_city"`, "embed:addr_ should prefix City column to addr_city")
 		assert.Contains(t, code, `"addr_street"`, "embed:addr_ should prefix Street column to addr_street")
-		assert.Contains(t, code, "func (s *UserSchema) AddrCity(raw ...bool) string", "Embedded field must produce AddrCity accessor")
+		assert.Contains(t, code, "func (s *userSchema) AddrCity(raw ...bool) string", "Embedded field must produce AddrCity accessor")
 	})
 
 	t.Run("AnonymousEmbedFlattens", func(t *testing.T) {
@@ -251,7 +259,7 @@ func TestGenerateFile_Integration(t *testing.T) {
 	})
 
 	t.Run("ReservedMethodNameEscaped", func(t *testing.T) {
-		assert.Contains(t, code, "func (s *UserSchema) ColTable(raw ...bool) string", "Field named Table should produce ColTable method to avoid collision with schema.Table()")
+		assert.Contains(t, code, "func (s *userSchema) ColTable(raw ...bool) string", "Field named Table should produce ColTable method to avoid collision with schema.Table()")
 	})
 
 	t.Run("TableAndAliasParsedFromBaseModelTag", func(t *testing.T) {
