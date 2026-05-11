@@ -10,6 +10,7 @@ import (
 	"go/types"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"unicode"
 
@@ -49,6 +50,7 @@ type ModelField struct {
 	ColumnName string
 	MethodName string
 	Label      string
+	Scanonly   bool
 }
 
 // ModelSchemaInfo contains complete metadata for generating a model schema helper.
@@ -77,7 +79,10 @@ func GenerateFile(inputFile, outputFile, packageName string) error {
 		schema.PackageName = packageName
 	}
 
-	code := generateSchemaCode(schemas)
+	code, err := generateSchemaCode(schemas)
+	if err != nil {
+		return fmt.Errorf("failed to generate schema code: %w", err)
+	}
 
 	dir := filepath.Dir(outputFile)
 	if dir != "." && dir != "" {
@@ -178,7 +183,7 @@ func parseModelFile(filename string) ([]*ModelSchemaInfo, error) {
 
 			schemaInfo := &ModelSchemaInfo{
 				ModelName:      modelName,
-				SchemaTypeName: lo.CamelCase(modelName + "Schema"),
+				SchemaTypeName: modelName + "Schema",
 				VarName:        modelName,
 				TableName:      tableName,
 				AliasName:      aliasName,
@@ -249,20 +254,22 @@ func isOrmBaseModel(expr ast.Expr, pkg *packages.Package) bool {
 }
 
 func parseStructFields(structType *ast.StructType, pkg *packages.Package) []ModelField {
-	var fields []ModelField
+	fields := make([]ModelField, 0, len(structType.Fields.List))
 
 	for _, f := range structType.Fields.List {
+		tag := fieldTag(f)
+		bunTag := extractStructTag(tag, "bun")
+
+		if bunTag == "-" || isRelationFieldFromTag(tag) {
+			continue
+		}
+
 		if len(f.Names) == 0 {
 			if isOrmBaseModel(f.Type, pkg) {
 				continue
 			}
 
-			if hasIgnoreTag(f) {
-				continue
-			}
-
-			inheritedFields := parseInheritedFields(f.Type, "", pkg)
-			fields = append(fields, inheritedFields...)
+			fields = append(fields, parseInheritedFields(f.Type, "", pkg)...)
 
 			continue
 		}
@@ -274,14 +281,13 @@ func parseStructFields(structType *ast.StructType, pkg *packages.Package) []Mode
 				continue
 			}
 
-			if embedPrefix := extractEmbedPrefix(f); embedPrefix != "" {
-				embeddedFields := parseInheritedFields(f.Type, embedPrefix, pkg)
-				fields = append(fields, embeddedFields...)
+			if embedPrefix := extractEmbedPrefixFromTag(tag); embedPrefix != "" {
+				fields = append(fields, parseInheritedFields(f.Type, embedPrefix, pkg)...)
 
 				continue
 			}
 
-			columnName := extractColumnName(f, fieldName)
+			columnName := extractColumnNameFromTag(tag, fieldName)
 			if columnName == "-" {
 				continue
 			}
@@ -290,8 +296,6 @@ func parseStructFields(structType *ast.StructType, pkg *packages.Package) []Mode
 			if goKeywords[goName] {
 				goName = "__" + goName
 			}
-
-			label := extractLabel(f)
 
 			methodName := fieldName
 			if reservedMethodNames[fieldName] {
@@ -302,7 +306,8 @@ func parseStructFields(structType *ast.StructType, pkg *packages.Package) []Mode
 				GoName:     goName,
 				ColumnName: columnName,
 				MethodName: methodName,
-				Label:      label,
+				Label:      extractLabelFromTag(tag),
+				Scanonly:   hasScanonlyTagFromTag(tag),
 			})
 		}
 	}
@@ -310,15 +315,15 @@ func parseStructFields(structType *ast.StructType, pkg *packages.Package) []Mode
 	return fields
 }
 
-// hasIgnoreTag checks if a field has bun:"-" tag.
-func hasIgnoreTag(f *ast.Field) bool {
+// fieldTag returns the raw tag literal of an AST field (with backticks), or
+// empty when no tag is present. extractStructTag handles both quoted and
+// unquoted forms via strings.Trim.
+func fieldTag(f *ast.Field) string {
 	if f.Tag == nil {
-		return false
+		return ""
 	}
 
-	bunTag := extractStructTag(f.Tag.Value, "bun")
-
-	return bunTag == "-"
+	return f.Tag.Value
 }
 
 // parseInheritedFields recursively parses inherited fields from embedded structs with optional prefix accumulation.
@@ -333,21 +338,19 @@ func parseInheritedFields(typeExpr ast.Expr, prefix string, pkg *packages.Packag
 
 // parseInheritedFieldsFromType recursively parses inherited fields from a types.Type.
 func parseInheritedFieldsFromType(typ types.Type, prefix string) []ModelField {
-	var fields []ModelField
-
-	if alias, ok := typ.(*types.Alias); ok {
-		typ = alias.Rhs()
-	}
+	typ = types.Unalias(typ)
 
 	named, ok := typ.(*types.Named)
 	if !ok {
-		return fields
+		return nil
 	}
 
 	structType, ok := named.Underlying().(*types.Struct)
 	if !ok {
-		return fields
+		return nil
 	}
+
+	fields := make([]ModelField, 0, structType.NumFields())
 
 	for i := range structType.NumFields() {
 		field := structType.Field(i)
@@ -360,6 +363,10 @@ func parseInheritedFieldsFromType(typ types.Type, prefix string) []ModelField {
 
 		bunTag := extractStructTag(tag, "bun")
 		if bunTag == "-" {
+			continue
+		}
+
+		if isRelationFieldFromTag(tag) {
 			continue
 		}
 
@@ -404,6 +411,7 @@ func parseInheritedFieldsFromType(typ types.Type, prefix string) []ModelField {
 			ColumnName: finalColumnName,
 			MethodName: methodName,
 			Label:      label,
+			Scanonly:   hasScanonlyTagFromTag(tag),
 		})
 	}
 
@@ -438,78 +446,59 @@ func extractColumnNameFromTag(tag, fieldName string) string {
 		return "-"
 	}
 
-	parts := strings.Split(bunTag, ",")
-	for _, part := range parts {
-		if strings.TrimSpace(part) == "scanonly" {
-			return "-"
-		}
-	}
-
-	if len(parts) > 0 && parts[0] != "" {
-		if strings.Contains(parts[0], "\n") {
-			return lo.SnakeCase(fieldName)
-		}
-
-		return parts[0]
+	if column, _, _ := strings.Cut(bunTag, ","); column != "" {
+		return column
 	}
 
 	return lo.SnakeCase(fieldName)
+}
+
+// isRelationFieldFromTag checks if a bun tag declares a model relationship (rel:has-one, rel:has-many, rel:belongs-to, rel:many-to-many).
+func isRelationFieldFromTag(tag string) bool {
+	bunTag := extractStructTag(tag, "bun")
+	if bunTag == "" {
+		return false
+	}
+
+	parts := strings.SplitSeq(bunTag, ",")
+	for part := range parts {
+		if strings.HasPrefix(strings.TrimSpace(part), "rel:") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// hasScanonlyTagFromTag reports whether a bun tag contains the scanonly flag.
+// Scanonly fields are scan-only result aliases and have no real database column,
+// so they must be excluded from Columns() but still expose a per-field accessor.
+func hasScanonlyTagFromTag(tag string) bool {
+	bunTag := extractStructTag(tag, "bun")
+	if bunTag == "" {
+		return false
+	}
+
+	parts := strings.SplitSeq(bunTag, ",")
+	for part := range parts {
+		if strings.TrimSpace(part) == "scanonly" {
+			return true
+		}
+	}
+
+	return false
 }
 
 func extractLabelFromTag(tag string) string {
 	return extractStructTag(tag, "label")
 }
 
+// extractStructTag returns the value associated with key in tag using Go's
+// standard struct tag parsing (reflect.StructTag.Get), so values containing
+// spaces or escapes are handled correctly. The input may be the raw literal
+// from go/ast (with backticks) or the unquoted form returned by go/types.
 func extractStructTag(tag, key string) string {
-	tag = strings.Trim(tag, "`")
-
-	parts := strings.Fields(tag)
-	prefix := key + `:"`
-
-	for _, part := range parts {
-		if after, ok := strings.CutPrefix(part, prefix); ok {
-			return strings.TrimSpace(strings.TrimSuffix(after, "\""))
-		}
-	}
-
-	return ""
-}
-
-func extractEmbedPrefix(f *ast.Field) string {
-	if f.Tag == nil {
-		return ""
-	}
-
-	bunTag := extractStructTag(f.Tag.Value, "bun")
-	if bunTag == "" {
-		return ""
-	}
-
-	parts := strings.SplitSeq(bunTag, ",")
-	for part := range parts {
-		part = strings.TrimSpace(part)
-		if prefix, ok := strings.CutPrefix(part, "embed:"); ok {
-			return prefix
-		}
-	}
-
-	return ""
-}
-
-func extractLabel(f *ast.Field) string {
-	if f.Tag == nil {
-		return ""
-	}
-
-	return extractLabelFromTag(f.Tag.Value)
-}
-
-func extractColumnName(f *ast.Field, fieldName string) string {
-	if f.Tag == nil {
-		return lo.SnakeCase(fieldName)
-	}
-
-	return extractColumnNameFromTag(f.Tag.Value, fieldName)
+	return reflect.StructTag(strings.Trim(tag, "`")).Get(key)
 }
 
 func parseBunTag(tagValue string) (table, alias string) {
@@ -531,13 +520,18 @@ func parseBunTag(tagValue string) (table, alias string) {
 	return table, alias
 }
 
-func generateSchemaCode(schemas []*ModelSchemaInfo) string {
+// astFileSize is a conservative byte budget passed to token.FileSet.AddFile for
+// the synthetic file used to anchor doc and package positions. The value only
+// needs to exceed the small number of synthetic positions allocated below.
+const astFileSize = 1000
+
+func generateSchemaCode(schemas []*ModelSchemaInfo) (string, error) {
 	if len(schemas) == 0 {
-		return ""
+		return "", nil
 	}
 
 	fset := token.NewFileSet()
-	file := fset.AddFile("", -1, 1000)
+	file := fset.AddFile("", -1, astFileSize)
 	commentPos := file.Pos(1)
 	packagePos := file.Pos(2)
 
@@ -568,10 +562,10 @@ func generateSchemaCode(schemas []*ModelSchemaInfo) string {
 
 	var buf bytes.Buffer
 	if err := format.Node(&buf, fset, astFile); err != nil {
-		panic(fmt.Sprintf("failed to format code: %v", err))
+		return "", fmt.Errorf("format generated AST: %w", err)
 	}
 
-	return buf.String()
+	return buf.String(), nil
 }
 
 func buildImportDecl() *ast.GenDecl {
@@ -890,6 +884,10 @@ func buildAsMethod(schema *ModelSchemaInfo) *ast.FuncDecl {
 func buildColumnsMethod(schema *ModelSchemaInfo) *ast.FuncDecl {
 	var elements []ast.Expr
 	for _, f := range schema.Fields {
+		if f.Scanonly {
+			continue
+		}
+
 		elements = append(elements, &ast.SelectorExpr{
 			X:   ast.NewIdent("s"),
 			Sel: ast.NewIdent(f.GoName),
@@ -899,7 +897,7 @@ func buildColumnsMethod(schema *ModelSchemaInfo) *ast.FuncDecl {
 	return &ast.FuncDecl{
 		Doc: &ast.CommentGroup{
 			List: []*ast.Comment{
-				{Text: "// Columns returns all column names."},
+				{Text: "// Columns returns all real database column names (scanonly fields are excluded)."},
 			},
 		},
 		Recv: &ast.FieldList{

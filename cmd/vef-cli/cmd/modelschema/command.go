@@ -24,10 +24,12 @@ schemas help reduce hardcoded column name strings in ORM queries.
 
 Features:
   - Processes single files or entire directories
-  - Supports extend fields (bun:"extend")
-  - Supports embed fields (bun:",embed:prefix_")
-  - Extracts field labels from struct tags
-  - Generates type-safe column accessors
+  - Generates type-safe column accessors for each model field
+  - Recurses into embedded structs (e.g. orm.FullAuditedModel) and bun:",embed:prefix_" fields
+  - Skips bun:"-" fields and bun rel:* relationship fields (has-one, has-many, belongs-to, many-to-many)
+  - Includes bun:",scanonly" fields as accessors but excludes them from Columns()
+  - Extracts field labels from label:"..." tags into method comments
+  - Reads table/alias from the BaseModel bun tag (table:..., alias:...)
 
 Input/Output modes:
   - File → File: Process single model, generate single schema
