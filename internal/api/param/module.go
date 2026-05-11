@@ -92,6 +92,18 @@ func NewStorageFactoryResolver(service storage.Service) api.FactoryParamResolver
 	return newFactoryValueResolver(service)
 }
 
+func NewClaimStoreFactoryResolver(cs storage.ClaimStore) api.FactoryParamResolver {
+	return newFactoryValueResolver(cs)
+}
+
+func NewDeleteQueueFactoryResolver(dq storage.DeleteQueue) api.FactoryParamResolver {
+	return newFactoryValueResolver(dq)
+}
+
+func NewFilesFactoryResolver(files storage.Files) api.FactoryParamResolver {
+	return newFactoryValueResolver(files)
+}
+
 var Module = fx.Module(
 	"vef:api:param",
 	fx.Provide(
@@ -156,6 +168,18 @@ var Module = fx.Module(
 		),
 		fx.Annotate(
 			NewStorageFactoryResolver,
+			fx.ResultTags(`group:"vef:api:factory_param_resolvers"`),
+		),
+		fx.Annotate(
+			NewClaimStoreFactoryResolver,
+			fx.ResultTags(`group:"vef:api:factory_param_resolvers"`),
+		),
+		fx.Annotate(
+			NewDeleteQueueFactoryResolver,
+			fx.ResultTags(`group:"vef:api:factory_param_resolvers"`),
+		),
+		fx.Annotate(
+			NewFilesFactoryResolver,
 			fx.ResultTags(`group:"vef:api:factory_param_resolvers"`),
 		),
 	),

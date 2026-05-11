@@ -244,19 +244,6 @@ func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) 
 	}, nil
 }
 
-func (s *Service) MoveObject(_ context.Context, opts storage.MoveObjectOptions) (*storage.ObjectInfo, error) {
-	info, err := s.CopyObject(context.Background(), opts.CopyObjectOptions)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := s.DeleteObject(context.Background(), storage.DeleteObjectOptions{Key: opts.SourceKey}); err != nil {
-		return nil, fmt.Errorf("copied successfully but failed to delete source: %w", err)
-	}
-
-	return info, nil
-}
-
 func (s *Service) StatObject(_ context.Context, opts storage.StatObjectOptions) (*storage.ObjectInfo, error) {
 	path := s.resolvePath(opts.Key)
 
@@ -286,19 +273,32 @@ func (s *Service) StatObject(_ context.Context, opts storage.StatObjectOptions) 
 	}, nil
 }
 
-func (s *Service) PromoteObject(ctx context.Context, tempKey string) (*storage.ObjectInfo, error) {
-	if !strings.HasPrefix(tempKey, storage.TempPrefix) {
-		return nil, nil
-	}
+// Capabilities reports the filesystem backend's supported features. The
+// filesystem backend serves files via the framework's proxy middleware and
+// has no native concept of presigned URLs or multipart uploads, so the HTTP
+// layer should fall back to the server-proxied "proxy" mode.
+func (*Service) Capabilities() storage.ServiceCapabilities {
+	return storage.ServiceCapabilities{}
+}
 
-	permanentKey := strings.TrimPrefix(tempKey, storage.TempPrefix)
+func (*Service) PresignPutObject(_ context.Context, _ storage.PresignPutOptions) (*storage.PresignedURL, error) {
+	return nil, storage.ErrCapabilityNotSupported
+}
 
-	return s.MoveObject(ctx, storage.MoveObjectOptions{
-		CopyObjectOptions: storage.CopyObjectOptions{
-			SourceKey: tempKey,
-			DestKey:   permanentKey,
-		},
-	})
+func (*Service) InitMultipart(_ context.Context, _ storage.InitMultipartOptions) (*storage.MultipartSession, error) {
+	return nil, storage.ErrCapabilityNotSupported
+}
+
+func (*Service) PresignPart(_ context.Context, _ storage.PresignPartOptions) (*storage.PresignedURL, error) {
+	return nil, storage.ErrCapabilityNotSupported
+}
+
+func (*Service) CompleteMultipart(_ context.Context, _ storage.CompleteMultipartOptions) (*storage.ObjectInfo, error) {
+	return nil, storage.ErrCapabilityNotSupported
+}
+
+func (*Service) AbortMultipart(_ context.Context, _ storage.AbortMultipartOptions) error {
+	return storage.ErrCapabilityNotSupported
 }
 
 func (s *Service) cleanupEmptyDirs(dir string) {

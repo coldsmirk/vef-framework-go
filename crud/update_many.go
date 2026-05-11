@@ -9,7 +9,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/copier"
-	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -60,8 +59,7 @@ func (u *updateManyOperation[TModel, TParams]) DisableDataPerm() UpdateMany[TMod
 	return u
 }
 
-func (u *updateManyOperation[TModel, TParams]) updateMany(db orm.DB, sc storage.Service, publisher event.Publisher) (func(ctx fiber.Ctx, db orm.DB, params UpdateManyParams[TParams]) error, error) {
-	promoter := storage.NewPromoter[TModel](sc, publisher)
+func (u *updateManyOperation[TModel, TParams]) updateMany(db orm.DB, files storage.Files) (func(ctx fiber.Ctx, db orm.DB, params UpdateManyParams[TParams]) error, error) {
 	schema := db.TableOf((*TModel)(nil))
 	pks := db.ModelPKFields((*TModel)(nil))
 
@@ -107,8 +105,10 @@ func (u *updateManyOperation[TModel, TParams]) updateMany(db orm.DB, sc storage.
 		}
 
 		return db.RunInTX(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
-			n := len(oldModels)
-			rollback := func() error { return batchRollback(txCtx, promoter, oldModels, models, n) }
+			// Snapshot DB-resident state per row before any merge so each
+			// row's diff sees its real previous file references.
+			snapshots := make([]TModel, len(oldModels))
+			copy(snapshots, oldModels)
 
 			query := tx.NewUpdate().Model(&oldModels)
 
@@ -125,20 +125,18 @@ func (u *updateManyOperation[TModel, TParams]) updateMany(db orm.DB, sc storage.
 			}
 
 			for i := range oldModels {
-				if err := promoter.Promote(txCtx, &oldModels[i], &models[i]); err != nil {
-					err = fmt.Errorf("promote files for model %d failed: %w", i, err)
-
-					return withCleanup(err, func() error { return batchRollback(txCtx, promoter, oldModels, models, i) })
+				if err := files.OnUpdate(txCtx, tx, &snapshots[i], &oldModels[i]); err != nil {
+					return err
 				}
 			}
 
 			if _, err := query.Bulk().Exec(txCtx); err != nil {
-				return withCleanup(err, rollback)
+				return err
 			}
 
 			if u.postUpdateMany != nil {
 				if err := u.postUpdateMany(oldModels, models, params.List, ctx, tx); err != nil {
-					return withCleanup(err, rollback)
+					return err
 				}
 			}
 

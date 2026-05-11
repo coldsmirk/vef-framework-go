@@ -2,13 +2,11 @@ package crud
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/copier"
-	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/storage"
@@ -49,9 +47,7 @@ func (c *createManyOperation[TModel, TParams]) WithPostCreateMany(processor Post
 	return c
 }
 
-func (c *createManyOperation[TModel, TParams]) createMany(sc storage.Service, publisher event.Publisher) (func(ctx fiber.Ctx, db orm.DB, params CreateManyParams[TParams]) error, error) {
-	promoter := storage.NewPromoter[TModel](sc, publisher)
-
+func (c *createManyOperation[TModel, TParams]) createMany(files storage.Files) (func(ctx fiber.Ctx, db orm.DB, params CreateManyParams[TParams]) error, error) {
 	return func(ctx fiber.Ctx, db orm.DB, params CreateManyParams[TParams]) error {
 		if len(params.List) == 0 {
 			return result.Ok([]map[string]any{}).Response(ctx)
@@ -65,8 +61,6 @@ func (c *createManyOperation[TModel, TParams]) createMany(sc storage.Service, pu
 		}
 
 		return db.RunInTX(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
-			cleanup := func() error { return batchCleanup(txCtx, promoter, models) }
-
 			query := tx.NewInsert().Model(&models)
 			if c.preCreateMany != nil {
 				if err := c.preCreateMany(models, params.List, query, ctx, tx); err != nil {
@@ -75,20 +69,18 @@ func (c *createManyOperation[TModel, TParams]) createMany(sc storage.Service, pu
 			}
 
 			for i := range models {
-				if err := promoter.Promote(txCtx, &models[i], nil); err != nil {
-					err = fmt.Errorf("promote files for model %d failed: %w", i, err)
-
-					return withCleanup(err, func() error { return batchCleanup(txCtx, promoter, models[:i]) })
+				if err := files.OnCreate(txCtx, tx, &models[i]); err != nil {
+					return err
 				}
 			}
 
 			if _, err := query.Exec(txCtx); err != nil {
-				return withCleanup(err, cleanup)
+				return err
 			}
 
 			if c.postCreateMany != nil {
 				if err := c.postCreateMany(models, params.List, ctx, tx); err != nil {
-					return withCleanup(err, cleanup)
+					return err
 				}
 			}
 
@@ -96,7 +88,7 @@ func (c *createManyOperation[TModel, TParams]) createMany(sc storage.Service, pu
 			for i := range models {
 				pk, err := db.ModelPKs(&models[i])
 				if err != nil {
-					return withCleanup(err, cleanup)
+					return err
 				}
 
 				pks[i] = pk

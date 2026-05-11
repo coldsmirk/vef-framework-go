@@ -7,7 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
+	"strconv"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -17,8 +18,17 @@ import (
 	"github.com/coldsmirk/vef-framework-go/storage"
 )
 
+// S3 protocol constants for multipart uploads.
+const (
+	// minPartSize is the smallest non-final part size accepted by S3 / MinIO.
+	minPartSize int64 = 5 * 1024 * 1024
+	// maxPartCount is the largest number of parts in a single multipart upload.
+	maxPartCount = 10000
+)
+
 type Service struct {
 	client *minio.Client
+	core   *minio.Core
 	bucket string
 }
 
@@ -34,8 +44,20 @@ func New(cfg config.MinIOConfig, appCfg *config.AppConfig) (storage.Service, err
 
 	return &Service{
 		client: client,
+		core:   &minio.Core{Client: client},
 		bucket: lo.CoalesceOrEmpty(cfg.Bucket, appCfg.Name, "vef-app"),
 	}, nil
+}
+
+func (*Service) Capabilities() storage.ServiceCapabilities {
+	return storage.ServiceCapabilities{
+		Multipart:     true,
+		PresignedPut:  true,
+		PresignedGet:  true,
+		PresignedPart: true,
+		MinPartSize:   minPartSize,
+		MaxPartCount:  maxPartCount,
+	}
 }
 
 func (s *Service) Init(ctx context.Context) error {
@@ -217,20 +239,6 @@ func (s *Service) CopyObject(ctx context.Context, opts storage.CopyObjectOptions
 	}, nil
 }
 
-func (s *Service) MoveObject(ctx context.Context, opts storage.MoveObjectOptions) (info *storage.ObjectInfo, err error) {
-	if info, err = s.CopyObject(ctx, opts.CopyObjectOptions); err != nil {
-		return info, err
-	}
-
-	if err = s.DeleteObject(ctx, storage.DeleteObjectOptions{
-		Key: opts.SourceKey,
-	}); err != nil {
-		return nil, fmt.Errorf("copied successfully but failed to delete source: %w", err)
-	}
-
-	return info, err
-}
-
 func (s *Service) StatObject(ctx context.Context, opts storage.StatObjectOptions) (*storage.ObjectInfo, error) {
 	info, err := s.client.StatObject(ctx, s.bucket, opts.Key, minio.StatObjectOptions{})
 	if err != nil {
@@ -248,19 +256,91 @@ func (s *Service) StatObject(ctx context.Context, opts storage.StatObjectOptions
 	}, nil
 }
 
-func (s *Service) PromoteObject(ctx context.Context, tempKey string) (*storage.ObjectInfo, error) {
-	if !strings.HasPrefix(tempKey, storage.TempPrefix) {
-		return nil, nil
+func (s *Service) PresignPutObject(ctx context.Context, opts storage.PresignPutOptions) (*storage.PresignedURL, error) {
+	u, err := s.client.PresignedPutObject(ctx, s.bucket, opts.Key, opts.Expires)
+	if err != nil {
+		return nil, s.translateError(err)
 	}
 
-	permanentKey := strings.TrimPrefix(tempKey, storage.TempPrefix)
+	headers := map[string]string{}
+	if opts.ContentType != "" {
+		headers["Content-Type"] = opts.ContentType
+	}
 
-	return s.MoveObject(ctx, storage.MoveObjectOptions{
-		CopyObjectOptions: storage.CopyObjectOptions{
-			SourceKey: tempKey,
-			DestKey:   permanentKey,
-		},
+	return &storage.PresignedURL{
+		URL:       u.String(),
+		Method:    http.MethodPut,
+		Headers:   headers,
+		ExpiresAt: time.Now().Add(opts.Expires),
+	}, nil
+}
+
+func (s *Service) InitMultipart(ctx context.Context, opts storage.InitMultipartOptions) (*storage.MultipartSession, error) {
+	uploadID, err := s.core.NewMultipartUpload(ctx, s.bucket, opts.Key, minio.PutObjectOptions{
+		ContentType:  opts.ContentType,
+		UserMetadata: opts.Metadata,
 	})
+	if err != nil {
+		return nil, s.translateError(err)
+	}
+
+	return &storage.MultipartSession{
+		Key:      opts.Key,
+		UploadID: uploadID,
+	}, nil
+}
+
+func (s *Service) PresignPart(ctx context.Context, opts storage.PresignPartOptions) (*storage.PresignedURL, error) {
+	if opts.PartNumber < 1 {
+		return nil, fmt.Errorf("storage(minio): partNumber must be >= 1, got %d", opts.PartNumber)
+	}
+
+	params := url.Values{
+		"partNumber": []string{strconv.Itoa(opts.PartNumber)},
+		"uploadId":   []string{opts.UploadID},
+	}
+
+	u, err := s.client.Presign(ctx, http.MethodPut, s.bucket, opts.Key, opts.Expires, params)
+	if err != nil {
+		return nil, s.translateError(err)
+	}
+
+	return &storage.PresignedURL{
+		URL:       u.String(),
+		Method:    http.MethodPut,
+		ExpiresAt: time.Now().Add(opts.Expires),
+	}, nil
+}
+
+func (s *Service) CompleteMultipart(ctx context.Context, opts storage.CompleteMultipartOptions) (*storage.ObjectInfo, error) {
+	parts := make([]minio.CompletePart, len(opts.Parts))
+	for i, p := range opts.Parts {
+		parts[i] = minio.CompletePart{
+			PartNumber: p.PartNumber,
+			ETag:       p.ETag,
+		}
+	}
+
+	info, err := s.core.CompleteMultipartUpload(ctx, s.bucket, opts.Key, opts.UploadID, parts, minio.PutObjectOptions{})
+	if err != nil {
+		return nil, s.translateError(err)
+	}
+
+	return &storage.ObjectInfo{
+		Bucket:       info.Bucket,
+		Key:          info.Key,
+		ETag:         info.ETag,
+		Size:         info.Size,
+		LastModified: info.LastModified,
+	}, nil
+}
+
+func (s *Service) AbortMultipart(ctx context.Context, opts storage.AbortMultipartOptions) error {
+	if err := s.core.AbortMultipartUpload(ctx, s.bucket, opts.Key, opts.UploadID); err != nil {
+		return s.translateError(err)
+	}
+
+	return nil
 }
 
 func (*Service) translateError(err error) error {

@@ -1,8 +1,6 @@
 package crud
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -15,7 +13,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
-	"github.com/coldsmirk/vef-framework-go/storage"
 )
 
 // columnRef pairs a logical name with a column identifier for validation.
@@ -172,50 +169,3 @@ func buildMetaJSONExpr(eb orm.ExprBuilder, metaColumns []orm.ColumnInfo) schema.
 	return eb.JSONObject(jsonArgs...)
 }
 
-// withCleanup attempts a cleanup when err is non-nil.
-// Returns the original error, optionally wrapped with the cleanup error.
-func withCleanup(err error, cleanup func() error) error {
-	if err == nil {
-		return nil
-	}
-
-	if cleanupErr := cleanup(); cleanupErr != nil {
-		return fmt.Errorf("%w; cleanup also failed: %w", err, cleanupErr)
-	}
-
-	return err
-}
-
-// batchCleanup cleans up files in batch, collecting all errors.
-func batchCleanup[TModel any](
-	ctx context.Context,
-	promoter storage.Promoter[TModel],
-	models []TModel,
-) error {
-	var errs []error
-	for i := range models {
-		if err := promoter.Promote(ctx, nil, &models[i]); err != nil {
-			errs = append(errs, fmt.Errorf("model %d: %w", i, err))
-		}
-	}
-
-	return errors.Join(errs...)
-}
-
-// batchRollback rolls back files in batch, collecting all errors.
-// Count specifies how many models to rollback (typically the index where the error occurred).
-func batchRollback[TModel any](
-	ctx context.Context,
-	promoter storage.Promoter[TModel],
-	oldModels, newModels []TModel,
-	count int,
-) error {
-	var errs []error
-	for i := range count {
-		if err := promoter.Promote(ctx, &newModels[i], &oldModels[i]); err != nil {
-			errs = append(errs, fmt.Errorf("model %d: %w", i, err))
-		}
-	}
-
-	return errors.Join(errs...)
-}

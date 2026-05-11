@@ -332,42 +332,6 @@ func (suite *MinIOServiceTestSuite) TestCopyObject() {
 	})
 }
 
-func (suite *MinIOServiceTestSuite) TestMoveObject() {
-	suite.Run("Success", func() {
-		suite.uploadTestObject()
-
-		destKey := "moved-file.txt"
-		info, err := suite.service.MoveObject(suite.ctx, storage.MoveObjectOptions{
-			CopyObjectOptions: storage.CopyObjectOptions{
-				SourceKey: suite.testObjectKey,
-				DestKey:   destKey,
-			},
-		})
-
-		suite.NoError(err, "MoveObject should succeed")
-		suite.NotNil(info, "ObjectInfo should not be nil")
-		suite.Equal(suite.testBucketName, info.Bucket, "Bucket should match")
-		suite.Equal(destKey, info.Key, "Destination key should match")
-
-		reader, err := suite.service.GetObject(suite.ctx, storage.GetObjectOptions{
-			Key: destKey,
-		})
-		suite.Require().NoError(err, "Should be able to get moved object")
-
-		defer reader.Close()
-
-		data, err := io.ReadAll(reader)
-		suite.Require().NoError(err, "Reading moved data should succeed")
-		suite.Equal(suite.testObjectData, data, "Moved data should match original")
-
-		_, err = suite.service.GetObject(suite.ctx, storage.GetObjectOptions{
-			Key: suite.testObjectKey,
-		})
-		suite.Error(err, "Source object should be deleted after move")
-		suite.Equal(storage.ErrObjectNotFound, err, "Error should be ErrObjectNotFound")
-	})
-}
-
 func (suite *MinIOServiceTestSuite) TestStatObject() {
 	suite.Run("Success", func() {
 		suite.uploadTestObject()
@@ -393,53 +357,6 @@ func (suite *MinIOServiceTestSuite) TestStatObject() {
 
 		suite.Error(err, "StatObject should return error for non-existent key")
 		suite.Equal(storage.ErrObjectNotFound, err, "Error should be ErrObjectNotFound")
-	})
-}
-
-func (suite *MinIOServiceTestSuite) TestPromoteObject() {
-	suite.Run("Success", func() {
-		tempKey := storage.TempPrefix + "2025/01/15/test-promote.txt"
-		content := []byte("Content to be promoted")
-		suite.uploadObject(tempKey, content)
-
-		info, err := suite.service.PromoteObject(suite.ctx, tempKey)
-		suite.Require().NoError(err, "PromoteObject should succeed")
-		suite.NotNil(info, "ObjectInfo should not be nil")
-
-		expectedKey := "2025/01/15/test-promote.txt"
-		suite.Equal(expectedKey, info.Key, "Key should not have temp prefix")
-		suite.Equal(suite.testBucketName, info.Bucket, "Bucket should match")
-
-		_, err = suite.service.StatObject(suite.ctx, storage.StatObjectOptions{Key: tempKey})
-		suite.Error(err, "Temp file should be deleted after promotion")
-		suite.Equal(storage.ErrObjectNotFound, err, "Error should be ErrObjectNotFound")
-
-		permanentInfo, err := suite.service.StatObject(suite.ctx, storage.StatObjectOptions{Key: expectedKey})
-		suite.NoError(err, "Should be able to stat promoted object")
-		suite.Equal(expectedKey, permanentInfo.Key, "Promoted key should match")
-		suite.Equal(int64(len(content)), permanentInfo.Size, "Promoted size should match")
-	})
-
-	suite.Run("NonTempKey", func() {
-		normalKey := "normal/file.txt"
-		content := []byte("Normal file content")
-		suite.uploadObject(normalKey, content)
-
-		info, err := suite.service.PromoteObject(suite.ctx, normalKey)
-		suite.NoError(err, "PromoteObject should not error for non-temp key")
-		suite.Nil(info, "PromoteObject should return nil for non-temp keys")
-
-		originalInfo, err := suite.service.StatObject(suite.ctx, storage.StatObjectOptions{Key: normalKey})
-		suite.NoError(err, "Original file should still exist")
-		suite.Equal(normalKey, originalInfo.Key, "Original key should be unchanged")
-	})
-
-	suite.Run("NotFound", func() {
-		tempKey := storage.TempPrefix + "non-existent.txt"
-
-		info, err := suite.service.PromoteObject(suite.ctx, tempKey)
-		suite.Error(err, "PromoteObject should return error for non-existent temp file")
-		suite.Nil(info, "ObjectInfo should be nil for non-existent file")
 	})
 }
 

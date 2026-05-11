@@ -2,13 +2,11 @@ package crud
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/copier"
-	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/storage"
@@ -49,9 +47,7 @@ func (c *createOperation[TModel, TParams]) WithPostCreate(processor PostCreatePr
 	return c
 }
 
-func (c *createOperation[TModel, TParams]) create(sc storage.Service, publisher event.Publisher) (func(ctx fiber.Ctx, db orm.DB, params TParams) error, error) {
-	promoter := storage.NewPromoter[TModel](sc, publisher)
-
+func (c *createOperation[TModel, TParams]) create(files storage.Files) (func(ctx fiber.Ctx, db orm.DB, params TParams) error, error) {
 	return func(ctx fiber.Ctx, db orm.DB, params TParams) error {
 		var model TModel
 		if err := copier.Copy(&params, &model); err != nil {
@@ -59,8 +55,6 @@ func (c *createOperation[TModel, TParams]) create(sc storage.Service, publisher 
 		}
 
 		return db.RunInTX(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
-			cleanup := func() error { return promoter.Promote(txCtx, nil, &model) }
-
 			query := tx.NewInsert().Model(&model)
 			if c.preCreate != nil {
 				if err := c.preCreate(&model, &params, query, ctx, tx); err != nil {
@@ -68,23 +62,23 @@ func (c *createOperation[TModel, TParams]) create(sc storage.Service, publisher 
 				}
 			}
 
-			if err := promoter.Promote(txCtx, &model, nil); err != nil {
-				return fmt.Errorf("promote files failed: %w", err)
+			if err := files.OnCreate(txCtx, tx, &model); err != nil {
+				return err
 			}
 
 			if _, err := query.Exec(txCtx); err != nil {
-				return withCleanup(err, cleanup)
+				return err
 			}
 
 			if c.postCreate != nil {
 				if err := c.postCreate(&model, &params, ctx, tx); err != nil {
-					return withCleanup(err, cleanup)
+					return err
 				}
 			}
 
 			pks, err := db.ModelPKs(&model)
 			if err != nil {
-				return withCleanup(err, cleanup)
+				return err
 			}
 
 			return result.Ok(pks).Response(ctx)

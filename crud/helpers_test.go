@@ -48,34 +48,6 @@ func TestApplyDataPermissionError(t *testing.T) {
 	require.NoError(t, err, "Should execute test request without error")
 }
 
-// MockPromoter implements storage.Promoter for testing.
-type MockPromoter[T any] struct {
-	err error
-}
-
-func (m *MockPromoter[T]) Promote(_ context.Context, _, _ *T) error {
-	return m.err
-}
-
-// TestBatchCleanupError covers helpers.go:204-206 - promote error in batchCleanup.
-func TestBatchCleanupError(t *testing.T) {
-	promoter := &MockPromoter[struct{}]{err: errors.New("cleanup error")}
-	models := []struct{}{{}, {}}
-	err := batchCleanup(context.Background(), promoter, models)
-	assert.Error(t, err, "Should return error from promoter")
-	assert.Contains(t, err.Error(), "cleanup error", "Error message should mention cleanup error")
-}
-
-// TestBatchRollbackError covers helpers.go:222-224 - promote error in batchRollback.
-func TestBatchRollbackError(t *testing.T) {
-	promoter := &MockPromoter[struct{}]{err: errors.New("rollback error")}
-	oldModels := []struct{}{{}, {}}
-	newModels := []struct{}{{}, {}}
-	err := batchRollback(context.Background(), promoter, oldModels, newModels, 2)
-	assert.Error(t, err, "Should return error from promoter")
-	assert.Contains(t, err.Error(), "rollback error", "Error message should mention rollback error")
-}
-
 // TestMergeOptionColumnMappingDefaults covers helpers.go - merge with nil default mapping.
 func TestMergeOptionColumnMappingDefaults(t *testing.T) {
 	mapping := &DataOptionColumnMapping{}
@@ -347,66 +319,3 @@ func TestValidateMetaColumnsEmpty(t *testing.T) {
 	assert.NoError(t, err, "Should succeed with nil meta columns")
 }
 
-// --- withCleanup ---
-
-// TestWithCleanupNilError covers withCleanup with nil error (no-op).
-func TestWithCleanupNilError(t *testing.T) {
-	called := false
-	err := withCleanup(nil, func() error {
-		called = true
-
-		return nil
-	})
-	assert.NoError(t, err, "Should return nil when original error is nil")
-	assert.False(t, called, "Cleanup should not be called when error is nil")
-}
-
-// TestWithCleanupSuccessfulCleanup covers withCleanup when cleanup succeeds.
-func TestWithCleanupSuccessfulCleanup(t *testing.T) {
-	originalErr := errors.New("operation failed")
-	err := withCleanup(originalErr, func() error {
-		return nil
-	})
-	assert.Equal(t, originalErr, err, "Should return the original error when cleanup succeeds")
-}
-
-// TestWithCleanupFailedCleanup covers withCleanup when cleanup also fails.
-func TestWithCleanupFailedCleanup(t *testing.T) {
-	originalErr := errors.New("operation failed")
-	cleanupErr := errors.New("cleanup failed")
-	err := withCleanup(originalErr, func() error {
-		return cleanupErr
-	})
-	assert.Error(t, err, "Should return error when both operation and cleanup fail")
-	assert.ErrorIs(t, err, originalErr, "Should wrap the original error")
-	assert.ErrorIs(t, err, cleanupErr, "Should wrap the cleanup error")
-	assert.Contains(t, err.Error(), "cleanup also failed", "Error message should mention cleanup failure")
-}
-
-// --- batchCleanup ---
-
-// TestBatchCleanupSuccess covers helpers.go:197-210 - all promotions succeed.
-func TestBatchCleanupSuccess(t *testing.T) {
-	promoter := &MockPromoter[struct{}]{err: nil}
-	models := []struct{}{{}, {}}
-	err := batchCleanup(context.Background(), promoter, models)
-	assert.NoError(t, err, "Should succeed when all promotions pass")
-}
-
-// --- batchRollback ---
-
-// TestBatchRollbackSuccess covers helpers.go:214-228 - all rollbacks succeed.
-func TestBatchRollbackSuccess(t *testing.T) {
-	promoter := &MockPromoter[struct{}]{err: nil}
-	oldModels := []struct{}{{}, {}}
-	newModels := []struct{}{{}, {}}
-	err := batchRollback(context.Background(), promoter, oldModels, newModels, 2)
-	assert.NoError(t, err, "Should succeed when all rollbacks pass")
-}
-
-// TestBatchRollbackZeroCount covers helpers.go:221 - count=0, no rollback needed.
-func TestBatchRollbackZeroCount(t *testing.T) {
-	promoter := &MockPromoter[struct{}]{err: errors.New("should not be called")}
-	err := batchRollback(context.Background(), promoter, nil, nil, 0)
-	assert.NoError(t, err, "Should succeed with zero count (no rollback needed)")
-}

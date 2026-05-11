@@ -15,4 +15,12 @@ var (
 	ErrAccessDenied = errors.New("access denied")
 	// ErrProviderNotConfigured indicates no storage provider is configured.
 	ErrProviderNotConfigured = errors.New("storage provider not configured")
+	// ErrCapabilityNotSupported indicates the backend does not support the
+	// requested optional capability (e.g. multipart, presigned PUT).
+	// Callers should consult Service.Capabilities() and pick another mode.
+	ErrCapabilityNotSupported = errors.New("capability not supported by backend")
+	// ErrClaimNotFound indicates the requested upload claim does not exist
+	// (already consumed by a business transaction, expired and swept,
+	// or never existed).
+	ErrClaimNotFound = errors.New("upload claim not found")
 )

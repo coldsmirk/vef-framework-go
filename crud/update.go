@@ -9,7 +9,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/copier"
-	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -60,8 +59,7 @@ func (u *updateOperation[TModel, TParams]) DisableDataPerm() Update[TModel, TPar
 	return u
 }
 
-func (u *updateOperation[TModel, TParams]) update(db orm.DB, sc storage.Service, publisher event.Publisher) (func(ctx fiber.Ctx, db orm.DB, params TParams) error, error) {
-	promoter := storage.NewPromoter[TModel](sc, publisher)
+func (u *updateOperation[TModel, TParams]) update(db orm.DB, files storage.Files) (func(ctx fiber.Ctx, db orm.DB, params TParams) error, error) {
 	schema := db.TableOf((*TModel)(nil))
 	pks := db.ModelPKFields((*TModel)(nil))
 
@@ -103,7 +101,9 @@ func (u *updateOperation[TModel, TParams]) update(db orm.DB, sc storage.Service,
 		}
 
 		return db.RunInTX(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
-			rollback := func() error { return promoter.Promote(txCtx, &model, &oldModel) }
+			// Snapshot the DB-resident state before any mutation so the
+			// diff can see which file references are truly being replaced.
+			snapshot := oldModel
 
 			query := tx.NewUpdate().Model(&oldModel)
 			if u.preUpdate != nil {
@@ -116,17 +116,17 @@ func (u *updateOperation[TModel, TParams]) update(db orm.DB, sc storage.Service,
 				return err
 			}
 
-			if err := promoter.Promote(txCtx, &oldModel, &model); err != nil {
-				return fmt.Errorf("promote files failed: %w", err)
+			if err := files.OnUpdate(txCtx, tx, &snapshot, &oldModel); err != nil {
+				return err
 			}
 
 			if _, err := query.WherePK().Exec(txCtx); err != nil {
-				return withCleanup(err, rollback)
+				return err
 			}
 
 			if u.postUpdate != nil {
 				if err := u.postUpdate(&oldModel, &model, &params, ctx, tx); err != nil {
-					return withCleanup(err, rollback)
+					return err
 				}
 			}
 

@@ -20,6 +20,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
+	istorage "github.com/coldsmirk/vef-framework-go/internal/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
@@ -89,8 +90,9 @@ func (s *StorageResourceTestSuite) setupTestApp() {
 				Kind: "sqlite",
 			},
 			&config.StorageConfig{
-				Provider: "minio",
-				MinIO:    minioConfig,
+				Provider:    "minio",
+				AutoMigrate: true,
+				MinIO:       minioConfig,
 			},
 			&security.JWTConfig{
 				Secret:   security.DefaultJWTSecret,
@@ -563,115 +565,6 @@ func (s *StorageResourceTestSuite) TestUploadWithContentType() {
 	s.Equal("application/json", info.ContentType, "Content type should match")
 }
 
-// TestDeleteTemp covers deletion, non-temp key rejection, idempotency, and missing key validation.
-func (s *StorageResourceTestSuite) TestDeleteTemp() {
-	s.Run("Success", func() {
-		uploadData := []byte("Temporary file to delete")
-		params := map[string]string{
-			"resource": "sys/storage",
-			"action":   "upload",
-			"version":  "v1",
-		}
-
-		uploadResp := s.makeMultipartRequest(params, "file", "temp.txt", uploadData)
-		s.Equal(200, uploadResp.StatusCode, "Upload should return 200 OK")
-
-		uploadBody := s.ReadResult(uploadResp)
-		s.True(uploadBody.IsOk(), "Upload should succeed")
-
-		uploadResult := s.ReadDataAsMap(uploadBody.Data)
-		tempKey := uploadResult["key"].(string)
-		s.True(strings.HasPrefix(tempKey, "temp/"), "Uploaded key should have temp/ prefix")
-		s.T().Logf("Uploaded temp file: %s", tempKey)
-
-		_, err := s.service.StatObject(s.ctx, storage.StatObjectOptions{
-			Key: tempKey,
-		})
-		s.Require().NoError(err, "Uploaded file should exist")
-
-		deleteResp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/storage",
-				Action:   "delete_temp",
-				Version:  "v1",
-			},
-			Params: map[string]any{
-				"key": tempKey,
-			},
-		}, s.token)
-
-		s.Equal(200, deleteResp.StatusCode, "Should return 200 OK")
-
-		deleteBody := s.ReadResult(deleteResp)
-		s.True(deleteBody.IsOk(), "Delete temp should succeed")
-		s.Equal(i18n.T(result.OkMessage), deleteBody.Message, "Should return success message")
-		s.T().Logf("Deleted temp file: %s", tempKey)
-
-		_, err = s.service.StatObject(s.ctx, storage.StatObjectOptions{
-			Key: tempKey,
-		})
-		s.Error(err, "File should not exist after deletion")
-	})
-
-	s.Run("NonTempKeyRejected", func() {
-		nonTempKey := "permanent/file.txt"
-		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/storage",
-				Action:   "delete_temp",
-				Version:  "v1",
-			},
-			Params: map[string]any{
-				"key": nonTempKey,
-			},
-		}, s.token)
-
-		s.Equal(200, resp.StatusCode, "Should return 200 OK")
-
-		body := s.ReadResult(resp)
-		s.False(body.IsOk(), "Delete temp should fail for non-temp key")
-		s.Equal(body.Message, i18n.T("invalid_temp_key"), "Error message should indicate temp file restriction")
-		s.T().Logf("Rejected non-temp key: %s (message: %s)", nonTempKey, body.Message)
-	})
-
-	s.Run("NonExistentFile", func() {
-		nonExistentKey := "temp/non-existent-file.txt"
-		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/storage",
-				Action:   "delete_temp",
-				Version:  "v1",
-			},
-			Params: map[string]any{
-				"key": nonExistentKey,
-			},
-		}, s.token)
-
-		s.Equal(200, resp.StatusCode, "Should return 200 OK")
-
-		body := s.ReadResult(resp)
-		s.True(body.IsOk(), "Delete temp should succeed even for non-existent file")
-		s.T().Logf("Idempotent deletion for non-existent key: %s", nonExistentKey)
-	})
-
-	s.Run("MissingKey", func() {
-		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/storage",
-				Action:   "delete_temp",
-				Version:  "v1",
-			},
-			Params: map[string]any{},
-		}, s.token)
-
-		s.Equal(400, resp.StatusCode, "Should return 400 Bad Request")
-
-		body := s.ReadResult(resp)
-		s.False(body.IsOk(), "Delete temp should fail without key")
-		s.T().Logf("Rejected request without key (message: %s)", body.Message)
-	})
-}
-
 func (s *StorageResourceTestSuite) TestConcurrentUploads() {
 	numUploads := 5
 	done := make(chan bool, numUploads)
@@ -706,6 +599,238 @@ func (s *StorageResourceTestSuite) TestConcurrentUploads() {
 			return
 		}
 	}
+}
+
+// ── New upload-claim API tests ──────────────────────────────────────────
+
+// initUpload is a convenience helper for tests that need to drive the new
+// init_upload action and assert against the returned shape.
+func (s *StorageResourceTestSuite) initUpload(params istorage.InitUploadParams) (istorage.InitUploadResult, *http.Response) {
+	resp := s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{
+			Resource: "sys/storage",
+			Action:   "init_upload",
+			Version:  "v1",
+		},
+		Params: map[string]any{
+			"filename":    params.Filename,
+			"size":        params.Size,
+			"contentType": params.ContentType,
+			"public":      params.Public,
+			"metadata":    params.Metadata,
+		},
+	}, s.token)
+
+	body := s.ReadResult(resp)
+	if !body.IsOk() {
+		return istorage.InitUploadResult{}, resp
+	}
+
+	m := s.ReadDataAsMap(body.Data)
+	out := istorage.InitUploadResult{
+		Mode:      asString(m["mode"]),
+		Key:       asString(m["key"]),
+		ClaimID:   asString(m["claimId"]),
+		UploadURL: asString(m["uploadUrl"]),
+		UploadID:  asString(m["uploadId"]),
+		PartSize:  asInt64(m["partSize"]),
+		PartCount: asInt(m["partCount"]),
+	}
+
+	if h, ok := m["requiredHeaders"].(map[string]any); ok {
+		out.RequiredHeaders = make(map[string]string, len(h))
+		for k, v := range h {
+			out.RequiredHeaders[k] = asString(v)
+		}
+	}
+
+	return out, resp
+}
+
+func asString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+
+	return ""
+}
+
+func asInt64(v any) int64 {
+	switch x := v.(type) {
+	case float64:
+		return int64(x)
+	case int64:
+		return x
+	case int:
+		return int64(x)
+	}
+
+	return 0
+}
+
+func asInt(v any) int {
+	return int(asInt64(v))
+}
+
+func (s *StorageResourceTestSuite) TestInitUploadDirectMode() {
+	out, _ := s.initUpload(istorage.InitUploadParams{
+		Filename:    "small.txt",
+		Size:        1024,
+		ContentType: "text/plain",
+	})
+
+	s.Equal("direct", out.Mode, "small files should pick the direct protocol")
+	s.True(strings.HasPrefix(out.Key, "priv/"), "default visibility is private")
+	s.True(strings.HasSuffix(out.Key, ".txt"), "extension preserved")
+	s.NotEmpty(out.ClaimID)
+	s.NotEmpty(out.UploadURL, "direct mode must return a presigned PUT URL")
+	s.Equal("", out.UploadID, "direct mode does not open a multipart session")
+}
+
+func (s *StorageResourceTestSuite) TestInitUploadPublicPrefix() {
+	out, _ := s.initUpload(istorage.InitUploadParams{
+		Filename: "hero.png",
+		Size:     1024,
+		Public:   true,
+	})
+
+	s.True(strings.HasPrefix(out.Key, "pub/"), "public flag should produce pub/ prefix")
+}
+
+func (s *StorageResourceTestSuite) TestInitUploadMultipartMode() {
+	// 10 MiB > default 5 MiB threshold, MinIO has Multipart+PresignedPart caps.
+	out, _ := s.initUpload(istorage.InitUploadParams{
+		Filename:    "video.mp4",
+		Size:        10 * 1024 * 1024,
+		ContentType: "video/mp4",
+	})
+
+	s.Equal("multipart", out.Mode, "size above threshold should pick multipart")
+	s.NotEmpty(out.UploadID, "multipart mode opens a backend session")
+	s.NotEmpty(out.ClaimID)
+	s.GreaterOrEqual(out.PartSize, int64(5*1024*1024), "part size respects S3 minimum")
+	s.GreaterOrEqual(out.PartCount, 1, "must compute at least one part")
+}
+
+func (s *StorageResourceTestSuite) TestSignPart() {
+	out, _ := s.initUpload(istorage.InitUploadParams{
+		Filename: "video.mp4",
+		Size:     10 * 1024 * 1024,
+	})
+	s.Require().Equal("multipart", out.Mode)
+
+	resp := s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{
+			Resource: "sys/storage",
+			Action:   "sign_part",
+			Version:  "v1",
+		},
+		Params: map[string]any{
+			"claimId":    out.ClaimID,
+			"partNumber": 1,
+		},
+	}, s.token)
+
+	body := s.ReadResult(resp)
+	s.Require().True(body.IsOk(), "sign_part should succeed: %s", body.Message)
+
+	m := s.ReadDataAsMap(body.Data)
+	s.NotEmpty(m["url"], "sign_part must return a non-empty URL")
+}
+
+func (s *StorageResourceTestSuite) TestSignPartRejectsNonMultipartClaim() {
+	out, _ := s.initUpload(istorage.InitUploadParams{
+		Filename: "small.txt",
+		Size:     1024,
+	})
+	s.Require().Equal("direct", out.Mode)
+
+	resp := s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{
+			Resource: "sys/storage",
+			Action:   "sign_part",
+			Version:  "v1",
+		},
+		Params: map[string]any{
+			"claimId":    out.ClaimID,
+			"partNumber": 1,
+		},
+	}, s.token)
+
+	body := s.ReadResult(resp)
+	s.False(body.IsOk(), "sign_part on a direct-mode claim should fail")
+}
+
+func (s *StorageResourceTestSuite) TestCompleteUploadDirectMode() {
+	out, _ := s.initUpload(istorage.InitUploadParams{
+		Filename:    "doc.txt",
+		Size:        12,
+		ContentType: "text/plain",
+	})
+	s.Require().Equal("direct", out.Mode)
+
+	// Simulate the client PUT by writing the object directly via the service
+	// (the test environment doesn't push bytes through the presigned URL).
+	_, err := s.service.PutObject(s.ctx, storage.PutObjectOptions{
+		Key:    out.Key,
+		Reader: bytes.NewReader([]byte("hello, world")),
+		Size:   12,
+	})
+	s.Require().NoError(err)
+
+	resp := s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{
+			Resource: "sys/storage",
+			Action:   "complete_upload",
+			Version:  "v1",
+		},
+		Params: map[string]any{
+			"claimId": out.ClaimID,
+		},
+	}, s.token)
+
+	body := s.ReadResult(resp)
+	s.Require().True(body.IsOk(), "complete_upload should succeed: %s", body.Message)
+
+	m := s.ReadDataAsMap(body.Data)
+	s.Equal(out.Key, m["key"], "result should echo the final key")
+	s.NotEmpty(m["eTag"])
+}
+
+func (s *StorageResourceTestSuite) TestAbortUploadHappyPath() {
+	out, _ := s.initUpload(istorage.InitUploadParams{
+		Filename: "video.mp4",
+		Size:     10 * 1024 * 1024,
+	})
+	s.Require().Equal("multipart", out.Mode)
+
+	resp := s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{
+			Resource: "sys/storage",
+			Action:   "abort_upload",
+			Version:  "v1",
+		},
+		Params: map[string]any{
+			"claimId": out.ClaimID,
+		},
+	}, s.token)
+
+	body := s.ReadResult(resp)
+	s.True(body.IsOk(), "abort_upload should succeed: %s", body.Message)
+
+	// A second abort on the same (now-deleted) claim is idempotent.
+	resp = s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{
+			Resource: "sys/storage",
+			Action:   "abort_upload",
+			Version:  "v1",
+		},
+		Params: map[string]any{
+			"claimId": out.ClaimID,
+		},
+	}, s.token)
+	body = s.ReadResult(resp)
+	s.True(body.IsOk(), "abort_upload is idempotent on missing claim")
 }
 
 // TestStorageResourceTestSuite runs the test suite.

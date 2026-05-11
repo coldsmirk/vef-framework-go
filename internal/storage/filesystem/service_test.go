@@ -116,32 +116,6 @@ func TestFilesystemService(t *testing.T) {
 		assert.Equal(t, []byte("Hello, Filesystem Storage!"), data, "Should equal expected value")
 	})
 
-	t.Run("MoveObject", func(t *testing.T) {
-		info, err := service.MoveObject(ctx, storage.MoveObjectOptions{
-			CopyObjectOptions: storage.CopyObjectOptions{
-				SourceKey: "test-copy.txt",
-				DestKey:   "test-moved.txt",
-			},
-		})
-
-		require.NoError(t, err, "Should not return error")
-		assert.NotNil(t, info, "Should not be nil")
-		assert.Equal(t, "test-moved.txt", info.Key, "Should equal expected value")
-
-		_, err = service.GetObject(ctx, storage.GetObjectOptions{
-			Key: "test-copy.txt",
-		})
-		assert.Error(t, err, "Should return error")
-		assert.Equal(t, storage.ErrObjectNotFound, err, "Should equal expected value")
-
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{
-			Key: "test-moved.txt",
-		})
-		require.NoError(t, err, "Should not return error")
-
-		defer reader.Close()
-	})
-
 	t.Run("ListObjects", func(t *testing.T) {
 		_, err := service.PutObject(ctx, storage.PutObjectOptions{
 			Key:    "folder/file1.txt",
@@ -187,31 +161,6 @@ func TestFilesystemService(t *testing.T) {
 				assert.NotContains(t, obj.Key, "folder/", "Should not contain value")
 			}
 		})
-	})
-
-	t.Run("PromoteObject", func(t *testing.T) {
-		tempKey := storage.TempPrefix + "2025/01/15/test.txt"
-		_, err := service.PutObject(ctx, storage.PutObjectOptions{
-			Key:    tempKey,
-			Reader: bytes.NewReader([]byte("temp content")),
-			Size:   12,
-		})
-		require.NoError(t, err, "Should not return error")
-
-		info, err := service.PromoteObject(ctx, tempKey)
-		require.NoError(t, err, "Should not return error")
-		assert.NotNil(t, info, "Should not be nil")
-		assert.Equal(t, "2025/01/15/test.txt", info.Key, "Should equal expected value")
-
-		_, err = service.GetObject(ctx, storage.GetObjectOptions{Key: tempKey})
-		assert.Error(t, err, "Should return error")
-
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{
-			Key: "2025/01/15/test.txt",
-		})
-		require.NoError(t, err, "Should not return error")
-
-		defer reader.Close()
 	})
 
 	t.Run("DeleteObject", func(t *testing.T) {
@@ -415,19 +364,6 @@ func TestEdgeCases(t *testing.T) {
 		assert.Equal(t, storage.ErrObjectNotFound, err, "Should equal expected value")
 	})
 
-	t.Run("MoveNonExistentFile", func(t *testing.T) {
-		service, cleanup := setupTestService(t)
-		defer cleanup()
-
-		_, err := service.MoveObject(ctx, storage.MoveObjectOptions{
-			CopyObjectOptions: storage.CopyObjectOptions{
-				SourceKey: "nonexistent.txt",
-				DestKey:   "dest.txt",
-			},
-		})
-		assert.Error(t, err, "Should return error")
-	})
-
 	t.Run("StatNonExistentFile", func(t *testing.T) {
 		service, cleanup := setupTestService(t)
 		defer cleanup()
@@ -508,34 +444,6 @@ func TestEdgeCases(t *testing.T) {
 		})
 		require.NoError(t, err, "Should not return error")
 		assert.NotEmpty(t, objects, "Should not be empty")
-	})
-
-	t.Run("PromoteNonTempFile", func(t *testing.T) {
-		service, cleanup := setupTestService(t)
-		defer cleanup()
-
-		key := "regular/file.txt"
-		_, err := service.PutObject(ctx, storage.PutObjectOptions{
-			Key:    key,
-			Reader: bytes.NewReader([]byte("content")),
-			Size:   7,
-		})
-		require.NoError(t, err, "Should not return error")
-
-		info, err := service.PromoteObject(ctx, key)
-		require.NoError(t, err, "Should not return error")
-		assert.Nil(t, info, "Should be nil")
-
-		_, err = service.GetObject(ctx, storage.GetObjectOptions{Key: key})
-		assert.NoError(t, err, "Should not return error")
-	})
-
-	t.Run("PromoteNonExistentTempFile", func(t *testing.T) {
-		service, cleanup := setupTestService(t)
-		defer cleanup()
-
-		_, err := service.PromoteObject(ctx, storage.TempPrefix+"nonexistent.txt")
-		assert.Error(t, err, "Should return error")
 	})
 
 	t.Run("VeryLongPath", func(t *testing.T) {
@@ -781,5 +689,30 @@ func TestLargeFile(t *testing.T) {
 		readData, err := io.ReadAll(reader)
 		require.NoError(t, err, "Should not return error")
 		assert.Equal(t, data, readData, "Should equal expected value")
+	})
+
+	t.Run("CapabilitiesReportsNoOptionalSupport", func(t *testing.T) {
+		caps := service.Capabilities()
+		assert.False(t, caps.Multipart)
+		assert.False(t, caps.PresignedPut)
+		assert.False(t, caps.PresignedGet)
+		assert.False(t, caps.PresignedPart)
+	})
+
+	t.Run("PresignedAndMultipartReturnNotSupported", func(t *testing.T) {
+		_, err := service.PresignPutObject(ctx, storage.PresignPutOptions{Key: "k"})
+		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
+
+		_, err = service.InitMultipart(ctx, storage.InitMultipartOptions{Key: "k"})
+		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
+
+		_, err = service.PresignPart(ctx, storage.PresignPartOptions{Key: "k"})
+		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
+
+		_, err = service.CompleteMultipart(ctx, storage.CompleteMultipartOptions{Key: "k"})
+		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
+
+		err = service.AbortMultipart(ctx, storage.AbortMultipartOptions{Key: "k"})
+		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
 	})
 }

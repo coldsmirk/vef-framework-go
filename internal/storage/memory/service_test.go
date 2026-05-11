@@ -98,32 +98,6 @@ func TestMemoryService(t *testing.T) {
 		assert.Equal(t, []byte("Hello, Memory Storage!"), data, "Copied data should match original")
 	})
 
-	t.Run("MoveObject", func(t *testing.T) {
-		info, err := service.MoveObject(ctx, storage.MoveObjectOptions{
-			CopyObjectOptions: storage.CopyObjectOptions{
-				SourceKey: "test-copy.txt",
-				DestKey:   "test-moved.txt",
-			},
-		})
-
-		require.NoError(t, err, "MoveObject should succeed")
-		assert.NotNil(t, info, "ObjectInfo should not be nil")
-		assert.Equal(t, "test-moved.txt", info.Key, "Destination key should match")
-
-		_, err = service.GetObject(ctx, storage.GetObjectOptions{
-			Key: "test-copy.txt",
-		})
-		assert.Error(t, err, "Source object should be deleted after move")
-		assert.Equal(t, storage.ErrObjectNotFound, err, "Error should be ErrObjectNotFound")
-
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{
-			Key: "test-moved.txt",
-		})
-		require.NoError(t, err, "Should be able to get moved object")
-
-		defer reader.Close()
-	})
-
 	t.Run("ListObjects", func(t *testing.T) {
 		_, err := service.PutObject(ctx, storage.PutObjectOptions{
 			Key:    "folder/file1.txt",
@@ -159,31 +133,6 @@ func TestMemoryService(t *testing.T) {
 		})
 	})
 
-	t.Run("PromoteObject", func(t *testing.T) {
-		tempKey := storage.TempPrefix + "2025/01/15/test.txt"
-		_, err := service.PutObject(ctx, storage.PutObjectOptions{
-			Key:    tempKey,
-			Reader: bytes.NewReader([]byte("temp content")),
-			Size:   12,
-		})
-		require.NoError(t, err, "PutObject should succeed for temp file")
-
-		info, err := service.PromoteObject(ctx, tempKey)
-		require.NoError(t, err, "PromoteObject should succeed")
-		assert.NotNil(t, info, "ObjectInfo should not be nil")
-		assert.Equal(t, "2025/01/15/test.txt", info.Key, "Promoted key should not have temp prefix")
-
-		_, err = service.GetObject(ctx, storage.GetObjectOptions{Key: tempKey})
-		assert.Error(t, err, "Temp file should be deleted after promotion")
-
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{
-			Key: "2025/01/15/test.txt",
-		})
-		require.NoError(t, err, "Should be able to get promoted object")
-
-		defer reader.Close()
-	})
-
 	t.Run("DeleteObject", func(t *testing.T) {
 		err := service.DeleteObject(ctx, storage.DeleteObjectOptions{
 			Key: "test.txt",
@@ -217,5 +166,30 @@ func TestMemoryService(t *testing.T) {
 			_, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
 			assert.Error(t, err, "Deleted object "+key+" should not be retrievable")
 		}
+	})
+
+	t.Run("CapabilitiesReportsNoOptionalSupport", func(t *testing.T) {
+		caps := service.Capabilities()
+		assert.False(t, caps.Multipart)
+		assert.False(t, caps.PresignedPut)
+		assert.False(t, caps.PresignedGet)
+		assert.False(t, caps.PresignedPart)
+	})
+
+	t.Run("PresignedAndMultipartReturnNotSupported", func(t *testing.T) {
+		_, err := service.PresignPutObject(ctx, storage.PresignPutOptions{Key: "k"})
+		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
+
+		_, err = service.InitMultipart(ctx, storage.InitMultipartOptions{Key: "k"})
+		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
+
+		_, err = service.PresignPart(ctx, storage.PresignPartOptions{Key: "k"})
+		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
+
+		_, err = service.CompleteMultipart(ctx, storage.CompleteMultipartOptions{Key: "k"})
+		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
+
+		err = service.AbortMultipart(ctx, storage.AbortMultipartOptions{Key: "k"})
+		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
 	})
 }

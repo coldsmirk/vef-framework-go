@@ -4,9 +4,15 @@ import "github.com/coldsmirk/vef-framework-go/event"
 
 const (
 	// EventTypeFilePromoted is published when a file is promoted from temp to permanent storage.
+	// Deprecated: emitted by the legacy Promoter only; will be removed when
+	// the Promoter is deleted.
 	EventTypeFilePromoted = "vef.storage.file.promoted"
 	// EventTypeFileDeleted is published when a file is deleted from storage.
 	EventTypeFileDeleted = "vef.storage.file.deleted"
+	// EventTypeDeleteDeadLetter is published when the delete worker has
+	// exhausted retries for a pending-delete row. Operations should consume
+	// this event to investigate; the row is parked, not removed.
+	EventTypeDeleteDeadLetter = "vef.storage.delete.dead_letter"
 )
 
 // FileOperation represents the type of file operation.
@@ -54,5 +60,35 @@ func NewFileDeletedEvent(metaType MetaType, fileKey string, attrs map[string]str
 		MetaType:  metaType,
 		FileKey:   fileKey,
 		Attrs:     attrs,
+	}
+}
+
+// DeleteDeadLetterEvent reports a pending-delete row that the delete worker
+// could not drain within its retry budget. The row is left in
+// storage_pending_deletes (parked) for manual investigation.
+type DeleteDeadLetterEvent struct {
+	event.BaseEvent
+
+	// PendingDeleteID is the primary key of the parked row.
+	PendingDeleteID string `json:"pendingDeleteId"`
+	// FileKey is the object key that failed to delete.
+	FileKey string `json:"fileKey"`
+	// Reason carries the original schedule reason.
+	Reason DeleteReason `json:"reason"`
+	// Attempts is the total number of failed attempts.
+	Attempts int `json:"attempts"`
+	// LastError captures the most recent error message for triage.
+	LastError string `json:"lastError,omitempty"`
+}
+
+// NewDeleteDeadLetterEvent creates a new dead-letter event.
+func NewDeleteDeadLetterEvent(id, key string, reason DeleteReason, attempts int, lastErr string) *DeleteDeadLetterEvent {
+	return &DeleteDeadLetterEvent{
+		BaseEvent:       event.NewBaseEvent(EventTypeDeleteDeadLetter),
+		PendingDeleteID: id,
+		FileKey:         key,
+		Reason:          reason,
+		Attempts:        attempts,
+		LastError:       lastErr,
 	}
 }

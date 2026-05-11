@@ -8,7 +8,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
-	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -59,8 +58,7 @@ func (d *deleteManyOperation[TModel]) DisableDataPerm() DeleteMany[TModel] {
 	return d
 }
 
-func (d *deleteManyOperation[TModel]) deleteMany(db orm.DB, sc storage.Service, publisher event.Publisher) (func(ctx fiber.Ctx, db orm.DB, params DeleteManyParams) error, error) {
-	promoter := storage.NewPromoter[TModel](sc, publisher)
+func (d *deleteManyOperation[TModel]) deleteMany(db orm.DB, files storage.Files) (func(ctx fiber.Ctx, db orm.DB, params DeleteManyParams) error, error) {
 	schema := db.TableOf((*TModel)(nil))
 	pks := db.ModelPKFields((*TModel)(nil))
 
@@ -129,8 +127,10 @@ func (d *deleteManyOperation[TModel]) deleteMany(db orm.DB, sc storage.Service, 
 				}
 			}
 
-			if cleanupErr := batchCleanup(txCtx, promoter, models); cleanupErr != nil {
-				return fmt.Errorf("delete succeeded but cleanup files failed: %w", cleanupErr)
+			for i := range models {
+				if err := files.OnDelete(txCtx, tx, &models[i]); err != nil {
+					return err
+				}
 			}
 
 			return result.Ok().Response(ctx)

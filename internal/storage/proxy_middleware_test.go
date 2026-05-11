@@ -55,10 +55,6 @@ func (*MockStorageService) CopyObject(_ context.Context, _ storage.CopyObjectOpt
 	return nil, nil
 }
 
-func (*MockStorageService) MoveObject(_ context.Context, _ storage.MoveObjectOptions) (*storage.ObjectInfo, error) {
-	return nil, nil
-}
-
 func (m *MockStorageService) StatObject(_ context.Context, opts storage.StatObjectOptions) (*storage.ObjectInfo, error) {
 	args := m.Called(opts)
 
@@ -69,8 +65,28 @@ func (m *MockStorageService) StatObject(_ context.Context, opts storage.StatObje
 	return args.Get(0).(*storage.ObjectInfo), args.Error(1)
 }
 
-func (*MockStorageService) PromoteObject(_ context.Context, _ string) (*storage.ObjectInfo, error) {
-	return nil, nil
+func (*MockStorageService) Capabilities() storage.ServiceCapabilities {
+	return storage.ServiceCapabilities{}
+}
+
+func (*MockStorageService) PresignPutObject(_ context.Context, _ storage.PresignPutOptions) (*storage.PresignedURL, error) {
+	return nil, storage.ErrCapabilityNotSupported
+}
+
+func (*MockStorageService) InitMultipart(_ context.Context, _ storage.InitMultipartOptions) (*storage.MultipartSession, error) {
+	return nil, storage.ErrCapabilityNotSupported
+}
+
+func (*MockStorageService) PresignPart(_ context.Context, _ storage.PresignPartOptions) (*storage.PresignedURL, error) {
+	return nil, storage.ErrCapabilityNotSupported
+}
+
+func (*MockStorageService) CompleteMultipart(_ context.Context, _ storage.CompleteMultipartOptions) (*storage.ObjectInfo, error) {
+	return nil, storage.ErrCapabilityNotSupported
+}
+
+func (*MockStorageService) AbortMultipart(_ context.Context, _ storage.AbortMultipartOptions) error {
+	return storage.ErrCapabilityNotSupported
 }
 
 // TestProxyMiddleware tests proxy middleware functionality.

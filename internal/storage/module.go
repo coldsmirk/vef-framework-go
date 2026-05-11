@@ -8,6 +8,9 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/internal/contract"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
+	"github.com/coldsmirk/vef-framework-go/internal/storage/migration"
+	"github.com/coldsmirk/vef-framework-go/internal/storage/store"
+	"github.com/coldsmirk/vef-framework-go/internal/storage/worker"
 	"github.com/coldsmirk/vef-framework-go/storage"
 )
 
@@ -37,4 +40,8 @@ var Module = fx.Module(
 			fx.ResultTags(`group:"vef:app:middlewares"`),
 		),
 	),
+
+	migration.Module,
+	store.Module,
+	worker.Module,
 )
