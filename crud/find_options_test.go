@@ -169,7 +169,7 @@ func NewErrorQueryApplierFindOptionsResource() api.Resource {
 				LabelColumn: "name",
 				ValueColumn: "id",
 			}).
-			WithQueryApplier(func(_ orm.SelectQuery, _ EmployeeSearch, _ fiber.Ctx) error {
+			WithQueryApplier(func(orm.SelectQuery, EmployeeSearch, fiber.Ctx) error {
 				return errors.New("options query applier error")
 			}).
 			Public(),

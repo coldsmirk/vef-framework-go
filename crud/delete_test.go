@@ -107,7 +107,7 @@ func NewEmployeeDeletePreHookErrorResource() api.Resource {
 		Resource: api.NewRPCResource("test/employee_delete_prehook_err"),
 		Delete: crud.NewDelete[Employee]().
 			Public().
-			WithPreDelete(func(_ *Employee, _ orm.DeleteQuery, _ fiber.Ctx, _ orm.DB) error {
+			WithPreDelete(func(*Employee, orm.DeleteQuery, fiber.Ctx, orm.DB) error {
 				return errors.New("pre-delete hook rejected")
 			}),
 	}
@@ -124,7 +124,7 @@ func NewEmployeeDeletePostHookErrorResource() api.Resource {
 		Resource: api.NewRPCResource("test/employee_delete_posthook_err"),
 		Delete: crud.NewDelete[Employee]().
 			Public().
-			WithPostDelete(func(_ *Employee, _ fiber.Ctx, _ orm.DB) error {
+			WithPostDelete(func(*Employee, fiber.Ctx, orm.DB) error {
 				return errors.New("post-delete hook rejected")
 			}),
 	}

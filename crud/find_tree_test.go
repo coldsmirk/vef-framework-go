@@ -167,7 +167,7 @@ func NewErrorQueryApplierDepartmentFindTreeResource() api.Resource {
 			Public().
 			WithIDColumn("id").
 			WithParentIDColumn("parent_id").
-			WithQueryApplier(func(_ orm.SelectQuery, _ DepartmentSearch, _ fiber.Ctx) error {
+			WithQueryApplier(func(orm.SelectQuery, DepartmentSearch, fiber.Ctx) error {
 				return errors.New("tree query applier error")
 			}),
 	}

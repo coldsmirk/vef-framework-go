@@ -131,7 +131,7 @@ func NewErrorQueryApplierFindPageResource() api.Resource {
 		Resource: api.NewRPCResource("test/employee_page_err_applier"),
 		FindPage: crud.NewFindPage[Employee, EmployeeSearch]().
 			WithCondition(fixtureScope).
-			WithQueryApplier(func(_ orm.SelectQuery, _ EmployeeSearch, _ fiber.Ctx) error {
+			WithQueryApplier(func(orm.SelectQuery, EmployeeSearch, fiber.Ctx) error {
 				return errors.New("query applier error")
 			}).
 			Public(),

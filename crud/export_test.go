@@ -89,7 +89,7 @@ func NewTestEmployeeExportWithFilenameResource() api.Resource {
 		Export: crud.NewExport[ExportEmployee, ExportEmployeeSearch]().
 			WithCondition(fixtureScope).
 			Public().
-			WithFilenameBuilder(func(_ ExportEmployeeSearch, _ fiber.Ctx) string {
+			WithFilenameBuilder(func(ExportEmployeeSearch, fiber.Ctx) string {
 				return "custom_users.xlsx"
 			}),
 	}
@@ -175,7 +175,7 @@ func NewTestEmployeeExportCSVWithFilenameResource() api.Resource {
 			WithCondition(fixtureScope).
 			Public().
 			WithDefaultFormat(crud.FormatCsv).
-			WithFilenameBuilder(func(_ ExportEmployeeSearch, _ fiber.Ctx) string {
+			WithFilenameBuilder(func(ExportEmployeeSearch, fiber.Ctx) string {
 				return "custom_users.csv"
 			}),
 	}
@@ -192,7 +192,7 @@ func NewErrorQueryApplierExportResource() api.Resource {
 		Resource: api.NewRPCResource("test/employee_export_err_applier"),
 		Export: crud.NewExport[ExportEmployee, ExportEmployeeSearch]().
 			WithCondition(fixtureScope).
-			WithQueryApplier(func(_ orm.SelectQuery, _ ExportEmployeeSearch, _ fiber.Ctx) error {
+			WithQueryApplier(func(orm.SelectQuery, ExportEmployeeSearch, fiber.Ctx) error {
 				return errors.New("export query applier error")
 			}).
 			Public(),
@@ -211,7 +211,7 @@ func NewPreExportErrorResource() api.Resource {
 		Export: crud.NewExport[ExportEmployee, ExportEmployeeSearch]().
 			WithCondition(fixtureScope).
 			Public().
-			WithPreExport(func(_ []ExportEmployee, _ ExportEmployeeSearch, _ fiber.Ctx, _ orm.DB) error {
+			WithPreExport(func([]ExportEmployee, ExportEmployeeSearch, fiber.Ctx, orm.DB) error {
 				return errors.New("pre-export error")
 			}),
 	}

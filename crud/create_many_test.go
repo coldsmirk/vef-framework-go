@@ -94,7 +94,7 @@ func NewEmployeeCreateManyPreHookErrorResource() api.Resource {
 		Resource: api.NewRPCResource("test/employee_create_many_prehook_err"),
 		CreateMany: crud.NewCreateMany[Employee, EmployeeCreateParams]().
 			Public().
-			WithPreCreateMany(func(_ []Employee, _ []EmployeeCreateParams, _ orm.InsertQuery, _ fiber.Ctx, _ orm.DB) error {
+			WithPreCreateMany(func([]Employee, []EmployeeCreateParams, orm.InsertQuery, fiber.Ctx, orm.DB) error {
 				return errors.New("pre-create-many hook rejected")
 			}),
 	}
@@ -111,7 +111,7 @@ func NewEmployeeCreateManyPostHookErrorResource() api.Resource {
 		Resource: api.NewRPCResource("test/employee_create_many_posthook_err"),
 		CreateMany: crud.NewCreateMany[Employee, EmployeeCreateParams]().
 			Public().
-			WithPostCreateMany(func(_ []Employee, _ []EmployeeCreateParams, _ fiber.Ctx, _ orm.DB) error {
+			WithPostCreateMany(func([]Employee, []EmployeeCreateParams, fiber.Ctx, orm.DB) error {
 				return errors.New("post-create-many hook rejected")
 			}),
 	}

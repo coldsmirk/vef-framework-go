@@ -104,7 +104,7 @@ func NewEmployeeCreatePreHookErrorResource() api.Resource {
 		Resource: api.NewRPCResource("test/employee_create_prehook_err"),
 		Create: crud.NewCreate[Employee, EmployeeCreateParams]().
 			Public().
-			WithPreCreate(func(_ *Employee, _ *EmployeeCreateParams, _ orm.InsertQuery, _ fiber.Ctx, _ orm.DB) error {
+			WithPreCreate(func(*Employee, *EmployeeCreateParams, orm.InsertQuery, fiber.Ctx, orm.DB) error {
 				return errors.New("pre-create hook rejected")
 			}),
 	}
@@ -121,7 +121,7 @@ func NewEmployeeCreatePostHookErrorResource() api.Resource {
 		Resource: api.NewRPCResource("test/employee_create_posthook_err"),
 		Create: crud.NewCreate[Employee, EmployeeCreateParams]().
 			Public().
-			WithPostCreate(func(_ *Employee, _ *EmployeeCreateParams, _ fiber.Ctx, _ orm.DB) error {
+			WithPostCreate(func(*Employee, *EmployeeCreateParams, fiber.Ctx, orm.DB) error {
 				return errors.New("post-create hook rejected")
 			}),
 	}

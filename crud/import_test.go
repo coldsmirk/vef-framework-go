@@ -162,7 +162,7 @@ func NewPreImportErrorResource() api.Resource {
 		Resource: api.NewRPCResource("test/employee_import_preproc_err"),
 		Import: crud.NewImport[ImportEmployee]().
 			Public().
-			WithPreImport(func(_ []ImportEmployee, _ orm.InsertQuery, _ fiber.Ctx, _ orm.DB) error {
+			WithPreImport(func([]ImportEmployee, orm.InsertQuery, fiber.Ctx, orm.DB) error {
 				return errors.New("pre-import error")
 			}),
 	}
@@ -179,7 +179,7 @@ func NewPostImportErrorResource() api.Resource {
 		Resource: api.NewRPCResource("test/employee_import_postproc_err"),
 		Import: crud.NewImport[ImportEmployee]().
 			Public().
-			WithPostImport(func(_ []ImportEmployee, _ fiber.Ctx, _ orm.DB) error {
+			WithPostImport(func([]ImportEmployee, fiber.Ctx, orm.DB) error {
 				return errors.New("post-import error")
 			}),
 	}

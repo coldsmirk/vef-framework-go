@@ -269,7 +269,7 @@ func NewErrorQueryApplierFindAllResource() api.Resource {
 		Resource: api.NewRPCResource("test/employee_all_err_applier"),
 		FindAll: crud.NewFindAll[Employee, EmployeeSearch]().
 			WithCondition(fixtureScope).
-			WithQueryApplier(func(_ orm.SelectQuery, _ EmployeeSearch, _ fiber.Ctx) error {
+			WithQueryApplier(func(orm.SelectQuery, EmployeeSearch, fiber.Ctx) error {
 				return errors.New("query applier error")
 			}).
 			Public(),

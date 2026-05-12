@@ -130,7 +130,7 @@ func NewEmployeeDeleteManyPreHookErrorResource() api.Resource {
 		Resource: api.NewRPCResource("test/employee_delete_many_prehook_err"),
 		DeleteMany: crud.NewDeleteMany[Employee]().
 			Public().
-			WithPreDeleteMany(func(_ []Employee, _ orm.DeleteQuery, _ fiber.Ctx, _ orm.DB) error {
+			WithPreDeleteMany(func([]Employee, orm.DeleteQuery, fiber.Ctx, orm.DB) error {
 				return errors.New("pre-delete-many hook rejected")
 			}),
 	}
@@ -147,7 +147,7 @@ func NewEmployeeDeleteManyPostHookErrorResource() api.Resource {
 		Resource: api.NewRPCResource("test/employee_delete_many_posthook_err"),
 		DeleteMany: crud.NewDeleteMany[Employee]().
 			Public().
-			WithPostDeleteMany(func(_ []Employee, _ fiber.Ctx, _ orm.DB) error {
+			WithPostDeleteMany(func([]Employee, fiber.Ctx, orm.DB) error {
 				return errors.New("post-delete-many hook rejected")
 			}),
 	}
