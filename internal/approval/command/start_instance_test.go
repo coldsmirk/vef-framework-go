@@ -28,7 +28,7 @@ type MockInstanceNoGenerator struct {
 	counter int
 }
 
-func (g *MockInstanceNoGenerator) Generate(_ context.Context, _ string) (string, error) {
+func (g *MockInstanceNoGenerator) Generate(context.Context, string) (string, error) {
 	g.counter++
 
 	return fmt.Sprintf("TEST-%d", g.counter), nil
