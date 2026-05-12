@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"unicode"
 
 	"github.com/coldsmirk/go-streams"
 	"github.com/samber/lo"
@@ -30,19 +29,11 @@ var (
 	ErrFileNotFoundInPackage = errors.New("file not found in package")
 )
 
-var (
-	goKeywords = map[string]bool{
-		"break": true, "case": true, "chan": true, "const": true, "continue": true,
-		"default": true, "defer": true, "else": true, "fallthrough": true, "for": true,
-		"func": true, "go": true, "goto": true, "if": true, "import": true,
-		"interface": true, "map": true, "package": true, "range": true, "return": true,
-		"select": true, "struct": true, "switch": true, "type": true, "var": true,
-	}
-
-	reservedMethodNames = map[string]bool{
-		"Table": true, "Alias": true, "As": true, "Columns": true,
-	}
-)
+// reservedMethodNames are accessor names that would collide with the schema's
+// own Table/Alias/As/Columns methods and must be prefixed with "Col".
+var reservedMethodNames = map[string]bool{
+	"Table": true, "Alias": true, "As": true, "Columns": true,
+}
 
 // ModelField represents a single field in a model struct with its Go and database metadata.
 type ModelField struct {
@@ -277,7 +268,7 @@ func parseStructFields(structType *ast.StructType, pkg *packages.Package) []Mode
 		for _, name := range f.Names {
 			fieldName := name.Name
 
-			if !unicode.IsUpper(rune(fieldName[0])) {
+			if !token.IsExported(fieldName) {
 				continue
 			}
 
@@ -292,20 +283,10 @@ func parseStructFields(structType *ast.StructType, pkg *packages.Package) []Mode
 				continue
 			}
 
-			goName := lo.CamelCase(fieldName)
-			if goKeywords[goName] {
-				goName = "__" + goName
-			}
-
-			methodName := fieldName
-			if reservedMethodNames[fieldName] {
-				methodName = "Col" + fieldName
-			}
-
 			fields = append(fields, ModelField{
-				GoName:     goName,
+				GoName:     escapeGoName(fieldName),
 				ColumnName: columnName,
-				MethodName: methodName,
+				MethodName: escapeMethodName(fieldName),
 				Label:      extractLabelFromTag(tag),
 				Scanonly:   hasScanonlyTagFromTag(tag),
 			})
@@ -313,6 +294,28 @@ func parseStructFields(structType *ast.StructType, pkg *packages.Package) []Mode
 	}
 
 	return fields
+}
+
+// escapeGoName returns the camelCase form of name with a "__" prefix if the
+// result collides with a Go keyword. The returned identifier is always usable
+// as a struct field or variable name.
+func escapeGoName(name string) string {
+	goName := lo.CamelCase(name)
+	if token.IsKeyword(goName) {
+		return "__" + goName
+	}
+
+	return goName
+}
+
+// escapeMethodName prefixes name with "Col" when it would collide with one of
+// the schema's own Table/Alias/As/Columns methods.
+func escapeMethodName(name string) string {
+	if reservedMethodNames[name] {
+		return "Col" + name
+	}
+
+	return name
 }
 
 // fieldTag returns the raw tag literal of an AST field (with backticks), or
@@ -392,25 +395,11 @@ func parseInheritedFieldsFromType(typ types.Type, prefix string) []ModelField {
 			continue
 		}
 
-		finalColumnName := prefix + columnName
-
-		goName := lo.CamelCase(prefix + fieldName)
-		if goKeywords[goName] {
-			goName = "__" + goName
-		}
-
-		label := extractLabelFromTag(tag)
-
-		methodName := lo.PascalCase(prefix) + fieldName
-		if reservedMethodNames[methodName] {
-			methodName = "Col" + methodName
-		}
-
 		fields = append(fields, ModelField{
-			GoName:     goName,
-			ColumnName: finalColumnName,
-			MethodName: methodName,
-			Label:      label,
+			GoName:     escapeGoName(prefix + fieldName),
+			ColumnName: prefix + columnName,
+			MethodName: escapeMethodName(lo.PascalCase(prefix) + fieldName),
+			Label:      extractLabelFromTag(tag),
 			Scanonly:   hasScanonlyTagFromTag(tag),
 		})
 	}
@@ -582,8 +571,24 @@ func buildImportDecl() *ast.GenDecl {
 	}
 }
 
+// schemaReceiver returns the (s *<typeName>) receiver block shared by every
+// schema method. Each call returns a fresh AST node so they can be embedded
+// into independent declarations without aliasing.
+func schemaReceiver(typeName string) *ast.FieldList {
+	return &ast.FieldList{
+		List: []*ast.Field{
+			{
+				Names: []*ast.Ident{ast.NewIdent("s")},
+				Type: &ast.StarExpr{
+					X: ast.NewIdent(typeName),
+				},
+			},
+		},
+	}
+}
+
 func buildVarDecl(schema *ModelSchemaInfo) *ast.GenDecl {
-	var elements []ast.Expr
+	elements := make([]ast.Expr, 0, 2+len(schema.Fields))
 
 	elements = append(elements, &ast.KeyValueExpr{
 		Key:   ast.NewIdent("_table"),
@@ -622,7 +627,7 @@ func buildVarDecl(schema *ModelSchemaInfo) *ast.GenDecl {
 }
 
 func buildTypeDecl(schema *ModelSchemaInfo) *ast.GenDecl {
-	var fields []*ast.Field
+	fields := make([]*ast.Field, 0, 2+len(schema.Fields))
 
 	fields = append(fields, &ast.Field{
 		Names: []*ast.Ident{ast.NewIdent("_table")},
@@ -657,7 +662,7 @@ func buildTypeDecl(schema *ModelSchemaInfo) *ast.GenDecl {
 }
 
 func buildFieldMethods(schema *ModelSchemaInfo) []ast.Decl {
-	var decls []ast.Decl
+	decls := make([]ast.Decl, 0, len(schema.Fields))
 
 	for _, f := range schema.Fields {
 		var doc *ast.CommentGroup
@@ -670,17 +675,8 @@ func buildFieldMethods(schema *ModelSchemaInfo) []ast.Decl {
 		}
 
 		decls = append(decls, &ast.FuncDecl{
-			Doc: doc,
-			Recv: &ast.FieldList{
-				List: []*ast.Field{
-					{
-						Names: []*ast.Ident{ast.NewIdent("s")},
-						Type: &ast.StarExpr{
-							X: ast.NewIdent(schema.SchemaTypeName),
-						},
-					},
-				},
-			},
+			Doc:  doc,
+			Recv: schemaReceiver(schema.SchemaTypeName),
 			Name: ast.NewIdent(f.MethodName),
 			Type: &ast.FuncType{
 				Params: &ast.FieldList{
@@ -733,16 +729,7 @@ func buildTableMethod(schema *ModelSchemaInfo) *ast.FuncDecl {
 				{Text: "// Table returns the table name."},
 			},
 		},
-		Recv: &ast.FieldList{
-			List: []*ast.Field{
-				{
-					Names: []*ast.Ident{ast.NewIdent("s")},
-					Type: &ast.StarExpr{
-						X: ast.NewIdent(schema.SchemaTypeName),
-					},
-				},
-			},
-		},
+		Recv: schemaReceiver(schema.SchemaTypeName),
 		Name: ast.NewIdent("Table"),
 		Type: &ast.FuncType{
 			Params: &ast.FieldList{},
@@ -774,16 +761,7 @@ func buildAliasMethod(schema *ModelSchemaInfo) *ast.FuncDecl {
 				{Text: "// Alias returns the table alias."},
 			},
 		},
-		Recv: &ast.FieldList{
-			List: []*ast.Field{
-				{
-					Names: []*ast.Ident{ast.NewIdent("s")},
-					Type: &ast.StarExpr{
-						X: ast.NewIdent(schema.SchemaTypeName),
-					},
-				},
-			},
-		},
+		Recv: schemaReceiver(schema.SchemaTypeName),
 		Name: ast.NewIdent("Alias"),
 		Type: &ast.FuncType{
 			Params: &ast.FieldList{},
@@ -815,16 +793,7 @@ func buildAsMethod(schema *ModelSchemaInfo) *ast.FuncDecl {
 				{Text: "// As creates a copy with a new alias."},
 			},
 		},
-		Recv: &ast.FieldList{
-			List: []*ast.Field{
-				{
-					Names: []*ast.Ident{ast.NewIdent("s")},
-					Type: &ast.StarExpr{
-						X: ast.NewIdent(schema.SchemaTypeName),
-					},
-				},
-			},
-		},
+		Recv: schemaReceiver(schema.SchemaTypeName),
 		Name: ast.NewIdent("As"),
 		Type: &ast.FuncType{
 			Params: &ast.FieldList{
@@ -882,7 +851,7 @@ func buildAsMethod(schema *ModelSchemaInfo) *ast.FuncDecl {
 }
 
 func buildColumnsMethod(schema *ModelSchemaInfo) *ast.FuncDecl {
-	var elements []ast.Expr
+	elements := make([]ast.Expr, 0, len(schema.Fields))
 	for _, f := range schema.Fields {
 		if f.Scanonly {
 			continue
@@ -900,16 +869,7 @@ func buildColumnsMethod(schema *ModelSchemaInfo) *ast.FuncDecl {
 				{Text: "// Columns returns all real database column names (scanonly fields are excluded)."},
 			},
 		},
-		Recv: &ast.FieldList{
-			List: []*ast.Field{
-				{
-					Names: []*ast.Ident{ast.NewIdent("s")},
-					Type: &ast.StarExpr{
-						X: ast.NewIdent(schema.SchemaTypeName),
-					},
-				},
-			},
-		},
+		Recv: schemaReceiver(schema.SchemaTypeName),
 		Name: ast.NewIdent("Columns"),
 		Type: &ast.FuncType{
 			Params: &ast.FieldList{},
@@ -942,16 +902,7 @@ func buildColumnsMethod(schema *ModelSchemaInfo) *ast.FuncDecl {
 
 func buildColumnMethod(schema *ModelSchemaInfo) *ast.FuncDecl {
 	return &ast.FuncDecl{
-		Recv: &ast.FieldList{
-			List: []*ast.Field{
-				{
-					Names: []*ast.Ident{ast.NewIdent("s")},
-					Type: &ast.StarExpr{
-						X: ast.NewIdent(schema.SchemaTypeName),
-					},
-				},
-			},
-		},
+		Recv: schemaReceiver(schema.SchemaTypeName),
 		Name: ast.NewIdent("column"),
 		Type: &ast.FuncType{
 			Params: &ast.FieldList{
