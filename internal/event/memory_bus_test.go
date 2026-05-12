@@ -195,7 +195,7 @@ func TestMemoryEventBusUnsubscribe(t *testing.T) {
 			mu         sync.Mutex
 		)
 
-		unsubscribe := bus.Subscribe("payment.processed", func(_ context.Context, _ event.Event) {
+		unsubscribe := bus.Subscribe("payment.processed", func(context.Context, event.Event) {
 			mu.Lock()
 
 			eventCount++
@@ -247,7 +247,7 @@ func TestMemoryEventBusUnsubscribe(t *testing.T) {
 		)
 
 		// First subscriber
-		unsubscribe1 := bus.Subscribe("notification.sent", func(_ context.Context, _ event.Event) {
+		unsubscribe1 := bus.Subscribe("notification.sent", func(context.Context, event.Event) {
 			mu.Lock()
 
 			subscriber1Count++
@@ -256,7 +256,7 @@ func TestMemoryEventBusUnsubscribe(t *testing.T) {
 		})
 
 		// Second subscriber
-		unsubscribe2 := bus.Subscribe("notification.sent", func(_ context.Context, _ event.Event) {
+		unsubscribe2 := bus.Subscribe("notification.sent", func(context.Context, event.Event) {
 			mu.Lock()
 
 			subscriber2Count++
@@ -307,7 +307,7 @@ func TestMemoryEventBusUnsubscribe(t *testing.T) {
 			mu         sync.Mutex
 		)
 
-		unsubscribe := bus.Subscribe("test.event", func(_ context.Context, _ event.Event) {
+		unsubscribe := bus.Subscribe("test.event", func(context.Context, event.Event) {
 			mu.Lock()
 
 			eventCount++
@@ -526,7 +526,7 @@ func TestMemoryEventBusMiddleware(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(1)
 
-		unsubscribe := bus.Subscribe("chain.test", func(_ context.Context, _ event.Event) {
+		unsubscribe := bus.Subscribe("chain.test", func(context.Context, event.Event) {
 			wg.Done()
 		})
 		defer unsubscribe()
@@ -580,7 +580,7 @@ func TestMemoryEventBusConcurrency(t *testing.T) {
 		for range numSubscribers {
 			wg.Add(eventsPerPublisher * numPublishers) // Each subscriber should receive all events
 
-			unsub := bus.Subscribe("concurrent.test", func(_ context.Context, _ event.Event) {
+			unsub := bus.Subscribe("concurrent.test", func(context.Context, event.Event) {
 				mu.Lock()
 
 				totalReceived++
@@ -646,7 +646,7 @@ func TestMemoryEventBusConcurrency(t *testing.T) {
 		// Concurrently subscribe and unsubscribe
 		for range numRoutines {
 			wg.Go(func() {
-				unsubscribe := bus.Subscribe("concurrent.unsub.test", func(_ context.Context, _ event.Event) {
+				unsubscribe := bus.Subscribe("concurrent.unsub.test", func(context.Context, event.Event) {
 					// Do nothing
 				})
 
