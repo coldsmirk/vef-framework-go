@@ -472,7 +472,7 @@ func (suite *EBConditionalFunctionsTestSuite) TestConditionalFunctionsSpecialVal
 
 		err := suite.selectPosts().
 			Select("id", "title").
-			SelectExpr(func(_ orm.ExprBuilder) any {
+			SelectExpr(func(orm.ExprBuilder) any {
 				return ""
 			}, "empty_not_null").
 			SelectExpr(func(eb orm.ExprBuilder) any {

@@ -388,7 +388,7 @@ func (suite *CreateTableTestSuite) TestColumnLevelCheck() {
 		q := suite.db.NewCreateTable().
 			Table("test_ddl_no_check").
 			Column("id", orm.DataType.BigInt(), orm.PrimaryKey()).
-			Check(func(_ orm.CheckBuilder) {}).
+			Check(func(orm.CheckBuilder) {}).
 			IfNotExists()
 		suite.NotNil(q, "Should return non-nil query when Check has no condition")
 	})
