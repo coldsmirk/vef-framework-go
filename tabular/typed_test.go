@@ -38,7 +38,7 @@ func (f *TypedFakeImporter) ImportFromFile(filename string) (any, []ImportError,
 	return f.value, f.errs, f.err
 }
 
-func (f *TypedFakeImporter) Import(_ io.Reader) (any, []ImportError, error) {
+func (f *TypedFakeImporter) Import(io.Reader) (any, []ImportError, error) {
 	f.importedFromIO = true
 
 	return f.value, f.errs, f.err
