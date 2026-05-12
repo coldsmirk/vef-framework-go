@@ -45,7 +45,7 @@ func (p *Provider) Connect(cfg *config.DataSourceConfig) (*sql.DB, schema.Dialec
 	return db, sqlitedialect.New(), nil
 }
 
-func (*Provider) ValidateConfig(_ *config.DataSourceConfig) error {
+func (*Provider) ValidateConfig(*config.DataSourceConfig) error {
 	return nil
 }
 
