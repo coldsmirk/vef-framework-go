@@ -76,7 +76,7 @@ func (j *JWT) Parse(tokenString string) (*JWTClaimsAccessor, error) {
 	token, err := jwt.NewParser(options...).
 		Parse(
 			tokenString,
-			func(_ *jwt.Token) (any, error) {
+			func(*jwt.Token) (any, error) {
 				return j.secret, nil
 			},
 		)
