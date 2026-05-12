@@ -16,6 +16,6 @@ func (*plaintextEncoder) Matches(password, encodedPassword string) bool {
 	return password == encodedPassword
 }
 
-func (*plaintextEncoder) UpgradeEncoding(_ string) bool {
+func (*plaintextEncoder) UpgradeEncoding(string) bool {
 	return true
 }

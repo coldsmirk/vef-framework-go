@@ -62,6 +62,6 @@ func (e *hashEncoder) Matches(password, encodedPassword string) bool {
 	return actualHash == encodedPassword
 }
 
-func (*hashEncoder) UpgradeEncoding(_ string) bool {
+func (*hashEncoder) UpgradeEncoding(string) bool {
 	return true
 }
