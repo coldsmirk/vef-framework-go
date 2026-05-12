@@ -328,7 +328,7 @@ func TestBuilderStreamToWriter(t *testing.T) {
 
 	t.Run("HandlesErrorFromSource", func(t *testing.T) {
 		expectedErr := errors.New("source error")
-		source := NewCallbackSource(func(_ CallbackWriter) error {
+		source := NewCallbackSource(func(CallbackWriter) error {
 			return expectedErr
 		})
 
@@ -357,7 +357,7 @@ func TestBuilderStreamToWriter(t *testing.T) {
 
 	t.Run("CallsOnErrorHandler", func(t *testing.T) {
 		expectedErr := errors.New("test error")
-		source := NewCallbackSource(func(_ CallbackWriter) error {
+		source := NewCallbackSource(func(CallbackWriter) error {
 			return expectedErr
 		})
 
