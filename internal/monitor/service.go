@@ -213,7 +213,7 @@ func getDeviceContainer(device string) string {
 }
 
 // CPU returns detailed CPU information including usage percentages.
-func (s *DefaultService) CPU(_ context.Context) (*monitor.CPUInfo, error) {
+func (s *DefaultService) CPU(context.Context) (*monitor.CPUInfo, error) {
 	cached := s.cpuCache.Load()
 	if cached == nil {
 		return nil, ErrCPUInfoNotReady
@@ -438,7 +438,7 @@ func (*DefaultService) Host(ctx context.Context) (*monitor.HostInfo, error) {
 }
 
 // Process returns information about the current process.
-func (s *DefaultService) Process(_ context.Context) (*monitor.ProcessInfo, error) {
+func (s *DefaultService) Process(context.Context) (*monitor.ProcessInfo, error) {
 	cached := s.processCache.Load()
 	if cached == nil {
 		return nil, ErrProcessInfoNotReady
