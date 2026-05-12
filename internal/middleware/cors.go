@@ -11,7 +11,7 @@ import (
 
 func NewCorsMiddleware(config *config.CorsConfig) app.Middleware {
 	handler := cors.New(cors.Config{
-		Next: func(_ fiber.Ctx) bool {
+		Next: func(fiber.Ctx) bool {
 			return !config.Enabled
 		},
 		AllowOrigins: config.AllowOrigins,
