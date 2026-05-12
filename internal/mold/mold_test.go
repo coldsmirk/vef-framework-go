@@ -17,7 +17,7 @@ import (
 // TestBadValues tests error handling for invalid inputs and registration panics.
 func TestBadValues(t *testing.T) {
 	transformer := New()
-	transformer.Register("blah", func(_ context.Context, _ mold.FieldLevel) error { return nil })
+	transformer.Register("blah", func(context.Context, mold.FieldLevel) error { return nil })
 
 	type InvalidTagStruct struct {
 		Ignore string `mold:"-"`
@@ -94,7 +94,7 @@ func TestBadValues(t *testing.T) {
 			transformer.Register("test", nil)
 		}, "Should panic when registering nil function")
 		assert.PanicsWithValue(t, "mold: tag \",\" either contains restricted characters or is the same as a restricted tag needed for normal operation", func() {
-			transformer.Register(",", func(_ context.Context, _ mold.FieldLevel) error { return nil })
+			transformer.Register(",", func(context.Context, mold.FieldLevel) error { return nil })
 		}, "Should panic when registering restricted character")
 	})
 
@@ -291,7 +291,7 @@ func TestBasicTransform(t *testing.T) {
 		assert.Equal(t, "unregistered/undefined transformation \"nonexistant\" found on field", err.Error(), "Error message should mention undefined transformation")
 
 		<-done
-		transformer.Register("dummy", func(_ context.Context, _ mold.FieldLevel) error { return nil })
+		transformer.Register("dummy", func(context.Context, mold.FieldLevel) error { return nil })
 		err = transformer.Field(context.Background(), &tt6.String, "dummy")
 		assert.NoError(t, err, "Newly registered transformation should work")
 	})
@@ -510,7 +510,7 @@ func TestInterface(t *testing.T) {
 
 		return nil
 	})
-	transformer.Register("error", func(_ context.Context, _ mold.FieldLevel) error {
+	transformer.Register("error", func(context.Context, mold.FieldLevel) error {
 		return errors.New("BAD VALUE")
 	})
 
@@ -722,7 +722,7 @@ func TestDiveKeys(t *testing.T) {
 
 		return nil
 	})
-	transformer.Register("err", func(_ context.Context, _ mold.FieldLevel) error {
+	transformer.Register("err", func(context.Context, mold.FieldLevel) error {
 		return errors.New("err")
 	})
 
