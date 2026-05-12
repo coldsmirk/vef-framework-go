@@ -200,7 +200,7 @@ func (*TestRPCResource) Restricted(ctx fiber.Ctx) error {
 	}).Response(ctx)
 }
 
-func (*TestRPCResource) Panic(_ fiber.Ctx) error {
+func (*TestRPCResource) Panic(fiber.Ctx) error {
 	panic("intentional panic for testing")
 }
 

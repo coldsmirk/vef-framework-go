@@ -17,7 +17,7 @@ func (*handlerValueResolver[T]) Type() reflect.Type {
 	return reflect.TypeFor[T]()
 }
 
-func (r *handlerValueResolver[T]) Resolve(_ fiber.Ctx) (reflect.Value, error) {
+func (r *handlerValueResolver[T]) Resolve(fiber.Ctx) (reflect.Value, error) {
 	return reflect.ValueOf(r.value), nil
 }
 

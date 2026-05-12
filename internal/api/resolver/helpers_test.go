@@ -76,7 +76,7 @@ func TestValidateHandlerSignature(t *testing.T) {
 	})
 
 	t.Run("WithParameters", func(t *testing.T) {
-		fn := func(_ int, _ string) error { return nil }
+		fn := func(int, string) error { return nil }
 		err := validateHandlerSignature(reflect.TypeOf(fn))
 		assert.NoError(t, err, "Handler with parameters should be valid")
 	})
@@ -105,7 +105,7 @@ func TestIsHandlerFactory(t *testing.T) {
 	})
 
 	t.Run("FactoryWithParams", func(t *testing.T) {
-		fn := func(_ int) func() error { return nil }
+		fn := func(int) func() error { return nil }
 		result := isHandlerFactory(reflect.TypeOf(fn))
 		assert.True(t, result, "Factory with parameters should be valid")
 	})

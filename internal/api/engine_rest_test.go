@@ -218,7 +218,7 @@ func (*TestRESTResource) Admin(ctx fiber.Ctx) error {
 	}).Response(ctx)
 }
 
-func (*TestRESTResource) Panic(_ fiber.Ctx) error {
+func (*TestRESTResource) Panic(fiber.Ctx) error {
 	panic("intentional panic for testing")
 }
 
