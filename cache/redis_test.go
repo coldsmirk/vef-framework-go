@@ -350,7 +350,7 @@ func (suite *RedisCacheTestSuite) TestRedisCacheIteration() {
 	suite.Run("ForEachEarlyTermination", func() {
 		var count int
 
-		err := userCache.ForEach(suite.ctx, func(_ string, _ TestUser) bool {
+		err := userCache.ForEach(suite.ctx, func(string, TestUser) bool {
 			count++
 
 			return count < 3
@@ -454,7 +454,7 @@ func (suite *RedisCacheTestSuite) TestRedisCacheClose() {
 	suite.Nil(keys, "Keys should be nil on closed cache")
 
 	called := false
-	err = cache.ForEach(ctx, func(_ string, _ TestUser) bool {
+	err = cache.ForEach(ctx, func(string, TestUser) bool {
 		called = true
 
 		return true

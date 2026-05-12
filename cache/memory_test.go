@@ -538,7 +538,7 @@ func TestMemoryCacheForEach(t *testing.T) {
 		_ = cache.Set(ctx, "c", 3)
 
 		count := 0
-		err := cache.ForEach(ctx, func(_ string, _ int) bool {
+		err := cache.ForEach(ctx, func(string, int) bool {
 			count++
 
 			return count < 2
@@ -553,7 +553,7 @@ func TestMemoryCacheForEach(t *testing.T) {
 		defer cache.Close()
 
 		called := false
-		err := cache.ForEach(ctx, func(_ string, _ int) bool {
+		err := cache.ForEach(ctx, func(string, int) bool {
 			called = true
 
 			return true
@@ -573,7 +573,7 @@ func TestMemoryCacheForEach(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		count := 0
-		cache.ForEach(ctx, func(_ string, _ int) bool {
+		cache.ForEach(ctx, func(string, int) bool {
 			count++
 
 			return true

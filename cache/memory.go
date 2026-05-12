@@ -227,7 +227,7 @@ func (m *memoryCache[T]) Delete(_ context.Context, key string) error {
 }
 
 // Clear removes all entries from the cache.
-func (m *memoryCache[T]) Clear(_ context.Context) error {
+func (m *memoryCache[T]) Clear(context.Context) error {
 	if m.closed.Load() {
 		return nil
 	}
@@ -307,7 +307,7 @@ func (m *memoryCache[T]) ForEach(_ context.Context, callback func(key string, va
 }
 
 // Size returns the number of entries in the cache.
-func (m *memoryCache[T]) Size(_ context.Context) (int64, error) {
+func (m *memoryCache[T]) Size(context.Context) (int64, error) {
 	if m.closed.Load() {
 		return 0, nil
 	}

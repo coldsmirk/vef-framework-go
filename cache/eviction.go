@@ -41,9 +41,9 @@ func NewNoOpEvictionHandler() *NoOpEvictionHandler {
 	return new(NoOpEvictionHandler)
 }
 
-func (*NoOpEvictionHandler) OnAccess(_ string)               {}
-func (*NoOpEvictionHandler) OnInsert(_ string)               {}
-func (*NoOpEvictionHandler) OnEvict(_ string)                {}
+func (*NoOpEvictionHandler) OnAccess(string)                 {}
+func (*NoOpEvictionHandler) OnInsert(string)                 {}
+func (*NoOpEvictionHandler) OnEvict(string)                  {}
 func (*NoOpEvictionHandler) SelectEvictionCandidate() string { return "" }
 func (*NoOpEvictionHandler) Reset()                          {}
 
@@ -131,7 +131,7 @@ func NewFifoHandler() *FifoHandler {
 	}
 }
 
-func (*FifoHandler) OnAccess(_ string) {
+func (*FifoHandler) OnAccess(string) {
 	// FIFO doesn't track access, only insertion order
 }
 
