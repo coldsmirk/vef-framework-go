@@ -13,6 +13,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
+var errNilClaim = errors.New("storage: nil claim")
+
 // NewClaimStore returns the default ClaimStore implementation backed by
 // the orm.DB abstraction. The concrete SQL dialect is determined by the
 // underlying orm provider; this package depends only on orm.DB.
@@ -29,7 +31,7 @@ type claimStore struct {
 
 func (s *claimStore) Create(ctx context.Context, claim *UploadClaim) error {
 	if claim == nil {
-		return errors.New("storage: nil claim")
+		return errNilClaim
 	}
 
 	_, err := s.db.NewInsert().Model(claim).Exec(ctx)
