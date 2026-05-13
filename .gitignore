@@ -33,6 +33,7 @@ go.work.sum
 cmd/CMD_DEV.md
 docs/plans/
 mutagen.yml
+mutagen.yml.lock
 
 # shell scripts
-*.shmutagen.yml.lock
+*.sh
