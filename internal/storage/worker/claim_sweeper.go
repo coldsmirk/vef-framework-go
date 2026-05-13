@@ -2,36 +2,51 @@ package worker
 
 import (
 	"context"
-	"errors"
 
+	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/id"
+	"github.com/coldsmirk/vef-framework-go/internal/storage/store"
+	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/storage"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
-// claimSweepBatchSize bounds how many expired claims one tick processes.
-const claimSweepBatchSize = 200
-
-// ClaimSweeper reaps expired upload claims: it aborts any associated
-// multipart session, deletes the partially-uploaded object (if present),
-// and removes the claim row. Failures on either side are logged and left
-// for the next tick to retry — the 24h claim TTL provides ample slack.
+// ClaimSweeper reaps expired upload claims by translating each into a
+// PendingDelete row and removing the claim entry — both atomically in
+// one transaction. The actual backend work (abort multipart, delete
+// object) is performed asynchronously by DeleteWorker, which inherits
+// retry/backoff/dead-letter from the queue. ClaimSweeper itself is a
+// pure metadata cleaner; if a single batch fails to commit, no rows
+// are dropped and the next tick re-attempts the same set.
 type ClaimSweeper struct {
-	service    storage.Service
-	claimStore storage.ClaimStore
+	db          orm.DB
+	claimStore  store.ClaimStore
+	deleteQueue store.DeleteQueue
+	cfg         *config.StorageConfig
 }
 
-// NewClaimSweeper constructs a ClaimSweeper bound to a backend Service and
-// the claim store.
-func NewClaimSweeper(service storage.Service, claimStore storage.ClaimStore) *ClaimSweeper {
+// NewClaimSweeper constructs a ClaimSweeper. db is required to wrap the
+// schedule-and-delete pair in a single transaction.
+func NewClaimSweeper(
+	db orm.DB,
+	claimStore store.ClaimStore,
+	deleteQueue store.DeleteQueue,
+	cfg *config.StorageConfig,
+) *ClaimSweeper {
 	return &ClaimSweeper{
-		service:    service,
-		claimStore: claimStore,
+		db:          db,
+		claimStore:  claimStore,
+		deleteQueue: deleteQueue,
+		cfg:         cfg,
 	}
 }
 
-// Run executes one sweep cycle. Safe to invoke from a cron task.
+// Run executes one sweep cycle. Safe to invoke from a cron task. Logs and
+// returns on any error; the next tick will pick up the same expired set.
 func (s *ClaimSweeper) Run(ctx context.Context) {
-	claims, err := s.claimStore.ScanExpired(ctx, timex.Now(), claimSweepBatchSize)
+	limit := s.cfg.EffectiveSweepBatchSize()
+
+	claims, err := s.claimStore.ScanExpired(ctx, timex.Now(), limit)
 	if err != nil {
 		logger.Errorf("Failed to scan expired claims: %v", err)
 
@@ -42,32 +57,44 @@ func (s *ClaimSweeper) Run(ctx context.Context) {
 		return
 	}
 
-	logger.Infof("Sweeping %d expired upload claim(s)", len(claims))
+	logger.Infof("Sweeping %d expired upload claim(s) into delete queue", len(claims))
 
-	for i := range claims {
-		s.cleanupClaim(ctx, &claims[i])
+	if err := s.transferToDeleteQueue(ctx, claims); err != nil {
+		logger.Errorf("Failed to transfer expired claims to delete queue: %v", err)
 	}
 }
 
-func (s *ClaimSweeper) cleanupClaim(ctx context.Context, claim *storage.UploadClaim) {
-	if claim.IsMultipart() {
-		if err := s.service.AbortMultipart(ctx, storage.AbortMultipartOptions{
-			Key:      claim.Key,
-			UploadID: claim.UploadID,
-		}); err != nil && !errors.Is(err, storage.ErrCapabilityNotSupported) {
-			// Log but proceed — the object delete below may still succeed.
-			logger.Warnf("Abort multipart for claim %s (key=%s) failed: %v", claim.ID, claim.Key, err)
+// transferToDeleteQueue atomically enqueues a PendingDelete for every
+// expired claim and removes the matching claim rows. Multipart claims
+// carry their UploadID forward so DeleteWorker can abort the dangling
+// session before deleting the (possibly partial) object.
+//
+// Enqueue (rather than the public Schedule(keys, reason) facade) is
+// used here so the per-row UploadID survives into the queue.
+func (s *ClaimSweeper) transferToDeleteQueue(ctx context.Context, claims []store.UploadClaim) error {
+	now := timex.Now()
+	items := make([]store.PendingDelete, len(claims))
+	ids := make([]string, len(claims))
+
+	for i := range claims {
+		claim := &claims[i]
+
+		items[i] = store.PendingDelete{
+			ID:            id.GenerateUUID(),
+			Key:           claim.Key,
+			UploadID:      claim.UploadID,
+			Reason:        storage.DeleteReasonClaimExpired,
+			NextAttemptAt: now,
+			CreatedAt:     now,
 		}
+		ids[i] = claim.ID
 	}
 
-	if err := s.service.DeleteObject(ctx, storage.DeleteObjectOptions{Key: claim.Key}); err != nil && !errors.Is(err, storage.ErrObjectNotFound) {
-		// Leave the claim row in place; next tick will retry.
-		logger.Warnf("Delete object %s for claim %s failed: %v", claim.Key, claim.ID, err)
+	return s.db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		if err := s.deleteQueue.Enqueue(txCtx, tx, items); err != nil {
+			return err
+		}
 
-		return
-	}
-
-	if err := s.claimStore.DeleteByID(ctx, claim.ID); err != nil {
-		logger.Errorf("Delete claim row %s failed: %v", claim.ID, err)
-	}
+		return s.claimStore.DeleteByIDs(txCtx, tx, ids)
+	})
 }

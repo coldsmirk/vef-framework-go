@@ -2,7 +2,6 @@ package storage
 
 import (
 	"io"
-	"time"
 )
 
 // PutObjectOptions contains parameters for uploading an object.
@@ -47,16 +46,6 @@ type ListObjectsOptions struct {
 	MaxKeys int
 }
 
-// PresignedURLOptions contains parameters for generating presigned URLs.
-type PresignedURLOptions struct {
-	// Key is the unique identifier of the object
-	Key string
-	// Expires specifies how long the presigned URL remains valid
-	Expires time.Duration
-	// Method specifies the HTTP method (GET for download, PUT for upload)
-	Method string
-}
-
 // CopyObjectOptions contains parameters for copying an object.
 type CopyObjectOptions struct {
 	// SourceKey is the identifier of the source object
@@ -71,67 +60,85 @@ type StatObjectOptions struct {
 	Key string
 }
 
-// PresignPutOptions contains parameters for generating a presigned URL that
-// the client can use to PUT a single object directly to the storage backend.
-// Used by the "direct" upload protocol for small files.
-type PresignPutOptions struct {
-	// Key is the unique identifier the uploaded object will receive.
-	Key string
-	// ContentType is the MIME type the client will send. Backends MAY
-	// include it in the URL signature or in PresignedURL.Headers.
-	ContentType string
-	// Expires is the URL's validity window.
-	Expires time.Duration
-}
-
-// InitMultipartOptions contains parameters for opening a multipart upload session.
+// InitMultipartOptions contains parameters for opening a multipart upload
+// session. The session is owned by the backend; callers thread the
+// returned UploadID back through PutPart, CompleteMultipart, and
+// AbortMultipart without interpreting it.
 type InitMultipartOptions struct {
-	// Key is the unique identifier the final assembled object will receive.
+	// Key is the unique identifier the final assembled object will
+	// receive.
 	Key string
 	// ContentType is the MIME type recorded with the final object.
 	ContentType string
 	// Metadata is custom key-value pairs stored on the final object.
+	// Programmatic channel only — the HTTP API does not expose it.
 	Metadata map[string]string
 }
 
-// PresignPartOptions contains parameters for generating a presigned URL that
-// the client can use to PUT a single part of an in-progress multipart upload.
-type PresignPartOptions struct {
+// PutPartOptions contains parameters for uploading a single part of an
+// in-progress multipart upload. The reader MUST yield exactly Size
+// bytes; backends use Size to validate the part against Multipart.PartSize()
+// and to plan storage layout.
+type PutPartOptions struct {
 	// Key is the object key the multipart session is targeting.
 	Key string
 	// UploadID is the opaque session token returned by InitMultipart.
 	UploadID string
-	// PartNumber is the 1-indexed part position within the assembled object.
+	// PartNumber is the 1-indexed part position within the assembled
+	// object. Re-uploading the same PartNumber overwrites the previous
+	// content and yields a new ETag.
 	PartNumber int
-	// Expires is the URL's validity window.
-	Expires time.Duration
+	// Reader is the part payload; the backend reads exactly Size bytes.
+	Reader io.Reader
+	// Size is the exact byte length of the part. Backends MAY reject
+	// requests where Size is smaller than ServiceCapabilities.PartSize
+	// (except for the final part of a session) with ErrPartTooSmall.
+	Size int64
 }
 
-// CompletedPart describes one finished part in a multipart upload, supplied
-// by the client to CompleteMultipart so the backend can assemble parts in
-// order. ETag is the opaque per-part identifier the backend returned to the
-// client when the part PUT succeeded; the client passes it back unchanged.
+// PartInfo describes a successfully uploaded part as reported by the
+// backend. ETag is the opaque token the caller MUST persist and replay
+// back through CompleteMultipart.
+type PartInfo struct {
+	// PartNumber is the 1-indexed part position.
+	PartNumber int
+	// ETag is the opaque per-part identifier the backend assigned. The
+	// format is backend-specific (MD5 hex on filesystem / memory, S3
+	// entity-tag on MinIO); callers MUST treat it as an opaque string.
+	ETag string
+	// Size is the byte length the backend recorded for this part.
+	Size int64
+}
+
+// CompletedPart references one finished part in a multipart upload
+// (PartNumber + ETag), forwarded back to CompleteMultipart so the
+// backend can verify and assemble parts in order.
 type CompletedPart struct {
 	// PartNumber is the 1-indexed part position.
 	PartNumber int
-	// ETag is the opaque token (RFC 7232 entity-tag) the backend returned
-	// in the PUT response when the part was uploaded.
+	// ETag is the opaque token the backend returned from PutPart for
+	// this part.
 	ETag string
 }
 
-// CompleteMultipartOptions contains parameters for finalizing a multipart upload.
+// CompleteMultipartOptions contains parameters for finalizing a
+// multipart upload. Parts MUST be sorted ascending by PartNumber and
+// MUST form a contiguous 1..N sequence; missing or duplicate part
+// numbers cause CompleteMultipart to return ErrPartNumberOutOfRange.
 type CompleteMultipartOptions struct {
 	// Key is the object key the multipart session is targeting.
 	Key string
 	// UploadID is the opaque session token returned by InitMultipart.
 	UploadID string
-	// Parts is the ordered list of completed parts. Backends will validate
-	// part numbers form a contiguous 1-indexed sequence.
+	// Parts is the ordered list of (PartNumber, ETag) pairs the backend
+	// uses to verify and assemble the final object.
 	Parts []CompletedPart
 }
 
-// AbortMultipartOptions contains parameters for cancelling a multipart upload session.
-// Calling Abort releases any partially uploaded parts on the backend.
+// AbortMultipartOptions contains parameters for canceling a multipart
+// upload session. Backends discard any uploaded parts and release the
+// session; calling Abort on an unknown or already-closed session is a
+// no-op (idempotent).
 type AbortMultipartOptions struct {
 	// Key is the object key the multipart session was targeting.
 	Key string

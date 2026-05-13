@@ -20,8 +20,9 @@ var scripts embed.FS
 // expectedTables lists all tables the storage module requires.
 // Used to check whether migration is needed.
 var expectedTables = []string{
-	"storage_upload_claims",
-	"storage_pending_deletes",
+	"sys_storage_upload_claim",
+	"sys_storage_upload_part",
+	"sys_storage_pending_delete",
 }
 
 // Migrate runs the storage module's DDL migration for the given database kind.

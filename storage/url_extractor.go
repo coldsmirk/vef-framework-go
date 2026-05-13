@@ -44,16 +44,12 @@ var (
 	}
 )
 
-// isRelativeURL checks if a URL is a relative path (not http:// or https://)
-func isRelativeURL(url string) bool {
-	url = strings.TrimSpace(url)
-
-	return url != "" &&
-		!strings.HasPrefix(url, "http://") &&
-		!strings.HasPrefix(url, "https://")
-}
-
-// extractHtmlURLs extracts all relative URLs from HTML content.
+// extractHtmlURLs extracts every URL appearing in supported HTML
+// attributes (<img src>, <a href>, <video src>, <audio src>, <source src>,
+// <embed src>, <object data>). Whitespace is trimmed; empty values are
+// dropped. The extractor does NOT filter by scheme — http/https,
+// data:, mailto:, etc. all reach the caller, who is responsible for
+// translating URLs to storage keys through a URLKeyMapper.
 func extractHtmlURLs(content string) []string {
 	if content == "" {
 		return nil
@@ -69,7 +65,7 @@ func extractHtmlURLs(content string) []string {
 			groups := match.Groups()
 			if len(groups) > 2 {
 				url := strings.TrimSpace(groups[2].String())
-				if isRelativeURL(url) {
+				if url != "" {
 					urlSet.Add(url)
 				}
 			}
@@ -81,8 +77,15 @@ func extractHtmlURLs(content string) []string {
 	return urlSet.ToSlice()
 }
 
-// replaceHtmlURLs replaces URLs in HTML content based on the replacement map.
-func replaceHtmlURLs(content string, replacements map[string]string) string {
+// ReplaceHtmlURLs rewrites <img src> / <a href> / <video src> / <audio src>
+// / <source src> / <embed src> / <object data> attribute values according
+// to the supplied replacement map. URLs absent from the map are left
+// untouched, and the original quote style (single vs double) is preserved
+// so the output round-trips through external HTML formatters cleanly.
+//
+// Pair this with URLKeyMapper.KeyToURL to render storage keys as the
+// URL convention the frontend expects.
+func ReplaceHtmlURLs(content string, replacements map[string]string) string {
 	if content == "" || len(replacements) == 0 {
 		return content
 	}
@@ -124,7 +127,12 @@ func replaceHtmlURLs(content string, replacements map[string]string) string {
 	return result.String()
 }
 
-// extractMarkdownURLs extracts all relative URLs from Markdown content.
+// extractMarkdownURLs extracts every URL appearing in `![alt](url)` /
+// `[text](url)` constructs. Optional titles (`(url "title")`) are
+// stripped. Whitespace is trimmed; empty values are dropped. The
+// extractor does NOT filter by scheme — http/https, data:, mailto:,
+// etc. all reach the caller, who is responsible for translating URLs
+// to storage keys through a URLKeyMapper.
 func extractMarkdownURLs(content string) []string {
 	if content == "" {
 		return nil
@@ -143,7 +151,7 @@ func extractMarkdownURLs(content string) []string {
 					url = strings.TrimSpace(url[:idx])
 				}
 
-				if isRelativeURL(url) {
+				if url != "" {
 					urlSet.Add(url)
 				}
 			}
@@ -174,8 +182,13 @@ func buildMarkdownReplacement(prefix, text, newURL, title string) string {
 	return sb.String()
 }
 
-// replaceMarkdownURLs replaces URLs in Markdown content based on the replacement map.
-func replaceMarkdownURLs(content string, replacements map[string]string) string {
+// ReplaceMarkdownURLs rewrites the URL portion of every `![alt](url)` /
+// `[text](url)` construct according to the supplied replacement map. The
+// optional title (`![](url "title")`) is preserved verbatim.
+//
+// Pair this with URLKeyMapper.KeyToURL to render storage keys as the
+// URL convention the frontend expects.
+func ReplaceMarkdownURLs(content string, replacements map[string]string) string {
 	if content == "" || len(replacements) == 0 {
 		return content
 	}

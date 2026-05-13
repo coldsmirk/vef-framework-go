@@ -39,9 +39,32 @@ var Module = fx.Module(
 			NewProxyMiddleware,
 			fx.ResultTags(`group:"vef:app:middlewares"`),
 		),
+		// Default FileACL: pub-only reads, all listing denied. Business
+		// modules override via vef.SupplyFileACL when they need to grant
+		// access to private keys based on their own ownership / ACL data.
+		newDefaultFileACL,
+		// Default URLKeyMapper: identity. Business modules override via
+		// vef.SupplyURLKeyMapper when they embed proxy / CDN URLs in
+		// richtext / markdown fields and need them translated back to
+		// storage keys during reconciliation.
+		newDefaultURLKeyMapper,
 	),
 
 	migration.Module,
 	store.Module,
 	worker.Module,
 )
+
+// newDefaultFileACL is a constructor (not a literal supply) so business
+// code can replace it through fx.Decorate or fx.Replace via the
+// vef.SupplyFileACL helper.
+func newDefaultFileACL() storage.FileACL {
+	return new(storage.DefaultFileACL)
+}
+
+// newDefaultURLKeyMapper is a constructor (not a literal supply) so
+// business code can replace it through fx.Decorate via the
+// vef.SupplyURLKeyMapper helper.
+func newDefaultURLKeyMapper() storage.URLKeyMapper {
+	return storage.ProxyURLKeyMapper{}
+}

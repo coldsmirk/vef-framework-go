@@ -54,9 +54,12 @@ func TestExtractHTMLURLs(t *testing.T) {
 			expected: []string{"temp/img.jpg", "temp/video.mp4", "temp/audio.mp3", "temp/src.mp4", "temp/embed.swf", "temp/data.pdf"},
 		},
 		{
-			name:     "AbsoluteUrlsIgnored",
+			// New contract: extractor no longer filters by scheme. Absolute
+			// URLs are surfaced together with relative ones; the downstream
+			// URLKeyMapper decides which ones map to managed storage keys.
+			name:     "AbsoluteAndRelativeBothExtracted",
 			html:     `<img src="http://example.com/pic.jpg"> <a href="https://example.com/doc.pdf"> <img src="temp/local.jpg">`,
-			expected: []string{"temp/local.jpg"},
+			expected: []string{"http://example.com/pic.jpg", "https://example.com/doc.pdf", "temp/local.jpg"},
 		},
 		{
 			name:     "CaseInsensitiveTags",
@@ -168,7 +171,7 @@ func TestReplaceHTMLURLs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := replaceHtmlURLs(tt.html, tt.replacements)
+			result := ReplaceHtmlURLs(tt.html, tt.replacements)
 			assert.Equal(t, tt.expected, result, "Should equal expected value")
 		})
 	}
@@ -217,9 +220,12 @@ func TestExtractMarkdownURLs(t *testing.T) {
 			expected: []string{"temp/doc.pdf"},
 		},
 		{
-			name:     "AbsoluteUrlsIgnored",
+			// New contract: extractor no longer filters by scheme. Absolute
+			// URLs are surfaced together with relative ones; the downstream
+			// URLKeyMapper decides which ones map to managed storage keys.
+			name:     "AbsoluteAndRelativeBothExtracted",
 			markdown: `![Remote](https://example.com/pic.jpg) ![Local](temp/pic.jpg)`,
-			expected: []string{"temp/pic.jpg"},
+			expected: []string{"https://example.com/pic.jpg", "temp/pic.jpg"},
 		},
 		{
 			name:     "EmptyAltText",
@@ -327,70 +333,12 @@ func TestReplaceMarkdownURLs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := replaceMarkdownURLs(tt.markdown, tt.replacements)
+			result := ReplaceMarkdownURLs(tt.markdown, tt.replacements)
 			assert.Equal(t, tt.expected, result, "Should equal expected value")
 		})
 	}
 }
 
-// TestIsRelativeURL tests relative URL detection.
-func TestIsRelativeURL(t *testing.T) {
-	tests := []struct {
-		name     string
-		url      string
-		expected bool
-	}{
-		{
-			name:     "EmptyString",
-			url:      "",
-			expected: false,
-		},
-		{
-			name:     "WhitespaceOnly",
-			url:      "   ",
-			expected: false,
-		},
-		{
-			name:     "RelativePath",
-			url:      "temp/pic.jpg",
-			expected: true,
-		},
-		{
-			name:     "RelativePathWithLeadingSlash",
-			url:      "/uploads/pic.jpg",
-			expected: true,
-		},
-		{
-			name:     "HttpURL",
-			url:      "http://example.com/pic.jpg",
-			expected: false,
-		},
-		{
-			name:     "HttpsURL",
-			url:      "https://example.com/pic.jpg",
-			expected: false,
-		},
-		{
-			name:     "UrlWithSpaces",
-			url:      "temp/pic with spaces.jpg",
-			expected: true,
-		},
-		{
-			name:     "UrlWithSpecialCharacters",
-			url:      "temp/doc-file_name@v2.pdf",
-			expected: true,
-		},
-		{
-			name:     "UrlWithLeadingSpaces",
-			url:      "  temp/pic.jpg",
-			expected: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := isRelativeURL(tt.url)
-			assert.Equal(t, tt.expected, result, "Should equal expected value")
-		})
-	}
-}
+// Scheme-based filtering moved out of the extractor into
+// IdentityURLKeyMapper.URLToKey. See url_key_mapper_test.go for the
+// replacement coverage.

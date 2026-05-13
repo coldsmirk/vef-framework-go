@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/coldsmirk/go-collections"
+
 	"github.com/coldsmirk/vef-framework-go/reflectx"
 	"github.com/coldsmirk/vef-framework-go/strx"
 )
@@ -52,72 +54,41 @@ type FileRef struct {
 	Attrs    map[string]string
 }
 
-// FileRefExtractor walks a value of type T and returns every uploaded
-// file referenced by its `meta`-tagged fields. Construction performs
-// a one-time reflect parse of T's struct shape, so callers should build
-// the extractor once per type and reuse it.
-type FileRefExtractor[T any] interface {
-	// Extract returns every file ref reachable from model. Returns nil
-	// for a nil pointer or a non-struct underlying type.
-	Extract(model *T) []FileRef
-	// Diff partitions refs across two snapshots of the same model type:
-	//   toConsume = refs in newModel but not in oldModel (newly referenced)
-	//   toDelete  = refs in oldModel but not in newModel (replaced/removed)
-	// Either argument may be nil to signal "no model on that side"
-	// (newModel=nil ⇒ delete-all; oldModel=nil ⇒ create).
-	Diff(newModel, oldModel *T) (toConsume, toDelete []FileRef)
-}
-
-// NewFileRefExtractor builds an extractor for type T.
-func NewFileRefExtractor[T any]() FileRefExtractor[T] {
-	typ := reflectx.Indirect(reflect.TypeFor[T]())
-	return &defaultExtractor[T]{fields: parseMetaFields(typ)}
-}
-
-type defaultExtractor[T any] struct {
-	fields []metaField
-}
-
-func (e *defaultExtractor[T]) Extract(model *T) []FileRef {
-	if model == nil {
-		return nil
-	}
-
-	value := reflect.Indirect(reflect.ValueOf(model))
-	if value.Kind() != reflect.Struct {
-		return nil
-	}
-
-	return collectFileRefs(value, e.fields)
-}
-
-func (e *defaultExtractor[T]) Diff(newModel, oldModel *T) (toConsume, toDelete []FileRef) {
-	newRefs := e.Extract(newModel)
-	oldRefs := e.Extract(oldModel)
-
-	newSet := make(map[string]struct{}, len(newRefs))
-	for _, r := range newRefs {
-		newSet[r.Key] = struct{}{}
-	}
-
-	oldSet := make(map[string]struct{}, len(oldRefs))
-	for _, r := range oldRefs {
-		oldSet[r.Key] = struct{}{}
-	}
+// diffRefs partitions two ref sets by key:
+//
+//	toConsume = refs in newRefs whose key is not in oldRefs
+//	toDelete  = refs in oldRefs whose key is not in newRefs
+//
+// Used exclusively by defaultFiles.OnUpdate (and its tests) to drive
+// the create / delete partitioning that ConsumeMany / Schedule consume.
+func diffRefs(newRefs, oldRefs []FileRef) (toConsume, toDelete []FileRef) {
+	newKeys := refKeySet(newRefs)
+	oldKeys := refKeySet(oldRefs)
 
 	for _, r := range newRefs {
-		if _, in := oldSet[r.Key]; !in {
+		if !oldKeys.Contains(r.Key) {
 			toConsume = append(toConsume, r)
 		}
 	}
 
 	for _, r := range oldRefs {
-		if _, in := newSet[r.Key]; !in {
+		if !newKeys.Contains(r.Key) {
 			toDelete = append(toDelete, r)
 		}
 	}
 
 	return toConsume, toDelete
+}
+
+// refKeySet collects every FileRef.Key into a HashSet. Returns an empty
+// (non-nil) set when refs is empty so callers can Contains() safely.
+func refKeySet(refs []FileRef) collections.Set[string] {
+	keys := collections.NewHashSet[string]()
+	for _, r := range refs {
+		keys.Add(r.Key)
+	}
+
+	return keys
 }
 
 func collectFileRefs(value reflect.Value, fields []metaField) []FileRef {
@@ -227,7 +198,13 @@ func parseMetaFields(typ reflect.Type) []metaField {
 			}
 
 			if !foundMetaType {
-				return reflectx.SkipChildren
+				// Return Continue (not SkipChildren) so reflectx's
+				// shouldRecurse can honor the WithDiveTag(tagMeta, "dive")
+				// configuration registered below: a field tagged
+				// `meta:"dive"` reaches this branch (no metaType match)
+				// and must allow reflectx to recurse into the nested
+				// struct so its meta-tagged fields become reachable.
+				return reflectx.Continue
 			}
 
 			// Format: "category:gallery public:true" -> {"category": "gallery", "public": "true"}

@@ -2,13 +2,10 @@ package minio
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
-	"strconv"
-	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -20,8 +17,10 @@ import (
 
 // S3 protocol constants for multipart uploads.
 const (
-	// minPartSize is the smallest non-final part size accepted by S3 / MinIO.
-	minPartSize int64 = 5 * 1024 * 1024
+	// partSize is the authoritative part size for chunked uploads via
+	// this backend. Chosen to be comfortably above the S3 minimum
+	// (5 MiB) while keeping per-part overhead low.
+	partSize int64 = 16 * 1024 * 1024
 	// maxPartCount is the largest number of parts in a single multipart upload.
 	maxPartCount = 10000
 )
@@ -49,15 +48,31 @@ func New(cfg config.MinIOConfig, appCfg *config.AppConfig) (storage.Service, err
 	}, nil
 }
 
-func (*Service) Capabilities() storage.ServiceCapabilities {
-	return storage.ServiceCapabilities{
-		Multipart:     true,
-		PresignedPut:  true,
-		PresignedGet:  true,
-		PresignedPart: true,
-		MinPartSize:   minPartSize,
-		MaxPartCount:  maxPartCount,
+func (*Service) PartSize() int64   { return partSize }
+func (*Service) MaxPartCount() int { return maxPartCount }
+
+// buildPublicPrefixPolicy constructs the bucket policy JSON that grants
+// anonymous s3:GetObject only on objects whose key starts with "pub/".
+// Uses json.Marshal to avoid string-interpolation injection risks.
+func buildPublicPrefixPolicy(bucket string) (string, error) {
+	policy := map[string]any{
+		"Version": "2012-10-17",
+		"Statement": []map[string]any{
+			{
+				"Effect":    "Allow",
+				"Principal": map[string]any{"AWS": []string{"*"}},
+				"Action":    []string{"s3:GetObject"},
+				"Resource":  []string{"arn:aws:s3:::" + bucket + "/pub/*"},
+			},
+		},
 	}
+
+	data, err := json.Marshal(policy)
+	if err != nil {
+		return "", err
+	}
+
+	return string(data), nil
 }
 
 func (s *Service) Init(ctx context.Context) error {
@@ -66,27 +81,21 @@ func (s *Service) Init(ctx context.Context) error {
 		return fmt.Errorf("failed to check bucket existence: %w", err)
 	}
 
-	if !exists {
-		if err := s.client.MakeBucket(ctx, s.bucket, minio.MakeBucketOptions{}); err != nil {
-			return fmt.Errorf("failed to create bucket %s: %w", s.bucket, err)
-		}
+	if exists {
+		return nil
+	}
 
-		// Set public read policy for the bucket
-		policy := fmt.Sprintf(`{
-			"Version": "2012-10-17",
-			"Statement": [
-				{
-					"Effect": "Allow",
-					"Principal": {"AWS": ["*"]},
-					"Action": ["s3:GetObject"],
-					"Resource": ["arn:aws:s3:::%s/*"]
-				}
-			]
-		}`, s.bucket)
+	if err := s.client.MakeBucket(ctx, s.bucket, minio.MakeBucketOptions{}); err != nil {
+		return fmt.Errorf("failed to create bucket %s: %w", s.bucket, err)
+	}
 
-		if err := s.client.SetBucketPolicy(ctx, s.bucket, policy); err != nil {
-			return fmt.Errorf("failed to set public read policy for bucket %s: %w", s.bucket, err)
-		}
+	policy, err := buildPublicPrefixPolicy(s.bucket)
+	if err != nil {
+		return fmt.Errorf("failed to build pub/* policy for bucket %s: %w", s.bucket, err)
+	}
+
+	if err := s.client.SetBucketPolicy(ctx, s.bucket, policy); err != nil {
+		return fmt.Errorf("failed to set pub/* public-read policy for bucket %s: %w", s.bucket, err)
 	}
 
 	return nil
@@ -192,28 +201,6 @@ func (s *Service) ListObjects(ctx context.Context, opts storage.ListObjectsOptio
 	return objects, nil
 }
 
-func (s *Service) GetPresignedURL(ctx context.Context, opts storage.PresignedURLOptions) (string, error) {
-	var (
-		u   *url.URL
-		err error
-	)
-
-	switch opts.Method {
-	case http.MethodGet, "":
-		u, err = s.client.PresignedGetObject(ctx, s.bucket, opts.Key, opts.Expires, nil)
-	case http.MethodPut:
-		u, err = s.client.PresignedPutObject(ctx, s.bucket, opts.Key, opts.Expires)
-	default:
-		return "", fmt.Errorf("%w: %s", ErrUnsupportedHTTPMethod, opts.Method)
-	}
-
-	if err != nil {
-		return "", s.translateError(err)
-	}
-
-	return u.String(), nil
-}
-
 func (s *Service) CopyObject(ctx context.Context, opts storage.CopyObjectOptions) (*storage.ObjectInfo, error) {
 	src := minio.CopySrcOptions{
 		Bucket: s.bucket,
@@ -256,24 +243,7 @@ func (s *Service) StatObject(ctx context.Context, opts storage.StatObjectOptions
 	}, nil
 }
 
-func (s *Service) PresignPutObject(ctx context.Context, opts storage.PresignPutOptions) (*storage.PresignedURL, error) {
-	u, err := s.client.PresignedPutObject(ctx, s.bucket, opts.Key, opts.Expires)
-	if err != nil {
-		return nil, s.translateError(err)
-	}
-
-	headers := map[string]string{}
-	if opts.ContentType != "" {
-		headers["Content-Type"] = opts.ContentType
-	}
-
-	return &storage.PresignedURL{
-		URL:       u.String(),
-		Method:    http.MethodPut,
-		Headers:   headers,
-		ExpiresAt: time.Now().Add(opts.Expires),
-	}, nil
-}
+// ── Multipart ───────────────────────────────────────────────────────────
 
 func (s *Service) InitMultipart(ctx context.Context, opts storage.InitMultipartOptions) (*storage.MultipartSession, error) {
 	uploadID, err := s.core.NewMultipartUpload(ctx, s.bucket, opts.Key, minio.PutObjectOptions{
@@ -290,25 +260,16 @@ func (s *Service) InitMultipart(ctx context.Context, opts storage.InitMultipartO
 	}, nil
 }
 
-func (s *Service) PresignPart(ctx context.Context, opts storage.PresignPartOptions) (*storage.PresignedURL, error) {
-	if opts.PartNumber < 1 {
-		return nil, fmt.Errorf("storage(minio): partNumber must be >= 1, got %d", opts.PartNumber)
-	}
-
-	params := url.Values{
-		"partNumber": []string{strconv.Itoa(opts.PartNumber)},
-		"uploadId":   []string{opts.UploadID},
-	}
-
-	u, err := s.client.Presign(ctx, http.MethodPut, s.bucket, opts.Key, opts.Expires, params)
+func (s *Service) PutPart(ctx context.Context, opts storage.PutPartOptions) (*storage.PartInfo, error) {
+	part, err := s.core.PutObjectPart(ctx, s.bucket, opts.Key, opts.UploadID, opts.PartNumber, opts.Reader, opts.Size, minio.PutObjectPartOptions{})
 	if err != nil {
 		return nil, s.translateError(err)
 	}
 
-	return &storage.PresignedURL{
-		URL:       u.String(),
-		Method:    http.MethodPut,
-		ExpiresAt: time.Now().Add(opts.Expires),
+	return &storage.PartInfo{
+		PartNumber: part.PartNumber,
+		ETag:       part.ETag,
+		Size:       part.Size,
 	}, nil
 }
 
@@ -337,7 +298,13 @@ func (s *Service) CompleteMultipart(ctx context.Context, opts storage.CompleteMu
 
 func (s *Service) AbortMultipart(ctx context.Context, opts storage.AbortMultipartOptions) error {
 	if err := s.core.AbortMultipartUpload(ctx, s.bucket, opts.Key, opts.UploadID); err != nil {
-		return s.translateError(err)
+		translated := s.translateError(err)
+		// AbortMultipart is idempotent: unknown session → nil.
+		if errors.Is(translated, storage.ErrUploadSessionNotFound) {
+			return nil
+		}
+
+		return translated
 	}
 
 	return nil
@@ -362,6 +329,12 @@ func (*Service) translateError(err error) error {
 		return storage.ErrInvalidBucketName
 	case "AccessDenied":
 		return storage.ErrAccessDenied
+	case "NoSuchUpload":
+		return storage.ErrUploadSessionNotFound
+	case "InvalidPart":
+		return storage.ErrPartETagMismatch
+	case "EntityTooSmall":
+		return storage.ErrPartTooSmall
 	default:
 		return err
 	}

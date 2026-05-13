@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/suite"
@@ -24,6 +23,7 @@ type MinIOServiceTestSuite struct {
 	ctx            context.Context
 	minioContainer *testx.MinIOContainer
 	service        storage.Service
+	multipart      storage.Multipart
 	minioClient    *minio.Client
 
 	testBucketName  string
@@ -44,6 +44,10 @@ func (suite *MinIOServiceTestSuite) SetupSuite() {
 	provider, err := New(*suite.minioContainer.MinIO, &config.AppConfig{})
 	suite.Require().NoError(err, "NewMinIOService should succeed")
 	suite.service = provider
+
+	multipart, ok := suite.service.(storage.Multipart)
+	suite.Require().True(ok, "MinIO service should implement storage.Multipart")
+	suite.multipart = multipart
 
 	suite.minioClient = suite.service.(*Service).client
 
@@ -229,70 +233,6 @@ func (suite *MinIOServiceTestSuite) TestListObjects() {
 	})
 }
 
-func (suite *MinIOServiceTestSuite) TestGetPresignedURL() {
-	suite.Run("GetMethod", func() {
-		suite.uploadTestObject()
-
-		url, err := suite.service.GetPresignedURL(suite.ctx, storage.PresignedURLOptions{
-			Key:     suite.testObjectKey,
-			Expires: 1 * time.Hour,
-			Method:  http.MethodGet,
-		})
-
-		suite.NoError(err, "GetPresignedURL should succeed")
-		suite.NotEmpty(url, "URL should not be empty")
-		suite.Contains(url, suite.testBucketName, "URL should contain bucket name")
-		suite.Contains(url, suite.testObjectKey, "URL should contain object key")
-
-		downloadReq, err := http.NewRequestWithContext(suite.ctx, http.MethodGet, url, nil)
-		suite.Require().NoError(err, "Creating download request should succeed")
-
-		resp, err := http.DefaultClient.Do(downloadReq)
-		suite.Require().NoError(err, "Downloading via presigned URL should succeed")
-
-		defer resp.Body.Close()
-
-		suite.Equal(http.StatusOK, resp.StatusCode, "Download should return 200 OK")
-		data, err := io.ReadAll(resp.Body)
-		suite.Require().NoError(err, "Reading response body should succeed")
-		suite.Equal(suite.testObjectData, data, "Downloaded data should match uploaded content")
-	})
-
-	suite.Run("PutMethod", func() {
-		url, err := suite.service.GetPresignedURL(suite.ctx, storage.PresignedURLOptions{
-			Key:     "presigned-upload.txt",
-			Expires: 1 * time.Hour,
-			Method:  http.MethodPut,
-		})
-
-		suite.NoError(err, "GetPresignedURL for PUT should succeed")
-		suite.NotEmpty(url, "URL should not be empty")
-		suite.Contains(url, suite.testBucketName, "URL should contain bucket name")
-
-		uploadData := []byte("Uploaded via presigned URL")
-		req, err := http.NewRequestWithContext(suite.ctx, http.MethodPut, url, bytes.NewReader(uploadData))
-		suite.Require().NoError(err, "Creating upload request should succeed")
-
-		resp, err := http.DefaultClient.Do(req)
-		suite.Require().NoError(err, "Uploading via presigned URL should succeed")
-
-		defer resp.Body.Close()
-
-		suite.Equal(http.StatusOK, resp.StatusCode, "Upload should return 200 OK")
-
-		reader, err := suite.service.GetObject(suite.ctx, storage.GetObjectOptions{
-			Key: "presigned-upload.txt",
-		})
-		suite.Require().NoError(err, "Should be able to get uploaded object")
-
-		defer reader.Close()
-
-		data, err := io.ReadAll(reader)
-		suite.Require().NoError(err, "Reading uploaded data should succeed")
-		suite.Equal(uploadData, data, "Uploaded data should match")
-	})
-}
-
 func (suite *MinIOServiceTestSuite) TestCopyObject() {
 	suite.Run("Success", func() {
 		suite.uploadTestObject()
@@ -373,6 +313,69 @@ func (suite *MinIOServiceTestSuite) uploadObject(key string, data []byte) {
 		ContentType: suite.testContentType,
 	})
 	suite.Require().NoError(err, "PutObject should succeed for "+key)
+}
+
+// anonymousGet performs an unauthenticated HTTP GET against the MinIO
+// endpoint, modeling an external client that bypasses the framework
+// and tries to read the object directly. The endpoint URL is derived
+// from the container config (http://<endpoint>/<bucket>/<key>); no
+// signing is applied so only objects covered by an Allow-anonymous
+// bucket policy should respond with 200.
+func (suite *MinIOServiceTestSuite) anonymousGet(key string) (int, []byte) {
+	endpoint := suite.minioContainer.MinIO.Endpoint
+	directURL := "http://" + endpoint + "/" + suite.testBucketName + "/" + key
+
+	req, err := http.NewRequestWithContext(suite.ctx, http.MethodGet, directURL, nil)
+	suite.Require().NoError(err, "Anonymous GET request construction should succeed for "+key)
+
+	resp, err := http.DefaultClient.Do(req)
+	suite.Require().NoError(err, "Anonymous GET should reach the MinIO endpoint for "+key)
+
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err, "Reading anonymous GET body should succeed for "+key)
+
+	return resp.StatusCode, body
+}
+
+// TestBucketPolicy guards the storage-layer half of the FileACL
+// boundary: the framework intentionally scopes the bucket's
+// anonymous-read policy to the "pub/" prefix so that "priv/" objects
+// can only be read through the proxy middleware (which authenticates
+// the caller and consults FileACL). A regression that widened the
+// policy back to "<bucket>/*" would let any outside caller fetch
+// every priv/ object by hitting the MinIO endpoint directly.
+func (suite *MinIOServiceTestSuite) TestBucketPolicy() {
+	suite.Run("PubPrefixAllowsAnonymousRead", func() {
+		key := "pub/anon-readable.txt"
+		body := []byte("public payload")
+		suite.uploadObject(key, body)
+
+		status, got := suite.anonymousGet(key)
+		suite.Equal(http.StatusOK, status, "Anonymous GET on pub/* must succeed (bucket policy grants s3:GetObject)")
+		suite.Equal(body, got, "Anonymous GET body must match the uploaded content for pub/*")
+	})
+
+	suite.Run("PrivPrefixDeniesAnonymousRead", func() {
+		key := "priv/anon-forbidden.txt"
+		body := []byte("private payload")
+		suite.uploadObject(key, body)
+
+		status, _ := suite.anonymousGet(key)
+		suite.Equal(http.StatusForbidden, status, "Anonymous GET on priv/* must be rejected by MinIO; only the proxy + FileACL path may serve these objects")
+	})
+
+	suite.Run("RootLevelKeyDeniesAnonymousRead", func() {
+		// Keys outside both pub/ and priv/ must also be inaccessible
+		// anonymously — the policy grants only pub/* explicitly.
+		key := "loose-key.txt"
+		body := []byte("ambiguous payload")
+		suite.uploadObject(key, body)
+
+		status, _ := suite.anonymousGet(key)
+		suite.Equal(http.StatusForbidden, status, "Anonymous GET on root-level keys must be rejected; pub/* is the only public namespace")
+	})
 }
 
 // TestMinIOServiceTestSuite tests MinIO service test suite functionality.

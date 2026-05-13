@@ -2,12 +2,16 @@ package storage
 
 import "github.com/coldsmirk/vef-framework-go/event"
 
+// Storage event topics. Subscribers should match on the constant rather
+// than the literal string to stay forward-compatible.
 const (
-	// EventTypeFilePromoted is published when a file is promoted from temp to permanent storage.
-	// Deprecated: emitted by the legacy Promoter only; will be removed when
-	// the Promoter is deleted.
+	// EventTypeFilePromoted is published when a previously-pending upload
+	// claim has been adopted by a business transaction (Files.OnCreate or
+	// the new-side of Files.OnUpdate). One event per consumed claim.
 	EventTypeFilePromoted = "vef.storage.file.promoted"
-	// EventTypeFileDeleted is published when a file is deleted from storage.
+	// EventTypeFileDeleted is published when the delete worker has
+	// successfully removed an object from the backend. One event per
+	// pending-delete row drained.
 	EventTypeFileDeleted = "vef.storage.file.deleted"
 	// EventTypeDeleteDeadLetter is published when the delete worker has
 	// exhausted retries for a pending-delete row. Operations should consume
@@ -15,57 +19,48 @@ const (
 	EventTypeDeleteDeadLetter = "vef.storage.delete.dead_letter"
 )
 
-// FileOperation represents the type of file operation.
-type FileOperation string
-
-const (
-	// OperationPromote indicates a file promotion operation.
-	OperationPromote FileOperation = "promote"
-	// OperationDelete indicates a file deletion operation.
-	OperationDelete FileOperation = "delete"
-)
-
-// FileEvent represents a file operation event in the storage system.
-// Published when files are promoted or deleted during Promoter operations.
-type FileEvent struct {
+// FilePromotedEvent reports the successful adoption of an upload claim by
+// a business transaction. Subscribers can use it for audit, analytics, or
+// downstream side-effects (cache warm-up, indexing, notifications).
+type FilePromotedEvent struct {
 	event.BaseEvent
 
-	// The operation type (promote/delete)
-	Operation FileOperation `json:"operation"`
-	// The meta type (uploaded_file/richtext/markdown)
-	MetaType MetaType `json:"metaType"`
-	// The file key (promoted key for promote, original key for delete)
+	// FileKey is the object key the business model now owns.
 	FileKey string `json:"fileKey"`
-	// Parsed attributes from the meta tag
-	Attrs map[string]string `json:"attrs,omitempty"`
 }
 
-// NewFilePromotedEvent creates a new file promoted event.
-// FileKey is the NEW key after promotion.
-func NewFilePromotedEvent(metaType MetaType, fileKey string, attrs map[string]string) *FileEvent {
-	return &FileEvent{
+// NewFilePromotedEvent creates a new file-promoted event.
+func NewFilePromotedEvent(key string) *FilePromotedEvent {
+	return &FilePromotedEvent{
 		BaseEvent: event.NewBaseEvent(EventTypeFilePromoted),
-		Operation: OperationPromote,
-		MetaType:  metaType,
-		FileKey:   fileKey,
-		Attrs:     attrs,
+		FileKey:   key,
 	}
 }
 
-// NewFileDeletedEvent creates a new file deleted event.
-func NewFileDeletedEvent(metaType MetaType, fileKey string, attrs map[string]string) *FileEvent {
-	return &FileEvent{
+// FileDeletedEvent reports the successful removal of an object from the
+// backend by the asynchronous delete worker. Subscribers can use it for
+// cache invalidation, audit, or downstream cleanup.
+type FileDeletedEvent struct {
+	event.BaseEvent
+
+	// FileKey is the object key that was just deleted.
+	FileKey string `json:"fileKey"`
+	// Reason carries the original schedule reason for the deletion.
+	Reason DeleteReason `json:"reason"`
+}
+
+// NewFileDeletedEvent creates a new file-deleted event.
+func NewFileDeletedEvent(key string, reason DeleteReason) *FileDeletedEvent {
+	return &FileDeletedEvent{
 		BaseEvent: event.NewBaseEvent(EventTypeFileDeleted),
-		Operation: OperationDelete,
-		MetaType:  metaType,
-		FileKey:   fileKey,
-		Attrs:     attrs,
+		FileKey:   key,
+		Reason:    reason,
 	}
 }
 
 // DeleteDeadLetterEvent reports a pending-delete row that the delete worker
 // could not drain within its retry budget. The row is left in
-// storage_pending_deletes (parked) for manual investigation.
+// sys_storage_pending_delete (parked) for manual investigation.
 type DeleteDeadLetterEvent struct {
 	event.BaseEvent
 

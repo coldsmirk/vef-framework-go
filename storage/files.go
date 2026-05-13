@@ -4,12 +4,11 @@ import (
 	"context"
 	"reflect"
 
-	collections "github.com/coldsmirk/go-collections"
+	"github.com/coldsmirk/go-collections"
 
-	"github.com/coldsmirk/vef-framework-go/id"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/reflectx"
-	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 // Files is the high-level facade business handlers use to keep their
@@ -21,8 +20,9 @@ import (
 // the claim consumption and pending-delete bookkeeping commit or roll
 // back atomically with the business write.
 //
-// Internally Files composes ClaimStore + DeleteQueue + a per-type meta
-// field cache; callers do not interact with those primitives directly.
+// Internally Files composes ClaimConsumer + DeleteScheduler + a per-type
+// meta field cache; callers do not interact with those primitives
+// directly.
 type Files interface {
 	// OnCreate adopts every file reference reachable from model by
 	// deleting the corresponding upload claim rows inside tx. Returns
@@ -43,21 +43,41 @@ type Files interface {
 }
 
 // NewFiles returns the default Files implementation, sharing the supplied
-// ClaimStore and DeleteQueue across all model types. The returned value
-// is safe for concurrent use; meta field specs are parsed once per type
-// on first access and cached for the lifetime of the instance.
-func NewFiles(cs ClaimStore, dq DeleteQueue) Files {
+// ClaimConsumer, DeleteScheduler, event Publisher, and URLKeyMapper
+// across all model types. The returned value is safe for concurrent
+// use; meta field specs are parsed once per type on first access and
+// cached for the lifetime of the instance.
+//
+// The URLKeyMapper translates richtext / markdown URLs to storage keys
+// during reconciliation. Pass IdentityURLKeyMapper{} (or nil, which is
+// normalised to the identity mapper) when business code embeds bare
+// keys directly in <img src> / ![](...).
+//
+// Promoted-file events are published synchronously after a successful
+// ConsumeMany call but before the business transaction commits. Combined
+// with an in-memory bus this gives at-least-once delivery with the
+// possibility of spurious events if the business transaction later
+// rolls back; subscribers MUST be idempotent.
+func NewFiles(cc ClaimConsumer, ds DeleteScheduler, publisher event.Publisher, urlMapper URLKeyMapper) Files {
+	if urlMapper == nil {
+		urlMapper = new(IdentityURLKeyMapper)
+	}
+
 	return &defaultFiles{
-		cs:    cs,
-		dq:    dq,
-		cache: collections.NewConcurrentHashMap[reflect.Type, *cachedExtractor](),
+		cc:        cc,
+		ds:        ds,
+		publisher: publisher,
+		urlMapper: urlMapper,
+		cache:     collections.NewConcurrentHashMap[reflect.Type, *cachedExtractor](),
 	}
 }
 
 type defaultFiles struct {
-	cs    ClaimStore
-	dq    DeleteQueue
-	cache collections.ConcurrentMap[reflect.Type, *cachedExtractor]
+	cc        ClaimConsumer
+	ds        DeleteScheduler
+	publisher event.Publisher
+	urlMapper URLKeyMapper
+	cache     collections.ConcurrentMap[reflect.Type, *cachedExtractor]
 }
 
 // cachedExtractor holds the reflect-parsed meta field spec for a single
@@ -72,17 +92,23 @@ func (f *defaultFiles) OnCreate(ctx context.Context, tx orm.DB, model any) error
 		return nil
 	}
 
-	refs := ext.extract(model)
+	refs := f.applyURLMapping(ext.extract(model))
 	if len(refs) == 0 {
 		return nil
 	}
 
 	keys := make([]string, len(refs))
-	for i, r := range refs {
-		keys[i] = r.Key
+	for i, ref := range refs {
+		keys[i] = ref.Key
 	}
 
-	return f.cs.ConsumeMany(ctx, tx, keys)
+	if err := f.cc.ConsumeMany(ctx, tx, keys); err != nil {
+		return err
+	}
+
+	f.publishPromoted(keys)
+
+	return nil
 }
 
 func (f *defaultFiles) OnUpdate(ctx context.Context, tx orm.DB, oldModel, newModel any) error {
@@ -90,27 +116,53 @@ func (f *defaultFiles) OnUpdate(ctx context.Context, tx orm.DB, oldModel, newMod
 	if ext == nil {
 		ext = f.extractorFor(oldModel)
 	}
+
 	if ext == nil {
 		return nil
 	}
 
-	oldRefs := ext.extract(oldModel)
-	newRefs := ext.extract(newModel)
+	// URL mapping is applied before diffing so old/new ref sets compare
+	// on storage keys, not raw embedded URLs. A frontend that switches
+	// from "/storage/files/foo.png" to "https://cdn/foo.png" while leaving
+	// the same key behind must not look like a delete + re-create.
+	oldRefs := f.applyURLMapping(ext.extract(oldModel))
+	newRefs := f.applyURLMapping(ext.extract(newModel))
 
 	toConsume, toDelete := diffRefs(newRefs, oldRefs)
 
+	var consumedKeys []string
+
 	if len(toConsume) > 0 {
-		keys := make([]string, len(toConsume))
-		for i, r := range toConsume {
-			keys[i] = r.Key
+		consumedKeys = make([]string, len(toConsume))
+		for i, ref := range toConsume {
+			consumedKeys[i] = ref.Key
 		}
 
-		if err := f.cs.ConsumeMany(ctx, tx, keys); err != nil {
+		if err := f.cc.ConsumeMany(ctx, tx, consumedKeys); err != nil {
 			return err
 		}
 	}
 
-	return f.scheduleDeletes(ctx, tx, toDelete, DeleteReasonReplaced)
+	if err := f.scheduleDeletes(ctx, tx, toDelete, DeleteReasonReplaced); err != nil {
+		return err
+	}
+
+	f.publishPromoted(consumedKeys)
+
+	return nil
+}
+
+// publishPromoted emits one FilePromotedEvent per adopted key. The
+// publisher may be nil in tests; callers must therefore always go
+// through this helper rather than touching f.publisher directly.
+func (f *defaultFiles) publishPromoted(keys []string) {
+	if f.publisher == nil || len(keys) == 0 {
+		return
+	}
+
+	for _, key := range keys {
+		f.publisher.Publish(NewFilePromotedEvent(key))
+	}
 }
 
 func (f *defaultFiles) OnDelete(ctx context.Context, tx orm.DB, model any) error {
@@ -119,7 +171,49 @@ func (f *defaultFiles) OnDelete(ctx context.Context, tx orm.DB, model any) error
 		return nil
 	}
 
-	return f.scheduleDeletes(ctx, tx, ext.extract(model), DeleteReasonDeleted)
+	return f.scheduleDeletes(ctx, tx, f.applyURLMapping(ext.extract(model)), DeleteReasonDeleted)
+}
+
+// applyURLMapping rewrites richtext / markdown ref keys through the
+// configured URLKeyMapper so embedded URLs become storage object keys
+// before they hit ClaimConsumer / DeleteScheduler.
+//
+// uploaded_file refs are passed through unchanged because their values
+// come from upload-time storage keys directly; they are never URLs.
+//
+// richtext / markdown refs are URLs from user content. The mapper's
+// (key, ok) result decides their fate:
+//
+//   - ok=true: replace the raw URL with the resolved storage key.
+//   - ok=false: drop the ref entirely; the URL refers to something
+//     outside this storage system (external CDN, mailto, data URI,
+//     bad input). Reconciliation must not touch unrelated objects.
+//
+// The output slice is rebuilt rather than mutated in place so callers
+// holding the input slice are not surprised by drops.
+func (f *defaultFiles) applyURLMapping(refs []FileRef) []FileRef {
+	if len(refs) == 0 {
+		return refs
+	}
+
+	out := make([]FileRef, 0, len(refs))
+	for _, r := range refs {
+		if r.MetaType != MetaTypeRichText && r.MetaType != MetaTypeMarkdown {
+			out = append(out, r)
+
+			continue
+		}
+
+		key, ok := f.urlMapper.URLToKey(r.Key)
+		if !ok {
+			continue
+		}
+
+		r.Key = key
+		out = append(out, r)
+	}
+
+	return out
 }
 
 // extractorFor returns the cached meta spec for model's underlying type,
@@ -154,20 +248,12 @@ func (f *defaultFiles) scheduleDeletes(
 		return nil
 	}
 
-	now := timex.Now()
-	items := make([]PendingDelete, len(refs))
-
-	for i, r := range refs {
-		items[i] = PendingDelete{
-			ID:            id.GenerateUUID(),
-			Key:           r.Key,
-			Reason:        reason,
-			NextAttemptAt: now,
-			CreatedAt:     now,
-		}
+	keys := make([]string, len(refs))
+	for i, ref := range refs {
+		keys[i] = ref.Key
 	}
 
-	return f.dq.Schedule(ctx, tx, items)
+	return f.ds.Schedule(ctx, tx, keys, reason)
 }
 
 func (e *cachedExtractor) extract(model any) []FileRef {
@@ -186,34 +272,4 @@ func (e *cachedExtractor) extract(model any) []FileRef {
 	}
 
 	return collectFileRefs(value, e.fields)
-}
-
-// diffRefs partitions two ref sets by key:
-//
-//	toConsume = refs in newRefs whose key is not in oldRefs
-//	toDelete  = refs in oldRefs whose key is not in newRefs
-func diffRefs(newRefs, oldRefs []FileRef) (toConsume, toDelete []FileRef) {
-	newSet := make(map[string]struct{}, len(newRefs))
-	for _, r := range newRefs {
-		newSet[r.Key] = struct{}{}
-	}
-
-	oldSet := make(map[string]struct{}, len(oldRefs))
-	for _, r := range oldRefs {
-		oldSet[r.Key] = struct{}{}
-	}
-
-	for _, r := range newRefs {
-		if _, in := oldSet[r.Key]; !in {
-			toConsume = append(toConsume, r)
-		}
-	}
-
-	for _, r := range oldRefs {
-		if _, in := newSet[r.Key]; !in {
-			toDelete = append(toDelete, r)
-		}
-	}
-
-	return toConsume, toDelete
 }

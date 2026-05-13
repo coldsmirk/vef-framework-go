@@ -6,48 +6,71 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/storage/store"
 	"github.com/coldsmirk/vef-framework-go/storage"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
-// Tunables for the delete worker. Hard-coded for now; lift into config if
-// operations want runtime tuning.
+// Backoff bounds for transient delete failures. These are intentionally
+// not exposed in StorageConfig — tuning them requires understanding the
+// exponential schedule, and operators can already cap retries via
+// DeleteMaxAttempts.
 const (
-	deleteBatchSize   = 100
-	deleteConcurrency = 8
-	deleteLeaseWindow = 5 * time.Minute
 	deleteBaseBackoff = 30 * time.Second
 	deleteMaxBackoff  = 1 * time.Hour
-	deleteMaxAttempts = 12
 
-	// deadLetterPark pushes a parked row far enough into the future that the
-	// next Lease will not pick it up. Operations remove or fix it manually.
+	// deadLetterPark pushes a parked row far enough into the future that
+	// the next Lease will not pick it up. Operations remove or fix it
+	// manually after consuming the dead-letter event.
 	deadLetterPark = 100 * 365 * 24 * time.Hour
 )
 
-// DeleteWorker drains storage_pending_deletes: it leases due rows, deletes
-// the underlying objects, and either marks the rows done or defers them
-// with exponential backoff. Rows that exceed deleteMaxAttempts are parked
+// DeleteWorker drains sys_storage_pending_delete: for each leased row it
+// optionally aborts a multipart session (UploadID != "" and the backend
+// implements storage.Multipart), deletes the underlying object, and
+// either marks the row done or defers it with exponential backoff. Rows
+// that exceed StorageConfig.DeleteMaxAttempts are parked indefinitely
 // and a dead-letter event is published.
 type DeleteWorker struct {
 	service     storage.Service
-	deleteQueue storage.DeleteQueue
+	multipart   storage.Multipart // nil when the backend does not implement chunked uploads
+	deleteQueue store.DeleteQueue
 	publisher   event.Publisher
+	cfg         *config.StorageConfig
 }
 
-// NewDeleteWorker constructs a DeleteWorker.
-func NewDeleteWorker(service storage.Service, deleteQueue storage.DeleteQueue, publisher event.Publisher) *DeleteWorker {
-	return &DeleteWorker{
+// NewDeleteWorker constructs a DeleteWorker. The optional multipart
+// capability is resolved once via a type assertion against the backend;
+// processOne consults the resulting handle instead of probing the
+// backend on every iteration.
+func NewDeleteWorker(
+	service storage.Service,
+	deleteQueue store.DeleteQueue,
+	publisher event.Publisher,
+	cfg *config.StorageConfig,
+) *DeleteWorker {
+	w := &DeleteWorker{
 		service:     service,
 		deleteQueue: deleteQueue,
 		publisher:   publisher,
+		cfg:         cfg,
 	}
+
+	if mp, ok := service.(storage.Multipart); ok {
+		w.multipart = mp
+	}
+
+	return w
 }
 
 // Run executes one drain cycle. Safe to invoke from a cron task.
 func (w *DeleteWorker) Run(ctx context.Context) {
-	leased, err := w.deleteQueue.Lease(ctx, timex.Now(), deleteBatchSize, deleteLeaseWindow)
+	batchSize := w.cfg.EffectiveDeleteBatchSize()
+	leaseWindow := w.cfg.EffectiveDeleteLeaseWindow()
+
+	leased, err := w.deleteQueue.Lease(ctx, timex.Now(), batchSize, leaseWindow)
 	if err != nil {
 		logger.Errorf("Failed to lease pending deletes: %v", err)
 
@@ -60,41 +83,72 @@ func (w *DeleteWorker) Run(ctx context.Context) {
 
 	logger.Infof("Processing %d pending delete(s)", len(leased))
 
-	sem := make(chan struct{}, deleteConcurrency)
+	concurrency := w.cfg.EffectiveDeleteConcurrency()
+	sem := make(chan struct{}, concurrency)
 
 	var wg sync.WaitGroup
 
 	for i := range leased {
 		item := &leased[i]
 
-		wg.Add(1)
 		sem <- struct{}{}
 
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			defer func() { <-sem }()
 
 			w.processOne(ctx, item)
-		}()
+		})
 	}
 
 	wg.Wait()
 }
 
-func (w *DeleteWorker) processOne(ctx context.Context, item *storage.PendingDelete) {
-	err := w.service.DeleteObject(ctx, storage.DeleteObjectOptions{Key: item.Key})
-	if err == nil || errors.Is(err, storage.ErrObjectNotFound) {
-		if doneErr := w.deleteQueue.Done(ctx, []string{item.ID}); doneErr != nil {
-			logger.Errorf("Mark delete row %s done failed: %v", item.ID, doneErr)
+// processOne handles a single leased pending-delete row. The work is
+// always: abort the multipart session if the row carries one AND the
+// backend implements storage.Multipart, then delete the object, then
+// mark done. A row that claims to be multipart against a backend that
+// no longer implements it (typically only possible after a backend
+// swap) silently skips the abort and proceeds to object deletion — the
+// session is unreachable through this service anyway. Transient errors
+// trigger Defer with exponential backoff; the DeleteMaxAttempts budget
+// gates dead-lettering.
+func (w *DeleteWorker) processOne(ctx context.Context, item *store.PendingDelete) {
+	if item.IsMultipart() && w.multipart != nil {
+		if err := w.multipart.AbortMultipart(ctx, storage.AbortMultipartOptions{
+			Key:      item.Key,
+			UploadID: item.UploadID,
+		}); err != nil {
+			w.handleFailure(ctx, item, err)
+
+			return
 		}
+	}
+
+	err := w.service.DeleteObject(ctx, storage.DeleteObjectOptions{Key: item.Key})
+	if err != nil && !errors.Is(err, storage.ErrObjectNotFound) {
+		w.handleFailure(ctx, item, err)
 
 		return
 	}
 
+	if doneErr := w.deleteQueue.Done(ctx, []string{item.ID}); doneErr != nil {
+		logger.Errorf("Mark delete row %s done failed: %v", item.ID, doneErr)
+
+		return
+	}
+
+	w.publisher.Publish(storage.NewFileDeletedEvent(item.Key, item.Reason))
+}
+
+// handleFailure decides whether a transient error should trigger a
+// backoff retry or, once attempts have exhausted DeleteMaxAttempts, a
+// dead-letter park.
+func (w *DeleteWorker) handleFailure(ctx context.Context, item *store.PendingDelete, lastErr error) {
+	maxAttempts := w.cfg.EffectiveDeleteMaxAttempts()
 	nextAttempt := item.Attempts + 1
 
-	if nextAttempt >= deleteMaxAttempts {
-		w.parkDeadLetter(ctx, item, err)
+	if nextAttempt >= maxAttempts {
+		w.parkDeadLetter(ctx, item, lastErr)
 
 		return
 	}
@@ -109,10 +163,11 @@ func (w *DeleteWorker) processOne(ctx context.Context, item *storage.PendingDele
 	}
 
 	logger.Warnf("Delete object %s failed (attempt %d/%d), retry in %s: %v",
-		item.Key, nextAttempt, deleteMaxAttempts, backoff, err)
+		item.Key, nextAttempt, maxAttempts, backoff, lastErr)
 }
 
-func (w *DeleteWorker) parkDeadLetter(ctx context.Context, item *storage.PendingDelete, lastErr error) {
+func (w *DeleteWorker) parkDeadLetter(ctx context.Context, item *store.PendingDelete, lastErr error) {
+	maxAttempts := w.cfg.EffectiveDeleteMaxAttempts()
 	parkUntil := timex.DateTime(time.Now().Add(deadLetterPark))
 
 	if deferErr := w.deleteQueue.Defer(ctx, item.ID, parkUntil); deferErr != nil {
@@ -120,23 +175,20 @@ func (w *DeleteWorker) parkDeadLetter(ctx context.Context, item *storage.Pending
 	}
 
 	logger.Errorf("Delete object %s reached max attempts (%d), parked as dead-letter: %v",
-		item.Key, deleteMaxAttempts, lastErr)
+		item.Key, maxAttempts, lastErr)
 
 	w.publisher.Publish(storage.NewDeleteDeadLetterEvent(
 		item.ID,
 		item.Key,
 		item.Reason,
 		item.Attempts+1,
-		lastErr.Error(),
+		classifyDeleteError(lastErr),
 	))
 }
 
 // computeBackoff returns 2^attempt * base, capped at deleteMaxBackoff.
 func computeBackoff(attempt int) time.Duration {
-	shift := attempt
-	if shift > 30 {
-		shift = 30 // prevent int overflow
-	}
+	shift := min(attempt, 30) // prevent int overflow
 
 	d := deleteBaseBackoff << shift //nolint:gosec // shift bounded above
 	if d <= 0 || d > deleteMaxBackoff {
@@ -144,4 +196,21 @@ func computeBackoff(attempt int) time.Duration {
 	}
 
 	return d
+}
+
+// classifyDeleteError returns a sanitized error category string for
+// dead-letter events. The full error detail stays in server logs;
+// events only carry the classification to avoid leaking backend
+// internals to external subscribers.
+func classifyDeleteError(err error) string {
+	switch {
+	case errors.Is(err, storage.ErrAccessDenied):
+		return "access_denied"
+	case errors.Is(err, storage.ErrBucketNotFound):
+		return "bucket_not_found"
+	case errors.Is(err, storage.ErrUploadSessionNotFound):
+		return "session_not_found"
+	default:
+		return "transient"
+	}
 }

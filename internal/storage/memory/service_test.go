@@ -168,28 +168,8 @@ func TestMemoryService(t *testing.T) {
 		}
 	})
 
-	t.Run("CapabilitiesReportsNoOptionalSupport", func(t *testing.T) {
-		caps := service.Capabilities()
-		assert.False(t, caps.Multipart)
-		assert.False(t, caps.PresignedPut)
-		assert.False(t, caps.PresignedGet)
-		assert.False(t, caps.PresignedPart)
-	})
-
-	t.Run("PresignedAndMultipartReturnNotSupported", func(t *testing.T) {
-		_, err := service.PresignPutObject(ctx, storage.PresignPutOptions{Key: "k"})
-		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
-
-		_, err = service.InitMultipart(ctx, storage.InitMultipartOptions{Key: "k"})
-		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
-
-		_, err = service.PresignPart(ctx, storage.PresignPartOptions{Key: "k"})
-		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
-
-		_, err = service.CompleteMultipart(ctx, storage.CompleteMultipartOptions{Key: "k"})
-		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
-
-		err = service.AbortMultipart(ctx, storage.AbortMultipartOptions{Key: "k"})
-		assert.ErrorIs(t, err, storage.ErrCapabilityNotSupported)
+	t.Run("ImplementsMultipart", func(t *testing.T) {
+		_, isMultipart := service.(storage.Multipart)
+		assert.True(t, isMultipart, "Memory backend must implement storage.Multipart")
 	})
 }

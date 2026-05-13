@@ -4,10 +4,14 @@ import (
 	"errors"
 	"mime"
 	"net/url"
+	"path"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
 
+	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -16,6 +20,7 @@ import (
 
 type ProxyMiddleware struct {
 	service storage.Service
+	acl     storage.FileACL
 }
 
 func (*ProxyMiddleware) Name() string {
@@ -31,12 +36,40 @@ func (p *ProxyMiddleware) Apply(router fiber.Router) {
 }
 
 func (p *ProxyMiddleware) handleFileProxy(ctx fiber.Ctx) error {
+	// fiber v3 Params returns the raw URI path segment without
+	// percent-decoding; unescape once to get the actual object key.
 	key, err := url.PathUnescape(ctx.Params("+"))
 	if err != nil {
 		return result.Err(
 			i18n.T(result.ErrMessageInvalidFileKey),
 			result.WithCode(result.ErrCodeInvalidFileKey),
 		)
+	}
+
+	// Reject path traversal, absolute paths, and control characters.
+	if !isValidObjectKey(key) {
+		return result.Err(
+			i18n.T(result.ErrMessageInvalidFileKey),
+			result.WithCode(result.ErrCodeInvalidFileKey),
+		)
+	}
+
+	// pub/* is world-readable by design (bucket policy + CDN caching);
+	// skip the ACL call entirely for performance and to allow anonymous
+	// access without requiring an auth token on the request.
+	if !strings.HasPrefix(key, storage.PublicPrefix) {
+		principal := contextx.Principal(ctx)
+
+		allowed, aclErr := p.acl.CanRead(ctx.Context(), principal, key)
+		if aclErr != nil {
+			logger.Errorf("FileACL.CanRead failed for key %s: %v", key, aclErr)
+
+			return result.Err(i18n.T(result.ErrMessageFailedToGetFile))
+		}
+
+		if !allowed {
+			return result.ErrAccessDenied
+		}
 	}
 
 	reader, err := p.service.GetObject(ctx.Context(), storage.GetObjectOptions{
@@ -64,20 +97,62 @@ func (p *ProxyMiddleware) handleFileProxy(ctx fiber.Ctx) error {
 
 	contentType := detectContentType(stat, key)
 	ctx.Set(fiber.HeaderContentType, contentType)
+	ctx.Set("X-Content-Type-Options", "nosniff")
 
-	ctx.Set(fiber.HeaderCacheControl, "public, max-age=86400, must-revalidate")
+	if stat != nil {
+		ctx.Set(fiber.HeaderContentLength, strconv.FormatInt(stat.Size, 10))
+	}
 
-	if stat != nil && stat.ETag != "" {
-		ctx.Set(fiber.HeaderETag, stat.ETag)
+	// pub/* is safe to cache publicly (CDN, browser); priv/* must never
+	// be stored in shared caches — the response is per-principal.
+	// Keys contain UUIDs so immutable is safe for CDN hit rate.
+	if strings.HasPrefix(key, storage.PublicPrefix) {
+		ctx.Set(fiber.HeaderCacheControl, "public, max-age=3600, immutable")
+
+		if stat != nil && stat.ETag != "" {
+			ctx.Set(fiber.HeaderETag, stat.ETag)
+		}
+	} else {
+		ctx.Set(fiber.HeaderCacheControl, "private, no-store")
+		// Do NOT send ETag for private files — prevents cross-user
+		// content fingerprinting via conditional requests.
 	}
 
 	return ctx.SendStream(reader)
 }
 
-func NewProxyMiddleware(service storage.Service) app.Middleware {
+func NewProxyMiddleware(service storage.Service, acl storage.FileACL) app.Middleware {
 	return &ProxyMiddleware{
 		service: service,
+		acl:     acl,
 	}
+}
+
+// isValidObjectKey rejects keys that could cause path traversal or
+// other filesystem-level exploits. A valid key:
+//   - is non-empty
+//   - does not start with "/" (absolute path)
+//   - contains no ".." path segments
+//   - equals its path.Clean form (no redundant slashes, no trailing /)
+//   - contains no NUL bytes or backslashes
+func isValidObjectKey(key string) bool {
+	if key == "" {
+		return false
+	}
+
+	if key[0] == '/' || strings.ContainsAny(key, "\x00\\") {
+		return false
+	}
+
+	if strings.Contains(key, "..") {
+		return false
+	}
+
+	if path.Clean(key) != key {
+		return false
+	}
+
+	return true
 }
 
 func detectContentType(stat *storage.ObjectInfo, key string) string {

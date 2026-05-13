@@ -3,34 +3,52 @@ package memory
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"crypto/md5"
+	"encoding/hex"
 	"io"
 	"maps"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/spf13/cast"
-
+	"github.com/coldsmirk/vef-framework-go/id"
 	"github.com/coldsmirk/vef-framework-go/storage"
 )
 
+const partSize int64 = 64 * 1024 // 64 KiB — small for fast multi-part test coverage
+
 // Service is intended for testing purposes only.
 type Service struct {
-	mu      sync.RWMutex
-	objects map[string]*objectData
+	mu       sync.RWMutex
+	objects  map[string]*objectData
+	sessions map[string]*multipartSession
 }
 
 type objectData struct {
 	data         []byte
+	etag         string
 	contentType  string
 	metadata     map[string]string
 	lastModified time.Time
 }
 
+type multipartSession struct {
+	key         string
+	contentType string
+	metadata    map[string]string
+	parts       map[int]*memoryPart
+}
+
+type memoryPart struct {
+	data []byte
+	etag string
+	size int64
+}
+
 func New() storage.Service {
 	return &Service{
-		objects: make(map[string]*objectData),
+		objects:  make(map[string]*objectData),
+		sessions: make(map[string]*multipartSession),
 	}
 }
 
@@ -40,12 +58,16 @@ func (s *Service) PutObject(_ context.Context, opts storage.PutObjectOptions) (*
 		return nil, err
 	}
 
+	h := md5.Sum(data)
+	etag := hex.EncodeToString(h[:])
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := time.Now()
 	s.objects[opts.Key] = &objectData{
 		data:         data,
+		etag:         etag,
 		contentType:  opts.ContentType,
 		metadata:     opts.Metadata,
 		lastModified: now,
@@ -54,7 +76,7 @@ func (s *Service) PutObject(_ context.Context, opts storage.PutObjectOptions) (*
 	return &storage.ObjectInfo{
 		Bucket:       "memory",
 		Key:          opts.Key,
-		ETag:         cast.ToString(now.UnixNano()),
+		ETag:         etag,
 		Size:         int64(len(data)),
 		ContentType:  opts.ContentType,
 		LastModified: now,
@@ -115,7 +137,7 @@ func (s *Service) ListObjects(_ context.Context, opts storage.ListObjectsOptions
 		objects = append(objects, storage.ObjectInfo{
 			Bucket:       "memory",
 			Key:          key,
-			ETag:         cast.ToString(obj.lastModified.UnixNano()),
+			ETag:         obj.etag,
 			Size:         int64(len(obj.data)),
 			ContentType:  obj.contentType,
 			LastModified: obj.lastModified,
@@ -128,10 +150,6 @@ func (s *Service) ListObjects(_ context.Context, opts storage.ListObjectsOptions
 	}
 
 	return objects, nil
-}
-
-func (*Service) GetPresignedURL(_ context.Context, opts storage.PresignedURLOptions) (string, error) {
-	return fmt.Sprintf("memory://%s?method=%s&expires=%d", opts.Key, opts.Method, opts.Expires), nil
 }
 
 func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) (*storage.ObjectInfo, error) {
@@ -149,9 +167,13 @@ func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) 
 	metadataCopy := make(map[string]string, len(source.metadata))
 	maps.Copy(metadataCopy, source.metadata)
 
+	copyHash := md5.Sum(dataCopy)
+	copyEtag := hex.EncodeToString(copyHash[:])
+
 	now := time.Now()
 	s.objects[opts.DestKey] = &objectData{
 		data:         dataCopy,
+		etag:         copyEtag,
 		contentType:  source.contentType,
 		metadata:     metadataCopy,
 		lastModified: now,
@@ -160,7 +182,7 @@ func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) 
 	return &storage.ObjectInfo{
 		Bucket:       "memory",
 		Key:          opts.DestKey,
-		ETag:         cast.ToString(now.UnixNano()),
+		ETag:         copyEtag,
 		Size:         int64(len(dataCopy)),
 		ContentType:  source.contentType,
 		LastModified: now,
@@ -180,7 +202,7 @@ func (s *Service) StatObject(_ context.Context, opts storage.StatObjectOptions) 
 	return &storage.ObjectInfo{
 		Bucket:       "memory",
 		Key:          opts.Key,
-		ETag:         cast.ToString(obj.lastModified.UnixNano()),
+		ETag:         obj.etag,
 		Size:         int64(len(obj.data)),
 		ContentType:  obj.contentType,
 		LastModified: obj.lastModified,
@@ -188,31 +210,136 @@ func (s *Service) StatObject(_ context.Context, opts storage.StatObjectOptions) 
 	}, nil
 }
 
-// Capabilities reports the in-memory backend's supported features. The
-// memory backend exists for unit testing of CRUD/HTTP code paths and does
-// not run a real HTTP endpoint, so it cannot serve presigned URLs and does
-// not implement multipart uploads. The HTTP layer should fall back to the
-// server-proxied "proxy" mode for this backend.
-func (*Service) Capabilities() storage.ServiceCapabilities {
-	return storage.ServiceCapabilities{}
+func (*Service) PartSize() int64   { return partSize }
+func (*Service) MaxPartCount() int { return 0 }
+
+// ── Multipart ───────────────────────────────────────────────────────────
+
+func (s *Service) InitMultipart(_ context.Context, opts storage.InitMultipartOptions) (*storage.MultipartSession, error) {
+	uploadID := id.GenerateUUID()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.sessions[uploadID] = &multipartSession{
+		key:         opts.Key,
+		contentType: opts.ContentType,
+		metadata:    opts.Metadata,
+		parts:       make(map[int]*memoryPart),
+	}
+
+	return &storage.MultipartSession{
+		Key:      opts.Key,
+		UploadID: uploadID,
+	}, nil
 }
 
-func (*Service) PresignPutObject(_ context.Context, _ storage.PresignPutOptions) (*storage.PresignedURL, error) {
-	return nil, storage.ErrCapabilityNotSupported
+func (s *Service) PutPart(_ context.Context, opts storage.PutPartOptions) (*storage.PartInfo, error) {
+	data, err := io.ReadAll(opts.Reader)
+	if err != nil {
+		return nil, err
+	}
+
+	h := md5.Sum(data)
+	etag := hex.EncodeToString(h[:])
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, exists := s.sessions[opts.UploadID]
+	if !exists {
+		return nil, storage.ErrUploadSessionNotFound
+	}
+
+	session.parts[opts.PartNumber] = &memoryPart{
+		data: data,
+		etag: etag,
+		size: int64(len(data)),
+	}
+
+	return &storage.PartInfo{
+		PartNumber: opts.PartNumber,
+		ETag:       etag,
+		Size:       int64(len(data)),
+	}, nil
 }
 
-func (*Service) InitMultipart(_ context.Context, _ storage.InitMultipartOptions) (*storage.MultipartSession, error) {
-	return nil, storage.ErrCapabilityNotSupported
+func (s *Service) CompleteMultipart(_ context.Context, opts storage.CompleteMultipartOptions) (*storage.ObjectInfo, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(opts.Parts) == 0 {
+		return nil, storage.ErrPartNumberOutOfRange
+	}
+
+	session, exists := s.sessions[opts.UploadID]
+	if !exists {
+		return nil, storage.ErrUploadSessionNotFound
+	}
+
+	// Verify parts: contiguous 1..N, ETags match, non-final size check.
+	for i, cp := range opts.Parts {
+		expected := i + 1
+		if cp.PartNumber != expected {
+			return nil, storage.ErrPartNumberOutOfRange
+		}
+
+		part, ok := session.parts[cp.PartNumber]
+		if !ok {
+			return nil, storage.ErrPartNumberOutOfRange
+		}
+
+		if part.etag != cp.ETag {
+			return nil, storage.ErrPartETagMismatch
+		}
+
+		// Non-final parts must be at least partSize (contract §2).
+		if i < len(opts.Parts)-1 && part.size < partSize {
+			return nil, storage.ErrPartTooSmall
+		}
+	}
+
+	// Assemble final object.
+	var totalSize int64
+	for _, cp := range opts.Parts {
+		totalSize += session.parts[cp.PartNumber].size
+	}
+
+	assembled := make([]byte, 0, totalSize)
+	for _, cp := range opts.Parts {
+		assembled = append(assembled, session.parts[cp.PartNumber].data...)
+	}
+
+	assembledHash := md5.Sum(assembled)
+	assembledEtag := hex.EncodeToString(assembledHash[:])
+
+	now := time.Now()
+	s.objects[session.key] = &objectData{
+		data:         assembled,
+		etag:         assembledEtag,
+		contentType:  session.contentType,
+		metadata:     session.metadata,
+		lastModified: now,
+	}
+
+	delete(s.sessions, opts.UploadID)
+
+	return &storage.ObjectInfo{
+		Bucket:       "memory",
+		Key:          session.key,
+		ETag:         assembledEtag,
+		Size:         totalSize,
+		ContentType:  session.contentType,
+		LastModified: now,
+		Metadata:     session.metadata,
+	}, nil
 }
 
-func (*Service) PresignPart(_ context.Context, _ storage.PresignPartOptions) (*storage.PresignedURL, error) {
-	return nil, storage.ErrCapabilityNotSupported
-}
+func (s *Service) AbortMultipart(_ context.Context, opts storage.AbortMultipartOptions) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-func (*Service) CompleteMultipart(_ context.Context, _ storage.CompleteMultipartOptions) (*storage.ObjectInfo, error) {
-	return nil, storage.ErrCapabilityNotSupported
-}
+	delete(s.sessions, opts.UploadID)
 
-func (*Service) AbortMultipart(_ context.Context, _ storage.AbortMultipartOptions) error {
-	return storage.ErrCapabilityNotSupported
+	return nil
 }

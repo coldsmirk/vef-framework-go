@@ -1,10 +1,9 @@
 package worker
 
 import (
-	"time"
-
 	"go.uber.org/fx"
 
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/cron"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 )
@@ -23,9 +22,16 @@ var (
 	)
 )
 
-func registerJobs(scheduler cron.Scheduler, sweeper *ClaimSweeper, deleter *DeleteWorker) error {
+func registerJobs(
+	scheduler cron.Scheduler,
+	sweeper *ClaimSweeper,
+	deleter *DeleteWorker,
+	cfg *config.StorageConfig,
+) error {
+	sweepInterval := cfg.EffectiveSweepInterval()
+
 	sweepJob, err := scheduler.NewJob(cron.NewDurationJob(
-		5*time.Minute,
+		sweepInterval,
 		cron.WithName("storage:claim-sweep"),
 		cron.WithTags("storage", "claim"),
 		cron.WithTask(sweeper.Run),
@@ -34,10 +40,12 @@ func registerJobs(scheduler cron.Scheduler, sweeper *ClaimSweeper, deleter *Dele
 		return err
 	}
 
-	logger.Infof("Claim sweep job [%s] registered, polling every 5m", sweepJob.Name())
+	logger.Infof("Claim sweep job [%s] registered, polling every %s", sweepJob.Name(), sweepInterval)
+
+	deleteInterval := cfg.EffectiveDeleteWorkerInterval()
 
 	deleteJob, err := scheduler.NewJob(cron.NewDurationJob(
-		5*time.Minute,
+		deleteInterval,
 		cron.WithName("storage:delete-worker"),
 		cron.WithTags("storage", "delete"),
 		cron.WithTask(deleter.Run),
@@ -46,7 +54,7 @@ func registerJobs(scheduler cron.Scheduler, sweeper *ClaimSweeper, deleter *Dele
 		return err
 	}
 
-	logger.Infof("Delete worker job [%s] registered, polling every 5m", deleteJob.Name())
+	logger.Infof("Delete worker job [%s] registered, polling every %s", deleteJob.Name(), deleteInterval)
 
 	return nil
 }

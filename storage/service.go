@@ -6,23 +6,10 @@ import (
 	"time"
 )
 
-// Service defines the core interface for object storage operations.
-//
-// The interface is provider-neutral: signatures, return types, and error
-// vocabulary are kept independent of any specific SDK or vendor (S3, OSS,
-// COS, Azure Blob, etc.). All vendor-specific behaviour lives in
-// internal/storage/<provider>/ implementations.
-//
-// Optional capabilities (multipart upload, presigned URLs) are reported via
-// Capabilities() and may return ErrCapabilityNotSupported on backends that
-// do not implement them. Callers should consult Capabilities first and
-// dispatch accordingly.
+// Service is the provider-neutral storage interface. Every backend MUST
+// implement all methods. Vendor-specific behavior lives in
+// internal/storage/<provider>/ and is independent of any specific SDK.
 type Service interface {
-	// Capabilities reports which optional features this backend supports.
-	// It is safe to call any time after construction; the returned value
-	// must not change for the lifetime of the Service instance.
-	Capabilities() ServiceCapabilities
-
 	// PutObject uploads an object to storage.
 	PutObject(ctx context.Context, opts PutObjectOptions) (*ObjectInfo, error)
 	// GetObject retrieves an object from storage.
@@ -33,82 +20,87 @@ type Service interface {
 	DeleteObjects(ctx context.Context, opts DeleteObjectsOptions) error
 	// ListObjects lists objects in a bucket with optional filtering.
 	ListObjects(ctx context.Context, opts ListObjectsOptions) ([]ObjectInfo, error)
-	// GetPresignedURL generates a presigned URL for temporary access to an object.
-	GetPresignedURL(ctx context.Context, opts PresignedURLOptions) (string, error)
 	// CopyObject copies an object from source to destination.
 	CopyObject(ctx context.Context, opts CopyObjectOptions) (*ObjectInfo, error)
 	// StatObject retrieves metadata information about an object.
 	StatObject(ctx context.Context, opts StatObjectOptions) (*ObjectInfo, error)
+}
 
-	// PresignPutObject returns a presigned URL the client can use to PUT a
-	// single object directly to storage. Returns ErrCapabilityNotSupported
-	// if Capabilities().PresignedPut is false.
-	PresignPutObject(ctx context.Context, opts PresignPutOptions) (*PresignedURL, error)
+// Multipart is the vendor-neutral chunked-upload primitive. Every
+// backend in this framework implements Multipart; callers obtain the
+// handle via a type assertion against storage.Service.
+//
+// The model is S3-inspired but does NOT leak S3 vocabulary into the
+// contract:
+//
+//   - UploadID is opaque; only the issuing backend interprets it.
+//   - ETag is an opaque per-part identifier issued by the backend; the
+//     caller holds it verbatim and passes it back to Complete.
+//   - PartNumber is 1-indexed and contiguous (1..N) at Complete time.
+//
+// Contract:
+//
+//  1. PutPart calls for distinct PartNumbers of the same session MAY
+//     proceed concurrently. Concurrent calls for the SAME PartNumber
+//     have last-writer-wins semantics — the part is overwritten and
+//     the previous ETag is invalidated.
+//  2. Except the final part, every part MUST be at least
+//     Capabilities().PartSize bytes; smaller parts return
+//     ErrPartTooSmall.
+//  3. CompleteMultipart MUST verify every (PartNumber, ETag) pair in
+//     opts.Parts matches a recorded part; mismatches return
+//     ErrPartETagMismatch.
+//  4. CompleteMultipart MUST verify Parts cover the contiguous range
+//     1..N with no gaps or duplicates; otherwise returns
+//     ErrPartNumberOutOfRange.
+//  5. After CompleteMultipart (success) or AbortMultipart the session
+//     is closed; further PutPart / CompleteMultipart / AbortMultipart
+//     against the same UploadID return ErrUploadSessionNotFound, with
+//     the exception that AbortMultipart is idempotent — re-aborting an
+//     unknown session returns nil.
+//  6. Session TTL is NOT part of the contract: long-running sessions
+//     are valid. Cleanup of abandoned sessions is driven by upper-layer
+//     sweepers (see internal/storage/worker) through AbortMultipart.
+//     Implementations MAY garbage-collect internally for resource
+//     hygiene, but that is a quality concern, not a contract concern.
+type Multipart interface {
+	// PartSize returns the backend's authoritative part size in bytes.
+	// Callers MUST split the object into chunks of exactly this size
+	// (except the final chunk, which may be smaller). The value is
+	// constant for the lifetime of the backend instance.
+	PartSize() int64
 
-	// InitMultipart opens a multipart upload session in the backend.
-	// Returns ErrCapabilityNotSupported if Capabilities().Multipart is false.
-	// The returned UploadID is opaque and must be passed back unchanged to
-	// PresignPart, CompleteMultipart, and AbortMultipart.
+	// MaxPartCount returns the maximum number of parts in a single
+	// multipart upload, or 0 for unlimited. The value is constant for
+	// the lifetime of the backend instance.
+	MaxPartCount() int
+
+	// InitMultipart opens a new upload session and returns an opaque
+	// UploadID.
 	InitMultipart(ctx context.Context, opts InitMultipartOptions) (*MultipartSession, error)
 
-	// PresignPart returns a presigned URL the client can use to PUT a single
-	// part of an in-progress multipart upload. Returns ErrCapabilityNotSupported
-	// if Capabilities().PresignedPart is false.
-	PresignPart(ctx context.Context, opts PresignPartOptions) (*PresignedURL, error)
+	// PutPart uploads a single part to an open session and returns the
+	// ETag the backend assigned. Re-uploading the same PartNumber
+	// overwrites the previous content and yields a new ETag.
+	PutPart(ctx context.Context, opts PutPartOptions) (*PartInfo, error)
 
-	// CompleteMultipart finalizes a multipart upload by assembling all parts
-	// into a single object. Parts must be supplied in PartNumber order with
-	// the ETags returned to the client when each part was PUT.
+	// CompleteMultipart finalizes a session by assembling its parts in
+	// PartNumber order. See the contract notes on the interface
+	// documentation for the verification rules and error mapping.
 	CompleteMultipart(ctx context.Context, opts CompleteMultipartOptions) (*ObjectInfo, error)
 
-	// AbortMultipart cancels an in-progress multipart session and releases
-	// any uploaded parts. Safe to call when the session has already been
-	// completed or aborted (treated as a no-op).
+	// AbortMultipart cancels an open session, discarding any uploaded
+	// parts. Idempotent: calling Abort on an unknown / already-closed
+	// session returns nil.
 	AbortMultipart(ctx context.Context, opts AbortMultipartOptions) error
 }
 
-// ServiceCapabilities reports which optional features a Service implementation
-// supports. Returned by Service.Capabilities; the value is constant for the
-// Service's lifetime.
-type ServiceCapabilities struct {
-	// Multipart indicates the backend supports InitMultipart /
-	// CompleteMultipart / AbortMultipart for chunked uploads.
-	Multipart bool
-	// PresignedPut indicates PresignPutObject can return a usable URL.
-	PresignedPut bool
-	// PresignedGet indicates GetPresignedURL can return a usable GET URL.
-	PresignedGet bool
-	// PresignedPart indicates PresignPart can return a usable per-part URL.
-	// Implies Multipart.
-	PresignedPart bool
-	// MaxObjectSize is the maximum supported single-object size in bytes,
-	// or 0 for unlimited.
-	MaxObjectSize int64
-	// MinPartSize is the minimum required size in bytes for any non-final
-	// part of a multipart upload, or 0 if not enforced.
-	MinPartSize int64
-	// MaxPartCount is the maximum number of parts in a single multipart
-	// upload, or 0 for unlimited.
-	MaxPartCount int
-}
-
-// PresignedURL is a backend-issued URL the client can use to access an
-// object directly, bypassing the application server. Headers lists any HTTP
-// headers the client MUST include with the request; the client should
-// forward them verbatim without interpreting their semantics.
-type PresignedURL struct {
-	URL       string            `json:"url"`
-	Method    string            `json:"method"`
-	Headers   map[string]string `json:"headers,omitempty"`
-	ExpiresAt time.Time         `json:"expiresAt"`
-}
-
 // MultipartSession identifies an opaque multipart upload session in the
-// backend. UploadID is provider-defined and must be passed back unchanged
-// to subsequent multipart calls.
+// backend. UploadID is provider-defined and must be passed back
+// unchanged to subsequent multipart calls.
 type MultipartSession struct {
-	Key      string `json:"key"`
-	UploadID string `json:"uploadId"`
+	Key      string
+	UploadID string
 }
 
 // ObjectInfo represents metadata information about a stored object.
