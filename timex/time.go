@@ -146,6 +146,17 @@ func (t Time) Sub(other Time) time.Duration {
 	return t.Unwrap().Sub(other.Unwrap())
 }
 
+// ToDuration returns the time-of-day expressed as a duration since midnight.
+// Useful for cron-style scheduling and business-hours arithmetic.
+func (t Time) ToDuration() time.Duration {
+	u := t.Unwrap()
+
+	return time.Duration(u.Hour())*time.Hour +
+		time.Duration(u.Minute())*time.Minute +
+		time.Duration(u.Second())*time.Second +
+		time.Duration(u.Nanosecond())*time.Nanosecond
+}
+
 // IsZero reports whether t represents the zero time instant.
 func (t Time) IsZero() bool {
 	return t.Unwrap().IsZero()

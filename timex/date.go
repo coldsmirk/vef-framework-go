@@ -86,6 +86,12 @@ func (d Date) After(other Date) bool {
 	return d.Unwrap().After(other.Unwrap())
 }
 
+// AddDate returns the date corresponding to adding the given number of years, months, and days to d,
+// mirroring time.Time.AddDate. Month-end overflow is normalized (e.g. Jan 31 + 1 month → Mar 3).
+func (d Date) AddDate(years, months, days int) Date {
+	return DateOf(d.Unwrap().AddDate(years, months, days))
+}
+
 // AddDays adds the specified number of days to the date.
 func (d Date) AddDays(days int) Date {
 	return DateOf(d.Unwrap().AddDate(0, 0, days))

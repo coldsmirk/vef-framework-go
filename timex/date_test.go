@@ -136,6 +136,57 @@ func TestDateBetween(t *testing.T) {
 	assert.False(t, start.Between(middle, end), "Start date should not be between middle and end")
 }
 
+// TestDateAddDate tests date add date functionality.
+func TestDateAddDate(t *testing.T) {
+	t.Run("CombinedDelta", func(t *testing.T) {
+		date := Date(MakeTime(2023, 12, 25, 0, 0, 0))
+		result := date.AddDate(1, 2, 3)
+
+		expected := MakeTime(2025, 2, 28, 0, 0, 0)
+		assert.True(t, expected.Equal(result.Unwrap()), "AddDate should add years, months, days at once")
+	})
+
+	t.Run("ZeroDelta", func(t *testing.T) {
+		date := Date(MakeTime(2023, 12, 25, 0, 0, 0))
+		result := date.AddDate(0, 0, 0)
+		assert.True(t, date.Unwrap().Equal(result.Unwrap()), "AddDate with zero delta should be no-op")
+	})
+
+	t.Run("NegativeDelta", func(t *testing.T) {
+		date := Date(MakeTime(2023, 12, 25, 0, 0, 0))
+		result := date.AddDate(-1, -1, -1)
+
+		expected := MakeTime(2022, 11, 24, 0, 0, 0)
+		assert.True(t, expected.Equal(result.Unwrap()), "AddDate should handle negative delta")
+	})
+
+	t.Run("MonthEndOverflow", func(t *testing.T) {
+		date := Date(MakeTime(2023, 1, 31, 0, 0, 0))
+		result := date.AddDate(0, 1, 0)
+
+		expected := MakeTime(2023, 3, 3, 0, 0, 0)
+		assert.True(t, expected.Equal(result.Unwrap()), "Jan 31 + 1 month normalizes to Mar 3 in non-leap year")
+	})
+
+	t.Run("LeapDayRollover", func(t *testing.T) {
+		date := Date(MakeTime(2024, 2, 29, 0, 0, 0))
+		result := date.AddDate(1, 0, 0)
+
+		expected := MakeTime(2025, 3, 1, 0, 0, 0)
+		assert.True(t, expected.Equal(result.Unwrap()), "Feb 29 + 1 year normalizes to Mar 1 in non-leap year")
+	})
+
+	t.Run("PreservesZeroedTime", func(t *testing.T) {
+		date := Date(MakeTime(2023, 12, 25, 0, 0, 0))
+		result := date.AddDate(0, 1, 1).Unwrap()
+
+		assert.Equal(t, 0, result.Hour(), "Hour should remain zero")
+		assert.Equal(t, 0, result.Minute(), "Minute should remain zero")
+		assert.Equal(t, 0, result.Second(), "Second should remain zero")
+		assert.Equal(t, 0, result.Nanosecond(), "Nanosecond should remain zero")
+	})
+}
+
 // TestDateAddDays tests date add days functionality.
 func TestDateAddDays(t *testing.T) {
 	date := Date(MakeTime(2023, 12, 25, 0, 0, 0))

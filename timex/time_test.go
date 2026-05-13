@@ -208,6 +208,31 @@ func TestTimeSub(t *testing.T) {
 	assert.Equal(t, -2*time.Hour, t2.Sub(t1), "Sub should return negative for earlier minus later")
 }
 
+// TestTimeToDuration tests time to duration functionality.
+func TestTimeToDuration(t *testing.T) {
+	t.Run("MidAfternoon", func(t *testing.T) {
+		timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
+		expected := 14*time.Hour + 30*time.Minute + 45*time.Second
+		assert.Equal(t, expected, timeOnly.ToDuration(), "ToDuration should sum hour/minute/second")
+	})
+
+	t.Run("Midnight", func(t *testing.T) {
+		timeOnly := Time(time.Date(1970, 1, 1, 0, 0, 0, 0, time.Local))
+		assert.Equal(t, time.Duration(0), timeOnly.ToDuration(), "Midnight should be zero duration")
+	})
+
+	t.Run("EndOfDay", func(t *testing.T) {
+		timeOnly := Time(time.Date(1970, 1, 1, 23, 59, 59, 999999999, time.Local))
+		expected := 23*time.Hour + 59*time.Minute + 59*time.Second + 999999999*time.Nanosecond
+		assert.Equal(t, expected, timeOnly.ToDuration(), "End of day should include nanoseconds")
+	})
+
+	t.Run("NanosecondPrecision", func(t *testing.T) {
+		timeOnly := Time(time.Date(1970, 1, 1, 0, 0, 0, 123456789, time.Local))
+		assert.Equal(t, 123456789*time.Nanosecond, timeOnly.ToDuration(), "Nanoseconds should be preserved")
+	})
+}
+
 // TestTimeComponents tests time components functionality.
 func TestTimeComponents(t *testing.T) {
 	timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 123456789, time.Local))
