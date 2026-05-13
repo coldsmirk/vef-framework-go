@@ -198,3 +198,63 @@ func ProvideMCPPrompts(constructor any, paramTags ...string) fx.Option {
 func SupplyMCPServerInfo(info *mcp.ServerInfo) fx.Option {
 	return fx.Supply(info)
 }
+
+// SupplyFileACL replaces the framework-provided default storage.FileACL
+// with a business-specific implementation. The default ACL is pub-only
+// (reads of keys under storage.PublicPrefix are allowed; everything
+// else is denied), so any application that stores private files MUST
+// register its own implementation through this helper.
+//
+// constructor is an fx-style factory that returns storage.FileACL (or a
+// type implementing it). It may declare any dependencies already
+// registered in the fx graph — typically orm.DB plus any business
+// services that own the reverse index from object key to owning row.
+//
+// Example:
+//
+//	type myACL struct{ db orm.DB }
+//
+//	func newMyACL(db orm.DB) storage.FileACL {
+//	    return &myACL{db: db}
+//	}
+//
+//	fx.New(
+//	    vef.Module,
+//	    vef.SupplyFileACL(newMyACL),
+//	)
+func SupplyFileACL(constructor any) fx.Option {
+	return fx.Decorate(constructor)
+}
+
+// SupplyURLKeyMapper replaces the framework-provided default
+// storage.URLKeyMapper (identity) with a business-specific
+// implementation. The default mapper assumes the frontend embeds bare
+// storage keys verbatim in <img src> / ![](...) constructs; applications
+// that embed proxy paths (e.g. "/storage/files/<key>"), CDN URLs, or any
+// other URL convention MUST register their own mapper here so meta:
+// "richtext" / "markdown" reconciliation can resolve those URLs back to
+// storage keys before consuming claims or scheduling deletions.
+//
+// constructor is an fx-style factory that returns storage.URLKeyMapper
+// (or a type implementing it). It may declare any dependencies already
+// registered in the fx graph.
+//
+// Example: stripping the framework's default proxy prefix.
+//
+//	type proxyURLMapper struct{}
+//
+//	func (proxyURLMapper) URLToKey(u string) string {
+//	    return strings.TrimPrefix(u, "/storage/files/")
+//	}
+//
+//	func (proxyURLMapper) KeyToURL(k string) string {
+//	    return "/storage/files/" + k
+//	}
+//
+//	fx.New(
+//	    vef.Module,
+//	    vef.SupplyURLKeyMapper(func() storage.URLKeyMapper { return proxyURLMapper{} }),
+//	)
+func SupplyURLKeyMapper(constructor any) fx.Option {
+	return fx.Decorate(constructor)
+}

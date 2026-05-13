@@ -168,4 +168,3 @@ func buildMetaJSONExpr(eb orm.ExprBuilder, metaColumns []orm.ColumnInfo) schema.
 
 	return eb.JSONObject(jsonArgs...)
 }
-

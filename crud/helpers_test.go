@@ -318,4 +318,3 @@ func TestValidateMetaColumnsEmpty(t *testing.T) {
 	err := validateMetaColumns(table, nil)
 	assert.NoError(t, err, "Should succeed with nil meta columns")
 }
-
