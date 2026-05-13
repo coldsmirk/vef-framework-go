@@ -32,6 +32,7 @@ go.work.sum
 .kiro/
 cmd/CMD_DEV.md
 docs/plans/
+mutagen.yml
 
 # shell scripts
-*.sh
+*.shmutagen.yml.lock

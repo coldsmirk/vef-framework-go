@@ -146,7 +146,7 @@ linters:
       scope: declarations
       exclude:
         - "^@"
-      capital: true
+      capital: false
 
     errorlint:
       errorf: true
