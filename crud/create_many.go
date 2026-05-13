@@ -48,6 +48,8 @@ func (c *createManyOperation[TModel, TParams]) WithPostCreateMany(processor Post
 }
 
 func (c *createManyOperation[TModel, TParams]) createMany(files storage.Files) (func(ctx fiber.Ctx, db orm.DB, params CreateManyParams[TParams]) error, error) {
+	typedFiles := storage.NewFilesFor[TModel](files)
+
 	return func(ctx fiber.Ctx, db orm.DB, params CreateManyParams[TParams]) error {
 		if len(params.List) == 0 {
 			return result.Ok([]map[string]any{}).Response(ctx)
@@ -69,7 +71,7 @@ func (c *createManyOperation[TModel, TParams]) createMany(files storage.Files) (
 			}
 
 			for i := range models {
-				if err := files.OnCreate(txCtx, tx, &models[i]); err != nil {
+				if err := typedFiles.OnCreate(txCtx, tx, &models[i]); err != nil {
 					return err
 				}
 			}

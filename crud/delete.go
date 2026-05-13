@@ -66,6 +66,8 @@ func (d *deleteOperation[TModel]) delete(db orm.DB, files storage.Files) (func(c
 		return nil, fmt.Errorf("%w: %s", ErrModelNoPrimaryKey, schema.Name)
 	}
 
+	typedFiles := storage.NewFilesFor[TModel](files)
+
 	return func(ctx fiber.Ctx, db orm.DB, params api.Params) error {
 		var (
 			model      TModel
@@ -112,7 +114,7 @@ func (d *deleteOperation[TModel]) delete(db orm.DB, files storage.Files) (func(c
 				}
 			}
 
-			if err := files.OnDelete(txCtx, tx, &model); err != nil {
+			if err := typedFiles.OnDelete(txCtx, tx, &model); err != nil {
 				return err
 			}
 

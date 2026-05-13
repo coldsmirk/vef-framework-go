@@ -67,6 +67,8 @@ func (u *updateOperation[TModel, TParams]) update(db orm.DB, files storage.Files
 		return nil, fmt.Errorf("%w: %s", ErrModelNoPrimaryKey, schema.Name)
 	}
 
+	typedFiles := storage.NewFilesFor[TModel](files)
+
 	return func(ctx fiber.Ctx, db orm.DB, params TParams) error {
 		var (
 			oldModel   TModel
@@ -116,7 +118,7 @@ func (u *updateOperation[TModel, TParams]) update(db orm.DB, files storage.Files
 				return err
 			}
 
-			if err := files.OnUpdate(txCtx, tx, &snapshot, &oldModel); err != nil {
+			if err := typedFiles.OnUpdate(txCtx, tx, &snapshot, &oldModel); err != nil {
 				return err
 			}
 

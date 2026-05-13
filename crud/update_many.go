@@ -67,6 +67,8 @@ func (u *updateManyOperation[TModel, TParams]) updateMany(db orm.DB, files stora
 		return nil, fmt.Errorf("%w: %s", ErrModelNoPrimaryKey, schema.Name)
 	}
 
+	typedFiles := storage.NewFilesFor[TModel](files)
+
 	return func(ctx fiber.Ctx, db orm.DB, params UpdateManyParams[TParams]) error {
 		if len(params.List) == 0 {
 			return result.Ok().Response(ctx)
@@ -125,7 +127,7 @@ func (u *updateManyOperation[TModel, TParams]) updateMany(db orm.DB, files stora
 			}
 
 			for i := range oldModels {
-				if err := files.OnUpdate(txCtx, tx, &snapshots[i], &oldModels[i]); err != nil {
+				if err := typedFiles.OnUpdate(txCtx, tx, &snapshots[i], &oldModels[i]); err != nil {
 					return err
 				}
 			}

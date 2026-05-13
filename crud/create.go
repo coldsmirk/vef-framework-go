@@ -48,6 +48,8 @@ func (c *createOperation[TModel, TParams]) WithPostCreate(processor PostCreatePr
 }
 
 func (c *createOperation[TModel, TParams]) create(files storage.Files) (func(ctx fiber.Ctx, db orm.DB, params TParams) error, error) {
+	typedFiles := storage.NewFilesFor[TModel](files)
+
 	return func(ctx fiber.Ctx, db orm.DB, params TParams) error {
 		var model TModel
 		if err := copier.Copy(&params, &model); err != nil {
@@ -62,7 +64,7 @@ func (c *createOperation[TModel, TParams]) create(files storage.Files) (func(ctx
 				}
 			}
 
-			if err := files.OnCreate(txCtx, tx, &model); err != nil {
+			if err := typedFiles.OnCreate(txCtx, tx, &model); err != nil {
 				return err
 			}
 

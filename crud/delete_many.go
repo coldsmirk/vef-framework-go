@@ -66,6 +66,8 @@ func (d *deleteManyOperation[TModel]) deleteMany(db orm.DB, files storage.Files)
 		return nil, fmt.Errorf("%w: %s", ErrModelNoPrimaryKey, schema.Name)
 	}
 
+	typedFiles := storage.NewFilesFor[TModel](files)
+
 	return func(ctx fiber.Ctx, db orm.DB, params DeleteManyParams) error {
 		if len(params.PKs) == 0 {
 			return result.Ok().Response(ctx)
@@ -128,7 +130,7 @@ func (d *deleteManyOperation[TModel]) deleteMany(db orm.DB, files storage.Files)
 			}
 
 			for i := range models {
-				if err := files.OnDelete(txCtx, tx, &models[i]); err != nil {
+				if err := typedFiles.OnDelete(txCtx, tx, &models[i]); err != nil {
 					return err
 				}
 			}
