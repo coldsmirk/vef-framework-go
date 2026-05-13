@@ -80,8 +80,6 @@ type defaultFiles struct {
 	cache     collections.ConcurrentMap[reflect.Type, *cachedExtractor]
 }
 
-// cachedExtractor holds the reflect-parsed meta field spec for a single
-// model type. Stored in defaultFiles.cache keyed by the indirected type.
 type cachedExtractor struct {
 	fields []metaField
 }
@@ -92,23 +90,7 @@ func (f *defaultFiles) OnCreate(ctx context.Context, tx orm.DB, model any) error
 		return nil
 	}
 
-	refs := f.applyURLMapping(ext.extract(model))
-	if len(refs) == 0 {
-		return nil
-	}
-
-	keys := make([]string, len(refs))
-	for i, ref := range refs {
-		keys[i] = ref.Key
-	}
-
-	if err := f.cc.ConsumeMany(ctx, tx, keys); err != nil {
-		return err
-	}
-
-	f.publishPromoted(keys)
-
-	return nil
+	return f.onCreateWith(ctx, tx, model, ext)
 }
 
 func (f *defaultFiles) OnUpdate(ctx context.Context, tx orm.DB, oldModel, newModel any) error {
@@ -121,10 +103,31 @@ func (f *defaultFiles) OnUpdate(ctx context.Context, tx orm.DB, oldModel, newMod
 		return nil
 	}
 
-	// URL mapping is applied before diffing so old/new ref sets compare
-	// on storage keys, not raw embedded URLs. A frontend that switches
-	// from "/storage/files/foo.png" to "https://cdn/foo.png" while leaving
-	// the same key behind must not look like a delete + re-create.
+	return f.onUpdateWith(ctx, tx, oldModel, newModel, ext)
+}
+
+func (f *defaultFiles) onCreateWith(ctx context.Context, tx orm.DB, model any, ext *cachedExtractor) error {
+	refs := f.applyURLMapping(ext.extract(model))
+	if len(refs) == 0 {
+		return nil
+	}
+
+	keys := refKeys(refs)
+
+	if err := f.cc.ConsumeMany(ctx, tx, keys); err != nil {
+		return err
+	}
+
+	f.publishPromoted(keys)
+
+	return nil
+}
+
+// onUpdateWith applies URL mapping before diffing so old/new ref sets
+// compare on storage keys, not raw embedded URLs — a frontend that
+// switches from "/storage/files/foo.png" to "https://cdn/foo.png" while
+// the underlying key is unchanged must not look like a delete + re-create.
+func (f *defaultFiles) onUpdateWith(ctx context.Context, tx orm.DB, oldModel, newModel any, ext *cachedExtractor) error {
 	oldRefs := f.applyURLMapping(ext.extract(oldModel))
 	newRefs := f.applyURLMapping(ext.extract(newModel))
 
@@ -133,10 +136,7 @@ func (f *defaultFiles) OnUpdate(ctx context.Context, tx orm.DB, oldModel, newMod
 	var consumedKeys []string
 
 	if len(toConsume) > 0 {
-		consumedKeys = make([]string, len(toConsume))
-		for i, ref := range toConsume {
-			consumedKeys[i] = ref.Key
-		}
+		consumedKeys = refKeys(toConsume)
 
 		if err := f.cc.ConsumeMany(ctx, tx, consumedKeys); err != nil {
 			return err
@@ -152,9 +152,18 @@ func (f *defaultFiles) OnUpdate(ctx context.Context, tx orm.DB, oldModel, newMod
 	return nil
 }
 
-// publishPromoted emits one FilePromotedEvent per adopted key. The
-// publisher may be nil in tests; callers must therefore always go
-// through this helper rather than touching f.publisher directly.
+func refKeys(refs []FileRef) []string {
+	keys := make([]string, len(refs))
+	for i, ref := range refs {
+		keys[i] = ref.Key
+	}
+
+	return keys
+}
+
+// publishPromoted tolerates a nil publisher (tests wire one without an
+// event bus); callers must therefore always go through this helper
+// rather than touching f.publisher directly.
 func (f *defaultFiles) publishPromoted(keys []string) {
 	if f.publisher == nil || len(keys) == 0 {
 		return
@@ -171,28 +180,29 @@ func (f *defaultFiles) OnDelete(ctx context.Context, tx orm.DB, model any) error
 		return nil
 	}
 
+	return f.onDeleteWith(ctx, tx, model, ext)
+}
+
+func (f *defaultFiles) onDeleteWith(ctx context.Context, tx orm.DB, model any, ext *cachedExtractor) error {
 	return f.scheduleDeletes(ctx, tx, f.applyURLMapping(ext.extract(model)), DeleteReasonDeleted)
 }
 
 // applyURLMapping rewrites richtext / markdown ref keys through the
 // configured URLKeyMapper so embedded URLs become storage object keys
-// before they hit ClaimConsumer / DeleteScheduler.
+// before they hit ClaimConsumer / DeleteScheduler. uploaded_file refs
+// are passed through unchanged (they already hold storage keys, not URLs).
 //
-// uploaded_file refs are passed through unchanged because their values
-// come from upload-time storage keys directly; they are never URLs.
+// A (key, ok=false) result drops the ref entirely: the URL refers to
+// something outside this storage system (external CDN, mailto, data URI,
+// bad input). Reconciliation must not touch unrelated objects.
 //
-// richtext / markdown refs are URLs from user content. The mapper's
-// (key, ok) result decides their fate:
-//
-//   - ok=true: replace the raw URL with the resolved storage key.
-//   - ok=false: drop the ref entirely; the URL refers to something
-//     outside this storage system (external CDN, mailto, data URI,
-//     bad input). Reconciliation must not touch unrelated objects.
-//
-// The output slice is rebuilt rather than mutated in place so callers
-// holding the input slice are not surprised by drops.
+// Fast path: when refs contains no richtext / markdown entries the
+// input slice is returned as-is to avoid an unnecessary allocation;
+// callers must therefore not assume the result is always a freshly
+// owned slice. The current callers feed in a slice that defaultFiles
+// itself just produced via ext.extract(...), so aliasing is benign.
 func (f *defaultFiles) applyURLMapping(refs []FileRef) []FileRef {
-	if len(refs) == 0 {
+	if len(refs) == 0 || !needsURLMapping(refs) {
 		return refs
 	}
 
@@ -216,9 +226,18 @@ func (f *defaultFiles) applyURLMapping(refs []FileRef) []FileRef {
 	return out
 }
 
-// extractorFor returns the cached meta spec for model's underlying type,
-// parsing it on first access. Returns nil when model is nil or a typed
-// nil pointer (caller should treat that as an empty ref set).
+func needsURLMapping(refs []FileRef) bool {
+	for _, r := range refs {
+		if r.MetaType == MetaTypeRichText || r.MetaType == MetaTypeMarkdown {
+			return true
+		}
+	}
+
+	return false
+}
+
+// extractorFor returns nil when model is nil or a typed nil pointer; the
+// caller treats that as an empty ref set.
 func (f *defaultFiles) extractorFor(model any) *cachedExtractor {
 	if model == nil {
 		return nil
@@ -229,8 +248,13 @@ func (f *defaultFiles) extractorFor(model any) *cachedExtractor {
 		return nil
 	}
 
-	typ := reflectx.Indirect(reflect.TypeOf(model))
+	return f.extractorForType(reflectx.Indirect(reflect.TypeOf(model)))
+}
 
+// extractorForType lets callers that know T statically (e.g. FilesFor[T])
+// pre-resolve the spec once at construction instead of paying the cache
+// lookup on every call.
+func (f *defaultFiles) extractorForType(typ reflect.Type) *cachedExtractor {
 	ext, _ := f.cache.GetOrCompute(typ, func() *cachedExtractor {
 		return &cachedExtractor{fields: parseMetaFields(typ)}
 	})

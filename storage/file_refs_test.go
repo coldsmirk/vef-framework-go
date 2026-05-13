@@ -479,17 +479,6 @@ func TestDiffRefsByMetaTag(t *testing.T) {
 	})
 }
 
-// refKeys projects a slice of FileRef into its Key field for compact
-// assertions like ElementsMatch.
-func refKeys(refs []FileRef) []string {
-	keys := make([]string, len(refs))
-	for i, r := range refs {
-		keys[i] = r.Key
-	}
-
-	return keys
-}
-
 // indexByKey lifts a flat ref slice into a Key→FileRef map so tests can
 // assert per-ref properties (MetaType, Attrs) without depending on slice
 // ordering.

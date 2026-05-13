@@ -65,12 +65,14 @@ func diffRefs(newRefs, oldRefs []FileRef) (toConsume, toDelete []FileRef) {
 	newKeys := refKeySet(newRefs)
 	oldKeys := refKeySet(oldRefs)
 
+	toConsume = make([]FileRef, 0, len(newRefs))
 	for _, r := range newRefs {
 		if !oldKeys.Contains(r.Key) {
 			toConsume = append(toConsume, r)
 		}
 	}
 
+	toDelete = make([]FileRef, 0, len(oldRefs))
 	for _, r := range oldRefs {
 		if !newKeys.Contains(r.Key) {
 			toDelete = append(toDelete, r)
@@ -80,8 +82,6 @@ func diffRefs(newRefs, oldRefs []FileRef) (toConsume, toDelete []FileRef) {
 	return toConsume, toDelete
 }
 
-// refKeySet collects every FileRef.Key into a HashSet. Returns an empty
-// (non-nil) set when refs is empty so callers can Contains() safely.
 func refKeySet(refs []FileRef) collections.Set[string] {
 	keys := collections.NewHashSet[string]()
 	for _, r := range refs {
@@ -92,7 +92,7 @@ func refKeySet(refs []FileRef) collections.Set[string] {
 }
 
 func collectFileRefs(value reflect.Value, fields []metaField) []FileRef {
-	refs := make([]FileRef, 0)
+	refs := make([]FileRef, 0, len(fields))
 
 	for _, f := range fields {
 		fieldValue := value.FieldByIndex(f.index)
@@ -123,28 +123,24 @@ func collectUploadedFileRefs(fieldValue reflect.Value, f metaField, refs *[]File
 		}
 
 	case fieldKindSlice:
-		keys, ok := reflectx.GetStringSliceValue(fieldValue)
-		if !ok {
-			return
-		}
-
-		for _, k := range keys {
-			if k = strings.TrimSpace(k); k != "" {
-				*refs = append(*refs, FileRef{Key: k, MetaType: f.typ, Attrs: f.attrs})
+		if keys, ok := reflectx.GetStringSliceValue(fieldValue); ok {
+			for _, k := range keys {
+				appendNonEmptyKey(refs, k, f)
 			}
 		}
 
 	case fieldKindMap:
-		entries, ok := reflectx.GetStringMapValue(fieldValue)
-		if !ok {
-			return
-		}
-
-		for _, k := range entries {
-			if k = strings.TrimSpace(k); k != "" {
-				*refs = append(*refs, FileRef{Key: k, MetaType: f.typ, Attrs: f.attrs})
+		if entries, ok := reflectx.GetStringMapValue(fieldValue); ok {
+			for _, k := range entries {
+				appendNonEmptyKey(refs, k, f)
 			}
 		}
+	}
+}
+
+func appendNonEmptyKey(refs *[]FileRef, key string, f metaField) {
+	if key = strings.TrimSpace(key); key != "" {
+		*refs = append(*refs, FileRef{Key: key, MetaType: f.typ, Attrs: f.attrs})
 	}
 }
 
