@@ -64,10 +64,10 @@ func (s *claimStore) UpdateUploadID(ctx context.Context, id, uploadID string) er
 
 func (*claimStore) MarkUploaded(ctx context.Context, tx orm.DB, id string) error {
 	res, err := tx.NewUpdate().Model((*UploadClaim)(nil)).
-		Set("status", string(ClaimStatusUploaded)).
+		Set("status", ClaimStatusUploaded).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("id", id)
-			cb.Equals("status", string(ClaimStatusPending))
+			cb.Equals("status", ClaimStatusPending)
 		}).
 		Exec(ctx)
 	if err != nil {
@@ -106,7 +106,7 @@ func (s *claimStore) Get(ctx context.Context, id string) (*UploadClaim, error) {
 func (s *claimStore) CountPendingByOwner(ctx context.Context, owner string) (int, error) {
 	count, err := s.db.NewSelect().Model((*UploadClaim)(nil)).Where(func(cb orm.ConditionBuilder) {
 		cb.Equals("created_by", owner)
-		cb.Equals("status", string(ClaimStatusPending))
+		cb.Equals("status", ClaimStatusPending)
 	}).Count(ctx)
 
 	return int(count), err
@@ -132,7 +132,7 @@ func (s *claimStore) GetByKey(ctx context.Context, key string) (*UploadClaim, er
 func (*claimStore) Consume(ctx context.Context, tx orm.DB, key string) error {
 	res, err := tx.NewDelete().Model((*UploadClaim)(nil)).Where(func(cb orm.ConditionBuilder) {
 		cb.Equals("object_key", key)
-		cb.Equals("status", string(ClaimStatusUploaded))
+		cb.Equals("status", ClaimStatusUploaded)
 	}).Exec(ctx)
 	if err != nil {
 		return err
@@ -159,7 +159,7 @@ func (*claimStore) ConsumeMany(ctx context.Context, tx orm.DB, keys []string) er
 
 	res, err := tx.NewDelete().Model((*UploadClaim)(nil)).Where(func(cb orm.ConditionBuilder) {
 		cb.In("object_key", uniq)
-		cb.Equals("status", string(ClaimStatusUploaded))
+		cb.Equals("status", ClaimStatusUploaded)
 	}).Exec(ctx)
 	if err != nil {
 		return err
@@ -186,7 +186,7 @@ func (s *claimStore) ScanExpired(ctx context.Context, now timex.DateTime, limit 
 	// still considers it live.
 	err := s.db.NewSelect().Model(&claims).Where(func(cb orm.ConditionBuilder) {
 		cb.LessThan("expires_at", now)
-		cb.Equals("status", string(ClaimStatusPending))
+		cb.Equals("status", ClaimStatusPending)
 	}).OrderBy("expires_at").Limit(limit).Scan(ctx)
 	if err != nil {
 		return nil, err
@@ -228,17 +228,5 @@ func dedupeStrings(in []string) []string {
 		return in
 	}
 
-	seen := collections.NewHashSet[string]()
-	out := make([]string, 0, len(in))
-
-	for _, v := range in {
-		if seen.Contains(v) {
-			continue
-		}
-
-		seen.Add(v)
-		out = append(out, v)
-	}
-
-	return out
+	return collections.NewHashSetFrom(in...).ToSlice()
 }
