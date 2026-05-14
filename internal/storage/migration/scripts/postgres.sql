@@ -20,23 +20,27 @@ CREATE TABLE IF NOT EXISTS sys_storage_upload_claim (
     CONSTRAINT uk_sys_storage_upload_claim__object_key UNIQUE (object_key)
 );
 
-COMMENT ON TABLE sys_storage_upload_claim IS '上传凭证';
-COMMENT ON COLUMN sys_storage_upload_claim.id IS '主键';
-COMMENT ON COLUMN sys_storage_upload_claim.created_at IS '创建时间';
-COMMENT ON COLUMN sys_storage_upload_claim.created_by IS '上传发起人';
-COMMENT ON COLUMN sys_storage_upload_claim.object_key IS '对象KEY';
-COMMENT ON COLUMN sys_storage_upload_claim.upload_id IS '分片会话ID';
-COMMENT ON COLUMN sys_storage_upload_claim.size IS '声明大小';
-COMMENT ON COLUMN sys_storage_upload_claim.content_type IS 'MIME类型';
-COMMENT ON COLUMN sys_storage_upload_claim.original_filename IS '原始文件名';
-COMMENT ON COLUMN sys_storage_upload_claim.status IS '状态';
-COMMENT ON COLUMN sys_storage_upload_claim.public IS '是否公开';
-COMMENT ON COLUMN sys_storage_upload_claim.part_size IS '分片大小';
-COMMENT ON COLUMN sys_storage_upload_claim.part_count IS '分片总数';
-COMMENT ON COLUMN sys_storage_upload_claim.expires_at IS '过期时间';
+COMMENT ON TABLE sys_storage_upload_claim IS 'Upload claims';
+COMMENT ON COLUMN sys_storage_upload_claim.id IS 'Primary key';
+COMMENT ON COLUMN sys_storage_upload_claim.created_at IS 'Created at';
+COMMENT ON COLUMN sys_storage_upload_claim.created_by IS 'Uploader';
+COMMENT ON COLUMN sys_storage_upload_claim.object_key IS 'Object key';
+COMMENT ON COLUMN sys_storage_upload_claim.upload_id IS 'Multipart session ID';
+COMMENT ON COLUMN sys_storage_upload_claim.size IS 'Size in bytes';
+COMMENT ON COLUMN sys_storage_upload_claim.content_type IS 'MIME type';
+COMMENT ON COLUMN sys_storage_upload_claim.original_filename IS 'Original filename';
+COMMENT ON COLUMN sys_storage_upload_claim.status IS 'Status: pending|uploaded';
+COMMENT ON COLUMN sys_storage_upload_claim.public IS 'Public readable';
+COMMENT ON COLUMN sys_storage_upload_claim.part_size IS 'Part size in bytes';
+COMMENT ON COLUMN sys_storage_upload_claim.part_count IS 'Part count';
+COMMENT ON COLUMN sys_storage_upload_claim.expires_at IS 'Expires at';
 
-CREATE INDEX idx_sys_storage_upload_claim__expires_at ON sys_storage_upload_claim(expires_at);
-CREATE INDEX idx_sys_storage_upload_claim__status ON sys_storage_upload_claim(status);
+-- Composite (expires_at, status) serves the claim sweeper's ScanExpired:
+-- WHERE expires_at < now AND status = 'pending' ORDER BY expires_at LIMIT n.
+CREATE INDEX idx_sys_storage_upload_claim__expires_at ON sys_storage_upload_claim(expires_at, status);
+-- Supports init_upload's per-owner in-flight session cap:
+-- COUNT WHERE created_by = ? AND status = 'pending'.
+CREATE INDEX idx_sys_storage_upload_claim__owner_status ON sys_storage_upload_claim(created_by, status);
 
 CREATE TABLE IF NOT EXISTS sys_storage_upload_part (
     id          VARCHAR(32)  NOT NULL,
@@ -51,15 +55,19 @@ CREATE TABLE IF NOT EXISTS sys_storage_upload_part (
         REFERENCES sys_storage_upload_claim(id) ON DELETE CASCADE
 );
 
-COMMENT ON TABLE sys_storage_upload_part IS '分片记录';
-COMMENT ON COLUMN sys_storage_upload_part.id IS '主键';
-COMMENT ON COLUMN sys_storage_upload_part.claim_id IS '所属Claim';
-COMMENT ON COLUMN sys_storage_upload_part.part_number IS '分片编号';
-COMMENT ON COLUMN sys_storage_upload_part.etag IS '分片ETag';
-COMMENT ON COLUMN sys_storage_upload_part.size IS '分片字节数';
-COMMENT ON COLUMN sys_storage_upload_part.created_at IS '创建时间';
+COMMENT ON TABLE sys_storage_upload_part IS 'Multipart upload parts';
+COMMENT ON COLUMN sys_storage_upload_part.id IS 'Primary key';
+COMMENT ON COLUMN sys_storage_upload_part.claim_id IS 'Owning claim ID';
+COMMENT ON COLUMN sys_storage_upload_part.part_number IS 'Part number';
+COMMENT ON COLUMN sys_storage_upload_part.etag IS 'Part ETag';
+COMMENT ON COLUMN sys_storage_upload_part.size IS 'Part size in bytes';
+COMMENT ON COLUMN sys_storage_upload_part.created_at IS 'Created at';
 
-CREATE INDEX idx_sys_storage_upload_part__claim ON sys_storage_upload_part(claim_id);
+-- No standalone (claim_id) index: the unique constraint
+-- uk_sys_storage_upload_part__claim_part(claim_id, part_number) already
+-- covers all WHERE claim_id = ? lookups via leftmost-prefix, the
+-- ORDER BY part_number in ListByClaim, the ON CONFLICT target, and the
+-- FK cascade probe.
 
 CREATE TABLE IF NOT EXISTS sys_storage_pending_delete (
     id              VARCHAR(32)  NOT NULL,
@@ -72,13 +80,16 @@ CREATE TABLE IF NOT EXISTS sys_storage_pending_delete (
     CONSTRAINT pk_sys_storage_pending_delete PRIMARY KEY (id)
 );
 
-COMMENT ON TABLE sys_storage_pending_delete IS '对象删除队列';
-COMMENT ON COLUMN sys_storage_pending_delete.id IS '主键';
-COMMENT ON COLUMN sys_storage_pending_delete.object_key IS '对象KEY';
-COMMENT ON COLUMN sys_storage_pending_delete.upload_id IS '分片会话ID';
-COMMENT ON COLUMN sys_storage_pending_delete.reason IS '原因';
-COMMENT ON COLUMN sys_storage_pending_delete.attempts IS '重试次数';
-COMMENT ON COLUMN sys_storage_pending_delete.next_attempt_at IS '下次尝试';
-COMMENT ON COLUMN sys_storage_pending_delete.created_at IS '创建时间';
+COMMENT ON TABLE sys_storage_pending_delete IS 'Pending object deletions';
+COMMENT ON COLUMN sys_storage_pending_delete.id IS 'Primary key';
+COMMENT ON COLUMN sys_storage_pending_delete.object_key IS 'Object key';
+COMMENT ON COLUMN sys_storage_pending_delete.upload_id IS 'Multipart session ID';
+COMMENT ON COLUMN sys_storage_pending_delete.reason IS 'Deletion reason';
+COMMENT ON COLUMN sys_storage_pending_delete.attempts IS 'Attempt count';
+COMMENT ON COLUMN sys_storage_pending_delete.next_attempt_at IS 'Next attempt at';
+COMMENT ON COLUMN sys_storage_pending_delete.created_at IS 'Created at';
 
-CREATE INDEX idx_sys_storage_pending_delete__lease ON sys_storage_pending_delete(next_attempt_at, attempts);
+-- attempts is intentionally NOT part of the index: Lease only filters and
+-- orders by next_attempt_at; attempts is only ever mutated by Defer
+-- (SET attempts = attempts + 1) and never appears in WHERE/ORDER BY.
+CREATE INDEX idx_sys_storage_pending_delete__lease ON sys_storage_pending_delete(next_attempt_at);

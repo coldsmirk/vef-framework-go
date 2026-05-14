@@ -3,50 +3,61 @@
 -- --------------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS sys_storage_upload_claim (
-    id                VARCHAR(32)  NOT NULL                            COMMENT '主键',
-    created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
-    created_by        VARCHAR(32)  NOT NULL DEFAULT 'system'           COMMENT '上传发起人',
-    object_key        VARCHAR(512) NOT NULL                            COMMENT '对象KEY',
-    upload_id         VARCHAR(128) NOT NULL DEFAULT ''                 COMMENT '分片会话ID',
-    size              BIGINT       NOT NULL DEFAULT 0                  COMMENT '声明大小',
-    content_type      VARCHAR(128) NOT NULL DEFAULT ''                 COMMENT 'MIME类型',
-    original_filename VARCHAR(255) NOT NULL DEFAULT ''                 COMMENT '原始文件名',
-    status            VARCHAR(16)  NOT NULL DEFAULT 'pending'          COMMENT '状态',
-    public            BOOLEAN      NOT NULL DEFAULT FALSE              COMMENT '是否公开',
-    part_size         BIGINT       NOT NULL DEFAULT 0                  COMMENT '分片大小',
-    part_count        INTEGER      NOT NULL DEFAULT 0                  COMMENT '分片总数',
-    expires_at        DATETIME     NOT NULL                            COMMENT '过期时间',
+    id                VARCHAR(32)  NOT NULL                            COMMENT 'Primary key',
+    created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT 'Created at',
+    created_by        VARCHAR(32)  NOT NULL DEFAULT 'system'           COMMENT 'Uploader',
+    object_key        VARCHAR(512) NOT NULL                            COMMENT 'Object key',
+    upload_id         VARCHAR(128) NOT NULL DEFAULT ''                 COMMENT 'Multipart session ID',
+    size              BIGINT       NOT NULL DEFAULT 0                  COMMENT 'Size in bytes',
+    content_type      VARCHAR(128) NOT NULL DEFAULT ''                 COMMENT 'MIME type',
+    original_filename VARCHAR(255) NOT NULL DEFAULT ''                 COMMENT 'Original filename',
+    status            VARCHAR(16)  NOT NULL DEFAULT 'pending'          COMMENT 'Status: pending|uploaded',
+    public            BOOLEAN      NOT NULL DEFAULT FALSE              COMMENT 'Public readable',
+    part_size         BIGINT       NOT NULL DEFAULT 0                  COMMENT 'Part size in bytes',
+    part_count        INTEGER      NOT NULL DEFAULT 0                  COMMENT 'Part count',
+    expires_at        DATETIME     NOT NULL                            COMMENT 'Expires at',
     CONSTRAINT pk_sys_storage_upload_claim PRIMARY KEY (id),
     CONSTRAINT uk_sys_storage_upload_claim__object_key UNIQUE (object_key)
-) COMMENT '上传凭证';
+) COMMENT 'Upload claims';
 
-CREATE INDEX idx_sys_storage_upload_claim__expires_at ON sys_storage_upload_claim(expires_at);
-CREATE INDEX idx_sys_storage_upload_claim__status ON sys_storage_upload_claim(status);
+-- Composite (expires_at, status) serves the claim sweeper's ScanExpired:
+-- WHERE expires_at < now AND status = 'pending' ORDER BY expires_at LIMIT n.
+CREATE INDEX idx_sys_storage_upload_claim__expires_at ON sys_storage_upload_claim(expires_at, status);
+-- Supports init_upload's per-owner in-flight session cap:
+-- COUNT WHERE created_by = ? AND status = 'pending'.
+CREATE INDEX idx_sys_storage_upload_claim__owner_status ON sys_storage_upload_claim(created_by, status);
 
 CREATE TABLE IF NOT EXISTS sys_storage_upload_part (
-    id          VARCHAR(32)  NOT NULL                            COMMENT '主键',
-    claim_id    VARCHAR(32)  NOT NULL                            COMMENT '所属Claim',
-    part_number INTEGER      NOT NULL                            COMMENT '分片编号',
-    etag        VARCHAR(64)  NOT NULL                            COMMENT '分片ETag',
-    size        BIGINT       NOT NULL                            COMMENT '分片字节数',
-    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
+    id          VARCHAR(32)  NOT NULL                            COMMENT 'Primary key',
+    claim_id    VARCHAR(32)  NOT NULL                            COMMENT 'Owning claim ID',
+    part_number INTEGER      NOT NULL                            COMMENT 'Part number',
+    etag        VARCHAR(64)  NOT NULL                            COMMENT 'Part ETag',
+    size        BIGINT       NOT NULL                            COMMENT 'Part size in bytes',
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT 'Created at',
     CONSTRAINT pk_sys_storage_upload_part PRIMARY KEY (id),
     CONSTRAINT uk_sys_storage_upload_part__claim_part UNIQUE (claim_id, part_number),
     CONSTRAINT fk_sys_storage_upload_part__claim FOREIGN KEY (claim_id)
         REFERENCES sys_storage_upload_claim(id) ON DELETE CASCADE
-) COMMENT '分片记录';
+) COMMENT 'Multipart upload parts';
 
-CREATE INDEX idx_sys_storage_upload_part__claim ON sys_storage_upload_part(claim_id);
+-- No standalone (claim_id) index: the unique constraint
+-- uk_sys_storage_upload_part__claim_part(claim_id, part_number) already
+-- covers all WHERE claim_id = ? lookups via leftmost-prefix, the
+-- ORDER BY part_number in ListByClaim, the ON CONFLICT target, and the
+-- InnoDB FK constraint requirement.
 
 CREATE TABLE IF NOT EXISTS sys_storage_pending_delete (
-    id              VARCHAR(32)  NOT NULL                            COMMENT '主键',
-    object_key      VARCHAR(512) NOT NULL                            COMMENT '对象KEY',
-    upload_id       VARCHAR(128) NOT NULL DEFAULT ''                 COMMENT '分片会话ID',
-    reason          VARCHAR(32)  NOT NULL DEFAULT 'replaced'         COMMENT '原因',
-    attempts        INTEGER      NOT NULL DEFAULT 0                  COMMENT '重试次数',
-    next_attempt_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '下次尝试',
-    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT '创建时间',
+    id              VARCHAR(32)  NOT NULL                            COMMENT 'Primary key',
+    object_key      VARCHAR(512) NOT NULL                            COMMENT 'Object key',
+    upload_id       VARCHAR(128) NOT NULL DEFAULT ''                 COMMENT 'Multipart session ID',
+    reason          VARCHAR(32)  NOT NULL DEFAULT 'replaced'         COMMENT 'Deletion reason',
+    attempts        INTEGER      NOT NULL DEFAULT 0                  COMMENT 'Attempt count',
+    next_attempt_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT 'Next attempt at',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT 'Created at',
     CONSTRAINT pk_sys_storage_pending_delete PRIMARY KEY (id)
-) COMMENT '对象删除队列';
+) COMMENT 'Pending object deletions';
 
-CREATE INDEX idx_sys_storage_pending_delete__lease ON sys_storage_pending_delete(next_attempt_at, attempts);
+-- attempts is intentionally NOT part of the index: Lease only filters and
+-- orders by next_attempt_at; attempts is only ever mutated by Defer
+-- (SET attempts = attempts + 1) and never appears in WHERE/ORDER BY.
+CREATE INDEX idx_sys_storage_pending_delete__lease ON sys_storage_pending_delete(next_attempt_at);

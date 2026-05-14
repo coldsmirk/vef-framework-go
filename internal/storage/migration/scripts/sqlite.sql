@@ -30,8 +30,12 @@ CREATE TABLE IF NOT EXISTS sys_storage_upload_claim (
     CONSTRAINT uk_sys_storage_upload_claim__object_key UNIQUE (object_key)
 );
 
-CREATE INDEX IF NOT EXISTS idx_sys_storage_upload_claim__expires_at ON sys_storage_upload_claim(expires_at);
-CREATE INDEX IF NOT EXISTS idx_sys_storage_upload_claim__status ON sys_storage_upload_claim(status);
+-- Composite (expires_at, status) serves the claim sweeper's ScanExpired:
+-- WHERE expires_at < now AND status = 'pending' ORDER BY expires_at LIMIT n.
+CREATE INDEX IF NOT EXISTS idx_sys_storage_upload_claim__expires_at ON sys_storage_upload_claim(expires_at, status);
+-- Supports init_upload's per-owner in-flight session cap:
+-- COUNT WHERE created_by = ? AND status = 'pending'.
+CREATE INDEX IF NOT EXISTS idx_sys_storage_upload_claim__owner_status ON sys_storage_upload_claim(created_by, status);
 
 -- Multipart upload parts: per-part bookkeeping while a chunked upload
 -- session is in flight. Rows are inserted by upload_part and read by
@@ -48,7 +52,11 @@ CREATE TABLE IF NOT EXISTS sys_storage_upload_part (
     CONSTRAINT uk_sys_storage_upload_part__claim_part UNIQUE (claim_id, part_number)
 );
 
-CREATE INDEX IF NOT EXISTS idx_sys_storage_upload_part__claim ON sys_storage_upload_part(claim_id);
+-- No standalone (claim_id) index: the unique constraint
+-- uk_sys_storage_upload_part__claim_part(claim_id, part_number) already
+-- covers all WHERE claim_id = ? lookups via leftmost-prefix, the
+-- ORDER BY part_number in ListByClaim, the ON CONFLICT target, and the
+-- FK cascade probe.
 
 -- Pending object deletions: durable queue drained by the delete worker.
 -- Rows are inserted by the CRUD layer inside the business transaction.
@@ -62,4 +70,7 @@ CREATE TABLE IF NOT EXISTS sys_storage_pending_delete (
     created_at      TIMESTAMP    NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_sys_storage_pending_delete__lease ON sys_storage_pending_delete(next_attempt_at, attempts);
+-- attempts is intentionally NOT part of the index: Lease only filters and
+-- orders by next_attempt_at; attempts is only ever mutated by Defer
+-- (SET attempts = attempts + 1) and never appears in WHERE/ORDER BY.
+CREATE INDEX IF NOT EXISTS idx_sys_storage_pending_delete__lease ON sys_storage_pending_delete(next_attempt_at);
