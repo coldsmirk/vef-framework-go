@@ -35,6 +35,13 @@ const multipartDir = ".multipart"
 // by cleanupEmptyDirs.
 const tmpDir = ".tmp"
 
+// etagsDir is the hidden directory under root that mirrors the object
+// tree and stores one small text file per object containing its MD5
+// ETag. Persisting the ETag at write time avoids re-reading the entire
+// object on every StatObject call (which the file proxy invokes per
+// request). Skipped by ListObjects.
+const etagsDir = ".etags"
+
 type manifest struct {
 	Key         string `json:"key"`
 	ContentType string `json:"contentType"`
@@ -67,8 +74,65 @@ func (s *Service) resolvePath(key string) string {
 	return filepath.Join(s.root, filepath.FromSlash(key))
 }
 
+func (s *Service) etagPath(key string) string {
+	return filepath.Join(s.root, etagsDir, filepath.FromSlash(key))
+}
+
 func (s *Service) sessionDir(uploadID string) string {
 	return filepath.Join(s.root, multipartDir, uploadID)
+}
+
+// writeETag persists etag to the sidecar tree for key. Failures are
+// non-fatal for the caller's main operation — the ETag is a cache hint,
+// not a correctness invariant — so the error is returned for logging
+// rather than propagated as a write failure.
+func (s *Service) writeETag(key, etag string) error {
+	path := s.etagPath(key)
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("filesystem: mkdir etag sidecar: %w", err)
+	}
+
+	tmp := path + ".tmp." + id.GenerateUUID()
+
+	if err := os.WriteFile(tmp, []byte(etag), 0o644); err != nil {
+		return fmt.Errorf("filesystem: write etag sidecar: %w", err)
+	}
+
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+
+		return fmt.Errorf("filesystem: rename etag sidecar: %w", err)
+	}
+
+	return nil
+}
+
+// readETag returns the persisted ETag for key, or "" if no sidecar
+// exists (e.g. object written by an older version, or sidecar removed).
+// A missing sidecar is not an error: callers fall back to an empty ETag.
+func (s *Service) readETag(key string) (string, error) {
+	data, err := os.ReadFile(s.etagPath(key))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+
+		return "", err
+	}
+
+	return string(data), nil
+}
+
+// removeETag deletes the sidecar for key. Idempotent.
+func (s *Service) removeETag(key string) {
+	path := s.etagPath(key)
+
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return
+	}
+
+	s.cleanupEmptyDirs(filepath.Dir(path))
 }
 
 func (s *Service) PutObject(_ context.Context, opts storage.PutObjectOptions) (*storage.ObjectInfo, error) {
@@ -98,6 +162,10 @@ func (s *Service) PutObject(_ context.Context, opts storage.PutObjectOptions) (*
 	stat, err := file.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	if err := s.writeETag(opts.Key, etag); err != nil {
+		return nil, err
 	}
 
 	return &storage.ObjectInfo{
@@ -134,13 +202,18 @@ func (s *Service) DeleteObject(_ context.Context, opts storage.DeleteObjectOptio
 	}
 
 	s.cleanupEmptyDirs(filepath.Dir(path))
+	s.removeETag(opts.Key)
 
 	return nil
 }
 
-func (s *Service) DeleteObjects(_ context.Context, opts storage.DeleteObjectsOptions) error {
+func (s *Service) DeleteObjects(ctx context.Context, opts storage.DeleteObjectsOptions) error {
 	return streams.FromSlice(opts.Keys).ForEachErr(func(key string) error {
-		return s.DeleteObject(context.Background(), storage.DeleteObjectOptions{Key: key})
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		return s.DeleteObject(ctx, storage.DeleteObjectOptions{Key: key})
 	})
 }
 
@@ -160,8 +233,8 @@ func (s *Service) ListObjects(_ context.Context, opts storage.ListObjectsOptions
 		}
 
 		if d.IsDir() {
-			// Skip the .multipart and .tmp directories entirely.
-			if d.Name() == multipartDir || d.Name() == tmpDir {
+			// Skip hidden infrastructure directories entirely.
+			if d.Name() == multipartDir || d.Name() == tmpDir || d.Name() == etagsDir {
 				return filepath.SkipDir
 			}
 
@@ -257,6 +330,10 @@ func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) 
 		return nil, fmt.Errorf("failed to stat destination file: %w", err)
 	}
 
+	if err := s.writeETag(opts.DestKey, etag); err != nil {
+		return nil, err
+	}
+
 	contentType := mime.TypeByExtension(filepath.Ext(destPath))
 
 	return &storage.ObjectInfo{
@@ -281,9 +358,13 @@ func (s *Service) StatObject(_ context.Context, opts storage.StatObjectOptions) 
 		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	etag, err := s.calculateMd5(path)
+	// Read the ETag from its sidecar — written at PutObject /
+	// CompleteMultipart / CopyObject time — to avoid re-hashing the
+	// entire file on every Stat. Missing sidecar yields an empty ETag,
+	// which the proxy treats as "no validator" rather than an error.
+	etag, err := s.readETag(opts.Key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to calculate MD5: %w", err)
+		return nil, fmt.Errorf("failed to read etag sidecar: %w", err)
 	}
 
 	contentType := mime.TypeByExtension(filepath.Ext(path))
@@ -562,6 +643,10 @@ func (s *Service) CompleteMultipart(_ context.Context, opts storage.CompleteMult
 		return nil, fmt.Errorf("filesystem: calculate etag: %w", err)
 	}
 
+	if err := s.writeETag(m.Key, etag); err != nil {
+		return nil, err
+	}
+
 	return &storage.ObjectInfo{
 		Bucket:       "filesystem",
 		Key:          m.Key,
@@ -584,9 +669,9 @@ func (s *Service) AbortMultipart(_ context.Context, opts storage.AbortMultipartO
 
 func (s *Service) cleanupEmptyDirs(dir string) {
 	for dir != s.root && strings.HasPrefix(dir, s.root) {
-		// Never remove the .multipart or .tmp directories.
+		// Never remove the hidden infrastructure directories themselves.
 		base := filepath.Base(dir)
-		if base == multipartDir || base == tmpDir {
+		if base == multipartDir || base == tmpDir || base == etagsDir {
 			break
 		}
 

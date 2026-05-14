@@ -505,6 +505,98 @@ func TestEdgeCases(t *testing.T) {
 		assert.NotEmpty(t, info1.ETag, "Should not be empty")
 	})
 
+	t.Run("ETagSidecarCreatedOnPutObject", func(t *testing.T) {
+		// PutObject must persist the MD5 ETag to the .etags sidecar tree
+		// so subsequent StatObject calls can read it without re-hashing
+		// the object body.
+		tempDir := t.TempDir()
+		service, err := New(config.FilesystemConfig{Root: tempDir})
+		require.NoError(t, err, "Service construction should succeed")
+
+		key := "priv/sidecar/created.bin"
+		data := []byte("etag sidecar payload")
+
+		_, err = service.PutObject(ctx, storage.PutObjectOptions{
+			Key:    key,
+			Reader: bytes.NewReader(data),
+			Size:   int64(len(data)),
+		})
+		require.NoError(t, err, "PutObject should succeed")
+
+		sidecarPath := filepath.Join(tempDir, ".etags", filepath.FromSlash(key))
+		contents, err := os.ReadFile(sidecarPath)
+		require.NoError(t, err, "ETag sidecar must exist after PutObject")
+		assert.NotEmpty(t, contents, "ETag sidecar must contain the MD5 hex string")
+	})
+
+	t.Run("ETagSidecarRemovedOnDeleteObject", func(t *testing.T) {
+		// DeleteObject must clean up the sidecar; otherwise a future
+		// PutObject to the same key briefly observes a stale ETag, and
+		// abandoned keys leak disk space under .etags.
+		tempDir := t.TempDir()
+		service, err := New(config.FilesystemConfig{Root: tempDir})
+		require.NoError(t, err, "Service construction should succeed")
+
+		key := "priv/sidecar/removed.bin"
+
+		_, err = service.PutObject(ctx, storage.PutObjectOptions{
+			Key:    key,
+			Reader: bytes.NewReader([]byte("payload")),
+			Size:   7,
+		})
+		require.NoError(t, err, "PutObject should succeed")
+
+		require.NoError(t, service.DeleteObject(ctx, storage.DeleteObjectOptions{Key: key}), "DeleteObject should succeed")
+
+		sidecarPath := filepath.Join(tempDir, ".etags", filepath.FromSlash(key))
+		_, statErr := os.Stat(sidecarPath)
+		assert.True(t, os.IsNotExist(statErr), "ETag sidecar must be removed after DeleteObject")
+	})
+
+	t.Run("StatObjectFallsBackForLegacyDataWithoutSidecar", func(t *testing.T) {
+		// Objects written before the sidecar mechanism (or whose sidecar
+		// was lost) must still be statable. The contract is: empty ETag,
+		// no error — the proxy then serves without a validator.
+		tempDir := t.TempDir()
+		service, err := New(config.FilesystemConfig{Root: tempDir})
+		require.NoError(t, err, "Service construction should succeed")
+
+		key := "priv/legacy.bin"
+		objectPath := filepath.Join(tempDir, filepath.FromSlash(key))
+		require.NoError(t, os.MkdirAll(filepath.Dir(objectPath), 0o755), "Should create legacy object directory")
+		require.NoError(t, os.WriteFile(objectPath, []byte("legacy"), 0o644), "Should write legacy object directly")
+
+		info, err := service.StatObject(ctx, storage.StatObjectOptions{Key: key})
+		require.NoError(t, err, "StatObject must succeed for legacy objects without sidecar")
+		assert.Equal(t, key, info.Key, "StatObject must echo the queried key")
+		assert.Equal(t, int64(6), info.Size, "StatObject must report the object size")
+		assert.Empty(t, info.ETag, "Legacy object without sidecar must yield empty ETag")
+	})
+
+	t.Run("ListObjectsSkipsETagSidecarDirectory", func(t *testing.T) {
+		// .etags is infrastructure, not user data. ListObjects must
+		// never surface sidecar paths, otherwise callers would see
+		// phantom keys that don't correspond to real objects.
+		tempDir := t.TempDir()
+		service, err := New(config.FilesystemConfig{Root: tempDir})
+		require.NoError(t, err, "Service construction should succeed")
+
+		_, err = service.PutObject(ctx, storage.PutObjectOptions{
+			Key:    "visible.bin",
+			Reader: bytes.NewReader([]byte("x")),
+			Size:   1,
+		})
+		require.NoError(t, err, "PutObject should succeed")
+
+		listed, err := service.ListObjects(ctx, storage.ListObjectsOptions{})
+		require.NoError(t, err, "ListObjects should succeed")
+		require.NotEmpty(t, listed, "ListObjects must surface the regular object")
+
+		for _, obj := range listed {
+			assert.NotContains(t, obj.Key, ".etags", "ListObjects must not surface sidecar entries")
+		}
+	})
+
 	t.Run("ContentTypeDetection", func(t *testing.T) {
 		service, cleanup := setupTestService(t)
 		defer cleanup()
