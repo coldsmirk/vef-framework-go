@@ -23,24 +23,28 @@ import (
 	"github.com/coldsmirk/vef-framework-go/storage"
 )
 
-const partSize int64 = 4 * 1024 * 1024 // 4 MiB
+const (
+	partSize int64 = 4 * 1024 * 1024 // 4 MiB
 
-// multipartDir is the hidden directory under root that holds in-flight
-// multipart sessions. Each session gets its own subdirectory keyed by
-// uploadID.
-const multipartDir = ".multipart"
+	bucketName = "filesystem"
 
-// tmpDir is the hidden directory under root that holds in-flight
-// assembly temp files. Skipped by ListObjects and never cleaned up
-// by cleanupEmptyDirs.
-const tmpDir = ".tmp"
+	// multipartDir is the hidden directory under root that holds in-flight
+	// multipart sessions. Each session gets its own subdirectory keyed by
+	// uploadID.
+	multipartDir = ".multipart"
 
-// etagsDir is the hidden directory under root that mirrors the object
-// tree and stores one small text file per object containing its MD5
-// ETag. Persisting the ETag at write time avoids re-reading the entire
-// object on every StatObject call (which the file proxy invokes per
-// request). Skipped by ListObjects.
-const etagsDir = ".etags"
+	// tmpDir is the hidden directory under root that holds in-flight
+	// assembly temp files. Skipped by ListObjects and never cleaned up
+	// by cleanupEmptyDirs.
+	tmpDir = ".tmp"
+
+	// etagsDir is the hidden directory under root that mirrors the object
+	// tree and stores one small text file per object containing its MD5
+	// ETag. Persisting the ETag at write time avoids re-reading the entire
+	// object on every StatObject call (which the file proxy invokes per
+	// request). Skipped by ListObjects.
+	etagsDir = ".etags"
+)
 
 type manifest struct {
 	Key         string `json:"key"`
@@ -82,30 +86,36 @@ func (s *Service) sessionDir(uploadID string) string {
 	return filepath.Join(s.root, multipartDir, uploadID)
 }
 
-// writeETag persists etag to the sidecar tree for key. Failures are
-// non-fatal for the caller's main operation — the ETag is a cache hint,
-// not a correctness invariant — so the error is returned for logging
-// rather than propagated as a write failure.
-func (s *Service) writeETag(key, etag string) error {
-	path := s.etagPath(key)
-
+// writeFileAtomic writes data to path via tmp-file + rename. The tmp
+// suffix is unique per call so concurrent writers to the same path each
+// produce a complete artifact in isolation; the final Rename yields
+// last-writer-wins on path.
+func writeFileAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("filesystem: mkdir etag sidecar: %w", err)
+		return fmt.Errorf("filesystem: mkdir: %w", err)
 	}
 
 	tmp := path + ".tmp." + id.GenerateUUID()
 
-	if err := os.WriteFile(tmp, []byte(etag), 0o644); err != nil {
-		return fmt.Errorf("filesystem: write etag sidecar: %w", err)
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return fmt.Errorf("filesystem: write tmp: %w", err)
 	}
 
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 
-		return fmt.Errorf("filesystem: rename etag sidecar: %w", err)
+		return fmt.Errorf("filesystem: rename tmp: %w", err)
 	}
 
 	return nil
+}
+
+// writeETag persists etag to the sidecar tree for key. Failures are
+// non-fatal for the caller's main operation — the ETag is a cache hint,
+// not a correctness invariant — so the error is returned for logging
+// rather than propagated as a write failure.
+func (s *Service) writeETag(key, etag string) error {
+	return writeFileAtomic(s.etagPath(key), []byte(etag))
 }
 
 // readETag returns the persisted ETag for key, or "" if no sidecar
@@ -169,7 +179,7 @@ func (s *Service) PutObject(_ context.Context, opts storage.PutObjectOptions) (*
 	}
 
 	return &storage.ObjectInfo{
-		Bucket:       "filesystem",
+		Bucket:       bucketName,
 		Key:          opts.Key,
 		ETag:         etag,
 		Size:         written,
@@ -267,7 +277,7 @@ func (s *Service) ListObjects(_ context.Context, opts storage.ListObjectsOptions
 		contentType := mime.TypeByExtension(filepath.Ext(path))
 
 		objects = append(objects, storage.ObjectInfo{
-			Bucket:       "filesystem",
+			Bucket:       bucketName,
 			Key:          key,
 			ETag:         "",
 			Size:         info.Size(),
@@ -337,7 +347,7 @@ func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) 
 	contentType := mime.TypeByExtension(filepath.Ext(destPath))
 
 	return &storage.ObjectInfo{
-		Bucket:       "filesystem",
+		Bucket:       bucketName,
 		Key:          opts.DestKey,
 		ETag:         etag,
 		Size:         written,
@@ -370,7 +380,7 @@ func (s *Service) StatObject(_ context.Context, opts storage.StatObjectOptions) 
 	contentType := mime.TypeByExtension(filepath.Ext(path))
 
 	return &storage.ObjectInfo{
-		Bucket:       "filesystem",
+		Bucket:       bucketName,
 		Key:          opts.Key,
 		ETag:         etag,
 		Size:         stat.Size(),
@@ -486,19 +496,11 @@ func (s *Service) PutPart(_ context.Context, opts storage.PutPartOptions) (*stor
 	etag := hex.EncodeToString(hasher.Sum(nil))
 
 	// Persist etag alongside the part for verification at Complete time.
-	// Same tmp+rename pattern keeps the recorded etag consistent with
+	// The atomic tmp+rename keeps the recorded etag consistent with
 	// whichever .part file ultimately wins the rename race.
 	etagPath := filepath.Join(dir, strconv.Itoa(opts.PartNumber)+".etag")
-	etagTmpPath := etagPath + ".tmp." + id.GenerateUUID()
-
-	if err := os.WriteFile(etagTmpPath, []byte(etag), 0o644); err != nil {
-		return nil, fmt.Errorf("filesystem: write etag: %w", err)
-	}
-
-	if err := os.Rename(etagTmpPath, etagPath); err != nil {
-		_ = os.Remove(etagTmpPath)
-
-		return nil, fmt.Errorf("filesystem: rename etag: %w", err)
+	if err := writeFileAtomic(etagPath, []byte(etag)); err != nil {
+		return nil, err
 	}
 
 	return &storage.PartInfo{
@@ -583,6 +585,9 @@ func (s *Service) CompleteMultipart(_ context.Context, opts storage.CompleteMult
 		return nil, fmt.Errorf("filesystem: create tmp file: %w", err)
 	}
 
+	hasher := md5.New()
+	writer := io.MultiWriter(tmpFile, hasher)
+
 	var totalSize int64
 
 	for _, cp := range sorted {
@@ -594,7 +599,7 @@ func (s *Service) CompleteMultipart(_ context.Context, opts storage.CompleteMult
 			return nil, fmt.Errorf("filesystem: open part %d: %w", cp.PartNumber, openErr)
 		}
 
-		n, copyErr := io.Copy(tmpFile, partFile)
+		n, copyErr := io.Copy(writer, partFile)
 		_ = partFile.Close()
 
 		if copyErr != nil {
@@ -638,17 +643,13 @@ func (s *Service) CompleteMultipart(_ context.Context, opts storage.CompleteMult
 		return nil, fmt.Errorf("filesystem: stat final: %w", err)
 	}
 
-	etag, err := s.calculateMd5(finalPath)
-	if err != nil {
-		return nil, fmt.Errorf("filesystem: calculate etag: %w", err)
-	}
-
+	etag := hex.EncodeToString(hasher.Sum(nil))
 	if err := s.writeETag(m.Key, etag); err != nil {
 		return nil, err
 	}
 
 	return &storage.ObjectInfo{
-		Bucket:       "filesystem",
+		Bucket:       bucketName,
 		Key:          m.Key,
 		ETag:         etag,
 		Size:         totalSize,
@@ -681,20 +682,4 @@ func (s *Service) cleanupEmptyDirs(dir string) {
 
 		dir = filepath.Dir(dir)
 	}
-}
-
-func (*Service) calculateMd5(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-
-	defer func() { _ = file.Close() }()
-
-	hasher := md5.New()
-	if _, err := io.Copy(hasher, file); err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
