@@ -554,6 +554,16 @@ func (r *Resource) CompleteUpload(ctx fiber.Ctx, principal *security.Principal, 
 		}
 
 		info = stat
+	} else {
+		// S3/MinIO CompleteMultipartUpload responses do not carry the
+		// assembled object size; derive it from the parts table so the
+		// size-mismatch check below is meaningful on the happy path.
+		var totalSize int64
+		for i := range parts {
+			totalSize += parts[i].Size
+		}
+
+		info.Size = totalSize
 	}
 
 	if claim.Size > 0 && info.Size != claim.Size {
