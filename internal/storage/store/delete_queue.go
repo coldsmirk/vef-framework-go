@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/id"
@@ -158,7 +157,7 @@ func (q *deleteQueue) Defer(ctx context.Context, id string, nextAt timex.DateTim
 	if n == 0 {
 		// Defer is best-effort; a missing row likely means another path
 		// already handled it (Done by parallel branch, or row was reaped).
-		return errors.Join(result.ErrRecordNotFound)
+		return result.ErrRecordNotFound
 	}
 
 	return nil

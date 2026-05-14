@@ -72,6 +72,11 @@ func (p *ProxyMiddleware) handleFileProxy(ctx fiber.Ctx) error {
 		}
 	}
 
+	// reader ownership: from this point on, the io.ReadCloser is handed
+	// off to ctx.SendStream below, which is responsible for closing it
+	// after the response body is flushed. Do NOT add an early return
+	// (e.g. on a StatObject failure) between here and SendStream without
+	// closing reader first, or the descriptor will leak.
 	reader, err := p.service.GetObject(ctx.Context(), storage.GetObjectOptions{
 		Key: key,
 	})
@@ -88,6 +93,9 @@ func (p *ProxyMiddleware) handleFileProxy(ctx fiber.Ctx) error {
 		return result.Err(i18n.T(result.ErrMessageFailedToGetFile))
 	}
 
+	// Stat failure is intentionally non-fatal: the response still streams
+	// the body, just without Content-Length / ETag headers. Treating it
+	// as fatal would force closing reader here.
 	stat, err := p.service.StatObject(ctx.Context(), storage.StatObjectOptions{
 		Key: key,
 	})
