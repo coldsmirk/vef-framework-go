@@ -159,13 +159,18 @@ func (s *Service) DeleteObjects(ctx context.Context, opts storage.DeleteObjectsO
 
 	errorCh := s.client.RemoveObjects(ctx, s.bucket, objectsCh, minio.RemoveObjectsOptions{})
 
+	// Drain errorCh fully so the SDK's producer goroutine can exit, then
+	// aggregate per-object failures. Early return on the first error would
+	// strand the goroutine on its next send and hide partial failures.
+	var errs []error
+
 	for err := range errorCh {
 		if err.Err != nil {
-			return s.translateError(err.Err)
+			errs = append(errs, s.translateError(err.Err))
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func (s *Service) ListObjects(ctx context.Context, opts storage.ListObjectsOptions) ([]storage.ObjectInfo, error) {
