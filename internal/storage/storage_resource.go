@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coldsmirk/go-collections"
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
@@ -34,6 +35,20 @@ const (
 // characters or path separators from leaking into object keys.
 var safeExtPattern = regexp.MustCompile(`^\.[a-zA-Z0-9]+$`)
 
+// safeContentTypePrefixes and safeContentTypes gate sanitizeContentType.
+// Hoisted to package scope so the upload hot path does not re-allocate
+// them on every InitUpload call.
+var (
+	safeContentTypePrefixes = []string{"image/", "audio/", "video/", "font/"}
+	safeContentTypes        = collections.NewHashSetFrom(
+		"application/pdf",
+		"application/zip",
+		"application/gzip",
+		"application/x-tar",
+		"application/octet-stream",
+	)
+)
+
 // sanitizeContentType returns a safe MIME type for storage. Client-
 // supplied values are accepted only when they fall within a known-safe
 // set (binary, image, audio, video, font, common archives). Everything
@@ -57,31 +72,21 @@ func isSafeContentType(ct string) bool {
 		return false
 	}
 
-	for _, prefix := range []string{"image/", "audio/", "video/", "font/"} {
+	for _, prefix := range safeContentTypePrefixes {
 		if strings.HasPrefix(ct, prefix) {
 			return true
 		}
 	}
 
-	switch ct {
-	case "application/pdf", "application/zip", "application/gzip",
-		"application/x-tar", "application/octet-stream":
-		return true
-	}
-
-	return false
+	return safeContentTypes.Contains(ct)
 }
 
 // ensureOwner asserts that the caller's principal owns the claim.
 // All storage RPC actions require authentication; this is defense in
 // depth for the per-claim ownership boundary.
 func ensureOwner(claim *store.UploadClaim, principal *security.Principal) error {
-	if principal == nil || principal.ID == "" {
-		return result.Err(i18n.T("claim_access_denied"))
-	}
-
-	if principal.ID != claim.CreatedBy {
-		return result.Err(i18n.T("claim_access_denied"))
+	if principal == nil || principal.ID == "" || principal.ID != claim.CreatedBy {
+		return result.ErrAccessDenied
 	}
 
 	return nil

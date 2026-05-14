@@ -72,7 +72,6 @@
   "abort_failed": "取消上传会话失败",
   "claim_not_multipart": "上传凭证不是分片上传类型",
   "claim_not_pending": "上传凭证已不在进行中状态，无法继续操作",
-  "claim_access_denied": "无权操作该上传凭证",
   "part_number_out_of_range": "分片编号超出允许范围",
   "upload_parts_incomplete": "已上传分片数量与声明不一致，请确认所有分片已上传",
   "multipart_not_supported": "当前存储后端不支持分片上传，请联系运维确认后端配置",

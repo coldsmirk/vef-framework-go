@@ -72,7 +72,6 @@
   "abort_failed": "Failed to abort the upload session",
   "claim_not_multipart": "Upload claim is not a multipart upload",
   "claim_not_pending": "Upload claim is no longer in pending state",
-  "claim_access_denied": "Not authorized to operate on this upload claim",
   "part_number_out_of_range": "Part number is out of the allowed range",
   "upload_parts_incomplete": "Number of uploaded parts does not match the declared part count",
   "multipart_not_supported": "Current storage backend does not support multipart uploads; verify the backend configuration with the operator",
