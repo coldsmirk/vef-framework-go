@@ -272,12 +272,7 @@ func (f *defaultFiles) scheduleDeletes(
 		return nil
 	}
 
-	keys := make([]string, len(refs))
-	for i, ref := range refs {
-		keys[i] = ref.Key
-	}
-
-	return f.ds.Schedule(ctx, tx, keys, reason)
+	return f.ds.Schedule(ctx, tx, refKeys(refs), reason)
 }
 
 func (e *cachedExtractor) extract(model any) []FileRef {

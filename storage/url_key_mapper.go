@@ -49,10 +49,6 @@ type URLKeyMapper interface {
 	KeyToURL(key string) string
 }
 
-// IdentityURLKeyMapper is the zero-config mapper that treats relative
-// URLs as bare storage keys. Suitable when the frontend convention is
-// to embed bare object keys (e.g. `<img src="priv/2026/05/12/foo.png">`)
-// and to resolve them to a viewable URL at render time.
 // DefaultProxyPrefix is the URL path prefix the framework's proxy
 // middleware mounts at. ProxyURLKeyMapper uses it to translate between
 // embedded URLs and storage keys.

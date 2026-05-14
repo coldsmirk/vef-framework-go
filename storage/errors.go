@@ -9,12 +9,8 @@ var (
 	ErrObjectNotFound = errors.New("object not found")
 	// ErrInvalidBucketName indicates the bucket name is invalid.
 	ErrInvalidBucketName = errors.New("invalid bucket name")
-	// ErrInvalidObjectKey indicates the object key is invalid.
-	ErrInvalidObjectKey = errors.New("invalid object key")
 	// ErrAccessDenied indicates permission is denied for the operation.
 	ErrAccessDenied = errors.New("access denied")
-	// ErrProviderNotConfigured indicates no storage provider is configured.
-	ErrProviderNotConfigured = errors.New("storage provider not configured")
 	// ErrClaimNotFound indicates the requested upload claim does not exist
 	// (already consumed by a business transaction, expired and swept,
 	// or never existed).
