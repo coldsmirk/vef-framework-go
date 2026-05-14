@@ -188,10 +188,12 @@ func (w *DeleteWorker) parkDeadLetter(ctx context.Context, item *store.PendingDe
 
 // computeBackoff returns 2^attempt * base, capped at deleteMaxBackoff.
 func computeBackoff(attempt int) time.Duration {
-	shift := min(attempt, 30) // prevent int overflow
+	// 30s << 7 = 64 min already exceeds the 1h cap; clamping shift here
+	// keeps the multiplication well within int64 bounds.
+	shift := min(attempt, 7)
 
 	d := deleteBaseBackoff << shift //nolint:gosec // shift bounded above
-	if d <= 0 || d > deleteMaxBackoff {
+	if d > deleteMaxBackoff {
 		return deleteMaxBackoff
 	}
 
