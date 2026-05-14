@@ -3,19 +3,21 @@ package memory
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"io"
 	"maps"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/coldsmirk/vef-framework-go/hashx"
 	"github.com/coldsmirk/vef-framework-go/id"
 	"github.com/coldsmirk/vef-framework-go/storage"
 )
 
-const partSize int64 = 64 * 1024 // 64 KiB — small for fast multi-part test coverage
+const (
+	partSize   int64 = 64 * 1024 // 64 KiB — small for fast multi-part test coverage
+	bucketName       = "memory"
+)
 
 // Service is intended for testing purposes only.
 type Service struct {
@@ -58,8 +60,7 @@ func (s *Service) PutObject(_ context.Context, opts storage.PutObjectOptions) (*
 		return nil, err
 	}
 
-	h := md5.Sum(data)
-	etag := hex.EncodeToString(h[:])
+	etag := hashx.MD5Bytes(data)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -74,7 +75,7 @@ func (s *Service) PutObject(_ context.Context, opts storage.PutObjectOptions) (*
 	}
 
 	return &storage.ObjectInfo{
-		Bucket:       "memory",
+		Bucket:       bucketName,
 		Key:          opts.Key,
 		ETag:         etag,
 		Size:         int64(len(data)),
@@ -135,7 +136,7 @@ func (s *Service) ListObjects(_ context.Context, opts storage.ListObjectsOptions
 		}
 
 		objects = append(objects, storage.ObjectInfo{
-			Bucket:       "memory",
+			Bucket:       bucketName,
 			Key:          key,
 			ETag:         obj.etag,
 			Size:         int64(len(obj.data)),
@@ -167,8 +168,7 @@ func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) 
 	metadataCopy := make(map[string]string, len(source.metadata))
 	maps.Copy(metadataCopy, source.metadata)
 
-	copyHash := md5.Sum(dataCopy)
-	copyEtag := hex.EncodeToString(copyHash[:])
+	copyEtag := hashx.MD5Bytes(dataCopy)
 
 	now := time.Now()
 	s.objects[opts.DestKey] = &objectData{
@@ -180,7 +180,7 @@ func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) 
 	}
 
 	return &storage.ObjectInfo{
-		Bucket:       "memory",
+		Bucket:       bucketName,
 		Key:          opts.DestKey,
 		ETag:         copyEtag,
 		Size:         int64(len(dataCopy)),
@@ -200,7 +200,7 @@ func (s *Service) StatObject(_ context.Context, opts storage.StatObjectOptions) 
 	}
 
 	return &storage.ObjectInfo{
-		Bucket:       "memory",
+		Bucket:       bucketName,
 		Key:          opts.Key,
 		ETag:         obj.etag,
 		Size:         int64(len(obj.data)),
@@ -240,8 +240,7 @@ func (s *Service) PutPart(_ context.Context, opts storage.PutPartOptions) (*stor
 		return nil, err
 	}
 
-	h := md5.Sum(data)
-	etag := hex.EncodeToString(h[:])
+	etag := hashx.MD5Bytes(data)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -310,8 +309,7 @@ func (s *Service) CompleteMultipart(_ context.Context, opts storage.CompleteMult
 		assembled = append(assembled, session.parts[cp.PartNumber].data...)
 	}
 
-	assembledHash := md5.Sum(assembled)
-	assembledEtag := hex.EncodeToString(assembledHash[:])
+	assembledEtag := hashx.MD5Bytes(assembled)
 
 	now := time.Now()
 	s.objects[session.key] = &objectData{
@@ -325,7 +323,7 @@ func (s *Service) CompleteMultipart(_ context.Context, opts storage.CompleteMult
 	delete(s.sessions, opts.UploadID)
 
 	return &storage.ObjectInfo{
-		Bucket:       "memory",
+		Bucket:       bucketName,
 		Key:          session.key,
 		ETag:         assembledEtag,
 		Size:         totalSize,
