@@ -118,8 +118,10 @@ type ClaimStore interface {
 	// same orm.DB instance passed to RunInTX.
 	Consume(ctx context.Context, tx orm.DB, key string) error
 
-	// ScanExpired returns up to limit claims whose ExpiresAt is before now.
-	// Used by the claim sweeper worker to drive cleanup.
+	// ScanExpired returns up to limit pending claims whose ExpiresAt is
+	// before now. Uploaded claims are intentionally excluded: their
+	// finalized objects are awaiting business consumption and must not be
+	// reaped if Consume happens after the original TTL.
 	ScanExpired(ctx context.Context, now timex.DateTime, limit int) ([]UploadClaim, error)
 
 	// DeleteByID removes a single claim row, used after the upload abort

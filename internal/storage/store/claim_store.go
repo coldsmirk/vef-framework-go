@@ -180,8 +180,13 @@ func (*claimStore) ConsumeMany(ctx context.Context, tx orm.DB, keys []string) er
 func (s *claimStore) ScanExpired(ctx context.Context, now timex.DateTime, limit int) ([]UploadClaim, error) {
 	var claims []UploadClaim
 
+	// Only pending claims are eligible for sweeping. An 'uploaded' claim
+	// whose business consumption is delayed past ExpiresAt would otherwise
+	// be reaped, deleting the backend object while the business layer
+	// still considers it live.
 	err := s.db.NewSelect().Model(&claims).Where(func(cb orm.ConditionBuilder) {
 		cb.LessThan("expires_at", now)
+		cb.Equals("status", string(ClaimStatusPending))
 	}).OrderBy("expires_at").Limit(limit).Scan(ctx)
 	if err != nil {
 		return nil, err

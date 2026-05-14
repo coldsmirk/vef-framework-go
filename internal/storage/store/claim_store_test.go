@@ -48,6 +48,7 @@ func newClaim(key string, expiresAt timex.DateTime) *uploadClaim {
 		ContentType:      "application/octet-stream",
 		OriginalFilename: "测试文件.bin",
 		CreatedBy:        "tester",
+		Status:           store.ClaimStatusPending,
 		ExpiresAt:        expiresAt,
 		CreatedAt:        timex.Now(),
 	}
@@ -143,6 +144,22 @@ func TestClaimStore(t *testing.T) {
 		got, err = cs.ScanExpired(ctx, now, 10)
 		require.NoError(t, err, "Expired claim rescan should succeed")
 		assert.Empty(t, got, "Deleted expired claim should not appear in later scans")
+	})
+
+	t.Run("ScanExpiredSkipsUploaded", func(t *testing.T) {
+		ctx, db, cs, _ := setupStores(t)
+
+		now := timex.Now()
+		uploaded := newClaim("priv/uploaded-past-ttl", now.AddHours(-1))
+		require.NoError(t, cs.Create(ctx, uploaded), "Uploaded claim creation should succeed")
+
+		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+			return cs.MarkUploaded(txCtx, tx, uploaded.ID)
+		}), "MarkUploaded should succeed")
+
+		got, err := cs.ScanExpired(ctx, now, 10)
+		require.NoError(t, err, "Expired claim scan should succeed")
+		assert.Empty(t, got, "Uploaded claims must never appear in the expired sweep set")
 	})
 
 	t.Run("ErrClaimNotFoundWraps", func(t *testing.T) {

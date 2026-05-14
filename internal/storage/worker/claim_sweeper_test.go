@@ -96,6 +96,7 @@ func TestClaimSweeper(t *testing.T) {
 			ID:        id.GenerateUUID(),
 			Key:       "priv/expired.bin",
 			CreatedBy: "tester",
+			Status:    store.ClaimStatusPending,
 			ExpiresAt: timex.Now().AddHours(-1),
 			CreatedAt: timex.Now(),
 		}
@@ -122,6 +123,7 @@ func TestClaimSweeper(t *testing.T) {
 			Key:       "priv/mp.bin",
 			UploadID:  "session-xyz",
 			CreatedBy: "tester",
+			Status:    store.ClaimStatusPending,
 			ExpiresAt: timex.Now().AddHours(-1),
 			CreatedAt: timex.Now(),
 		}
@@ -145,6 +147,7 @@ func TestClaimSweeper(t *testing.T) {
 			ID:        id.GenerateUUID(),
 			Key:       "priv/live.bin",
 			CreatedBy: "tester",
+			Status:    store.ClaimStatusPending,
 			ExpiresAt: timex.Now().AddHours(1), // future
 			CreatedAt: timex.Now(),
 		}
