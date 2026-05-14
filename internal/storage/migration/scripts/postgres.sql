@@ -3,9 +3,9 @@
 --------------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS sys_storage_upload_claim (
-    id                VARCHAR(32)  NOT NULL,
+    id                VARCHAR(128) NOT NULL,
     created_at        TIMESTAMP    NOT NULL DEFAULT LOCALTIMESTAMP,
-    created_by        VARCHAR(32)  NOT NULL DEFAULT 'system',
+    created_by        VARCHAR(128) NOT NULL DEFAULT 'system',
     object_key        VARCHAR(512) NOT NULL,
     upload_id         VARCHAR(128) NOT NULL DEFAULT '',
     size              BIGINT       NOT NULL DEFAULT 0,
@@ -43,8 +43,8 @@ CREATE INDEX idx_sys_storage_upload_claim__expires_at ON sys_storage_upload_clai
 CREATE INDEX idx_sys_storage_upload_claim__owner_status ON sys_storage_upload_claim(created_by, status);
 
 CREATE TABLE IF NOT EXISTS sys_storage_upload_part (
-    id          VARCHAR(32)  NOT NULL,
-    claim_id    VARCHAR(32)  NOT NULL,
+    id          VARCHAR(128) NOT NULL,
+    claim_id    VARCHAR(128) NOT NULL,
     part_number INTEGER      NOT NULL,
     etag        VARCHAR(64)  NOT NULL,
     size        BIGINT       NOT NULL,
@@ -70,10 +70,10 @@ COMMENT ON COLUMN sys_storage_upload_part.created_at IS 'Created at';
 -- FK cascade probe.
 
 CREATE TABLE IF NOT EXISTS sys_storage_pending_delete (
-    id              VARCHAR(32)  NOT NULL,
+    id              VARCHAR(128) NOT NULL,
     object_key      VARCHAR(512) NOT NULL,
     upload_id       VARCHAR(128) NOT NULL DEFAULT '',
-    reason          VARCHAR(32)  NOT NULL DEFAULT 'replaced',
+    reason          VARCHAR(128) NOT NULL DEFAULT 'replaced',
     attempts        INTEGER      NOT NULL DEFAULT 0,
     next_attempt_at TIMESTAMP    NOT NULL DEFAULT LOCALTIMESTAMP,
     created_at      TIMESTAMP    NOT NULL DEFAULT LOCALTIMESTAMP,

@@ -3,9 +3,9 @@
 -- --------------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS sys_storage_upload_claim (
-    id                VARCHAR(32)  NOT NULL                            COMMENT 'Primary key',
+    id                VARCHAR(128) NOT NULL                            COMMENT 'Primary key',
     created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT 'Created at',
-    created_by        VARCHAR(32)  NOT NULL DEFAULT 'system'           COMMENT 'Uploader',
+    created_by        VARCHAR(128) NOT NULL DEFAULT 'system'           COMMENT 'Uploader',
     object_key        VARCHAR(512) NOT NULL                            COMMENT 'Object key',
     upload_id         VARCHAR(128) NOT NULL DEFAULT ''                 COMMENT 'Multipart session ID',
     size              BIGINT       NOT NULL DEFAULT 0                  COMMENT 'Size in bytes',
@@ -28,8 +28,8 @@ CREATE INDEX idx_sys_storage_upload_claim__expires_at ON sys_storage_upload_clai
 CREATE INDEX idx_sys_storage_upload_claim__owner_status ON sys_storage_upload_claim(created_by, status);
 
 CREATE TABLE IF NOT EXISTS sys_storage_upload_part (
-    id          VARCHAR(32)  NOT NULL                            COMMENT 'Primary key',
-    claim_id    VARCHAR(32)  NOT NULL                            COMMENT 'Owning claim ID',
+    id          VARCHAR(128) NOT NULL                            COMMENT 'Primary key',
+    claim_id    VARCHAR(128) NOT NULL                            COMMENT 'Owning claim ID',
     part_number INTEGER      NOT NULL                            COMMENT 'Part number',
     etag        VARCHAR(64)  NOT NULL                            COMMENT 'Part ETag',
     size        BIGINT       NOT NULL                            COMMENT 'Part size in bytes',
@@ -47,10 +47,10 @@ CREATE TABLE IF NOT EXISTS sys_storage_upload_part (
 -- InnoDB FK constraint requirement.
 
 CREATE TABLE IF NOT EXISTS sys_storage_pending_delete (
-    id              VARCHAR(32)  NOT NULL                            COMMENT 'Primary key',
+    id              VARCHAR(128) NOT NULL                            COMMENT 'Primary key',
     object_key      VARCHAR(512) NOT NULL                            COMMENT 'Object key',
     upload_id       VARCHAR(128) NOT NULL DEFAULT ''                 COMMENT 'Multipart session ID',
-    reason          VARCHAR(32)  NOT NULL DEFAULT 'replaced'         COMMENT 'Deletion reason',
+    reason          VARCHAR(128) NOT NULL DEFAULT 'replaced'         COMMENT 'Deletion reason',
     attempts        INTEGER      NOT NULL DEFAULT 0                  COMMENT 'Attempt count',
     next_attempt_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT 'Next attempt at',
     created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT 'Created at',
