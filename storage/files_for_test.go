@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/security"
 	"github.com/coldsmirk/vef-framework-go/storage"
 )
 
@@ -34,13 +35,13 @@ type RecordingStubFiles struct {
 	deleteCalls int
 }
 
-func (r *RecordingStubFiles) OnCreate(context.Context, orm.DB, any) error {
+func (r *RecordingStubFiles) OnCreate(context.Context, orm.DB, *security.Principal, any) error {
 	r.createCalls++
 
 	return nil
 }
 
-func (r *RecordingStubFiles) OnUpdate(context.Context, orm.DB, any, any) error {
+func (r *RecordingStubFiles) OnUpdate(context.Context, orm.DB, *security.Principal, any, any) error {
 	r.updateCalls++
 
 	return nil
@@ -60,7 +61,7 @@ func TestFilesFor(t *testing.T) {
 			Body:     `<p><img src="priv/embed.png"></p>`,
 		}
 
-		require.NoError(t, files.OnCreate(context.Background(), nil, model), "Typed OnCreate must succeed for the same input as untyped Files")
+		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, model), "Typed OnCreate must succeed for the same input as untyped Files")
 
 		require.Len(t, cs.consumeManyCalls, 1, "Typed OnCreate must batch every ref into one ConsumeMany call, matching untyped semantics")
 		assert.ElementsMatch(t,
@@ -81,7 +82,7 @@ func TestFilesFor(t *testing.T) {
 		old := &FileModel{CoverKey: "priv/old.png"}
 		updated := &FileModel{CoverKey: "priv/new.png"}
 
-		require.NoError(t, files.OnUpdate(context.Background(), nil, old, updated), "Typed OnUpdate must succeed")
+		require.NoError(t, files.OnUpdate(context.Background(), nil, testPrincipal, old, updated), "Typed OnUpdate must succeed")
 
 		require.Len(t, cs.consumeManyCalls, 1, "Typed OnUpdate must consume exactly the newly added ref")
 		assert.Equal(t, []string{"priv/new.png"}, cs.consumeManyCalls[0].Keys, "Only the new ref should be consumed")
@@ -117,9 +118,9 @@ func TestFilesFor(t *testing.T) {
 		cs, ds, pub, files := newTestFilesFor()
 		ctx := context.Background()
 
-		require.NoError(t, files.OnCreate(ctx, nil, nil), "Typed OnCreate(nil) must be a noop")
+		require.NoError(t, files.OnCreate(ctx, nil, testPrincipal, nil), "Typed OnCreate(nil) must be a noop")
 		require.NoError(t, files.OnDelete(ctx, nil, nil), "Typed OnDelete(nil) must be a noop")
-		require.NoError(t, files.OnUpdate(ctx, nil, nil, nil), "Typed OnUpdate(nil,nil) must be a noop")
+		require.NoError(t, files.OnUpdate(ctx, nil, testPrincipal, nil, nil), "Typed OnUpdate(nil,nil) must be a noop")
 
 		assert.Empty(t, cs.consumeManyCalls, "Nil hooks must not consume")
 		assert.Empty(t, ds.scheduleCalls, "Nil hooks must not schedule")
@@ -135,7 +136,7 @@ func TestFilesFor(t *testing.T) {
 			cs, ds, pub, files := newTestFilesFor()
 			updated := &FileModel{CoverKey: "priv/added.png"}
 
-			require.NoError(t, files.OnUpdate(context.Background(), nil, nil, updated), "Typed OnUpdate(nil, new) must succeed")
+			require.NoError(t, files.OnUpdate(context.Background(), nil, testPrincipal, nil, updated), "Typed OnUpdate(nil, new) must succeed")
 
 			require.Len(t, cs.consumeManyCalls, 1, "Missing old side must consume new refs")
 			assert.Equal(t, []string{"priv/added.png"}, cs.consumeManyCalls[0].Keys, "Only the new ref should be consumed")
@@ -147,7 +148,7 @@ func TestFilesFor(t *testing.T) {
 			cs, ds, pub, files := newTestFilesFor()
 			old := &FileModel{CoverKey: "priv/removed.png"}
 
-			require.NoError(t, files.OnUpdate(context.Background(), nil, old, nil), "Typed OnUpdate(old, nil) must succeed")
+			require.NoError(t, files.OnUpdate(context.Background(), nil, testPrincipal, old, nil), "Typed OnUpdate(old, nil) must succeed")
 
 			assert.Empty(t, cs.consumeManyCalls, "Missing new side must not consume")
 			require.Len(t, ds.scheduleCalls, 1, "Missing new side must schedule the removed ref")
@@ -161,7 +162,7 @@ func TestFilesFor(t *testing.T) {
 		cs, _, pub, files := newTestFilesFor()
 		cs.consumeManyErr = errors.New("simulated conflict")
 
-		err := files.OnCreate(context.Background(), nil, &FileModel{CoverKey: "priv/cover.png"})
+		err := files.OnCreate(context.Background(), nil, testPrincipal, &FileModel{CoverKey: "priv/cover.png"})
 
 		require.Error(t, err, "Typed OnCreate must surface ConsumeMany failures")
 		assert.ErrorIs(t, err, cs.consumeManyErr, "Returned error must wrap the ConsumeMany error")
@@ -179,8 +180,8 @@ func TestFilesFor(t *testing.T) {
 		typed := storage.NewFilesFor[FileModel](stub)
 
 		ctx := context.Background()
-		require.NoError(t, typed.OnCreate(ctx, nil, &FileModel{}), "OnCreate must delegate to the foreign Files")
-		require.NoError(t, typed.OnUpdate(ctx, nil, &FileModel{}, &FileModel{}), "OnUpdate must delegate to the foreign Files")
+		require.NoError(t, typed.OnCreate(ctx, nil, testPrincipal, &FileModel{}), "OnCreate must delegate to the foreign Files")
+		require.NoError(t, typed.OnUpdate(ctx, nil, testPrincipal, &FileModel{}, &FileModel{}), "OnUpdate must delegate to the foreign Files")
 		require.NoError(t, typed.OnDelete(ctx, nil, &FileModel{}), "OnDelete must delegate to the foreign Files")
 
 		assert.Equal(t, 1, stub.createCalls, "Foreign OnCreate must be invoked exactly once")
@@ -203,8 +204,8 @@ func TestFilesFor(t *testing.T) {
 
 		model := &FileModel{CoverKey: "priv/shared.png"}
 
-		require.NoError(t, typed.OnCreate(context.Background(), nil, model), "Typed OnCreate must succeed")
-		require.NoError(t, files.OnCreate(context.Background(), nil, model), "Untyped OnCreate must succeed after typed has populated the cache")
+		require.NoError(t, typed.OnCreate(context.Background(), nil, testPrincipal, model), "Typed OnCreate must succeed")
+		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, model), "Untyped OnCreate must succeed after typed has populated the cache")
 
 		require.Len(t, cs.consumeManyCalls, 2, "Each path must produce its own ConsumeMany call")
 		assert.Equal(t, cs.consumeManyCalls[0].Keys, cs.consumeManyCalls[1].Keys, "Both facades must extract the same refs from the same model")

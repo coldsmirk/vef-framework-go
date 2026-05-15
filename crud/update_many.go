@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
+	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/copier"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -126,8 +127,10 @@ func (u *updateManyOperation[TModel, TParams]) updateMany(db orm.DB, files stora
 				}
 			}
 
+			principal := contextx.Principal(txCtx)
+
 			for i := range oldModels {
-				if err := typedFiles.OnUpdate(txCtx, tx, &snapshots[i], &oldModels[i]); err != nil {
+				if err := typedFiles.OnUpdate(txCtx, tx, principal, &snapshots[i], &oldModels[i]); err != nil {
 					return err
 				}
 			}

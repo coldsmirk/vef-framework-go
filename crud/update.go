@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
+	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/copier"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -118,7 +119,7 @@ func (u *updateOperation[TModel, TParams]) update(db orm.DB, files storage.Files
 				return err
 			}
 
-			if err := typedFiles.OnUpdate(txCtx, tx, &snapshot, &oldModel); err != nil {
+			if err := typedFiles.OnUpdate(txCtx, tx, contextx.Principal(txCtx), &snapshot, &oldModel); err != nil {
 				return err
 			}
 

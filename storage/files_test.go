@@ -15,6 +15,10 @@ import (
 	"github.com/coldsmirk/vef-framework-go/storage"
 )
 
+// testPrincipal is the default authorization subject for Files lifecycle
+// tests. Tests that exercise the ownership boundary build their own.
+var testPrincipal = &security.Principal{ID: "tester"}
+
 // stripPrefixURLMapper is a test-only URLKeyMapper that strips a fixed
 // prefix from embedded URLs (e.g. "/storage/files/") to recover the
 // underlying storage key, and prepends it again on the way out. URLs
@@ -136,7 +140,7 @@ func TestFiles(t *testing.T) {
 		cs, ds, pub, files := newTestFiles()
 		model := &FileModel{CoverKey: "priv/cover.png"}
 
-		require.NoError(t, files.OnCreate(context.Background(), nil, model), "OnCreate should succeed")
+		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, model), "OnCreate should succeed")
 
 		require.Len(t, cs.consumeManyCalls, 1, "OnCreate must invoke ConsumeMany exactly once")
 		assert.Equal(t, []string{"priv/cover.png"}, cs.consumeManyCalls[0].Keys, "Consumed keys should match the model's uploaded_file ref")
@@ -153,7 +157,7 @@ func TestFiles(t *testing.T) {
 			Body:     `<p><img src="priv/embed-1.png"><img src="priv/embed-2.png"></p>`,
 		}
 
-		require.NoError(t, files.OnCreate(context.Background(), nil, model), "OnCreate should succeed for richtext content")
+		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, model), "OnCreate should succeed for richtext content")
 
 		require.Len(t, cs.consumeManyCalls, 1, "OnCreate must batch every reachable ref into one ConsumeMany call")
 		assert.ElementsMatch(t,
@@ -172,7 +176,7 @@ func TestFiles(t *testing.T) {
 	t.Run("OnCreateNoRefsIsNoop", func(t *testing.T) {
 		cs, ds, pub, files := newTestFiles()
 
-		require.NoError(t, files.OnCreate(context.Background(), nil, &FileModel{}), "Empty model OnCreate should be a noop")
+		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, &FileModel{}), "Empty model OnCreate should be a noop")
 
 		assert.Empty(t, cs.consumeManyCalls, "ConsumeMany must not be called when the model has no refs")
 		assert.Empty(t, ds.scheduleCalls, "Schedule must not be called either")
@@ -183,7 +187,7 @@ func TestFiles(t *testing.T) {
 		cs, _, pub, files := newTestFiles()
 		cs.consumeManyErr = errors.New("simulated transaction conflict")
 
-		err := files.OnCreate(context.Background(), nil, &FileModel{CoverKey: "priv/cover.png"})
+		err := files.OnCreate(context.Background(), nil, testPrincipal, &FileModel{CoverKey: "priv/cover.png"})
 
 		require.Error(t, err, "OnCreate must surface ConsumeMany failures")
 		assert.ErrorIs(t, err, cs.consumeManyErr, "Returned error must wrap the ConsumeMany error")
@@ -196,7 +200,7 @@ func TestFiles(t *testing.T) {
 		old := &FileModel{CoverKey: "priv/old-cover.png"}
 		updated := &FileModel{CoverKey: "priv/new-cover.png"}
 
-		require.NoError(t, files.OnUpdate(context.Background(), nil, old, updated), "OnUpdate should succeed")
+		require.NoError(t, files.OnUpdate(context.Background(), nil, testPrincipal, old, updated), "OnUpdate should succeed")
 
 		require.Len(t, cs.consumeManyCalls, 1, "Exactly one ConsumeMany should fire for the newly added ref")
 		assert.Equal(t, []string{"priv/new-cover.png"}, cs.consumeManyCalls[0].Keys, "Only the new ref should be consumed")
@@ -214,7 +218,7 @@ func TestFiles(t *testing.T) {
 		cs, ds, pub, files := newTestFiles()
 		model := &FileModel{CoverKey: "priv/same.png"}
 
-		require.NoError(t, files.OnUpdate(context.Background(), nil, model, model), "Identical snapshots should noop")
+		require.NoError(t, files.OnUpdate(context.Background(), nil, testPrincipal, model, model), "Identical snapshots should noop")
 
 		assert.Empty(t, cs.consumeManyCalls, "Unchanged refs must not consume")
 		assert.Empty(t, ds.scheduleCalls, "Unchanged refs must not schedule deletes")
@@ -231,6 +235,7 @@ func TestFiles(t *testing.T) {
 		err := files.OnUpdate(
 			context.Background(),
 			nil,
+			testPrincipal,
 			&FileModel{CoverKey: "priv/old.png"},
 			&FileModel{CoverKey: "priv/new.png"},
 		)
@@ -274,9 +279,9 @@ func TestFiles(t *testing.T) {
 		cs, ds, pub, files := newTestFiles()
 		ctx := context.Background()
 
-		require.NoError(t, files.OnCreate(ctx, nil, (*FileModel)(nil)), "OnCreate(nil) must be a noop")
+		require.NoError(t, files.OnCreate(ctx, nil, testPrincipal, (*FileModel)(nil)), "OnCreate(nil) must be a noop")
 		require.NoError(t, files.OnDelete(ctx, nil, (*FileModel)(nil)), "OnDelete(nil) must be a noop")
-		require.NoError(t, files.OnUpdate(ctx, nil, (*FileModel)(nil), (*FileModel)(nil)), "OnUpdate(nil,nil) must be a noop")
+		require.NoError(t, files.OnUpdate(ctx, nil, testPrincipal, (*FileModel)(nil), (*FileModel)(nil)), "OnUpdate(nil,nil) must be a noop")
 
 		assert.Empty(t, cs.consumeManyCalls, "Nil hooks must not consume")
 		assert.Empty(t, ds.scheduleCalls, "Nil hooks must not schedule")
@@ -291,7 +296,7 @@ func TestFiles(t *testing.T) {
 		ds := &MockDeleteScheduler{}
 		files := storage.NewFiles(cs, ds, nil, new(storage.IdentityURLKeyMapper))
 
-		require.NoError(t, files.OnCreate(context.Background(), nil, &FileModel{CoverKey: "priv/cover.png"}), "OnCreate with nil publisher must succeed")
+		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, &FileModel{CoverKey: "priv/cover.png"}), "OnCreate with nil publisher must succeed")
 		assert.Len(t, cs.consumeManyCalls, 1, "ConsumeMany must still run with a nil publisher")
 	})
 
@@ -312,7 +317,7 @@ func TestFiles(t *testing.T) {
 				`<img src="/storage/files/priv/embed-2.png">`,
 		}
 
-		require.NoError(t, files.OnCreate(context.Background(), nil, model), "OnCreate must succeed when mapper rewrites richtext URLs")
+		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, model), "OnCreate must succeed when mapper rewrites richtext URLs")
 		require.Len(t, cs.consumeManyCalls, 1, "ConsumeMany must be invoked exactly once")
 		assert.ElementsMatch(t,
 			[]string{"priv/cover.png", "priv/embed-1.png", "priv/embed-2.png"},
@@ -329,7 +334,7 @@ func TestFiles(t *testing.T) {
 		mapper := stripPrefixURLMapper{prefix: "priv/"}
 		files := storage.NewFiles(cs, ds, nil, mapper)
 
-		require.NoError(t, files.OnCreate(context.Background(), nil, &FileModel{CoverKey: "priv/cover.png"}), "OnCreate must succeed")
+		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, &FileModel{CoverKey: "priv/cover.png"}), "OnCreate must succeed")
 		require.Len(t, cs.consumeManyCalls, 1, "ConsumeMany must be invoked exactly once")
 		assert.Equal(t,
 			[]string{"priv/cover.png"},
@@ -351,7 +356,7 @@ func TestFiles(t *testing.T) {
 		old := &FileModel{Body: `<img src="/storage/files/priv/same.png">`}
 		updated := &FileModel{Body: `<img src="/storage/files/priv/same.png">`}
 
-		require.NoError(t, files.OnUpdate(context.Background(), nil, old, updated), "Identity update on mapped keys must be a noop")
+		require.NoError(t, files.OnUpdate(context.Background(), nil, testPrincipal, old, updated), "Identity update on mapped keys must be a noop")
 		assert.Empty(t, cs.consumeManyCalls, "No new keys → no ConsumeMany call")
 		assert.Empty(t, ds.scheduleCalls, "No removed keys → no Schedule call")
 	})
@@ -372,7 +377,7 @@ func TestFiles(t *testing.T) {
 				`<img src="priv/embed.png">`,
 		}
 
-		require.NoError(t, files.OnCreate(context.Background(), nil, model), "OnCreate must succeed with mixed absolute / relative URLs")
+		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, model), "OnCreate must succeed with mixed absolute / relative URLs")
 		require.Len(t, cs.consumeManyCalls, 1, "ConsumeMany must be invoked exactly once")
 		assert.ElementsMatch(t,
 			[]string{"priv/cover.png", "priv/embed.png"},
@@ -406,7 +411,7 @@ func TestFiles(t *testing.T) {
 				`<img src="https://other.example.com/foreign.png">`,
 		}
 
-		require.NoError(t, files.OnCreate(context.Background(), nil, model), "OnCreate must succeed with CDN URLs")
+		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, model), "OnCreate must succeed with CDN URLs")
 		require.Len(t, cs.consumeManyCalls, 1, "ConsumeMany must be invoked exactly once")
 		assert.ElementsMatch(t,
 			[]string{"priv/cover.png", "priv/cdn-1.png", "priv/cdn-2.png"},

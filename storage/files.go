@@ -6,10 +6,10 @@ import (
 
 	"github.com/coldsmirk/go-collections"
 
-	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/reflectx"
+	"github.com/coldsmirk/vef-framework-go/security"
 )
 
 // Files is the high-level facade business handlers use to keep their
@@ -21,25 +21,37 @@ import (
 // the claim consumption and pending-delete bookkeeping commit or roll
 // back atomically with the business write.
 //
+// The principal argument is the authorization subject for ownership
+// checks: OnCreate / OnUpdate's `ConsumeMany` will only adopt claims
+// created by this principal. Passing a nil or empty principal causes
+// the call to fail with ErrAccessDenied. Background jobs / system
+// paths that legitimately operate on behalf of "the system" need to
+// pass a synthetic system principal; making the principal explicit at
+// the call site keeps the authorization flow auditable.
+//
 // Internally Files composes ClaimConsumer + DeleteScheduler + a per-type
 // meta field cache; callers do not interact with those primitives
 // directly.
 type Files interface {
 	// OnCreate adopts every file reference reachable from model by
 	// deleting the corresponding upload claim rows inside tx. Returns
-	// ErrClaimNotFound (wrapped) when any reference is missing, which
-	// must cause the caller's tx to roll back.
-	OnCreate(ctx context.Context, tx orm.DB, model any) error
+	// ErrAccessDenied when principal does not own a referenced claim
+	// (or when a claim is missing entirely — the two cases are folded
+	// to avoid leaking existence across tenants).
+	OnCreate(ctx context.Context, tx orm.DB, principal *security.Principal, model any) error
 
 	// OnUpdate reconciles file references between two snapshots of the
 	// same model: newly-referenced files are adopted (ConsumeMany);
 	// dereferenced files are queued for asynchronous deletion with
-	// DeleteReasonReplaced. Either argument may be nil to signal the
-	// absence of that side (mirrors FileRefExtractor.Diff semantics).
-	OnUpdate(ctx context.Context, tx orm.DB, oldModel, newModel any) error
+	// DeleteReasonReplaced. Either model argument may be nil to signal
+	// the absence of that side (mirrors FileRefExtractor.Diff
+	// semantics).
+	OnUpdate(ctx context.Context, tx orm.DB, principal *security.Principal, oldModel, newModel any) error
 
 	// OnDelete schedules every file reference in model for asynchronous
-	// deletion with DeleteReasonDeleted.
+	// deletion with DeleteReasonDeleted. The principal argument is
+	// accepted for signature symmetry with OnCreate / OnUpdate but is
+	// not consulted today — delete scheduling does not consume claims.
 	OnDelete(ctx context.Context, tx orm.DB, model any) error
 }
 
@@ -85,16 +97,16 @@ type cachedExtractor struct {
 	fields []metaField
 }
 
-func (f *defaultFiles) OnCreate(ctx context.Context, tx orm.DB, model any) error {
+func (f *defaultFiles) OnCreate(ctx context.Context, tx orm.DB, principal *security.Principal, model any) error {
 	ext := f.extractorFor(model)
 	if ext == nil {
 		return nil
 	}
 
-	return f.onCreateWith(ctx, tx, model, ext)
+	return f.onCreateWith(ctx, tx, principal, model, ext)
 }
 
-func (f *defaultFiles) OnUpdate(ctx context.Context, tx orm.DB, oldModel, newModel any) error {
+func (f *defaultFiles) OnUpdate(ctx context.Context, tx orm.DB, principal *security.Principal, oldModel, newModel any) error {
 	ext := f.extractorFor(newModel)
 	if ext == nil {
 		ext = f.extractorFor(oldModel)
@@ -104,10 +116,10 @@ func (f *defaultFiles) OnUpdate(ctx context.Context, tx orm.DB, oldModel, newMod
 		return nil
 	}
 
-	return f.onUpdateWith(ctx, tx, oldModel, newModel, ext)
+	return f.onUpdateWith(ctx, tx, principal, oldModel, newModel, ext)
 }
 
-func (f *defaultFiles) onCreateWith(ctx context.Context, tx orm.DB, model any, ext *cachedExtractor) error {
+func (f *defaultFiles) onCreateWith(ctx context.Context, tx orm.DB, principal *security.Principal, model any, ext *cachedExtractor) error {
 	refs := f.applyURLMapping(ext.extract(model))
 	if len(refs) == 0 {
 		return nil
@@ -115,7 +127,7 @@ func (f *defaultFiles) onCreateWith(ctx context.Context, tx orm.DB, model any, e
 
 	keys := refKeys(refs)
 
-	if err := f.cc.ConsumeMany(ctx, tx, contextx.Principal(ctx), keys); err != nil {
+	if err := f.cc.ConsumeMany(ctx, tx, principal, keys); err != nil {
 		return err
 	}
 
@@ -128,7 +140,7 @@ func (f *defaultFiles) onCreateWith(ctx context.Context, tx orm.DB, model any, e
 // compare on storage keys, not raw embedded URLs — a frontend that
 // switches from "/storage/files/foo.png" to "https://cdn/foo.png" while
 // the underlying key is unchanged must not look like a delete + re-create.
-func (f *defaultFiles) onUpdateWith(ctx context.Context, tx orm.DB, oldModel, newModel any, ext *cachedExtractor) error {
+func (f *defaultFiles) onUpdateWith(ctx context.Context, tx orm.DB, principal *security.Principal, oldModel, newModel any, ext *cachedExtractor) error {
 	oldRefs := f.applyURLMapping(ext.extract(oldModel))
 	newRefs := f.applyURLMapping(ext.extract(newModel))
 
@@ -139,7 +151,7 @@ func (f *defaultFiles) onUpdateWith(ctx context.Context, tx orm.DB, oldModel, ne
 	if len(toConsume) > 0 {
 		consumedKeys = refKeys(toConsume)
 
-		if err := f.cc.ConsumeMany(ctx, tx, contextx.Principal(ctx), consumedKeys); err != nil {
+		if err := f.cc.ConsumeMany(ctx, tx, principal, consumedKeys); err != nil {
 			return err
 		}
 	}

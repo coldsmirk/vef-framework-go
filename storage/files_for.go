@@ -6,6 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/reflectx"
+	"github.com/coldsmirk/vef-framework-go/security"
 )
 
 // FilesFor is the type-safe counterpart of Files for handlers that
@@ -37,8 +38,8 @@ type FilesFor[T any] struct {
 // rather than name the concrete type.
 type cachedFiles interface {
 	extractorForType(reflect.Type) *cachedExtractor
-	onCreateWith(ctx context.Context, tx orm.DB, model any, ext *cachedExtractor) error
-	onUpdateWith(ctx context.Context, tx orm.DB, oldModel, newModel any, ext *cachedExtractor) error
+	onCreateWith(ctx context.Context, tx orm.DB, principal *security.Principal, model any, ext *cachedExtractor) error
+	onUpdateWith(ctx context.Context, tx orm.DB, principal *security.Principal, oldModel, newModel any, ext *cachedExtractor) error
 	onDeleteWith(ctx context.Context, tx orm.DB, model any, ext *cachedExtractor) error
 }
 
@@ -63,30 +64,30 @@ func NewFilesFor[T any](files Files) FilesFor[T] {
 // OnCreate adopts every file reference reachable from model by deleting
 // the corresponding upload claim rows inside tx. See Files.OnCreate for
 // the full contract; passing a nil pointer is a no-op.
-func (f FilesFor[T]) OnCreate(ctx context.Context, tx orm.DB, model *T) error {
+func (f FilesFor[T]) OnCreate(ctx context.Context, tx orm.DB, principal *security.Principal, model *T) error {
 	if model == nil {
 		return nil
 	}
 
 	if f.cached != nil {
-		return f.cached.onCreateWith(ctx, tx, model, f.ext)
+		return f.cached.onCreateWith(ctx, tx, principal, model, f.ext)
 	}
 
-	return f.files.OnCreate(ctx, tx, model)
+	return f.files.OnCreate(ctx, tx, principal, model)
 }
 
 // OnUpdate reconciles file references between two snapshots of T. See
 // Files.OnUpdate for the full contract; either argument may be nil.
-func (f FilesFor[T]) OnUpdate(ctx context.Context, tx orm.DB, oldModel, newModel *T) error {
+func (f FilesFor[T]) OnUpdate(ctx context.Context, tx orm.DB, principal *security.Principal, oldModel, newModel *T) error {
 	if oldModel == nil && newModel == nil {
 		return nil
 	}
 
 	if f.cached != nil {
-		return f.cached.onUpdateWith(ctx, tx, oldModel, newModel, f.ext)
+		return f.cached.onUpdateWith(ctx, tx, principal, oldModel, newModel, f.ext)
 	}
 
-	return f.files.OnUpdate(ctx, tx, oldModel, newModel)
+	return f.files.OnUpdate(ctx, tx, principal, oldModel, newModel)
 }
 
 // OnDelete schedules every file reference in model for asynchronous

@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
+	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/copier"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -64,7 +65,7 @@ func (c *createOperation[TModel, TParams]) create(files storage.Files) (func(ctx
 				}
 			}
 
-			if err := typedFiles.OnCreate(txCtx, tx, &model); err != nil {
+			if err := typedFiles.OnCreate(txCtx, tx, contextx.Principal(txCtx), &model); err != nil {
 				return err
 			}
 
