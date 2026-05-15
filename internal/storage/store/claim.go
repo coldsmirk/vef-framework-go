@@ -122,7 +122,22 @@ type ClaimStore interface {
 	// before now. Uploaded claims are intentionally excluded: their
 	// finalized objects are awaiting business consumption and must not be
 	// reaped if Consume happens after the original TTL.
+	//
+	// Non-transactional: callers that intend to follow up with DeleteByIDs
+	// in another transaction race a concurrent MarkUploaded — see
+	// LockExpiredInTx for the sweeper-safe variant.
 	ScanExpired(ctx context.Context, now timex.DateTime, limit int) ([]UploadClaim, error)
+
+	// LockExpiredInTx is ScanExpired's sweeper-safe cousin: it locks the
+	// returned rows with FOR UPDATE SKIP LOCKED inside tx, so a follow-up
+	// DeleteByIDs in the same transaction is guaranteed to see the same
+	// (status='pending', expired) view. Multi-instance sweepers lease
+	// disjoint slices via SKIP LOCKED.
+	//
+	// Callers MUST issue the Enqueue / DeleteByIDs follow-up inside the
+	// same tx; otherwise the lock is released on commit and the safety
+	// argument collapses back to ScanExpired's TOCTOU window.
+	LockExpiredInTx(ctx context.Context, tx orm.DB, now timex.DateTime, limit int) ([]UploadClaim, error)
 
 	// DeleteByID removes a single claim row, used after the upload abort
 	// path has finished cleaning up the corresponding storage side-effects.

@@ -163,12 +163,14 @@ func (*claimStore) ConsumeMany(ctx context.Context, tx orm.DB, principal *securi
 		return nil
 	}
 
-	// Reject anonymous or malformed principals up front. The DELETE
-	// below would also reject them (no row has an empty created_by),
-	// but failing fast avoids hitting the database for an obviously
-	// unauthorized call.
+	// Reject anonymous or malformed principals up front. ErrAccessDenied
+	// (not ErrClaimNotFound) is the right class here: a downstream
+	// debugger seeing "claim not found" would chase missing-data leads,
+	// while the real problem is "no authenticated subject in context"
+	// — typically a background job / batch path calling Files without
+	// supplying a system principal.
 	if principal == nil || principal.ID == "" {
-		return fmt.Errorf("%w: anonymous principal cannot consume claims", storage.ErrClaimNotFound)
+		return fmt.Errorf("%w: anonymous principal cannot consume claims", storage.ErrAccessDenied)
 	}
 
 	uniq := dedupeStrings(keys)
@@ -205,6 +207,27 @@ func (s *claimStore) ScanExpired(ctx context.Context, now timex.DateTime, limit 
 		cb.LessThan("expires_at", now)
 		cb.Equals("status", ClaimStatusPending)
 	}).OrderBy("expires_at").Limit(limit).Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return claims, nil
+}
+
+func (*claimStore) LockExpiredInTx(ctx context.Context, tx orm.DB, now timex.DateTime, limit int) ([]UploadClaim, error) {
+	var claims []UploadClaim
+
+	// FOR UPDATE SKIP LOCKED is essential for the multi-instance sweeper
+	// story (same reasoning as DeleteQueue.Lease): without it, two
+	// sweepers running on the same tick both pick the same rows and the
+	// downstream Enqueue + DeleteByIDs serialize on the locked row set.
+	// SKIP LOCKED makes each sweeper take a disjoint slice. SQLite, which
+	// has no row-level locking, transparently drops the FOR UPDATE clause
+	// (single-writer DB → no race to begin with).
+	err := tx.NewSelect().Model(&claims).Where(func(cb orm.ConditionBuilder) {
+		cb.LessThan("expires_at", now)
+		cb.Equals("status", ClaimStatusPending)
+	}).OrderBy("expires_at").Limit(limit).ForUpdateSkipLocked().Scan(ctx)
 	if err != nil {
 		return nil, err
 	}

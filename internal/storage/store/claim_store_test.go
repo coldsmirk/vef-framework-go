@@ -159,7 +159,7 @@ func TestClaimStore(t *testing.T) {
 		err := db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
 			return cs.ConsumeMany(txCtx, tx, nil, []string{"priv/whatever"})
 		})
-		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Anonymous principal must be rejected upfront")
+		assert.ErrorIs(t, err, storage.ErrAccessDenied, "Anonymous principal must be rejected upfront with access-denied (not claim-not-found, which would mislead debugging)")
 	})
 
 	t.Run("ScanExpired", func(t *testing.T) {

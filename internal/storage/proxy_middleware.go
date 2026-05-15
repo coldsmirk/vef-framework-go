@@ -163,14 +163,28 @@ func isValidObjectKey(key string) bool {
 	return true
 }
 
+// detectContentType resolves the Content-Type to serve. The result is
+// always passed through sanitizeContentType before being written to the
+// response header — backends may return whatever they like (e.g.
+// filesystem currently re-derives from the file extension, so a
+// `.html` upload yields `text/html`), and serving an unsafe type on the
+// same origin would open a stored-XSS surface. Sanitize is the final
+// barrier; it collapses anything outside the known-safe set to
+// `application/octet-stream`.
 func detectContentType(stat *storage.ObjectInfo, key string) string {
-	if stat != nil && stat.ContentType != "" {
-		return stat.ContentType
+	var raw string
+
+	switch {
+	case stat != nil && stat.ContentType != "":
+		raw = stat.ContentType
+	default:
+		raw = mime.TypeByExtension(filepath.Ext(key))
 	}
 
-	if contentType := mime.TypeByExtension(filepath.Ext(key)); contentType != "" {
-		return contentType
+	sanitized := sanitizeContentType(raw, key)
+	if sanitized == "" {
+		return fiber.MIMEOctetStream
 	}
 
-	return fiber.MIMEOctetStream
+	return sanitized
 }

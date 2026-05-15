@@ -423,6 +423,15 @@ func (r *Resource) UploadPart(ctx fiber.Ctx, principal *security.Principal, para
 		return err
 	}
 
+	// Re-validate the original claim.Size against the current
+	// configured cap. The resume path skips init_upload so a claim
+	// opened under an older (looser) limit could otherwise complete
+	// after an operator tightened MaxUploadSize. Doing the check here
+	// (and again in complete_upload) keeps the runtime authoritative.
+	if err := r.validateUploadInput(claim.Size); err != nil {
+		return err
+	}
+
 	if !claim.IsMultipart() {
 		return result.Err(i18n.T("claim_not_multipart"))
 	}
@@ -577,12 +586,21 @@ type CompleteUploadResult struct {
 // commits the same MarkUploaded + DeleteByClaim transaction so the
 // claim still ends in a consumable state.
 func (r *Resource) CompleteUpload(ctx fiber.Ctx, principal *security.Principal, params CompleteUploadParams) error {
-	// Idempotent fast-path: a retried complete_upload after a successful
-	// CompleteMultipart whose response was lost in transit must still
-	// surface the finalized ObjectInfo. This check has to run before
-	// loadActiveClaim because the helper rejects non-pending claims.
+	// Single Get + inline branching: the idempotent fast-path needs the
+	// uploaded-status branch, and the active-claim guard needs the
+	// pending/expiry branch. Calling loadActiveClaim here would re-Get
+	// and open a TOCTOU window where a concurrent retry flips the row
+	// from pending to uploaded between the two reads, mistakenly
+	// rejecting the second caller as "not pending" instead of taking
+	// the idempotent fast-path.
 	claim, err := r.claimStore.Get(ctx.Context(), params.ClaimID)
 	if err != nil {
+		// Collapse claim-not-found into access-denied to avoid the
+		// existence oracle (same convention as loadActiveClaim).
+		if errors.Is(err, storage.ErrClaimNotFound) {
+			return result.ErrAccessDenied
+		}
+
 		return err
 	}
 
@@ -602,10 +620,20 @@ func (r *Resource) CompleteUpload(ctx fiber.Ctx, principal *security.Principal, 
 		}).Response(ctx)
 	}
 
-	// Active-claim guard (pending + not expired). Status/expiry checks
-	// happen here so the idempotent branch above can use the raw row.
-	claim, err = loadActiveClaim(ctx.Context(), r.claimStore, principal, params.ClaimID)
-	if err != nil {
+	if claim.Status != store.ClaimStatusPending {
+		return result.Err(i18n.T("claim_not_pending"))
+	}
+
+	if time.Time(claim.ExpiresAt).Before(time.Now()) {
+		return result.Err(i18n.T("claim_expired"))
+	}
+
+	// Re-validate against the current MaxUploadSize. A claim opened
+	// under an older limit must not finalize after the cap is
+	// tightened. The idempotent uploaded-fast-path above is exempt —
+	// once the object is materialized, retroactively rejecting it on
+	// retry would just confuse the client.
+	if err := r.validateUploadInput(claim.Size); err != nil {
 		return err
 	}
 

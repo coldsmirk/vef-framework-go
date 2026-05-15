@@ -43,58 +43,58 @@ func NewClaimSweeper(
 
 // Run executes one sweep cycle. Safe to invoke from a cron task. Logs and
 // returns on any error; the next tick will pick up the same expired set.
+//
+// Everything happens inside a single transaction: LockExpiredInTx takes
+// FOR UPDATE SKIP LOCKED on the candidate rows, then Enqueue + DeleteByIDs
+// commit against that locked view. This eliminates the previous
+// TOCTOU window where a concurrent complete_upload could flip a claim
+// from pending to uploaded between scan and delete — under the old
+// flow Enqueue would queue a deletion for a now-live object and
+// DeleteByIDs would remove its uploaded claim row, orphaning the
+// object and breaking the eventual ConsumeMany. With the lock, the
+// concurrent MarkUploaded blocks until commit and then sees the row
+// gone (its own UPDATE matches 0 rows, returning ErrClaimNotFound,
+// which complete_upload surfaces as a normal failure).
 func (s *ClaimSweeper) Run(ctx context.Context) {
 	limit := s.cfg.EffectiveSweepBatchSize()
 
-	claims, err := s.claimStore.ScanExpired(ctx, timex.Now(), limit)
-	if err != nil {
-		logger.Errorf("Failed to scan expired claims: %v", err)
-
-		return
-	}
-
-	if len(claims) == 0 {
-		return
-	}
-
-	logger.Infof("Sweeping %d expired upload claim(s) into delete queue", len(claims))
-
-	if err := s.transferToDeleteQueue(ctx, claims); err != nil {
-		logger.Errorf("Failed to transfer expired claims to delete queue: %v", err)
-	}
-}
-
-// transferToDeleteQueue atomically enqueues a PendingDelete for every
-// expired claim and removes the matching claim rows. Multipart claims
-// carry their UploadID forward so DeleteWorker can abort the dangling
-// session before deleting the (possibly partial) object.
-//
-// Enqueue (rather than the public Schedule(keys, reason) facade) is
-// used here so the per-row UploadID survives into the queue.
-func (s *ClaimSweeper) transferToDeleteQueue(ctx context.Context, claims []store.UploadClaim) error {
-	now := timex.Now()
-	items := make([]store.PendingDelete, len(claims))
-	ids := make([]string, len(claims))
-
-	for i := range claims {
-		claim := &claims[i]
-
-		items[i] = store.PendingDelete{
-			ID:            id.GenerateUUID(),
-			Key:           claim.Key,
-			UploadID:      claim.UploadID,
-			Reason:        storage.DeleteReasonClaimExpired,
-			NextAttemptAt: now,
-			CreatedAt:     now,
+	err := s.db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		claims, err := s.claimStore.LockExpiredInTx(txCtx, tx, timex.Now(), limit)
+		if err != nil {
+			return err
 		}
-		ids[i] = claim.ID
-	}
 
-	return s.db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		if len(claims) == 0 {
+			return nil
+		}
+
+		logger.Infof("Sweeping %d expired upload claim(s) into delete queue", len(claims))
+
+		now := timex.Now()
+		items := make([]store.PendingDelete, len(claims))
+		ids := make([]string, len(claims))
+
+		for i := range claims {
+			claim := &claims[i]
+
+			items[i] = store.PendingDelete{
+				ID:            id.GenerateUUID(),
+				Key:           claim.Key,
+				UploadID:      claim.UploadID,
+				Reason:        storage.DeleteReasonClaimExpired,
+				NextAttemptAt: now,
+				CreatedAt:     now,
+			}
+			ids[i] = claim.ID
+		}
+
 		if err := s.deleteQueue.Enqueue(txCtx, tx, items); err != nil {
 			return err
 		}
 
 		return s.claimStore.DeleteByIDs(txCtx, tx, ids)
 	})
+	if err != nil {
+		logger.Errorf("Failed to sweep expired claims: %v", err)
+	}
 }
