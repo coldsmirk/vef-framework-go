@@ -92,6 +92,55 @@ func ensureOwner(claim *store.UploadClaim, principal *security.Principal) error 
 	return nil
 }
 
+// loadActiveClaim resolves a claim by ID and asserts the four invariants
+// every "active session" handler relies on:
+//
+//  1. the row exists,
+//  2. the caller owns it,
+//  3. it is still in the pending state, and
+//  4. its TTL has not elapsed.
+//
+// Returned errors are already shaped for direct return from an RPC
+// handler (result.ErrAccessDenied or i18n-wrapped result.Err). Handlers
+// that need different semantics on these conditions (e.g.
+// complete_upload's idempotent fast-path for already-uploaded claims)
+// must check those branches before calling this helper.
+//
+// "Not found" is intentionally collapsed into "access denied": revealing
+// that a particular claim ID exists (but is owned by someone else) leaks
+// information across tenants. UUIDs are hard to guess in practice, but
+// the active-claim path is exposed to authenticated callers, so we
+// remove the oracle.
+func loadActiveClaim(
+	ctx context.Context,
+	claimStore store.ClaimStore,
+	principal *security.Principal,
+	claimID string,
+) (*store.UploadClaim, error) {
+	claim, err := claimStore.Get(ctx, claimID)
+	if err != nil {
+		if errors.Is(err, storage.ErrClaimNotFound) {
+			return nil, result.ErrAccessDenied
+		}
+
+		return nil, err
+	}
+
+	if err := ensureOwner(claim, principal); err != nil {
+		return nil, err
+	}
+
+	if claim.Status != store.ClaimStatusPending {
+		return nil, result.Err(i18n.T("claim_not_pending"))
+	}
+
+	if time.Time(claim.ExpiresAt).Before(time.Now()) {
+		return nil, result.Err(i18n.T("claim_expired"))
+	}
+
+	return claim, nil
+}
+
 // validateUploadInput enforces the server-side cap on object size
 // configured in StorageConfig. Called by InitUpload before any backend
 // or DB side effect.
@@ -126,6 +175,7 @@ func NewResource(
 			api.WithOperations(
 				api.OperationSpec{Action: "init_upload"},
 				api.OperationSpec{Action: "upload_part"},
+				api.OperationSpec{Action: "list_parts"},
 				api.OperationSpec{Action: "complete_upload"},
 				api.OperationSpec{Action: "abort_upload"},
 			),
@@ -365,17 +415,9 @@ func (r *Resource) UploadPart(ctx fiber.Ctx, principal *security.Principal, para
 		return result.Err(i18n.T("multipart_not_supported"))
 	}
 
-	claim, err := r.claimStore.Get(ctx.Context(), params.ClaimID)
+	claim, err := loadActiveClaim(ctx.Context(), r.claimStore, principal, params.ClaimID)
 	if err != nil {
 		return err
-	}
-
-	if err := ensureOwner(claim, principal); err != nil {
-		return err
-	}
-
-	if claim.Status != store.ClaimStatusPending {
-		return result.Err(i18n.T("claim_not_pending"))
 	}
 
 	if !claim.IsMultipart() {
@@ -440,6 +482,67 @@ func (r *Resource) UploadPart(ctx fiber.Ctx, principal *security.Principal, para
 	}).Response(ctx)
 }
 
+// ── list_parts ──────────────────────────────────────────────────────────
+
+// ListPartsParams identifies which in-flight session to inspect.
+type ListPartsParams struct {
+	api.P
+
+	ClaimID string `json:"claimId" validate:"required"`
+}
+
+// ListedPart describes a single successfully uploaded part. ETag is
+// intentionally omitted: clients do not reconstruct the parts list —
+// complete_upload assembles it from the database on the server side.
+type ListedPart struct {
+	PartNumber int   `json:"partNumber"`
+	Size       int64 `json:"size"`
+}
+
+// ListPartsResult enumerates the parts the backend has already accepted
+// for an active claim. The list is ordered by part number ascending.
+type ListPartsResult struct {
+	Parts []ListedPart `json:"parts"`
+}
+
+// ListParts reports which parts of an in-flight chunked upload have
+// already been accepted by the backend. Clients use the result to drive
+// resumable uploads — skipping parts the server has confirmed and
+// uploading only the remainder. The handler validates ownership and the
+// claim's active state (pending + not expired) so the response is safe
+// to act on without an additional round trip.
+//
+// The list is sourced from the database, not the backend's native
+// ListParts (S3 supports it, filesystem/memory do not). The database is
+// the authoritative source: it carries the ETag complete_upload uses to
+// assemble the object, so any part recorded here will be honored by
+// complete_upload as-is.
+func (r *Resource) ListParts(ctx fiber.Ctx, principal *security.Principal, params ListPartsParams) error {
+	claim, err := loadActiveClaim(ctx.Context(), r.claimStore, principal, params.ClaimID)
+	if err != nil {
+		return err
+	}
+
+	if !claim.IsMultipart() {
+		return result.Err(i18n.T("claim_not_multipart"))
+	}
+
+	parts, err := r.partStore.ListByClaim(ctx.Context(), claim.ID)
+	if err != nil {
+		return err
+	}
+
+	listed := make([]ListedPart, len(parts))
+	for i := range parts {
+		listed[i] = ListedPart{
+			PartNumber: parts[i].PartNumber,
+			Size:       parts[i].Size,
+		}
+	}
+
+	return result.Ok(ListPartsResult{Parts: listed}).Response(ctx)
+}
+
 // ── complete_upload ─────────────────────────────────────────────────────
 
 type CompleteUploadParams struct {
@@ -471,6 +574,10 @@ type CompleteUploadResult struct {
 // commits the same MarkUploaded + DeleteByClaim transaction so the
 // claim still ends in a consumable state.
 func (r *Resource) CompleteUpload(ctx fiber.Ctx, principal *security.Principal, params CompleteUploadParams) error {
+	// Idempotent fast-path: a retried complete_upload after a successful
+	// CompleteMultipart whose response was lost in transit must still
+	// surface the finalized ObjectInfo. This check has to run before
+	// loadActiveClaim because the helper rejects non-pending claims.
 	claim, err := r.claimStore.Get(ctx.Context(), params.ClaimID)
 	if err != nil {
 		return err
@@ -480,9 +587,6 @@ func (r *Resource) CompleteUpload(ctx fiber.Ctx, principal *security.Principal, 
 		return err
 	}
 
-	// True idempotency — if already uploaded, return the result
-	// without re-assembling. This covers client retries after a
-	// successful CompleteMultipart whose response was lost in transit.
 	if claim.Status == store.ClaimStatusUploaded {
 		info, statErr := r.service.StatObject(ctx.Context(), storage.StatObjectOptions{Key: claim.Key})
 		if statErr != nil {
@@ -495,13 +599,11 @@ func (r *Resource) CompleteUpload(ctx fiber.Ctx, principal *security.Principal, 
 		}).Response(ctx)
 	}
 
-	if claim.Status != store.ClaimStatusPending {
-		return result.Err(i18n.T("claim_not_pending"))
-	}
-
-	// Reject expired claims to prevent race with ClaimSweeper.
-	if time.Time(claim.ExpiresAt).Before(time.Now()) {
-		return result.Err(i18n.T("claim_expired"))
+	// Active-claim guard (pending + not expired). Status/expiry checks
+	// happen here so the idempotent branch above can use the raw row.
+	claim, err = loadActiveClaim(ctx.Context(), r.claimStore, principal, params.ClaimID)
+	if err != nil {
+		return err
 	}
 
 	if !claim.IsMultipart() {

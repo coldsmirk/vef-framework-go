@@ -369,6 +369,98 @@ func (s *StorageResourceTestSuite) TestAbortUploadIdempotentOnMissingClaim() {
 	s.True(body.IsOk(), "abort_upload on a missing claim must be a silent no-op")
 }
 
+// ── list_parts ──────────────────────────────────────────────────────────
+
+// listParts is a JSON RPC unlike upload_part — no multipart form
+// encoding is needed even though the action lives on the chunked
+// upload pipeline. The helper exists so the test suite uses the same
+// dispatch path as the production client (MakeRPCRequestWithToken).
+func (s *StorageResourceTestSuite) listParts(token, claimID string) result.Result {
+	resp := s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{Resource: "sys/storage", Action: "list_parts", Version: "v1"},
+		Params:     map[string]any{"claimId": claimID},
+	}, token)
+
+	return s.ReadResult(resp)
+}
+
+func (s *StorageResourceTestSuite) TestListPartsEmptyBeforeAnyUpload() {
+	data, body := s.initUpload("video.mp4", chunkedSize)
+	s.Require().True(body.IsOk())
+
+	listed := s.listParts(s.ownerToken, data["claimId"].(string))
+	s.Require().True(listed.IsOk(), "list_parts on a fresh claim should succeed: %s", listed.Message)
+
+	m := s.ReadDataAsMap(listed.Data)
+	parts, ok := m["parts"].([]any)
+	s.Require().True(ok, "Response must include a parts array")
+	s.Empty(parts, "A claim without any uploaded parts should yield an empty list")
+}
+
+func (s *StorageResourceTestSuite) TestListPartsReportsUploadedParts() {
+	data, body := s.initUpload("video.mp4", chunkedSize)
+	s.Require().True(body.IsOk())
+
+	claimID := data["claimId"].(string)
+	part1 := bytes.Repeat([]byte{'a'}, int(memoryPartSize))
+	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, part1)).IsOk())
+
+	listed := s.listParts(s.ownerToken, claimID)
+	s.Require().True(listed.IsOk(), "list_parts after one uploaded part should succeed: %s", listed.Message)
+
+	m := s.ReadDataAsMap(listed.Data)
+	parts := m["parts"].([]any)
+	s.Require().Len(parts, 1, "Exactly one part should be reported")
+
+	first := parts[0].(map[string]any)
+	s.Equal(float64(1), first["partNumber"], "Reported part number should match the upload")
+	s.Equal(float64(memoryPartSize), first["size"], "Reported part size should match the upload")
+}
+
+func (s *StorageResourceTestSuite) TestListPartsRejectsWrongOwner() {
+	data, body := s.initUpload("video.mp4", chunkedSize)
+	s.Require().True(body.IsOk())
+
+	listed := s.listParts(s.otherToken, data["claimId"].(string))
+	s.False(listed.IsOk(), "list_parts from a non-owner principal must fail")
+}
+
+func (s *StorageResourceTestSuite) TestListPartsRejectsCompletedClaim() {
+	data, body := s.initUpload("video.mp4", chunkedSize)
+	s.Require().True(body.IsOk())
+
+	claimID := data["claimId"].(string)
+	part1 := bytes.Repeat([]byte{'a'}, int(memoryPartSize))
+	part2 := bytes.Repeat([]byte{'b'}, int(chunkedSize-memoryPartSize))
+	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, part1)).IsOk())
+	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 2, part2)).IsOk())
+
+	completeResp := s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
+		Params:     map[string]any{"claimId": claimID},
+	}, s.ownerToken)
+	s.Require().True(s.ReadResult(completeResp).IsOk(), "complete_upload should succeed before the rejection check")
+
+	listed := s.listParts(s.ownerToken, claimID)
+	s.False(listed.IsOk(), "list_parts on an already-completed claim must fail (claim is no longer pending)")
+}
+
+func (s *StorageResourceTestSuite) TestListPartsAfterAbortReturnsClaimNotFound() {
+	data, body := s.initUpload("video.mp4", chunkedSize)
+	s.Require().True(body.IsOk())
+
+	claimID := data["claimId"].(string)
+
+	abortResp := s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{Resource: "sys/storage", Action: "abort_upload", Version: "v1"},
+		Params:     map[string]any{"claimId": claimID},
+	}, s.ownerToken)
+	s.Require().True(s.ReadResult(abortResp).IsOk(), "abort_upload should succeed before the lookup check")
+
+	listed := s.listParts(s.ownerToken, claimID)
+	s.False(listed.IsOk(), "list_parts on an aborted (deleted) claim must fail")
+}
+
 // ── validation edge cases ───────────────────────────────────────────────
 
 func (s *StorageResourceTestSuite) TestUploadPartRejectsNonFinalPartTooSmall() {
