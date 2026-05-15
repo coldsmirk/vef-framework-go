@@ -8,11 +8,11 @@ import (
 // URLKeyMapper translates between storage object keys (the canonical
 // identifiers persisted in ClaimStore / DeleteQueue and used by the
 // underlying Service) and the URLs that business templates embed in
-// richtext / markdown fields.
+// rich_text / markdown fields.
 //
 // The framework uses the mapper in two directions:
 //
-//   - URLToKey is invoked while reconciling `meta:"richtext"` /
+//   - URLToKey is invoked while reconciling `meta:"rich_text"` /
 //     `meta:"markdown"` fields, so embedded URLs (e.g. proxy paths like
 //     "/storage/files/priv/2026/05/12/foo.png", or CDN URLs like
 //     "https://cdn.example.com/priv/2026/05/12/foo.png") are normalised
@@ -100,17 +100,6 @@ func (m ProxyURLKeyMapper) URLToKey(rawURL string) (string, bool) {
 
 	p := m.prefix()
 	if !strings.HasPrefix(trimmed, p) {
-		// Also accept bare keys (no prefix) for backward compatibility
-		// with content that was stored before the mapper was configured.
-		if !strings.Contains(trimmed, "/") {
-			return "", false
-		}
-
-		// Check if it looks like a storage key (starts with pub/ or priv/).
-		if strings.HasPrefix(trimmed, PublicPrefix) || strings.HasPrefix(trimmed, PrivatePrefix) {
-			return trimmed, true
-		}
-
 		return "", false
 	}
 

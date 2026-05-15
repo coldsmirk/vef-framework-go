@@ -98,41 +98,6 @@ func TestMemoryService(t *testing.T) {
 		assert.Equal(t, []byte("Hello, Memory Storage!"), data, "Copied data should match original")
 	})
 
-	t.Run("ListObjects", func(t *testing.T) {
-		_, err := service.PutObject(ctx, storage.PutObjectOptions{
-			Key:    "folder/file1.txt",
-			Reader: bytes.NewReader([]byte("file1")),
-			Size:   5,
-		})
-		require.NoError(t, err, "PutObject should succeed for file1")
-
-		_, err = service.PutObject(ctx, storage.PutObjectOptions{
-			Key:    "folder/file2.txt",
-			Reader: bytes.NewReader([]byte("file2")),
-			Size:   5,
-		})
-		require.NoError(t, err, "PutObject should succeed for file2")
-
-		t.Run("ListAllObjects", func(t *testing.T) {
-			objects, err := service.ListObjects(ctx, storage.ListObjectsOptions{
-				Recursive: true,
-			})
-
-			require.NoError(t, err, "ListObjects should succeed")
-			assert.GreaterOrEqual(t, len(objects), 3, "Should have at least 3 objects")
-		})
-
-		t.Run("ListWithPrefix", func(t *testing.T) {
-			objects, err := service.ListObjects(ctx, storage.ListObjectsOptions{
-				Prefix:    "folder/",
-				Recursive: true,
-			})
-
-			require.NoError(t, err, "ListObjects with prefix should succeed")
-			assert.Equal(t, 2, len(objects), "Should have exactly 2 objects in folder")
-		})
-	})
-
 	t.Run("DeleteObject", func(t *testing.T) {
 		err := service.DeleteObject(ctx, storage.DeleteObjectOptions{
 			Key: "test.txt",

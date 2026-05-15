@@ -170,7 +170,7 @@ func (s *StorageResourceTestSuite) TestInitUploadHappyPath() {
 	s.Require().True(body.IsOk(), "init_upload should succeed: %s", body.Message)
 
 	s.NotEmpty(data["claimId"], "Response must include the new claim ID")
-	s.NotEmpty(data["uploadId"], "Response must include the backend upload ID")
+	s.NotContains(data, "uploadId", "Backend upload ID must NOT leak to the client surface")
 	s.True(strings.HasPrefix(data["key"].(string), storage.PrivatePrefix), "Default visibility is private")
 	s.Equal("video.mp4", data["originalFilename"], "Original filename should be echoed back")
 	s.Equal(float64(memoryPartSize), data["partSize"], "Part size should mirror the backend's authoritative value")

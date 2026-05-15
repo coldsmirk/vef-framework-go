@@ -13,9 +13,15 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/storage/store"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/security"
 	"github.com/coldsmirk/vef-framework-go/storage"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
+
+// owner is the principal that owns every claim newClaim builds.
+// Tests use it as the default ConsumeMany caller; cases that exercise
+// the ownership boundary build their own principal.
+var owner = &security.Principal{ID: "tester"}
 
 // Type aliases keep the test code readable while making the dependency
 // on the internal store package explicit.
@@ -106,7 +112,7 @@ func TestClaimStore(t *testing.T) {
 
 		// Try to consume both an existing and a non-existing key in one tx.
 		err := db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return cs.ConsumeMany(txCtx, tx, []string{claim.Key, "priv/missing"})
+			return cs.ConsumeMany(txCtx, tx, owner, []string{claim.Key, "priv/missing"})
 		})
 		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Missing claim should fail the transaction")
 
@@ -120,8 +126,40 @@ func TestClaimStore(t *testing.T) {
 		ctx, db, cs, _ := setupStores(t)
 
 		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return cs.ConsumeMany(txCtx, tx, nil)
+			return cs.ConsumeMany(txCtx, tx, owner, nil)
 		}), "Consuming an empty claim list should succeed")
+	})
+
+	t.Run("ConsumeManyRejectsOtherOwner", func(t *testing.T) {
+		ctx, db, cs, _ := setupStores(t)
+
+		claim := newClaim("priv/owned-by-tester", timex.Now().AddHours(1))
+		require.NoError(t, cs.Create(ctx, claim), "Claim creation should succeed")
+
+		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+			return cs.MarkUploaded(txCtx, tx, claim.ID)
+		}), "MarkUploaded should succeed so the claim is consumable")
+
+		intruder := &security.Principal{ID: "someone-else"}
+
+		err := db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+			return cs.ConsumeMany(txCtx, tx, intruder, []string{claim.Key})
+		})
+		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Consuming another principal's claim must be rejected with the same sentinel as missing keys")
+
+		// And the claim must survive the rollback intact.
+		got, err := cs.GetByKey(ctx, claim.Key)
+		require.NoError(t, err, "Original owner's claim must remain after the rejected consume")
+		assert.Equal(t, claim.ID, got.ID, "Claim row should be untouched")
+	})
+
+	t.Run("ConsumeManyRejectsAnonymousPrincipal", func(t *testing.T) {
+		ctx, db, cs, _ := setupStores(t)
+
+		err := db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+			return cs.ConsumeMany(txCtx, tx, nil, []string{"priv/whatever"})
+		})
+		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Anonymous principal must be rejected upfront")
 	})
 
 	t.Run("ScanExpired", func(t *testing.T) {

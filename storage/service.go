@@ -18,8 +18,6 @@ type Service interface {
 	DeleteObject(ctx context.Context, opts DeleteObjectOptions) error
 	// DeleteObjects deletes multiple objects from storage in a batch operation.
 	DeleteObjects(ctx context.Context, opts DeleteObjectsOptions) error
-	// ListObjects lists objects in a bucket with optional filtering.
-	ListObjects(ctx context.Context, opts ListObjectsOptions) ([]ObjectInfo, error)
 	// CopyObject copies an object from source to destination.
 	CopyObject(ctx context.Context, opts CopyObjectOptions) (*ObjectInfo, error)
 	// StatObject retrieves metadata information about an object.

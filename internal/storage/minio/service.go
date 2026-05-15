@@ -173,39 +173,6 @@ func (s *Service) DeleteObjects(ctx context.Context, opts storage.DeleteObjectsO
 	return errors.Join(errs...)
 }
 
-func (s *Service) ListObjects(ctx context.Context, opts storage.ListObjectsOptions) ([]storage.ObjectInfo, error) {
-	listOpts := minio.ListObjectsOptions{
-		Prefix:       opts.Prefix,
-		Recursive:    opts.Recursive,
-		MaxKeys:      opts.MaxKeys,
-		WithMetadata: true,
-	}
-
-	var objects []storage.ObjectInfo
-
-	for object := range s.client.ListObjects(ctx, s.bucket, listOpts) {
-		if object.Err != nil {
-			return nil, s.translateError(object.Err)
-		}
-
-		objects = append(objects, storage.ObjectInfo{
-			Bucket:       s.bucket,
-			Key:          object.Key,
-			ETag:         object.ETag,
-			Size:         object.Size,
-			ContentType:  object.ContentType,
-			LastModified: object.LastModified,
-			Metadata:     object.UserMetadata,
-		})
-
-		if opts.MaxKeys > 0 && len(objects) >= opts.MaxKeys {
-			break
-		}
-	}
-
-	return objects, nil
-}
-
 func (s *Service) CopyObject(ctx context.Context, opts storage.CopyObjectOptions) (*storage.ObjectInfo, error) {
 	src := minio.CopySrcOptions{
 		Bucket: s.bucket,

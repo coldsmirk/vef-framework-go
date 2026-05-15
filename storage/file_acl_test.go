@@ -50,21 +50,6 @@ func TestDefaultFileACL(t *testing.T) {
 		require.NoError(t, err, "Default ACL must not error on an empty key")
 		assert.False(t, allowed, "Default ACL must deny reads of empty keys")
 	})
-
-	t.Run("CanListDeniesEverything", func(t *testing.T) {
-		// List is intentionally restrictive in the default ACL — even
-		// PublicPrefix listing requires a business override.
-		for _, prefix := range []string{
-			"",
-			storage.PublicPrefix,
-			storage.PrivatePrefix,
-			"any/random/prefix/",
-		} {
-			allowed, err := acl.CanList(ctx, principal, prefix)
-			require.NoError(t, err, "Default ACL must not error on CanList(%q)", prefix)
-			assert.False(t, allowed, "Default ACL must deny CanList for prefix %q", prefix)
-		}
-	})
 }
 
 // Compile-time assertion that DefaultFileACL satisfies the FileACL

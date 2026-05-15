@@ -43,10 +43,6 @@ func (*MockStorageService) DeleteObjects(context.Context, storage.DeleteObjectsO
 	return nil
 }
 
-func (*MockStorageService) ListObjects(context.Context, storage.ListObjectsOptions) ([]storage.ObjectInfo, error) {
-	return nil, nil
-}
-
 func (*MockStorageService) CopyObject(context.Context, storage.CopyObjectOptions) (*storage.ObjectInfo, error) {
 	return nil, nil
 }

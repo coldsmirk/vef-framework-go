@@ -5,7 +5,6 @@ import (
 	"context"
 	"io"
 	"maps"
-	"strings"
 	"sync"
 	"time"
 
@@ -115,42 +114,6 @@ func (s *Service) DeleteObjects(_ context.Context, opts storage.DeleteObjectsOpt
 	}
 
 	return nil
-}
-
-func (s *Service) ListObjects(_ context.Context, opts storage.ListObjectsOptions) ([]storage.ObjectInfo, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	var objects []storage.ObjectInfo
-
-	for key, obj := range s.objects {
-		if opts.Prefix != "" && !strings.HasPrefix(key, opts.Prefix) {
-			continue
-		}
-
-		if !opts.Recursive {
-			relativeKey := strings.TrimPrefix(key, opts.Prefix)
-			if strings.Contains(relativeKey, "/") {
-				continue
-			}
-		}
-
-		objects = append(objects, storage.ObjectInfo{
-			Bucket:       bucketName,
-			Key:          key,
-			ETag:         obj.etag,
-			Size:         int64(len(obj.data)),
-			ContentType:  obj.contentType,
-			LastModified: obj.lastModified,
-			Metadata:     obj.metadata,
-		})
-
-		if opts.MaxKeys > 0 && len(objects) >= opts.MaxKeys {
-			break
-		}
-	}
-
-	return objects, nil
 }
 
 func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) (*storage.ObjectInfo, error) {

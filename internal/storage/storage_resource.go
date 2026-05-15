@@ -247,10 +247,14 @@ type InitUploadParams struct {
 // OriginalFilename is the client-supplied filename echoed back; the
 // framework persists it on the claim row, not in backend user-metadata,
 // so callers can rely on it independent of the storage backend.
+//
+// The backend's multipart UploadID is intentionally NOT exposed to the
+// client: every client-facing action (upload_part / list_parts /
+// complete_upload / abort_upload) routes by ClaimID only. The framework
+// loads the UploadID from the claim row internally.
 type InitUploadResult struct {
 	Key              string    `json:"key"`
 	ClaimID          string    `json:"claimId"`
-	UploadID         string    `json:"uploadId"`
 	OriginalFilename string    `json:"originalFilename"`
 	PartSize         int64     `json:"partSize"`
 	PartCount        int       `json:"partCount"`
@@ -364,7 +368,6 @@ func (r *Resource) InitUpload(ctx fiber.Ctx, principal *security.Principal, para
 	return result.Ok(InitUploadResult{
 		Key:              claim.Key,
 		ClaimID:          claim.ID,
-		UploadID:         claim.UploadID,
 		OriginalFilename: claim.OriginalFilename,
 		PartSize:         partSize,
 		PartCount:        partCount,

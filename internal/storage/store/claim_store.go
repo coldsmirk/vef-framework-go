@@ -9,6 +9,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
+	"github.com/coldsmirk/vef-framework-go/security"
 	"github.com/coldsmirk/vef-framework-go/storage"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -150,9 +151,24 @@ func (*claimStore) Consume(ctx context.Context, tx orm.DB, key string) error {
 	return nil
 }
 
-func (*claimStore) ConsumeMany(ctx context.Context, tx orm.DB, keys []string) error {
+// ConsumeMany deletes upload_claim rows whose object_key is in keys
+// AND whose created_by matches principal.ID. Folding the ownership
+// check into the DELETE WHERE makes the operation secure-by-default
+// at zero extra-query cost: a row that exists but belongs to another
+// principal is invisible to this caller, identical to a row that does
+// not exist. The single sentinel (ErrClaimNotFound) intentionally does
+// not distinguish the two — that would leak existence across tenants.
+func (*claimStore) ConsumeMany(ctx context.Context, tx orm.DB, principal *security.Principal, keys []string) error {
 	if len(keys) == 0 {
 		return nil
+	}
+
+	// Reject anonymous or malformed principals up front. The DELETE
+	// below would also reject them (no row has an empty created_by),
+	// but failing fast avoids hitting the database for an obviously
+	// unauthorized call.
+	if principal == nil || principal.ID == "" {
+		return fmt.Errorf("%w: anonymous principal cannot consume claims", storage.ErrClaimNotFound)
 	}
 
 	uniq := dedupeStrings(keys)
@@ -160,6 +176,7 @@ func (*claimStore) ConsumeMany(ctx context.Context, tx orm.DB, keys []string) er
 	res, err := tx.NewDelete().Model((*UploadClaim)(nil)).Where(func(cb orm.ConditionBuilder) {
 		cb.In("object_key", uniq)
 		cb.Equals("status", ClaimStatusUploaded)
+		cb.Equals("created_by", principal.ID)
 	}).Exec(ctx)
 	if err != nil {
 		return err

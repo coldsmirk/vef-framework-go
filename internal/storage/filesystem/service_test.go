@@ -116,53 +116,6 @@ func TestFilesystemService(t *testing.T) {
 		assert.Equal(t, []byte("Hello, Filesystem Storage!"), data, "Should equal expected value")
 	})
 
-	t.Run("ListObjects", func(t *testing.T) {
-		_, err := service.PutObject(ctx, storage.PutObjectOptions{
-			Key:    "folder/file1.txt",
-			Reader: bytes.NewReader([]byte("file1")),
-			Size:   5,
-		})
-		require.NoError(t, err, "Should not return error")
-
-		_, err = service.PutObject(ctx, storage.PutObjectOptions{
-			Key:    "folder/file2.txt",
-			Reader: bytes.NewReader([]byte("file2")),
-			Size:   5,
-		})
-		require.NoError(t, err, "Should not return error")
-
-		t.Run("ListAllObjects", func(t *testing.T) {
-			objects, err := service.ListObjects(ctx, storage.ListObjectsOptions{
-				Recursive: true,
-			})
-
-			require.NoError(t, err, "Should not return error")
-			assert.GreaterOrEqual(t, len(objects), 3, "Should be greater or equal")
-		})
-
-		t.Run("ListWithPrefix", func(t *testing.T) {
-			objects, err := service.ListObjects(ctx, storage.ListObjectsOptions{
-				Prefix:    "folder/",
-				Recursive: true,
-			})
-
-			require.NoError(t, err, "Should not return error")
-			assert.Equal(t, 2, len(objects), "Should equal expected value")
-		})
-
-		t.Run("ListNonRecursive", func(t *testing.T) {
-			objects, err := service.ListObjects(ctx, storage.ListObjectsOptions{
-				Recursive: false,
-			})
-
-			require.NoError(t, err, "Should not return error")
-
-			for _, obj := range objects {
-				assert.NotContains(t, obj.Key, "folder/", "Should not contain value")
-			}
-		})
-	})
-
 	t.Run("DeleteObject", func(t *testing.T) {
 		err := service.DeleteObject(ctx, storage.DeleteObjectOptions{
 			Key: "test.txt",
@@ -365,77 +318,6 @@ func TestEdgeCases(t *testing.T) {
 		assert.Equal(t, storage.ErrObjectNotFound, err, "Should equal expected value")
 	})
 
-	t.Run("ListEmptyDirectory", func(t *testing.T) {
-		service, cleanup := setupTestService(t)
-		defer cleanup()
-
-		objects, err := service.ListObjects(ctx, storage.ListObjectsOptions{
-			Recursive: true,
-		})
-		require.NoError(t, err, "Should not return error")
-		assert.Empty(t, objects, "Should be empty")
-	})
-
-	t.Run("ListWithNonExistentPrefix", func(t *testing.T) {
-		service, cleanup := setupTestService(t)
-		defer cleanup()
-
-		_, err := service.PutObject(ctx, storage.PutObjectOptions{
-			Key:    "exists.txt",
-			Reader: bytes.NewReader([]byte("test")),
-			Size:   4,
-		})
-		require.NoError(t, err, "Should not return error")
-
-		objects, err := service.ListObjects(ctx, storage.ListObjectsOptions{
-			Prefix:    "nonexistent/",
-			Recursive: true,
-		})
-		require.NoError(t, err, "Should not return error")
-		assert.Empty(t, objects, "Should be empty")
-	})
-
-	t.Run("ListWithMaxKeys", func(t *testing.T) {
-		service, cleanup := setupTestService(t)
-		defer cleanup()
-
-		for i := range 10 {
-			_, err := service.PutObject(ctx, storage.PutObjectOptions{
-				Key:    filepath.Join("test", "file"+string(rune('0'+i))+".txt"),
-				Reader: bytes.NewReader([]byte("content")),
-				Size:   7,
-			})
-			require.NoError(t, err, "Should not return error")
-		}
-
-		objects, err := service.ListObjects(ctx, storage.ListObjectsOptions{
-			Prefix:    "test/",
-			Recursive: true,
-			MaxKeys:   5,
-		})
-		require.NoError(t, err, "Should not return error")
-		assert.Equal(t, 5, len(objects), "Should equal expected value")
-	})
-
-	t.Run("ListWithZeroMaxKeys", func(t *testing.T) {
-		service, cleanup := setupTestService(t)
-		defer cleanup()
-
-		_, err := service.PutObject(ctx, storage.PutObjectOptions{
-			Key:    "test.txt",
-			Reader: bytes.NewReader([]byte("test")),
-			Size:   4,
-		})
-		require.NoError(t, err, "Should not return error")
-
-		objects, err := service.ListObjects(ctx, storage.ListObjectsOptions{
-			Recursive: true,
-			MaxKeys:   0,
-		})
-		require.NoError(t, err, "Should not return error")
-		assert.NotEmpty(t, objects, "Should not be empty")
-	})
-
 	t.Run("VeryLongPath", func(t *testing.T) {
 		service, cleanup := setupTestService(t)
 		defer cleanup()
@@ -573,30 +455,6 @@ func TestEdgeCases(t *testing.T) {
 		assert.Empty(t, info.ETag, "Legacy object without sidecar must yield empty ETag")
 	})
 
-	t.Run("ListObjectsSkipsETagSidecarDirectory", func(t *testing.T) {
-		// .etags is infrastructure, not user data. ListObjects must
-		// never surface sidecar paths, otherwise callers would see
-		// phantom keys that don't correspond to real objects.
-		tempDir := t.TempDir()
-		service, err := New(config.FilesystemConfig{Root: tempDir})
-		require.NoError(t, err, "Service construction should succeed")
-
-		_, err = service.PutObject(ctx, storage.PutObjectOptions{
-			Key:    "visible.bin",
-			Reader: bytes.NewReader([]byte("x")),
-			Size:   1,
-		})
-		require.NoError(t, err, "PutObject should succeed")
-
-		listed, err := service.ListObjects(ctx, storage.ListObjectsOptions{})
-		require.NoError(t, err, "ListObjects should succeed")
-		require.NotEmpty(t, listed, "ListObjects must surface the regular object")
-
-		for _, obj := range listed {
-			assert.NotContains(t, obj.Key, ".etags", "ListObjects must not surface sidecar entries")
-		}
-	})
-
 	t.Run("ContentTypeDetection", func(t *testing.T) {
 		service, cleanup := setupTestService(t)
 		defer cleanup()
@@ -658,12 +516,13 @@ func TestConcurrency(t *testing.T) {
 			<-done
 		}
 
-		objects, err := service.ListObjects(ctx, storage.ListObjectsOptions{
-			Prefix:    "concurrent/put/",
-			Recursive: true,
-		})
-		require.NoError(t, err, "Should not return error")
-		assert.Equal(t, concurrency, len(objects), "Should equal expected value")
+		// Verify each concurrent put landed via StatObject; ListObjects
+		// used to play this role before it was removed.
+		for i := range concurrency {
+			key := filepath.Join("concurrent", "put", "file"+string(rune('0'+i))+".txt")
+			_, err := service.StatObject(ctx, storage.StatObjectOptions{Key: key})
+			require.NoError(t, err, "Concurrent put %q should be visible", key)
+		}
 	})
 
 	t.Run("ConcurrentReadSameFile", func(t *testing.T) {
@@ -730,12 +589,13 @@ func TestConcurrency(t *testing.T) {
 			<-done
 		}
 
-		objects, err := service.ListObjects(ctx, storage.ListObjectsOptions{
-			Prefix:    "concurrent/delete/",
-			Recursive: true,
-		})
-		require.NoError(t, err, "Should not return error")
-		assert.Empty(t, objects, "Should be empty")
+		// Each concurrent delete should have removed its key; verify
+		// via StatObject (ListObjects no longer exists).
+		for i := range concurrency {
+			key := filepath.Join("concurrent", "delete", "file"+string(rune('0'+i))+".txt")
+			_, err := service.StatObject(ctx, storage.StatObjectOptions{Key: key})
+			assert.ErrorIs(t, err, storage.ErrObjectNotFound, "Concurrent delete of %q should leave it gone", key)
+		}
 	})
 }
 

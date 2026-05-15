@@ -187,52 +187,6 @@ func (suite *MinIOServiceTestSuite) TestDeleteObjects() {
 	})
 }
 
-func (suite *MinIOServiceTestSuite) TestListObjects() {
-	objects := map[string][]byte{
-		"folder1/file1.txt": []byte("content1"),
-		"folder1/file2.txt": []byte("content2"),
-		"folder2/file3.txt": []byte("content3"),
-		"root.txt":          []byte("root content"),
-	}
-
-	for key, data := range objects {
-		suite.uploadObject(key, data)
-	}
-
-	suite.Run("ListAll", func() {
-		result, err := suite.service.ListObjects(suite.ctx, storage.ListObjectsOptions{
-			Recursive: true,
-		})
-
-		suite.NoError(err, "ListObjects should succeed")
-		suite.Len(result, 4, "Should have 4 objects")
-	})
-
-	suite.Run("ListWithPrefix", func() {
-		result, err := suite.service.ListObjects(suite.ctx, storage.ListObjectsOptions{
-			Prefix:    "folder1/",
-			Recursive: true,
-		})
-
-		suite.NoError(err, "ListObjects with prefix should succeed")
-		suite.Len(result, 2, "Should have 2 objects with prefix")
-
-		for _, obj := range result {
-			suite.Contains(obj.Key, "folder1/", "Object key should contain prefix")
-		}
-	})
-
-	suite.Run("ListWithMaxKeys", func() {
-		result, err := suite.service.ListObjects(suite.ctx, storage.ListObjectsOptions{
-			Recursive: true,
-			MaxKeys:   2,
-		})
-
-		suite.NoError(err, "ListObjects with max keys should succeed")
-		suite.Equal(2, len(result), "Should respect MaxKeys limit")
-	})
-}
-
 func (suite *MinIOServiceTestSuite) TestCopyObject() {
 	suite.Run("Success", func() {
 		suite.uploadTestObject()

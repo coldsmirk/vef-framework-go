@@ -36,16 +36,6 @@ type DeleteObjectsOptions struct {
 	Keys []string
 }
 
-// ListObjectsOptions contains parameters for listing objects.
-type ListObjectsOptions struct {
-	// Prefix filters objects by key prefix
-	Prefix string
-	// Recursive determines whether to list objects recursively
-	Recursive bool
-	// MaxKeys limits the maximum number of objects to return
-	MaxKeys int
-}
-
 // CopyObjectOptions contains parameters for copying an object.
 type CopyObjectOptions struct {
 	// SourceKey is the identifier of the source object

@@ -232,7 +232,7 @@ func SupplyFileACL(constructor any) fx.Option {
 // storage keys verbatim in <img src> / ![](...) constructs; applications
 // that embed proxy paths (e.g. "/storage/files/<key>"), CDN URLs, or any
 // other URL convention MUST register their own mapper here so meta:
-// "richtext" / "markdown" reconciliation can resolve those URLs back to
+// "rich_text" / "markdown" reconciliation can resolve those URLs back to
 // storage keys before consuming claims or scheduling deletions.
 //
 // constructor is an fx-style factory that returns storage.URLKeyMapper

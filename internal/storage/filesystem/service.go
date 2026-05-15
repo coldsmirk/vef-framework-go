@@ -5,10 +5,8 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"mime"
 	"os"
 	"path/filepath"
@@ -225,78 +223,6 @@ func (s *Service) DeleteObjects(ctx context.Context, opts storage.DeleteObjectsO
 
 		return s.DeleteObject(ctx, storage.DeleteObjectOptions{Key: key})
 	})
-}
-
-func (s *Service) ListObjects(_ context.Context, opts storage.ListObjectsOptions) ([]storage.ObjectInfo, error) {
-	var objects []storage.ObjectInfo
-
-	prefix := opts.Prefix
-	searchPath := s.resolvePath(prefix)
-
-	err := filepath.WalkDir(searchPath, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			if os.IsPermission(err) || os.IsNotExist(err) {
-				return nil
-			}
-
-			return err
-		}
-
-		if d.IsDir() {
-			// Skip hidden infrastructure directories entirely.
-			if d.Name() == multipartDir || d.Name() == tmpDir || d.Name() == etagsDir {
-				return filepath.SkipDir
-			}
-
-			return nil
-		}
-
-		relPath, err := filepath.Rel(s.root, path)
-		if err != nil {
-			return err
-		}
-
-		key := filepath.ToSlash(relPath)
-
-		if prefix != "" && !strings.HasPrefix(key, prefix) {
-			return nil
-		}
-
-		if !opts.Recursive {
-			relativeKey := strings.TrimPrefix(key, prefix)
-			if strings.Contains(relativeKey, "/") {
-				return nil
-			}
-		}
-
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-
-		contentType := mime.TypeByExtension(filepath.Ext(path))
-
-		objects = append(objects, storage.ObjectInfo{
-			Bucket:       bucketName,
-			Key:          key,
-			ETag:         "",
-			Size:         info.Size(),
-			ContentType:  contentType,
-			LastModified: info.ModTime(),
-		})
-
-		if opts.MaxKeys > 0 && len(objects) >= opts.MaxKeys {
-			return io.EOF
-		}
-
-		return nil
-	})
-
-	if err != nil && !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("failed to list objects: %w", err)
-	}
-
-	return objects, nil
 }
 
 func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) (*storage.ObjectInfo, error) {

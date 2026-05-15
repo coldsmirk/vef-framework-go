@@ -11,6 +11,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/security"
 	"github.com/coldsmirk/vef-framework-go/storage"
 )
 
@@ -37,13 +38,14 @@ func (m stripPrefixURLMapper) KeyToURL(k string) string { return m.prefix + k }
 // URLs. Used by every TestFiles sub-case.
 type FileModel struct {
 	CoverKey string `meta:"uploaded_file"`
-	Body     string `meta:"richtext"`
+	Body     string `meta:"rich_text"`
 }
 
 // ConsumeManyCall captures one ConsumeMany invocation.
 type ConsumeManyCall struct {
-	Tx   orm.DB
-	Keys []string
+	Tx        orm.DB
+	Principal *security.Principal
+	Keys      []string
 }
 
 // ScheduleCall captures one DeleteScheduler.Schedule invocation.
@@ -60,10 +62,11 @@ type MockClaimConsumer struct {
 	consumeManyErr   error
 }
 
-func (m *MockClaimConsumer) ConsumeMany(_ context.Context, tx orm.DB, keys []string) error {
+func (m *MockClaimConsumer) ConsumeMany(_ context.Context, tx orm.DB, principal *security.Principal, keys []string) error {
 	m.consumeManyCalls = append(m.consumeManyCalls, ConsumeManyCall{
-		Tx:   tx,
-		Keys: append([]string(nil), keys...),
+		Tx:        tx,
+		Principal: principal,
+		Keys:      append([]string(nil), keys...),
 	})
 
 	return m.consumeManyErr
@@ -292,7 +295,7 @@ func TestFiles(t *testing.T) {
 		assert.Len(t, cs.consumeManyCalls, 1, "ConsumeMany must still run with a nil publisher")
 	})
 
-	// P0-1 regression guards: richtext / markdown URLs must be translated
+	// P0-1 regression guards: rich_text / markdown URLs must be translated
 	// through the URLKeyMapper into storage keys before ConsumeMany sees
 	// them. Without the mapper, an embedded "/storage/files/foo.png"
 	// would never match the "foo.png" row in sys_storage_upload_claim.

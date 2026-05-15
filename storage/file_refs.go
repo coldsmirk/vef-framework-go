@@ -18,7 +18,7 @@ const (
 	// map[string]string).
 	MetaTypeUploadedFile MetaType = "uploaded_file"
 	// MetaTypeRichText is HTML content with embedded resource references.
-	MetaTypeRichText MetaType = "richtext"
+	MetaTypeRichText MetaType = "rich_text"
 	// MetaTypeMarkdown is Markdown content with embedded resource references.
 	MetaTypeMarkdown MetaType = "markdown"
 )
@@ -40,13 +40,13 @@ type metaField struct {
 	index []int
 	typ   MetaType
 	// Storage shape of the field (only meaningful for uploaded_file;
-	// always fieldKindScalar for richtext / markdown).
+	// always fieldKindScalar for rich_text / markdown).
 	kind  fieldKind
 	attrs map[string]string
 }
 
 // FileRef is a single file reference extracted from a model field tagged
-// with `meta:"uploaded_file/richtext/markdown"`. Attrs carries any
+// with `meta:"uploaded_file/rich_text/markdown"`. Attrs carries any
 // key/value attributes parsed from the tag value (e.g. `category:gallery`).
 type FileRef struct {
 	Key      string
@@ -216,7 +216,7 @@ func parseMetaFields(typ reflect.Type) []metaField {
 
 			// For "uploaded_file", support scalar (string/*string), slice
 			// ([]string) and named map (map[string]string). For
-			// "richtext"/"markdown", only scalar types are allowed.
+			// "rich_text"/"markdown", only scalar types are allowed.
 			if metaType == MetaTypeUploadedFile {
 				switch {
 				case reflectx.IsStringSliceType(fieldType):

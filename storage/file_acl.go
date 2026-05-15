@@ -30,7 +30,7 @@ const (
 	PrivatePrefix = "priv/"
 )
 
-// FileACL decides whether a principal may read or list object keys.
+// FileACL decides whether a principal may read an object key.
 //
 // The storage module is provider-neutral and intentionally has no model
 // of "ownership" — that information lives entirely in the business
@@ -46,8 +46,6 @@ const (
 //  2. In CanRead, look up the row by key and decide based on the
 //     principal's identity, roles, or tenant against the row's
 //     visibility / owner columns.
-//  3. In CanList, restrict listing to operationally privileged
-//     principals or to prefixes scoped to the principal's identity.
 //
 // Implementations MUST return false (not error) for unauthorized
 // access; errors are reserved for backend / lookup failures (database
@@ -59,18 +57,10 @@ type FileACL interface {
 	// hook; implementations only see keys that need authoritative
 	// authorization.
 	CanRead(ctx context.Context, principal *security.Principal, key string) (bool, error)
-
-	// CanList returns true when principal is authorized to list objects
-	// under prefix. Called before List.
-	//
-	// Most production setups should keep listing tightly restricted —
-	// it is primarily an ops / debug tool and rarely belongs in
-	// user-facing flows.
-	CanList(ctx context.Context, principal *security.Principal, prefix string) (bool, error)
 }
 
 // DefaultFileACL is the framework-provided default ACL. It grants read
-// access only to keys under PublicPrefix and denies all listing.
+// access only to keys under PublicPrefix.
 //
 // This default keeps the framework safe-by-default: without an explicit
 // override, the storage module behaves as a pub-only file server and
@@ -84,11 +74,4 @@ type DefaultFileACL struct{}
 // per-principal access; that is the business module's responsibility.
 func (*DefaultFileACL) CanRead(_ context.Context, _ *security.Principal, key string) (bool, error) {
 	return strings.HasPrefix(key, PublicPrefix), nil
-}
-
-// CanList denies all listing. List is intentionally restrictive in the
-// default ACL because there is no safe per-prefix policy the framework
-// can apply without business knowledge.
-func (*DefaultFileACL) CanList(context.Context, *security.Principal, string) (bool, error) {
-	return false, nil
 }

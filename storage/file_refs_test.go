@@ -61,7 +61,7 @@ type UploadedMapModel struct {
 }
 
 type RichTextOnlyModel struct {
-	Body string `meta:"richtext"`
+	Body string `meta:"rich_text"`
 }
 
 type MarkdownOnlyModel struct {
@@ -81,12 +81,12 @@ type UnsupportedScalarModel struct {
 }
 
 type RichTextOnNonStringModel struct {
-	Bodies []string `meta:"richtext"`
+	Bodies []string `meta:"rich_text"`
 }
 
 type MixedModel struct {
 	Cover string `meta:"uploaded_file"`
-	Body  string `meta:"richtext"`
+	Body  string `meta:"rich_text"`
 	Notes string `meta:"markdown"`
 }
 
@@ -128,7 +128,7 @@ type DiveMultiLevelOuter struct {
 
 type DiveMixedInner struct {
 	Cover string `meta:"uploaded_file"`
-	Body  string `meta:"richtext"`
+	Body  string `meta:"rich_text"`
 	Notes string `meta:"markdown"`
 }
 
@@ -342,7 +342,7 @@ func TestExtractRefsByMetaTag(t *testing.T) {
 	})
 
 	t.Run("RichTextOnNonStringIgnored", func(t *testing.T) {
-		// richtext / markdown require a string field; a []string body
+		// rich_text / markdown require a string field; a []string body
 		// is a misuse and must be skipped.
 		assert.Empty(t, extractRefs(&RichTextOnNonStringModel{Bodies: []string{"<img src=\"priv/x.png\">"}}), "richtext on a non-string field must be silently dropped")
 	})

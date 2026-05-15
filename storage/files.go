@@ -6,6 +6,7 @@ import (
 
 	"github.com/coldsmirk/go-collections"
 
+	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/reflectx"
@@ -48,7 +49,7 @@ type Files interface {
 // use; meta field specs are parsed once per type on first access and
 // cached for the lifetime of the instance.
 //
-// The URLKeyMapper translates richtext / markdown URLs to storage keys
+// The URLKeyMapper translates rich_text / markdown URLs to storage keys
 // during reconciliation. Pass IdentityURLKeyMapper{} (or nil, which is
 // normalised to the identity mapper) when business code embeds bare
 // keys directly in <img src> / ![](...).
@@ -114,7 +115,7 @@ func (f *defaultFiles) onCreateWith(ctx context.Context, tx orm.DB, model any, e
 
 	keys := refKeys(refs)
 
-	if err := f.cc.ConsumeMany(ctx, tx, keys); err != nil {
+	if err := f.cc.ConsumeMany(ctx, tx, contextx.Principal(ctx), keys); err != nil {
 		return err
 	}
 
@@ -138,7 +139,7 @@ func (f *defaultFiles) onUpdateWith(ctx context.Context, tx orm.DB, oldModel, ne
 	if len(toConsume) > 0 {
 		consumedKeys = refKeys(toConsume)
 
-		if err := f.cc.ConsumeMany(ctx, tx, consumedKeys); err != nil {
+		if err := f.cc.ConsumeMany(ctx, tx, contextx.Principal(ctx), consumedKeys); err != nil {
 			return err
 		}
 	}
@@ -187,7 +188,7 @@ func (f *defaultFiles) onDeleteWith(ctx context.Context, tx orm.DB, model any, e
 	return f.scheduleDeletes(ctx, tx, f.applyURLMapping(ext.extract(model)), DeleteReasonDeleted)
 }
 
-// applyURLMapping rewrites richtext / markdown ref keys through the
+// applyURLMapping rewrites rich_text / markdown ref keys through the
 // configured URLKeyMapper so embedded URLs become storage object keys
 // before they hit ClaimConsumer / DeleteScheduler. uploaded_file refs
 // are passed through unchanged (they already hold storage keys, not URLs).
@@ -196,17 +197,13 @@ func (f *defaultFiles) onDeleteWith(ctx context.Context, tx orm.DB, model any, e
 // something outside this storage system (external CDN, mailto, data URI,
 // bad input). Reconciliation must not touch unrelated objects.
 //
-// Fast path: when refs contains no richtext / markdown entries the
-// input slice is returned as-is to avoid an unnecessary allocation;
-// callers must therefore not assume the result is always a freshly
-// owned slice. The current callers feed in a slice that defaultFiles
-// itself just produced via ext.extract(...), so aliasing is benign.
+// Always returns a freshly allocated slice — never aliases the input.
+// The allocation is negligible (ref lists are short) and the explicit
+// ownership boundary keeps future callers safe from a subtle bug where
+// a cached input slice gets mutated by a downstream pipeline.
 func (f *defaultFiles) applyURLMapping(refs []FileRef) []FileRef {
-	if len(refs) == 0 || !needsURLMapping(refs) {
-		return refs
-	}
-
 	out := make([]FileRef, 0, len(refs))
+
 	for _, r := range refs {
 		if r.MetaType != MetaTypeRichText && r.MetaType != MetaTypeMarkdown {
 			out = append(out, r)
@@ -224,16 +221,6 @@ func (f *defaultFiles) applyURLMapping(refs []FileRef) []FileRef {
 	}
 
 	return out
-}
-
-func needsURLMapping(refs []FileRef) bool {
-	for _, r := range refs {
-		if r.MetaType == MetaTypeRichText || r.MetaType == MetaTypeMarkdown {
-			return true
-		}
-	}
-
-	return false
 }
 
 // extractorFor returns nil when model is nil or a typed nil pointer; the
