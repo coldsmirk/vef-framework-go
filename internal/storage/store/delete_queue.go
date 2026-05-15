@@ -58,12 +58,22 @@ func (q *deleteQueue) Schedule(ctx context.Context, tx orm.DB, keys []string, re
 	return q.Enqueue(ctx, tx, items)
 }
 
+// Enqueue inserts pending-delete rows, swallowing duplicates that hit
+// the (object_key, reason) uniqueness constraint via DO NOTHING. This
+// makes the operation idempotent — the claim sweeper can run in
+// multi-instance deployments without a leader, and a re-tried business
+// transaction can re-enqueue the same (key, reason) pair without
+// blowing up the surrounding transaction.
 func (*deleteQueue) Enqueue(ctx context.Context, tx orm.DB, items []PendingDelete) error {
 	if len(items) == 0 {
 		return nil
 	}
 
-	_, err := tx.NewInsert().Model(&items).Exec(ctx)
+	_, err := tx.NewInsert().Model(&items).
+		OnConflict(func(cb orm.ConflictBuilder) {
+			cb.Columns("object_key", "reason").DoNothing()
+		}).
+		Exec(ctx)
 
 	return err
 }

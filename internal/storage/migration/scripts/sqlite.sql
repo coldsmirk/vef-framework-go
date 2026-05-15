@@ -67,7 +67,13 @@ CREATE TABLE IF NOT EXISTS sys_storage_pending_delete (
     reason          VARCHAR(128) NOT NULL DEFAULT 'replaced',
     attempts        INTEGER      NOT NULL DEFAULT 0,
     next_attempt_at TIMESTAMP    NOT NULL DEFAULT (datetime('now', 'localtime')),
-    created_at      TIMESTAMP    NOT NULL DEFAULT (datetime('now', 'localtime'))
+    created_at      TIMESTAMP    NOT NULL DEFAULT (datetime('now', 'localtime')),
+    -- Idempotency boundary for Enqueue: the claim sweeper can run from
+    -- multiple instances concurrently, and business retries may re-emit
+    -- the same (key, reason) pair. The Enqueue path uses ON CONFLICT
+    -- DO NOTHING against this constraint, so a duplicate insert is a
+    -- silent no-op instead of a double-publish.
+    CONSTRAINT uk_sys_storage_pending_delete__key_reason UNIQUE (object_key, reason)
 );
 
 -- attempts is intentionally NOT part of the index: Lease only filters and

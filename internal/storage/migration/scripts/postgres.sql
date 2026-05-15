@@ -77,7 +77,13 @@ CREATE TABLE IF NOT EXISTS sys_storage_pending_delete (
     attempts        INTEGER      NOT NULL DEFAULT 0,
     next_attempt_at TIMESTAMP    NOT NULL DEFAULT LOCALTIMESTAMP,
     created_at      TIMESTAMP    NOT NULL DEFAULT LOCALTIMESTAMP,
-    CONSTRAINT pk_sys_storage_pending_delete PRIMARY KEY (id)
+    CONSTRAINT pk_sys_storage_pending_delete PRIMARY KEY (id),
+    -- Idempotency boundary for Enqueue: the claim sweeper can run from
+    -- multiple instances concurrently, and business retries may re-emit
+    -- the same (key, reason) pair. The Enqueue path uses ON CONFLICT
+    -- DO NOTHING against this constraint, so a duplicate insert is a
+    -- silent no-op instead of a double-publish.
+    CONSTRAINT uk_sys_storage_pending_delete__key_reason UNIQUE (object_key, reason)
 );
 
 COMMENT ON TABLE sys_storage_pending_delete IS 'Pending object deletions';
