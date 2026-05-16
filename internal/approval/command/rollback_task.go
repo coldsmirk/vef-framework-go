@@ -173,7 +173,7 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 	)
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
-	behavior.CollectorFromContext(ctx).Append(events...)
+	behavior.EventCollectorFromContext(ctx).Add(events...)
 
 	return cqrs.Unit{}, nil
 }

@@ -130,7 +130,7 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 		return cqrs.Unit{}, fmt.Errorf("update instance: %w", err)
 	}
 
-	behavior.CollectorFromContext(ctx).Append(events...)
+	behavior.EventCollectorFromContext(ctx).Add(events...)
 
 	return cqrs.Unit{}, nil
 }

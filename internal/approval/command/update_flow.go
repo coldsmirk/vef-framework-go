@@ -101,7 +101,7 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		}
 	}
 
-	behavior.CollectorFromContext(ctx).Append(
+	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewFlowUpdatedEvent(flow.ID, flow.TenantID),
 	)
 

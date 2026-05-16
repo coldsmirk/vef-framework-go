@@ -161,7 +161,7 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	actionLog.AddedAssigneeIDs = insertUsers
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
-	behavior.CollectorFromContext(ctx).Append(
+	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewAssigneesAddedEvent(instance.ID, instance.TenantID, task.NodeID, task.ID, cmd.AddType, insertUsers, userNames),
 	)
 

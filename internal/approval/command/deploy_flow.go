@@ -204,7 +204,7 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 		}
 	}
 
-	behavior.CollectorFromContext(ctx).Append(
+	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewFlowDeployedEvent(version.FlowID, flow.TenantID, version.ID, version.Version),
 	)
 

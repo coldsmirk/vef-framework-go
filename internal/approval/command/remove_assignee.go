@@ -105,7 +105,7 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 	// already persisted any status / current_node_id / finished_at change
 	// through the state machine. No extra UPDATE is required.
 
-	behavior.CollectorFromContext(ctx).Append(events...)
+	behavior.EventCollectorFromContext(ctx).Add(events...)
 
 	return cqrs.Unit{}, nil
 }

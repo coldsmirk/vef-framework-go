@@ -88,7 +88,7 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 		return cqrs.Unit{}, fmt.Errorf("update instance form_data: %w", err)
 	}
 
-	behavior.CollectorFromContext(ctx).Append(events...)
+	behavior.EventCollectorFromContext(ctx).Add(events...)
 
 	return cqrs.Unit{}, nil
 }

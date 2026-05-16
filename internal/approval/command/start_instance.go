@@ -197,7 +197,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		return nil, fmt.Errorf("start process: %w", err)
 	}
 
-	behavior.CollectorFromContext(ctx).Append(
+	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewInstanceCreatedEvent(instance.ID, instance.TenantID, flow.ID, title, cmd.Applicant.ID, cmd.Applicant.Name),
 	)
 

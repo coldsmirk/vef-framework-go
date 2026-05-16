@@ -124,7 +124,7 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 		return cqrs.Unit{}, fmt.Errorf("insert urge record: %w", err)
 	}
 
-	behavior.CollectorFromContext(ctx).Append(
+	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewTaskUrgedEvent(
 			task.InstanceID, task.TenantID, task.NodeID, cmd.TaskID,
 			cmd.UrgerID, urgerName, task.AssigneeID, task.AssigneeName, cmd.Message,

@@ -145,8 +145,8 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 
 	evt := approval.NewCCNotifiedEvent(instance.ID, instance.TenantID, node.ID, insertedUserIDs, ccUserNames, false)
 
-	if collector, ok := behavior.TryCollectorFromContext(ctx); ok {
-		collector.Append(evt)
+	if collector, ok := behavior.TryEventCollectorFromContext(ctx); ok {
+		collector.Add(evt)
 
 		return nil
 	}

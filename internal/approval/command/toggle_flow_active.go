@@ -70,7 +70,7 @@ func (h *ToggleFlowActiveHandler) Handle(ctx context.Context, cmd ToggleFlowActi
 		return cqrs.Unit{}, shared.ErrFlowNotFound
 	}
 
-	behavior.CollectorFromContext(ctx).Append(
+	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewFlowToggledEvent(cmd.FlowID, flow.TenantID, cmd.IsActive),
 	)
 

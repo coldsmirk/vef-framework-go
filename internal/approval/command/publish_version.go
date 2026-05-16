@@ -140,7 +140,7 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 		}
 	}
 
-	behavior.CollectorFromContext(ctx).Append(
+	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewFlowPublishedEvent(version.FlowID, flow.TenantID, cmd.VersionID),
 	)
 

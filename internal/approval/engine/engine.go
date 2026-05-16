@@ -83,8 +83,8 @@ func (e *FlowEngine) publishEvents(ctx context.Context, db orm.DB, events ...app
 	// trace handling. The collector is absent when this engine runs
 	// outside a CQRS pipeline (timeout scanner, binding listener); in
 	// that case fall back to direct bus.Publish.
-	if collector, ok := behavior.TryCollectorFromContext(ctx); ok {
-		collector.Append(events...)
+	if collector, ok := behavior.TryEventCollectorFromContext(ctx); ok {
+		collector.Add(events...)
 
 		return nil
 	}

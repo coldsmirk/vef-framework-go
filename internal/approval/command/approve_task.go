@@ -112,7 +112,7 @@ func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cq
 		return cqrs.Unit{}, fmt.Errorf("update instance form_data: %w", err)
 	}
 
-	behavior.CollectorFromContext(ctx).Append(events...)
+	behavior.EventCollectorFromContext(ctx).Add(events...)
 
 	return cqrs.Unit{}, nil
 }
