@@ -94,13 +94,27 @@ func (m *MockDeleteScheduler) Schedule(_ context.Context, tx orm.DB, keys []stri
 }
 
 // CapturingPublisher records every published event so test cases can
-// assert which FilePromotedEvent payloads escaped Files.
+// assert which FilePromotedEvent payloads escaped Files. Implements
+// event.Bus so storage.NewFiles accepts it directly in tests.
 type CapturingPublisher struct {
 	events []event.Event
 }
 
-func (p *CapturingPublisher) Publish(e event.Event) {
+// Publish implements event.Bus.
+func (p *CapturingPublisher) Publish(_ context.Context, e event.Event, _ ...event.PublishOption) error {
 	p.events = append(p.events, e)
+	return nil
+}
+
+// PublishBatch implements event.Bus.
+func (p *CapturingPublisher) PublishBatch(_ context.Context, evts []event.Event, _ ...event.PublishOption) error {
+	p.events = append(p.events, evts...)
+	return nil
+}
+
+// Subscribe implements event.Bus with a no-op unsubscribe.
+func (*CapturingPublisher) Subscribe(string, event.Handler, ...event.SubscribeOption) (event.Unsubscribe, error) {
+	return func() {}, nil
 }
 
 // promotedKeys returns the FilePromotedEvent keys captured by p, in

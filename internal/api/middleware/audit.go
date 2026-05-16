@@ -22,13 +22,13 @@ import (
 
 // Audit handles audit logging.
 type Audit struct {
-	publisher event.Publisher
+	bus event.Bus
 }
 
 // NewAudit creates a new audit middleware.
-func NewAudit(publisher event.Publisher) api.Middleware {
+func NewAudit(bus event.Bus) api.Middleware {
 	return &Audit{
-		publisher: publisher,
+		bus: bus,
 	}
 }
 
@@ -55,7 +55,7 @@ func (m *Audit) Process(ctx fiber.Ctx) error {
 }
 
 func (m *Audit) audit(ctx fiber.Ctx, op *api.Operation) error {
-	if !op.EnableAudit || m.publisher == nil {
+	if !op.EnableAudit || m.bus == nil {
 		return ctx.Next()
 	}
 
@@ -72,7 +72,9 @@ func (m *Audit) audit(ctx fiber.Ctx, op *api.Operation) error {
 		return handlerErr
 	}
 
-	m.publisher.Publish(evt)
+	if err := m.bus.Publish(ctx.Context(), evt, event.WithAsync()); err != nil {
+		contextx.Logger(ctx).Warnf("audit publish failed: %v", err)
+	}
 
 	return handlerErr
 }

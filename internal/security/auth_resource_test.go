@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,23 +62,49 @@ func (m *MockUserInfoLoader) LoadUserInfo(ctx context.Context, principal *securi
 	return args.Get(0).(*security.UserInfo), args.Error(1)
 }
 
-// MockPublisher is a mock implementation of event.Publisher for testing.
+// MockPublisher is a mock implementation of event.Bus for testing.
 type MockPublisher struct {
 	mock.Mock
 
+	mu              sync.Mutex
 	publishedEvents []event.Event
 }
 
-func (m *MockPublisher) Publish(evt event.Event) {
+// Publish implements event.Bus.
+func (m *MockPublisher) Publish(_ context.Context, evt event.Event, _ ...event.PublishOption) error {
 	m.Called(evt)
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.publishedEvents = append(m.publishedEvents, evt)
+	return nil
+}
+
+// PublishBatch implements event.Bus.
+func (m *MockPublisher) PublishBatch(ctx context.Context, evts []event.Event, opts ...event.PublishOption) error {
+	for _, evt := range evts {
+		if err := m.Publish(ctx, evt, opts...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Subscribe implements event.Bus with a no-op unsubscribe.
+func (*MockPublisher) Subscribe(string, event.Handler, ...event.SubscribeOption) (event.Unsubscribe, error) {
+	return func() {}, nil
 }
 
 func (m *MockPublisher) GetPublishedEvents() []event.Event {
-	return m.publishedEvents
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]event.Event, len(m.publishedEvents))
+	copy(out, m.publishedEvents)
+	return out
 }
 
 func (m *MockPublisher) ClearPublishedEvents() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.publishedEvents = nil
 }
 
@@ -138,7 +165,7 @@ func (suite *AuthResourceTestSuite) setupTestApp() {
 		fx.Replace(
 			fx.Annotate(
 				suite.publisher,
-				fx.As(new(event.Publisher)),
+				fx.As(new(event.Bus)),
 			),
 		),
 		fx.Replace(
@@ -1133,7 +1160,7 @@ func (s *ChallengeFlowTestSuite) SetupSuite() {
 		fx.Replace(
 			fx.Annotate(
 				s.publisher,
-				fx.As(new(event.Publisher)),
+				fx.As(new(event.Bus)),
 			),
 		),
 		fx.Replace(
@@ -1573,7 +1600,7 @@ func (s *AuthResourceErrorPathTestSuite) SetupSuite() {
 		fx.Replace(
 			fx.Annotate(
 				s.publisher,
-				fx.As(new(event.Publisher)),
+				fx.As(new(event.Bus)),
 			),
 		),
 		fx.Replace(

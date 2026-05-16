@@ -28,7 +28,7 @@ type AuthResourceParams struct {
 	ChallengeTokenStore security.ChallengeTokenStore
 	UserInfoLoader      security.UserInfoLoader      `optional:"true"`
 	ChallengeProviders  []security.ChallengeProvider `group:"vef:security:challenge_providers"`
-	Publisher           event.Publisher
+	Bus                 event.Bus
 	SecurityConfig      *config.SecurityConfig
 }
 
@@ -44,7 +44,7 @@ func NewAuthResource(params AuthResourceParams) api.Resource {
 		challengeTokenStore: params.ChallengeTokenStore,
 		userInfoLoader:      params.UserInfoLoader,
 		challengeProviders:  params.ChallengeProviders,
-		publisher:           params.Publisher,
+		bus:                 params.Bus,
 
 		Resource: api.NewRPCResource(
 			"security/auth",
@@ -84,7 +84,7 @@ type AuthResource struct {
 	challengeTokenStore security.ChallengeTokenStore
 	userInfoLoader      security.UserInfoLoader
 	challengeProviders  []security.ChallengeProvider
-	publisher           event.Publisher
+	bus                 event.Bus
 }
 
 // LoginParams represents the request parameters for user login.
@@ -129,7 +129,7 @@ func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
 			FailReason: failReason,
 			ErrorCode:  errorCode,
 		})
-		a.publisher.Publish(loginEvent)
+		_ = a.bus.Publish(ctx.Context(), loginEvent, event.WithAsync())
 
 		return err
 	}
@@ -170,7 +170,7 @@ func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
 		TraceID:   contextx.RequestID(ctx),
 		IsOk:      true,
 	})
-	a.publisher.Publish(loginEvent)
+	_ = a.bus.Publish(ctx.Context(), loginEvent, event.WithAsync())
 
 	return result.Ok(&security.LoginResult{Tokens: tokens}).Response(ctx)
 }
@@ -271,7 +271,7 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 		TraceID:   contextx.RequestID(ctx),
 		IsOk:      true,
 	})
-	a.publisher.Publish(loginEvent)
+	_ = a.bus.Publish(ctx.Context(), loginEvent, event.WithAsync())
 
 	return result.Ok(&security.LoginResult{Tokens: tokens}).Response(ctx)
 }

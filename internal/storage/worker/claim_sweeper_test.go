@@ -41,13 +41,28 @@ type TestEnv struct {
 	Cfg *config.StorageConfig
 }
 
-// CapturePublisher records all published events for assertion.
+// CapturePublisher records all published events for assertion. It
+// implements event.Bus so worker constructors that now expect a Bus
+// can accept it directly.
 type CapturePublisher struct {
 	events []event.Event
 }
 
-func (p *CapturePublisher) Publish(evt event.Event) {
+// Publish implements event.Bus.
+func (p *CapturePublisher) Publish(_ context.Context, evt event.Event, _ ...event.PublishOption) error {
 	p.events = append(p.events, evt)
+	return nil
+}
+
+// PublishBatch implements event.Bus.
+func (p *CapturePublisher) PublishBatch(_ context.Context, evts []event.Event, _ ...event.PublishOption) error {
+	p.events = append(p.events, evts...)
+	return nil
+}
+
+// Subscribe implements event.Bus with a no-op unsubscribe.
+func (*CapturePublisher) Subscribe(string, event.Handler, ...event.SubscribeOption) (event.Unsubscribe, error) {
+	return func() {}, nil
 }
 
 // newTestStorageConfig returns a minimal StorageConfig for worker tests.

@@ -60,6 +60,6 @@ func TestNewLoginEvent(t *testing.T) {
 		evt := NewLoginEvent(LoginEventParams{AuthType: "test"})
 
 		var _ event.Event = evt
-		assert.NotEmpty(t, evt.Type(), "Should have event type")
+		assert.NotEmpty(t, evt.EventType(), "Should have event type")
 	})
 }

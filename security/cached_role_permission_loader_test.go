@@ -4,13 +4,12 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/event"
-	ievent "github.com/coldsmirk/vef-framework-go/internal/event"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 )
 
 type CachedRolePermissionsLoaderTestSuite struct {
@@ -22,10 +21,7 @@ type CachedRolePermissionsLoaderTestSuite struct {
 
 func (s *CachedRolePermissionsLoaderTestSuite) SetupSuite() {
 	s.ctx = context.Background()
-
-	s.bus = ievent.NewMemoryBus([]event.Middleware{})
-	err := s.bus.(interface{ Start() error }).Start()
-	s.Require().NoError(err, "Should start event bus")
+	s.bus = eventtest.NewFakeBus()
 }
 
 func (s *CachedRolePermissionsLoaderTestSuite) TestCachesResults() {
@@ -114,8 +110,7 @@ func (s *CachedRolePermissionsLoaderTestSuite) TestInvalidatesSpecificRoles() {
 	s.Require().NoError(err, "Should load user permissions")
 	s.Require().Contains(resultUser, "test.read", "Should contain expected value")
 
-	PublishRolePermissionsChangedEvent(s.bus, "admin")
-	time.Sleep(10 * time.Millisecond)
+	s.Require().NoError(PublishRolePermissionsChangedEvent(s.ctx, s.bus, "admin"))
 
 	result2, err := cachedLoader.LoadPermissions(s.ctx, "admin")
 	s.Require().NoError(err, "Should reload admin permissions after invalidation")
@@ -178,8 +173,7 @@ func (s *CachedRolePermissionsLoaderTestSuite) TestInvalidatesAllRoles() {
 	s.Require().Contains(resultUser, "test.read", "Should contain expected value")
 	s.Require().NotContains(resultUser, "test.update", "Should not contain unexpected value")
 
-	PublishRolePermissionsChangedEvent(s.bus)
-	time.Sleep(10 * time.Millisecond)
+	s.Require().NoError(PublishRolePermissionsChangedEvent(s.ctx, s.bus))
 
 	result2, err := cachedLoader.LoadPermissions(s.ctx, "admin")
 	s.Require().NoError(err, "Should reload admin permissions after invalidation")

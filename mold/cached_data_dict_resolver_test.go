@@ -5,13 +5,12 @@ import (
 	"errors"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/event"
-	ievent "github.com/coldsmirk/vef-framework-go/internal/event"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 )
 
 // CachedDataDictResolverTestSuite tests the CachedDataDictResolver component.
@@ -26,16 +25,10 @@ type CachedDataDictResolverTestSuite struct {
 
 func (s *CachedDataDictResolverTestSuite) SetupSuite() {
 	s.ctx = context.Background()
-
-	s.bus = ievent.NewMemoryBus([]event.Middleware{})
-
-	err := s.bus.Start()
-	s.Require().NoError(err, "Should not return error")
+	s.bus = eventtest.NewFakeBus()
 }
 
-func (s *CachedDataDictResolverTestSuite) TearDownSuite() {
-	_ = s.bus.Shutdown(context.Background())
-}
+func (s *CachedDataDictResolverTestSuite) TearDownSuite() {}
 
 func (s *CachedDataDictResolverTestSuite) newResolver(loader DataDictLoader) DataDictResolver {
 	return NewCachedDataDictResolver(loader, s.bus)
@@ -80,8 +73,7 @@ func (s *CachedDataDictResolverTestSuite) TestInvalidatesSpecificKeys() {
 	s.Equal("草稿", first, "Should return correct draft value")
 	s.T().Logf("Before invalidation: status 'draft' -> '%s'", first)
 
-	PublishDataDictChangedEvent(s.bus, "status")
-	time.Sleep(10 * time.Millisecond)
+	s.Require().NoError(PublishDataDictChangedEvent(s.ctx, s.bus, "status"))
 	s.T().Logf("Published invalidation event for 'status' key")
 
 	second, err := resolver.Resolve(s.ctx, "status", "archived")
@@ -117,8 +109,7 @@ func (s *CachedDataDictResolverTestSuite) TestInvalidatesAllKeys() {
 	s.Equal("新闻", firstCategory, "Should return correct category value")
 	s.T().Logf("Before invalidation: category 'news' -> '%s'", firstCategory)
 
-	PublishDataDictChangedEvent(s.bus)
-	time.Sleep(10 * time.Millisecond)
+	s.Require().NoError(PublishDataDictChangedEvent(s.ctx, s.bus))
 	s.T().Logf("Published global invalidation event (all keys)")
 
 	updatedStatus, err := resolver.Resolve(s.ctx, "status", "published")

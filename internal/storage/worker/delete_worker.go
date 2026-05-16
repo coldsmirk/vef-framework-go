@@ -37,7 +37,7 @@ type DeleteWorker struct {
 	service     storage.Service
 	multipart   storage.Multipart // nil when the backend does not implement chunked uploads
 	deleteQueue store.DeleteQueue
-	publisher   event.Publisher
+	bus         event.Bus
 	cfg         *config.StorageConfig
 }
 
@@ -48,13 +48,13 @@ type DeleteWorker struct {
 func NewDeleteWorker(
 	service storage.Service,
 	deleteQueue store.DeleteQueue,
-	publisher event.Publisher,
+	bus event.Bus,
 	cfg *config.StorageConfig,
 ) *DeleteWorker {
 	w := &DeleteWorker{
 		service:     service,
 		deleteQueue: deleteQueue,
-		publisher:   publisher,
+		bus:         bus,
 		cfg:         cfg,
 	}
 
@@ -137,7 +137,9 @@ func (w *DeleteWorker) processOne(ctx context.Context, item *store.PendingDelete
 		return
 	}
 
-	w.publisher.Publish(storage.NewFileDeletedEvent(item.Key, item.Reason))
+	if err := w.bus.Publish(ctx, storage.NewFileDeletedEvent(item.Key, item.Reason)); err != nil {
+		logger.Warnf("publish file-deleted event for %s failed: %v", item.Key, err)
+	}
 }
 
 // handleFailure decides whether a transient error should trigger a
@@ -177,13 +179,15 @@ func (w *DeleteWorker) parkDeadLetter(ctx context.Context, item *store.PendingDe
 	logger.Errorf("Delete object %s reached max attempts (%d), parked as dead-letter: %v",
 		item.Key, maxAttempts, lastErr)
 
-	w.publisher.Publish(storage.NewDeleteDeadLetterEvent(
+	if err := w.bus.Publish(ctx, storage.NewDeleteDeadLetterEvent(
 		item.ID,
 		item.Key,
 		item.Reason,
 		item.Attempts+1,
 		classifyDeleteError(lastErr),
-	))
+	)); err != nil {
+		logger.Warnf("publish dead-letter event for %s failed: %v", item.Key, err)
+	}
 }
 
 // computeBackoff returns 2^attempt * base, capped at deleteMaxBackoff.

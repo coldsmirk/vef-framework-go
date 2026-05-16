@@ -6,14 +6,10 @@ import (
 	"github.com/coldsmirk/vef-framework-go/event"
 )
 
-const (
-	eventTypeAudit = "vef.api.request.audit"
-)
+const eventTypeAudit = "vef.api.request.audit"
 
 // AuditEvent represents an API request audit log event.
 type AuditEvent struct {
-	event.BaseEvent
-
 	// API identification
 	Resource string `json:"resource"`
 	Action   string `json:"action"`
@@ -37,6 +33,9 @@ type AuditEvent struct {
 	// Performance metrics
 	ElapsedTime int64 `json:"elapsedTime"` // Elapsed time in milliseconds
 }
+
+// EventType implements event.Event.
+func (*AuditEvent) EventType() string { return eventTypeAudit }
 
 // AuditEventParams contains parameters for creating an AuditEvent.
 type AuditEventParams struct {
@@ -67,7 +66,6 @@ type AuditEventParams struct {
 // NewAuditEvent creates a new audit event with the given parameters.
 func NewAuditEvent(params AuditEventParams) *AuditEvent {
 	return &AuditEvent{
-		BaseEvent:     event.NewBaseEvent(eventTypeAudit),
 		Resource:      params.Resource,
 		Action:        params.Action,
 		Version:       params.Version,
@@ -84,12 +82,13 @@ func NewAuditEvent(params AuditEventParams) *AuditEvent {
 	}
 }
 
-// SubscribeAuditEvent subscribes to audit events.
-// Returns an unsubscribe function that can be called to remove the subscription.
-func SubscribeAuditEvent(subscriber event.Subscriber, handler func(context.Context, *AuditEvent)) event.UnsubscribeFunc {
-	return subscriber.Subscribe(eventTypeAudit, func(ctx context.Context, evt event.Event) {
-		if auditEvt, ok := evt.(*AuditEvent); ok {
-			handler(ctx, auditEvt)
-		}
-	})
+// SubscribeAuditEvent registers a typed handler for audit events.
+func SubscribeAuditEvent(
+	bus event.Bus,
+	handler func(context.Context, *AuditEvent) error,
+	opts ...event.SubscribeOption,
+) (event.Unsubscribe, error) {
+	return event.SubscribeTyped[*AuditEvent](bus, func(ctx context.Context, evt *AuditEvent, _ event.Envelope) error {
+		return handler(ctx, evt)
+	}, opts...)
 }

@@ -1,7 +1,5 @@
 package storage
 
-import "github.com/coldsmirk/vef-framework-go/event"
-
 // Storage event topics. Subscribers should match on the constant rather
 // than the literal string to stay forward-compatible.
 const (
@@ -23,26 +21,22 @@ const (
 // a business transaction. Subscribers can use it for audit, analytics, or
 // downstream side-effects (cache warm-up, indexing, notifications).
 type FilePromotedEvent struct {
-	event.BaseEvent
-
 	// FileKey is the object key the business model now owns.
 	FileKey string `json:"fileKey"`
 }
 
 // NewFilePromotedEvent creates a new file-promoted event.
 func NewFilePromotedEvent(key string) *FilePromotedEvent {
-	return &FilePromotedEvent{
-		BaseEvent: event.NewBaseEvent(EventTypeFilePromoted),
-		FileKey:   key,
-	}
+	return &FilePromotedEvent{FileKey: key}
 }
+
+// EventType implements event.Event.
+func (*FilePromotedEvent) EventType() string { return EventTypeFilePromoted }
 
 // FileDeletedEvent reports the successful removal of an object from the
 // backend by the asynchronous delete worker. Subscribers can use it for
 // cache invalidation, audit, or downstream cleanup.
 type FileDeletedEvent struct {
-	event.BaseEvent
-
 	// FileKey is the object key that was just deleted.
 	FileKey string `json:"fileKey"`
 	// Reason carries the original schedule reason for the deletion.
@@ -51,19 +45,16 @@ type FileDeletedEvent struct {
 
 // NewFileDeletedEvent creates a new file-deleted event.
 func NewFileDeletedEvent(key string, reason DeleteReason) *FileDeletedEvent {
-	return &FileDeletedEvent{
-		BaseEvent: event.NewBaseEvent(EventTypeFileDeleted),
-		FileKey:   key,
-		Reason:    reason,
-	}
+	return &FileDeletedEvent{FileKey: key, Reason: reason}
 }
+
+// EventType implements event.Event.
+func (*FileDeletedEvent) EventType() string { return EventTypeFileDeleted }
 
 // DeleteDeadLetterEvent reports a pending-delete row that the delete worker
 // could not drain within its retry budget. The row is left in
 // sys_storage_pending_delete (parked) for manual investigation.
 type DeleteDeadLetterEvent struct {
-	event.BaseEvent
-
 	// PendingDeleteID is the primary key of the parked row.
 	PendingDeleteID string `json:"pendingDeleteId"`
 	// FileKey is the object key that failed to delete.
@@ -79,7 +70,6 @@ type DeleteDeadLetterEvent struct {
 // NewDeleteDeadLetterEvent creates a new dead-letter event.
 func NewDeleteDeadLetterEvent(id, key string, reason DeleteReason, attempts int, lastErr string) *DeleteDeadLetterEvent {
 	return &DeleteDeadLetterEvent{
-		BaseEvent:       event.NewBaseEvent(EventTypeDeleteDeadLetter),
 		PendingDeleteID: id,
 		FileKey:         key,
 		Reason:          reason,
@@ -87,3 +77,6 @@ func NewDeleteDeadLetterEvent(id, key string, reason DeleteReason, attempts int,
 		LastError:       lastErr,
 	}
 }
+
+// EventType implements event.Event.
+func (*DeleteDeadLetterEvent) EventType() string { return EventTypeDeleteDeadLetter }

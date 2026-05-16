@@ -7,10 +7,13 @@ import (
 	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/event"
+	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/reflectx"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
+
+var filesLogger = ilogx.Named("storage:files")
 
 // Files is the high-level facade business handlers use to keep their
 // `meta`-tagged file references in sync with the storage backend across
@@ -71,7 +74,7 @@ type Files interface {
 // with an in-memory bus this gives at-least-once delivery with the
 // possibility of spurious events if the business transaction later
 // rolls back; subscribers MUST be idempotent.
-func NewFiles(cc ClaimConsumer, ds DeleteScheduler, publisher event.Publisher, urlMapper URLKeyMapper) Files {
+func NewFiles(cc ClaimConsumer, ds DeleteScheduler, bus event.Bus, urlMapper URLKeyMapper) Files {
 	if urlMapper == nil {
 		urlMapper = new(IdentityURLKeyMapper)
 	}
@@ -79,7 +82,7 @@ func NewFiles(cc ClaimConsumer, ds DeleteScheduler, publisher event.Publisher, u
 	return &defaultFiles{
 		cc:        cc,
 		ds:        ds,
-		publisher: publisher,
+		bus:       bus,
 		urlMapper: urlMapper,
 		cache:     collections.NewConcurrentHashMap[reflect.Type, *cachedExtractor](),
 	}
@@ -88,7 +91,7 @@ func NewFiles(cc ClaimConsumer, ds DeleteScheduler, publisher event.Publisher, u
 type defaultFiles struct {
 	cc        ClaimConsumer
 	ds        DeleteScheduler
-	publisher event.Publisher
+	bus       event.Bus
 	urlMapper URLKeyMapper
 	cache     collections.ConcurrentMap[reflect.Type, *cachedExtractor]
 }
@@ -131,7 +134,7 @@ func (f *defaultFiles) onCreateWith(ctx context.Context, tx orm.DB, principal *s
 		return err
 	}
 
-	f.publishPromoted(keys)
+	f.publishPromoted(ctx, keys)
 
 	return nil
 }
@@ -160,7 +163,7 @@ func (f *defaultFiles) onUpdateWith(ctx context.Context, tx orm.DB, principal *s
 		return err
 	}
 
-	f.publishPromoted(consumedKeys)
+	f.publishPromoted(ctx, consumedKeys)
 
 	return nil
 }
@@ -174,16 +177,18 @@ func refKeys(refs []FileRef) []string {
 	return keys
 }
 
-// publishPromoted tolerates a nil publisher (tests wire one without an
-// event bus); callers must therefore always go through this helper
-// rather than touching f.publisher directly.
-func (f *defaultFiles) publishPromoted(keys []string) {
-	if f.publisher == nil || len(keys) == 0 {
+// publishPromoted tolerates a nil bus (tests wire defaultFiles without
+// an event bus); callers must therefore always go through this helper
+// rather than touching f.bus directly.
+func (f *defaultFiles) publishPromoted(ctx context.Context, keys []string) {
+	if f.bus == nil || len(keys) == 0 {
 		return
 	}
 
 	for _, key := range keys {
-		f.publisher.Publish(NewFilePromotedEvent(key))
+		if err := f.bus.Publish(ctx, NewFilePromotedEvent(key)); err != nil {
+			filesLogger.Warnf("publish file-promoted event for %s failed: %v", key, err)
+		}
 	}
 }
 

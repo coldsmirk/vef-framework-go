@@ -8,10 +8,8 @@ import (
 
 const eventTypeLogin = "vef.security.login"
 
-// LoginEvent represents a user login event.
+// LoginEvent represents a user login attempt — successful or otherwise.
 type LoginEvent struct {
-	event.BaseEvent
-
 	AuthType   string  `json:"authType"`
 	UserID     *string `json:"userId"` // Populated on success
 	Username   string  `json:"username"`
@@ -22,6 +20,9 @@ type LoginEvent struct {
 	FailReason string  `json:"failReason"` // Populated on failure
 	ErrorCode  int     `json:"errorCode"`
 }
+
+// EventType implements event.Event.
+func (*LoginEvent) EventType() string { return eventTypeLogin }
 
 // LoginEventParams contains parameters for creating a LoginEvent.
 type LoginEventParams struct {
@@ -39,7 +40,6 @@ type LoginEventParams struct {
 // NewLoginEvent creates a new login event with the given parameters.
 func NewLoginEvent(params LoginEventParams) *LoginEvent {
 	return &LoginEvent{
-		BaseEvent:  event.NewBaseEvent(eventTypeLogin),
 		AuthType:   params.AuthType,
 		UserID:     params.UserID,
 		Username:   params.Username,
@@ -52,12 +52,14 @@ func NewLoginEvent(params LoginEventParams) *LoginEvent {
 	}
 }
 
-// SubscribeLoginEvent subscribes to login events.
-// Returns an unsubscribe function that can be called to remove the subscription.
-func SubscribeLoginEvent(subscriber event.Subscriber, handler func(context.Context, *LoginEvent)) event.UnsubscribeFunc {
-	return subscriber.Subscribe(eventTypeLogin, func(ctx context.Context, evt event.Event) {
-		if loginEvt, ok := evt.(*LoginEvent); ok {
-			handler(ctx, loginEvt)
-		}
-	})
+// SubscribeLoginEvent registers a typed handler for login events. The
+// returned Unsubscribe detaches the subscription.
+func SubscribeLoginEvent(
+	bus event.Bus,
+	handler func(context.Context, *LoginEvent) error,
+	opts ...event.SubscribeOption,
+) (event.Unsubscribe, error) {
+	return event.SubscribeTyped[*LoginEvent](bus, func(ctx context.Context, evt *LoginEvent, _ event.Envelope) error {
+		return handler(ctx, evt)
+	}, opts...)
 }
