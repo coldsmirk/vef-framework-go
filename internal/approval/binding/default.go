@@ -7,18 +7,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
-
-// businessIdentifierPattern is the defense-in-depth whitelist for
-// table / column identifiers interpolated into raw SQL. Mirrors the regex
-// applied by the command-side flow validation; rejecting at write-back
-// time too guards rows persisted before the validator existed.
-var businessIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
 
 // ErrBindingMisconfigured signals that a Flow with BindingMode=business is
 // missing one of the required columns (business_table / business_pk_field /
@@ -73,8 +66,8 @@ func (*DefaultHook) WriteBackStatus(ctx context.Context, db orm.DB, flow *approv
 	// rows persisted before the validator existed (or smuggled in via a
 	// direct DB write) cannot turn fmt.Sprintf into a SQL injection vector.
 	for _, ident := range []string{table, pkField, statusField} {
-		if !businessIdentifierPattern.MatchString(ident) {
-			return fmt.Errorf("%w: flow %q identifier %q does not match SQL-safe pattern", ErrBindingMisconfigured, flow.ID, ident)
+		if err := approval.ValidateBusinessIdentifier(ident); err != nil {
+			return fmt.Errorf("%w: flow %q identifier %q rejected: %w", ErrBindingMisconfigured, flow.ID, ident, err)
 		}
 	}
 
