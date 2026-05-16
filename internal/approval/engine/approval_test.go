@@ -2,14 +2,12 @@ package engine_test
 
 import (
 	"context"
-	"time"
 
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
-	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 func init() {
@@ -100,8 +98,6 @@ func (s *ApprovalProcessorTestSuite) TestProcessSequentialApprovalShouldStartTim
 	instance := s.NewInstance(s.T(), "applicant-1")
 	s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2", "user-3"})
 
-	startedAt := timex.Now()
-
 	pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
 		n.ApprovalMethod = approval.ApprovalSequential
 		n.TimeoutHours = 24
@@ -115,9 +111,12 @@ func (s *ApprovalProcessorTestSuite) TestProcessSequentialApprovalShouldStartTim
 	s.Require().Len(tasks, 3, "Should create three sequential approval tasks")
 
 	s.Require().NotNil(tasks[0].Deadline, "First pending task should have deadline set immediately")
+	// Timezone-agnostic: CreatedAt and Deadline live on the same row and pass through the
+	// same driver Scan path, so any timezone drift cancels out. With TimeoutHours=24 the
+	// deadline must sit at least 23h past CreatedAt.
 	s.Assert().True(
-		tasks[0].Deadline.Unwrap().After(startedAt.Unwrap().Add(23*time.Hour)),
-		"First task deadline should be close to now plus timeout hours",
+		tasks[0].Deadline.Unwrap().After(tasks[0].CreatedAt.AddHours(23).Unwrap()),
+		"First task deadline should be close to creation time plus timeout hours",
 	)
 	s.Assert().Nil(tasks[1].Deadline, "Waiting tasks should not start timeout before activation")
 	s.Assert().Nil(tasks[2].Deadline, "Waiting tasks should not start timeout before activation")
@@ -126,8 +125,6 @@ func (s *ApprovalProcessorTestSuite) TestProcessSequentialApprovalShouldStartTim
 func (s *ApprovalProcessorTestSuite) TestProcessSetsTaskDeadlineFromTimeoutHours() {
 	instance := s.NewInstance(s.T(), "applicant-1")
 	s.InsertAssigneeConfig(s.T(), []string{"user-1"})
-
-	startedAt := timex.Now()
 
 	pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
 		n.TimeoutHours = 24
@@ -141,8 +138,12 @@ func (s *ApprovalProcessorTestSuite) TestProcessSetsTaskDeadlineFromTimeoutHours
 	s.Require().Len(tasks, 1, "Should create exactly one task")
 	s.Require().NotNil(tasks[0].Deadline, "Task deadline should be set from node timeout")
 
-	deadline := tasks[0].Deadline.Unwrap()
-	s.Assert().True(deadline.After(startedAt.Unwrap().Add(23*time.Hour)), "Task deadline should be near now plus timeout hours")
+	// Timezone-agnostic: compare deadline to the same row's CreatedAt (same Scan path) —
+	// drift cancels out. TimeoutHours=24, so deadline must be at least 23h past CreatedAt.
+	s.Assert().True(
+		tasks[0].Deadline.Unwrap().After(tasks[0].CreatedAt.AddHours(23).Unwrap()),
+		"Task deadline should be near creation time plus timeout hours",
+	)
 }
 
 func (s *ApprovalProcessorTestSuite) TestProcessEmptyAssignee() {

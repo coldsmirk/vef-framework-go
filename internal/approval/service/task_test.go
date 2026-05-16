@@ -208,7 +208,6 @@ func (s *TaskServiceTestSuite) TestActivateNextSequentialTask() {
 		instance.ID = inst.ID
 		node := &approval.FlowNode{TimeoutHours: 2}
 		node.ID = nodeID
-		startedAt := timex.Now()
 
 		err = s.svc.ActivateNextSequentialTask(s.ctx, s.db, instance, node)
 		s.Require().NoError(err, "Should activate next sequential task with timeout")
@@ -223,8 +222,13 @@ func (s *TaskServiceTestSuite) TestActivateNextSequentialTask() {
 
 		s.Assert().Equal(approval.TaskPending, reloaded.Status, "Waiting task should transition to pending")
 		s.Require().NotNil(reloaded.Deadline, "Activated pending task should have deadline set")
+		// Timezone-agnostic: compare deadline to the same row's CreatedAt (both pass through the
+		// same driver Scan path so any timezone drift is identical). Node TimeoutHours=2,
+		// activation happens within the same test, so the recalculated deadline must be at
+		// least 1h past CreatedAt; if the implementation incorrectly inherited the seeded
+		// stale deadline (now-8h) it would fall well before CreatedAt.
 		s.Assert().True(
-			reloaded.Deadline.Unwrap().After(startedAt.AddHours(1).Unwrap()),
+			reloaded.Deadline.Unwrap().After(reloaded.CreatedAt.AddHours(1).Unwrap()),
 			"Activated task deadline should be recalculated from activation time",
 		)
 	})

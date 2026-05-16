@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/timeout"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -349,8 +349,6 @@ func (s *ScannerTestSuite) TestTransferAdminTimeoutShouldStartDeadlineForNewAdmi
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should configure node admin users and timeout hours for transfer deadline test")
 
-	startedAt := timex.Now()
-
 	s.scanner.ScanTimeouts(s.ctx)
 
 	var adminTasks []approval.Task
@@ -367,8 +365,11 @@ func (s *ScannerTestSuite) TestTransferAdminTimeoutShouldStartDeadlineForNewAdmi
 	)
 	s.Require().Len(adminTasks, 1, "Timeout transfer should create one pending admin task")
 	s.Require().NotNil(adminTasks[0].Deadline, "Transferred pending admin task should start timeout deadline")
+	// Timezone-agnostic: CreatedAt and Deadline come from the same row via the same driver
+	// Scan path, so any timezone drift cancels out. TimeoutHours=4, so the admin task's
+	// deadline must sit at least 3h past CreatedAt.
 	s.Assert().True(
-		adminTasks[0].Deadline.Unwrap().After(startedAt.AddHours(3).Unwrap()),
+		adminTasks[0].Deadline.Unwrap().After(adminTasks[0].CreatedAt.AddHours(3).Unwrap()),
 		"Transferred pending admin task deadline should be computed from transfer time",
 	)
 }

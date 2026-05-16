@@ -10,10 +10,10 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -347,8 +347,19 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldStartTimeoutWhenNewTaskIsPen
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should set original task deadline")
 
+	// Reload the seeded original deadline so the assertion compares two values that pass
+	// through the same driver Scan path (timezone-agnostic).
+	var seeded approval.Task
+
+	seeded.ID = task.ID
+	s.Require().NoError(
+		s.db.NewSelect().Model(&seeded).WherePK().Scan(s.ctx),
+		"Should reload the seeded original deadline as a DB-side baseline",
+	)
+	s.Require().NotNil(seeded.Deadline, "Seeded original deadline should be persisted")
+	originalBaseline := seeded.Deadline.Unwrap()
+
 	operator := approval.OperatorInfo{ID: "operator-deadline", Name: "Operator"}
-	startedAt := timex.Now()
 	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
 		TaskID:   task.ID,
 		UserIDs:  []string{"new-deadline-user"},
@@ -370,13 +381,17 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldStartTimeoutWhenNewTaskIsPen
 	s.Require().Len(newTasks, 1, "Should create one added assignee task")
 	s.Assert().Equal(approval.TaskPending, newTasks[0].Status, "Parallel add should create a pending task")
 	s.Require().NotNil(newTasks[0].Deadline, "Pending task should start timeout immediately")
+	// Timezone-agnostic: the new task's CreatedAt and Deadline pass through identical driver
+	// Scan paths, so any timezone drift cancels out. Node TimeoutHours=4, so the new
+	// deadline must sit at least 3h past CreatedAt.
 	s.Assert().True(
-		newTasks[0].Deadline.Unwrap().After(startedAt.AddHours(3).Unwrap()),
+		newTasks[0].Deadline.Unwrap().After(newTasks[0].CreatedAt.AddHours(3).Unwrap()),
 		"Pending task deadline should be calculated from add-assignee time",
 	)
-	s.Assert().NotEqual(
-		originalDeadline.Unwrap().Unix(),
-		newTasks[0].Deadline.Unwrap().Unix(),
+	// Compare to the DB-side baseline of the original deadline (now+8h) — the new deadline
+	// (now+4h) must be strictly earlier, proving it was recomputed rather than inherited.
+	s.Assert().True(
+		newTasks[0].Deadline.Unwrap().Before(originalBaseline.Add(-3*time.Hour)),
 		"Pending task deadline should not inherit original task deadline directly",
 	)
 }
