@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/event/middleware"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
@@ -411,7 +412,7 @@ func (b *Bus) buildBuckets(ctx context.Context, evts []event.Event, cfg event.Pu
 			return nil, fmt.Errorf("%w: %q", event.ErrInvalidEventType, evt.EventType())
 		}
 
-		processed, err := b.runPublishMiddleware(ctx, b.buildEnvelope(evt, cfg))
+		processed, err := b.runPublishMiddleware(ctx, b.buildEnvelope(ctx, evt, cfg))
 		if err != nil {
 			return nil, err
 		}
@@ -561,7 +562,7 @@ func stripAsyncOption(opts []event.PublishOption) []event.PublishOption {
 	return out
 }
 
-func (b *Bus) buildEnvelope(evt event.Event, cfg event.PublishConfig) event.Envelope {
+func (b *Bus) buildEnvelope(ctx context.Context, evt event.Event, cfg event.PublishConfig) event.Envelope {
 	now := time.Now()
 
 	occurred := cfg.OccurredAt
@@ -574,13 +575,21 @@ func (b *Bus) buildEnvelope(evt event.Event, cfg event.PublishConfig) event.Enve
 		source = b.appSource
 	}
 
+	correlationID := cfg.CorrelationID
+	if correlationID == "" {
+		// Inherit the per-request trace ID by default so any downstream
+		// subscriber can correlate events with the originating HTTP/RPC
+		// request. Explicit WithCorrelationID still wins.
+		correlationID = contextx.RequestID(ctx)
+	}
+
 	return event.Envelope{
 		ID:            newEventID(),
 		Type:          evt.EventType(),
 		Source:        source,
 		OccurredAt:    occurred,
 		PublishedAt:   now,
-		CorrelationID: cfg.CorrelationID,
+		CorrelationID: correlationID,
 		Headers:       cfg.Headers,
 		Payload:       evt,
 	}
