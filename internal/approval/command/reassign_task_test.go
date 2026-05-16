@@ -93,6 +93,7 @@ func (s *ReassignTaskTestSuite) TestReassignSuccess() {
 		NewAssigneeID: "new-user",
 		Operator:      operator,
 		Reason:        "人员调整",
+		Caller:        approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should reassign task without error")
 
@@ -120,6 +121,7 @@ func (s *ReassignTaskTestSuite) TestReassignTaskNotFound() {
 		TaskID:        "non-existent",
 		NewAssigneeID: "new-user",
 		Operator:      operator,
+		Caller:        approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return ErrTaskNotFound")
@@ -133,6 +135,7 @@ func (s *ReassignTaskTestSuite) TestReassignTaskNotPending() {
 		TaskID:        task.ID,
 		NewAssigneeID: "new-user",
 		Operator:      operator,
+		Caller:        approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should not allow reassigning non-pending task")
@@ -146,6 +149,7 @@ func (s *ReassignTaskTestSuite) TestReassignShouldRejectBlankTarget() {
 		TaskID:        task.ID,
 		NewAssigneeID: "   ",
 		Operator:      operator,
+		Caller:        approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should reject blank reassignment target")
 	s.Assert().ErrorIs(err, shared.ErrInvalidTransferTarget, "Should return invalid target error for blank reassignment target")
@@ -159,6 +163,7 @@ func (s *ReassignTaskTestSuite) TestReassignShouldRejectSameAssignee() {
 		TaskID:        task.ID,
 		NewAssigneeID: "original-user",
 		Operator:      operator,
+		Caller:        approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should reject reassignment to current assignee")
 	s.Assert().ErrorIs(err, shared.ErrInvalidTransferTarget, "Should return invalid target error for self reassignment")
@@ -183,6 +188,7 @@ func (s *ReassignTaskTestSuite) TestReassignShouldRejectExistingActiveTarget() {
 		TaskID:        task.ID,
 		NewAssigneeID: "existing-user",
 		Operator:      operator,
+		Caller:        approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should reject reassignment to assignee with active task on the same node")
 	s.Assert().ErrorIs(err, shared.ErrInvalidTransferTarget, "Should return invalid target error for duplicate active assignee")

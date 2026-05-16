@@ -61,6 +61,7 @@ func (s *ApproveTaskTestSuite) TestApproveSuccess() {
 		TaskID:   task.ID,
 		Operator: operator,
 		Opinion:  "Approved",
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should approve task without error")
 
@@ -95,6 +96,7 @@ func (s *ApproveTaskTestSuite) TestApproveTaskNotFound() {
 	_, err := s.handler.Handle(s.ctx, command.ApproveTaskCmd{
 		TaskID:   "non-existent",
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return expected error")
@@ -107,6 +109,7 @@ func (s *ApproveTaskTestSuite) TestApproveNotAssignee() {
 	_, err := s.handler.Handle(s.ctx, command.ApproveTaskCmd{
 		TaskID:   task.ID,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should return expected error")
@@ -127,6 +130,7 @@ func (s *ApproveTaskTestSuite) TestApproveAlreadyCompleted() {
 	_, err = s.handler.Handle(s.ctx, command.ApproveTaskCmd{
 		TaskID:   task.ID,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should return expected error")
@@ -156,6 +160,7 @@ func (s *ApproveTaskTestSuite) TestApproveTaskNotCurrentNode() {
 		TaskID:   task.ID,
 		Operator: operator,
 		Opinion:  "approved",
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when approving a task not in current node")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should return task not pending for stale node task")
@@ -191,6 +196,7 @@ func (s *ApproveTaskTestSuite) TestApproveShouldResolveCCFromFormField() {
 		FormData: map[string]any{
 			ccField: []string{"cc-user-2", "cc-user-3"},
 		},
+		Caller: approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should approve task with form-field CC data")
 

@@ -240,7 +240,7 @@ func (s *TaskServiceTestSuite) TestPrepareOperation() {
 	s.Run("Success", func() {
 		nodeID, instanceID, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "op-user-1")
 
-		tc, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, "op-user-1", nil)
+		tc, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.OperatorInfo{ID: "op-user-1"}, approval.SystemCaller, nil)
 		s.Require().NoError(err, "Should prepare operation context")
 		s.Assert().Equal(instanceID, tc.Instance.ID, "Prepared instance ID should match")
 		s.Assert().Equal(taskID, tc.Task.ID, "Prepared task ID should match")
@@ -248,28 +248,28 @@ func (s *TaskServiceTestSuite) TestPrepareOperation() {
 	})
 
 	s.Run("TaskNotFound", func() {
-		_, err := s.svc.PrepareOperation(s.ctx, s.db, "non-existent", "op-user-1", nil)
+		_, err := s.svc.PrepareOperation(s.ctx, s.db, "non-existent", approval.OperatorInfo{ID: "op-user-1"}, approval.SystemCaller, nil)
 		s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return task not found for missing task ID")
 	})
 
 	s.Run("InstanceCompleted", func() {
 		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceApproved, approval.TaskPending, "op-user-2")
 
-		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, "op-user-2", nil)
+		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.OperatorInfo{ID: "op-user-2"}, approval.SystemCaller, nil)
 		s.Assert().ErrorIs(err, shared.ErrInstanceCompleted, "Should reject operation on completed instance")
 	})
 
 	s.Run("NotAssignee", func() {
 		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "op-user-3")
 
-		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, "wrong-user", nil)
+		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.OperatorInfo{ID: "wrong-user"}, approval.SystemCaller, nil)
 		s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should reject non-assignee operator")
 	})
 
 	s.Run("TaskNotPending", func() {
 		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskApproved, "op-user-4")
 
-		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, "op-user-4", nil)
+		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.OperatorInfo{ID: "op-user-4"}, approval.SystemCaller, nil)
 		s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject non-pending task")
 	})
 
@@ -294,7 +294,7 @@ func (s *TaskServiceTestSuite) TestPrepareOperation() {
 			Exec(s.ctx)
 		s.Require().NoError(err, "Should move instance current node away from task node")
 
-		_, err = s.svc.PrepareOperation(s.ctx, s.db, taskID, "op-user-5", nil)
+		_, err = s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.OperatorInfo{ID: "op-user-5"}, approval.SystemCaller, nil)
 		s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject operations on tasks outside current node")
 	})
 }
@@ -309,6 +309,7 @@ func (s *TaskServiceTestSuite) TestLoadTaskContextForNodeOperation() {
 
 		tc, err := s.svc.LoadTaskContextForNodeOperation(s.ctx, s.db, taskID, service.TaskContextLoadOptions{
 			RequireCurrentNode: true,
+			Caller:             approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should load context when pending constraint is not required")
 		s.Assert().Equal(instanceID, tc.Instance.ID, "Loaded instance ID should match")
@@ -326,6 +327,7 @@ func (s *TaskServiceTestSuite) TestLoadTaskContextForNodeOperation() {
 			RequireOperatorAssignee: true,
 			RequireTaskPending:      true,
 			RequireCurrentNode:      true,
+			Caller:                  approval.SystemCaller,
 		})
 		s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should reject non-assignee when assignee constraint is enabled")
 	})

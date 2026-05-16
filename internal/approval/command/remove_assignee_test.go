@@ -114,6 +114,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveSuccess() {
 	_, err := s.handler.Handle(s.ctx, command.RemoveAssigneeCmd{
 		TaskID:   task2.ID,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should remove assignee without error")
 
@@ -180,6 +181,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveWaitingTaskShouldSucceed() {
 	_, err = s.handler.Handle(s.ctx, command.RemoveAssigneeCmd{
 		TaskID:   waitingTask.ID,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Removing waiting task should be supported")
 
@@ -244,6 +246,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveNotAllowed() {
 	_, err = s.handler.Handle(s.ctx, command.RemoveAssigneeCmd{
 		TaskID:   task.ID,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrRemoveAssigneeNotAllowed, "Should return expected error")
@@ -254,6 +257,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveTaskNotFound() {
 	_, err := s.handler.Handle(s.ctx, command.RemoveAssigneeCmd{
 		TaskID:   "non-existent",
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return expected error")
@@ -288,6 +292,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveInstanceCompleted() {
 	_, err = s.handler.Handle(s.ctx, command.RemoveAssigneeCmd{
 		TaskID:   task.ID,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrInstanceCompleted, "Should reject remove on completed instance")
@@ -318,6 +323,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveTaskNotCurrentNode() {
 	_, err = s.handler.Handle(s.ctx, command.RemoveAssigneeCmd{
 		TaskID:   task2.ID,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject remove on non-current node task")
@@ -345,6 +351,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveAssigneeShouldBeConcurrencySafe() {
 			_, err := s.handler.Handle(txCtx, command.RemoveAssigneeCmd{
 				TaskID:   taskID,
 				Operator: approval.OperatorInfo{ID: operatorID, Name: operatorID},
+				Caller:   approval.SystemCaller,
 			})
 
 			return err

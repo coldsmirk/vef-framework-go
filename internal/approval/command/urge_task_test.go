@@ -101,6 +101,7 @@ func (s *UrgeTaskTestSuite) TestUrgeSuccess() {
 		TaskID:  task.ID,
 		UrgerID: "applicant-1",
 		Message: "Please review ASAP",
+		Caller:  approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should urge task without error")
 
@@ -122,6 +123,7 @@ func (s *UrgeTaskTestSuite) TestUrgeCooldown() {
 	_, err := s.handler.Handle(s.ctx, command.UrgeTaskCmd{
 		TaskID:  task.ID,
 		UrgerID: "applicant-1",
+		Caller:  approval.SystemCaller,
 	})
 	s.Require().NoError(err, "First urge should succeed")
 
@@ -129,6 +131,7 @@ func (s *UrgeTaskTestSuite) TestUrgeCooldown() {
 	_, err = s.handler.Handle(s.ctx, command.UrgeTaskCmd{
 		TaskID:  task.ID,
 		UrgerID: "applicant-1",
+		Caller:  approval.SystemCaller,
 	})
 	s.Require().Error(err, "Second urge should fail")
 
@@ -141,6 +144,7 @@ func (s *UrgeTaskTestSuite) TestUrgeTaskNotFound() {
 	_, err := s.handler.Handle(s.ctx, command.UrgeTaskCmd{
 		TaskID:  "non-existent",
 		UrgerID: "applicant-1",
+		Caller:  approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return ErrTaskNotFound")
@@ -152,6 +156,7 @@ func (s *UrgeTaskTestSuite) TestUrgeShouldDenyNonParticipant() {
 	_, err := s.handler.Handle(s.ctx, command.UrgeTaskCmd{
 		TaskID:  task.ID,
 		UrgerID: "outsider-1",
+		Caller:  approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should reject non-participant urge request")
 	s.Assert().ErrorIs(err, shared.ErrAccessDenied, "Should return access denied for non-participant")
@@ -180,6 +185,7 @@ func (s *UrgeTaskTestSuite) TestUrgeCooldownShouldBeConcurrencySafe() {
 			_, err := s.handler.Handle(txCtx, command.UrgeTaskCmd{
 				TaskID:  task.ID,
 				UrgerID: "applicant-1",
+				Caller:  approval.SystemCaller,
 			})
 
 			return err

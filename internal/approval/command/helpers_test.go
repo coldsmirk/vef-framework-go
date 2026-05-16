@@ -396,6 +396,7 @@ func deployAndPublishFlow(t testing.TB, ctx context.Context, db orm.DB, code str
 	version, err := deployHandler.Handle(ctx, command.DeployFlowCmd{
 		FlowID:         flow.ID,
 		FlowDefinition: def,
+		Caller:         approval.SystemCaller,
 	})
 	require.NoError(t, err, "Should deploy flow")
 
@@ -403,6 +404,7 @@ func deployAndPublishFlow(t testing.TB, ctx context.Context, db orm.DB, code str
 	_, err = publishHandler.Handle(ctx, command.PublishVersionCmd{
 		VersionID:  version.ID,
 		OperatorID: "admin",
+		Caller:     approval.SystemCaller,
 	})
 	require.NoError(t, err, "Should publish version")
 

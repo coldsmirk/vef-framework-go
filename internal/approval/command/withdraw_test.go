@@ -99,6 +99,7 @@ func (s *WithdrawTestSuite) TestWithdrawSuccess() {
 	_, err := s.handler.Handle(s.ctx, command.WithdrawCmd{
 		InstanceID: inst.ID,
 		Operator:   operator,
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should withdraw instance without error")
 
@@ -135,6 +136,7 @@ func (s *WithdrawTestSuite) TestWithdrawNotApplicant() {
 	_, err := s.handler.Handle(s.ctx, command.WithdrawCmd{
 		InstanceID: inst.ID,
 		Operator:   operator,
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrNotApplicant, "Should return ErrNotApplicant")
@@ -147,6 +149,7 @@ func (s *WithdrawTestSuite) TestWithdrawNotAllowed() {
 	_, err := s.handler.Handle(s.ctx, command.WithdrawCmd{
 		InstanceID: inst.ID,
 		Operator:   operator,
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrWithdrawNotAllowed, "Should not allow withdrawal of approved instance")
@@ -157,6 +160,7 @@ func (s *WithdrawTestSuite) TestWithdrawInstanceNotFound() {
 	_, err := s.handler.Handle(s.ctx, command.WithdrawCmd{
 		InstanceID: "non-existent",
 		Operator:   operator,
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrInstanceNotFound, "Should return ErrInstanceNotFound")
@@ -186,6 +190,7 @@ func (s *WithdrawTestSuite) TestWithdrawShouldBeConcurrencySafe() {
 			_, err := s.handler.Handle(txCtx, command.WithdrawCmd{
 				InstanceID: inst.ID,
 				Operator:   operator,
+				Caller:     approval.SystemCaller,
 			})
 
 			return err

@@ -87,6 +87,7 @@ func (s *DeployFlowTestSuite) TestDeploySuccess() {
 	cmd := command.DeployFlowCmd{
 		FlowID:         s.flowID,
 		FlowDefinition: simpleFlowDef(),
+		Caller:         approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -138,6 +139,7 @@ func (s *DeployFlowTestSuite) TestDeployWithDescription() {
 		FlowID:         s.flowID,
 		Description:    &desc,
 		FlowDefinition: simpleFlowDef(),
+		Caller:         approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -159,6 +161,7 @@ func (s *DeployFlowTestSuite) TestDeployFlowNotFound() {
 	cmd := command.DeployFlowCmd{
 		FlowID:         "non-existent-flow-id",
 		FlowDefinition: simpleFlowDef(),
+		Caller:         approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)
@@ -176,6 +179,7 @@ func (s *DeployFlowTestSuite) TestDeployInvalidFlowDesign() {
 				})},
 			},
 		},
+		Caller: approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)
@@ -197,6 +201,7 @@ func (s *DeployFlowTestSuite) TestDeployInvalidAddAssigneeTypeInNodeData() {
 				{ID: "edge-2", Source: "approval-1", Target: "end-1"},
 			},
 		},
+		Caller: approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)
@@ -208,6 +213,7 @@ func (s *DeployFlowTestSuite) TestDeployWithAssigneesAndCCs() {
 	cmd := command.DeployFlowCmd{
 		FlowID:         s.flowID,
 		FlowDefinition: approvalFlowDef(),
+		Caller:         approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -263,6 +269,7 @@ func (s *DeployFlowTestSuite) TestDeployEdgesWithNodeKeys() {
 	cmd := command.DeployFlowCmd{
 		FlowID:         s.flowID,
 		FlowDefinition: simpleFlowDef(),
+		Caller:         approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -289,6 +296,7 @@ func (s *DeployFlowTestSuite) TestDeployDoesNotUpdateFlowCurrentVersion() {
 	cmd := command.DeployFlowCmd{
 		FlowID:         s.flowID,
 		FlowDefinition: simpleFlowDef(),
+		Caller:         approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)

@@ -63,6 +63,7 @@ func (s *FindFlowsTestSuite) TearDownSuite() {
 func (s *FindFlowsTestSuite) TestFindAll() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 		Pageable: page.Pageable{Page: 1, Size: 10},
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(4), result.Total, "Should find 4 flows")
@@ -73,6 +74,7 @@ func (s *FindFlowsTestSuite) TestFilterByTenant() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 		TenantID: new("t1"),
 		Pageable: page.Pageable{Page: 1, Size: 10},
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(3), result.Total, "Should find 3 flows in tenant t1")
@@ -82,6 +84,7 @@ func (s *FindFlowsTestSuite) TestFilterByCategory() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 		CategoryID: new(s.categoryID1),
 		Pageable:   page.Pageable{Page: 1, Size: 10},
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(2), result.Total, "Should find 2 flows in category 1")
@@ -92,6 +95,7 @@ func (s *FindFlowsTestSuite) TestFilterByIsActive() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 		IsActive: &isActive,
 		Pageable: page.Pageable{Page: 1, Size: 10},
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(3), result.Total, "Should find 3 active flows")
@@ -101,6 +105,7 @@ func (s *FindFlowsTestSuite) TestKeywordSearch() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 		Keyword:  new("Flow"),
 		Pageable: page.Pageable{Page: 1, Size: 10},
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(4), result.Total, "Should find 4 flows with 'Flow' in name")
@@ -109,6 +114,7 @@ func (s *FindFlowsTestSuite) TestKeywordSearch() {
 func (s *FindFlowsTestSuite) TestPagination() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 		Pageable: page.Pageable{Page: 1, Size: 2},
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(4), result.Total, "Total should be 4")
@@ -119,6 +125,7 @@ func (s *FindFlowsTestSuite) TestEmpty() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 		TenantID: new("non-existent-tenant"),
 		Pageable: page.Pageable{Page: 1, Size: 10},
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(0), result.Total, "Should find 0 flows")

@@ -85,6 +85,7 @@ func (s *GetAdminInstanceDetailTestSuite) TearDownSuite() {
 func (s *GetAdminInstanceDetailTestSuite) TestGetDetailSuccess() {
 	detail, err := s.handler.Handle(s.ctx, query.GetAdminInstanceDetailQuery{
 		InstanceID: s.instanceID,
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should get admin instance detail without error")
 	s.Require().NotNil(detail, "Should not be nil")
@@ -100,6 +101,7 @@ func (s *GetAdminInstanceDetailTestSuite) TestGetDetailSuccess() {
 func (s *GetAdminInstanceDetailTestSuite) TestNotFound() {
 	_, err := s.handler.Handle(s.ctx, query.GetAdminInstanceDetailQuery{
 		InstanceID: "non-existent-instance",
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().ErrorIs(err, shared.ErrInstanceNotFound, "Should return instance-not-found error")
 }

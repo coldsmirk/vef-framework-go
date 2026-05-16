@@ -69,6 +69,7 @@ func (s *StartInstanceTestSuite) TestStartSuccess() {
 		FlowCode:  "apv-cmd-test-flow",
 		Applicant: applicant,
 		FormData:  map[string]any{"reason": "test"},
+		Caller:    approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should start instance without error")
 	s.Require().NotNil(instance, "Should not be nil")
@@ -91,6 +92,7 @@ func (s *StartInstanceTestSuite) TestStartFlowNotFound() {
 	_, err := s.handler.Handle(s.ctx, command.StartInstanceCmd{
 		FlowCode:  "non-existent-flow",
 		Applicant: applicant,
+		Caller:    approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrFlowNotFound, "Should return expected error")
@@ -117,6 +119,7 @@ func (s *StartInstanceTestSuite) TestStartFlowNotActive() {
 	_, err = s.handler.Handle(s.ctx, command.StartInstanceCmd{
 		FlowCode:  "apv-cmd-test-flow",
 		Applicant: applicant,
+		Caller:    approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrFlowNotActive, "Should return expected error")
@@ -140,6 +143,7 @@ func (s *StartInstanceTestSuite) TestStartWithFormData() {
 		FlowCode:  "apv-cmd-test-flow",
 		Applicant: applicant,
 		FormData:  formData,
+		Caller:    approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should start instance with form data")
 	s.Require().NotNil(instance, "Should not be nil")
@@ -168,6 +172,7 @@ func (s *StartInstanceTestSuite) TestStartShouldRenderTemplateWithCompatibleKeys
 		FlowCode:  "apv-cmd-test-flow",
 		Applicant: applicant,
 		FormData:  map[string]any{"reason": "Travel"},
+		Caller:    approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should start instance with lowerCamel title template keys")
 	s.Assert().Equal("TEST-1-Template User-apv-cmd-test-flow-Travel", instance.Title, "Should render lowerCamel template keys consistently")
@@ -185,6 +190,7 @@ func (s *StartInstanceTestSuite) TestStartShouldRejectInvalidFormDataBySchema() 
 		FlowCode:  "apv-cmd-test-flow",
 		Applicant: approval.OperatorInfo{ID: "user-invalid", Name: "Invalid User"},
 		FormData:  map[string]any{"unknown": "value"},
+		Caller:    approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should reject form data that violates form schema")
 

@@ -104,6 +104,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeSuccess() {
 		UserIDs:  []string{"new-user-1", "new-user-2"},
 		AddType:  approval.AddAssigneeBefore,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should add assignees without error")
 
@@ -162,6 +163,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeNotAllowed() {
 		UserIDs:  []string{"new-user-1"},
 		AddType:  approval.AddAssigneeBefore,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrAddAssigneeNotAllowed, "Should return ErrAddAssigneeNotAllowed")
@@ -176,6 +178,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeNotAssignee() {
 		UserIDs:  []string{"new-user-1"},
 		AddType:  approval.AddAssigneeBefore,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should return ErrNotAssignee")
@@ -188,6 +191,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotFound() {
 		UserIDs:  []string{"new-user-1"},
 		AddType:  approval.AddAssigneeBefore,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return ErrTaskNotFound")
@@ -223,6 +227,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeInstanceCompleted() {
 		UserIDs:  []string{"new-user-1"},
 		AddType:  approval.AddAssigneeBefore,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrInstanceCompleted, "Should return ErrInstanceCompleted")
@@ -274,6 +279,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeRejectsDisallowedConfiguredType() 
 		UserIDs:  []string{"new-user-1"},
 		AddType:  approval.AddAssigneeAfter,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should reject disallowed add assignee type")
 	s.Assert().ErrorIs(err, shared.ErrInvalidAddAssigneeType, "Should return ErrInvalidAddAssigneeType")
@@ -295,6 +301,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotPending() {
 		UserIDs:  []string{"new-user-1"},
 		AddType:  approval.AddAssigneeBefore,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject adding assignee for non-pending task")
@@ -325,6 +332,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotCurrentNode() {
 		UserIDs:  []string{"new-user-1"},
 		AddType:  approval.AddAssigneeBefore,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject adding assignee for non-current node task")
@@ -366,6 +374,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldStartTimeoutWhenNewTaskIsPen
 		UserIDs:  []string{"new-deadline-user"},
 		AddType:  approval.AddAssigneeParallel,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should add assignee without error")
 
@@ -421,6 +430,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldKeepWaitingTaskDeadlineEmpty
 		UserIDs:  []string{"new-waiting-user"},
 		AddType:  approval.AddAssigneeAfter,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should add assignee without error")
 
@@ -462,6 +472,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeBeforeShouldResetOriginalTaskDeadl
 		UserIDs:  []string{"new-before-user"},
 		AddType:  approval.AddAssigneeBefore,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should add assignee without error")
 
@@ -485,6 +496,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldDeduplicateUserIDsAndIgnoreE
 		UserIDs:  []string{"new-user-1", "", "new-user-1", "new-user-2"},
 		AddType:  approval.AddAssigneeParallel,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should add assignees without error")
 
@@ -532,6 +544,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldSkipExistingActiveAssignee()
 		UserIDs:  []string{"new-user-1", "new-user-2"},
 		AddType:  approval.AddAssigneeParallel,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should add assignees without error")
 
@@ -581,6 +594,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldBeConcurrencySafe() {
 				UserIDs:  []string{"new-user-concurrency"},
 				AddType:  approval.AddAssigneeParallel,
 				Operator: operator,
+				Caller:   approval.SystemCaller,
 			})
 
 			return err
@@ -658,6 +672,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeAndPrepareOperationShouldAvoidDead
 				UserIDs:  []string{"lock-order-user"},
 				AddType:  approval.AddAssigneeParallel,
 				Operator: approval.OperatorInfo{ID: "operator-lock-order", Name: "Operator"},
+				Caller:   approval.SystemCaller,
 			})
 
 			return err
@@ -668,7 +683,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeAndPrepareOperationShouldAvoidDead
 	go func() {
 		prepareDone <- s.db.RunInTX(s.ctx, func(ctx context.Context, tx orm.DB) error {
 			txCtx := contextx.SetDB(ctx, tx)
-			_, err := taskSvc.PrepareOperation(txCtx, tx, task.ID, "operator-lock-order", nil)
+			_, err := taskSvc.PrepareOperation(txCtx, tx, task.ID, approval.OperatorInfo{ID: "operator-lock-order"}, approval.SystemCaller, nil)
 
 			return err
 		})

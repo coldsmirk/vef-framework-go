@@ -112,6 +112,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTaskNotFound() {
 		TaskID:       "non-existent",
 		Operator:     operator,
 		TargetNodeID: s.targetNode.ID,
+		Caller:       approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when task does not exist")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return task not found")
@@ -133,6 +134,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTaskNotCurrentNode() {
 		Operator:     operator,
 		TargetNodeID: s.targetNode.ID,
 		Opinion:      "rollback",
+		Caller:       approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when rolling back a task not in current node")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should return task not pending for stale node task")
@@ -148,6 +150,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTargetRequired() {
 			Operator:     operator,
 			TargetNodeID: "",
 			Opinion:      "rollback",
+			Caller:       approval.SystemCaller,
 		})
 		s.Require().Error(err, "Should fail when rollback target is empty")
 		s.Assert().ErrorIs(err, shared.ErrInvalidRollbackTarget, "Should return invalid rollback target for empty input")
@@ -162,6 +165,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTargetRequired() {
 			Operator:     operator,
 			TargetNodeID: "   ",
 			Opinion:      "rollback",
+			Caller:       approval.SystemCaller,
 		})
 		s.Require().Error(err, "Should fail when rollback target is blank")
 		s.Assert().ErrorIs(err, shared.ErrInvalidRollbackTarget, "Should return invalid rollback target for blank input")
@@ -177,6 +181,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTargetShouldNotBeCurrentNode() {
 		Operator:     operator,
 		TargetNodeID: s.rollbackNode.ID,
 		Opinion:      "rollback to current",
+		Caller:       approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when rollback target is current node")
 	s.Assert().ErrorIs(err, shared.ErrInvalidRollbackTarget, "Should return invalid rollback target when target equals current node")

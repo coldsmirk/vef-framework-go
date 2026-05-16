@@ -110,6 +110,7 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowSuccess() {
 		Initiators: []shared.CreateFlowInitiatorCmd{
 			{Kind: approval.InitiatorRole, IDs: []string{"role-new"}},
 		},
+		Caller: approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -143,6 +144,7 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowNotFound() {
 		Name:                   "Updated Flow",
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Template",
+		Caller:                 approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)
@@ -166,6 +168,7 @@ func (s *UpdateFlowTestSuite) TestUpdateAllFields() {
 			{Kind: approval.InitiatorUser, IDs: []string{"user-all-1"}},
 			{Kind: approval.InitiatorRole, IDs: []string{"role-all-1"}},
 		},
+		Caller: approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)

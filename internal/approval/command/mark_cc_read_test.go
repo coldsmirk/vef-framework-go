@@ -109,6 +109,7 @@ func (s *MarkCCReadTestSuite) TestMarkReadSuccess() {
 	_, err := s.handler.Handle(s.ctx, command.MarkCCReadCmd{
 		InstanceID: instID,
 		UserID:     "cc-user-1",
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should mark CC as read without error")
 
@@ -143,6 +144,7 @@ func (s *MarkCCReadTestSuite) TestMarkReadNoRecords() {
 	_, err := s.handler.Handle(s.ctx, command.MarkCCReadCmd{
 		InstanceID: "non-existent-instance",
 		UserID:     "cc-user-1",
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should not error when no CC records exist")
 }
@@ -162,6 +164,7 @@ func (s *MarkCCReadTestSuite) TestMarkReadIdempotent() {
 	_, err = s.handler.Handle(s.ctx, command.MarkCCReadCmd{
 		InstanceID: instID,
 		UserID:     "cc-user-3",
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should not return error")
 
@@ -169,6 +172,7 @@ func (s *MarkCCReadTestSuite) TestMarkReadIdempotent() {
 	_, err = s.handler.Handle(s.ctx, command.MarkCCReadCmd{
 		InstanceID: instID,
 		UserID:     "cc-user-3",
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should be idempotent")
 }
@@ -189,6 +193,7 @@ func (s *MarkCCReadTestSuite) TestMarkReadShouldAdvanceCCNodeWhenAllRead() {
 	_, err := s.handler.Handle(s.ctx, command.MarkCCReadCmd{
 		InstanceID: instID,
 		UserID:     "cc-advance-1",
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should mark first user as read")
 
@@ -206,6 +211,7 @@ func (s *MarkCCReadTestSuite) TestMarkReadShouldAdvanceCCNodeWhenAllRead() {
 	_, err = s.handler.Handle(s.ctx, command.MarkCCReadCmd{
 		InstanceID: instID,
 		UserID:     "cc-advance-2",
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should mark second user as read and complete CC node")
 
@@ -238,6 +244,7 @@ func (s *MarkCCReadTestSuite) TestMarkReadShouldNotAdvanceWhenCCNodeIsNotCurrent
 	_, err = s.handler.Handle(s.ctx, command.MarkCCReadCmd{
 		InstanceID: instID,
 		UserID:     "cc-stale-node",
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should mark CC record as read even when node is not current")
 

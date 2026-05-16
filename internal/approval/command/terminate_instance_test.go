@@ -97,6 +97,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateSuccess() {
 		InstanceID: inst.ID,
 		Operator:   operator,
 		Reason:     "违规终止",
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should terminate instance without error")
 
@@ -133,6 +134,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateInstanceNotFound() {
 	_, err := s.handler.Handle(s.ctx, command.TerminateInstanceCmd{
 		InstanceID: "non-existent",
 		Operator:   operator,
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrInstanceNotFound, "Should return ErrInstanceNotFound")
@@ -145,6 +147,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateAlreadyCompleted() {
 	_, err := s.handler.Handle(s.ctx, command.TerminateInstanceCmd{
 		InstanceID: inst.ID,
 		Operator:   operator,
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrInstanceNotRunning, "Should not allow terminating approved instance")
@@ -157,6 +160,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateAlreadyTerminated() {
 	_, err := s.handler.Handle(s.ctx, command.TerminateInstanceCmd{
 		InstanceID: inst.ID,
 		Operator:   operator,
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrInstanceNotRunning, "Should not allow terminating already terminated instance")

@@ -59,6 +59,7 @@ func (s *RejectTaskTestSuite) TestRejectSuccess() {
 		TaskID:   task.ID,
 		Operator: operator,
 		Opinion:  "Not acceptable",
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should reject task without error")
 
@@ -99,6 +100,7 @@ func (s *RejectTaskTestSuite) TestRejectTaskNotFound() {
 	_, err := s.handler.Handle(s.ctx, command.RejectTaskCmd{
 		TaskID:   "non-existent",
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return expected error")
@@ -111,6 +113,7 @@ func (s *RejectTaskTestSuite) TestRejectNotAssignee() {
 	_, err := s.handler.Handle(s.ctx, command.RejectTaskCmd{
 		TaskID:   task.ID,
 		Operator: operator,
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should return expected error")
@@ -140,6 +143,7 @@ func (s *RejectTaskTestSuite) TestRejectTaskNotCurrentNode() {
 		TaskID:   task.ID,
 		Operator: operator,
 		Opinion:  "rejected",
+		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when rejecting a task not in current node")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should return task not pending for stale node task")

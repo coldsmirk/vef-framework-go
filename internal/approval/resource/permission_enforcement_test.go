@@ -63,7 +63,7 @@ func (s *PermissionEnforcementResourceTestSuite) SetupSuite() {
 		fx.Populate(&s.db),
 	)
 
-	s.token = s.GenerateToken(security.NewUser("test-user", "user", "user"))
+	s.token = s.GenerateToken(newTenantUser("test-user", "user", "user"))
 	cleanAllApprovalData(s.ctx, s.db)
 	_, _ = s.db.NewInsert().Model(&approval.FlowCategory{
 		TenantID: "default",

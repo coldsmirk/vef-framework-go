@@ -64,7 +64,7 @@ func (s *GetFlowGraphTestSuite) TearDownSuite() {
 }
 
 func (s *GetFlowGraphTestSuite) TestGetGraphSuccess() {
-	graph, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: s.flowID})
+	graph, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: s.flowID, Caller: approval.SystemCaller})
 	s.Require().NoError(err, "Should get flow graph without error")
 	s.Require().NotNil(graph, "Should not be nil")
 
@@ -75,7 +75,7 @@ func (s *GetFlowGraphTestSuite) TestGetGraphSuccess() {
 }
 
 func (s *GetFlowGraphTestSuite) TestFlowNotFound() {
-	_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: "non-existent"})
+	_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: "non-existent", Caller: approval.SystemCaller})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrFlowNotFound, "Should return expected error")
 }
@@ -90,7 +90,7 @@ func (s *GetFlowGraphTestSuite) TestNoPublishedVersion() {
 	// Delete the published version so flow has no published version
 	_, _ = s.db.NewDelete().Model((*approval.FlowVersion)(nil)).Where(func(cb orm.ConditionBuilder) { cb.Equals("flow_id", fix2.FlowID) }).Exec(s.ctx)
 
-	_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: fix2.FlowID})
+	_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: fix2.FlowID, Caller: approval.SystemCaller})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrNoPublishedVersion, "Should return expected error")
 }

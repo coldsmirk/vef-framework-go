@@ -67,6 +67,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowSuccess() {
 		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "{{.applicantName}}'s leave request",
+		Caller:                 approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -104,6 +105,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowDefaultTenant() {
 		CategoryID:            s.categoryID,
 		BindingMode:           approval.BindingStandalone,
 		InstanceTitleTemplate: "Reimbursement request",
+		Caller:                approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -119,6 +121,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowDuplicateCode() {
 		CategoryID:            s.categoryID,
 		BindingMode:           approval.BindingStandalone,
 		InstanceTitleTemplate: "Title Template",
+		Caller:                approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)
@@ -143,6 +146,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowWithInitiators() {
 			{Kind: approval.InitiatorUser, IDs: []string{"user-1", "user-2"}},
 			{Kind: approval.InitiatorRole, IDs: []string{"role-admin"}},
 		},
+		Caller: approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)

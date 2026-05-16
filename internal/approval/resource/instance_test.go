@@ -13,7 +13,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
-	"github.com/coldsmirk/vef-framework-go/security"
 )
 
 // adminRPCCall sends an RPC request to the approval/admin resource and returns the result.
@@ -88,10 +87,10 @@ func (s *InstanceResourceTestSuite) SetupSuite() {
 	s.noCC = s.createAndPublishFlow("res-no-cc", "No CC Flow", noManualCCFlowDef())
 
 	// Generate tokens for multiple users
-	s.approver2Token = s.GenerateToken(security.NewUser("approver-2", "Approver 2"))
-	s.manager1Token = s.GenerateToken(security.NewUser("manager-1", "Manager 1"))
-	s.handler1Token = s.GenerateToken(security.NewUser("handler-1", "Handler 1"))
-	s.otherUserToken = s.GenerateToken(security.NewUser("other-user", "Other User"))
+	s.approver2Token = s.GenerateToken(newTenantUser("approver-2", "Approver 2"))
+	s.manager1Token = s.GenerateToken(newTenantUser("manager-1", "Manager 1"))
+	s.handler1Token = s.GenerateToken(newTenantUser("handler-1", "Handler 1"))
+	s.otherUserToken = s.GenerateToken(newTenantUser("other-user", "Other User"))
 }
 
 func (s *InstanceResourceTestSuite) TearDownSuite() {

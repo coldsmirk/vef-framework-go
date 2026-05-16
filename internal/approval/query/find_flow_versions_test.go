@@ -64,6 +64,7 @@ func (s *FindFlowVersionsTestSuite) TearDownSuite() {
 func (s *FindFlowVersionsTestSuite) TestSuccessWithMultipleVersions() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowVersionsQuery{
 		FlowID: s.flowID1,
+		Caller: approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Require().Len(result, 3, "Should find 3 versions for flow 1")
@@ -76,6 +77,7 @@ func (s *FindFlowVersionsTestSuite) TestSuccessWithMultipleVersions() {
 func (s *FindFlowVersionsTestSuite) TestEmpty() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowVersionsQuery{
 		FlowID: "non-existent-flow-id",
+		Caller: approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Empty(result, "Should return empty slice for non-existent flow")

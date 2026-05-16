@@ -49,10 +49,16 @@ func TestCallerContextAuthorize(t *testing.T) {
 			wantErr:        false,
 		},
 		{
-			name:           "ZeroValuePermissive",
+			name:           "SystemInternalCrossTenant",
+			caller:         approval.SystemCaller,
+			entityTenantID: "tenant-b",
+			wantErr:        false,
+		},
+		{
+			name:           "ZeroValueDenied",
 			caller:         approval.CallerContext{},
 			entityTenantID: "tenant-a",
-			wantErr:        false,
+			wantErr:        true,
 		},
 		{
 			name:           "MatchingTenant",
@@ -84,6 +90,41 @@ func TestCallerContextAuthorize(t *testing.T) {
 			} else {
 				assert.NoError(t, err, "Should allow %s", tc.name)
 			}
+		})
+	}
+}
+
+func TestCallerContextAllows(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, approval.SystemCaller.Allows("any"), "System caller should allow any tenant")
+	assert.True(t, approval.CallerContext{IsSuperAdmin: true}.Allows("any"), "Super admin caller should allow any tenant")
+	assert.True(t, approval.CallerContext{TenantID: "t1"}.Allows("t1"), "Matching tenant should allow")
+	assert.False(t, approval.CallerContext{TenantID: "t1"}.Allows("t2"), "Non-matching tenant should deny")
+	assert.False(t, approval.CallerContext{}.Allows("t1"), "Zero caller should deny")
+}
+
+func TestCallerContextEffectiveTenantID(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		caller   approval.CallerContext
+		override string
+		want     string
+	}{
+		{"SuperAdminPassthroughOverride", approval.CallerContext{IsSuperAdmin: true}, "tenant-x", "tenant-x"},
+		{"SuperAdminEmptyOverride", approval.CallerContext{IsSuperAdmin: true}, "", ""},
+		{"SystemPassthroughOverride", approval.SystemCaller, "tenant-x", "tenant-x"},
+		{"NonSuperPinsToOwnTenant", approval.CallerContext{TenantID: "tenant-a"}, "tenant-b", "tenant-a"},
+		{"NonSuperEmptyOverrideKeepsOwn", approval.CallerContext{TenantID: "tenant-a"}, "", "tenant-a"},
+		{"ZeroCallerReturnsEmpty", approval.CallerContext{}, "tenant-x", ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, tc.caller.EffectiveTenantID(tc.override), "Should return expected effective tenant for %s", tc.name)
 		})
 	}
 }

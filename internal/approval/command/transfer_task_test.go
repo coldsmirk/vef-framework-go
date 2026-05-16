@@ -101,6 +101,7 @@ func (s *TransferTaskTestSuite) TestTransferSuccess() {
 		Operator:     operator,
 		TransferToID: "new-assignee-1",
 		Opinion:      "Need expert review",
+		Caller:       approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should transfer task without error")
 
@@ -168,6 +169,7 @@ func (s *TransferTaskTestSuite) TestTransferNotAllowed() {
 		TaskID:       task.ID,
 		Operator:     operator,
 		TransferToID: "new-assignee",
+		Caller:       approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrTransferNotAllowed, "Should return expected error")
@@ -179,6 +181,7 @@ func (s *TransferTaskTestSuite) TestTransferTaskNotFound() {
 		TaskID:       "non-existent",
 		Operator:     operator,
 		TransferToID: "new-assignee",
+		Caller:       approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return expected error")
@@ -192,6 +195,7 @@ func (s *TransferTaskTestSuite) TestTransferNotAssignee() {
 		TaskID:       task.ID,
 		Operator:     operator,
 		TransferToID: "new-assignee",
+		Caller:       approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should return error")
 	s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should return expected error")
@@ -222,6 +226,7 @@ func (s *TransferTaskTestSuite) TestTransferTaskNotCurrentNode() {
 		TaskID:       task.ID,
 		Operator:     operator,
 		TransferToID: "new-assignee",
+		Caller:       approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when transferring a task not in current node")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should return task not pending for stale node task")
@@ -236,6 +241,7 @@ func (s *TransferTaskTestSuite) TestTransferTargetValidation() {
 			TaskID:       task.ID,
 			Operator:     operator,
 			TransferToID: "   ",
+			Caller:       approval.SystemCaller,
 		})
 		s.Require().Error(err, "Should fail when transfer target is empty")
 		s.Assert().ErrorIs(err, shared.ErrInvalidTransferTarget, "Should return invalid transfer target for empty target")
@@ -249,6 +255,7 @@ func (s *TransferTaskTestSuite) TestTransferTargetValidation() {
 			TaskID:       task.ID,
 			Operator:     operator,
 			TransferToID: "assignee-self",
+			Caller:       approval.SystemCaller,
 		})
 		s.Require().Error(err, "Should fail when transferring to self")
 		s.Assert().ErrorIs(err, shared.ErrInvalidTransferTarget, "Should return invalid transfer target for self transfer")
@@ -273,6 +280,7 @@ func (s *TransferTaskTestSuite) TestTransferTargetValidation() {
 			TaskID:       task.ID,
 			Operator:     operator,
 			TransferToID: "assignee-target",
+			Caller:       approval.SystemCaller,
 		})
 		s.Require().Error(err, "Should fail when target already has active task on node")
 		s.Assert().ErrorIs(err, shared.ErrInvalidTransferTarget, "Should return invalid transfer target for duplicate active assignee")

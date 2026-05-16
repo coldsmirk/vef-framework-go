@@ -77,6 +77,7 @@ func (s *ResubmitTestSuite) TestResubmitClearsFinishedAt() {
 	_, err = s.handler.Handle(s.ctx, command.ResubmitCmd{
 		InstanceID: instance.ID,
 		Operator:   approval.OperatorInfo{ID: "applicant-1", Name: "Applicant"},
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should resubmit returned instance")
 
@@ -127,6 +128,7 @@ func (s *ResubmitTestSuite) TestResubmitShouldBeConcurrencySafe() {
 			_, err := s.handler.Handle(txCtx, command.ResubmitCmd{
 				InstanceID: instance.ID,
 				Operator:   approval.OperatorInfo{ID: "applicant-1", Name: "Applicant"},
+				Caller:     approval.SystemCaller,
 			})
 
 			return err
@@ -204,6 +206,7 @@ func (s *ResubmitTestSuite) TestResubmitShouldRejectInvalidFormDataBySchema() {
 		InstanceID: instance.ID,
 		Operator:   approval.OperatorInfo{ID: "applicant-1", Name: "Applicant"},
 		FormData:   map[string]any{"amount": "invalid"},
+		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should reject invalid resubmit form data")
 

@@ -122,6 +122,24 @@ func setupResourceApp(s *apptest.Suite) (orm.DB, string) {
 	return db, token
 }
 
+// testTenant is the tenant identifier baked into every test principal so the
+// strict CallerContext semantics (introduced in the security re-audit) treat
+// requests as belonging to a known tenant. Test fixtures create flows /
+// instances under the same tenant so the tenant guard passes naturally.
+const testTenant = "default"
+
+// newTenantUser wraps security.NewUser with tenant_id baked into the
+// principal's Details map. Resource handlers resolve the tenant via the
+// DefaultPrincipalTenantResolver, which probes Details for "tenant_id" —
+// without this helper test users would resolve to a zero CallerContext and
+// hit the strict deny path before any business logic ran.
+func newTenantUser(id, name string, roles ...string) *security.Principal {
+	p := security.NewUser(id, name, roles...)
+	p.Details = map[string]any{"tenant_id": testTenant}
+
+	return p
+}
+
 // --- Cleanup helpers ---
 
 // deleteAll removes all rows from the given models in order (FK-safe).
