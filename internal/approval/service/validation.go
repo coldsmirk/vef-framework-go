@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"regexp"
@@ -15,6 +16,13 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
+
+// FormDataMaxBytes caps the JSON-encoded form payload an applicant or
+// approver can submit. 64 KiB is generous for legitimate forms (typical
+// approval payloads are < 4 KiB) while still rejecting blobs that would
+// bloat the JSONB column or drive the runtime into OOM. Override at
+// build time only if you intentionally accept larger payloads.
+const FormDataMaxBytes = 64 * 1024
 
 // ValidationService provides validation operations.
 type ValidationService struct {
@@ -37,6 +45,19 @@ func (*ValidationService) ValidateOpinion(node *approval.FlowNode, opinion strin
 
 // ValidateFormData validates submitted form data against the published form schema.
 func (*ValidationService) ValidateFormData(schema *approval.FormDefinition, formData map[string]any) error {
+	// Size guard runs first — applies even to flows without a schema so
+	// callers cannot bypass the cap by omitting the form definition.
+	if formData != nil {
+		raw, err := json.Marshal(formData)
+		if err != nil {
+			return fmt.Errorf("encode form data for size check: %w", err)
+		}
+
+		if len(raw) > FormDataMaxBytes {
+			return shared.ErrFormDataTooLarge
+		}
+	}
+
 	if schema == nil || len(schema.Fields) == 0 {
 		return nil
 	}

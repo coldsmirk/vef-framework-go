@@ -18,7 +18,7 @@ func TestManagementResourcePermTokens(t *testing.T) {
 	}
 
 	t.Run("FlowResource", func(t *testing.T) {
-		resource := approvalresource.NewFlowResource(nil)
+		resource := approvalresource.NewFlowResource(nil, nil)
 		specs := collectSpecs(resource, collectors...)
 
 		expected := map[string]string{

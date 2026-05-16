@@ -25,6 +25,7 @@ type UpdateFlowCmd struct {
 	IsAllInitiationAllowed bool
 	InstanceTitleTemplate  string
 	Initiators             []shared.CreateFlowInitiatorCmd
+	Caller                 approval.CallerContext
 }
 
 // UpdateFlowHandler handles the UpdateFlowCmd command.
@@ -53,6 +54,10 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		}
 
 		return nil, fmt.Errorf("query flow: %w", err)
+	}
+
+	if err := cmd.Caller.Authorize(flow.TenantID); err != nil {
+		return nil, shared.ErrFlowNotFound
 	}
 
 	flow.Name = cmd.Name

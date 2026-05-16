@@ -1,6 +1,8 @@
 package approval
 
 import (
+	"context"
+	"errors"
 	"slices"
 
 	"github.com/coldsmirk/vef-framework-go/security"
@@ -21,4 +23,60 @@ func IsSuperAdmin(p *security.Principal) bool {
 	}
 
 	return slices.Contains(p.Roles, SuperAdminRole)
+}
+
+// ErrCrossTenantAccess is returned when a non-super-admin caller attempts
+// to act on an entity owned by a different tenant. Resource and command
+// handlers use CallerContext.Authorize to surface it consistently.
+var ErrCrossTenantAccess = errors.New("approval: cross-tenant access denied")
+
+// CallerContext bundles the tenant authority of a single API call. Resource
+// handlers resolve it from the security principal (via
+// PrincipalTenantResolver + IsSuperAdmin) and pass it into commands /
+// queries through their struct fields so handlers can enforce data
+// ownership without re-parsing principal details.
+//
+// A zero-value CallerContext is treated as permissive (system-internal or
+// test fixtures where no caller is on the wire). Production code paths
+// MUST populate it on the resource boundary.
+type CallerContext struct {
+	// TenantID is the caller's resolved tenant. Empty for super-admin or
+	// for system-internal callers.
+	TenantID string
+	// IsSuperAdmin grants cross-tenant access regardless of TenantID.
+	IsSuperAdmin bool
+}
+
+// Authorize reports whether the caller is allowed to act on an entity owned
+// by entityTenantID. Super-admin callers always pass. Callers with an
+// empty TenantID (zero value) are treated as system-internal and also pass
+// — this preserves test fixtures and engine-internal call sites that have
+// no HTTP principal. Non-empty TenantID must match entityTenantID exactly.
+func (c CallerContext) Authorize(entityTenantID string) error {
+	if c.IsSuperAdmin {
+		return nil
+	}
+
+	if c.TenantID == "" {
+		return nil
+	}
+
+	if c.TenantID != entityTenantID {
+		return ErrCrossTenantAccess
+	}
+
+	return nil
+}
+
+// PrincipalTenantResolver extracts the caller's tenant ID from a security
+// principal. Implemented by host applications because Principal.Details is
+// schema-less; the framework cannot know where the host stores tenant
+// affiliation.
+//
+// Returning an empty string is valid (e.g. system principals, platform
+// super-admins, or anonymous callers) — CallerContext.Authorize then falls
+// back to its zero-value pass-through.
+type PrincipalTenantResolver interface {
+	// Resolve returns the tenant identifier for the given principal.
+	Resolve(ctx context.Context, principal *security.Principal) (string, error)
 }

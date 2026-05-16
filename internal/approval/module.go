@@ -3,6 +3,7 @@ package approval
 import (
 	"go.uber.org/fx"
 
+	"github.com/coldsmirk/vef-framework-go/internal/approval/auth"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
@@ -19,6 +20,7 @@ import (
 var Module = fx.Module(
 	"vef:approval",
 
+	auth.Module,
 	strategy.Module,
 	behavior.Module,
 	binding.Module,

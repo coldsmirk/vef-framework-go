@@ -18,6 +18,7 @@ type GetFlowGraphQuery struct {
 
 	FlowID   string
 	TenantID string
+	Caller   approval.CallerContext
 }
 
 // GetFlowGraphHandler handles the GetFlowGraphQuery.
@@ -51,6 +52,10 @@ func (h *GetFlowGraphHandler) Handle(ctx context.Context, query GetFlowGraphQuer
 		}
 
 		return nil, fmt.Errorf("query flow: %w", err)
+	}
+
+	if err := query.Caller.Authorize(flow.TenantID); err != nil {
+		return nil, shared.ErrFlowNotFound
 	}
 
 	var version approval.FlowVersion

@@ -20,6 +20,7 @@ type FindFlowsQuery struct {
 	CategoryID *string
 	Keyword    *string
 	IsActive   *bool
+	Caller     approval.CallerContext
 }
 
 // FindFlowsHandler handles the FindFlowsQuery.
@@ -34,6 +35,14 @@ func NewFindFlowsHandler(db orm.DB) *FindFlowsHandler {
 
 func (h *FindFlowsHandler) Handle(ctx context.Context, query FindFlowsQuery) (*page.Page[approval.Flow], error) {
 	db := contextx.DB(ctx, h.db)
+
+	// Non-super-admin callers can never list flows outside their tenant. We
+	// override params.TenantID with the caller's resolved tenant rather than
+	// trusting client input — even when a tenant admin forgets to pass it.
+	if !query.Caller.IsSuperAdmin && query.Caller.TenantID != "" {
+		callerTenant := query.Caller.TenantID
+		query.TenantID = &callerTenant
+	}
 
 	var flows []approval.Flow
 

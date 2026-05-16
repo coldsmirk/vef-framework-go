@@ -22,13 +22,19 @@ type AdminResource struct {
 
 	bus                cqrs.Bus
 	departmentResolver approval.PrincipalDepartmentResolver
+	tenantResolver     approval.PrincipalTenantResolver
 }
 
 // NewAdminResource creates a new admin resource.
-func NewAdminResource(bus cqrs.Bus, departmentResolver approval.PrincipalDepartmentResolver) api.Resource {
+func NewAdminResource(
+	bus cqrs.Bus,
+	departmentResolver approval.PrincipalDepartmentResolver,
+	tenantResolver approval.PrincipalTenantResolver,
+) api.Resource {
 	return &AdminResource{
 		bus:                bus,
 		departmentResolver: departmentResolver,
+		tenantResolver:     tenantResolver,
 		Resource: api.NewRPCResource(
 			"approval/admin",
 			api.WithOperations(
@@ -36,6 +42,7 @@ func NewAdminResource(bus cqrs.Bus, departmentResolver approval.PrincipalDepartm
 				api.OperationSpec{Action: "find_tasks", PermToken: "approval:task:query"},
 				api.OperationSpec{Action: "get_instance_detail", PermToken: "approval:instance:detail"},
 				api.OperationSpec{Action: "find_action_logs", PermToken: "approval:log:query"},
+				api.OperationSpec{Action: "get_metrics", PermToken: "approval:metrics:query"},
 				// Admin write actions: framework-level audit captures who/when/IP
 				// in addition to the business-table action_log.
 				api.OperationSpec{Action: "terminate_instance", PermToken: "approval:instance:terminate", EnableAudit: true},
@@ -134,9 +141,15 @@ type AdminGetInstanceDetailParams struct {
 }
 
 // GetInstanceDetail returns the full admin detail of an instance.
-func (r *AdminResource) GetInstanceDetail(ctx fiber.Ctx, _ *security.Principal, params AdminGetInstanceDetailParams) error {
+func (r *AdminResource) GetInstanceDetail(ctx fiber.Ctx, principal *security.Principal, params AdminGetInstanceDetailParams) error {
+	caller, err := r.resolveCaller(ctx.Context(), principal)
+	if err != nil {
+		return err
+	}
+
 	detail, err := cqrs.Send[query.GetAdminInstanceDetailQuery, *admin.InstanceDetail](ctx.Context(), r.bus, query.GetAdminInstanceDetailQuery{
 		InstanceID: params.InstanceID,
+		Caller:     caller,
 	})
 	if err != nil {
 		return err
@@ -188,10 +201,16 @@ func (r *AdminResource) TerminateInstance(ctx fiber.Ctx, principal *security.Pri
 		return err
 	}
 
+	caller, err := r.resolveCaller(ctx.Context(), principal)
+	if err != nil {
+		return err
+	}
+
 	if _, err := cqrs.Send[command.TerminateInstanceCmd, cqrs.Unit](ctx.Context(), r.bus, command.TerminateInstanceCmd{
 		InstanceID: params.InstanceID,
 		Operator:   operator,
 		Reason:     params.Reason,
+		Caller:     caller,
 	}); err != nil {
 		return err
 	}
@@ -215,11 +234,17 @@ func (r *AdminResource) ReassignTask(ctx fiber.Ctx, principal *security.Principa
 		return err
 	}
 
+	caller, err := r.resolveCaller(ctx.Context(), principal)
+	if err != nil {
+		return err
+	}
+
 	if _, err := cqrs.Send[command.ReassignTaskCmd, cqrs.Unit](ctx.Context(), r.bus, command.ReassignTaskCmd{
 		TaskID:        params.TaskID,
 		NewAssigneeID: params.NewAssigneeID,
 		Operator:      operator,
 		Reason:        params.Reason,
+		Caller:        caller,
 	}); err != nil {
 		return err
 	}
@@ -229,6 +254,10 @@ func (r *AdminResource) ReassignTask(ctx fiber.Ctx, principal *security.Principa
 
 func (r *AdminResource) resolveOperator(ctx context.Context, principal *security.Principal) (approval.OperatorInfo, error) {
 	return resolveOperator(ctx, r.departmentResolver, principal)
+}
+
+func (r *AdminResource) resolveCaller(ctx context.Context, principal *security.Principal) (approval.CallerContext, error) {
+	return resolveCaller(ctx, r.tenantResolver, principal)
 }
 
 // AdminGetMetricsParams contains the parameters for the metrics dashboard query.

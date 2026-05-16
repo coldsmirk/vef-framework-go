@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -32,6 +33,21 @@ func resolveOperator(ctx context.Context, resolver approval.PrincipalDepartmentR
 	}, nil
 }
 
+// resolveCaller bundles tenant authority from the principal. Used by
+// resource handlers to gate cross-tenant access on entity-scoped commands
+// and queries (terminate / reassign / detail / flow mutations).
+func resolveCaller(ctx context.Context, resolver approval.PrincipalTenantResolver, principal *security.Principal) (approval.CallerContext, error) {
+	tenantID, err := resolver.Resolve(ctx, principal)
+	if err != nil {
+		return approval.CallerContext{}, fmt.Errorf("resolve caller tenant: %w", err)
+	}
+
+	return approval.CallerContext{
+		TenantID:     tenantID,
+		IsSuperAdmin: approval.IsSuperAdmin(principal),
+	}, nil
+}
+
 // InstanceResource handles instance lifecycle and queries.
 type InstanceResource struct {
 	api.Resource
@@ -48,15 +64,25 @@ func NewInstanceResource(bus cqrs.Bus, departmentResolver approval.PrincipalDepa
 		Resource: api.NewRPCResource(
 			"approval/instance",
 			api.WithOperations(
-				api.OperationSpec{Action: "start"},
-				api.OperationSpec{Action: "process_task"},
-				api.OperationSpec{Action: "withdraw"},
-				api.OperationSpec{Action: "resubmit"},
-				api.OperationSpec{Action: "add_cc"},
-				api.OperationSpec{Action: "mark_cc_read"},
-				api.OperationSpec{Action: "add_assignee"},
-				api.OperationSpec{Action: "remove_assignee"},
-				api.OperationSpec{Action: "urge_task"},
+				// Submission and the per-task decision are the two highest-value
+				// state changes — keep audit on so framework-level IP/UA/RequestID
+				// land beside the business action_log.
+				api.OperationSpec{Action: "start", PermToken: "approval:instance:start", EnableAudit: true},
+				api.OperationSpec{Action: "process_task", PermToken: "approval:task:process", EnableAudit: true},
+				api.OperationSpec{Action: "withdraw", PermToken: "approval:instance:withdraw", EnableAudit: true},
+				api.OperationSpec{Action: "resubmit", PermToken: "approval:instance:resubmit", EnableAudit: true},
+				api.OperationSpec{Action: "add_cc", PermToken: "approval:instance:cc", EnableAudit: true},
+				// mark_cc_read is a self-service read receipt — low impact, no audit.
+				api.OperationSpec{Action: "mark_cc_read", PermToken: "approval:instance:cc"},
+				api.OperationSpec{Action: "add_assignee", PermToken: "approval:task:add_assignee", EnableAudit: true},
+				api.OperationSpec{Action: "remove_assignee", PermToken: "approval:task:remove_assignee", EnableAudit: true},
+				// urge_task additionally rate-limited to deter notification
+				// flooding even when the per-task cooldown is satisfied.
+				api.OperationSpec{
+					Action:    "urge_task",
+					PermToken: "approval:task:urge",
+					RateLimit: &api.RateLimitConfig{Max: 10, Period: time.Minute},
+				},
 			),
 		),
 	}

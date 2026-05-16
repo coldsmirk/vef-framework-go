@@ -93,6 +93,12 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 		return cqrs.Unit{}, nil
 	}
 
+	operatorName := shared.ResolveUserName(ctx, h.userResolver, operatorID)
+	actionLog := approval.OperatorInfo{ID: operatorID, Name: operatorName}.NewActionLog(cmd.InstanceID, approval.ActionAddCC)
+	actionLog.NodeID = new(*instance.CurrentNodeID)
+	actionLog.CCUserIDs = insertedUserIDs
+	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
+
 	behavior.CollectorFromContext(ctx).Append(
 		approval.NewCCNotifiedEvent(cmd.InstanceID, instance.TenantID, *instance.CurrentNodeID, insertedUserIDs, ccUserNames, true),
 	)

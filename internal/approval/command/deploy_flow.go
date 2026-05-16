@@ -22,6 +22,7 @@ type DeployFlowCmd struct {
 	Description    *string
 	FlowDefinition approval.FlowDefinition
 	FormDefinition *approval.FormDefinition
+	Caller         approval.CallerContext
 }
 
 // AssigneeProvider is the interface for accessing assignees from typed node data.
@@ -59,7 +60,7 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 	flow.ID = cmd.FlowID
 	if err := db.NewSelect().
 		Model(&flow).
-		Select("current_version").
+		Select("current_version", "tenant_id").
 		WherePK().
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
@@ -67,6 +68,10 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 		}
 
 		return nil, fmt.Errorf("load flow: %w", err)
+	}
+
+	if err := cmd.Caller.Authorize(flow.TenantID); err != nil {
+		return nil, shared.ErrFlowNotFound
 	}
 
 	version := approval.FlowVersion{

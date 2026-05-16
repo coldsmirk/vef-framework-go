@@ -33,6 +33,7 @@ type CreateFlowCmd struct {
 	IsAllInitiationAllowed bool
 	InstanceTitleTemplate  string
 	Initiators             []shared.CreateFlowInitiatorCmd
+	Caller                 approval.CallerContext
 }
 
 // CreateFlowHandler handles the CreateFlowCmd command.
@@ -48,6 +49,14 @@ func NewCreateFlowHandler(db orm.DB) *CreateFlowHandler {
 func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*approval.Flow, error) {
 	db := contextx.DB(ctx, h.db)
 	tenantID := lo.CoalesceOrEmpty(cmd.TenantID, "default")
+
+	if err := cmd.Caller.Authorize(tenantID); err != nil {
+		return nil, shared.ErrFlowNotFound
+	}
+
+	if err := validateBusinessIdentifiers(cmd.BindingMode, cmd.BusinessTable, cmd.BusinessPkField, cmd.BusinessStatusField, cmd.BusinessTitleField); err != nil {
+		return nil, err
+	}
 
 	exists, err := db.NewSelect().
 		Model((*approval.Flow)(nil)).

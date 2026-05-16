@@ -256,6 +256,7 @@ const (
 	ActionResubmit       ActionType = "resubmit"  // Resubmit a returned instance
 	ActionReassign       ActionType = "reassign"  // Admin reassigned task to a different user
 	ActionTerminate      ActionType = "terminate" // Admin force-terminated an instance
+	ActionAddCC          ActionType = "add_cc"    // Participant added CC recipients
 )
 
 // CCKind represents the kind of CC recipient.

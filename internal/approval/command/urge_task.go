@@ -46,7 +46,7 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 
 	if err := db.NewSelect().
 		Model(&task).
-		Select("status", "node_id", "instance_id", "assignee_id", "assignee_name").
+		Select("status", "node_id", "instance_id", "assignee_id", "assignee_name", "tenant_id").
 		ForUpdate().
 		WherePK().
 		Scan(ctx); err != nil {
@@ -61,12 +61,12 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 		return cqrs.Unit{}, shared.ErrTaskNotPending
 	}
 
-	isParticipant, err := h.taskSvc.IsInstanceParticipant(ctx, db, task.InstanceID, cmd.UrgerID)
+	authorized, err := h.taskSvc.IsUrgeAuthorized(ctx, db, task.InstanceID, cmd.UrgerID)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
 
-	if !isParticipant {
+	if !authorized {
 		return cqrs.Unit{}, shared.ErrAccessDenied
 	}
 

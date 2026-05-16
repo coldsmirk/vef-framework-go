@@ -13,11 +13,15 @@ import (
 	"github.com/coldsmirk/vef-framework-go/result"
 )
 
-// GetAdminInstanceDetailQuery retrieves the full admin detail of an instance (no participant check).
+// GetAdminInstanceDetailQuery retrieves the full admin detail of an instance.
+// Tenant-scoped: handler authorizes Caller against the loaded instance's
+// TenantID before returning data so a tenant admin cannot peek at another
+// tenant's instance by guessing the ID.
 type GetAdminInstanceDetailQuery struct {
 	cqrs.BaseQuery
 
 	InstanceID string
+	Caller     approval.CallerContext
 }
 
 // GetAdminInstanceDetailHandler handles the GetAdminInstanceDetailQuery.
@@ -44,6 +48,12 @@ func (h *GetAdminInstanceDetailHandler) Handle(ctx context.Context, query GetAdm
 		}
 
 		return nil, fmt.Errorf("query instance: %w", err)
+	}
+
+	if err := query.Caller.Authorize(instance.TenantID); err != nil {
+		// Return InstanceNotFound rather than CrossTenantAccess so callers
+		// cannot probe existence across tenants.
+		return nil, shared.ErrInstanceNotFound
 	}
 
 	// Load flow.

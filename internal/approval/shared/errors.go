@@ -15,13 +15,14 @@ import "github.com/coldsmirk/vef-framework-go/result"
 
 // Error codes for the approval module (40xxx range).
 const (
-	ErrCodeFlowNotFound       = 40001
-	ErrCodeFlowNotActive      = 40002
-	ErrCodeNoPublishedVersion = 40003
-	ErrCodeVersionNotDraft    = 40004
-	ErrCodeInvalidFlowDesign  = 40005
-	ErrCodeFlowCodeExists     = 40006
-	ErrCodeVersionNotFound    = 40007
+	ErrCodeFlowNotFound              = 40001
+	ErrCodeFlowNotActive             = 40002
+	ErrCodeNoPublishedVersion        = 40003
+	ErrCodeVersionNotDraft           = 40004
+	ErrCodeInvalidFlowDesign         = 40005
+	ErrCodeFlowCodeExists            = 40006
+	ErrCodeVersionNotFound           = 40007
+	ErrCodeInvalidBusinessIdentifier = 40008
 
 	ErrCodeInstanceNotFound          = 40101
 	ErrCodeInstanceCompleted         = 40102
@@ -70,6 +71,14 @@ var (
 	ErrInvalidFlowDesign  = result.Err("流程设计无效", result.WithCode(ErrCodeInvalidFlowDesign))
 	ErrFlowCodeExists     = result.Err("流程编码已存在", result.WithCode(ErrCodeFlowCodeExists))
 	ErrVersionNotFound    = result.Err("流程版本不存在", result.WithCode(ErrCodeVersionNotFound))
+	// ErrInvalidBusinessIdentifier rejects business_table / pk / status /
+	// title field values that do not match a strict SQL-identifier regex.
+	// Flow definitions interpolate these into UPDATE statements at runtime
+	// so accepting arbitrary user input would open a SQL injection vector.
+	ErrInvalidBusinessIdentifier = result.Err(
+		"业务表名或字段名不合法，必须匹配 ^[A-Za-z_][A-Za-z0-9_]{0,62}$",
+		result.WithCode(ErrCodeInvalidBusinessIdentifier),
+	)
 
 	ErrInstanceNotFound          = result.Err("审批实例不存在", result.WithCode(ErrCodeInstanceNotFound))
 	ErrInstanceCompleted         = result.Err("审批实例已结束", result.WithCode(ErrCodeInstanceCompleted))
@@ -99,6 +108,14 @@ var (
 
 	ErrFormValidationFailed = result.Err("表单验证失败", result.WithCode(ErrCodeFormValidationFailed))
 	ErrFieldNotEditable     = result.Err("字段不可编辑", result.WithCode(ErrCodeFieldNotEditable))
+	// ErrFormDataTooLarge rejects submissions whose JSON-encoded form data
+	// would exceed FormDataMaxBytes. Stops malicious clients from blowing
+	// up the JSONB column or driving the runtime into OOM via deeply
+	// nested or massive maps.
+	ErrFormDataTooLarge = result.Err(
+		"表单数据超过最大允许大小",
+		result.WithCode(ErrCodeFormValidationFailed),
+	)
 
 	ErrDelegationNotFound = result.Err("委托记录不存在", result.WithCode(ErrCodeDelegationNotFound))
 	ErrDelegationConflict = result.Err("委托时间段冲突", result.WithCode(ErrCodeDelegationConflict))

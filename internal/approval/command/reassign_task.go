@@ -22,6 +22,7 @@ type ReassignTaskCmd struct {
 	NewAssigneeID string
 	Operator      approval.OperatorInfo
 	Reason        string
+	Caller        approval.CallerContext
 }
 
 // ReassignTaskHandler handles the ReassignTaskCmd command.
@@ -55,6 +56,12 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 		}
 
 		return cqrs.Unit{}, fmt.Errorf("load task: %w", err)
+	}
+
+	if err := cmd.Caller.Authorize(task.TenantID); err != nil {
+		// Return TaskNotFound rather than CrossTenantAccess so callers
+		// cannot probe existence across tenants.
+		return cqrs.Unit{}, shared.ErrTaskNotFound
 	}
 
 	if task.Status != approval.TaskPending {

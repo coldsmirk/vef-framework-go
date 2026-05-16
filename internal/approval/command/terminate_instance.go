@@ -22,6 +22,7 @@ type TerminateInstanceCmd struct {
 	InstanceID string
 	Operator   approval.OperatorInfo
 	Reason     string
+	Caller     approval.CallerContext
 }
 
 // TerminateInstanceHandler handles the TerminateInstanceCmd command.
@@ -46,6 +47,12 @@ func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInst
 	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID)
 	if err != nil {
 		return cqrs.Unit{}, err
+	}
+
+	if err := cmd.Caller.Authorize(instance.TenantID); err != nil {
+		// Return InstanceNotFound rather than CrossTenantAccess so callers
+		// cannot use the error to probe existence across tenants.
+		return cqrs.Unit{}, shared.ErrInstanceNotFound
 	}
 
 	if instance.Status != approval.InstanceRunning {

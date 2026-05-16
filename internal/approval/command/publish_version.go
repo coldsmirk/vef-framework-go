@@ -7,6 +7,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -20,16 +21,21 @@ type PublishVersionCmd struct {
 
 	VersionID  string
 	OperatorID string
+	Caller     approval.CallerContext
 }
 
 // PublishVersionHandler handles the PublishVersionCmd command.
 type PublishVersionHandler struct {
-	db orm.DB
+	db        orm.DB
+	flowCache *engine.FlowCache
 }
 
-// NewPublishVersionHandler creates a new PublishVersionHandler.
-func NewPublishVersionHandler(db orm.DB) *PublishVersionHandler {
-	return &PublishVersionHandler{db: db}
+// NewPublishVersionHandler creates a new PublishVersionHandler. flowCache
+// may be nil in test fixtures; production wiring always supplies it so
+// archived versions are evicted from the compiled-flow cache before any
+// new instance picks up a stale plan.
+func NewPublishVersionHandler(db orm.DB, flowCache *engine.FlowCache) *PublishVersionHandler {
+	return &PublishVersionHandler{db: db, flowCache: flowCache}
 }
 
 func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCmd) (cqrs.Unit, error) {
@@ -52,6 +58,20 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 
 	if version.Status != approval.VersionDraft {
 		return cqrs.Unit{}, shared.ErrVersionNotDraft
+	}
+
+	// Capture currently-published versions before archiving so we can
+	// invalidate their compiled-flow cache entries below.
+	var archivedVersions []approval.FlowVersion
+	if err := db.NewSelect().
+		Model(&archivedVersions).
+		Select("id").
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("flow_id", version.FlowID).
+				Equals("status", approval.VersionPublished)
+		}).
+		Scan(ctx); err != nil {
+		return cqrs.Unit{}, fmt.Errorf("collect archived versions: %w", err)
 	}
 
 	// Archive old published versions
@@ -96,6 +116,28 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 	flow.ID = version.FlowID
 	if err := db.NewSelect().Model(&flow).Select("tenant_id").WherePK().Scan(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("load flow tenant: %w", err)
+	}
+
+	if err := cmd.Caller.Authorize(flow.TenantID); err != nil {
+		return cqrs.Unit{}, shared.ErrVersionNotFound
+	}
+
+	// Invalidate the compiled-flow cache for the newly-published version
+	// (defensive — should not be warm yet) and every just-archived one so
+	// in-flight callers stop receiving the previous plan.
+	if h.flowCache != nil {
+		invalidated := make([]string, 0, len(archivedVersions)+1)
+		for _, v := range archivedVersions {
+			invalidated = append(invalidated, v.ID)
+		}
+
+		invalidated = append(invalidated, cmd.VersionID)
+
+		for _, id := range invalidated {
+			if err := h.flowCache.Invalidate(ctx, id); err != nil {
+				return cqrs.Unit{}, fmt.Errorf("invalidate compiled flow %s: %w", id, err)
+			}
+		}
 	}
 
 	behavior.CollectorFromContext(ctx).Append(
