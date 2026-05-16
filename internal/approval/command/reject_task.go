@@ -77,12 +77,15 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 	actionLog := h.taskSvc.BuildActionLog(instance.ID, task, cmd.Operator, approval.ActionReject, service.ActionLogParams{Opinion: cmd.Opinion})
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
+	// Status / current_node_id / finished_at are already persisted by the
+	// state machine through HandleNodeCompletion → ApplyInstanceTransition.
+	// Only form_data — mutated locally via MergeFormData — still needs writing.
 	if _, err := db.NewUpdate().
 		Model(instance).
-		Select("form_data", "current_node_id", "status", "finished_at").
+		Select("form_data").
 		WherePK().
 		Exec(ctx); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("update instance: %w", err)
+		return cqrs.Unit{}, fmt.Errorf("update instance form_data: %w", err)
 	}
 
 	behavior.CollectorFromContext(ctx).Append(events...)

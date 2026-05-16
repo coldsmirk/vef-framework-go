@@ -2,7 +2,6 @@ package command
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
@@ -102,13 +101,9 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 
 	events = append(events, completionEvents...)
 
-	if _, err := db.NewUpdate().
-		Model(instance).
-		Select("form_data", "current_node_id", "status", "finished_at").
-		WherePK().
-		Exec(ctx); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("update instance: %w", err)
-	}
+	// remove_assignee does not mutate form_data and HandleNodeCompletion has
+	// already persisted any status / current_node_id / finished_at change
+	// through the state machine. No extra UPDATE is required.
 
 	behavior.CollectorFromContext(ctx).Append(events...)
 

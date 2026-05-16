@@ -6,6 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -66,15 +67,44 @@ func NewFlowEngine(
 // the right transactional moment.
 func (e *FlowEngine) LifecycleHooks() *LifecycleHookRunner { return e.hooks }
 
-// publishEvents forwards domain events to the framework bus inside the
-// caller's transaction; visibility hinges on the caller committing.
-// Returns nil when the bus is unset (test fixtures) or no events.
+// publishEvents forwards domain events to either the request-scoped
+// EventCollector (so EventPublishBehavior can flush them after the handler
+// succeeds) or — when invoked outside a CQRS pipeline — directly to the
+// bus inside the caller's transaction. Visibility hinges on the caller
+// committing. Returns nil when there are no events or no bus configured
+// (test fixtures).
 func (e *FlowEngine) publishEvents(ctx context.Context, db orm.DB, events ...approval.DomainEvent) error {
-	if e.bus == nil || len(events) == 0 {
+	if len(events) == 0 {
 		return nil
 	}
 
-	return e.bus.PublishBatch(ctx, event.AsEvents(events), event.WithTx(db))
+	// Prefer the collector so command handlers see a single batched
+	// publish at the end of the pipeline with consistent OccurredAt /
+	// trace handling. The collector is absent when this engine runs
+	// outside a CQRS pipeline (timeout scanner, binding listener); in
+	// that case fall back to direct bus.Publish below.
+	if collector, ok := behavior.TryCollectorFromContext(ctx); ok {
+		collector.Append(events...)
+
+		return nil
+	}
+
+	if e.bus == nil {
+		return nil
+	}
+
+	for _, evt := range events {
+		opts := []event.PublishOption{event.WithTx(db)}
+		if t := approval.PayloadOccurredAt(evt); !t.IsZero() {
+			opts = append(opts, event.WithOccurredAt(t.Unwrap()))
+		}
+
+		if err := e.bus.Publish(ctx, evt, opts...); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // StartProcess starts a flow process by finding the start node and processing it.
@@ -165,19 +195,15 @@ func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instanc
 		instance.CurrentNodeID = new(node.ID)
 		instance.FinishedAt = new(timex.Now())
 
-		if err := ApplyInstanceTransition(
-			ctx, db, instance, *result.FinalStatus,
+		// ApplyInstanceTransitionWithHooks centralizes both the state-
+		// machine UPDATE and lifecycle hook fan-out so every final-status
+		// path (here, pass-rule rejection, admin terminate, …) fires the
+		// same host extensions inside the same tx.
+		if err := ApplyInstanceTransitionWithHooks(
+			ctx, db, instance, *result.FinalStatus, e.hooks,
 			"current_node_id", "finished_at",
 		); err != nil {
 			return fmt.Errorf("apply completion transition: %w", err)
-		}
-
-		// Synchronous lifecycle hooks (transaction-bound). Errors here
-		// roll back the completion so hosts can enforce invariants.
-		if e.hooks != nil {
-			if err := e.hooks.OnInstanceCompleted(ctx, db, instance, *result.FinalStatus); err != nil {
-				return fmt.Errorf("lifecycle hooks on instance completed: %w", err)
-			}
 		}
 
 		// Publish completion event

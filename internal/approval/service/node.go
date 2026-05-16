@@ -6,6 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -68,8 +69,11 @@ func (s *NodeService) HandleNodeCompletion(
 		}
 
 		instance.FinishedAt = new(timex.Now())
-		if err := engine.ApplyInstanceTransition(
-			ctx, db, instance, approval.InstanceRejected, "finished_at",
+		// Final-status transition: route through the hooks helper so
+		// host-registered InstanceLifecycleHook implementations see the
+		// rejection (same as NodeActionComplete in the engine).
+		if err := engine.ApplyInstanceTransitionWithHooks(
+			ctx, db, instance, approval.InstanceRejected, s.engine.LifecycleHooks(), "finished_at",
 		); err != nil {
 			return nil, fmt.Errorf("apply rejection transition: %w", err)
 		}
@@ -139,9 +143,20 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 		return nil
 	}
 
-	return s.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
-		approval.NewCCNotifiedEvent(instance.ID, instance.TenantID, node.ID, insertedUserIDs, ccUserNames, false),
-	}), event.WithTx(db))
+	evt := approval.NewCCNotifiedEvent(instance.ID, instance.TenantID, node.ID, insertedUserIDs, ccUserNames, false)
+
+	if collector, ok := behavior.TryCollectorFromContext(ctx); ok {
+		collector.Append(evt)
+
+		return nil
+	}
+
+	opts := []event.PublishOption{event.WithTx(db)}
+	if t := approval.PayloadOccurredAt(evt); !t.IsZero() {
+		opts = append(opts, event.WithOccurredAt(t.Unwrap()))
+	}
+
+	return s.bus.Publish(ctx, evt, opts...)
 }
 
 // CheckCCNodeCompletion checks if all CC records for CC nodes are read and advances the flow.

@@ -143,7 +143,7 @@ func (s *Scanner) processTimeout(ctx context.Context, task *approval.Task) error
 			return fmt.Errorf("execute timeout action: %w", err)
 		}
 
-		return s.bus.PublishBatch(ctx, event.AsEvents(events), event.WithTx(tx))
+		return publishWithOccurredAt(ctx, s.bus, tx, events)
 	})
 }
 
@@ -234,13 +234,9 @@ func (s *Scanner) autoFinishTask(
 
 	events = append(events, completionEvents...)
 
-	if _, err := tx.NewUpdate().
-		Model(instance).
-		Select("current_node_id", "status", "finished_at").
-		WherePK().
-		Exec(ctx); err != nil {
-		return nil, fmt.Errorf("update instance: %w", err)
-	}
+	// HandleNodeCompletion already persisted any status / current_node_id /
+	// finished_at change through the state machine — no extra UPDATE is
+	// required here. autoFinishTask never touches form_data.
 
 	actionLog := systemOperator.NewActionLog(task.InstanceID, actionType)
 	actionLog.NodeID = new(task.NodeID)
@@ -440,8 +436,27 @@ func (s *Scanner) sendPreWarning(ctx context.Context, task *approval.Task, hours
 			hoursLeft,
 		)
 
-		return s.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{evt}), event.WithTx(tx))
+		return publishWithOccurredAt(ctx, s.bus, tx, []approval.DomainEvent{evt})
 	})
+}
+
+// publishWithOccurredAt publishes one event per call so we can project
+// each payload's OccurredTime onto the envelope. Scanner runs outside the
+// CQRS pipeline (cron-driven), so there is no EventCollector to fall back
+// to — direct bus.Publish is the only path.
+func publishWithOccurredAt(ctx context.Context, bus event.Bus, tx orm.DB, events []approval.DomainEvent) error {
+	for _, evt := range events {
+		opts := []event.PublishOption{event.WithTx(tx)}
+		if t := approval.PayloadOccurredAt(evt); !t.IsZero() {
+			opts = append(opts, event.WithOccurredAt(t.Unwrap()))
+		}
+
+		if err := bus.Publish(ctx, evt, opts...); err != nil {
+			return fmt.Errorf("publish %s: %w", evt.EventType(), err)
+		}
+	}
+
+	return nil
 }
 
 // CleanupExpiredRecords prunes retention-bounded record tables: form

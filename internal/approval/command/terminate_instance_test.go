@@ -35,7 +35,7 @@ type TerminateInstanceTestSuite struct {
 }
 
 func (s *TerminateInstanceTestSuite) SetupSuite() {
-	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewTerminateInstanceHandler(s.db, service.NewTaskService(), service.NewInstanceService()))
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewTerminateInstanceHandler(s.db, service.NewTaskService(), service.NewInstanceService(nil)))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "terminate")
 
 	node := &approval.FlowNode{

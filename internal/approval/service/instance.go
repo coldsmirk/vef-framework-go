@@ -15,12 +15,20 @@ import (
 // InstanceService is the single write-side entry point for instance status
 // transitions. Every status change (approve / reject / withdraw / rollback /
 // resubmit / terminate / engine-driven completion) must go through Transition
-// so that state-machine validation and the optimistic-lock UPDATE happen
-// together. Direct UPDATE statements against apv_instance.status are a bug.
-type InstanceService struct{}
+// so that state-machine validation, the optimistic-lock UPDATE, and the
+// host-registered lifecycle hooks fire together. Direct UPDATE statements
+// against apv_instance.status are a bug.
+type InstanceService struct {
+	hooks *engine.LifecycleHookRunner
+}
 
-// NewInstanceService creates a new InstanceService.
-func NewInstanceService() *InstanceService { return new(InstanceService) }
+// NewInstanceService creates a new InstanceService. hooks may be nil in
+// test fixtures; production wiring always supplies the engine's
+// LifecycleHookRunner so completion transitions invoke registered
+// extensions inside the same tx as the status change.
+func NewInstanceService(hooks *engine.LifecycleHookRunner) *InstanceService {
+	return &InstanceService{hooks: hooks}
+}
 
 // LoadForUpdate loads an instance by ID with a row-level lock. Callers
 // that are about to mutate instance state (withdraw, resubmit, terminate,
@@ -47,7 +55,8 @@ func (*InstanceService) LoadForUpdate(ctx context.Context, db orm.DB, instanceID
 }
 
 // Transition validates the instance status transition through the state
-// machine and applies it atomically with an optimistic-lock UPDATE.
+// machine, applies it atomically with an optimistic-lock UPDATE, and
+// invokes lifecycle hooks when the new status is final.
 //
 // extraCols lists additional columns the caller pre-populated on instance
 // and wants persisted in the same UPDATE (e.g. "finished_at",
@@ -56,14 +65,14 @@ func (*InstanceService) LoadForUpdate(ctx context.Context, db orm.DB, instanceID
 // If a concurrent writer already advanced the status, the UPDATE matches
 // zero rows and Transition returns ErrInvalidInstanceTransition with the
 // in-memory status restored to the pre-call value.
-func (*InstanceService) Transition(
+func (s *InstanceService) Transition(
 	ctx context.Context,
 	db orm.DB,
 	instance *approval.Instance,
 	to approval.InstanceStatus,
 	extraCols ...string,
 ) error {
-	err := engine.ApplyInstanceTransition(ctx, db, instance, to, extraCols...)
+	err := engine.ApplyInstanceTransitionWithHooks(ctx, db, instance, to, s.hooks, extraCols...)
 	if err == nil {
 		return nil
 	}
