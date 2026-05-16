@@ -151,12 +151,7 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 		return nil
 	}
 
-	opts := []event.PublishOption{event.WithTx(db)}
-	if t := approval.PayloadOccurredAt(evt); !t.IsZero() {
-		opts = append(opts, event.WithOccurredAt(t.Unwrap()))
-	}
-
-	return s.bus.Publish(ctx, evt, opts...)
+	return engine.PublishEventsTx(ctx, s.bus, db, evt)
 }
 
 // CheckCCNodeCompletion checks if all CC records for CC nodes are read and advances the flow.

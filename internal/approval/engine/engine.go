@@ -82,29 +82,14 @@ func (e *FlowEngine) publishEvents(ctx context.Context, db orm.DB, events ...app
 	// publish at the end of the pipeline with consistent OccurredAt /
 	// trace handling. The collector is absent when this engine runs
 	// outside a CQRS pipeline (timeout scanner, binding listener); in
-	// that case fall back to direct bus.Publish below.
+	// that case fall back to direct bus.Publish.
 	if collector, ok := behavior.TryCollectorFromContext(ctx); ok {
 		collector.Append(events...)
 
 		return nil
 	}
 
-	if e.bus == nil {
-		return nil
-	}
-
-	for _, evt := range events {
-		opts := []event.PublishOption{event.WithTx(db)}
-		if t := approval.PayloadOccurredAt(evt); !t.IsZero() {
-			opts = append(opts, event.WithOccurredAt(t.Unwrap()))
-		}
-
-		if err := e.bus.Publish(ctx, evt, opts...); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return PublishEventsTx(ctx, e.bus, db, events...)
 }
 
 // StartProcess starts a flow process by finding the start node and processing it.
