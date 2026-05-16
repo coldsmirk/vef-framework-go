@@ -331,34 +331,31 @@ func (s *TaskServiceTestSuite) TestLoadTaskContextForNodeOperation() {
 	})
 }
 
-// --- InsertActionLog ---
+// --- BuildActionLog ---
 
-func (s *TaskServiceTestSuite) TestInsertActionLog() {
+func (s *TaskServiceTestSuite) TestBuildActionLog() {
 	s.Run("WithAllFields", func() {
 		inst := s.fixture.createInstance(s.T(), s.ctx, s.db, approval.InstanceRunning)
 		task := insertTaskWithDetails(s.T(), s.ctx, s.db, inst.ID, s.fixture.NodeIDs[0], approval.TaskPending, 1)
 		operator := approval.OperatorInfo{ID: "log-user-1", Name: "Logger"}
 
-		err := s.svc.InsertActionLog(s.ctx, s.db, inst.ID, task, operator, approval.ActionApprove, service.ActionLogParams{
+		log := s.svc.BuildActionLog(inst.ID, task, operator, approval.ActionApprove, service.ActionLogParams{
 			Opinion: "looks good", TransferToID: "transfer-to-1", TransferToName: "Transfer User", RollbackToNodeID: "rollback-node-1",
 		})
-		s.Require().NoError(err, "Should insert action log with all optional fields")
-
-		var log approval.ActionLog
-		s.Require().NoError(s.db.NewSelect().
-			Model(&log).
-			Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", inst.ID) }).
-			Scan(s.ctx), "Should query inserted action log")
 
 		s.Assert().Equal(approval.ActionApprove, log.Action, "Action should be approve")
 		s.Assert().Equal("log-user-1", log.OperatorID, "Operator ID should match")
-		s.Assert().NotNil(log.Opinion, "Opinion should be persisted when provided")
+		s.Assert().NotNil(log.NodeID, "Node ID should be populated from task")
+		s.Assert().Equal(task.NodeID, *log.NodeID, "Node ID should match task")
+		s.Assert().NotNil(log.TaskID, "Task ID should be populated from task")
+		s.Assert().Equal(task.ID, *log.TaskID, "Task ID should match task")
+		s.Assert().NotNil(log.Opinion, "Opinion should be set when provided")
 		s.Assert().Equal("looks good", *log.Opinion, "Opinion value should match input")
-		s.Assert().NotNil(log.TransferToID, "Transfer target should be persisted when provided")
+		s.Assert().NotNil(log.TransferToID, "Transfer target should be set when provided")
 		s.Assert().Equal("transfer-to-1", *log.TransferToID, "Transfer target should match input")
-		s.Assert().NotNil(log.TransferToName, "Transfer target name should be persisted when provided")
+		s.Assert().NotNil(log.TransferToName, "Transfer target name should be set when provided")
 		s.Assert().Equal("Transfer User", *log.TransferToName, "Transfer target name should match input")
-		s.Assert().NotNil(log.RollbackToNodeID, "Rollback target should be persisted when provided")
+		s.Assert().NotNil(log.RollbackToNodeID, "Rollback target should be set when provided")
 		s.Assert().Equal("rollback-node-1", *log.RollbackToNodeID, "Rollback target should match input")
 	})
 
@@ -367,17 +364,11 @@ func (s *TaskServiceTestSuite) TestInsertActionLog() {
 		task := insertTaskWithDetails(s.T(), s.ctx, s.db, inst.ID, s.fixture.NodeIDs[1], approval.TaskPending, 1)
 		operator := approval.OperatorInfo{ID: "log-user-2", Name: "Logger2"}
 
-		err := s.svc.InsertActionLog(s.ctx, s.db, inst.ID, task, operator, approval.ActionSubmit, service.ActionLogParams{})
-		s.Require().NoError(err, "Should insert action log without optional fields")
-
-		var log approval.ActionLog
-		s.Require().NoError(s.db.NewSelect().
-			Model(&log).
-			Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", inst.ID) }).
-			Scan(s.ctx), "Should query inserted action log")
+		log := s.svc.BuildActionLog(inst.ID, task, operator, approval.ActionSubmit, service.ActionLogParams{})
 
 		s.Assert().Nil(log.Opinion, "Should not set opinion when empty")
 		s.Assert().Nil(log.TransferToID, "Should not set transfer_to_id when empty")
+		s.Assert().Nil(log.TransferToName, "Should not set transfer_to_name when empty")
 		s.Assert().Nil(log.RollbackToNodeID, "Should not set rollback_to_node_id when empty")
 	})
 }

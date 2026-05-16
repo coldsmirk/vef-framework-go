@@ -13,6 +13,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -29,7 +31,7 @@ type RemoveAssigneeTestSuite struct {
 
 	ctx     context.Context
 	db      orm.DB
-	handler *command.RemoveAssigneeHandler
+	handler cqrs.Handler[command.RemoveAssigneeCmd, cqrs.Unit]
 	fixture *MinimalFixture
 	nodeID  string
 
@@ -40,7 +42,7 @@ func (s *RemoveAssigneeTestSuite) SetupSuite() {
 	eng := buildTestEngine()
 	taskSvc, nodeSvc, _ := buildTestServices(eng)
 
-	s.handler = command.NewRemoveAssigneeHandler(s.db, taskSvc, nodeSvc, eng)
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewRemoveAssigneeHandler(s.db, taskSvc, nodeSvc, eng))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "remove")
 
 	node := &approval.FlowNode{

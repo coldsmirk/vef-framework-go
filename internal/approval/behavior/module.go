@@ -21,6 +21,10 @@ var Module = fx.Module(
 			fx.ResultTags(`group:"vef:cqrs:behaviors"`),
 		),
 		fx.Annotate(
+			NewActionLogBehavior,
+			fx.ResultTags(`group:"vef:cqrs:behaviors"`),
+		),
+		fx.Annotate(
 			NewEventPublishBehavior,
 			fx.ResultTags(`group:"vef:cqrs:behaviors"`),
 		),

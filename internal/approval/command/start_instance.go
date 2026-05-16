@@ -185,11 +185,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	}
 
 	submitLog := cmd.Applicant.NewActionLog(instance.ID, approval.ActionSubmit)
-	if _, err := db.NewInsert().
-		Model(submitLog).
-		Exec(ctx); err != nil {
-		return nil, fmt.Errorf("insert submit log: %w", err)
-	}
+	behavior.ActionLogCollectorFromContext(ctx).Add(submitLog)
 
 	if hooks := h.engine.LifecycleHooks(); hooks != nil {
 		if err := hooks.OnInstanceCreated(ctx, db, instance); err != nil {

@@ -74,9 +74,8 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 
 	events = append(events, completionEvents...)
 
-	if err := h.taskSvc.InsertActionLog(ctx, db, instance.ID, task, cmd.Operator, approval.ActionReject, service.ActionLogParams{Opinion: cmd.Opinion}); err != nil {
-		return cqrs.Unit{}, err
-	}
+	actionLog := h.taskSvc.BuildActionLog(instance.ID, task, cmd.Operator, approval.ActionReject, service.ActionLogParams{Opinion: cmd.Opinion})
+	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	if _, err := db.NewUpdate().
 		Model(instance).

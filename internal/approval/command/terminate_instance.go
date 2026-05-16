@@ -84,9 +84,7 @@ func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInst
 		actionLog.Opinion = &cmd.Reason
 	}
 
-	if _, err := db.NewInsert().Model(actionLog).Exec(ctx); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("insert action log: %w", err)
-	}
+	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	behavior.CollectorFromContext(ctx).Append(
 		approval.NewInstanceCompletedEvent(cmd.InstanceID, instance.TenantID, approval.InstanceTerminated),

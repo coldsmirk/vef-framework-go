@@ -159,11 +159,7 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	actionLog.AddAssigneeType = &cmd.AddType
 
 	actionLog.AddedAssigneeIDs = insertUsers
-	if _, err := db.NewInsert().
-		Model(actionLog).
-		Exec(ctx); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("insert action log: %w", err)
-	}
+	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	behavior.CollectorFromContext(ctx).Append(
 		approval.NewAssigneesAddedEvent(instance.ID, instance.TenantID, task.NodeID, task.ID, cmd.AddType, insertUsers, userNames),

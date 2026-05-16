@@ -97,9 +97,8 @@ func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cq
 		actionType = approval.ActionHandle
 	}
 
-	if err := h.taskSvc.InsertActionLog(ctx, db, instance.ID, task, cmd.Operator, actionType, service.ActionLogParams{Opinion: cmd.Opinion}); err != nil {
-		return cqrs.Unit{}, err
-	}
+	actionLog := h.taskSvc.BuildActionLog(instance.ID, task, cmd.Operator, actionType, service.ActionLogParams{Opinion: cmd.Opinion})
+	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	if _, err := db.NewUpdate().
 		Model(instance).

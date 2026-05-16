@@ -89,9 +89,7 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 	actionLog.TaskID = new(task.ID)
 
 	actionLog.RemovedAssigneeIDs = []string{task.AssigneeID}
-	if _, err := db.NewInsert().Model(actionLog).Exec(ctx); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("insert action log: %w", err)
-	}
+	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	events := []approval.DomainEvent{
 		approval.NewAssigneesRemovedEvent(task.InstanceID, task.TenantID, task.NodeID, task.ID, []string{task.AssigneeID}, map[string]string{task.AssigneeID: task.AssigneeName}),

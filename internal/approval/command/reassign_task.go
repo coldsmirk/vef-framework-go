@@ -108,9 +108,7 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 		actionLog.Opinion = &cmd.Reason
 	}
 
-	if _, err := db.NewInsert().Model(actionLog).Exec(ctx); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("insert action log: %w", err)
-	}
+	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	behavior.CollectorFromContext(ctx).Append(
 		approval.NewTaskReassignedEvent(task.ID, task.TenantID, task.InstanceID, task.NodeID, oldAssigneeID, oldAssigneeName, newAssigneeID, newAssigneeName, cmd.Reason),

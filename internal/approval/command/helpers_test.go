@@ -19,33 +19,74 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// busPublishingHandler wraps a cqrs.Handler with EventPublishBehavior so that
-// events appended to the request-scoped EventCollector get flushed to the
-// supplied bus after the handler returns. Tests use it to keep their
-// bus.CapturedByType assertions after handlers stopped publishing directly.
+// busPublishingHandler wraps a cqrs.Handler with ActionLogBehavior and
+// EventPublishBehavior so handlers exercise the same context plumbing as
+// production: action logs collected via the request-scoped collector get
+// flushed to the DB, and events appended to the request-scoped
+// EventCollector get flushed to the supplied bus after the handler
+// returns. Tests use it to keep their bus.CapturedByType assertions and
+// to verify ActionLog persistence after handlers stopped writing directly.
 type busPublishingHandler[TCmd cqrs.Action, TResult any] struct {
 	bus      *eventtest.FakeBus
 	delegate cqrs.Handler[TCmd, TResult]
-	behavior cqrs.Behavior
+	chain    cqrs.Behavior
+}
+
+// chainBehaviors composes behaviors outside-in: the first behavior is the
+// outermost wrapper and runs first on entry / last on exit.
+func chainBehaviors(behaviors ...cqrs.Behavior) cqrs.Behavior {
+	return behaviorChain(behaviors)
+}
+
+type behaviorChain []cqrs.Behavior
+
+func (c behaviorChain) Handle(ctx context.Context, action cqrs.Action, next func(context.Context) (any, error)) (any, error) {
+	for i := len(c) - 1; i >= 0; i-- {
+		b := c[i]
+		inner := next
+		next = func(ctx context.Context) (any, error) {
+			return b.Handle(ctx, action, inner)
+		}
+	}
+
+	return next(ctx)
 }
 
 // wrapWithBus returns a Handler that delegates to inner while flushing
-// collected events through bus.
+// collected action logs to db and events to bus.
 func wrapWithBus[TCmd cqrs.Action, TResult any](
 	bus *eventtest.FakeBus,
 	inner cqrs.Handler[TCmd, TResult],
 ) *busPublishingHandler[TCmd, TResult] {
+	return wrapWithBusAndDB(nil, bus, inner)
+}
+
+// wrapWithBusAndDB additionally installs ActionLogBehavior so the request-
+// scoped collector flushes through db. When db is nil the wrapper falls
+// back to the EventPublish-only chain used by tests that do not care
+// about action logs.
+func wrapWithBusAndDB[TCmd cqrs.Action, TResult any](
+	db orm.DB,
+	bus *eventtest.FakeBus,
+	inner cqrs.Handler[TCmd, TResult],
+) *busPublishingHandler[TCmd, TResult] {
+	behaviors := []cqrs.Behavior{behavior.NewEventPublishBehavior(bus)}
+	if db != nil {
+		behaviors = append([]cqrs.Behavior{behavior.NewActionLogBehavior(db)}, behaviors...)
+	}
+
 	return &busPublishingHandler[TCmd, TResult]{
 		bus:      bus,
 		delegate: inner,
-		behavior: behavior.NewEventPublishBehavior(bus),
+		chain:    chainBehaviors(behaviors...),
 	}
 }
 
-// Handle runs the delegate inside EventPublishBehavior so the fake bus
-// observes the collected events.
+// Handle runs the delegate inside the configured behavior chain so the
+// fake bus observes collected events and the DB observes collected
+// action logs.
 func (h *busPublishingHandler[TCmd, TResult]) Handle(ctx context.Context, cmd TCmd) (TResult, error) {
-	result, err := h.behavior.Handle(ctx, cmd, func(innerCtx context.Context) (any, error) {
+	result, err := h.chain.Handle(ctx, cmd, func(innerCtx context.Context) (any, error) {
 		return h.delegate.Handle(innerCtx, cmd)
 	})
 

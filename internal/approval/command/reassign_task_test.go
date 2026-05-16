@@ -9,6 +9,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -25,14 +27,14 @@ type ReassignTaskTestSuite struct {
 
 	ctx     context.Context
 	db      orm.DB
-	handler *command.ReassignTaskHandler
+	handler cqrs.Handler[command.ReassignTaskCmd, cqrs.Unit]
 	fixture *MinimalFixture
 	nodeID  string
 	taskSeq int
 }
 
 func (s *ReassignTaskTestSuite) SetupSuite() {
-	s.handler = command.NewReassignTaskHandler(s.db, nil)
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewReassignTaskHandler(s.db, nil))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "reassign")
 
 	node := &approval.FlowNode{

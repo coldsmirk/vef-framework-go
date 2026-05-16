@@ -14,6 +14,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -30,14 +32,14 @@ type WithdrawTestSuite struct {
 
 	ctx         context.Context
 	db          orm.DB
-	handler     *command.WithdrawHandler
+	handler     cqrs.Handler[command.WithdrawCmd, cqrs.Unit]
 	fixture     *MinimalFixture
 	nodeID      string
 	instanceSeq int
 }
 
 func (s *WithdrawTestSuite) SetupSuite() {
-	s.handler = command.NewWithdrawHandler(s.db, service.NewTaskService(), service.NewInstanceService())
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewWithdrawHandler(s.db, service.NewTaskService(), service.NewInstanceService()))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "withdraw")
 
 	node := &approval.FlowNode{

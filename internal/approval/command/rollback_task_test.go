@@ -10,6 +10,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -26,7 +28,7 @@ type RollbackTaskTestSuite struct {
 
 	ctx          context.Context
 	db           orm.DB
-	handler      *command.RollbackTaskHandler
+	handler      cqrs.Handler[command.RollbackTaskCmd, cqrs.Unit]
 	fixture      *MinimalFixture
 	rollbackNode *approval.FlowNode
 	targetNode   *approval.FlowNode
@@ -38,7 +40,7 @@ func (s *RollbackTaskTestSuite) SetupSuite() {
 	eng := buildTestEngine()
 	taskSvc := service.NewTaskService()
 	validSvc := service.NewValidationService(nil)
-	s.handler = command.NewRollbackTaskHandler(s.db, taskSvc, service.NewInstanceService(), validSvc, eng)
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewRollbackTaskHandler(s.db, taskSvc, service.NewInstanceService(), validSvc, eng))
 
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "rollback")
 

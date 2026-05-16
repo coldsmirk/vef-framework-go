@@ -13,6 +13,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -31,18 +33,18 @@ type ResubmitTestSuite struct {
 
 	ctx     context.Context
 	db      orm.DB
-	handler *command.ResubmitHandler
+	handler cqrs.Handler[command.ResubmitCmd, cqrs.Unit]
 	fixture *FlowFixture
 }
 
 func (s *ResubmitTestSuite) SetupSuite() {
 	s.fixture = setupApprovalFlow(s.T(), s.ctx, s.db)
-	s.handler = command.NewResubmitHandler(
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewResubmitHandler(
 		s.db,
 		buildTestEngine(),
 		service.NewValidationService(nil),
 		service.NewInstanceService(),
-	)
+	))
 }
 
 func (s *ResubmitTestSuite) TearDownTest() {

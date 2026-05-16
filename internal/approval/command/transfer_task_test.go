@@ -10,6 +10,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -26,7 +28,7 @@ type TransferTaskTestSuite struct {
 
 	ctx     context.Context
 	db      orm.DB
-	handler *command.TransferTaskHandler
+	handler cqrs.Handler[command.TransferTaskCmd, cqrs.Unit]
 	fixture *MinimalFixture
 	nodeID  string
 
@@ -36,7 +38,7 @@ type TransferTaskTestSuite struct {
 func (s *TransferTaskTestSuite) SetupSuite() {
 	taskSvc := service.NewTaskService()
 	validSvc := service.NewValidationService(nil)
-	s.handler = command.NewTransferTaskHandler(s.db, taskSvc, validSvc, nil)
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewTransferTaskHandler(s.db, taskSvc, validSvc, nil))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "transfer")
 
 	node := &approval.FlowNode{

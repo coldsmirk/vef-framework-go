@@ -8,6 +8,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -24,7 +26,7 @@ type RejectTaskTestSuite struct {
 
 	ctx     context.Context
 	db      orm.DB
-	handler *command.RejectTaskHandler
+	handler cqrs.Handler[command.RejectTaskCmd, cqrs.Unit]
 	fixture *FlowFixture
 }
 
@@ -34,7 +36,7 @@ func (s *RejectTaskTestSuite) SetupSuite() {
 	eng := buildTestEngine()
 	taskSvc, nodeSvc, validSvc := buildTestServices(eng)
 
-	s.handler = command.NewRejectTaskHandler(s.db, taskSvc, nodeSvc, validSvc)
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewRejectTaskHandler(s.db, taskSvc, nodeSvc, validSvc))
 }
 
 func (s *RejectTaskTestSuite) TearDownTest() {

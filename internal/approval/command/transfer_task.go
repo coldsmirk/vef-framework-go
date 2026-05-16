@@ -113,17 +113,14 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 		approval.NewTaskCreatedEvent(newTask.ID, newTask.TenantID, instance.ID, node.ID, transferToID, transferToName, task.Deadline),
 	}
 
-	if err := h.taskSvc.InsertActionLog(
-		ctx,
-		db,
+	actionLog := h.taskSvc.BuildActionLog(
 		instance.ID,
 		task,
 		cmd.Operator,
 		approval.ActionTransfer,
 		service.ActionLogParams{Opinion: cmd.Opinion, TransferToID: transferToID, TransferToName: transferToName},
-	); err != nil {
-		return cqrs.Unit{}, err
-	}
+	)
+	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	if _, err := db.NewUpdate().
 		Model(instance).

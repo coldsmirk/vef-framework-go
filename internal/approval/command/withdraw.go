@@ -89,9 +89,7 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Uni
 		actionLog.Opinion = &cmd.Reason
 	}
 
-	if _, err := db.NewInsert().Model(actionLog).Exec(ctx); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("insert action log: %w", err)
-	}
+	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	behavior.CollectorFromContext(ctx).Append(
 		approval.NewInstanceWithdrawnEvent(cmd.InstanceID, instance.TenantID, cmd.Operator.ID),

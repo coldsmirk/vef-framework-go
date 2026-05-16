@@ -115,9 +115,7 @@ func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Uni
 	}
 
 	actionLog := cmd.Operator.NewActionLog(cmd.InstanceID, approval.ActionResubmit)
-	if _, err := db.NewInsert().Model(actionLog).Exec(ctx); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("insert action log: %w", err)
-	}
+	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	behavior.CollectorFromContext(ctx).Append(
 		approval.NewInstanceResubmittedEvent(cmd.InstanceID, instance.TenantID, cmd.Operator.ID),

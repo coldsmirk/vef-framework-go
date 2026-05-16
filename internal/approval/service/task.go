@@ -326,7 +326,7 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID, o
 	return tc, nil
 }
 
-// ActionLogParams holds optional fields for InsertActionLog.
+// ActionLogParams holds optional fields for BuildActionLog.
 type ActionLogParams struct {
 	Opinion          string
 	TransferToID     string
@@ -334,16 +334,17 @@ type ActionLogParams struct {
 	RollbackToNodeID string
 }
 
-// InsertActionLog creates and inserts an action log entry.
-func (*TaskService) InsertActionLog(
-	ctx context.Context,
-	db orm.DB,
+// BuildActionLog constructs a task-scoped ActionLog entry. Persistence is
+// deferred to ActionLogBehavior; callers hand the result to the request-
+// scoped ActionLogCollector instead of inserting directly so transactional
+// log writes happen at one place.
+func (*TaskService) BuildActionLog(
 	instanceID string,
 	task *approval.Task,
 	operator approval.OperatorInfo,
 	action approval.ActionType,
 	params ActionLogParams,
-) error {
+) *approval.ActionLog {
 	actionLog := operator.NewActionLog(instanceID, action)
 	actionLog.NodeID = new(task.NodeID)
 	actionLog.TaskID = new(task.ID)
@@ -364,11 +365,7 @@ func (*TaskService) InsertActionLog(
 		actionLog.RollbackToNodeID = new(params.RollbackToNodeID)
 	}
 
-	if _, err := db.NewInsert().Model(actionLog).Exec(ctx); err != nil {
-		return fmt.Errorf("insert action log: %w", err)
-	}
-
-	return nil
+	return actionLog
 }
 
 // LoadTaskContextForNodeOperation loads and validates instance/task/node context for node operations.

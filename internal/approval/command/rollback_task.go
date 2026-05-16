@@ -164,17 +164,14 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 		}
 	}
 
-	if err := h.taskSvc.InsertActionLog(
-		ctx,
-		db,
+	actionLog := h.taskSvc.BuildActionLog(
 		instance.ID,
 		task,
 		cmd.Operator,
 		approval.ActionRollback,
 		service.ActionLogParams{Opinion: cmd.Opinion, RollbackToNodeID: targetNodeID},
-	); err != nil {
-		return cqrs.Unit{}, err
-	}
+	)
+	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	behavior.CollectorFromContext(ctx).Append(events...)
 
