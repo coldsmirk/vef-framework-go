@@ -208,21 +208,16 @@ type AdminTerminateInstanceParams struct {
 
 // TerminateInstance terminates a running approval instance.
 func (r *AdminResource) TerminateInstance(ctx fiber.Ctx, principal *security.Principal, params AdminTerminateInstanceParams) error {
-	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
-	if err != nil {
-		return err
-	}
-
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
 
 	if _, err := cqrs.Send[command.TerminateInstanceCmd, cqrs.Unit](ctx.Context(), r.bus, command.TerminateInstanceCmd{
 		InstanceID: params.InstanceID,
-		Operator:   operator,
+		Operator:   actor.Operator,
 		Reason:     params.Reason,
-		Caller:     caller,
+		Caller:     actor.Caller,
 	}); err != nil {
 		return err
 	}
@@ -241,12 +236,7 @@ type AdminReassignTaskParams struct {
 
 // ReassignTask reassigns a pending task to a different user.
 func (r *AdminResource) ReassignTask(ctx fiber.Ctx, principal *security.Principal, params AdminReassignTaskParams) error {
-	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
-	if err != nil {
-		return err
-	}
-
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -254,9 +244,9 @@ func (r *AdminResource) ReassignTask(ctx fiber.Ctx, principal *security.Principa
 	if _, err := cqrs.Send[command.ReassignTaskCmd, cqrs.Unit](ctx.Context(), r.bus, command.ReassignTaskCmd{
 		TaskID:        params.TaskID,
 		NewAssigneeID: params.NewAssigneeID,
-		Operator:      operator,
+		Operator:      actor.Operator,
 		Reason:        params.Reason,
-		Caller:        caller,
+		Caller:        actor.Caller,
 	}); err != nil {
 		return err
 	}

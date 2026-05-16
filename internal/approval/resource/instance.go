@@ -48,6 +48,37 @@ func resolveCaller(ctx context.Context, resolver approval.PrincipalTenantResolve
 	}, nil
 }
 
+// resolveActor walks the principal once and returns both the operator
+// identity (for audit logging) and the caller's tenant authority. Resource
+// handlers that hit a command always need both, so threading them together
+// avoids two near-identical pairs of resolve / nil-check / wrap-error per
+// endpoint. Returning the resolved values by value keeps the call site a
+// single assignment — `actor, err := r.resolveActor(...)` — which is the
+// shape most handlers want.
+type resolvedActor struct {
+	Operator approval.OperatorInfo
+	Caller   approval.CallerContext
+}
+
+func resolveActor(
+	ctx context.Context,
+	deptResolver approval.PrincipalDepartmentResolver,
+	tenantResolver approval.PrincipalTenantResolver,
+	principal *security.Principal,
+) (resolvedActor, error) {
+	operator, err := resolveOperator(ctx, deptResolver, principal)
+	if err != nil {
+		return resolvedActor{}, err
+	}
+
+	caller, err := resolveCaller(ctx, tenantResolver, principal)
+	if err != nil {
+		return resolvedActor{}, err
+	}
+
+	return resolvedActor{Operator: operator, Caller: caller}, nil
+}
+
 // InstanceResource handles instance lifecycle and queries.
 type InstanceResource struct {
 	api.Resource
@@ -106,12 +137,7 @@ type StartInstanceParams struct {
 
 // Start creates a new flow instance.
 func (r *InstanceResource) Start(ctx fiber.Ctx, principal *security.Principal, params StartInstanceParams) error {
-	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
-	if err != nil {
-		return err
-	}
-
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -119,10 +145,10 @@ func (r *InstanceResource) Start(ctx fiber.Ctx, principal *security.Principal, p
 	instance, err := cqrs.Send[command.StartInstanceCmd, *approval.Instance](ctx.Context(), r.bus, command.StartInstanceCmd{
 		TenantID:         params.TenantID,
 		FlowCode:         params.FlowCode,
-		Applicant:        operator,
+		Applicant:        actor.Operator,
 		BusinessRecordID: params.BusinessRecordID,
 		FormData:         params.FormData,
-		Caller:           caller,
+		Caller:           actor.Caller,
 	})
 	if err != nil {
 		return err
@@ -145,12 +171,7 @@ type ProcessTaskParams struct {
 
 // ProcessTask handles task actions (approve/reject/transfer/rollback/handle).
 func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Principal, params ProcessTaskParams) error {
-	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
-	if err != nil {
-		return err
-	}
-
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -159,39 +180,39 @@ func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Princi
 	case "approve", "handle":
 		_, err = cqrs.Send[command.ApproveTaskCmd, cqrs.Unit](ctx.Context(), r.bus, command.ApproveTaskCmd{
 			TaskID:   params.TaskID,
-			Operator: operator,
+			Operator: actor.Operator,
 			Opinion:  params.Opinion,
 			FormData: params.FormData,
-			Caller:   caller,
+			Caller:   actor.Caller,
 		})
 
 	case "reject":
 		_, err = cqrs.Send[command.RejectTaskCmd, cqrs.Unit](ctx.Context(), r.bus, command.RejectTaskCmd{
 			TaskID:   params.TaskID,
-			Operator: operator,
+			Operator: actor.Operator,
 			Opinion:  params.Opinion,
 			FormData: params.FormData,
-			Caller:   caller,
+			Caller:   actor.Caller,
 		})
 
 	case "transfer":
 		_, err = cqrs.Send[command.TransferTaskCmd, cqrs.Unit](ctx.Context(), r.bus, command.TransferTaskCmd{
 			TaskID:       params.TaskID,
-			Operator:     operator,
+			Operator:     actor.Operator,
 			Opinion:      params.Opinion,
 			FormData:     params.FormData,
 			TransferToID: params.TransferToID,
-			Caller:       caller,
+			Caller:       actor.Caller,
 		})
 
 	case "rollback":
 		_, err = cqrs.Send[command.RollbackTaskCmd, cqrs.Unit](ctx.Context(), r.bus, command.RollbackTaskCmd{
 			TaskID:       params.TaskID,
-			Operator:     operator,
+			Operator:     actor.Operator,
 			Opinion:      params.Opinion,
 			FormData:     params.FormData,
 			TargetNodeID: params.TargetNodeID,
-			Caller:       caller,
+			Caller:       actor.Caller,
 		})
 
 	default:
@@ -215,21 +236,16 @@ type WithdrawParams struct {
 
 // Withdraw withdraws an instance.
 func (r *InstanceResource) Withdraw(ctx fiber.Ctx, principal *security.Principal, params WithdrawParams) error {
-	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
-	if err != nil {
-		return err
-	}
-
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
 
 	if _, err := cqrs.Send[command.WithdrawCmd, cqrs.Unit](ctx.Context(), r.bus, command.WithdrawCmd{
 		InstanceID: params.InstanceID,
-		Operator:   operator,
+		Operator:   actor.Operator,
 		Reason:     params.Reason,
-		Caller:     caller,
+		Caller:     actor.Caller,
 	}); err != nil {
 		return err
 	}
@@ -247,21 +263,16 @@ type ResubmitParams struct {
 
 // Resubmit resubmits a returned instance.
 func (r *InstanceResource) Resubmit(ctx fiber.Ctx, principal *security.Principal, params ResubmitParams) error {
-	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
-	if err != nil {
-		return err
-	}
-
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
 
 	if _, err := cqrs.Send[command.ResubmitCmd, cqrs.Unit](ctx.Context(), r.bus, command.ResubmitCmd{
 		InstanceID: params.InstanceID,
-		Operator:   operator,
+		Operator:   actor.Operator,
 		FormData:   params.FormData,
-		Caller:     caller,
+		Caller:     actor.Caller,
 	}); err != nil {
 		return err
 	}
@@ -279,12 +290,7 @@ type AddCCParams struct {
 
 // AddCC adds CC records for an instance.
 func (r *InstanceResource) AddCC(ctx fiber.Ctx, principal *security.Principal, params AddCCParams) error {
-	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
-	if err != nil {
-		return err
-	}
-
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -292,8 +298,8 @@ func (r *InstanceResource) AddCC(ctx fiber.Ctx, principal *security.Principal, p
 	if _, err := cqrs.Send[command.AddCCCmd, cqrs.Unit](ctx.Context(), r.bus, command.AddCCCmd{
 		InstanceID: params.InstanceID,
 		CCUserIDs:  params.CCUserIDs,
-		Operator:   operator,
-		Caller:     caller,
+		Operator:   actor.Operator,
+		Caller:     actor.Caller,
 	}); err != nil {
 		return err
 	}
@@ -337,12 +343,7 @@ type AddAssigneeParams struct {
 
 // AddAssignee dynamically adds assignees to a task.
 func (r *InstanceResource) AddAssignee(ctx fiber.Ctx, principal *security.Principal, params AddAssigneeParams) error {
-	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
-	if err != nil {
-		return err
-	}
-
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -351,8 +352,8 @@ func (r *InstanceResource) AddAssignee(ctx fiber.Ctx, principal *security.Princi
 		TaskID:   params.TaskID,
 		UserIDs:  params.UserIDs,
 		AddType:  approval.AddAssigneeType(params.AddType),
-		Operator: operator,
-		Caller:   caller,
+		Operator: actor.Operator,
+		Caller:   actor.Caller,
 	}); err != nil {
 		return err
 	}
@@ -369,20 +370,15 @@ type RemoveAssigneeParams struct {
 
 // RemoveAssignee removes an assignee by canceling their task.
 func (r *InstanceResource) RemoveAssignee(ctx fiber.Ctx, principal *security.Principal, params RemoveAssigneeParams) error {
-	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
-	if err != nil {
-		return err
-	}
-
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
 
 	if _, err := cqrs.Send[command.RemoveAssigneeCmd, cqrs.Unit](ctx.Context(), r.bus, command.RemoveAssigneeCmd{
 		TaskID:   params.TaskID,
-		Operator: operator,
-		Caller:   caller,
+		Operator: actor.Operator,
+		Caller:   actor.Caller,
 	}); err != nil {
 		return err
 	}
