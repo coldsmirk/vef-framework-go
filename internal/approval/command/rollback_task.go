@@ -32,6 +32,7 @@ type RollbackTaskCmd struct {
 type RollbackTaskHandler struct {
 	db            orm.DB
 	taskSvc       *service.TaskService
+	instanceSvc   *service.InstanceService
 	validationSvc *service.ValidationService
 	engine        *engine.FlowEngine
 	bus           event.Bus
@@ -41,6 +42,7 @@ type RollbackTaskHandler struct {
 func NewRollbackTaskHandler(
 	db orm.DB,
 	taskSvc *service.TaskService,
+	instanceSvc *service.InstanceService,
 	validationSvc *service.ValidationService,
 	eng *engine.FlowEngine,
 	bus event.Bus,
@@ -48,6 +50,7 @@ func NewRollbackTaskHandler(
 	return &RollbackTaskHandler{
 		db:            db,
 		taskSvc:       taskSvc,
+		instanceSvc:   instanceSvc,
 		validationSvc: validationSvc,
 		engine:        eng,
 		bus:           bus,
@@ -126,21 +129,41 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 	var events []approval.DomainEvent
 
 	if targetNode.Kind == approval.NodeStart {
-		// Return to initiator: pause instance as returned
+		// Return to initiator: pause instance as returned. State machine
+		// transition persists form_data / current_node_id / finished_at
+		// in the same UPDATE.
 		now := timex.Now()
-		instance.Status = approval.InstanceReturned
 		instance.FinishedAt = &now
+
+		if err := h.instanceSvc.Transition(
+			ctx, db, instance, approval.InstanceReturned,
+			"form_data", "current_node_id", "finished_at",
+		); err != nil {
+			return cqrs.Unit{}, err
+		}
+
 		events = []approval.DomainEvent{
-			approval.NewInstanceReturnedEvent(instance.ID, node.ID, targetNodeID, cmd.Operator.ID),
+			approval.NewInstanceReturnedEvent(instance.ID, instance.TenantID, node.ID, targetNodeID, cmd.Operator.ID),
 		}
 	} else {
-		// Rollback to intermediate node: continue processing
+		// Rollback to intermediate node: status stays running but
+		// form_data / current_node_id need to be persisted before the
+		// engine processes the target. ProcessNode handles any further
+		// state transitions through ApplyInstanceTransition.
+		if _, err := db.NewUpdate().
+			Model(instance).
+			Select("form_data", "current_node_id").
+			WherePK().
+			Exec(ctx); err != nil {
+			return cqrs.Unit{}, fmt.Errorf("update instance: %w", err)
+		}
+
 		if err := h.engine.ProcessNode(ctx, db, instance, &targetNode); err != nil {
 			return cqrs.Unit{}, fmt.Errorf("process rollback target node: %w", err)
 		}
 
 		events = []approval.DomainEvent{
-			approval.NewInstanceRolledBackEvent(instance.ID, node.ID, targetNodeID, cmd.Operator.ID),
+			approval.NewInstanceRolledBackEvent(instance.ID, instance.TenantID, node.ID, targetNodeID, cmd.Operator.ID),
 		}
 	}
 
@@ -154,14 +177,6 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 		service.ActionLogParams{Opinion: cmd.Opinion, RollbackToNodeID: targetNodeID},
 	); err != nil {
 		return cqrs.Unit{}, err
-	}
-
-	if _, err := db.NewUpdate().
-		Model(instance).
-		Select("form_data", "current_node_id", "status", "finished_at").
-		WherePK().
-		Exec(ctx); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("update instance: %w", err)
 	}
 
 	if err := h.bus.PublishBatch(ctx, event.AsEvents(events), event.WithTx(db)); err != nil {

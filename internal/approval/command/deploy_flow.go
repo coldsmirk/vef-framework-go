@@ -6,6 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
@@ -39,11 +40,12 @@ type CCProvider interface {
 type DeployFlowHandler struct {
 	db         orm.DB
 	flowDefSvc *service.FlowDefinitionService
+	bus        event.Bus
 }
 
 // NewDeployFlowHandler creates a new DeployFlowHandler.
-func NewDeployFlowHandler(db orm.DB, flowDefSvc *service.FlowDefinitionService) *DeployFlowHandler {
-	return &DeployFlowHandler{db: db, flowDefSvc: flowDefSvc}
+func NewDeployFlowHandler(db orm.DB, flowDefSvc *service.FlowDefinitionService, bus event.Bus) *DeployFlowHandler {
+	return &DeployFlowHandler{db: db, flowDefSvc: flowDefSvc, bus: bus}
 }
 
 func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*approval.FlowVersion, error) {
@@ -196,6 +198,12 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 		if _, err := db.NewInsert().Model(&edges).Exec(ctx); err != nil {
 			return nil, fmt.Errorf("insert edges: %w", err)
 		}
+	}
+
+	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
+		approval.NewFlowDeployedEvent(version.FlowID, flow.TenantID, version.ID, version.Version),
+	}), event.WithTx(db)); err != nil {
+		return nil, fmt.Errorf("publish flow deployed event: %w", err)
 	}
 
 	return &version, nil

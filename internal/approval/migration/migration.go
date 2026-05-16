@@ -32,7 +32,6 @@ var expectedTables = []string{
 	"apv_instance",
 	"apv_task",
 	"apv_action_log",
-	"apv_parallel_record",
 	"apv_cc_record",
 	"apv_delegation",
 	"apv_form_snapshot",
@@ -45,6 +44,7 @@ var expectedTables = []string{
 // per-module bookkeeping.
 var obsoleteTables = []string{
 	"apv_event_outbox",
+	"apv_parallel_record",
 }
 
 // Migrate runs the approval module's DDL migration for the given

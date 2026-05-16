@@ -75,9 +75,9 @@ func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cq
 
 	var taskEvent approval.DomainEvent
 	if isHandle {
-		taskEvent = approval.NewTaskHandledEvent(task.ID, instance.ID, node.ID, cmd.Operator.ID, cmd.Opinion)
+		taskEvent = approval.NewTaskHandledEvent(task.ID, task.TenantID, instance.ID, node.ID, cmd.Operator.ID, cmd.Opinion)
 	} else {
-		taskEvent = approval.NewTaskApprovedEvent(task.ID, instance.ID, node.ID, cmd.Operator.ID, cmd.Opinion)
+		taskEvent = approval.NewTaskApprovedEvent(task.ID, task.TenantID, instance.ID, node.ID, cmd.Operator.ID, cmd.Opinion)
 	}
 
 	events := []approval.DomainEvent{taskEvent}

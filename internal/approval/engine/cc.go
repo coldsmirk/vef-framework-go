@@ -26,7 +26,7 @@ func (p *CCProcessor) Process(ctx context.Context, pc *ProcessContext) (*Process
 	var events []approval.DomainEvent
 	if len(ccUserIDs) > 0 {
 		events = []approval.DomainEvent{
-			approval.NewCCNotifiedEvent(pc.Instance.ID, pc.Node.ID, ccUserIDs, ccUserNames, false),
+			approval.NewCCNotifiedEvent(pc.Instance.ID, pc.Instance.TenantID, pc.Node.ID, ccUserIDs, ccUserNames, false),
 		}
 	}
 
@@ -52,7 +52,7 @@ func (*CCProcessor) createCCRecords(ctx context.Context, pc *ProcessContext) ([]
 		return nil, nil, fmt.Errorf("load cc configs: %w", err)
 	}
 
-	resolved, err := shared.CollectUniqueCCUserIDs(ccConfigs, pc.FormData, ResolveCCUserIDs, nil)
+	resolved, err := shared.CollectUniqueCCUserIDs(ccConfigs, pc.FormData, shared.ResolveCCUserIDs, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve cc users: %w", err)
 	}

@@ -36,4 +36,6 @@ var Module = fx.Module(
 			),
 		),
 	),
+
+	fx.Invoke(func(r *StrategyRegistry) error { return r.ValidateBuiltins() }),
 )

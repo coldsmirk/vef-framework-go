@@ -1,3 +1,14 @@
+// Package shared collects cross-cutting types and helpers for the approval
+// module: sentinel errors with stable codes, ID utilities, deadline math,
+// CC user resolution, and small DTOs shared by the command/query/resource
+// boundaries.
+//
+// Error handling: each sentinel below is a value of result.Error (Code +
+// Message + HTTP Status). result.Error is a comparable struct, so
+// errors.Is(wrapped, shared.ErrXxx) works against any chain produced with
+// fmt.Errorf("...: %w", err) — there's no need to dereference a pointer.
+// Build new domain errors by attaching one of these sentinels with %w; do
+// not synthesize ad-hoc error strings at call sites.
 package shared
 
 import "github.com/coldsmirk/vef-framework-go/result"
@@ -12,11 +23,12 @@ const (
 	ErrCodeFlowCodeExists     = 40006
 	ErrCodeVersionNotFound    = 40007
 
-	ErrCodeInstanceNotFound   = 40101
-	ErrCodeInstanceCompleted  = 40102
-	ErrCodeNotAllowedInitiate = 40103
-	ErrCodeWithdrawNotAllowed = 40104
-	ErrCodeResubmitNotAllowed = 40105
+	ErrCodeInstanceNotFound          = 40101
+	ErrCodeInstanceCompleted         = 40102
+	ErrCodeNotAllowedInitiate        = 40103
+	ErrCodeWithdrawNotAllowed        = 40104
+	ErrCodeResubmitNotAllowed        = 40105
+	ErrCodeInvalidInstanceTransition = 40106
 
 	ErrCodeTaskNotFound             = 40201
 	ErrCodeTaskNotPending           = 40202
@@ -59,11 +71,12 @@ var (
 	ErrFlowCodeExists     = result.Err("流程编码已存在", result.WithCode(ErrCodeFlowCodeExists))
 	ErrVersionNotFound    = result.Err("流程版本不存在", result.WithCode(ErrCodeVersionNotFound))
 
-	ErrInstanceNotFound   = result.Err("审批实例不存在", result.WithCode(ErrCodeInstanceNotFound))
-	ErrInstanceCompleted  = result.Err("审批实例已结束", result.WithCode(ErrCodeInstanceCompleted))
-	ErrNotAllowedInitiate = result.Err("无权发起此流程", result.WithCode(ErrCodeNotAllowedInitiate))
-	ErrWithdrawNotAllowed = result.Err("当前状态不允许撤回", result.WithCode(ErrCodeWithdrawNotAllowed))
-	ErrResubmitNotAllowed = result.Err("当前状态不允许重新提交", result.WithCode(ErrCodeResubmitNotAllowed))
+	ErrInstanceNotFound          = result.Err("审批实例不存在", result.WithCode(ErrCodeInstanceNotFound))
+	ErrInstanceCompleted         = result.Err("审批实例已结束", result.WithCode(ErrCodeInstanceCompleted))
+	ErrNotAllowedInitiate        = result.Err("无权发起此流程", result.WithCode(ErrCodeNotAllowedInitiate))
+	ErrWithdrawNotAllowed        = result.Err("当前状态不允许撤回", result.WithCode(ErrCodeWithdrawNotAllowed))
+	ErrResubmitNotAllowed        = result.Err("当前状态不允许重新提交", result.WithCode(ErrCodeResubmitNotAllowed))
+	ErrInvalidInstanceTransition = result.Err("非法的实例状态转换", result.WithCode(ErrCodeInvalidInstanceTransition))
 
 	ErrTaskNotFound             = result.Err("任务不存在", result.WithCode(ErrCodeTaskNotFound))
 	ErrTaskNotPending           = result.Err("任务非待处理状态", result.WithCode(ErrCodeTaskNotPending))

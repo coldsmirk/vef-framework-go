@@ -4,6 +4,7 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/migration"
@@ -20,6 +21,7 @@ var Module = fx.Module(
 
 	strategy.Module,
 	behavior.Module,
+	binding.Module,
 	engine.Module,
 	service.Module,
 	command.Module,

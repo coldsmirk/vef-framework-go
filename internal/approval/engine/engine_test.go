@@ -87,7 +87,7 @@ func TestNormalizePassRatio(t *testing.T) {
 // TestNewFlowEngine tests new flow engine constructor via behavior.
 func TestNewFlowEngine(t *testing.T) {
 	t.Run("EmptyProcessors", func(t *testing.T) {
-		eng := engine.NewFlowEngine(nil, nil, nil, nil)
+		eng := engine.NewFlowEngine(nil, nil, nil, nil, nil, nil)
 		require.NotNil(t, eng, "Should create engine with nil processors")
 
 		node := &approval.FlowNode{Kind: approval.NodeStart, Name: "Start"}
@@ -100,7 +100,7 @@ func TestNewFlowEngine(t *testing.T) {
 		stubErr := errors.New("stub reached")
 		eng := engine.NewFlowEngine(nil, []engine.NodeProcessor{
 			&StubProcessor{kind: approval.NodeStart, err: stubErr},
-		}, nil, nil)
+		}, nil, nil, nil, nil)
 
 		node := &approval.FlowNode{Kind: approval.NodeStart, Name: "Start"}
 		node.ID = "test-start"
@@ -120,7 +120,7 @@ func TestNewFlowEngine(t *testing.T) {
 			procs = append(procs, &StubProcessor{kind: k, err: errors.New("reached-" + string(k))})
 		}
 
-		eng := engine.NewFlowEngine(nil, procs, nil, nil)
+		eng := engine.NewFlowEngine(nil, procs, nil, nil, nil, nil)
 		for _, k := range kinds {
 			node := &approval.FlowNode{Kind: k, Name: string(k)}
 			node.ID = "test-" + string(k)
@@ -129,19 +129,16 @@ func TestNewFlowEngine(t *testing.T) {
 		}
 	})
 
-	t.Run("DuplicateOverrides", func(t *testing.T) {
+	t.Run("DuplicatesPanic", func(t *testing.T) {
 		errFirst := errors.New("first")
 		errSecond := errors.New("second")
-		eng := engine.NewFlowEngine(nil, []engine.NodeProcessor{
-			&StubProcessor{kind: approval.NodeStart, err: errFirst},
-			&StubProcessor{kind: approval.NodeStart, err: errSecond},
-		}, nil, nil)
 
-		node := &approval.FlowNode{Kind: approval.NodeStart, Name: "Start"}
-		node.ID = "test-start"
-		err := eng.ProcessNode(t.Context(), nil, &approval.Instance{}, node)
-		assert.ErrorIs(t, err, errSecond, "Last registered processor should win")
-		assert.NotErrorIs(t, err, errFirst, "First processor should be overridden")
+		assert.Panics(t, func() {
+			engine.NewFlowEngine(nil, []engine.NodeProcessor{
+				&StubProcessor{kind: approval.NodeStart, err: errFirst},
+				&StubProcessor{kind: approval.NodeStart, err: errSecond},
+			}, nil, nil, nil, nil)
+		}, "Duplicate node-kind registration must panic to surface the configuration bug")
 	})
 }
 
@@ -152,7 +149,7 @@ func TestEvaluatePassRuleWithTasks(t *testing.T) {
 		nil,
 		nil,
 	)
-	eng := engine.NewFlowEngine(reg, nil, nil, nil)
+	eng := engine.NewFlowEngine(reg, nil, nil, nil, nil, nil)
 	node := &approval.FlowNode{PassRule: approval.PassAll, PassRatio: decimal.NewFromInt(0)}
 
 	t.Run("AllApproved", func(t *testing.T) {
@@ -242,7 +239,7 @@ func (s *FlowEngineTestSuite) SetupSuite() {
 		engine.NewStartProcessor(),
 		engine.NewEndProcessor(),
 		engine.NewApprovalProcessor(nil),
-	}, nil, nil)
+	}, nil, nil, nil, nil)
 
 	// Build FK chain: FlowCategory → Flow → FlowVersion
 	category := &approval.FlowCategory{TenantID: "default", Code: "engine-test", Name: "Engine Test"}

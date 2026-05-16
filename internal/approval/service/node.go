@@ -59,23 +59,23 @@ func (s *NodeService) HandleNodeCompletion(
 		return nil, nil
 
 	case approval.PassRuleRejected:
-		if err := engine.InstanceStateMachine.Transition(instance.Status, approval.InstanceRejected); err != nil {
-			return nil, err
-		}
-
 		if err := s.TriggerNodeCC(ctx, db, instance, node, approval.PassRuleRejected); err != nil {
 			return nil, fmt.Errorf("trigger node cc: %w", err)
 		}
-
-		instance.Status = approval.InstanceRejected
-		instance.FinishedAt = new(timex.Now())
 
 		if err := s.taskSvc.CancelRemainingTasks(ctx, db, instance.ID, node.ID); err != nil {
 			return nil, err
 		}
 
+		instance.FinishedAt = new(timex.Now())
+		if err := engine.ApplyInstanceTransition(
+			ctx, db, instance, approval.InstanceRejected, "finished_at",
+		); err != nil {
+			return nil, fmt.Errorf("apply rejection transition: %w", err)
+		}
+
 		return []approval.DomainEvent{
-			approval.NewInstanceCompletedEvent(instance.ID, approval.InstanceRejected),
+			approval.NewInstanceCompletedEvent(instance.ID, instance.TenantID, approval.InstanceRejected),
 		}, nil
 
 	default:
@@ -106,7 +106,7 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 	resolved, err := shared.CollectUniqueCCUserIDs(
 		ccConfigs,
 		formData,
-		engine.ResolveCCUserIDs,
+		shared.ResolveCCUserIDs,
 		func(cfg approval.FlowNodeCC) bool {
 			switch cfg.Timing {
 			case approval.CCTimingAlways:
@@ -140,7 +140,7 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 	}
 
 	return s.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
-		approval.NewCCNotifiedEvent(instance.ID, node.ID, insertedUserIDs, ccUserNames, false),
+		approval.NewCCNotifiedEvent(instance.ID, instance.TenantID, node.ID, insertedUserIDs, ccUserNames, false),
 	}), event.WithTx(db))
 }
 

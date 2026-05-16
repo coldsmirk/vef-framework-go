@@ -9,11 +9,3 @@ type FlowGraph struct {
 	Nodes   []approval.FlowNode   `json:"nodes"`
 	Edges   []approval.FlowEdge   `json:"edges"`
 }
-
-// InstanceDetail contains the full details of an instance.
-type InstanceDetail struct {
-	Instance   approval.Instance    `json:"instance"`
-	Tasks      []approval.Task      `json:"tasks"`
-	ActionLogs []approval.ActionLog `json:"actionLogs"`
-	FlowNodes  []approval.FlowNode  `json:"flowNodes"`
-}

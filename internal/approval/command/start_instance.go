@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"text/template"
 
 	"github.com/samber/lo"
@@ -37,6 +38,7 @@ type StartInstanceHandler struct {
 	instanceNoGenerator approval.InstanceNoGenerator
 	bus                 event.Bus
 	validationSvc       *service.ValidationService
+	bindingHook         approval.BusinessBindingHook
 }
 
 // NewStartInstanceHandler creates a new StartInstanceHandler.
@@ -46,6 +48,7 @@ func NewStartInstanceHandler(
 	instanceNoGenerator approval.InstanceNoGenerator,
 	bus event.Bus,
 	validationSvc *service.ValidationService,
+	bindingHook approval.BusinessBindingHook,
 ) *StartInstanceHandler {
 	return &StartInstanceHandler{
 		db:                  db,
@@ -53,6 +56,7 @@ func NewStartInstanceHandler(
 		instanceNoGenerator: instanceNoGenerator,
 		bus:                 bus,
 		validationSvc:       validationSvc,
+		bindingHook:         bindingHook,
 	}
 }
 
@@ -161,6 +165,28 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		return nil, fmt.Errorf("insert instance: %w", err)
 	}
 
+	// Resolve the business binding (if any). The default hook is a no-op;
+	// hosts that override it can allocate a business row inside the same
+	// transaction. Returning empty string keeps BusinessRecordID nil.
+	if flow.BindingMode == approval.BindingBusiness && h.bindingHook != nil {
+		businessID, err := h.bindingHook.OnInstanceCreated(ctx, db, &flow, instance)
+		if err != nil {
+			return nil, fmt.Errorf("business binding on create: %w", err)
+		}
+
+		trimmed := strings.TrimSpace(businessID)
+		if trimmed != "" && (instance.BusinessRecordID == nil || *instance.BusinessRecordID == "") {
+			instance.BusinessRecordID = &trimmed
+			if _, err := db.NewUpdate().
+				Model(instance).
+				Select("business_record_id").
+				WherePK().
+				Exec(ctx); err != nil {
+				return nil, fmt.Errorf("persist business_record_id: %w", err)
+			}
+		}
+	}
+
 	submitLog := cmd.Applicant.NewActionLog(instance.ID, approval.ActionSubmit)
 	if _, err := db.NewInsert().
 		Model(submitLog).
@@ -168,12 +194,18 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		return nil, fmt.Errorf("insert submit log: %w", err)
 	}
 
+	if hooks := h.engine.LifecycleHooks(); hooks != nil {
+		if err := hooks.OnInstanceCreated(ctx, db, instance); err != nil {
+			return nil, fmt.Errorf("lifecycle hooks on instance created: %w", err)
+		}
+	}
+
 	if err := h.engine.StartProcess(ctx, db, instance); err != nil {
 		return nil, fmt.Errorf("start process: %w", err)
 	}
 
 	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
-		approval.NewInstanceCreatedEvent(instance.ID, flow.ID, title, cmd.Applicant.ID, cmd.Applicant.Name),
+		approval.NewInstanceCreatedEvent(instance.ID, instance.TenantID, flow.ID, title, cmd.Applicant.ID, cmd.Applicant.Name),
 	}), event.WithTx(db)); err != nil {
 		return nil, fmt.Errorf("publish instance created event: %w", err)
 	}

@@ -17,4 +17,10 @@ var (
 
 	// Expression evaluation errors.
 	ErrExpressionReturnedNonBool = errors.New("expression returned non-bool type")
+
+	// Registry validation errors. Surface during boot when the framework
+	// strategy module is missing one of the built-in enum values.
+	errBuiltinPassRuleMissing  = errors.New("no PassRuleStrategy registered for built-in PassRule")
+	errBuiltinAssigneeMissing  = errors.New("no AssigneeResolver registered for built-in AssigneeKind")
+	errBuiltinEvaluatorMissing = errors.New("no ConditionEvaluator registered for built-in ConditionKind")
 )

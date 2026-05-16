@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
@@ -57,11 +58,13 @@ func (s *ScannerTestSuite) SetupSuite() {
 		engine.NewApprovalProcessor(nil),
 		engine.NewHandleProcessor(nil),
 		engine.NewCCProcessor(),
-	}, s.bus, nil)
+	}, s.bus, nil, nil, nil)
 	taskSvc := service.NewTaskService()
 	nodeSvc := service.NewNodeService(eng, s.bus, taskSvc, nil)
 
-	s.scanner = timeout.NewScanner(s.db, s.bus, taskSvc, nodeSvc, nil)
+	cfg := new(config.ApprovalConfig)
+	cfg.ApplyDefaults()
+	s.scanner = timeout.NewScanner(s.db, s.bus, taskSvc, nodeSvc, nil, cfg)
 }
 
 func (s *ScannerTestSuite) TearDownTest() {

@@ -40,7 +40,7 @@ func (s *RollbackTaskTestSuite) SetupSuite() {
 	taskSvc := service.NewTaskService()
 	validSvc := service.NewValidationService(nil)
 	pub := eventtest.NewFakeBus()
-	s.handler = command.NewRollbackTaskHandler(s.db, taskSvc, validSvc, eng, pub)
+	s.handler = command.NewRollbackTaskHandler(s.db, taskSvc, service.NewInstanceService(), validSvc, eng, pub)
 
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "rollback")
 

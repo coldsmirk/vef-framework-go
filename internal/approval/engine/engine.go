@@ -21,23 +21,50 @@ type FlowEngine struct {
 	processors   map[approval.NodeKind]NodeProcessor
 	bus          event.Bus
 	userResolver approval.UserInfoResolver
+	hooks        *LifecycleHookRunner
+	flowCache    *FlowCache
 }
 
-// NewFlowEngine creates a new flow engine.
-func NewFlowEngine(registry *strategy.StrategyRegistry, processors []NodeProcessor, bus event.Bus, userResolver approval.UserInfoResolver) *FlowEngine {
+// NewFlowEngine creates a new flow engine. Duplicate NodeKind registrations
+// panic on construction — silent overwrite is a deployment bug we want to
+// surface at boot rather than mask at runtime.
+//
+// flowCache may be nil; the engine then falls back to per-request DB lookups
+// for node/edge traversal. Production wiring always supplies a cache so
+// hot paths become map lookups.
+func NewFlowEngine(
+	registry *strategy.StrategyRegistry,
+	processors []NodeProcessor,
+	bus event.Bus,
+	userResolver approval.UserInfoResolver,
+	hooks *LifecycleHookRunner,
+	flowCache *FlowCache,
+) *FlowEngine {
 	engine := &FlowEngine{
 		registry:     registry,
 		processors:   make(map[approval.NodeKind]NodeProcessor, len(processors)),
 		bus:          bus,
 		userResolver: userResolver,
+		hooks:        hooks,
+		flowCache:    flowCache,
 	}
 
 	for _, p := range processors {
-		engine.processors[p.NodeKind()] = p
+		kind := p.NodeKind()
+		if existing, dup := engine.processors[kind]; dup {
+			panic(fmt.Sprintf("approval: duplicate node processor for kind %q: %T and %T", kind, existing, p))
+		}
+
+		engine.processors[kind] = p
 	}
 
 	return engine
 }
+
+// LifecycleHooks exposes the aggregated host-registered hooks so callers
+// outside the engine (e.g. start_instance) can fire OnInstanceCreated at
+// the right transactional moment.
+func (e *FlowEngine) LifecycleHooks() *LifecycleHookRunner { return e.hooks }
 
 // publishEvents forwards domain events to the framework bus inside the
 // caller's transaction; visibility hinges on the caller committing.
@@ -52,6 +79,19 @@ func (e *FlowEngine) publishEvents(ctx context.Context, db orm.DB, events ...app
 
 // StartProcess starts a flow process by finding the start node and processing it.
 func (e *FlowEngine) StartProcess(ctx context.Context, db orm.DB, instance *approval.Instance) error {
+	if e.flowCache != nil {
+		compiled, err := e.flowCache.Get(ctx, instance.FlowVersionID)
+		if err != nil {
+			return fmt.Errorf("compile flow: %w", err)
+		}
+
+		if compiled.StartNode == nil {
+			return fmt.Errorf("%w: %s", ErrFlowMissingStartNode, instance.FlowVersionID)
+		}
+
+		return e.ProcessNode(ctx, db, instance, compiled.StartNode)
+	}
+
 	var startNode approval.FlowNode
 
 	if err := db.NewSelect().
@@ -123,21 +163,27 @@ func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instanc
 
 	case NodeActionComplete:
 		instance.CurrentNodeID = new(node.ID)
-		instance.Status = *result.FinalStatus
 		instance.FinishedAt = new(timex.Now())
 
-		if _, err := db.NewUpdate().
-			Model(instance).
-			Select("current_node_id", "status", "finished_at").
-			WherePK().
-			Exec(ctx); err != nil {
-			return err
+		if err := ApplyInstanceTransition(
+			ctx, db, instance, *result.FinalStatus,
+			"current_node_id", "finished_at",
+		); err != nil {
+			return fmt.Errorf("apply completion transition: %w", err)
+		}
+
+		// Synchronous lifecycle hooks (transaction-bound). Errors here
+		// roll back the completion so hosts can enforce invariants.
+		if e.hooks != nil {
+			if err := e.hooks.OnInstanceCompleted(ctx, db, instance, *result.FinalStatus); err != nil {
+				return fmt.Errorf("lifecycle hooks on instance completed: %w", err)
+			}
 		}
 
 		// Publish completion event
 		if err := e.publishEvents(
 			ctx, db,
-			approval.NewInstanceCompletedEvent(instance.ID, *result.FinalStatus),
+			approval.NewInstanceCompletedEvent(instance.ID, instance.TenantID, *result.FinalStatus),
 		); err != nil {
 			return fmt.Errorf("publish instance completed event: %w", err)
 		}
@@ -152,6 +198,25 @@ func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instanc
 // AdvanceToNextNode finds the matching edge from the current node and advances to the next one.
 // BranchID is used by condition nodes to select the edge matching the branch.
 func (e *FlowEngine) AdvanceToNextNode(ctx context.Context, db orm.DB, instance *approval.Instance, fromNode *approval.FlowNode, branchID *string) error {
+	if e.flowCache != nil {
+		compiled, err := e.flowCache.Get(ctx, instance.FlowVersionID)
+		if err != nil {
+			return fmt.Errorf("compile flow: %w", err)
+		}
+
+		edge, err := compiled.FindOutgoing(fromNode.ID, branchID)
+		if err != nil {
+			return err
+		}
+
+		nextNode, ok := compiled.Nodes[edge.TargetNodeID]
+		if !ok {
+			return fmt.Errorf("%w: %s", ErrFlowMissingTargetNode, edge.TargetNodeID)
+		}
+
+		return e.ProcessNode(ctx, db, instance, nextNode)
+	}
+
 	edge, err := e.findMatchingEdge(ctx, db, fromNode.ID, branchID)
 	if err != nil {
 		return err
@@ -220,6 +285,14 @@ func (e *FlowEngine) EvaluateNodeCompletion(ctx context.Context, db orm.DB, inst
 	}
 
 	prc := buildPassRuleContext(node, tasks)
+
+	// Deadlock guard: if all tasks on this node ended up in non-actionable
+	// states (transferred / canceled / removed / skipped / rolled_back),
+	// no further decision is possible. Treat the node as passed so the
+	// instance can advance instead of getting stuck at PassRulePending.
+	if len(tasks) > 0 && prc.TotalCount == 0 {
+		return approval.PassRulePassed, nil
+	}
 
 	return passStrategy.Evaluate(prc), nil
 }

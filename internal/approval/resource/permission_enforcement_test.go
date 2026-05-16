@@ -10,7 +10,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/config"
 	iapproval "github.com/coldsmirk/vef-framework-go/internal/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -48,7 +47,7 @@ func (s *PermissionEnforcementResourceTestSuite) SetupSuite() {
 				Secret:   security.DefaultJWTSecret,
 				Audience: "test_app",
 			},
-			&config.ApprovalConfig{AutoMigrate: true},
+			newApprovalConfig(),
 		),
 		fx.Provide(func() context.Context { return s.ctx }),
 		iapproval.Module,

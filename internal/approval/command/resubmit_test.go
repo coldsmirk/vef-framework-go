@@ -42,6 +42,7 @@ func (s *ResubmitTestSuite) SetupSuite() {
 		s.db,
 		buildTestEngine(),
 		service.NewValidationService(nil),
+		service.NewInstanceService(),
 		eventtest.NewFakeBus(),
 	)
 }

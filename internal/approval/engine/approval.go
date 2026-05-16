@@ -144,6 +144,11 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 
 	var tasks []approval.Task
 
+	// FOR UPDATE serializes concurrent writers on the same node so the
+	// in-memory task[] view used by the cascading-activation loop below
+	// stays consistent with the database; without it, a parallel update
+	// could change task[j] between our activate attempt and our retry,
+	// causing us to skip an assignee that should auto-pass.
 	if err := pc.DB.NewSelect().
 		Model(&tasks).
 		Where(func(cb orm.ConditionBuilder) {
@@ -151,6 +156,7 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 				Equals("node_id", pc.Node.ID)
 		}).
 		OrderBy("sort_order").
+		ForUpdate().
 		Scan(ctx); err != nil {
 		return nil, fmt.Errorf("query tasks for consecutive approver check: %w", err)
 	}

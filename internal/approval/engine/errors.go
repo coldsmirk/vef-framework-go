@@ -16,8 +16,15 @@ var (
 	ErrNoBranches       = errors.New("condition node has no branches")
 	ErrNoMatchingBranch = errors.New("no matching branch and no default branch")
 
-	// State machine errors.
-	errInvalidTransition = errors.New("invalid state transition")
+	// ErrInvalidTransition signals that a requested state transition is not
+	// permitted by the state machine, or that a concurrent writer already
+	// advanced the target row off the expected `from` status.
+	ErrInvalidTransition = errors.New("invalid state transition")
+
+	// CompiledFlow errors.
+	ErrFlowMissingStartNode  = errors.New("flow has no start node")
+	ErrFlowMissingTargetNode = errors.New("compiled flow is missing target node")
+	ErrFlowNoNodes           = errors.New("compiled flow has no nodes for version")
 
 	// Process result errors.
 	errUnknownNodeAction = errors.New("unknown node action")

@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -27,18 +28,20 @@ type WithdrawCmd struct {
 
 // WithdrawHandler handles the WithdrawCmd command.
 type WithdrawHandler struct {
-	db      orm.DB
-	taskSvc *service.TaskService
-	bus     event.Bus
+	db          orm.DB
+	taskSvc     *service.TaskService
+	instanceSvc *service.InstanceService
+	bus         event.Bus
 }
 
 // NewWithdrawHandler creates a new WithdrawHandler.
 func NewWithdrawHandler(
 	db orm.DB,
 	taskSvc *service.TaskService,
+	instanceSvc *service.InstanceService,
 	bus event.Bus,
 ) *WithdrawHandler {
-	return &WithdrawHandler{db: db, taskSvc: taskSvc, bus: bus}
+	return &WithdrawHandler{db: db, taskSvc: taskSvc, instanceSvc: instanceSvc, bus: bus}
 }
 
 func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Unit, error) {
@@ -68,31 +71,15 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Uni
 		return cqrs.Unit{}, shared.ErrWithdrawNotAllowed
 	}
 
-	originalStatus := instance.Status
 	now := timex.Now()
-	instance.Status = approval.InstanceWithdrawn
 	instance.FinishedAt = &now
 
-	updateResult, err := db.NewUpdate().
-		Model((*approval.Instance)(nil)).
-		Set("status", instance.Status).
-		Set("finished_at", now).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.PKEquals(instance.ID).
-				Equals("status", originalStatus)
-		}).
-		Exec(ctx)
-	if err != nil {
-		return cqrs.Unit{}, fmt.Errorf("update instance: %w", err)
-	}
+	if err := h.instanceSvc.Transition(ctx, db, &instance, approval.InstanceWithdrawn, "finished_at"); err != nil {
+		if errors.Is(err, shared.ErrInvalidInstanceTransition) {
+			return cqrs.Unit{}, shared.ErrWithdrawNotAllowed
+		}
 
-	affected, err := updateResult.RowsAffected()
-	if err != nil {
-		return cqrs.Unit{}, fmt.Errorf("get affected rows for instance update: %w", err)
-	}
-
-	if affected == 0 {
-		return cqrs.Unit{}, shared.ErrWithdrawNotAllowed
+		return cqrs.Unit{}, err
 	}
 
 	if err := h.taskSvc.CancelInstanceTasks(ctx, db, cmd.InstanceID); err != nil {
@@ -109,7 +96,7 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Uni
 	}
 
 	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
-		approval.NewInstanceWithdrawnEvent(cmd.InstanceID, cmd.Operator.ID),
+		approval.NewInstanceWithdrawnEvent(cmd.InstanceID, instance.TenantID, cmd.Operator.ID),
 	}), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}

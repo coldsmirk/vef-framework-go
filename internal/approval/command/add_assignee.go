@@ -167,7 +167,7 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	}
 
 	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
-		approval.NewAssigneesAddedEvent(instance.ID, task.NodeID, task.ID, cmd.AddType, insertUsers, userNames),
+		approval.NewAssigneesAddedEvent(instance.ID, instance.TenantID, task.NodeID, task.ID, cmd.AddType, insertUsers, userNames),
 	}), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}

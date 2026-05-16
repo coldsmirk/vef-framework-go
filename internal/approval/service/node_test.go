@@ -56,7 +56,7 @@ func (s *NodeServiceTestSuite) SetupSuite() {
 	}
 
 	s.bus = eventtest.NewFakeBus()
-	eng := engine.NewFlowEngine(registry, processors, s.bus, nil)
+	eng := engine.NewFlowEngine(registry, processors, s.bus, nil, nil, nil)
 	taskSvc := service.NewTaskService()
 	s.svc = service.NewNodeService(eng, s.bus, taskSvc, nil)
 	s.fixture = setupSvcFixture(s.T(), s.ctx, s.db)

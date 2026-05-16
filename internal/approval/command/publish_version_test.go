@@ -60,7 +60,7 @@ func (s *PublishVersionTestSuite) SetupSuite() {
 
 	s.flowID = flow.ID
 	s.bus = eventtest.NewFakeBus()
-	s.deployHandler = command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService())
+	s.deployHandler = command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), s.bus)
 	s.publishHandler = command.NewPublishVersionHandler(s.db, s.bus)
 }
 

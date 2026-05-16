@@ -107,7 +107,7 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 	}
 
 	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
-		approval.NewCCNotifiedEvent(cmd.InstanceID, *instance.CurrentNodeID, insertedUserIDs, ccUserNames, true),
+		approval.NewCCNotifiedEvent(cmd.InstanceID, instance.TenantID, *instance.CurrentNodeID, insertedUserIDs, ccUserNames, true),
 	}), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}

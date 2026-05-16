@@ -103,8 +103,8 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 	}
 
 	if existingCount > 0 {
-		return cqrs.Unit{}, result.Err(
-			fmt.Sprintf("催办操作过于频繁，请 %d 分钟后再试", cooldownMinutes),
+		return cqrs.Unit{}, result.Errf(
+			"催办操作过于频繁，请 %d 分钟后再试", cooldownMinutes,
 			result.WithCode(shared.ErrCodeUrgeCooldown),
 		)
 	}
@@ -126,7 +126,7 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 	}
 
 	urgedEvent := approval.NewTaskUrgedEvent(
-		task.InstanceID, task.NodeID, cmd.TaskID,
+		task.InstanceID, task.TenantID, task.NodeID, cmd.TaskID,
 		cmd.UrgerID, urgerName, task.AssigneeID, task.AssigneeName, cmd.Message,
 	)
 

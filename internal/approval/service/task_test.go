@@ -441,7 +441,7 @@ func (s *TaskServiceTestSuite) TestCanRemoveAssigneeTask() {
 
 		node := &approval.FlowNode{PassRule: approval.PassAll}
 		node.ID = nodeID
-		canRemove, err := s.svc.CanRemoveAssigneeTask(s.ctx, s.db, engine.NewFlowEngine(nil, nil, nil, nil), node, *task1)
+		canRemove, err := s.svc.CanRemoveAssigneeTask(s.ctx, s.db, engine.NewFlowEngine(nil, nil, nil, nil, nil, nil), node, *task1)
 		s.Require().NoError(err, "Should evaluate removability without error")
 		s.Assert().True(canRemove, "Should allow removal when other actionable tasks exist")
 	})

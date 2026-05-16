@@ -324,7 +324,7 @@ func TestBuildPassRuleContext(t *testing.T) {
 
 // TestPublishEventsNilPublisher tests publishEvents with nil publisher.
 func TestPublishEventsNilPublisher(t *testing.T) {
-	eng := NewFlowEngine(nil, nil, nil, nil)
+	eng := NewFlowEngine(nil, nil, nil, nil, nil, nil)
 
 	t.Run("NilPublisherNoEvents", func(t *testing.T) {
 		err := eng.publishEvents(t.Context(), nil)
@@ -332,7 +332,7 @@ func TestPublishEventsNilPublisher(t *testing.T) {
 	})
 
 	t.Run("NilPublisherWithEvents", func(t *testing.T) {
-		err := eng.publishEvents(t.Context(), nil, approval.NewInstanceCompletedEvent("inst-1", approval.InstanceApproved))
+		err := eng.publishEvents(t.Context(), nil, approval.NewInstanceCompletedEvent("inst-1", "tenant-1", approval.InstanceApproved))
 		assert.NoError(t, err, "Should not error with nil publisher even with events")
 	})
 }

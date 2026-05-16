@@ -549,36 +549,6 @@ COMMENT ON COLUMN apv_action_log.attachments IS '附件列表';
 CREATE INDEX idx_apv_action_log__operator_id ON apv_action_log(operator_id);
 CREATE INDEX idx_apv_action_log__instance_id_created_at ON apv_action_log(instance_id, created_at);
 
--- Parallel approval record
-CREATE TABLE IF NOT EXISTS apv_parallel_record (
-    id VARCHAR(32) CONSTRAINT pk_apv_parallel_record PRIMARY KEY,
-    created_at TIMESTAMP NOT NULL DEFAULT LOCALTIMESTAMP,
-    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
-    instance_id VARCHAR(32) NOT NULL,
-    node_id VARCHAR(32) NOT NULL,
-    task_id VARCHAR(32) NOT NULL,
-    assignee_id VARCHAR(32) NOT NULL,
-    decision VARCHAR(16),
-    opinion TEXT,
-    CONSTRAINT fk_apv_parallel_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-COMMENT ON TABLE apv_parallel_record IS '并行审批记录';
-COMMENT ON COLUMN apv_parallel_record.id IS '主键';
-COMMENT ON COLUMN apv_parallel_record.created_at IS '记录时间';
-COMMENT ON COLUMN apv_parallel_record.created_by IS '创建人ID';
-COMMENT ON COLUMN apv_parallel_record.instance_id IS '流程实例ID';
-COMMENT ON COLUMN apv_parallel_record.node_id IS '节点ID';
-COMMENT ON COLUMN apv_parallel_record.task_id IS '关联任务ID';
-COMMENT ON COLUMN apv_parallel_record.assignee_id IS '审批人ID';
-COMMENT ON COLUMN apv_parallel_record.decision IS '审批决定';
-COMMENT ON COLUMN apv_parallel_record.opinion IS '审批意见';
-
--- For parallel pass-rule evaluation: count results per node
-CREATE INDEX idx_apv_parallel_record__instance_id_node_id ON apv_parallel_record(instance_id, node_id);
--- For looking up individual vote by task
-CREATE INDEX idx_apv_parallel_record__instance_id_task_id ON apv_parallel_record(instance_id, task_id);
-
 -- CC record
 CREATE TABLE IF NOT EXISTS apv_cc_record (
     id VARCHAR(32) CONSTRAINT pk_apv_cc_record PRIMARY KEY,

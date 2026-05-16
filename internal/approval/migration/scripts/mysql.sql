@@ -363,26 +363,6 @@ CREATE TABLE IF NOT EXISTS apv_action_log (
 CREATE INDEX idx_apv_action_log__operator_id ON apv_action_log(operator_id);
 CREATE INDEX idx_apv_action_log__instance_id_created_at ON apv_action_log(instance_id, created_at);
 
--- Parallel approval record
-CREATE TABLE IF NOT EXISTS apv_parallel_record (
-    id VARCHAR(32) NOT NULL COMMENT '主键',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录时间',
-    created_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT '创建人ID',
-    instance_id VARCHAR(32) NOT NULL COMMENT '流程实例ID',
-    node_id VARCHAR(32) NOT NULL COMMENT '节点ID',
-    task_id VARCHAR(32) NOT NULL COMMENT '关联任务ID',
-    assignee_id VARCHAR(32) NOT NULL COMMENT '审批人ID',
-    decision VARCHAR(16) COMMENT '审批决定',
-    opinion TEXT COMMENT '审批意见',
-    CONSTRAINT pk_apv_parallel_record PRIMARY KEY (id),
-    CONSTRAINT fk_apv_parallel_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE
-) COMMENT '并行审批记录';
-
--- For parallel pass-rule evaluation: count results per node
-CREATE INDEX idx_apv_parallel_record__instance_id_node_id ON apv_parallel_record(instance_id, node_id);
--- For looking up individual vote by task
-CREATE INDEX idx_apv_parallel_record__instance_id_task_id ON apv_parallel_record(instance_id, task_id);
-
 -- CC record
 CREATE TABLE IF NOT EXISTS apv_cc_record (
     id VARCHAR(32) NOT NULL COMMENT '主键',

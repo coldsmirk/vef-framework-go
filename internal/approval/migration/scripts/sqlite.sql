@@ -343,25 +343,6 @@ CREATE TABLE IF NOT EXISTS apv_action_log (
 CREATE INDEX IF NOT EXISTS idx_apv_action_log__operator_id ON apv_action_log(operator_id);
 CREATE INDEX IF NOT EXISTS idx_apv_action_log__instance_id_created_at ON apv_action_log(instance_id, created_at);
 
--- Parallel approval record
-CREATE TABLE IF NOT EXISTS apv_parallel_record (
-    id VARCHAR(32) CONSTRAINT pk_apv_parallel_record PRIMARY KEY,
-    created_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime')),
-    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
-    instance_id VARCHAR(32) NOT NULL,
-    node_id VARCHAR(32) NOT NULL,
-    task_id VARCHAR(32) NOT NULL,
-    assignee_id VARCHAR(32) NOT NULL,
-    decision VARCHAR(16),
-    opinion TEXT,
-    CONSTRAINT fk_apv_parallel_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
--- For parallel pass-rule evaluation: count results per node
-CREATE INDEX IF NOT EXISTS idx_apv_parallel_record__instance_id_node_id ON apv_parallel_record(instance_id, node_id);
--- For looking up individual vote by task
-CREATE INDEX IF NOT EXISTS idx_apv_parallel_record__instance_id_task_id ON apv_parallel_record(instance_id, task_id);
-
 -- CC record
 CREATE TABLE IF NOT EXISTS apv_cc_record (
     id VARCHAR(32) CONSTRAINT pk_apv_cc_record PRIMARY KEY,

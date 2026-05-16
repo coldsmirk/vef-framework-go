@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -51,7 +52,7 @@ func (s *StartInstanceTestSuite) SetupSuite() {
 	pub := eventtest.NewFakeBus()
 	validSvc := service.NewValidationService(nil)
 
-	s.handler = command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, pub, validSvc)
+	s.handler = command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, pub, validSvc, binding.NewDefaultHook())
 }
 
 func (s *StartInstanceTestSuite) TearDownTest() {

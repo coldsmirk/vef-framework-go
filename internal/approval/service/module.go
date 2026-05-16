@@ -11,5 +11,6 @@ var Module = fx.Module(
 		NewTaskService,
 		NewNodeService,
 		NewValidationService,
+		NewInstanceService,
 	),
 )

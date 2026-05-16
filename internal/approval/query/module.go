@@ -26,6 +26,7 @@ var Module = fx.Module(
 		NewFindAdminActionLogsHandler,
 		NewFindFlowsHandler,
 		NewFindFlowVersionsHandler,
+		NewGetMetricsHandler,
 	),
 
 	fx.Invoke(registerHandlers),
@@ -48,6 +49,7 @@ func registerHandlers(
 	findAdminActionLogs *FindAdminActionLogsHandler,
 	findFlows *FindFlowsHandler,
 	findFlowVersions *FindFlowVersionsHandler,
+	getMetrics *GetMetricsHandler,
 ) {
 	cqrs.Register(bus, getFlowGraph)
 	cqrs.Register(bus, findMyInitiated)
@@ -63,4 +65,5 @@ func registerHandlers(
 	cqrs.Register(bus, findAdminActionLogs)
 	cqrs.Register(bus, findFlows)
 	cqrs.Register(bus, findFlowVersions)
+	cqrs.Register(bus, getMetrics)
 }

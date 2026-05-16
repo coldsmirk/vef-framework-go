@@ -92,8 +92,15 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 		return cqrs.Unit{}, fmt.Errorf("update flow current version: %w", err)
 	}
 
+	var flow approval.Flow
+
+	flow.ID = version.FlowID
+	if err := db.NewSelect().Model(&flow).Select("tenant_id").WherePK().Scan(ctx); err != nil {
+		return cqrs.Unit{}, fmt.Errorf("load flow tenant: %w", err)
+	}
+
 	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
-		approval.NewFlowPublishedEvent(version.FlowID, cmd.VersionID),
+		approval.NewFlowPublishedEvent(version.FlowID, flow.TenantID, cmd.VersionID),
 	}), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}

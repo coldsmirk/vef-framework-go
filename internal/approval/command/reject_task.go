@@ -67,7 +67,7 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 	}
 
 	events := []approval.DomainEvent{
-		approval.NewTaskRejectedEvent(task.ID, instance.ID, node.ID, cmd.Operator.ID, cmd.Opinion),
+		approval.NewTaskRejectedEvent(task.ID, task.TenantID, instance.ID, node.ID, cmd.Operator.ID, cmd.Opinion),
 	}
 
 	completionEvents, err := h.nodeSvc.HandleNodeCompletion(ctx, db, instance, node)

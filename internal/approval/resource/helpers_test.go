@@ -18,6 +18,15 @@ import (
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
+// newApprovalConfig builds an ApprovalConfig pre-populated with defaults so
+// tests don't have to mirror every interval/retention value.
+func newApprovalConfig() *config.ApprovalConfig {
+	cfg := &config.ApprovalConfig{AutoMigrate: true}
+	cfg.ApplyDefaults()
+
+	return cfg
+}
+
 // --- Mock implementations ---
 
 // MockAssigneeService is a no-op implementation of approval.AssigneeService for testing.
@@ -88,7 +97,7 @@ func setupResourceApp(s *apptest.Suite) (orm.DB, string) {
 				Secret:   security.DefaultJWTSecret,
 				Audience: "test_app",
 			},
-			&config.ApprovalConfig{AutoMigrate: true},
+			newApprovalConfig(),
 		),
 		fx.Provide(func() context.Context { return ctx }),
 		iapproval.Module,
@@ -104,7 +113,11 @@ func setupResourceApp(s *apptest.Suite) (orm.DB, string) {
 		fx.Populate(&db),
 	)
 
-	token := s.GenerateToken(security.NewUser("test-admin", "admin", "admin"))
+	// Test admin carries SuperAdminRole so existing tests (which call admin
+	// queries without a TenantID filter) keep working after the G1
+	// cross-tenant guard. Tests that need to verify the guard itself can
+	// generate a non-super-admin token explicitly.
+	token := s.GenerateToken(security.NewUser("test-admin", "admin", "admin", approval.SuperAdminRole))
 
 	return db, token
 }

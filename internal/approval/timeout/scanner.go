@@ -8,6 +8,7 @@ import (
 	collections "github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -28,6 +29,7 @@ type Scanner struct {
 	taskSvc      *service.TaskService
 	nodeSvc      *service.NodeService
 	userResolver approval.UserInfoResolver
+	cfg          *config.ApprovalConfig
 }
 
 // systemOperator is the operator identity used for system-initiated actions.
@@ -40,6 +42,7 @@ func NewScanner(
 	taskSvc *service.TaskService,
 	nodeSvc *service.NodeService,
 	userResolver approval.UserInfoResolver,
+	cfg *config.ApprovalConfig,
 ) *Scanner {
 	return &Scanner{
 		db:           db,
@@ -47,6 +50,7 @@ func NewScanner(
 		taskSvc:      taskSvc,
 		nodeSvc:      nodeSvc,
 		userResolver: userResolver,
+		cfg:          cfg,
 	}
 }
 
@@ -173,8 +177,9 @@ func (*Scanner) recordTimeoutNotify(_ context.Context, _ orm.DB, task *approval.
 	}
 
 	return []approval.DomainEvent{
-		approval.NewTaskTimeoutEvent(
+		approval.NewTaskTimedOutEvent(
 			task.ID,
+			task.TenantID,
 			task.InstanceID,
 			task.NodeID,
 			task.AssigneeID,
@@ -214,11 +219,11 @@ func (s *Scanner) autoFinishTask(
 	events := make([]approval.DomainEvent, 0, 2)
 	if status == approval.TaskApproved {
 		events = append(events,
-			approval.NewTaskApprovedEvent(task.ID, task.InstanceID, node.ID, "system", "任务处理超时，系统自动通过"),
+			approval.NewTaskApprovedEvent(task.ID, task.TenantID, task.InstanceID, node.ID, "system", "任务处理超时，系统自动通过"),
 		)
 	} else {
 		events = append(events,
-			approval.NewTaskRejectedEvent(task.ID, task.InstanceID, node.ID, "system", "任务处理超时，系统自动驳回"),
+			approval.NewTaskRejectedEvent(task.ID, task.TenantID, task.InstanceID, node.ID, "system", "任务处理超时，系统自动驳回"),
 		)
 	}
 
@@ -258,15 +263,10 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 		return nil, fmt.Errorf("%w: node %q", errNoAdminUsers, node.Key)
 	}
 
-	// Finish the original task as transferred
-	task.Status = approval.TaskTransferred
-	task.FinishedAt = new(timex.Now())
-
-	if _, err := tx.NewUpdate().
-		Model(task).
-		WherePK().
-		Select("status", "finished_at").
-		Exec(ctx); err != nil {
+	// Finish the original task as transferred via the state machine so the
+	// transition is validated and the optimistic-lock UPDATE is consistent
+	// with every other finish path.
+	if err := s.taskSvc.FinishTask(ctx, tx, task, approval.TaskTransferred); err != nil {
 		return nil, fmt.Errorf("finish transferred task: %w", err)
 	}
 
@@ -325,6 +325,7 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 
 		events = append(events, approval.NewTaskTransferredEvent(
 			task.ID,
+			task.TenantID,
 			task.InstanceID,
 			task.NodeID,
 			task.AssigneeID,
@@ -336,6 +337,7 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 
 		events = append(events, approval.NewTaskCreatedEvent(
 			newTask.ID,
+			newTask.TenantID,
 			task.InstanceID,
 			task.NodeID,
 			adminID,
@@ -429,6 +431,7 @@ func (s *Scanner) sendPreWarning(ctx context.Context, task *approval.Task, hours
 
 		evt := approval.NewTaskDeadlineWarningEvent(
 			task.ID,
+			task.TenantID,
 			task.InstanceID,
 			task.NodeID,
 			task.AssigneeID,
@@ -439,4 +442,51 @@ func (s *Scanner) sendPreWarning(ctx context.Context, task *approval.Task, hours
 
 		return s.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{evt}), event.WithTx(tx))
 	})
+}
+
+// CleanupExpiredRecords prunes retention-bounded record tables: form
+// snapshots, urge records, and read CC records. Each table has its own
+// retention window configured via ApprovalConfig; rows older than the
+// cutoff are deleted in a single statement.
+//
+// Action logs are kept indefinitely as the canonical audit trail.
+func (s *Scanner) CleanupExpiredRecords(ctx context.Context) {
+	now := timex.Now()
+
+	formCutoff := now.Add(-s.cfg.FormSnapshotRetention)
+	if n, err := s.db.NewDelete().
+		Model((*approval.FormSnapshot)(nil)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.LessThan("created_at", formCutoff)
+		}).
+		Exec(ctx); err != nil {
+		logger.Errorf("cleanup form snapshots failed: %v", err)
+	} else if affected, _ := n.RowsAffected(); affected > 0 {
+		logger.Infof("cleanup form snapshots: deleted %d rows older than %s", affected, formCutoff)
+	}
+
+	urgeCutoff := now.Add(-s.cfg.UrgeRecordRetention)
+	if n, err := s.db.NewDelete().
+		Model((*approval.UrgeRecord)(nil)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.LessThan("created_at", urgeCutoff)
+		}).
+		Exec(ctx); err != nil {
+		logger.Errorf("cleanup urge records failed: %v", err)
+	} else if affected, _ := n.RowsAffected(); affected > 0 {
+		logger.Infof("cleanup urge records: deleted %d rows older than %s", affected, urgeCutoff)
+	}
+
+	ccCutoff := now.Add(-s.cfg.CCRecordRetention)
+	if n, err := s.db.NewDelete().
+		Model((*approval.CCRecord)(nil)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.LessThan("created_at", ccCutoff).
+				IsNotNull("read_at")
+		}).
+		Exec(ctx); err != nil {
+		logger.Errorf("cleanup cc records failed: %v", err)
+	} else if affected, _ := n.RowsAffected(); affected > 0 {
+		logger.Infof("cleanup cc records: deleted %d read rows older than %s", affected, ccCutoff)
+	}
 }

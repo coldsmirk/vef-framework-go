@@ -207,7 +207,7 @@ func buildTestEngine() *engine.FlowEngine {
 		engine.NewCCProcessor(),
 	}
 
-	return engine.NewFlowEngine(registry, processors, eventtest.NewFakeBus(), nil)
+	return engine.NewFlowEngine(registry, processors, eventtest.NewFakeBus(), nil, nil, nil)
 }
 
 // buildTestServices creates the standard service instances for command tests.
@@ -303,7 +303,7 @@ func deployAndPublishFlow(t testing.TB, ctx context.Context, db orm.DB, code str
 	_, err = db.NewInsert().Model(flow).Exec(ctx)
 	require.NoError(t, err, "Should insert test flow")
 
-	deployHandler := command.NewDeployFlowHandler(db, service.NewFlowDefinitionService())
+	deployHandler := command.NewDeployFlowHandler(db, service.NewFlowDefinitionService(), eventtest.NewFakeBus())
 	version, err := deployHandler.Handle(ctx, command.DeployFlowCmd{
 		FlowID:         flow.ID,
 		FlowDefinition: def,

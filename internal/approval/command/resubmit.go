@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 
@@ -30,6 +31,7 @@ type ResubmitHandler struct {
 	db            orm.DB
 	engine        *engine.FlowEngine
 	validationSvc *service.ValidationService
+	instanceSvc   *service.InstanceService
 	bus           event.Bus
 }
 
@@ -38,9 +40,10 @@ func NewResubmitHandler(
 	db orm.DB,
 	eng *engine.FlowEngine,
 	validationSvc *service.ValidationService,
+	instanceSvc *service.InstanceService,
 	bus event.Bus,
 ) *ResubmitHandler {
-	return &ResubmitHandler{db: db, engine: eng, validationSvc: validationSvc, bus: bus}
+	return &ResubmitHandler{db: db, engine: eng, validationSvc: validationSvc, instanceSvc: instanceSvc, bus: bus}
 }
 
 func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Unit, error) {
@@ -93,19 +96,24 @@ func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Uni
 		return cqrs.Unit{}, err
 	}
 
-	instance.Status = approval.InstanceRunning
+	// State machine transition: returned|withdrawn -> running. The same
+	// UPDATE persists the merged form data and clears finished_at; the
+	// engine handles any further status changes during StartProcess
+	// (e.g. straight-to-end shortcuts) through ApplyInstanceTransition.
 	instance.FinishedAt = nil
+	if err := h.instanceSvc.Transition(
+		ctx, db, &instance, approval.InstanceRunning,
+		"form_data", "finished_at",
+	); err != nil {
+		if errors.Is(err, shared.ErrInvalidInstanceTransition) {
+			return cqrs.Unit{}, shared.ErrResubmitNotAllowed
+		}
+
+		return cqrs.Unit{}, err
+	}
 
 	if err := h.engine.StartProcess(ctx, db, &instance); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("start process on resubmit: %w", err)
-	}
-
-	if _, err := db.NewUpdate().
-		Model(&instance).
-		Select("form_data", "status", "current_node_id", "finished_at").
-		WherePK().
-		Exec(ctx); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("update instance: %w", err)
 	}
 
 	actionLog := cmd.Operator.NewActionLog(cmd.InstanceID, approval.ActionResubmit)
@@ -114,7 +122,7 @@ func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Uni
 	}
 
 	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
-		approval.NewInstanceResubmittedEvent(cmd.InstanceID, cmd.Operator.ID),
+		approval.NewInstanceResubmittedEvent(cmd.InstanceID, instance.TenantID, cmd.Operator.ID),
 	}), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}

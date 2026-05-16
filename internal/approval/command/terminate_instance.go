@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -26,18 +27,20 @@ type TerminateInstanceCmd struct {
 
 // TerminateInstanceHandler handles the TerminateInstanceCmd command.
 type TerminateInstanceHandler struct {
-	db      orm.DB
-	taskSvc *service.TaskService
-	bus     event.Bus
+	db          orm.DB
+	taskSvc     *service.TaskService
+	instanceSvc *service.InstanceService
+	bus         event.Bus
 }
 
 // NewTerminateInstanceHandler creates a new TerminateInstanceHandler.
 func NewTerminateInstanceHandler(
 	db orm.DB,
 	taskSvc *service.TaskService,
+	instanceSvc *service.InstanceService,
 	bus event.Bus,
 ) *TerminateInstanceHandler {
-	return &TerminateInstanceHandler{db: db, taskSvc: taskSvc, bus: bus}
+	return &TerminateInstanceHandler{db: db, taskSvc: taskSvc, instanceSvc: instanceSvc, bus: bus}
 }
 
 func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInstanceCmd) (cqrs.Unit, error) {
@@ -64,27 +67,14 @@ func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInst
 	}
 
 	now := timex.Now()
+	instance.FinishedAt = &now
 
-	updateResult, err := db.NewUpdate().
-		Model((*approval.Instance)(nil)).
-		Set("status", approval.InstanceTerminated).
-		Set("finished_at", now).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.PKEquals(instance.ID).
-				Equals("status", approval.InstanceRunning)
-		}).
-		Exec(ctx)
-	if err != nil {
-		return cqrs.Unit{}, fmt.Errorf("update instance: %w", err)
-	}
+	if err := h.instanceSvc.Transition(ctx, db, &instance, approval.InstanceTerminated, "finished_at"); err != nil {
+		if errors.Is(err, shared.ErrInvalidInstanceTransition) {
+			return cqrs.Unit{}, shared.ErrInstanceNotRunning
+		}
 
-	affected, err := updateResult.RowsAffected()
-	if err != nil {
-		return cqrs.Unit{}, fmt.Errorf("get affected rows for instance update: %w", err)
-	}
-
-	if affected == 0 {
-		return cqrs.Unit{}, shared.ErrInstanceNotRunning
+		return cqrs.Unit{}, err
 	}
 
 	if err := h.taskSvc.CancelInstanceTasks(ctx, db, cmd.InstanceID); err != nil {
@@ -101,7 +91,7 @@ func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInst
 	}
 
 	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
-		approval.NewInstanceCompletedEvent(cmd.InstanceID, approval.InstanceTerminated),
+		approval.NewInstanceCompletedEvent(cmd.InstanceID, instance.TenantID, approval.InstanceTerminated),
 	}), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}

@@ -146,7 +146,11 @@ func (*ValidationService) ValidateRollbackTarget(ctx context.Context, db orm.DB,
 					Equals("flow_version_id", instance.FlowVersionID)
 			}).
 			Scan(ctx); err != nil {
-			return shared.ErrInvalidRollbackTarget
+			if result.IsRecordNotFound(err) {
+				return shared.ErrInvalidRollbackTarget
+			}
+
+			return fmt.Errorf("find rollback target: %w", err)
 		}
 
 		if !slices.Contains(currentNode.RollbackTargetKeys, targetNode.Key) {

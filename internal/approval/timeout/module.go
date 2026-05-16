@@ -1,10 +1,9 @@
 package timeout
 
 import (
-	"time"
-
 	"go.uber.org/fx"
 
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/cron"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 )
@@ -21,9 +20,9 @@ var (
 	)
 )
 
-func registerTimeoutJobs(scheduler cron.Scheduler, scanner *Scanner) error {
+func registerTimeoutJobs(scheduler cron.Scheduler, scanner *Scanner, cfg *config.ApprovalConfig) error {
 	scanJob, err := scheduler.NewJob(cron.NewDurationJob(
-		1*time.Minute,
+		cfg.TimeoutScanInterval,
 		cron.WithName("approval:timeout:scan"),
 		cron.WithTags("approval", "timeout"),
 		cron.WithTask(scanner.ScanTimeouts),
@@ -32,10 +31,10 @@ func registerTimeoutJobs(scheduler cron.Scheduler, scanner *Scanner) error {
 		return err
 	}
 
-	logger.Infof("Timeout scan job [%s] registered, polling every 1m", scanJob.Name())
+	logger.Infof("Timeout scan job [%s] registered, polling every %s", scanJob.Name(), cfg.TimeoutScanInterval)
 
 	preWarnJob, err := scheduler.NewJob(cron.NewDurationJob(
-		5*time.Minute,
+		cfg.PreWarningScanInterval,
 		cron.WithName("approval:timeout:pre_warning"),
 		cron.WithTags("approval", "timeout"),
 		cron.WithTask(scanner.ScanPreWarnings),
@@ -44,7 +43,19 @@ func registerTimeoutJobs(scheduler cron.Scheduler, scanner *Scanner) error {
 		return err
 	}
 
-	logger.Infof("Pre-warning scan job [%s] registered, polling every 5m", preWarnJob.Name())
+	logger.Infof("Pre-warning scan job [%s] registered, polling every %s", preWarnJob.Name(), cfg.PreWarningScanInterval)
+
+	cleanupJob, err := scheduler.NewJob(cron.NewDurationJob(
+		cfg.CleanupScanInterval,
+		cron.WithName("approval:cleanup"),
+		cron.WithTags("approval", "cleanup"),
+		cron.WithTask(scanner.CleanupExpiredRecords),
+	))
+	if err != nil {
+		return err
+	}
+
+	logger.Infof("Cleanup job [%s] registered, polling every %s", cleanupJob.Name(), cfg.CleanupScanInterval)
 
 	return nil
 }

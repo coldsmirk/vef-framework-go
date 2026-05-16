@@ -38,7 +38,7 @@ type WithdrawTestSuite struct {
 }
 
 func (s *WithdrawTestSuite) SetupSuite() {
-	s.handler = command.NewWithdrawHandler(s.db, service.NewTaskService(), eventtest.NewFakeBus())
+	s.handler = command.NewWithdrawHandler(s.db, service.NewTaskService(), service.NewInstanceService(), eventtest.NewFakeBus())
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "withdraw")
 
 	node := &approval.FlowNode{

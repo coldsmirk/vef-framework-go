@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -64,7 +65,7 @@ func (s *UpdateFlowTestSuite) SetupSuite() {
 	_, err = s.db.NewInsert().Model(initiator).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert test initiator")
 
-	s.handler = command.NewUpdateFlowHandler(s.db)
+	s.handler = command.NewUpdateFlowHandler(s.db, eventtest.NewFakeBus())
 }
 
 func (s *UpdateFlowTestSuite) TearDownTest() {

@@ -63,7 +63,7 @@ func (sm *StateMachine[S]) CanTransition(from, to S) bool {
 // Transition performs a state transition, returning an error if invalid.
 func (sm *StateMachine[S]) Transition(from, to S) error {
 	if !sm.CanTransition(from, to) {
-		return fmt.Errorf("%w: %s from %s to %s", errInvalidTransition, sm.name, from, to)
+		return fmt.Errorf("%w: %s from %s to %s", ErrInvalidTransition, sm.name, from, to)
 	}
 
 	return nil

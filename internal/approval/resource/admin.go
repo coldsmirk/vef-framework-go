@@ -36,8 +36,10 @@ func NewAdminResource(bus cqrs.Bus, departmentResolver approval.PrincipalDepartm
 				api.OperationSpec{Action: "find_tasks", PermToken: "approval:task:query"},
 				api.OperationSpec{Action: "get_instance_detail", PermToken: "approval:instance:detail"},
 				api.OperationSpec{Action: "find_action_logs", PermToken: "approval:log:query"},
-				api.OperationSpec{Action: "terminate_instance", PermToken: "approval:instance:terminate"},
-				api.OperationSpec{Action: "reassign_task", PermToken: "approval:task:reassign"},
+				// Admin write actions: framework-level audit captures who/when/IP
+				// in addition to the business-table action_log.
+				api.OperationSpec{Action: "terminate_instance", PermToken: "approval:instance:terminate", EnableAudit: true},
+				api.OperationSpec{Action: "reassign_task", PermToken: "approval:task:reassign", EnableAudit: true},
 			),
 		),
 	}
@@ -57,7 +59,11 @@ type AdminFindInstancesParams struct {
 }
 
 // FindInstances queries instances for admin management.
-func (r *AdminResource) FindInstances(ctx fiber.Ctx, _ *security.Principal, params AdminFindInstancesParams) error {
+func (r *AdminResource) FindInstances(ctx fiber.Ctx, principal *security.Principal, params AdminFindInstancesParams) error {
+	if err := requireTenantScope(principal, params.TenantID); err != nil {
+		return err
+	}
+
 	res, err := cqrs.Send[query.FindAdminInstancesQuery, *page.Page[admin.Instance]](ctx.Context(), r.bus, query.FindAdminInstancesQuery{
 		TenantID:    params.TenantID,
 		ApplicantID: params.ApplicantID,
@@ -73,6 +79,21 @@ func (r *AdminResource) FindInstances(ctx fiber.Ctx, _ *security.Principal, para
 	return result.Ok(res).Response(ctx)
 }
 
+// requireTenantScope enforces that non-super-admin callers always specify a
+// TenantID for admin queries. The default (params.TenantID == nil) would
+// otherwise return every tenant's data, which is rarely intended.
+func requireTenantScope(principal *security.Principal, tenantID *string) error {
+	if approval.IsSuperAdmin(principal) {
+		return nil
+	}
+
+	if tenantID == nil || *tenantID == "" {
+		return result.Err("admin 查询必须指定租户", result.WithCode(40701))
+	}
+
+	return nil
+}
+
 // AdminFindTasksParams contains the query parameters for admin task listing.
 type AdminFindTasksParams struct {
 	api.P
@@ -86,7 +107,11 @@ type AdminFindTasksParams struct {
 }
 
 // FindTasks queries tasks for admin management.
-func (r *AdminResource) FindTasks(ctx fiber.Ctx, _ *security.Principal, params AdminFindTasksParams) error {
+func (r *AdminResource) FindTasks(ctx fiber.Ctx, principal *security.Principal, params AdminFindTasksParams) error {
+	if err := requireTenantScope(principal, params.TenantID); err != nil {
+		return err
+	}
+
 	res, err := cqrs.Send[query.FindAdminTasksQuery, *page.Page[admin.Task]](ctx.Context(), r.bus, query.FindAdminTasksQuery{
 		TenantID:   params.TenantID,
 		AssigneeID: params.AssigneeID,
@@ -131,7 +156,11 @@ type AdminFindActionLogsParams struct {
 }
 
 // FindActionLogs queries action logs for an instance with pagination.
-func (r *AdminResource) FindActionLogs(ctx fiber.Ctx, _ *security.Principal, params AdminFindActionLogsParams) error {
+func (r *AdminResource) FindActionLogs(ctx fiber.Ctx, principal *security.Principal, params AdminFindActionLogsParams) error {
+	if err := requireTenantScope(principal, params.TenantID); err != nil {
+		return err
+	}
+
 	res, err := cqrs.Send[query.FindAdminActionLogsQuery, *page.Page[admin.ActionLog]](ctx.Context(), r.bus, query.FindAdminActionLogsQuery{
 		InstanceID: params.InstanceID,
 		TenantID:   params.TenantID,
@@ -200,4 +229,32 @@ func (r *AdminResource) ReassignTask(ctx fiber.Ctx, principal *security.Principa
 
 func (r *AdminResource) resolveOperator(ctx context.Context, principal *security.Principal) (approval.OperatorInfo, error) {
 	return resolveOperator(ctx, r.departmentResolver, principal)
+}
+
+// AdminGetMetricsParams contains the parameters for the metrics dashboard query.
+type AdminGetMetricsParams struct {
+	api.P
+
+	TenantID *string `json:"tenantId"`
+}
+
+// GetMetrics returns aggregated approval engine metrics for the admin dashboard.
+func (r *AdminResource) GetMetrics(ctx fiber.Ctx, principal *security.Principal, params AdminGetMetricsParams) error {
+	if err := requireTenantScope(principal, params.TenantID); err != nil {
+		return err
+	}
+
+	tenantID := ""
+	if params.TenantID != nil {
+		tenantID = *params.TenantID
+	}
+
+	metrics, err := cqrs.Send[query.GetMetricsQuery, *admin.Metrics](ctx.Context(), r.bus, query.GetMetricsQuery{
+		TenantID: tenantID,
+	})
+	if err != nil {
+		return err
+	}
+
+	return result.Ok(metrics).Response(ctx)
 }

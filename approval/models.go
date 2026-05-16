@@ -289,20 +289,6 @@ type CCRecord struct {
 	ReadAt     *timex.DateTime `json:"readAt" bun:"read_at,nullzero"`
 }
 
-// ParallelRecord represents a parallel approval decision record.
-type ParallelRecord struct {
-	orm.BaseModel `bun:"table:apv_parallel_record,alias:apr"`
-	orm.Model
-	orm.CreationTrackedModel
-
-	InstanceID string  `json:"instanceId" bun:"instance_id"`
-	NodeID     string  `json:"nodeId" bun:"node_id"`
-	TaskID     string  `json:"taskId" bun:"task_id"`
-	AssigneeID string  `json:"assigneeId" bun:"assignee_id"`
-	Decision   *string `json:"decision" bun:"decision,nullzero"`
-	Opinion    *string `json:"opinion" bun:"opinion,nullzero"`
-}
-
 // Delegation represents an approval delegation.
 type Delegation struct {
 	orm.BaseModel `bun:"table:apv_delegation,alias:ad"`
