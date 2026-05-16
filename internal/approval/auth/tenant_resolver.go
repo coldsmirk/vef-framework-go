@@ -35,12 +35,10 @@ func (*DefaultPrincipalTenantResolver) Resolve(_ context.Context, p *security.Pr
 		return "", nil
 	}
 
-	if v, ok := m["tenant_id"].(string); ok && v != "" {
-		return v, nil
-	}
-
-	if v, ok := m["tenantId"].(string); ok && v != "" {
-		return v, nil
+	for _, key := range []string{"tenant_id", "tenantId"} {
+		if v, ok := m[key].(string); ok && v != "" {
+			return v, nil
+		}
 	}
 
 	return "", nil

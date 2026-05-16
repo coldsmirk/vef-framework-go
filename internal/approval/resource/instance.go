@@ -100,7 +100,7 @@ type StartInstanceParams struct {
 
 // Start creates a new flow instance.
 func (r *InstanceResource) Start(ctx fiber.Ctx, principal *security.Principal, params StartInstanceParams) error {
-	operator, err := r.resolveOperator(ctx.Context(), principal)
+	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -133,7 +133,7 @@ type ProcessTaskParams struct {
 
 // ProcessTask handles task actions (approve/reject/transfer/rollback/handle).
 func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Principal, params ProcessTaskParams) error {
-	operator, err := r.resolveOperator(ctx.Context(), principal)
+	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -194,7 +194,7 @@ type WithdrawParams struct {
 
 // Withdraw withdraws an instance.
 func (r *InstanceResource) Withdraw(ctx fiber.Ctx, principal *security.Principal, params WithdrawParams) error {
-	operator, err := r.resolveOperator(ctx.Context(), principal)
+	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -220,7 +220,7 @@ type ResubmitParams struct {
 
 // Resubmit resubmits a returned instance.
 func (r *InstanceResource) Resubmit(ctx fiber.Ctx, principal *security.Principal, params ResubmitParams) error {
-	operator, err := r.resolveOperator(ctx.Context(), principal)
+	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -287,7 +287,7 @@ type AddAssigneeParams struct {
 
 // AddAssignee dynamically adds assignees to a task.
 func (r *InstanceResource) AddAssignee(ctx fiber.Ctx, principal *security.Principal, params AddAssigneeParams) error {
-	operator, err := r.resolveOperator(ctx.Context(), principal)
+	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -313,7 +313,7 @@ type RemoveAssigneeParams struct {
 
 // RemoveAssignee removes an assignee by canceling their task.
 func (r *InstanceResource) RemoveAssignee(ctx fiber.Ctx, principal *security.Principal, params RemoveAssigneeParams) error {
-	operator, err := r.resolveOperator(ctx.Context(), principal)
+	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -326,10 +326,6 @@ func (r *InstanceResource) RemoveAssignee(ctx fiber.Ctx, principal *security.Pri
 	}
 
 	return result.Ok().Response(ctx)
-}
-
-func (r *InstanceResource) resolveOperator(ctx context.Context, principal *security.Principal) (approval.OperatorInfo, error) {
-	return resolveOperator(ctx, r.departmentResolver, principal)
 }
 
 // UrgeTaskParams contains the parameters for urging a task.

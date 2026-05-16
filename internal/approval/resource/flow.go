@@ -1,8 +1,6 @@
 package resource
 
 import (
-	"context"
-
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
@@ -47,10 +45,6 @@ func NewFlowResource(bus cqrs.Bus, tenantResolver approval.PrincipalTenantResolv
 	}
 }
 
-func (r *FlowResource) resolveCaller(ctx context.Context, principal *security.Principal) (approval.CallerContext, error) {
-	return resolveCaller(ctx, r.tenantResolver, principal)
-}
-
 // CreateFlowParams contains the parameters for creating a flow.
 type CreateFlowParams struct {
 	api.P
@@ -80,7 +74,7 @@ type CreateInitiatorParams struct {
 
 // Create creates a new flow.
 func (r *FlowResource) Create(ctx fiber.Ctx, principal *security.Principal, params CreateFlowParams) error {
-	caller, err := r.resolveCaller(ctx.Context(), principal)
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -134,7 +128,7 @@ type DeployFlowParams struct {
 
 // Deploy deploys a flow definition.
 func (r *FlowResource) Deploy(ctx fiber.Ctx, principal *security.Principal, params DeployFlowParams) error {
-	caller, err := r.resolveCaller(ctx.Context(), principal)
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -166,7 +160,7 @@ type PublishVersionParams struct {
 
 // PublishVersion publishes a flow version.
 func (r *FlowResource) PublishVersion(ctx fiber.Ctx, principal *security.Principal, params PublishVersionParams) error {
-	caller, err := r.resolveCaller(ctx.Context(), principal)
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -196,7 +190,7 @@ type GetGraphParams struct {
 
 // GetGraph returns the flow graph for the published version.
 func (r *FlowResource) GetGraph(ctx fiber.Ctx, principal *security.Principal, params GetGraphParams) error {
-	caller, err := r.resolveCaller(ctx.Context(), principal)
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -231,7 +225,7 @@ type FindFlowsParams struct {
 
 // FindFlows queries flows for admin management.
 func (r *FlowResource) FindFlows(ctx fiber.Ctx, principal *security.Principal, params FindFlowsParams) error {
-	caller, err := r.resolveCaller(ctx.Context(), principal)
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -271,7 +265,7 @@ type UpdateFlowParams struct {
 
 // UpdateFlow updates an existing flow.
 func (r *FlowResource) UpdateFlow(ctx fiber.Ctx, principal *security.Principal, params UpdateFlowParams) error {
-	caller, err := r.resolveCaller(ctx.Context(), principal)
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -316,7 +310,7 @@ type ToggleActiveParams struct {
 
 // ToggleActive toggles the active status of a flow.
 func (r *FlowResource) ToggleActive(ctx fiber.Ctx, principal *security.Principal, params ToggleActiveParams) error {
-	caller, err := r.resolveCaller(ctx.Context(), principal)
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -346,7 +340,7 @@ type FindVersionsParams struct {
 
 // FindVersions queries flow versions for a specific flow.
 func (r *FlowResource) FindVersions(ctx fiber.Ctx, principal *security.Principal, params FindVersionsParams) error {
-	caller, err := r.resolveCaller(ctx.Context(), principal)
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}

@@ -1,8 +1,6 @@
 package resource
 
 import (
-	"context"
-
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
@@ -142,7 +140,7 @@ type AdminGetInstanceDetailParams struct {
 
 // GetInstanceDetail returns the full admin detail of an instance.
 func (r *AdminResource) GetInstanceDetail(ctx fiber.Ctx, principal *security.Principal, params AdminGetInstanceDetailParams) error {
-	caller, err := r.resolveCaller(ctx.Context(), principal)
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -196,12 +194,12 @@ type AdminTerminateInstanceParams struct {
 
 // TerminateInstance terminates a running approval instance.
 func (r *AdminResource) TerminateInstance(ctx fiber.Ctx, principal *security.Principal, params AdminTerminateInstanceParams) error {
-	operator, err := r.resolveOperator(ctx.Context(), principal)
+	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
 	if err != nil {
 		return err
 	}
 
-	caller, err := r.resolveCaller(ctx.Context(), principal)
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -229,12 +227,12 @@ type AdminReassignTaskParams struct {
 
 // ReassignTask reassigns a pending task to a different user.
 func (r *AdminResource) ReassignTask(ctx fiber.Ctx, principal *security.Principal, params AdminReassignTaskParams) error {
-	operator, err := r.resolveOperator(ctx.Context(), principal)
+	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
 	if err != nil {
 		return err
 	}
 
-	caller, err := r.resolveCaller(ctx.Context(), principal)
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -250,14 +248,6 @@ func (r *AdminResource) ReassignTask(ctx fiber.Ctx, principal *security.Principa
 	}
 
 	return result.Ok().Response(ctx)
-}
-
-func (r *AdminResource) resolveOperator(ctx context.Context, principal *security.Principal) (approval.OperatorInfo, error) {
-	return resolveOperator(ctx, r.departmentResolver, principal)
-}
-
-func (r *AdminResource) resolveCaller(ctx context.Context, principal *security.Principal) (approval.CallerContext, error) {
-	return resolveCaller(ctx, r.tenantResolver, principal)
 }
 
 // AdminGetMetricsParams contains the parameters for the metrics dashboard query.

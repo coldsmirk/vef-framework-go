@@ -53,11 +53,9 @@ type CallerContext struct {
 // — this preserves test fixtures and engine-internal call sites that have
 // no HTTP principal. Non-empty TenantID must match entityTenantID exactly.
 func (c CallerContext) Authorize(entityTenantID string) error {
-	if c.IsSuperAdmin {
-		return nil
-	}
-
-	if c.TenantID == "" {
+	// Permissive paths: super-admin overrides any tenant; an empty TenantID
+	// marks a system-internal / test caller with no enforceable scope.
+	if c.IsSuperAdmin || c.TenantID == "" {
 		return nil
 	}
 
