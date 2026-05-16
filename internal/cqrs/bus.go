@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 
 	"github.com/coldsmirk/go-collections"
 	"github.com/samber/lo"
@@ -30,12 +31,27 @@ type CommandQueryBus struct {
 	behaviors []Behavior
 }
 
-// NewBus creates a new Bus with the given behavior middlewares.
+// NewBus creates a new Bus with the given behavior middlewares. Behaviors
+// implementing Ordered are wrapped outside-in by ascending Order; ties and
+// behaviors without Order share the FX-supplied position.
 func NewBus(behaviors []Behavior) Bus {
+	ordered := slices.Clone(behaviors)
+	slices.SortStableFunc(ordered, func(a, b Behavior) int {
+		return orderOf(a) - orderOf(b)
+	})
+
 	return &CommandQueryBus{
 		handlers:  collections.NewConcurrentHashMap[reflect.Type, Dispatcher](),
-		behaviors: behaviors,
+		behaviors: ordered,
 	}
+}
+
+func orderOf(b Behavior) int {
+	if o, ok := b.(Ordered); ok {
+		return o.Order()
+	}
+
+	return 0
 }
 
 func (b *CommandQueryBus) register(key reflect.Type, d Dispatcher) {

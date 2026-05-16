@@ -31,6 +31,27 @@ type Behavior interface {
 	Handle(ctx context.Context, action Action, next func(ctx context.Context) (any, error)) (any, error)
 }
 
+// Ordered is an optional interface for Behavior implementations that need
+// deterministic wrapping order. The Bus sorts behaviors by Order ascending
+// at construction time, so a behavior with a lower Order wraps a behavior
+// with a higher Order (outermost first → innermost last). Behaviors that
+// do not implement Ordered are placed at Order 0, in the order Uber FX
+// produced them — which is not stable for value groups, so production
+// pipelines should implement Ordered.
+//
+// Conventional bands:
+//
+//   - 0–99    : transactional / contextual setup (must wrap everything)
+//   - 100–199 : audit / collector lifecycle (writes after handler succeeds)
+//   - 200–299 : event publish / outbox (last buffered side effect)
+//   - 1000+   : custom host behaviors
+type Ordered interface {
+	// Order returns the sort key for the behavior. Lower values wrap
+	// outer; behaviors share an Order at the cost of an unstable relative
+	// position between them.
+	Order() int
+}
+
 // ActionKind distinguishes commands from queries.
 type ActionKind int
 

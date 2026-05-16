@@ -40,10 +40,17 @@ type actionLogCollectorKey struct{}
 
 // ActionLogCollectorFromContext returns the request-scoped ActionLogCollector
 // or a detached no-op collector when called outside the CQRS pipeline.
+//
+// Detached collectors warn — outside test fixtures, missing context means a
+// handler ran without ActionLogBehavior in the pipeline and its audit rows
+// will silently disappear. Set up a behavior chain (or call from inside the
+// CQRS bus) to silence the warning.
 func ActionLogCollectorFromContext(ctx context.Context) *ActionLogCollector {
 	if c, ok := ctx.Value(actionLogCollectorKey{}).(*ActionLogCollector); ok {
 		return c
 	}
+
+	logger.Warnf("approval: ActionLogCollector missing from context — audit logs will be discarded; ensure ActionLogBehavior is registered")
 
 	return new(ActionLogCollector)
 }
@@ -60,6 +67,11 @@ type ActionLogBehavior struct {
 func NewActionLogBehavior(db orm.DB) cqrs.Behavior {
 	return &ActionLogBehavior{db: db}
 }
+
+// Order positions ActionLogBehavior between Transaction (Order 0) and
+// EventPublish (Order 200), so logs persist inside the tx but before
+// events emit. A handler failure short-circuits both writes.
+func (*ActionLogBehavior) Order() int { return 100 }
 
 // Handle wraps the handler with collector lifecycle management.
 func (b *ActionLogBehavior) Handle(ctx context.Context, action cqrs.Action, next func(context.Context) (any, error)) (any, error) {

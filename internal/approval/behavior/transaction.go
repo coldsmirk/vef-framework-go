@@ -19,6 +19,10 @@ func NewTransactionBehavior(db orm.DB) cqrs.Behavior {
 	return &TransactionBehavior{db: db}
 }
 
+// Order places TransactionBehavior at the outermost slot so every
+// inner behavior (ActionLog / EventPublish) sees the same tx in context.
+func (*TransactionBehavior) Order() int { return 0 }
+
 // Handle wraps command actions in a database transaction. Query actions pass
 // through unchanged. If a parent transaction is already attached to ctx
 // (e.g. when a Saga or event subscriber re-dispatches a command from within

@@ -580,6 +580,13 @@ func (b *Bus) buildEnvelope(ctx context.Context, evt event.Event, cfg event.Publ
 		// Inherit the per-request trace ID by default so any downstream
 		// subscriber can correlate events with the originating HTTP/RPC
 		// request. Explicit WithCorrelationID still wins.
+		//
+		// Privacy note: CorrelationID is part of the envelope, so it
+		// crosses every transport boundary (in-memory, outbox, Redis
+		// stream, …). For setups where RequestID is sensitive — e.g.
+		// when it doubles as a user-session correlator — register a
+		// publish middleware that strips Envelope.CorrelationID before
+		// the persistent transport sees it (see event/middleware).
 		correlationID = contextx.RequestID(ctx)
 	}
 

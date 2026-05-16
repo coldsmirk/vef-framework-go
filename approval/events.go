@@ -1,6 +1,39 @@
 package approval
 
-import "github.com/coldsmirk/vef-framework-go/timex"
+import (
+	"reflect"
+
+	"github.com/coldsmirk/vef-framework-go/timex"
+)
+
+// payloadOccurredTime extracts the OccurredTime field from a DomainEvent
+// payload. Every approval event struct carries this field; publishers use
+// the value to project business time onto Envelope.OccurredAt via
+// event.WithOccurredAt. Returns the zero DateTime for payloads that lack
+// the field (defensive — should never happen for in-tree events).
+func payloadOccurredTime(e DomainEvent) timex.DateTime {
+	v := reflect.Indirect(reflect.ValueOf(e))
+	if !v.IsValid() || v.Kind() != reflect.Struct {
+		return timex.DateTime{}
+	}
+
+	f := v.FieldByName("OccurredTime")
+	if !f.IsValid() || f.Type() != reflect.TypeFor[timex.DateTime]() {
+		return timex.DateTime{}
+	}
+
+	t, _ := f.Interface().(timex.DateTime)
+
+	return t
+}
+
+// PayloadOccurredAt is the exported wrapper used by publishers in the
+// approval module. Kept as a package-level helper rather than a method
+// on DomainEvent so the interface can stay minimal (EventType only)
+// while still letting transports / behaviors project business time.
+func PayloadOccurredAt(e DomainEvent) timex.DateTime {
+	return payloadOccurredTime(e)
+}
 
 // stringPtrOrNil returns nil for empty strings, or a pointer to the string value.
 func stringPtrOrNil(s string) *string {

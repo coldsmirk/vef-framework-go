@@ -82,7 +82,7 @@ func (l *Listener) handle(ctx context.Context, evt *approval.InstanceCompletedEv
 		return nil
 	}
 
-	if err := l.hook.OnInstanceCompleted(ctx, l.db, &flow, &instance, evt.FinalStatus); err != nil {
+	if err := l.hook.WriteBackStatus(ctx, l.db, &flow, &instance, evt.FinalStatus); err != nil {
 		// Surface as a domain event so operators / Saga workers can
 		// retry. Failed bindings on a misconfigured flow surface with
 		// ErrBindingMisconfigured; transient failures show their wrapped
@@ -97,7 +97,12 @@ func (l *Listener) handle(ctx context.Context, evt *approval.InstanceCompletedEv
 			instance.ID, instance.TenantID, flow.ID, evt.FinalStatus, businessTable, err.Error(),
 		)
 
-		if pubErr := l.bus.Publish(ctx, failureEvent); pubErr != nil {
+		opts := []event.PublishOption{}
+		if t := approval.PayloadOccurredAt(failureEvent); !t.IsZero() {
+			opts = append(opts, event.WithOccurredAt(t.Unwrap()))
+		}
+
+		if pubErr := l.bus.Publish(ctx, failureEvent, opts...); pubErr != nil {
 			logger.Errorf("publish binding failure event for instance %s: %v", instance.ID, pubErr)
 		}
 

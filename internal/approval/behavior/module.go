@@ -6,12 +6,14 @@ import (
 
 // Module provides all CQRS behavior middlewares for the approval module.
 // Behaviors are aggregated via FX group `group:"vef:cqrs:behaviors"`; the
-// CQRS bus wraps them outside-in so the slot order at registration is the
-// execution order.
+// CQRS bus sorts them by their Order() method so wrapping order is
+// independent of FX's group-resolution timing.
 //
-// Transaction wraps the entire pipeline so every inner behavior and the
-// final handler share a single DB transaction. EventPublish runs inside
-// the transaction so PublishBatch can enroll via event.WithTx(db).
+// Order assignments (see cqrs.Ordered):
+//
+//   - Transaction  (Order 0)   wraps every inner behavior and the handler.
+//   - ActionLog    (Order 100) persists audit rows after the handler succeeds.
+//   - EventPublish (Order 200) emits events last, still inside the same tx.
 var Module = fx.Module(
 	"vef:approval:behavior",
 
