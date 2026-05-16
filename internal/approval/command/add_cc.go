@@ -28,7 +28,7 @@ type AddCCCmd struct {
 type AddCCHandler struct {
 	db           orm.DB
 	taskSvc      *service.TaskService
-	bus    event.Bus
+	bus          event.Bus
 	userResolver approval.UserInfoResolver
 }
 

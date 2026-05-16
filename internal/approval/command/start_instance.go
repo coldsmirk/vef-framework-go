@@ -35,7 +35,7 @@ type StartInstanceHandler struct {
 	db                  orm.DB
 	engine              *engine.FlowEngine
 	instanceNoGenerator approval.InstanceNoGenerator
-	bus           event.Bus
+	bus                 event.Bus
 	validationSvc       *service.ValidationService
 }
 
@@ -51,7 +51,7 @@ func NewStartInstanceHandler(
 		db:                  db,
 		engine:              engine,
 		instanceNoGenerator: instanceNoGenerator,
-		bus:           bus,
+		bus:                 bus,
 		validationSvc:       validationSvc,
 	}
 }
@@ -173,8 +173,8 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	}
 
 	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
-			approval.NewInstanceCreatedEvent(instance.ID, flow.ID, title, cmd.Applicant.ID, cmd.Applicant.Name),
-		}), event.WithTx(db)); err != nil {
+		approval.NewInstanceCreatedEvent(instance.ID, flow.ID, title, cmd.Applicant.ID, cmd.Applicant.Name),
+	}), event.WithTx(db)); err != nil {
 		return nil, fmt.Errorf("publish instance created event: %w", err)
 	}
 

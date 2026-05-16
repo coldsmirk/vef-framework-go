@@ -29,7 +29,7 @@ type UrgeTaskCmd struct {
 type UrgeTaskHandler struct {
 	db           orm.DB
 	taskSvc      *service.TaskService
-	bus    event.Bus
+	bus          event.Bus
 	userResolver approval.UserInfoResolver
 }
 

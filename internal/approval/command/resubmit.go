@@ -30,7 +30,7 @@ type ResubmitHandler struct {
 	db            orm.DB
 	engine        *engine.FlowEngine
 	validationSvc *service.ValidationService
-	bus     event.Bus
+	bus           event.Bus
 }
 
 // NewResubmitHandler creates a new ResubmitHandler.

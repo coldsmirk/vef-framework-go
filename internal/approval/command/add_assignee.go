@@ -29,7 +29,7 @@ type AddAssigneeCmd struct {
 type AddAssigneeHandler struct {
 	db           orm.DB
 	taskSvc      *service.TaskService
-	bus    event.Bus
+	bus          event.Bus
 	userResolver approval.UserInfoResolver
 }
 

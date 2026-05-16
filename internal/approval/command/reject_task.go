@@ -28,7 +28,7 @@ type RejectTaskHandler struct {
 	taskSvc       *service.TaskService
 	nodeSvc       *service.NodeService
 	validationSvc *service.ValidationService
-	bus     event.Bus
+	bus           event.Bus
 }
 
 // NewRejectTaskHandler creates a new RejectTaskHandler.
@@ -44,7 +44,7 @@ func NewRejectTaskHandler(
 		taskSvc:       taskSvc,
 		nodeSvc:       nodeSvc,
 		validationSvc: validationSvc,
-		bus:     bus,
+		bus:           bus,
 	}
 }
 

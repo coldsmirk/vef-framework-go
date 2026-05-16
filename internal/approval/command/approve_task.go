@@ -28,7 +28,7 @@ type ApproveTaskHandler struct {
 	taskSvc       *service.TaskService
 	nodeSvc       *service.NodeService
 	validationSvc *service.ValidationService
-	bus     event.Bus
+	bus           event.Bus
 }
 
 // NewApproveTaskHandler creates a new ApproveTaskHandler.
@@ -44,7 +44,7 @@ func NewApproveTaskHandler(
 		taskSvc:       taskSvc,
 		nodeSvc:       nodeSvc,
 		validationSvc: validSvc,
-		bus:     bus,
+		bus:           bus,
 	}
 }
 

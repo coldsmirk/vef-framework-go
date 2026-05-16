@@ -85,6 +85,7 @@ func dropObsoleteTables(ctx context.Context, db orm.DB) error {
 			return fmt.Errorf("drop %s: %w", table, err)
 		}
 	}
+
 	return nil
 }
 

@@ -24,11 +24,11 @@ type RemoveAssigneeCmd struct {
 
 // RemoveAssigneeHandler handles the RemoveAssigneeCmd command.
 type RemoveAssigneeHandler struct {
-	db        orm.DB
-	taskSvc   *service.TaskService
-	nodeSvc   *service.NodeService
-	engine    *engine.FlowEngine
-	bus event.Bus
+	db      orm.DB
+	taskSvc *service.TaskService
+	nodeSvc *service.NodeService
+	engine  *engine.FlowEngine
+	bus     event.Bus
 }
 
 // NewRemoveAssigneeHandler creates a new RemoveAssigneeHandler.

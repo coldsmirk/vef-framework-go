@@ -30,7 +30,7 @@ type TransferTaskHandler struct {
 	db            orm.DB
 	taskSvc       *service.TaskService
 	validationSvc *service.ValidationService
-	bus     event.Bus
+	bus           event.Bus
 	userResolver  approval.UserInfoResolver
 }
 
@@ -46,7 +46,7 @@ func NewTransferTaskHandler(
 		db:            db,
 		taskSvc:       taskSvc,
 		validationSvc: validationSvc,
-		bus:     bus,
+		bus:           bus,
 		userResolver:  userResolver,
 	}
 }

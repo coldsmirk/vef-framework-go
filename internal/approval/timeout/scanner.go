@@ -24,7 +24,7 @@ var (
 // Scanner scans for timed-out tasks and processes them.
 type Scanner struct {
 	db           orm.DB
-	bus    event.Bus
+	bus          event.Bus
 	taskSvc      *service.TaskService
 	nodeSvc      *service.NodeService
 	userResolver approval.UserInfoResolver
@@ -43,7 +43,7 @@ func NewScanner(
 ) *Scanner {
 	return &Scanner{
 		db:           db,
-		bus:    bus,
+		bus:          bus,
 		taskSvc:      taskSvc,
 		nodeSvc:      nodeSvc,
 		userResolver: userResolver,

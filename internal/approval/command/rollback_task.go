@@ -34,7 +34,7 @@ type RollbackTaskHandler struct {
 	taskSvc       *service.TaskService
 	validationSvc *service.ValidationService
 	engine        *engine.FlowEngine
-	bus     event.Bus
+	bus           event.Bus
 }
 
 // NewRollbackTaskHandler creates a new RollbackTaskHandler.
@@ -50,7 +50,7 @@ func NewRollbackTaskHandler(
 		taskSvc:       taskSvc,
 		validationSvc: validationSvc,
 		engine:        eng,
-		bus:     bus,
+		bus:           bus,
 	}
 }
 

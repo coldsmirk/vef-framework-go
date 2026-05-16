@@ -27,9 +27,9 @@ type WithdrawCmd struct {
 
 // WithdrawHandler handles the WithdrawCmd command.
 type WithdrawHandler struct {
-	db        orm.DB
-	taskSvc   *service.TaskService
-	bus event.Bus
+	db      orm.DB
+	taskSvc *service.TaskService
+	bus     event.Bus
 }
 
 // NewWithdrawHandler creates a new WithdrawHandler.

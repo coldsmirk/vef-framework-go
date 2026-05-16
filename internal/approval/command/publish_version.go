@@ -24,7 +24,7 @@ type PublishVersionCmd struct {
 
 // PublishVersionHandler handles the PublishVersionCmd command.
 type PublishVersionHandler struct {
-	db        orm.DB
+	db  orm.DB
 	bus event.Bus
 }
 
@@ -93,8 +93,8 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 	}
 
 	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
-			approval.NewFlowPublishedEvent(version.FlowID, cmd.VersionID),
-		}), event.WithTx(db)); err != nil {
+		approval.NewFlowPublishedEvent(version.FlowID, cmd.VersionID),
+	}), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}
 

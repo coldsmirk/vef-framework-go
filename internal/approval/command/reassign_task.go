@@ -27,7 +27,7 @@ type ReassignTaskCmd struct {
 // ReassignTaskHandler handles the ReassignTaskCmd command.
 type ReassignTaskHandler struct {
 	db           orm.DB
-	bus    event.Bus
+	bus          event.Bus
 	userResolver approval.UserInfoResolver
 }
 

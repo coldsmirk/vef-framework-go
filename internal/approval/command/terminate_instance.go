@@ -26,9 +26,9 @@ type TerminateInstanceCmd struct {
 
 // TerminateInstanceHandler handles the TerminateInstanceCmd command.
 type TerminateInstanceHandler struct {
-	db        orm.DB
-	taskSvc   *service.TaskService
-	bus event.Bus
+	db      orm.DB
+	taskSvc *service.TaskService
+	bus     event.Bus
 }
 
 // NewTerminateInstanceHandler creates a new TerminateInstanceHandler.

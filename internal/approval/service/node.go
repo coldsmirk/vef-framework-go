@@ -15,7 +15,7 @@ import (
 // NodeService provides node-level domain operations.
 type NodeService struct {
 	engine       *engine.FlowEngine
-	bus    event.Bus
+	bus          event.Bus
 	taskSvc      *TaskService
 	userResolver approval.UserInfoResolver
 }
