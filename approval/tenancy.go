@@ -36,30 +36,44 @@ var ErrCrossTenantAccess = errors.New("approval: cross-tenant access denied")
 // queries through their struct fields so handlers can enforce data
 // ownership without re-parsing principal details.
 //
-// A zero-value CallerContext is treated as permissive (system-internal or
-// test fixtures where no caller is on the wire). Production code paths
-// MUST populate it on the resource boundary.
+// Production code MUST populate exactly one of TenantID / IsSuperAdmin /
+// IsSystemInternal. A zero-value CallerContext is treated as
+// **unauthorized** so a forgotten resolver call surfaces as a deny rather
+// than silently waving the request through — this is the deliberate fail-
+// closed posture introduced after the security audit caught fail-open
+// regressions in the default principal resolver.
 type CallerContext struct {
 	// TenantID is the caller's resolved tenant. Empty for super-admin or
-	// for system-internal callers.
+	// for system-internal callers; must be non-empty for every authenticated
+	// API request.
 	TenantID string
 	// IsSuperAdmin grants cross-tenant access regardless of TenantID.
 	IsSuperAdmin bool
+	// IsSystemInternal marks a caller without an HTTP / RPC principal
+	// (timeout scanner, binding listener, engine-internal saga, test
+	// fixtures). Authorize passes unconditionally for such callers; resource
+	// paths must NEVER populate this — it's only legitimate for in-process
+	// system code that already established scope by other means.
+	IsSystemInternal bool
 }
 
+// SystemCaller is the canonical CallerContext for in-process system code
+// (timeout scanner, binding listener, engine-internal sagas, test fixtures
+// that intentionally bypass tenant scoping). Use this instead of the zero
+// value so the intent is explicit at the call site.
+var SystemCaller = CallerContext{IsSystemInternal: true}
+
 // Authorize reports whether the caller is allowed to act on an entity owned
-// by entityTenantID. Super-admin callers always pass. Callers with an
-// empty TenantID (zero value) are treated as system-internal and also pass
-// — this preserves test fixtures and engine-internal call sites that have
-// no HTTP principal. Non-empty TenantID must match entityTenantID exactly.
+// by entityTenantID. Super-admin callers always pass; system-internal
+// callers pass too (no HTTP principal exists, scope is enforced upstream).
+// Every other caller must have a non-empty TenantID that matches the
+// entity tenant exactly — zero-value contexts are rejected.
 func (c CallerContext) Authorize(entityTenantID string) error {
-	// Permissive paths: super-admin overrides any tenant; an empty TenantID
-	// marks a system-internal / test caller with no enforceable scope.
-	if c.IsSuperAdmin || c.TenantID == "" {
+	if c.IsSuperAdmin || c.IsSystemInternal {
 		return nil
 	}
 
-	if c.TenantID != entityTenantID {
+	if c.TenantID == "" || c.TenantID != entityTenantID {
 		return ErrCrossTenantAccess
 	}
 
@@ -76,12 +90,13 @@ func (c CallerContext) Allows(entityTenantID string) bool {
 
 // EffectiveTenantID returns the tenant filter the caller is actually
 // allowed to query. Non-super-admin callers always operate within their
-// own tenant; their override (if any) is ignored. Super-admin callers
-// may pass a specific tenant through override, or empty for cross-tenant
-// visibility. This is the single source of truth for list queries — the
-// resource layer should never read params.TenantID directly.
+// own tenant; their override (if any) is ignored. Super-admin and
+// system-internal callers may pass a specific tenant through override, or
+// empty for cross-tenant visibility. This is the single source of truth
+// for list queries — the resource layer should never read params.TenantID
+// directly.
 func (c CallerContext) EffectiveTenantID(override string) string {
-	if c.IsSuperAdmin {
+	if c.IsSuperAdmin || c.IsSystemInternal {
 		return override
 	}
 

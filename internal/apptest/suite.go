@@ -180,6 +180,10 @@ func (s *Suite) GenerateToken(principal *security.Principal) string {
 		WithRoles(principal.Roles).
 		WithType(security.TokenTypeAccess)
 
+	if principal.Details != nil {
+		claims = claims.WithDetails(principal.Details)
+	}
+
 	token, err := jwtInstance.Generate(claims, 1*time.Hour, 0)
 	s.Require().NoError(err)
 
