@@ -44,15 +44,9 @@ func NewTerminateInstanceHandler(
 func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInstanceCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID)
+	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID, cmd.Caller)
 	if err != nil {
 		return cqrs.Unit{}, err
-	}
-
-	if err := cmd.Caller.Authorize(instance.TenantID); err != nil {
-		// Return InstanceNotFound rather than CrossTenantAccess so callers
-		// cannot use the error to probe existence across tenants.
-		return cqrs.Unit{}, shared.ErrInstanceNotFound
 	}
 
 	if instance.Status != approval.InstanceRunning {
@@ -81,7 +75,7 @@ func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInst
 
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
-	behavior.CollectorFromContext(ctx).Append(
+	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewInstanceCompletedEvent(cmd.InstanceID, instance.TenantID, approval.InstanceTerminated),
 	)
 

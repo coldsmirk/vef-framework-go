@@ -23,6 +23,7 @@ type ResubmitCmd struct {
 	InstanceID string
 	Operator   approval.OperatorInfo
 	FormData   map[string]any
+	Caller     approval.CallerContext
 }
 
 // ResubmitHandler handles the ResubmitCmd command.
@@ -46,7 +47,7 @@ func NewResubmitHandler(
 func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID)
+	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID, cmd.Caller)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
@@ -105,7 +106,7 @@ func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Uni
 	actionLog := cmd.Operator.NewActionLog(cmd.InstanceID, approval.ActionResubmit)
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
-	behavior.CollectorFromContext(ctx).Append(
+	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewInstanceResubmittedEvent(cmd.InstanceID, instance.TenantID, cmd.Operator.ID),
 	)
 

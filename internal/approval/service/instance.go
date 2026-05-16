@@ -30,12 +30,22 @@ func NewInstanceService(hooks *engine.LifecycleHookRunner) *InstanceService {
 	return &InstanceService{hooks: hooks}
 }
 
-// LoadForUpdate loads an instance by ID with a row-level lock. Callers
-// that are about to mutate instance state (withdraw, resubmit, terminate,
-// add_cc, mark_cc_read) reuse this helper instead of open-coding the
-// ForUpdate select so the lookup, lock, and not-found mapping stay
-// consistent across handlers.
-func (*InstanceService) LoadForUpdate(ctx context.Context, db orm.DB, instanceID string) (*approval.Instance, error) {
+// LoadForUpdate loads an instance by ID with a row-level lock and asserts
+// that the caller is authorized to act on it. Cross-tenant access surfaces
+// as ErrInstanceNotFound — the same response shape as "no such instance"
+// — so the API never reveals existence across tenants.
+//
+// caller may be a zero CallerContext (system-internal call, test fixtures);
+// in that case Authorize is permissive and tenant enforcement is skipped.
+// Production resource paths always populate it; making the parameter
+// mandatory means "any tenant-scoped load goes through this guard" is a
+// compile-time invariant, not a code-review hope.
+func (*InstanceService) LoadForUpdate(
+	ctx context.Context,
+	db orm.DB,
+	instanceID string,
+	caller approval.CallerContext,
+) (*approval.Instance, error) {
 	instance := &approval.Instance{}
 	instance.ID = instanceID
 
@@ -49,6 +59,10 @@ func (*InstanceService) LoadForUpdate(ctx context.Context, db orm.DB, instanceID
 		}
 
 		return nil, fmt.Errorf("load instance: %w", err)
+	}
+
+	if !caller.Allows(instance.TenantID) {
+		return nil, shared.ErrInstanceNotFound
 	}
 
 	return instance, nil

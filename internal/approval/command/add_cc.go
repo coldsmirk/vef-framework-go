@@ -21,6 +21,7 @@ type AddCCCmd struct {
 	InstanceID string
 	CCUserIDs  []string
 	OperatorID string
+	Caller     approval.CallerContext
 }
 
 // AddCCHandler handles the AddCCCmd command.
@@ -39,7 +40,7 @@ func NewAddCCHandler(db orm.DB, taskSvc *service.TaskService, instanceSvc *servi
 func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID)
+	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID, cmd.Caller)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
@@ -99,7 +100,7 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 	actionLog.CCUserIDs = insertedUserIDs
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
-	behavior.CollectorFromContext(ctx).Append(
+	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewCCNotifiedEvent(cmd.InstanceID, instance.TenantID, *instance.CurrentNodeID, insertedUserIDs, ccUserNames, true),
 	)
 

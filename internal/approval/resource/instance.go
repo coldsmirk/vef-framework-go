@@ -54,13 +54,19 @@ type InstanceResource struct {
 
 	bus                cqrs.Bus
 	departmentResolver approval.PrincipalDepartmentResolver
+	tenantResolver     approval.PrincipalTenantResolver
 }
 
 // NewInstanceResource creates a new instance resource.
-func NewInstanceResource(bus cqrs.Bus, departmentResolver approval.PrincipalDepartmentResolver) api.Resource {
+func NewInstanceResource(
+	bus cqrs.Bus,
+	departmentResolver approval.PrincipalDepartmentResolver,
+	tenantResolver approval.PrincipalTenantResolver,
+) api.Resource {
 	return &InstanceResource{
 		bus:                bus,
 		departmentResolver: departmentResolver,
+		tenantResolver:     tenantResolver,
 		Resource: api.NewRPCResource(
 			"approval/instance",
 			api.WithOperations(
@@ -199,10 +205,16 @@ func (r *InstanceResource) Withdraw(ctx fiber.Ctx, principal *security.Principal
 		return err
 	}
 
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	if err != nil {
+		return err
+	}
+
 	if _, err := cqrs.Send[command.WithdrawCmd, cqrs.Unit](ctx.Context(), r.bus, command.WithdrawCmd{
 		InstanceID: params.InstanceID,
 		Operator:   operator,
 		Reason:     params.Reason,
+		Caller:     caller,
 	}); err != nil {
 		return err
 	}
@@ -225,10 +237,16 @@ func (r *InstanceResource) Resubmit(ctx fiber.Ctx, principal *security.Principal
 		return err
 	}
 
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	if err != nil {
+		return err
+	}
+
 	if _, err := cqrs.Send[command.ResubmitCmd, cqrs.Unit](ctx.Context(), r.bus, command.ResubmitCmd{
 		InstanceID: params.InstanceID,
 		Operator:   operator,
 		FormData:   params.FormData,
+		Caller:     caller,
 	}); err != nil {
 		return err
 	}
@@ -246,10 +264,16 @@ type AddCCParams struct {
 
 // AddCC adds CC records for an instance.
 func (r *InstanceResource) AddCC(ctx fiber.Ctx, principal *security.Principal, params AddCCParams) error {
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	if err != nil {
+		return err
+	}
+
 	if _, err := cqrs.Send[command.AddCCCmd, cqrs.Unit](ctx.Context(), r.bus, command.AddCCCmd{
 		InstanceID: params.InstanceID,
 		CCUserIDs:  params.CCUserIDs,
 		OperatorID: principal.ID,
+		Caller:     caller,
 	}); err != nil {
 		return err
 	}

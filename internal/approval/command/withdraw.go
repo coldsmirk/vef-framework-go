@@ -23,6 +23,7 @@ type WithdrawCmd struct {
 	InstanceID string
 	Operator   approval.OperatorInfo
 	Reason     string
+	Caller     approval.CallerContext
 }
 
 // WithdrawHandler handles the WithdrawCmd command.
@@ -44,7 +45,7 @@ func NewWithdrawHandler(
 func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID)
+	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID, cmd.Caller)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
@@ -79,7 +80,7 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Uni
 
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
-	behavior.CollectorFromContext(ctx).Append(
+	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewInstanceWithdrawnEvent(cmd.InstanceID, instance.TenantID, cmd.Operator.ID),
 	)
 
