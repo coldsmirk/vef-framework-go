@@ -1,6 +1,8 @@
 package resource
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
@@ -65,12 +67,13 @@ type AdminFindInstancesParams struct {
 
 // FindInstances queries instances for admin management.
 func (r *AdminResource) FindInstances(ctx fiber.Ctx, principal *security.Principal, params AdminFindInstancesParams) error {
-	if err := requireTenantScope(principal, params.TenantID); err != nil {
+	tenantFilter, err := r.resolveTenantFilter(ctx, principal, params.TenantID)
+	if err != nil {
 		return err
 	}
 
 	res, err := cqrs.Send[query.FindAdminInstancesQuery, *page.Page[admin.Instance]](ctx.Context(), r.bus, query.FindAdminInstancesQuery{
-		TenantID:    params.TenantID,
+		TenantID:    tenantFilter,
 		ApplicantID: params.ApplicantID,
 		Status:      params.Status,
 		FlowID:      params.FlowID,
@@ -84,19 +87,28 @@ func (r *AdminResource) FindInstances(ctx fiber.Ctx, principal *security.Princip
 	return result.Ok(res).Response(ctx)
 }
 
-// requireTenantScope enforces that non-super-admin callers always specify a
-// TenantID for admin queries. The default (params.TenantID == nil) would
-// otherwise return every tenant's data, which is rarely intended.
-func requireTenantScope(principal *security.Principal, tenantID *string) error {
-	if approval.IsSuperAdmin(principal) {
-		return nil
+// resolveTenantFilter derives the tenant filter for an admin query: a
+// non-super-admin caller always filters by their own tenant (override is
+// ignored); a super-admin may pass an explicit override or leave it empty
+// for cross-tenant visibility. Returns nil when the resolved filter is
+// empty so query handlers treat it as "no tenant filter".
+func (r *AdminResource) resolveTenantFilter(ctx fiber.Ctx, principal *security.Principal, override *string) (*string, error) {
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	if err != nil {
+		return nil, err
 	}
 
-	if tenantID == nil || *tenantID == "" {
-		return result.Err("admin 查询必须指定租户", result.WithCode(40701))
+	overrideValue := ""
+	if override != nil {
+		overrideValue = strings.TrimSpace(*override)
 	}
 
-	return nil
+	effective := caller.EffectiveTenantID(overrideValue)
+	if effective == "" {
+		return nil, nil
+	}
+
+	return &effective, nil
 }
 
 // AdminFindTasksParams contains the query parameters for admin task listing.
@@ -113,12 +125,13 @@ type AdminFindTasksParams struct {
 
 // FindTasks queries tasks for admin management.
 func (r *AdminResource) FindTasks(ctx fiber.Ctx, principal *security.Principal, params AdminFindTasksParams) error {
-	if err := requireTenantScope(principal, params.TenantID); err != nil {
+	tenantFilter, err := r.resolveTenantFilter(ctx, principal, params.TenantID)
+	if err != nil {
 		return err
 	}
 
 	res, err := cqrs.Send[query.FindAdminTasksQuery, *page.Page[admin.Task]](ctx.Context(), r.bus, query.FindAdminTasksQuery{
-		TenantID:   params.TenantID,
+		TenantID:   tenantFilter,
 		AssigneeID: params.AssigneeID,
 		InstanceID: params.InstanceID,
 		Status:     params.Status,
@@ -168,13 +181,14 @@ type AdminFindActionLogsParams struct {
 
 // FindActionLogs queries action logs for an instance with pagination.
 func (r *AdminResource) FindActionLogs(ctx fiber.Ctx, principal *security.Principal, params AdminFindActionLogsParams) error {
-	if err := requireTenantScope(principal, params.TenantID); err != nil {
+	tenantFilter, err := r.resolveTenantFilter(ctx, principal, params.TenantID)
+	if err != nil {
 		return err
 	}
 
 	res, err := cqrs.Send[query.FindAdminActionLogsQuery, *page.Page[admin.ActionLog]](ctx.Context(), r.bus, query.FindAdminActionLogsQuery{
 		InstanceID: params.InstanceID,
-		TenantID:   params.TenantID,
+		TenantID:   tenantFilter,
 		Pageable:   page.Pageable{Page: params.Page, Size: params.PageSize},
 	})
 	if err != nil {
@@ -259,13 +273,14 @@ type AdminGetMetricsParams struct {
 
 // GetMetrics returns aggregated approval engine metrics for the admin dashboard.
 func (r *AdminResource) GetMetrics(ctx fiber.Ctx, principal *security.Principal, params AdminGetMetricsParams) error {
-	if err := requireTenantScope(principal, params.TenantID); err != nil {
+	tenantFilter, err := r.resolveTenantFilter(ctx, principal, params.TenantID)
+	if err != nil {
 		return err
 	}
 
 	tenantID := ""
-	if params.TenantID != nil {
-		tenantID = *params.TenantID
+	if tenantFilter != nil {
+		tenantID = *tenantFilter
 	}
 
 	metrics, err := cqrs.Send[query.GetMetricsQuery, *admin.Metrics](ctx.Context(), r.bus, query.GetMetricsQuery{

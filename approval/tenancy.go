@@ -66,6 +66,28 @@ func (c CallerContext) Authorize(entityTenantID string) error {
 	return nil
 }
 
+// Allows is the bool variant of Authorize. Query handlers use it when a
+// failed authorization must mimic "not found" rather than surface an error
+// — the typical multi-tenant pattern that avoids leaking entity existence
+// across tenants.
+func (c CallerContext) Allows(entityTenantID string) bool {
+	return c.Authorize(entityTenantID) == nil
+}
+
+// EffectiveTenantID returns the tenant filter the caller is actually
+// allowed to query. Non-super-admin callers always operate within their
+// own tenant; their override (if any) is ignored. Super-admin callers
+// may pass a specific tenant through override, or empty for cross-tenant
+// visibility. This is the single source of truth for list queries — the
+// resource layer should never read params.TenantID directly.
+func (c CallerContext) EffectiveTenantID(override string) string {
+	if c.IsSuperAdmin {
+		return override
+	}
+
+	return c.TenantID
+}
+
 // PrincipalTenantResolver extracts the caller's tenant ID from a security
 // principal. Implemented by host applications because Principal.Details is
 // schema-less; the framework cannot know where the host stores tenant
