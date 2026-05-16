@@ -6,7 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -28,7 +28,6 @@ type RemoveAssigneeHandler struct {
 	taskSvc *service.TaskService
 	nodeSvc *service.NodeService
 	engine  *engine.FlowEngine
-	bus     event.Bus
 }
 
 // NewRemoveAssigneeHandler creates a new RemoveAssigneeHandler.
@@ -37,10 +36,9 @@ func NewRemoveAssigneeHandler(
 	taskSvc *service.TaskService,
 	nodeSvc *service.NodeService,
 	eng *engine.FlowEngine,
-	bus event.Bus,
 ) *RemoveAssigneeHandler {
 	return &RemoveAssigneeHandler{
-		db: db, taskSvc: taskSvc, nodeSvc: nodeSvc, engine: eng, bus: bus,
+		db: db, taskSvc: taskSvc, nodeSvc: nodeSvc, engine: eng,
 	}
 }
 
@@ -114,9 +112,7 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 		return cqrs.Unit{}, fmt.Errorf("update instance: %w", err)
 	}
 
-	if err := h.bus.PublishBatch(ctx, event.AsEvents(events), event.WithTx(db)); err != nil {
-		return cqrs.Unit{}, err
-	}
+	behavior.CollectorFromContext(ctx).Append(events...)
 
 	return cqrs.Unit{}, nil
 }

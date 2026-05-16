@@ -10,7 +10,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
-	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -37,8 +36,7 @@ type TransferTaskTestSuite struct {
 func (s *TransferTaskTestSuite) SetupSuite() {
 	taskSvc := service.NewTaskService()
 	validSvc := service.NewValidationService(nil)
-	pub := eventtest.NewFakeBus()
-	s.handler = command.NewTransferTaskHandler(s.db, taskSvc, validSvc, pub, nil)
+	s.handler = command.NewTransferTaskHandler(s.db, taskSvc, validSvc, nil)
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "transfer")
 
 	node := &approval.FlowNode{

@@ -6,7 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -24,13 +24,12 @@ type PublishVersionCmd struct {
 
 // PublishVersionHandler handles the PublishVersionCmd command.
 type PublishVersionHandler struct {
-	db  orm.DB
-	bus event.Bus
+	db orm.DB
 }
 
 // NewPublishVersionHandler creates a new PublishVersionHandler.
-func NewPublishVersionHandler(db orm.DB, bus event.Bus) *PublishVersionHandler {
-	return &PublishVersionHandler{db: db, bus: bus}
+func NewPublishVersionHandler(db orm.DB) *PublishVersionHandler {
+	return &PublishVersionHandler{db: db}
 }
 
 func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCmd) (cqrs.Unit, error) {
@@ -99,11 +98,9 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 		return cqrs.Unit{}, fmt.Errorf("load flow tenant: %w", err)
 	}
 
-	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
+	behavior.CollectorFromContext(ctx).Append(
 		approval.NewFlowPublishedEvent(version.FlowID, flow.TenantID, cmd.VersionID),
-	}), event.WithTx(db)); err != nil {
-		return cqrs.Unit{}, err
-	}
+	)
 
 	return cqrs.Unit{}, nil
 }

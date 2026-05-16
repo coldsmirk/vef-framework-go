@@ -14,6 +14,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -32,7 +33,7 @@ type AddCCTestSuite struct {
 	ctx         context.Context
 	db          orm.DB
 	bus         *eventtest.FakeBus
-	handler     *command.AddCCHandler
+	handler     *busPublishingHandler[command.AddCCCmd, cqrs.Unit]
 	fixture     *MinimalFixture
 	nodeID      string
 	instanceSeq int
@@ -40,7 +41,7 @@ type AddCCTestSuite struct {
 
 func (s *AddCCTestSuite) SetupSuite() {
 	s.bus = eventtest.NewFakeBus()
-	s.handler = command.NewAddCCHandler(s.db, service.NewTaskService(), s.bus, nil)
+	s.handler = wrapWithBus(s.bus, command.NewAddCCHandler(s.db, service.NewTaskService(), nil))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "cc")
 
 	node := &approval.FlowNode{

@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -30,8 +31,8 @@ type PublishVersionTestSuite struct {
 	ctx            context.Context
 	db             orm.DB
 	bus            *eventtest.FakeBus
-	publishHandler *command.PublishVersionHandler
-	deployHandler  *command.DeployFlowHandler
+	publishHandler *busPublishingHandler[command.PublishVersionCmd, cqrs.Unit]
+	deployHandler  *busPublishingHandler[command.DeployFlowCmd, *approval.FlowVersion]
 	flowID         string
 }
 
@@ -60,8 +61,8 @@ func (s *PublishVersionTestSuite) SetupSuite() {
 
 	s.flowID = flow.ID
 	s.bus = eventtest.NewFakeBus()
-	s.deployHandler = command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), s.bus)
-	s.publishHandler = command.NewPublishVersionHandler(s.db, s.bus)
+	s.deployHandler = wrapWithBus(s.bus, command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService()))
+	s.publishHandler = wrapWithBus(s.bus, command.NewPublishVersionHandler(s.db))
 }
 
 func (s *PublishVersionTestSuite) TearDownTest() {

@@ -11,7 +11,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -36,7 +36,6 @@ type StartInstanceHandler struct {
 	db                  orm.DB
 	engine              *engine.FlowEngine
 	instanceNoGenerator approval.InstanceNoGenerator
-	bus                 event.Bus
 	validationSvc       *service.ValidationService
 	bindingHook         approval.BusinessBindingHook
 }
@@ -46,7 +45,6 @@ func NewStartInstanceHandler(
 	db orm.DB,
 	engine *engine.FlowEngine,
 	instanceNoGenerator approval.InstanceNoGenerator,
-	bus event.Bus,
 	validationSvc *service.ValidationService,
 	bindingHook approval.BusinessBindingHook,
 ) *StartInstanceHandler {
@@ -54,7 +52,6 @@ func NewStartInstanceHandler(
 		db:                  db,
 		engine:              engine,
 		instanceNoGenerator: instanceNoGenerator,
-		bus:                 bus,
 		validationSvc:       validationSvc,
 		bindingHook:         bindingHook,
 	}
@@ -204,11 +201,9 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		return nil, fmt.Errorf("start process: %w", err)
 	}
 
-	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
+	behavior.CollectorFromContext(ctx).Append(
 		approval.NewInstanceCreatedEvent(instance.ID, instance.TenantID, flow.ID, title, cmd.Applicant.ID, cmd.Applicant.Name),
-	}), event.WithTx(db)); err != nil {
-		return nil, fmt.Errorf("publish instance created event: %w", err)
-	}
+	)
 
 	return instance, nil
 }

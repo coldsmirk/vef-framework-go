@@ -6,7 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -23,13 +23,12 @@ type ToggleFlowActiveCmd struct {
 
 // ToggleFlowActiveHandler handles the ToggleFlowActiveCmd command.
 type ToggleFlowActiveHandler struct {
-	db  orm.DB
-	bus event.Bus
+	db orm.DB
 }
 
 // NewToggleFlowActiveHandler creates a new ToggleFlowActiveHandler.
-func NewToggleFlowActiveHandler(db orm.DB, bus event.Bus) *ToggleFlowActiveHandler {
-	return &ToggleFlowActiveHandler{db: db, bus: bus}
+func NewToggleFlowActiveHandler(db orm.DB) *ToggleFlowActiveHandler {
+	return &ToggleFlowActiveHandler{db: db}
 }
 
 func (h *ToggleFlowActiveHandler) Handle(ctx context.Context, cmd ToggleFlowActiveCmd) (cqrs.Unit, error) {
@@ -66,11 +65,9 @@ func (h *ToggleFlowActiveHandler) Handle(ctx context.Context, cmd ToggleFlowActi
 		return cqrs.Unit{}, shared.ErrFlowNotFound
 	}
 
-	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
+	behavior.CollectorFromContext(ctx).Append(
 		approval.NewFlowToggledEvent(cmd.FlowID, flow.TenantID, cmd.IsActive),
-	}), event.WithTx(db)); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("publish flow toggled event: %w", err)
-	}
+	)
 
 	return cqrs.Unit{}, nil
 }

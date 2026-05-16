@@ -9,13 +9,62 @@ import (
 	"github.com/uptrace/bun/dialect"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
+	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
+
+// busPublishingHandler wraps a cqrs.Handler with EventPublishBehavior so that
+// events appended to the request-scoped EventCollector get flushed to the
+// supplied bus after the handler returns. Tests use it to keep their
+// bus.CapturedByType assertions after handlers stopped publishing directly.
+type busPublishingHandler[TCmd cqrs.Action, TResult any] struct {
+	bus      *eventtest.FakeBus
+	delegate cqrs.Handler[TCmd, TResult]
+	behavior cqrs.Behavior
+}
+
+// wrapWithBus returns a Handler that delegates to inner while flushing
+// collected events through bus.
+func wrapWithBus[TCmd cqrs.Action, TResult any](
+	bus *eventtest.FakeBus,
+	inner cqrs.Handler[TCmd, TResult],
+) *busPublishingHandler[TCmd, TResult] {
+	return &busPublishingHandler[TCmd, TResult]{
+		bus:      bus,
+		delegate: inner,
+		behavior: behavior.NewEventPublishBehavior(bus),
+	}
+}
+
+// Handle runs the delegate inside EventPublishBehavior so the fake bus
+// observes the collected events.
+func (h *busPublishingHandler[TCmd, TResult]) Handle(ctx context.Context, cmd TCmd) (TResult, error) {
+	result, err := h.behavior.Handle(ctx, cmd, func(innerCtx context.Context) (any, error) {
+		return h.delegate.Handle(innerCtx, cmd)
+	})
+
+	var zero TResult
+	if err != nil {
+		return zero, err
+	}
+
+	if result == nil {
+		return zero, nil
+	}
+
+	out, ok := result.(TResult)
+	if !ok {
+		return zero, fmt.Errorf("unexpected handler result type %T", result)
+	}
+
+	return out, nil
+}
 
 //nolint:revive // t testing.TB is conventionally the first parameter in test helpers
 func setPublishedFormSchema(t testing.TB, ctx context.Context, db orm.DB, versionID string, schema *approval.FormDefinition) {
@@ -213,8 +262,7 @@ func buildTestEngine() *engine.FlowEngine {
 // buildTestServices creates the standard service instances for command tests.
 func buildTestServices(eng *engine.FlowEngine) (*service.TaskService, *service.NodeService, *service.ValidationService) {
 	taskSvc := service.NewTaskService()
-	pub := eventtest.NewFakeBus()
-	nodeSvc := service.NewNodeService(eng, pub, taskSvc, nil)
+	nodeSvc := service.NewNodeService(eng, eventtest.NewFakeBus(), taskSvc, nil)
 	validSvc := service.NewValidationService(nil)
 
 	return taskSvc, nodeSvc, validSvc
@@ -303,14 +351,14 @@ func deployAndPublishFlow(t testing.TB, ctx context.Context, db orm.DB, code str
 	_, err = db.NewInsert().Model(flow).Exec(ctx)
 	require.NoError(t, err, "Should insert test flow")
 
-	deployHandler := command.NewDeployFlowHandler(db, service.NewFlowDefinitionService(), eventtest.NewFakeBus())
+	deployHandler := command.NewDeployFlowHandler(db, service.NewFlowDefinitionService())
 	version, err := deployHandler.Handle(ctx, command.DeployFlowCmd{
 		FlowID:         flow.ID,
 		FlowDefinition: def,
 	})
 	require.NoError(t, err, "Should deploy flow")
 
-	publishHandler := command.NewPublishVersionHandler(db, eventtest.NewFakeBus())
+	publishHandler := command.NewPublishVersionHandler(db)
 	_, err = publishHandler.Handle(ctx, command.PublishVersionCmd{
 		VersionID:  version.ID,
 		OperatorID: "admin",

@@ -7,7 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -31,7 +31,6 @@ type WithdrawHandler struct {
 	db          orm.DB
 	taskSvc     *service.TaskService
 	instanceSvc *service.InstanceService
-	bus         event.Bus
 }
 
 // NewWithdrawHandler creates a new WithdrawHandler.
@@ -39,9 +38,8 @@ func NewWithdrawHandler(
 	db orm.DB,
 	taskSvc *service.TaskService,
 	instanceSvc *service.InstanceService,
-	bus event.Bus,
 ) *WithdrawHandler {
-	return &WithdrawHandler{db: db, taskSvc: taskSvc, instanceSvc: instanceSvc, bus: bus}
+	return &WithdrawHandler{db: db, taskSvc: taskSvc, instanceSvc: instanceSvc}
 }
 
 func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Unit, error) {
@@ -95,11 +93,9 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Uni
 		return cqrs.Unit{}, fmt.Errorf("insert action log: %w", err)
 	}
 
-	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
+	behavior.CollectorFromContext(ctx).Append(
 		approval.NewInstanceWithdrawnEvent(cmd.InstanceID, instance.TenantID, cmd.Operator.ID),
-	}), event.WithTx(db)); err != nil {
-		return cqrs.Unit{}, err
-	}
+	)
 
 	return cqrs.Unit{}, nil
 }

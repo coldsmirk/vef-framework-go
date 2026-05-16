@@ -7,7 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -35,7 +35,6 @@ type RollbackTaskHandler struct {
 	instanceSvc   *service.InstanceService
 	validationSvc *service.ValidationService
 	engine        *engine.FlowEngine
-	bus           event.Bus
 }
 
 // NewRollbackTaskHandler creates a new RollbackTaskHandler.
@@ -45,7 +44,6 @@ func NewRollbackTaskHandler(
 	instanceSvc *service.InstanceService,
 	validationSvc *service.ValidationService,
 	eng *engine.FlowEngine,
-	bus event.Bus,
 ) *RollbackTaskHandler {
 	return &RollbackTaskHandler{
 		db:            db,
@@ -53,7 +51,6 @@ func NewRollbackTaskHandler(
 		instanceSvc:   instanceSvc,
 		validationSvc: validationSvc,
 		engine:        eng,
-		bus:           bus,
 	}
 }
 
@@ -179,9 +176,7 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 		return cqrs.Unit{}, err
 	}
 
-	if err := h.bus.PublishBatch(ctx, event.AsEvents(events), event.WithTx(db)); err != nil {
-		return cqrs.Unit{}, err
-	}
+	behavior.CollectorFromContext(ctx).Append(events...)
 
 	return cqrs.Unit{}, nil
 }

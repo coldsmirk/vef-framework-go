@@ -8,7 +8,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -32,7 +32,6 @@ type ResubmitHandler struct {
 	engine        *engine.FlowEngine
 	validationSvc *service.ValidationService
 	instanceSvc   *service.InstanceService
-	bus           event.Bus
 }
 
 // NewResubmitHandler creates a new ResubmitHandler.
@@ -41,9 +40,8 @@ func NewResubmitHandler(
 	eng *engine.FlowEngine,
 	validationSvc *service.ValidationService,
 	instanceSvc *service.InstanceService,
-	bus event.Bus,
 ) *ResubmitHandler {
-	return &ResubmitHandler{db: db, engine: eng, validationSvc: validationSvc, instanceSvc: instanceSvc, bus: bus}
+	return &ResubmitHandler{db: db, engine: eng, validationSvc: validationSvc, instanceSvc: instanceSvc}
 }
 
 func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Unit, error) {
@@ -121,11 +119,9 @@ func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Uni
 		return cqrs.Unit{}, fmt.Errorf("insert action log: %w", err)
 	}
 
-	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
+	behavior.CollectorFromContext(ctx).Append(
 		approval.NewInstanceResubmittedEvent(cmd.InstanceID, instance.TenantID, cmd.Operator.ID),
-	}), event.WithTx(db)); err != nil {
-		return cqrs.Unit{}, err
-	}
+	)
 
 	return cqrs.Unit{}, nil
 }

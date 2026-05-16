@@ -6,7 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -28,7 +28,6 @@ type ApproveTaskHandler struct {
 	taskSvc       *service.TaskService
 	nodeSvc       *service.NodeService
 	validationSvc *service.ValidationService
-	bus           event.Bus
 }
 
 // NewApproveTaskHandler creates a new ApproveTaskHandler.
@@ -37,14 +36,12 @@ func NewApproveTaskHandler(
 	taskSvc *service.TaskService,
 	nodeSvc *service.NodeService,
 	validSvc *service.ValidationService,
-	bus event.Bus,
 ) *ApproveTaskHandler {
 	return &ApproveTaskHandler{
 		db:            db,
 		taskSvc:       taskSvc,
 		nodeSvc:       nodeSvc,
 		validationSvc: validSvc,
-		bus:           bus,
 	}
 }
 
@@ -112,9 +109,7 @@ func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cq
 		return cqrs.Unit{}, fmt.Errorf("update instance: %w", err)
 	}
 
-	if err := h.bus.PublishBatch(ctx, event.AsEvents(events), event.WithTx(db)); err != nil {
-		return cqrs.Unit{}, err
-	}
+	behavior.CollectorFromContext(ctx).Append(events...)
 
 	return cqrs.Unit{}, nil
 }

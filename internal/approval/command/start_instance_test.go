@@ -12,7 +12,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
-	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -49,10 +48,9 @@ func (s *StartInstanceTestSuite) SetupSuite() {
 	s.fixture = setupApprovalFlow(s.T(), s.ctx, s.db)
 
 	eng := buildTestEngine()
-	pub := eventtest.NewFakeBus()
 	validSvc := service.NewValidationService(nil)
 
-	s.handler = command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, pub, validSvc, binding.NewDefaultHook())
+	s.handler = command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, validSvc, binding.NewDefaultHook())
 }
 
 func (s *StartInstanceTestSuite) TearDownTest() {

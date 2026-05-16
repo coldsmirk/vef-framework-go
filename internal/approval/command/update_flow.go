@@ -6,7 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -29,13 +29,12 @@ type UpdateFlowCmd struct {
 
 // UpdateFlowHandler handles the UpdateFlowCmd command.
 type UpdateFlowHandler struct {
-	db  orm.DB
-	bus event.Bus
+	db orm.DB
 }
 
 // NewUpdateFlowHandler creates a new UpdateFlowHandler.
-func NewUpdateFlowHandler(db orm.DB, bus event.Bus) *UpdateFlowHandler {
-	return &UpdateFlowHandler{db: db, bus: bus}
+func NewUpdateFlowHandler(db orm.DB) *UpdateFlowHandler {
+	return &UpdateFlowHandler{db: db}
 }
 
 func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*approval.Flow, error) {
@@ -97,11 +96,9 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		}
 	}
 
-	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
+	behavior.CollectorFromContext(ctx).Append(
 		approval.NewFlowUpdatedEvent(flow.ID, flow.TenantID),
-	}), event.WithTx(db)); err != nil {
-		return nil, fmt.Errorf("publish flow updated event: %w", err)
-	}
+	)
 
 	return &flow, nil
 }

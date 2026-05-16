@@ -7,7 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -29,13 +29,12 @@ type AddAssigneeCmd struct {
 type AddAssigneeHandler struct {
 	db           orm.DB
 	taskSvc      *service.TaskService
-	bus          event.Bus
 	userResolver approval.UserInfoResolver
 }
 
 // NewAddAssigneeHandler creates a new AddAssigneeHandler.
-func NewAddAssigneeHandler(db orm.DB, taskSvc *service.TaskService, bus event.Bus, userResolver approval.UserInfoResolver) *AddAssigneeHandler {
-	return &AddAssigneeHandler{db: db, taskSvc: taskSvc, bus: bus, userResolver: userResolver}
+func NewAddAssigneeHandler(db orm.DB, taskSvc *service.TaskService, userResolver approval.UserInfoResolver) *AddAssigneeHandler {
+	return &AddAssigneeHandler{db: db, taskSvc: taskSvc, userResolver: userResolver}
 }
 
 func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cqrs.Unit, error) {
@@ -166,11 +165,9 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 		return cqrs.Unit{}, fmt.Errorf("insert action log: %w", err)
 	}
 
-	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
+	behavior.CollectorFromContext(ctx).Append(
 		approval.NewAssigneesAddedEvent(instance.ID, instance.TenantID, task.NodeID, task.ID, cmd.AddType, insertUsers, userNames),
-	}), event.WithTx(db)); err != nil {
-		return cqrs.Unit{}, err
-	}
+	)
 
 	return cqrs.Unit{}, nil
 }
