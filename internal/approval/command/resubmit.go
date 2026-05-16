@@ -14,7 +14,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // ResubmitCmd resubmits a returned instance.
@@ -47,20 +46,9 @@ func NewResubmitHandler(
 func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	var instance approval.Instance
-
-	instance.ID = cmd.InstanceID
-
-	if err := db.NewSelect().
-		Model(&instance).
-		ForUpdate().
-		WherePK().
-		Scan(ctx); err != nil {
-		if result.IsRecordNotFound(err) {
-			return cqrs.Unit{}, shared.ErrInstanceNotFound
-		}
-
-		return cqrs.Unit{}, fmt.Errorf("load instance: %w", err)
+	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID)
+	if err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	if instance.ApplicantID != cmd.Operator.ID {
@@ -100,7 +88,7 @@ func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Uni
 	// (e.g. straight-to-end shortcuts) through ApplyInstanceTransition.
 	instance.FinishedAt = nil
 	if err := h.instanceSvc.Transition(
-		ctx, db, &instance, approval.InstanceRunning,
+		ctx, db, instance, approval.InstanceRunning,
 		"form_data", "finished_at",
 	); err != nil {
 		if errors.Is(err, shared.ErrInvalidInstanceTransition) {
@@ -110,7 +98,7 @@ func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Uni
 		return cqrs.Unit{}, err
 	}
 
-	if err := h.engine.StartProcess(ctx, db, &instance); err != nil {
+	if err := h.engine.StartProcess(ctx, db, instance); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("start process on resubmit: %w", err)
 	}
 

@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // InstanceService is the single write-side entry point for instance status
@@ -20,6 +21,30 @@ type InstanceService struct{}
 
 // NewInstanceService creates a new InstanceService.
 func NewInstanceService() *InstanceService { return new(InstanceService) }
+
+// LoadForUpdate loads an instance by ID with a row-level lock. Callers
+// that are about to mutate instance state (withdraw, resubmit, terminate,
+// add_cc, mark_cc_read) reuse this helper instead of open-coding the
+// ForUpdate select so the lookup, lock, and not-found mapping stay
+// consistent across handlers.
+func (*InstanceService) LoadForUpdate(ctx context.Context, db orm.DB, instanceID string) (*approval.Instance, error) {
+	instance := &approval.Instance{}
+	instance.ID = instanceID
+
+	if err := db.NewSelect().
+		Model(instance).
+		ForUpdate().
+		WherePK().
+		Scan(ctx); err != nil {
+		if result.IsRecordNotFound(err) {
+			return nil, shared.ErrInstanceNotFound
+		}
+
+		return nil, fmt.Errorf("load instance: %w", err)
+	}
+
+	return instance, nil
+}
 
 // Transition validates the instance status transition through the state
 // machine and applies it atomically with an optimistic-lock UPDATE.

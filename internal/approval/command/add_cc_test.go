@@ -41,7 +41,7 @@ type AddCCTestSuite struct {
 
 func (s *AddCCTestSuite) SetupSuite() {
 	s.bus = eventtest.NewFakeBus()
-	s.handler = wrapWithBus(s.bus, command.NewAddCCHandler(s.db, service.NewTaskService(), nil))
+	s.handler = wrapWithBus(s.bus, command.NewAddCCHandler(s.db, service.NewTaskService(), service.NewInstanceService(), nil))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "cc")
 
 	node := &approval.FlowNode{

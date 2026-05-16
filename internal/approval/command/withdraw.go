@@ -13,7 +13,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
@@ -45,20 +44,9 @@ func NewWithdrawHandler(
 func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	var instance approval.Instance
-
-	instance.ID = cmd.InstanceID
-
-	if err := db.NewSelect().
-		Model(&instance).
-		ForUpdate().
-		WherePK().
-		Scan(ctx); err != nil {
-		if result.IsRecordNotFound(err) {
-			return cqrs.Unit{}, shared.ErrInstanceNotFound
-		}
-
-		return cqrs.Unit{}, fmt.Errorf("load instance: %w", err)
+	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID)
+	if err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	if instance.ApplicantID != cmd.Operator.ID {
@@ -72,7 +60,7 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Uni
 	now := timex.Now()
 	instance.FinishedAt = &now
 
-	if err := h.instanceSvc.Transition(ctx, db, &instance, approval.InstanceWithdrawn, "finished_at"); err != nil {
+	if err := h.instanceSvc.Transition(ctx, db, instance, approval.InstanceWithdrawn, "finished_at"); err != nil {
 		if errors.Is(err, shared.ErrInvalidInstanceTransition) {
 			return cqrs.Unit{}, shared.ErrWithdrawNotAllowed
 		}

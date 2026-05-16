@@ -12,7 +12,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // AddCCCmd adds CC records for an instance.
@@ -28,32 +27,21 @@ type AddCCCmd struct {
 type AddCCHandler struct {
 	db           orm.DB
 	taskSvc      *service.TaskService
+	instanceSvc  *service.InstanceService
 	userResolver approval.UserInfoResolver
 }
 
 // NewAddCCHandler creates a new AddCCHandler.
-func NewAddCCHandler(db orm.DB, taskSvc *service.TaskService, userResolver approval.UserInfoResolver) *AddCCHandler {
-	return &AddCCHandler{db: db, taskSvc: taskSvc, userResolver: userResolver}
+func NewAddCCHandler(db orm.DB, taskSvc *service.TaskService, instanceSvc *service.InstanceService, userResolver approval.UserInfoResolver) *AddCCHandler {
+	return &AddCCHandler{db: db, taskSvc: taskSvc, instanceSvc: instanceSvc, userResolver: userResolver}
 }
 
 func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	var instance approval.Instance
-
-	instance.ID = cmd.InstanceID
-
-	if err := db.NewSelect().
-		Model(&instance).
-		Select("status", "current_node_id").
-		ForUpdate().
-		WherePK().
-		Scan(ctx); err != nil {
-		if result.IsRecordNotFound(err) {
-			return cqrs.Unit{}, shared.ErrInstanceNotFound
-		}
-
-		return cqrs.Unit{}, fmt.Errorf("load instance: %w", err)
+	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID)
+	if err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	if instance.Status != approval.InstanceRunning || instance.CurrentNodeID == nil {
