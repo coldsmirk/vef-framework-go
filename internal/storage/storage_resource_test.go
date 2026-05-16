@@ -432,6 +432,7 @@ func (s *StorageResourceTestSuite) TestListPartsRejectsCompletedClaim() {
 	claimID := data["claimId"].(string)
 	part1 := bytes.Repeat([]byte{'a'}, int(memoryPartSize))
 	part2 := bytes.Repeat([]byte{'b'}, int(chunkedSize-memoryPartSize))
+
 	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, part1)).IsOk())
 	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 2, part2)).IsOk())
 

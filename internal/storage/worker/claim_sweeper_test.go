@@ -51,12 +51,14 @@ type CapturePublisher struct {
 // Publish implements event.Bus.
 func (p *CapturePublisher) Publish(_ context.Context, evt event.Event, _ ...event.PublishOption) error {
 	p.events = append(p.events, evt)
+
 	return nil
 }
 
 // PublishBatch implements event.Bus.
 func (p *CapturePublisher) PublishBatch(_ context.Context, evts []event.Event, _ ...event.PublishOption) error {
 	p.events = append(p.events, evts...)
+
 	return nil
 }
 

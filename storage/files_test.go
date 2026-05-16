@@ -103,12 +103,14 @@ type CapturingPublisher struct {
 // Publish implements event.Bus.
 func (p *CapturingPublisher) Publish(_ context.Context, e event.Event, _ ...event.PublishOption) error {
 	p.events = append(p.events, e)
+
 	return nil
 }
 
 // PublishBatch implements event.Bus.
 func (p *CapturingPublisher) PublishBatch(_ context.Context, evts []event.Event, _ ...event.PublishOption) error {
 	p.events = append(p.events, evts...)
+
 	return nil
 }
 

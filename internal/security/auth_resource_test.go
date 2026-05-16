@@ -75,7 +75,9 @@ func (m *MockPublisher) Publish(_ context.Context, evt event.Event, _ ...event.P
 	m.Called(evt)
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.publishedEvents = append(m.publishedEvents, evt)
+
 	return nil
 }
 
@@ -86,6 +88,7 @@ func (m *MockPublisher) PublishBatch(ctx context.Context, evts []event.Event, op
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -97,14 +100,17 @@ func (*MockPublisher) Subscribe(string, event.Handler, ...event.SubscribeOption)
 func (m *MockPublisher) GetPublishedEvents() []event.Event {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	out := make([]event.Event, len(m.publishedEvents))
 	copy(out, m.publishedEvents)
+
 	return out
 }
 
 func (m *MockPublisher) ClearPublishedEvents() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.publishedEvents = nil
 }
 

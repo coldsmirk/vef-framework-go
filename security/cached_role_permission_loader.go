@@ -60,9 +60,12 @@ func (c *CachedRolePermissionsLoader) handlePermissionsChanged(ctx context.Conte
 	if len(evt.Roles) == 0 {
 		if err := c.permCache.Clear(ctx); err != nil {
 			c.logger.Errorf("Failed to clear all role permissions cache: %v", err)
+
 			return err
 		}
+
 		c.logger.Info("Cleared all role permissions cache")
+
 		return nil
 	}
 
@@ -70,10 +73,13 @@ func (c *CachedRolePermissionsLoader) handlePermissionsChanged(ctx context.Conte
 	for _, role := range evt.Roles {
 		if err := c.permCache.Delete(ctx, role); err != nil {
 			c.logger.Errorf("Failed to delete cache for role %s: %v", role, err)
+
 			return err
 		}
+
 		c.logger.Infof("Cleared cache for role: %s", role)
 	}
+
 	return nil
 }
 

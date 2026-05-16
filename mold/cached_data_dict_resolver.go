@@ -117,18 +117,24 @@ func (r *CachedDataDictResolver) handleInvalidation(ctx context.Context, evt *Da
 	if len(evt.Keys) == 0 {
 		if err := r.dictCache.Clear(ctx); err != nil {
 			r.logger.Errorf("Failed to clear dictionary cache: %v", err)
+
 			return err
 		}
+
 		r.logger.Info("Cleared all dictionary cache entries")
+
 		return nil
 	}
 
 	for _, dictKey := range evt.Keys {
 		if err := r.dictCache.Delete(ctx, dictKey); err != nil {
 			r.logger.Errorf("Failed to delete cache for dictionary %q: %v", dictKey, err)
+
 			return err
 		}
+
 		r.logger.Infof("Cleared cache for dictionary %q", dictKey)
 	}
+
 	return nil
 }
