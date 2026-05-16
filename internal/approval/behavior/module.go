@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/fx"
 
+	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 )
 
@@ -57,27 +58,24 @@ var Module = fx.Module(
 var ErrMissingCollectorBehavior = errors.New("approval: required collector behavior missing from cqrs:behaviors group")
 
 // assertCollectorBehaviorsRegistered scans the behavior group for the two
-// approval-critical collectors (ActionLog and EventPublish) and panics on
-// boot when either is absent. Host overrides via fx.Replace are fine — what
-// we're guarding against is a host that strips approval.behavior.Module out
-// of its FX graph while still pulling in the approval command handlers.
+// approval-critical collectors (ActionLog and EventPublish) and fails boot
+// when either is absent. Host overrides via fx.Replace are fine — what we
+// guard against is a host that strips approval.behavior.Module out of its
+// FX graph while still pulling in the approval command handlers, which
+// would silently drop audit rows and domain events.
+//
+// Matching is done by the concrete generic instantiation
+// (*collectorBehavior[T]) rather than by Order so renumbering or adding
+// host behaviors with shared Order values cannot accidentally satisfy the
+// check.
 func assertCollectorBehaviorsRegistered(behaviors []cqrs.Behavior) error {
 	var hasActionLog, hasEventPublish bool
 
-	// Match on the unique Order assignments (100/200) rather than type-
-	// asserting *collectorBehavior[T] — the latter would require importing
-	// the approval domain package here (circular). Behaviors that
-	// legitimately share these Order values would need to renumber.
 	for _, b := range behaviors {
-		o, ok := b.(cqrs.Ordered)
-		if !ok {
-			continue
-		}
-
-		switch o.Order() {
-		case 100:
+		switch b.(type) {
+		case *collectorBehavior[*approval.ActionLog]:
 			hasActionLog = true
-		case 200:
+		case *collectorBehavior[approval.DomainEvent]:
 			hasEventPublish = true
 		}
 	}
