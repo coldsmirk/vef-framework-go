@@ -276,6 +276,44 @@ func ProvideEventErrorSink(constructor any, paramTags ...string) fx.Option {
 	)
 }
 
+// SupplyBusinessBindingHook replaces the framework-provided default
+// approval.BusinessBindingHook (no-op create + status write-back) with a
+// host-supplied implementation. Hosts override this when their business
+// row needs to be allocated during start_instance or when the write-back
+// must touch additional columns / cross-service calls.
+//
+// constructor is an fx-style factory that returns approval.BusinessBindingHook
+// (or a type implementing it). It may declare any dependencies already
+// registered in the fx graph.
+//
+// Example:
+//
+//	fx.New(
+//	    vef.Module,
+//	    vef.SupplyBusinessBindingHook(newMyHook),
+//	)
+func SupplyBusinessBindingHook(constructor any) fx.Option {
+	return fx.Decorate(constructor)
+}
+
+// ProvideApprovalLifecycleHook registers a synchronous
+// approval.InstanceLifecycleHook into the FX container. Hooks run inside
+// the engine transaction for OnInstanceCreated / OnInstanceCompleted, so
+// returning an error rolls back the surrounding business operation.
+//
+// The constructor must return approval.InstanceLifecycleHook (not a
+// concrete type). Multiple hooks compose via the
+// `vef:approval:lifecycle_hooks` group.
+func ProvideApprovalLifecycleHook(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:approval:lifecycle_hooks"`),
+		),
+	)
+}
+
 // SupplyURLKeyMapper replaces the framework-provided default
 // storage.URLKeyMapper (identity) with a business-specific
 // implementation. The default mapper assumes the frontend embeds bare

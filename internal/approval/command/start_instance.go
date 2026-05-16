@@ -204,7 +204,13 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	return instance, nil
 }
 
-// renderInstanceTitle renders an instance title from a Go text/template string.
+// renderInstanceTitle renders an instance title from a Go text/template
+// string. text/template (unlike Jinja2) cannot execute arbitrary code, so
+// the only escape hatch is reading fields out of the data map. The data
+// map exposes flow / applicant / formData verbatim; the trust boundary is
+// the flow-definition admin, who already sees the same form payload they
+// could embed here. Future tightening (allowlisting formData keys) would
+// be a host-policy concern rather than a framework concern.
 func renderInstanceTitle(titleTemplate string, data map[string]any) (string, error) {
 	if titleTemplate == "" {
 		flowName, _ := data["flowName"].(string)
