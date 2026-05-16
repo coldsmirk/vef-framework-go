@@ -10,8 +10,8 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -31,6 +31,7 @@ type AddAssigneeTestSuite struct {
 
 	ctx     context.Context
 	db      orm.DB
+	bus     *eventtest.FakeBus
 	handler *command.AddAssigneeHandler
 	fixture *MinimalFixture
 	nodeID  string
@@ -39,7 +40,8 @@ type AddAssigneeTestSuite struct {
 }
 
 func (s *AddAssigneeTestSuite) SetupSuite() {
-	s.handler = command.NewAddAssigneeHandler(s.db, service.NewTaskService(), dispatcher.NewEventPublisher(), nil)
+	s.bus = eventtest.NewFakeBus()
+	s.handler = command.NewAddAssigneeHandler(s.db, service.NewTaskService(), s.bus, nil)
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "add-assignee")
 
 	node := &approval.FlowNode{
@@ -56,6 +58,7 @@ func (s *AddAssigneeTestSuite) SetupSuite() {
 
 func (s *AddAssigneeTestSuite) TearDownTest() {
 	cleanRuntimeData(s.ctx, s.db)
+	s.bus.Reset()
 }
 
 func (s *AddAssigneeTestSuite) TearDownSuite() {
@@ -484,24 +487,13 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldDeduplicateUserIDsAndIgnoreE
 	s.Assert().Equal("new-user-1", addedTasks[0].AssigneeID, "First added task should keep first-seen assignee order")
 	s.Assert().Equal("new-user-2", addedTasks[1].AssigneeID, "Second added task should keep first-seen assignee order")
 
-	var outbox approval.EventOutbox
-	s.Require().NoError(
-		s.db.NewSelect().
-			Model(&outbox).
-			Where(func(cb orm.ConditionBuilder) {
-				cb.Equals("event_type", "approval.task.assignees_added")
-			}).
-			OrderByDesc("created_at").
-			Limit(1).
-			Scan(s.ctx),
-		"Should query latest assignee-added event",
-	)
-
-	rawIDs, ok := outbox.Payload["assigneeIds"].([]any)
-	s.Require().True(ok, "Event payload should contain assigneeIds array")
-	s.Require().Len(rawIDs, 2, "Event payload should contain deduplicated assignee IDs")
-	s.Assert().Equal("new-user-1", rawIDs[0], "Event payload should preserve first-seen assignee order")
-	s.Assert().Equal("new-user-2", rawIDs[1], "Event payload should preserve first-seen assignee order")
+	captured := s.bus.CapturedByType("approval.task.assignees_added")
+	s.Require().NotEmpty(captured, "Should publish at least one assignee-added event")
+	evt, ok := captured[len(captured)-1].(*approval.AssigneesAddedEvent)
+	s.Require().True(ok, "Latest captured event should be *AssigneesAddedEvent")
+	s.Require().Len(evt.AssigneeIDs, 2, "Event should carry deduplicated assignee IDs")
+	s.Assert().Equal("new-user-1", evt.AssigneeIDs[0], "Event should preserve first-seen assignee order")
+	s.Assert().Equal("new-user-2", evt.AssigneeIDs[1], "Event should preserve first-seen assignee order")
 }
 
 func (s *AddAssigneeTestSuite) TestAddAssigneeShouldSkipExistingActiveAssignee() {
@@ -540,23 +532,12 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldSkipExistingActiveAssignee()
 	s.Require().Len(addedTasks, 1, "Should skip assignee that already has active task on node")
 	s.Assert().Equal("new-user-2", addedTasks[0].AssigneeID, "Should only create task for non-existing active assignee")
 
-	var outbox approval.EventOutbox
-	s.Require().NoError(
-		s.db.NewSelect().
-			Model(&outbox).
-			Where(func(cb orm.ConditionBuilder) {
-				cb.Equals("event_type", "approval.task.assignees_added")
-			}).
-			OrderByDesc("created_at").
-			Limit(1).
-			Scan(s.ctx),
-		"Should query latest assignee-added event",
-	)
-
-	rawIDs, ok := outbox.Payload["assigneeIds"].([]any)
-	s.Require().True(ok, "Event payload should contain assigneeIds array")
-	s.Require().Len(rawIDs, 1, "Event payload should only include newly inserted assignee")
-	s.Assert().Equal("new-user-2", rawIDs[0], "Event payload should exclude existing active assignee")
+	captured := s.bus.CapturedByType("approval.task.assignees_added")
+	s.Require().NotEmpty(captured, "Should publish at least one assignee-added event")
+	evt, ok := captured[len(captured)-1].(*approval.AssigneesAddedEvent)
+	s.Require().True(ok, "Latest captured event should be *AssigneesAddedEvent")
+	s.Require().Len(evt.AssigneeIDs, 1, "Event should only include newly inserted assignee")
+	s.Assert().Equal("new-user-2", evt.AssigneeIDs[0], "Event should exclude existing active assignee")
 }
 
 func (s *AddAssigneeTestSuite) TestAddAssigneeShouldBeConcurrencySafe() {

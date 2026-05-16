@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -29,6 +29,7 @@ type PublishVersionTestSuite struct {
 
 	ctx            context.Context
 	db             orm.DB
+	bus            *eventtest.FakeBus
 	publishHandler *command.PublishVersionHandler
 	deployHandler  *command.DeployFlowHandler
 	flowID         string
@@ -58,17 +59,18 @@ func (s *PublishVersionTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Should insert test flow")
 
 	s.flowID = flow.ID
+	s.bus = eventtest.NewFakeBus()
 	s.deployHandler = command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService())
-	s.publishHandler = command.NewPublishVersionHandler(s.db, dispatcher.NewEventPublisher())
+	s.publishHandler = command.NewPublishVersionHandler(s.db, s.bus)
 }
 
 func (s *PublishVersionTestSuite) TearDownTest() {
 	deleteAll(s.ctx, s.db,
-		(*approval.EventOutbox)(nil),
 		(*approval.FlowEdge)(nil),
 		(*approval.FlowNode)(nil),
 		(*approval.FlowVersion)(nil),
 	)
+	s.bus.Reset()
 
 	// Reset flow CurrentVersion to 0 for test isolation
 	_, err := s.db.NewUpdate().
@@ -124,18 +126,12 @@ func (s *PublishVersionTestSuite) TestPublishSuccess() {
 	s.Require().NotNil(published.PublishedBy, "Should set PublishedBy")
 	s.Assert().Equal("admin-user", *published.PublishedBy, "Should set correct PublishedBy")
 
-	// Verify event outbox record created
-	var outboxRecords []approval.EventOutbox
-
-	err = s.db.NewSelect().
-		Model(&outboxRecords).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("event_type", "approval.flow.published")
-		}).
-		Scan(s.ctx)
-	s.Require().NoError(err, "Should query event outbox")
-	s.Require().Len(outboxRecords, 1, "Should insert one event outbox record")
-	s.Assert().Equal(approval.EventOutboxPending, outboxRecords[0].Status, "Should set event status to pending")
+	// Verify event published to the bus
+	captured := s.bus.CapturedByType("approval.flow.published")
+	s.Require().Len(captured, 1, "Should publish one flow-published event")
+	evt, ok := captured[0].(*approval.FlowPublishedEvent)
+	s.Require().True(ok, "Captured event should be *FlowPublishedEvent")
+	s.Assert().Equal(version.ID, evt.VersionID, "Event should reference the published version")
 }
 
 func (s *PublishVersionTestSuite) TestPublishVersionNotFound() {

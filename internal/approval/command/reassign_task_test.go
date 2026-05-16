@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -33,7 +33,7 @@ type ReassignTaskTestSuite struct {
 }
 
 func (s *ReassignTaskTestSuite) SetupSuite() {
-	s.handler = command.NewReassignTaskHandler(s.db, dispatcher.NewEventPublisher(), nil)
+	s.handler = command.NewReassignTaskHandler(s.db, eventtest.NewFakeBus(), nil)
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "reassign")
 
 	node := &approval.FlowNode{

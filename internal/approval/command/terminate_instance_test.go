@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -34,7 +34,7 @@ type TerminateInstanceTestSuite struct {
 }
 
 func (s *TerminateInstanceTestSuite) SetupSuite() {
-	s.handler = command.NewTerminateInstanceHandler(s.db, service.NewTaskService(), dispatcher.NewEventPublisher())
+	s.handler = command.NewTerminateInstanceHandler(s.db, service.NewTaskService(), eventtest.NewFakeBus())
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "terminate")
 
 	node := &approval.FlowNode{

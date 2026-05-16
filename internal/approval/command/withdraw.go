@@ -6,7 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -29,16 +29,16 @@ type WithdrawCmd struct {
 type WithdrawHandler struct {
 	db        orm.DB
 	taskSvc   *service.TaskService
-	publisher *dispatcher.EventPublisher
+	bus event.Bus
 }
 
 // NewWithdrawHandler creates a new WithdrawHandler.
 func NewWithdrawHandler(
 	db orm.DB,
 	taskSvc *service.TaskService,
-	publisher *dispatcher.EventPublisher,
+	bus event.Bus,
 ) *WithdrawHandler {
-	return &WithdrawHandler{db: db, taskSvc: taskSvc, publisher: publisher}
+	return &WithdrawHandler{db: db, taskSvc: taskSvc, bus: bus}
 }
 
 func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Unit, error) {
@@ -108,9 +108,9 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Uni
 		return cqrs.Unit{}, fmt.Errorf("insert action log: %w", err)
 	}
 
-	if err := h.publisher.PublishAll(ctx, db, []approval.DomainEvent{
+	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
 		approval.NewInstanceWithdrawnEvent(cmd.InstanceID, cmd.Operator.ID),
-	}); err != nil {
+	}), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}
 

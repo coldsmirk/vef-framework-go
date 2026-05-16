@@ -85,7 +85,7 @@ func deleteAll(ctx context.Context, db orm.DB, models ...any) {
 // cleanAllQueryData removes all approval data in FK-safe order.
 func cleanAllQueryData(ctx context.Context, db orm.DB) {
 	deleteAll(ctx, db,
-		(*approval.EventOutbox)(nil),
+
 		(*approval.ActionLog)(nil),
 		(*approval.UrgeRecord)(nil),
 		(*approval.CCRecord)(nil),

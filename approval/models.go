@@ -318,22 +318,6 @@ type Delegation struct {
 	Reason         *string        `json:"reason" bun:"reason,nullzero"`
 }
 
-// EventOutbox represents an event outbox entry for transactional event publishing.
-type EventOutbox struct {
-	orm.BaseModel `bun:"table:apv_event_outbox,alias:aeo"`
-	orm.Model
-	orm.CreationTrackedModel
-
-	EventID     string            `json:"eventId" bun:"event_id"`
-	EventType   string            `json:"eventType" bun:"event_type"`
-	Payload     map[string]any    `json:"payload" bun:"payload,type:jsonb"`
-	Status      EventOutboxStatus `json:"status" bun:"status"`
-	RetryCount  int               `json:"retryCount" bun:"retry_count"`
-	LastError   *string           `json:"lastError" bun:"last_error,nullzero"`
-	ProcessedAt *timex.DateTime   `json:"processedAt" bun:"processed_at,nullzero"`
-	RetryAfter  *timex.DateTime   `json:"retryAfter" bun:"retry_after,nullzero"`
-}
-
 // UrgeRecord represents an urge/reminder record.
 type UrgeRecord struct {
 	orm.BaseModel `bun:"table:apv_urge_record,alias:aur"`

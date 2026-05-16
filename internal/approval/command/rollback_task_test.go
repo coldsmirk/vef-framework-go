@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -39,7 +39,7 @@ func (s *RollbackTaskTestSuite) SetupSuite() {
 	eng := buildTestEngine()
 	taskSvc := service.NewTaskService()
 	validSvc := service.NewValidationService(nil)
-	pub := dispatcher.NewEventPublisher()
+	pub := eventtest.NewFakeBus()
 	s.handler = command.NewRollbackTaskHandler(s.db, taskSvc, validSvc, eng, pub)
 
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "rollback")

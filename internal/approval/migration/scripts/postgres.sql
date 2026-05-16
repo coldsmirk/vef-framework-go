@@ -682,36 +682,8 @@ CREATE INDEX idx_apv_form_snapshot__instance_id_node_id ON apv_form_snapshot(ins
 -- Auxiliary Tables
 --------------------------------------------------------------------------------
 
--- Event outbox (optional, for transactional event publishing)
-CREATE TABLE IF NOT EXISTS apv_event_outbox (
-    id VARCHAR(32) CONSTRAINT pk_apv_event_outbox PRIMARY KEY,
-    created_at TIMESTAMP NOT NULL DEFAULT LOCALTIMESTAMP,
-    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
-    event_id VARCHAR(64) NOT NULL,
-    event_type VARCHAR(128) NOT NULL,
-    payload JSONB NOT NULL,
-    status VARCHAR(16) NOT NULL DEFAULT 'pending',
-    retry_count INTEGER NOT NULL DEFAULT 0,
-    last_error TEXT,
-    processed_at TIMESTAMP,
-    retry_after TIMESTAMP,
-    CONSTRAINT uk_apv_event_outbox__event_id UNIQUE (event_id)
-);
-
-COMMENT ON TABLE apv_event_outbox IS '事件发件箱';
-COMMENT ON COLUMN apv_event_outbox.id IS '主键';
-COMMENT ON COLUMN apv_event_outbox.created_at IS '创建时间';
-COMMENT ON COLUMN apv_event_outbox.created_by IS '创建人ID';
-COMMENT ON COLUMN apv_event_outbox.event_id IS '事件唯一标识';
-COMMENT ON COLUMN apv_event_outbox.event_type IS '事件类型';
-COMMENT ON COLUMN apv_event_outbox.payload IS '事件载荷';
-COMMENT ON COLUMN apv_event_outbox.status IS '状态';
-COMMENT ON COLUMN apv_event_outbox.retry_count IS '重试次数';
-COMMENT ON COLUMN apv_event_outbox.last_error IS '最后一次错误信息';
-COMMENT ON COLUMN apv_event_outbox.processed_at IS '处理时间';
-COMMENT ON COLUMN apv_event_outbox.retry_after IS '下次重试时间';
-
-CREATE INDEX idx_apv_event_outbox__relay ON apv_event_outbox(status, retry_after, created_at) WHERE status IN ('pending', 'failed', 'processing');
+-- (apv_event_outbox removed; framework now provides a generic outbox
+-- via internal/event/transport/outbox / sys_event_outbox.)
 
 -- Urge record
 CREATE TABLE IF NOT EXISTS apv_urge_record (

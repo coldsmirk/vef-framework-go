@@ -121,7 +121,7 @@ func deleteAll(ctx context.Context, db orm.DB, models ...any) {
 // cleanRuntimeData removes runtime data (instances, tasks, etc.) while preserving flow definitions.
 func cleanRuntimeData(ctx context.Context, db orm.DB) {
 	deleteAll(ctx, db,
-		(*approval.EventOutbox)(nil),
+
 		(*approval.ActionLog)(nil),
 		(*approval.UrgeRecord)(nil),
 		(*approval.CCRecord)(nil),

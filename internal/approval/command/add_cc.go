@@ -7,7 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
@@ -28,13 +28,13 @@ type AddCCCmd struct {
 type AddCCHandler struct {
 	db           orm.DB
 	taskSvc      *service.TaskService
-	publisher    *dispatcher.EventPublisher
+	bus    event.Bus
 	userResolver approval.UserInfoResolver
 }
 
 // NewAddCCHandler creates a new AddCCHandler.
-func NewAddCCHandler(db orm.DB, taskSvc *service.TaskService, publisher *dispatcher.EventPublisher, userResolver approval.UserInfoResolver) *AddCCHandler {
-	return &AddCCHandler{db: db, taskSvc: taskSvc, publisher: publisher, userResolver: userResolver}
+func NewAddCCHandler(db orm.DB, taskSvc *service.TaskService, bus event.Bus, userResolver approval.UserInfoResolver) *AddCCHandler {
+	return &AddCCHandler{db: db, taskSvc: taskSvc, bus: bus, userResolver: userResolver}
 }
 
 func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, error) {
@@ -106,9 +106,9 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 		return cqrs.Unit{}, nil
 	}
 
-	if err := h.publisher.PublishAll(ctx, db, []approval.DomainEvent{
+	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
 		approval.NewCCNotifiedEvent(cmd.InstanceID, *instance.CurrentNodeID, insertedUserIDs, ccUserNames, true),
-	}); err != nil {
+	}), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}
 

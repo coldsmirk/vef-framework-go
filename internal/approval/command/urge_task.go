@@ -7,7 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
@@ -29,13 +29,13 @@ type UrgeTaskCmd struct {
 type UrgeTaskHandler struct {
 	db           orm.DB
 	taskSvc      *service.TaskService
-	publisher    *dispatcher.EventPublisher
+	bus    event.Bus
 	userResolver approval.UserInfoResolver
 }
 
 // NewUrgeTaskHandler creates a new UrgeTaskHandler.
-func NewUrgeTaskHandler(db orm.DB, taskSvc *service.TaskService, publisher *dispatcher.EventPublisher, userResolver approval.UserInfoResolver) *UrgeTaskHandler {
-	return &UrgeTaskHandler{db: db, taskSvc: taskSvc, publisher: publisher, userResolver: userResolver}
+func NewUrgeTaskHandler(db orm.DB, taskSvc *service.TaskService, bus event.Bus, userResolver approval.UserInfoResolver) *UrgeTaskHandler {
+	return &UrgeTaskHandler{db: db, taskSvc: taskSvc, bus: bus, userResolver: userResolver}
 }
 
 func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Unit, error) {
@@ -125,12 +125,12 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 		return cqrs.Unit{}, fmt.Errorf("insert urge record: %w", err)
 	}
 
-	event := approval.NewTaskUrgedEvent(
+	urgedEvent := approval.NewTaskUrgedEvent(
 		task.InstanceID, task.NodeID, cmd.TaskID,
 		cmd.UrgerID, urgerName, task.AssigneeID, task.AssigneeName, cmd.Message,
 	)
 
-	if err := h.publisher.PublishAll(ctx, db, []approval.DomainEvent{event}); err != nil {
+	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{urgedEvent}), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}
 

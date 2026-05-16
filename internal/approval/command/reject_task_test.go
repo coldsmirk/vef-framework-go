@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -34,7 +34,7 @@ func (s *RejectTaskTestSuite) SetupSuite() {
 
 	eng := buildTestEngine()
 	taskSvc, nodeSvc, validSvc := buildTestServices(eng)
-	pub := dispatcher.NewEventPublisher()
+	pub := eventtest.NewFakeBus()
 
 	s.handler = command.NewRejectTaskHandler(s.db, taskSvc, nodeSvc, validSvc, pub)
 }

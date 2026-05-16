@@ -11,8 +11,8 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -38,7 +38,7 @@ type WithdrawTestSuite struct {
 }
 
 func (s *WithdrawTestSuite) SetupSuite() {
-	s.handler = command.NewWithdrawHandler(s.db, service.NewTaskService(), dispatcher.NewEventPublisher())
+	s.handler = command.NewWithdrawHandler(s.db, service.NewTaskService(), eventtest.NewFakeBus())
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "withdraw")
 
 	node := &approval.FlowNode{

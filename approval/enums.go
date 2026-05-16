@@ -277,16 +277,6 @@ const (
 	CCTimingOnReject  CCTiming = "on_reject"  // OnReject: send CC only when rejected
 )
 
-// EventOutboxStatus represents the processing status of an event outbox record.
-type EventOutboxStatus string
-
-const (
-	EventOutboxPending    EventOutboxStatus = "pending"
-	EventOutboxProcessing EventOutboxStatus = "processing"
-	EventOutboxCompleted  EventOutboxStatus = "completed"
-	EventOutboxFailed     EventOutboxStatus = "failed"
-)
-
 // FieldKind represents the kind of a form field.
 type FieldKind string
 

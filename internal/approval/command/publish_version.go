@@ -6,7 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -25,12 +25,12 @@ type PublishVersionCmd struct {
 // PublishVersionHandler handles the PublishVersionCmd command.
 type PublishVersionHandler struct {
 	db        orm.DB
-	publisher *dispatcher.EventPublisher
+	bus event.Bus
 }
 
 // NewPublishVersionHandler creates a new PublishVersionHandler.
-func NewPublishVersionHandler(db orm.DB, publisher *dispatcher.EventPublisher) *PublishVersionHandler {
-	return &PublishVersionHandler{db: db, publisher: publisher}
+func NewPublishVersionHandler(db orm.DB, bus event.Bus) *PublishVersionHandler {
+	return &PublishVersionHandler{db: db, bus: bus}
 }
 
 func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCmd) (cqrs.Unit, error) {
@@ -92,12 +92,9 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 		return cqrs.Unit{}, fmt.Errorf("update flow current version: %w", err)
 	}
 
-	if err := h.publisher.PublishAll(
-		ctx, db,
-		[]approval.DomainEvent{
+	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
 			approval.NewFlowPublishedEvent(version.FlowID, cmd.VersionID),
-		},
-	); err != nil {
+		}), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}
 

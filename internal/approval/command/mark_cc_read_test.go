@@ -68,7 +68,7 @@ func (s *MarkCCReadTestSuite) SetupSuite() {
 }
 
 func (s *MarkCCReadTestSuite) TearDownTest() {
-	deleteAll(s.ctx, s.db, (*approval.EventOutbox)(nil), (*approval.CCRecord)(nil), (*approval.Instance)(nil))
+	deleteAll(s.ctx, s.db, (*approval.CCRecord)(nil), (*approval.Instance)(nil))
 }
 
 func (s *MarkCCReadTestSuite) TearDownSuite() {

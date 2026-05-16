@@ -456,26 +456,8 @@ CREATE INDEX idx_apv_form_snapshot__instance_id_node_id ON apv_form_snapshot(ins
 -- Auxiliary Tables
 -- --------------------------------------------------------------------------------
 
--- Event outbox (optional, for transactional event publishing)
-CREATE TABLE IF NOT EXISTS apv_event_outbox (
-    id VARCHAR(32) NOT NULL COMMENT '主键',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    created_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT '创建人ID',
-    event_id VARCHAR(64) NOT NULL COMMENT '事件唯一标识',
-    event_type VARCHAR(128) NOT NULL COMMENT '事件类型',
-    payload JSON NOT NULL COMMENT '事件载荷',
-    status VARCHAR(16) NOT NULL DEFAULT 'pending' COMMENT '状态',
-    retry_count INTEGER NOT NULL DEFAULT 0 COMMENT '重试次数',
-    last_error TEXT COMMENT '最后一次错误信息',
-    processed_at DATETIME NULL COMMENT '处理时间',
-    retry_after DATETIME NULL COMMENT '下次重试时间',
-    -- Generated flag for partial-index semantics on relay-eligible statuses
-    relay_flag TINYINT AS (CASE WHEN status IN ('pending', 'failed', 'processing') THEN 1 ELSE NULL END) STORED,
-    CONSTRAINT pk_apv_event_outbox PRIMARY KEY (id),
-    CONSTRAINT uk_apv_event_outbox__event_id UNIQUE (event_id)
-) COMMENT '事件发件箱';
-
-CREATE INDEX idx_apv_event_outbox__relay ON apv_event_outbox(relay_flag, retry_after, created_at);
+-- (apv_event_outbox removed; framework now provides a generic outbox
+-- via internal/event/transport/outbox / sys_event_outbox.)
 
 -- Urge record
 CREATE TABLE IF NOT EXISTS apv_urge_record (

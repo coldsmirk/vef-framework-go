@@ -6,7 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
@@ -28,16 +28,16 @@ type TerminateInstanceCmd struct {
 type TerminateInstanceHandler struct {
 	db        orm.DB
 	taskSvc   *service.TaskService
-	publisher *dispatcher.EventPublisher
+	bus event.Bus
 }
 
 // NewTerminateInstanceHandler creates a new TerminateInstanceHandler.
 func NewTerminateInstanceHandler(
 	db orm.DB,
 	taskSvc *service.TaskService,
-	publisher *dispatcher.EventPublisher,
+	bus event.Bus,
 ) *TerminateInstanceHandler {
-	return &TerminateInstanceHandler{db: db, taskSvc: taskSvc, publisher: publisher}
+	return &TerminateInstanceHandler{db: db, taskSvc: taskSvc, bus: bus}
 }
 
 func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInstanceCmd) (cqrs.Unit, error) {
@@ -100,9 +100,9 @@ func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInst
 		return cqrs.Unit{}, fmt.Errorf("insert action log: %w", err)
 	}
 
-	if err := h.publisher.PublishAll(ctx, db, []approval.DomainEvent{
+	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
 		approval.NewInstanceCompletedEvent(cmd.InstanceID, approval.InstanceTerminated),
-	}); err != nil {
+	}), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}
 

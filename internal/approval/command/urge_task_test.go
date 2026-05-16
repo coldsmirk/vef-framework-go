@@ -9,8 +9,8 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -30,6 +30,7 @@ type UrgeTaskTestSuite struct {
 
 	ctx     context.Context
 	db      orm.DB
+	bus     *eventtest.FakeBus
 	handler *command.UrgeTaskHandler
 	fixture *MinimalFixture
 	nodeID  string
@@ -37,7 +38,8 @@ type UrgeTaskTestSuite struct {
 }
 
 func (s *UrgeTaskTestSuite) SetupSuite() {
-	s.handler = command.NewUrgeTaskHandler(s.db, service.NewTaskService(), dispatcher.NewEventPublisher(), nil)
+	s.bus = eventtest.NewFakeBus()
+	s.handler = command.NewUrgeTaskHandler(s.db, service.NewTaskService(), s.bus, nil)
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "urge")
 
 	node := &approval.FlowNode{
@@ -66,10 +68,10 @@ func (s *UrgeTaskTestSuite) SetupSuite() {
 
 func (s *UrgeTaskTestSuite) TearDownTest() {
 	deleteAll(s.ctx, s.db,
-		(*approval.EventOutbox)(nil),
 		(*approval.UrgeRecord)(nil),
 		(*approval.Task)(nil),
 	)
+	s.bus.Reset()
 }
 
 func (s *UrgeTaskTestSuite) TearDownSuite() {
@@ -109,11 +111,7 @@ func (s *UrgeTaskTestSuite) TestUrgeSuccess() {
 	s.Assert().Len(records, 1, "Should create one urge record")
 
 	// Verify event published
-	var events []approval.EventOutbox
-	s.Require().NoError(s.db.NewSelect().Model(&events).
-		Where(func(cb orm.ConditionBuilder) { cb.Equals("event_type", "approval.task.urged") }).
-		Scan(s.ctx), "Should not return error")
-	s.Assert().Len(events, 1, "Should publish one urge event")
+	s.Assert().Len(s.bus.CapturedByType("approval.task.urged"), 1, "Should publish one urge event")
 }
 
 func (s *UrgeTaskTestSuite) TestUrgeCooldown() {

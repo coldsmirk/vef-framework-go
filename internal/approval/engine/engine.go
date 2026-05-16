@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -19,16 +19,16 @@ type nodeDepthKey struct{}
 type FlowEngine struct {
 	registry     *strategy.StrategyRegistry
 	processors   map[approval.NodeKind]NodeProcessor
-	publisher    *dispatcher.EventPublisher
+	bus          event.Bus
 	userResolver approval.UserInfoResolver
 }
 
 // NewFlowEngine creates a new flow engine.
-func NewFlowEngine(registry *strategy.StrategyRegistry, processors []NodeProcessor, pub *dispatcher.EventPublisher, userResolver approval.UserInfoResolver) *FlowEngine {
+func NewFlowEngine(registry *strategy.StrategyRegistry, processors []NodeProcessor, bus event.Bus, userResolver approval.UserInfoResolver) *FlowEngine {
 	engine := &FlowEngine{
 		registry:     registry,
 		processors:   make(map[approval.NodeKind]NodeProcessor, len(processors)),
-		publisher:    pub,
+		bus:          bus,
 		userResolver: userResolver,
 	}
 
@@ -39,13 +39,15 @@ func NewFlowEngine(registry *strategy.StrategyRegistry, processors []NodeProcess
 	return engine
 }
 
-// publishEvents publishes domain events if the publisher is available.
+// publishEvents forwards domain events to the framework bus inside the
+// caller's transaction; visibility hinges on the caller committing.
+// Returns nil when the bus is unset (test fixtures) or no events.
 func (e *FlowEngine) publishEvents(ctx context.Context, db orm.DB, events ...approval.DomainEvent) error {
-	if e.publisher == nil || len(events) == 0 {
+	if e.bus == nil || len(events) == 0 {
 		return nil
 	}
 
-	return e.publisher.PublishAll(ctx, db, events)
+	return e.bus.PublishBatch(ctx, event.AsEvents(events), event.WithTx(db))
 }
 
 // StartProcess starts a flow process by finding the start node and processing it.

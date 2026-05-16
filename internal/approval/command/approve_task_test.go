@@ -8,8 +8,8 @@ import (
 	collections "github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -36,7 +36,7 @@ func (s *ApproveTaskTestSuite) SetupSuite() {
 
 	eng := buildTestEngine()
 	taskSvc, nodeSvc, validSvc := buildTestServices(eng)
-	pub := dispatcher.NewEventPublisher()
+	pub := eventtest.NewFakeBus()
 
 	s.handler = command.NewApproveTaskHandler(s.db, taskSvc, nodeSvc, validSvc, pub)
 }

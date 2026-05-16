@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -48,7 +48,7 @@ func (s *StartInstanceTestSuite) SetupSuite() {
 	s.fixture = setupApprovalFlow(s.T(), s.ctx, s.db)
 
 	eng := buildTestEngine()
-	pub := dispatcher.NewEventPublisher()
+	pub := eventtest.NewFakeBus()
 	validSvc := service.NewValidationService(nil)
 
 	s.handler = command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, pub, validSvc)

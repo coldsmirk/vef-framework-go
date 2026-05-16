@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -37,7 +37,7 @@ type TransferTaskTestSuite struct {
 func (s *TransferTaskTestSuite) SetupSuite() {
 	taskSvc := service.NewTaskService()
 	validSvc := service.NewValidationService(nil)
-	pub := dispatcher.NewEventPublisher()
+	pub := eventtest.NewFakeBus()
 	s.handler = command.NewTransferTaskHandler(s.db, taskSvc, validSvc, pub, nil)
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "transfer")
 

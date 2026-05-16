@@ -5,7 +5,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/migration"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
@@ -22,7 +21,6 @@ var Module = fx.Module(
 	strategy.Module,
 	behavior.Module,
 	engine.Module,
-	dispatcher.Module,
 	service.Module,
 	command.Module,
 	query.Module,

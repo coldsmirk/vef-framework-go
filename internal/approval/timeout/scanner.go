@@ -8,7 +8,7 @@ import (
 	collections "github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -24,7 +24,7 @@ var (
 // Scanner scans for timed-out tasks and processes them.
 type Scanner struct {
 	db           orm.DB
-	publisher    *dispatcher.EventPublisher
+	bus    event.Bus
 	taskSvc      *service.TaskService
 	nodeSvc      *service.NodeService
 	userResolver approval.UserInfoResolver
@@ -36,14 +36,14 @@ var systemOperator = approval.OperatorInfo{ID: "system", Name: "系统"}
 // NewScanner creates a new timeout scanner.
 func NewScanner(
 	db orm.DB,
-	publisher *dispatcher.EventPublisher,
+	bus event.Bus,
 	taskSvc *service.TaskService,
 	nodeSvc *service.NodeService,
 	userResolver approval.UserInfoResolver,
 ) *Scanner {
 	return &Scanner{
 		db:           db,
-		publisher:    publisher,
+		bus:    bus,
 		taskSvc:      taskSvc,
 		nodeSvc:      nodeSvc,
 		userResolver: userResolver,
@@ -139,7 +139,7 @@ func (s *Scanner) processTimeout(ctx context.Context, task *approval.Task) error
 			return fmt.Errorf("execute timeout action: %w", err)
 		}
 
-		return s.publisher.PublishAll(ctx, tx, events)
+		return s.bus.PublishBatch(ctx, event.AsEvents(events), event.WithTx(tx))
 	})
 }
 
@@ -437,6 +437,6 @@ func (s *Scanner) sendPreWarning(ctx context.Context, task *approval.Task, hours
 			hoursLeft,
 		)
 
-		return s.publisher.PublishAll(ctx, tx, []approval.DomainEvent{evt})
+		return s.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{evt}), event.WithTx(tx))
 	})
 }

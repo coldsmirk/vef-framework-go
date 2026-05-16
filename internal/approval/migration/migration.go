@@ -36,13 +36,25 @@ var expectedTables = []string{
 	"apv_cc_record",
 	"apv_delegation",
 	"apv_form_snapshot",
-	"apv_event_outbox",
 	"apv_urge_record",
 }
 
-// Migrate runs the approval module's DDL migration for the given database kind.
-// It checks whether all expected tables exist and skips if they do.
+// obsoleteTables lists tables that earlier versions of the approval
+// module created but no longer uses. Migrate drops them unconditionally
+// so upgrades clean up after the framework-level outbox replaced
+// per-module bookkeeping.
+var obsoleteTables = []string{
+	"apv_event_outbox",
+}
+
+// Migrate runs the approval module's DDL migration for the given
+// database kind. It first drops obsolete tables from earlier versions,
+// then runs the create scripts if any expected table is missing.
 func Migrate(ctx context.Context, db orm.DB, kind config.DBKind) error {
+	if err := dropObsoleteTables(ctx, db); err != nil {
+		return fmt.Errorf("drop obsolete tables: %w", err)
+	}
+
 	needed, err := needsMigration(ctx, db, kind)
 	if err != nil {
 		return fmt.Errorf("check migration status: %w", err)
@@ -61,6 +73,18 @@ func Migrate(ctx context.Context, db orm.DB, kind config.DBKind) error {
 		return fmt.Errorf("execute approval migration: %w", err)
 	}
 
+	return nil
+}
+
+// dropObsoleteTables removes tables retired in past schema revisions.
+// IF EXISTS keeps the statement idempotent across both fresh and
+// upgraded databases.
+func dropObsoleteTables(ctx context.Context, db orm.DB) error {
+	for _, table := range obsoleteTables {
+		if _, err := db.NewRaw("DROP TABLE IF EXISTS " + table).Exec(ctx); err != nil {
+			return fmt.Errorf("drop %s: %w", table, err)
+		}
+	}
 	return nil
 }
 

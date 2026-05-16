@@ -11,8 +11,8 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -40,7 +40,7 @@ type RemoveAssigneeTestSuite struct {
 func (s *RemoveAssigneeTestSuite) SetupSuite() {
 	eng := buildTestEngine()
 	taskSvc, nodeSvc, _ := buildTestServices(eng)
-	pub := dispatcher.NewEventPublisher()
+	pub := eventtest.NewFakeBus()
 
 	s.handler = command.NewRemoveAssigneeHandler(s.db, taskSvc, nodeSvc, eng, pub)
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "remove")

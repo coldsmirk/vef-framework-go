@@ -11,8 +11,8 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -31,6 +31,7 @@ type AddCCTestSuite struct {
 
 	ctx         context.Context
 	db          orm.DB
+	bus         *eventtest.FakeBus
 	handler     *command.AddCCHandler
 	fixture     *MinimalFixture
 	nodeID      string
@@ -38,7 +39,8 @@ type AddCCTestSuite struct {
 }
 
 func (s *AddCCTestSuite) SetupSuite() {
-	s.handler = command.NewAddCCHandler(s.db, service.NewTaskService(), dispatcher.NewEventPublisher(), nil)
+	s.bus = eventtest.NewFakeBus()
+	s.handler = command.NewAddCCHandler(s.db, service.NewTaskService(), s.bus, nil)
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "cc")
 
 	node := &approval.FlowNode{
@@ -55,11 +57,11 @@ func (s *AddCCTestSuite) SetupSuite() {
 
 func (s *AddCCTestSuite) TearDownTest() {
 	deleteAll(s.ctx, s.db,
-		(*approval.EventOutbox)(nil),
 		(*approval.CCRecord)(nil),
 		(*approval.Task)(nil),
 		(*approval.Instance)(nil),
 	)
+	s.bus.Reset()
 }
 
 func (s *AddCCTestSuite) TearDownSuite() {
@@ -248,27 +250,13 @@ func (s *AddCCTestSuite) TestAddCCEventUsesInsertedUserIDs() {
 	})
 	s.Require().NoError(err, "Should not return error")
 
-	var outbox approval.EventOutbox
-	s.Require().NoError(s.db.NewSelect().
-		Model(&outbox).
-		Where(func(cb orm.ConditionBuilder) { cb.Equals("event_type", "approval.cc.notified") }).
-		OrderByDesc("created_at").
-		Limit(1).
-		Scan(s.ctx), "Should not return error")
+	captured := s.bus.CapturedByType("approval.cc.notified")
+	s.Require().NotEmpty(captured, "Should publish at least one cc-notified event")
+	evt, ok := captured[len(captured)-1].(*approval.CCNotifiedEvent)
+	s.Require().True(ok, "Latest captured event should be *CCNotifiedEvent")
 
-	rawIDs, ok := outbox.Payload["ccUserIds"].([]any)
-	s.Require().True(ok, "Event payload should contain ccUserIds as array")
-
-	actual := make([]string, 0, len(rawIDs))
-	for _, item := range rawIDs {
-		userID, ok := item.(string)
-		s.Require().True(ok, "ccUserIds item should be string")
-
-		actual = append(actual, userID)
-	}
-
+	actual := append([]string(nil), evt.CCUserIDs...)
 	slices.Sort(actual)
-
 	expected := []string{"cc-user-2", "cc-user-3"}
 	slices.Sort(expected)
 	s.Assert().Equal(expected, actual, "Event should include only actually inserted CC users")
@@ -297,22 +285,13 @@ func (s *AddCCTestSuite) TestAddCCShouldDeduplicateAndIgnoreEmptyUserIDs() {
 	s.Assert().Equal("cc-user-2", records[0].CCUserID, "Should preserve first-seen CC user order")
 	s.Assert().Equal("cc-user-3", records[1].CCUserID, "Should preserve first-seen CC user order")
 
-	var outbox approval.EventOutbox
-	s.Require().NoError(
-		s.db.NewSelect().
-			Model(&outbox).
-			Where(func(cb orm.ConditionBuilder) { cb.Equals("event_type", "approval.cc.notified") }).
-			OrderByDesc("created_at").
-			Limit(1).
-			Scan(s.ctx),
-		"Should query latest cc-notified event",
-	)
-
-	rawIDs, ok := outbox.Payload["ccUserIds"].([]any)
-	s.Require().True(ok, "Event payload should contain ccUserIds array")
-	s.Require().Len(rawIDs, 2, "Event payload should contain deduplicated ccUserIds")
-	s.Assert().Equal("cc-user-2", rawIDs[0], "Event payload should preserve first-seen CC user order")
-	s.Assert().Equal("cc-user-3", rawIDs[1], "Event payload should preserve first-seen CC user order")
+	captured := s.bus.CapturedByType("approval.cc.notified")
+	s.Require().NotEmpty(captured, "Should publish at least one cc-notified event")
+	evt, ok := captured[len(captured)-1].(*approval.CCNotifiedEvent)
+	s.Require().True(ok, "Latest captured event should be *CCNotifiedEvent")
+	s.Require().Len(evt.CCUserIDs, 2, "Event should contain deduplicated ccUserIds")
+	s.Assert().Equal("cc-user-2", evt.CCUserIDs[0], "Event should preserve first-seen CC user order")
+	s.Assert().Equal("cc-user-3", evt.CCUserIDs[1], "Event should preserve first-seen CC user order")
 }
 
 func (s *AddCCTestSuite) TestAddCCShouldRejectUnauthorizedOperator() {

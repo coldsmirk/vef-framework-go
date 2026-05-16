@@ -7,7 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -34,7 +34,7 @@ type RollbackTaskHandler struct {
 	taskSvc       *service.TaskService
 	validationSvc *service.ValidationService
 	engine        *engine.FlowEngine
-	publisher     *dispatcher.EventPublisher
+	bus     event.Bus
 }
 
 // NewRollbackTaskHandler creates a new RollbackTaskHandler.
@@ -43,14 +43,14 @@ func NewRollbackTaskHandler(
 	taskSvc *service.TaskService,
 	validationSvc *service.ValidationService,
 	eng *engine.FlowEngine,
-	publisher *dispatcher.EventPublisher,
+	bus event.Bus,
 ) *RollbackTaskHandler {
 	return &RollbackTaskHandler{
 		db:            db,
 		taskSvc:       taskSvc,
 		validationSvc: validationSvc,
 		engine:        eng,
-		publisher:     publisher,
+		bus:     bus,
 	}
 }
 
@@ -164,7 +164,7 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 		return cqrs.Unit{}, fmt.Errorf("update instance: %w", err)
 	}
 
-	if err := h.publisher.PublishAll(ctx, db, events); err != nil {
+	if err := h.bus.PublishBatch(ctx, event.AsEvents(events), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}
 

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
@@ -27,6 +27,7 @@ type NodeServiceTestSuite struct {
 
 	ctx     context.Context
 	db      orm.DB
+	bus     *eventtest.FakeBus
 	svc     *service.NodeService
 	fixture *SvcFixture
 }
@@ -54,16 +55,16 @@ func (s *NodeServiceTestSuite) SetupSuite() {
 		engine.NewCCProcessor(),
 	}
 
-	eng := engine.NewFlowEngine(registry, processors, dispatcher.NewEventPublisher(), nil)
+	s.bus = eventtest.NewFakeBus()
+	eng := engine.NewFlowEngine(registry, processors, s.bus, nil)
 	taskSvc := service.NewTaskService()
-	s.svc = service.NewNodeService(eng, dispatcher.NewEventPublisher(), taskSvc, nil)
+	s.svc = service.NewNodeService(eng, s.bus, taskSvc, nil)
 	s.fixture = setupSvcFixture(s.T(), s.ctx, s.db)
 }
 
 func (s *NodeServiceTestSuite) TearDownTest() {
 	deleteAll(s.ctx, s.db,
 		(*approval.FormSnapshot)(nil),
-		(*approval.EventOutbox)(nil),
 		(*approval.ActionLog)(nil),
 		(*approval.CCRecord)(nil),
 		(*approval.Task)(nil),
@@ -73,6 +74,7 @@ func (s *NodeServiceTestSuite) TearDownTest() {
 		(*approval.FlowNodeCC)(nil),
 		(*approval.FlowNode)(nil),
 	)
+	s.bus.Reset()
 }
 
 func (s *NodeServiceTestSuite) TearDownSuite() {
@@ -265,12 +267,11 @@ func (s *NodeServiceTestSuite) TestTriggerNodeCCShouldRespectTimingAndDeduplicat
 		"Should include only deduplicated users from applicable timing configs",
 	)
 
-	notifiedCount, err := s.db.NewSelect().
-		Model((*approval.EventOutbox)(nil)).
-		Where(func(cb orm.ConditionBuilder) { cb.Equals("event_type", "approval.cc.notified") }).
-		Count(s.ctx)
-	s.Require().NoError(err, "Should count CC notified events")
-	s.Assert().Equal(int64(1), notifiedCount, "Should emit a single CC notification event for merged recipients")
+	s.Assert().Len(
+		s.bus.CapturedByType("approval.cc.notified"),
+		1,
+		"Should emit a single CC notification event for merged recipients",
+	)
 }
 
 func (s *NodeServiceTestSuite) TestTriggerNodeCCShouldIgnoreExistingRecordsAndPublishOnlyNewUsers() {
@@ -320,21 +321,10 @@ func (s *NodeServiceTestSuite) TestTriggerNodeCCShouldIgnoreExistingRecordsAndPu
 	)
 	s.Require().Len(records, 2, "Should keep one existing record and insert only one new record")
 
-	var outbox approval.EventOutbox
-	s.Require().NoError(
-		s.db.NewSelect().
-			Model(&outbox).
-			Where(func(cb orm.ConditionBuilder) {
-				cb.Equals("event_type", "approval.cc.notified")
-			}).
-			OrderByDesc("created_at").
-			Limit(1).
-			Scan(s.ctx),
-		"Should query latest cc-notified outbox event",
-	)
-
-	rawIDs, ok := outbox.Payload["ccUserIds"].([]any)
-	s.Require().True(ok, "Outbox payload should contain ccUserIds array")
-	s.Require().Len(rawIDs, 1, "CC event should include only newly inserted users")
-	s.Assert().Equal("cc-user-new", rawIDs[0], "CC event should exclude already existing CC users")
+	captured := s.bus.CapturedByType("approval.cc.notified")
+	s.Require().NotEmpty(captured, "Should publish at least one cc-notified event")
+	evt, ok := captured[len(captured)-1].(*approval.CCNotifiedEvent)
+	s.Require().True(ok, "Latest captured event should be *CCNotifiedEvent")
+	s.Require().Len(evt.CCUserIDs, 1, "CC event should include only newly inserted users")
+	s.Assert().Equal("cc-user-new", evt.CCUserIDs[0], "CC event should exclude already existing CC users")
 }

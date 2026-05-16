@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
@@ -32,6 +32,7 @@ type ScannerTestSuite struct {
 
 	ctx     context.Context
 	db      orm.DB
+	bus     *eventtest.FakeBus
 	scanner *timeout.Scanner
 	seq     int
 }
@@ -48,7 +49,7 @@ func (s *ScannerTestSuite) SetupSuite() {
 		strategy.NewSelfAssigneeResolver(),
 	}
 	registry := strategy.NewStrategyRegistry(passRules, assigneeResolvers, nil)
-	publisher := dispatcher.NewEventPublisher()
+	s.bus = eventtest.NewFakeBus()
 	eng := engine.NewFlowEngine(registry, []engine.NodeProcessor{
 		engine.NewStartProcessor(),
 		engine.NewEndProcessor(),
@@ -56,16 +57,15 @@ func (s *ScannerTestSuite) SetupSuite() {
 		engine.NewApprovalProcessor(nil),
 		engine.NewHandleProcessor(nil),
 		engine.NewCCProcessor(),
-	}, publisher, nil)
+	}, s.bus, nil)
 	taskSvc := service.NewTaskService()
-	nodeSvc := service.NewNodeService(eng, publisher, taskSvc, nil)
+	nodeSvc := service.NewNodeService(eng, s.bus, taskSvc, nil)
 
-	s.scanner = timeout.NewScanner(s.db, publisher, taskSvc, nodeSvc, nil)
+	s.scanner = timeout.NewScanner(s.db, s.bus, taskSvc, nodeSvc, nil)
 }
 
 func (s *ScannerTestSuite) TearDownTest() {
 	deleteAll(s.ctx, s.db,
-		(*approval.EventOutbox)(nil),
 		(*approval.ActionLog)(nil),
 		(*approval.CCRecord)(nil),
 		(*approval.Task)(nil),
@@ -77,6 +77,7 @@ func (s *ScannerTestSuite) TearDownTest() {
 		(*approval.Flow)(nil),
 		(*approval.FlowCategory)(nil),
 	)
+	s.bus.Reset()
 }
 
 func deleteAll(ctx context.Context, db orm.DB, models ...any) {
@@ -304,19 +305,16 @@ func (s *ScannerTestSuite) TestTransferAdminTimeoutShouldAlignCreatedTasksWithTr
 	s.Assert().True(original.IsTimeout, "Original timed-out task should be marked as timeout")
 	s.Assert().ElementsMatch([]string{"admin-1", "admin-2"}, adminPending, "Pending tasks should be created for all node admins")
 
-	transferredEventCount, err := s.db.NewSelect().
-		Model((*approval.EventOutbox)(nil)).
-		Where(func(cb orm.ConditionBuilder) { cb.Equals("event_type", "approval.task.transferred") }).
-		Count(s.ctx)
-	s.Require().NoError(err, "Should count transferred events after timeout transfer")
-	s.Assert().Equal(int64(2), transferredEventCount, "Should emit one transfer event per created admin task")
-
-	createdEventCount, err := s.db.NewSelect().
-		Model((*approval.EventOutbox)(nil)).
-		Where(func(cb orm.ConditionBuilder) { cb.Equals("event_type", "approval.task.created") }).
-		Count(s.ctx)
-	s.Require().NoError(err, "Should count created events after timeout transfer")
-	s.Assert().Equal(int64(2), createdEventCount, "Should emit one task-created event per admin task")
+	s.Assert().Len(
+		s.bus.CapturedByType("approval.task.transferred"),
+		2,
+		"Should emit one transfer event per created admin task",
+	)
+	s.Assert().Len(
+		s.bus.CapturedByType("approval.task.created"),
+		2,
+		"Should emit one task-created event per admin task",
+	)
 
 	var logs []approval.ActionLog
 	s.Require().NoError(
@@ -495,12 +493,11 @@ func (s *ScannerTestSuite) TestScanPreWarningsShouldSendWarningForPendingTasks()
 	)
 	s.Assert().True(updatedTask.IsPreWarningSent, "Pending task should be marked as pre-warning sent")
 
-	warningCount, err := s.db.NewSelect().
-		Model((*approval.EventOutbox)(nil)).
-		Where(func(cb orm.ConditionBuilder) { cb.Equals("event_type", "approval.task.deadline_warning") }).
-		Count(s.ctx)
-	s.Require().NoError(err, "Should count warning events after pre-warning scan")
-	s.Assert().Equal(int64(1), warningCount, "Pending task in warning window should emit one warning event")
+	s.Assert().Len(
+		s.bus.CapturedByType("approval.task.deadline_warning"),
+		1,
+		"Pending task in warning window should emit one warning event",
+	)
 }
 
 func (s *ScannerTestSuite) TestScanTimeoutsShouldIgnoreWaitingTasks() {
@@ -518,9 +515,10 @@ func (s *ScannerTestSuite) TestScanTimeoutsShouldIgnoreWaitingTasks() {
 	s.Assert().Equal(approval.TaskWaiting, updatedTask.Status, "Waiting task should not be auto-processed by timeout scanner")
 	s.Assert().False(updatedTask.IsTimeout, "Waiting task should not be marked as timeout")
 
-	outboxCount, err := s.db.NewSelect().Model((*approval.EventOutbox)(nil)).Count(s.ctx)
-	s.Require().NoError(err, "Should count outbox events after timeout scan")
-	s.Assert().Equal(int64(0), outboxCount, "Ignoring waiting task should not publish timeout events")
+	s.Assert().Empty(
+		s.bus.Captured(),
+		"Ignoring waiting task should not publish timeout events",
+	)
 }
 
 func (s *ScannerTestSuite) TestScanPreWarningsShouldBeIdempotent() {
@@ -544,12 +542,11 @@ func (s *ScannerTestSuite) TestScanPreWarningsShouldBeIdempotent() {
 	s.scanner.ScanPreWarnings(s.ctx)
 	s.scanner.ScanPreWarnings(s.ctx)
 
-	warningCount, err := s.db.NewSelect().
-		Model((*approval.EventOutbox)(nil)).
-		Where(func(cb orm.ConditionBuilder) { cb.Equals("event_type", "approval.task.deadline_warning") }).
-		Count(s.ctx)
-	s.Require().NoError(err, "Should count warning events after double scan")
-	s.Assert().Equal(int64(1), warningCount, "Idempotent pre-warning should emit only one event across two scans")
+	s.Assert().Len(
+		s.bus.CapturedByType("approval.task.deadline_warning"),
+		1,
+		"Idempotent pre-warning should emit only one event across two scans",
+	)
 }
 
 func (s *ScannerTestSuite) TestScanPreWarningsShouldIgnoreWaitingTasks() {
@@ -581,10 +578,8 @@ func (s *ScannerTestSuite) TestScanPreWarningsShouldIgnoreWaitingTasks() {
 	)
 	s.Assert().False(updatedTask.IsPreWarningSent, "Waiting task should not be marked as pre-warning sent")
 
-	warningCount, err := s.db.NewSelect().
-		Model((*approval.EventOutbox)(nil)).
-		Where(func(cb orm.ConditionBuilder) { cb.Equals("event_type", "approval.task.deadline_warning") }).
-		Count(s.ctx)
-	s.Require().NoError(err, "Should count warning events after pre-warning scan")
-	s.Assert().Equal(int64(0), warningCount, "Ignoring waiting task should not emit warning events")
+	s.Assert().Empty(
+		s.bus.CapturedByType("approval.task.deadline_warning"),
+		"Ignoring waiting task should not emit warning events",
+	)
 }

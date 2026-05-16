@@ -6,7 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -28,7 +28,7 @@ type RejectTaskHandler struct {
 	taskSvc       *service.TaskService
 	nodeSvc       *service.NodeService
 	validationSvc *service.ValidationService
-	publisher     *dispatcher.EventPublisher
+	bus     event.Bus
 }
 
 // NewRejectTaskHandler creates a new RejectTaskHandler.
@@ -37,14 +37,14 @@ func NewRejectTaskHandler(
 	taskSvc *service.TaskService,
 	nodeSvc *service.NodeService,
 	validationSvc *service.ValidationService,
-	publisher *dispatcher.EventPublisher,
+	bus event.Bus,
 ) *RejectTaskHandler {
 	return &RejectTaskHandler{
 		db:            db,
 		taskSvc:       taskSvc,
 		nodeSvc:       nodeSvc,
 		validationSvc: validationSvc,
-		publisher:     publisher,
+		bus:     bus,
 	}
 }
 
@@ -89,7 +89,7 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 		return cqrs.Unit{}, fmt.Errorf("update instance: %w", err)
 	}
 
-	if err := h.publisher.PublishAll(ctx, db, events); err != nil {
+	if err := h.bus.PublishBatch(ctx, event.AsEvents(events), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}
 

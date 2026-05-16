@@ -1,10 +1,6 @@
 package approval
 
-import (
-	"context"
-
-	"github.com/coldsmirk/vef-framework-go/timex"
-)
+import "github.com/coldsmirk/vef-framework-go/timex"
 
 // stringPtrOrNil returns nil for empty strings, or a pointer to the string value.
 func stringPtrOrNil(s string) *string {
@@ -15,19 +11,14 @@ func stringPtrOrNil(s string) *string {
 	return &s
 }
 
-// DomainEvent is the base interface for all approval domain events.
+// DomainEvent is the contract every approval domain event satisfies.
+// EventType matches the framework's event.Event surface so domain
+// events can be published through the event Bus without adaptation.
 type DomainEvent interface {
-	// EventName returns the unique event identifier (e.g., "approval.instance.created").
-	EventName() string
+	// EventType returns the unique event identifier (e.g., "approval.instance.created").
+	EventType() string
 	// OccurredAt returns the timestamp when the event occurred.
 	OccurredAt() timex.DateTime
-}
-
-// EventDispatcher dispatches outbox events to external systems.
-// Default implementation forwards to event.Bus.
-type EventDispatcher interface {
-	// Dispatch sends an outbox event record to the external event system.
-	Dispatch(ctx context.Context, record EventOutbox) error
 }
 
 // ==================== Instance Events ====================
@@ -53,7 +44,7 @@ func NewInstanceCreatedEvent(instanceID, flowID, title, applicantID, applicantNa
 	}
 }
 
-func (*InstanceCreatedEvent) EventName() string            { return "approval.instance.created" }
+func (*InstanceCreatedEvent) EventType() string            { return "approval.instance.created" }
 func (e *InstanceCreatedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // InstanceCompletedEvent fired when instance reaches a final status.
@@ -75,7 +66,7 @@ func NewInstanceCompletedEvent(instanceID string, finalStatus InstanceStatus) *I
 	}
 }
 
-func (*InstanceCompletedEvent) EventName() string            { return "approval.instance.completed" }
+func (*InstanceCompletedEvent) EventType() string            { return "approval.instance.completed" }
 func (e *InstanceCompletedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // InstanceWithdrawnEvent fired when applicant withdraws the instance.
@@ -93,7 +84,7 @@ func NewInstanceWithdrawnEvent(instanceID, operatorID string) *InstanceWithdrawn
 	}
 }
 
-func (*InstanceWithdrawnEvent) EventName() string            { return "approval.instance.withdrawn" }
+func (*InstanceWithdrawnEvent) EventType() string            { return "approval.instance.withdrawn" }
 func (e *InstanceWithdrawnEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // InstanceRolledBackEvent fired when instance is rolled back.
@@ -115,7 +106,7 @@ func NewInstanceRolledBackEvent(instanceID, fromNodeID, toNodeID, operatorID str
 	}
 }
 
-func (*InstanceRolledBackEvent) EventName() string            { return "approval.instance.rolled_back" }
+func (*InstanceRolledBackEvent) EventType() string            { return "approval.instance.rolled_back" }
 func (e *InstanceRolledBackEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // InstanceReturnedEvent fired when instance is returned to the initiator.
@@ -137,7 +128,7 @@ func NewInstanceReturnedEvent(instanceID, fromNodeID, toNodeID, operatorID strin
 	}
 }
 
-func (*InstanceReturnedEvent) EventName() string            { return "approval.instance.returned" }
+func (*InstanceReturnedEvent) EventType() string            { return "approval.instance.returned" }
 func (e *InstanceReturnedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // InstanceResubmittedEvent fired when the initiator resubmits a returned instance.
@@ -155,7 +146,7 @@ func NewInstanceResubmittedEvent(instanceID, operatorID string) *InstanceResubmi
 	}
 }
 
-func (*InstanceResubmittedEvent) EventName() string            { return "approval.instance.resubmitted" }
+func (*InstanceResubmittedEvent) EventType() string            { return "approval.instance.resubmitted" }
 func (e *InstanceResubmittedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // ==================== Node Events ====================
@@ -177,7 +168,7 @@ func NewNodeEnteredEvent(instanceID, nodeID, nodeName string) *NodeEnteredEvent 
 	}
 }
 
-func (*NodeEnteredEvent) EventName() string            { return "approval.node.entered" }
+func (*NodeEnteredEvent) EventType() string            { return "approval.node.entered" }
 func (e *NodeEnteredEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // NodeAutoPassedEvent fired when a node is auto-passed.
@@ -197,7 +188,7 @@ func NewNodeAutoPassedEvent(instanceID, nodeID, reason string) *NodeAutoPassedEv
 	}
 }
 
-func (*NodeAutoPassedEvent) EventName() string            { return "approval.node.auto_passed" }
+func (*NodeAutoPassedEvent) EventType() string            { return "approval.node.auto_passed" }
 func (e *NodeAutoPassedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // ParallelJoinedEvent fired when parallel branches are joined.
@@ -215,7 +206,7 @@ func NewParallelJoinedEvent(instanceID, nodeID string) *ParallelJoinedEvent {
 	}
 }
 
-func (*ParallelJoinedEvent) EventName() string            { return "approval.node.parallel_joined" }
+func (*ParallelJoinedEvent) EventType() string            { return "approval.node.parallel_joined" }
 func (e *ParallelJoinedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // ==================== Task Events ====================
@@ -243,7 +234,7 @@ func NewTaskCreatedEvent(taskID, instanceID, nodeID, assigneeID, assigneeName st
 	}
 }
 
-func (*TaskCreatedEvent) EventName() string            { return "approval.task.created" }
+func (*TaskCreatedEvent) EventType() string            { return "approval.task.created" }
 func (e *TaskCreatedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // TaskApprovedEvent fired when a task is approved.
@@ -267,7 +258,7 @@ func NewTaskApprovedEvent(taskID, instanceID, nodeID, operatorID, opinion string
 	}
 }
 
-func (*TaskApprovedEvent) EventName() string            { return "approval.task.approved" }
+func (*TaskApprovedEvent) EventType() string            { return "approval.task.approved" }
 func (e *TaskApprovedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // TaskHandledEvent fired when a handle-type task is completed.
@@ -291,7 +282,7 @@ func NewTaskHandledEvent(taskID, instanceID, nodeID, operatorID, opinion string)
 	}
 }
 
-func (*TaskHandledEvent) EventName() string            { return "approval.task.handled" }
+func (*TaskHandledEvent) EventType() string            { return "approval.task.handled" }
 func (e *TaskHandledEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // TaskRejectedEvent fired when a task is rejected.
@@ -315,7 +306,7 @@ func NewTaskRejectedEvent(taskID, instanceID, nodeID, operatorID, opinion string
 	}
 }
 
-func (*TaskRejectedEvent) EventName() string            { return "approval.task.rejected" }
+func (*TaskRejectedEvent) EventType() string            { return "approval.task.rejected" }
 func (e *TaskRejectedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // TaskTransferredEvent fired when a task is transferred.
@@ -345,7 +336,7 @@ func NewTaskTransferredEvent(taskID, instanceID, nodeID, fromUserID, fromUserNam
 	}
 }
 
-func (*TaskTransferredEvent) EventName() string            { return "approval.task.transferred" }
+func (*TaskTransferredEvent) EventType() string            { return "approval.task.transferred" }
 func (e *TaskTransferredEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // TaskReassignedEvent fired when an admin reassigns a task to a different user.
@@ -375,7 +366,7 @@ func NewTaskReassignedEvent(taskID, instanceID, nodeID, fromUserID, fromUserName
 	}
 }
 
-func (*TaskReassignedEvent) EventName() string            { return "approval.task.reassigned" }
+func (*TaskReassignedEvent) EventType() string            { return "approval.task.reassigned" }
 func (e *TaskReassignedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // TaskTimeoutEvent fired when a task times out.
@@ -401,7 +392,7 @@ func NewTaskTimeoutEvent(taskID, instanceID, nodeID, assigneeID, assigneeName st
 	}
 }
 
-func (*TaskTimeoutEvent) EventName() string            { return "approval.task.timeout" }
+func (*TaskTimeoutEvent) EventType() string            { return "approval.task.timeout" }
 func (e *TaskTimeoutEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // AssigneesAddedEvent fired when assignees are dynamically added.
@@ -427,7 +418,7 @@ func NewAssigneesAddedEvent(instanceID, nodeID, taskID string, addType AddAssign
 	}
 }
 
-func (*AssigneesAddedEvent) EventName() string            { return "approval.task.assignees_added" }
+func (*AssigneesAddedEvent) EventType() string            { return "approval.task.assignees_added" }
 func (e *AssigneesAddedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // AssigneesRemovedEvent fired when assignees are dynamically removed.
@@ -451,7 +442,7 @@ func NewAssigneesRemovedEvent(instanceID, nodeID, taskID string, assigneeIDs []s
 	}
 }
 
-func (*AssigneesRemovedEvent) EventName() string            { return "approval.task.assignees_removed" }
+func (*AssigneesRemovedEvent) EventType() string            { return "approval.task.assignees_removed" }
 func (e *AssigneesRemovedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // ==================== CC Events ====================
@@ -477,7 +468,7 @@ func NewCCNotifiedEvent(instanceID, nodeID string, ccUserIDs []string, ccUserNam
 	}
 }
 
-func (*CCNotifiedEvent) EventName() string            { return "approval.cc.notified" }
+func (*CCNotifiedEvent) EventType() string            { return "approval.cc.notified" }
 func (e *CCNotifiedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // ==================== Flow Events ====================
@@ -497,7 +488,7 @@ func NewFlowPublishedEvent(flowID, versionID string) *FlowPublishedEvent {
 	}
 }
 
-func (*FlowPublishedEvent) EventName() string            { return "approval.flow.published" }
+func (*FlowPublishedEvent) EventType() string            { return "approval.flow.published" }
 func (e *FlowPublishedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // ==================== Timeout & Urge Events ====================
@@ -527,7 +518,7 @@ func NewTaskDeadlineWarningEvent(taskID, instanceID, nodeID, assigneeID, assigne
 	}
 }
 
-func (*TaskDeadlineWarningEvent) EventName() string            { return "approval.task.deadline_warning" }
+func (*TaskDeadlineWarningEvent) EventType() string            { return "approval.task.deadline_warning" }
 func (e *TaskDeadlineWarningEvent) OccurredAt() timex.DateTime { return e.OccurredTime }
 
 // TaskUrgedEvent fired when a task assignee is urged/reminded.
@@ -557,5 +548,5 @@ func NewTaskUrgedEvent(instanceID, nodeID, taskID, urgerID, urgerName, targetUse
 	}
 }
 
-func (*TaskUrgedEvent) EventName() string            { return "approval.task.urged" }
+func (*TaskUrgedEvent) EventType() string            { return "approval.task.urged" }
 func (e *TaskUrgedEvent) OccurredAt() timex.DateTime { return e.OccurredTime }

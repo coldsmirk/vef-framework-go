@@ -186,7 +186,7 @@ func deleteAll(ctx context.Context, db orm.DB, models ...any) {
 // cleanAllServiceData removes all approval-related data from the database.
 func cleanAllServiceData(ctx context.Context, db orm.DB) {
 	deleteAll(ctx, db,
-		(*approval.EventOutbox)(nil),
+
 		(*approval.ActionLog)(nil),
 		(*approval.UrgeRecord)(nil),
 		(*approval.CCRecord)(nil),

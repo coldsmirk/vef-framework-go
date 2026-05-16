@@ -7,7 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -27,17 +27,17 @@ type ReassignTaskCmd struct {
 // ReassignTaskHandler handles the ReassignTaskCmd command.
 type ReassignTaskHandler struct {
 	db           orm.DB
-	publisher    *dispatcher.EventPublisher
+	bus    event.Bus
 	userResolver approval.UserInfoResolver
 }
 
 // NewReassignTaskHandler creates a new ReassignTaskHandler.
 func NewReassignTaskHandler(
 	db orm.DB,
-	publisher *dispatcher.EventPublisher,
+	bus event.Bus,
 	userResolver approval.UserInfoResolver,
 ) *ReassignTaskHandler {
-	return &ReassignTaskHandler{db: db, publisher: publisher, userResolver: userResolver}
+	return &ReassignTaskHandler{db: db, bus: bus, userResolver: userResolver}
 }
 
 func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (cqrs.Unit, error) {
@@ -114,9 +114,9 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 		return cqrs.Unit{}, fmt.Errorf("insert action log: %w", err)
 	}
 
-	if err := h.publisher.PublishAll(ctx, db, []approval.DomainEvent{
+	if err := h.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
 		approval.NewTaskReassignedEvent(task.ID, task.InstanceID, task.NodeID, oldAssigneeID, oldAssigneeName, newAssigneeID, newAssigneeName, cmd.Reason),
-	}); err != nil {
+	}), event.WithTx(db)); err != nil {
 		return cqrs.Unit{}, err
 	}
 

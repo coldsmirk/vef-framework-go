@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/dispatcher"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -15,14 +15,14 @@ import (
 // NodeService provides node-level domain operations.
 type NodeService struct {
 	engine       *engine.FlowEngine
-	publisher    *dispatcher.EventPublisher
+	bus    event.Bus
 	taskSvc      *TaskService
 	userResolver approval.UserInfoResolver
 }
 
 // NewNodeService creates a new NodeService.
-func NewNodeService(eng *engine.FlowEngine, pub *dispatcher.EventPublisher, taskSvc *TaskService, userResolver approval.UserInfoResolver) *NodeService {
-	return &NodeService{engine: eng, publisher: pub, taskSvc: taskSvc, userResolver: userResolver}
+func NewNodeService(eng *engine.FlowEngine, pub event.Bus, taskSvc *TaskService, userResolver approval.UserInfoResolver) *NodeService {
+	return &NodeService{engine: eng, bus: pub, taskSvc: taskSvc, userResolver: userResolver}
 }
 
 // HandleNodeCompletion evaluates node completion and handles the result.
@@ -139,9 +139,9 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 		return nil
 	}
 
-	return s.publisher.PublishAll(ctx, db, []approval.DomainEvent{
+	return s.bus.PublishBatch(ctx, event.AsEvents([]approval.DomainEvent{
 		approval.NewCCNotifiedEvent(instance.ID, node.ID, insertedUserIDs, ccUserNames, false),
-	})
+	}), event.WithTx(db))
 }
 
 // CheckCCNodeCompletion checks if all CC records for CC nodes are read and advances the flow.

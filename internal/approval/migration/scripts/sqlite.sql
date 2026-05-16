@@ -430,23 +430,8 @@ CREATE INDEX IF NOT EXISTS idx_apv_form_snapshot__instance_id_node_id ON apv_for
 -- Auxiliary Tables
 --------------------------------------------------------------------------------
 
--- Event outbox (optional, for transactional event publishing)
-CREATE TABLE IF NOT EXISTS apv_event_outbox (
-    id VARCHAR(32) CONSTRAINT pk_apv_event_outbox PRIMARY KEY,
-    created_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime')),
-    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
-    event_id VARCHAR(64) NOT NULL,
-    event_type VARCHAR(128) NOT NULL,
-    payload TEXT NOT NULL,
-    status VARCHAR(16) NOT NULL DEFAULT 'pending',
-    retry_count INTEGER NOT NULL DEFAULT 0,
-    last_error TEXT,
-    processed_at TIMESTAMP,
-    retry_after TIMESTAMP,
-    CONSTRAINT uk_apv_event_outbox__event_id UNIQUE (event_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_apv_event_outbox__relay ON apv_event_outbox(status, retry_after, created_at) WHERE status IN ('pending', 'failed', 'processing');
+-- (apv_event_outbox removed; framework now provides a generic outbox
+-- via internal/event/transport/outbox / sys_event_outbox.)
 
 -- Urge record
 CREATE TABLE IF NOT EXISTS apv_urge_record (
