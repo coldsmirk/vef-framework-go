@@ -20,6 +20,7 @@ type RejectTaskCmd struct {
 	Operator approval.OperatorInfo
 	Opinion  string
 	FormData map[string]any
+	Caller   approval.CallerContext
 }
 
 // RejectTaskHandler handles the RejectTaskCmd command.
@@ -48,7 +49,7 @@ func NewRejectTaskHandler(
 func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	tc, err := h.taskSvc.PrepareOperation(ctx, db, cmd.TaskID, cmd.Operator.ID, cmd.FormData)
+	tc, err := h.taskSvc.PrepareOperation(ctx, db, cmd.TaskID, cmd.Operator, cmd.Caller, cmd.FormData)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}

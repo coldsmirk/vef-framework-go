@@ -23,6 +23,7 @@ type AddAssigneeCmd struct {
 	UserIDs  []string
 	AddType  approval.AddAssigneeType
 	Operator approval.OperatorInfo
+	Caller   approval.CallerContext
 }
 
 // AddAssigneeHandler handles the AddAssigneeCmd command.
@@ -45,6 +46,7 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 		RequireOperatorAssignee: true,
 		RequireTaskPending:      true,
 		RequireCurrentNode:      true,
+		Caller:                  cmd.Caller,
 	})
 	if err != nil {
 		return cqrs.Unit{}, err

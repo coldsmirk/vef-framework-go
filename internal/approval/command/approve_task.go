@@ -20,6 +20,7 @@ type ApproveTaskCmd struct {
 	Operator approval.OperatorInfo
 	Opinion  string
 	FormData map[string]any
+	Caller   approval.CallerContext
 }
 
 // ApproveTaskHandler handles the ApproveTaskCmd command.
@@ -48,7 +49,7 @@ func NewApproveTaskHandler(
 func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	tc, err := h.taskSvc.PrepareOperation(ctx, db, cmd.TaskID, cmd.Operator.ID, cmd.FormData)
+	tc, err := h.taskSvc.PrepareOperation(ctx, db, cmd.TaskID, cmd.Operator, cmd.Caller, cmd.FormData)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}

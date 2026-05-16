@@ -20,7 +20,7 @@ type AddCCCmd struct {
 
 	InstanceID string
 	CCUserIDs  []string
-	OperatorID string
+	Operator   approval.OperatorInfo
 	Caller     approval.CallerContext
 }
 
@@ -66,7 +66,7 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 		return cqrs.Unit{}, shared.ErrManualCcNotAllowed
 	}
 
-	operatorID := strings.TrimSpace(cmd.OperatorID)
+	operatorID := strings.TrimSpace(cmd.Operator.ID)
 	if operatorID == "" {
 		return cqrs.Unit{}, shared.ErrNotAssignee
 	}
@@ -94,8 +94,7 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 		return cqrs.Unit{}, nil
 	}
 
-	operatorName := shared.ResolveUserName(ctx, h.userResolver, operatorID)
-	actionLog := approval.OperatorInfo{ID: operatorID, Name: operatorName}.NewActionLog(cmd.InstanceID, approval.ActionAddCC)
+	actionLog := cmd.Operator.NewActionLog(cmd.InstanceID, approval.ActionAddCC)
 	actionLog.NodeID = new(*instance.CurrentNodeID)
 	actionLog.CCUserIDs = insertedUserIDs
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)

@@ -23,6 +23,7 @@ type UrgeTaskCmd struct {
 	TaskID  string
 	UrgerID string
 	Message string
+	Caller  approval.CallerContext
 }
 
 // UrgeTaskHandler handles the UrgeTaskCmd command.
@@ -59,6 +60,13 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 
 	if task.Status != approval.TaskPending {
 		return cqrs.Unit{}, shared.ErrTaskNotPending
+	}
+
+	// Tenant guard before opening any further information: an attacker
+	// knowing a task ID from another tenant gets the same TaskNotFound
+	// response as if the task didn't exist at all.
+	if !cmd.Caller.Allows(task.TenantID) {
+		return cqrs.Unit{}, shared.ErrTaskNotFound
 	}
 
 	authorized, err := h.taskSvc.IsUrgeAuthorized(ctx, db, task.InstanceID, cmd.UrgerID)

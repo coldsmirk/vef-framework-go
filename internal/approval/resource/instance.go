@@ -111,12 +111,18 @@ func (r *InstanceResource) Start(ctx fiber.Ctx, principal *security.Principal, p
 		return err
 	}
 
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	if err != nil {
+		return err
+	}
+
 	instance, err := cqrs.Send[command.StartInstanceCmd, *approval.Instance](ctx.Context(), r.bus, command.StartInstanceCmd{
 		TenantID:         params.TenantID,
 		FlowCode:         params.FlowCode,
 		Applicant:        operator,
 		BusinessRecordID: params.BusinessRecordID,
 		FormData:         params.FormData,
+		Caller:           caller,
 	})
 	if err != nil {
 		return err
@@ -144,6 +150,11 @@ func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Princi
 		return err
 	}
 
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	if err != nil {
+		return err
+	}
+
 	switch params.Action {
 	case "approve", "handle":
 		_, err = cqrs.Send[command.ApproveTaskCmd, cqrs.Unit](ctx.Context(), r.bus, command.ApproveTaskCmd{
@@ -151,6 +162,7 @@ func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Princi
 			Operator: operator,
 			Opinion:  params.Opinion,
 			FormData: params.FormData,
+			Caller:   caller,
 		})
 
 	case "reject":
@@ -159,6 +171,7 @@ func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Princi
 			Operator: operator,
 			Opinion:  params.Opinion,
 			FormData: params.FormData,
+			Caller:   caller,
 		})
 
 	case "transfer":
@@ -168,6 +181,7 @@ func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Princi
 			Opinion:      params.Opinion,
 			FormData:     params.FormData,
 			TransferToID: params.TransferToID,
+			Caller:       caller,
 		})
 
 	case "rollback":
@@ -177,6 +191,7 @@ func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Princi
 			Opinion:      params.Opinion,
 			FormData:     params.FormData,
 			TargetNodeID: params.TargetNodeID,
+			Caller:       caller,
 		})
 
 	default:
@@ -264,6 +279,11 @@ type AddCCParams struct {
 
 // AddCC adds CC records for an instance.
 func (r *InstanceResource) AddCC(ctx fiber.Ctx, principal *security.Principal, params AddCCParams) error {
+	operator, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
+	if err != nil {
+		return err
+	}
+
 	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
@@ -272,7 +292,7 @@ func (r *InstanceResource) AddCC(ctx fiber.Ctx, principal *security.Principal, p
 	if _, err := cqrs.Send[command.AddCCCmd, cqrs.Unit](ctx.Context(), r.bus, command.AddCCCmd{
 		InstanceID: params.InstanceID,
 		CCUserIDs:  params.CCUserIDs,
-		OperatorID: principal.ID,
+		Operator:   operator,
 		Caller:     caller,
 	}); err != nil {
 		return err
@@ -290,9 +310,15 @@ type MarkCCReadParams struct {
 
 // MarkCCRead marks CC records as read for the user.
 func (r *InstanceResource) MarkCCRead(ctx fiber.Ctx, principal *security.Principal, params MarkCCReadParams) error {
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	if err != nil {
+		return err
+	}
+
 	if _, err := cqrs.Send[command.MarkCCReadCmd, cqrs.Unit](ctx.Context(), r.bus, command.MarkCCReadCmd{
 		InstanceID: params.InstanceID,
 		UserID:     principal.ID,
+		Caller:     caller,
 	}); err != nil {
 		return err
 	}
@@ -316,11 +342,17 @@ func (r *InstanceResource) AddAssignee(ctx fiber.Ctx, principal *security.Princi
 		return err
 	}
 
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	if err != nil {
+		return err
+	}
+
 	if _, err := cqrs.Send[command.AddAssigneeCmd, cqrs.Unit](ctx.Context(), r.bus, command.AddAssigneeCmd{
 		TaskID:   params.TaskID,
 		UserIDs:  params.UserIDs,
 		AddType:  approval.AddAssigneeType(params.AddType),
 		Operator: operator,
+		Caller:   caller,
 	}); err != nil {
 		return err
 	}
@@ -342,9 +374,15 @@ func (r *InstanceResource) RemoveAssignee(ctx fiber.Ctx, principal *security.Pri
 		return err
 	}
 
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	if err != nil {
+		return err
+	}
+
 	if _, err := cqrs.Send[command.RemoveAssigneeCmd, cqrs.Unit](ctx.Context(), r.bus, command.RemoveAssigneeCmd{
 		TaskID:   params.TaskID,
 		Operator: operator,
+		Caller:   caller,
 	}); err != nil {
 		return err
 	}
@@ -362,10 +400,16 @@ type UrgeTaskParams struct {
 
 // UrgeTask sends an urge notification for a pending task.
 func (r *InstanceResource) UrgeTask(ctx fiber.Ctx, principal *security.Principal, params UrgeTaskParams) error {
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	if err != nil {
+		return err
+	}
+
 	if _, err := cqrs.Send[command.UrgeTaskCmd, cqrs.Unit](ctx.Context(), r.bus, command.UrgeTaskCmd{
 		TaskID:  params.TaskID,
 		UrgerID: principal.ID,
 		Message: params.Message,
+		Caller:  caller,
 	}); err != nil {
 		return err
 	}

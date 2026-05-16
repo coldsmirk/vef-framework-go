@@ -26,6 +26,11 @@ type TaskContextLoadOptions struct {
 	RequireOperatorAssignee bool
 	RequireTaskPending      bool
 	RequireCurrentNode      bool
+	// Caller asserts the caller's tenant authority. Non-zero values cause
+	// the loader to reject cross-tenant access (mapped to ErrTaskNotFound
+	// so callers cannot probe existence across tenants). Zero / system
+	// callers bypass — see approval.CallerContext for the trust model.
+	Caller approval.CallerContext
 }
 
 // cancelableTaskStatuses lists statuses eligible for bulk cancellation.
@@ -351,12 +356,13 @@ func (*TaskService) CanRemoveAssigneeTask(ctx context.Context, db orm.DB, eng *e
 
 // PrepareOperation loads task context and merges editable form data.
 // Callers that require opinion validation should invoke ValidateOpinion separately.
-func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID, operatorID string, formData map[string]any) (*TaskContext, error) {
+func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID string, operator approval.OperatorInfo, caller approval.CallerContext, formData map[string]any) (*TaskContext, error) {
 	tc, err := s.LoadTaskContextForNodeOperation(ctx, db, taskID, TaskContextLoadOptions{
-		OperatorID:              operatorID,
+		OperatorID:              operator.ID,
 		RequireOperatorAssignee: true,
 		RequireTaskPending:      true,
 		RequireCurrentNode:      true,
+		Caller:                  caller,
 	})
 	if err != nil {
 		return nil, err
@@ -439,6 +445,13 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 		ForUpdate().
 		Scan(ctx); err != nil {
 		return nil, shared.ErrInstanceNotFound
+	}
+
+	// Tenant guard: cross-tenant callers see a uniform "task not found" so
+	// they can't probe entity existence across tenants. System / super-admin
+	// callers fall through (see approval.CallerContext.Allows).
+	if !options.Caller.Allows(instance.TenantID) {
+		return nil, shared.ErrTaskNotFound
 	}
 
 	// Lock task after instance to keep a consistent lock order across command handlers.

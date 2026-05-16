@@ -18,6 +18,7 @@ type MarkCCReadCmd struct {
 
 	InstanceID string
 	UserID     string
+	Caller     approval.CallerContext
 }
 
 // MarkCCReadHandler handles the MarkCCReadCmd command.
@@ -33,6 +34,23 @@ func NewMarkCCReadHandler(db orm.DB, nodeSvc *service.NodeService) *MarkCCReadHa
 
 func (h *MarkCCReadHandler) Handle(ctx context.Context, cmd MarkCCReadCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
+
+	// Tenant guard: the request carries an instance id from the client, so
+	// load the instance's tenant_id first and verify the caller can act on
+	// it. Cross-tenant probes get a zero-records response — same shape as
+	// "no unread CC records" so the existence of the instance is opaque.
+	var instance approval.Instance
+
+	instance.ID = cmd.InstanceID
+	if err := db.NewSelect().Model(&instance).Select("tenant_id").WherePK().Scan(ctx); err != nil {
+		// Treat "not found" the same as "no unread records" to avoid leaking
+		// existence. Non-not-found errors still propagate.
+		return cqrs.Unit{}, nil //nolint:nilerr // tenant isolation requires opaque response
+	}
+
+	if !cmd.Caller.Allows(instance.TenantID) {
+		return cqrs.Unit{}, nil
+	}
 
 	var records []approval.CCRecord
 

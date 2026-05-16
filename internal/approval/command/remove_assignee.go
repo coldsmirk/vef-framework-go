@@ -19,6 +19,7 @@ type RemoveAssigneeCmd struct {
 
 	TaskID   string
 	Operator approval.OperatorInfo
+	Caller   approval.CallerContext
 }
 
 // RemoveAssigneeHandler handles the RemoveAssigneeCmd command.
@@ -46,6 +47,7 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 
 	tc, err := h.taskSvc.LoadTaskContextForNodeOperation(ctx, db, cmd.TaskID, service.TaskContextLoadOptions{
 		RequireCurrentNode: true,
+		Caller:             cmd.Caller,
 	})
 	if err != nil {
 		return cqrs.Unit{}, err

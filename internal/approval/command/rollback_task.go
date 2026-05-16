@@ -26,6 +26,7 @@ type RollbackTaskCmd struct {
 	Opinion      string
 	FormData     map[string]any
 	TargetNodeID string
+	Caller       approval.CallerContext
 }
 
 // RollbackTaskHandler handles the RollbackTaskCmd command.
@@ -57,7 +58,7 @@ func NewRollbackTaskHandler(
 func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	tc, err := h.taskSvc.PrepareOperation(ctx, db, cmd.TaskID, cmd.Operator.ID, cmd.FormData)
+	tc, err := h.taskSvc.PrepareOperation(ctx, db, cmd.TaskID, cmd.Operator, cmd.Caller, cmd.FormData)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}

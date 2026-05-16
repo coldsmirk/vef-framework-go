@@ -29,6 +29,7 @@ type StartInstanceCmd struct {
 	Applicant        approval.OperatorInfo
 	BusinessRecordID *string
 	FormData         map[string]any
+	Caller           approval.CallerContext
 }
 
 // StartInstanceHandler handles the StartInstanceCmd command.
@@ -77,6 +78,14 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		}
 
 		return nil, fmt.Errorf("load flow: %w", err)
+	}
+
+	// Tenant guard: cmd.TenantID is client-supplied, so the caller must own
+	// or supervise that tenant. Return FlowNotFound (rather than
+	// CrossTenantAccess) so a probing caller cannot distinguish "no such
+	// flow in your tenant" from "exists but belongs to another tenant".
+	if !cmd.Caller.Allows(flow.TenantID) {
+		return nil, shared.ErrFlowNotFound
 	}
 
 	if !flow.IsActive {

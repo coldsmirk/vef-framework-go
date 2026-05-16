@@ -23,6 +23,7 @@ type TransferTaskCmd struct {
 	Opinion      string
 	FormData     map[string]any
 	TransferToID string
+	Caller       approval.CallerContext
 }
 
 // TransferTaskHandler handles the TransferTaskCmd command.
@@ -51,7 +52,7 @@ func NewTransferTaskHandler(
 func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	tc, err := h.taskSvc.PrepareOperation(ctx, db, cmd.TaskID, cmd.Operator.ID, cmd.FormData)
+	tc, err := h.taskSvc.PrepareOperation(ctx, db, cmd.TaskID, cmd.Operator, cmd.Caller, cmd.FormData)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
