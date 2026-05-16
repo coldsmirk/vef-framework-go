@@ -54,7 +54,10 @@ func (h *GetFlowGraphHandler) Handle(ctx context.Context, query GetFlowGraphQuer
 		return nil, fmt.Errorf("query flow: %w", err)
 	}
 
-	if err := query.Caller.Authorize(flow.TenantID); err != nil {
+	if !query.Caller.Allows(flow.TenantID) {
+		// Indistinguishable from "no such flow" on purpose — see opaque
+		// response policy for query handlers (avoids cross-tenant
+		// existence probing).
 		return nil, shared.ErrFlowNotFound
 	}
 

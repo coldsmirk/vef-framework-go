@@ -50,9 +50,10 @@ func (h *GetAdminInstanceDetailHandler) Handle(ctx context.Context, query GetAdm
 		return nil, fmt.Errorf("query instance: %w", err)
 	}
 
-	if err := query.Caller.Authorize(instance.TenantID); err != nil {
-		// Return InstanceNotFound rather than CrossTenantAccess so callers
-		// cannot probe existence across tenants.
+	if !query.Caller.Allows(instance.TenantID) {
+		// Indistinguishable from "no such instance" on purpose — see
+		// opaque response policy for query handlers (avoids cross-tenant
+		// existence probing).
 		return nil, shared.ErrInstanceNotFound
 	}
 

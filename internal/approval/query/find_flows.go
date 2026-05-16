@@ -36,12 +36,20 @@ func NewFindFlowsHandler(db orm.DB) *FindFlowsHandler {
 func (h *FindFlowsHandler) Handle(ctx context.Context, query FindFlowsQuery) (*page.Page[approval.Flow], error) {
 	db := contextx.DB(ctx, h.db)
 
-	// Non-super-admin callers can never list flows outside their tenant. We
-	// override params.TenantID with the caller's resolved tenant rather than
-	// trusting client input — even when a tenant admin forgets to pass it.
-	if !query.Caller.IsSuperAdmin && query.Caller.TenantID != "" {
-		callerTenant := query.Caller.TenantID
-		query.TenantID = &callerTenant
+	// EffectiveTenantID is the single source of truth for the tenant filter:
+	// super-admin keeps the caller-supplied override (possibly empty for
+	// cross-tenant view); every other caller is pinned to their own tenant
+	// regardless of what the client sent. Mirrors the admin resource's
+	// resolveTenantFilter helper.
+	override := ""
+	if query.TenantID != nil {
+		override = *query.TenantID
+	}
+
+	if effective := query.Caller.EffectiveTenantID(override); effective != "" {
+		query.TenantID = &effective
+	} else {
+		query.TenantID = nil
 	}
 
 	var flows []approval.Flow
