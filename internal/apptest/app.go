@@ -67,6 +67,26 @@ func coreOptions() []fx.Option {
 				Port:      0,
 				BodyLimit: "100mib",
 			},
+			// Enable the outbox transport by default in tests so command
+			// handlers that publish events with event.WithTx have a real
+			// TxTransport to route to. Tests can override this with
+			// fx.Replace if they want different routing.
+			&config.EventConfig{
+				DefaultTransport: "memory",
+				Transports: config.EventTransportsConfig{
+					Outbox: config.EventOutboxTransportConfig{Enabled: true},
+				},
+				Routing: []config.EventRoutingRule{
+					{Pattern: "approval.*", Transports: []string{"outbox"}},
+				},
+				Middleware: config.EventMiddlewareConfig{
+					Logging: true,
+					Tracing: true,
+					Metrics: true,
+					Recover: true,
+					Inbox:   true,
+				},
+			},
 		),
 		iconfig.Module,
 		orm.Module,
@@ -81,6 +101,13 @@ func coreOptions() []fx.Option {
 		storage.Module,
 		monitor.Module,
 		schema.Module,
+		event.OutboxModule,
+		// RedisStreamTransportModule is intentionally omitted from the
+		// apptest core: it pulls *redis.Client into the fx graph, whose
+		// OnStart hook PINGs the server. Tests that actually exercise
+		// redisstream construct the transport directly (see the
+		// redisstream contract test) rather than running it via apptest.
+		event.InboxModule,
 		mcp.Module,
 		app.Module,
 	}

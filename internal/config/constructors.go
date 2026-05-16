@@ -53,3 +53,7 @@ func newMCPConfig(cfg config.Config) (*config.MCPConfig, error) {
 func newApprovalConfig(cfg config.Config) (*config.ApprovalConfig, error) {
 	return unmarshalConfig(cfg, "vef.approval", new(config.ApprovalConfig))
 }
+
+func newEventConfig(cfg config.Config) (*config.EventConfig, error) {
+	return unmarshalConfig(cfg, "vef.event", new(config.EventConfig))
+}

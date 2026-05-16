@@ -226,6 +226,56 @@ func SupplyFileACL(constructor any) fx.Option {
 	return fx.Decorate(constructor)
 }
 
+// ProvideEventTransport registers a custom event Transport. The
+// constructor must return event/transport.Transport (or a type that
+// satisfies it).
+func ProvideEventTransport(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:event:transports"`),
+		),
+	)
+}
+
+// ProvideEventPublishMiddleware registers a publish-side event
+// middleware. The constructor must return event/middleware.PublishMiddleware.
+func ProvideEventPublishMiddleware(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:event:publish-middlewares"`),
+		),
+	)
+}
+
+// ProvideEventConsumeMiddleware registers a consume-side event
+// middleware. The constructor must return event/middleware.ConsumeMiddleware.
+func ProvideEventConsumeMiddleware(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:event:consume-middlewares"`),
+		),
+	)
+}
+
+// ProvideEventErrorSink overrides the framework's default async error
+// sink. The constructor must return event.ErrorSink. Useful when
+// async-publish failures need to flow to a metrics or alerting system
+// rather than just the logger.
+func ProvideEventErrorSink(constructor any, paramTags ...string) fx.Option {
+	return fx.Decorate(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+		),
+	)
+}
+
 // SupplyURLKeyMapper replaces the framework-provided default
 // storage.URLKeyMapper (identity) with a business-specific
 // implementation. The default mapper assumes the frontend embeds bare

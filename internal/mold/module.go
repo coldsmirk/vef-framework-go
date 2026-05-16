@@ -15,7 +15,7 @@ var Module = fx.Module(
 	"vef:mold",
 	fx.Decorate(
 		fx.Annotate(
-			func(loader mold.DataDictLoader, bus event.Subscriber) mold.DataDictResolver {
+			func(loader mold.DataDictLoader, bus event.Bus) mold.DataDictResolver {
 				if loader == nil {
 					return nil
 				}

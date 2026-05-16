@@ -1,0 +1,58 @@
+package inbox
+
+import (
+	"context"
+	"time"
+
+	pubinbox "github.com/coldsmirk/vef-framework-go/event/inbox"
+	"github.com/coldsmirk/vef-framework-go/timex"
+)
+
+// Cleaner deletes inbox records older than the configured retention so
+// the table stays bounded. Intended to be invoked from a cron job.
+type Cleaner struct {
+	repo      pubinbox.Repository
+	retention time.Duration
+	logger    logger
+}
+
+// logger is the minimal logging surface used during cleanup; matches
+// the surface exposed by the outbox relay so both jobs accept the
+// framework's logx.Logger.
+type logger interface {
+	Infof(format string, args ...any)
+	Warnf(format string, args ...any)
+	Errorf(format string, args ...any)
+}
+
+// NewCleaner constructs a Cleaner.
+func NewCleaner(repo pubinbox.Repository, retention time.Duration, log logger) *Cleaner {
+	if log == nil {
+		log = noopLogger{}
+	}
+
+	return &Cleaner{repo: repo, retention: retention, logger: log}
+}
+
+// Cleanup runs one delete cycle, removing records older than the
+// retention window. Safe to invoke periodically from a cron task.
+func (c *Cleaner) Cleanup(ctx context.Context) {
+	cutoff := timex.Now().Add(-c.retention)
+
+	deleted, err := c.repo.DeleteOlderThan(ctx, cutoff)
+	if err != nil {
+		c.logger.Errorf("inbox cleanup failed: %v", err)
+
+		return
+	}
+
+	if deleted > 0 {
+		c.logger.Infof("inbox cleanup deleted %d record(s) older than %s", deleted, cutoff.Unwrap().Format(time.RFC3339))
+	}
+}
+
+type noopLogger struct{}
+
+func (noopLogger) Infof(string, ...any)  {}
+func (noopLogger) Warnf(string, ...any)  {}
+func (noopLogger) Errorf(string, ...any) {}

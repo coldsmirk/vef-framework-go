@@ -38,8 +38,8 @@ func NewSchedulerResolver(scheduler cron.Scheduler) api.HandlerParamResolver {
 	return newHandlerValueResolver(scheduler)
 }
 
-func NewPublisherResolver(publisher event.Publisher) api.HandlerParamResolver {
-	return newHandlerValueResolver(publisher)
+func NewBusResolver(bus event.Bus) api.HandlerParamResolver {
+	return newHandlerValueResolver(bus)
 }
 
 func NewTransformerResolver(transformer mold.Transformer) api.HandlerParamResolver {
@@ -80,8 +80,8 @@ func NewSchedulerFactoryResolver(scheduler cron.Scheduler) api.FactoryParamResol
 	return newFactoryValueResolver(scheduler)
 }
 
-func NewPublisherFactoryResolver(publisher event.Publisher) api.FactoryParamResolver {
-	return newFactoryValueResolver(publisher)
+func NewBusFactoryResolver(bus event.Bus) api.FactoryParamResolver {
+	return newFactoryValueResolver(bus)
 }
 
 func NewTransformerFactoryResolver(transformer mold.Transformer) api.FactoryParamResolver {
@@ -122,7 +122,7 @@ var Module = fx.Module(
 			fx.ResultTags(`group:"vef:api:handler_param_resolvers"`),
 		),
 		fx.Annotate(
-			NewPublisherResolver,
+			NewBusResolver,
 			fx.ResultTags(`group:"vef:api:handler_param_resolvers"`),
 		),
 		fx.Annotate(
@@ -151,7 +151,7 @@ var Module = fx.Module(
 			fx.ResultTags(`group:"vef:api:factory_param_resolvers"`),
 		),
 		fx.Annotate(
-			NewPublisherFactoryResolver,
+			NewBusFactoryResolver,
 			fx.ResultTags(`group:"vef:api:factory_param_resolvers"`),
 		),
 		fx.Annotate(

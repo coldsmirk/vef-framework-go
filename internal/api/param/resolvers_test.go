@@ -279,13 +279,13 @@ func (*TestParamResolversResource) VerifyMoldFactory(transformer mold.Transforme
 	}
 }
 
-func (*TestParamResolversResource) VerifyEvent(ctx fiber.Ctx, publisher event.Publisher) error {
+func (*TestParamResolversResource) VerifyEvent(ctx fiber.Ctx, publisher event.Bus) error {
 	injected := publisher != nil
 
 	return result.Ok(map[string]any{"injected": injected}).Response(ctx)
 }
 
-func (*TestParamResolversResource) VerifyEventFactory(publisher event.Publisher) func(ctx fiber.Ctx) error {
+func (*TestParamResolversResource) VerifyEventFactory(publisher event.Bus) func(ctx fiber.Ctx) error {
 	injected := publisher != nil
 
 	return func(ctx fiber.Ctx) error {

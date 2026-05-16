@@ -17,5 +17,6 @@ var Module = fx.Module(
 		newMonitorConfig,
 		newMCPConfig,
 		newApprovalConfig,
+		newEventConfig,
 	),
 )
