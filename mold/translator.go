@@ -10,18 +10,18 @@ type Translator interface {
 	Translate(ctx context.Context, kind, value string) (string, error)
 }
 
-// DataDictResolver defines the data dictionary resolver interface for converting codes to readable names
+// DictionaryResolver defines the dictionary resolver interface for converting codes to readable names.
 // Supports multi-level data dictionaries, using key to distinguish different dictionary types.
-type DataDictResolver interface {
-	// Resolve resolves the corresponding name based on dictionary key and code value
-	// Returns the translated name and an error if resolution fails
+type DictionaryResolver interface {
+	// Resolve resolves the corresponding name based on dictionary key and code value.
+	// Returns the translated name and an error if resolution fails.
 	Resolve(ctx context.Context, key, code string) (string, error)
 }
 
-// DataDictLoader defines the contract for loading dictionary entries by key.
+// DictionaryLoader defines the contract for loading dictionary entries by key.
 // Implementations should return a map where the key is the dictionary item's code
 // and the value is the translated/display name.
-type DataDictLoader interface {
+type DictionaryLoader interface {
 	// Load loads all dictionary entries for the given key, returning a code-to-name mapping.
 	Load(ctx context.Context, key string) (map[string]string, error)
 }

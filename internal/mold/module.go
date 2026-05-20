@@ -15,12 +15,12 @@ var Module = fx.Module(
 	"vef:mold",
 	fx.Decorate(
 		fx.Annotate(
-			func(loader mold.DataDictLoader, bus event.Bus) mold.DataDictResolver {
+			func(loader mold.DictionaryLoader, bus event.Bus) mold.DictionaryResolver {
 				if loader == nil {
 					return nil
 				}
 
-				return mold.NewCachedDataDictResolver(loader, bus)
+				return mold.NewCachedDictionaryResolver(loader, bus)
 			},
 			fx.ParamTags(`optional:"true"`),
 		),
@@ -40,7 +40,7 @@ var Module = fx.Module(
 		),
 		// Built-in data dictionary translator
 		fx.Annotate(
-			NewDataDictTranslator,
+			NewDictionaryTranslator,
 			fx.ParamTags(`optional:"true"`),
 			fx.ResultTags(`group:"vef:mold:translators"`),
 		),

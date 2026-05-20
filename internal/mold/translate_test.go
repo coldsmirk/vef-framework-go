@@ -24,12 +24,12 @@ type TranslateTransformerTestSuite struct {
 	transformer mold.Transformer
 }
 
-// MockDataDictLoader mocks mold.DataDictLoader for testing.
-type MockDataDictLoader struct {
+// MockDictionaryLoader mocks mold.DictionaryLoader for testing.
+type MockDictionaryLoader struct {
 	shouldError bool
 }
 
-func (m *MockDataDictLoader) Load(_ context.Context, key string) (map[string]string, error) {
+func (m *MockDictionaryLoader) Load(_ context.Context, key string) (map[string]string, error) {
 	if m.shouldError {
 		return nil, fmt.Errorf("mock loader error for key=%s", key)
 	}
@@ -66,8 +66,8 @@ func (suite *TranslateTransformerTestSuite) SetupSuite() {
 		fx.Replace(&config.DataSourceConfig{
 			Kind: config.SQLite,
 		}),
-		fx.Provide(func() mold.DataDictLoader {
-			return &MockDataDictLoader{shouldError: false}
+		fx.Provide(func() mold.DictionaryLoader {
+			return &MockDictionaryLoader{shouldError: false}
 		}),
 		fx.Populate(&suite.transformer),
 	)
@@ -354,8 +354,8 @@ func (suite *TranslateTransformerTestSuite) TestTranslateWithResolverError() {
 			fx.Replace(&config.DataSourceConfig{
 				Kind: config.SQLite,
 			}),
-			fx.Provide(func() mold.DataDictLoader {
-				return &MockDataDictLoader{shouldError: true}
+			fx.Provide(func() mold.DictionaryLoader {
+				return &MockDictionaryLoader{shouldError: true}
 			}),
 			fx.Populate(&transformer),
 		)
@@ -411,7 +411,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateWithMissingResolver() {
 
 		err := transformer.Struct(ctx, test)
 		suite.Error(err, "Translation should fail when resolver is not configured")
-		suite.Contains(err.Error(), "data dictionary resolver is not configured", "Error should indicate missing resolver")
+		suite.Contains(err.Error(), "dictionary resolver is not configured", "Error should indicate missing resolver")
 
 		suite.T().Logf("Error (expected): %v", err)
 	})
@@ -712,8 +712,8 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSliceErrors() {
 			fx.Replace(&config.DataSourceConfig{
 				Kind: config.SQLite,
 			}),
-			fx.Provide(func() mold.DataDictLoader {
-				return &MockDataDictLoader{shouldError: true}
+			fx.Provide(func() mold.DictionaryLoader {
+				return &MockDictionaryLoader{shouldError: true}
 			}),
 			fx.Populate(&transformer),
 		)
@@ -779,7 +779,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSliceErrors() {
 
 		err := transformer.Struct(ctx, test)
 		suite.Error(err, "Should fail when resolver is not configured")
-		suite.Contains(err.Error(), "data dictionary resolver is not configured", "Error should indicate missing resolver")
+		suite.Contains(err.Error(), "dictionary resolver is not configured", "Error should indicate missing resolver")
 		suite.Contains(err.Error(), "element[0]", "Error should include failing element index")
 		suite.Contains(err.Error(), "Statuses", "Error should include source field name")
 
