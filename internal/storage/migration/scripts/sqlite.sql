@@ -10,9 +10,7 @@ PRAGMA journal_mode = WAL;
 -- Storage Module Tables
 --------------------------------------------------------------------------------
 
--- Upload claims: in-flight upload bookkeeping. Rows are inserted by the
--- upload init flow and deleted either by the business transaction
--- (on commit) or by the claim sweeper worker (on TTL expiry).
+-- Claims
 CREATE TABLE IF NOT EXISTS sys_storage_upload_claim (
     id                VARCHAR(128) CONSTRAINT pk_sys_storage_upload_claim PRIMARY KEY,
     created_at        TIMESTAMP    NOT NULL DEFAULT (datetime('now', 'localtime')),
@@ -37,11 +35,7 @@ CREATE INDEX IF NOT EXISTS idx_sys_storage_upload_claim__expires_at ON sys_stora
 -- COUNT WHERE created_by = ? AND status = 'pending'.
 CREATE INDEX IF NOT EXISTS idx_sys_storage_upload_claim__owner_status ON sys_storage_upload_claim(created_by, status);
 
--- Multipart upload parts: per-part bookkeeping while a chunked upload
--- session is in flight. Rows are inserted by upload_part and read by
--- complete_upload to assemble the CompletedPart list, then deleted in
--- the same transaction that flips the parent claim to status='uploaded'.
--- The claim sweeper relies on ON DELETE CASCADE to reap stale parts.
+-- Parts
 CREATE TABLE IF NOT EXISTS sys_storage_upload_part (
     id          VARCHAR(128) CONSTRAINT pk_sys_storage_upload_part PRIMARY KEY,
     claim_id    VARCHAR(128) NOT NULL REFERENCES sys_storage_upload_claim(id) ON DELETE CASCADE,
@@ -58,8 +52,7 @@ CREATE TABLE IF NOT EXISTS sys_storage_upload_part (
 -- ORDER BY part_number in ListByClaim, the ON CONFLICT target, and the
 -- FK cascade probe.
 
--- Pending object deletions: durable queue drained by the delete worker.
--- Rows are inserted by the CRUD layer inside the business transaction.
+-- Deletes
 CREATE TABLE IF NOT EXISTS sys_storage_pending_delete (
     id              VARCHAR(128) CONSTRAINT pk_sys_storage_pending_delete PRIMARY KEY,
     object_key      VARCHAR(512) NOT NULL,

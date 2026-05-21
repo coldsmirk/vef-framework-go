@@ -20,20 +20,20 @@ CREATE TABLE IF NOT EXISTS sys_storage_upload_claim (
     CONSTRAINT uk_sys_storage_upload_claim__object_key UNIQUE (object_key)
 );
 
-COMMENT ON TABLE sys_storage_upload_claim IS 'Upload claims';
-COMMENT ON COLUMN sys_storage_upload_claim.id IS 'Primary key';
-COMMENT ON COLUMN sys_storage_upload_claim.created_at IS 'Created at';
+COMMENT ON TABLE sys_storage_upload_claim IS 'Claims';
+COMMENT ON COLUMN sys_storage_upload_claim.id IS 'ID';
+COMMENT ON COLUMN sys_storage_upload_claim.created_at IS 'Created';
 COMMENT ON COLUMN sys_storage_upload_claim.created_by IS 'Uploader';
 COMMENT ON COLUMN sys_storage_upload_claim.object_key IS 'Object key';
-COMMENT ON COLUMN sys_storage_upload_claim.upload_id IS 'Multipart session ID';
-COMMENT ON COLUMN sys_storage_upload_claim.size IS 'Size in bytes';
+COMMENT ON COLUMN sys_storage_upload_claim.upload_id IS 'Upload ID';
+COMMENT ON COLUMN sys_storage_upload_claim.size IS 'Size';
 COMMENT ON COLUMN sys_storage_upload_claim.content_type IS 'MIME type';
-COMMENT ON COLUMN sys_storage_upload_claim.original_filename IS 'Original filename';
-COMMENT ON COLUMN sys_storage_upload_claim.status IS 'Status: pending|uploaded';
-COMMENT ON COLUMN sys_storage_upload_claim.public IS 'Public readable';
-COMMENT ON COLUMN sys_storage_upload_claim.part_size IS 'Part size in bytes';
-COMMENT ON COLUMN sys_storage_upload_claim.part_count IS 'Part count';
-COMMENT ON COLUMN sys_storage_upload_claim.expires_at IS 'Expires at';
+COMMENT ON COLUMN sys_storage_upload_claim.original_filename IS 'Filename';
+COMMENT ON COLUMN sys_storage_upload_claim.status IS 'Status';
+COMMENT ON COLUMN sys_storage_upload_claim.public IS 'Public';
+COMMENT ON COLUMN sys_storage_upload_claim.part_size IS 'Part size';
+COMMENT ON COLUMN sys_storage_upload_claim.part_count IS 'Parts';
+COMMENT ON COLUMN sys_storage_upload_claim.expires_at IS 'Expires';
 
 -- Composite (expires_at, status) serves the claim sweeper's ScanExpired:
 -- WHERE expires_at < now AND status = 'pending' ORDER BY expires_at LIMIT n.
@@ -55,13 +55,13 @@ CREATE TABLE IF NOT EXISTS sys_storage_upload_part (
         REFERENCES sys_storage_upload_claim(id) ON DELETE CASCADE
 );
 
-COMMENT ON TABLE sys_storage_upload_part IS 'Multipart upload parts';
-COMMENT ON COLUMN sys_storage_upload_part.id IS 'Primary key';
-COMMENT ON COLUMN sys_storage_upload_part.claim_id IS 'Owning claim ID';
+COMMENT ON TABLE sys_storage_upload_part IS 'Parts';
+COMMENT ON COLUMN sys_storage_upload_part.id IS 'ID';
+COMMENT ON COLUMN sys_storage_upload_part.claim_id IS 'Claim ID';
 COMMENT ON COLUMN sys_storage_upload_part.part_number IS 'Part number';
-COMMENT ON COLUMN sys_storage_upload_part.etag IS 'Part ETag';
-COMMENT ON COLUMN sys_storage_upload_part.size IS 'Part size in bytes';
-COMMENT ON COLUMN sys_storage_upload_part.created_at IS 'Created at';
+COMMENT ON COLUMN sys_storage_upload_part.etag IS 'ETag';
+COMMENT ON COLUMN sys_storage_upload_part.size IS 'Size';
+COMMENT ON COLUMN sys_storage_upload_part.created_at IS 'Created';
 
 -- No standalone (claim_id) index: the unique constraint
 -- uk_sys_storage_upload_part__claim_part(claim_id, part_number) already
@@ -86,14 +86,14 @@ CREATE TABLE IF NOT EXISTS sys_storage_pending_delete (
     CONSTRAINT uk_sys_storage_pending_delete__key_reason UNIQUE (object_key, reason)
 );
 
-COMMENT ON TABLE sys_storage_pending_delete IS 'Pending object deletions';
-COMMENT ON COLUMN sys_storage_pending_delete.id IS 'Primary key';
+COMMENT ON TABLE sys_storage_pending_delete IS 'Deletes';
+COMMENT ON COLUMN sys_storage_pending_delete.id IS 'ID';
 COMMENT ON COLUMN sys_storage_pending_delete.object_key IS 'Object key';
-COMMENT ON COLUMN sys_storage_pending_delete.upload_id IS 'Multipart session ID';
-COMMENT ON COLUMN sys_storage_pending_delete.reason IS 'Deletion reason';
-COMMENT ON COLUMN sys_storage_pending_delete.attempts IS 'Attempt count';
-COMMENT ON COLUMN sys_storage_pending_delete.next_attempt_at IS 'Next attempt at';
-COMMENT ON COLUMN sys_storage_pending_delete.created_at IS 'Created at';
+COMMENT ON COLUMN sys_storage_pending_delete.upload_id IS 'Upload ID';
+COMMENT ON COLUMN sys_storage_pending_delete.reason IS 'Reason';
+COMMENT ON COLUMN sys_storage_pending_delete.attempts IS 'Attempts';
+COMMENT ON COLUMN sys_storage_pending_delete.next_attempt_at IS 'Retry at';
+COMMENT ON COLUMN sys_storage_pending_delete.created_at IS 'Created';
 
 -- attempts is intentionally NOT part of the index: Lease only filters and
 -- orders by next_attempt_at; attempts is only ever mutated by Defer
