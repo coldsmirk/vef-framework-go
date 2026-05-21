@@ -29,6 +29,7 @@ func (suite *RedisTestSuite) TestNewClient() {
 
 	suite.Run("DefaultConfiguration", func() {
 		cfg := &config.RedisConfig{
+			Enabled:  true,
 			Host:     "127.0.0.1",
 			Port:     6379,
 			Database: 0,
@@ -60,6 +61,7 @@ func (suite *RedisTestSuite) TestNewClient() {
 
 	suite.Run("CustomConfiguration", func() {
 		cfg := &config.RedisConfig{
+			Enabled:  true,
 			Host:     "custom-host",
 			Port:     6380,
 			User:     "testuser",
@@ -156,6 +158,7 @@ func (suite *RedisTestSuite) TestHealthCheck() {
 
 	suite.Run("HealthCheckFailure", func() {
 		cfg := &config.RedisConfig{
+			Enabled:  true,
 			Host:     "invalid-host",
 			Port:     9999,
 			Database: 0,
@@ -173,6 +176,36 @@ func (suite *RedisTestSuite) TestHealthCheck() {
 
 		suite.T().Log("Health check failed as expected")
 	})
+}
+
+// TestNewClientDisabled verifies that NewClient returns nil when the
+// Enabled flag is off, so applications without Redis can load the
+// module without forcing a connection.
+func TestNewClientDisabled(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *config.RedisConfig
+	}{
+		{
+			name: "ZeroValueConfig",
+			cfg:  &config.RedisConfig{},
+		},
+		{
+			name: "DisabledWithHostSet",
+			cfg: &config.RedisConfig{
+				Enabled: false,
+				Host:    "redis.example.com",
+				Port:    6379,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := NewClient(tt.cfg, &config.AppConfig{Name: "test-app"})
+			assert.Nil(t, client, "NewClient should return nil when Enabled is false")
+		})
+	}
 }
 
 // TestBuildRedisAddr tests build redis addr functionality.

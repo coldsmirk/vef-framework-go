@@ -17,7 +17,15 @@ import (
 var logger = logx.Named("redis")
 
 // NewClient creates a Redis client with adaptive pool sizing to balance performance and resource usage.
+// When cfg.Enabled is false it returns nil so the framework can stay redis-free; downstream consumers
+// must treat the dependency as optional and skip work when the client is absent.
 func NewClient(cfg *config.RedisConfig, appCfg *config.AppConfig) *redis.Client {
+	if !cfg.Enabled {
+		logger.Info("Redis disabled (vef.redis.enabled=false), skipping client construction")
+
+		return nil
+	}
+
 	clientName := lo.CoalesceOrEmpty(appCfg.Name, "vef-app")
 
 	poolSize := getPoolSize()

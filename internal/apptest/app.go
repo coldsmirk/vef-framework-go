@@ -106,11 +106,13 @@ func coreOptions() []fx.Option {
 		monitor.Module,
 		schema.Module,
 		event.OutboxModule,
-		// RedisStreamTransportModule is intentionally omitted from the
-		// apptest core: it pulls *redis.Client into the fx graph, whose
-		// OnStart hook PINGs the server. Tests that actually exercise
-		// redisstream construct the transport directly (see the
-		// redisstream contract test) rather than running it via apptest.
+		// RedisStreamTransportModule is safe to load here because the
+		// default RedisConfig has Enabled=false, so redis.NewClient
+		// returns nil, the Ping hook short-circuits, and the redisstream
+		// constructor falls back to "no transport contributed". Tests
+		// that actually exercise redisstream provide an enabled config
+		// (see testx.NewRedisContainer).
+		event.RedisStreamTransportModule,
 		event.InboxModule,
 		mcp.Module,
 		app.Module,
