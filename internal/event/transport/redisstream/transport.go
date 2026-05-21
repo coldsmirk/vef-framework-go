@@ -23,6 +23,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/event/transport"
 	pubredisstream "github.com/coldsmirk/vef-framework-go/event/transport/redisstream"
 	"github.com/coldsmirk/vef-framework-go/id"
+	"github.com/coldsmirk/vef-framework-go/internal/logx"
+	publogx "github.com/coldsmirk/vef-framework-go/logx"
 )
 
 // maxFrameBytes caps inbound Redis Stream frames so a hostile or
@@ -47,19 +49,11 @@ var errTransportNotStarted = errors.New("redisstream: transport not started")
 // characters outside the eventTypePattern allowlist.
 var errInvalidEventType = errors.New("redisstream: invalid event type")
 
-// logger is the minimal logging surface used internally; satisfied by
-// logx.Logger and easily stubbed in tests.
-type logger interface {
-	Infof(format string, args ...any)
-	Warnf(format string, args ...any)
-	Errorf(format string, args ...any)
-}
-
 // Transport implements transport.Transport over Redis Streams.
 type Transport struct {
 	client *goredis.Client
 	cfg    pubredisstream.Config
-	logger logger
+	logger publogx.Logger
 
 	mu      sync.Mutex
 	subs    []*subscription
@@ -77,13 +71,14 @@ type subscription struct {
 	fn       transport.ConsumeFunc
 	cfg      transport.SubscribeConfig
 	stopCh   chan struct{}
+	stopOnce sync.Once
 	wg       sync.WaitGroup
 }
 
-// New constructs a Transport.
-func New(client *goredis.Client, cfg pubredisstream.Config, log logger) *Transport {
+// New constructs a Transport. A nil logger is replaced with logx.Discard.
+func New(client *goredis.Client, cfg pubredisstream.Config, log publogx.Logger) *Transport {
 	if log == nil {
-		log = noopLogger{}
+		log = logx.Discard()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -288,8 +283,14 @@ func (t *Transport) consumerLoop(sub *subscription) {
 			Block:    t.cfg.EffectiveBlockTimeout(),
 		}).Result()
 		if err != nil {
-			if errors.Is(err, goredis.Nil) || errors.Is(err, context.Canceled) {
+			if errors.Is(err, goredis.Nil) {
 				continue
+			}
+
+			// Transport ctx canceled (Stop in progress) — exit instead of
+			// busy-spinning until stopCh is observed on the next iteration.
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return
 			}
 
 			t.logger.Warnf("redisstream: XREADGROUP on %s: %v", sub.stream, err)
@@ -351,13 +352,9 @@ func (t *Transport) sleepOrStop(sub *subscription, d time.Duration) {
 }
 
 func (s *subscription) stop() {
-	select {
-	case <-s.stopCh:
-		return
-	default:
+	s.stopOnce.Do(func() {
 		close(s.stopCh)
-	}
-
+	})
 	s.wg.Wait()
 }
 
@@ -382,9 +379,3 @@ func validateEventType(t string) error {
 
 	return nil
 }
-
-type noopLogger struct{}
-
-func (noopLogger) Infof(string, ...any)  {}
-func (noopLogger) Warnf(string, ...any)  {}
-func (noopLogger) Errorf(string, ...any) {}
