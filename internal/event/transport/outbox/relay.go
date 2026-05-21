@@ -10,6 +10,8 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/event/transport"
 	puboutbox "github.com/coldsmirk/vef-framework-go/event/transport/outbox"
+	"github.com/coldsmirk/vef-framework-go/internal/logx"
+	publogx "github.com/coldsmirk/vef-framework-go/logx"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
@@ -48,27 +50,19 @@ type Relay struct {
 	sinkFn   func() transport.Transport
 	cfg      puboutbox.Config
 	dlqTopic func(eventType string) string
-	logger   logger
-}
-
-// logger is the minimal logging surface the relay relies on. It is
-// satisfied by the framework's logx.Logger but kept as a local
-// interface so unit tests can supply a no-op implementation.
-type logger interface {
-	Infof(format string, args ...any)
-	Warnf(format string, args ...any)
-	Errorf(format string, args ...any)
+	logger   publogx.Logger
 }
 
 // NewRelay constructs a Relay. sinkFn returns the current sink — it is
 // called once per cycle so installation can be deferred. dlqTopic
 // computes the DLQ topic for an event type; pass nil to use the
-// framework default ("vef-dlq." + type).
+// framework default ("vef-dlq." + type). A nil logger is replaced with
+// logx.Discard so tests can omit it.
 func NewRelay(
 	repo puboutbox.Repository,
 	sinkFn func() transport.Transport,
 	cfg puboutbox.Config,
-	log logger,
+	log publogx.Logger,
 	dlqTopic func(eventType string) string,
 ) *Relay {
 	if dlqTopic == nil {
@@ -76,7 +70,7 @@ func NewRelay(
 	}
 
 	if log == nil {
-		log = noopLogger{}
+		log = logx.Discard()
 	}
 
 	return &Relay{
@@ -229,9 +223,3 @@ func toFrame(record puboutbox.Record) transport.Frame {
 		Body:          record.Payload,
 	}
 }
-
-type noopLogger struct{}
-
-func (noopLogger) Infof(string, ...any)  {}
-func (noopLogger) Warnf(string, ...any)  {}
-func (noopLogger) Errorf(string, ...any) {}

@@ -5,6 +5,8 @@ import (
 	"time"
 
 	pubinbox "github.com/coldsmirk/vef-framework-go/event/inbox"
+	"github.com/coldsmirk/vef-framework-go/internal/logx"
+	publogx "github.com/coldsmirk/vef-framework-go/logx"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
@@ -13,22 +15,14 @@ import (
 type Cleaner struct {
 	repo      pubinbox.Repository
 	retention time.Duration
-	logger    logger
+	logger    publogx.Logger
 }
 
-// logger is the minimal logging surface used during cleanup; matches
-// the surface exposed by the outbox relay so both jobs accept the
-// framework's logx.Logger.
-type logger interface {
-	Infof(format string, args ...any)
-	Warnf(format string, args ...any)
-	Errorf(format string, args ...any)
-}
-
-// NewCleaner constructs a Cleaner.
-func NewCleaner(repo pubinbox.Repository, retention time.Duration, log logger) *Cleaner {
+// NewCleaner constructs a Cleaner. A nil logger is replaced with
+// logx.Discard so tests can omit it.
+func NewCleaner(repo pubinbox.Repository, retention time.Duration, log publogx.Logger) *Cleaner {
 	if log == nil {
-		log = noopLogger{}
+		log = logx.Discard()
 	}
 
 	return &Cleaner{repo: repo, retention: retention, logger: log}
@@ -50,9 +44,3 @@ func (c *Cleaner) Cleanup(ctx context.Context) {
 		c.logger.Infof("inbox cleanup deleted %d record(s) older than %s", deleted, cutoff.Unwrap().Format(time.RFC3339))
 	}
 }
-
-type noopLogger struct{}
-
-func (noopLogger) Infof(string, ...any)  {}
-func (noopLogger) Warnf(string, ...any)  {}
-func (noopLogger) Errorf(string, ...any) {}
