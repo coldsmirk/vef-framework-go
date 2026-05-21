@@ -25,7 +25,12 @@ func ApplySubscribeOptions(opts []SubscribeOption) SubscribeConfig {
 	return cfg
 }
 
-// WithGroup sets the consumer group name.
+// WithGroup sets the consumer group name. Required for any subscription
+// whose resolved route touches an at-least-once transport (outbox,
+// Redis Streams, …) — the group is the Inbox dedupe scope and the
+// Redis Streams XGROUP identifier, both of which must remain stable
+// across process restarts. Bus.Subscribe returns ErrGroupRequired if
+// the group is missing on such a route.
 func WithGroup(name string) SubscribeOption {
 	return func(c *SubscribeConfig) { c.Group = name }
 }

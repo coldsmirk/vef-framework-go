@@ -47,4 +47,16 @@ var (
 	// nil interface). Callers should pass a concrete *MyEvent or
 	// MyEvent type, not the bare Event interface.
 	ErrNilTypeParameter = errors.New("event: SubscribeTyped requires a concrete event type")
+	// ErrGroupRequired indicates Subscribe was called on a route that
+	// resolves to one or more at-least-once transports (outbox, Redis
+	// Streams, …) without an explicit WithGroup option. A stable group
+	// name is the dedupe scope for the Inbox middleware and the
+	// consumer group name for Redis Streams; an auto-generated value
+	// would change across restarts and either reset Redis Streams
+	// position or invalidate dedupe records.
+	ErrGroupRequired = errors.New("event: at-least-once subscription requires event.WithGroup(\"name\")")
+	// ErrTxAsyncMutex indicates the caller combined WithTx and
+	// WithAsync, which is contradictory: a transactional publish must
+	// complete inside the caller's transaction window.
+	ErrTxAsyncMutex = errors.New("event: WithTx and WithAsync are mutually exclusive")
 )
