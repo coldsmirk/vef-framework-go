@@ -1,6 +1,7 @@
 package event
 
 import (
+	"fmt"
 	"path"
 
 	"github.com/coldsmirk/vef-framework-go/config"
@@ -29,6 +30,14 @@ func buildRouter(cfg *config.EventConfig, registry map[string]transport.Transpor
 
 	rules := make([]compiledRule, 0, len(cfg.Routing))
 	for _, rule := range cfg.Routing {
+		// Pre-validate pattern syntax at config time so a typo in
+		// path.Match metacharacters (unclosed '[', stray '\\') surfaces
+		// during fx.Start rather than silently skipping rules at
+		// dispatch time.
+		if _, err := path.Match(rule.Pattern, "vef.routing.syntax.probe"); err != nil {
+			return nil, fmt.Errorf("event: invalid routing pattern %q: %w", rule.Pattern, err)
+		}
+
 		ts, err := resolveTransports(registry, rule.Transports)
 		if err != nil {
 			return nil, err
@@ -44,11 +53,20 @@ func buildRouter(cfg *config.EventConfig, registry map[string]transport.Transpor
 }
 
 // Resolve returns the transports that should receive the given event
-// type. The slice is never nil; callers may iterate directly.
+// type. Patterns were syntax-checked during buildRouter, so an error
+// from path.Match here would indicate a corrupted rule — log loudly and
+// skip the entry instead of returning a misleading match.
 func (r *router) Resolve(eventType string) []transport.Transport {
 	for _, rule := range r.rules {
 		ok, err := path.Match(rule.pattern, eventType)
-		if err == nil && ok {
+		if err != nil {
+			busLogger.Warnf("router: path.Match pattern=%q event=%q: %v (skipping rule)",
+				rule.pattern, eventType, err)
+
+			continue
+		}
+
+		if ok {
 			return rule.transports
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/config"
@@ -27,11 +28,6 @@ var eventTypePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 // busLogger is the package-wide logger.
 var busLogger = logx.Named("event")
 
-// errTxAsyncMutex indicates the caller combined WithTx and WithAsync,
-// which is contradictory: a transactional publish must complete inside
-// the caller's transaction window.
-var errTxAsyncMutex = errors.New("event: WithTx and WithAsync are mutually exclusive")
-
 // maxFrameBodyBytes caps the JSON-encoded payload size accepted by the
 // bus before encoding. Cross-process transports inherit this limit so a
 // hostile or misconfigured publisher cannot push arbitrarily large
@@ -48,11 +44,16 @@ const (
 
 // Bus is the framework's event Bus implementation. It wires routing,
 // per-transport delivery, async fan-in, and middleware composition.
+//
+// started / stopped are atomic so the publish hot path can check the
+// lifecycle state without taking b.mu. The mutex remains the
+// authoritative serialiser for state transitions (Start / Stop) and
+// for protecting the mutable pending / active maps.
 type Bus struct {
 	mu sync.Mutex
 
-	started bool
-	stopped bool
+	started atomic.Bool
+	stopped atomic.Bool
 
 	transports map[string]transport.Transport
 	router     *router
@@ -62,8 +63,9 @@ type Bus struct {
 	publishMW []middleware.PublishMiddleware
 	consumeMW []middleware.ConsumeMiddleware
 
-	pending []pendingSubscription
-	active  []activeSubscription
+	pending   []pendingSubscription
+	active    map[uint64]activeSubscription
+	nextSubID uint64
 
 	async     *asyncFanIn
 	errorSink event.ErrorSink
@@ -107,11 +109,14 @@ func NewBus(
 		publishMW:  publishMW,
 		consumeMW:  consumeMW,
 		errorSink:  sink,
+		active:     make(map[uint64]activeSubscription),
 	}
 	b.async = newAsyncFanIn(
 		cfg.EffectiveAsyncQueueSize(),
 		cfg.EffectiveAsyncWorkers(),
-		b.publishOne,
+		func(ctx context.Context, evt event.Event, opts []event.PublishOption) error {
+			return b.publishMany(ctx, []event.Event{evt}, opts)
+		},
 		b.reportAsyncError,
 	)
 
@@ -125,7 +130,7 @@ func NewBus(
 // goroutines.
 func (b *Bus) Start(ctx context.Context) error {
 	b.mu.Lock()
-	if b.started {
+	if b.started.Load() {
 		b.mu.Unlock()
 
 		return event.ErrBusAlreadyStarted
@@ -172,7 +177,7 @@ func (b *Bus) Start(ctx context.Context) error {
 	b.mu.Lock()
 	pending := b.pending
 	b.pending = nil
-	b.started = true
+	b.started.Store(true)
 	b.mu.Unlock()
 
 	for _, p := range pending {
@@ -193,38 +198,40 @@ func (b *Bus) Start(ctx context.Context) error {
 // Stop drains async work, unsubscribes all active subscriptions, and
 // stops every transport. Idempotent; no-ops if Start never completed.
 func (b *Bus) Stop(ctx context.Context) error {
-	b.mu.Lock()
-	if b.stopped {
-		b.mu.Unlock()
-
+	if !b.stopped.CompareAndSwap(false, true) {
 		return nil
 	}
 
-	b.stopped = true
-	wasStarted := b.started
+	b.mu.Lock()
+	wasStarted := b.started.Load()
 	active := b.active
 	b.active = nil
 	b.mu.Unlock()
 
-	if wasStarted {
-		if err := b.async.shutdown(ctx); err != nil {
-			busLogger.Warnf("async shutdown timed out: %v", err)
-		}
+	if !wasStarted {
+		return nil
+	}
 
-		for _, sub := range active {
-			for _, u := range sub.unsubs {
-				u()
-			}
-		}
+	var errs []error
+	if err := b.async.shutdown(ctx); err != nil {
+		busLogger.Warnf("async shutdown timed out: %v", err)
+		errs = append(errs, fmt.Errorf("async shutdown: %w", err))
+	}
 
-		for _, t := range b.transports {
-			if err := t.Stop(ctx); err != nil {
-				busLogger.Warnf("transport %s stop: %v", t.Name(), err)
-			}
+	for _, sub := range active {
+		for _, u := range sub.unsubs {
+			u()
 		}
 	}
 
-	return nil
+	for _, t := range b.transports {
+		if err := t.Stop(ctx); err != nil {
+			busLogger.Warnf("transport %s stop: %v", t.Name(), err)
+			errs = append(errs, fmt.Errorf("transport %s: %w", t.Name(), err))
+		}
+	}
+
+	return errors.Join(errs...)
 }
 
 // Publish implements event.Bus.
@@ -244,28 +251,35 @@ func (b *Bus) PublishBatch(ctx context.Context, evts []event.Event, opts ...even
 func (b *Bus) Subscribe(eventType string, h event.Handler, opts ...event.SubscribeOption) (event.Unsubscribe, error) {
 	cfg := event.ApplySubscribeOptions(opts)
 
+	if b.started.Load() {
+		return b.subscribeNow(eventType, h, cfg)
+	}
+
 	b.mu.Lock()
-	if !b.started {
-		idx := len(b.pending)
-		b.pending = append(b.pending, pendingSubscription{
-			eventType: eventType,
-			handler:   h,
-			cfg:       cfg,
-		})
+	// Re-check under the lock: Start may have flipped started between
+	// the atomic load above and acquiring the mutex.
+	if b.started.Load() {
 		b.mu.Unlock()
 
-		return func() {
-			b.mu.Lock()
-			defer b.mu.Unlock()
-
-			if idx < len(b.pending) {
-				b.pending[idx].canceled = true
-			}
-		}, nil
+		return b.subscribeNow(eventType, h, cfg)
 	}
+
+	idx := len(b.pending)
+	b.pending = append(b.pending, pendingSubscription{
+		eventType: eventType,
+		handler:   h,
+		cfg:       cfg,
+	})
 	b.mu.Unlock()
 
-	return b.subscribeNow(eventType, h, cfg)
+	return func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+
+		if idx < len(b.pending) {
+			b.pending[idx].canceled = true
+		}
+	}, nil
 }
 
 func (b *Bus) subscribeNow(eventType string, h event.Handler, cfg event.SubscribeConfig) (event.Unsubscribe, error) {
@@ -274,20 +288,40 @@ func (b *Bus) subscribeNow(eventType string, h event.Handler, cfg event.Subscrib
 		return nil, event.ErrNoRouteMatched
 	}
 
-	// Synthesize a per-subscription group when the caller did not
-	// supply one and any AtLeastOnce transport is in the route. This
-	// ensures the Inbox middleware's dedupe key is scoped to this
-	// subscription rather than shared across all anonymous consumers.
-	effectiveGroup := cfg.Group
-	if effectiveGroup == "" {
-		for _, t := range transports {
-			if t.Capabilities().AtLeastOnce {
-				effectiveGroup = "vef:anon:" + newEventID()
-
-				break
-			}
+	// Filter publish-only transports (e.g. transactional outbox) so the
+	// bus does not attempt to subscribe on them. Subscribers must attach
+	// to the downstream sink transport directly; the outbox relay is
+	// what forwards records to that sink at delivery time.
+	//
+	// router.Resolve hands back the rule's internal slice — must allocate
+	// a fresh slice here so filtering does not corrupt the route compiled
+	// at start-up.
+	subscribable := make([]transport.Transport, 0, len(transports))
+	for _, t := range transports {
+		if !t.Capabilities().PublishOnly {
+			subscribable = append(subscribable, t)
 		}
 	}
+
+	if len(subscribable) == 0 {
+		return nil, fmt.Errorf("%w: %q resolves only to publish-only transports", event.ErrNoRouteMatched, eventType)
+	}
+
+	transports = subscribable
+
+	// At-least-once transports rely on a stable consumer group: it is
+	// the Inbox dedupe key and the Redis Streams XGROUP name. Auto-
+	// synthesizing one would reset Redis Streams position on each
+	// restart and detach historical dedupe records from new ones.
+	// Force callers to pick a meaningful name.
+	for _, t := range transports {
+		if t.Capabilities().AtLeastOnce && cfg.Group == "" {
+			return nil, fmt.Errorf("%w (event=%q, transport=%s)",
+				event.ErrGroupRequired, eventType, t.Name())
+		}
+	}
+
+	effectiveGroup := cfg.Group
 
 	unsubs := make([]transport.Unsubscribe, 0, len(transports))
 	for _, t := range transports {
@@ -309,13 +343,23 @@ func (b *Bus) subscribeNow(eventType string, h event.Handler, cfg event.Subscrib
 	}
 
 	b.mu.Lock()
-	b.active = append(b.active, activeSubscription{unsubs: unsubs})
+	subID := b.nextSubID
+	b.nextSubID++
+	b.active[subID] = activeSubscription{unsubs: unsubs}
 	b.mu.Unlock()
 
+	var once sync.Once
+
 	return func() {
-		for _, u := range unsubs {
-			u()
-		}
+		once.Do(func() {
+			for _, u := range unsubs {
+				u()
+			}
+
+			b.mu.Lock()
+			delete(b.active, subID)
+			b.mu.Unlock()
+		})
 	}, nil
 }
 
@@ -341,15 +385,11 @@ func (b *Bus) publishMany(ctx context.Context, evts []event.Event, opts []event.
 		return nil
 	}
 
-	cfg := event.ApplyPublishOptions(opts)
-
-	b.mu.Lock()
-	if !b.started {
-		b.mu.Unlock()
-
+	if !b.started.Load() {
 		return event.ErrBusNotStarted
 	}
-	b.mu.Unlock()
+
+	cfg := event.ApplyPublishOptions(opts)
 
 	if cfg.Async {
 		return b.publishAsync(ctx, evts, opts, cfg)
@@ -373,19 +413,22 @@ func (b *Bus) publishMany(ctx context.Context, evts []event.Event, opts []event.
 // publishAsync enqueues each event onto the async fan-in, falling back
 // to a synchronous publish (with WithAsync stripped) when the queue is
 // full so security-critical events are not silently dropped under load.
+// The detached context survives request cancellation so an enqueued
+// publish is not lost when the originating request returns.
 func (b *Bus) publishAsync(ctx context.Context, evts []event.Event, opts []event.PublishOption, cfg event.PublishConfig) error {
 	if cfg.Tx != nil {
-		return errTxAsyncMutex
+		return event.ErrTxAsyncMutex
 	}
 
-	for _, evt := range evts {
-		detached := context.WithoutCancel(ctx)
+	syncOpts := stripAsyncOption(opts)
+	detached := context.WithoutCancel(ctx)
 
-		if b.async.Enqueue(asyncJob{ctx: detached, evt: evt, opts: opts}) {
+	for _, evt := range evts {
+		if b.async.Enqueue(asyncJob{ctx: detached, evt: evt, opts: syncOpts}) {
 			continue
 		}
 
-		if err := b.publishSync(detached, evt, stripAsyncOption(opts)); err != nil {
+		if err := b.publishMany(detached, []event.Event{evt}, syncOpts); err != nil {
 			b.reportAsyncError(fmt.Errorf("%w: fallback sync publish: %w", event.ErrAsyncQueueFull, err),
 				event.Envelope{Type: evt.EventType()})
 		}
@@ -403,17 +446,27 @@ type pendingBucket struct {
 
 // buildBuckets validates and encodes each event, applies publish
 // middleware, resolves routing, then groups the resulting frames by
-// destination transport.
+// destination transport. The publish-middleware chain is built once
+// per batch and the base handler captures the post-middleware envelope
+// into a shared slot — n events trigger one chain build, not n.
 func (b *Bus) buildBuckets(ctx context.Context, evts []event.Event, cfg event.PublishConfig) (map[string]*pendingBucket, error) {
 	buckets := make(map[string]*pendingBucket)
+
+	var processed event.Envelope
+
+	runMW := middleware.ChainPublish(b.publishMW, func(_ context.Context, e *event.Envelope) error {
+		processed = *e
+
+		return nil
+	})
 
 	for _, evt := range evts {
 		if !eventTypePattern.MatchString(evt.EventType()) {
 			return nil, fmt.Errorf("%w: %q", event.ErrInvalidEventType, evt.EventType())
 		}
 
-		processed, err := b.runPublishMiddleware(ctx, b.buildEnvelope(ctx, evt, cfg))
-		if err != nil {
+		env := b.buildEnvelope(ctx, evt, cfg)
+		if err := runMW(ctx, &env); err != nil {
 			return nil, err
 		}
 
@@ -448,25 +501,6 @@ func (b *Bus) buildBuckets(ctx context.Context, evts []event.Event, cfg event.Pu
 	}
 
 	return buckets, nil
-}
-
-// runPublishMiddleware runs the publish-side middleware chain and
-// returns the resulting envelope. The middleware may mutate Headers
-// (e.g. tracing injects traceparent), so we capture the final state
-// rather than relying on the caller's pointer.
-func (b *Bus) runPublishMiddleware(ctx context.Context, env event.Envelope) (event.Envelope, error) {
-	var processed event.Envelope
-
-	run := middleware.ChainPublish(b.publishMW, func(_ context.Context, e *event.Envelope) error {
-		processed = *e
-
-		return nil
-	})
-	if err := run(ctx, &env); err != nil {
-		return event.Envelope{}, err
-	}
-
-	return processed, nil
 }
 
 // routeForPublish returns the transports for the supplied event type,
@@ -523,20 +557,6 @@ func (b *Bus) publishBucket(ctx context.Context, t transport.Transport, frames [
 	}
 
 	return nil
-}
-
-// publishOne is the async worker's entry point. Worker-driven calls
-// must not loop back through the async queue; the WithAsync flag is
-// stripped here as a defensive measure (the job ctor already drops it
-// when falling back synchronously from a full queue).
-func (b *Bus) publishOne(ctx context.Context, evt event.Event, opts ...event.PublishOption) error {
-	return b.publishSync(ctx, evt, stripAsyncOption(opts))
-}
-
-// publishSync is the synchronous publish path shared by the worker and
-// the async-queue-full fallback. It bypasses the async branch entirely.
-func (b *Bus) publishSync(ctx context.Context, evt event.Event, opts []event.PublishOption) error {
-	return b.publishMany(ctx, []event.Event{evt}, opts)
 }
 
 // stripAsyncOption returns opts with any WithAsync option removed. It
