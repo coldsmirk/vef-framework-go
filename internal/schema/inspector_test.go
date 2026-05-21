@@ -96,6 +96,20 @@ func (suite *InspectorTestSuite) runInspectorTests(dsConfig *config.DataSourceCo
 		suite.Contains(columnNames, "email", "Should have email column")
 	})
 
+	suite.Run("InspectViews", func() {
+		views, err := inspector.InspectViews(suite.ctx)
+		suite.NoError(err, "InspectViews should succeed")
+		suite.NotEmpty(views, "Views list should not be empty")
+
+		viewNames := make([]string, len(views))
+		for i, view := range views {
+			viewNames[i] = view.Name
+		}
+
+		suite.T().Logf("%s views found: %v", dbKind, viewNames)
+		suite.Contains(viewNames, "inspector_test_user_emails", "Should find inspector_test_user_emails view")
+	})
+
 	suite.Run("InspectTableNotFound", func() {
 		_, err := inspector.InspectTable(suite.ctx, "nonexistent_table_xyz")
 		suite.Error(err, "InspectTable should return error for nonexistent table")
@@ -104,7 +118,7 @@ func (suite *InspectorTestSuite) runInspectorTests(dsConfig *config.DataSourceCo
 }
 
 func (suite *InspectorTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKind) {
-	var usersSQL, postsSQL string
+	var usersSQL, postsSQL, viewSQL string
 
 	switch dbKind {
 	case config.Postgres:
@@ -124,6 +138,9 @@ func (suite *InspectorTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKin
 				status VARCHAR(20) DEFAULT 'draft',
 				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			)`
+		viewSQL = `
+			CREATE OR REPLACE VIEW inspector_test_user_emails AS
+			SELECT id, email FROM inspector_test_users`
 
 	case config.MySQL:
 		usersSQL = `
@@ -146,6 +163,9 @@ func (suite *InspectorTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKin
 				INDEX idx_user_id (user_id),
 				INDEX idx_status (status)
 			)`
+		viewSQL = `
+			CREATE OR REPLACE VIEW inspector_test_user_emails AS
+			SELECT id, email FROM inspector_test_users`
 
 	case config.SQLite:
 		usersSQL = `
@@ -164,6 +184,9 @@ func (suite *InspectorTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKin
 				status TEXT DEFAULT 'draft',
 				created_at TEXT DEFAULT CURRENT_TIMESTAMP
 			)`
+		viewSQL = `
+			CREATE VIEW IF NOT EXISTS inspector_test_user_emails AS
+			SELECT id, email FROM inspector_test_users`
 	}
 
 	_, err := db.ExecContext(suite.ctx, usersSQL)
@@ -171,9 +194,13 @@ func (suite *InspectorTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKin
 
 	_, err = db.ExecContext(suite.ctx, postsSQL)
 	suite.Require().NoError(err, "Creating inspector_test_posts table should succeed")
+
+	_, err = db.ExecContext(suite.ctx, viewSQL)
+	suite.Require().NoError(err, "Creating inspector_test_user_emails view should succeed")
 }
 
 func (suite *InspectorTestSuite) cleanupTestTables(db *sql.DB) {
+	_, _ = db.ExecContext(suite.ctx, "DROP VIEW IF EXISTS inspector_test_user_emails")
 	_, _ = db.ExecContext(suite.ctx, "DROP TABLE IF EXISTS inspector_test_posts")
 	_, _ = db.ExecContext(suite.ctx, "DROP TABLE IF EXISTS inspector_test_users")
 }

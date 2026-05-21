@@ -263,11 +263,10 @@ func (s *DefaultService) ListViews(ctx context.Context) ([]schema.View, error) {
 	result := make([]schema.View, len(views))
 	for i, v := range views {
 		view := schema.View{
-			Name:         v.Name,
-			Definition:   v.Def,
-			Materialized: v.Materialized(),
-			Columns:      extractColumnNames(v.Columns),
-			Comment:      extractComment(v.Attrs),
+			Name:       v.Name,
+			Definition: v.Def,
+			Columns:    extractColumnNames(v.Columns),
+			Comment:    extractComment(v.Attrs),
 		}
 		if v.Schema != nil {
 			view.Schema = v.Schema.Name
@@ -284,46 +283,6 @@ func extractColumnNames(columns []*as.Column) []string {
 	names := make([]string, len(columns))
 	for i, col := range columns {
 		names[i] = col.Name
-	}
-
-	return names
-}
-
-// ListTriggers returns all triggers in the current database/schema.
-func (s *DefaultService) ListTriggers(ctx context.Context) ([]schema.Trigger, error) {
-	triggers, err := s.inspector.InspectTriggers(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to inspect triggers: %w", err)
-	}
-
-	result := make([]schema.Trigger, len(triggers))
-	for i, t := range triggers {
-		trigger := schema.Trigger{
-			Name:       t.Name,
-			ActionTime: string(t.ActionTime),
-			ForEachRow: t.For == as.TriggerForRow,
-			Body:       t.Body,
-			Events:     extractEventNames(t.Events),
-		}
-		if t.Table != nil {
-			trigger.Table = t.Table.Name
-		}
-
-		if t.View != nil {
-			trigger.View = t.View.Name
-		}
-
-		result[i] = trigger
-	}
-
-	return result, nil
-}
-
-// extractEventNames extracts event names from a slice of trigger events.
-func extractEventNames(events []as.TriggerEvent) []string {
-	names := make([]string, len(events))
-	for i, event := range events {
-		names[i] = event.Name
 	}
 
 	return names

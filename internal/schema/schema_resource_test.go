@@ -214,10 +214,40 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 
 		s.T().Logf("%s validation error: code=%d, message=%s", dbKind, body.Code, body.Message)
 	})
+
+	s.Run("ListViews", func() {
+		resp := s.MakeRPCRequestWithToken(api.Request{
+			Identifier: api.Identifier{
+				Resource: "sys/schema",
+				Action:   "list_views",
+				Version:  "v1",
+			},
+		}, token)
+
+		s.Equal(http.StatusOK, resp.StatusCode, "Should return 200 OK")
+
+		body := s.ReadResult(resp)
+		s.True(body.IsOk(), "list_views should succeed")
+
+		views := s.ReadDataAsSlice(body.Data)
+
+		viewNames := make([]string, 0, len(views))
+		for _, view := range views {
+			viewMap, ok := view.(map[string]any)
+			if ok {
+				if name, exists := viewMap["name"]; exists {
+					viewNames = append(viewNames, name.(string))
+				}
+			}
+		}
+
+		s.T().Logf("%s views found via API: %v", dbKind, viewNames)
+		s.Contains(viewNames, "resource_test_order_view", "Should find resource_test_order_view")
+	})
 }
 
 func (s *SchemaResourceTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKind) {
-	var ordersSQL, itemsSQL string
+	var ordersSQL, itemsSQL, viewSQL string
 
 	switch dbKind {
 	case config.Postgres:
@@ -238,6 +268,9 @@ func (s *SchemaResourceTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKi
 				unit_price DECIMAL(10, 2) NOT NULL,
 				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			)`
+		viewSQL = `
+			CREATE OR REPLACE VIEW resource_test_order_view AS
+			SELECT id, customer_name, total_amount FROM resource_test_orders`
 
 	case config.MySQL:
 		ordersSQL = `
@@ -259,6 +292,9 @@ func (s *SchemaResourceTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKi
 				CONSTRAINT fk_items_order FOREIGN KEY (order_id) REFERENCES resource_test_orders(id) ON DELETE CASCADE,
 				INDEX idx_items_order (order_id)
 			)`
+		viewSQL = `
+			CREATE OR REPLACE VIEW resource_test_order_view AS
+			SELECT id, customer_name, total_amount FROM resource_test_orders`
 
 	case config.SQLite:
 		ordersSQL = `
@@ -278,6 +314,9 @@ func (s *SchemaResourceTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKi
 				unit_price REAL NOT NULL,
 				created_at TEXT DEFAULT CURRENT_TIMESTAMP
 			)`
+		viewSQL = `
+			CREATE VIEW IF NOT EXISTS resource_test_order_view AS
+			SELECT id, customer_name, total_amount FROM resource_test_orders`
 	}
 
 	_, err := db.ExecContext(s.ctx, ordersSQL)
@@ -285,9 +324,13 @@ func (s *SchemaResourceTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKi
 
 	_, err = db.ExecContext(s.ctx, itemsSQL)
 	s.Require().NoError(err, "Creating resource_test_items table should succeed")
+
+	_, err = db.ExecContext(s.ctx, viewSQL)
+	s.Require().NoError(err, "Creating resource_test_order_view view should succeed")
 }
 
 func (s *SchemaResourceTestSuite) cleanupTestTables(db *sql.DB, _ config.DBKind) {
+	_, _ = db.ExecContext(s.ctx, "DROP VIEW IF EXISTS resource_test_order_view")
 	_, _ = db.ExecContext(s.ctx, "DROP TABLE IF EXISTS resource_test_items")
 	_, _ = db.ExecContext(s.ctx, "DROP TABLE IF EXISTS resource_test_orders")
 }

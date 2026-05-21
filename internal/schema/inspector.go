@@ -24,14 +24,14 @@ type Inspector interface {
 	InspectTable(ctx context.Context, name string) (*as.Table, error)
 	// InspectViews inspects all views in the current database schema.
 	InspectViews(ctx context.Context) ([]*as.View, error)
-	// InspectTriggers inspects all triggers in the current database schema.
-	InspectTriggers(ctx context.Context) ([]*as.Trigger, error)
 }
 
 var ErrUnsupportedDBKind = errors.New("unsupported database type")
 
 type AtlasInspector struct {
 	inspector as.Inspector
+	db        *sql.DB
+	kind      config.DBKind
 	schema    string
 }
 
@@ -67,6 +67,8 @@ func NewInspector(db *sql.DB, kind config.DBKind, schemaName string) (Inspector,
 
 	return &AtlasInspector{
 		inspector: inspector,
+		db:        db,
+		kind:      kind,
 		schema:    schema,
 	}, nil
 }
@@ -93,36 +95,222 @@ func (i *AtlasInspector) InspectTable(ctx context.Context, name string) (*as.Tab
 }
 
 func (i *AtlasInspector) InspectViews(ctx context.Context) ([]*as.View, error) {
-	schema, err := i.inspector.InspectSchema(ctx, i.schema, &as.InspectOptions{
-		Mode: as.InspectViews,
-	})
-	if err != nil {
-		return nil, err
+	switch i.kind {
+	case config.Postgres:
+		return i.inspectPostgresViews(ctx)
+	case config.MySQL:
+		return i.inspectMySQLViews(ctx)
+	case config.SQLite:
+		return i.inspectSQLiteViews(ctx)
+	default:
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedDBKind, i.kind)
 	}
-
-	return schema.Views, nil
 }
 
-func (i *AtlasInspector) InspectTriggers(ctx context.Context) ([]*as.Trigger, error) {
-	// Triggers are attached to tables and views, so we need to inspect both
-	schema, err := i.inspector.InspectSchema(ctx, i.schema, &as.InspectOptions{
-		Mode: as.InspectTables | as.InspectViews | as.InspectTriggers,
-	})
+func (i *AtlasInspector) inspectPostgresViews(ctx context.Context) ([]*as.View, error) {
+	rows, err := i.db.QueryContext(ctx, `
+SELECT
+	v.table_schema,
+	v.table_name,
+	COALESCE(v.view_definition, ''),
+	COALESCE(pg_catalog.obj_description(c.oid, 'pg_class'), '')
+FROM
+	information_schema.views AS v
+	JOIN pg_catalog.pg_namespace AS n ON n.nspname = v.table_schema
+	JOIN pg_catalog.pg_class AS c ON c.relnamespace = n.oid AND c.relname = v.table_name
+WHERE
+	v.table_schema = $1
+ORDER BY
+	v.table_name`, i.schema)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query postgres views: %w", err)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	var views []*as.View
+	for rows.Next() {
+		var schemaName, name, definition, comment string
+		if err := rows.Scan(&schemaName, &name, &definition, &comment); err != nil {
+			return nil, fmt.Errorf("scan postgres view: %w", err)
+		}
+
+		columns, err := i.inspectPostgresViewColumns(ctx, schemaName, name)
+		if err != nil {
+			return nil, err
+		}
+
+		views = append(views, newAtlasView(schemaName, name, definition, comment, columns))
 	}
 
-	var triggers []*as.Trigger
-
-	// Collect triggers from tables
-	for _, t := range schema.Tables {
-		triggers = append(triggers, t.Triggers...)
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate postgres views: %w", err)
 	}
 
-	// Collect triggers from views
-	for _, v := range schema.Views {
-		triggers = append(triggers, v.Triggers...)
+	return views, nil
+}
+
+func (i *AtlasInspector) inspectPostgresViewColumns(ctx context.Context, schemaName, viewName string) ([]string, error) {
+	return queryColumnNames(ctx, i.db, `
+SELECT
+	column_name
+FROM
+	information_schema.columns
+WHERE
+	table_schema = $1
+	AND table_name = $2
+ORDER BY
+	ordinal_position`, schemaName, viewName)
+}
+
+func (i *AtlasInspector) inspectMySQLViews(ctx context.Context) ([]*as.View, error) {
+	rows, err := i.db.QueryContext(ctx, `
+SELECT
+	v.table_schema,
+	v.table_name,
+	COALESCE(v.view_definition, ''),
+	COALESCE(t.table_comment, '')
+FROM
+	information_schema.views AS v
+	LEFT JOIN information_schema.tables AS t
+		ON t.table_schema = v.table_schema AND t.table_name = v.table_name
+WHERE
+	v.table_schema = DATABASE()
+ORDER BY
+	v.table_name`)
+	if err != nil {
+		return nil, fmt.Errorf("query mysql views: %w", err)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	var views []*as.View
+	for rows.Next() {
+		var schemaName, name, definition, comment string
+		if err := rows.Scan(&schemaName, &name, &definition, &comment); err != nil {
+			return nil, fmt.Errorf("scan mysql view: %w", err)
+		}
+
+		columns, err := i.inspectMySQLViewColumns(ctx, schemaName, name)
+		if err != nil {
+			return nil, err
+		}
+
+		views = append(views, newAtlasView(schemaName, name, definition, comment, columns))
 	}
 
-	return triggers, nil
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate mysql views: %w", err)
+	}
+
+	return views, nil
+}
+
+func (i *AtlasInspector) inspectMySQLViewColumns(ctx context.Context, schemaName, viewName string) ([]string, error) {
+	return queryColumnNames(ctx, i.db, `
+SELECT
+	column_name
+FROM
+	information_schema.columns
+WHERE
+	table_schema = ?
+	AND table_name = ?
+ORDER BY
+	ordinal_position`, schemaName, viewName)
+}
+
+func (i *AtlasInspector) inspectSQLiteViews(ctx context.Context) ([]*as.View, error) {
+	rows, err := i.db.QueryContext(ctx, `
+SELECT
+	name,
+	COALESCE(sql, '')
+FROM
+	sqlite_schema
+WHERE
+	type = 'view'
+	AND name NOT LIKE 'sqlite_%'
+ORDER BY
+	name`)
+	if err != nil {
+		return nil, fmt.Errorf("query sqlite views: %w", err)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	var views []*as.View
+	for rows.Next() {
+		var name, definition string
+		if err := rows.Scan(&name, &definition); err != nil {
+			return nil, fmt.Errorf("scan sqlite view: %w", err)
+		}
+
+		columns, err := i.inspectSQLiteViewColumns(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+
+		views = append(views, newAtlasView(i.schema, name, definition, "", columns))
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate sqlite views: %w", err)
+	}
+
+	return views, nil
+}
+
+func (i *AtlasInspector) inspectSQLiteViewColumns(ctx context.Context, viewName string) ([]string, error) {
+	return queryColumnNames(ctx, i.db, `
+SELECT
+	name
+FROM
+	pragma_table_info(?)
+ORDER BY
+	cid`, viewName)
+}
+
+func queryColumnNames(ctx context.Context, db *sql.DB, query string, args ...any) ([]string, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query view columns: %w", err)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	var columns []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scan view column: %w", err)
+		}
+
+		columns = append(columns, name)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate view columns: %w", err)
+	}
+
+	return columns, nil
+}
+
+func newAtlasView(schemaName, name, definition, comment string, columns []string) *as.View {
+	view := as.NewView(name, definition)
+	if schemaName != "" {
+		view.Schema = as.New(schemaName)
+	}
+
+	if comment != "" {
+		view.Attrs = append(view.Attrs, &as.Comment{Text: comment})
+	}
+
+	for _, column := range columns {
+		view.Columns = append(view.Columns, as.NewColumn(column))
+	}
+
+	return view
 }

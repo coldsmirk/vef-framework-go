@@ -69,23 +69,11 @@ type Check struct {
 
 // View represents database view information.
 type View struct {
-	Name         string   `json:"name"`
-	Schema       string   `json:"schema,omitempty"`
-	Definition   string   `json:"definition"`
-	Comment      string   `json:"comment,omitempty"`
-	Columns      []string `json:"columns,omitempty"`
-	Materialized bool     `json:"materialized,omitempty"`
-}
-
-// Trigger represents database trigger information.
-type Trigger struct {
 	Name       string   `json:"name"`
-	Table      string   `json:"table,omitempty"`
-	View       string   `json:"view,omitempty"`
-	ActionTime string   `json:"actionTime"`
-	Events     []string `json:"events"`
-	ForEachRow bool     `json:"forEachRow"`
-	Body       string   `json:"body"`
+	Schema     string   `json:"schema,omitempty"`
+	Definition string   `json:"definition"`
+	Comment    string   `json:"comment,omitempty"`
+	Columns    []string `json:"columns,omitempty"`
 }
 
 // Service defines the interface for read-only database schema inspection.
@@ -96,6 +84,4 @@ type Service interface {
 	GetTableSchema(ctx context.Context, name string) (*TableSchema, error)
 	// ListViews returns all views in the current database/schema.
 	ListViews(ctx context.Context) ([]View, error)
-	// ListTriggers returns all triggers in the current database/schema.
-	ListTriggers(ctx context.Context) ([]Trigger, error)
 }

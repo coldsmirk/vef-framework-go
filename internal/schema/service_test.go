@@ -162,6 +162,20 @@ func (suite *ServiceTestSuite) runServiceTests(dsConfig *config.DataSourceConfig
 		}
 	})
 
+	suite.Run("ListViews", func() {
+		views, err := svc.ListViews(suite.ctx)
+		suite.NoError(err, "ListViews should succeed")
+		suite.NotEmpty(views, "Views list should not be empty")
+
+		viewNames := make([]string, len(views))
+		for i, view := range views {
+			viewNames[i] = view.Name
+		}
+
+		suite.T().Logf("%s views: %v", dbKind, viewNames)
+		suite.Contains(viewNames, "service_test_product_view", "Should find service_test_product_view")
+	})
+
 	suite.Run("GetTableSchemaNotFound", func() {
 		_, err := svc.GetTableSchema(suite.ctx, "nonexistent_table_xyz")
 		suite.Error(err, "GetTableSchema should return error for nonexistent table")
@@ -170,8 +184,8 @@ func (suite *ServiceTestSuite) runServiceTests(dsConfig *config.DataSourceConfig
 
 func (suite *ServiceTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKind) {
 	var (
-		categoriesSQL, productsSQL string
-		additionalSQL              []string
+		categoriesSQL, productsSQL, viewSQL string
+		additionalSQL                       []string
 	)
 
 	switch dbKind {
@@ -199,6 +213,9 @@ func (suite *ServiceTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKind)
 			"CREATE INDEX IF NOT EXISTS idx_products_category ON service_test_products(category_id)",
 			"CREATE INDEX IF NOT EXISTS idx_products_price ON service_test_products(price)",
 		}
+		viewSQL = `
+			CREATE OR REPLACE VIEW service_test_product_view AS
+			SELECT id, sku, name FROM service_test_products`
 
 	case config.MySQL:
 		categoriesSQL = `
@@ -223,6 +240,9 @@ func (suite *ServiceTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKind)
 				INDEX idx_products_category (category_id),
 				INDEX idx_products_price (price)
 			)`
+		viewSQL = `
+			CREATE OR REPLACE VIEW service_test_product_view AS
+			SELECT id, sku, name FROM service_test_products`
 
 	case config.SQLite:
 		categoriesSQL = `
@@ -247,6 +267,9 @@ func (suite *ServiceTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKind)
 			"CREATE INDEX IF NOT EXISTS idx_products_category ON service_test_products(category_id)",
 			"CREATE INDEX IF NOT EXISTS idx_products_price ON service_test_products(price)",
 		}
+		viewSQL = `
+			CREATE VIEW IF NOT EXISTS service_test_product_view AS
+			SELECT id, sku, name FROM service_test_products`
 	}
 
 	_, err := db.ExecContext(suite.ctx, categoriesSQL)
@@ -258,9 +281,13 @@ func (suite *ServiceTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKind)
 	for _, sql := range additionalSQL {
 		_, _ = db.ExecContext(suite.ctx, sql)
 	}
+
+	_, err = db.ExecContext(suite.ctx, viewSQL)
+	suite.Require().NoError(err, "Creating service_test_product_view view should succeed")
 }
 
 func (suite *ServiceTestSuite) cleanupTestTables(db *sql.DB) {
+	_, _ = db.ExecContext(suite.ctx, "DROP VIEW IF EXISTS service_test_product_view")
 	_, _ = db.ExecContext(suite.ctx, "DROP TABLE IF EXISTS service_test_products")
 	_, _ = db.ExecContext(suite.ctx, "DROP TABLE IF EXISTS service_test_categories")
 }

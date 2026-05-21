@@ -21,7 +21,6 @@ func NewResource(service schema.Service) api.Resource {
 				api.OperationSpec{Action: "list_tables", RateLimit: &api.RateLimitConfig{Max: 60}},
 				api.OperationSpec{Action: "get_table_schema", RateLimit: &api.RateLimitConfig{Max: 60}},
 				api.OperationSpec{Action: "list_views", RateLimit: &api.RateLimitConfig{Max: 60}},
-				api.OperationSpec{Action: "list_triggers", RateLimit: &api.RateLimitConfig{Max: 60}},
 			),
 		),
 	}
@@ -76,14 +75,4 @@ func (r *Resource) ListViews(ctx fiber.Ctx) error {
 	}
 
 	return result.Ok(views).Response(ctx)
-}
-
-// ListTriggers returns all triggers in the current database/schema.
-func (r *Resource) ListTriggers(ctx fiber.Ctx) error {
-	triggers, err := r.service.ListTriggers(ctx.Context())
-	if err != nil {
-		return err
-	}
-
-	return result.Ok(triggers).Response(ctx)
 }
