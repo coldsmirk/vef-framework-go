@@ -3,7 +3,6 @@ package event
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 
 	"github.com/coldsmirk/vef-framework-go/event"
 )
@@ -20,24 +19,26 @@ type asyncJob struct {
 // asyncFanIn drains async publishes through a worker pool. The worker
 // count and queue capacity come from config.EventConfig.
 //
-// Shutdown semantics: shutdown() flips the closed flag (so Enqueue
-// stops accepting), then closes the queue so workers drain remaining
-// jobs in FIFO order before exiting. This avoids the previous race
-// where worker goroutines could observe both stop and queue ready and
-// silently drop already-enqueued jobs.
+// Shutdown semantics: shutdown() acquires mu, flips closed, closes the
+// queue, and releases mu. Enqueue holds mu while inspecting closed and
+// performing the non-blocking send, so the queue cannot be closed
+// between the two operations. This is the classic "guard the close +
+// send window with a single lock" pattern; the alternative atomic flag
+// has an unavoidable check-then-send race.
 type asyncFanIn struct {
 	queue   chan asyncJob
 	workers int
-	publish func(ctx context.Context, evt event.Event, opts ...event.PublishOption) error
+	publish func(ctx context.Context, evt event.Event, opts []event.PublishOption) error
 	sink    event.ErrorSink
 	wg      sync.WaitGroup
-	closed  atomic.Bool
-	closeMu sync.Mutex
+
+	mu     sync.Mutex
+	closed bool
 }
 
 func newAsyncFanIn(
 	queueSize, workers int,
-	publish func(ctx context.Context, evt event.Event, opts ...event.PublishOption) error,
+	publish func(ctx context.Context, evt event.Event, opts []event.PublishOption) error,
 	sink event.ErrorSink,
 ) *asyncFanIn {
 	if queueSize <= 0 {
@@ -67,7 +68,7 @@ func (a *asyncFanIn) worker() {
 	defer a.wg.Done()
 
 	for job := range a.queue {
-		if err := a.publish(job.ctx, job.evt, job.opts...); err != nil && a.sink != nil {
+		if err := a.publish(job.ctx, job.evt, job.opts); err != nil && a.sink != nil {
 			a.sink(err, event.Envelope{Type: job.evt.EventType()})
 		}
 	}
@@ -77,7 +78,10 @@ func (a *asyncFanIn) worker() {
 // false when the queue is full or the fan-in has been shut down; the
 // caller is expected to report the drop via ErrorSink.
 func (a *asyncFanIn) Enqueue(job asyncJob) bool {
-	if a.closed.Load() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.closed {
 		return false
 	}
 
@@ -93,15 +97,16 @@ func (a *asyncFanIn) Enqueue(job asyncJob) bool {
 // the buffered backlog, and waits for all workers to exit. Honoring
 // ctx allows the caller to bound graceful shutdown.
 func (a *asyncFanIn) shutdown(ctx context.Context) error {
-	a.closeMu.Lock()
-	if !a.closed.CompareAndSwap(false, true) {
-		a.closeMu.Unlock()
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
 
 		return nil
 	}
 
+	a.closed = true
 	close(a.queue)
-	a.closeMu.Unlock()
+	a.mu.Unlock()
 
 	done := make(chan struct{})
 	go func() {
