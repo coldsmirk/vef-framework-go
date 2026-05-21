@@ -6,7 +6,7 @@ type RedisConfig struct {
 	// framework provides a nil *redis.Client into the fx graph and skips the
 	// connection PING during start-up; downstream modules that ask for the
 	// client via `optional:"true"` therefore stay dormant. Set this to true
-	// only when the application actually depends on Redis (cache, redisstream
+	// only when the application actually depends on Redis (cache, redis_stream
 	// transport, nonce store, etc.).
 	Enabled  bool   `config:"enabled"`
 	Host     string `config:"host"`

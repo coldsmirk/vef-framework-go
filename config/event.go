@@ -34,7 +34,7 @@ type EventConfig struct {
 type EventTransportsConfig struct {
 	Memory      EventMemoryTransportConfig      `config:"memory"`
 	Outbox      EventOutboxTransportConfig      `config:"outbox"`
-	RedisStream EventRedisStreamTransportConfig `config:"redisstream"`
+	RedisStream EventRedisStreamTransportConfig `config:"redis_stream"`
 }
 
 // EventMemoryTransportConfig configures the in-process transport.

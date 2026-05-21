@@ -123,17 +123,17 @@ func bindOutboxSinkAndRelay(
 		sinkName = "memory"
 	}
 
-	// Sanity check: outbox sink="memory" while redisstream is enabled is
+	// Sanity check: outbox sink="memory" while redis_stream is enabled is
 	// usually a configuration oversight — the outbox writes records in
 	// the caller's transaction but the relay only dispatches them in-
 	// process, so cross-node subscribers never see them. Surface this
 	// explicitly so operators can correct the routing.
 	if sinkName == "memory" && eventCfg.Transports.RedisStream.Enabled {
 		outboxLogger.Warnf(
-			"outbox sink is 'memory' but redisstream transport is enabled; "+
+			"outbox sink is 'memory' but redis_stream transport is enabled; "+
 				"cross-process subscribers will not receive outbox events. "+
 				"Set vef.event.transports.outbox.sink = %q to dispatch across nodes.",
-			"redisstream")
+			"redis_stream")
 	}
 
 	var (

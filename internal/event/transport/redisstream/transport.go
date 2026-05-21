@@ -39,15 +39,15 @@ var eventTypePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
 // errFrameTooLarge wraps the per-message size check failure so callers
 // can detect it with errors.Is.
-var errFrameTooLarge = errors.New("redisstream: frame body exceeds size limit")
+var errFrameTooLarge = errors.New("redis_stream: frame body exceeds size limit")
 
 // errTransportNotStarted indicates Subscribe was called before Start
 // (or after Stop).
-var errTransportNotStarted = errors.New("redisstream: transport not started")
+var errTransportNotStarted = errors.New("redis_stream: transport not started")
 
 // errInvalidEventType is returned when an event type contains
 // characters outside the eventTypePattern allowlist.
-var errInvalidEventType = errors.New("redisstream: invalid event type")
+var errInvalidEventType = errors.New("redis_stream: invalid event type")
 
 // Transport implements transport.Transport over Redis Streams.
 type Transport struct {
@@ -117,7 +117,7 @@ func (t *Transport) Start(ctx context.Context) error {
 	if err := t.client.Ping(ctx).Err(); err != nil {
 		t.started.Store(false)
 
-		return fmt.Errorf("redisstream: ping: %w", err)
+		return fmt.Errorf("redis_stream: ping: %w", err)
 	}
 
 	t.wg.Add(1)
@@ -167,7 +167,7 @@ func (t *Transport) Publish(ctx context.Context, frames []transport.Frame) error
 
 		body, err := json.Marshal(frame)
 		if err != nil {
-			return fmt.Errorf("redisstream: encode frame %s: %w", frame.ID, err)
+			return fmt.Errorf("redis_stream: encode frame %s: %w", frame.ID, err)
 		}
 
 		if len(body) > maxFrameBytes {
@@ -185,7 +185,7 @@ func (t *Transport) Publish(ctx context.Context, frames []transport.Frame) error
 		}
 
 		if _, err := t.client.XAdd(ctx, args).Result(); err != nil {
-			return fmt.Errorf("redisstream: xadd %s: %w", frame.Type, err)
+			return fmt.Errorf("redis_stream: xadd %s: %w", frame.Type, err)
 		}
 	}
 
@@ -214,7 +214,7 @@ func (t *Transport) Subscribe(eventType, group string, fn transport.ConsumeFunc,
 	// some messages have been published still observes them.
 	if err := t.client.XGroupCreateMkStream(t.ctx, stream, group, t.cfg.EffectiveStartID()).Err(); err != nil &&
 		!isBusyGroup(err) {
-		return nil, fmt.Errorf("redisstream: create group %s on %s: %w", group, stream, err)
+		return nil, fmt.Errorf("redis_stream: create group %s on %s: %w", group, stream, err)
 	}
 
 	consumer := t.cfg.ConsumerID
@@ -293,7 +293,7 @@ func (t *Transport) consumerLoop(sub *subscription) {
 				return
 			}
 
-			t.logger.Warnf("redisstream: XREADGROUP on %s: %v", sub.stream, err)
+			t.logger.Warnf("redis_stream: XREADGROUP on %s: %v", sub.stream, err)
 			t.sleepOrStop(sub, time.Second)
 
 			continue
@@ -310,14 +310,14 @@ func (t *Transport) consumerLoop(sub *subscription) {
 func (t *Transport) deliver(ctx context.Context, sub *subscription, msg goredis.XMessage) {
 	rawFrame, ok := msg.Values["frame"].(string)
 	if !ok {
-		t.logger.Errorf("redisstream: frame missing or non-string on %s id=%s", sub.stream, msg.ID)
+		t.logger.Errorf("redis_stream: frame missing or non-string on %s id=%s", sub.stream, msg.ID)
 		_, _ = t.client.XAck(ctx, sub.stream, sub.group, msg.ID).Result()
 
 		return
 	}
 
 	if len(rawFrame) > maxFrameBytes {
-		t.logger.Errorf("redisstream: frame %s on %s exceeds %d bytes, dropping", msg.ID, sub.stream, maxFrameBytes)
+		t.logger.Errorf("redis_stream: frame %s on %s exceeds %d bytes, dropping", msg.ID, sub.stream, maxFrameBytes)
 		_, _ = t.client.XAck(ctx, sub.stream, sub.group, msg.ID).Result()
 
 		return
@@ -325,7 +325,7 @@ func (t *Transport) deliver(ctx context.Context, sub *subscription, msg goredis.
 
 	var frame transport.Frame
 	if err := json.Unmarshal([]byte(rawFrame), &frame); err != nil {
-		t.logger.Errorf("redisstream: decode frame %s on %s: %v", msg.ID, sub.stream, err)
+		t.logger.Errorf("redis_stream: decode frame %s on %s: %v", msg.ID, sub.stream, err)
 		_, _ = t.client.XAck(ctx, sub.stream, sub.group, msg.ID).Result()
 
 		return
@@ -333,13 +333,13 @@ func (t *Transport) deliver(ctx context.Context, sub *subscription, msg goredis.
 
 	delivery := &streamDelivery{frame: frame, attempt: 1, msgID: msg.ID}
 	if err := sub.fn(ctx, delivery); err != nil {
-		t.logger.Warnf("redisstream: handler returned error on %s id=%s: %v — leaving pending for retry", sub.stream, msg.ID, err)
+		t.logger.Warnf("redis_stream: handler returned error on %s id=%s: %v — leaving pending for retry", sub.stream, msg.ID, err)
 
 		return
 	}
 
 	if _, err := t.client.XAck(ctx, sub.stream, sub.group, msg.ID).Result(); err != nil {
-		t.logger.Warnf("redisstream: XACK %s id=%s: %v", sub.stream, msg.ID, err)
+		t.logger.Warnf("redis_stream: XACK %s id=%s: %v", sub.stream, msg.ID, err)
 	}
 }
 

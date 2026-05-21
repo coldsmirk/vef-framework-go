@@ -10,9 +10,9 @@ package redisstream
 import "time"
 
 // Name is the stable identifier used in routing configuration.
-const Name = "redisstream"
+const Name = "redis_stream"
 
-// Config configures a redisstream Transport instance.
+// Config configures a redis_stream Transport instance.
 type Config struct {
 	// StreamPrefix is prepended to event types to form the Redis
 	// Stream key. Defaults to "vef:events:".

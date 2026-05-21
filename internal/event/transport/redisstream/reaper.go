@@ -48,7 +48,7 @@ func (t *Transport) reapSub(sub *subscription) {
 		Count:  t.cfg.EffectiveClaimBatchSize(),
 	}).Result()
 	if err != nil {
-		t.logger.Warnf("redisstream reaper: xpending %s: %v", sub.stream, err)
+		t.logger.Warnf("redis_stream reaper: xpending %s: %v", sub.stream, err)
 
 		return
 	}
@@ -78,7 +78,7 @@ func (t *Transport) reapSub(sub *subscription) {
 		Messages: ids,
 	}).Result()
 	if err != nil {
-		t.logger.Warnf("redisstream reaper: xclaim %s: %v", sub.stream, err)
+		t.logger.Warnf("redis_stream reaper: xclaim %s: %v", sub.stream, err)
 
 		return
 	}

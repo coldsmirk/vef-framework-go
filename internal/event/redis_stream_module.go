@@ -12,18 +12,18 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 )
 
-var redisstreamLogger = logx.Named("event:redisstream")
+var redisStreamLogger = logx.Named("event:redis_stream")
 
 // RedisStreamTransportModule wires the cross-process Redis Streams
 // transport. Disabled by default; enable via
-// vef.event.transports.redisstream.enabled = true.
+// vef.event.transports.redis_stream.enabled = true.
 //
 // The *redis.Client dependency is optional so fx does not force the
 // redis module to construct (and connect) when the transport is off —
 // applications without redis configured can leave the module loaded
 // without paying the connection penalty.
 var RedisStreamTransportModule = fx.Module(
-	"vef:event:redisstream",
+	"vef:event:redis_stream",
 	fx.Provide(
 		fx.Annotate(
 			newRedisStreamTransport,
@@ -48,5 +48,5 @@ func newRedisStreamTransport(cfg *config.EventConfig, client *goredis.Client) tr
 		ConsumerID:    cfg.Transports.RedisStream.ConsumerID,
 	}
 
-	return redisstream.New(client, rsCfg, redisstreamLogger)
+	return redisstream.New(client, rsCfg, redisStreamLogger)
 }

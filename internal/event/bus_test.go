@@ -189,7 +189,7 @@ func TestBusPublishSubscribeRoundTrip(t *testing.T) {
 }
 
 func TestBusRequiresGroupForAtLeastOnceTransport(t *testing.T) {
-	atLeastOnce := newRecordingTransport("redisstream", transport.Capabilities{AtLeastOnce: true})
+	atLeastOnce := newRecordingTransport("redis_stream", transport.Capabilities{AtLeastOnce: true})
 
 	bus := newTestBus(t, []transport.Transport{atLeastOnce})
 

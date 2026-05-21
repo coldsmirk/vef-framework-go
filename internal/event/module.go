@@ -17,7 +17,7 @@ import (
 )
 
 // Module wires the Bus, registers the always-on memory transport, and
-// exposes fx groups for downstream modules (outbox, redisstream, inbox)
+// exposes fx groups for downstream modules (outbox, redis_stream, inbox)
 // to plug additional transports and middleware.
 var Module = fx.Module(
 	"vef:event",

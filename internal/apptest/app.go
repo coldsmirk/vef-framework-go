@@ -108,9 +108,9 @@ func coreOptions() []fx.Option {
 		event.OutboxModule,
 		// RedisStreamTransportModule is safe to load here because the
 		// default RedisConfig has Enabled=false, so redis.NewClient
-		// returns nil, the Ping hook short-circuits, and the redisstream
+		// returns nil, the Ping hook short-circuits, and the redis_stream
 		// constructor falls back to "no transport contributed". Tests
-		// that actually exercise redisstream provide an enabled config
+		// that actually exercise redis_stream provide an enabled config
 		// (see testx.NewRedisContainer).
 		event.RedisStreamTransportModule,
 		event.InboxModule,

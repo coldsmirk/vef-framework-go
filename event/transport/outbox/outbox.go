@@ -5,7 +5,7 @@
 // transaction become visible to subscribers iff the transaction
 // commits. A background relay claims pending records, dispatches them
 // to a downstream sink Transport (typically memory for single-node or
-// redisstream for cross-process), and marks the record completed,
+// redis_stream for cross-process), and marks the record completed,
 // failed, or dead.
 //
 // Subscription model. The outbox is publish-only: it persists frames
@@ -13,9 +13,9 @@
 // transport directly; the bus filters publish-only transports out of
 // the Subscribe path so fan-out routes do not double-register handlers.
 // Set vef.event.transports.outbox.sink to the transport that should
-// receive the relayed frames (memory for single-node, redisstream for
+// receive the relayed frames (memory for single-node, redis_stream for
 // cross-node — the framework warns at start-up when "memory" is paired
-// with an enabled redisstream module).
+// with an enabled redis_stream module).
 package outbox
 
 import (
