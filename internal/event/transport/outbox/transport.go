@@ -74,7 +74,10 @@ func (t *Transport) Sink() transport.Transport {
 func (*Transport) Name() string { return puboutbox.Name }
 
 // Capabilities reports outbox semantics: durable, transactional,
-// ordered per-key, and at-least-once.
+// ordered per-key, and at-least-once. PublishOnly is true because the
+// outbox itself does not deliver to subscribers — the relay forwards
+// claimed records to the sink transport, and subscribers must attach
+// to the sink directly.
 func (*Transport) Capabilities() transport.Capabilities {
 	return transport.Capabilities{
 		Durable:        true,
@@ -82,6 +85,7 @@ func (*Transport) Capabilities() transport.Capabilities {
 		Ordered:        true,
 		AtLeastOnce:    true,
 		SupportsGroups: false,
+		PublishOnly:    true,
 	}
 }
 
@@ -145,16 +149,14 @@ func rejectDLQReentry(frames []transport.Frame) error {
 	return nil
 }
 
-// Subscribe forwards the registration to the sink Transport, so the
-// outbox layer remains a transparent persistence shim from the
-// consumer's perspective.
-func (t *Transport) Subscribe(eventType, group string, fn transport.ConsumeFunc, cfg transport.SubscribeConfig) (transport.Unsubscribe, error) {
-	sink := t.Sink()
-	if sink == nil {
-		return nil, ErrSinkNotConfigured
-	}
-
-	return sink.Subscribe(eventType, group, fn, cfg)
+// Subscribe is unsupported on the outbox transport. The outbox persists
+// records that a relay later forwards to a downstream sink — subscribers
+// must attach to the sink directly. Returning a sentinel makes
+// misconfigurations fail loudly instead of silently double-registering
+// the same handler on the sink (which would invoke it once for the
+// direct sink subscription and once for the outbox-forwarded one).
+func (*Transport) Subscribe(string, string, transport.ConsumeFunc, transport.SubscribeConfig) (transport.Unsubscribe, error) {
+	return nil, transport.ErrSubscribeUnsupported
 }
 
 // framesToRecords converts inbound transport frames into pending outbox

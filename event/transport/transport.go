@@ -6,10 +6,17 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
+
+// ErrSubscribeUnsupported indicates a transport refuses Subscribe calls.
+// Publish-only transports (e.g. transactional outbox) return this so
+// the bus can detect the misuse and so the routing layer can filter
+// them out during subscription resolution.
+var ErrSubscribeUnsupported = errors.New("transport: subscribe is not supported on this transport")
 
 // Frame is the wire-level representation of an event. The bus encodes
 // Envelope into Frame on publish and decodes back on consume.
@@ -79,6 +86,14 @@ type Capabilities struct {
 	// SupportsGroups means SubscribeConfig.Group affects delivery
 	// semantics.
 	SupportsGroups bool
+	// PublishOnly marks transports that accept publishes but cannot
+	// deliver to subscribers themselves. The classic example is the
+	// transactional outbox: it persists records that a relay later
+	// forwards to a downstream sink transport. The bus filters out
+	// publish-only transports when resolving Subscribe targets so
+	// fan-out routes do not pick them up; subscribers must attach to
+	// the sink transport directly.
+	PublishOnly bool
 }
 
 // Unsubscribe detaches a previously registered consumer. Safe for
