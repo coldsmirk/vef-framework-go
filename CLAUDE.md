@@ -123,6 +123,11 @@ Compression (`-1000`) → Headers (`-900`) → CORS (`-800`) → Content-Type (`
 - Edit tool `replace_all` replaces ALL occurrences including strings/comments — scope carefully.
 - `_test.go` types: always use exported PascalCase (`TestCmd`, not `testCmd`).
 - Testify suite `TearDownTest`/`SetupTest` only run between top-level `Test*` methods — NOT between `s.Run()` subtests. Add per-subtest cleanup (e.g., `defer cleanup()`) for data isolation.
+- **Outbox is publish-only**: `event.Bus.Subscribe` on an event whose route resolves to the outbox transport will skip outbox (filtered via `Capabilities.PublishOnly`). Direct `outbox.Subscribe` returns `transport.ErrSubscribeUnsupported`. Subscribers must attach to the configured sink (`vef.event.transports.outbox.sink`) — `memory` for single-node, `redisstream` for cross-process.
+- **At-least-once subscriptions require `event.WithGroup("name")`**: subscribing to events whose route includes outbox / redisstream / any `Capabilities.AtLeastOnce` transport without an explicit group returns `event.ErrGroupRequired`. The group is the Inbox dedupe scope and the Redis Streams `XGROUP` name — both must be stable across restarts.
+- **Outbox sink config**: with `outbox.enabled=true && sink="memory"` the relay only dispatches in-process. If `redisstream.enabled=true` is also set, the framework logs a start-up warning. For cross-node delivery set `vef.event.transports.outbox.sink="redisstream"`.
+- **Tracing default trusts incoming TraceID** (W3C/OTel-compatible). Use `vef.event.middleware.tracing_strict=true` at trust-boundary ingresses to switch to strict mode (incoming park under `IncomingTraceIDFromContext`, fresh ID generated for the active context).
+- **Database migrations**: per-module DDL goes through `internal/sqlmigration.Run(ctx, db, Plan{Label, Kind, Scripts, ExpectedTables, Pre})`. Each module keeps its own `//go:embed scripts/*.sql` since `embed` cannot cross package boundaries; everything else (`needsMigration` probe, dialect query, script loader) is shared.
 
 ## CLI Tools
 
