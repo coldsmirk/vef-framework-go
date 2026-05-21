@@ -49,7 +49,7 @@ func newInboxMiddleware(cfg *config.EventConfig, repo pubinbox.Repository) pubmw
 		return nil
 	}
 
-	return internalmw.NewInbox(repo)
+	return internalmw.NewInbox(repo, cfg.Inbox.EffectiveProcessingLease())
 }
 
 func runInboxMigration(

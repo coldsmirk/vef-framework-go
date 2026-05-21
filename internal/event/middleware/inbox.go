@@ -14,21 +14,22 @@ import (
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
-const inboxProcessingLease = 10 * time.Minute
-
 var inboxLogger = logx.Named("event:inbox")
 
 // Inbox is a consume-side ConsumeMiddleware that dedupes deliveries by
 // (consumer_group, event_id). It activates only on transports whose
 // Capabilities advertise AtLeastOnce so in-memory paths don't pay the
-// database round-trip cost.
+// database round-trip cost. Handlers must still make their business side
+// effects idempotent: if processing exceeds the lease and the transport
+// redelivers, another worker may acquire and run the same event.
 type Inbox struct {
-	repo pubinbox.Repository
+	repo            pubinbox.Repository
+	processingLease time.Duration
 }
 
 // NewInbox constructs an Inbox middleware.
-func NewInbox(repo pubinbox.Repository) *Inbox {
-	return &Inbox{repo: repo}
+func NewInbox(repo pubinbox.Repository, processingLease time.Duration) *Inbox {
+	return &Inbox{repo: repo, processingLease: processingLease}
 }
 
 // Name implements ConsumeMiddleware.
@@ -45,7 +46,7 @@ func (m *Inbox) WrapConsume(next pubmw.ConsumeHandler) pubmw.ConsumeHandler {
 	return func(ctx context.Context, d transport.Delivery, env event.Envelope) (err error) {
 		group := consumerGroupFromContext(ctx)
 
-		lockUntil := timex.Now().Add(inboxProcessingLease)
+		lockUntil := timex.Now().Add(m.processingLease)
 
 		claim, lockID, err := m.repo.Acquire(ctx, group, env.ID, lockUntil)
 		if err != nil {
@@ -96,6 +97,9 @@ func (m *Inbox) WrapConsume(next pubmw.ConsumeHandler) pubmw.ConsumeHandler {
 
 		if err = m.repo.MarkCompleted(ctx, group, env.ID, lockID); err != nil {
 			if errors.Is(err, pubinbox.ErrLockLost) {
+				// The handler already succeeded. Ack this delivery and
+				// leave the newer lock owner untouched; handler business
+				// effects must be idempotent across such overlap.
 				inboxLogger.Warnf(
 					"event inbox lock lost after handler success: group=%s event_id=%s lock_id=%s",
 					group, env.ID, lockID)

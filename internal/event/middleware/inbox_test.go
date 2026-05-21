@@ -26,6 +26,10 @@ type LockLostInboxRepository struct {
 	released bool
 }
 
+type CapturingInboxRepository struct {
+	lockUntil timex.DateTime
+}
+
 func (*LockLostInboxRepository) Acquire(
 	context.Context,
 	string,
@@ -35,8 +39,23 @@ func (*LockLostInboxRepository) Acquire(
 	return pubinbox.AcquireResultAcquired, "lock-lost", nil
 }
 
+func (r *CapturingInboxRepository) Acquire(
+	_ context.Context,
+	_ string,
+	_ string,
+	lockUntil timex.DateTime,
+) (pubinbox.AcquireResult, string, error) {
+	r.lockUntil = lockUntil
+
+	return pubinbox.AcquireResultAcquired, "captured-lock", nil
+}
+
 func (*LockLostInboxRepository) MarkCompleted(context.Context, string, string, string) error {
 	return pubinbox.ErrLockLost
+}
+
+func (*CapturingInboxRepository) MarkCompleted(context.Context, string, string, string) error {
+	return nil
 }
 
 func (r *LockLostInboxRepository) Release(context.Context, string, string, string) error {
@@ -45,7 +64,15 @@ func (r *LockLostInboxRepository) Release(context.Context, string, string, strin
 	return nil
 }
 
+func (*CapturingInboxRepository) Release(context.Context, string, string, string) error {
+	return nil
+}
+
 func (*LockLostInboxRepository) DeleteOlderThan(context.Context, timex.DateTime) (int64, error) {
+	return 0, nil
+}
+
+func (*CapturingInboxRepository) DeleteOlderThan(context.Context, timex.DateTime) (int64, error) {
 	return 0, nil
 }
 
@@ -64,7 +91,7 @@ func setupInboxMiddleware(t *testing.T) *Inbox {
 	db := testx.NewTestDB(t)
 	require.NoError(t, inbox.Migrate(ctx, db, config.SQLite), "Inbox migration should succeed")
 
-	return NewInbox(inbox.NewRepository(db))
+	return NewInbox(inbox.NewRepository(db), 10*time.Minute)
 }
 
 func inboxEnvelope() event.Envelope {
@@ -155,7 +182,7 @@ func TestInboxMiddlewareReturnsErrorForActiveDuplicate(t *testing.T) {
 	// Manually acquire a live claim to model a concurrent consumer that
 	// still owns the same event.
 	repo := mw.repo
-	_, _, err = repo.Acquire(context.Background(), "consumer-a", "evt-active", timex.Now().Add(inboxProcessingLease))
+	_, _, err = repo.Acquire(context.Background(), "consumer-a", "evt-active", timex.Now().Add(10*time.Minute))
 	require.NoError(t, err, "Manual claim should succeed")
 
 	activeEnv := event.Envelope{ID: "evt-active", Type: "test.inbox"}
@@ -169,7 +196,7 @@ func TestInboxMiddlewareReturnsErrorForActiveDuplicate(t *testing.T) {
 
 func TestInboxMiddlewareAcknowledgesLostLockAfterHandlerSuccess(t *testing.T) {
 	repo := new(LockLostInboxRepository)
-	mw := NewInbox(repo)
+	mw := NewInbox(repo, 10*time.Minute)
 	ctx := WithConsumerGroup(context.Background(), "consumer-a")
 	calls := 0
 
@@ -182,6 +209,25 @@ func TestInboxMiddlewareAcknowledgesLostLockAfterHandlerSuccess(t *testing.T) {
 	require.NoError(t, err, "Lost lock after handler success should be acknowledged")
 	require.Equal(t, 1, calls, "Handler should run before the lock loss is detected")
 	require.False(t, repo.released, "Successful handler with lost lock should not release a newer claim")
+}
+
+func TestInboxMiddlewareUsesConfiguredProcessingLease(t *testing.T) {
+	repo := new(CapturingInboxRepository)
+	lease := 37 * time.Second
+	mw := NewInbox(repo, lease)
+	ctx := WithConsumerGroup(context.Background(), "consumer-a")
+	before := time.Now().Add(lease)
+
+	err := mw.WrapConsume(func(context.Context, transport.Delivery, event.Envelope) error {
+		return nil
+	})(ctx, inboxDelivery(), inboxEnvelope())
+
+	after := time.Now().Add(lease)
+
+	require.NoError(t, err, "Handler should complete with captured lease repository")
+	require.False(t,
+		repo.lockUntil.Unwrap().Before(before) || repo.lockUntil.Unwrap().After(after),
+		"Processing lease deadline should use the middleware configuration")
 }
 
 var _ pubmw.ConsumeMiddleware = (*Inbox)(nil)

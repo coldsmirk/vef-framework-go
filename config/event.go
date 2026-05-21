@@ -89,9 +89,11 @@ type EventMiddlewareConfig struct {
 	Inbox bool `config:"inbox"`
 }
 
-// EventInboxConfig governs the inbox table retention and cleanup.
+// EventInboxConfig governs the inbox table retention, processing
+// leases, and cleanup.
 type EventInboxConfig struct {
 	Retention       time.Duration `config:"retention"`
+	ProcessingLease time.Duration `config:"processing_lease"`
 	CleanupInterval time.Duration `config:"cleanup_interval"`
 }
 
@@ -165,6 +167,15 @@ func (c *EventInboxConfig) EffectiveRetention() time.Duration {
 	}
 
 	return 7 * 24 * time.Hour
+}
+
+// EffectiveProcessingLease applies the default of 10 minutes.
+func (c *EventInboxConfig) EffectiveProcessingLease() time.Duration {
+	if c.ProcessingLease > 0 {
+		return c.ProcessingLease
+	}
+
+	return 10 * time.Minute
 }
 
 // EffectiveCleanupInterval applies the default of 1 hour.
