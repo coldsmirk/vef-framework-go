@@ -37,7 +37,7 @@ func NewRedisContainer(ctx context.Context, t testing.TB) *RedisContainer {
 		Redis: &config.RedisConfig{
 			Enabled:  true,
 			Host:     host,
-			Port:     uint16(port.Int()),
+			Port:     port.Num(),
 			Database: 0,
 		},
 	}
