@@ -6,6 +6,7 @@ package middleware
 
 import (
 	"context"
+	"slices"
 
 	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
@@ -51,12 +52,12 @@ type ConsumeMiddleware interface {
 // safely with fx groups.
 func ChainPublish(mws []PublishMiddleware, base PublishHandler) PublishHandler {
 	h := base
-	for i := len(mws) - 1; i >= 0; i-- {
-		if mws[i] == nil {
+	for _, mw := range slices.Backward(mws) {
+		if mw == nil {
 			continue
 		}
 
-		h = mws[i].WrapPublish(h)
+		h = mw.WrapPublish(h)
 	}
 
 	return h
@@ -67,12 +68,12 @@ func ChainPublish(mws []PublishMiddleware, base PublishHandler) PublishHandler {
 // wrapper. Nil entries are skipped (see ChainPublish).
 func ChainConsume(mws []ConsumeMiddleware, caps transport.Capabilities, base ConsumeHandler) ConsumeHandler {
 	h := base
-	for i := len(mws) - 1; i >= 0; i-- {
-		if mws[i] == nil || !mws[i].Applies(caps) {
+	for _, mw := range slices.Backward(mws) {
+		if mw == nil || !mw.Applies(caps) {
 			continue
 		}
 
-		h = mws[i].WrapConsume(h)
+		h = mw.WrapConsume(h)
 	}
 
 	return h

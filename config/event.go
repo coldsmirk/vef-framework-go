@@ -72,8 +72,15 @@ type EventRedisStreamTransportConfig struct {
 type EventMiddlewareConfig struct {
 	Logging bool `config:"logging"`
 	Tracing bool `config:"tracing"`
-	Metrics bool `config:"metrics"`
-	Recover bool `config:"recover"`
+	// TracingStrict, when true, switches the Tracing middleware to
+	// strict mode: incoming TraceIDs from cross-process transports are
+	// treated as untrusted and parked under IncomingTraceIDFromContext;
+	// a fresh ID is generated for log correlation. Default (false) is
+	// W3C / OpenTelemetry-compatible propagation suitable for intra-
+	// cluster pub/sub. Toggle this on at the edge between trust zones.
+	TracingStrict bool `config:"tracing_strict"`
+	Metrics       bool `config:"metrics"`
+	Recover       bool `config:"recover"`
 	// Inbox controls whether the consume-side idempotency middleware
 	// is enabled. It only activates on transports whose Capabilities
 	// declare AtLeastOnce regardless of this flag.

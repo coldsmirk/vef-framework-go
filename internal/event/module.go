@@ -28,6 +28,7 @@ var Module = fx.Module(
 			fx.As(new(transport.Transport)),
 		),
 		defaultErrorSink,
+		defaultMetricsRecorder,
 		// Built-in cross-cutting middlewares; each constructor consults
 		// the EventConfig.Middleware toggles and returns nil to opt out.
 		fx.Annotate(
@@ -144,6 +145,10 @@ func newTracingPublishMiddleware(cfg *config.EventConfig) middleware.PublishMidd
 		return nil
 	}
 
+	if cfg.Middleware.TracingStrict {
+		return internalmw.NewTracingStrict()
+	}
+
 	return internalmw.NewTracing()
 }
 
@@ -152,21 +157,32 @@ func newTracingConsumeMiddleware(cfg *config.EventConfig) middleware.ConsumeMidd
 		return nil
 	}
 
+	if cfg.Middleware.TracingStrict {
+		return internalmw.NewTracingStrict()
+	}
+
 	return internalmw.NewTracing()
 }
 
-func newMetricsPublishMiddleware(cfg *config.EventConfig) middleware.PublishMiddleware {
+func newMetricsPublishMiddleware(cfg *config.EventConfig, rec event.MetricsRecorder) middleware.PublishMiddleware {
 	if !cfg.Middleware.Metrics {
 		return nil
 	}
 
-	return internalmw.NewMetrics()
+	return internalmw.NewMetrics(rec)
 }
 
-func newMetricsConsumeMiddleware(cfg *config.EventConfig) middleware.ConsumeMiddleware {
+func newMetricsConsumeMiddleware(cfg *config.EventConfig, rec event.MetricsRecorder) middleware.ConsumeMiddleware {
 	if !cfg.Middleware.Metrics {
 		return nil
 	}
 
-	return internalmw.NewMetrics()
+	return internalmw.NewMetrics(rec)
+}
+
+// defaultMetricsRecorder publishes lightweight expvar maps. Override
+// via fx.Decorate (see vef.ProvideEventMetricsRecorder) to forward
+// observations to Prometheus / OpenTelemetry / vendor SDKs.
+func defaultMetricsRecorder() event.MetricsRecorder {
+	return internalmw.NewExpvarMetricsRecorder()
 }

@@ -263,6 +263,26 @@ func ProvideEventConsumeMiddleware(constructor any, paramTags ...string) fx.Opti
 	)
 }
 
+// ProvideEventMetricsRecorder overrides the framework's default
+// (expvar-backed) event.MetricsRecorder. The constructor must return
+// event.MetricsRecorder. Use this when forwarding publish/consume
+// observations to Prometheus, OpenTelemetry, or a vendor SDK.
+//
+// Example:
+//
+//	fx.New(
+//	    vef.Module,
+//	    vef.ProvideEventMetricsRecorder(newPrometheusRecorder),
+//	)
+func ProvideEventMetricsRecorder(constructor any, paramTags ...string) fx.Option {
+	return fx.Decorate(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+		),
+	)
+}
+
 // ProvideEventErrorSink overrides the framework's default async error
 // sink. The constructor must return event.ErrorSink. Useful when
 // async-publish failures need to flow to a metrics or alerting system

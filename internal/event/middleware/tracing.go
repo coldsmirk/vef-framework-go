@@ -14,10 +14,32 @@ import (
 // and stashed into Headers under the W3C-compatible "traceparent" key.
 // On consume, the TraceID is restored onto the context so downstream
 // loggers can attach it to every record.
-type Tracing struct{}
+//
+// Two modes are supported:
+//
+//   - Default (NewTracing): incoming TraceIDs are trusted and propagated
+//     end-to-end, matching W3C / OpenTelemetry conventions. This is the
+//     correct choice for receiving events inside a trust boundary
+//     (intra-cluster RPC, internal pub/sub).
+//   - Strict (NewTracingStrict): incoming TraceIDs are treated as
+//     untrusted. A fresh ID is generated for log correlation and the
+//     declared incoming value is parked under a separate ctx key
+//     accessible via IncomingTraceIDFromContext. Use when accepting
+//     events from less-trusted producers (multi-tenant ingress, public
+//     webhook → outbox bridge).
+type Tracing struct {
+	strict bool
+}
 
-// NewTracing constructs a Tracing middleware.
+// NewTracing constructs a Tracing middleware that trusts incoming
+// TraceIDs (W3C-compatible propagation).
 func NewTracing() *Tracing { return new(Tracing) }
+
+// NewTracingStrict constructs a Tracing middleware that does not trust
+// incoming TraceIDs. A fresh trace ID is generated per consume and the
+// declared incoming value is exposed only through IncomingTraceIDFromContext
+// so audit pipelines can distinguish forged from framework-generated IDs.
+func NewTracingStrict() *Tracing { return &Tracing{strict: true} }
 
 // Name implements both middleware interfaces.
 func (*Tracing) Name() string { return "tracing" }
@@ -51,32 +73,38 @@ func (*Tracing) WrapPublish(next pubmw.PublishHandler) pubmw.PublishHandler {
 	}
 }
 
-// WrapConsume restores the trace ID into the context. Trace IDs
-// arriving from cross-process transports are treated as untrusted and
-// stored under a separate ctx key (IncomingTraceIDFromContext); the
-// active trace context is always freshly generated so log/audit
-// correlation cannot be spoofed by a hostile publisher.
-func (*Tracing) WrapConsume(next pubmw.ConsumeHandler) pubmw.ConsumeHandler {
+// WrapConsume restores the trace ID into the context. Behavior depends
+// on the strict flag — see the Tracing type documentation.
+func (m *Tracing) WrapConsume(next pubmw.ConsumeHandler) pubmw.ConsumeHandler {
 	return func(ctx context.Context, d transport.Delivery, env event.Envelope) error {
 		incoming := env.TraceID
 		if incoming == "" {
 			incoming = env.Headers[traceHeaderKey]
 		}
 
-		if incoming != "" {
-			ctx = context.WithValue(ctx, incomingTraceIDKey{}, incoming)
-		}
+		if m.strict {
+			if incoming != "" {
+				ctx = context.WithValue(ctx, incomingTraceIDKey{}, incoming)
+			}
 
-		ctx = context.WithValue(ctx, traceIDKey{}, id.GenerateUUID())
+			ctx = context.WithValue(ctx, traceIDKey{}, id.GenerateUUID())
+		} else {
+			trace := incoming
+			if trace == "" {
+				trace = id.GenerateUUID()
+			}
+
+			ctx = context.WithValue(ctx, traceIDKey{}, trace)
+		}
 
 		return next(ctx, d, env)
 	}
 }
 
-// TraceIDFromContext returns the locally-generated trace ID stamped
-// onto ctx by the Tracing consume middleware, or "" when absent. It is
-// always safe to log; do not rely on it matching any caller-supplied
-// header value.
+// TraceIDFromContext returns the trace ID stamped onto ctx by the
+// Tracing consume middleware. In the default (trusting) mode this is
+// the same value the producer sent; in strict mode it is a freshly
+// generated, non-spoofable ID.
 func TraceIDFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
@@ -88,9 +116,9 @@ func TraceIDFromContext(ctx context.Context) string {
 }
 
 // IncomingTraceIDFromContext returns the trace ID supplied by the
-// cross-process producer (when present). Treat this value as untrusted
-// — log it under a distinct field (e.g. "incoming_trace_id") so audit
-// pipelines can differentiate forged versus framework-generated IDs.
+// cross-process producer when strict mode is in effect; in the default
+// (trusting) mode this returns "" because the producer-supplied value
+// is already used as the active TraceIDFromContext.
 func IncomingTraceIDFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
