@@ -49,6 +49,7 @@ var OutboxModule = fx.Module(
 		),
 	),
 	fx.Invoke(runOutboxMigration),
+	fx.Invoke(registerOutboxCleanup),
 	fx.Invoke(
 		fx.Annotate(
 			bindOutboxSinkAndRelay,
@@ -180,6 +181,33 @@ func bindOutboxSinkAndRelay(
 	}
 
 	outboxLogger.Infof("Outbox relay job [%s] registered, polling every %s", job.Name(), interval)
+
+	return nil
+}
+
+func registerOutboxCleanup(
+	eventCfg *config.EventConfig,
+	scheduler cron.Scheduler,
+	repo puboutbox.Repository,
+) error {
+	if !eventCfg.Transports.Outbox.Enabled {
+		return nil
+	}
+
+	cleaner := outbox.NewCleaner(repo, eventCfg.Transports.Outbox.EffectiveCompletedTTL(), outboxLogger)
+	interval := eventCfg.Transports.Outbox.EffectiveCleanupInterval()
+
+	job, err := scheduler.NewJob(cron.NewDurationJob(
+		interval,
+		cron.WithName("vef:event:outbox:cleanup"),
+		cron.WithTags("vef", "event", "outbox"),
+		cron.WithTask(cleaner.Cleanup),
+	))
+	if err != nil {
+		return fmt.Errorf("register outbox cleanup job: %w", err)
+	}
+
+	outboxLogger.Infof("Outbox cleanup job [%s] registered, polling every %s", job.Name(), interval)
 
 	return nil
 }

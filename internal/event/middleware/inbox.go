@@ -2,12 +2,21 @@ package middleware
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"time"
 
 	"github.com/coldsmirk/vef-framework-go/event"
 	pubinbox "github.com/coldsmirk/vef-framework-go/event/inbox"
 	pubmw "github.com/coldsmirk/vef-framework-go/event/middleware"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
+	"github.com/coldsmirk/vef-framework-go/internal/logx"
+	"github.com/coldsmirk/vef-framework-go/timex"
 )
+
+const inboxProcessingLease = 10 * time.Minute
+
+var inboxLogger = logx.Named("event:inbox")
 
 // Inbox is a consume-side ConsumeMiddleware that dedupes deliveries by
 // (consumer_group, event_id). It activates only on transports whose
@@ -33,20 +42,73 @@ func (*Inbox) Applies(caps transport.Capabilities) bool { return caps.AtLeastOnc
 // short-circuits the handler chain with success so the transport Acks
 // the message and skips redelivery downstream.
 func (m *Inbox) WrapConsume(next pubmw.ConsumeHandler) pubmw.ConsumeHandler {
-	return func(ctx context.Context, d transport.Delivery, env event.Envelope) error {
+	return func(ctx context.Context, d transport.Delivery, env event.Envelope) (err error) {
 		group := consumerGroupFromContext(ctx)
 
-		acquired, err := m.repo.TryInsert(ctx, group, env.ID)
+		lockUntil := timex.Now().Add(inboxProcessingLease)
+
+		claim, lockID, err := m.repo.Acquire(ctx, group, env.ID, lockUntil)
 		if err != nil {
 			return err
 		}
 
-		if !acquired {
-			// Duplicate delivery — Ack without invoking the handler.
+		switch claim {
+		case pubinbox.AcquireResultAcquired:
+		case pubinbox.AcquireResultCompleted:
+			// Successful duplicate delivery — Ack without invoking the handler.
 			return nil
+		case pubinbox.AcquireResultInProgress:
+			return fmt.Errorf("%w: group=%s event_id=%s", pubinbox.ErrInProgress, group, env.ID)
+		default:
+			return fmt.Errorf("%w: %q", pubinbox.ErrUnknownAcquireResult, claim)
 		}
 
-		return next(ctx, d, env)
+		if lockID == "" {
+			return fmt.Errorf("%w: group=%s event_id=%s", pubinbox.ErrMissingLockID, group, env.ID)
+		}
+
+		acquired := true
+
+		handlerDone := false
+		defer func() {
+			if r := recover(); r != nil {
+				if acquired {
+					_ = m.repo.Release(context.Background(), group, env.ID, lockID)
+				}
+
+				panic(r)
+			}
+
+			if err == nil || !acquired || handlerDone {
+				return
+			}
+
+			if releaseErr := m.repo.Release(context.Background(), group, env.ID, lockID); releaseErr != nil {
+				err = fmt.Errorf("event inbox: release after handler failure: %w (handler: %w)", releaseErr, err)
+			}
+		}()
+
+		if err = next(ctx, d, env); err != nil {
+			return err
+		}
+
+		handlerDone = true
+
+		if err = m.repo.MarkCompleted(ctx, group, env.ID, lockID); err != nil {
+			if errors.Is(err, pubinbox.ErrLockLost) {
+				inboxLogger.Warnf(
+					"event inbox lock lost after handler success: group=%s event_id=%s lock_id=%s",
+					group, env.ID, lockID)
+
+				return nil
+			}
+
+			return err
+		}
+
+		acquired = false
+
+		return nil
 	}
 }
 

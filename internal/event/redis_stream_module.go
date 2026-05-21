@@ -39,14 +39,20 @@ func newRedisStreamTransport(cfg *config.EventConfig, client *goredis.Client) tr
 		return nil
 	}
 
-	rsCfg := pubredisstream.Config{
-		StreamPrefix:  cfg.Transports.RedisStream.StreamPrefix,
-		MaxLenApprox:  cfg.Transports.RedisStream.MaxLenApprox,
-		BlockTimeout:  cfg.Transports.RedisStream.BlockTimeout,
-		ClaimIdle:     cfg.Transports.RedisStream.ClaimIdle,
-		ClaimInterval: cfg.Transports.RedisStream.ClaimInterval,
-		ConsumerID:    cfg.Transports.RedisStream.ConsumerID,
-	}
+	return redisstream.New(client, redisStreamConfig(cfg), redisStreamLogger)
+}
 
-	return redisstream.New(client, rsCfg, redisStreamLogger)
+func redisStreamConfig(cfg *config.EventConfig) pubredisstream.Config {
+	c := cfg.Transports.RedisStream
+
+	return pubredisstream.Config{
+		StreamPrefix:   c.StreamPrefix,
+		MaxLenApprox:   c.MaxLenApprox,
+		BlockTimeout:   c.BlockTimeout,
+		ClaimIdle:      c.ClaimIdle,
+		ClaimInterval:  c.ClaimInterval,
+		ClaimBatchSize: c.ClaimBatchSize,
+		ConsumerID:     c.ConsumerID,
+		StartID:        c.StartID,
+	}
 }

@@ -1,12 +1,4 @@
---------------------------------------------------------------------------------
--- Event Outbox (sys_event_outbox)
---
--- Stores frames published with event.WithTx so that downstream delivery
--- is decoupled from the publishing transaction. The relay loop polls
--- pending and retry-eligible rows under FOR UPDATE SKIP LOCKED, claims
--- them as 'processing', dispatches to the configured sink Transport,
--- then marks completed / failed / dead.
---------------------------------------------------------------------------------
+-- Outbox PG
 
 CREATE TABLE IF NOT EXISTS sys_event_outbox (
     id              VARCHAR(32)  NOT NULL,
@@ -30,27 +22,25 @@ CREATE TABLE IF NOT EXISTS sys_event_outbox (
     CONSTRAINT uk_sys_event_outbox__event_id UNIQUE (event_id)
 );
 
-COMMENT ON TABLE sys_event_outbox IS 'Event outbox for transactional publishing';
-COMMENT ON COLUMN sys_event_outbox.id IS 'Row primary key';
-COMMENT ON COLUMN sys_event_outbox.created_at IS 'Insert time';
-COMMENT ON COLUMN sys_event_outbox.created_by IS 'Inserting principal';
-COMMENT ON COLUMN sys_event_outbox.event_id IS 'Envelope ID, stable across retries';
-COMMENT ON COLUMN sys_event_outbox.event_type IS 'Envelope Type, drives routing';
-COMMENT ON COLUMN sys_event_outbox.source IS 'Producing application';
-COMMENT ON COLUMN sys_event_outbox.trace_id IS 'W3C trace ID';
-COMMENT ON COLUMN sys_event_outbox.span_id IS 'W3C span ID';
-COMMENT ON COLUMN sys_event_outbox.correlation_id IS 'Caller-supplied correlation key';
-COMMENT ON COLUMN sys_event_outbox.headers IS 'Envelope headers (JSON map)';
-COMMENT ON COLUMN sys_event_outbox.payload IS 'Canonical JSON of the original Event';
-COMMENT ON COLUMN sys_event_outbox.status IS 'pending|processing|completed|failed|dead';
-COMMENT ON COLUMN sys_event_outbox.retry_count IS 'Number of failed dispatches';
-COMMENT ON COLUMN sys_event_outbox.last_error IS 'Most recent error string';
-COMMENT ON COLUMN sys_event_outbox.processed_at IS 'When the row reached completed/dead';
-COMMENT ON COLUMN sys_event_outbox.retry_after IS 'Next retry time (also the processing lease deadline)';
-COMMENT ON COLUMN sys_event_outbox.occurred_at IS 'Business event time';
+COMMENT ON TABLE sys_event_outbox IS 'Outbox';
+COMMENT ON COLUMN sys_event_outbox.id IS 'ID';
+COMMENT ON COLUMN sys_event_outbox.created_at IS 'Created';
+COMMENT ON COLUMN sys_event_outbox.created_by IS 'Creator';
+COMMENT ON COLUMN sys_event_outbox.event_id IS 'Event ID';
+COMMENT ON COLUMN sys_event_outbox.event_type IS 'Type';
+COMMENT ON COLUMN sys_event_outbox.source IS 'Source';
+COMMENT ON COLUMN sys_event_outbox.trace_id IS 'Trace ID';
+COMMENT ON COLUMN sys_event_outbox.span_id IS 'Span ID';
+COMMENT ON COLUMN sys_event_outbox.correlation_id IS 'Correlation ID';
+COMMENT ON COLUMN sys_event_outbox.headers IS 'Headers';
+COMMENT ON COLUMN sys_event_outbox.payload IS 'Payload';
+COMMENT ON COLUMN sys_event_outbox.status IS 'Status';
+COMMENT ON COLUMN sys_event_outbox.retry_count IS 'Retries';
+COMMENT ON COLUMN sys_event_outbox.last_error IS 'Error';
+COMMENT ON COLUMN sys_event_outbox.processed_at IS 'Processed';
+COMMENT ON COLUMN sys_event_outbox.retry_after IS 'Retry at';
+COMMENT ON COLUMN sys_event_outbox.occurred_at IS 'Occurred';
 
--- Composite (status, retry_after, created_at) serves the relay's poll:
--- WHERE status IN (pending,failed,processing) AND retry_after <= now ORDER BY created_at LIMIT n.
 CREATE INDEX idx_sys_event_outbox__relay ON sys_event_outbox(status, retry_after, created_at);
--- Supports per-type analytics and cleanup queries.
 CREATE INDEX idx_sys_event_outbox__type_created ON sys_event_outbox(event_type, created_at);
+CREATE INDEX idx_sys_event_outbox__cleanup ON sys_event_outbox(status, processed_at);

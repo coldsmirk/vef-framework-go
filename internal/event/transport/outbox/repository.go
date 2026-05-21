@@ -210,13 +210,13 @@ func (r *DefaultRepository) MarkFailed(
 	return nil
 }
 
-// DeleteCompletedOlderThan removes completed rows whose created_at is
+// DeleteCompletedOlderThan removes completed rows whose processed_at is
 // strictly before cutoff. Dead rows are kept for diagnostics regardless.
 func (r *DefaultRepository) DeleteCompletedOlderThan(ctx context.Context, cutoff timex.DateTime) (int64, error) {
 	res, err := r.db.NewDelete().
 		Model((*puboutbox.Record)(nil)).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("status", string(puboutbox.StatusCompleted)).LessThan("created_at", cutoff)
+			cb.Equals("status", string(puboutbox.StatusCompleted)).LessThan("processed_at", cutoff)
 		}).
 		Exec(ctx)
 	if err != nil {

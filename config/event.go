@@ -59,13 +59,15 @@ type EventOutboxTransportConfig struct {
 
 // EventRedisStreamTransportConfig configures the Redis Streams transport.
 type EventRedisStreamTransportConfig struct {
-	Enabled       bool          `config:"enabled"`
-	StreamPrefix  string        `config:"stream_prefix"`
-	MaxLenApprox  int64         `config:"max_len_approx"`
-	BlockTimeout  time.Duration `config:"block_timeout"`
-	ClaimIdle     time.Duration `config:"claim_idle"`
-	ClaimInterval time.Duration `config:"claim_interval"`
-	ConsumerID    string        `config:"consumer_id"`
+	Enabled        bool          `config:"enabled"`
+	StreamPrefix   string        `config:"stream_prefix"`
+	MaxLenApprox   int64         `config:"max_len_approx"`
+	BlockTimeout   time.Duration `config:"block_timeout"`
+	ClaimIdle      time.Duration `config:"claim_idle"`
+	ClaimInterval  time.Duration `config:"claim_interval"`
+	ClaimBatchSize int64         `config:"claim_batch_size"`
+	ConsumerID     string        `config:"consumer_id"`
+	StartID        string        `config:"start_id"`
 }
 
 // EventMiddlewareConfig toggles the built-in consume/publish middlewares.
@@ -136,6 +138,24 @@ func (c *EventConfig) EffectivePublishTimeout() time.Duration {
 	}
 
 	return 5 * time.Second
+}
+
+// EffectiveCleanupInterval applies the outbox cleanup default.
+func (c *EventOutboxTransportConfig) EffectiveCleanupInterval() time.Duration {
+	if c.CleanupInterval > 0 {
+		return c.CleanupInterval
+	}
+
+	return time.Hour
+}
+
+// EffectiveCompletedTTL applies the outbox completed-row TTL default.
+func (c *EventOutboxTransportConfig) EffectiveCompletedTTL() time.Duration {
+	if c.CompletedTTL > 0 {
+		return c.CompletedTTL
+	}
+
+	return 7 * 24 * time.Hour
 }
 
 // EffectiveRetention applies the default of 7 days.

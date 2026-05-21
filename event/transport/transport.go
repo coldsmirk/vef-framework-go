@@ -114,7 +114,8 @@ type Transport interface {
 	// Stop drains in-flight work and releases resources. Idempotent.
 	Stop(ctx context.Context) error
 	// Publish submits frames. Returns once the transport has accepted
-	// (durably stored or buffered) the entire batch.
+	// the frames it can store or buffer; non-transactional transports
+	// may partially accept a batch before returning an error.
 	Publish(ctx context.Context, frames []Frame) error
 	// Subscribe attaches a consumer to the given event type within an
 	// optional consumer group. Returns an unsubscribe closure.

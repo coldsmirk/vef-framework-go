@@ -1,5 +1,4 @@
--- Event Outbox (sys_event_outbox) — MySQL dialect
--- See postgres.sql for column-by-column documentation.
+-- Outbox MySQL
 
 CREATE TABLE IF NOT EXISTS sys_event_outbox (
     id              VARCHAR(32)  NOT NULL,
@@ -22,5 +21,6 @@ CREATE TABLE IF NOT EXISTS sys_event_outbox (
     CONSTRAINT pk_sys_event_outbox PRIMARY KEY (id),
     CONSTRAINT uk_sys_event_outbox__event_id UNIQUE (event_id),
     INDEX idx_sys_event_outbox__relay (status, retry_after, created_at),
-    INDEX idx_sys_event_outbox__type_created (event_type, created_at)
-) COMMENT='Event outbox for transactional publishing';
+    INDEX idx_sys_event_outbox__type_created (event_type, created_at),
+    INDEX idx_sys_event_outbox__cleanup (status, processed_at)
+) COMMENT='Outbox';

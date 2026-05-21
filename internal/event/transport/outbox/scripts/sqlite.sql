@@ -1,5 +1,4 @@
--- Event Outbox (sys_event_outbox) — SQLite dialect
--- See postgres.sql for column-by-column documentation.
+-- Outbox SQLite
 
 CREATE TABLE IF NOT EXISTS sys_event_outbox (
     id              TEXT     NOT NULL,
@@ -25,3 +24,4 @@ CREATE TABLE IF NOT EXISTS sys_event_outbox (
 
 CREATE INDEX IF NOT EXISTS idx_sys_event_outbox__relay ON sys_event_outbox(status, retry_after, created_at);
 CREATE INDEX IF NOT EXISTS idx_sys_event_outbox__type_created ON sys_event_outbox(event_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_sys_event_outbox__cleanup ON sys_event_outbox(status, processed_at);

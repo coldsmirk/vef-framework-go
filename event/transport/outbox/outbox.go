@@ -123,7 +123,7 @@ func (c Config) EffectiveRelayInterval() time.Duration {
 		return c.RelayInterval
 	}
 
-	return 5 * time.Second
+	return 10 * time.Second
 }
 
 // EffectiveMaxRetries applies the default when unset.

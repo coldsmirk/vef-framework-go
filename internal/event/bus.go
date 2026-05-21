@@ -201,14 +201,52 @@ func (b *Bus) Start(ctx context.Context) error {
 	b.started.Store(true)
 	b.mu.Unlock()
 
+	var (
+		flushErrs []error
+		flushed   []event.Unsubscribe
+	)
 	for _, p := range pending {
 		if p.canceled {
 			continue
 		}
 
-		if _, err := b.subscribeNow(p.eventType, p.handler, p.cfg); err != nil {
+		unsub, err := b.subscribeNow(p.eventType, p.handler, p.cfg)
+		if err != nil {
 			busLogger.Errorf("flush subscription %s failed: %v", p.eventType, err)
+			flushErrs = append(flushErrs, fmt.Errorf("event: flush subscription %s: %w", p.eventType, err))
+
+			continue
 		}
+
+		flushed = append(flushed, unsub)
+	}
+
+	if len(flushErrs) > 0 {
+		for _, unsub := range flushed {
+			unsub()
+		}
+
+		b.mu.Lock()
+		active := b.active
+		b.active = make(map[uint64]activeSubscription)
+		b.pending = pending
+		b.started.Store(false)
+		b.router = nil
+		b.mu.Unlock()
+
+		for _, sub := range active {
+			for _, u := range sub.unsubs {
+				u()
+			}
+		}
+
+		for _, t := range started {
+			if stopErr := t.Stop(ctx); stopErr != nil {
+				flushErrs = append(flushErrs, fmt.Errorf("event: rollback stop %s: %w", t.Name(), stopErr))
+			}
+		}
+
+		return errors.Join(flushErrs...)
 	}
 
 	b.async.start()

@@ -87,8 +87,11 @@ type Bus interface {
 	// the configured transport accepted the frame, not whether
 	// downstream handlers succeeded.
 	Publish(ctx context.Context, evt Event, opts ...PublishOption) error
-	// PublishBatch atomically submits multiple events. For transactional
-	// transports the whole batch participates in the caller's transaction.
+	// PublishBatch submits multiple events through the same route
+	// resolution pass. Atomicity is transport-specific: transactional
+	// transports participate in the caller's transaction, while
+	// non-transactional transports may partially accept a batch before
+	// returning an error.
 	PublishBatch(ctx context.Context, evts []Event, opts ...PublishOption) error
 	// Subscribe registers a handler for the given event type. The
 	// registration is buffered when the bus has not started and

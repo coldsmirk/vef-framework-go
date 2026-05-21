@@ -333,6 +333,21 @@ func TestBusPendingSubscriptionFlushedOnStart(t *testing.T) {
 	}
 }
 
+func TestBusStartFailsWhenPendingSubscriptionCannotFlush(t *testing.T) {
+	atLeastOnce := newRecordingTransport("redis_stream", transport.Capabilities{AtLeastOnce: true})
+	cfg := &config.EventConfig{DefaultTransport: "redis_stream"}
+
+	bus := NewBus(cfg, "test-app", []transport.Transport{atLeastOnce}, nil, nil, nil)
+	_, err := bus.Subscribe("bus.test", func(context.Context, event.Envelope) error { return nil })
+	require.NoError(t, err, "Subscribe before Start should buffer the registration")
+
+	err = bus.Start(t.Context())
+	require.ErrorIs(t, err, event.ErrGroupRequired, "Start should fail when buffered subscription cannot attach")
+
+	err = bus.Publish(t.Context(), &BusTestEvent{Value: "after-failed-start"})
+	require.ErrorIs(t, err, event.ErrBusNotStarted, "Failed Start should leave the bus stopped")
+}
+
 // ---- publish middleware chain shared-build verification ----
 
 type CountingPublishMW struct {

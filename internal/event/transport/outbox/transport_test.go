@@ -133,7 +133,7 @@ func TestOutboxRelayDispatchesAndMarksCompleted(t *testing.T) {
 	db, repo, tp, sink := setupOutbox(t)
 
 	frame := newFrame("evt-ok", "test.created", `{"ok":true}`)
-	require.NoError(t, tp.Publish(ctx, []transport.Frame{frame}))
+	require.NoError(t, tp.Publish(ctx, []transport.Frame{frame}), "Publish should persist relay record")
 
 	relay := outbox.NewRelay(repo, tp.Sink, puboutbox.Config{
 		RelayInterval: time.Second, MaxRetries: 3, BatchSize: 10,
@@ -151,8 +151,8 @@ func TestOutboxRelayDispatchesAndMarksCompleted(t *testing.T) {
 
 	// Confirm row status using the repository: no claimable rows remain.
 	leftover, err := repo.ClaimBatch(ctx, 10, 3, timex.Now().Add(time.Minute))
-	require.NoError(t, err)
-	require.Empty(t, leftover)
+	require.NoError(t, err, "Claiming after completion should not error")
+	require.Empty(t, leftover, "Completed record should not be claimable")
 
 	_ = db
 }
@@ -162,7 +162,7 @@ func TestOutboxRelayBackoffAndDeadAfterMaxRetries(t *testing.T) {
 	db, repo, tp, sink := setupOutbox(t)
 
 	frame := newFrame("evt-dead", "test.flaky", `{"flaky":true}`)
-	require.NoError(t, tp.Publish(ctx, []transport.Frame{frame}))
+	require.NoError(t, tp.Publish(ctx, []transport.Frame{frame}), "Publish should persist retryable record")
 
 	cfg := puboutbox.Config{
 		RelayInterval: time.Second, MaxRetries: 2, BatchSize: 10,
@@ -187,15 +187,57 @@ func TestOutboxRelayBackoffAndDeadAfterMaxRetries(t *testing.T) {
 	// dispatch frames after the second failure).
 	frames := sink.Frames()
 	require.NotEmpty(t, frames, "DLQ frame should be forwarded once")
-	require.Equal(t, "vef-dlq.test.flaky", frames[len(frames)-1].Type)
+	require.Equal(t, "vef-dlq.test.flaky", frames[len(frames)-1].Type, "Last sink frame should be DLQ forwarded")
 
 	// No claimable rows remain — the dead record is excluded by
 	// status filtering even with retry_after in the past.
 	forceRetryReady(t, db, "evt-dead")
 
 	left, err := repo.ClaimBatch(ctx, 10, 2, timex.Now().Add(time.Minute))
-	require.NoError(t, err)
+	require.NoError(t, err, "Claiming after dead transition should not error")
 	require.Empty(t, left, "dead records must not be reclaimable")
+}
+
+func TestOutboxCleanerDeletesCompletedRowsByProcessedAt(t *testing.T) {
+	ctx := context.Background()
+	db, repo, tp, _ := setupOutbox(t)
+
+	oldFrame := newFrame("evt-clean-old", "test.clean", `{"old":true}`)
+	freshFrame := newFrame("evt-clean-fresh", "test.clean", `{"fresh":true}`)
+	require.NoError(t, tp.Publish(ctx, []transport.Frame{oldFrame, freshFrame}), "Publish should persist records")
+
+	oldRows, err := repo.ClaimBatch(ctx, 1, 3, timex.Now().Add(time.Minute))
+	require.NoError(t, err, "First claim should succeed")
+	require.Len(t, oldRows, 1, "First claim should return one row")
+	require.NoError(t, repo.MarkCompleted(ctx, oldRows[0].ID), "Old row should be completed")
+
+	freshRows, err := repo.ClaimBatch(ctx, 1, 3, timex.Now().Add(time.Minute))
+	require.NoError(t, err, "Second claim should succeed")
+	require.Len(t, freshRows, 1, "Second claim should return one row")
+	require.NoError(t, repo.MarkCompleted(ctx, freshRows[0].ID), "Fresh row should be completed")
+
+	oldProcessedAt := timex.Now().Add(-2 * time.Hour)
+	_, err = db.NewUpdate().
+		Model((*puboutbox.Record)(nil)).
+		Set("processed_at", oldProcessedAt).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.PKEquals(oldRows[0].ID)
+		}).
+		Exec(ctx)
+	require.NoError(t, err, "Old processed timestamp should be adjustable")
+
+	cleaner := outbox.NewCleaner(repo, time.Hour, nil)
+	cleaner.Cleanup(ctx)
+
+	count, err := db.NewSelect().Model((*puboutbox.Record)(nil)).Count(ctx)
+	require.NoError(t, err, "Record count should be queryable")
+	require.EqualValues(t, 1, count, "Cleaner should remove only rows older than completed TTL")
+
+	var remaining puboutbox.Record
+
+	err = db.NewSelect().Model(&remaining).Scan(ctx)
+	require.NoError(t, err, "Remaining outbox row should be queryable")
+	require.Equal(t, freshRows[0].ID, remaining.ID, "Fresh completed row should remain")
 }
 
 // forceRetryReady backs the retry_after timestamp into the past so a
@@ -211,5 +253,5 @@ func forceRetryReady(t *testing.T, db orm.DB, eventID string) {
 			cb.Equals("event_id", eventID)
 		}).
 		Exec(context.Background())
-	require.NoError(t, err)
+	require.NoError(t, err, "Retry timestamp should be adjustable")
 }
