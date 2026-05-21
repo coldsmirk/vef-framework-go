@@ -30,12 +30,16 @@ func SubscribeTyped[T Event](
 ) (Unsubscribe, error) {
 	var zero T
 
-	eventType := zero.EventType()
-
+	// Discover the runtime type *before* invoking EventType, otherwise
+	// instantiating with the bare Event interface would dereference a
+	// nil interface value and panic instead of returning the documented
+	// ErrNilTypeParameter sentinel.
 	declared := reflect.TypeOf(zero)
 	if declared == nil {
 		return nil, ErrNilTypeParameter
 	}
+
+	eventType := zero.EventType()
 
 	return b.Subscribe(eventType, func(ctx context.Context, env Envelope) error {
 		evt, err := decodePayload[T](declared, env.Payload)
