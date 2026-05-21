@@ -79,6 +79,7 @@ var Module = fx.Module(
 			),
 			fx.As(fx.Self()),
 			fx.As(new(event.Bus)),
+			fx.As(new(event.RouteInspector)),
 		),
 	),
 )

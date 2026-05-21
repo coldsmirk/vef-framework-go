@@ -82,6 +82,27 @@ type activeSubscription struct {
 	unsubs []transport.Unsubscribe
 }
 
+// HasTransactionalRoute implements event.RouteInspector. Returns false
+// before Start (no router built yet) or when no transactional transport
+// is among the resolved route for eventType.
+func (b *Bus) HasTransactionalRoute(eventType string) bool {
+	b.mu.Lock()
+	r := b.router
+	b.mu.Unlock()
+
+	if r == nil {
+		return false
+	}
+
+	for _, t := range r.Resolve(eventType) {
+		if t.Capabilities().Transactional {
+			return true
+		}
+	}
+
+	return false
+}
+
 // NewBus constructs a Bus from the supplied configuration, transport
 // registry, and middleware groups. Subscribe calls are accepted before
 // Start; they are flushed during Start once the router is resolved.
