@@ -42,14 +42,12 @@ func IsDuplicateKeyError(err error) bool {
 	}
 
 	// PostgreSQL: code 23505 (unique_violation)
-	var pgErr pgdriver.Error
-	if errors.As(err, &pgErr) {
+	if pgErr, ok := errors.AsType[pgdriver.Error](err); ok {
 		return pgErr.Field('C') == pgUniqueViolation
 	}
 
 	// MySQL: 1062 (ER_DUP_ENTRY) or 1169 (ER_DUP_UNIQUE)
-	var mysqlErr *mysql.MySQLError
-	if errors.As(err, &mysqlErr) {
+	if mysqlErr, ok := errors.AsType[*mysql.MySQLError](err); ok {
 		return mysqlErr.Number == mysqlDupEntry || mysqlErr.Number == mysqlDupUnique
 	}
 
@@ -81,14 +79,12 @@ func IsForeignKeyError(err error) bool {
 	}
 
 	// PostgreSQL: code 23503 (foreign_key_violation)
-	var pgErr pgdriver.Error
-	if errors.As(err, &pgErr) {
+	if pgErr, ok := errors.AsType[pgdriver.Error](err); ok {
 		return pgErr.Field('C') == pgForeignKeyViolation
 	}
 
 	// MySQL: 1451 (ER_ROW_IS_REFERENCED) or 1452 (ER_NO_REFERENCED_ROW)
-	var mysqlErr *mysql.MySQLError
-	if errors.As(err, &mysqlErr) {
+	if mysqlErr, ok := errors.AsType[*mysql.MySQLError](err); ok {
 		return mysqlErr.Number == mysqlRowIsReferenced || mysqlErr.Number == mysqlNoReferencedRow
 	}
 

@@ -42,8 +42,7 @@ var fiberErrorMappings = map[int]fiberErrorMapping{
 
 // handleError handles the error and returns the response.
 func handleError(ctx fiber.Ctx, err error) error {
-	var fiberErr *fiber.Error
-	if errors.As(err, &fiberErr) {
+	if fiberErr, ok := errors.AsType[*fiber.Error](err); ok {
 		// Look up the error mapping for this status code
 		mapping, exists := fiberErrorMappings[fiberErr.Code]
 

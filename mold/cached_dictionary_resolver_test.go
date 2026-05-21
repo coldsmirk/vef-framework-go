@@ -28,8 +28,6 @@ func (s *CachedDictionaryResolverTestSuite) SetupSuite() {
 	s.bus = eventtest.NewFakeBus()
 }
 
-func (s *CachedDictionaryResolverTestSuite) TearDownSuite() {}
-
 func (s *CachedDictionaryResolverTestSuite) newResolver(loader DictionaryLoader) DictionaryResolver {
 	return NewCachedDictionaryResolver(loader, s.bus)
 }

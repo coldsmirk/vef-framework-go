@@ -131,8 +131,7 @@ func extractErrorInfo(err error) (code int, message string) {
 		return resultErr.Code, resultErr.Message
 	}
 
-	var fiberErr *fiber.Error
-	if errors.As(err, &fiberErr) {
+	if fiberErr, ok := errors.AsType[*fiber.Error](err); ok {
 		mappedCode, messageKey, _ := app.MapFiberError(fiberErr.Code)
 
 		return mappedCode, i18n.T(messageKey)

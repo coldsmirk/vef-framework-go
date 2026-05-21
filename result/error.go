@@ -109,12 +109,7 @@ func Errf(format string, args ...any) Error {
 
 // AsErr extracts an Error from err if present.
 func AsErr(err error) (Error, bool) {
-	var target Error
-	if errors.As(err, &target) {
-		return target, true
-	}
-
-	return Error{}, false
+	return errors.AsType[Error](err)
 }
 
 // IsRecordNotFound checks if the error is a record not found error.

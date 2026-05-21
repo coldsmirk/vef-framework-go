@@ -70,8 +70,7 @@ func (b *CommandQueryBus) send(ctx context.Context, key reflect.Type, action Act
 	execute := func(ctx context.Context) (any, error) {
 		return h.dispatch(ctx, action)
 	}
-	for i := len(b.behaviors) - 1; i >= 0; i-- {
-		bh := b.behaviors[i]
+	for _, bh := range slices.Backward(b.behaviors) {
 		next := execute
 		execute = func(ctx context.Context) (any, error) {
 			return bh.Handle(ctx, action, next)

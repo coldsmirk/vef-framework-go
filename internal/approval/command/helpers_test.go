@@ -3,6 +3,7 @@ package command_test
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -41,8 +42,7 @@ func chainBehaviors(behaviors ...cqrs.Behavior) cqrs.Behavior {
 type behaviorChain []cqrs.Behavior
 
 func (c behaviorChain) Handle(ctx context.Context, action cqrs.Action, next func(context.Context) (any, error)) (any, error) {
-	for i := len(c) - 1; i >= 0; i-- {
-		b := c[i]
+	for _, b := range slices.Backward(c) {
 		inner := next
 		next = func(ctx context.Context) (any, error) {
 			return b.Handle(ctx, action, inner)

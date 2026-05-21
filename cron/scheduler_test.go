@@ -42,10 +42,10 @@ func TestSchedulerNewJobOneTime(t *testing.T) {
 
 	scheduler := NewScheduler(gocronScheduler)
 
-	var executed int32
+	var executed atomic.Int32
 
 	testFunc := func() {
-		atomic.AddInt32(&executed, 1)
+		executed.Add(1)
 	}
 
 	jobDef := NewOneTimeJob(nil,
@@ -64,7 +64,7 @@ func TestSchedulerNewJobOneTime(t *testing.T) {
 	scheduler.Start()
 	time.Sleep(100 * time.Millisecond)
 
-	assert.Equal(t, int32(1), atomic.LoadInt32(&executed), "One-time job should execute exactly once")
+	assert.Equal(t, int32(1), executed.Load(), "One-time job should execute exactly once")
 }
 
 // TestSchedulerNewJobDuration tests creating and executing a duration-based job with limited runs.
@@ -78,10 +78,10 @@ func TestSchedulerNewJobDuration(t *testing.T) {
 
 	scheduler := NewScheduler(gocronScheduler)
 
-	var executed int32
+	var executed atomic.Int32
 
 	testFunc := func() {
-		atomic.AddInt32(&executed, 1)
+		executed.Add(1)
 	}
 
 	jobDef := NewDurationJob(50*time.Millisecond,
@@ -99,7 +99,7 @@ func TestSchedulerNewJobDuration(t *testing.T) {
 	scheduler.Start()
 	time.Sleep(200 * time.Millisecond)
 
-	assert.Equal(t, int32(3), atomic.LoadInt32(&executed), "Duration job should execute exactly 3 times")
+	assert.Equal(t, int32(3), executed.Load(), "Duration job should execute exactly 3 times")
 }
 
 // TestSchedulerNewJobCron tests creating and executing a cron-based job with limited runs.
@@ -113,10 +113,10 @@ func TestSchedulerNewJobCron(t *testing.T) {
 
 	scheduler := NewScheduler(gocronScheduler)
 
-	var executed int32
+	var executed atomic.Int32
 
 	testFunc := func() {
-		atomic.AddInt32(&executed, 1)
+		executed.Add(1)
 	}
 
 	jobDef := NewCronJob("* * * * * *", true,
@@ -134,7 +134,7 @@ func TestSchedulerNewJobCron(t *testing.T) {
 	scheduler.Start()
 	time.Sleep(2500 * time.Millisecond)
 
-	assert.Equal(t, int32(2), atomic.LoadInt32(&executed), "Cron job should execute exactly 2 times")
+	assert.Equal(t, int32(2), executed.Load(), "Cron job should execute exactly 2 times")
 }
 
 // TestSchedulerNewJobDurationRandom tests creating and executing a random duration job.
@@ -148,10 +148,10 @@ func TestSchedulerNewJobDurationRandom(t *testing.T) {
 
 	scheduler := NewScheduler(gocronScheduler)
 
-	var executed int32
+	var executed atomic.Int32
 
 	testFunc := func() {
-		atomic.AddInt32(&executed, 1)
+		executed.Add(1)
 	}
 
 	jobDef := NewDurationRandomJob(10*time.Millisecond, 50*time.Millisecond,
@@ -169,7 +169,7 @@ func TestSchedulerNewJobDurationRandom(t *testing.T) {
 	scheduler.Start()
 	time.Sleep(200 * time.Millisecond)
 
-	executions := atomic.LoadInt32(&executed)
+	executions := executed.Load()
 	assert.GreaterOrEqual(t, executions, int32(1), "Random duration job should execute at least once")
 	assert.LessOrEqual(t, executions, int32(2), "Random duration job should not exceed limit")
 }
@@ -287,13 +287,13 @@ func TestSchedulerUpdateJob(t *testing.T) {
 
 	scheduler := NewScheduler(gocronScheduler)
 
-	var executed1, executed2 int32
+	var executed1, executed2 atomic.Int32
 
 	testFunc1 := func() {
-		atomic.AddInt32(&executed1, 1)
+		executed1.Add(1)
 	}
 	testFunc2 := func() {
-		atomic.AddInt32(&executed2, 1)
+		executed2.Add(1)
 	}
 
 	jobDef1 := NewOneTimeJob(nil,
@@ -318,8 +318,8 @@ func TestSchedulerUpdateJob(t *testing.T) {
 	scheduler.Start()
 	time.Sleep(100 * time.Millisecond)
 
-	assert.Equal(t, int32(0), atomic.LoadInt32(&executed1), "Original task should not execute")
-	assert.Equal(t, int32(1), atomic.LoadInt32(&executed2), "Updated task should execute once")
+	assert.Equal(t, int32(0), executed1.Load(), "Original task should not execute")
+	assert.Equal(t, int32(1), executed2.Load(), "Updated task should execute once")
 }
 
 // TestSchedulerWithContext tests job cancellation via context.
@@ -333,7 +333,7 @@ func TestSchedulerWithContext(t *testing.T) {
 
 	scheduler := NewScheduler(gocronScheduler)
 
-	var executed int32
+	var executed atomic.Int32
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -342,7 +342,7 @@ func TestSchedulerWithContext(t *testing.T) {
 		case <-jobCtx.Done():
 			return
 		case <-time.After(100 * time.Millisecond):
-			atomic.AddInt32(&executed, 1)
+			executed.Add(1)
 		}
 	}
 
@@ -361,7 +361,7 @@ func TestSchedulerWithContext(t *testing.T) {
 	cancel()
 	time.Sleep(200 * time.Millisecond)
 
-	assert.Equal(t, int32(0), atomic.LoadInt32(&executed), "Job should not execute after context cancellation")
+	assert.Equal(t, int32(0), executed.Load(), "Job should not execute after context cancellation")
 }
 
 // TestSchedulerStopJobs tests stopping all jobs.
@@ -375,10 +375,10 @@ func TestSchedulerStopJobs(t *testing.T) {
 
 	scheduler := NewScheduler(gocronScheduler)
 
-	var executed int32
+	var executed atomic.Int32
 
 	testFunc := func() {
-		atomic.AddInt32(&executed, 1)
+		executed.Add(1)
 	}
 
 	jobDef := NewDurationJob(50*time.Millisecond,
@@ -395,11 +395,11 @@ func TestSchedulerStopJobs(t *testing.T) {
 	err = scheduler.StopJobs()
 	require.NoError(t, err, "Should stop jobs")
 
-	executedAfterStop := atomic.LoadInt32(&executed)
+	executedAfterStop := executed.Load()
 
 	time.Sleep(150 * time.Millisecond)
 
-	finalExecuted := atomic.LoadInt32(&executed)
+	finalExecuted := executed.Load()
 
 	assert.Equal(t, executedAfterStop, finalExecuted, "Jobs should not execute after being stopped")
 }
@@ -415,10 +415,10 @@ func TestJobRunNow(t *testing.T) {
 
 	scheduler := NewScheduler(gocronScheduler)
 
-	var executed int32
+	var executed atomic.Int32
 
 	testFunc := func() {
-		atomic.AddInt32(&executed, 1)
+		executed.Add(1)
 	}
 
 	futureTime := time.Now().Add(1 * time.Hour)
@@ -433,13 +433,13 @@ func TestJobRunNow(t *testing.T) {
 	scheduler.Start()
 
 	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, int32(0), atomic.LoadInt32(&executed), "Job should not execute before scheduled time")
+	assert.Equal(t, int32(0), executed.Load(), "Job should not execute before scheduled time")
 
 	err = job.RunNow()
 	require.NoError(t, err, "Should trigger job immediately")
 
 	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&executed), "Job should execute immediately after RunNow")
+	assert.Equal(t, int32(1), executed.Load(), "Job should execute immediately after RunNow")
 }
 
 // TestJobNextRuns tests retrieving future run times.
