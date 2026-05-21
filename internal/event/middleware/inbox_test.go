@@ -225,9 +225,10 @@ func TestInboxMiddlewareUsesConfiguredProcessingLease(t *testing.T) {
 	after := time.Now().Add(lease)
 
 	require.NoError(t, err, "Handler should complete with captured lease repository")
-	require.False(t,
-		repo.lockUntil.Unwrap().Before(before) || repo.lockUntil.Unwrap().After(after),
-		"Processing lease deadline should use the middleware configuration")
+
+	got := repo.lockUntil.Unwrap()
+	require.False(t, got.Before(before), "Processing lease deadline should not precede now+lease at call start")
+	require.False(t, got.After(after), "Processing lease deadline should not exceed now+lease at call end")
 }
 
 var _ pubmw.ConsumeMiddleware = (*Inbox)(nil)
