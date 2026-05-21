@@ -72,8 +72,8 @@ func TestFilesFor(t *testing.T) {
 		assert.Empty(t, ds.scheduleCalls, "Typed OnCreate must not schedule deletions, matching untyped semantics")
 		assert.ElementsMatch(t,
 			[]string{"priv/cover.png", "priv/embed.png"},
-			pub.promotedKeys(),
-			"Each consumed key must produce one FilePromotedEvent, matching untyped semantics",
+			pub.claimedKeys(),
+			"Each consumed key must produce one FileClaimedEvent, matching untyped semantics",
 		)
 	})
 
@@ -91,7 +91,7 @@ func TestFilesFor(t *testing.T) {
 		assert.Equal(t, []string{"priv/old.png"}, ds.scheduleCalls[0].Keys, "Replaced batch should target the old key")
 		assert.Equal(t, storage.DeleteReasonReplaced, ds.scheduleCalls[0].Reason, "Replaced batch should carry the replaced reason")
 
-		assert.Equal(t, []string{"priv/new.png"}, pub.promotedKeys(), "Only newly added refs should produce FilePromotedEvent")
+		assert.Equal(t, []string{"priv/new.png"}, pub.claimedKeys(), "Only newly added refs should produce FileClaimedEvent")
 	})
 
 	t.Run("OnDeleteSchedulesEveryRefWithDeletedReason", func(t *testing.T) {
@@ -111,7 +111,7 @@ func TestFilesFor(t *testing.T) {
 			ds.scheduledKeys(0),
 			"Scheduled keys should cover every reachable ref",
 		)
-		assert.Empty(t, pub.events, "Typed OnDelete must not publish promotion events")
+		assert.Empty(t, pub.events, "Typed OnDelete must not publish claim events")
 	})
 
 	t.Run("NilModelIsNoopAcrossAllHooks", func(t *testing.T) {
@@ -141,7 +141,7 @@ func TestFilesFor(t *testing.T) {
 			require.Len(t, cs.consumeManyCalls, 1, "Missing old side must consume new refs")
 			assert.Equal(t, []string{"priv/added.png"}, cs.consumeManyCalls[0].Keys, "Only the new ref should be consumed")
 			assert.Empty(t, ds.scheduleCalls, "Missing old side must not schedule deletions")
-			assert.Equal(t, []string{"priv/added.png"}, pub.promotedKeys(), "New ref should produce a FilePromotedEvent")
+			assert.Equal(t, []string{"priv/added.png"}, pub.claimedKeys(), "New ref should produce a FileClaimedEvent")
 		})
 
 		t.Run("NilNewIsPureDelete", func(t *testing.T) {
@@ -154,7 +154,7 @@ func TestFilesFor(t *testing.T) {
 			require.Len(t, ds.scheduleCalls, 1, "Missing new side must schedule the removed ref")
 			assert.Equal(t, []string{"priv/removed.png"}, ds.scheduleCalls[0].Keys, "Removed batch should target the old key")
 			assert.Equal(t, storage.DeleteReasonReplaced, ds.scheduleCalls[0].Reason, "Removed batch should carry the replaced reason (mirrors untyped OnUpdate)")
-			assert.Empty(t, pub.events, "Pure delete must not publish promotion events")
+			assert.Empty(t, pub.events, "Pure delete must not publish claim events")
 		})
 	})
 
@@ -166,7 +166,7 @@ func TestFilesFor(t *testing.T) {
 
 		require.Error(t, err, "Typed OnCreate must surface ConsumeMany failures")
 		assert.ErrorIs(t, err, cs.consumeManyErr, "Returned error must wrap the ConsumeMany error")
-		assert.Empty(t, pub.events, "No FilePromotedEvent must be published when ConsumeMany fails (event-on-success contract)")
+		assert.Empty(t, pub.events, "No FileClaimedEvent must be published when ConsumeMany fails (event-on-success contract)")
 	})
 
 	t.Run("NewFilesForFallsBackToForeignFilesImplementation", func(t *testing.T) {

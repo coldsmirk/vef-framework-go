@@ -69,11 +69,12 @@ type Files interface {
 // normalised to the identity mapper) when business code embeds bare
 // keys directly in <img src> / ![](...).
 //
-// Promoted-file events are published synchronously after a successful
-// ConsumeMany call but before the business transaction commits. Combined
-// with an in-memory bus this gives at-least-once delivery with the
-// possibility of spurious events if the business transaction later
-// rolls back; subscribers MUST be idempotent.
+// FileClaimedEvent is published through the outbox transport inside the
+// caller's transaction (event.WithTx). Subscribers see the event iff
+// the business transaction commits — no ghost events on rollback. The
+// outbox relay forwards records to the configured sink with at-least-
+// once semantics, so subscribers must still attach with event.WithGroup
+// and rely on the Inbox middleware for dedupe.
 func NewFiles(cc ClaimConsumer, ds DeleteScheduler, bus event.Bus, urlMapper URLKeyMapper) Files {
 	if urlMapper == nil {
 		urlMapper = new(IdentityURLKeyMapper)
@@ -134,7 +135,7 @@ func (f *defaultFiles) onCreateWith(ctx context.Context, tx orm.DB, principal *s
 		return err
 	}
 
-	f.publishPromoted(ctx, keys)
+	f.publishClaimed(ctx, tx, keys)
 
 	return nil
 }
@@ -163,7 +164,7 @@ func (f *defaultFiles) onUpdateWith(ctx context.Context, tx orm.DB, principal *s
 		return err
 	}
 
-	f.publishPromoted(ctx, consumedKeys)
+	f.publishClaimed(ctx, tx, consumedKeys)
 
 	return nil
 }
@@ -177,17 +178,23 @@ func refKeys(refs []FileRef) []string {
 	return keys
 }
 
-// publishPromoted tolerates a nil bus (tests wire defaultFiles without
-// an event bus); callers must therefore always go through this helper
-// rather than touching f.bus directly.
-func (f *defaultFiles) publishPromoted(ctx context.Context, keys []string) {
+// publishClaimed routes every claimed key through the outbox transport
+// inside the caller's business transaction. Tolerates a nil bus (tests
+// wire defaultFiles without an event bus); callers must therefore always
+// go through this helper rather than touching f.bus directly.
+//
+// A publish failure here is logged but not propagated: the outbox table
+// participates in tx, so a tx commit later will fail and trigger a
+// retry of the whole flow anyway. Surfacing the per-key error would
+// only mask the eventual commit error with less useful context.
+func (f *defaultFiles) publishClaimed(ctx context.Context, tx orm.DB, keys []string) {
 	if f.bus == nil || len(keys) == 0 {
 		return
 	}
 
 	for _, key := range keys {
-		if err := f.bus.Publish(ctx, NewFilePromotedEvent(key)); err != nil {
-			filesLogger.Warnf("publish file-promoted event for %s failed: %v", key, err)
+		if err := f.bus.Publish(ctx, NewFileClaimedEvent(key), event.WithTx(tx)); err != nil {
+			filesLogger.Warnf("publish file-claimed event for %s failed: %v", key, err)
 		}
 	}
 }

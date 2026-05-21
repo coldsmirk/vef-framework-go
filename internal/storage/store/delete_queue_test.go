@@ -83,7 +83,9 @@ func TestDeleteQueue(t *testing.T) {
 			return dq.Enqueue(txCtx, tx, []store.PendingDelete{item})
 		}), "Pending delete should be enqueued inside the transaction")
 
-		require.NoError(t, dq.Done(ctx, []string{item.ID}), "Done should remove the pending delete row")
+		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+			return dq.Done(txCtx, tx, []string{item.ID})
+		}), "Done should remove the pending delete row inside the transaction")
 
 		leased, err := dq.Lease(ctx, now.AddHours(24), 10, time.Minute)
 		require.NoError(t, err, "Lease after Done should succeed")
@@ -105,7 +107,9 @@ func TestDeleteQueue(t *testing.T) {
 		require.Len(t, leased, 1, "Initial lease should return the scheduled row")
 
 		nextAt := now.AddHours(1)
-		require.NoError(t, dq.Defer(ctx, item.ID, nextAt), "Deferring a leased row should succeed")
+		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+			return dq.Defer(txCtx, tx, item.ID, nextAt)
+		}), "Deferring a leased row should succeed inside the transaction")
 
 		// Move now past nextAt and confirm Lease returns it with attempts=1.
 		leased, err = dq.Lease(ctx, nextAt.AddHours(1), 10, time.Minute)

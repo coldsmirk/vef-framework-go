@@ -93,23 +93,42 @@ func (m *MockDeleteScheduler) Schedule(_ context.Context, tx orm.DB, keys []stri
 	return m.scheduleErr
 }
 
+// CapturedPublish records one Publish invocation: the event payload and
+// the per-call PublishOption count, so tests can assert that the
+// caller forwarded transactional options (typically WithTx) rather
+// than firing a bare Publish.
+//
+// Note: PublishConfig.Tx defaults to a nil interface, so a stripped-
+// WithTx call and a present-WithTx(nil) call resolve to the same
+// post-fold value. Counting raw options is the only way the captured
+// trace can distinguish the two cases in a unit test.
+type CapturedPublish struct {
+	Event   event.Event
+	OptsLen int
+}
+
 // CapturingPublisher records every published event so test cases can
-// assert which FilePromotedEvent payloads escaped Files. Implements
+// assert which FileClaimedEvent payloads escaped Files. Implements
 // event.Bus so storage.NewFiles accepts it directly in tests.
 type CapturingPublisher struct {
 	events []event.Event
+	calls  []CapturedPublish
 }
 
 // Publish implements event.Bus.
-func (p *CapturingPublisher) Publish(_ context.Context, e event.Event, _ ...event.PublishOption) error {
+func (p *CapturingPublisher) Publish(_ context.Context, e event.Event, opts ...event.PublishOption) error {
 	p.events = append(p.events, e)
+	p.calls = append(p.calls, CapturedPublish{Event: e, OptsLen: len(opts)})
 
 	return nil
 }
 
 // PublishBatch implements event.Bus.
-func (p *CapturingPublisher) PublishBatch(_ context.Context, evts []event.Event, _ ...event.PublishOption) error {
-	p.events = append(p.events, evts...)
+func (p *CapturingPublisher) PublishBatch(_ context.Context, evts []event.Event, opts ...event.PublishOption) error {
+	for _, e := range evts {
+		p.events = append(p.events, e)
+		p.calls = append(p.calls, CapturedPublish{Event: e, OptsLen: len(opts)})
+	}
 
 	return nil
 }
@@ -119,13 +138,13 @@ func (*CapturingPublisher) Subscribe(string, event.Handler, ...event.SubscribeOp
 	return func() {}, nil
 }
 
-// promotedKeys returns the FilePromotedEvent keys captured by p, in
-// publication order, ignoring any non-promoted events.
-func (p *CapturingPublisher) promotedKeys() []string {
+// claimedKeys returns the FileClaimedEvent keys captured by p, in
+// publication order, ignoring any non-claimed events.
+func (p *CapturingPublisher) claimedKeys() []string {
 	keys := make([]string, 0, len(p.events))
 
 	for _, e := range p.events {
-		if pe, ok := e.(*storage.FilePromotedEvent); ok {
+		if pe, ok := e.(*storage.FileClaimedEvent); ok {
 			keys = append(keys, pe.FileKey)
 		}
 	}
@@ -152,7 +171,7 @@ func newTestFiles() (*MockClaimConsumer, *MockDeleteScheduler, *CapturingPublish
 }
 
 func TestFiles(t *testing.T) {
-	t.Run("OnCreateConsumesClaimsAndPublishesPromoted", func(t *testing.T) {
+	t.Run("OnCreateConsumesClaimsAndPublishesClaimed", func(t *testing.T) {
 		cs, ds, pub, files := newTestFiles()
 		model := &FileModel{CoverKey: "priv/cover.png"}
 
@@ -163,7 +182,7 @@ func TestFiles(t *testing.T) {
 
 		assert.Empty(t, ds.scheduleCalls, "OnCreate must not schedule deletions")
 
-		assert.Equal(t, []string{"priv/cover.png"}, pub.promotedKeys(), "Each consumed key must trigger one FilePromotedEvent")
+		assert.Equal(t, []string{"priv/cover.png"}, pub.claimedKeys(), "Each consumed key must trigger one FileClaimedEvent")
 	})
 
 	t.Run("OnCreateExtractsRichTextRefs", func(t *testing.T) {
@@ -184,8 +203,8 @@ func TestFiles(t *testing.T) {
 
 		assert.ElementsMatch(t,
 			[]string{"priv/cover.png", "priv/embed-1.png", "priv/embed-2.png"},
-			pub.promotedKeys(),
-			"All consumed keys should produce a FilePromotedEvent",
+			pub.claimedKeys(),
+			"All consumed keys should produce a FileClaimedEvent",
 		)
 	})
 
@@ -196,7 +215,7 @@ func TestFiles(t *testing.T) {
 
 		assert.Empty(t, cs.consumeManyCalls, "ConsumeMany must not be called when the model has no refs")
 		assert.Empty(t, ds.scheduleCalls, "Schedule must not be called either")
-		assert.Empty(t, pub.events, "No events should be published when there is nothing to promote")
+		assert.Empty(t, pub.events, "No events should be published when there is nothing to claim")
 	})
 
 	t.Run("OnCreateConsumeErrorPropagatesAndSuppressesEvents", func(t *testing.T) {
@@ -207,7 +226,7 @@ func TestFiles(t *testing.T) {
 
 		require.Error(t, err, "OnCreate must surface ConsumeMany failures")
 		assert.ErrorIs(t, err, cs.consumeManyErr, "Returned error must wrap the ConsumeMany error")
-		assert.Empty(t, pub.events, "No FilePromotedEvent must be published when ConsumeMany fails (event-on-success contract)")
+		assert.Empty(t, pub.events, "No FileClaimedEvent must be published when ConsumeMany fails (event-on-success contract)")
 	})
 
 	t.Run("OnUpdateConsumesNewKeysAndSchedulesReplaced", func(t *testing.T) {
@@ -227,7 +246,7 @@ func TestFiles(t *testing.T) {
 		assert.Equal(t, []string{"priv/old-cover.png"}, ds.scheduleCalls[0].Keys, "Replaced batch should target the old key")
 		assert.Equal(t, storage.DeleteReasonReplaced, ds.scheduleCalls[0].Reason, "Replaced batch should carry the replaced reason")
 
-		assert.Equal(t, []string{"priv/new-cover.png"}, pub.promotedKeys(), "Only newly added refs should produce FilePromotedEvent")
+		assert.Equal(t, []string{"priv/new-cover.png"}, pub.claimedKeys(), "Only newly added refs should produce FileClaimedEvent")
 	})
 
 	t.Run("OnUpdateNoChangeIsNoop", func(t *testing.T) {
@@ -281,7 +300,7 @@ func TestFiles(t *testing.T) {
 			"Scheduled keys should cover every reachable ref",
 		)
 
-		assert.Empty(t, pub.events, "OnDelete must not publish FilePromotedEvent — promotion is for adoptions only")
+		assert.Empty(t, pub.events, "OnDelete must not publish FileClaimedEvent — claim events are for adoptions only")
 	})
 
 	t.Run("OnDeleteEmptyModelIsNoop", func(t *testing.T) {
@@ -306,7 +325,7 @@ func TestFiles(t *testing.T) {
 
 	t.Run("NilPublisherIsTolerated", func(t *testing.T) {
 		// Regression guard: storage_resource and tests sometimes wire
-		// Files with a nil publisher. publishPromoted must short-circuit
+		// Files with a nil publisher. publishClaimed must short-circuit
 		// rather than NPE.
 		cs := &MockClaimConsumer{}
 		ds := &MockDeleteScheduler{}
@@ -314,6 +333,24 @@ func TestFiles(t *testing.T) {
 
 		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, &FileModel{CoverKey: "priv/cover.png"}), "OnCreate with nil publisher must succeed")
 		assert.Len(t, cs.consumeManyCalls, 1, "ConsumeMany must still run with a nil publisher")
+	})
+
+	t.Run("PublishCarriesTransactionalOption", func(t *testing.T) {
+		// Regression guard: claimed events must flow through the outbox
+		// transport in the caller's transaction. Files achieves this by
+		// always passing event.WithTx(tx) to Publish. The CapturingPublisher
+		// records the raw PublishOption count so we can fail loudly if
+		// a future refactor drops the option.
+		_, _, pub, files := newTestFiles()
+
+		require.NoError(t,
+			files.OnCreate(context.Background(), nil, testPrincipal,
+				&FileModel{CoverKey: "priv/cover.png"}),
+			"OnCreate should succeed")
+
+		require.Len(t, pub.calls, 1, "Exactly one Publish call expected")
+		assert.GreaterOrEqual(t, pub.calls[0].OptsLen, 1,
+			"publishClaimed must forward at least one PublishOption (event.WithTx)")
 	})
 
 	// P0-1 regression guards: rich_text / markdown URLs must be translated
@@ -402,8 +439,8 @@ func TestFiles(t *testing.T) {
 		)
 		assert.ElementsMatch(t,
 			[]string{"priv/cover.png", "priv/embed.png"},
-			pub.promotedKeys(),
-			"Promotion events must mirror consumed keys; absolute URLs do not produce a FilePromotedEvent",
+			pub.claimedKeys(),
+			"claim events must mirror consumed keys; absolute URLs do not produce a FileClaimedEvent",
 		)
 		assert.Empty(t, ds.scheduleCalls, "OnCreate must not schedule deletes")
 	})

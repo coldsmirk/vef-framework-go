@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/storage/store"
+	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/storage"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -33,11 +34,19 @@ const (
 // either marks the row done or defers it with exponential backoff. Rows
 // that exceed StorageConfig.DeleteMaxAttempts are parked indefinitely
 // and a dead-letter event is published.
+//
+// Done + FileDeleted publish (and Defer + DeadLetter publish) are
+// committed in a single transaction via db.RunInTX, so the bookkeeping
+// and the outbox event flip atomically. The backend object delete
+// itself runs outside the transaction — it is idempotent (ErrObjectNotFound
+// is silently absorbed), so a retried tick after a transaction-side
+// crash converges without leaking objects or events.
 type DeleteWorker struct {
 	service     storage.Service
 	multipart   storage.Multipart // nil when the backend does not implement chunked uploads
 	deleteQueue store.DeleteQueue
 	bus         event.Bus
+	db          orm.DB
 	cfg         *config.StorageConfig
 }
 
@@ -49,12 +58,14 @@ func NewDeleteWorker(
 	service storage.Service,
 	deleteQueue store.DeleteQueue,
 	bus event.Bus,
+	db orm.DB,
 	cfg *config.StorageConfig,
 ) *DeleteWorker {
 	w := &DeleteWorker{
 		service:     service,
 		deleteQueue: deleteQueue,
 		bus:         bus,
+		db:          db,
 		cfg:         cfg,
 	}
 
@@ -131,20 +142,31 @@ func (w *DeleteWorker) processOne(ctx context.Context, item *store.PendingDelete
 		return
 	}
 
-	if doneErr := w.deleteQueue.Done(ctx, []string{item.ID}); doneErr != nil {
-		logger.Errorf("Mark delete row %s done failed: %v", item.ID, doneErr)
+	// Commit Done + FileDeleted event atomically: the row deletion and
+	// the outbox insert share the transaction, so a tx failure rolls
+	// back both and the next lease re-runs processOne. DeleteObject
+	// above already ran outside the tx but is idempotent, so a retry
+	// converges without leaking objects.
+	txErr := w.db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		if err := w.deleteQueue.Done(txCtx, tx, []string{item.ID}); err != nil {
+			return err
+		}
 
-		return
-	}
-
-	if err := w.bus.Publish(ctx, storage.NewFileDeletedEvent(item.Key, item.Reason)); err != nil {
-		logger.Warnf("publish file-deleted event for %s failed: %v", item.Key, err)
+		return w.bus.Publish(txCtx,
+			storage.NewFileDeletedEvent(item.Key, item.Reason),
+			event.WithTx(tx))
+	})
+	if txErr != nil {
+		logger.Errorf("Commit done+event for delete row %s failed: %v (will retry on next lease)",
+			item.ID, txErr)
 	}
 }
 
 // handleFailure decides whether a transient error should trigger a
 // backoff retry or, once attempts have exhausted DeleteMaxAttempts, a
-// dead-letter park.
+// dead-letter park. Transient backoff has no co-committed event, so the
+// Defer runs in a single-statement transaction; dead-letter park does
+// publish an event, so it commits both inside one transaction.
 func (w *DeleteWorker) handleFailure(ctx context.Context, item *store.PendingDelete, lastErr error) {
 	maxAttempts := w.cfg.EffectiveDeleteMaxAttempts()
 	nextAttempt := item.Attempts + 1
@@ -158,7 +180,10 @@ func (w *DeleteWorker) handleFailure(ctx context.Context, item *store.PendingDel
 	backoff := computeBackoff(nextAttempt)
 	nextAt := timex.DateTime(time.Now().Add(backoff))
 
-	if deferErr := w.deleteQueue.Defer(ctx, item.ID, nextAt); deferErr != nil {
+	deferErr := w.db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		return w.deleteQueue.Defer(txCtx, tx, item.ID, nextAt)
+	})
+	if deferErr != nil {
 		logger.Errorf("Defer delete row %s failed: %v", item.ID, deferErr)
 
 		return
@@ -172,22 +197,34 @@ func (w *DeleteWorker) parkDeadLetter(ctx context.Context, item *store.PendingDe
 	maxAttempts := w.cfg.EffectiveDeleteMaxAttempts()
 	parkUntil := timex.DateTime(time.Now().Add(deadLetterPark))
 
-	if deferErr := w.deleteQueue.Defer(ctx, item.ID, parkUntil); deferErr != nil {
-		logger.Errorf("Park dead-letter row %s failed: %v", item.ID, deferErr)
+	// Defer + DeadLetter event commit atomically. A tx failure here
+	// leaves the row at its current NextAttemptAt — the next lease
+	// will pick it up, handleFailure will recompute the failure path
+	// and re-attempt parkDeadLetter. The original lastErr is lost on
+	// retry; for dead-letter classification that is acceptable since
+	// the row has already exceeded its retry budget.
+	txErr := w.db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		if err := w.deleteQueue.Defer(txCtx, tx, item.ID, parkUntil); err != nil {
+			return err
+		}
+
+		return w.bus.Publish(txCtx, storage.NewDeleteDeadLetterEvent(
+			item.ID,
+			item.Key,
+			item.Reason,
+			item.Attempts+1,
+			classifyDeleteError(lastErr),
+		), event.WithTx(tx))
+	})
+	if txErr != nil {
+		logger.Errorf("Park dead-letter row %s failed: %v (will retry on next lease)",
+			item.ID, txErr)
+
+		return
 	}
 
 	logger.Errorf("Delete object %s reached max attempts (%d), parked as dead-letter: %v",
 		item.Key, maxAttempts, lastErr)
-
-	if err := w.bus.Publish(ctx, storage.NewDeleteDeadLetterEvent(
-		item.ID,
-		item.Key,
-		item.Reason,
-		item.Attempts+1,
-		classifyDeleteError(lastErr),
-	)); err != nil {
-		logger.Warnf("publish dead-letter event for %s failed: %v", item.Key, err)
-	}
 }
 
 // computeBackoff returns 2^attempt * base, capped at deleteMaxBackoff.

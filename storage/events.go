@@ -2,11 +2,18 @@ package storage
 
 // Storage event topics. Subscribers should match on the constant rather
 // than the literal string to stay forward-compatible.
+//
+// All three topics are published via the outbox transport in the
+// originating business transaction (see Files / DeleteWorker). The
+// outbox relay forwards records to the configured sink transport and
+// guarantees at-least-once delivery; subscribers must attach to the
+// sink, supply event.WithGroup("..."), and rely on the Inbox middleware
+// for dedupe.
 const (
-	// EventTypeFilePromoted is published when a previously-pending upload
-	// claim has been adopted by a business transaction (Files.OnCreate or
-	// the new-side of Files.OnUpdate). One event per consumed claim.
-	EventTypeFilePromoted = "vef.storage.file.promoted"
+	// EventTypeFileClaimed is published when a previously-pending upload
+	// claim has been consumed by a business transaction (Files.OnCreate
+	// or the new-side of Files.OnUpdate). One event per consumed claim.
+	EventTypeFileClaimed = "vef.storage.file.claimed"
 	// EventTypeFileDeleted is published when the delete worker has
 	// successfully removed an object from the backend. One event per
 	// pending-delete row drained.
@@ -17,21 +24,24 @@ const (
 	EventTypeDeleteDeadLetter = "vef.storage.delete.dead_letter"
 )
 
-// FilePromotedEvent reports the successful adoption of an upload claim by
-// a business transaction. Subscribers can use it for audit, analytics, or
-// downstream side-effects (cache warm-up, indexing, notifications).
-type FilePromotedEvent struct {
+// FileClaimedEvent reports that a business transaction has formally
+// claimed a previously-pending uploaded file: the matching upload_claim
+// row was deleted inside the caller's transaction and the file now
+// belongs to the business model. Subscribers can use it for audit,
+// analytics, or downstream side-effects (cache warm-up, indexing,
+// notifications).
+type FileClaimedEvent struct {
 	// FileKey is the object key the business model now owns.
 	FileKey string `json:"fileKey"`
 }
 
-// NewFilePromotedEvent creates a new file-promoted event.
-func NewFilePromotedEvent(key string) *FilePromotedEvent {
-	return &FilePromotedEvent{FileKey: key}
+// NewFileClaimedEvent creates a new file-claimed event.
+func NewFileClaimedEvent(key string) *FileClaimedEvent {
+	return &FileClaimedEvent{FileKey: key}
 }
 
 // EventType implements event.Event.
-func (*FilePromotedEvent) EventType() string { return EventTypeFilePromoted }
+func (*FileClaimedEvent) EventType() string { return EventTypeFileClaimed }
 
 // FileDeletedEvent reports the successful removal of an object from the
 // backend by the asynchronous delete worker. Subscribers can use it for

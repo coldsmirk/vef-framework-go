@@ -95,12 +95,15 @@ type DeleteQueue interface {
 	// expected per-item processing time (e.g. 5 minutes for object delete).
 	Lease(ctx context.Context, now timex.DateTime, limit int, leaseDuration time.Duration) ([]PendingDelete, error)
 
-	// Done removes the rows identified by ids in a single batch (DELETE).
-	// ids may be empty (no-op).
-	Done(ctx context.Context, ids []string) error
+	// Done removes the rows identified by ids in a single batch (DELETE)
+	// inside tx, so the caller can commit the delete alongside any
+	// follow-up bookkeeping (typically an outbox event publish). ids
+	// may be empty (no-op).
+	Done(ctx context.Context, tx orm.DB, ids []string) error
 
 	// Defer atomically increments Attempts and sets NextAttemptAt = nextAt
-	// for the row identified by id. The worker uses this on transient
-	// failure with an exponential-backoff timestamp.
-	Defer(ctx context.Context, id string, nextAt timex.DateTime) error
+	// for the row identified by id, inside tx. The worker uses this on
+	// transient failure with an exponential-backoff timestamp, or on
+	// dead-letter park together with a co-committed dead-letter event.
+	Defer(ctx context.Context, tx orm.DB, id string, nextAt timex.DateTime) error
 }

@@ -41,23 +41,39 @@ type TestEnv struct {
 	Cfg *config.StorageConfig
 }
 
+// CapturedPublish is one Publish invocation: the event payload and the
+// raw PublishOption count. The option count lets tests assert that
+// callers forwarded transactional options (event.WithTx) — PublishConfig.Tx
+// itself folds nil-WithTx and stripped-WithTx to the same value, so
+// counting raw options is the only signal a unit test can use to tell
+// "Publish carried WithTx" from "Publish carried nothing".
+type CapturedPublish struct {
+	Event   event.Event
+	OptsLen int
+}
+
 // CapturePublisher records all published events for assertion. It
 // implements event.Bus so worker constructors that now expect a Bus
 // can accept it directly.
 type CapturePublisher struct {
 	events []event.Event
+	calls  []CapturedPublish
 }
 
 // Publish implements event.Bus.
-func (p *CapturePublisher) Publish(_ context.Context, evt event.Event, _ ...event.PublishOption) error {
+func (p *CapturePublisher) Publish(_ context.Context, evt event.Event, opts ...event.PublishOption) error {
 	p.events = append(p.events, evt)
+	p.calls = append(p.calls, CapturedPublish{Event: evt, OptsLen: len(opts)})
 
 	return nil
 }
 
 // PublishBatch implements event.Bus.
-func (p *CapturePublisher) PublishBatch(_ context.Context, evts []event.Event, _ ...event.PublishOption) error {
-	p.events = append(p.events, evts...)
+func (p *CapturePublisher) PublishBatch(_ context.Context, evts []event.Event, opts ...event.PublishOption) error {
+	for _, e := range evts {
+		p.events = append(p.events, e)
+		p.calls = append(p.calls, CapturedPublish{Event: e, OptsLen: len(opts)})
+	}
 
 	return nil
 }

@@ -133,20 +133,20 @@ func (q *deleteQueue) Lease(ctx context.Context, now timex.DateTime, limit int, 
 	return leased, err
 }
 
-func (q *deleteQueue) Done(ctx context.Context, ids []string) error {
+func (*deleteQueue) Done(ctx context.Context, tx orm.DB, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
 
-	_, err := q.db.NewDelete().Model((*PendingDelete)(nil)).Where(func(cb orm.ConditionBuilder) {
+	_, err := tx.NewDelete().Model((*PendingDelete)(nil)).Where(func(cb orm.ConditionBuilder) {
 		cb.In("id", ids)
 	}).Exec(ctx)
 
 	return err
 }
 
-func (q *deleteQueue) Defer(ctx context.Context, id string, nextAt timex.DateTime) error {
-	res, err := q.db.NewUpdate().Model((*PendingDelete)(nil)).
+func (*deleteQueue) Defer(ctx context.Context, tx orm.DB, id string, nextAt timex.DateTime) error {
+	res, err := tx.NewUpdate().Model((*PendingDelete)(nil)).
 		Set("next_attempt_at", nextAt).
 		SetExpr("attempts", func(eb orm.ExprBuilder) any {
 			return eb.Add(eb.Column("attempts"), 1)

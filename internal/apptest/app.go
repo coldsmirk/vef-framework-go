@@ -78,6 +78,10 @@ func coreOptions() []fx.Option {
 				},
 				Routing: []config.EventRoutingRule{
 					{Pattern: "approval.*", Transports: []string{"outbox"}},
+					// Storage events publish with event.WithTx; the storage
+					// module's start-up check requires a transactional route
+					// for vef.storage.*.
+					{Pattern: "vef.storage.*", Transports: []string{"outbox"}},
 				},
 				Middleware: config.EventMiddlewareConfig{
 					Logging: true,

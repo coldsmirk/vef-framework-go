@@ -128,6 +128,10 @@ Compression (`-1000`) → Headers (`-900`) → CORS (`-800`) → Content-Type (`
 - **Outbox sink config**: with `outbox.enabled=true && sink="memory"` the relay only dispatches in-process. If `redisstream.enabled=true` is also set, the framework logs a start-up warning. For cross-node delivery set `vef.event.transports.outbox.sink="redisstream"`.
 - **Tracing default trusts incoming TraceID** (W3C/OTel-compatible). Use `vef.event.middleware.tracing_strict=true` at trust-boundary ingresses to switch to strict mode (incoming park under `IncomingTraceIDFromContext`, fresh ID generated for the active context).
 - **Database migrations**: per-module DDL goes through `internal/sqlmigration.Run(ctx, db, Plan{Label, Kind, Scripts, ExpectedTables, Pre})`. Each module keeps its own `//go:embed scripts/*.sql` since `embed` cannot cross package boundaries; everything else (`needsMigration` probe, dialect query, script loader) is shared.
+- **Storage events require a transactional route**: `vef.storage.file.claimed`, `vef.storage.file.deleted`, and `vef.storage.delete.dead_letter` are all published with `event.WithTx(tx)` so the events become visible iff the originating business transaction commits. The storage module fails fast at start-up (via `event.RouteInspector`) unless these patterns resolve to a `Transactional=true` transport. Required config:
+  - `vef.event.transports.outbox.enabled = true`
+  - a routing rule with `pattern = "vef.storage.*"` → `transports = ["outbox"]`, **or** set `vef.event.default_transport = "outbox"`.
+  Subscribers attach to the configured outbox sink (`memory` single-node / `redisstream` cross-node) and must supply `event.WithGroup("...")`.
 
 ## CLI Tools
 
