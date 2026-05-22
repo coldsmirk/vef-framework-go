@@ -1,6 +1,3 @@
-// Package binding provides the default BusinessBindingHook implementation
-// that wires the approval engine into the host application's business tables
-// declared via Flow.BusinessTable / BusinessPkField / BusinessStatusField.
 package binding
 
 import (

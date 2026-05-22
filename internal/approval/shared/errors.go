@@ -1,14 +1,3 @@
-// Package shared collects cross-cutting types and helpers for the approval
-// module: sentinel errors with stable codes, ID utilities, deadline math,
-// CC user resolution, and small DTOs shared by the command/query/resource
-// boundaries.
-//
-// Error handling: each sentinel below is a value of result.Error (Code +
-// Message + HTTP Status). result.Error is a comparable struct, so
-// errors.Is(wrapped, shared.ErrXxx) works against any chain produced with
-// fmt.Errorf("...: %w", err) — there's no need to dereference a pointer.
-// Build new domain errors by attaching one of these sentinels with %w; do
-// not synthesize ad-hoc error strings at call sites.
 package shared
 
 import "github.com/coldsmirk/vef-framework-go/result"

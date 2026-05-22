@@ -8,7 +8,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/internal/api/collector"
-	approvalresource "github.com/coldsmirk/vef-framework-go/internal/approval/resource"
+	iresource "github.com/coldsmirk/vef-framework-go/internal/approval/resource"
 )
 
 func TestManagementResourceRequiredPermissions(t *testing.T) {
@@ -18,7 +18,7 @@ func TestManagementResourceRequiredPermissions(t *testing.T) {
 	}
 
 	t.Run("FlowResource", func(t *testing.T) {
-		resource := approvalresource.NewFlowResource(nil, nil)
+		resource := iresource.NewFlowResource(nil, nil)
 		specs := collectSpecs(resource, collectors...)
 
 		expected := map[string]string{
@@ -36,7 +36,7 @@ func TestManagementResourceRequiredPermissions(t *testing.T) {
 	})
 
 	t.Run("CategoryResource", func(t *testing.T) {
-		resource := approvalresource.NewCategoryResource()
+		resource := iresource.NewCategoryResource()
 		specs := collectSpecs(resource, collectors...)
 
 		expected := map[string]string{
@@ -51,7 +51,7 @@ func TestManagementResourceRequiredPermissions(t *testing.T) {
 	})
 
 	t.Run("DelegationResource", func(t *testing.T) {
-		resource := approvalresource.NewDelegationResource()
+		resource := iresource.NewDelegationResource()
 		specs := collectSpecs(resource, collectors...)
 
 		expected := map[string]string{

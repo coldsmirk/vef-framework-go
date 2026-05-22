@@ -1,8 +1,3 @@
-// Package auth provides the default identity-resolution wiring for the
-// approval module. The defaults are intentionally fail-closed: hosts that
-// store tenant affiliation outside Principal.Details — or that expose
-// principals without a tenant scope at all — must replace the resolver
-// via fx.Replace.
 package auth
 
 import (
