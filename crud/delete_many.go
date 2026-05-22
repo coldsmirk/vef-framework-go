@@ -111,7 +111,7 @@ func (d *deleteManyOperation[TModel]) deleteMany(db orm.DB, files storage.Files)
 			}
 		}
 
-		return db.RunInTX(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
+		return db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
 			query := tx.NewDelete().Model(&models)
 			if d.preDeleteMany != nil {
 				if err := d.preDeleteMany(models, query, ctx, tx); err != nil {

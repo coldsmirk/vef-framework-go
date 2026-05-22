@@ -587,7 +587,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldBeConcurrencySafe() {
 	runOne := func() {
 		<-start
 
-		err := s.db.RunInTX(s.ctx, func(ctx context.Context, tx orm.DB) error {
+		err := s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error {
 			txCtx := contextx.SetDB(ctx, tx)
 			_, err := s.handler.Handle(txCtx, command.AddAssigneeCmd{
 				TaskID:   task.ID,
@@ -642,7 +642,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeAndPrepareOperationShouldAvoidDead
 	lockDone := make(chan error, 1)
 
 	go func() {
-		lockDone <- s.db.RunInTX(s.ctx, func(ctx context.Context, tx orm.DB) error {
+		lockDone <- s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error {
 			lockedTask := approval.Task{}
 			lockedTask.ID = task.ID
 
@@ -665,7 +665,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeAndPrepareOperationShouldAvoidDead
 
 	addDone := make(chan error, 1)
 	go func() {
-		addDone <- s.db.RunInTX(s.ctx, func(ctx context.Context, tx orm.DB) error {
+		addDone <- s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error {
 			txCtx := contextx.SetDB(ctx, tx)
 			_, err := s.handler.Handle(txCtx, command.AddAssigneeCmd{
 				TaskID:   task.ID,
@@ -681,7 +681,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeAndPrepareOperationShouldAvoidDead
 
 	prepareDone := make(chan error, 1)
 	go func() {
-		prepareDone <- s.db.RunInTX(s.ctx, func(ctx context.Context, tx orm.DB) error {
+		prepareDone <- s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error {
 			txCtx := contextx.SetDB(ctx, tx)
 			_, err := taskSvc.PrepareOperation(txCtx, tx, task.ID, approval.OperatorInfo{ID: "operator-lock-order"}, approval.SystemCaller, nil)
 

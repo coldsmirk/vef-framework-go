@@ -96,7 +96,7 @@ func TestClaimStore(t *testing.T) {
 		claim.Status = store.ClaimStatusUploaded
 		require.NoError(t, cs.Create(ctx, claim), "Claim creation should succeed")
 
-		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 			return cs.Consume(txCtx, tx, claim.Key)
 		}), "Claim consumption transaction should succeed")
 
@@ -111,7 +111,7 @@ func TestClaimStore(t *testing.T) {
 		require.NoError(t, cs.Create(ctx, claim), "Claim creation should succeed")
 
 		// Try to consume both an existing and a non-existing key in one tx.
-		err := db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		err := db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 			return cs.ConsumeMany(txCtx, tx, owner, []string{claim.Key, "priv/missing"})
 		})
 		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Missing claim should fail the transaction")
@@ -125,7 +125,7 @@ func TestClaimStore(t *testing.T) {
 	t.Run("ConsumeManyEmpty", func(t *testing.T) {
 		ctx, db, cs, _ := setupStores(t)
 
-		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 			return cs.ConsumeMany(txCtx, tx, owner, nil)
 		}), "Consuming an empty claim list should succeed")
 	})
@@ -136,13 +136,13 @@ func TestClaimStore(t *testing.T) {
 		claim := newClaim("priv/owned-by-tester", timex.Now().AddHours(1))
 		require.NoError(t, cs.Create(ctx, claim), "Claim creation should succeed")
 
-		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 			return cs.MarkUploaded(txCtx, tx, claim.ID)
 		}), "MarkUploaded should succeed so the claim is consumable")
 
 		intruder := &security.Principal{ID: "someone-else"}
 
-		err := db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		err := db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 			return cs.ConsumeMany(txCtx, tx, intruder, []string{claim.Key})
 		})
 		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Consuming another principal's claim must be rejected with the same sentinel as missing keys")
@@ -156,7 +156,7 @@ func TestClaimStore(t *testing.T) {
 	t.Run("ConsumeManyRejectsAnonymousPrincipal", func(t *testing.T) {
 		ctx, db, cs, _ := setupStores(t)
 
-		err := db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		err := db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 			return cs.ConsumeMany(txCtx, tx, nil, []string{"priv/whatever"})
 		})
 		assert.ErrorIs(t, err, storage.ErrAccessDenied, "Anonymous principal must be rejected upfront with access-denied (not claim-not-found, which would mislead debugging)")
@@ -191,7 +191,7 @@ func TestClaimStore(t *testing.T) {
 		uploaded := newClaim("priv/uploaded-past-ttl", now.AddHours(-1))
 		require.NoError(t, cs.Create(ctx, uploaded), "Uploaded claim creation should succeed")
 
-		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 			return cs.MarkUploaded(txCtx, tx, uploaded.ID)
 		}), "MarkUploaded should succeed")
 
@@ -208,7 +208,7 @@ func TestClaimStore(t *testing.T) {
 		claim.UploadID = "session-1"
 		require.NoError(t, cs.Create(ctx, claim), "Expired claim creation should succeed")
 
-		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 			updated, err := cs.MarkUploadedIfPendingExpired(txCtx, tx, *claim, now)
 			require.NoError(t, err, "Conditional upload mark should not fail")
 			assert.True(t, updated, "Expired pending claim should be updated")
@@ -220,7 +220,7 @@ func TestClaimStore(t *testing.T) {
 		require.NoError(t, err, "Claim lookup should succeed")
 		assert.Equal(t, store.ClaimStatusUploaded, got.Status, "Conditional update should mark the claim uploaded")
 
-		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 			updated, err := cs.MarkUploadedIfPendingExpired(txCtx, tx, *claim, now)
 			require.NoError(t, err, "Conditional upload mark should not fail for stale snapshot")
 			assert.False(t, updated, "Already uploaded claim should not be updated again")
@@ -240,7 +240,7 @@ func TestClaimStore(t *testing.T) {
 		staleSnapshot := *claim
 		staleSnapshot.UploadID = "stale-session"
 
-		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 			deleted, err := cs.DeleteIfPendingExpired(txCtx, tx, staleSnapshot, now)
 			require.NoError(t, err, "Conditional delete should not fail for stale snapshot")
 			assert.False(t, deleted, "Changed UploadID should make the stale snapshot lose")
@@ -248,7 +248,7 @@ func TestClaimStore(t *testing.T) {
 			return nil
 		}), "Stale conditional delete transaction should succeed")
 
-		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 			deleted, err := cs.DeleteIfPendingExpired(txCtx, tx, *claim, now)
 			require.NoError(t, err, "Conditional delete should not fail")
 			assert.True(t, deleted, "Matching expired pending claim should be deleted")
@@ -263,7 +263,7 @@ func TestClaimStore(t *testing.T) {
 	t.Run("ErrClaimNotFoundWraps", func(t *testing.T) {
 		ctx, db, cs, _ := setupStores(t)
 
-		err := db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+		err := db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 			return cs.Consume(txCtx, tx, "missing")
 		})
 		require.Error(t, err, "Missing claim consumption should fail")

@@ -63,7 +63,7 @@ func (c *createManyOperation[TModel, TParams]) createMany(files storage.Files) (
 			}
 		}
 
-		return db.RunInTX(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
+		return db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
 			query := tx.NewInsert().Model(&models)
 			if c.preCreateMany != nil {
 				if err := c.preCreateMany(models, params.List, query, ctx, tx); err != nil {

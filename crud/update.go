@@ -103,7 +103,7 @@ func (u *updateOperation[TModel, TParams]) update(db orm.DB, files storage.Files
 			return err
 		}
 
-		return db.RunInTX(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
+		return db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
 			// Snapshot the DB-resident state before any mutation so the
 			// diff can see which file references are truly being replaced.
 			snapshot := oldModel

@@ -89,7 +89,7 @@ func (s *Scanner) ScanTimeouts(ctx context.Context) {
 
 // processTimeout handles a single timed-out task.
 func (s *Scanner) processTimeout(ctx context.Context, task *approval.Task) error {
-	return s.db.RunInTX(ctx, func(ctx context.Context, tx orm.DB) error {
+	return s.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
 		var instance approval.Instance
 
 		instance.ID = task.InstanceID
@@ -402,7 +402,7 @@ func (s *Scanner) ScanPreWarnings(ctx context.Context) {
 
 // sendPreWarning marks the task as pre-warning sent and publishes the warning event.
 func (s *Scanner) sendPreWarning(ctx context.Context, task *approval.Task, hoursLeft int) error {
-	return s.db.RunInTX(ctx, func(ctx context.Context, tx orm.DB) error {
+	return s.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
 		result, err := tx.NewUpdate().
 			Model((*approval.Task)(nil)).
 			Set("is_pre_warning_sent", true).

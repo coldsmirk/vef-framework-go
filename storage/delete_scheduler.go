@@ -42,7 +42,7 @@ const (
 type DeleteScheduler interface {
 	// Schedule INSERTs one pending-delete row per key inside tx, all
 	// carrying the supplied reason. tx must be the orm.DB instance
-	// passed into RunInTX so that scheduling shares the business
+	// passed into RunInTx so that scheduling shares the business
 	// transaction's atomicity guarantees. keys may be empty or nil
 	// (no-op).
 	//

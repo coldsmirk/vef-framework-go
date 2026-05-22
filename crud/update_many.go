@@ -107,7 +107,7 @@ func (u *updateManyOperation[TModel, TParams]) updateMany(db orm.DB, files stora
 			}
 		}
 
-		return db.RunInTX(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
+		return db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
 			// Snapshot DB-resident state per row before any merge so each
 			// row's diff sees its real previous file references.
 			snapshots := make([]TModel, len(oldModels))

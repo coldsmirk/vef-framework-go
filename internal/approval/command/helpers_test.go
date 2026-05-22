@@ -180,7 +180,7 @@ func holdPostgresSharedLock(
 	lockReady chan struct{},
 	releaseLock chan struct{},
 ) error {
-	return db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+	return db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 		if _, err := tx.NewRaw("LOCK TABLE " + tableName + " IN SHARE MODE").Exec(txCtx); err != nil {
 			return err
 		}

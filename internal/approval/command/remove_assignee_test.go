@@ -346,7 +346,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveAssigneeShouldBeConcurrencySafe() {
 	runOne := func(taskID, operatorID string) {
 		<-start
 
-		err := s.db.RunInTX(s.ctx, func(ctx context.Context, tx orm.DB) error {
+		err := s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error {
 			txCtx := contextx.SetDB(ctx, tx)
 			_, err := s.handler.Handle(txCtx, command.RemoveAssigneeCmd{
 				TaskID:   taskID,

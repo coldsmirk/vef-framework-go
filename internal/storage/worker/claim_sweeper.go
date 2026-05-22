@@ -75,7 +75,7 @@ func (s *ClaimSweeper) Run(ctx context.Context) {
 		return
 	}
 
-	err = s.db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+	err = s.db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 		now := timex.Now()
 		items := make([]store.PendingDelete, 0, len(plan.remove))
 

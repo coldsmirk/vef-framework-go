@@ -123,7 +123,7 @@ type ClaimStore interface {
 	// Consume deletes the claim row for key, executed inside the supplied
 	// business transaction tx. Returns ErrClaimNotFound when no row
 	// exists for key OR when the row is still pending. tx must be the
-	// same orm.DB instance passed to RunInTX.
+	// same orm.DB instance passed to RunInTx.
 	Consume(ctx context.Context, tx orm.DB, key string) error
 
 	// ScanExpired returns up to limit pending claims whose ExpiresAt is

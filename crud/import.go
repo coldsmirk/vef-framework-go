@@ -151,7 +151,7 @@ func (i *importOperation[TModel]) importData() func(ctx fiber.Ctx, db orm.DB, lo
 			}.Response(ctx)
 		}
 
-		return db.RunInTX(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
+		return db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
 			query := tx.NewInsert().Model(&models)
 			if i.preImport != nil {
 				if err := i.preImport(models, query, ctx, tx); err != nil {

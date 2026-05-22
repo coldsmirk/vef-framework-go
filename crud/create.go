@@ -57,7 +57,7 @@ func (c *createOperation[TModel, TParams]) create(files storage.Files) (func(ctx
 			return err
 		}
 
-		return db.RunInTX(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
+		return db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
 			query := tx.NewInsert().Model(&model)
 			if c.preCreate != nil {
 				if err := c.preCreate(&model, &params, query, ctx, tx); err != nil {

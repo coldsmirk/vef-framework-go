@@ -19,11 +19,11 @@ type DBTestSuite struct {
 	*BaseTestSuite
 }
 
-// TestRunInTX tests RunInTX method.
-func (suite *DBTestSuite) TestRunInTX() {
-	suite.T().Logf("Testing RunInTX for %s", suite.ds.Kind)
+// TestRunInTx tests RunInTx method.
+func (suite *DBTestSuite) TestRunInTx() {
+	suite.T().Logf("Testing RunInTx for %s", suite.ds.Kind)
 
-	err := suite.db.RunInTX(suite.ctx, func(ctx context.Context, tx orm.DB) error {
+	err := suite.db.RunInTx(suite.ctx, func(ctx context.Context, tx orm.DB) error {
 		count, err := tx.NewSelect().
 			Model((*User)(nil)).
 			Count(ctx)
@@ -34,14 +34,14 @@ func (suite *DBTestSuite) TestRunInTX() {
 		return nil
 	})
 
-	suite.NoError(err, "RunInTX should work")
+	suite.NoError(err, "RunInTx should work")
 }
 
-// TestRunInReadOnlyTX tests RunInReadOnlyTX method.
-func (suite *DBTestSuite) TestRunInReadOnlyTX() {
-	suite.T().Logf("Testing RunInReadOnlyTX for %s", suite.ds.Kind)
+// TestRunInReadOnlyTx tests RunInReadOnlyTx method.
+func (suite *DBTestSuite) TestRunInReadOnlyTx() {
+	suite.T().Logf("Testing RunInReadOnlyTx for %s", suite.ds.Kind)
 
-	err := suite.db.RunInReadOnlyTX(suite.ctx, func(ctx context.Context, tx orm.DB) error {
+	err := suite.db.RunInReadOnlyTx(suite.ctx, func(ctx context.Context, tx orm.DB) error {
 		count, err := tx.NewSelect().
 			Model((*User)(nil)).
 			Count(ctx)
@@ -52,7 +52,7 @@ func (suite *DBTestSuite) TestRunInReadOnlyTX() {
 		return nil
 	})
 
-	suite.NoError(err, "RunInReadOnlyTX should work")
+	suite.NoError(err, "RunInReadOnlyTx should work")
 }
 
 // TestBeginTx tests BeginTx method.
@@ -114,7 +114,7 @@ func (suite *DBTestSuite) TestModelPKFields() {
 func (suite *DBTestSuite) TestTxCommit() {
 	suite.T().Logf("Testing Tx Commit for %s", suite.ds.Kind)
 
-	err := suite.db.RunInTX(suite.ctx, func(ctx context.Context, tx orm.DB) error {
+	err := suite.db.RunInTx(suite.ctx, func(ctx context.Context, tx orm.DB) error {
 		count, err := tx.NewSelect().
 			Model((*User)(nil)).
 			Count(ctx)

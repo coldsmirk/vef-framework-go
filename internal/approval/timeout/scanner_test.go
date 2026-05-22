@@ -389,7 +389,7 @@ func (s *ScannerTestSuite) TestScanTimeoutsShouldLockInstanceBeforeTask() {
 	lockDone := make(chan error, 1)
 
 	go func() {
-		lockDone <- s.db.RunInTX(s.ctx, func(ctx context.Context, tx orm.DB) error {
+		lockDone <- s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error {
 			lockedTask := approval.Task{}
 
 			lockedTask.ID = task.ID
@@ -419,7 +419,7 @@ func (s *ScannerTestSuite) TestScanTimeoutsShouldLockInstanceBeforeTask() {
 	instanceLockBlocked := false
 	for range 20 {
 		lockCtx, cancel := context.WithTimeout(s.ctx, 120*time.Millisecond)
-		err := s.db.RunInTX(lockCtx, func(ctx context.Context, tx orm.DB) error {
+		err := s.db.RunInTx(lockCtx, func(ctx context.Context, tx orm.DB) error {
 			lockedInstance := approval.Instance{}
 			lockedInstance.ID = instance.ID
 

@@ -185,7 +185,7 @@ func (s *WithdrawTestSuite) TestWithdrawShouldBeConcurrencySafe() {
 	runOne := func() {
 		<-start
 
-		err := s.db.RunInTX(s.ctx, func(ctx context.Context, tx orm.DB) error {
+		err := s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error {
 			txCtx := contextx.SetDB(ctx, tx)
 			_, err := s.handler.Handle(txCtx, command.WithdrawCmd{
 				InstanceID: inst.ID,

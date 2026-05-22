@@ -41,7 +41,7 @@ func (b *TransactionBehavior) Handle(ctx context.Context, action cqrs.Action, ne
 
 	var result any
 
-	err := b.db.RunInTX(ctx, func(ctx context.Context, tx orm.DB) (err error) {
+	err := b.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) (err error) {
 		ctx = contextx.SetDB(ctx, tx)
 		result, err = next(ctx)
 

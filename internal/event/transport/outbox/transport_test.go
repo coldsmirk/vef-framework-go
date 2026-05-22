@@ -114,14 +114,14 @@ func TestOutboxTransportPublishTxRollbackHidesRecord(t *testing.T) {
 
 	frame := newFrame("evt-rb", "test.created", `{"rolled":true}`)
 	sentinel := errors.New("force rollback")
-	err := db.RunInTX(ctx, func(ctx context.Context, tx orm.DB) error {
+	err := db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
 		if err := tp.PublishTx(ctx, tx, []transport.Frame{frame}); err != nil {
 			return err
 		}
 
 		return sentinel
 	})
-	require.ErrorIs(t, err, sentinel, "RunInTX should surface the sentinel error")
+	require.ErrorIs(t, err, sentinel, "RunInTx should surface the sentinel error")
 
 	claimed, err := repo.ClaimBatch(ctx, 10, 3, timex.Now().Add(time.Minute))
 	require.NoError(t, err)

@@ -62,7 +62,7 @@ func (r *DefaultRepository) ClaimBatch(
 ) ([]puboutbox.Record, error) {
 	var claimed []puboutbox.Record
 
-	err := r.db.RunInTX(ctx, func(ctx context.Context, tx orm.DB) error {
+	err := r.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
 		now := timex.Now()
 
 		var records []puboutbox.Record

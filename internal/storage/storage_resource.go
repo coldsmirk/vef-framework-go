@@ -475,7 +475,7 @@ func (r *Resource) UploadPart(ctx fiber.Ctx, principal *security.Principal, para
 	// without trusting the client. Upsert handles re-uploads of the
 	// same part number — the latest ETag wins, matching the backend's
 	// last-writer semantics.
-	if err := r.db.RunInTX(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
+	if err := r.db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
 		return r.partStore.Upsert(txCtx, tx, &store.UploadPart{
 			ID:         id.GenerateUUID(),
 			ClaimID:    claim.ID,
@@ -709,7 +709,7 @@ func (r *Resource) CompleteUpload(ctx fiber.Ctx, principal *security.Principal, 
 		return result.Err(i18n.T("upload_size_mismatch"))
 	}
 
-	if err := r.db.RunInTX(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
+	if err := r.db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
 		if err := r.claimStore.MarkUploaded(txCtx, tx, claim.ID); err != nil {
 			return err
 		}
@@ -774,7 +774,7 @@ func (r *Resource) AbortUpload(ctx fiber.Ctx, principal *security.Principal, par
 		return delErr
 	}
 
-	if err := r.db.RunInTX(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
+	if err := r.db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
 		if err := r.partStore.DeleteByClaim(txCtx, tx, claim.ID); err != nil {
 			return err
 		}

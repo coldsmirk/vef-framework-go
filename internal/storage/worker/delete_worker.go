@@ -36,7 +36,7 @@ const (
 // and a dead-letter event is published.
 //
 // Done + FileDeleted publish (and Defer + DeadLetter publish) are
-// committed in a single transaction via db.RunInTX, so the bookkeeping
+// committed in a single transaction via db.RunInTx, so the bookkeeping
 // and the outbox event flip atomically. The backend object delete
 // itself runs outside the transaction — it is idempotent (ErrObjectNotFound
 // is silently absorbed), so a retried tick after a transaction-side
@@ -147,7 +147,7 @@ func (w *DeleteWorker) processOne(ctx context.Context, item *store.PendingDelete
 	// back both and the next lease re-runs processOne. DeleteObject
 	// above already ran outside the tx but is idempotent, so a retry
 	// converges without leaking objects.
-	txErr := w.db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+	txErr := w.db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 		if err := w.deleteQueue.Done(txCtx, tx, []string{item.ID}); err != nil {
 			return err
 		}
@@ -180,7 +180,7 @@ func (w *DeleteWorker) handleFailure(ctx context.Context, item *store.PendingDel
 	backoff := computeBackoff(nextAttempt)
 	nextAt := timex.DateTime(time.Now().Add(backoff))
 
-	deferErr := w.db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+	deferErr := w.db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 		return w.deleteQueue.Defer(txCtx, tx, item.ID, nextAt)
 	})
 	if deferErr != nil {
@@ -203,7 +203,7 @@ func (w *DeleteWorker) parkDeadLetter(ctx context.Context, item *store.PendingDe
 	// and re-attempt parkDeadLetter. The original lastErr is lost on
 	// retry; for dead-letter classification that is acceptable since
 	// the row has already exceeded its retry budget.
-	txErr := w.db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+	txErr := w.db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 		if err := w.deleteQueue.Defer(txCtx, tx, item.ID, parkUntil); err != nil {
 			return err
 		}

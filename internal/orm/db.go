@@ -45,11 +45,11 @@ type DB interface {
 	NewAddColumn() AddColumnQuery
 	// NewDropColumn creates a new ALTER TABLE DROP COLUMN query builder.
 	NewDropColumn() DropColumnQuery
-	// RunInTX executes fn within a read-write transaction (READ COMMITTED isolation).
+	// RunInTx executes fn within a read-write transaction (READ COMMITTED isolation).
 	// The transaction is committed if fn returns nil, rolled back otherwise.
-	RunInTX(ctx context.Context, fn func(ctx context.Context, tx DB) error) error
-	// RunInReadOnlyTX executes fn within a read-only transaction (READ COMMITTED isolation).
-	RunInReadOnlyTX(ctx context.Context, fn func(ctx context.Context, tx DB) error) error
+	RunInTx(ctx context.Context, fn func(ctx context.Context, tx DB) error) error
+	// RunInReadOnlyTx executes fn within a read-only transaction (READ COMMITTED isolation).
+	RunInReadOnlyTx(ctx context.Context, fn func(ctx context.Context, tx DB) error) error
 	// BeginTx starts a manual transaction with the given options. Caller must commit or rollback.
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error)
 	// Connection acquires a dedicated database connection from the pool.
@@ -139,11 +139,11 @@ func (d *BunDB) NewDropColumn() DropColumnQuery {
 	return NewDropColumnQuery(d)
 }
 
-func (d *BunDB) RunInTX(ctx context.Context, fn func(context.Context, DB) error) error {
+func (d *BunDB) RunInTx(ctx context.Context, fn func(context.Context, DB) error) error {
 	return d.runInTx(ctx, txOptions, fn)
 }
 
-func (d *BunDB) RunInReadOnlyTX(ctx context.Context, fn func(context.Context, DB) error) error {
+func (d *BunDB) RunInReadOnlyTx(ctx context.Context, fn func(context.Context, DB) error) error {
 	return d.runInTx(ctx, readOnlyTxOptions, fn)
 }
 

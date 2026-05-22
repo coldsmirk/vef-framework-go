@@ -82,7 +82,7 @@ func TestDeleteWorker(t *testing.T) {
 			CreatedAt:     timex.Now(),
 		}
 
-		require.NoError(t, env.DB.RunInTX(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
+		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
 			return env.DQ.Enqueue(txCtx, tx, []store.PendingDelete{item})
 		}), "Pending delete should be scheduled inside the transaction")
 
@@ -121,7 +121,7 @@ func TestDeleteWorker(t *testing.T) {
 			CreatedAt:     timex.Now(),
 		}
 
-		require.NoError(t, env.DB.RunInTX(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
+		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
 			return env.DQ.Enqueue(txCtx, tx, []store.PendingDelete{item})
 		}), "Multipart pending delete should be scheduled")
 
@@ -147,7 +147,7 @@ func TestDeleteWorker(t *testing.T) {
 			CreatedAt:     timex.Now(),
 		}
 
-		require.NoError(t, env.DB.RunInTX(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
+		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
 			return env.DQ.Enqueue(txCtx, tx, []store.PendingDelete{item})
 		}), "Pending delete should be scheduled inside the transaction")
 
@@ -171,7 +171,7 @@ func TestDeleteWorker(t *testing.T) {
 			CreatedAt:     timex.Now(),
 		}
 
-		require.NoError(t, env.DB.RunInTX(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
+		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
 			return env.DQ.Enqueue(txCtx, tx, []store.PendingDelete{item})
 		}), "Pending delete should be scheduled inside the transaction")
 
@@ -201,7 +201,7 @@ func TestDeleteWorker(t *testing.T) {
 			CreatedAt:     timex.Now(),
 		}
 
-		require.NoError(t, env.DB.RunInTX(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
+		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
 			return env.DQ.Enqueue(txCtx, tx, []store.PendingDelete{item})
 		}), "Pending delete should be scheduled inside the transaction")
 

@@ -96,7 +96,7 @@ func (d *deleteOperation[TModel]) delete(db orm.DB, files storage.Files) (func(c
 			return err
 		}
 
-		return db.RunInTX(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
+		return db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
 			query := tx.NewDelete().Model(&model)
 			if d.preDelete != nil {
 				if err := d.preDelete(&model, query, ctx, tx); err != nil {

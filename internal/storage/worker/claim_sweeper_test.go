@@ -207,7 +207,7 @@ func TestClaimSweeper(t *testing.T) {
 		require.NoError(t, env.CS.Create(env.Ctx, claim), "Expired multipart claim creation should succeed")
 		putMemoryObject(t, env.Svc, claim.Key)
 
-		require.NoError(t, env.DB.RunInTX(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
+		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
 			return env.PS.Upsert(txCtx, tx, &store.UploadPart{
 				ID:         id.GenerateUUID(),
 				ClaimID:    claim.ID,
@@ -284,7 +284,7 @@ func TestClaimSweeper(t *testing.T) {
 				completedDuringStat = true
 
 				putMemoryObject(t, env.Svc, claim.Key)
-				require.NoError(t, env.DB.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+				require.NoError(t, env.DB.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 					return env.CS.MarkUploaded(txCtx, tx, claim.ID)
 				}), "Concurrent complete_upload bookkeeping should succeed")
 			},

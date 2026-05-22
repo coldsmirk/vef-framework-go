@@ -85,7 +85,7 @@ func (q *deleteQueue) Lease(ctx context.Context, now timex.DateTime, limit int, 
 
 	var leased []PendingDelete
 
-	err := q.db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+	err := q.db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 		var candidates []PendingDelete
 
 		// SKIP LOCKED is essential for the multi-worker deployment story:

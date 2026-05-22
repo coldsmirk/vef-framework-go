@@ -87,7 +87,7 @@ func (s *DBStore) Reserve(ctx context.Context, key string, count int, now timex.
 		newValue     int
 	)
 
-	if err := s.db.RunInTX(ctx, func(ctx context.Context, tx orm.DB) error {
+	if err := s.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
 		var model RuleModel
 
 		if err := tx.NewSelect().

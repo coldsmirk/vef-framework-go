@@ -20,7 +20,7 @@ var filesLogger = ilogx.Named("storage:files")
 // the standard create / update / delete lifecycle.
 //
 // All three methods MUST be called inside a business transaction; the
-// supplied tx is the same orm.DB instance passed to orm.DB.RunInTX, so
+// supplied tx is the same orm.DB instance passed to orm.DB.RunInTx, so
 // the claim consumption and pending-delete bookkeeping commit or roll
 // back atomically with the business write.
 //
