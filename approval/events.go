@@ -299,7 +299,15 @@ func (*NodeAutoPassedEvent) EventType() string { return EventTypeNodeAutoPassed 
 
 // ==================== Task Events ====================
 
-// TaskCreatedEvent fired when a new task is created.
+// TaskCreatedEvent fires the moment a task row is inserted, not the moment
+// it becomes actionable. Under sequential approval, tasks after the first
+// start with Status=Waiting and a nil Deadline; subscribers should treat a
+// nil Deadline as the cue that the task is queued behind a predecessor and
+// must not yet surface a "new pending task" notification. When the
+// predecessor finishes and the task transitions to Pending, no new event
+// is published — subscribers reading the live task table see the change.
+// If this contract proves insufficient, the right extension is to add a
+// dedicated TaskActivatedEvent rather than overloading TaskCreatedEvent.
 type TaskCreatedEvent struct {
 	TaskID       string          `json:"taskId"`
 	TenantID     string          `json:"tenantId"`

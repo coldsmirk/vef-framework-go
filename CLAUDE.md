@@ -133,6 +133,10 @@ Compression (`-1000`) → Headers (`-900`) → CORS (`-800`) → Content-Type (`
   - `vef.event.transports.outbox.enabled = true`
   - a routing rule with `pattern = "vef.storage.*"` → `transports = ["outbox"]`, **or** set `vef.event.default_transport = "outbox"`.
   Subscribers attach to the configured outbox sink (`memory` single-node / `redis_stream` cross-node) and must supply `event.WithGroup("...")`.
+- **Approval events require a transactional route plus a subscribable sink**: every `approval.*` event except `binding_failed` is published with `event.WithTx(tx)` (via `EventPublishBehavior` in the CQRS pipeline and `engine.PublishEventsTx` from the timeout scanner). The approval module fails fast at start-up (via `event.RouteInspector`) unless those event types resolve to a `Transactional=true` transport. `binding/listener.go` also subscribes to `approval.instance.completed`, so the route must include a real sink — `["outbox"]` alone is filtered out as publish-only and the listener will not receive anything. Required config:
+  - `vef.event.transports.outbox.enabled = true`
+  - a routing rule with `pattern = "approval.*"` → `transports = ["outbox", "memory"]` (single-node) or `["outbox", "redis_stream"]` (cross-node), **or** `vef.event.default_transport = "outbox"` with the matching outbox sink configured.
+  Binding listener wraps `InstanceBindingFailedEvent` in a short `db.RunInTx` + `event.WithTx(...)` so the route's transactional pass filters out the memory leg and avoids outbox + memory double delivery; it falls back to a plain publish on `event.ErrTxRequired`. Any custom subscriber attached to other approval events must also supply `event.WithGroup("...")` when the route includes an at-least-once transport — the binding listener uses `event.WithGroup("approval:binding")` as the in-tree example.
 
 ## CLI Tools
 
