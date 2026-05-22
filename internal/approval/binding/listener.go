@@ -33,14 +33,21 @@ func NewListener(db orm.DB, bus event.Bus, hook approval.BusinessBindingHook) *L
 	return &Listener{db: db, bus: bus, hook: hook}
 }
 
+// bindingConsumerGroup is the stable consumer group name for the binding
+// listener. It is the Inbox dedupe scope (so retries do not re-write the
+// business table) and, when the route lands on Redis Streams, the XGROUP
+// identifier (which must remain stable across restarts).
+const bindingConsumerGroup = "approval:binding"
+
 // Start registers the event subscription. Called by FX Invoke during boot.
 func (l *Listener) Start() error {
-	_, err := event.SubscribeTyped(l.bus, l.handle)
+	_, err := event.SubscribeTyped(l.bus, l.handle, event.WithGroup(bindingConsumerGroup))
 	if err != nil {
 		return fmt.Errorf("subscribe instance completed: %w", err)
 	}
 
-	logger.Infof("Instance binding listener subscribed to %s", new(approval.InstanceCompletedEvent).EventType())
+	logger.Infof("Instance binding listener subscribed to %s (group=%s)",
+		new(approval.InstanceCompletedEvent).EventType(), bindingConsumerGroup)
 
 	return nil
 }
