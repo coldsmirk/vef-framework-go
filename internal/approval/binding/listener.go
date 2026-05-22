@@ -104,12 +104,7 @@ func (l *Listener) handle(ctx context.Context, evt *approval.InstanceCompletedEv
 			instance.ID, instance.TenantID, flow.ID, evt.FinalStatus, businessTable, err.Error(),
 		)
 
-		opts := []event.PublishOption{}
-		if t := approval.PayloadOccurredAt(failureEvent); !t.IsZero() {
-			opts = append(opts, event.WithOccurredAt(t.Unwrap()))
-		}
-
-		if pubErr := l.bus.Publish(ctx, failureEvent, opts...); pubErr != nil {
+		if pubErr := l.publishFailure(ctx, failureEvent); pubErr != nil {
 			logger.Errorf("publish binding failure event for instance %s: %v", instance.ID, pubErr)
 		}
 
@@ -127,4 +122,28 @@ func (l *Listener) handle(ctx context.Context, evt *approval.InstanceCompletedEv
 	}
 
 	return nil
+}
+
+func (l *Listener) publishFailure(ctx context.Context, failureEvent approval.DomainEvent) error {
+	opts := []event.PublishOption{}
+	if t := approval.PayloadOccurredAt(failureEvent); !t.IsZero() {
+		opts = append(opts, event.WithOccurredAt(t.Unwrap()))
+	}
+
+	if l.db == nil {
+		return l.bus.Publish(ctx, failureEvent, opts...)
+	}
+
+	err := l.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
+		return l.bus.Publish(ctx, failureEvent, append(opts, event.WithTx(tx))...)
+	})
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, event.ErrTxRequired) {
+		return l.bus.Publish(ctx, failureEvent, opts...)
+	}
+
+	return err
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/testx"
 )
 
 // spyBus captures the most recent Subscribe arguments so tests can verify
@@ -20,6 +21,8 @@ type spyBus struct {
 	subscribeCalls int
 	capturedType   string
 	capturedGroup  string
+	publishErrs    []error
+	publishCalls   []event.PublishConfig
 }
 
 func (b *spyBus) Subscribe(eventType string, _ event.Handler, opts ...event.SubscribeOption) (event.Unsubscribe, error) {
@@ -31,8 +34,16 @@ func (b *spyBus) Subscribe(eventType string, _ event.Handler, opts ...event.Subs
 	return func() {}, nil
 }
 
-func (*spyBus) Publish(context.Context, event.Event, ...event.PublishOption) error {
-	return nil
+func (b *spyBus) Publish(_ context.Context, _ event.Event, opts ...event.PublishOption) error {
+	b.publishCalls = append(b.publishCalls, event.ApplyPublishOptions(opts))
+	if len(b.publishErrs) == 0 {
+		return nil
+	}
+
+	err := b.publishErrs[0]
+	b.publishErrs = b.publishErrs[1:]
+
+	return err
 }
 
 func (*spyBus) PublishBatch(context.Context, []event.Event, ...event.PublishOption) error {
@@ -43,12 +54,51 @@ func TestListenerStartSubscribesWithStableGroup(t *testing.T) {
 	bus := &spyBus{}
 	listener := NewListener(nil, bus, nil)
 
-	require.NoError(t, listener.Start(), "Start 不应返回错误")
-	assert.Equal(t, 1, bus.subscribeCalls, "应当只订阅一次")
+	require.NoError(t, listener.Start(), "Start should not return an error")
+	assert.Equal(t, 1, bus.subscribeCalls, "Listener should subscribe exactly once")
 	assert.Equal(t, approval.EventTypeInstanceCompleted, bus.capturedType,
-		"应当订阅 InstanceCompleted 事件")
+		"Listener should subscribe to InstanceCompletedEvent")
 	assert.Equal(t, bindingConsumerGroup, bus.capturedGroup,
-		"必须带上稳定的 consumer group 名称，否则在 at-least-once 路由下会触发 ErrGroupRequired")
+		"Listener must set a stable consumer group for at-least-once routes")
 	assert.Equal(t, "approval:binding", bus.capturedGroup,
-		"group 名称是 inbox dedupe scope，必须保持稳定")
+		"Group name is the inbox dedupe scope and must remain stable")
+}
+
+func TestListenerPublishFailure(t *testing.T) {
+	t.Run("UsesTxWhenDatabaseAvailable", func(t *testing.T) {
+		bus := &spyBus{}
+		listener := NewListener(testx.NewTestDB(t), bus, nil)
+
+		err := listener.publishFailure(t.Context(), approval.NewInstanceBindingFailedEvent(
+			"inst-1", "tenant-1", "flow-1", approval.InstanceApproved, "biz_table", "boom"))
+
+		require.NoError(t, err, "Binding failure should publish through a short transaction when DB is available")
+		require.Len(t, bus.publishCalls, 1, "Binding failure should publish once to avoid outbox plus memory double delivery")
+		assert.NotNil(t, bus.publishCalls[0].Tx, "Publish options should include Tx so routing selects only outbox")
+	})
+
+	t.Run("FallsBackWhenNoTransactionalRoute", func(t *testing.T) {
+		bus := &spyBus{publishErrs: []error{event.ErrTxRequired}}
+		listener := NewListener(testx.NewTestDB(t), bus, nil)
+
+		err := listener.publishFailure(t.Context(), approval.NewInstanceBindingFailedEvent(
+			"inst-1", "tenant-1", "flow-1", approval.InstanceApproved, "biz_table", "boom"))
+
+		require.NoError(t, err, "Binding failure should fall back to non-transactional publish when no Tx route exists")
+		require.Len(t, bus.publishCalls, 2, "Binding failure should retry once without Tx after ErrTxRequired")
+		assert.NotNil(t, bus.publishCalls[0].Tx, "First publish attempt should include Tx")
+		assert.Nil(t, bus.publishCalls[1].Tx, "Fallback publish should not include Tx")
+	})
+
+	t.Run("PublishesDirectlyWithoutDatabase", func(t *testing.T) {
+		bus := &spyBus{}
+		listener := NewListener(nil, bus, nil)
+
+		err := listener.publishFailure(t.Context(), approval.NewInstanceBindingFailedEvent(
+			"inst-1", "tenant-1", "flow-1", approval.InstanceApproved, "biz_table", "boom"))
+
+		require.NoError(t, err, "Binding failure should publish directly when DB is unavailable")
+		require.Len(t, bus.publishCalls, 1, "Binding failure should publish exactly once")
+		assert.Nil(t, bus.publishCalls[0].Tx, "Publish options should not include Tx when DB is unavailable")
+	})
 }

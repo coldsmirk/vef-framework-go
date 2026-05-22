@@ -58,7 +58,7 @@ func TestVerifyEventRouting(t *testing.T) {
 		lc := fxtest.NewLifecycle(t)
 		verifyEventRouting(lc, inspector)
 
-		require.NoError(t, lc.Start(context.Background()), "所有必需事件都有事务路由时不应当报错")
+		require.NoError(t, lc.Start(context.Background()), "All required events should have transactional routes")
 
 		lc.RequireStop()
 	})
@@ -72,33 +72,34 @@ func TestVerifyEventRouting(t *testing.T) {
 		verifyEventRouting(lc, inspector)
 
 		err := lc.Start(context.Background())
-		require.Error(t, err, "缺事务路由时必须返回错误")
-		assert.ErrorIs(t, err, ErrEventRouteNotTransactional, "应当为 ErrEventRouteNotTransactional")
-		assert.Contains(t, err.Error(), approval.EventTypeTaskCreated, "错误信息应当点名缺失的事件类型")
-		assert.Contains(t, err.Error(), "outbox", "错误信息应当指引配置 outbox")
+		require.Error(t, err, "Missing transactional route should return an error")
+		assert.ErrorIs(t, err, ErrEventRouteNotTransactional, "Error should wrap ErrEventRouteNotTransactional")
+		assert.Contains(t, err.Error(), approval.EventTypeTaskCreated, "Error should name the missing event type")
+		assert.Contains(t, err.Error(), "outbox", "Error should guide operators toward outbox configuration")
+		assert.Contains(t, err.Error(), "[\"outbox\", \"memory\"]",
+			"Error should include a subscribable sink and not only publish-only outbox")
 	})
 
 	t.Run("FailsOnFirstMissingEventInDeclaredOrder", func(t *testing.T) {
-		// 完全空表 → 第一个 required 即 EventTypeInstanceCreated 应当被点名
+		// An empty table should report the first required event type.
 		inspector := &stubRouteInspector{}
 
 		lc := fxtest.NewLifecycle(t)
 		verifyEventRouting(lc, inspector)
 
 		err := lc.Start(context.Background())
-		require.Error(t, err, "完全没有事务路由时必须返回错误")
+		require.Error(t, err, "Missing all transactional routes should return an error")
 		assert.ErrorIs(t, err, ErrEventRouteNotTransactional)
 		assert.Contains(t, err.Error(), approval.EventTypeInstanceCreated,
-			"应当报告首个未配置事务路由的事件类型")
+			"Error should report the first missing transactional route")
 	})
 
 	t.Run("DoesNotRequireBindingFailedTxRoute", func(t *testing.T) {
-		// binding_failed 由异步 listener 发出（无 WithTx），不应进入校验列表。
-		// 即使 inspector 显式不为它提供事务路由，verifyEventRouting 也应放行。
+		// binding_failed is emitted by the async listener and should not
+		// be part of the approval business-event transaction route check.
 		ts := allRequiredTransactional()
-		// EventTypeInstanceBindingFailed 不在 ts 里 —— 这正是默认状态
 		_, exists := ts[approval.EventTypeInstanceBindingFailed]
-		require.False(t, exists, "binding_failed 不应在事务路由要求列表中")
+		require.False(t, exists, "binding_failed should not be in the required transaction-route list")
 
 		inspector := &stubRouteInspector{transactional: ts}
 
@@ -106,7 +107,7 @@ func TestVerifyEventRouting(t *testing.T) {
 		verifyEventRouting(lc, inspector)
 
 		require.NoError(t, lc.Start(context.Background()),
-			"binding_failed 缺事务路由时不应当让模块启动失败")
+			"Missing binding_failed transactional route should not fail module startup")
 
 		lc.RequireStop()
 	})
