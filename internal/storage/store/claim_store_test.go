@@ -200,6 +200,66 @@ func TestClaimStore(t *testing.T) {
 		assert.Empty(t, got, "Uploaded claims must never appear in the expired sweep set")
 	})
 
+	t.Run("MarkUploadedIfPendingExpired", func(t *testing.T) {
+		ctx, db, cs, _ := setupStores(t)
+
+		now := timex.Now()
+		claim := newClaim("priv/conditional-uploaded", now.AddHours(-1))
+		claim.UploadID = "session-1"
+		require.NoError(t, cs.Create(ctx, claim), "Expired claim creation should succeed")
+
+		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+			updated, err := cs.MarkUploadedIfPendingExpired(txCtx, tx, *claim, now)
+			require.NoError(t, err, "Conditional upload mark should not fail")
+			assert.True(t, updated, "Expired pending claim should be updated")
+
+			return nil
+		}), "Conditional upload mark transaction should succeed")
+
+		got, err := cs.Get(ctx, claim.ID)
+		require.NoError(t, err, "Claim lookup should succeed")
+		assert.Equal(t, store.ClaimStatusUploaded, got.Status, "Conditional update should mark the claim uploaded")
+
+		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+			updated, err := cs.MarkUploadedIfPendingExpired(txCtx, tx, *claim, now)
+			require.NoError(t, err, "Conditional upload mark should not fail for stale snapshot")
+			assert.False(t, updated, "Already uploaded claim should not be updated again")
+
+			return nil
+		}), "Stale conditional upload mark transaction should succeed")
+	})
+
+	t.Run("DeleteIfPendingExpired", func(t *testing.T) {
+		ctx, db, cs, _ := setupStores(t)
+
+		now := timex.Now()
+		claim := newClaim("priv/conditional-delete", now.AddHours(-1))
+		claim.UploadID = "session-delete"
+		require.NoError(t, cs.Create(ctx, claim), "Expired claim creation should succeed")
+
+		staleSnapshot := *claim
+		staleSnapshot.UploadID = "stale-session"
+
+		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+			deleted, err := cs.DeleteIfPendingExpired(txCtx, tx, staleSnapshot, now)
+			require.NoError(t, err, "Conditional delete should not fail for stale snapshot")
+			assert.False(t, deleted, "Changed UploadID should make the stale snapshot lose")
+
+			return nil
+		}), "Stale conditional delete transaction should succeed")
+
+		require.NoError(t, db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+			deleted, err := cs.DeleteIfPendingExpired(txCtx, tx, *claim, now)
+			require.NoError(t, err, "Conditional delete should not fail")
+			assert.True(t, deleted, "Matching expired pending claim should be deleted")
+
+			return nil
+		}), "Conditional delete transaction should succeed")
+
+		_, err := cs.Get(ctx, claim.ID)
+		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Deleted claim should no longer be queryable")
+	})
+
 	t.Run("ErrClaimNotFoundWraps", func(t *testing.T) {
 		ctx, db, cs, _ := setupStores(t)
 

@@ -3,6 +3,7 @@ package worker_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -59,6 +60,21 @@ type CapturedPublish struct {
 type CapturePublisher struct {
 	events []event.Event
 	calls  []CapturedPublish
+}
+
+type StatHookService struct {
+	storage.Service
+
+	afterStat func(context.Context, storage.StatObjectOptions, *storage.ObjectInfo, error)
+}
+
+func (s *StatHookService) StatObject(ctx context.Context, opts storage.StatObjectOptions) (*storage.ObjectInfo, error) {
+	info, err := s.Service.StatObject(ctx, opts)
+	if s.afterStat != nil {
+		s.afterStat(ctx, opts, info, err)
+	}
+
+	return info, err
 }
 
 // Publish implements event.Bus.
@@ -240,6 +256,49 @@ func TestClaimSweeper(t *testing.T) {
 		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
 		require.NoError(t, err, "Lease should succeed")
 		assert.Empty(t, leased, "Recently expired claim must not be enqueued for deletion")
+	})
+
+	t.Run("DoesNotEnqueueDeleteWhenClaimCompletesAfterStat", func(t *testing.T) {
+		env := setupWorker(t)
+
+		claim := &store.UploadClaim{
+			ID:        id.GenerateUUID(),
+			Key:       "priv/race-completed-after-stat.bin",
+			UploadID:  "session-race",
+			Size:      7,
+			CreatedBy: "tester",
+			Status:    store.ClaimStatusPending,
+			ExpiresAt: timex.Now().Add(-2 * config.DefaultSweepInterval),
+			CreatedAt: timex.Now(),
+		}
+		require.NoError(t, env.CS.Create(env.Ctx, claim), "Expired multipart claim creation should succeed")
+
+		completedDuringStat := false
+		svc := &StatHookService{
+			Service: env.Svc,
+			afterStat: func(ctx context.Context, _ storage.StatObjectOptions, _ *storage.ObjectInfo, err error) {
+				if completedDuringStat || !errors.Is(err, storage.ErrObjectNotFound) {
+					return
+				}
+
+				completedDuringStat = true
+
+				putMemoryObject(t, env.Svc, claim.Key)
+				require.NoError(t, env.DB.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error {
+					return env.CS.MarkUploaded(txCtx, tx, claim.ID)
+				}), "Concurrent complete_upload bookkeeping should succeed")
+			},
+		}
+
+		worker.NewClaimSweeper(env.DB, svc, env.CS, env.PS, env.DQ, env.Cfg).Run(env.Ctx)
+
+		got, err := env.CS.Get(env.Ctx, claim.ID)
+		require.NoError(t, err, "Concurrent completed claim should remain queryable")
+		assert.Equal(t, store.ClaimStatusUploaded, got.Status, "Concurrent complete_upload should win over the stale delete plan")
+
+		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
+		require.NoError(t, err, "Lease should succeed")
+		assert.Empty(t, leased, "Stale delete plan must not enqueue a delete for a claim completed after StatObject")
 	})
 
 	t.Run("LeavesLiveClaim", func(t *testing.T) {

@@ -102,6 +102,13 @@ type ClaimStore interface {
 	// be recovered by the claim sweeper with this method.
 	MarkUploaded(ctx context.Context, tx orm.DB, id string) error
 
+	// MarkUploadedIfPendingExpired conditionally flips claim.status from
+	// 'pending' to 'uploaded' for an expired row matching the supplied
+	// claim snapshot. It returns true only when this transaction won the
+	// race to update the row. Used by the claim sweeper after it verifies
+	// the backend object outside the database transaction.
+	MarkUploadedIfPendingExpired(ctx context.Context, tx orm.DB, claim UploadClaim, cutoff timex.DateTime) (bool, error)
+
 	// Get returns the claim by ID, or ErrClaimNotFound.
 	Get(ctx context.Context, id string) (*UploadClaim, error)
 
@@ -124,9 +131,10 @@ type ClaimStore interface {
 	// finalized objects are awaiting business consumption and must not be
 	// reaped if Consume happens after the original TTL.
 	//
-	// Non-transactional: callers that intend to follow up with DeleteByIDs
-	// in another transaction race a concurrent MarkUploaded — see
-	// LockExpiredInTx for the sweeper-safe variant.
+	// Non-transactional: callers that perform follow-up writes later must
+	// protect them with conditional predicates such as status='pending'
+	// and the original snapshot fields, or use LockExpiredInTx when the
+	// whole operation can remain short and database-only.
 	ScanExpired(ctx context.Context, now timex.DateTime, limit int) ([]UploadClaim, error)
 
 	// LockExpiredInTx is ScanExpired's sweeper-safe cousin: it locks the
@@ -151,8 +159,13 @@ type ClaimStore interface {
 	DeleteByIDInTx(ctx context.Context, tx orm.DB, id string) error
 
 	// DeleteByIDs removes multiple claim rows inside the supplied
-	// transaction. Used by the claim sweeper to atomically pair the
-	// claim-row removal with the corresponding DeleteQueue.Schedule call,
-	// guaranteeing the queue and the claim table commit together.
+	// transaction. Callers that delete based on an earlier non-locked
+	// snapshot should prefer DeleteIfPendingExpired so concurrent
+	// complete_upload calls cannot be raced by a stale delete plan.
 	DeleteByIDs(ctx context.Context, tx orm.DB, ids []string) error
+
+	// DeleteIfPendingExpired conditionally removes one expired pending
+	// claim matching the supplied snapshot. It returns true only when
+	// this transaction won the race to delete the row.
+	DeleteIfPendingExpired(ctx context.Context, tx orm.DB, claim UploadClaim, cutoff timex.DateTime) (bool, error)
 }

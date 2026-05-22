@@ -87,6 +87,34 @@ func (*claimStore) MarkUploaded(ctx context.Context, tx orm.DB, id string) error
 	return nil
 }
 
+func (*claimStore) MarkUploadedIfPendingExpired(
+	ctx context.Context,
+	tx orm.DB,
+	claim UploadClaim,
+	cutoff timex.DateTime,
+) (bool, error) {
+	res, err := tx.NewUpdate().Model((*UploadClaim)(nil)).
+		Set("status", ClaimStatusUploaded).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("id", claim.ID)
+			cb.Equals("object_key", claim.Key)
+			cb.Equals("upload_id", claim.UploadID)
+			cb.Equals("status", ClaimStatusPending)
+			cb.LessThan("expires_at", cutoff)
+		}).
+		Exec(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return n > 0, nil
+}
+
 func (s *claimStore) Get(ctx context.Context, id string) (*UploadClaim, error) {
 	var claim UploadClaim
 
@@ -261,6 +289,31 @@ func (*claimStore) DeleteByIDs(ctx context.Context, tx orm.DB, ids []string) err
 	}).Exec(ctx)
 
 	return err
+}
+
+func (*claimStore) DeleteIfPendingExpired(
+	ctx context.Context,
+	tx orm.DB,
+	claim UploadClaim,
+	cutoff timex.DateTime,
+) (bool, error) {
+	res, err := tx.NewDelete().Model((*UploadClaim)(nil)).Where(func(cb orm.ConditionBuilder) {
+		cb.Equals("id", claim.ID)
+		cb.Equals("object_key", claim.Key)
+		cb.Equals("upload_id", claim.UploadID)
+		cb.Equals("status", ClaimStatusPending)
+		cb.LessThan("expires_at", cutoff)
+	}).Exec(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return n > 0, nil
 }
 
 func dedupeStrings(in []string) []string {
