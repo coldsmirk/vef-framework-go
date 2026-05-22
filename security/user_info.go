@@ -39,11 +39,11 @@ type UserMenu struct {
 }
 
 type UserInfo struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	Gender     Gender     `json:"gender"`
-	Avatar     *string    `json:"avatar"`
-	PermTokens []string   `json:"permTokens"`
-	Menus      []UserMenu `json:"menus"`
-	Details    any        `json:"details,omitempty"`
+	ID               string     `json:"id"`
+	Name             string     `json:"name"`
+	Gender           Gender     `json:"gender"`
+	Avatar           *string    `json:"avatar"`
+	PermissionTokens []string   `json:"permissionTokens"`
+	Menus            []UserMenu `json:"menus"`
+	Details          any        `json:"details,omitempty"`
 }

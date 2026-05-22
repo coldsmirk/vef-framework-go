@@ -783,7 +783,7 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoSuccess() {
 		Name:   "Test User",
 		Gender: security.GenderMale,
 		Avatar: &avatarURL,
-		PermTokens: []string{
+		PermissionTokens: []string{
 			"user:read",
 			"user:write",
 			"order:read",
@@ -830,12 +830,12 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoSuccess() {
 	suite.Equal("male", data["gender"], "Gender should match")
 	suite.Equal(avatarURL, data["avatar"], "Avatar URL should match")
 
-	permTokens, ok := data["permTokens"].([]any)
+	permissionTokens, ok := data["permissionTokens"].([]any)
 	suite.True(ok, "Permission tokens should be an array")
-	suite.Len(permTokens, 3, "Should have 3 permission tokens")
-	suite.Contains(permTokens, "user:read", "Should contain user:read permission")
-	suite.Contains(permTokens, "user:write", "Should contain user:write permission")
-	suite.Contains(permTokens, "order:read", "Should contain order:read permission")
+	suite.Len(permissionTokens, 3, "Should have 3 permission tokens")
+	suite.Contains(permissionTokens, "user:read", "Should contain user:read permission")
+	suite.Contains(permissionTokens, "user:write", "Should contain user:write permission")
+	suite.Contains(permissionTokens, "order:read", "Should contain order:read permission")
 
 	menus, ok := data["menus"].([]any)
 	suite.True(ok, "Menus should be an array")
@@ -929,11 +929,11 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoWithEmptyMenus() {
 	accessToken := tokens["accessToken"].(string)
 
 	expectedUserInfo := &security.UserInfo{
-		ID:         "user001",
-		Name:       "Test User",
-		Gender:     security.GenderUnknown,
-		PermTokens: []string{},
-		Menus:      []security.UserMenu{},
+		ID:               "user001",
+		Name:             "Test User",
+		Gender:           security.GenderUnknown,
+		PermissionTokens: []string{},
+		Menus:            []security.UserMenu{},
 	}
 
 	suite.userInfoLoader.On("LoadUserInfo", mock.Anything, mock.MatchedBy(func(p *security.Principal) bool {
@@ -959,9 +959,9 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoWithEmptyMenus() {
 	suite.Equal("unknown", data["gender"], "Gender should be unknown")
 	suite.Nil(data["avatar"], "Avatar should be null when not set")
 
-	permTokens, ok := data["permTokens"].([]any)
+	permissionTokens, ok := data["permissionTokens"].([]any)
 	suite.True(ok, "Permission tokens should be an array")
-	suite.Len(permTokens, 0, "Permission tokens should be empty")
+	suite.Len(permissionTokens, 0, "Permission tokens should be empty")
 
 	menus, ok := data["menus"].([]any)
 	suite.True(ok, "Menus should be an array")
