@@ -39,7 +39,7 @@ jobs:
         run: go mod download
 
       - name: Run Tests with Coverage
-        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic -timeout 30m ./...
+        run: go test -v -race -coverpkg=./... -coverprofile=coverage.txt -covermode=atomic -timeout 30m ./...
         env:
           TZ: Asia/Shanghai
           VEF_I18N_LANGUAGE: en

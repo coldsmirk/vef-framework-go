@@ -3,10 +3,10 @@ coverage:
     project:
       default:
         target: 80%
-        threshold: 2%
+        threshold: 0%
     patch:
       default:
-        target: 70%
+        target: 80%
 
 comment:
   layout: "reach,diff,flags,tree"
