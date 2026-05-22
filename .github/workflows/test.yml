@@ -29,6 +29,7 @@ jobs:
 
       - name: Pull Docker images in parallel
         run: |
+          docker pull testcontainers/ryuk:0.13.0 &
           docker pull postgres:18-alpine &
           docker pull mysql:lts &
           docker pull redis:8-alpine &
