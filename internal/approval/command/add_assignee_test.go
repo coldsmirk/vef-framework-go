@@ -115,6 +115,22 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeSuccess() {
 		OrderBy("sort_order").
 		Scan(s.ctx), "Should not return error")
 	s.Assert().GreaterOrEqual(len(tasks), 3, "Should have at least 3 tasks (1 original + 2 new)")
+
+	// Every added assignee task must surface as a TaskCreatedEvent so
+	// downstream subscribers (待办通知、个人待办投影) see the new work item.
+	created := s.bus.CapturedByType(approval.EventTypeTaskCreated)
+	s.Assert().Len(created, 2, "应当为每个新增的指派人发出一个 TaskCreatedEvent")
+
+	assignees := make([]string, 0, len(created))
+	for _, evt := range created {
+		tc, ok := evt.(*approval.TaskCreatedEvent)
+		s.Require().True(ok, "事件应当是 *TaskCreatedEvent")
+
+		assignees = append(assignees, tc.AssigneeID)
+	}
+
+	s.Assert().ElementsMatch([]string{"new-user-1", "new-user-2"}, assignees,
+		"TaskCreatedEvent 应当覆盖所有新加签人")
 }
 
 func (s *AddAssigneeTestSuite) TestAddAssigneeNotAllowed() {

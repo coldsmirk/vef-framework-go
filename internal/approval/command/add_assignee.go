@@ -128,6 +128,8 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 		}
 	}
 
+	eventCollector := behavior.EventCollectorFromContext(ctx)
+
 	for i, userID := range insertUsers {
 		newTask := &approval.Task{
 			TenantID:        instance.TenantID,
@@ -153,6 +155,16 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 			Exec(ctx); err != nil {
 			return cqrs.Unit{}, fmt.Errorf("insert assignee task: %w", err)
 		}
+
+		eventCollector.Add(approval.NewTaskCreatedEvent(
+			newTask.ID,
+			newTask.TenantID,
+			instance.ID,
+			task.NodeID,
+			userID,
+			userNames[userID],
+			newTask.Deadline,
+		))
 	}
 
 	actionLog := cmd.Operator.NewActionLog(instance.ID, approval.ActionAddAssignee)
@@ -163,7 +175,7 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	actionLog.AddedAssigneeIDs = insertUsers
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
-	behavior.EventCollectorFromContext(ctx).Add(
+	eventCollector.Add(
 		approval.NewAssigneesAddedEvent(instance.ID, instance.TenantID, task.NodeID, task.ID, cmd.AddType, insertUsers, userNames),
 	)
 

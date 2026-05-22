@@ -39,11 +39,12 @@ func (p *HandleProcessor) Process(ctx context.Context, pc *ProcessContext) (*Pro
 		return nil, err
 	}
 
-	if err := createTasksWithDelegation(ctx, pc, assignees); err != nil {
+	events, err := createTasksWithDelegation(ctx, pc, assignees)
+	if err != nil {
 		return nil, err
 	}
 
-	return &ProcessResult{Action: NodeActionWait}, nil
+	return &ProcessResult{Action: NodeActionWait, Events: events}, nil
 }
 
 func (*HandleProcessor) resolveAndDeduplicateAssignees(ctx context.Context, pc *ProcessContext) ([]approval.ResolvedAssignee, error) {

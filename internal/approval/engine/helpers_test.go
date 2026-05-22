@@ -336,3 +336,94 @@ func TestPublishEventsNilPublisher(t *testing.T) {
 		assert.NoError(t, err, "Should not error with nil publisher even with events")
 	})
 }
+
+// newProcessContextForEvent constructs the minimum ProcessContext needed
+// to exercise the TaskCreatedEvent factory helpers without touching the DB.
+func newProcessContextForEvent(instanceID, nodeID string) *ProcessContext {
+	inst := &approval.Instance{TenantID: "tenant-1"}
+	inst.ID = instanceID
+
+	node := &approval.FlowNode{}
+	node.ID = nodeID
+
+	return &ProcessContext{Instance: inst, Node: node}
+}
+
+// TestNewTaskCreatedEvent verifies the factory copies the full task payload
+// onto the event, including the conditional deadline used by subscribers to
+// distinguish actionable tasks from sequential-queue tasks.
+func TestNewTaskCreatedEvent(t *testing.T) {
+	t.Run("MapsAllPayloadFields", func(t *testing.T) {
+		pc := newProcessContextForEvent("inst-1", "node-1")
+		deadline := timex.DateTime(time.Date(2026, 5, 22, 9, 0, 0, 0, time.UTC))
+
+		task := &approval.Task{
+			TenantID:     "tenant-1",
+			AssigneeID:   "user-7",
+			AssigneeName: "测试用户",
+			Deadline:     &deadline,
+		}
+		task.ID = "task-99"
+
+		domainEvt := newTaskCreatedEvent(pc, task)
+		require.NotNil(t, domainEvt, "应当返回非 nil 事件")
+
+		evt, ok := domainEvt.(*approval.TaskCreatedEvent)
+		require.True(t, ok, "事件类型应当是 *TaskCreatedEvent")
+
+		assert.Equal(t, approval.EventTypeTaskCreated, evt.EventType(),
+			"事件类型字符串必须为 approval.task.created")
+		assert.Equal(t, "task-99", evt.TaskID, "应当映射 Task.ID")
+		assert.Equal(t, "tenant-1", evt.TenantID, "应当映射 Task.TenantID")
+		assert.Equal(t, "inst-1", evt.InstanceID, "应当从 ProcessContext.Instance.ID 映射")
+		assert.Equal(t, "node-1", evt.NodeID, "应当从 ProcessContext.Node.ID 映射")
+		assert.Equal(t, "user-7", evt.AssigneeID, "应当映射 Task.AssigneeID")
+		assert.Equal(t, "测试用户", evt.AssigneeName, "应当映射 Task.AssigneeName")
+		require.NotNil(t, evt.Deadline, "Pending 任务应当带 deadline")
+		assert.True(t, evt.Deadline.Equal(deadline), "deadline 必须按值传递")
+		assert.False(t, evt.OccurredTime.IsZero(), "OccurredTime 应当被自动填充")
+	})
+
+	t.Run("LeavesDeadlineNilWhenTaskHasNone", func(t *testing.T) {
+		pc := newProcessContextForEvent("inst-1", "node-1")
+		task := &approval.Task{AssigneeID: "u", AssigneeName: "n", Deadline: nil}
+		task.ID = "task-waiting"
+
+		evt := newTaskCreatedEvent(pc, task).(*approval.TaskCreatedEvent)
+		assert.Nil(t, evt.Deadline,
+			"Waiting 任务 deadline 应当保持 nil 以区分非激活态")
+	})
+}
+
+// TestTaskCreatedEventsFor verifies the batch helper preserves input order
+// — order matters because some downstream subscribers reconstruct task
+// ordering (e.g. sequential approval queues) from the event stream.
+func TestTaskCreatedEventsFor(t *testing.T) {
+	t.Run("PreservesOrder", func(t *testing.T) {
+		pc := newProcessContextForEvent("inst-batch", "node-batch")
+
+		ids := []string{"t-a", "t-b", "t-c"}
+		tasks := make([]*approval.Task, len(ids))
+
+		for i, id := range ids {
+			tk := &approval.Task{AssigneeID: "u", AssigneeName: "n"}
+			tk.ID = id
+			tasks[i] = tk
+		}
+
+		events := taskCreatedEventsFor(pc, tasks)
+		require.Len(t, events, len(ids), "应当为每个任务生成一个事件")
+
+		for i, want := range ids {
+			got := events[i].(*approval.TaskCreatedEvent).TaskID
+			assert.Equal(t, want, got, "事件 #%d 应当对应第 %d 个输入任务", i, i)
+		}
+	})
+
+	t.Run("EmptyInputReturnsEmptyOutput", func(t *testing.T) {
+		pc := newProcessContextForEvent("inst-empty", "node-empty")
+
+		events := taskCreatedEventsFor(pc, nil)
+		assert.Empty(t, events, "空输入应当返回空切片，且不应当 panic")
+	})
+}

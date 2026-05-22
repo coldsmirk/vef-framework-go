@@ -212,8 +212,39 @@ func buildTask(pc *ProcessContext, assignee approval.ResolvedAssignee, deadline 
 	}
 }
 
+// newTaskCreatedEvent returns the TaskCreatedEvent describing a just-
+// inserted task row. The event reports the physical creation of the task,
+// not the moment it becomes actionable: under sequential approval, tasks
+// after the first start as TaskWaiting and a nil Deadline, which is how
+// downstream consumers can distinguish "queued behind a predecessor" from
+// "immediately actionable" without an extra event type.
+func newTaskCreatedEvent(pc *ProcessContext, task *approval.Task) approval.DomainEvent {
+	return approval.NewTaskCreatedEvent(
+		task.ID,
+		task.TenantID,
+		pc.Instance.ID,
+		pc.Node.ID,
+		task.AssigneeID,
+		task.AssigneeName,
+		task.Deadline,
+	)
+}
+
+// taskCreatedEventsFor returns the slice of TaskCreatedEvents corresponding
+// to a batch of just-inserted tasks, preserving input order.
+func taskCreatedEventsFor(pc *ProcessContext, tasks []*approval.Task) []approval.DomainEvent {
+	events := make([]approval.DomainEvent, len(tasks))
+	for i, t := range tasks {
+		events[i] = newTaskCreatedEvent(pc, t)
+	}
+
+	return events
+}
+
 // createTasksForUsers creates pending tasks for a list of user IDs with sortOrder=0.
-// User names are resolved via pc.UserResolver. Returns a Wait result, or ErrNoAssignee if the list is empty.
+// User names are resolved via pc.UserResolver. Returns a Wait result whose
+// Events field carries one TaskCreatedEvent per inserted task, or
+// ErrNoAssignee if the list is empty.
 func createTasksForUsers(ctx context.Context, pc *ProcessContext, userIDs []string) (*ProcessResult, error) {
 	normalizedIDs := shared.NormalizeUniqueIDs(userIDs)
 	if len(normalizedIDs) == 0 {
@@ -236,7 +267,7 @@ func createTasksForUsers(ctx context.Context, pc *ProcessContext, userIDs []stri
 		return nil, fmt.Errorf("create tasks: %w", err)
 	}
 
-	return &ProcessResult{Action: NodeActionWait}, nil
+	return &ProcessResult{Action: NodeActionWait, Events: taskCreatedEventsFor(pc, tasks)}, nil
 }
 
 // handleEmptyAssignee handles the case when no assignees are resolved.
@@ -272,8 +303,11 @@ func handleEmptyAssignee(ctx context.Context, pc *ProcessContext, assigneeServic
 	}
 }
 
-// createTasksWithDelegation creates tasks for resolved assignees, setting DelegatorID/DelegatorName when applicable.
-func createTasksWithDelegation(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) error {
+// createTasksWithDelegation creates tasks for resolved assignees, setting
+// DelegatorID/DelegatorName when applicable. Returns one TaskCreatedEvent
+// per inserted task in input order so the caller can attach them to
+// ProcessResult.Events alongside any node-level events.
+func createTasksWithDelegation(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) ([]approval.DomainEvent, error) {
 	deadline := computeDeadline(pc.Node)
 
 	tasks := make([]*approval.Task, len(assignees))
@@ -282,10 +316,10 @@ func createTasksWithDelegation(ctx context.Context, pc *ProcessContext, assignee
 	}
 
 	if _, err := pc.DB.NewInsert().Model(&tasks).Exec(ctx); err != nil {
-		return fmt.Errorf("create tasks: %w", err)
+		return nil, fmt.Errorf("create tasks: %w", err)
 	}
 
-	return nil
+	return taskCreatedEventsFor(pc, tasks), nil
 }
 
 // getSuperior retrieves the superior user info. Returns ErrAssigneeServiceNotConfigured if assigneeService is nil.

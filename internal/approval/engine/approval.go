@@ -40,15 +40,25 @@ func (p *ApprovalProcessor) Process(ctx context.Context, pc *ProcessContext) (*P
 		return p.handleSameApplicant(ctx, pc, assignees)
 	}
 
-	if err := p.createApprovalTasks(ctx, pc, assignees); err != nil {
+	events, err := p.createApprovalTasks(ctx, pc, assignees)
+	if err != nil {
 		return nil, err
 	}
 
 	if pc.Node.ConsecutiveApproverAction == approval.ConsecutiveApproverAutoPass {
-		return p.autoPassConsecutiveApprovers(ctx, pc)
+		result, err := p.autoPassConsecutiveApprovers(ctx, pc)
+		if err != nil {
+			return nil, err
+		}
+
+		// Creation events precede auto-pass events so downstream
+		// subscribers observe the natural lifecycle order.
+		result.Events = append(events, result.Events...)
+
+		return result, nil
 	}
 
-	return &ProcessResult{Action: NodeActionWait}, nil
+	return &ProcessResult{Action: NodeActionWait, Events: events}, nil
 }
 
 func (*ApprovalProcessor) resolveAndProcessAssignees(ctx context.Context, pc *ProcessContext) ([]approval.ResolvedAssignee, error) {
@@ -67,8 +77,14 @@ func (*ApprovalProcessor) resolveAndProcessAssignees(ctx context.Context, pc *Pr
 	return assignees, nil
 }
 
-// createApprovalTasks creates tasks with sequential ordering support.
-func (*ApprovalProcessor) createApprovalTasks(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) error {
+// createApprovalTasks creates tasks with sequential ordering support and
+// returns one TaskCreatedEvent per inserted task in insertion order.
+// Sequential tasks after the first are created as TaskWaiting with a nil
+// deadline; subscribers can use those fields to distinguish queued tasks
+// from immediately actionable ones.
+func (*ApprovalProcessor) createApprovalTasks(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) ([]approval.DomainEvent, error) {
+	events := make([]approval.DomainEvent, 0, len(assignees))
+
 	for i, assignee := range assignees {
 		sortOrder := 0
 		status := approval.TaskPending
@@ -97,11 +113,13 @@ func (*ApprovalProcessor) createApprovalTasks(ctx context.Context, pc *ProcessCo
 		}
 
 		if _, err := pc.DB.NewInsert().Model(task).Exec(ctx); err != nil {
-			return fmt.Errorf("create approval task: %w", err)
+			return nil, fmt.Errorf("create approval task: %w", err)
 		}
+
+		events = append(events, newTaskCreatedEvent(pc, task))
 	}
 
-	return nil
+	return events, nil
 }
 
 func (p *ApprovalProcessor) handleSameApplicant(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) (*ProcessResult, error) {
@@ -122,11 +140,12 @@ func (p *ApprovalProcessor) handleSameApplicant(ctx context.Context, pc *Process
 		return createTasksForUsers(ctx, pc, []string{superiorInfo.ID})
 
 	default: // includes SameApplicantSelfApprove and other unrecognized actions
-		if err := createTasksWithDelegation(ctx, pc, assignees); err != nil {
+		events, err := createTasksWithDelegation(ctx, pc, assignees)
+		if err != nil {
 			return nil, err
 		}
 
-		return &ProcessResult{Action: NodeActionWait}, nil
+		return &ProcessResult{Action: NodeActionWait, Events: events}, nil
 	}
 }
 
