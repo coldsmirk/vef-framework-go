@@ -55,6 +55,42 @@ type DomainEvent interface {
 	EventType() string
 }
 
+// Approval event type identifiers. Exposed as constants so framework
+// callers (route inspection, subscription filters, metrics labels) can
+// reference them by symbol rather than risking a typo on the wire string.
+const (
+	EventTypeInstanceCreated       = "approval.instance.created"
+	EventTypeInstanceCompleted     = "approval.instance.completed"
+	EventTypeInstanceWithdrawn     = "approval.instance.withdrawn"
+	EventTypeInstanceRolledBack    = "approval.instance.rolled_back"
+	EventTypeInstanceReturned      = "approval.instance.returned"
+	EventTypeInstanceResubmitted   = "approval.instance.resubmitted"
+	EventTypeInstanceBindingFailed = "approval.instance.binding_failed"
+
+	EventTypeNodeEntered    = "approval.node.entered"
+	EventTypeNodeAutoPassed = "approval.node.auto_passed"
+
+	EventTypeTaskCreated         = "approval.task.created"
+	EventTypeTaskApproved        = "approval.task.approved"
+	EventTypeTaskHandled         = "approval.task.handled"
+	EventTypeTaskRejected        = "approval.task.rejected"
+	EventTypeTaskTransferred     = "approval.task.transferred"
+	EventTypeTaskReassigned      = "approval.task.reassigned"
+	EventTypeTaskTimedOut        = "approval.task.timed_out"
+	EventTypeAssigneesAdded      = "approval.task.assignees_added"
+	EventTypeAssigneesRemoved    = "approval.task.assignees_removed"
+	EventTypeTaskDeadlineWarning = "approval.task.deadline_warning"
+	EventTypeTaskUrged           = "approval.task.urged"
+
+	EventTypeCCNotified = "approval.cc.notified"
+
+	EventTypeFlowCreated   = "approval.flow.created"
+	EventTypeFlowUpdated   = "approval.flow.updated"
+	EventTypeFlowDeployed  = "approval.flow.deployed"
+	EventTypeFlowToggled   = "approval.flow.toggled"
+	EventTypeFlowPublished = "approval.flow.published"
+)
+
 // ==================== Instance Events ====================
 
 // InstanceCreatedEvent fired when a new instance is created.
@@ -80,7 +116,7 @@ func NewInstanceCreatedEvent(instanceID, tenantID, flowID, title, applicantID, a
 	}
 }
 
-func (*InstanceCreatedEvent) EventType() string { return "approval.instance.created" }
+func (*InstanceCreatedEvent) EventType() string { return EventTypeInstanceCreated }
 
 // InstanceCompletedEvent fired when instance reaches a final status.
 type InstanceCompletedEvent struct {
@@ -103,7 +139,7 @@ func NewInstanceCompletedEvent(instanceID, tenantID string, finalStatus Instance
 	}
 }
 
-func (*InstanceCompletedEvent) EventType() string { return "approval.instance.completed" }
+func (*InstanceCompletedEvent) EventType() string { return EventTypeInstanceCompleted }
 
 // InstanceWithdrawnEvent fired when applicant withdraws the instance.
 type InstanceWithdrawnEvent struct {
@@ -122,7 +158,7 @@ func NewInstanceWithdrawnEvent(instanceID, tenantID, operatorID string) *Instanc
 	}
 }
 
-func (*InstanceWithdrawnEvent) EventType() string { return "approval.instance.withdrawn" }
+func (*InstanceWithdrawnEvent) EventType() string { return EventTypeInstanceWithdrawn }
 
 // InstanceRolledBackEvent fired when instance is rolled back.
 type InstanceRolledBackEvent struct {
@@ -145,7 +181,7 @@ func NewInstanceRolledBackEvent(instanceID, tenantID, fromNodeID, toNodeID, oper
 	}
 }
 
-func (*InstanceRolledBackEvent) EventType() string { return "approval.instance.rolled_back" }
+func (*InstanceRolledBackEvent) EventType() string { return EventTypeInstanceRolledBack }
 
 // InstanceReturnedEvent fired when instance is returned to the initiator.
 type InstanceReturnedEvent struct {
@@ -168,7 +204,7 @@ func NewInstanceReturnedEvent(instanceID, tenantID, fromNodeID, toNodeID, operat
 	}
 }
 
-func (*InstanceReturnedEvent) EventType() string { return "approval.instance.returned" }
+func (*InstanceReturnedEvent) EventType() string { return EventTypeInstanceReturned }
 
 // InstanceResubmittedEvent fired when the initiator resubmits a returned instance.
 type InstanceResubmittedEvent struct {
@@ -187,7 +223,7 @@ func NewInstanceResubmittedEvent(instanceID, tenantID, operatorID string) *Insta
 	}
 }
 
-func (*InstanceResubmittedEvent) EventType() string { return "approval.instance.resubmitted" }
+func (*InstanceResubmittedEvent) EventType() string { return EventTypeInstanceResubmitted }
 
 // InstanceBindingFailedEvent fires when business binding (writing the final
 // status back to the host's business table) fails after the approval itself
@@ -215,7 +251,7 @@ func NewInstanceBindingFailedEvent(instanceID, tenantID, flowID string, finalSta
 	}
 }
 
-func (*InstanceBindingFailedEvent) EventType() string { return "approval.instance.binding_failed" }
+func (*InstanceBindingFailedEvent) EventType() string { return EventTypeInstanceBindingFailed }
 
 // ==================== Node Events ====================
 
@@ -238,7 +274,7 @@ func NewNodeEnteredEvent(instanceID, tenantID, nodeID, nodeName string) *NodeEnt
 	}
 }
 
-func (*NodeEnteredEvent) EventType() string { return "approval.node.entered" }
+func (*NodeEnteredEvent) EventType() string { return EventTypeNodeEntered }
 
 // NodeAutoPassedEvent fired when a node is auto-passed.
 type NodeAutoPassedEvent struct {
@@ -259,7 +295,7 @@ func NewNodeAutoPassedEvent(instanceID, tenantID, nodeID, reason string) *NodeAu
 	}
 }
 
-func (*NodeAutoPassedEvent) EventType() string { return "approval.node.auto_passed" }
+func (*NodeAutoPassedEvent) EventType() string { return EventTypeNodeAutoPassed }
 
 // ==================== Task Events ====================
 
@@ -288,7 +324,7 @@ func NewTaskCreatedEvent(taskID, tenantID, instanceID, nodeID, assigneeID, assig
 	}
 }
 
-func (*TaskCreatedEvent) EventType() string { return "approval.task.created" }
+func (*TaskCreatedEvent) EventType() string { return EventTypeTaskCreated }
 
 // TaskApprovedEvent fired when a task is approved.
 type TaskApprovedEvent struct {
@@ -313,7 +349,7 @@ func NewTaskApprovedEvent(taskID, tenantID, instanceID, nodeID, operatorID, opin
 	}
 }
 
-func (*TaskApprovedEvent) EventType() string { return "approval.task.approved" }
+func (*TaskApprovedEvent) EventType() string { return EventTypeTaskApproved }
 
 // TaskHandledEvent fired when a handle-type task is completed.
 type TaskHandledEvent struct {
@@ -338,7 +374,7 @@ func NewTaskHandledEvent(taskID, tenantID, instanceID, nodeID, operatorID, opini
 	}
 }
 
-func (*TaskHandledEvent) EventType() string { return "approval.task.handled" }
+func (*TaskHandledEvent) EventType() string { return EventTypeTaskHandled }
 
 // TaskRejectedEvent fired when a task is rejected.
 type TaskRejectedEvent struct {
@@ -363,7 +399,7 @@ func NewTaskRejectedEvent(taskID, tenantID, instanceID, nodeID, operatorID, opin
 	}
 }
 
-func (*TaskRejectedEvent) EventType() string { return "approval.task.rejected" }
+func (*TaskRejectedEvent) EventType() string { return EventTypeTaskRejected }
 
 // TaskTransferredEvent fired when a task is transferred.
 type TaskTransferredEvent struct {
@@ -395,7 +431,7 @@ func NewTaskTransferredEvent(taskID, tenantID, instanceID, nodeID, fromUserID, f
 	}
 }
 
-func (*TaskTransferredEvent) EventType() string { return "approval.task.transferred" }
+func (*TaskTransferredEvent) EventType() string { return EventTypeTaskTransferred }
 
 // TaskReassignedEvent fired when an admin reassigns a task to a different user.
 type TaskReassignedEvent struct {
@@ -427,7 +463,7 @@ func NewTaskReassignedEvent(taskID, tenantID, instanceID, nodeID, fromUserID, fr
 	}
 }
 
-func (*TaskReassignedEvent) EventType() string { return "approval.task.reassigned" }
+func (*TaskReassignedEvent) EventType() string { return EventTypeTaskReassigned }
 
 // TaskTimedOutEvent fired when a task times out.
 type TaskTimedOutEvent struct {
@@ -454,7 +490,7 @@ func NewTaskTimedOutEvent(taskID, tenantID, instanceID, nodeID, assigneeID, assi
 	}
 }
 
-func (*TaskTimedOutEvent) EventType() string { return "approval.task.timed_out" }
+func (*TaskTimedOutEvent) EventType() string { return EventTypeTaskTimedOut }
 
 // AssigneesAddedEvent fired when assignees are dynamically added.
 type AssigneesAddedEvent struct {
@@ -481,7 +517,7 @@ func NewAssigneesAddedEvent(instanceID, tenantID, nodeID, taskID string, addType
 	}
 }
 
-func (*AssigneesAddedEvent) EventType() string { return "approval.task.assignees_added" }
+func (*AssigneesAddedEvent) EventType() string { return EventTypeAssigneesAdded }
 
 // AssigneesRemovedEvent fired when assignees are dynamically removed.
 type AssigneesRemovedEvent struct {
@@ -506,7 +542,7 @@ func NewAssigneesRemovedEvent(instanceID, tenantID, nodeID, taskID string, assig
 	}
 }
 
-func (*AssigneesRemovedEvent) EventType() string { return "approval.task.assignees_removed" }
+func (*AssigneesRemovedEvent) EventType() string { return EventTypeAssigneesRemoved }
 
 // ==================== CC Events ====================
 
@@ -533,7 +569,7 @@ func NewCCNotifiedEvent(instanceID, tenantID, nodeID string, ccUserIDs []string,
 	}
 }
 
-func (*CCNotifiedEvent) EventType() string { return "approval.cc.notified" }
+func (*CCNotifiedEvent) EventType() string { return EventTypeCCNotified }
 
 // ==================== Flow Events ====================
 
@@ -558,7 +594,7 @@ func NewFlowCreatedEvent(flowID, tenantID, code, name, categoryID string) *FlowC
 	}
 }
 
-func (*FlowCreatedEvent) EventType() string { return "approval.flow.created" }
+func (*FlowCreatedEvent) EventType() string { return EventTypeFlowCreated }
 
 // FlowUpdatedEvent fires when a flow's metadata (name, description, admins,
 // initiators, etc.) is updated. Version publication has its own event.
@@ -576,7 +612,7 @@ func NewFlowUpdatedEvent(flowID, tenantID string) *FlowUpdatedEvent {
 	}
 }
 
-func (*FlowUpdatedEvent) EventType() string { return "approval.flow.updated" }
+func (*FlowUpdatedEvent) EventType() string { return EventTypeFlowUpdated }
 
 // FlowDeployedEvent fires when a flow's schema is deployed as a new draft
 // version (before it's published).
@@ -598,7 +634,7 @@ func NewFlowDeployedEvent(flowID, tenantID, versionID string, version int) *Flow
 	}
 }
 
-func (*FlowDeployedEvent) EventType() string { return "approval.flow.deployed" }
+func (*FlowDeployedEvent) EventType() string { return EventTypeFlowDeployed }
 
 // FlowToggledEvent fires when a flow is activated or deactivated.
 type FlowToggledEvent struct {
@@ -617,7 +653,7 @@ func NewFlowToggledEvent(flowID, tenantID string, isActive bool) *FlowToggledEve
 	}
 }
 
-func (*FlowToggledEvent) EventType() string { return "approval.flow.toggled" }
+func (*FlowToggledEvent) EventType() string { return EventTypeFlowToggled }
 
 // FlowPublishedEvent fired when a flow version is published.
 type FlowPublishedEvent struct {
@@ -636,7 +672,7 @@ func NewFlowPublishedEvent(flowID, tenantID, versionID string) *FlowPublishedEve
 	}
 }
 
-func (*FlowPublishedEvent) EventType() string { return "approval.flow.published" }
+func (*FlowPublishedEvent) EventType() string { return EventTypeFlowPublished }
 
 // ==================== Timeout & Urge Events ====================
 
@@ -667,7 +703,7 @@ func NewTaskDeadlineWarningEvent(taskID, tenantID, instanceID, nodeID, assigneeI
 	}
 }
 
-func (*TaskDeadlineWarningEvent) EventType() string { return "approval.task.deadline_warning" }
+func (*TaskDeadlineWarningEvent) EventType() string { return EventTypeTaskDeadlineWarning }
 
 // TaskUrgedEvent fired when a task assignee is urged/reminded.
 type TaskUrgedEvent struct {
@@ -699,4 +735,4 @@ func NewTaskUrgedEvent(instanceID, tenantID, nodeID, taskID, urgerID, urgerName,
 	}
 }
 
-func (*TaskUrgedEvent) EventType() string { return "approval.task.urged" }
+func (*TaskUrgedEvent) EventType() string { return EventTypeTaskUrged }
