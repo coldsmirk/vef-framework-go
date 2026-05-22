@@ -7,8 +7,8 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
-	pubredisstream "github.com/coldsmirk/vef-framework-go/event/transport/redisstream"
-	"github.com/coldsmirk/vef-framework-go/internal/event/transport/redisstream"
+	"github.com/coldsmirk/vef-framework-go/event/transport/redisstream"
+	iredisstream "github.com/coldsmirk/vef-framework-go/internal/event/transport/redisstream"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 )
 
@@ -39,13 +39,13 @@ func newRedisStreamTransport(cfg *config.EventConfig, client *goredis.Client) tr
 		return nil
 	}
 
-	return redisstream.New(client, redisStreamConfig(cfg), redisStreamLogger)
+	return iredisstream.New(client, redisStreamConfig(cfg), redisStreamLogger)
 }
 
-func redisStreamConfig(cfg *config.EventConfig) pubredisstream.Config {
+func redisStreamConfig(cfg *config.EventConfig) redisstream.Config {
 	c := cfg.Transports.RedisStream
 
-	return pubredisstream.Config{
+	return redisstream.Config{
 		StreamPrefix:   c.StreamPrefix,
 		MaxLenApprox:   c.MaxLenApprox,
 		BlockTimeout:   c.BlockTimeout,

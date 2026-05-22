@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/event/transport"
-	puboutbox "github.com/coldsmirk/vef-framework-go/event/transport/outbox"
-	"github.com/coldsmirk/vef-framework-go/internal/logx"
-	publogx "github.com/coldsmirk/vef-framework-go/logx"
+	"github.com/coldsmirk/vef-framework-go/event/transport/outbox"
+	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
+	"github.com/coldsmirk/vef-framework-go/logx"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
@@ -46,11 +46,11 @@ const dlqHeader = "vef.dlq"
 // The sink is resolved lazily on each cycle so the outbox transport
 // can break the circular fx dependency on the transport registry.
 type Relay struct {
-	repo     puboutbox.Repository
+	repo     outbox.Repository
 	sinkFn   func() transport.Transport
-	cfg      puboutbox.Config
+	cfg      outbox.Config
 	dlqTopic func(eventType string) string
-	logger   publogx.Logger
+	logger   logx.Logger
 }
 
 // NewRelay constructs a Relay. sinkFn returns the current sink — it is
@@ -59,10 +59,10 @@ type Relay struct {
 // framework default ("vef-dlq." + type). A nil logger is replaced with
 // logx.Discard so tests can omit it.
 func NewRelay(
-	repo puboutbox.Repository,
+	repo outbox.Repository,
 	sinkFn func() transport.Transport,
-	cfg puboutbox.Config,
-	log publogx.Logger,
+	cfg outbox.Config,
+	log logx.Logger,
 	dlqTopic func(eventType string) string,
 ) *Relay {
 	if dlqTopic == nil {
@@ -70,7 +70,7 @@ func NewRelay(
 	}
 
 	if log == nil {
-		log = logx.Discard()
+		log = ilogx.Discard()
 	}
 
 	return &Relay{
@@ -117,7 +117,7 @@ func (r *Relay) RelayPending(ctx context.Context) {
 	}
 }
 
-func (r *Relay) dispatchOne(ctx context.Context, sink transport.Transport, record *puboutbox.Record) error {
+func (r *Relay) dispatchOne(ctx context.Context, sink transport.Transport, record *outbox.Record) error {
 	frame := toFrame(*record)
 
 	if err := sink.Publish(ctx, []transport.Frame{frame}); err != nil {
@@ -131,7 +131,7 @@ func (r *Relay) dispatchOne(ctx context.Context, sink transport.Transport, recor
 // exhausted: only if the DLQ accepts the frame do we transition the
 // record to StatusDead. Otherwise the record stays Failed and is
 // retried on the next cycle so the DLQ payload is never silently lost.
-func (r *Relay) handleFailure(ctx context.Context, sink transport.Transport, record *puboutbox.Record, dispatchErr error) error {
+func (r *Relay) handleFailure(ctx context.Context, sink transport.Transport, record *outbox.Record, dispatchErr error) error {
 	maxRetries := r.cfg.EffectiveMaxRetries()
 	retryCount := record.RetryCount + 1
 
@@ -163,7 +163,7 @@ func (r *Relay) handleFailure(ctx context.Context, sink transport.Transport, rec
 	return nil
 }
 
-func (r *Relay) forwardDLQ(ctx context.Context, sink transport.Transport, record *puboutbox.Record) error {
+func (r *Relay) forwardDLQ(ctx context.Context, sink transport.Transport, record *outbox.Record) error {
 	frame := toFrame(*record)
 
 	frame.Type = r.dlqTopic(record.EventType)
@@ -209,7 +209,7 @@ func defaultDLQTopic(eventType string) string {
 // toFrame reconstructs a transport.Frame from a stored Record. The
 // occurredAt and publishedAt values reflect when the original publisher
 // committed; subscribers can use them for end-to-end latency metrics.
-func toFrame(record puboutbox.Record) transport.Frame {
+func toFrame(record outbox.Record) transport.Frame {
 	return transport.Frame{
 		ID:            record.EventID,
 		Type:          record.EventType,

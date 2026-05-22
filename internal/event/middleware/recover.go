@@ -1,7 +1,3 @@
-// Package middleware provides the built-in publish-side and
-// consume-side middlewares wired by internal/event. Each middleware is
-// a focused single-responsibility implementation of
-// middleware.PublishMiddleware or middleware.ConsumeMiddleware.
 package middleware
 
 import (
@@ -10,7 +6,7 @@ import (
 	"runtime/debug"
 
 	"github.com/coldsmirk/vef-framework-go/event"
-	pubmw "github.com/coldsmirk/vef-framework-go/event/middleware"
+	"github.com/coldsmirk/vef-framework-go/event/middleware"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
 	"github.com/coldsmirk/vef-framework-go/logx"
 )
@@ -35,7 +31,7 @@ func (*Recover) Name() string { return "recover" }
 func (*Recover) Applies(transport.Capabilities) bool { return true }
 
 // WrapConsume implements ConsumeMiddleware.
-func (m *Recover) WrapConsume(next pubmw.ConsumeHandler) pubmw.ConsumeHandler {
+func (m *Recover) WrapConsume(next middleware.ConsumeHandler) middleware.ConsumeHandler {
 	return func(ctx context.Context, d transport.Delivery, env event.Envelope) (err error) {
 		defer func() {
 			if r := recover(); r != nil {

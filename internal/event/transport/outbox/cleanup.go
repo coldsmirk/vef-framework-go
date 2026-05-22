@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	puboutbox "github.com/coldsmirk/vef-framework-go/event/transport/outbox"
-	"github.com/coldsmirk/vef-framework-go/internal/logx"
-	publogx "github.com/coldsmirk/vef-framework-go/logx"
+	"github.com/coldsmirk/vef-framework-go/event/transport/outbox"
+	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
+	"github.com/coldsmirk/vef-framework-go/logx"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
@@ -14,16 +14,16 @@ import (
 // TTL so the table stays bounded while dead rows remain available for
 // diagnostics.
 type Cleaner struct {
-	repo puboutbox.Repository
+	repo outbox.Repository
 	ttl  time.Duration
-	log  publogx.Logger
+	log  logx.Logger
 }
 
 // NewCleaner constructs a Cleaner. A nil logger is replaced with
 // logx.Discard so tests can omit it.
-func NewCleaner(repo puboutbox.Repository, ttl time.Duration, log publogx.Logger) *Cleaner {
+func NewCleaner(repo outbox.Repository, ttl time.Duration, log logx.Logger) *Cleaner {
 	if log == nil {
-		log = logx.Discard()
+		log = ilogx.Discard()
 	}
 
 	return &Cleaner{repo: repo, ttl: ttl, log: log}

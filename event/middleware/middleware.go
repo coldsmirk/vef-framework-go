@@ -1,7 +1,3 @@
-// Package middleware defines the publish-side and consume-side
-// middleware contracts used by the event bus. Middleware composes
-// orthogonal concerns (tracing, logging, metrics, idempotency, panic
-// recovery) so that transports and handlers stay focused.
 package middleware
 
 import (

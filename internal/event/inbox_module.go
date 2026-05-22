@@ -8,10 +8,10 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/cron"
-	pubinbox "github.com/coldsmirk/vef-framework-go/event/inbox"
-	pubmw "github.com/coldsmirk/vef-framework-go/event/middleware"
-	"github.com/coldsmirk/vef-framework-go/internal/event/inbox"
-	internalmw "github.com/coldsmirk/vef-framework-go/internal/event/middleware"
+	"github.com/coldsmirk/vef-framework-go/event/inbox"
+	"github.com/coldsmirk/vef-framework-go/event/middleware"
+	iinbox "github.com/coldsmirk/vef-framework-go/internal/event/inbox"
+	imiddleware "github.com/coldsmirk/vef-framework-go/internal/event/middleware"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -28,28 +28,28 @@ var InboxModule = fx.Module(
 		fx.Annotate(
 			newInboxRepository,
 			fx.As(fx.Self()),
-			fx.As(new(pubinbox.Repository)),
+			fx.As(new(inbox.Repository)),
 		),
 		fx.Annotate(
 			newInboxMiddleware,
 			fx.ResultTags(`group:"vef:event:consume-middlewares"`),
-			fx.As(new(pubmw.ConsumeMiddleware)),
+			fx.As(new(middleware.ConsumeMiddleware)),
 		),
 	),
 	fx.Invoke(runInboxMigration),
 	fx.Invoke(registerInboxCleanup),
 )
 
-func newInboxRepository(db orm.DB) *inbox.DefaultRepository {
-	return inbox.NewRepository(db)
+func newInboxRepository(db orm.DB) *iinbox.DefaultRepository {
+	return iinbox.NewRepository(db)
 }
 
-func newInboxMiddleware(cfg *config.EventConfig, repo pubinbox.Repository) pubmw.ConsumeMiddleware {
+func newInboxMiddleware(cfg *config.EventConfig, repo inbox.Repository) middleware.ConsumeMiddleware {
 	if !cfg.Middleware.Inbox {
 		return nil
 	}
 
-	return internalmw.NewInbox(repo, cfg.Inbox.EffectiveProcessingLease())
+	return imiddleware.NewInbox(repo, cfg.Inbox.EffectiveProcessingLease())
 }
 
 func runInboxMigration(
@@ -64,7 +64,7 @@ func runInboxMigration(
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			if err := inbox.Migrate(ctx, db, dsCfg.Kind); err != nil {
+			if err := iinbox.Migrate(ctx, db, dsCfg.Kind); err != nil {
 				return fmt.Errorf("inbox migration: %w", err)
 			}
 
@@ -76,13 +76,13 @@ func runInboxMigration(
 func registerInboxCleanup(
 	cfg *config.EventConfig,
 	scheduler cron.Scheduler,
-	repo pubinbox.Repository,
+	repo inbox.Repository,
 ) error {
 	if !cfg.Middleware.Inbox {
 		return nil
 	}
 
-	cleaner := inbox.NewCleaner(repo, cfg.Inbox.EffectiveRetention(), inboxLogger)
+	cleaner := iinbox.NewCleaner(repo, cfg.Inbox.EffectiveRetention(), inboxLogger)
 	interval := cfg.Inbox.EffectiveCleanupInterval()
 
 	job, err := scheduler.NewJob(cron.NewDurationJob(

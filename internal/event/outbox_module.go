@@ -10,8 +10,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/cron"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
-	puboutbox "github.com/coldsmirk/vef-framework-go/event/transport/outbox"
-	"github.com/coldsmirk/vef-framework-go/internal/event/transport/outbox"
+	"github.com/coldsmirk/vef-framework-go/event/transport/outbox"
+	ioutbox "github.com/coldsmirk/vef-framework-go/internal/event/transport/outbox"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -37,7 +37,7 @@ var OutboxModule = fx.Module(
 		fx.Annotate(
 			newOutboxRepository,
 			fx.As(fx.Self()),
-			fx.As(new(puboutbox.Repository)),
+			fx.As(new(outbox.Repository)),
 		),
 		// The outbox transport is constructed without its sink; the
 		// fx.Invoke at the bottom of this module binds the sink once
@@ -58,16 +58,16 @@ var OutboxModule = fx.Module(
 	),
 )
 
-func newOutboxRepository(db orm.DB) *outbox.DefaultRepository {
-	return outbox.NewRepository(db)
+func newOutboxRepository(db orm.DB) *ioutbox.DefaultRepository {
+	return ioutbox.NewRepository(db)
 }
 
 // outboxConfig collapses the framework-level config into the transport
 // package's Config struct, applying configured overrides.
-func outboxConfig(cfg *config.EventConfig) puboutbox.Config {
+func outboxConfig(cfg *config.EventConfig) outbox.Config {
 	c := cfg.Transports.Outbox
 
-	return puboutbox.Config{
+	return outbox.Config{
 		RelayInterval:   c.RelayInterval,
 		MaxRetries:      c.MaxRetries,
 		BatchSize:       c.BatchSize,
@@ -77,12 +77,12 @@ func outboxConfig(cfg *config.EventConfig) puboutbox.Config {
 	}
 }
 
-func newOutboxTransport(cfg *config.EventConfig, repo puboutbox.Repository) transport.Transport {
+func newOutboxTransport(cfg *config.EventConfig, repo outbox.Repository) transport.Transport {
 	if !cfg.Transports.Outbox.Enabled {
 		return nil
 	}
 
-	return outbox.NewTransport(repo, outboxConfig(cfg))
+	return ioutbox.NewTransport(repo, outboxConfig(cfg))
 }
 
 func runOutboxMigration(
@@ -97,7 +97,7 @@ func runOutboxMigration(
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			if err := outbox.Migrate(ctx, db, dsCfg.Kind); err != nil {
+			if err := ioutbox.Migrate(ctx, db, dsCfg.Kind); err != nil {
 				return fmt.Errorf("outbox migration: %w", err)
 			}
 
@@ -112,7 +112,7 @@ func runOutboxMigration(
 func bindOutboxSinkAndRelay(
 	eventCfg *config.EventConfig,
 	scheduler cron.Scheduler,
-	repo puboutbox.Repository,
+	repo outbox.Repository,
 	transports []transport.Transport,
 ) error {
 	if !eventCfg.Transports.Outbox.Enabled {
@@ -139,7 +139,7 @@ func bindOutboxSinkAndRelay(
 
 	var (
 		sink    transport.Transport
-		outboxT *outbox.Transport
+		outboxT *ioutbox.Transport
 	)
 	for _, t := range transports {
 		if t == nil {
@@ -150,7 +150,7 @@ func bindOutboxSinkAndRelay(
 			sink = t
 		}
 
-		if ot, ok := t.(*outbox.Transport); ok {
+		if ot, ok := t.(*ioutbox.Transport); ok {
 			outboxT = ot
 		}
 	}
@@ -166,7 +166,7 @@ func bindOutboxSinkAndRelay(
 	outboxT.SetSink(sink)
 
 	cfg := outboxConfig(eventCfg)
-	relay := outbox.NewRelay(repo, outboxT.Sink, cfg, outboxLogger, nil)
+	relay := ioutbox.NewRelay(repo, outboxT.Sink, cfg, outboxLogger, nil)
 
 	interval := cfg.EffectiveRelayInterval()
 
@@ -188,13 +188,13 @@ func bindOutboxSinkAndRelay(
 func registerOutboxCleanup(
 	eventCfg *config.EventConfig,
 	scheduler cron.Scheduler,
-	repo puboutbox.Repository,
+	repo outbox.Repository,
 ) error {
 	if !eventCfg.Transports.Outbox.Enabled {
 		return nil
 	}
 
-	cleaner := outbox.NewCleaner(repo, eventCfg.Transports.Outbox.EffectiveCompletedTTL(), outboxLogger)
+	cleaner := ioutbox.NewCleaner(repo, eventCfg.Transports.Outbox.EffectiveCompletedTTL(), outboxLogger)
 	interval := eventCfg.Transports.Outbox.EffectiveCleanupInterval()
 
 	job, err := scheduler.NewJob(cron.NewDurationJob(

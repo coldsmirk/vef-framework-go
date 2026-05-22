@@ -1,7 +1,3 @@
-// Package event implements the framework's event Bus: routing,
-// transports, middleware composition, and the async fan-in pump. The
-// public surface lives under github.com/coldsmirk/vef-framework-go/event;
-// this package contains the wiring and runtime details.
 package event
 
 import (
@@ -11,9 +7,9 @@ import (
 	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/event/middleware"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
-	pubmemory "github.com/coldsmirk/vef-framework-go/event/transport/memory"
-	internalmw "github.com/coldsmirk/vef-framework-go/internal/event/middleware"
-	"github.com/coldsmirk/vef-framework-go/internal/event/transport/memory"
+	"github.com/coldsmirk/vef-framework-go/event/transport/memory"
+	imiddleware "github.com/coldsmirk/vef-framework-go/internal/event/middleware"
+	imemory "github.com/coldsmirk/vef-framework-go/internal/event/transport/memory"
 )
 
 // Module wires the Bus, registers the always-on memory transport, and
@@ -85,9 +81,9 @@ var Module = fx.Module(
 )
 
 func newMemoryTransport(cfg *config.EventConfig) transport.Transport {
-	return memory.New(pubmemory.Config{
+	return imemory.New(memory.Config{
 		QueueSize:      cfg.Transports.Memory.QueueSize,
-		FullPolicy:     pubmemory.FullPolicy(cfg.Transports.Memory.FullPolicy),
+		FullPolicy:     memory.FullPolicy(cfg.Transports.Memory.FullPolicy),
 		PublishTimeout: cfg.Transports.Memory.PublishTimeout,
 	})
 }
@@ -122,7 +118,7 @@ func newRecoverMiddleware(cfg *config.EventConfig) middleware.ConsumeMiddleware 
 		return nil
 	}
 
-	return internalmw.NewRecover(busLogger)
+	return imiddleware.NewRecover(busLogger)
 }
 
 func newLoggingPublishMiddleware(cfg *config.EventConfig) middleware.PublishMiddleware {
@@ -130,7 +126,7 @@ func newLoggingPublishMiddleware(cfg *config.EventConfig) middleware.PublishMidd
 		return nil
 	}
 
-	return internalmw.NewLogging(busLogger)
+	return imiddleware.NewLogging(busLogger)
 }
 
 func newLoggingConsumeMiddleware(cfg *config.EventConfig) middleware.ConsumeMiddleware {
@@ -138,7 +134,7 @@ func newLoggingConsumeMiddleware(cfg *config.EventConfig) middleware.ConsumeMidd
 		return nil
 	}
 
-	return internalmw.NewLogging(busLogger)
+	return imiddleware.NewLogging(busLogger)
 }
 
 func newTracingPublishMiddleware(cfg *config.EventConfig) middleware.PublishMiddleware {
@@ -147,10 +143,10 @@ func newTracingPublishMiddleware(cfg *config.EventConfig) middleware.PublishMidd
 	}
 
 	if cfg.Middleware.TracingStrict {
-		return internalmw.NewTracingStrict()
+		return imiddleware.NewTracingStrict()
 	}
 
-	return internalmw.NewTracing()
+	return imiddleware.NewTracing()
 }
 
 func newTracingConsumeMiddleware(cfg *config.EventConfig) middleware.ConsumeMiddleware {
@@ -159,10 +155,10 @@ func newTracingConsumeMiddleware(cfg *config.EventConfig) middleware.ConsumeMidd
 	}
 
 	if cfg.Middleware.TracingStrict {
-		return internalmw.NewTracingStrict()
+		return imiddleware.NewTracingStrict()
 	}
 
-	return internalmw.NewTracing()
+	return imiddleware.NewTracing()
 }
 
 func newMetricsPublishMiddleware(cfg *config.EventConfig, rec event.MetricsRecorder) middleware.PublishMiddleware {
@@ -170,7 +166,7 @@ func newMetricsPublishMiddleware(cfg *config.EventConfig, rec event.MetricsRecor
 		return nil
 	}
 
-	return internalmw.NewMetrics(rec)
+	return imiddleware.NewMetrics(rec)
 }
 
 func newMetricsConsumeMiddleware(cfg *config.EventConfig, rec event.MetricsRecorder) middleware.ConsumeMiddleware {
@@ -178,12 +174,12 @@ func newMetricsConsumeMiddleware(cfg *config.EventConfig, rec event.MetricsRecor
 		return nil
 	}
 
-	return internalmw.NewMetrics(rec)
+	return imiddleware.NewMetrics(rec)
 }
 
 // defaultMetricsRecorder publishes lightweight expvar maps. Override
 // via fx.Decorate (see vef.ProvideEventMetricsRecorder) to forward
 // observations to Prometheus / OpenTelemetry / vendor SDKs.
 func defaultMetricsRecorder() event.MetricsRecorder {
-	return internalmw.NewExpvarMetricsRecorder()
+	return imiddleware.NewExpvarMetricsRecorder()
 }

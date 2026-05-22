@@ -1,10 +1,3 @@
-// Package redisstream implements the cross-process Transport backed
-// by Redis Streams (XADD / XREADGROUP / XACK / XCLAIM). Each event
-// type maps to a single stream key composed of the configured prefix
-// + event type. Consumer groups deliver each message at-least-once
-// to one consumer within the group; a reaper claims orphaned pending
-// messages after a configurable idle threshold so a crashed consumer
-// does not block the partition.
 package redisstream
 
 import (
@@ -21,10 +14,10 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/coldsmirk/vef-framework-go/event/transport"
-	pubredisstream "github.com/coldsmirk/vef-framework-go/event/transport/redisstream"
+	"github.com/coldsmirk/vef-framework-go/event/transport/redisstream"
 	"github.com/coldsmirk/vef-framework-go/id"
-	"github.com/coldsmirk/vef-framework-go/internal/logx"
-	publogx "github.com/coldsmirk/vef-framework-go/logx"
+	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
+	"github.com/coldsmirk/vef-framework-go/logx"
 )
 
 // maxFrameBytes caps inbound Redis Stream frames so a hostile or
@@ -52,8 +45,8 @@ var errInvalidEventType = errors.New("redis_stream: invalid event type")
 // Transport implements transport.Transport over Redis Streams.
 type Transport struct {
 	client *goredis.Client
-	cfg    pubredisstream.Config
-	logger publogx.Logger
+	cfg    redisstream.Config
+	logger logx.Logger
 
 	mu      sync.Mutex
 	subs    []*subscription
@@ -76,9 +69,9 @@ type subscription struct {
 }
 
 // New constructs a Transport. A nil logger is replaced with logx.Discard.
-func New(client *goredis.Client, cfg pubredisstream.Config, log publogx.Logger) *Transport {
+func New(client *goredis.Client, cfg redisstream.Config, log logx.Logger) *Transport {
 	if log == nil {
-		log = logx.Discard()
+		log = ilogx.Discard()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -94,7 +87,7 @@ func New(client *goredis.Client, cfg pubredisstream.Config, log publogx.Logger) 
 }
 
 // Name implements transport.Transport.
-func (*Transport) Name() string { return pubredisstream.Name }
+func (*Transport) Name() string { return redisstream.Name }
 
 // Capabilities advertises cross-process durable at-least-once delivery
 // with consumer groups.

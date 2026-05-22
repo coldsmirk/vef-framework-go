@@ -14,8 +14,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/event/middleware"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
-	internalmw "github.com/coldsmirk/vef-framework-go/internal/event/middleware"
-	memimpl "github.com/coldsmirk/vef-framework-go/internal/event/transport/memory"
+	imiddleware "github.com/coldsmirk/vef-framework-go/internal/event/middleware"
+	imemory "github.com/coldsmirk/vef-framework-go/internal/event/transport/memory"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -430,7 +430,7 @@ func (b *Bus) buildConsumer(t transport.Transport, group string, h event.Handler
 
 	return func(ctx context.Context, d transport.Delivery) error {
 		if group != "" {
-			ctx = internalmw.WithConsumerGroup(ctx, group)
+			ctx = imiddleware.WithConsumerGroup(ctx, group)
 		}
 
 		env := decodeFrame(d.Frame())
@@ -692,7 +692,7 @@ func (b *Bus) reportAsyncError(err error, env event.Envelope) {
 }
 
 func (*Bus) translateTransportError(err error, t transport.Transport) error {
-	if memimpl.IsQueueFull(err) {
+	if imemory.IsQueueFull(err) {
 		return fmt.Errorf("%w: %s", event.ErrQueueFull, t.Name())
 	}
 

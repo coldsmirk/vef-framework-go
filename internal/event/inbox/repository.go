@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	pubinbox "github.com/coldsmirk/vef-framework-go/event/inbox"
+	"github.com/coldsmirk/vef-framework-go/event/inbox"
 	"github.com/coldsmirk/vef-framework-go/id"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -30,12 +30,12 @@ func (r *DefaultRepository) Acquire(
 	consumerGroup string,
 	eventID string,
 	lockUntil timex.DateTime,
-) (pubinbox.AcquireResult, string, error) {
+) (inbox.AcquireResult, string, error) {
 	lockID := id.Generate()
-	record := &pubinbox.Record{
+	record := &inbox.Record{
 		EventID:       eventID,
 		ConsumerGroup: consumerGroup,
-		Status:        pubinbox.StatusProcessing,
+		Status:        inbox.StatusProcessing,
 		LockID:        lockID,
 		LockedUntil:   &lockUntil,
 	}
@@ -43,7 +43,7 @@ func (r *DefaultRepository) Acquire(
 
 	_, err := r.db.NewInsert().Model(record).Exec(ctx)
 	if err == nil {
-		return pubinbox.AcquireResultAcquired, lockID, nil
+		return inbox.AcquireResultAcquired, lockID, nil
 	}
 	// The framework ORM translates dialect-specific unique-violation
 	// codes into result.ErrRecordAlreadyExists, which is what every
@@ -52,7 +52,7 @@ func (r *DefaultRepository) Acquire(
 		return "", "", fmt.Errorf("inbox: acquire (%s, %s): %w", consumerGroup, eventID, err)
 	}
 
-	var existing pubinbox.Record
+	var existing inbox.Record
 	if err := r.db.NewSelect().Model(&existing).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("consumer_group", consumerGroup).Equals("event_id", eventID)
@@ -61,22 +61,22 @@ func (r *DefaultRepository) Acquire(
 		return "", "", fmt.Errorf("inbox: load existing (%s, %s): %w", consumerGroup, eventID, err)
 	}
 
-	if existing.Status == pubinbox.StatusCompleted {
-		return pubinbox.AcquireResultCompleted, "", nil
+	if existing.Status == inbox.StatusCompleted {
+		return inbox.AcquireResultCompleted, "", nil
 	}
 
 	now := timex.Now()
 
 	res, err := r.db.NewUpdate().
-		Model((*pubinbox.Record)(nil)).
-		Set("status", pubinbox.StatusProcessing).
+		Model((*inbox.Record)(nil)).
+		Set("status", inbox.StatusProcessing).
 		Set("lock_id", lockID).
 		Set("locked_until", lockUntil).
 		Set("completed_at", nil).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("consumer_group", consumerGroup).
 				Equals("event_id", eventID).
-				Equals("status", string(pubinbox.StatusProcessing)).
+				Equals("status", string(inbox.StatusProcessing)).
 				Group(func(cb orm.ConditionBuilder) {
 					cb.IsNull("locked_until").OrLessThanOrEqual("locked_until", now)
 				})
@@ -92,10 +92,10 @@ func (r *DefaultRepository) Acquire(
 	}
 
 	if affected == 0 {
-		return pubinbox.AcquireResultInProgress, "", nil
+		return inbox.AcquireResultInProgress, "", nil
 	}
 
-	return pubinbox.AcquireResultAcquired, lockID, nil
+	return inbox.AcquireResultAcquired, lockID, nil
 }
 
 // MarkCompleted marks the processing claim as completed.
@@ -108,15 +108,15 @@ func (r *DefaultRepository) MarkCompleted(
 	now := timex.Now()
 
 	res, err := r.db.NewUpdate().
-		Model((*pubinbox.Record)(nil)).
-		Set("status", pubinbox.StatusCompleted).
+		Model((*inbox.Record)(nil)).
+		Set("status", inbox.StatusCompleted).
 		Set("lock_id", nil).
 		Set("locked_until", nil).
 		Set("completed_at", now).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("consumer_group", consumerGroup).
 				Equals("event_id", eventID).
-				Equals("status", string(pubinbox.StatusProcessing)).
+				Equals("status", string(inbox.StatusProcessing)).
 				Equals("lock_id", lockID)
 		}).
 		Exec(ctx)
@@ -130,7 +130,7 @@ func (r *DefaultRepository) MarkCompleted(
 	}
 
 	if affected == 0 {
-		return fmt.Errorf("inbox: mark completed (%s, %s): %w", consumerGroup, eventID, pubinbox.ErrLockLost)
+		return fmt.Errorf("inbox: mark completed (%s, %s): %w", consumerGroup, eventID, inbox.ErrLockLost)
 	}
 
 	return nil
@@ -144,11 +144,11 @@ func (r *DefaultRepository) Release(
 	lockID string,
 ) error {
 	_, err := r.db.NewDelete().
-		Model((*pubinbox.Record)(nil)).
+		Model((*inbox.Record)(nil)).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("consumer_group", consumerGroup).
 				Equals("event_id", eventID).
-				Equals("status", string(pubinbox.StatusProcessing)).
+				Equals("status", string(inbox.StatusProcessing)).
 				Equals("lock_id", lockID)
 		}).
 		Exec(ctx)
@@ -162,9 +162,9 @@ func (r *DefaultRepository) Release(
 // DeleteOlderThan removes completed records strictly older than the cutoff.
 func (r *DefaultRepository) DeleteOlderThan(ctx context.Context, cutoff timex.DateTime) (int64, error) {
 	res, err := r.db.NewDelete().
-		Model((*pubinbox.Record)(nil)).
+		Model((*inbox.Record)(nil)).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("status", string(pubinbox.StatusCompleted)).LessThan("completed_at", cutoff)
+			cb.Equals("status", string(inbox.StatusCompleted)).LessThan("completed_at", cutoff)
 		}).
 		Exec(ctx)
 	if err != nil {

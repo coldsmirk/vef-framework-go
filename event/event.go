@@ -1,12 +1,3 @@
-// Package event defines the framework's event bus contract: the
-// minimal Event interface every domain event satisfies, the Envelope
-// metadata carried alongside payloads, and the Bus surface used by
-// publishers and subscribers.
-//
-// Publish/Subscribe modes (transactional, asynchronous, batch, grouped
-// consumers) are expressed via PublishOption and SubscribeOption to
-// keep the Bus interface narrow. Concrete transports, routing, and
-// middleware live in sibling packages.
 package event
 
 import (

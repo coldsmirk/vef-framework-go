@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/event"
-	pubmw "github.com/coldsmirk/vef-framework-go/event/middleware"
+	"github.com/coldsmirk/vef-framework-go/event/middleware"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
 )
 
@@ -38,7 +38,7 @@ func (*Metrics) Name() string { return "metrics" }
 func (*Metrics) Applies(transport.Capabilities) bool { return true }
 
 // WrapPublish reports every publish outcome through the recorder.
-func (m *Metrics) WrapPublish(next pubmw.PublishHandler) pubmw.PublishHandler {
+func (m *Metrics) WrapPublish(next middleware.PublishHandler) middleware.PublishHandler {
 	return func(ctx context.Context, env *event.Envelope) error {
 		err := next(ctx, env)
 		m.rec.PublishObserved(env.Type, err)
@@ -49,7 +49,7 @@ func (m *Metrics) WrapPublish(next pubmw.PublishHandler) pubmw.PublishHandler {
 
 // WrapConsume reports every consume outcome plus elapsed time through
 // the recorder.
-func (m *Metrics) WrapConsume(next pubmw.ConsumeHandler) pubmw.ConsumeHandler {
+func (m *Metrics) WrapConsume(next middleware.ConsumeHandler) middleware.ConsumeHandler {
 	return func(ctx context.Context, d transport.Delivery, env event.Envelope) error {
 		start := time.Now()
 		err := next(ctx, d, env)

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/event"
-	pubinbox "github.com/coldsmirk/vef-framework-go/event/inbox"
-	pubmw "github.com/coldsmirk/vef-framework-go/event/middleware"
+	"github.com/coldsmirk/vef-framework-go/event/inbox"
+	"github.com/coldsmirk/vef-framework-go/event/middleware"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -23,12 +23,12 @@ var inboxLogger = logx.Named("event:inbox")
 // effects idempotent: if processing exceeds the lease and the transport
 // redelivers, another worker may acquire and run the same event.
 type Inbox struct {
-	repo            pubinbox.Repository
+	repo            inbox.Repository
 	processingLease time.Duration
 }
 
 // NewInbox constructs an Inbox middleware.
-func NewInbox(repo pubinbox.Repository, processingLease time.Duration) *Inbox {
+func NewInbox(repo inbox.Repository, processingLease time.Duration) *Inbox {
 	return &Inbox{repo: repo, processingLease: processingLease}
 }
 
@@ -42,7 +42,7 @@ func (*Inbox) Applies(caps transport.Capabilities) bool { return caps.AtLeastOnc
 // WrapConsume claims the (group, eventID) slot; on duplicate it
 // short-circuits the handler chain with success so the transport Acks
 // the message and skips redelivery downstream.
-func (m *Inbox) WrapConsume(next pubmw.ConsumeHandler) pubmw.ConsumeHandler {
+func (m *Inbox) WrapConsume(next middleware.ConsumeHandler) middleware.ConsumeHandler {
 	return func(ctx context.Context, d transport.Delivery, env event.Envelope) (err error) {
 		group := consumerGroupFromContext(ctx)
 
@@ -54,18 +54,18 @@ func (m *Inbox) WrapConsume(next pubmw.ConsumeHandler) pubmw.ConsumeHandler {
 		}
 
 		switch claim {
-		case pubinbox.AcquireResultAcquired:
-		case pubinbox.AcquireResultCompleted:
+		case inbox.AcquireResultAcquired:
+		case inbox.AcquireResultCompleted:
 			// Successful duplicate delivery — Ack without invoking the handler.
 			return nil
-		case pubinbox.AcquireResultInProgress:
-			return fmt.Errorf("%w: group=%s event_id=%s", pubinbox.ErrInProgress, group, env.ID)
+		case inbox.AcquireResultInProgress:
+			return fmt.Errorf("%w: group=%s event_id=%s", inbox.ErrInProgress, group, env.ID)
 		default:
-			return fmt.Errorf("%w: %q", pubinbox.ErrUnknownAcquireResult, claim)
+			return fmt.Errorf("%w: %q", inbox.ErrUnknownAcquireResult, claim)
 		}
 
 		if lockID == "" {
-			return fmt.Errorf("%w: group=%s event_id=%s", pubinbox.ErrMissingLockID, group, env.ID)
+			return fmt.Errorf("%w: group=%s event_id=%s", inbox.ErrMissingLockID, group, env.ID)
 		}
 
 		acquired := true
@@ -96,7 +96,7 @@ func (m *Inbox) WrapConsume(next pubmw.ConsumeHandler) pubmw.ConsumeHandler {
 		handlerDone = true
 
 		if err = m.repo.MarkCompleted(ctx, group, env.ID, lockID); err != nil {
-			if errors.Is(err, pubinbox.ErrLockLost) {
+			if errors.Is(err, inbox.ErrLockLost) {
 				// The handler already succeeded. Ack this delivery and
 				// leave the newer lock owner untouched; handler business
 				// effects must be idempotent across such overlap.

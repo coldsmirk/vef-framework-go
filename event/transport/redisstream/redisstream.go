@@ -1,10 +1,3 @@
-// Package redisstream declares the cross-process Transport contract
-// backed by Redis Streams.
-//
-// Each event type maps to one stream: StreamPrefix + EventType. Consumer
-// groups are configured per Subscribe call; consumer IDs default to the
-// framework-wide VEF_NODE_ID so that XCLAIM can adopt orphaned messages
-// after a crash.
 package redisstream
 
 import "time"

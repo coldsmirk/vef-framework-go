@@ -11,8 +11,8 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
-	puboutbox "github.com/coldsmirk/vef-framework-go/event/transport/outbox"
-	"github.com/coldsmirk/vef-framework-go/internal/event/transport/outbox"
+	"github.com/coldsmirk/vef-framework-go/event/transport/outbox"
+	ioutbox "github.com/coldsmirk/vef-framework-go/internal/event/transport/outbox"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -62,15 +62,15 @@ func (s *recordingSink) Frames() []transport.Frame {
 	return append([]transport.Frame(nil), s.frames...)
 }
 
-func setupOutbox(t *testing.T) (orm.DB, *outbox.DefaultRepository, *outbox.Transport, *recordingSink) {
+func setupOutbox(t *testing.T) (orm.DB, *ioutbox.DefaultRepository, *ioutbox.Transport, *recordingSink) {
 	t.Helper()
 
 	ctx := context.Background()
 	db := testx.NewTestDB(t)
-	require.NoError(t, outbox.Migrate(ctx, db, config.SQLite), "outbox migration should succeed")
+	require.NoError(t, ioutbox.Migrate(ctx, db, config.SQLite), "outbox migration should succeed")
 
-	repo := outbox.NewRepository(db)
-	cfg := puboutbox.Config{
+	repo := ioutbox.NewRepository(db)
+	cfg := outbox.Config{
 		RelayInterval:   time.Second,
 		MaxRetries:      3,
 		BatchSize:       10,
@@ -80,7 +80,7 @@ func setupOutbox(t *testing.T) (orm.DB, *outbox.DefaultRepository, *outbox.Trans
 
 	t.Cleanup(func() { /* db cleanup handled by testx */ })
 
-	tp := outbox.NewTransport(repo, cfg)
+	tp := ioutbox.NewTransport(repo, cfg)
 	sink := &recordingSink{}
 	tp.SetSink(sink)
 
@@ -135,7 +135,7 @@ func TestOutboxRelayDispatchesAndMarksCompleted(t *testing.T) {
 	frame := newFrame("evt-ok", "test.created", `{"ok":true}`)
 	require.NoError(t, tp.Publish(ctx, []transport.Frame{frame}), "Publish should persist relay record")
 
-	relay := outbox.NewRelay(repo, tp.Sink, puboutbox.Config{
+	relay := ioutbox.NewRelay(repo, tp.Sink, outbox.Config{
 		RelayInterval: time.Second, MaxRetries: 3, BatchSize: 10,
 		LeaseMultiplier: 4, MinLease: 5 * time.Second,
 	}, nil, nil)
@@ -164,11 +164,11 @@ func TestOutboxRelayBackoffAndDeadAfterMaxRetries(t *testing.T) {
 	frame := newFrame("evt-dead", "test.flaky", `{"flaky":true}`)
 	require.NoError(t, tp.Publish(ctx, []transport.Frame{frame}), "Publish should persist retryable record")
 
-	cfg := puboutbox.Config{
+	cfg := outbox.Config{
 		RelayInterval: time.Second, MaxRetries: 2, BatchSize: 10,
 		LeaseMultiplier: 4, MinLease: 5 * time.Second,
 	}
-	relay := outbox.NewRelay(repo, tp.Sink, cfg, nil, nil)
+	relay := ioutbox.NewRelay(repo, tp.Sink, cfg, nil, nil)
 
 	// First failure: status becomes Failed with a retry scheduled.
 	sink.failNext = errors.New("boom-1")
@@ -218,7 +218,7 @@ func TestOutboxCleanerDeletesCompletedRowsByProcessedAt(t *testing.T) {
 
 	oldProcessedAt := timex.Now().Add(-2 * time.Hour)
 	_, err = db.NewUpdate().
-		Model((*puboutbox.Record)(nil)).
+		Model((*outbox.Record)(nil)).
 		Set("processed_at", oldProcessedAt).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.PKEquals(oldRows[0].ID)
@@ -226,14 +226,14 @@ func TestOutboxCleanerDeletesCompletedRowsByProcessedAt(t *testing.T) {
 		Exec(ctx)
 	require.NoError(t, err, "Old processed timestamp should be adjustable")
 
-	cleaner := outbox.NewCleaner(repo, time.Hour, nil)
+	cleaner := ioutbox.NewCleaner(repo, time.Hour, nil)
 	cleaner.Cleanup(ctx)
 
-	count, err := db.NewSelect().Model((*puboutbox.Record)(nil)).Count(ctx)
+	count, err := db.NewSelect().Model((*outbox.Record)(nil)).Count(ctx)
 	require.NoError(t, err, "Record count should be queryable")
 	require.EqualValues(t, 1, count, "Cleaner should remove only rows older than completed TTL")
 
-	var remaining puboutbox.Record
+	var remaining outbox.Record
 
 	err = db.NewSelect().Model(&remaining).Scan(ctx)
 	require.NoError(t, err, "Remaining outbox row should be queryable")
@@ -247,7 +247,7 @@ func forceRetryReady(t *testing.T, db orm.DB, eventID string) {
 
 	past := timex.Now().Add(-time.Hour)
 	_, err := db.NewUpdate().
-		Model((*puboutbox.Record)(nil)).
+		Model((*outbox.Record)(nil)).
 		Set("retry_after", past).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("event_id", eventID)

@@ -1,7 +1,3 @@
-// Package memory declares the configuration surface for the in-process
-// Transport. It is the default for single-node deployments and the
-// canonical sink for outbox-style transports that need a downstream
-// dispatcher.
 package memory
 
 import "time"

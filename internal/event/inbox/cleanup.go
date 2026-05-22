@@ -4,25 +4,25 @@ import (
 	"context"
 	"time"
 
-	pubinbox "github.com/coldsmirk/vef-framework-go/event/inbox"
-	"github.com/coldsmirk/vef-framework-go/internal/logx"
-	publogx "github.com/coldsmirk/vef-framework-go/logx"
+	"github.com/coldsmirk/vef-framework-go/event/inbox"
+	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
+	"github.com/coldsmirk/vef-framework-go/logx"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 // Cleaner deletes inbox records older than the configured retention so
 // the table stays bounded. Intended to be invoked from a cron job.
 type Cleaner struct {
-	repo      pubinbox.Repository
+	repo      inbox.Repository
 	retention time.Duration
-	logger    publogx.Logger
+	logger    logx.Logger
 }
 
 // NewCleaner constructs a Cleaner. A nil logger is replaced with
 // logx.Discard so tests can omit it.
-func NewCleaner(repo pubinbox.Repository, retention time.Duration, log publogx.Logger) *Cleaner {
+func NewCleaner(repo inbox.Repository, retention time.Duration, log logx.Logger) *Cleaner {
 	if log == nil {
-		log = logx.Discard()
+		log = ilogx.Discard()
 	}
 
 	return &Cleaner{repo: repo, retention: retention, logger: log}

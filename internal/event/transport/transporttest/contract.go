@@ -1,7 +1,3 @@
-// Package transporttest hosts the shared transport contract suite.
-// Each transport implementation drives this suite from its own test
-// package so the consume/publish semantics stay consistent across
-// memory, outbox, redis_stream, and any future backend.
 package transporttest
 
 import (

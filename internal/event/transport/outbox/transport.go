@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/coldsmirk/vef-framework-go/event/transport"
-	puboutbox "github.com/coldsmirk/vef-framework-go/event/transport/outbox"
+	"github.com/coldsmirk/vef-framework-go/event/transport/outbox"
 	"github.com/coldsmirk/vef-framework-go/id"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -40,8 +40,8 @@ var ErrInvalidFrameBody = errors.New("outbox: frame body is not valid JSON")
 // transport registry it consumes: construct with NewTransport, then
 // SetSink once the registry is fully populated.
 type Transport struct {
-	repo puboutbox.Repository
-	cfg  puboutbox.Config
+	repo outbox.Repository
+	cfg  outbox.Config
 
 	mu   sync.RWMutex
 	sink transport.Transport
@@ -49,7 +49,7 @@ type Transport struct {
 
 // NewTransport constructs an outbox Transport. The sink must be bound
 // via SetSink before Start is called.
-func NewTransport(repo puboutbox.Repository, cfg puboutbox.Config) *Transport {
+func NewTransport(repo outbox.Repository, cfg outbox.Config) *Transport {
 	return &Transport{repo: repo, cfg: cfg}
 }
 
@@ -71,7 +71,7 @@ func (t *Transport) Sink() transport.Transport {
 }
 
 // Name implements transport.Transport.
-func (*Transport) Name() string { return puboutbox.Name }
+func (*Transport) Name() string { return outbox.Name }
 
 // Capabilities reports outbox semantics: durable, transactional,
 // ordered per-key, and at-least-once. PublishOnly is true because the
@@ -162,15 +162,15 @@ func (*Transport) Subscribe(string, string, transport.ConsumeFunc, transport.Sub
 // framesToRecords converts inbound transport frames into pending outbox
 // rows. Headers are JSON-shape-tolerant: nil headers map to a nil
 // column rather than an empty object.
-func framesToRecords(frames []transport.Frame) ([]puboutbox.Record, error) {
-	records := make([]puboutbox.Record, len(frames))
+func framesToRecords(frames []transport.Frame) ([]outbox.Record, error) {
+	records := make([]outbox.Record, len(frames))
 	for i, frame := range frames {
 		body := frame.Body
 		if !json.Valid(body) {
 			return nil, fmt.Errorf("%w: frame %s", ErrInvalidFrameBody, frame.ID)
 		}
 
-		records[i] = puboutbox.Record{
+		records[i] = outbox.Record{
 			EventID:       frame.ID,
 			EventType:     frame.Type,
 			Source:        frame.Source,
@@ -179,7 +179,7 @@ func framesToRecords(frames []transport.Frame) ([]puboutbox.Record, error) {
 			CorrelationID: frame.CorrelationID,
 			Headers:       frame.Headers,
 			Payload:       json.RawMessage(body),
-			Status:        puboutbox.StatusPending,
+			Status:        outbox.StatusPending,
 			OccurredAt:    timex.DateTime(frame.OccurredAt),
 		}
 		records[i].ID = id.Generate()

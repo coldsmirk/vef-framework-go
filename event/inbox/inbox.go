@@ -1,6 +1,3 @@
-// Package inbox declares the idempotency record model and repository
-// contract used by the consume-side Inbox middleware. The default
-// repository persists to sys_event_inbox.
 package inbox
 
 import (

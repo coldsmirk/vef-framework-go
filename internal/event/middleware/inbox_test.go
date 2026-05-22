@@ -10,10 +10,10 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/event"
-	pubinbox "github.com/coldsmirk/vef-framework-go/event/inbox"
-	pubmw "github.com/coldsmirk/vef-framework-go/event/middleware"
+	"github.com/coldsmirk/vef-framework-go/event/inbox"
+	"github.com/coldsmirk/vef-framework-go/event/middleware"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
-	"github.com/coldsmirk/vef-framework-go/internal/event/inbox"
+	iinbox "github.com/coldsmirk/vef-framework-go/internal/event/inbox"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -35,8 +35,8 @@ func (*LockLostInboxRepository) Acquire(
 	string,
 	string,
 	timex.DateTime,
-) (pubinbox.AcquireResult, string, error) {
-	return pubinbox.AcquireResultAcquired, "lock-lost", nil
+) (inbox.AcquireResult, string, error) {
+	return inbox.AcquireResultAcquired, "lock-lost", nil
 }
 
 func (r *CapturingInboxRepository) Acquire(
@@ -44,14 +44,14 @@ func (r *CapturingInboxRepository) Acquire(
 	_ string,
 	_ string,
 	lockUntil timex.DateTime,
-) (pubinbox.AcquireResult, string, error) {
+) (inbox.AcquireResult, string, error) {
 	r.lockUntil = lockUntil
 
-	return pubinbox.AcquireResultAcquired, "captured-lock", nil
+	return inbox.AcquireResultAcquired, "captured-lock", nil
 }
 
 func (*LockLostInboxRepository) MarkCompleted(context.Context, string, string, string) error {
-	return pubinbox.ErrLockLost
+	return inbox.ErrLockLost
 }
 
 func (*CapturingInboxRepository) MarkCompleted(context.Context, string, string, string) error {
@@ -89,9 +89,9 @@ func setupInboxMiddleware(t *testing.T) *Inbox {
 
 	ctx := context.Background()
 	db := testx.NewTestDB(t)
-	require.NoError(t, inbox.Migrate(ctx, db, config.SQLite), "Inbox migration should succeed")
+	require.NoError(t, iinbox.Migrate(ctx, db, config.SQLite), "Inbox migration should succeed")
 
-	return NewInbox(inbox.NewRepository(db), 10*time.Minute)
+	return NewInbox(iinbox.NewRepository(db), 10*time.Minute)
 }
 
 func inboxEnvelope() event.Envelope {
@@ -191,7 +191,7 @@ func TestInboxMiddlewareReturnsErrorForActiveDuplicate(t *testing.T) {
 
 		return nil
 	})(ctx, InboxDelivery{frame: transport.Frame{ID: "evt-active", Type: "test.inbox"}}, activeEnv)
-	require.ErrorIs(t, err, pubinbox.ErrInProgress, "Active duplicate should stay pending for retry")
+	require.ErrorIs(t, err, inbox.ErrInProgress, "Active duplicate should stay pending for retry")
 }
 
 func TestInboxMiddlewareAcknowledgesLostLockAfterHandlerSuccess(t *testing.T) {
@@ -231,4 +231,4 @@ func TestInboxMiddlewareUsesConfiguredProcessingLease(t *testing.T) {
 	require.False(t, got.After(after), "Processing lease deadline should not exceed now+lease at call end")
 }
 
-var _ pubmw.ConsumeMiddleware = (*Inbox)(nil)
+var _ middleware.ConsumeMiddleware = (*Inbox)(nil)

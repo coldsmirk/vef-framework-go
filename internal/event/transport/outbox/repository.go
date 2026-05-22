@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	puboutbox "github.com/coldsmirk/vef-framework-go/event/transport/outbox"
+	"github.com/coldsmirk/vef-framework-go/event/transport/outbox"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -24,7 +24,7 @@ func NewRepository(db orm.DB) *DefaultRepository {
 // InsertBatch persists pending records on the outer (non-transactional)
 // connection. Callers that need the records to share a transaction
 // with surrounding business writes must use InsertBatchTx instead.
-func (r *DefaultRepository) InsertBatch(ctx context.Context, records []puboutbox.Record) error {
+func (r *DefaultRepository) InsertBatch(ctx context.Context, records []outbox.Record) error {
 	if len(records) == 0 {
 		return nil
 	}
@@ -33,7 +33,7 @@ func (r *DefaultRepository) InsertBatch(ctx context.Context, records []puboutbox
 }
 
 // InsertBatchTx persists pending records within the caller's transaction.
-func (*DefaultRepository) InsertBatchTx(ctx context.Context, tx orm.DB, records []puboutbox.Record) error {
+func (*DefaultRepository) InsertBatchTx(ctx context.Context, tx orm.DB, records []outbox.Record) error {
 	if len(records) == 0 {
 		return nil
 	}
@@ -41,7 +41,7 @@ func (*DefaultRepository) InsertBatchTx(ctx context.Context, tx orm.DB, records 
 	return insertBatchUsing(ctx, tx, records)
 }
 
-func insertBatchUsing(ctx context.Context, db orm.DB, records []puboutbox.Record) error {
+func insertBatchUsing(ctx context.Context, db orm.DB, records []outbox.Record) error {
 	_, err := db.NewInsert().Model(&records).Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("outbox: insert batch: %w", err)
@@ -59,23 +59,23 @@ func (r *DefaultRepository) ClaimBatch(
 	batchSize int,
 	maxRetries int,
 	leaseUntil timex.DateTime,
-) ([]puboutbox.Record, error) {
-	var claimed []puboutbox.Record
+) ([]outbox.Record, error) {
+	var claimed []outbox.Record
 
 	err := r.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
 		now := timex.Now()
 
-		var records []puboutbox.Record
+		var records []outbox.Record
 		if err := tx.NewSelect().Model(&records).
 			Where(func(cb orm.ConditionBuilder) {
 				cb.Group(func(cb orm.ConditionBuilder) {
-					cb.Equals("status", string(puboutbox.StatusPending)).IsNull("retry_after")
+					cb.Equals("status", string(outbox.StatusPending)).IsNull("retry_after")
 				}).OrGroup(func(cb orm.ConditionBuilder) {
-					cb.Equals("status", string(puboutbox.StatusFailed)).
+					cb.Equals("status", string(outbox.StatusFailed)).
 						LessThan("retry_count", maxRetries).
 						LessThanOrEqual("retry_after", now)
 				}).OrGroup(func(cb orm.ConditionBuilder) {
-					cb.Equals("status", string(puboutbox.StatusProcessing)).
+					cb.Equals("status", string(outbox.StatusProcessing)).
 						LessThan("retry_count", maxRetries).
 						LessThanOrEqual("retry_after", now)
 				})
@@ -91,22 +91,22 @@ func (r *DefaultRepository) ClaimBatch(
 			return nil
 		}
 
-		claimed = make([]puboutbox.Record, 0, len(records))
+		claimed = make([]outbox.Record, 0, len(records))
 		for _, rec := range records {
 			res, err := tx.NewUpdate().
-				Model((*puboutbox.Record)(nil)).
-				Set("status", string(puboutbox.StatusProcessing)).
+				Model((*outbox.Record)(nil)).
+				Set("status", string(outbox.StatusProcessing)).
 				Set("retry_after", leaseUntil).
 				Where(func(cb orm.ConditionBuilder) {
 					cb.PKEquals(rec.ID)
 
 					switch rec.Status {
-					case puboutbox.StatusPending:
-						cb.Equals("status", string(puboutbox.StatusPending)).IsNull("retry_after")
-					case puboutbox.StatusFailed:
-						cb.Equals("status", string(puboutbox.StatusFailed)).LessThanOrEqual("retry_after", now)
-					case puboutbox.StatusProcessing:
-						cb.Equals("status", string(puboutbox.StatusProcessing)).LessThanOrEqual("retry_after", now)
+					case outbox.StatusPending:
+						cb.Equals("status", string(outbox.StatusPending)).IsNull("retry_after")
+					case outbox.StatusFailed:
+						cb.Equals("status", string(outbox.StatusFailed)).LessThanOrEqual("retry_after", now)
+					case outbox.StatusProcessing:
+						cb.Equals("status", string(outbox.StatusProcessing)).LessThanOrEqual("retry_after", now)
 					}
 				}).
 				Exec(ctx)
@@ -123,7 +123,7 @@ func (r *DefaultRepository) ClaimBatch(
 				continue
 			}
 
-			rec.Status = puboutbox.StatusProcessing
+			rec.Status = outbox.StatusProcessing
 			leaseCopy := leaseUntil
 			rec.RetryAfter = &leaseCopy
 			claimed = append(claimed, rec)
@@ -141,8 +141,8 @@ func (r *DefaultRepository) ClaimBatch(
 // MarkCompleted transitions a processing record to completed.
 func (r *DefaultRepository) MarkCompleted(ctx context.Context, id string) error {
 	now := timex.Now()
-	record := &puboutbox.Record{
-		Status:      puboutbox.StatusCompleted,
+	record := &outbox.Record{
+		Status:      outbox.StatusCompleted,
 		ProcessedAt: &now,
 		RetryAfter:  nil,
 		LastError:   nil,
@@ -152,7 +152,7 @@ func (r *DefaultRepository) MarkCompleted(ctx context.Context, id string) error 
 	_, err := r.db.NewUpdate().
 		Model(record).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.PKEquals(id).Equals("status", string(puboutbox.StatusProcessing))
+			cb.PKEquals(id).Equals("status", string(outbox.StatusProcessing))
 		}).
 		Select("status", "processed_at", "retry_after", "last_error").
 		Exec(ctx)
@@ -175,7 +175,7 @@ func (r *DefaultRepository) MarkFailed(
 	maxRetries int,
 ) error {
 	errCopy := errMsg
-	record := &puboutbox.Record{
+	record := &outbox.Record{
 		RetryCount: retryCount,
 		LastError:  &errCopy,
 	}
@@ -185,13 +185,13 @@ func (r *DefaultRepository) MarkFailed(
 
 	if retryCount >= maxRetries {
 		now := timex.Now()
-		record.Status = puboutbox.StatusDead
+		record.Status = outbox.StatusDead
 		record.RetryAfter = nil
 		record.ProcessedAt = &now
 
 		columns = append(columns, "processed_at")
 	} else {
-		record.Status = puboutbox.StatusFailed
+		record.Status = outbox.StatusFailed
 		ra := retryAfter
 		record.RetryAfter = &ra
 	}
@@ -199,7 +199,7 @@ func (r *DefaultRepository) MarkFailed(
 	_, err := r.db.NewUpdate().
 		Model(record).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.PKEquals(id).Equals("status", string(puboutbox.StatusProcessing))
+			cb.PKEquals(id).Equals("status", string(outbox.StatusProcessing))
 		}).
 		Select(columns...).
 		Exec(ctx)
@@ -214,9 +214,9 @@ func (r *DefaultRepository) MarkFailed(
 // strictly before cutoff. Dead rows are kept for diagnostics regardless.
 func (r *DefaultRepository) DeleteCompletedOlderThan(ctx context.Context, cutoff timex.DateTime) (int64, error) {
 	res, err := r.db.NewDelete().
-		Model((*puboutbox.Record)(nil)).
+		Model((*outbox.Record)(nil)).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("status", string(puboutbox.StatusCompleted)).LessThan("processed_at", cutoff)
+			cb.Equals("status", string(outbox.StatusCompleted)).LessThan("processed_at", cutoff)
 		}).
 		Exec(ctx)
 	if err != nil {

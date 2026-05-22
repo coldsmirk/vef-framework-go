@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/coldsmirk/vef-framework-go/event"
-	pubmw "github.com/coldsmirk/vef-framework-go/event/middleware"
+	"github.com/coldsmirk/vef-framework-go/event/middleware"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
 	"github.com/coldsmirk/vef-framework-go/id"
 )
@@ -55,7 +55,7 @@ type (
 )
 
 // WrapPublish injects a trace ID into the envelope.
-func (*Tracing) WrapPublish(next pubmw.PublishHandler) pubmw.PublishHandler {
+func (*Tracing) WrapPublish(next middleware.PublishHandler) middleware.PublishHandler {
 	return func(ctx context.Context, env *event.Envelope) error {
 		if env.TraceID == "" {
 			env.TraceID = id.GenerateUUID()
@@ -75,7 +75,7 @@ func (*Tracing) WrapPublish(next pubmw.PublishHandler) pubmw.PublishHandler {
 
 // WrapConsume restores the trace ID into the context. Behavior depends
 // on the strict flag — see the Tracing type documentation.
-func (m *Tracing) WrapConsume(next pubmw.ConsumeHandler) pubmw.ConsumeHandler {
+func (m *Tracing) WrapConsume(next middleware.ConsumeHandler) middleware.ConsumeHandler {
 	return func(ctx context.Context, d transport.Delivery, env event.Envelope) error {
 		incoming := env.TraceID
 		if incoming == "" {

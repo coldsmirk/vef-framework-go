@@ -13,8 +13,8 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
-	pubredisstream "github.com/coldsmirk/vef-framework-go/event/transport/redisstream"
-	"github.com/coldsmirk/vef-framework-go/internal/event/transport/redisstream"
+	"github.com/coldsmirk/vef-framework-go/event/transport/redisstream"
+	iredisstream "github.com/coldsmirk/vef-framework-go/internal/event/transport/redisstream"
 	"github.com/coldsmirk/vef-framework-go/internal/event/transport/transporttest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 )
@@ -29,14 +29,14 @@ func TestRedisStreamTransportContract(t *testing.T) {
 			Addr: net.JoinHostPort(container.Redis.Host, strconv.Itoa(int(container.Redis.Port))),
 		})
 
-		cfg := pubredisstream.Config{
+		cfg := redisstream.Config{
 			StreamPrefix:  "test:event:",
 			MaxLenApprox:  1024,
 			BlockTimeout:  200 * time.Millisecond,
 			ClaimIdle:     30 * time.Second,
 			ClaimInterval: 30 * time.Second,
 		}
-		tp := redisstream.New(client, cfg, nil)
+		tp := iredisstream.New(client, cfg, nil)
 		cleanup := func() {
 			_ = client.Close()
 		}

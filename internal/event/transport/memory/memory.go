@@ -1,16 +1,3 @@
-// Package memory implements the in-process Transport. It is the
-// default for single-node deployments and the canonical "sink" for
-// outbox-style transports that need a downstream dispatcher.
-//
-// Design notes:
-//   - Each subscription owns its own buffered channel and worker pool.
-//     A slow handler in one subscription cannot back-pressure publishes
-//     to other subscriptions (a defect in the legacy MemoryBus).
-//   - Publish never holds a mutex while invoking handlers; the legacy
-//     RLock-during-deliver pattern is gone.
-//   - Stop is idempotent and safe to call concurrently with Publish.
-//     Publishing after Stop returns ErrBusStopped instead of panicking
-//     on a closed channel (a second legacy defect).
 package memory
 
 import (
@@ -21,7 +8,7 @@ import (
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/event/transport"
-	pubmemory "github.com/coldsmirk/vef-framework-go/event/transport/memory"
+	"github.com/coldsmirk/vef-framework-go/event/transport/memory"
 )
 
 // ErrBusStopped indicates Publish was called after Stop. Distinct from
@@ -30,7 +17,7 @@ var ErrBusStopped = errors.New("memory transport: stopped")
 
 // Transport is the in-process implementation of transport.Transport.
 type Transport struct {
-	cfg pubmemory.Config
+	cfg memory.Config
 
 	mu      sync.RWMutex
 	subs    map[string]map[string]*subscription // eventType → subID → sub
@@ -46,12 +33,12 @@ type subscription struct {
 	wg          sync.WaitGroup
 	stopOnce    sync.Once
 	stopCh      chan struct{}
-	fullPolicy  pubmemory.FullPolicy
+	fullPolicy  memory.FullPolicy
 	publishWait time.Duration
 }
 
 // New constructs a memory Transport with the given config.
-func New(cfg pubmemory.Config) *Transport {
+func New(cfg memory.Config) *Transport {
 	return &Transport{
 		cfg:  cfg,
 		subs: make(map[string]map[string]*subscription),
@@ -59,7 +46,7 @@ func New(cfg pubmemory.Config) *Transport {
 }
 
 // Name implements transport.Transport.
-func (*Transport) Name() string { return pubmemory.Name }
+func (*Transport) Name() string { return memory.Name }
 
 // Capabilities reports the semantic guarantees of the memory transport.
 func (*Transport) Capabilities() transport.Capabilities {
@@ -218,7 +205,7 @@ func (s *subscription) deliver(frame transport.Frame) {
 
 func (s *subscription) enqueue(ctx context.Context, frame transport.Frame) error {
 	switch s.fullPolicy {
-	case pubmemory.FullPolicyBlock:
+	case memory.FullPolicyBlock:
 		if s.publishWait > 0 {
 			t := time.NewTimer(s.publishWait)
 			defer t.Stop()
@@ -244,7 +231,7 @@ func (s *subscription) enqueue(ctx context.Context, frame transport.Frame) error
 			return ErrBusStopped
 		}
 
-	case pubmemory.FullPolicyDropOldest:
+	case memory.FullPolicyDropOldest:
 		for {
 			select {
 			case <-s.stopCh:

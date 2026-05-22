@@ -1,21 +1,3 @@
-// Package outbox declares the persistent outbox Transport contract:
-// records, status, repository interface, and configuration.
-//
-// An outbox Transport guarantees that events written in a caller
-// transaction become visible to subscribers iff the transaction
-// commits. A background relay claims pending records, dispatches them
-// to a downstream sink Transport (typically memory for single-node or
-// redis_stream for cross-process), and marks the record completed,
-// failed, or dead.
-//
-// Subscription model. The outbox is publish-only: it persists frames
-// but does not deliver them itself. Subscribers attach to the sink
-// transport directly; the bus filters publish-only transports out of
-// the Subscribe path so fan-out routes do not double-register handlers.
-// Set vef.event.transports.outbox.sink to the transport that should
-// receive the relayed frames (memory for single-node, redis_stream for
-// cross-node — the framework warns at start-up when "memory" is paired
-// with an enabled redis_stream module).
 package outbox
 
 import (

@@ -1,7 +1,3 @@
-// Package transport defines the pluggable delivery contract for the
-// event bus. Transports are responsible for accepting outgoing frames
-// and pumping incoming frames to consumers; the bus handles routing,
-// middleware, and envelope encoding.
 package transport
 
 import (

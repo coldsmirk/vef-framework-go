@@ -12,11 +12,11 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
-	pubmemory "github.com/coldsmirk/vef-framework-go/event/transport/memory"
-	puboutbox "github.com/coldsmirk/vef-framework-go/event/transport/outbox"
+	"github.com/coldsmirk/vef-framework-go/event/transport/memory"
+	"github.com/coldsmirk/vef-framework-go/event/transport/outbox"
 	"github.com/coldsmirk/vef-framework-go/id"
-	"github.com/coldsmirk/vef-framework-go/internal/event/transport/memory"
-	"github.com/coldsmirk/vef-framework-go/internal/event/transport/outbox"
+	imemory "github.com/coldsmirk/vef-framework-go/internal/event/transport/memory"
+	ioutbox "github.com/coldsmirk/vef-framework-go/internal/event/transport/outbox"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 )
 
@@ -29,9 +29,9 @@ import (
 // Subscribe call against the outbox must surface
 // transport.ErrSubscribeUnsupported.
 func TestOutboxSubscribeUnsupported(t *testing.T) {
-	repo := outbox.NewRepository(testx.NewTestDB(t))
-	tp := outbox.NewTransport(repo, puboutbox.Config{})
-	tp.SetSink(memory.New(pubmemory.Config{}))
+	repo := ioutbox.NewRepository(testx.NewTestDB(t))
+	tp := ioutbox.NewTransport(repo, outbox.Config{})
+	tp.SetSink(imemory.New(memory.Config{}))
 
 	_, err := tp.Subscribe("anything", "g", func(context.Context, transport.Delivery) error { return nil }, transport.SubscribeConfig{})
 	require.ErrorIs(t, err, transport.ErrSubscribeUnsupported,
@@ -45,21 +45,21 @@ func TestOutboxEndToEndRoundTrip(t *testing.T) {
 	ctx := context.Background()
 
 	db := testx.NewTestDB(t)
-	require.NoError(t, outbox.Migrate(ctx, db, config.SQLite))
+	require.NoError(t, ioutbox.Migrate(ctx, db, config.SQLite))
 
-	repo := outbox.NewRepository(db)
-	sink := memory.New(pubmemory.Config{QueueSize: 16, FullPolicy: pubmemory.FullPolicyError})
+	repo := ioutbox.NewRepository(db)
+	sink := imemory.New(memory.Config{QueueSize: 16, FullPolicy: memory.FullPolicyError})
 	require.NoError(t, sink.Start(ctx))
 	t.Cleanup(func() { _ = sink.Stop(ctx) })
 
-	cfg := puboutbox.Config{
+	cfg := outbox.Config{
 		RelayInterval:   50 * time.Millisecond,
 		MaxRetries:      3,
 		BatchSize:       16,
 		LeaseMultiplier: 4,
 		MinLease:        time.Second,
 	}
-	tp := outbox.NewTransport(repo, cfg)
+	tp := ioutbox.NewTransport(repo, cfg)
 	tp.SetSink(sink)
 	require.NoError(t, tp.Start(ctx))
 
@@ -83,7 +83,7 @@ func TestOutboxEndToEndRoundTrip(t *testing.T) {
 	require.NoError(t, tp.Publish(ctx, []transport.Frame{frame}))
 
 	// One relay cycle is enough since the test owns the schedule.
-	relay := outbox.NewRelay(repo, tp.Sink, cfg, nil, nil)
+	relay := ioutbox.NewRelay(repo, tp.Sink, cfg, nil, nil)
 	relay.RelayPending(ctx)
 
 	select {
@@ -103,21 +103,21 @@ func TestOutboxRelayConcurrentPublish(t *testing.T) {
 	ctx := context.Background()
 
 	db := testx.NewTestDB(t)
-	require.NoError(t, outbox.Migrate(ctx, db, config.SQLite))
+	require.NoError(t, ioutbox.Migrate(ctx, db, config.SQLite))
 
-	repo := outbox.NewRepository(db)
-	sink := memory.New(pubmemory.Config{QueueSize: 128, FullPolicy: pubmemory.FullPolicyError})
+	repo := ioutbox.NewRepository(db)
+	sink := imemory.New(memory.Config{QueueSize: 128, FullPolicy: memory.FullPolicyError})
 	require.NoError(t, sink.Start(ctx))
 	t.Cleanup(func() { _ = sink.Stop(ctx) })
 
-	cfg := puboutbox.Config{
+	cfg := outbox.Config{
 		RelayInterval:   50 * time.Millisecond,
 		MaxRetries:      3,
 		BatchSize:       64,
 		LeaseMultiplier: 4,
 		MinLease:        time.Second,
 	}
-	tp := outbox.NewTransport(repo, cfg)
+	tp := ioutbox.NewTransport(repo, cfg)
 	tp.SetSink(sink)
 	require.NoError(t, tp.Start(ctx))
 
@@ -160,7 +160,7 @@ func TestOutboxRelayConcurrentPublish(t *testing.T) {
 	require.Zero(t, publishErrors.Load(), "every publish should accept the frame")
 
 	// Drain the outbox in a single relay cycle; BatchSize >= total.
-	relay := outbox.NewRelay(repo, tp.Sink, cfg, nil, nil)
+	relay := ioutbox.NewRelay(repo, tp.Sink, cfg, nil, nil)
 	relay.RelayPending(ctx)
 
 	seen := make(map[string]struct{}, total)

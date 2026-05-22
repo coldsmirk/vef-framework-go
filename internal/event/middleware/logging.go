@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/event"
-	pubmw "github.com/coldsmirk/vef-framework-go/event/middleware"
+	"github.com/coldsmirk/vef-framework-go/event/middleware"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
 	"github.com/coldsmirk/vef-framework-go/logx"
 )
@@ -28,7 +28,7 @@ func (*Logging) Name() string { return "logging" }
 func (*Logging) Applies(transport.Capabilities) bool { return true }
 
 // WrapPublish implements PublishMiddleware.
-func (m *Logging) WrapPublish(next pubmw.PublishHandler) pubmw.PublishHandler {
+func (m *Logging) WrapPublish(next middleware.PublishHandler) middleware.PublishHandler {
 	return func(ctx context.Context, env *event.Envelope) error {
 		err := next(ctx, env)
 		if err != nil {
@@ -42,7 +42,7 @@ func (m *Logging) WrapPublish(next pubmw.PublishHandler) pubmw.PublishHandler {
 }
 
 // WrapConsume implements ConsumeMiddleware.
-func (m *Logging) WrapConsume(next pubmw.ConsumeHandler) pubmw.ConsumeHandler {
+func (m *Logging) WrapConsume(next middleware.ConsumeHandler) middleware.ConsumeHandler {
 	return func(ctx context.Context, d transport.Delivery, env event.Envelope) error {
 		start := time.Now()
 		err := next(ctx, d, env)
