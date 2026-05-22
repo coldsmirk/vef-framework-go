@@ -1,14 +1,22 @@
+comment:
+  behavior: default
+  layout: reach,diff,flags,tree
+  require_changes: false
+
 coverage:
   status:
+    patch:
+      default:
+        target: 80%
     project:
       default:
         target: 80%
         threshold: 0%
-    patch:
-      default:
-        target: 80%
 
-comment:
-  layout: "reach,diff,flags,tree"
-  behavior: default
-  require_changes: false
+ignore:
+  - "**/*_test.go"
+  - "**/testdata/**"
+  - "cmd/**"
+  - "internal/apptest/**"
+  - "internal/eventtest/**"
+  - "internal/testx/**"
