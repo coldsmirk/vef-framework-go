@@ -54,7 +54,7 @@ RPC uses `POST /api`; REST routes are mounted under `/api/<resource>`.
 
 - `orm.DB` for queries and `db.NewRaw(...)` for raw SQL when needed.
 - Models embed `bun.BaseModel` (table tag) + `orm.FullAuditedModel` (id + audit: `created_at/by`, `updated_at/by`). Variants: `orm.Model` (id only), `orm.CreationTrackedModel` (creation audit, no id), `orm.FullTrackedModel` (full audit, no id), `orm.CreationAuditedModel` (id + creation audit). IDs: `id.Generate()` → 20-char XID.
-- Transactions: `db.RunInTX(ctx, func(txCtx context.Context, tx orm.DB) error { ... })`.
+- Transactions: `db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error { ... })`.
 - Search: `search.Applier[T]` with struct tags.
 
 ## Security
@@ -112,7 +112,7 @@ Compression (`-1000`) → Headers (`-900`) → CORS (`-800`) → Content-Type (`
 
 ## Gotchas
 
-- `db.RunInTX` — uppercase TX, not `RunInTx`.
+- `db.RunInTx` — use `Tx` casing, not uppercase `TX`.
 - `SupplySPAConfigs` — all caps SPA, not `SupplySpaConfigs`.
 - `api.OperationSpec` — not `api.Spec`.
 - CRUD embedding uses interface names as field names: `crud.FindAll[M,S]` not `*crud.FindAllApi`. Constructor: `crud.NewFindAll[M,S]()`.
