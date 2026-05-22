@@ -46,7 +46,7 @@ func (j *jobAdapter) ID() string {
 }
 
 func (j *jobAdapter) LastRun() (time.Time, error) {
-	return j.job.LastRun()
+	return j.job.LastRunStartedAt()
 }
 
 func (j *jobAdapter) Name() string {
