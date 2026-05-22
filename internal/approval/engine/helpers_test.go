@@ -366,22 +366,22 @@ func TestNewTaskCreatedEvent(t *testing.T) {
 		task.ID = "task-99"
 
 		domainEvt := newTaskCreatedEvent(pc, task)
-		require.NotNil(t, domainEvt, "应当返回非 nil 事件")
+		require.NotNil(t, domainEvt, "Factory should return a non-nil event")
 
 		evt, ok := domainEvt.(*approval.TaskCreatedEvent)
-		require.True(t, ok, "事件类型应当是 *TaskCreatedEvent")
+		require.True(t, ok, "Event should be *TaskCreatedEvent")
 
 		assert.Equal(t, approval.EventTypeTaskCreated, evt.EventType(),
-			"事件类型字符串必须为 approval.task.created")
-		assert.Equal(t, "task-99", evt.TaskID, "应当映射 Task.ID")
-		assert.Equal(t, "tenant-1", evt.TenantID, "应当映射 Task.TenantID")
-		assert.Equal(t, "inst-1", evt.InstanceID, "应当从 ProcessContext.Instance.ID 映射")
-		assert.Equal(t, "node-1", evt.NodeID, "应当从 ProcessContext.Node.ID 映射")
-		assert.Equal(t, "user-7", evt.AssigneeID, "应当映射 Task.AssigneeID")
-		assert.Equal(t, "测试用户", evt.AssigneeName, "应当映射 Task.AssigneeName")
-		require.NotNil(t, evt.Deadline, "Pending 任务应当带 deadline")
-		assert.True(t, evt.Deadline.Equal(deadline), "deadline 必须按值传递")
-		assert.False(t, evt.OccurredTime.IsZero(), "OccurredTime 应当被自动填充")
+			"Event type should be approval.task.created")
+		assert.Equal(t, "task-99", evt.TaskID, "Event should map Task.ID")
+		assert.Equal(t, "tenant-1", evt.TenantID, "Event should map Task.TenantID")
+		assert.Equal(t, "inst-1", evt.InstanceID, "Event should map ProcessContext.Instance.ID")
+		assert.Equal(t, "node-1", evt.NodeID, "Event should map ProcessContext.Node.ID")
+		assert.Equal(t, "user-7", evt.AssigneeID, "Event should map Task.AssigneeID")
+		assert.Equal(t, "测试用户", evt.AssigneeName, "Event should map Task.AssigneeName")
+		require.NotNil(t, evt.Deadline, "Pending task should include deadline")
+		assert.True(t, evt.Deadline.Equal(deadline), "Deadline should preserve the original value")
+		assert.False(t, evt.OccurredTime.IsZero(), "OccurredTime should be populated")
 	})
 
 	t.Run("LeavesDeadlineNilWhenTaskHasNone", func(t *testing.T) {
@@ -391,7 +391,7 @@ func TestNewTaskCreatedEvent(t *testing.T) {
 
 		evt := newTaskCreatedEvent(pc, task).(*approval.TaskCreatedEvent)
 		assert.Nil(t, evt.Deadline,
-			"Waiting 任务 deadline 应当保持 nil 以区分非激活态")
+			"Waiting task should keep deadline nil to distinguish inactive work")
 	})
 }
 
@@ -412,11 +412,11 @@ func TestTaskCreatedEventsFor(t *testing.T) {
 		}
 
 		events := taskCreatedEventsFor(pc, tasks)
-		require.Len(t, events, len(ids), "应当为每个任务生成一个事件")
+		require.Len(t, events, len(ids), "Batch helper should create one event per task")
 
 		for i, want := range ids {
 			got := events[i].(*approval.TaskCreatedEvent).TaskID
-			assert.Equal(t, want, got, "事件 #%d 应当对应第 %d 个输入任务", i, i)
+			assert.Equal(t, want, got, "Event #%d should match input task #%d", i, i)
 		}
 	})
 
@@ -424,6 +424,6 @@ func TestTaskCreatedEventsFor(t *testing.T) {
 		pc := newProcessContextForEvent("inst-empty", "node-empty")
 
 		events := taskCreatedEventsFor(pc, nil)
-		assert.Empty(t, events, "空输入应当返回空切片，且不应当 panic")
+		assert.Empty(t, events, "Empty input should return an empty slice without panic")
 	})
 }
