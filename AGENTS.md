@@ -47,7 +47,7 @@ go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest
 
 ## Request Lifecycle (`/api`)
 
-Request parsing → Authentication (JWT/signature/password) → Context enrichment (DB, logger, principal) → Authorization (`RequiredPermission`) → Rate limiting (100 req/5min default) → Handler dispatch (30s timeout).  
+Request parsing → Authentication (JWT/signature/password) → Context enrichment (DB, logger, principal) → Authorization (`RequiredPermission`) → Rate limiting (100 req/5min default) → Handler dispatch (30s timeout).
 RPC uses `POST /api`; REST routes are mounted under `/api/<resource>`.
 
 ## Data Access
