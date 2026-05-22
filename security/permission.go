@@ -10,7 +10,7 @@ import (
 // Used by authorization middleware to enforce access control on API endpoints.
 type PermissionChecker interface {
 	// HasPermission returns true if the Principal has the specified permission token.
-	HasPermission(ctx context.Context, principal *Principal, permToken string) (bool, error)
+	HasPermission(ctx context.Context, principal *Principal, permission string) (bool, error)
 }
 
 // RolePermissionsLoader retrieves permissions associated with a role.
@@ -38,7 +38,7 @@ type DataScope interface {
 // Used to translate permission tokens into concrete data filtering rules.
 type DataPermissionResolver interface {
 	// ResolveDataScope returns the DataScope that should be applied for the permission.
-	ResolveDataScope(ctx context.Context, principal *Principal, permToken string) (DataScope, error)
+	ResolveDataScope(ctx context.Context, principal *Principal, permission string) (DataScope, error)
 }
 
 // DataPermissionApplier applies data permission filters to database queries.

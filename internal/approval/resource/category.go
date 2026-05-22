@@ -62,10 +62,10 @@ func buildFlowCategoryTree(flatCategories []approval.FlowCategory) []approval.Fl
 func NewCategoryResource() api.Resource {
 	return &CategoryResource{
 		Resource:        api.NewRPCResource("approval/category"),
-		FindTree:        crud.NewFindTree[approval.FlowCategory, CategorySearch](buildFlowCategoryTree).PermToken("approval:category:query"),
-		FindTreeOptions: crud.NewFindTreeOptions[approval.FlowCategory, CategorySearch]().PermToken("approval:category:query"),
-		Create:          crud.NewCreate[approval.FlowCategory, CategoryParams]().PermToken("approval:category:create"),
-		Update:          crud.NewUpdate[approval.FlowCategory, CategoryParams]().PermToken("approval:category:update"),
-		Delete:          crud.NewDelete[approval.FlowCategory]().PermToken("approval:category:delete"),
+		FindTree:        crud.NewFindTree[approval.FlowCategory, CategorySearch](buildFlowCategoryTree).RequiredPermission("approval:category:query"),
+		FindTreeOptions: crud.NewFindTreeOptions[approval.FlowCategory, CategorySearch]().RequiredPermission("approval:category:query"),
+		Create:          crud.NewCreate[approval.FlowCategory, CategoryParams]().RequiredPermission("approval:category:create"),
+		Update:          crud.NewUpdate[approval.FlowCategory, CategoryParams]().RequiredPermission("approval:category:update"),
+		Delete:          crud.NewDelete[approval.FlowCategory]().RequiredPermission("approval:category:delete"),
 	}
 }

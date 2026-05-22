@@ -68,8 +68,8 @@ func (m *Auth) checkPermission(ctx fiber.Ctx, op *api.Operation, principal *secu
 		return ctx.Next()
 	}
 
-	if permToken := permTokenFromOperation(op); permToken != "" {
-		if err := m.doCheck(ctx.Context(), principal, permToken); err != nil {
+	if permission := requiredPermissionFromOperation(op); permission != "" {
+		if err := m.doCheck(ctx.Context(), principal, permission); err != nil {
 			return err
 		}
 	}
@@ -77,35 +77,35 @@ func (m *Auth) checkPermission(ctx fiber.Ctx, op *api.Operation, principal *secu
 	return ctx.Next()
 }
 
-func (m *Auth) doCheck(ctx context.Context, principal *security.Principal, permToken string) error {
+func (m *Auth) doCheck(ctx context.Context, principal *security.Principal, permission string) error {
 	if m.checker == nil {
 		return fmt.Errorf(
 			"%w: %w, permission=%q",
-			fiber.ErrForbidden, ErrPermissionCheckerNotProvided, permToken,
+			fiber.ErrForbidden, ErrPermissionCheckerNotProvided, permission,
 		)
 	}
 
-	granted, err := m.checker.HasPermission(ctx, principal, permToken)
+	granted, err := m.checker.HasPermission(ctx, principal, permission)
 	if err != nil {
 		return fmt.Errorf(
 			"%w: %w, principal=%q, permission=%q: %w",
-			fiber.ErrForbidden, ErrPermissionCheckFailed, principal.ID, permToken, err,
+			fiber.ErrForbidden, ErrPermissionCheckFailed, principal.ID, permission, err,
 		)
 	}
 
 	if !granted {
 		return fmt.Errorf(
 			"%w: %w, principal=%q (type=%s), permission=%q",
-			fiber.ErrForbidden, ErrPermissionDenied, principal.ID, principal.Type, permToken,
+			fiber.ErrForbidden, ErrPermissionDenied, principal.ID, principal.Type, permission,
 		)
 	}
 
 	return nil
 }
 
-// permTokenFromOperation extracts the permission token from an operation's auth options.
-func permTokenFromOperation(op *api.Operation) string {
-	if token, ok := op.Auth.Options[shared.AuthOptionPermToken].(string); ok {
+// requiredPermissionFromOperation extracts the required permission token from an operation's auth options.
+func requiredPermissionFromOperation(op *api.Operation) string {
+	if token, ok := op.Auth.Options[shared.AuthOptionRequiredPermission].(string); ok {
 		return token
 	}
 

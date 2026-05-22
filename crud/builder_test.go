@@ -27,10 +27,10 @@ func TestBuilderMethods(t *testing.T) {
 		assert.Equal(t, 5*time.Second, specs[0].Timeout, "Timeout should be set")
 	})
 
-	t.Run("PermToken", func(t *testing.T) {
-		c := crud.NewCreate[orm.FullAuditedModel, orm.FullAuditedModel]().PermToken("admin:create")
+	t.Run("RequiredPermission", func(t *testing.T) {
+		c := crud.NewCreate[orm.FullAuditedModel, orm.FullAuditedModel]().RequiredPermission("admin:create")
 		specs := c.Provide()
-		assert.Equal(t, "admin:create", specs[0].PermToken, "PermToken should be set")
+		assert.Equal(t, "admin:create", specs[0].RequiredPermission, "RequiredPermission should be set")
 	})
 
 	t.Run("RateLimit", func(t *testing.T) {
@@ -50,13 +50,13 @@ func TestBuilderMethods(t *testing.T) {
 		c := crud.NewCreate[orm.FullAuditedModel, orm.FullAuditedModel]().
 			EnableAudit().
 			Timeout(10*time.Second).
-			PermToken("user:write").
+			RequiredPermission("user:write").
 			RateLimit(50, 5*time.Minute).
 			Public()
 		specs := c.Provide()
 		assert.True(t, specs[0].EnableAudit, "EnableAudit should be true")
 		assert.Equal(t, 10*time.Second, specs[0].Timeout, "Timeout should be set")
-		assert.Equal(t, "user:write", specs[0].PermToken, "PermToken should be set")
+		assert.Equal(t, "user:write", specs[0].RequiredPermission, "RequiredPermission should be set")
 		assert.True(t, specs[0].Public, "Public should be true")
 		assert.NotNil(t, specs[0].RateLimit, "RateLimit should be set")
 	})

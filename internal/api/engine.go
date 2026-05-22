@@ -217,12 +217,12 @@ func (e *engine) registerOperation(res api.Resource, spec api.OperationSpec) err
 // buildOperation constructs an api.Operation from a resource and spec.
 func (e *engine) buildOperation(res api.Resource, spec api.OperationSpec, handler any) *api.Operation {
 	ac := e.resolveAuthConfig(res, spec)
-	if spec.PermToken != "" {
+	if spec.RequiredPermission != "" {
 		if ac.Options == nil {
 			ac.Options = make(map[string]any)
 		}
 
-		ac.Options[shared.AuthOptionPermToken] = spec.PermToken
+		ac.Options[shared.AuthOptionRequiredPermission] = spec.RequiredPermission
 	}
 
 	return &api.Operation{

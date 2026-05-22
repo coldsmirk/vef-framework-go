@@ -18,8 +18,8 @@ type Builder[T any] interface {
 	Timeout(timeout time.Duration) T
 	// Public marks this endpoint as publicly accessible without authentication.
 	Public() T
-	// PermToken sets the permission token required to access this endpoint.
-	PermToken(token string) T
+	// RequiredPermission sets the permission token required to access this endpoint.
+	RequiredPermission(token string) T
 	// RateLimit configures rate limiting for this endpoint.
 	RateLimit(maxRequests int, period time.Duration) T
 	// Build creates an OperationSpec with the configured settings and the given handler.
@@ -27,13 +27,13 @@ type Builder[T any] interface {
 }
 
 type baseBuilder[T any] struct {
-	kind        api.Kind
-	action      string
-	enableAudit bool
-	timeout     time.Duration
-	public      bool
-	permToken   string
-	rateLimit   *api.RateLimitConfig
+	kind               api.Kind
+	action             string
+	enableAudit        bool
+	timeout            time.Duration
+	public             bool
+	requiredPermission string
+	rateLimit          *api.RateLimitConfig
 
 	self T
 }
@@ -72,8 +72,8 @@ func (b *baseBuilder[T]) Public() T {
 	return b.self
 }
 
-func (b *baseBuilder[T]) PermToken(token string) T {
-	b.permToken = token
+func (b *baseBuilder[T]) RequiredPermission(token string) T {
+	b.requiredPermission = token
 
 	return b.self
 }
@@ -89,12 +89,12 @@ func (b *baseBuilder[T]) RateLimit(maxRequests int, period time.Duration) T {
 
 func (b *baseBuilder[T]) Build(handler any) api.OperationSpec {
 	return api.OperationSpec{
-		Action:      b.action,
-		EnableAudit: b.enableAudit,
-		Timeout:     b.timeout,
-		Public:      b.public,
-		PermToken:   b.permToken,
-		RateLimit:   b.rateLimit,
-		Handler:     handler,
+		Action:             b.action,
+		EnableAudit:        b.enableAudit,
+		Timeout:            b.timeout,
+		Public:             b.public,
+		RequiredPermission: b.requiredPermission,
+		RateLimit:          b.rateLimit,
+		Handler:            handler,
 	}
 }

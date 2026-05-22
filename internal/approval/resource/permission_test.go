@@ -11,7 +11,7 @@ import (
 	approvalresource "github.com/coldsmirk/vef-framework-go/internal/approval/resource"
 )
 
-func TestManagementResourcePermTokens(t *testing.T) {
+func TestManagementResourceRequiredPermissions(t *testing.T) {
 	collectors := []api.OperationsCollector{
 		collector.NewResourceProviderCollector(),
 		collector.NewEmbeddedProviderCollector(),
@@ -32,7 +32,7 @@ func TestManagementResourcePermTokens(t *testing.T) {
 			"find_versions":   "approval:flow:query",
 		}
 
-		assertPermTokens(t, specs, expected)
+		assertRequiredPermissions(t, specs, expected)
 	})
 
 	t.Run("CategoryResource", func(t *testing.T) {
@@ -47,7 +47,7 @@ func TestManagementResourcePermTokens(t *testing.T) {
 			"delete":            "approval:category:delete",
 		}
 
-		assertPermTokens(t, specs, expected)
+		assertRequiredPermissions(t, specs, expected)
 	})
 
 	t.Run("DelegationResource", func(t *testing.T) {
@@ -61,7 +61,7 @@ func TestManagementResourcePermTokens(t *testing.T) {
 			"delete":    "approval:delegation:delete",
 		}
 
-		assertPermTokens(t, specs, expected)
+		assertRequiredPermissions(t, specs, expected)
 	})
 }
 
@@ -74,19 +74,19 @@ func collectSpecs(resource api.Resource, collectors ...api.OperationsCollector) 
 	return specs
 }
 
-func assertPermTokens(t *testing.T, specs []api.OperationSpec, expected map[string]string) {
+func assertRequiredPermissions(t *testing.T, specs []api.OperationSpec, expected map[string]string) {
 	t.Helper()
 
 	require.NotEmpty(t, specs, "Should collect operations from resource")
 
 	permByAction := make(map[string]string, len(specs))
 	for _, spec := range specs {
-		permByAction[spec.Action] = spec.PermToken
+		permByAction[spec.Action] = spec.RequiredPermission
 	}
 
-	for action, permToken := range expected {
+	for action, permission := range expected {
 		actual, exists := permByAction[action]
 		require.True(t, exists, "Should expose %s action", action)
-		assert.Equal(t, permToken, actual, "Action %s should declare the expected PermToken", action)
+		assert.Equal(t, permission, actual, "Action %s should declare the expected RequiredPermission", action)
 	}
 }

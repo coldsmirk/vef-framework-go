@@ -13,8 +13,8 @@ type OperationSpec struct {
 	Timeout time.Duration
 	// Public indicates whether this endpoint is publicly accessible
 	Public bool
-	// PermToken is the permission token required for access
-	PermToken string
+	// RequiredPermission is the permission token required for access
+	RequiredPermission string
 	// RateLimit represents the rate limit for an API endpoint
 	RateLimit *RateLimitConfig
 	// Handler is the business logic handler.

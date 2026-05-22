@@ -38,15 +38,15 @@ func NewAdminResource(
 		Resource: api.NewRPCResource(
 			"approval/admin",
 			api.WithOperations(
-				api.OperationSpec{Action: "find_instances", PermToken: "approval:instance:query"},
-				api.OperationSpec{Action: "find_tasks", PermToken: "approval:task:query"},
-				api.OperationSpec{Action: "get_instance_detail", PermToken: "approval:instance:detail"},
-				api.OperationSpec{Action: "find_action_logs", PermToken: "approval:log:query"},
-				api.OperationSpec{Action: "get_metrics", PermToken: "approval:metrics:query"},
+				api.OperationSpec{Action: "find_instances", RequiredPermission: "approval:instance:query"},
+				api.OperationSpec{Action: "find_tasks", RequiredPermission: "approval:task:query"},
+				api.OperationSpec{Action: "get_instance_detail", RequiredPermission: "approval:instance:detail"},
+				api.OperationSpec{Action: "find_action_logs", RequiredPermission: "approval:log:query"},
+				api.OperationSpec{Action: "get_metrics", RequiredPermission: "approval:metrics:query"},
 				// Admin write actions: framework-level audit captures who/when/IP
 				// in addition to the business-table action_log.
-				api.OperationSpec{Action: "terminate_instance", PermToken: "approval:instance:terminate", EnableAudit: true},
-				api.OperationSpec{Action: "reassign_task", PermToken: "approval:task:reassign", EnableAudit: true},
+				api.OperationSpec{Action: "terminate_instance", RequiredPermission: "approval:instance:terminate", EnableAudit: true},
+				api.OperationSpec{Action: "reassign_task", RequiredPermission: "approval:task:reassign", EnableAudit: true},
 			),
 		),
 	}

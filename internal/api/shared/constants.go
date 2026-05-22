@@ -5,5 +5,5 @@ const (
 	MetaKeyRESTHTTPMethod = "__http_method"
 	MetaKeyRESTHTTPPath   = "__http_path"
 
-	AuthOptionPermToken = "__perm_token"
+	AuthOptionRequiredPermission = "__required_permission"
 )

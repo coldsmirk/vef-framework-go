@@ -50,8 +50,8 @@ type MockPermissionChecker struct {
 	mock.Mock
 }
 
-func (m *MockPermissionChecker) HasPermission(ctx context.Context, principal *security.Principal, permToken string) (bool, error) {
-	args := m.Called(ctx, principal, permToken)
+func (m *MockPermissionChecker) HasPermission(ctx context.Context, principal *security.Principal, permission string) (bool, error) {
+	args := m.Called(ctx, principal, permission)
 
 	return args.Bool(0), args.Error(1)
 }
@@ -100,12 +100,12 @@ func NewTestRPCResource() api.Resource {
 					Public: true,
 				},
 				api.OperationSpec{
-					Action:    "admin",
-					PermToken: "test:admin",
+					Action:             "admin",
+					RequiredPermission: "test:admin",
 				},
 				api.OperationSpec{
-					Action:    "restricted",
-					PermToken: "test:restricted",
+					Action:             "restricted",
+					RequiredPermission: "test:restricted",
 				},
 				api.OperationSpec{
 					Action: "panic",

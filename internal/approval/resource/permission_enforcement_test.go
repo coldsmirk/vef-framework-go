@@ -130,7 +130,7 @@ func (s *PermissionEnforcementResourceTestSuite) TestMyPendingCountsShouldStillA
 		Identifier: api.Identifier{Resource: "approval/my", Action: "get_pending_counts", Version: "v1"},
 	}, s.token)
 
-	s.Require().Equal(http.StatusOK, resp.StatusCode, "Self-service query without PermToken should still pass")
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "Self-service query without RequiredPermission should still pass")
 	body := s.ReadResult(resp)
 	s.True(body.IsOk(), "Self-service query should succeed without permission token")
 	data := s.ReadDataAsMap(body.Data)

@@ -12,7 +12,7 @@ import (
 )
 
 // DataPermission handles data permission resolution.
-// It resolves data scope for the current principal and permission token,
+// It resolves data scope for the current principal and required permission,
 // then injects a RequestScopedDataPermApplier into the context.
 type DataPermission struct {
 	resolver security.DataPermissionResolver
@@ -53,8 +53,8 @@ func (m *DataPermission) Process(ctx fiber.Ctx) error {
 	}
 
 	if principal.Type != security.PrincipalTypeSystem {
-		if permToken := permTokenFromOperation(op); permToken != "" {
-			if err := m.resolveDataScope(ctx, principal, permToken); err != nil {
+		if permission := requiredPermissionFromOperation(op); permission != "" {
+			if err := m.resolveDataScope(ctx, principal, permission); err != nil {
 				return err
 			}
 		}
@@ -63,7 +63,7 @@ func (m *DataPermission) Process(ctx fiber.Ctx) error {
 	return ctx.Next()
 }
 
-func (m *DataPermission) resolveDataScope(ctx fiber.Ctx, principal *security.Principal, permToken string) error {
+func (m *DataPermission) resolveDataScope(ctx fiber.Ctx, principal *security.Principal, permission string) error {
 	if m.resolver == nil {
 		return fmt.Errorf(
 			"%w: %w",
@@ -71,11 +71,11 @@ func (m *DataPermission) resolveDataScope(ctx fiber.Ctx, principal *security.Pri
 		)
 	}
 
-	ds, err := m.resolver.ResolveDataScope(ctx.Context(), principal, permToken)
+	ds, err := m.resolver.ResolveDataScope(ctx.Context(), principal, permission)
 	if err != nil {
 		return fmt.Errorf(
 			"%w: %w, principal=%q, permission=%q: %w",
-			fiber.ErrForbidden, ErrDataScopeResolutionFailed, principal.ID, permToken, err,
+			fiber.ErrForbidden, ErrDataScopeResolutionFailed, principal.ID, permission, err,
 		)
 	}
 
@@ -83,7 +83,7 @@ func (m *DataPermission) resolveDataScope(ctx fiber.Ctx, principal *security.Pri
 	if ds != nil {
 		lgr.Debugf("Resolved data scope: scope=%q, principal=%q", ds.Key(), principal.ID)
 	} else {
-		lgr.Debugf("No data scope resolved: principal=%q, permission=%q", principal.ID, permToken)
+		lgr.Debugf("No data scope resolved: principal=%q, permission=%q", principal.ID, permission)
 	}
 
 	applier := security.NewRequestScopedDataPermApplier(principal, ds, lgr)

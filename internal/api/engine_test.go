@@ -371,17 +371,17 @@ func TestEngineRegister(t *testing.T) {
 		assert.Equal(t, api.AuthStrategySignature, op.Auth.Strategy, "Operation should use resource's custom auth")
 	})
 
-	t.Run("OperationWithPermToken", func(t *testing.T) {
-		e, _ := newRegistrationEngine(t, []api.OperationSpec{{Action: "delete", PermToken: "sys:user:delete"}})
+	t.Run("OperationWithRequiredPermission", func(t *testing.T) {
+		e, _ := newRegistrationEngine(t, []api.OperationSpec{{Action: "delete", RequiredPermission: "sys:user:delete"}})
 		res := &MockResource{kind: api.KindRPC, name: "sys/user"}
 
 		err := e.Register(res)
-		require.NoError(t, err, "Registration with perm token should succeed")
+		require.NoError(t, err, "Registration with required permission should succeed")
 
 		op := e.Lookup(api.Identifier{Resource: "sys/user", Action: "delete", Version: api.VersionV1})
 		require.NotNil(t, op, "Operation should be found")
 		require.NotNil(t, op.Auth.Options, "Auth options should not be nil")
-		assert.Equal(t, "sys:user:delete", op.Auth.Options[shared.AuthOptionPermToken], "PermToken should be stored correctly")
+		assert.Equal(t, "sys:user:delete", op.Auth.Options[shared.AuthOptionRequiredPermission], "RequiredPermission should be stored correctly")
 	})
 
 	t.Run("OperationWithCustomTimeout", func(t *testing.T) {

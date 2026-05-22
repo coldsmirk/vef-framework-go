@@ -24,7 +24,7 @@ func NewRBACDataPermissionResolver(loader security.RolePermissionsLoader) securi
 func (r *RBACDataPermissionResolver) ResolveDataScope(
 	ctx context.Context,
 	principal *security.Principal,
-	permToken string,
+	permission string,
 ) (security.DataScope, error) {
 	if r.loader == nil {
 		return nil, nil
@@ -46,7 +46,7 @@ func (r *RBACDataPermissionResolver) ResolveDataScope(
 			return nil, err
 		}
 
-		if dataScope, exists := permissions[permToken]; exists && dataScope != nil {
+		if dataScope, exists := permissions[permission]; exists && dataScope != nil {
 			if priority := dataScope.Priority(); priority > maxPriority {
 				maxPriority = priority
 				selectedScope = dataScope

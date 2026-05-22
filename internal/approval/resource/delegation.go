@@ -46,9 +46,9 @@ type DelegationResource struct {
 func NewDelegationResource() api.Resource {
 	return &DelegationResource{
 		Resource: api.NewRPCResource("approval/delegation"),
-		FindPage: crud.NewFindPage[approval.Delegation, DelegationSearch]().PermToken("approval:delegation:query"),
-		Create:   crud.NewCreate[approval.Delegation, DelegationParams]().PermToken("approval:delegation:create"),
-		Update:   crud.NewUpdate[approval.Delegation, DelegationParams]().PermToken("approval:delegation:update"),
-		Delete:   crud.NewDelete[approval.Delegation]().PermToken("approval:delegation:delete"),
+		FindPage: crud.NewFindPage[approval.Delegation, DelegationSearch]().RequiredPermission("approval:delegation:query"),
+		Create:   crud.NewCreate[approval.Delegation, DelegationParams]().RequiredPermission("approval:delegation:create"),
+		Update:   crud.NewUpdate[approval.Delegation, DelegationParams]().RequiredPermission("approval:delegation:update"),
+		Delete:   crud.NewDelete[approval.Delegation]().RequiredPermission("approval:delegation:delete"),
 	}
 }

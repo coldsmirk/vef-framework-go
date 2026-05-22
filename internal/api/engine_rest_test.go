@@ -50,14 +50,14 @@ func NewTestRESTResource() api.Resource {
 					Handler: "Delete",
 				},
 				api.OperationSpec{
-					Action:    "patch",
-					Handler:   "Patch",
-					PermToken: "items:patch",
+					Action:             "patch",
+					Handler:            "Patch",
+					RequiredPermission: "items:patch",
 				},
 				api.OperationSpec{
-					Action:    "post admin",
-					Handler:   "Admin",
-					PermToken: "items:admin",
+					Action:             "post admin",
+					Handler:            "Admin",
+					RequiredPermission: "items:admin",
 				},
 				api.OperationSpec{
 					Action:  "get panic",

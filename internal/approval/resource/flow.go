@@ -32,14 +32,14 @@ func NewFlowResource(bus cqrs.Bus, tenantResolver approval.PrincipalTenantResolv
 			api.WithOperations(
 				// Flow CRUD writes touch shared definition state and warrant
 				// framework-level audit beyond business events.
-				api.OperationSpec{Action: "create", PermToken: "approval:flow:create", EnableAudit: true},
-				api.OperationSpec{Action: "deploy", PermToken: "approval:flow:deploy", EnableAudit: true},
-				api.OperationSpec{Action: "publish_version", PermToken: "approval:flow:publish", EnableAudit: true},
-				api.OperationSpec{Action: "update_flow", PermToken: "approval:flow:update", EnableAudit: true},
-				api.OperationSpec{Action: "toggle_active", PermToken: "approval:flow:update", EnableAudit: true},
-				api.OperationSpec{Action: "get_graph", PermToken: "approval:flow:query"},
-				api.OperationSpec{Action: "find_flows", PermToken: "approval:flow:query"},
-				api.OperationSpec{Action: "find_versions", PermToken: "approval:flow:query"},
+				api.OperationSpec{Action: "create", RequiredPermission: "approval:flow:create", EnableAudit: true},
+				api.OperationSpec{Action: "deploy", RequiredPermission: "approval:flow:deploy", EnableAudit: true},
+				api.OperationSpec{Action: "publish_version", RequiredPermission: "approval:flow:publish", EnableAudit: true},
+				api.OperationSpec{Action: "update_flow", RequiredPermission: "approval:flow:update", EnableAudit: true},
+				api.OperationSpec{Action: "toggle_active", RequiredPermission: "approval:flow:update", EnableAudit: true},
+				api.OperationSpec{Action: "get_graph", RequiredPermission: "approval:flow:query"},
+				api.OperationSpec{Action: "find_flows", RequiredPermission: "approval:flow:query"},
+				api.OperationSpec{Action: "find_versions", RequiredPermission: "approval:flow:query"},
 			),
 		),
 	}

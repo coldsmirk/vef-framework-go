@@ -33,30 +33,30 @@ func TestBuildLoggerName(t *testing.T) {
 	}
 }
 
-// TestPermTokenFromOperation tests the permTokenFromOperation helper function.
-func TestPermTokenFromOperation(t *testing.T) {
-	t.Run("WithPermToken", func(t *testing.T) {
+// TestRequiredPermissionFromOperation tests the requiredPermissionFromOperation helper function.
+func TestRequiredPermissionFromOperation(t *testing.T) {
+	t.Run("WithRequiredPermission", func(t *testing.T) {
 		op := &api.Operation{
 			Auth: &api.AuthConfig{
 				Options: map[string]any{
-					shared.AuthOptionPermToken: "sys:user:read",
+					shared.AuthOptionRequiredPermission: "sys:user:read",
 				},
 			},
 		}
 
-		token := permTokenFromOperation(op)
-		assert.Equal(t, "sys:user:read", token, "Should extract perm token")
+		token := requiredPermissionFromOperation(op)
+		assert.Equal(t, "sys:user:read", token, "Should extract required permission")
 	})
 
-	t.Run("WithoutPermToken", func(t *testing.T) {
+	t.Run("WithoutRequiredPermission", func(t *testing.T) {
 		op := &api.Operation{
 			Auth: &api.AuthConfig{
 				Options: map[string]any{},
 			},
 		}
 
-		token := permTokenFromOperation(op)
-		assert.Empty(t, token, "Should return empty when no perm token")
+		token := requiredPermissionFromOperation(op)
+		assert.Empty(t, token, "Should return empty when no required permission")
 	})
 
 	t.Run("NilOptions", func(t *testing.T) {
@@ -66,7 +66,7 @@ func TestPermTokenFromOperation(t *testing.T) {
 			},
 		}
 
-		token := permTokenFromOperation(op)
+		token := requiredPermissionFromOperation(op)
 		assert.Empty(t, token, "Should return empty when options is nil")
 	})
 
@@ -74,13 +74,13 @@ func TestPermTokenFromOperation(t *testing.T) {
 		op := &api.Operation{
 			Auth: &api.AuthConfig{
 				Options: map[string]any{
-					shared.AuthOptionPermToken: 123,
+					shared.AuthOptionRequiredPermission: 123,
 				},
 			},
 		}
 
-		token := permTokenFromOperation(op)
-		assert.Empty(t, token, "Should return empty when perm token is not a string")
+		token := requiredPermissionFromOperation(op)
+		assert.Empty(t, token, "Should return empty when required permission is not a string")
 	})
 }
 
