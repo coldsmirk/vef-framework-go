@@ -36,6 +36,7 @@ type TestEnv struct {
 	DB  orm.DB
 	Svc storage.Service
 	CS  store.ClaimStore
+	PS  store.UploadPartStore
 	DQ  store.DeleteQueue
 	Pub *CapturePublisher
 	Cfg *config.StorageConfig
@@ -102,6 +103,7 @@ func setupWorker(t *testing.T) *TestEnv {
 		DB:  db,
 		Svc: memory.New(),
 		CS:  store.NewClaimStore(db),
+		PS:  store.NewUploadPartStore(db),
 		DQ:  store.NewDeleteQueue(db),
 		Pub: &CapturePublisher{},
 		Cfg: newTestStorageConfig(),
@@ -130,12 +132,12 @@ func TestClaimSweeper(t *testing.T) {
 			Key:       "priv/expired.bin",
 			CreatedBy: "tester",
 			Status:    store.ClaimStatusPending,
-			ExpiresAt: timex.Now().AddHours(-1),
+			ExpiresAt: timex.Now().Add(-2 * config.DefaultSweepInterval),
 			CreatedAt: timex.Now(),
 		}
 		require.NoError(t, env.CS.Create(env.Ctx, claim), "Expired claim creation should succeed")
 
-		worker.NewClaimSweeper(env.DB, env.CS, env.DQ, env.Cfg).Run(env.Ctx)
+		worker.NewClaimSweeper(env.DB, env.Svc, env.CS, env.PS, env.DQ, env.Cfg).Run(env.Ctx)
 
 		_, err := env.CS.Get(env.Ctx, claim.ID)
 		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Claim row should be removed by the sweeper")
@@ -157,12 +159,12 @@ func TestClaimSweeper(t *testing.T) {
 			UploadID:  "session-xyz",
 			CreatedBy: "tester",
 			Status:    store.ClaimStatusPending,
-			ExpiresAt: timex.Now().AddHours(-1),
+			ExpiresAt: timex.Now().Add(-2 * config.DefaultSweepInterval),
 			CreatedAt: timex.Now(),
 		}
 		require.NoError(t, env.CS.Create(env.Ctx, claim), "Expired multipart claim creation should succeed")
 
-		worker.NewClaimSweeper(env.DB, env.CS, env.DQ, env.Cfg).Run(env.Ctx)
+		worker.NewClaimSweeper(env.DB, env.Svc, env.CS, env.PS, env.DQ, env.Cfg).Run(env.Ctx)
 
 		_, err := env.CS.Get(env.Ctx, claim.ID)
 		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Expired multipart claim row should be removed")
@@ -171,6 +173,73 @@ func TestClaimSweeper(t *testing.T) {
 		require.NoError(t, err, "Lease should succeed")
 		require.Len(t, leased, 1, "Sweeper should enqueue exactly one PendingDelete row")
 		assert.Equal(t, "session-xyz", leased[0].UploadID, "UploadID should be forwarded so the worker can abort the dangling session")
+	})
+
+	t.Run("RecoversCompletedMultipartClaim", func(t *testing.T) {
+		env := setupWorker(t)
+
+		claim := &store.UploadClaim{
+			ID:        id.GenerateUUID(),
+			Key:       "priv/recovered.bin",
+			UploadID:  "session-recovered",
+			Size:      7,
+			CreatedBy: "tester",
+			Status:    store.ClaimStatusPending,
+			ExpiresAt: timex.Now().Add(-2 * config.DefaultSweepInterval),
+			CreatedAt: timex.Now(),
+		}
+		require.NoError(t, env.CS.Create(env.Ctx, claim), "Expired multipart claim creation should succeed")
+		putMemoryObject(t, env.Svc, claim.Key)
+
+		require.NoError(t, env.DB.RunInTX(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
+			return env.PS.Upsert(txCtx, tx, &store.UploadPart{
+				ID:         id.GenerateUUID(),
+				ClaimID:    claim.ID,
+				PartNumber: 1,
+				ETag:       "stale-etag",
+				Size:       7,
+				CreatedAt:  timex.Now(),
+			})
+		}), "Upload part row should be seeded")
+
+		worker.NewClaimSweeper(env.DB, env.Svc, env.CS, env.PS, env.DQ, env.Cfg).Run(env.Ctx)
+
+		got, err := env.CS.Get(env.Ctx, claim.ID)
+		require.NoError(t, err, "Recovered claim should remain queryable")
+		assert.Equal(t, store.ClaimStatusUploaded, got.Status, "Sweeper should mark the already-materialized object as uploaded")
+
+		parts, err := env.PS.ListByClaim(env.Ctx, claim.ID)
+		require.NoError(t, err, "Part lookup should succeed")
+		assert.Empty(t, parts, "Recovered claim should no longer retain stale part rows")
+
+		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
+		require.NoError(t, err, "Lease should succeed")
+		assert.Empty(t, leased, "Recovered claim must not be enqueued for deletion")
+	})
+
+	t.Run("LeavesRecentlyExpiredClaim", func(t *testing.T) {
+		env := setupWorker(t)
+
+		claim := &store.UploadClaim{
+			ID:        id.GenerateUUID(),
+			Key:       "priv/recently-expired.bin",
+			UploadID:  "session-recent",
+			CreatedBy: "tester",
+			Status:    store.ClaimStatusPending,
+			ExpiresAt: timex.Now().Add(-config.DefaultSweepInterval / 2),
+			CreatedAt: timex.Now(),
+		}
+		require.NoError(t, env.CS.Create(env.Ctx, claim), "Recently expired claim creation should succeed")
+
+		worker.NewClaimSweeper(env.DB, env.Svc, env.CS, env.PS, env.DQ, env.Cfg).Run(env.Ctx)
+
+		got, err := env.CS.Get(env.Ctx, claim.ID)
+		require.NoError(t, err, "Recently expired claim should remain queryable during grace period")
+		assert.Equal(t, claim.Key, got.Key, "Sweeper must not touch claims still inside the grace window")
+
+		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
+		require.NoError(t, err, "Lease should succeed")
+		assert.Empty(t, leased, "Recently expired claim must not be enqueued for deletion")
 	})
 
 	t.Run("LeavesLiveClaim", func(t *testing.T) {
@@ -186,7 +255,7 @@ func TestClaimSweeper(t *testing.T) {
 		}
 		require.NoError(t, env.CS.Create(env.Ctx, claim), "Live claim creation should succeed")
 
-		worker.NewClaimSweeper(env.DB, env.CS, env.DQ, env.Cfg).Run(env.Ctx)
+		worker.NewClaimSweeper(env.DB, env.Svc, env.CS, env.PS, env.DQ, env.Cfg).Run(env.Ctx)
 
 		got, err := env.CS.Get(env.Ctx, claim.ID)
 		require.NoError(t, err, "Live claim should remain queryable")
@@ -201,7 +270,7 @@ func TestClaimSweeper(t *testing.T) {
 		env := setupWorker(t)
 
 		// Nothing scheduled; sweeper should not error.
-		worker.NewClaimSweeper(env.DB, env.CS, env.DQ, env.Cfg).Run(env.Ctx)
+		worker.NewClaimSweeper(env.DB, env.Svc, env.CS, env.PS, env.DQ, env.Cfg).Run(env.Ctx)
 
 		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
 		require.NoError(t, err, "Lease should succeed")

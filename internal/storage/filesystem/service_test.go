@@ -252,6 +252,46 @@ func TestEdgeCases(t *testing.T) {
 		}
 	})
 
+	t.Run("RejectsInvalidObjectKeys", func(t *testing.T) {
+		service, cleanup := setupTestService(t)
+		defer cleanup()
+
+		testCases := []struct {
+			name string
+			key  string
+		}{
+			{name: "ParentDirectory", key: "../escape.txt"},
+			{name: "NestedParentDirectory", key: "safe/../../escape.txt"},
+			{name: "AbsolutePath", key: "/tmp/escape.txt"},
+			{name: "RedundantSlash", key: "safe//file.txt"},
+			{name: "CurrentDirectory", key: "safe/./file.txt"},
+			{name: "Backslash", key: `safe\file.txt`},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				_, err := service.PutObject(ctx, storage.PutObjectOptions{
+					Key:    tc.key,
+					Reader: bytes.NewReader([]byte("payload")),
+					Size:   7,
+				})
+				assert.Error(t, err, "PutObject should reject invalid key %q", tc.key)
+
+				_, err = service.GetObject(ctx, storage.GetObjectOptions{Key: tc.key})
+				assert.Error(t, err, "GetObject should reject invalid key %q", tc.key)
+
+				err = service.DeleteObject(ctx, storage.DeleteObjectOptions{Key: tc.key})
+				assert.Error(t, err, "DeleteObject should reject invalid key %q", tc.key)
+
+				_, err = service.CopyObject(ctx, storage.CopyObjectOptions{
+					SourceKey: "file-with-dashes.txt",
+					DestKey:   tc.key,
+				})
+				assert.Error(t, err, "CopyObject should reject invalid destination key %q", tc.key)
+			})
+		}
+	})
+
 	t.Run("OverwriteExistingFile", func(t *testing.T) {
 		service, cleanup := setupTestService(t)
 		defer cleanup()
@@ -636,5 +676,30 @@ func TestLargeFile(t *testing.T) {
 	t.Run("ImplementsMultipart", func(t *testing.T) {
 		_, isMultipart := any(service).(storage.Multipart)
 		assert.True(t, isMultipart, "Filesystem backend must implement storage.Multipart")
+	})
+
+	t.Run("RejectsInvalidMultipartInputs", func(t *testing.T) {
+		mp := service.(storage.Multipart)
+
+		_, err := mp.InitMultipart(ctx, storage.InitMultipartOptions{
+			Key:         "../escape.bin",
+			ContentType: "application/octet-stream",
+		})
+		assert.Error(t, err, "InitMultipart should reject invalid object keys")
+
+		_, err = mp.PutPart(ctx, storage.PutPartOptions{
+			Key:        "large/file.bin",
+			UploadID:   "../session",
+			PartNumber: 1,
+			Reader:     bytes.NewReader([]byte("payload")),
+			Size:       7,
+		})
+		assert.Error(t, err, "PutPart should reject invalid upload IDs")
+
+		err = mp.AbortMultipart(ctx, storage.AbortMultipartOptions{
+			Key:      "large/file.bin",
+			UploadID: "../session",
+		})
+		assert.Error(t, err, "AbortMultipart should reject invalid upload IDs")
 	})
 }

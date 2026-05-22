@@ -5,10 +5,12 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -44,6 +46,11 @@ const (
 	etagsDir = ".etags"
 )
 
+var (
+	errInvalidObjectKey = errors.New("filesystem: invalid object key")
+	errInvalidUploadID  = errors.New("filesystem: invalid upload id")
+)
+
 type manifest struct {
 	Key         string `json:"key"`
 	ContentType string `json:"contentType"`
@@ -65,6 +72,13 @@ func New(cfg config.FilesystemConfig) (storage.Service, error) {
 		root = "./storage"
 	}
 
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve storage root directory: %w", err)
+	}
+
+	root = filepath.Clean(absRoot)
+
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create storage root directory: %w", err)
 	}
@@ -72,16 +86,63 @@ func New(cfg config.FilesystemConfig) (storage.Service, error) {
 	return &Service{root: root}, nil
 }
 
-func (s *Service) resolvePath(key string) string {
-	return filepath.Join(s.root, filepath.FromSlash(key))
+func (*Service) cleanObjectKey(key string) (string, error) {
+	if key == "" || filepath.IsAbs(key) || strings.ContainsAny(key, "\x00\\") {
+		return "", errInvalidObjectKey
+	}
+
+	if path.Clean(key) != key {
+		return "", errInvalidObjectKey
+	}
+
+	for segment := range strings.SplitSeq(key, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return "", errInvalidObjectKey
+		}
+	}
+
+	return filepath.FromSlash(key), nil
 }
 
-func (s *Service) etagPath(key string) string {
-	return filepath.Join(s.root, etagsDir, filepath.FromSlash(key))
+func (s *Service) resolvePath(key string) (string, error) {
+	cleanKey, err := s.cleanObjectKey(key)
+	if err != nil {
+		return "", err
+	}
+
+	path := filepath.Join(s.root, cleanKey)
+
+	rel, err := filepath.Rel(s.root, path)
+	if err != nil {
+		return "", err
+	}
+
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", errInvalidObjectKey
+	}
+
+	return path, nil
 }
 
-func (s *Service) sessionDir(uploadID string) string {
-	return filepath.Join(s.root, multipartDir, uploadID)
+func (s *Service) etagPath(key string) (string, error) {
+	cleanKey, err := s.cleanObjectKey(key)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(s.root, etagsDir, cleanKey), nil
+}
+
+func (s *Service) sessionDir(uploadID string) (string, error) {
+	if uploadID == "" ||
+		uploadID == "." ||
+		uploadID == ".." ||
+		path.Clean(uploadID) != uploadID ||
+		strings.ContainsAny(uploadID, "\x00/\\") {
+		return "", errInvalidUploadID
+	}
+
+	return filepath.Join(s.root, multipartDir, uploadID), nil
 }
 
 // writeFileAtomic writes data to path via tmp-file + rename. The tmp
@@ -113,14 +174,24 @@ func writeFileAtomic(path string, data []byte) error {
 // not a correctness invariant — so the error is returned for logging
 // rather than propagated as a write failure.
 func (s *Service) writeETag(key, etag string) error {
-	return writeFileAtomic(s.etagPath(key), []byte(etag))
+	path, err := s.etagPath(key)
+	if err != nil {
+		return err
+	}
+
+	return writeFileAtomic(path, []byte(etag))
 }
 
 // readETag returns the persisted ETag for key, or "" if no sidecar
 // exists (e.g. object written by an older version, or sidecar removed).
 // A missing sidecar is not an error: callers fall back to an empty ETag.
 func (s *Service) readETag(key string) (string, error) {
-	data, err := os.ReadFile(s.etagPath(key))
+	path, err := s.etagPath(key)
+	if err != nil {
+		return "", err
+	}
+
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", nil
@@ -134,7 +205,10 @@ func (s *Service) readETag(key string) (string, error) {
 
 // removeETag deletes the sidecar for key. Idempotent.
 func (s *Service) removeETag(key string) {
-	path := s.etagPath(key)
+	path, err := s.etagPath(key)
+	if err != nil {
+		return
+	}
 
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return
@@ -144,7 +218,10 @@ func (s *Service) removeETag(key string) {
 }
 
 func (s *Service) PutObject(_ context.Context, opts storage.PutObjectOptions) (*storage.ObjectInfo, error) {
-	path := s.resolvePath(opts.Key)
+	path, err := s.resolvePath(opts.Key)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
@@ -188,7 +265,10 @@ func (s *Service) PutObject(_ context.Context, opts storage.PutObjectOptions) (*
 }
 
 func (s *Service) GetObject(_ context.Context, opts storage.GetObjectOptions) (io.ReadCloser, error) {
-	path := s.resolvePath(opts.Key)
+	path, err := s.resolvePath(opts.Key)
+	if err != nil {
+		return nil, err
+	}
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -203,7 +283,10 @@ func (s *Service) GetObject(_ context.Context, opts storage.GetObjectOptions) (i
 }
 
 func (s *Service) DeleteObject(_ context.Context, opts storage.DeleteObjectOptions) error {
-	path := s.resolvePath(opts.Key)
+	path, err := s.resolvePath(opts.Key)
+	if err != nil {
+		return err
+	}
 
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete file: %w", err)
@@ -226,8 +309,15 @@ func (s *Service) DeleteObjects(ctx context.Context, opts storage.DeleteObjectsO
 }
 
 func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) (*storage.ObjectInfo, error) {
-	srcPath := s.resolvePath(opts.SourceKey)
-	destPath := s.resolvePath(opts.DestKey)
+	srcPath, err := s.resolvePath(opts.SourceKey)
+	if err != nil {
+		return nil, err
+	}
+
+	destPath, err := s.resolvePath(opts.DestKey)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create destination directory: %w", err)
@@ -283,7 +373,10 @@ func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) 
 }
 
 func (s *Service) StatObject(_ context.Context, opts storage.StatObjectOptions) (*storage.ObjectInfo, error) {
-	path := s.resolvePath(opts.Key)
+	path, err := s.resolvePath(opts.Key)
+	if err != nil {
+		return nil, err
+	}
 
 	stat, err := os.Stat(path)
 	if err != nil {
@@ -321,8 +414,16 @@ func (*Service) MaxPartCount() int { return 0 }
 // ── Multipart ───────────────────────────────────────────────────────────
 
 func (s *Service) InitMultipart(_ context.Context, opts storage.InitMultipartOptions) (*storage.MultipartSession, error) {
+	if _, err := s.cleanObjectKey(opts.Key); err != nil {
+		return nil, err
+	}
+
 	uploadID := id.GenerateUUID()
-	dir := s.sessionDir(uploadID)
+
+	dir, err := s.sessionDir(uploadID)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("filesystem: init multipart mkdir: %w", err)
@@ -365,7 +466,10 @@ func (s *Service) InitMultipart(_ context.Context, opts storage.InitMultipartOpt
 }
 
 func (s *Service) PutPart(_ context.Context, opts storage.PutPartOptions) (*storage.PartInfo, error) {
-	dir := s.sessionDir(opts.UploadID)
+	dir, err := s.sessionDir(opts.UploadID)
+	if err != nil {
+		return nil, err
+	}
 
 	if _, err := os.Stat(filepath.Join(dir, "manifest.json")); err != nil {
 		if os.IsNotExist(err) {
@@ -441,7 +545,10 @@ func (s *Service) CompleteMultipart(_ context.Context, opts storage.CompleteMult
 		return nil, storage.ErrPartNumberOutOfRange
 	}
 
-	dir := s.sessionDir(opts.UploadID)
+	dir, err := s.sessionDir(opts.UploadID)
+	if err != nil {
+		return nil, err
+	}
 
 	manifestData, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
 	if err != nil {
@@ -548,7 +655,13 @@ func (s *Service) CompleteMultipart(_ context.Context, opts storage.CompleteMult
 	_ = tmpFile.Close()
 
 	// Atomic rename to final path.
-	finalPath := s.resolvePath(m.Key)
+	finalPath, err := s.resolvePath(m.Key)
+	if err != nil {
+		_ = os.Remove(tmpPath)
+
+		return nil, err
+	}
+
 	if err := os.MkdirAll(filepath.Dir(finalPath), 0o755); err != nil {
 		_ = os.Remove(tmpPath)
 
@@ -585,7 +698,11 @@ func (s *Service) CompleteMultipart(_ context.Context, opts storage.CompleteMult
 }
 
 func (s *Service) AbortMultipart(_ context.Context, opts storage.AbortMultipartOptions) error {
-	dir := s.sessionDir(opts.UploadID)
+	dir, err := s.sessionDir(opts.UploadID)
+	if err != nil {
+		return err
+	}
+
 	// Idempotent: non-existent directory is fine.
 	_ = os.RemoveAll(dir)
 

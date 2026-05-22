@@ -16,7 +16,7 @@ import (
 
 // createFiberApp creates a new Fiber application with the given configuration.
 func createFiberApp(cfg *config.AppConfig) (*fiber.App, error) {
-	bodyLimitStr := lo.CoalesceOrEmpty(strings.TrimSpace(cfg.BodyLimit), "10mib")
+	bodyLimitStr := lo.CoalesceOrEmpty(strings.TrimSpace(cfg.BodyLimit), "32mib")
 
 	bodyLimit, err := humanize.ParseBytes(bodyLimitStr)
 	if err != nil {

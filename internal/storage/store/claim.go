@@ -98,7 +98,8 @@ type ClaimStore interface {
 	// tx so the business layer can consume the claim. Used by the
 	// complete_upload (and synchronous single-shot upload) paths once
 	// the underlying object is finalized. Returns ErrClaimNotFound when
-	// no row matches id.
+	// no row matches id. An expired-but-finalized pending claim may still
+	// be recovered by the claim sweeper with this method.
 	MarkUploaded(ctx context.Context, tx orm.DB, id string) error
 
 	// Get returns the claim by ID, or ErrClaimNotFound.
