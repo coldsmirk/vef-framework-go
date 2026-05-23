@@ -1,6 +1,9 @@
 package shared
 
-import "github.com/coldsmirk/vef-framework-go/result"
+import (
+	"github.com/coldsmirk/vef-framework-go/i18n"
+	"github.com/coldsmirk/vef-framework-go/result"
+)
 
 // Error codes for the approval module (40xxx range).
 const (
@@ -51,66 +54,70 @@ const (
 	ErrCodeInstanceNotRunning = 40702
 )
 
-// Error definitions.
+// Error definitions. Messages are resolved through i18n at package
+// init time using the language selected by VEF_I18N_LANGUAGE.
+//
+// These are sentinel values — callers use errors.Is to recognize them,
+// so the Error value must remain stable. Switching i18n language at
+// runtime (e.g. via i18n.SetLanguage in tests) will not update these
+// frozen messages; new translations only take effect on process restart.
 var (
-	ErrFlowNotFound       = result.Err("流程不存在", result.WithCode(ErrCodeFlowNotFound))
-	ErrFlowNotActive      = result.Err("流程未激活", result.WithCode(ErrCodeFlowNotActive))
-	ErrNoPublishedVersion = result.Err("无已发布版本", result.WithCode(ErrCodeNoPublishedVersion))
-	ErrVersionNotDraft    = result.Err("版本非草稿状态", result.WithCode(ErrCodeVersionNotDraft))
-	ErrInvalidFlowDesign  = result.Err("流程设计无效", result.WithCode(ErrCodeInvalidFlowDesign))
-	ErrFlowCodeExists     = result.Err("流程编码已存在", result.WithCode(ErrCodeFlowCodeExists))
-	ErrVersionNotFound    = result.Err("流程版本不存在", result.WithCode(ErrCodeVersionNotFound))
+	ErrFlowNotFound       = result.Err(i18n.T(ErrMessageFlowNotFound), result.WithCode(ErrCodeFlowNotFound))
+	ErrFlowNotActive      = result.Err(i18n.T(ErrMessageFlowNotActive), result.WithCode(ErrCodeFlowNotActive))
+	ErrNoPublishedVersion = result.Err(i18n.T(ErrMessageNoPublishedVersion), result.WithCode(ErrCodeNoPublishedVersion))
+	ErrVersionNotDraft    = result.Err(i18n.T(ErrMessageVersionNotDraft), result.WithCode(ErrCodeVersionNotDraft))
+	ErrInvalidFlowDesign  = result.Err(i18n.T(ErrMessageInvalidFlowDesign), result.WithCode(ErrCodeInvalidFlowDesign))
+	ErrFlowCodeExists     = result.Err(i18n.T(ErrMessageFlowCodeExists), result.WithCode(ErrCodeFlowCodeExists))
+	ErrVersionNotFound    = result.Err(i18n.T(ErrMessageVersionNotFound), result.WithCode(ErrCodeVersionNotFound))
 	// ErrInvalidBusinessIdentifier rejects business_table / pk / status /
 	// title field values that do not match a strict SQL-identifier regex.
 	// Flow definitions interpolate these into UPDATE statements at runtime
 	// so accepting arbitrary user input would open a SQL injection vector.
 	ErrInvalidBusinessIdentifier = result.Err(
-		"业务表名或字段名不合法，必须匹配 ^[A-Za-z_][A-Za-z0-9_]{0,62}$",
+		i18n.T(ErrMessageInvalidBusinessIdentifier),
 		result.WithCode(ErrCodeInvalidBusinessIdentifier),
 	)
 
-	ErrInstanceNotFound          = result.Err("审批实例不存在", result.WithCode(ErrCodeInstanceNotFound))
-	ErrInstanceCompleted         = result.Err("审批实例已结束", result.WithCode(ErrCodeInstanceCompleted))
-	ErrNotAllowedInitiate        = result.Err("无权发起此流程", result.WithCode(ErrCodeNotAllowedInitiate))
-	ErrWithdrawNotAllowed        = result.Err("当前状态不允许撤回", result.WithCode(ErrCodeWithdrawNotAllowed))
-	ErrResubmitNotAllowed        = result.Err("当前状态不允许重新提交", result.WithCode(ErrCodeResubmitNotAllowed))
-	ErrInvalidInstanceTransition = result.Err("非法的实例状态转换", result.WithCode(ErrCodeInvalidInstanceTransition))
+	ErrInstanceNotFound          = result.Err(i18n.T(ErrMessageInstanceNotFound), result.WithCode(ErrCodeInstanceNotFound))
+	ErrInstanceCompleted         = result.Err(i18n.T(ErrMessageInstanceCompleted), result.WithCode(ErrCodeInstanceCompleted))
+	ErrNotAllowedInitiate        = result.Err(i18n.T(ErrMessageNotAllowedInitiate), result.WithCode(ErrCodeNotAllowedInitiate))
+	ErrWithdrawNotAllowed        = result.Err(i18n.T(ErrMessageWithdrawNotAllowed), result.WithCode(ErrCodeWithdrawNotAllowed))
+	ErrResubmitNotAllowed        = result.Err(i18n.T(ErrMessageResubmitNotAllowed), result.WithCode(ErrCodeResubmitNotAllowed))
+	ErrInvalidInstanceTransition = result.Err(i18n.T(ErrMessageInvalidInstanceTransition), result.WithCode(ErrCodeInvalidInstanceTransition))
 
-	ErrTaskNotFound             = result.Err("任务不存在", result.WithCode(ErrCodeTaskNotFound))
-	ErrTaskNotPending           = result.Err("任务非待处理状态", result.WithCode(ErrCodeTaskNotPending))
-	ErrNotAssignee              = result.Err("非任务审批人", result.WithCode(ErrCodeNotAssignee))
-	ErrInvalidTaskTransition    = result.Err("非法的任务状态转换", result.WithCode(ErrCodeInvalidTaskTransition))
-	ErrRollbackNotAllowed       = result.Err("当前节点不允许回退", result.WithCode(ErrCodeRollbackNotAllowed))
-	ErrAddAssigneeNotAllowed    = result.Err("当前节点不允许加签", result.WithCode(ErrCodeAddAssigneeNotAllowed))
-	ErrTransferNotAllowed       = result.Err("当前节点不允许转交", result.WithCode(ErrCodeTransferNotAllowed))
-	ErrOpinionRequired          = result.Err("审批意见必填", result.WithCode(ErrCodeOpinionRequired))
-	ErrManualCcNotAllowed       = result.Err("当前节点不允许手动抄送", result.WithCode(ErrCodeManualCcNotAllowed))
-	ErrRemoveAssigneeNotAllowed = result.Err("当前节点不允许减签", result.WithCode(ErrCodeRemoveAssigneeNotAllowed))
-	ErrInvalidAddAssigneeType   = result.Err("非法的加签类型", result.WithCode(ErrCodeInvalidAddAssigneeType))
-	ErrNotApplicant             = result.Err("非审批发起人，无权操作", result.WithCode(ErrCodeNotApplicant))
-	ErrInvalidRollbackTarget    = result.Err("非法的回退目标节点", result.WithCode(ErrCodeInvalidRollbackTarget))
-	ErrLastAssigneeRemoval      = result.Err("无法移除最后一个有效审批人", result.WithCode(ErrCodeLastAssigneeRemoval))
-	ErrInvalidTransferTarget    = result.Err("非法的转交目标审批人", result.WithCode(ErrCodeInvalidTransferTarget))
+	ErrTaskNotFound             = result.Err(i18n.T(ErrMessageTaskNotFound), result.WithCode(ErrCodeTaskNotFound))
+	ErrTaskNotPending           = result.Err(i18n.T(ErrMessageTaskNotPending), result.WithCode(ErrCodeTaskNotPending))
+	ErrNotAssignee              = result.Err(i18n.T(ErrMessageNotAssignee), result.WithCode(ErrCodeNotAssignee))
+	ErrInvalidTaskTransition    = result.Err(i18n.T(ErrMessageInvalidTaskTransition), result.WithCode(ErrCodeInvalidTaskTransition))
+	ErrRollbackNotAllowed       = result.Err(i18n.T(ErrMessageRollbackNotAllowed), result.WithCode(ErrCodeRollbackNotAllowed))
+	ErrAddAssigneeNotAllowed    = result.Err(i18n.T(ErrMessageAddAssigneeNotAllowed), result.WithCode(ErrCodeAddAssigneeNotAllowed))
+	ErrTransferNotAllowed       = result.Err(i18n.T(ErrMessageTransferNotAllowed), result.WithCode(ErrCodeTransferNotAllowed))
+	ErrOpinionRequired          = result.Err(i18n.T(ErrMessageOpinionRequired), result.WithCode(ErrCodeOpinionRequired))
+	ErrManualCcNotAllowed       = result.Err(i18n.T(ErrMessageManualCcNotAllowed), result.WithCode(ErrCodeManualCcNotAllowed))
+	ErrRemoveAssigneeNotAllowed = result.Err(i18n.T(ErrMessageRemoveAssigneeNotAllowed), result.WithCode(ErrCodeRemoveAssigneeNotAllowed))
+	ErrInvalidAddAssigneeType   = result.Err(i18n.T(ErrMessageInvalidAddAssigneeType), result.WithCode(ErrCodeInvalidAddAssigneeType))
+	ErrNotApplicant             = result.Err(i18n.T(ErrMessageNotApplicant), result.WithCode(ErrCodeNotApplicant))
+	ErrInvalidRollbackTarget    = result.Err(i18n.T(ErrMessageInvalidRollbackTarget), result.WithCode(ErrCodeInvalidRollbackTarget))
+	ErrLastAssigneeRemoval      = result.Err(i18n.T(ErrMessageLastAssigneeRemoval), result.WithCode(ErrCodeLastAssigneeRemoval))
+	ErrInvalidTransferTarget    = result.Err(i18n.T(ErrMessageInvalidTransferTarget), result.WithCode(ErrCodeInvalidTransferTarget))
 
-	ErrNoAssignee            = result.Err("无可用审批人", result.WithCode(ErrCodeNoAssignee))
-	ErrAssigneeResolveFailed = result.Err("解析审批人失败", result.WithCode(ErrCodeAssigneeResolveFailed))
+	ErrNoAssignee            = result.Err(i18n.T(ErrMessageNoAssignee), result.WithCode(ErrCodeNoAssignee))
+	ErrAssigneeResolveFailed = result.Err(i18n.T(ErrMessageAssigneeResolveFailed), result.WithCode(ErrCodeAssigneeResolveFailed))
 
-	ErrFormValidationFailed = result.Err("表单验证失败", result.WithCode(ErrCodeFormValidationFailed))
-	ErrFieldNotEditable     = result.Err("字段不可编辑", result.WithCode(ErrCodeFieldNotEditable))
+	ErrFormValidationFailed = result.Err(i18n.T(ErrMessageFormValidationFailed), result.WithCode(ErrCodeFormValidationFailed))
+	ErrFieldNotEditable     = result.Err(i18n.T(ErrMessageFieldNotEditable), result.WithCode(ErrCodeFieldNotEditable))
 	// ErrFormDataTooLarge rejects submissions whose JSON-encoded form data
 	// would exceed FormDataMaxBytes. Stops malicious clients from blowing
 	// up the JSONB column or driving the runtime into OOM via deeply
 	// nested or massive maps.
 	ErrFormDataTooLarge = result.Err(
-		"表单数据超过最大允许大小",
+		i18n.T(ErrMessageFormDataTooLarge),
 		result.WithCode(ErrCodeFormValidationFailed),
 	)
 
-	ErrDelegationNotFound = result.Err("委托记录不存在", result.WithCode(ErrCodeDelegationNotFound))
-	ErrDelegationConflict = result.Err("委托时间段冲突", result.WithCode(ErrCodeDelegationConflict))
+	ErrDelegationNotFound = result.Err(i18n.T(ErrMessageDelegationNotFound), result.WithCode(ErrCodeDelegationNotFound))
+	ErrDelegationConflict = result.Err(i18n.T(ErrMessageDelegationConflict), result.WithCode(ErrCodeDelegationConflict))
 
-	ErrUrgeCooldown = result.Err("催办冷却中，请稍后再试", result.WithCode(ErrCodeUrgeCooldown))
-
-	ErrAccessDenied       = result.Err("无权访问此审批实例", result.WithCode(ErrCodeAccessDenied))
-	ErrInstanceNotRunning = result.Err("实例非运行状态，无法操作", result.WithCode(ErrCodeInstanceNotRunning))
+	ErrAccessDenied       = result.Err(i18n.T(ErrMessageAccessDenied), result.WithCode(ErrCodeAccessDenied))
+	ErrInstanceNotRunning = result.Err(i18n.T(ErrMessageInstanceNotRunning), result.WithCode(ErrCodeInstanceNotRunning))
 )

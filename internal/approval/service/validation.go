@@ -12,6 +12,7 @@ import (
 	collections "github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -73,7 +74,7 @@ func (*ValidationService) ValidateFormData(schema *approval.FormDefinition, form
 
 	for key := range formData {
 		if _, ok := fieldByKey[key]; !ok {
-			return newFormValidationError(fmt.Sprintf("字段 %s 未在表单定义中", key))
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldNotDefined, map[string]any{"field": key}))
 		}
 	}
 
@@ -81,7 +82,7 @@ func (*ValidationService) ValidateFormData(schema *approval.FormDefinition, form
 		value, exists := formData[field.Key]
 		if !exists || isEmptyFormValue(value) {
 			if field.IsRequired {
-				return newFormValidationError(fmt.Sprintf("字段 %s 为必填项", fieldLabel(field)))
+				return newFormValidationError(i18n.T(shared.ErrMessageFormFieldRequired, map[string]any{"field": fieldLabel(field)}))
 			}
 
 			continue
@@ -187,7 +188,7 @@ func validateFormField(field approval.FormFieldDefinition, value any) error {
 	case approval.FieldInput, approval.FieldTextarea, approval.FieldDate:
 		text, ok := value.(string)
 		if !ok {
-			return newFormValidationError(fmt.Sprintf("字段 %s 类型无效，应为字符串", fieldLabel(field)))
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMustBeString, map[string]any{"field": fieldLabel(field)}))
 		}
 
 		return validateStringRule(field, text)
@@ -198,7 +199,7 @@ func validateFormField(field approval.FormFieldDefinition, value any) error {
 	case approval.FieldNumber:
 		number, ok := toFloat64(value)
 		if !ok {
-			return newFormValidationError(fmt.Sprintf("字段 %s 类型无效，应为数字", fieldLabel(field)))
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMustBeNumber, map[string]any{"field": fieldLabel(field)}))
 		}
 
 		return validateNumberRule(field, number)
@@ -217,21 +218,27 @@ func validateStringRule(field approval.FormFieldDefinition, value string) error 
 	}
 
 	if field.Validation.MinLength != nil && len(value) < *field.Validation.MinLength {
-		return newFormValidationError(fmt.Sprintf("字段 %s 长度不能小于 %d", fieldLabel(field), *field.Validation.MinLength))
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMinLength, map[string]any{
+			"field": fieldLabel(field),
+			"min":   *field.Validation.MinLength,
+		}))
 	}
 
 	if field.Validation.MaxLength != nil && len(value) > *field.Validation.MaxLength {
-		return newFormValidationError(fmt.Sprintf("字段 %s 长度不能大于 %d", fieldLabel(field), *field.Validation.MaxLength))
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMaxLength, map[string]any{
+			"field": fieldLabel(field),
+			"max":   *field.Validation.MaxLength,
+		}))
 	}
 
 	if field.Validation.Pattern != "" {
 		matched, err := regexp.MatchString(field.Validation.Pattern, value)
 		if err != nil {
-			return newFormValidationError(fmt.Sprintf("字段 %s 校验规则无效", fieldLabel(field)))
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldInvalidValidation, map[string]any{"field": fieldLabel(field)}))
 		}
 
 		if !matched {
-			return newFormValidationError(validationMessage(field, fmt.Sprintf("字段 %s 格式不正确", fieldLabel(field))))
+			return newFormValidationError(validationMessage(field, i18n.T(shared.ErrMessageFormFieldPatternMismatch, map[string]any{"field": fieldLabel(field)})))
 		}
 	}
 
@@ -244,11 +251,17 @@ func validateNumberRule(field approval.FormFieldDefinition, value float64) error
 	}
 
 	if field.Validation.Min != nil && value < *field.Validation.Min {
-		return newFormValidationError(fmt.Sprintf("字段 %s 不能小于 %v", fieldLabel(field), *field.Validation.Min))
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMinValue, map[string]any{
+			"field": fieldLabel(field),
+			"min":   *field.Validation.Min,
+		}))
 	}
 
 	if field.Validation.Max != nil && value > *field.Validation.Max {
-		return newFormValidationError(fmt.Sprintf("字段 %s 不能大于 %v", fieldLabel(field), *field.Validation.Max))
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMaxValue, map[string]any{
+			"field": fieldLabel(field),
+			"max":   *field.Validation.Max,
+		}))
 	}
 
 	return nil
@@ -258,34 +271,34 @@ func validateUploadField(field approval.FormFieldDefinition, value any) error {
 	switch files := value.(type) {
 	case string:
 		if strings.TrimSpace(files) == "" {
-			return newFormValidationError(fmt.Sprintf("字段 %s 不能为空", fieldLabel(field)))
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldEmpty, map[string]any{"field": fieldLabel(field)}))
 		}
 
 		return nil
 
 	case []string:
 		if len(files) == 0 {
-			return newFormValidationError(fmt.Sprintf("字段 %s 不能为空", fieldLabel(field)))
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldEmpty, map[string]any{"field": fieldLabel(field)}))
 		}
 
 		return nil
 
 	case []any:
 		if len(files) == 0 {
-			return newFormValidationError(fmt.Sprintf("字段 %s 不能为空", fieldLabel(field)))
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldEmpty, map[string]any{"field": fieldLabel(field)}))
 		}
 
 		for _, item := range files {
 			text, ok := item.(string)
 			if !ok || strings.TrimSpace(text) == "" {
-				return newFormValidationError(fmt.Sprintf("字段 %s 包含无效文件项", fieldLabel(field)))
+				return newFormValidationError(i18n.T(shared.ErrMessageFormFieldInvalidFileItem, map[string]any{"field": fieldLabel(field)}))
 			}
 		}
 
 		return nil
 
 	default:
-		return newFormValidationError(fmt.Sprintf("字段 %s 类型无效，应为文件字符串或文件数组", fieldLabel(field)))
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMustBeFile, map[string]any{"field": fieldLabel(field)}))
 	}
 }
 
@@ -301,7 +314,7 @@ func validateSelectField(field approval.FormFieldDefinition, value any) error {
 		}
 
 		if !allowedValues.Contains(fmt.Sprint(item)) {
-			return newFormValidationError(fmt.Sprintf("字段 %s 取值无效", fieldLabel(field)))
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldInvalidValue, map[string]any{"field": fieldLabel(field)}))
 		}
 
 		return nil

@@ -7,6 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -110,8 +111,8 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 	}
 
 	if existingCount > 0 {
-		return cqrs.Unit{}, result.Errf(
-			"催办操作过于频繁，请 %d 分钟后再试", cooldownMinutes,
+		return cqrs.Unit{}, result.Err(
+			i18n.T(shared.ErrMessageUrgeTooFrequent, map[string]any{"minutes": cooldownMinutes}),
 			result.WithCode(shared.ErrCodeUrgeCooldown),
 		)
 	}
