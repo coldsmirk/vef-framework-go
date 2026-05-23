@@ -22,20 +22,20 @@ CREATE TABLE IF NOT EXISTS apv_flow_category (
         REFERENCES apv_flow_category(id) ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE apv_flow_category IS '流程分类';
-COMMENT ON COLUMN apv_flow_category.id IS '主键';
-COMMENT ON COLUMN apv_flow_category.created_at IS '创建时间';
-COMMENT ON COLUMN apv_flow_category.updated_at IS '更新时间';
-COMMENT ON COLUMN apv_flow_category.created_by IS '创建人ID';
-COMMENT ON COLUMN apv_flow_category.updated_by IS '更新人ID';
-COMMENT ON COLUMN apv_flow_category.tenant_id IS '租户ID';
-COMMENT ON COLUMN apv_flow_category.code IS '分类编码';
-COMMENT ON COLUMN apv_flow_category.name IS '分类名称';
-COMMENT ON COLUMN apv_flow_category.icon IS '分类图标';
-COMMENT ON COLUMN apv_flow_category.parent_id IS '父分类ID';
-COMMENT ON COLUMN apv_flow_category.sort_order IS '排序';
-COMMENT ON COLUMN apv_flow_category.is_active IS '是否启用';
-COMMENT ON COLUMN apv_flow_category.remark IS '备注';
+COMMENT ON TABLE apv_flow_category IS 'Flow Category';
+COMMENT ON COLUMN apv_flow_category.id IS 'ID';
+COMMENT ON COLUMN apv_flow_category.created_at IS 'Created';
+COMMENT ON COLUMN apv_flow_category.updated_at IS 'Updated';
+COMMENT ON COLUMN apv_flow_category.created_by IS 'Creator';
+COMMENT ON COLUMN apv_flow_category.updated_by IS 'Updater';
+COMMENT ON COLUMN apv_flow_category.tenant_id IS 'Tenant';
+COMMENT ON COLUMN apv_flow_category.code IS 'Code';
+COMMENT ON COLUMN apv_flow_category.name IS 'Name';
+COMMENT ON COLUMN apv_flow_category.icon IS 'Icon';
+COMMENT ON COLUMN apv_flow_category.parent_id IS 'Parent';
+COMMENT ON COLUMN apv_flow_category.sort_order IS 'Sort';
+COMMENT ON COLUMN apv_flow_category.is_active IS 'Active';
+COMMENT ON COLUMN apv_flow_category.remark IS 'Remark';
 
 CREATE INDEX idx_apv_flow_category__tenant_id ON apv_flow_category(tenant_id);
 CREATE INDEX idx_apv_flow_category__parent_id ON apv_flow_category(parent_id);
@@ -71,28 +71,28 @@ CREATE TABLE IF NOT EXISTS apv_flow (
         REFERENCES apv_flow_category(id) ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE apv_flow IS '流程定义';
-COMMENT ON COLUMN apv_flow.id IS '主键';
-COMMENT ON COLUMN apv_flow.created_at IS '创建时间';
-COMMENT ON COLUMN apv_flow.updated_at IS '更新时间';
-COMMENT ON COLUMN apv_flow.created_by IS '创建人ID';
-COMMENT ON COLUMN apv_flow.updated_by IS '更新人ID';
-COMMENT ON COLUMN apv_flow.tenant_id IS '租户ID';
-COMMENT ON COLUMN apv_flow.category_id IS '分类ID';
-COMMENT ON COLUMN apv_flow.code IS '流程编码';
-COMMENT ON COLUMN apv_flow.name IS '流程名称';
-COMMENT ON COLUMN apv_flow.icon IS '流程图标';
-COMMENT ON COLUMN apv_flow.description IS '描述';
-COMMENT ON COLUMN apv_flow.binding_mode IS '数据绑定模式';
-COMMENT ON COLUMN apv_flow.business_table IS '业务表名';
-COMMENT ON COLUMN apv_flow.business_pk_field IS '业务表主键字段';
-COMMENT ON COLUMN apv_flow.business_title_field IS '标题字段映射';
-COMMENT ON COLUMN apv_flow.business_status_field IS '状态字段映射';
-COMMENT ON COLUMN apv_flow.admin_user_ids IS '流程管理员ID';
-COMMENT ON COLUMN apv_flow.is_all_initiation_allowed IS '是否允许所有人发起';
-COMMENT ON COLUMN apv_flow.instance_title_template IS '实例标题模板';
-COMMENT ON COLUMN apv_flow.is_active IS '是否启用';
-COMMENT ON COLUMN apv_flow.current_version IS '当前版本号';
+COMMENT ON TABLE apv_flow IS 'Flow';
+COMMENT ON COLUMN apv_flow.id IS 'ID';
+COMMENT ON COLUMN apv_flow.created_at IS 'Created';
+COMMENT ON COLUMN apv_flow.updated_at IS 'Updated';
+COMMENT ON COLUMN apv_flow.created_by IS 'Creator';
+COMMENT ON COLUMN apv_flow.updated_by IS 'Updater';
+COMMENT ON COLUMN apv_flow.tenant_id IS 'Tenant';
+COMMENT ON COLUMN apv_flow.category_id IS 'Category';
+COMMENT ON COLUMN apv_flow.code IS 'Code';
+COMMENT ON COLUMN apv_flow.name IS 'Name';
+COMMENT ON COLUMN apv_flow.icon IS 'Icon';
+COMMENT ON COLUMN apv_flow.description IS 'Description';
+COMMENT ON COLUMN apv_flow.binding_mode IS 'Binding Mode';
+COMMENT ON COLUMN apv_flow.business_table IS 'Biz Table';
+COMMENT ON COLUMN apv_flow.business_pk_field IS 'Biz PK';
+COMMENT ON COLUMN apv_flow.business_title_field IS 'Title Field';
+COMMENT ON COLUMN apv_flow.business_status_field IS 'Status Field';
+COMMENT ON COLUMN apv_flow.admin_user_ids IS 'Admins';
+COMMENT ON COLUMN apv_flow.is_all_initiation_allowed IS 'Open Start';
+COMMENT ON COLUMN apv_flow.instance_title_template IS 'Title Template';
+COMMENT ON COLUMN apv_flow.is_active IS 'Active';
+COMMENT ON COLUMN apv_flow.current_version IS 'Version';
 
 CREATE INDEX idx_apv_flow__category_id ON apv_flow(category_id);
 CREATE INDEX idx_apv_flow__tenant_id ON apv_flow(tenant_id);
@@ -106,11 +106,11 @@ CREATE TABLE IF NOT EXISTS apv_flow_initiator (
     CONSTRAINT fk_apv_flow_initiator__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE apv_flow_initiator IS '流程发起人';
-COMMENT ON COLUMN apv_flow_initiator.id IS '主键';
-COMMENT ON COLUMN apv_flow_initiator.flow_id IS '流程ID';
-COMMENT ON COLUMN apv_flow_initiator.kind IS '发起人类型';
-COMMENT ON COLUMN apv_flow_initiator.ids IS '发起人ID';
+COMMENT ON TABLE apv_flow_initiator IS 'Initiator';
+COMMENT ON COLUMN apv_flow_initiator.id IS 'ID';
+COMMENT ON COLUMN apv_flow_initiator.flow_id IS 'Flow';
+COMMENT ON COLUMN apv_flow_initiator.kind IS 'Kind';
+COMMENT ON COLUMN apv_flow_initiator.ids IS 'Subjects';
 
 CREATE INDEX idx_apv_flow_initiator__flow_id ON apv_flow_initiator(flow_id);
 
@@ -137,21 +137,21 @@ CREATE TABLE IF NOT EXISTS apv_flow_version (
     CONSTRAINT fk_apv_flow_version__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE apv_flow_version IS '流程版本';
-COMMENT ON COLUMN apv_flow_version.id IS '主键';
-COMMENT ON COLUMN apv_flow_version.created_at IS '创建时间';
-COMMENT ON COLUMN apv_flow_version.updated_at IS '更新时间';
-COMMENT ON COLUMN apv_flow_version.created_by IS '创建人ID';
-COMMENT ON COLUMN apv_flow_version.updated_by IS '更新人ID';
-COMMENT ON COLUMN apv_flow_version.flow_id IS '流程ID';
-COMMENT ON COLUMN apv_flow_version.version IS '版本号';
-COMMENT ON COLUMN apv_flow_version.status IS '版本状态';
-COMMENT ON COLUMN apv_flow_version.description IS '版本描述';
-COMMENT ON COLUMN apv_flow_version.storage_mode IS '表单存储模式';
-COMMENT ON COLUMN apv_flow_version.flow_schema IS '流程结构定义';
-COMMENT ON COLUMN apv_flow_version.form_schema IS '表单结构定义';
-COMMENT ON COLUMN apv_flow_version.published_at IS '发布时间';
-COMMENT ON COLUMN apv_flow_version.published_by IS '发布人ID';
+COMMENT ON TABLE apv_flow_version IS 'Version';
+COMMENT ON COLUMN apv_flow_version.id IS 'ID';
+COMMENT ON COLUMN apv_flow_version.created_at IS 'Created';
+COMMENT ON COLUMN apv_flow_version.updated_at IS 'Updated';
+COMMENT ON COLUMN apv_flow_version.created_by IS 'Creator';
+COMMENT ON COLUMN apv_flow_version.updated_by IS 'Updater';
+COMMENT ON COLUMN apv_flow_version.flow_id IS 'Flow';
+COMMENT ON COLUMN apv_flow_version.version IS 'Version';
+COMMENT ON COLUMN apv_flow_version.status IS 'Status';
+COMMENT ON COLUMN apv_flow_version.description IS 'Description';
+COMMENT ON COLUMN apv_flow_version.storage_mode IS 'Storage Mode';
+COMMENT ON COLUMN apv_flow_version.flow_schema IS 'Flow Schema';
+COMMENT ON COLUMN apv_flow_version.form_schema IS 'Form Schema';
+COMMENT ON COLUMN apv_flow_version.published_at IS 'Published';
+COMMENT ON COLUMN apv_flow_version.published_by IS 'Publisher';
 
 CREATE INDEX idx_apv_flow_version__flow_id_status ON apv_flow_version(flow_id, status);
 -- Ensure at most one published version per flow
@@ -209,43 +209,43 @@ CREATE TABLE IF NOT EXISTS apv_flow_node (
     CONSTRAINT fk_apv_flow_node__flow_version_id FOREIGN KEY (flow_version_id) REFERENCES apv_flow_version(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE apv_flow_node IS '流程节点';
-COMMENT ON COLUMN apv_flow_node.id IS '主键';
-COMMENT ON COLUMN apv_flow_node.created_at IS '创建时间';
-COMMENT ON COLUMN apv_flow_node.updated_at IS '更新时间';
-COMMENT ON COLUMN apv_flow_node.created_by IS '创建人ID';
-COMMENT ON COLUMN apv_flow_node.updated_by IS '更新人ID';
-COMMENT ON COLUMN apv_flow_node.flow_version_id IS '流程版本ID';
-COMMENT ON COLUMN apv_flow_node.key IS '节点标识';
-COMMENT ON COLUMN apv_flow_node.kind IS '节点类型';
-COMMENT ON COLUMN apv_flow_node.name IS '节点名称';
-COMMENT ON COLUMN apv_flow_node.description IS '节点描述';
-COMMENT ON COLUMN apv_flow_node.execution_type IS '执行类型';
-COMMENT ON COLUMN apv_flow_node.approval_method IS '审批方式';
-COMMENT ON COLUMN apv_flow_node.pass_rule IS '通过规则';
-COMMENT ON COLUMN apv_flow_node.pass_ratio IS '通过比例';
-COMMENT ON COLUMN apv_flow_node.empty_assignee_action IS '无处理人时处理方式';
-COMMENT ON COLUMN apv_flow_node.fallback_user_ids IS '备选处理人ID';
-COMMENT ON COLUMN apv_flow_node.admin_user_ids IS '审批管理员ID';
-COMMENT ON COLUMN apv_flow_node.same_applicant_action IS '审批人与提交人同一人时处理方式';
-COMMENT ON COLUMN apv_flow_node.is_rollback_allowed IS '是否允许回退';
-COMMENT ON COLUMN apv_flow_node.rollback_type IS '回退方式';
-COMMENT ON COLUMN apv_flow_node.rollback_data_strategy IS '回退时表单数据策略';
-COMMENT ON COLUMN apv_flow_node.rollback_target_keys IS '指定回退目标节点Key列表';
-COMMENT ON COLUMN apv_flow_node.is_add_assignee_allowed IS '是否允许动态添加审批人';
-COMMENT ON COLUMN apv_flow_node.add_assignee_types IS '动态添加审批人的方式';
-COMMENT ON COLUMN apv_flow_node.is_remove_assignee_allowed IS '是否允许移除审批人';
-COMMENT ON COLUMN apv_flow_node.field_permissions IS '字段权限配置';
-COMMENT ON COLUMN apv_flow_node.is_manual_cc_allowed IS '是否允许处理时手动指定抄送人';
-COMMENT ON COLUMN apv_flow_node.is_transfer_allowed IS '是否允许转交';
-COMMENT ON COLUMN apv_flow_node.is_opinion_required IS '是否必填审批意见';
-COMMENT ON COLUMN apv_flow_node.timeout_hours IS '超时时间';
-COMMENT ON COLUMN apv_flow_node.timeout_action IS '超时动作';
-COMMENT ON COLUMN apv_flow_node.timeout_notify_before_hours IS '超时通知的提前小时数';
-COMMENT ON COLUMN apv_flow_node.urge_cooldown_minutes IS '催办冷却时间';
-COMMENT ON COLUMN apv_flow_node.consecutive_approver_action IS '相邻审批节点同一审批人处理方式';
-COMMENT ON COLUMN apv_flow_node.is_read_confirm_required IS '是否需要全员已阅后才继续';
-COMMENT ON COLUMN apv_flow_node.branches IS '条件分支配置';
+COMMENT ON TABLE apv_flow_node IS 'Node';
+COMMENT ON COLUMN apv_flow_node.id IS 'ID';
+COMMENT ON COLUMN apv_flow_node.created_at IS 'Created';
+COMMENT ON COLUMN apv_flow_node.updated_at IS 'Updated';
+COMMENT ON COLUMN apv_flow_node.created_by IS 'Creator';
+COMMENT ON COLUMN apv_flow_node.updated_by IS 'Updater';
+COMMENT ON COLUMN apv_flow_node.flow_version_id IS 'Version';
+COMMENT ON COLUMN apv_flow_node.key IS 'Key';
+COMMENT ON COLUMN apv_flow_node.kind IS 'Kind';
+COMMENT ON COLUMN apv_flow_node.name IS 'Name';
+COMMENT ON COLUMN apv_flow_node.description IS 'Description';
+COMMENT ON COLUMN apv_flow_node.execution_type IS 'Exec Type';
+COMMENT ON COLUMN apv_flow_node.approval_method IS 'Method';
+COMMENT ON COLUMN apv_flow_node.pass_rule IS 'Pass Rule';
+COMMENT ON COLUMN apv_flow_node.pass_ratio IS 'Pass Ratio';
+COMMENT ON COLUMN apv_flow_node.empty_assignee_action IS 'Empty Action';
+COMMENT ON COLUMN apv_flow_node.fallback_user_ids IS 'Fallbacks';
+COMMENT ON COLUMN apv_flow_node.admin_user_ids IS 'Admins';
+COMMENT ON COLUMN apv_flow_node.same_applicant_action IS 'Self Action';
+COMMENT ON COLUMN apv_flow_node.is_rollback_allowed IS 'Rollback';
+COMMENT ON COLUMN apv_flow_node.rollback_type IS 'Rollback Type';
+COMMENT ON COLUMN apv_flow_node.rollback_data_strategy IS 'Rollback Data';
+COMMENT ON COLUMN apv_flow_node.rollback_target_keys IS 'Rollback Targets';
+COMMENT ON COLUMN apv_flow_node.is_add_assignee_allowed IS 'Add Allowed';
+COMMENT ON COLUMN apv_flow_node.add_assignee_types IS 'Add Types';
+COMMENT ON COLUMN apv_flow_node.is_remove_assignee_allowed IS 'Remove Allowed';
+COMMENT ON COLUMN apv_flow_node.field_permissions IS 'Field Perms';
+COMMENT ON COLUMN apv_flow_node.is_manual_cc_allowed IS 'Manual CC';
+COMMENT ON COLUMN apv_flow_node.is_transfer_allowed IS 'Transfer';
+COMMENT ON COLUMN apv_flow_node.is_opinion_required IS 'Opinion';
+COMMENT ON COLUMN apv_flow_node.timeout_hours IS 'Timeout';
+COMMENT ON COLUMN apv_flow_node.timeout_action IS 'Timeout Action';
+COMMENT ON COLUMN apv_flow_node.timeout_notify_before_hours IS 'Notify Before';
+COMMENT ON COLUMN apv_flow_node.urge_cooldown_minutes IS 'Urge Cooldown';
+COMMENT ON COLUMN apv_flow_node.consecutive_approver_action IS 'Consecutive';
+COMMENT ON COLUMN apv_flow_node.is_read_confirm_required IS 'Read Confirm';
+COMMENT ON COLUMN apv_flow_node.branches IS 'Branches';
 
 -- Node assignee config
 CREATE TABLE IF NOT EXISTS apv_flow_node_assignee (
@@ -258,13 +258,13 @@ CREATE TABLE IF NOT EXISTS apv_flow_node_assignee (
     CONSTRAINT fk_apv_flow_node_assignee__node_id FOREIGN KEY (node_id) REFERENCES apv_flow_node(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE apv_flow_node_assignee IS '节点处理人';
-COMMENT ON COLUMN apv_flow_node_assignee.id IS '主键';
-COMMENT ON COLUMN apv_flow_node_assignee.node_id IS '节点ID';
-COMMENT ON COLUMN apv_flow_node_assignee.kind IS '处理人类型';
-COMMENT ON COLUMN apv_flow_node_assignee.ids IS '处理人ID';
-COMMENT ON COLUMN apv_flow_node_assignee.form_field IS '表单字段';
-COMMENT ON COLUMN apv_flow_node_assignee.sort_order IS '排序';
+COMMENT ON TABLE apv_flow_node_assignee IS 'Assignee';
+COMMENT ON COLUMN apv_flow_node_assignee.id IS 'ID';
+COMMENT ON COLUMN apv_flow_node_assignee.node_id IS 'Node';
+COMMENT ON COLUMN apv_flow_node_assignee.kind IS 'Kind';
+COMMENT ON COLUMN apv_flow_node_assignee.ids IS 'Subjects';
+COMMENT ON COLUMN apv_flow_node_assignee.form_field IS 'Form Field';
+COMMENT ON COLUMN apv_flow_node_assignee.sort_order IS 'Sort';
 
 CREATE INDEX idx_apv_flow_node_assignee__node_id ON apv_flow_node_assignee(node_id);
 
@@ -279,13 +279,13 @@ CREATE TABLE IF NOT EXISTS apv_flow_node_cc (
     CONSTRAINT fk_apv_flow_node_cc__node_id FOREIGN KEY (node_id) REFERENCES apv_flow_node(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE apv_flow_node_cc IS '节点抄送人';
-COMMENT ON COLUMN apv_flow_node_cc.id IS '主键';
-COMMENT ON COLUMN apv_flow_node_cc.node_id IS '节点ID';
-COMMENT ON COLUMN apv_flow_node_cc.kind IS '抄送人类型';
-COMMENT ON COLUMN apv_flow_node_cc.ids IS '抄送人ID';
-COMMENT ON COLUMN apv_flow_node_cc.form_field IS '表单字段';
-COMMENT ON COLUMN apv_flow_node_cc.timing IS '抄送时机';
+COMMENT ON TABLE apv_flow_node_cc IS 'Node CC';
+COMMENT ON COLUMN apv_flow_node_cc.id IS 'ID';
+COMMENT ON COLUMN apv_flow_node_cc.node_id IS 'Node';
+COMMENT ON COLUMN apv_flow_node_cc.kind IS 'Kind';
+COMMENT ON COLUMN apv_flow_node_cc.ids IS 'Subjects';
+COMMENT ON COLUMN apv_flow_node_cc.form_field IS 'Form Field';
+COMMENT ON COLUMN apv_flow_node_cc.timing IS 'Timing';
 
 CREATE INDEX idx_apv_flow_node_cc__node_id ON apv_flow_node_cc(node_id);
 
@@ -304,15 +304,15 @@ CREATE TABLE IF NOT EXISTS apv_flow_edge (
     CONSTRAINT fk_apv_flow_edge__target_node_id FOREIGN KEY (target_node_id) REFERENCES apv_flow_node(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE apv_flow_edge IS '流程连线';
-COMMENT ON COLUMN apv_flow_edge.id IS '主键';
-COMMENT ON COLUMN apv_flow_edge.flow_version_id IS '流程版本ID';
-COMMENT ON COLUMN apv_flow_edge.key IS '连线标识';
-COMMENT ON COLUMN apv_flow_edge.source_node_id IS '来源节点ID';
-COMMENT ON COLUMN apv_flow_edge.source_node_key IS '来源节点标识';
-COMMENT ON COLUMN apv_flow_edge.target_node_id IS '目标节点ID';
-COMMENT ON COLUMN apv_flow_edge.target_node_key IS '目标节点标识';
-COMMENT ON COLUMN apv_flow_edge.source_handle IS '来源节点句柄';
+COMMENT ON TABLE apv_flow_edge IS 'Edge';
+COMMENT ON COLUMN apv_flow_edge.id IS 'ID';
+COMMENT ON COLUMN apv_flow_edge.flow_version_id IS 'Version';
+COMMENT ON COLUMN apv_flow_edge.key IS 'Key';
+COMMENT ON COLUMN apv_flow_edge.source_node_id IS 'Source';
+COMMENT ON COLUMN apv_flow_edge.source_node_key IS 'Source Key';
+COMMENT ON COLUMN apv_flow_edge.target_node_id IS 'Target';
+COMMENT ON COLUMN apv_flow_edge.target_node_key IS 'Target Key';
+COMMENT ON COLUMN apv_flow_edge.source_handle IS 'Handle';
 
 CREATE INDEX idx_apv_flow_edge__flow_version_id_source_node_id ON apv_flow_edge(flow_version_id, source_node_id);
 CREATE INDEX idx_apv_flow_edge__source_node_id ON apv_flow_edge(source_node_id);
@@ -339,19 +339,19 @@ CREATE TABLE IF NOT EXISTS apv_flow_form_field (
     CONSTRAINT fk_apv_flow_form_field__flow_version_id FOREIGN KEY (flow_version_id) REFERENCES apv_flow_version(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE apv_flow_form_field IS '流程表单字段';
-COMMENT ON COLUMN apv_flow_form_field.id IS '主键';
-COMMENT ON COLUMN apv_flow_form_field.flow_version_id IS '流程版本ID';
-COMMENT ON COLUMN apv_flow_form_field.name IS '名称';
-COMMENT ON COLUMN apv_flow_form_field.kind IS '类型';
-COMMENT ON COLUMN apv_flow_form_field.label IS '显示名称';
-COMMENT ON COLUMN apv_flow_form_field.placeholder IS '占位提示';
-COMMENT ON COLUMN apv_flow_form_field.default_value IS '默认值';
-COMMENT ON COLUMN apv_flow_form_field.is_required IS '是否必填';
-COMMENT ON COLUMN apv_flow_form_field.is_readonly IS '是否只读';
-COMMENT ON COLUMN apv_flow_form_field.validation IS '校验规则';
-COMMENT ON COLUMN apv_flow_form_field.sort_order IS '显示顺序';
-COMMENT ON COLUMN apv_flow_form_field.meta IS '元信息';
+COMMENT ON TABLE apv_flow_form_field IS 'Form Field';
+COMMENT ON COLUMN apv_flow_form_field.id IS 'ID';
+COMMENT ON COLUMN apv_flow_form_field.flow_version_id IS 'Version';
+COMMENT ON COLUMN apv_flow_form_field.name IS 'Name';
+COMMENT ON COLUMN apv_flow_form_field.kind IS 'Kind';
+COMMENT ON COLUMN apv_flow_form_field.label IS 'Label';
+COMMENT ON COLUMN apv_flow_form_field.placeholder IS 'Placeholder';
+COMMENT ON COLUMN apv_flow_form_field.default_value IS 'Default';
+COMMENT ON COLUMN apv_flow_form_field.is_required IS 'Required';
+COMMENT ON COLUMN apv_flow_form_field.is_readonly IS 'Readonly';
+COMMENT ON COLUMN apv_flow_form_field.validation IS 'Validation';
+COMMENT ON COLUMN apv_flow_form_field.sort_order IS 'Sort';
+COMMENT ON COLUMN apv_flow_form_field.meta IS 'Meta';
 
 --------------------------------------------------------------------------------
 -- Runtime Tables
@@ -387,26 +387,26 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     CONSTRAINT uk_apv_instance__instance_no UNIQUE (instance_no)
 );
 
-COMMENT ON TABLE apv_instance IS '流程实例';
-COMMENT ON COLUMN apv_instance.id IS '主键';
-COMMENT ON COLUMN apv_instance.created_at IS '创建时间';
-COMMENT ON COLUMN apv_instance.updated_at IS '更新时间';
-COMMENT ON COLUMN apv_instance.created_by IS '创建人ID';
-COMMENT ON COLUMN apv_instance.updated_by IS '更新人ID';
-COMMENT ON COLUMN apv_instance.tenant_id IS '租户ID';
-COMMENT ON COLUMN apv_instance.flow_id IS '流程ID';
-COMMENT ON COLUMN apv_instance.flow_version_id IS '流程版本ID';
-COMMENT ON COLUMN apv_instance.title IS '申请标题';
-COMMENT ON COLUMN apv_instance.instance_no IS '实例编号';
-COMMENT ON COLUMN apv_instance.applicant_id IS '申请人ID';
-COMMENT ON COLUMN apv_instance.applicant_name IS '申请人姓名';
-COMMENT ON COLUMN apv_instance.applicant_department_id IS '申请人部门ID';
-COMMENT ON COLUMN apv_instance.applicant_department_name IS '申请人部门名称';
-COMMENT ON COLUMN apv_instance.status IS '实例状态';
-COMMENT ON COLUMN apv_instance.current_node_id IS '当前节点ID';
-COMMENT ON COLUMN apv_instance.finished_at IS '完成时间';
-COMMENT ON COLUMN apv_instance.business_record_id IS '业务记录ID';
-COMMENT ON COLUMN apv_instance.form_data IS '表单数据';
+COMMENT ON TABLE apv_instance IS 'Instance';
+COMMENT ON COLUMN apv_instance.id IS 'ID';
+COMMENT ON COLUMN apv_instance.created_at IS 'Created';
+COMMENT ON COLUMN apv_instance.updated_at IS 'Updated';
+COMMENT ON COLUMN apv_instance.created_by IS 'Creator';
+COMMENT ON COLUMN apv_instance.updated_by IS 'Updater';
+COMMENT ON COLUMN apv_instance.tenant_id IS 'Tenant';
+COMMENT ON COLUMN apv_instance.flow_id IS 'Flow';
+COMMENT ON COLUMN apv_instance.flow_version_id IS 'Version';
+COMMENT ON COLUMN apv_instance.title IS 'Title';
+COMMENT ON COLUMN apv_instance.instance_no IS 'No.';
+COMMENT ON COLUMN apv_instance.applicant_id IS 'Applicant';
+COMMENT ON COLUMN apv_instance.applicant_name IS 'Applicant Name';
+COMMENT ON COLUMN apv_instance.applicant_department_id IS 'Department';
+COMMENT ON COLUMN apv_instance.applicant_department_name IS 'Dept Name';
+COMMENT ON COLUMN apv_instance.status IS 'Status';
+COMMENT ON COLUMN apv_instance.current_node_id IS 'Current Node';
+COMMENT ON COLUMN apv_instance.finished_at IS 'Finished';
+COMMENT ON COLUMN apv_instance.business_record_id IS 'Biz Record';
+COMMENT ON COLUMN apv_instance.form_data IS 'Form Data';
 
 CREATE INDEX idx_apv_instance__tenant_id ON apv_instance(tenant_id);
 CREATE INDEX idx_apv_instance__tenant_id_status_created_at ON apv_instance(tenant_id, status, created_at DESC);
@@ -455,28 +455,28 @@ CREATE TABLE IF NOT EXISTS apv_task (
     CONSTRAINT fk_apv_task__parent_task_id FOREIGN KEY (parent_task_id) REFERENCES apv_task(id) ON DELETE SET NULL ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE apv_task IS '审批任务';
-COMMENT ON COLUMN apv_task.id IS '主键';
-COMMENT ON COLUMN apv_task.created_at IS '创建时间';
-COMMENT ON COLUMN apv_task.updated_at IS '更新时间';
-COMMENT ON COLUMN apv_task.created_by IS '创建人ID';
-COMMENT ON COLUMN apv_task.updated_by IS '更新人ID';
-COMMENT ON COLUMN apv_task.tenant_id IS '租户ID';
-COMMENT ON COLUMN apv_task.instance_id IS '流程实例ID';
-COMMENT ON COLUMN apv_task.node_id IS '节点ID';
-COMMENT ON COLUMN apv_task.assignee_id IS '审批人ID';
-COMMENT ON COLUMN apv_task.assignee_name IS '审批人姓名';
-COMMENT ON COLUMN apv_task.delegator_id IS '委托人ID';
-COMMENT ON COLUMN apv_task.delegator_name IS '委托人姓名';
-COMMENT ON COLUMN apv_task.sort_order IS '审批顺序';
-COMMENT ON COLUMN apv_task.status IS '任务状态';
-COMMENT ON COLUMN apv_task.read_at IS '阅读时间';
-COMMENT ON COLUMN apv_task.parent_task_id IS '来源任务ID';
-COMMENT ON COLUMN apv_task.add_assignee_type IS '添加方式';
-COMMENT ON COLUMN apv_task.deadline IS '截止时间';
-COMMENT ON COLUMN apv_task.is_timeout IS '是否已超时';
-COMMENT ON COLUMN apv_task.is_pre_warning_sent IS '是否已发送预警通知';
-COMMENT ON COLUMN apv_task.finished_at IS '完成时间';
+COMMENT ON TABLE apv_task IS 'Task';
+COMMENT ON COLUMN apv_task.id IS 'ID';
+COMMENT ON COLUMN apv_task.created_at IS 'Created';
+COMMENT ON COLUMN apv_task.updated_at IS 'Updated';
+COMMENT ON COLUMN apv_task.created_by IS 'Creator';
+COMMENT ON COLUMN apv_task.updated_by IS 'Updater';
+COMMENT ON COLUMN apv_task.tenant_id IS 'Tenant';
+COMMENT ON COLUMN apv_task.instance_id IS 'Instance';
+COMMENT ON COLUMN apv_task.node_id IS 'Node';
+COMMENT ON COLUMN apv_task.assignee_id IS 'Assignee';
+COMMENT ON COLUMN apv_task.assignee_name IS 'Assignee Name';
+COMMENT ON COLUMN apv_task.delegator_id IS 'Delegator';
+COMMENT ON COLUMN apv_task.delegator_name IS 'Delegator Name';
+COMMENT ON COLUMN apv_task.sort_order IS 'Sort';
+COMMENT ON COLUMN apv_task.status IS 'Status';
+COMMENT ON COLUMN apv_task.read_at IS 'Read';
+COMMENT ON COLUMN apv_task.parent_task_id IS 'Parent';
+COMMENT ON COLUMN apv_task.add_assignee_type IS 'Add Type';
+COMMENT ON COLUMN apv_task.deadline IS 'Deadline';
+COMMENT ON COLUMN apv_task.is_timeout IS 'Timeout';
+COMMENT ON COLUMN apv_task.is_pre_warning_sent IS 'Pre-warned';
+COMMENT ON COLUMN apv_task.finished_at IS 'Finished';
 
 CREATE INDEX idx_apv_task__tenant_id ON apv_task(tenant_id);
 CREATE INDEX idx_apv_task__tenant_id_assignee_id_status ON apv_task(tenant_id, assignee_id, status);
@@ -521,30 +521,30 @@ CREATE TABLE IF NOT EXISTS apv_action_log (
     CONSTRAINT fk_apv_action_log__task_id FOREIGN KEY (task_id) REFERENCES apv_task(id) ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE apv_action_log IS '操作日志';
-COMMENT ON COLUMN apv_action_log.id IS '主键';
-COMMENT ON COLUMN apv_action_log.created_at IS '操作时间';
-COMMENT ON COLUMN apv_action_log.created_by IS '操作人ID';
-COMMENT ON COLUMN apv_action_log.instance_id IS '流程实例ID';
-COMMENT ON COLUMN apv_action_log.node_id IS '节点ID';
-COMMENT ON COLUMN apv_action_log.task_id IS '任务ID';
-COMMENT ON COLUMN apv_action_log.action IS '操作类型';
-COMMENT ON COLUMN apv_action_log.operator_id IS '操作人ID';
-COMMENT ON COLUMN apv_action_log.operator_name IS '操作人姓名';
-COMMENT ON COLUMN apv_action_log.operator_department_id IS '操作人部门ID';
-COMMENT ON COLUMN apv_action_log.operator_department_name IS '操作人部门名称';
-COMMENT ON COLUMN apv_action_log.ip_address IS '操作人IP地址';
-COMMENT ON COLUMN apv_action_log.user_agent IS '操作人用户代理';
-COMMENT ON COLUMN apv_action_log.opinion IS '审批意见';
-COMMENT ON COLUMN apv_action_log.meta IS '元数据';
-COMMENT ON COLUMN apv_action_log.transfer_to_id IS '转交用户ID';
-COMMENT ON COLUMN apv_action_log.transfer_to_name IS '转交用户姓名';
-COMMENT ON COLUMN apv_action_log.rollback_to_node_id IS '回退节点ID';
-COMMENT ON COLUMN apv_action_log.add_assignee_type IS '加签方式';
-COMMENT ON COLUMN apv_action_log.added_assignee_ids IS '加签用户ID';
-COMMENT ON COLUMN apv_action_log.removed_assignee_ids IS '减签用户ID';
-COMMENT ON COLUMN apv_action_log.cc_user_ids IS '抄送用户ID';
-COMMENT ON COLUMN apv_action_log.attachments IS '附件列表';
+COMMENT ON TABLE apv_action_log IS 'Action Log';
+COMMENT ON COLUMN apv_action_log.id IS 'ID';
+COMMENT ON COLUMN apv_action_log.created_at IS 'Performed';
+COMMENT ON COLUMN apv_action_log.created_by IS 'Creator';
+COMMENT ON COLUMN apv_action_log.instance_id IS 'Instance';
+COMMENT ON COLUMN apv_action_log.node_id IS 'Node';
+COMMENT ON COLUMN apv_action_log.task_id IS 'Task';
+COMMENT ON COLUMN apv_action_log.action IS 'Action';
+COMMENT ON COLUMN apv_action_log.operator_id IS 'Operator';
+COMMENT ON COLUMN apv_action_log.operator_name IS 'Operator Name';
+COMMENT ON COLUMN apv_action_log.operator_department_id IS 'Department';
+COMMENT ON COLUMN apv_action_log.operator_department_name IS 'Dept Name';
+COMMENT ON COLUMN apv_action_log.ip_address IS 'IP';
+COMMENT ON COLUMN apv_action_log.user_agent IS 'User Agent';
+COMMENT ON COLUMN apv_action_log.opinion IS 'Opinion';
+COMMENT ON COLUMN apv_action_log.meta IS 'Meta';
+COMMENT ON COLUMN apv_action_log.transfer_to_id IS 'Transferee';
+COMMENT ON COLUMN apv_action_log.transfer_to_name IS 'Transferee Name';
+COMMENT ON COLUMN apv_action_log.rollback_to_node_id IS 'Rollback Node';
+COMMENT ON COLUMN apv_action_log.add_assignee_type IS 'Add Type';
+COMMENT ON COLUMN apv_action_log.added_assignee_ids IS 'Added';
+COMMENT ON COLUMN apv_action_log.removed_assignee_ids IS 'Removed';
+COMMENT ON COLUMN apv_action_log.cc_user_ids IS 'CC List';
+COMMENT ON COLUMN apv_action_log.attachments IS 'Attachments';
 
 CREATE INDEX idx_apv_action_log__operator_id ON apv_action_log(operator_id);
 CREATE INDEX idx_apv_action_log__instance_id_created_at ON apv_action_log(instance_id, created_at);
@@ -564,17 +564,17 @@ CREATE TABLE IF NOT EXISTS apv_cc_record (
     CONSTRAINT fk_apv_cc_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE apv_cc_record IS '抄送记录';
-COMMENT ON COLUMN apv_cc_record.id IS '主键';
-COMMENT ON COLUMN apv_cc_record.created_at IS '抄送时间';
-COMMENT ON COLUMN apv_cc_record.created_by IS '创建人ID';
-COMMENT ON COLUMN apv_cc_record.instance_id IS '流程实例ID';
-COMMENT ON COLUMN apv_cc_record.node_id IS '节点ID';
-COMMENT ON COLUMN apv_cc_record.task_id IS '关联的任务ID';
-COMMENT ON COLUMN apv_cc_record.cc_user_id IS '被抄送人ID';
-COMMENT ON COLUMN apv_cc_record.cc_user_name IS '被抄送人姓名';
-COMMENT ON COLUMN apv_cc_record.is_manual IS '是否手动指定';
-COMMENT ON COLUMN apv_cc_record.read_at IS '阅读时间';
+COMMENT ON TABLE apv_cc_record IS 'CC Record';
+COMMENT ON COLUMN apv_cc_record.id IS 'ID';
+COMMENT ON COLUMN apv_cc_record.created_at IS 'Sent';
+COMMENT ON COLUMN apv_cc_record.created_by IS 'Creator';
+COMMENT ON COLUMN apv_cc_record.instance_id IS 'Instance';
+COMMENT ON COLUMN apv_cc_record.node_id IS 'Node';
+COMMENT ON COLUMN apv_cc_record.task_id IS 'Task';
+COMMENT ON COLUMN apv_cc_record.cc_user_id IS 'User';
+COMMENT ON COLUMN apv_cc_record.cc_user_name IS 'User Name';
+COMMENT ON COLUMN apv_cc_record.is_manual IS 'Manual';
+COMMENT ON COLUMN apv_cc_record.read_at IS 'Read';
 
 CREATE INDEX idx_apv_cc_record__instance_id ON apv_cc_record(instance_id);
 CREATE INDEX idx_apv_cc_record__cc_user_id_read_at ON apv_cc_record(cc_user_id, read_at);
@@ -607,20 +607,20 @@ CREATE TABLE IF NOT EXISTS apv_delegation (
     CONSTRAINT ck_apv_delegation__no_self CHECK (delegator_id != delegatee_id)
 );
 
-COMMENT ON TABLE apv_delegation IS '审批代理';
-COMMENT ON COLUMN apv_delegation.id IS '主键';
-COMMENT ON COLUMN apv_delegation.created_at IS '创建时间';
-COMMENT ON COLUMN apv_delegation.updated_at IS '更新时间';
-COMMENT ON COLUMN apv_delegation.created_by IS '创建人ID';
-COMMENT ON COLUMN apv_delegation.updated_by IS '更新人ID';
-COMMENT ON COLUMN apv_delegation.delegator_id IS '委托人ID';
-COMMENT ON COLUMN apv_delegation.delegatee_id IS '被委托人ID';
-COMMENT ON COLUMN apv_delegation.flow_category_id IS '流程分类ID';
-COMMENT ON COLUMN apv_delegation.flow_id IS '指定流程ID';
-COMMENT ON COLUMN apv_delegation.start_time IS '代理开始时间';
-COMMENT ON COLUMN apv_delegation.end_time IS '代理结束时间';
-COMMENT ON COLUMN apv_delegation.is_active IS '是否启用';
-COMMENT ON COLUMN apv_delegation.reason IS '委托原因';
+COMMENT ON TABLE apv_delegation IS 'Delegation';
+COMMENT ON COLUMN apv_delegation.id IS 'ID';
+COMMENT ON COLUMN apv_delegation.created_at IS 'Created';
+COMMENT ON COLUMN apv_delegation.updated_at IS 'Updated';
+COMMENT ON COLUMN apv_delegation.created_by IS 'Creator';
+COMMENT ON COLUMN apv_delegation.updated_by IS 'Updater';
+COMMENT ON COLUMN apv_delegation.delegator_id IS 'Delegator';
+COMMENT ON COLUMN apv_delegation.delegatee_id IS 'Delegatee';
+COMMENT ON COLUMN apv_delegation.flow_category_id IS 'Category';
+COMMENT ON COLUMN apv_delegation.flow_id IS 'Flow';
+COMMENT ON COLUMN apv_delegation.start_time IS 'Start';
+COMMENT ON COLUMN apv_delegation.end_time IS 'End';
+COMMENT ON COLUMN apv_delegation.is_active IS 'Active';
+COMMENT ON COLUMN apv_delegation.reason IS 'Reason';
 
 -- For "my received delegations" query (reserved for future use)
 CREATE INDEX idx_apv_delegation__delegatee_id_is_active_end_time ON apv_delegation(delegatee_id, is_active, end_time);
@@ -638,13 +638,13 @@ CREATE TABLE IF NOT EXISTS apv_form_snapshot (
     CONSTRAINT fk_apv_form_snapshot__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE apv_form_snapshot IS '表单快照'; -- Use for rollback strategies: snapshot/merge
-COMMENT ON COLUMN apv_form_snapshot.id IS '主键';
-COMMENT ON COLUMN apv_form_snapshot.created_at IS '生成时间';
-COMMENT ON COLUMN apv_form_snapshot.created_by IS '创建人ID';
-COMMENT ON COLUMN apv_form_snapshot.instance_id IS '实例ID';
-COMMENT ON COLUMN apv_form_snapshot.node_id IS '节点ID';
-COMMENT ON COLUMN apv_form_snapshot.form_data IS '表单数据快照';
+COMMENT ON TABLE apv_form_snapshot IS 'Snapshot'; -- Use for rollback strategies: snapshot/merge
+COMMENT ON COLUMN apv_form_snapshot.id IS 'ID';
+COMMENT ON COLUMN apv_form_snapshot.created_at IS 'Generated';
+COMMENT ON COLUMN apv_form_snapshot.created_by IS 'Creator';
+COMMENT ON COLUMN apv_form_snapshot.instance_id IS 'Instance';
+COMMENT ON COLUMN apv_form_snapshot.node_id IS 'Node';
+COMMENT ON COLUMN apv_form_snapshot.form_data IS 'Form Data';
 
 CREATE INDEX idx_apv_form_snapshot__instance_id_node_id ON apv_form_snapshot(instance_id, node_id);
 
@@ -671,18 +671,18 @@ CREATE TABLE IF NOT EXISTS apv_urge_record (
     CONSTRAINT fk_apv_urge_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE apv_urge_record IS '催办记录';
-COMMENT ON COLUMN apv_urge_record.id IS '主键';
-COMMENT ON COLUMN apv_urge_record.created_at IS '催办时间';
-COMMENT ON COLUMN apv_urge_record.created_by IS '创建人ID';
-COMMENT ON COLUMN apv_urge_record.instance_id IS '流程实例ID';
-COMMENT ON COLUMN apv_urge_record.node_id IS '节点ID';
-COMMENT ON COLUMN apv_urge_record.task_id IS '任务ID';
-COMMENT ON COLUMN apv_urge_record.urger_id IS '催办人ID';
-COMMENT ON COLUMN apv_urge_record.urger_name IS '催办人姓名';
-COMMENT ON COLUMN apv_urge_record.target_user_id IS '被催办人ID';
-COMMENT ON COLUMN apv_urge_record.target_user_name IS '被催办人姓名';
-COMMENT ON COLUMN apv_urge_record.message IS '催办消息';
+COMMENT ON TABLE apv_urge_record IS 'Urge';
+COMMENT ON COLUMN apv_urge_record.id IS 'ID';
+COMMENT ON COLUMN apv_urge_record.created_at IS 'Urged';
+COMMENT ON COLUMN apv_urge_record.created_by IS 'Creator';
+COMMENT ON COLUMN apv_urge_record.instance_id IS 'Instance';
+COMMENT ON COLUMN apv_urge_record.node_id IS 'Node';
+COMMENT ON COLUMN apv_urge_record.task_id IS 'Task';
+COMMENT ON COLUMN apv_urge_record.urger_id IS 'Urger';
+COMMENT ON COLUMN apv_urge_record.urger_name IS 'Urger Name';
+COMMENT ON COLUMN apv_urge_record.target_user_id IS 'Target';
+COMMENT ON COLUMN apv_urge_record.target_user_name IS 'Target Name';
+COMMENT ON COLUMN apv_urge_record.message IS 'Message';
 
 CREATE INDEX idx_apv_urge_record__task_id_urger_id_created_at ON apv_urge_record(task_id, urger_id, created_at);
 CREATE INDEX idx_apv_urge_record__instance_id ON apv_urge_record(instance_id);
