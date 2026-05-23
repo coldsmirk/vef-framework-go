@@ -162,7 +162,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
+		s.Equal(ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
 	})
 
 	s.Run("RejectsEmptyToken", func() {
@@ -171,7 +171,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
+		s.Equal(ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
 	})
 
 	s.Run("RejectsAccessToken", func() {
@@ -186,7 +186,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
+		s.Equal(ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
 	})
 
 	s.Run("RejectsRefreshToken", func() {
@@ -201,7 +201,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
+		s.Equal(ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
 	})
 
 	s.Run("RejectsTokenWithoutType", func() {
@@ -215,7 +215,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
+		s.Equal(ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
 	})
 
 	s.Run("RejectsExpiredToken", func() {
@@ -230,7 +230,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeTokenExpired, resErr.Code, "Should return token expired error code")
+		s.Equal(ErrCodeTokenExpired, resErr.Code, "Should return token expired error code")
 	})
 
 	s.Run("RejectsMalformedSubject", func() {
@@ -245,7 +245,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
+		s.Equal(ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
 	})
 
 	s.Run("RejectsEmptySubject", func() {
@@ -260,7 +260,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
+		s.Equal(ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
 	})
 
 	s.Run("RejectsUnknownPrincipalType", func() {
@@ -276,7 +276,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
+		s.Equal(ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
 	})
 
 	s.Run("DefaultsToUserWhenTypeClaimMissing", func() {

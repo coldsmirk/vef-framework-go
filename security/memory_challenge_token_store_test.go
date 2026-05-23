@@ -173,7 +173,7 @@ func TestMemoryChallengeTokenStoreParse(t *testing.T) {
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error")
-		assert.Equal(t, result.ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
+		assert.Equal(t, ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
 	})
 
 	t.Run("RejectsNonExistentToken", func(t *testing.T) {
@@ -184,7 +184,7 @@ func TestMemoryChallengeTokenStoreParse(t *testing.T) {
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error")
-		assert.Equal(t, result.ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
+		assert.Equal(t, ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
 	})
 }
 

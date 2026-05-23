@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 const (
@@ -86,7 +84,7 @@ func (j *JWT) Parse(tokenString string) (*JWTClaimsAccessor, error) {
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, result.ErrTokenInvalid
+		return nil, ErrTokenInvalid
 	}
 
 	return NewJWTClaimsAccessor(claims), nil
@@ -96,14 +94,14 @@ func (j *JWT) Parse(tokenString string) (*JWTClaimsAccessor, error) {
 func mapJWTError(err error) error {
 	switch {
 	case errors.Is(err, jwt.ErrTokenExpired):
-		return result.ErrTokenExpired
+		return ErrTokenExpired
 	case errors.Is(err, jwt.ErrTokenNotValidYet):
-		return result.ErrTokenNotValidYet
+		return ErrTokenNotValidYet
 	case errors.Is(err, jwt.ErrTokenInvalidIssuer):
-		return result.ErrTokenInvalidIssuer
+		return ErrTokenInvalidIssuer
 	case errors.Is(err, jwt.ErrTokenInvalidAudience):
-		return result.ErrTokenInvalidAudience
+		return ErrTokenInvalidAudience
 	default:
-		return result.ErrTokenInvalid
+		return ErrTokenInvalid
 	}
 }

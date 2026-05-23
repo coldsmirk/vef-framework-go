@@ -414,7 +414,7 @@ func (s *SignatureAuthenticatorTestSuite) TestNonceValidation() {
 			},
 		})
 		s.Require().Error(err, "Should return error when nonce is empty")
-		s.ErrorIs(err, result.ErrNonceRequired, "Should return nonce required error")
+		s.ErrorIs(err, security.ErrNonceRequired, "Should return nonce required error")
 		loader.AssertExpectations(s.T())
 	})
 
@@ -571,7 +571,7 @@ func (s *SignatureAuthenticatorTestSuite) TestIPWhitelist() {
 			},
 		})
 		s.Require().Error(err, "Should return error when IP is not in whitelist")
-		s.ErrorIs(err, result.ErrIPNotAllowed, "Should return IP not allowed error")
+		s.ErrorIs(err, security.ErrIPNotAllowed, "Should return IP not allowed error")
 		loader.AssertExpectations(s.T())
 	})
 

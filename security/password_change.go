@@ -2,8 +2,6 @@ package security
 
 import (
 	"context"
-
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // ChallengeTypePasswordChange is the challenge type identifier for forced password change.
@@ -75,7 +73,7 @@ func (p *PasswordChangeChallengeProvider) Evaluate(ctx context.Context, principa
 func (p *PasswordChangeChallengeProvider) Resolve(ctx context.Context, principal *Principal, response any) (*Principal, error) {
 	newPassword, ok := response.(string)
 	if !ok || newPassword == "" {
-		return nil, result.ErrNewPasswordRequired
+		return nil, ErrNewPasswordRequired
 	}
 
 	if err := p.changer.ChangePassword(ctx, principal, newPassword); err != nil {

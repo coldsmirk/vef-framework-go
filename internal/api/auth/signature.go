@@ -6,7 +6,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	isecurity "github.com/coldsmirk/vef-framework-go/internal/security"
-	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
@@ -46,24 +45,24 @@ func (s *SignatureStrategy) Authenticate(ctx fiber.Ctx, _ map[string]any) (*secu
 	signature := ctx.Get(api.HeaderXSignature)
 
 	if appID == "" {
-		return nil, result.ErrAppIDRequired
+		return nil, security.ErrAppIDRequired
 	}
 
 	if timestampStr == "" {
-		return nil, result.ErrTimestampRequired
+		return nil, security.ErrTimestampRequired
 	}
 
 	if nonce == "" {
-		return nil, result.ErrNonceRequired
+		return nil, security.ErrNonceRequired
 	}
 
 	if signature == "" {
-		return nil, result.ErrSignatureRequired
+		return nil, security.ErrSignatureRequired
 	}
 
 	timestamp, err := cast.ToInt64E(timestampStr)
 	if err != nil {
-		return nil, result.ErrTimestampInvalid
+		return nil, security.ErrTimestampInvalid
 	}
 
 	return s.authManager.Authenticate(ctx.Context(), security.Authentication{

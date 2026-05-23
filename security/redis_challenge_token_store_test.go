@@ -187,7 +187,7 @@ func (s *RedisChallengeTokenStoreTestSuite) TestParse() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
+		s.Equal(ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
 	})
 
 	s.Run("RejectsNonExistentToken", func() {
@@ -196,7 +196,7 @@ func (s *RedisChallengeTokenStoreTestSuite) TestParse() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
+		s.Equal(ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
 	})
 }
 

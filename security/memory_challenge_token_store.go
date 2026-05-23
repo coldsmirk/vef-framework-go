@@ -5,7 +5,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/cache"
 	"github.com/coldsmirk/vef-framework-go/id"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // MemoryChallengeTokenStore implements ChallengeTokenStore using an in-memory cache.
@@ -34,12 +33,12 @@ func (s *MemoryChallengeTokenStore) Generate(principal *Principal, pending, reso
 
 func (s *MemoryChallengeTokenStore) Parse(token string) (*ChallengeState, error) {
 	if token == "" {
-		return nil, result.ErrTokenInvalid
+		return nil, ErrTokenInvalid
 	}
 
 	state, ok := s.cache.Get(context.Background(), token)
 	if !ok {
-		return nil, result.ErrTokenInvalid
+		return nil, ErrTokenInvalid
 	}
 
 	return &state, nil

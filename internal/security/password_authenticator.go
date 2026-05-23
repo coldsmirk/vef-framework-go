@@ -35,21 +35,21 @@ func (*PasswordAuthenticator) Supports(authType string) bool { return authType =
 
 func (p *PasswordAuthenticator) Authenticate(ctx context.Context, authentication security.Authentication) (*security.Principal, error) {
 	if p.loader == nil {
-		return nil, result.ErrNotImplemented(i18n.T(result.ErrMessageUserLoaderNotImplemented))
+		return nil, result.ErrNotImplemented(i18n.T(security.ErrMessageUserLoaderNotImplemented))
 	}
 
 	username := authentication.Principal
 	if username == "" {
-		return nil, result.ErrPrincipalInvalid(i18n.T("username_required"))
+		return nil, security.ErrPrincipalInvalid(i18n.T("security_username_required"))
 	}
 
 	if username == orm.OperatorSystem || username == orm.OperatorCronJob || username == orm.OperatorAnonymous {
-		return nil, result.ErrPrincipalInvalid(i18n.T("system_principal_login_forbidden"))
+		return nil, security.ErrPrincipalInvalid(i18n.T("security_system_principal_login_forbidden"))
 	}
 
 	password, ok := authentication.Credentials.(string)
 	if !ok || password == "" {
-		return nil, result.ErrCredentialsInvalid(i18n.T("password_required"))
+		return nil, security.ErrCredentialsInvalid(i18n.T("security_password_required"))
 	}
 
 	principal, passwordHash, err := p.loader.LoadByUsername(ctx, username)
@@ -60,15 +60,15 @@ func (p *PasswordAuthenticator) Authenticate(ctx context.Context, authentication
 			logger.Warnf("Failed to load user by username %q: %v", username, err)
 		}
 
-		return nil, result.ErrCredentialsInvalid(i18n.T("invalid_credentials"))
+		return nil, security.ErrCredentialsInvalid(i18n.T("security_invalid_credentials"))
 	}
 
 	if principal == nil || passwordHash == "" {
-		return nil, result.ErrCredentialsInvalid(i18n.T("invalid_credentials"))
+		return nil, security.ErrCredentialsInvalid(i18n.T("security_invalid_credentials"))
 	}
 
 	if !p.encoder.Matches(password, passwordHash) {
-		return nil, result.ErrCredentialsInvalid(i18n.T("invalid_credentials"))
+		return nil, security.ErrCredentialsInvalid(i18n.T("security_invalid_credentials"))
 	}
 
 	logger.Infof("Password authentication successful for principal %q", principal.ID)

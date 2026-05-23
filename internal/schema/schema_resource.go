@@ -6,7 +6,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
-	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/schema"
 )
@@ -54,11 +53,8 @@ type GetTableSchemaParams struct {
 func (r *Resource) GetTableSchema(ctx fiber.Ctx, params GetTableSchemaParams) error {
 	table, err := r.service.GetTableSchema(ctx.Context(), params.Name)
 	if err != nil {
-		if errors.Is(err, ErrTableNotFound) {
-			return result.Err(
-				i18n.T("schema_table_not_found"),
-				result.WithCode(result.ErrCodeSchemaTableNotFound),
-			)
+		if errors.Is(err, ErrTableMissing) {
+			return schema.ErrTableNotFound
 		}
 
 		return err

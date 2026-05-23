@@ -111,6 +111,23 @@ Compression (`-1000`) → Headers (`-900`) → CORS (`-800`) → Content-Type (`
 - **Event middleware**: `group:"vef:event:middlewares"`.
 - **Rate limits & audit**: `OperationSpec.RateLimit`, `OperationSpec.EnableAudit` per endpoint.
 
+## Error / i18n Convention
+
+A single convention governs every module that surfaces API errors. New modules MUST follow it; deviations are bugs.
+
+- **Two-file split per module**:
+  - `<module>/errors.go` — internal `errors.New` sentinels (configuration faults, type assertions, reflective failures) consumed only within the module.
+  - `<module>/api_errors.go` — outward-facing `result.Error` sentinels with i18n message, status code, and business code. Public API surface.
+  - Modules with no internal sentinels skip `errors.go`; modules with no outward errors skip `api_errors.go`.
+- **i18n key namespace**: every key carries its module prefix — `approval_*`, `monitor_*`, `storage_*`, `schema_*`, `api_*`, `security_*`. Cross-cutting keys in `result` package (`ok`, `error`, `record_not_found`, etc.) are unprefixed and reserved for that package.
+- **Constant naming**:
+  - `ErrCode<Name>` — int business code (e.g. `security.ErrCodeTokenInvalid`).
+  - `ErrMessage<Name>` — i18n key string. **Only define when the key is referenced cross-file**: dynamic templates (callers pass template params via `i18n.T(key, params)`), factory-style errors (`ErrCredentialsInvalid(msg)`), or Fiber/external mapping tables. For purely sentinel-internal keys, inline the string literal at the sentinel definition (`i18n.T("security_signature_invalid")`) — do not introduce a named constant.
+  - `Err<Name>` — `result.Error` sentinel (e.g. `security.ErrTokenInvalid`).
+- **Sentinel vs inline**: prefer a sentinel when ≥2 callers return the same error; inline at the call site only when an error is genuinely single-use and parameterised.
+- **`errors.Is` semantics**: `result.Error.Is` compares `Code` alone, so dynamic factories (`Errf`, `ErrNotImplemented`, `security.ErrCredentialsInvalid`) match their corresponding sentinels. Do not rely on message-string equality for identity.
+- **Dependency direction**: business modules import `result`; `result` MUST NOT import any business module. New error codes / messages live next to the code that raises them, never in `result`.
+
 ## Gotchas
 
 - `db.RunInTx` — use `Tx` casing, not uppercase `TX`.

@@ -13,10 +13,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/httpx"
-	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/api/middleware"
 	"github.com/coldsmirk/vef-framework-go/internal/api/shared"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 const (
@@ -157,10 +155,7 @@ func parseFormRequest(ctx fiber.Ctx, request *api.Request) error {
 		if err := json.Unmarshal([]byte(params), &request.Params); err != nil {
 			contextx.Logger(ctx).Warnf("Failed to parse params json: %v", err)
 
-			return result.Err(
-				i18n.T(result.ErrMessageAPIRequestParamsInvalidJSON),
-				result.WithCode(result.ErrCodeBadRequest),
-			)
+			return api.ErrInvalidRequestParams
 		}
 	}
 
@@ -168,10 +163,7 @@ func parseFormRequest(ctx fiber.Ctx, request *api.Request) error {
 		if err := json.Unmarshal([]byte(meta), &request.Meta); err != nil {
 			contextx.Logger(ctx).Warnf("Failed to parse meta json: %v", err)
 
-			return result.Err(
-				i18n.T(result.ErrMessageAPIRequestMetaInvalidJSON),
-				result.WithCode(result.ErrCodeBadRequest),
-			)
+			return api.ErrInvalidRequestMeta
 		}
 	}
 

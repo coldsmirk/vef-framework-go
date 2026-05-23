@@ -210,7 +210,7 @@ func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error for non-string response")
-		assert.Equal(t, result.ErrCodeDepartmentRequired, resErr.Code, "Should return department required error")
+		assert.Equal(t, ErrCodeDepartmentRequired, resErr.Code, "Should return department required error")
 	})
 
 	t.Run("ResponseNil", func(t *testing.T) {
@@ -223,7 +223,7 @@ func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error for nil response")
-		assert.Equal(t, result.ErrCodeDepartmentRequired, resErr.Code, "Should return department required error")
+		assert.Equal(t, ErrCodeDepartmentRequired, resErr.Code, "Should return department required error")
 	})
 
 	t.Run("ResponseEmpty", func(t *testing.T) {
@@ -236,7 +236,7 @@ func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error for empty response")
-		assert.Equal(t, result.ErrCodeDepartmentRequired, resErr.Code, "Should return department required error")
+		assert.Equal(t, ErrCodeDepartmentRequired, resErr.Code, "Should return department required error")
 	})
 
 	t.Run("WhitespaceDepartmentID", func(t *testing.T) {

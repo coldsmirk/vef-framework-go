@@ -233,7 +233,7 @@ func TestNewTOTPChallengeProvider(t *testing.T) {
 		_, err = provider.Resolve(ctx, principal, "000000")
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error for invalid code")
-		assert.Equal(t, result.ErrCodeOTPCodeInvalid, resErr.Code, "Should return OTP code invalid error")
+		assert.Equal(t, ErrCodeOTPCodeInvalid, resErr.Code, "Should return OTP code invalid error")
 	})
 }
 

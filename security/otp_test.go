@@ -256,7 +256,7 @@ func TestOTPChallengeProviderResolve(t *testing.T) {
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error")
-		assert.Equal(t, result.ErrCodeOTPCodeInvalid, resErr.Code, "Should return OTP code invalid error")
+		assert.Equal(t, ErrCodeOTPCodeInvalid, resErr.Code, "Should return OTP code invalid error")
 	})
 
 	t.Run("ResponseNotString", func(t *testing.T) {
@@ -270,7 +270,7 @@ func TestOTPChallengeProviderResolve(t *testing.T) {
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error for non-string response")
-		assert.Equal(t, result.ErrCodeOTPCodeRequired, resErr.Code, "Should return OTP code required error")
+		assert.Equal(t, ErrCodeOTPCodeRequired, resErr.Code, "Should return OTP code required error")
 	})
 
 	t.Run("ResponseNil", func(t *testing.T) {
@@ -284,7 +284,7 @@ func TestOTPChallengeProviderResolve(t *testing.T) {
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error for nil response")
-		assert.Equal(t, result.ErrCodeOTPCodeRequired, resErr.Code, "Should return OTP code required error")
+		assert.Equal(t, ErrCodeOTPCodeRequired, resErr.Code, "Should return OTP code required error")
 	})
 
 	t.Run("ResponseEmpty", func(t *testing.T) {
@@ -298,7 +298,7 @@ func TestOTPChallengeProviderResolve(t *testing.T) {
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error for empty response")
-		assert.Equal(t, result.ErrCodeOTPCodeRequired, resErr.Code, "Should return OTP code required error")
+		assert.Equal(t, ErrCodeOTPCodeRequired, resErr.Code, "Should return OTP code required error")
 	})
 
 	t.Run("VerifierError", func(t *testing.T) {

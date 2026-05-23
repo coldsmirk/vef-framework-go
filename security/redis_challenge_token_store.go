@@ -8,7 +8,6 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/coldsmirk/vef-framework-go/id"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 const redisChallengePrefix = "vef:security:challenge:"
@@ -42,7 +41,7 @@ func (s *RedisChallengeTokenStore) Generate(principal *Principal, pending, resol
 
 func (s *RedisChallengeTokenStore) Parse(token string) (*ChallengeState, error) {
 	if token == "" {
-		return nil, result.ErrTokenInvalid
+		return nil, ErrTokenInvalid
 	}
 
 	key := redisChallengePrefix + token
@@ -50,7 +49,7 @@ func (s *RedisChallengeTokenStore) Parse(token string) (*ChallengeState, error) 
 	data, err := s.client.Get(context.Background(), key).Bytes()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return nil, result.ErrTokenInvalid
+			return nil, ErrTokenInvalid
 		}
 
 		return nil, err
@@ -58,7 +57,7 @@ func (s *RedisChallengeTokenStore) Parse(token string) (*ChallengeState, error) 
 
 	var state ChallengeState
 	if err := json.Unmarshal(data, &state); err != nil {
-		return nil, result.ErrTokenInvalid
+		return nil, ErrTokenInvalid
 	}
 
 	return &state, nil

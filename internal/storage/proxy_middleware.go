@@ -12,7 +12,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/storage"
@@ -40,18 +39,12 @@ func (p *ProxyMiddleware) handleFileProxy(ctx fiber.Ctx) error {
 	// percent-decoding; unescape once to get the actual object key.
 	key, err := url.PathUnescape(ctx.Params("+"))
 	if err != nil {
-		return result.Err(
-			i18n.T(result.ErrMessageInvalidFileKey),
-			result.WithCode(result.ErrCodeInvalidFileKey),
-		)
+		return storage.ErrInvalidFileKey
 	}
 
 	// Reject path traversal, absolute paths, and control characters.
 	if !isValidObjectKey(key) {
-		return result.Err(
-			i18n.T(result.ErrMessageInvalidFileKey),
-			result.WithCode(result.ErrCodeInvalidFileKey),
-		)
+		return storage.ErrInvalidFileKey
 	}
 
 	// pub/* is world-readable by design (bucket policy + CDN caching);
@@ -64,7 +57,7 @@ func (p *ProxyMiddleware) handleFileProxy(ctx fiber.Ctx) error {
 		if aclErr != nil {
 			logger.Errorf("FileACL.CanRead failed for key %s: %v", key, aclErr)
 
-			return result.Err(i18n.T(result.ErrMessageFailedToGetFile))
+			return storage.ErrFailedToGetFile
 		}
 
 		if !allowed {
@@ -82,15 +75,12 @@ func (p *ProxyMiddleware) handleFileProxy(ctx fiber.Ctx) error {
 	})
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
-			return result.Err(
-				i18n.T(result.ErrMessageFileNotFound),
-				result.WithCode(result.ErrCodeFileNotFound),
-			)
+			return storage.ErrFileNotFound
 		}
 
 		logger.Errorf("Failed to get object %s: %v", key, err)
 
-		return result.Err(i18n.T(result.ErrMessageFailedToGetFile))
+		return storage.ErrFailedToGetFile
 	}
 
 	// Stat failure is intentionally non-fatal: the response still streams

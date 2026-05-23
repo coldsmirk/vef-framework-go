@@ -31,12 +31,12 @@ func (*JWTRefreshAuthenticator) Supports(authType string) bool {
 
 func (j *JWTRefreshAuthenticator) Authenticate(ctx context.Context, authentication security.Authentication) (*security.Principal, error) {
 	if j.userLoader == nil {
-		return nil, result.ErrNotImplemented(i18n.T(result.ErrMessageUserLoaderNotImplemented))
+		return nil, result.ErrNotImplemented(i18n.T(security.ErrMessageUserLoaderNotImplemented))
 	}
 
 	token := authentication.Principal
 	if token == "" {
-		return nil, result.ErrTokenInvalid
+		return nil, security.ErrTokenInvalid
 	}
 
 	claimsAccessor, err := j.jwt.Parse(token)
@@ -47,7 +47,7 @@ func (j *JWTRefreshAuthenticator) Authenticate(ctx context.Context, authenticati
 	}
 
 	if claimsAccessor.Type() != security.TokenTypeRefresh {
-		return nil, result.ErrTokenInvalid
+		return nil, security.ErrTokenInvalid
 	}
 
 	subjectParts := strings.SplitN(claimsAccessor.Subject(), "@", 2)

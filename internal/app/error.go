@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/result"
+	"github.com/coldsmirk/vef-framework-go/security"
 )
 
 // fiberErrorMapping defines the mapping from Fiber HTTP status codes to application error codes and messages.
@@ -23,8 +24,8 @@ var fiberErrorMappings = map[int]fiberErrorMapping{
 		message: result.ErrMessageNotFound,
 	},
 	fiber.StatusUnauthorized: {
-		code:    result.ErrCodeUnauthenticated,
-		message: result.ErrMessageUnauthenticated,
+		code:    security.ErrCodeUnauthenticated,
+		message: security.ErrMessageUnauthenticated,
 	},
 	fiber.StatusForbidden: {
 		code:    result.ErrCodeAccessDenied,

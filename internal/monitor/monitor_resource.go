@@ -4,7 +4,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
-	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/monitor"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -54,10 +53,7 @@ func (r *Resource) GetOverview(ctx fiber.Ctx) error {
 func (r *Resource) GetCPU(ctx fiber.Ctx) error {
 	cpuInfo, err := r.service.CPU(ctx.Context())
 	if err != nil {
-		return result.Err(
-			i18n.T(result.ErrMessageMonitorNotReady),
-			result.WithCode(result.ErrCodeMonitorNotReady),
-		)
+		return monitor.ErrNotReady
 	}
 
 	return result.Ok(cpuInfo).Response(ctx)
@@ -107,10 +103,7 @@ func (r *Resource) GetHost(ctx fiber.Ctx) error {
 func (r *Resource) GetProcess(ctx fiber.Ctx) error {
 	procInfo, err := r.service.Process(ctx.Context())
 	if err != nil {
-		return result.Err(
-			i18n.T(result.ErrMessageMonitorNotReady),
-			result.WithCode(result.ErrCodeMonitorNotReady),
-		)
+		return monitor.ErrNotReady
 	}
 
 	return result.Ok(procInfo).Response(ctx)

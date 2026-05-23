@@ -26,8 +26,8 @@ func (am *AuthenticatorAuthManager) Authenticate(ctx context.Context, authentica
 		logger.Warnf("No authenticator found for authentication type: %s", authentication.Type)
 
 		return nil, result.Err(
-			i18n.T(result.ErrMessageUnsupportedAuthenticationType, map[string]any{"kind": authentication.Type}),
-			result.WithCode(result.ErrCodeUnsupportedAuthenticationType),
+			i18n.T(security.ErrMessageUnsupportedAuthenticationType, map[string]any{"kind": authentication.Type}),
+			result.WithCode(security.ErrCodeUnsupportedAuthenticationType),
 			result.WithStatus(fiber.StatusBadRequest),
 		)
 	}

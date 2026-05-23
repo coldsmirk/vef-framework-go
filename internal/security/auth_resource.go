@@ -222,16 +222,16 @@ type ResolveChallengeParams struct {
 func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengeParams) error {
 	state, err := a.challengeTokenStore.Parse(params.ChallengeToken)
 	if err != nil {
-		return result.ErrChallengeTokenInvalid
+		return security.ErrChallengeTokenInvalid
 	}
 
 	if len(state.Pending) == 0 || state.Pending[0] != params.Type {
-		return result.ErrChallengeTypeInvalid
+		return security.ErrChallengeTypeInvalid
 	}
 
 	provider := a.findProvider(params.Type)
 	if provider == nil {
-		return result.ErrChallengeTypeInvalid
+		return security.ErrChallengeTypeInvalid
 	}
 
 	principal, err := provider.Resolve(ctx.Context(), state.Principal, params.Response)
@@ -280,7 +280,7 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 // Requires a UserInfoLoader implementation to be provided.
 func (a *AuthResource) GetUserInfo(ctx fiber.Ctx, principal *security.Principal, params api.Params) error {
 	if a.userInfoLoader == nil {
-		return result.ErrNotImplemented(i18n.T(result.ErrMessageUserInfoLoaderNotImplemented))
+		return result.ErrNotImplemented(i18n.T(security.ErrMessageUserInfoLoaderNotImplemented))
 	}
 
 	userInfo, err := a.userInfoLoader.LoadUserInfo(ctx.Context(), principal, params)

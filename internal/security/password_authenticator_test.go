@@ -58,7 +58,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodePrincipalInvalid, resErr.Code, "Should return principal invalid code")
+		s.Equal(security.ErrCodePrincipalInvalid, resErr.Code, "Should return principal invalid code")
 	})
 
 	s.Run("SystemPrincipalForbidden", func() {
@@ -79,7 +79,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 
 				resErr, ok := result.AsErr(err)
 				s.Require().True(ok, "Should return a result.Error")
-				s.Equal(result.ErrCodePrincipalInvalid, resErr.Code, "Should return principal invalid code")
+				s.Equal(security.ErrCodePrincipalInvalid, resErr.Code, "Should return principal invalid code")
 			})
 		}
 	})
@@ -98,7 +98,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid code")
+		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid code")
 	})
 
 	s.Run("CredentialsNotString", func() {
@@ -115,7 +115,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid code")
+		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid code")
 	})
 
 	s.Run("EmptyPassword", func() {
@@ -132,7 +132,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid code")
+		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid code")
 	})
 
 	s.Run("UserNotFound", func() {
@@ -151,7 +151,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid to avoid leaking user existence")
+		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid to avoid leaking user existence")
 		loader.AssertExpectations(s.T())
 	})
 
@@ -171,7 +171,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid to mask internal error")
+		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid to mask internal error")
 	})
 
 	s.Run("NilPrincipalFromLoader", func() {
@@ -190,7 +190,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid code")
+		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid code")
 	})
 
 	s.Run("EmptyPasswordHash", func() {
@@ -210,7 +210,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid code")
+		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid code")
 	})
 
 	s.Run("PasswordMismatch", func() {
@@ -232,7 +232,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid code")
+		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid code")
 		encoder.AssertExpectations(s.T())
 	})
 

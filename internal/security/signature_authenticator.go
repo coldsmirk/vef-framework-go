@@ -41,17 +41,17 @@ func (*SignatureAuthenticator) Supports(authType string) bool {
 
 func (a *SignatureAuthenticator) Authenticate(ctx context.Context, authentication security.Authentication) (*security.Principal, error) {
 	if a.loader == nil {
-		return nil, result.ErrNotImplemented(i18n.T(result.ErrMessageExternalAppLoaderNotImplemented))
+		return nil, result.ErrNotImplemented(i18n.T(security.ErrMessageExternalAppLoaderNotImplemented))
 	}
 
 	appID := authentication.Principal
 	if appID == "" {
-		return nil, result.ErrAppIDRequired
+		return nil, security.ErrAppIDRequired
 	}
 
 	credentials, ok := authentication.Credentials.(*security.SignatureCredentials)
 	if !ok || credentials == nil {
-		return nil, result.ErrCredentialsInvalid(i18n.T(result.ErrMessageCredentialsFormatInvalid))
+		return nil, security.ErrCredentialsInvalid(i18n.T(security.ErrMessageCredentialsFormatInvalid))
 	}
 
 	principal, secret, err := a.loader.LoadByID(ctx, appID)
@@ -60,7 +60,7 @@ func (a *SignatureAuthenticator) Authenticate(ctx context.Context, authenticatio
 	}
 
 	if principal == nil || secret == "" {
-		return nil, result.ErrExternalAppNotFound
+		return nil, security.ErrExternalAppNotFound
 	}
 
 	if err := a.validateIPWhitelist(ctx, principal); err != nil {
@@ -83,10 +83,14 @@ func (a *SignatureAuthenticator) verifySignature(
 ) error {
 	sig, err := security.NewSignature(secret, a.options...)
 	if err != nil {
+		logger.Warnf("Signature construction failed for app %q (likely misconfigured secret): %v", appID, err)
+
 		return mapSignatureError(err)
 	}
 
 	if err := sig.Verify(ctx, appID, credentials.Timestamp, credentials.Nonce, credentials.Signature); err != nil {
+		logger.Warnf("Signature verify failed for app %q: %v", appID, err)
+
 		return mapSignatureError(err)
 	}
 
@@ -100,7 +104,7 @@ func (*SignatureAuthenticator) validateIPWhitelist(ctx context.Context, principa
 	}
 
 	if !details.Enabled {
-		return result.ErrExternalAppDisabled
+		return security.ErrExternalAppDisabled
 	}
 
 	if details.IPWhitelist == "" {
@@ -113,24 +117,31 @@ func (*SignatureAuthenticator) validateIPWhitelist(ctx context.Context, principa
 	}
 
 	if validator := security.NewIPWhitelistValidator(details.IPWhitelist); !validator.IsAllowed(requestIP) {
-		return result.ErrIPNotAllowed
+		return security.ErrIPNotAllowed
 	}
 
 	return nil
 }
 
-// mapSignatureError converts security.Signature errors to result errors.
+// mapSignatureError converts errors raised during signature construction
+// or verification into the corresponding API-facing error.
+//
+// Server-side configuration errors (signature secret decode failure or
+// missing secret) are explicitly mapped to the generic invalid-signature
+// reply so they never leak to the client. The originating cause is
+// always logged at the call site in verifySignature for ops diagnosis.
 func mapSignatureError(err error) error {
 	switch {
-	case errors.Is(err, security.ErrSignatureExpired):
-		return result.ErrSignatureExpired
-	case errors.Is(err, security.ErrSignatureInvalid):
-		return result.ErrSignatureInvalid
-	case errors.Is(err, security.ErrSignatureNonceUsed):
-		return result.ErrNonceAlreadyUsed
-	case errors.Is(err, security.ErrSignatureNonceRequired):
-		return result.ErrNonceRequired
-	default:
-		return result.ErrSignatureInvalid
+	case err == nil:
+		return nil
+	case errors.Is(err, security.ErrSignatureSecretRequired),
+		errors.Is(err, security.ErrDecodeSignatureSecretFailed):
+		return security.ErrSignatureInvalid
 	}
+
+	if apiErr, ok := result.AsErr(err); ok {
+		return apiErr
+	}
+
+	return security.ErrSignatureInvalid
 }

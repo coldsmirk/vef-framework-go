@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cast"
 
 	"github.com/coldsmirk/vef-framework-go/id"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 const (
@@ -51,12 +50,12 @@ func (s *JWTChallengeTokenStore) Parse(token string) (*ChallengeState, error) {
 	}
 
 	if claimsAccessor.Type() != TokenTypeChallenge {
-		return nil, result.ErrTokenInvalid
+		return nil, ErrTokenInvalid
 	}
 
 	subjectParts := strings.SplitN(claimsAccessor.Subject(), "@", 2)
 	if len(subjectParts) < 2 {
-		return nil, result.ErrTokenInvalid
+		return nil, ErrTokenInvalid
 	}
 
 	principalType := PrincipalType(cast.ToString(claimsAccessor.Claim(ClaimChallengePrincipalType)))
@@ -77,7 +76,7 @@ func (s *JWTChallengeTokenStore) Parse(token string) (*ChallengeState, error) {
 		}
 
 	default:
-		return nil, result.ErrTokenInvalid
+		return nil, ErrTokenInvalid
 	}
 
 	principal.AttemptUnmarshalDetails(claimsAccessor.Details())

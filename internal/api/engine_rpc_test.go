@@ -415,7 +415,7 @@ func (suite *RPCEngineTestSuite) TestProtectedAPIWithInvalidToken() {
 
 	body := suite.ReadResult(resp)
 	suite.False(body.IsOk(), "Should fail with invalid token")
-	suite.Equal(result.ErrCodeTokenInvalid, body.Code, "Should return token invalid error")
+	suite.Equal(security.ErrCodeTokenInvalid, body.Code, "Should return token invalid error")
 }
 
 func (suite *RPCEngineTestSuite) TestOperationNotFound() {
@@ -618,7 +618,7 @@ func (suite *RPCEngineTestSuite) TestI18nErrorMessages() {
 
 	body := suite.ReadResult(resp)
 	suite.False(body.IsOk(), "Should fail without token")
-	suite.Equal(i18n.T(result.ErrMessageUnauthenticated), body.Message, "Should return i18n translated message")
+	suite.Equal(i18n.T(security.ErrMessageUnauthenticated), body.Message, "Should return i18n translated message")
 }
 
 func (suite *RPCEngineTestSuite) TestContentTypeValidation() {

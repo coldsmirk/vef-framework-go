@@ -306,7 +306,7 @@ func TestWithCode(t *testing.T) {
 		{"DefaultCode", ErrCodeDefault, ErrCodeDefault},
 		{"BadRequest", ErrCodeBadRequest, ErrCodeBadRequest},
 		{"NotFound", ErrCodeNotFound, ErrCodeNotFound},
-		{"Unauthorized", ErrCodeUnauthenticated, ErrCodeUnauthenticated},
+		{"AccessDenied", ErrCodeAccessDenied, ErrCodeAccessDenied},
 		{"CustomCode", 9999, 9999},
 	}
 
@@ -366,24 +366,11 @@ func TestPredefinedErrors(t *testing.T) {
 	}{
 		{"ErrRecordNotFound", ErrRecordNotFound, ErrCodeRecordNotFound, fiber.StatusOK},
 		{"ErrRecordAlreadyExists", ErrRecordAlreadyExists, ErrCodeRecordAlreadyExists, fiber.StatusOK},
-		{"ErrTokenExpired", ErrTokenExpired, ErrCodeTokenExpired, fiber.StatusUnauthorized},
-		{"ErrTokenInvalid", ErrTokenInvalid, ErrCodeTokenInvalid, fiber.StatusUnauthorized},
-		{"ErrTokenNotValidYet", ErrTokenNotValidYet, ErrCodeTokenNotValidYet, fiber.StatusUnauthorized},
-		{"ErrTokenInvalidIssuer", ErrTokenInvalidIssuer, ErrCodeTokenInvalidIssuer, fiber.StatusUnauthorized},
-		{"ErrTokenInvalidAudience", ErrTokenInvalidAudience, ErrCodeTokenInvalidAudience, fiber.StatusUnauthorized},
-		{"ErrTokenMissingSubject", ErrTokenMissingSubject, ErrCodeTokenMissingSubject, fiber.StatusUnauthorized},
-		{"ErrTokenMissingTokenType", ErrTokenMissingTokenType, ErrCodeTokenMissingTokenType, fiber.StatusUnauthorized},
-		{"ErrAppIDRequired", ErrAppIDRequired, ErrCodeAppIDRequired, fiber.StatusUnauthorized},
-		{"ErrTimestampRequired", ErrTimestampRequired, ErrCodeTimestampRequired, fiber.StatusUnauthorized},
-		{"ErrSignatureRequired", ErrSignatureRequired, ErrCodeSignatureRequired, fiber.StatusUnauthorized},
-		{"ErrTimestampInvalid", ErrTimestampInvalid, ErrCodeTimestampInvalid, fiber.StatusUnauthorized},
-		{"ErrSignatureExpired", ErrSignatureExpired, ErrCodeSignatureExpired, fiber.StatusUnauthorized},
-		{"ErrSignatureInvalid", ErrSignatureInvalid, ErrCodeSignatureInvalid, fiber.StatusUnauthorized},
-		{"ErrExternalAppNotFound", ErrExternalAppNotFound, ErrCodeExternalAppNotFound, fiber.StatusUnauthorized},
-		{"ErrExternalAppDisabled", ErrExternalAppDisabled, ErrCodeExternalAppDisabled, fiber.StatusUnauthorized},
-		{"ErrIPNotAllowed", ErrIPNotAllowed, ErrCodeIPNotAllowed, fiber.StatusUnauthorized},
-		{"ErrUnauthenticated", ErrUnauthenticated, ErrCodeUnauthenticated, fiber.StatusUnauthorized},
+		{"ErrForeignKeyViolation", ErrForeignKeyViolation, ErrCodeForeignKeyViolation, fiber.StatusOK},
+		{"ErrDangerousSQL", ErrDangerousSQL, ErrCodeDangerousSQL, fiber.StatusOK},
 		{"ErrAccessDenied", ErrAccessDenied, ErrCodeAccessDenied, fiber.StatusForbidden},
+		{"ErrTooManyRequests", ErrTooManyRequests, ErrCodeTooManyRequests, fiber.StatusTooManyRequests},
+		{"ErrRequestTimeout", ErrRequestTimeout, ErrCodeRequestTimeout, fiber.StatusRequestTimeout},
 		{"ErrUnknown", ErrUnknown, ErrCodeUnknown, fiber.StatusInternalServerError},
 	}
 
@@ -394,4 +381,36 @@ func TestPredefinedErrors(t *testing.T) {
 			assert.NotEmpty(t, tt.err.Message, "Predefined error should have a message")
 		})
 	}
+}
+
+// TestErrorIs verifies that errors.Is matches on Code alone, so dynamic
+// factories (Errf, ErrNotImplemented, etc.) recognize the same logical
+// error regardless of the message they carry.
+func TestErrorIs(t *testing.T) {
+	t.Run("MatchingCodeMatchesIgnoringMessage", func(t *testing.T) {
+		sentinel := Err("static", WithCode(ErrCodeBadRequest))
+		dynamic := Err("dynamic message at runtime", WithCode(ErrCodeBadRequest))
+
+		assert.True(t, errors.Is(dynamic, sentinel), "Dynamic factory result should match sentinel via Is")
+	})
+
+	t.Run("MismatchedCodeDoesNotMatch", func(t *testing.T) {
+		bad := Err(WithCode(ErrCodeBadRequest))
+		notFound := Err(WithCode(ErrCodeNotFound))
+
+		assert.False(t, errors.Is(bad, notFound), "Different codes must not match")
+	})
+
+	t.Run("NonResultErrorDoesNotMatch", func(t *testing.T) {
+		sentinel := Err(WithCode(ErrCodeBadRequest))
+		other := errors.New("plain error")
+
+		assert.False(t, errors.Is(other, sentinel), "Plain error must not match a result.Error sentinel")
+	})
+
+	t.Run("ErrfMatchesPredefinedSentinelByCode", func(t *testing.T) {
+		dynamic := Errf("user %s not found", "alice", WithCode(ErrCodeRecordNotFound))
+
+		assert.True(t, errors.Is(dynamic, ErrRecordNotFound), "Errf with matching code must match predefined sentinel")
+	})
 }

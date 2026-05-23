@@ -6,8 +6,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // TestNewJWT tests new JWT functionality.
@@ -88,7 +86,7 @@ func TestJWTGenerate(t *testing.T) {
 
 		// Token should not be valid yet due to nbf
 		_, err = jwt.Parse(token)
-		assert.ErrorIs(t, err, result.ErrTokenNotValidYet, "Error should be result.ErrTokenNotValidYet")
+		assert.ErrorIs(t, err, ErrTokenNotValidYet, "Error should be ErrTokenNotValidYet")
 	})
 
 	t.Run("StandardClaimsAreSetCorrectly", func(t *testing.T) {
@@ -139,7 +137,7 @@ func TestJWTParse(t *testing.T) {
 		require.NoError(t, err, "Should not return error")
 
 		_, err = jwt.Parse(token)
-		assert.ErrorIs(t, err, result.ErrTokenExpired, "Error should be result.ErrTokenExpired")
+		assert.ErrorIs(t, err, ErrTokenExpired, "Error should be ErrTokenExpired")
 	})
 
 	t.Run("ParseTokenWithWrongAudience", func(t *testing.T) {
@@ -156,7 +154,7 @@ func TestJWTParse(t *testing.T) {
 
 		// Try to parse with original JWT (different audience)
 		_, err = jwt.Parse(token)
-		assert.ErrorIs(t, err, result.ErrTokenInvalidAudience, "Error should be result.ErrTokenInvalidAudience")
+		assert.ErrorIs(t, err, ErrTokenInvalidAudience, "Error should be ErrTokenInvalidAudience")
 	})
 
 	t.Run("ParseTokenWithWrongSecret", func(t *testing.T) {
@@ -173,17 +171,17 @@ func TestJWTParse(t *testing.T) {
 
 		// Try to parse with original JWT (different secret)
 		_, err = jwt.Parse(token)
-		assert.ErrorIs(t, err, result.ErrTokenInvalid, "Error should be result.ErrTokenInvalid")
+		assert.ErrorIs(t, err, ErrTokenInvalid, "Error should be ErrTokenInvalid")
 	})
 
 	t.Run("ParseMalformedToken", func(t *testing.T) {
 		_, err := jwt.Parse("malformed.token.string")
-		assert.ErrorIs(t, err, result.ErrTokenInvalid, "Error should be result.ErrTokenInvalid")
+		assert.ErrorIs(t, err, ErrTokenInvalid, "Error should be ErrTokenInvalid")
 	})
 
 	t.Run("ParseEmptyToken", func(t *testing.T) {
 		_, err := jwt.Parse("")
-		assert.ErrorIs(t, err, result.ErrTokenInvalid, "Error should be result.ErrTokenInvalid")
+		assert.ErrorIs(t, err, ErrTokenInvalid, "Error should be ErrTokenInvalid")
 	})
 }
 
@@ -209,7 +207,7 @@ func TestJWTErrorMapping(t *testing.T) {
 
 				return token
 			},
-			expectedError: result.ErrTokenExpired,
+			expectedError: ErrTokenExpired,
 		},
 		{
 			name: "NotYetValidToken",
@@ -219,7 +217,7 @@ func TestJWTErrorMapping(t *testing.T) {
 
 				return token
 			},
-			expectedError: result.ErrTokenNotValidYet,
+			expectedError: ErrTokenNotValidYet,
 		},
 	}
 

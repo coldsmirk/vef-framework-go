@@ -113,7 +113,7 @@ func (suite *InspectorTestSuite) runInspectorTests(dsConfig *config.DataSourceCo
 	suite.Run("InspectTableNotFound", func() {
 		_, err := inspector.InspectTable(suite.ctx, "nonexistent_table_xyz")
 		suite.Error(err, "InspectTable should return error for nonexistent table")
-		suite.ErrorIs(err, schema.ErrTableNotFound, "Error should be ErrTableNotFound")
+		suite.ErrorIs(err, schema.ErrTableMissing, "Error should be ErrTableMissing")
 	})
 }
 

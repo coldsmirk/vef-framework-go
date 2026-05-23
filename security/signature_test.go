@@ -105,7 +105,7 @@ func TestSignatureSign(t *testing.T) {
 	t.Run("EmptyAppID", func(t *testing.T) {
 		result, err := sig.Sign("")
 
-		assert.ErrorIs(t, err, ErrSignatureAppIDRequired, "Should return app ID required error")
+		assert.ErrorIs(t, err, ErrAppIDRequired, "Should return app ID required error")
 		assert.Nil(t, result, "Result should be nil on error")
 	})
 
@@ -252,7 +252,7 @@ func TestSignatureVerify(t *testing.T) {
 		require.NoError(t, err, "Should create signature without error")
 
 		err = sig.Verify(ctx, "", time.Now().Unix(), "test-nonce", "signature")
-		assert.ErrorIs(t, err, ErrSignatureAppIDRequired, "Should return app ID required error")
+		assert.ErrorIs(t, err, ErrAppIDRequired, "Should return app ID required error")
 	})
 
 	t.Run("EmptyNonce", func(t *testing.T) {
@@ -260,7 +260,7 @@ func TestSignatureVerify(t *testing.T) {
 		require.NoError(t, err, "Should create signature without error")
 
 		err = sig.Verify(ctx, "test-app", time.Now().Unix(), "", "signature")
-		assert.ErrorIs(t, err, ErrSignatureNonceRequired, "Should return nonce required error")
+		assert.ErrorIs(t, err, ErrNonceRequired, "Should return nonce required error")
 	})
 
 	t.Run("EmptySignature", func(t *testing.T) {
@@ -282,7 +282,7 @@ func TestSignatureVerify(t *testing.T) {
 		assert.NoError(t, err, "Should verify first request without error")
 
 		err = sig.Verify(ctx, result.AppID, result.Timestamp, result.Nonce, result.Signature)
-		assert.ErrorIs(t, err, ErrSignatureNonceUsed, "Should return nonce used error for replay attack")
+		assert.ErrorIs(t, err, ErrNonceAlreadyUsed, "Should return nonce used error for replay attack")
 	})
 
 	t.Run("ConcurrentReplayAttackPrevention", func(t *testing.T) {
@@ -316,7 +316,7 @@ func TestSignatureVerify(t *testing.T) {
 				continue
 			}
 
-			assert.ErrorIs(t, verifyErr, ErrSignatureNonceUsed, "One concurrent request should be rejected as replay")
+			assert.ErrorIs(t, verifyErr, ErrNonceAlreadyUsed, "One concurrent request should be rejected as replay")
 		}
 
 		assert.Equal(t, 1, successCount, "Only one concurrent verify should succeed for same nonce")

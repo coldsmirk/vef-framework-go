@@ -88,7 +88,7 @@ func (i *AtlasInspector) InspectTable(ctx context.Context, name string) (*as.Tab
 	}
 
 	if len(schema.Tables) == 0 {
-		return nil, ErrTableNotFound
+		return nil, ErrTableMissing
 	}
 
 	return schema.Tables[0], nil

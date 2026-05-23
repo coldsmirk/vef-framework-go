@@ -14,7 +14,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
-	"github.com/coldsmirk/vef-framework-go/result"
+	"github.com/coldsmirk/vef-framework-go/schema"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
@@ -192,7 +192,7 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 
 		body := s.ReadResult(resp)
 		s.False(body.IsOk(), "get_table_schema should fail for nonexistent table")
-		s.Equal(result.ErrCodeSchemaTableNotFound, body.Code, "Error code should be ErrCodeSchemaTableNotFound")
+		s.Equal(schema.ErrCodeTableNotFound, body.Code, "Error code should be ErrCodeTableNotFound")
 
 		s.T().Logf("%s table not found error: code=%d, message=%s", dbKind, body.Code, body.Message)
 	})

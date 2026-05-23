@@ -11,10 +11,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/httpx"
-	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/api/middleware"
 	"github.com/coldsmirk/vef-framework-go/internal/api/shared"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 const (
@@ -174,10 +172,7 @@ func (*REST) parseJSONBody(ctx fiber.Ctx, req *api.Request) error {
 	if err := json.Unmarshal(body, &data); err != nil {
 		contextx.Logger(ctx).Warnf("Failed to parse JSON body: %v", err)
 
-		return result.Err(
-			i18n.T(result.ErrMessageAPIRequestParamsInvalidJSON),
-			result.WithCode(result.ErrCodeBadRequest),
-		)
+		return api.ErrInvalidRequestParams
 	}
 
 	maps.Copy(req.Params, data)

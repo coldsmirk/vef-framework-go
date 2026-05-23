@@ -154,7 +154,7 @@ func (s *JWTTokenAuthenticatorTestSuite) TestAuthenticate() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeTokenExpired, resErr.Code, "Should return token expired code")
+		s.Equal(security.ErrCodeTokenExpired, resErr.Code, "Should return token expired code")
 	})
 }
 

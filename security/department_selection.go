@@ -2,8 +2,6 @@ package security
 
 import (
 	"context"
-
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // ChallengeTypeDepartmentSelection is the challenge type identifier for department selection.
@@ -81,7 +79,7 @@ func (p *DepartmentSelectionChallengeProvider) Evaluate(ctx context.Context, pri
 func (p *DepartmentSelectionChallengeProvider) Resolve(ctx context.Context, principal *Principal, response any) (*Principal, error) {
 	departmentID, ok := response.(string)
 	if !ok || departmentID == "" {
-		return nil, result.ErrDepartmentRequired
+		return nil, ErrDepartmentRequired
 	}
 
 	return p.selector.SelectDepartment(ctx, principal, departmentID)

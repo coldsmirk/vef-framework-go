@@ -277,7 +277,7 @@ func (suite *AuthResourceTestSuite) TestLoginInvalidCredentials() {
 
 		body := suite.ReadResult(resp)
 		suite.False(body.IsOk(), "Login should fail with wrong password")
-		suite.Equal(result.ErrCodeCredentialsInvalid, body.Code, "Should return credentials invalid error")
+		suite.Equal(security.ErrCodeCredentialsInvalid, body.Code, "Should return credentials invalid error")
 	})
 
 	suite.Run("UserNotFound", func() {
@@ -298,7 +298,7 @@ func (suite *AuthResourceTestSuite) TestLoginInvalidCredentials() {
 
 		body := suite.ReadResult(resp)
 		suite.False(body.IsOk(), "Login should fail with non-existent user")
-		suite.Equal(result.ErrCodeCredentialsInvalid, body.Code, "Should return credentials invalid error")
+		suite.Equal(security.ErrCodeCredentialsInvalid, body.Code, "Should return credentials invalid error")
 	})
 }
 
@@ -362,7 +362,7 @@ func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 
 		body := suite.ReadResult(resp)
 		suite.False(body.IsOk(), "Login should fail with empty password")
-		suite.Equal(result.ErrCodeCredentialsInvalid, body.Code, "Should return credentials invalid error")
+		suite.Equal(security.ErrCodeCredentialsInvalid, body.Code, "Should return credentials invalid error")
 	})
 
 	suite.Run("LoaderRecordNotFoundError", func() {
@@ -388,7 +388,7 @@ func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 
 		body := suite.ReadResult(resp)
 		suite.False(body.IsOk(), "Login should fail when loader reports record not found")
-		suite.Equal(result.ErrCodeCredentialsInvalid, body.Code, "Should return credentials invalid error")
+		suite.Equal(security.ErrCodeCredentialsInvalid, body.Code, "Should return credentials invalid error")
 		suite.userLoader.AssertExpectations(suite.T())
 	})
 
@@ -415,7 +415,7 @@ func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 
 		body := suite.ReadResult(resp)
 		suite.False(body.IsOk(), "Login should fail when loader returns unexpected error")
-		suite.Equal(result.ErrCodeCredentialsInvalid, body.Code, "Should return credentials invalid error")
+		suite.Equal(security.ErrCodeCredentialsInvalid, body.Code, "Should return credentials invalid error")
 		suite.userLoader.AssertExpectations(suite.T())
 	})
 }
@@ -488,7 +488,7 @@ func (suite *AuthResourceTestSuite) TestRefreshInvalidToken() {
 
 		body := suite.ReadResult(resp)
 		suite.False(body.IsOk(), "Refresh should fail with invalid token")
-		suite.Equal(result.ErrCodeTokenInvalid, body.Code, "Should return token invalid error")
+		suite.Equal(security.ErrCodeTokenInvalid, body.Code, "Should return token invalid error")
 	})
 
 	suite.Run("EmptyToken", func() {
@@ -565,7 +565,7 @@ func (suite *AuthResourceTestSuite) TestRefreshWithAccessToken() {
 
 	body := suite.ReadResult(resp)
 	suite.False(body.IsOk(), "Refresh should fail with access token")
-	suite.Equal(result.ErrCodeTokenInvalid, body.Code, "Should return token invalid error")
+	suite.Equal(security.ErrCodeTokenInvalid, body.Code, "Should return token invalid error")
 }
 
 // TestRefreshUserNotFound tests refresh failure when user is not found.
@@ -1043,7 +1043,7 @@ func (suite *AuthResourceTestSuite) TestLoginEventPublished() {
 		suite.Equal("testuser", loginEvent.Username, "Username should match")
 		suite.False(loginEvent.IsOk, "IsOk should be false for failed login")
 		suite.NotEmpty(loginEvent.FailReason, "FailReason should not be empty for failed login")
-		suite.Equal(result.ErrCodeCredentialsInvalid, loginEvent.ErrorCode, "ErrorCode should match")
+		suite.Equal(security.ErrCodeCredentialsInvalid, loginEvent.ErrorCode, "ErrorCode should match")
 		suite.NotEmpty(loginEvent.LoginIP, "LoginIP should not be empty")
 		suite.NotEmpty(loginEvent.TraceID, "TraceID should not be empty")
 	})
@@ -1079,7 +1079,7 @@ func (suite *AuthResourceTestSuite) TestLoginEventPublished() {
 		suite.Nil(loginEvent.UserID, "UserID should be nil for non-existent user")
 		suite.Equal("nonexistent", loginEvent.Username, "Username should match")
 		suite.False(loginEvent.IsOk, "IsOk should be false")
-		suite.Equal(result.ErrCodeCredentialsInvalid, loginEvent.ErrorCode, "ErrorCode should match")
+		suite.Equal(security.ErrCodeCredentialsInvalid, loginEvent.ErrorCode, "ErrorCode should match")
 	})
 }
 
@@ -1371,7 +1371,7 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeInvalidToken() {
 
 	body := s.ReadResult(resp)
 	s.False(body.IsOk(), "Condition should be false")
-	s.Equal(result.ErrCodeChallengeTokenInvalid, body.Code, "Should match expected value")
+	s.Equal(security.ErrCodeChallengeTokenInvalid, body.Code, "Should match expected value")
 }
 
 // TestResolveChallengeWrongType tests that resolve_challenge rejects a type not in pending list.
@@ -1403,7 +1403,7 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeWrongType() {
 
 	body := s.ReadResult(resp)
 	s.False(body.IsOk(), "Condition should be false")
-	s.Equal(result.ErrCodeChallengeTypeInvalid, body.Code, "Should match expected value")
+	s.Equal(security.ErrCodeChallengeTypeInvalid, body.Code, "Should match expected value")
 }
 
 // TestResolveChallengeProviderRejectsResponse tests that resolve_challenge
@@ -1421,8 +1421,8 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeProviderRejectsResponse() {
 
 	s.challengeProvider.On("Resolve", mock.Anything, mock.Anything, "wrong_code").
 		Return((*security.Principal)(nil), result.Err(
-			i18n.T(result.ErrMessageChallengeResolveFailed),
-			result.WithCode(result.ErrCodeChallengeResolveFailed),
+			i18n.T(security.ErrMessageChallengeResolveFailed),
+			result.WithCode(security.ErrCodeChallengeResolveFailed),
 			result.WithStatus(400),
 		)).Once()
 
@@ -1443,7 +1443,7 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeProviderRejectsResponse() {
 
 	body := s.ReadResult(resp)
 	s.False(body.IsOk(), "Condition should be false")
-	s.Equal(result.ErrCodeChallengeResolveFailed, body.Code, "Should match expected value")
+	s.Equal(security.ErrCodeChallengeResolveFailed, body.Code, "Should match expected value")
 }
 
 // TestLoginEvaluateChallengeError tests that login propagates errors from challenge evaluation.
@@ -1797,7 +1797,7 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeProviderNotFound() 
 
 	body := s.ReadResult(resp)
 	s.False(body.IsOk(), "Condition should be false")
-	s.Equal(result.ErrCodeChallengeTypeInvalid, body.Code, "Should match expected value")
+	s.Equal(security.ErrCodeChallengeTypeInvalid, body.Code, "Should match expected value")
 }
 
 // TestResolveChallengeTokenGenerateError covers the branch where all challenges

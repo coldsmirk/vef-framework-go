@@ -52,11 +52,11 @@ func (s *AuthManagerTestSuite) TestAuthenticate() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeUnsupportedAuthenticationType, resErr.Code, "Should return unsupported auth type code")
+		s.Equal(security.ErrCodeUnsupportedAuthenticationType, resErr.Code, "Should return unsupported auth type code")
 	})
 
 	s.Run("AuthenticatorReturnsResultError", func() {
-		authErr := result.ErrCredentialsInvalid("bad password")
+		authErr := security.ErrCredentialsInvalid("bad password")
 
 		auth := new(MockAuthenticator)
 		auth.On("Supports", "password").Return(true)
@@ -72,7 +72,7 @@ func (s *AuthManagerTestSuite) TestAuthenticate() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeCredentialsInvalid, resErr.Code, "Should preserve error code")
+		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should preserve error code")
 	})
 
 	s.Run("AuthenticatorReturnsGenericError", func() {
@@ -123,7 +123,7 @@ func (s *AuthManagerTestSuite) TestAuthenticate() {
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(result.ErrCodeUnsupportedAuthenticationType, resErr.Code, "Should return unsupported auth type code")
+		s.Equal(security.ErrCodeUnsupportedAuthenticationType, resErr.Code, "Should return unsupported auth type code")
 	})
 }
 

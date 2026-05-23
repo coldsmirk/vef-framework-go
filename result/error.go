@@ -24,6 +24,23 @@ func (e Error) Error() string {
 	return e.Message
 }
 
+// Is reports whether target represents the same business error as e.
+//
+// Two result.Error values are considered equal when they share the same
+// Code — Message may differ (factories such as ErrCredentialsInvalid
+// build dynamic messages) and Status is transport-level metadata that
+// must not affect identity comparisons. Returning true for matching
+// Codes lets errors.Is(err, sentinel) work for both static sentinels
+// and dynamically constructed errors from the same logical kind.
+func (e Error) Is(target error) bool {
+	other, ok := target.(Error)
+	if !ok {
+		return false
+	}
+
+	return e.Code == other.Code
+}
+
 // Err creates a new Error with optional message and options.
 // Usage: Err(), Err("message"), Err("message", WithCode(...)), Err(WithCode(...)).
 func Err(messageOrOptions ...any) Error {

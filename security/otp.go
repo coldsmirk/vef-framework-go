@@ -2,8 +2,6 @@ package security
 
 import (
 	"context"
-
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // OTPEvaluator determines whether a user needs OTP verification.
@@ -106,7 +104,7 @@ func (p *OTPChallengeProvider) Evaluate(ctx context.Context, principal *Principa
 func (p *OTPChallengeProvider) Resolve(ctx context.Context, principal *Principal, response any) (*Principal, error) {
 	code, ok := response.(string)
 	if !ok || code == "" {
-		return nil, result.ErrOTPCodeRequired
+		return nil, ErrOTPCodeRequired
 	}
 
 	valid, err := p.config.Verifier.Verify(ctx, principal, code)
@@ -115,7 +113,7 @@ func (p *OTPChallengeProvider) Resolve(ctx context.Context, principal *Principal
 	}
 
 	if !valid {
-		return nil, result.ErrOTPCodeInvalid
+		return nil, ErrOTPCodeInvalid
 	}
 
 	return principal, nil

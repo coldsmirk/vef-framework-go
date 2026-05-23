@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
@@ -29,7 +28,7 @@ func (*JWTTokenAuthenticator) Supports(authType string) bool {
 func (ja *JWTTokenAuthenticator) Authenticate(_ context.Context, authentication security.Authentication) (*security.Principal, error) {
 	token := authentication.Principal
 	if token == "" {
-		return nil, result.ErrTokenInvalid
+		return nil, security.ErrTokenInvalid
 	}
 
 	claimsAccessor, err := ja.jwt.Parse(token)
@@ -38,12 +37,12 @@ func (ja *JWTTokenAuthenticator) Authenticate(_ context.Context, authentication 
 	}
 
 	if claimsAccessor.Type() != security.TokenTypeAccess {
-		return nil, result.ErrTokenInvalid
+		return nil, security.ErrTokenInvalid
 	}
 
 	subjectParts := strings.SplitN(claimsAccessor.Subject(), "@", 2)
 	if len(subjectParts) < 2 {
-		return nil, result.ErrTokenInvalid
+		return nil, security.ErrTokenInvalid
 	}
 
 	principal := security.NewUser(subjectParts[0], subjectParts[1], claimsAccessor.Roles()...)
