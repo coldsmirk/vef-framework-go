@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,11 +18,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
-
-// eventTypePattern restricts event type strings to a safe alphabet so
-// they can be safely composed into stream keys, DLQ topic names, and
-// metrics labels without escaping concerns.
-var eventTypePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
 // busLogger is the package-wide logger.
 var busLogger = logx.Named("event")
@@ -520,7 +514,7 @@ func (b *Bus) buildBuckets(ctx context.Context, evts []event.Event, cfg event.Pu
 	})
 
 	for _, evt := range evts {
-		if !eventTypePattern.MatchString(evt.EventType()) {
+		if !transport.EventTypePattern.MatchString(evt.EventType()) {
 			return nil, fmt.Errorf("%w: %q", event.ErrInvalidEventType, evt.EventType())
 		}
 

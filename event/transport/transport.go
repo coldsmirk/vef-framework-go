@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"regexp"
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -13,6 +14,14 @@ import (
 // the bus can detect the misuse and so the routing layer can filter
 // them out during subscription resolution.
 var ErrSubscribeUnsupported = errors.New("transport: subscribe is not supported on this transport")
+
+// EventTypePattern is the alphabet allowed in event type strings when
+// they are composed into transport-level keys (Redis Stream keys, DLQ
+// topics, metrics labels). All publish and subscribe paths validate
+// event types against this single regex so the alphabet cannot drift
+// across the bus and individual transport implementations. Update both
+// sites if the alphabet ever changes.
+var EventTypePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
 // Frame is the wire-level representation of an event. The bus encodes
 // Envelope into Frame on publish and decodes back on consume.

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,11 +24,6 @@ import (
 // exceeding the limit are XACKed and discarded with a log line.
 const maxFrameBytes = 1 << 20 // 1 MiB
 
-// eventTypePattern is the alphabet allowed in event types when used
-// to compose Redis Stream keys and DLQ topics. Validation keeps stream
-// keys deterministic and safe from accidental wildcard injection.
-var eventTypePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
-
 // errFrameTooLarge wraps the per-message size check failure so callers
 // can detect it with errors.Is.
 var errFrameTooLarge = errors.New("redis_stream: frame body exceeds size limit")
@@ -39,7 +33,7 @@ var errFrameTooLarge = errors.New("redis_stream: frame body exceeds size limit")
 var errTransportNotStarted = errors.New("redis_stream: transport not started")
 
 // errInvalidEventType is returned when an event type contains
-// characters outside the eventTypePattern allowlist.
+// characters outside the transport.EventTypePattern allowlist.
 var errInvalidEventType = errors.New("redis_stream: invalid event type")
 
 // Transport implements transport.Transport over Redis Streams.
@@ -365,9 +359,9 @@ func isBusyGroup(err error) bool {
 // safe for stream keys and DLQ topics. Returning a typed error lets
 // callers (bus, contract suite, applications) check via errors.Is.
 func validateEventType(t string) error {
-	if t == "" || !eventTypePattern.MatchString(t) {
+	if t == "" || !transport.EventTypePattern.MatchString(t) {
 		return fmt.Errorf("%w: %q (allowed: %s)",
-			errInvalidEventType, t, eventTypePattern.String())
+			errInvalidEventType, t, transport.EventTypePattern.String())
 	}
 
 	return nil
