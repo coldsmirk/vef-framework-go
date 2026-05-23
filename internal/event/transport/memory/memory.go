@@ -19,6 +19,16 @@ var ErrBusStopped = errors.New("memory transport: stopped")
 type Transport struct {
 	cfg memory.Config
 
+	// ctx is the transport-scoped lifecycle context. Stop cancels it so
+	// in-flight consumer goroutines observe the shutdown signal in
+	// addition to the per-subscription stopCh. Without this, handlers
+	// blocking on downstream I/O would only see the cancellation when
+	// the per-subscription stopCh closed — which is fine for unsubscribe
+	// but not for transport Stop where the bus wants every handler to
+	// unwind on the supplied shutdown deadline.
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	mu      sync.RWMutex
 	subs    map[string]map[string]*subscription // eventType → subID → sub
 	stopped atomic.Bool
@@ -35,13 +45,21 @@ type subscription struct {
 	stopCh      chan struct{}
 	fullPolicy  memory.FullPolicy
 	publishWait time.Duration
+
+	// ctx carries the transport's lifecycle. deliver hands it to the
+	// consume callback so handlers see Done on transport Stop.
+	ctx context.Context
 }
 
 // New constructs a memory Transport with the given config.
 func New(cfg memory.Config) *Transport {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return &Transport{
-		cfg:  cfg,
-		subs: make(map[string]map[string]*subscription),
+		cfg:    cfg,
+		ctx:    ctx,
+		cancel: cancel,
+		subs:   make(map[string]map[string]*subscription),
 	}
 }
 
@@ -67,6 +85,11 @@ func (t *Transport) Stop(ctx context.Context) error {
 	if !t.stopped.CompareAndSwap(false, true) {
 		return nil
 	}
+
+	// Cancel the transport-scoped context before draining so any handler
+	// currently inside its consume callback observes the shutdown via
+	// ctx.Done() rather than only on the next loop iteration.
+	t.cancel()
 
 	t.mu.Lock()
 
@@ -146,6 +169,7 @@ func (t *Transport) Subscribe(eventType, _ string, fn transport.ConsumeFunc, cfg
 		stopCh:      make(chan struct{}),
 		fullPolicy:  t.cfg.EffectiveFullPolicy(),
 		publishWait: t.cfg.PublishTimeout,
+		ctx:         t.ctx,
 	}
 
 	t.mu.Lock()
@@ -186,6 +210,8 @@ func (s *subscription) loop() {
 		select {
 		case <-s.stopCh:
 			return
+		case <-s.ctx.Done():
+			return
 		case frame, ok := <-s.queue:
 			if !ok {
 				return
@@ -200,7 +226,9 @@ func (s *subscription) deliver(frame transport.Frame) {
 	d := newDelivery(frame)
 	// Memory transport ignores Ack/Nack outcomes (no retry semantics);
 	// the bus's consume middleware (recover, logging) handles errors.
-	_ = s.consume(context.Background(), d)
+	// The transport-scoped context carries Stop cancellation so
+	// handlers blocking on downstream I/O can unwind cleanly.
+	_ = s.consume(s.ctx, d)
 }
 
 func (s *subscription) enqueue(ctx context.Context, frame transport.Frame) error {
