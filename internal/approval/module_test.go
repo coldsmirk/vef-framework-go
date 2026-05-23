@@ -13,12 +13,29 @@ import (
 
 // stubRouteInspector lets verifyEventRouting exercise OnStart against a
 // deterministic routing table without spinning up the real bus.
+//
+// subscribable defaults to "every event is subscribable" via the nil
+// map fallback in HasSubscribableTransport, so existing scenarios that
+// only care about the transactional axis stay terse. Scenarios that
+// exercise the subscribable check set an explicit map.
 type stubRouteInspector struct {
 	transactional map[string]bool
+	subscribable  map[string]bool
 }
 
 func (s *stubRouteInspector) HasTransactionalRoute(et string) bool {
 	return s.transactional[et]
+}
+
+func (s *stubRouteInspector) HasSubscribableTransport(et string) bool {
+	if s.subscribable == nil {
+		// Treat every event as subscribable when the field is unset so
+		// callers that only care about HasTransactionalRoute don't have
+		// to enumerate the full event list twice.
+		return true
+	}
+
+	return s.subscribable[et]
 }
 
 func allRequiredTransactional() map[string]bool {
@@ -108,6 +125,54 @@ func TestVerifyEventRouting(t *testing.T) {
 
 		require.NoError(t, lc.Start(context.Background()),
 			"Missing binding_failed transactional route should not fail module startup")
+
+		lc.RequireStop()
+	})
+
+	t.Run("FailsWhenInstanceCompletedHasNoSubscribableTransport", func(t *testing.T) {
+		// Mirror the production misconfiguration: route resolves to a
+		// publish-only outbox alone. HasTransactionalRoute=true on all
+		// events, HasSubscribableTransport=false on InstanceCompleted.
+		inspector := &stubRouteInspector{
+			transactional: allRequiredTransactional(),
+			subscribable: map[string]bool{
+				// Every other event remains subscribable so the test
+				// pinpoints InstanceCompleted as the unique offender.
+				approval.EventTypeInstanceCompleted: false,
+			},
+		}
+		// Mark all other events as subscribable explicitly.
+		for et := range allRequiredTransactional() {
+			if et == approval.EventTypeInstanceCompleted {
+				continue
+			}
+
+			inspector.subscribable[et] = true
+		}
+
+		lc := fxtest.NewLifecycle(t)
+		verifyEventRouting(lc, inspector)
+
+		err := lc.Start(context.Background())
+		require.Error(t, err, "binding listener cannot subscribe to a publish-only route")
+		assert.ErrorIs(t, err, ErrEventRouteNotSubscribable,
+			"Error should wrap ErrEventRouteNotSubscribable")
+		assert.Contains(t, err.Error(), approval.EventTypeInstanceCompleted,
+			"Error should name the offending event type")
+		assert.Contains(t, err.Error(), "binding listener",
+			"Error should explain why the route needs a sink")
+	})
+
+	t.Run("PassesWhenSubscribableRouteIsAvailable", func(t *testing.T) {
+		// Default stub treats every event as subscribable. Same result
+		// as a route containing [\"outbox\", \"memory\"].
+		inspector := &stubRouteInspector{transactional: allRequiredTransactional()}
+
+		lc := fxtest.NewLifecycle(t)
+		verifyEventRouting(lc, inspector)
+
+		require.NoError(t, lc.Start(context.Background()),
+			"Subscribable transport on InstanceCompleted should let the module start")
 
 		lc.RequireStop()
 	})
