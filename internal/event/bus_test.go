@@ -333,6 +333,41 @@ func TestBusPendingSubscriptionFlushedOnStart(t *testing.T) {
 	}
 }
 
+func TestRollbackStartedTransportsCollectsStopErrors(t *testing.T) {
+	// Bus.Start composes rollback through this helper; testing it
+	// directly avoids depending on the non-deterministic iteration
+	// order of Bus.transports (a map keyed by transport Name).
+	clean := newRecordingTransport("clean", transport.Capabilities{})
+	boom := newFailingStopTransport("boom")
+
+	cfg := &config.EventConfig{DefaultTransport: "clean"}
+	bus := NewBus(cfg, "test-app", []transport.Transport{clean, boom}, nil, nil, nil)
+
+	errs := bus.rollbackStartedTransports(t.Context(), []transport.Transport{clean, boom})
+	require.Len(t, errs, 1,
+		"rollback must report exactly one Stop failure when one transport's Stop fails")
+	require.ErrorIs(t, errs[0], errStopBoom,
+		"reported error must wrap the underlying Stop failure verbatim")
+}
+
+func TestJoinStartFailureWrapping(t *testing.T) {
+	cause := errors.New("primary start failure")
+
+	require.Equal(t, cause, joinStartFailure(cause, nil),
+		"With no rollback errors the cause must be returned verbatim — wrapping it via errors.Join "+
+			"breaks errors.Is on a single-arg join")
+
+	rb1 := errors.New("rollback A")
+	rb2 := errors.New("rollback B")
+	joined := joinStartFailure(cause, []error{rb1, rb2})
+	require.ErrorIs(t, joined, cause,
+		"Joined error must still satisfy errors.Is on the primary cause")
+	require.ErrorIs(t, joined, rb1,
+		"Joined error must surface the first rollback failure for operator visibility")
+	require.ErrorIs(t, joined, rb2,
+		"Joined error must surface every rollback failure, not just the first")
+}
+
 func TestBusStartFailsWhenPendingSubscriptionCannotFlush(t *testing.T) {
 	atLeastOnce := newRecordingTransport("redis_stream", transport.Capabilities{AtLeastOnce: true})
 	cfg := &config.EventConfig{DefaultTransport: "redis_stream"}

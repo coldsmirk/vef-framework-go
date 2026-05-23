@@ -170,20 +170,15 @@ func (b *Bus) Start(ctx context.Context) error {
 	started := make([]transport.Transport, 0, len(b.transports))
 	for _, t := range b.transports {
 		if err := t.Start(ctx); err != nil {
-			// Roll back already-started transports so partial Start
-			// failures don't leak goroutines or leave the bus in a
-			// half-initialized state.
-			for _, ts := range started {
-				if stopErr := ts.Stop(ctx); stopErr != nil {
-					busLogger.Warnf("rollback stop %s: %v", ts.Name(), stopErr)
-				}
-			}
+			cause := fmt.Errorf("event: start transport %s: %w", t.Name(), err)
+
+			rollbackErrs := b.rollbackStartedTransports(ctx, started)
 
 			b.mu.Lock()
 			b.router = nil
 			b.mu.Unlock()
 
-			return fmt.Errorf("event: start transport %s: %w", t.Name(), err)
+			return joinStartFailure(cause, rollbackErrs)
 		}
 
 		started = append(started, t)
@@ -216,29 +211,7 @@ func (b *Bus) Start(ctx context.Context) error {
 	}
 
 	if len(flushErrs) > 0 {
-		for _, unsub := range flushed {
-			unsub()
-		}
-
-		b.mu.Lock()
-		active := b.active
-		b.active = make(map[uint64]activeSubscription)
-		b.pending = pending
-		b.started.Store(false)
-		b.router = nil
-		b.mu.Unlock()
-
-		for _, sub := range active {
-			for _, u := range sub.unsubs {
-				u()
-			}
-		}
-
-		for _, t := range started {
-			if stopErr := t.Stop(ctx); stopErr != nil {
-				flushErrs = append(flushErrs, fmt.Errorf("event: rollback stop %s: %w", t.Name(), stopErr))
-			}
-		}
+		flushErrs = append(flushErrs, b.revertFromFailedFlush(ctx, pending, flushed, started)...)
 
 		return errors.Join(flushErrs...)
 	}
@@ -246,6 +219,80 @@ func (b *Bus) Start(ctx context.Context) error {
 	b.async.start()
 
 	return nil
+}
+
+// rollbackStartedTransports stops every transport that has already
+// been brought up during this Start attempt, returning the slice of
+// Stop failures. Stop failures during rollback usually signal resource
+// leaks (lingering goroutines, unreleased connections), so callers
+// surface them alongside the triggering cause rather than swallowing
+// them with a log line — partial visibility hides operational risk.
+func (*Bus) rollbackStartedTransports(ctx context.Context, started []transport.Transport) []error {
+	var errs []error
+	for _, t := range started {
+		if stopErr := t.Stop(ctx); stopErr != nil {
+			errs = append(errs, fmt.Errorf("event: rollback stop %s: %w", t.Name(), stopErr))
+		}
+	}
+
+	return errs
+}
+
+// revertFromFailedFlush rewinds the bus to its pre-Start state after
+// the pending-subscription flush has produced one or more errors.
+// Sequence:
+//  1. Unsubscribe everything that flushed successfully in this attempt.
+//  2. Snapshot and clear b.active while restoring b.pending under the
+//     mutex. b.started has already flipped to true earlier in Start,
+//     so any concurrent Subscribe call took the subscribeNow path and
+//     installed itself into b.active; these stray entries must also
+//     be unwound so a future retry starts from a clean slate.
+//  3. Unsubscribe the stray entries outside the lock to keep the
+//     critical section short.
+//  4. Stop every transport that we had already brought up, joining
+//     any Stop errors so they reach the caller.
+func (b *Bus) revertFromFailedFlush(
+	ctx context.Context,
+	pending []pendingSubscription,
+	flushed []event.Unsubscribe,
+	started []transport.Transport,
+) []error {
+	for _, unsub := range flushed {
+		unsub()
+	}
+
+	b.mu.Lock()
+	straySubs := b.active
+	b.active = make(map[uint64]activeSubscription)
+	b.pending = pending
+	b.started.Store(false)
+	b.router = nil
+	b.mu.Unlock()
+
+	for _, sub := range straySubs {
+		for _, u := range sub.unsubs {
+			u()
+		}
+	}
+
+	return b.rollbackStartedTransports(ctx, started)
+}
+
+// joinStartFailure combines the triggering cause with any rollback
+// Stop errors. errors.Join with a single non-nil entry wraps the
+// argument rather than returning it verbatim, which would interfere
+// with callers using errors.Is — fall back to the raw cause when no
+// rollback errors occurred.
+func joinStartFailure(cause error, rollbackErrs []error) error {
+	if len(rollbackErrs) == 0 {
+		return cause
+	}
+
+	all := make([]error, 0, 1+len(rollbackErrs))
+	all = append(all, cause)
+	all = append(all, rollbackErrs...)
+
+	return errors.Join(all...)
 }
 
 // Stop drains async work, unsubscribes all active subscriptions, and
