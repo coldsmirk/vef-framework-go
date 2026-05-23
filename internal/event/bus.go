@@ -97,6 +97,28 @@ func (b *Bus) HasTransactionalRoute(eventType string) bool {
 	return false
 }
 
+// HasSubscribableTransport implements event.RouteInspector. Returns
+// false before Start (no router built yet) or when every transport
+// resolving eventType is publish-only — in that case no Subscribe call
+// against the route could ever succeed, so callers should fail fast.
+func (b *Bus) HasSubscribableTransport(eventType string) bool {
+	b.mu.Lock()
+	r := b.router
+	b.mu.Unlock()
+
+	if r == nil {
+		return false
+	}
+
+	for _, t := range r.Resolve(eventType) {
+		if !t.Capabilities().PublishOnly {
+			return true
+		}
+	}
+
+	return false
+}
+
 // NewBus constructs a Bus from the supplied configuration, transport
 // registry, and middleware groups. Subscribe calls are accepted before
 // Start; they are flushed during Start once the router is resolved.

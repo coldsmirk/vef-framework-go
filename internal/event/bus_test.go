@@ -202,6 +202,40 @@ func TestBusRequiresGroupForAtLeastOnceTransport(t *testing.T) {
 	require.NoError(t, err, "explicit WithGroup unblocks the subscription")
 }
 
+func TestBusHasSubscribableTransport(t *testing.T) {
+	mem := newRecordingTransport("memory", transport.Capabilities{})
+	pubOnly := newPublishOnlyTransport("outbox")
+
+	cfg := &config.EventConfig{
+		DefaultTransport: "memory",
+		Routing: []config.EventRoutingRule{
+			{Pattern: "with.sink.*", Transports: []string{"memory", "outbox"}},
+			{Pattern: "pub.only.*", Transports: []string{"outbox"}},
+		},
+	}
+
+	bus := NewBus(cfg, "test-app", []transport.Transport{mem, pubOnly}, nil, nil, nil)
+	require.NoError(t, bus.Start(t.Context()))
+	t.Cleanup(func() { _ = bus.Stop(context.Background()) })
+
+	require.True(t, bus.HasSubscribableTransport("with.sink.x"),
+		"Route containing memory alongside outbox must be reported subscribable")
+	require.False(t, bus.HasSubscribableTransport("pub.only.x"),
+		"Route resolving only to a publish-only transport must be reported non-subscribable")
+	require.True(t, bus.HasSubscribableTransport("unrouted.event"),
+		"Fallback default transport (memory) is subscribable")
+}
+
+func TestBusHasSubscribableTransportBeforeStart(t *testing.T) {
+	mem := newRecordingTransport("memory", transport.Capabilities{})
+	cfg := &config.EventConfig{DefaultTransport: "memory"}
+
+	bus := NewBus(cfg, "test-app", []transport.Transport{mem}, nil, nil, nil)
+
+	require.False(t, bus.HasSubscribableTransport("any"),
+		"Inspector must return false before Start when the router has not been built")
+}
+
 func TestBusSkipsPublishOnlyTransportOnSubscribe(t *testing.T) {
 	mem := newRecordingTransport("memory", transport.Capabilities{})
 	pubOnly := newPublishOnlyTransport("outbox")
