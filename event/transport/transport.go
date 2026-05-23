@@ -17,10 +17,11 @@ var ErrSubscribeUnsupported = errors.New("transport: subscribe is not supported 
 
 // EventTypePattern is the alphabet allowed in event type strings when
 // they are composed into transport-level keys (Redis Stream keys, DLQ
-// topics, metrics labels). All publish and subscribe paths validate
-// event types against this single regex so the alphabet cannot drift
-// across the bus and individual transport implementations. Update both
-// sites if the alphabet ever changes.
+// topics, metrics labels). The bus enforces it at both its Publish and
+// Subscribe entry points, and cross-process transports re-validate at
+// their own boundary as defense in depth. In-process transports rely
+// on the bus check rather than duplicating it. Update every validation
+// site if the alphabet ever changes.
 var EventTypePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
 // Frame is the wire-level representation of an event. The bus encodes

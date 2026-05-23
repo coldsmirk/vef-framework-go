@@ -371,6 +371,13 @@ func (b *Bus) PublishBatch(ctx context.Context, evts []event.Event, opts ...even
 // pending registration. After Start the call attaches handlers to all
 // matched transports.
 func (b *Bus) Subscribe(eventType string, h event.Handler, opts ...event.SubscribeOption) (event.Unsubscribe, error) {
+	// Validate at the entry point so pending subscriptions registered
+	// before Start fail immediately rather than blowing up at flush
+	// time. The publish path validates symmetrically before encoding.
+	if !transport.EventTypePattern.MatchString(eventType) {
+		return nil, fmt.Errorf("%w: %q", event.ErrInvalidEventType, eventType)
+	}
+
 	cfg := event.ApplySubscribeOptions(opts)
 
 	if b.started.Load() {

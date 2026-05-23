@@ -188,6 +188,37 @@ func TestBusPublishSubscribeRoundTrip(t *testing.T) {
 	require.Len(t, mem.capturedFrames(), 1)
 }
 
+func TestBusSubscribeRejectsInvalidEventType(t *testing.T) {
+	// The published EventTypePattern contract promises validation at
+	// both Publish and Subscribe entry points. Without this check the
+	// contract wording was stronger than the implementation — a
+	// pending subscription registered before Start would silently
+	// accept any string and only fail at flush time, by which point
+	// the misuse is far from the call site.
+	mem := newRecordingTransport("memory", transport.Capabilities{})
+	bus := newTestBus(t, []transport.Transport{mem})
+
+	t.Run("AfterStart", func(t *testing.T) {
+		_, err := bus.Subscribe("invalid event type with spaces",
+			func(context.Context, event.Envelope) error { return nil })
+		require.ErrorIs(t, err, event.ErrInvalidEventType,
+			"Subscribe must reject event types outside the transport-key alphabet")
+	})
+
+	t.Run("BeforeStart", func(t *testing.T) {
+		// Build a fresh, unstarted bus so the pending branch runs.
+		fresh := newRecordingTransport("memory", transport.Capabilities{})
+		cfg := &config.EventConfig{DefaultTransport: "memory"}
+		earlyBus := NewBus(cfg, "test-app", []transport.Transport{fresh}, nil, nil, nil)
+
+		_, err := earlyBus.Subscribe("bad/event/type",
+			func(context.Context, event.Envelope) error { return nil })
+		require.ErrorIs(t, err, event.ErrInvalidEventType,
+			"Subscribe must validate before buffering pending registrations, "+
+				"not defer the error to flush time")
+	})
+}
+
 func TestBusRequiresGroupForAtLeastOnceTransport(t *testing.T) {
 	atLeastOnce := newRecordingTransport("redis_stream", transport.Capabilities{AtLeastOnce: true})
 
