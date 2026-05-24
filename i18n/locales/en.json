@@ -13,8 +13,6 @@
   "security_token_not_valid_yet": "Refresh token is not yet valid",
   "security_token_invalid_issuer": "Invalid token issuer",
   "security_token_invalid_audience": "Token does not belong to this application",
-  "security_token_missing_subject": "Token is missing subject information",
-  "security_token_missing_token_type": "Token is missing type information",
   "security_app_id_required": "Application id is required",
   "security_timestamp_required": "Timestamp is required",
   "security_signature_required": "Signature is required",

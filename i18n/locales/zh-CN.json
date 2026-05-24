@@ -13,8 +13,6 @@
   "security_token_not_valid_yet": "刷新令牌未生效",
   "security_token_invalid_issuer": "无效的令牌颁发者",
   "security_token_invalid_audience": "令牌不属于当前应用",
-  "security_token_missing_subject": "令牌缺失主体信息",
-  "security_token_missing_token_type": "令牌缺失类型信息",
   "security_app_id_required": "应用ID必须",
   "security_timestamp_required": "时间戳必须",
   "security_signature_required": "签名必须",

@@ -22,7 +22,7 @@ const (
 )
 
 // Response codes for security-domain API errors.
-// 1000-1029: authentication; 1030-1039: challenge.
+// 1000-1022: authentication; 1030-1039: challenge.
 const (
 	ErrCodeUnauthenticated               = 1000
 	ErrCodeUnsupportedAuthenticationType = 1001
@@ -30,25 +30,23 @@ const (
 	ErrCodeTokenInvalid                  = 1003
 	ErrCodeTokenNotValidYet              = 1004
 	ErrCodeTokenInvalidIssuer            = 1005
-	ErrCodeTokenInvalidAudience          = 1007
-	ErrCodeTokenMissingSubject           = 1008
-	ErrCodeTokenMissingTokenType         = 1009
-	ErrCodePrincipalInvalid              = 1010
-	ErrCodeCredentialsInvalid            = 1011
-	ErrCodeAppIDRequired                 = 1012
-	ErrCodeTimestampRequired             = 1013
-	ErrCodeSignatureRequired             = 1014
-	ErrCodeTimestampInvalid              = 1015
-	ErrCodeSignatureExpired              = 1016
-	ErrCodeExternalAppNotFound           = 1017
-	ErrCodeExternalAppDisabled           = 1018
-	ErrCodeIPNotAllowed                  = 1019
-	ErrCodeSignatureInvalid              = 1020
-	ErrCodeNonceRequired                 = 1021
-	ErrCodeNonceInvalid                  = 1022
-	ErrCodeNonceAlreadyUsed              = 1023
-	ErrCodeAuthHeaderMissing             = 1024
-	ErrCodeAuthHeaderInvalid             = 1025
+	ErrCodeTokenInvalidAudience          = 1006
+	ErrCodePrincipalInvalid              = 1007
+	ErrCodeCredentialsInvalid            = 1008
+	ErrCodeAppIDRequired                 = 1009
+	ErrCodeTimestampRequired             = 1010
+	ErrCodeSignatureRequired             = 1011
+	ErrCodeTimestampInvalid              = 1012
+	ErrCodeSignatureExpired              = 1013
+	ErrCodeExternalAppNotFound           = 1014
+	ErrCodeExternalAppDisabled           = 1015
+	ErrCodeIPNotAllowed                  = 1016
+	ErrCodeSignatureInvalid              = 1017
+	ErrCodeNonceRequired                 = 1018
+	ErrCodeNonceInvalid                  = 1019
+	ErrCodeNonceAlreadyUsed              = 1020
+	ErrCodeAuthHeaderMissing             = 1021
+	ErrCodeAuthHeaderInvalid             = 1022
 
 	// Challenge errors (1030-1039).
 	ErrCodeChallengeRequired      = 1030
@@ -92,16 +90,6 @@ var (
 	ErrTokenInvalidAudience = result.Err(
 		i18n.T("security_token_invalid_audience"),
 		result.WithCode(ErrCodeTokenInvalidAudience),
-		result.WithStatus(fiber.StatusUnauthorized),
-	)
-	ErrTokenMissingSubject = result.Err(
-		i18n.T("security_token_missing_subject"),
-		result.WithCode(ErrCodeTokenMissingSubject),
-		result.WithStatus(fiber.StatusUnauthorized),
-	)
-	ErrTokenMissingTokenType = result.Err(
-		i18n.T("security_token_missing_token_type"),
-		result.WithCode(ErrCodeTokenMissingTokenType),
 		result.WithStatus(fiber.StatusUnauthorized),
 	)
 )
