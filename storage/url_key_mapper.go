@@ -17,7 +17,7 @@ import (
 //     "/storage/files/priv/2026/05/12/foo.png", or CDN URLs like
 //     "https://cdn.example.com/priv/2026/05/12/foo.png") are normalised
 //     to the keys ClaimStore knows about ("priv/2026/05/12/foo.png")
-//     before ConsumeMany / Schedule are called. Implementations decide
+//     before Consume / Enqueue are called. Implementations decide
 //     which URLs map to managed keys; the framework does not pre-filter
 //     by scheme, so http(s) URLs reach the mapper too.
 //

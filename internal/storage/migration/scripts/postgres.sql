@@ -35,7 +35,7 @@ COMMENT ON COLUMN sys_storage_upload_claim.part_size IS 'Part size';
 COMMENT ON COLUMN sys_storage_upload_claim.part_count IS 'Parts';
 COMMENT ON COLUMN sys_storage_upload_claim.expires_at IS 'Expires';
 
--- Composite (expires_at, status) serves the claim sweeper's ScanExpired:
+-- Composite (expires_at, status) serves the claim sweeper's ListExpired:
 -- WHERE expires_at < now AND status = 'pending' ORDER BY expires_at LIMIT n.
 CREATE INDEX idx_sys_storage_upload_claim__expires_at ON sys_storage_upload_claim(expires_at, status);
 -- Supports init_upload's per-owner in-flight session cap:

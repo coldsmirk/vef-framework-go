@@ -10,6 +10,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/storage/store"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/storage"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -35,12 +36,15 @@ const (
 // that exceed StorageConfig.DeleteMaxAttempts are parked indefinitely
 // and a dead-letter event is published.
 //
-// Done + FileDeleted publish (and Defer + DeadLetter publish) are
-// committed in a single transaction via db.RunInTx, so the bookkeeping
-// and the outbox event flip atomically. The backend object delete
-// itself runs outside the transaction — it is idempotent (ErrObjectNotFound
-// is silently absorbed), so a retried tick after a transaction-side
-// crash converges without leaking objects or events.
+// Done + FileDeleted publish (on success) and Defer + DeadLetter
+// publish (on terminal failure) each commit in a single transaction
+// via db.RunInTx, so the bookkeeping and the outbox event flip
+// atomically. The transient-retry Defer (intermediate failure) runs
+// in its own RunInTx for ORM consistency but carries no co-committed
+// event. The backend object delete itself runs outside the transaction
+// — it is idempotent (ErrObjectNotFound is silently absorbed), so a
+// retried tick after a transaction-side crash converges without
+// leaking objects or events.
 type DeleteWorker struct {
 	service     storage.Service
 	multipart   storage.Multipart // nil when the backend does not implement chunked uploads
@@ -69,9 +73,7 @@ func NewDeleteWorker(
 		cfg:         cfg,
 	}
 
-	if mp, ok := service.(storage.Multipart); ok {
-		w.multipart = mp
-	}
+	w.multipart = storage.MultipartFor(service)
 
 	return w
 }
@@ -184,6 +186,15 @@ func (w *DeleteWorker) handleFailure(ctx context.Context, item *store.PendingDel
 		return w.deleteQueue.Defer(txCtx, tx, item.ID, nextAt)
 	})
 	if deferErr != nil {
+		// Missing row means our lease expired and another worker (or a
+		// later tick of this one) already ran Done on it — a benign
+		// cross-instance race the Defer doc explicitly warns about.
+		// Logging an error here would mislead on-call into chasing a
+		// failure that never happened.
+		if errors.Is(deferErr, result.ErrRecordNotFound) {
+			return
+		}
+
 		logger.Errorf("Defer delete row %s failed: %v", item.ID, deferErr)
 
 		return
@@ -217,6 +228,13 @@ func (w *DeleteWorker) parkDeadLetter(ctx context.Context, item *store.PendingDe
 		), event.WithTx(tx))
 	})
 	if txErr != nil {
+		// Same benign cross-instance race as handleFailure: a missing
+		// row means another path already Done'd it after our lease
+		// expired, so there is nothing to park.
+		if errors.Is(txErr, result.ErrRecordNotFound) {
+			return
+		}
+
 		logger.Errorf("Park dead-letter row %s failed: %v (will retry on next lease)",
 			item.ID, txErr)
 

@@ -15,15 +15,15 @@ import (
 // the atomicity of the business write. The delete worker drains the queue
 // asynchronously with retry/backoff.
 //
-// UploadID is non-empty only for rows scheduled by the claim sweeper for
+// UploadID is non-empty only for rows enqueued by the claim sweeper for
 // expired multipart claims; the worker will best-effort abort the dangling
 // multipart session before deleting the object.
 //
 // Internal type: business code never constructs PendingDelete values
 // directly. The higher-level storage.Files facade and the public
-// storage.DeleteScheduler interface accept (key, reason) pairs and the
+// storage.DeleteEnqueuer interface accept (key, reason) pairs and the
 // implementation builds these rows internally. The claim sweeper uses
-// Enqueue to retain control over UploadID + Reason on a per-row basis.
+// Insert to retain control over UploadID + Reason on a per-row basis.
 type PendingDelete struct {
 	orm.BaseModel `json:"-" bun:"table:sys_storage_pending_delete,alias:spd"`
 
@@ -46,7 +46,7 @@ func (p *PendingDelete) IsMultipart() bool {
 //
 // Lifecycle:
 //
-//  1. The CRUD layer Schedules items inside the business transaction; the
+//  1. The CRUD layer Enqueues items inside the business transaction; the
 //     INSERT commits atomically with the business write.
 //  2. The delete worker Leases due rows in batches. Lease atomically pushes
 //     each leased row's NextAttemptAt into the future (visibility timeout)
@@ -73,20 +73,26 @@ func (p *PendingDelete) IsMultipart() bool {
 //     should still configure an S3 lifecycle rule that aborts incomplete
 //     multipart uploads after N days as a defense-in-depth measure.
 //
-// Internal type: business code uses the minimal storage.DeleteScheduler
+// Internal type: business code uses the minimal storage.DeleteEnqueuer
 // interface (which DeleteQueue satisfies via embedding). DeleteQueue is
 // consumed directly only by the storage worker (Lease/Done/Defer) and
-// by the claim sweeper (Enqueue, which retains UploadID for abort).
+// by the claim sweeper (Insert, which retains UploadID for abort).
 type DeleteQueue interface {
-	// Schedule is the only method business code reaches through the
-	// public storage.DeleteScheduler interface. Embedding keeps the two
+	// Enqueue is the only method business code reaches through the
+	// public storage.DeleteEnqueuer interface. Embedding keeps the two
 	// surfaces in lock-step at compile time.
-	storage.DeleteScheduler
+	storage.DeleteEnqueuer
 
-	// Enqueue INSERTs fully-formed rows inside tx. Used by the claim
+	// Insert writes fully-formed rows inside tx. Used by the claim
 	// sweeper to forward UploadID + claim_expired reason on a per-row
 	// basis. items may be empty (no-op).
-	Enqueue(ctx context.Context, tx orm.DB, items []PendingDelete) error
+	//
+	// Unlike Enqueue, Insert does NOT deduplicate items before issuing
+	// the INSERT — the public Enqueue path dedupes the (key, reason)
+	// pair, while Insert callers must either supply already-unique rows
+	// or rely on the (object_key, reason) UNIQUE constraint's
+	// ON CONFLICT DO NOTHING for idempotency.
+	Insert(ctx context.Context, tx orm.DB, items []PendingDelete) error
 
 	// Lease atomically claims up to limit rows whose NextAttemptAt <= now,
 	// pushing each claimed row's NextAttemptAt to now+leaseDuration.
@@ -105,5 +111,11 @@ type DeleteQueue interface {
 	// for the row identified by id, inside tx. The worker uses this on
 	// transient failure with an exponential-backoff timestamp, or on
 	// dead-letter park together with a co-committed dead-letter event.
+	//
+	// Returns result.ErrRecordNotFound when the row no longer exists —
+	// typically because another worker instance (or a later tick of
+	// this one) already finalized it after the lease expired. Callers
+	// MUST treat this as a benign cross-instance race rather than a
+	// failure.
 	Defer(ctx context.Context, tx orm.DB, id string, nextAt timex.DateTime) error
 }

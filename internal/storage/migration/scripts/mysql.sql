@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS sys_storage_upload_claim (
     CONSTRAINT uk_sys_storage_upload_claim__object_key UNIQUE (object_key)
 ) COMMENT 'Claims';
 
--- Composite (expires_at, status) serves the claim sweeper's ScanExpired:
+-- Composite (expires_at, status) serves the claim sweeper's ListExpired:
 -- WHERE expires_at < now AND status = 'pending' ORDER BY expires_at LIMIT n.
 CREATE INDEX idx_sys_storage_upload_claim__expires_at ON sys_storage_upload_claim(expires_at, status);
 -- Supports init_upload's per-owner in-flight session cap:
@@ -55,11 +55,12 @@ CREATE TABLE IF NOT EXISTS sys_storage_pending_delete (
     next_attempt_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT 'Retry at',
     created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP  COMMENT 'Created',
     CONSTRAINT pk_sys_storage_pending_delete PRIMARY KEY (id),
-    -- Idempotency boundary for Enqueue: the claim sweeper can run from
-    -- multiple instances concurrently, and business retries may re-emit
-    -- the same (key, reason) pair. The Enqueue path uses ON CONFLICT
-    -- DO NOTHING against this constraint, so a duplicate insert is a
-    -- silent no-op instead of a double-publish.
+    -- Idempotency boundary for the delete queue: the claim sweeper can
+    -- run from multiple instances concurrently, and business retries
+    -- may re-emit the same (key, reason) pair. The Insert path (which
+    -- Enqueue forwards to) uses ON CONFLICT DO NOTHING against this
+    -- constraint, so a duplicate insert is a silent no-op instead of a
+    -- double-publish.
     CONSTRAINT uk_sys_storage_pending_delete__key_reason UNIQUE (object_key, reason)
 ) COMMENT 'Deletes';
 

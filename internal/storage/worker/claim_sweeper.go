@@ -51,13 +51,15 @@ type sweepPlan struct {
 	remove  []store.UploadClaim
 }
 
-// Run executes one sweep cycle. Safe to invoke from a cron task. Logs and
-// returns on any error; the next tick will pick up the same expired set.
+// Run executes one sweep cycle. Safe to invoke from a cron task.
+// Errors at each stage (listing expired rows, per-claim backend probe,
+// transactional cleanup) are logged; the next tick re-reads the
+// expired set, so transient failures self-heal.
 func (s *ClaimSweeper) Run(ctx context.Context) {
 	limit := s.cfg.EffectiveSweepBatchSize()
 	cutoff := timex.Now().Add(-s.cfg.EffectiveSweepInterval())
 
-	claims, err := s.claimStore.ScanExpired(ctx, cutoff, limit)
+	claims, err := s.claimStore.ListExpired(ctx, cutoff, limit)
 	if err != nil {
 		logger.Errorf("Failed to scan expired claims: %v", err)
 
@@ -120,7 +122,7 @@ func (s *ClaimSweeper) Run(ctx context.Context) {
 			})
 		}
 
-		return s.deleteQueue.Enqueue(txCtx, tx, items)
+		return s.deleteQueue.Insert(txCtx, tx, items)
 	})
 	if err != nil {
 		logger.Errorf("Failed to sweep expired claims: %v", err)

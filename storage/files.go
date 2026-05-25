@@ -24,17 +24,16 @@ var filesLogger = ilogx.Named("storage:files")
 // the claim consumption and pending-delete bookkeeping commit or roll
 // back atomically with the business write.
 //
-// The principal argument is the authorization subject for ownership
-// checks: OnCreate / OnUpdate's `ConsumeMany` will only adopt claims
-// created by this principal. Passing a nil or empty principal causes
-// the call to fail with ErrAccessDenied. Background jobs / system
-// paths that legitimately operate on behalf of "the system" need to
-// pass a synthetic system principal; making the principal explicit at
-// the call site keeps the authorization flow auditable.
-//
-// Internally Files composes ClaimConsumer + DeleteScheduler + a per-type
-// meta field cache; callers do not interact with those primitives
-// directly.
+// The principal argument on OnCreate / OnUpdate is the authorization
+// subject for claim ownership: Consume will only adopt claims created
+// by this principal, and a nil or empty principal causes the call to
+// fail with ErrAccessDenied. Background jobs / system paths that
+// legitimately operate on behalf of "the system" need to pass a
+// synthetic system principal; making the principal explicit at the
+// call site keeps the authorization flow auditable. OnDelete does not
+// consume claims and therefore takes no principal — callers are
+// expected to enforce ownership of the deleted row at the CRUD layer
+// before invoking it.
 type Files interface {
 	// OnCreate adopts every file reference reachable from model by
 	// deleting the corresponding upload claim rows inside tx. Returns
@@ -44,29 +43,30 @@ type Files interface {
 	OnCreate(ctx context.Context, tx orm.DB, principal *security.Principal, model any) error
 
 	// OnUpdate reconciles file references between two snapshots of the
-	// same model: newly-referenced files are adopted (ConsumeMany);
+	// same model: newly-referenced files are adopted (Consume);
 	// dereferenced files are queued for asynchronous deletion with
 	// DeleteReasonReplaced. Either model argument may be nil to signal
 	// the absence of that side (mirrors FileRefExtractor.Diff
 	// semantics).
 	OnUpdate(ctx context.Context, tx orm.DB, principal *security.Principal, oldModel, newModel any) error
 
-	// OnDelete schedules every file reference in model for asynchronous
-	// deletion with DeleteReasonDeleted. The principal argument is
-	// accepted for signature symmetry with OnCreate / OnUpdate but is
-	// not consulted today — delete scheduling does not consume claims.
+	// OnDelete enqueues every file reference in model for asynchronous
+	// deletion with DeleteReasonDeleted. Ownership of the model row
+	// must be verified by the caller before invoking this hook;
+	// OnDelete does not look up claims and therefore performs no
+	// principal check itself.
 	OnDelete(ctx context.Context, tx orm.DB, model any) error
 }
 
 // NewFiles returns the default Files implementation, sharing the supplied
-// ClaimConsumer, DeleteScheduler, event Publisher, and URLKeyMapper
+// ClaimConsumer, DeleteEnqueuer, event Publisher, and URLKeyMapper
 // across all model types. The returned value is safe for concurrent
 // use; meta field specs are parsed once per type on first access and
 // cached for the lifetime of the instance.
 //
 // The URLKeyMapper translates rich_text / markdown URLs to storage keys
-// during reconciliation. Pass IdentityURLKeyMapper{} (or nil, which is
-// normalised to the identity mapper) when business code embeds bare
+// during reconciliation. Pass new(IdentityURLKeyMapper) (or nil, which
+// is normalised to the identity mapper) when business code embeds bare
 // keys directly in <img src> / ![](...).
 //
 // FileClaimedEvent is published through the outbox transport inside the
@@ -75,14 +75,14 @@ type Files interface {
 // outbox relay forwards records to the configured sink with at-least-
 // once semantics, so subscribers must still attach with event.WithGroup
 // and rely on the Inbox middleware for dedupe.
-func NewFiles(cc ClaimConsumer, ds DeleteScheduler, bus event.Bus, urlMapper URLKeyMapper) Files {
+func NewFiles(cc ClaimConsumer, de DeleteEnqueuer, bus event.Bus, urlMapper URLKeyMapper) Files {
 	if urlMapper == nil {
 		urlMapper = new(IdentityURLKeyMapper)
 	}
 
 	return &defaultFiles{
 		cc:        cc,
-		ds:        ds,
+		de:        de,
 		bus:       bus,
 		urlMapper: urlMapper,
 		cache:     collections.NewConcurrentHashMap[reflect.Type, *cachedExtractor](),
@@ -91,7 +91,7 @@ func NewFiles(cc ClaimConsumer, ds DeleteScheduler, bus event.Bus, urlMapper URL
 
 type defaultFiles struct {
 	cc        ClaimConsumer
-	ds        DeleteScheduler
+	de        DeleteEnqueuer
 	bus       event.Bus
 	urlMapper URLKeyMapper
 	cache     collections.ConcurrentMap[reflect.Type, *cachedExtractor]
@@ -131,7 +131,7 @@ func (f *defaultFiles) onCreateWith(ctx context.Context, tx orm.DB, principal *s
 
 	keys := refKeys(refs)
 
-	if err := f.cc.ConsumeMany(ctx, tx, principal, keys); err != nil {
+	if err := f.cc.Consume(ctx, tx, principal, keys); err != nil {
 		return err
 	}
 
@@ -155,12 +155,12 @@ func (f *defaultFiles) onUpdateWith(ctx context.Context, tx orm.DB, principal *s
 	if len(toConsume) > 0 {
 		consumedKeys = refKeys(toConsume)
 
-		if err := f.cc.ConsumeMany(ctx, tx, principal, consumedKeys); err != nil {
+		if err := f.cc.Consume(ctx, tx, principal, consumedKeys); err != nil {
 			return err
 		}
 	}
 
-	if err := f.scheduleDeletes(ctx, tx, toDelete, DeleteReasonReplaced); err != nil {
+	if err := f.enqueueDeletes(ctx, tx, toDelete, DeleteReasonReplaced); err != nil {
 		return err
 	}
 
@@ -209,12 +209,12 @@ func (f *defaultFiles) OnDelete(ctx context.Context, tx orm.DB, model any) error
 }
 
 func (f *defaultFiles) onDeleteWith(ctx context.Context, tx orm.DB, model any, ext *cachedExtractor) error {
-	return f.scheduleDeletes(ctx, tx, f.applyURLMapping(ext.extract(model)), DeleteReasonDeleted)
+	return f.enqueueDeletes(ctx, tx, f.applyURLMapping(ext.extract(model)), DeleteReasonDeleted)
 }
 
 // applyURLMapping rewrites rich_text / markdown ref keys through the
 // configured URLKeyMapper so embedded URLs become storage object keys
-// before they hit ClaimConsumer / DeleteScheduler. uploaded_file refs
+// before they hit ClaimConsumer / DeleteEnqueuer. uploaded_file refs
 // are passed through unchanged (they already hold storage keys, not URLs).
 //
 // A (key, ok=false) result drops the ref entirely: the URL refers to
@@ -273,7 +273,7 @@ func (f *defaultFiles) extractorForType(typ reflect.Type) *cachedExtractor {
 	return ext
 }
 
-func (f *defaultFiles) scheduleDeletes(
+func (f *defaultFiles) enqueueDeletes(
 	ctx context.Context,
 	tx orm.DB,
 	refs []FileRef,
@@ -283,7 +283,7 @@ func (f *defaultFiles) scheduleDeletes(
 		return nil
 	}
 
-	return f.ds.Schedule(ctx, tx, refKeys(refs), reason)
+	return f.de.Enqueue(ctx, tx, refKeys(refs), reason)
 }
 
 func (e *cachedExtractor) extract(model any) []FileRef {

@@ -23,7 +23,7 @@ import (
 // drops the FOR UPDATE clause via the ORM (single-writer DB → no race
 // to begin with). MySQL and PostgreSQL execute the lock as expected.
 //
-// The returned value also satisfies the public storage.DeleteScheduler
+// The returned value also satisfies the public storage.DeleteEnqueuer
 // interface; the fx graph exposes both surfaces.
 func NewDeleteQueue(db orm.DB) DeleteQueue {
 	return &deleteQueue{db: db}
@@ -33,10 +33,10 @@ type deleteQueue struct {
 	db orm.DB
 }
 
-// Schedule implements storage.DeleteScheduler. It builds a PendingDelete
+// Enqueue implements storage.DeleteEnqueuer. It builds a PendingDelete
 // row per (deduplicated) key with the supplied reason and forwards them
-// to Enqueue inside the same business transaction.
-func (q *deleteQueue) Schedule(ctx context.Context, tx orm.DB, keys []string, reason storage.DeleteReason) error {
+// to Insert inside the same business transaction.
+func (q *deleteQueue) Enqueue(ctx context.Context, tx orm.DB, keys []string, reason storage.DeleteReason) error {
 	if len(keys) == 0 {
 		return nil
 	}
@@ -55,16 +55,16 @@ func (q *deleteQueue) Schedule(ctx context.Context, tx orm.DB, keys []string, re
 		}
 	}
 
-	return q.Enqueue(ctx, tx, items)
+	return q.Insert(ctx, tx, items)
 }
 
-// Enqueue inserts pending-delete rows, swallowing duplicates that hit
+// Insert writes pending-delete rows, swallowing duplicates that hit
 // the (object_key, reason) uniqueness constraint via DO NOTHING. This
 // makes the operation idempotent — the claim sweeper can run in
 // multi-instance deployments without a leader, and a re-tried business
-// transaction can re-enqueue the same (key, reason) pair without
+// transaction can re-insert the same (key, reason) pair without
 // blowing up the surrounding transaction.
-func (*deleteQueue) Enqueue(ctx context.Context, tx orm.DB, items []PendingDelete) error {
+func (*deleteQueue) Insert(ctx context.Context, tx orm.DB, items []PendingDelete) error {
 	if len(items) == 0 {
 		return nil
 	}

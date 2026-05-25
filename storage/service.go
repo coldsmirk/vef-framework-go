@@ -93,6 +93,18 @@ type Multipart interface {
 	AbortMultipart(ctx context.Context, opts AbortMultipartOptions) error
 }
 
+// MultipartFor returns the Multipart capability handle when svc opts
+// into chunked uploads, or nil when it does not. Callers gate any
+// multipart-specific code path on a nil check so the Service interface
+// stays small and backends that lack chunked uploads stay valid.
+func MultipartFor(svc Service) Multipart {
+	if mp, ok := svc.(Multipart); ok {
+		return mp
+	}
+
+	return nil
+}
+
 // MultipartSession identifies an opaque multipart upload session in the
 // backend. UploadID is provider-defined and must be passed back
 // unchanged to subsequent multipart calls.

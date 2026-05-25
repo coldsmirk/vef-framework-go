@@ -60,7 +60,7 @@ type FileRef struct {
 //	toDelete  = refs in oldRefs whose key is not in newRefs
 //
 // Used exclusively by defaultFiles.OnUpdate (and its tests) to drive
-// the create / delete partitioning that ConsumeMany / Schedule consume.
+// the create / delete partitioning that Consume / Enqueue process.
 func diffRefs(newRefs, oldRefs []FileRef) (toConsume, toDelete []FileRef) {
 	newKeys := refKeySet(newRefs)
 	oldKeys := refKeySet(oldRefs)

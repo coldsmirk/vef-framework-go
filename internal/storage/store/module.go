@@ -28,7 +28,7 @@ var Module = fx.Module(
 		fx.Annotate(
 			NewDeleteQueue,
 			fx.As(fx.Self()),
-			fx.As(new(storage.DeleteScheduler)),
+			fx.As(new(storage.DeleteEnqueuer)),
 		),
 		NewUploadPartStore,
 	),

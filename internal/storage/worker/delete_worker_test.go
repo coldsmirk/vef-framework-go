@@ -83,8 +83,8 @@ func TestDeleteWorker(t *testing.T) {
 		}
 
 		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
-			return env.DQ.Enqueue(txCtx, tx, []store.PendingDelete{item})
-		}), "Pending delete should be scheduled inside the transaction")
+			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{item})
+		}), "Pending delete should be inserted inside the transaction")
 
 		worker.NewDeleteWorker(env.Svc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
@@ -122,7 +122,7 @@ func TestDeleteWorker(t *testing.T) {
 		}
 
 		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
-			return env.DQ.Enqueue(txCtx, tx, []store.PendingDelete{item})
+			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{item})
 		}), "Multipart pending delete should be scheduled")
 
 		worker.NewDeleteWorker(tracker, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
@@ -148,8 +148,8 @@ func TestDeleteWorker(t *testing.T) {
 		}
 
 		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
-			return env.DQ.Enqueue(txCtx, tx, []store.PendingDelete{item})
-		}), "Pending delete should be scheduled inside the transaction")
+			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{item})
+		}), "Pending delete should be inserted inside the transaction")
 
 		worker.NewDeleteWorker(env.Svc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
@@ -172,8 +172,8 @@ func TestDeleteWorker(t *testing.T) {
 		}
 
 		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
-			return env.DQ.Enqueue(txCtx, tx, []store.PendingDelete{item})
-		}), "Pending delete should be scheduled inside the transaction")
+			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{item})
+		}), "Pending delete should be inserted inside the transaction")
 
 		worker.NewDeleteWorker(failingSvc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
@@ -202,8 +202,8 @@ func TestDeleteWorker(t *testing.T) {
 		}
 
 		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
-			return env.DQ.Enqueue(txCtx, tx, []store.PendingDelete{item})
-		}), "Pending delete should be scheduled inside the transaction")
+			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{item})
+		}), "Pending delete should be inserted inside the transaction")
 
 		worker.NewDeleteWorker(failingSvc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
@@ -211,6 +211,15 @@ func TestDeleteWorker(t *testing.T) {
 		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(24*365), 10, time.Minute)
 		require.NoError(t, err, "Pending delete lease should succeed")
 		assert.Empty(t, leased, "Dead-lettered row must not be visible within a year")
+
+		// Lease at a horizon well past the dead-letter park window to
+		// confirm the row was parked (still in the queue) rather than
+		// silently Done'd — without this, Done would also make Lease
+		// return empty and the test would pass spuriously.
+		// deadLetterPark is 100 years; 101*365 days clears it.
+		parked, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(101*365*24), 10, time.Minute)
+		require.NoError(t, err, "Dead-letter horizon lease should succeed")
+		assert.Len(t, parked, 1, "Dead-lettered row must remain in the queue, just parked far in the future")
 
 		require.Len(t, env.Pub.events, 1, "Max attempts should emit one dead-letter event")
 		dl, ok := env.Pub.events[0].(*storage.DeleteDeadLetterEvent)

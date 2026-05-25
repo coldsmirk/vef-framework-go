@@ -100,9 +100,11 @@ func ensureOwner(claim *store.UploadClaim, principal *security.Principal) error 
 //  3. it is still in the pending state, and
 //  4. its TTL has not elapsed.
 //
-// Returned errors are already shaped for direct return from an RPC
-// handler (result.ErrAccessDenied or i18n-wrapped result.Err). Handlers
-// that need different semantics on these conditions (e.g.
+// Errors originating from invariant violations are shaped for direct
+// return from an RPC handler (result.ErrAccessDenied or i18n-wrapped
+// result.Err). Underlying database errors are returned unwrapped —
+// callers should not assume every error is presentation-ready.
+// Handlers that need different semantics on these conditions (e.g.
 // complete_upload's idempotent fast-path for already-uploaded claims)
 // must check those branches before calling this helper.
 //
@@ -142,8 +144,10 @@ func loadActiveClaim(
 }
 
 // validateUploadInput enforces the server-side cap on object size
-// configured in StorageConfig. Called by InitUpload before any backend
-// or DB side effect.
+// configured in StorageConfig. Called by every upload entry point
+// (init_upload, upload_part, complete_upload) before any costly side
+// effect, so a runtime tightening of MaxUploadSize is enforced
+// uniformly.
 //
 // Backend user-metadata is intentionally not part of this validation:
 // the HTTP API no longer accepts user-supplied metadata at all
@@ -187,9 +191,7 @@ func NewResource(
 	// methods through storage.Service — it dispatches through this typed
 	// handle, so any code path that touches them is gated on a nil check
 	// the compiler can reason about.
-	if mp, ok := service.(storage.Multipart); ok {
-		r.multipart = mp
-	}
+	r.multipart = storage.MultipartFor(service)
 
 	return r
 }
@@ -283,7 +285,8 @@ func (r *Resource) InitUpload(ctx fiber.Ctx, principal *security.Principal, para
 	}
 
 	if r.multipart == nil {
-		// Defensive: unreachable with current backends (all implement Multipart).
+		// Backend opted out of chunked uploads; clients hitting a
+		// multipart path must reconfigure or switch to single-shot upload.
 		return result.Err(i18n.T("multipart_not_supported"))
 	}
 
@@ -340,14 +343,17 @@ func (r *Resource) InitUpload(ctx fiber.Ctx, principal *security.Principal, para
 		// Best-effort cleanup so the sweeper does not see a stale row;
 		// if this delete also fails the sweeper will still handle it on
 		// TTL expiry.
-		if delErr := r.claimStore.DeleteByID(ctx.Context(), claim.ID); delErr != nil {
+		delErr := r.db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
+			return r.claimStore.Delete(txCtx, tx, claim.ID)
+		})
+		if delErr != nil {
 			logger.Warnf("Delete claim %s after multipart init failure: %v", claim.ID, delErr)
 		}
 
 		return err
 	}
 
-	if updateErr := r.claimStore.UpdateUploadID(ctx.Context(), claim.ID, session.UploadID); updateErr != nil {
+	if updateErr := r.claimStore.SetUploadID(ctx.Context(), claim.ID, session.UploadID); updateErr != nil {
 		// The claim row UPDATE failed after the backend session opened.
 		// Abort the orphan session before surfacing the error so the
 		// backend does not retain dangling parts. AbortMultipart is
@@ -642,7 +648,8 @@ func (r *Resource) CompleteUpload(ctx fiber.Ctx, principal *security.Principal, 
 	}
 
 	if r.multipart == nil {
-		// Defensive: unreachable with current backends (all implement Multipart).
+		// Backend opted out of chunked uploads; clients hitting a
+		// multipart path must reconfigure or switch to single-shot upload.
 		return result.Err(i18n.T("multipart_not_supported"))
 	}
 
@@ -753,6 +760,16 @@ func (r *Resource) AbortUpload(ctx fiber.Ctx, principal *security.Principal, par
 		return err
 	}
 
+	// AbortUpload only operates on in-flight (pending) claims. Once a
+	// claim is marked uploaded the object is awaiting business adoption
+	// — aborting at that point would silently delete a finalized file
+	// even though the caller's intent (cancel an in-flight upload) no
+	// longer applies. Returning Ok preserves the idempotent abort
+	// contract: subsequent abort calls on the same claim are no-ops.
+	if claim.Status != store.ClaimStatusPending {
+		return result.Ok().Response(ctx)
+	}
+
 	if claim.IsMultipart() && r.multipart != nil {
 		// AbortMultipart is idempotent — calling it on an unknown or
 		// already-closed session is a no-op. When the backend has been
@@ -779,7 +796,7 @@ func (r *Resource) AbortUpload(ctx fiber.Ctx, principal *security.Principal, par
 			return err
 		}
 
-		return r.claimStore.DeleteByIDInTx(txCtx, tx, claim.ID)
+		return r.claimStore.Delete(txCtx, tx, claim.ID)
 	}); err != nil {
 		return err
 	}

@@ -19,15 +19,9 @@ import (
 )
 
 // owner is the principal that owns every claim newClaim builds.
-// Tests use it as the default ConsumeMany caller; cases that exercise
+// Tests use it as the default Consume caller; cases that exercise
 // the ownership boundary build their own principal.
 var owner = &security.Principal{ID: "tester"}
-
-// Type aliases keep the test code readable while making the dependency
-// on the internal store package explicit.
-type (
-	uploadClaim = store.UploadClaim
-)
 
 // ── shared test infrastructure ──────────────────────────────────────────
 //
@@ -46,13 +40,13 @@ func setupStores(t *testing.T) (context.Context, orm.DB, store.ClaimStore, store
 	return ctx, db, store.NewClaimStore(db), store.NewDeleteQueue(db)
 }
 
-func newClaim(key string, expiresAt timex.DateTime) *uploadClaim {
-	return &uploadClaim{
+func newClaim(key string, expiresAt timex.DateTime) *store.UploadClaim {
+	return &store.UploadClaim{
 		ID:               id.GenerateUUID(),
 		Key:              key,
 		Size:             1024,
 		ContentType:      "application/octet-stream",
-		OriginalFilename: "测试文件.bin",
+		OriginalFilename: "test-file.bin",
 		CreatedBy:        "tester",
 		Status:           store.ClaimStatusPending,
 		ExpiresAt:        expiresAt,
@@ -69,14 +63,10 @@ func TestClaimStore(t *testing.T) {
 		claim := newClaim("priv/2026/05/10/abc.bin", timex.Now().AddHours(1))
 		require.NoError(t, cs.Create(ctx, claim), "Claim creation should succeed")
 
-		gotByID, err := cs.Get(ctx, claim.ID)
+		got, err := cs.Get(ctx, claim.ID)
 		require.NoError(t, err, "Claim lookup by ID should succeed")
-		assert.Equal(t, claim.Key, gotByID.Key, "Lookup by ID should return matching key")
-		assert.Equal(t, claim.OriginalFilename, gotByID.OriginalFilename, "OriginalFilename must round-trip through the claim row")
-
-		gotByKey, err := cs.GetByKey(ctx, claim.Key)
-		require.NoError(t, err, "Claim lookup by key should succeed")
-		assert.Equal(t, claim.ID, gotByKey.ID, "Lookup by key should return matching ID")
+		assert.Equal(t, claim.Key, got.Key, "Lookup by ID should return matching key")
+		assert.Equal(t, claim.OriginalFilename, got.OriginalFilename, "OriginalFilename must round-trip through the claim row")
 	})
 
 	t.Run("GetMissing", func(t *testing.T) {
@@ -84,9 +74,6 @@ func TestClaimStore(t *testing.T) {
 
 		_, err := cs.Get(ctx, "non-existent")
 		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Missing claim lookup by ID should return ErrClaimNotFound")
-
-		_, err = cs.GetByKey(ctx, "non-existent")
-		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Missing claim lookup by key should return ErrClaimNotFound")
 	})
 
 	t.Run("ConsumeInTx", func(t *testing.T) {
@@ -97,7 +84,7 @@ func TestClaimStore(t *testing.T) {
 		require.NoError(t, cs.Create(ctx, claim), "Claim creation should succeed")
 
 		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return cs.Consume(txCtx, tx, claim.Key)
+			return cs.Consume(txCtx, tx, owner, []string{claim.Key})
 		}), "Claim consumption transaction should succeed")
 
 		_, err := cs.Get(ctx, claim.ID)
@@ -110,27 +97,37 @@ func TestClaimStore(t *testing.T) {
 		claim := newClaim("priv/exists", timex.Now().AddHours(1))
 		require.NoError(t, cs.Create(ctx, claim), "Claim creation should succeed")
 
+		// Flip to uploaded so Consume's status='uploaded' filter does not
+		// silently drop this row — without this the test would pass even
+		// if Consume never tried to delete anything.
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
+			return cs.MarkUploaded(txCtx, tx, claim.ID)
+		}), "MarkUploaded should succeed so the claim is consumable")
+
 		// Try to consume both an existing and a non-existing key in one tx.
 		err := db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return cs.ConsumeMany(txCtx, tx, owner, []string{claim.Key, "priv/missing"})
+			return cs.Consume(txCtx, tx, owner, []string{claim.Key, "priv/missing"})
 		})
 		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Missing claim should fail the transaction")
 
-		// Rollback should leave the existing claim intact.
-		got, err := cs.GetByKey(ctx, claim.Key)
+		// Rollback must leave the existing uploaded claim intact, proving
+		// the partial DELETE was undone (not just that Consume short-
+		// circuited before any write).
+		got, err := cs.Get(ctx, claim.ID)
 		require.NoError(t, err, "Existing claim lookup should succeed after rollback")
-		assert.Equal(t, claim.ID, got.ID, "Rollback should leave the existing claim intact")
+		assert.Equal(t, claim.Key, got.Key, "Rollback should leave the existing claim intact")
+		assert.Equal(t, store.ClaimStatusUploaded, got.Status, "Rollback should preserve the uploaded status")
 	})
 
-	t.Run("ConsumeManyEmpty", func(t *testing.T) {
+	t.Run("ConsumeEmpty", func(t *testing.T) {
 		ctx, db, cs, _ := setupStores(t)
 
 		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return cs.ConsumeMany(txCtx, tx, owner, nil)
+			return cs.Consume(txCtx, tx, owner, nil)
 		}), "Consuming an empty claim list should succeed")
 	})
 
-	t.Run("ConsumeManyRejectsOtherOwner", func(t *testing.T) {
+	t.Run("ConsumeRejectsOtherOwner", func(t *testing.T) {
 		ctx, db, cs, _ := setupStores(t)
 
 		claim := newClaim("priv/owned-by-tester", timex.Now().AddHours(1))
@@ -143,27 +140,42 @@ func TestClaimStore(t *testing.T) {
 		intruder := &security.Principal{ID: "someone-else"}
 
 		err := db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return cs.ConsumeMany(txCtx, tx, intruder, []string{claim.Key})
+			return cs.Consume(txCtx, tx, intruder, []string{claim.Key})
 		})
 		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Consuming another principal's claim must be rejected with the same sentinel as missing keys")
 
 		// And the claim must survive the rollback intact.
-		got, err := cs.GetByKey(ctx, claim.Key)
+		got, err := cs.Get(ctx, claim.ID)
 		require.NoError(t, err, "Original owner's claim must remain after the rejected consume")
-		assert.Equal(t, claim.ID, got.ID, "Claim row should be untouched")
+		assert.Equal(t, claim.Key, got.Key, "Claim row should be untouched")
 	})
 
-	t.Run("ConsumeManyRejectsAnonymousPrincipal", func(t *testing.T) {
+	t.Run("ConsumeRejectsAnonymousPrincipal", func(t *testing.T) {
 		ctx, db, cs, _ := setupStores(t)
 
-		err := db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return cs.ConsumeMany(txCtx, tx, nil, []string{"priv/whatever"})
-		})
-		assert.ErrorIs(t, err, storage.ErrAccessDenied, "Anonymous principal must be rejected upfront with access-denied (not claim-not-found, which would mislead debugging)")
+		anonCases := []struct {
+			name      string
+			principal *security.Principal
+		}{
+			{"Nil", nil},
+			{"EmptyID", &security.Principal{ID: ""}},
+			{"AnonymousSentinel", security.PrincipalAnonymous},
+		}
+
+		for _, tc := range anonCases {
+			t.Run(tc.name, func(t *testing.T) {
+				err := db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
+					return cs.Consume(txCtx, tx, tc.principal, []string{"priv/whatever"})
+				})
+				assert.ErrorIs(t, err, storage.ErrAccessDenied,
+					"Anonymous principal must be rejected upfront with access-denied "+
+						"(not claim-not-found, which would mislead debugging)")
+			})
+		}
 	})
 
-	t.Run("ScanExpired", func(t *testing.T) {
-		ctx, _, cs, _ := setupStores(t)
+	t.Run("ListExpired", func(t *testing.T) {
+		ctx, db, cs, _ := setupStores(t)
 
 		now := timex.Now()
 		expired := newClaim("priv/expired", now.AddHours(-1))
@@ -172,19 +184,21 @@ func TestClaimStore(t *testing.T) {
 		require.NoError(t, cs.Create(ctx, expired), "Expired claim creation should succeed")
 		require.NoError(t, cs.Create(ctx, live), "Live claim creation should succeed")
 
-		got, err := cs.ScanExpired(ctx, now, 10)
-		require.NoError(t, err, "Expired claim scan should succeed")
+		got, err := cs.ListExpired(ctx, now, 10)
+		require.NoError(t, err, "Expired claim listing should succeed")
 		require.Len(t, got, 1, "Only the expired claim should be returned")
-		assert.Equal(t, expired.ID, got[0].ID, "Expired scan should return the expired claim")
+		assert.Equal(t, expired.ID, got[0].ID, "Expired listing should return the expired claim")
 
-		require.NoError(t, cs.DeleteByID(ctx, expired.ID), "Expired claim deletion should succeed")
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
+			return cs.Delete(txCtx, tx, expired.ID)
+		}), "Expired claim deletion should succeed")
 
-		got, err = cs.ScanExpired(ctx, now, 10)
-		require.NoError(t, err, "Expired claim rescan should succeed")
-		assert.Empty(t, got, "Deleted expired claim should not appear in later scans")
+		got, err = cs.ListExpired(ctx, now, 10)
+		require.NoError(t, err, "Expired claim relisting should succeed")
+		assert.Empty(t, got, "Deleted expired claim should not appear in later listings")
 	})
 
-	t.Run("ScanExpiredSkipsUploaded", func(t *testing.T) {
+	t.Run("ListExpiredSkipsUploaded", func(t *testing.T) {
 		ctx, db, cs, _ := setupStores(t)
 
 		now := timex.Now()
@@ -195,8 +209,8 @@ func TestClaimStore(t *testing.T) {
 			return cs.MarkUploaded(txCtx, tx, uploaded.ID)
 		}), "MarkUploaded should succeed")
 
-		got, err := cs.ScanExpired(ctx, now, 10)
-		require.NoError(t, err, "Expired claim scan should succeed")
+		got, err := cs.ListExpired(ctx, now, 10)
+		require.NoError(t, err, "Expired claim listing should succeed")
 		assert.Empty(t, got, "Uploaded claims must never appear in the expired sweep set")
 	})
 
@@ -258,15 +272,5 @@ func TestClaimStore(t *testing.T) {
 
 		_, err := cs.Get(ctx, claim.ID)
 		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Deleted claim should no longer be queryable")
-	})
-
-	t.Run("ErrClaimNotFoundWraps", func(t *testing.T) {
-		ctx, db, cs, _ := setupStores(t)
-
-		err := db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return cs.Consume(txCtx, tx, "missing")
-		})
-		require.Error(t, err, "Missing claim consumption should fail")
-		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Consume error should wrap ErrClaimNotFound")
 	})
 }

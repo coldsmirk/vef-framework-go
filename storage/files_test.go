@@ -45,15 +45,15 @@ type FileModel struct {
 	Body     string `meta:"rich_text"`
 }
 
-// ConsumeManyCall captures one ConsumeMany invocation.
-type ConsumeManyCall struct {
+// ConsumeCall captures one ClaimConsumer.Consume invocation.
+type ConsumeCall struct {
 	Tx        orm.DB
 	Principal *security.Principal
 	Keys      []string
 }
 
-// ScheduleCall captures one DeleteScheduler.Schedule invocation.
-type ScheduleCall struct {
+// EnqueueCall captures one DeleteEnqueuer.Enqueue invocation.
+type EnqueueCall struct {
 	Tx     orm.DB
 	Keys   []string
 	Reason storage.DeleteReason
@@ -62,35 +62,35 @@ type ScheduleCall struct {
 // MockClaimConsumer is the minimal stub Files needs to exercise the
 // claim-consumption path.
 type MockClaimConsumer struct {
-	consumeManyCalls []ConsumeManyCall
-	consumeManyErr   error
+	consumeCalls []ConsumeCall
+	consumeErr   error
 }
 
-func (m *MockClaimConsumer) ConsumeMany(_ context.Context, tx orm.DB, principal *security.Principal, keys []string) error {
-	m.consumeManyCalls = append(m.consumeManyCalls, ConsumeManyCall{
+func (m *MockClaimConsumer) Consume(_ context.Context, tx orm.DB, principal *security.Principal, keys []string) error {
+	m.consumeCalls = append(m.consumeCalls, ConsumeCall{
 		Tx:        tx,
 		Principal: principal,
 		Keys:      append([]string(nil), keys...),
 	})
 
-	return m.consumeManyErr
+	return m.consumeErr
 }
 
-// MockDeleteScheduler is the minimal stub Files needs to verify the
-// delete-scheduling path.
-type MockDeleteScheduler struct {
-	scheduleCalls []ScheduleCall
-	scheduleErr   error
+// MockDeleteEnqueuer is the minimal stub Files needs to verify the
+// delete-enqueue path.
+type MockDeleteEnqueuer struct {
+	enqueueCalls []EnqueueCall
+	enqueueErr   error
 }
 
-func (m *MockDeleteScheduler) Schedule(_ context.Context, tx orm.DB, keys []string, reason storage.DeleteReason) error {
-	m.scheduleCalls = append(m.scheduleCalls, ScheduleCall{
+func (m *MockDeleteEnqueuer) Enqueue(_ context.Context, tx orm.DB, keys []string, reason storage.DeleteReason) error {
+	m.enqueueCalls = append(m.enqueueCalls, EnqueueCall{
 		Tx:     tx,
 		Keys:   append([]string(nil), keys...),
 		Reason: reason,
 	})
 
-	return m.scheduleErr
+	return m.enqueueErr
 }
 
 // CapturedPublish records one Publish invocation: the event payload and
@@ -152,35 +152,25 @@ func (p *CapturingPublisher) claimedKeys() []string {
 	return keys
 }
 
-// scheduledKeys picks a single Schedule call's keys by index. Tests
-// that call Schedule multiple times can index by call order.
-func (m *MockDeleteScheduler) scheduledKeys(callIdx int) []string {
-	if callIdx < 0 || callIdx >= len(m.scheduleCalls) {
-		return nil
-	}
-
-	return m.scheduleCalls[callIdx].Keys
-}
-
-func newTestFiles() (*MockClaimConsumer, *MockDeleteScheduler, *CapturingPublisher, storage.Files) {
+func newTestFiles() (*MockClaimConsumer, *MockDeleteEnqueuer, *CapturingPublisher, storage.Files) {
 	cs := &MockClaimConsumer{}
-	ds := &MockDeleteScheduler{}
+	de := &MockDeleteEnqueuer{}
 	pub := &CapturingPublisher{}
 
-	return cs, ds, pub, storage.NewFiles(cs, ds, pub, new(storage.IdentityURLKeyMapper))
+	return cs, de, pub, storage.NewFiles(cs, de, pub, new(storage.IdentityURLKeyMapper))
 }
 
 func TestFiles(t *testing.T) {
 	t.Run("OnCreateConsumesClaimsAndPublishesClaimed", func(t *testing.T) {
-		cs, ds, pub, files := newTestFiles()
+		cs, de, pub, files := newTestFiles()
 		model := &FileModel{CoverKey: "priv/cover.png"}
 
 		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, model), "OnCreate should succeed")
 
-		require.Len(t, cs.consumeManyCalls, 1, "OnCreate must invoke ConsumeMany exactly once")
-		assert.Equal(t, []string{"priv/cover.png"}, cs.consumeManyCalls[0].Keys, "Consumed keys should match the model's uploaded_file ref")
+		require.Len(t, cs.consumeCalls, 1, "OnCreate must invoke Consume exactly once")
+		assert.Equal(t, []string{"priv/cover.png"}, cs.consumeCalls[0].Keys, "Consumed keys should match the model's uploaded_file ref")
 
-		assert.Empty(t, ds.scheduleCalls, "OnCreate must not schedule deletions")
+		assert.Empty(t, de.enqueueCalls, "OnCreate must not enqueue deletions")
 
 		assert.Equal(t, []string{"priv/cover.png"}, pub.claimedKeys(), "Each consumed key must trigger one FileClaimedEvent")
 	})
@@ -194,10 +184,10 @@ func TestFiles(t *testing.T) {
 
 		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, model), "OnCreate should succeed for richtext content")
 
-		require.Len(t, cs.consumeManyCalls, 1, "OnCreate must batch every reachable ref into one ConsumeMany call")
+		require.Len(t, cs.consumeCalls, 1, "OnCreate must batch every reachable ref into one Consume call")
 		assert.ElementsMatch(t,
 			[]string{"priv/cover.png", "priv/embed-1.png", "priv/embed-2.png"},
-			cs.consumeManyCalls[0].Keys,
+			cs.consumeCalls[0].Keys,
 			"All three refs (cover + 2 richtext URLs) should be consumed",
 		)
 
@@ -209,63 +199,63 @@ func TestFiles(t *testing.T) {
 	})
 
 	t.Run("OnCreateNoRefsIsNoop", func(t *testing.T) {
-		cs, ds, pub, files := newTestFiles()
+		cs, de, pub, files := newTestFiles()
 
 		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, &FileModel{}), "Empty model OnCreate should be a noop")
 
-		assert.Empty(t, cs.consumeManyCalls, "ConsumeMany must not be called when the model has no refs")
-		assert.Empty(t, ds.scheduleCalls, "Schedule must not be called either")
+		assert.Empty(t, cs.consumeCalls, "Consume must not be called when the model has no refs")
+		assert.Empty(t, de.enqueueCalls, "Enqueue must not be called either")
 		assert.Empty(t, pub.events, "No events should be published when there is nothing to claim")
 	})
 
 	t.Run("OnCreateConsumeErrorPropagatesAndSuppressesEvents", func(t *testing.T) {
 		cs, _, pub, files := newTestFiles()
-		cs.consumeManyErr = errors.New("simulated transaction conflict")
+		cs.consumeErr = errors.New("simulated transaction conflict")
 
 		err := files.OnCreate(context.Background(), nil, testPrincipal, &FileModel{CoverKey: "priv/cover.png"})
 
-		require.Error(t, err, "OnCreate must surface ConsumeMany failures")
-		assert.ErrorIs(t, err, cs.consumeManyErr, "Returned error must wrap the ConsumeMany error")
-		assert.Empty(t, pub.events, "No FileClaimedEvent must be published when ConsumeMany fails (event-on-success contract)")
+		require.Error(t, err, "OnCreate must surface Consume failures")
+		assert.ErrorIs(t, err, cs.consumeErr, "Returned error must wrap the Consume error")
+		assert.Empty(t, pub.events, "No FileClaimedEvent must be published when Consume fails (event-on-success contract)")
 	})
 
-	t.Run("OnUpdateConsumesNewKeysAndSchedulesReplaced", func(t *testing.T) {
-		cs, ds, pub, files := newTestFiles()
+	t.Run("OnUpdateConsumesNewKeysAndEnqueuesReplaced", func(t *testing.T) {
+		cs, de, pub, files := newTestFiles()
 
 		old := &FileModel{CoverKey: "priv/old-cover.png"}
 		updated := &FileModel{CoverKey: "priv/new-cover.png"}
 
 		require.NoError(t, files.OnUpdate(context.Background(), nil, testPrincipal, old, updated), "OnUpdate should succeed")
 
-		require.Len(t, cs.consumeManyCalls, 1, "Exactly one ConsumeMany should fire for the newly added ref")
-		assert.Equal(t, []string{"priv/new-cover.png"}, cs.consumeManyCalls[0].Keys, "Only the new ref should be consumed")
+		require.Len(t, cs.consumeCalls, 1, "Exactly one Consume should fire for the newly added ref")
+		assert.Equal(t, []string{"priv/new-cover.png"}, cs.consumeCalls[0].Keys, "Only the new ref should be consumed")
 
-		require.Len(t, ds.scheduleCalls, 1, "Exactly one Schedule should fire for the replaced ref")
-		require.Len(t, ds.scheduleCalls[0].Keys, 1, "Schedule batch should carry the single replaced ref")
+		require.Len(t, de.enqueueCalls, 1, "Exactly one Enqueue should fire for the replaced ref")
+		require.Len(t, de.enqueueCalls[0].Keys, 1, "Enqueue batch should carry the single replaced ref")
 
-		assert.Equal(t, []string{"priv/old-cover.png"}, ds.scheduleCalls[0].Keys, "Replaced batch should target the old key")
-		assert.Equal(t, storage.DeleteReasonReplaced, ds.scheduleCalls[0].Reason, "Replaced batch should carry the replaced reason")
+		assert.Equal(t, []string{"priv/old-cover.png"}, de.enqueueCalls[0].Keys, "Replaced batch should target the old key")
+		assert.Equal(t, storage.DeleteReasonReplaced, de.enqueueCalls[0].Reason, "Replaced batch should carry the replaced reason")
 
 		assert.Equal(t, []string{"priv/new-cover.png"}, pub.claimedKeys(), "Only newly added refs should produce FileClaimedEvent")
 	})
 
 	t.Run("OnUpdateNoChangeIsNoop", func(t *testing.T) {
-		cs, ds, pub, files := newTestFiles()
+		cs, de, pub, files := newTestFiles()
 		model := &FileModel{CoverKey: "priv/same.png"}
 
 		require.NoError(t, files.OnUpdate(context.Background(), nil, testPrincipal, model, model), "Identical snapshots should noop")
 
-		assert.Empty(t, cs.consumeManyCalls, "Unchanged refs must not consume")
-		assert.Empty(t, ds.scheduleCalls, "Unchanged refs must not schedule deletes")
+		assert.Empty(t, cs.consumeCalls, "Unchanged refs must not consume")
+		assert.Empty(t, de.enqueueCalls, "Unchanged refs must not enqueue deletes")
 		assert.Empty(t, pub.events, "Unchanged refs must not publish events")
 	})
 
-	t.Run("OnUpdateConsumeErrorSkipsScheduleAndEvent", func(t *testing.T) {
-		// Failure in ConsumeMany must short-circuit before scheduling
-		// the replaced delete; otherwise a rolled-back business tx
-		// would still leave the queue with orphan rows.
-		cs, ds, pub, files := newTestFiles()
-		cs.consumeManyErr = errors.New("consume failure")
+	t.Run("OnUpdateConsumeErrorSkipsEnqueueAndEvent", func(t *testing.T) {
+		// Failure in Consume must short-circuit before enqueuing the
+		// replaced delete; otherwise a rolled-back business tx would
+		// still leave the queue with orphan rows.
+		cs, de, pub, files := newTestFiles()
+		cs.consumeErr = errors.New("consume failure")
 
 		err := files.OnUpdate(
 			context.Background(),
@@ -275,13 +265,13 @@ func TestFiles(t *testing.T) {
 			&FileModel{CoverKey: "priv/new.png"},
 		)
 
-		require.Error(t, err, "OnUpdate must propagate ConsumeMany failures")
-		assert.Empty(t, ds.scheduleCalls, "Schedule must not run after ConsumeMany failure")
-		assert.Empty(t, pub.events, "No event must be published after ConsumeMany failure")
+		require.Error(t, err, "OnUpdate must propagate Consume failures")
+		assert.Empty(t, de.enqueueCalls, "Enqueue must not run after Consume failure")
+		assert.Empty(t, pub.events, "No event must be published after Consume failure")
 	})
 
-	t.Run("OnDeleteSchedulesEveryRefWithDeletedReason", func(t *testing.T) {
-		cs, ds, pub, files := newTestFiles()
+	t.Run("OnDeleteEnqueuesEveryRefWithDeletedReason", func(t *testing.T) {
+		cs, de, pub, files := newTestFiles()
 		model := &FileModel{
 			CoverKey: "priv/cover.png",
 			Body:     `<p><img src="priv/body-1.png"><img src="priv/body-2.png"></p>`,
@@ -289,37 +279,37 @@ func TestFiles(t *testing.T) {
 
 		require.NoError(t, files.OnDelete(context.Background(), nil, model), "OnDelete should succeed")
 
-		assert.Empty(t, cs.consumeManyCalls, "OnDelete must not consume claims")
+		assert.Empty(t, cs.consumeCalls, "OnDelete must not consume claims")
 
-		require.Len(t, ds.scheduleCalls, 1, "OnDelete should batch every ref into one Schedule call")
-		assert.Equal(t, storage.DeleteReasonDeleted, ds.scheduleCalls[0].Reason, "Schedule call should carry the deleted reason")
+		require.Len(t, de.enqueueCalls, 1, "OnDelete should batch every ref into one Enqueue call")
+		assert.Equal(t, storage.DeleteReasonDeleted, de.enqueueCalls[0].Reason, "Enqueue call should carry the deleted reason")
 
 		assert.ElementsMatch(t,
 			[]string{"priv/cover.png", "priv/body-1.png", "priv/body-2.png"},
-			ds.scheduledKeys(0),
-			"Scheduled keys should cover every reachable ref",
+			de.enqueueCalls[0].Keys,
+			"Enqueued keys should cover every reachable ref",
 		)
 
 		assert.Empty(t, pub.events, "OnDelete must not publish FileClaimedEvent — claim events are for adoptions only")
 	})
 
 	t.Run("OnDeleteEmptyModelIsNoop", func(t *testing.T) {
-		_, ds, _, files := newTestFiles()
+		_, de, _, files := newTestFiles()
 
 		require.NoError(t, files.OnDelete(context.Background(), nil, &FileModel{}), "Empty model OnDelete should be a noop")
-		assert.Empty(t, ds.scheduleCalls, "No refs means no Schedule call")
+		assert.Empty(t, de.enqueueCalls, "No refs means no Enqueue call")
 	})
 
 	t.Run("NilModelIsNoopAcrossAllHooks", func(t *testing.T) {
-		cs, ds, pub, files := newTestFiles()
+		cs, de, pub, files := newTestFiles()
 		ctx := context.Background()
 
 		require.NoError(t, files.OnCreate(ctx, nil, testPrincipal, (*FileModel)(nil)), "OnCreate(nil) must be a noop")
 		require.NoError(t, files.OnDelete(ctx, nil, (*FileModel)(nil)), "OnDelete(nil) must be a noop")
 		require.NoError(t, files.OnUpdate(ctx, nil, testPrincipal, (*FileModel)(nil), (*FileModel)(nil)), "OnUpdate(nil,nil) must be a noop")
 
-		assert.Empty(t, cs.consumeManyCalls, "Nil hooks must not consume")
-		assert.Empty(t, ds.scheduleCalls, "Nil hooks must not schedule")
+		assert.Empty(t, cs.consumeCalls, "Nil hooks must not consume")
+		assert.Empty(t, de.enqueueCalls, "Nil hooks must not enqueue")
 		assert.Empty(t, pub.events, "Nil hooks must not publish")
 	})
 
@@ -328,11 +318,11 @@ func TestFiles(t *testing.T) {
 		// Files with a nil publisher. publishClaimed must short-circuit
 		// rather than NPE.
 		cs := &MockClaimConsumer{}
-		ds := &MockDeleteScheduler{}
-		files := storage.NewFiles(cs, ds, nil, new(storage.IdentityURLKeyMapper))
+		de := &MockDeleteEnqueuer{}
+		files := storage.NewFiles(cs, de, nil, new(storage.IdentityURLKeyMapper))
 
 		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, &FileModel{CoverKey: "priv/cover.png"}), "OnCreate with nil publisher must succeed")
-		assert.Len(t, cs.consumeManyCalls, 1, "ConsumeMany must still run with a nil publisher")
+		assert.Len(t, cs.consumeCalls, 1, "Consume must still run with a nil publisher")
 	})
 
 	t.Run("PublishCarriesTransactionalOption", func(t *testing.T) {
@@ -354,15 +344,15 @@ func TestFiles(t *testing.T) {
 	})
 
 	// P0-1 regression guards: rich_text / markdown URLs must be translated
-	// through the URLKeyMapper into storage keys before ConsumeMany sees
+	// through the URLKeyMapper into storage keys before Consume sees
 	// them. Without the mapper, an embedded "/storage/files/foo.png"
 	// would never match the "foo.png" row in sys_storage_upload_claim.
 
 	t.Run("URLKeyMapperRewritesRichtextKeysBeforeConsume", func(t *testing.T) {
 		cs := &MockClaimConsumer{}
-		ds := &MockDeleteScheduler{}
+		de := &MockDeleteEnqueuer{}
 		mapper := stripPrefixURLMapper{prefix: "/storage/files/"}
-		files := storage.NewFiles(cs, ds, nil, mapper)
+		files := storage.NewFiles(cs, de, nil, mapper)
 
 		model := &FileModel{
 			CoverKey: "priv/cover.png",
@@ -371,36 +361,36 @@ func TestFiles(t *testing.T) {
 		}
 
 		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, model), "OnCreate must succeed when mapper rewrites richtext URLs")
-		require.Len(t, cs.consumeManyCalls, 1, "ConsumeMany must be invoked exactly once")
+		require.Len(t, cs.consumeCalls, 1, "Consume must be invoked exactly once")
 		assert.ElementsMatch(t,
 			[]string{"priv/cover.png", "priv/embed-1.png", "priv/embed-2.png"},
-			cs.consumeManyCalls[0].Keys,
-			"Richtext URLs must be stripped of the proxy prefix before reaching ConsumeMany",
+			cs.consumeCalls[0].Keys,
+			"Richtext URLs must be stripped of the proxy prefix before reaching Consume",
 		)
 	})
 
 	t.Run("URLKeyMapperLeavesUploadedFileRefsUntouched", func(t *testing.T) {
 		cs := &MockClaimConsumer{}
-		ds := &MockDeleteScheduler{}
+		de := &MockDeleteEnqueuer{}
 		// A mapper that would rewrite EVERY input. uploaded_file values
 		// already are storage keys, so they must bypass the mapper.
 		mapper := stripPrefixURLMapper{prefix: "priv/"}
-		files := storage.NewFiles(cs, ds, nil, mapper)
+		files := storage.NewFiles(cs, de, nil, mapper)
 
 		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, &FileModel{CoverKey: "priv/cover.png"}), "OnCreate must succeed")
-		require.Len(t, cs.consumeManyCalls, 1, "ConsumeMany must be invoked exactly once")
+		require.Len(t, cs.consumeCalls, 1, "Consume must be invoked exactly once")
 		assert.Equal(t,
 			[]string{"priv/cover.png"},
-			cs.consumeManyCalls[0].Keys,
+			cs.consumeCalls[0].Keys,
 			"uploaded_file refs must pass through unchanged even with a non-identity mapper",
 		)
 	})
 
 	t.Run("URLKeyMapperDiffsOnMappedKeysDuringOnUpdate", func(t *testing.T) {
 		cs := &MockClaimConsumer{}
-		ds := &MockDeleteScheduler{}
+		de := &MockDeleteEnqueuer{}
 		mapper := stripPrefixURLMapper{prefix: "/storage/files/"}
-		files := storage.NewFiles(cs, ds, nil, mapper)
+		files := storage.NewFiles(cs, de, nil, mapper)
 
 		// Same underlying key; only the URL prefix changes (e.g. proxy
 		// path swapped for a CDN URL the frontend computed differently).
@@ -410,8 +400,8 @@ func TestFiles(t *testing.T) {
 		updated := &FileModel{Body: `<img src="/storage/files/priv/same.png">`}
 
 		require.NoError(t, files.OnUpdate(context.Background(), nil, testPrincipal, old, updated), "Identity update on mapped keys must be a noop")
-		assert.Empty(t, cs.consumeManyCalls, "No new keys → no ConsumeMany call")
-		assert.Empty(t, ds.scheduleCalls, "No removed keys → no Schedule call")
+		assert.Empty(t, cs.consumeCalls, "No new keys → no Consume call")
+		assert.Empty(t, de.enqueueCalls, "No removed keys → no Enqueue call")
 	})
 
 	t.Run("IdentityMapperDropsAbsoluteURLsInRichtext", func(t *testing.T) {
@@ -419,10 +409,10 @@ func TestFiles(t *testing.T) {
 		// surfaces http(s) URLs to the mapper, and the default
 		// IdentityURLKeyMapper rejects them (ok=false). The result is
 		// the same observable outcome as before — absolute URLs do
-		// not reach ConsumeMany — but the decision now happens in
+		// not reach Consume — but the decision now happens in
 		// the mapper instead of the extractor, so a business module
 		// can override the behavior by supplying a custom mapper.
-		cs, ds, pub, files := newTestFiles()
+		cs, de, pub, files := newTestFiles()
 
 		model := &FileModel{
 			CoverKey: "priv/cover.png",
@@ -431,18 +421,18 @@ func TestFiles(t *testing.T) {
 		}
 
 		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, model), "OnCreate must succeed with mixed absolute / relative URLs")
-		require.Len(t, cs.consumeManyCalls, 1, "ConsumeMany must be invoked exactly once")
+		require.Len(t, cs.consumeCalls, 1, "Consume must be invoked exactly once")
 		assert.ElementsMatch(t,
 			[]string{"priv/cover.png", "priv/embed.png"},
-			cs.consumeManyCalls[0].Keys,
-			"Absolute http(s) URLs must be filtered out by IdentityURLKeyMapper before reaching ConsumeMany",
+			cs.consumeCalls[0].Keys,
+			"Absolute http(s) URLs must be filtered out by IdentityURLKeyMapper before reaching Consume",
 		)
 		assert.ElementsMatch(t,
 			[]string{"priv/cover.png", "priv/embed.png"},
 			pub.claimedKeys(),
 			"claim events must mirror consumed keys; absolute URLs do not produce a FileClaimedEvent",
 		)
-		assert.Empty(t, ds.scheduleCalls, "OnCreate must not schedule deletes")
+		assert.Empty(t, de.enqueueCalls, "OnCreate must not enqueue deletes")
 	})
 
 	t.Run("CustomMapperResolvesCDNHostsToKeys", func(t *testing.T) {
@@ -453,9 +443,9 @@ func TestFiles(t *testing.T) {
 		// before the mapper saw them; the new pipeline routes them
 		// through URLToKey instead.
 		cs := &MockClaimConsumer{}
-		ds := &MockDeleteScheduler{}
+		de := &MockDeleteEnqueuer{}
 		mapper := stripPrefixURLMapper{prefix: "https://cdn.example.com/"}
-		files := storage.NewFiles(cs, ds, nil, mapper)
+		files := storage.NewFiles(cs, de, nil, mapper)
 
 		model := &FileModel{
 			CoverKey: "priv/cover.png",
@@ -465,12 +455,12 @@ func TestFiles(t *testing.T) {
 		}
 
 		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, model), "OnCreate must succeed with CDN URLs")
-		require.Len(t, cs.consumeManyCalls, 1, "ConsumeMany must be invoked exactly once")
+		require.Len(t, cs.consumeCalls, 1, "Consume must be invoked exactly once")
 		assert.ElementsMatch(t,
 			[]string{"priv/cover.png", "priv/cdn-1.png", "priv/cdn-2.png"},
-			cs.consumeManyCalls[0].Keys,
+			cs.consumeCalls[0].Keys,
 			"CDN URLs must be resolved to storage keys; foreign-host URLs must be rejected by the mapper",
 		)
-		assert.Empty(t, ds.scheduleCalls, "OnCreate must not schedule deletes")
+		assert.Empty(t, de.enqueueCalls, "OnCreate must not enqueue deletes")
 	})
 }

@@ -26,7 +26,7 @@ func newPending(key string, nextAt timex.DateTime) store.PendingDelete {
 }
 
 func TestDeleteQueue(t *testing.T) {
-	t.Run("EnqueueAndLease", func(t *testing.T) {
+	t.Run("InsertAndLease", func(t *testing.T) {
 		ctx, db, _, dq := setupStores(t)
 
 		now := timex.Now()
@@ -36,8 +36,8 @@ func TestDeleteQueue(t *testing.T) {
 		}
 
 		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return dq.Enqueue(txCtx, tx, items)
-		}), "Pending deletes should be enqueued inside the transaction")
+			return dq.Insert(txCtx, tx, items)
+		}), "Pending deletes should be inserted inside the transaction")
 
 		leased, err := dq.Lease(ctx, now, 10, time.Minute)
 		require.NoError(t, err, "Pending delete lease should succeed")
@@ -50,26 +50,26 @@ func TestDeleteQueue(t *testing.T) {
 		assert.Empty(t, again, "Leased rows must not be visible until lease expires")
 	})
 
-	t.Run("ScheduleByKeysWritesOneRowPerKey", func(t *testing.T) {
-		// Public DeleteScheduler.Schedule(keys, reason): the queue must
+	t.Run("EnqueueByKeysWritesOneRowPerKey", func(t *testing.T) {
+		// Public DeleteEnqueuer.Enqueue(keys, reason): the queue must
 		// build one PendingDelete per deduplicated key with the supplied
 		// reason, all sharing the current timestamp as NextAttemptAt.
 		ctx, db, _, dq := setupStores(t)
 
 		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return dq.Schedule(txCtx, tx, []string{"priv/x", "priv/y", "priv/x"}, storage.DeleteReasonReplaced)
-		}), "Schedule(keys, reason) should succeed inside the transaction")
+			return dq.Enqueue(txCtx, tx, []string{"priv/x", "priv/y", "priv/x"}, storage.DeleteReasonReplaced)
+		}), "Enqueue(keys, reason) should succeed inside the transaction")
 
 		leased, err := dq.Lease(ctx, timex.Now().AddHours(1), 10, time.Minute)
-		require.NoError(t, err, "Lease after schedule should succeed")
-		require.Len(t, leased, 2, "Schedule should dedupe before insert (priv/x appears once)")
+		require.NoError(t, err, "Lease after enqueue should succeed")
+		require.Len(t, leased, 2, "Enqueue should dedupe before insert (priv/x appears once)")
 
 		keys := []string{leased[0].Key, leased[1].Key}
-		assert.ElementsMatch(t, []string{"priv/x", "priv/y"}, keys, "Scheduled keys should match the deduplicated input")
+		assert.ElementsMatch(t, []string{"priv/x", "priv/y"}, keys, "Enqueued keys should match the deduplicated input")
 
 		for _, row := range leased {
-			assert.Equal(t, storage.DeleteReasonReplaced, row.Reason, "Schedule should propagate the reason verbatim")
-			assert.Empty(t, row.UploadID, "Schedule(keys, reason) must never set a multipart UploadID")
+			assert.Equal(t, storage.DeleteReasonReplaced, row.Reason, "Enqueue should propagate the reason verbatim")
+			assert.Empty(t, row.UploadID, "Enqueue(keys, reason) must never set a multipart UploadID")
 		}
 	})
 
@@ -80,8 +80,8 @@ func TestDeleteQueue(t *testing.T) {
 		item := newPending("priv/done", now)
 
 		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return dq.Enqueue(txCtx, tx, []store.PendingDelete{item})
-		}), "Pending delete should be enqueued inside the transaction")
+			return dq.Insert(txCtx, tx, []store.PendingDelete{item})
+		}), "Pending delete should be inserted inside the transaction")
 
 		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 			return dq.Done(txCtx, tx, []string{item.ID})
@@ -99,12 +99,12 @@ func TestDeleteQueue(t *testing.T) {
 		item := newPending("priv/defer", now)
 
 		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return dq.Enqueue(txCtx, tx, []store.PendingDelete{item})
-		}), "Pending delete should be enqueued inside the transaction")
+			return dq.Insert(txCtx, tx, []store.PendingDelete{item})
+		}), "Pending delete should be inserted inside the transaction")
 
 		leased, err := dq.Lease(ctx, now, 10, time.Minute)
 		require.NoError(t, err, "Initial lease should succeed")
-		require.Len(t, leased, 1, "Initial lease should return the scheduled row")
+		require.Len(t, leased, 1, "Initial lease should return the inserted row")
 
 		nextAt := now.AddHours(1)
 		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
@@ -118,27 +118,27 @@ func TestDeleteQueue(t *testing.T) {
 		assert.Equal(t, 1, leased[0].Attempts, "Deferred row should increment attempts")
 	})
 
+	t.Run("InsertEmpty", func(t *testing.T) {
+		ctx, db, _, dq := setupStores(t)
+
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
+			return dq.Insert(txCtx, tx, nil)
+		}), "Inserting an empty delete list should succeed")
+
+		leased, err := dq.Lease(ctx, timex.Now(), 10, time.Minute)
+		require.NoError(t, err, "Lease after empty insert should succeed")
+		assert.Empty(t, leased, "Empty insert should not create pending delete rows")
+	})
+
 	t.Run("EnqueueEmpty", func(t *testing.T) {
 		ctx, db, _, dq := setupStores(t)
 
 		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return dq.Enqueue(txCtx, tx, nil)
-		}), "Enqueueing an empty delete list should succeed")
+			return dq.Enqueue(txCtx, tx, nil, storage.DeleteReasonReplaced)
+		}), "Enqueue with no keys should succeed")
 
 		leased, err := dq.Lease(ctx, timex.Now(), 10, time.Minute)
 		require.NoError(t, err, "Lease after empty enqueue should succeed")
-		assert.Empty(t, leased, "Empty enqueue should not create pending delete rows")
-	})
-
-	t.Run("ScheduleEmpty", func(t *testing.T) {
-		ctx, db, _, dq := setupStores(t)
-
-		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return dq.Schedule(txCtx, tx, nil, storage.DeleteReasonReplaced)
-		}), "Schedule with no keys should succeed")
-
-		leased, err := dq.Lease(ctx, timex.Now(), 10, time.Minute)
-		require.NoError(t, err, "Lease after empty schedule should succeed")
-		assert.Empty(t, leased, "Empty schedule must not create pending delete rows")
+		assert.Empty(t, leased, "Empty enqueue must not create pending delete rows")
 	})
 }
