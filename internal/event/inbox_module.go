@@ -55,16 +55,18 @@ func newInboxMiddleware(cfg *config.EventConfig, repo inbox.Repository) middlewa
 func runInboxMigration(
 	lc fx.Lifecycle,
 	cfg *config.EventConfig,
-	dsCfg *config.DataSourceConfig,
+	dataSources *config.DataSourcesConfig,
 	db orm.DB,
 ) {
 	if !cfg.Middleware.Inbox {
 		return
 	}
 
+	kind := dataSources.Primary().Kind
+
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			if err := iinbox.Migrate(ctx, db, dsCfg.Kind); err != nil {
+			if err := iinbox.Migrate(ctx, db, kind); err != nil {
 				return fmt.Errorf("inbox migration: %w", err)
 			}
 

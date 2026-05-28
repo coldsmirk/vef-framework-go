@@ -175,9 +175,6 @@ func (suite *AuthResourceTestSuite) setupTestApp() {
 			),
 		),
 		fx.Replace(
-			&config.DataSourceConfig{
-				Kind: "sqlite",
-			},
 			&config.SecurityConfig{
 				TokenExpires:     24 * time.Hour,
 				RefreshNotBefore: 1 * time.Millisecond,
@@ -1170,9 +1167,6 @@ func (s *ChallengeFlowTestSuite) SetupSuite() {
 			),
 		),
 		fx.Replace(
-			&config.DataSourceConfig{
-				Kind: "sqlite",
-			},
 			&config.SecurityConfig{
 				TokenExpires:     24 * time.Hour,
 				RefreshNotBefore: 1 * time.Millisecond,
@@ -1610,7 +1604,6 @@ func (s *AuthResourceErrorPathTestSuite) SetupSuite() {
 			),
 		),
 		fx.Replace(
-			&config.DataSourceConfig{Kind: "sqlite"},
 			&config.SecurityConfig{
 				TokenExpires:     24 * time.Hour,
 				RefreshNotBefore: 1 * time.Millisecond,

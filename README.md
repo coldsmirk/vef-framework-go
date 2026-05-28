@@ -73,9 +73,16 @@ Create `configs/application.toml`:
 name = "my-app"
 port = 8080
 
-[vef.data_source]
+[vef.data_sources.primary]
 type = "sqlite"
 path = "./my-app.db"
+
+# Additional named sources are optional; each one is reachable through
+# orm.DataSources.Get("<name>"). Example:
+# [vef.data_sources.analytics]
+# type = "postgres"
+# host = "analytics.example.com"
+# database = "warehouse"
 ```
 
 This is the smallest runnable configuration. Sections such as `vef.monitor`, `vef.mcp`, and `vef.approval` are optional.

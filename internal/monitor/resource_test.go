@@ -41,9 +41,6 @@ func (suite *MonitorResourceTestSuite) SetupSuite() {
 
 	suite.SetupApp(
 		fx.Replace(
-			&config.DataSourceConfig{
-				Kind: "sqlite",
-			},
 			monitorConfig,
 			&security.JWTConfig{
 				Secret:   security.DefaultJWTSecret,

@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/fx"
 
-	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
 	"github.com/coldsmirk/vef-framework-go/mold"
@@ -63,9 +62,6 @@ func (suite *TranslateTransformerTestSuite) SetupSuite() {
 
 	suite.app, suite.stop = apptest.NewTestApp(
 		suite.T(),
-		fx.Replace(&config.DataSourceConfig{
-			Kind: config.SQLite,
-		}),
 		fx.Provide(func() mold.DictionaryLoader {
 			return &MockDictionaryLoader{shouldError: false}
 		}),
@@ -351,9 +347,6 @@ func (suite *TranslateTransformerTestSuite) TestTranslateWithResolverError() {
 
 		_, stop := apptest.NewTestApp(
 			suite.T(),
-			fx.Replace(&config.DataSourceConfig{
-				Kind: config.SQLite,
-			}),
 			fx.Provide(func() mold.DictionaryLoader {
 				return &MockDictionaryLoader{shouldError: true}
 			}),
@@ -391,9 +384,6 @@ func (suite *TranslateTransformerTestSuite) TestTranslateWithMissingResolver() {
 
 		_, stop := apptest.NewTestApp(
 			suite.T(),
-			fx.Replace(&config.DataSourceConfig{
-				Kind: config.SQLite,
-			}),
 			fx.Populate(&transformer),
 		)
 		defer stop()
@@ -709,9 +699,6 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSliceErrors() {
 
 		_, stop := apptest.NewTestApp(
 			suite.T(),
-			fx.Replace(&config.DataSourceConfig{
-				Kind: config.SQLite,
-			}),
 			fx.Provide(func() mold.DictionaryLoader {
 				return &MockDictionaryLoader{shouldError: true}
 			}),
@@ -761,9 +748,6 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSliceErrors() {
 
 		_, stop := apptest.NewTestApp(
 			suite.T(),
-			fx.Replace(&config.DataSourceConfig{
-				Kind: config.SQLite,
-			}),
 			fx.Populate(&transformer),
 		)
 		defer stop()

@@ -13,7 +13,6 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/api"
-	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
 	"github.com/coldsmirk/vef-framework-go/password"
@@ -318,9 +317,6 @@ func (suite *RESTEngineTestSuite) setupTestApp() {
 			return suite.permissionChecker
 		}),
 		fx.Replace(
-			&config.DataSourceConfig{
-				Kind: config.SQLite,
-			},
 			&security.JWTConfig{
 				Secret:   security.DefaultJWTSecret,
 				Audience: "test_app",

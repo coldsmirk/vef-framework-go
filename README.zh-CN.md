@@ -73,9 +73,16 @@ func main() {
 name = "my-app"
 port = 8080
 
-[vef.data_source]
+[vef.data_sources.primary]
 type = "sqlite"
 path = "./my-app.db"
+
+# 附加数据源按需配置，通过 orm.DataSources.Get("<name>") 取用。
+# 例如：
+# [vef.data_sources.analytics]
+# type = "postgres"
+# host = "analytics.example.com"
+# database = "warehouse"
 ```
 
 这个配置示例已经可以直接运行；`vef.monitor`、`vef.mcp`、`vef.approval` 等配置段按需补充即可。

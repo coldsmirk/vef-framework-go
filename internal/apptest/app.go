@@ -28,9 +28,22 @@ import (
 )
 
 // NopConfig implements config.Config for testing without file dependencies.
+// It returns nil for every Unmarshal call except vef.data_sources, where it
+// injects a default in-memory SQLite primary so the framework's
+// newDataSourcesConfig (which requires a primary entry) can boot. Tests that
+// need a different primary or extra sources override the result via
+// fx.Replace(&config.DataSourcesConfig{...}) or apptest.WithDataSourcesConfig.
 type NopConfig struct{}
 
-func (*NopConfig) Unmarshal(string, any) error {
+func (*NopConfig) Unmarshal(key string, target any) error {
+	if key == "vef.data_sources" {
+		if m, ok := target.(*map[string]config.DataSourceConfig); ok {
+			*m = map[string]config.DataSourceConfig{
+				"primary": {Kind: config.SQLite},
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -124,12 +137,19 @@ func buildOptions(options ...fx.Option) []fx.Option {
 }
 
 func buildOptionsWithDB(existingDB *bun.DB, options ...fx.Option) []fx.Option {
+	// Wrap the caller-supplied bun.DB as the primary entry of a Registry so
+	// the rest of the FX graph (orm.DataSources, orm.DB, schema reflection,
+	// etc.) sees the same connection.
+	r := database.NewRegistryFromBunDB(existingDB, config.SQLite, nil)
+
 	dbProvider := fx.Provide(
 		fx.Annotate(
-			func() *bun.DB { return existingDB },
-			fx.As(new(bun.IDB)),
+			func() *database.Registry { return r },
+			fx.As(new(orm.DataSources)),
 			fx.As(fx.Self()),
 		),
+		func() *bun.DB { return existingDB },
+		func() bun.IDB { return existingDB },
 		func(db *bun.DB) *sql.DB { return db.DB },
 	)
 
@@ -140,4 +160,12 @@ func buildOptionsWith(dbOption fx.Option, extra ...fx.Option) []fx.Option {
 	opts := append(coreOptions(), dbOption)
 
 	return append(opts, extra...)
+}
+
+// WithDataSourcesConfig replaces the DataSourcesConfig produced by the
+// framework's config module. Equivalent to fx.Replace(&config.DataSourcesConfig{...}),
+// but exposed as a helper so tests do not have to import the internal config
+// package or remember the type.
+func WithDataSourcesConfig(cfg *config.DataSourcesConfig) fx.Option {
+	return fx.Replace(cfg)
 }

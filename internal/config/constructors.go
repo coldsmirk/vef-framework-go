@@ -20,10 +20,6 @@ func newAppConfig(cfg config.Config) (*config.AppConfig, error) {
 	return unmarshalConfig(cfg, "vef.app", new(config.AppConfig))
 }
 
-func newDataSourceConfig(cfg config.Config) (*config.DataSourceConfig, error) {
-	return unmarshalConfig(cfg, "vef.data_source", new(config.DataSourceConfig))
-}
-
 func newCorsConfig(cfg config.Config) (*config.CorsConfig, error) {
 	return unmarshalConfig(cfg, "vef.cors", new(config.CorsConfig))
 }

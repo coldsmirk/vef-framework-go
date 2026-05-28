@@ -98,16 +98,18 @@ func newOutboxTransport(cfg *config.EventConfig, repo outbox.Repository) transpo
 func runOutboxMigration(
 	lc fx.Lifecycle,
 	eventCfg *config.EventConfig,
-	dsCfg *config.DataSourceConfig,
+	dataSources *config.DataSourcesConfig,
 	db orm.DB,
 ) {
 	if !eventCfg.Transports.Outbox.Enabled {
 		return
 	}
 
+	kind := dataSources.Primary().Kind
+
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			if err := ioutbox.Migrate(ctx, db, dsCfg.Kind); err != nil {
+			if err := ioutbox.Migrate(ctx, db, kind); err != nil {
 				return fmt.Errorf("outbox migration: %w", err)
 			}
 

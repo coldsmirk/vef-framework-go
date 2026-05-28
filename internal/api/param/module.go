@@ -50,6 +50,10 @@ func NewStorageResolver(service storage.Service) api.HandlerParamResolver {
 	return newHandlerValueResolver(service)
 }
 
+func NewDataSourcesResolver(ds orm.DataSources) api.HandlerParamResolver {
+	return newHandlerValueResolver(ds)
+}
+
 func NewParamsResolver() api.HandlerParamResolver {
 	return newContextResolver(func(ctx fiber.Ctx) api.Params {
 		if req := shared.Request(ctx); req != nil && req.Params != nil {
@@ -96,6 +100,10 @@ func NewFilesFactoryResolver(files storage.Files) api.FactoryParamResolver {
 	return newFactoryValueResolver(files)
 }
 
+func NewDataSourcesFactoryResolver(ds orm.DataSources) api.FactoryParamResolver {
+	return newFactoryValueResolver(ds)
+}
+
 var Module = fx.Module(
 	"vef:api:param",
 	fx.Provide(
@@ -134,6 +142,10 @@ var Module = fx.Module(
 			fx.ResultTags(`group:"vef:api:handler_param_resolvers"`),
 		),
 		fx.Annotate(
+			NewDataSourcesResolver,
+			fx.ResultTags(`group:"vef:api:handler_param_resolvers"`),
+		),
+		fx.Annotate(
 			NewParamsResolver,
 			fx.ResultTags(`group:"vef:api:handler_param_resolvers"`),
 		),
@@ -164,6 +176,10 @@ var Module = fx.Module(
 		),
 		fx.Annotate(
 			NewFilesFactoryResolver,
+			fx.ResultTags(`group:"vef:api:factory_param_resolvers"`),
+		),
+		fx.Annotate(
+			NewDataSourcesFactoryResolver,
 			fx.ResultTags(`group:"vef:api:factory_param_resolvers"`),
 		),
 	),

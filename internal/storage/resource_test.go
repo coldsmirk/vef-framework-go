@@ -66,7 +66,6 @@ func (s *StorageResourceTestSuite) SetupSuite() {
 
 	s.SetupApp(
 		fx.Replace(
-			&config.DataSourceConfig{Kind: config.SQLite},
 			&config.StorageConfig{
 				Provider:      config.StorageMemory,
 				AutoMigrate:   true,

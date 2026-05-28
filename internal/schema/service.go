@@ -16,9 +16,15 @@ type DefaultService struct {
 	inspector Inspector
 }
 
-// NewService creates a new schema service.
-func NewService(db *sql.DB, ds *config.DataSourceConfig) (schema.Service, error) {
-	inspector, err := NewInspector(db, ds.Kind, ds.Schema)
+// NewService creates a new schema service backed by the primary data source.
+// Multi-data-source schema reflection is intentionally out of scope for v1;
+// callers that need to introspect a non-primary source should inject
+// orm.DataSources, fetch the connection, and drive atlas inspection
+// themselves.
+func NewService(db *sql.DB, dataSources *config.DataSourcesConfig) (schema.Service, error) {
+	primary := dataSources.Primary()
+
+	inspector, err := NewInspector(db, primary.Kind, primary.Schema)
 	if err != nil {
 		return nil, err
 	}

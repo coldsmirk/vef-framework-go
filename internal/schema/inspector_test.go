@@ -50,7 +50,7 @@ func (suite *InspectorTestSuite) TestSQLiteInspector() {
 }
 
 func (suite *InspectorTestSuite) runInspectorTests(dsConfig *config.DataSourceConfig, dbKind string) {
-	db, err := database.New(dsConfig)
+	db, err := database.Open("test", *dsConfig)
 	suite.Require().NoError(err, "Database connection should succeed")
 
 	defer func() {

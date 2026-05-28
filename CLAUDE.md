@@ -35,7 +35,7 @@ go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest
 - **Structure**: public packages at root (`api`, `crud`, `orm`, `security`, `result`, etc.), internal implementations under `internal/`.
 - **Boot sequence** (`vef.Run()` in `bootstrap.go`): `config → database → orm → middleware → api → security → event → cqrs → cron → redis → mold → storage → schema → monitor → mcp → app`.
 - **Modules**: each exposes `fx.Module` in `internal/<module>/module.go`, constructors annotated into FX groups.
-- **DI helpers** (`di.go`): `vef.ProvideAPIResource(...)`, `vef.ProvideMiddleware(...)`, `vef.ProvideSPAConfig(...)`, `vef.SupplySPAConfigs(...)`, `vef.ProvideCQRSBehavior(...)`, `vef.ProvideMCPTools(...)`, etc.
+- **DI helpers** (`di.go`): `vef.ProvideAPIResource(...)`, `vef.ProvideMiddleware(...)`, `vef.ProvideSPAConfig(...)`, `vef.SupplySPAConfigs(...)`, `vef.ProvideCQRSBehavior(...)`, `vef.ProvideMCPTools(...)`, `vef.ProvideDataSourceProvider(...)`, etc.
 
 ## API Patterns
 
@@ -52,9 +52,10 @@ RPC uses `POST /api`; REST routes are mounted under `/api/<resource>`.
 
 ## Data Access
 
-- `orm.DB` for queries and `db.NewRaw(...)` for raw SQL when needed.
+- `orm.DB` for queries against the **primary** data source and `db.NewRaw(...)` for raw SQL when needed.
+- Multi-source: inject `orm.DataSources` and call `sources.Get("<name>")` (or `Primary()`). `Get` returns `orm.DB`. The registry covers `Register`, `Update`, `Unregister`, `Reconcile`, `HealthCheck`, `Has`, `Names`, `Kind`. Static sources come from `vef.data_sources.<name>` in TOML; runtime sources come from a `DataSourceProvider` (`vef.ProvideDataSourceProvider(...)`) or direct `Register`. For periodic sync against an external table, schedule a cron job that calls `sources.Reconcile(...)`.
 - Models embed `bun.BaseModel` (table tag) + `orm.FullAuditedModel` (id + audit: `created_at/by`, `updated_at/by`). Variants: `orm.Model` (id only), `orm.CreationTrackedModel` (creation audit, no id), `orm.FullTrackedModel` (full audit, no id), `orm.CreationAuditedModel` (id + creation audit). IDs: `id.Generate()` → 20-char XID.
-- Transactions: `db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error { ... })`.
+- Transactions: `db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error { ... })`. Cross-source transactions are **not supported**; an event published with `event.WithTx(tx)` requires a tx opened from the primary source.
 - Search: `search.Applier[T]` with struct tags.
 
 ## Security
@@ -79,7 +80,7 @@ RPC uses `POST /api`; REST routes are mounted under `/api/<resource>`.
 
 ## Configuration
 
-- `application.toml` from `./configs`, `./`, or `VEF_CONFIG_PATH`. Sections: `vef.app`, `vef.data_source`, `vef.cors`, `vef.security`, `vef.redis`, `vef.cache`, `vef.storage`.
+- `application.toml` from `./configs`, `./`, or `VEF_CONFIG_PATH`. Sections: `vef.app`, `vef.data_sources.<name>` (primary mandatory), `vef.cors`, `vef.security`, `vef.redis`, `vef.cache`, `vef.storage`.
 - `config.Config.Unmarshal` with `config:""` struct tags. Env overrides: `VEF_CONFIG_PATH`, `VEF_LOG_LEVEL`, `VEF_NODE_ID`, `VEF_I18N_LANGUAGE`.
 
 ## Middleware Stack (by `Order()`)
@@ -131,6 +132,7 @@ A single convention governs every module that surfaces API errors. New modules M
 ## Gotchas
 
 - `db.RunInTx` — use `Tx` casing, not uppercase `TX`.
+- **Data sources**: `vef.data_sources.<name>`, primary mandatory. Internal modules (approval, storage, event inbox/outbox, schema reflection, CRUD) all operate on the **primary** source only — additional sources are application-level concerns. Cross-source transactions are not supported; `event.WithTx(tx)` must use a tx opened from the primary. `orm.DataSources.Unregister` is soft-close: callers that already hold an `orm.DB` reference can complete in-flight queries, but the next `Get` returns `ErrDataSourceClosed`. `Reconcile` serialises (registry-wide mutex) so two ticks of a refresher job never interleave.
 - `SupplySPAConfigs` — all caps SPA, not `SupplySpaConfigs`.
 - `api.OperationSpec` — not `api.Spec`.
 - CRUD embedding uses interface names as field names: `crud.FindAll[M,S]` not `*crud.FindAllApi`. Constructor: `crud.NewFindAll[M,S]()`.

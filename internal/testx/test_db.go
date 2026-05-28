@@ -15,7 +15,7 @@ import (
 func NewTestDB(t *testing.T) orm.DB {
 	t.Helper()
 
-	bunDB, err := database.New(&config.DataSourceConfig{Kind: config.SQLite})
+	bunDB, err := database.Open("test", config.DataSourceConfig{Kind: config.SQLite})
 	require.NoError(t, err, "SQLite connection should succeed")
 
 	t.Cleanup(func() {

@@ -94,9 +94,6 @@ func (suite *MCPTestSuite) setupTestApp() {
 			),
 		),
 		fx.Replace(
-			&config.DataSourceConfig{
-				Kind: "sqlite",
-			},
 			&config.MCPConfig{
 				Enabled:     true,
 				RequireAuth: true,

@@ -15,7 +15,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go"
 	"github.com/coldsmirk/vef-framework-go/api"
-	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
@@ -47,9 +46,6 @@ func (suite *AppTestSuite) SetupSuite() {
 
 	suite.app, suite.stop = apptest.NewTestApp(
 		suite.T(),
-		fx.Replace(&config.DataSourceConfig{
-			Kind: config.SQLite,
-		}),
 		fx.Invoke(func() {
 			// Re-initialize i18n with default language after clearing env var
 			_ = i18n.SetLanguage("")

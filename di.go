@@ -366,3 +366,27 @@ func ProvideApprovalLifecycleHook(constructor any, paramTags ...string) fx.Optio
 func SupplyURLKeyMapper(constructor any) fx.Option {
 	return fx.Decorate(constructor)
 }
+
+// ProvideDataSourceProvider registers an orm.DataSourceProvider that the
+// framework consults during boot, after the primary and static (TOML)
+// data sources have been registered. Every spec returned by the provider's
+// Load method is passed to orm.DataSources.Register; a name collision with
+// any existing source (TOML or another provider) fails boot.
+//
+// Typical use case: a tenant table in the primary database whose rows
+// describe additional data sources. The provider reads the table during
+// Load and returns one DataSourceSpec per row. For periodic re-sync of
+// the same table, register a cron job that calls
+// orm.DataSources.Reconcile instead.
+//
+// constructor is an fx-style factory that returns orm.DataSourceProvider
+// (or a type that implements it).
+func ProvideDataSourceProvider(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:orm:data_source_providers"`),
+		),
+	)
+}

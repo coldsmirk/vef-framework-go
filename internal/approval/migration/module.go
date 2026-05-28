@@ -16,10 +16,10 @@ var Module = fx.Module(
 	fx.Invoke(autoMigrate),
 )
 
-func autoMigrate(ctx context.Context, cfg *config.ApprovalConfig, db orm.DB, ds *config.DataSourceConfig) error {
+func autoMigrate(ctx context.Context, cfg *config.ApprovalConfig, db orm.DB, dataSources *config.DataSourcesConfig) error {
 	if !cfg.AutoMigrate {
 		return nil
 	}
 
-	return Migrate(ctx, db, ds.Kind)
+	return Migrate(ctx, db, dataSources.Primary().Kind)
 }

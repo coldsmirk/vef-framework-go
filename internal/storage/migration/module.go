@@ -21,12 +21,14 @@ var Module = fx.Module(
 // is required because the fx graph does not provide a long-lived
 // context.Context directly; the hook receives the lifecycle context that
 // fx manages for startup.
-func autoMigrate(lc fx.Lifecycle, cfg *config.StorageConfig, db orm.DB, ds *config.DataSourceConfig) {
+func autoMigrate(lc fx.Lifecycle, cfg *config.StorageConfig, db orm.DB, dataSources *config.DataSourcesConfig) {
 	if !cfg.AutoMigrate {
 		return
 	}
 
+	kind := dataSources.Primary().Kind
+
 	lc.Append(fx.StartHook(func(ctx context.Context) error {
-		return Migrate(ctx, db, ds.Kind)
+		return Migrate(ctx, db, kind)
 	}))
 }

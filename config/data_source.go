@@ -12,7 +12,10 @@ const (
 	SQLite    DBKind = "sqlite"
 )
 
-// DataSourceConfig defines database connection settings.
+// DataSourceConfig defines database connection settings for one named
+// data source. Sources live under `vef.data_sources.<name>` in the TOML
+// configuration; the entry under name "primary" is mandatory and is the
+// source exposed in the FX container as orm.DB.
 type DataSourceConfig struct {
 	Kind           DBKind `config:"type"`
 	Host           string `config:"host"`
@@ -23,4 +26,20 @@ type DataSourceConfig struct {
 	Schema         string `config:"schema"`
 	Path           string `config:"path"`
 	EnableSQLGuard bool   `config:"enable_sql_guard"`
+}
+
+// DataSourcesConfig groups every entry under vef.data_sources. Map keys are
+// the data source names (lower-case, alphanumeric); the entry named "primary"
+// is mandatory and powers the framework-wide orm.DB injection. Map is
+// populated by newDataSourcesConfig which calls viper.UnmarshalKey directly,
+// so the struct itself has no config tag.
+type DataSourcesConfig struct {
+	Map map[string]DataSourceConfig
+}
+
+// Primary returns the configuration for the primary data source. Callers
+// that received a validated DataSourcesConfig (via newDataSourcesConfig)
+// can rely on the entry being present.
+func (c *DataSourcesConfig) Primary() DataSourceConfig {
+	return c.Map["primary"]
 }

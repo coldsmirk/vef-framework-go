@@ -9,7 +9,6 @@ import (
 
 var (
 	ErrUnsupportedDBKind  = errors.New("unsupported database type")
-	errPingFailed         = errors.New("database ping failed")
 	errVersionQueryFailed = errors.New("database version query failed")
 )
 
@@ -39,10 +38,6 @@ func newDatabaseError(dbKind config.DBKind, operation string, err error, context
 		Err:     err,
 		Context: context,
 	}
-}
-
-func wrapPingError(dbKind config.DBKind, err error) error {
-	return newDatabaseError(dbKind, "ping", fmt.Errorf("%w: %w", errPingFailed, err), nil)
 }
 
 func wrapVersionQueryError(dbKind config.DBKind, err error) error {

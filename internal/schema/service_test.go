@@ -51,7 +51,7 @@ func (suite *ServiceTestSuite) TestSQLiteService() {
 }
 
 func (suite *ServiceTestSuite) runServiceTests(dsConfig *config.DataSourceConfig, dbKind string) {
-	db, err := database.New(dsConfig)
+	db, err := database.Open("test", *dsConfig)
 	suite.Require().NoError(err, "Database connection should succeed")
 
 	defer func() {
@@ -62,7 +62,9 @@ func (suite *ServiceTestSuite) runServiceTests(dsConfig *config.DataSourceConfig
 
 	defer suite.cleanupTestTables(db.DB)
 
-	svc, err := schema.NewService(db.DB, dsConfig)
+	svc, err := schema.NewService(db.DB, &config.DataSourcesConfig{
+		Map: map[string]config.DataSourceConfig{"primary": *dsConfig},
+	})
 	suite.Require().NoError(err, "Service creation should succeed")
 
 	suite.Run("ListTables", func() {

@@ -6,7 +6,6 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/schema"
 
-	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/logx"
 )
 
@@ -31,25 +30,4 @@ func setupBunDB(sqlDB *sql.DB, dialect schema.Dialect, opts *databaseOptions) *b
 	db = db.WithNamedArg("Operator", "system")
 
 	return db
-}
-
-func New(cfg *config.DataSourceConfig, options ...Option) (*bun.DB, error) {
-	provider, exists := registry.provider(cfg.Kind)
-	if !exists {
-		return nil, newUnsupportedDBKindError(cfg.Kind)
-	}
-
-	sqlDB, dialect, err := provider.Connect(cfg)
-	if err != nil || sqlDB == nil {
-		return nil, err
-	}
-
-	opts := newDefaultOptions(cfg)
-	opts.apply(options...)
-
-	if opts.PoolConfig != nil {
-		opts.PoolConfig.ApplyToDB(sqlDB)
-	}
-
-	return setupBunDB(sqlDB, dialect, opts), nil
 }

@@ -121,12 +121,10 @@ func (suite *BaseTestSuite) cleanupTestRecords() {
 }
 
 func (suite *BaseTestSuite) setupBaseSuite(resourceCtors ...any) {
-	opts := make([]fx.Option, 0, len(resourceCtors)+2)
+	opts := make([]fx.Option, 0, len(resourceCtors)+1)
 	for _, ctor := range resourceCtors {
 		opts = append(opts, vef.ProvideAPIResource(ctor))
 	}
-
-	opts = append(opts, fx.Replace(suite.ds))
 
 	suite.SetupAppWithDB(suite.bunDB, opts...)
 }
