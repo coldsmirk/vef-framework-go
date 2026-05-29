@@ -25,8 +25,8 @@ type DataSources interface {
 	Primary() DB
 
 	// Get returns the orm.DB registered under name. It returns
-	// ErrDataSourceNotFound when the name has never been registered and
-	// ErrDataSourceClosed when the entry was Unregister'd.
+	// ErrDataSourceNotFound when no source is currently registered under name
+	// (including after it was Unregister'd).
 	Get(name string) (DB, error)
 
 	// Has reports whether name is currently registered and not closed.
@@ -37,16 +37,18 @@ type DataSources interface {
 	Names() []string
 
 	// Kind returns the dialect for the named data source. It returns
-	// ErrDataSourceNotFound / ErrDataSourceClosed for the same conditions as
-	// Get. Useful for sqlmigration / schema reflection callers that need to
-	// branch on dialect without pulling out the full DB.
+	// ErrDataSourceNotFound for the same conditions as Get. Useful for
+	// sqlmigration / schema reflection callers that need to branch on dialect
+	// without pulling out the full DB.
 	Kind(name string) (config.DBKind, error)
 
 	// Register opens a new data source and inserts it under name. It returns
-	// ErrDataSourceExists if the name is already registered and
-	// ErrPrimaryReserved if name equals PrimaryDataSourceName. The newly
-	// opened connection is closed and not retained on conflict.
-	Register(ctx context.Context, name string, cfg config.DataSourceConfig, opts ...RegisterOption) (DB, error)
+	// ErrDataSourceExists if the name is already registered, ErrPrimaryReserved
+	// if name equals PrimaryDataSourceName, and ErrDataSourceNameInvalid if name
+	// is empty or contains whitespace/control characters. The newly opened
+	// connection is closed and not retained on conflict. Register never closes
+	// an existing connection, so it takes no RegisterOption.
+	Register(ctx context.Context, name string, cfg config.DataSourceConfig) (DB, error)
 
 	// Update atomically replaces the connection for an existing data source
 	// with one opened from cfg. The new connection must Open and Ping
@@ -58,13 +60,13 @@ type DataSources interface {
 	// ErrPrimaryReserved when name is PrimaryDataSourceName.
 	Update(ctx context.Context, name string, cfg config.DataSourceConfig, opts ...RegisterOption) (DB, error)
 
-	// Unregister soft-closes the named data source. Subsequent Get calls
-	// return ErrDataSourceClosed; callers already holding a DB reference
-	// will fail their next query with a driver-level error once the
-	// underlying *sql.DB is closed. Unregister returns ErrPrimaryReserved
-	// for the primary source and ErrDataSourceNotFound when name is not
-	// registered.
-	Unregister(ctx context.Context, name string) error
+	// Unregister removes the named data source from the registry. Subsequent
+	// Get calls return ErrDataSourceNotFound. The underlying *sql.DB is closed
+	// asynchronously (honoring WithCloseGrace), so callers already holding a DB
+	// reference can finish in-flight queries before the connection pool tears
+	// down. Unregister returns ErrPrimaryReserved for the primary source and
+	// ErrDataSourceNotFound when name is not registered.
+	Unregister(ctx context.Context, name string, opts ...RegisterOption) error
 
 	// Reconcile drives the registry toward the supplied desired set of
 	// non-primary sources. The implementation computes three buckets:
@@ -110,11 +112,12 @@ type DataSourceSpec struct {
 	Cfg config.DataSourceConfig
 }
 
-// RegisterOption tunes a single Register or Update call. Options compose;
-// later options override earlier ones for the same field.
+// RegisterOption tunes a single Update or Unregister call — the two operations
+// that close an existing connection. Options compose; later options override
+// earlier ones for the same field.
 type RegisterOption func(*RegisterOptions)
 
-// RegisterOptions holds the tunables a Register/Update call honors. It is
+// RegisterOptions holds the tunables an Update/Unregister call honors. It is
 // exported so registry implementations can read it; user code should
 // construct it via the RegisterOption helpers.
 type RegisterOptions struct {
@@ -125,8 +128,9 @@ type RegisterOptions struct {
 }
 
 // WithCloseGrace returns a RegisterOption that delays the asynchronous close
-// of a replaced/unregistered underlying *bun.DB by d. Use it to give in-flight
-// queries some time to drain before the connection pool tears down.
+// of a replaced (Update) or removed (Unregister) underlying *bun.DB by d. Use
+// it to give in-flight queries some time to drain before the connection pool
+// tears down.
 func WithCloseGrace(d time.Duration) RegisterOption {
 	return func(o *RegisterOptions) {
 		if d > 0 {

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -148,33 +149,33 @@ func TestRegistryUnregister(t *testing.T) {
 	require.NoError(t, r.Unregister(ctx, "to-remove"), "Unregister should succeed")
 
 	_, err = r.Get("to-remove")
-	require.ErrorIs(t, err, orm.ErrDataSourceClosed, "Get after Unregister returns ErrDataSourceClosed")
+	require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "Get after Unregister returns ErrDataSourceNotFound")
 
 	_, err = r.Kind("to-remove")
-	require.ErrorIs(t, err, orm.ErrDataSourceClosed, "Kind after Unregister returns ErrDataSourceClosed")
+	require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "Kind after Unregister returns ErrDataSourceNotFound")
 
 	require.False(t, r.Has("to-remove"), "Has after Unregister returns false")
 
 	err = r.Unregister(ctx, "to-remove")
-	require.ErrorIs(t, err, orm.ErrDataSourceClosed, "double Unregister returns ErrDataSourceClosed")
+	require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "double Unregister returns ErrDataSourceNotFound")
 }
 
-func TestRegistryRegisterReplacesClosedEntry(t *testing.T) {
+func TestRegistryReRegisterAfterUnregister(t *testing.T) {
 	ctx := context.Background()
 	r := newTestRegistry(t)
 
 	first, err := r.Register(ctx, "reopen", newSQLiteCfg(t, "first"))
 	require.NoError(t, err, "initial Register should succeed")
 
-	require.NoError(t, r.Unregister(ctx, "reopen"), "Unregister should close the entry")
+	require.NoError(t, r.Unregister(ctx, "reopen"), "Unregister frees the name")
 
 	second, err := r.Register(ctx, "reopen", newSQLiteCfg(t, "second"))
-	require.NoError(t, err, "Register should replace a closed entry")
-	require.NotSame(t, first, second, "reopened source should use a fresh DB instance")
+	require.NoError(t, err, "Register should succeed once the name is free")
+	require.NotSame(t, first, second, "re-registered source should use a fresh DB instance")
 
 	got, err := r.Get("reopen")
 	require.NoError(t, err, "Get after re-registering should succeed")
-	require.Equal(t, second, got, "Get should return the reopened DB")
+	require.Equal(t, second, got, "Get should return the re-registered DB")
 }
 
 func TestRegistryPrimaryReserved(t *testing.T) {
@@ -311,8 +312,7 @@ func TestRegistryConcurrentAccess(t *testing.T) {
 				}
 
 				if err := r.Unregister(ctx, name); err != nil &&
-					!errors.Is(err, orm.ErrDataSourceNotFound) &&
-					!errors.Is(err, orm.ErrDataSourceClosed) {
+					!errors.Is(err, orm.ErrDataSourceNotFound) {
 					t.Errorf("Unregister %q unexpected error: %v", name, err)
 
 					return
@@ -327,4 +327,102 @@ func TestRegistryConcurrentAccess(t *testing.T) {
 	// Misses are tolerated under contention; the counter is only used to
 	// exercise the path. Read it via Load to avoid copying the atomic value.
 	_ = getMisses.Load()
+}
+
+func TestRegistryConcurrentSameName(t *testing.T) {
+	ctx := context.Background()
+	r := newTestRegistry(t)
+
+	const (
+		workers = 16
+		ops     = 25
+	)
+
+	// A shared in-memory SQLite config keeps every Open independent (no file
+	// locking) while all workers contend on the SAME registry key, exercising
+	// the Register/Update/Unregister atomicity that the per-name concurrency
+	// test does not.
+	cfg := config.DataSourceConfig{Kind: config.SQLite}
+
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Go(func() {
+			for range ops {
+				if _, err := r.Register(ctx, "contended", cfg); err != nil &&
+					!errors.Is(err, orm.ErrDataSourceExists) {
+					t.Errorf("Register: unexpected error: %v", err)
+
+					return
+				}
+
+				if _, err := r.Update(ctx, "contended", cfg); err != nil &&
+					!errors.Is(err, orm.ErrDataSourceNotFound) {
+					t.Errorf("Update: unexpected error: %v", err)
+
+					return
+				}
+
+				if err := r.Unregister(ctx, "contended"); err != nil &&
+					!errors.Is(err, orm.ErrDataSourceNotFound) {
+					t.Errorf("Unregister: unexpected error: %v", err)
+
+					return
+				}
+			}
+		})
+	}
+
+	wg.Wait()
+
+	// The final state must be consistent: the name is either absent or maps to
+	// a usable connection — never a half-closed or leaked entry.
+	db, err := r.Get("contended")
+	if err != nil {
+		require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "an absent source reports NotFound")
+
+		return
+	}
+
+	var v int
+	require.NoError(t, db.NewRaw("SELECT 1").Scan(ctx, &v), "a present source must be usable")
+	require.Equal(t, 1, v, "present source should answer queries")
+}
+
+func TestRegistryUpdateWithCloseGrace(t *testing.T) {
+	ctx := context.Background()
+	r := newTestRegistry(t)
+
+	old, err := r.Register(ctx, "graceful", newSQLiteCfg(t, "v1"))
+	require.NoError(t, err, "Register should succeed")
+
+	_, err = r.Update(ctx, "graceful", newSQLiteCfg(t, "v2"), orm.WithCloseGrace(2*time.Second))
+	require.NoError(t, err, "Update with close grace should succeed")
+
+	// The replaced connection is closed only after the grace window, so a
+	// caller still holding the old orm.DB can keep querying right after Update.
+	var v int
+	require.NoError(t, old.NewRaw("SELECT 1").Scan(ctx, &v),
+		"old connection should still serve queries during the grace window")
+	require.Equal(t, 1, v, "drained query should return its value")
+}
+
+func TestRegistryUnregisterDrainsInFlight(t *testing.T) {
+	ctx := context.Background()
+	r := newTestRegistry(t)
+
+	db, err := r.Register(ctx, "draining", newSQLiteCfg(t, "drain"))
+	require.NoError(t, err, "Register should succeed")
+
+	require.NoError(t, r.Unregister(ctx, "draining", orm.WithCloseGrace(2*time.Second)),
+		"Unregister with close grace should succeed")
+
+	_, err = r.Get("draining")
+	require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "Get after Unregister returns ErrDataSourceNotFound")
+
+	// The connection is closed only after the grace window, so the previously
+	// obtained orm.DB reference can still finish in-flight work.
+	var v int
+	require.NoError(t, db.NewRaw("SELECT 1").Scan(ctx, &v),
+		"held reference should drain during the grace window")
+	require.Equal(t, 1, v, "drained query should return its value")
 }

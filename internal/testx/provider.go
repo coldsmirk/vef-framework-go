@@ -48,7 +48,7 @@ func ForEachDB(t *testing.T, fn func(t *testing.T, env *DBEnv)) {
 
 // newDBEnv creates a complete DBEnv with database connection and automatic cleanup.
 func newDBEnv(t *testing.T, ctx context.Context, ds *config.DataSourceConfig) *DBEnv {
-	db, err := database.Open("test", *ds)
+	db, err := database.Open(*ds)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

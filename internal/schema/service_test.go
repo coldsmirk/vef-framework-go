@@ -51,7 +51,7 @@ func (suite *ServiceTestSuite) TestSQLiteService() {
 }
 
 func (suite *ServiceTestSuite) runServiceTests(dsConfig *config.DataSourceConfig, dbKind string) {
-	db, err := database.Open("test", *dsConfig)
+	db, err := database.Open(*dsConfig)
 	suite.Require().NoError(err, "Database connection should succeed")
 
 	defer func() {

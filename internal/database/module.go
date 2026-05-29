@@ -74,23 +74,19 @@ func providePrimarySQLDB(db *bun.DB) *sql.DB { return db.DB }
 // Ping that benefits from the OnStart context (so a misconfigured source
 // fails the boot rather than the provide phase).
 func seedStaticDataSources(lc fx.Lifecycle, r *Registry, cfg *config.DataSourcesConfig) {
-	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			for name, dsCfg := range cfg.Map {
-				if name == orm.PrimaryDataSourceName {
-					continue
-				}
-
-				if _, err := r.Register(ctx, name, dsCfg); err != nil {
-					return fmt.Errorf("register static data source %q: %w", name, err)
-				}
-
-				logger.Infof("Registered static data source: %s (%s)", name, dsCfg.Kind)
+	lc.Append(fx.StartHook(func(ctx context.Context) error {
+		for name, dsCfg := range cfg.Map {
+			if name == orm.PrimaryDataSourceName {
+				continue
 			}
 
-			return nil
-		},
-	})
+			if err := registerSource(ctx, r, name, dsCfg, "static"); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}))
 }
 
 // DataSourceProviderParams collects every orm.DataSourceProvider declared
@@ -110,26 +106,33 @@ func runDataSourceProviders(lc fx.Lifecycle, r *Registry, p DataSourceProviderPa
 		return
 	}
 
-	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			for _, provider := range p.Providers {
-				specs, err := provider.Load(ctx)
-				if err != nil {
-					return fmt.Errorf("data source provider %q: %w", provider.Name(), err)
-				}
-
-				for _, spec := range specs {
-					if _, err := r.Register(ctx, spec.Name, spec.Cfg); err != nil {
-						return fmt.Errorf("provider %q: register data source %q: %w",
-							provider.Name(), spec.Name, err)
-					}
-
-					logger.Infof("Registered provided data source: %s (%s) via %s",
-						spec.Name, spec.Cfg.Kind, provider.Name())
-				}
+	lc.Append(fx.StartHook(func(ctx context.Context) error {
+		for _, provider := range p.Providers {
+			specs, err := provider.Load(ctx)
+			if err != nil {
+				return fmt.Errorf("data source provider %q: %w", provider.Name(), err)
 			}
 
-			return nil
-		},
-	})
+			for _, spec := range specs {
+				if err := registerSource(ctx, r, spec.Name, spec.Cfg, provider.Name()); err != nil {
+					return err
+				}
+			}
+		}
+
+		return nil
+	}))
+}
+
+// registerSource registers a single non-primary data source and logs it,
+// tagging the error and log line with origin (e.g. "static" or a provider
+// name) so a misconfigured source is easy to trace at boot.
+func registerSource(ctx context.Context, r *Registry, name string, cfg config.DataSourceConfig, origin string) error {
+	if _, err := r.Register(ctx, name, cfg); err != nil {
+		return fmt.Errorf("register %s data source %q: %w", origin, name, err)
+	}
+
+	logger.Infof("Registered %s data source: %s (%s)", origin, name, cfg.Kind)
+
+	return nil
 }

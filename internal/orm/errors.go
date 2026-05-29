@@ -16,6 +16,25 @@ var (
 	ErrMissingColumnOrExpression    = errors.New("order clause requires at least one column or expression")
 	ErrModelMustBePointerToStruct   = errors.New("model must be a pointer to struct")
 	ErrPrimaryKeyUnsupportedType    = errors.New("unsupported primary key type")
+
+	// ErrDataSourceNotFound is returned by DataSources.Get/Update/Unregister/Kind
+	// when no data source is currently registered under the requested name.
+	ErrDataSourceNotFound = errors.New("orm: data source not found")
+
+	// ErrDataSourceExists is returned by DataSources.Register when a data source
+	// with the same name is already registered. Use Update to replace an existing
+	// configuration, or Unregister + Register to fully recycle the entry.
+	ErrDataSourceExists = errors.New("orm: data source already registered")
+
+	// ErrPrimaryReserved is returned by Register/Update/Unregister when the
+	// caller attempts to mutate the primary data source through the dynamic API.
+	// The primary source is owned by the TOML configuration and lives for the
+	// lifetime of the application.
+	ErrPrimaryReserved = errors.New("orm: primary data source is reserved")
+
+	// ErrDataSourceNameInvalid is returned by Register/Update when a name is
+	// empty or contains whitespace or control characters.
+	ErrDataSourceNameInvalid = errors.New("orm: data source name invalid")
 )
 
 // translateWriteError converts database-specific errors to framework errors.

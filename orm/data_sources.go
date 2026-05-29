@@ -18,7 +18,6 @@ const PrimaryDataSourceName = orm.PrimaryDataSourceName
 var (
 	ErrDataSourceNotFound    = orm.ErrDataSourceNotFound
 	ErrDataSourceExists      = orm.ErrDataSourceExists
-	ErrDataSourceClosed      = orm.ErrDataSourceClosed
 	ErrPrimaryReserved       = orm.ErrPrimaryReserved
 	ErrDataSourceNameInvalid = orm.ErrDataSourceNameInvalid
 
