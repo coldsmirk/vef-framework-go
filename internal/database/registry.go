@@ -65,15 +65,15 @@ func NewRegistry(ctx context.Context, primaryCfg config.DataSourceConfig, logger
 	}, logger, dbOpts), nil
 }
 
-// NewRegistryFromBunDB wraps an already-opened *bun.DB as the primary
-// data source without re-opening it. It is intended for test harnesses
-// (apptest.SetupAppWithDB) that want to share a single in-memory SQLite
-// connection across an FX app without paying the cost of a real Open/Ping
-// dance. Production code should always use NewRegistry.
-func NewRegistryFromBunDB(primary *bun.DB, kind config.DBKind, logger logx.Logger) *Registry {
+// NewRegistryFromBunDB wraps an already-opened *bun.DB as the primary data
+// source without re-opening it. It is intended for test harnesses
+// (apptest.SetupAppWithDBConfig) that want to share an existing connection
+// across an FX app without paying the cost of a real Open/Ping dance.
+// Production code should always use NewRegistry.
+func NewRegistryFromBunDB(primary *bun.DB, cfg config.DataSourceConfig, logger logx.Logger) *Registry {
 	return newRegistryFromEntry(&registryEntry{
 		name:  orm.PrimaryDataSourceName,
-		cfg:   config.DataSourceConfig{Kind: kind},
+		cfg:   cfg,
 		bunDB: primary,
 		ormDB: orm.New(primary),
 	}, logger, nil)
@@ -192,13 +192,25 @@ func (r *Registry) Register(ctx context.Context, name string, cfg config.DataSou
 		ormDB: orm.New(bunDB),
 	}
 
-	if _, inserted := r.entries.PutIfAbsent(name, entry); !inserted {
+	var existsOpen bool
+
+	stored, _ := r.entries.Compute(name, func(_ string, prev *registryEntry, exists bool) (*registryEntry, bool) {
+		if exists && !prev.closed.Load() {
+			existsOpen = true
+
+			return prev, true
+		}
+
+		return entry, true
+	})
+
+	if existsOpen {
 		_ = bunDB.Close()
 
 		return nil, orm.ErrDataSourceExists
 	}
 
-	return entry.ormDB, nil
+	return stored.ormDB, nil
 }
 
 // Update implements orm.DataSources.Update.
@@ -225,6 +237,7 @@ func (r *Registry) Update(ctx context.Context, name string, cfg config.DataSourc
 	var (
 		oldEntry *registryEntry
 		notFound bool
+		closed   bool
 	)
 
 	newEntry, _ := r.entries.Compute(name, func(_ string, prev *registryEntry, exists bool) (*registryEntry, bool) {
@@ -232,6 +245,12 @@ func (r *Registry) Update(ctx context.Context, name string, cfg config.DataSourc
 			notFound = true
 
 			return nil, false
+		}
+
+		if prev.closed.Load() {
+			closed = true
+
+			return prev, true
 		}
 
 		oldEntry = prev
@@ -250,6 +269,12 @@ func (r *Registry) Update(ctx context.Context, name string, cfg config.DataSourc
 		return nil, orm.ErrDataSourceNotFound
 	}
 
+	if closed {
+		_ = bunDB.Close()
+
+		return nil, orm.ErrDataSourceClosed
+	}
+
 	oldEntry.closed.Store(true)
 	r.asyncClose(name, oldEntry.bunDB, applyRegisterOptions(opts))
 
@@ -262,12 +287,15 @@ func (r *Registry) Unregister(ctx context.Context, name string) error {
 		return orm.ErrPrimaryReserved
 	}
 
-	e, ok := r.entries.Remove(name)
+	e, ok := r.entries.Get(name)
 	if !ok {
 		return orm.ErrDataSourceNotFound
 	}
 
-	e.closed.Store(true)
+	if e.closed.Swap(true) {
+		return orm.ErrDataSourceClosed
+	}
+
 	r.asyncClose(name, e.bunDB, orm.RegisterOptions{})
 
 	_ = ctx
@@ -406,7 +434,9 @@ func (r *Registry) Shutdown(ctx context.Context) error {
 			continue
 		}
 
-		e.closed.Store(true)
+		if e.closed.Swap(true) {
+			continue
+		}
 
 		if err := e.bunDB.Close(); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("close data source %q: %w", k, err)

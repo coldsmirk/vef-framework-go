@@ -30,9 +30,9 @@ type DataSourceConfig struct {
 
 // DataSourcesConfig groups every entry under vef.data_sources. Map keys are
 // the data source names (lower-case, alphanumeric); the entry named "primary"
-// is mandatory and powers the framework-wide orm.DB injection. Map is
-// populated by newDataSourcesConfig which calls viper.UnmarshalKey directly,
-// so the struct itself has no config tag.
+// is mandatory and powers the framework-wide orm.DB injection. The legacy
+// vef.data_source key is accepted as a compatibility fallback and mapped to
+// primary by the internal config loader.
 type DataSourcesConfig struct {
 	Map map[string]DataSourceConfig
 }

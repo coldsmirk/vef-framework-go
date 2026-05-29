@@ -57,7 +57,20 @@ func NewTestApp(t testing.TB, options ...fx.Option) (*app.App, func()) {
 // instead of creating a new connection via database.Module.
 // This avoids redundant database connections when tests already manage their own.
 func NewTestAppWithDB(t testing.TB, db *bun.DB, options ...fx.Option) (*app.App, func()) {
-	return newTestApp(t, buildOptionsWithDB(db, options...))
+	return NewTestAppWithDBConfig(t, db, config.DataSourceConfig{Kind: config.SQLite}, options...)
+}
+
+// NewTestAppWithDBConfig creates a test application that uses an existing
+// *bun.DB and the matching primary data source config. Use this for tests that
+// reuse a non-SQLite connection so migration and schema services pick the
+// correct dialect metadata.
+func NewTestAppWithDBConfig(
+	t testing.TB,
+	db *bun.DB,
+	cfg config.DataSourceConfig,
+	options ...fx.Option,
+) (*app.App, func()) {
+	return newTestApp(t, buildOptionsWithDBConfig(db, cfg, options...))
 }
 
 func newTestApp(t testing.TB, opts []fx.Option) (*app.App, func()) {
@@ -136,11 +149,11 @@ func buildOptions(options ...fx.Option) []fx.Option {
 	return buildOptionsWith(database.Module, options...)
 }
 
-func buildOptionsWithDB(existingDB *bun.DB, options ...fx.Option) []fx.Option {
+func buildOptionsWithDBConfig(existingDB *bun.DB, cfg config.DataSourceConfig, options ...fx.Option) []fx.Option {
 	// Wrap the caller-supplied bun.DB as the primary entry of a Registry so
 	// the rest of the FX graph (orm.DataSources, orm.DB, schema reflection,
 	// etc.) sees the same connection.
-	r := database.NewRegistryFromBunDB(existingDB, config.SQLite, nil)
+	r := database.NewRegistryFromBunDB(existingDB, cfg, nil)
 
 	dbProvider := fx.Provide(
 		fx.Annotate(
@@ -153,7 +166,17 @@ func buildOptionsWithDB(existingDB *bun.DB, options ...fx.Option) []fx.Option {
 		func(db *bun.DB) *sql.DB { return db.DB },
 	)
 
-	return buildOptionsWith(dbProvider, options...)
+	return buildOptionsWith(
+		fx.Options(
+			fx.Replace(&config.DataSourcesConfig{
+				Map: map[string]config.DataSourceConfig{
+					orm.PrimaryDataSourceName: cfg,
+				},
+			}),
+			dbProvider,
+		),
+		options...,
+	)
 }
 
 func buildOptionsWith(dbOption fx.Option, extra ...fx.Option) []fx.Option {

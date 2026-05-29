@@ -126,7 +126,7 @@ func (suite *BaseTestSuite) setupBaseSuite(resourceCtors ...any) {
 		opts = append(opts, vef.ProvideAPIResource(ctor))
 	}
 
-	suite.SetupAppWithDB(suite.bunDB, opts...)
+	suite.SetupAppWithDBConfig(suite.bunDB, *suite.ds, opts...)
 }
 
 func (suite *BaseTestSuite) tearDownBaseSuite() {

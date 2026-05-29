@@ -15,6 +15,7 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/api"
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
@@ -46,6 +47,12 @@ func (s *Suite) SetupApp(opts ...fx.Option) {
 // instead of creating a new database connection.
 func (s *Suite) SetupAppWithDB(db *bun.DB, opts ...fx.Option) {
 	s.App, s.stop = NewTestAppWithDB(s.T(), db, opts...)
+}
+
+// SetupAppWithDBConfig creates a test app using an existing *bun.DB and the
+// matching primary data source config.
+func (s *Suite) SetupAppWithDBConfig(db *bun.DB, cfg config.DataSourceConfig, opts ...fx.Option) {
+	s.App, s.stop = NewTestAppWithDBConfig(s.T(), db, cfg, opts...)
 }
 
 // TearDownApp stops the app gracefully.

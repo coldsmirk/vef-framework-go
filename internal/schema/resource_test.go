@@ -59,7 +59,11 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 
 	s.SetupApp(
 		fx.Replace(
-			dsConfig,
+			&config.DataSourcesConfig{
+				Map: map[string]config.DataSourceConfig{
+					"primary": *dsConfig,
+				},
+			},
 			&security.JWTConfig{
 				Secret:   security.DefaultJWTSecret,
 				Audience: "test_app",

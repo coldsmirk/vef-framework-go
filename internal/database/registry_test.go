@@ -148,12 +148,33 @@ func TestRegistryUnregister(t *testing.T) {
 	require.NoError(t, r.Unregister(ctx, "to-remove"), "Unregister should succeed")
 
 	_, err = r.Get("to-remove")
-	require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "Get after Unregister returns ErrDataSourceNotFound")
+	require.ErrorIs(t, err, orm.ErrDataSourceClosed, "Get after Unregister returns ErrDataSourceClosed")
+
+	_, err = r.Kind("to-remove")
+	require.ErrorIs(t, err, orm.ErrDataSourceClosed, "Kind after Unregister returns ErrDataSourceClosed")
 
 	require.False(t, r.Has("to-remove"), "Has after Unregister returns false")
 
 	err = r.Unregister(ctx, "to-remove")
-	require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "double Unregister returns ErrDataSourceNotFound")
+	require.ErrorIs(t, err, orm.ErrDataSourceClosed, "double Unregister returns ErrDataSourceClosed")
+}
+
+func TestRegistryRegisterReplacesClosedEntry(t *testing.T) {
+	ctx := context.Background()
+	r := newTestRegistry(t)
+
+	first, err := r.Register(ctx, "reopen", newSQLiteCfg(t, "first"))
+	require.NoError(t, err, "initial Register should succeed")
+
+	require.NoError(t, r.Unregister(ctx, "reopen"), "Unregister should close the entry")
+
+	second, err := r.Register(ctx, "reopen", newSQLiteCfg(t, "second"))
+	require.NoError(t, err, "Register should replace a closed entry")
+	require.NotSame(t, first, second, "reopened source should use a fresh DB instance")
+
+	got, err := r.Get("reopen")
+	require.NoError(t, err, "Get after re-registering should succeed")
+	require.Equal(t, second, got, "Get should return the reopened DB")
 }
 
 func TestRegistryPrimaryReserved(t *testing.T) {
@@ -289,7 +310,9 @@ func TestRegistryConcurrentAccess(t *testing.T) {
 					}
 				}
 
-				if err := r.Unregister(ctx, name); err != nil && !errors.Is(err, orm.ErrDataSourceNotFound) {
+				if err := r.Unregister(ctx, name); err != nil &&
+					!errors.Is(err, orm.ErrDataSourceNotFound) &&
+					!errors.Is(err, orm.ErrDataSourceClosed) {
 					t.Errorf("Unregister %q unexpected error: %v", name, err)
 
 					return
