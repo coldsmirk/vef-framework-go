@@ -79,7 +79,7 @@ RPC uses `POST /api`; REST routes are mounted under `/api/<resource>`.
 
 ## Configuration
 
-- `application.toml` from `./configs`, `./`, or `VEF_CONFIG_PATH`. Sections: `vef.app`, `vef.data_sources.<name>` (`primary` mandatory; legacy `vef.data_source` is accepted as primary fallback), `vef.cors`, `vef.security`, `vef.redis`, `vef.cache`, `vef.storage`.
+- `application.toml` from `./configs`, `./`, or `VEF_CONFIG_PATH`. Sections: `vef.app`, `vef.data_sources.<name>` (`primary` mandatory; no legacy `vef.data_source` fallback), `vef.cors`, `vef.security`, `vef.redis`, `vef.cache`, `vef.storage`.
 - `config.Config.Unmarshal` with `config:""` struct tags. Env overrides: `VEF_CONFIG_PATH`, `VEF_LOG_LEVEL`, `VEF_NODE_ID`, `VEF_I18N_LANGUAGE`.
 
 ## Middleware Stack (by `Order()`)
