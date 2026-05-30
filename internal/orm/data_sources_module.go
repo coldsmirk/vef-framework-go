@@ -21,7 +21,7 @@ var DataSourcesModule = fx.Module(
 	"vef:orm:data_sources",
 	fx.Provide(
 		provideRegistry,
-		providePrimarySQLDB,
+		providePrimaryRawDB,
 	),
 	fx.Invoke(seedStaticDataSources),
 	fx.Invoke(runDataSourceProviders),
@@ -44,7 +44,7 @@ func provideRegistry(lc fx.Lifecycle, dataSources *config.DataSourcesConfig) (da
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			return database.LogVersion(ctx, primaryKind, registry.PrimarySQLDB(), logger)
+			return database.LogVersion(ctx, primaryKind, registry.PrimaryRawDB(), logger)
 		},
 		OnStop: func(ctx context.Context) error {
 			logger.Info("Closing data source registry...")
@@ -59,7 +59,7 @@ func provideRegistry(lc fx.Lifecycle, dataSources *config.DataSourcesConfig) (da
 	}, nil
 }
 
-func providePrimarySQLDB(r *Registry) *sql.DB { return r.PrimarySQLDB() }
+func providePrimaryRawDB(r *Registry) *sql.DB { return r.PrimaryRawDB() }
 
 // seedStaticDataSources registers every TOML-declared data source besides
 // primary. It runs as an FX lifecycle StartHook because Register issues a

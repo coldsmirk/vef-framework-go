@@ -95,9 +95,9 @@ func newRegistryFromEntry(primary *registryEntry, logger logx.Logger) *Registry 
 	}
 }
 
-// PrimarySQLDB exposes the raw *sql.DB for the primary source. It is used for
+// PrimaryRawDB exposes the raw *sql.DB for the primary source. It is used for
 // boot-time version logging and by the schema reflection service.
-func (r *Registry) PrimarySQLDB() *sql.DB { return r.primary.sqlDB }
+func (r *Registry) PrimaryRawDB() *sql.DB { return r.primary.sqlDB }
 
 // Primary returns the orm.DB for the primary data source. It never reports
 // an error: the primary source is constructed during FX boot or the entire
