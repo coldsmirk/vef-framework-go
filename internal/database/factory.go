@@ -12,7 +12,7 @@ import (
 // manages; it is also exported for tests and the migration helpers that need
 // to spin up a connection outside the FX lifecycle.
 func Open(cfg config.DataSourceConfig, options ...Option) (*bun.DB, error) {
-	provider, exists := registry.provider(cfg.Kind)
+	provider, exists := registry.lookup(cfg.Kind)
 	if !exists {
 		return nil, newUnsupportedDBKindError(cfg.Kind)
 	}

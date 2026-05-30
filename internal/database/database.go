@@ -20,7 +20,7 @@ var logger = ilogx.Named("database")
 // provider. The orm data source start hook calls it so dialect introspection
 // stays inside the database layer.
 func LogVersion(kind config.DBKind, db *bun.DB, logger logx.Logger) error {
-	provider, ok := registry.provider(kind)
+	provider, ok := registry.lookup(kind)
 	if !ok {
 		return nil
 	}
@@ -34,7 +34,7 @@ func LogVersion(kind config.DBKind, db *bun.DB, logger logx.Logger) error {
 	return nil
 }
 
-func logDBVersion(provider DatabaseProvider, db *bun.DB, logger logx.Logger) error {
+func logDBVersion(provider Provider, db *bun.DB, logger logx.Logger) error {
 	version, err := provider.QueryVersion(db)
 	if err != nil {
 		return wrapVersionQueryError(provider.Kind(), err)

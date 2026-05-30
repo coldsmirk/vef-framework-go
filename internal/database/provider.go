@@ -12,8 +12,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/database/sqlite"
 )
 
-// DatabaseProvider defines the contract for database-specific connection and validation logic.
-type DatabaseProvider interface {
+// Provider defines the contract for database-specific connection and validation logic.
+type Provider interface {
 	// Connect establishes a database connection and returns the sql.DB, dialect, and any error.
 	Connect(config *config.DataSourceConfig) (*sql.DB, schema.Dialect, error)
 	// Kind returns the database kind this provider handles (postgres, mysql, or sqlite).
@@ -25,12 +25,12 @@ type DatabaseProvider interface {
 }
 
 type providerRegistry struct {
-	providers map[config.DBKind]DatabaseProvider
+	providers map[config.DBKind]Provider
 }
 
 func newProviderRegistry() *providerRegistry {
 	registry := &providerRegistry{
-		providers: make(map[config.DBKind]DatabaseProvider),
+		providers: make(map[config.DBKind]Provider),
 	}
 
 	registry.register(sqlite.NewProvider())
@@ -40,12 +40,12 @@ func newProviderRegistry() *providerRegistry {
 	return registry
 }
 
-func (r *providerRegistry) register(provider DatabaseProvider) {
+func (r *providerRegistry) register(provider Provider) {
 	r.providers[provider.Kind()] = provider
 }
 
-func (r *providerRegistry) provider(dbKind config.DBKind) (DatabaseProvider, bool) {
-	provider, exists := r.providers[dbKind]
+func (r *providerRegistry) lookup(kind config.DBKind) (Provider, bool) {
+	provider, exists := r.providers[kind]
 
 	return provider, exists
 }
