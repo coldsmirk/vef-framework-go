@@ -15,8 +15,8 @@ func Open(cfg config.DataSourceConfig, options ...Option) (*sql.DB, error) {
 		return nil, newUnsupportedDBKindError(cfg.Kind)
 	}
 
-	sqlDB, err := provider.Connect(&cfg)
-	if err != nil || sqlDB == nil {
+	db, err := provider.Connect(&cfg)
+	if err != nil || db == nil {
 		return nil, err
 	}
 
@@ -24,8 +24,8 @@ func Open(cfg config.DataSourceConfig, options ...Option) (*sql.DB, error) {
 	opts.apply(options...)
 
 	if opts.PoolConfig != nil {
-		opts.PoolConfig.ApplyToDB(sqlDB)
+		opts.PoolConfig.ApplyToDB(db)
 	}
 
-	return sqlDB, nil
+	return db, nil
 }
