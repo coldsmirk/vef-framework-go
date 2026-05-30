@@ -20,37 +20,43 @@ import (
 var DataSourcesModule = fx.Module(
 	"vef:orm:data_sources",
 	fx.Provide(
-		fx.Annotate(
-			provideRegistry,
-			fx.As(new(DataSources)),
-			fx.As(fx.Self()),
-		),
+		provideRegistry,
 		providePrimarySQLDB,
 	),
 	fx.Invoke(seedStaticDataSources),
 	fx.Invoke(runDataSourceProviders),
 )
 
-func provideRegistry(lc fx.Lifecycle, dataSources *config.DataSourcesConfig) (*Registry, error) {
-	r, err := NewRegistry(context.Background(), dataSources.Primary(), logger)
+type dataSourcesOut struct {
+	fx.Out
+
+	Registry    *Registry
+	DataSources DataSources
+}
+
+func provideRegistry(lc fx.Lifecycle, dataSources *config.DataSourcesConfig) (dataSourcesOut, error) {
+	registry, err := NewRegistry(context.Background(), dataSources.Primary(), logger)
 	if err != nil {
-		return nil, err
+		return dataSourcesOut{}, err
 	}
 
 	primaryKind := dataSources.Primary().Kind
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
-			return database.LogVersion(ctx, primaryKind, r.PrimarySQLDB(), logger)
+			return database.LogVersion(ctx, primaryKind, registry.PrimarySQLDB(), logger)
 		},
 		OnStop: func(ctx context.Context) error {
 			logger.Info("Closing data source registry...")
 
-			return r.Shutdown(ctx)
+			return registry.Shutdown(ctx)
 		},
 	})
 
-	return r, nil
+	return dataSourcesOut{
+		Registry:    registry,
+		DataSources: registry,
+	}, nil
 }
 
 func providePrimarySQLDB(r *Registry) *sql.DB { return r.PrimarySQLDB() }
