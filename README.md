@@ -97,7 +97,7 @@ VEF loads `application.toml` from `./configs`, `.`, `../configs`, or the path po
 
 ## Core Concepts
 
-- `vef.Run(...)` starts the framework and wires the default module chain: config, database, ORM, middleware, API, security, event, CQRS, cron, redis, mold, storage, sequence, schema, monitor, MCP, and app.
+- `vef.Run(...)` starts the framework and wires the default module chain: config, ORM (which also builds the data source registry and primary connection), middleware, API, security, event, CQRS, cron, redis, mold, storage, sequence, schema, monitor, MCP, and app.
 - API endpoints are defined as resources with `api.NewRPCResource(...)` or `api.NewRESTResource(...)`.
 - Business modules are composed with FX options, for example `vef.ProvideAPIResource(...)`, `vef.ProvideMiddleware(...)`, and `vef.ProvideMCPTools(...)`.
 - CRUD-heavy modules can build on the generic helpers in `crud/` instead of writing repetitive handlers from scratch.

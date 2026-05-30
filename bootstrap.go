@@ -11,7 +11,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/config"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/cron"
-	"github.com/coldsmirk/vef-framework-go/internal/database"
 	"github.com/coldsmirk/vef-framework-go/internal/event"
 	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/internal/mcp"
@@ -43,7 +42,7 @@ func Run(options ...fx.Option) {
 	opts := []fx.Option{
 		fx.WithLogger(newFxLogger),
 		config.Module,
-		database.Module,
+		orm.DataSourcesModule,
 		orm.Module,
 		middleware.Module,
 		api.Module,

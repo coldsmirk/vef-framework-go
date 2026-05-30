@@ -5,8 +5,8 @@ import (
 )
 
 // Module derives the primary orm.DB from the data sources registry provided
-// by internal/database.Module. Most callers inject orm.DB directly and get
-// the primary source; cross-source access goes through orm.DataSources.
+// by DataSourcesModule. Most callers inject orm.DB directly and get the
+// primary source; cross-source access goes through orm.DataSources.
 var Module = fx.Module(
 	"vef:orm",
 	fx.Provide(providePrimary),

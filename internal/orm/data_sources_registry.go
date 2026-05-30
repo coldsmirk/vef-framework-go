@@ -1,4 +1,4 @@
-package database
+package orm
 
 import (
 	"context"
@@ -13,22 +13,22 @@ import (
 	collections "github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/config"
-	"github.com/coldsmirk/vef-framework-go/internal/orm"
+	"github.com/coldsmirk/vef-framework-go/internal/database"
 	"github.com/coldsmirk/vef-framework-go/logx"
 )
 
-// Registry is the orm.DataSources implementation backed by collections.ConcurrentMap.
+// Registry is the DataSources implementation backed by collections.ConcurrentMap.
 // The primary entry is owned outside the map so callers can grab it on the fast
 // path; every other entry lives inside the map. The map only ever holds live
 // sources — Unregister and Shutdown remove entries outright — and the underlying
-// *bun.DB is closed asynchronously so callers that still hold an orm.DB reference
-// can drain their in-flight queries.
+// *bun.DB is closed asynchronously so callers that still hold a DB reference can
+// drain their in-flight queries.
 type Registry struct {
 	entries collections.ConcurrentMap[string, *registryEntry]
 	primary *registryEntry
 
 	logger logx.Logger
-	dbOpts []Option
+	dbOpts []database.Option
 
 	reconcileMu sync.Mutex
 
@@ -44,7 +44,7 @@ type registryEntry struct {
 	name  string
 	cfg   config.DataSourceConfig
 	bunDB *bun.DB
-	ormDB orm.DB
+	ormDB DB
 }
 
 // NewRegistry constructs a Registry seeded with the primary data source. The
@@ -52,8 +52,8 @@ type registryEntry struct {
 // the FX boot can fail-fast. dbOpts are applied to every Open call (the primary
 // and every dynamically registered source alike), so connection-level tuning is
 // shared across the whole registry.
-func NewRegistry(ctx context.Context, primaryCfg config.DataSourceConfig, logger logx.Logger, dbOpts ...Option) (*Registry, error) {
-	bunDB, err := Open(primaryCfg, dbOpts...)
+func NewRegistry(ctx context.Context, primaryCfg config.DataSourceConfig, logger logx.Logger, dbOpts ...database.Option) (*Registry, error) {
+	bunDB, err := database.Open(primaryCfg, dbOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("open primary data source: %w", err)
 	}
@@ -65,10 +65,10 @@ func NewRegistry(ctx context.Context, primaryCfg config.DataSourceConfig, logger
 	}
 
 	return newRegistryFromEntry(&registryEntry{
-		name:  orm.PrimaryDataSourceName,
+		name:  PrimaryDataSourceName,
 		cfg:   primaryCfg,
 		bunDB: bunDB,
-		ormDB: orm.New(bunDB),
+		ormDB: New(bunDB),
 	}, logger, dbOpts), nil
 }
 
@@ -79,14 +79,14 @@ func NewRegistry(ctx context.Context, primaryCfg config.DataSourceConfig, logger
 // Production code should always use NewRegistry.
 func NewRegistryFromBunDB(primary *bun.DB, cfg config.DataSourceConfig, logger logx.Logger) *Registry {
 	return newRegistryFromEntry(&registryEntry{
-		name:  orm.PrimaryDataSourceName,
+		name:  PrimaryDataSourceName,
 		cfg:   cfg,
 		bunDB: primary,
-		ormDB: orm.New(primary),
+		ormDB: New(primary),
 	}, logger, nil)
 }
 
-func newRegistryFromEntry(primary *registryEntry, logger logx.Logger, dbOpts []Option) *Registry {
+func newRegistryFromEntry(primary *registryEntry, logger logx.Logger, dbOpts []database.Option) *Registry {
 	return &Registry{
 		entries: collections.NewConcurrentHashMap[string, *registryEntry](),
 		primary: primary,
@@ -104,25 +104,25 @@ func (r *Registry) PrimaryBunDB() *bun.DB { return r.primary.bunDB }
 // Primary returns the orm.DB for the primary data source. It never reports
 // an error: the primary source is constructed during FX boot or the entire
 // application fails to start.
-func (r *Registry) Primary() orm.DB { return r.primary.ormDB }
+func (r *Registry) Primary() DB { return r.primary.ormDB }
 
-// Get implements orm.DataSources.Get.
-func (r *Registry) Get(name string) (orm.DB, error) {
-	if name == orm.PrimaryDataSourceName {
+// Get implements DataSources.Get.
+func (r *Registry) Get(name string) (DB, error) {
+	if name == PrimaryDataSourceName {
 		return r.primary.ormDB, nil
 	}
 
 	e, ok := r.entries.Get(name)
 	if !ok {
-		return nil, orm.ErrDataSourceNotFound
+		return nil, ErrDataSourceNotFound
 	}
 
 	return e.ormDB, nil
 }
 
-// Has implements orm.DataSources.Has.
+// Has implements DataSources.Has.
 func (r *Registry) Has(name string) bool {
-	if name == orm.PrimaryDataSourceName {
+	if name == PrimaryDataSourceName {
 		return true
 	}
 
@@ -131,13 +131,13 @@ func (r *Registry) Has(name string) bool {
 	return ok
 }
 
-// Names implements orm.DataSources.Names. The returned slice always contains
+// Names implements DataSources.Names. The returned slice always contains
 // PrimaryDataSourceName and is sorted lexically so callers can rely on a
 // stable order for diagnostics and tests.
 func (r *Registry) Names() []string {
 	keys := r.entries.Keys()
 	out := make([]string, 0, len(keys)+1)
-	out = append(out, orm.PrimaryDataSourceName)
+	out = append(out, PrimaryDataSourceName)
 	out = append(out, keys...)
 
 	slices.Sort(out)
@@ -145,15 +145,15 @@ func (r *Registry) Names() []string {
 	return out
 }
 
-// Kind implements orm.DataSources.Kind.
+// Kind implements DataSources.Kind.
 func (r *Registry) Kind(name string) (config.DBKind, error) {
-	if name == orm.PrimaryDataSourceName {
+	if name == PrimaryDataSourceName {
 		return r.primary.cfg.Kind, nil
 	}
 
 	e, ok := r.entries.Get(name)
 	if !ok {
-		return "", orm.ErrDataSourceNotFound
+		return "", ErrDataSourceNotFound
 	}
 
 	return e.cfg.Kind, nil
@@ -164,15 +164,15 @@ func (r *Registry) Kind(name string) (config.DBKind, error) {
 // caller owns the returned *bun.DB and must close it if it decides not to keep
 // it (e.g. on a name conflict).
 func (r *Registry) openAndPing(ctx context.Context, name string, cfg config.DataSourceConfig) (*bun.DB, error) {
-	if name == orm.PrimaryDataSourceName {
-		return nil, orm.ErrPrimaryReserved
+	if name == PrimaryDataSourceName {
+		return nil, ErrPrimaryReserved
 	}
 
 	if err := validateDataSourceName(name); err != nil {
 		return nil, err
 	}
 
-	bunDB, err := Open(cfg, r.dbOpts...)
+	bunDB, err := database.Open(cfg, r.dbOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("open data source %q: %w", name, err)
 	}
@@ -186,8 +186,8 @@ func (r *Registry) openAndPing(ctx context.Context, name string, cfg config.Data
 	return bunDB, nil
 }
 
-// Register implements orm.DataSources.Register.
-func (r *Registry) Register(ctx context.Context, name string, cfg config.DataSourceConfig) (orm.DB, error) {
+// Register implements DataSources.Register.
+func (r *Registry) Register(ctx context.Context, name string, cfg config.DataSourceConfig) (DB, error) {
 	bunDB, err := r.openAndPing(ctx, name, cfg)
 	if err != nil {
 		return nil, err
@@ -197,20 +197,20 @@ func (r *Registry) Register(ctx context.Context, name string, cfg config.DataSou
 		name:  name,
 		cfg:   cfg,
 		bunDB: bunDB,
-		ormDB: orm.New(bunDB),
+		ormDB: New(bunDB),
 	}
 
 	if _, inserted := r.entries.PutIfAbsent(name, entry); !inserted {
 		_ = bunDB.Close()
 
-		return nil, orm.ErrDataSourceExists
+		return nil, ErrDataSourceExists
 	}
 
 	return entry.ormDB, nil
 }
 
-// Update implements orm.DataSources.Update.
-func (r *Registry) Update(ctx context.Context, name string, cfg config.DataSourceConfig, opts ...orm.RegisterOption) (orm.DB, error) {
+// Update implements DataSources.Update.
+func (r *Registry) Update(ctx context.Context, name string, cfg config.DataSourceConfig, opts ...RegisterOption) (DB, error) {
 	bunDB, err := r.openAndPing(ctx, name, cfg)
 	if err != nil {
 		return nil, err
@@ -234,14 +234,14 @@ func (r *Registry) Update(ctx context.Context, name string, cfg config.DataSourc
 			name:  name,
 			cfg:   cfg,
 			bunDB: bunDB,
-			ormDB: orm.New(bunDB),
+			ormDB: New(bunDB),
 		}, true
 	})
 
 	if notFound {
 		_ = bunDB.Close()
 
-		return nil, orm.ErrDataSourceNotFound
+		return nil, ErrDataSourceNotFound
 	}
 
 	r.asyncClose(name, oldEntry.bunDB, applyOptions(opts))
@@ -249,18 +249,18 @@ func (r *Registry) Update(ctx context.Context, name string, cfg config.DataSourc
 	return newEntry.ormDB, nil
 }
 
-// Unregister implements orm.DataSources.Unregister. The entry is removed from
-// the registry atomically; its underlying connection is closed asynchronously
-// (honoring WithCloseGrace) so callers already holding an orm.DB reference can
+// Unregister implements DataSources.Unregister. The entry is removed from the
+// registry atomically; its underlying connection is closed asynchronously
+// (honoring WithCloseGrace) so callers already holding a DB reference can
 // finish in-flight queries.
-func (r *Registry) Unregister(_ context.Context, name string, opts ...orm.RegisterOption) error {
-	if name == orm.PrimaryDataSourceName {
-		return orm.ErrPrimaryReserved
+func (r *Registry) Unregister(_ context.Context, name string, opts ...RegisterOption) error {
+	if name == PrimaryDataSourceName {
+		return ErrPrimaryReserved
 	}
 
 	e, ok := r.entries.Remove(name)
 	if !ok {
-		return orm.ErrDataSourceNotFound
+		return ErrDataSourceNotFound
 	}
 
 	r.asyncClose(name, e.bunDB, applyOptions(opts))
@@ -268,12 +268,12 @@ func (r *Registry) Unregister(_ context.Context, name string, opts ...orm.Regist
 	return nil
 }
 
-// Reconcile implements orm.DataSources.Reconcile. Concurrent reconciles are
+// Reconcile implements DataSources.Reconcile. Concurrent reconciles are
 // serialized by a registry-wide mutex so two refresher ticks never interleave
 // add/update/remove on the same name. Direct Register/Update/Unregister calls
 // are NOT covered by that mutex; mixing them with a running Reconcile may leave
 // the registry diverging from the reconciled set.
-func (r *Registry) Reconcile(ctx context.Context, specs []orm.DataSourceSpec, opts ...orm.ReconcileOption) (orm.ReconcileReport, error) {
+func (r *Registry) Reconcile(ctx context.Context, specs []DataSourceSpec, opts ...ReconcileOption) (ReconcileReport, error) {
 	r.reconcileMu.Lock()
 	defer r.reconcileMu.Unlock()
 
@@ -281,7 +281,7 @@ func (r *Registry) Reconcile(ctx context.Context, specs []orm.DataSourceSpec, op
 
 	desired := make(map[string]config.DataSourceConfig, len(specs))
 	for _, s := range specs {
-		if s.Name == "" || s.Name == orm.PrimaryDataSourceName {
+		if s.Name == "" || s.Name == PrimaryDataSourceName {
 			continue
 		}
 
@@ -297,7 +297,7 @@ func (r *Registry) Reconcile(ctx context.Context, specs []orm.DataSourceSpec, op
 
 	adds, updates, removes := diffReconcile(current, desired)
 
-	report := orm.ReconcileReport{}
+	report := ReconcileReport{}
 
 	if ro.DryRun {
 		report.Added = adds
@@ -346,8 +346,8 @@ func (r *Registry) Reconcile(ctx context.Context, specs []orm.DataSourceSpec, op
 	return report, nil
 }
 
-// HealthCheck implements orm.DataSources.HealthCheck. Every source is pinged
-// in parallel; the returned map contains an entry per source with a nil error
+// HealthCheck implements DataSources.HealthCheck. Every source is pinged in
+// parallel; the returned map contains an entry per source with a nil error
 // when reachable.
 func (r *Registry) HealthCheck(ctx context.Context) map[string]error {
 	results := make(map[string]error)
@@ -364,7 +364,7 @@ func (r *Registry) HealthCheck(ctx context.Context) map[string]error {
 	}
 
 	wg.Go(func() {
-		record(orm.PrimaryDataSourceName, r.primary.bunDB.PingContext(ctx))
+		record(PrimaryDataSourceName, r.primary.bunDB.PingContext(ctx))
 	})
 
 	r.entries.ForEach(func(name string, e *registryEntry) bool {
@@ -436,7 +436,7 @@ func (r *Registry) waitClose(ctx context.Context) error {
 	}
 }
 
-func (r *Registry) asyncClose(name string, db *bun.DB, opts orm.RegisterOptions) {
+func (r *Registry) asyncClose(name string, db *bun.DB, opts RegisterOptions) {
 	r.closeWg.Go(func() {
 		if opts.CloseGrace > 0 {
 			select {
@@ -468,12 +468,12 @@ func applyOptions[O any, F ~func(*O)](opts []F) O {
 // selector, so it must be a clean single-token identifier.
 func validateDataSourceName(name string) error {
 	if name == "" {
-		return orm.ErrDataSourceNameInvalid
+		return ErrDataSourceNameInvalid
 	}
 
 	for _, c := range name {
 		if unicode.IsSpace(c) || unicode.IsControl(c) {
-			return orm.ErrDataSourceNameInvalid
+			return ErrDataSourceNameInvalid
 		}
 	}
 

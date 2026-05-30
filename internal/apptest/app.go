@@ -14,7 +14,6 @@ import (
 	iconfig "github.com/coldsmirk/vef-framework-go/internal/config"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/cron"
-	"github.com/coldsmirk/vef-framework-go/internal/database"
 	"github.com/coldsmirk/vef-framework-go/internal/event"
 	"github.com/coldsmirk/vef-framework-go/internal/mcp"
 	"github.com/coldsmirk/vef-framework-go/internal/middleware"
@@ -54,7 +53,7 @@ func NewTestApp(t testing.TB, options ...fx.Option) (*app.App, func()) {
 }
 
 // NewTestAppWithDB creates a test application that uses an existing *bun.DB
-// instead of creating a new connection via database.Module.
+// instead of creating a new connection via orm.DataSourcesModule.
 // This avoids redundant database connections when tests already manage their own.
 func NewTestAppWithDB(t testing.TB, db *bun.DB, options ...fx.Option) (*app.App, func()) {
 	return NewTestAppWithDBConfig(t, db, config.DataSourceConfig{Kind: config.SQLite}, options...)
@@ -146,18 +145,18 @@ func coreOptions() []fx.Option {
 }
 
 func buildOptions(options ...fx.Option) []fx.Option {
-	return buildOptionsWith(database.Module, options...)
+	return buildOptionsWith(orm.DataSourcesModule, options...)
 }
 
 func buildOptionsWithDBConfig(existingDB *bun.DB, cfg config.DataSourceConfig, options ...fx.Option) []fx.Option {
 	// Wrap the caller-supplied bun.DB as the primary entry of a Registry so
 	// the rest of the FX graph (orm.DataSources, orm.DB, schema reflection,
 	// etc.) sees the same connection.
-	r := database.NewRegistryFromBunDB(existingDB, cfg, nil)
+	r := orm.NewRegistryFromBunDB(existingDB, cfg, nil)
 
 	dbProvider := fx.Provide(
 		fx.Annotate(
-			func() *database.Registry { return r },
+			func() *orm.Registry { return r },
 			fx.As(new(orm.DataSources)),
 			fx.As(fx.Self()),
 		),

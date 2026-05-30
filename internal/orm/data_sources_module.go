@@ -1,4 +1,4 @@
-package database
+package orm
 
 import (
 	"context"
@@ -9,27 +9,29 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/config"
-	"github.com/coldsmirk/vef-framework-go/internal/logx"
-	"github.com/coldsmirk/vef-framework-go/internal/orm"
+	"github.com/coldsmirk/vef-framework-go/internal/database"
 )
 
-var (
-	logger = logx.Named("database")
-	Module = fx.Module(
-		"vef:database",
-		fx.Provide(
-			fx.Annotate(
-				provideRegistry,
-				fx.As(new(orm.DataSources)),
-				fx.As(fx.Self()),
-			),
-			providePrimaryBunDB,
-			providePrimaryIBunDB,
-			providePrimarySQLDB,
+// DataSourcesModule constructs the data source Registry from configuration and
+// exposes the primary connection in its raw forms (*bun.DB, bun.IDB, *sql.DB).
+// It is the production provider of orm.DataSources; test harnesses that want to
+// share an existing *bun.DB supply their own equivalent instead (see apptest).
+// The agnostic Module then derives the primary orm.DB from whichever
+// DataSources is in the container.
+var DataSourcesModule = fx.Module(
+	"vef:orm:data_sources",
+	fx.Provide(
+		fx.Annotate(
+			provideRegistry,
+			fx.As(new(DataSources)),
+			fx.As(fx.Self()),
 		),
-		fx.Invoke(seedStaticDataSources),
-		fx.Invoke(runDataSourceProviders),
-	)
+		providePrimaryBunDB,
+		providePrimaryIBunDB,
+		providePrimarySQLDB,
+	),
+	fx.Invoke(seedStaticDataSources),
+	fx.Invoke(runDataSourceProviders),
 )
 
 func provideRegistry(lc fx.Lifecycle, dataSources *config.DataSourcesConfig) (*Registry, error) {
@@ -38,20 +40,11 @@ func provideRegistry(lc fx.Lifecycle, dataSources *config.DataSourcesConfig) (*R
 		return nil, err
 	}
 
+	primaryKind := dataSources.Primary().Kind
+
 	lc.Append(fx.Hook{
-		OnStart: func(_ context.Context) error {
-			provider, ok := registry.provider(dataSources.Primary().Kind)
-			if !ok {
-				return nil
-			}
-
-			if err := logDBVersion(provider, r.PrimaryBunDB(), logger); err != nil {
-				return err
-			}
-
-			logger.Infof("Database client started successfully: %s", provider.Kind())
-
-			return nil
+		OnStart: func(context.Context) error {
+			return database.LogVersion(primaryKind, r.PrimaryBunDB(), logger)
 		},
 		OnStop: func(ctx context.Context) error {
 			logger.Info("Closing data source registry...")
@@ -76,7 +69,7 @@ func providePrimarySQLDB(db *bun.DB) *sql.DB { return db.DB }
 func seedStaticDataSources(lc fx.Lifecycle, r *Registry, cfg *config.DataSourcesConfig) {
 	lc.Append(fx.StartHook(func(ctx context.Context) error {
 		for name, dsCfg := range cfg.Map {
-			if name == orm.PrimaryDataSourceName {
+			if name == PrimaryDataSourceName {
 				continue
 			}
 
@@ -89,13 +82,13 @@ func seedStaticDataSources(lc fx.Lifecycle, r *Registry, cfg *config.DataSources
 	}))
 }
 
-// DataSourceProviderParams collects every orm.DataSourceProvider declared
-// through vef.ProvideDataSourceProvider. The group is optional so
-// applications with no providers still satisfy the invoke signature.
+// DataSourceProviderParams collects every DataSourceProvider declared through
+// vef.ProvideDataSourceProvider. The group is optional so applications with no
+// providers still satisfy the invoke signature.
 type DataSourceProviderParams struct {
 	fx.In
 
-	Providers []orm.DataSourceProvider `group:"vef:orm:data_source_providers"`
+	Providers []DataSourceProvider `group:"vef:orm:data_source_providers"`
 }
 
 // runDataSourceProviders calls Load on every registered DataSourceProvider

@@ -33,7 +33,7 @@ go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest
 
 - **Stack**: Go 1.26.0 + Fiber v3 + Uber FX + Bun ORM. Default language: Simplified Chinese (`VEF_I18N_LANGUAGE`).
 - **Structure**: public packages at root (`api`, `crud`, `orm`, `security`, `result`, etc.), internal implementations under `internal/`.
-- **Boot sequence** (`vef.Run()` in `bootstrap.go`): `config → database → orm → middleware → api → security → event → cqrs → cron → redis → mold → storage → schema → monitor → mcp → app`.
+- **Boot sequence** (`vef.Run()` in `bootstrap.go`): `config → orm → middleware → api → security → event → cqrs → cron → redis → mold → storage → schema → monitor → mcp → app`. The `orm` step is two FX modules — `orm.DataSourcesModule` (builds the data source registry + primary `*bun.DB`/`*sql.DB`) then `orm.Module` (derives the primary `orm.DB`). `internal/database` is a pure connection factory (`Open` → `*bun.DB`) with **no FX module**; `orm` depends on it, never the reverse.
 - **Modules**: each exposes `fx.Module` in `internal/<module>/module.go`, constructors annotated into FX groups.
 - **DI helpers** (`di.go`): `vef.ProvideAPIResource(...)`, `vef.ProvideMiddleware(...)`, `vef.ProvideSPAConfig(...)`, `vef.SupplySPAConfigs(...)`, `vef.ProvideCQRSBehavior(...)`, `vef.ProvideMCPTools(...)`, etc.
 

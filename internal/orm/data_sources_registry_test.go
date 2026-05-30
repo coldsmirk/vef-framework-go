@@ -1,4 +1,4 @@
-package database_test
+package orm_test
 
 import (
 	"context"
@@ -12,9 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/config"
-	"github.com/coldsmirk/vef-framework-go/internal/database"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
-	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/internal/orm"
 )
 
 func newSQLiteCfg(t *testing.T, name string) config.DataSourceConfig {
@@ -26,11 +25,11 @@ func newSQLiteCfg(t *testing.T, name string) config.DataSourceConfig {
 	}
 }
 
-func newTestRegistry(t *testing.T) *database.Registry {
+func newTestRegistry(t *testing.T) *orm.Registry {
 	t.Helper()
 
 	ctx := context.Background()
-	r, err := database.NewRegistry(ctx, newSQLiteCfg(t, "primary"), logx.Discard())
+	r, err := orm.NewRegistry(ctx, newSQLiteCfg(t, "primary"), logx.Discard())
 	require.NoError(t, err, "primary registry should construct")
 	t.Cleanup(func() {
 		require.NoError(t, r.Shutdown(ctx), "registry should shut down cleanly")
