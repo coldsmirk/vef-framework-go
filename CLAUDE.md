@@ -33,7 +33,7 @@ go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest
 
 - **Stack**: Go 1.26.0 + Fiber v3 + Uber FX + Bun ORM. Default language: Simplified Chinese (`VEF_I18N_LANGUAGE`).
 - **Structure**: public packages at root (`api`, `crud`, `orm`, `security`, `result`, etc.), internal implementations under `internal/`.
-- **Boot sequence** (`vef.Run()` in `bootstrap.go`): `config → orm → middleware → api → security → event → cqrs → cron → redis → mold → storage → schema → monitor → mcp → app`. The `orm` step is two FX modules — `orm.DataSourcesModule` (builds the data source registry + primary `*bun.DB`/`*sql.DB`) then `orm.Module` (derives the primary `orm.DB`). `internal/database` is a pure connection factory (`Open` → `*bun.DB`) with **no FX module**; `orm` depends on it, never the reverse.
+- **Boot sequence** (`vef.Run()` in `bootstrap.go`): `config → orm → middleware → api → security → event → cqrs → cron → redis → mold → storage → sequence → event outbox → event redis stream → event inbox → schema → monitor → mcp → app`. The `orm` step is two FX modules — `orm.DataSourcesModule` (builds the data source registry + primary `*bun.DB`/`*sql.DB`) then `orm.Module` (derives the primary `orm.DB`). `internal/database` is a pure connection factory (`Open` → `*bun.DB`) with **no FX module**; `orm` depends on it, never the reverse.
 - **Modules**: each exposes `fx.Module` in `internal/<module>/module.go`, constructors annotated into FX groups.
 - **DI helpers** (`di.go`): `vef.ProvideAPIResource(...)`, `vef.ProvideMiddleware(...)`, `vef.ProvideSPAConfig(...)`, `vef.SupplySPAConfigs(...)`, `vef.ProvideCQRSBehavior(...)`, `vef.ProvideMCPTools(...)`, `vef.ProvideDataSourceProvider(...)`, etc.
 
@@ -136,7 +136,7 @@ A single convention governs every module that surfaces API errors. New modules M
 - `SupplySPAConfigs` — all caps SPA, not `SupplySpaConfigs`.
 - `api.OperationSpec` — not `api.Spec`.
 - CRUD embedding uses interface names as field names: `crud.FindAll[M,S]` not `*crud.FindAllApi`. Constructor: `crud.NewFindAll[M,S]()`.
-- Boot sequence includes `schema` and `mcp` modules — often missed when listing module order.
+- Boot sequence includes `sequence`, event transport submodules, `schema`, and `mcp` modules — often missed when listing module order.
 - Import cycles: when package A imports B which imports A, move shared types to the lower-level package.
 - No centralized `interfaces.go` or `types.go` — if found, refactor to co-locate with related code.
 - Edit tool `replace_all` replaces ALL occurrences including strings/comments — scope carefully.
