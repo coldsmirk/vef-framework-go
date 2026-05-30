@@ -1,10 +1,8 @@
 package database
 
 import (
+	"context"
 	"database/sql"
-
-	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/schema"
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/database/mysql"
@@ -14,14 +12,14 @@ import (
 
 // Provider defines the contract for database-specific connection and validation logic.
 type Provider interface {
-	// Connect establishes a database connection and returns the sql.DB, dialect, and any error.
-	Connect(config *config.DataSourceConfig) (*sql.DB, schema.Dialect, error)
+	// Connect establishes a database connection and returns the *sql.DB and any error.
+	Connect(config *config.DataSourceConfig) (*sql.DB, error)
 	// Kind returns the database kind this provider handles (postgres, mysql, or sqlite).
 	Kind() config.DBKind
 	// ValidateConfig checks that the data source configuration is valid before attempting to connect.
 	ValidateConfig(config *config.DataSourceConfig) error
-	// QueryVersion queries and returns the database server version string.
-	QueryVersion(db *bun.DB) (string, error)
+	// Version queries and returns the database server version string.
+	Version(ctx context.Context, db *sql.DB) (string, error)
 }
 
 type providerRegistry struct {
@@ -51,3 +49,12 @@ func (r *providerRegistry) lookup(kind config.DBKind) (Provider, bool) {
 }
 
 var registry = newProviderRegistry()
+
+// SupportsKind reports whether a connection provider is registered for kind.
+// It lets higher layers (e.g. orm.DialectFor) assert that the connector and
+// dialect halves of a dialect agree on the same set of supported kinds.
+func SupportsKind(kind config.DBKind) bool {
+	_, ok := registry.lookup(kind)
+
+	return ok
+}

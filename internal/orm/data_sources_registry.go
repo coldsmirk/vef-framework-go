@@ -2,18 +2,17 @@ package orm
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"slices"
 	"sync"
 	"time"
 	"unicode"
 
+	"github.com/coldsmirk/go-collections"
 	"github.com/uptrace/bun"
 
-	"github.com/coldsmirk/go-collections"
-
 	"github.com/coldsmirk/vef-framework-go/config"
-	"github.com/coldsmirk/vef-framework-go/internal/database"
 	"github.com/coldsmirk/vef-framework-go/logx"
 )
 
@@ -21,14 +20,13 @@ import (
 // The primary entry is owned outside the map so callers can grab it on the fast
 // path; every other entry lives inside the map. The map only ever holds live
 // sources — Unregister and Shutdown remove entries outright — and the underlying
-// *bun.DB is closed asynchronously so callers that still hold a DB reference can
+// *sql.DB is closed asynchronously so callers that still hold a DB reference can
 // drain their in-flight queries.
 type Registry struct {
 	entries collections.ConcurrentMap[string, *registryEntry]
 	primary *registryEntry
 
 	logger logx.Logger
-	dbOpts []database.Option
 
 	reconcileMu sync.Mutex
 
@@ -40,26 +38,26 @@ type Registry struct {
 // registryEntry is immutable once stored: a source is mutated by replacing the
 // whole entry (Update) or removing it (Unregister), never by editing it in place.
 // That immutability is what lets the read methods run lock-free off the map.
+// sqlDB is the lifecycle handle (ping/close); the *bun.DB built while opening the
+// source lives only inside ormDB, never as a separate field.
 type registryEntry struct {
 	name  string
 	cfg   config.DataSourceConfig
-	bunDB *bun.DB
+	sqlDB *sql.DB
 	ormDB DB
 }
 
 // NewRegistry constructs a Registry seeded with the primary data source. The
 // primary is opened, Pinged, and on failure the constructor returns an error so
-// the FX boot can fail-fast. dbOpts are applied to every Open call (the primary
-// and every dynamically registered source alike), so connection-level tuning is
-// shared across the whole registry.
-func NewRegistry(ctx context.Context, primaryCfg config.DataSourceConfig, logger logx.Logger, dbOpts ...database.Option) (*Registry, error) {
-	bunDB, err := database.Open(primaryCfg, dbOpts...)
+// the FX boot can fail-fast.
+func NewRegistry(ctx context.Context, primaryCfg config.DataSourceConfig, logger logx.Logger) (*Registry, error) {
+	sqlDB, ormDB, err := openDataSource(primaryCfg)
 	if err != nil {
 		return nil, fmt.Errorf("open primary data source: %w", err)
 	}
 
-	if err := bunDB.PingContext(ctx); err != nil {
-		_ = bunDB.Close()
+	if err := sqlDB.PingContext(ctx); err != nil {
+		_ = sqlDB.Close()
 
 		return nil, fmt.Errorf("ping primary data source: %w", err)
 	}
@@ -67,39 +65,39 @@ func NewRegistry(ctx context.Context, primaryCfg config.DataSourceConfig, logger
 	return newRegistryFromEntry(&registryEntry{
 		name:  PrimaryDataSourceName,
 		cfg:   primaryCfg,
-		bunDB: bunDB,
-		ormDB: New(bunDB),
-	}, logger, dbOpts), nil
+		sqlDB: sqlDB,
+		ormDB: ormDB,
+	}, logger), nil
 }
 
 // NewRegistryFromBunDB wraps an already-opened *bun.DB as the primary data
 // source without re-opening it. It is intended for test harnesses
 // (apptest.SetupAppWithDBConfig) that want to share an existing connection
 // across an FX app without paying the cost of a real Open/Ping dance.
-// Production code should always use NewRegistry.
+// Production code should always use NewRegistry. The *sql.DB lifecycle handle is
+// taken from the supplied *bun.DB; the bun.DB itself is retained only inside the
+// derived orm.DB.
 func NewRegistryFromBunDB(primary *bun.DB, cfg config.DataSourceConfig, logger logx.Logger) *Registry {
 	return newRegistryFromEntry(&registryEntry{
 		name:  PrimaryDataSourceName,
 		cfg:   cfg,
-		bunDB: primary,
+		sqlDB: primary.DB,
 		ormDB: New(primary),
-	}, logger, nil)
+	}, logger)
 }
 
-func newRegistryFromEntry(primary *registryEntry, logger logx.Logger, dbOpts []database.Option) *Registry {
+func newRegistryFromEntry(primary *registryEntry, logger logx.Logger) *Registry {
 	return &Registry{
 		entries: collections.NewConcurrentHashMap[string, *registryEntry](),
 		primary: primary,
 		logger:  logger,
-		dbOpts:  dbOpts,
 		closing: make(chan struct{}),
 	}
 }
 
-// PrimaryBunDB exposes the underlying *bun.DB for the primary source. It is
-// kept package-private to FX wiring and to the schema reflection service,
-// which still needs a raw *sql.DB handle.
-func (r *Registry) PrimaryBunDB() *bun.DB { return r.primary.bunDB }
+// PrimarySQLDB exposes the raw *sql.DB for the primary source. It is used for
+// boot-time version logging and by the schema reflection service.
+func (r *Registry) PrimarySQLDB() *sql.DB { return r.primary.sqlDB }
 
 // Primary returns the orm.DB for the primary data source. It never reports
 // an error: the primary source is constructed during FX boot or the entire
@@ -161,34 +159,34 @@ func (r *Registry) Kind(name string) (config.DBKind, error) {
 
 // openAndPing validates name, rejects the reserved primary name, and opens and
 // pings a fresh connection — the prologue shared by Register and Update. The
-// caller owns the returned *bun.DB and must close it if it decides not to keep
+// caller owns the returned *sql.DB and must close it if it decides not to keep
 // it (e.g. on a name conflict).
-func (r *Registry) openAndPing(ctx context.Context, name string, cfg config.DataSourceConfig) (*bun.DB, error) {
+func (*Registry) openAndPing(ctx context.Context, name string, cfg config.DataSourceConfig) (*sql.DB, DB, error) {
 	if name == PrimaryDataSourceName {
-		return nil, ErrPrimaryReserved
+		return nil, nil, ErrPrimaryReserved
 	}
 
 	if err := validateDataSourceName(name); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	bunDB, err := database.Open(cfg, r.dbOpts...)
+	sqlDB, ormDB, err := openDataSource(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("open data source %q: %w", name, err)
+		return nil, nil, fmt.Errorf("open data source %q: %w", name, err)
 	}
 
-	if err := bunDB.PingContext(ctx); err != nil {
-		_ = bunDB.Close()
+	if err := sqlDB.PingContext(ctx); err != nil {
+		_ = sqlDB.Close()
 
-		return nil, fmt.Errorf("ping data source %q: %w", name, err)
+		return nil, nil, fmt.Errorf("ping data source %q: %w", name, err)
 	}
 
-	return bunDB, nil
+	return sqlDB, ormDB, nil
 }
 
 // Register implements DataSources.Register.
 func (r *Registry) Register(ctx context.Context, name string, cfg config.DataSourceConfig) (DB, error) {
-	bunDB, err := r.openAndPing(ctx, name, cfg)
+	sqlDB, ormDB, err := r.openAndPing(ctx, name, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -196,12 +194,12 @@ func (r *Registry) Register(ctx context.Context, name string, cfg config.DataSou
 	entry := &registryEntry{
 		name:  name,
 		cfg:   cfg,
-		bunDB: bunDB,
-		ormDB: New(bunDB),
+		sqlDB: sqlDB,
+		ormDB: ormDB,
 	}
 
 	if _, inserted := r.entries.PutIfAbsent(name, entry); !inserted {
-		_ = bunDB.Close()
+		_ = sqlDB.Close()
 
 		return nil, ErrDataSourceExists
 	}
@@ -211,7 +209,7 @@ func (r *Registry) Register(ctx context.Context, name string, cfg config.DataSou
 
 // Update implements DataSources.Update.
 func (r *Registry) Update(ctx context.Context, name string, cfg config.DataSourceConfig, opts ...RegisterOption) (DB, error) {
-	bunDB, err := r.openAndPing(ctx, name, cfg)
+	sqlDB, ormDB, err := r.openAndPing(ctx, name, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -233,18 +231,18 @@ func (r *Registry) Update(ctx context.Context, name string, cfg config.DataSourc
 		return &registryEntry{
 			name:  name,
 			cfg:   cfg,
-			bunDB: bunDB,
-			ormDB: New(bunDB),
+			sqlDB: sqlDB,
+			ormDB: ormDB,
 		}, true
 	})
 
 	if notFound {
-		_ = bunDB.Close()
+		_ = sqlDB.Close()
 
 		return nil, ErrDataSourceNotFound
 	}
 
-	r.asyncClose(name, oldEntry.bunDB, applyOptions(opts))
+	r.asyncClose(name, oldEntry.sqlDB, applyOptions(opts))
 
 	return newEntry.ormDB, nil
 }
@@ -263,7 +261,7 @@ func (r *Registry) Unregister(_ context.Context, name string, opts ...RegisterOp
 		return ErrDataSourceNotFound
 	}
 
-	r.asyncClose(name, e.bunDB, applyOptions(opts))
+	r.asyncClose(name, e.sqlDB, applyOptions(opts))
 
 	return nil
 }
@@ -364,11 +362,11 @@ func (r *Registry) HealthCheck(ctx context.Context) map[string]error {
 	}
 
 	wg.Go(func() {
-		record(PrimaryDataSourceName, r.primary.bunDB.PingContext(ctx))
+		record(PrimaryDataSourceName, r.primary.sqlDB.PingContext(ctx))
 	})
 
 	r.entries.ForEach(func(name string, e *registryEntry) bool {
-		db := e.bunDB
+		db := e.sqlDB
 		wg.Go(func() {
 			record(name, db.PingContext(ctx))
 		})
@@ -397,7 +395,7 @@ func (r *Registry) Shutdown(ctx context.Context) error {
 			continue
 		}
 
-		if err := e.bunDB.Close(); err != nil && firstErr == nil {
+		if err := e.sqlDB.Close(); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("close data source %q: %w", k, err)
 		}
 	}
@@ -406,7 +404,7 @@ func (r *Registry) Shutdown(ctx context.Context) error {
 		firstErr = err
 	}
 
-	if err := r.primary.bunDB.Close(); err != nil && firstErr == nil {
+	if err := r.primary.sqlDB.Close(); err != nil && firstErr == nil {
 		firstErr = fmt.Errorf("close primary data source: %w", err)
 	}
 
@@ -436,7 +434,7 @@ func (r *Registry) waitClose(ctx context.Context) error {
 	}
 }
 
-func (r *Registry) asyncClose(name string, db *bun.DB, opts RegisterOptions) {
+func (r *Registry) asyncClose(name string, db *sql.DB, opts RegisterOptions) {
 	r.closeWg.Go(func() {
 		if opts.CloseGrace > 0 {
 			select {

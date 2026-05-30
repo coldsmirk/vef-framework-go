@@ -5,10 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/coldsmirk/vef-framework-go/config"
-	"github.com/coldsmirk/vef-framework-go/internal/database"
 	"github.com/coldsmirk/vef-framework-go/internal/orm"
 )
 
@@ -48,11 +45,10 @@ func ForEachDB(t *testing.T, fn func(t *testing.T, env *DBEnv)) {
 
 // newDBEnv creates a complete DBEnv with database connection and automatic cleanup.
 func newDBEnv(t *testing.T, ctx context.Context, ds *config.DataSourceConfig) *DBEnv {
-	db, err := database.Open(*ds)
-	require.NoError(t, err)
+	sqlDB, bunDB := openBunDB(t, *ds)
 
 	t.Cleanup(func() {
-		if err := db.Close(); err != nil {
+		if err := sqlDB.Close(); err != nil {
 			t.Logf("Error closing database connection for %s: %v", ds.Kind, err)
 		}
 	})
@@ -60,9 +56,9 @@ func newDBEnv(t *testing.T, ctx context.Context, ds *config.DataSourceConfig) *D
 	return &DBEnv{
 		T:     t,
 		Ctx:   ctx,
-		RawDB: db.DB,
-		BunDB: db,
-		DB:    orm.New(db),
+		RawDB: sqlDB,
+		BunDB: bunDB,
+		DB:    orm.New(bunDB),
 		DS:    ds,
 	}
 }

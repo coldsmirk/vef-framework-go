@@ -57,11 +57,11 @@ func (suite *InspectorTestSuite) runInspectorTests(dsConfig *config.DataSourceCo
 		suite.Require().NoError(db.Close(), "Database should close without error")
 	}()
 
-	suite.setupTestTables(db.DB, dsConfig.Kind)
+	suite.setupTestTables(db, dsConfig.Kind)
 
-	defer suite.cleanupTestTables(db.DB)
+	defer suite.cleanupTestTables(db)
 
-	inspector, err := schema.NewInspector(db.DB, dsConfig.Kind, dsConfig.Schema)
+	inspector, err := schema.NewInspector(db, dsConfig.Kind, dsConfig.Schema)
 	suite.Require().NoError(err, "Inspector creation should succeed")
 
 	suite.Run("InspectSchema", func() {

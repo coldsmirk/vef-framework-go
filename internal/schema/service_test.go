@@ -58,11 +58,11 @@ func (suite *ServiceTestSuite) runServiceTests(dsConfig *config.DataSourceConfig
 		suite.Require().NoError(db.Close(), "Database should close without error")
 	}()
 
-	suite.setupTestTables(db.DB, dsConfig.Kind)
+	suite.setupTestTables(db, dsConfig.Kind)
 
-	defer suite.cleanupTestTables(db.DB)
+	defer suite.cleanupTestTables(db)
 
-	svc, err := schema.NewService(db.DB, &config.DataSourcesConfig{
+	svc, err := schema.NewService(db, &config.DataSourcesConfig{
 		Map: map[string]config.DataSourceConfig{"primary": *dsConfig},
 	})
 	suite.Require().NoError(err, "Service creation should succeed")

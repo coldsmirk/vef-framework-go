@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
-	"github.com/uptrace/bun"
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/api"
@@ -55,7 +54,7 @@ func (s *SchemaResourceTestSuite) TestSQLiteResource() {
 }
 
 func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceConfig, dbKind string) {
-	var bunDB *bun.DB
+	var sqlDB *sql.DB
 
 	s.SetupApp(
 		fx.Replace(
@@ -69,15 +68,15 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 				Audience: "test_app",
 			},
 		),
-		fx.Populate(&bunDB),
+		fx.Populate(&sqlDB),
 	)
 
 	defer s.TearDownApp()
 
 	token := s.GenerateToken(security.NewUser("test-admin", "admin"))
 
-	s.setupTestTables(bunDB.DB, dsConfig.Kind)
-	defer s.cleanupTestTables(bunDB.DB, dsConfig.Kind)
+	s.setupTestTables(sqlDB, dsConfig.Kind)
+	defer s.cleanupTestTables(sqlDB, dsConfig.Kind)
 
 	s.Run("ListTables", func() {
 		resp := s.MakeRPCRequestWithToken(api.Request{

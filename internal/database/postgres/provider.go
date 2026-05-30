@@ -1,14 +1,12 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
 	"github.com/samber/lo"
-	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
-	"github.com/uptrace/bun/schema"
 
 	"github.com/coldsmirk/vef-framework-go/config"
 )
@@ -27,9 +25,9 @@ func (p *Provider) Kind() config.DBKind {
 	return p.dbKind
 }
 
-func (p *Provider) Connect(cfg *config.DataSourceConfig) (*sql.DB, schema.Dialect, error) {
+func (p *Provider) Connect(cfg *config.DataSourceConfig) (*sql.DB, error) {
 	if err := p.ValidateConfig(cfg); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	connector := pgdriver.NewConnector(
@@ -49,13 +47,13 @@ func (p *Provider) Connect(cfg *config.DataSourceConfig) (*sql.DB, schema.Dialec
 		}),
 	)
 
-	return sql.OpenDB(connector), pgdialect.New(), nil
+	return sql.OpenDB(connector), nil
 }
 
 func (*Provider) ValidateConfig(*config.DataSourceConfig) error {
 	return nil
 }
 
-func (*Provider) QueryVersion(db *bun.DB) (string, error) {
-	return queryVersion(db)
+func (*Provider) Version(ctx context.Context, db *sql.DB) (string, error) {
+	return queryVersion(ctx, db)
 }

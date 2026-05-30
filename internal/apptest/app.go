@@ -160,9 +160,7 @@ func buildOptionsWithDBConfig(existingDB *bun.DB, cfg config.DataSourceConfig, o
 			fx.As(new(orm.DataSources)),
 			fx.As(fx.Self()),
 		),
-		func() *bun.DB { return existingDB },
-		func() bun.IDB { return existingDB },
-		func(db *bun.DB) *sql.DB { return db.DB },
+		func() *sql.DB { return existingDB.DB },
 	)
 
 	return buildOptionsWith(

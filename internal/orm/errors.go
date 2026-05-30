@@ -17,6 +17,10 @@ var (
 	ErrModelMustBePointerToStruct   = errors.New("model must be a pointer to struct")
 	ErrPrimaryKeyUnsupportedType    = errors.New("unsupported primary key type")
 
+	// ErrUnsupportedDialect is returned by DialectFor when no bun dialect is
+	// registered for the requested config.DBKind.
+	ErrUnsupportedDialect = errors.New("orm: unsupported database dialect")
+
 	// ErrDataSourceNotFound is returned by DataSources.Get/Update/Unregister/Kind
 	// when no data source is currently registered under the requested name.
 	ErrDataSourceNotFound = errors.New("orm: data source not found")

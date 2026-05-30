@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/uptrace/bun"
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/config"
@@ -13,11 +12,11 @@ import (
 )
 
 // DataSourcesModule constructs the data source Registry from configuration and
-// exposes the primary connection in its raw forms (*bun.DB, bun.IDB, *sql.DB).
-// It is the production provider of orm.DataSources; test harnesses that want to
-// share an existing *bun.DB supply their own equivalent instead (see apptest).
-// The agnostic Module then derives the primary orm.DB from whichever
-// DataSources is in the container.
+// exposes the primary connection's raw *sql.DB (consumed by the schema
+// reflection service). It is the production provider of orm.DataSources; test
+// harnesses that want to share an existing *bun.DB supply their own equivalent
+// instead (see apptest). The agnostic Module then derives the primary orm.DB
+// from whichever DataSources is in the container.
 var DataSourcesModule = fx.Module(
 	"vef:orm:data_sources",
 	fx.Provide(
@@ -26,8 +25,6 @@ var DataSourcesModule = fx.Module(
 			fx.As(new(DataSources)),
 			fx.As(fx.Self()),
 		),
-		providePrimaryBunDB,
-		providePrimaryIBunDB,
 		providePrimarySQLDB,
 	),
 	fx.Invoke(seedStaticDataSources),
@@ -43,8 +40,8 @@ func provideRegistry(lc fx.Lifecycle, dataSources *config.DataSourcesConfig) (*R
 	primaryKind := dataSources.Primary().Kind
 
 	lc.Append(fx.Hook{
-		OnStart: func(context.Context) error {
-			return database.LogVersion(primaryKind, r.PrimaryBunDB(), logger)
+		OnStart: func(ctx context.Context) error {
+			return database.LogVersion(ctx, primaryKind, r.PrimarySQLDB(), logger)
 		},
 		OnStop: func(ctx context.Context) error {
 			logger.Info("Closing data source registry...")
@@ -56,11 +53,7 @@ func provideRegistry(lc fx.Lifecycle, dataSources *config.DataSourcesConfig) (*R
 	return r, nil
 }
 
-func providePrimaryBunDB(r *Registry) *bun.DB { return r.PrimaryBunDB() }
-
-func providePrimaryIBunDB(r *Registry) bun.IDB { return r.PrimaryBunDB() }
-
-func providePrimarySQLDB(db *bun.DB) *sql.DB { return db.DB }
+func providePrimarySQLDB(r *Registry) *sql.DB { return r.PrimarySQLDB() }
 
 // seedStaticDataSources registers every TOML-declared data source besides
 // primary. It runs as an FX lifecycle StartHook because Register issues a

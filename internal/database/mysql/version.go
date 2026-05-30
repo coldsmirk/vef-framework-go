@@ -2,14 +2,11 @@ package mysql
 
 import (
 	"context"
-
-	"github.com/uptrace/bun"
+	"database/sql"
 )
 
-func queryVersion(db *bun.DB) (string, error) {
+func queryVersion(ctx context.Context, db *sql.DB) (string, error) {
 	var version string
 
-	return version, db.NewSelect().
-		ColumnExpr("version()").
-		Scan(context.Background(), &version)
+	return version, db.QueryRowContext(ctx, "SELECT version()").Scan(&version)
 }
