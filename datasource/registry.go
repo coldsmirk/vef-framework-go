@@ -80,7 +80,25 @@ type Registry interface {
 	// primary name are ignored.
 	Reconcile(ctx context.Context, specs []Spec, opts ...ReconcileOption) (ReconcileReport, error)
 
+	// TestConnection opens a throwaway connection from cfg, verifies it by
+	// querying the server version, then closes it immediately. It never registers
+	// anything and never mutates the registry — it is the connectivity probe
+	// behind a UI "test connection" button, run before Register/Update. On success
+	// it returns the reached server's ConnectionInfo; any error means the source
+	// is unreachable or unusable.
+	TestConnection(ctx context.Context, cfg config.DataSourceConfig) (ConnectionInfo, error)
+
 	// HealthCheck pings every registered source in parallel and returns a
 	// name -> error map. A nil error indicates the source is reachable.
 	HealthCheck(ctx context.Context) map[string]error
+}
+
+// ConnectionInfo describes a data source reached by TestConnection. It is
+// populated only on a successful probe.
+type ConnectionInfo struct {
+	// Version is the server version string reported by the database — for
+	// example "PostgreSQL 16.2 on x86_64-..." or an SQLite library version such
+	// as "3.45.1". It is surfaced back to operators as confirmation of a
+	// successful test.
+	Version string
 }

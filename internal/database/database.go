@@ -13,27 +13,34 @@ import (
 // orm data source start hook calls it so version introspection stays inside the
 // database layer.
 func LogVersion(ctx context.Context, kind config.DBKind, db *sql.DB, logger logx.Logger) error {
-	provider, ok := registry.lookup(kind)
-	if !ok {
+	if !SupportsKind(kind) {
 		return nil
 	}
 
-	if err := logDBVersion(ctx, provider, db, logger); err != nil {
+	version, err := Version(ctx, kind, db)
+	if err != nil {
 		return err
 	}
 
-	logger.Infof("Database client started successfully: %s", provider.Kind())
+	logger.Infof("Database type: %s | Database version: %s", kind, version)
+	logger.Infof("Database client started successfully: %s", kind)
 
 	return nil
 }
 
-func logDBVersion(ctx context.Context, provider Provider, db *sql.DB, logger logx.Logger) error {
-	version, err := provider.Version(ctx, db)
-	if err != nil {
-		return wrapVersionQueryError(provider.Kind(), err)
+// Version resolves the provider for kind and returns the connected server's
+// version string. It returns an unsupported-kind error when no provider is
+// registered for kind.
+func Version(ctx context.Context, kind config.DBKind, db *sql.DB) (string, error) {
+	provider, ok := registry.lookup(kind)
+	if !ok {
+		return "", newUnsupportedDBKindError(kind)
 	}
 
-	logger.Infof("Database type: %s | Database version: %s", provider.Kind(), version)
+	version, err := provider.Version(ctx, db)
+	if err != nil {
+		return "", wrapVersionQueryError(kind, err)
+	}
 
-	return nil
+	return version, nil
 }

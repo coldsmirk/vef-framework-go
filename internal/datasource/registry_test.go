@@ -38,6 +38,40 @@ func newTestRegistry(t *testing.T) *registry {
 	return r
 }
 
+func TestRegistryTestConnection(t *testing.T) {
+	ctx := context.Background()
+	r := newTestRegistry(t)
+
+	t.Run("Success", func(t *testing.T) {
+		info, err := r.TestConnection(ctx, newSQLiteCfg(t, "probe"))
+		require.NoError(t, err, "probing a reachable sqlite source should succeed")
+		require.NotEmpty(t, info.Version, "a successful probe should report the server version")
+
+		require.Equal(t, []string{datasource.PrimaryName}, r.Names(),
+			"TestConnection must not register the probed source")
+	})
+
+	t.Run("UnsupportedKind", func(t *testing.T) {
+		info, err := r.TestConnection(ctx, config.DataSourceConfig{Kind: "no-such-dialect"})
+		require.Error(t, err, "an unsupported dialect should fail the probe")
+		require.Empty(t, info.Version, "a failed probe returns a zero ConnectionInfo")
+	})
+
+	t.Run("Unreachable", func(t *testing.T) {
+		cfg := config.DataSourceConfig{
+			Kind: config.SQLite,
+			Path: filepath.Join(t.TempDir(), "missing-dir", "probe.db"),
+		}
+
+		info, err := r.TestConnection(ctx, cfg)
+		require.Error(t, err, "a source that cannot be opened or queried should fail the probe")
+		require.Empty(t, info.Version, "a failed probe returns a zero ConnectionInfo")
+
+		require.Equal(t, []string{datasource.PrimaryName}, r.Names(),
+			"a failed TestConnection must not leak a registry entry")
+	})
+}
+
 func TestRegistryPrimary(t *testing.T) {
 	r := newTestRegistry(t)
 
