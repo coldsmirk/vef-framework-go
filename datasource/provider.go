@@ -26,6 +26,6 @@ type Provider interface {
 type Spec struct {
 	// Name is the registry key. Must be non-empty and not equal to PrimaryName.
 	Name string
-	// Cfg is the connection configuration applied when opening the source.
-	Cfg config.DataSourceConfig
+	// Config is the connection configuration applied when opening the source.
+	Config config.DataSourceConfig
 }

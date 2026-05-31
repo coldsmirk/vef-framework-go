@@ -102,7 +102,7 @@ func TestDataSourceProviderRegistersAdditionalSource(t *testing.T) {
 			Map: map[string]config.DataSourceConfig{"primary": sqliteCfg(t, "primary")},
 		}),
 		vef.ProvideDataSourceProvider(func() datasource.Provider {
-			return &fakeProvider{spec: datasource.Spec{Name: "tenant1", Cfg: cfg}}
+			return &fakeProvider{spec: datasource.Spec{Name: "tenant1", Config: cfg}}
 		}),
 		fx.Populate(&sources),
 	)
@@ -148,9 +148,9 @@ func TestDataSourcesReconcileCoversAllThreeTransitions(t *testing.T) {
 	require.True(t, sources.Has("remove"))
 
 	specs := []datasource.Spec{
-		{Name: "keep", Cfg: keepCfg},
-		{Name: "tenant", Cfg: updateNewCfg},
-		{Name: "fresh", Cfg: freshCfg},
+		{Name: "keep", Config: keepCfg},
+		{Name: "tenant", Config: updateNewCfg},
+		{Name: "fresh", Config: freshCfg},
 	}
 
 	report, err := sources.Reconcile(context.Background(), specs)

@@ -280,7 +280,7 @@ func (r *registry) Reconcile(ctx context.Context, specs []datasource.Spec, opts 
 			continue
 		}
 
-		desired[s.Name] = s.Cfg
+		desired[s.Name] = s.Config
 	}
 
 	current := make(map[string]config.DataSourceConfig, r.entries.Size())

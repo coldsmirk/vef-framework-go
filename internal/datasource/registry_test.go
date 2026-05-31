@@ -205,9 +205,9 @@ func TestRegistryReconcileAddsUpdatesAndRemoves(t *testing.T) {
 	require.NoError(t, err)
 
 	specs := []datasource.Spec{
-		{Name: "keep", Cfg: keepCfg},                   // unchanged
-		{Name: "tenant", Cfg: updateNewCfg},            // updated cfg
-		{Name: "fresh", Cfg: newSQLiteCfg(t, "fresh")}, // added
+		{Name: "keep", Config: keepCfg},                   // unchanged
+		{Name: "tenant", Config: updateNewCfg},            // updated cfg
+		{Name: "fresh", Config: newSQLiteCfg(t, "fresh")}, // added
 		// "remove" omitted → removed
 	}
 
@@ -229,7 +229,7 @@ func TestRegistryReconcileDryRun(t *testing.T) {
 	r := newTestRegistry(t)
 
 	cfg := newSQLiteCfg(t, "candidate")
-	specs := []datasource.Spec{{Name: "candidate", Cfg: cfg}}
+	specs := []datasource.Spec{{Name: "candidate", Config: cfg}}
 
 	report, err := r.Reconcile(ctx, specs, datasource.WithReconcileDryRun())
 	require.NoError(t, err, "dry run Reconcile should not error")
@@ -242,8 +242,8 @@ func TestRegistryReconcileIgnoresPrimaryAndEmpty(t *testing.T) {
 	r := newTestRegistry(t)
 
 	specs := []datasource.Spec{
-		{Name: "", Cfg: newSQLiteCfg(t, "empty")},
-		{Name: datasource.PrimaryName, Cfg: newSQLiteCfg(t, "shadow")},
+		{Name: "", Config: newSQLiteCfg(t, "empty")},
+		{Name: datasource.PrimaryName, Config: newSQLiteCfg(t, "shadow")},
 	}
 
 	report, err := r.Reconcile(ctx, specs)
@@ -258,8 +258,8 @@ func TestRegistryReconcilePartialFailureAggregatesErrors(t *testing.T) {
 	r := newTestRegistry(t)
 
 	specs := []datasource.Spec{
-		{Name: "good", Cfg: newSQLiteCfg(t, "good")},
-		{Name: "bad", Cfg: config.DataSourceConfig{Kind: "no-such-dialect"}},
+		{Name: "good", Config: newSQLiteCfg(t, "good")},
+		{Name: "bad", Config: config.DataSourceConfig{Kind: "no-such-dialect"}},
 	}
 
 	report, err := r.Reconcile(ctx, specs)

@@ -139,7 +139,7 @@ func runProviders(ctx context.Context, r *registry, providers []datasource.Provi
 		}
 
 		for _, spec := range specs {
-			if err := registerSource(ctx, r, spec.Name, spec.Cfg, provider.Name()); err != nil {
+			if err := registerSource(ctx, r, spec.Name, spec.Config, provider.Name()); err != nil {
 				return err
 			}
 		}
