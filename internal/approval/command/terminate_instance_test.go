@@ -45,7 +45,7 @@ func (s *TerminateInstanceTestSuite) SetupSuite() {
 		Name:          "Terminate Node",
 	}
 	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Terminate instance should complete without error")
 	s.nodeID = node.ID
 }
 
@@ -69,7 +69,7 @@ func (s *TerminateInstanceTestSuite) insertInstance(status approval.InstanceStat
 		Status:        status,
 	}
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Terminate instance should complete without error")
 
 	return inst
 }
@@ -84,7 +84,7 @@ func (s *TerminateInstanceTestSuite) insertTask(instanceID, assigneeID string, s
 		Status:     status,
 	}
 	_, err := s.db.NewInsert().Model(task).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Terminate instance should complete without error")
 }
 
 func (s *TerminateInstanceTestSuite) TestTerminateSuccess() {
@@ -105,7 +105,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateSuccess() {
 	var updated approval.Instance
 
 	updated.ID = inst.ID
-	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "Should not return error")
+	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "TestTerminateSuccess should complete without error")
 	s.Assert().Equal(approval.InstanceTerminated, updated.Status, "Should set status to terminated")
 	s.Assert().NotNil(updated.FinishedAt, "Should set finished_at")
 
@@ -113,7 +113,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateSuccess() {
 	var tasks []approval.Task
 	s.Require().NoError(s.db.NewSelect().Model(&tasks).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", inst.ID) }).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "TestTerminateSuccess should complete without error")
 
 	for _, t := range tasks {
 		s.Assert().Equal(approval.TaskCanceled, t.Status, "All tasks should be canceled")
@@ -123,7 +123,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateSuccess() {
 	var logs []approval.ActionLog
 	s.Require().NoError(s.db.NewSelect().Model(&logs).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", inst.ID) }).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "TestTerminateSuccess should complete without error")
 	s.Assert().Len(logs, 1, "Should insert one action log")
 	s.Assert().Equal(approval.ActionTerminate, logs[0].Action, "Action should be terminate")
 	s.Assert().Equal("违规终止", *logs[0].Opinion, "Should record reason in opinion")
@@ -136,7 +136,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateInstanceNotFound() {
 		Operator:   operator,
 		Caller:     approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestTerminateInstanceNotFound should return an error")
 	s.Assert().ErrorIs(err, shared.ErrInstanceNotFound, "Should return ErrInstanceNotFound")
 }
 
@@ -149,7 +149,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateAlreadyCompleted() {
 		Operator:   operator,
 		Caller:     approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestTerminateAlreadyCompleted should return an error")
 	s.Assert().ErrorIs(err, shared.ErrInstanceNotRunning, "Should not allow terminating approved instance")
 }
 
@@ -162,6 +162,6 @@ func (s *TerminateInstanceTestSuite) TestTerminateAlreadyTerminated() {
 		Operator:   operator,
 		Caller:     approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestTerminateAlreadyTerminated should return an error")
 	s.Assert().ErrorIs(err, shared.ErrInstanceNotRunning, "Should not allow terminating already terminated instance")
 }

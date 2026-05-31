@@ -237,7 +237,7 @@ func (s *FindAvailableFlowsTestSuite) TestUserWithInitiatorAccess() {
 		}
 	}
 
-	s.Assert().True(foundRestricted, "user-a should see the restricted flow via initiator rule")
+	s.Assert().True(foundRestricted, "User-a should see the restricted flow via initiator rule")
 }
 
 func (s *FindAvailableFlowsTestSuite) TestUserWithDepartmentInitiatorAccess() {

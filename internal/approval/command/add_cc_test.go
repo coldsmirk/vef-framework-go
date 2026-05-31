@@ -33,7 +33,7 @@ type AddCCTestSuite struct {
 	ctx         context.Context
 	db          orm.DB
 	bus         *eventtest.FakeBus
-	handler     *busPublishingHandler[command.AddCCCmd, cqrs.Unit]
+	handler     *BusPublishingHandler[command.AddCCCmd, cqrs.Unit]
 	fixture     *MinimalFixture
 	nodeID      string
 	instanceSeq int
@@ -52,7 +52,7 @@ func (s *AddCCTestSuite) SetupSuite() {
 		IsManualCCAllowed: true,
 	}
 	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Manual-CC node should insert successfully")
 	s.nodeID = node.ID
 }
 
@@ -84,7 +84,7 @@ func (s *AddCCTestSuite) insertInstance(currentNodeID, operatorID string) *appro
 		CurrentNodeID: nodeIDPtr,
 	}
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "CC test instance should insert successfully")
 
 	task := &approval.Task{
 		TenantID:   "default",
@@ -115,7 +115,7 @@ func (s *AddCCTestSuite) TestAddCCSuccess() {
 	var records []approval.CCRecord
 	s.Require().NoError(s.db.NewSelect().Model(&records).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", inst.ID) }).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "CC records should load after adding users")
 	s.Assert().Len(records, 2, "Should create 2 CC records")
 }
 
@@ -132,7 +132,7 @@ func (s *AddCCTestSuite) TestAddCCDuplicateFiltered() {
 		IsManual:   true,
 	}
 	_, err := s.db.NewInsert().Model(existing).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Existing CC record should insert before duplicate filtering")
 
 	// Add CC with one existing and one new user
 	_, err = s.handler.Handle(s.ctx, command.AddCCCmd{
@@ -147,7 +147,7 @@ func (s *AddCCTestSuite) TestAddCCDuplicateFiltered() {
 	var records []approval.CCRecord
 	s.Require().NoError(s.db.NewSelect().Model(&records).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", inst.ID) }).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "CC records should load after duplicate filtering")
 	s.Assert().Len(records, 2, "Should have 2 CC records total (1 existing + 1 new)")
 }
 
@@ -162,7 +162,7 @@ func (s *AddCCTestSuite) TestAddCCManualNotAllowed() {
 	}
 	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
 
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Manual-CC-disabled node should insert successfully")
 	defer func() {
 		_, _ = s.db.NewDelete().Model(node).WherePK().Exec(s.ctx)
 	}()
@@ -175,7 +175,7 @@ func (s *AddCCTestSuite) TestAddCCManualNotAllowed() {
 		Operator:   approval.OperatorInfo{ID: "operator-3"},
 		Caller:     approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "Manual CC should be rejected when node disallows it")
 	s.Assert().ErrorIs(err, shared.ErrManualCcNotAllowed, "Should return ErrManualCcNotAllowed")
 }
 
@@ -186,7 +186,7 @@ func (s *AddCCTestSuite) TestAddCCInstanceNotFound() {
 		Operator:   approval.OperatorInfo{ID: "operator-4"},
 		Caller:     approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "Adding CC to a missing instance should fail")
 	s.Assert().ErrorIs(err, shared.ErrInstanceNotFound, "Should return ErrInstanceNotFound")
 }
 
@@ -209,7 +209,7 @@ func (s *AddCCTestSuite) TestAddCCInstanceCompleted() {
 		Operator:   approval.OperatorInfo{ID: "operator-5"},
 		Caller:     approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "Adding CC to a completed instance should fail")
 	s.Assert().ErrorIs(err, shared.ErrInstanceCompleted, "Should reject adding CC for completed instance")
 }
 
@@ -248,7 +248,7 @@ func (s *AddCCTestSuite) TestAddCCEventUsesInsertedUserIDs() {
 		IsManual:   true,
 	}
 	_, err := s.db.NewInsert().Model(existing).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Existing CC record should insert before event filtering")
 
 	_, err = s.handler.Handle(s.ctx, command.AddCCCmd{
 		InstanceID: inst.ID,
@@ -256,7 +256,7 @@ func (s *AddCCTestSuite) TestAddCCEventUsesInsertedUserIDs() {
 		Operator:   approval.OperatorInfo{ID: "operator-7"},
 		Caller:     approval.SystemCaller,
 	})
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Adding CC should succeed after filtering existing users")
 
 	captured := s.bus.CapturedByType("approval.cc.notified")
 	s.Require().NotEmpty(captured, "Should publish at least one cc-notified event")

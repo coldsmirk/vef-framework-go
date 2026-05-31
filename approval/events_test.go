@@ -10,6 +10,18 @@ import (
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
+// EventInnerWithoutOccurredTime is nested in EventWithoutOccurredTime so the
+// reflection fallback can see a struct with no OccurredTime field.
+type EventInnerWithoutOccurredTime struct{ Ignored string }
+
+// EventWithoutOccurredTime is a DomainEvent without an OccurredTime field, used
+// to drive the reflection fall-through branch of PayloadOccurredAt.
+type EventWithoutOccurredTime struct {
+	Inner any
+}
+
+func (*EventWithoutOccurredTime) EventType() string { return "fake.event" }
+
 func TestPayloadOccurredAt(t *testing.T) {
 	t.Parallel()
 
@@ -42,9 +54,7 @@ func TestPayloadOccurredAt(t *testing.T) {
 	t.Run("PointerStructWithoutField", func(t *testing.T) {
 		t.Parallel()
 
-		type fake struct{ Ignored string }
-
-		var typed approval.DomainEvent = &fakeEvent{Inner: fake{Ignored: "x"}}
+		var typed approval.DomainEvent = &EventWithoutOccurredTime{Inner: EventInnerWithoutOccurredTime{Ignored: "x"}}
 
 		got := approval.PayloadOccurredAt(typed)
 		assert.True(t, got.IsZero(), "Struct without OccurredTime field should return zero DateTime")
@@ -63,11 +73,3 @@ func TestPayloadOccurredAt(t *testing.T) {
 		assert.True(t, got.IsZero(), "Explicit zero OccurredTime should report zero")
 	})
 }
-
-// fakeEvent is a DomainEvent without an OccurredTime field, used to drive
-// the reflection fall-through branch of PayloadOccurredAt.
-type fakeEvent struct {
-	Inner any
-}
-
-func (*fakeEvent) EventType() string { return "fake.event" }

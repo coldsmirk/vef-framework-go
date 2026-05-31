@@ -87,7 +87,7 @@ func (s *MarkCCReadTestSuite) createInstance(no string, currentNodeID *string) s
 		CurrentNodeID: currentNodeID,
 	}
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Mark CC read should complete without error")
 
 	return inst.ID
 }
@@ -103,7 +103,7 @@ func (s *MarkCCReadTestSuite) TestMarkReadSuccess() {
 	}
 	for i := range records {
 		_, err := s.db.NewInsert().Model(&records[i]).Exec(s.ctx)
-		s.Require().NoError(err, "Should not return error")
+		s.Require().NoError(err, "TestMarkReadSuccess should complete without error")
 	}
 
 	_, err := s.handler.Handle(s.ctx, command.MarkCCReadCmd{
@@ -120,7 +120,7 @@ func (s *MarkCCReadTestSuite) TestMarkReadSuccess() {
 			cb.Equals("instance_id", instID).
 				Equals("cc_user_id", "cc-user-1")
 		}).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "TestMarkReadSuccess should complete without error")
 
 	for _, r := range updatedRecords {
 		s.Assert().NotNil(r.ReadAt, "Should set ReadAt for cc-user-1")
@@ -133,7 +133,7 @@ func (s *MarkCCReadTestSuite) TestMarkReadSuccess() {
 			cb.Equals("instance_id", instID).
 				Equals("cc_user_id", "cc-user-2")
 		}).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "TestMarkReadSuccess should complete without error")
 
 	for _, r := range otherRecords {
 		s.Assert().Nil(r.ReadAt, "Should not set ReadAt for cc-user-2")
@@ -158,7 +158,7 @@ func (s *MarkCCReadTestSuite) TestMarkReadIdempotent() {
 		IsManual:   false,
 	}
 	_, err := s.db.NewInsert().Model(record).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "TestMarkReadIdempotent should complete without error")
 
 	// Mark read first time
 	_, err = s.handler.Handle(s.ctx, command.MarkCCReadCmd{
@@ -166,7 +166,7 @@ func (s *MarkCCReadTestSuite) TestMarkReadIdempotent() {
 		UserID:     "cc-user-3",
 		Caller:     approval.SystemCaller,
 	})
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "TestMarkReadIdempotent should complete without error")
 
 	// Mark read second time - should be idempotent (no unread records left)
 	_, err = s.handler.Handle(s.ctx, command.MarkCCReadCmd{

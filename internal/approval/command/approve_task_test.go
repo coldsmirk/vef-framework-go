@@ -69,14 +69,14 @@ func (s *ApproveTaskTestSuite) TestApproveSuccess() {
 	var updated approval.Task
 
 	updated.ID = task.ID
-	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "Should not return error")
+	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "TestApproveSuccess should complete without error")
 	s.Assert().Equal(approval.TaskApproved, updated.Status, "Task should be approved")
 
 	// Verify action log
 	var logs []approval.ActionLog
 	s.Require().NoError(s.db.NewSelect().Model(&logs).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", inst.ID) }).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "TestApproveSuccess should complete without error")
 	s.Assert().GreaterOrEqual(len(logs), 1, "Should have at least 1 action log")
 
 	found := false
@@ -84,7 +84,7 @@ func (s *ApproveTaskTestSuite) TestApproveSuccess() {
 		if log.Action == approval.ActionApprove {
 			found = true
 
-			s.Assert().Equal("approver-1", log.OperatorID, "Should match expected value")
+			s.Assert().Equal("approver-1", log.OperatorID, "TestApproveSuccess should match expected value")
 		}
 	}
 
@@ -98,7 +98,7 @@ func (s *ApproveTaskTestSuite) TestApproveTaskNotFound() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestApproveTaskNotFound should return an error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return expected error")
 }
 
@@ -111,7 +111,7 @@ func (s *ApproveTaskTestSuite) TestApproveNotAssignee() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestApproveNotAssignee should return an error")
 	s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should return expected error")
 }
 
@@ -124,7 +124,7 @@ func (s *ApproveTaskTestSuite) TestApproveAlreadyCompleted() {
 		Set("status", approval.TaskApproved).
 		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(task.ID) }).
 		Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "TestApproveAlreadyCompleted should complete without error")
 
 	operator := approval.OperatorInfo{ID: "approver-1", Name: "Approver"}
 	_, err = s.handler.Handle(s.ctx, command.ApproveTaskCmd{
@@ -132,7 +132,7 @@ func (s *ApproveTaskTestSuite) TestApproveAlreadyCompleted() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestApproveAlreadyCompleted should return an error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should return expected error")
 }
 
@@ -204,7 +204,7 @@ func (s *ApproveTaskTestSuite) TestApproveShouldResolveCCFromFormField() {
 	s.Require().NoError(s.db.NewSelect().
 		Model(&records).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", inst.ID) }).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "TestApproveShouldResolveCCFromFormField should complete without error")
 
 	userIDs := make([]string, len(records))
 	for i, record := range records {

@@ -88,7 +88,7 @@ func (s *GetAdminInstanceDetailTestSuite) TestGetDetailSuccess() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should get admin instance detail without error")
-	s.Require().NotNil(detail, "Should not be nil")
+	s.Require().NotNil(detail, "TestGetDetailSuccess should return a non-nil value")
 
 	s.Assert().Equal(s.instanceID, detail.Instance.InstanceID, "Should return correct instance")
 	s.Assert().Equal("Admin Detail Test", detail.Instance.Title, "Should return correct title")

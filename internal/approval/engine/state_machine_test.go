@@ -32,9 +32,9 @@ func (s TestState) IsFinal() bool  { return s == TestStateFinal }
 func TestStateMachine(t *testing.T) {
 	t.Run("NewEmpty", func(t *testing.T) {
 		sm := NewStateMachine[TestState]("test")
-		assert.NotNil(t, sm, "Should not be nil")
-		assert.Equal(t, "test", sm.name, "Should equal expected value")
-		assert.Empty(t, sm.transitions, "Should be empty")
+		assert.NotNil(t, sm, "TestStateMachine should return a non-nil value")
+		assert.Equal(t, "test", sm.name, "TestStateMachine should match expected value")
+		assert.Empty(t, sm.transitions, "TestStateMachine should return empty value")
 	})
 
 	t.Run("CanTransitionReturnsFalseOnEmpty", func(t *testing.T) {
@@ -50,8 +50,8 @@ func TestStateMachine(t *testing.T) {
 	t.Run("TransitionReturnsErrorOnEmpty", func(t *testing.T) {
 		sm := NewStateMachine[TestState]("test")
 		err := sm.Transition(TestStateA, TestStateB)
-		require.Error(t, err, "Should return error")
-		assert.Contains(t, err.Error(), "invalid state transition", "Should contain expected value")
+		require.Error(t, err, "TestStateMachine should return an error")
+		assert.Contains(t, err.Error(), "invalid state transition", "TestStateMachine should include expected value")
 	})
 
 	t.Run("ChainingReturnsSameInstance", func(t *testing.T) {
@@ -78,8 +78,8 @@ func TestStateMachine(t *testing.T) {
 		sm.AddTransition(TestStateA, TestStateB, "overwritten_event")
 
 		tr := sm.transitions[TestStateA][TestStateB]
-		require.NotNil(t, tr, "Should not be nil")
-		assert.Equal(t, "overwritten_event", tr.Event, "Should equal expected value")
+		require.NotNil(t, tr, "TestStateMachine should return a non-nil value")
+		assert.Equal(t, "overwritten_event", tr.Event, "TestStateMachine should match expected value")
 	})
 
 	t.Run("UnregisteredFrom", func(t *testing.T) {
@@ -121,8 +121,8 @@ func TestInstanceStateMachine(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				assert.True(t, InstanceStateMachine.CanTransition(tt.from, tt.to), "Condition should be true")
-				assert.NoError(t, InstanceStateMachine.Transition(tt.from, tt.to), "Should not return error")
+				assert.True(t, InstanceStateMachine.CanTransition(tt.from, tt.to), "TestInstanceStateMachine condition should be true")
+				assert.NoError(t, InstanceStateMachine.Transition(tt.from, tt.to), "TestInstanceStateMachine should complete without error")
 			})
 		}
 	})
@@ -143,8 +143,8 @@ func TestInstanceStateMachine(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				assert.False(t, InstanceStateMachine.CanTransition(tt.from, tt.to), "Condition should be false")
-				assert.Error(t, InstanceStateMachine.Transition(tt.from, tt.to), "Should return error")
+				assert.False(t, InstanceStateMachine.CanTransition(tt.from, tt.to), "TestInstanceStateMachine condition should be false")
+				assert.Error(t, InstanceStateMachine.Transition(tt.from, tt.to), "TestInstanceStateMachine should return an error")
 			})
 		}
 	})
@@ -165,13 +165,13 @@ func TestInstanceStateMachine(t *testing.T) {
 		t.Run("ReturnedState", func(t *testing.T) {
 			targets := InstanceStateMachine.AvailableTransitions(approval.InstanceReturned)
 			require.Len(t, targets, 1, "Should have 1 available transition from returned")
-			assert.Equal(t, approval.InstanceRunning, targets[0], "Should equal expected value")
+			assert.Equal(t, approval.InstanceRunning, targets[0], "TestInstanceStateMachine should match expected value")
 		})
 
 		t.Run("WithdrawnState", func(t *testing.T) {
 			targets := InstanceStateMachine.AvailableTransitions(approval.InstanceWithdrawn)
 			require.Len(t, targets, 1, "Should have 1 available transition from withdrawn")
-			assert.Equal(t, approval.InstanceRunning, targets[0], "Should equal expected value")
+			assert.Equal(t, approval.InstanceRunning, targets[0], "TestInstanceStateMachine should match expected value")
 		})
 
 		t.Run("ApprovedState", func(t *testing.T) {
@@ -186,9 +186,9 @@ func TestInstanceStateMachine(t *testing.T) {
 	t.Run("TransitionError", func(t *testing.T) {
 		err := InstanceStateMachine.Transition(approval.InstanceApproved, approval.InstanceRunning)
 		require.Error(t, err, "Should return error for invalid transition")
-		assert.Contains(t, err.Error(), "invalid state transition", "Should contain expected value")
-		assert.Contains(t, err.Error(), "approved", "Should contain expected value")
-		assert.Contains(t, err.Error(), "running", "Should contain expected value")
+		assert.Contains(t, err.Error(), "invalid state transition", "TestInstanceStateMachine should include expected value")
+		assert.Contains(t, err.Error(), "approved", "TestInstanceStateMachine should include expected value")
+		assert.Contains(t, err.Error(), "running", "TestInstanceStateMachine should include expected value")
 	})
 
 	t.Run("EventValues", func(t *testing.T) {
@@ -209,10 +209,10 @@ func TestInstanceStateMachine(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				tr := InstanceStateMachine.transitions[tt.from][tt.to]
-				require.NotNil(t, tr, "Should not be nil")
-				assert.Equal(t, tt.event, tr.Event, "Should equal expected value")
-				assert.Equal(t, tt.from, tr.From, "Should equal expected value")
-				assert.Equal(t, tt.to, tr.To, "Should equal expected value")
+				require.NotNil(t, tr, "TestInstanceStateMachine should return a non-nil value")
+				assert.Equal(t, tt.event, tr.Event, "TestInstanceStateMachine should match expected value")
+				assert.Equal(t, tt.from, tr.From, "TestInstanceStateMachine should match expected value")
+				assert.Equal(t, tt.to, tr.To, "TestInstanceStateMachine should match expected value")
 			})
 		}
 	})
@@ -239,7 +239,7 @@ func TestInstanceStateMachine(t *testing.T) {
 				for _, target := range allStatuses {
 					t.Run("To"+string(target), func(t *testing.T) {
 						assert.False(t, InstanceStateMachine.CanTransition(ts.status, target), "Should not allow transition from terminal state")
-						assert.Error(t, InstanceStateMachine.Transition(ts.status, target), "Should return error")
+						assert.Error(t, InstanceStateMachine.Transition(ts.status, target), "TestInstanceStateMachine should return an error")
 					})
 				}
 			})
@@ -273,8 +273,8 @@ func TestTaskStateMachine(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				assert.True(t, TaskStateMachine.CanTransition(tt.from, tt.to), "Condition should be true")
-				assert.NoError(t, TaskStateMachine.Transition(tt.from, tt.to), "Should not return error")
+				assert.True(t, TaskStateMachine.CanTransition(tt.from, tt.to), "TestTaskStateMachine condition should be true")
+				assert.NoError(t, TaskStateMachine.Transition(tt.from, tt.to), "TestTaskStateMachine should complete without error")
 			})
 		}
 	})
@@ -297,8 +297,8 @@ func TestTaskStateMachine(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				assert.False(t, TaskStateMachine.CanTransition(tt.from, tt.to), "Condition should be false")
-				assert.Error(t, TaskStateMachine.Transition(tt.from, tt.to), "Should return error")
+				assert.False(t, TaskStateMachine.CanTransition(tt.from, tt.to), "TestTaskStateMachine condition should be false")
+				assert.Error(t, TaskStateMachine.Transition(tt.from, tt.to), "TestTaskStateMachine should return an error")
 			})
 		}
 	})
@@ -343,9 +343,9 @@ func TestTaskStateMachine(t *testing.T) {
 	t.Run("TransitionError", func(t *testing.T) {
 		err := TaskStateMachine.Transition(approval.TaskApproved, approval.TaskPending)
 		require.Error(t, err, "Should return error for invalid transition")
-		assert.Contains(t, err.Error(), "invalid state transition", "Should contain expected value")
-		assert.Contains(t, err.Error(), "approved", "Should contain expected value")
-		assert.Contains(t, err.Error(), "pending", "Should contain expected value")
+		assert.Contains(t, err.Error(), "invalid state transition", "TestTaskStateMachine should include expected value")
+		assert.Contains(t, err.Error(), "approved", "TestTaskStateMachine should include expected value")
+		assert.Contains(t, err.Error(), "pending", "TestTaskStateMachine should include expected value")
 	})
 
 	t.Run("EventValues", func(t *testing.T) {
@@ -372,10 +372,10 @@ func TestTaskStateMachine(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				tr := TaskStateMachine.transitions[tt.from][tt.to]
-				require.NotNil(t, tr, "Should not be nil")
-				assert.Equal(t, tt.event, tr.Event, "Should equal expected value")
-				assert.Equal(t, tt.from, tr.From, "Should equal expected value")
-				assert.Equal(t, tt.to, tr.To, "Should equal expected value")
+				require.NotNil(t, tr, "TestTaskStateMachine should return a non-nil value")
+				assert.Equal(t, tt.event, tr.Event, "TestTaskStateMachine should match expected value")
+				assert.Equal(t, tt.from, tr.From, "TestTaskStateMachine should match expected value")
+				assert.Equal(t, tt.to, tr.To, "TestTaskStateMachine should match expected value")
 			})
 		}
 	})
@@ -413,7 +413,7 @@ func TestTaskStateMachine(t *testing.T) {
 				for _, target := range allStatuses {
 					t.Run("To"+string(target), func(t *testing.T) {
 						assert.False(t, TaskStateMachine.CanTransition(ts.status, target), "Should not allow transition from terminal state")
-						assert.Error(t, TaskStateMachine.Transition(ts.status, target), "Should return error")
+						assert.Error(t, TaskStateMachine.Transition(ts.status, target), "TestTaskStateMachine should return an error")
 					})
 				}
 			})

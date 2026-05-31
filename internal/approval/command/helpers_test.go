@@ -20,14 +20,14 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// busPublishingHandler wraps a cqrs.Handler with ActionLogBehavior and
+// BusPublishingHandler wraps a cqrs.Handler with ActionLogBehavior and
 // EventPublishBehavior so handlers exercise the same context plumbing as
 // production: action logs collected via the request-scoped collector get
 // flushed to the DB, and events appended to the request-scoped
 // EventCollector get flushed to the supplied bus after the handler
 // returns. Tests use it to keep their bus.CapturedByType assertions and
 // to verify ActionLog persistence after handlers stopped writing directly.
-type busPublishingHandler[TCmd cqrs.Action, TResult any] struct {
+type BusPublishingHandler[TCmd cqrs.Action, TResult any] struct {
 	bus      *eventtest.FakeBus
 	delegate cqrs.Handler[TCmd, TResult]
 	chain    cqrs.Behavior
@@ -36,12 +36,13 @@ type busPublishingHandler[TCmd cqrs.Action, TResult any] struct {
 // chainBehaviors composes behaviors outside-in: the first behavior is the
 // outermost wrapper and runs first on entry / last on exit.
 func chainBehaviors(behaviors ...cqrs.Behavior) cqrs.Behavior {
-	return behaviorChain(behaviors)
+	return BehaviorChain(behaviors)
 }
 
-type behaviorChain []cqrs.Behavior
+// BehaviorChain composes test behaviors in a deterministic outer-to-inner order.
+type BehaviorChain []cqrs.Behavior
 
-func (c behaviorChain) Handle(ctx context.Context, action cqrs.Action, next func(context.Context) (any, error)) (any, error) {
+func (c BehaviorChain) Handle(ctx context.Context, action cqrs.Action, next func(context.Context) (any, error)) (any, error) {
 	for _, b := range slices.Backward(c) {
 		inner := next
 		next = func(ctx context.Context) (any, error) {
@@ -57,7 +58,7 @@ func (c behaviorChain) Handle(ctx context.Context, action cqrs.Action, next func
 func wrapWithBus[TCmd cqrs.Action, TResult any](
 	bus *eventtest.FakeBus,
 	inner cqrs.Handler[TCmd, TResult],
-) *busPublishingHandler[TCmd, TResult] {
+) *BusPublishingHandler[TCmd, TResult] {
 	return wrapWithBusAndDB(nil, bus, inner)
 }
 
@@ -69,13 +70,13 @@ func wrapWithBusAndDB[TCmd cqrs.Action, TResult any](
 	db orm.DB,
 	bus *eventtest.FakeBus,
 	inner cqrs.Handler[TCmd, TResult],
-) *busPublishingHandler[TCmd, TResult] {
+) *BusPublishingHandler[TCmd, TResult] {
 	behaviors := []cqrs.Behavior{behavior.NewEventPublishBehavior(bus)}
 	if db != nil {
 		behaviors = append([]cqrs.Behavior{behavior.NewActionLogBehavior(db)}, behaviors...)
 	}
 
-	return &busPublishingHandler[TCmd, TResult]{
+	return &BusPublishingHandler[TCmd, TResult]{
 		bus:      bus,
 		delegate: inner,
 		chain:    chainBehaviors(behaviors...),
@@ -85,7 +86,7 @@ func wrapWithBusAndDB[TCmd cqrs.Action, TResult any](
 // Handle runs the delegate inside the configured behavior chain so the
 // fake bus observes collected events and the DB observes collected
 // action logs.
-func (h *busPublishingHandler[TCmd, TResult]) Handle(ctx context.Context, cmd TCmd) (TResult, error) {
+func (h *BusPublishingHandler[TCmd, TResult]) Handle(ctx context.Context, cmd TCmd) (TResult, error) {
 	result, err := h.chain.Handle(ctx, cmd, func(innerCtx context.Context) (any, error) {
 		return h.delegate.Handle(innerCtx, cmd)
 	})
@@ -119,12 +120,13 @@ func setPublishedFormSchema(t testing.TB, ctx context.Context, db orm.DB, versio
 	require.NoError(t, err, "Should update published form schema")
 }
 
-type lockDialect string
+// LockDialect is the database dialect family used by table-lock test helpers.
+type LockDialect string
 
 const (
-	lockDialectPostgres lockDialect = "postgres"
-	lockDialectMySQL    lockDialect = "mysql"
-	lockDialectSQLite   lockDialect = "sqlite"
+	lockDialectPostgres LockDialect = "postgres"
+	lockDialectMySQL    LockDialect = "mysql"
+	lockDialectSQLite   LockDialect = "sqlite"
 )
 
 // holdSharedTableLock starts a transaction that holds a table lock until release
@@ -160,7 +162,7 @@ func holdSharedTableLock(ctx context.Context, db orm.DB, tableName string) (read
 	return lockReady, releaseLock, lockDone
 }
 
-func detectLockDialect(ctx context.Context, db orm.DB) lockDialect {
+func detectLockDialect(ctx context.Context, db orm.DB) LockDialect {
 	_ = ctx
 
 	switch db.NewSelect().Dialect().Name() {

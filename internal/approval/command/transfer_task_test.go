@@ -49,7 +49,7 @@ func (s *TransferTaskTestSuite) SetupSuite() {
 		IsTransferAllowed: true,
 	}
 	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Transfer task should complete without error")
 	s.nodeID = node.ID
 }
 
@@ -76,7 +76,7 @@ func (s *TransferTaskTestSuite) setupData(assigneeID string) (*approval.Instance
 		CurrentNodeID: &s.nodeID,
 	}
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Transfer task should complete without error")
 
 	task := &approval.Task{
 		TenantID:   "default",
@@ -87,7 +87,7 @@ func (s *TransferTaskTestSuite) setupData(assigneeID string) (*approval.Instance
 		Status:     approval.TaskPending,
 	}
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Transfer task should complete without error")
 
 	return inst, task
 }
@@ -109,7 +109,7 @@ func (s *TransferTaskTestSuite) TestTransferSuccess() {
 	var original approval.Task
 
 	original.ID = task.ID
-	s.Require().NoError(s.db.NewSelect().Model(&original).WherePK().Scan(s.ctx), "Should not return error")
+	s.Require().NoError(s.db.NewSelect().Model(&original).WherePK().Scan(s.ctx), "TestTransferSuccess should complete without error")
 	s.Assert().Equal(approval.TaskTransferred, original.Status, "Original task should be transferred")
 
 	// Verify new task created for transferee
@@ -119,7 +119,7 @@ func (s *TransferTaskTestSuite) TestTransferSuccess() {
 			cb.Equals("instance_id", task.InstanceID).
 				Equals("assignee_id", "new-assignee-1")
 		}).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "TestTransferSuccess should complete without error")
 	s.Assert().Len(newTasks, 1, "Should create one new task for transferee")
 	s.Assert().Equal(approval.TaskPending, newTasks[0].Status, "New task should be pending")
 }
@@ -135,7 +135,7 @@ func (s *TransferTaskTestSuite) TestTransferNotAllowed() {
 	}
 	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
 
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "TestTransferNotAllowed should complete without error")
 	defer func() {
 		_, _ = s.db.NewDelete().Model(node).WherePK().Exec(s.ctx)
 	}()
@@ -151,7 +151,7 @@ func (s *TransferTaskTestSuite) TestTransferNotAllowed() {
 		CurrentNodeID: &node.ID,
 	}
 	_, err = s.db.NewInsert().Model(inst).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "TestTransferNotAllowed should complete without error")
 
 	task := &approval.Task{
 		TenantID:   "default",
@@ -162,7 +162,7 @@ func (s *TransferTaskTestSuite) TestTransferNotAllowed() {
 		Status:     approval.TaskPending,
 	}
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "TestTransferNotAllowed should complete without error")
 
 	operator := approval.OperatorInfo{ID: "assignee-2", Name: "Assignee"}
 	_, err = s.handler.Handle(s.ctx, command.TransferTaskCmd{
@@ -171,7 +171,7 @@ func (s *TransferTaskTestSuite) TestTransferNotAllowed() {
 		TransferToID: "new-assignee",
 		Caller:       approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestTransferNotAllowed should return an error")
 	s.Assert().ErrorIs(err, shared.ErrTransferNotAllowed, "Should return expected error")
 }
 
@@ -183,7 +183,7 @@ func (s *TransferTaskTestSuite) TestTransferTaskNotFound() {
 		TransferToID: "new-assignee",
 		Caller:       approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestTransferTaskNotFound should return an error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return expected error")
 }
 
@@ -197,7 +197,7 @@ func (s *TransferTaskTestSuite) TestTransferNotAssignee() {
 		TransferToID: "new-assignee",
 		Caller:       approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestTransferNotAssignee should return an error")
 	s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should return expected error")
 }
 

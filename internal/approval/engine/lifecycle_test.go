@@ -11,10 +11,10 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// recordingHook captures invocation order and surfaces a controlled
+// RecordingHook captures invocation order and surfaces a controlled
 // error so tests can verify the short-circuit semantics of
 // LifecycleHookRunner.
-type recordingHook struct {
+type RecordingHook struct {
 	name             string
 	createdInvoked   *[]string
 	completedInvoked *[]string
@@ -24,7 +24,7 @@ type recordingHook struct {
 	lastInstanceID   *string
 }
 
-func (h *recordingHook) OnInstanceCreated(_ context.Context, _ orm.DB, instance *approval.Instance) error {
+func (h *RecordingHook) OnInstanceCreated(_ context.Context, _ orm.DB, instance *approval.Instance) error {
 	*h.createdInvoked = append(*h.createdInvoked, h.name)
 	if h.lastInstanceID != nil {
 		*h.lastInstanceID = instance.ID
@@ -33,7 +33,7 @@ func (h *recordingHook) OnInstanceCreated(_ context.Context, _ orm.DB, instance 
 	return h.createdErr
 }
 
-func (h *recordingHook) OnInstanceCompleted(_ context.Context, _ orm.DB, instance *approval.Instance, finalStatus approval.InstanceStatus) error {
+func (h *RecordingHook) OnInstanceCompleted(_ context.Context, _ orm.DB, instance *approval.Instance, finalStatus approval.InstanceStatus) error {
 	*h.completedInvoked = append(*h.completedInvoked, h.name)
 	if h.lastFinalStatus != nil {
 		*h.lastFinalStatus = finalStatus
@@ -58,8 +58,8 @@ func TestLifecycleHookRunnerOnInstanceCreated(t *testing.T) {
 		)
 
 		runner := NewLifecycleHookRunner([]approval.InstanceLifecycleHook{
-			&recordingHook{name: "a", createdInvoked: &created, completedInvoked: &completed},
-			&recordingHook{name: "b", createdInvoked: &created, completedInvoked: &completed},
+			&RecordingHook{name: "a", createdInvoked: &created, completedInvoked: &completed},
+			&RecordingHook{name: "b", createdInvoked: &created, completedInvoked: &completed},
 		})
 		err := runner.OnInstanceCreated(context.Background(), nil, &approval.Instance{})
 
@@ -77,8 +77,8 @@ func TestLifecycleHookRunnerOnInstanceCreated(t *testing.T) {
 
 		boom := errors.New("hook failed")
 		runner := NewLifecycleHookRunner([]approval.InstanceLifecycleHook{
-			&recordingHook{name: "a", createdInvoked: &created, completedInvoked: &completed, createdErr: boom},
-			&recordingHook{name: "b", createdInvoked: &created, completedInvoked: &completed},
+			&RecordingHook{name: "a", createdInvoked: &created, completedInvoked: &completed, createdErr: boom},
+			&RecordingHook{name: "b", createdInvoked: &created, completedInvoked: &completed},
 		})
 		err := runner.OnInstanceCreated(context.Background(), nil, &approval.Instance{})
 
@@ -101,7 +101,7 @@ func TestLifecycleHookRunnerOnInstanceCompleted(t *testing.T) {
 		)
 
 		runner := NewLifecycleHookRunner([]approval.InstanceLifecycleHook{
-			&recordingHook{name: "a", createdInvoked: &created, completedInvoked: &completed, lastFinalStatus: &seenStatus, lastInstanceID: &seenID},
+			&RecordingHook{name: "a", createdInvoked: &created, completedInvoked: &completed, lastFinalStatus: &seenStatus, lastInstanceID: &seenID},
 		})
 		err := runner.OnInstanceCompleted(context.Background(), nil, &approval.Instance{}, approval.InstanceTerminated)
 		// Set ID after construction so the recording hook captures it.
@@ -122,8 +122,8 @@ func TestLifecycleHookRunnerOnInstanceCompleted(t *testing.T) {
 
 		boom := errors.New("hook failed")
 		runner := NewLifecycleHookRunner([]approval.InstanceLifecycleHook{
-			&recordingHook{name: "a", createdInvoked: &created, completedInvoked: &completed, completedErr: boom},
-			&recordingHook{name: "b", createdInvoked: &created, completedInvoked: &completed},
+			&RecordingHook{name: "a", createdInvoked: &created, completedInvoked: &completed, completedErr: boom},
+			&RecordingHook{name: "b", createdInvoked: &created, completedInvoked: &completed},
 		})
 		err := runner.OnInstanceCompleted(context.Background(), nil, &approval.Instance{}, approval.InstanceApproved)
 

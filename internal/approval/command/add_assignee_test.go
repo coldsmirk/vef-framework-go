@@ -33,7 +33,7 @@ type AddAssigneeTestSuite struct {
 	ctx     context.Context
 	db      orm.DB
 	bus     *eventtest.FakeBus
-	handler *busPublishingHandler[command.AddAssigneeCmd, cqrs.Unit]
+	handler *BusPublishingHandler[command.AddAssigneeCmd, cqrs.Unit]
 	fixture *MinimalFixture
 	nodeID  string
 
@@ -53,7 +53,7 @@ func (s *AddAssigneeTestSuite) SetupSuite() {
 		IsAddAssigneeAllowed: true,
 	}
 	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Add-assignee test node should insert successfully")
 	s.nodeID = node.ID
 }
 
@@ -79,7 +79,7 @@ func (s *AddAssigneeTestSuite) setupData(assigneeID string) (*approval.Instance,
 		CurrentNodeID: &s.nodeID,
 	}
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Add-assignee test instance should insert successfully")
 
 	task := &approval.Task{
 		TenantID:   "default",
@@ -90,7 +90,7 @@ func (s *AddAssigneeTestSuite) setupData(assigneeID string) (*approval.Instance,
 		Status:     approval.TaskPending,
 	}
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Add-assignee test task should insert successfully")
 
 	return inst, task
 }
@@ -113,7 +113,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeSuccess() {
 	s.Require().NoError(s.db.NewSelect().Model(&tasks).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", task.InstanceID) }).
 		OrderBy("sort_order").
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "Tasks should load after adding assignees")
 	s.Assert().GreaterOrEqual(len(tasks), 3, "Should have at least 3 tasks (1 original + 2 new)")
 
 	// Every added assignee task must surface as a TaskCreatedEvent so
@@ -144,7 +144,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeNotAllowed() {
 	}
 	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
 
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Add-assignee-disabled node should insert successfully")
 	defer func() {
 		_, _ = s.db.NewDelete().Model(node).WherePK().Exec(s.ctx)
 	}()
@@ -160,7 +160,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeNotAllowed() {
 		CurrentNodeID: &node.ID,
 	}
 	_, err = s.db.NewInsert().Model(inst).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Instance on add-assignee-disabled node should insert successfully")
 
 	task := &approval.Task{
 		TenantID:   "default",
@@ -171,7 +171,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeNotAllowed() {
 		Status:     approval.TaskPending,
 	}
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Task on add-assignee-disabled node should insert successfully")
 
 	operator := approval.OperatorInfo{ID: "operator-2", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
@@ -181,7 +181,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeNotAllowed() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "Adding assignees should fail when node disallows it")
 	s.Assert().ErrorIs(err, shared.ErrAddAssigneeNotAllowed, "Should return ErrAddAssigneeNotAllowed")
 }
 
@@ -196,7 +196,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeNotAssignee() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "Non-assignee should be rejected when adding assignees")
 	s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should return ErrNotAssignee")
 }
 
@@ -209,7 +209,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotFound() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "Adding assignees to a missing task should fail")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return ErrTaskNotFound")
 }
 
@@ -224,7 +224,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeInstanceCompleted() {
 		Status:        approval.InstanceApproved,
 	}
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Completed instance should insert before add-assignee rejection")
 
 	task := &approval.Task{
 		TenantID:   "default",
@@ -235,7 +235,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeInstanceCompleted() {
 		Status:     approval.TaskPending,
 	}
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Task on completed instance should insert before add-assignee rejection")
 
 	operator := approval.OperatorInfo{ID: "operator-3", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
@@ -245,7 +245,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeInstanceCompleted() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "Adding assignees to a completed instance should fail")
 	s.Assert().ErrorIs(err, shared.ErrInstanceCompleted, "Should return ErrInstanceCompleted")
 }
 
@@ -309,7 +309,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotPending() {
 		Set("status", approval.TaskApproved).
 		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(task.ID) }).
 		Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Task status should update to approved before add-assignee rejection")
 
 	operator := approval.OperatorInfo{ID: "operator-4", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
@@ -319,7 +319,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotPending() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "Adding assignees to a non-pending task should fail")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject adding assignee for non-pending task")
 }
 
@@ -333,14 +333,14 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotCurrentNode() {
 		Name:          "Other Current Node",
 	}
 	_, err := s.db.NewInsert().Model(otherNode).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Other current node should insert successfully")
 
 	_, err = s.db.NewUpdate().
 		Model((*approval.Instance)(nil)).
 		Set("current_node_id", otherNode.ID).
 		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(inst.ID) }).
 		Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Instance current node should update before add-assignee rejection")
 
 	operator := approval.OperatorInfo{ID: "operator-5", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
@@ -350,7 +350,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotCurrentNode() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "Adding assignees from a stale node task should fail")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject adding assignee for non-current node task")
 }
 

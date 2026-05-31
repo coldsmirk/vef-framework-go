@@ -44,7 +44,7 @@ func (s *ReassignTaskTestSuite) SetupSuite() {
 		Name:          "Reassign Node",
 	}
 	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Reassign task should complete without error")
 	s.nodeID = node.ID
 }
 
@@ -68,7 +68,7 @@ func (s *ReassignTaskTestSuite) insertInstanceAndTask(assigneeID string, taskSta
 		Status:        approval.InstanceRunning,
 	}
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Reassign task should complete without error")
 
 	task := &approval.Task{
 		TenantID:   "default",
@@ -79,7 +79,7 @@ func (s *ReassignTaskTestSuite) insertInstanceAndTask(assigneeID string, taskSta
 		Status:     taskStatus,
 	}
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Reassign task should complete without error")
 
 	return inst, task
 }
@@ -101,14 +101,14 @@ func (s *ReassignTaskTestSuite) TestReassignSuccess() {
 	var updated approval.Task
 
 	updated.ID = task.ID
-	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "Should not return error")
+	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "TestReassignSuccess should complete without error")
 	s.Assert().Equal("new-user", updated.AssigneeID, "Should update assignee to new user")
 
 	// Verify action log
 	var logs []approval.ActionLog
 	s.Require().NoError(s.db.NewSelect().Model(&logs).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", updated.InstanceID) }).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "TestReassignSuccess should complete without error")
 	s.Assert().Len(logs, 1, "Should insert one action log")
 	s.Assert().Equal(approval.ActionReassign, logs[0].Action, "Action should be reassign")
 	s.Assert().Equal("new-user", *logs[0].TransferToID, "Should record transfer target")
@@ -123,7 +123,7 @@ func (s *ReassignTaskTestSuite) TestReassignTaskNotFound() {
 		Operator:      operator,
 		Caller:        approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestReassignTaskNotFound should return an error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return ErrTaskNotFound")
 }
 
@@ -137,7 +137,7 @@ func (s *ReassignTaskTestSuite) TestReassignTaskNotPending() {
 		Operator:      operator,
 		Caller:        approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestReassignTaskNotPending should return an error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should not allow reassigning non-pending task")
 }
 

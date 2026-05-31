@@ -23,7 +23,7 @@ func TestAddAssigneeTypeIsValid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.value.IsValid(), "Should equal expected value")
+			assert.Equal(t, tt.expected, tt.value.IsValid(), "TestAddAssigneeTypeIsValid should match expected value")
 		})
 	}
 }
@@ -64,7 +64,7 @@ func TestInstanceStatusString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.status.String(), "Should equal expected value")
+			assert.Equal(t, tt.expected, tt.status.String(), "TestInstanceStatusString should match expected value")
 		})
 	}
 }
@@ -86,7 +86,7 @@ func TestInstanceStatusIsFinal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.status.IsFinal(), "Should equal expected value")
+			assert.Equal(t, tt.expected, tt.status.IsFinal(), "TestInstanceStatusIsFinal should match expected value")
 		})
 	}
 }
@@ -112,7 +112,7 @@ func TestTaskStatusString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.status.String(), "Should equal expected value")
+			assert.Equal(t, tt.expected, tt.status.String(), "TestTaskStatusString should match expected value")
 		})
 	}
 }
@@ -138,7 +138,7 @@ func TestTaskStatusIsFinal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.status.IsFinal(), "Should equal expected value")
+			assert.Equal(t, tt.expected, tt.status.IsFinal(), "TestTaskStatusIsFinal should match expected value")
 		})
 	}
 }

@@ -30,7 +30,7 @@ func TestTransactionBehavior(t *testing.T) {
 			return "ok", nil
 		})
 
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestTransactionBehavior should complete without error")
 		assert.Equal(t, "ok", result, "Should return handler result")
 	})
 
@@ -45,7 +45,7 @@ func TestTransactionBehavior(t *testing.T) {
 			return "query-result", nil
 		})
 
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestTransactionBehavior should complete without error")
 		assert.True(t, called, "Should call next handler")
 		assert.Equal(t, "query-result", result, "Should return handler result")
 	})

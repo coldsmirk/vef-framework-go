@@ -72,7 +72,7 @@ func (s *ResubmitTestSuite) TestResubmitClearsFinishedAt() {
 		FinishedAt:    &finishedAt,
 	}
 	_, err := s.db.NewInsert().Model(instance).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "TestResubmitClearsFinishedAt should complete without error")
 
 	_, err = s.handler.Handle(s.ctx, command.ResubmitCmd{
 		InstanceID: instance.ID,
@@ -84,7 +84,7 @@ func (s *ResubmitTestSuite) TestResubmitClearsFinishedAt() {
 	var updated approval.Instance
 
 	updated.ID = instance.ID
-	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "Should not return error")
+	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "TestResubmitClearsFinishedAt should complete without error")
 
 	s.Assert().Equal(approval.InstanceRunning, updated.Status, "Instance should be running after resubmit")
 	s.Assert().Nil(updated.FinishedAt, "Resubmitted running instance should clear finished_at")

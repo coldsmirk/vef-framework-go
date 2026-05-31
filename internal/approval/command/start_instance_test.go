@@ -72,7 +72,7 @@ func (s *StartInstanceTestSuite) TestStartSuccess() {
 		Caller:    approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should start instance without error")
-	s.Require().NotNil(instance, "Should not be nil")
+	s.Require().NotNil(instance, "TestStartSuccess should return a non-nil value")
 
 	s.Assert().Equal(approval.InstanceRunning, instance.Status, "Instance should be running")
 	s.Assert().Equal("user-1", instance.ApplicantID, "Should set applicant ID")
@@ -83,7 +83,7 @@ func (s *StartInstanceTestSuite) TestStartSuccess() {
 	var logs []approval.ActionLog
 	s.Require().NoError(s.db.NewSelect().Model(&logs).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instance.ID) }).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "TestStartSuccess should complete without error")
 	s.Assert().GreaterOrEqual(len(logs), 1, "Should have at least 1 action log (submit)")
 }
 
@@ -94,7 +94,7 @@ func (s *StartInstanceTestSuite) TestStartFlowNotFound() {
 		Applicant: applicant,
 		Caller:    approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestStartFlowNotFound should return an error")
 	s.Assert().ErrorIs(err, shared.ErrFlowNotFound, "Should return expected error")
 }
 
@@ -105,7 +105,7 @@ func (s *StartInstanceTestSuite) TestStartFlowNotActive() {
 		Set("is_active", false).
 		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.fixture.FlowID) }).
 		Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "TestStartFlowNotActive should complete without error")
 
 	defer func() {
 		_, _ = s.db.NewUpdate().
@@ -121,7 +121,7 @@ func (s *StartInstanceTestSuite) TestStartFlowNotActive() {
 		Applicant: applicant,
 		Caller:    approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestStartFlowNotActive should return an error")
 	s.Assert().ErrorIs(err, shared.ErrFlowNotActive, "Should return expected error")
 }
 
@@ -146,7 +146,7 @@ func (s *StartInstanceTestSuite) TestStartWithFormData() {
 		Caller:    approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should start instance with form data")
-	s.Require().NotNil(instance, "Should not be nil")
+	s.Require().NotNil(instance, "TestStartWithFormData should return a non-nil value")
 	s.Assert().NotNil(instance.FormData, "Should store form data")
 }
 

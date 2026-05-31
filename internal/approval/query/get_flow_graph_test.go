@@ -44,7 +44,7 @@ func (s *GetFlowGraphTestSuite) SetupSuite() {
 	}
 	for i := range nodes {
 		_, err := s.db.NewInsert().Model(&nodes[i]).Exec(s.ctx)
-		s.Require().NoError(err, "Should not return error")
+		s.Require().NoError(err, "Get flow graph should complete without error")
 	}
 
 	// Create edge
@@ -56,7 +56,7 @@ func (s *GetFlowGraphTestSuite) SetupSuite() {
 		TargetNodeKey: "end-1",
 	}
 	_, err := s.db.NewInsert().Model(edge).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Get flow graph should complete without error")
 }
 
 func (s *GetFlowGraphTestSuite) TearDownSuite() {
@@ -66,7 +66,7 @@ func (s *GetFlowGraphTestSuite) TearDownSuite() {
 func (s *GetFlowGraphTestSuite) TestGetGraphSuccess() {
 	graph, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: s.flowID, Caller: approval.SystemCaller})
 	s.Require().NoError(err, "Should get flow graph without error")
-	s.Require().NotNil(graph, "Should not be nil")
+	s.Require().NotNil(graph, "TestGetGraphSuccess should return a non-nil value")
 
 	s.Assert().Equal(s.flowID, graph.Flow.ID, "Should return correct flow")
 	s.Assert().Equal(s.versionID, graph.Version.ID, "Should return correct version")
@@ -76,7 +76,7 @@ func (s *GetFlowGraphTestSuite) TestGetGraphSuccess() {
 
 func (s *GetFlowGraphTestSuite) TestFlowNotFound() {
 	_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: "non-existent", Caller: approval.SystemCaller})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestFlowNotFound should return an error")
 	s.Assert().ErrorIs(err, shared.ErrFlowNotFound, "Should return expected error")
 }
 
@@ -91,6 +91,6 @@ func (s *GetFlowGraphTestSuite) TestNoPublishedVersion() {
 	_, _ = s.db.NewDelete().Model((*approval.FlowVersion)(nil)).Where(func(cb orm.ConditionBuilder) { cb.Equals("flow_id", fix2.FlowID) }).Exec(s.ctx)
 
 	_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: fix2.FlowID, Caller: approval.SystemCaller})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestNoPublishedVersion should return an error")
 	s.Assert().ErrorIs(err, shared.ErrNoPublishedVersion, "Should return expected error")
 }

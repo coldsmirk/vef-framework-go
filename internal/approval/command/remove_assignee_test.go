@@ -54,7 +54,7 @@ func (s *RemoveAssigneeTestSuite) SetupSuite() {
 		IsRemoveAssigneeAllowed: true,
 	}
 	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Remove assignee should complete without error")
 	s.nodeID = node.ID
 }
 
@@ -79,7 +79,7 @@ func (s *RemoveAssigneeTestSuite) setupData() (inst *approval.Instance, task1, t
 		CurrentNodeID: &s.nodeID,
 	}
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Remove assignee should complete without error")
 
 	task1 = &approval.Task{
 		TenantID:   "default",
@@ -90,7 +90,7 @@ func (s *RemoveAssigneeTestSuite) setupData() (inst *approval.Instance, task1, t
 		Status:     approval.TaskPending,
 	}
 	_, err = s.db.NewInsert().Model(task1).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Remove assignee should complete without error")
 
 	task2 = &approval.Task{
 		TenantID:   "default",
@@ -101,7 +101,7 @@ func (s *RemoveAssigneeTestSuite) setupData() (inst *approval.Instance, task1, t
 		Status:     approval.TaskPending,
 	}
 	_, err = s.db.NewInsert().Model(task2).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Remove assignee should complete without error")
 
 	return inst, task1, task2
 }
@@ -122,14 +122,14 @@ func (s *RemoveAssigneeTestSuite) TestRemoveSuccess() {
 	var updated approval.Task
 
 	updated.ID = task2.ID
-	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "Should not return error")
+	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "TestRemoveSuccess should complete without error")
 	s.Assert().Equal(approval.TaskRemoved, updated.Status, "Task should be removed")
 
 	// Verify action log
 	var logs []approval.ActionLog
 	s.Require().NoError(s.db.NewSelect().Model(&logs).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", task2.InstanceID) }).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "TestRemoveSuccess should complete without error")
 
 	found := false
 	for _, log := range logs {
@@ -213,7 +213,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveNotAllowed() {
 	}
 	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
 
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "TestRemoveNotAllowed should complete without error")
 	defer func() {
 		_, _ = s.db.NewDelete().Model(node).WherePK().Exec(s.ctx)
 	}()
@@ -229,7 +229,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveNotAllowed() {
 		CurrentNodeID: &node.ID,
 	}
 	_, err = s.db.NewInsert().Model(inst).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "TestRemoveNotAllowed should complete without error")
 
 	task := &approval.Task{
 		TenantID:   "default",
@@ -240,7 +240,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveNotAllowed() {
 		Status:     approval.TaskPending,
 	}
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "TestRemoveNotAllowed should complete without error")
 
 	operator := approval.OperatorInfo{ID: "assignee-3", Name: "Assignee"}
 	_, err = s.handler.Handle(s.ctx, command.RemoveAssigneeCmd{
@@ -248,7 +248,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveNotAllowed() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestRemoveNotAllowed should return an error")
 	s.Assert().ErrorIs(err, shared.ErrRemoveAssigneeNotAllowed, "Should return expected error")
 }
 
@@ -259,7 +259,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveTaskNotFound() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestRemoveTaskNotFound should return an error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return expected error")
 }
 
@@ -294,7 +294,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveInstanceCompleted() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestRemoveInstanceCompleted should return an error")
 	s.Assert().ErrorIs(err, shared.ErrInstanceCompleted, "Should reject remove on completed instance")
 }
 
@@ -325,7 +325,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveTaskNotCurrentNode() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestRemoveTaskNotCurrentNode should return an error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject remove on non-current node task")
 }
 

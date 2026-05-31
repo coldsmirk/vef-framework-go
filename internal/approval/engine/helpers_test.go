@@ -258,7 +258,7 @@ func TestGetSuperior(t *testing.T) {
 			Once()
 
 		info, err := getSuperior(t.Context(), svc, "user1")
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestGetSuperior should complete without error")
 		assert.Equal(t, "superior1", info.ID, "Should return superior ID from service")
 
 		svc.AssertExpectations(t)

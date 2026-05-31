@@ -81,7 +81,7 @@ func (s *FlowResourceTestSuite) createFlow(code, name string) string {
 		},
 	}, s.token)
 
-	s.Require().Equal(http.StatusOK, resp.StatusCode, "Should match expected value")
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "TestFlowResource should match expected value")
 	res := s.ReadResult(resp)
 	s.Require().True(res.IsOk(), "Should create flow")
 
@@ -106,7 +106,7 @@ func (s *FlowResourceTestSuite) deployFlow(flowID string, def approval.FlowDefin
 		},
 	}, s.token)
 
-	s.Require().Equal(http.StatusOK, resp.StatusCode, "Should match expected value")
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "TestFlowResource should match expected value")
 	res := s.ReadResult(resp)
 	s.Require().True(res.IsOk(), "Should deploy flow")
 
@@ -135,13 +135,13 @@ func (s *FlowResourceTestSuite) TestCreateFlow() {
 		},
 	}, s.token)
 
-	s.Assert().Equal(http.StatusOK, resp.StatusCode, "Should match expected value")
+	s.Assert().Equal(http.StatusOK, resp.StatusCode, "TestCreateFlow should match expected value")
 	res := s.ReadResult(resp)
 	s.Assert().True(res.IsOk(), "Should create flow successfully")
 
 	data := s.ReadDataAsMap(res.Data)
-	s.Assert().Equal("test-flow-create", data["code"], "Should match expected value")
-	s.Assert().Equal("Test Flow", data["name"], "Should match expected value")
+	s.Assert().Equal("test-flow-create", data["code"], "TestCreateFlow should match expected value")
+	s.Assert().Equal("Test Flow", data["name"], "TestCreateFlow should match expected value")
 	s.Assert().NotEmpty(data["id"], "Should generate an ID")
 }
 
@@ -154,7 +154,7 @@ func (s *FlowResourceTestSuite) TestDeployFlow() {
 	var version approval.FlowVersion
 
 	version.ID = versionID
-	s.Require().NoError(s.db.NewSelect().Model(&version).WherePK().Scan(s.ctx), "Should not return error")
+	s.Require().NoError(s.db.NewSelect().Model(&version).WherePK().Scan(s.ctx), "TestDeployFlow should complete without error")
 	s.Assert().Equal(1, version.Version, "Should be version 1")
 	s.Assert().Equal(approval.VersionDraft, version.Status, "Should be draft status")
 }
@@ -174,7 +174,7 @@ func (s *FlowResourceTestSuite) TestPublishVersion() {
 		},
 	}, s.token)
 
-	s.Assert().Equal(http.StatusOK, resp.StatusCode, "Should match expected value")
+	s.Assert().Equal(http.StatusOK, resp.StatusCode, "TestPublishVersion should match expected value")
 	res := s.ReadResult(resp)
 	s.Assert().True(res.IsOk(), "Should publish version successfully")
 
@@ -182,14 +182,14 @@ func (s *FlowResourceTestSuite) TestPublishVersion() {
 	var version approval.FlowVersion
 
 	version.ID = versionID
-	s.Require().NoError(s.db.NewSelect().Model(&version).WherePK().Scan(s.ctx), "Should not return error")
+	s.Require().NoError(s.db.NewSelect().Model(&version).WherePK().Scan(s.ctx), "TestPublishVersion should complete without error")
 	s.Assert().Equal(approval.VersionPublished, version.Status, "Should be published")
 
 	// Verify flow.currentVersion updated
 	var flow approval.Flow
 
 	flow.ID = flowID
-	s.Require().NoError(s.db.NewSelect().Model(&flow).WherePK().Scan(s.ctx), "Should not return error")
+	s.Require().NoError(s.db.NewSelect().Model(&flow).WherePK().Scan(s.ctx), "TestPublishVersion should complete without error")
 	s.Assert().Equal(1, flow.CurrentVersion, "Current version should be 1 after publish")
 }
 
@@ -208,7 +208,7 @@ func (s *FlowResourceTestSuite) TestGetGraph() {
 			"versionId": versionID,
 		},
 	}, s.token)
-	s.Require().Equal(http.StatusOK, resp.StatusCode, "Should match expected value")
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "TestGetGraph should match expected value")
 
 	// Get graph
 	resp = s.MakeRPCRequestWithToken(api.Request{
@@ -222,7 +222,7 @@ func (s *FlowResourceTestSuite) TestGetGraph() {
 		},
 	}, s.token)
 
-	s.Assert().Equal(http.StatusOK, resp.StatusCode, "Should match expected value")
+	s.Assert().Equal(http.StatusOK, resp.StatusCode, "TestGetGraph should match expected value")
 	res := s.ReadResult(resp)
 	s.Assert().True(res.IsOk(), "Should get flow graph")
 
@@ -250,7 +250,7 @@ func (s *FlowResourceTestSuite) TestDeployInvalidDefinition() {
 		},
 	}, s.token)
 
-	s.Assert().Equal(http.StatusOK, resp.StatusCode, "Should match expected value")
+	s.Assert().Equal(http.StatusOK, resp.StatusCode, "TestDeployInvalidDefinition should match expected value")
 	res := s.ReadResult(resp)
 	s.Assert().False(res.IsOk(), "Should fail to deploy with invalid definition")
 }

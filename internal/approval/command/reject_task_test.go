@@ -67,28 +67,28 @@ func (s *RejectTaskTestSuite) TestRejectSuccess() {
 	var updated approval.Task
 
 	updated.ID = task.ID
-	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "Should not return error")
+	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "TestRejectSuccess should complete without error")
 	s.Assert().Equal(approval.TaskRejected, updated.Status, "Task should be rejected")
 
 	// Verify instance status (with PassAll rule, one rejection rejects instance)
 	var updatedInst approval.Instance
 
 	updatedInst.ID = inst.ID
-	s.Require().NoError(s.db.NewSelect().Model(&updatedInst).WherePK().Scan(s.ctx), "Should not return error")
+	s.Require().NoError(s.db.NewSelect().Model(&updatedInst).WherePK().Scan(s.ctx), "TestRejectSuccess should complete without error")
 	s.Assert().Equal(approval.InstanceRejected, updatedInst.Status, "Instance should be rejected")
 
 	// Verify action log
 	var logs []approval.ActionLog
 	s.Require().NoError(s.db.NewSelect().Model(&logs).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", inst.ID) }).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "TestRejectSuccess should complete without error")
 
 	found := false
 	for _, log := range logs {
 		if log.Action == approval.ActionReject {
 			found = true
 
-			s.Assert().Equal("rejector-1", log.OperatorID, "Should match expected value")
+			s.Assert().Equal("rejector-1", log.OperatorID, "TestRejectSuccess should match expected value")
 		}
 	}
 
@@ -102,7 +102,7 @@ func (s *RejectTaskTestSuite) TestRejectTaskNotFound() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestRejectTaskNotFound should return an error")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return expected error")
 }
 
@@ -115,7 +115,7 @@ func (s *RejectTaskTestSuite) TestRejectNotAssignee() {
 		Operator: operator,
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestRejectNotAssignee should return an error")
 	s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should return expected error")
 }
 

@@ -32,7 +32,7 @@ type UrgeTaskTestSuite struct {
 	ctx     context.Context
 	db      orm.DB
 	bus     *eventtest.FakeBus
-	handler *busPublishingHandler[command.UrgeTaskCmd, cqrs.Unit]
+	handler *BusPublishingHandler[command.UrgeTaskCmd, cqrs.Unit]
 	fixture *MinimalFixture
 	nodeID  string
 	instID  string
@@ -50,7 +50,7 @@ func (s *UrgeTaskTestSuite) SetupSuite() {
 		Name:          "Urge Test Node",
 	}
 	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Urge test node should insert successfully")
 	s.nodeID = node.ID
 
 	inst := &approval.Instance{
@@ -63,7 +63,7 @@ func (s *UrgeTaskTestSuite) SetupSuite() {
 		Status:        approval.InstanceRunning,
 	}
 	_, err = s.db.NewInsert().Model(inst).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Urge test instance should insert successfully")
 	s.instID = inst.ID
 }
 
@@ -89,7 +89,7 @@ func (s *UrgeTaskTestSuite) insertTask(assigneeID string) *approval.Task {
 		Status:     approval.TaskPending,
 	}
 	_, err := s.db.NewInsert().Model(task).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Urge test task should insert successfully")
 
 	return task
 }
@@ -109,7 +109,7 @@ func (s *UrgeTaskTestSuite) TestUrgeSuccess() {
 	var records []approval.UrgeRecord
 	s.Require().NoError(s.db.NewSelect().Model(&records).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("task_id", task.ID) }).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "Urge records should load after urging a task")
 	s.Assert().Len(records, 1, "Should create one urge record")
 
 	// Verify event published
@@ -146,7 +146,7 @@ func (s *UrgeTaskTestSuite) TestUrgeTaskNotFound() {
 		UrgerID: "applicant-1",
 		Caller:  approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "Urging a missing task should fail")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return ErrTaskNotFound")
 }
 

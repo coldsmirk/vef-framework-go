@@ -31,8 +31,8 @@ type PublishVersionTestSuite struct {
 	ctx            context.Context
 	db             orm.DB
 	bus            *eventtest.FakeBus
-	publishHandler *busPublishingHandler[command.PublishVersionCmd, cqrs.Unit]
-	deployHandler  *busPublishingHandler[command.DeployFlowCmd, *approval.FlowVersion]
+	publishHandler *BusPublishingHandler[command.PublishVersionCmd, cqrs.Unit]
+	deployHandler  *BusPublishingHandler[command.DeployFlowCmd, *approval.FlowVersion]
 	flowID         string
 }
 

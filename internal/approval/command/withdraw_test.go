@@ -49,7 +49,7 @@ func (s *WithdrawTestSuite) SetupSuite() {
 		Name:          "Withdraw Node",
 	}
 	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Withdraw should complete without error")
 	s.nodeID = node.ID
 }
 
@@ -73,7 +73,7 @@ func (s *WithdrawTestSuite) insertInstance(applicantID string, status approval.I
 		Status:        status,
 	}
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Withdraw should complete without error")
 
 	return inst
 }
@@ -88,7 +88,7 @@ func (s *WithdrawTestSuite) insertTask(instanceID string, status approval.TaskSt
 		Status:     status,
 	}
 	_, err := s.db.NewInsert().Model(task).Exec(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Withdraw should complete without error")
 }
 
 func (s *WithdrawTestSuite) TestWithdrawSuccess() {
@@ -107,14 +107,14 @@ func (s *WithdrawTestSuite) TestWithdrawSuccess() {
 	var updated approval.Instance
 
 	updated.ID = inst.ID
-	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "Should not return error")
+	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "TestWithdrawSuccess should complete without error")
 	s.Assert().Equal(approval.InstanceWithdrawn, updated.Status, "Should set status to withdrawn")
 
 	// Verify tasks canceled
 	var tasks []approval.Task
 	s.Require().NoError(s.db.NewSelect().Model(&tasks).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", inst.ID) }).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "TestWithdrawSuccess should complete without error")
 
 	for _, t := range tasks {
 		s.Assert().Equal(approval.TaskCanceled, t.Status, "All tasks should be canceled")
@@ -124,7 +124,7 @@ func (s *WithdrawTestSuite) TestWithdrawSuccess() {
 	var logs []approval.ActionLog
 	s.Require().NoError(s.db.NewSelect().Model(&logs).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", inst.ID) }).
-		Scan(s.ctx), "Should not return error")
+		Scan(s.ctx), "TestWithdrawSuccess should complete without error")
 	s.Assert().Len(logs, 1, "Should insert one action log")
 	s.Assert().Equal(approval.ActionWithdraw, logs[0].Action, "Action should be withdraw")
 }
@@ -138,7 +138,7 @@ func (s *WithdrawTestSuite) TestWithdrawNotApplicant() {
 		Operator:   operator,
 		Caller:     approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestWithdrawNotApplicant should return an error")
 	s.Assert().ErrorIs(err, shared.ErrNotApplicant, "Should return ErrNotApplicant")
 }
 
@@ -151,7 +151,7 @@ func (s *WithdrawTestSuite) TestWithdrawNotAllowed() {
 		Operator:   operator,
 		Caller:     approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestWithdrawNotAllowed should return an error")
 	s.Assert().ErrorIs(err, shared.ErrWithdrawNotAllowed, "Should not allow withdrawal of approved instance")
 }
 
@@ -162,7 +162,7 @@ func (s *WithdrawTestSuite) TestWithdrawInstanceNotFound() {
 		Operator:   operator,
 		Caller:     approval.SystemCaller,
 	})
-	s.Require().Error(err, "Should return error")
+	s.Require().Error(err, "TestWithdrawInstanceNotFound should return an error")
 	s.Assert().ErrorIs(err, shared.ErrInstanceNotFound, "Should return ErrInstanceNotFound")
 }
 
@@ -224,8 +224,8 @@ func (s *WithdrawTestSuite) TestWithdrawShouldBeConcurrencySafe() {
 		}
 	}
 
-	s.Assert().Equal(1, successCount, "Concurrent withdraw should allow only one successful operation")
-	s.Assert().Equal(1, notAllowedCount, "Concurrent withdraw should reject stale operation by withdraw state transition")
+	s.Assert().Equal(1, successCount, "Concurrent Withdraw should allow only one successful operation")
+	s.Assert().Equal(1, notAllowedCount, "Concurrent Withdraw should reject stale operation by withdraw state transition")
 
 	var actionLogs []approval.ActionLog
 	s.Require().NoError(
@@ -238,5 +238,5 @@ func (s *WithdrawTestSuite) TestWithdrawShouldBeConcurrencySafe() {
 			Scan(s.ctx),
 		"Should query withdraw action logs",
 	)
-	s.Assert().Len(actionLogs, 1, "Concurrent withdraw should insert only one withdraw action log")
+	s.Assert().Len(actionLogs, 1, "Concurrent Withdraw should insert only one withdraw action log")
 }

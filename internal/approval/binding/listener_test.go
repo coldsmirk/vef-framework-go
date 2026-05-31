@@ -12,12 +12,12 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 )
 
-// spyBus captures the most recent Subscribe arguments so tests can verify
+// SpyBus captures the most recent Subscribe arguments so tests can verify
 // the listener supplies a stable consumer group via WithGroup. It is
 // intentionally minimal: only Subscribe is exercised, and Publish /
 // PublishBatch return nil without recording so the listener's failure
 // branch can run without a real bus.
-type spyBus struct {
+type SpyBus struct {
 	subscribeCalls int
 	capturedType   string
 	capturedGroup  string
@@ -25,7 +25,7 @@ type spyBus struct {
 	publishCalls   []event.PublishConfig
 }
 
-func (b *spyBus) Subscribe(eventType string, _ event.Handler, opts ...event.SubscribeOption) (event.Unsubscribe, error) {
+func (b *SpyBus) Subscribe(eventType string, _ event.Handler, opts ...event.SubscribeOption) (event.Unsubscribe, error) {
 	cfg := event.ApplySubscribeOptions(opts)
 	b.subscribeCalls++
 	b.capturedType = eventType
@@ -34,7 +34,7 @@ func (b *spyBus) Subscribe(eventType string, _ event.Handler, opts ...event.Subs
 	return func() {}, nil
 }
 
-func (b *spyBus) Publish(_ context.Context, _ event.Event, opts ...event.PublishOption) error {
+func (b *SpyBus) Publish(_ context.Context, _ event.Event, opts ...event.PublishOption) error {
 	b.publishCalls = append(b.publishCalls, event.ApplyPublishOptions(opts))
 	if len(b.publishErrs) == 0 {
 		return nil
@@ -46,12 +46,12 @@ func (b *spyBus) Publish(_ context.Context, _ event.Event, opts ...event.Publish
 	return err
 }
 
-func (*spyBus) PublishBatch(context.Context, []event.Event, ...event.PublishOption) error {
+func (*SpyBus) PublishBatch(context.Context, []event.Event, ...event.PublishOption) error {
 	return nil
 }
 
 func TestListenerStartSubscribesWithStableGroup(t *testing.T) {
-	bus := &spyBus{}
+	bus := &SpyBus{}
 	listener := NewListener(nil, bus, nil)
 
 	require.NoError(t, listener.Start(), "Start should not return an error")
@@ -66,7 +66,7 @@ func TestListenerStartSubscribesWithStableGroup(t *testing.T) {
 
 func TestListenerPublishFailure(t *testing.T) {
 	t.Run("UsesTxWhenDatabaseAvailable", func(t *testing.T) {
-		bus := &spyBus{}
+		bus := &SpyBus{}
 		listener := NewListener(testx.NewTestDB(t), bus, nil)
 
 		err := listener.publishFailure(t.Context(), approval.NewInstanceBindingFailedEvent(
@@ -78,7 +78,7 @@ func TestListenerPublishFailure(t *testing.T) {
 	})
 
 	t.Run("FallsBackWhenNoTransactionalRoute", func(t *testing.T) {
-		bus := &spyBus{publishErrs: []error{event.ErrTxRequired}}
+		bus := &SpyBus{publishErrs: []error{event.ErrTxRequired}}
 		listener := NewListener(testx.NewTestDB(t), bus, nil)
 
 		err := listener.publishFailure(t.Context(), approval.NewInstanceBindingFailedEvent(
@@ -91,7 +91,7 @@ func TestListenerPublishFailure(t *testing.T) {
 	})
 
 	t.Run("PublishesDirectlyWithoutDatabase", func(t *testing.T) {
-		bus := &spyBus{}
+		bus := &SpyBus{}
 		listener := NewListener(nil, bus, nil)
 
 		err := listener.publishFailure(t.Context(), approval.NewInstanceBindingFailedEvent(

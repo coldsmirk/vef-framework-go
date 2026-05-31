@@ -26,7 +26,7 @@ func (s *InstanceResourceTestSuite) adminRPCCall(action string, params map[strin
 		Identifier: api.Identifier{Resource: "approval/admin", Action: action, Version: "v1"},
 		Params:     params,
 	}, t)
-	s.Require().Equal(http.StatusOK, resp.StatusCode, "Should match expected value")
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "Admin RPC call should return HTTP 200")
 
 	return s.ReadResult(resp)
 }
@@ -119,7 +119,7 @@ func (s *InstanceResourceTestSuite) createAndPublishFlow(code, name string, def 
 			"instanceTitleTemplate":  name + " {{.instanceNo}}",
 		},
 	}, s.token)
-	s.Require().Equal(http.StatusOK, resp.StatusCode, "Should match expected value")
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "Create flow RPC should return HTTP 200")
 	res := s.ReadResult(resp)
 	s.Require().True(res.IsOk(), "Should create flow: "+code)
 	flowData := s.ReadDataAsMap(res.Data)
@@ -133,7 +133,7 @@ func (s *InstanceResourceTestSuite) createAndPublishFlow(code, name string, def 
 			"flowDefinition": toMap(def),
 		},
 	}, s.token)
-	s.Require().Equal(http.StatusOK, resp.StatusCode, "Should match expected value")
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "Deploy flow RPC should return HTTP 200")
 	res = s.ReadResult(resp)
 	s.Require().True(res.IsOk(), "Should deploy flow: "+code)
 	versionData := s.ReadDataAsMap(res.Data)
@@ -144,7 +144,7 @@ func (s *InstanceResourceTestSuite) createAndPublishFlow(code, name string, def 
 		Identifier: api.Identifier{Resource: "approval/flow", Action: "publish_version", Version: "v1"},
 		Params:     map[string]any{"versionId": versionID},
 	}, s.token)
-	s.Require().Equal(http.StatusOK, resp.StatusCode, "Should match expected value")
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "Publish flow RPC should return HTTP 200")
 	res = s.ReadResult(resp)
 	s.Require().True(res.IsOk(), "Should publish flow: "+code)
 
@@ -163,7 +163,7 @@ func (s *InstanceResourceTestSuite) rpcCall(action string, params map[string]any
 		Identifier: api.Identifier{Resource: "approval/instance", Action: action, Version: "v1"},
 		Params:     params,
 	}, t)
-	s.Require().Equal(http.StatusOK, resp.StatusCode, "Should match expected value")
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "Instance RPC call should return HTTP 200")
 
 	return s.ReadResult(resp)
 }
@@ -189,7 +189,7 @@ func (s *InstanceResourceTestSuite) findPendingTasks(instanceID string) []map[st
 		"page":       1,
 		"pageSize":   50,
 	})
-	s.Require().True(res.IsOk(), "Should find tasks")
+	s.Require().True(res.IsOk(), "Pending task lookup should succeed")
 
 	data := s.ReadDataAsMap(res.Data)
 
@@ -232,7 +232,7 @@ func (s *InstanceResourceTestSuite) loadInstance(instanceID string) approval.Ins
 	var instance approval.Instance
 
 	instance.ID = instanceID
-	s.Require().NoError(s.db.NewSelect().Model(&instance).WherePK().Scan(s.ctx), "Should not return error")
+	s.Require().NoError(s.db.NewSelect().Model(&instance).WherePK().Scan(s.ctx), "Instance row should load by primary key")
 
 	return instance
 }
@@ -242,7 +242,7 @@ func (s *InstanceResourceTestSuite) loadTask(taskID string) approval.Task {
 	var task approval.Task
 
 	task.ID = taskID
-	s.Require().NoError(s.db.NewSelect().Model(&task).WherePK().Scan(s.ctx), "Should not return error")
+	s.Require().NoError(s.db.NewSelect().Model(&task).WherePK().Scan(s.ctx), "Task row should load by primary key")
 
 	return task
 }
@@ -258,52 +258,48 @@ func (s *InstanceResourceTestSuite) findNodeIDByKind(flowVersionID string, kind 
 				cb.Equals("kind", kind)
 			}).
 			Limit(1).
-			Scan(s.ctx), "Should not return error",
+			Scan(s.ctx), "Flow node should load by kind",
 	)
 
 	return node.ID
 }
 
-// --- Test methods ---
+func (s *InstanceResourceTestSuite) TestStartSimpleFlowAutoComplete() {
+	data := s.startInstance(s.simple.FlowCode, nil)
+	instanceID := data["id"].(string)
+	s.Require().NotEmpty(instanceID, "Start response should include an instance ID for simple flow")
 
-func (s *InstanceResourceTestSuite) TestStart() {
-	s.Run("SimpleFlowAutoComplete", func() {
-		data := s.startInstance(s.simple.FlowCode, nil)
-		instanceID := data["id"].(string)
-		s.Assert().NotEmpty(instanceID, "Should not be empty")
+	instance := s.loadInstance(instanceID)
+	s.Assert().Equal(approval.InstanceApproved, instance.Status, "Simple flow should auto-complete")
+}
 
-		instance := s.loadInstance(instanceID)
-		s.Assert().Equal(approval.InstanceApproved, instance.Status, "Simple flow should auto-complete")
+func (s *InstanceResourceTestSuite) TestStartApprovalFlowRunning() {
+	data := s.startInstance(s.approval.FlowCode, nil)
+	instanceID := data["id"].(string)
+
+	instance := s.loadInstance(instanceID)
+	s.Assert().Equal(approval.InstanceRunning, instance.Status, "Approval flow should be running")
+
+	tasks := s.findPendingTasks(instanceID)
+	s.Assert().NotEmpty(tasks, "Approval flow should create pending tasks")
+}
+
+func (s *InstanceResourceTestSuite) TestStartFlowNotFound() {
+	res := s.rpcCall("start", map[string]any{
+		"tenantId": "default",
+		"flowCode": "non-existent-flow",
 	})
+	s.Assert().False(res.IsOk(), "Starting a non-existent flow should fail")
+}
 
-	s.Run("ApprovalFlowRunning", func() {
-		data := s.startInstance(s.approval.FlowCode, nil)
-		instanceID := data["id"].(string)
+func (s *InstanceResourceTestSuite) TestStartWithFormData() {
+	formData := map[string]any{"title": "Test Request", "amount": 100}
+	data := s.startInstance(s.approval.FlowCode, formData)
+	instanceID := data["id"].(string)
 
-		instance := s.loadInstance(instanceID)
-		s.Assert().Equal(approval.InstanceRunning, instance.Status, "Approval flow should be running")
-
-		tasks := s.findPendingTasks(instanceID)
-		s.Assert().NotEmpty(tasks, "Should have pending tasks")
-	})
-
-	s.Run("FlowNotFound", func() {
-		res := s.rpcCall("start", map[string]any{
-			"tenantId": "default",
-			"flowCode": "non-existent-flow",
-		})
-		s.Assert().False(res.IsOk(), "Should fail for non-existent flow")
-	})
-
-	s.Run("WithFormData", func() {
-		formData := map[string]any{"title": "Test Request", "amount": 100}
-		data := s.startInstance(s.approval.FlowCode, formData)
-		instanceID := data["id"].(string)
-
-		instance := s.loadInstance(instanceID)
-		s.Assert().Equal(approval.InstanceRunning, instance.Status, "Should match expected value")
-		s.Assert().NotNil(instance.FormData, "Form data should be stored")
-	})
+	instance := s.loadInstance(instanceID)
+	s.Assert().Equal(approval.InstanceRunning, instance.Status, "Approval flow should keep running after start with form data")
+	s.Assert().NotNil(instance.FormData, "Start should persist submitted form data")
 }
 
 func (s *InstanceResourceTestSuite) TestProcessTask() {
@@ -330,7 +326,7 @@ func (s *InstanceResourceTestSuite) TestProcessTask() {
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
-		s.Require().NotEmpty(tasks, "Should not be empty")
+		s.Require().NotEmpty(tasks, "Reject test should start with a pending task")
 
 		res := s.processTask(tasks[0]["id"].(string), "reject", "Rejected")
 		s.Assert().True(res.IsOk(), "Should reject task")
@@ -344,7 +340,7 @@ func (s *InstanceResourceTestSuite) TestProcessTask() {
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
-		s.Require().NotEmpty(tasks, "Should not be empty")
+		s.Require().NotEmpty(tasks, "Transfer test should start with a pending task")
 		originalTaskID := tasks[0]["id"].(string)
 
 		res := s.rpcCall("process_task", map[string]any{
@@ -406,7 +402,7 @@ func (s *InstanceResourceTestSuite) TestProcessTask() {
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
-		s.Require().NotEmpty(tasks, "Should not be empty")
+		s.Require().NotEmpty(tasks, "Parallel flow should create pending tasks")
 
 		// Find test-admin's task
 		var taskID string
@@ -418,11 +414,11 @@ func (s *InstanceResourceTestSuite) TestProcessTask() {
 			}
 		}
 
-		s.Require().NotEmpty(taskID, "Should not be empty")
+		s.Require().NotEmpty(taskID, "Parallel flow should include a test-admin task")
 
 		// Approve first
 		res := s.processTask(taskID, "approve", "OK")
-		s.Require().True(res.IsOk(), "Condition should be true")
+		s.Require().True(res.IsOk(), "Initial approval should succeed before duplicate processing")
 
 		// Try to approve again — task is no longer pending
 		res = s.processTask(taskID, "approve", "OK again")
@@ -434,7 +430,7 @@ func (s *InstanceResourceTestSuite) TestProcessTask() {
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
-		s.Require().NotEmpty(tasks, "Should not be empty")
+		s.Require().NotEmpty(tasks, "Approval flow should create a pending task for assignee authorization")
 
 		// Try with other-user who is not the assignee
 		res := s.processTask(tasks[0]["id"].(string), "approve", "Trying", s.otherUserToken)
@@ -446,7 +442,7 @@ func (s *InstanceResourceTestSuite) TestProcessTask() {
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
-		s.Require().NotEmpty(tasks, "Should not be empty")
+		s.Require().NotEmpty(tasks, "Approval flow should create a pending task for opinion validation")
 
 		// Submit with empty opinion (approval flow requires opinion)
 		res := s.processTask(tasks[0]["id"].(string), "approve", "")
@@ -460,7 +456,7 @@ func (s *InstanceResourceTestSuite) TestRollback() {
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
-		s.Require().NotEmpty(tasks, "Should not be empty")
+		s.Require().NotEmpty(tasks, "Approval flow should create a rollback source task")
 		taskID := tasks[0]["id"].(string)
 
 		// Get the flow version ID and find start node ID for rollback target
@@ -491,7 +487,7 @@ func (s *InstanceResourceTestSuite) TestRollback() {
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
-		s.Require().NotEmpty(tasks, "Should not be empty")
+		s.Require().NotEmpty(tasks, "Handle branch should create a task for rollback rejection")
 
 		instance := s.loadInstance(instanceID)
 		startNodeID := s.findNodeIDByKind(instance.FlowVersionID, approval.NodeStart)
@@ -510,7 +506,7 @@ func (s *InstanceResourceTestSuite) TestRollback() {
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
-		s.Require().NotEmpty(tasks, "Should not be empty")
+		s.Require().NotEmpty(tasks, "Approval flow should create a task for invalid rollback target")
 
 		instance := s.loadInstance(instanceID)
 		endNodeID := s.findNodeIDByKind(instance.FlowVersionID, approval.NodeEnd)
@@ -565,7 +561,7 @@ func (s *InstanceResourceTestSuite) TestWithdraw() {
 			"instanceId": instanceID,
 			"reason":     "First withdraw",
 		})
-		s.Require().True(res.IsOk(), "Condition should be true")
+		s.Require().True(res.IsOk(), "Initial Withdraw should succeed before duplicate withdraw")
 
 		// Try again
 		res = s.rpcCall("withdraw", map[string]any{
@@ -597,7 +593,7 @@ func (s *InstanceResourceTestSuite) TestResubmit() {
 			"instanceId": instanceID,
 			"reason":     "Need to revise",
 		})
-		s.Require().True(res.IsOk(), "Condition should be true")
+		s.Require().True(res.IsOk(), "Withdraw should succeed before resubmit")
 
 		// Resubmit
 		res = s.rpcCall("resubmit", map[string]any{
@@ -617,7 +613,7 @@ func (s *InstanceResourceTestSuite) TestResubmit() {
 			}
 
 			approveRes := s.processTask(tasks[0]["id"].(string), "approve", "Approved after resubmit")
-			s.Assert().True(approveRes.IsOk(), "Condition should be true")
+			s.Assert().True(approveRes.IsOk(), "Approval after resubmit should succeed")
 		}
 
 		instance = s.loadInstance(instanceID)
@@ -643,7 +639,7 @@ func (s *InstanceResourceTestSuite) TestAddAssignee() {
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
-		s.Require().NotEmpty(tasks, "Should not be empty")
+		s.Require().NotEmpty(tasks, "Approval flow should create a task before adding an assignee")
 		originalTaskID := tasks[0]["id"].(string)
 
 		res := s.rpcCall("add_assignee", map[string]any{
@@ -667,7 +663,7 @@ func (s *InstanceResourceTestSuite) TestAddAssignee() {
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
-		s.Require().NotEmpty(tasks, "Should not be empty")
+		s.Require().NotEmpty(tasks, "Approval flow should create a task before add-after")
 		originalTaskID := tasks[0]["id"].(string)
 
 		res := s.rpcCall("add_assignee", map[string]any{
@@ -689,7 +685,7 @@ func (s *InstanceResourceTestSuite) TestAddAssignee() {
 					cb.Equals("instance_id", instanceID)
 					cb.Equals("status", approval.TaskWaiting)
 				}).
-				Scan(s.ctx), "Should not return error",
+				Scan(s.ctx), "Waiting tasks should load after add-after",
 		)
 		s.Assert().NotEmpty(waitingTasks, "Should have waiting task for after-added assignee")
 	})
@@ -699,7 +695,7 @@ func (s *InstanceResourceTestSuite) TestAddAssignee() {
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
-		s.Require().NotEmpty(tasks, "Should not be empty")
+		s.Require().NotEmpty(tasks, "Approval flow should create a task before add-parallel")
 		originalTaskID := tasks[0]["id"].(string)
 
 		res := s.rpcCall("add_assignee", map[string]any{
@@ -724,7 +720,7 @@ func (s *InstanceResourceTestSuite) TestAddAssignee() {
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
-		s.Require().NotEmpty(tasks, "Should not be empty")
+		s.Require().NotEmpty(tasks, "Handle branch should create a task for add-assignee rejection")
 
 		res := s.rpcCall("add_assignee", map[string]any{
 			"taskId":  tasks[0]["id"].(string),
@@ -741,7 +737,7 @@ func (s *InstanceResourceTestSuite) TestRemoveAssignee() {
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
-		s.Require().NotEmpty(tasks, "Should not be empty")
+		s.Require().NotEmpty(tasks, "Approval flow should create a task before removing an assignee")
 		originalTaskID := tasks[0]["id"].(string)
 
 		// First add a parallel assignee so the node has 2+ tasks
@@ -783,7 +779,7 @@ func (s *InstanceResourceTestSuite) TestRemoveAssignee() {
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
-		s.Require().NotEmpty(tasks, "Should not be empty")
+		s.Require().NotEmpty(tasks, "Handle branch should create a task for remove-assignee rejection")
 
 		res := s.rpcCall("remove_assignee", map[string]any{
 			"taskId": tasks[0]["id"].(string),
@@ -805,7 +801,7 @@ func (s *InstanceResourceTestSuite) TestCC() {
 
 		count, err := s.db.NewSelect().Model((*approval.CCRecord)(nil)).
 			Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instanceID) }).Count(s.ctx)
-		s.Require().NoError(err, "Should not return error")
+		s.Require().NoError(err, "CC record count should query successfully")
 		s.Assert().GreaterOrEqual(count, int64(2), "Should have CC records")
 	})
 
@@ -818,7 +814,7 @@ func (s *InstanceResourceTestSuite) TestCC() {
 			"instanceId": instanceID,
 			"ccUserIds":  []string{"test-admin"},
 		})
-		s.Require().True(addRes.IsOk(), "Condition should be true")
+		s.Require().True(addRes.IsOk(), "Manual CC creation should succeed before marking read")
 
 		// Mark as read
 		res := s.rpcCall("mark_cc_read", map[string]any{
@@ -855,7 +851,7 @@ func (s *InstanceResourceTestSuite) TestUrgeTask() {
 
 	count, err := s.db.NewSelect().Model((*approval.UrgeRecord)(nil)).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("task_id", taskID) }).Count(s.ctx)
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Urge record count should query successfully")
 	s.Assert().Equal(int64(1), count, "Should have one urge record")
 }
 
@@ -969,7 +965,7 @@ func (s *InstanceResourceTestSuite) TestParallelApproval() {
 		instanceID := data["id"].(string)
 
 		instance := s.loadInstance(instanceID)
-		s.Assert().Equal(approval.InstanceRunning, instance.Status, "Should match expected value")
+		s.Assert().Equal(approval.InstanceRunning, instance.Status, "Parallel approval flow should start running")
 
 		// Should have 2 pending tasks (test-admin + approver-2)
 		tasks := s.findPendingTasks(instanceID)
@@ -988,7 +984,7 @@ func (s *InstanceResourceTestSuite) TestParallelApproval() {
 		s.Require().NotEmpty(testAdminTaskID, "Should find test-admin task")
 
 		res := s.processTask(testAdminTaskID, "approve", "Admin approved")
-		s.Assert().True(res.IsOk(), "Condition should be true")
+		s.Assert().True(res.IsOk(), "Test-admin approval should succeed")
 
 		// Instance should still be running (waiting for approver-2)
 		instance = s.loadInstance(instanceID)
@@ -1007,7 +1003,7 @@ func (s *InstanceResourceTestSuite) TestParallelApproval() {
 		s.Require().NotEmpty(approver2TaskID, "Should find approver-2 task")
 
 		res = s.processTask(approver2TaskID, "approve", "Approver 2 approved", s.approver2Token)
-		s.Assert().True(res.IsOk(), "Condition should be true")
+		s.Assert().True(res.IsOk(), "Approver-2 approval should succeed")
 
 		// Instance should be approved
 		instance = s.loadInstance(instanceID)
@@ -1031,10 +1027,10 @@ func (s *InstanceResourceTestSuite) TestParallelApproval() {
 			}
 		}
 
-		s.Require().NotEmpty(testAdminTaskID, "Should not be empty")
+		s.Require().NotEmpty(testAdminTaskID, "Parallel flow should include a test-admin task")
 
 		res := s.processTask(testAdminTaskID, "reject", "Rejected by admin")
-		s.Assert().True(res.IsOk(), "Condition should be true")
+		s.Assert().True(res.IsOk(), "Test-admin rejection should succeed")
 
 		// Instance should be rejected immediately (PassAll rule: any rejection terminates)
 		instance := s.loadInstance(instanceID)
