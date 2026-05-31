@@ -2,6 +2,7 @@ package datasource
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -11,6 +12,20 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/datasource"
 )
+
+type TestProvider struct {
+	name  string
+	specs []datasource.Spec
+	err   error
+}
+
+func (p TestProvider) Name() string {
+	return p.name
+}
+
+func (p TestProvider) Load(context.Context) ([]datasource.Spec, error) {
+	return p.specs, p.err
+}
 
 // TestProvideRegistryClosesPrimaryOnSeedFailure pins the lifecycle contract that
 // a mid-start failure (here, a static source with an unsupported dialect) still
@@ -71,4 +86,74 @@ func TestProvideRegistryDefersPrimaryPingToStart(t *testing.T) {
 		"Start should fail when the unreachable primary is pinged in the OnStart hook")
 
 	require.NoError(t, lc.Stop(ctx), "Stop should drain cleanly")
+}
+
+func TestRunProviders(t *testing.T) {
+	ctx := context.Background()
+	loadErr := errors.New("tenant catalog failed")
+
+	tests := []struct {
+		name      string
+		provider  datasource.Provider
+		assertion func(t *testing.T, r *registry, err error)
+	}{
+		{
+			name: "Load error",
+			provider: TestProvider{
+				name: "tenant-catalog",
+				err:  loadErr,
+			},
+			assertion: func(t *testing.T, _ *registry, err error) {
+				require.ErrorIs(t, err, loadErr, "Provider load failure should wrap the provider error")
+				require.Contains(t, err.Error(), `data source provider "tenant-catalog"`,
+					"Provider load failure should identify the provider name")
+			},
+		},
+		{
+			name: "Register specs",
+			provider: TestProvider{
+				name: "tenant-catalog",
+				specs: []datasource.Spec{
+					{Name: "tenant", Config: newSQLiteCfg(t, "provider-tenant")},
+					{Name: "analytics", Config: newSQLiteCfg(t, "provider-analytics")},
+				},
+			},
+			assertion: func(t *testing.T, r *registry, err error) {
+				require.NoError(t, err, "Provider specs should register without error")
+				require.True(t, r.Has("tenant"), "Provider spec should register the tenant data source")
+				require.True(t, r.Has("analytics"), "Provider spec should register the analytics data source")
+
+				tenantKind, err := r.Kind("tenant")
+				require.NoError(t, err, "Provider tenant source kind lookup should succeed")
+				require.Equal(t, config.SQLite, tenantKind, "Provider tenant source should preserve the configured kind")
+			},
+		},
+		{
+			name: "Register duplicate spec name",
+			provider: TestProvider{
+				name: "tenant-catalog",
+				specs: []datasource.Spec{
+					{Name: "duplicate", Config: newSQLiteCfg(t, "provider-duplicate-first")},
+					{Name: "duplicate", Config: newSQLiteCfg(t, "provider-duplicate-second")},
+					{Name: "after-conflict", Config: newSQLiteCfg(t, "provider-after-conflict")},
+				},
+			},
+			assertion: func(t *testing.T, r *registry, err error) {
+				require.ErrorIs(t, err, datasource.ErrExists, "Duplicate provider spec should propagate the registry conflict")
+				require.Contains(t, err.Error(), `register tenant-catalog data source "duplicate"`,
+					"Duplicate provider spec error should identify the provider source")
+				require.True(t, r.Has("duplicate"), "First duplicate provider spec should remain registered before the conflict")
+				require.False(t, r.Has("after-conflict"), "Provider specs after a conflict should not be registered")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newTestRegistry(t)
+
+			err := runProviders(ctx, r, []datasource.Provider{tt.provider})
+			tt.assertion(t, r, err)
+		})
+	}
 }

@@ -44,8 +44,8 @@ func TestRegistryTestConnection(t *testing.T) {
 
 	t.Run("Success", func(t *testing.T) {
 		info, err := r.TestConnection(ctx, newSQLiteCfg(t, "probe"))
-		require.NoError(t, err, "probing a reachable sqlite source should succeed")
-		require.NotEmpty(t, info.Version, "a successful probe should report the server version")
+		require.NoError(t, err, "Reachable SQLite source probe should succeed")
+		require.NotEmpty(t, info.Version, "Successful probe should report the server version")
 
 		require.Equal(t, []string{datasource.PrimaryName}, r.Names(),
 			"TestConnection must not register the probed source")
@@ -53,8 +53,8 @@ func TestRegistryTestConnection(t *testing.T) {
 
 	t.Run("UnsupportedKind", func(t *testing.T) {
 		info, err := r.TestConnection(ctx, config.DataSourceConfig{Kind: "no-such-dialect"})
-		require.Error(t, err, "an unsupported dialect should fail the probe")
-		require.Empty(t, info.Version, "a failed probe returns a zero ConnectionInfo")
+		require.Error(t, err, "Unsupported dialect should fail the probe")
+		require.Empty(t, info.Version, "Failed probe should return a zero ConnectionInfo")
 	})
 
 	t.Run("Unreachable", func(t *testing.T) {
@@ -64,11 +64,11 @@ func TestRegistryTestConnection(t *testing.T) {
 		}
 
 		info, err := r.TestConnection(ctx, cfg)
-		require.Error(t, err, "a source that cannot be opened or queried should fail the probe")
-		require.Empty(t, info.Version, "a failed probe returns a zero ConnectionInfo")
+		require.Error(t, err, "Unreachable source should fail the probe")
+		require.Empty(t, info.Version, "Failed probe should return a zero ConnectionInfo")
 
 		require.Equal(t, []string{datasource.PrimaryName}, r.Names(),
-			"a failed TestConnection must not leak a registry entry")
+			"Failed TestConnection should not leak a registry entry")
 	})
 
 	t.Run("RespectsCallerCancellation", func(t *testing.T) {
@@ -76,7 +76,7 @@ func TestRegistryTestConnection(t *testing.T) {
 		cancel() // the internal default timeout must not swallow the caller's cancel
 
 		_, err := r.TestConnection(canceled, newSQLiteCfg(t, "canceled"))
-		require.Error(t, err, "a canceled caller context must abort the probe")
+		require.Error(t, err, "Canceled caller context should abort the probe")
 	})
 }
 
