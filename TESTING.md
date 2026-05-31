@@ -96,18 +96,18 @@ func TestFeature(t *testing.T) {
 
 Suite 测试中**必须使用实例方法**，不要导入独立的 `assert`/`require` 包：
 
-- 前置条件：`s.Require().NoError(err, "msg")`、`s.Require().NotNil(result, "msg")`
-- 验证断言：`s.Equal(expected, actual, "msg")`、`s.NotEmpty(value, "msg")`
+- 前置条件：`s.Require().NoError(err, "Operation should succeed")`、`s.Require().NotNil(result, "Result should exist")`
+- 验证断言：`s.Equal(expected, actual, "Status should match expected value")`、`s.NotEmpty(value, "Name should not be empty")`
 
 禁止使用 `require.NoError(s.T(), ...)` 或 `assert.Equal(s.T(), ...)` 形式。
 
 ### Simple Tests — Standalone Functions
 
-非 Suite 测试使用独立的 `require`/`assert` 包：`require.NoError(t, err, "msg")`、`assert.Equal(t, expected, actual, "msg")`。
+非 Suite 测试使用独立的 `require`/`assert` 包：`require.NoError(t, err, "Operation should succeed")`、`assert.Equal(t, expected, actual, "Status should match expected value")`。
 
 ### Message Rules
 
-**Every assertion must have a descriptive message** — describe what _should_ happen, not what failed.
+**Every assertion must have a descriptive English message** — start with an uppercase letter and describe what _should_ happen, not what failed or a generic placeholder.
 
 ```go
 // Good
