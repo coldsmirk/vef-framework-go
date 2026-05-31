@@ -16,26 +16,16 @@ import (
 
 var logger = logx.Named("datasource")
 
-// RegistryModule constructs the data source Registry from configuration, seeds
-// the non-primary static (TOML) and provider-supplied sources during startup,
-// and exposes the primary connection's raw *sql.DB (consumed by the schema
-// reflection service). It is the production provider of datasource.Registry;
-// test harnesses that want to share an existing connection supply their own via
-// NewFromDB instead. The agnostic Module then derives the primary orm.DB from
-// whichever Registry is in the container.
-var RegistryModule = fx.Module(
-	"vef:datasource:registry",
-	fx.Provide(provideRegistry),
-)
-
-// Module derives the primary orm.DB from whichever datasource.Registry is in the
-// container. Most callers inject orm.DB directly and get the primary source;
-// cross-source access goes through datasource.Registry. Keeping it separate from
-// RegistryModule lets test harnesses supply their own Registry and still reuse
-// this derivation.
+// Module constructs the data source Registry from configuration, seeds the
+// non-primary static (TOML) and provider-supplied sources during startup,
+// exposes the primary connection's raw *sql.DB (consumed by the schema
+// reflection service), and derives the primary orm.DB for common callers.
 var Module = fx.Module(
 	"vef:datasource",
-	fx.Provide(providePrimary),
+	fx.Provide(
+		provideRegistry,
+		providePrimary,
+	),
 )
 
 func providePrimary(r datasource.Registry) orm.DB {
@@ -45,8 +35,8 @@ func providePrimary(r datasource.Registry) orm.DB {
 type registryOut struct {
 	fx.Out
 
-	Sources datasource.Registry
-	RawDB   *sql.DB
+	Registry datasource.Registry
+	RawDB    *sql.DB
 }
 
 // ProviderParams collects every datasource.Provider declared through
@@ -77,7 +67,7 @@ type ProviderParams struct {
 // always counts as started and its OnStop is guaranteed once Start reaches it,
 // regardless of which later step fails.
 func provideRegistry(lc fx.Lifecycle, cfg *config.DataSourcesConfig, p ProviderParams) (registryOut, error) {
-	r, err := newRegistry(cfg.Primary(), logger)
+	reg, err := newRegistry(cfg.Primary(), logger)
 	if err != nil {
 		return registryOut{}, err
 	}
@@ -88,39 +78,39 @@ func provideRegistry(lc fx.Lifecycle, cfg *config.DataSourcesConfig, p ProviderP
 		OnStop: func(ctx context.Context) error {
 			logger.Info("Closing data source registry...")
 
-			return r.Shutdown(ctx)
+			return reg.Shutdown(ctx)
 		},
 	})
 
 	lc.Append(fx.StartHook(func(ctx context.Context) error {
-		if err := r.PrimaryRawDB().PingContext(ctx); err != nil {
+		if err := reg.PrimaryRawDB().PingContext(ctx); err != nil {
 			return fmt.Errorf("ping primary data source: %w", err)
 		}
 
-		if err := database.LogVersion(ctx, primaryKind, r.PrimaryRawDB(), logger); err != nil {
+		if err := database.LogVersion(ctx, primaryKind, reg.PrimaryRawDB(), logger); err != nil {
 			return err
 		}
 
-		if err := seedStatic(ctx, r, cfg); err != nil {
+		if err := seedStatic(ctx, reg, cfg); err != nil {
 			return err
 		}
 
-		return runProviders(ctx, r, p.Providers)
+		return runProviders(ctx, reg, p.Providers)
 	}))
 
-	return registryOut{Sources: r, RawDB: r.PrimaryRawDB()}, nil
+	return registryOut{Registry: reg, RawDB: reg.PrimaryRawDB()}, nil
 }
 
 // seedStatic registers every TOML-declared data source besides primary. It runs
 // during OnStart so the Register Ping benefits from the start context and a
 // misconfigured source fails the boot rather than the provide phase.
-func seedStatic(ctx context.Context, r *registry, cfg *config.DataSourcesConfig) error {
+func seedStatic(ctx context.Context, reg *registry, cfg *config.DataSourcesConfig) error {
 	for name, dsCfg := range cfg.Map {
 		if name == datasource.PrimaryName {
 			continue
 		}
 
-		if err := registerSource(ctx, r, name, dsCfg, "static"); err != nil {
+		if err := registerSource(ctx, reg, name, dsCfg, "static"); err != nil {
 			return err
 		}
 	}
@@ -131,7 +121,7 @@ func seedStatic(ctx context.Context, r *registry, cfg *config.DataSourcesConfig)
 // runProviders calls Load on every registered Provider and registers the
 // returned specs. Provider order is undefined; a name collision (with TOML or
 // another provider) fails boot.
-func runProviders(ctx context.Context, r *registry, providers []datasource.Provider) error {
+func runProviders(ctx context.Context, reg *registry, providers []datasource.Provider) error {
 	for _, provider := range providers {
 		specs, err := provider.Load(ctx)
 		if err != nil {
@@ -139,7 +129,7 @@ func runProviders(ctx context.Context, r *registry, providers []datasource.Provi
 		}
 
 		for _, spec := range specs {
-			if err := registerSource(ctx, r, spec.Name, spec.Config, provider.Name()); err != nil {
+			if err := registerSource(ctx, reg, spec.Name, spec.Config, provider.Name()); err != nil {
 				return err
 			}
 		}
@@ -151,8 +141,8 @@ func runProviders(ctx context.Context, r *registry, providers []datasource.Provi
 // registerSource registers a single non-primary data source and logs it, tagging
 // the error and log line with origin (e.g. "static" or a provider name) so a
 // misconfigured source is easy to trace at boot.
-func registerSource(ctx context.Context, r *registry, name string, cfg config.DataSourceConfig, origin string) error {
-	if _, err := r.Register(ctx, name, cfg); err != nil {
+func registerSource(ctx context.Context, reg *registry, name string, cfg config.DataSourceConfig, origin string) error {
+	if _, err := reg.Register(ctx, name, cfg); err != nil {
 		return fmt.Errorf("register %s data source %q: %w", origin, name, err)
 	}
 

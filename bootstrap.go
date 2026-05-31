@@ -42,7 +42,6 @@ func Run(options ...fx.Option) {
 	opts := []fx.Option{
 		fx.WithLogger(newFxLogger),
 		config.Module,
-		datasource.RegistryModule,
 		datasource.Module,
 		middleware.Module,
 		api.Module,

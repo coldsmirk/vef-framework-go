@@ -38,13 +38,13 @@ type registry struct {
 
 // entry is immutable once stored: a source is mutated by replacing the whole
 // entry (Update) or removing it (Unregister), never by editing it in place. That
-// immutability is what lets the read methods run lock-free off the map. sqlDB is
+// immutability is what lets the read methods run lock-free off the map. rawDB is
 // the lifecycle handle (ping/close); the *bun.DB built while opening the source
 // lives only inside ormDB, never as a separate field.
 type entry struct {
 	name  string
 	cfg   config.DataSourceConfig
-	sqlDB *sql.DB
+	rawDB *sql.DB
 	ormDB orm.DB
 }
 
@@ -55,7 +55,7 @@ type entry struct {
 // provideRegistry). Building the registry in the provide phase keeps the primary
 // orm.DB available to the rest of the FX graph immediately.
 func newRegistry(primaryCfg config.DataSourceConfig, logger logx.Logger) (*registry, error) {
-	sqlDB, ormDB, err := open(primaryCfg)
+	rawDB, ormDB, err := open(primaryCfg)
 	if err != nil {
 		return nil, fmt.Errorf("open primary data source: %w", err)
 	}
@@ -63,7 +63,7 @@ func newRegistry(primaryCfg config.DataSourceConfig, logger logx.Logger) (*regis
 	return fromEntry(&entry{
 		name:  datasource.PrimaryName,
 		cfg:   primaryCfg,
-		sqlDB: sqlDB,
+		rawDB: rawDB,
 		ormDB: ormDB,
 	}, logger), nil
 }
@@ -74,11 +74,11 @@ func newRegistry(primaryCfg config.DataSourceConfig, logger logx.Logger) (*regis
 // Open/Ping dance. Production code should always go through the FX module. The
 // caller supplies both the *sql.DB lifecycle handle and the orm.DB wrapper built
 // over it, so datasource stays unaware of bun.
-func NewFromDB(sqlDB *sql.DB, primary orm.DB, cfg config.DataSourceConfig, logger logx.Logger) datasource.Registry {
+func NewFromDB(rawDB *sql.DB, primary orm.DB, cfg config.DataSourceConfig, logger logx.Logger) datasource.Registry {
 	return fromEntry(&entry{
 		name:  datasource.PrimaryName,
 		cfg:   cfg,
-		sqlDB: sqlDB,
+		rawDB: rawDB,
 		ormDB: primary,
 	}, logger)
 }
@@ -94,7 +94,7 @@ func fromEntry(primary *entry, logger logx.Logger) *registry {
 
 // PrimaryRawDB exposes the raw *sql.DB for the primary source. It is used for
 // boot-time version logging and by the schema reflection service.
-func (r *registry) PrimaryRawDB() *sql.DB { return r.primary.sqlDB }
+func (r *registry) PrimaryRawDB() *sql.DB { return r.primary.rawDB }
 
 // Primary returns the orm.DB for the primary data source. It never reports an
 // error: the primary source is constructed during FX boot or the entire
@@ -167,23 +167,23 @@ func (*registry) openAndPing(ctx context.Context, name string, cfg config.DataSo
 		return nil, nil, err
 	}
 
-	sqlDB, ormDB, err := open(cfg)
+	rawDB, ormDB, err := open(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open data source %q: %w", name, err)
 	}
 
-	if err := sqlDB.PingContext(ctx); err != nil {
-		_ = sqlDB.Close()
+	if err := rawDB.PingContext(ctx); err != nil {
+		_ = rawDB.Close()
 
 		return nil, nil, fmt.Errorf("ping data source %q: %w", name, err)
 	}
 
-	return sqlDB, ormDB, nil
+	return rawDB, ormDB, nil
 }
 
 // Register implements datasource.Registry.Register.
 func (r *registry) Register(ctx context.Context, name string, cfg config.DataSourceConfig) (orm.DB, error) {
-	sqlDB, ormDB, err := r.openAndPing(ctx, name, cfg)
+	rawDB, ormDB, err := r.openAndPing(ctx, name, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -191,12 +191,12 @@ func (r *registry) Register(ctx context.Context, name string, cfg config.DataSou
 	e := &entry{
 		name:  name,
 		cfg:   cfg,
-		sqlDB: sqlDB,
+		rawDB: rawDB,
 		ormDB: ormDB,
 	}
 
 	if _, inserted := r.entries.PutIfAbsent(name, e); !inserted {
-		_ = sqlDB.Close()
+		_ = rawDB.Close()
 
 		return nil, datasource.ErrExists
 	}
@@ -206,7 +206,7 @@ func (r *registry) Register(ctx context.Context, name string, cfg config.DataSou
 
 // Update implements datasource.Registry.Update.
 func (r *registry) Update(ctx context.Context, name string, cfg config.DataSourceConfig, opts ...datasource.RegisterOption) (orm.DB, error) {
-	sqlDB, ormDB, err := r.openAndPing(ctx, name, cfg)
+	rawDB, ormDB, err := r.openAndPing(ctx, name, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -228,18 +228,18 @@ func (r *registry) Update(ctx context.Context, name string, cfg config.DataSourc
 		return &entry{
 			name:  name,
 			cfg:   cfg,
-			sqlDB: sqlDB,
+			rawDB: rawDB,
 			ormDB: ormDB,
 		}, true
 	})
 
 	if notFound {
-		_ = sqlDB.Close()
+		_ = rawDB.Close()
 
 		return nil, datasource.ErrNotFound
 	}
 
-	r.asyncClose(name, oldEntry.sqlDB, applyOptions(opts))
+	r.asyncClose(name, oldEntry.rawDB, applyOptions(opts))
 
 	return newEntry.ormDB, nil
 }
@@ -258,7 +258,7 @@ func (r *registry) Unregister(_ context.Context, name string, opts ...datasource
 		return datasource.ErrNotFound
 	}
 
-	r.asyncClose(name, e.sqlDB, applyOptions(opts))
+	r.asyncClose(name, e.rawDB, applyOptions(opts))
 
 	return nil
 }
@@ -359,11 +359,11 @@ func (r *registry) HealthCheck(ctx context.Context) map[string]error {
 	}
 
 	wg.Go(func() {
-		record(datasource.PrimaryName, r.primary.sqlDB.PingContext(ctx))
+		record(datasource.PrimaryName, r.primary.rawDB.PingContext(ctx))
 	})
 
 	r.entries.ForEach(func(name string, e *entry) bool {
-		db := e.sqlDB
+		db := e.rawDB
 		wg.Go(func() {
 			record(name, db.PingContext(ctx))
 		})
@@ -385,14 +385,14 @@ func (r *registry) Shutdown(ctx context.Context) error {
 
 	var firstErr error
 
-	for _, k := range r.entries.Keys() {
-		e, ok := r.entries.Remove(k)
+	for _, key := range r.entries.Keys() {
+		e, ok := r.entries.Remove(key)
 		if !ok {
 			continue
 		}
 
-		if err := e.sqlDB.Close(); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("close data source %q: %w", k, err)
+		if err := e.rawDB.Close(); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("close data source %q: %w", key, err)
 		}
 	}
 
@@ -400,7 +400,7 @@ func (r *registry) Shutdown(ctx context.Context) error {
 		firstErr = err
 	}
 
-	if err := r.primary.sqlDB.Close(); err != nil && firstErr == nil {
+	if err := r.primary.rawDB.Close(); err != nil && firstErr == nil {
 		firstErr = fmt.Errorf("close primary data source: %w", err)
 	}
 

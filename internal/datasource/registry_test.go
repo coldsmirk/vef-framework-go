@@ -30,9 +30,9 @@ func newTestRegistry(t *testing.T) *registry {
 
 	ctx := context.Background()
 	r, err := newRegistry(newSQLiteCfg(t, "primary"), logx.Discard())
-	require.NoError(t, err, "primary registry should construct")
+	require.NoError(t, err, "Primary registry should construct")
 	t.Cleanup(func() {
-		require.NoError(t, r.Shutdown(ctx), "registry should shut down cleanly")
+		require.NoError(t, r.Shutdown(ctx), "Registry should shut down cleanly")
 	})
 
 	return r
@@ -41,13 +41,13 @@ func newTestRegistry(t *testing.T) *registry {
 func TestRegistryPrimary(t *testing.T) {
 	r := newTestRegistry(t)
 
-	require.NotNil(t, r.Primary(), "primary orm.DB should be available")
-	require.True(t, r.Has(datasource.PrimaryName), "primary should be reported as present")
-	require.Equal(t, []string{datasource.PrimaryName}, r.Names(), "fresh registry only knows primary")
+	require.NotNil(t, r.Primary(), "Primary orm.DB should be available")
+	require.True(t, r.Has(datasource.PrimaryName), "Primary should be reported as present")
+	require.Equal(t, []string{datasource.PrimaryName}, r.Names(), "Fresh registry should only know primary")
 
 	kind, err := r.Kind(datasource.PrimaryName)
-	require.NoError(t, err, "kind lookup for primary should succeed")
-	require.Equal(t, config.SQLite, kind, "primary kind should match seed cfg")
+	require.NoError(t, err, "Kind lookup for primary should succeed")
+	require.Equal(t, config.SQLite, kind, "Primary kind should match seed config")
 
 	got, err := r.Get(datasource.PrimaryName)
 	require.NoError(t, err, "Get(primary) should not error")
@@ -59,7 +59,7 @@ func TestRegistryRegisterAndGet(t *testing.T) {
 	r := newTestRegistry(t)
 
 	db, err := r.Register(ctx, "analytics", newSQLiteCfg(t, "analytics"))
-	require.NoError(t, err, "first Register should succeed")
+	require.NoError(t, err, "First Register should succeed")
 	require.NotNil(t, db, "Register should return a usable DB")
 
 	again, err := r.Get("analytics")
@@ -70,7 +70,7 @@ func TestRegistryRegisterAndGet(t *testing.T) {
 	require.Equal(t, []string{"analytics", datasource.PrimaryName}, names, "Names sorted lexically")
 
 	_, err = r.Register(ctx, "analytics", newSQLiteCfg(t, "analytics2"))
-	require.ErrorIs(t, err, datasource.ErrExists, "duplicate Register should fail with ErrExists")
+	require.ErrorIs(t, err, datasource.ErrExists, "Duplicate Register should fail with ErrExists")
 }
 
 func TestRegistryRegisterRejectsInvalidName(t *testing.T) {
@@ -78,10 +78,10 @@ func TestRegistryRegisterRejectsInvalidName(t *testing.T) {
 	r := newTestRegistry(t)
 
 	_, err := r.Register(ctx, "", newSQLiteCfg(t, "x"))
-	require.ErrorIs(t, err, datasource.ErrNameInvalid, "empty name should be rejected")
+	require.ErrorIs(t, err, datasource.ErrNameInvalid, "Empty name should be rejected")
 
 	_, err = r.Register(ctx, datasource.PrimaryName, newSQLiteCfg(t, "x"))
-	require.ErrorIs(t, err, datasource.ErrPrimaryReserved, "primary name is reserved")
+	require.ErrorIs(t, err, datasource.ErrPrimaryReserved, "Primary name should be reserved")
 }
 
 func TestRegistryGetUnknownReturnsNotFound(t *testing.T) {
@@ -102,11 +102,11 @@ func TestRegistryUpdate(t *testing.T) {
 
 	old, err := r.Register(ctx, "tenant1", newSQLiteCfg(t, "v1"))
 	require.NoError(t, err, "Register should succeed")
-	require.NotNil(t, old)
+	require.NotNil(t, old, "Register should return the old DB")
 
 	newDB, err := r.Update(ctx, "tenant1", newSQLiteCfg(t, "v2"))
 	require.NoError(t, err, "Update should succeed when name exists")
-	require.NotNil(t, newDB)
+	require.NotNil(t, newDB, "Update should return the new DB")
 	require.NotSame(t, old, newDB, "Update produces a new DB instance")
 
 	got, err := r.Get("tenant1")
@@ -119,15 +119,15 @@ func TestRegistryUpdateFailureKeepsOld(t *testing.T) {
 	r := newTestRegistry(t)
 
 	old, err := r.Register(ctx, "tenant1", newSQLiteCfg(t, "v1"))
-	require.NoError(t, err)
+	require.NoError(t, err, "Register should seed the original source")
 
 	badCfg := config.DataSourceConfig{Kind: "no-such-dialect"}
 	_, err = r.Update(ctx, "tenant1", badCfg)
 	require.Error(t, err, "Update with unsupported dialect must fail")
 
 	got, err := r.Get("tenant1")
-	require.NoError(t, err, "old entry should still be reachable after failed Update")
-	require.Equal(t, old, got, "old DB instance is preserved on Update failure")
+	require.NoError(t, err, "Old entry should still be reachable after failed Update")
+	require.Equal(t, old, got, "Old DB instance should be preserved on Update failure")
 }
 
 func TestRegistryUpdateUnknownReturnsNotFound(t *testing.T) {
@@ -143,7 +143,7 @@ func TestRegistryUnregister(t *testing.T) {
 	r := newTestRegistry(t)
 
 	_, err := r.Register(ctx, "to-remove", newSQLiteCfg(t, "rm"))
-	require.NoError(t, err)
+	require.NoError(t, err, "Register should seed the source to remove")
 
 	require.NoError(t, r.Unregister(ctx, "to-remove"), "Unregister should succeed")
 
@@ -156,7 +156,7 @@ func TestRegistryUnregister(t *testing.T) {
 	require.False(t, r.Has("to-remove"), "Has after Unregister returns false")
 
 	err = r.Unregister(ctx, "to-remove")
-	require.ErrorIs(t, err, datasource.ErrNotFound, "double Unregister returns ErrNotFound")
+	require.ErrorIs(t, err, datasource.ErrNotFound, "Double Unregister should return ErrNotFound")
 }
 
 func TestRegistryReRegisterAfterUnregister(t *testing.T) {
@@ -164,13 +164,13 @@ func TestRegistryReRegisterAfterUnregister(t *testing.T) {
 	r := newTestRegistry(t)
 
 	first, err := r.Register(ctx, "reopen", newSQLiteCfg(t, "first"))
-	require.NoError(t, err, "initial Register should succeed")
+	require.NoError(t, err, "Initial Register should succeed")
 
 	require.NoError(t, r.Unregister(ctx, "reopen"), "Unregister frees the name")
 
 	second, err := r.Register(ctx, "reopen", newSQLiteCfg(t, "second"))
 	require.NoError(t, err, "Register should succeed once the name is free")
-	require.NotSame(t, first, second, "re-registered source should use a fresh DB instance")
+	require.NotSame(t, first, second, "Re-registered source should use a fresh DB instance")
 
 	got, err := r.Get("reopen")
 	require.NoError(t, err, "Get after re-registering should succeed")
@@ -198,11 +198,11 @@ func TestRegistryReconcileAddsUpdatesAndRemoves(t *testing.T) {
 	removeCfg := newSQLiteCfg(t, "rm")
 
 	_, err := r.Register(ctx, "keep", keepCfg)
-	require.NoError(t, err)
+	require.NoError(t, err, "Register should seed unchanged source")
 	_, err = r.Register(ctx, "tenant", updateOldCfg)
-	require.NoError(t, err)
+	require.NoError(t, err, "Register should seed source to update")
 	_, err = r.Register(ctx, "remove", removeCfg)
-	require.NoError(t, err)
+	require.NoError(t, err, "Register should seed source to remove")
 
 	specs := []datasource.Spec{
 		{Name: "keep", Config: keepCfg},                   // unchanged
@@ -218,10 +218,10 @@ func TestRegistryReconcileAddsUpdatesAndRemoves(t *testing.T) {
 	require.Equal(t, []string{"remove"}, report.Removed, "Removed list matches expected diff")
 	require.Nil(t, report.Errors, "Errors should be nil when all actions succeed")
 
-	require.True(t, r.Has("keep"), "unchanged source remains")
-	require.True(t, r.Has("tenant"), "updated source remains")
-	require.True(t, r.Has("fresh"), "added source is present")
-	require.False(t, r.Has("remove"), "removed source is gone")
+	require.True(t, r.Has("keep"), "Unchanged source should remain")
+	require.True(t, r.Has("tenant"), "Updated source should remain")
+	require.True(t, r.Has("fresh"), "Added source should be present")
+	require.False(t, r.Has("remove"), "Removed source should be gone")
 }
 
 func TestRegistryReconcileDryRun(t *testing.T) {
@@ -232,9 +232,9 @@ func TestRegistryReconcileDryRun(t *testing.T) {
 	specs := []datasource.Spec{{Name: "candidate", Config: cfg}}
 
 	report, err := r.Reconcile(ctx, specs, datasource.WithReconcileDryRun())
-	require.NoError(t, err, "dry run Reconcile should not error")
-	require.Equal(t, []string{"candidate"}, report.Added, "dry run still reports diff")
-	require.False(t, r.Has("candidate"), "dry run does not actually register the source")
+	require.NoError(t, err, "Dry run Reconcile should not error")
+	require.Equal(t, []string{"candidate"}, report.Added, "Dry run should still report diff")
+	require.False(t, r.Has("candidate"), "Dry run should not register the source")
 }
 
 func TestRegistryReconcileIgnoresPrimaryAndEmpty(t *testing.T) {
@@ -247,10 +247,10 @@ func TestRegistryReconcileIgnoresPrimaryAndEmpty(t *testing.T) {
 	}
 
 	report, err := r.Reconcile(ctx, specs)
-	require.NoError(t, err)
-	require.Empty(t, report.Added, "empty and primary entries are ignored")
-	require.Empty(t, report.Updated)
-	require.Empty(t, report.Removed)
+	require.NoError(t, err, "Reconcile should ignore invalid desired entries")
+	require.Empty(t, report.Added, "Empty and primary entries should be ignored")
+	require.Empty(t, report.Updated, "Empty and primary entries should not update sources")
+	require.Empty(t, report.Removed, "Empty desired set should not remove existing sources")
 }
 
 func TestRegistryReconcilePartialFailureAggregatesErrors(t *testing.T) {
@@ -263,10 +263,10 @@ func TestRegistryReconcilePartialFailureAggregatesErrors(t *testing.T) {
 	}
 
 	report, err := r.Reconcile(ctx, specs)
-	require.NoError(t, err, "partial failure does not surface as top-level error")
-	require.Equal(t, []string{"good"}, report.Added, "good source still added")
-	require.NotNil(t, report.Errors, "errors are surfaced in the report")
-	require.Contains(t, report.Errors, "bad", "bad name is keyed in errors map")
+	require.NoError(t, err, "Partial failure should not surface as top-level error")
+	require.Equal(t, []string{"good"}, report.Added, "Good source should still be added")
+	require.NotNil(t, report.Errors, "Errors should be surfaced in the report")
+	require.Contains(t, report.Errors, "bad", "Bad source name should be keyed in errors map")
 }
 
 func TestRegistryHealthCheck(t *testing.T) {
@@ -274,12 +274,12 @@ func TestRegistryHealthCheck(t *testing.T) {
 	r := newTestRegistry(t)
 
 	_, err := r.Register(ctx, "extra", newSQLiteCfg(t, "extra"))
-	require.NoError(t, err)
+	require.NoError(t, err, "Register should seed extra source for health check")
 
 	results := r.HealthCheck(ctx)
 	require.Len(t, results, 2, "HealthCheck reports primary + one extra")
-	require.NoError(t, results[datasource.PrimaryName], "primary should be healthy")
-	require.NoError(t, results["extra"], "extra should be healthy")
+	require.NoError(t, results[datasource.PrimaryName], "Primary should be healthy")
+	require.NoError(t, results["extra"], "Extra source should be healthy")
 }
 
 func TestRegistryConcurrentAccess(t *testing.T) {
@@ -322,7 +322,7 @@ func TestRegistryConcurrentAccess(t *testing.T) {
 
 	wg.Wait()
 
-	require.Positive(t, getSuccesses.Load(), "at least some Get calls should succeed")
+	require.Positive(t, getSuccesses.Load(), "At least some Get calls should succeed")
 	// Misses are tolerated under contention; the counter is only used to
 	// exercise the path. Read it via Load to avoid copying the atomic value.
 	_ = getMisses.Load()
@@ -377,14 +377,14 @@ func TestRegistryConcurrentSameName(t *testing.T) {
 	// a usable connection — never a half-closed or leaked entry.
 	db, err := r.Get("contended")
 	if err != nil {
-		require.ErrorIs(t, err, datasource.ErrNotFound, "an absent source reports NotFound")
+		require.ErrorIs(t, err, datasource.ErrNotFound, "Absent source should report NotFound")
 
 		return
 	}
 
 	var v int
-	require.NoError(t, db.NewRaw("SELECT 1").Scan(ctx, &v), "a present source must be usable")
-	require.Equal(t, 1, v, "present source should answer queries")
+	require.NoError(t, db.NewRaw("SELECT 1").Scan(ctx, &v), "Present source should be usable")
+	require.Equal(t, 1, v, "Present source should answer queries")
 }
 
 func TestRegistryUpdateWithCloseGrace(t *testing.T) {
@@ -401,8 +401,8 @@ func TestRegistryUpdateWithCloseGrace(t *testing.T) {
 	// caller still holding the old orm.DB can keep querying right after Update.
 	var v int
 	require.NoError(t, old.NewRaw("SELECT 1").Scan(ctx, &v),
-		"old connection should still serve queries during the grace window")
-	require.Equal(t, 1, v, "drained query should return its value")
+		"Old connection should still serve queries during the grace window")
+	require.Equal(t, 1, v, "Drained query should return its value")
 }
 
 func TestRegistryUnregisterDrainsInFlight(t *testing.T) {
@@ -422,6 +422,6 @@ func TestRegistryUnregisterDrainsInFlight(t *testing.T) {
 	// obtained orm.DB reference can still finish in-flight work.
 	var v int
 	require.NoError(t, db.NewRaw("SELECT 1").Scan(ctx, &v),
-		"held reference should drain during the grace window")
-	require.Equal(t, 1, v, "drained query should return its value")
+		"Held reference should drain during the grace window")
+	require.Equal(t, 1, v, "Drained query should return its value")
 }

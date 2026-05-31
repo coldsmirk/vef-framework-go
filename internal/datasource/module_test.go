@@ -30,17 +30,17 @@ func TestProvideRegistryClosesPrimaryOnSeedFailure(t *testing.T) {
 	}
 
 	out, err := provideRegistry(lc, cfg, ProviderParams{})
-	require.NoError(t, err, "provideRegistry opens the primary in the provide phase")
-	require.NotNil(t, out.RawDB, "primary raw *sql.DB should be exposed")
-	require.NoError(t, out.RawDB.PingContext(ctx), "primary must be healthy before start")
+	require.NoError(t, err, "ProvideRegistry should open the primary in the provide phase")
+	require.NotNil(t, out.RawDB, "Primary raw *sql.DB should be exposed")
+	require.NoError(t, out.RawDB.PingContext(ctx), "Primary should be healthy before start")
 
 	require.Error(t, lc.Start(ctx),
-		"start must fail: the 'broken' static source has an unsupported dialect")
+		"Start should fail when a static source has an unsupported dialect")
 
-	require.NoError(t, lc.Stop(ctx), "stop should drain cleanly")
+	require.NoError(t, lc.Stop(ctx), "Stop should drain cleanly")
 
 	require.Error(t, out.RawDB.PingContext(ctx),
-		"primary connection must be closed by the Shutdown hook despite the seed failure")
+		"Primary connection should be closed by the Shutdown hook despite the seed failure")
 }
 
 // TestProvideRegistryDefersPrimaryPingToStart pins that the provide phase does
@@ -64,11 +64,11 @@ func TestProvideRegistryDefersPrimaryPingToStart(t *testing.T) {
 	}
 
 	out, err := provideRegistry(lc, cfg, ProviderParams{})
-	require.NoError(t, err, "provide phase opens lazily and must not ping the primary")
-	require.NotNil(t, out.RawDB, "primary raw *sql.DB should be exposed")
+	require.NoError(t, err, "Provide phase should open lazily and avoid pinging the primary")
+	require.NotNil(t, out.RawDB, "Primary raw *sql.DB should be exposed")
 
 	require.Error(t, lc.Start(ctx),
-		"start must fail: the unreachable primary is pinged in the OnStart hook")
+		"Start should fail when the unreachable primary is pinged in the OnStart hook")
 
-	require.NoError(t, lc.Stop(ctx), "stop should drain cleanly")
+	require.NoError(t, lc.Stop(ctx), "Stop should drain cleanly")
 }

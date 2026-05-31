@@ -55,7 +55,7 @@ func NewTestApp(t testing.TB, options ...fx.Option) (*app.App, func()) {
 }
 
 // NewTestAppWithDB creates a test application that uses an existing *bun.DB
-// instead of creating a new connection via datasource.RegistryModule.
+// instead of creating a new connection via datasource.Module.
 // This avoids redundant database connections when tests already manage their own.
 func NewTestAppWithDB(t testing.TB, db *bun.DB, options ...fx.Option) (*app.App, func()) {
 	return NewTestAppWithDBConfig(t, db, config.DataSourceConfig{Kind: config.SQLite}, options...)
@@ -84,7 +84,7 @@ func newTestApp(t testing.TB, opts []fx.Option) (*app.App, func()) {
 	return testApp, fxApp.RequireStop
 }
 
-func coreOptions() []fx.Option {
+func coreOptions(dataSourceOption fx.Option) []fx.Option {
 	return []fx.Option{
 		fx.NopLogger,
 		fx.Replace(
@@ -120,7 +120,7 @@ func coreOptions() []fx.Option {
 			},
 		),
 		iconfig.Module,
-		idatasource.Module,
+		dataSourceOption,
 		middleware.Module,
 		api.Module,
 		security.Module,
@@ -147,7 +147,7 @@ func coreOptions() []fx.Option {
 }
 
 func buildOptions(options ...fx.Option) []fx.Option {
-	return buildOptionsWith(idatasource.RegistryModule, options...)
+	return buildOptionsWith(idatasource.Module, options...)
 }
 
 func buildOptionsWithDBConfig(existingDB *bun.DB, cfg config.DataSourceConfig, options ...fx.Option) []fx.Option {
@@ -155,11 +155,12 @@ func buildOptionsWithDBConfig(existingDB *bun.DB, cfg config.DataSourceConfig, o
 	// rest of the FX graph (datasource.Registry, orm.DB, schema reflection, etc.)
 	// sees the same connection. apptest does the bun→orm.DB conversion here so the
 	// datasource package itself stays unaware of bun.
-	r := idatasource.NewFromDB(existingDB.DB, orm.New(existingDB), cfg, nil)
+	dsr := idatasource.NewFromDB(existingDB.DB, orm.New(existingDB), cfg, nil)
 
 	dbProvider := fx.Provide(
-		func() datasource.Registry { return r },
+		func() datasource.Registry { return dsr },
 		func() *sql.DB { return existingDB.DB },
+		func() orm.DB { return dsr.Primary() },
 	)
 
 	return buildOptionsWith(
@@ -175,8 +176,8 @@ func buildOptionsWithDBConfig(existingDB *bun.DB, cfg config.DataSourceConfig, o
 	)
 }
 
-func buildOptionsWith(dbOption fx.Option, extra ...fx.Option) []fx.Option {
-	opts := append(coreOptions(), dbOption)
+func buildOptionsWith(dataSourceOption fx.Option, extra ...fx.Option) []fx.Option {
+	opts := coreOptions(dataSourceOption)
 
 	return append(opts, extra...)
 }

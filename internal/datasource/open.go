@@ -19,17 +19,17 @@ import (
 // that lives inside the orm.DB. On any post-connect failure the *sql.DB is
 // closed so no handle leaks.
 func open(cfg config.DataSourceConfig) (*sql.DB, orm.DB, error) {
-	sqlDB, err := database.Open(cfg)
+	rawDB, err := database.Open(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	ormDB, err := orm.Open(sqlDB, cfg.Kind, orm.WithSQLGuard(cfg.EnableSQLGuard))
+	ormDB, err := orm.Open(rawDB, cfg.Kind, orm.WithSQLGuard(cfg.EnableSQLGuard))
 	if err != nil {
-		_ = sqlDB.Close()
+		_ = rawDB.Close()
 
 		return nil, nil, err
 	}
 
-	return sqlDB, ormDB, nil
+	return rawDB, ormDB, nil
 }
