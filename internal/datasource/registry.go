@@ -13,6 +13,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/datasource"
+	"github.com/coldsmirk/vef-framework-go/internal/database"
 	"github.com/coldsmirk/vef-framework-go/internal/orm"
 	"github.com/coldsmirk/vef-framework-go/logx"
 )
@@ -339,6 +340,36 @@ func (r *registry) Reconcile(ctx context.Context, specs []datasource.Spec, opts 
 	}
 
 	return report, nil
+}
+
+// defaultTestConnectionTimeout caps a TestConnection probe so a black-holed host
+// cannot hang it for longer than a UI "test" button should ever wait. It is an
+// upper bound only: the probe context is derived from the caller's, so an earlier
+// caller deadline or an explicit cancel still wins.
+const defaultTestConnectionTimeout = 5 * time.Second
+
+// TestConnection implements datasource.Registry.TestConnection. It opens a
+// throwaway connection, proves it by querying the server version (which forces a
+// real round-trip), and closes it via defer — the registry itself is never
+// touched, so a failed probe leaks nothing. The probe is bounded by
+// defaultTestConnectionTimeout, derived from ctx so the caller's own deadline or
+// cancellation continues to apply.
+func (*registry) TestConnection(ctx context.Context, cfg config.DataSourceConfig) (datasource.ConnectionInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, defaultTestConnectionTimeout)
+	defer cancel()
+
+	db, err := database.Open(cfg)
+	if err != nil {
+		return datasource.ConnectionInfo{}, err
+	}
+	defer func() { _ = db.Close() }()
+
+	version, err := database.Version(ctx, cfg.Kind, db)
+	if err != nil {
+		return datasource.ConnectionInfo{}, err
+	}
+
+	return datasource.ConnectionInfo{Version: version}, nil
 }
 
 // HealthCheck implements datasource.Registry.HealthCheck. Every source is pinged
