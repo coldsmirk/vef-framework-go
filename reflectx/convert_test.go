@@ -39,7 +39,7 @@ func TestToDecimalE(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ToDecimalE(tt.input)
 			if tt.wantErr {
-				assert.Error(t, err, "Should return error")
+				assert.Error(t, err, "TestToDecimalE should return an error")
 
 				return
 			}

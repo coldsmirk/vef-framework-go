@@ -17,9 +17,9 @@ import (
 	"github.com/coldsmirk/vef-framework-go/tabular"
 )
 
-type excelPrefixParser struct{}
+type ExcelPrefixParser struct{}
 
-func (*excelPrefixParser) Parse(cellValue string, _ reflect.Type) (any, error) {
+func (*ExcelPrefixParser) Parse(cellValue string, _ reflect.Type) (any, error) {
 	if cellValue == "" {
 		return "", nil
 	}
@@ -29,6 +29,44 @@ func (*excelPrefixParser) Parse(cellValue string, _ reflect.Type) (any, error) {
 	}
 
 	return cellValue, nil
+}
+
+// exportToTemp writes the exporter output to a fresh temp file scoped to the
+// test, returning the resulting file path.
+func exportToTemp[T any](t *testing.T, exporter tabular.Exporter, rows []T, pattern string) string {
+	t.Helper()
+
+	tmp, err := os.CreateTemp(t.TempDir(), pattern)
+	require.NoError(t, err, "CreateTemp should succeed for pattern %q", pattern)
+
+	filename := tmp.Name()
+	require.NoError(t, tmp.Close(), "Closing temp file should succeed")
+
+	require.NoError(t, exporter.ExportToFile(rows, filename), "ExportToFile should succeed")
+
+	return filename
+}
+
+// buildSheet constructs an Excel workbook via the supplied callback and saves
+// it to a fresh temp file scoped to the test, returning the resulting path.
+func buildSheet(t *testing.T, pattern string, build func(*excelize.File)) string {
+	t.Helper()
+
+	tmp, err := os.CreateTemp(t.TempDir(), pattern)
+	require.NoError(t, err, "CreateTemp should succeed for pattern %q", pattern)
+
+	filename := tmp.Name()
+	require.NoError(t, tmp.Close(), "Closing temp file should succeed")
+
+	f := excelize.NewFile()
+	t.Cleanup(func() {
+		_ = f.Close()
+	})
+
+	build(f)
+	require.NoError(t, f.SaveAs(filename), "Saving the workbook should succeed")
+
+	return filename
 }
 
 // TestImporter exercises the Excel importer end to end against struct-typed
@@ -121,7 +159,7 @@ func TestImporter(t *testing.T) {
 		})
 
 		importer := NewImporterFor[PrefixUser]()
-		importer.RegisterParser("prefix_parser", &excelPrefixParser{})
+		importer.RegisterParser("prefix_parser", &ExcelPrefixParser{})
 
 		importedAny, importErrors, err := importer.ImportFromFile(filename)
 		require.NoError(t, err, "Import should succeed when a custom parser is registered")
@@ -343,10 +381,10 @@ func TestMapImporter(t *testing.T) {
 		require.True(t, ok, "Dynamic importer should return []map[string]any")
 		require.Len(t, imported, 2, "Both rows should be imported")
 
-		assert.Equal(t, 1, imported[0]["id"], "id should be parsed as int")
-		assert.Equal(t, "张三", imported[0]["name"], "name should round-trip")
-		assert.Equal(t, true, imported[0]["active"], "active should be parsed as bool")
-		assert.Equal(t, birthday, imported[0]["birthday"], "birthday should round-trip via Format")
+		assert.Equal(t, 1, imported[0]["id"], "ID should be parsed as int")
+		assert.Equal(t, "张三", imported[0]["name"], "Name should round-trip")
+		assert.Equal(t, true, imported[0]["active"], "Active flag should be parsed as bool")
+		assert.Equal(t, birthday, imported[0]["birthday"], "Birthday should round-trip via Format")
 	})
 
 	t.Run("RequiredMissing", func(t *testing.T) {
@@ -355,7 +393,7 @@ func TestMapImporter(t *testing.T) {
 			require.NoError(t, f.SetCellValue(sheet, "A1", "用户ID"), "Setting header A1 should succeed")
 			require.NoError(t, f.SetCellValue(sheet, "B1", "姓名"), "Setting header B1 should succeed")
 			// Row 2: empty id, valid name.
-			require.NoError(t, f.SetCellValue(sheet, "B2", "张三"), "Setting name should succeed")
+			require.NoError(t, f.SetCellValue(sheet, "B2", "张三"), "Setting name value should succeed")
 		})
 
 		imp, err := NewMapImporter(baseDynamicSpecs(), nil)
@@ -431,8 +469,8 @@ func TestMapImporter(t *testing.T) {
 		require.Len(t, imported, 1, "One row should be imported")
 
 		row := imported[0]
-		assert.Equal(t, 1, row["id"], "id should be parsed as int")
-		assert.Equal(t, "张三", row["name"], "name should round-trip")
+		assert.Equal(t, 1, row["id"], "ID should be parsed as int")
+		assert.Equal(t, "张三", row["name"], "Name should round-trip")
 		_, hasExtra := row["Extra"]
 		assert.False(t, hasExtra, "Unknown header should not leak into the map")
 
@@ -471,42 +509,4 @@ func TestMapImporter(t *testing.T) {
 		assert.Contains(t, importErrors[0].Error(), "blocked name",
 			"ImportError should include the validator's message")
 	})
-}
-
-// exportToTemp writes the exporter output to a fresh temp file scoped to the
-// test, returning the resulting file path.
-func exportToTemp[T any](t *testing.T, exporter tabular.Exporter, rows []T, pattern string) string {
-	t.Helper()
-
-	tmp, err := os.CreateTemp(t.TempDir(), pattern)
-	require.NoError(t, err, "CreateTemp should succeed for pattern %q", pattern)
-
-	filename := tmp.Name()
-	require.NoError(t, tmp.Close(), "Closing temp file should succeed")
-
-	require.NoError(t, exporter.ExportToFile(rows, filename), "ExportToFile should succeed")
-
-	return filename
-}
-
-// buildSheet constructs an Excel workbook via the supplied callback and saves
-// it to a fresh temp file scoped to the test, returning the resulting path.
-func buildSheet(t *testing.T, pattern string, build func(*excelize.File)) string {
-	t.Helper()
-
-	tmp, err := os.CreateTemp(t.TempDir(), pattern)
-	require.NoError(t, err, "CreateTemp should succeed for pattern %q", pattern)
-
-	filename := tmp.Name()
-	require.NoError(t, tmp.Close(), "Closing temp file should succeed")
-
-	f := excelize.NewFile()
-	t.Cleanup(func() {
-		_ = f.Close()
-	})
-
-	build(f)
-	require.NoError(t, f.SaveAs(filename), "Saving the workbook should succeed")
-
-	return filename
 }

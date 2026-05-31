@@ -40,9 +40,9 @@ type ImporterNoTagStruct struct {
 	Age  int
 }
 
-type prefixParser struct{}
+type PrefixParser struct{}
 
-func (*prefixParser) Parse(cellValue string, _ reflect.Type) (any, error) {
+func (*PrefixParser) Parse(cellValue string, _ reflect.Type) (any, error) {
 	if cellValue == "" {
 		return "", nil
 	}
@@ -52,6 +52,17 @@ func (*prefixParser) Parse(cellValue string, _ reflect.Type) (any, error) {
 	}
 
 	return cellValue, nil
+}
+
+// baseDynamicSpecs returns the shared dynamic schema used by the map-based
+// importer/exporter tests.
+func baseDynamicSpecs() []tabular.ColumnSpec {
+	return []tabular.ColumnSpec{
+		{Key: "id", Name: "用户ID", Type: reflect.TypeFor[int](), Required: true},
+		{Key: "name", Name: "姓名", Type: reflect.TypeFor[string](), Required: true},
+		{Key: "birthday", Name: "生日", Type: reflect.TypeFor[time.Time](), Format: "2006-01-02"},
+		{Key: "active", Name: "激活", Type: reflect.TypeFor[bool](), Default: "false"},
+	}
 }
 
 // TestImporter exercises the CSV importer end to end against struct-typed
@@ -156,7 +167,7 @@ func TestImporter(t *testing.T) {
 		}
 
 		importer := NewImporterFor[PrefixUser]()
-		importer.RegisterParser("prefix_parser", &prefixParser{})
+		importer.RegisterParser("prefix_parser", &PrefixParser{})
 
 		result, importErrors, err := importer.Import(strings.NewReader(csvContent))
 		require.NoError(t, err, "Import should succeed when a custom parser is registered")
@@ -338,17 +349,6 @@ func TestImporter(t *testing.T) {
 	})
 }
 
-// baseDynamicSpecs returns the shared dynamic schema used by the map-based
-// importer/exporter tests.
-func baseDynamicSpecs() []tabular.ColumnSpec {
-	return []tabular.ColumnSpec{
-		{Key: "id", Name: "用户ID", Type: reflect.TypeFor[int](), Required: true},
-		{Key: "name", Name: "姓名", Type: reflect.TypeFor[string](), Required: true},
-		{Key: "birthday", Name: "生日", Type: reflect.TypeFor[time.Time](), Format: "2006-01-02"},
-		{Key: "active", Name: "激活", Type: reflect.TypeFor[bool](), Default: "false"},
-	}
-}
-
 // TestMapImporter covers the dynamic []map[string]any importer path including
 // validation, parsing, and adapter-level options.
 func TestMapImporter(t *testing.T) {
@@ -378,10 +378,10 @@ func TestMapImporter(t *testing.T) {
 		require.True(t, ok, "Dynamic importer should return []map[string]any")
 		require.Len(t, imported, 2, "Both rows should be imported")
 
-		assert.Equal(t, 1, imported[0]["id"], "id should be parsed as int")
-		assert.Equal(t, "张三", imported[0]["name"], "name should round-trip")
-		assert.Equal(t, true, imported[0]["active"], "active should be parsed as bool")
-		assert.Equal(t, birthday, imported[0]["birthday"], "birthday should parse back via the Format template")
+		assert.Equal(t, 1, imported[0]["id"], "ID should be parsed as int")
+		assert.Equal(t, "张三", imported[0]["name"], "Name should round-trip")
+		assert.Equal(t, true, imported[0]["active"], "Active flag should be parsed as bool")
+		assert.Equal(t, birthday, imported[0]["birthday"], "Birthday should parse back via the Format template")
 	})
 
 	t.Run("RequiredMissing", func(t *testing.T) {
@@ -453,8 +453,8 @@ func TestMapImporter(t *testing.T) {
 		require.Len(t, imported, 1, "One row should be imported")
 
 		row := imported[0]
-		assert.Equal(t, 1, row["id"], "id should parse")
-		assert.Equal(t, "张三", row["name"], "name should parse")
+		assert.Equal(t, 1, row["id"], "ID should parse")
+		assert.Equal(t, "张三", row["name"], "Name should parse")
 		_, hasExtra := row["Extra"]
 		assert.False(t, hasExtra, "Unknown columns should not leak into the row")
 

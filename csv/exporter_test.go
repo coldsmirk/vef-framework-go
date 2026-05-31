@@ -30,11 +30,11 @@ type ExporterSimpleUser struct {
 	Email string `tabular:"邮箱"`
 }
 
-type prefixFormatter struct {
+type PrefixFormatter struct {
 	prefix string
 }
 
-func (f *prefixFormatter) Format(value any) (string, error) {
+func (f *PrefixFormatter) Format(value any) (string, error) {
 	if value == nil {
 		return "", nil
 	}
@@ -124,7 +124,7 @@ func TestExporter(t *testing.T) {
 		}
 
 		exporter := NewExporterFor[PrefixUser]()
-		exporter.RegisterFormatter("prefix", &prefixFormatter{prefix: "ID:"})
+		exporter.RegisterFormatter("prefix", &PrefixFormatter{prefix: "ID:"})
 
 		buf, err := exporter.Export(users)
 		require.NoError(t, err, "Export should succeed with a registered custom formatter")

@@ -90,8 +90,8 @@ func TestTypedImporter(t *testing.T) {
 
 		rows, errs, err := typed.Import(bytes.NewReader(nil))
 		require.NoError(t, err, "Import should succeed when inner importer succeeds")
-		assert.Nil(t, errs, "errs should be propagated as-is")
-		assert.Equal(t, want, rows, "rows should equal the inner result")
+		assert.Nil(t, errs, "Import errors should be propagated as-is")
+		assert.Equal(t, want, rows, "Typed rows should equal the inner result")
 		assert.True(t, inner.importedFromIO, "Import should delegate to inner importer")
 	})
 
@@ -102,8 +102,8 @@ func TestTypedImporter(t *testing.T) {
 
 		rows, _, err := typed.ImportFromFile("data.csv")
 		require.NoError(t, err, "ImportFromFile should succeed when inner succeeds")
-		assert.Equal(t, "data.csv", inner.importFromFile, "filename should be forwarded to inner")
-		assert.Equal(t, want, rows, "rows should equal the inner result")
+		assert.Equal(t, "data.csv", inner.importFromFile, "Filename should be forwarded to inner importer")
+		assert.Equal(t, want, rows, "Typed rows should equal the inner result")
 	})
 
 	t.Run("PropagatesError", func(t *testing.T) {
@@ -114,8 +114,8 @@ func TestTypedImporter(t *testing.T) {
 
 		rows, errs, err := typed.Import(bytes.NewReader(nil))
 		require.ErrorIs(t, err, wantErr, "Import should propagate inner error")
-		assert.Equal(t, wantErrs, errs, "errs should be propagated as-is")
-		assert.Nil(t, rows, "rows should be nil when error returned")
+		assert.Equal(t, wantErrs, errs, "Import errors should be propagated as-is")
+		assert.Nil(t, rows, "Typed rows should be nil when the inner importer returns an error")
 	})
 
 	t.Run("RejectsWrongElementType", func(t *testing.T) {
@@ -124,9 +124,9 @@ func TestTypedImporter(t *testing.T) {
 
 		rows, _, err := typed.Import(bytes.NewReader(nil))
 		require.Error(t, err, "Import should fail when inner returns wrong element type")
-		assert.Contains(t, err.Error(), "[]string", "error should describe actual type")
-		assert.Contains(t, err.Error(), "TypedRow", "error should describe expected element type")
-		assert.Nil(t, rows, "rows should be nil on type mismatch")
+		assert.Contains(t, err.Error(), "[]string", "Error should describe actual type")
+		assert.Contains(t, err.Error(), "TypedRow", "Error should describe expected element type")
+		assert.Nil(t, rows, "Typed rows should be nil on type mismatch")
 	})
 
 	t.Run("HandlesNilValue", func(t *testing.T) {
@@ -134,8 +134,8 @@ func TestTypedImporter(t *testing.T) {
 		typed := NewTypedImporter[TypedRow](inner)
 
 		rows, _, err := typed.Import(bytes.NewReader(nil))
-		require.NoError(t, err, "nil value should not raise an error")
-		assert.Nil(t, rows, "rows should be nil when inner returned nil")
+		require.NoError(t, err, "Nil inner value should not raise an error")
+		assert.Nil(t, rows, "Typed rows should be nil when inner importer returned nil")
 	})
 
 	t.Run("RegisterParserDelegates", func(t *testing.T) {
@@ -145,7 +145,7 @@ func TestTypedImporter(t *testing.T) {
 		typed.RegisterParser("custom", nil)
 
 		assert.True(t, inner.registeredOnce, "RegisterParser should delegate to inner importer")
-		assert.Equal(t, "custom", inner.registeredName, "parser name should be forwarded")
+		assert.Equal(t, "custom", inner.registeredName, "Parser name should be forwarded")
 		assert.Same(t, inner, typed.Inner(), "Inner should expose the wrapped importer")
 	})
 }
@@ -162,7 +162,7 @@ func TestTypedExporter(t *testing.T) {
 		got, err := typed.Export(rows)
 		require.NoError(t, err, "Export should succeed when inner succeeds")
 		assert.Same(t, wantBuf, got, "Export should return the inner buffer")
-		assert.Equal(t, rows, inner.receivedRows, "inner exporter should receive typed rows")
+		assert.Equal(t, rows, inner.receivedRows, "Inner exporter should receive typed rows")
 	})
 
 	t.Run("ExportPropagatesError", func(t *testing.T) {
@@ -172,7 +172,7 @@ func TestTypedExporter(t *testing.T) {
 
 		got, err := typed.Export([]TypedRow{{ID: 1}})
 		require.ErrorIs(t, err, wantErr, "Export should propagate inner error")
-		assert.Nil(t, got, "buffer should be nil on error")
+		assert.Nil(t, got, "Export buffer should be nil on error")
 	})
 
 	t.Run("ExportToFileDelegates", func(t *testing.T) {
@@ -181,8 +181,8 @@ func TestTypedExporter(t *testing.T) {
 		typed := NewTypedExporter[TypedRow](inner)
 
 		require.NoError(t, typed.ExportToFile(rows, "out.csv"), "ExportToFile should succeed")
-		assert.Equal(t, "out.csv", inner.exportToFile, "filename should be forwarded")
-		assert.Equal(t, rows, inner.receivedRows, "inner exporter should receive typed rows")
+		assert.Equal(t, "out.csv", inner.exportToFile, "Filename should be forwarded")
+		assert.Equal(t, rows, inner.receivedRows, "Inner exporter should receive typed rows")
 	})
 
 	t.Run("RegisterFormatterDelegates", func(t *testing.T) {
@@ -192,7 +192,7 @@ func TestTypedExporter(t *testing.T) {
 		typed.RegisterFormatter("custom", nil)
 
 		assert.True(t, inner.registeredOnce, "RegisterFormatter should delegate to inner exporter")
-		assert.Equal(t, "custom", inner.registeredName, "formatter name should be forwarded")
+		assert.Equal(t, "custom", inner.registeredName, "Formatter name should be forwarded")
 		assert.Same(t, inner, typed.Inner(), "Inner should expose the wrapped exporter")
 	})
 }

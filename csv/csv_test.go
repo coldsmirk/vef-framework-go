@@ -11,7 +11,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/tabular"
 )
 
-type csvFactoryUser struct {
+type CSVFactoryUser struct {
 	ID   int    `tabular:"用户ID"`
 	Name string `tabular:"姓名"`
 }
@@ -19,7 +19,7 @@ type csvFactoryUser struct {
 // TestNewImporterFor verifies the struct-typed importer factory wires the
 // StructAdapter correctly and returns a tabular.Importer.
 func TestNewImporterFor(t *testing.T) {
-	importer := NewImporterFor[csvFactoryUser]()
+	importer := NewImporterFor[CSVFactoryUser]()
 	require.NotNil(t, importer, "Factory should return a non-nil importer")
 	assert.Implements(t, (*tabular.Importer)(nil), importer, "Result should implement tabular.Importer")
 }
@@ -27,7 +27,7 @@ func TestNewImporterFor(t *testing.T) {
 // TestNewExporterFor verifies the struct-typed exporter factory wires the
 // StructAdapter correctly and returns a tabular.Exporter.
 func TestNewExporterFor(t *testing.T) {
-	exporter := NewExporterFor[csvFactoryUser]()
+	exporter := NewExporterFor[CSVFactoryUser]()
 	require.NotNil(t, exporter, "Factory should return a non-nil exporter")
 	assert.Implements(t, (*tabular.Exporter)(nil), exporter, "Result should implement tabular.Exporter")
 }
@@ -35,14 +35,14 @@ func TestNewExporterFor(t *testing.T) {
 // TestNewTypedImporterFor verifies the typed wrapper factory returns a
 // generic TypedImporter[T] that re-wraps the underlying importer.
 func TestNewTypedImporterFor(t *testing.T) {
-	typed := NewTypedImporterFor[csvFactoryUser]()
+	typed := NewTypedImporterFor[CSVFactoryUser]()
 	require.NotNil(t, typed, "Factory should return a non-nil typed importer")
 }
 
 // TestNewTypedExporterFor verifies the typed wrapper factory returns a
 // generic TypedExporter[T] that re-wraps the underlying exporter.
 func TestNewTypedExporterFor(t *testing.T) {
-	typed := NewTypedExporterFor[csvFactoryUser]()
+	typed := NewTypedExporterFor[CSVFactoryUser]()
 	require.NotNil(t, typed, "Factory should return a non-nil typed exporter")
 }
 

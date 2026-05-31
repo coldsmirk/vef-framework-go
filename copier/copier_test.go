@@ -34,7 +34,7 @@ func TestCopyBasic(t *testing.T) {
 	})
 }
 
-// TestCopyValueToPtr tests value → pointer converters.
+// TestCopyValueToPtr tests value to pointer converters.
 func TestCopyValueToPtr(t *testing.T) {
 	t.Run("StringToPtr", func(t *testing.T) {
 		type Src struct{ V string }
@@ -42,9 +42,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		type Dst struct{ V *string }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: "hello"}, &dst), "string → *string should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, "hello", *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: "hello"}, &dst), "String to *string conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, "hello", *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("BoolToPtr", func(t *testing.T) {
@@ -53,9 +53,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		type Dst struct{ V *bool }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: true}, &dst), "bool → *bool should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.True(t, *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: true}, &dst), "Bool to *bool conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.True(t, *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("IntToPtr", func(t *testing.T) {
@@ -64,9 +64,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		type Dst struct{ V *int }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: 42}, &dst), "int → *int should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, 42, *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: 42}, &dst), "Int to *int conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, 42, *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("Int8ToPtr", func(t *testing.T) {
@@ -75,9 +75,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		type Dst struct{ V *int8 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: 8}, &dst), "int8 → *int8 should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, int8(8), *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: 8}, &dst), "Int8 to *int8 conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, int8(8), *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("Int16ToPtr", func(t *testing.T) {
@@ -86,9 +86,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		type Dst struct{ V *int16 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: 100}, &dst), "int16 → *int16 should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, int16(100), *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: 100}, &dst), "Int16 to *int16 conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, int16(100), *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("Int32ToPtr", func(t *testing.T) {
@@ -97,9 +97,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		type Dst struct{ V *int32 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: 12345}, &dst), "int32 → *int32 should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, int32(12345), *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: 12345}, &dst), "Int32 to *int32 conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, int32(12345), *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("Int64ToPtr", func(t *testing.T) {
@@ -108,9 +108,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		type Dst struct{ V *int64 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: 99999}, &dst), "int64 → *int64 should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, int64(99999), *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: 99999}, &dst), "Int64 to *int64 conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, int64(99999), *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("UintToPtr", func(t *testing.T) {
@@ -119,9 +119,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		type Dst struct{ V *uint }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: 7}, &dst), "uint → *uint should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, uint(7), *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: 7}, &dst), "Uint to *uint conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, uint(7), *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("Uint8ToPtr", func(t *testing.T) {
@@ -130,9 +130,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		type Dst struct{ V *uint8 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: 255}, &dst), "uint8 → *uint8 should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, uint8(255), *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: 255}, &dst), "Uint8 to *uint8 conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, uint8(255), *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("Uint16ToPtr", func(t *testing.T) {
@@ -141,9 +141,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		type Dst struct{ V *uint16 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: 500}, &dst), "uint16 → *uint16 should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, uint16(500), *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: 500}, &dst), "Uint16 to *uint16 conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, uint16(500), *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("Uint32ToPtr", func(t *testing.T) {
@@ -152,9 +152,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		type Dst struct{ V *uint32 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: 70000}, &dst), "uint32 → *uint32 should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, uint32(70000), *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: 70000}, &dst), "Uint32 to *uint32 conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, uint32(70000), *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("Uint64ToPtr", func(t *testing.T) {
@@ -163,9 +163,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		type Dst struct{ V *uint64 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: 123456789}, &dst), "uint64 → *uint64 should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, uint64(123456789), *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: 123456789}, &dst), "Uint64 to *uint64 conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, uint64(123456789), *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("Float32ToPtr", func(t *testing.T) {
@@ -174,9 +174,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		type Dst struct{ V *float32 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: 1.5}, &dst), "float32 → *float32 should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, float32(1.5), *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: 1.5}, &dst), "Float32 to *float32 conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, float32(1.5), *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("Float64ToPtr", func(t *testing.T) {
@@ -185,9 +185,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		type Dst struct{ V *float64 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: 3.14}, &dst), "float64 → *float64 should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, 3.14, *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: 3.14}, &dst), "Float64 to *float64 conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, 3.14, *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("DecimalToPtr", func(t *testing.T) {
@@ -198,9 +198,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		d := decimal.NewFromFloat(123.45)
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: d}, &dst), "Decimal → *Decimal should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.True(t, d.Equal(*dst.V), "value should match")
+		require.NoError(t, Copy(Src{V: d}, &dst), "Decimal to *Decimal conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.True(t, d.Equal(*dst.V), "Copied field value should match the source value")
 	})
 
 	t.Run("TimeToPtr", func(t *testing.T) {
@@ -211,9 +211,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		v := time.Date(2024, 1, 15, 14, 30, 0, 0, time.UTC)
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: v}, &dst), "time.Time → *time.Time should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, v, *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: v}, &dst), "Time value to *time.Time conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, v, *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("DateTimeToPtr", func(t *testing.T) {
@@ -224,9 +224,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		v := timex.DateTime(time.Date(2024, 1, 15, 14, 30, 0, 0, time.UTC))
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: v}, &dst), "timex.DateTime → *timex.DateTime should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, v, *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: v}, &dst), "DateTime value to *timex.DateTime conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, v, *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("DateToPtr", func(t *testing.T) {
@@ -237,9 +237,9 @@ func TestCopyValueToPtr(t *testing.T) {
 		v := timex.Date(time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC))
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: v}, &dst), "timex.Date → *timex.Date should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, v, *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: v}, &dst), "Date value to *timex.Date conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, v, *dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("TimexTimeToPtr", func(t *testing.T) {
@@ -250,13 +250,13 @@ func TestCopyValueToPtr(t *testing.T) {
 		v := timex.Time(time.Date(0, 1, 1, 15, 30, 45, 0, time.UTC))
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: v}, &dst), "timex.Time → *timex.Time should succeed")
-		require.NotNil(t, dst.V, "pointer should not be nil")
-		assert.Equal(t, v, *dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: v}, &dst), "Time value to *timex.Time conversion should succeed")
+		require.NotNil(t, dst.V, "Destination pointer field should not be nil")
+		assert.Equal(t, v, *dst.V, "Copied field value should match the source value")
 	})
 }
 
-// TestCopyPtrToValue tests pointer → value converters (non-nil and nil).
+// TestCopyPtrToValue tests pointer to value converters (non-nil and nil).
 func TestCopyPtrToValue(t *testing.T) {
 	t.Run("StringPtrToValue", func(t *testing.T) {
 		type Src struct{ V *string }
@@ -264,8 +264,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V string }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: new("hello")}, &dst), "*string → string should succeed")
-		assert.Equal(t, "hello", dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: new("hello")}, &dst), "Pointer to string conversion should succeed")
+		assert.Equal(t, "hello", dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("NilStringPtrToValue", func(t *testing.T) {
@@ -274,8 +274,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V string }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: nil}, &dst), "nil *string → string should use zero value")
-		assert.Equal(t, "", dst.V, "nil pointer should produce zero value")
+		require.NoError(t, Copy(Src{V: nil}, &dst), "Nil *string to string conversion should use the zero value")
+		assert.Equal(t, "", dst.V, "Nil source pointer should produce the destination zero value")
 	})
 
 	t.Run("BoolPtrToValue", func(t *testing.T) {
@@ -284,8 +284,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V bool }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: new(true)}, &dst), "*bool → bool should succeed")
-		assert.True(t, dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: new(true)}, &dst), "Pointer to bool conversion should succeed")
+		assert.True(t, dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("NilBoolPtrToValue", func(t *testing.T) {
@@ -294,8 +294,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V bool }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: nil}, &dst), "nil *bool → bool should use zero value")
-		assert.False(t, dst.V, "nil pointer should produce zero value")
+		require.NoError(t, Copy(Src{V: nil}, &dst), "Nil *bool to bool conversion should use the zero value")
+		assert.False(t, dst.V, "Nil source pointer should produce the destination zero value")
 	})
 
 	t.Run("Int64PtrToValue", func(t *testing.T) {
@@ -304,8 +304,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V int64 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: new(int64(42))}, &dst), "*int64 → int64 should succeed")
-		assert.Equal(t, int64(42), dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: new(int64(42))}, &dst), "Pointer to int64 conversion should succeed")
+		assert.Equal(t, int64(42), dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("NilInt64PtrToValue", func(t *testing.T) {
@@ -314,8 +314,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V int64 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: nil}, &dst), "nil *int64 → int64 should use zero value")
-		assert.Equal(t, int64(0), dst.V, "nil pointer should produce zero value")
+		require.NoError(t, Copy(Src{V: nil}, &dst), "Nil *int64 to int64 conversion should use the zero value")
+		assert.Equal(t, int64(0), dst.V, "Nil source pointer should produce the destination zero value")
 	})
 
 	t.Run("Float64PtrToValue", func(t *testing.T) {
@@ -324,8 +324,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V float64 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: new(3.14)}, &dst), "*float64 → float64 should succeed")
-		assert.Equal(t, 3.14, dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: new(3.14)}, &dst), "Pointer to float64 conversion should succeed")
+		assert.Equal(t, 3.14, dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("NilFloat64PtrToValue", func(t *testing.T) {
@@ -334,8 +334,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V float64 }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: nil}, &dst), "nil *float64 → float64 should use zero value")
-		assert.Equal(t, 0.0, dst.V, "nil pointer should produce zero value")
+		require.NoError(t, Copy(Src{V: nil}, &dst), "Nil *float64 to float64 conversion should use the zero value")
+		assert.Equal(t, 0.0, dst.V, "Nil source pointer should produce the destination zero value")
 	})
 
 	t.Run("DecimalPtrToValue", func(t *testing.T) {
@@ -346,8 +346,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		d := decimal.NewFromFloat(99.99)
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: &d}, &dst), "*Decimal → Decimal should succeed")
-		assert.True(t, d.Equal(dst.V), "value should match")
+		require.NoError(t, Copy(Src{V: &d}, &dst), "Pointer to Decimal conversion should succeed")
+		assert.True(t, d.Equal(dst.V), "Copied field value should match the source value")
 	})
 
 	t.Run("NilDecimalPtrToValue", func(t *testing.T) {
@@ -356,8 +356,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V decimal.Decimal }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: nil}, &dst), "nil *Decimal → Decimal should use zero value")
-		assert.True(t, decimal.Zero.Equal(dst.V), "nil pointer should produce zero value")
+		require.NoError(t, Copy(Src{V: nil}, &dst), "Nil *Decimal to Decimal conversion should use the zero value")
+		assert.True(t, decimal.Zero.Equal(dst.V), "Nil source pointer should produce the destination zero value")
 	})
 
 	t.Run("TimePtrToValue", func(t *testing.T) {
@@ -368,8 +368,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		v := time.Date(2024, 1, 15, 14, 30, 0, 0, time.UTC)
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: &v}, &dst), "*time.Time → time.Time should succeed")
-		assert.Equal(t, v, dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: &v}, &dst), "Pointer to time.Time conversion should succeed")
+		assert.Equal(t, v, dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("NilTimePtrToValue", func(t *testing.T) {
@@ -378,8 +378,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V time.Time }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: nil}, &dst), "nil *time.Time → time.Time should use zero value")
-		assert.True(t, dst.V.IsZero(), "nil pointer should produce zero value")
+		require.NoError(t, Copy(Src{V: nil}, &dst), "Nil *time.Time to time.Time conversion should use the zero value")
+		assert.True(t, dst.V.IsZero(), "Nil source pointer should produce the destination zero value")
 	})
 
 	t.Run("DateTimePtrToValue", func(t *testing.T) {
@@ -390,8 +390,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		v := timex.DateTime(time.Date(2024, 1, 15, 14, 30, 0, 0, time.UTC))
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: &v}, &dst), "*timex.DateTime → timex.DateTime should succeed")
-		assert.Equal(t, v, dst.V, "value should match")
+		require.NoError(t, Copy(Src{V: &v}, &dst), "Pointer to timex.DateTime conversion should succeed")
+		assert.Equal(t, v, dst.V, "Copied field value should match the source value")
 	})
 
 	t.Run("NilDateTimePtrToValue", func(t *testing.T) {
@@ -400,8 +400,8 @@ func TestCopyPtrToValue(t *testing.T) {
 		type Dst struct{ V timex.DateTime }
 
 		var dst Dst
-		require.NoError(t, Copy(Src{V: nil}, &dst), "nil *timex.DateTime → timex.DateTime should use zero value")
-		assert.True(t, time.Time(dst.V).IsZero(), "nil pointer should produce zero value")
+		require.NoError(t, Copy(Src{V: nil}, &dst), "Nil *timex.DateTime to timex.DateTime conversion should use the zero value")
+		assert.True(t, time.Time(dst.V).IsZero(), "Nil source pointer should produce the destination zero value")
 	})
 }
 

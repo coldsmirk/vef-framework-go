@@ -14,11 +14,11 @@ import (
 	"github.com/coldsmirk/vef-framework-go/tabular"
 )
 
-type excelPrefixFormatter struct {
+type ExcelPrefixFormatter struct {
 	prefix string
 }
 
-func (f *excelPrefixFormatter) Format(value any) (string, error) {
+func (f *ExcelPrefixFormatter) Format(value any) (string, error) {
 	if value == nil {
 		return "", nil
 	}
@@ -83,7 +83,7 @@ func TestExporter(t *testing.T) {
 		}
 
 		exporter := NewExporterFor[PrefixUser]()
-		exporter.RegisterFormatter("prefix", &excelPrefixFormatter{prefix: "ID:"})
+		exporter.RegisterFormatter("prefix", &ExcelPrefixFormatter{prefix: "ID:"})
 
 		buf, err := exporter.Export(users)
 		require.NoError(t, err, "Export should succeed with a registered custom formatter")

@@ -26,8 +26,8 @@ func TestGetIP(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), "GET", "/test", nil)
 		req.Header.Set("X-Forwarded-For", forwardedIP)
 		resp, err := app.Test(req)
-		require.NoError(t, err, "Should not return error")
-		require.Equal(t, 200, resp.StatusCode, "Should equal expected value")
+		require.NoError(t, err, "TestGetIP should complete without error")
+		require.Equal(t, 200, resp.StatusCode, "Response status should be OK after IP handling")
 	})
 
 	t.Run("FallbackToDirectIP", func(t *testing.T) {
@@ -42,8 +42,8 @@ func TestGetIP(t *testing.T) {
 
 		req := httptest.NewRequestWithContext(context.Background(), "GET", "/test", nil)
 		resp, err := app.Test(req)
-		require.NoError(t, err, "Should not return error")
-		require.Equal(t, 200, resp.StatusCode, "Should equal expected value")
+		require.NoError(t, err, "TestGetIP should complete without error")
+		require.Equal(t, 200, resp.StatusCode, "Response status should be OK after IP handling")
 	})
 
 	t.Run("XForwardedForOverridesDirectIP", func(t *testing.T) {
@@ -60,8 +60,8 @@ func TestGetIP(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), "GET", "/test", nil)
 		req.Header.Set("X-Forwarded-For", forwardedIP)
 		resp, err := app.Test(req)
-		require.NoError(t, err, "Should not return error")
-		require.Equal(t, 200, resp.StatusCode, "Should equal expected value")
+		require.NoError(t, err, "TestGetIP should complete without error")
+		require.Equal(t, 200, resp.StatusCode, "Response status should be OK after IP handling")
 	})
 
 	t.Run("EmptyXForwardedForHeader", func(t *testing.T) {
@@ -77,8 +77,8 @@ func TestGetIP(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), "GET", "/test", nil)
 		req.Header.Set("X-Forwarded-For", "")
 		resp, err := app.Test(req)
-		require.NoError(t, err, "Should not return error")
-		require.Equal(t, 200, resp.StatusCode, "Should equal expected value")
+		require.NoError(t, err, "TestGetIP should complete without error")
+		require.Equal(t, 200, resp.StatusCode, "Response status should be OK after IP handling")
 	})
 
 	t.Run("MultipleIPsInXForwardedFor", func(t *testing.T) {
@@ -95,7 +95,7 @@ func TestGetIP(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), "GET", "/test", nil)
 		req.Header.Set("X-Forwarded-For", forwardedIPs)
 		resp, err := app.Test(req)
-		require.NoError(t, err, "Should not return error")
-		require.Equal(t, 200, resp.StatusCode, "Should equal expected value")
+		require.NoError(t, err, "TestGetIP should complete without error")
+		require.Equal(t, 200, resp.StatusCode, "Response status should be OK after IP handling")
 	})
 }

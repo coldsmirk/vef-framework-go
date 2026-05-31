@@ -219,7 +219,7 @@ func TestConvertSliceToCollectionSetRejections(t *testing.T) {
 
 		decoder, err := NewDecoder(&target)
 		require.NoError(t, err, "Decoder construction should succeed")
-		assert.Error(t, decoder.Decode(input), "+Inf should be rejected")
+		assert.Error(t, decoder.Decode(input), "Positive infinity should be rejected")
 	})
 
 	t.Run("StringElementToIntSet", func(t *testing.T) {
@@ -273,7 +273,7 @@ func TestConvertSliceToCollectionSetRejections(t *testing.T) {
 
 		decoder, err := NewDecoder(&target)
 		require.NoError(t, err, "Decoder construction should succeed")
-		assert.Error(t, decoder.Decode(input), "2^63 must overflow int64")
+		assert.Error(t, decoder.Decode(input), "Value 2^63 must overflow int64")
 	})
 
 	// Same boundary for uint64: math.MaxUint64 rounds up to 2^64 in
@@ -287,7 +287,7 @@ func TestConvertSliceToCollectionSetRejections(t *testing.T) {
 
 		decoder, err := NewDecoder(&target)
 		require.NoError(t, err, "Decoder construction should succeed")
-		assert.Error(t, decoder.Decode(input), "2^64 must overflow uint64")
+		assert.Error(t, decoder.Decode(input), "Value 2^64 must overflow uint64")
 	})
 
 	// MinInt64 (-2^63) is exactly representable in float64 and must
@@ -375,12 +375,12 @@ func probeRegistry[T cmp.Ordered](t *testing.T) {
 
 	for _, f := range families {
 		builder, ok := collectionSetBuilders[f.typ]
-		require.True(t, ok, "%s[%s] must be registered", f.name, elemType)
+		require.True(t, ok, "Registry entry %s[%s] must be registered", f.name, elemType)
 
 		out, err := builder(emptySource)
-		require.NoError(t, err, "%s[%s] builder must accept empty source", f.name, elemType)
+		require.NoError(t, err, "Registry builder %s[%s] must accept empty source", f.name, elemType)
 		assert.True(t, reflect.TypeOf(out).Implements(f.typ),
-			"%s[%s] builder returned %T which does not implement %s",
+			"Registry builder %s[%s] should return %T implementing %s",
 			f.name, elemType, out, f.typ)
 	}
 }

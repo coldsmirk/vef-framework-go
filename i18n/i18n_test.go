@@ -79,7 +79,7 @@ func TestSetLanguage(t *testing.T) {
 
 	t.Run("SetToChinese", func(t *testing.T) {
 		err := SetLanguage("zh-CN")
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestSetLanguage should complete without error")
 
 		msg := T("validator_phone_number")
 		t.Logf("Chinese message: %s", msg)
@@ -89,7 +89,7 @@ func TestSetLanguage(t *testing.T) {
 
 	t.Run("SetToEnglish", func(t *testing.T) {
 		err := SetLanguage("en")
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestSetLanguage should complete without error")
 
 		msg := T("validator_phone_number")
 		t.Logf("English message: %s", msg)
@@ -109,7 +109,7 @@ func TestSetLanguage(t *testing.T) {
 		}()
 
 		err := SetLanguage("")
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestSetLanguage should complete without error")
 
 		msg := T("ok")
 		t.Logf("Default language message: %s", msg)
@@ -164,7 +164,7 @@ func TestIsLanguageSupported(t *testing.T) {
 // TestTranslator tests the global T and TE functions.
 func TestTranslator(t *testing.T) {
 	err := SetLanguage("zh-CN")
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestTranslator should complete without error")
 
 	t.Run("TFunctionWithValidMessageID", func(t *testing.T) {
 		msg := T("ok")

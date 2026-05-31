@@ -206,7 +206,7 @@ func TestParseStruct(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				result := parseStruct(tt.typ)
-				require.Len(t, result, len(tt.expected), "parseStruct should return one column per visible exported field")
+				require.Len(t, result, len(tt.expected), "Struct parser should return one column per visible exported field")
 
 				for i, expected := range tt.expected {
 					actual := result[i]
@@ -238,7 +238,7 @@ func TestParseStruct(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				result := parseStruct(tt.typ)
-				assert.Nil(t, result, "parseStruct should return nil when given a non-struct type (%s)", tt.typ.Kind())
+				assert.Nil(t, result, "Struct parser should return nil when given a non-struct type (%s)", tt.typ.Kind())
 			})
 		}
 	})
@@ -258,9 +258,9 @@ func TestNewSchema(t *testing.T) {
 		require.Equal(t, 3, schema.ColumnCount(), "Schema should have one column per exported field")
 
 		columns := schema.Columns()
-		assert.Equal(t, "字段1", columns[0].Name, "order=0 column should sort first")
-		assert.Equal(t, "字段2", columns[1].Name, "order=1 column should sort second")
-		assert.Equal(t, "字段3", columns[2].Name, "order=2 column should sort third")
+		assert.Equal(t, "字段1", columns[0].Name, "Order=0 column should sort first")
+		assert.Equal(t, "字段2", columns[1].Name, "Order=1 column should sort second")
+		assert.Equal(t, "字段3", columns[2].Name, "Order=2 column should sort third")
 	})
 
 	t.Run("NewSchemaForGenericHelper", func(t *testing.T) {
@@ -440,14 +440,14 @@ func TestBuildColumn(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := buildColumn(tt.field, tt.attrs, tt.order)
-			assert.Equal(t, tt.expected.Index, result.Index, "buildColumn should preserve the source field's reflect index")
-			assert.Equal(t, tt.expected.Name, result.Name, "buildColumn should resolve Name from name attribute, __default, or field name")
-			assert.Equal(t, tt.expected.Width, result.Width, "buildColumn should parse width attribute or default to zero on parse failure")
-			assert.Equal(t, tt.expected.Order, result.Order, "buildColumn should parse order attribute or fall back to argument when invalid")
-			assert.Equal(t, tt.expected.Default, result.Default, "buildColumn should pass default attribute through verbatim")
-			assert.Equal(t, tt.expected.Format, result.Format, "buildColumn should pass format attribute through verbatim")
-			assert.Equal(t, tt.expected.Formatter, result.Formatter, "buildColumn should pass formatter attribute through verbatim")
-			assert.Equal(t, tt.expected.Parser, result.Parser, "buildColumn should pass parser attribute through verbatim")
+			assert.Equal(t, tt.expected.Index, result.Index, "Column builder should preserve the source field's reflect index")
+			assert.Equal(t, tt.expected.Name, result.Name, "Column builder should resolve Name from name attribute, __default, or field name")
+			assert.Equal(t, tt.expected.Width, result.Width, "Column builder should parse width attribute or default to zero on parse failure")
+			assert.Equal(t, tt.expected.Order, result.Order, "Column builder should parse order attribute or fall back to argument when invalid")
+			assert.Equal(t, tt.expected.Default, result.Default, "Column builder should pass default attribute through verbatim")
+			assert.Equal(t, tt.expected.Format, result.Format, "Column builder should pass format attribute through verbatim")
+			assert.Equal(t, tt.expected.Formatter, result.Formatter, "Column builder should pass formatter attribute through verbatim")
+			assert.Equal(t, tt.expected.Parser, result.Parser, "Column builder should pass parser attribute through verbatim")
 		})
 	}
 }

@@ -19,7 +19,7 @@ func TestNew(t *testing.T) {
 // TestDayJs tests day js functionality.
 func TestDayJs(t *testing.T) {
 	vm, err := js.New()
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestDayJs should complete without error")
 
 	tests := []struct {
 		name   string
@@ -69,7 +69,7 @@ func TestDayJs(t *testing.T) {
 // TestBigJs tests big js functionality.
 func TestBigJs(t *testing.T) {
 	vm, err := js.New()
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestBigJs should complete without error")
 
 	tests := []struct {
 		name   string
@@ -115,7 +115,7 @@ func TestBigJs(t *testing.T) {
 // TestRadashUtils tests radash utils functionality.
 func TestRadashUtils(t *testing.T) {
 	vm, err := js.New()
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRadashUtils should complete without error")
 
 	tests := []struct {
 		name   string
@@ -197,7 +197,7 @@ func TestRadashUtils(t *testing.T) {
 // TestValidatorJs tests validator js functionality.
 func TestValidatorJs(t *testing.T) {
 	vm, err := js.New()
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestValidatorJs should complete without error")
 
 	tests := []struct {
 		name   string
@@ -269,7 +269,7 @@ func TestValidatorJs(t *testing.T) {
 func TestCombinedLibraries(t *testing.T) {
 	t.Run("DateFormattingAndValidation", func(t *testing.T) {
 		vm, err := js.New()
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestCombinedLibraries should complete without error")
 
 		script := `
 			const date = dayjs('2025-01-15').format('YYYY-MM-DD');
@@ -277,16 +277,16 @@ func TestCombinedLibraries(t *testing.T) {
 			({ date, isValid })
 		`
 		result, err := vm.RunString(script)
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestCombinedLibraries should complete without error")
 
 		obj := result.ToObject(vm)
-		assert.Equal(t, "2025-01-15", obj.Get("date").String(), "Should equal expected value")
-		assert.True(t, obj.Get("isValid").ToBoolean(), "Should be true")
+		assert.Equal(t, "2025-01-15", obj.Get("date").String(), "JavaScript helper result should match the expected output")
+		assert.True(t, obj.Get("isValid").ToBoolean(), "TestCombinedLibraries condition should be true")
 	})
 
 	t.Run("PriceCalculationWithFormatting", func(t *testing.T) {
 		vm, err := js.New()
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestCombinedLibraries should complete without error")
 
 		script := `
 			const price = Big('19.99');
@@ -296,13 +296,13 @@ func TestCombinedLibraries(t *testing.T) {
 			formatted
 		`
 		result, err := vm.RunString(script)
-		require.NoError(t, err, "Should not return error")
-		assert.Equal(t, "Total: $21.59", result.String(), "Should equal expected value")
+		require.NoError(t, err, "TestCombinedLibraries should complete without error")
+		assert.Equal(t, "Total: $21.59", result.String(), "JavaScript helper result should match the expected output")
 	})
 
 	t.Run("DataProcessingPipeline", func(t *testing.T) {
 		vm, err := js.New()
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestCombinedLibraries should complete without error")
 
 		script := `
 			const data = [
@@ -318,7 +318,7 @@ func TestCombinedLibraries(t *testing.T) {
 			({ count, total: totalAmount.toString() })
 		`
 		result, err := vm.RunString(script)
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestCombinedLibraries should complete without error")
 
 		obj := result.ToObject(vm)
 		assert.Equal(t, int64(2), obj.Get("count").ToInteger(), "Should have 2 valid emails")
@@ -329,7 +329,7 @@ func TestCombinedLibraries(t *testing.T) {
 // TestGoJavaScriptInterop tests go java script interop functionality.
 func TestGoJavaScriptInterop(t *testing.T) {
 	vm, err := js.New()
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestGoJavaScriptInterop should complete without error")
 
 	t.Run("PassGoStructToJS", func(t *testing.T) {
 		type User struct {
@@ -340,7 +340,7 @@ func TestGoJavaScriptInterop(t *testing.T) {
 
 		user := User{Name: "alice", Email: "alice@example.com", Age: 30}
 		err := vm.Set("user", user)
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestGoJavaScriptInterop should complete without error")
 
 		script := `
 			const capitalized = utils.capitalize(user.name);
@@ -349,18 +349,18 @@ func TestGoJavaScriptInterop(t *testing.T) {
 			({ capitalized, isValidEmail, isAdult })
 		`
 		result, err := vm.RunString(script)
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestGoJavaScriptInterop should complete without error")
 
 		obj := result.ToObject(vm)
-		assert.Equal(t, "Alice", obj.Get("capitalized").String(), "Should equal expected value")
-		assert.True(t, obj.Get("isValidEmail").ToBoolean(), "Should be true")
-		assert.True(t, obj.Get("isAdult").ToBoolean(), "Should be true")
+		assert.Equal(t, "Alice", obj.Get("capitalized").String(), "JavaScript helper result should match the expected output")
+		assert.True(t, obj.Get("isValidEmail").ToBoolean(), "TestGoJavaScriptInterop condition should be true")
+		assert.True(t, obj.Get("isAdult").ToBoolean(), "TestGoJavaScriptInterop condition should be true")
 	})
 
 	t.Run("PassArrayToJS", func(t *testing.T) {
 		numbers := []int{5, 2, 8, 1, 9}
 		err := vm.Set("numbers", numbers)
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestGoJavaScriptInterop should complete without error")
 
 		script := `
 			const sorted = utils.sort(numbers);
@@ -369,11 +369,11 @@ func TestGoJavaScriptInterop(t *testing.T) {
 			({ sorted, sum, max })
 		`
 		result, err := vm.RunString(script)
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestGoJavaScriptInterop should complete without error")
 
 		obj := result.ToObject(vm)
-		assert.Equal(t, int64(25), obj.Get("sum").ToInteger(), "Should equal expected value")
-		assert.Equal(t, int64(9), obj.Get("max").ToInteger(), "Should equal expected value")
+		assert.Equal(t, int64(25), obj.Get("sum").ToInteger(), "JavaScript helper result should match the expected output")
+		assert.Equal(t, int64(9), obj.Get("max").ToInteger(), "JavaScript helper result should match the expected output")
 	})
 
 	t.Run("ReturnComplexObject", func(t *testing.T) {
@@ -389,16 +389,16 @@ func TestGoJavaScriptInterop(t *testing.T) {
 			})
 		`
 		result, err := vm.RunString(script)
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestGoJavaScriptInterop should complete without error")
 
 		obj := result.ToObject(vm)
-		assert.NotEmpty(t, obj.Get("timestamp").String(), "Should not be empty")
-		assert.Equal(t, "115", obj.Get("calculation").String(), "Should equal expected value")
-		assert.Equal(t, "Hello world", obj.Get("processed").String(), "Should equal expected value")
+		assert.NotEmpty(t, obj.Get("timestamp").String(), "TestGoJavaScriptInterop should return non-empty value")
+		assert.Equal(t, "115", obj.Get("calculation").String(), "JavaScript helper result should match the expected output")
+		assert.Equal(t, "Hello world", obj.Get("processed").String(), "JavaScript helper result should match the expected output")
 
 		validation := obj.Get("validation").ToObject(vm)
-		assert.True(t, validation.Get("email").ToBoolean(), "Should be true")
-		assert.True(t, validation.Get("uuid").ToBoolean(), "Should be true")
+		assert.True(t, validation.Get("email").ToBoolean(), "TestGoJavaScriptInterop condition should be true")
+		assert.True(t, validation.Get("uuid").ToBoolean(), "TestGoJavaScriptInterop condition should be true")
 	})
 }
 
@@ -463,7 +463,7 @@ func TestParse(t *testing.T) {
 // TestTypeCheckers tests type checkers functionality.
 func TestTypeCheckers(t *testing.T) {
 	vm, err := js.New()
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestTypeCheckers should complete without error")
 
 	tests := []struct {
 		name   string
@@ -521,7 +521,7 @@ func TestTypeCheckers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := vm.RunString(tt.script)
-			require.NoError(t, err, "Should not return error")
+			require.NoError(t, err, "TestTypeCheckers should complete without error")
 			tt.check(t, result)
 		})
 	}
@@ -530,7 +530,7 @@ func TestTypeCheckers(t *testing.T) {
 // TestErrorHandling tests error handling functionality.
 func TestErrorHandling(t *testing.T) {
 	vm, err := js.New()
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestErrorHandling should complete without error")
 
 	t.Run("ReferenceError", func(t *testing.T) {
 		_, err := vm.RunString(`nonExistentVariable`)

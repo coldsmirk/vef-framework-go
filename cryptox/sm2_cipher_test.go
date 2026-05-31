@@ -183,10 +183,10 @@ func TestSm2CipherMultipleEncryptions(t *testing.T) {
 // TestSm2CipherSignVerify tests Sm2 Cipher sign verify scenarios.
 func TestSm2CipherSignVerify(t *testing.T) {
 	privateKey, err := generateSM2KeyPair()
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestSm2CipherSignVerify should complete without error")
 
 	cipher, err := NewSM2(privateKey, &privateKey.PublicKey)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestSm2CipherSignVerify should complete without error")
 
 	tests := []struct {
 		name string
@@ -218,31 +218,31 @@ func TestSm2CipherSignVerify(t *testing.T) {
 // TestSm2CipherSignWithoutPrivateKey tests Sm2 Cipher sign without private key scenarios.
 func TestSm2CipherSignWithoutPrivateKey(t *testing.T) {
 	privateKey, err := generateSM2KeyPair()
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestSm2CipherSignWithoutPrivateKey should complete without error")
 
 	cipher, err := NewSM2(nil, &privateKey.PublicKey)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestSm2CipherSignWithoutPrivateKey should complete without error")
 
 	data := "Test message"
 	_, err = cipher.Sign(data)
-	assert.Error(t, err, "Should return error")
+	assert.Error(t, err, "TestSm2CipherSignWithoutPrivateKey should return an error")
 	assert.ErrorIs(t, err, ErrPrivateKeyRequiredForSign, "Error should be ErrPrivateKeyRequiredForSign")
 }
 
 // TestSm2CipherVerifyWithoutPublicKey tests Sm2 Cipher verify without public key scenarios.
 func TestSm2CipherVerifyWithoutPublicKey(t *testing.T) {
 	privateKey, err := generateSM2KeyPair()
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestSm2CipherVerifyWithoutPublicKey should complete without error")
 
 	signerCipher, err := NewSM2(privateKey, &privateKey.PublicKey)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestSm2CipherVerifyWithoutPublicKey should complete without error")
 
 	data := "Test message"
 	signature, err := signerCipher.Sign(data)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestSm2CipherVerifyWithoutPublicKey should complete without error")
 
 	verifierCipher, err := NewSM2(privateKey, nil)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestSm2CipherVerifyWithoutPublicKey should complete without error")
 
 	valid, err := verifierCipher.Verify(data, signature)
 	require.NoError(t, err, "Should verify signature without error")
@@ -252,32 +252,32 @@ func TestSm2CipherVerifyWithoutPublicKey(t *testing.T) {
 // TestSm2CipherInvalidSignature tests Sm2 Cipher invalid signature scenarios.
 func TestSm2CipherInvalidSignature(t *testing.T) {
 	privateKey, err := generateSM2KeyPair()
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestSm2CipherInvalidSignature should complete without error")
 
 	cipher, err := NewSM2(privateKey, &privateKey.PublicKey)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestSm2CipherInvalidSignature should complete without error")
 
 	data := "Test message"
 
 	_, err = cipher.Verify(data, "invalid-base64")
-	assert.Error(t, err, "Should return error")
+	assert.Error(t, err, "TestSm2CipherInvalidSignature should return an error")
 }
 
 // TestSm2CipherDifferentSignatures tests Sm2 Cipher different signatures scenarios.
 func TestSm2CipherDifferentSignatures(t *testing.T) {
 	privateKey, err := generateSM2KeyPair()
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestSm2CipherDifferentSignatures should complete without error")
 
 	cipher, err := NewSM2(privateKey, &privateKey.PublicKey)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestSm2CipherDifferentSignatures should complete without error")
 
 	data := "Test message"
 
 	signature1, err := cipher.Sign(data)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestSm2CipherDifferentSignatures should complete without error")
 
 	signature2, err := cipher.Sign(data)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestSm2CipherDifferentSignatures should complete without error")
 
 	assert.NotEqual(t, signature1, signature2,
 		"SM2 should produce different signatures due to random component")

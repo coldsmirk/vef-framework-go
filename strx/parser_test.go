@@ -143,7 +143,7 @@ func TestParseTagCommaSeparated(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ParseTag(tt.input)
-			assert.Equal(t, tt.expected, result, "Should equal expected value")
+			assert.Equal(t, tt.expected, result, "ParseTag should parse comma-separated attributes for %s", tt.name)
 		})
 	}
 }
@@ -257,7 +257,7 @@ func TestParseTagSpaceSeparated(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ParseTag(tt.input, WithSpacePairDelimiter(), WithValueDelimiter(':'))
-			assert.Equal(t, tt.expected, result, "Should equal expected value")
+			assert.Equal(t, tt.expected, result, "ParseTag should parse space-separated attributes for %s", tt.name)
 		})
 	}
 }
@@ -335,7 +335,7 @@ func TestParseTagCustomDelimiters(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ParseTag(tt.input, tt.opts...)
-			assert.Equal(t, tt.expected, result, "Should equal expected value")
+			assert.Equal(t, tt.expected, result, "ParseTag should honor custom delimiters for %s", tt.name)
 		})
 	}
 }
@@ -453,7 +453,7 @@ func TestParseTagBareValueMode(t *testing.T) {
 			opts = append(opts, WithBareValueMode(tt.mode))
 			opts = append(opts, tt.opts...)
 			result := ParseTag(tt.input, opts...)
-			assert.Equal(t, tt.expected, result, "Should equal expected value")
+			assert.Equal(t, tt.expected, result, "ParseTag should honor bare value mode for %s", tt.name)
 		})
 	}
 }
@@ -543,7 +543,7 @@ func TestParseTagEdgeCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ParseTag(tt.input, tt.opts...)
-			assert.Equal(t, tt.expected, result, "Should equal expected value")
+			assert.Equal(t, tt.expected, result, "ParseTag should handle edge case %s", tt.name)
 		})
 	}
 }
@@ -563,7 +563,7 @@ func TestParseTagOptionsOrdering(t *testing.T) {
 			"a": "1",
 			"b": "2",
 		}
-		assert.Equal(t, expected, result, "Should equal expected value")
+		assert.Equal(t, expected, result, "ParseTag should apply multiple options in order")
 	})
 
 	t.Run("OverridingOptions", func(t *testing.T) {
@@ -578,6 +578,6 @@ func TestParseTagOptionsOrdering(t *testing.T) {
 			"a": "1",
 			"b": "2",
 		}
-		assert.Equal(t, expected, result, "Should equal expected value")
+		assert.Equal(t, expected, result, "ParseTag should let later options override earlier ones")
 	})
 }

@@ -433,7 +433,7 @@ func TestDefaultParser(t *testing.T) {
 				validate: func(t *testing.T, result any) {
 					f, ok := result.(float32)
 					require.True(t, ok, "Result should be float32 when target is float32")
-					assert.InDelta(t, 3.14159, f, 0.00001, "float32 should preserve roughly 7 significant digits")
+					assert.InDelta(t, 3.14159, f, 0.00001, "Float32 should preserve roughly 7 significant digits")
 				},
 			},
 			{
@@ -443,7 +443,7 @@ func TestDefaultParser(t *testing.T) {
 				validate: func(t *testing.T, result any) {
 					f, ok := result.(float64)
 					require.True(t, ok, "Result should be float64 when target is float64")
-					assert.InDelta(t, 3.14159265359, f, 0.000000001, "float64 should preserve full input precision")
+					assert.InDelta(t, 3.14159265359, f, 0.000000001, "Float64 should preserve full input precision")
 				},
 			},
 		}

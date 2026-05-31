@@ -138,7 +138,7 @@ func TestStructAdapter(t *testing.T) {
 		require.NoError(t, row.Set(columns[0], int64(42)), "Set should accept convertible int64 for int field")
 
 		value := row.Value().(StructAdapterUser)
-		assert.Equal(t, 42, value.ID, "int64 input should be converted to int field")
+		assert.Equal(t, 42, value.ID, "Int64 input should be converted to int field")
 	})
 
 	t.Run("SetIncompatibleType", func(t *testing.T) {

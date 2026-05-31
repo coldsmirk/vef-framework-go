@@ -104,16 +104,16 @@ func TestBuild(t *testing.T) {
 
 		result := Build(nodes, adapter)
 
-		require.Len(t, result, 1, "Length should be 1")
+		require.Len(t, result, 1, "Node collection should contain exactly one item")
 		root := result[0]
-		assert.Equal(t, "1", root.ID, "Should equal expected value")
-		assert.Equal(t, "Root", root.Name, "Should equal expected value")
-		require.Len(t, root.Children, 2, "Length should be 2")
+		assert.Equal(t, "1", root.ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "Root", root.Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		require.Len(t, root.Children, 2, "Node collection should contain exactly two items")
 
-		assert.Equal(t, "2", root.Children[0].ID, "Should equal expected value")
-		assert.Equal(t, "3", root.Children[1].ID, "Should equal expected value")
-		assert.Empty(t, root.Children[0].Children, "Should be empty")
-		assert.Empty(t, root.Children[1].Children, "Should be empty")
+		assert.Equal(t, "2", root.Children[0].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "3", root.Children[1].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Empty(t, root.Children[0].Children, "Node collection should be empty for this case")
+		assert.Empty(t, root.Children[1].Children, "Node collection should be empty for this case")
 	})
 
 	t.Run("BuildsTreeWithMultipleRoots", func(t *testing.T) {
@@ -121,24 +121,24 @@ func TestBuild(t *testing.T) {
 
 		result := Build(nodes, adapter)
 
-		require.Len(t, result, 3, "Length should be 3")
+		require.Len(t, result, 3, "Node collection should contain exactly three items")
 
 		root1 := findNodeByID(result, "1")
 		root2 := findNodeByID(result, "6")
 		orphan := findNodeByID(result, "8")
 
-		require.NotNil(t, root1, "Should not be nil")
-		require.NotNil(t, root2, "Should not be nil")
-		require.NotNil(t, orphan, "Should not be nil")
+		require.NotNil(t, root1, "Tree lookup should return the expected node")
+		require.NotNil(t, root2, "Tree lookup should return the expected node")
+		require.NotNil(t, orphan, "Tree lookup should return the expected node")
 
-		assert.Equal(t, "Root 1", root1.Name, "Should equal expected value")
-		assert.Len(t, root1.Children, 2, "Length should be 2")
+		assert.Equal(t, "Root 1", root1.Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Len(t, root1.Children, 2, "Node collection should contain exactly two items")
 
-		assert.Equal(t, "Root 2", root2.Name, "Should equal expected value")
-		assert.Len(t, root2.Children, 1, "Length should be 1")
+		assert.Equal(t, "Root 2", root2.Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Len(t, root2.Children, 1, "Node collection should contain exactly one item")
 
-		assert.Equal(t, "Orphan", orphan.Name, "Should equal expected value")
-		assert.Empty(t, orphan.Children, "Should be empty")
+		assert.Equal(t, "Orphan", orphan.Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Empty(t, orphan.Children, "Node collection should be empty for this case")
 	})
 
 	t.Run("BuildsDeepNestedTree", func(t *testing.T) {
@@ -146,19 +146,19 @@ func TestBuild(t *testing.T) {
 
 		result := Build(nodes, adapter)
 
-		require.Len(t, result, 2, "Length should be 2")
+		require.Len(t, result, 2, "Node collection should contain exactly two items")
 
 		root1 := findNodeByID(result, "root1")
-		require.NotNil(t, root1, "Should not be nil")
-		require.Len(t, root1.Children, 2, "Length should be 2")
+		require.NotNil(t, root1, "Tree lookup should return the expected node")
+		require.Len(t, root1.Children, 2, "Node collection should contain exactly two items")
 
 		childA := findNodeByID(root1.Children, "a")
-		require.NotNil(t, childA, "Should not be nil")
-		require.Len(t, childA.Children, 2, "Length should be 2")
+		require.NotNil(t, childA, "Tree lookup should return the expected node")
+		require.Len(t, childA.Children, 2, "Node collection should contain exactly two items")
 
 		childC := findNodeByID(childA.Children, "c")
-		require.NotNil(t, childC, "Should not be nil")
-		assert.Len(t, childC.Children, 2, "Length should be 2")
+		require.NotNil(t, childC, "Tree lookup should return the expected node")
+		assert.Len(t, childC.Children, 2, "Node collection should contain exactly two items")
 	})
 
 	t.Run("HandlesEmptySlice", func(t *testing.T) {
@@ -166,8 +166,8 @@ func TestBuild(t *testing.T) {
 
 		result := Build(nodes, adapter)
 
-		assert.NotNil(t, result, "Should not be nil")
-		assert.Empty(t, result, "Should be empty")
+		assert.NotNil(t, result, "Tree lookup should return the expected node")
+		assert.Empty(t, result, "Node collection should be empty for this case")
 	})
 
 	t.Run("HandlesSingleNode", func(t *testing.T) {
@@ -177,10 +177,10 @@ func TestBuild(t *testing.T) {
 
 		result := Build(nodes, adapter)
 
-		require.Len(t, result, 1, "Length should be 1")
-		assert.Equal(t, "1", result[0].ID, "Should equal expected value")
-		assert.Equal(t, "Single", result[0].Name, "Should equal expected value")
-		assert.Empty(t, result[0].Children, "Should be empty")
+		require.Len(t, result, 1, "Node collection should contain exactly one item")
+		assert.Equal(t, "1", result[0].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "Single", result[0].Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Empty(t, result[0].Children, "Node collection should be empty for this case")
 	})
 
 	t.Run("HandlesNodesWithEmptyIDs", func(t *testing.T) {
@@ -191,11 +191,11 @@ func TestBuild(t *testing.T) {
 
 		result := Build(nodes, adapter)
 
-		require.Len(t, result, 2, "Length should be 2")
+		require.Len(t, result, 2, "Node collection should contain exactly two items")
 
 		validNode := findNodeByID(result, "1")
-		require.NotNil(t, validNode, "Should not be nil")
-		assert.Equal(t, "Valid", validNode.Name, "Should equal expected value")
+		require.NotNil(t, validNode, "Tree lookup should return the expected node")
+		assert.Equal(t, "Valid", validNode.Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("HandlesCircularReferencesGracefully", func(t *testing.T) {
@@ -206,7 +206,7 @@ func TestBuild(t *testing.T) {
 
 		result := Build(nodes, adapter)
 
-		require.Empty(t, result, "Should be empty")
+		require.Empty(t, result, "Node collection should be empty for this case")
 	})
 
 	t.Run("HandlesPartialCircularReferences", func(t *testing.T) {
@@ -219,11 +219,11 @@ func TestBuild(t *testing.T) {
 
 		result := Build(nodes, adapter)
 
-		require.Len(t, result, 1, "Length should be 1")
+		require.Len(t, result, 1, "Node collection should contain exactly one item")
 		root := result[0]
-		assert.Equal(t, "root", root.ID, "Should equal expected value")
-		require.Len(t, root.Children, 1, "Length should be 1")
-		assert.Equal(t, "3", root.Children[0].ID, "Should equal expected value")
+		assert.Equal(t, "root", root.ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		require.Len(t, root.Children, 1, "Node collection should contain exactly one item")
+		assert.Equal(t, "3", root.Children[0].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("WorksWithDifferentDataTypes", func(t *testing.T) {
@@ -237,16 +237,16 @@ func TestBuild(t *testing.T) {
 		categoryAdapter := createTestCategoryAdapter()
 		result := Build(categories, categoryAdapter)
 
-		require.Len(t, result, 1, "Length should be 1")
+		require.Len(t, result, 1, "Node collection should contain exactly one item")
 		tech := result[0]
-		assert.Equal(t, "tech", tech.CategoryID, "Should equal expected value")
-		assert.Equal(t, "Technology", tech.CategoryName, "Should equal expected value")
-		require.Len(t, tech.SubCategories, 2, "Length should be 2")
+		assert.Equal(t, "tech", tech.CategoryID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "Technology", tech.CategoryName, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		require.Len(t, tech.SubCategories, 2, "Node collection should contain exactly two items")
 
 		software := findCategoryByID(tech.SubCategories, "software")
-		require.NotNil(t, software, "Should not be nil")
-		require.Len(t, software.SubCategories, 1, "Length should be 1")
-		assert.Equal(t, "ai", software.SubCategories[0].CategoryID, "Should equal expected value")
+		require.NotNil(t, software, "Tree lookup should return the expected node")
+		require.Len(t, software.SubCategories, 1, "Node collection should contain exactly one item")
+		assert.Equal(t, "ai", software.SubCategories[0].CategoryID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 }
 
@@ -260,9 +260,9 @@ func TestFindNode(t *testing.T) {
 
 		result, found := FindNode(tree, "1", adapter)
 
-		assert.True(t, found, "Should be found")
-		assert.Equal(t, "1", result.ID, "Should equal expected value")
-		assert.Equal(t, "Root 1", result.Name, "Should equal expected value")
+		assert.True(t, found, "Tree lookup should report the target node as found")
+		assert.Equal(t, "1", result.ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "Root 1", result.Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("FindsDeepNestedNode", func(t *testing.T) {
@@ -271,9 +271,9 @@ func TestFindNode(t *testing.T) {
 
 		result, found := FindNode(tree, "f", adapter)
 
-		assert.True(t, found, "Should be found")
-		assert.Equal(t, "f", result.ID, "Should equal expected value")
-		assert.Equal(t, "F", result.Name, "Should equal expected value")
+		assert.True(t, found, "Tree lookup should report the target node as found")
+		assert.Equal(t, "f", result.ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "F", result.Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("FindsLeafNode", func(t *testing.T) {
@@ -282,9 +282,9 @@ func TestFindNode(t *testing.T) {
 
 		result, found := FindNode(tree, "4", adapter)
 
-		assert.True(t, found, "Should be found")
-		assert.Equal(t, "4", result.ID, "Should equal expected value")
-		assert.Equal(t, "Child 1-1-1", result.Name, "Should equal expected value")
+		assert.True(t, found, "Tree lookup should report the target node as found")
+		assert.Equal(t, "4", result.ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "Child 1-1-1", result.Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("FindsIntermediateNodeWithChildren", func(t *testing.T) {
@@ -293,10 +293,10 @@ func TestFindNode(t *testing.T) {
 
 		result, found := FindNode(tree, "2", adapter)
 
-		assert.True(t, found, "Should be found")
-		assert.Equal(t, "2", result.ID, "Should equal expected value")
-		assert.Equal(t, "Child 1-1", result.Name, "Should equal expected value")
-		assert.Len(t, result.Children, 2, "Length should be 2")
+		assert.True(t, found, "Tree lookup should report the target node as found")
+		assert.Equal(t, "2", result.ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "Child 1-1", result.Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Len(t, result.Children, 2, "Node collection should contain exactly two items")
 	})
 
 	t.Run("ReturnsFalseForNonExistentNode", func(t *testing.T) {
@@ -305,8 +305,8 @@ func TestFindNode(t *testing.T) {
 
 		result, found := FindNode(tree, "nonexistent", adapter)
 
-		assert.False(t, found, "Should not be found")
-		assert.Equal(t, "", result.ID, "Should equal expected value")
+		assert.False(t, found, "Tree lookup should report the target node as missing")
+		assert.Equal(t, "", result.ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("ReturnsFalseForEmptyTargetID", func(t *testing.T) {
@@ -315,7 +315,7 @@ func TestFindNode(t *testing.T) {
 
 		_, found := FindNode(tree, "", adapter)
 
-		assert.False(t, found, "Should not be found")
+		assert.False(t, found, "Tree lookup should report the target node as missing")
 	})
 
 	t.Run("HandlesEmptyTree", func(t *testing.T) {
@@ -323,7 +323,7 @@ func TestFindNode(t *testing.T) {
 
 		_, found := FindNode(tree, "1", adapter)
 
-		assert.False(t, found, "Should not be found")
+		assert.False(t, found, "Tree lookup should report the target node as missing")
 	})
 
 	t.Run("FindsNodesInDifferentBranches", func(t *testing.T) {
@@ -331,16 +331,16 @@ func TestFindNode(t *testing.T) {
 		tree := Build(nodes, adapter)
 
 		result1, found1 := FindNode(tree, "2", adapter)
-		assert.True(t, found1, "Should be found")
-		assert.Equal(t, "2", result1.ID, "Should equal expected value")
+		assert.True(t, found1, "Tree lookup should report the target node as found")
+		assert.Equal(t, "2", result1.ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 
 		result2, found2 := FindNode(tree, "7", adapter)
-		assert.True(t, found2, "Should be found")
-		assert.Equal(t, "7", result2.ID, "Should equal expected value")
+		assert.True(t, found2, "Tree lookup should report the target node as found")
+		assert.Equal(t, "7", result2.ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 
 		result3, found3 := FindNode(tree, "8", adapter)
-		assert.True(t, found3, "Should be found")
-		assert.Equal(t, "8", result3.ID, "Should equal expected value")
+		assert.True(t, found3, "Tree lookup should report the target node as found")
+		assert.Equal(t, "8", result3.ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("WorksWithDifferentDataTypes", func(t *testing.T) {
@@ -355,9 +355,9 @@ func TestFindNode(t *testing.T) {
 
 		result, found := FindNode(tree, "ai", categoryAdapter)
 
-		assert.True(t, found, "Should be found")
-		assert.Equal(t, "ai", result.CategoryID, "Should equal expected value")
-		assert.Equal(t, "AI", result.CategoryName, "Should equal expected value")
+		assert.True(t, found, "Tree lookup should report the target node as found")
+		assert.Equal(t, "ai", result.CategoryID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "AI", result.CategoryName, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("FindsFirstOccurrenceWithDuplicateIDs", func(t *testing.T) {
@@ -370,9 +370,9 @@ func TestFindNode(t *testing.T) {
 		tree := Build(nodes, adapter)
 		result, found := FindNode(tree, "2", adapter)
 
-		assert.True(t, found, "Should be found")
-		assert.Equal(t, "2", result.ID, "Should equal expected value")
-		assert.Contains(t, []string{"Child 1", "Child 2"}, result.Name, "Should contain expected value")
+		assert.True(t, found, "Tree lookup should report the target node as found")
+		assert.Equal(t, "2", result.ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Contains(t, []string{"Child 1", "Child 2"}, result.Name, "Duplicate ID lookup should return one of the matching child names")
 	})
 }
 
@@ -386,10 +386,10 @@ func TestFindNodePath(t *testing.T) {
 
 		path, found := FindNodePath(tree, "1", adapter)
 
-		assert.True(t, found, "Should be found")
-		require.Len(t, path, 1, "Length should be 1")
-		assert.Equal(t, "1", path[0].ID, "Should equal expected value")
-		assert.Equal(t, "Root 1", path[0].Name, "Should equal expected value")
+		assert.True(t, found, "Tree lookup should report the target node as found")
+		require.Len(t, path, 1, "Node collection should contain exactly one item")
+		assert.Equal(t, "1", path[0].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "Root 1", path[0].Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("FindsPathToDeepNestedNode", func(t *testing.T) {
@@ -398,12 +398,12 @@ func TestFindNodePath(t *testing.T) {
 
 		path, found := FindNodePath(tree, "f", adapter)
 
-		assert.True(t, found, "Should be found")
-		require.Len(t, path, 4, "Length should be 4")
-		assert.Equal(t, "root1", path[0].ID, "Should equal expected value")
-		assert.Equal(t, "a", path[1].ID, "Should equal expected value")
-		assert.Equal(t, "c", path[2].ID, "Should equal expected value")
-		assert.Equal(t, "f", path[3].ID, "Should equal expected value")
+		assert.True(t, found, "Tree lookup should report the target node as found")
+		require.Len(t, path, 4, "Node collection should contain exactly four items")
+		assert.Equal(t, "root1", path[0].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "a", path[1].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "c", path[2].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "f", path[3].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("FindsPathToImmediateChild", func(t *testing.T) {
@@ -412,10 +412,10 @@ func TestFindNodePath(t *testing.T) {
 
 		path, found := FindNodePath(tree, "2", adapter)
 
-		assert.True(t, found, "Should be found")
-		require.Len(t, path, 2, "Length should be 2")
-		assert.Equal(t, "1", path[0].ID, "Should equal expected value")
-		assert.Equal(t, "2", path[1].ID, "Should equal expected value")
+		assert.True(t, found, "Tree lookup should report the target node as found")
+		require.Len(t, path, 2, "Node collection should contain exactly two items")
+		assert.Equal(t, "1", path[0].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "2", path[1].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("FindsPathToLeafNode", func(t *testing.T) {
@@ -424,11 +424,11 @@ func TestFindNodePath(t *testing.T) {
 
 		path, found := FindNodePath(tree, "4", adapter)
 
-		assert.True(t, found, "Should be found")
-		require.Len(t, path, 3, "Length should be 3")
-		assert.Equal(t, "1", path[0].ID, "Should equal expected value")
-		assert.Equal(t, "2", path[1].ID, "Should equal expected value")
-		assert.Equal(t, "4", path[2].ID, "Should equal expected value")
+		assert.True(t, found, "Tree lookup should report the target node as found")
+		require.Len(t, path, 3, "Node collection should contain exactly three items")
+		assert.Equal(t, "1", path[0].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "2", path[1].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "4", path[2].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("FindsPathToOrphanNode", func(t *testing.T) {
@@ -437,10 +437,10 @@ func TestFindNodePath(t *testing.T) {
 
 		path, found := FindNodePath(tree, "8", adapter)
 
-		assert.True(t, found, "Should be found")
-		require.Len(t, path, 1, "Length should be 1")
-		assert.Equal(t, "8", path[0].ID, "Should equal expected value")
-		assert.Equal(t, "Orphan", path[0].Name, "Should equal expected value")
+		assert.True(t, found, "Tree lookup should report the target node as found")
+		require.Len(t, path, 1, "Node collection should contain exactly one item")
+		assert.Equal(t, "8", path[0].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "Orphan", path[0].Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("ReturnsNilForNonExistentNode", func(t *testing.T) {
@@ -449,8 +449,8 @@ func TestFindNodePath(t *testing.T) {
 
 		path, found := FindNodePath(tree, "nonexistent", adapter)
 
-		assert.False(t, found, "Should not be found")
-		assert.Nil(t, path, "Should be nil")
+		assert.False(t, found, "Tree lookup should report the target node as missing")
+		assert.Nil(t, path, "Tree path lookup should return nil when the target is missing")
 	})
 
 	t.Run("ReturnsNilForEmptyTargetID", func(t *testing.T) {
@@ -459,8 +459,8 @@ func TestFindNodePath(t *testing.T) {
 
 		path, found := FindNodePath(tree, "", adapter)
 
-		assert.False(t, found, "Should not be found")
-		assert.Nil(t, path, "Should be nil")
+		assert.False(t, found, "Tree lookup should report the target node as missing")
+		assert.Nil(t, path, "Tree path lookup should return nil when the target is missing")
 	})
 
 	t.Run("HandlesEmptyTree", func(t *testing.T) {
@@ -468,8 +468,8 @@ func TestFindNodePath(t *testing.T) {
 
 		path, found := FindNodePath(tree, "1", adapter)
 
-		assert.False(t, found, "Should not be found")
-		assert.Nil(t, path, "Should be nil")
+		assert.False(t, found, "Tree lookup should report the target node as missing")
+		assert.Nil(t, path, "Tree path lookup should return nil when the target is missing")
 	})
 
 	t.Run("FindsPathsInDifferentBranches", func(t *testing.T) {
@@ -477,17 +477,17 @@ func TestFindNodePath(t *testing.T) {
 		tree := Build(nodes, adapter)
 
 		path1, found1 := FindNodePath(tree, "5", adapter)
-		assert.True(t, found1, "Should be found")
-		require.Len(t, path1, 3, "Length should be 3")
-		assert.Equal(t, "1", path1[0].ID, "Should equal expected value")
-		assert.Equal(t, "2", path1[1].ID, "Should equal expected value")
-		assert.Equal(t, "5", path1[2].ID, "Should equal expected value")
+		assert.True(t, found1, "Tree lookup should report the target node as found")
+		require.Len(t, path1, 3, "Node collection should contain exactly three items")
+		assert.Equal(t, "1", path1[0].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "2", path1[1].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "5", path1[2].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 
 		path2, found2 := FindNodePath(tree, "7", adapter)
-		assert.True(t, found2, "Should be found")
-		require.Len(t, path2, 2, "Length should be 2")
-		assert.Equal(t, "6", path2[0].ID, "Should equal expected value")
-		assert.Equal(t, "7", path2[1].ID, "Should equal expected value")
+		assert.True(t, found2, "Tree lookup should report the target node as found")
+		require.Len(t, path2, 2, "Node collection should contain exactly two items")
+		assert.Equal(t, "6", path2[0].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "7", path2[1].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("PathContainsCompleteNodeData", func(t *testing.T) {
@@ -496,16 +496,16 @@ func TestFindNodePath(t *testing.T) {
 
 		path, found := FindNodePath(tree, "4", adapter)
 
-		assert.True(t, found, "Should be found")
-		require.Len(t, path, 3, "Length should be 3")
+		assert.True(t, found, "Tree lookup should report the target node as found")
+		require.Len(t, path, 3, "Node collection should contain exactly three items")
 
-		assert.Equal(t, "Root 1", path[0].Name, "Should equal expected value")
-		assert.Equal(t, "Child 1-1", path[1].Name, "Should equal expected value")
-		assert.Equal(t, "Child 1-1-1", path[2].Name, "Should equal expected value")
+		assert.Equal(t, "Root 1", path[0].Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "Child 1-1", path[1].Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "Child 1-1-1", path[2].Name, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 
-		assert.Equal(t, "", path[0].ParentID, "Should equal expected value")
-		assert.Equal(t, "1", path[1].ParentID, "Should equal expected value")
-		assert.Equal(t, "2", path[2].ParentID, "Should equal expected value")
+		assert.Equal(t, "", path[0].ParentID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "1", path[1].ParentID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "2", path[2].ParentID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("WorksWithDifferentDataTypes", func(t *testing.T) {
@@ -520,15 +520,15 @@ func TestFindNodePath(t *testing.T) {
 
 		path, found := FindNodePath(tree, "ai", categoryAdapter)
 
-		assert.True(t, found, "Should be found")
-		require.Len(t, path, 3, "Length should be 3")
-		assert.Equal(t, "tech", path[0].CategoryID, "Should equal expected value")
-		assert.Equal(t, "software", path[1].CategoryID, "Should equal expected value")
-		assert.Equal(t, "ai", path[2].CategoryID, "Should equal expected value")
+		assert.True(t, found, "Tree lookup should report the target node as found")
+		require.Len(t, path, 3, "Node collection should contain exactly three items")
+		assert.Equal(t, "tech", path[0].CategoryID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "software", path[1].CategoryID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "ai", path[2].CategoryID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 
-		assert.Equal(t, 1, path[0].Level, "Should equal expected value")
-		assert.Equal(t, 2, path[1].Level, "Should equal expected value")
-		assert.Equal(t, 3, path[2].Level, "Should equal expected value")
+		assert.Equal(t, 1, path[0].Level, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, 2, path[1].Level, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, 3, path[2].Level, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("FindsCorrectPathInComplexTree", func(t *testing.T) {
@@ -537,12 +537,12 @@ func TestFindNodePath(t *testing.T) {
 
 		path, found := FindNodePath(tree, "g", adapter)
 
-		assert.True(t, found, "Should be found")
-		require.Len(t, path, 4, "Length should be 4")
-		assert.Equal(t, "root1", path[0].ID, "Should equal expected value")
-		assert.Equal(t, "a", path[1].ID, "Should equal expected value")
-		assert.Equal(t, "c", path[2].ID, "Should equal expected value")
-		assert.Equal(t, "g", path[3].ID, "Should equal expected value")
+		assert.True(t, found, "Tree lookup should report the target node as found")
+		require.Len(t, path, 4, "Node collection should contain exactly four items")
+		assert.Equal(t, "root1", path[0].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "a", path[1].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "c", path[2].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Equal(t, "g", path[3].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 }
 
@@ -557,7 +557,7 @@ func TestAdapterEdgeCases(t *testing.T) {
 
 		assert.Panics(t, func() {
 			Build(nodes, badAdapter)
-		}, "Should panic as expected")
+		}, "Build should panic when adapter callbacks are missing")
 	})
 
 	t.Run("LargeTreePerformance", func(t *testing.T) {
@@ -577,9 +577,9 @@ func TestAdapterEdgeCases(t *testing.T) {
 		adapter := createTestNodeAdapter()
 		result := Build(nodes, adapter)
 
-		require.Len(t, result, 1, "Length should be 1")
-		assert.Equal(t, "root", result[0].ID, "Should equal expected value")
-		assert.Len(t, result[0].Children, nodeCount-1, "Length should be nodeCount-1")
+		require.Len(t, result, 1, "Node collection should contain exactly one item")
+		assert.Equal(t, "root", result[0].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Len(t, result[0].Children, nodeCount-1, "Root node should contain all generated child nodes")
 	})
 
 	t.Run("DeepNestingPerformance", func(t *testing.T) {
@@ -599,7 +599,7 @@ func TestAdapterEdgeCases(t *testing.T) {
 		adapter := createTestNodeAdapter()
 		result := Build(nodes, adapter)
 
-		require.Len(t, result, 1, "Length should be 1")
+		require.Len(t, result, 1, "Node collection should contain exactly one item")
 
 		current := result[0]
 
@@ -609,7 +609,7 @@ func TestAdapterEdgeCases(t *testing.T) {
 			depthCount++
 		}
 
-		assert.Equal(t, depth, depthCount, "Should equal expected value")
+		assert.Equal(t, depth, depthCount, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("NodesWithSpecialCharactersInIDs", func(t *testing.T) {
@@ -623,15 +623,15 @@ func TestAdapterEdgeCases(t *testing.T) {
 		adapter := createTestNodeAdapter()
 		result := Build(nodes, adapter)
 
-		require.Len(t, result, 1, "Length should be 1")
+		require.Len(t, result, 1, "Node collection should contain exactly one item")
 		root := result[0]
-		assert.Equal(t, "root/path", root.ID, "Should equal expected value")
-		require.Len(t, root.Children, 2, "Length should be 2")
+		assert.Equal(t, "root/path", root.ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		require.Len(t, root.Children, 2, "Node collection should contain exactly two items")
 
 		emailChild := findNodeByID(root.Children, "child@domain.com")
-		require.NotNil(t, emailChild, "Should not be nil")
-		require.Len(t, emailChild.Children, 1, "Length should be 1")
-		assert.Equal(t, "unicode_测试_🌟", emailChild.Children[0].ID, "Should equal expected value")
+		require.NotNil(t, emailChild, "Tree lookup should return the expected node")
+		require.Len(t, emailChild.Children, 1, "Node collection should contain exactly one item")
+		assert.Equal(t, "unicode_测试_🌟", emailChild.Children[0].ID, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 
 	t.Run("ConcurrentReadSafety", func(*testing.T) {
@@ -671,13 +671,13 @@ func TestAdapterEdgeCases(t *testing.T) {
 		adapter := createTestNodeAdapter()
 
 		node := nodes[0]
-		assert.Equal(t, "1", adapter.GetID(node), "Should equal expected value")
-		assert.Nil(t, adapter.GetParentID(node), "Should equal expected value")
-		assert.Empty(t, adapter.GetChildren(node), "Should be empty")
+		assert.Equal(t, "1", adapter.GetID(node), "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Nil(t, adapter.GetParentID(node), "Tree result should preserve node IDs, names, parent IDs, and category levels")
+		assert.Empty(t, adapter.GetChildren(node), "Node collection should be empty for this case")
 
 		newChildren := []TestNode{{ID: "child", Name: "Test Child"}}
 		adapter.SetChildren(&nodes[0], newChildren)
-		assert.Equal(t, newChildren, nodes[0].Children, "Should equal expected value")
+		assert.Equal(t, newChildren, nodes[0].Children, "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 }
 
@@ -705,7 +705,7 @@ func TestAdapterBenchmarkScenarios(t *testing.T) {
 		adapter := createTestNodeAdapter()
 		result := Build(nodes, adapter)
 
-		require.Len(t, result, 1, "Length should be 1")
+		require.Len(t, result, 1, "Node collection should contain exactly one item")
 
 		var countNodes func([]TestNode) int
 
@@ -718,6 +718,6 @@ func TestAdapterBenchmarkScenarios(t *testing.T) {
 			return count
 		}
 
-		assert.Equal(t, nodeCount, countNodes(result), "Should equal expected value")
+		assert.Equal(t, nodeCount, countNodes(result), "Tree result should preserve node IDs, names, parent IDs, and category levels")
 	})
 }

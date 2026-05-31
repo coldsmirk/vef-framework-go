@@ -108,8 +108,8 @@ func TestMapAdapterWriter(t *testing.T) {
 		result, ok := writer.Build().([]map[string]any)
 		require.True(t, ok, "Build should return []map[string]any")
 		require.Len(t, result, 1, "One committed row should produce one output")
-		assert.Equal(t, 1, result[0]["id"], "id should be preserved")
-		assert.Equal(t, "Alice", result[0]["name"], "name should be preserved")
+		assert.Equal(t, 1, result[0]["id"], "ID value should be preserved")
+		assert.Equal(t, "Alice", result[0]["name"], "Name value should be preserved")
 	})
 
 	t.Run("RequiredMissingKey", func(t *testing.T) {

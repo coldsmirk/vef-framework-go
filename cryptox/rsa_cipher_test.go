@@ -266,7 +266,7 @@ func TestRsaCipherDefaultMode(t *testing.T) {
 	decrypted, err := cipher.Decrypt(ciphertext)
 	require.NoError(t, err, "Should decrypt ciphertext successfully")
 
-	assert.Equal(t, plaintext, decrypted, "Should equal expected value")
+	assert.Equal(t, plaintext, decrypted, "RSA decrypt should recover the original plaintext")
 }
 
 // TestRsaCipherKeySizes tests RSA with different key sizes.
@@ -303,10 +303,10 @@ func TestRsaCipherKeySizes(t *testing.T) {
 // TestRsaCipherSignVerifyPss tests Rsa Cipher sign verify pss scenarios.
 func TestRsaCipherSignVerifyPss(t *testing.T) {
 	privateKey, err := generateRSAKeyPair(2048)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherSignVerifyPss should complete without error")
 
 	cipher, err := NewRSA(privateKey, &privateKey.PublicKey, WithRSASignMode(RsaSignModePSS))
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherSignVerifyPss should complete without error")
 
 	tests := []struct {
 		name string
@@ -321,14 +321,14 @@ func TestRsaCipherSignVerifyPss(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			signature, err := cipher.Sign(tt.data)
-			require.NoError(t, err, "Should not return error")
+			require.NoError(t, err, "TestRsaCipherSignVerifyPss should complete without error")
 
 			valid, err := cipher.Verify(tt.data, signature)
-			require.NoError(t, err, "Should not return error")
+			require.NoError(t, err, "TestRsaCipherSignVerifyPss should complete without error")
 			assert.True(t, valid, "Should be valid")
 
 			valid, err = cipher.Verify(tt.data+"tampered", signature)
-			require.NoError(t, err, "Should not return error")
+			require.NoError(t, err, "TestRsaCipherSignVerifyPss should complete without error")
 			assert.False(t, valid, "Should not be valid")
 		})
 	}
@@ -337,66 +337,66 @@ func TestRsaCipherSignVerifyPss(t *testing.T) {
 // TestRsaCipherSignVerifyPkcs1v15 tests Rsa Cipher sign verify pkcs1v15 scenarios.
 func TestRsaCipherSignVerifyPkcs1v15(t *testing.T) {
 	privateKey, err := generateRSAKeyPair(2048)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherSignVerifyPkcs1v15 should complete without error")
 
 	cipher, err := NewRSA(privateKey, &privateKey.PublicKey, WithRSASignMode(RsaSignModePKCS1v15))
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherSignVerifyPkcs1v15 should complete without error")
 
 	data := "Test message"
 	signature, err := cipher.Sign(data)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherSignVerifyPkcs1v15 should complete without error")
 
 	valid, err := cipher.Verify(data, signature)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherSignVerifyPkcs1v15 should complete without error")
 	assert.True(t, valid, "Should be valid")
 }
 
 // TestRsaCipherSignWithoutPrivateKey tests Rsa Cipher sign without private key scenarios.
 func TestRsaCipherSignWithoutPrivateKey(t *testing.T) {
 	privateKey, err := generateRSAKeyPair(2048)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherSignWithoutPrivateKey should complete without error")
 
 	cipher, err := NewRSA(nil, &privateKey.PublicKey)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherSignWithoutPrivateKey should complete without error")
 
 	data := "Test message"
 	_, err = cipher.Sign(data)
-	assert.Error(t, err, "Should return error")
+	assert.Error(t, err, "TestRsaCipherSignWithoutPrivateKey should return an error")
 	assert.ErrorIs(t, err, ErrPrivateKeyRequiredForSign, "Error should be ErrPrivateKeyRequiredForSign")
 }
 
 // TestRsaCipherVerifyWithoutPublicKey tests Rsa Cipher verify without public key scenarios.
 func TestRsaCipherVerifyWithoutPublicKey(t *testing.T) {
 	privateKey, err := generateRSAKeyPair(2048)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherVerifyWithoutPublicKey should complete without error")
 
 	signerCipher, err := NewRSA(privateKey, &privateKey.PublicKey)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherVerifyWithoutPublicKey should complete without error")
 
 	data := "Test message"
 	signature, err := signerCipher.Sign(data)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherVerifyWithoutPublicKey should complete without error")
 
 	verifierCipher, err := NewRSA(privateKey, nil)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherVerifyWithoutPublicKey should complete without error")
 
 	valid, err := verifierCipher.Verify(data, signature)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherVerifyWithoutPublicKey should complete without error")
 	assert.True(t, valid, "Should be valid")
 }
 
 // TestRsaCipherInvalidSignature tests Rsa Cipher invalid signature scenarios.
 func TestRsaCipherInvalidSignature(t *testing.T) {
 	privateKey, err := generateRSAKeyPair(2048)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherInvalidSignature should complete without error")
 
 	cipher, err := NewRSA(privateKey, &privateKey.PublicKey)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherInvalidSignature should complete without error")
 
 	data := "Test message"
 
 	_, err = cipher.Verify(data, "invalid-base64")
-	assert.Error(t, err, "Should return error")
+	assert.Error(t, err, "TestRsaCipherInvalidSignature should return an error")
 }
 
 // TestRsaCipherInvalidPem tests RSA cipher with invalid PEM data.
@@ -511,29 +511,29 @@ func TestRsaCipherEncryptWithoutPublicKey(t *testing.T) {
 // TestRsaCipherDifferentSignModes tests Rsa Cipher different sign modes scenarios.
 func TestRsaCipherDifferentSignModes(t *testing.T) {
 	privateKey, err := generateRSAKeyPair(2048)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherDifferentSignModes should complete without error")
 
 	pssCipher, err := NewRSA(privateKey, &privateKey.PublicKey, WithRSASignMode(RsaSignModePSS))
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherDifferentSignModes should complete without error")
 
 	pkcs1Cipher, err := NewRSA(privateKey, &privateKey.PublicKey, WithRSASignMode(RsaSignModePKCS1v15))
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherDifferentSignModes should complete without error")
 
 	data := "Test message"
 
 	pssSignature, err := pssCipher.Sign(data)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherDifferentSignModes should complete without error")
 
 	pkcs1Signature, err := pkcs1Cipher.Sign(data)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherDifferentSignModes should complete without error")
 
 	assert.NotEqual(t, pssSignature, pkcs1Signature, "Should not equal")
 
 	validPss, err := pssCipher.Verify(data, pssSignature)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherDifferentSignModes should complete without error")
 	assert.True(t, validPss, "Should be valid")
 
 	validPkcs1, err := pkcs1Cipher.Verify(data, pkcs1Signature)
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "TestRsaCipherDifferentSignModes should complete without error")
 	assert.True(t, validPkcs1, "Should be valid")
 }

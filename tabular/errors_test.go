@@ -29,7 +29,7 @@ func TestFormatRowError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := formatRowError(tt.row, tt.column, tt.field, cause)
-			assert.Equal(t, tt.expected, got, "formatRowError should produce the documented format")
+			assert.Equal(t, tt.expected, got, "Row error formatter should produce the documented format")
 		})
 	}
 }
@@ -49,7 +49,7 @@ func TestImportError(t *testing.T) {
 	})
 
 	t.Run("ErrorsIsTraversesUnwrap", func(t *testing.T) {
-		require.ErrorIs(t, importErr, cause, "errors.Is should walk through Unwrap")
+		require.ErrorIs(t, importErr, cause, "Errors.Is should walk through Unwrap")
 	})
 
 	t.Run("ZeroValueDegradesGracefully", func(t *testing.T) {
@@ -75,6 +75,6 @@ func TestExportError(t *testing.T) {
 	})
 
 	t.Run("ErrorsIsTraversesUnwrap", func(t *testing.T) {
-		require.ErrorIs(t, exportErr, cause, "errors.Is should walk through Unwrap")
+		require.ErrorIs(t, exportErr, cause, "Errors.Is should walk through Unwrap")
 	})
 }

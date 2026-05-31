@@ -25,10 +25,10 @@ func TestMD5(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := MD5(tt.input)
-			assert.Equal(t, tt.expected, result, "Should equal expected value")
+			assert.Equal(t, tt.expected, result, "Hash output should match the expected digest")
 
 			resultBytes := MD5Bytes([]byte(tt.input))
-			assert.Equal(t, tt.expected, resultBytes, "Should equal expected value")
+			assert.Equal(t, tt.expected, resultBytes, "Hash output should match the expected digest")
 		})
 	}
 }
@@ -50,10 +50,10 @@ func TestSHA1(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := SHA1(tt.input)
-			assert.Equal(t, tt.expected, result, "Should equal expected value")
+			assert.Equal(t, tt.expected, result, "Hash output should match the expected digest")
 
 			resultBytes := SHA1Bytes([]byte(tt.input))
-			assert.Equal(t, tt.expected, resultBytes, "Should equal expected value")
+			assert.Equal(t, tt.expected, resultBytes, "Hash output should match the expected digest")
 		})
 	}
 }
@@ -75,10 +75,10 @@ func TestSHA256(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := SHA256(tt.input)
-			assert.Equal(t, tt.expected, result, "Should equal expected value")
+			assert.Equal(t, tt.expected, result, "Hash output should match the expected digest")
 
 			resultBytes := SHA256Bytes([]byte(tt.input))
-			assert.Equal(t, tt.expected, resultBytes, "Should equal expected value")
+			assert.Equal(t, tt.expected, resultBytes, "Hash output should match the expected digest")
 		})
 	}
 }
@@ -99,10 +99,10 @@ func TestSHA512(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := SHA512(tt.input)
-			assert.Equal(t, tt.expected, result, "Should equal expected value")
+			assert.Equal(t, tt.expected, result, "Hash output should match the expected digest")
 
 			resultBytes := SHA512Bytes([]byte(tt.input))
-			assert.Equal(t, tt.expected, resultBytes, "Should equal expected value")
+			assert.Equal(t, tt.expected, resultBytes, "Hash output should match the expected digest")
 		})
 	}
 }
@@ -124,10 +124,10 @@ func TestSM3(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := SM3(tt.input)
-			assert.Equal(t, tt.expected, result, "Should equal expected value")
+			assert.Equal(t, tt.expected, result, "Hash output should match the expected digest")
 
 			resultBytes := SM3Bytes([]byte(tt.input))
-			assert.Equal(t, tt.expected, resultBytes, "Should equal expected value")
+			assert.Equal(t, tt.expected, resultBytes, "Hash output should match the expected digest")
 		})
 	}
 }
@@ -149,7 +149,7 @@ func TestHmacMD5(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := HmacMD5(tt.key, tt.data)
-			assert.Len(t, result, 32, "Length should be 32")
+			assert.Len(t, result, 32, "Hex digest should contain 32 characters")
 			assert.Regexp(t, "^[0-9a-f]+$", result, "Should contain only lowercase hex characters")
 
 			result2 := HmacMD5(tt.key, tt.data)
@@ -181,7 +181,7 @@ func TestHmacSHA1(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := HmacSHA1(tt.key, tt.data)
-			assert.Len(t, result, 40, "Length should be 40")
+			assert.Len(t, result, 40, "Hex digest should contain 40 characters")
 			assert.Regexp(t, "^[0-9a-f]+$", result, "Should contain only lowercase hex characters")
 		})
 	}
@@ -205,11 +205,11 @@ func TestHmacSHA256(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := HmacSHA256(tt.key, tt.data)
-			assert.Len(t, result, 64, "Length should be 64")
+			assert.Len(t, result, 64, "Hex digest should contain 64 characters")
 			assert.Regexp(t, "^[0-9a-f]+$", result, "Should contain only lowercase hex characters")
 
 			if tt.expected != "" {
-				assert.Equal(t, tt.expected, result, "Should equal expected value")
+				assert.Equal(t, tt.expected, result, "Hash output should match the expected digest")
 			}
 		})
 	}
@@ -231,7 +231,7 @@ func TestHmacSHA512(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := HmacSHA512(tt.key, tt.data)
-			assert.Len(t, result, 128, "Length should be 128")
+			assert.Len(t, result, 128, "Hex digest should contain 128 characters")
 			assert.Regexp(t, "^[0-9a-f]+$", result, "Should contain only lowercase hex characters")
 		})
 	}
@@ -253,7 +253,7 @@ func TestHmacSM3(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := HmacSM3(tt.key, tt.data)
-			assert.Len(t, result, 64, "Length should be 64")
+			assert.Len(t, result, 64, "Hex digest should contain 64 characters")
 			assert.Regexp(t, "^[0-9a-f]+$", result, "Should contain only lowercase hex characters")
 
 			result2 := HmacSM3(tt.key, tt.data)
@@ -278,7 +278,7 @@ func TestHashFunctionsNilInput(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.testFunc()
-			assert.NotEmpty(t, result, "Should not be empty")
+			assert.NotEmpty(t, result, "TestHashFunctionsNilInput should return non-empty value")
 			assert.Regexp(t, "^[0-9a-f]+$", result, "Should contain only lowercase hex characters")
 		})
 	}
@@ -303,7 +303,7 @@ func TestHashOutputFormat(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.testFunc(testData)
 			assert.Regexp(t, "^[0-9a-f]+$", result, "Should contain only lowercase hex characters")
-			assert.NotEmpty(t, result, "Should not be empty")
+			assert.NotEmpty(t, result, "TestHashOutputFormat should return non-empty value")
 		})
 	}
 }
