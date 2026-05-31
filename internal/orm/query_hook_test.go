@@ -22,16 +22,16 @@ func TestSQLGuard(t *testing.T) {
 	newGuardedDB := func(t *testing.T, enableGuard bool) DB {
 		t.Helper()
 
-		sqlDB, err := database.Open(config.DataSourceConfig{Kind: config.SQLite})
-		require.NoError(t, err, "database.Open should succeed")
+		rawDB, err := database.Open(config.DataSourceConfig{Kind: config.SQLite})
+		require.NoError(t, err, "Database.Open should succeed")
 
-		t.Cleanup(func() { _ = sqlDB.Close() })
+		t.Cleanup(func() { _ = rawDB.Close() })
 
-		db, err := Open(sqlDB, config.SQLite, WithSQLGuard(enableGuard))
-		require.NoError(t, err, "orm.Open should succeed")
+		db, err := Open(rawDB, config.SQLite, WithSQLGuard(enableGuard))
+		require.NoError(t, err, "ORM open should succeed")
 
 		_, err = db.NewRaw("CREATE TABLE IF NOT EXISTS test_guard (id INTEGER PRIMARY KEY, name TEXT)").Exec(ctx)
-		require.NoError(t, err, "create test table should succeed")
+		require.NoError(t, err, "Creating test table should succeed")
 
 		return db
 	}
@@ -41,43 +41,43 @@ func TestSQLGuard(t *testing.T) {
 
 		_, err := db.NewRaw("DROP TABLE test_guard").Exec(ctx)
 		require.Error(t, err, "DROP should be blocked by SQL guard")
-		require.ErrorIs(t, err, context.Canceled, "blocked query cancels the context")
+		require.ErrorIs(t, err, context.Canceled, "Blocked query should cancel the context")
 
 		var count int
 		require.NoError(t, db.NewRaw("SELECT COUNT(*) FROM test_guard").Scan(ctx, &count),
-			"table should still exist after blocked DROP")
+			"Table should still exist after blocked DROP")
 	})
 
 	t.Run("TruncateStatementBlocked", func(t *testing.T) {
 		db := newGuardedDB(t, true)
 
 		_, err := db.NewRaw("INSERT INTO test_guard (name) VALUES ('test')").Exec(ctx)
-		require.NoError(t, err, "insert should succeed")
+		require.NoError(t, err, "Insert should succeed")
 
 		_, err = db.NewRaw("TRUNCATE TABLE test_guard").Exec(ctx)
 		require.Error(t, err, "TRUNCATE should be blocked by SQL guard")
-		require.ErrorIs(t, err, context.Canceled, "blocked query cancels the context")
+		require.ErrorIs(t, err, context.Canceled, "Blocked query should cancel the context")
 
 		var count int
 		require.NoError(t, db.NewRaw("SELECT COUNT(*) FROM test_guard").Scan(ctx, &count),
-			"count query should succeed after blocked TRUNCATE")
-		require.Equal(t, 1, count, "data should still exist after blocked TRUNCATE")
+			"Count query should succeed after blocked TRUNCATE")
+		require.Equal(t, 1, count, "Data should still exist after blocked TRUNCATE")
 	})
 
 	t.Run("DeleteWithoutWhereBlocked", func(t *testing.T) {
 		db := newGuardedDB(t, true)
 
 		_, err := db.NewRaw("INSERT INTO test_guard (name) VALUES ('test')").Exec(ctx)
-		require.NoError(t, err, "insert should succeed")
+		require.NoError(t, err, "Insert should succeed")
 
 		_, err = db.NewRaw("DELETE FROM test_guard").Exec(ctx)
 		require.Error(t, err, "DELETE without WHERE should be blocked by SQL guard")
-		require.ErrorIs(t, err, context.Canceled, "blocked query cancels the context")
+		require.ErrorIs(t, err, context.Canceled, "Blocked query should cancel the context")
 
 		var count int
 		require.NoError(t, db.NewRaw("SELECT COUNT(*) FROM test_guard").Scan(ctx, &count),
-			"count query should succeed after blocked DELETE")
-		require.Equal(t, 1, count, "data should still exist after blocked DELETE without WHERE")
+			"Count query should succeed after blocked DELETE")
+		require.Equal(t, 1, count, "Data should still exist after blocked DELETE without WHERE")
 	})
 
 	t.Run("DeleteWithWhereAllowed", func(t *testing.T) {

@@ -36,7 +36,7 @@ func WithSQLGuard(enabled bool) Option {
 // kind selects the SQL dialect, not the connection: Open never touches the
 // connection config, so deciding how to construct the *sql.DB stays entirely
 // with the database package. An unsupported kind returns ErrUnsupportedDialect.
-func Open(sqlDB *sql.DB, kind config.DBKind, opts ...Option) (DB, error) {
+func Open(db *sql.DB, kind config.DBKind, opts ...Option) (DB, error) {
 	dialect, err := DialectFor(kind)
 	if err != nil {
 		return nil, err
@@ -47,7 +47,7 @@ func Open(sqlDB *sql.DB, kind config.DBKind, opts ...Option) (DB, error) {
 		opt(&o)
 	}
 
-	bunDB := bun.NewDB(sqlDB, dialect, bun.WithDiscardUnknownColumns())
+	bunDB := bun.NewDB(db, dialect, bun.WithDiscardUnknownColumns())
 	addQueryHook(bunDB, logger, o.sqlGuard)
 
 	return New(bunDB), nil
