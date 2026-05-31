@@ -5,48 +5,45 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/suite"
+	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
-type RBACDataPermissionResolverTestSuite struct {
-	suite.Suite
-}
-
 // TestResolveDataScope verifies all data scope resolution paths.
-func (s *RBACDataPermissionResolverTestSuite) TestResolveDataScope() {
+func TestRBACDataPermissionResolverResolveDataScope(t *testing.T) {
 	ctx := context.Background()
 
-	s.Run("NilLoader", func() {
+	t.Run("NilLoader", func(t *testing.T) {
 		resolver := NewRBACDataPermissionResolver(nil)
 
 		scope, err := resolver.ResolveDataScope(ctx, security.NewUser("user1", "Alice", "admin"), "user:read")
-		s.Require().NoError(err, "Should not return error for nil loader")
-		s.Nil(scope, "Should return nil scope when loader is nil")
+		require.NoError(t, err, "Nil loader should not return an error")
+		assert.Nil(t, scope, "Nil loader should return nil scope")
 	})
 
-	s.Run("NilPrincipal", func() {
+	t.Run("NilPrincipal", func(t *testing.T) {
 		loader := new(MockRolePermissionsLoader)
 		resolver := NewRBACDataPermissionResolver(loader)
 
 		scope, err := resolver.ResolveDataScope(ctx, nil, "user:read")
-		s.Require().NoError(err, "Should not return error for nil principal")
-		s.Nil(scope, "Should return nil scope for nil principal")
+		require.NoError(t, err, "Nil principal should not return an error")
+		assert.Nil(t, scope, "Nil principal should return nil scope")
 	})
 
-	s.Run("NoRoles", func() {
+	t.Run("NoRoles", func(t *testing.T) {
 		loader := new(MockRolePermissionsLoader)
 		resolver := NewRBACDataPermissionResolver(loader)
 		principal := security.NewUser("user1", "Alice")
 
 		scope, err := resolver.ResolveDataScope(ctx, principal, "user:read")
-		s.Require().NoError(err, "Should not return error for empty roles")
-		s.Nil(scope, "Should return nil scope when user has no roles")
+		require.NoError(t, err, "User without roles should not return an error")
+		assert.Nil(t, scope, "User without roles should return nil scope")
 	})
 
-	s.Run("PermissionNotFound", func() {
+	t.Run("PermissionNotFound", func(t *testing.T) {
 		loader := new(MockRolePermissionsLoader)
 		loader.On("LoadPermissions", mock.Anything, "viewer").Return(
 			map[string]security.DataScope{"dashboard:read": nil}, nil,
@@ -56,12 +53,12 @@ func (s *RBACDataPermissionResolverTestSuite) TestResolveDataScope() {
 		principal := security.NewUser("user1", "Alice", "viewer")
 
 		scope, err := resolver.ResolveDataScope(ctx, principal, "user:read")
-		s.Require().NoError(err, "Should not return error")
-		s.Nil(scope, "Should return nil when permission not found")
-		loader.AssertExpectations(s.T())
+		require.NoError(t, err, "Missing permission should not return an error")
+		assert.Nil(t, scope, "Missing permission should return nil scope")
+		loader.AssertExpectations(t)
 	})
 
-	s.Run("PermissionFound", func() {
+	t.Run("PermissionFound", func(t *testing.T) {
 		deptScope := new(MockDataScope)
 		deptScope.On("Priority").Return(10)
 
@@ -74,13 +71,13 @@ func (s *RBACDataPermissionResolverTestSuite) TestResolveDataScope() {
 		principal := security.NewUser("user1", "Alice", "admin")
 
 		scope, err := resolver.ResolveDataScope(ctx, principal, "user:read")
-		s.Require().NoError(err, "Should not return error")
-		s.NotNil(scope, "Should return data scope")
-		s.Equal(10, scope.Priority(), "Should return correct scope")
-		loader.AssertExpectations(s.T())
+		require.NoError(t, err, "Matching permission should not return an error")
+		require.NotNil(t, scope, "Matching permission should return data scope")
+		assert.Equal(t, 10, scope.Priority(), "Matching permission should return scope priority")
+		loader.AssertExpectations(t)
 	})
 
-	s.Run("HighestPriorityWins", func() {
+	t.Run("HighestPriorityWins", func(t *testing.T) {
 		lowScope := new(MockDataScope)
 		lowScope.On("Priority").Return(5)
 
@@ -99,13 +96,13 @@ func (s *RBACDataPermissionResolverTestSuite) TestResolveDataScope() {
 		principal := security.NewUser("user1", "Alice", "viewer", "admin")
 
 		scope, err := resolver.ResolveDataScope(ctx, principal, "user:read")
-		s.Require().NoError(err, "Should not return error")
-		s.Require().NotNil(scope, "Should return data scope")
-		s.Equal(20, scope.Priority(), "Should select scope with highest priority")
-		loader.AssertExpectations(s.T())
+		require.NoError(t, err, "Multiple matching scopes should not return an error")
+		require.NotNil(t, scope, "Multiple matching scopes should return a data scope")
+		assert.Equal(t, 20, scope.Priority(), "Highest-priority matching scope should be selected")
+		loader.AssertExpectations(t)
 	})
 
-	s.Run("LoaderReturnsError", func() {
+	t.Run("LoaderReturnsError", func(t *testing.T) {
 		loader := new(MockRolePermissionsLoader)
 		loader.On("LoadPermissions", mock.Anything, "admin").Return(nil, errors.New("cache failure"))
 
@@ -113,12 +110,12 @@ func (s *RBACDataPermissionResolverTestSuite) TestResolveDataScope() {
 		principal := security.NewUser("user1", "Alice", "admin")
 
 		_, err := resolver.ResolveDataScope(ctx, principal, "user:read")
-		s.Require().Error(err, "Should propagate loader error")
-		s.Equal("cache failure", err.Error(), "Should preserve error message")
-		loader.AssertExpectations(s.T())
+		require.Error(t, err, "Loader failure should be returned")
+		assert.Equal(t, "cache failure", err.Error(), "Loader error message should be preserved")
+		loader.AssertExpectations(t)
 	})
 
-	s.Run("ErrorOnSecondRoleStopsEarly", func() {
+	t.Run("ErrorOnSecondRoleStopsEarly", func(t *testing.T) {
 		loader := new(MockRolePermissionsLoader)
 		loader.On("LoadPermissions", mock.Anything, "viewer").Return(
 			map[string]security.DataScope{}, nil,
@@ -129,11 +126,11 @@ func (s *RBACDataPermissionResolverTestSuite) TestResolveDataScope() {
 		principal := security.NewUser("user1", "Alice", "viewer", "admin")
 
 		_, err := resolver.ResolveDataScope(ctx, principal, "user:read")
-		s.Require().Error(err, "Should propagate error from second role")
-		loader.AssertExpectations(s.T())
+		require.Error(t, err, "Second role loader failure should be returned")
+		loader.AssertExpectations(t)
 	})
 
-	s.Run("OnlyOneRoleHasPermission", func() {
+	t.Run("OnlyOneRoleHasPermission", func(t *testing.T) {
 		deptScope := new(MockDataScope)
 		deptScope.On("Priority").Return(10)
 
@@ -149,13 +146,13 @@ func (s *RBACDataPermissionResolverTestSuite) TestResolveDataScope() {
 		principal := security.NewUser("user1", "Alice", "viewer", "admin")
 
 		scope, err := resolver.ResolveDataScope(ctx, principal, "user:read")
-		s.Require().NoError(err, "Should not return error")
-		s.Require().NotNil(scope, "Should find scope from second role")
-		s.Equal(10, scope.Priority(), "Should return correct scope")
-		loader.AssertExpectations(s.T())
+		require.NoError(t, err, "Second role matching permission should not return an error")
+		require.NotNil(t, scope, "Second role matching permission should return data scope")
+		assert.Equal(t, 10, scope.Priority(), "Second role matching permission should return scope priority")
+		loader.AssertExpectations(t)
 	})
 
-	s.Run("NilDataScopeValue", func() {
+	t.Run("NilDataScopeValue", func(t *testing.T) {
 		loader := new(MockRolePermissionsLoader)
 		loader.On("LoadPermissions", mock.Anything, "admin").Return(
 			map[string]security.DataScope{"user:read": nil}, nil,
@@ -165,12 +162,12 @@ func (s *RBACDataPermissionResolverTestSuite) TestResolveDataScope() {
 		principal := security.NewUser("user1", "Alice", "admin")
 
 		scope, err := resolver.ResolveDataScope(ctx, principal, "user:read")
-		s.Require().NoError(err, "Should not panic on nil DataScope value")
-		s.Nil(scope, "Should return nil when DataScope value is nil")
-		loader.AssertExpectations(s.T())
+		require.NoError(t, err, "Nil DataScope value should not return an error")
+		assert.Nil(t, scope, "Nil DataScope value should return nil scope")
+		loader.AssertExpectations(t)
 	})
 
-	s.Run("LoaderReturnsNilMap", func() {
+	t.Run("LoaderReturnsNilMap", func(t *testing.T) {
 		loader := new(MockRolePermissionsLoader)
 		loader.On("LoadPermissions", mock.Anything, "admin").Return(nil, nil)
 
@@ -178,12 +175,8 @@ func (s *RBACDataPermissionResolverTestSuite) TestResolveDataScope() {
 		principal := security.NewUser("user1", "Alice", "admin")
 
 		scope, err := resolver.ResolveDataScope(ctx, principal, "user:read")
-		s.Require().NoError(err, "Should not return error for nil map")
-		s.Nil(scope, "Should return nil scope for nil map")
-		loader.AssertExpectations(s.T())
+		require.NoError(t, err, "Nil permission map should not return an error")
+		assert.Nil(t, scope, "Nil permission map should return nil scope")
+		loader.AssertExpectations(t)
 	})
-}
-
-func TestRBACDataPermissionResolver(t *testing.T) {
-	suite.Run(t, new(RBACDataPermissionResolverTestSuite))
 }

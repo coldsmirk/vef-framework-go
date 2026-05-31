@@ -47,26 +47,26 @@ func (s *CachedRolePermissionsLoaderTestSuite) TestCachesResults() {
 	result, err := cachedLoader.LoadPermissions(s.ctx, "admin")
 	s.Require().NoError(err, "Should load admin permissions")
 	s.Require().Equal(2, len(result), "Admin should have 2 permissions")
-	s.Require().Contains(result, "test.read", "Should contain expected value")
-	s.Require().Contains(result, "test.write", "Should contain expected value")
+	s.Require().Contains(result, "test.read", "Admin permissions should include read permission")
+	s.Require().Contains(result, "test.write", "Admin permissions should include write permission")
 	s.Require().NotContains(result, "test.delete", "Should not contain unexpected value")
 
 	result2, err := cachedLoader.LoadPermissions(s.ctx, "admin")
 	s.Require().NoError(err, "Should load cached admin permissions")
 	s.Require().Equal(2, len(result2), "Admin should have 2 permissions")
-	s.Require().Contains(result2, "test.read", "Should contain expected value")
-	s.Require().Contains(result2, "test.write", "Should contain expected value")
+	s.Require().Contains(result2, "test.read", "Cached admin permissions should include read permission")
+	s.Require().Contains(result2, "test.write", "Cached admin permissions should include write permission")
 
 	result3, err := cachedLoader.LoadPermissions(s.ctx, "user")
 	s.Require().NoError(err, "Should load user permissions")
 	s.Require().Equal(1, len(result3), "User should have 1 permission")
-	s.Require().Contains(result3, "test.read", "Should contain expected value")
+	s.Require().Contains(result3, "test.read", "User permissions should include read permission")
 	s.Require().NotContains(result3, "test.write", "Should not contain unexpected value")
 
 	result4, err := cachedLoader.LoadPermissions(s.ctx, "user")
 	s.Require().NoError(err, "Should load cached user permissions")
 	s.Require().Equal(1, len(result4), "User should have 1 permission")
-	s.Require().Contains(result4, "test.read", "Should contain expected value")
+	s.Require().Contains(result4, "test.read", "Cached user permissions should include read permission")
 
 	mockLoader.AssertExpectations(s.T())
 }
@@ -102,25 +102,26 @@ func (s *CachedRolePermissionsLoaderTestSuite) TestInvalidatesSpecificRoles() {
 
 	result, err := cachedLoader.LoadPermissions(s.ctx, "admin")
 	s.Require().NoError(err, "Should load admin permissions")
-	s.Require().Contains(result, "test.read", "Should contain expected value")
-	s.Require().Contains(result, "test.write", "Should contain expected value")
+	s.Require().Contains(result, "test.read", "Admin permissions before invalidation should include read permission")
+	s.Require().Contains(result, "test.write", "Admin permissions before invalidation should include write permission")
 	s.Require().NotContains(result, "test.delete", "Should not contain unexpected value")
 
 	resultUser, err := cachedLoader.LoadPermissions(s.ctx, "user")
 	s.Require().NoError(err, "Should load user permissions")
-	s.Require().Contains(resultUser, "test.read", "Should contain expected value")
+	s.Require().Contains(resultUser, "test.read", "User permissions before admin invalidation should include read permission")
 
-	s.Require().NoError(PublishRolePermissionsChangedEvent(s.ctx, s.bus, "admin"))
+	s.Require().NoError(PublishRolePermissionsChangedEvent(s.ctx, s.bus, "admin"),
+		"Role-specific permission change should publish successfully")
 
 	result2, err := cachedLoader.LoadPermissions(s.ctx, "admin")
 	s.Require().NoError(err, "Should reload admin permissions after invalidation")
-	s.Require().Contains(result2, "test.read", "Should contain expected value")
-	s.Require().Contains(result2, "test.write", "Should contain expected value")
-	s.Require().Contains(result2, "test.delete", "Should contain expected value")
+	s.Require().Contains(result2, "test.read", "Reloaded admin permissions should include read permission")
+	s.Require().Contains(result2, "test.write", "Reloaded admin permissions should include write permission")
+	s.Require().Contains(result2, "test.delete", "Reloaded admin permissions should include delete permission")
 
 	resultUser2, err := cachedLoader.LoadPermissions(s.ctx, "user")
 	s.Require().NoError(err, "Should load cached user permissions")
-	s.Require().Contains(resultUser2, "test.read", "Should contain expected value")
+	s.Require().Contains(resultUser2, "test.read", "User permissions should stay cached after admin invalidation")
 
 	mockLoader.AssertExpectations(s.T())
 }
@@ -164,27 +165,28 @@ func (s *CachedRolePermissionsLoaderTestSuite) TestInvalidatesAllRoles() {
 
 	result, err := cachedLoader.LoadPermissions(s.ctx, "admin")
 	s.Require().NoError(err, "Should load admin permissions")
-	s.Require().Contains(result, "test.read", "Should contain expected value")
-	s.Require().Contains(result, "test.write", "Should contain expected value")
+	s.Require().Contains(result, "test.read", "Admin permissions before global invalidation should include read permission")
+	s.Require().Contains(result, "test.write", "Admin permissions before global invalidation should include write permission")
 	s.Require().NotContains(result, "test.delete", "Should not contain unexpected value")
 
 	resultUser, err := cachedLoader.LoadPermissions(s.ctx, "user")
 	s.Require().NoError(err, "Should load user permissions")
-	s.Require().Contains(resultUser, "test.read", "Should contain expected value")
+	s.Require().Contains(resultUser, "test.read", "User permissions before global invalidation should include read permission")
 	s.Require().NotContains(resultUser, "test.update", "Should not contain unexpected value")
 
-	s.Require().NoError(PublishRolePermissionsChangedEvent(s.ctx, s.bus))
+	s.Require().NoError(PublishRolePermissionsChangedEvent(s.ctx, s.bus),
+		"Global permission change should publish successfully")
 
 	result2, err := cachedLoader.LoadPermissions(s.ctx, "admin")
 	s.Require().NoError(err, "Should reload admin permissions after invalidation")
-	s.Require().Contains(result2, "test.read", "Should contain expected value")
-	s.Require().Contains(result2, "test.write", "Should contain expected value")
-	s.Require().Contains(result2, "test.delete", "Should contain expected value")
+	s.Require().Contains(result2, "test.read", "Reloaded admin permissions should include read permission")
+	s.Require().Contains(result2, "test.write", "Reloaded admin permissions should include write permission")
+	s.Require().Contains(result2, "test.delete", "Reloaded admin permissions should include delete permission")
 
 	resultUser2, err := cachedLoader.LoadPermissions(s.ctx, "user")
 	s.Require().NoError(err, "Should reload user permissions after invalidation")
-	s.Require().Contains(resultUser2, "test.read", "Should contain expected value")
-	s.Require().Contains(resultUser2, "test.update", "Should contain expected value")
+	s.Require().Contains(resultUser2, "test.read", "Reloaded user permissions should include read permission")
+	s.Require().Contains(resultUser2, "test.update", "Reloaded user permissions should include update permission")
 
 	mockLoader.AssertExpectations(s.T())
 }
@@ -258,8 +260,8 @@ func (s *CachedRolePermissionsLoaderTestSuite) TestSingleflightMergesConcurrentR
 	for i := range numRequests {
 		s.Require().NoError(errors[i], "Request %d should not error", i)
 		s.Require().NotNil(results[i], "Request %d should return a result", i)
-		s.Require().Contains(results[i], "test.read", "Should contain expected value")
-		s.Require().Contains(results[i], "test.write", "Should contain expected value")
+		s.Require().Contains(results[i], "test.read", "Merged request %d should include read permission", i)
+		s.Require().Contains(results[i], "test.write", "Merged request %d should include write permission", i)
 	}
 
 	mockLoader.AssertExpectations(s.T())

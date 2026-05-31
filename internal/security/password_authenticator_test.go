@@ -62,17 +62,24 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 	})
 
 	s.Run("SystemPrincipalForbidden", func() {
-		systemPrincipals := []string{orm.OperatorSystem, orm.OperatorCronJob, orm.OperatorAnonymous}
+		systemPrincipals := []struct {
+			name      string
+			principal string
+		}{
+			{"SystemOperator", orm.OperatorSystem},
+			{"CronJobOperator", orm.OperatorCronJob},
+			{"AnonymousOperator", orm.OperatorAnonymous},
+		}
 
-		for _, principal := range systemPrincipals {
-			s.Run(principal, func() {
+		for _, tc := range systemPrincipals {
+			s.Run(tc.name, func() {
 				loader := new(MockUserLoader)
 				encoder := new(MockPasswordEncoder)
 				auth := NewPasswordAuthenticator(loader, encoder)
 
 				_, err := auth.Authenticate(ctx, security.Authentication{
 					Type:        AuthTypePassword,
-					Principal:   principal,
+					Principal:   tc.principal,
 					Credentials: "password123",
 				})
 				s.Require().Error(err, "Should reject system principal")

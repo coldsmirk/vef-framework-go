@@ -148,7 +148,7 @@ func TestPasswordChangeChallengeProviderEvaluate(t *testing.T) {
 
 		challenge, err := provider.Evaluate(ctx, principal)
 
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "Challenge data with meta should evaluate without error")
 		require.NotNil(t, challenge, "Should return challenge")
 		assert.Same(t, data, challenge.Data, "Should pass through data with Meta intact")
 	})

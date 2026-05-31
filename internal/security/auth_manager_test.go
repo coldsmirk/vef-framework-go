@@ -5,22 +5,19 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/suite"
+	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
-type AuthManagerTestSuite struct {
-	suite.Suite
-}
-
 // TestAuthenticate verifies AuthManager authentication dispatch and error handling.
-func (s *AuthManagerTestSuite) TestAuthenticate() {
+func TestAuthManagerAuthenticate(t *testing.T) {
 	ctx := context.Background()
 
-	s.Run("MatchingAuthenticator", func() {
+	t.Run("MatchingAuthenticator", func(t *testing.T) {
 		principal := security.NewUser("user1", "Alice", "admin")
 
 		auth := new(MockAuthenticator)
@@ -33,12 +30,12 @@ func (s *AuthManagerTestSuite) TestAuthenticate() {
 			Type:      "password",
 			Principal: "alice",
 		})
-		s.Require().NoError(err, "Should authenticate without error")
-		s.Equal("user1", got.ID, "Should return expected principal")
-		auth.AssertExpectations(s.T())
+		require.NoError(t, err, "Matching authenticator should authenticate without error")
+		assert.Equal(t, "user1", got.ID, "Matching authenticator should return the loaded principal ID")
+		auth.AssertExpectations(t)
 	})
 
-	s.Run("NoMatchingAuthenticator", func() {
+	t.Run("NoMatchingAuthenticator", func(t *testing.T) {
 		auth := new(MockAuthenticator)
 		auth.On("Supports", "oauth").Return(false)
 
@@ -48,14 +45,14 @@ func (s *AuthManagerTestSuite) TestAuthenticate() {
 			Type:      "oauth",
 			Principal: "alice",
 		})
-		s.Require().Error(err, "Should return error for unsupported type")
+		require.Error(t, err, "Unsupported auth type should return an error")
 
 		resErr, ok := result.AsErr(err)
-		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(security.ErrCodeUnsupportedAuthenticationType, resErr.Code, "Should return unsupported auth type code")
+		require.True(t, ok, "Unsupported auth type should return a result.Error")
+		assert.Equal(t, security.ErrCodeUnsupportedAuthenticationType, resErr.Code, "Unsupported auth type should return unsupported authentication code")
 	})
 
-	s.Run("AuthenticatorReturnsResultError", func() {
+	t.Run("AuthenticatorReturnsResultError", func(t *testing.T) {
 		authErr := security.ErrCredentialsInvalid("bad password")
 
 		auth := new(MockAuthenticator)
@@ -68,14 +65,14 @@ func (s *AuthManagerTestSuite) TestAuthenticate() {
 			Type:      "password",
 			Principal: "alice",
 		})
-		s.Require().Error(err, "Should propagate authenticator error")
+		require.Error(t, err, "Authenticator result error should be returned")
 
 		resErr, ok := result.AsErr(err)
-		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should preserve error code")
+		require.True(t, ok, "Authenticator result error should remain a result.Error")
+		assert.Equal(t, security.ErrCodeCredentialsInvalid, resErr.Code, "Authenticator result error code should be preserved")
 	})
 
-	s.Run("AuthenticatorReturnsGenericError", func() {
+	t.Run("AuthenticatorReturnsGenericError", func(t *testing.T) {
 		auth := new(MockAuthenticator)
 		auth.On("Supports", "password").Return(true)
 		auth.On("Authenticate", mock.Anything, mock.Anything).Return(nil, errors.New("db connection failed"))
@@ -86,11 +83,11 @@ func (s *AuthManagerTestSuite) TestAuthenticate() {
 			Type:      "password",
 			Principal: "alice",
 		})
-		s.Require().Error(err, "Should propagate generic error")
-		s.Equal("db connection failed", err.Error(), "Should preserve error message")
+		require.Error(t, err, "Authenticator generic error should be returned")
+		assert.Equal(t, "db connection failed", err.Error(), "Authenticator generic error message should be preserved")
 	})
 
-	s.Run("MultipleAuthenticatorsSelectsCorrect", func() {
+	t.Run("MultipleAuthenticatorsSelectsCorrect", func(t *testing.T) {
 		principal := security.NewUser("user1", "Alice")
 
 		tokenAuth := new(MockAuthenticator)
@@ -106,48 +103,45 @@ func (s *AuthManagerTestSuite) TestAuthenticate() {
 			Type:      "password",
 			Principal: "alice",
 		})
-		s.Require().NoError(err, "Should authenticate with matching authenticator")
-		s.Equal("user1", got.ID, "Should return expected principal")
-		tokenAuth.AssertNotCalled(s.T(), "Authenticate")
-		passwordAuth.AssertExpectations(s.T())
+		require.NoError(t, err, "Matching authenticator in list should authenticate without error")
+		assert.Equal(t, "user1", got.ID, "Matching authenticator in list should return the loaded principal ID")
+		tokenAuth.AssertNotCalled(t, "Authenticate")
+		passwordAuth.AssertExpectations(t)
 	})
 
-	s.Run("EmptyAuthenticatorList", func() {
+	t.Run("EmptyAuthenticatorList", func(t *testing.T) {
 		manager := NewAuthManager([]security.Authenticator{})
 
 		_, err := manager.Authenticate(ctx, security.Authentication{
 			Type:      "password",
 			Principal: "alice",
 		})
-		s.Require().Error(err, "Should return error with no authenticators")
+		require.Error(t, err, "Empty authenticator list should return an error")
 
 		resErr, ok := result.AsErr(err)
-		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(security.ErrCodeUnsupportedAuthenticationType, resErr.Code, "Should return unsupported auth type code")
+		require.True(t, ok, "Empty authenticator list should return a result.Error")
+		assert.Equal(t, security.ErrCodeUnsupportedAuthenticationType, resErr.Code, "Empty authenticator list should return unsupported authentication code")
 	})
 }
 
 // TestMaskPrincipal verifies principal masking for log safety.
-func (s *AuthManagerTestSuite) TestMaskPrincipal() {
-	s.Run("EmptyString", func() {
-		s.Equal("<empty>", maskPrincipal(""), "Should return <empty> for empty string")
-	})
+func TestMaskPrincipal(t *testing.T) {
+	tests := []struct {
+		name      string
+		principal string
+		expected  string
+	}{
+		{"EmptyString", "", "<empty>"},
+		{"TwoCharacters", "ab", "***"},
+		{"ThreeCharacters", "abc", "***"},
+		{"FiveCharacters", "alice", "ali***"},
+		{"EmailAddress", "user@example.com", "use***"},
+		{"SingleCharacter", "a", "***"},
+	}
 
-	s.Run("ShortString", func() {
-		s.Equal("***", maskPrincipal("ab"), "Should fully mask short strings")
-		s.Equal("***", maskPrincipal("abc"), "Should fully mask 3-char strings")
-	})
-
-	s.Run("LongString", func() {
-		s.Equal("ali***", maskPrincipal("alice"), "Should show first 3 chars and mask rest")
-		s.Equal("use***", maskPrincipal("user@example.com"), "Should show first 3 chars and mask rest")
-	})
-
-	s.Run("SingleChar", func() {
-		s.Equal("***", maskPrincipal("a"), "Should fully mask single char")
-	})
-}
-
-func TestAuthManager(t *testing.T) {
-	suite.Run(t, new(AuthManagerTestSuite))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, maskPrincipal(tt.principal), "Principal mask should match expected redaction")
+		})
+	}
 }

@@ -3,6 +3,8 @@ package password
 import (
 	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 const benchmarkPassword = "MySecurePassword123!"
@@ -291,11 +293,7 @@ func TestEncoderPerformanceComparison(t *testing.T) {
 
 		// Encode once for matching benchmark
 		encoded, err := ec.encoder.Encode(benchmarkPassword)
-		if err != nil {
-			t.Errorf("%s: Encode failed: %v", ec.name, err)
-
-			continue
-		}
+		require.NoError(t, err, "Encoder %s should encode the benchmark password", ec.name)
 
 		// Benchmark matching
 		matchResult := testing.Benchmark(func(b *testing.B) {

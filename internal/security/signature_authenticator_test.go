@@ -61,9 +61,21 @@ func (s *SignatureAuthenticatorTestSuite) TestSupports() {
 
 	s.True(auth.Supports(AuthTypeSignature), "Should support signature type")
 
-	for _, authType := range []string{"password", "token", "jwt", "openapi", "bearer", ""} {
-		s.Run(authType, func() {
-			s.False(auth.Supports(authType), "Should not support %q type", authType)
+	testCases := []struct {
+		name     string
+		authType string
+	}{
+		{"PasswordType", "password"},
+		{"TokenType", "token"},
+		{"JWTType", "jwt"},
+		{"OpenAPIType", "openapi"},
+		{"BearerType", "bearer"},
+		{"EmptyType", ""},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			s.False(auth.Supports(tc.authType), "Should not support %q type", tc.authType)
 		})
 	}
 }
@@ -668,8 +680,8 @@ func (s *SignatureAuthenticatorTestSuite) TestSuccessfulAuthentication() {
 			Credentials: creds1,
 		})
 		s.Require().NoError(err, "Should authenticate app1")
-		s.Equal("app1", got1.ID, "Should equal expected value")
-		s.Equal("App One", got1.Name, "Should equal expected value")
+		s.Equal("app1", got1.ID, "Should return first external app ID")
+		s.Equal("App One", got1.Name, "Should return first external app name")
 
 		creds2 := s.generateValidCredentials("app2", secret2)
 		got2, err := auth.Authenticate(ctx, security.Authentication{
@@ -678,8 +690,8 @@ func (s *SignatureAuthenticatorTestSuite) TestSuccessfulAuthentication() {
 			Credentials: creds2,
 		})
 		s.Require().NoError(err, "Should authenticate app2")
-		s.Equal("app2", got2.ID, "Should equal expected value")
-		s.Equal("App Two", got2.Name, "Should equal expected value")
+		s.Equal("app2", got2.ID, "Should return second external app ID")
+		s.Equal("App Two", got2.Name, "Should return second external app name")
 
 		loader.AssertExpectations(s.T())
 	})

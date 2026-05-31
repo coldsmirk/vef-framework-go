@@ -153,7 +153,7 @@ func (suite *AuthResourceTestSuite) SetupTest() {
 func (suite *AuthResourceTestSuite) setupTestApp() {
 	// Hash the password for test user
 	hashedPassword, err := password.NewBcryptEncoder().Encode("password123")
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "Test user password should hash successfully")
 
 	suite.SetupApp(
 		fx.Supply(
@@ -1144,7 +1144,7 @@ func (s *ChallengeFlowTestSuite) SetupSuite() {
 	s.challengeProvider.On("Order").Return(0).Maybe()
 
 	hashedPassword, err := password.NewBcryptEncoder().Encode("password123")
-	s.Require().NoError(err, "Should not return error")
+	s.Require().NoError(err, "Challenge flow test user password should hash successfully")
 
 	s.SetupApp(
 		fx.Supply(
@@ -1220,10 +1220,10 @@ func (s *ChallengeFlowTestSuite) loginAndGetResult() map[string]any {
 		},
 	})
 
-	s.Equal(200, resp.StatusCode, "Should match expected value")
+	s.Equal(200, resp.StatusCode, "Password login helper should return HTTP 200")
 
 	body := s.ReadResult(resp)
-	s.True(body.IsOk(), "Condition should be true")
+	s.True(body.IsOk(), "Password login helper response should be ok")
 
 	return s.ReadDataAsMap(body.Data)
 }
@@ -1244,8 +1244,8 @@ func (s *ChallengeFlowTestSuite) TestLoginWithChallenge() {
 
 	challenge, ok := data["challenge"].(map[string]any)
 	s.Require().True(ok, "Challenge should be an object")
-	s.Equal("totp", challenge["type"], "Should match expected value")
-	s.Equal(true, challenge["required"], "Should match expected value")
+	s.Equal("totp", challenge["type"], "Login challenge should use TOTP type")
+	s.Equal(true, challenge["required"], "Login challenge should be required")
 
 	s.challengeProvider.AssertExpectations(s.T())
 }
@@ -1264,11 +1264,11 @@ func (s *ChallengeFlowTestSuite) TestLoginNoChallengeWhenEvaluateReturnsNil() {
 
 	tokensRaw, ok := data["tokens"]
 	s.Require().True(ok, "Should have tokens")
-	s.NotNil(tokensRaw, "Should not be nil")
+	s.NotNil(tokensRaw, "Login without challenge should return token payload")
 
 	tokens := tokensRaw.(map[string]any)
-	s.NotEmpty(tokens["accessToken"], "Should not be empty")
-	s.NotEmpty(tokens["refreshToken"], "Should not be empty")
+	s.NotEmpty(tokens["accessToken"], "Login without challenge should return access token")
+	s.NotEmpty(tokens["refreshToken"], "Login without challenge should return refresh token")
 }
 
 // TestResolveChallengeSuccess tests the full login→challenge→resolve→tokens flow.
@@ -1301,21 +1301,21 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeSuccess() {
 		},
 	})
 
-	s.Equal(200, resp.StatusCode, "Should match expected value")
+	s.Equal(200, resp.StatusCode, "Resolved challenge should return HTTP 200")
 
 	body := s.ReadResult(resp)
-	s.True(body.IsOk(), "Condition should be true")
+	s.True(body.IsOk(), "Resolved challenge response should be ok")
 
 	resolveData := s.ReadDataAsMap(body.Data)
 	s.Nil(resolveData["challengeToken"], "No challenge token when all resolved")
 
 	tokensRaw, ok := resolveData["tokens"]
 	s.Require().True(ok, "Should have tokens after resolving all challenges")
-	s.NotNil(tokensRaw, "Should not be nil")
+	s.NotNil(tokensRaw, "Resolved challenge should return token payload")
 
 	tokens := tokensRaw.(map[string]any)
-	s.NotEmpty(tokens["accessToken"], "Should not be empty")
-	s.NotEmpty(tokens["refreshToken"], "Should not be empty")
+	s.NotEmpty(tokens["accessToken"], "Resolved challenge should return access token")
+	s.NotEmpty(tokens["refreshToken"], "Resolved challenge should return refresh token")
 
 	s.challengeProvider.AssertExpectations(s.T())
 }
@@ -1337,11 +1337,11 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeEmptyToken() {
 		},
 	})
 
-	s.Equal(400, resp.StatusCode, "Should match expected value")
+	s.Equal(400, resp.StatusCode, "Empty challenge token should return HTTP 400")
 
 	body := s.ReadResult(resp)
-	s.False(body.IsOk(), "Condition should be false")
-	s.Equal(result.ErrCodeBadRequest, body.Code, "Should match expected value")
+	s.False(body.IsOk(), "Empty challenge token response should not be ok")
+	s.Equal(result.ErrCodeBadRequest, body.Code, "Empty challenge token should return bad request code")
 }
 
 // TestResolveChallengeInvalidToken tests that resolve_challenge rejects malformed tokens.
@@ -1361,11 +1361,11 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeInvalidToken() {
 		},
 	})
 
-	s.Equal(401, resp.StatusCode, "Should match expected value")
+	s.Equal(401, resp.StatusCode, "Invalid challenge token should return HTTP 401")
 
 	body := s.ReadResult(resp)
-	s.False(body.IsOk(), "Condition should be false")
-	s.Equal(security.ErrCodeChallengeTokenInvalid, body.Code, "Should match expected value")
+	s.False(body.IsOk(), "Invalid challenge token response should not be ok")
+	s.Equal(security.ErrCodeChallengeTokenInvalid, body.Code, "Invalid challenge token should return token invalid code")
 }
 
 // TestResolveChallengeWrongType tests that resolve_challenge rejects a type not in pending list.
@@ -1393,11 +1393,11 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeWrongType() {
 		},
 	})
 
-	s.Equal(400, resp.StatusCode, "Should match expected value")
+	s.Equal(400, resp.StatusCode, "Wrong challenge type should return HTTP 400")
 
 	body := s.ReadResult(resp)
-	s.False(body.IsOk(), "Condition should be false")
-	s.Equal(security.ErrCodeChallengeTypeInvalid, body.Code, "Should match expected value")
+	s.False(body.IsOk(), "Wrong challenge type response should not be ok")
+	s.Equal(security.ErrCodeChallengeTypeInvalid, body.Code, "Wrong challenge type should return type invalid code")
 }
 
 // TestResolveChallengeProviderRejectsResponse tests that resolve_challenge
@@ -1433,11 +1433,11 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeProviderRejectsResponse() {
 		},
 	})
 
-	s.Equal(400, resp.StatusCode, "Should match expected value")
+	s.Equal(400, resp.StatusCode, "Rejected challenge response should return HTTP 400")
 
 	body := s.ReadResult(resp)
-	s.False(body.IsOk(), "Condition should be false")
-	s.Equal(security.ErrCodeChallengeResolveFailed, body.Code, "Should match expected value")
+	s.False(body.IsOk(), "Rejected challenge response should not be ok")
+	s.Equal(security.ErrCodeChallengeResolveFailed, body.Code, "Rejected challenge response should return resolve failed code")
 }
 
 // TestLoginEvaluateChallengeError tests that login propagates errors from challenge evaluation.
@@ -1692,18 +1692,18 @@ func (s *AuthResourceErrorPathTestSuite) TestLoginNonResultError() {
 
 	resp := s.MakeRPCRequest(s.loginRequest())
 
-	s.Equal(500, resp.StatusCode, "Should match expected value")
+	s.Equal(500, resp.StatusCode, "Non-result login error should return HTTP 500")
 
 	body := s.ReadResult(resp)
-	s.False(body.IsOk(), "Condition should be false")
-	s.Equal(result.ErrCodeUnknown, body.Code, "Should match expected value")
+	s.False(body.IsOk(), "Non-result login error response should not be ok")
+	s.Equal(result.ErrCodeUnknown, body.Code, "Non-result login error should return unknown code")
 
 	events := s.publisher.GetPublishedEvents()
-	s.Require().Len(events, 1, "Should have expected length")
+	s.Require().Len(events, 1, "TestLoginNonResultError should have expected length")
 	loginEvent := events[0].(*security.LoginEvent)
-	s.False(loginEvent.IsOk, "Condition should be false")
-	s.Equal("unexpected db failure", loginEvent.FailReason, "Should match expected value")
-	s.Equal(result.ErrCodeUnknown, loginEvent.ErrorCode, "Should match expected value")
+	s.False(loginEvent.IsOk, "Non-result login error event should be marked failed")
+	s.Equal("unexpected db failure", loginEvent.FailReason, "Non-result login error event should preserve failure reason")
+	s.Equal(result.ErrCodeUnknown, loginEvent.ErrorCode, "Non-result login error event should use unknown code")
 }
 
 // TestLoginTokenGenerateError covers the branch where authentication succeeds
@@ -1717,10 +1717,10 @@ func (s *AuthResourceErrorPathTestSuite) TestLoginTokenGenerateError() {
 
 	resp := s.MakeRPCRequest(s.loginRequest())
 
-	s.Equal(500, resp.StatusCode, "Should match expected value")
+	s.Equal(500, resp.StatusCode, "Login token generation failure should return HTTP 500")
 
 	body := s.ReadResult(resp)
-	s.False(body.IsOk(), "Condition should be false")
+	s.False(body.IsOk(), "Login token generation failure response should not be ok")
 }
 
 // TestLoginChallengeStoreError covers the branch where authentication succeeds,
@@ -1735,10 +1735,10 @@ func (s *AuthResourceErrorPathTestSuite) TestLoginChallengeStoreError() {
 
 	resp := s.MakeRPCRequest(s.loginRequest())
 
-	s.Equal(500, resp.StatusCode, "Should match expected value")
+	s.Equal(500, resp.StatusCode, "Challenge token store failure should return HTTP 500")
 
 	body := s.ReadResult(resp)
-	s.False(body.IsOk(), "Condition should be false")
+	s.False(body.IsOk(), "Challenge token store failure response should not be ok")
 }
 
 // TestRefreshTokenGenerateError covers the branch where refresh authentication
@@ -1760,10 +1760,10 @@ func (s *AuthResourceErrorPathTestSuite) TestRefreshTokenGenerateError() {
 		},
 	})
 
-	s.Equal(500, resp.StatusCode, "Should match expected value")
+	s.Equal(500, resp.StatusCode, "Refresh token generation failure should return HTTP 500")
 
 	body := s.ReadResult(resp)
-	s.False(body.IsOk(), "Condition should be false")
+	s.False(body.IsOk(), "Refresh token generation failure response should not be ok")
 }
 
 // TestResolveChallengeProviderNotFound covers the branch where the challenge type
@@ -1789,8 +1789,8 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeProviderNotFound() 
 	})
 
 	body := s.ReadResult(resp)
-	s.False(body.IsOk(), "Condition should be false")
-	s.Equal(security.ErrCodeChallengeTypeInvalid, body.Code, "Should match expected value")
+	s.False(body.IsOk(), "Missing challenge provider response should not be ok")
+	s.Equal(security.ErrCodeChallengeTypeInvalid, body.Code, "Missing challenge provider should return type invalid code")
 }
 
 // TestResolveChallengeTokenGenerateError covers the branch where all challenges
@@ -1808,10 +1808,10 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeTokenGenerateError(
 
 	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
 
-	s.Equal(500, resp.StatusCode, "Should match expected value")
+	s.Equal(500, resp.StatusCode, "Resolve challenge token generation failure should return HTTP 500")
 
 	body := s.ReadResult(resp)
-	s.False(body.IsOk(), "Condition should be false")
+	s.False(body.IsOk(), "Resolve challenge token generation failure response should not be ok")
 }
 
 // TestResolveChallengeMoreRemain covers the branch where resolving one challenge
@@ -1831,18 +1831,18 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeMoreRemain() {
 
 	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
 
-	s.Equal(200, resp.StatusCode, "Should match expected value")
+	s.Equal(200, resp.StatusCode, "Remaining challenge response should return HTTP 200")
 
 	body := s.ReadResult(resp)
-	s.True(body.IsOk(), "Condition should be true")
+	s.True(body.IsOk(), "Remaining challenge response should be ok")
 
 	data := s.ReadDataAsMap(body.Data)
-	s.Equal("new-challenge-token", data["challengeToken"], "Should match expected value")
+	s.Equal("new-challenge-token", data["challengeToken"], "Remaining challenge response should return new challenge token")
 
 	challenge, ok := data["challenge"].(map[string]any)
 	s.Require().True(ok, "Challenge should be an object")
-	s.Equal("sms", challenge["type"], "Should match expected value")
-	s.Equal(true, challenge["required"], "Should match expected value")
+	s.Equal("sms", challenge["type"], "Remaining challenge response should use SMS type")
+	s.Equal(true, challenge["required"], "Remaining challenge response should mark challenge required")
 }
 
 // TestResolveChallengeStoreErrorOnRemain covers the branch where remaining challenges
@@ -1862,10 +1862,10 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeStoreErrorOnRemain(
 
 	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
 
-	s.Equal(500, resp.StatusCode, "Should match expected value")
+	s.Equal(500, resp.StatusCode, "Remaining challenge token store failure should return HTTP 500")
 
 	body := s.ReadResult(resp)
-	s.False(body.IsOk(), "Condition should be false")
+	s.False(body.IsOk(), "Remaining challenge token store failure response should not be ok")
 }
 
 // TestResolveChallengeEvaluateErrorOnRemain covers the branch where remaining
@@ -1883,10 +1883,10 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeEvaluateErrorOnRema
 
 	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
 
-	s.Equal(500, resp.StatusCode, "Should match expected value")
+	s.Equal(500, resp.StatusCode, "Remaining challenge evaluation failure should return HTTP 500")
 
 	body := s.ReadResult(resp)
-	s.False(body.IsOk(), "Condition should be false")
+	s.False(body.IsOk(), "Remaining challenge evaluation failure response should not be ok")
 }
 
 // TestResolveChallengeRemainingProviderNotFound covers the skip branch
@@ -1905,19 +1905,19 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeRemainingProviderNo
 
 	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
 
-	s.Equal(200, resp.StatusCode, "Should match expected value")
+	s.Equal(200, resp.StatusCode, "Skipped missing remaining provider should return HTTP 200")
 
 	body := s.ReadResult(resp)
-	s.True(body.IsOk(), "Condition should be true")
+	s.True(body.IsOk(), "Skipped missing remaining provider response should be ok")
 
 	data := s.ReadDataAsMap(body.Data)
 	s.Nil(data["challengeToken"], "No challenge token when all resolved")
 	s.Nil(data["challenge"], "No challenge when all resolved")
 
 	tokensRaw, ok := data["tokens"].(map[string]any)
-	s.Require().True(ok, "Should have tokens")
-	s.NotEmpty(tokensRaw["accessToken"], "Should not be empty")
-	s.NotEmpty(tokensRaw["refreshToken"], "Should not be empty")
+	s.Require().True(ok, "Skipped missing remaining provider should return tokens")
+	s.NotEmpty(tokensRaw["accessToken"], "Provider-not-found challenge flow should return access token")
+	s.NotEmpty(tokensRaw["refreshToken"], "Provider-not-found challenge flow should return refresh token")
 }
 
 func TestAuthResourceErrorPath(t *testing.T) {
