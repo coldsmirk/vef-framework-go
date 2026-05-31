@@ -66,7 +66,7 @@ type ProviderParams struct {
 // partially-registered sources. The Shutdown hook carries no OnStart, so it
 // always counts as started and its OnStop is guaranteed once Start reaches it,
 // regardless of which later step fails.
-func provideRegistry(lc fx.Lifecycle, cfg *config.DataSourcesConfig, p ProviderParams) (registryOut, error) {
+func provideRegistry(lc fx.Lifecycle, cfg *config.DataSourcesConfig, params ProviderParams) (registryOut, error) {
 	reg, err := newRegistry(cfg.Primary(), logger)
 	if err != nil {
 		return registryOut{}, err
@@ -95,7 +95,7 @@ func provideRegistry(lc fx.Lifecycle, cfg *config.DataSourcesConfig, p ProviderP
 			return err
 		}
 
-		return runProviders(ctx, reg, p.Providers)
+		return runProviders(ctx, reg, params.Providers)
 	}))
 
 	return registryOut{Registry: reg, RawDB: reg.PrimaryRawDB()}, nil
