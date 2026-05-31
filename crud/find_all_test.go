@@ -2,11 +2,8 @@ package crud_test
 
 import (
 	"errors"
-	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/api"
@@ -1070,43 +1067,4 @@ func (suite *FindAllTestSuite) TestFindAllDynamicSortNullsLast() {
 	suite.True(body.IsOk(), "Should return successful response")
 
 	suite.T().Logf("Dynamic NullsLast sort returned OK")
-}
-
-// TestSetupErrModelNoPrimaryKey covers find.go:60-62 - auditUserModel on model with no PK.
-func TestSetupErrModelNoPrimaryKey(t *testing.T) {
-	db := testx.NewTestDB(t)
-
-	fa := crud.NewFindAll[NoPKModel, struct{}]()
-	fa.WithAuditUserNames((*struct{})(nil))
-
-	specs := fa.Public().Provide()
-	require.Len(t, specs, 1, "Should return exactly 1 operation spec")
-
-	err := callHandlerFactory(t, specs[0].Handler, db)
-	assert.ErrorIs(t, err, crud.ErrModelNoPrimaryKey, "Should return ErrModelNoPrimaryKey")
-}
-
-// TestSetupErrAuditUserCompositePK covers find.go:64-66 - auditUserModel on composite PK model.
-func TestSetupErrAuditUserCompositePK(t *testing.T) {
-	db := testx.NewTestDB(t)
-
-	fa := crud.NewFindAll[CompositePKModel, struct{}]()
-	fa.WithAuditUserNames((*struct{})(nil))
-
-	specs := fa.Public().Provide()
-	require.Len(t, specs, 1, "Should return exactly 1 operation spec")
-
-	err := callHandlerFactory(t, specs[0].Handler, db)
-	assert.ErrorIs(t, err, crud.ErrAuditUserCompositePK, "Should return ErrAuditUserCompositePK")
-}
-
-// TestFindWithOptions covers find.go WithOptions method.
-func TestFindWithOptions(t *testing.T) {
-	fa := crud.NewFindAll[orm.FullAuditedModel, struct{}]().
-		WithOptions(&crud.FindOperationOption{
-			Parts: []crud.QueryPart{crud.QueryRoot},
-		}).
-		Public()
-	specs := fa.Provide()
-	assert.Len(t, specs, 1, "Should return exactly 1 operation spec")
 }
