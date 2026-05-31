@@ -70,6 +70,14 @@ func TestRegistryTestConnection(t *testing.T) {
 		require.Equal(t, []string{datasource.PrimaryName}, r.Names(),
 			"a failed TestConnection must not leak a registry entry")
 	})
+
+	t.Run("RespectsCallerCancellation", func(t *testing.T) {
+		canceled, cancel := context.WithCancel(ctx)
+		cancel() // the internal default timeout must not swallow the caller's cancel
+
+		_, err := r.TestConnection(canceled, newSQLiteCfg(t, "canceled"))
+		require.Error(t, err, "a canceled caller context must abort the probe")
+	})
 }
 
 func TestRegistryPrimary(t *testing.T) {
