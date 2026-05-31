@@ -11,9 +11,14 @@ import (
 
 type DataSourcesTestConfig struct {
 	values map[string]any
+	err    error
 }
 
 func (c *DataSourcesTestConfig) Unmarshal(key string, target any) error {
+	if c.err != nil {
+		return c.err
+	}
+
 	v, ok := c.values[key]
 	if !ok {
 		return nil
@@ -45,9 +50,18 @@ func TestNewDataSourcesConfig(t *testing.T) {
 			},
 		})
 
-		require.NoError(t, err, "valid multi-source config should be accepted")
-		require.Equal(t, pkgconfig.Postgres, cfg.Primary().Kind, "primary should come from vef.data_sources.primary")
-		require.Equal(t, pkgconfig.MySQL, cfg.Map["audit"].Kind, "secondary sources should be preserved")
+		require.NoError(t, err, "Valid multi-source config should be accepted")
+		require.Equal(t, pkgconfig.Postgres, cfg.Primary().Kind, "Primary source should come from vef.data_sources.primary")
+		require.Equal(t, pkgconfig.MySQL, cfg.Map["audit"].Kind, "Secondary sources should be preserved")
+	})
+
+	t.Run("UnmarshalFailureFails", func(t *testing.T) {
+		expectedErr := errors.New("decode failed")
+
+		_, err := newDataSourcesConfig(&DataSourcesTestConfig{err: expectedErr})
+
+		require.ErrorIs(t, err, expectedErr, "Unmarshal failure should preserve the original error")
+		require.ErrorContains(t, err, "unmarshal vef.data_sources", "Unmarshal failure should identify the data sources key")
 	})
 
 	t.Run("MissingPrimaryFails", func(t *testing.T) {
@@ -59,12 +73,12 @@ func TestNewDataSourcesConfig(t *testing.T) {
 			},
 		})
 
-		require.ErrorIs(t, err, ErrPrimaryDataSourceMissing, "primary source is required even when secondaries exist")
+		require.ErrorIs(t, err, ErrPrimaryDataSourceMissing, "Primary source is required even when secondaries exist")
 	})
 
 	t.Run("EmptyConfigFails", func(t *testing.T) {
 		_, err := newDataSourcesConfig(&DataSourcesTestConfig{values: map[string]any{}})
 
-		require.ErrorIs(t, err, ErrPrimaryDataSourceMissing, "an absent vef.data_sources is rejected")
+		require.ErrorIs(t, err, ErrPrimaryDataSourceMissing, "Absent vef.data_sources should be rejected")
 	})
 }

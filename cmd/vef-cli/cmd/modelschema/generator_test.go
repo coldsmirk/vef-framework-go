@@ -14,6 +14,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// methodBodyText returns the source text of method (*receiverType).methodName
+// from the parsed file using go/printer for fidelity, or fails the test if
+// the method is missing.
+func methodBodyText(t *testing.T, fset *token.FileSet, file *ast.File, receiverType, methodName string) string {
+	t.Helper()
+
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv == nil || fn.Name.Name != methodName {
+			continue
+		}
+
+		star, ok := fn.Recv.List[0].Type.(*ast.StarExpr)
+		if !ok {
+			continue
+		}
+
+		ident, ok := star.X.(*ast.Ident)
+		if !ok || ident.Name != receiverType {
+			continue
+		}
+
+		var buf bytes.Buffer
+		require.NoError(t, printer.Fprint(&buf, fset, fn.Body), "Method body should print successfully")
+
+		return buf.String()
+	}
+
+	t.Fatalf("Method (*%s).%s should exist in generated file", receiverType, methodName)
+
+	return ""
+}
+
 func TestExtractStructTag(t *testing.T) {
 	tests := []struct {
 		name string
@@ -76,7 +109,7 @@ func TestHasScanonlyTagFromTag(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := hasScanonlyTagFromTag(tt.tag)
-			assert.Equal(t, tt.want, got, "scanonly detection should match")
+			assert.Equal(t, tt.want, got, "Scanonly detection should match")
 		})
 	}
 }
@@ -140,8 +173,8 @@ func TestParseBunTag(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			gotTable, gotAlias := parseBunTag(tt.tag)
-			assert.Equal(t, tt.wantTable, gotTable, "table should match")
-			assert.Equal(t, tt.wantAlias, gotAlias, "alias should match")
+			assert.Equal(t, tt.wantTable, gotTable, "Table name should match parsed bun tag")
+			assert.Equal(t, tt.wantAlias, gotAlias, "Alias should match parsed bun tag")
 		})
 	}
 }
@@ -218,7 +251,7 @@ func TestGenerateFile(t *testing.T) {
 		})
 
 		t.Run("BunDashFieldSkipped", func(t *testing.T) {
-			assert.NotRegexp(t, `\binternal\s+string`, code, `bun:"-" field Internal must be skipped`)
+			assert.NotRegexp(t, `\binternal\s+string`, code, `Bun skip-tag field Internal must be skipped`)
 		})
 
 		t.Run("UnexportedFieldSkipped", func(t *testing.T) {
@@ -226,8 +259,8 @@ func TestGenerateFile(t *testing.T) {
 		})
 
 		t.Run("ScanonlyAppearsAsAccessor", func(t *testing.T) {
-			assert.Contains(t, code, `computed: "computed"`, "scanonly column name should default to snake_case fieldName")
-			assert.Contains(t, code, "func (s *userSchema) Computed(raw ...bool) string", "scanonly accessor must be generated")
+			assert.Contains(t, code, `computed: "computed"`, "Scanonly column name should default to snake_case fieldName")
+			assert.Contains(t, code, "func (s *userSchema) Computed(raw ...bool) string", "Scanonly accessor must be generated")
 		})
 
 		t.Run("ScanonlyExcludedFromColumns", func(t *testing.T) {
@@ -239,9 +272,9 @@ func TestGenerateFile(t *testing.T) {
 		})
 
 		t.Run("EmbedPrefixApplied", func(t *testing.T) {
-			assert.Contains(t, code, `addrCity:`, "embed:addr_ should produce camelCase struct field addrCity")
-			assert.Contains(t, code, `"addr_city"`, "embed:addr_ should prefix City column to addr_city")
-			assert.Contains(t, code, `"addr_street"`, "embed:addr_ should prefix Street column to addr_street")
+			assert.Contains(t, code, `addrCity:`, "Embed prefix should produce camelCase struct field addrCity")
+			assert.Contains(t, code, `"addr_city"`, "Embed prefix should prefix City column to addr_city")
+			assert.Contains(t, code, `"addr_street"`, "Embed prefix should prefix Street column to addr_street")
 			assert.Contains(t, code, "func (s *userSchema) AddrCity(raw ...bool) string", "Embedded field must produce AddrCity accessor")
 		})
 
@@ -300,39 +333,6 @@ func TestGenerateFile(t *testing.T) {
 	})
 }
 
-// methodBodyText returns the source text of method (*receiverType).methodName
-// from the parsed file using go/printer for fidelity, or fails the test if
-// the method is missing.
-func methodBodyText(t *testing.T, fset *token.FileSet, file *ast.File, receiverType, methodName string) string {
-	t.Helper()
-
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Recv == nil || fn.Name.Name != methodName {
-			continue
-		}
-
-		star, ok := fn.Recv.List[0].Type.(*ast.StarExpr)
-		if !ok {
-			continue
-		}
-
-		ident, ok := star.X.(*ast.Ident)
-		if !ok || ident.Name != receiverType {
-			continue
-		}
-
-		var buf bytes.Buffer
-		require.NoError(t, printer.Fprint(&buf, fset, fn.Body), "Method body should print successfully")
-
-		return buf.String()
-	}
-
-	t.Fatalf("method (*%s).%s not found in generated file", receiverType, methodName)
-
-	return ""
-}
-
 func TestGenerateDirectory(t *testing.T) {
 	t.Run("HappyPath", func(t *testing.T) {
 		inputDir := filepath.Join("testdata", "models")
@@ -361,7 +361,7 @@ func TestGenerateDirectory(t *testing.T) {
 		missing := filepath.Join(t.TempDir(), "does-not-exist")
 
 		err := GenerateDirectory(missing, t.TempDir(), "schemas")
-		require.ErrorIs(t, err, ErrNoGoFilesFound, "Glob over a missing directory returns no files → ErrNoGoFilesFound")
+		require.ErrorIs(t, err, ErrNoGoFilesFound, "Glob over a missing directory should return ErrNoGoFilesFound")
 	})
 
 	t.Run("SkipsFilesWithoutModels", func(t *testing.T) {

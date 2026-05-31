@@ -122,12 +122,12 @@ func (suite *AppTestSuite) TestCustomResource() {
 		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 		resp, err := suite.app.Test(req, 2*time.Second)
-		suite.NoError(err, "API request should not fail")
-		suite.NotNil(resp, "Response should not be nil")
-		suite.Equal(200, resp.StatusCode, "Should return 200 OK")
+		suite.Require().NoError(err, "API request should not fail")
+		suite.Require().NotNil(resp, "Response should not be nil")
+		suite.Equal(200, resp.StatusCode, "Ping endpoint should return 200 OK")
 
 		body, err := io.ReadAll(resp.Body)
-		suite.NoError(err, "Should read response body")
+		suite.Require().NoError(err, "Ping endpoint response body should be readable")
 		suite.Equal(`{"code":0,"message":"成功","data":"pong"}`, string(body), "Response body should match expected")
 	})
 }

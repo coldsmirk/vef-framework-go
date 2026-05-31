@@ -36,6 +36,30 @@ type GetUserResult struct {
 	Name string
 }
 
+type RecordingBehavior struct {
+	name  string
+	calls *[]string
+}
+
+func (b RecordingBehavior) Handle(ctx context.Context, _ Action, next func(context.Context) (any, error)) (any, error) {
+	*b.calls = append(*b.calls, b.name+"-before")
+	res, err := next(ctx)
+
+	*b.calls = append(*b.calls, b.name+"-after")
+
+	return res, err
+}
+
+type OrderedRecordingBehavior struct {
+	RecordingBehavior
+
+	order int
+}
+
+func (b OrderedRecordingBehavior) Order() int {
+	return b.order
+}
+
 func TestRegisterAndSend(t *testing.T) {
 	t.Run("SingleHandler", func(t *testing.T) {
 		bus := NewBus(nil)
@@ -45,8 +69,8 @@ func TestRegisterAndSend(t *testing.T) {
 
 		got, err := Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{Name: "alice"})
 
-		require.NoError(t, err, "Should send command without error")
-		assert.Equal(t, "u_alice", got.ID, "Should return handler result with prefixed name")
+		require.NoError(t, err, "Registered command handler should execute without error")
+		assert.Equal(t, "u_alice", got.ID, "Registered command handler should return the prefixed name")
 	})
 
 	t.Run("UnitCommand", func(t *testing.T) {
@@ -61,9 +85,9 @@ func TestRegisterAndSend(t *testing.T) {
 
 		got, err := Send[DeleteUserCmd, Unit](context.Background(), bus, DeleteUserCmd{ID: "123"})
 
-		require.NoError(t, err, "Should send unit command without error")
-		assert.Equal(t, Unit{}, got, "Should return empty Unit value")
-		assert.True(t, called, "Handler should have been invoked")
+		require.NoError(t, err, "Unit command handler should execute without error")
+		assert.Equal(t, Unit{}, got, "Unit command handler should return the empty Unit value")
+		assert.True(t, called, "Unit command handler should be invoked")
 	})
 
 	t.Run("MultipleHandlers", func(t *testing.T) {
@@ -76,12 +100,12 @@ func TestRegisterAndSend(t *testing.T) {
 		}))
 
 		r1, err := Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{Name: "bob"})
-		require.NoError(t, err, "Should send create command without error")
-		assert.Equal(t, "bob", r1.ID, "Should return create result with correct ID")
+		require.NoError(t, err, "Create command handler should execute without error")
+		assert.Equal(t, "bob", r1.ID, "Create command handler should return the command name as ID")
 
 		r2, err := Send[GetUserQuery, GetUserResult](context.Background(), bus, GetUserQuery{ID: "42"})
-		require.NoError(t, err, "Should send query without error")
-		assert.Equal(t, "found_42", r2.Name, "Should return query result with correct name")
+		require.NoError(t, err, "Query handler should execute without error")
+		assert.Equal(t, "found_42", r2.Name, "Query handler should return the lookup result name")
 	})
 
 	t.Run("HandlerReturnsError", func(t *testing.T) {
@@ -92,8 +116,8 @@ func TestRegisterAndSend(t *testing.T) {
 
 		got, err := Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{Name: "fail"})
 
-		require.EqualError(t, err, "db error", "Should propagate handler error")
-		assert.Empty(t, got.ID, "Should return zero value result on error")
+		require.EqualError(t, err, "db error", "Handler error should be propagated")
+		assert.Empty(t, got.ID, "Handler error should return a zero-value result")
 	})
 
 	t.Run("ZeroValueCommand", func(t *testing.T) {
@@ -104,8 +128,8 @@ func TestRegisterAndSend(t *testing.T) {
 
 		got, err := Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{})
 
-		require.NoError(t, err, "Should handle zero value command without error")
-		assert.Empty(t, got.ID, "Should return empty ID for zero value name")
+		require.NoError(t, err, "Zero-value command should execute without error")
+		assert.Empty(t, got.ID, "Zero-value command should return an empty ID")
 	})
 
 	t.Run("NilBehaviors", func(t *testing.T) {
@@ -116,8 +140,8 @@ func TestRegisterAndSend(t *testing.T) {
 
 		got, err := Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{Name: "test"})
 
-		require.NoError(t, err, "Should send without error when behaviors is nil")
-		assert.Equal(t, "test", got.ID, "Should return correct result with nil behaviors")
+		require.NoError(t, err, "Nil behavior list should allow handler execution")
+		assert.Equal(t, "test", got.ID, "Nil behavior list should return the handler result")
 	})
 
 	t.Run("EmptyBehaviors", func(t *testing.T) {
@@ -128,8 +152,8 @@ func TestRegisterAndSend(t *testing.T) {
 
 		got, err := Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{Name: "test"})
 
-		require.NoError(t, err, "Should send without error when behaviors is empty")
-		assert.Equal(t, "test", got.ID, "Should return correct result with empty behaviors")
+		require.NoError(t, err, "Empty behavior list should allow handler execution")
+		assert.Equal(t, "test", got.ID, "Empty behavior list should return the handler result")
 	})
 }
 
@@ -138,8 +162,8 @@ func TestSendUnregisteredCommand(t *testing.T) {
 
 	_, err := Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{Name: "x"})
 
-	require.ErrorIs(t, err, ErrHandlerNotFound, "Should return ErrHandlerNotFound for unregistered command")
-	assert.Contains(t, err.Error(), "CreateUserCmd", "Error should include the command type name")
+	require.ErrorIs(t, err, ErrHandlerNotFound, "Unregistered command should return ErrHandlerNotFound")
+	assert.Contains(t, err.Error(), "CreateUserCmd", "Handler lookup error should include the command type name")
 }
 
 func TestRegisterDuplicatePanics(t *testing.T) {
@@ -155,7 +179,7 @@ func TestRegisterDuplicatePanics(t *testing.T) {
 				return CreateUserResult{}, nil
 			}))
 		},
-		"Should panic when registering duplicate handler for the same command type",
+		"Duplicate handler registration should panic for the same command type",
 	)
 }
 
@@ -181,9 +205,9 @@ func TestBehaviorPipeline(t *testing.T) {
 
 		got, err := Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{Name: "test"})
 
-		require.NoError(t, err, "Should send through behavior pipeline without error")
-		assert.Equal(t, "test", got.ID, "Should return handler result")
-		assert.Equal(t, []string{"before", "handler", "after"}, order, "Should execute behavior before and after handler")
+		require.NoError(t, err, "Single behavior pipeline should execute without error")
+		assert.Equal(t, "test", got.ID, "Single behavior pipeline should return the handler result")
+		assert.Equal(t, []string{"before", "handler", "after"}, order, "Single behavior should wrap the handler")
 	})
 
 	t.Run("MultipleBehaviorsOrder", func(t *testing.T) {
@@ -209,9 +233,9 @@ func TestBehaviorPipeline(t *testing.T) {
 
 		_, err := Send[CreateUserCmd, Unit](context.Background(), bus, CreateUserCmd{})
 
-		require.NoError(t, err, "Should send through multiple behaviors without error")
+		require.NoError(t, err, "Multiple behavior pipeline should execute without error")
 		assert.Equal(t, []string{"b1-before", "b2-before", "handler", "b2-after", "b1-after"}, order,
-			"Should execute behaviors as nested middleware in registration order")
+			"Multiple behaviors should execute as nested middleware in registration order")
 	})
 
 	t.Run("ShortCircuit", func(t *testing.T) {
@@ -230,8 +254,8 @@ func TestBehaviorPipeline(t *testing.T) {
 
 		got, err := Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{})
 
-		require.NoError(t, err, "Should short-circuit without error")
-		assert.Equal(t, "short-circuited", got.ID, "Should return behavior's short-circuit result")
+		require.NoError(t, err, "Short-circuit behavior should execute without error")
+		assert.Equal(t, "short-circuited", got.ID, "Short-circuit behavior should return its own result")
 		assert.False(t, handlerCalled, "Handler should not be called when behavior short-circuits")
 	})
 
@@ -249,7 +273,7 @@ func TestBehaviorPipeline(t *testing.T) {
 
 		got, err := Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{})
 
-		require.NoError(t, err, "Should send with modified context without error")
+		require.NoError(t, err, "Context-modifying behavior should execute without error")
 		assert.Equal(t, "injected", got.ID, "Handler should receive context value injected by behavior")
 	})
 
@@ -265,7 +289,7 @@ func TestBehaviorPipeline(t *testing.T) {
 
 		_, err := Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{})
 
-		require.EqualError(t, err, "behavior error", "Should propagate behavior error")
+		require.EqualError(t, err, "behavior error", "Behavior error should be propagated")
 	})
 
 	t.Run("BehaviorReceivesCommand", func(t *testing.T) {
@@ -285,7 +309,7 @@ func TestBehaviorPipeline(t *testing.T) {
 		sent := CreateUserCmd{Name: "inspect"}
 		_, err := Send[CreateUserCmd, Unit](context.Background(), bus, sent)
 
-		require.NoError(t, err, "Should send without error")
+		require.NoError(t, err, "Behavior inspection pipeline should execute without error")
 		assert.Equal(t, sent, receivedCmd, "Behavior should receive the original command")
 	})
 
@@ -301,8 +325,42 @@ func TestBehaviorPipeline(t *testing.T) {
 
 		got, err := Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{})
 
-		require.NoError(t, err, "Should not return error when behavior returns nil")
-		assert.Empty(t, got.ID, "Should return zero value when behavior returns nil")
+		require.NoError(t, err, "Nil behavior result should not return an error")
+		assert.Empty(t, got.ID, "Nil behavior result should return a zero-value command result")
+	})
+
+	t.Run("OrderedBehaviorsWrapByAscendingOrder", func(t *testing.T) {
+		var calls []string
+
+		bus := NewBus([]Behavior{
+			OrderedRecordingBehavior{RecordingBehavior: RecordingBehavior{name: "high", calls: &calls}, order: 100},
+			RecordingBehavior{name: "default-a", calls: &calls},
+			OrderedRecordingBehavior{RecordingBehavior: RecordingBehavior{name: "default-b", calls: &calls}, order: 0},
+			OrderedRecordingBehavior{RecordingBehavior: RecordingBehavior{name: "low", calls: &calls}, order: -10},
+			RecordingBehavior{name: "default-c", calls: &calls},
+		})
+		Register(bus, HandlerFunc[CreateUserCmd, Unit](func(context.Context, CreateUserCmd) (Unit, error) {
+			calls = append(calls, "handler")
+
+			return Unit{}, nil
+		}))
+
+		_, err := Send[CreateUserCmd, Unit](context.Background(), bus, CreateUserCmd{})
+
+		require.NoError(t, err, "Ordered behavior pipeline should execute without error")
+		assert.Equal(t, []string{
+			"low-before",
+			"default-a-before",
+			"default-b-before",
+			"default-c-before",
+			"high-before",
+			"handler",
+			"high-after",
+			"default-c-after",
+			"default-b-after",
+			"default-a-after",
+			"low-after",
+		}, calls, "Ordered behaviors should wrap by ascending order while preserving equal-order input order")
 	})
 }
 
@@ -385,7 +443,7 @@ func TestActionKind(t *testing.T) {
 		}))
 
 		_, err := Send[CreateUserCmd, Unit](context.Background(), bus, CreateUserCmd{})
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "Behavior action-kind inspection should execute without error")
 		assert.Equal(t, Command, receivedKind, "Behavior should receive Command kind for command type")
 	})
 }
