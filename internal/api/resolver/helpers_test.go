@@ -65,14 +65,14 @@ func TestValidateHandlerSignature(t *testing.T) {
 		fn := func() string { return "" }
 		err := validateHandlerSignature(reflect.TypeOf(fn))
 		assert.Error(t, err, "Handler returning non-error should be invalid")
-		assert.Contains(t, err.Error(), "invalid return type", "Should contain expected value")
+		assert.Contains(t, err.Error(), "invalid return type", "TestValidateHandlerSignature should include expected value")
 	})
 
 	t.Run("TooManyReturns", func(t *testing.T) {
 		fn := func() (string, error) { return "", nil }
 		err := validateHandlerSignature(reflect.TypeOf(fn))
 		assert.Error(t, err, "Handler with too many returns should be invalid")
-		assert.Contains(t, err.Error(), "too many return values", "Should contain expected value")
+		assert.Contains(t, err.Error(), "too many return values", "TestValidateHandlerSignature should include expected value")
 	})
 
 	t.Run("WithParameters", func(t *testing.T) {
@@ -154,7 +154,7 @@ func TestValidateHandler(t *testing.T) {
 	t.Run("NotAFunction", func(t *testing.T) {
 		err := validateHandler(reflect.ValueOf("not a function"))
 		assert.Error(t, err, "Non-function should fail validation")
-		assert.Contains(t, err.Error(), "must be a function", "Should contain expected value")
+		assert.Contains(t, err.Error(), "must be a function", "TestValidateHandler should include expected value")
 	})
 
 	t.Run("NilFunction", func(t *testing.T) {
@@ -162,7 +162,7 @@ func TestValidateHandler(t *testing.T) {
 
 		err := validateHandler(reflect.ValueOf(fn))
 		assert.Error(t, err, "Nil function should fail validation")
-		assert.Contains(t, err.Error(), "cannot be nil", "Should contain expected value")
+		assert.Contains(t, err.Error(), "cannot be nil", "TestValidateHandler should include expected value")
 	})
 }
 
@@ -335,7 +335,7 @@ func TestFindHandlerMethod(t *testing.T) {
 	t.Run("NotFound", func(t *testing.T) {
 		_, err := findHandlerMethod(reflect.ValueOf(resource), "NonExistent")
 		assert.Error(t, err, "Non-existent method should fail")
-		assert.Contains(t, err.Error(), "not found", "Should contain expected value")
+		assert.Contains(t, err.Error(), "not found", "TestFindHandlerMethod should include expected value")
 	})
 
 	t.Run("FactoryMethod", func(t *testing.T) {

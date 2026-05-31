@@ -386,7 +386,7 @@ func (suite *EBBasicExpressionsTestSuite) TestNull() {
 		for _, result := range results {
 			suite.NotEmpty(result.ID, "Should have non-empty ID")
 			suite.NotEmpty(result.Title, "Should have non-empty Title")
-			suite.Nil(result.NullValue, "Should be nil")
+			suite.Nil(result.NullValue, "TestNull should return nil")
 		}
 	})
 }
@@ -508,8 +508,8 @@ func (suite *EBBasicExpressionsTestSuite) TestIsNotNull() {
 		for _, result := range results {
 			suite.NotEmpty(result.Title, "Should have non-empty Title")
 			suite.NotEmpty(result.Status, "Should have non-empty Status")
-			suite.True(result.HasTitle, "Should be true")
-			suite.True(result.HasStatus, "Should be true")
+			suite.True(result.HasTitle, "TestIsNotNull condition should be true")
+			suite.True(result.HasStatus, "TestIsNotNull condition should be true")
 		}
 	})
 }
@@ -1955,7 +1955,7 @@ func (suite *EBBasicExpressionsTestSuite) TestFragmentByDialect() {
 		})
 
 		suite.Require().NoError(err, "Should execute query")
-		suite.NotNil(fragment, "Should not be nil")
+		suite.NotNil(fragment, "TestFragmentByDialect should return a non-nil value")
 
 		// Verify the correct fragment was generated
 		fragmentStr := string(fragment)
@@ -1989,7 +1989,7 @@ func (suite *EBBasicExpressionsTestSuite) TestFragmentByDialect() {
 
 		suite.Error(err, "FragmentByDialect should return error when callback fails")
 		suite.Equal(testErr, err, "Should return the exact error from callback")
-		suite.Nil(fragment, "Should be nil")
+		suite.Nil(fragment, "TestFragmentByDialect should return nil")
 	})
 
 	suite.Run("DefaultFragmentCallback", func() {
@@ -2020,6 +2020,6 @@ func (suite *EBBasicExpressionsTestSuite) TestFragmentByDialect() {
 		})
 
 		suite.Require().NoError(err, "Should execute query")
-		suite.Nil(fragment, "Should be nil")
+		suite.Nil(fragment, "TestFragmentByDialect should return nil")
 	})
 }

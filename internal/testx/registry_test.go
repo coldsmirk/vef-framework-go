@@ -18,7 +18,7 @@ type MockFeatureTestSuite struct {
 }
 
 func (s *MockFeatureTestSuite) TestPlaceholder() {
-	s.Equal("test", s.base.value, "Should match expected value")
+	s.Equal("test", s.base.value, "TestPlaceholder should match expected value")
 }
 
 // TestRegistryAdd tests registry add functionality.

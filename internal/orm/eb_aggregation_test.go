@@ -1232,7 +1232,7 @@ func (suite *EBAggregationFunctionsTestSuite) TestAggregateIgnoreRespectNulls() 
 				})
 			}, "names")
 
-		suite.NotNil(query, "Should not be nil")
+		suite.NotNil(query, "TestAggregateIgnoreRespectNulls should return a non-nil value")
 	})
 
 	suite.Run("RespectNulls", func() {
@@ -1245,6 +1245,6 @@ func (suite *EBAggregationFunctionsTestSuite) TestAggregateIgnoreRespectNulls() 
 				})
 			}, "names")
 
-		suite.NotNil(query, "Should not be nil")
+		suite.NotNil(query, "TestAggregateIgnoreRespectNulls should return a non-nil value")
 	})
 }

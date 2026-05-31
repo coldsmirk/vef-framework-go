@@ -76,7 +76,7 @@ func TestNewFromAny(t *testing.T) {
 
 			got, err := NewFromAny(tt.input)
 			if tt.wantErr {
-				assert.Error(t, err, "Should return error")
+				assert.Error(t, err, "TestNewFromAny should return an error")
 
 				return
 			}

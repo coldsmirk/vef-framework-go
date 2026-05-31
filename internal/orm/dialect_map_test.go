@@ -20,15 +20,15 @@ func TestDialectFor(t *testing.T) {
 		t.Run(string(kind), func(t *testing.T) {
 			dialect, err := DialectFor(kind)
 			require.NoError(t, err, "DialectFor should support %s", kind)
-			assert.NotNil(t, dialect, "dialect should not be nil for %s", kind)
+			assert.NotNil(t, dialect, "Dialect should not be nil for %s", kind)
 			assert.True(t, database.SupportsKind(kind),
-				"database must also provide a connector for %s (connector<->dialect invariant)", kind)
+				"Database must also provide a connector for %s (connector<->dialect invariant)", kind)
 		})
 	}
 
 	t.Run("Unsupported", func(t *testing.T) {
 		dialect, err := DialectFor("no-such-dialect")
-		require.ErrorIs(t, err, ErrUnsupportedDialect, "unsupported kind should return ErrUnsupportedDialect")
-		assert.Nil(t, dialect, "dialect should be nil for an unsupported kind")
+		require.ErrorIs(t, err, ErrUnsupportedDialect, "Unsupported kind should return ErrUnsupportedDialect")
+		assert.Nil(t, dialect, "Dialect should be nil for an unsupported kind")
 	})
 }

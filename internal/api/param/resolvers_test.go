@@ -167,7 +167,7 @@ func (suite *ParamResolversTestSuite) makeAPIRequest(action, body string) *http.
 	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 	resp, err := suite.app.Test(req, 30*time.Second)
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "TestCronFactoryResolver should complete without error")
 
 	return resp
 }
@@ -176,7 +176,7 @@ func (suite *ParamResolversTestSuite) readBody(resp *http.Response) string {
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "TestCronFactoryResolver should complete without error")
 
 	return string(body)
 }

@@ -249,7 +249,7 @@ func (suite *RESTEngineTestSuite) SetupSuite() {
 	var err error
 
 	suite.hashedPassword, err = password.NewBcryptEncoder().Encode("password123")
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "Engine REST should complete without error")
 
 	suite.userLoader = new(MockUserLoader)
 	suite.permissionChecker = new(MockPermissionChecker)
@@ -560,7 +560,7 @@ func (suite *RESTEngineTestSuite) TestEmptyRequestBody() {
 	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 	resp, err := suite.App.Test(req, 30*time.Second)
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "TestEmptyRequestBody should complete without error")
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
 
@@ -578,7 +578,7 @@ func (suite *RESTEngineTestSuite) TestTokenInQueryParam() {
 	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 	resp, err := suite.App.Test(req, 30*time.Second)
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "TestTokenInQueryParam should complete without error")
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
 
@@ -691,7 +691,7 @@ func (suite *RESTEngineTestSuite) TestContentTypeValidation() {
 	req.Header.Set(fiber.HeaderContentType, "text/plain")
 
 	resp, err := suite.App.Test(req, 30*time.Second)
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "TestContentTypeValidation should complete without error")
 
 	suite.Equal(415, resp.StatusCode, "Should return 415 Unsupported Media Type")
 }

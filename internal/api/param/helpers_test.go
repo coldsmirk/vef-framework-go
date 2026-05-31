@@ -95,7 +95,7 @@ func TestIsBuiltinParamsType(t *testing.T) {
 // TestIsBuiltinMetaType tests isBuiltinMetaType.
 func TestIsBuiltinMetaType(t *testing.T) {
 	t.Run("PageableIsBuiltin", func(t *testing.T) {
-		assert.True(t, isBuiltinMetaType(reflect.TypeFor[page.Pageable]()), "page.Pageable should be builtin meta type")
+		assert.True(t, isBuiltinMetaType(reflect.TypeFor[page.Pageable]()), "Pageable meta type should be builtin")
 	})
 
 	t.Run("NotBuiltin", func(t *testing.T) {
@@ -106,7 +106,7 @@ func TestIsBuiltinMetaType(t *testing.T) {
 // TestEmbedsSentinelType tests the embedsSentinelType BFS search.
 func TestEmbedsSentinelType(t *testing.T) {
 	t.Run("MatchesSelf", func(t *testing.T) {
-		assert.True(t, embedsSentinelType(reflect.TypeFor[api.P](), apiParamsType), "api.P should match itself")
+		assert.True(t, embedsSentinelType(reflect.TypeFor[api.P](), apiParamsType), "Param sentinel api.P should match itself")
 	})
 
 	t.Run("NestedMatch", func(t *testing.T) {

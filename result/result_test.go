@@ -467,7 +467,7 @@ func TestResultResponseIntegration(t *testing.T) {
 	t.Run("SuccessEndpoint", func(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), "POST", "/success", nil)
 		resp, err := app.Test(req)
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestResultResponseIntegration should complete without error")
 
 		defer resp.Body.Close()
 
@@ -476,7 +476,7 @@ func TestResultResponseIntegration(t *testing.T) {
 		var result Result
 
 		err = json.NewDecoder(resp.Body).Decode(&result)
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestResultResponseIntegration should complete without error")
 
 		assert.Equal(t, OkCode, result.Code, "Should have success code")
 		assert.NotNil(t, result.Data, "Should have data")
@@ -485,7 +485,7 @@ func TestResultResponseIntegration(t *testing.T) {
 	t.Run("SuccessCustomEndpoint", func(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), "POST", "/success-custom", nil)
 		resp, err := app.Test(req)
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestResultResponseIntegration should complete without error")
 
 		defer resp.Body.Close()
 
@@ -494,7 +494,7 @@ func TestResultResponseIntegration(t *testing.T) {
 		var result Result
 
 		err = json.NewDecoder(resp.Body).Decode(&result)
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestResultResponseIntegration should complete without error")
 
 		assert.Equal(t, OkCode, result.Code, "Should have success code")
 		assert.Equal(t, "Resource created", result.Message, "Should have custom message")
@@ -503,7 +503,7 @@ func TestResultResponseIntegration(t *testing.T) {
 	t.Run("ErrorEndpoint", func(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), "POST", "/error", nil)
 		resp, err := app.Test(req)
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestResultResponseIntegration should complete without error")
 
 		defer resp.Body.Close()
 
@@ -512,7 +512,7 @@ func TestResultResponseIntegration(t *testing.T) {
 		var result Result
 
 		err = json.NewDecoder(resp.Body).Decode(&result)
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestResultResponseIntegration should complete without error")
 
 		assert.Equal(t, ErrCodeBadRequest, result.Code, "Should have error code")
 		assert.Equal(t, "operation failed", result.Message, "Should have error message")

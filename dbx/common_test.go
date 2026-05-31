@@ -55,7 +55,7 @@ func TestColumnWithAlias(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ColumnWithAlias(tt.column, tt.alias...)
-			assert.Equal(t, tt.expected, result, "Should equal expected value")
+			assert.Equal(t, tt.expected, result, "TestColumnWithAlias should match expected value")
 		})
 	}
 }

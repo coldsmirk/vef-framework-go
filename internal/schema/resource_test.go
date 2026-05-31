@@ -90,7 +90,7 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 		s.Equal(http.StatusOK, resp.StatusCode, "Should return 200 OK")
 
 		body := s.ReadResult(resp)
-		s.True(body.IsOk(), "list_tables should succeed")
+		s.True(body.IsOk(), "ListTables should succeed")
 
 		tables := s.ReadDataAsSlice(body.Data)
 
@@ -124,7 +124,7 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 		s.Equal(http.StatusOK, resp.StatusCode, "Should return 200 OK")
 
 		body := s.ReadResult(resp)
-		s.True(body.IsOk(), "get_table_schema should succeed")
+		s.True(body.IsOk(), "GetTableSchema should succeed")
 
 		tableSchema := s.ReadDataAsMap(body.Data)
 
@@ -194,7 +194,7 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 		s.Equal(http.StatusOK, resp.StatusCode, "Should return 200 OK (error in body)")
 
 		body := s.ReadResult(resp)
-		s.False(body.IsOk(), "get_table_schema should fail for nonexistent table")
+		s.False(body.IsOk(), "GetTableSchema should fail for nonexistent table")
 		s.Equal(schema.ErrCodeTableNotFound, body.Code, "Error code should be ErrCodeTableNotFound")
 
 		s.T().Logf("%s table not found error: code=%d, message=%s", dbKind, body.Code, body.Message)
@@ -213,7 +213,7 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 		}, token)
 
 		body := s.ReadResult(resp)
-		s.False(body.IsOk(), "get_table_schema should fail without name parameter")
+		s.False(body.IsOk(), "GetTableSchema should fail without name parameter")
 
 		s.T().Logf("%s validation error: code=%d, message=%s", dbKind, body.Code, body.Message)
 	})
@@ -230,7 +230,7 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 		s.Equal(http.StatusOK, resp.StatusCode, "Should return 200 OK")
 
 		body := s.ReadResult(resp)
-		s.True(body.IsOk(), "list_views should succeed")
+		s.True(body.IsOk(), "ListViews should succeed")
 
 		views := s.ReadDataAsSlice(body.Data)
 

@@ -639,8 +639,8 @@ func TestAdaptHandler(t *testing.T) {
 
 		op := &api.Operation{Handler: DummyHandler}
 		result, err := e.adaptHandler(op)
-		assert.NoError(t, err, "adaptHandler should not return error")
-		assert.NotNil(t, result, "adaptHandler should return handler")
+		assert.NoError(t, err, "AdaptHandler should not return error")
+		assert.NotNil(t, result, "AdaptHandler should return handler")
 	})
 
 	t.Run("FirstAdapterReturnsNilSecondSucceeds", func(t *testing.T) {
@@ -651,8 +651,8 @@ func TestAdaptHandler(t *testing.T) {
 
 		op := &api.Operation{Handler: DummyHandler}
 		result, err := e.adaptHandler(op)
-		assert.NoError(t, err, "adaptHandler should not return error")
-		assert.NotNil(t, result, "adaptHandler should return handler from second adapter")
+		assert.NoError(t, err, "AdaptHandler should not return error")
+		assert.NotNil(t, result, "AdaptHandler should return handler from second adapter")
 	})
 
 	t.Run("NoAdaptersConfigured", func(t *testing.T) {
@@ -660,8 +660,8 @@ func TestAdaptHandler(t *testing.T) {
 
 		op := &api.Operation{Handler: DummyHandler}
 		result, err := e.adaptHandler(op)
-		assert.Error(t, err, "adaptHandler should return error when no adapter handles")
-		assert.Nil(t, result, "adaptHandler should return nil handler")
+		assert.Error(t, err, "AdaptHandler should return error when no adapter handles")
+		assert.Nil(t, result, "AdaptHandler should return nil handler")
 		assert.ErrorIs(t, err, shared.ErrNoHandlerAdapterFound, "Error should be ErrNoHandlerAdapterFound")
 	})
 
@@ -670,8 +670,8 @@ func TestAdaptHandler(t *testing.T) {
 
 		op := &api.Operation{Handler: DummyHandler}
 		result, err := e.adaptHandler(op)
-		assert.Error(t, err, "adaptHandler should return error")
-		assert.Nil(t, result, "adaptHandler should return nil handler")
+		assert.Error(t, err, "AdaptHandler should return error")
+		assert.Nil(t, result, "AdaptHandler should return nil handler")
 	})
 
 	t.Run("SingleAdapterReturnsNil", func(t *testing.T) {
@@ -679,8 +679,8 @@ func TestAdaptHandler(t *testing.T) {
 
 		op := &api.Operation{Handler: DummyHandler}
 		result, err := e.adaptHandler(op)
-		assert.Error(t, err, "adaptHandler should return error when adapter returns nil")
-		assert.Nil(t, result, "adaptHandler should return nil handler")
+		assert.Error(t, err, "AdaptHandler should return error when adapter returns nil")
+		assert.Nil(t, result, "AdaptHandler should return nil handler")
 		assert.ErrorIs(t, err, shared.ErrNoHandlerAdapterFound, "Error should be ErrNoHandlerAdapterFound")
 	})
 
@@ -692,8 +692,8 @@ func TestAdaptHandler(t *testing.T) {
 
 		op := &api.Operation{Handler: DummyHandler}
 		result, err := e.adaptHandler(op)
-		assert.Error(t, err, "adaptHandler should return error when all adapters return nil")
-		assert.Nil(t, result, "adaptHandler should return nil handler")
+		assert.Error(t, err, "AdaptHandler should return error when all adapters return nil")
+		assert.Nil(t, result, "AdaptHandler should return nil handler")
 		assert.ErrorIs(t, err, shared.ErrNoHandlerAdapterFound, "Error should be ErrNoHandlerAdapterFound")
 	})
 }
@@ -810,8 +810,8 @@ func TestResolveHandler(t *testing.T) {
 		))
 
 		result, err := e.resolveHandler(spec, res)
-		assert.NoError(t, err, "resolveHandler should not return error")
-		assert.NotNil(t, result, "resolveHandler should return handler")
+		assert.NoError(t, err, "ResolveHandler should not return error")
+		assert.NotNil(t, result, "ResolveHandler should return handler")
 	})
 
 	t.Run("FirstResolverReturnsNilSecondSucceeds", func(t *testing.T) {
@@ -821,8 +821,8 @@ func TestResolveHandler(t *testing.T) {
 		))
 
 		result, err := e.resolveHandler(spec, res)
-		assert.NoError(t, err, "resolveHandler should not return error")
-		assert.NotNil(t, result, "resolveHandler should return handler from second resolver")
+		assert.NoError(t, err, "ResolveHandler should not return error")
+		assert.NotNil(t, result, "ResolveHandler should return handler from second resolver")
 	})
 
 	t.Run("AllResolversReturnNil", func(t *testing.T) {
@@ -832,8 +832,8 @@ func TestResolveHandler(t *testing.T) {
 		))
 
 		result, err := e.resolveHandler(spec, res)
-		assert.Error(t, err, "resolveHandler should return error when all resolvers return nil")
-		assert.Nil(t, result, "resolveHandler should return nil handler")
+		assert.Error(t, err, "ResolveHandler should return error when all resolvers return nil")
+		assert.Nil(t, result, "ResolveHandler should return nil handler")
 		assert.Contains(t, err.Error(), "no handler resolver found", "Error should mention no resolver found")
 	})
 
@@ -841,8 +841,8 @@ func TestResolveHandler(t *testing.T) {
 		e := newTestEngine(t, WithHandlerResolvers(&MockHandlerResolver{err: errors.New("resolve failed")}))
 
 		result, err := e.resolveHandler(spec, res)
-		assert.Error(t, err, "resolveHandler should return error")
-		assert.Nil(t, result, "resolveHandler should return nil handler")
+		assert.Error(t, err, "ResolveHandler should return error")
+		assert.Nil(t, result, "ResolveHandler should return nil handler")
 	})
 }
 
@@ -853,7 +853,7 @@ func TestRegisterResource(t *testing.T) {
 
 		res := &MockResource{kind: api.KindRPC, name: "test/resource"}
 		err := e.registerResource(res)
-		assert.NoError(t, err, "registerResource with no collectors should succeed")
+		assert.NoError(t, err, "RegisterResource with no collectors should succeed")
 	})
 
 	t.Run("CollectorReturnsEmptySpecs", func(t *testing.T) {
@@ -864,7 +864,7 @@ func TestRegisterResource(t *testing.T) {
 
 		res := &MockResource{kind: api.KindRPC, name: "test/resource"}
 		err := e.registerResource(res)
-		assert.NoError(t, err, "registerResource with empty specs should succeed")
+		assert.NoError(t, err, "RegisterResource with empty specs should succeed")
 	})
 }
 

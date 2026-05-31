@@ -41,13 +41,13 @@ func (suite *MonitorServiceTestSuite) SetupSuite() {
 	suite.serviceWithCustomBuildInfo = imonitor.NewService(cfg, buildInfo)
 	if initializer, ok := suite.serviceWithCustomBuildInfo.(contract.Initializer); ok {
 		err := initializer.Init(suite.ctx)
-		suite.Require().NoError(err, "Should not return error")
+		suite.Require().NoError(err, "Service should complete without error")
 	}
 
 	suite.serviceWithDefaultBuildInfo = imonitor.NewService(cfg, nil)
 	if initializer, ok := suite.serviceWithDefaultBuildInfo.(contract.Initializer); ok {
 		err := initializer.Init(suite.ctx)
-		suite.Require().NoError(err, "Should not return error")
+		suite.Require().NoError(err, "Service should complete without error")
 	}
 
 	time.Sleep(100 * time.Millisecond)

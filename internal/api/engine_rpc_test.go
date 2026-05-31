@@ -224,7 +224,7 @@ func (suite *RPCEngineTestSuite) SetupSuite() {
 	var err error
 
 	suite.hashedPassword, err = password.NewBcryptEncoder().Encode("password123")
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "Engine RPC should complete without error")
 
 	suite.userLoader = new(MockUserLoader)
 	suite.permissionChecker = new(MockPermissionChecker)
@@ -472,7 +472,7 @@ func (suite *RPCEngineTestSuite) TestInvalidJsonRequest() {
 	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 	resp, err := suite.App.Test(req, 30*time.Second)
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "TestInvalidJsonRequest should complete without error")
 
 	suite.Equal(500, resp.StatusCode, "Should return 500 Internal Server Error for invalid JSON")
 
@@ -487,7 +487,7 @@ func (suite *RPCEngineTestSuite) TestEmptyRequestBody() {
 	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 	resp, err := suite.App.Test(req, 30*time.Second)
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "TestEmptyRequestBody should complete without error")
 
 	suite.Equal(500, resp.StatusCode, "Should return 500 Internal Server Error for empty body")
 
@@ -570,7 +570,7 @@ func (suite *RPCEngineTestSuite) TestErrorResponse() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
 
 	body := suite.ReadResult(resp)
-	suite.False(body.IsOk(), "Should return error")
+	suite.False(body.IsOk(), "TestErrorResponse should return an error")
 	suite.Equal(result.ErrCodeDefault, body.Code, "Should return default error code")
 	suite.Equal("intentional error", body.Message, "Should return error message")
 }
@@ -627,13 +627,13 @@ func (suite *RPCEngineTestSuite) TestContentTypeValidation() {
 			Version:  "v1",
 		},
 	})
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "TestContentTypeValidation should complete without error")
 
 	req := httptest.NewRequestWithContext(context.Background(), fiber.MethodPost, "/api", strings.NewReader(string(jsonBytes)))
 	req.Header.Set(fiber.HeaderContentType, "text/plain")
 
 	resp, err := suite.App.Test(req, 30*time.Second)
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "TestContentTypeValidation should complete without error")
 
 	suite.Equal(415, resp.StatusCode, "Should return 415 Unsupported Media Type")
 }
@@ -687,13 +687,13 @@ func (suite *RPCEngineTestSuite) TestTokenInQueryParam() {
 			Version:  "v1",
 		},
 	})
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "TestTokenInQueryParam should complete without error")
 
 	req := httptest.NewRequestWithContext(context.Background(), fiber.MethodPost, "/api?"+security.QueryKeyAccessToken+"="+token, strings.NewReader(string(jsonBytes)))
 	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 	resp, err := suite.App.Test(req, 30*time.Second)
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "TestTokenInQueryParam should complete without error")
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
 

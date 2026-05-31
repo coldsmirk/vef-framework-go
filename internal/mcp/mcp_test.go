@@ -84,7 +84,7 @@ func (suite *MCPTestSuite) SetupTest() {
 
 func (suite *MCPTestSuite) setupTestApp() {
 	hashedPassword, err := password.NewBcryptEncoder().Encode("password123")
-	suite.Require().NoError(err, "Should not return error")
+	suite.Require().NoError(err, "MCP should complete without error")
 
 	suite.SetupApp(
 		fx.Supply(
@@ -296,7 +296,7 @@ func (suite *MCPTestSuite) TestMCPEndpointAuthorizationHeader() {
 		req.Header.Set(fiber.HeaderAuthorization, "Bearer "+token)
 
 		resp, err := suite.App.Test(req, 30*time.Second)
-		suite.Require().NoError(err, "Should not return error")
+		suite.Require().NoError(err, "TestMCPEndpointAuthorizationHeader should complete without error")
 
 		suite.NotEqual(401, resp.StatusCode, "Should accept Bearer prefix")
 	})
@@ -310,7 +310,7 @@ func (suite *MCPTestSuite) TestMCPEndpointAuthorizationHeader() {
 		req.Header.Set(fiber.HeaderAuthorization, "bearer "+token)
 
 		resp, err := suite.App.Test(req, 30*time.Second)
-		suite.Require().NoError(err, "Should not return error")
+		suite.Require().NoError(err, "TestMCPEndpointAuthorizationHeader should complete without error")
 
 		// SDK accepts lowercase bearer
 		suite.NotEqual(401, resp.StatusCode, "Should accept lowercase bearer prefix")
@@ -325,7 +325,7 @@ func (suite *MCPTestSuite) TestMCPEndpointAuthorizationHeader() {
 		req.Header.Set(fiber.HeaderAuthorization, token) // No "Bearer " prefix
 
 		resp, err := suite.App.Test(req, 30*time.Second)
-		suite.Require().NoError(err, "Should not return error")
+		suite.Require().NoError(err, "TestMCPEndpointAuthorizationHeader should complete without error")
 
 		suite.Equal(401, resp.StatusCode, "Should reject token without Bearer prefix")
 	})

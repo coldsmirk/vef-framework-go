@@ -115,15 +115,15 @@ func TestSchemaFor(t *testing.T) {
 
 		// $schema is manually deleted in schemaFromType
 		_, hasSchema := schema["$schema"]
-		assert.False(t, hasSchema, "$schema should be removed")
+		assert.False(t, hasSchema, "Schema keyword should be removed")
 
 		// $id is controlled by Reflector.Anonymous = true
 		_, hasID := schema["$id"]
-		assert.False(t, hasID, "$id should not be generated")
+		assert.False(t, hasID, "ID keyword should not be generated")
 
 		// $defs is controlled by Reflector.DoNotReference = true
 		_, hasDefs := schema["$defs"]
-		assert.False(t, hasDefs, "$defs should not be generated")
+		assert.False(t, hasDefs, "Definitions keyword should not be generated")
 	})
 }
 
