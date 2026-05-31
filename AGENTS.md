@@ -32,8 +32,8 @@ go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest
 ## Architecture Overview
 
 - **Stack**: Go 1.26.0 + Fiber v3 + Uber FX + Bun ORM. Default language: Simplified Chinese (`VEF_I18N_LANGUAGE`).
-- **Structure**: public packages at root (`api`, `crud`, `orm`, `security`, `result`, etc.), internal implementations under `internal/`.
-- **Boot sequence** (`vef.Run()` in `bootstrap.go`): `config → orm → middleware → api → security → event → cqrs → cron → redis → mold → storage → sequence → event outbox → event redis stream → event inbox → schema → monitor → mcp → app`. The `orm` step is two FX modules — `orm.DataSourcesModule` (builds the data source registry + primary `*bun.DB`/`*sql.DB`) then `orm.Module` (derives the primary `orm.DB`). `internal/database` is a pure connection factory (`Open` → `*bun.DB`) with **no FX module**; `orm` depends on it, never the reverse.
+- **Structure**: public packages at root (`api`, `crud`, `orm`, `datasource`, `security`, `result`, etc.), internal implementations under `internal/`.
+- **Boot sequence** (`vef.Run()` in `bootstrap.go`): `config → datasource → middleware → api → security → event → cqrs → cron → redis → mold → storage → sequence → event outbox → event redis stream → event inbox → schema → monitor → mcp → app`. The `datasource` step is two FX modules — `datasource.RegistryModule` (builds the registry, seeds static/provider sources, exposes the primary `*sql.DB`) then `datasource.Module` (derives the primary `orm.DB` from the Registry). **Layering is `datasource → orm → database`, with `orm` and `database` mutually unaware**: `internal/database` connects a `config.DataSourceConfig` into a `*sql.DB` (no bun ORM imports beyond the SQL drivers, no FX module); `internal/orm` takes an already-connected `*sql.DB` and wraps it into `orm.DB` via `orm.Open(sqlDB, kind, opts...)` (it owns all bun assembly — dialect via `orm.DialectFor`, query hook, `internal/orm/sqlguard` — and never imports `database`); `internal/datasource` is the only composition root that knows both, calling `database.Open` then `orm.Open`. The registry stores `orm.DB` + the `*sql.DB` lifecycle handle; the `*bun.DB` lives only inside the `orm.DB` wrapper. The public **`datasource`** package defines the contract (`Registry`, `Provider`, `Spec`, options, errors); `internal/datasource` implements it (internal → public, like `storage`). Nothing is re-exported through the public `orm` package.
 - **Modules**: each exposes `fx.Module` in `internal/<module>/module.go`, constructors annotated into FX groups.
 - **DI helpers** (`di.go`): `vef.ProvideAPIResource(...)`, `vef.ProvideMiddleware(...)`, `vef.ProvideSPAConfig(...)`, `vef.SupplySPAConfigs(...)`, `vef.ProvideCQRSBehavior(...)`, `vef.ProvideMCPTools(...)`, etc.
 
@@ -138,6 +138,7 @@ Compression (`-1000`) → Headers (`-900`) → CORS (`-800`) → Content-Type (`
 | Entry point | `bootstrap.go`, `start.go`, `di.go` |
 | API internals | `internal/api/*` |
 | ORM | `internal/orm/*` |
+| Data sources | `datasource/*` (contract), `internal/datasource/*` (impl) |
 | Security | `internal/security/*`, `security/` |
 | Testing | `internal/apptest`, `crud/*_test.go` |
 | Docs | `README.md`, `TESTING.md` |
