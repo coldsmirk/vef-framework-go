@@ -1,0 +1,43 @@
+package datasource
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"go.uber.org/fx/fxtest"
+
+	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/datasource"
+)
+
+// TestProvideRegistryClosesPrimaryOnSeedFailure pins the lifecycle contract that
+// a mid-start failure (here, a static source with an unsupported dialect) still
+// drains the already-opened primary. Fx only runs a hook's OnStop when that same
+// hook's OnStart succeeded, so the Shutdown hook must stay separate from the
+// fallible seed/provider start work — otherwise the primary connection leaks.
+// This test fails if the two are folded back into a single hook.
+func TestProvideRegistryClosesPrimaryOnSeedFailure(t *testing.T) {
+	ctx := context.Background()
+	lc := fxtest.NewLifecycle(t)
+
+	cfg := &config.DataSourcesConfig{
+		Map: map[string]config.DataSourceConfig{
+			datasource.PrimaryName: {Kind: config.SQLite},
+			"broken":               {Kind: "no-such-dialect"},
+		},
+	}
+
+	out, err := provideRegistry(lc, cfg, ProviderParams{})
+	require.NoError(t, err, "provideRegistry opens the primary in the provide phase")
+	require.NotNil(t, out.RawDB, "primary raw *sql.DB should be exposed")
+	require.NoError(t, out.RawDB.PingContext(ctx), "primary must be healthy before start")
+
+	require.Error(t, lc.Start(ctx),
+		"start must fail: the 'broken' static source has an unsupported dialect")
+
+	require.NoError(t, lc.Stop(ctx), "stop should drain cleanly")
+
+	require.Error(t, out.RawDB.PingContext(ctx),
+		"primary connection must be closed by the Shutdown hook despite the seed failure")
+}

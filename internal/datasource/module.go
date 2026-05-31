@@ -59,9 +59,18 @@ type ProviderParams struct {
 }
 
 // provideRegistry opens the primary source (fail-fast in the provide phase) and
-// registers a lifecycle hook that, on start, logs the primary version, seeds the
-// non-primary static sources, then runs the data source providers — in that
-// order — and, on stop, drains and closes every source.
+// registers two lifecycle hooks: a Shutdown hook that drains and closes every
+// source on stop, and a start-only hook that logs the primary version, seeds the
+// non-primary static sources, then runs the data source providers.
+//
+// The two are kept separate on purpose. Fx only runs a hook's OnStop when that
+// same hook's OnStart succeeded (see fx internal/lifecycle: Start increments
+// numStarted only after OnStart returns nil; Stop runs OnStop for the started
+// prefix only). Folding Shutdown together with the fallible seed/provider work
+// would mean a mid-start failure skips the drain entirely, leaking the primary
+// and any partially-registered sources. The Shutdown hook carries no OnStart, so
+// it always counts as started and its OnStop is guaranteed once Start reaches it,
+// regardless of which later step fails.
 func provideRegistry(lc fx.Lifecycle, cfg *config.DataSourcesConfig, p ProviderParams) (registryOut, error) {
 	r, err := newRegistry(context.Background(), cfg.Primary(), logger)
 	if err != nil {
@@ -71,23 +80,24 @@ func provideRegistry(lc fx.Lifecycle, cfg *config.DataSourcesConfig, p ProviderP
 	primaryKind := cfg.Primary().Kind
 
 	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			if err := database.LogVersion(ctx, primaryKind, r.PrimaryRawDB(), logger); err != nil {
-				return err
-			}
-
-			if err := seedStatic(ctx, r, cfg); err != nil {
-				return err
-			}
-
-			return runProviders(ctx, r, p.Providers)
-		},
 		OnStop: func(ctx context.Context) error {
 			logger.Info("Closing data source registry...")
 
 			return r.Shutdown(ctx)
 		},
 	})
+
+	lc.Append(fx.StartHook(func(ctx context.Context) error {
+		if err := database.LogVersion(ctx, primaryKind, r.PrimaryRawDB(), logger); err != nil {
+			return err
+		}
+
+		if err := seedStatic(ctx, r, cfg); err != nil {
+			return err
+		}
+
+		return runProviders(ctx, r, p.Providers)
+	}))
 
 	return registryOut{Sources: r, RawDB: r.PrimaryRawDB()}, nil
 }
