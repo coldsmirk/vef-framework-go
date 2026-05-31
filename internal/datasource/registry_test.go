@@ -1,4 +1,4 @@
-package orm_test
+package datasource
 
 import (
 	"context"
@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/datasource"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
-	"github.com/coldsmirk/vef-framework-go/internal/orm"
 )
 
 func newSQLiteCfg(t *testing.T, name string) config.DataSourceConfig {
@@ -25,11 +25,11 @@ func newSQLiteCfg(t *testing.T, name string) config.DataSourceConfig {
 	}
 }
 
-func newTestRegistry(t *testing.T) *orm.Registry {
+func newTestRegistry(t *testing.T) *registry {
 	t.Helper()
 
 	ctx := context.Background()
-	r, err := orm.NewRegistry(ctx, newSQLiteCfg(t, "primary"), logx.Discard())
+	r, err := newRegistry(ctx, newSQLiteCfg(t, "primary"), logx.Discard())
 	require.NoError(t, err, "primary registry should construct")
 	t.Cleanup(func() {
 		require.NoError(t, r.Shutdown(ctx), "registry should shut down cleanly")
@@ -42,14 +42,14 @@ func TestRegistryPrimary(t *testing.T) {
 	r := newTestRegistry(t)
 
 	require.NotNil(t, r.Primary(), "primary orm.DB should be available")
-	require.True(t, r.Has(orm.PrimaryDataSourceName), "primary should be reported as present")
-	require.Equal(t, []string{orm.PrimaryDataSourceName}, r.Names(), "fresh registry only knows primary")
+	require.True(t, r.Has(datasource.PrimaryName), "primary should be reported as present")
+	require.Equal(t, []string{datasource.PrimaryName}, r.Names(), "fresh registry only knows primary")
 
-	kind, err := r.Kind(orm.PrimaryDataSourceName)
+	kind, err := r.Kind(datasource.PrimaryName)
 	require.NoError(t, err, "kind lookup for primary should succeed")
 	require.Equal(t, config.SQLite, kind, "primary kind should match seed cfg")
 
-	got, err := r.Get(orm.PrimaryDataSourceName)
+	got, err := r.Get(datasource.PrimaryName)
 	require.NoError(t, err, "Get(primary) should not error")
 	require.Equal(t, r.Primary(), got, "Get(primary) returns the same DB as Primary()")
 }
@@ -67,10 +67,10 @@ func TestRegistryRegisterAndGet(t *testing.T) {
 	require.Equal(t, db, again, "Get returns the same DB instance as Register")
 
 	names := r.Names()
-	require.Equal(t, []string{"analytics", orm.PrimaryDataSourceName}, names, "Names sorted lexically")
+	require.Equal(t, []string{"analytics", datasource.PrimaryName}, names, "Names sorted lexically")
 
 	_, err = r.Register(ctx, "analytics", newSQLiteCfg(t, "analytics2"))
-	require.ErrorIs(t, err, orm.ErrDataSourceExists, "duplicate Register should fail with ErrDataSourceExists")
+	require.ErrorIs(t, err, datasource.ErrExists, "duplicate Register should fail with ErrExists")
 }
 
 func TestRegistryRegisterRejectsInvalidName(t *testing.T) {
@@ -78,20 +78,20 @@ func TestRegistryRegisterRejectsInvalidName(t *testing.T) {
 	r := newTestRegistry(t)
 
 	_, err := r.Register(ctx, "", newSQLiteCfg(t, "x"))
-	require.ErrorIs(t, err, orm.ErrDataSourceNameInvalid, "empty name should be rejected")
+	require.ErrorIs(t, err, datasource.ErrNameInvalid, "empty name should be rejected")
 
-	_, err = r.Register(ctx, orm.PrimaryDataSourceName, newSQLiteCfg(t, "x"))
-	require.ErrorIs(t, err, orm.ErrPrimaryReserved, "primary name is reserved")
+	_, err = r.Register(ctx, datasource.PrimaryName, newSQLiteCfg(t, "x"))
+	require.ErrorIs(t, err, datasource.ErrPrimaryReserved, "primary name is reserved")
 }
 
 func TestRegistryGetUnknownReturnsNotFound(t *testing.T) {
 	r := newTestRegistry(t)
 
 	_, err := r.Get("does-not-exist")
-	require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "Get on unknown name returns ErrDataSourceNotFound")
+	require.ErrorIs(t, err, datasource.ErrNotFound, "Get on unknown name returns ErrNotFound")
 
 	_, err = r.Kind("does-not-exist")
-	require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "Kind on unknown name returns ErrDataSourceNotFound")
+	require.ErrorIs(t, err, datasource.ErrNotFound, "Kind on unknown name returns ErrNotFound")
 
 	require.False(t, r.Has("does-not-exist"), "Has on unknown name reports false")
 }
@@ -135,7 +135,7 @@ func TestRegistryUpdateUnknownReturnsNotFound(t *testing.T) {
 	r := newTestRegistry(t)
 
 	_, err := r.Update(ctx, "ghost", newSQLiteCfg(t, "ghost"))
-	require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "Update on missing name returns ErrDataSourceNotFound")
+	require.ErrorIs(t, err, datasource.ErrNotFound, "Update on missing name returns ErrNotFound")
 }
 
 func TestRegistryUnregister(t *testing.T) {
@@ -148,15 +148,15 @@ func TestRegistryUnregister(t *testing.T) {
 	require.NoError(t, r.Unregister(ctx, "to-remove"), "Unregister should succeed")
 
 	_, err = r.Get("to-remove")
-	require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "Get after Unregister returns ErrDataSourceNotFound")
+	require.ErrorIs(t, err, datasource.ErrNotFound, "Get after Unregister returns ErrNotFound")
 
 	_, err = r.Kind("to-remove")
-	require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "Kind after Unregister returns ErrDataSourceNotFound")
+	require.ErrorIs(t, err, datasource.ErrNotFound, "Kind after Unregister returns ErrNotFound")
 
 	require.False(t, r.Has("to-remove"), "Has after Unregister returns false")
 
 	err = r.Unregister(ctx, "to-remove")
-	require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "double Unregister returns ErrDataSourceNotFound")
+	require.ErrorIs(t, err, datasource.ErrNotFound, "double Unregister returns ErrNotFound")
 }
 
 func TestRegistryReRegisterAfterUnregister(t *testing.T) {
@@ -181,11 +181,11 @@ func TestRegistryPrimaryReserved(t *testing.T) {
 	ctx := context.Background()
 	r := newTestRegistry(t)
 
-	require.ErrorIs(t, r.Unregister(ctx, orm.PrimaryDataSourceName), orm.ErrPrimaryReserved,
+	require.ErrorIs(t, r.Unregister(ctx, datasource.PrimaryName), datasource.ErrPrimaryReserved,
 		"Unregister(primary) must return ErrPrimaryReserved")
 
-	_, err := r.Update(ctx, orm.PrimaryDataSourceName, newSQLiteCfg(t, "p2"))
-	require.ErrorIs(t, err, orm.ErrPrimaryReserved, "Update(primary) must return ErrPrimaryReserved")
+	_, err := r.Update(ctx, datasource.PrimaryName, newSQLiteCfg(t, "p2"))
+	require.ErrorIs(t, err, datasource.ErrPrimaryReserved, "Update(primary) must return ErrPrimaryReserved")
 }
 
 func TestRegistryReconcileAddsUpdatesAndRemoves(t *testing.T) {
@@ -204,7 +204,7 @@ func TestRegistryReconcileAddsUpdatesAndRemoves(t *testing.T) {
 	_, err = r.Register(ctx, "remove", removeCfg)
 	require.NoError(t, err)
 
-	specs := []orm.DataSourceSpec{
+	specs := []datasource.Spec{
 		{Name: "keep", Cfg: keepCfg},                   // unchanged
 		{Name: "tenant", Cfg: updateNewCfg},            // updated cfg
 		{Name: "fresh", Cfg: newSQLiteCfg(t, "fresh")}, // added
@@ -229,9 +229,9 @@ func TestRegistryReconcileDryRun(t *testing.T) {
 	r := newTestRegistry(t)
 
 	cfg := newSQLiteCfg(t, "candidate")
-	specs := []orm.DataSourceSpec{{Name: "candidate", Cfg: cfg}}
+	specs := []datasource.Spec{{Name: "candidate", Cfg: cfg}}
 
-	report, err := r.Reconcile(ctx, specs, orm.WithReconcileDryRun())
+	report, err := r.Reconcile(ctx, specs, datasource.WithReconcileDryRun())
 	require.NoError(t, err, "dry run Reconcile should not error")
 	require.Equal(t, []string{"candidate"}, report.Added, "dry run still reports diff")
 	require.False(t, r.Has("candidate"), "dry run does not actually register the source")
@@ -241,9 +241,9 @@ func TestRegistryReconcileIgnoresPrimaryAndEmpty(t *testing.T) {
 	ctx := context.Background()
 	r := newTestRegistry(t)
 
-	specs := []orm.DataSourceSpec{
+	specs := []datasource.Spec{
 		{Name: "", Cfg: newSQLiteCfg(t, "empty")},
-		{Name: orm.PrimaryDataSourceName, Cfg: newSQLiteCfg(t, "shadow")},
+		{Name: datasource.PrimaryName, Cfg: newSQLiteCfg(t, "shadow")},
 	}
 
 	report, err := r.Reconcile(ctx, specs)
@@ -257,7 +257,7 @@ func TestRegistryReconcilePartialFailureAggregatesErrors(t *testing.T) {
 	ctx := context.Background()
 	r := newTestRegistry(t)
 
-	specs := []orm.DataSourceSpec{
+	specs := []datasource.Spec{
 		{Name: "good", Cfg: newSQLiteCfg(t, "good")},
 		{Name: "bad", Cfg: config.DataSourceConfig{Kind: "no-such-dialect"}},
 	}
@@ -278,7 +278,7 @@ func TestRegistryHealthCheck(t *testing.T) {
 
 	results := r.HealthCheck(ctx)
 	require.Len(t, results, 2, "HealthCheck reports primary + one extra")
-	require.NoError(t, results[orm.PrimaryDataSourceName], "primary should be healthy")
+	require.NoError(t, results[datasource.PrimaryName], "primary should be healthy")
 	require.NoError(t, results["extra"], "extra should be healthy")
 }
 
@@ -302,7 +302,7 @@ func TestRegistryConcurrentAccess(t *testing.T) {
 			name := "ds-" + string(rune('a'+id))
 
 			for range ops {
-				if _, err := r.Register(ctx, name, newSQLiteCfg(t, name)); err == nil || errors.Is(err, orm.ErrDataSourceExists) {
+				if _, err := r.Register(ctx, name, newSQLiteCfg(t, name)); err == nil || errors.Is(err, datasource.ErrExists) {
 					if _, gerr := r.Get(name); gerr == nil {
 						getSuccesses.Add(1)
 					} else {
@@ -311,7 +311,7 @@ func TestRegistryConcurrentAccess(t *testing.T) {
 				}
 
 				if err := r.Unregister(ctx, name); err != nil &&
-					!errors.Is(err, orm.ErrDataSourceNotFound) {
+					!errors.Is(err, datasource.ErrNotFound) {
 					t.Errorf("Unregister %q unexpected error: %v", name, err)
 
 					return
@@ -348,21 +348,21 @@ func TestRegistryConcurrentSameName(t *testing.T) {
 		wg.Go(func() {
 			for range ops {
 				if _, err := r.Register(ctx, "contended", cfg); err != nil &&
-					!errors.Is(err, orm.ErrDataSourceExists) {
+					!errors.Is(err, datasource.ErrExists) {
 					t.Errorf("Register: unexpected error: %v", err)
 
 					return
 				}
 
 				if _, err := r.Update(ctx, "contended", cfg); err != nil &&
-					!errors.Is(err, orm.ErrDataSourceNotFound) {
+					!errors.Is(err, datasource.ErrNotFound) {
 					t.Errorf("Update: unexpected error: %v", err)
 
 					return
 				}
 
 				if err := r.Unregister(ctx, "contended"); err != nil &&
-					!errors.Is(err, orm.ErrDataSourceNotFound) {
+					!errors.Is(err, datasource.ErrNotFound) {
 					t.Errorf("Unregister: unexpected error: %v", err)
 
 					return
@@ -377,7 +377,7 @@ func TestRegistryConcurrentSameName(t *testing.T) {
 	// a usable connection — never a half-closed or leaked entry.
 	db, err := r.Get("contended")
 	if err != nil {
-		require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "an absent source reports NotFound")
+		require.ErrorIs(t, err, datasource.ErrNotFound, "an absent source reports NotFound")
 
 		return
 	}
@@ -394,7 +394,7 @@ func TestRegistryUpdateWithCloseGrace(t *testing.T) {
 	old, err := r.Register(ctx, "graceful", newSQLiteCfg(t, "v1"))
 	require.NoError(t, err, "Register should succeed")
 
-	_, err = r.Update(ctx, "graceful", newSQLiteCfg(t, "v2"), orm.WithCloseGrace(2*time.Second))
+	_, err = r.Update(ctx, "graceful", newSQLiteCfg(t, "v2"), datasource.WithCloseGrace(2*time.Second))
 	require.NoError(t, err, "Update with close grace should succeed")
 
 	// The replaced connection is closed only after the grace window, so a
@@ -412,11 +412,11 @@ func TestRegistryUnregisterDrainsInFlight(t *testing.T) {
 	db, err := r.Register(ctx, "draining", newSQLiteCfg(t, "drain"))
 	require.NoError(t, err, "Register should succeed")
 
-	require.NoError(t, r.Unregister(ctx, "draining", orm.WithCloseGrace(2*time.Second)),
+	require.NoError(t, r.Unregister(ctx, "draining", datasource.WithCloseGrace(2*time.Second)),
 		"Unregister with close grace should succeed")
 
 	_, err = r.Get("draining")
-	require.ErrorIs(t, err, orm.ErrDataSourceNotFound, "Get after Unregister returns ErrDataSourceNotFound")
+	require.ErrorIs(t, err, datasource.ErrNotFound, "Get after Unregister returns ErrNotFound")
 
 	// The connection is closed only after the grace window, so the previously
 	// obtained orm.DB reference can still finish in-flight work.

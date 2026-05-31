@@ -13,8 +13,9 @@ import (
 )
 
 // openBunDB opens a *sql.DB for cfg via database.Open and builds a *bun.DB with
-// the matching dialect. It mirrors orm.openDataSource for tests that need the
-// raw *bun.DB handle. The caller owns closing the returned *sql.DB.
+// the matching dialect. It mirrors the database.Open + orm dialect assembly for
+// tests that need the raw *bun.DB handle. The caller owns closing the returned
+// *sql.DB.
 func openBunDB(t *testing.T, cfg config.DataSourceConfig) (*sql.DB, *bun.DB) {
 	t.Helper()
 

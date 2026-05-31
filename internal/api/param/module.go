@@ -7,6 +7,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/cron"
+	"github.com/coldsmirk/vef-framework-go/datasource"
 	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/api/shared"
 	"github.com/coldsmirk/vef-framework-go/logx"
@@ -50,7 +51,7 @@ func NewStorageResolver(service storage.Service) api.HandlerParamResolver {
 	return newHandlerValueResolver(service)
 }
 
-func NewDataSourcesResolver(ds orm.DataSources) api.HandlerParamResolver {
+func NewDataSourcesResolver(ds datasource.Registry) api.HandlerParamResolver {
 	return newHandlerValueResolver(ds)
 }
 
@@ -100,7 +101,7 @@ func NewFilesFactoryResolver(files storage.Files) api.FactoryParamResolver {
 	return newFactoryValueResolver(files)
 }
 
-func NewDataSourcesFactoryResolver(ds orm.DataSources) api.FactoryParamResolver {
+func NewDataSourcesFactoryResolver(ds datasource.Registry) api.FactoryParamResolver {
 	return newFactoryValueResolver(ds)
 }
 

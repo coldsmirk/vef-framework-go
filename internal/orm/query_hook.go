@@ -12,7 +12,7 @@ import (
 	"github.com/muesli/termenv"
 	"github.com/uptrace/bun"
 
-	"github.com/coldsmirk/vef-framework-go/internal/database/sqlguard"
+	"github.com/coldsmirk/vef-framework-go/internal/orm/sqlguard"
 	"github.com/coldsmirk/vef-framework-go/logx"
 )
 

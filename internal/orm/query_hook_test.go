@@ -7,7 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/config"
-	"github.com/coldsmirk/vef-framework-go/internal/database/sqlguard"
+	"github.com/coldsmirk/vef-framework-go/internal/database"
+	"github.com/coldsmirk/vef-framework-go/internal/orm/sqlguard"
 )
 
 // TestSQLGuard tests SQL guard integration with raw SQL through the orm query
@@ -21,13 +22,13 @@ func TestSQLGuard(t *testing.T) {
 	newGuardedDB := func(t *testing.T, enableGuard bool) DB {
 		t.Helper()
 
-		sqlDB, db, err := openDataSource(config.DataSourceConfig{
-			Kind:           config.SQLite,
-			EnableSQLGuard: enableGuard,
-		})
-		require.NoError(t, err, "openDataSource should succeed")
+		sqlDB, err := database.Open(config.DataSourceConfig{Kind: config.SQLite})
+		require.NoError(t, err, "database.Open should succeed")
 
 		t.Cleanup(func() { _ = sqlDB.Close() })
+
+		db, err := Open(sqlDB, config.SQLite, WithSQLGuard(enableGuard))
+		require.NoError(t, err, "orm.Open should succeed")
 
 		_, err = db.NewRaw("CREATE TABLE IF NOT EXISTS test_guard (id INTEGER PRIMARY KEY, name TEXT)").Exec(ctx)
 		require.NoError(t, err, "create test table should succeed")

@@ -10,6 +10,7 @@ import (
 
 	vef "github.com/coldsmirk/vef-framework-go"
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/datasource"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -49,9 +50,9 @@ func TestDataSourcesPrimaryInjectsAsDB(t *testing.T) {
 }
 
 // TestDataSourcesStaticRegistration boots an app with two static sources and
-// verifies the secondary entry is reachable via orm.DataSources.Get.
+// verifies the secondary entry is reachable via datasource.Registry.Get.
 func TestDataSourcesStaticRegistration(t *testing.T) {
-	var sources orm.DataSources
+	var sources datasource.Registry
 
 	_, stop := apptest.NewTestApp(t,
 		apptest.WithDataSourcesConfig(&config.DataSourcesConfig{
@@ -79,13 +80,13 @@ func TestDataSourcesStaticRegistration(t *testing.T) {
 // fakeProvider feeds the framework a single extra spec, simulating the
 // "tenant table" use case where additional sources live outside the TOML.
 type fakeProvider struct {
-	spec orm.DataSourceSpec
+	spec datasource.Spec
 }
 
 func (*fakeProvider) Name() string { return "fake" }
 
-func (p *fakeProvider) Load(_ context.Context) ([]orm.DataSourceSpec, error) {
-	return []orm.DataSourceSpec{p.spec}, nil
+func (p *fakeProvider) Load(_ context.Context) ([]datasource.Spec, error) {
+	return []datasource.Spec{p.spec}, nil
 }
 
 // TestDataSourceProviderRegistersAdditionalSource verifies that a custom
@@ -94,14 +95,14 @@ func (p *fakeProvider) Load(_ context.Context) ([]orm.DataSourceSpec, error) {
 func TestDataSourceProviderRegistersAdditionalSource(t *testing.T) {
 	cfg := sqliteCfg(t, "tenant1")
 
-	var sources orm.DataSources
+	var sources datasource.Registry
 
 	_, stop := apptest.NewTestApp(t,
 		apptest.WithDataSourcesConfig(&config.DataSourcesConfig{
 			Map: map[string]config.DataSourceConfig{"primary": sqliteCfg(t, "primary")},
 		}),
-		vef.ProvideDataSourceProvider(func() orm.DataSourceProvider {
-			return &fakeProvider{spec: orm.DataSourceSpec{Name: "tenant1", Cfg: cfg}}
+		vef.ProvideDataSourceProvider(func() datasource.Provider {
+			return &fakeProvider{spec: datasource.Spec{Name: "tenant1", Cfg: cfg}}
 		}),
 		fx.Populate(&sources),
 	)
@@ -121,7 +122,7 @@ func TestDataSourceProviderRegistersAdditionalSource(t *testing.T) {
 // sync use case: the user maintains a desired set of non-primary sources,
 // calls Reconcile, and the registry adds/updates/removes accordingly.
 func TestDataSourcesReconcileCoversAllThreeTransitions(t *testing.T) {
-	var sources orm.DataSources
+	var sources datasource.Registry
 
 	keepCfg := sqliteCfg(t, "keep")
 	updateOldCfg := sqliteCfg(t, "u-old")
@@ -146,7 +147,7 @@ func TestDataSourcesReconcileCoversAllThreeTransitions(t *testing.T) {
 	require.True(t, sources.Has("tenant"))
 	require.True(t, sources.Has("remove"))
 
-	specs := []orm.DataSourceSpec{
+	specs := []datasource.Spec{
 		{Name: "keep", Cfg: keepCfg},
 		{Name: "tenant", Cfg: updateNewCfg},
 		{Name: "fresh", Cfg: freshCfg},
@@ -175,7 +176,7 @@ func TestDataSourcesReconcileCoversAllThreeTransitions(t *testing.T) {
 // Register/Update/Unregister all refuse the "primary" name. Runtime callers
 // cannot accidentally replace the FX-injected primary connection.
 func TestDataSourcesPrimaryReservedFromRuntime(t *testing.T) {
-	var sources orm.DataSources
+	var sources datasource.Registry
 
 	_, stop := apptest.NewTestApp(t,
 		apptest.WithDataSourcesConfig(&config.DataSourcesConfig{
@@ -186,11 +187,11 @@ func TestDataSourcesPrimaryReservedFromRuntime(t *testing.T) {
 	t.Cleanup(stop)
 
 	ctx := context.Background()
-	_, err := sources.Register(ctx, orm.PrimaryDataSourceName, sqliteCfg(t, "ghost"))
-	require.ErrorIs(t, err, orm.ErrPrimaryReserved)
+	_, err := sources.Register(ctx, datasource.PrimaryName, sqliteCfg(t, "ghost"))
+	require.ErrorIs(t, err, datasource.ErrPrimaryReserved)
 
-	_, err = sources.Update(ctx, orm.PrimaryDataSourceName, sqliteCfg(t, "ghost"))
-	require.ErrorIs(t, err, orm.ErrPrimaryReserved)
+	_, err = sources.Update(ctx, datasource.PrimaryName, sqliteCfg(t, "ghost"))
+	require.ErrorIs(t, err, datasource.ErrPrimaryReserved)
 
-	require.ErrorIs(t, sources.Unregister(ctx, orm.PrimaryDataSourceName), orm.ErrPrimaryReserved)
+	require.ErrorIs(t, sources.Unregister(ctx, datasource.PrimaryName), datasource.ErrPrimaryReserved)
 }

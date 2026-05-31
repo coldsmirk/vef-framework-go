@@ -9,11 +9,13 @@ import (
 	"go.uber.org/fx/fxtest"
 
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/datasource"
 	"github.com/coldsmirk/vef-framework-go/internal/api"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
 	iconfig "github.com/coldsmirk/vef-framework-go/internal/config"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/cron"
+	idatasource "github.com/coldsmirk/vef-framework-go/internal/datasource"
 	"github.com/coldsmirk/vef-framework-go/internal/event"
 	"github.com/coldsmirk/vef-framework-go/internal/mcp"
 	"github.com/coldsmirk/vef-framework-go/internal/middleware"
@@ -53,7 +55,7 @@ func NewTestApp(t testing.TB, options ...fx.Option) (*app.App, func()) {
 }
 
 // NewTestAppWithDB creates a test application that uses an existing *bun.DB
-// instead of creating a new connection via orm.DataSourcesModule.
+// instead of creating a new connection via datasource.RegistryModule.
 // This avoids redundant database connections when tests already manage their own.
 func NewTestAppWithDB(t testing.TB, db *bun.DB, options ...fx.Option) (*app.App, func()) {
 	return NewTestAppWithDBConfig(t, db, config.DataSourceConfig{Kind: config.SQLite}, options...)
@@ -118,7 +120,7 @@ func coreOptions() []fx.Option {
 			},
 		),
 		iconfig.Module,
-		orm.Module,
+		idatasource.Module,
 		middleware.Module,
 		api.Module,
 		security.Module,
@@ -145,21 +147,18 @@ func coreOptions() []fx.Option {
 }
 
 func buildOptions(options ...fx.Option) []fx.Option {
-	return buildOptionsWith(orm.DataSourcesModule, options...)
+	return buildOptionsWith(idatasource.RegistryModule, options...)
 }
 
 func buildOptionsWithDBConfig(existingDB *bun.DB, cfg config.DataSourceConfig, options ...fx.Option) []fx.Option {
-	// Wrap the caller-supplied bun.DB as the primary entry of a Registry so
-	// the rest of the FX graph (orm.DataSources, orm.DB, schema reflection,
-	// etc.) sees the same connection.
-	r := orm.NewRegistryFromBunDB(existingDB, cfg, nil)
+	// Wrap the caller-supplied bun.DB as the primary entry of a Registry so the
+	// rest of the FX graph (datasource.Registry, orm.DB, schema reflection, etc.)
+	// sees the same connection. apptest does the bun→orm.DB conversion here so the
+	// datasource package itself stays unaware of bun.
+	r := idatasource.NewFromDB(existingDB.DB, orm.New(existingDB), cfg, nil)
 
 	dbProvider := fx.Provide(
-		fx.Annotate(
-			func() *orm.Registry { return r },
-			fx.As(new(orm.DataSources)),
-			fx.As(fx.Self()),
-		),
+		func() datasource.Registry { return r },
 		func() *sql.DB { return existingDB.DB },
 	)
 
@@ -167,7 +166,7 @@ func buildOptionsWithDBConfig(existingDB *bun.DB, cfg config.DataSourceConfig, o
 		fx.Options(
 			fx.Replace(&config.DataSourcesConfig{
 				Map: map[string]config.DataSourceConfig{
-					orm.PrimaryDataSourceName: cfg,
+					datasource.PrimaryName: cfg,
 				},
 			}),
 			dbProvider,

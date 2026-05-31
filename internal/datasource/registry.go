@@ -1,4 +1,4 @@
-package orm
+package datasource
 
 import (
 	"context"
@@ -10,21 +10,22 @@ import (
 	"unicode"
 
 	"github.com/coldsmirk/go-collections"
-	"github.com/uptrace/bun"
 
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/datasource"
+	"github.com/coldsmirk/vef-framework-go/internal/orm"
 	"github.com/coldsmirk/vef-framework-go/logx"
 )
 
-// Registry is the DataSources implementation backed by collections.ConcurrentMap.
-// The primary entry is owned outside the map so callers can grab it on the fast
-// path; every other entry lives inside the map. The map only ever holds live
-// sources — Unregister and Shutdown remove entries outright — and the underlying
-// *sql.DB is closed asynchronously so callers that still hold a DB reference can
-// drain their in-flight queries.
-type Registry struct {
-	entries collections.ConcurrentMap[string, *registryEntry]
-	primary *registryEntry
+// registry is the datasource.Registry implementation backed by
+// collections.ConcurrentMap. The primary entry is owned outside the map so
+// callers can grab it on the fast path; every other entry lives inside the map.
+// The map only ever holds live sources — Unregister and Shutdown remove entries
+// outright — and the underlying *sql.DB is closed asynchronously so callers that
+// still hold a DB reference can drain their in-flight queries.
+type registry struct {
+	entries collections.ConcurrentMap[string, *entry]
+	primary *entry
 
 	logger logx.Logger
 
@@ -35,23 +36,23 @@ type Registry struct {
 	closeOnce sync.Once
 }
 
-// registryEntry is immutable once stored: a source is mutated by replacing the
-// whole entry (Update) or removing it (Unregister), never by editing it in place.
-// That immutability is what lets the read methods run lock-free off the map.
-// sqlDB is the lifecycle handle (ping/close); the *bun.DB built while opening the
-// source lives only inside ormDB, never as a separate field.
-type registryEntry struct {
+// entry is immutable once stored: a source is mutated by replacing the whole
+// entry (Update) or removing it (Unregister), never by editing it in place. That
+// immutability is what lets the read methods run lock-free off the map. sqlDB is
+// the lifecycle handle (ping/close); the *bun.DB built while opening the source
+// lives only inside ormDB, never as a separate field.
+type entry struct {
 	name  string
 	cfg   config.DataSourceConfig
 	sqlDB *sql.DB
-	ormDB DB
+	ormDB orm.DB
 }
 
-// NewRegistry constructs a Registry seeded with the primary data source. The
+// newRegistry constructs a registry seeded with the primary data source. The
 // primary is opened, Pinged, and on failure the constructor returns an error so
 // the FX boot can fail-fast.
-func NewRegistry(ctx context.Context, primaryCfg config.DataSourceConfig, logger logx.Logger) (*Registry, error) {
-	sqlDB, ormDB, err := openDataSource(primaryCfg)
+func newRegistry(ctx context.Context, primaryCfg config.DataSourceConfig, logger logx.Logger) (*registry, error) {
+	sqlDB, ormDB, err := open(primaryCfg)
 	if err != nil {
 		return nil, fmt.Errorf("open primary data source: %w", err)
 	}
@@ -62,33 +63,32 @@ func NewRegistry(ctx context.Context, primaryCfg config.DataSourceConfig, logger
 		return nil, fmt.Errorf("ping primary data source: %w", err)
 	}
 
-	return newRegistryFromEntry(&registryEntry{
-		name:  PrimaryDataSourceName,
+	return fromEntry(&entry{
+		name:  datasource.PrimaryName,
 		cfg:   primaryCfg,
 		sqlDB: sqlDB,
 		ormDB: ormDB,
 	}, logger), nil
 }
 
-// NewRegistryFromBunDB wraps an already-opened *bun.DB as the primary data
-// source without re-opening it. It is intended for test harnesses
-// (apptest.SetupAppWithDBConfig) that want to share an existing connection
-// across an FX app without paying the cost of a real Open/Ping dance.
-// Production code should always use NewRegistry. The *sql.DB lifecycle handle is
-// taken from the supplied *bun.DB; the bun.DB itself is retained only inside the
-// derived orm.DB.
-func NewRegistryFromBunDB(primary *bun.DB, cfg config.DataSourceConfig, logger logx.Logger) *Registry {
-	return newRegistryFromEntry(&registryEntry{
-		name:  PrimaryDataSourceName,
+// NewFromDB wraps an already-built orm.DB as the primary data source without
+// re-opening it. It is intended for test harnesses (apptest) that want to share
+// an existing connection across an FX app without paying the cost of a real
+// Open/Ping dance. Production code should always go through the FX module. The
+// caller supplies both the *sql.DB lifecycle handle and the orm.DB wrapper built
+// over it, so datasource stays unaware of bun.
+func NewFromDB(sqlDB *sql.DB, primary orm.DB, cfg config.DataSourceConfig, logger logx.Logger) datasource.Registry {
+	return fromEntry(&entry{
+		name:  datasource.PrimaryName,
 		cfg:   cfg,
-		sqlDB: primary.DB,
-		ormDB: New(primary),
+		sqlDB: sqlDB,
+		ormDB: primary,
 	}, logger)
 }
 
-func newRegistryFromEntry(primary *registryEntry, logger logx.Logger) *Registry {
-	return &Registry{
-		entries: collections.NewConcurrentHashMap[string, *registryEntry](),
+func fromEntry(primary *entry, logger logx.Logger) *registry {
+	return &registry{
+		entries: collections.NewConcurrentHashMap[string, *entry](),
 		primary: primary,
 		logger:  logger,
 		closing: make(chan struct{}),
@@ -97,30 +97,30 @@ func newRegistryFromEntry(primary *registryEntry, logger logx.Logger) *Registry 
 
 // PrimaryRawDB exposes the raw *sql.DB for the primary source. It is used for
 // boot-time version logging and by the schema reflection service.
-func (r *Registry) PrimaryRawDB() *sql.DB { return r.primary.sqlDB }
+func (r *registry) PrimaryRawDB() *sql.DB { return r.primary.sqlDB }
 
-// Primary returns the orm.DB for the primary data source. It never reports
-// an error: the primary source is constructed during FX boot or the entire
+// Primary returns the orm.DB for the primary data source. It never reports an
+// error: the primary source is constructed during FX boot or the entire
 // application fails to start.
-func (r *Registry) Primary() DB { return r.primary.ormDB }
+func (r *registry) Primary() orm.DB { return r.primary.ormDB }
 
-// Get implements DataSources.Get.
-func (r *Registry) Get(name string) (DB, error) {
-	if name == PrimaryDataSourceName {
+// Get implements datasource.Registry.Get.
+func (r *registry) Get(name string) (orm.DB, error) {
+	if name == datasource.PrimaryName {
 		return r.primary.ormDB, nil
 	}
 
 	e, ok := r.entries.Get(name)
 	if !ok {
-		return nil, ErrDataSourceNotFound
+		return nil, datasource.ErrNotFound
 	}
 
 	return e.ormDB, nil
 }
 
-// Has implements DataSources.Has.
-func (r *Registry) Has(name string) bool {
-	if name == PrimaryDataSourceName {
+// Has implements datasource.Registry.Has.
+func (r *registry) Has(name string) bool {
+	if name == datasource.PrimaryName {
 		return true
 	}
 
@@ -129,13 +129,13 @@ func (r *Registry) Has(name string) bool {
 	return ok
 }
 
-// Names implements DataSources.Names. The returned slice always contains
-// PrimaryDataSourceName and is sorted lexically so callers can rely on a
-// stable order for diagnostics and tests.
-func (r *Registry) Names() []string {
+// Names implements datasource.Registry.Names. The returned slice always contains
+// PrimaryName and is sorted lexically so callers can rely on a stable order for
+// diagnostics and tests.
+func (r *registry) Names() []string {
 	keys := r.entries.Keys()
 	out := make([]string, 0, len(keys)+1)
-	out = append(out, PrimaryDataSourceName)
+	out = append(out, datasource.PrimaryName)
 	out = append(out, keys...)
 
 	slices.Sort(out)
@@ -143,15 +143,15 @@ func (r *Registry) Names() []string {
 	return out
 }
 
-// Kind implements DataSources.Kind.
-func (r *Registry) Kind(name string) (config.DBKind, error) {
-	if name == PrimaryDataSourceName {
+// Kind implements datasource.Registry.Kind.
+func (r *registry) Kind(name string) (config.DBKind, error) {
+	if name == datasource.PrimaryName {
 		return r.primary.cfg.Kind, nil
 	}
 
 	e, ok := r.entries.Get(name)
 	if !ok {
-		return "", ErrDataSourceNotFound
+		return "", datasource.ErrNotFound
 	}
 
 	return e.cfg.Kind, nil
@@ -161,16 +161,16 @@ func (r *Registry) Kind(name string) (config.DBKind, error) {
 // pings a fresh connection — the prologue shared by Register and Update. The
 // caller owns the returned *sql.DB and must close it if it decides not to keep
 // it (e.g. on a name conflict).
-func (*Registry) openAndPing(ctx context.Context, name string, cfg config.DataSourceConfig) (*sql.DB, DB, error) {
-	if name == PrimaryDataSourceName {
-		return nil, nil, ErrPrimaryReserved
+func (*registry) openAndPing(ctx context.Context, name string, cfg config.DataSourceConfig) (*sql.DB, orm.DB, error) {
+	if name == datasource.PrimaryName {
+		return nil, nil, datasource.ErrPrimaryReserved
 	}
 
-	if err := validateDataSourceName(name); err != nil {
+	if err := validateName(name); err != nil {
 		return nil, nil, err
 	}
 
-	sqlDB, ormDB, err := openDataSource(cfg)
+	sqlDB, ormDB, err := open(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open data source %q: %w", name, err)
 	}
@@ -184,42 +184,42 @@ func (*Registry) openAndPing(ctx context.Context, name string, cfg config.DataSo
 	return sqlDB, ormDB, nil
 }
 
-// Register implements DataSources.Register.
-func (r *Registry) Register(ctx context.Context, name string, cfg config.DataSourceConfig) (DB, error) {
+// Register implements datasource.Registry.Register.
+func (r *registry) Register(ctx context.Context, name string, cfg config.DataSourceConfig) (orm.DB, error) {
 	sqlDB, ormDB, err := r.openAndPing(ctx, name, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	entry := &registryEntry{
+	e := &entry{
 		name:  name,
 		cfg:   cfg,
 		sqlDB: sqlDB,
 		ormDB: ormDB,
 	}
 
-	if _, inserted := r.entries.PutIfAbsent(name, entry); !inserted {
+	if _, inserted := r.entries.PutIfAbsent(name, e); !inserted {
 		_ = sqlDB.Close()
 
-		return nil, ErrDataSourceExists
+		return nil, datasource.ErrExists
 	}
 
-	return entry.ormDB, nil
+	return e.ormDB, nil
 }
 
-// Update implements DataSources.Update.
-func (r *Registry) Update(ctx context.Context, name string, cfg config.DataSourceConfig, opts ...RegisterOption) (DB, error) {
+// Update implements datasource.Registry.Update.
+func (r *registry) Update(ctx context.Context, name string, cfg config.DataSourceConfig, opts ...datasource.RegisterOption) (orm.DB, error) {
 	sqlDB, ormDB, err := r.openAndPing(ctx, name, cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	var (
-		oldEntry *registryEntry
+		oldEntry *entry
 		notFound bool
 	)
 
-	newEntry, _ := r.entries.Compute(name, func(_ string, prev *registryEntry, exists bool) (*registryEntry, bool) {
+	newEntry, _ := r.entries.Compute(name, func(_ string, prev *entry, exists bool) (*entry, bool) {
 		if !exists {
 			notFound = true
 
@@ -228,7 +228,7 @@ func (r *Registry) Update(ctx context.Context, name string, cfg config.DataSourc
 
 		oldEntry = prev
 
-		return &registryEntry{
+		return &entry{
 			name:  name,
 			cfg:   cfg,
 			sqlDB: sqlDB,
@@ -239,7 +239,7 @@ func (r *Registry) Update(ctx context.Context, name string, cfg config.DataSourc
 	if notFound {
 		_ = sqlDB.Close()
 
-		return nil, ErrDataSourceNotFound
+		return nil, datasource.ErrNotFound
 	}
 
 	r.asyncClose(name, oldEntry.sqlDB, applyOptions(opts))
@@ -247,18 +247,18 @@ func (r *Registry) Update(ctx context.Context, name string, cfg config.DataSourc
 	return newEntry.ormDB, nil
 }
 
-// Unregister implements DataSources.Unregister. The entry is removed from the
-// registry atomically; its underlying connection is closed asynchronously
-// (honoring WithCloseGrace) so callers already holding a DB reference can
-// finish in-flight queries.
-func (r *Registry) Unregister(_ context.Context, name string, opts ...RegisterOption) error {
-	if name == PrimaryDataSourceName {
-		return ErrPrimaryReserved
+// Unregister implements datasource.Registry.Unregister. The entry is removed from
+// the registry atomically; its underlying connection is closed asynchronously
+// (honoring WithCloseGrace) so callers already holding a DB reference can finish
+// in-flight queries.
+func (r *registry) Unregister(_ context.Context, name string, opts ...datasource.RegisterOption) error {
+	if name == datasource.PrimaryName {
+		return datasource.ErrPrimaryReserved
 	}
 
 	e, ok := r.entries.Remove(name)
 	if !ok {
-		return ErrDataSourceNotFound
+		return datasource.ErrNotFound
 	}
 
 	r.asyncClose(name, e.sqlDB, applyOptions(opts))
@@ -266,12 +266,12 @@ func (r *Registry) Unregister(_ context.Context, name string, opts ...RegisterOp
 	return nil
 }
 
-// Reconcile implements DataSources.Reconcile. Concurrent reconciles are
+// Reconcile implements datasource.Registry.Reconcile. Concurrent reconciles are
 // serialized by a registry-wide mutex so two refresher ticks never interleave
 // add/update/remove on the same name. Direct Register/Update/Unregister calls
 // are NOT covered by that mutex; mixing them with a running Reconcile may leave
 // the registry diverging from the reconciled set.
-func (r *Registry) Reconcile(ctx context.Context, specs []DataSourceSpec, opts ...ReconcileOption) (ReconcileReport, error) {
+func (r *registry) Reconcile(ctx context.Context, specs []datasource.Spec, opts ...datasource.ReconcileOption) (datasource.ReconcileReport, error) {
 	r.reconcileMu.Lock()
 	defer r.reconcileMu.Unlock()
 
@@ -279,7 +279,7 @@ func (r *Registry) Reconcile(ctx context.Context, specs []DataSourceSpec, opts .
 
 	desired := make(map[string]config.DataSourceConfig, len(specs))
 	for _, s := range specs {
-		if s.Name == "" || s.Name == PrimaryDataSourceName {
+		if s.Name == "" || s.Name == datasource.PrimaryName {
 			continue
 		}
 
@@ -287,7 +287,7 @@ func (r *Registry) Reconcile(ctx context.Context, specs []DataSourceSpec, opts .
 	}
 
 	current := make(map[string]config.DataSourceConfig, r.entries.Size())
-	r.entries.ForEach(func(name string, e *registryEntry) bool {
+	r.entries.ForEach(func(name string, e *entry) bool {
 		current[name] = e.cfg
 
 		return true
@@ -295,7 +295,7 @@ func (r *Registry) Reconcile(ctx context.Context, specs []DataSourceSpec, opts .
 
 	adds, updates, removes := diffReconcile(current, desired)
 
-	report := ReconcileReport{}
+	report := datasource.ReconcileReport{}
 
 	if ro.DryRun {
 		report.Added = adds
@@ -344,10 +344,10 @@ func (r *Registry) Reconcile(ctx context.Context, specs []DataSourceSpec, opts .
 	return report, nil
 }
 
-// HealthCheck implements DataSources.HealthCheck. Every source is pinged in
-// parallel; the returned map contains an entry per source with a nil error
+// HealthCheck implements datasource.Registry.HealthCheck. Every source is pinged
+// in parallel; the returned map contains an entry per source with a nil error
 // when reachable.
-func (r *Registry) HealthCheck(ctx context.Context) map[string]error {
+func (r *registry) HealthCheck(ctx context.Context) map[string]error {
 	results := make(map[string]error)
 
 	var (
@@ -362,10 +362,10 @@ func (r *Registry) HealthCheck(ctx context.Context) map[string]error {
 	}
 
 	wg.Go(func() {
-		record(PrimaryDataSourceName, r.primary.sqlDB.PingContext(ctx))
+		record(datasource.PrimaryName, r.primary.sqlDB.PingContext(ctx))
 	})
 
-	r.entries.ForEach(func(name string, e *registryEntry) bool {
+	r.entries.ForEach(func(name string, e *entry) bool {
 		db := e.sqlDB
 		wg.Go(func() {
 			record(name, db.PingContext(ctx))
@@ -381,10 +381,9 @@ func (r *Registry) HealthCheck(ctx context.Context) map[string]error {
 
 // Shutdown closes every registered data source. It first signals any pending
 // async-close goroutines to stop waiting on their CloseGrace, then closes the
-// live sources, drains the close goroutines (bounded by ctx), and finally
-// closes the primary. The FX OnStop hook relies on this clean, ctx-bounded
-// drain.
-func (r *Registry) Shutdown(ctx context.Context) error {
+// live sources, drains the close goroutines (bounded by ctx), and finally closes
+// the primary. The FX OnStop hook relies on this clean, ctx-bounded drain.
+func (r *registry) Shutdown(ctx context.Context) error {
 	r.signalClosing()
 
 	var firstErr error
@@ -411,14 +410,14 @@ func (r *Registry) Shutdown(ctx context.Context) error {
 	return firstErr
 }
 
-func (r *Registry) signalClosing() {
+func (r *registry) signalClosing() {
 	r.closeOnce.Do(func() { close(r.closing) })
 }
 
 // waitClose blocks until every async-close goroutine finishes or ctx is done,
-// whichever comes first. signalClosing has already woken any goroutine parked
-// on its CloseGrace, so this normally returns promptly.
-func (r *Registry) waitClose(ctx context.Context) error {
+// whichever comes first. signalClosing has already woken any goroutine parked on
+// its CloseGrace, so this normally returns promptly.
+func (r *registry) waitClose(ctx context.Context) error {
 	done := make(chan struct{})
 
 	go func() {
@@ -434,7 +433,7 @@ func (r *Registry) waitClose(ctx context.Context) error {
 	}
 }
 
-func (r *Registry) asyncClose(name string, db *sql.DB, opts RegisterOptions) {
+func (r *registry) asyncClose(name string, db *sql.DB, opts datasource.RegisterOptions) {
 	r.closeWg.Go(func() {
 		if opts.CloseGrace > 0 {
 			select {
@@ -451,7 +450,7 @@ func (r *Registry) asyncClose(name string, db *sql.DB, opts RegisterOptions) {
 
 // applyOptions folds a slice of functional options into a fresh options value.
 // It works for any option family whose underlying type is func(*O) — both
-// RegisterOption and ReconcileOption qualify.
+// datasource.RegisterOption and datasource.ReconcileOption qualify.
 func applyOptions[O any, F ~func(*O)](opts []F) O {
 	var o O
 	for _, opt := range opts {
@@ -461,17 +460,17 @@ func applyOptions[O any, F ~func(*O)](opts []F) O {
 	return o
 }
 
-// validateDataSourceName rejects empty names and names that carry whitespace or
-// control characters. A data source name is both a registry key and a config
-// selector, so it must be a clean single-token identifier.
-func validateDataSourceName(name string) error {
+// validateName rejects empty names and names that carry whitespace or control
+// characters. A data source name is both a registry key and a config selector,
+// so it must be a clean single-token identifier.
+func validateName(name string) error {
 	if name == "" {
-		return ErrDataSourceNameInvalid
+		return datasource.ErrNameInvalid
 	}
 
 	for _, c := range name {
 		if unicode.IsSpace(c) || unicode.IsControl(c) {
-			return ErrDataSourceNameInvalid
+			return datasource.ErrNameInvalid
 		}
 	}
 
