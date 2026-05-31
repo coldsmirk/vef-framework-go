@@ -36,13 +36,13 @@ func TestGuardCheck(t *testing.T) {
 			err := guard.Check(tt.sql)
 
 			if tt.wantBlock {
-				require.Error(t, err, "Should block dangerous SQL")
+				require.Error(t, err, "Guard should block dangerous SQL")
 
 				var guardErr *GuardError
-				require.True(t, errors.As(err, &guardErr), "Condition should be true")
-				assert.True(t, errors.Is(guardErr.Err, tt.errType), "Condition should be true")
+				require.True(t, errors.As(err, &guardErr), "Guard error should unwrap as GuardError")
+				assert.True(t, errors.Is(guardErr.Err, tt.errType), "Guard error should wrap expected type")
 			} else {
-				assert.NoError(t, err, "Should allow safe SQL")
+				assert.NoError(t, err, "Guard should allow SQL that is not blocked")
 			}
 		})
 	}
@@ -55,15 +55,15 @@ func TestGuardCustomRules(t *testing.T) {
 
 	// DROP should be blocked
 	err := guard.Check("DROP TABLE users")
-	require.Error(t, err, "Should block DROP with custom rule")
+	require.Error(t, err, "Custom rule should block DROP")
 
 	// DELETE without WHERE should pass (rule not included)
 	err = guard.Check("DELETE FROM users")
-	assert.NoError(t, err, "Should allow DELETE without WHERE when rule not included")
+	assert.NoError(t, err, "Custom rule set should allow DELETE without WHERE")
 
 	// TRUNCATE should pass (rule not included)
 	err = guard.Check("TRUNCATE TABLE users")
-	assert.NoError(t, err, "Should allow TRUNCATE when rule not included")
+	assert.NoError(t, err, "Custom rule set should allow TRUNCATE")
 }
 
 // TestGuardEmptyRulesUsesDefaults tests guard empty rules uses defaults functionality.
@@ -71,7 +71,7 @@ func TestGuardEmptyRulesUsesDefaults(t *testing.T) {
 	logger := logx.Named("test")
 	guard := NewGuard(logger)
 
-	assert.Len(t, guard.rules, 3, "Should use 3 default rules when none provided")
+	assert.Len(t, guard.rules, 3, "Guard should use three default rules when none provided")
 }
 
 // TestGuardError tests guard error functionality.
@@ -87,10 +87,10 @@ func TestGuardError(t *testing.T) {
 			SQL: "DROP TABLE users",
 		}
 
-		assert.Contains(t, err.Error(), "dangerous sql detected", "Should contain expected value")
-		assert.Contains(t, err.Error(), "no_drop", "Should contain expected value")
-		assert.Contains(t, err.Error(), "DROP", "Should contain expected value")
-		assert.True(t, errors.Is(err, ErrDangerousSQL), "Condition should be true")
+		assert.Contains(t, err.Error(), "dangerous sql detected", "GuardError should include dangerous SQL prefix")
+		assert.Contains(t, err.Error(), "no_drop", "GuardError should include violation rule")
+		assert.Contains(t, err.Error(), "DROP", "GuardError should include blocked statement")
+		assert.True(t, errors.Is(err, ErrDangerousSQL), "GuardError should match ErrDangerousSQL")
 	})
 
 	t.Run("WithoutViolation", func(t *testing.T) {
@@ -99,7 +99,7 @@ func TestGuardError(t *testing.T) {
 			SQL: "INVALID SQL",
 		}
 
-		assert.Equal(t, ErrSQLParseFailed.Error(), err.Error(), "Should equal expected value")
-		assert.True(t, errors.Is(err, ErrSQLParseFailed), "Condition should be true")
+		assert.Equal(t, ErrSQLParseFailed.Error(), err.Error(), "GuardError without violation should use wrapped error message")
+		assert.True(t, errors.Is(err, ErrSQLParseFailed), "GuardError should match ErrSQLParseFailed")
 	})
 }
