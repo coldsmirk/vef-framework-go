@@ -34,11 +34,11 @@ func TestRouterFallsBackToDefault(t *testing.T) {
 	registry := map[string]transport.Transport{mem.name: mem}
 
 	r, err := buildRouter(&config.EventConfig{DefaultTransport: "memory"}, registry)
-	require.NoError(t, err)
+	require.NoError(t, err, "Router should build with a valid default transport")
 
 	got := r.Resolve("unmatched.event")
-	require.Len(t, got, 1)
-	require.Equal(t, mem, got[0], "events without a matching rule should route to the fallback")
+	require.Len(t, got, 1, "Unmatched events should resolve to exactly one fallback transport")
+	require.Equal(t, mem, got[0], "Events without a matching rule should route to the fallback")
 }
 
 func TestRouterFirstMatchWins(t *testing.T) {
@@ -55,12 +55,12 @@ func TestRouterFirstMatchWins(t *testing.T) {
 	}
 
 	r, err := buildRouter(cfg, registry)
-	require.NoError(t, err)
+	require.NoError(t, err, "Router should build with ordered routing rules")
 
 	require.Equal(t, []transport.Transport{out}, r.Resolve("billing.charged"),
-		"first matching rule should win")
+		"First matching rule should win")
 	require.Equal(t, []transport.Transport{mem}, r.Resolve("auth.login"),
-		"non-billing events should fall through to the catch-all rule")
+		"Non-billing events should fall through to the catch-all rule")
 }
 
 func TestRouterRejectsInvalidPatternAtBuildTime(t *testing.T) {
@@ -75,13 +75,13 @@ func TestRouterRejectsInvalidPatternAtBuildTime(t *testing.T) {
 	}
 
 	_, err := buildRouter(cfg, registry)
-	require.Error(t, err, "buildRouter must reject patterns with malformed metacharacters")
-	require.Contains(t, err.Error(), "invalid routing pattern")
+	require.Error(t, err, "BuildRouter must reject patterns with malformed metacharacters")
+	require.Contains(t, err.Error(), "invalid routing pattern", "Error should describe the invalid routing pattern")
 }
 
 func TestRouterUnknownTransportFails(t *testing.T) {
 	registry := map[string]transport.Transport{}
 
 	_, err := buildRouter(&config.EventConfig{DefaultTransport: "memory"}, registry)
-	require.Error(t, err, "unknown default transport must surface as a build error")
+	require.Error(t, err, "Unknown default transport must surface as a build error")
 }

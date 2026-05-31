@@ -11,30 +11,30 @@ import (
 	"github.com/coldsmirk/vef-framework-go/event/transport"
 )
 
-// fakeNamedTransport satisfies transport.Transport's Name/Capabilities
+// FakeNamedTransport satisfies transport.Transport's Name/Capabilities
 // surface used by validateOutboxSinkRoute; the lifecycle methods stay
 // no-ops because the validator never invokes them.
-type fakeNamedTransport struct {
+type FakeNamedTransport struct {
 	name string
 	caps transport.Capabilities
 }
 
-func (f *fakeNamedTransport) Name() string                         { return f.name }
-func (f *fakeNamedTransport) Capabilities() transport.Capabilities { return f.caps }
-func (*fakeNamedTransport) Start(_ context.Context) error          { return nil }
-func (*fakeNamedTransport) Stop(_ context.Context) error           { return nil }
-func (*fakeNamedTransport) Publish(_ context.Context, _ []transport.Frame) error {
+func (f *FakeNamedTransport) Name() string                         { return f.name }
+func (f *FakeNamedTransport) Capabilities() transport.Capabilities { return f.caps }
+func (*FakeNamedTransport) Start(_ context.Context) error          { return nil }
+func (*FakeNamedTransport) Stop(_ context.Context) error           { return nil }
+func (*FakeNamedTransport) Publish(_ context.Context, _ []transport.Frame) error {
 	return nil
 }
 
-func (*fakeNamedTransport) Subscribe(_, _ string, _ transport.ConsumeFunc, _ transport.SubscribeConfig) (transport.Unsubscribe, error) {
+func (*FakeNamedTransport) Subscribe(_, _ string, _ transport.ConsumeFunc, _ transport.SubscribeConfig) (transport.Unsubscribe, error) {
 	return func() {}, nil
 }
 
 func TestValidateOutboxSinkRoute(t *testing.T) {
-	memory := &fakeNamedTransport{name: "memory"}
-	redis := &fakeNamedTransport{name: "redis_stream", caps: transport.Capabilities{AtLeastOnce: true}}
-	outboxT := &fakeNamedTransport{name: "outbox", caps: transport.Capabilities{PublishOnly: true, Transactional: true}}
+	memory := &FakeNamedTransport{name: "memory"}
+	redis := &FakeNamedTransport{name: "redis_stream", caps: transport.Capabilities{AtLeastOnce: true}}
+	outboxT := &FakeNamedTransport{name: "outbox", caps: transport.Capabilities{PublishOnly: true, Transactional: true}}
 	all := []transport.Transport{memory, redis, outboxT}
 
 	t.Run("PassesWhenSinkIsTheOnlySubscribableInRoute", func(t *testing.T) {
@@ -44,7 +44,7 @@ func TestValidateOutboxSinkRoute(t *testing.T) {
 			},
 		}
 		require.NoError(t, validateOutboxSinkRoute(cfg, "memory", all),
-			"sink=memory inside route [outbox, memory] must be accepted")
+			"Sink=memory inside route [outbox, memory] must be accepted")
 	})
 
 	t.Run("PassesWhenSinkIsOneOfManySubscribablesInRoute", func(t *testing.T) {
@@ -54,7 +54,7 @@ func TestValidateOutboxSinkRoute(t *testing.T) {
 			},
 		}
 		require.NoError(t, validateOutboxSinkRoute(cfg, "redis_stream", all),
-			"sink=redis_stream among multiple subscribable transports must be accepted")
+			"Sink=redis_stream among multiple subscribable transports must be accepted")
 	})
 
 	t.Run("PassesWhenRouteHasNoSubscribableTransport", func(t *testing.T) {
@@ -67,7 +67,7 @@ func TestValidateOutboxSinkRoute(t *testing.T) {
 			},
 		}
 		require.NoError(t, validateOutboxSinkRoute(cfg, "memory", all),
-			"publish-only-only route must not require sink to appear among its members")
+			"Publish-only route must not require sink to appear among its members")
 	})
 
 	t.Run("FailsWhenSinkIsMissingFromMultiTransportRoute", func(t *testing.T) {

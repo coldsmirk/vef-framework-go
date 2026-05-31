@@ -11,7 +11,7 @@ import (
 
 func TestApplyPublishOptionsDefaultsAreZero(t *testing.T) {
 	cfg := event.ApplyPublishOptions(nil)
-	require.Zero(t, cfg, "empty option slice should resolve to a zero PublishConfig")
+	require.Zero(t, cfg, "Empty option slice should resolve to a zero PublishConfig")
 }
 
 func TestApplyPublishOptionsAppliesAllFields(t *testing.T) {
@@ -23,10 +23,10 @@ func TestApplyPublishOptionsAppliesAllFields(t *testing.T) {
 		event.WithHeaders(map[string]string{"k1": "v1"}),
 	})
 
-	require.Equal(t, "auth-service", cfg.Source)
-	require.Equal(t, ts, cfg.OccurredAt)
-	require.Equal(t, "corr-1", cfg.CorrelationID)
-	require.Equal(t, "v1", cfg.Headers["k1"])
+	require.Equal(t, "auth-service", cfg.Source, "WithSource should populate Source")
+	require.Equal(t, ts, cfg.OccurredAt, "WithOccurredAt should populate OccurredAt")
+	require.Equal(t, "corr-1", cfg.CorrelationID, "WithCorrelationID should populate CorrelationID")
+	require.Equal(t, "v1", cfg.Headers["k1"], "WithHeaders should merge header values")
 }
 
 func TestWithAsyncSetsAsyncFlag(t *testing.T) {
@@ -41,16 +41,16 @@ func TestWithHeadersMergesMultipleCalls(t *testing.T) {
 		event.WithHeaders(map[string]string{"b": "overwritten", "c": "3"}),
 	})
 
-	require.Equal(t, "1", cfg.Headers["a"], "first WithHeaders value should survive")
-	require.Equal(t, "overwritten", cfg.Headers["b"], "later WithHeaders should override earlier keys")
-	require.Equal(t, "3", cfg.Headers["c"], "merge should accumulate new keys across calls")
-	require.Len(t, cfg.Headers, 3, "merge should not duplicate or drop keys")
+	require.Equal(t, "1", cfg.Headers["a"], "First WithHeaders value should survive")
+	require.Equal(t, "overwritten", cfg.Headers["b"], "Later WithHeaders should override earlier keys")
+	require.Equal(t, "3", cfg.Headers["c"], "Merge should accumulate new keys across calls")
+	require.Len(t, cfg.Headers, 3, "Merge should not duplicate or drop keys")
 }
 
 func TestWithHeadersNilInputIsNoop(t *testing.T) {
 	cfg := event.ApplyPublishOptions([]event.PublishOption{event.WithHeaders(nil)})
 	// A nil map argument should not allocate Headers; merging nil is a no-op.
-	require.Empty(t, cfg.Headers, "nil headers input should leave Headers empty")
+	require.Empty(t, cfg.Headers, "Nil headers input should leave Headers empty")
 }
 
 func TestOptionOrderLastWins(t *testing.T) {
@@ -59,5 +59,5 @@ func TestOptionOrderLastWins(t *testing.T) {
 		event.WithSource("second"),
 		event.WithSource("third"),
 	})
-	require.Equal(t, "third", cfg.Source, "later options must override earlier ones for the same field")
+	require.Equal(t, "third", cfg.Source, "Later options must override earlier ones for the same field")
 }

@@ -155,7 +155,7 @@ func newTestBus(t *testing.T, transports []transport.Transport, mws ...any) *Bus
 	}
 
 	bus := NewBus(cfg, "test-app", transports, pubMW, conMW, nil)
-	require.NoError(t, bus.Start(t.Context()))
+	require.NoError(t, bus.Start(t.Context()), "Test bus should start successfully")
 
 	t.Cleanup(func() { _ = bus.Stop(context.Background()) })
 
@@ -174,18 +174,18 @@ func TestBusPublishSubscribeRoundTrip(t *testing.T) {
 
 		return nil
 	})
-	require.NoError(t, err)
+	require.NoError(t, err, "Subscribe should register the round-trip handler")
 
-	require.NoError(t, bus.Publish(t.Context(), &BusTestEvent{Value: "hello"}))
+	require.NoError(t, bus.Publish(t.Context(), &BusTestEvent{Value: "hello"}), "Publish should deliver the round-trip event")
 
 	select {
 	case env := <-received:
-		require.Equal(t, "bus.test", env.Type)
+		require.Equal(t, "bus.test", env.Type, "Received envelope should preserve the event type")
 	case <-time.After(2 * time.Second):
 		t.Fatal("subscriber did not receive published event")
 	}
 
-	require.Len(t, mem.capturedFrames(), 1)
+	require.Len(t, mem.capturedFrames(), 1, "Transport should record exactly one published frame")
 }
 
 func TestBusSubscribeRejectsInvalidEventType(t *testing.T) {
@@ -225,12 +225,12 @@ func TestBusRequiresGroupForAtLeastOnceTransport(t *testing.T) {
 	bus := newTestBus(t, []transport.Transport{atLeastOnce})
 
 	_, err := bus.Subscribe("bus.test", func(context.Context, event.Envelope) error { return nil })
-	require.Error(t, err, "subscribing to at-least-once transport without WithGroup must fail")
-	require.ErrorIs(t, err, event.ErrGroupRequired)
+	require.Error(t, err, "Subscribing to at-least-once transport without WithGroup must fail")
+	require.ErrorIs(t, err, event.ErrGroupRequired, "Missing WithGroup should surface ErrGroupRequired")
 
 	_, err = bus.Subscribe("bus.test", func(context.Context, event.Envelope) error { return nil },
 		event.WithGroup("explicit"))
-	require.NoError(t, err, "explicit WithGroup unblocks the subscription")
+	require.NoError(t, err, "Explicit WithGroup should unblock the subscription")
 }
 
 func TestBusHasSubscribableTransport(t *testing.T) {
@@ -246,7 +246,7 @@ func TestBusHasSubscribableTransport(t *testing.T) {
 	}
 
 	bus := NewBus(cfg, "test-app", []transport.Transport{mem, pubOnly}, nil, nil, nil)
-	require.NoError(t, bus.Start(t.Context()))
+	require.NoError(t, bus.Start(t.Context()), "Bus should start with mixed memory and outbox routes")
 	t.Cleanup(func() { _ = bus.Stop(context.Background()) })
 
 	require.True(t, bus.HasSubscribableTransport("with.sink.x"),
@@ -279,7 +279,7 @@ func TestBusSkipsPublishOnlyTransportOnSubscribe(t *testing.T) {
 	}
 
 	bus := NewBus(cfg, "test-app", []transport.Transport{mem, pubOnly}, nil, nil, nil)
-	require.NoError(t, bus.Start(t.Context()))
+	require.NoError(t, bus.Start(t.Context()), "Bus should start before subscribing to a publish-only fan-out route")
 	t.Cleanup(func() { _ = bus.Stop(context.Background()) })
 
 	calls := atomic.Int64{}
@@ -291,17 +291,18 @@ func TestBusSkipsPublishOnlyTransportOnSubscribe(t *testing.T) {
 		},
 		event.WithGroup("g"),
 	)
-	require.NoError(t, err, "subscribe should skip publish-only transports and still register on the in-process one")
+	require.NoError(t, err, "Subscribe should skip publish-only transports and still register on the in-process one")
 
-	require.NoError(t, bus.Publish(t.Context(), &BusTestEvent{Value: "fan-out"}))
+	require.NoError(t, bus.Publish(t.Context(), &BusTestEvent{Value: "fan-out"}),
+		"Publish should fan out to memory and outbox transports")
 
 	require.Eventually(t, func() bool { return calls.Load() == 1 },
 		2*time.Second, 10*time.Millisecond,
-		"handler should fire exactly once, not duplicated by the outbox-forwarded path")
+		"Handler should fire exactly once, not duplicated by the outbox-forwarded path")
 
 	// Both transports should still see the publish (fan-out for publish).
-	require.Len(t, mem.capturedFrames(), 1)
-	require.Len(t, pubOnly.capturedFrames(), 1)
+	require.Len(t, mem.capturedFrames(), 1, "Memory transport should receive the fan-out publish")
+	require.Len(t, pubOnly.capturedFrames(), 1, "Publish-only transport should receive the fan-out publish")
 }
 
 func TestBusActiveMapClearedAfterUnsubscribe(t *testing.T) {
@@ -309,17 +310,17 @@ func TestBusActiveMapClearedAfterUnsubscribe(t *testing.T) {
 	bus := newTestBus(t, []transport.Transport{mem})
 
 	unsub, err := bus.Subscribe("bus.test", func(context.Context, event.Envelope) error { return nil })
-	require.NoError(t, err)
+	require.NoError(t, err, "Subscribe should create an active subscription")
 
 	bus.mu.Lock()
-	require.Len(t, bus.active, 1, "active map should hold the live subscription")
+	require.Len(t, bus.active, 1, "Active map should hold the live subscription")
 	bus.mu.Unlock()
 
 	unsub()
 	unsub() // idempotent — must not panic or double-delete
 
 	bus.mu.Lock()
-	require.Empty(t, bus.active, "unsubscribe must remove the entry so Stop cannot double-invoke it")
+	require.Empty(t, bus.active, "Unsubscribe must remove the entry so Stop cannot double-invoke it")
 	bus.mu.Unlock()
 }
 
@@ -328,11 +329,11 @@ func TestBusStopAggregatesTransportErrors(t *testing.T) {
 	cfg := &config.EventConfig{DefaultTransport: "memory"}
 
 	bus := NewBus(cfg, "test-app", []transport.Transport{failing}, nil, nil, nil)
-	require.NoError(t, bus.Start(t.Context()))
+	require.NoError(t, bus.Start(t.Context()), "Bus should start before Stop failure aggregation is tested")
 
 	err := bus.Stop(t.Context())
 	require.Error(t, err, "Stop must surface transport failures, not swallow them")
-	require.ErrorIs(t, err, errStopBoom)
+	require.ErrorIs(t, err, errStopBoom, "Stop error should wrap the failing transport error")
 }
 
 func TestBusPublishWithoutStartFails(t *testing.T) {
@@ -341,7 +342,7 @@ func TestBusPublishWithoutStartFails(t *testing.T) {
 
 	bus := NewBus(cfg, "test-app", []transport.Transport{mem}, nil, nil, nil)
 	err := bus.Publish(context.Background(), &BusTestEvent{Value: "before-start"})
-	require.ErrorIs(t, err, event.ErrBusNotStarted)
+	require.ErrorIs(t, err, event.ErrBusNotStarted, "Publish before Start should return ErrBusNotStarted")
 }
 
 func TestBusStartTwiceFails(t *testing.T) {
@@ -349,11 +350,11 @@ func TestBusStartTwiceFails(t *testing.T) {
 	cfg := &config.EventConfig{DefaultTransport: "memory"}
 
 	bus := NewBus(cfg, "test-app", []transport.Transport{mem}, nil, nil, nil)
-	require.NoError(t, bus.Start(t.Context()))
+	require.NoError(t, bus.Start(t.Context()), "Initial Start should succeed")
 	t.Cleanup(func() { _ = bus.Stop(context.Background()) })
 
 	err := bus.Start(t.Context())
-	require.ErrorIs(t, err, event.ErrBusAlreadyStarted)
+	require.ErrorIs(t, err, event.ErrBusAlreadyStarted, "Second Start should return ErrBusAlreadyStarted")
 }
 
 func TestBusTxAndAsyncAreMutuallyExclusive(t *testing.T) {
@@ -365,7 +366,7 @@ func TestBusTxAndAsyncAreMutuallyExclusive(t *testing.T) {
 	db := testx.NewTestDB(t)
 	err := bus.Publish(t.Context(), &BusTestEvent{Value: "x"},
 		event.WithTx(db), event.WithAsync())
-	require.ErrorIs(t, err, event.ErrTxAsyncMutex)
+	require.ErrorIs(t, err, event.ErrTxAsyncMutex, "Publish should reject transactional async delivery")
 }
 
 func TestBusPendingSubscriptionFlushedOnStart(t *testing.T) {
@@ -384,12 +385,13 @@ func TestBusPendingSubscriptionFlushedOnStart(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err, "Subscribe before Start should buffer, not error")
-	require.NotNil(t, unsub)
+	require.NotNil(t, unsub, "Buffered subscription should still return an unsubscribe function")
 
-	require.NoError(t, bus.Start(t.Context()))
+	require.NoError(t, bus.Start(t.Context()), "Start should flush buffered subscriptions")
 	t.Cleanup(func() { _ = bus.Stop(context.Background()) })
 
-	require.NoError(t, bus.Publish(t.Context(), &BusTestEvent{Value: "pending"}))
+	require.NoError(t, bus.Publish(t.Context(), &BusTestEvent{Value: "pending"}),
+		"Publish should reach the flushed pending subscription")
 
 	select {
 	case <-received:
@@ -410,9 +412,9 @@ func TestRollbackStartedTransportsCollectsStopErrors(t *testing.T) {
 
 	errs := bus.rollbackStartedTransports(t.Context(), []transport.Transport{clean, boom})
 	require.Len(t, errs, 1,
-		"rollback must report exactly one Stop failure when one transport's Stop fails")
+		"Rollback must report exactly one Stop failure when one transport's Stop fails")
 	require.ErrorIs(t, errs[0], errStopBoom,
-		"reported error must wrap the underlying Stop failure verbatim")
+		"Reported error must wrap the underlying Stop failure verbatim")
 }
 
 func TestJoinStartFailureWrapping(t *testing.T) {
@@ -477,11 +479,11 @@ func TestPublishMiddlewareChainBuiltOncePerBatch(t *testing.T) {
 		&BusTestEvent{Value: "a"},
 		&BusTestEvent{Value: "b"},
 		&BusTestEvent{Value: "c"},
-	}))
+	}), "PublishBatch should process all events through the shared middleware chain")
 
 	// WrapPublish should be invoked once per batch (chain build), not once per event.
 	require.EqualValues(t, 1, mw.wraps.Load(),
-		"publish middleware chain must be built once per PublishBatch, not per event")
+		"Publish middleware chain must be built once per PublishBatch, not per event")
 	require.EqualValues(t, 3, mw.calls.Load(),
-		"wrapped handler should still execute once per event")
+		"Wrapped handler should still execute once per event")
 }

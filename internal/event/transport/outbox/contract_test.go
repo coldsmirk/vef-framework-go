@@ -35,7 +35,7 @@ func TestOutboxSubscribeUnsupported(t *testing.T) {
 
 	_, err := tp.Subscribe("anything", "g", func(context.Context, transport.Delivery) error { return nil }, transport.SubscribeConfig{})
 	require.ErrorIs(t, err, transport.ErrSubscribeUnsupported,
-		"outbox subscribe must surface ErrSubscribeUnsupported so the bus skips it during fan-out routing")
+		"Outbox subscribe must surface ErrSubscribeUnsupported so the bus skips it during fan-out routing")
 }
 
 // TestOutboxEndToEndRoundTrip verifies the publish → relay → sink path:
@@ -45,11 +45,11 @@ func TestOutboxEndToEndRoundTrip(t *testing.T) {
 	ctx := context.Background()
 
 	db := testx.NewTestDB(t)
-	require.NoError(t, ioutbox.Migrate(ctx, db, config.SQLite))
+	require.NoError(t, ioutbox.Migrate(ctx, db, config.SQLite), "Outbox migration should succeed")
 
 	repo := ioutbox.NewRepository(db)
 	sink := imemory.New(memory.Config{QueueSize: 16, FullPolicy: memory.FullPolicyError})
-	require.NoError(t, sink.Start(ctx))
+	require.NoError(t, sink.Start(ctx), "Sink transport should start")
 	t.Cleanup(func() { _ = sink.Stop(ctx) })
 
 	cfg := outbox.Config{
@@ -61,7 +61,7 @@ func TestOutboxEndToEndRoundTrip(t *testing.T) {
 	}
 	tp := ioutbox.NewTransport(repo, cfg)
 	tp.SetSink(sink)
-	require.NoError(t, tp.Start(ctx))
+	require.NoError(t, tp.Start(ctx), "Outbox transport should start")
 
 	received := make(chan transport.Frame, 1)
 	_, err := sink.Subscribe("contract.outbox.roundtrip", "g-rt",
@@ -70,7 +70,7 @@ func TestOutboxEndToEndRoundTrip(t *testing.T) {
 
 			return nil
 		}, transport.SubscribeConfig{Concurrency: 1})
-	require.NoError(t, err)
+	require.NoError(t, err, "Sink subscription should register")
 
 	frame := transport.Frame{
 		ID:          id.GenerateUUID(),
@@ -80,7 +80,7 @@ func TestOutboxEndToEndRoundTrip(t *testing.T) {
 		PublishedAt: time.Now(),
 		Body:        []byte(`{"hello":"outbox"}`),
 	}
-	require.NoError(t, tp.Publish(ctx, []transport.Frame{frame}))
+	require.NoError(t, tp.Publish(ctx, []transport.Frame{frame}), "Outbox publish should persist the frame")
 
 	// One relay cycle is enough since the test owns the schedule.
 	relay := ioutbox.NewRelay(repo, tp.Sink, cfg, nil, nil)
@@ -88,8 +88,8 @@ func TestOutboxEndToEndRoundTrip(t *testing.T) {
 
 	select {
 	case got := <-received:
-		require.Equal(t, frame.ID, got.ID)
-		require.JSONEq(t, string(frame.Body), string(got.Body))
+		require.Equal(t, frame.ID, got.ID, "Relayed frame should preserve the original ID")
+		require.JSONEq(t, string(frame.Body), string(got.Body), "Relayed frame body should preserve the original JSON body")
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for relay → sink delivery")
 	}
@@ -103,11 +103,11 @@ func TestOutboxRelayConcurrentPublish(t *testing.T) {
 	ctx := context.Background()
 
 	db := testx.NewTestDB(t)
-	require.NoError(t, ioutbox.Migrate(ctx, db, config.SQLite))
+	require.NoError(t, ioutbox.Migrate(ctx, db, config.SQLite), "Outbox migration should succeed")
 
 	repo := ioutbox.NewRepository(db)
 	sink := imemory.New(memory.Config{QueueSize: 128, FullPolicy: memory.FullPolicyError})
-	require.NoError(t, sink.Start(ctx))
+	require.NoError(t, sink.Start(ctx), "Sink transport should start")
 	t.Cleanup(func() { _ = sink.Stop(ctx) })
 
 	cfg := outbox.Config{
@@ -119,7 +119,7 @@ func TestOutboxRelayConcurrentPublish(t *testing.T) {
 	}
 	tp := ioutbox.NewTransport(repo, cfg)
 	tp.SetSink(sink)
-	require.NoError(t, tp.Start(ctx))
+	require.NoError(t, tp.Start(ctx), "Outbox transport should start")
 
 	const total = 32
 
@@ -135,7 +135,7 @@ func TestOutboxRelayConcurrentPublish(t *testing.T) {
 
 			return nil
 		}, transport.SubscribeConfig{Concurrency: 4})
-	require.NoError(t, err)
+	require.NoError(t, err, "Concurrent sink subscription should register")
 
 	var wg sync.WaitGroup
 	wg.Add(total)
@@ -157,7 +157,7 @@ func TestOutboxRelayConcurrentPublish(t *testing.T) {
 	}
 
 	wg.Wait()
-	require.Zero(t, publishErrors.Load(), "every publish should accept the frame")
+	require.Zero(t, publishErrors.Load(), "Every publish should accept the frame")
 
 	// Drain the outbox in a single relay cycle; BatchSize >= total.
 	relay := ioutbox.NewRelay(repo, tp.Sink, cfg, nil, nil)

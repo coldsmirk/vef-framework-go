@@ -58,5 +58,5 @@ func TestRedisStreamPingsContainer(t *testing.T) {
 	})
 	t.Cleanup(func() { _ = client.Close() })
 
-	require.NoError(t, client.Ping(context.Background()).Err(), "container must be reachable")
+	require.NoError(t, client.Ping(context.Background()).Err(), "Container must be reachable")
 }

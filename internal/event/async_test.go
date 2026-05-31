@@ -43,21 +43,21 @@ func TestAsyncFanInDrainsQueueOnShutdown(t *testing.T) {
 
 	for range 5 {
 		require.True(t, a.Enqueue(asyncJob{ctx: context.Background(), evt: &AsyncTestEvent{}}),
-			"queue capacity should easily hold 5 jobs")
+			"Queue capacity should easily hold 5 jobs")
 	}
 
 	<-ready
 	close(release)
 
-	require.NoError(t, a.shutdown(context.Background()), "shutdown should drain the queue")
-	require.EqualValues(t, 5, processed.Load(), "every enqueued job must be processed before shutdown returns")
+	require.NoError(t, a.shutdown(context.Background()), "Shutdown should drain the queue")
+	require.EqualValues(t, 5, processed.Load(), "Every enqueued job must be processed before shutdown returns")
 }
 
 func TestAsyncFanInEnqueueAfterShutdownReturnsFalse(t *testing.T) {
 	a := newAsyncFanIn(4, 1, func(context.Context, event.Event, []event.PublishOption) error { return nil }, nil)
 	a.start()
 
-	require.NoError(t, a.shutdown(context.Background()))
+	require.NoError(t, a.shutdown(context.Background()), "Initial shutdown should succeed")
 	require.False(t, a.Enqueue(asyncJob{ctx: context.Background(), evt: &AsyncTestEvent{}}),
 		"Enqueue must refuse new work once shutdown completes")
 }
@@ -66,8 +66,8 @@ func TestAsyncFanInShutdownIsIdempotent(t *testing.T) {
 	a := newAsyncFanIn(4, 2, func(context.Context, event.Event, []event.PublishOption) error { return nil }, nil)
 	a.start()
 
-	require.NoError(t, a.shutdown(context.Background()))
-	require.NoError(t, a.shutdown(context.Background()), "second shutdown must be a no-op")
+	require.NoError(t, a.shutdown(context.Background()), "Initial shutdown should succeed")
+	require.NoError(t, a.shutdown(context.Background()), "Second shutdown must be a no-op")
 }
 
 func TestAsyncFanInSinkInvokedOnPublishError(t *testing.T) {
@@ -84,9 +84,10 @@ func TestAsyncFanInSinkInvokedOnPublishError(t *testing.T) {
 	a := newAsyncFanIn(4, 1, publish, sink)
 	a.start()
 
-	require.True(t, a.Enqueue(asyncJob{ctx: context.Background(), evt: &AsyncTestEvent{}}))
+	require.True(t, a.Enqueue(asyncJob{ctx: context.Background(), evt: &AsyncTestEvent{}}),
+		"Enqueue should accept work before shutdown")
 
-	require.NoError(t, a.shutdown(context.Background()))
+	require.NoError(t, a.shutdown(context.Background()), "Shutdown should flush the failing publish")
 	require.EqualValues(t, 1, sinkCount.Load(), "ErrorSink should observe one publish failure")
 }
 
@@ -114,7 +115,7 @@ func TestAsyncFanInConcurrentEnqueueAndShutdown(t *testing.T) {
 
 	// Give producers a head start, then shutdown concurrently.
 	time.Sleep(50 * time.Millisecond)
-	require.NoError(t, a.shutdown(context.Background()))
+	require.NoError(t, a.shutdown(context.Background()), "Concurrent shutdown should complete without send-on-closed-channel races")
 
 	wg.Wait()
 }

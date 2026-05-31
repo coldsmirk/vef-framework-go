@@ -27,12 +27,12 @@ func TestRedisStreamConfigIncludesClaimOverrides(t *testing.T) {
 
 	got := redisStreamConfig(cfg)
 
-	require.Equal(t, "custom", got.StreamPrefix, "stream prefix should be copied")
-	require.EqualValues(t, 123, got.MaxLenApprox, "max len should be copied")
-	require.Equal(t, 2*time.Second, got.BlockTimeout, "block timeout should be copied")
-	require.Equal(t, 3*time.Second, got.ClaimIdle, "claim idle should be copied")
-	require.Equal(t, 4*time.Second, got.ClaimInterval, "claim interval should be copied")
-	require.EqualValues(t, 17, got.ClaimBatchSize, "claim batch size should be copied")
-	require.Equal(t, "consumer-1", got.ConsumerID, "consumer id should be copied")
-	require.Equal(t, "42-0", got.StartID, "start id should be copied")
+	require.Equal(t, "custom", got.StreamPrefix, "Stream prefix should be copied")
+	require.EqualValues(t, 123, got.MaxLenApprox, "Max len should be copied")
+	require.Equal(t, 2*time.Second, got.BlockTimeout, "Block timeout should be copied")
+	require.Equal(t, 3*time.Second, got.ClaimIdle, "Claim idle should be copied")
+	require.Equal(t, 4*time.Second, got.ClaimInterval, "Claim interval should be copied")
+	require.EqualValues(t, 17, got.ClaimBatchSize, "Claim batch size should be copied")
+	require.Equal(t, "consumer-1", got.ConsumerID, "Consumer id should be copied")
+	require.Equal(t, "42-0", got.StartID, "Start id should be copied")
 }

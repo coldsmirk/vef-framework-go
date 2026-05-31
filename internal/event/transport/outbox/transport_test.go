@@ -18,24 +18,24 @@ import (
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
-// recordingSink is a stub Transport that records every Publish call and
+// RecordingSink is a stub Transport that records every Publish call and
 // optionally returns an injected error to simulate downstream failure.
-type recordingSink struct {
+type RecordingSink struct {
 	mu       sync.Mutex
 	frames   []transport.Frame
 	failNext error
 }
 
-func (*recordingSink) Name() string { return "recording" }
+func (*RecordingSink) Name() string { return "recording" }
 
-func (*recordingSink) Capabilities() transport.Capabilities {
+func (*RecordingSink) Capabilities() transport.Capabilities {
 	return transport.Capabilities{Durable: false}
 }
 
-func (*recordingSink) Start(context.Context) error { return nil }
-func (*recordingSink) Stop(context.Context) error  { return nil }
+func (*RecordingSink) Start(context.Context) error { return nil }
+func (*RecordingSink) Stop(context.Context) error  { return nil }
 
-func (s *recordingSink) Publish(_ context.Context, frames []transport.Frame) error {
+func (s *RecordingSink) Publish(_ context.Context, frames []transport.Frame) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -51,23 +51,23 @@ func (s *recordingSink) Publish(_ context.Context, frames []transport.Frame) err
 	return nil
 }
 
-func (*recordingSink) Subscribe(string, string, transport.ConsumeFunc, transport.SubscribeConfig) (transport.Unsubscribe, error) {
+func (*RecordingSink) Subscribe(string, string, transport.ConsumeFunc, transport.SubscribeConfig) (transport.Unsubscribe, error) {
 	return func() {}, nil
 }
 
-func (s *recordingSink) Frames() []transport.Frame {
+func (s *RecordingSink) Frames() []transport.Frame {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	return append([]transport.Frame(nil), s.frames...)
 }
 
-func setupOutbox(t *testing.T) (orm.DB, *ioutbox.DefaultRepository, *ioutbox.Transport, *recordingSink) {
+func setupOutbox(t *testing.T) (orm.DB, *ioutbox.DefaultRepository, *ioutbox.Transport, *RecordingSink) {
 	t.Helper()
 
 	ctx := context.Background()
 	db := testx.NewTestDB(t)
-	require.NoError(t, ioutbox.Migrate(ctx, db, config.SQLite), "outbox migration should succeed")
+	require.NoError(t, ioutbox.Migrate(ctx, db, config.SQLite), "Outbox migration should succeed")
 
 	repo := ioutbox.NewRepository(db)
 	cfg := outbox.Config{
@@ -81,7 +81,7 @@ func setupOutbox(t *testing.T) (orm.DB, *ioutbox.DefaultRepository, *ioutbox.Tra
 	t.Cleanup(func() { /* db cleanup handled by testx */ })
 
 	tp := ioutbox.NewTransport(repo, cfg)
-	sink := &recordingSink{}
+	sink := &RecordingSink{}
 	tp.SetSink(sink)
 
 	return db, repo, tp, sink
@@ -124,8 +124,8 @@ func TestOutboxTransportPublishTxRollbackHidesRecord(t *testing.T) {
 	require.ErrorIs(t, err, sentinel, "RunInTx should surface the sentinel error")
 
 	claimed, err := repo.ClaimBatch(ctx, 10, 3, timex.Now().Add(time.Minute))
-	require.NoError(t, err)
-	require.Empty(t, claimed, "rolled-back records must not be visible to the relay")
+	require.NoError(t, err, "Claiming after rollback should not error")
+	require.Empty(t, claimed, "Rolled-back records must not be visible to the relay")
 }
 
 func TestOutboxRelayDispatchesAndMarksCompleted(t *testing.T) {
@@ -141,13 +141,13 @@ func TestOutboxRelayDispatchesAndMarksCompleted(t *testing.T) {
 	}, nil, nil)
 	relay.RelayPending(ctx)
 
-	require.Len(t, sink.Frames(), 1, "sink should receive one frame")
-	require.Equal(t, "evt-ok", sink.Frames()[0].ID)
-	require.JSONEq(t, `{"ok":true}`, string(sink.Frames()[0].Body), "payload bytes must round-trip cleanly through the outbox table")
+	require.Len(t, sink.Frames(), 1, "Sink should receive one frame")
+	require.Equal(t, "evt-ok", sink.Frames()[0].ID, "Sink frame should preserve the event ID")
+	require.JSONEq(t, `{"ok":true}`, string(sink.Frames()[0].Body), "Payload bytes must round-trip cleanly through the outbox table")
 
 	// Second relay cycle is a no-op: the record is completed.
 	relay.RelayPending(ctx)
-	require.Len(t, sink.Frames(), 1, "completed records must not be redelivered")
+	require.Len(t, sink.Frames(), 1, "Completed records must not be redelivered")
 
 	// Confirm row status using the repository: no claimable rows remain.
 	leftover, err := repo.ClaimBatch(ctx, 10, 3, timex.Now().Add(time.Minute))
@@ -195,7 +195,7 @@ func TestOutboxRelayBackoffAndDeadAfterMaxRetries(t *testing.T) {
 
 	left, err := repo.ClaimBatch(ctx, 10, 2, timex.Now().Add(time.Minute))
 	require.NoError(t, err, "Claiming after dead transition should not error")
-	require.Empty(t, left, "dead records must not be reclaimable")
+	require.Empty(t, left, "Dead records must not be reclaimable")
 }
 
 func TestOutboxCleanerDeletesCompletedRowsByProcessedAt(t *testing.T) {

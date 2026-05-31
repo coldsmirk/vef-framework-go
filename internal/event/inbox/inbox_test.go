@@ -20,7 +20,7 @@ func setupInbox(t *testing.T) *iinbox.DefaultRepository {
 
 	ctx := context.Background()
 	db := testx.NewTestDB(t)
-	require.NoError(t, iinbox.Migrate(ctx, db, config.SQLite), "inbox migration should succeed")
+	require.NoError(t, iinbox.Migrate(ctx, db, config.SQLite), "Inbox migration should succeed")
 
 	return iinbox.NewRepository(db)
 }
