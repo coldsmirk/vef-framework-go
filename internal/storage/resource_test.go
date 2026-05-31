@@ -96,18 +96,18 @@ func (s *StorageResourceTestSuite) makeMultipartRequest(token string, fields map
 	writer := multipart.NewWriter(body)
 
 	for k, v := range fields {
-		s.Require().NoError(writer.WriteField(k, v), "Should write form field %s", k)
+		s.Require().NoError(writer.WriteField(k, v), "Multipart request should write form field %s", k)
 	}
 
 	if fileName != "" {
 		part, err := writer.CreateFormFile("file", fileName)
-		s.Require().NoError(err, "Should create form file")
+		s.Require().NoError(err, "Multipart request should create the file part")
 
 		_, err = part.Write(fileContent)
-		s.Require().NoError(err, "Should write file content")
+		s.Require().NoError(err, "Multipart request should write file content")
 	}
 
-	s.Require().NoError(writer.Close(), "Should close multipart writer")
+	s.Require().NoError(writer.Close(), "Multipart writer should close successfully")
 
 	req := httptest.NewRequestWithContext(s.ctx, fiber.MethodPost, "/api", body)
 	req.Header.Set(fiber.HeaderContentType, writer.FormDataContentType())
@@ -131,7 +131,7 @@ func (s *StorageResourceTestSuite) uploadPart(token, claimID string, partNumber 
 		"claimId":    claimID,
 		"partNumber": partNumber,
 	})
-	s.Require().NoError(err, "Should marshal upload_part params")
+	s.Require().NoError(err, "Upload part params should marshal to JSON")
 
 	return s.makeMultipartRequest(token, map[string]string{
 		"resource": "sys/storage",
@@ -162,15 +162,25 @@ func (s *StorageResourceTestSuite) initUpload(filename string, size int64) (map[
 	return s.ReadDataAsMap(body.Data), body
 }
 
+func (s *StorageResourceTestSuite) requireString(data map[string]any, key string) string {
+	s.T().Helper()
+
+	value, ok := data[key].(string)
+	s.Require().True(ok, "Response must include string field %s", key)
+
+	return value
+}
+
 // ── init_upload ─────────────────────────────────────────────────────────
 
 func (s *StorageResourceTestSuite) TestInitUploadHappyPath() {
 	data, body := s.initUpload("video.mp4", chunkedSize)
-	s.Require().True(body.IsOk(), "init_upload should succeed: %s", body.Message)
+	s.Require().True(body.IsOk(), "Init upload should succeed: %s", body.Message)
 
 	s.NotEmpty(data["claimId"], "Response must include the new claim ID")
 	s.NotContains(data, "uploadId", "Backend upload ID must NOT leak to the client surface")
-	s.True(strings.HasPrefix(data["key"].(string), storage.PrivatePrefix), "Default visibility is private")
+	key := s.requireString(data, "key")
+	s.True(strings.HasPrefix(key, storage.PrivatePrefix), "Default visibility is private")
 	s.Equal("video.mp4", data["originalFilename"], "Original filename should be echoed back")
 	s.Equal(float64(memoryPartSize), data["partSize"], "Part size should mirror the backend's authoritative value")
 	s.Equal(float64(2), data["partCount"], "80 KiB / 64 KiB → 2 parts")
@@ -178,7 +188,7 @@ func (s *StorageResourceTestSuite) TestInitUploadHappyPath() {
 
 func (s *StorageResourceTestSuite) TestInitUploadRejectsOversizedFile() {
 	_, body := s.initUpload("oversized.bin", testMaxUploadSize+1)
-	s.False(body.IsOk(), "init_upload exceeding the configured cap must fail")
+	s.False(body.IsOk(), "Init upload exceeding the configured cap must fail")
 }
 
 func (s *StorageResourceTestSuite) TestInitUploadSinglePartForSmallFile() {
@@ -186,7 +196,7 @@ func (s *StorageResourceTestSuite) TestInitUploadSinglePartForSmallFile() {
 	// part. The unified protocol still routes them through init_upload
 	// — the only difference is partCount=1 instead of partCount>1.
 	data, body := s.initUpload("note.txt", singleShotSize)
-	s.Require().True(body.IsOk(), "init_upload should accept files smaller than partSize")
+	s.Require().True(body.IsOk(), "Init upload should accept files smaller than partSize")
 
 	s.Equal(float64(memoryPartSize), data["partSize"], "Part size should mirror the backend's authoritative value")
 	s.Equal(float64(1), data["partCount"], "Files <= partSize should yield exactly one part")
@@ -196,16 +206,16 @@ func (s *StorageResourceTestSuite) TestInitUploadSinglePartForSmallFile() {
 
 func (s *StorageResourceTestSuite) TestUploadPartHappyPath() {
 	data, body := s.initUpload("video.mp4", chunkedSize)
-	s.Require().True(body.IsOk())
+	s.Require().True(body.IsOk(), "Init upload should prepare a claim before upload_part: %s", body.Message)
 
-	claimID := data["claimId"].(string)
+	claimID := s.requireString(data, "claimId")
 	part := bytes.Repeat([]byte{'a'}, int(memoryPartSize))
 
 	resp := s.uploadPart(s.ownerToken, claimID, 1, part)
-	s.Equal(http.StatusOK, resp.StatusCode, "Should return 200 OK")
+	s.Equal(http.StatusOK, resp.StatusCode, "Upload part should return HTTP 200")
 
 	body = s.ReadResult(resp)
-	s.Require().True(body.IsOk(), "upload_part should succeed: %s", body.Message)
+	s.Require().True(body.IsOk(), "Upload part should succeed: %s", body.Message)
 
 	m := s.ReadDataAsMap(body.Data)
 	s.Equal(float64(1), m["partNumber"], "Response should echo the requested part number")
@@ -214,43 +224,43 @@ func (s *StorageResourceTestSuite) TestUploadPartHappyPath() {
 
 func (s *StorageResourceTestSuite) TestUploadPartRejectsWrongOwner() {
 	data, body := s.initUpload("video.mp4", chunkedSize)
-	s.Require().True(body.IsOk())
+	s.Require().True(body.IsOk(), "Init upload should prepare a claim before wrong-owner upload_part: %s", body.Message)
 
-	claimID := data["claimId"].(string)
+	claimID := s.requireString(data, "claimId")
 	part := bytes.Repeat([]byte{'a'}, int(memoryPartSize))
 
 	resp := s.uploadPart(s.otherToken, claimID, 1, part)
 	body = s.ReadResult(resp)
-	s.False(body.IsOk(), "upload_part from a non-owner principal must fail")
+	s.False(body.IsOk(), "Upload part from a non-owner principal must fail")
 }
 
 func (s *StorageResourceTestSuite) TestUploadPartRejectsOutOfRangePartNumber() {
 	data, body := s.initUpload("video.mp4", chunkedSize)
-	s.Require().True(body.IsOk())
+	s.Require().True(body.IsOk(), "Init upload should prepare a claim before out-of-range upload_part: %s", body.Message)
 
-	claimID := data["claimId"].(string)
+	claimID := s.requireString(data, "claimId")
 	part := bytes.Repeat([]byte{'a'}, int(memoryPartSize))
 
 	// partCount is 2; 99 is well outside the [1, 2] range.
 	resp := s.uploadPart(s.ownerToken, claimID, 99, part)
 	body = s.ReadResult(resp)
-	s.False(body.IsOk(), "upload_part with an out-of-range partNumber must fail")
+	s.False(body.IsOk(), "Upload part with an out-of-range partNumber must fail")
 }
 
 // ── complete_upload ─────────────────────────────────────────────────────
 
 func (s *StorageResourceTestSuite) TestCompleteUploadHappyPath() {
 	data, body := s.initUpload("video.mp4", chunkedSize)
-	s.Require().True(body.IsOk())
+	s.Require().True(body.IsOk(), "Init upload should prepare a claim before complete_upload: %s", body.Message)
 
-	claimID := data["claimId"].(string)
+	claimID := s.requireString(data, "claimId")
 
 	// Upload both parts: a 64 KiB chunk and a 16 KiB tail.
 	part1 := bytes.Repeat([]byte{'a'}, int(memoryPartSize))
 	part2 := bytes.Repeat([]byte{'b'}, int(chunkedSize-memoryPartSize))
 
-	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, part1)).IsOk(), "Should upload part 1")
-	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 2, part2)).IsOk(), "Should upload part 2")
+	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, part1)).IsOk(), "Upload part should accept part 1")
+	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 2, part2)).IsOk(), "Upload part should accept part 2")
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
 		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
@@ -258,7 +268,7 @@ func (s *StorageResourceTestSuite) TestCompleteUploadHappyPath() {
 	}, s.ownerToken)
 
 	body = s.ReadResult(resp)
-	s.Require().True(body.IsOk(), "complete_upload should succeed: %s", body.Message)
+	s.Require().True(body.IsOk(), "Complete upload should succeed: %s", body.Message)
 
 	m := s.ReadDataAsMap(body.Data)
 	s.Equal(data["key"], m["key"], "Final key should match the planned key")
@@ -271,13 +281,13 @@ func (s *StorageResourceTestSuite) TestCompleteUploadHappyPathSinglePart() {
 	// (init → upload_part(1) → complete) without any single-shot
 	// shortcut.
 	data, body := s.initUpload("note.txt", singleShotSize)
-	s.Require().True(body.IsOk())
+	s.Require().True(body.IsOk(), "Init upload should prepare a single-part claim: %s", body.Message)
 	s.Equal(float64(1), data["partCount"], "Small file should yield exactly one part")
 
-	claimID := data["claimId"].(string)
+	claimID := s.requireString(data, "claimId")
 	payload := bytes.Repeat([]byte{'z'}, int(singleShotSize))
 
-	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, payload)).IsOk(), "Should upload the only part")
+	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, payload)).IsOk(), "Upload part should accept the only part")
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
 		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
@@ -285,7 +295,7 @@ func (s *StorageResourceTestSuite) TestCompleteUploadHappyPathSinglePart() {
 	}, s.ownerToken)
 
 	body = s.ReadResult(resp)
-	s.Require().True(body.IsOk(), "complete_upload should succeed for the single-part case: %s", body.Message)
+	s.Require().True(body.IsOk(), "Complete upload should succeed for the single-part case: %s", body.Message)
 
 	m := s.ReadDataAsMap(body.Data)
 	s.Equal(data["key"], m["key"], "Final key should match the planned key")
@@ -302,12 +312,12 @@ func (s *StorageResourceTestSuite) TestCompleteUploadDeletesObjectOnSizeMismatch
 	actualPayload := bytes.Repeat([]byte{'m'}, 50)
 
 	data, body := s.initUpload("mismatch.bin", declaredSize)
-	s.Require().True(body.IsOk())
+	s.Require().True(body.IsOk(), "Init upload should prepare a claim for size mismatch cleanup: %s", body.Message)
 
-	claimID := data["claimId"].(string)
-	key := data["key"].(string)
+	claimID := s.requireString(data, "claimId")
+	key := s.requireString(data, "key")
 
-	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, actualPayload)).IsOk(), "Should upload the part")
+	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, actualPayload)).IsOk(), "Upload part should accept the undersized payload")
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
 		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
@@ -315,7 +325,7 @@ func (s *StorageResourceTestSuite) TestCompleteUploadDeletesObjectOnSizeMismatch
 	}, s.ownerToken)
 
 	body = s.ReadResult(resp)
-	s.False(body.IsOk(), "complete_upload must fail when assembled size != declared size")
+	s.False(body.IsOk(), "Complete upload must fail when assembled size != declared size")
 
 	// Verify the orphan object was cleaned up from the backend.
 	_, err := s.service.StatObject(s.ctx, storage.StatObjectOptions{Key: key})
@@ -324,13 +334,14 @@ func (s *StorageResourceTestSuite) TestCompleteUploadDeletesObjectOnSizeMismatch
 
 func (s *StorageResourceTestSuite) TestCompleteUploadRejectsIncompleteParts() {
 	data, body := s.initUpload("video.mp4", chunkedSize)
-	s.Require().True(body.IsOk())
+	s.Require().True(body.IsOk(), "Init upload should prepare a claim before incomplete complete_upload: %s", body.Message)
 
-	claimID := data["claimId"].(string)
+	claimID := s.requireString(data, "claimId")
 
 	// Upload only the first part, then try to complete the upload.
 	part1 := bytes.Repeat([]byte{'a'}, int(memoryPartSize))
-	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, part1)).IsOk())
+	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, part1)).IsOk(),
+		"Upload part should accept the first chunk before incomplete complete_upload")
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
 		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
@@ -338,16 +349,16 @@ func (s *StorageResourceTestSuite) TestCompleteUploadRejectsIncompleteParts() {
 	}, s.ownerToken)
 
 	body = s.ReadResult(resp)
-	s.False(body.IsOk(), "complete_upload with missing parts must fail")
+	s.False(body.IsOk(), "Complete upload with missing parts must fail")
 }
 
 // ── abort_upload ────────────────────────────────────────────────────────
 
 func (s *StorageResourceTestSuite) TestAbortUploadHappyPath() {
 	data, body := s.initUpload("video.mp4", chunkedSize)
-	s.Require().True(body.IsOk())
+	s.Require().True(body.IsOk(), "Init upload should prepare a claim before abort_upload: %s", body.Message)
 
-	claimID := data["claimId"].(string)
+	claimID := s.requireString(data, "claimId")
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
 		Identifier: api.Identifier{Resource: "sys/storage", Action: "abort_upload", Version: "v1"},
@@ -355,7 +366,7 @@ func (s *StorageResourceTestSuite) TestAbortUploadHappyPath() {
 	}, s.ownerToken)
 
 	body = s.ReadResult(resp)
-	s.True(body.IsOk(), "abort_upload should succeed: %s", body.Message)
+	s.True(body.IsOk(), "Abort upload should succeed: %s", body.Message)
 }
 
 func (s *StorageResourceTestSuite) TestAbortUploadIdempotentOnMissingClaim() {
@@ -365,7 +376,7 @@ func (s *StorageResourceTestSuite) TestAbortUploadIdempotentOnMissingClaim() {
 	}, s.ownerToken)
 
 	body := s.ReadResult(resp)
-	s.True(body.IsOk(), "abort_upload on a missing claim must be a silent no-op")
+	s.True(body.IsOk(), "Abort upload on a missing claim must be a silent no-op")
 }
 
 // ── list_parts ──────────────────────────────────────────────────────────
@@ -385,10 +396,10 @@ func (s *StorageResourceTestSuite) listParts(token, claimID string) result.Resul
 
 func (s *StorageResourceTestSuite) TestListPartsEmptyBeforeAnyUpload() {
 	data, body := s.initUpload("video.mp4", chunkedSize)
-	s.Require().True(body.IsOk())
+	s.Require().True(body.IsOk(), "Init upload should prepare a claim before list_parts: %s", body.Message)
 
-	listed := s.listParts(s.ownerToken, data["claimId"].(string))
-	s.Require().True(listed.IsOk(), "list_parts on a fresh claim should succeed: %s", listed.Message)
+	listed := s.listParts(s.ownerToken, s.requireString(data, "claimId"))
+	s.Require().True(listed.IsOk(), "List parts on a fresh claim should succeed: %s", listed.Message)
 
 	m := s.ReadDataAsMap(listed.Data)
 	parts, ok := m["parts"].([]any)
@@ -398,76 +409,81 @@ func (s *StorageResourceTestSuite) TestListPartsEmptyBeforeAnyUpload() {
 
 func (s *StorageResourceTestSuite) TestListPartsReportsUploadedParts() {
 	data, body := s.initUpload("video.mp4", chunkedSize)
-	s.Require().True(body.IsOk())
+	s.Require().True(body.IsOk(), "Init upload should prepare a claim before uploaded part listing: %s", body.Message)
 
-	claimID := data["claimId"].(string)
+	claimID := s.requireString(data, "claimId")
 	part1 := bytes.Repeat([]byte{'a'}, int(memoryPartSize))
-	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, part1)).IsOk())
+	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, part1)).IsOk(),
+		"Upload part should accept the part before list_parts")
 
 	listed := s.listParts(s.ownerToken, claimID)
-	s.Require().True(listed.IsOk(), "list_parts after one uploaded part should succeed: %s", listed.Message)
+	s.Require().True(listed.IsOk(), "List parts after one uploaded part should succeed: %s", listed.Message)
 
 	m := s.ReadDataAsMap(listed.Data)
-	parts := m["parts"].([]any)
+	parts, ok := m["parts"].([]any)
+	s.Require().True(ok, "Response must include a parts array")
 	s.Require().Len(parts, 1, "Exactly one part should be reported")
 
-	first := parts[0].(map[string]any)
+	first, ok := parts[0].(map[string]any)
+	s.Require().True(ok, "Reported part entry must be an object")
 	s.Equal(float64(1), first["partNumber"], "Reported part number should match the upload")
 	s.Equal(float64(memoryPartSize), first["size"], "Reported part size should match the upload")
 }
 
 func (s *StorageResourceTestSuite) TestListPartsRejectsWrongOwner() {
 	data, body := s.initUpload("video.mp4", chunkedSize)
-	s.Require().True(body.IsOk())
+	s.Require().True(body.IsOk(), "Init upload should prepare a claim before wrong-owner list_parts: %s", body.Message)
 
-	listed := s.listParts(s.otherToken, data["claimId"].(string))
-	s.False(listed.IsOk(), "list_parts from a non-owner principal must fail")
+	listed := s.listParts(s.otherToken, s.requireString(data, "claimId"))
+	s.False(listed.IsOk(), "List parts from a non-owner principal must fail")
 }
 
 func (s *StorageResourceTestSuite) TestListPartsRejectsCompletedClaim() {
 	data, body := s.initUpload("video.mp4", chunkedSize)
-	s.Require().True(body.IsOk())
+	s.Require().True(body.IsOk(), "Init upload should prepare a claim before completed list_parts rejection: %s", body.Message)
 
-	claimID := data["claimId"].(string)
+	claimID := s.requireString(data, "claimId")
 	part1 := bytes.Repeat([]byte{'a'}, int(memoryPartSize))
 	part2 := bytes.Repeat([]byte{'b'}, int(chunkedSize-memoryPartSize))
 
-	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, part1)).IsOk())
-	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 2, part2)).IsOk())
+	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, part1)).IsOk(),
+		"Upload part should accept part 1 before completing the claim")
+	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 2, part2)).IsOk(),
+		"Upload part should accept part 2 before completing the claim")
 
 	completeResp := s.MakeRPCRequestWithToken(api.Request{
 		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
 		Params:     map[string]any{"claimId": claimID},
 	}, s.ownerToken)
-	s.Require().True(s.ReadResult(completeResp).IsOk(), "complete_upload should succeed before the rejection check")
+	s.Require().True(s.ReadResult(completeResp).IsOk(), "Complete upload should succeed before the rejection check")
 
 	listed := s.listParts(s.ownerToken, claimID)
-	s.False(listed.IsOk(), "list_parts on an already-completed claim must fail (claim is no longer pending)")
+	s.False(listed.IsOk(), "List parts on an already-completed claim must fail (claim is no longer pending)")
 }
 
 func (s *StorageResourceTestSuite) TestListPartsAfterAbortReturnsClaimNotFound() {
 	data, body := s.initUpload("video.mp4", chunkedSize)
-	s.Require().True(body.IsOk())
+	s.Require().True(body.IsOk(), "Init upload should prepare a claim before aborted list_parts rejection: %s", body.Message)
 
-	claimID := data["claimId"].(string)
+	claimID := s.requireString(data, "claimId")
 
 	abortResp := s.MakeRPCRequestWithToken(api.Request{
 		Identifier: api.Identifier{Resource: "sys/storage", Action: "abort_upload", Version: "v1"},
 		Params:     map[string]any{"claimId": claimID},
 	}, s.ownerToken)
-	s.Require().True(s.ReadResult(abortResp).IsOk(), "abort_upload should succeed before the lookup check")
+	s.Require().True(s.ReadResult(abortResp).IsOk(), "Abort upload should succeed before the lookup check")
 
 	listed := s.listParts(s.ownerToken, claimID)
-	s.False(listed.IsOk(), "list_parts on an aborted (deleted) claim must fail")
+	s.False(listed.IsOk(), "List parts on an aborted (deleted) claim must fail")
 }
 
 // ── validation edge cases ───────────────────────────────────────────────
 
 func (s *StorageResourceTestSuite) TestUploadPartRejectsNonFinalPartTooSmall() {
 	data, body := s.initUpload("video.mp4", chunkedSize)
-	s.Require().True(body.IsOk())
+	s.Require().True(body.IsOk(), "Init upload should prepare a claim before non-final size validation: %s", body.Message)
 
-	claimID := data["claimId"].(string)
+	claimID := s.requireString(data, "claimId")
 	// Part 1 is non-final (partCount=2) but smaller than partSize.
 	smallPart := bytes.Repeat([]byte{'s'}, int(memoryPartSize)/2)
 

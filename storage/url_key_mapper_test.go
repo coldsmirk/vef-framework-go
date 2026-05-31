@@ -9,6 +9,37 @@ import (
 	"github.com/coldsmirk/vef-framework-go/storage"
 )
 
+// CDNHostMapper is a documented example of how a business module wires
+// a custom URLKeyMapper to recognize CDN URLs of the form
+// "https://cdn.example.com/<key>". The key extractor strips the host
+// prefix; the URL composer puts it back. This pattern is what the new
+// (key, ok) signature is designed to enable: previously, http/https
+// URLs never reached the mapper because the extractor pre-filtered
+// them, so business code could not opt in even by writing a custom
+// mapper.
+type CDNHostMapper struct {
+	prefix string
+}
+
+func (m CDNHostMapper) URLToKey(raw string) (string, bool) {
+	if rest, ok := strings.CutPrefix(raw, m.prefix); ok {
+		return rest, true
+	}
+
+	// Relative paths still resolve through the same mapper for
+	// completeness; absolute non-CDN URLs are rejected so the mapper
+	// remains a deterministic contract for what counts as managed.
+	if !strings.Contains(raw, "://") {
+		return raw, raw != ""
+	}
+
+	return "", false
+}
+
+func (m CDNHostMapper) KeyToURL(key string) string {
+	return m.prefix + key
+}
+
 // TestIdentityURLKeyMapperURLToKey covers the new (key, ok) contract for
 // the zero-config mapper. The mapper accepts relative paths (no scheme)
 // and rejects every URL carrying a scheme so business modules embedding
@@ -78,21 +109,21 @@ func TestIdentityURLKeyMapperURLToKey(t *testing.T) {
 			input:     "data:image/png;base64,iVBORw0KGgoAAA",
 			wantKey:   "",
 			wantOK:    false,
-			assertMsg: "data: URIs are inline payloads, never storage keys",
+			assertMsg: "Data: URIs are inline payloads, never storage keys",
 		},
 		{
 			name:      "MailtoRejected",
 			input:     "mailto:foo@bar.com",
 			wantKey:   "",
 			wantOK:    false,
-			assertMsg: "mailto: links are not storage references",
+			assertMsg: "Mailto: links are not storage references",
 		},
 		{
 			name:      "JavascriptRejected",
 			input:     "javascript:alert(1)",
 			wantKey:   "",
 			wantOK:    false,
-			assertMsg: "javascript: pseudo-URLs are not storage references",
+			assertMsg: "Javascript: pseudo-URLs are not storage references",
 		},
 		{
 			name:      "FtpRejected",
@@ -141,43 +172,12 @@ func TestIdentityURLKeyMapperKeyToURL(t *testing.T) {
 	}
 }
 
-// cdnHostMapper is a documented example of how a business module wires
-// a custom URLKeyMapper to recognize CDN URLs of the form
-// "https://cdn.example.com/<key>". The key extractor strips the host
-// prefix; the URL composer puts it back. This pattern is what the new
-// (key, ok) signature is designed to enable: previously, http/https
-// URLs never reached the mapper because the extractor pre-filtered
-// them, so business code could not opt in even by writing a custom
-// mapper.
-type cdnHostMapper struct {
-	prefix string
-}
-
-func (m cdnHostMapper) URLToKey(raw string) (string, bool) {
-	if rest, ok := strings.CutPrefix(raw, m.prefix); ok {
-		return rest, true
-	}
-
-	// Relative paths still resolve through the same mapper for
-	// completeness; absolute non-CDN URLs are rejected so the mapper
-	// remains a deterministic contract for what counts as managed.
-	if !strings.Contains(raw, "://") {
-		return raw, raw != ""
-	}
-
-	return "", false
-}
-
-func (m cdnHostMapper) KeyToURL(key string) string {
-	return m.prefix + key
-}
-
 // TestCustomMapperRecognizesCDNHost demonstrates that http(s) URLs can
 // now flow through to a custom URLKeyMapper. With the old extractor
 // pre-filter, "https://cdn.example.com/priv/foo.png" would never reach
 // URLToKey and the mapper would have no way to claim it.
 func TestCustomMapperRecognizesCDNHost(t *testing.T) {
-	m := cdnHostMapper{prefix: "https://cdn.example.com/"}
+	m := CDNHostMapper{prefix: "https://cdn.example.com/"}
 
 	t.Run("MatchingCDNURLBecomesKey", func(t *testing.T) {
 		key, ok := m.URLToKey("https://cdn.example.com/priv/2026/05/12/foo.png")

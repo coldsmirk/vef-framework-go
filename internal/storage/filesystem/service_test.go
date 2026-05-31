@@ -19,7 +19,7 @@ func setupTestService(t *testing.T) (storage.Service, func()) {
 	tempDir := t.TempDir()
 
 	service, err := New(config.FilesystemConfig{Root: tempDir})
-	require.NoError(t, err, "Should not return error")
+	require.NoError(t, err, "Service should complete without error")
 
 	cleanup := func() {
 		_ = os.RemoveAll(tempDir)
@@ -49,11 +49,11 @@ func TestFilesystemService(t *testing.T) {
 			},
 		})
 
-		require.NoError(t, err, "Should not return error")
-		assert.NotNil(t, info, "Should not be nil")
-		assert.Equal(t, "test.txt", info.Key, "Should equal expected value")
-		assert.Equal(t, int64(len(data)), info.Size, "Should equal expected value")
-		assert.Equal(t, "text/plain", info.ContentType, "Should equal expected value")
+		require.NoError(t, err, "TestFilesystemService should complete without error")
+		assert.NotNil(t, info, "TestFilesystemService should return a non-nil value")
+		assert.Equal(t, "test.txt", info.Key, "TestFilesystemService should match expected value")
+		assert.Equal(t, int64(len(data)), info.Size, "TestFilesystemService should match expected value")
+		assert.Equal(t, "text/plain", info.ContentType, "TestFilesystemService should match expected value")
 	})
 
 	t.Run("GetObjectSuccess", func(t *testing.T) {
@@ -63,14 +63,14 @@ func TestFilesystemService(t *testing.T) {
 			Key: "test.txt",
 		})
 
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestFilesystemService should complete without error")
 
-		require.NotNil(t, reader, "Should not be nil")
+		require.NotNil(t, reader, "TestFilesystemService should return a non-nil value")
 		defer reader.Close()
 
 		data, err := io.ReadAll(reader)
-		require.NoError(t, err, "Should not return error")
-		assert.Equal(t, expectedData, data, "Should equal expected value")
+		require.NoError(t, err, "TestFilesystemService should complete without error")
+		assert.Equal(t, expectedData, data, "TestFilesystemService should match expected value")
 	})
 
 	t.Run("GetObjectNotFound", func(t *testing.T) {
@@ -78,9 +78,9 @@ func TestFilesystemService(t *testing.T) {
 			Key: "nonexistent.txt",
 		})
 
-		assert.Error(t, err, "Should return error")
-		assert.Nil(t, reader, "Should be nil")
-		assert.Equal(t, storage.ErrObjectNotFound, err, "Should equal expected value")
+		assert.Error(t, err, "Missing object reads should return an error")
+		assert.Nil(t, reader, "TestFilesystemService should return nil")
+		assert.Equal(t, storage.ErrObjectNotFound, err, "TestFilesystemService should match expected value")
 	})
 
 	t.Run("StatObject", func(t *testing.T) {
@@ -88,9 +88,9 @@ func TestFilesystemService(t *testing.T) {
 			Key: "test.txt",
 		})
 
-		require.NoError(t, err, "Should not return error")
-		assert.NotNil(t, info, "Should not be nil")
-		assert.Equal(t, "test.txt", info.Key, "Should equal expected value")
+		require.NoError(t, err, "TestFilesystemService should complete without error")
+		assert.NotNil(t, info, "TestFilesystemService should return a non-nil value")
+		assert.Equal(t, "test.txt", info.Key, "TestFilesystemService should match expected value")
 		assert.Greater(t, info.Size, int64(0), "Should be greater")
 	})
 
@@ -100,20 +100,20 @@ func TestFilesystemService(t *testing.T) {
 			DestKey:   "test-copy.txt",
 		})
 
-		require.NoError(t, err, "Should not return error")
-		assert.NotNil(t, info, "Should not be nil")
-		assert.Equal(t, "test-copy.txt", info.Key, "Should equal expected value")
+		require.NoError(t, err, "TestFilesystemService should complete without error")
+		assert.NotNil(t, info, "TestFilesystemService should return a non-nil value")
+		assert.Equal(t, "test-copy.txt", info.Key, "TestFilesystemService should match expected value")
 
 		reader, err := service.GetObject(ctx, storage.GetObjectOptions{
 			Key: "test-copy.txt",
 		})
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestFilesystemService should complete without error")
 
 		defer reader.Close()
 
 		data, err := io.ReadAll(reader)
-		require.NoError(t, err, "Should not return error")
-		assert.Equal(t, []byte("Hello, Filesystem Storage!"), data, "Should equal expected value")
+		require.NoError(t, err, "TestFilesystemService should complete without error")
+		assert.Equal(t, []byte("Hello, Filesystem Storage!"), data, "TestFilesystemService should match expected value")
 	})
 
 	t.Run("DeleteObject", func(t *testing.T) {
@@ -121,12 +121,12 @@ func TestFilesystemService(t *testing.T) {
 			Key: "test.txt",
 		})
 
-		assert.NoError(t, err, "Should not return error")
+		assert.NoError(t, err, "TestFilesystemService should complete without error")
 
 		_, err = service.GetObject(ctx, storage.GetObjectOptions{
 			Key: "test.txt",
 		})
-		assert.Error(t, err, "Should return error")
+		assert.Error(t, err, "Deleted object reads should return an error")
 	})
 
 	t.Run("DeleteObjects", func(t *testing.T) {
@@ -137,17 +137,17 @@ func TestFilesystemService(t *testing.T) {
 				Reader: bytes.NewReader([]byte("content")),
 				Size:   7,
 			})
-			require.NoError(t, err, "Should not return error")
+			require.NoError(t, err, "TestFilesystemService should complete without error")
 		}
 
 		err := service.DeleteObjects(ctx, storage.DeleteObjectsOptions{
 			Keys: keys,
 		})
-		assert.NoError(t, err, "Should not return error")
+		assert.NoError(t, err, "TestFilesystemService should complete without error")
 
 		for _, key := range keys {
 			_, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
-			assert.Error(t, err, "Should return error")
+			assert.Error(t, err, "Deleted batch object reads should return an error")
 		}
 	})
 
@@ -160,18 +160,18 @@ func TestFilesystemService(t *testing.T) {
 			Reader: bytes.NewReader(data),
 			Size:   int64(len(data)),
 		})
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestFilesystemService should complete without error")
 
 		reader, err := service.GetObject(ctx, storage.GetObjectOptions{
 			Key: nestedKey,
 		})
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestFilesystemService should complete without error")
 
 		defer reader.Close()
 
 		readData, err := io.ReadAll(reader)
-		require.NoError(t, err, "Should not return error")
-		assert.Equal(t, data, readData, "Should equal expected value")
+		require.NoError(t, err, "TestFilesystemService should complete without error")
+		assert.Equal(t, data, readData, "TestFilesystemService should match expected value")
 	})
 }
 
@@ -181,15 +181,15 @@ func TestCleanupEmptyDirs(t *testing.T) {
 	service := &Service{root: tempDir}
 
 	nestedPath := filepath.Join(tempDir, "a", "b", "c", "test.txt")
-	require.NoError(t, os.MkdirAll(filepath.Dir(nestedPath), 0o755), "Should not return error")
-	require.NoError(t, os.WriteFile(nestedPath, []byte("test"), 0o644), "Should not return error")
+	require.NoError(t, os.MkdirAll(filepath.Dir(nestedPath), 0o755), "TestCleanupEmptyDirs should complete without error")
+	require.NoError(t, os.WriteFile(nestedPath, []byte("test"), 0o644), "TestCleanupEmptyDirs should complete without error")
 
-	require.NoError(t, os.Remove(nestedPath), "Should not return error")
+	require.NoError(t, os.Remove(nestedPath), "TestCleanupEmptyDirs should complete without error")
 
 	service.cleanupEmptyDirs(filepath.Dir(nestedPath))
 
 	_, err := os.Stat(filepath.Join(tempDir, "a"))
-	assert.True(t, os.IsNotExist(err), "Should be true")
+	assert.True(t, os.IsNotExist(err), "TestCleanupEmptyDirs condition should be true")
 }
 
 // TestEdgeCases tests edge cases functionality.
@@ -206,18 +206,18 @@ func TestEdgeCases(t *testing.T) {
 			Size:   0,
 		})
 
-		require.NoError(t, err, "Should not return error")
-		assert.Equal(t, int64(0), info.Size, "Should equal expected value")
-		assert.NotEmpty(t, info.ETag, "Should not be empty")
+		require.NoError(t, err, "TestEdgeCases should complete without error")
+		assert.Equal(t, int64(0), info.Size, "TestEdgeCases should match expected value")
+		assert.NotEmpty(t, info.ETag, "TestEdgeCases should return non-empty value")
 
 		reader, err := service.GetObject(ctx, storage.GetObjectOptions{Key: "empty.txt"})
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestEdgeCases should complete without error")
 
 		defer reader.Close()
 
 		data, err := io.ReadAll(reader)
-		require.NoError(t, err, "Should not return error")
-		assert.Empty(t, data, "Should be empty")
+		require.NoError(t, err, "TestEdgeCases should complete without error")
+		assert.Empty(t, data, "TestEdgeCases should return empty value")
 	})
 
 	t.Run("SpecialCharactersInKey", func(t *testing.T) {
@@ -247,8 +247,8 @@ func TestEdgeCases(t *testing.T) {
 			defer reader.Close()
 
 			readData, err := io.ReadAll(reader)
-			require.NoError(t, err, "Should not return error")
-			assert.Equal(t, data, readData, "Should equal expected value")
+			require.NoError(t, err, "TestEdgeCases should complete without error")
+			assert.Equal(t, data, readData, "TestEdgeCases should match expected value")
 		}
 	})
 
@@ -305,24 +305,24 @@ func TestEdgeCases(t *testing.T) {
 			Reader: bytes.NewReader(originalData),
 			Size:   int64(len(originalData)),
 		})
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestEdgeCases should complete without error")
 
 		info, err := service.PutObject(ctx, storage.PutObjectOptions{
 			Key:    key,
 			Reader: bytes.NewReader(newData),
 			Size:   int64(len(newData)),
 		})
-		require.NoError(t, err, "Should not return error")
-		assert.Equal(t, int64(len(newData)), info.Size, "Should equal expected value")
+		require.NoError(t, err, "TestEdgeCases should complete without error")
+		assert.Equal(t, int64(len(newData)), info.Size, "TestEdgeCases should match expected value")
 
 		reader, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestEdgeCases should complete without error")
 
 		defer reader.Close()
 
 		readData, err := io.ReadAll(reader)
-		require.NoError(t, err, "Should not return error")
-		assert.Equal(t, newData, readData, "Should equal expected value")
+		require.NoError(t, err, "TestEdgeCases should complete without error")
+		assert.Equal(t, newData, readData, "TestEdgeCases should match expected value")
 	})
 
 	t.Run("DeleteNonExistentFile", func(t *testing.T) {
@@ -332,7 +332,7 @@ func TestEdgeCases(t *testing.T) {
 		err := service.DeleteObject(ctx, storage.DeleteObjectOptions{
 			Key: "nonexistent.txt",
 		})
-		assert.NoError(t, err, "Should not return error")
+		assert.NoError(t, err, "TestEdgeCases should complete without error")
 	})
 
 	t.Run("CopyNonExistentFile", func(t *testing.T) {
@@ -343,8 +343,8 @@ func TestEdgeCases(t *testing.T) {
 			SourceKey: "nonexistent.txt",
 			DestKey:   "dest.txt",
 		})
-		assert.Error(t, err, "Should return error")
-		assert.Equal(t, storage.ErrObjectNotFound, err, "Should equal expected value")
+		assert.Error(t, err, "Copying a missing source object should return an error")
+		assert.Equal(t, storage.ErrObjectNotFound, err, "TestEdgeCases should match expected value")
 	})
 
 	t.Run("StatNonExistentFile", func(t *testing.T) {
@@ -354,8 +354,8 @@ func TestEdgeCases(t *testing.T) {
 		_, err := service.StatObject(ctx, storage.StatObjectOptions{
 			Key: "nonexistent.txt",
 		})
-		assert.Error(t, err, "Should return error")
-		assert.Equal(t, storage.ErrObjectNotFound, err, "Should equal expected value")
+		assert.Error(t, err, "Statting a missing object should return an error")
+		assert.Equal(t, storage.ErrObjectNotFound, err, "TestEdgeCases should match expected value")
 	})
 
 	t.Run("VeryLongPath", func(t *testing.T) {
@@ -375,35 +375,35 @@ func TestEdgeCases(t *testing.T) {
 			Reader: bytes.NewReader(data),
 			Size:   int64(len(data)),
 		})
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestEdgeCases should complete without error")
 
 		reader, err := service.GetObject(ctx, storage.GetObjectOptions{Key: longPath})
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestEdgeCases should complete without error")
 
 		defer reader.Close()
 	})
 
 	t.Run("InvalidRootDirectory", func(t *testing.T) {
 		_, err := New(config.FilesystemConfig{Root: "/invalid/readonly/path/that/should/not/exist"})
-		assert.Error(t, err, "Should return error")
+		assert.Error(t, err, "Invalid root directory should return an error")
 	})
 
 	t.Run("DefaultRootDirectory", func(t *testing.T) {
 		originalWd, err := os.Getwd()
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestEdgeCases should complete without error")
 
 		tempDir := t.TempDir()
 		err = os.Chdir(tempDir)
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestEdgeCases should complete without error")
 
 		defer os.Chdir(originalWd)
 
 		service, err := New(config.FilesystemConfig{})
-		require.NoError(t, err, "Should not return error")
-		assert.NotNil(t, service, "Should not be nil")
+		require.NoError(t, err, "TestEdgeCases should complete without error")
+		assert.NotNil(t, service, "TestEdgeCases should return a non-nil value")
 
 		_, err = os.Stat(filepath.Join(tempDir, "storage"))
-		assert.NoError(t, err, "Should not return error")
+		assert.NoError(t, err, "TestEdgeCases should complete without error")
 	})
 
 	t.Run("MD5ConsistencyCheck", func(t *testing.T) {
@@ -418,13 +418,13 @@ func TestEdgeCases(t *testing.T) {
 			Reader: bytes.NewReader(data),
 			Size:   int64(len(data)),
 		})
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestEdgeCases should complete without error")
 
 		info2, err := service.StatObject(ctx, storage.StatObjectOptions{Key: key})
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestEdgeCases should complete without error")
 
-		assert.Equal(t, info1.ETag, info2.ETag, "Should equal expected value")
-		assert.NotEmpty(t, info1.ETag, "Should not be empty")
+		assert.Equal(t, info1.ETag, info2.ETag, "TestEdgeCases should match expected value")
+		assert.NotEmpty(t, info1.ETag, "TestEdgeCases should return non-empty value")
 	})
 
 	t.Run("ETagSidecarCreatedOnPutObject", func(t *testing.T) {
@@ -517,10 +517,10 @@ func TestEdgeCases(t *testing.T) {
 				Reader: bytes.NewReader([]byte("test")),
 				Size:   4,
 			})
-			require.NoError(t, err, "Should not return error")
+			require.NoError(t, err, "TestEdgeCases should complete without error")
 
 			info, err := service.StatObject(ctx, storage.StatObjectOptions{Key: tc.key})
-			require.NoError(t, err, "Should not return error")
+			require.NoError(t, err, "TestEdgeCases should complete without error")
 			assert.Equal(t, tc.contentType, info.ContentType, "Key: %s", tc.key)
 		}
 	})
@@ -546,7 +546,7 @@ func TestConcurrency(t *testing.T) {
 					Reader: bytes.NewReader(data),
 					Size:   int64(len(data)),
 				})
-				assert.NoError(t, err, "Should not return error")
+				assert.NoError(t, err, "TestConcurrency should complete without error")
 
 				done <- true
 			}(i)
@@ -574,7 +574,7 @@ func TestConcurrency(t *testing.T) {
 			Reader: bytes.NewReader(expectedData),
 			Size:   int64(len(expectedData)),
 		})
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestConcurrency should complete without error")
 
 		concurrency := 20
 		done := make(chan bool, concurrency)
@@ -582,14 +582,14 @@ func TestConcurrency(t *testing.T) {
 		for range concurrency {
 			go func() {
 				reader, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
-				assert.NoError(t, err, "Should not return error")
+				assert.NoError(t, err, "TestConcurrency should complete without error")
 
 				if reader != nil {
 					defer reader.Close()
 
 					data, err := io.ReadAll(reader)
-					assert.NoError(t, err, "Should not return error")
-					assert.Equal(t, expectedData, data, "Should equal expected value")
+					assert.NoError(t, err, "TestConcurrency should complete without error")
+					assert.Equal(t, expectedData, data, "TestConcurrency should match expected value")
 				}
 
 				done <- true
@@ -611,7 +611,7 @@ func TestConcurrency(t *testing.T) {
 				Reader: bytes.NewReader([]byte("content")),
 				Size:   7,
 			})
-			require.NoError(t, err, "Should not return error")
+			require.NoError(t, err, "TestConcurrency should complete without error")
 		}
 
 		done := make(chan bool, concurrency)
@@ -619,7 +619,7 @@ func TestConcurrency(t *testing.T) {
 			go func(id int) {
 				key := filepath.Join("concurrent", "delete", "file"+string(rune('0'+id))+".txt")
 				err := service.DeleteObject(ctx, storage.DeleteObjectOptions{Key: key})
-				assert.NoError(t, err, "Should not return error")
+				assert.NoError(t, err, "TestConcurrency should complete without error")
 
 				done <- true
 			}(i)
@@ -660,17 +660,17 @@ func TestLargeFile(t *testing.T) {
 			Reader: bytes.NewReader(data),
 			Size:   int64(size),
 		})
-		require.NoError(t, err, "Should not return error")
-		assert.Equal(t, int64(size), info.Size, "Should equal expected value")
+		require.NoError(t, err, "TestLargeFile should complete without error")
+		assert.Equal(t, int64(size), info.Size, "TestLargeFile should match expected value")
 
 		reader, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
-		require.NoError(t, err, "Should not return error")
+		require.NoError(t, err, "TestLargeFile should complete without error")
 
 		defer reader.Close()
 
 		readData, err := io.ReadAll(reader)
-		require.NoError(t, err, "Should not return error")
-		assert.Equal(t, data, readData, "Should equal expected value")
+		require.NoError(t, err, "TestLargeFile should complete without error")
+		assert.Equal(t, data, readData, "TestLargeFile should match expected value")
 	})
 
 	t.Run("ImplementsMultipart", func(t *testing.T) {

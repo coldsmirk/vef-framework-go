@@ -19,15 +19,15 @@ import (
 // tests. Tests that exercise the ownership boundary build their own.
 var testPrincipal = &security.Principal{ID: "tester"}
 
-// stripPrefixURLMapper is a test-only URLKeyMapper that strips a fixed
+// StripPrefixURLMapper is a test-only URLKeyMapper that strips a fixed
 // prefix from embedded URLs (e.g. "/storage/files/") to recover the
 // underlying storage key, and prepends it again on the way out. URLs
 // missing the prefix are treated as not-managed (ok=false) so the
 // mapper mirrors a realistic custom implementation that recognizes
 // only its own URL shape.
-type stripPrefixURLMapper struct{ prefix string }
+type StripPrefixURLMapper struct{ prefix string }
 
-func (m stripPrefixURLMapper) URLToKey(u string) (string, bool) {
+func (m StripPrefixURLMapper) URLToKey(u string) (string, bool) {
 	if !strings.HasPrefix(u, m.prefix) {
 		return "", false
 	}
@@ -35,7 +35,7 @@ func (m stripPrefixURLMapper) URLToKey(u string) (string, bool) {
 	return strings.TrimPrefix(u, m.prefix), true
 }
 
-func (m stripPrefixURLMapper) KeyToURL(k string) string { return m.prefix + k }
+func (m StripPrefixURLMapper) KeyToURL(k string) string { return m.prefix + k }
 
 // FileModel mirrors a typical business struct that mixes a scalar
 // uploaded_file field with a richtext field carrying embedded resource
@@ -340,7 +340,7 @@ func TestFiles(t *testing.T) {
 
 		require.Len(t, pub.calls, 1, "Exactly one Publish call expected")
 		assert.GreaterOrEqual(t, pub.calls[0].OptsLen, 1,
-			"publishClaimed must forward at least one PublishOption (event.WithTx)")
+			"PublishClaimed must forward at least one PublishOption (event.WithTx)")
 	})
 
 	// P0-1 regression guards: rich_text / markdown URLs must be translated
@@ -351,7 +351,7 @@ func TestFiles(t *testing.T) {
 	t.Run("URLKeyMapperRewritesRichtextKeysBeforeConsume", func(t *testing.T) {
 		cs := &MockClaimConsumer{}
 		de := &MockDeleteEnqueuer{}
-		mapper := stripPrefixURLMapper{prefix: "/storage/files/"}
+		mapper := StripPrefixURLMapper{prefix: "/storage/files/"}
 		files := storage.NewFiles(cs, de, nil, mapper)
 
 		model := &FileModel{
@@ -374,7 +374,7 @@ func TestFiles(t *testing.T) {
 		de := &MockDeleteEnqueuer{}
 		// A mapper that would rewrite EVERY input. uploaded_file values
 		// already are storage keys, so they must bypass the mapper.
-		mapper := stripPrefixURLMapper{prefix: "priv/"}
+		mapper := StripPrefixURLMapper{prefix: "priv/"}
 		files := storage.NewFiles(cs, de, nil, mapper)
 
 		require.NoError(t, files.OnCreate(context.Background(), nil, testPrincipal, &FileModel{CoverKey: "priv/cover.png"}), "OnCreate must succeed")
@@ -382,14 +382,14 @@ func TestFiles(t *testing.T) {
 		assert.Equal(t,
 			[]string{"priv/cover.png"},
 			cs.consumeCalls[0].Keys,
-			"uploaded_file refs must pass through unchanged even with a non-identity mapper",
+			"Uploaded_file refs must pass through unchanged even with a non-identity mapper",
 		)
 	})
 
 	t.Run("URLKeyMapperDiffsOnMappedKeysDuringOnUpdate", func(t *testing.T) {
 		cs := &MockClaimConsumer{}
 		de := &MockDeleteEnqueuer{}
-		mapper := stripPrefixURLMapper{prefix: "/storage/files/"}
+		mapper := StripPrefixURLMapper{prefix: "/storage/files/"}
 		files := storage.NewFiles(cs, de, nil, mapper)
 
 		// Same underlying key; only the URL prefix changes (e.g. proxy
@@ -430,7 +430,7 @@ func TestFiles(t *testing.T) {
 		assert.ElementsMatch(t,
 			[]string{"priv/cover.png", "priv/embed.png"},
 			pub.claimedKeys(),
-			"claim events must mirror consumed keys; absolute URLs do not produce a FileClaimedEvent",
+			"Claim events must mirror consumed keys; absolute URLs do not produce a FileClaimedEvent",
 		)
 		assert.Empty(t, de.enqueueCalls, "OnCreate must not enqueue deletes")
 	})
@@ -444,7 +444,7 @@ func TestFiles(t *testing.T) {
 		// through URLToKey instead.
 		cs := &MockClaimConsumer{}
 		de := &MockDeleteEnqueuer{}
-		mapper := stripPrefixURLMapper{prefix: "https://cdn.example.com/"}
+		mapper := StripPrefixURLMapper{prefix: "https://cdn.example.com/"}
 		files := storage.NewFiles(cs, de, nil, mapper)
 
 		model := &FileModel{

@@ -46,7 +46,7 @@ func (suite *MinIOServiceTestSuite) SetupSuite() {
 	suite.service = provider
 
 	multipart, ok := suite.service.(storage.Multipart)
-	suite.Require().True(ok, "MinIO service should implement storage.Multipart")
+	suite.Require().True(ok, "MinIO Service should implement storage.Multipart")
 	suite.multipart = multipart
 
 	suite.minioClient = suite.service.(*Service).client

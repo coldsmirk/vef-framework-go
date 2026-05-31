@@ -82,7 +82,7 @@ func TestExtractHTMLURLs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			urls := extractHtmlURLs(tt.html)
 			if len(tt.expected) == 0 {
-				assert.Empty(t, urls, "Should be empty")
+				assert.Empty(t, urls, "TestExtractHTMLURLs should return empty value")
 			} else {
 				assert.ElementsMatch(t, tt.expected, urls, "ElementsMatch assertion should pass")
 			}
@@ -172,7 +172,7 @@ func TestReplaceHTMLURLs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ReplaceHtmlURLs(tt.html, tt.replacements)
-			assert.Equal(t, tt.expected, result, "Should equal expected value")
+			assert.Equal(t, tt.expected, result, "TestReplaceHTMLURLs should match expected value")
 		})
 	}
 }
@@ -253,7 +253,7 @@ func TestExtractMarkdownURLs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			urls := extractMarkdownURLs(tt.markdown)
 			if len(tt.expected) == 0 {
-				assert.Empty(t, urls, "Should be empty")
+				assert.Empty(t, urls, "TestExtractMarkdownURLs should return empty value")
 			} else {
 				assert.ElementsMatch(t, tt.expected, urls, "ElementsMatch assertion should pass")
 			}
@@ -334,7 +334,7 @@ func TestReplaceMarkdownURLs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ReplaceMarkdownURLs(tt.markdown, tt.replacements)
-			assert.Equal(t, tt.expected, result, "Should equal expected value")
+			assert.Equal(t, tt.expected, result, "TestReplaceMarkdownURLs should match expected value")
 		})
 	}
 }

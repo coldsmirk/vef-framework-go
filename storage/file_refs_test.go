@@ -166,7 +166,7 @@ func TestExtractRefs(t *testing.T) {
 
 func TestExtractRefsByMetaTag(t *testing.T) {
 	t.Run("NilModelYieldsNil", func(t *testing.T) {
-		assert.Nil(t, extractRefs[UploadedScalarModel](nil), "extractRefs(nil) must return nil, not an empty slice")
+		assert.Nil(t, extractRefs[UploadedScalarModel](nil), "ExtractRefs(nil) must return nil, not an empty slice")
 	})
 
 	t.Run("UploadedFileScalarPopulated", func(t *testing.T) {
@@ -317,8 +317,8 @@ func TestExtractRefsByMetaTag(t *testing.T) {
 		refs := extractRefs(&WithAttrsModel{Cover: "priv/cover.png"})
 
 		require.Len(t, refs, 1, "Tagged field with value must yield one ref")
-		assert.Equal(t, "gallery", refs[0].Attrs["category"], "category attr must be parsed from the meta tag")
-		assert.Equal(t, "true", refs[0].Attrs["public"], "public attr must be parsed from the meta tag")
+		assert.Equal(t, "gallery", refs[0].Attrs["category"], "Category attr must be parsed from the meta tag")
+		assert.Equal(t, "true", refs[0].Attrs["public"], "Public attr must be parsed from the meta tag")
 	})
 
 	t.Run("AttrsEmptyWhenTagHasNoExtraAttributes", func(t *testing.T) {
@@ -338,13 +338,13 @@ func TestExtractRefsByMetaTag(t *testing.T) {
 	t.Run("UnsupportedScalarTypeIgnored", func(t *testing.T) {
 		// uploaded_file only supports string-shaped fields; an int
 		// tagged uploaded_file must be ignored rather than panic.
-		assert.Empty(t, extractRefs(&UnsupportedScalarModel{Count: 42}), "uploaded_file on a non-string field must be silently dropped")
+		assert.Empty(t, extractRefs(&UnsupportedScalarModel{Count: 42}), "Uploaded_file on a non-string field must be silently dropped")
 	})
 
 	t.Run("RichTextOnNonStringIgnored", func(t *testing.T) {
 		// rich_text / markdown require a string field; a []string body
 		// is a misuse and must be skipped.
-		assert.Empty(t, extractRefs(&RichTextOnNonStringModel{Bodies: []string{"<img src=\"priv/x.png\">"}}), "richtext on a non-string field must be silently dropped")
+		assert.Empty(t, extractRefs(&RichTextOnNonStringModel{Bodies: []string{"<img src=\"priv/x.png\">"}}), "Richtext on a non-string field must be silently dropped")
 	})
 
 	t.Run("MixedModelExtractsAllThreeMetaTypes", func(t *testing.T) {

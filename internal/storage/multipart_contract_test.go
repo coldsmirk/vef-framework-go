@@ -152,7 +152,7 @@ func (s *MultipartContractSuite) TestPutPartAfterComplete() {
 		Key: session.Key, UploadID: session.UploadID,
 		Parts: []storage.CompletedPart{{PartNumber: 1, ETag: p1.ETag}},
 	})
-	s.Require().NoError(err)
+	s.Require().NoError(err, "CompleteMultipart should succeed before testing PutPart after completion")
 
 	_, err = s.multipart.PutPart(context.Background(), storage.PutPartOptions{
 		Key: session.Key, UploadID: session.UploadID,

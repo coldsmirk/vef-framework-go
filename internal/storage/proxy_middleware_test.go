@@ -111,7 +111,7 @@ func TestProxyMiddleware(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/storage/files/pub/2025/01/15/test.jpg", nil)
 		resp, err := app.Test(req)
 
-		assert.NoError(t, err, "Should not return error")
+		assert.NoError(t, err, "TestProxyMiddleware should complete without error")
 		assert.Equal(t, http.StatusOK, resp.StatusCode, "Public file should be accessible")
 		assert.Equal(t, "image/jpeg", resp.Header.Get("Content-Type"), "Content-Type should match")
 		assert.Equal(t, "nosniff", resp.Header.Get("X-Content-Type-Options"), "Must send nosniff to prevent MIME sniffing")
@@ -137,7 +137,7 @@ func TestProxyMiddleware(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/storage/files/pub/nonexistent.jpg", nil)
 		resp, err := app.Test(req)
 
-		assert.NoError(t, err, "Should not return error")
+		assert.NoError(t, err, "TestProxyMiddleware should complete without error")
 		assert.Equal(t, http.StatusOK, resp.StatusCode, "Framework returns 200 with error body")
 
 		mockService.AssertExpectations(t)
@@ -153,7 +153,7 @@ func TestProxyMiddleware(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/storage/files/priv/2025/01/15/secret.bin", nil)
 		resp, err := app.Test(req)
 
-		assert.NoError(t, err, "Should not return error")
+		assert.NoError(t, err, "TestProxyMiddleware should complete without error")
 		assert.Equal(t, http.StatusOK, resp.StatusCode, "Framework returns 200 with error body for access denied")
 
 		// GetObject should NOT be called — ACL rejects before reaching backend
@@ -181,8 +181,8 @@ func TestProxyMiddleware(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/storage/files/pub/%E6%B5%8B%E8%AF%95%E6%96%87%E4%BB%B6.jpg", nil)
 		resp, err := app.Test(req)
 
-		assert.NoError(t, err, "Should not return error")
-		assert.Equal(t, http.StatusOK, resp.StatusCode, "Should succeed for pub/ key")
+		assert.NoError(t, err, "TestProxyMiddleware should complete without error")
+		assert.Equal(t, http.StatusOK, resp.StatusCode, "Public file proxy should return 200 OK")
 
 		mockService.AssertExpectations(t)
 	})
@@ -201,7 +201,7 @@ func TestProxyMiddleware(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/storage/files/pub/error.jpg", nil)
 		resp, err := app.Test(req)
 
-		assert.NoError(t, err, "Should not return error")
+		assert.NoError(t, err, "TestProxyMiddleware should complete without error")
 		assert.Equal(t, http.StatusOK, resp.StatusCode, "Framework returns 200 with error body")
 
 		mockService.AssertExpectations(t)
@@ -226,8 +226,8 @@ func TestProxyMiddleware(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/storage/files/pub/test.png", nil)
 		resp, err := app.Test(req)
 
-		assert.NoError(t, err, "Should not return error")
-		assert.Equal(t, http.StatusOK, resp.StatusCode, "Should succeed")
+		assert.NoError(t, err, "TestProxyMiddleware should complete without error")
+		assert.Equal(t, http.StatusOK, resp.StatusCode, "Proxy should return 200 OK when stat metadata fails")
 		assert.Equal(t, "image/png", resp.Header.Get("Content-Type"), "Should fallback to extension")
 
 		mockService.AssertExpectations(t)
@@ -255,8 +255,8 @@ func TestProxyMiddleware(t *testing.T) {
 		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/storage/files/pub/document.pdf", nil)
 		resp, err := app.Test(req)
 
-		assert.NoError(t, err, "Should not return error")
-		assert.Equal(t, http.StatusOK, resp.StatusCode, "Should succeed")
+		assert.NoError(t, err, "TestProxyMiddleware should complete without error")
+		assert.Equal(t, http.StatusOK, resp.StatusCode, "Proxy should return 200 OK when content type is empty")
 		assert.Equal(t, "application/pdf", resp.Header.Get("Content-Type"), "Should fallback to extension")
 		assert.Equal(t, "etag456", resp.Header.Get("ETag"), "ETag should be set")
 
