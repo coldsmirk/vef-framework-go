@@ -11,23 +11,23 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
-// stubRouteInspector lets verifyEventRouting exercise OnStart against a
+// StubRouteInspector lets verifyEventRouting exercise OnStart against a
 // deterministic routing table without spinning up the real bus.
 //
 // subscribable defaults to "every event is subscribable" via the nil
 // map fallback in HasSubscribableTransport, so existing scenarios that
 // only care about the transactional axis stay terse. Scenarios that
 // exercise the subscribable check set an explicit map.
-type stubRouteInspector struct {
+type StubRouteInspector struct {
 	transactional map[string]bool
 	subscribable  map[string]bool
 }
 
-func (s *stubRouteInspector) HasTransactionalRoute(et string) bool {
+func (s *StubRouteInspector) HasTransactionalRoute(et string) bool {
 	return s.transactional[et]
 }
 
-func (s *stubRouteInspector) HasSubscribableTransport(et string) bool {
+func (s *StubRouteInspector) HasSubscribableTransport(et string) bool {
 	if s.subscribable == nil {
 		// Treat every event as subscribable when the field is unset so
 		// callers that only care about HasTransactionalRoute don't have
@@ -70,7 +70,7 @@ func allRequiredTransactional() map[string]bool {
 
 func TestVerifyEventRouting(t *testing.T) {
 	t.Run("PassesWhenAllRequiredEventsHaveTransactionalRoute", func(t *testing.T) {
-		inspector := &stubRouteInspector{transactional: allRequiredTransactional()}
+		inspector := &StubRouteInspector{transactional: allRequiredTransactional()}
 
 		lc := fxtest.NewLifecycle(t)
 		verifyEventRouting(lc, inspector)
@@ -83,7 +83,7 @@ func TestVerifyEventRouting(t *testing.T) {
 	t.Run("FailsWhenTaskCreatedMissesTransactionalRoute", func(t *testing.T) {
 		ts := allRequiredTransactional()
 		delete(ts, approval.EventTypeTaskCreated)
-		inspector := &stubRouteInspector{transactional: ts}
+		inspector := &StubRouteInspector{transactional: ts}
 
 		lc := fxtest.NewLifecycle(t)
 		verifyEventRouting(lc, inspector)
@@ -99,14 +99,14 @@ func TestVerifyEventRouting(t *testing.T) {
 
 	t.Run("FailsOnFirstMissingEventInDeclaredOrder", func(t *testing.T) {
 		// An empty table should report the first required event type.
-		inspector := &stubRouteInspector{}
+		inspector := &StubRouteInspector{}
 
 		lc := fxtest.NewLifecycle(t)
 		verifyEventRouting(lc, inspector)
 
 		err := lc.Start(context.Background())
 		require.Error(t, err, "Missing all transactional routes should return an error")
-		assert.ErrorIs(t, err, ErrEventRouteNotTransactional)
+		assert.ErrorIs(t, err, ErrEventRouteNotTransactional, "Error should wrap ErrEventRouteNotTransactional")
 		assert.Contains(t, err.Error(), approval.EventTypeInstanceCreated,
 			"Error should report the first missing transactional route")
 	})
@@ -116,9 +116,9 @@ func TestVerifyEventRouting(t *testing.T) {
 		// be part of the approval business-event transaction route check.
 		ts := allRequiredTransactional()
 		_, exists := ts[approval.EventTypeInstanceBindingFailed]
-		require.False(t, exists, "binding_failed should not be in the required transaction-route list")
+		require.False(t, exists, "Binding failed event should not be in the required transaction-route list")
 
-		inspector := &stubRouteInspector{transactional: ts}
+		inspector := &StubRouteInspector{transactional: ts}
 
 		lc := fxtest.NewLifecycle(t)
 		verifyEventRouting(lc, inspector)
@@ -133,7 +133,7 @@ func TestVerifyEventRouting(t *testing.T) {
 		// Mirror the production misconfiguration: route resolves to a
 		// publish-only outbox alone. HasTransactionalRoute=true on all
 		// events, HasSubscribableTransport=false on InstanceCompleted.
-		inspector := &stubRouteInspector{
+		inspector := &StubRouteInspector{
 			transactional: allRequiredTransactional(),
 			subscribable: map[string]bool{
 				// Every other event remains subscribable so the test
@@ -154,7 +154,7 @@ func TestVerifyEventRouting(t *testing.T) {
 		verifyEventRouting(lc, inspector)
 
 		err := lc.Start(context.Background())
-		require.Error(t, err, "binding listener cannot subscribe to a publish-only route")
+		require.Error(t, err, "Binding listener cannot subscribe to a publish-only route")
 		assert.ErrorIs(t, err, ErrEventRouteNotSubscribable,
 			"Error should wrap ErrEventRouteNotSubscribable")
 		assert.Contains(t, err.Error(), approval.EventTypeInstanceCompleted,
@@ -166,7 +166,7 @@ func TestVerifyEventRouting(t *testing.T) {
 	t.Run("PassesWhenSubscribableRouteIsAvailable", func(t *testing.T) {
 		// Default stub treats every event as subscribable. Same result
 		// as a route containing [\"outbox\", \"memory\"].
-		inspector := &stubRouteInspector{transactional: allRequiredTransactional()}
+		inspector := &StubRouteInspector{transactional: allRequiredTransactional()}
 
 		lc := fxtest.NewLifecycle(t)
 		verifyEventRouting(lc, inspector)
