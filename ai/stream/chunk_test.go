@@ -10,40 +10,40 @@ import (
 func TestNewStartChunk(t *testing.T) {
 	chunk := NewStartChunk("msg_123")
 
-	assert.Equal(t, ChunkTypeStart, chunk["type"], "Should equal expected value")
-	assert.Equal(t, "msg_123", chunk["messageID"], "Should equal expected value")
+	assert.Equal(t, ChunkTypeStart, chunk["type"], "Start chunk should use the start type")
+	assert.Equal(t, "msg_123", chunk["messageID"], "Start chunk should include the message ID")
 }
 
 // TestNewFinishChunk tests new finish chunk functionality.
 func TestNewFinishChunk(t *testing.T) {
 	chunk := NewFinishChunk()
 
-	assert.Equal(t, ChunkTypeFinish, chunk["type"], "Should equal expected value")
-	assert.Len(t, chunk, 1, "Length should be 1")
+	assert.Equal(t, ChunkTypeFinish, chunk["type"], "Finish chunk should use the finish type")
+	assert.Len(t, chunk, 1, "Finish chunk should only include the type field")
 }
 
 // TestNewStartStepChunk tests new start step chunk functionality.
 func TestNewStartStepChunk(t *testing.T) {
 	chunk := NewStartStepChunk()
 
-	assert.Equal(t, ChunkTypeStartStep, chunk["type"], "Should equal expected value")
-	assert.Len(t, chunk, 1, "Length should be 1")
+	assert.Equal(t, ChunkTypeStartStep, chunk["type"], "Start step chunk should use the start-step type")
+	assert.Len(t, chunk, 1, "Start step chunk should only include the type field")
 }
 
 // TestNewFinishStepChunk tests new finish step chunk functionality.
 func TestNewFinishStepChunk(t *testing.T) {
 	chunk := NewFinishStepChunk()
 
-	assert.Equal(t, ChunkTypeFinishStep, chunk["type"], "Should equal expected value")
-	assert.Len(t, chunk, 1, "Length should be 1")
+	assert.Equal(t, ChunkTypeFinishStep, chunk["type"], "Finish step chunk should use the finish-step type")
+	assert.Len(t, chunk, 1, "Finish step chunk should only include the type field")
 }
 
 // TestNewErrorChunk tests new error chunk functionality.
 func TestNewErrorChunk(t *testing.T) {
 	chunk := NewErrorChunk("something went wrong")
 
-	assert.Equal(t, ChunkTypeError, chunk["type"], "Should equal expected value")
-	assert.Equal(t, "something went wrong", chunk["errorText"], "Should equal expected value")
+	assert.Equal(t, ChunkTypeError, chunk["type"], "Error chunk should use the error type")
+	assert.Equal(t, "something went wrong", chunk["errorText"], "Error chunk should include the error text")
 }
 
 // TestTextChunks tests text chunks functionality.
@@ -83,7 +83,7 @@ func TestTextChunks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			chunk := tt.fn()
-			assert.Equal(t, tt.expected, chunk, "Should equal expected value")
+			assert.Equal(t, tt.expected, chunk, "Text chunk should match the protocol payload")
 		})
 	}
 }
@@ -125,7 +125,7 @@ func TestReasoningChunks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			chunk := tt.fn()
-			assert.Equal(t, tt.expected, chunk, "Should equal expected value")
+			assert.Equal(t, tt.expected, chunk, "Reasoning chunk should match the protocol payload")
 		})
 	}
 }
@@ -183,7 +183,7 @@ func TestToolChunks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			chunk := tt.fn()
-			assert.Equal(t, tt.expected, chunk, "Should equal expected value")
+			assert.Equal(t, tt.expected, chunk, "Tool chunk should match the protocol payload")
 		})
 	}
 }
@@ -193,37 +193,37 @@ func TestSourceChunks(t *testing.T) {
 	t.Run("SourceURLWithTitle", func(t *testing.T) {
 		chunk := NewSourceURLChunk("src_1", "https://example.com", "Example Site")
 
-		assert.Equal(t, ChunkTypeSourceURL, chunk["type"], "Should equal expected value")
-		assert.Equal(t, "src_1", chunk["sourceID"], "Should equal expected value")
-		assert.Equal(t, "https://example.com", chunk["url"], "Should equal expected value")
-		assert.Equal(t, "Example Site", chunk["title"], "Should equal expected value")
+		assert.Equal(t, ChunkTypeSourceURL, chunk["type"], "Source URL chunk should use the source-url type")
+		assert.Equal(t, "src_1", chunk["sourceID"], "Source URL chunk should include the source ID")
+		assert.Equal(t, "https://example.com", chunk["url"], "Source URL chunk should include the URL")
+		assert.Equal(t, "Example Site", chunk["title"], "Source URL chunk should include a non-empty title")
 	})
 
 	t.Run("SourceURLWithoutTitle", func(t *testing.T) {
 		chunk := NewSourceURLChunk("src_1", "https://example.com", "")
 
-		assert.Equal(t, ChunkTypeSourceURL, chunk["type"], "Should equal expected value")
-		assert.Equal(t, "src_1", chunk["sourceID"], "Should equal expected value")
-		assert.Equal(t, "https://example.com", chunk["url"], "Should equal expected value")
-		assert.NotContains(t, chunk, "title", "Should not contain value")
+		assert.Equal(t, ChunkTypeSourceURL, chunk["type"], "Source URL chunk should use the source-url type")
+		assert.Equal(t, "src_1", chunk["sourceID"], "Source URL chunk should include the source ID")
+		assert.Equal(t, "https://example.com", chunk["url"], "Source URL chunk should include the URL")
+		assert.NotContains(t, chunk, "title", "Source URL chunk should omit an empty title")
 	})
 
 	t.Run("SourceDocumentWithTitle", func(t *testing.T) {
 		chunk := NewSourceDocumentChunk("src_2", "application/pdf", "Report.pdf")
 
-		assert.Equal(t, ChunkTypeSourceDocument, chunk["type"], "Should equal expected value")
-		assert.Equal(t, "src_2", chunk["sourceID"], "Should equal expected value")
-		assert.Equal(t, "application/pdf", chunk["mediaType"], "Should equal expected value")
-		assert.Equal(t, "Report.pdf", chunk["title"], "Should equal expected value")
+		assert.Equal(t, ChunkTypeSourceDocument, chunk["type"], "Source document chunk should use the source-document type")
+		assert.Equal(t, "src_2", chunk["sourceID"], "Source document chunk should include the source ID")
+		assert.Equal(t, "application/pdf", chunk["mediaType"], "Source document chunk should include the media type")
+		assert.Equal(t, "Report.pdf", chunk["title"], "Source document chunk should include a non-empty title")
 	})
 
 	t.Run("SourceDocumentWithoutTitle", func(t *testing.T) {
 		chunk := NewSourceDocumentChunk("src_2", "application/pdf", "")
 
-		assert.Equal(t, ChunkTypeSourceDocument, chunk["type"], "Should equal expected value")
-		assert.Equal(t, "src_2", chunk["sourceID"], "Should equal expected value")
-		assert.Equal(t, "application/pdf", chunk["mediaType"], "Should equal expected value")
-		assert.NotContains(t, chunk, "title", "Should not contain value")
+		assert.Equal(t, ChunkTypeSourceDocument, chunk["type"], "Source document chunk should use the source-document type")
+		assert.Equal(t, "src_2", chunk["sourceID"], "Source document chunk should include the source ID")
+		assert.Equal(t, "application/pdf", chunk["mediaType"], "Source document chunk should include the media type")
+		assert.NotContains(t, chunk, "title", "Source document chunk should omit an empty title")
 	})
 }
 
@@ -231,10 +231,10 @@ func TestSourceChunks(t *testing.T) {
 func TestNewFileChunk(t *testing.T) {
 	chunk := NewFileChunk("file_1", "image/png", "https://cdn.example.com/image.png")
 
-	assert.Equal(t, ChunkTypeFile, chunk["type"], "Should equal expected value")
-	assert.Equal(t, "file_1", chunk["fileID"], "Should equal expected value")
-	assert.Equal(t, "image/png", chunk["mediaType"], "Should equal expected value")
-	assert.Equal(t, "https://cdn.example.com/image.png", chunk["url"], "Should equal expected value")
+	assert.Equal(t, ChunkTypeFile, chunk["type"], "File chunk should use the file type")
+	assert.Equal(t, "file_1", chunk["fileID"], "File chunk should include the file ID")
+	assert.Equal(t, "image/png", chunk["mediaType"], "File chunk should include the media type")
+	assert.Equal(t, "https://cdn.example.com/image.png", chunk["url"], "File chunk should include the file URL")
 }
 
 // TestNewDataChunk tests new data chunk functionality.
@@ -265,8 +265,8 @@ func TestNewDataChunk(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			chunk := NewDataChunk(tt.dataType, tt.data)
 
-			assert.Equal(t, ChunkType("data-"+tt.dataType), chunk["type"], "Should equal expected value")
-			assert.Equal(t, tt.data, chunk["data"], "Should equal expected value")
+			assert.Equal(t, ChunkType("data-"+tt.dataType), chunk["type"], "Data chunk should derive its type from dataType")
+			assert.Equal(t, tt.data, chunk["data"], "Data chunk should include the provided data payload")
 		})
 	}
 }
