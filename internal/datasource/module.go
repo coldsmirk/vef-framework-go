@@ -58,21 +58,26 @@ type ProviderParams struct {
 	Providers []datasource.Provider `group:"vef:datasource:providers"`
 }
 
-// provideRegistry opens the primary source (fail-fast in the provide phase) and
-// registers two lifecycle hooks: a Shutdown hook that drains and closes every
-// source on stop, and a start-only hook that logs the primary version, seeds the
+// provideRegistry builds the registry in the provide phase (a non-blocking open,
+// so the primary orm.DB is available to the graph immediately) and registers two
+// lifecycle hooks: a Shutdown hook that drains and closes every source on stop,
+// and a start-only hook that pings the primary, logs its version, seeds the
 // non-primary static sources, then runs the data source providers.
 //
-// The two are kept separate on purpose. Fx only runs a hook's OnStop when that
-// same hook's OnStart succeeded (see fx internal/lifecycle: Start increments
+// The primary's reachability ping is deferred to start-up so it runs under the
+// FX start timeout instead of the unbounded provide phase — matching how the
+// secondary sources are already pinged during Register.
+//
+// The two hooks are kept separate on purpose. Fx only runs a hook's OnStop when
+// that same hook's OnStart succeeded (see fx internal/lifecycle: Start increments
 // numStarted only after OnStart returns nil; Stop runs OnStop for the started
-// prefix only). Folding Shutdown together with the fallible seed/provider work
-// would mean a mid-start failure skips the drain entirely, leaking the primary
-// and any partially-registered sources. The Shutdown hook carries no OnStart, so
-// it always counts as started and its OnStop is guaranteed once Start reaches it,
+// prefix only). Folding Shutdown together with the fallible start work would mean
+// a mid-start failure skips the drain entirely, leaking the primary and any
+// partially-registered sources. The Shutdown hook carries no OnStart, so it
+// always counts as started and its OnStop is guaranteed once Start reaches it,
 // regardless of which later step fails.
 func provideRegistry(lc fx.Lifecycle, cfg *config.DataSourcesConfig, p ProviderParams) (registryOut, error) {
-	r, err := newRegistry(context.Background(), cfg.Primary(), logger)
+	r, err := newRegistry(cfg.Primary(), logger)
 	if err != nil {
 		return registryOut{}, err
 	}
@@ -88,6 +93,10 @@ func provideRegistry(lc fx.Lifecycle, cfg *config.DataSourcesConfig, p ProviderP
 	})
 
 	lc.Append(fx.StartHook(func(ctx context.Context) error {
+		if err := r.PrimaryRawDB().PingContext(ctx); err != nil {
+			return fmt.Errorf("ping primary data source: %w", err)
+		}
+
 		if err := database.LogVersion(ctx, primaryKind, r.PrimaryRawDB(), logger); err != nil {
 			return err
 		}

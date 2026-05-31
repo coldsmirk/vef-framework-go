@@ -29,7 +29,7 @@ func newTestRegistry(t *testing.T) *registry {
 	t.Helper()
 
 	ctx := context.Background()
-	r, err := newRegistry(ctx, newSQLiteCfg(t, "primary"), logx.Discard())
+	r, err := newRegistry(newSQLiteCfg(t, "primary"), logx.Discard())
 	require.NoError(t, err, "primary registry should construct")
 	t.Cleanup(func() {
 		require.NoError(t, r.Shutdown(ctx), "registry should shut down cleanly")

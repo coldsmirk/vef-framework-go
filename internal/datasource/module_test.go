@@ -2,6 +2,7 @@ package datasource
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -40,4 +41,34 @@ func TestProvideRegistryClosesPrimaryOnSeedFailure(t *testing.T) {
 
 	require.Error(t, out.RawDB.PingContext(ctx),
 		"primary connection must be closed by the Shutdown hook despite the seed failure")
+}
+
+// TestProvideRegistryDefersPrimaryPingToStart pins that the provide phase does
+// not ping the primary: database/sql opens lazily, so a primary that opens but is
+// unreachable still builds the graph, and the reachability check happens in the
+// OnStart hook (where it is bounded by the FX start timeout). This fails if the
+// ping is moved back into the provide phase.
+func TestProvideRegistryDefersPrimaryPingToStart(t *testing.T) {
+	ctx := context.Background()
+	lc := fxtest.NewLifecycle(t)
+
+	// A SQLite path under a missing directory: sql.Open succeeds (lazy) but the
+	// first connection fails because the parent directory does not exist.
+	cfg := &config.DataSourcesConfig{
+		Map: map[string]config.DataSourceConfig{
+			datasource.PrimaryName: {
+				Kind: config.SQLite,
+				Path: filepath.Join(t.TempDir(), "missing-dir", "primary.db"),
+			},
+		},
+	}
+
+	out, err := provideRegistry(lc, cfg, ProviderParams{})
+	require.NoError(t, err, "provide phase opens lazily and must not ping the primary")
+	require.NotNil(t, out.RawDB, "primary raw *sql.DB should be exposed")
+
+	require.Error(t, lc.Start(ctx),
+		"start must fail: the unreachable primary is pinged in the OnStart hook")
+
+	require.NoError(t, lc.Stop(ctx), "stop should drain cleanly")
 }

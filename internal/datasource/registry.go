@@ -49,18 +49,15 @@ type entry struct {
 }
 
 // newRegistry constructs a registry seeded with the primary data source. The
-// primary is opened, Pinged, and on failure the constructor returns an error so
-// the FX boot can fail-fast.
-func newRegistry(ctx context.Context, primaryCfg config.DataSourceConfig, logger logx.Logger) (*registry, error) {
+// open is non-blocking — database/sql establishes no connection until first use
+// — so a bad primary config fails fast here while the actual reachability ping is
+// deferred to start-up, where it runs under the FX start timeout (see
+// provideRegistry). Building the registry in the provide phase keeps the primary
+// orm.DB available to the rest of the FX graph immediately.
+func newRegistry(primaryCfg config.DataSourceConfig, logger logx.Logger) (*registry, error) {
 	sqlDB, ormDB, err := open(primaryCfg)
 	if err != nil {
 		return nil, fmt.Errorf("open primary data source: %w", err)
-	}
-
-	if err := sqlDB.PingContext(ctx); err != nil {
-		_ = sqlDB.Close()
-
-		return nil, fmt.Errorf("ping primary data source: %w", err)
 	}
 
 	return fromEntry(&entry{
