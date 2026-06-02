@@ -78,6 +78,7 @@
   "storage_invalid_file_key": "Invalid file key",
   "storage_file_not_found": "File not found",
   "storage_failed_to_get_file": "Failed to get file",
+  "expression_evaluation_failed": "Failed to evaluate expression",
   "validator_phone_number": "{0} format is invalid",
   "validator_decimal_min": "{0} must be at least {1}",
   "validator_decimal_max": "{0} must be less than or equal to {1}",

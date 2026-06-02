@@ -78,6 +78,7 @@
   "storage_invalid_file_key": "无效的文件标识",
   "storage_file_not_found": "文件不存在",
   "storage_failed_to_get_file": "获取文件失败",
+  "expression_evaluation_failed": "表达式求值失败",
   "validator_phone_number": "{0}格式不正确",
   "validator_decimal_min": "{0}最小只能为{1}",
   "validator_decimal_max": "{0}必须小于或等于{1}",
