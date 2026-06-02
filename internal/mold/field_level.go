@@ -50,3 +50,7 @@ func (f MoldFieldLevel) SiblingField(name string) (reflect.Value, bool) {
 
 	return f.container.Field(cf.idx), true
 }
+
+func (f MoldFieldLevel) Struct() reflect.Value {
+	return f.container
+}

@@ -56,6 +56,10 @@ type FieldLevel interface {
 	// SiblingField returns the sibling field value of the same struct by field name
 	// Returns the field reflect.Value and a boolean indicating if the field exists
 	SiblingField(name string) (reflect.Value, bool)
+	// Struct returns the struct value that contains the current field.
+	// The returned value is invalid when the field is transformed outside of a
+	// struct walk (e.g. via Transformer.Field); callers must check IsValid.
+	Struct() reflect.Value
 }
 
 // StructLevel represents the interface for struct level modifier function.
