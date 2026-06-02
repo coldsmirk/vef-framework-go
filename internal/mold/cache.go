@@ -59,7 +59,11 @@ func (tc *tagCache) Set(key string, value *cTag) {
 
 type cStruct struct {
 	fields map[string]*cField
-	fn     mold.StructLevelFunc
+	// order lists field names in declaration order so transformations run
+	// deterministically (field transformers that read sibling values, such as
+	// expression-derived fields, depend on a stable evaluation order).
+	order []string
+	fn    mold.StructLevelFunc
 }
 
 type cField struct {
@@ -135,6 +139,7 @@ func (t *MoldTransformer) extractStructCache(current reflect.Value) (*cStruct, e
 			cTags: ctag,
 		}
 		sc.fields[field.Name] = cf
+		sc.order = append(sc.order, field.Name)
 	}
 
 	t.cCache.Set(typ, sc)

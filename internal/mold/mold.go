@@ -142,7 +142,8 @@ func (t *MoldTransformer) setByStruct(ctx context.Context, parent, current refle
 		}
 	}
 
-	for name, field := range cs.fields {
+	for _, name := range cs.order {
+		field := cs.fields[name]
 		if err := t.setByFieldWithContainer(ctx, name, current.Field(field.idx), field.cTags, current, cs); err != nil {
 			return err
 		}
