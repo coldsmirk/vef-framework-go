@@ -20,6 +20,13 @@ var (
 	// ErrUnsupportedDialect is returned by DialectFor when no bun dialect is
 	// registered for the requested config.DBKind.
 	ErrUnsupportedDialect = errors.New("orm: unsupported database dialect")
+
+	// ErrConnectionInTx is returned by Connection when it is invoked on a
+	// transaction-scoped DB. A transaction already owns a single dedicated
+	// connection, and bun's Tx exposes only *sql.Tx — handing back a pool
+	// connection would detach it from the transaction (it would not see the
+	// transaction's uncommitted writes and could deadlock on held locks).
+	ErrConnectionInTx = errors.New("orm: Connection is pool-scoped and cannot be used within a transaction")
 )
 
 // translateWriteError converts database-specific errors to framework errors.

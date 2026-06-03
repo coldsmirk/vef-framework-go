@@ -22,6 +22,10 @@ var whitespaceRegex = regexp.MustCompile(`\s+`)
 // guardErrorStashKey is the stash key for storing guard errors.
 const guardErrorStashKey = "__sqlguard_error"
 
+// slowQueryThresholdMillis is the elapsed time at or above which a query is
+// logged at Warn instead of Info.
+const slowQueryThresholdMillis = 500
+
 type queryHook struct {
 	logger   logx.Logger
 	output   *termenv.Output
@@ -53,10 +57,6 @@ func (qh *queryHook) AfterQuery(_ context.Context, event *bun.QueryEvent) {
 	guardErr := qh.extractGuardError(event)
 	elapsed := time.Since(event.StartTime).Milliseconds()
 
-	elapsedStyle := qh.formatElapsedTime(elapsed)
-	operationStyle := qh.formatOperation(event.Operation())
-	queryStyle := qh.formatQuery(event.Query)
-
 	displayErr := guardErr
 	if displayErr == nil {
 		displayErr = event.Err
@@ -64,17 +64,37 @@ func (qh *queryHook) AfterQuery(_ context.Context, event *bun.QueryEvent) {
 
 	if displayErr != nil && !errors.Is(displayErr, sql.ErrNoRows) {
 		errorStyle := qh.output.String(displayErr.Error()).Foreground(termenv.ANSIRed)
-		qh.logger.Error(operationStyle.String() + elapsedStyle.String() + " " + queryStyle.String() + " " + errorStyle.String())
+		qh.logger.Error(qh.formatPrefix(elapsed, event.Operation(), event.Query) + " " + errorStyle.String())
 
 		return
 	}
 
-	message := operationStyle.String() + elapsedStyle.String() + " " + queryStyle.String()
-	if elapsed >= 500 {
+	// Skip the regex normalization and ANSI styling entirely when the target
+	// level is disabled — AfterQuery is the per-query hot path and the formatted
+	// message would otherwise be built only to be discarded.
+	level := logx.LevelInfo
+	if elapsed >= slowQueryThresholdMillis {
+		level = logx.LevelWarn
+	}
+
+	if !qh.logger.Enabled(level) {
+		return
+	}
+
+	message := qh.formatPrefix(elapsed, event.Operation(), event.Query)
+	if level == logx.LevelWarn {
 		qh.logger.Warn(message)
 	} else {
 		qh.logger.Info(message)
 	}
+}
+
+// formatPrefix renders the styled "operation elapsed query" prefix shared by the
+// info, warn, and error log paths.
+func (qh *queryHook) formatPrefix(elapsed int64, operation, query string) string {
+	return qh.formatOperation(operation).String() +
+		qh.formatElapsedTime(elapsed).String() + " " +
+		qh.formatQuery(query).String()
 }
 
 func (*queryHook) extractGuardError(event *bun.QueryEvent) error {

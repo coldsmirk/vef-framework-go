@@ -11,11 +11,12 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/orm/sqlguard"
 )
 
-// TestSQLGuard tests SQL guard integration with raw SQL through the orm query
-// hook. The GoSQLX parser doesn't support double-quoted identifiers (bun's
-// default), so the tests use NewRaw with unquoted SQL. Each subtest opens its
-// own data source and closes it via t.Cleanup so the shared in-memory SQLite
-// database is fresh between subtests.
+// TestSQLGuard tests SQL guard integration through the orm query hook. The
+// GoSQLX parser handles bun's default double-quoted identifiers, so the guard
+// blocks both raw SQL and the bun-generated quoted DDL emitted by the typed
+// builders (see the TypedDropBlocked subtest). Each subtest opens its own data
+// source and closes it via t.Cleanup so the shared in-memory SQLite database is
+// fresh between subtests.
 func TestSQLGuard(t *testing.T) {
 	ctx := context.Background()
 
@@ -46,6 +47,21 @@ func TestSQLGuard(t *testing.T) {
 		var count int
 		require.NoError(t, db.NewRaw("SELECT COUNT(*) FROM test_guard").Scan(ctx, &count),
 			"Table should still exist after blocked DROP")
+	})
+
+	t.Run("TypedDropBlocked", func(t *testing.T) {
+		db := newGuardedDB(t, true)
+
+		// The typed builder emits a bun-quoted identifier (DROP TABLE "test_guard").
+		// This pins that the guard parses and blocks bun-generated quoted DDL, not
+		// only hand-written unquoted raw SQL.
+		_, err := db.NewDropTable().Table("test_guard").Exec(ctx)
+		require.Error(t, err, "Typed DROP should be blocked by SQL guard")
+		require.ErrorIs(t, err, context.Canceled, "Blocked query should cancel the context")
+
+		var count int
+		require.NoError(t, db.NewRaw("SELECT COUNT(*) FROM test_guard").Scan(ctx, &count),
+			"Table should still exist after blocked typed DROP")
 	})
 
 	t.Run("TruncateStatementBlocked", func(t *testing.T) {

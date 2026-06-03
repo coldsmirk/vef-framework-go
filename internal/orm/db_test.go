@@ -86,6 +86,35 @@ func (suite *DBTestSuite) TestConn() {
 	suite.NoError(err, "Conn close should work")
 }
 
+// TestConnectionInTx pins that Connection is pool-scoped: invoking it on a
+// transaction-scoped DB returns ErrConnectionInTx instead of a detached pool
+// connection that would not participate in the transaction.
+func (suite *DBTestSuite) TestConnectionInTx() {
+	suite.T().Logf("Testing Connection within a transaction for %s", suite.ds.Kind)
+
+	suite.Run("RunInTx", func() {
+		err := suite.db.RunInTx(suite.ctx, func(_ context.Context, tx orm.DB) error {
+			conn, err := tx.Connection(suite.ctx)
+			suite.ErrorIs(err, orm.ErrConnectionInTx, "Connection inside RunInTx should be rejected")
+			suite.Nil(conn, "Connection should be nil when rejected inside a transaction")
+
+			return nil
+		})
+		suite.NoError(err, "RunInTx should commit cleanly")
+	})
+
+	suite.Run("BeginTx", func() {
+		tx, err := suite.db.BeginTx(suite.ctx, nil)
+		suite.Require().NoError(err, "BeginTx should start a transaction")
+
+		defer func() { suite.NoError(tx.Rollback(), "Rollback should work") }()
+
+		conn, err := tx.Connection(suite.ctx)
+		suite.ErrorIs(err, orm.ErrConnectionInTx, "Connection on a Tx should be rejected")
+		suite.Nil(conn, "Connection should be nil when rejected on a Tx")
+	})
+}
+
 // TestModelPKs tests ModelPKs method.
 func (suite *DBTestSuite) TestModelPKs() {
 	suite.T().Logf("Testing ModelPKs for %s", suite.ds.Kind)

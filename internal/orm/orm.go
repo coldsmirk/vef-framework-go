@@ -16,7 +16,5 @@ var logger = logx.Named("orm")
 // (see api/middleware/contextual.go). The key must be the bare "Operator" — bun
 // matches the ?Operator placeholder against the registered name without the '?'.
 func New(db bun.IDB) DB {
-	inst := &BunDB{db: db}
-
-	return inst.WithNamedArg(PlaceholderKeyOperator, OperatorSystem)
+	return newBunDB(db).WithNamedArg(PlaceholderKeyOperator, OperatorSystem)
 }

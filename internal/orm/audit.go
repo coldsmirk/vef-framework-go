@@ -10,26 +10,26 @@ import (
 
 // autoColumnHandlers manages audit fields (ID, timestamps, user tracking) on insert/update.
 var autoColumnHandlers = []ColumnHandler{
-	&IDHandler{},
-	&CreatedAtHandler{},
-	&UpdatedAtHandler{},
-	&CreatedByHandler{},
-	&UpdatedByHandler{},
+	new(IDHandler),
+	new(CreatedAtHandler),
+	new(UpdatedAtHandler),
+	new(CreatedByHandler),
+	new(UpdatedByHandler),
 }
 
-type InsertAutoColumnPlanItem struct {
+type insertAutoColumnPlanItem struct {
 	field   *schema.Field
 	handler InsertColumnHandler
 }
 
-type UpdateAutoColumnPlanItem struct {
+type updateAutoColumnPlanItem struct {
 	field   *schema.Field
 	handler UpdateColumnHandler
 }
 
 var (
-	insertAutoColumnPlanCache = collections.NewConcurrentHashMap[*schema.Table, []InsertAutoColumnPlanItem]()
-	updateAutoColumnPlanCache = collections.NewConcurrentHashMap[*schema.Table, []UpdateAutoColumnPlanItem]()
+	insertAutoColumnPlanCache = collections.NewConcurrentHashMap[*schema.Table, []insertAutoColumnPlanItem]()
+	updateAutoColumnPlanCache = collections.NewConcurrentHashMap[*schema.Table, []updateAutoColumnPlanItem]()
 )
 
 // ColumnHandler provides the column name that the handler manages.
@@ -66,9 +66,9 @@ func processAutoColumns(query any, table *schema.Table, modelValue any, mv refle
 	}
 }
 
-func getInsertAutoColumnPlan(table *schema.Table) []InsertAutoColumnPlanItem {
-	plan, _ := insertAutoColumnPlanCache.GetOrCompute(table, func() []InsertAutoColumnPlanItem {
-		items := make([]InsertAutoColumnPlanItem, 0, len(autoColumnHandlers))
+func getInsertAutoColumnPlan(table *schema.Table) []insertAutoColumnPlanItem {
+	plan, _ := insertAutoColumnPlanCache.GetOrCompute(table, func() []insertAutoColumnPlanItem {
+		items := make([]insertAutoColumnPlanItem, 0, len(autoColumnHandlers))
 		for _, handler := range autoColumnHandlers {
 			insertHandler, ok := handler.(InsertColumnHandler)
 			if !ok {
@@ -80,7 +80,7 @@ func getInsertAutoColumnPlan(table *schema.Table) []InsertAutoColumnPlanItem {
 				continue
 			}
 
-			items = append(items, InsertAutoColumnPlanItem{
+			items = append(items, insertAutoColumnPlanItem{
 				field:   field,
 				handler: insertHandler,
 			})
@@ -92,9 +92,9 @@ func getInsertAutoColumnPlan(table *schema.Table) []InsertAutoColumnPlanItem {
 	return plan
 }
 
-func getUpdateAutoColumnPlan(table *schema.Table) []UpdateAutoColumnPlanItem {
-	plan, _ := updateAutoColumnPlanCache.GetOrCompute(table, func() []UpdateAutoColumnPlanItem {
-		items := make([]UpdateAutoColumnPlanItem, 0, len(autoColumnHandlers))
+func getUpdateAutoColumnPlan(table *schema.Table) []updateAutoColumnPlanItem {
+	plan, _ := updateAutoColumnPlanCache.GetOrCompute(table, func() []updateAutoColumnPlanItem {
+		items := make([]updateAutoColumnPlanItem, 0, len(autoColumnHandlers))
 		for _, handler := range autoColumnHandlers {
 			updateHandler, ok := handler.(UpdateColumnHandler)
 			if !ok {
@@ -106,7 +106,7 @@ func getUpdateAutoColumnPlan(table *schema.Table) []UpdateAutoColumnPlanItem {
 				continue
 			}
 
-			items = append(items, UpdateAutoColumnPlanItem{
+			items = append(items, updateAutoColumnPlanItem{
 				field:   field,
 				handler: updateHandler,
 			})
@@ -123,7 +123,7 @@ func applyInsertAutoColumns(
 	table *schema.Table,
 	modelValue any,
 	mv reflect.Value,
-	plan []InsertAutoColumnPlanItem,
+	plan []insertAutoColumnPlanItem,
 ) {
 	if !mv.IsValid() {
 		return
@@ -161,7 +161,7 @@ func applyUpdateAutoColumns(
 	table *schema.Table,
 	modelValue any,
 	mv reflect.Value,
-	plan []UpdateAutoColumnPlanItem,
+	plan []updateAutoColumnPlanItem,
 ) {
 	if !mv.IsValid() {
 		return

@@ -41,6 +41,20 @@ type FloatPKModel struct {
 	Name string  `bun:"name"`
 }
 
+type StringPtrPKModel struct {
+	bun.BaseModel `bun:"table:test_string_ptr_pk"`
+
+	ID   *string `bun:"id,pk"`
+	Name string  `bun:"name"`
+}
+
+type IntPtrPKModel struct {
+	bun.BaseModel `bun:"table:test_int_ptr_pk"`
+
+	ID   *int64 `bun:"id,pk"`
+	Name string `bun:"name"`
+}
+
 func newTestBunDB(t *testing.T) *bun.DB {
 	t.Helper()
 
@@ -202,6 +216,53 @@ func TestPKFieldSetUnsupportedType(t *testing.T) {
 
 	err := pkField.Set(model, 3.14)
 	assert.ErrorIs(t, err, ErrPrimaryKeyUnsupportedType, "Should reject unsupported PK type")
+}
+
+// TestPKFieldSetPointerTypes verifies PKField.Set populates the dereferenced
+// value for pointer-typed primary keys, covering the IsPtr branches for both
+// *string and *int64 PKs.
+func TestPKFieldSetPointerTypes(t *testing.T) {
+	db := newTestBunDB(t)
+
+	t.Run("StringPtrPK", func(t *testing.T) {
+		pkField := newPKFieldForModel(t, db, (*StringPtrPKModel)(nil))
+		model := &StringPtrPKModel{}
+
+		err := pkField.Set(model, "ptr-id")
+		require.NoError(t, err, "Should set *string PK value")
+		require.NotNil(t, model.ID, "Pointer PK should be allocated")
+		assert.Equal(t, "ptr-id", *model.ID, "Should store the dereferenced string value")
+	})
+
+	t.Run("StringPtrPKFromInt", func(t *testing.T) {
+		pkField := newPKFieldForModel(t, db, (*StringPtrPKModel)(nil))
+		model := &StringPtrPKModel{}
+
+		err := pkField.Set(model, 7)
+		require.NoError(t, err, "Should convert int to *string PK")
+		require.NotNil(t, model.ID, "Pointer PK should be allocated")
+		assert.Equal(t, "7", *model.ID, "Should store the converted string value")
+	})
+
+	t.Run("IntPtrPK", func(t *testing.T) {
+		pkField := newPKFieldForModel(t, db, (*IntPtrPKModel)(nil))
+		model := &IntPtrPKModel{}
+
+		err := pkField.Set(model, 42)
+		require.NoError(t, err, "Should set *int64 PK value")
+		require.NotNil(t, model.ID, "Pointer PK should be allocated")
+		assert.Equal(t, int64(42), *model.ID, "Should store the dereferenced int64 value")
+	})
+
+	t.Run("IntPtrPKFromString", func(t *testing.T) {
+		pkField := newPKFieldForModel(t, db, (*IntPtrPKModel)(nil))
+		model := &IntPtrPKModel{}
+
+		err := pkField.Set(model, "123")
+		require.NoError(t, err, "Should parse string to *int64 PK")
+		require.NotNil(t, model.ID, "Pointer PK should be allocated")
+		assert.Equal(t, int64(123), *model.ID, "Should store the parsed int64 value")
+	})
 }
 
 // TestPKFieldValueErrors verifies PKField.Value returns errors for invalid models.
