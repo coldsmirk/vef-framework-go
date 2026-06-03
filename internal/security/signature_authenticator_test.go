@@ -516,21 +516,22 @@ func (s *SignatureAuthenticatorTestSuite) TestIPWhitelist() {
 			IPWhitelist: "192.168.1.0/24",
 		}
 		loader.On("LoadByID", mock.Anything, "app1").Return(principal, testSecretHex, nil)
-		nonceStore.On("StoreIfAbsent", mock.Anything, "app1", mock.AnythingOfType("string"), mock.AnythingOfType("time.Duration")).Return(true, nil)
 
 		auth := NewSignatureAuthenticator(loader, nonceStore)
 		credentials := s.generateValidCredentials("app1", testSecretHex)
 
-		// No IP set in context — should pass whitelist check
-		got, err := auth.Authenticate(ctx, security.Authentication{
+		// No IP set in context — a configured whitelist fails closed (deny).
+		_, err := auth.Authenticate(ctx, security.Authentication{
 			Type:        AuthTypeSignature,
 			Principal:   "app1",
 			Credentials: credentials,
 		})
-		s.Require().NoError(err, "Should pass when request IP is empty")
-		s.Equal("app1", got.ID, "Principal ID should match")
+		s.Require().Error(err, "Should deny when request IP is empty and whitelist is configured")
+
+		resErr, ok := result.AsErr(err)
+		s.Require().True(ok, "Should return a result.Error")
+		s.Equal(security.ErrCodeIPNotAllowed, resErr.Code, "Should return IP-not-allowed code")
 		loader.AssertExpectations(s.T())
-		nonceStore.AssertExpectations(s.T())
 	})
 
 	s.Run("WhitelistIPAllowed", func() {

@@ -73,6 +73,28 @@ func (s *JWTRefreshAuthenticatorTestSuite) TestAuthenticate() {
 		s.Require().Error(err, "Should return error for invalid JWT")
 	})
 
+	s.Run("MalformedSubjectNoAtSign", func() {
+		// Craft a refresh token whose subject has no '@' separator.
+		claimsBuilder := security.NewJWTClaimsBuilder().
+			WithSubject("malformedsubject").
+			WithType(security.TokenTypeRefresh)
+		token, err := s.jwt.Generate(claimsBuilder, time.Hour, 0)
+		s.Require().NoError(err, "Should generate token with malformed subject")
+
+		loader := new(MockUserLoader)
+		auth := NewJWTRefreshAuthenticator(s.jwt, loader)
+
+		_, err = auth.Authenticate(ctx, security.Authentication{
+			Type:      AuthTypeRefresh,
+			Principal: token,
+		})
+		s.Require().Error(err, "Should reject token with malformed subject")
+
+		resErr, ok := result.AsErr(err)
+		s.Require().True(ok, "Should return a result.Error")
+		s.Equal(security.ErrCodeTokenInvalid, resErr.Code, "Should return token invalid code")
+	})
+
 	s.Run("AccessTokenRejected", func() {
 		principal := security.NewUser("user1", "Alice")
 		tokens, err := s.gen.Generate(principal)

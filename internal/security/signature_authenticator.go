@@ -113,7 +113,10 @@ func (*SignatureAuthenticator) validateIPWhitelist(ctx context.Context, principa
 
 	requestIP := contextx.RequestIP(ctx)
 	if requestIP == "" {
-		return nil
+		// Fail closed: an IP whitelist is configured but the request IP cannot be
+		// determined. Allowing the request would silently bypass the control, so
+		// deny instead.
+		return security.ErrIPNotAllowed
 	}
 
 	if validator := security.NewIPWhitelistValidator(details.IPWhitelist); !validator.IsAllowed(requestIP) {

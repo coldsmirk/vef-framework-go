@@ -16,6 +16,15 @@ import (
 func TestRBACPermissionCheckerHasPermission(t *testing.T) {
 	ctx := context.Background()
 
+	t.Run("NilLoader", func(t *testing.T) {
+		checker := NewRBACPermissionChecker(nil)
+		principal := security.NewUser("user1", "Alice", "admin")
+
+		has, err := checker.HasPermission(ctx, principal, "user:read")
+		require.NoError(t, err, "Nil loader should not return an error")
+		assert.False(t, has, "Nil loader should deny permission")
+	})
+
 	t.Run("NilPrincipal", func(t *testing.T) {
 		loader := new(MockRolePermissionsLoader)
 		checker := NewRBACPermissionChecker(loader)

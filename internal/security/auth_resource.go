@@ -145,7 +145,7 @@ func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
 	}
 
 	if challenge != nil {
-		challengeToken, err := a.challengeTokenStore.Generate(principal, pending, nil)
+		challengeToken, err := a.challengeTokenStore.Generate(ctx.Context(), principal, pending, nil)
 		if err != nil {
 			return err
 		}
@@ -220,7 +220,7 @@ type ResolveChallengeParams struct {
 // On success, either issues real auth tokens (all challenges resolved)
 // or evaluates the next challenge sequentially.
 func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengeParams) error {
-	state, err := a.challengeTokenStore.Parse(params.ChallengeToken)
+	state, err := a.challengeTokenStore.Parse(ctx.Context(), params.ChallengeToken)
 	if err != nil {
 		return security.ErrChallengeTokenInvalid
 	}
@@ -248,7 +248,7 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 	}
 
 	if challenge != nil {
-		challengeToken, err := a.challengeTokenStore.Generate(principal, remaining, resolved)
+		challengeToken, err := a.challengeTokenStore.Generate(ctx.Context(), principal, remaining, resolved)
 		if err != nil {
 			return err
 		}
@@ -265,7 +265,9 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 	}
 
 	loginEvent := security.NewLoginEvent(security.LoginEventParams{
+		AuthType:  params.Type,
 		UserID:    &principal.ID,
+		Username:  principal.Name,
 		LoginIP:   httpx.GetIP(ctx),
 		UserAgent: ctx.Get(fiber.HeaderUserAgent),
 		TraceID:   contextx.RequestID(ctx),

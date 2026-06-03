@@ -16,14 +16,14 @@ const (
 
 type JWTTokenGenerator struct {
 	jwt              *security.JWT
-	tokenExpires     time.Duration
+	refreshExpires   time.Duration
 	refreshNotBefore time.Duration
 }
 
 func NewJWTTokenGenerator(jwt *security.JWT, securityConfig *config.SecurityConfig) security.TokenGenerator {
 	return &JWTTokenGenerator{
 		jwt:              jwt,
-		tokenExpires:     securityConfig.TokenExpires,
+		refreshExpires:   securityConfig.TokenExpires,
 		refreshNotBefore: securityConfig.RefreshNotBefore,
 	}
 }
@@ -69,5 +69,5 @@ func (g *JWTTokenGenerator) generateRefreshToken(jwtID string, principal *securi
 		WithSubject(fmt.Sprintf("%s@%s", principal.ID, principal.Name)).
 		WithType(security.TokenTypeRefresh)
 
-	return g.jwt.Generate(claimsBuilder, g.tokenExpires, g.refreshNotBefore)
+	return g.jwt.Generate(claimsBuilder, g.refreshExpires, g.refreshNotBefore)
 }

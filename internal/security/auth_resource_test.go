@@ -1522,14 +1522,14 @@ type MockChallengeTokenStore struct {
 	mock.Mock
 }
 
-func (m *MockChallengeTokenStore) Generate(principal *security.Principal, pending, resolved []string) (string, error) {
-	args := m.Called(principal, pending, resolved)
+func (m *MockChallengeTokenStore) Generate(ctx context.Context, principal *security.Principal, pending, resolved []string) (string, error) {
+	args := m.Called(ctx, principal, pending, resolved)
 
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockChallengeTokenStore) Parse(token string) (*security.ChallengeState, error) {
-	args := m.Called(token)
+func (m *MockChallengeTokenStore) Parse(ctx context.Context, token string) (*security.ChallengeState, error) {
+	args := m.Called(ctx, token)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -1721,7 +1721,7 @@ func (s *AuthResourceErrorPathTestSuite) TestLoginChallengeStoreError() {
 		Return(s.testUser, nil).Once()
 	s.challengeProviderA.On("Evaluate", mock.Anything, mock.Anything).
 		Return(&security.LoginChallenge{Type: "totp", Required: true}, nil).Once()
-	s.challengeTokenStore.On("Generate", s.testUser, mock.Anything, mock.Anything).
+	s.challengeTokenStore.On("Generate", mock.Anything, s.testUser, mock.Anything, mock.Anything).
 		Return("", errors.New("store unavailable")).Once()
 
 	resp := s.MakeRPCRequest(s.loginRequest())
@@ -1760,7 +1760,7 @@ func (s *AuthResourceErrorPathTestSuite) TestRefreshTokenGenerateError() {
 // TestResolveChallengeProviderNotFound covers the branch where the challenge type
 // exists in the pending list but the provider is not registered.
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeProviderNotFound() {
-	s.challengeTokenStore.On("Parse", "valid-challenge-token").
+	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
 			Principal: s.testUser,
 			Pending:   []string{"email"},
@@ -1787,7 +1787,7 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeProviderNotFound() 
 // TestResolveChallengeTokenGenerateError covers the branch where all challenges
 // are resolved but TokenGenerator.Generate fails.
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeTokenGenerateError() {
-	s.challengeTokenStore.On("Parse", "valid-challenge-token").
+	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
 			Principal: s.testUser,
 			Pending:   []string{"totp"},
@@ -1808,7 +1808,7 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeTokenGenerateError(
 // TestResolveChallengeMoreRemain covers the branch where resolving one challenge
 // leaves others pending, returning a new challenge token with the next challenge.
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeMoreRemain() {
-	s.challengeTokenStore.On("Parse", "valid-challenge-token").
+	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
 			Principal: s.testUser,
 			Pending:   []string{"totp", "sms"},
@@ -1817,7 +1817,7 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeMoreRemain() {
 		Return(s.testUser, nil).Once()
 	s.challengeProviderB.On("Evaluate", mock.Anything, s.testUser).
 		Return(&security.LoginChallenge{Type: "sms", Required: true}, nil).Once()
-	s.challengeTokenStore.On("Generate", s.testUser, []string{"sms"}, []string{"totp"}).
+	s.challengeTokenStore.On("Generate", mock.Anything, s.testUser, []string{"sms"}, []string{"totp"}).
 		Return("new-challenge-token", nil).Once()
 
 	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
@@ -1839,7 +1839,7 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeMoreRemain() {
 // TestResolveChallengeStoreErrorOnRemain covers the branch where remaining challenges
 // exist but ChallengeTokenStore.Generate fails for the new token.
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeStoreErrorOnRemain() {
-	s.challengeTokenStore.On("Parse", "valid-challenge-token").
+	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
 			Principal: s.testUser,
 			Pending:   []string{"totp", "sms"},
@@ -1848,7 +1848,7 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeStoreErrorOnRemain(
 		Return(s.testUser, nil).Once()
 	s.challengeProviderB.On("Evaluate", mock.Anything, s.testUser).
 		Return(&security.LoginChallenge{Type: "sms", Required: true}, nil).Once()
-	s.challengeTokenStore.On("Generate", s.testUser, []string{"sms"}, []string{"totp"}).
+	s.challengeTokenStore.On("Generate", mock.Anything, s.testUser, []string{"sms"}, []string{"totp"}).
 		Return("", errors.New("store failure")).Once()
 
 	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
@@ -1862,7 +1862,7 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeStoreErrorOnRemain(
 // TestResolveChallengeEvaluateErrorOnRemain covers the branch where remaining
 // challenges exist but the next provider.Evaluate fails.
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeEvaluateErrorOnRemain() {
-	s.challengeTokenStore.On("Parse", "valid-challenge-token").
+	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
 			Principal: s.testUser,
 			Pending:   []string{"totp", "sms"},
@@ -1884,7 +1884,7 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeEvaluateErrorOnRema
 // when the next pending type has no registered provider — it is skipped
 // and since no more challenges remain, auth tokens are issued.
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeRemainingProviderNotFound() {
-	s.challengeTokenStore.On("Parse", "valid-challenge-token").
+	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
 			Principal: s.testUser,
 			Pending:   []string{"totp", "unknown_type"},

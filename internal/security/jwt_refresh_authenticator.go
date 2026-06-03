@@ -51,6 +51,10 @@ func (j *JWTRefreshAuthenticator) Authenticate(ctx context.Context, authenticati
 	}
 
 	subjectParts := strings.SplitN(claimsAccessor.Subject(), "@", 2)
+	if len(subjectParts) < 2 {
+		return nil, security.ErrTokenInvalid
+	}
+
 	userID := subjectParts[0]
 
 	// Reload user to get latest permissions/status instead of relying on stale token data.

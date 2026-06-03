@@ -147,6 +147,8 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		loader.On("LoadByUsername", mock.Anything, "alice").Return(nil, "", result.ErrRecordNotFound)
 
 		encoder := new(MockPasswordEncoder)
+		// Dummy comparison is performed on the not-found path to equalize timing.
+		encoder.On("Matches", "password123", dummyPasswordHash).Return(false)
 		auth := NewPasswordAuthenticator(loader, encoder)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
@@ -160,6 +162,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		s.Require().True(ok, "Should return a result.Error")
 		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid to avoid leaking user existence")
 		loader.AssertExpectations(s.T())
+		encoder.AssertExpectations(s.T())
 	})
 
 	s.Run("LoaderReturnsGenericError", func() {
@@ -167,6 +170,8 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		loader.On("LoadByUsername", mock.Anything, "alice").Return(nil, "", errors.New("db error"))
 
 		encoder := new(MockPasswordEncoder)
+		// Dummy comparison is performed on the error path to equalize timing.
+		encoder.On("Matches", "password123", dummyPasswordHash).Return(false)
 		auth := NewPasswordAuthenticator(loader, encoder)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
@@ -179,6 +184,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
 		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid to mask internal error")
+		encoder.AssertExpectations(s.T())
 	})
 
 	s.Run("NilPrincipalFromLoader", func() {
@@ -186,6 +192,8 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		loader.On("LoadByUsername", mock.Anything, "alice").Return(nil, "hash", nil)
 
 		encoder := new(MockPasswordEncoder)
+		// Dummy comparison is performed on the nil-principal path to equalize timing.
+		encoder.On("Matches", "password123", dummyPasswordHash).Return(false)
 		auth := NewPasswordAuthenticator(loader, encoder)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
@@ -198,6 +206,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
 		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid code")
+		encoder.AssertExpectations(s.T())
 	})
 
 	s.Run("EmptyPasswordHash", func() {
@@ -206,6 +215,8 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		loader.On("LoadByUsername", mock.Anything, "alice").Return(principal, "", nil)
 
 		encoder := new(MockPasswordEncoder)
+		// Dummy comparison is performed on the empty-hash path to equalize timing.
+		encoder.On("Matches", "password123", dummyPasswordHash).Return(false)
 		auth := NewPasswordAuthenticator(loader, encoder)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
@@ -218,6 +229,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
 		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should return credentials invalid code")
+		encoder.AssertExpectations(s.T())
 	})
 
 	s.Run("PasswordMismatch", func() {

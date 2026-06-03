@@ -2,9 +2,11 @@ package security
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
@@ -132,6 +134,55 @@ func (s *JWTTokenGeneratorTestSuite) TestRefreshTokenClaims() {
 	s.NotEmpty(claims.ID(), "Should have JWT ID")
 	s.Empty(claims.Roles(), "Should not include roles in refresh token")
 	s.Nil(claims.Details(), "Should not include details in refresh token")
+}
+
+// TestTokenTTLs verifies that access and refresh tokens carry the correct expiry durations.
+func (s *JWTTokenGeneratorTestSuite) TestTokenTTLs() {
+	// claimExp extracts the "exp" claim as a Unix timestamp.
+	claimExp := func(claims *security.JWTClaimsAccessor) int64 {
+		raw := claims.Claim("exp")
+		switch v := raw.(type) {
+		case float64:
+			return int64(v)
+		case int64:
+			return v
+		default:
+			s.Fail("unexpected exp claim type", "%T", raw)
+
+			return 0
+		}
+	}
+
+	s.Run("AccessTokenUsesHardcodedTTL", func() {
+		principal := security.NewUser("user1", "Alice")
+
+		tokens, err := s.generator.Generate(principal)
+		s.Require().NoError(err, "Should generate tokens without error")
+
+		claims, err := s.jwt.Parse(tokens.AccessToken)
+		s.Require().NoError(err, "Should parse access token")
+
+		exp := time.Unix(claimExp(claims), 0)
+		delta := time.Until(exp)
+		s.InDelta(AccessTokenExpires.Seconds(), delta.Seconds(), 5, "Access token should expire in ~30 min")
+	})
+
+	s.Run("RefreshTokenUsesConfiguredTTL", func() {
+		const refreshTTL = 24 * time.Hour
+
+		gen := NewJWTTokenGenerator(s.jwt, &config.SecurityConfig{TokenExpires: refreshTTL})
+		principal := security.NewUser("user1", "Alice")
+
+		tokens, err := gen.Generate(principal)
+		s.Require().NoError(err, "Should generate tokens without error")
+
+		claims, err := s.jwt.Parse(tokens.RefreshToken)
+		s.Require().NoError(err, "Should parse refresh token")
+
+		exp := time.Unix(claimExp(claims), 0)
+		delta := time.Until(exp)
+		s.InDelta(refreshTTL.Seconds(), delta.Seconds(), 5, "Refresh token should expire in ~24 h")
+	})
 }
 
 // TestSharedJWTID verifies that access and refresh tokens share the same JWT ID.
