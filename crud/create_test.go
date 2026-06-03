@@ -401,8 +401,7 @@ func (suite *CreateTestSuite) TestCreatePreHookError() {
 		},
 	})
 
-	// Hook errors inside transactions may result in 500
-	suite.Contains([]int{200, 500}, resp.StatusCode, "Should return error status code")
+	suite.Equal(500, resp.StatusCode, "Pre-create hook returning a plain error should produce HTTP 500 (unhandled error path)")
 
 	suite.T().Logf("Create failed as expected due to pre-hook error")
 }
@@ -427,8 +426,7 @@ func (suite *CreateTestSuite) TestCreatePostHookError() {
 		},
 	})
 
-	// Post-hook errors may result in 500 since they occur inside a transaction
-	suite.Contains([]int{200, 500}, resp.StatusCode, "Should return error status code")
+	suite.Equal(500, resp.StatusCode, "Post-create hook returning a plain error should produce HTTP 500 (unhandled error path)")
 
 	suite.T().Logf("Create failed as expected due to post-hook error")
 }
