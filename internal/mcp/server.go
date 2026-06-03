@@ -11,11 +11,11 @@ import (
 	smcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/coldsmirk/vef-framework-go/config"
-	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
+	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/mcp"
 )
 
-var logger = ilogx.Named("mcp")
+var logger = logx.Named("mcp")
 
 type ServerParams struct {
 	fx.In
@@ -160,7 +160,7 @@ func getServerVersion(params ServerParams) string {
 }
 
 func getInstructions(params ServerParams) string {
-	if params.ServerInfo != nil {
+	if params.ServerInfo != nil && params.ServerInfo.Instructions != "" {
 		return params.ServerInfo.Instructions
 	}
 

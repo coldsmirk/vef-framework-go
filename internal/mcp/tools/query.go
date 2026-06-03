@@ -66,7 +66,9 @@ func (t *QueryTool) handleQuery(ctx context.Context, req *mcp.CallToolRequest) (
 	}
 
 	for _, result := range results {
-		convertByteSlicesToStrings(result)
+		for k, v := range result {
+			result[k] = convertByteSlices(v)
+		}
 	}
 
 	jsonBytes, err := json.Marshal(results)
@@ -78,18 +80,35 @@ func (t *QueryTool) handleQuery(ctx context.Context, req *mcp.CallToolRequest) (
 	return mcp.NewToolResultText(string(jsonBytes)), nil
 }
 
-// convertByteSlicesToStrings converts []byte values to strings in a map.
-// Only converts if the byte slice is valid UTF-8 text (e.g., PostgreSQL char/varchar fields).
-// Binary data (e.g., BYTEA/BLOB) remains as []byte and will be Base64-encoded in JSON.
-func convertByteSlicesToStrings(m map[string]any) {
-	for k, v := range m {
-		switch val := v.(type) {
-		case []byte:
-			if utf8.Valid(val) {
-				m[k] = string(val)
-			}
-		case map[string]any:
-			convertByteSlicesToStrings(val)
+// convertByteSlices recursively converts []byte values that hold valid UTF-8
+// text (e.g. PostgreSQL char/varchar fields) into strings, descending into
+// nested maps and slices so array/JSON columns are handled consistently with
+// scalar text columns. Binary data (e.g. BYTEA/BLOB) is left as []byte and will
+// be Base64-encoded in JSON. The converted value is returned.
+func convertByteSlices(v any) any {
+	switch val := v.(type) {
+	case []byte:
+		if utf8.Valid(val) {
+			return string(val)
 		}
+
+		return val
+
+	case map[string]any:
+		for k, elem := range val {
+			val[k] = convertByteSlices(elem)
+		}
+
+		return val
+
+	case []any:
+		for i, elem := range val {
+			val[i] = convertByteSlices(elem)
+		}
+
+		return val
+
+	default:
+		return val
 	}
 }

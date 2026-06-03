@@ -57,7 +57,15 @@ type ServerInfo struct {
 	Instructions string
 }
 
-// Type aliases for MCP SDK types - users don't need to import the SDK directly.
+// Type aliases for MCP SDK types so users don't need to import the SDK directly.
+//
+// Unlike storage/datasource, this package deliberately re-exports the
+// modelcontextprotocol/go-sdk types rather than defining a leak-free contract.
+// The MCP protocol surface (tools, resources, prompts, content) tracks the SDK
+// one-to-one, so an abstraction layer would add maintenance cost without
+// decoupling consumers from the protocol. The tradeoff is intentional: an SDK
+// breaking change propagates to framework consumers, so the SDK version is
+// pinned in go.mod and upgraded deliberately.
 type (
 	Server         = mcp.Server
 	ServerOptions  = mcp.ServerOptions

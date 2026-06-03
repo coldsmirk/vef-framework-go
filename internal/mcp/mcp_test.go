@@ -196,7 +196,7 @@ func (suite *MCPTestSuite) TestMCPEndpointWithValidToken() {
 	suite.Run("InitializeWithValidToken", func() {
 		token := suite.GenerateToken(suite.testUser)
 		suite.NotEmpty(token, "Should get valid access token")
-		suite.T().Logf("Got access token: %s...", token[:20])
+		suite.T().Logf("Got access token: %s...", token[:min(len(token), 20)])
 
 		body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}`
 

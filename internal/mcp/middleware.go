@@ -40,10 +40,6 @@ func (*MCPMiddleware) Order() int {
 }
 
 func (m *MCPMiddleware) Apply(router fiber.Router) {
-	if m.handler == nil {
-		return
-	}
-
 	router.All(mcpPath, m.handler.FiberHandler())
-	logger.Infof("MCP endpoint registered at POST %s", mcpPath)
+	logger.Infof("MCP endpoint registered at %s (all methods)", mcpPath)
 }

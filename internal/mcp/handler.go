@@ -41,7 +41,7 @@ func NewHandler(params HandlerParams) *Handler {
 func createHTTPHandler(server *mcp.Server) http.Handler {
 	return mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return server },
-		&mcp.StreamableHTTPOptions{},
+		new(mcp.StreamableHTTPOptions),
 	)
 }
 
