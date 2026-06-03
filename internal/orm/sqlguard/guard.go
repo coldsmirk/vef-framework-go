@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ajitpratap0/GoSQLX/pkg/gosqlx"
+	"github.com/ajitpratap0/GoSQLX/pkg/sql/ast"
 
 	"github.com/coldsmirk/vef-framework-go/logx"
 )
@@ -12,6 +13,7 @@ import (
 var (
 	ErrDangerousSQL   = errors.New("dangerous sql detected")
 	ErrSQLParseFailed = errors.New("failed to parse sql")
+	ErrNotReadOnly    = errors.New("only read-only sql statements are permitted")
 )
 
 // GuardError wraps a sql guard error with additional context.
@@ -72,6 +74,39 @@ func (g *Guard) Check(sql string) error {
 				Err:       ErrDangerousSQL,
 				Violation: violation,
 				SQL:       sql,
+			}
+		}
+	}
+
+	return nil
+}
+
+// EnsureReadOnly verifies that sql consists solely of read-only statements
+// (SELECT/SHOW/DESCRIBE). Unlike Check it fails closed: a parse error, an empty
+// statement list, or any non-read statement returns an error. It is intended for
+// surfaces that execute caller-supplied SQL, such as the MCP database query tool.
+func EnsureReadOnly(sql string) error {
+	astNode, err := gosqlx.Parse(sql)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrSQLParseFailed, err)
+	}
+
+	if len(astNode.Statements) == 0 {
+		return ErrNotReadOnly
+	}
+
+	for _, stmt := range astNode.Statements {
+		switch stmt.(type) {
+		case *ast.SelectStatement, *ast.Select, *ast.ShowStatement, *ast.DescribeStatement:
+		default:
+			return &GuardError{
+				Err: ErrNotReadOnly,
+				SQL: sql,
+				Violation: &Violation{
+					Rule:        "read_only",
+					Statement:   fmt.Sprintf("%T", stmt),
+					Description: "only read-only (SELECT) statements are permitted",
+				},
 			}
 		}
 	}

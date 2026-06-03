@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"unicode/utf8"
 
+	"github.com/coldsmirk/vef-framework-go/internal/orm/sqlguard"
 	"github.com/coldsmirk/vef-framework-go/mcp"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -31,7 +32,7 @@ func (t *QueryTool) Tools() []mcp.ToolDefinition {
 		{
 			Tool: &mcp.Tool{
 				Name:        "database_query",
-				Description: "Execute a parameterized SQL query against the database. Returns query results as JSON array.",
+				Description: "Execute a read-only (SELECT) parameterized SQL query against the database. Returns query results as JSON array.",
 				InputSchema: mcp.MustSchemaFor[QueryArgs](),
 			},
 			Handler: t.handleQuery,
@@ -49,6 +50,11 @@ func (t *QueryTool) handleQuery(ctx context.Context, req *mcp.CallToolRequest) (
 
 	if args.SQL == "" {
 		return mcp.NewToolResultError("Sql parameter is required and must not be empty"), nil
+	}
+
+	if err := sqlguard.EnsureReadOnly(args.SQL); err != nil {
+		//nolint:nilerr // MCP handler should return error result with nil error
+		return mcp.NewToolResultError("Only read-only (SELECT) queries are permitted: " + err.Error()), nil
 	}
 
 	db := mcp.DBWithOperator(ctx, t.db)
