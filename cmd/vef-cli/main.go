@@ -8,7 +8,7 @@ import (
 
 var (
 	version = "0.0.1"
-	date    = "2025-11-02 22:22:09"
+	date    = ""
 )
 
 func main() {

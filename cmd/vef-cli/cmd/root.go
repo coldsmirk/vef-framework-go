@@ -11,10 +11,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/cmd/vef-cli/cmd/modelschema"
 )
 
-var (
-	Version string
-	Date    string
-)
+var version VersionInfo
 
 var rootCmd = &cobra.Command{
 	Use:   "vef-cli",
@@ -24,15 +21,13 @@ var rootCmd = &cobra.Command{
 
 // Init initializes version information from ldflags or runtime/debug.
 func Init(ldflagsVersion, ldflagsDate string) {
-	info := GetVersionInfo(ldflagsVersion, ldflagsDate)
-	Version = info.Version
-	Date = info.Date
+	version = GetVersionInfo(ldflagsVersion, ldflagsDate)
 }
 
 // Execute runs the root command.
 func Execute() error {
-	rootCmd.Version = Version
-	rootCmd.SetVersionTemplate(Banner + fmt.Sprintf("\nVersion: %s | Built: %s\n", Version, Date))
+	rootCmd.Version = version.Version
+	rootCmd.SetVersionTemplate(Banner + "\n" + version.String() + "\n")
 
 	if err := rootCmd.Execute(); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)

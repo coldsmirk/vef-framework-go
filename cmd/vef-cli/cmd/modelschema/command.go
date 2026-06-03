@@ -7,6 +7,8 @@ import (
 
 	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
+
+	"github.com/coldsmirk/vef-framework-go/cmd/vef-cli/cmd/internal/cliout"
 )
 
 var errInputOutputMismatch = errors.New("when input is a directory, output must also be a directory")
@@ -83,10 +85,10 @@ func runGenerateModelSchema(cmd *cobra.Command, _ []string) error {
 		return errInputOutputMismatch
 	}
 
-	printLabeledLine(output, "Generating model schemas...", "", termenv.ANSICyan)
-	printLabeledLine(output, "  Input: ", input, termenv.ANSIBrightBlack)
-	printLabeledLine(output, "  Output: ", outputPath, termenv.ANSIBrightBlack)
-	printLabeledLine(output, "  Package: ", pkg, termenv.ANSIBrightBlack)
+	cliout.PrintLabeledLine(output, "Generating model schemas...", "", termenv.ANSICyan)
+	cliout.PrintLabeledLine(output, "  Input: ", input, termenv.ANSIBrightBlack)
+	cliout.PrintLabeledLine(output, "  Output: ", outputPath, termenv.ANSIBrightBlack)
+	cliout.PrintLabeledLine(output, "  Package: ", pkg, termenv.ANSIBrightBlack)
 
 	if inputIsDir {
 		if err := GenerateDirectory(input, outputPath, pkg); err != nil {
@@ -101,13 +103,4 @@ func runGenerateModelSchema(cmd *cobra.Command, _ []string) error {
 	_, _ = fmt.Println(output.String("✓ Successfully generated schema files").Foreground(termenv.ANSIGreen))
 
 	return nil
-}
-
-func printLabeledLine(output *termenv.Output, label, value string, color termenv.Color) {
-	if value == "" {
-		_, _ = fmt.Println(output.String(label).Foreground(color))
-	} else {
-		_, _ = fmt.Print(output.String(label).Foreground(color))
-		_, _ = fmt.Println(value)
-	}
 }

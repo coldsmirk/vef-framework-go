@@ -227,7 +227,7 @@ func isOrmBaseModel(expr ast.Expr, pkg *packages.Package) bool {
 		return false
 	}
 
-	if ident.Name != "orm" || selector.Sel.Name != "BaseModel" {
+	if selector.Sel.Name != "BaseModel" {
 		return false
 	}
 

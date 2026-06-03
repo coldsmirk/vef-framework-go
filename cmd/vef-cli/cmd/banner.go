@@ -22,6 +22,6 @@ func PrintBanner() {
 
 	_, _ = fmt.Print(output.String(Banner).Foreground(termenv.ANSICyan).Bold())
 
-	versionInfo := fmt.Sprintf("Version: %s | Built: %s\n\n", Version, Date)
+	versionInfo := version.String() + "\n\n"
 	_, _ = fmt.Print(output.String(versionInfo).Foreground(termenv.ANSIBrightBlack))
 }
