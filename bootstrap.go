@@ -6,24 +6,10 @@ import (
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 
-	"github.com/coldsmirk/vef-framework-go/internal/api"
-	"github.com/coldsmirk/vef-framework-go/internal/app"
+	"github.com/coldsmirk/vef-framework-go/internal/bootmodules"
 	"github.com/coldsmirk/vef-framework-go/internal/config"
-	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
-	"github.com/coldsmirk/vef-framework-go/internal/cron"
 	"github.com/coldsmirk/vef-framework-go/internal/datasource"
-	"github.com/coldsmirk/vef-framework-go/internal/event"
-	"github.com/coldsmirk/vef-framework-go/internal/expression"
 	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
-	"github.com/coldsmirk/vef-framework-go/internal/mcp"
-	"github.com/coldsmirk/vef-framework-go/internal/middleware"
-	"github.com/coldsmirk/vef-framework-go/internal/mold"
-	"github.com/coldsmirk/vef-framework-go/internal/monitor"
-	"github.com/coldsmirk/vef-framework-go/internal/redis"
-	"github.com/coldsmirk/vef-framework-go/internal/schema"
-	"github.com/coldsmirk/vef-framework-go/internal/security"
-	"github.com/coldsmirk/vef-framework-go/internal/sequence"
-	"github.com/coldsmirk/vef-framework-go/internal/storage"
 	"github.com/coldsmirk/vef-framework-go/logx"
 )
 
@@ -39,31 +25,16 @@ func newFxLogger() fxevent.Logger {
 // Run starts the VEF framework with the provided options.
 // It initializes all core modules and runs the application.
 func Run(options ...fx.Option) {
-	// Core framework modules
+	// config, datasource, and the fx logger are wired here; the business
+	// modules come from bootmodules.Core(), the single source of truth shared
+	// with the test harness (internal/apptest) so the two graphs cannot drift.
 	opts := []fx.Option{
 		fx.WithLogger(newFxLogger),
 		config.Module,
 		datasource.Module,
-		middleware.Module,
-		api.Module,
-		security.Module,
-		event.Module,
-		expression.Module,
-		cqrs.Module,
-		cron.Module,
-		redis.Module,
-		mold.Module,
-		storage.Module,
-		sequence.Module,
-		event.OutboxModule,
-		event.RedisStreamTransportModule,
-		event.InboxModule,
-		schema.Module,
-		monitor.Module,
-		mcp.Module,
-		app.Module,
 	}
 
+	opts = append(opts, bootmodules.Core()...)
 	opts = append(opts, options...)
 	opts = append(
 		opts,

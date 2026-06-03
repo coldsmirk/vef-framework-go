@@ -10,22 +10,11 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/datasource"
-	"github.com/coldsmirk/vef-framework-go/internal/api"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
+	"github.com/coldsmirk/vef-framework-go/internal/bootmodules"
 	iconfig "github.com/coldsmirk/vef-framework-go/internal/config"
-	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
-	"github.com/coldsmirk/vef-framework-go/internal/cron"
 	idatasource "github.com/coldsmirk/vef-framework-go/internal/datasource"
-	"github.com/coldsmirk/vef-framework-go/internal/event"
-	"github.com/coldsmirk/vef-framework-go/internal/mcp"
-	"github.com/coldsmirk/vef-framework-go/internal/middleware"
-	"github.com/coldsmirk/vef-framework-go/internal/mold"
-	"github.com/coldsmirk/vef-framework-go/internal/monitor"
 	"github.com/coldsmirk/vef-framework-go/internal/orm"
-	"github.com/coldsmirk/vef-framework-go/internal/redis"
-	"github.com/coldsmirk/vef-framework-go/internal/schema"
-	"github.com/coldsmirk/vef-framework-go/internal/security"
-	"github.com/coldsmirk/vef-framework-go/internal/storage"
 )
 
 // NopConfig implements config.Config for testing without file dependencies.
@@ -93,12 +82,12 @@ func newTestApp(t testing.TB, opts []fx.Option) (*app.App, func()) {
 }
 
 func coreOptions(dataSourceOption fx.Option) []fx.Option {
-	return []fx.Option{
+	opts := []fx.Option{
 		fx.NopLogger,
 		fx.Replace(
 			fx.Annotate(&NopConfig{}, fx.As(new(config.Config))),
 			&config.AppConfig{
-				Name:      "test-app",
+				Name:      testAppName,
 				Port:      0,
 				BodyLimit: "100mib",
 			},
@@ -129,29 +118,14 @@ func coreOptions(dataSourceOption fx.Option) []fx.Option {
 		),
 		iconfig.Module,
 		dataSourceOption,
-		middleware.Module,
-		api.Module,
-		security.Module,
-		event.Module,
-		cqrs.Module,
-		cron.Module,
-		redis.Module,
-		mold.Module,
-		storage.Module,
-		monitor.Module,
-		schema.Module,
-		event.OutboxModule,
-		// RedisStreamTransportModule is safe to load here because the
-		// default RedisConfig has Enabled=false, so redis.NewClient
-		// returns nil, the Ping hook short-circuits, and the redis_stream
-		// constructor falls back to "no transport contributed". Tests
-		// that actually exercise redis_stream provide an enabled config
-		// (see testx.NewRedisContainer).
-		event.RedisStreamTransportModule,
-		event.InboxModule,
-		mcp.Module,
-		app.Module,
 	}
+
+	// Business modules come from bootmodules.Core() — the same canonical list
+	// the production boot sequence (vef.Run) uses — so this harness cannot
+	// drift from the real graph. The default test RedisConfig has Enabled=false,
+	// so the redis_stream transport falls back to "no transport contributed";
+	// tests that exercise it supply an enabled config (see testx.NewRedisContainer).
+	return append(opts, bootmodules.Core()...)
 }
 
 func buildOptions(options ...fx.Option) []fx.Option {
