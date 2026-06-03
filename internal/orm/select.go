@@ -178,54 +178,31 @@ func (q *BunSelectQuery) Model(model any) SelectQuery {
 }
 
 func (q *BunSelectQuery) ModelTable(name string, alias ...string) SelectQuery {
-	if len(alias) > 0 && alias[0] != "" {
-		q.query.ModelTableExpr("? AS ?", bun.Name(name), bun.Name(alias[0]))
-	} else {
-		q.query.ModelTableExpr("? AS ?TableAlias", bun.Name(name))
-	}
+	applyModelTable(name, alias, q.query.ModelTableExpr)
 
 	return q
 }
 
 func (q *BunSelectQuery) Table(name string, alias ...string) SelectQuery {
-	if len(alias) > 0 && alias[0] != "" {
-		q.query.TableExpr("? AS ?", bun.Name(name), bun.Name(alias[0]))
-	} else {
-		q.query.Table(name)
-	}
+	applyTable(name, alias, q.query.TableExpr, q.query.Table)
 
 	return q
 }
 
 func (q *BunSelectQuery) TableFrom(model any, alias ...string) SelectQuery {
-	table := q.db.TableOf(model)
-
-	aliasToUse := table.Alias
-	if len(alias) > 0 && alias[0] != "" {
-		aliasToUse = alias[0]
-	}
-
-	q.query.TableExpr("? AS ?", bun.Name(table.Name), bun.Name(aliasToUse))
+	applyTableFrom(q.query.TableExpr, q.db, model, alias)
 
 	return q
 }
 
 func (q *BunSelectQuery) TableExpr(builder func(ExprBuilder) any, alias ...string) SelectQuery {
-	if len(alias) > 0 && alias[0] != "" {
-		q.query.TableExpr("? AS ?", builder(q.eb), bun.Name(alias[0]))
-	} else {
-		q.query.TableExpr("?", builder(q.eb))
-	}
+	applyTableExpr(q.query.TableExpr, q.eb, builder, alias)
 
 	return q
 }
 
-func (q *BunSelectQuery) TableSubQuery(builder func(query SelectQuery), alias ...string) SelectQuery {
-	if len(alias) > 0 && alias[0] != "" {
-		q.query.TableExpr("(?) AS ?", q.BuildSubQuery(builder), bun.Name(alias[0]))
-	} else {
-		q.query.TableExpr("(?)", q.BuildSubQuery(builder))
-	}
+func (q *BunSelectQuery) TableSubQuery(builder func(SelectQuery), alias ...string) SelectQuery {
+	applyTableSubQuery(q.query.TableExpr, q.BuildSubQuery(builder), alias)
 
 	return q
 }
@@ -670,8 +647,16 @@ func (q *BunSelectQuery) ApplyIf(condition bool, fns ...ApplyFunc[SelectQuery]) 
 	return q
 }
 
-// clearSelectState clears base column selection state flags.
-// Note: exprSelects are NOT cleared as SelectExpr is cumulative and can combine with any mode.
+// clearSelectState resets the mutually-exclusive base column selection state.
+//
+// Selection methods are split into two application models. The mutually-exclusive base
+// selectors (SelectAll/SelectModelColumns/SelectModelPKs/Select) are buffered as flags and
+// thunks and flushed later by applySelectState; this deferral lets a later base selector
+// override an earlier one regardless of call order (e.g. SelectAll after Select). Exclude,
+// ExcludeAll, Distinct, and DistinctOn* apply to q.query eagerly because they are additive
+// modifiers with no override semantics.
+//
+// exprSelects are NOT cleared here: SelectExpr is cumulative and combines with any base mode.
 func (q *BunSelectQuery) clearSelectState() {
 	q.hasSelectAll = false
 	q.hasSelectModelColumns = false
@@ -679,7 +664,8 @@ func (q *BunSelectQuery) clearSelectState() {
 	q.explicitSelects = nil
 }
 
-// applySelectState applies deferred select state before query execution.
+// applySelectState flushes the deferred base selection (see clearSelectState) onto q.query
+// exactly once, immediately before execution or before a subquery is materialized.
 func (q *BunSelectQuery) applySelectState() {
 	if q.selectStateApplied {
 		return

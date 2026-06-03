@@ -34,11 +34,15 @@ func applyTableFrom[T any](tableExpr func(string, ...any) T, db *BunDB, model an
 	tableExpr("? AS ?", bun.Name(table.Name), bun.Name(aliasToUse))
 }
 
+// applyTableExpr sets the table source to a raw SQL expression. The expression is emitted
+// verbatim without enclosing parentheses so that table-valued functions (JSON_EACH(...),
+// UNNEST(...)) render correctly; callers that need a parenthesized inline subquery use
+// ExprBuilder.SubQuery (which adds its own parens) or applyTableSubQuery.
 func applyTableExpr[T any](tableExpr func(string, ...any) T, eb ExprBuilder, builder func(ExprBuilder) any, alias []string) {
 	if len(alias) > 0 && alias[0] != "" {
-		tableExpr("(?) AS ?", builder(eb), bun.Name(alias[0]))
+		tableExpr("? AS ?", builder(eb), bun.Name(alias[0]))
 	} else {
-		tableExpr("(?)", builder(eb))
+		tableExpr("?", builder(eb))
 	}
 }
 
