@@ -2,7 +2,6 @@ package api
 
 import (
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/coldsmirk/go-collections"
@@ -22,6 +21,12 @@ var logger = logx.Named("api")
 type EngineOption func(*engine)
 
 // engine implements api.Engine.
+//
+// Concurrency contract: operations is a ConcurrentMap and supports concurrent
+// Register calls after Mount. routerOperations is a plain (non-concurrent) Map
+// because it is written only during WithRouters (before any goroutine can call
+// Register) and never mutated thereafter — reads are safe without a lock. Do
+// not mutate routerOperations outside of init-time option application.
 type engine struct {
 	defaultVersion   string
 	defaultTimeout   time.Duration
@@ -206,10 +211,10 @@ func (e *engine) registerOperation(res api.Resource, spec api.OperationSpec) err
 		}
 	}
 
-	logger.Infof("Registered %s operation: resource=%s, action=%s, version=%s, type=%s, auth=%s, audit=%v",
+	logger.Infof("Registered %s operation: resource=%s, action=%s, version=%s, auth=%s, audit=%v",
 		rs.Name(),
 		op.Resource, op.Action, op.Version,
-		reflect.TypeOf(res).String(), op.Auth.Strategy, op.EnableAudit)
+		op.Auth.Strategy, op.EnableAudit)
 
 	return nil
 }
@@ -271,10 +276,10 @@ func (e *engine) resolveAuthConfig(res api.Resource, spec api.OperationSpec) *ap
 	return e.defaultAuth.Clone()
 }
 
-// findRouterStrategy finds a router that can handle the given operation spec.
+// findRouterStrategy finds a router that can handle the given resource kind.
 func (e *engine) findRouterStrategy(kind api.Kind) api.RouterStrategy {
 	for router := range e.routerOperations.SeqKeys() {
-		if router.Name() == kind.String() {
+		if router.CanHandle(kind) {
 			return router
 		}
 	}
@@ -339,11 +344,15 @@ func (*engine) wrapHandlerIfNecessary(handler fiber.Handler, op *api.Operation) 
 
 	return timeout.New(handler, timeout.Config{
 		Timeout: op.Timeout,
+		// The timeout middleware does not route OnTimeout's returned error
+		// through the app error handler, so render the response here. All
+		// fields derive from the ErrRequestTimeout sentinel (single source
+		// of truth) rather than being hardcoded inline.
 		OnTimeout: func(c fiber.Ctx) error {
 			return result.Result{
-				Code:    result.ErrCodeRequestTimeout,
+				Code:    result.ErrRequestTimeout.Code,
 				Message: result.ErrRequestTimeout.Message,
-			}.Response(c, fiber.StatusRequestTimeout)
+			}.Response(c, result.ErrRequestTimeout.Status)
 		},
 	})
 }

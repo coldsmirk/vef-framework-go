@@ -76,7 +76,7 @@ func (s *BearerStrategy) Authenticate(ctx fiber.Ctx, _ map[string]any) (*securit
 		}
 	}
 
-	return nil, ErrInvalidToken
+	return nil, security.ErrTokenInvalid
 }
 
 func (*BearerStrategy) wrapExtractError(ctx fiber.Ctx, err error) error {

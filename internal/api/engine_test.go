@@ -607,6 +607,19 @@ func TestResolveRateLimit(t *testing.T) {
 	}
 }
 
+// customNamedRouter is a RouterStrategy whose Name() differs from Kind.String()
+// but whose CanHandle correctly matches. Used to verify the engine routes via
+// CanHandle rather than relying on Name()==Kind.String().
+type customNamedRouter struct {
+	MockRouterStrategy
+
+	handlesKind api.Kind
+}
+
+func (r *customNamedRouter) CanHandle(kind api.Kind) bool {
+	return kind == r.handlesKind
+}
+
 // TestFindRouterStrategy tests find router strategy scenarios.
 func TestFindRouterStrategy(t *testing.T) {
 	rpcRouter := &MockRouterStrategy{name: "rpc"}
@@ -629,6 +642,20 @@ func TestFindRouterStrategy(t *testing.T) {
 		onlyRPC := newTestEngine(t, WithRouters(&MockRouterStrategy{name: "rpc"}))
 		result := onlyRPC.findRouterStrategy(api.KindREST)
 		assert.Nil(t, result, "Should return nil for unknown kind")
+	})
+
+	t.Run("RoutesViaCanHandleNotName", func(t *testing.T) {
+		// The router's Name() is deliberately different from KindRPC.String().
+		// The engine must still find it by calling CanHandle, not Name()==kind.String().
+		router := &customNamedRouter{
+			MockRouterStrategy: MockRouterStrategy{name: "my-custom-rpc-router"},
+			handlesKind:        api.KindRPC,
+		}
+		eng := newTestEngine(t, WithRouters(router))
+
+		found := eng.findRouterStrategy(api.KindRPC)
+		require.NotNil(t, found, "Should find router via CanHandle even when Name differs from kind string")
+		assert.Equal(t, "my-custom-rpc-router", found.Name(), "Should return the custom-named router")
 	})
 }
 

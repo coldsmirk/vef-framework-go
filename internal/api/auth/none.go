@@ -20,7 +20,7 @@ func (*NoneStrategy) Name() string {
 	return api.AuthStrategyNone
 }
 
-// Authenticate returns anonymous principal.
+// Authenticate returns a fresh anonymous principal for this request.
 func (*NoneStrategy) Authenticate(fiber.Ctx, map[string]any) (*security.Principal, error) {
-	return security.PrincipalAnonymous, nil
+	return security.NewUser(security.PrincipalAnonymous.ID, security.PrincipalAnonymous.Name), nil
 }
