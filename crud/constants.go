@@ -13,8 +13,7 @@ const (
 
 // Error message keys and codes.
 const (
-	ErrMessageProcessorMustReturnSlice = "processor_must_return_slice"
-	ErrCodeProcessorInvalidReturn      = 2400
+	ErrCodeProcessorInvalidReturn = 2400
 )
 
 // RPC action names (snake_case identifiers).

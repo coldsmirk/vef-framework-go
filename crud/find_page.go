@@ -1,6 +1,7 @@
 package crud
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/coldsmirk/go-streams"
@@ -34,7 +35,6 @@ func (a *findPageOperation[TModel, TSearch]) Provide() []api.OperationSpec {
 	return []api.OperationSpec{a.Build(a.findPage)}
 }
 
-// This value is used when the request's page size is zero or invalid.
 func (a *findPageOperation[TModel, TSearch]) WithDefaultPageSize(size int) FindPage[TModel, TSearch] {
 	a.defaultPageSize = size
 
@@ -80,11 +80,12 @@ func (a *findPageOperation[TModel, TSearch]) findPage(db orm.DB) (func(ctx fiber
 			return result.Ok(page.New(pageable, total, typedModels)).Response(ctx)
 		}
 
-		// Slow path: processor returned a different slice type, use reflection
+		// Slow path: processor returned a different slice type, use reflection.
+		// Use fmt.Sprintf("%T") to safely handle nil without panicking.
 		rv := reflect.Indirect(reflect.ValueOf(processed))
 		if rv.Kind() != reflect.Slice {
 			return result.Err(
-				i18n.T(ErrMessageProcessorMustReturnSlice, map[string]any{"type": reflect.TypeOf(processed).String()}),
+				i18n.T("crud_processor_must_return_slice", map[string]any{"type": fmt.Sprintf("%T", processed)}),
 				result.WithCode(ErrCodeProcessorInvalidReturn),
 				result.WithStatus(fiber.StatusInternalServerError),
 			)

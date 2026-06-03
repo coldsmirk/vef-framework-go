@@ -22,13 +22,13 @@ type columnRef struct {
 }
 
 // validateColumnsExist validates that the specified columns exist in the model schema.
-func validateColumnsExist(schema *schema.Table, columns ...columnRef) error {
+func validateColumnsExist(table *schema.Table, columns ...columnRef) error {
 	for _, c := range columns {
-		if c.column != "" && !schema.HasField(c.column) {
+		if c.column != "" && !table.HasField(c.column) {
 			return result.Err(i18n.T("crud_field_not_exist_in_model", map[string]any{
 				"field": c.column,
 				"name":  c.name,
-				"model": schema.TypeName,
+				"model": table.TypeName,
 			}))
 		}
 	}
@@ -37,14 +37,14 @@ func validateColumnsExist(schema *schema.Table, columns ...columnRef) error {
 }
 
 // validateOptionColumns validates columns for DataOptionColumnMapping.
-func validateOptionColumns(schema *schema.Table, mapping *DataOptionColumnMapping) error {
+func validateOptionColumns(table *schema.Table, mapping *DataOptionColumnMapping) error {
 	columns := []columnRef{
 		{"labelColumn", mapping.LabelColumn},
 		{"valueColumn", mapping.ValueColumn},
 		{"descriptionColumn", mapping.DescriptionColumn},
 	}
 
-	return validateColumnsExist(schema, columns...)
+	return validateColumnsExist(table, columns...)
 }
 
 // mergeOptionColumnMapping merges the provided mapping with default mapping.
@@ -145,13 +145,13 @@ func parseMetaColumns(specs []string) []orm.ColumnInfo {
 }
 
 // validateMetaColumns validates that all meta columns exist in the table schema.
-func validateMetaColumns(schema *schema.Table, metaColumns []orm.ColumnInfo) error {
+func validateMetaColumns(table *schema.Table, metaColumns []orm.ColumnInfo) error {
 	for _, col := range metaColumns {
-		if !schema.HasField(col.Name) {
+		if !table.HasField(col.Name) {
 			return result.Err(i18n.T("crud_field_not_exist_in_model", map[string]any{
 				"field": col.Name,
 				"name":  "metaColumns",
-				"model": schema.TypeName,
+				"model": table.TypeName,
 			}))
 		}
 	}

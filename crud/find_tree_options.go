@@ -39,21 +39,18 @@ func (a *findTreeOptionsOperation[TModel, TSearch]) Provide() []api.OperationSpe
 	return []api.OperationSpec{a.Build(a.findTreeOptions)}
 }
 
-// This mapping provides fallback values for label, value, description, and sort columns.
 func (a *findTreeOptionsOperation[TModel, TSearch]) WithDefaultColumnMapping(mapping *DataOptionColumnMapping) FindTreeOptions[TModel, TSearch] {
 	a.defaultColumnMapping = mapping
 
 	return a
 }
 
-// This column is used to identify individual nodes and establish parent-child relationships.
 func (a *findTreeOptionsOperation[TModel, TSearch]) WithIDColumn(name string) FindTreeOptions[TModel, TSearch] {
 	a.idColumn = name
 
 	return a
 }
 
-// This column establishes the hierarchical relationship between parent and child nodes.
 func (a *findTreeOptionsOperation[TModel, TSearch]) WithParentIDColumn(name string) FindTreeOptions[TModel, TSearch] {
 	a.parentIDColumn = name
 
@@ -76,7 +73,7 @@ func (a *findTreeOptionsOperation[TModel, TSearch]) WithQueryApplier(applier fun
 	return a
 }
 
-func (a *findTreeOptionsOperation[TModel, TSearch]) findTreeOptions(db orm.DB) (func(ctx fiber.Ctx, db orm.DB, config DataOptionConfig, _ Sortable, search TSearch, meta api.Meta) error, error) {
+func (a *findTreeOptionsOperation[TModel, TSearch]) findTreeOptions(db orm.DB) (func(ctx fiber.Ctx, db orm.DB, config DataOptionConfig, search TSearch, meta api.Meta) error, error) {
 	if err := a.Setup(db, &FindOperationConfig{
 		QueryParts: &QueryPartsConfig{
 			Condition:         []QueryPart{QueryBase},
@@ -95,17 +92,18 @@ func (a *findTreeOptionsOperation[TModel, TSearch]) findTreeOptions(db orm.DB) (
 	}
 
 	if !table.HasField(a.idColumn) {
-		return nil, fmt.Errorf("%w: column %q does not exist in model %T (tree node id)", ErrColumnNotFound, a.idColumn, (*TModel)(nil))
+		return nil, fmt.Errorf("%w: column %q does not exist in model %T (tree node id)", errColumnNotFound, a.idColumn, (*TModel)(nil))
 	}
 
 	if !table.HasField(a.parentIDColumn) {
-		return nil, fmt.Errorf("%w: column %q does not exist in model %T (parent reference)", ErrColumnNotFound, a.parentIDColumn, (*TModel)(nil))
+		return nil, fmt.Errorf("%w: column %q does not exist in model %T (parent reference)", errColumnNotFound, a.parentIDColumn, (*TModel)(nil))
 	}
 
-	return func(ctx fiber.Ctx, db orm.DB, config DataOptionConfig, _ Sortable, search TSearch, meta api.Meta) error {
+	return func(ctx fiber.Ctx, db orm.DB, config DataOptionConfig, search TSearch, meta api.Meta) error {
 		var (
 			flatOptions []TreeDataOption
 			query       = db.NewSelect().Model((*TModel)(nil))
+			cteErr      error
 		)
 
 		mergeOptionColumnMapping(&config.DataOptionColumnMapping, a.defaultColumnMapping)
@@ -119,19 +117,10 @@ func (a *findTreeOptionsOperation[TModel, TSearch]) findTreeOptions(db orm.DB) (
 			return err
 		}
 
-		// selectColumnAs adds a column with optional aliasing: uses Select when column matches alias, SelectAs otherwise.
-		selectColumnAs := func(q orm.SelectQuery, column, alias string) {
-			if column == alias {
-				q.Select(column)
-			} else {
-				q.SelectAs(column, alias)
-			}
-		}
-
 		// applyTreeColumns selects id and parent_id columns on a CTE sub-query.
 		applyTreeColumns := func(q orm.SelectQuery) {
-			selectColumnAs(q, a.idColumn, IDColumn)
-			selectColumnAs(q, a.parentIDColumn, ParentIDColumn)
+			selectColumn(q, a.idColumn, IDColumn)
+			selectColumn(q, a.parentIDColumn, ParentIDColumn)
 		}
 
 		query.WithRecursive(
@@ -139,7 +128,7 @@ func (a *findTreeOptionsOperation[TModel, TSearch]) findTreeOptions(db orm.DB) (
 				applyTreeColumns(cteQuery.Model((*TModel)(nil)))
 
 				if err := a.ConfigureQuery(cteQuery, search, meta, ctx, QueryBase); err != nil {
-					SetQueryError(ctx, err)
+					cteErr = err
 
 					return
 				}
@@ -149,7 +138,7 @@ func (a *findTreeOptionsOperation[TModel, TSearch]) findTreeOptions(db orm.DB) (
 					applyTreeColumns(recursiveQuery.Model((*TModel)(nil)))
 
 					if err := a.ConfigureQuery(recursiveQuery, search, meta, ctx, QueryRecursive); err != nil {
-						SetQueryError(ctx, err)
+						cteErr = err
 
 						return
 					}
@@ -169,16 +158,16 @@ func (a *findTreeOptionsOperation[TModel, TSearch]) findTreeOptions(db orm.DB) (
 					Distinct()
 			})
 
-		if queryErr := QueryError(ctx); queryErr != nil {
-			return queryErr
+		if cteErr != nil {
+			return cteErr
 		}
 
 		applyTreeColumns(query)
-		selectColumnAs(query, config.LabelColumn, LabelColumn)
-		selectColumnAs(query, config.ValueColumn, ValueColumn)
+		selectColumn(query, config.LabelColumn, LabelColumn)
+		selectColumn(query, config.ValueColumn, ValueColumn)
 
 		if config.DescriptionColumn != "" {
-			selectColumnAs(query, config.DescriptionColumn, DescriptionColumn)
+			selectColumn(query, config.DescriptionColumn, DescriptionColumn)
 		}
 
 		query.ApplyIf(len(metaColumns) > 0, func(sq orm.SelectQuery) {

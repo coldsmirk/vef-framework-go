@@ -8,8 +8,8 @@ var ErrModelNoPrimaryKey = errors.New("model has no primary key")
 // ErrAuditUserCompositePK indicates the audit user model has a composite primary key which is not supported.
 var ErrAuditUserCompositePK = errors.New("audit user model has composite primary key, only single primary key is supported")
 
-// ErrSearchTypeMismatch indicates a type mismatch in search parameter conversion.
-var ErrSearchTypeMismatch = errors.New("search type mismatch")
+// errSearchTypeMismatch indicates a type mismatch in search parameter conversion.
+var errSearchTypeMismatch = errors.New("search type mismatch")
 
-// ErrColumnNotFound indicates a column does not exist in the model.
-var ErrColumnNotFound = errors.New("column does not exist in model")
+// errColumnNotFound indicates a column does not exist in the model.
+var errColumnNotFound = errors.New("column does not exist in model")

@@ -38,14 +38,12 @@ func (a *findTreeOperation[TModel, TSearch]) Provide() []api.OperationSpec {
 	return []api.OperationSpec{a.Build(a.findTree)}
 }
 
-// This column is used to identify individual nodes and establish parent-child relationships.
 func (a *findTreeOperation[TModel, TSearch]) WithIDColumn(name string) FindTree[TModel, TSearch] {
 	a.idColumn = name
 
 	return a
 }
 
-// This column establishes the hierarchical relationship between parent and child nodes.
 func (a *findTreeOperation[TModel, TSearch]) WithParentIDColumn(name string) FindTree[TModel, TSearch] {
 	a.parentIDColumn = name
 
@@ -105,17 +103,18 @@ func (a *findTreeOperation[TModel, TSearch]) findTree(db orm.DB) (func(ctx fiber
 
 	table := db.TableOf((*TModel)(nil))
 	if !table.HasField(a.idColumn) {
-		return nil, fmt.Errorf("%w: column %q does not exist in model %T (tree node id)", ErrColumnNotFound, a.idColumn, (*TModel)(nil))
+		return nil, fmt.Errorf("%w: column %q does not exist in model %T (tree node id)", errColumnNotFound, a.idColumn, (*TModel)(nil))
 	}
 
 	if !table.HasField(a.parentIDColumn) {
-		return nil, fmt.Errorf("%w: column %q does not exist in model %T (parent reference)", ErrColumnNotFound, a.parentIDColumn, (*TModel)(nil))
+		return nil, fmt.Errorf("%w: column %q does not exist in model %T (parent reference)", errColumnNotFound, a.parentIDColumn, (*TModel)(nil))
 	}
 
 	return func(ctx fiber.Ctx, db orm.DB, transformer mold.Transformer, search TSearch, meta api.Meta) error {
 		var (
 			flatModels []TModel
 			query      = db.NewSelect()
+			cteErr     error
 		)
 
 		query.WithRecursive(
@@ -124,8 +123,7 @@ func (a *findTreeOperation[TModel, TSearch]) findTree(db orm.DB) (func(ctx fiber
 				baseQuery := cteQuery.Model((*TModel)(nil)).SelectModelColumns()
 
 				if err := a.ConfigureQuery(baseQuery, search, meta, ctx, QueryBase); err != nil {
-					// Store error for later return
-					SetQueryError(ctx, err)
+					cteErr = err
 
 					return
 				}
@@ -135,7 +133,7 @@ func (a *findTreeOperation[TModel, TSearch]) findTree(db orm.DB) (func(ctx fiber
 					recursiveQuery.Model((*TModel)(nil)).SelectModelColumns()
 
 					if err := a.ConfigureQuery(recursiveQuery, search, meta, ctx, QueryRecursive); err != nil {
-						SetQueryError(ctx, err)
+						cteErr = err
 
 						return
 					}
@@ -152,8 +150,8 @@ func (a *findTreeOperation[TModel, TSearch]) findTree(db orm.DB) (func(ctx fiber
 			Distinct().
 			Table("_tree")
 
-		if queryErr := QueryError(ctx); queryErr != nil {
-			return queryErr
+		if cteErr != nil {
+			return cteErr
 		}
 
 		if err := a.ConfigureQuery(query, search, meta, ctx, QueryRoot); err != nil {

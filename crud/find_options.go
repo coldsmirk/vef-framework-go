@@ -37,7 +37,6 @@ func (a *findOptionsOperation[TModel, TSearch]) Provide() []api.OperationSpec {
 	return []api.OperationSpec{a.Build(a.findOptions)}
 }
 
-// This mapping provides fallback values for column mapping when not explicitly specified in queries.
 func (a *findOptionsOperation[TModel, TSearch]) WithDefaultColumnMapping(mapping *DataOptionColumnMapping) FindOptions[TModel, TSearch] {
 	a.defaultColumnMapping = mapping
 

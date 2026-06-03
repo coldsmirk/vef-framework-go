@@ -204,8 +204,6 @@ func (a *baseFindOperation[TModel, TSearch, TProcessorIn, TOperation]) Process(i
 	return a.processor(input, search, ctx)
 }
 
-// This function is called after data is fetched from the database but before returning to the client.
-// Common use cases: data masking, computed fields, nested structure transformation, aggregation.
 func (a *baseFindOperation[TModel, TSearch, TProcessorIn, TOperation]) WithProcessor(processor Processor[TProcessorIn, TSearch]) TOperation {
 	a.processor = processor
 
@@ -236,8 +234,6 @@ func (a *baseFindOperation[TModel, TSearch, TProcessorIn, TOperation]) WithSelec
 	return a.self
 }
 
-// This is applied when no dynamic sorting is provided in the request.
-// The orderSpecs are stored and applied during Setup() to allow framework-level defaults.
 func (a *baseFindOperation[TModel, TSearch, TProcessorIn, TOperation]) WithDefaultSort(orderSpecs ...*sortx.OrderSpec) TOperation {
 	if len(orderSpecs) > 0 {
 		a.defaultSort = slices.Clone(orderSpecs)

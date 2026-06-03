@@ -138,7 +138,7 @@ func (i *importOperation[TModel]) importData() func(ctx fiber.Ctx, db orm.DB, lo
 
 		models, ok := modelsAny.([]TModel)
 		if !ok {
-			return result.Err("import type assertion failed")
+			return result.Err(i18n.T("crud_import_type_assertion_failed"))
 		}
 
 		if len(importErrors) > 0 {
@@ -148,7 +148,7 @@ func (i *importOperation[TModel]) importData() func(ctx fiber.Ctx, db orm.DB, lo
 				Data: fiber.Map{
 					"errors": importErrors,
 				},
-			}.Response(ctx)
+			}.Response(ctx, fiber.StatusUnprocessableEntity)
 		}
 
 		return db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {

@@ -368,9 +368,12 @@ func (suite *DeleteManyTestSuite) TestDeleteManyNegativeCases() {
 			},
 		})
 
-		suite.Equal(500, resp.StatusCode, "Should return 500 status code for invalid parameter type")
+		suite.Equal(400, resp.StatusCode, "A wrong-typed parameter is a client error → HTTP 400")
+		body := suite.ReadResult(resp)
+		suite.False(body.IsOk(), "Invalid primary keys type should fail")
+		suite.Equal(result.ErrCodeBadRequest, body.Code, "A wrong-typed parameter should surface the bad-request code")
 
-		suite.T().Logf("Validation failed as expected for invalid primary keys parameter type")
+		suite.T().Logf("Decode failure surfaced HTTP 400 + bad-request code as expected for invalid primary keys parameter type")
 	})
 
 	suite.Run("AllNonExistent", func() {

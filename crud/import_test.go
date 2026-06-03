@@ -276,7 +276,7 @@ func (suite *ImportTestSuite) TestImportWithValidationErrors() {
 		},
 	}, "test_import_invalid.xlsx", buf.Bytes())
 
-	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
+	suite.Require().Equal(422, resp.StatusCode, "Import validation failures should return HTTP 422 Unprocessable Entity")
 	body := suite.ReadResult(resp)
 	suite.False(body.IsOk(), "Should return failure response due to validation errors")
 
@@ -309,7 +309,7 @@ func (suite *ImportTestSuite) TestImportWithMissingRequiredFields() {
 		},
 	}, "test_import_missing.xlsx", buf.Bytes())
 
-	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
+	suite.Require().Equal(422, resp.StatusCode, "Import validation failures should return HTTP 422 Unprocessable Entity")
 	body := suite.ReadResult(resp)
 	suite.False(body.IsOk(), "Should return failure response due to missing required fields")
 
@@ -602,7 +602,7 @@ func (suite *ImportTestSuite) TestImportCSVWithValidationErrors() {
 		},
 	}, "test_import_invalid.csv", buf.Bytes())
 
-	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
+	suite.Require().Equal(422, resp.StatusCode, "Import validation failures should return HTTP 422 Unprocessable Entity")
 	body := suite.ReadResult(resp)
 	suite.False(body.IsOk(), "Should return failure response due to validation errors")
 
