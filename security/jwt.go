@@ -2,6 +2,7 @@ package security
 
 import (
 	"cmp"
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -47,6 +48,17 @@ func NewJWT(config *JWTConfig) (*JWT, error) {
 		config: config,
 		secret: secret,
 	}, nil
+}
+
+// GenerateSecret returns a cryptographically random, hex-encoded 256-bit secret
+// suitable for JWTConfig.Secret. Use it to provision a per-deployment signing key.
+func GenerateSecret() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("%w: %w", ErrGenerateJWTSecretFailed, err)
+	}
+
+	return hex.EncodeToString(buf), nil
 }
 
 // Generate creates a JWT token with the given claims and expires.

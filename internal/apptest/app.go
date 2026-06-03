@@ -45,6 +45,14 @@ func (*NopConfig) Unmarshal(key string, target any) error {
 		}
 	}
 
+	// Align the test app's JWT signing secret with Suite.GenerateToken so tokens
+	// minted by tests verify against the running app.
+	if key == "vef.security" {
+		if sc, ok := target.(*config.SecurityConfig); ok {
+			sc.Secret = testJWTSecret
+		}
+	}
+
 	return nil
 }
 

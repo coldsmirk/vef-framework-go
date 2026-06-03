@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	AccessTokenExpires = time.Minute * 30
+	AccessTokenExpires  = time.Minute * 30
+	RefreshTokenExpires = time.Hour * 24 * 7
 )
 
 type JWTTokenGenerator struct {

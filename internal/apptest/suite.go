@@ -24,6 +24,10 @@ import (
 // testJWTAudience matches lo.SnakeCase of the test app name "test-app".
 const testJWTAudience = "test_app"
 
+// testJWTSecret is the JWT signing secret apptest configures for the test app
+// (see coreOptions) and reuses in GenerateToken so generated tokens verify.
+const testJWTSecret = security.DefaultJWTSecret
+
 // Suite provides common integration test infrastructure for suites
 // that boot a full FX App and make HTTP requests against it.
 // Embed this struct instead of suite.Suite to get app lifecycle management,
@@ -167,15 +171,12 @@ func (s *Suite) ReadDataAsSlice(data any) []any {
 // --- Auth helpers ---
 
 // GenerateToken creates a valid JWT access token for the given principal.
-// Uses security.DefaultJWTSecret and the test app audience ("test_app").
+// It signs with the same secret and audience ("test_app") that apptest's
+// coreOptions configures for the test app, so the token verifies out of the box.
 // The token is valid for 1 hour with no notBefore delay.
-//
-// Tests using this method must configure the same JWT secret in their FX app:
-//
-//	fx.Replace(&security.JWTConfig{Secret: security.DefaultJWTSecret, Audience: "test_app"})
 func (s *Suite) GenerateToken(principal *security.Principal) string {
 	jwtCfg := &security.JWTConfig{
-		Secret:   security.DefaultJWTSecret,
+		Secret:   testJWTSecret,
 		Audience: testJWTAudience,
 	}
 

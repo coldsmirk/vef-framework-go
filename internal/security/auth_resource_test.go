@@ -176,14 +176,11 @@ func (suite *AuthResourceTestSuite) setupTestApp() {
 		),
 		fx.Replace(
 			&config.SecurityConfig{
+				Secret:           testJWTSecret,
 				TokenExpires:     24 * time.Hour,
 				RefreshNotBefore: 1 * time.Millisecond,
 				LoginRateLimit:   1000,
 				RefreshRateLimit: 1000,
-			},
-			&security.JWTConfig{
-				Secret:   testJWTSecret,
-				Audience: "test-app",
 			},
 		),
 		fx.Invoke(func() {
@@ -1168,14 +1165,11 @@ func (s *ChallengeFlowTestSuite) SetupSuite() {
 		),
 		fx.Replace(
 			&config.SecurityConfig{
+				Secret:           testJWTSecret,
 				TokenExpires:     24 * time.Hour,
 				RefreshNotBefore: 1 * time.Millisecond,
 				LoginRateLimit:   1000,
 				RefreshRateLimit: 1000,
-			},
-			&security.JWTConfig{
-				Secret:   testJWTSecret,
-				Audience: "test-app",
 			},
 		),
 		fx.Invoke(func() {
@@ -1605,14 +1599,11 @@ func (s *AuthResourceErrorPathTestSuite) SetupSuite() {
 		),
 		fx.Replace(
 			&config.SecurityConfig{
+				Secret:           testJWTSecret,
 				TokenExpires:     24 * time.Hour,
 				RefreshNotBefore: 1 * time.Millisecond,
 				LoginRateLimit:   1000,
 				RefreshRateLimit: 1000,
-			},
-			&security.JWTConfig{
-				Secret:   testJWTSecret,
-				Audience: "test-app",
 			},
 		),
 	)

@@ -3,7 +3,8 @@ package security
 import "errors"
 
 var (
-	ErrDecodeJWTSecretFailed = errors.New("failed to decode jwt secret")
+	ErrDecodeJWTSecretFailed   = errors.New("failed to decode jwt secret")
+	ErrGenerateJWTSecretFailed = errors.New("failed to generate jwt secret")
 
 	ErrDecodeSignatureSecretFailed = errors.New("failed to decode signature secret")
 	ErrSignatureSecretRequired     = errors.New("signature secret is required")

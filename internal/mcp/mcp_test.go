@@ -99,11 +99,8 @@ func (suite *MCPTestSuite) setupTestApp() {
 				RequireAuth: true,
 			},
 			&config.SecurityConfig{
+				Secret:       security.DefaultJWTSecret,
 				TokenExpires: 24 * time.Hour,
-			},
-			&security.JWTConfig{
-				Secret:   security.DefaultJWTSecret,
-				Audience: "test_app",
 			},
 		),
 		fx.Invoke(func() {
