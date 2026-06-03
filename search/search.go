@@ -10,27 +10,31 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/dbx"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
-	"github.com/coldsmirk/vef-framework-go/monad"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-var (
-	logger    = logx.Named("search")
-	rangeType = reflect.TypeFor[monad.Range[int]]()
-)
+var logger = logx.Named("search")
 
+// Search is a compiled set of search conditions parsed from a struct's
+// `search` tags. Apply it against a populated instance of that struct to
+// translate non-empty fields into ORM query conditions.
 type Search struct {
-	conditions []Condition
+	conditions []condition
 }
 
-type Condition struct {
-	Index    []int
-	Alias    string
-	Columns  []string
-	Operator Operator
-	Params   map[string]string
+type condition struct {
+	index    []int
+	alias    string
+	columns  []string
+	operator Operator
+	params   map[string]string
 }
 
+// Apply adds a query condition for every non-empty field of target, which must
+// be the (optionally pointer-wrapped) struct the Search was built from. The
+// optional defaultAlias qualifies columns that do not declare their own alias.
+// A non-struct target is a programming error; it is logged and Apply becomes a
+// no-op, adding no conditions, so callers must not rely on it to enforce filtering.
 func (f Search) Apply(cb orm.ConditionBuilder, target any, defaultAlias ...string) {
 	value := reflect.Indirect(reflect.ValueOf(target))
 	if value.Kind() != reflect.Struct {
@@ -40,16 +44,16 @@ func (f Search) Apply(cb orm.ConditionBuilder, target any, defaultAlias ...strin
 	}
 
 	for _, c := range f.conditions {
-		field := value.FieldByIndex(c.Index)
+		field := value.FieldByIndex(c.index)
 		if field.Kind() == reflect.Pointer && field.IsNil() {
 			continue
 		}
 
 		fieldValue := extractFieldValue(field.Interface())
 
-		alias := getColumnAlias(c.Alias, defaultAlias...)
+		alias := getColumnAlias(c.alias, defaultAlias...)
 		columns := streams.MapTo(
-			streams.FromSlice(c.Columns),
+			streams.FromSlice(c.columns),
 			func(column string) string { return dbx.ColumnWithAlias(column, alias) },
 		).Collect()
 
@@ -78,22 +82,22 @@ func getColumnAlias(alias string, defaultAlias ...string) string {
 	return ""
 }
 
-func applyCondition(cb orm.ConditionBuilder, c Condition, columns []string, value any) {
-	switch c.Operator {
+func applyCondition(cb orm.ConditionBuilder, c condition, columns []string, value any) {
+	switch c.operator {
 	case Equals, NotEquals, GreaterThan, GreaterThanOrEqual, LessThan, LessThanOrEqual:
-		applyComparisonCondition(cb, columns[0], c.Operator, value)
+		applyComparisonCondition(cb, columns[0], c.operator, value)
 	case Between, NotBetween:
-		applyBetweenCondition(cb, columns[0], c.Operator, value, c.Params)
+		applyBetweenCondition(cb, columns[0], c.operator, value, c.params)
 	case In, NotIn:
-		applyInCondition(cb, columns[0], value, c.Operator, c.Params)
+		applyInCondition(cb, columns[0], value, c.operator, c.params)
 	case IsNull, IsNotNull:
-		applyNullCondition(cb, columns[0], value, c.Operator)
+		applyNullCondition(cb, columns[0], value, c.operator)
 	case Contains, NotContains, StartsWith, NotStartsWith, EndsWith, NotEndsWith,
 		ContainsIgnoreCase, NotContainsIgnoreCase, StartsWithIgnoreCase, NotStartsWithIgnoreCase,
 		EndsWithIgnoreCase, NotEndsWithIgnoreCase:
-		applyLikeCondition(cb, columns, value, c.Operator)
+		applyLikeCondition(cb, columns, value, c.operator)
 	default:
-		logger.Warnf("Unknown operator %q for columns %v, condition ignored", c.Operator, columns)
+		logger.Warnf("Unknown operator %q for columns %v, condition ignored", c.operator, columns)
 	}
 }
 
@@ -131,11 +135,8 @@ func applyBetweenCondition(cb orm.ConditionBuilder, column string, operator Oper
 func applyInCondition(cb orm.ConditionBuilder, column string, fieldValue any, operator Operator, conditionParams map[string]string) {
 	var values []any
 
-	switch v := fieldValue.(type) {
-	case string:
-		values = parseStringInCondition(v, conditionParams)
-	case *string:
-		values = parseStringInCondition(*v, conditionParams)
+	if s, ok := fieldValue.(string); ok {
+		values = parseStringInCondition(s, conditionParams)
 	}
 
 	// Handle slice types
@@ -179,13 +180,7 @@ func parseStringInCondition(slice string, conditionParams map[string]string) []a
 
 // applyNullCondition only applies condition when value is boolean true.
 func applyNullCondition(cb orm.ConditionBuilder, column string, fieldValue any, operator Operator) {
-	var shouldApply bool
-	switch value := fieldValue.(type) {
-	case bool:
-		shouldApply = value
-	case *bool:
-		shouldApply = *value
-	}
+	shouldApply, _ := fieldValue.(bool)
 
 	switch operator {
 	case IsNull:
@@ -200,14 +195,7 @@ func applyNullCondition(cb orm.ConditionBuilder, column string, fieldValue any, 
 }
 
 func applyLikeCondition(cb orm.ConditionBuilder, columns []string, fieldValue any, operator Operator) {
-	var content string
-	switch value := fieldValue.(type) {
-	case string:
-		content = value
-	case *string:
-		content = *value
-	}
-
+	content, _ := fieldValue.(string)
 	if content == "" {
 		return
 	}

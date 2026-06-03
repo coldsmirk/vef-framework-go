@@ -140,19 +140,19 @@ func TestSimpleSearch(t *testing.T) {
 
 	assert.Len(t, search.conditions, len(tests), "Should have correct number of conditions")
 
-	conditionsByColumn := make(map[string]Condition)
-	for _, condition := range search.conditions {
-		assert.Len(t, condition.Columns, 1, "Each condition should have exactly one column")
-		conditionsByColumn[condition.Columns[0]] = condition
+	conditionsByColumn := make(map[string]condition)
+	for _, cond := range search.conditions {
+		assert.Len(t, cond.columns, 1, "Each condition should have exactly one column")
+		conditionsByColumn[cond.columns[0]] = cond
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.column, func(t *testing.T) {
-			condition, exists := conditionsByColumn[tt.column]
+			cond, exists := conditionsByColumn[tt.column]
 			assert.True(t, exists, "Column should exist in conditions")
-			assert.Equal(t, tt.operator, condition.Operator, "Operator should match")
-			assert.Equal(t, tt.alias, condition.Alias, "Alias should match")
-			assert.Equal(t, tt.params, condition.Params, "Params should match")
+			assert.Equal(t, tt.operator, cond.operator, "Operator should match")
+			assert.Equal(t, tt.alias, cond.alias, "Alias should match")
+			assert.Equal(t, tt.params, cond.params, "Params should match")
 		})
 	}
 }
@@ -165,11 +165,11 @@ func TestComplexSearch(t *testing.T) {
 
 	t.Run("MultiColumnCondition", func(t *testing.T) {
 		foundMultiColumn := false
-		for _, condition := range search.conditions {
-			if len(condition.Columns) > 1 {
+		for _, cond := range search.conditions {
+			if len(cond.columns) > 1 {
 				foundMultiColumn = true
 
-				assert.Equal(t, Contains, condition.Operator, "Multi-column should use contains operator")
+				assert.Equal(t, Contains, cond.operator, "Multi-column should use contains operator")
 			}
 		}
 
@@ -178,8 +178,8 @@ func TestComplexSearch(t *testing.T) {
 
 	t.Run("ConditionWithParams", func(t *testing.T) {
 		foundWithParams := false
-		for _, condition := range search.conditions {
-			if len(condition.Params) > 0 {
+		for _, cond := range search.conditions {
+			if len(cond.params) > 0 {
 				foundWithParams = true
 
 				break
@@ -191,8 +191,8 @@ func TestComplexSearch(t *testing.T) {
 
 	t.Run("RangeOperators", func(t *testing.T) {
 		foundRangeOp := false
-		for _, condition := range search.conditions {
-			if condition.Operator == Between || condition.Operator == NotBetween {
+		for _, cond := range search.conditions {
+			if cond.operator == Between || cond.operator == NotBetween {
 				foundRangeOp = true
 
 				break
@@ -219,8 +219,8 @@ func TestNestedSearch(t *testing.T) {
 	for _, expectedCol := range expectedColumns {
 		t.Run(expectedCol, func(t *testing.T) {
 			found := false
-			for _, condition := range search.conditions {
-				if len(condition.Columns) == 1 && condition.Columns[0] == expectedCol {
+			for _, cond := range search.conditions {
+				if len(cond.columns) == 1 && cond.columns[0] == expectedCol {
 					found = true
 
 					break
@@ -240,11 +240,11 @@ func TestEdgeCases(t *testing.T) {
 
 	t.Run("CustomAlias", func(t *testing.T) {
 		foundWithAlias := false
-		for _, condition := range search.conditions {
-			if condition.Alias == "t1" {
+		for _, cond := range search.conditions {
+			if cond.alias == "t1" {
 				foundWithAlias = true
 
-				assert.Equal(t, []string{"name"}, condition.Columns, "Should have correct column")
+				assert.Equal(t, []string{"name"}, cond.columns, "Should have correct column")
 			}
 		}
 
@@ -253,8 +253,8 @@ func TestEdgeCases(t *testing.T) {
 
 	t.Run("WithParams", func(t *testing.T) {
 		foundWithParams := false
-		for _, condition := range search.conditions {
-			if len(condition.Params) > 0 {
+		for _, cond := range search.conditions {
+			if len(cond.params) > 0 {
 				foundWithParams = true
 
 				break
@@ -266,8 +266,8 @@ func TestEdgeCases(t *testing.T) {
 
 	t.Run("DefaultOperator", func(t *testing.T) {
 		foundDefault := false
-		for _, condition := range search.conditions {
-			if condition.Operator == "startsWith" {
+		for _, cond := range search.conditions {
+			if cond.operator == "startsWith" {
 				foundDefault = true
 
 				break
@@ -334,19 +334,19 @@ func TestOperatorShorthand(t *testing.T) {
 
 	assert.Len(t, search.conditions, len(tests), "Should have correct number of conditions")
 
-	conditionsByFirstColumn := make(map[string]Condition)
-	for _, condition := range search.conditions {
-		assert.Greater(t, len(condition.Columns), 0, "Should have at least one column")
-		conditionsByFirstColumn[condition.Columns[0]] = condition
+	conditionsByFirstColumn := make(map[string]condition)
+	for _, cond := range search.conditions {
+		assert.Greater(t, len(cond.columns), 0, "Should have at least one column")
+		conditionsByFirstColumn[cond.columns[0]] = cond
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
-			condition, exists := conditionsByFirstColumn[tt.key]
+			cond, exists := conditionsByFirstColumn[tt.key]
 			assert.True(t, exists, "Column should exist in conditions")
-			assert.Equal(t, tt.operator, condition.Operator, "Operator should match")
-			assert.Equal(t, tt.columns, condition.Columns, "Columns should match")
-			assert.Equal(t, tt.params, condition.Params, "Params should match")
+			assert.Equal(t, tt.operator, cond.operator, "Operator should match")
+			assert.Equal(t, tt.columns, cond.columns, "Columns should match")
+			assert.Equal(t, tt.params, cond.params, "Params should match")
 		})
 	}
 }
@@ -390,8 +390,8 @@ func TestStructWithoutSearchTags(t *testing.T) {
 
 	assert.Len(t, search.conditions, 3, "Should have conditions for all fields")
 
-	for _, condition := range search.conditions {
-		assert.Equal(t, Equals, condition.Operator, "Should use default operator")
+	for _, cond := range search.conditions {
+		assert.Equal(t, Equals, cond.operator, "Should use default operator")
 	}
 }
 
@@ -420,8 +420,8 @@ func TestDeepNestedStruct(t *testing.T) {
 	for _, expectedCol := range expectedColumns {
 		t.Run(expectedCol, func(t *testing.T) {
 			found := false
-			for _, condition := range search.conditions {
-				if len(condition.Columns) == 1 && condition.Columns[0] == expectedCol {
+			for _, cond := range search.conditions {
+				if len(cond.columns) == 1 && cond.columns[0] == expectedCol {
 					found = true
 
 					break
@@ -455,16 +455,16 @@ func TestNoTagStruct(t *testing.T) {
 
 	assert.Len(t, search.conditions, len(tests), "Should have conditions excluding ignored fields")
 
-	conditionsByColumn := make(map[string]Condition)
-	for _, condition := range search.conditions {
-		conditionsByColumn[condition.Columns[0]] = condition
+	conditionsByColumn := make(map[string]condition)
+	for _, cond := range search.conditions {
+		conditionsByColumn[cond.columns[0]] = cond
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.column, func(t *testing.T) {
-			condition, exists := conditionsByColumn[tt.column]
+			cond, exists := conditionsByColumn[tt.column]
 			assert.True(t, exists, "Column should exist in conditions")
-			assert.Equal(t, tt.operator, condition.Operator, "Should use default operator")
+			assert.Equal(t, tt.operator, cond.operator, "Should use default operator")
 		})
 	}
 }

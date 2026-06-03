@@ -114,6 +114,6 @@ type OrderSpec struct {
 }
 
 // IsValid checks if the OrderSpec has a non-empty column name.
-func (os OrderSpec) IsValid() bool {
-	return os.Column != ""
+func (spec OrderSpec) IsValid() bool {
+	return spec.Column != ""
 }

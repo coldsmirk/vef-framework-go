@@ -14,24 +14,18 @@ import (
 )
 
 var (
-	rangeStartFieldIndex []int
-	rangeEndFieldIndex   []int
+	rangeType            = reflect.TypeFor[monad.Range[int]]()
+	rangeStartFieldIndex = rangeFieldIndex("Start")
+	rangeEndFieldIndex   = rangeFieldIndex("End")
 )
 
-func init() {
-	field, ok := reflect.TypeFor[monad.Range[int]]().FieldByName("Start")
+func rangeFieldIndex(name string) []int {
+	field, ok := rangeType.FieldByName(name)
 	if !ok {
-		panic("mo.Range[int] struct must have a 'Start' field for range operations to work properly")
+		panic("monad.Range[int] struct must have a " + name + " field for range operations to work properly")
 	}
 
-	rangeStartFieldIndex = field.Index
-
-	field, ok = reflect.TypeFor[monad.Range[int]]().FieldByName("End")
-	if !ok {
-		panic("mo.Range[int] struct must have an 'End' field for range operations to work properly")
-	}
-
-	rangeEndFieldIndex = field.Index
+	return field.Index
 }
 
 func getRangeValue(fieldValue any, conditionParams map[string]string) (start, end any, _ bool) {

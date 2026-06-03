@@ -13,6 +13,9 @@ import (
 
 var apiInType = reflect.TypeFor[api.P]()
 
+// New compiles the `search` tags of typ (after dereferencing pointers) into a
+// Search. A non-struct typ is a programming error; it is logged and an empty
+// Search is returned, whose Apply is a no-op.
 func New(typ reflect.Type) Search {
 	typ = reflectx.Indirect(typ)
 	if typ.Kind() != reflect.Struct {
@@ -24,12 +27,13 @@ func New(typ reflect.Type) Search {
 	return Search{conditions: parseStruct(typ)}
 }
 
+// NewFor compiles the `search` tags of the struct type T into a Search.
 func NewFor[T any]() Search {
 	return New(reflect.TypeFor[T]())
 }
 
-func parseStruct(t reflect.Type) []Condition {
-	conditions := make([]Condition, 0)
+func parseStruct(t reflect.Type) []condition {
+	conditions := make([]condition, 0)
 
 	visitor := reflectx.TypeVisitor{
 		VisitFieldType: func(field reflect.StructField, _ int) reflectx.VisitAction {
@@ -72,7 +76,7 @@ func parseStruct(t reflect.Type) []Condition {
 	return conditions
 }
 
-func buildCondition(field reflect.StructField, attrs map[string]string) Condition {
+func buildCondition(field reflect.StructField, attrs map[string]string) condition {
 	column := attrs[AttrColumn]
 	columns := lo.Ternary(
 		column == "",
@@ -90,11 +94,11 @@ func buildCondition(field reflect.StructField, attrs map[string]string) Conditio
 		)
 	}
 
-	return Condition{
-		Index:    field.Index,
-		Alias:    attrs[AttrAlias],
-		Columns:  columns,
-		Operator: Operator(operator),
-		Params:   params,
+	return condition{
+		index:    field.Index,
+		alias:    attrs[AttrAlias],
+		columns:  columns,
+		operator: Operator(operator),
+		params:   params,
 	}
 }

@@ -353,11 +353,13 @@ func TestConvertSliceToCollectionSetEdgeCases(t *testing.T) {
 	})
 }
 
-// probeRegistry verifies that each of the four set-family interfaces for a
-// given element type T is registered AND that the registered builder returns
-// a value implementing the expected interface. This catches both omissions
-// and mis-wiring (e.g. a HashSet builder bound to the SortedSet[T] key).
-func probeRegistry[T cmp.Ordered](t *testing.T) {
+// probeRegistry verifies that each set-family interface for a given element
+// type T is registered AND that the registered builder returns a value
+// implementing the expected interface. This catches both omissions and
+// mis-wiring (e.g. a HashSet builder bound to the SortedSet[T] key). It returns
+// the number of family entries it verified so callers can derive the expected
+// total registry size instead of hard-coding it.
+func probeRegistry[T cmp.Ordered](t *testing.T) int {
 	t.Helper()
 
 	emptySource := reflect.ValueOf([]any{})
@@ -383,6 +385,8 @@ func probeRegistry[T cmp.Ordered](t *testing.T) {
 			"Registry builder %s[%s] should return %T implementing %s",
 			f.name, elemType, out, f.typ)
 	}
+
+	return len(families)
 }
 
 // TestRegistryCoverage asserts that every (interface family × supported T)
@@ -391,21 +395,22 @@ func probeRegistry[T cmp.Ordered](t *testing.T) {
 // explicitly so a missing registerCollectionSet call shows up as a concrete
 // failing assertion instead of a silent gap that the size check might miss.
 func TestRegistryCoverage(t *testing.T) {
-	probeRegistry[string](t)
-	probeRegistry[int](t)
-	probeRegistry[int8](t)
-	probeRegistry[int16](t)
-	probeRegistry[int32](t)
-	probeRegistry[int64](t)
-	probeRegistry[uint](t)
-	probeRegistry[uint8](t)
-	probeRegistry[uint16](t)
-	probeRegistry[uint32](t)
-	probeRegistry[uint64](t)
-	probeRegistry[float32](t)
-	probeRegistry[float64](t)
+	verified := probeRegistry[string](t) +
+		probeRegistry[int](t) +
+		probeRegistry[int8](t) +
+		probeRegistry[int16](t) +
+		probeRegistry[int32](t) +
+		probeRegistry[int64](t) +
+		probeRegistry[uint](t) +
+		probeRegistry[uint8](t) +
+		probeRegistry[uint16](t) +
+		probeRegistry[uint32](t) +
+		probeRegistry[uint64](t) +
+		probeRegistry[float32](t) +
+		probeRegistry[float64](t)
 
-	// 4 families × 13 element types = 52 entries.
-	assert.Equal(t, 52, len(collectionSetBuilders),
-		"Registry size should match families × supported element types")
+	// The registry must hold exactly the verified (family × element type) pairs
+	// and nothing more, so any unverified extra entry is caught here.
+	assert.Equal(t, verified, len(collectionSetBuilders),
+		"Registry size should match the verified families × supported element types")
 }

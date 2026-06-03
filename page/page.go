@@ -15,7 +15,10 @@ type Pageable struct {
 	Size int `json:"size"`
 }
 
-// Normalize normalizes the pageable parameters.
+// Normalize normalizes the pageable parameters. The optional size argument
+// supplies the fallback page size used when Size is unset; only the first
+// value is considered and any further arguments are ignored. When omitted,
+// DefaultPageSize is used.
 func (p *Pageable) Normalize(size ...int) {
 	if p.Page < 1 {
 		p.Page = DefaultPageNumber

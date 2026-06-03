@@ -9,7 +9,6 @@ import (
 )
 
 var (
-	// DefaultDecoderTagName is the default struct tag name used for map decoding.
 	defaultDecoderTagName = "json"
 
 	// DecoderHook composes multiple decode hooks for comprehensive type conversion.
@@ -68,7 +67,7 @@ func NewDecoder(result any, options ...DecoderOption) (*mapstructure.Decoder, er
 	return mapstructure.NewDecoder(config)
 }
 
-// Default is "json". This specifies which struct tag to read for field names.
+// WithTagName sets the struct tag used to read field names. Default is "json".
 // Example: WithTagName("yaml") will use `yaml:"field_name"` tags.
 func WithTagName(tagName string) DecoderOption {
 	return func(c *mapstructure.DecoderConfig) {
@@ -85,7 +84,7 @@ func WithIgnoreUntaggedFields(ignoreUntaggedFields bool) DecoderOption {
 	}
 }
 
-// The hook is called before decoding and allows modification of values before setting them.
+// WithDecodeHook overrides the decode hook called before decoding to allow modification of values before setting them.
 // It's called for every map and value in the input. Returning an error will cause the entire decode to fail.
 // This replaces the default DecoderHook which includes time, URL, IP, and basic type conversions.
 func WithDecodeHook(decodeHook mapstructure.DecodeHookFunc) DecoderOption {
@@ -94,9 +93,9 @@ func WithDecodeHook(decodeHook mapstructure.DecodeHookFunc) DecoderOption {
 	}
 }
 
-// Default uses CamelCase matching. The function receives the map key and struct field name,
-// and should return true if they match. This allows implementing case-sensitive matching,
-// snake_case conversion, or other custom naming strategies.
+// WithMatchName sets the predicate matching map keys to struct field names. Default uses CamelCase matching.
+// The function receives the map key and struct field name, and should return true if they match.
+// This allows implementing case-sensitive matching, snake_case conversion, or other custom naming strategies.
 func WithMatchName(matchName func(mapKey, fieldName string) bool) DecoderOption {
 	return func(c *mapstructure.DecoderConfig) {
 		c.MatchName = matchName

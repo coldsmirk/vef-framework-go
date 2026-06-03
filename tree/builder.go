@@ -6,13 +6,20 @@ import (
 
 // Adapter provides functions to access tree node properties.
 type Adapter[T any] struct {
-	GetID       func(T) string
+	// GetID returns the unique identifier of a node. Nodes with an empty ID are ignored.
+	GetID func(T) string
+	// GetParentID returns the identifier of a node's parent, or nil if the node is a root.
 	GetParentID func(T) *string
+	// GetChildren returns the children already attached to a node.
 	GetChildren func(T) []T
+	// SetChildren assigns the children of a node in place via the given pointer.
 	SetChildren func(*T, []T)
 }
 
 // Build constructs a tree structure from a flat slice of nodes using the provided adapter.
+// A node is treated as a root when its parent ID is nil or refers to an ID not present in
+// nodes. Nodes whose parent chain never reaches such a root (for example a closed cycle
+// like 1->2->1) are unreachable and therefore omitted from the result.
 func Build[T any](nodes []T, adapter Adapter[T]) []T {
 	if len(nodes) == 0 {
 		return []T{}
