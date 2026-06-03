@@ -158,54 +158,17 @@ func TestIsSimilarType(t *testing.T) {
 		t2 := reflect.TypeFor[EmbeddedStruct]()
 		assert.False(t, IsSimilarType(t1, t2), "Different non-generic types should not be similar")
 	})
-}
 
-// TestApplyIfString tests apply if string functionality.
-func TestApplyIfString(t *testing.T) {
-	t.Run("StringValue", func(t *testing.T) {
-		result := ApplyIfString("hello", func(s string) int {
-			return len(s)
-		})
-		assert.Equal(t, 5, result, "Should apply function to string value")
+	t.Run("BothNil", func(t *testing.T) {
+		assert.True(t, IsSimilarType(nil, nil), "Two nil types should be treated as identical")
 	})
 
-	t.Run("ReflectValueString", func(t *testing.T) {
-		rv := reflect.ValueOf("world")
-		result := ApplyIfString(rv, func(s string) int {
-			return len(s)
-		})
-		assert.Equal(t, 5, result, "Should apply function to reflect.Value string")
+	t.Run("FirstNil", func(t *testing.T) {
+		assert.False(t, IsSimilarType(nil, reflect.TypeFor[int]()), "A nil type should not be similar to a concrete type")
 	})
 
-	t.Run("PointerToString", func(t *testing.T) {
-		str := "test"
-		result := ApplyIfString(&str, func(s string) int {
-			return len(s)
-		})
-		assert.Equal(t, 4, result, "Should apply function to pointer to string")
-	})
-
-	t.Run("NonStringValueWithDefault", func(t *testing.T) {
-		result := ApplyIfString(123, func(s string) int {
-			return len(s)
-		}, 999)
-		assert.Equal(t, 999, result, "Should return default for non-string value")
-	})
-
-	t.Run("NonStringValueWithoutDefault", func(t *testing.T) {
-		result := ApplyIfString(123, func(s string) int {
-			return len(s)
-		})
-		assert.Equal(t, 0, result, "Should return empty value for non-string without default")
-	})
-
-	t.Run("NilPointer", func(t *testing.T) {
-		var str *string
-
-		result := ApplyIfString(str, func(s string) int {
-			return len(s)
-		}, 100)
-		assert.Equal(t, 100, result, "Should return default for nil pointer")
+	t.Run("SecondNil", func(t *testing.T) {
+		assert.False(t, IsSimilarType(reflect.TypeFor[int](), nil), "A concrete type should not be similar to a nil type")
 	})
 }
 

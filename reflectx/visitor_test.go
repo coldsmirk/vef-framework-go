@@ -63,6 +63,15 @@ type VisitorSharedRoot struct {
 	VisitorBranchB
 }
 
+type VisitorSiblingLeaf struct {
+	Value string
+}
+
+type VisitorSameTypedSiblings struct {
+	Primary   VisitorSiblingLeaf `visit:"dive"`
+	Secondary VisitorSiblingLeaf `visit:"dive"`
+}
+
 // TestVisitDepthFirst tests Visit depth first scenarios.
 func TestVisitDepthFirst(t *testing.T) {
 	// Create test structure
@@ -116,6 +125,68 @@ func TestVisitDepthFirst(t *testing.T) {
 
 	assert.Contains(t, visitedMethods, "BaseMethod", "Should visit BaseMethod")
 	assert.Contains(t, visitedMethods, "EmbeddedMethod", "Should visit EmbeddedMethod")
+}
+
+// TestVisitSameTypedSiblings verifies that distinct fields sharing the same struct
+// type are each recursed into, so neither subtree's field index paths are dropped.
+func TestVisitSameTypedSiblings(t *testing.T) {
+	testStruct := VisitorSameTypedSiblings{
+		Primary:   VisitorSiblingLeaf{Value: "primary"},
+		Secondary: VisitorSiblingLeaf{Value: "secondary"},
+	}
+
+	var leafIndexPaths [][]int
+
+	visitor := Visitor{
+		VisitField: func(field reflect.StructField, _ reflect.Value, _ int) VisitAction {
+			if field.Name == "Value" {
+				leafIndexPaths = append(leafIndexPaths, field.Index)
+			}
+
+			return Continue
+		},
+	}
+
+	t.Run("DepthFirst", func(t *testing.T) {
+		leafIndexPaths = nil
+
+		Visit(reflect.ValueOf(testStruct), visitor)
+
+		assert.Equal(t, [][]int{{0, 0}, {1, 0}}, leafIndexPaths, "Both same-typed sibling subtrees should be visited with distinct index paths")
+	})
+
+	t.Run("BreadthFirst", func(t *testing.T) {
+		leafIndexPaths = nil
+
+		Visit(reflect.ValueOf(testStruct), visitor, WithTraversalMode(BreadthFirst))
+
+		assert.ElementsMatch(t, [][]int{{0, 0}, {1, 0}}, leafIndexPaths, "Both same-typed sibling subtrees should be visited with distinct index paths")
+	})
+}
+
+// TestVisitDiamondBranches verifies a type reachable through two independent
+// branches is visited once per branch in DepthFirst mode.
+func TestVisitDiamondBranches(t *testing.T) {
+	var visitedStructs []string
+
+	visitor := Visitor{
+		VisitStruct: func(structType reflect.Type, _ reflect.Value, _ int) VisitAction {
+			visitedStructs = append(visitedStructs, structType.Name())
+
+			return Continue
+		},
+	}
+
+	Visit(reflect.ValueOf(VisitorSharedRoot{}), visitor)
+
+	count := 0
+	for _, name := range visitedStructs {
+		if name == "VisitorSharedBase" {
+			count++
+		}
+	}
+
+	assert.Equal(t, 2, count, "Shared base should be visited once per independent branch")
 }
 
 // TestVisitBreadthFirst tests Visit breadth first scenarios.
@@ -831,11 +902,10 @@ func TestVisitCyclicReference(t *testing.T) {
 
 	Visit(reflect.ValueOf(node1), visitor)
 
-	// Should visit each instance, but prevent infinite recursion
-	// Due to cycle detection, the same struct type should not cause infinite loop
-	assert.NotEmpty(t, visitedStructs, "Cycle traversal should visit at least one node")
-	// The exact behavior depends on implementation, but it shouldn't hang
-	assert.True(t, len(visitedStructs) < 10, "Should not visit too many instances due to cycle detection")
+	// Path-scoped cycle detection stops as soon as a type recurs on the active path.
+	// A self-referencing node revisits its own type immediately, so only the entry
+	// node is visited and the cycle never expands.
+	assert.Equal(t, []string{"SelfReferencing_node1"}, visitedStructs, "Self-referencing cycle should visit only the entry node")
 }
 
 // TestVisitMethodsOnNonAddressableValue tests Visit methods on non addressable value scenarios.
@@ -1186,9 +1256,17 @@ func TestVisitFieldIndexPathMixedEmbedding(t *testing.T) {
 
 	fieldIndexMap := make(map[string][]int)
 
+	// InnerField is reached through both the anonymous Inner embed and the
+	// dive-tagged Tagged field, so it has two distinct index paths.
+	var innerFieldPaths [][]int
+
 	// Test with dive tag enabled
 	visitor := TypeVisitor{
 		VisitFieldType: func(field reflect.StructField, _ int) VisitAction {
+			if field.Name == "InnerField" {
+				innerFieldPaths = append(innerFieldPaths, field.Index)
+			}
+
 			fieldIndexMap[field.Name] = field.Index
 
 			return Continue
@@ -1197,10 +1275,8 @@ func TestVisitFieldIndexPathMixedEmbedding(t *testing.T) {
 
 	VisitType(reflect.TypeFor[Outer](), visitor, WithDiveTag("visit", "dive"))
 
-	// Anonymous InnerField should be at [0, 0, 0]
-	anonymousInnerIndex, found := fieldIndexMap["InnerField"]
-	assert.True(t, found, "Should find InnerField from anonymous embedding")
-	assert.Equal(t, []int{0, 0, 0}, anonymousInnerIndex, "Anonymous InnerField should have path [0,0,0]")
+	// InnerField is reached via the anonymous embed ([0,0,0]) and the tagged field ([0,2,0]).
+	assert.ElementsMatch(t, [][]int{{0, 0, 0}, {0, 2, 0}}, innerFieldPaths, "Both InnerField paths from the same-typed siblings should be visited")
 
 	// MiddleField should be at [0, 1]
 	assert.NotNil(t, fieldIndexMap["MiddleField"], "Visitor field index should be recorded")
@@ -1430,8 +1506,9 @@ func TestVisitBreadthFirstUnexportedFields(t *testing.T) {
 	assert.Equal(t, []string{"PublicField"}, visitedFields, "Should only visit exported fields")
 }
 
-// TestVisitBreadthFirstVisitedDedup tests visited type deduplication in BreadthFirst mode.
-func TestVisitBreadthFirstVisitedDedup(t *testing.T) {
+// TestVisitBreadthFirstDiamondBranches tests that a type reachable through two
+// independent branches is visited once per branch in BreadthFirst mode.
+func TestVisitBreadthFirstDiamondBranches(t *testing.T) {
 	testStruct := VisitorSharedRoot{}
 
 	var visitedStructs []string
@@ -1453,7 +1530,7 @@ func TestVisitBreadthFirstVisitedDedup(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, 1, count, "Shared base should only be visited once")
+	assert.Equal(t, 2, count, "Shared base should be visited once per independent branch")
 }
 
 // TestVisitMethodStopAction tests method visitor returning Stop in both traversal modes.
@@ -1547,8 +1624,9 @@ func TestVisitTypeBreadthFirstMaxDepth(t *testing.T) {
 	assert.NotContains(t, visitedTypes, "VisitorTestLogger", "Should not visit deeper structures due to MaxDepth")
 }
 
-// TestVisitTypeBreadthFirstVisitedDedup tests visited type deduplication in BreadthFirst type traversal.
-func TestVisitTypeBreadthFirstVisitedDedup(t *testing.T) {
+// TestVisitTypeBreadthFirstDiamondBranches tests that a type reachable through two
+// independent branches is visited once per branch in BreadthFirst type traversal.
+func TestVisitTypeBreadthFirstDiamondBranches(t *testing.T) {
 	var visitedTypes []string
 
 	visitor := TypeVisitor{
@@ -1568,7 +1646,7 @@ func TestVisitTypeBreadthFirstVisitedDedup(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, 1, count, "Shared base should only be visited once")
+	assert.Equal(t, 2, count, "Shared base should be visited once per independent branch")
 }
 
 // TestVisitTypeUnexportedFields tests unexported field skipping in both traversal modes.

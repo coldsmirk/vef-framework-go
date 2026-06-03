@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-
-	"github.com/samber/lo"
 )
 
 // Indirect returns the underlying type of pointer type.
@@ -28,6 +26,10 @@ func IsSimilarType(t1, t2 reflect.Type) bool {
 		return true
 	}
 
+	if t1 == nil || t2 == nil {
+		return false
+	}
+
 	if t1.PkgPath() != t2.PkgPath() {
 		return false
 	}
@@ -39,24 +41,18 @@ func IsSimilarType(t1, t2 reflect.Type) bool {
 	return index1 > -1 && index2 > -1 && index1 == index2 && name1[:index1] == name2[:index2]
 }
 
-// ApplyIfString applies a function to a string value, returning defaultValue for non-strings.
-func ApplyIfString[T any](value any, fn func(string) T, defaultValue ...T) T {
-	var rv reflect.Value
-	if v, ok := value.(reflect.Value); ok {
-		rv = reflect.Indirect(v)
-	} else {
-		rv = reflect.Indirect(reflect.ValueOf(value))
+// addressablePointer returns a pointer to value, reusing its address when addressable
+// and otherwise copying it into a freshly allocated pointer. This exposes pointer-receiver
+// methods on non-addressable values.
+func addressablePointer(value reflect.Value) reflect.Value {
+	if value.CanAddr() {
+		return value.Addr()
 	}
 
-	if rv.Kind() == reflect.String {
-		return fn(rv.String())
-	}
+	ptr := reflect.New(value.Type())
+	ptr.Elem().Set(value)
 
-	if len(defaultValue) > 0 {
-		return defaultValue[0]
-	}
-
-	return lo.Empty[T]()
+	return ptr
 }
 
 // FindMethod finds a method on a target value (includes pointer receiver and promoted methods).
@@ -66,15 +62,7 @@ func FindMethod(target reflect.Value, name string) reflect.Value {
 	}
 
 	if target.Kind() != reflect.Pointer {
-		var ptrValue reflect.Value
-		if target.CanAddr() {
-			ptrValue = target.Addr()
-		} else {
-			ptrValue = reflect.New(target.Type())
-			ptrValue.Elem().Set(target)
-		}
-
-		if method := ptrValue.MethodByName(name); method.IsValid() {
+		if method := addressablePointer(target).MethodByName(name); method.IsValid() {
 			return method
 		}
 	}
@@ -98,17 +86,9 @@ func CollectMethods(target reflect.Value) map[string]reflect.Value {
 		return methods
 	}
 
-	targetType := target.Type()
-
-	var ptrTarget reflect.Value
-	if target.CanAddr() {
-		ptrTarget = target.Addr()
-	} else {
-		ptrTarget = reflect.New(targetType)
-		ptrTarget.Elem().Set(target)
-	}
-
+	ptrTarget := addressablePointer(target)
 	ptrType := ptrTarget.Type()
+
 	for i := range ptrType.NumMethod() {
 		method := ptrType.Method(i)
 		methods[method.Name] = ptrTarget.Method(i)
