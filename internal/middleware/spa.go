@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"path"
 	"strings"
 	"time"
 
@@ -12,6 +13,22 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/app"
 	"github.com/coldsmirk/vef-framework-go/middleware"
 )
+
+// spaEntryPath returns the SPA mount path, defaulting an empty path to "/".
+func spaEntryPath(config *middleware.SPAConfig) string {
+	if config.Path == "" {
+		return "/"
+	}
+
+	return config.Path
+}
+
+// spaStaticPrefix returns the canonical static-asset prefix for a SPA mount:
+// "/static/" for a root mount, "/app/static/" for an "/app" mount. path.Join
+// normalizes the join so a root mount never yields a double-slashed "//static/".
+func spaStaticPrefix(config *middleware.SPAConfig) string {
+	return path.Join(spaEntryPath(config), "static") + "/"
+}
 
 type spaMiddleware struct {
 	configs []*middleware.SPAConfig
@@ -27,26 +44,28 @@ func (*spaMiddleware) Order() int {
 
 func (s *spaMiddleware) Apply(router fiber.Router) {
 	for _, config := range s.configs {
-		applySpa(router, config)
+		applySPA(router, config)
 	}
 
 	router.Use(func(ctx fiber.Ctx) error {
 		if ctx.Method() == fiber.MethodGet {
-			path := ctx.Path()
+			reqPath := ctx.Path()
 			for _, config := range s.configs {
-				// Skip if already at SPA entry or static path to prevent infinite loop
-				if path == config.Path || strings.HasPrefix(path, config.Path+"/static/") {
+				entry := spaEntryPath(config)
+
+				// Skip if already at SPA entry or static path to prevent infinite loop.
+				if reqPath == entry || strings.HasPrefix(reqPath, spaStaticPrefix(config)) {
 					continue
 				}
 
 				// Skip configured exclusions (e.g. "/api", "/ws") so the SPA
 				// catch-all never swallows non-SPA routes.
-				if hasAnyPrefix(path, config.ExcludePaths) {
+				if hasAnyPrefix(reqPath, config.ExcludePaths) {
 					continue
 				}
 
-				if strings.HasPrefix(path, config.Path) {
-					ctx.Path(config.Path)
+				if strings.HasPrefix(reqPath, entry) {
+					ctx.Path(entry)
 
 					return ctx.RestartRouting()
 				}
@@ -57,9 +76,11 @@ func (s *spaMiddleware) Apply(router fiber.Router) {
 	})
 }
 
-func applySpa(router fiber.Router, config *middleware.SPAConfig) {
+func applySPA(router fiber.Router, config *middleware.SPAConfig) {
+	entry := spaEntryPath(config)
+
 	group := router.Group(
-		config.Path,
+		entry,
 		etag.New(etag.Config{Weak: true}),
 		helmet.New(helmet.Config{
 			XFrameOptions:             "sameorigin",
@@ -79,18 +100,13 @@ func applySpa(router fiber.Router, config *middleware.SPAConfig) {
 		Compress:      true,
 	}))
 
-	fallbackPath := config.Path
-	if fallbackPath == "" {
-		fallbackPath = "/"
-	}
-
 	group.Get("/static/*", static.New("", static.Config{
 		FS:            config.Fs,
 		CacheDuration: 10 * time.Minute,
 		MaxAge:        int((8 * time.Hour).Seconds()),
 		Compress:      true,
 		NotFoundHandler: func(ctx fiber.Ctx) error {
-			ctx.Path(fallbackPath)
+			ctx.Path(entry)
 
 			return ctx.RestartRouting()
 		},
@@ -102,21 +118,15 @@ func NewSPAMiddleware(configs []*middleware.SPAConfig) app.Middleware {
 		return nil
 	}
 
-	for _, config := range configs {
-		if config.Path == "" {
-			config.Path = "/"
-		}
-	}
-
 	return &spaMiddleware{
 		configs: configs,
 	}
 }
 
-// hasAnyPrefix reports whether path starts with any of the given non-empty prefixes.
-func hasAnyPrefix(path string, prefixes []string) bool {
+// hasAnyPrefix reports whether reqPath starts with any of the given non-empty prefixes.
+func hasAnyPrefix(reqPath string, prefixes []string) bool {
 	for _, prefix := range prefixes {
-		if prefix != "" && strings.HasPrefix(path, prefix) {
+		if prefix != "" && strings.HasPrefix(reqPath, prefix) {
 			return true
 		}
 	}

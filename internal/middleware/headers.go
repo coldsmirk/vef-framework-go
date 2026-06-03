@@ -16,7 +16,10 @@ func NewHeadersMiddleware() app.Middleware {
 
 			ctx.Set(fiber.HeaderXContentTypeOptions, "nosniff")
 
-			if ctx.Protocol() == "https" {
+			// Scheme() reports the request scheme (http/https), honoring
+			// X-Forwarded-Proto only behind a trusted proxy; Protocol() returns
+			// the HTTP wire version (e.g. "HTTP/1.1") and never equals "https".
+			if ctx.Scheme() == "https" {
 				ctx.Set(fiber.HeaderStrictTransportSecurity, "max-age=31536000; includeSubDomains")
 			}
 

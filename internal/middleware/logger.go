@@ -17,9 +17,12 @@ func NewLoggerMiddleware() app.Middleware {
 		handler: func(ctx fiber.Ctx) error {
 			requestID := requestid.FromContext(ctx)
 			logger := logx.Named(fmt.Sprintf("request_id:%s", requestID))
+
+			// Write both lookup paths: the fiber.Ctx variants store into Locals
+			// for fiber-handler lookups, while the embedded context.Context carries
+			// the values for non-fiber consumers reached via ctx.Context().
 			contextx.SetLogger(ctx, logger)
 			contextx.SetRequestID(ctx, requestID)
-
 			ctx.SetContext(
 				contextx.SetLogger(
 					contextx.SetRequestID(ctx.Context(), requestID),

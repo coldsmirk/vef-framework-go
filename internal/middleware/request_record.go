@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"path"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -98,13 +97,7 @@ func isSPAStaticRequest(ctx fiber.Ctx, spaConfigs []*middleware.SPAConfig) bool 
 
 	reqPath := ctx.Path()
 	for _, config := range spaConfigs {
-		spaPath := config.Path
-		if spaPath == "" {
-			spaPath = "/"
-		}
-
-		staticPath := path.Join(spaPath, "static/")
-		if reqPath == spaPath || strings.HasPrefix(reqPath, staticPath) {
+		if reqPath == spaEntryPath(config) || strings.HasPrefix(reqPath, spaStaticPrefix(config)) {
 			return true
 		}
 	}
