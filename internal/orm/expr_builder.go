@@ -252,7 +252,7 @@ func (b *QueryExprBuilder) ExprByDialect(exprs DialectExprs) schema.QueryAppende
 		return exprs.Default()
 	}
 
-	return b.Null()
+	return errExpr{err: ErrDialectHandlerMissing}
 }
 
 // ExecByDialect executes database-specific side-effect callbacks based on the current dialect.
@@ -842,8 +842,13 @@ func (b *QueryExprBuilder) Right(expr, length any) schema.QueryAppender {
 func (b *QueryExprBuilder) Repeat(expr, count any) schema.QueryAppender {
 	return b.ExprByDialect(DialectExprs{
 		SQLite: func() schema.QueryAppender {
+			// ZEROBLOB needs an integer length; ToInteger keeps the divide from
+			// yielding a REAL (Divide casts operands to REAL on SQLite) and
+			// avoids relying on implicit float-to-int coercion.
+			blobLen := b.ToInteger(b.Divide(b.Paren(b.Add(count, 1)), 2))
+
 			return b.Replace(
-				b.SubString(b.Expr("QUOTE(ZEROBLOB(?))", b.Divide(b.Paren(b.Add(count, 1)), 2)), 3, count),
+				b.SubString(b.Expr("QUOTE(ZEROBLOB(?))", blobLen), 3, count),
 				"0",
 				expr,
 			)
@@ -858,52 +863,98 @@ func (b *QueryExprBuilder) Replace(expr, search, replacement any) schema.QueryAp
 	return b.Expr("REPLACE(?, ?, ?)", expr, search, replacement)
 }
 
+// LIKE pattern escaping. The value supplied to Contains/StartsWith/EndsWith is a
+// literal substring, so its %, _ and the escape character must be neutralized
+// before the wildcards are added; otherwise a value such as "50%" would be
+// treated as a wildcard and over-match. An explicit ESCAPE clause makes the
+// chosen escape character portable across dialects.
+const likeEscapeByte = '\\'
+
+// escapeLikeLiteral neutralizes LIKE metacharacters in a literal value so the
+// only wildcards in the final pattern are the ones fuzzyMatch adds itself.
+func escapeLikeLiteral(value string) string {
+	replacer := strings.NewReplacer(
+		string(likeEscapeByte), string(likeEscapeByte)+string(likeEscapeByte),
+		"%", string(likeEscapeByte)+"%",
+		"_", string(likeEscapeByte)+"_",
+	)
+
+	return replacer.Replace(value)
+}
+
+// escapeLikeExpr neutralizes LIKE metacharacters in a dynamic expression
+// (column, subquery, ...) SQL-side. The escape character is replaced first so
+// the escapes introduced for % and _ are not doubled.
+func (b *QueryExprBuilder) escapeLikeExpr(pattern any) schema.QueryAppender {
+	esc := string(likeEscapeByte)
+
+	return b.Replace(
+		b.Replace(
+			b.Replace(pattern, esc, esc+esc),
+			"%", esc+"%",
+		),
+		"_", esc+"_",
+	)
+}
+
+// like builds "<expr> <op> <pattern> ESCAPE ?" with the escape character bound as
+// a parameter. op is a trusted literal ("LIKE"/"ILIKE"). Binding the escape char
+// rather than inlining ESCAPE '\' keeps it portable: MySQL processes backslashes
+// in string literals, so a literal ESCAPE '\' is mis-parsed there.
+func (b *QueryExprBuilder) like(op string, expr, pattern any) schema.QueryAppender {
+	return b.Expr("? "+op+" ? ESCAPE ?", expr, pattern, string(likeEscapeByte))
+}
+
 // fuzzyMatch builds a fuzzy LIKE expression based on FuzzyKind.
 // It optimizes for string literals by pre-building the LIKE pattern in Go code,
-// avoiding runtime string concatenation in the database.
+// avoiding runtime string concatenation in the database. LIKE metacharacters in
+// the value are escaped (with a matching ESCAPE clause) so the value matches
+// literally rather than as a wildcard.
 func (b *QueryExprBuilder) fuzzyMatch(expr, pattern any, kind FuzzyKind, ignoreCase bool) schema.QueryAppender {
 	// Optimize for string literals: build pattern in Go
 	if strPattern, ok := pattern.(string); ok {
-		likePattern := kind.BuildPattern(strPattern)
+		likePattern := kind.BuildPattern(escapeLikeLiteral(strPattern))
 		if ignoreCase {
 			return b.ExprByDialect(DialectExprs{
 				Postgres: func() schema.QueryAppender {
-					return b.Expr("? ILIKE ?", expr, likePattern)
+					return b.like("ILIKE", expr, likePattern)
 				},
 				Default: func() schema.QueryAppender {
-					return b.Expr("? LIKE ?", b.Lower(expr), strings.ToLower(likePattern))
+					return b.like("LIKE", b.Lower(expr), strings.ToLower(likePattern))
 				},
 			})
 		}
 
-		return b.Expr("? LIKE ?", expr, likePattern)
+		return b.like("LIKE", expr, likePattern)
 	}
 
-	// For dynamic expressions, build pattern using b.Concat()
+	// For dynamic expressions, escape metacharacters SQL-side then add wildcards.
+	escaped := b.escapeLikeExpr(pattern)
+
 	var likePattern any
 	switch kind {
 	case FuzzyContains:
-		likePattern = b.Concat("%", pattern, "%")
+		likePattern = b.Concat("%", escaped, "%")
 	case FuzzyStarts:
-		likePattern = b.Concat(pattern, "%")
+		likePattern = b.Concat(escaped, "%")
 	case FuzzyEnds:
-		likePattern = b.Concat("%", pattern)
+		likePattern = b.Concat("%", escaped)
 	default:
-		likePattern = pattern
+		likePattern = escaped
 	}
 
 	if ignoreCase {
 		return b.ExprByDialect(DialectExprs{
 			Postgres: func() schema.QueryAppender {
-				return b.Expr("? ILIKE ?", expr, likePattern)
+				return b.like("ILIKE", expr, likePattern)
 			},
 			Default: func() schema.QueryAppender {
-				return b.Expr("? LIKE ?", b.Lower(expr), b.Lower(likePattern))
+				return b.like("LIKE", b.Lower(expr), b.Lower(likePattern))
 			},
 		})
 	}
 
-	return b.Expr("? LIKE ?", expr, likePattern)
+	return b.like("LIKE", expr, likePattern)
 }
 
 func (b *QueryExprBuilder) Contains(expr, substr any) schema.QueryAppender {
@@ -932,8 +983,10 @@ func (b *QueryExprBuilder) EndsWithIgnoreCase(expr, suffix any) schema.QueryAppe
 
 func (b *QueryExprBuilder) Reverse(expr any) schema.QueryAppender {
 	return b.ExprByDialect(DialectExprs{
+		// SQLite has no REVERSE function and no faithful single-expression
+		// emulation, so fail loudly instead of returning the string unreversed.
 		SQLite: func() schema.QueryAppender {
-			return b.Expr("?", expr)
+			return errExpr{err: ErrDialectUnsupportedOperation}
 		},
 		Default: func() schema.QueryAppender {
 			return b.Expr("REVERSE(?)", expr)

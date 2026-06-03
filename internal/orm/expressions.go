@@ -79,3 +79,15 @@ func newExpressions(sep any, exprs ...any) *Expressions {
 		sep:   sep,
 	}
 }
+
+// errExpr is a schema.QueryAppender that always fails rendering with the wrapped
+// error. It lets builder methods surface a misconfiguration (missing dialect
+// handler) or an unsupported operation loudly at query-build time instead of
+// emitting silently-wrong SQL.
+type errExpr struct {
+	err error
+}
+
+func (e errExpr) AppendQuery(schema.QueryGen, []byte) ([]byte, error) {
+	return nil, e.err
+}

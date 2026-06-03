@@ -7,6 +7,9 @@ import (
 	"github.com/uptrace/bun/schema"
 )
 
+// CriteriaBuilder hosts the shared condition operator methods. Concrete builders
+// embed it and bind the and/or/group hooks to their own clause-collection backend,
+// so the operator surface is implemented once and reused by every ConditionBuilder.
 type CriteriaBuilder struct {
 	qb    QueryBuilder
 	eb    ExprBuilder
@@ -729,6 +732,18 @@ func (cb *CriteriaBuilder) OrIsFalseExpr(builder func(ExprBuilder) any) Conditio
 	return cb
 }
 
+// anyGroup wraps the per-value fuzzy methods in a single (Or)Group, applying each
+// value through the supplied single-value action. It backs every *Any string method.
+func (cb *CriteriaBuilder) anyGroup(group func(func(ConditionBuilder)) ConditionBuilder, values []string, each func(ConditionBuilder, string)) ConditionBuilder {
+	group(func(cb ConditionBuilder) {
+		for _, value := range values {
+			each(cb, value)
+		}
+	})
+
+	return cb
+}
+
 func (cb *CriteriaBuilder) Contains(column, value string) ConditionBuilder {
 	cb.and("? LIKE ?", cb.eb.Column(column), FuzzyContains.BuildPattern(value))
 
@@ -742,23 +757,15 @@ func (cb *CriteriaBuilder) OrContains(column, value string) ConditionBuilder {
 }
 
 func (cb *CriteriaBuilder) ContainsAny(column string, values []string) ConditionBuilder {
-	cb.Group(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.OrContains(column, value)
-		}
+	return cb.anyGroup(cb.Group, values, func(cb ConditionBuilder, value string) {
+		cb.OrContains(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) OrContainsAny(column string, values []string) ConditionBuilder {
-	cb.OrGroup(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.OrContains(column, value)
-		}
+	return cb.anyGroup(cb.OrGroup, values, func(cb ConditionBuilder, value string) {
+		cb.OrContains(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) ContainsIgnoreCase(column, value string) ConditionBuilder {
@@ -774,23 +781,15 @@ func (cb *CriteriaBuilder) OrContainsIgnoreCase(column, value string) ConditionB
 }
 
 func (cb *CriteriaBuilder) ContainsAnyIgnoreCase(column string, values []string) ConditionBuilder {
-	cb.Group(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.OrContainsIgnoreCase(column, value)
-		}
+	return cb.anyGroup(cb.Group, values, func(cb ConditionBuilder, value string) {
+		cb.OrContainsIgnoreCase(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) OrContainsAnyIgnoreCase(column string, values []string) ConditionBuilder {
-	cb.OrGroup(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.OrContainsIgnoreCase(column, value)
-		}
+	return cb.anyGroup(cb.OrGroup, values, func(cb ConditionBuilder, value string) {
+		cb.OrContainsIgnoreCase(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) NotContains(column, value string) ConditionBuilder {
@@ -806,23 +805,15 @@ func (cb *CriteriaBuilder) OrNotContains(column, value string) ConditionBuilder 
 }
 
 func (cb *CriteriaBuilder) NotContainsAny(column string, values []string) ConditionBuilder {
-	cb.Group(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.NotContains(column, value)
-		}
+	return cb.anyGroup(cb.Group, values, func(cb ConditionBuilder, value string) {
+		cb.NotContains(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) OrNotContainsAny(column string, values []string) ConditionBuilder {
-	cb.OrGroup(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.NotContains(column, value)
-		}
+	return cb.anyGroup(cb.OrGroup, values, func(cb ConditionBuilder, value string) {
+		cb.NotContains(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) NotContainsIgnoreCase(column, value string) ConditionBuilder {
@@ -838,23 +829,15 @@ func (cb *CriteriaBuilder) OrNotContainsIgnoreCase(column, value string) Conditi
 }
 
 func (cb *CriteriaBuilder) NotContainsAnyIgnoreCase(column string, values []string) ConditionBuilder {
-	cb.Group(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.NotContainsIgnoreCase(column, value)
-		}
+	return cb.anyGroup(cb.Group, values, func(cb ConditionBuilder, value string) {
+		cb.NotContainsIgnoreCase(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) OrNotContainsAnyIgnoreCase(column string, values []string) ConditionBuilder {
-	cb.OrGroup(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.NotContainsIgnoreCase(column, value)
-		}
+	return cb.anyGroup(cb.OrGroup, values, func(cb ConditionBuilder, value string) {
+		cb.NotContainsIgnoreCase(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) StartsWith(column, value string) ConditionBuilder {
@@ -870,23 +853,15 @@ func (cb *CriteriaBuilder) OrStartsWith(column, value string) ConditionBuilder {
 }
 
 func (cb *CriteriaBuilder) StartsWithAny(column string, values []string) ConditionBuilder {
-	cb.Group(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.OrStartsWith(column, value)
-		}
+	return cb.anyGroup(cb.Group, values, func(cb ConditionBuilder, value string) {
+		cb.OrStartsWith(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) OrStartsWithAny(column string, values []string) ConditionBuilder {
-	cb.OrGroup(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.OrStartsWith(column, value)
-		}
+	return cb.anyGroup(cb.OrGroup, values, func(cb ConditionBuilder, value string) {
+		cb.OrStartsWith(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) StartsWithIgnoreCase(column, value string) ConditionBuilder {
@@ -902,23 +877,15 @@ func (cb *CriteriaBuilder) OrStartsWithIgnoreCase(column, value string) Conditio
 }
 
 func (cb *CriteriaBuilder) StartsWithAnyIgnoreCase(column string, values []string) ConditionBuilder {
-	cb.Group(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.OrStartsWithIgnoreCase(column, value)
-		}
+	return cb.anyGroup(cb.Group, values, func(cb ConditionBuilder, value string) {
+		cb.OrStartsWithIgnoreCase(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) OrStartsWithAnyIgnoreCase(column string, values []string) ConditionBuilder {
-	cb.OrGroup(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.OrStartsWithIgnoreCase(column, value)
-		}
+	return cb.anyGroup(cb.OrGroup, values, func(cb ConditionBuilder, value string) {
+		cb.OrStartsWithIgnoreCase(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) NotStartsWith(column, value string) ConditionBuilder {
@@ -934,23 +901,15 @@ func (cb *CriteriaBuilder) OrNotStartsWith(column, value string) ConditionBuilde
 }
 
 func (cb *CriteriaBuilder) NotStartsWithAny(column string, values []string) ConditionBuilder {
-	cb.Group(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.NotStartsWith(column, value)
-		}
+	return cb.anyGroup(cb.Group, values, func(cb ConditionBuilder, value string) {
+		cb.NotStartsWith(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) OrNotStartsWithAny(column string, values []string) ConditionBuilder {
-	cb.OrGroup(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.NotStartsWith(column, value)
-		}
+	return cb.anyGroup(cb.OrGroup, values, func(cb ConditionBuilder, value string) {
+		cb.NotStartsWith(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) NotStartsWithIgnoreCase(column, value string) ConditionBuilder {
@@ -966,23 +925,15 @@ func (cb *CriteriaBuilder) OrNotStartsWithIgnoreCase(column, value string) Condi
 }
 
 func (cb *CriteriaBuilder) NotStartsWithAnyIgnoreCase(column string, values []string) ConditionBuilder {
-	cb.Group(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.NotStartsWithIgnoreCase(column, value)
-		}
+	return cb.anyGroup(cb.Group, values, func(cb ConditionBuilder, value string) {
+		cb.NotStartsWithIgnoreCase(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) OrNotStartsWithAnyIgnoreCase(column string, values []string) ConditionBuilder {
-	cb.OrGroup(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.NotStartsWithIgnoreCase(column, value)
-		}
+	return cb.anyGroup(cb.OrGroup, values, func(cb ConditionBuilder, value string) {
+		cb.NotStartsWithIgnoreCase(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) EndsWith(column, value string) ConditionBuilder {
@@ -998,23 +949,15 @@ func (cb *CriteriaBuilder) OrEndsWith(column, value string) ConditionBuilder {
 }
 
 func (cb *CriteriaBuilder) EndsWithAny(column string, values []string) ConditionBuilder {
-	cb.Group(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.OrEndsWith(column, value)
-		}
+	return cb.anyGroup(cb.Group, values, func(cb ConditionBuilder, value string) {
+		cb.OrEndsWith(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) OrEndsWithAny(column string, values []string) ConditionBuilder {
-	cb.OrGroup(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.OrEndsWith(column, value)
-		}
+	return cb.anyGroup(cb.OrGroup, values, func(cb ConditionBuilder, value string) {
+		cb.OrEndsWith(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) EndsWithIgnoreCase(column, value string) ConditionBuilder {
@@ -1030,23 +973,15 @@ func (cb *CriteriaBuilder) OrEndsWithIgnoreCase(column, value string) ConditionB
 }
 
 func (cb *CriteriaBuilder) EndsWithAnyIgnoreCase(column string, values []string) ConditionBuilder {
-	cb.Group(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.OrEndsWithIgnoreCase(column, value)
-		}
+	return cb.anyGroup(cb.Group, values, func(cb ConditionBuilder, value string) {
+		cb.OrEndsWithIgnoreCase(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) OrEndsWithAnyIgnoreCase(column string, values []string) ConditionBuilder {
-	cb.OrGroup(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.OrEndsWithIgnoreCase(column, value)
-		}
+	return cb.anyGroup(cb.OrGroup, values, func(cb ConditionBuilder, value string) {
+		cb.OrEndsWithIgnoreCase(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) NotEndsWith(column, value string) ConditionBuilder {
@@ -1062,23 +997,15 @@ func (cb *CriteriaBuilder) OrNotEndsWith(column, value string) ConditionBuilder 
 }
 
 func (cb *CriteriaBuilder) NotEndsWithAny(column string, values []string) ConditionBuilder {
-	cb.Group(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.NotEndsWith(column, value)
-		}
+	return cb.anyGroup(cb.Group, values, func(cb ConditionBuilder, value string) {
+		cb.NotEndsWith(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) OrNotEndsWithAny(column string, values []string) ConditionBuilder {
-	cb.OrGroup(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.NotEndsWith(column, value)
-		}
+	return cb.anyGroup(cb.OrGroup, values, func(cb ConditionBuilder, value string) {
+		cb.NotEndsWith(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) NotEndsWithIgnoreCase(column, value string) ConditionBuilder {
@@ -1094,23 +1021,15 @@ func (cb *CriteriaBuilder) OrNotEndsWithIgnoreCase(column, value string) Conditi
 }
 
 func (cb *CriteriaBuilder) NotEndsWithAnyIgnoreCase(column string, values []string) ConditionBuilder {
-	cb.Group(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.NotEndsWithIgnoreCase(column, value)
-		}
+	return cb.anyGroup(cb.Group, values, func(cb ConditionBuilder, value string) {
+		cb.NotEndsWithIgnoreCase(column, value)
 	})
-
-	return cb
 }
 
 func (cb *CriteriaBuilder) OrNotEndsWithAnyIgnoreCase(column string, values []string) ConditionBuilder {
-	cb.OrGroup(func(cb ConditionBuilder) {
-		for _, value := range values {
-			cb.NotEndsWithIgnoreCase(column, value)
-		}
+	return cb.anyGroup(cb.OrGroup, values, func(cb ConditionBuilder, value string) {
+		cb.NotEndsWithIgnoreCase(column, value)
 	})
-
-	return cb
 }
 
 // buildLikeIgnoreCase builds a dialect-aware case-insensitive LIKE/NOT LIKE expression.
@@ -1157,27 +1076,27 @@ func (cb *CriteriaBuilder) OrGroup(builder func(ConditionBuilder)) ConditionBuil
 
 // auditUserCompare adds a comparison condition for an audit user column.
 func (*CriteriaBuilder) auditUserCompare(addFn func(string, ...any), op, col, value string, alias ...string) {
-	addFn("? ? ?", buildColumnExpr(col, alias...), bun.Safe(op), value)
+	addFn("? "+op+" ?", buildColumnExpr(col, alias...), value)
 }
 
 // auditUserCompareSubQuery adds a comparison condition with a subquery for an audit user column.
 func (cb *CriteriaBuilder) auditUserCompareSubQuery(addFn func(string, ...any), op, col string, builder func(SelectQuery), alias ...string) {
-	addFn("? ? (?)", buildColumnExpr(col, alias...), bun.Safe(op), cb.qb.BuildSubQuery(builder))
+	addFn("? "+op+" (?)", buildColumnExpr(col, alias...), cb.qb.BuildSubQuery(builder))
 }
 
 // auditUserCompareCurrent adds a comparison condition against the current operator for an audit user column.
 func (*CriteriaBuilder) auditUserCompareCurrent(addFn func(string, ...any), op, col string, alias ...string) {
-	addFn("? ? ?Operator", buildColumnExpr(col, alias...), bun.Safe(op))
+	addFn("? "+op+" ?Operator", buildColumnExpr(col, alias...))
 }
 
 // auditUserIn adds an IN/NOT IN condition for an audit user column.
 func (*CriteriaBuilder) auditUserIn(addFn func(string, ...any), op, col string, values []string, alias ...string) {
-	addFn("? ? ?", buildColumnExpr(col, alias...), bun.Safe(op), bun.Tuple(values))
+	addFn("? "+op+" ?", buildColumnExpr(col, alias...), bun.Tuple(values))
 }
 
 // auditUserInSubQuery adds an IN/NOT IN subquery condition for an audit user column.
 func (cb *CriteriaBuilder) auditUserInSubQuery(addFn func(string, ...any), op, col string, builder func(SelectQuery), alias ...string) {
-	addFn("? ? (?)", buildColumnExpr(col, alias...), bun.Safe(op), cb.qb.BuildSubQuery(builder))
+	addFn("? "+op+" (?)", buildColumnExpr(col, alias...), cb.qb.BuildSubQuery(builder))
 }
 
 func (cb *CriteriaBuilder) CreatedByEquals(createdBy string, alias ...string) ConditionBuilder {
