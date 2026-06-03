@@ -43,8 +43,9 @@ const (
 type StorageMode string
 
 const (
-	StorageJSON  StorageMode = "json"  // JSON: form data stored in apv_instance.form_data (JSONB column)
-	StorageTable StorageMode = "table" // Table: form data stored in dynamically created tables (e.g., apv_form_data_{flow_code})
+	// StorageJSON stores form data in the apv_instance.form_data JSONB column.
+	// It is currently the only implemented storage mode.
+	StorageJSON StorageMode = "json"
 )
 
 // NodeKind represents the kind of a flow node.

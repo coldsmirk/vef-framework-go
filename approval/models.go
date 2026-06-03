@@ -159,24 +159,6 @@ type FlowNodeCC struct {
 	Timing    CCTiming `json:"timing" bun:"timing"`
 }
 
-// FlowFormField represents a flow form field definition.
-type FlowFormField struct {
-	orm.BaseModel `bun:"table:apv_flow_form_field,alias:afff"`
-	orm.Model
-
-	FlowVersionID string         `json:"flowVersionId" bun:"flow_version_id"`
-	Name          string         `json:"name" bun:"name"`
-	Kind          FieldKind      `json:"kind" bun:"kind"`
-	Label         string         `json:"label" bun:"label"`
-	Placeholder   *string        `json:"placeholder" bun:"placeholder,nullzero"`
-	DefaultValue  *string        `json:"defaultValue" bun:"default_value,nullzero"`
-	IsRequired    *bool          `json:"isRequired" bun:"is_required,nullzero"`
-	IsReadonly    *bool          `json:"isReadonly" bun:"is_readonly,nullzero"`
-	Validation    map[string]any `json:"validation" bun:"validation,type:jsonb,nullzero"`
-	SortOrder     int            `json:"sortOrder" bun:"sort_order"`
-	Meta          map[string]any `json:"meta" bun:"meta,type:jsonb,nullzero"`
-}
-
 // FlowInitiator represents a flow initiator configuration.
 type FlowInitiator struct {
 	orm.BaseModel `bun:"table:apv_flow_initiator,alias:afi"`
