@@ -291,6 +291,36 @@ func TestMemoryCacheSize(t *testing.T) {
 		require.NoError(t, err, "TestMemoryCacheSize should complete without error")
 		assert.Equal(t, int64(0), size, "TestMemoryCacheSize should match expected value")
 	})
+
+	t.Run("SizeExactAfterMixedSetDeleteExpiry", func(t *testing.T) {
+		// Exercise all three size-mutation paths (insert, delete, lazy expiry)
+		// in one deterministic sequence and assert the counter is exact.
+		cache := newTestCache[string](0, 0, EvictionPolicyLRU, 5*time.Minute)
+		defer cache.Close()
+
+		// 5 permanent entries.
+		for i := range 5 {
+			require.NoError(t, cache.Set(ctx, fmt.Sprintf("perm%d", i), "v"), "insert should succeed")
+		}
+
+		// 2 short-lived entries that will expire.
+		require.NoError(t, cache.Set(ctx, "temp1", "v", 30*time.Millisecond), "insert should succeed")
+		require.NoError(t, cache.Set(ctx, "temp2", "v", 30*time.Millisecond), "insert should succeed")
+
+		require.NoError(t, cache.Delete(ctx, "perm0"), "delete should succeed") // size 6
+		require.NoError(t, cache.Delete(ctx, "missing"), "delete of absent key is a no-op")
+
+		time.Sleep(60 * time.Millisecond)
+
+		// Reads trigger lazy expiry of temp1/temp2, decrementing size to 4.
+		_, ok := cache.Get(ctx, "temp1")
+		assert.False(t, ok, "expired entry should not be returned")
+		assert.False(t, cache.Contains(ctx, "temp2"), "expired entry should not be reported present")
+
+		size, err := cache.Size(ctx)
+		require.NoError(t, err, "Size should not error")
+		assert.Equal(t, int64(4), size, "size must equal inserts minus deletes minus expired entries")
+	})
 }
 
 // TestMemoryCacheEvictionPolicies tests memory cache eviction policies functionality.
@@ -352,6 +382,44 @@ func TestMemoryCacheEvictionPolicies(t *testing.T) {
 		assert.True(t, cache.Contains(ctx, "key2"), "TestMemoryCacheEvictionPolicies condition should be true")
 		assert.False(t, cache.Contains(ctx, "key3"), "TestMemoryCacheEvictionPolicies condition should be false")
 		assert.True(t, cache.Contains(ctx, "key4"), "TestMemoryCacheEvictionPolicies condition should be true")
+	})
+
+	t.Run("LFUEvictionAfterDrainingMinBucket", func(t *testing.T) {
+		// Regression: accessing the single entry drained the min-frequency
+		// bucket and left minFreq stale, so Set rejected the next insert with
+		// ErrMemoryLimitExceeded instead of evicting the existing key.
+		cache := newTestCache[string](1, 0, EvictionPolicyLFU, 5*time.Minute)
+		defer cache.Close()
+
+		require.NoError(t, cache.Set(ctx, "key1", "value1"), "initial insert should succeed")
+
+		cache.Get(ctx, "key1") // bumps key1 to frequency 2, draining the freq-1 bucket
+
+		err := cache.Set(ctx, "key2", "value2")
+		require.NoError(t, err, "insert after draining the min bucket must evict, not return ErrMemoryLimitExceeded")
+
+		assert.False(t, cache.Contains(ctx, "key1"), "the accessed key should have been evicted")
+		assert.True(t, cache.Contains(ctx, "key2"), "the new key should be present")
+	})
+
+	t.Run("LFUEvictionAfterAccessingAllEntries", func(t *testing.T) {
+		// Same root cause with more than one entry: every key is bumped off the
+		// minimum bucket before a new insert forces eviction.
+		cache := newTestCache[string](2, 0, EvictionPolicyLFU, 5*time.Minute)
+		defer cache.Close()
+
+		require.NoError(t, cache.Set(ctx, "key1", "value1"), "initial insert should succeed")
+		require.NoError(t, cache.Set(ctx, "key2", "value2"), "initial insert should succeed")
+
+		cache.Get(ctx, "key1") // key1 -> freq 2
+		cache.Get(ctx, "key2") // key2 -> freq 2, freq-1 bucket now empty
+
+		err := cache.Set(ctx, "key3", "value3")
+		require.NoError(t, err, "insert after accessing all entries must evict, not return ErrMemoryLimitExceeded")
+
+		size, _ := cache.Size(ctx)
+		assert.Equal(t, int64(2), size, "cache should stay at max size after eviction")
+		assert.True(t, cache.Contains(ctx, "key3"), "the new key should be present")
 	})
 
 	t.Run("FIFOEviction", func(t *testing.T) {
@@ -841,7 +909,7 @@ func TestMemoryCacheEdgeCases(t *testing.T) {
 
 		assert.Equal(t, EvictionPolicyNone, mc.evictionPolicy, "TestMemoryCacheEdgeCases should match expected value")
 
-		_, isNoOp := mc.evictionHandler.(*NoOpEvictionHandler)
+		_, isNoOp := mc.evictionHandler.(*noOpEvictionHandler)
 		assert.True(t, isNoOp, "Unlimited maxSize should use NoOpEvictionHandler")
 
 		for i := range 1000 {
@@ -862,7 +930,7 @@ func TestMemoryCacheEdgeCases(t *testing.T) {
 
 		assert.Equal(t, EvictionPolicyNone, mc.evictionPolicy, "TestMemoryCacheEdgeCases should match expected value")
 
-		_, isNoOp := mc.evictionHandler.(*NoOpEvictionHandler)
+		_, isNoOp := mc.evictionHandler.(*noOpEvictionHandler)
 		assert.True(t, isNoOp, "Negative maxSize should use NoOpEvictionHandler")
 	})
 

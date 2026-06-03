@@ -102,6 +102,12 @@ func logRedisServerInfo(ctx context.Context, client *redis.Client) error {
 }
 
 func buildRedisAddr(cfg *config.RedisConfig) string {
+	// For unix sockets go-redis dials Network/Addr directly, so Addr must be the
+	// socket path (port is meaningless). The path is carried by Host.
+	if cfg.Network == "unix" {
+		return lo.CoalesceOrEmpty(cfg.Host, "/run/redis/redis.sock")
+	}
+
 	host := lo.CoalesceOrEmpty(cfg.Host, "127.0.0.1")
 	port := lo.CoalesceOrEmpty(cfg.Port, 6379)
 

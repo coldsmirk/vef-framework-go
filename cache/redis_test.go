@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -70,6 +71,60 @@ func (suite *RedisCacheTestSuite) setupStringCache(namespace string) Cache[strin
 	suite.Require().NotNil(c, "Redis should return a non-nil value")
 
 	return c
+}
+
+// TestRedisBuildPattern verifies SCAN MATCH patterns escape glob metacharacters
+// in the fixed prefix so a namespace/prefix containing * ? [ ] \ matches
+// literally instead of broadening the scan to unrelated keys.
+func TestRedisBuildPattern(t *testing.T) {
+	tests := []struct {
+		name       string
+		basePrefix string
+		filter     string
+		expected   string
+	}{
+		{
+			name:       "PlainPrefixNoFilter",
+			basePrefix: "vef:cache:users",
+			filter:     "",
+			expected:   "vef:cache:users*",
+		},
+		{
+			name:       "PlainPrefixWithFilter",
+			basePrefix: "vef:cache:users",
+			filter:     "active",
+			expected:   "vef:cache:users:active*",
+		},
+		{
+			name:       "StarInPrefixEscaped",
+			basePrefix: "vef:cache:a*b",
+			filter:     "",
+			expected:   `vef:cache:a\*b*`,
+		},
+		{
+			name:       "MetacharactersInFilterEscaped",
+			basePrefix: "vef:cache:ns",
+			filter:     "a?[b]",
+			expected:   `vef:cache:ns:a\?\[b\]*`,
+		},
+		{
+			name:       "BackslashInPrefixEscaped",
+			basePrefix: `vef:cache:a\b`,
+			filter:     "",
+			expected:   `vef:cache:a\\b*`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &redisCache[string]{
+				keyBuilder: NewPrefixKeyBuilder(tt.basePrefix),
+				basePrefix: tt.basePrefix,
+			}
+
+			assert.Equal(t, tt.expected, c.buildPattern(tt.filter), "buildPattern should escape glob metacharacters in the fixed prefix")
+		})
+	}
 }
 
 func (suite *RedisCacheTestSuite) TestRedisCacheBasicOperations() {

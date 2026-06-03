@@ -31,14 +31,6 @@ func NewPrefixKeyBuilder(prefix string) *PrefixKeyBuilder {
 	}
 }
 
-// NewPrefixKeyBuilderWithSeparator creates a new prefix-based key builder with custom separator.
-func NewPrefixKeyBuilderWithSeparator(prefix, separator string) *PrefixKeyBuilder {
-	return &PrefixKeyBuilder{
-		prefix:    prefix,
-		separator: separator,
-	}
-}
-
 // Build constructs a cache key with prefix.
 func (k *PrefixKeyBuilder) Build(keyParts ...string) string {
 	if k.prefix == "" {

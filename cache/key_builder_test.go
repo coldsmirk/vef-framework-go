@@ -50,20 +50,6 @@ func TestPrefixKeyBuilder(t *testing.T) {
 		assert.Equal(t, "app:user:123:profile", result, "TestPrefixKeyBuilder should match expected value")
 	})
 
-	t.Run("BuildWithCustomSeparator", func(t *testing.T) {
-		builder := NewPrefixKeyBuilderWithSeparator("app", "/")
-
-		result := builder.Build("user", "123")
-		assert.Equal(t, "app/user/123", result, "TestPrefixKeyBuilder should match expected value")
-	})
-
-	t.Run("BuildWithCustomSeparatorEmptyKeyParts", func(t *testing.T) {
-		builder := NewPrefixKeyBuilderWithSeparator("app", "/")
-
-		result := builder.Build()
-		assert.Equal(t, "app", result, "TestPrefixKeyBuilder should match expected value")
-	})
-
 	t.Run("KeyHelperFunction", func(t *testing.T) {
 		result := Key("user", "123")
 		assert.Equal(t, "user:123", result, "TestPrefixKeyBuilder should match expected value")

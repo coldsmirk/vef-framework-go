@@ -9,6 +9,20 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/coldsmirk/vef-framework-go/internal/logx"
+)
+
+var logger = logx.Named("cache:redis")
+
+// globEscaper backslash-escapes the metacharacters Redis SCAN MATCH recognizes
+// (* ? [ ] \) so a fixed key prefix is matched literally instead of as a glob.
+var globEscaper = strings.NewReplacer(
+	`\`, `\\`,
+	`*`, `\*`,
+	`?`, `\?`,
+	`[`, `\[`,
+	`]`, `\]`,
 )
 
 type redisConfig struct {
@@ -25,7 +39,7 @@ type redisCache[T any] struct {
 	keyBuilder KeyBuilder
 	basePrefix string
 	defaultTTL time.Duration
-	serializer Serializer[T]
+	serializer valueSerializer[T]
 	loadMixin  SingleflightMixin[T]
 	closed     atomic.Bool
 }
@@ -68,10 +82,10 @@ func (c *redisCache[T]) getExpiration(ttl []time.Duration) time.Duration {
 
 func (c *redisCache[T]) buildPattern(prefix string) string {
 	if prefix == "" {
-		return c.basePrefix + "*"
+		return globEscaper.Replace(c.basePrefix) + "*"
 	}
 
-	return c.keyBuilder.Build(prefix) + "*"
+	return globEscaper.Replace(c.keyBuilder.Build(prefix)) + "*"
 }
 
 // stripPrefix removes the basePrefix from a Redis key to return the user's original key.
@@ -101,15 +115,21 @@ func (c *redisCache[T]) getByCacheKey(ctx context.Context, cacheKey string) (val
 			return value, false
 		}
 
-		// Redis error (network, timeout, etc.) - treat as cache miss
-		// to avoid cascading failures in the application layer
+		// Redis error (network, timeout, etc.) - treat as cache miss to avoid
+		// cascading failures, but surface it so a backend outage is visible
+		// rather than silently degrading every Get into a loader call.
+		logger.Warnf("redis cache get failed for key %s, treating as miss: %v", cacheKey, err)
+
 		return value, false
 	}
 
 	value, err = c.serializer.Deserialize(data)
 	if err != nil {
-		// Deserialization failed - data is corrupted or incompatible
-		// Treat as cache miss and let the application reload fresh data
+		// Deserialization failed - data is corrupted or incompatible. Treat as
+		// a miss so the application reloads fresh data, and log it because a
+		// persistent failure means a schema/serializer mismatch.
+		logger.Warnf("redis cache deserialize failed for key %s, treating as miss: %v", cacheKey, err)
+
 		return value, false
 	}
 
@@ -173,6 +193,8 @@ func (c *redisCache[T]) Contains(ctx context.Context, key string) bool {
 
 	exists, err := c.client.Exists(ctx, cacheKey).Result()
 	if err != nil {
+		logger.Warnf("redis cache exists check failed for key %s, treating as absent: %v", cacheKey, err)
+
 		return false
 	}
 
@@ -203,7 +225,7 @@ func (c *redisCache[T]) Clear(ctx context.Context) error {
 		return c.client.FlushDB(ctx).Err()
 	}
 
-	pattern := c.basePrefix + "*"
+	pattern := c.buildPattern("")
 	iter := c.client.Scan(ctx, 0, pattern, 0).Iterator()
 
 	var keys []string
@@ -310,7 +332,7 @@ func (c *redisCache[T]) Size(ctx context.Context) (int64, error) {
 		return c.client.DBSize(ctx).Result()
 	}
 
-	pattern := c.basePrefix + "*"
+	pattern := c.buildPattern("")
 	iter := c.client.Scan(ctx, 0, pattern, 0).Iterator()
 
 	var count int64

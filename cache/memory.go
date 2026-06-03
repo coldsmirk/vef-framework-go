@@ -47,11 +47,11 @@ type memoryCache[T any] struct {
 	maxSize         int64
 	defaultTTL      time.Duration
 	evictionPolicy  EvictionPolicy
-	evictionHandler EvictionHandler
+	evictionHandler evictionPolicyHandler
 	stopGC          chan struct{}
 	gcInterval      time.Duration
 	size            atomic.Int64 // Atomic counter for cache size
-	mu              sync.Mutex   // Protects eviction logic
+	mu              sync.Mutex   // Serializes Set's size check + eviction decision; handlers carry their own locks
 	loadMixin       SingleflightMixin[T]
 	closed          atomic.Bool // Tracks if cache is closed
 }
@@ -61,8 +61,6 @@ func newMemoryCache[T any](cfg *memoryConfig) Cache[T] {
 	if cfg == nil {
 		cfg = defaultMemoryConfig()
 	}
-
-	factory := &EvictionHandlerFactory{}
 
 	// Use default if gcInterval is not set
 	if cfg.gcInterval <= 0 {
@@ -88,7 +86,7 @@ func newMemoryCache[T any](cfg *memoryConfig) Cache[T] {
 		maxSize:         cfg.maxSize,
 		defaultTTL:      cfg.defaultTTL,
 		evictionPolicy:  cfg.evictionPolicy,
-		evictionHandler: factory.CreateHandler(cfg.evictionPolicy),
+		evictionHandler: newEvictionHandler(cfg.evictionPolicy),
 		stopGC:          make(chan struct{}),
 		gcInterval:      cfg.gcInterval,
 	}

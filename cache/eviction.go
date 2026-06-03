@@ -20,49 +20,61 @@ const (
 	EvictionPolicyFIFO
 )
 
-// EvictionHandler defines the interface for handling cache eviction.
-type EvictionHandler interface {
-	// OnAccess is called when an entry is accessed.
+// evictionPolicyHandler tracks access/insert order so the memory cache can pick
+// a victim when it is full.
+type evictionPolicyHandler interface {
+	// OnAccess records that an entry was read.
 	OnAccess(key string)
-	// OnInsert is called when a new entry is inserted.
+	// OnInsert records that a new entry was stored.
 	OnInsert(key string)
-	// OnEvict is called when an entry is evicted.
+	// OnEvict drops an entry from the tracking state.
 	OnEvict(key string)
 	// SelectEvictionCandidate selects a key to evict, returns empty string if no candidate.
 	SelectEvictionCandidate() string
-	// Reset clears all eviction tracking data.
+	// Reset clears all tracking state.
 	Reset()
 }
 
-// NoOpEvictionHandler is used when eviction policy is EvictionPolicyNone.
-type NoOpEvictionHandler struct{}
-
-func NewNoOpEvictionHandler() *NoOpEvictionHandler {
-	return new(NoOpEvictionHandler)
+// newEvictionHandler builds the handler matching the requested policy.
+func newEvictionHandler(policy EvictionPolicy) evictionPolicyHandler {
+	switch policy {
+	case EvictionPolicyLRU:
+		return newLruHandler()
+	case EvictionPolicyLFU:
+		return newLfuHandler()
+	case EvictionPolicyFIFO:
+		return newFifoHandler()
+	case EvictionPolicyNone:
+		fallthrough
+	default:
+		return new(noOpEvictionHandler)
+	}
 }
 
-func (*NoOpEvictionHandler) OnAccess(string)                 {}
-func (*NoOpEvictionHandler) OnInsert(string)                 {}
-func (*NoOpEvictionHandler) OnEvict(string)                  {}
-func (*NoOpEvictionHandler) SelectEvictionCandidate() string { return "" }
-func (*NoOpEvictionHandler) Reset()                          {}
+// noOpEvictionHandler is used when eviction policy is EvictionPolicyNone.
+type noOpEvictionHandler struct{}
 
-// LruHandler implements Least Recently Used eviction policy.
-type LruHandler struct {
+func (*noOpEvictionHandler) OnAccess(string)                 {}
+func (*noOpEvictionHandler) OnInsert(string)                 {}
+func (*noOpEvictionHandler) OnEvict(string)                  {}
+func (*noOpEvictionHandler) SelectEvictionCandidate() string { return "" }
+func (*noOpEvictionHandler) Reset()                          {}
+
+// lruHandler implements Least Recently Used eviction policy.
+type lruHandler struct {
 	mu         sync.RWMutex
 	accessList *list.List
 	accessMap  map[string]*list.Element
 }
 
-// NewLruHandler creates a new LRU eviction handler.
-func NewLruHandler() *LruHandler {
-	return &LruHandler{
+func newLruHandler() *lruHandler {
+	return &lruHandler{
 		accessList: list.New(),
 		accessMap:  make(map[string]*list.Element),
 	}
 }
 
-func (h *LruHandler) OnAccess(key string) {
+func (h *lruHandler) OnAccess(key string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -76,12 +88,12 @@ func (h *LruHandler) OnAccess(key string) {
 	}
 }
 
-func (h *LruHandler) OnInsert(key string) {
+func (h *lruHandler) OnInsert(key string) {
 	// Treat insert as access
 	h.OnAccess(key)
 }
 
-func (h *LruHandler) OnEvict(key string) {
+func (h *lruHandler) OnEvict(key string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -91,7 +103,7 @@ func (h *LruHandler) OnEvict(key string) {
 	}
 }
 
-func (h *LruHandler) SelectEvictionCandidate() string {
+func (h *lruHandler) SelectEvictionCandidate() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
@@ -108,7 +120,7 @@ func (h *LruHandler) SelectEvictionCandidate() string {
 	return ""
 }
 
-func (h *LruHandler) Reset() {
+func (h *lruHandler) Reset() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -116,26 +128,25 @@ func (h *LruHandler) Reset() {
 	h.accessMap = make(map[string]*list.Element)
 }
 
-// FifoHandler implements First In First Out eviction policy.
-type FifoHandler struct {
+// fifoHandler implements First In First Out eviction policy.
+type fifoHandler struct {
 	mu         sync.RWMutex
 	insertList *list.List
 	insertMap  map[string]*list.Element
 }
 
-// NewFifoHandler creates a new FIFO eviction handler.
-func NewFifoHandler() *FifoHandler {
-	return &FifoHandler{
+func newFifoHandler() *fifoHandler {
+	return &fifoHandler{
 		insertList: list.New(),
 		insertMap:  make(map[string]*list.Element),
 	}
 }
 
-func (*FifoHandler) OnAccess(string) {
+func (*fifoHandler) OnAccess(string) {
 	// FIFO doesn't track access, only insertion order
 }
 
-func (h *FifoHandler) OnInsert(key string) {
+func (h *fifoHandler) OnInsert(key string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -146,7 +157,7 @@ func (h *FifoHandler) OnInsert(key string) {
 	}
 }
 
-func (h *FifoHandler) OnEvict(key string) {
+func (h *fifoHandler) OnEvict(key string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -156,7 +167,7 @@ func (h *FifoHandler) OnEvict(key string) {
 	}
 }
 
-func (h *FifoHandler) SelectEvictionCandidate() string {
+func (h *fifoHandler) SelectEvictionCandidate() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
@@ -173,7 +184,7 @@ func (h *FifoHandler) SelectEvictionCandidate() string {
 	return ""
 }
 
-func (h *FifoHandler) Reset() {
+func (h *fifoHandler) Reset() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -195,9 +206,9 @@ type lfuFreqBucket struct {
 	nodeMap   map[string]*list.Element
 }
 
-// LfuHandler implements Least Frequently Used eviction policy using frequency buckets.
+// lfuHandler implements Least Frequently Used eviction policy using frequency buckets.
 // This implementation achieves O(1) time complexity for all operations.
-type LfuHandler struct {
+type lfuHandler struct {
 	mu            sync.RWMutex
 	freqBuckets   *list.List // List of *lfuFreqBucket, sorted by frequency
 	bucketMap     map[int64]*list.Element
@@ -207,9 +218,8 @@ type LfuHandler struct {
 	insertCounter int64
 }
 
-// NewLfuHandler creates a new LFU eviction handler.
-func NewLfuHandler() *LfuHandler {
-	return &LfuHandler{
+func newLfuHandler() *lfuHandler {
+	return &lfuHandler{
 		freqBuckets: list.New(),
 		bucketMap:   make(map[int64]*list.Element),
 		keyToBucket: make(map[string]*list.Element),
@@ -218,7 +228,7 @@ func NewLfuHandler() *LfuHandler {
 	}
 }
 
-func (h *LfuHandler) OnAccess(key string) {
+func (h *lfuHandler) OnAccess(key string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -232,21 +242,18 @@ func (h *LfuHandler) OnAccess(key string) {
 	newFreq := oldFreq + 1
 	node.frequency = newFreq
 
-	// Move node to new frequency bucket
+	// Move node to new frequency bucket. moveToFreqBucket deletes the old
+	// bucket from bucketMap/freqBuckets once it empties, so recompute minFreq
+	// from the surviving buckets rather than probing the (possibly removed)
+	// old bucket.
 	h.moveToFreqBucket(key, node, oldFreq, newFreq)
 
-	// Update min frequency if needed
 	if oldFreq == h.minFreq {
-		// Check if old frequency bucket is now empty
-		if bucketElem, exists := h.bucketMap[oldFreq]; exists {
-			if bucket, ok := bucketElem.Value.(*lfuFreqBucket); ok && bucket.entries.Len() == 0 {
-				h.minFreq = newFreq
-			}
-		}
+		h.recalculateMinFreq()
 	}
 }
 
-func (h *LfuHandler) OnInsert(key string) {
+func (h *lfuHandler) OnInsert(key string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -270,7 +277,7 @@ func (h *LfuHandler) OnInsert(key string) {
 	h.minFreq = 1
 }
 
-func (h *LfuHandler) OnEvict(key string) {
+func (h *lfuHandler) OnEvict(key string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -292,7 +299,7 @@ func (h *LfuHandler) OnEvict(key string) {
 	}
 }
 
-func (h *LfuHandler) SelectEvictionCandidate() string {
+func (h *lfuHandler) SelectEvictionCandidate() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
@@ -324,7 +331,7 @@ func (h *LfuHandler) SelectEvictionCandidate() string {
 	return ""
 }
 
-func (h *LfuHandler) Reset() {
+func (h *lfuHandler) Reset() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -337,7 +344,7 @@ func (h *LfuHandler) Reset() {
 }
 
 // addToFreqBucket adds a node to the specified frequency bucket.
-func (h *LfuHandler) addToFreqBucket(key string, node *lfuNode, freq int64) {
+func (h *lfuHandler) addToFreqBucket(key string, node *lfuNode, freq int64) {
 	bucketElem, exists := h.bucketMap[freq]
 
 	var bucket *lfuFreqBucket
@@ -364,7 +371,7 @@ func (h *LfuHandler) addToFreqBucket(key string, node *lfuNode, freq int64) {
 }
 
 // removeFromFreqBucket removes a node from the specified frequency bucket.
-func (h *LfuHandler) removeFromFreqBucket(key string, freq int64) {
+func (h *lfuHandler) removeFromFreqBucket(key string, freq int64) {
 	bucketElem, exists := h.bucketMap[freq]
 	if !exists {
 		return
@@ -392,13 +399,13 @@ func (h *LfuHandler) removeFromFreqBucket(key string, freq int64) {
 }
 
 // moveToFreqBucket moves a node from one frequency bucket to another.
-func (h *LfuHandler) moveToFreqBucket(key string, node *lfuNode, oldFreq, newFreq int64) {
+func (h *lfuHandler) moveToFreqBucket(key string, node *lfuNode, oldFreq, newFreq int64) {
 	h.removeFromFreqBucket(key, oldFreq)
 	h.addToFreqBucket(key, node, newFreq)
 }
 
 // insertBucketSorted inserts a bucket in sorted order by frequency.
-func (h *LfuHandler) insertBucketSorted(bucket *lfuFreqBucket) *list.Element {
+func (h *lfuHandler) insertBucketSorted(bucket *lfuFreqBucket) *list.Element {
 	// Find insertion point
 	for elem := h.freqBuckets.Front(); elem != nil; elem = elem.Next() {
 		existingBucket, ok := elem.Value.(*lfuFreqBucket)
@@ -412,7 +419,7 @@ func (h *LfuHandler) insertBucketSorted(bucket *lfuFreqBucket) *list.Element {
 }
 
 // recalculateMinFreq recalculates the minimum frequency from current buckets.
-func (h *LfuHandler) recalculateMinFreq() {
+func (h *lfuHandler) recalculateMinFreq() {
 	if h.freqBuckets.Len() == 0 {
 		h.minFreq = 0
 
@@ -425,23 +432,5 @@ func (h *LfuHandler) recalculateMinFreq() {
 		if bucket, ok := elem.Value.(*lfuFreqBucket); ok {
 			h.minFreq = bucket.frequency
 		}
-	}
-}
-
-// EvictionHandlerFactory creates eviction handlers based on policy.
-type EvictionHandlerFactory struct{}
-
-func (*EvictionHandlerFactory) CreateHandler(policy EvictionPolicy) EvictionHandler {
-	switch policy {
-	case EvictionPolicyLRU:
-		return NewLruHandler()
-	case EvictionPolicyLFU:
-		return NewLfuHandler()
-	case EvictionPolicyFIFO:
-		return NewFifoHandler()
-	case EvictionPolicyNone:
-		fallthrough
-	default:
-		return NewNoOpEvictionHandler()
 	}
 }

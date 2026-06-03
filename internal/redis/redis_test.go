@@ -247,6 +247,22 @@ func TestBuildRedisAddr(t *testing.T) {
 			},
 			expected: "127.0.0.1:6380",
 		},
+		{
+			name: "UnixSocketUsesHostAsPath",
+			config: &config.RedisConfig{
+				Network: "unix",
+				Host:    "/var/run/redis/redis.sock",
+				Port:    6379,
+			},
+			expected: "/var/run/redis/redis.sock",
+		},
+		{
+			name: "UnixSocketWithoutHostUsesDefaultPath",
+			config: &config.RedisConfig{
+				Network: "unix",
+			},
+			expected: "/run/redis/redis.sock",
+		},
 	}
 
 	for _, tt := range tests {
