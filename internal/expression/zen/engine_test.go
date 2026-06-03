@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/expression"
-	"github.com/coldsmirk/vef-framework-go/expression/zen"
+	"github.com/coldsmirk/vef-framework-go/internal/expression/zen"
 )
 
 func TestEngine(t *testing.T) {
