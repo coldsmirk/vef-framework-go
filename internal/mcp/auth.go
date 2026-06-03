@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/modelcontextprotocol/go-sdk/auth"
+	"github.com/spf13/cast"
 
 	isecurity "github.com/coldsmirk/vef-framework-go/internal/security"
 	"github.com/coldsmirk/vef-framework-go/security"
@@ -24,16 +26,13 @@ func CreateTokenVerifier(authManager security.AuthManager) auth.TokenVerifier {
 			return nil, fmt.Errorf("%w: %w", auth.ErrInvalidToken, err)
 		}
 
-		// AuthManager.Authenticate is the source of truth: it parses the JWT and
-		// rejects expired tokens (via the exp claim) before we reach this point,
-		// so the credential is already known to be valid here. The SDK still
-		// requires a non-zero, future Expiration as a structural gate
-		// (auth.verify rejects a zero or past value), but it does not expose the
-		// underlying token's real exp through AuthManager. We therefore set a
-		// far-future sentinel to satisfy the gate without asserting a misleading
-		// lifetime; real expiry stays owned by AuthManager.
+		// authManager.Authenticate already validated the JWT (signature, exp, issuer,
+		// audience). Parse it without re-verifying the signature so we can read the real
+		// exp claim and report it accurately to the MCP SDK.
+		expiration := jwtExpiration(tokenString)
+
 		return &auth.TokenInfo{
-			Expiration: validatedUpstream,
+			Expiration: expiration,
 			Extra: map[string]any{
 				"principal": principal,
 			},
@@ -41,7 +40,22 @@ func CreateTokenVerifier(authManager security.AuthManager) auth.TokenVerifier {
 	}
 }
 
-// validatedUpstream is the SDK Expiration sentinel used when the token has
-// already been validated by AuthManager. It must be non-zero and in the future
-// to pass auth.verify; its absolute value carries no meaning.
-var validatedUpstream = time.Date(9999, time.December, 31, 23, 59, 59, 0, time.UTC)
+// jwtExpiration parses the exp claim from a JWT without verifying its signature.
+// The caller must have already authenticated the token via AuthManager; this is
+// a read-only claim extraction performed after validation succeeds.
+// Returns a far-future fallback time if the claim is absent or unparseable.
+func jwtExpiration(tokenString string) time.Time {
+	var claims jwt.MapClaims
+
+	_, _, err := jwt.NewParser().ParseUnverified(tokenString, &claims)
+	if err != nil {
+		return time.Date(9999, time.December, 31, 23, 59, 59, 0, time.UTC)
+	}
+
+	exp := cast.ToInt64(claims["exp"])
+	if exp <= 0 {
+		return time.Date(9999, time.December, 31, 23, 59, 59, 0, time.UTC)
+	}
+
+	return time.Unix(exp, 0)
+}
