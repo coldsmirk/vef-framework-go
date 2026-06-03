@@ -1,12 +1,17 @@
 package orm
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/uptrace/bun/schema"
 
 	"github.com/coldsmirk/vef-framework-go/sortx"
 )
+
+// ErrWindowFrameMissingBound is returned when a window frame unit (ROWS/RANGE/GROUPS)
+// is configured without a start bound, which would otherwise render invalid SQL.
+var ErrWindowFrameMissingBound = errors.New("window frame requires a start bound")
 
 // WindowPartitionable defines window functions that support partitioning.
 type WindowPartitionable[T any] interface {
@@ -300,18 +305,18 @@ type WindowBoolAndBuilder interface {
 }
 
 type partitionExpr struct {
-	builders ExprBuilder
-	column   string
-	expr     any
+	eb     ExprBuilder
+	column string
+	expr   any
 }
 
 func (p *partitionExpr) AppendQuery(gen schema.QueryGen, b []byte) (_ []byte, err error) {
 	if p.column != "" {
-		return p.builders.Column(p.column).AppendQuery(gen, b)
+		return p.eb.Column(p.column).AppendQuery(gen, b)
 	}
 
 	if p.expr != nil {
-		return p.builders.Expr("?", p.expr).AppendQuery(gen, b)
+		return p.eb.Expr("?", p.expr).AppendQuery(gen, b)
 	}
 
 	return b, nil
@@ -340,57 +345,45 @@ func (w *baseWindowExpr) setArgs(args ...any) {
 func (w *baseWindowExpr) appendPartitionBy(columns ...string) {
 	for _, column := range columns {
 		w.partitionExprs = append(w.partitionExprs, partitionExpr{
-			builders: w.eb,
-			column:   column,
+			eb:     w.eb,
+			column: column,
 		})
 	}
 }
 
 func (w *baseWindowExpr) appendPartitionByExpr(expr any) {
 	w.partitionExprs = append(w.partitionExprs, partitionExpr{
-		builders: w.eb,
-		expr:     expr,
+		eb:   w.eb,
+		expr: expr,
 	})
 }
 
 func (w *baseWindowExpr) appendOrderBy(columns ...string) {
-	for _, column := range columns {
-		w.orderExprs = append(w.orderExprs, orderExpr{
-			builders:   w.eb,
-			column:     column,
-			direction:  sortx.OrderAsc,
-			nullsOrder: sortx.NullsDefault,
-		})
-	}
+	appendOrderColumns(&w.orderExprs, w.eb, sortx.OrderAsc, columns...)
 }
 
 func (w *baseWindowExpr) appendOrderByDesc(columns ...string) {
-	for _, column := range columns {
-		w.orderExprs = append(w.orderExprs, orderExpr{
-			builders:   w.eb,
-			column:     column,
-			direction:  sortx.OrderDesc,
-			nullsOrder: sortx.NullsDefault,
-		})
-	}
+	appendOrderColumns(&w.orderExprs, w.eb, sortx.OrderDesc, columns...)
 }
 
 func (w *baseWindowExpr) appendOrderByExpr(expr any) {
-	w.orderExprs = append(w.orderExprs, orderExpr{
-		builders:   w.eb,
-		expr:       expr,
-		direction:  sortx.OrderAsc,
-		nullsOrder: sortx.NullsDefault,
-	})
+	appendOrderExpr(&w.orderExprs, w.eb, expr)
 }
 
-func (w *baseWindowExpr) AppendQuery(gen schema.QueryGen, b []byte) (_ []byte, err error) {
+func (w *baseWindowExpr) AppendQuery(gen schema.QueryGen, b []byte) ([]byte, error) {
+	return w.appendQueryWithArgs(gen, b, w.args)
+}
+
+// appendQueryWithArgs renders the window function using the supplied arguments
+// rather than the receiver's args field, so callers that derive arguments at render
+// time (LAG/LEAD/NTH_VALUE) stay side-effect-free under repeated rendering.
+func (w *baseWindowExpr) appendQueryWithArgs(gen schema.QueryGen, b []byte, args []any) (_ []byte, err error) {
 	if w.funcExpr == nil {
 		b = append(b, w.funcName...)
 		b = append(b, '(')
 
-		if len(w.args) > 0 {
-			if b, err = w.eb.Exprs(w.args...).AppendQuery(gen, b); err != nil {
+		if len(args) > 0 {
+			if b, err = w.eb.Exprs(args...).AppendQuery(gen, b); err != nil {
 				return
 			}
 		}
@@ -463,6 +456,12 @@ func (w *baseWindowExpr) AppendQuery(gen schema.QueryGen, b []byte) (_ []byte, e
 	}
 
 	if w.frameType != FrameDefault {
+		// A frame unit (ROWS/RANGE/GROUPS) requires a start bound; without one the
+		// fluent API would otherwise emit "ROWS " or "BETWEEN  AND ...".
+		if w.frameStartKind == FrameBoundNone {
+			return nil, ErrWindowFrameMissingBound
+		}
+
 		if len(w.partitionExprs) > 0 || len(w.orderExprs) > 0 {
 			b = append(b, ' ')
 		}
@@ -731,7 +730,7 @@ func (o *offsetWindowExpr[T]) DefaultValue(value any) T {
 	return o.self
 }
 
-func (o *offsetWindowExpr[T]) AppendQuery(gen schema.QueryGen, b []byte) (_ []byte, err error) {
+func (o *offsetWindowExpr[T]) AppendQuery(gen schema.QueryGen, b []byte) ([]byte, error) {
 	var args []any
 
 	if o.column != "" {
@@ -748,9 +747,7 @@ func (o *offsetWindowExpr[T]) AppendQuery(gen schema.QueryGen, b []byte) (_ []by
 		args = append(args, o.defaultValue)
 	}
 
-	o.setArgs(args...)
-
-	return o.baseWindowExpr.AppendQuery(gen, b)
+	return o.appendQueryWithArgs(gen, b, args)
 }
 
 type lagExpr struct {
@@ -848,7 +845,7 @@ func (nv *nthValueExpr) FromLast() NthValueBuilder {
 	return nv
 }
 
-func (nv *nthValueExpr) AppendQuery(gen schema.QueryGen, b []byte) (_ []byte, err error) {
+func (nv *nthValueExpr) AppendQuery(gen schema.QueryGen, b []byte) ([]byte, error) {
 	var args []any
 	if nv.column != "" {
 		args = append(args, nv.eb.Column(nv.column))
@@ -857,9 +854,8 @@ func (nv *nthValueExpr) AppendQuery(gen schema.QueryGen, b []byte) (_ []byte, er
 	}
 
 	args = append(args, nv.n)
-	nv.setArgs(args...)
 
-	return nv.baseWindowExpr.AppendQuery(gen, b)
+	return nv.appendQueryWithArgs(gen, b, args)
 }
 
 type windowCountExpr struct {

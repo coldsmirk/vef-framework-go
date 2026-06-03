@@ -409,34 +409,15 @@ func (a *baseAggregateExpr) setFilter(builder func(ConditionBuilder)) {
 }
 
 func (a *baseAggregateExpr) appendOrderBy(columns ...string) {
-	for _, column := range columns {
-		a.orderExprs = append(a.orderExprs, orderExpr{
-			builders:   a.eb,
-			column:     column,
-			direction:  sortx.OrderAsc,
-			nullsOrder: sortx.NullsDefault,
-		})
-	}
+	appendOrderColumns(&a.orderExprs, a.eb, sortx.OrderAsc, columns...)
 }
 
 func (a *baseAggregateExpr) appendOrderByDesc(columns ...string) {
-	for _, column := range columns {
-		a.orderExprs = append(a.orderExprs, orderExpr{
-			builders:   a.eb,
-			column:     column,
-			direction:  sortx.OrderDesc,
-			nullsOrder: sortx.NullsDefault,
-		})
-	}
+	appendOrderColumns(&a.orderExprs, a.eb, sortx.OrderDesc, columns...)
 }
 
 func (a *baseAggregateExpr) appendOrderByExpr(expr any) {
-	a.orderExprs = append(a.orderExprs, orderExpr{
-		builders:   a.eb,
-		expr:       expr,
-		direction:  sortx.OrderAsc,
-		nullsOrder: sortx.NullsDefault,
-	})
+	appendOrderExpr(&a.orderExprs, a.eb, expr)
 }
 
 func (a *baseAggregateExpr) AppendQuery(gen schema.QueryGen, b []byte) ([]byte, error) {
@@ -505,14 +486,20 @@ func (a *baseAggregateExpr) appendQueryWithState(gen schema.QueryGen, b []byte, 
 	return b, nil
 }
 
+// appendCompatibleFilterQueryWithState emulates a FILTER clause on dialects that
+// lack native support by folding the predicate into a CASE argument. COUNT becomes
+// SUM(CASE WHEN filter THEN 1 ELSE 0 END); other aggregates wrap their argument and
+// fall back to NULL so excluded rows do not contribute. ORDER BY and NULLS handling
+// are rendered exactly as the native path does, so combining FILTER with those clauses
+// keeps its semantics instead of silently dropping them.
 func (a *baseAggregateExpr) appendCompatibleFilterQueryWithState(gen schema.QueryGen, b []byte, state aggregateQueryState) (_ []byte, err error) {
-	funcName := state.funcName
+	countLike := state.funcName == "COUNT"
+	sumLike := countLike || state.funcName == "SUM"
 
-	switch funcName {
-	case "COUNT":
+	if countLike {
 		b = append(b, "SUM"...)
-	default:
-		b = append(b, funcName...)
+	} else {
+		b = append(b, state.funcName...)
 	}
 
 	b = append(b, '(')
@@ -523,24 +510,34 @@ func (a *baseAggregateExpr) appendCompatibleFilterQueryWithState(gen schema.Quer
 
 	if b, err = a.eb.Case(func(cb CaseBuilder) {
 		when := cb.WhenExpr(state.filter)
-		switch funcName {
-		case "COUNT":
+		if countLike {
 			when.Then(1)
-		default:
+		} else {
 			when.Then(state.argsExpr)
 		}
 
-		switch funcName {
-		case "COUNT", "SUM":
+		if sumLike {
 			cb.Else(0)
-		default:
+		} else {
 			cb.Else(a.eb.Null())
 		}
 	}).AppendQuery(gen, b); err != nil {
 		return
 	}
 
+	if len(state.orderExprs) > 0 {
+		b = append(b, ' ')
+		if b, err = newOrderByClause(state.orderExprs...).AppendQuery(gen, b); err != nil {
+			return
+		}
+	}
+
 	b = append(b, ')')
+
+	if state.nullsMode != NullsDefault {
+		b = append(b, ' ')
+		b = append(b, state.nullsMode.String()...)
+	}
 
 	return b, nil
 }

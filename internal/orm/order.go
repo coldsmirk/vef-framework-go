@@ -24,7 +24,7 @@ type OrderBuilder interface {
 
 // orderExpr implements OrderBuilder interface.
 type orderExpr struct {
-	builders   ExprBuilder
+	eb         ExprBuilder
 	column     string
 	direction  sortx.OrderDirection
 	nullsOrder sortx.NullsOrder
@@ -75,9 +75,9 @@ func (o *orderExpr) AppendQuery(gen schema.QueryGen, b []byte) (_ []byte, err er
 	}
 
 	if o.column != "" {
-		b, err = o.builders.Column(o.column).AppendQuery(gen, b)
+		b, err = o.eb.Column(o.column).AppendQuery(gen, b)
 	} else {
-		b, err = o.builders.Expr("?", o.expr).AppendQuery(gen, b)
+		b, err = o.eb.Expr("?", o.expr).AppendQuery(gen, b)
 	}
 
 	if err != nil {
@@ -116,9 +116,9 @@ func (o *orderByClause) AppendQuery(gen schema.QueryGen, b []byte) (_ []byte, er
 	return b, nil
 }
 
-func newOrderExpr(builders ExprBuilder) *orderExpr {
+func newOrderExpr(eb ExprBuilder) *orderExpr {
 	return &orderExpr{
-		builders:   builders,
+		eb:         eb,
 		direction:  sortx.OrderAsc,
 		nullsOrder: sortx.NullsDefault,
 	}
@@ -128,4 +128,28 @@ func newOrderByClause(exprs ...orderExpr) *orderByClause {
 	return &orderByClause{
 		exprs: exprs,
 	}
+}
+
+// appendOrderColumns appends one column-based orderExpr per column with the given
+// direction, shared by the aggregate and window builders.
+func appendOrderColumns(dst *[]orderExpr, eb ExprBuilder, direction sortx.OrderDirection, columns ...string) {
+	for _, column := range columns {
+		*dst = append(*dst, orderExpr{
+			eb:         eb,
+			column:     column,
+			direction:  direction,
+			nullsOrder: sortx.NullsDefault,
+		})
+	}
+}
+
+// appendOrderExpr appends a single expression-based orderExpr with ascending
+// direction, shared by the aggregate and window builders.
+func appendOrderExpr(dst *[]orderExpr, eb ExprBuilder, expr any) {
+	*dst = append(*dst, orderExpr{
+		eb:         eb,
+		expr:       expr,
+		direction:  sortx.OrderAsc,
+		nullsOrder: sortx.NullsDefault,
+	})
 }
