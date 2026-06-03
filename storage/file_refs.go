@@ -251,7 +251,6 @@ func parseMetaFields(typ reflect.Type) []metaField {
 		typ,
 		visitor,
 		reflectx.WithDiveTag(tagMeta, "dive"),
-		reflectx.WithTraversalMode(reflectx.DepthFirst),
 	)
 
 	return fields

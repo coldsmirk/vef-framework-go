@@ -70,7 +70,6 @@ func parseStruct(t reflect.Type) []condition {
 	reflectx.VisitType(
 		t, visitor,
 		reflectx.WithDiveTag(TagSearch, AttrDive),
-		reflectx.WithTraversalMode(reflectx.DepthFirst),
 	)
 
 	return conditions

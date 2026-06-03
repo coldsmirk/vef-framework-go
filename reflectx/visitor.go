@@ -1,18 +1,9 @@
 package reflectx
 
 import (
-	"container/list"
 	"reflect"
 
 	"github.com/coldsmirk/go-collections"
-)
-
-// TraversalMode defines the traversal strategy for visiting struct fields and methods.
-type TraversalMode int
-
-const (
-	DepthFirst TraversalMode = iota
-	BreadthFirst
 )
 
 // VisitAction represents the action to take after visiting a node.
@@ -32,19 +23,13 @@ type TagConfig struct {
 
 // VisitorConfig configures how the traversal should be performed.
 type VisitorConfig struct {
-	TraversalMode TraversalMode
-	Recursive     bool
-	DiveTag       TagConfig
-	MaxDepth      int
+	Recursive bool
+	DiveTag   TagConfig
+	MaxDepth  int
 }
 
 // VisitorOption configures visitor behavior.
 type VisitorOption func(*VisitorConfig)
-
-// WithTraversalMode selects the traversal strategy. The default is DepthFirst.
-func WithTraversalMode(mode TraversalMode) VisitorOption {
-	return func(c *VisitorConfig) { c.TraversalMode = mode }
-}
 
 // WithDisableRecursive limits the traversal to the root struct's own fields,
 // skipping anonymous embeds and dive-tagged fields. Recursion is enabled by default.
@@ -65,9 +50,8 @@ func WithMaxDepth(maxDepth int) VisitorOption {
 
 func defaultVisitorConfig() VisitorConfig {
 	return VisitorConfig{
-		TraversalMode: DepthFirst,
-		Recursive:     true,
-		DiveTag:       TagConfig{Name: "visit", Value: "dive"},
+		Recursive: true,
+		DiveTag:   TagConfig{Name: "visit", Value: "dive"},
 	}
 }
 
@@ -130,11 +114,7 @@ func Visit(target reflect.Value, visitor Visitor, opts ...VisitorOption) {
 		return
 	}
 
-	if config.TraversalMode == DepthFirst {
-		visitDepthFirst(target, config, visitor, collections.NewHashSet[reflect.Type](), 0, nil)
-	} else {
-		visitBreadthFirst(target, config, visitor)
-	}
+	visitDepthFirst(target, config, visitor, collections.NewHashSet[reflect.Type](), 0, nil)
 }
 
 // VisitType traverses a struct type using type visitor callbacks.
@@ -152,11 +132,7 @@ func VisitType(targetType reflect.Type, visitor TypeVisitor, opts ...VisitorOpti
 		return
 	}
 
-	if config.TraversalMode == DepthFirst {
-		visitTypeDepthFirst(targetType, config, visitor, collections.NewHashSet[reflect.Type](), 0, nil)
-	} else {
-		visitTypeBreadthFirst(targetType, config, visitor)
-	}
+	visitTypeDepthFirst(targetType, config, visitor, collections.NewHashSet[reflect.Type](), 0, nil)
 }
 
 func visitDepthFirst(target reflect.Value, config VisitorConfig, visitor Visitor, ancestors collections.Set[reflect.Type], depth int, parentIndexPath []int) VisitAction {
@@ -223,82 +199,6 @@ func visitDepthFirst(target reflect.Value, config VisitorConfig, visitor Visitor
 	return Continue
 }
 
-func visitBreadthFirst(target reflect.Value, config VisitorConfig, visitor Visitor) {
-	type queueItem struct {
-		value           reflect.Value
-		depth           int
-		parentIndexPath []int
-		ancestors       collections.Set[reflect.Type]
-	}
-
-	queue := list.New()
-	queue.PushBack(queueItem{target, 0, nil, collections.NewHashSet[reflect.Type]()})
-
-	for queue.Len() > 0 {
-		item := queue.Remove(queue.Front()).(queueItem)
-		current, depth, parentIndexPath, ancestors := item.value, item.depth, item.parentIndexPath, item.ancestors
-
-		if config.MaxDepth > 0 && depth >= config.MaxDepth {
-			continue
-		}
-
-		for current.Kind() == reflect.Pointer {
-			if current.IsNil() {
-				break
-			}
-
-			current = current.Elem()
-		}
-
-		if current.Kind() != reflect.Struct {
-			continue
-		}
-
-		currentType := current.Type()
-		if ancestors.Contains(currentType) {
-			continue
-		}
-
-		childAncestors := ancestors.Clone()
-		childAncestors.Add(currentType)
-
-		if visitor.VisitStruct != nil {
-			if visitor.VisitStruct(currentType, current, depth) == Stop {
-				return
-			}
-		}
-
-		for i := range current.NumField() {
-			field := current.Field(i)
-			fieldType := currentType.Field(i)
-
-			if !field.CanInterface() {
-				continue
-			}
-
-			fieldTypeCopy := fieldWithAbsoluteIndex(fieldType, parentIndexPath)
-			skipChildren := false
-
-			if visitor.VisitField != nil {
-				switch action := visitor.VisitField(fieldTypeCopy, field, depth); action {
-				case Stop:
-					return
-				case SkipChildren:
-					skipChildren = true
-				}
-			}
-
-			if !skipChildren && config.Recursive && shouldRecurse(fieldType, config.DiveTag) {
-				queue.PushBack(queueItem{field, depth + 1, fieldTypeCopy.Index, childAncestors})
-			}
-		}
-
-		if visitMethods(current, visitor.VisitMethod, depth) == Stop {
-			return
-		}
-	}
-}
-
 func visitTypeDepthFirst(targetType reflect.Type, config VisitorConfig, visitor TypeVisitor, ancestors collections.Set[reflect.Type], depth int, parentIndexPath []int) VisitAction {
 	if config.MaxDepth > 0 && depth >= config.MaxDepth {
 		return Continue
@@ -345,71 +245,6 @@ func visitTypeDepthFirst(targetType reflect.Type, config VisitorConfig, visitor 
 	}
 
 	return Continue
-}
-
-func visitTypeBreadthFirst(targetType reflect.Type, config VisitorConfig, visitor TypeVisitor) {
-	type queueItem struct {
-		structType      reflect.Type
-		depth           int
-		parentIndexPath []int
-		ancestors       collections.Set[reflect.Type]
-	}
-
-	queue := list.New()
-	queue.PushBack(queueItem{targetType, 0, nil, collections.NewHashSet[reflect.Type]()})
-
-	for queue.Len() > 0 {
-		item := queue.Remove(queue.Front()).(queueItem)
-		current := Indirect(item.structType)
-		depth, parentIndexPath, ancestors := item.depth, item.parentIndexPath, item.ancestors
-
-		if config.MaxDepth > 0 && depth >= config.MaxDepth {
-			continue
-		}
-
-		if current.Kind() != reflect.Struct {
-			continue
-		}
-
-		if ancestors.Contains(current) {
-			continue
-		}
-
-		childAncestors := ancestors.Clone()
-		childAncestors.Add(current)
-
-		if visitor.VisitStructType != nil {
-			if visitor.VisitStructType(current, depth) == Stop {
-				return
-			}
-		}
-
-		for field := range current.Fields() {
-			if !field.IsExported() {
-				continue
-			}
-
-			fieldCopy := fieldWithAbsoluteIndex(field, parentIndexPath)
-			skipChildren := false
-
-			if visitor.VisitFieldType != nil {
-				switch action := visitor.VisitFieldType(fieldCopy, depth); action {
-				case Stop:
-					return
-				case SkipChildren:
-					skipChildren = true
-				}
-			}
-
-			if !skipChildren && config.Recursive && shouldRecurse(field, config.DiveTag) {
-				queue.PushBack(queueItem{field.Type, depth + 1, fieldCopy.Index, childAncestors})
-			}
-		}
-
-		if visitMethodTypes(current, visitor.VisitMethodType, depth) == Stop {
-			return
-		}
-	}
 }
 
 func visitMethods(target reflect.Value, visitor MethodVisitor, depth int) VisitAction {

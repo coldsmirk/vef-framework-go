@@ -68,7 +68,6 @@ func parseStruct(t reflect.Type) []*Column {
 	reflectx.VisitType(
 		rootType, visitor,
 		reflectx.WithDiveTag(TagTabular, AttrDive),
-		reflectx.WithTraversalMode(reflectx.DepthFirst),
 	)
 
 	return columns

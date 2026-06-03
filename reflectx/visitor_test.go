@@ -147,21 +147,9 @@ func TestVisitSameTypedSiblings(t *testing.T) {
 		},
 	}
 
-	t.Run("DepthFirst", func(t *testing.T) {
-		leafIndexPaths = nil
+	Visit(reflect.ValueOf(testStruct), visitor)
 
-		Visit(reflect.ValueOf(testStruct), visitor)
-
-		assert.Equal(t, [][]int{{0, 0}, {1, 0}}, leafIndexPaths, "Both same-typed sibling subtrees should be visited with distinct index paths")
-	})
-
-	t.Run("BreadthFirst", func(t *testing.T) {
-		leafIndexPaths = nil
-
-		Visit(reflect.ValueOf(testStruct), visitor, WithTraversalMode(BreadthFirst))
-
-		assert.ElementsMatch(t, [][]int{{0, 0}, {1, 0}}, leafIndexPaths, "Both same-typed sibling subtrees should be visited with distinct index paths")
-	})
+	assert.Equal(t, [][]int{{0, 0}, {1, 0}}, leafIndexPaths, "Both same-typed sibling subtrees should be visited with distinct index paths")
 }
 
 // TestVisitDiamondBranches verifies a type reachable through two independent
@@ -187,53 +175,6 @@ func TestVisitDiamondBranches(t *testing.T) {
 	}
 
 	assert.Equal(t, 2, count, "Shared base should be visited once per independent branch")
-}
-
-// TestVisitBreadthFirst tests Visit breadth first scenarios.
-func TestVisitBreadthFirst(t *testing.T) {
-	testStruct := VisitorTestNested{
-		VisitorTestEmbedded: VisitorTestEmbedded{
-			BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
-			EmbeddedValue:   42,
-			Services: &VisitorTestServices{
-				Logger: VisitorTestLogger{Level: "info"},
-				Cache:  &VisitorTestCache{Size: 100},
-			},
-		},
-		NestedValue: true,
-	}
-
-	var (
-		visitedStructs []string
-		depths         []int
-	)
-
-	visitor := Visitor{
-		VisitStruct: func(structType reflect.Type, _ reflect.Value, depth int) VisitAction {
-			visitedStructs = append(visitedStructs, structType.Name())
-			depths = append(depths, depth)
-
-			return Continue
-		},
-	}
-
-	Visit(reflect.ValueOf(testStruct), visitor, WithTraversalMode(BreadthFirst))
-
-	require.Len(t, visitedStructs, 6, "Should visit 6 structs total")
-	require.Len(t, depths, 6, "Should record 6 depths")
-
-	assert.Equal(t, "VisitorTestNested", visitedStructs[0], "Root struct should be visited first")
-	assert.Equal(t, 0, depths[0], "Root struct should be at depth 0")
-
-	depth1Structs := []string{}
-
-	for i, depth := range depths {
-		if depth == 1 {
-			depth1Structs = append(depth1Structs, visitedStructs[i])
-		}
-	}
-
-	assert.Contains(t, depth1Structs, "VisitorTestEmbedded", "Embedded struct should be at depth 1")
 }
 
 // TestVisitMaxDepth tests Visit max depth scenarios.
@@ -475,43 +416,6 @@ func TestVisitTypeDepthFirst(t *testing.T) {
 	// Verify methods are visited
 	assert.Contains(t, visitedMethods, "BaseMethod", "Visitor traversal should include the expected target")
 	assert.Contains(t, visitedMethods, "EmbeddedMethod", "Visitor traversal should include the expected target")
-}
-
-// TestVisitTypeBreadthFirst tests VisitType breadth first scenarios.
-func TestVisitTypeBreadthFirst(t *testing.T) {
-	var (
-		visitedTypes []string
-		depths       []int
-	)
-
-	visitor := TypeVisitor{
-		VisitStructType: func(structType reflect.Type, depth int) VisitAction {
-			visitedTypes = append(visitedTypes, structType.Name())
-			depths = append(depths, depth)
-
-			return Continue
-		},
-	}
-
-	VisitType(reflect.TypeFor[VisitorTestNested](), visitor, WithTraversalMode(BreadthFirst))
-
-	// Verify breadth-first ordering
-	require.Len(t, visitedTypes, 6, "Visitor traversal should record all six entries")
-	require.Len(t, depths, 6, "Visitor traversal should record all six entries")
-
-	assert.Equal(t, "VisitorTestNested", visitedTypes[0], "Visitor traversal output should match the expected order, depth, or field value")
-	assert.Equal(t, 0, depths[0], "Visitor traversal output should match the expected order, depth, or field value")
-
-	// Find types at depth 1
-	depth1Types := []string{}
-
-	for i, depth := range depths {
-		if depth == 1 {
-			depth1Types = append(depth1Types, visitedTypes[i])
-		}
-	}
-
-	assert.Contains(t, depth1Types, "VisitorTestEmbedded", "Visitor traversal should include the expected target")
 }
 
 // TestVisitTypeMaxDepth tests VisitType max depth scenarios.
@@ -1119,28 +1023,20 @@ func TestVisitFieldIndexPathCanAccessValues(t *testing.T) {
 	assert.Equal(t, int64(1024), actualValue.Int(), "Visitor traversal output should match the expected order, depth, or field value")
 }
 
-// TestVisitTypeFieldIndexPathAllTraversalModes tests VisitType field index path all traversal modes scenarios.
-func TestVisitTypeFieldIndexPathAllTraversalModes(t *testing.T) {
-	// Test that all four traversal modes produce correct index paths
+// TestVisitTypeFieldIndexPath tests VisitType field index path scenarios for both value and type traversal.
+func TestVisitTypeFieldIndexPath(t *testing.T) {
 	testCases := []struct {
 		name      string
-		mode      TraversalMode
 		useValue  bool
 		fieldName string
 		expected  []int
 	}{
-		{"TypeDepthFirst - BaseValue", DepthFirst, false, "BaseValue", []int{0, 0}},
-		{"TypeDepthFirst - EmbeddedValue", DepthFirst, false, "EmbeddedValue", []int{1}},
-		{"TypeDepthFirst - Level", DepthFirst, false, "Level", []int{2, 0, 0}},
-		{"TypeBreadthFirst - BaseValue", BreadthFirst, false, "BaseValue", []int{0, 0}},
-		{"TypeBreadthFirst - EmbeddedValue", BreadthFirst, false, "EmbeddedValue", []int{1}},
-		{"TypeBreadthFirst - Level", BreadthFirst, false, "Level", []int{2, 0, 0}},
-		{"ValueDepthFirst - BaseValue", DepthFirst, true, "BaseValue", []int{0, 0}},
-		{"ValueDepthFirst - EmbeddedValue", DepthFirst, true, "EmbeddedValue", []int{1}},
-		{"ValueDepthFirst - Level", DepthFirst, true, "Level", []int{2, 0, 0}},
-		{"ValueBreadthFirst - BaseValue", BreadthFirst, true, "BaseValue", []int{0, 0}},
-		{"ValueBreadthFirst - EmbeddedValue", BreadthFirst, true, "EmbeddedValue", []int{1}},
-		{"ValueBreadthFirst - Level", BreadthFirst, true, "Level", []int{2, 0, 0}},
+		{"Type - BaseValue", false, "BaseValue", []int{0, 0}},
+		{"Type - EmbeddedValue", false, "EmbeddedValue", []int{1}},
+		{"Type - Level", false, "Level", []int{2, 0, 0}},
+		{"Value - BaseValue", true, "BaseValue", []int{0, 0}},
+		{"Value - EmbeddedValue", true, "EmbeddedValue", []int{1}},
+		{"Value - Level", true, "Level", []int{2, 0, 0}},
 	}
 
 	for _, tc := range testCases {
@@ -1168,7 +1064,7 @@ func TestVisitTypeFieldIndexPathAllTraversalModes(t *testing.T) {
 					},
 				}
 
-				Visit(reflect.ValueOf(testValue), visitor, WithTraversalMode(tc.mode))
+				Visit(reflect.ValueOf(testValue), visitor)
 			} else {
 				visitor := TypeVisitor{
 					VisitFieldType: func(field reflect.StructField, _ int) VisitAction {
@@ -1182,7 +1078,7 @@ func TestVisitTypeFieldIndexPathAllTraversalModes(t *testing.T) {
 					},
 				}
 
-				VisitType(reflect.TypeFor[VisitorTestEmbedded](), visitor, WithTraversalMode(tc.mode))
+				VisitType(reflect.TypeFor[VisitorTestEmbedded](), visitor)
 			}
 
 			assert.Equal(t, tc.expected, foundIndex, "Field %s should have correct index path", tc.fieldName)
@@ -1377,337 +1273,60 @@ func TestVisitTypeFieldIndexPathConsistency(t *testing.T) {
 	}
 }
 
-// --- BreadthFirst coverage tests ---
-
-// TestVisitBreadthFirstStopAction tests VisitStruct returning Stop in BreadthFirst mode.
-func TestVisitBreadthFirstStopAction(t *testing.T) {
-	testStruct := VisitorTestEmbedded{
-		BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
-		EmbeddedValue:   42,
-	}
-
-	var visitedStructs []string
-
-	visitor := Visitor{
-		VisitStruct: func(structType reflect.Type, _ reflect.Value, _ int) VisitAction {
-			visitedStructs = append(visitedStructs, structType.Name())
-
-			return Stop
-		},
-	}
-
-	Visit(reflect.ValueOf(testStruct), visitor, WithTraversalMode(BreadthFirst))
-
-	assert.Equal(t, []string{"VisitorTestEmbedded"}, visitedStructs, "Should stop at first struct")
-}
-
-// TestVisitBreadthFirstSkipChildrenAction tests VisitField returning SkipChildren in BreadthFirst mode.
-func TestVisitBreadthFirstSkipChildrenAction(t *testing.T) {
-	testStruct := VisitorTestEmbedded{
-		BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
-		Services: &VisitorTestServices{
-			Logger: VisitorTestLogger{Level: "info"},
-		},
-	}
-
-	var visitedStructs []string
-
-	visitor := Visitor{
-		VisitField: func(field reflect.StructField, _ reflect.Value, _ int) VisitAction {
-			if field.Name == "Services" {
-				return SkipChildren
-			}
-
-			return Continue
-		},
-		VisitStruct: func(structType reflect.Type, _ reflect.Value, _ int) VisitAction {
-			visitedStructs = append(visitedStructs, structType.Name())
-
-			return Continue
-		},
-	}
-
-	Visit(reflect.ValueOf(testStruct), visitor, WithTraversalMode(BreadthFirst))
-
-	assert.NotContains(t, visitedStructs, "VisitorTestServices", "Should not visit skipped children")
-	assert.NotContains(t, visitedStructs, "VisitorTestLogger", "Should not visit nested skipped children")
-}
-
-// TestVisitBreadthFirstMaxDepth tests MaxDepth in BreadthFirst mode.
-func TestVisitBreadthFirstMaxDepth(t *testing.T) {
-	testStruct := VisitorTestNested{
-		VisitorTestEmbedded: VisitorTestEmbedded{
-			BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
-			Services: &VisitorTestServices{
-				Logger: VisitorTestLogger{Level: "info"},
-			},
-		},
-	}
-
-	var visitedStructs []string
-
-	visitor := Visitor{
-		VisitStruct: func(structType reflect.Type, _ reflect.Value, _ int) VisitAction {
-			visitedStructs = append(visitedStructs, structType.Name())
-
-			return Continue
-		},
-	}
-
-	Visit(reflect.ValueOf(testStruct), visitor, WithTraversalMode(BreadthFirst), WithMaxDepth(2))
-
-	assert.NotContains(t, visitedStructs, "VisitorTestLogger", "Should not visit deeper structures due to MaxDepth")
-}
-
-// TestVisitBreadthFirstNilPointerField tests nil pointer handling in BreadthFirst mode.
-func TestVisitBreadthFirstNilPointerField(t *testing.T) {
-	testStruct := VisitorTestEmbedded{
-		BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
-		Services:        nil,
-	}
-
-	var visitedStructs []string
-
-	visitor := Visitor{
-		VisitStruct: func(structType reflect.Type, _ reflect.Value, _ int) VisitAction {
-			visitedStructs = append(visitedStructs, structType.Name())
-
-			return Continue
-		},
-	}
-
-	Visit(reflect.ValueOf(testStruct), visitor, WithTraversalMode(BreadthFirst))
-
-	assert.Contains(t, visitedStructs, "VisitorTestEmbedded", "Should visit root struct")
-	assert.NotContains(t, visitedStructs, "VisitorTestServices", "Should not visit nil pointer target")
-}
-
-// TestVisitBreadthFirstUnexportedFields tests unexported field skipping in BreadthFirst mode.
-func TestVisitBreadthFirstUnexportedFields(t *testing.T) {
-	type StructWithUnexported struct {
-		PublicField  string
-		privateField int
-	}
-
-	testStruct := StructWithUnexported{PublicField: "public", privateField: 42}
-
-	var visitedFields []string
-
-	visitor := Visitor{
-		VisitField: func(field reflect.StructField, _ reflect.Value, _ int) VisitAction {
-			visitedFields = append(visitedFields, field.Name)
-
-			return Continue
-		},
-	}
-
-	Visit(reflect.ValueOf(testStruct), visitor, WithTraversalMode(BreadthFirst))
-
-	assert.Equal(t, []string{"PublicField"}, visitedFields, "Should only visit exported fields")
-}
-
-// TestVisitBreadthFirstDiamondBranches tests that a type reachable through two
-// independent branches is visited once per branch in BreadthFirst mode.
-func TestVisitBreadthFirstDiamondBranches(t *testing.T) {
-	testStruct := VisitorSharedRoot{}
-
-	var visitedStructs []string
-
-	visitor := Visitor{
-		VisitStruct: func(structType reflect.Type, _ reflect.Value, _ int) VisitAction {
-			visitedStructs = append(visitedStructs, structType.Name())
-
-			return Continue
-		},
-	}
-
-	Visit(reflect.ValueOf(testStruct), visitor, WithTraversalMode(BreadthFirst))
-
-	count := 0
-	for _, name := range visitedStructs {
-		if name == "VisitorSharedBase" {
-			count++
-		}
-	}
-
-	assert.Equal(t, 2, count, "Shared base should be visited once per independent branch")
-}
-
-// TestVisitMethodStopAction tests method visitor returning Stop in both traversal modes.
+// TestVisitMethodStopAction tests method visitor returning Stop.
 func TestVisitMethodStopAction(t *testing.T) {
 	testStruct := BaseVisitorTest{BaseValue: "test"}
 
-	modes := []struct {
-		name string
-		mode TraversalMode
-	}{
-		{"DepthFirst", DepthFirst},
-		{"BreadthFirst", BreadthFirst},
-	}
+	var visitedMethods []string
 
-	for _, m := range modes {
-		t.Run(m.name, func(t *testing.T) {
-			var visitedMethods []string
-
-			visitor := Visitor{
-				VisitMethod: func(method reflect.Method, _ reflect.Value, _ int) VisitAction {
-					visitedMethods = append(visitedMethods, method.Name)
-
-					return Stop
-				},
-			}
-
-			Visit(reflect.ValueOf(testStruct), visitor, WithTraversalMode(m.mode))
-
-			assert.Len(t, visitedMethods, 1, "Should stop after first method")
-		})
-	}
-}
-
-// --- Type visitor BreadthFirst coverage tests ---
-
-// TestVisitTypeBreadthFirstStopAction tests VisitStructType returning Stop in BreadthFirst mode.
-func TestVisitTypeBreadthFirstStopAction(t *testing.T) {
-	var visitedTypes []string
-
-	visitor := TypeVisitor{
-		VisitStructType: func(structType reflect.Type, _ int) VisitAction {
-			visitedTypes = append(visitedTypes, structType.Name())
+	visitor := Visitor{
+		VisitMethod: func(method reflect.Method, _ reflect.Value, _ int) VisitAction {
+			visitedMethods = append(visitedMethods, method.Name)
 
 			return Stop
 		},
 	}
 
-	VisitType(reflect.TypeFor[VisitorTestNested](), visitor, WithTraversalMode(BreadthFirst))
+	Visit(reflect.ValueOf(testStruct), visitor)
 
-	assert.Equal(t, []string{"VisitorTestNested"}, visitedTypes, "Should stop at first struct")
+	assert.Len(t, visitedMethods, 1, "Should stop after first method")
 }
 
-// TestVisitTypeBreadthFirstSkipChildrenAction tests VisitFieldType returning SkipChildren in BreadthFirst mode.
-func TestVisitTypeBreadthFirstSkipChildrenAction(t *testing.T) {
-	var visitedTypes []string
-
-	visitor := TypeVisitor{
-		VisitFieldType: func(field reflect.StructField, _ int) VisitAction {
-			if field.Name == "Services" {
-				return SkipChildren
-			}
-
-			return Continue
-		},
-		VisitStructType: func(structType reflect.Type, _ int) VisitAction {
-			visitedTypes = append(visitedTypes, structType.Name())
-
-			return Continue
-		},
-	}
-
-	VisitType(reflect.TypeFor[VisitorTestEmbedded](), visitor, WithTraversalMode(BreadthFirst))
-
-	assert.NotContains(t, visitedTypes, "VisitorTestServices", "Should not visit skipped children")
-}
-
-// TestVisitTypeBreadthFirstMaxDepth tests MaxDepth in BreadthFirst type traversal.
-func TestVisitTypeBreadthFirstMaxDepth(t *testing.T) {
-	var visitedTypes []string
-
-	visitor := TypeVisitor{
-		VisitStructType: func(structType reflect.Type, _ int) VisitAction {
-			visitedTypes = append(visitedTypes, structType.Name())
-
-			return Continue
-		},
-	}
-
-	VisitType(reflect.TypeFor[VisitorTestNested](), visitor, WithTraversalMode(BreadthFirst), WithMaxDepth(2))
-
-	assert.NotContains(t, visitedTypes, "VisitorTestLogger", "Should not visit deeper structures due to MaxDepth")
-}
-
-// TestVisitTypeBreadthFirstDiamondBranches tests that a type reachable through two
-// independent branches is visited once per branch in BreadthFirst type traversal.
-func TestVisitTypeBreadthFirstDiamondBranches(t *testing.T) {
-	var visitedTypes []string
-
-	visitor := TypeVisitor{
-		VisitStructType: func(structType reflect.Type, _ int) VisitAction {
-			visitedTypes = append(visitedTypes, structType.Name())
-
-			return Continue
-		},
-	}
-
-	VisitType(reflect.TypeFor[VisitorSharedRoot](), visitor, WithTraversalMode(BreadthFirst))
-
-	count := 0
-	for _, name := range visitedTypes {
-		if name == "VisitorSharedBase" {
-			count++
-		}
-	}
-
-	assert.Equal(t, 2, count, "Shared base should be visited once per independent branch")
-}
-
-// TestVisitTypeUnexportedFields tests unexported field skipping in both traversal modes.
+// TestVisitTypeUnexportedFields tests unexported field skipping in depth-first traversal.
 func TestVisitTypeUnexportedFields(t *testing.T) {
 	type LocalStructWithPrivate struct {
 		Public  string
 		private int //nolint:unused // intentionally unexported to test that VisitType skips it
 	}
 
-	modes := []struct {
-		name string
-		mode TraversalMode
-	}{
-		{"DepthFirst", DepthFirst},
-		{"BreadthFirst", BreadthFirst},
+	var visitedFields []string
+
+	visitor := TypeVisitor{
+		VisitFieldType: func(field reflect.StructField, _ int) VisitAction {
+			visitedFields = append(visitedFields, field.Name)
+
+			return Continue
+		},
 	}
 
-	for _, m := range modes {
-		t.Run(m.name, func(t *testing.T) {
-			var visitedFields []string
+	VisitType(reflect.TypeFor[LocalStructWithPrivate](), visitor)
 
-			visitor := TypeVisitor{
-				VisitFieldType: func(field reflect.StructField, _ int) VisitAction {
-					visitedFields = append(visitedFields, field.Name)
-
-					return Continue
-				},
-			}
-
-			VisitType(reflect.TypeFor[LocalStructWithPrivate](), visitor, WithTraversalMode(m.mode))
-
-			assert.Equal(t, []string{"Public"}, visitedFields, "Should only visit exported fields")
-		})
-	}
+	assert.Equal(t, []string{"Public"}, visitedFields, "Should only visit exported fields")
 }
 
-// TestVisitTypeMethodStopAction tests method type visitor returning Stop in both traversal modes.
+// TestVisitTypeMethodStopAction tests method type visitor returning Stop.
 func TestVisitTypeMethodStopAction(t *testing.T) {
-	modes := []struct {
-		name string
-		mode TraversalMode
-	}{
-		{"DepthFirst", DepthFirst},
-		{"BreadthFirst", BreadthFirst},
+	var visitedMethods []string
+
+	visitor := TypeVisitor{
+		VisitMethodType: func(method reflect.Method, _ reflect.Type, _ int) VisitAction {
+			visitedMethods = append(visitedMethods, method.Name)
+
+			return Stop
+		},
 	}
 
-	for _, m := range modes {
-		t.Run(m.name, func(t *testing.T) {
-			var visitedMethods []string
+	VisitType(reflect.TypeFor[BaseVisitorTest](), visitor)
 
-			visitor := TypeVisitor{
-				VisitMethodType: func(method reflect.Method, _ reflect.Type, _ int) VisitAction {
-					visitedMethods = append(visitedMethods, method.Name)
-
-					return Stop
-				},
-			}
-
-			VisitType(reflect.TypeFor[BaseVisitorTest](), visitor, WithTraversalMode(m.mode))
-
-			assert.Len(t, visitedMethods, 1, "Should stop after first method")
-		})
-	}
+	assert.Len(t, visitedMethods, 1, "Should stop after first method")
 }
