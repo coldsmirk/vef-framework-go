@@ -17,7 +17,7 @@ type MemoryStore struct {
 }
 
 // NewMemoryStore creates a new in-memory sequence store.
-func NewMemoryStore() Store {
+func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		rules: collections.NewConcurrentHashMap[string, *Rule](),
 		locks: collections.NewConcurrentHashMap[string, *sync.Mutex](),

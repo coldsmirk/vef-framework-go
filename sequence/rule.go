@@ -22,7 +22,8 @@ const (
 	OverflowError OverflowStrategy = "error"
 	// OverflowReset automatically resets the counter to StartValue when MaxValue is exceeded.
 	OverflowReset OverflowStrategy = "reset"
-	// OverflowExtend allows the sequence number to exceed SeqLength (more digits than configured).
+	// OverflowExtend lets the counter keep growing past MaxValue without erroring or resetting.
+	// The rendered number may then exceed the SeqLength zero-pad width (more digits than configured).
 	OverflowExtend OverflowStrategy = "extend"
 )
 

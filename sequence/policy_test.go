@@ -138,6 +138,47 @@ func TestEvaluateReserve(t *testing.T) {
 		assert.NoError(t, err, "Cycle reset should prevent overflow error")
 		assert.True(t, resetNeeded, "Cycle reset should take priority over overflow")
 	})
+
+	t.Run("CycleResetStillEnforcesMaxValue", func(t *testing.T) {
+		yesterday := timex.DateTime(time.Time(now).AddDate(0, 0, -1))
+
+		t.Run("ErrorStrategy", func(t *testing.T) {
+			rule := &Rule{
+				SeqStep: 10, StartValue: 0, CurrentValue: 100, MaxValue: 5,
+				OverflowStrategy: OverflowError, ResetCycle: ResetDaily,
+				LastResetAt: &yesterday,
+			}
+
+			_, err := evaluateReserve(rule, 1, now)
+
+			assert.ErrorIs(t, err, ErrSequenceOverflow, "Post-reset base exceeding MaxValue must overflow under OverflowError")
+		})
+
+		t.Run("ResetStrategyCannotEscapeOverflow", func(t *testing.T) {
+			rule := &Rule{
+				SeqStep: 10, StartValue: 0, CurrentValue: 100, MaxValue: 5,
+				OverflowStrategy: OverflowReset, ResetCycle: ResetDaily,
+				LastResetAt: &yesterday,
+			}
+
+			_, err := evaluateReserve(rule, 1, now)
+
+			assert.ErrorIs(t, err, ErrSequenceOverflow, "Resetting again cannot help when the post-reset batch still exceeds MaxValue")
+		})
+
+		t.Run("ExtendStrategyAllowsOverflow", func(t *testing.T) {
+			rule := &Rule{
+				SeqStep: 10, StartValue: 0, CurrentValue: 100, MaxValue: 5,
+				OverflowStrategy: OverflowExtend, ResetCycle: ResetDaily,
+				LastResetAt: &yesterday,
+			}
+
+			resetNeeded, err := evaluateReserve(rule, 1, now)
+
+			assert.NoError(t, err, "Extend strategy should allow growth past MaxValue even on a reset boundary")
+			assert.True(t, resetNeeded, "Cycle reset should still rebase the counter under the extend strategy")
+		})
+	})
 }
 
 func TestNeedsResetByCycle(t *testing.T) {

@@ -3,11 +3,8 @@ package sequence
 import (
 	"context"
 
-	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
-
-var logger = logx.Named("sequence")
 
 // Generator provides serial number generation.
 type Generator interface {

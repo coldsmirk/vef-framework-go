@@ -8,14 +8,10 @@ import (
 	"time"
 
 	"github.com/coldsmirk/go-collections"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/coldsmirk/vef-framework-go/config"
-	"github.com/coldsmirk/vef-framework-go/id"
-	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/sequence"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -84,7 +80,7 @@ func TestGenerateConcurrentResetShouldProduceUniqueNumbers(t *testing.T) {
 	yesterday := timex.DateTime(time.Time(now).AddDate(0, 0, -1))
 	key := "race-reset-unique"
 
-	store := sequence.NewMemoryStore().(*sequence.MemoryStore)
+	store := sequence.NewMemoryStore()
 	store.Register(newTestRule(key, func(rule *sequence.Rule) {
 		rule.ResetCycle = sequence.ResetDaily
 		rule.StartValue = 0
@@ -118,7 +114,7 @@ func TestGenerateOverflowErrorShouldNotAdvanceCounter(t *testing.T) {
 	ctx := context.Background()
 	key := "overflow-error-no-state-change"
 
-	store := sequence.NewMemoryStore().(*sequence.MemoryStore)
+	store := sequence.NewMemoryStore()
 	store.Register(newTestRule(key, func(r *sequence.Rule) {
 		r.CurrentValue = 9
 		r.MaxValue = 9
@@ -448,7 +444,7 @@ func TestMemoryEngine(t *testing.T) {
 }
 
 func (s *MemoryEngineTestSuite) SetupTest() {
-	store := sequence.NewMemoryStore().(*sequence.MemoryStore)
+	store := sequence.NewMemoryStore()
 	s.generator = NewGenerator(store)
 	s.ctx = context.Background()
 	s.registerRule = func(rule *sequence.Rule) {
@@ -457,7 +453,7 @@ func (s *MemoryEngineTestSuite) SetupTest() {
 }
 
 func (s *MemoryEngineTestSuite) TestConcurrentGenerate() {
-	store := sequence.NewMemoryStore().(*sequence.MemoryStore)
+	store := sequence.NewMemoryStore()
 	store.Register(newTestRule("conc-mem", func(rule *sequence.Rule) {
 		rule.SeqLength = 6
 	}))
@@ -472,172 +468,6 @@ func (s *MemoryEngineTestSuite) TestConcurrentGenerate() {
 	for i := range numGoroutines {
 		wg.Go(func() {
 			results[i], errs[i] = generator.Generate(s.ctx, "conc-mem")
-		})
-	}
-
-	wg.Wait()
-
-	for i := range numGoroutines {
-		s.NoError(errs[i], "Concurrent generate should not error")
-	}
-
-	unique := collections.NewHashSetFrom(results...)
-	s.Equal(numGoroutines, unique.Size(), "All generated results should be unique")
-}
-
-// ---------------------------------------------------------------------------
-// DBEngineTestSuite — Engine backed by DBStore, run per database via ForEachDB.
-// ---------------------------------------------------------------------------
-
-type DBEngineTestSuite struct {
-	EngineTestSuite
-
-	env *testx.DBEnv
-}
-
-func TestDBEngine(t *testing.T) {
-	testx.ForEachDB(t, func(t *testing.T, env *testx.DBEnv) {
-		store := sequence.NewDBStore(env.DB)
-		err := store.(*sequence.DBStore).Init(env.Ctx)
-		require.NoError(t, err, "Should create sequence rule table")
-
-		suite.Run(t, &DBEngineTestSuite{env: env})
-	})
-}
-
-func (s *DBEngineTestSuite) SetupTest() {
-	s.ctx = s.env.Ctx
-
-	// Clean all rules from previous test method
-	_, err := s.env.DB.NewRaw("DELETE FROM " + sequence.DBStoreTableName).Exec(s.ctx)
-	s.Require().NoError(err, "Should clean up rules")
-
-	s.generator = NewGenerator(sequence.NewDBStore(s.env.DB))
-	s.registerRule = func(rule *sequence.Rule) {
-		s.T().Helper()
-
-		model := &sequence.RuleModel{
-			Key:              rule.Key,
-			Name:             rule.Name,
-			SeqLength:        int16(rule.SeqLength),
-			SeqStep:          int16(rule.SeqStep),
-			StartValue:       rule.StartValue,
-			MaxValue:         rule.MaxValue,
-			OverflowStrategy: rule.OverflowStrategy,
-			ResetCycle:       rule.ResetCycle,
-			CurrentValue:     rule.CurrentValue,
-			LastResetAt:      rule.LastResetAt,
-			IsActive:         true,
-		}
-		model.ID = id.Generate()
-
-		if rule.Prefix != "" {
-			model.Prefix = &rule.Prefix
-		}
-
-		if rule.Suffix != "" {
-			model.Suffix = &rule.Suffix
-		}
-
-		if rule.DateFormat != "" {
-			model.DateFormat = &rule.DateFormat
-		}
-
-		_, err := s.env.DB.NewInsert().Model(model).Exec(s.ctx)
-		s.Require().NoError(err, "Should insert test rule %q", rule.Key)
-	}
-}
-
-func (s *DBEngineTestSuite) TestConcurrentGenerate() {
-	if s.env.DS.Kind == config.SQLite {
-		s.T().Skip("SQLite uses database-level locking: concurrent transactions holding SHARED locks cannot upgrade to EXCLUSIVE for writes, causing deadlock")
-	}
-
-	s.registerRule(newTestRule("conc-db", func(rule *sequence.Rule) {
-		rule.SeqLength = 6
-	}))
-
-	numGoroutines := 50
-	results := make([]string, numGoroutines)
-	errs := make([]error, numGoroutines)
-
-	var wg sync.WaitGroup
-
-	for i := range numGoroutines {
-		wg.Go(func() {
-			results[i], errs[i] = s.generator.Generate(s.ctx, "conc-db")
-		})
-	}
-
-	wg.Wait()
-
-	for i := range numGoroutines {
-		s.NoError(errs[i], "Concurrent generate should not error")
-	}
-
-	unique := collections.NewHashSetFrom(results...)
-	s.Equal(numGoroutines, unique.Size(), "All generated results should be unique")
-}
-
-// ---------------------------------------------------------------------------
-// RedisEngineTestSuite — Engine backed by RedisStore.
-// ---------------------------------------------------------------------------
-
-type RedisEngineTestSuite struct {
-	EngineTestSuite
-
-	container *testx.RedisContainer
-	client    *redis.Client
-}
-
-func TestRedisEngine(t *testing.T) {
-	suite.Run(t, new(RedisEngineTestSuite))
-}
-
-func (s *RedisEngineTestSuite) SetupSuite() {
-	ctx := context.Background()
-	s.container = testx.NewRedisContainer(ctx, s.T())
-
-	s.client = redis.NewClient(&redis.Options{
-		Addr: fmt.Sprintf("%s:%d", s.container.Redis.Host, s.container.Redis.Port),
-		DB:   int(s.container.Redis.Database),
-	})
-
-	s.Require().NoError(s.client.Ping(ctx).Err(), "Should connect to Redis")
-}
-
-func (s *RedisEngineTestSuite) TearDownSuite() {
-	if s.client != nil {
-		s.client.Close()
-	}
-}
-
-func (s *RedisEngineTestSuite) SetupTest() {
-	s.ctx = context.Background()
-	s.client.FlushDB(s.ctx)
-
-	store := sequence.NewRedisStore(s.client).(*sequence.RedisStore)
-	s.generator = NewGenerator(store)
-	s.registerRule = func(rule *sequence.Rule) {
-		s.T().Helper()
-		s.Require().NoError(store.RegisterRule(s.ctx, rule), "Should register rule %q", rule.Key)
-	}
-}
-
-func (s *RedisEngineTestSuite) TestConcurrentGenerate() {
-	s.registerRule(newTestRule("conc-redis", func(rule *sequence.Rule) {
-		rule.SeqLength = 6
-	}))
-
-	numGoroutines := 100
-	results := make([]string, numGoroutines)
-	errs := make([]error, numGoroutines)
-
-	var wg sync.WaitGroup
-
-	for i := range numGoroutines {
-		wg.Go(func() {
-			results[i], errs[i] = s.generator.Generate(s.ctx, "conc-redis")
 		})
 	}
 

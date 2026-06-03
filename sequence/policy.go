@@ -10,12 +10,29 @@ func evaluateReserve(rule *Rule, count int, now timex.DateTime) (bool, error) {
 	}
 
 	resetNeeded := needsResetByCycle(rule, now)
-	if !resetNeeded && rule.MaxValue > 0 && rule.CurrentValue+rule.SeqStep*count > rule.MaxValue {
+
+	// A cycle reset rebases the counter to StartValue before incrementing;
+	// the overflow ceiling must then be evaluated against that post-reset base
+	// rather than the stale CurrentValue, otherwise OverflowError could be
+	// silently violated on the reset boundary.
+	base := rule.CurrentValue
+	if resetNeeded {
+		base = rule.StartValue
+	}
+
+	if rule.MaxValue > 0 && base+rule.SeqStep*count > rule.MaxValue {
 		switch rule.OverflowStrategy {
 		case OverflowReset:
-			resetNeeded = true
+			// Resetting again cannot help once the post-reset batch already
+			// exceeds MaxValue, so this is a genuine misconfiguration.
+			if resetNeeded {
+				return false, ErrSequenceOverflow
+			}
+
+			return true, nil
+
 		case OverflowExtend:
-			// Keep growing after max value.
+			// Keep growing past MaxValue without erroring.
 		default:
 			return false, ErrSequenceOverflow
 		}

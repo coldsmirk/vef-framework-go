@@ -9,7 +9,4 @@ var (
 	ErrSequenceOverflow = errors.New("sequence value exceeded max value")
 	// ErrInvalidCount indicates the requested count is invalid (must be >= 1).
 	ErrInvalidCount = errors.New("sequence generate count must be >= 1")
-
-	// ErrMissingField indicates a required field is missing from Redis hash data.
-	errMissingField = errors.New("missing field")
 )

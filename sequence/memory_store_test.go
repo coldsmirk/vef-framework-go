@@ -24,7 +24,7 @@ func TestMemoryStore(t *testing.T) {
 }
 
 func (s *MemoryStoreTestSuite) SetupTest() {
-	s.store = NewMemoryStore().(*MemoryStore)
+	s.store = NewMemoryStore()
 	s.ctx = context.Background()
 }
 
@@ -152,6 +152,29 @@ func (s *MemoryStoreTestSuite) TestReserve() {
 		rule, ok := s.store.rules.Get("daily-reset")
 		s.Require().True(ok, "Rule should still exist after cycle reset")
 		s.NotNil(rule.LastResetAt, "Cycle reset should update last reset timestamp")
+	})
+
+	s.Run("CycleResetStillEnforcesMaxValue", func() {
+		now := timex.Now()
+		yesterday := timex.DateTime(time.Time(now).AddDate(0, 0, -1))
+		s.store.Register(&Rule{
+			Key:              "daily-reset-overflow",
+			SeqStep:          10,
+			StartValue:       0,
+			MaxValue:         5,
+			CurrentValue:     100,
+			OverflowStrategy: OverflowError,
+			ResetCycle:       ResetDaily,
+			LastResetAt:      &yesterday,
+			IsActive:         true,
+		})
+
+		_, _, err := s.store.Reserve(s.ctx, "daily-reset-overflow", 1, now)
+		s.Require().ErrorIs(err, ErrSequenceOverflow, "Post-reset batch exceeding MaxValue must still overflow under OverflowError")
+
+		rule, ok := s.store.rules.Get("daily-reset-overflow")
+		s.Require().True(ok, "Rule should still exist after a rejected overflow")
+		s.Equal(100, rule.CurrentValue, "Counter must not advance when the post-reset batch overflows")
 	})
 }
 
