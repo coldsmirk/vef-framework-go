@@ -13,6 +13,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/cron"
 	"github.com/coldsmirk/vef-framework-go/internal/datasource"
 	"github.com/coldsmirk/vef-framework-go/internal/event"
+	"github.com/coldsmirk/vef-framework-go/internal/expression"
 	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/internal/mcp"
 	"github.com/coldsmirk/vef-framework-go/internal/middleware"
@@ -21,7 +22,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/redis"
 	"github.com/coldsmirk/vef-framework-go/internal/schema"
 	"github.com/coldsmirk/vef-framework-go/internal/security"
-	isequence "github.com/coldsmirk/vef-framework-go/internal/sequence"
+	"github.com/coldsmirk/vef-framework-go/internal/sequence"
 	"github.com/coldsmirk/vef-framework-go/internal/storage"
 	"github.com/coldsmirk/vef-framework-go/logx"
 )
@@ -47,12 +48,13 @@ func Run(options ...fx.Option) {
 		api.Module,
 		security.Module,
 		event.Module,
+		expression.Module,
 		cqrs.Module,
 		cron.Module,
 		redis.Module,
 		mold.Module,
 		storage.Module,
-		isequence.Module,
+		sequence.Module,
 		event.OutboxModule,
 		event.RedisStreamTransportModule,
 		event.InboxModule,
