@@ -459,6 +459,8 @@ type CountingPublishMW struct {
 
 func (*CountingPublishMW) Name() string { return "counting-pub" }
 
+func (*CountingPublishMW) Order() int { return middleware.OrderLogging }
+
 func (m *CountingPublishMW) WrapPublish(next middleware.PublishHandler) middleware.PublishHandler {
 	m.wraps.Add(1)
 

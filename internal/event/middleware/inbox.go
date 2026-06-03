@@ -35,6 +35,12 @@ func NewInbox(repo inbox.Repository, processingLease time.Duration) *Inbox {
 // Name implements ConsumeMiddleware.
 func (*Inbox) Name() string { return "inbox" }
 
+// Order implements ConsumeMiddleware. Inbox runs innermost so the dedupe
+// decision sits closest to the handler's side effects, and so its
+// panic-time lock release unwinds before the outer Recover middleware
+// converts the panic into an error.
+func (*Inbox) Order() int { return middleware.OrderInbox }
+
 // Applies attaches the middleware only when the transport may deliver
 // the same message more than once.
 func (*Inbox) Applies(caps transport.Capabilities) bool { return caps.AtLeastOnce }

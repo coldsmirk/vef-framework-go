@@ -26,6 +26,10 @@ func NewRecover(logger logx.Logger) *Recover {
 // Name implements ConsumeMiddleware.
 func (*Recover) Name() string { return "recover" }
 
+// Order implements ConsumeMiddleware. Recover wraps outermost so it
+// captures panics from every inner middleware and the handler.
+func (*Recover) Order() int { return middleware.OrderRecover }
+
 // Applies implements ConsumeMiddleware. Recover is always useful so it
 // attaches to every transport.
 func (*Recover) Applies(transport.Capabilities) bool { return true }

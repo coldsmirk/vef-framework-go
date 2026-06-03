@@ -24,6 +24,10 @@ func NewLogging(logger logx.Logger) *Logging {
 // Name implements both PublishMiddleware and ConsumeMiddleware.
 func (*Logging) Name() string { return "logging" }
 
+// Order implements both middleware interfaces. Logging runs after tracing
+// so log lines can carry the trace ID.
+func (*Logging) Order() int { return middleware.OrderLogging }
+
 // Applies always returns true; logging is cross-cutting.
 func (*Logging) Applies(transport.Capabilities) bool { return true }
 

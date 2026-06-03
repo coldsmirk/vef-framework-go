@@ -34,6 +34,10 @@ func NewMetrics(rec event.MetricsRecorder) *Metrics {
 // Name implements both middleware interfaces.
 func (*Metrics) Name() string { return "metrics" }
 
+// Order implements both middleware interfaces. Metrics measures the
+// handler plus the inner middlewares.
+func (*Metrics) Order() int { return middleware.OrderMetrics }
+
 // Applies always returns true.
 func (*Metrics) Applies(transport.Capabilities) bool { return true }
 
