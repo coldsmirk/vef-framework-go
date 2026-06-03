@@ -393,7 +393,7 @@ func (suite *UpdateManyTestSuite) TestUpdateManyNegativeCases() {
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 		body := suite.ReadResult(resp)
 		suite.False(body.IsOk(), "Should fail when required id is missing")
-		suite.Equal(body.Message, i18n.T("primary_key_required", map[string]any{"field": "id"}), "Should return primary key required message")
+		suite.Equal(body.Message, i18n.T("crud_primary_key_required", map[string]any{"field": "id"}), "Should return primary key required message")
 
 		suite.T().Logf("Validation failed as expected for missing id")
 	})

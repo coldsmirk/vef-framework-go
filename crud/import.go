@@ -99,11 +99,11 @@ func (i *importOperation[TModel]) importData() func(ctx fiber.Ctx, db orm.DB, lo
 	return func(ctx fiber.Ctx, db orm.DB, logger logx.Logger, config importConfig, params importParams) error {
 		// Import requests must use multipart/form-data format
 		if httpx.IsJSON(ctx) {
-			return result.Err(i18n.T("import_requires_multipart"))
+			return result.Err(i18n.T("crud_import_requires_multipart"))
 		}
 
 		if params.File == nil {
-			return result.Err(i18n.T("import_requires_file"))
+			return result.Err(i18n.T("crud_import_requires_file"))
 		}
 
 		var (
@@ -117,12 +117,12 @@ func (i *importOperation[TModel]) importData() func(ctx fiber.Ctx, db orm.DB, lo
 		case FormatCsv:
 			importer = csvImporter
 		default:
-			return result.Err(i18n.T("unsupported_import_format"))
+			return result.Err(i18n.T("crud_unsupported_import_format"))
 		}
 
 		file, err := params.File.Open()
 		if err != nil {
-			return result.Err(i18n.T("file_open_failed"))
+			return result.Err(i18n.T("crud_file_open_failed"))
 		}
 
 		defer func() {
@@ -144,7 +144,7 @@ func (i *importOperation[TModel]) importData() func(ctx fiber.Ctx, db orm.DB, lo
 		if len(importErrors) > 0 {
 			return result.Result{
 				Code:    result.ErrCodeDefault,
-				Message: i18n.T("import_validation_failed"),
+				Message: i18n.T("crud_import_validation_failed"),
 				Data: fiber.Map{
 					"errors": importErrors,
 				},

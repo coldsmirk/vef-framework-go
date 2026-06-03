@@ -77,7 +77,7 @@ func (d *deleteOperation[TModel]) delete(db orm.DB, files storage.Files) (func(c
 		for _, pk := range pks {
 			value, ok := params[pk.Name]
 			if !ok {
-				return result.Err(i18n.T("primary_key_required", map[string]any{"field": pk.Name}))
+				return result.Err(i18n.T("crud_primary_key_required", map[string]any{"field": pk.Name}))
 			}
 
 			if err := pk.Set(modelValue, value); err != nil {

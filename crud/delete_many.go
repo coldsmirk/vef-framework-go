@@ -82,7 +82,7 @@ func (d *deleteManyOperation[TModel]) deleteMany(db orm.DB, files storage.Files)
 				for _, pk := range pks {
 					value, ok := pkMap[pk.Name]
 					if !ok {
-						return result.Err(i18n.T("primary_key_required", map[string]any{"field": pk.Name}))
+						return result.Err(i18n.T("crud_primary_key_required", map[string]any{"field": pk.Name}))
 					}
 
 					if err := pk.Set(modelValue, value); err != nil {
@@ -91,7 +91,7 @@ func (d *deleteManyOperation[TModel]) deleteMany(db orm.DB, files storage.Files)
 				}
 			} else {
 				if len(pks) != 1 {
-					return result.Err(i18n.T("composite_primary_key_requires_map"))
+					return result.Err(i18n.T("crud_composite_primary_key_requires_map"))
 				}
 
 				if err := pks[0].Set(modelValue, pkValue); err != nil {

@@ -120,7 +120,7 @@ func (a *exportOperation[TModel, TSearch]) exportData(db orm.DB) (func(ctx fiber
 			contentType = contentTypeCsv
 			defaultFilename = defaultFilenameCsv
 		default:
-			return result.Err(i18n.T("unsupported_export_format"))
+			return result.Err(i18n.T("crud_unsupported_export_format"))
 		}
 
 		var (

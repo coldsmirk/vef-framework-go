@@ -289,7 +289,7 @@ func (suite *DeleteTestSuite) TestDeleteNegativeCases() {
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 		body := suite.ReadResult(resp)
 		suite.False(body.IsOk(), "Should fail when required id is missing")
-		suite.Equal(body.Message, i18n.T("primary_key_required", map[string]any{"field": "id"}), "Should return primary key required message")
+		suite.Equal(body.Message, i18n.T("crud_primary_key_required", map[string]any{"field": "id"}), "Should return primary key required message")
 
 		suite.T().Logf("Validation failed as expected for missing id")
 	})
@@ -354,7 +354,7 @@ func (suite *DeleteTestSuite) TestDeleteRequiresPrimaryKey() {
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 		body := suite.ReadResult(resp)
 		suite.False(body.IsOk(), "Should fail when trying to delete by email instead of primary key")
-		suite.Equal(body.Message, i18n.T("primary_key_required", map[string]any{"field": "id"}), "Should return primary key required message")
+		suite.Equal(body.Message, i18n.T("crud_primary_key_required", map[string]any{"field": "id"}), "Should return primary key required message")
 
 		suite.T().Logf("Validation failed as expected - cannot delete by email, primary key required")
 	})
@@ -375,7 +375,7 @@ func (suite *DeleteTestSuite) TestDeleteRequiresPrimaryKey() {
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 		body := suite.ReadResult(resp)
 		suite.False(body.IsOk(), "Should fail when trying to delete by status instead of primary key")
-		suite.Equal(body.Message, i18n.T("primary_key_required", map[string]any{"field": "id"}), "Should return primary key required message")
+		suite.Equal(body.Message, i18n.T("crud_primary_key_required", map[string]any{"field": "id"}), "Should return primary key required message")
 
 		suite.T().Logf("Validation failed as expected - cannot delete by status, primary key required")
 	})

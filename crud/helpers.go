@@ -25,7 +25,7 @@ type columnRef struct {
 func validateColumnsExist(schema *schema.Table, columns ...columnRef) error {
 	for _, c := range columns {
 		if c.column != "" && !schema.HasField(c.column) {
-			return result.Err(i18n.T("field_not_exist_in_model", map[string]any{
+			return result.Err(i18n.T("crud_field_not_exist_in_model", map[string]any{
 				"field": c.column,
 				"name":  c.name,
 				"model": schema.TypeName,
@@ -148,7 +148,7 @@ func parseMetaColumns(specs []string) []orm.ColumnInfo {
 func validateMetaColumns(schema *schema.Table, metaColumns []orm.ColumnInfo) error {
 	for _, col := range metaColumns {
 		if !schema.HasField(col.Name) {
-			return result.Err(i18n.T("field_not_exist_in_model", map[string]any{
+			return result.Err(i18n.T("crud_field_not_exist_in_model", map[string]any{
 				"field": col.Name,
 				"name":  "metaColumns",
 				"model": schema.TypeName,

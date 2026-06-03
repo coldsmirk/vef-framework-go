@@ -88,7 +88,7 @@ func (u *updateOperation[TModel, TParams]) update(db orm.DB, files storage.Files
 			}
 
 			if reflect.ValueOf(pkValue).IsZero() {
-				return result.Err(i18n.T("primary_key_required", map[string]any{"field": pk.Name}))
+				return result.Err(i18n.T("crud_primary_key_required", map[string]any{"field": pk.Name}))
 			}
 		}
 

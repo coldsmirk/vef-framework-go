@@ -351,7 +351,7 @@ func (suite *DeleteManyTestSuite) TestDeleteManyNegativeCases() {
 		suite.Equal(400, resp.StatusCode, "Should return 400 status code for validation error")
 		body := suite.ReadResult(resp)
 		suite.False(body.IsOk(), "Should fail when primary keys parameter is missing")
-		suite.Contains(body.Message, i18n.T("batch_delete_pks"), "Message should indicate primary keys is required")
+		suite.Contains(body.Message, i18n.T("crud_batch_delete_pks"), "Message should indicate primary keys is required")
 
 		suite.T().Logf("Validation failed as expected for missing primary keys parameter")
 	})

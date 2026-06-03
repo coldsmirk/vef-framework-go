@@ -91,7 +91,7 @@ func (u *updateManyOperation[TModel, TParams]) updateMany(db orm.DB, files stora
 				}
 
 				if reflect.ValueOf(pkValue).IsZero() {
-					return result.Err(i18n.T("primary_key_required", map[string]any{"field": pk.Name}))
+					return result.Err(i18n.T("crud_primary_key_required", map[string]any{"field": pk.Name}))
 				}
 			}
 
