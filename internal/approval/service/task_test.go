@@ -384,7 +384,8 @@ func (s *TaskServiceTestSuite) TestIsAuthorizedForNodeOperation() {
 		insertTaskWithDetails(s.T(), s.ctx, s.db, inst.ID, nodeID, approval.TaskPending, 1)
 		peerTask := insertTaskWithAssignee(s.T(), s.ctx, s.db, inst.ID, nodeID, approval.TaskPending, 2, "peer-user")
 
-		result := s.svc.IsAuthorizedForNodeOperation(s.ctx, s.db, *peerTask, "peer-user")
+		result, err := s.svc.IsAuthorizedForNodeOperation(s.ctx, s.db, *peerTask, "peer-user")
+		s.Require().NoError(err, "Authorization check should not error")
 		s.Assert().True(result, "Peer assignee should be authorized")
 	})
 
@@ -406,7 +407,8 @@ func (s *TaskServiceTestSuite) TestIsAuthorizedForNodeOperation() {
 			Status:     approval.TaskPending,
 		}
 
-		result := s.svc.IsAuthorizedForNodeOperation(s.ctx, s.db, task, "admin-user")
+		result, err := s.svc.IsAuthorizedForNodeOperation(s.ctx, s.db, task, "admin-user")
+		s.Require().NoError(err, "Authorization check should not error")
 		s.Assert().True(result, "Flow admin should be authorized")
 	})
 
@@ -418,7 +420,8 @@ func (s *TaskServiceTestSuite) TestIsAuthorizedForNodeOperation() {
 			Status:     approval.TaskPending,
 		}
 
-		result := s.svc.IsAuthorizedForNodeOperation(s.ctx, s.db, task, "random-user")
+		result, err := s.svc.IsAuthorizedForNodeOperation(s.ctx, s.db, task, "random-user")
+		s.Require().NoError(err, "A non-existent instance is a denial, not an error")
 		s.Assert().False(result, "Random user should not be authorized")
 	})
 }

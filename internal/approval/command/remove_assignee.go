@@ -61,7 +61,12 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 		return cqrs.Unit{}, shared.ErrRemoveAssigneeNotAllowed
 	}
 
-	if !h.taskSvc.IsAuthorizedForNodeOperation(ctx, db, *task, cmd.Operator.ID) {
+	authorized, err := h.taskSvc.IsAuthorizedForNodeOperation(ctx, db, *task, cmd.Operator.ID)
+	if err != nil {
+		return cqrs.Unit{}, err
+	}
+
+	if !authorized {
 		return cqrs.Unit{}, shared.ErrNotAssignee
 	}
 

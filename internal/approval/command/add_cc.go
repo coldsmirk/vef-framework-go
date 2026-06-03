@@ -71,10 +71,15 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 		return cqrs.Unit{}, shared.ErrNotAssignee
 	}
 
-	if !h.taskSvc.IsAuthorizedForNodeOperation(ctx, db, approval.Task{
+	authorized, err := h.taskSvc.IsAuthorizedForNodeOperation(ctx, db, approval.Task{
 		InstanceID: instance.ID,
 		NodeID:     *instance.CurrentNodeID,
-	}, operatorID) {
+	}, operatorID)
+	if err != nil {
+		return cqrs.Unit{}, err
+	}
+
+	if !authorized {
 		return cqrs.Unit{}, shared.ErrNotAssignee
 	}
 

@@ -179,10 +179,13 @@ func (*TaskService) CancelInstanceTasks(ctx context.Context, db orm.DB, instance
 	return err
 }
 
-// IsAuthorizedForNodeOperation checks if the operator is authorized to perform
-// node-level operations (e.g., remove assignee). Returns true if the operator
-// is a peer assignee on the same node or a flow admin.
-func (*TaskService) IsAuthorizedForNodeOperation(ctx context.Context, db orm.DB, task approval.Task, operatorID string) bool {
+// IsAuthorizedForNodeOperation reports whether the operator may perform
+// node-level operations (e.g. remove assignee): true if the operator is a
+// peer assignee on the same node or a flow admin. Database errors are
+// returned to the caller rather than swallowed, so an infrastructure
+// failure surfaces as a server error instead of a silent authorization
+// denial.
+func (*TaskService) IsAuthorizedForNodeOperation(ctx context.Context, db orm.DB, task approval.Task, operatorID string) (bool, error) {
 	peerCount, err := db.NewSelect().
 		Model((*approval.Task)(nil)).
 		Where(func(cb orm.ConditionBuilder) {
@@ -192,20 +195,31 @@ func (*TaskService) IsAuthorizedForNodeOperation(ctx context.Context, db orm.DB,
 				In("status", cancelableTaskStatuses)
 		}).
 		Count(ctx)
-	if err == nil && peerCount > 0 {
-		return true
+	if err != nil {
+		return false, err
+	}
+
+	if peerCount > 0 {
+		return true, nil
 	}
 
 	var instance approval.Instance
 
 	instance.ID = task.InstanceID
 
+	// A missing instance/flow means no flow-admin grant exists — a
+	// legitimate "not authorized" answer — so it returns (false, nil).
+	// Any other error is an infrastructure failure and is surfaced.
 	if err := db.NewSelect().
 		Model(&instance).
 		Select("flow_id").
 		WherePK().
 		Scan(ctx); err != nil {
-		return false
+		if result.IsRecordNotFound(err) {
+			return false, nil
+		}
+
+		return false, err
 	}
 
 	var flow approval.Flow
@@ -217,10 +231,14 @@ func (*TaskService) IsAuthorizedForNodeOperation(ctx context.Context, db orm.DB,
 		Select("admin_user_ids").
 		WherePK().
 		Scan(ctx); err != nil {
-		return false
+		if result.IsRecordNotFound(err) {
+			return false, nil
+		}
+
+		return false, err
 	}
 
-	return slices.Contains(flow.AdminUserIDs, operatorID)
+	return slices.Contains(flow.AdminUserIDs, operatorID), nil
 }
 
 // IsUrgeAuthorized reports whether userID may dispatch an urge for tasks
