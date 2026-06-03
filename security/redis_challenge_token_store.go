@@ -22,7 +22,7 @@ func NewRedisChallengeTokenStore(client *redis.Client) ChallengeTokenStore {
 	return &RedisChallengeTokenStore{client: client}
 }
 
-func (s *RedisChallengeTokenStore) Generate(principal *Principal, pending, resolved []string) (string, error) {
+func (s *RedisChallengeTokenStore) Generate(ctx context.Context, principal *Principal, pending, resolved []string) (string, error) {
 	token := id.GenerateUUID()
 	state := ChallengeState{Principal: principal, Pending: pending, Resolved: resolved}
 
@@ -32,21 +32,21 @@ func (s *RedisChallengeTokenStore) Generate(principal *Principal, pending, resol
 	}
 
 	key := redisChallengePrefix + token
-	if err := s.client.Set(context.Background(), key, data, ChallengeTokenExpires).Err(); err != nil {
+	if err := s.client.Set(ctx, key, data, ChallengeTokenExpires).Err(); err != nil {
 		return "", err
 	}
 
 	return token, nil
 }
 
-func (s *RedisChallengeTokenStore) Parse(token string) (*ChallengeState, error) {
+func (s *RedisChallengeTokenStore) Parse(ctx context.Context, token string) (*ChallengeState, error) {
 	if token == "" {
 		return nil, ErrTokenInvalid
 	}
 
 	key := redisChallengePrefix + token
 
-	data, err := s.client.Get(context.Background(), key).Bytes()
+	data, err := s.client.Get(ctx, key).Bytes()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return nil, ErrTokenInvalid

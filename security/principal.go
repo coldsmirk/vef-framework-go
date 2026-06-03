@@ -34,6 +34,14 @@ var (
 	externalAppDetailsType = reflect.TypeFor[map[string]any]()
 )
 
+// SetUserDetailsType configures the process-global target type used to unmarshal the
+// Details field of user Principals (PrincipalTypeUser). T must be a struct or struct
+// pointer; any other kind causes an immediate panic.
+//
+// This function mutates a package-level variable that is read on every Principal
+// deserialization. Call it exactly once at application startup — before the HTTP
+// server begins accepting requests — and never again. Calling it concurrently with
+// in-flight requests is a data race.
 func SetUserDetailsType[T any]() {
 	userDetailsType = reflectx.Indirect(reflect.TypeFor[T]())
 	if userDetailsType.Kind() != reflect.Struct {
@@ -43,6 +51,14 @@ func SetUserDetailsType[T any]() {
 	}
 }
 
+// SetExternalAppDetailsType configures the process-global target type used to unmarshal
+// the Details field of external-app Principals (PrincipalTypeExternalApp). T must be a
+// struct or struct pointer; any other kind causes an immediate panic.
+//
+// This function mutates a package-level variable that is read on every Principal
+// deserialization. Call it exactly once at application startup — before the HTTP
+// server begins accepting requests — and never again. Calling it concurrently with
+// in-flight requests is a data race.
 func SetExternalAppDetailsType[T any]() {
 	externalAppDetailsType = reflectx.Indirect(reflect.TypeFor[T]())
 	if externalAppDetailsType.Kind() != reflect.Struct {

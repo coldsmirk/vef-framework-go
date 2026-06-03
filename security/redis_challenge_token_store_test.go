@@ -53,7 +53,7 @@ func (s *RedisChallengeTokenStoreTestSuite) TestGenerate() {
 	s.Run("WithPendingAndResolved", func() {
 		principal := NewUser("user1", "Alice", "admin")
 
-		token, err := s.store.Generate(principal, []string{"totp", "department"}, []string{"sms"})
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp", "department"}, []string{"sms"})
 
 		s.Require().NoError(err, "Should generate token without error")
 		s.NotEmpty(token, "Should return a non-empty token")
@@ -62,7 +62,7 @@ func (s *RedisChallengeTokenStoreTestSuite) TestGenerate() {
 	s.Run("WithNilResolved", func() {
 		principal := NewUser("user2", "Bob")
 
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 
 		s.Require().NoError(err, "Should generate token without error")
 		s.NotEmpty(token, "Should return a non-empty token")
@@ -71,7 +71,7 @@ func (s *RedisChallengeTokenStoreTestSuite) TestGenerate() {
 	s.Run("WithEmptySlices", func() {
 		principal := NewUser("user3", "Charlie")
 
-		token, err := s.store.Generate(principal, []string{}, []string{})
+		token, err := s.store.Generate(context.Background(), principal, []string{}, []string{})
 
 		s.Require().NoError(err, "Should generate token with empty slices")
 		s.NotEmpty(token, "Should return a non-empty token")
@@ -81,7 +81,7 @@ func (s *RedisChallengeTokenStoreTestSuite) TestGenerate() {
 		principal := NewUser("user4", "Diana", "editor")
 		principal.Details = map[string]any{"department": "engineering", "level": 3}
 
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 
 		s.Require().NoError(err, "Should generate token with details")
 		s.NotEmpty(token, "Should return a non-empty token")
@@ -90,7 +90,7 @@ func (s *RedisChallengeTokenStoreTestSuite) TestGenerate() {
 	s.Run("WithNoRoles", func() {
 		principal := NewUser("user5", "Eve")
 
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 
 		s.Require().NoError(err, "Should generate token without roles")
 		s.NotEmpty(token, "Should return a non-empty token")
@@ -105,10 +105,10 @@ func (s *RedisChallengeTokenStoreTestSuite) TestParse() {
 		pending := []string{"totp", "department"}
 		resolved := []string{"sms"}
 
-		token, err := s.store.Generate(principal, pending, resolved)
+		token, err := s.store.Generate(context.Background(), principal, pending, resolved)
 		s.Require().NoError(err, "Should generate token without error")
 
-		state, err := s.store.Parse(token)
+		state, err := s.store.Parse(context.Background(), token)
 		s.Require().NoError(err, "Should parse token without error")
 		s.Require().NotNil(state, "Should return non-nil state")
 
@@ -123,10 +123,10 @@ func (s *RedisChallengeTokenStoreTestSuite) TestParse() {
 	s.Run("WithNilResolved", func() {
 		principal := NewUser("user2", "Bob")
 
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 		s.Require().NoError(err, "Should generate token without error")
 
-		state, err := s.store.Parse(token)
+		state, err := s.store.Parse(context.Background(), token)
 		s.Require().NoError(err, "Should parse token without error")
 		s.Require().NotNil(state, "Should return non-nil state")
 
@@ -137,10 +137,10 @@ func (s *RedisChallengeTokenStoreTestSuite) TestParse() {
 	s.Run("WithNoRoles", func() {
 		principal := NewUser("user3", "Charlie")
 
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 		s.Require().NoError(err, "Should generate token without error")
 
-		state, err := s.store.Parse(token)
+		state, err := s.store.Parse(context.Background(), token)
 		s.Require().NoError(err, "Should parse token without error")
 		s.Require().NotNil(state, "Should return non-nil state")
 
@@ -151,10 +151,10 @@ func (s *RedisChallengeTokenStoreTestSuite) TestParse() {
 		principal := NewUser("user4", "Diana", "admin")
 		principal.Details = map[string]any{"department": "engineering"}
 
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 		s.Require().NoError(err, "Should generate token without error")
 
-		state, err := s.store.Parse(token)
+		state, err := s.store.Parse(context.Background(), token)
 		s.Require().NoError(err, "Should parse token without error")
 		s.Require().NotNil(state, "Should return non-nil state")
 
@@ -170,10 +170,10 @@ func (s *RedisChallengeTokenStoreTestSuite) TestParse() {
 	s.Run("SubjectWithAtSignInName", func() {
 		principal := NewUser("user5", "user@example.com")
 
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 		s.Require().NoError(err, "Should generate token without error")
 
-		state, err := s.store.Parse(token)
+		state, err := s.store.Parse(context.Background(), token)
 		s.Require().NoError(err, "Should parse token without error")
 		s.Require().NotNil(state, "Should return non-nil state")
 
@@ -182,7 +182,7 @@ func (s *RedisChallengeTokenStoreTestSuite) TestParse() {
 	})
 
 	s.Run("RejectsEmptyToken", func() {
-		_, err := s.store.Parse("")
+		_, err := s.store.Parse(context.Background(), "")
 		s.Require().Error(err, "Should reject empty token")
 
 		resErr, ok := result.AsErr(err)
@@ -191,7 +191,7 @@ func (s *RedisChallengeTokenStoreTestSuite) TestParse() {
 	})
 
 	s.Run("RejectsNonExistentToken", func() {
-		_, err := s.store.Parse("non-existent-token-id")
+		_, err := s.store.Parse(context.Background(), "non-existent-token-id")
 		s.Require().Error(err, "Should reject non-existent token")
 
 		resErr, ok := result.AsErr(err)
@@ -208,7 +208,7 @@ func (s *RedisChallengeTokenStoreTestSuite) TestTokenUniqueness() {
 
 		tokens := make(map[string]struct{}, 100)
 		for range 100 {
-			token, err := s.store.Generate(principal, []string{"totp"}, nil)
+			token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 			s.Require().NoError(err, "Should generate token without error")
 
 			tokens[token] = struct{}{}
@@ -225,10 +225,10 @@ func (s *RedisChallengeTokenStoreTestSuite) TestTTLExpiration() {
 	s.Run("TokenAvailableWithinTTL", func() {
 		principal := NewUser("user1", "Alice", "admin")
 
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 		s.Require().NoError(err, "Should generate token without error")
 
-		state, err := s.store.Parse(token)
+		state, err := s.store.Parse(context.Background(), token)
 		s.Require().NoError(err, "Should parse freshly generated token without error")
 		s.Equal("user1", state.Principal.ID, "Should preserve principal ID")
 	})
@@ -250,11 +250,11 @@ func (s *RedisChallengeTokenStoreTestSuite) TestConcurrency() {
 					"role1",
 				)
 
-				token, err := s.store.Generate(principal, []string{"totp"}, []string{"sms"})
+				token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, []string{"sms"})
 				s.Require().NoError(err, "Should generate token without error in goroutine %d", i)
 				s.NotEmpty(token, "Should return non-empty token in goroutine %d", i)
 
-				state, err := s.store.Parse(token)
+				state, err := s.store.Parse(context.Background(), token)
 				s.Require().NoError(err, "Should parse token without error in goroutine %d", i)
 				s.Require().NotNil(state, "Should return non-nil state in goroutine %d", i)
 				s.Equal(fmt.Sprintf("user-%d", i), state.Principal.ID, "Should preserve principal ID in goroutine %d", i)

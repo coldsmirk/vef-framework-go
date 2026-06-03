@@ -48,10 +48,8 @@ const (
 	ErrCodeAuthHeaderMissing             = 1021
 	ErrCodeAuthHeaderInvalid             = 1022
 
-	// Challenge errors (1030-1039).
-	ErrCodeChallengeRequired      = 1030
+	// Challenge errors (1030-1039). 1030 and 1032 are absent: they were never wired to a sentinel.
 	ErrCodeChallengeTokenInvalid  = 1031
-	ErrCodeChallengeTokenExpired  = 1032
 	ErrCodeChallengeTypeInvalid   = 1033
 	ErrCodeChallengeResolveFailed = 1034
 	ErrCodeOTPCodeRequired        = 1035

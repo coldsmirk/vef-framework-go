@@ -20,23 +20,23 @@ func NewMemoryChallengeTokenStore() ChallengeTokenStore {
 	}
 }
 
-func (s *MemoryChallengeTokenStore) Generate(principal *Principal, pending, resolved []string) (string, error) {
+func (s *MemoryChallengeTokenStore) Generate(ctx context.Context, principal *Principal, pending, resolved []string) (string, error) {
 	token := id.GenerateUUID()
 
 	state := ChallengeState{Principal: principal, Pending: pending, Resolved: resolved}
-	if err := s.cache.Set(context.Background(), token, state, ChallengeTokenExpires); err != nil {
+	if err := s.cache.Set(ctx, token, state, ChallengeTokenExpires); err != nil {
 		return "", err
 	}
 
 	return token, nil
 }
 
-func (s *MemoryChallengeTokenStore) Parse(token string) (*ChallengeState, error) {
+func (s *MemoryChallengeTokenStore) Parse(ctx context.Context, token string) (*ChallengeState, error) {
 	if token == "" {
 		return nil, ErrTokenInvalid
 	}
 
-	state, ok := s.cache.Get(context.Background(), token)
+	state, ok := s.cache.Get(ctx, token)
 	if !ok {
 		return nil, ErrTokenInvalid
 	}

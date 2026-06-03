@@ -29,11 +29,15 @@ type ChallengeState struct {
 // Challenge tokens carry the intermediate state between login steps,
 // allowing the login flow to pause for user input (e.g., 2FA code, department selection).
 // The default implementation uses JWT; alternatives (e.g., Redis) can be swapped via DI.
+//
+// PUBLIC INTERFACE CHANGE: ctx context.Context added as the first parameter to Generate and
+// Parse so that I/O-backed implementations (Redis, external stores) can honor request
+// deadlines, cancellation, and trace propagation — mirroring the sibling NonceStore interface.
 type ChallengeTokenStore interface {
 	// Generate creates a challenge token encoding the principal and challenge state.
-	Generate(principal *Principal, pending, resolved []string) (string, error)
+	Generate(ctx context.Context, principal *Principal, pending, resolved []string) (string, error)
 	// Parse retrieves the challenge state from a token.
-	Parse(token string) (*ChallengeState, error)
+	Parse(ctx context.Context, token string) (*ChallengeState, error)
 }
 
 // ChallengeProvider evaluates and resolves a login challenge.

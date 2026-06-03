@@ -1,6 +1,7 @@
 package security
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -31,21 +32,21 @@ func (s *JWTChallengeTokenStoreTestSuite) SetupSuite() {
 func (s *JWTChallengeTokenStoreTestSuite) TestGenerate() {
 	s.Run("WithPendingAndResolved", func() {
 		principal := NewUser("user1", "Alice", "admin")
-		token, err := s.store.Generate(principal, []string{"totp", "department"}, []string{"sms"})
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp", "department"}, []string{"sms"})
 		s.Require().NoError(err, "Should generate token without error")
 		s.NotEmpty(token, "Should return a non-empty token")
 	})
 
 	s.Run("WithNilResolved", func() {
 		principal := NewUser("user2", "Bob")
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 		s.Require().NoError(err, "Should generate token without error")
 		s.NotEmpty(token, "Should return a non-empty token")
 	})
 
 	s.Run("WithEmptySlices", func() {
 		principal := NewUser("user3", "Charlie")
-		token, err := s.store.Generate(principal, []string{}, []string{})
+		token, err := s.store.Generate(context.Background(), principal, []string{}, []string{})
 		s.Require().NoError(err, "Should generate token with empty slices")
 		s.NotEmpty(token, "Should return a non-empty token")
 	})
@@ -54,14 +55,14 @@ func (s *JWTChallengeTokenStoreTestSuite) TestGenerate() {
 		principal := NewUser("user4", "Diana", "editor")
 		principal.Details = map[string]any{"department": "engineering", "level": 3}
 
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 		s.Require().NoError(err, "Should generate token with details")
 		s.NotEmpty(token, "Should return a non-empty token")
 	})
 
 	s.Run("WithNoRoles", func() {
 		principal := NewUser("user5", "Eve")
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 		s.Require().NoError(err, "Should generate token without roles")
 		s.NotEmpty(token, "Should return a non-empty token")
 	})
@@ -74,10 +75,10 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		pending := []string{"totp", "department"}
 		resolved := []string{"sms"}
 
-		token, err := s.store.Generate(principal, pending, resolved)
+		token, err := s.store.Generate(context.Background(), principal, pending, resolved)
 		s.Require().NoError(err, "Should generate token without error")
 
-		state, err := s.store.Parse(token)
+		state, err := s.store.Parse(context.Background(), token)
 		s.Require().NoError(err, "Should parse token without error")
 		s.Require().NotNil(state, "Should return non-nil state")
 
@@ -91,10 +92,10 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 	s.Run("WithNilResolved", func() {
 		principal := NewUser("user2", "Bob")
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 		s.Require().NoError(err, "Should generate token without error")
 
-		state, err := s.store.Parse(token)
+		state, err := s.store.Parse(context.Background(), token)
 		s.Require().NoError(err, "Should parse token without error")
 		s.Require().NotNil(state, "Should return non-nil state")
 
@@ -104,10 +105,10 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 	s.Run("WithNoRoles", func() {
 		principal := NewUser("user3", "Charlie")
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 		s.Require().NoError(err, "Should generate token without error")
 
-		state, err := s.store.Parse(token)
+		state, err := s.store.Parse(context.Background(), token)
 		s.Require().NoError(err, "Should parse token without error")
 		s.Require().NotNil(state, "Should return non-nil state")
 
@@ -116,10 +117,10 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 	s.Run("PreservesExternalAppPrincipalType", func() {
 		principal := NewExternalApp("app1", "Payment API", "service")
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 		s.Require().NoError(err, "Should generate token without error")
 
-		state, err := s.store.Parse(token)
+		state, err := s.store.Parse(context.Background(), token)
 		s.Require().NoError(err, "Should parse token without error")
 		s.Require().NotNil(state, "Should return non-nil state")
 
@@ -133,10 +134,10 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		principal := NewUser("user4", "Diana", "admin")
 		principal.Details = map[string]any{"department": "engineering"}
 
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 		s.Require().NoError(err, "Should generate token without error")
 
-		state, err := s.store.Parse(token)
+		state, err := s.store.Parse(context.Background(), token)
 		s.Require().NoError(err, "Should parse token without error")
 		s.Require().NotNil(state, "Should return non-nil state")
 
@@ -145,19 +146,19 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 	s.Run("SubjectWithAtSignInName", func() {
 		principal := NewUser("user5", "user@example.com")
-		token, err := s.store.Generate(principal, []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), principal, []string{"totp"}, nil)
 		s.Require().NoError(err, "Should generate token without error")
 
-		state, err := s.store.Parse(token)
+		state, err := s.store.Parse(context.Background(), token)
 		s.Require().NoError(err, "Should parse token without error")
 		s.Require().NotNil(state, "Should return non-nil state")
 
-		s.Equal("user5", state.Principal.ID, "Should extract ID before first @")
-		s.Equal("user@example.com", state.Principal.Name, "Should preserve name with @ sign")
+		s.Equal("user5", state.Principal.ID, "Should preserve principal ID")
+		s.Equal("user@example.com", state.Principal.Name, "Should preserve name containing @ sign")
 	})
 
 	s.Run("RejectsInvalidToken", func() {
-		_, err := s.store.Parse("invalid.token.string")
+		_, err := s.store.Parse(context.Background(), "invalid.token.string")
 		s.Require().Error(err, "Should reject malformed token")
 
 		resErr, ok := result.AsErr(err)
@@ -166,7 +167,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 	})
 
 	s.Run("RejectsEmptyToken", func() {
-		_, err := s.store.Parse("")
+		_, err := s.store.Parse(context.Background(), "")
 		s.Require().Error(err, "Should reject empty token")
 
 		resErr, ok := result.AsErr(err)
@@ -181,7 +182,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		token, err := s.jwt.Generate(claimsBuilder, 5*time.Minute, 0)
 		s.Require().NoError(err, "Should generate access token without error")
 
-		_, err = s.store.Parse(token)
+		_, err = s.store.Parse(context.Background(), token)
 		s.Require().Error(err, "Should reject access token")
 
 		resErr, ok := result.AsErr(err)
@@ -196,7 +197,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		token, err := s.jwt.Generate(claimsBuilder, 5*time.Minute, 0)
 		s.Require().NoError(err, "Should generate refresh token without error")
 
-		_, err = s.store.Parse(token)
+		_, err = s.store.Parse(context.Background(), token)
 		s.Require().Error(err, "Should reject refresh token")
 
 		resErr, ok := result.AsErr(err)
@@ -210,7 +211,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		token, err := s.jwt.Generate(claimsBuilder, 5*time.Minute, 0)
 		s.Require().NoError(err, "Should generate token without error")
 
-		_, err = s.store.Parse(token)
+		_, err = s.store.Parse(context.Background(), token)
 		s.Require().Error(err, "Should reject token without type")
 
 		resErr, ok := result.AsErr(err)
@@ -225,7 +226,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		token, err := s.jwt.Generate(claimsBuilder, -1*time.Hour, 0)
 		s.Require().NoError(err, "Should generate expired token without error")
 
-		_, err = s.store.Parse(token)
+		_, err = s.store.Parse(context.Background(), token)
 		s.Require().Error(err, "Should reject expired token")
 
 		resErr, ok := result.AsErr(err)
@@ -233,30 +234,17 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		s.Equal(ErrCodeTokenExpired, resErr.Code, "Should return token expired error code")
 	})
 
-	s.Run("RejectsMalformedSubject", func() {
-		claimsBuilder := NewJWTClaimsBuilder().
-			WithSubject("no-at-sign").
-			WithType(TokenTypeChallenge)
-		token, err := s.jwt.Generate(claimsBuilder, 5*time.Minute, 0)
-		s.Require().NoError(err, "Should generate token without error")
-
-		_, err = s.store.Parse(token)
-		s.Require().Error(err, "Should reject token with malformed subject")
-
-		resErr, ok := result.AsErr(err)
-		s.Require().True(ok, "Should return a result.Error")
-		s.Equal(ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
-	})
-
-	s.Run("RejectsEmptySubject", func() {
+	s.Run("RejectsMissingPrincipalID", func() {
+		// Subject is the principal ID; an empty subject means no principal ID is present.
 		claimsBuilder := NewJWTClaimsBuilder().
 			WithSubject("").
-			WithType(TokenTypeChallenge)
+			WithType(TokenTypeChallenge).
+			WithClaim(ClaimChallengePrincipalName, "Alice")
 		token, err := s.jwt.Generate(claimsBuilder, 5*time.Minute, 0)
 		s.Require().NoError(err, "Should generate token without error")
 
-		_, err = s.store.Parse(token)
-		s.Require().Error(err, "Should reject token with empty subject")
+		_, err = s.store.Parse(context.Background(), token)
+		s.Require().Error(err, "Should reject token with empty principal ID")
 
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
@@ -271,7 +259,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		token, err := s.jwt.Generate(claimsBuilder, 5*time.Minute, 0)
 		s.Require().NoError(err, "Should generate token without error")
 
-		_, err = s.store.Parse(token)
+		_, err = s.store.Parse(context.Background(), token)
 		s.Require().Error(err, "Should reject token with unknown principal type")
 
 		resErr, ok := result.AsErr(err)
@@ -286,7 +274,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		token, err := s.jwt.Generate(claimsBuilder, 5*time.Minute, 0)
 		s.Require().NoError(err, "Should generate token without error")
 
-		state, err := s.store.Parse(token)
+		state, err := s.store.Parse(context.Background(), token)
 		s.Require().NoError(err, "Should parse token without error")
 		s.Require().NotNil(state, "Should return non-nil state")
 		s.Equal(PrincipalTypeUser, state.Principal.Type, "Should default to user for backward compatibility")
