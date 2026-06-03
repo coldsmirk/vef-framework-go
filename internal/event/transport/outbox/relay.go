@@ -3,7 +3,6 @@ package outbox
 import (
 	"context"
 	"fmt"
-	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -135,18 +134,23 @@ func (r *Relay) handleFailure(ctx context.Context, sink transport.Transport, rec
 	maxRetries := r.cfg.EffectiveMaxRetries()
 	retryCount := record.RetryCount + 1
 
-	backoff := time.Duration(math.Pow(2, float64(retryCount))) * time.Second
 	now := timex.Now()
-	retryAfter := now.Add(backoff)
+	retryAfter := now.Add(backoffFor(retryCount))
 	redacted := redactError(dispatchErr.Error())
 
 	if retryCount >= maxRetries {
 		if err := r.forwardDLQ(ctx, sink, record); err != nil {
-			// Keep the record Failed-with-retry so the next cycle can
-			// re-attempt the DLQ forward rather than silently losing it.
-			r.logger.Warnf("outbox relay: DLQ forward for %s failed (%v); record remains Failed for retry", record.EventID, err)
+			// The business retry budget is exhausted, but the DLQ forward
+			// itself failed. Keep the record in a CLAIMABLE Failed state —
+			// retry_count stays below maxRetries — so the next relay cycle
+			// retries the DLQ hand-off. Advancing retry_count to the dead
+			// threshold here would strand the record permanently, because
+			// ClaimBatch only re-claims rows with retry_count < maxRetries.
+			// The record transitions to Dead only once the DLQ forward
+			// finally succeeds (the fall-through MarkFailed below).
+			r.logger.Warnf("outbox relay: DLQ forward for %s failed (%v); record kept claimable for DLQ retry", record.EventID, err)
 
-			if markErr := r.repo.MarkFailed(ctx, record.ID, redacted, record.RetryCount+1, retryAfter, maxRetries+1); markErr != nil {
+			if markErr := r.repo.MarkFailed(ctx, record.ID, redacted, record.RetryCount, retryAfter, maxRetries); markErr != nil {
 				return fmt.Errorf("mark failed: %w", markErr)
 			}
 
@@ -200,6 +204,21 @@ func (r *Relay) leaseDeadline() timex.DateTime {
 	candidate := max(r.cfg.EffectiveRelayInterval()*time.Duration(multiplier), r.cfg.EffectiveMinLease())
 
 	return timex.Now().Add(candidate)
+}
+
+// maxBackoff caps the exponential retry delay so a record that keeps
+// failing does not push retry_after absurdly far into the future.
+const maxBackoff = time.Hour
+
+// backoffFor returns the exponential retry delay (2^retryCount seconds)
+// capped at maxBackoff. The exponent is clamped before shifting so the
+// computation can never overflow time.Duration's underlying int64.
+func backoffFor(retryCount int) time.Duration {
+	const maxShift = 16 // 2^16 s ≈ 18h, already beyond maxBackoff
+
+	shift := min(max(retryCount, 0), maxShift)
+
+	return min(time.Second<<shift, maxBackoff)
 }
 
 func defaultDLQTopic(eventType string) string {

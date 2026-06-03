@@ -3,6 +3,8 @@ package outbox_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,10 +22,18 @@ import (
 
 // RecordingSink is a stub Transport that records every Publish call and
 // optionally returns an injected error to simulate downstream failure.
+//
+// failNext fails exactly one Publish call (one-shot). failBusiness /
+// failDLQ fail every Publish of a business / DLQ-forwarded frame
+// respectively, letting tests drive the relay's DLQ retry paths
+// independently. A frame is a DLQ forward when its Type carries the
+// "vef-dlq." topic prefix.
 type RecordingSink struct {
-	mu       sync.Mutex
-	frames   []transport.Frame
-	failNext error
+	mu           sync.Mutex
+	frames       []transport.Frame
+	failNext     error
+	failBusiness bool
+	failDLQ      bool
 }
 
 func (*RecordingSink) Name() string { return "recording" }
@@ -44,6 +54,13 @@ func (s *RecordingSink) Publish(_ context.Context, frames []transport.Frame) err
 		s.failNext = nil
 
 		return err
+	}
+
+	for _, f := range frames {
+		isDLQ := strings.HasPrefix(f.Type, "vef-dlq.")
+		if (isDLQ && s.failDLQ) || (!isDLQ && s.failBusiness) {
+			return fmt.Errorf("recording sink: injected failure (type=%s)", f.Type)
+		}
 	}
 
 	s.frames = append(s.frames, frames...)
@@ -196,6 +213,82 @@ func TestOutboxRelayBackoffAndDeadAfterMaxRetries(t *testing.T) {
 	left, err := repo.ClaimBatch(ctx, 10, 2, timex.Now().Add(time.Minute))
 	require.NoError(t, err, "Claiming after dead transition should not error")
 	require.Empty(t, left, "Dead records must not be reclaimable")
+}
+
+func TestOutboxRelayDLQForwardFailureKeepsRecordClaimable(t *testing.T) {
+	ctx := context.Background()
+	db, repo, tp, sink := setupOutbox(t)
+
+	frame := newFrame("evt-dlq-fail", "test.flaky", `{"flaky":true}`)
+	require.NoError(t, tp.Publish(ctx, []transport.Frame{frame}), "Publish should persist retryable record")
+
+	cfg := outbox.Config{
+		RelayInterval: time.Second, MaxRetries: 2, BatchSize: 10,
+		LeaseMultiplier: 4, MinLease: 5 * time.Second,
+	}
+	relay := ioutbox.NewRelay(repo, tp.Sink, cfg, nil, nil)
+
+	// Sink is fully down: both business dispatch and the DLQ forward fail.
+	sink.failBusiness = true
+	sink.failDLQ = true
+
+	// First cycle: retry_count 0→1, record stays Failed (budget not yet hit).
+	relay.RelayPending(ctx)
+	forceRetryReady(t, db, "evt-dlq-fail")
+
+	// Second cycle: budget exhausted (MaxRetries=2), the relay attempts the
+	// DLQ forward, which also fails.
+	relay.RelayPending(ctx)
+	forceRetryReady(t, db, "evt-dlq-fail")
+
+	// REGRESSION: a failed DLQ forward must NOT strand the record in a
+	// permanently-Failed state. It must remain claimable so a later cycle
+	// can retry the DLQ hand-off rather than silently losing the payload.
+	claimable, err := repo.ClaimBatch(ctx, 10, cfg.MaxRetries, timex.Now().Add(time.Minute))
+	require.NoError(t, err, "Claiming should not error")
+	require.Len(t, claimable, 1, "A failed DLQ forward must leave the record claimable, not stranded")
+	require.Equal(t, "evt-dlq-fail", claimable[0].EventID, "The claimable record should be the DLQ-stranded candidate")
+}
+
+func TestOutboxRelayDLQRetrySucceedsThenDead(t *testing.T) {
+	ctx := context.Background()
+	db, repo, tp, sink := setupOutbox(t)
+
+	frame := newFrame("evt-dlq-recover", "test.flaky", `{"flaky":true}`)
+	require.NoError(t, tp.Publish(ctx, []transport.Frame{frame}), "Publish should persist record")
+
+	cfg := outbox.Config{
+		RelayInterval: time.Second, MaxRetries: 1, BatchSize: 10,
+		LeaseMultiplier: 4, MinLease: 5 * time.Second,
+	}
+	relay := ioutbox.NewRelay(repo, tp.Sink, cfg, nil, nil)
+
+	// Business dispatch always fails; the DLQ forward fails once, then
+	// recovers — exercising the "retry the DLQ hand-off" path through to
+	// the terminal Dead transition.
+	sink.failBusiness = true
+	sink.failDLQ = true
+
+	// MaxRetries=1: the first cycle already exhausts the budget and the
+	// DLQ forward fails, leaving the record claimable (regression guard).
+	relay.RelayPending(ctx)
+	forceRetryReady(t, db, "evt-dlq-recover")
+
+	// Let the DLQ forward succeed on the retry: the record transitions Dead.
+	sink.failDLQ = false
+
+	relay.RelayPending(ctx)
+
+	frames := sink.Frames()
+	require.NotEmpty(t, frames, "DLQ frame should be forwarded once the sink recovers")
+	require.Equal(t, "vef-dlq.test.flaky", frames[len(frames)-1].Type, "Forwarded frame should target the DLQ topic")
+
+	// A successful DLQ forward marks the record Dead — never reclaimable.
+	forceRetryReady(t, db, "evt-dlq-recover")
+
+	left, err := repo.ClaimBatch(ctx, 10, cfg.MaxRetries, timex.Now().Add(time.Minute))
+	require.NoError(t, err, "Claiming should not error")
+	require.Empty(t, left, "The record must be Dead after a successful DLQ forward")
 }
 
 func TestOutboxCleanerDeletesCompletedRowsByProcessedAt(t *testing.T) {
