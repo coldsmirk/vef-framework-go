@@ -11,9 +11,16 @@ import (
 	"github.com/coldsmirk/vef-framework-go/event/transport/memory"
 )
 
-// ErrBusStopped indicates Publish was called after Stop. Distinct from
-// the framework-level ErrQueueFull and surfaces only on this transport.
+// ErrBusStopped indicates Publish or Subscribe was called after Stop.
+// Distinct from the framework-level ErrQueueFull and surfaces only on
+// this transport at the transport level (not per-subscription teardown).
 var ErrBusStopped = errors.New("memory transport: stopped")
+
+// errSubscriptionStopped is returned by enqueue when the individual
+// subscription's stopCh fires (unsubscribe or transport Stop draining
+// the sub). It is intentionally unexported — callers of Publish should
+// not see it; Publish treats it as a silent skip, not a hard error.
+var errSubscriptionStopped = errors.New("memory transport: subscription stopped")
 
 // Transport is the in-process implementation of transport.Transport.
 type Transport struct {
@@ -138,10 +145,21 @@ func (t *Transport) Publish(ctx context.Context, frames []transport.Frame) error
 
 		t.mu.RUnlock()
 
+		var errs []error
+
 		for _, sub := range targets {
-			if err := sub.enqueue(ctx, frame); err != nil {
-				return err
+			err := sub.enqueue(ctx, frame)
+			if err == nil || errors.Is(err, errSubscriptionStopped) {
+				// errSubscriptionStopped means the subscription was torn
+				// down concurrently; nothing to deliver, not a hard error.
+				continue
 			}
+
+			errs = append(errs, err)
+		}
+
+		if err := errors.Join(errs...); err != nil {
+			return err
 		}
 	}
 
@@ -173,6 +191,16 @@ func (t *Transport) Subscribe(eventType, _ string, fn transport.ConsumeFunc, cfg
 	}
 
 	t.mu.Lock()
+	// Re-check inside the lock: Stop sets stopped=true via CAS *before*
+	// acquiring t.mu to drain subs. Without this second check, a Subscribe
+	// that races with Stop can insert after the drain, leaking the sub's
+	// goroutines permanently.
+	if t.stopped.Load() {
+		t.mu.Unlock()
+
+		return nil, ErrBusStopped
+	}
+
 	if t.subs[eventType] == nil {
 		t.subs[eventType] = make(map[string]*subscription)
 	}
@@ -246,7 +274,7 @@ func (s *subscription) enqueue(ctx context.Context, frame transport.Frame) error
 			case <-ctx.Done():
 				return ctx.Err()
 			case <-s.stopCh:
-				return ErrBusStopped
+				return errSubscriptionStopped
 			}
 		}
 
@@ -256,14 +284,14 @@ func (s *subscription) enqueue(ctx context.Context, frame transport.Frame) error
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-s.stopCh:
-			return ErrBusStopped
+			return errSubscriptionStopped
 		}
 
 	case memory.FullPolicyDropOldest:
 		for {
 			select {
 			case <-s.stopCh:
-				return ErrBusStopped
+				return errSubscriptionStopped
 			case <-ctx.Done():
 				return ctx.Err()
 			case s.queue <- frame:
