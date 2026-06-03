@@ -66,6 +66,19 @@ func (s *AlwaysFailService) DeleteObject(context.Context, storage.DeleteObjectOp
 	return s.err
 }
 
+// noMultipartService wraps a real Service but deliberately does NOT expose
+// the storage.Multipart interface. This lets tests exercise the branch in
+// processOne where a row carries an UploadID but the backend does not
+// support multipart, so the abort step is silently skipped.
+//
+// The struct only re-declares the non-Multipart surface; because it
+// embeds storage.Service the method set does not include any Multipart
+// methods, so a type assertion to storage.Multipart on this wrapper always
+// fails and MultipartFor returns nil.
+type noMultipartService struct {
+	storage.Service
+}
+
 // ── TestDeleteWorker ────────────────────────────────────────────────────
 
 func TestDeleteWorker(t *testing.T) {
@@ -184,6 +197,131 @@ func TestDeleteWorker(t *testing.T) {
 		require.Len(t, leased, 1, "Deferred row should become visible after retry delay")
 		assert.Equal(t, 1, leased[0].Attempts, "Attempts should be incremented")
 		assert.Empty(t, env.Pub.events, "Transient failure must not emit any event yet")
+	})
+
+	t.Run("AbortMultipartFailureTriggersDeferNotDelete", func(t *testing.T) {
+		env := setupWorker(t)
+
+		abortErr := errors.New("simulated abort failure")
+		tracker := &AbortTrackingService{Service: env.Svc, abortErr: abortErr}
+
+		// Object itself exists so that, if the worker proceeded past abort, it
+		// would delete it — asserting it survives proves the worker stopped.
+		putMemoryObject(t, env.Svc, "priv/abort-fail.bin")
+
+		item := store.PendingDelete{
+			ID:            id.GenerateUUID(),
+			Key:           "priv/abort-fail.bin",
+			UploadID:      "session-abort-fail",
+			Reason:        storage.DeleteReasonClaimExpired,
+			NextAttemptAt: timex.Now(),
+			CreatedAt:     timex.Now(),
+		}
+
+		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
+			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{item})
+		}), "Multipart pending delete should be scheduled")
+
+		worker.NewDeleteWorker(tracker, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
+
+		assert.Equal(t, 1, tracker.abortCount, "AbortMultipart must be called once before failure")
+
+		// Object must still be reachable — the worker did not proceed to DeleteObject.
+		_, err := env.Svc.GetObject(env.Ctx, storage.GetObjectOptions{Key: item.Key})
+		assert.NoError(t, err, "Object must survive when AbortMultipart fails")
+
+		// Row must be deferred (not removed): a far-future lease reveals it with Attempts=1.
+		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(2), 10, time.Minute)
+		require.NoError(t, err, "Lease after abort failure should succeed")
+		require.Len(t, leased, 1, "Row should be deferred, not removed, after abort failure")
+		assert.Equal(t, 1, leased[0].Attempts, "Attempts should be incremented after abort failure")
+
+		assert.Empty(t, env.Pub.events, "No event must be emitted for an intermediate abort failure")
+	})
+
+	t.Run("MultipartRowAgainstNonMultipartBackendSkipsAbortAndDeletes", func(t *testing.T) {
+		env := setupWorker(t)
+
+		// noMultipartService embeds only the storage.Service interface, so the
+		// type assertion to storage.Multipart fails and MultipartFor returns nil.
+		// This simulates a backend that was swapped to one without multipart support
+		// while a row with an UploadID was already in the queue.
+		nonMPSvc := &noMultipartService{Service: env.Svc}
+		putMemoryObject(t, env.Svc, "priv/non-mp.bin")
+
+		item := store.PendingDelete{
+			ID:       id.GenerateUUID(),
+			Key:      "priv/non-mp.bin",
+			UploadID: "session-orphaned",
+			Reason:   storage.DeleteReasonReplaced,
+			// Attempts left at 0; NextAttemptAt in the past so it leases immediately.
+			NextAttemptAt: timex.Now(),
+			CreatedAt:     timex.Now(),
+		}
+
+		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
+			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{item})
+		}), "Multipart pending delete against non-multipart backend should be scheduled")
+
+		worker.NewDeleteWorker(nonMPSvc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
+
+		// Object should be deleted despite the row carrying an UploadID.
+		_, err := env.Svc.GetObject(env.Ctx, storage.GetObjectOptions{Key: item.Key})
+		assert.ErrorIs(t, err, storage.ErrObjectNotFound,
+			"Worker must delete the object even when the backend does not support multipart")
+
+		// Row should be Done.
+		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
+		require.NoError(t, err, "Lease should succeed after non-multipart backend delete")
+		assert.Empty(t, leased, "Row should be Done when abort is skipped and delete succeeds")
+
+		// FileDeleted event should be emitted.
+		require.Len(t, env.Pub.events, 1, "Successful delete must emit one FileDeletedEvent")
+		_, ok := env.Pub.events[0].(*storage.FileDeletedEvent)
+		assert.True(t, ok, "Event should be FileDeletedEvent")
+	})
+
+	t.Run("ProcessesMultipleRowsConcurrently", func(t *testing.T) {
+		env := setupWorker(t)
+
+		const rowCount = 5
+
+		keys := make([]string, rowCount)
+		rows := make([]store.PendingDelete, rowCount)
+
+		for i := range rowCount {
+			keys[i] = "priv/multi-" + id.GenerateUUID() + ".bin"
+			putMemoryObject(t, env.Svc, keys[i])
+			rows[i] = store.PendingDelete{
+				ID:            id.GenerateUUID(),
+				Key:           keys[i],
+				Reason:        storage.DeleteReasonDeleted,
+				NextAttemptAt: timex.Now(),
+				CreatedAt:     timex.Now(),
+			}
+		}
+
+		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
+			return env.DQ.Insert(txCtx, tx, rows)
+		}), "All pending delete rows should be inserted")
+
+		worker.NewDeleteWorker(env.Svc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
+
+		// All objects must be deleted.
+		for _, key := range keys {
+			_, err := env.Svc.GetObject(env.Ctx, storage.GetObjectOptions{Key: key})
+			assert.ErrorIs(t, err, storage.ErrObjectNotFound,
+				"Object %s must be deleted by the worker", key)
+		}
+
+		// Queue must be fully drained.
+		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10+rowCount, time.Minute)
+		require.NoError(t, err, "Lease after concurrent drain should succeed")
+		assert.Empty(t, leased, "All rows must be marked Done after a concurrent run")
+
+		// One FileDeleted event per row.
+		assert.Len(t, env.Pub.events, rowCount,
+			"Worker must emit exactly one FileDeletedEvent per processed row")
 	})
 
 	t.Run("DeadLettersAfterMaxAttempts", func(t *testing.T) {

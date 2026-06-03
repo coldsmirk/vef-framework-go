@@ -39,7 +39,7 @@ type TestEnv struct {
 	CS  store.ClaimStore
 	PS  store.UploadPartStore
 	DQ  store.DeleteQueue
-	Pub *CapturePublisher
+	Pub *CaptureBus
 	Cfg *config.StorageConfig
 }
 
@@ -54,10 +54,10 @@ type CapturedPublish struct {
 	OptsLen int
 }
 
-// CapturePublisher records all published events for assertion. It
-// implements event.Bus so worker constructors that now expect a Bus
+// CaptureBus records all published events for assertion. It
+// implements event.Bus so worker constructors that expect a Bus
 // can accept it directly.
-type CapturePublisher struct {
+type CaptureBus struct {
 	events []event.Event
 	calls  []CapturedPublish
 }
@@ -78,7 +78,7 @@ func (s *StatHookService) StatObject(ctx context.Context, opts storage.StatObjec
 }
 
 // Publish implements event.Bus.
-func (p *CapturePublisher) Publish(_ context.Context, evt event.Event, opts ...event.PublishOption) error {
+func (p *CaptureBus) Publish(_ context.Context, evt event.Event, opts ...event.PublishOption) error {
 	p.events = append(p.events, evt)
 	p.calls = append(p.calls, CapturedPublish{Event: evt, OptsLen: len(opts)})
 
@@ -86,7 +86,7 @@ func (p *CapturePublisher) Publish(_ context.Context, evt event.Event, opts ...e
 }
 
 // PublishBatch implements event.Bus.
-func (p *CapturePublisher) PublishBatch(_ context.Context, evts []event.Event, opts ...event.PublishOption) error {
+func (p *CaptureBus) PublishBatch(_ context.Context, evts []event.Event, opts ...event.PublishOption) error {
 	for _, e := range evts {
 		p.events = append(p.events, e)
 		p.calls = append(p.calls, CapturedPublish{Event: e, OptsLen: len(opts)})
@@ -96,7 +96,7 @@ func (p *CapturePublisher) PublishBatch(_ context.Context, evts []event.Event, o
 }
 
 // Subscribe implements event.Bus with a no-op unsubscribe.
-func (*CapturePublisher) Subscribe(string, event.Handler, ...event.SubscribeOption) (event.Unsubscribe, error) {
+func (*CaptureBus) Subscribe(string, event.Handler, ...event.SubscribeOption) (event.Unsubscribe, error) {
 	return func() {}, nil
 }
 
@@ -121,7 +121,7 @@ func setupWorker(t *testing.T) *TestEnv {
 		CS:  store.NewClaimStore(db),
 		PS:  store.NewUploadPartStore(db),
 		DQ:  store.NewDeleteQueue(db),
-		Pub: &CapturePublisher{},
+		Pub: &CaptureBus{},
 		Cfg: newTestStorageConfig(),
 	}
 }
