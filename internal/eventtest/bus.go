@@ -1,8 +1,3 @@
-// Package eventtest provides synchronous in-memory test doubles for
-// the framework's event Bus. The default FakeBus exercises the same
-// Subscribe → Publish flow as the production Bus but skips routing,
-// async fan-in, and middleware composition; suitable for unit tests
-// of resolvers, caches, and other handlers that subscribe to events.
 package eventtest
 
 import (
@@ -12,15 +7,21 @@ import (
 	"github.com/coldsmirk/vef-framework-go/event"
 )
 
-// FakeBus is a synchronous in-memory Bus suitable for unit tests.
-// Subscribe registers a handler indexed by event type; Publish invokes
-// all matching handlers in registration order and returns the first
-// non-nil error. PublishOption and SubscribeOption are accepted for
-// signature compatibility but otherwise ignored.
+// FakeBus is a synchronous in-memory event bus test double that exercises the
+// same Subscribe → Publish flow as the production Bus but skips routing,
+// async fan-in, and middleware composition; suitable for unit tests of
+// resolvers, caches, and other handlers that subscribe to events.
 //
-// FakeBus also records every published event for later inspection via
-// Captured / CapturedByType so tests that previously queried an outbox
-// table can verify behavior without database round-trips.
+// Subscribe registers a handler indexed by event type; Publish invokes all
+// matching handlers in registration order and returns the first non-nil error.
+// PublishOption and SubscribeOption are accepted for signature compatibility but
+// otherwise ignored — in particular, FakeBus does NOT enforce ErrGroupRequired
+// semantics. Tests that need to assert at-least-once group requirements should
+// use an integration test against the real Bus.
+//
+// FakeBus also records every published event for later inspection via Captured /
+// CapturedByType so tests that previously queried an outbox table can verify
+// behavior without database round-trips.
 type FakeBus struct {
 	mu       sync.Mutex
 	handlers map[string][]event.Handler

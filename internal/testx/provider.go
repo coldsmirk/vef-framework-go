@@ -30,8 +30,10 @@ var providers = []struct {
 	}},
 }
 
-// ForEachDB runs fn once per enabled database, managing container lifecycle automatically.
-// Test hierarchy: t.Run("<DisplayName>", fn).
+// ForEachDB runs fn once for each supported database (Postgres, MySQL, SQLite),
+// managing container lifecycle automatically. Postgres and MySQL require Docker;
+// the suite hard-fails at container start if Docker is unavailable. SQLite uses
+// a temp-dir file and needs no container. Test hierarchy: t.Run("<DisplayName>", fn).
 func ForEachDB(t *testing.T, fn func(t *testing.T, env *DBEnv)) {
 	for _, p := range providers {
 		t.Run(p.name, func(t *testing.T) {

@@ -1,13 +1,3 @@
-// Package sqlmigration provides the framework-internal DDL migration
-// helper shared by every module that ships its own SQL scripts
-// (approval, storage, event inbox, event outbox).
-//
-// Each caller supplies an embedded script bundle plus the list of
-// tables that must exist after the migration. Run inspects the schema
-// dictionary for the configured dialect, skips when every expected
-// table is already present, and otherwise executes the per-dialect
-// script as a single batch. Optional Pre hooks let callers attach
-// drop-obsolete-tables steps before the create script runs.
 package sqlmigration
 
 import (

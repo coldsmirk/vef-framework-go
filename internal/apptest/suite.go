@@ -21,7 +21,14 @@ import (
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
-// testJWTAudience matches lo.SnakeCase of the test app name "test-app".
+// testAppName is the fixed application name used by coreOptions in app.go.
+// It MUST match the Name field in the &config.AppConfig{} supplied there.
+// Changing one without the other will cause JWT audience mismatches in tests.
+const testAppName = "test-app"
+
+// testJWTAudience is lo.SnakeCase(testAppName), matching the audience the JWT
+// authenticator derives in internal/security/module.go (lo.SnakeCase(appCfg.Name)).
+// Keep this in sync with testAppName whenever the app name changes.
 const testJWTAudience = "test_app"
 
 // testJWTSecret is the JWT signing secret apptest configures for the test app
@@ -71,16 +78,7 @@ func (s *Suite) TearDownApp() {
 // MakeRPCRequest sends an RPC API request (POST /api with JSON body)
 // and returns the raw HTTP response.
 func (s *Suite) MakeRPCRequest(body api.Request) *http.Response {
-	jsonBytes, err := json.Marshal(body)
-	s.Require().NoError(err)
-
-	req := httptest.NewRequestWithContext(context.Background(), fiber.MethodPost, "/api", strings.NewReader(string(jsonBytes)))
-	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
-
-	resp, err := s.App.Test(req)
-	s.Require().NoError(err)
-
-	return resp
+	return s.MakeRPCRequestWithToken(body, "")
 }
 
 // MakeRPCRequestWithToken sends an RPC API request with a Bearer authorization header.
@@ -88,36 +86,25 @@ func (s *Suite) MakeRPCRequestWithToken(body api.Request, token string) *http.Re
 	jsonBytes, err := json.Marshal(body)
 	s.Require().NoError(err)
 
-	req := httptest.NewRequestWithContext(context.Background(), fiber.MethodPost, "/api", strings.NewReader(string(jsonBytes)))
-	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
-	req.Header.Set(fiber.HeaderAuthorization, security.AuthSchemeBearer+" "+token)
-
-	resp, err := s.App.Test(req)
-	s.Require().NoError(err)
-
-	return resp
+	return s.doRequest(fiber.MethodPost, "/api", string(jsonBytes), token)
 }
 
 // --- REST requests (any method, any path) ---
 
 // MakeRESTRequest sends a REST API request with the given HTTP method, path, and optional JSON body.
 func (s *Suite) MakeRESTRequest(method, path, body string) *http.Response {
-	var req *http.Request
-	if body != "" {
-		req = httptest.NewRequestWithContext(context.Background(), method, path, strings.NewReader(body))
-		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
-	} else {
-		req = httptest.NewRequestWithContext(context.Background(), method, path, nil)
-	}
-
-	resp, err := s.App.Test(req)
-	s.Require().NoError(err)
-
-	return resp
+	return s.MakeRESTRequestWithToken(method, path, body, "")
 }
 
 // MakeRESTRequestWithToken sends a REST API request with a Bearer authorization header.
 func (s *Suite) MakeRESTRequestWithToken(method, path, body, token string) *http.Response {
+	return s.doRequest(method, path, body, token)
+}
+
+// doRequest builds and executes an HTTP request against the test app. When body
+// is non-empty the Content-Type header is set to application/json. When token
+// is non-empty an Authorization: Bearer header is added.
+func (s *Suite) doRequest(method, path, body, token string) *http.Response {
 	var req *http.Request
 	if body != "" {
 		req = httptest.NewRequestWithContext(context.Background(), method, path, strings.NewReader(body))
@@ -126,7 +113,9 @@ func (s *Suite) MakeRESTRequestWithToken(method, path, body, token string) *http
 		req = httptest.NewRequestWithContext(context.Background(), method, path, nil)
 	}
 
-	req.Header.Set(fiber.HeaderAuthorization, security.AuthSchemeBearer+" "+token)
+	if token != "" {
+		req.Header.Set(fiber.HeaderAuthorization, security.AuthSchemeBearer+" "+token)
+	}
 
 	resp, err := s.App.Test(req)
 	s.Require().NoError(err)
@@ -171,9 +160,11 @@ func (s *Suite) ReadDataAsSlice(data any) []any {
 // --- Auth helpers ---
 
 // GenerateToken creates a valid JWT access token for the given principal.
-// It signs with the same secret and audience ("test_app") that apptest's
-// coreOptions configures for the test app, so the token verifies out of the box.
-// The token is valid for 1 hour with no notBefore delay.
+// It signs with the same secret and audience (testJWTAudience, derived from
+// testAppName) that apptest's coreOptions configures for the test app, so the
+// token verifies out of the box. The token is valid for 1 hour with no notBefore
+// delay. If a suite overrides the app name via fx.Replace, this method will
+// produce tokens with the wrong audience — use a custom JWTConfig in that case.
 func (s *Suite) GenerateToken(principal *security.Principal) string {
 	jwtCfg := &security.JWTConfig{
 		Secret:   testJWTSecret,

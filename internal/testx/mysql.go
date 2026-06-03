@@ -22,7 +22,7 @@ func NewMySQLContainer(ctx context.Context, t testing.TB) *MySQLContainer {
 		mysql.WithUsername(TestUsername),
 		mysql.WithPassword(TestPassword),
 		testcontainers.WithWaitStrategy(
-			wait.ForLog("port: 3306  MySQL Community Server - GPL").
+			wait.ForListeningPort("3306/tcp").
 				WithStartupTimeout(DefaultContainerTimeout),
 		),
 	)
