@@ -30,9 +30,3 @@ func Migrate(ctx context.Context, db orm.DB, kind config.DBKind) error {
 		ExpectedTables: expectedTables,
 	})
 }
-
-// GetMigrationSQL returns the storage DDL script for the given dialect.
-// Retained for tests and tooling that needs the raw SQL.
-func GetMigrationSQL(kind config.DBKind) (string, error) {
-	return sqlmigration.LoadScript(scripts, kind)
-}
