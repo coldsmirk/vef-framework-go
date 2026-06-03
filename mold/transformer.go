@@ -40,14 +40,10 @@ type FieldLevel interface {
 	Transformer() Transformer
 	// Name returns the name of the current field being modified.
 	Name() string
-	//
-	// Parent returns the top level parent of the current value return by Field()
-	//
-	// This is used primarily for having the ability to nil out pointer type values.
-	//
-	// NOTE: that is there are several layers of abstractions eg. interface{} of interface{} of interface{} this
-	//       function returns the first interface{}
-	//
+	// Parent returns the top level parent of the current value returned by Field().
+	// This is used primarily for the ability to nil out pointer type values.
+	// When several layers of abstraction are nested (e.g. an any wrapping an any),
+	// it returns the first any.
 	Parent() reflect.Value
 	// Field returns the current field value being modified.
 	Field() reflect.Value
@@ -66,14 +62,10 @@ type FieldLevel interface {
 type StructLevel interface {
 	// Transformer represents a subset of the current *Transformer that is executing the current transformation.
 	Transformer() Transformer
-	//
-	// Parent returns the top level parent of the current value return by Struct().
-	//
-	// This is used primarily for having the ability to nil out pointer type values.
-	//
-	// NOTE: that is there are several layers of abstractions eg. interface{} of interface{} of interface{} this
-	//       function returns the first interface{}.
-	//
+	// Parent returns the top level parent of the current value returned by Struct().
+	// This is used primarily for the ability to nil out pointer type values.
+	// When several layers of abstraction are nested (e.g. an any wrapping an any),
+	// it returns the first any.
 	Parent() reflect.Value
 	// Struct returns the value of the current struct being modified.
 	Struct() reflect.Value

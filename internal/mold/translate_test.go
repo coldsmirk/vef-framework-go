@@ -626,6 +626,63 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSlice() {
 			test.Statuses, test.StatusesName,
 			test.Priorities, test.PrioritiesName)
 	})
+
+	suite.Run("TranslateNilPointerStringSliceTarget", func() {
+		type TestStruct struct {
+			Statuses     []string `mold:"translate=dict:status"`
+			StatusesName *[]string
+		}
+
+		test := &TestStruct{
+			Statuses:     []string{"active", "pending"},
+			StatusesName: nil,
+		}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.NoError(err, "Translation should succeed for *[]string target, mirroring the scalar *string path")
+		suite.Require().NotNil(test.StatusesName, "Nil *[]string target should be allocated")
+		suite.Equal([]string{"Active Status", "Pending Status"}, *test.StatusesName, "Pointer slice target should be translated element-wise")
+
+		suite.T().Logf("Statuses: %v -> StatusesName: %v", test.Statuses, *test.StatusesName)
+	})
+
+	suite.Run("TranslatePreInitializedPointerStringSliceTarget", func() {
+		type TestStruct struct {
+			Statuses     []string `mold:"translate=dict:status"`
+			StatusesName *[]string
+		}
+
+		existing := []string{"stale"}
+		test := &TestStruct{
+			Statuses:     []string{"inactive"},
+			StatusesName: &existing,
+		}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.NoError(err, "Translation should overwrite a pre-initialized *[]string target")
+		suite.Require().NotNil(test.StatusesName, "Pointer slice target should remain non-nil")
+		suite.Equal([]string{"Inactive Status"}, *test.StatusesName, "Pointer slice target should be replaced wholesale")
+
+		suite.T().Logf("Overwrote pointer slice target: %v", *test.StatusesName)
+	})
+
+	suite.Run("TranslateNilSourceLeavesPointerSliceTargetNil", func() {
+		type TestStruct struct {
+			Statuses     []string `mold:"translate=dict:status"`
+			StatusesName *[]string
+		}
+
+		test := &TestStruct{
+			Statuses:     nil,
+			StatusesName: nil,
+		}
+
+		err := suite.transformer.Struct(suite.ctx, test)
+		suite.NoError(err, "Nil source should skip writing the *[]string target")
+		suite.Nil(test.StatusesName, "Pointer slice target should remain nil when source is nil")
+
+		suite.T().Log("Nil source slice skipped, pointer slice target untouched")
+	})
 }
 
 // TestTranslateStringSliceErrors tests error handling for []string source fields.

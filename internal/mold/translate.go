@@ -9,7 +9,6 @@ import (
 
 	"github.com/spf13/cast"
 
-	"github.com/coldsmirk/vef-framework-go/logx"
 	"github.com/coldsmirk/vef-framework-go/mold"
 	"github.com/coldsmirk/vef-framework-go/reflectx"
 )
@@ -34,7 +33,6 @@ var (
 // TranslateTransformer is a translator-based transformer that converts values to readable names
 // Supports multiple translators and delegates to the appropriate one based on translation kind (from tag parameters).
 type TranslateTransformer struct {
-	logger      logx.Logger
 	translators []mold.Translator
 }
 
@@ -160,10 +158,27 @@ func extractStringSlice(fieldName string, field reflect.Value) ([]string, bool, 
 	return values, ok, nil
 }
 
-// setTranslatedSlice writes translated string values into a []string target field.
+// setTranslatedSlice writes translated string values into a []string or *[]string target field,
+// mirroring the scalar path's string / *string handling. A nil *[]string target is allocated.
 func setTranslatedSlice(target reflect.Value, values []string, targetFieldName string) error {
-	if !reflectx.IsStringSliceType(target.Type()) {
-		return fmt.Errorf("%w: translated field %q has type %v (expected []string)", ErrUnsupportedFieldType, targetFieldName, target.Type())
+	targetType := target.Type()
+
+	if targetType.Kind() == reflect.Pointer {
+		if !reflectx.IsStringSliceType(targetType.Elem()) {
+			return fmt.Errorf("%w: translated field %q has unsupported pointer type %v", ErrUnsupportedFieldType, targetFieldName, targetType)
+		}
+
+		if target.IsNil() {
+			target.Set(reflect.New(targetType.Elem()))
+		}
+
+		reflectx.SetStringSliceValue(target.Elem(), values)
+
+		return nil
+	}
+
+	if !reflectx.IsStringSliceType(targetType) {
+		return fmt.Errorf("%w: translated field %q has type %v (expected []string or *[]string)", ErrUnsupportedFieldType, targetFieldName, targetType)
 	}
 
 	reflectx.SetStringSliceValue(target, values)
@@ -177,7 +192,9 @@ func (*TranslateTransformer) Tag() string {
 }
 
 // Transform executes translation transformation logic.
-// Dispatches between scalar and []string/*[]string slice source paths; both share the same
+// The engine dereferences pointer sources via extractType before this runs, so the dispatch
+// sees an already-unwrapped value and matches []string for the slice path (a *[]string source
+// arrives here as []string); everything else takes the scalar path. Both paths share the same
 // `<Field>Name` sibling convention and translator selection rules.
 func (t *TranslateTransformer) Transform(ctx context.Context, fl mold.FieldLevel) error {
 	name := fl.Name()
@@ -239,10 +256,11 @@ func (t *TranslateTransformer) transformScalar(ctx context.Context, fl mold.Fiel
 	return fmt.Errorf("%w: kind %q for field %q with value %q", ErrNoTranslatorSupportsKind, kind, name, value)
 }
 
-// transformStringSlice handles []string source fields, translating each element via the chosen
-// translator. Nil source skips writing the target; empty slice writes an empty slice; every
-// element (including empty strings) is forwarded to Translator.Translate so the translator owns
-// the empty-element semantics. Element-level errors fail fast and include the index.
+// transformStringSlice handles []string source fields (a *[]string source is already unwrapped
+// to []string by the engine before dispatch), translating each element via the chosen translator
+// into a []string or *[]string target. Nil source skips writing the target; empty slice writes an
+// empty slice; every element (including empty strings) is forwarded to Translator.Translate so the
+// translator owns the empty-element semantics. Element-level errors fail fast and include the index.
 func (t *TranslateTransformer) transformStringSlice(ctx context.Context, fl mold.FieldLevel, name string, field reflect.Value) error {
 	values, ok, err := extractStringSlice(name, field)
 	if err != nil {
@@ -304,7 +322,6 @@ func (t *TranslateTransformer) transformStringSlice(ctx context.Context, fl mold
 // NewTranslateTransformer creates a translate transformer instance.
 func NewTranslateTransformer(translators []mold.Translator) mold.FieldTransformer {
 	return &TranslateTransformer{
-		logger:      logger.Named("translate"),
 		translators: translators,
 	}
 }

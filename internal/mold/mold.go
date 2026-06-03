@@ -10,11 +10,12 @@ import (
 	"github.com/coldsmirk/vef-framework-go/mold"
 )
 
-var (
-	timeType           = reflect.TypeFor[time.Time]()
+const (
 	restrictedAliasErr = "mold: alias %q either contains restricted characters or is the same as a restricted tag needed for normal operation"
 	restrictedTagErr   = "mold: tag %q either contains restricted characters or is the same as a restricted tag needed for normal operation"
 )
+
+var timeType = reflect.TypeFor[time.Time]()
 
 // MoldTransformer is the base controlling object which contains
 // all necessary information.
@@ -100,6 +101,8 @@ func (t *MoldTransformer) RegisterStructLevel(fn mold.StructLevelFunc, types ...
 
 // RegisterInterceptor registers interceptor functions against one or more types.
 // InterceptorFunc allows intercepting incoming values to redirect modifications to an inner type/value.
+//
+// NOTE: This method is not thread-safe; register all interceptors before use.
 func (t *MoldTransformer) RegisterInterceptor(fn mold.InterceptorFunc, types ...any) {
 	for _, typ := range types {
 		t.interceptors[reflect.TypeOf(typ)] = fn
@@ -257,7 +260,7 @@ func (t *MoldTransformer) applyTransformation(
 	structValue reflect.Value,
 	structCache *cStruct,
 ) (reflect.Value, reflect.Kind, error) {
-	fl := MoldFieldLevel{
+	fl := &MoldFieldLevel{
 		transformer: t,
 		name:        name,
 		parent:      original,
@@ -292,7 +295,7 @@ func (t *MoldTransformer) applyTransformation(
 }
 
 func (t *MoldTransformer) traverseStruct(ctx context.Context, current, original reflect.Value) error {
-	original2 := current
+	addrParent := current
 	current, kind := t.extractType(current)
 
 	if kind != reflect.Struct {
@@ -317,7 +320,7 @@ func (t *MoldTransformer) traverseStruct(ctx context.Context, current, original 
 		return nil
 	}
 
-	return t.setByStruct(ctx, original2, current, typ)
+	return t.setByStruct(ctx, addrParent, current, typ)
 }
 
 func (t *MoldTransformer) setByIterable(ctx context.Context, current reflect.Value, ct *cTag) error {
