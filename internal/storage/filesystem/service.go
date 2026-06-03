@@ -219,15 +219,15 @@ func (s *Service) readMeta(key string) (etag, contentType string, err error) {
 		return "", "", err
 	}
 
-	// Attempt JSON decode (current format). Fall back to plain-text ETag
-	// written by the previous single-field sidecar (legacy objects).
+	// Attempt JSON decode (current format). A decode failure means the
+	// sidecar predates the JSON format: fall back to treating the raw bytes
+	// as the legacy plain-text ETag (no ContentType recorded).
 	var m objectMeta
-	if jsonErr := json.Unmarshal(data, &m); jsonErr != nil {
-		// Legacy sidecar: raw hex string, no ContentType recorded.
-		return string(data), "", nil
+	if json.Unmarshal(data, &m) == nil {
+		return m.ETag, m.ContentType, nil
 	}
 
-	return m.ETag, m.ContentType, nil
+	return string(data), "", nil
 }
 
 // removeMeta deletes the sidecar for key. Non-NotExist errors are logged
