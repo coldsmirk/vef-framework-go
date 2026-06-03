@@ -62,6 +62,43 @@ var Module = fx.Module(
 	fx.Invoke(verifyEventRouting),
 )
 
+// transactionalEventTypes lists the approval event types that must route
+// to a transactional transport. InstanceBindingFailedEvent is deliberately
+// excluded: it is emitted by the asynchronous binding listener outside any
+// business transaction, so requiring a transactional route for it would
+// force misconfiguration on hosts that legitimately route only binding_failed
+// through non-tx paths.
+//
+// This slice is the single source of truth consumed by both verifyEventRouting
+// and its tests so the two cannot drift.
+var transactionalEventTypes = []string{
+	approval.EventTypeInstanceCreated,
+	approval.EventTypeInstanceCompleted,
+	approval.EventTypeInstanceWithdrawn,
+	approval.EventTypeInstanceRolledBack,
+	approval.EventTypeInstanceReturned,
+	approval.EventTypeInstanceResubmitted,
+	approval.EventTypeNodeEntered,
+	approval.EventTypeNodeAutoPassed,
+	approval.EventTypeTaskCreated,
+	approval.EventTypeTaskApproved,
+	approval.EventTypeTaskHandled,
+	approval.EventTypeTaskRejected,
+	approval.EventTypeTaskTransferred,
+	approval.EventTypeTaskReassigned,
+	approval.EventTypeTaskTimedOut,
+	approval.EventTypeAssigneesAdded,
+	approval.EventTypeAssigneesRemoved,
+	approval.EventTypeTaskDeadlineWarning,
+	approval.EventTypeTaskUrged,
+	approval.EventTypeCCNotified,
+	approval.EventTypeFlowCreated,
+	approval.EventTypeFlowUpdated,
+	approval.EventTypeFlowDeployed,
+	approval.EventTypeFlowToggled,
+	approval.EventTypeFlowPublished,
+}
+
 // verifyEventRouting fails fast at start-up when the framework's event
 // bus is mis-configured for approval's two delivery requirements:
 //
@@ -79,45 +116,13 @@ var Module = fx.Module(
 //     the subscription at registration time, so no binding write-back
 //     would ever happen even though the application started cleanly.
 //
-// InstanceBindingFailedEvent is deliberately excluded from the
-// transactional set: it is emitted by the asynchronous binding listener
-// outside any business transaction, so requiring a transactional route
-// for it would force misconfiguration on hosts that legitimately route
-// only binding_failed through non-tx paths.
-//
 // The check itself is deferred to OnStart so the bus has built its
 // router by the time we query it (bus.Start runs first in the lifecycle
 // order — see bootstrap module ordering).
 func verifyEventRouting(lc fx.Lifecycle, inspector event.RouteInspector) {
 	lc.Append(fx.Hook{
 		OnStart: func(_ context.Context) error {
-			txRequired := []string{
-				approval.EventTypeInstanceCreated,
-				approval.EventTypeInstanceCompleted,
-				approval.EventTypeInstanceWithdrawn,
-				approval.EventTypeInstanceRolledBack,
-				approval.EventTypeInstanceReturned,
-				approval.EventTypeInstanceResubmitted,
-				approval.EventTypeNodeEntered,
-				approval.EventTypeNodeAutoPassed,
-				approval.EventTypeTaskCreated,
-				approval.EventTypeTaskApproved,
-				approval.EventTypeTaskHandled,
-				approval.EventTypeTaskRejected,
-				approval.EventTypeTaskTransferred,
-				approval.EventTypeTaskReassigned,
-				approval.EventTypeTaskTimedOut,
-				approval.EventTypeAssigneesAdded,
-				approval.EventTypeAssigneesRemoved,
-				approval.EventTypeTaskDeadlineWarning,
-				approval.EventTypeTaskUrged,
-				approval.EventTypeCCNotified,
-				approval.EventTypeFlowCreated,
-				approval.EventTypeFlowUpdated,
-				approval.EventTypeFlowDeployed,
-				approval.EventTypeFlowToggled,
-				approval.EventTypeFlowPublished,
-			}
+			txRequired := transactionalEventTypes
 
 			for _, et := range txRequired {
 				if !inspector.HasTransactionalRoute(et) {

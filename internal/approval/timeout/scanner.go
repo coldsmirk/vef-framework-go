@@ -220,11 +220,11 @@ func (s *Scanner) autoFinishTask(
 	events := make([]approval.DomainEvent, 0, 2)
 	if status == approval.TaskApproved {
 		events = append(events,
-			approval.NewTaskApprovedEvent(task.ID, task.TenantID, task.InstanceID, node.ID, "system", "任务处理超时，系统自动通过"),
+			approval.NewTaskApprovedEvent(task.ID, task.TenantID, task.InstanceID, node.ID, systemOperator.ID, "任务处理超时，系统自动通过"),
 		)
 	} else {
 		events = append(events,
-			approval.NewTaskRejectedEvent(task.ID, task.TenantID, task.InstanceID, node.ID, "system", "任务处理超时，系统自动驳回"),
+			approval.NewTaskRejectedEvent(task.ID, task.TenantID, task.InstanceID, node.ID, systemOperator.ID, "任务处理超时，系统自动驳回"),
 		)
 	}
 

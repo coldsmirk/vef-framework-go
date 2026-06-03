@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/security"
@@ -105,20 +106,13 @@ func isTenantField(f reflect.StructField) bool {
 			return true
 		}
 
-		if tag := f.Tag.Get("json"); tag != "" && extractJSONName(tag) == candidate {
-			return true
+		if tag := f.Tag.Get("json"); tag != "" {
+			name, _, _ := strings.Cut(tag, ",")
+			if name == candidate {
+				return true
+			}
 		}
 	}
 
 	return false
-}
-
-func extractJSONName(tag string) string {
-	for i := 0; i < len(tag); i++ {
-		if tag[i] == ',' {
-			return tag[:i]
-		}
-	}
-
-	return tag
 }

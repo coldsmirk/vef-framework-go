@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
+	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
 // EventCollector is the request-scoped buffer for approval domain events.
@@ -24,12 +25,12 @@ type EventCollector = Collector[approval.DomainEvent]
 //
 // Order positions the behavior as the innermost approval behavior so events
 // only emit after the handler and ActionLog have both succeeded.
-func NewEventPublishBehavior(bus event.Bus) cqrs.Behavior {
+func NewEventPublishBehavior(db orm.DB, bus event.Bus) cqrs.Behavior {
 	return &collectorBehavior[approval.DomainEvent]{
 		order: 200,
 		name:  "event publish",
 		flush: func(ctx context.Context, events []approval.DomainEvent) error {
-			db := contextx.DB(ctx)
+			db := contextx.DB(ctx, db)
 
 			for _, e := range events {
 				opts := []event.PublishOption{event.WithTx(db)}

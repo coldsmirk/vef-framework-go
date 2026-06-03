@@ -39,33 +39,12 @@ func (s *StubRouteInspector) HasSubscribableTransport(et string) bool {
 }
 
 func allRequiredTransactional() map[string]bool {
-	return map[string]bool{
-		approval.EventTypeInstanceCreated:     true,
-		approval.EventTypeInstanceCompleted:   true,
-		approval.EventTypeInstanceWithdrawn:   true,
-		approval.EventTypeInstanceRolledBack:  true,
-		approval.EventTypeInstanceReturned:    true,
-		approval.EventTypeInstanceResubmitted: true,
-		approval.EventTypeNodeEntered:         true,
-		approval.EventTypeNodeAutoPassed:      true,
-		approval.EventTypeTaskCreated:         true,
-		approval.EventTypeTaskApproved:        true,
-		approval.EventTypeTaskHandled:         true,
-		approval.EventTypeTaskRejected:        true,
-		approval.EventTypeTaskTransferred:     true,
-		approval.EventTypeTaskReassigned:      true,
-		approval.EventTypeTaskTimedOut:        true,
-		approval.EventTypeAssigneesAdded:      true,
-		approval.EventTypeAssigneesRemoved:    true,
-		approval.EventTypeTaskDeadlineWarning: true,
-		approval.EventTypeTaskUrged:           true,
-		approval.EventTypeCCNotified:          true,
-		approval.EventTypeFlowCreated:         true,
-		approval.EventTypeFlowUpdated:         true,
-		approval.EventTypeFlowDeployed:        true,
-		approval.EventTypeFlowToggled:         true,
-		approval.EventTypeFlowPublished:       true,
+	m := make(map[string]bool, len(transactionalEventTypes))
+	for _, et := range transactionalEventTypes {
+		m[et] = true
 	}
+
+	return m
 }
 
 func TestVerifyEventRouting(t *testing.T) {
