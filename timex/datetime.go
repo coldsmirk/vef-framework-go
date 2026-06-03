@@ -40,35 +40,24 @@ func (dt DateTime) String() string {
 	return time.Time(dt).Format(time.DateTime)
 }
 
-// MarshalJSON implements the json.Marshaler interface for JSON serialization.
+// MarshalJSON implements the json.Marshaler interface, emitting the canonical DateTime layout.
 func (dt DateTime) MarshalJSON() ([]byte, error) {
-	bs := make([]byte, 0, dateTimePatternLength+2)
-	bs = append(bs, jsonQuote)
-	bs = time.Time(dt).AppendFormat(bs, time.DateTime)
-	bs = append(bs, jsonQuote)
-
-	return bs, nil
+	return appendQuotedFormat(time.Time(dt), time.DateTime, dateTimePatternLength), nil
 }
 
-// UnmarshalJSON implements the json.Unmarshaler interface for JSON deserialization.
+// UnmarshalJSON implements the json.Unmarshaler interface. It accepts a JSON string in the
+// canonical DateTime layout; any other shape is rejected.
 func (dt *DateTime) UnmarshalJSON(bs []byte) error {
-	value := utils.UnsafeString(bs)
-	if value == jsonNull {
+	if utils.UnsafeString(bs) == jsonNull {
 		return nil
 	}
 
-	if err := validateJSONFormat(bs, dateTimePatternLength); err != nil {
+	value, ok := unquoteJSON(bs)
+	if !ok {
 		return ErrInvalidDateTimeFormat
 	}
 
-	parsed, err := Parse(value[1 : dateTimePatternLength+1])
-	if err != nil {
-		return err
-	}
-
-	*dt = parsed
-
-	return nil
+	return dt.parseStrict(value)
 }
 
 // Equal compares two DateTime values for equality.
@@ -217,7 +206,8 @@ func (dt DateTime) IsZero() bool {
 	return dt.Unwrap().IsZero()
 }
 
-// Between reports whether dt is between start and end.
+// Between reports whether dt falls strictly between start and end, exclusive of both endpoints
+// (the open interval (start, end)). dt equal to start or end returns false.
 func (dt DateTime) Between(start, end DateTime) bool {
 	return dt.After(start) && dt.Before(end)
 }
@@ -376,14 +366,22 @@ func (dt DateTime) MarshalText() ([]byte, error) {
 	return []byte(dt.String()), nil
 }
 
-// UnmarshalText implements the encoding.TextUnmarshaler interface.
+// UnmarshalText implements the encoding.TextUnmarshaler interface. Like UnmarshalJSON it is
+// strict: the text must match the canonical DateTime layout.
 func (dt *DateTime) UnmarshalText(text []byte) error {
-	parsed, err := Parse(string(text))
+	return dt.parseStrict(utils.UnsafeString(text))
+}
+
+// parseStrict parses value against the canonical DateTime layout (no lenient fallback) and stores
+// the result. It backs the JSON and text deserialization paths so both reject non-canonical input
+// identically.
+func (dt *DateTime) parseStrict(value string) error {
+	parsed, err := time.ParseInLocation(dateTimeLayout, value, time.Local)
 	if err != nil {
-		return err
+		return ErrInvalidDateTimeFormat
 	}
 
-	*dt = parsed
+	*dt = DateTime(parsed)
 
 	return nil
 }

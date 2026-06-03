@@ -13,6 +13,4 @@ var (
 	ErrFailedScan = errors.New("failed to scan value")
 	// ErrUnsupportedDestType indicates dest type is unsupported.
 	ErrUnsupportedDestType = errors.New("unsupported destination type")
-	// ErrInvalidJSONFormat indicates invalid JSON length/quotes for datetime types.
-	ErrInvalidJSONFormat = errors.New("invalid JSON format: expected quoted value of specific length")
 )

@@ -7,8 +7,12 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// Time represents a time value (without date) with database and JSON support.
+// Time represents a time-of-day (hour, minute, second, nanosecond) without a date component.
 // It uses the standard time.TimeOnly format (15:04:05).
+//
+// Time is a civil clock value: Equal, Before, After, Between, and Sub compare by time-of-day and
+// ignore the underlying time.Time location, so two Time values for the same clock reading are equal
+// even when constructed from time.Time values in different zones.
 type Time time.Time
 
 // Unwrap returns the underlying time.Time value.
@@ -40,50 +44,47 @@ func (t Time) String() string {
 	return time.Time(t).Format(time.TimeOnly)
 }
 
-// MarshalJSON implements the json.Marshaler interface for JSON serialization.
+// MarshalJSON implements the json.Marshaler interface, emitting the canonical TimeOnly layout.
 func (t Time) MarshalJSON() ([]byte, error) {
-	bs := make([]byte, 0, timePatternLength+2)
-	bs = append(bs, jsonQuote)
-	bs = time.Time(t).AppendFormat(bs, time.TimeOnly)
-	bs = append(bs, jsonQuote)
-
-	return bs, nil
+	return appendQuotedFormat(time.Time(t), time.TimeOnly, timePatternLength), nil
 }
 
-// UnmarshalJSON implements the json.Unmarshaler interface for JSON deserialization.
+// UnmarshalJSON implements the json.Unmarshaler interface. It accepts a JSON string in the
+// canonical TimeOnly layout; any other shape is rejected.
 func (t *Time) UnmarshalJSON(bs []byte) error {
-	value := utils.UnsafeString(bs)
-	if value == jsonNull {
+	if utils.UnsafeString(bs) == jsonNull {
 		return nil
 	}
 
-	if err := validateJSONFormat(bs, timePatternLength); err != nil {
+	value, ok := unquoteJSON(bs)
+	if !ok {
 		return ErrInvalidTimeFormat
 	}
 
-	parsed, err := ParseTime(value[1 : timePatternLength+1])
-	if err != nil {
-		return err
-	}
-
-	*t = parsed
-
-	return nil
+	return t.parseStrict(value)
 }
 
-// Equal compares two Time values for equality.
+// civil returns t as a time-of-day anchored to 1970-01-01 UTC, giving a zone-independent anchor
+// for clock comparisons.
+func (t Time) civil() time.Time {
+	u := t.Unwrap()
+
+	return time.Date(1970, 1, 1, u.Hour(), u.Minute(), u.Second(), u.Nanosecond(), time.UTC)
+}
+
+// Equal reports whether t and other are the same time-of-day, regardless of location.
 func (t Time) Equal(other Time) bool {
-	return t.Unwrap().Equal(other.Unwrap())
+	return t.civil().Equal(other.civil())
 }
 
-// Before reports whether the time t is before other.
+// Before reports whether the time-of-day t is before other, regardless of location.
 func (t Time) Before(other Time) bool {
-	return t.Unwrap().Before(other.Unwrap())
+	return t.civil().Before(other.civil())
 }
 
-// After reports whether the time t is after other.
+// After reports whether the time-of-day t is after other, regardless of location.
 func (t Time) After(other Time) bool {
-	return t.Unwrap().After(other.Unwrap())
+	return t.civil().After(other.civil())
 }
 
 // AddHours adds the specified number of hours to the time.
@@ -141,9 +142,9 @@ func (t Time) AddMilliseconds(milliseconds int64) Time {
 	return TimeOf(t.Unwrap().Add(time.Duration(milliseconds) * time.Millisecond))
 }
 
-// Sub returns the duration t-other.
+// Sub returns the duration t-other, computed on the time-of-day and independent of location.
 func (t Time) Sub(other Time) time.Duration {
-	return t.Unwrap().Sub(other.Unwrap())
+	return t.civil().Sub(other.civil())
 }
 
 // ToDuration returns the time-of-day expressed as a duration since midnight.
@@ -162,7 +163,8 @@ func (t Time) IsZero() bool {
 	return t.Unwrap().IsZero()
 }
 
-// Between reports whether t is between start and end.
+// Between reports whether t falls strictly between start and end, exclusive of both endpoints
+// (the open interval (start, end)). t equal to start or end returns false.
 func (t Time) Between(start, end Time) bool {
 	return t.After(start) && t.Before(end)
 }
@@ -200,14 +202,22 @@ func (t Time) MarshalText() ([]byte, error) {
 	return []byte(t.String()), nil
 }
 
-// UnmarshalText implements the encoding.TextUnmarshaler interface.
+// UnmarshalText implements the encoding.TextUnmarshaler interface. Like UnmarshalJSON it is
+// strict: the text must match the canonical TimeOnly layout.
 func (t *Time) UnmarshalText(text []byte) error {
-	parsed, err := ParseTime(string(text))
+	return t.parseStrict(utils.UnsafeString(text))
+}
+
+// parseStrict parses value against the canonical TimeOnly layout (no lenient fallback) and stores
+// the result. It backs the JSON and text deserialization paths so both reject non-canonical input
+// identically.
+func (t *Time) parseStrict(value string) error {
+	parsed, err := time.ParseInLocation(timeLayout, value, time.Local)
 	if err != nil {
-		return err
+		return ErrInvalidTimeFormat
 	}
 
-	*t = parsed
+	*t = TimeOf(parsed)
 
 	return nil
 }

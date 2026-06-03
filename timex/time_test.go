@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestTimeOf tests time of functionality.
 func TestTimeOf(t *testing.T) {
 	now := MakeTime(2023, 12, 25, 14, 30, 45)
 	timeOnly := TimeOf(now)
@@ -22,7 +21,6 @@ func TestTimeOf(t *testing.T) {
 	assert.Equal(t, 45, unwrapped.Second(), "Second should be preserved")
 }
 
-// TestNowTime tests now time functionality.
 func TestNowTime(t *testing.T) {
 	before := time.Now()
 	timeOnly := NowTime()
@@ -36,7 +34,6 @@ func TestNowTime(t *testing.T) {
 	assert.LessOrEqual(t, unwrapped.Hour(), before.Hour()+1, "Hour should be close to current")
 }
 
-// TestParseTime tests parse time functionality.
 func TestParseTime(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -90,24 +87,35 @@ func TestParseTime(t *testing.T) {
 	}
 }
 
-// TestTimeString tests time string functionality.
 func TestTimeString(t *testing.T) {
 	timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 	expected := "14:30:45"
 	assert.Equal(t, expected, timeOnly.String(), "String representation should match format")
 }
 
-// TestTimeEqual tests time equal functionality.
 func TestTimeEqual(t *testing.T) {
-	time1 := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
-	time2 := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
-	time3 := Time(time.Date(1970, 1, 1, 14, 30, 46, 0, time.Local))
+	t.Run("SameZone", func(t *testing.T) {
+		time1 := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
+		time2 := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
+		time3 := Time(time.Date(1970, 1, 1, 14, 30, 46, 0, time.Local))
 
-	assert.True(t, time1.Equal(time2), "Equal times should be equal")
-	assert.False(t, time1.Equal(time3), "Different times should not be equal")
+		assert.True(t, time1.Equal(time2), "Equal times should be equal")
+		assert.False(t, time1.Equal(time3), "Different times should not be equal")
+	})
+
+	t.Run("CrossZone", func(t *testing.T) {
+		// Same wall-clock reading, different source zones. A civil Time compares the time-of-day
+		// only, so the two must be equal and unordered.
+		utc := TimeOf(time.Date(1970, 1, 1, 14, 30, 45, 0, time.UTC))
+		east := TimeOf(time.Date(1970, 1, 1, 14, 30, 45, 0, time.FixedZone("UTC+8", 8*60*60)))
+
+		assert.True(t, utc.Equal(east), "Same clock reading in different zones should be equal")
+		assert.False(t, utc.Before(east), "Same clock reading should not be before across zones")
+		assert.False(t, utc.After(east), "Same clock reading should not be after across zones")
+		assert.Equal(t, time.Duration(0), utc.Sub(east), "Sub of the same clock reading should be zero across zones")
+	})
 }
 
-// TestTimeBefore tests time before functionality.
 func TestTimeBefore(t *testing.T) {
 	time1 := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 	time2 := Time(time.Date(1970, 1, 1, 14, 30, 46, 0, time.Local))
@@ -116,7 +124,6 @@ func TestTimeBefore(t *testing.T) {
 	assert.False(t, time2.Before(time1), "Later time should not be before earlier")
 }
 
-// TestTimeAfter tests time after functionality.
 func TestTimeAfter(t *testing.T) {
 	time1 := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 	time2 := Time(time.Date(1970, 1, 1, 14, 30, 46, 0, time.Local))
@@ -125,7 +132,6 @@ func TestTimeAfter(t *testing.T) {
 	assert.True(t, time2.After(time1), "Later time should be after earlier")
 }
 
-// TestTimeBetween tests time between functionality.
 func TestTimeBetween(t *testing.T) {
 	start := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 	middle := Time(time.Date(1970, 1, 1, 14, 30, 46, 0, time.Local))
@@ -133,9 +139,10 @@ func TestTimeBetween(t *testing.T) {
 
 	assert.True(t, middle.Between(start, end), "Middle time should be between start and end")
 	assert.False(t, start.Between(middle, end), "Start time should not be between middle and end")
+	assert.False(t, start.Between(start, end), "Between is exclusive of the start endpoint")
+	assert.False(t, end.Between(start, end), "Between is exclusive of the end endpoint")
 }
 
-// TestTimeAdd tests time add functionality.
 func TestTimeAdd(t *testing.T) {
 	timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 	duration := 2 * time.Hour
@@ -145,7 +152,6 @@ func TestTimeAdd(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "Add should add duration correctly")
 }
 
-// TestTimeAddHours tests time add hours functionality.
 func TestTimeAddHours(t *testing.T) {
 	timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 	result := timeOnly.AddHours(3)
@@ -154,7 +160,6 @@ func TestTimeAddHours(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "AddHours should add hours correctly")
 }
 
-// TestTimeAddMinutes tests time add minutes functionality.
 func TestTimeAddMinutes(t *testing.T) {
 	timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 	result := timeOnly.AddMinutes(15)
@@ -163,7 +168,6 @@ func TestTimeAddMinutes(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "AddMinutes should add minutes correctly")
 }
 
-// TestTimeAddSeconds tests time add seconds functionality.
 func TestTimeAddSeconds(t *testing.T) {
 	timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 	result := timeOnly.AddSeconds(30)
@@ -172,7 +176,6 @@ func TestTimeAddSeconds(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "AddSeconds should add seconds correctly")
 }
 
-// TestTimeAddNanoseconds tests time add nanoseconds functionality.
 func TestTimeAddNanoseconds(t *testing.T) {
 	timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 	result := timeOnly.AddNanoseconds(500000000)
@@ -181,7 +184,6 @@ func TestTimeAddNanoseconds(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "AddNanoseconds should add nanoseconds correctly")
 }
 
-// TestTimeAddMicroseconds tests time add microseconds functionality.
 func TestTimeAddMicroseconds(t *testing.T) {
 	timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 	result := timeOnly.AddMicroseconds(500000)
@@ -190,7 +192,6 @@ func TestTimeAddMicroseconds(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "AddMicroseconds should add microseconds correctly")
 }
 
-// TestTimeAddMilliseconds tests time add milliseconds functionality.
 func TestTimeAddMilliseconds(t *testing.T) {
 	timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 	result := timeOnly.AddMilliseconds(500)
@@ -199,7 +200,6 @@ func TestTimeAddMilliseconds(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "AddMilliseconds should add milliseconds correctly")
 }
 
-// TestTimeSub tests time sub functionality.
 func TestTimeSub(t *testing.T) {
 	t1 := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 	t2 := Time(time.Date(1970, 1, 1, 12, 30, 45, 0, time.Local))
@@ -208,7 +208,6 @@ func TestTimeSub(t *testing.T) {
 	assert.Equal(t, -2*time.Hour, t2.Sub(t1), "Sub should return negative for earlier minus later")
 }
 
-// TestTimeToDuration tests time to duration functionality.
 func TestTimeToDuration(t *testing.T) {
 	t.Run("MidAfternoon", func(t *testing.T) {
 		timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
@@ -233,7 +232,6 @@ func TestTimeToDuration(t *testing.T) {
 	})
 }
 
-// TestTimeComponents tests time components functionality.
 func TestTimeComponents(t *testing.T) {
 	timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 123456789, time.Local))
 
@@ -243,7 +241,6 @@ func TestTimeComponents(t *testing.T) {
 	assert.Equal(t, 123456789, timeOnly.Nanosecond(), "Nanosecond should match")
 }
 
-// TestTimeIsZero tests time is zero functionality.
 func TestTimeIsZero(t *testing.T) {
 	zeroTime := Time{}
 	nonZeroTime := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
@@ -252,7 +249,6 @@ func TestTimeIsZero(t *testing.T) {
 	assert.False(t, nonZeroTime.IsZero(), "Non-zero time should not be zero")
 }
 
-// TestTimeBeginOfMethods tests time begin of methods functionality.
 func TestTimeBeginOfMethods(t *testing.T) {
 	timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 123456789, time.Local))
 
@@ -269,7 +265,6 @@ func TestTimeBeginOfMethods(t *testing.T) {
 	})
 }
 
-// TestTimeEndOfMethods tests time end of methods functionality.
 func TestTimeEndOfMethods(t *testing.T) {
 	timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 123456789, time.Local))
 
@@ -286,7 +281,6 @@ func TestTimeEndOfMethods(t *testing.T) {
 	})
 }
 
-// TestTimeMarshalJSON tests time marshal JSON functionality.
 func TestTimeMarshalJSON(t *testing.T) {
 	timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 	data, err := timeOnly.MarshalJSON()
@@ -296,7 +290,6 @@ func TestTimeMarshalJSON(t *testing.T) {
 	assert.Equal(t, expected, string(data), "JSON should match expected format")
 }
 
-// TestTimeUnmarshalJSON tests time unmarshal JSON functionality.
 func TestTimeUnmarshalJSON(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -324,7 +317,6 @@ func TestTimeUnmarshalJSON(t *testing.T) {
 	}
 }
 
-// TestTimeValue tests time value functionality.
 func TestTimeValue(t *testing.T) {
 	timeOnly := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 	value, err := timeOnly.Value()
@@ -336,7 +328,6 @@ func TestTimeValue(t *testing.T) {
 	assert.Equal(t, expected, str, "Value should match expected format")
 }
 
-// TestTimeScan tests time scan functionality.
 func TestTimeScan(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -365,7 +356,6 @@ func TestTimeScan(t *testing.T) {
 	}
 }
 
-// TestTimeJSONRoundTrip tests time JSON round trip functionality.
 func TestTimeJSONRoundTrip(t *testing.T) {
 	original := Time(time.Date(1970, 1, 1, 14, 30, 45, 0, time.Local))
 

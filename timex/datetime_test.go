@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestDateTimeOf tests date time of functionality.
 func TestDateTimeOf(t *testing.T) {
 	now := MakeTime(2023, 12, 25, 14, 30, 45)
 	dt := Of(now)
@@ -16,7 +15,6 @@ func TestDateTimeOf(t *testing.T) {
 	assert.True(t, now.Equal(dt.Unwrap()), "Of should preserve the original time")
 }
 
-// TestNow tests now functionality.
 func TestNow(t *testing.T) {
 	before := time.Now()
 	dt := Now()
@@ -26,7 +24,6 @@ func TestNow(t *testing.T) {
 	assert.False(t, unwrapped.Before(before) || unwrapped.After(after), "Now should return current time")
 }
 
-// TestFromUnix tests from unix functionality.
 func TestFromUnix(t *testing.T) {
 	timestamp := int64(1703514645)
 	dt := FromUnix(timestamp, 0)
@@ -36,7 +33,6 @@ func TestFromUnix(t *testing.T) {
 	assert.True(t, expected.Equal(dt.Unwrap()), "FromUnix should create correct datetime")
 }
 
-// TestFromUnixMilli tests from unix milli functionality.
 func TestFromUnixMilli(t *testing.T) {
 	timestamp := int64(1703514645000)
 	dt := FromUnixMilli(timestamp)
@@ -46,7 +42,6 @@ func TestFromUnixMilli(t *testing.T) {
 	assert.True(t, expected.Equal(dt.Unwrap()), "FromUnixMilli should create correct datetime")
 }
 
-// TestFromUnixMicro tests from unix micro functionality.
 func TestFromUnixMicro(t *testing.T) {
 	timestamp := int64(1703514645000000)
 	dt := FromUnixMicro(timestamp)
@@ -56,7 +51,6 @@ func TestFromUnixMicro(t *testing.T) {
 	assert.True(t, expected.Equal(dt.Unwrap()), "FromUnixMicro should create correct datetime")
 }
 
-// TestParse tests parse functionality.
 func TestParse(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -111,14 +105,12 @@ func TestParse(t *testing.T) {
 	}
 }
 
-// TestDateTimeString tests date time string functionality.
 func TestDateTimeString(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	expected := "2023-12-25 14:30:45"
 	assert.Equal(t, expected, dt.String(), "String representation should match format")
 }
 
-// TestDateTimeEqual tests date time equal functionality.
 func TestDateTimeEqual(t *testing.T) {
 	dt1 := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	dt2 := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
@@ -128,7 +120,6 @@ func TestDateTimeEqual(t *testing.T) {
 	assert.False(t, dt1.Equal(dt3), "Different datetimes should not be equal")
 }
 
-// TestDateTimeBefore tests date time before functionality.
 func TestDateTimeBefore(t *testing.T) {
 	dt1 := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	dt2 := DateTime(MakeTime(2023, 12, 25, 14, 30, 46))
@@ -137,7 +128,6 @@ func TestDateTimeBefore(t *testing.T) {
 	assert.False(t, dt2.Before(dt1), "Later datetime should not be before earlier")
 }
 
-// TestDateTimeAfter tests date time after functionality.
 func TestDateTimeAfter(t *testing.T) {
 	dt1 := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	dt2 := DateTime(MakeTime(2023, 12, 25, 14, 30, 46))
@@ -146,7 +136,6 @@ func TestDateTimeAfter(t *testing.T) {
 	assert.True(t, dt2.After(dt1), "Later datetime should be after earlier")
 }
 
-// TestDateTimeBetween tests date time between functionality.
 func TestDateTimeBetween(t *testing.T) {
 	start := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	middle := DateTime(MakeTime(2023, 12, 25, 14, 30, 46))
@@ -154,9 +143,10 @@ func TestDateTimeBetween(t *testing.T) {
 
 	assert.True(t, middle.Between(start, end), "Middle datetime should be between start and end")
 	assert.False(t, start.Between(middle, end), "Start datetime should not be between middle and end")
+	assert.False(t, start.Between(start, end), "Between is exclusive of the start endpoint")
+	assert.False(t, end.Between(start, end), "Between is exclusive of the end endpoint")
 }
 
-// TestDateTimeAdd tests date time add functionality.
 func TestDateTimeAdd(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	duration := 2 * time.Hour
@@ -166,7 +156,6 @@ func TestDateTimeAdd(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "Add should add duration correctly")
 }
 
-// TestDateTimeAddDate tests date time add date functionality.
 func TestDateTimeAddDate(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	result := dt.AddDate(1, 2, 3)
@@ -175,7 +164,6 @@ func TestDateTimeAddDate(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "AddDate should add years, months, days correctly")
 }
 
-// TestDateTimeAddDays tests date time add days functionality.
 func TestDateTimeAddDays(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	result := dt.AddDays(5)
@@ -184,7 +172,6 @@ func TestDateTimeAddDays(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "AddDays should add days correctly")
 }
 
-// TestDateTimeAddMonths tests date time add months functionality.
 func TestDateTimeAddMonths(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	result := dt.AddMonths(2)
@@ -193,7 +180,6 @@ func TestDateTimeAddMonths(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "AddMonths should add months correctly")
 }
 
-// TestDateTimeAddYears tests date time add years functionality.
 func TestDateTimeAddYears(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	result := dt.AddYears(1)
@@ -202,7 +188,6 @@ func TestDateTimeAddYears(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "AddYears should add years correctly")
 }
 
-// TestDateTimeAddHours tests date time add hours functionality.
 func TestDateTimeAddHours(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	result := dt.AddHours(3)
@@ -211,7 +196,6 @@ func TestDateTimeAddHours(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "AddHours should add hours correctly")
 }
 
-// TestDateTimeAddMinutes tests date time add minutes functionality.
 func TestDateTimeAddMinutes(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	result := dt.AddMinutes(15)
@@ -220,7 +204,6 @@ func TestDateTimeAddMinutes(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "AddMinutes should add minutes correctly")
 }
 
-// TestDateTimeAddSeconds tests date time add seconds functionality.
 func TestDateTimeAddSeconds(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	result := dt.AddSeconds(30)
@@ -229,7 +212,6 @@ func TestDateTimeAddSeconds(t *testing.T) {
 	assert.True(t, expected.Equal(result.Unwrap()), "AddSeconds should add seconds correctly")
 }
 
-// TestDateTimeSub tests date time sub functionality.
 func TestDateTimeSub(t *testing.T) {
 	dt1 := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	dt2 := DateTime(MakeTime(2023, 12, 25, 12, 30, 45))
@@ -238,7 +220,6 @@ func TestDateTimeSub(t *testing.T) {
 	assert.Equal(t, -2*time.Hour, dt2.Sub(dt1), "Sub should return negative for earlier minus later")
 }
 
-// TestDateTimeSince tests date time since functionality.
 func TestDateTimeSince(t *testing.T) {
 	dt := DateTime(MakeTime(2020, 1, 1, 0, 0, 0))
 
@@ -246,7 +227,6 @@ func TestDateTimeSince(t *testing.T) {
 	assert.True(t, since > 0, "Since should return positive duration for past datetime")
 }
 
-// TestDateTimeUntil tests date time until functionality.
 func TestDateTimeUntil(t *testing.T) {
 	dt := DateTime(MakeTime(2099, 1, 1, 0, 0, 0))
 
@@ -254,7 +234,6 @@ func TestDateTimeUntil(t *testing.T) {
 	assert.True(t, until > 0, "Until should return positive duration for future datetime")
 }
 
-// TestDateTimeComponents tests date time components functionality.
 func TestDateTimeComponents(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 
@@ -269,7 +248,6 @@ func TestDateTimeComponents(t *testing.T) {
 	assert.Equal(t, 359, dt.YearDay(), "YearDay should match")
 }
 
-// TestDateTimeUnixMethods tests date time unix methods functionality.
 func TestDateTimeUnixMethods(t *testing.T) {
 	testLocation := time.FixedZone("UTC+8", 8*60*60)
 	dt := DateTime(time.Date(2023, 12, 25, 14, 30, 45, 0, testLocation))
@@ -281,7 +259,6 @@ func TestDateTimeUnixMethods(t *testing.T) {
 	assert.Equal(t, int(expectedUnix*1000000000), int(dt.UnixNano()), "Unix nanoseconds should match")
 }
 
-// TestDateTimeIsZero tests date time is zero functionality.
 func TestDateTimeIsZero(t *testing.T) {
 	zeroTime := DateTime{}
 	nonZeroTime := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
@@ -290,7 +267,6 @@ func TestDateTimeIsZero(t *testing.T) {
 	assert.False(t, nonZeroTime.IsZero(), "Non-zero datetime should not be zero")
 }
 
-// TestDateTimeBeginOfMethods tests date time begin of methods functionality.
 func TestDateTimeBeginOfMethods(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 
@@ -337,7 +313,6 @@ func TestDateTimeBeginOfMethods(t *testing.T) {
 	})
 }
 
-// TestDateTimeEndOfMethods tests date time end of methods functionality.
 func TestDateTimeEndOfMethods(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 
@@ -372,7 +347,6 @@ func TestDateTimeEndOfMethods(t *testing.T) {
 	})
 }
 
-// TestDateTimeWeekdayMethods tests date time weekday methods functionality.
 func TestDateTimeWeekdayMethods(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 
@@ -395,7 +369,6 @@ func TestDateTimeWeekdayMethods(t *testing.T) {
 	})
 }
 
-// TestDateTimeMarshalJSON tests date time marshal JSON functionality.
 func TestDateTimeMarshalJSON(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	data, err := dt.MarshalJSON()
@@ -405,7 +378,6 @@ func TestDateTimeMarshalJSON(t *testing.T) {
 	assert.Equal(t, expected, string(data), "JSON should match expected format")
 }
 
-// TestDateTimeUnmarshalJSON tests date time unmarshal JSON functionality.
 func TestDateTimeUnmarshalJSON(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -434,7 +406,6 @@ func TestDateTimeUnmarshalJSON(t *testing.T) {
 	}
 }
 
-// TestDateTimeValue tests date time value functionality.
 func TestDateTimeValue(t *testing.T) {
 	dt := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	value, err := dt.Value()
@@ -446,7 +417,6 @@ func TestDateTimeValue(t *testing.T) {
 	assert.Equal(t, expected, str, "Value should match expected format")
 }
 
-// TestDateTimeScan tests date time scan functionality.
 func TestDateTimeScan(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -481,7 +451,6 @@ func TestDateTimeScan(t *testing.T) {
 	}
 }
 
-// TestDateTimeJSONRoundTrip tests date time JSON round trip functionality.
 func TestDateTimeJSONRoundTrip(t *testing.T) {
 	tests := []struct {
 		name     string

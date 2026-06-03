@@ -7,8 +7,13 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// Date represents a date value (without time) with database and JSON support.
+// Date represents a calendar date (year, month, day) without a time-of-day component.
 // It uses the standard time.DateOnly format (2006-01-02).
+//
+// Date is a civil date: Equal, Before, After, Between, and Sub compare by calendar date and
+// ignore the underlying time.Time location, so two Date values for the same day are equal even
+// when constructed from time.Time values in different zones (e.g. a local literal versus a UTC
+// database row). Sub therefore always returns a whole number of 24-hour days.
 type Date time.Time
 
 // Unwrap returns the underlying time.Time value.
@@ -40,50 +45,47 @@ func (d Date) String() string {
 	return time.Time(d).Format(time.DateOnly)
 }
 
-// MarshalJSON implements the json.Marshaler interface for JSON serialization.
+// MarshalJSON implements the json.Marshaler interface, emitting the canonical DateOnly layout.
 func (d Date) MarshalJSON() ([]byte, error) {
-	bs := make([]byte, 0, datePatternLength+2)
-	bs = append(bs, jsonQuote)
-	bs = time.Time(d).AppendFormat(bs, time.DateOnly)
-	bs = append(bs, jsonQuote)
-
-	return bs, nil
+	return appendQuotedFormat(time.Time(d), time.DateOnly, datePatternLength), nil
 }
 
-// UnmarshalJSON implements the json.Unmarshaler interface for JSON deserialization.
+// UnmarshalJSON implements the json.Unmarshaler interface. It accepts a JSON string in the
+// canonical DateOnly layout; any other shape (including a datetime string) is rejected.
 func (d *Date) UnmarshalJSON(bs []byte) error {
-	value := utils.UnsafeString(bs)
-	if value == jsonNull {
+	if utils.UnsafeString(bs) == jsonNull {
 		return nil
 	}
 
-	if err := validateJSONFormat(bs, datePatternLength); err != nil {
+	value, ok := unquoteJSON(bs)
+	if !ok {
 		return ErrInvalidDateFormat
 	}
 
-	parsed, err := ParseDate(value[1 : datePatternLength+1])
-	if err != nil {
-		return err
-	}
-
-	*d = parsed
-
-	return nil
+	return d.parseStrict(value)
 }
 
-// Equal compares two Date values for equality.
+// civil returns d as midnight UTC of its calendar date, giving a zone-independent anchor for
+// calendar comparisons.
+func (d Date) civil() time.Time {
+	t := d.Unwrap()
+
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// Equal reports whether d and other are the same calendar date, regardless of location.
 func (d Date) Equal(other Date) bool {
-	return d.Unwrap().Equal(other.Unwrap())
+	return d.civil().Equal(other.civil())
 }
 
-// Before reports whether the date d is before other.
+// Before reports whether the calendar date d is before other, regardless of location.
 func (d Date) Before(other Date) bool {
-	return d.Unwrap().Before(other.Unwrap())
+	return d.civil().Before(other.civil())
 }
 
-// After reports whether the date d is after other.
+// After reports whether the calendar date d is after other, regardless of location.
 func (d Date) After(other Date) bool {
-	return d.Unwrap().After(other.Unwrap())
+	return d.civil().After(other.civil())
 }
 
 // AddDate returns the date corresponding to adding the given number of years, months, and days to d,
@@ -138,9 +140,10 @@ func (d Date) Location() *time.Location {
 	return d.Unwrap().Location()
 }
 
-// Sub returns the duration d-other.
+// Sub returns the duration d-other as a whole number of 24-hour days, computed on the calendar
+// date and independent of location.
 func (d Date) Sub(other Date) time.Duration {
-	return d.Unwrap().Sub(other.Unwrap())
+	return d.civil().Sub(other.civil())
 }
 
 // Since returns the time elapsed since d (equivalent to time.Since).
@@ -163,7 +166,8 @@ func (d Date) Unix() int64 {
 	return d.Unwrap().Unix()
 }
 
-// Between reports whether d is between start and end.
+// Between reports whether d falls strictly between start and end, exclusive of both endpoints
+// (the open interval (start, end)). d equal to start or end returns false.
 func (d Date) Between(start, end Date) bool {
 	return d.After(start) && d.Before(end)
 }
@@ -291,14 +295,22 @@ func (d Date) MarshalText() ([]byte, error) {
 	return []byte(d.String()), nil
 }
 
-// UnmarshalText implements the encoding.TextUnmarshaler interface.
+// UnmarshalText implements the encoding.TextUnmarshaler interface. Like UnmarshalJSON it is
+// strict: the text must match the canonical DateOnly layout.
 func (d *Date) UnmarshalText(text []byte) error {
-	parsed, err := ParseDate(string(text))
+	return d.parseStrict(utils.UnsafeString(text))
+}
+
+// parseStrict parses value against the canonical DateOnly layout (no lenient fallback) and stores
+// the result. It backs the JSON and text deserialization paths so both reject non-canonical input
+// identically — a datetime string, for example, will not be silently truncated to a date.
+func (d *Date) parseStrict(value string) error {
+	parsed, err := time.ParseInLocation(dateLayout, value, time.Local)
 	if err != nil {
-		return err
+		return ErrInvalidDateFormat
 	}
 
-	*d = parsed
+	*d = DateOf(parsed)
 
 	return nil
 }

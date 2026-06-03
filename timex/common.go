@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gofiber/utils/v2"
 	"github.com/spf13/cast"
 )
 
@@ -56,10 +57,9 @@ func scanTimeValue(src any, parseString func(string) (any, error), convertTime f
 		return assignValue(dest, convertTime(*v))
 
 	default:
-		if str, err := cast.ToStringE(src); err == nil {
-			return parseAndAssign(str, parseString, dest)
-		}
-
+		// All string-like sources are handled above; anything else (numbers, complex,
+		// arbitrary structs) is not a valid wire form for a date/time column. Reject it
+		// directly instead of stringifying it into a guaranteed parse failure.
 		return fmt.Errorf("%w: %s value: %v", ErrFailedScan, typeName, src)
 	}
 }
@@ -109,28 +109,43 @@ func assignValue(dest, value any) error {
 }
 
 // parseTimeWithFallback provides a standardized way to parse time strings with fallback support.
-// It first tries the provided layout, then falls back to the cast library for common formats.
+// It first tries the provided layout in the local timezone, then falls back to the cast library
+// for common formats (RFC3339, ISO-8601, etc.). Used by the lenient public Parse* entry points.
 func parseTimeWithFallback(value, layout string) (time.Time, error) {
-	// Primary: try with specified layout (use Local timezone for DateTime parsing)
+	// Primary: try with the specified layout in the local timezone.
 	parsed, err := time.ParseInLocation(layout, value, time.Local)
 	if err == nil {
 		return parsed, nil
 	}
 
-	// Fallback: try cast library for common time formats
+	// Fallback: try cast library for common time formats.
 	if castTime, castErr := cast.ToTimeE(value); castErr == nil {
 		return castTime, nil
 	}
 
-	// Return original error if both methods fail
+	// Return original error if both methods fail.
 	return time.Time{}, err
 }
 
-// validateJSONFormat checks if the JSON bytes have the expected format for time types.
-func validateJSONFormat(bs []byte, expectedLength int) error {
-	if len(bs) != expectedLength+2 || bs[0] != jsonQuote || bs[len(bs)-1] != jsonQuote {
-		return fmt.Errorf("%w: expected length %d with quotes", ErrInvalidJSONFormat, expectedLength)
+// appendQuotedFormat renders t with layout, wrapped in JSON string quotes, into a freshly
+// sized buffer. Shared by the MarshalJSON implementations of all timex types.
+func appendQuotedFormat(t time.Time, layout string, length int) []byte {
+	bs := make([]byte, 0, length+2)
+	bs = append(bs, jsonQuote)
+	bs = t.AppendFormat(bs, layout)
+	bs = append(bs, jsonQuote)
+
+	return bs
+}
+
+// unquoteJSON reports whether bs is a JSON string literal and, if so, returns its unquoted
+// contents. The caller supplies its own typed error when ok is false. Deserialization is strict:
+// the contents must match the type's canonical layout, which the caller enforces by parsing with
+// that layout (no lenient fallback).
+func unquoteJSON(bs []byte) (value string, ok bool) {
+	if len(bs) < 2 || bs[0] != jsonQuote || bs[len(bs)-1] != jsonQuote {
+		return "", false
 	}
 
-	return nil
+	return utils.UnsafeString(bs[1 : len(bs)-1]), true
 }
