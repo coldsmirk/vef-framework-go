@@ -1,7 +1,6 @@
 package param
 
 import (
-	"container/list"
 	"reflect"
 	"slices"
 
@@ -14,18 +13,10 @@ var (
 	apiParamsType = reflect.TypeFor[api.P]()
 	apiMetaType   = reflect.TypeFor[api.M]()
 
-	// BuiltinParamsTypes contains framework built-in types that should be resolved from params.
-	builtinParamsTypes = []reflect.Type{}
-
-	// BuiltinMetaTypes contains framework built-in types that should be resolved from meta.
 	builtinMetaTypes = []reflect.Type{
 		reflect.TypeFor[page.Pageable](),
 	}
 )
-
-func isBuiltinParamsType(t reflect.Type) bool {
-	return slices.Contains(builtinParamsTypes, t)
-}
 
 func isBuiltinMetaType(t reflect.Type) bool {
 	return slices.Contains(builtinMetaTypes, t)
@@ -127,11 +118,11 @@ func embedsSentinelType(targetType, sentinelType reflect.Type) bool {
 		return false
 	}
 
-	types := list.New()
-	types.PushBack(targetType)
+	queue := []reflect.Type{targetType}
 
-	for types.Len() > 0 {
-		current := types.Remove(types.Front()).(reflect.Type)
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
 
 		if current.Kind() != reflect.Struct {
 			continue
@@ -143,7 +134,7 @@ func embedsSentinelType(targetType, sentinelType reflect.Type) bool {
 
 		for field := range current.Fields() {
 			if field.Anonymous {
-				types.PushBack(field.Type)
+				queue = append(queue, field.Type)
 			}
 		}
 	}

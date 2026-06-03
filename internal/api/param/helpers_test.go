@@ -81,17 +81,6 @@ func TestEmbedsAPIMeta(t *testing.T) {
 	})
 }
 
-// TestIsBuiltinParamsType tests isBuiltinParamsType.
-func TestIsBuiltinParamsType(t *testing.T) {
-	t.Run("NotBuiltin", func(t *testing.T) {
-		assert.False(t, isBuiltinParamsType(reflect.TypeFor[string]()), "String should not be builtin params type")
-	})
-
-	t.Run("NotBuiltinStruct", func(t *testing.T) {
-		assert.False(t, isBuiltinParamsType(reflect.TypeFor[NoEmbed]()), "Custom struct should not be builtin params type")
-	})
-}
-
 // TestIsBuiltinMetaType tests isBuiltinMetaType.
 func TestIsBuiltinMetaType(t *testing.T) {
 	t.Run("PageableIsBuiltin", func(t *testing.T) {

@@ -435,7 +435,7 @@ func (suite *RESTEngineTestSuite) TestPostCreateInvalidBody() {
 
 	resp := suite.MakeRESTRequest(fiber.MethodPost, "/api/items", "{invalid json}")
 
-	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
+	suite.Equal(400, resp.StatusCode, "An invalid JSON body is a client error → HTTP 400")
 
 	body := suite.ReadResult(resp)
 	suite.False(body.IsOk(), "POST create should fail with invalid body")
@@ -703,7 +703,7 @@ func (suite *RESTEngineTestSuite) TestPutInvalidJSON() {
 
 	resp := suite.MakeRESTRequestWithToken(fiber.MethodPut, "/api/items", "{invalid json}", token)
 
-	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
+	suite.Equal(400, resp.StatusCode, "An invalid JSON body is a client error → HTTP 400")
 
 	body := suite.ReadResult(resp)
 	suite.False(body.IsOk(), "Should fail with invalid JSON")
@@ -717,7 +717,7 @@ func (suite *RESTEngineTestSuite) TestPatchInvalidJSON() {
 
 	resp := suite.MakeRESTRequestWithToken(fiber.MethodPatch, "/api/items", "{invalid json}", token)
 
-	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
+	suite.Equal(400, resp.StatusCode, "An invalid JSON body is a client error → HTTP 400")
 
 	body := suite.ReadResult(resp)
 	suite.False(body.IsOk(), "Should fail with invalid JSON")

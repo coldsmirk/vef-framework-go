@@ -160,14 +160,62 @@ func (suite *ParamResolversTestSuite) TestCronFactoryResolver() {
 	})
 }
 
+func (suite *ParamResolversTestSuite) TestParamsDecode() {
+	suite.Run("DecodesFieldValues", func() {
+		resp := suite.makeAPIRequestFull("verify_params_decode", `{"name":"alice","age":30}`, "{}")
+		suite.Equal(200, resp.StatusCode, "Should return 200 OK")
+		body := suite.readBody(resp)
+		suite.Contains(body, `"name":"alice"`, "Decoded name field should match input")
+		suite.Contains(body, `"age":30`, "Decoded age field should match input")
+	})
+
+	suite.Run("ValidationFailureReturns400Code", func() {
+		// name is required; omitting it should trigger a validation error
+		resp := suite.makeAPIRequestFull("verify_params_decode", `{"age":5}`, "{}")
+		suite.Equal(400, resp.StatusCode, "A missing required field is a client error → HTTP 400")
+		body := suite.readBody(resp)
+		// ErrCodeBadRequest = 1400
+		suite.Contains(body, `"code":1400`, "Validation failure should return bad-request code 1400")
+	})
+
+	suite.Run("TypeMismatchReturns400Code", func() {
+		// age is int; supplying a string that cannot be decoded should surface as bad-request
+		resp := suite.makeAPIRequestFull("verify_params_decode", `{"name":"bob","age":"not-a-number"}`, "{}")
+		suite.Equal(400, resp.StatusCode, "A wrong-typed field is a client error → HTTP 400")
+		body := suite.readBody(resp)
+		suite.Contains(body, `"code":1400`, "Type-mismatch decode failure should return bad-request code 1400, not unknown 1900")
+	})
+}
+
+func (suite *ParamResolversTestSuite) TestMetaDecode() {
+	suite.Run("DecodesFieldValues", func() {
+		resp := suite.makeAPIRequestFull("verify_meta_decode", "{}", `{"tag":"hello"}`)
+		suite.Equal(200, resp.StatusCode, "Should return 200 OK")
+		body := suite.readBody(resp)
+		suite.Contains(body, `"tag":"hello"`, "Decoded tag field should match meta input")
+	})
+
+	suite.Run("TypeMismatchReturns400Code", func() {
+		// tag is string; use a nested object to force a decode failure
+		resp := suite.makeAPIRequestFull("verify_meta_decode", "{}", `{"tag":{"nested":true}}`)
+		suite.Equal(400, resp.StatusCode, "A wrong-typed meta field is a client error → HTTP 400")
+		body := suite.readBody(resp)
+		suite.Contains(body, `"code":1400`, "Meta type-mismatch decode failure should return bad-request code 1400")
+	})
+}
+
 func (suite *ParamResolversTestSuite) makeAPIRequest(action, body string) *http.Response {
-	fullBody := `{"resource": "test/param_resolvers", "action": "` + action + `", "version": "v1", "params": ` + body + `}`
+	return suite.makeAPIRequestFull(action, body, "{}")
+}
+
+func (suite *ParamResolversTestSuite) makeAPIRequestFull(action, params, meta string) *http.Response {
+	fullBody := `{"resource": "test/param_resolvers", "action": "` + action + `", "version": "v1", "params": ` + params + `, "meta": ` + meta + `}`
 
 	req := httptest.NewRequestWithContext(context.Background(), fiber.MethodPost, "/api", strings.NewReader(fullBody))
 	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
 	resp, err := suite.app.Test(req, 30*time.Second)
-	suite.Require().NoError(err, "TestCronFactoryResolver should complete without error")
+	suite.Require().NoError(err, "API request should complete without error")
 
 	return resp
 }
@@ -176,7 +224,7 @@ func (suite *ParamResolversTestSuite) readBody(resp *http.Response) string {
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
-	suite.Require().NoError(err, "TestCronFactoryResolver should complete without error")
+	suite.Require().NoError(err, "reading response body should succeed")
 
 	return string(body)
 }
@@ -211,6 +259,9 @@ func NewTestParamResolversResource() api.Resource {
 				api.OperationSpec{Action: "verify_event_factory", Public: true},
 				api.OperationSpec{Action: "verify_cron", Public: true},
 				api.OperationSpec{Action: "verify_cron_factory", Public: true},
+				// param-decoding behavior tests
+				api.OperationSpec{Action: "verify_params_decode", Public: true},
+				api.OperationSpec{Action: "verify_meta_decode", Public: true},
 			),
 		),
 	}
@@ -302,4 +353,27 @@ func (*TestParamResolversResource) VerifyCronFactory(scheduler cron.Scheduler) f
 	return func(ctx fiber.Ctx) error {
 		return result.Ok(map[string]any{"Factory_injected": injected}).Response(ctx)
 	}
+}
+
+// TestParamsDecodeParams is the typed api.P params struct used for decode tests.
+type TestParamsDecodeParams struct {
+	api.P
+
+	Name string `json:"name" validate:"required"`
+	Age  int    `json:"age"`
+}
+
+// TestMetaDecodeParams is the typed api.M meta struct used for decode tests.
+type TestMetaDecodeParams struct {
+	api.M
+
+	Tag string `json:"tag"`
+}
+
+func (*TestParamResolversResource) VerifyParamsDecode(ctx fiber.Ctx, p TestParamsDecodeParams) error {
+	return result.Ok(map[string]any{"name": p.Name, "age": p.Age}).Response(ctx)
+}
+
+func (*TestParamResolversResource) VerifyMetaDecode(ctx fiber.Ctx, m TestMetaDecodeParams) error {
+	return result.Ok(map[string]any{"tag": m.Tag}).Response(ctx)
 }

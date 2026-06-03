@@ -14,10 +14,9 @@ import (
 	"github.com/coldsmirk/vef-framework-go/validator"
 )
 
-var (
-	loggerType       = reflect.TypeFor[logx.Logger]()
-	withLoggerMethod = "WithLogger"
-)
+const withLoggerMethod = "WithLogger"
+
+var loggerType = reflect.TypeFor[logx.Logger]()
 
 type HandlerParamResolverFunc func(ctx fiber.Ctx) (reflect.Value, error)
 
@@ -43,7 +42,7 @@ func (m *HandlerParamResolverManager) Resolve(target reflect.Value, paramType re
 		return resolver, nil
 	}
 
-	if embedsAPIParams(paramType) || isBuiltinParamsType(paramType) {
+	if embedsAPIParams(paramType) {
 		return buildParamsResolver(paramType), nil
 	}
 
@@ -65,16 +64,17 @@ type decodable interface {
 }
 
 func buildParamsResolver(paramType reflect.Type) HandlerParamResolverFunc {
-	return buildRequestFieldResolver(paramType, func(req *api.Request) decodable { return req.Params })
+	return buildRequestFieldResolver(paramType, func(req *api.Request) decodable { return req.Params }, api.ErrInvalidRequestParams)
 }
 
 func buildMetaResolver(metaType reflect.Type) HandlerParamResolverFunc {
-	return buildRequestFieldResolver(metaType, func(req *api.Request) decodable { return req.Meta })
+	return buildRequestFieldResolver(metaType, func(req *api.Request) decodable { return req.Meta }, api.ErrInvalidRequestMeta)
 }
 
 func buildRequestFieldResolver(
 	targetType reflect.Type,
 	fieldAccessor func(*api.Request) decodable,
+	decodeErr error,
 ) HandlerParamResolverFunc {
 	elemType := reflectx.Indirect(targetType)
 	isPtr := targetType.Kind() == reflect.Pointer
@@ -87,7 +87,7 @@ func buildRequestFieldResolver(
 
 		value := reflect.New(elemType)
 		if err := fieldAccessor(req).Decode(value.Interface()); err != nil {
-			return reflect.Value{}, err
+			return reflect.Value{}, fmt.Errorf("%w: %w", decodeErr, err)
 		}
 
 		if err := validator.Validate(value.Interface()); err != nil {

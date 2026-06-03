@@ -48,7 +48,7 @@ func buildFactoryFieldResolver(
 ) (FactoryParamResolverFunc, error) {
 	converted, err := reflectx.ConvertValue(field, targetType)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert field value: %w", err)
+		return nil, fmt.Errorf("%w: %s: %w", ErrResolveFactoryParamType, targetType, err)
 	}
 
 	return func() (reflect.Value, error) { return converted, nil }, nil
