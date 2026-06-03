@@ -2,7 +2,6 @@ package resource
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -15,8 +14,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
-
-var errUnsupportedAction = errors.New("unsupported action")
 
 // resolveOperator builds an OperatorInfo from the authenticated principal.
 func resolveOperator(ctx context.Context, resolver approval.PrincipalDepartmentResolver, principal *security.Principal) (approval.OperatorInfo, error) {
@@ -48,6 +45,11 @@ func resolveCaller(ctx context.Context, resolver approval.PrincipalTenantResolve
 	}, nil
 }
 
+type resolvedActor struct {
+	Operator approval.OperatorInfo
+	Caller   approval.CallerContext
+}
+
 // resolveActor walks the principal once and returns both the operator
 // identity (for audit logging) and the caller's tenant authority. Resource
 // handlers that hit a command always need both, so threading them together
@@ -55,11 +57,6 @@ func resolveCaller(ctx context.Context, resolver approval.PrincipalTenantResolve
 // endpoint. Returning the resolved values by value keeps the call site a
 // single assignment — `actor, err := r.resolveActor(...)` — which is the
 // shape most handlers want.
-type resolvedActor struct {
-	Operator approval.OperatorInfo
-	Caller   approval.CallerContext
-}
-
 func resolveActor(
 	ctx context.Context,
 	deptResolver approval.PrincipalDepartmentResolver,
@@ -163,7 +160,7 @@ type ProcessTaskParams struct {
 
 	TaskID       string         `json:"taskId" validate:"required"`
 	Action       string         `json:"action" validate:"required,oneof=approve reject transfer rollback handle"`
-	Opinion      string         `json:"opinion"`
+	Opinion      string         `json:"opinion" validate:"max=2000"`
 	FormData     map[string]any `json:"formData"`
 	TransferToID string         `json:"transferToId"`
 	TargetNodeID string         `json:"targetNodeId"`
@@ -214,9 +211,6 @@ func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Princi
 			TargetNodeID: params.TargetNodeID,
 			Caller:       actor.Caller,
 		})
-
-	default:
-		return fmt.Errorf("%w: %s", errUnsupportedAction, params.Action)
 	}
 
 	if err != nil {
@@ -231,7 +225,7 @@ type WithdrawParams struct {
 	api.P
 
 	InstanceID string `json:"instanceId" validate:"required"`
-	Reason     string `json:"reason"`
+	Reason     string `json:"reason" validate:"max=2000"`
 }
 
 // Withdraw withdraws an instance.
@@ -285,7 +279,7 @@ type AddCCParams struct {
 	api.P
 
 	InstanceID string   `json:"instanceId" validate:"required"`
-	CCUserIDs  []string `json:"ccUserIds" validate:"required,min=1"`
+	CCUserIDs  []string `json:"ccUserIds" validate:"required,min=1,max=50"`
 }
 
 // AddCC adds CC records for an instance.
@@ -391,7 +385,7 @@ type UrgeTaskParams struct {
 	api.P
 
 	TaskID  string `json:"taskId" validate:"required"`
-	Message string `json:"message"`
+	Message string `json:"message" validate:"max=500"`
 }
 
 // UrgeTask sends an urge notification for a pending task.

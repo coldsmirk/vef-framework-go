@@ -203,7 +203,7 @@ type AdminTerminateInstanceParams struct {
 	api.P
 
 	InstanceID string `json:"instanceId" validate:"required"`
-	Reason     string `json:"reason"`
+	Reason     string `json:"reason" validate:"max=2000"`
 }
 
 // TerminateInstance terminates a running approval instance.
@@ -231,7 +231,7 @@ type AdminReassignTaskParams struct {
 
 	TaskID        string `json:"taskId" validate:"required"`
 	NewAssigneeID string `json:"newAssigneeId" validate:"required"`
-	Reason        string `json:"reason"`
+	Reason        string `json:"reason" validate:"max=2000"`
 }
 
 // ReassignTask reassigns a pending task to a different user.

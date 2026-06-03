@@ -1,9 +1,13 @@
 package resource
 
 import (
+	"github.com/gofiber/fiber/v3"
+
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/crud"
+	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/tree"
 )
 
@@ -58,14 +62,97 @@ func buildFlowCategoryTree(flatCategories []approval.FlowCategory) []approval.Fl
 	return tree.Build(flatCategories, adapter)
 }
 
+// categoryTenantApplier returns a query applier that scopes category reads to
+// the caller's tenant. Super-admin callers see all tenants; every other caller
+// is confined to their own tenant, preventing cross-tenant data exposure.
+func categoryTenantApplier(resolver approval.PrincipalTenantResolver) func(query orm.SelectQuery, search CategorySearch, ctx fiber.Ctx) error {
+	return func(query orm.SelectQuery, _ CategorySearch, ctx fiber.Ctx) error {
+		// fiber.Ctx.Value reads fasthttp UserValues (Locals), which is where
+		// the principal is stored; ctx.Context() returns the embedded Go
+		// context which does NOT carry Locals.
+		principal := contextx.Principal(ctx)
+		if approval.IsSuperAdmin(principal) {
+			return nil
+		}
+
+		caller, err := resolveCaller(ctx.Context(), resolver, principal)
+		if err != nil {
+			return err
+		}
+
+		if caller.TenantID != "" {
+			query.Where(func(cb orm.ConditionBuilder) {
+				cb.Equals("tenant_id", caller.TenantID)
+			})
+		}
+
+		return nil
+	}
+}
+
 // NewCategoryResource creates a new category resource with standard CRUD operations.
-func NewCategoryResource() api.Resource {
+func NewCategoryResource(tenantResolver approval.PrincipalTenantResolver) api.Resource {
+	tenantApplier := categoryTenantApplier(tenantResolver)
+
 	return &CategoryResource{
-		Resource:        api.NewRPCResource("approval/category"),
-		FindTree:        crud.NewFindTree[approval.FlowCategory, CategorySearch](buildFlowCategoryTree).RequiredPermission("approval:category:query"),
-		FindTreeOptions: crud.NewFindTreeOptions[approval.FlowCategory, CategorySearch]().RequiredPermission("approval:category:query"),
-		Create:          crud.NewCreate[approval.FlowCategory, CategoryParams]().RequiredPermission("approval:category:create"),
-		Update:          crud.NewUpdate[approval.FlowCategory, CategoryParams]().RequiredPermission("approval:category:update"),
-		Delete:          crud.NewDelete[approval.FlowCategory]().RequiredPermission("approval:category:delete"),
+		Resource: api.NewRPCResource("approval/category"),
+		FindTree: crud.NewFindTree[approval.FlowCategory, CategorySearch](buildFlowCategoryTree).
+			RequiredPermission("approval:category:query").
+			WithQueryApplier(tenantApplier, crud.QueryBase),
+		FindTreeOptions: crud.NewFindTreeOptions[approval.FlowCategory, CategorySearch]().
+			RequiredPermission("approval:category:query").
+			WithQueryApplier(tenantApplier, crud.QueryBase),
+		Create: crud.NewCreate[approval.FlowCategory, CategoryParams]().
+			RequiredPermission("approval:category:create").
+			WithPreCreate(func(model *approval.FlowCategory, _ *CategoryParams, _ orm.InsertQuery, ctx fiber.Ctx, _ orm.DB) error {
+				principal := contextx.Principal(ctx)
+				if approval.IsSuperAdmin(principal) {
+					return nil
+				}
+
+				caller, err := resolveCaller(ctx.Context(), tenantResolver, principal)
+				if err != nil {
+					return err
+				}
+
+				// Non-super-admin callers can only create categories for their own
+				// tenant; ignore any tenant the client submitted and stamp the
+				// caller's resolved tenant instead.
+				if caller.TenantID != "" {
+					model.TenantID = caller.TenantID
+				}
+
+				return nil
+			}),
+		Update: crud.NewUpdate[approval.FlowCategory, CategoryParams]().
+			RequiredPermission("approval:category:update").
+			WithPreUpdate(func(oldModel, _ *approval.FlowCategory, _ *CategoryParams, _ orm.UpdateQuery, ctx fiber.Ctx, _ orm.DB) error {
+				principal := contextx.Principal(ctx)
+				if approval.IsSuperAdmin(principal) {
+					return nil
+				}
+
+				caller, err := resolveCaller(ctx.Context(), tenantResolver, principal)
+				if err != nil {
+					return err
+				}
+
+				return caller.Authorize(oldModel.TenantID)
+			}),
+		Delete: crud.NewDelete[approval.FlowCategory]().
+			RequiredPermission("approval:category:delete").
+			WithPreDelete(func(model *approval.FlowCategory, _ orm.DeleteQuery, ctx fiber.Ctx, _ orm.DB) error {
+				principal := contextx.Principal(ctx)
+				if approval.IsSuperAdmin(principal) {
+					return nil
+				}
+
+				caller, err := resolveCaller(ctx.Context(), tenantResolver, principal)
+				if err != nil {
+					return err
+				}
+
+				return caller.Authorize(model.TenantID)
+			}),
 	}
 }

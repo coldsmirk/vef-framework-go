@@ -3,9 +3,13 @@ package resource
 import (
 	"time"
 
+	"github.com/gofiber/fiber/v3"
+
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/crud"
+	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
 // DelegationParams contains the create/update parameters for delegation.
@@ -46,9 +50,42 @@ type DelegationResource struct {
 func NewDelegationResource() api.Resource {
 	return &DelegationResource{
 		Resource: api.NewRPCResource("approval/delegation"),
-		FindPage: crud.NewFindPage[approval.Delegation, DelegationSearch]().RequiredPermission("approval:delegation:query"),
-		Create:   crud.NewCreate[approval.Delegation, DelegationParams]().RequiredPermission("approval:delegation:create"),
-		Update:   crud.NewUpdate[approval.Delegation, DelegationParams]().RequiredPermission("approval:delegation:update"),
-		Delete:   crud.NewDelete[approval.Delegation]().RequiredPermission("approval:delegation:delete"),
+		FindPage: crud.NewFindPage[approval.Delegation, DelegationSearch]().
+			RequiredPermission("approval:delegation:query").
+			WithQueryApplier(func(query orm.SelectQuery, _ DelegationSearch, ctx fiber.Ctx) error {
+				principal := contextx.Principal(ctx)
+				// Super-admin callers may query all delegations; everyone else
+				// is confined to records they own as delegator.
+				if approval.IsSuperAdmin(principal) {
+					return nil
+				}
+
+				if principal != nil {
+					query.Where(func(cb orm.ConditionBuilder) {
+						cb.Equals("delegator_id", principal.ID)
+					})
+				}
+
+				return nil
+			}),
+		Create: crud.NewCreate[approval.Delegation, DelegationParams]().
+			RequiredPermission("approval:delegation:create").
+			WithPreCreate(func(model *approval.Delegation, _ *DelegationParams, _ orm.InsertQuery, ctx fiber.Ctx, _ orm.DB) error {
+				principal := contextx.Principal(ctx)
+				// Non-super-admin callers can only create delegations on their
+				// own behalf; stamp the delegatorId from the principal so the
+				// client cannot forge a delegation for another user.
+				if approval.IsSuperAdmin(principal) {
+					return nil
+				}
+
+				if principal != nil {
+					model.DelegatorID = principal.ID
+				}
+
+				return nil
+			}),
+		Update: crud.NewUpdate[approval.Delegation, DelegationParams]().RequiredPermission("approval:delegation:update"),
+		Delete: crud.NewDelete[approval.Delegation]().RequiredPermission("approval:delegation:delete"),
 	}
 }

@@ -81,7 +81,7 @@ func (s *FlowResourceTestSuite) createFlow(code, name string) string {
 		},
 	}, s.token)
 
-	s.Require().Equal(http.StatusOK, resp.StatusCode, "TestFlowResource should match expected value")
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "Flow create RPC should return HTTP 200")
 	res := s.ReadResult(resp)
 	s.Require().True(res.IsOk(), "Should create flow")
 
@@ -106,7 +106,7 @@ func (s *FlowResourceTestSuite) deployFlow(flowID string, def approval.FlowDefin
 		},
 	}, s.token)
 
-	s.Require().Equal(http.StatusOK, resp.StatusCode, "TestFlowResource should match expected value")
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "Flow deploy RPC should return HTTP 200")
 	res := s.ReadResult(resp)
 	s.Require().True(res.IsOk(), "Should deploy flow")
 
@@ -135,13 +135,13 @@ func (s *FlowResourceTestSuite) TestCreateFlow() {
 		},
 	}, s.token)
 
-	s.Assert().Equal(http.StatusOK, resp.StatusCode, "TestCreateFlow should match expected value")
+	s.Assert().Equal(http.StatusOK, resp.StatusCode, "Create flow RPC should return HTTP 200")
 	res := s.ReadResult(resp)
 	s.Assert().True(res.IsOk(), "Should create flow successfully")
 
 	data := s.ReadDataAsMap(res.Data)
-	s.Assert().Equal("test-flow-create", data["code"], "TestCreateFlow should match expected value")
-	s.Assert().Equal("Test Flow", data["name"], "TestCreateFlow should match expected value")
+	s.Assert().Equal("test-flow-create", data["code"], "Created flow should echo the submitted code")
+	s.Assert().Equal("Test Flow", data["name"], "Created flow should echo the submitted name")
 	s.Assert().NotEmpty(data["id"], "Should generate an ID")
 }
 
@@ -174,7 +174,7 @@ func (s *FlowResourceTestSuite) TestPublishVersion() {
 		},
 	}, s.token)
 
-	s.Assert().Equal(http.StatusOK, resp.StatusCode, "TestPublishVersion should match expected value")
+	s.Assert().Equal(http.StatusOK, resp.StatusCode, "Publish version RPC should return HTTP 200")
 	res := s.ReadResult(resp)
 	s.Assert().True(res.IsOk(), "Should publish version successfully")
 
@@ -208,7 +208,7 @@ func (s *FlowResourceTestSuite) TestGetGraph() {
 			"versionId": versionID,
 		},
 	}, s.token)
-	s.Require().Equal(http.StatusOK, resp.StatusCode, "TestGetGraph should match expected value")
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "Publish version RPC (prerequisite for graph) should return HTTP 200")
 
 	// Get graph
 	resp = s.MakeRPCRequestWithToken(api.Request{
@@ -222,7 +222,7 @@ func (s *FlowResourceTestSuite) TestGetGraph() {
 		},
 	}, s.token)
 
-	s.Assert().Equal(http.StatusOK, resp.StatusCode, "TestGetGraph should match expected value")
+	s.Assert().Equal(http.StatusOK, resp.StatusCode, "Get graph RPC should return HTTP 200")
 	res := s.ReadResult(resp)
 	s.Assert().True(res.IsOk(), "Should get flow graph")
 
@@ -250,7 +250,7 @@ func (s *FlowResourceTestSuite) TestDeployInvalidDefinition() {
 		},
 	}, s.token)
 
-	s.Assert().Equal(http.StatusOK, resp.StatusCode, "TestDeployInvalidDefinition should match expected value")
+	s.Assert().Equal(http.StatusOK, resp.StatusCode, "Deploy RPC should return HTTP 200 even for invalid definitions (error in result body)")
 	res := s.ReadResult(resp)
 	s.Assert().False(res.IsOk(), "Should fail to deploy with invalid definition")
 }

@@ -36,7 +36,7 @@ func TestManagementResourceRequiredPermissions(t *testing.T) {
 	})
 
 	t.Run("CategoryResource", func(t *testing.T) {
-		resource := iresource.NewCategoryResource()
+		resource := iresource.NewCategoryResource(nil)
 		specs := collectSpecs(resource, collectors...)
 
 		expected := map[string]string{
