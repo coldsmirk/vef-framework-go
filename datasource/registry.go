@@ -43,10 +43,11 @@ type Registry interface {
 
 	// Register opens a new data source and inserts it under name. It returns
 	// ErrExists if the name is already registered, ErrPrimaryReserved if name
-	// equals PrimaryName, and ErrNameInvalid if name is empty or contains
-	// whitespace/control characters. The newly opened connection is closed and
-	// not retained on conflict. Register never closes an existing connection, so
-	// it takes no RegisterOption.
+	// equals PrimaryName, ErrNameInvalid if name is empty or contains
+	// whitespace/control characters, and ErrClosed once the registry has begun
+	// shutting down. The newly opened connection is closed and not retained on
+	// conflict. Register never closes an existing connection, so it takes no
+	// RegisterOption.
 	Register(ctx context.Context, name string, cfg config.DataSourceConfig) (orm.DB, error)
 
 	// Update atomically replaces the connection for an existing data source with
@@ -55,16 +56,17 @@ type Registry interface {
 	// underlying *sql.DB is closed asynchronously so callers that already hold a
 	// DB reference observe no downtime.
 	//
-	// Update returns ErrNotFound when name is not registered and
-	// ErrPrimaryReserved when name is PrimaryName.
+	// Update returns ErrNotFound when name is not registered,
+	// ErrPrimaryReserved when name is PrimaryName, and ErrClosed once the
+	// registry has begun shutting down.
 	Update(ctx context.Context, name string, cfg config.DataSourceConfig, opts ...RegisterOption) (orm.DB, error)
 
 	// Unregister removes the named data source from the registry. Subsequent Get
 	// calls return ErrNotFound. The underlying *sql.DB is closed asynchronously
 	// (honoring WithCloseGrace), so callers already holding a DB reference can
 	// finish in-flight queries before the connection pool tears down. Unregister
-	// returns ErrPrimaryReserved for the primary source and ErrNotFound when name
-	// is not registered.
+	// returns ErrPrimaryReserved for the primary source, ErrNotFound when name
+	// is not registered, and ErrClosed once the registry has begun shutting down.
 	Unregister(ctx context.Context, name string, opts ...RegisterOption) error
 
 	// Reconcile drives the registry toward the supplied desired set of

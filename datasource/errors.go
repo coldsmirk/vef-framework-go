@@ -21,4 +21,10 @@ var (
 	// ErrNameInvalid is returned by Register/Update when a name is empty or
 	// contains whitespace or control characters.
 	ErrNameInvalid = errors.New("datasource: data source name invalid")
+
+	// ErrClosed is returned by Register/Update/Unregister once the registry has
+	// begun shutting down. After shutdown the connection pools are drained and
+	// closed, so accepting a mutation would either leak a freshly opened pool or
+	// race the shutdown drain.
+	ErrClosed = errors.New("datasource: registry is closed")
 )

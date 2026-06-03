@@ -467,3 +467,32 @@ func TestRegistryUnregisterDrainsInFlight(t *testing.T) {
 		"Held reference should drain during the grace window")
 	require.Equal(t, 1, v, "Drained query should return its value")
 }
+
+func TestRegistryMutationsRejectedAfterShutdown(t *testing.T) {
+	ctx := context.Background()
+	r := newTestRegistry(t)
+
+	seeded, err := r.Register(ctx, "seeded", newSQLiteCfg(t, "seeded"))
+	require.NoError(t, err, "Register before shutdown should succeed")
+	require.NotNil(t, seeded, "Seeded source should be usable")
+
+	require.NoError(t, r.Shutdown(ctx), "Shutdown should drain cleanly")
+
+	t.Run("Register", func(t *testing.T) {
+		db, err := r.Register(ctx, "late", newSQLiteCfg(t, "late"))
+		require.ErrorIs(t, err, datasource.ErrClosed, "Register after shutdown returns ErrClosed")
+		require.Nil(t, db, "No DB is returned for a rejected Register")
+		require.False(t, r.Has("late"), "Rejected Register must not leak a registry entry")
+	})
+
+	t.Run("Update", func(t *testing.T) {
+		db, err := r.Update(ctx, "seeded", newSQLiteCfg(t, "seeded2"))
+		require.ErrorIs(t, err, datasource.ErrClosed, "Update after shutdown returns ErrClosed")
+		require.Nil(t, db, "No DB is returned for a rejected Update")
+	})
+
+	t.Run("Unregister", func(t *testing.T) {
+		err := r.Unregister(ctx, "seeded")
+		require.ErrorIs(t, err, datasource.ErrClosed, "Unregister after shutdown returns ErrClosed")
+	})
+}

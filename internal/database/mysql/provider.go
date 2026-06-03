@@ -26,8 +26,8 @@ func (p *Provider) Kind() config.DBKind {
 }
 
 func (p *Provider) Connect(cfg *config.DataSourceConfig) (*sql.DB, error) {
-	if err := p.ValidateConfig(cfg); err != nil {
-		return nil, err
+	if cfg.Database == "" {
+		return nil, ErrMySQLDatabaseRequired
 	}
 
 	connector, err := mysql.NewConnector(p.buildConfig(cfg))
@@ -36,14 +36,6 @@ func (p *Provider) Connect(cfg *config.DataSourceConfig) (*sql.DB, error) {
 	}
 
 	return sql.OpenDB(connector), nil
-}
-
-func (*Provider) ValidateConfig(cfg *config.DataSourceConfig) error {
-	if cfg.Database == "" {
-		return ErrMySQLDatabaseRequired
-	}
-
-	return nil
 }
 
 func (*Provider) Version(ctx context.Context, db *sql.DB) (string, error) {

@@ -32,9 +32,15 @@ type registry struct {
 
 	reconcileMu sync.Mutex
 
-	closeWg   sync.WaitGroup
-	closing   chan struct{}
-	closeOnce sync.Once
+	// closeMu serializes the shutdown transition against async-close
+	// registration. signalClosing closes the closing channel under it, and
+	// asyncClose decides whether to register on closeWg under it, so once
+	// closing is set no new closeWg task can be added — making Shutdown's
+	// closeWg.Wait safe from the WaitGroup-reuse race.
+	closeMu sync.Mutex
+	closeWg sync.WaitGroup
+	closing chan struct{}
+	closed  bool
 }
 
 // entry is immutable once stored: a source is mutated by replacing the whole
@@ -155,11 +161,17 @@ func (r *registry) Kind(name string) (config.DBKind, error) {
 	return e.cfg.Kind, nil
 }
 
-// openAndPing validates name, rejects the reserved primary name, and opens and
-// pings a fresh connection — the prologue shared by Register and Update. The
-// caller owns the returned *sql.DB and must close it if it decides not to keep
-// it (e.g. on a name conflict).
-func (*registry) openAndPing(ctx context.Context, name string, cfg config.DataSourceConfig) (*sql.DB, orm.DB, error) {
+// openAndPing rejects mutations once shutdown has begun, validates name, rejects
+// the reserved primary name, and opens and pings a fresh connection — the
+// prologue shared by Register and Update. Checking r.closing before opening means
+// a late mutation fails fast without ever opening a pool that Shutdown has already
+// stopped draining. The caller owns the returned *sql.DB and must close it if it
+// decides not to keep it (e.g. on a name conflict).
+func (r *registry) openAndPing(ctx context.Context, name string, cfg config.DataSourceConfig) (*sql.DB, orm.DB, error) {
+	if r.isClosing() {
+		return nil, nil, datasource.ErrClosed
+	}
+
 	if name == datasource.PrimaryName {
 		return nil, nil, datasource.ErrPrimaryReserved
 	}
@@ -202,6 +214,19 @@ func (r *registry) Register(ctx context.Context, name string, cfg config.DataSou
 		return nil, datasource.ErrExists
 	}
 
+	// Shutdown may have signaled closing between the openAndPing guard and the
+	// insert above, after its drain loop already passed this key. Re-check and
+	// tear down the entry we just inserted so its pool never leaks past Shutdown.
+	// RemoveIf scopes the deletion to this exact entry so a concurrent Register of
+	// the same name is never clobbered.
+	if r.isClosing() {
+		if r.entries.RemoveIf(name, e, sameEntry) {
+			_ = rawDB.Close()
+		}
+
+		return nil, datasource.ErrClosed
+	}
+
 	return e.ormDB, nil
 }
 
@@ -240,7 +265,21 @@ func (r *registry) Update(ctx context.Context, name string, cfg config.DataSourc
 		return nil, datasource.ErrNotFound
 	}
 
+	// The replaced connection is always drained: asyncClose honors the grace
+	// window when live and closes synchronously once shutdown has begun.
 	r.asyncClose(name, oldEntry.rawDB, applyOptions(opts))
+
+	// Shutdown may have signaled closing between the openAndPing guard and the
+	// swap above. The freshly swapped-in entry would then leak if Shutdown's drain
+	// loop already passed this key, so tear it down — scoped via RemoveIf to the
+	// exact entry we swapped in.
+	if r.isClosing() {
+		if r.entries.RemoveIf(name, newEntry, sameEntry) {
+			_ = rawDB.Close()
+		}
+
+		return nil, datasource.ErrClosed
+	}
 
 	return newEntry.ormDB, nil
 }
@@ -250,6 +289,10 @@ func (r *registry) Update(ctx context.Context, name string, cfg config.DataSourc
 // (honoring WithCloseGrace) so callers already holding a DB reference can finish
 // in-flight queries.
 func (r *registry) Unregister(_ context.Context, name string, opts ...datasource.RegisterOption) error {
+	if r.isClosing() {
+		return datasource.ErrClosed
+	}
+
 	if name == datasource.PrimaryName {
 		return datasource.ErrPrimaryReserved
 	}
@@ -439,7 +482,13 @@ func (r *registry) Shutdown(ctx context.Context) error {
 }
 
 func (r *registry) signalClosing() {
-	r.closeOnce.Do(func() { close(r.closing) })
+	r.closeMu.Lock()
+	defer r.closeMu.Unlock()
+
+	if !r.closed {
+		r.closed = true
+		close(r.closing)
+	}
 }
 
 // waitClose blocks until every async-close goroutine finishes or ctx is done,
@@ -461,7 +510,22 @@ func (r *registry) waitClose(ctx context.Context) error {
 	}
 }
 
+// asyncClose closes db on a background goroutine after an optional grace window,
+// registering the goroutine with closeWg so Shutdown can drain it. The closing
+// check and the closeWg registration happen together under closeMu: signalClosing
+// takes the same lock, so the registration either wins the race (and Shutdown
+// drains it) or loses it (and db is closed synchronously). This rules out adding
+// to closeWg after Shutdown's closeWg.Wait has begun. The grace window is moot
+// once teardown has started, so the synchronous path skips it.
 func (r *registry) asyncClose(name string, db *sql.DB, opts datasource.RegisterOptions) {
+	r.closeMu.Lock()
+	if r.closed {
+		r.closeMu.Unlock()
+		r.closeDB(name, db)
+
+		return
+	}
+
 	r.closeWg.Go(func() {
 		if opts.CloseGrace > 0 {
 			select {
@@ -470,11 +534,34 @@ func (r *registry) asyncClose(name string, db *sql.DB, opts datasource.RegisterO
 			}
 		}
 
-		if err := db.Close(); err != nil && r.logger != nil {
-			r.logger.Warnf("close data source %q: %v", name, err)
-		}
+		r.closeDB(name, db)
 	})
+	r.closeMu.Unlock()
 }
+
+func (r *registry) closeDB(name string, db *sql.DB) {
+	if err := db.Close(); err != nil && r.logger != nil {
+		r.logger.Warnf("close data source %q: %v", name, err)
+	}
+}
+
+// isClosing is the lock-free fast-fail check used by the mutating API
+// (Register/Update/Unregister) to reject work once shutdown has begun. It reads
+// the closing channel directly; the deterministic ordering that protects closeWg
+// lives in asyncClose/signalClosing under closeMu.
+func (r *registry) isClosing() bool {
+	select {
+	case <-r.closing:
+		return true
+	default:
+		return false
+	}
+}
+
+// sameEntry compares entries by pointer identity. Entries are immutable and
+// stored by pointer, so identity is the right equality for RemoveIf when a
+// shutdown-race recheck must delete only the exact entry it inserted.
+func sameEntry(a, b *entry) bool { return a == b }
 
 // applyOptions folds a slice of functional options into a fresh options value.
 // It works for any option family whose underlying type is func(*O) — both

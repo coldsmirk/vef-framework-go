@@ -10,14 +10,12 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/database/sqlite"
 )
 
-// Provider defines the contract for database-specific connection and validation logic.
+// Provider defines the contract for database-specific connection logic.
 type Provider interface {
 	// Connect establishes a database connection and returns the *sql.DB and any error.
 	Connect(config *config.DataSourceConfig) (*sql.DB, error)
 	// Kind returns the database kind this provider handles (postgres, mysql, or sqlite).
 	Kind() config.DBKind
-	// ValidateConfig checks that the data source configuration is valid before attempting to connect.
-	ValidateConfig(config *config.DataSourceConfig) error
 	// Version queries and returns the database server version string.
 	Version(ctx context.Context, db *sql.DB) (string, error)
 }

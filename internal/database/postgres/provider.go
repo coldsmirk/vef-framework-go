@@ -25,11 +25,7 @@ func (p *Provider) Kind() config.DBKind {
 	return p.dbKind
 }
 
-func (p *Provider) Connect(cfg *config.DataSourceConfig) (*sql.DB, error) {
-	if err := p.ValidateConfig(cfg); err != nil {
-		return nil, err
-	}
-
+func (*Provider) Connect(cfg *config.DataSourceConfig) (*sql.DB, error) {
 	connector := pgdriver.NewConnector(
 		pgdriver.WithNetwork("tcp"),
 		pgdriver.WithAddr(fmt.Sprintf(
@@ -48,10 +44,6 @@ func (p *Provider) Connect(cfg *config.DataSourceConfig) (*sql.DB, error) {
 	)
 
 	return sql.OpenDB(connector), nil
-}
-
-func (*Provider) ValidateConfig(*config.DataSourceConfig) error {
-	return nil
 }
 
 func (*Provider) Version(ctx context.Context, db *sql.DB) (string, error) {

@@ -7,9 +7,10 @@ import (
 )
 
 // Open establishes a connection to the configured data source and returns the
-// raw *sql.DB with the connection pool applied. Building an ORM handle on top of
-// it (bun.DB, dialect, query hooks) is the caller's concern — see internal/orm.
-func Open(cfg config.DataSourceConfig, options ...Option) (*sql.DB, error) {
+// raw *sql.DB with the default connection pool applied. Building an ORM handle on
+// top of it (bun.DB, dialect, query hooks) is the caller's concern — see
+// internal/orm.
+func Open(cfg config.DataSourceConfig) (*sql.DB, error) {
 	provider, exists := registry.lookup(cfg.Kind)
 	if !exists {
 		return nil, newUnsupportedDBKindError(cfg.Kind)
@@ -20,12 +21,7 @@ func Open(cfg config.DataSourceConfig, options ...Option) (*sql.DB, error) {
 		return nil, err
 	}
 
-	opts := newDefaultOptions()
-	opts.apply(options...)
-
-	if opts.PoolConfig != nil {
-		opts.PoolConfig.ApplyToDB(db)
-	}
+	NewDefaultConnectionPoolConfig().ApplyToDB(db)
 
 	return db, nil
 }

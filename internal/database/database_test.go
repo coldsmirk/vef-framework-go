@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/suite"
 
@@ -30,7 +29,6 @@ func (suite *DatabaseTestSuite) SetupSuite() {
 	suite.mysqlContainer = testx.NewMySQLContainer(suite.ctx, suite.T())
 }
 
-// TestSQLiteConnection tests SQLite in-memory database connection and basic operations.
 func (suite *DatabaseTestSuite) TestSQLiteConnection() {
 	db, err := database.Open(config.DataSourceConfig{Kind: config.SQLite})
 	suite.Require().NoError(err, "SQLite connection should succeed")
@@ -41,7 +39,6 @@ func (suite *DatabaseTestSuite) TestSQLiteConnection() {
 	suite.Require().NoError(db.Close(), "Database should close without error")
 }
 
-// TestPostgreSQLConnection tests PostgreSQL database connection via Testcontainers.
 func (suite *DatabaseTestSuite) TestPostgreSQLConnection() {
 	db, err := database.Open(*suite.postgresContainer.DataSource)
 	suite.Require().NoError(err, "PostgreSQL connection should succeed")
@@ -52,7 +49,6 @@ func (suite *DatabaseTestSuite) TestPostgreSQLConnection() {
 	suite.Require().NoError(db.Close(), "Database should close without error")
 }
 
-// TestMySQLConnection tests MySQL database connection via Testcontainers.
 func (suite *DatabaseTestSuite) TestMySQLConnection() {
 	db, err := database.Open(*suite.mysqlContainer.DataSource)
 	suite.Require().NoError(err, "MySQL connection should succeed")
@@ -63,15 +59,13 @@ func (suite *DatabaseTestSuite) TestMySQLConnection() {
 	suite.Require().NoError(db.Close(), "Database should close without error")
 }
 
-// TestUnsupportedDatabaseKind tests error handling for unsupported database kinds.
 func (suite *DatabaseTestSuite) TestUnsupportedDatabaseKind() {
 	db, err := database.Open(config.DataSourceConfig{Kind: "unsupported"})
-	suite.Error(err, "Should return error for unsupported database type")
-	suite.Nil(db, "Database instance should be nil on error")
+	suite.Require().Error(err, "Should return error for unsupported database type")
+	suite.Require().Nil(db, "Database instance should be nil on error")
 	suite.Contains(err.Error(), "unsupported database type", "Error message should mention unsupported type")
 }
 
-// TestSQLiteFileMode tests SQLite file-based database mode.
 func (suite *DatabaseTestSuite) TestSQLiteFileMode() {
 	tempFile, err := os.CreateTemp("", "test_file_*.db")
 	suite.Require().NoError(err, "Temporary file creation should succeed")
@@ -93,7 +87,6 @@ func (suite *DatabaseTestSuite) TestSQLiteFileMode() {
 	suite.Require().NoError(db.Close(), "Database should close without error")
 }
 
-// TestMySQLValidation tests MySQL configuration validation for missing required fields.
 func (suite *DatabaseTestSuite) TestMySQLValidation() {
 	db, err := database.Open(config.DataSourceConfig{
 		Kind: config.MySQL,
@@ -101,31 +94,9 @@ func (suite *DatabaseTestSuite) TestMySQLValidation() {
 		Port: 3306,
 		User: "root",
 	})
-	suite.Error(err, "Should return error when database name is missing")
-	suite.Nil(db, "Database instance should be nil on validation error")
+	suite.Require().Error(err, "Should return error when database name is missing")
+	suite.Require().Nil(db, "Database instance should be nil on validation error")
 	suite.Contains(err.Error(), "database name is required", "Error message should mention missing database name")
-}
-
-// TestConnectionPoolConfiguration tests custom connection pool configuration.
-func (suite *DatabaseTestSuite) TestConnectionPoolConfiguration() {
-	customPoolConfig := &database.ConnectionPoolConfig{
-		MaxIdleConns:    5,
-		MaxOpenConns:    10,
-		ConnMaxIdleTime: 1 * time.Minute,
-		ConnMaxLifetime: 5 * time.Minute,
-	}
-
-	db, err := database.Open(config.DataSourceConfig{Kind: config.SQLite}, database.WithConnectionPool(customPoolConfig))
-	suite.Require().NoError(err, "Connection with custom pool config should succeed")
-	suite.Require().NotNil(db, "Database instance should not be nil")
-
-	var result int
-
-	err = db.QueryRowContext(suite.ctx, "SELECT 1").Scan(&result)
-	suite.Require().NoError(err, "Query should succeed with connection pool")
-	suite.Equal(1, result, "Query result should be 1")
-
-	suite.Require().NoError(db.Close(), "Database should close without error")
 }
 
 // testBasicDBOperations verifies that an opened *sql.DB is usable: it pings,
@@ -157,7 +128,6 @@ func (suite *DatabaseTestSuite) testBasicDBOperations(db *sql.DB, dbKind string)
 	suite.T().Logf("%s version: %s", dbKind, version)
 }
 
-// TestDatabase tests database test suite functionality.
 func TestDatabase(t *testing.T) {
 	suite.Run(t, new(DatabaseTestSuite))
 }

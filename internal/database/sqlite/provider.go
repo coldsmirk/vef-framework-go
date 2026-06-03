@@ -31,20 +31,12 @@ func (p *Provider) Kind() config.DBKind {
 }
 
 func (p *Provider) Connect(cfg *config.DataSourceConfig) (*sql.DB, error) {
-	if err := p.ValidateConfig(cfg); err != nil {
-		return nil, err
-	}
-
 	db, err := sql.Open(sqliteshim.ShimName, p.buildDsn(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
 	}
 
 	return db, nil
-}
-
-func (*Provider) ValidateConfig(*config.DataSourceConfig) error {
-	return nil
 }
 
 func (*Provider) Version(ctx context.Context, db *sql.DB) (string, error) {
