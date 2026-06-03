@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	zengo "github.com/gorules/zen-go"
+	"github.com/gorules/zen-go"
 
 	"github.com/coldsmirk/vef-framework-go/expression"
 )
@@ -21,7 +21,7 @@ func (*engine) Evaluate(ctx context.Context, source string, env any) (expression
 		return expression.Value{}, err
 	}
 
-	return wrap(zengo.EvaluateExpression[any](source, env))
+	return wrap(zen.EvaluateExpression[any](source, env))
 }
 
 func (*engine) Compile(source string, opts ...expression.CompileOption) (expression.Program, error) {
@@ -52,10 +52,10 @@ func (p *program) Run(ctx context.Context, env any) (expression.Value, error) {
 	}
 
 	if p.predicate {
-		return wrap(zengo.EvaluateUnaryExpression(p.source, env))
+		return wrap(zen.EvaluateUnaryExpression(p.source, env))
 	}
 
-	return wrap(zengo.EvaluateExpression[any](p.source, env))
+	return wrap(zen.EvaluateExpression[any](p.source, env))
 }
 
 // wrap adapts a Zen (result, error) pair into the expression contract, joining

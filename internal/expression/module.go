@@ -2,14 +2,17 @@ package expression
 
 import (
 	"go.uber.org/fx"
+
+	"github.com/coldsmirk/vef-framework-go/internal/expression/zen"
 )
 
-// Module wires the backend-agnostic expression integrations: an API handler
-// parameter resolver and a mold field transformer. It requires an
-// expression.Engine supplied by a backend module (e.g. expression/zen).
+// Module wires the expression feature: the Zen-backed engine plus the API
+// handler parameter resolver and the mold field transformer. It is re-exported
+// through the public expression/zen package.
 var Module = fx.Module(
 	"vef:expression",
 	fx.Provide(
+		zen.New,
 		fx.Annotate(
 			NewEngineResolver,
 			fx.ResultTags(`group:"vef:api:handler_param_resolvers"`),
