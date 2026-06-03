@@ -4,9 +4,19 @@ import (
 	"github.com/coldsmirk/go-streams"
 	"go.uber.org/fx"
 
+	iapproval "github.com/coldsmirk/vef-framework-go/internal/approval"
 	"github.com/coldsmirk/vef-framework-go/mcp"
 	"github.com/coldsmirk/vef-framework-go/middleware"
 )
+
+// ApprovalModule enables the optional approval (workflow) feature: pass it to
+// vef.Run(...) to register the approval API resources, CQRS handlers, engine,
+// binding listener, and timeout scanner. It is intentionally absent from the
+// default boot sequence (bootmodules.Core) so applications that do not need
+// workflows pay nothing. Approval events publish with event.WithTx and the
+// binding listener subscribes, so the host must route approval.* to a
+// transactional transport with a subscribable sink (see the approval docs).
+var ApprovalModule = iapproval.Module
 
 var (
 	Provide    = fx.Provide
