@@ -27,6 +27,10 @@ type Middleware interface {
 
 var logger = logx.Named("app")
 
+// shutdownTimeout is the grace period given to the HTTP server to finish
+// in-flight requests before it is forcibly closed.
+const shutdownTimeout = 30 * time.Second
+
 // App represents the VEF application server.
 // It wraps a Fiber application and manages the HTTP server lifecycle.
 type App struct {
@@ -49,7 +53,7 @@ func (a *App) Start() <-chan error {
 			fmt.Sprintf(":%d", a.port),
 			fiber.ListenConfig{
 				EnablePrintRoutes: false,
-				ShutdownTimeout:   30 * time.Second,
+				ShutdownTimeout:   shutdownTimeout,
 				BeforeServeFunc: func(*fiber.App) error {
 					errChan <- nil
 
@@ -82,7 +86,7 @@ func (a *App) Start() <-chan error {
 func (a *App) Stop() error {
 	logger.Info("Stopping VEF application...")
 
-	return a.app.ShutdownWithTimeout(time.Second * 30)
+	return a.app.ShutdownWithTimeout(shutdownTimeout)
 }
 
 // Test sends an HTTP request to the application for testing purposes.

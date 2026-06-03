@@ -11,5 +11,5 @@ func (*StructValidator) Validate(out any) error {
 }
 
 func newStructValidator() *StructValidator {
-	return &StructValidator{}
+	return new(StructValidator)
 }

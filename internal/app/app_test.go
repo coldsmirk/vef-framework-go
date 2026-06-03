@@ -25,24 +25,20 @@ import (
 type AppTestSuite struct {
 	suite.Suite
 
-	app  *app.App
-	stop func()
+	app             *app.App
+	stop            func()
+	originalI18nEnv string
 }
 
 // SetupSuite runs once before all tests in the suite.
 func (suite *AppTestSuite) SetupSuite() {
 	suite.T().Log("Setting up AppTestSuite - starting test app")
 
-	// Clear environment variable to test with default language (zh-CN)
-	originalEnv := os.Getenv("VEF_I18N_LANGUAGE")
-
+	// Save and clear VEF_I18N_LANGUAGE so i18n initializes with the default
+	// language (zh-CN). The original value is restored in TearDownSuite so it
+	// outlives every test in the suite.
+	suite.originalI18nEnv = os.Getenv("VEF_I18N_LANGUAGE")
 	_ = os.Unsetenv("VEF_I18N_LANGUAGE")
-
-	defer func() {
-		if originalEnv != "" {
-			_ = os.Setenv("VEF_I18N_LANGUAGE", originalEnv)
-		}
-	}()
 
 	suite.app, suite.stop = apptest.NewTestApp(
 		suite.T(),
@@ -64,6 +60,14 @@ func (suite *AppTestSuite) TearDownSuite() {
 
 	if suite.stop != nil {
 		suite.stop()
+	}
+
+	// Restore VEF_I18N_LANGUAGE to the value it held before SetupSuite ran,
+	// ensuring the env is clean for tests that run after this suite.
+	if suite.originalI18nEnv != "" {
+		_ = os.Setenv("VEF_I18N_LANGUAGE", suite.originalI18nEnv)
+	} else {
+		_ = os.Unsetenv("VEF_I18N_LANGUAGE")
 	}
 
 	suite.T().Log("AppTestSuite teardown complete")
