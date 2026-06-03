@@ -23,6 +23,16 @@ func createFiberApp(cfg *config.AppConfig) (*fiber.App, error) {
 		return nil, fmt.Errorf("failed to parse body limit: %w", err)
 	}
 
+	trustProxy := len(cfg.TrustedProxies) > 0
+
+	// Resolve the client IP from X-Forwarded-For only when trusted proxies are
+	// configured; otherwise c.IP() returns the direct connection peer and a
+	// client-supplied forwarded header is ignored.
+	proxyHeader := ""
+	if trustProxy {
+		proxyHeader = fiber.HeaderXForwardedFor
+	}
+
 	return fiber.NewWithCustomCtx(
 		func(app *fiber.App) fiber.CustomCtx {
 			return &CustomCtx{
@@ -30,20 +40,23 @@ func createFiberApp(cfg *config.AppConfig) (*fiber.App, error) {
 			}
 		},
 		fiber.Config{
-			AppName:         lo.CoalesceOrEmpty(cfg.Name, "vef-app"),
-			BodyLimit:       int(bodyLimit),
-			CaseSensitive:   true,
-			IdleTimeout:     30 * time.Second,
-			ErrorHandler:    handleError,
-			StrictRouting:   false,
-			StructValidator: newStructValidator(),
-			ServerHeader:    "vef",
-			Concurrency:     1024 * 1024,
-			ReadBufferSize:  8192,
-			WriteBufferSize: 8192,
-			Immutable:       false,
-			ReadTimeout:     30 * time.Second,
-			WriteTimeout:    120 * time.Second,
+			AppName:          lo.CoalesceOrEmpty(cfg.Name, "vef-app"),
+			BodyLimit:        int(bodyLimit),
+			CaseSensitive:    true,
+			IdleTimeout:      30 * time.Second,
+			ErrorHandler:     handleError,
+			StrictRouting:    false,
+			StructValidator:  newStructValidator(),
+			ServerHeader:     "vef",
+			Concurrency:      1024 * 1024,
+			ReadBufferSize:   8192,
+			WriteBufferSize:  8192,
+			Immutable:        false,
+			ReadTimeout:      30 * time.Second,
+			WriteTimeout:     120 * time.Second,
+			TrustProxy:       trustProxy,
+			TrustProxyConfig: fiber.TrustProxyConfig{Proxies: cfg.TrustedProxies},
+			ProxyHeader:      proxyHeader,
 		},
 	), nil
 }

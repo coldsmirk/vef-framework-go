@@ -2,7 +2,10 @@ package httpx
 
 import "github.com/gofiber/fiber/v3"
 
-// GetIP retrieves X-Forwarded-For header or falls back to direct IP.
+// GetIP returns the client IP resolved by Fiber. When the application configures
+// trusted proxies (vef.app.trusted_proxies), this honors X-Forwarded-For from
+// those proxies; otherwise it is the direct connection peer. A raw, client-supplied
+// X-Forwarded-For is never trusted.
 func GetIP(ctx fiber.Ctx) string {
-	return ctx.Get(fiber.HeaderXForwardedFor, ctx.IP())
+	return ctx.IP()
 }

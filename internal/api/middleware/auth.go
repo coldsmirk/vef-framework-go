@@ -8,6 +8,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/httpx"
 	"github.com/coldsmirk/vef-framework-go/internal/api/shared"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
@@ -44,6 +45,10 @@ func (m *Auth) Process(ctx fiber.Ctx) error {
 
 		return fiber.ErrUnauthorized
 	}
+
+	// Make the resolved client IP available to authenticators (e.g. the
+	// signature authenticator's IP whitelist) via the request context.
+	ctx.SetContext(contextx.SetRequestIP(ctx.Context(), httpx.GetIP(ctx)))
 
 	strategy, found := m.registry.Get(op.Auth.Strategy)
 	if !found {

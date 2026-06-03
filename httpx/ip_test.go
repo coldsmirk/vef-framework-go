@@ -10,92 +10,68 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestGetIP tests GetIP functionality.
+// TestGetIP verifies that GetIP resolves the client IP via Fiber and never trusts
+// a raw, client-supplied X-Forwarded-For unless a trusted proxy is configured.
 func TestGetIP(t *testing.T) {
-	t.Run("XForwardedForHeader", func(t *testing.T) {
+	t.Run("IgnoresUntrustedXForwardedFor", func(t *testing.T) {
 		app := fiber.New()
-		forwardedIP := "192.168.1.100"
+		spoofed := "10.0.0.1"
 
+		var got string
 		app.Get("/test", func(c fiber.Ctx) error {
-			ip := GetIP(c)
-			assert.Equal(t, forwardedIP, ip, "Should use X-Forwarded-For header")
+			got = GetIP(c)
 
-			return c.SendString(ip)
+			return c.SendString(got)
 		})
 
 		req := httptest.NewRequestWithContext(context.Background(), "GET", "/test", nil)
-		req.Header.Set("X-Forwarded-For", forwardedIP)
+		req.Header.Set("X-Forwarded-For", spoofed)
 		resp, err := app.Test(req)
-		require.NoError(t, err, "TestGetIP should complete without error")
-		require.Equal(t, 200, resp.StatusCode, "Response status should be OK after IP handling")
+		require.NoError(t, err, "request should complete without error")
+		require.Equal(t, 200, resp.StatusCode, "response status should be OK")
+		assert.NotEqual(t, spoofed, got, "a client-supplied X-Forwarded-For must be ignored without a trusted proxy")
 	})
 
-	t.Run("FallbackToDirectIP", func(t *testing.T) {
+	t.Run("DirectIPWhenNoHeader", func(t *testing.T) {
 		app := fiber.New()
 
+		var got string
 		app.Get("/test", func(c fiber.Ctx) error {
-			ip := GetIP(c)
-			assert.NotEmpty(t, ip, "Should return direct IP when X-Forwarded-For is not present")
+			got = GetIP(c)
 
-			return c.SendString(ip)
+			return c.SendString(got)
 		})
 
 		req := httptest.NewRequestWithContext(context.Background(), "GET", "/test", nil)
 		resp, err := app.Test(req)
-		require.NoError(t, err, "TestGetIP should complete without error")
-		require.Equal(t, 200, resp.StatusCode, "Response status should be OK after IP handling")
+		require.NoError(t, err, "request should complete without error")
+		require.Equal(t, 200, resp.StatusCode, "response status should be OK")
+		assert.NotEmpty(t, got, "should return the direct connection IP")
 	})
 
-	t.Run("XForwardedForOverridesDirectIP", func(t *testing.T) {
-		app := fiber.New()
-		forwardedIP := "10.0.0.1"
+	t.Run("HonorsXForwardedForFromTrustedProxy", func(t *testing.T) {
+		app := fiber.New(fiber.Config{
+			TrustProxy: true,
+			// Trust the direct connection peer used by fiber's app.Test so the
+			// single forwarded hop is treated as the real client, and read it
+			// from X-Forwarded-For (mirrors createFiberApp).
+			TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
+			ProxyHeader:      fiber.HeaderXForwardedFor,
+		})
+		clientIP := "203.0.113.195"
 
+		var got string
 		app.Get("/test", func(c fiber.Ctx) error {
-			ip := GetIP(c)
-			assert.Equal(t, forwardedIP, ip, "Should use X-Forwarded-For over direct IP")
+			got = GetIP(c)
 
-			return c.SendString(ip)
+			return c.SendString(got)
 		})
 
 		req := httptest.NewRequestWithContext(context.Background(), "GET", "/test", nil)
-		req.Header.Set("X-Forwarded-For", forwardedIP)
+		req.Header.Set("X-Forwarded-For", clientIP)
 		resp, err := app.Test(req)
-		require.NoError(t, err, "TestGetIP should complete without error")
-		require.Equal(t, 200, resp.StatusCode, "Response status should be OK after IP handling")
-	})
-
-	t.Run("EmptyXForwardedForHeader", func(t *testing.T) {
-		app := fiber.New()
-
-		app.Get("/test", func(c fiber.Ctx) error {
-			ip := GetIP(c)
-			assert.NotEmpty(t, ip, "Should fall back to direct IP when header is empty")
-
-			return c.SendString(ip)
-		})
-
-		req := httptest.NewRequestWithContext(context.Background(), "GET", "/test", nil)
-		req.Header.Set("X-Forwarded-For", "")
-		resp, err := app.Test(req)
-		require.NoError(t, err, "TestGetIP should complete without error")
-		require.Equal(t, 200, resp.StatusCode, "Response status should be OK after IP handling")
-	})
-
-	t.Run("MultipleIPsInXForwardedFor", func(t *testing.T) {
-		app := fiber.New()
-		forwardedIPs := "203.0.113.195, 70.41.3.18, 150.172.238.178"
-
-		app.Get("/test", func(c fiber.Ctx) error {
-			ip := GetIP(c)
-			assert.Equal(t, forwardedIPs, ip, "Should return the full X-Forwarded-For value")
-
-			return c.SendString(ip)
-		})
-
-		req := httptest.NewRequestWithContext(context.Background(), "GET", "/test", nil)
-		req.Header.Set("X-Forwarded-For", forwardedIPs)
-		resp, err := app.Test(req)
-		require.NoError(t, err, "TestGetIP should complete without error")
-		require.Equal(t, 200, resp.StatusCode, "Response status should be OK after IP handling")
+		require.NoError(t, err, "request should complete without error")
+		require.Equal(t, 200, resp.StatusCode, "response status should be OK")
+		assert.Equal(t, clientIP, got, "X-Forwarded-For from a trusted proxy should be honored")
 	})
 }
