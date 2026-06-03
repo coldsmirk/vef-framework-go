@@ -8,6 +8,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
@@ -34,7 +35,7 @@ type ReassignTaskTestSuite struct {
 }
 
 func (s *ReassignTaskTestSuite) SetupSuite() {
-	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewReassignTaskHandler(s.db, nil))
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewReassignTaskHandler(s.db, service.NewTaskService(), nil))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "reassign")
 
 	node := &approval.FlowNode{

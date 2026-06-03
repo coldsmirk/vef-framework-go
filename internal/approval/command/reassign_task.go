@@ -8,10 +8,10 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // ReassignTaskCmd reassigns a pending task to a different user (admin operation).
@@ -28,65 +28,48 @@ type ReassignTaskCmd struct {
 // ReassignTaskHandler handles the ReassignTaskCmd command.
 type ReassignTaskHandler struct {
 	db           orm.DB
+	taskSvc      *service.TaskService
 	userResolver approval.UserInfoResolver
 }
 
 // NewReassignTaskHandler creates a new ReassignTaskHandler.
 func NewReassignTaskHandler(
 	db orm.DB,
+	taskSvc *service.TaskService,
 	userResolver approval.UserInfoResolver,
 ) *ReassignTaskHandler {
-	return &ReassignTaskHandler{db: db, userResolver: userResolver}
+	return &ReassignTaskHandler{db: db, taskSvc: taskSvc, userResolver: userResolver}
 }
 
 func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	var task approval.Task
-
-	task.ID = cmd.TaskID
-
-	if err := db.NewSelect().
-		Model(&task).
-		ForUpdate().
-		WherePK().
-		Scan(ctx); err != nil {
-		if result.IsRecordNotFound(err) {
-			return cqrs.Unit{}, shared.ErrTaskNotFound
-		}
-
-		return cqrs.Unit{}, fmt.Errorf("load task: %w", err)
+	// Load instance (ForUpdate) then task (ForUpdate), matching the lock order
+	// used by all sibling task-mutating handlers (approve_task, transfer_task,
+	// remove_assignee, etc.) via LoadTaskContextForNodeOperation. Holding the
+	// instance lock serializes concurrent reassigns that target the same node,
+	// so the duplicate-assignee check below runs atomically.
+	tc, err := h.taskSvc.LoadTaskContextForNodeOperation(ctx, db, cmd.TaskID, service.TaskContextLoadOptions{
+		RequireTaskPending: true,
+		Caller:             cmd.Caller,
+	})
+	if err != nil {
+		return cqrs.Unit{}, err
 	}
 
-	if err := cmd.Caller.Authorize(task.TenantID); err != nil {
-		// Return TaskNotFound rather than CrossTenantAccess so callers
-		// cannot probe existence across tenants.
-		return cqrs.Unit{}, shared.ErrTaskNotFound
-	}
-
-	if task.Status != approval.TaskPending {
-		return cqrs.Unit{}, shared.ErrTaskNotPending
-	}
+	task := tc.Task
 
 	newAssigneeID := strings.TrimSpace(cmd.NewAssigneeID)
 	if newAssigneeID == "" || newAssigneeID == task.AssigneeID {
 		return cqrs.Unit{}, shared.ErrInvalidTransferTarget
 	}
 
-	activeTaskCount, err := db.NewSelect().
-		Model((*approval.Task)(nil)).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", task.InstanceID).
-				Equals("node_id", task.NodeID).
-				Equals("assignee_id", newAssigneeID).
-				In("status", []approval.TaskStatus{approval.TaskPending, approval.TaskWaiting})
-		}).
-		Count(ctx)
+	duplicate, err := hasActiveTaskForAssignee(ctx, db, task.InstanceID, task.NodeID, newAssigneeID)
 	if err != nil {
 		return cqrs.Unit{}, fmt.Errorf("query reassignment target active task: %w", err)
 	}
 
-	if activeTaskCount > 0 {
+	if duplicate {
 		return cqrs.Unit{}, shared.ErrInvalidTransferTarget
 	}
 
@@ -122,4 +105,25 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 	)
 
 	return cqrs.Unit{}, nil
+}
+
+// hasActiveTaskForAssignee reports whether the given assignee already has a
+// pending or waiting task on the specified node of an instance.  Used by both
+// transfer_task and reassign_task to enforce the "one active task per assignee
+// per node" invariant under the instance-level lock.
+func hasActiveTaskForAssignee(ctx context.Context, db orm.DB, instanceID, nodeID, assigneeID string) (bool, error) {
+	count, err := db.NewSelect().
+		Model((*approval.Task)(nil)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("instance_id", instanceID).
+				Equals("node_id", nodeID).
+				Equals("assignee_id", assigneeID).
+				In("status", []approval.TaskStatus{approval.TaskPending, approval.TaskWaiting})
+		}).
+		Count(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
 }

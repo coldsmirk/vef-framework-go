@@ -71,7 +71,7 @@ func wrapWithBusAndDB[TCmd cqrs.Action, TResult any](
 	bus *eventtest.FakeBus,
 	inner cqrs.Handler[TCmd, TResult],
 ) *BusPublishingHandler[TCmd, TResult] {
-	behaviors := []cqrs.Behavior{behavior.NewEventPublishBehavior(bus)}
+	behaviors := []cqrs.Behavior{behavior.NewEventPublishBehavior(db, bus)}
 	if db != nil {
 		behaviors = append([]cqrs.Behavior{behavior.NewActionLogBehavior(db)}, behaviors...)
 	}
@@ -162,9 +162,7 @@ func holdSharedTableLock(ctx context.Context, db orm.DB, tableName string) (read
 	return lockReady, releaseLock, lockDone
 }
 
-func detectLockDialect(ctx context.Context, db orm.DB) LockDialect {
-	_ = ctx
-
+func detectLockDialect(_ context.Context, db orm.DB) LockDialect {
 	switch db.NewSelect().Dialect().Name() {
 	case dialect.MySQL:
 		return lockDialectMySQL

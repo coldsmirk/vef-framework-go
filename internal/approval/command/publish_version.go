@@ -60,6 +60,21 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 		return cqrs.Unit{}, shared.ErrVersionNotDraft
 	}
 
+	// Authorize before any mutations so an unauthorized caller cannot
+	// cause side effects (archive, publish, version bump). Mirrors the
+	// pre-write authorization order used by create_flow, update_flow,
+	// toggle_flow_active, and deploy_flow.
+	var flow approval.Flow
+
+	flow.ID = version.FlowID
+	if err := db.NewSelect().Model(&flow).Select("tenant_id").WherePK().Scan(ctx); err != nil {
+		return cqrs.Unit{}, fmt.Errorf("load flow tenant: %w", err)
+	}
+
+	if err := cmd.Caller.Authorize(flow.TenantID); err != nil {
+		return cqrs.Unit{}, shared.ErrVersionNotFound
+	}
+
 	// Capture currently-published versions before archiving so we can
 	// invalidate their compiled-flow cache entries below.
 	var archivedVersions []approval.FlowVersion
@@ -109,17 +124,6 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 		}).
 		Exec(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("update flow current version: %w", err)
-	}
-
-	var flow approval.Flow
-
-	flow.ID = version.FlowID
-	if err := db.NewSelect().Model(&flow).Select("tenant_id").WherePK().Scan(ctx); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("load flow tenant: %w", err)
-	}
-
-	if err := cmd.Caller.Authorize(flow.TenantID); err != nil {
-		return cqrs.Unit{}, shared.ErrVersionNotFound
 	}
 
 	// Invalidate the compiled-flow cache for the newly-published version

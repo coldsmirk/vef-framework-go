@@ -8,7 +8,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
@@ -113,9 +112,11 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	pendingDeadline := shared.ComputeTaskDeadline(node.TimeoutHours)
 	userNames := shared.ResolveUserNameMapSilent(ctx, h.userResolver, insertUsers)
 
-	// For AddAssigneeBefore, suspend the original task before inserting new ones.
-	if cmd.AddType == approval.AddAssigneeBefore &&
-		engine.TaskStateMachine.CanTransition(task.Status, approval.TaskWaiting) {
+	// For AddAssigneeBefore, suspend the original task before inserting new
+	// ones. The task was already validated as Pending by LoadTaskContextForNodeOperation
+	// (RequireTaskPending), and Pending→Waiting is always a legal transition, so
+	// the update is unconditional — no CanTransition guard needed.
+	if cmd.AddType == approval.AddAssigneeBefore {
 		task.Status = approval.TaskWaiting
 
 		task.Deadline = nil

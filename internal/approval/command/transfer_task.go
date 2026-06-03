@@ -72,20 +72,12 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 		return cqrs.Unit{}, shared.ErrInvalidTransferTarget
 	}
 
-	activeTaskCount, err := db.NewSelect().
-		Model((*approval.Task)(nil)).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", instance.ID).
-				Equals("node_id", task.NodeID).
-				Equals("assignee_id", transferToID).
-				In("status", []approval.TaskStatus{approval.TaskPending, approval.TaskWaiting})
-		}).
-		Count(ctx)
+	duplicate, err := hasActiveTaskForAssignee(ctx, db, instance.ID, task.NodeID, transferToID)
 	if err != nil {
 		return cqrs.Unit{}, fmt.Errorf("query transfer target active task: %w", err)
 	}
 
-	if activeTaskCount > 0 {
+	if duplicate {
 		return cqrs.Unit{}, shared.ErrInvalidTransferTarget
 	}
 

@@ -25,15 +25,13 @@ type DeployFlowCmd struct {
 	Caller         approval.CallerContext
 }
 
-// AssigneeProvider is the interface for accessing assignees from typed node data.
-type AssigneeProvider interface {
-	// GetAssignees returns the assignee definitions configured on this node.
+// assigneeProvider is the interface for accessing assignees from typed node data.
+type assigneeProvider interface {
 	GetAssignees() []approval.AssigneeDefinition
 }
 
-// CCProvider is the interface for accessing CC list from typed node data.
-type CCProvider interface {
-	// GetCCs returns the CC recipient definitions configured on this node.
+// ccProvider is the interface for accessing CC list from typed node data.
+type ccProvider interface {
 	GetCCs() []approval.CCDefinition
 }
 
@@ -137,7 +135,7 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 	for i, pn := range parsedNodes {
 		nodeID := nodes[i].ID
 
-		if ap, ok := pn.data.(AssigneeProvider); ok {
+		if ap, ok := pn.data.(assigneeProvider); ok {
 			for _, assigneeDef := range ap.GetAssignees() {
 				allAssignees = append(allAssignees, approval.FlowNodeAssignee{
 					NodeID:    nodeID,
@@ -149,7 +147,7 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 			}
 		}
 
-		if cp, ok := pn.data.(CCProvider); ok {
+		if cp, ok := pn.data.(ccProvider); ok {
 			for _, ccDef := range cp.GetCCs() {
 				allCCs = append(allCCs, approval.FlowNodeCC{
 					NodeID:    nodeID,
