@@ -5,6 +5,8 @@ import (
 
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/schema"
+
+	collections "github.com/coldsmirk/go-collections"
 )
 
 // MergeWhenBuilder is an interface for defining actions in MERGE WHEN clauses.
@@ -176,9 +178,9 @@ func (b *mergeUpdateBuilder) SetAll(excludedColumns ...string) MergeUpdateBuilde
 		panic("merge: SetAll() requires a table schema - call Model() before SetAll()")
 	}
 
-	excluded := toStringSet(excludedColumns)
+	excluded := collections.NewHashSetFrom(excludedColumns...)
 	for _, field := range b.table.Fields {
-		if !excluded[field.Name] {
+		if !excluded.Contains(field.Name) {
 			setExpr := b.eb.Expr("? = ?.?", bun.Name(field.Name), bun.Name(b.srcAlias), bun.Name(field.Name))
 			b.setExprs = append(b.setExprs, setExpr)
 		}
@@ -255,9 +257,9 @@ func (b *mergeInsertBuilder) ValuesAll(excludedColumns ...string) MergeInsertBui
 		panic("merge: ValuesAll() requires a table schema - call Model() before ValuesAll()")
 	}
 
-	excluded := toStringSet(excludedColumns)
+	excluded := collections.NewHashSetFrom(excludedColumns...)
 	for _, field := range b.table.Fields {
-		if !excluded[field.Name] {
+		if !excluded.Contains(field.Name) {
 			valueExpr := b.eb.Expr("?.?", bun.Name(b.srcAlias), bun.Name(field.Name))
 			b.values = append(b.values, columnValuePair{
 				column: field.Name,
@@ -274,14 +276,4 @@ func (b *mergeInsertBuilder) apply() {
 	for _, value := range b.values {
 		b.query.Value(value.column, "?", value.value)
 	}
-}
-
-// toStringSet converts a string slice to a map for O(1) lookups.
-func toStringSet(values []string) map[string]bool {
-	set := make(map[string]bool, len(values))
-	for _, v := range values {
-		set[v] = true
-	}
-
-	return set
 }

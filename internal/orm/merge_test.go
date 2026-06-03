@@ -5,6 +5,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 func init() {
@@ -98,14 +99,26 @@ func (suite *MergeTestSuite) TestBasicMerge() {
 		}).
 		Exec(suite.ctx)
 
-	suite.NoError(err, "MERGE operation should complete successfully")
+	suite.Require().NoError(err, "MERGE operation should complete successfully")
+	suite.Require().NotNil(result, "MERGE should return a result")
 
-	if result != nil {
-		affected, _ := result.RowsAffected()
-		suite.True(affected >= 0, "MERGE should affect 0 or more rows, got %d", affected)
-		suite.T().Logf("MERGE operation affected %d rows", affected)
-	}
+	affected, _ := result.RowsAffected()
+	suite.Equal(int64(3), affected, "MERGE should affect 1 updated + 2 inserted rows")
 
+	// The matched row must reflect the source update.
+	var updated User
+
+	err = suite.db.NewSelect().
+		Model(&updated).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("id", suite.testUsers[0].ID)
+		}).
+		Scan(suite.ctx)
+	suite.Require().NoError(err, "Failed to query the merged-update user")
+	suite.Equal("MT Alice Updated", updated.Name, "matched row name should be updated from source")
+	suite.Equal(int16(31), updated.Age, "matched row age should be updated from source")
+
+	// The unmatched rows must be inserted with source values.
 	var newUsers []User
 
 	err = suite.db.NewSelect().
@@ -115,13 +128,10 @@ func (suite *MergeTestSuite) TestBasicMerge() {
 		}).
 		OrderBy("name").
 		Scan(suite.ctx)
-	suite.NoError(err, "Failed to query newly inserted users")
-	suite.T().Logf("Found %d new users after merge", len(newUsers))
-
-	for _, user := range newUsers {
-		suite.T().Logf("New user - ID: %s, Name: %s, Email: %s, Age: %d, Active: %v",
-			user.ID, user.Name, user.Email, user.Age, user.IsActive)
-	}
+	suite.Require().NoError(err, "Failed to query newly inserted users")
+	suite.Require().Len(newUsers, 2, "both unmatched source rows should be inserted")
+	suite.Equal("MT David New", newUsers[0].Name, "first inserted user should match source order")
+	suite.Equal("MT Eva New", newUsers[1].Name, "second inserted user should match source order")
 }
 
 // TestCteMethods tests CTE methods: With for named CTEs, WithValues for inline data CTEs.
@@ -757,12 +767,16 @@ func (suite *MergeTestSuite) TestReturningMethods() {
 			Returning("id", "name").
 			Scan(suite.ctx, &returnedUsers)
 
-		suite.NoError(err, "RETURNING specific columns should work")
-		suite.T().Logf("RETURNING specific columns returned %d results", len(returnedUsers))
+		suite.Require().NoError(err, "RETURNING specific columns should work")
+		suite.Require().Len(returnedUsers, 2, "both inserted rows should be returned")
 
-		for _, result := range returnedUsers {
-			suite.T().Logf("Returned: ID=%s, Name=%s", result.ID, result.Name)
+		byID := make(map[string]ReturnResult, len(returnedUsers))
+		for _, r := range returnedUsers {
+			byID[r.ID] = r
 		}
+
+		suite.Equal("Return User 1", byID["ret1"].Name, "RETURNING should expose the inserted name for ret1")
+		suite.Equal("Return User 2", byID["ret2"].Name, "RETURNING should expose the inserted name for ret2")
 	})
 
 	suite.Run("ReturningAll", func() {
@@ -848,6 +862,51 @@ func (suite *MergeTestSuite) TestReturningMethods() {
 			suite.T().Logf("RETURNING NONE affected %d rows", affected)
 		}
 	})
+}
+
+// TestMergeDuplicateKeyError verifies MERGE routes duplicate-key violations through the
+// shared write-error translation, returning the same sentinel as Insert/Update.
+func (suite *MergeTestSuite) TestMergeDuplicateKeyError() {
+	if suite.ds.Kind != config.Postgres {
+		suite.T().Skipf("MERGE statement is only supported by PostgreSQL, skipping for %s", suite.ds.Kind)
+	}
+
+	type UserMergeData struct {
+		ID    string `bun:"id,pk"`
+		Name  string `bun:"name"`
+		Email string `bun:"email"`
+	}
+
+	// Source row carries a fresh id (so it is NOT matched) but reuses an existing
+	// email, which violates the unique(email) constraint on INSERT.
+	sourceData := []UserMergeData{
+		{ID: "mt_dup_new", Name: "MT Dup", Email: suite.testUsers[0].Email},
+	}
+
+	defer func() {
+		_, _ = suite.db.NewDelete().
+			Model(&User{}).
+			Where(func(cb orm.ConditionBuilder) {
+				cb.Equals("id", "mt_dup_new")
+			}).
+			Exec(suite.ctx)
+	}()
+
+	_, err := suite.db.NewMerge().
+		Model(&User{}).
+		WithValues("_src", &sourceData).
+		UsingTable("_src").
+		On(func(cb orm.ConditionBuilder) {
+			cb.EqualsColumn("u.id", "_src.id")
+		}).
+		WhenNotMatched().
+		ThenInsert(func(ib orm.MergeInsertBuilder) {
+			ib.Values("id", "name", "email")
+		}).
+		Exec(suite.ctx)
+
+	suite.Require().Error(err, "MERGE inserting a duplicate email should error")
+	suite.ErrorIs(err, result.ErrRecordAlreadyExists, "MERGE duplicate-key error should be translated like Insert/Update")
 }
 
 // TestWhenNotMatchedByTarget tests insertion when row exists in source but not in target (with optional conditions).

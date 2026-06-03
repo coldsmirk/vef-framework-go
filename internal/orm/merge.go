@@ -8,7 +8,7 @@ import (
 	"github.com/uptrace/bun/schema"
 )
 
-var defaultSourceAlias = "src"
+const defaultSourceAlias = "src"
 
 // NewMergeQuery creates a new MergeQuery instance with the provided database instance.
 // It initializes the query builders and sets up the table schema context for proper query building.
@@ -219,9 +219,18 @@ func (q *BunMergeQuery) ApplyIf(condition bool, fns ...ApplyFunc[MergeQuery]) Me
 }
 
 func (q *BunMergeQuery) Exec(ctx context.Context, dest ...any) (sql.Result, error) {
-	return q.query.Exec(ctx, dest...)
+	res, err := q.query.Exec(ctx, dest...)
+	if err != nil {
+		return nil, translateWriteError(err)
+	}
+
+	return res, nil
 }
 
 func (q *BunMergeQuery) Scan(ctx context.Context, dest ...any) error {
-	return q.query.Scan(ctx, dest...)
+	if err := q.query.Scan(ctx, dest...); err != nil {
+		return translateWriteError(err)
+	}
+
+	return nil
 }

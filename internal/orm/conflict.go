@@ -147,7 +147,7 @@ func (b *InsertQueryConflictBuilder) buildMySQL(query *bun.InsertQuery) {
 func (b *InsertQueryConflictBuilder) buildPostgresSQLite(query *bun.InsertQuery) {
 	var target schema.QueryAppender
 	if b.constraint != "" {
-		target = b.eb.Expr("CONSTRAINT ?", bun.Name(b.constraint))
+		target = b.eb.Expr("ON CONSTRAINT ?", bun.Name(b.constraint))
 	} else if len(b.columns) > 0 {
 		target = b.eb.Expr("(?)", Names(b.columns...))
 	}
@@ -167,7 +167,9 @@ func (b *InsertQueryConflictBuilder) buildPostgresSQLite(query *bun.InsertQuery)
 
 	args := []any{target}
 
-	if b.targetWhere != nil {
+	// A partial-index predicate (WHERE) is only valid with a column-inference
+	// target; PostgreSQL rejects it after ON CONSTRAINT, so skip it there.
+	if b.targetWhere != nil && b.constraint == "" {
 		sb.WriteString("WHERE ? ")
 
 		args = append(args, b.targetWhere)

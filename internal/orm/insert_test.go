@@ -1339,6 +1339,27 @@ func (suite *InsertTestSuite) TestConflictAdvanced() {
 		}).Exec(suite.ctx)
 	})
 
+	suite.Run("ConstraintWithWhereDropsPredicate", func() {
+		// A partial-index predicate is invalid after ON CONFLICT ON CONSTRAINT;
+		// the builder must drop the target WHERE rather than emit broken SQL.
+		tag := &Tag{Name: "ConstraintWhere"}
+		tag.ID = "test-cstr-where"
+
+		sql := suite.db.NewInsert().
+			Model(tag).
+			OnConflict(func(cb orm.ConflictBuilder) {
+				cb.Constraint("test_tag_pkey").
+					Where(func(cond orm.ConditionBuilder) {
+						cond.IsNotNull("id")
+					}).
+					DoNothing()
+			}).
+			String()
+
+		suite.Contains(sql, "CONSTRAINT", "named constraint target should be rendered")
+		suite.NotContains(sql, "WHERE", "target WHERE must be dropped when a named constraint is used")
+	})
+
 	suite.Run("SetExprOnConflict", func() {
 		tag := &Tag{Name: "ConflictSetExpr"}
 		tag.ID = "test-conflict-setexpr"
