@@ -63,7 +63,9 @@ func (r *Resource) GetCPU(ctx fiber.Ctx) error {
 func (r *Resource) GetMemory(ctx fiber.Ctx) error {
 	memInfo, err := r.service.Memory(ctx.Context())
 	if err != nil {
-		return err
+		logger.Errorf("Failed to collect memory info: %v", err)
+
+		return monitor.ErrCollectionFailed
 	}
 
 	return result.Ok(memInfo).Response(ctx)
@@ -73,7 +75,9 @@ func (r *Resource) GetMemory(ctx fiber.Ctx) error {
 func (r *Resource) GetDisk(ctx fiber.Ctx) error {
 	diskInfo, err := r.service.Disk(ctx.Context())
 	if err != nil {
-		return err
+		logger.Errorf("Failed to collect disk info: %v", err)
+
+		return monitor.ErrCollectionFailed
 	}
 
 	return result.Ok(diskInfo).Response(ctx)
@@ -83,7 +87,9 @@ func (r *Resource) GetDisk(ctx fiber.Ctx) error {
 func (r *Resource) GetNetwork(ctx fiber.Ctx) error {
 	netInfo, err := r.service.Network(ctx.Context())
 	if err != nil {
-		return err
+		logger.Errorf("Failed to collect network info: %v", err)
+
+		return monitor.ErrCollectionFailed
 	}
 
 	return result.Ok(netInfo).Response(ctx)
@@ -93,7 +99,9 @@ func (r *Resource) GetNetwork(ctx fiber.Ctx) error {
 func (r *Resource) GetHost(ctx fiber.Ctx) error {
 	hostInfo, err := r.service.Host(ctx.Context())
 	if err != nil {
-		return err
+		logger.Errorf("Failed to collect host info: %v", err)
+
+		return monitor.ErrCollectionFailed
 	}
 
 	return result.Ok(hostInfo).Response(ctx)
@@ -113,7 +121,9 @@ func (r *Resource) GetProcess(ctx fiber.Ctx) error {
 func (r *Resource) GetLoad(ctx fiber.Ctx) error {
 	loadInfo, err := r.service.Load(ctx.Context())
 	if err != nil {
-		return err
+		logger.Errorf("Failed to collect load info: %v", err)
+
+		return monitor.ErrCollectionFailed
 	}
 
 	return result.Ok(loadInfo).Response(ctx)

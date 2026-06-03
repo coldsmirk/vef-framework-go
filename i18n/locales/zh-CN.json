@@ -86,6 +86,7 @@
   "validator_alphanum_us_slash": "{0}只能包含字母、数字、下划线和斜线",
   "validator_alphanum_us_dot": "{0}只能包含字母、数字、下划线和点",
   "monitor_not_ready": "监控数据尚未就绪, 请稍后重试",
+  "monitor_collection_failed": "采集系统指标失败, 请稍后重试",
   "schema_table_not_found": "表不存在",
   "dangerous_sql": "检测到危险 SQL 操作, 执行已阻止",
   "security_unsupported_authentication_type": "不支持的认证类型: {{.kind}}",

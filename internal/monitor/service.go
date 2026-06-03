@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -24,7 +25,7 @@ import (
 // DefaultService implements monitor.Service with background CPU and process sampling.
 type DefaultService struct {
 	buildInfo *monitor.BuildInfo
-	config    *config.MonitorConfig
+	config    config.MonitorConfig
 
 	cpuCache     atomic.Value // stores *monitor.CPUInfo
 	processCache atomic.Value // stores *monitor.ProcessInfo
@@ -33,19 +34,64 @@ type DefaultService struct {
 	samplerDone   chan struct{}
 }
 
-// NewService creates a new monitor.Service implementation.
+// NewService creates a new monitor.Service implementation. A nil cfg or zero-valued
+// fields fall back to DefaultConfig; a nil buildInfo falls back to unknown metadata.
+// The framework version is always stamped onto the returned build info.
 func NewService(cfg *config.MonitorConfig, buildInfo *monitor.BuildInfo) monitor.Service {
 	return &DefaultService{
-		buildInfo: buildInfo,
-		config:    cfg,
+		buildInfo: resolveBuildInfo(buildInfo),
+		config:    resolveConfig(cfg),
 	}
 }
 
+// resolveConfig applies DefaultConfig values for any unset (zero) sampling field so
+// the service always has a positive sample interval and duration, while preserving
+// the caller-provided mount exclusions.
+func resolveConfig(cfg *config.MonitorConfig) config.MonitorConfig {
+	resolved := DefaultConfig()
+	if cfg == nil {
+		return resolved
+	}
+
+	if cfg.SampleInterval > 0 {
+		resolved.SampleInterval = cfg.SampleInterval
+	}
+
+	if cfg.SampleDuration > 0 {
+		resolved.SampleDuration = cfg.SampleDuration
+	}
+
+	resolved.ExcludedMounts = cfg.ExcludedMounts
+
+	return resolved
+}
+
+// resolveBuildInfo fills unknown metadata when no build info was supplied and
+// always stamps the framework version.
+func resolveBuildInfo(buildInfo *monitor.BuildInfo) *monitor.BuildInfo {
+	if buildInfo == nil {
+		buildInfo = &monitor.BuildInfo{
+			AppVersion: "unknown",
+			BuildTime:  "unknown",
+			GitCommit:  "unknown",
+		}
+	}
+
+	buildInfo.VEFVersion = version.VEFVersion
+
+	return buildInfo
+}
+
 // Overview returns a comprehensive system overview by fetching all metrics.
+// It is best-effort and never returns an error: a sub-metric that fails to
+// collect is logged and left nil so a single broken collector does not mask the
+// rest. Callers should inspect individual fields rather than rely on the error.
 func (s *DefaultService) Overview(ctx context.Context) (*monitor.SystemOverview, error) {
 	var overview monitor.SystemOverview
 
-	if hostInfo, err := s.Host(ctx); err == nil {
+	if hostInfo, err := s.Host(ctx); err != nil {
+		logger.Warnf("Overview: failed to collect host info: %v", err)
+	} else {
 		overview.Host = &monitor.HostSummary{
 			Hostname:        hostInfo.Hostname,
 			OS:              hostInfo.OS,
@@ -57,7 +103,9 @@ func (s *DefaultService) Overview(ctx context.Context) (*monitor.SystemOverview,
 		}
 	}
 
-	if cpuInfo, err := s.CPU(ctx); err == nil {
+	if cpuInfo, err := s.CPU(ctx); err != nil {
+		logger.Warnf("Overview: failed to collect CPU info: %v", err)
+	} else {
 		overview.CPU = &monitor.CPUSummary{
 			PhysicalCores: cpuInfo.PhysicalCores,
 			LogicalCores:  cpuInfo.LogicalCores,
@@ -65,7 +113,9 @@ func (s *DefaultService) Overview(ctx context.Context) (*monitor.SystemOverview,
 		}
 	}
 
-	if memInfo, err := s.Memory(ctx); err == nil && memInfo.Virtual != nil {
+	if memInfo, err := s.Memory(ctx); err != nil {
+		logger.Warnf("Overview: failed to collect memory info: %v", err)
+	} else if memInfo.Virtual != nil {
 		overview.Memory = &monitor.MemorySummary{
 			Total:       memInfo.Virtual.Total,
 			Used:        memInfo.Virtual.Used,
@@ -73,15 +123,21 @@ func (s *DefaultService) Overview(ctx context.Context) (*monitor.SystemOverview,
 		}
 	}
 
-	if diskInfo, err := s.Disk(ctx); err == nil {
+	if diskInfo, err := s.Disk(ctx); err != nil {
+		logger.Warnf("Overview: failed to collect disk info: %v", err)
+	} else {
 		overview.Disk = s.buildDiskSummary(diskInfo)
 	}
 
-	if netInfo, err := s.Network(ctx); err == nil {
+	if netInfo, err := s.Network(ctx); err != nil {
+		logger.Warnf("Overview: failed to collect network info: %v", err)
+	} else {
 		overview.Network = s.buildNetworkSummary(netInfo)
 	}
 
-	if procInfo, err := s.Process(ctx); err == nil {
+	if procInfo, err := s.Process(ctx); err != nil {
+		logger.Warnf("Overview: failed to collect process info: %v", err)
+	} else {
 		overview.Process = &monitor.ProcessSummary{
 			PID:           procInfo.PID,
 			Name:          procInfo.Name,
@@ -90,7 +146,9 @@ func (s *DefaultService) Overview(ctx context.Context) (*monitor.SystemOverview,
 		}
 	}
 
-	if loadInfo, err := s.Load(ctx); err == nil {
+	if loadInfo, err := s.Load(ctx); err != nil {
+		logger.Warnf("Overview: failed to collect load info: %v", err)
+	} else {
 		overview.Load = loadInfo
 	}
 
@@ -99,14 +157,14 @@ func (s *DefaultService) Overview(ctx context.Context) (*monitor.SystemOverview,
 	return &overview, nil
 }
 
-func (*DefaultService) buildDiskSummary(diskInfo *monitor.DiskInfo) *monitor.DiskSummary {
+func (s *DefaultService) buildDiskSummary(diskInfo *monitor.DiskInfo) *monitor.DiskSummary {
 	var (
 		total, used uint64
 		seenDevices = make(map[string]bool)
 	)
 
 	for _, part := range diskInfo.Partitions {
-		if shouldSkipMountPoint(part.MountPoint) {
+		if s.shouldSkipMountPoint(part.MountPoint) {
 			continue
 		}
 
@@ -154,30 +212,25 @@ func (*DefaultService) buildNetworkSummary(netInfo *monitor.NetworkInfo) *monito
 	}
 }
 
-// Mount point prefixes to exclude from disk statistics.
-var (
-	excludedMountPrefixes = []string{
-		// macOS special volumes
-		"/System/Volumes/",
-		"/Volumes/Recovery",
-		"/private/var/vm",
-		// Linux special mount points
-		"/snap/",
-		"/run/",
-		"/dev/",
-		"/sys/",
-		"/proc/",
-		// Development tools
-		"/Library/Developer/CoreSimulator",
-	}
-	excludedMountSubstrings = []string{
-		".timemachine",
-		"OrbStack",
-	}
-)
+// excludedMountPrefixes are OS pseudo-filesystem mount points that never
+// represent real storage and are always excluded from disk statistics.
+var excludedMountPrefixes = []string{
+	// macOS special volumes
+	"/System/Volumes/",
+	"/Volumes/Recovery",
+	"/private/var/vm",
+	// Linux special mount points
+	"/snap/",
+	"/run/",
+	"/dev/",
+	"/sys/",
+	"/proc/",
+}
 
 // shouldSkipMountPoint checks if a mount point should be excluded from disk stats.
-func shouldSkipMountPoint(mountPoint string) bool {
+// Built-in OS pseudo-mounts are always skipped; host- or vendor-specific volumes
+// are skipped only when their path contains a configured ExcludedMounts substring.
+func (s *DefaultService) shouldSkipMountPoint(mountPoint string) bool {
 	if mountPoint == "" {
 		return true
 	}
@@ -188,8 +241,8 @@ func shouldSkipMountPoint(mountPoint string) bool {
 		}
 	}
 
-	for _, substr := range excludedMountSubstrings {
-		if strings.Contains(mountPoint, substr) {
+	for _, substr := range s.config.ExcludedMounts {
+		if substr != "" && strings.Contains(mountPoint, substr) {
 			return true
 		}
 	}
@@ -197,19 +250,21 @@ func shouldSkipMountPoint(mountPoint string) bool {
 	return false
 }
 
-// getDeviceContainer extracts the base container device name from an APFS volume device.
+// partitionSuffix matches a trailing partition designator so sibling partitions
+// of the same physical disk collapse to one container key. It strips an optional
+// 's' (APFS, e.g. disk1s1) or 'p' (NVMe, e.g. nvme0n1p1) prefix followed by the
+// partition number, and bare trailing digits (SATA, e.g. sda1).
+var partitionSuffix = regexp.MustCompile(`[sp]?[0-9]+$`)
+
+// getDeviceContainer extracts the base container device name from a partition
+// device, stripping the trailing partition suffix so APFS volumes and sibling
+// partitions of the same disk de-duplicate to a single container.
 func getDeviceContainer(device string) string {
 	if device == "" {
 		return ""
 	}
 
-	for i, ch := range device {
-		if ch == 's' && i > 0 {
-			return device[:i]
-		}
-	}
-
-	return device
+	return partitionSuffix.ReplaceAllString(device, "")
 }
 
 // CPU returns detailed CPU information including usage percentages.
@@ -461,22 +516,20 @@ func (*DefaultService) Load(ctx context.Context) (*monitor.LoadInfo, error) {
 	}, nil
 }
 
-// BuildInfo returns application build information if available.
+// BuildInfo returns application build information. It is always non-nil: NewService
+// fills unknown metadata and stamps the framework version at construction time.
 func (s *DefaultService) BuildInfo() *monitor.BuildInfo {
-	if s.buildInfo == nil {
-		return &monitor.BuildInfo{
-			VEFVersion: version.VEFVersion,
-			AppVersion: "unknown",
-			BuildTime:  "unknown",
-			GitCommit:  "unknown",
-		}
-	}
-
 	return s.buildInfo
 }
 
 // Init starts background goroutines to periodically sample CPU and process metrics.
+// It is idempotent: a second call while a sampler is already running is a no-op, so
+// the running goroutine is never orphaned.
 func (s *DefaultService) Init(context.Context) error {
+	if s.samplerCancel != nil {
+		return nil
+	}
+
 	samplerCtx, cancel := context.WithCancel(context.Background())
 	s.samplerCancel = cancel
 	s.samplerDone = make(chan struct{})

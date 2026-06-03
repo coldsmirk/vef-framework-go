@@ -86,6 +86,7 @@
   "validator_alphanum_us_slash": "{0} can only contain letters, numbers, underscores and slashes",
   "validator_alphanum_us_dot": "{0} can only contain letters, numbers, underscores and dots",
   "monitor_not_ready": "Monitoring data is not ready yet, please try again later",
+  "monitor_collection_failed": "Failed to collect system metrics, please try again later",
   "schema_table_not_found": "Table not found",
   "dangerous_sql": "Dangerous SQL detected, execution blocked",
   "security_unsupported_authentication_type": "Unsupported authentication type: {{.kind}}",

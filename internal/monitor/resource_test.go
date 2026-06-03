@@ -2,6 +2,7 @@ package monitor_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -18,15 +19,11 @@ import (
 type MonitorResourceTestSuite struct {
 	apptest.Suite
 
-	ctx     context.Context
-	service monitor.Service
-	token   string
+	token string
 }
 
 func (suite *MonitorResourceTestSuite) SetupSuite() {
 	suite.T().Log("Setting up MonitorResourceTestSuite - starting test app")
-
-	suite.ctx = context.Background()
 
 	monitorConfig := &config.MonitorConfig{
 		SampleInterval: 100 * time.Millisecond,
@@ -48,7 +45,6 @@ func (suite *MonitorResourceTestSuite) SetupSuite() {
 			},
 		),
 		fx.Supply(buildInfo),
-		fx.Populate(&suite.service),
 	)
 
 	suite.token = suite.GenerateToken(&security.Principal{
@@ -375,4 +371,127 @@ func (suite *MonitorResourceTestSuite) TestGetBuildInfo() {
 // TestMonitorResourceTestSuite tests monitor resource test suite functionality.
 func TestMonitorResource(t *testing.T) {
 	suite.Run(t, new(MonitorResourceTestSuite))
+}
+
+// FailingMonitorService is a monitor.Service whose live collectors and caches all
+// fail, so the resource layer exercises its error-mapping branches.
+type FailingMonitorService struct{}
+
+func (*FailingMonitorService) Overview(context.Context) (*monitor.SystemOverview, error) {
+	return nil, errFailingMonitor
+}
+
+func (*FailingMonitorService) CPU(context.Context) (*monitor.CPUInfo, error) {
+	return nil, errFailingMonitor
+}
+
+func (*FailingMonitorService) Memory(context.Context) (*monitor.MemoryInfo, error) {
+	return nil, errFailingMonitor
+}
+
+func (*FailingMonitorService) Disk(context.Context) (*monitor.DiskInfo, error) {
+	return nil, errFailingMonitor
+}
+
+func (*FailingMonitorService) Network(context.Context) (*monitor.NetworkInfo, error) {
+	return nil, errFailingMonitor
+}
+
+func (*FailingMonitorService) Host(context.Context) (*monitor.HostInfo, error) {
+	return nil, errFailingMonitor
+}
+
+func (*FailingMonitorService) Process(context.Context) (*monitor.ProcessInfo, error) {
+	return nil, errFailingMonitor
+}
+
+func (*FailingMonitorService) Load(context.Context) (*monitor.LoadInfo, error) {
+	return nil, errFailingMonitor
+}
+
+func (*FailingMonitorService) BuildInfo() *monitor.BuildInfo {
+	return &monitor.BuildInfo{}
+}
+
+var errFailingMonitor = errors.New("monitor collector unavailable")
+
+type MonitorResourceErrorMappingSuite struct {
+	apptest.Suite
+
+	token string
+}
+
+func (suite *MonitorResourceErrorMappingSuite) SetupSuite() {
+	suite.T().Log("Setting up MonitorResourceErrorMappingSuite - failing service")
+
+	suite.SetupApp(
+		fx.Replace(
+			&config.MonitorConfig{
+				SampleInterval: 100 * time.Millisecond,
+				SampleDuration: 50 * time.Millisecond,
+			},
+			&security.JWTConfig{
+				Secret:   security.DefaultJWTSecret,
+				Audience: "test_app",
+			},
+		),
+		// Replace the real service with one that always fails so the resource's
+		// outward error mapping is exercised over the real HTTP pipeline.
+		fx.Decorate(func(monitor.Service) monitor.Service {
+			return new(FailingMonitorService)
+		}),
+	)
+
+	suite.token = suite.GenerateToken(&security.Principal{
+		ID:   "test-admin",
+		Name: "admin",
+	})
+}
+
+func (suite *MonitorResourceErrorMappingSuite) TearDownSuite() {
+	suite.TearDownApp()
+}
+
+func (suite *MonitorResourceErrorMappingSuite) requestCode(action string) int {
+	resp := suite.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{
+			Resource: "sys/monitor",
+			Action:   action,
+			Version:  "v1",
+		},
+	}, suite.token)
+
+	suite.Equal(200, resp.StatusCode, "transport status should be 200 for action %q", action)
+
+	return suite.ReadResult(resp).Code
+}
+
+func (suite *MonitorResourceErrorMappingSuite) TestNotReadyMapping() {
+	suite.T().Log("Testing not-ready error mapping for cached collectors")
+
+	suite.Run("CPU", func() {
+		suite.Equal(monitor.ErrCodeNotReady, suite.requestCode("get_cpu"),
+			"get_cpu should map a failure to the not-ready code")
+	})
+
+	suite.Run("Process", func() {
+		suite.Equal(monitor.ErrCodeNotReady, suite.requestCode("get_process"),
+			"get_process should map a failure to the not-ready code")
+	})
+}
+
+func (suite *MonitorResourceErrorMappingSuite) TestCollectionFailedMapping() {
+	suite.T().Log("Testing collection-failed error mapping for live collectors")
+
+	for _, action := range []string{"get_memory", "get_disk", "get_network", "get_host", "get_load"} {
+		suite.Run(action, func() {
+			suite.Equal(monitor.ErrCodeCollectionFailed, suite.requestCode(action),
+				"%s should map a failure to the collection-failed code", action)
+		})
+	}
+}
+
+// TestMonitorResourceErrorMapping verifies the resource layer's outward error mapping.
+func TestMonitorResourceErrorMapping(t *testing.T) {
+	suite.Run(t, new(MonitorResourceErrorMappingSuite))
 }
