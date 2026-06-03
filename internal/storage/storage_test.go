@@ -12,7 +12,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/storage"
 )
 
-// TestNew tests new functionality.
 func TestNew(t *testing.T) {
 	tests := []struct {
 		name          string

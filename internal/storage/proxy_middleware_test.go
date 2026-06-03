@@ -263,3 +263,178 @@ func TestProxyMiddleware(t *testing.T) {
 		mockService.AssertExpectations(t)
 	})
 }
+
+// TestIsValidObjectKey covers the security-relevant behavior of the
+// isValidObjectKey helper. The function guards the proxy handler against
+// path-traversal and other filesystem-level exploits, so rejection cases
+// are emphasized.
+func TestIsValidObjectKey(t *testing.T) {
+	tests := []struct {
+		name  string
+		key   string
+		valid bool
+	}{
+		// ── rejection cases (security boundary) ──────────────────────
+		{
+			name:  "EmptyKey",
+			key:   "",
+			valid: false,
+		},
+		{
+			name:  "AbsolutePath",
+			key:   "/etc/passwd",
+			valid: false,
+		},
+		{
+			name:  "DotDotSegmentTraversal",
+			key:   "../secret",
+			valid: false,
+		},
+		{
+			name:  "DotDotInMiddle",
+			key:   "pub/../priv/secret.bin",
+			valid: false,
+		},
+		{
+			name:  "DotDotAtEnd",
+			key:   "pub/2026/..",
+			valid: false,
+		},
+		{
+			name:  "DotDotOnly",
+			key:   "..",
+			valid: false,
+		},
+		{
+			name:  "NULByte",
+			key:   "pub/fi\x00le.jpg",
+			valid: false,
+		},
+		{
+			name:  "Backslash",
+			key:   "pub\\windows\\path",
+			valid: false,
+		},
+		{
+			name:  "TrailingSlash",
+			key:   "pub/2026/01/15/",
+			valid: false,
+		},
+		{
+			name:  "DoubleSlash",
+			key:   "pub//file.jpg",
+			valid: false,
+		},
+		{
+			name:  "LeadingDotDotAbsolute",
+			key:   "/../escape",
+			valid: false,
+		},
+
+		// ── acceptance cases ─────────────────────────────────────────
+		{
+			name:  "SimplePublicKey",
+			key:   "pub/2026/01/15/photo.jpg",
+			valid: true,
+		},
+		{
+			name:  "SimplePrivateKey",
+			key:   "priv/2026/01/15/report.pdf",
+			valid: true,
+		},
+		{
+			name:  "SingleSegment",
+			key:   "file.bin",
+			valid: true,
+		},
+		{
+			name:  "DeepPath",
+			key:   "pub/a/b/c/d/e/f.png",
+			valid: true,
+		},
+		{
+			name:  "KeyWithDotInName",
+			key:   "pub/my.file.v2.jpg",
+			valid: true,
+		},
+		{
+			name:  "KeyWithUnicode",
+			key:   "pub/测试文件.jpg",
+			valid: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isValidObjectKey(tt.key)
+			if tt.valid {
+				assert.True(t, got, "isValidObjectKey(%q) should return true for a valid key", tt.key)
+			} else {
+				assert.False(t, got, "isValidObjectKey(%q) should return false to reject unsafe key", tt.key)
+			}
+		})
+	}
+}
+
+// TestDetectContentType covers the detectContentType helper which picks
+// a content type from the ObjectInfo stat (when available) and always
+// runs the result through sanitizeContentType to prevent stored-XSS.
+func TestDetectContentType(t *testing.T) {
+	tests := []struct {
+		name     string
+		stat     *storage.ObjectInfo
+		key      string
+		expected string
+	}{
+		{
+			name:     "StatContentTypePreferred",
+			stat:     &storage.ObjectInfo{ContentType: "image/jpeg"},
+			key:      "pub/file.jpg",
+			expected: "image/jpeg",
+		},
+		{
+			name:     "StatContentTypeEmptyFallsBackToExtension",
+			stat:     &storage.ObjectInfo{ContentType: ""},
+			key:      "pub/file.png",
+			expected: "image/png",
+		},
+		{
+			name:     "NilStatFallsBackToExtension",
+			stat:     nil,
+			key:      "pub/file.pdf",
+			expected: "application/pdf",
+		},
+		{
+			name:     "UnsafeContentTypeSanitizedToOctetStream",
+			stat:     &storage.ObjectInfo{ContentType: "text/html"},
+			key:      "pub/page.html",
+			expected: "application/octet-stream",
+		},
+		{
+			name:     "JavaScriptSanitizedToOctetStream",
+			stat:     &storage.ObjectInfo{ContentType: "application/javascript"},
+			key:      "pub/script.js",
+			expected: "application/octet-stream",
+		},
+		{
+			name:     "UnknownExtensionNoStatFallsToOctetStream",
+			stat:     nil,
+			key:      "pub/file.xyz123",
+			expected: "application/octet-stream",
+		},
+		{
+			name:     "VideoMimePassesThrough",
+			stat:     &storage.ObjectInfo{ContentType: "video/mp4"},
+			key:      "pub/clip.mp4",
+			expected: "video/mp4",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectContentType(tt.stat, tt.key)
+			assert.Equal(t, tt.expected, got,
+				"detectContentType(stat, %q) should return %q", tt.key, tt.expected)
+		})
+	}
+}

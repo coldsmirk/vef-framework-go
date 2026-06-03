@@ -498,6 +498,86 @@ func (s *StorageResourceTestSuite) TestInitUploadRejectsFilenameTooLong() {
 	s.False(body.IsOk(), "Filename exceeding 255 chars must be rejected by validation")
 }
 
+// ── public upload rejection ─────────────────────────────────────────────
+
+// initUploadPublic is like initUpload but sets public=true on the
+// init_upload params. Used only to exercise the AllowPublicUploads gate.
+func (s *StorageResourceTestSuite) initUploadPublic(filename string, size int64) (map[string]any, result.Result) {
+	resp := s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{Resource: "sys/storage", Action: "init_upload", Version: "v1"},
+		Params: map[string]any{
+			"filename": filename,
+			"size":     size,
+			"public":   true,
+		},
+	}, s.ownerToken)
+
+	body := s.ReadResult(resp)
+	if !body.IsOk() {
+		return nil, body
+	}
+
+	return s.ReadDataAsMap(body.Data), body
+}
+
+func (s *StorageResourceTestSuite) TestInitUploadRejectsPublicWhenNotAllowed() {
+	// The suite fixture sets AllowPublicUploads to its zero value (false),
+	// so any public=true request must be rejected with the
+	// storage_public_uploads_not_allowed business error (code 2000).
+	_, body := s.initUploadPublic("photo.jpg", singleShotSize)
+	s.False(body.IsOk(), "InitUpload with public=true must fail when AllowPublicUploads=false")
+	s.Equal(2000, body.Code, "Error code must be the default business error code")
+}
+
+// ── complete_upload idempotent retry ────────────────────────────────────
+
+func (s *StorageResourceTestSuite) TestCompleteUploadIdempotentOnAlreadyCompleted() {
+	// Drive the full upload to completion, then call complete_upload a
+	// second time. The handler detects ClaimStatusUploaded, re-stats the
+	// object, and returns the same success response instead of erroring.
+	data, body := s.initUpload("idempotent.mp4", chunkedSize)
+	s.Require().True(body.IsOk(), "Init upload must succeed before idempotent complete test: %s", body.Message)
+
+	claimID := s.requireString(data, "claimId")
+	expectedKey := s.requireString(data, "key")
+
+	part1 := bytes.Repeat([]byte{'a'}, int(memoryPartSize))
+	part2 := bytes.Repeat([]byte{'b'}, int(chunkedSize-memoryPartSize))
+
+	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, part1)).IsOk(),
+		"Upload part 1 must succeed before idempotent complete test")
+	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 2, part2)).IsOk(),
+		"Upload part 2 must succeed before idempotent complete test")
+
+	// First complete: normal path.
+	firstResp := s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
+		Params:     map[string]any{"claimId": claimID},
+	}, s.ownerToken)
+
+	firstBody := s.ReadResult(firstResp)
+	s.Require().True(firstBody.IsOk(), "First complete_upload must succeed: %s", firstBody.Message)
+
+	// Second complete: idempotent fast-path via ClaimStatusUploaded branch.
+	secondResp := s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
+		Params:     map[string]any{"claimId": claimID},
+	}, s.ownerToken)
+
+	secondBody := s.ReadResult(secondResp)
+	s.True(secondBody.IsOk(), "Second complete_upload on an already-completed claim must succeed idempotently: %s", secondBody.Message)
+
+	// Both responses must agree on the final key and original filename.
+	first := s.ReadDataAsMap(firstBody.Data)
+	second := s.ReadDataAsMap(secondBody.Data)
+
+	s.Equal(expectedKey, second["key"], "Idempotent retry must return the same object key as the first complete")
+	s.Equal(first["originalFilename"], second["originalFilename"],
+		"Idempotent retry must echo the same originalFilename")
+	s.Equal(first["size"], second["size"],
+		"Idempotent retry must report the same assembled object size")
+}
+
 func TestStorageResource(t *testing.T) {
 	suite.Run(t, new(StorageResourceTestSuite))
 }
