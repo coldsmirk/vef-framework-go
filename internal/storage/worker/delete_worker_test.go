@@ -207,19 +207,13 @@ func TestDeleteWorker(t *testing.T) {
 
 		worker.NewDeleteWorker(failingSvc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
-		// Row should still exist but parked far in the future.
-		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(24*365), 10, time.Minute)
-		require.NoError(t, err, "Pending delete lease should succeed")
-		assert.Empty(t, leased, "Dead-lettered row must not be visible within a year")
-
-		// Lease at a horizon well past the dead-letter park window to
-		// confirm the row was parked (still in the queue) rather than
-		// silently Done'd — without this, Done would also make Lease
-		// return empty and the test would pass spuriously.
-		// deadLetterPark is 100 years; 101*365 days clears it.
-		parked, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(101*365*24), 10, time.Minute)
-		require.NoError(t, err, "Dead-letter horizon lease should succeed")
-		assert.Len(t, parked, 1, "Dead-lettered row must remain in the queue, just parked far in the future")
+		// The row must be terminally removed from the queue, not parked: a
+		// far-horizon lease that would clear any conceivable park window
+		// must still return nothing. Keeping the row would let a later lease
+		// re-publish the dead-letter event and re-inflate the attempt count.
+		remaining, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(101*365*24), 10, time.Minute)
+		require.NoError(t, err, "Far-horizon lease should succeed")
+		assert.Empty(t, remaining, "Dead-lettered row must be removed from the queue, not parked")
 
 		require.Len(t, env.Pub.events, 1, "Max attempts should emit one dead-letter event")
 		dl, ok := env.Pub.events[0].(*storage.DeleteDeadLetterEvent)

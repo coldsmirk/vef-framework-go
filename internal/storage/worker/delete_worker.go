@@ -22,11 +22,6 @@ import (
 const (
 	deleteBaseBackoff = 30 * time.Second
 	deleteMaxBackoff  = 1 * time.Hour
-
-	// deadLetterPark pushes a parked row far enough into the future that
-	// the next Lease will not pick it up. Operations remove or fix it
-	// manually after consuming the dead-letter event.
-	deadLetterPark = 100 * 365 * 24 * time.Hour
 )
 
 // DeleteWorker drains sys_storage_pending_delete: for each leased row it
@@ -174,13 +169,13 @@ func (w *DeleteWorker) handleFailure(ctx context.Context, item *store.PendingDel
 	nextAttempt := item.Attempts + 1
 
 	if nextAttempt >= maxAttempts {
-		w.parkDeadLetter(ctx, item, lastErr)
+		w.deadLetter(ctx, item, lastErr)
 
 		return
 	}
 
 	backoff := computeBackoff(nextAttempt)
-	nextAt := timex.DateTime(time.Now().Add(backoff))
+	nextAt := timex.Now().Add(backoff)
 
 	deferErr := w.db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 		return w.deleteQueue.Defer(txCtx, tx, item.ID, nextAt)
@@ -204,18 +199,20 @@ func (w *DeleteWorker) handleFailure(ctx context.Context, item *store.PendingDel
 		item.Key, nextAttempt, maxAttempts, backoff, lastErr)
 }
 
-func (w *DeleteWorker) parkDeadLetter(ctx context.Context, item *store.PendingDelete, lastErr error) {
+// deadLetter terminally retires a row that has exhausted its retry budget:
+// it DELETEs the row and publishes the dead-letter event in one
+// transaction. Removing the row (rather than parking it far in the future)
+// is what makes the retirement terminal — a parked row is still a queue row
+// and any later re-lease would re-publish the event and re-inflate the
+// attempt counter. The dead-letter event, routed through the transactional
+// outbox, is the durable record operators act on (and carries strictly more
+// detail than the row: it includes the error classification); its
+// at-least-once delivery means consumers already dedupe.
+func (w *DeleteWorker) deadLetter(ctx context.Context, item *store.PendingDelete, lastErr error) {
 	maxAttempts := w.cfg.EffectiveDeleteMaxAttempts()
-	parkUntil := timex.DateTime(time.Now().Add(deadLetterPark))
 
-	// Defer + DeadLetter event commit atomically. A tx failure here
-	// leaves the row at its current NextAttemptAt — the next lease
-	// will pick it up, handleFailure will recompute the failure path
-	// and re-attempt parkDeadLetter. The original lastErr is lost on
-	// retry; for dead-letter classification that is acceptable since
-	// the row has already exceeded its retry budget.
 	txErr := w.db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-		if err := w.deleteQueue.Defer(txCtx, tx, item.ID, parkUntil); err != nil {
+		if err := w.deleteQueue.Done(txCtx, tx, []string{item.ID}); err != nil {
 			return err
 		}
 
@@ -228,20 +225,15 @@ func (w *DeleteWorker) parkDeadLetter(ctx context.Context, item *store.PendingDe
 		), event.WithTx(tx))
 	})
 	if txErr != nil {
-		// Same benign cross-instance race as handleFailure: a missing
-		// row means another path already Done'd it after our lease
-		// expired, so there is nothing to park.
-		if errors.Is(txErr, result.ErrRecordNotFound) {
-			return
-		}
-
-		logger.Errorf("Park dead-letter row %s failed: %v (will retry on next lease)",
-			item.ID, txErr)
+		// A tx failure leaves the row at its current NextAttemptAt, so the
+		// next lease re-runs the failure path. The original lastErr is lost
+		// on retry, but that is acceptable for a row past its retry budget.
+		logger.Errorf("Dead-letter row %s failed: %v (will retry on next lease)", item.ID, txErr)
 
 		return
 	}
 
-	logger.Errorf("Delete object %s reached max attempts (%d), parked as dead-letter: %v",
+	logger.Errorf("Delete object %s reached max attempts (%d); dead-lettered and removed from queue: %v",
 		item.Key, maxAttempts, lastErr)
 }
 
