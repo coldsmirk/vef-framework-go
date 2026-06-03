@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -86,30 +87,16 @@ func (*ApprovalProcessor) createApprovalTasks(ctx context.Context, pc *ProcessCo
 	events := make([]approval.DomainEvent, 0, len(assignees))
 
 	for i, assignee := range assignees {
-		sortOrder := 0
-		status := approval.TaskPending
 		deadline := computeDeadline(pc.Node)
+		task := buildTask(pc, assignee, deadline)
 
 		if pc.Node.ApprovalMethod == approval.ApprovalSequential {
-			sortOrder = i + 1
+			task.SortOrder = i + 1
 
 			if i > 0 {
-				status = approval.TaskWaiting
-				deadline = nil
+				task.Status = approval.TaskWaiting
+				task.Deadline = nil
 			}
-		}
-
-		task := &approval.Task{
-			TenantID:      pc.Instance.TenantID,
-			InstanceID:    pc.Instance.ID,
-			NodeID:        pc.Node.ID,
-			AssigneeID:    assignee.UserID,
-			AssigneeName:  assignee.UserName,
-			DelegatorID:   assignee.DelegatorID,
-			DelegatorName: assignee.DelegatorName,
-			SortOrder:     sortOrder,
-			Status:        status,
-			Deadline:      deadline,
 		}
 
 		if _, err := pc.DB.NewInsert().Model(task).Exec(ctx); err != nil {
@@ -134,7 +121,7 @@ func (p *ApprovalProcessor) handleSameApplicant(ctx context.Context, pc *Process
 		}
 
 		if superiorInfo == nil || superiorInfo.ID == "" {
-			return nil, ErrNoAssignee
+			return nil, shared.ErrNoAssignee
 		}
 
 		return createTasksForUsers(ctx, pc, []string{superiorInfo.ID})

@@ -9,7 +9,6 @@ var (
 	ErrMaxNodeDepth      = errors.New("max node processing depth exceeded")
 
 	// Approval node errors.
-	ErrNoAssignee                   = errors.New("no assignee resolved for node")
 	ErrAssigneeServiceNotConfigured = errors.New("assignee service is not configured")
 
 	// Condition node errors.

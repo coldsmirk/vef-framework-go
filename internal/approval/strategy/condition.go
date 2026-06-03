@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/vm"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
@@ -36,14 +38,22 @@ func NewExpressionConditionEvaluator() approval.ConditionEvaluator {
 	return new(ExpressionConditionEvaluator)
 }
 
-// ExpressionConditionEvaluator evaluates expr-lang expressions.
-type ExpressionConditionEvaluator struct{}
+// ExpressionConditionEvaluator evaluates approval conditions written in expr-lang syntax
+// (e.g. startsWith, ??"", contains). It deliberately uses expr-lang directly rather than
+// the framework's swappable expression.Engine, whose only current backend is Zen (CGO).
+// Routing approval evaluation through expression.Engine would force a CGO dependency into
+// every framework build and break pure-Go environments. Migrate to expression.Engine only
+// once a pure-Go backend is available. Compiled programs are cached by expression source
+// to avoid repeated parse+type-check costs across multiple condition evaluations.
+type ExpressionConditionEvaluator struct {
+	cache sync.Map // key: string (expression source), value: *vm.Program
+}
 
 func (*ExpressionConditionEvaluator) Kind() approval.ConditionKind {
 	return approval.ConditionExpression
 }
 
-func (*ExpressionConditionEvaluator) Evaluate(_ context.Context, cond approval.Condition, ec *approval.EvaluationContext) (bool, error) {
+func (e *ExpressionConditionEvaluator) Evaluate(_ context.Context, cond approval.Condition, ec *approval.EvaluationContext) (bool, error) {
 	var departmentID string
 	if ec.ApplicantDepartmentID != nil {
 		departmentID = *ec.ApplicantDepartmentID
@@ -55,7 +65,7 @@ func (*ExpressionConditionEvaluator) Evaluate(_ context.Context, cond approval.C
 		"applicantDepartmentId": departmentID,
 	}
 
-	program, err := expr.Compile(cond.Expression, expr.Env(env), expr.AsBool())
+	program, err := e.compile(cond.Expression, env)
 	if err != nil {
 		return false, fmt.Errorf("compile expression: %w", err)
 	}
@@ -71,6 +81,23 @@ func (*ExpressionConditionEvaluator) Evaluate(_ context.Context, cond approval.C
 	}
 
 	return boolResult, nil
+}
+
+// compile returns the compiled program for the given expression, using the cache to avoid
+// repeated compilation. env is used only for type-checking on first compile.
+func (e *ExpressionConditionEvaluator) compile(source string, env map[string]any) (*vm.Program, error) {
+	if cached, ok := e.cache.Load(source); ok {
+		return cached.(*vm.Program), nil
+	}
+
+	program, err := expr.Compile(source, expr.Env(env), expr.AsBool())
+	if err != nil {
+		return nil, err
+	}
+
+	e.cache.Store(source, program)
+
+	return program, nil
 }
 
 // buildFieldExpression converts a structured field condition to an expr-lang expression string.

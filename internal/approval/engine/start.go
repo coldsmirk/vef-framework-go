@@ -10,7 +10,7 @@ import (
 type StartProcessor struct{}
 
 // NewStartProcessor creates a StartProcessor.
-func NewStartProcessor() NodeProcessor { return &StartProcessor{} }
+func NewStartProcessor() *StartProcessor { return new(StartProcessor) }
 
 func (*StartProcessor) NodeKind() approval.NodeKind { return approval.NodeStart }
 

@@ -11,12 +11,10 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
-	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
 // ResolveContext provides context for assignee resolution.
 type ResolveContext struct {
-	DB                    orm.DB
 	ApplicantID           string
 	ApplicantName         string
 	ApplicantDepartmentID *string

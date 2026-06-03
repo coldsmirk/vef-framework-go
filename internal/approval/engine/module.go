@@ -12,9 +12,9 @@ var Module = fx.Module(
 
 	// Node processors
 	fx.Provide(
-		fx.Annotate(NewStartProcessor, fx.ResultTags(`group:"vef:approval:node_processors"`)),
-		fx.Annotate(NewEndProcessor, fx.ResultTags(`group:"vef:approval:node_processors"`)),
-		fx.Annotate(NewConditionProcessor, fx.ResultTags(`group:"vef:approval:node_processors"`)),
+		fx.Annotate(NewStartProcessor, fx.As(new(NodeProcessor)), fx.ResultTags(`group:"vef:approval:node_processors"`)),
+		fx.Annotate(NewEndProcessor, fx.As(new(NodeProcessor)), fx.ResultTags(`group:"vef:approval:node_processors"`)),
+		fx.Annotate(NewConditionProcessor, fx.As(new(NodeProcessor)), fx.ResultTags(`group:"vef:approval:node_processors"`)),
 		fx.Annotate(NewApprovalProcessor, fx.As(new(NodeProcessor)), fx.ResultTags(`group:"vef:approval:node_processors"`)),
 		fx.Annotate(NewHandleProcessor, fx.As(new(NodeProcessor)), fx.ResultTags(`group:"vef:approval:node_processors"`)),
 		fx.Annotate(NewCCProcessor, fx.As(new(NodeProcessor)), fx.ResultTags(`group:"vef:approval:node_processors"`)),

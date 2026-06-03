@@ -14,7 +14,7 @@ import (
 type ConditionProcessor struct{}
 
 // NewConditionProcessor creates a ConditionProcessor.
-func NewConditionProcessor() NodeProcessor { return &ConditionProcessor{} }
+func NewConditionProcessor() *ConditionProcessor { return new(ConditionProcessor) }
 
 func (*ConditionProcessor) NodeKind() approval.NodeKind { return approval.NodeCondition }
 
@@ -46,7 +46,7 @@ func (*ConditionProcessor) Process(ctx context.Context, pc *ProcessContext) (*Pr
 			continue
 		}
 
-		match, err := evaluateConditionGroups(pc.Registry, ctx, evalCtx, branch.ConditionGroups)
+		match, err := evaluateConditionGroups(ctx, pc.Registry, evalCtx, branch.ConditionGroups)
 		if err != nil {
 			return nil, fmt.Errorf("evaluate branch %q: %w", branch.Label, err)
 		}
@@ -64,15 +64,13 @@ func (*ConditionProcessor) Process(ctx context.Context, pc *ProcessContext) (*Pr
 }
 
 // evaluateConditionGroups evaluates condition groups using OR between groups, AND within each group.
-//
-//nolint:revive // registry is the primary dependency
-func evaluateConditionGroups(registry *strategy.StrategyRegistry, ctx context.Context, evalCtx *approval.EvaluationContext, groups []approval.ConditionGroup) (bool, error) {
+func evaluateConditionGroups(ctx context.Context, registry *strategy.StrategyRegistry, evalCtx *approval.EvaluationContext, groups []approval.ConditionGroup) (bool, error) {
 	if len(groups) == 0 {
 		return true, nil
 	}
 
 	for _, group := range groups {
-		match, err := evaluateGroupConditions(registry, ctx, evalCtx, group.Conditions)
+		match, err := evaluateGroupConditions(ctx, registry, evalCtx, group.Conditions)
 		if err != nil {
 			return false, err
 		}
@@ -86,9 +84,7 @@ func evaluateConditionGroups(registry *strategy.StrategyRegistry, ctx context.Co
 }
 
 // evaluateGroupConditions evaluates a set of conditions using AND logic.
-//
-//nolint:revive // registry is the primary dependency
-func evaluateGroupConditions(registry *strategy.StrategyRegistry, ctx context.Context, evalCtx *approval.EvaluationContext, conditions []approval.Condition) (bool, error) {
+func evaluateGroupConditions(ctx context.Context, registry *strategy.StrategyRegistry, evalCtx *approval.EvaluationContext, conditions []approval.Condition) (bool, error) {
 	if len(conditions) == 0 {
 		return true, nil
 	}

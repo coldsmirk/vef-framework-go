@@ -13,7 +13,7 @@ import (
 type CCProcessor struct{}
 
 // NewCCProcessor creates a CCProcessor.
-func NewCCProcessor() *CCProcessor { return &CCProcessor{} }
+func NewCCProcessor() *CCProcessor { return new(CCProcessor) }
 
 func (*CCProcessor) NodeKind() approval.NodeKind { return approval.NodeCC }
 

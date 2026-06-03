@@ -7,6 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 )
 
@@ -167,7 +168,7 @@ func (s *HandleProcessorTestSuite) TestProcessEmptyAssignee() {
 		}))
 
 		_, err := s.processor.Process(s.Ctx, pc)
-		s.Require().ErrorIs(err, engine.ErrNoAssignee, "Should return ErrNoAssignee for unknown empty handler action")
+		s.Require().ErrorIs(err, shared.ErrNoAssignee, "Should return ErrNoAssignee for unknown empty handler action")
 	})
 }
 

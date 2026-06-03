@@ -281,7 +281,7 @@ func TestConditionProcessor(t *testing.T) {
 // TestEvaluateConditionGroups tests OR logic between condition groups.
 func TestEvaluateConditionGroups(t *testing.T) {
 	t.Run("EmptyGroups", func(t *testing.T) {
-		result, err := evaluateConditionGroups(nil, context.Background(), nil, nil)
+		result, err := evaluateConditionGroups(context.Background(), nil, nil, nil)
 		require.NoError(t, err, "Should not error on empty groups")
 		assert.True(t, result, "Should return true for empty groups")
 	})
@@ -292,7 +292,7 @@ func TestEvaluateConditionGroups(t *testing.T) {
 			{Conditions: []approval.Condition{{Kind: "test"}}},
 		}
 
-		result, err := evaluateConditionGroups(registry, context.Background(), &approval.EvaluationContext{}, groups)
+		result, err := evaluateConditionGroups(context.Background(), registry, &approval.EvaluationContext{}, groups)
 		require.NoError(t, err, "Should not error")
 		assert.True(t, result, "Should return true when single group matches")
 	})
@@ -304,7 +304,7 @@ func TestEvaluateConditionGroups(t *testing.T) {
 			{Conditions: []approval.Condition{{Kind: "test", Subject: "yes"}}},
 		}
 
-		result, err := evaluateConditionGroups(registry, context.Background(), &approval.EvaluationContext{}, groups)
+		result, err := evaluateConditionGroups(context.Background(), registry, &approval.EvaluationContext{}, groups)
 		require.NoError(t, err, "Should not error")
 		assert.True(t, result, "Should return true when second group matches (OR)")
 	})
@@ -316,7 +316,7 @@ func TestEvaluateConditionGroups(t *testing.T) {
 			{Conditions: []approval.Condition{{Kind: "test"}}},
 		}
 
-		result, err := evaluateConditionGroups(registry, context.Background(), &approval.EvaluationContext{}, groups)
+		result, err := evaluateConditionGroups(context.Background(), registry, &approval.EvaluationContext{}, groups)
 		require.NoError(t, err, "Should not error")
 		assert.False(t, result, "Should return false when all groups fail")
 	})
@@ -333,7 +333,7 @@ func TestEvaluateConditionGroups(t *testing.T) {
 			{Conditions: []approval.Condition{{Kind: "err"}}},
 		}
 
-		_, err := evaluateConditionGroups(registry, context.Background(), &approval.EvaluationContext{}, groups)
+		_, err := evaluateConditionGroups(context.Background(), registry, &approval.EvaluationContext{}, groups)
 		require.ErrorIs(t, err, evalErr, "Should propagate evaluation error")
 	})
 }
@@ -343,7 +343,7 @@ func TestEvaluateConditionGroups(t *testing.T) {
 // TestEvaluateGroupConditions tests AND logic within a condition group.
 func TestEvaluateGroupConditions(t *testing.T) {
 	t.Run("EmptyConditions", func(t *testing.T) {
-		result, err := evaluateGroupConditions(nil, context.Background(), nil, nil)
+		result, err := evaluateGroupConditions(context.Background(), nil, nil, nil)
 		require.NoError(t, err, "Should not error on empty conditions")
 		assert.True(t, result, "Should return true for empty conditions")
 	})
@@ -352,7 +352,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 		registry := newRegistry(alwaysMatch("test"))
 		conditions := []approval.Condition{{Kind: "test"}, {Kind: "test"}}
 
-		result, err := evaluateGroupConditions(registry, context.Background(), &approval.EvaluationContext{}, conditions)
+		result, err := evaluateGroupConditions(context.Background(), registry, &approval.EvaluationContext{}, conditions)
 		require.NoError(t, err, "Should not error")
 		assert.True(t, result, "Should return true when all conditions match")
 	})
@@ -364,7 +364,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 			{Kind: "test", Subject: "no"},
 		}
 
-		result, err := evaluateGroupConditions(registry, context.Background(), &approval.EvaluationContext{}, conditions)
+		result, err := evaluateGroupConditions(context.Background(), registry, &approval.EvaluationContext{}, conditions)
 		require.NoError(t, err, "Should not error")
 		assert.False(t, result, "Should return false when one condition fails (AND)")
 	})
@@ -373,7 +373,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 		registry := newRegistry() // empty registry
 		conditions := []approval.Condition{{Kind: "unknown"}}
 
-		_, err := evaluateGroupConditions(registry, context.Background(), &approval.EvaluationContext{}, conditions)
+		_, err := evaluateGroupConditions(context.Background(), registry, &approval.EvaluationContext{}, conditions)
 		require.Error(t, err, "Should error on unknown evaluator kind")
 		assert.Contains(t, err.Error(), "unknown", "Should mention the unknown kind")
 	})
@@ -388,7 +388,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 		})
 		conditions := []approval.Condition{{Kind: "err"}}
 
-		_, err := evaluateGroupConditions(registry, context.Background(), &approval.EvaluationContext{}, conditions)
+		_, err := evaluateGroupConditions(context.Background(), registry, &approval.EvaluationContext{}, conditions)
 		require.ErrorIs(t, err, evalErr, "Should propagate evaluator error")
 	})
 
@@ -409,7 +409,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 			}
 			evalCtx := &approval.EvaluationContext{FormData: approval.NewFormData(map[string]any{"amount": float64(1000)}), ApplicantID: "u1"}
 
-			match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			require.NoError(t, err, "Should not return error for valid field condition")
 			assert.True(t, match, "Should match when amount 1000 > 500")
 		})
@@ -420,7 +420,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 			}
 			evalCtx := &approval.EvaluationContext{FormData: approval.NewFormData(map[string]any{"amount": float64(1000)}), ApplicantID: "u1"}
 
-			match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			require.NoError(t, err, "Should not return error for valid field condition")
 			assert.False(t, match, "Should not match when amount 1000 is not > 2000")
 		})
@@ -435,7 +435,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 				ApplicantID: "u1",
 			}
 
-			match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			require.NoError(t, err, "Should not return error when all conditions are valid")
 			assert.True(t, match, "Should match when all AND conditions are satisfied")
 		})
@@ -450,7 +450,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 				ApplicantID: "u1",
 			}
 
-			match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			require.NoError(t, err, "Should not return error for valid conditions")
 			assert.False(t, match, "Should not match when one AND condition fails")
 		})
@@ -461,7 +461,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 			}
 			evalCtx := &approval.EvaluationContext{FormData: approval.NewFormData(nil), ApplicantID: "user_42"}
 
-			match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			require.NoError(t, err, "Should not return error for applicant field condition")
 			assert.True(t, match, "Should match when applicant ID equals expected value")
 		})
@@ -472,7 +472,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 			}
 			evalCtx := &approval.EvaluationContext{FormData: approval.NewFormData(nil), ApplicantID: "u1", ApplicantDepartmentID: new("dept_001")}
 
-			match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			require.NoError(t, err, "Should not return error for department condition")
 			assert.True(t, match, "Should match when department ID equals expected value")
 		})
@@ -483,7 +483,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 			}
 			evalCtx := &approval.EvaluationContext{FormData: approval.NewFormData(nil), ApplicantID: "u1", ApplicantDepartmentID: new("dept_001")}
 
-			match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			require.NoError(t, err, "Should not return error for department condition")
 			assert.False(t, match, "Should not match when department ID differs from expected value")
 		})
@@ -515,7 +515,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 					}
 					evalCtx := &approval.EvaluationContext{FormData: approval.NewFormData(tt.formData), ApplicantID: "u1"}
 
-					match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+					match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 					require.NoError(t, err, "Should not return error for valid condition")
 					assert.True(t, match, "Should match for operator %s", tt.operator)
 				})
@@ -530,7 +530,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 			}
 			evalCtx := &approval.EvaluationContext{FormData: approval.NewFormData(map[string]any{"amount": float64(1000)}), ApplicantID: "u1"}
 
-			match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			require.NoError(t, err, "Should not return error for valid expression")
 			assert.True(t, match, "Should match when expression evaluates to true")
 		})
@@ -541,7 +541,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 			}
 			evalCtx := &approval.EvaluationContext{FormData: approval.NewFormData(map[string]any{"amount": float64(100)}), ApplicantID: "u1"}
 
-			match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			require.NoError(t, err, "Should not return error for valid expression")
 			assert.False(t, match, "Should not match when expression evaluates to false")
 		})
@@ -552,7 +552,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 			}
 			evalCtx := &approval.EvaluationContext{FormData: approval.NewFormData(nil), ApplicantID: "admin_user"}
 
-			match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			require.NoError(t, err, "Should not return error for applicant expression")
 			assert.True(t, match, "Should match when applicant equals expected value")
 		})
@@ -563,7 +563,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 			}
 			evalCtx := &approval.EvaluationContext{FormData: approval.NewFormData(nil), ApplicantID: "u1", ApplicantDepartmentID: new("finance")}
 
-			match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			require.NoError(t, err, "Should not return error for department expression")
 			assert.True(t, match, "Should match when department equals expected value in expression")
 		})
@@ -574,7 +574,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 			}
 			evalCtx := &approval.EvaluationContext{FormData: approval.NewFormData(map[string]any{"amount": float64(500)}), ApplicantID: "user1"}
 
-			match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			require.NoError(t, err, "Should not return error for complex expression")
 			assert.True(t, match, "Should match for complex boolean expression")
 		})
@@ -585,7 +585,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 			}
 			evalCtx := &approval.EvaluationContext{FormData: approval.NewFormData(nil), ApplicantID: "u1"}
 
-			_, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			_, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			assert.Error(t, err, "Should return error for invalid expression syntax")
 		})
 	})
@@ -601,7 +601,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 				ApplicantID: "u1",
 			}
 
-			match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			require.NoError(t, err, "Should not return error for mixed conditions")
 			assert.True(t, match, "Should match when all mixed conditions are satisfied")
 		})
@@ -616,7 +616,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 				ApplicantID: "u1",
 			}
 
-			match, err := evaluateGroupConditions(realRegistry, t.Context(), evalCtx, conditions)
+			match, err := evaluateGroupConditions(t.Context(), realRegistry, evalCtx, conditions)
 			require.NoError(t, err, "Should not return error when expression simply does not match")
 			assert.False(t, match, "Should not match when expression condition fails in AND group")
 		})

@@ -1,8 +1,6 @@
 package engine
 
 import (
-	"fmt"
-
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
@@ -16,34 +14,27 @@ type State interface {
 	IsFinal() bool
 }
 
-// Transition defines a state transition.
-type Transition[S State] struct {
-	From  S
-	To    S
-	Event string
-}
-
 // StateMachine manages state transitions.
 type StateMachine[S State] struct {
 	name        string
-	transitions map[S]map[S]*Transition[S]
+	transitions map[S]map[S]struct{}
 }
 
 // NewStateMachine creates a new state machine with the given name.
 func NewStateMachine[S State](name string) *StateMachine[S] {
 	return &StateMachine[S]{
 		name:        name,
-		transitions: make(map[S]map[S]*Transition[S]),
+		transitions: make(map[S]map[S]struct{}),
 	}
 }
 
 // AddTransition registers a valid state transition.
-func (sm *StateMachine[S]) AddTransition(from, to S, event string) *StateMachine[S] {
+func (sm *StateMachine[S]) AddTransition(from, to S) *StateMachine[S] {
 	if sm.transitions[from] == nil {
-		sm.transitions[from] = make(map[S]*Transition[S])
+		sm.transitions[from] = make(map[S]struct{})
 	}
 
-	sm.transitions[from][to] = &Transition[S]{From: from, To: to, Event: event}
+	sm.transitions[from][to] = struct{}{}
 
 	return sm
 }
@@ -60,42 +51,18 @@ func (sm *StateMachine[S]) CanTransition(from, to S) bool {
 	return ok
 }
 
-// Transition performs a state transition, returning an error if invalid.
-func (sm *StateMachine[S]) Transition(from, to S) error {
-	if !sm.CanTransition(from, to) {
-		return fmt.Errorf("%w: %s from %s to %s", ErrInvalidTransition, sm.name, from, to)
-	}
-
-	return nil
-}
-
-// AvailableTransitions returns all valid target states from the given state.
-func (sm *StateMachine[S]) AvailableTransitions(from S) []S {
-	targets, ok := sm.transitions[from]
-	if !ok {
-		return nil
-	}
-
-	result := make([]S, 0, len(targets))
-	for to := range targets {
-		result = append(result, to)
-	}
-
-	return result
-}
-
 // InstanceStateMachine defines valid instance state transitions.
 var InstanceStateMachine = buildInstanceStateMachine()
 
 func buildInstanceStateMachine() *StateMachine[approval.InstanceStatus] {
 	sm := NewStateMachine[approval.InstanceStatus]("instance")
-	sm.AddTransition(approval.InstanceRunning, approval.InstanceApproved, "complete_approved")
-	sm.AddTransition(approval.InstanceRunning, approval.InstanceRejected, "complete_rejected")
-	sm.AddTransition(approval.InstanceRunning, approval.InstanceWithdrawn, "withdraw")
-	sm.AddTransition(approval.InstanceRunning, approval.InstanceTerminated, "terminate")
-	sm.AddTransition(approval.InstanceRunning, approval.InstanceReturned, "return_to_initiator")
-	sm.AddTransition(approval.InstanceReturned, approval.InstanceRunning, "resubmit")
-	sm.AddTransition(approval.InstanceWithdrawn, approval.InstanceRunning, "resubmit")
+	sm.AddTransition(approval.InstanceRunning, approval.InstanceApproved)
+	sm.AddTransition(approval.InstanceRunning, approval.InstanceRejected)
+	sm.AddTransition(approval.InstanceRunning, approval.InstanceWithdrawn)
+	sm.AddTransition(approval.InstanceRunning, approval.InstanceTerminated)
+	sm.AddTransition(approval.InstanceRunning, approval.InstanceReturned)
+	sm.AddTransition(approval.InstanceReturned, approval.InstanceRunning)
+	sm.AddTransition(approval.InstanceWithdrawn, approval.InstanceRunning)
 
 	return sm
 }
@@ -105,18 +72,18 @@ var TaskStateMachine = buildTaskStateMachine()
 
 func buildTaskStateMachine() *StateMachine[approval.TaskStatus] {
 	sm := NewStateMachine[approval.TaskStatus]("task")
-	sm.AddTransition(approval.TaskWaiting, approval.TaskPending, "activate")
-	sm.AddTransition(approval.TaskWaiting, approval.TaskCanceled, "cancel")
-	sm.AddTransition(approval.TaskWaiting, approval.TaskSkipped, "skip")
-	sm.AddTransition(approval.TaskWaiting, approval.TaskRemoved, "remove")
-	sm.AddTransition(approval.TaskPending, approval.TaskApproved, "approve")
-	sm.AddTransition(approval.TaskPending, approval.TaskHandled, "handle")
-	sm.AddTransition(approval.TaskPending, approval.TaskRejected, "reject")
-	sm.AddTransition(approval.TaskPending, approval.TaskTransferred, "transfer")
-	sm.AddTransition(approval.TaskPending, approval.TaskRolledBack, "rollback")
-	sm.AddTransition(approval.TaskPending, approval.TaskCanceled, "cancel")
-	sm.AddTransition(approval.TaskPending, approval.TaskWaiting, "wait_for_before")
-	sm.AddTransition(approval.TaskPending, approval.TaskRemoved, "remove")
+	sm.AddTransition(approval.TaskWaiting, approval.TaskPending)
+	sm.AddTransition(approval.TaskWaiting, approval.TaskCanceled)
+	sm.AddTransition(approval.TaskWaiting, approval.TaskSkipped)
+	sm.AddTransition(approval.TaskWaiting, approval.TaskRemoved)
+	sm.AddTransition(approval.TaskPending, approval.TaskApproved)
+	sm.AddTransition(approval.TaskPending, approval.TaskHandled)
+	sm.AddTransition(approval.TaskPending, approval.TaskRejected)
+	sm.AddTransition(approval.TaskPending, approval.TaskTransferred)
+	sm.AddTransition(approval.TaskPending, approval.TaskRolledBack)
+	sm.AddTransition(approval.TaskPending, approval.TaskCanceled)
+	sm.AddTransition(approval.TaskPending, approval.TaskWaiting)
+	sm.AddTransition(approval.TaskPending, approval.TaskRemoved)
 
 	return sm
 }

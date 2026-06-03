@@ -10,7 +10,7 @@ import (
 type EndProcessor struct{}
 
 // NewEndProcessor creates an EndProcessor.
-func NewEndProcessor() NodeProcessor { return &EndProcessor{} }
+func NewEndProcessor() *EndProcessor { return new(EndProcessor) }
 
 func (*EndProcessor) NodeKind() approval.NodeKind { return approval.NodeEnd }
 
