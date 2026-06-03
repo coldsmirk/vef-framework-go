@@ -51,9 +51,24 @@ func settableFloat() reflect.Value {
 	return reflect.New(reflect.TypeFor[float64]()).Elem()
 }
 
+// OrderingEngine records the order in which expressions are evaluated.
+type OrderingEngine struct {
+	sources []string
+}
+
+func (e *OrderingEngine) Evaluate(_ context.Context, source string, _ any) (expression.Value, error) {
+	e.sources = append(e.sources, source)
+
+	return expression.NewValue(float64(0)), nil
+}
+
+func (*OrderingEngine) Compile(string, ...expression.CompileOption) (expression.Program, error) {
+	return nil, nil
+}
+
 func TestFieldTransformer(t *testing.T) {
 	t.Run("Tag", func(t *testing.T) {
-		assert.Equal(t, "expr", NewFieldTransformer(new(CapturingEngine)).Tag(), "tag should be expr")
+		assert.Equal(t, "expr", NewFieldTransformer(new(CapturingEngine)).Tag(), "Tag should be expr")
 	})
 
 	t.Run("Success", func(t *testing.T) {
@@ -71,10 +86,10 @@ func TestFieldTransformer(t *testing.T) {
 			field: field,
 			str:   reflect.ValueOf(env),
 		})
-		require.NoError(t, err, "transform should succeed")
-		assert.Equal(t, float64(6), field.Float(), "field should be set to the engine result")
-		assert.Equal(t, "price * qty", eng.gotSource, "source should be the tag param")
-		assert.Equal(t, env, eng.gotEnv, "env should be the containing struct")
+		require.NoError(t, err, "Transform should succeed")
+		assert.Equal(t, float64(6), field.Float(), "Field should be set to the engine result")
+		assert.Equal(t, "price * qty", eng.gotSource, "Source should be the tag param")
+		assert.Equal(t, env, eng.gotEnv, "Env should be the containing struct")
 	})
 
 	t.Run("NilEnvWithoutStruct", func(t *testing.T) {
@@ -84,8 +99,8 @@ func TestFieldTransformer(t *testing.T) {
 			param: "1 + 1",
 			field: settableFloat(),
 		})
-		require.NoError(t, err, "transform should succeed without a struct env")
-		assert.Nil(t, eng.gotEnv, "env should be nil when no struct is available")
+		require.NoError(t, err, "Transform should succeed without a struct env")
+		assert.Nil(t, eng.gotEnv, "Env should be nil when no struct is available")
 	})
 
 	t.Run("EmptyExpression", func(t *testing.T) {
@@ -93,7 +108,7 @@ func TestFieldTransformer(t *testing.T) {
 			param: "",
 			field: settableFloat(),
 		})
-		assert.ErrorIs(t, err, ErrEmptyExpression, "empty expression should error")
+		assert.ErrorIs(t, err, ErrEmptyExpression, "Empty expression should error")
 	})
 
 	t.Run("NotSettable", func(t *testing.T) {
@@ -101,7 +116,7 @@ func TestFieldTransformer(t *testing.T) {
 			param: "x",
 			field: reflect.ValueOf(3.0), // not addressable
 		})
-		assert.ErrorIs(t, err, ErrFieldNotSettable, "non-settable field should error")
+		assert.ErrorIs(t, err, ErrFieldNotSettable, "Non-settable field should error")
 	})
 
 	t.Run("DecodeError", func(t *testing.T) {
@@ -109,7 +124,7 @@ func TestFieldTransformer(t *testing.T) {
 		field := reflect.New(reflect.TypeFor[int]()).Elem()
 
 		err := NewFieldTransformer(eng).Transform(context.Background(), FakeFieldLevel{param: "x", field: field})
-		require.Error(t, err, "decoding a string into int should fail")
+		require.Error(t, err, "Decoding a string into int should fail")
 	})
 }
 
@@ -130,29 +145,14 @@ func TestFieldTransformerWithMold(t *testing.T) {
 
 	row := Row{Price: 2, Qty: 3}
 	err := transformer.Struct(context.Background(), &row)
-	require.NoError(t, err, "mold struct walk should succeed")
+	require.NoError(t, err, "Mold struct walk should succeed")
 
 	assert.Equal(t, float64(6), row.Total, "Total should be computed by the expression")
-	assert.Equal(t, "price * qty", eng.gotSource, "engine should receive the tag expression")
+	assert.Equal(t, "price * qty", eng.gotSource, "Engine should receive the tag expression")
 
 	got, ok := eng.gotEnv.(Row)
-	require.True(t, ok, "env should be the containing struct")
-	assert.Equal(t, float64(2), got.Price, "env should carry sibling values")
-}
-
-// OrderingEngine records the order in which expressions are evaluated.
-type OrderingEngine struct {
-	sources []string
-}
-
-func (e *OrderingEngine) Evaluate(_ context.Context, source string, _ any) (expression.Value, error) {
-	e.sources = append(e.sources, source)
-
-	return expression.NewValue(float64(0)), nil
-}
-
-func (*OrderingEngine) Compile(string, ...expression.CompileOption) (expression.Program, error) {
-	return nil, nil
+	require.True(t, ok, "Env should be the containing struct")
+	assert.Equal(t, float64(2), got.Price, "Env should carry sibling values")
 }
 
 // TestFieldTransformerEvaluationOrder guards against non-deterministic field
@@ -174,7 +174,7 @@ func TestFieldTransformerEvaluationOrder(t *testing.T) {
 		transformer.Register(field.Tag(), field.Transform)
 
 		row := Row{}
-		require.NoError(t, transformer.Struct(context.Background(), &row), "mold struct walk should succeed")
-		assert.Equal(t, []string{"1", "2", "3", "4"}, eng.sources, "expr fields must evaluate in declaration order")
+		require.NoError(t, transformer.Struct(context.Background(), &row), "Mold struct walk should succeed")
+		assert.Equal(t, []string{"1", "2", "3", "4"}, eng.sources, "Expr fields must evaluate in declaration order")
 	}
 }

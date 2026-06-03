@@ -64,16 +64,16 @@ func TestEvaluateAs(t *testing.T) {
 		eng := &StubEngine{value: expression.NewValue(float64(7))}
 		got, err := expression.EvaluateAs[int](context.Background(), eng, "3 + 4", map[string]any{"k": "v"})
 		require.NoError(t, err, "EvaluateAs should succeed")
-		assert.Equal(t, 7, got, "should decode result to int")
-		assert.Equal(t, "3 + 4", eng.gotSource, "source should pass through")
-		assert.Equal(t, map[string]any{"k": "v"}, eng.gotEnv, "env should pass through")
+		assert.Equal(t, 7, got, "Should decode result to int")
+		assert.Equal(t, "3 + 4", eng.gotSource, "Source should pass through")
+		assert.Equal(t, map[string]any{"k": "v"}, eng.gotEnv, "Env should pass through")
 	})
 
 	t.Run("Error", func(t *testing.T) {
 		sentinel := errors.New("boom")
 		eng := &StubEngine{err: sentinel}
 		_, err := expression.EvaluateAs[int](context.Background(), eng, "x", nil)
-		require.ErrorIs(t, err, sentinel, "engine error should propagate")
+		require.ErrorIs(t, err, sentinel, "Engine error should propagate")
 	})
 }
 
@@ -84,13 +84,13 @@ func TestMatch(t *testing.T) {
 		require.NoError(t, err, "Match should succeed")
 		assert.True(t, ok, "Match should return the boolean result")
 		assert.True(t, eng.gotPredicate, "Match should compile with AsPredicate")
-		assert.Equal(t, map[string]any{"$": 10}, eng.gotEnv, "env should pass through")
+		assert.Equal(t, map[string]any{"$": 10}, eng.gotEnv, "Env should pass through")
 	})
 
 	t.Run("Error", func(t *testing.T) {
 		sentinel := errors.New("boom")
 		eng := &StubEngine{err: sentinel}
 		_, err := expression.Match(context.Background(), eng, "x", nil)
-		require.ErrorIs(t, err, sentinel, "compile error should propagate")
+		require.ErrorIs(t, err, sentinel, "Compile error should propagate")
 	})
 }

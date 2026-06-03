@@ -27,7 +27,7 @@ func TestEngineResolver(t *testing.T) {
 	resolver := NewEngineResolver(eng)
 
 	t.Run("Type", func(t *testing.T) {
-		assert.Equal(t, reflect.TypeFor[expression.Engine](), resolver.Type(), "resolver should handle expression.Engine")
+		assert.Equal(t, reflect.TypeFor[expression.Engine](), resolver.Type(), "Resolver should handle expression.Engine")
 	})
 
 	t.Run("Resolve", func(t *testing.T) {
@@ -35,7 +35,7 @@ func TestEngineResolver(t *testing.T) {
 		require.NoError(t, err, "Resolve should not error")
 
 		got, ok := value.Interface().(*StubEngine)
-		require.True(t, ok, "resolved value should be the engine")
-		assert.Same(t, eng, got, "resolved engine should be the provided instance")
+		require.True(t, ok, "Resolved value should be the engine")
+		assert.Same(t, eng, got, "Resolved engine should be the provided instance")
 	})
 }

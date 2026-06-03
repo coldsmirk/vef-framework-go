@@ -14,18 +14,18 @@ import (
 
 func TestErrEvaluationFailed(t *testing.T) {
 	t.Run("Code", func(t *testing.T) {
-		assert.Equal(t, expression.ErrCodeEvaluationFailed, expression.ErrEvaluationFailed.Code, "sentinel should carry its code")
+		assert.Equal(t, expression.ErrCodeEvaluationFailed, expression.ErrEvaluationFailed.Code, "Sentinel should carry its code")
 	})
 
 	t.Run("WrappedIdentity", func(t *testing.T) {
 		cause := errors.New("zen: bad expression")
 		err := fmt.Errorf("%w: %w", expression.ErrEvaluationFailed, cause)
 
-		assert.ErrorIs(t, err, expression.ErrEvaluationFailed, "wrapped error should match the sentinel by code")
-		assert.ErrorIs(t, err, cause, "wrapped error should preserve the cause")
+		assert.ErrorIs(t, err, expression.ErrEvaluationFailed, "Wrapped error should match the sentinel by code")
+		assert.ErrorIs(t, err, cause, "Wrapped error should preserve the cause")
 
 		got, ok := result.AsErr(err)
-		require.True(t, ok, "result.AsErr should extract the business error")
-		assert.Equal(t, expression.ErrCodeEvaluationFailed, got.Code, "extracted error should carry the code")
+		require.True(t, ok, "Business error should be extracted via result.AsErr")
+		assert.Equal(t, expression.ErrCodeEvaluationFailed, got.Code, "Extracted error should carry the code")
 	})
 }
