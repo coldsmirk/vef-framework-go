@@ -3,7 +3,6 @@ package schema
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 
 	"ariga.io/atlas/sql/mysql"
@@ -16,69 +15,63 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 )
 
-// Inspector wraps Atlas inspection capabilities for read-only schema inspection.
-type Inspector interface {
-	// InspectSchema inspects the current database schema.
-	InspectSchema(ctx context.Context) (*as.Schema, error)
-	// InspectTable inspects a specific table.
-	InspectTable(ctx context.Context, name string) (*as.Table, error)
-	// InspectViews inspects all views in the current database schema.
-	InspectViews(ctx context.Context) ([]*as.View, error)
-}
-
-var ErrUnsupportedDBKind = errors.New("unsupported database type")
-
+// AtlasInspector performs read-only schema inspection backed by Atlas.
 type AtlasInspector struct {
-	inspector as.Inspector
-	db        *sql.DB
-	kind      config.DBKind
-	schema    string
+	inspector    as.Inspector
+	db           *sql.DB
+	schema       string
+	inspectViews func(ctx context.Context) ([]*as.View, error)
 }
 
 // NewInspector creates a new Atlas Inspector for the given database connection.
-func NewInspector(db *sql.DB, kind config.DBKind, schemaName string) (Inspector, error) {
+func NewInspector(db *sql.DB, kind config.DBKind, schemaName string) (*AtlasInspector, error) {
 	var (
 		inspector as.Inspector
 		schema    string
 		err       error
 	)
 
+	i := &AtlasInspector{db: db}
+
 	switch kind {
 	case config.Postgres:
 		inspector, err = postgres.Open(db)
 		schema = lo.CoalesceOrEmpty(schemaName, "public")
+		i.inspectViews = i.inspectPostgresViews
 
 	case config.MySQL:
 		inspector, err = mysql.Open(db)
 		// For MySQL, schema is the database name, which is already set in the connection
 		schema = ""
+		i.inspectViews = i.inspectMySQLViews
 
 	case config.SQLite:
 		inspector, err = sqlite.Open(db)
 		schema = "main"
+		i.inspectViews = i.inspectSQLiteViews
 
 	default:
-		return nil, fmt.Errorf("%w: %s", ErrUnsupportedDBKind, kind)
+		return nil, fmt.Errorf("%w: %s", errUnsupportedDBKind, kind)
 	}
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to open %s inspector: %w", kind, err)
 	}
 
-	return &AtlasInspector{
-		inspector: inspector,
-		db:        db,
-		kind:      kind,
-		schema:    schema,
-	}, nil
+	i.inspector = inspector
+	i.schema = schema
+
+	return i, nil
 }
 
+// InspectSchema inspects the current database schema.
 func (i *AtlasInspector) InspectSchema(ctx context.Context) (*as.Schema, error) {
 	return i.inspector.InspectSchema(ctx, i.schema, &as.InspectOptions{
 		Mode: as.InspectTables,
 	})
 }
 
+// InspectTable inspects a specific table, returning ErrTableMissing if it does not exist.
 func (i *AtlasInspector) InspectTable(ctx context.Context, name string) (*as.Table, error) {
 	schema, err := i.inspector.InspectSchema(ctx, i.schema, &as.InspectOptions{
 		Tables: []string{name},
@@ -94,17 +87,9 @@ func (i *AtlasInspector) InspectTable(ctx context.Context, name string) (*as.Tab
 	return schema.Tables[0], nil
 }
 
+// InspectViews inspects all views in the current database schema.
 func (i *AtlasInspector) InspectViews(ctx context.Context) ([]*as.View, error) {
-	switch i.kind {
-	case config.Postgres:
-		return i.inspectPostgresViews(ctx)
-	case config.MySQL:
-		return i.inspectMySQLViews(ctx)
-	case config.SQLite:
-		return i.inspectSQLiteViews(ctx)
-	default:
-		return nil, fmt.Errorf("%w: %s", ErrUnsupportedDBKind, i.kind)
-	}
+	return i.inspectViews(ctx)
 }
 
 func (i *AtlasInspector) inspectPostgresViews(ctx context.Context) ([]*as.View, error) {

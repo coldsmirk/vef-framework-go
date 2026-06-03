@@ -338,7 +338,6 @@ func (s *SchemaResourceTestSuite) cleanupTestTables(db *sql.DB, _ config.DBKind)
 	_, _ = db.ExecContext(s.ctx, "DROP TABLE IF EXISTS resource_test_orders")
 }
 
-// TestSchemaResourceTestSuite tests schema resource test suite functionality.
 func TestSchemaResource(t *testing.T) {
 	suite.Run(t, new(SchemaResourceTestSuite))
 }

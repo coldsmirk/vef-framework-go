@@ -5,6 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 
+	"ariga.io/atlas/sql/mysql"
+	"ariga.io/atlas/sql/postgres"
+	"ariga.io/atlas/sql/sqlite"
+
 	as "ariga.io/atlas/sql/schema"
 
 	"github.com/coldsmirk/vef-framework-go/config"
@@ -13,7 +17,7 @@ import (
 
 // DefaultService is the default implementation of schema.Service.
 type DefaultService struct {
-	inspector Inspector
+	inspector *AtlasInspector
 }
 
 // NewService creates a new schema service backed by the primary data source.
@@ -36,13 +40,13 @@ func NewService(db *sql.DB, dataSources *config.DataSourcesConfig) (schema.Servi
 
 // ListTables returns all tables in the current database/schema.
 func (s *DefaultService) ListTables(ctx context.Context) ([]schema.Table, error) {
-	result, err := s.inspector.InspectSchema(ctx)
+	inspected, err := s.inspector.InspectSchema(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect schema: %w", err)
 	}
 
-	tables := make([]schema.Table, len(result.Tables))
-	for i, t := range result.Tables {
+	tables := make([]schema.Table, len(inspected.Tables))
+	for i, t := range inspected.Tables {
 		table := schema.Table{
 			Name:    t.Name,
 			Comment: extractComment(t.Attrs),
@@ -64,11 +68,11 @@ func (s *DefaultService) GetTableSchema(ctx context.Context, name string) (*sche
 		return nil, fmt.Errorf("failed to inspect table: %w", err)
 	}
 
-	return s.convertTable(table), nil
+	return convertTable(table), nil
 }
 
 // convertTable converts an Atlas table to a schema.TableSchema.
-func (s *DefaultService) convertTable(t *as.Table) *schema.TableSchema {
+func convertTable(t *as.Table) *schema.TableSchema {
 	info := schema.TableSchema{
 		Name:    t.Name,
 		Columns: make([]schema.Column, len(t.Columns)),
@@ -78,17 +82,17 @@ func (s *DefaultService) convertTable(t *as.Table) *schema.TableSchema {
 		info.Schema = t.Schema.Name
 	}
 
-	pkColumns := s.extractPrimaryKey(t, &info)
-	s.convertColumns(t, &info, pkColumns)
-	s.convertIndexes(t, &info)
-	s.convertForeignKeys(t, &info)
-	s.convertTableAttributes(t, &info)
+	pkColumns := extractPrimaryKey(t, &info)
+	convertColumns(t, &info, pkColumns)
+	convertIndexes(t, &info)
+	convertForeignKeys(t, &info)
+	convertTableAttributes(t, &info)
 
 	return &info
 }
 
 // extractPrimaryKey extracts primary key information and returns a set of primary key column names.
-func (*DefaultService) extractPrimaryKey(t *as.Table, info *schema.TableSchema) map[string]bool {
+func extractPrimaryKey(t *as.Table, info *schema.TableSchema) map[string]bool {
 	pkColumns := make(map[string]bool)
 
 	if t.PrimaryKey == nil {
@@ -114,7 +118,7 @@ func (*DefaultService) extractPrimaryKey(t *as.Table, info *schema.TableSchema) 
 }
 
 // convertColumns converts Atlas columns to schema columns.
-func (*DefaultService) convertColumns(t *as.Table, info *schema.TableSchema, pkColumns map[string]bool) {
+func convertColumns(t *as.Table, info *schema.TableSchema, pkColumns map[string]bool) {
 	for i, col := range t.Columns {
 		colInfo := schema.Column{
 			Name:            col.Name,
@@ -136,7 +140,7 @@ func (*DefaultService) convertColumns(t *as.Table, info *schema.TableSchema, pkC
 }
 
 // convertIndexes converts Atlas indexes to schema indexes and unique keys.
-func (*DefaultService) convertIndexes(t *as.Table, info *schema.TableSchema) {
+func convertIndexes(t *as.Table, info *schema.TableSchema) {
 	for _, idx := range t.Indexes {
 		columns := extractIndexColumns(idx.Parts)
 
@@ -155,7 +159,7 @@ func (*DefaultService) convertIndexes(t *as.Table, info *schema.TableSchema) {
 }
 
 // convertForeignKeys converts Atlas foreign keys to schema foreign keys.
-func (*DefaultService) convertForeignKeys(t *as.Table, info *schema.TableSchema) {
+func convertForeignKeys(t *as.Table, info *schema.TableSchema) {
 	for _, fk := range t.ForeignKeys {
 		fkInfo := schema.ForeignKey{
 			Name:       fk.Symbol,
@@ -182,7 +186,7 @@ func (*DefaultService) convertForeignKeys(t *as.Table, info *schema.TableSchema)
 }
 
 // convertTableAttributes converts Atlas table attributes to schema attributes.
-func (*DefaultService) convertTableAttributes(t *as.Table, info *schema.TableSchema) {
+func convertTableAttributes(t *as.Table, info *schema.TableSchema) {
 	for _, attr := range t.Attrs {
 		switch a := attr.(type) {
 		case *as.Comment:
@@ -237,20 +241,17 @@ func referentialActionToString(action as.ReferenceOption) string {
 	}
 }
 
-// hasAutoIncrement checks if a column has auto-increment attribute.
+// hasAutoIncrement reports whether a column auto-generates its value: MySQL
+// AUTO_INCREMENT, SQLite AUTOINCREMENT, or PostgreSQL GENERATED ... AS IDENTITY.
 func hasAutoIncrement(col *as.Column) bool {
 	for _, attr := range col.Attrs {
-		typeName := fmt.Sprintf("%T", attr)
-		if typeName == "*mysql.AutoIncrement" || typeName == "*sqlite.AutoIncrement" {
+		switch attr.(type) {
+		case *mysql.AutoIncrement, *sqlite.AutoIncrement, *postgres.Identity:
 			return true
 		}
 	}
 
-	if col.Type == nil || col.Type.Raw == "" {
-		return false
-	}
-
-	// PostgreSQL uses SERIAL types which show up in the type raw string
+	// PostgreSQL SERIAL pseudo-types surface only in the raw type string.
 	switch col.Type.Raw {
 	case "serial", "bigserial", "smallserial", "SERIAL", "BIGSERIAL", "SMALLSERIAL":
 		return true
@@ -266,7 +267,7 @@ func (s *DefaultService) ListViews(ctx context.Context) ([]schema.View, error) {
 		return nil, fmt.Errorf("failed to inspect views: %w", err)
 	}
 
-	result := make([]schema.View, len(views))
+	converted := make([]schema.View, len(views))
 	for i, v := range views {
 		view := schema.View{
 			Name:       v.Name,
@@ -278,10 +279,10 @@ func (s *DefaultService) ListViews(ctx context.Context) ([]schema.View, error) {
 			view.Schema = v.Schema.Name
 		}
 
-		result[i] = view
+		converted[i] = view
 	}
 
-	return result, nil
+	return converted, nil
 }
 
 // extractColumnNames extracts column names from a slice of columns.

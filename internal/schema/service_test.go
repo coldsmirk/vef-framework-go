@@ -132,36 +132,35 @@ func (suite *ServiceTestSuite) runServiceTests(dsConfig *config.DataSourceConfig
 		tableSchema, err := svc.GetTableSchema(suite.ctx, "service_test_products")
 		suite.NoError(err, "GetTableSchema should succeed")
 
-		suite.T().Logf("%s service_test_products indexes: %d", dbKind, len(tableSchema.Indexes))
-
-		for _, idx := range tableSchema.Indexes {
-			suite.T().Logf("  Index: %s, Columns: %v", idx.Name, idx.Columns)
+		indexColumns := make([][]string, len(tableSchema.Indexes))
+		for i, idx := range tableSchema.Indexes {
+			indexColumns[i] = idx.Columns
 		}
 
-		suite.T().Logf("%s service_test_products unique keys: %d", dbKind, len(tableSchema.UniqueKeys))
+		suite.NotEmpty(tableSchema.Indexes, "service_test_products should report at least one index")
+		suite.Contains(indexColumns, []string{"category_id"}, "Should report the category_id index")
+		suite.Contains(indexColumns, []string{"price"}, "Should report the price index")
 
-		for _, uk := range tableSchema.UniqueKeys {
-			suite.T().Logf("  UniqueKey: %s, Columns: %v", uk.Name, uk.Columns)
+		uniqueColumns := make([][]string, len(tableSchema.UniqueKeys))
+		for i, uk := range tableSchema.UniqueKeys {
+			uniqueColumns[i] = uk.Columns
 		}
+
+		suite.NotEmpty(tableSchema.UniqueKeys, "service_test_products should report the sku unique key")
+		suite.Contains(uniqueColumns, []string{"sku"}, "Unique key should cover the sku column")
 	})
 
 	suite.Run("GetTableSchemaWithForeignKeys", func() {
 		tableSchema, err := svc.GetTableSchema(suite.ctx, "service_test_products")
 		suite.NoError(err, "GetTableSchema should succeed")
 
-		suite.T().Logf("%s service_test_products foreign keys: %d", dbKind, len(tableSchema.ForeignKeys))
+		suite.Require().Len(tableSchema.ForeignKeys, 1, "service_test_products should report exactly one foreign key")
 
-		for _, fk := range tableSchema.ForeignKeys {
-			suite.T().Logf("  ForeignKey: %s, Columns: %v -> %s(%v), OnDelete: %s, OnUpdate: %s",
-				fk.Name, fk.Columns, fk.RefTable, fk.RefColumns, fk.OnDelete, fk.OnUpdate)
-		}
-
-		if len(tableSchema.ForeignKeys) > 0 {
-			fk := tableSchema.ForeignKeys[0]
-			suite.NotEmpty(fk.Columns, "FK columns should not be empty")
-			suite.NotEmpty(fk.RefTable, "FK ref table should not be empty")
-			suite.NotEmpty(fk.RefColumns, "FK ref columns should not be empty")
-		}
+		fk := tableSchema.ForeignKeys[0]
+		suite.Equal([]string{"category_id"}, fk.Columns, "FK should be on category_id")
+		suite.Equal("service_test_categories", fk.RefTable, "FK should reference service_test_categories")
+		suite.Equal([]string{"id"}, fk.RefColumns, "FK should reference the id column")
+		suite.Equal("CASCADE", fk.OnDelete, "FK should cascade on delete")
 	})
 
 	suite.Run("ListViews", func() {
@@ -182,6 +181,34 @@ func (suite *ServiceTestSuite) runServiceTests(dsConfig *config.DataSourceConfig
 		_, err := svc.GetTableSchema(suite.ctx, "nonexistent_table_xyz")
 		suite.Error(err, "GetTableSchema should return error for nonexistent table")
 	})
+
+	if dbKind == "PostgreSQL" {
+		suite.Run("GetTableSchemaWithIdentityColumn", func() {
+			_, err := db.ExecContext(suite.ctx, `
+				CREATE TABLE IF NOT EXISTS service_test_identity (
+					id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+					name VARCHAR(100) NOT NULL
+				)`)
+			suite.Require().NoError(err, "Creating service_test_identity table should succeed")
+
+			defer func() {
+				_, _ = db.ExecContext(suite.ctx, "DROP TABLE IF EXISTS service_test_identity")
+			}()
+
+			tableSchema, err := svc.GetTableSchema(suite.ctx, "service_test_identity")
+			suite.Require().NoError(err, "GetTableSchema should succeed")
+
+			var idCol pkgschema.Column
+			for _, col := range tableSchema.Columns {
+				if col.Name == "id" {
+					idCol = col
+				}
+			}
+
+			suite.Equal("id", idCol.Name, "Should find the id column")
+			suite.True(idCol.IsAutoIncrement, "GENERATED ALWAYS AS IDENTITY id should be auto increment")
+		})
+	}
 }
 
 func (suite *ServiceTestSuite) setupTestTables(db *sql.DB, dbKind config.DBKind) {
@@ -294,7 +321,6 @@ func (suite *ServiceTestSuite) cleanupTestTables(db *sql.DB) {
 	_, _ = db.ExecContext(suite.ctx, "DROP TABLE IF EXISTS service_test_categories")
 }
 
-// TestServiceTestSuite tests service test suite functionality.
 func TestService(t *testing.T) {
 	suite.Run(t, new(ServiceTestSuite))
 }
