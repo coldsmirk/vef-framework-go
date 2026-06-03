@@ -147,13 +147,24 @@ func (s *Service) DeleteObject(ctx context.Context, opts storage.DeleteObjectOpt
 }
 
 func (s *Service) DeleteObjects(ctx context.Context, opts storage.DeleteObjectsOptions) error {
-	objectsCh := make(chan minio.ObjectInfo, len(opts.Keys))
+	// Small bounded buffer: the SDK docs recommend a buffered channel so
+	// the producer does not block the caller's goroutine while the SDK
+	// issues DELETE batches. 16 is sufficient for any realistic batch and
+	// avoids the unbounded allocation that len(opts.Keys) causes on large
+	// inputs.
+	const feedBufSize = 16
+
+	objectsCh := make(chan minio.ObjectInfo, feedBufSize)
 
 	go func() {
 		defer close(objectsCh)
 
 		for _, key := range opts.Keys {
-			objectsCh <- minio.ObjectInfo{Key: key}
+			select {
+			case objectsCh <- minio.ObjectInfo{Key: key}:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
@@ -189,11 +200,20 @@ func (s *Service) CopyObject(ctx context.Context, opts storage.CopyObjectOptions
 		return nil, s.translateError(err)
 	}
 
+	// The minio CopyObject result does not carry ContentType; retrieve it
+	// from a StatObject on the destination (one extra round-trip, but
+	// keeps ContentType consistent with PutObject and StatObject callers).
+	destStat, err := s.client.StatObject(ctx, s.bucket, opts.DestKey, minio.StatObjectOptions{})
+	if err != nil {
+		return nil, s.translateError(err)
+	}
+
 	return &storage.ObjectInfo{
 		Bucket:       info.Bucket,
 		Key:          info.Key,
 		ETag:         info.ETag,
 		Size:         info.Size,
+		ContentType:  destStat.ContentType,
 		LastModified: info.LastModified,
 	}, nil
 }

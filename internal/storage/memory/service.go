@@ -14,8 +14,12 @@ import (
 )
 
 const (
-	partSize   int64 = 64 * 1024 // 64 KiB — small for fast multi-part test coverage
-	bucketName       = "memory"
+	partSize int64 = 64 * 1024 // 64 KiB — small for fast multi-part test coverage
+
+	// bucketName is a sentinel used in ObjectInfo.Bucket for this backend.
+	// The memory backend is bucket-less; this constant signals that
+	// divergence from minio's real-bucket semantics intentionally.
+	bucketName = "memory"
 )
 
 // Service is intended for testing purposes only.

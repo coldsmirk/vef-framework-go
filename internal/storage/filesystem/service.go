@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"os"
 	"path"
@@ -26,6 +27,9 @@ import (
 const (
 	partSize int64 = 4 * 1024 * 1024 // 4 MiB
 
+	// bucketName is a sentinel used in ObjectInfo.Bucket for this backend.
+	// The filesystem backend is bucket-less; this constant signals that
+	// divergence from minio's real-bucket semantics intentionally.
 	bucketName = "filesystem"
 
 	// multipartDir is the hidden directory under root that holds in-flight
@@ -39,10 +43,10 @@ const (
 	tmpDir = ".tmp"
 
 	// etagsDir is the hidden directory under root that mirrors the object
-	// tree and stores one small text file per object containing its MD5
-	// ETag. Persisting the ETag at write time avoids re-reading the entire
-	// object on every StatObject call (which the file proxy invokes per
-	// request). Skipped by ListObjects.
+	// tree and stores one small JSON sidecar per object carrying its MD5
+	// ETag and ContentType. Persisting these at write time avoids
+	// re-reading the entire object on every StatObject call (which the
+	// file proxy invokes per request). Skipped by ListObjects.
 	etagsDir = ".etags"
 )
 
@@ -169,87 +173,140 @@ func writeFileAtomic(path string, data []byte) error {
 	return nil
 }
 
-// writeETag persists etag to the sidecar tree for key. Failures are
-// non-fatal for the caller's main operation — the ETag is a cache hint,
-// not a correctness invariant — so the error is returned for logging
-// rather than propagated as a write failure.
-func (s *Service) writeETag(key, etag string) error {
-	path, err := s.etagPath(key)
+// objectMeta is the JSON structure stored in the .etags sidecar tree.
+// It carries the MD5 ETag and the caller-supplied ContentType so that
+// StatObject and CopyObject can return them without re-deriving from the
+// file extension. The sidecar is written atomically (tmp+rename) and is
+// a cache/hint, not a correctness invariant.
+type objectMeta struct {
+	ETag        string `json:"etag"`
+	ContentType string `json:"contentType"`
+}
+
+// writeMeta persists etag and contentType to the sidecar tree for key.
+// Errors are returned for logging by callers; the sidecar is advisory.
+func (s *Service) writeMeta(key, etag, contentType string) error {
+	p, err := s.etagPath(key)
 	if err != nil {
 		return err
 	}
 
-	return writeFileAtomic(path, []byte(etag))
-}
-
-// readETag returns the persisted ETag for key, or "" if no sidecar
-// exists (e.g. object written by an older version, or sidecar removed).
-// A missing sidecar is not an error: callers fall back to an empty ETag.
-func (s *Service) readETag(key string) (string, error) {
-	path, err := s.etagPath(key)
+	data, err := json.Marshal(objectMeta{ETag: etag, ContentType: contentType})
 	if err != nil {
-		return "", err
+		return fmt.Errorf("filesystem: marshal sidecar: %w", err)
 	}
 
-	data, err := os.ReadFile(path)
+	return writeFileAtomic(p, data)
+}
+
+// readMeta returns the persisted ETag and ContentType for key.
+// If no sidecar exists (legacy object or sidecar lost), it falls back to
+// the plain-text ETag format written by older versions of the service.
+// Missing sidecar is not an error: callers treat an empty ETag as
+// "no validator" and derive ContentType from the file extension.
+func (s *Service) readMeta(key string) (etag, contentType string, err error) {
+	p, err := s.etagPath(key)
+	if err != nil {
+		return "", "", err
+	}
+
+	data, err := os.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", nil
+			return "", "", nil
 		}
 
-		return "", err
+		return "", "", err
 	}
 
-	return string(data), nil
+	// Attempt JSON decode (current format). Fall back to plain-text ETag
+	// written by the previous single-field sidecar (legacy objects).
+	var m objectMeta
+	if jsonErr := json.Unmarshal(data, &m); jsonErr != nil {
+		// Legacy sidecar: raw hex string, no ContentType recorded.
+		return string(data), "", nil
+	}
+
+	return m.ETag, m.ContentType, nil
 }
 
-// removeETag deletes the sidecar for key. Idempotent.
-func (s *Service) removeETag(key string) {
-	path, err := s.etagPath(key)
+// removeMeta deletes the sidecar for key. Non-NotExist errors are logged
+// because they indicate a real IO or permission problem. Idempotent.
+func (s *Service) removeMeta(key string) {
+	p, err := s.etagPath(key)
 	if err != nil {
 		return
 	}
 
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(p); err != nil {
+		if !os.IsNotExist(err) {
+			slog.Error("filesystem: failed to remove object sidecar", "key", key, "error", err)
+		}
+
 		return
 	}
 
-	s.cleanupEmptyDirs(filepath.Dir(path))
+	s.cleanupEmptyDirs(filepath.Dir(p))
 }
 
 func (s *Service) PutObject(_ context.Context, opts storage.PutObjectOptions) (*storage.ObjectInfo, error) {
-	path, err := s.resolvePath(opts.Key)
+	destPath, err := s.resolvePath(opts.Key)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	file, err := os.Create(path)
+	// Write via a unique tmp file then atomic rename so a partial write is
+	// never observable at the final path. The body is streamed to avoid
+	// buffering arbitrarily large objects in memory, so we use a streaming
+	// md5.New() here rather than hashx.MD5Bytes (which requires a []byte).
+	tmpPath := destPath + ".tmp." + id.GenerateUUID()
+
+	tmpFile, err := os.Create(tmpPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create file: %w", err)
+		return nil, fmt.Errorf("failed to create tmp file: %w", err)
 	}
 
-	defer func() { _ = file.Close() }()
-
 	hasher := md5.New()
-	writer := io.MultiWriter(file, hasher)
+	writer := io.MultiWriter(tmpFile, hasher)
 
-	written, err := io.Copy(writer, opts.Reader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write file: %w", err)
+	written, copyErr := io.Copy(writer, opts.Reader)
+	if copyErr != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+
+		return nil, fmt.Errorf("failed to write file: %w", copyErr)
+	}
+
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+
+		return nil, fmt.Errorf("failed to sync file: %w", err)
+	}
+
+	stat, statErr := tmpFile.Stat()
+
+	_ = tmpFile.Close()
+
+	if statErr != nil {
+		_ = os.Remove(tmpPath)
+
+		return nil, fmt.Errorf("failed to stat file: %w", statErr)
+	}
+
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+
+		return nil, fmt.Errorf("failed to finalize file: %w", err)
 	}
 
 	etag := hex.EncodeToString(hasher.Sum(nil))
 
-	stat, err := file.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat file: %w", err)
-	}
-
-	if err := s.writeETag(opts.Key, etag); err != nil {
+	if err := s.writeMeta(opts.Key, etag, opts.ContentType); err != nil {
 		return nil, err
 	}
 
@@ -293,7 +350,7 @@ func (s *Service) DeleteObject(_ context.Context, opts storage.DeleteObjectOptio
 	}
 
 	s.cleanupEmptyDirs(filepath.Dir(path))
-	s.removeETag(opts.Key)
+	s.removeMeta(opts.Key)
 
 	return nil
 }
@@ -319,6 +376,19 @@ func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) 
 		return nil, err
 	}
 
+	// Inherit the ContentType from the source object's sidecar so it is
+	// propagated to the destination without re-deriving from the extension.
+	// Fall back to extension-derived type only when no stored ContentType
+	// exists (legacy objects written before the sidecar recorded it).
+	_, srcContentType, err := s.readMeta(opts.SourceKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read source sidecar: %w", err)
+	}
+
+	if srcContentType == "" {
+		srcContentType = mime.TypeByExtension(filepath.Ext(srcPath))
+	}
+
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create destination directory: %w", err)
 	}
@@ -334,40 +404,62 @@ func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) 
 
 	defer func() { _ = src.Close() }()
 
-	dest, err := os.Create(destPath)
+	// Write via a unique tmp file then atomic rename so a partial copy is
+	// never observable at the final path. Body is streamed (source may be
+	// large) so we keep streaming md5.New() rather than hashx.MD5Bytes.
+	tmpPath := destPath + ".tmp." + id.GenerateUUID()
+
+	tmpFile, err := os.Create(tmpPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create destination file: %w", err)
+		return nil, fmt.Errorf("failed to create destination tmp file: %w", err)
 	}
 
-	defer func() { _ = dest.Close() }()
-
 	hasher := md5.New()
-	writer := io.MultiWriter(dest, hasher)
+	writer := io.MultiWriter(tmpFile, hasher)
 
-	written, err := io.Copy(writer, src)
-	if err != nil {
-		return nil, fmt.Errorf("failed to copy file: %w", err)
+	written, copyErr := io.Copy(writer, src)
+	if copyErr != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+
+		return nil, fmt.Errorf("failed to copy file: %w", copyErr)
+	}
+
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+
+		return nil, fmt.Errorf("failed to sync destination file: %w", err)
+	}
+
+	stat, statErr := tmpFile.Stat()
+
+	_ = tmpFile.Close()
+
+	if statErr != nil {
+		_ = os.Remove(tmpPath)
+
+		return nil, fmt.Errorf("failed to stat destination file: %w", statErr)
+	}
+
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+
+		return nil, fmt.Errorf("failed to finalize destination file: %w", err)
 	}
 
 	etag := hex.EncodeToString(hasher.Sum(nil))
 
-	stat, err := dest.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat destination file: %w", err)
-	}
-
-	if err := s.writeETag(opts.DestKey, etag); err != nil {
+	if err := s.writeMeta(opts.DestKey, etag, srcContentType); err != nil {
 		return nil, err
 	}
-
-	contentType := mime.TypeByExtension(filepath.Ext(destPath))
 
 	return &storage.ObjectInfo{
 		Bucket:       bucketName,
 		Key:          opts.DestKey,
 		ETag:         etag,
 		Size:         written,
-		ContentType:  contentType,
+		ContentType:  srcContentType,
 		LastModified: stat.ModTime(),
 	}, nil
 }
@@ -387,16 +479,19 @@ func (s *Service) StatObject(_ context.Context, opts storage.StatObjectOptions) 
 		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	// Read the ETag from its sidecar — written at PutObject /
-	// CompleteMultipart / CopyObject time — to avoid re-hashing the
-	// entire file on every Stat. Missing sidecar yields an empty ETag,
-	// which the proxy treats as "no validator" rather than an error.
-	etag, err := s.readETag(opts.Key)
+	// Read ETag and ContentType from the sidecar — written at PutObject /
+	// CompleteMultipart / CopyObject time — to avoid re-hashing the entire
+	// file on every Stat. Missing sidecar yields an empty ETag and empty
+	// ContentType; the proxy treats that as "no validator". Fall back to
+	// extension-derived ContentType for legacy objects without a sidecar.
+	etag, contentType, err := s.readMeta(opts.Key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read etag sidecar: %w", err)
+		return nil, fmt.Errorf("failed to read object sidecar: %w", err)
 	}
 
-	contentType := mime.TypeByExtension(filepath.Ext(path))
+	if contentType == "" {
+		contentType = mime.TypeByExtension(filepath.Ext(path))
+	}
 
 	return &storage.ObjectInfo{
 		Bucket:       bucketName,
@@ -585,8 +680,12 @@ func (s *Service) CompleteMultipart(_ context.Context, opts storage.CompleteMult
 			return nil, statErr
 		}
 
-		// Non-final parts must be at least partSize. The final part is
-		// exempt per the multipart contract.
+		// Minimum-size enforcement is deferred to here (Complete) rather
+		// than PutPart because at upload time we cannot know whether a
+		// given part is the last one. S3 semantics exempt the final part
+		// from the minimum-size requirement; only non-final parts must
+		// satisfy it. Checking at PutPart would incorrectly reject valid
+		// single-part or tail uploads.
 		if i < len(sorted)-1 && partStat.Size() < partSize {
 			return nil, storage.ErrPartTooSmall
 		}
@@ -683,7 +782,7 @@ func (s *Service) CompleteMultipart(_ context.Context, opts storage.CompleteMult
 	}
 
 	etag := hex.EncodeToString(hasher.Sum(nil))
-	if err := s.writeETag(m.Key, etag); err != nil {
+	if err := s.writeMeta(m.Key, etag, m.ContentType); err != nil {
 		return nil, err
 	}
 
