@@ -84,3 +84,22 @@ func (s *GetMyPendingCountsTestSuite) TestZeroCountsForUnknownUser() {
 	s.Assert().Equal(0, counts.PendingTaskCount, "Should have 0 pending tasks")
 	s.Assert().Equal(0, counts.UnreadCCCount, "Should have 0 unread CC records")
 }
+
+func (s *GetMyPendingCountsTestSuite) TestTenantScopedCountsMatchCrossTenant() {
+	// t1 is the only tenant with data; a scoped query should return the same
+	// counts as the cross-tenant query.
+	t1 := "t1"
+	counts, err := s.handler.Handle(s.ctx, query.GetMyPendingCountsQuery{UserID: "user-a", TenantID: &t1})
+	s.Require().NoError(err, "Should query without error with TenantID set")
+	s.Assert().Equal(2, counts.PendingTaskCount, "Tenant t1 should have 2 pending tasks for user-a")
+	s.Assert().Equal(2, counts.UnreadCCCount, "Tenant t1 should have 2 unread CC records for user-a")
+}
+
+func (s *GetMyPendingCountsTestSuite) TestTenantScopedCountsZeroForOtherTenant() {
+	// Data belongs to t1; querying with t2 should yield 0.
+	t2 := "t2"
+	counts, err := s.handler.Handle(s.ctx, query.GetMyPendingCountsQuery{UserID: "user-a", TenantID: &t2})
+	s.Require().NoError(err, "Should query without error for non-matching tenant")
+	s.Assert().Equal(0, counts.PendingTaskCount, "Should have 0 pending tasks for tenant t2")
+	s.Assert().Equal(0, counts.UnreadCCCount, "Should have 0 unread CC records for tenant t2")
+}

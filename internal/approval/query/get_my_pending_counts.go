@@ -12,10 +12,13 @@ import (
 )
 
 // GetMyPendingCountsQuery retrieves pending task and unread CC counts for the current user.
+// TenantID optionally scopes counts to a specific tenant, matching the behavior of
+// FindMyPendingTasksQuery and FindMyCCRecordsQuery. When nil the counts are cross-tenant.
 type GetMyPendingCountsQuery struct {
 	cqrs.BaseQuery
 
-	UserID string
+	UserID   string
+	TenantID *string
 }
 
 // GetMyPendingCountsHandler handles the GetMyPendingCountsQuery.
@@ -35,7 +38,10 @@ func (h *GetMyPendingCountsHandler) Handle(ctx context.Context, query GetMyPendi
 		Model((*approval.Task)(nil)).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("assignee_id", query.UserID).
-				Equals("status", string(approval.TaskPending))
+				Equals("status", string(approval.TaskPending)).
+				ApplyIf(query.TenantID != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("tenant_id", *query.TenantID)
+				})
 		}).
 		Count(ctx)
 	if err != nil {
@@ -47,6 +53,14 @@ func (h *GetMyPendingCountsHandler) Handle(ctx context.Context, query GetMyPendi
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("cc_user_id", query.UserID).
 				IsNull("read_at")
+		}).
+		ApplyIf(query.TenantID != nil, func(sq orm.SelectQuery) {
+			sq.Join((*approval.Instance)(nil), func(cb orm.ConditionBuilder) {
+				cb.EqualsColumn("instance_id", "i.id")
+			}, "i").
+				Where(func(cb orm.ConditionBuilder) {
+					cb.Equals("i.tenant_id", *query.TenantID)
+				})
 		}).
 		Count(ctx)
 	if err != nil {

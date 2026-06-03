@@ -114,7 +114,7 @@ func (h *FindAvailableFlowsHandler) Handle(ctx context.Context, query FindAvaila
 
 	flowIDs := flowIDSet.ToSlice()
 
-	publishedFlowIDs, err := h.loadPublishedFlowIDs(ctx, db, flowIDs)
+	publishedFlowIDs, err := loadPublishedFlowIDs(ctx, db, flowIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -252,43 +252,4 @@ func (h *FindAvailableFlowsHandler) matchesAnyRole(
 	}
 
 	return false, nil
-}
-
-func (*FindAvailableFlowsHandler) loadPublishedFlowIDs(ctx context.Context, db orm.DB, flowIDs []string) ([]string, error) {
-	var publishedFlowIDs []string
-
-	if err := db.NewSelect().
-		Model((*approval.FlowVersion)(nil)).
-		Distinct().
-		Select("flow_id").
-		Where(func(cb orm.ConditionBuilder) {
-			cb.In("flow_id", flowIDs).
-				Equals("status", approval.VersionPublished)
-		}).
-		Scan(ctx, &publishedFlowIDs); err != nil {
-		return nil, fmt.Errorf("query published flow versions: %w", err)
-	}
-
-	return publishedFlowIDs, nil
-}
-
-// loadCategoryMap loads flow categories by IDs and returns a map keyed by category ID.
-func loadCategoryMap(ctx context.Context, db orm.DB, categoryIDs []string) (map[string]*approval.FlowCategory, error) {
-	if len(categoryIDs) == 0 {
-		return nil, nil
-	}
-
-	var categories []approval.FlowCategory
-	if err := db.NewSelect().Model(&categories).
-		Where(func(cb orm.ConditionBuilder) { cb.In("id", categoryIDs) }).
-		Scan(ctx); err != nil {
-		return nil, fmt.Errorf("query flow categories: %w", err)
-	}
-
-	m := make(map[string]*approval.FlowCategory, len(categories))
-	for i := range categories {
-		m[categories[i].ID] = &categories[i]
-	}
-
-	return m, nil
 }

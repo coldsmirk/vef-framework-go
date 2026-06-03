@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/my"
@@ -11,7 +10,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // GetMyInstanceDetailQuery retrieves instance detail with access control for the current user.
@@ -36,17 +34,9 @@ func NewGetMyInstanceDetailHandler(db orm.DB, taskSvc *service.TaskService) *Get
 func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInstanceDetailQuery) (*my.InstanceDetail, error) {
 	db := contextx.DB(ctx, h.db)
 
-	// Load instance.
-	var instance approval.Instance
-
-	instance.ID = query.InstanceID
-
-	if err := db.NewSelect().Model(&instance).WherePK().Scan(ctx); err != nil {
-		if result.IsRecordNotFound(err) {
-			return nil, shared.ErrInstanceNotFound
-		}
-
-		return nil, fmt.Errorf("query instance: %w", err)
+	bundle, err := loadInstanceDetailBundle(ctx, db, query.InstanceID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Check participant membership.
@@ -59,47 +49,14 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 		return nil, shared.ErrAccessDenied
 	}
 
-	// Load flow.
-	var flow approval.Flow
-
-	flow.ID = instance.FlowID
-	if err := db.NewSelect().Model(&flow).WherePK().Scan(ctx); err != nil && !result.IsRecordNotFound(err) {
-		return nil, fmt.Errorf("query flow: %w", err)
-	}
-
-	// Load tasks.
-	var tasks []approval.Task
-	if err := db.NewSelect().Model(&tasks).
-		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", query.InstanceID) }).
-		OrderBy("sort_order").
-		Scan(ctx); err != nil {
-		return nil, fmt.Errorf("query tasks: %w", err)
-	}
-
-	// Load action logs.
-	var actionLogs []approval.ActionLog
-	if err := db.NewSelect().Model(&actionLogs).
-		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", query.InstanceID) }).
-		OrderBy("created_at").
-		Scan(ctx); err != nil {
-		return nil, fmt.Errorf("query action logs: %w", err)
-	}
-
-	// Load flow nodes.
-	var flowNodes []approval.FlowNode
-	if err := db.NewSelect().Model(&flowNodes).
-		Where(func(cb orm.ConditionBuilder) { cb.Equals("flow_version_id", instance.FlowVersionID) }).
-		OrderBy("created_at").
-		Scan(ctx); err != nil {
-		return nil, fmt.Errorf("query flow nodes: %w", err)
-	}
-
-	nodeNameMap := make(map[string]string, len(flowNodes))
-	for _, n := range flowNodes {
-		nodeNameMap[n.ID] = n.Name
-	}
-
 	// Build DTO.
+	instance := bundle.Instance
+	flow := bundle.Flow
+	tasks := bundle.Tasks
+	actionLogs := bundle.ActionLogs
+	flowNodes := bundle.FlowNodes
+	nodeNameMap := bundle.NodeNameMap
+
 	detail := &my.InstanceDetail{
 		Instance: my.InstanceInfo{
 			InstanceID:       instance.ID,
