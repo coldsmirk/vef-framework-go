@@ -5,8 +5,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/spf13/cast"
-
 	"github.com/coldsmirk/vef-framework-go/logx"
 )
 
@@ -16,7 +14,7 @@ type slogHandler struct {
 	levelFilter logx.Level
 }
 
-func (s slogHandler) Enabled(_ context.Context, level slog.Level) bool {
+func (s *slogHandler) Enabled(_ context.Context, level slog.Level) bool {
 	logLevel := slogLevelToLogLevel(level)
 
 	return s.logger.Enabled(logLevel) && logLevel >= s.levelFilter
@@ -35,13 +33,14 @@ func slogLevelToLogLevel(level slog.Level) logx.Level {
 	}
 }
 
-func (s slogHandler) Handle(_ context.Context, record slog.Record) error {
+func (s *slogHandler) Handle(_ context.Context, record slog.Record) error {
 	fields := make([]string, 0, record.NumAttrs()+len(s.attrs))
+	for _, attr := range s.attrs {
+		fields = appendAttr(fields, attr)
+	}
 
 	record.Attrs(func(attr slog.Attr) bool {
-		if field := formatAttr(attr); field != "" {
-			fields = append(fields, field)
-		}
+		fields = appendAttr(fields, attr)
 
 		return true
 	})
@@ -52,29 +51,33 @@ func (s slogHandler) Handle(_ context.Context, record slog.Record) error {
 	}
 
 	message := record.Message + fieldsValue
-	switch record.Level {
-	case slog.LevelDebug:
+	switch slogLevelToLogLevel(record.Level) {
+	case logx.LevelDebug:
 		s.logger.Debug(message)
-	case slog.LevelInfo:
+	case logx.LevelInfo:
 		s.logger.Info(message)
-	case slog.LevelWarn:
+	case logx.LevelWarn:
 		s.logger.Warn(message)
-	case slog.LevelError:
+	default:
 		s.logger.Error(message)
 	}
 
 	return nil
 }
 
-func (s slogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (s *slogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	merged := make([]slog.Attr, 0, len(s.attrs)+len(attrs))
+	merged = append(merged, s.attrs...)
+	merged = append(merged, attrs...)
+
 	return &slogHandler{
 		logger:      s.logger,
-		attrs:       append(s.attrs, attrs...),
+		attrs:       merged,
 		levelFilter: s.levelFilter,
 	}
 }
 
-func (s slogHandler) WithGroup(name string) slog.Handler {
+func (s *slogHandler) WithGroup(name string) slog.Handler {
 	return &slogHandler{
 		logger:      s.logger.Named(name),
 		attrs:       s.attrs,
@@ -82,31 +85,28 @@ func (s slogHandler) WithGroup(name string) slog.Handler {
 	}
 }
 
-func formatAttr(attr slog.Attr) string {
-	var value string
-
-	switch attr.Value.Kind() {
-	case slog.KindString:
-		value = attr.Value.String()
-	case slog.KindInt64:
-		value = cast.ToString(attr.Value.Int64())
-	case slog.KindUint64:
-		value = cast.ToString(attr.Value.Uint64())
-	case slog.KindFloat64:
-		value = cast.ToString(attr.Value.Float64())
-	case slog.KindBool:
-		value = cast.ToString(attr.Value.Bool())
-	case slog.KindDuration:
-		value = cast.ToString(attr.Value.Duration())
-	case slog.KindTime:
-		value = cast.ToString(attr.Value.Time())
-	case slog.KindAny:
-		value = cast.ToString(attr.Value.Any())
-	default:
-		return ""
+func appendAttr(fields []string, attr slog.Attr) []string {
+	attr.Value = attr.Value.Resolve()
+	if attr.Equal(slog.Attr{}) {
+		return fields
 	}
 
-	return attr.Key + ": " + value
+	if attr.Value.Kind() == slog.KindGroup {
+		for _, sub := range attr.Value.Group() {
+			if attr.Key != "" {
+				sub = slog.Attr{Key: attr.Key + "." + sub.Key, Value: sub.Value}
+			}
+
+			fields = appendAttr(fields, sub)
+		}
+
+		return fields
+	}
+
+	// slog.Value.String renders every non-group kind canonically (scalars via
+	// strconv, Duration/Time via their String, KindAny via fmt), so it covers
+	// arbitrary values that a typed converter would otherwise drop.
+	return append(fields, attr.Key+": "+attr.Value.String())
 }
 
 func NewSlogHandler(name string, callerSkip int, levelFilter ...logx.Level) slog.Handler {

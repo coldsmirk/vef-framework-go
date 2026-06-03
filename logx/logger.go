@@ -65,9 +65,3 @@ type Logger interface {
 	// Panicf logs a formatted message at Panic level and then panics.
 	Panicf(template string, args ...any)
 }
-
-// LoggerConfigurable defines an interface for components that can be configured with a logger.
-type LoggerConfigurable[T any] interface {
-	// WithLogger returns a copy of the component configured with the given logger.
-	WithLogger(logger Logger) T
-}
