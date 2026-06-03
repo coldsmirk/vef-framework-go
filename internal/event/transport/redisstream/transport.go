@@ -204,10 +204,12 @@ func (t *Transport) Subscribe(eventType, group string, fn transport.ConsumeFunc,
 		return nil, fmt.Errorf("redis_stream: create group %s on %s: %w", group, stream, err)
 	}
 
-	consumer := t.cfg.ConsumerID
-	if consumer == "" {
-		consumer = "vef-" + id.GenerateUUID()
+	prefix := t.cfg.ConsumerID
+	if prefix == "" {
+		prefix = "vef"
 	}
+
+	consumer := prefix + "-" + id.GenerateUUID()
 
 	sub := &subscription{
 		stream:   stream,
@@ -288,13 +290,23 @@ func (t *Transport) consumerLoop(sub *subscription) {
 
 		for _, stream := range res {
 			for _, msg := range stream.Messages {
-				t.deliver(t.ctx, sub, msg)
+				t.deliver(t.ctx, sub, msg, 1)
 			}
 		}
 	}
 }
 
-func (t *Transport) deliver(ctx context.Context, sub *subscription, msg goredis.XMessage) {
+// deliver dispatches a single Redis Streams message to the subscription
+// handler. The attempt parameter is the 1-based delivery count: pass 1
+// for fresh XREADGROUP ">" messages, and the actual Redis delivery count
+// (from XPENDING RetryCount) for reaper-reclaimed messages.
+//
+// Poison-message policy: frames that are missing or non-string, exceed
+// maxFrameBytes, or cannot be JSON-decoded are XACKed and dropped by
+// design (logged at error level). Redelivering such frames forever would
+// head-of-line block the stream; they are permanently undeliverable. The
+// at-least-once guarantee applies only to well-formed frames.
+func (t *Transport) deliver(ctx context.Context, sub *subscription, msg goredis.XMessage, attempt int) {
 	rawFrame, ok := msg.Values["frame"].(string)
 	if !ok {
 		t.logger.Errorf("redis_stream: frame missing or non-string on %s id=%s", sub.stream, msg.ID)
@@ -318,7 +330,7 @@ func (t *Transport) deliver(ctx context.Context, sub *subscription, msg goredis.
 		return
 	}
 
-	delivery := &streamDelivery{frame: frame, attempt: 1, msgID: msg.ID}
+	delivery := &streamDelivery{frame: frame, attempt: attempt, msgID: msg.ID}
 	if err := sub.fn(ctx, delivery); err != nil {
 		t.logger.Warnf("redis_stream: handler returned error on %s id=%s: %v — leaving pending for retry", sub.stream, msg.ID, err)
 
@@ -352,16 +364,16 @@ func isBusyGroup(err error) bool {
 		return false
 	}
 
-	return strings.Contains(err.Error(), "BUSYGROUP")
+	return strings.HasPrefix(err.Error(), "BUSYGROUP")
 }
 
 // validateEventType ensures the event type only contains characters
 // safe for stream keys and DLQ topics. Returning a typed error lets
 // callers (bus, contract suite, applications) check via errors.Is.
-func validateEventType(t string) error {
-	if t == "" || !transport.EventTypePattern.MatchString(t) {
+func validateEventType(eventType string) error {
+	if eventType == "" || !transport.EventTypePattern.MatchString(eventType) {
 		return fmt.Errorf("%w: %q (allowed: %s)",
-			errInvalidEventType, t, transport.EventTypePattern.String())
+			errInvalidEventType, eventType, transport.EventTypePattern.String())
 	}
 
 	return nil

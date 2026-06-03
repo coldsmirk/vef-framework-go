@@ -57,13 +57,18 @@ func (t *Transport) reapSub(sub *subscription) {
 		return
 	}
 
+	// Build a retry-count map from XPENDING so deliver can report the
+	// actual Redis delivery count rather than a hardcoded value.
+	retryCounts := make(map[string]int64, len(pending))
 	ids := make([]string, 0, len(pending))
+
 	for _, p := range pending {
 		if p.Consumer == sub.consumer {
 			continue
 		}
 
 		ids = append(ids, p.ID)
+		retryCounts[p.ID] = p.RetryCount
 	}
 
 	if len(ids) == 0 {
@@ -84,6 +89,12 @@ func (t *Transport) reapSub(sub *subscription) {
 	}
 
 	for _, msg := range claimed {
-		t.deliver(t.ctx, sub, msg)
+		// Use the Redis delivery count from XPENDING as the attempt number.
+		// RetryCount reflects how many times Redis has delivered the message;
+		// clamp to at least 2 to distinguish reaper redeliveries from first
+		// delivery even if the map lookup misses (e.g. a race with XPENDING).
+		attempt := max(int(retryCounts[msg.ID]), 2)
+
+		t.deliver(t.ctx, sub, msg, attempt)
 	}
 }

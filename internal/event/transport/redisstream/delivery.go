@@ -17,9 +17,10 @@ type streamDelivery struct {
 // Frame implements transport.Delivery.
 func (d *streamDelivery) Frame() transport.Frame { return d.frame }
 
-// Attempt implements transport.Delivery. Redis Streams does not track
-// per-message retry counts inside the transport surface; the bus
-// middleware chain owns retry budgeting via SubscribeConfig.MaxAttempts.
+// Attempt implements transport.Delivery. For fresh XREADGROUP deliveries
+// this is 1. For reaper-reclaimed messages it reflects the Redis delivery
+// count from XPENDING (RetryCount), clamped to at least 2 so consumers
+// can distinguish retries from first delivery.
 func (d *streamDelivery) Attempt() int { return d.attempt }
 
 // Ack is a no-op here because the transport.consumerLoop XACKs after

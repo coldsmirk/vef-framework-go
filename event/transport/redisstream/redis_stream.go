@@ -23,9 +23,11 @@ type Config struct {
 	// ClaimBatchSize bounds the number of pending entries the reaper
 	// inspects per cycle. Defaults to 64.
 	ClaimBatchSize int64
-	// ConsumerID overrides the consumer name within a group. When
-	// empty the transport derives one from VEF_NODE_ID + a random
-	// suffix.
+	// ConsumerID is an optional human-readable prefix for the consumer
+	// name within a group (useful for observability via XINFO CONSUMERS).
+	// A unique per-process suffix is always appended so replicas sharing
+	// the same config never collide within a consumer group. When empty,
+	// "vef" is used as the prefix.
 	ConsumerID string
 	// StartID is the Redis Streams ID a newly created consumer group
 	// resumes from. Defaults to "0" so messages produced before the
