@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/coldsmirk/vef-framework-go/config"
-	"github.com/coldsmirk/vef-framework-go/internal/monitor"
 )
 
 // unmarshalConfig is a generic helper that unmarshals configuration from a given key.
@@ -37,9 +36,7 @@ func newStorageConfig(cfg config.Config) (*config.StorageConfig, error) {
 }
 
 func newMonitorConfig(cfg config.Config) (*config.MonitorConfig, error) {
-	monitorConfig := monitor.DefaultConfig()
-
-	return unmarshalConfig(cfg, "vef.monitor", &monitorConfig)
+	return unmarshalConfig(cfg, "vef.monitor", new(config.MonitorConfig))
 }
 
 func newMCPConfig(cfg config.Config) (*config.MCPConfig, error) {

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
@@ -108,83 +109,47 @@ type EventRoutingRule struct {
 
 // EffectiveDefaultTransport applies the default fallback.
 func (c *EventConfig) EffectiveDefaultTransport() string {
-	if c.DefaultTransport != "" {
-		return c.DefaultTransport
-	}
-
-	return "memory"
+	return cmp.Or(c.DefaultTransport, "memory")
 }
 
 // EffectiveAsyncQueueSize applies the default.
 func (c *EventConfig) EffectiveAsyncQueueSize() int {
-	if c.AsyncQueueSize > 0 {
-		return c.AsyncQueueSize
-	}
-
-	return 4096
+	return coalescePositive(c.AsyncQueueSize, 4096)
 }
 
 // EffectiveAsyncWorkers applies the default.
 func (c *EventConfig) EffectiveAsyncWorkers() int {
-	if c.AsyncWorkers > 0 {
-		return c.AsyncWorkers
-	}
-
-	return 4
+	return coalescePositive(c.AsyncWorkers, 4)
 }
 
 // EffectivePublishTimeout applies the default.
 func (c *EventConfig) EffectivePublishTimeout() time.Duration {
-	if c.PublishTimeout > 0 {
-		return c.PublishTimeout
-	}
-
-	return 5 * time.Second
+	return coalescePositive(c.PublishTimeout, 5*time.Second)
 }
 
 // EffectiveCleanupInterval applies the outbox cleanup default.
 func (c *EventOutboxTransportConfig) EffectiveCleanupInterval() time.Duration {
-	if c.CleanupInterval > 0 {
-		return c.CleanupInterval
-	}
-
-	return time.Hour
+	return coalescePositive(c.CleanupInterval, time.Hour)
 }
 
 // EffectiveCompletedTTL applies the outbox completed-row TTL default.
 func (c *EventOutboxTransportConfig) EffectiveCompletedTTL() time.Duration {
-	if c.CompletedTTL > 0 {
-		return c.CompletedTTL
-	}
-
-	return 7 * 24 * time.Hour
+	return coalescePositive(c.CompletedTTL, 7*24*time.Hour)
 }
 
 // EffectiveRetention applies the default of 7 days.
 func (c *EventInboxConfig) EffectiveRetention() time.Duration {
-	if c.Retention > 0 {
-		return c.Retention
-	}
-
-	return 7 * 24 * time.Hour
+	return coalescePositive(c.Retention, 7*24*time.Hour)
 }
 
 // EffectiveProcessingLease applies the default of 10 minutes.
 func (c *EventInboxConfig) EffectiveProcessingLease() time.Duration {
-	if c.ProcessingLease > 0 {
-		return c.ProcessingLease
-	}
-
-	return 10 * time.Minute
+	return coalescePositive(c.ProcessingLease, 10*time.Minute)
 }
 
 // EffectiveCleanupInterval applies the default of 1 hour.
 func (c *EventInboxConfig) EffectiveCleanupInterval() time.Duration {
-	if c.CleanupInterval > 0 {
-		return c.CleanupInterval
-	}
-
-	return time.Hour
+	return coalescePositive(c.CleanupInterval, time.Hour)
 }
 
 // ErrInboxRetentionTooShort indicates the inbox retention window is
@@ -213,7 +178,7 @@ func (c *EventConfig) Validate() error {
 	}
 
 	backoffSecs := math.Pow(2, float64(maxRetries+1)) - 2 // sum_{k=1..N} 2^k
-	horizon := time.Duration(backoffSecs) * time.Second
+	horizon := backoffHorizon(backoffSecs)
 
 	retention := c.Inbox.EffectiveRetention()
 	if retention <= horizon {
@@ -222,4 +187,18 @@ func (c *EventConfig) Validate() error {
 	}
 
 	return nil
+}
+
+// backoffHorizon converts a backoff window expressed in seconds into a
+// time.Duration, saturating at the maximum representable duration. Without
+// saturation a misconfigured max_retries makes backoffSecs*time.Second
+// overflow int64 to a negative value, which would silently defeat the
+// retention <= horizon guard. Saturating keeps the check fail-closed.
+func backoffHorizon(backoffSecs float64) time.Duration {
+	const maxDurationSecs = float64(math.MaxInt64) / float64(time.Second)
+	if backoffSecs >= maxDurationSecs {
+		return time.Duration(math.MaxInt64)
+	}
+
+	return time.Duration(backoffSecs) * time.Second
 }

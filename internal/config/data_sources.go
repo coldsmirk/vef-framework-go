@@ -21,7 +21,7 @@ func newDataSourcesConfig(cfg config.Config) (*config.DataSourcesConfig, error) 
 		return nil, fmt.Errorf("unmarshal vef.data_sources: %w", err)
 	}
 
-	if _, ok := sources["primary"]; !ok {
+	if _, ok := sources[config.PrimaryDataSourceName]; !ok {
 		return nil, ErrPrimaryDataSourceMissing
 	}
 

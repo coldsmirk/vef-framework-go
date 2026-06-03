@@ -1,5 +1,11 @@
 package config
 
+// PrimaryDataSourceName is the reserved name of the data source declared
+// under vef.data_sources.primary. It is mandatory and powers the
+// framework-wide orm.DB injection. config is the lowest layer, so this is
+// the canonical home for the constant.
+const PrimaryDataSourceName = "primary"
+
 // DBKind represents supported database kinds.
 type DBKind string
 
@@ -35,9 +41,10 @@ type DataSourcesConfig struct {
 	Map map[string]DataSourceConfig
 }
 
-// Primary returns the configuration for the primary data source. Callers
-// that received a validated DataSourcesConfig (via newDataSourcesConfig)
-// can rely on the entry being present.
+// Primary returns the configuration for the primary data source, or the zero
+// value if absent. The framework validates the primary entry's presence at
+// startup, so callers that obtain this config from the framework can rely on
+// it being populated.
 func (c *DataSourcesConfig) Primary() DataSourceConfig {
-	return c.Map["primary"]
+	return c.Map[PrimaryDataSourceName]
 }

@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
@@ -29,18 +28,14 @@ func (v *ViperConfig) Unmarshal(key string, target any) error {
 
 func newConfig() (config.Config, error) {
 	v := viper.NewWithOptions(
-		viper.EnvKeyReplacer(strings.NewReplacer(".", "_")),
 		viper.KeyDelimiter("."),
 		viper.WithLogger(ilogx.NewSLogger("config", 3, logx.LevelWarn)),
 	)
-	v.SetEnvPrefix(config.EnvKeyPrefix)
-	v.AllowEmptyEnv(true)
-	v.AutomaticEnv()
 
 	v.SetConfigName("application")
 	v.SetConfigType("toml")
 	v.AddConfigPath("./configs")
-	v.AddConfigPath("$VEF_CONFIG_PATH")
+	v.AddConfigPath("$" + config.EnvConfigPath)
 	v.AddConfigPath(".")
 	v.AddConfigPath("../configs")
 
