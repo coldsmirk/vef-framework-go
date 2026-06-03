@@ -39,6 +39,12 @@ func (s *spaMiddleware) Apply(router fiber.Router) {
 					continue
 				}
 
+				// Skip configured exclusions (e.g. "/api", "/ws") so the SPA
+				// catch-all never swallows non-SPA routes.
+				if hasAnyPrefix(path, config.ExcludePaths) {
+					continue
+				}
+
 				if strings.HasPrefix(path, config.Path) {
 					ctx.Path(config.Path)
 
@@ -105,4 +111,15 @@ func NewSPAMiddleware(configs []*middleware.SPAConfig) app.Middleware {
 	return &spaMiddleware{
 		configs: configs,
 	}
+}
+
+// hasAnyPrefix reports whether path starts with any of the given non-empty prefixes.
+func hasAnyPrefix(path string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if prefix != "" && strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+
+	return false
 }
