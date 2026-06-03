@@ -64,25 +64,18 @@ func (d *TaskNodeData) GetCCs() []CCDefinition {
 }
 
 // applyTaskNodeData applies TaskNodeData fields to a FlowNode.
+// ApplyTo assumes the target node is freshly constructed (zero value) so all
+// fields are overwritten unconditionally — this is intentional full-snapshot
+// semantics, not a partial update.
 func applyTaskNodeData(node *FlowNode, data *TaskNodeData) {
-	if data.ExecutionType != "" {
-		node.ExecutionType = data.ExecutionType
-	}
-
-	if data.EmptyAssigneeAction != "" {
-		node.EmptyAssigneeAction = data.EmptyAssigneeAction
-	}
-
+	node.ExecutionType = data.ExecutionType
+	node.EmptyAssigneeAction = data.EmptyAssigneeAction
 	node.FallbackUserIDs = data.FallbackUserIDs
 	node.AdminUserIDs = data.AdminUserIDs
 	node.IsTransferAllowed = data.IsTransferAllowed
 	node.IsOpinionRequired = data.IsOpinionRequired
 	node.TimeoutHours = data.TimeoutHours
-
-	if data.TimeoutAction != "" {
-		node.TimeoutAction = data.TimeoutAction
-	}
-
+	node.TimeoutAction = data.TimeoutAction
 	node.TimeoutNotifyBeforeHours = data.TimeoutNotifyBeforeHours
 	node.UrgeCooldownMinutes = data.UrgeCooldownMinutes
 	node.FieldPermissions = data.FieldPermissions
@@ -144,38 +137,19 @@ type ApprovalNodeData struct {
 func (*ApprovalNodeData) Kind() NodeKind { return NodeApproval }
 
 // ApplyTo applies approval node data to a FlowNode.
+// The target node is assumed to be freshly constructed (zero value); all fields
+// are overwritten unconditionally as a full-snapshot deploy operation.
 func (d *ApprovalNodeData) ApplyTo(node *FlowNode) {
 	applyBaseNodeData(node, &d.BaseNodeData)
 	applyTaskNodeData(node, &d.TaskNodeData)
 
-	if d.ApprovalMethod != "" {
-		node.ApprovalMethod = d.ApprovalMethod
-	}
-
-	if d.PassRule != "" {
-		node.PassRule = d.PassRule
-	}
-
-	if !d.PassRatio.IsZero() {
-		node.PassRatio = d.PassRatio
-	}
-
-	if d.SameApplicantAction != "" {
-		node.SameApplicantAction = d.SameApplicantAction
-	}
-
-	if d.ConsecutiveApproverAction != "" {
-		node.ConsecutiveApproverAction = d.ConsecutiveApproverAction
-	}
-
-	if d.RollbackType != "" {
-		node.RollbackType = d.RollbackType
-	}
-
-	if d.RollbackDataStrategy != "" {
-		node.RollbackDataStrategy = d.RollbackDataStrategy
-	}
-
+	node.ApprovalMethod = d.ApprovalMethod
+	node.PassRule = d.PassRule
+	node.PassRatio = d.PassRatio
+	node.SameApplicantAction = d.SameApplicantAction
+	node.ConsecutiveApproverAction = d.ConsecutiveApproverAction
+	node.RollbackType = d.RollbackType
+	node.RollbackDataStrategy = d.RollbackDataStrategy
 	node.RollbackTargetKeys = d.RollbackTargetKeys
 	node.IsRollbackAllowed = d.IsRollbackAllowed
 	node.IsAddAssigneeAllowed = d.IsAddAssigneeAllowed

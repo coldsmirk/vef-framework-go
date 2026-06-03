@@ -1,29 +1,31 @@
-package approval
+package approval_test
 
 import (
 	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
 // TestAddAssigneeTypeIsValid tests AddAssigneeType IsValid scenarios.
 func TestAddAssigneeTypeIsValid(t *testing.T) {
 	tests := []struct {
 		name     string
-		value    AddAssigneeType
+		value    approval.AddAssigneeType
 		expected bool
 	}{
-		{"Before", AddAssigneeBefore, true},
-		{"After", AddAssigneeAfter, true},
-		{"Parallel", AddAssigneeParallel, true},
-		{"InvalidEmpty", AddAssigneeType(""), false},
-		{"InvalidRandom", AddAssigneeType("invalid"), false},
+		{"Before", approval.AddAssigneeBefore, true},
+		{"After", approval.AddAssigneeAfter, true},
+		{"Parallel", approval.AddAssigneeParallel, true},
+		{"InvalidEmpty", approval.AddAssigneeType(""), false},
+		{"InvalidRandom", approval.AddAssigneeType("invalid"), false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.value.IsValid(), "TestAddAssigneeTypeIsValid should match expected value")
+			assert.Equal(t, tt.expected, tt.value.IsValid(), "%s: IsValid should report %v", tt.name, tt.expected)
 		})
 	}
 }
@@ -31,16 +33,16 @@ func TestAddAssigneeTypeIsValid(t *testing.T) {
 // TestAddAssigneeTypeUnmarshalJSON tests AddAssigneeType JSON decoding validation.
 func TestAddAssigneeTypeUnmarshalJSON(t *testing.T) {
 	t.Run("Valid", func(t *testing.T) {
-		var value AddAssigneeType
+		var value approval.AddAssigneeType
 
 		err := json.Unmarshal([]byte(`"before"`), &value)
 
 		assert.NoError(t, err, "Should decode valid add assignee type")
-		assert.Equal(t, AddAssigneeBefore, value, "Should decode to typed value")
+		assert.Equal(t, approval.AddAssigneeBefore, value, "Should decode to typed value")
 	})
 
 	t.Run("Invalid", func(t *testing.T) {
-		var value AddAssigneeType
+		var value approval.AddAssigneeType
 
 		err := json.Unmarshal([]byte(`"invalid"`), &value)
 
@@ -52,19 +54,19 @@ func TestAddAssigneeTypeUnmarshalJSON(t *testing.T) {
 func TestInstanceStatusString(t *testing.T) {
 	tests := []struct {
 		name     string
-		status   InstanceStatus
+		status   approval.InstanceStatus
 		expected string
 	}{
-		{"Running", InstanceRunning, "running"},
-		{"Approved", InstanceApproved, "approved"},
-		{"Rejected", InstanceRejected, "rejected"},
-		{"Withdrawn", InstanceWithdrawn, "withdrawn"},
-		{"Returned", InstanceReturned, "returned"},
+		{"Running", approval.InstanceRunning, "running"},
+		{"Approved", approval.InstanceApproved, "approved"},
+		{"Rejected", approval.InstanceRejected, "rejected"},
+		{"Withdrawn", approval.InstanceWithdrawn, "withdrawn"},
+		{"Returned", approval.InstanceReturned, "returned"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.status.String(), "TestInstanceStatusString should match expected value")
+			assert.Equal(t, tt.expected, tt.status.String(), "%s: String() should return %q", tt.name, tt.expected)
 		})
 	}
 }
@@ -73,20 +75,20 @@ func TestInstanceStatusString(t *testing.T) {
 func TestInstanceStatusIsFinal(t *testing.T) {
 	tests := []struct {
 		name     string
-		status   InstanceStatus
+		status   approval.InstanceStatus
 		expected bool
 	}{
-		{"Approved", InstanceApproved, true},
-		{"Rejected", InstanceRejected, true},
-		{"Withdrawn", InstanceWithdrawn, false},
-		{"Running", InstanceRunning, false},
-		{"Returned", InstanceReturned, false},
-		{"Terminated", InstanceTerminated, true},
+		{"Approved", approval.InstanceApproved, true},
+		{"Rejected", approval.InstanceRejected, true},
+		{"Withdrawn", approval.InstanceWithdrawn, false},
+		{"Running", approval.InstanceRunning, false},
+		{"Returned", approval.InstanceReturned, false},
+		{"Terminated", approval.InstanceTerminated, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.status.IsFinal(), "TestInstanceStatusIsFinal should match expected value")
+			assert.Equal(t, tt.expected, tt.status.IsFinal(), "%s: IsFinal should report %v", tt.name, tt.expected)
 		})
 	}
 }
@@ -95,24 +97,24 @@ func TestInstanceStatusIsFinal(t *testing.T) {
 func TestTaskStatusString(t *testing.T) {
 	tests := []struct {
 		name     string
-		status   TaskStatus
+		status   approval.TaskStatus
 		expected string
 	}{
-		{"Waiting", TaskWaiting, "waiting"},
-		{"Pending", TaskPending, "pending"},
-		{"Approved", TaskApproved, "approved"},
-		{"Rejected", TaskRejected, "rejected"},
-		{"Handled", TaskHandled, "handled"},
-		{"Transferred", TaskTransferred, "transferred"},
-		{"Rollback", TaskRolledBack, "rolled_back"},
-		{"Canceled", TaskCanceled, "canceled"},
-		{"Removed", TaskRemoved, "removed"},
-		{"Skipped", TaskSkipped, "skipped"},
+		{"Waiting", approval.TaskWaiting, "waiting"},
+		{"Pending", approval.TaskPending, "pending"},
+		{"Approved", approval.TaskApproved, "approved"},
+		{"Rejected", approval.TaskRejected, "rejected"},
+		{"Handled", approval.TaskHandled, "handled"},
+		{"Transferred", approval.TaskTransferred, "transferred"},
+		{"Rollback", approval.TaskRolledBack, "rolled_back"},
+		{"Canceled", approval.TaskCanceled, "canceled"},
+		{"Removed", approval.TaskRemoved, "removed"},
+		{"Skipped", approval.TaskSkipped, "skipped"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.status.String(), "TestTaskStatusString should match expected value")
+			assert.Equal(t, tt.expected, tt.status.String(), "%s: String() should return %q", tt.name, tt.expected)
 		})
 	}
 }
@@ -121,24 +123,24 @@ func TestTaskStatusString(t *testing.T) {
 func TestTaskStatusIsFinal(t *testing.T) {
 	tests := []struct {
 		name     string
-		status   TaskStatus
+		status   approval.TaskStatus
 		expected bool
 	}{
-		{"Approved", TaskApproved, true},
-		{"Rejected", TaskRejected, true},
-		{"Handled", TaskHandled, true},
-		{"Transferred", TaskTransferred, true},
-		{"Rollback", TaskRolledBack, true},
-		{"Canceled", TaskCanceled, true},
-		{"Removed", TaskRemoved, true},
-		{"Skipped", TaskSkipped, true},
-		{"Waiting", TaskWaiting, false},
-		{"Pending", TaskPending, false},
+		{"Approved", approval.TaskApproved, true},
+		{"Rejected", approval.TaskRejected, true},
+		{"Handled", approval.TaskHandled, true},
+		{"Transferred", approval.TaskTransferred, true},
+		{"Rollback", approval.TaskRolledBack, true},
+		{"Canceled", approval.TaskCanceled, true},
+		{"Removed", approval.TaskRemoved, true},
+		{"Skipped", approval.TaskSkipped, true},
+		{"Waiting", approval.TaskWaiting, false},
+		{"Pending", approval.TaskPending, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.status.IsFinal(), "TestTaskStatusIsFinal should match expected value")
+			assert.Equal(t, tt.expected, tt.status.IsFinal(), "%s: IsFinal should report %v", tt.name, tt.expected)
 		})
 	}
 }
