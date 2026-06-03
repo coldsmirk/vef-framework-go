@@ -60,7 +60,9 @@ func (i *importer) ImportFromFile(filename string) (any, []tabular.ImportError, 
 	return i.Import(f)
 }
 
-// Import reads CSV data from an io.Reader.
+// Import reads CSV data from an io.Reader. The entire input is read into memory
+// before processing, so peak memory scales with the file size in addition to
+// the materialized result slice.
 func (i *importer) Import(reader io.Reader) (any, []tabular.ImportError, error) {
 	csvReader := csv.NewReader(reader)
 	csvReader.Comma = i.options.delimiter
@@ -105,6 +107,7 @@ func (i *importer) Import(reader io.Reader) (any, []tabular.ImportError, error) 
 	writer := i.adapter.Writer(len(dataRows))
 
 	parseOpts := tabular.ParseRowOptions{TrimSpace: i.options.trimSpace}
+	parsers := tabular.ResolveParsers(schema, i.parsers)
 
 	var importErrors []tabular.ImportError
 
@@ -119,7 +122,7 @@ func (i *importer) Import(reader io.Reader) (any, []tabular.ImportError, error) 
 
 		builder := writer.NewRow()
 
-		rowErrors := tabular.ParseRow(row, columnMapping, schema, builder, i.parsers, csvRow, parseOpts)
+		rowErrors := tabular.ParseRow(row, columnMapping, schema, builder, parsers, csvRow, parseOpts)
 		if len(rowErrors) > 0 {
 			importErrors = append(importErrors, rowErrors...)
 

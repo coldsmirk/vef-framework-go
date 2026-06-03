@@ -47,7 +47,7 @@ func (a *mapAdapter) Schema() *Schema {
 // []map[string]any during validation so that All() uses the fast path.
 func (*mapAdapter) Reader(data any) (RowReader, error) {
 	if data == nil {
-		return &mapReader{}, nil
+		return new(mapReader), nil
 	}
 
 	// Fast path: concrete slice of maps.

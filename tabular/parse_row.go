@@ -35,6 +35,10 @@ type ParseRowOptions struct {
 // Cells are read in sorted source-index order so that per-row import errors
 // are deterministic.
 //
+// parsers holds one ValueParser per schema column (aligned with
+// schema.Columns()), pre-resolved once via ResolveParsers so resolution does
+// not repeat per cell.
+//
 // RowNumber is the human-facing row number (1-based, including the header
 // row) used when constructing ImportError entries. Empty cells fall back to
 // the column Default; cells that remain empty are skipped so that adapters
@@ -49,7 +53,7 @@ func ParseRow(
 	mapping ColumnMapping,
 	schema *Schema,
 	builder RowBuilder,
-	parsers map[string]ValueParser,
+	parsers []ValueParser,
 	rowNumber int,
 	opts ParseRowOptions,
 ) []ImportError {
@@ -58,7 +62,8 @@ func ParseRow(
 	columns := schema.Columns()
 
 	for _, srcIndex := range mapping.sortedKeys {
-		column := columns[mapping.entries[srcIndex]]
+		schemaIndex := mapping.entries[srcIndex]
+		column := columns[schemaIndex]
 
 		var cellValue string
 		// Source rows may have fewer columns than the mapping expects (e.g.
@@ -79,7 +84,7 @@ func ParseRow(
 			continue
 		}
 
-		value, err := ResolveParser(column, parsers).Parse(cellValue, column.Type)
+		value, err := parsers[schemaIndex].Parse(cellValue, column.Type)
 		if err != nil {
 			errs = append(errs, ImportError{
 				Row:    rowNumber,

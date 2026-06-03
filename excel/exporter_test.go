@@ -147,6 +147,73 @@ func TestExporter(t *testing.T) {
 	})
 }
 
+// TestExporterNativeCellTypes verifies the exporter writes typed cells for the
+// default-formatter path (so numbers stay summable and dates sortable) while
+// columns with an explicit format or a custom formatter remain text cells.
+func TestExporterNativeCellTypes(t *testing.T) {
+	// Count/CreatedAt use the default formatter with no format (written native);
+	// Salary carries an explicit format and Tagged a custom formatter (both stay
+	// text); Note is a plain string cell.
+	type NativeRow struct {
+		Count     int       `tabular:"Count"`
+		Salary    float64   `tabular:"Salary,format=%.2f"`
+		CreatedAt time.Time `tabular:"CreatedAt"`
+		Note      string    `tabular:"Note"`
+		Tagged    int       `tabular:"Tagged,formatter=prefix"`
+	}
+
+	rows := []NativeRow{
+		{Count: 42, Salary: 1234.5, CreatedAt: time.Date(2024, 1, 15, 9, 30, 0, 0, time.UTC), Note: "hi", Tagged: 7},
+	}
+
+	exporter := NewExporterFor[NativeRow]()
+	exporter.RegisterFormatter("prefix", &ExcelPrefixFormatter{prefix: "T:"})
+
+	buf, err := exporter.Export(rows)
+	require.NoError(t, err, "Export should succeed for the native-typing fixture")
+
+	f, err := excelize.OpenReader(buf)
+	require.NoError(t, err, "Opening the exported workbook should succeed")
+	t.Cleanup(func() { _ = f.Close() })
+
+	t.Run("NumericColumnWithoutFormatIsNative", func(t *testing.T) {
+		cellType, err := f.GetCellType("Sheet1", "A2")
+		require.NoError(t, err, "Reading the Count cell type should succeed")
+		assert.NotEqual(t, excelize.CellTypeInlineString, cellType, "Native number cell should not be an inline string")
+		assert.NotEqual(t, excelize.CellTypeSharedString, cellType, "Native number cell should not be a shared string")
+
+		raw, err := f.GetCellValue("Sheet1", "A2", excelize.Options{RawCellValue: true})
+		require.NoError(t, err, "Reading the raw Count cell value should succeed")
+		assert.Equal(t, "42", raw, "Native number cell should store the numeric value, not text")
+	})
+
+	t.Run("ExplicitFormatColumnStaysString", func(t *testing.T) {
+		cellType, err := f.GetCellType("Sheet1", "B2")
+		require.NoError(t, err, "Reading the Salary cell type should succeed")
+		assert.Contains(t,
+			[]excelize.CellType{excelize.CellTypeInlineString, excelize.CellTypeSharedString},
+			cellType,
+			"A column with an explicit format should stay a string cell")
+
+		value, err := f.GetCellValue("Sheet1", "B2")
+		require.NoError(t, err, "Reading the Salary cell value should succeed")
+		assert.Equal(t, "1234.50", value, "Explicit %.2f format should be applied verbatim as text")
+	})
+
+	t.Run("DateColumnWithoutFormatIsNative", func(t *testing.T) {
+		cellType, err := f.GetCellType("Sheet1", "C2")
+		require.NoError(t, err, "Reading the CreatedAt cell type should succeed")
+		assert.NotEqual(t, excelize.CellTypeInlineString, cellType, "Native date cell should not be an inline string")
+		assert.NotEqual(t, excelize.CellTypeSharedString, cellType, "Native date cell should not be a shared string")
+	})
+
+	t.Run("CustomFormatterColumnStaysString", func(t *testing.T) {
+		value, err := f.GetCellValue("Sheet1", "E2")
+		require.NoError(t, err, "Reading the Tagged cell value should succeed")
+		assert.Equal(t, "T: 7", value, "Custom formatter output should be written as text")
+	})
+}
+
 // TestMapExporter covers the dynamic []map[string]any exporter path including
 // width propagation and schema validation failures.
 func TestMapExporter(t *testing.T) {

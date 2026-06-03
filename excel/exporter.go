@@ -3,10 +3,12 @@ package excel
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 
 	"github.com/xuri/excelize/v2"
 
 	"github.com/coldsmirk/vef-framework-go/tabular"
+	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 // exporter writes rows into an Excel workbook via a tabular.RowAdapter.
@@ -142,7 +144,19 @@ func (e *exporter) writeHeader(f *excelize.File, sheetName string) error {
 }
 
 func (e *exporter) writeData(f *excelize.File, sheetName string, data any) error {
-	columns := e.adapter.Schema().Columns()
+	schema := e.adapter.Schema()
+	columns := schema.Columns()
+	formatters := tabular.ResolveFormatters(schema, e.formatters)
+
+	// A column writes a native (typed) cell when it relies on the default
+	// formatter and declares no explicit Format. An explicit Format or a custom
+	// formatter is an opt-in to a specific textual rendering, so it stays a
+	// string; otherwise excelize stores int/float/time.Time as typed cells so
+	// numbers stay summable and dates stay chronologically sortable.
+	native := make([]bool, len(columns))
+	for i, column := range columns {
+		native[i] = column.Format == "" && tabular.IsDefaultFormatter(column, e.formatters)
+	}
 
 	reader, err := e.adapter.Reader(data)
 	if err != nil {
@@ -165,7 +179,13 @@ func (e *exporter) writeData(f *excelize.File, sheetName string, data any) error
 				}
 			}
 
-			cellValue, err := tabular.ResolveFormatter(column, e.formatters).Format(raw)
+			if native[columnIndex] {
+				rowValues[columnIndex] = nativeCellValue(raw)
+
+				continue
+			}
+
+			cellValue, err := formatters[columnIndex].Format(raw)
 			if err != nil {
 				return tabular.ExportError{
 					Row:    rowIndex,
@@ -185,4 +205,38 @@ func (e *exporter) writeData(f *excelize.File, sheetName string, data any) error
 	}
 
 	return nil
+}
+
+// nativeCellValue normalizes a raw cell value into a form excelize stores as a
+// typed cell: nil pointers collapse to an empty cell and pointers are
+// dereferenced. timex.DateTime / timex.Date are unwrapped to time.Time so
+// excelize stores a native date(time) cell that sorts chronologically. Other
+// values pass through unchanged so SetSheetRow's type switch handles ints,
+// floats, bools and time.Time directly, and stringifies the rest.
+//
+// timex.Time (time-of-day) is deliberately left unwrapped: its underlying date
+// is the zero date, which predates the Excel epoch and would render a bogus
+// date, so excelize stringifies it via its String() method instead.
+func nativeCellValue(raw any) any {
+	if raw == nil {
+		return nil
+	}
+
+	rv := reflect.ValueOf(raw)
+	if rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return nil
+		}
+
+		raw = rv.Elem().Interface()
+	}
+
+	switch v := raw.(type) {
+	case timex.DateTime:
+		return v.Unwrap()
+	case timex.Date:
+		return v.Unwrap()
+	default:
+		return raw
+	}
 }

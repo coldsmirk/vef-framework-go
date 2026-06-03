@@ -44,6 +44,14 @@ func parseStruct(t reflect.Type) []*Column {
 			}
 
 			if tag == AttrDive {
+				// dive only recurses into (pointer-to-)struct fields. Applied to
+				// any other kind the field is neither recursed nor emitted, so
+				// warn rather than silently dropping it from the schema.
+				if reflectx.Indirect(field.Type).Kind() != reflect.Struct {
+					logger.Warnf("Field %s has tabular:\"dive\" but is not a struct (%s); field is ignored",
+						field.Name, field.Type)
+				}
+
 				return reflectx.Continue
 			}
 

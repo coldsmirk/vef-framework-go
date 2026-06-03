@@ -106,3 +106,70 @@ func TestResolveParser(t *testing.T) {
 		assert.Equal(t, 15, parsed.Day(), "Parsed day should match the input")
 	})
 }
+
+// TestIsDefaultFormatter verifies the predicate that branches typed vs string
+// export output mirrors ResolveFormatter's precedence.
+func TestIsDefaultFormatter(t *testing.T) {
+	registry := map[string]Formatter{"named": &MarkerFormatter{tag: "named"}}
+
+	tests := []struct {
+		name string
+		col  *Column
+		want bool
+	}{
+		{"DirectFnIsCustom", &Column{FormatterFn: &MarkerFormatter{tag: "x"}}, false},
+		{"RegisteredNameIsCustom", &Column{Formatter: "named"}, false},
+		{"UnknownNameFallsBackToDefault", &Column{Formatter: "missing"}, true},
+		{"NoFormatterIsDefault", &Column{}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsDefaultFormatter(tt.col, registry),
+				"IsDefaultFormatter should follow ResolveFormatter precedence")
+		})
+	}
+}
+
+// TestResolveFormatters verifies the batch resolver returns one formatter per
+// column aligned with schema order, reusing the same instances ResolveFormatter
+// would pick.
+func TestResolveFormatters(t *testing.T) {
+	custom := &MarkerFormatter{tag: "custom"}
+	specs := []ColumnSpec{
+		{Key: "a", Type: reflect.TypeFor[string]()},
+		{Key: "b", Type: reflect.TypeFor[string](), FormatterFn: custom},
+	}
+
+	schema, err := NewSchemaFromSpecs(specs)
+	require.NoError(t, err, "Schema construction from specs should succeed")
+
+	formatters := ResolveFormatters(schema, nil)
+	require.Len(t, formatters, 2, "ResolveFormatters should return one formatter per column")
+	assert.Same(t, custom, formatters[1], "Column with FormatterFn should reuse the bound instance")
+
+	out, err := formatters[0].Format("hello")
+	require.NoError(t, err, "Default formatter should stringify the value")
+	assert.Equal(t, "hello", out, "Default formatter should return the raw string")
+}
+
+// TestResolveParsers verifies the batch resolver returns one parser per column
+// aligned with schema order.
+func TestResolveParsers(t *testing.T) {
+	custom := &MarkerParser{tag: "custom"}
+	specs := []ColumnSpec{
+		{Key: "a", Type: reflect.TypeFor[string]()},
+		{Key: "b", Type: reflect.TypeFor[string](), ParserFn: custom},
+	}
+
+	schema, err := NewSchemaFromSpecs(specs)
+	require.NoError(t, err, "Schema construction from specs should succeed")
+
+	parsers := ResolveParsers(schema, nil)
+	require.Len(t, parsers, 2, "ResolveParsers should return one parser per column")
+	assert.Same(t, custom, parsers[1], "Column with ParserFn should reuse the bound instance")
+
+	out, err := parsers[0].Parse("hello", reflect.TypeFor[string]())
+	require.NoError(t, err, "Default parser should return the raw string")
+	assert.Equal(t, "hello", out, "Default parser should return the raw string")
+}

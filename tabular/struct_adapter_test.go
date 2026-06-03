@@ -166,3 +166,106 @@ func TestStructAdapter(t *testing.T) {
 		}
 	})
 }
+
+type StructAdapterDiveProfile struct {
+	City string `tabular:"City"`
+	Zip  string `tabular:"Zip"`
+}
+
+type StructAdapterDiveValue struct {
+	ID      int                      `tabular:"ID"`
+	Profile StructAdapterDiveProfile `tabular:"dive"`
+}
+
+type StructAdapterDivePointer struct {
+	ID      int                       `tabular:"ID"`
+	Profile *StructAdapterDiveProfile `tabular:"dive"`
+}
+
+// TestStructAdapterDive verifies that dive paths through both value- and
+// pointer-embedded structs read and write without panicking, including the
+// nil-embedded-pointer cases that previously crashed FieldByIndex.
+func TestStructAdapterDive(t *testing.T) {
+	t.Run("ReadValueEmbedded", func(t *testing.T) {
+		adapter := NewStructAdapterFor[StructAdapterDiveValue]()
+		columns := adapter.Schema().Columns()
+		require.Len(t, columns, 3, "value dive should expose ID plus two nested columns")
+
+		rows := []StructAdapterDiveValue{{ID: 1, Profile: StructAdapterDiveProfile{City: "Shanghai", Zip: "200000"}}}
+		reader, err := adapter.Reader(rows)
+		require.NoError(t, err, "Reader should accept []T with a value-embedded struct")
+
+		for _, view := range reader.All() {
+			city, err := view.Get(columns[1])
+			require.NoError(t, err, "Get should read a dived value field")
+			assert.Equal(t, "Shanghai", city, "Dived value field should return the nested value")
+		}
+	})
+
+	t.Run("ReadNilPointerEmbedded", func(t *testing.T) {
+		adapter := NewStructAdapterFor[StructAdapterDivePointer]()
+		columns := adapter.Schema().Columns()
+		require.Len(t, columns, 3, "pointer dive should expose ID plus two nested columns")
+
+		// Profile is nil: reading a dived field must not panic.
+		rows := []StructAdapterDivePointer{{ID: 1}}
+		reader, err := adapter.Reader(rows)
+		require.NoError(t, err, "Reader should accept []T with a nil pointer-embedded struct")
+
+		for _, view := range reader.All() {
+			city, err := view.Get(columns[1])
+			require.NoError(t, err, "Get through a nil embedded pointer should not error")
+			assert.Nil(t, city, "Dived field of a nil embedded pointer should read as nil")
+		}
+	})
+
+	t.Run("ReadPopulatedPointerEmbedded", func(t *testing.T) {
+		adapter := NewStructAdapterFor[StructAdapterDivePointer]()
+		columns := adapter.Schema().Columns()
+
+		rows := []StructAdapterDivePointer{{ID: 1, Profile: &StructAdapterDiveProfile{City: "Beijing", Zip: "100000"}}}
+		reader, err := adapter.Reader(rows)
+		require.NoError(t, err, "Reader should accept a populated pointer-embedded struct")
+
+		for _, view := range reader.All() {
+			city, err := view.Get(columns[1])
+			require.NoError(t, err, "Get should read a dived field of a populated embedded pointer")
+			assert.Equal(t, "Beijing", city, "Dived field should return the nested pointer value")
+		}
+	})
+
+	t.Run("WriteValueEmbedded", func(t *testing.T) {
+		adapter := NewStructAdapterFor[StructAdapterDiveValue]()
+		columns := adapter.Schema().Columns()
+		writer := adapter.Writer(1)
+
+		row := writer.NewRow()
+		require.NoError(t, row.Set(columns[0], 5), "Set top-level field should succeed")
+		require.NoError(t, row.Set(columns[1], "Shenzhen"), "Set dived value field should succeed")
+		require.NoError(t, writer.Commit(row), "Commit should succeed for a value dive row")
+
+		result, ok := writer.Build().([]StructAdapterDiveValue)
+		require.True(t, ok, "Build should return []StructAdapterDiveValue")
+		require.Len(t, result, 1, "One committed row should produce one output")
+		assert.Equal(t, "Shenzhen", result[0].Profile.City, "Dived value field should be written into the nested struct")
+	})
+
+	t.Run("WriteNilPointerEmbeddedAllocates", func(t *testing.T) {
+		adapter := NewStructAdapterFor[StructAdapterDivePointer]()
+		columns := adapter.Schema().Columns()
+		writer := adapter.Writer(1)
+
+		// NewRow starts with a nil *Profile; Set into a dived field must allocate
+		// the intermediate pointer rather than panic.
+		row := writer.NewRow()
+		require.NoError(t, row.Set(columns[0], 9), "Set top-level field should succeed")
+		require.NoError(t, row.Set(columns[1], "Guangzhou"), "Set into a nil embedded pointer should allocate and succeed")
+		require.NoError(t, writer.Commit(row), "Commit should succeed for a pointer dive row")
+
+		result, ok := writer.Build().([]StructAdapterDivePointer)
+		require.True(t, ok, "Build should return []StructAdapterDivePointer")
+		require.Len(t, result, 1, "One committed row should produce one output")
+		require.NotNil(t, result[0].Profile, "Set should have allocated the embedded pointer")
+		assert.Equal(t, "Guangzhou", result[0].Profile.City, "Dived field should be written into the allocated nested struct")
+	})
+}

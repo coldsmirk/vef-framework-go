@@ -92,10 +92,18 @@ func newSchema(columns []*Column) *Schema {
 
 	for _, column := range columns {
 		if column.Key != "" {
+			if _, dup := byKey[column.Key]; dup {
+				logger.Warnf("Duplicate column key %q; later columns shadow earlier ones during import", column.Key)
+			}
+
 			byKey[column.Key] = column
 		}
 
 		if column.Name != "" {
+			if _, dup := byName[column.Name]; dup {
+				logger.Warnf("Duplicate column name %q; later columns shadow earlier ones during import", column.Name)
+			}
+
 			byName[column.Name] = column
 		}
 	}

@@ -105,7 +105,9 @@ func (e *exporter) writeHeader(csvWriter *csv.Writer) error {
 }
 
 func (e *exporter) writeData(csvWriter *csv.Writer, data any) error {
-	columns := e.adapter.Schema().Columns()
+	schema := e.adapter.Schema()
+	columns := schema.Columns()
+	formatters := tabular.ResolveFormatters(schema, e.formatters)
 
 	reader, err := e.adapter.Reader(data)
 	if err != nil {
@@ -126,7 +128,7 @@ func (e *exporter) writeData(csvWriter *csv.Writer, data any) error {
 				}
 			}
 
-			cellValue, err := tabular.ResolveFormatter(column, e.formatters).Format(raw)
+			cellValue, err := formatters[columnIndex].Format(raw)
 			if err != nil {
 				return tabular.ExportError{
 					Row:    rowIndex,

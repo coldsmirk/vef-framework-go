@@ -9,6 +9,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// ParserDiveProfile is a nested struct dived into by the dive-tag tests.
+type ParserDiveProfile struct {
+	City string `tabular:"城市"`
+	Zip  string `tabular:"邮编"`
+}
+
+// ParserDiveOuterValue dives into a value-embedded nested struct.
+type ParserDiveOuterValue struct {
+	ID      string            `tabular:"ID"`
+	Profile ParserDiveProfile `tabular:"dive"`
+}
+
+// ParserDiveOuterPointer dives into a pointer-embedded nested struct.
+type ParserDiveOuterPointer struct {
+	ID      string             `tabular:"ID"`
+	Profile *ParserDiveProfile `tabular:"dive"`
+}
+
 // TestParseStruct exercises parseStruct, the helper that converts a struct
 // reflect.Type into the slice of *Column descriptors used by Schema.
 func TestParseStruct(t *testing.T) {
@@ -242,6 +260,32 @@ func TestParseStruct(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("Dive", func(t *testing.T) {
+		t.Run("ValueEmbeddedStruct", func(t *testing.T) {
+			result := parseStruct(reflect.TypeFor[ParserDiveOuterValue]())
+
+			require.Len(t, result, 3, "dive should flatten the nested value struct into individual columns")
+			assert.Equal(t, "ID", result[0].Key, "top-level field key should be the bare field name")
+			assert.Equal(t, []int{0}, result[0].Index, "top-level field index should be single-segment")
+			assert.Equal(t, "Profile.City", result[1].Key, "dived field key should be the dotted field path")
+			assert.Equal(t, []int{1, 0}, result[1].Index, "dived field index should be the multi-segment path through the value struct")
+			assert.Equal(t, "城市", result[1].Name, "dived field name should come from the nested field tag")
+			assert.Equal(t, "Profile.Zip", result[2].Key, "second dived field key should be the dotted field path")
+			assert.Equal(t, []int{1, 1}, result[2].Index, "second dived field index should be the multi-segment path")
+		})
+
+		t.Run("PointerEmbeddedStruct", func(t *testing.T) {
+			result := parseStruct(reflect.TypeFor[ParserDiveOuterPointer]())
+
+			require.Len(t, result, 3, "dive should flatten the nested pointer struct into individual columns")
+			assert.Equal(t, "ID", result[0].Key, "top-level field key should be the bare field name")
+			assert.Equal(t, "Profile.City", result[1].Key, "dived pointer field key should be the dotted field path")
+			assert.Equal(t, []int{1, 0}, result[1].Index, "dived pointer field index should step through the pointer field")
+			assert.Equal(t, "Profile.Zip", result[2].Key, "second dived pointer field key should be the dotted field path")
+			assert.Equal(t, []int{1, 1}, result[2].Index, "second dived pointer field index should step through the pointer field")
+		})
+	})
 }
 
 // TestNewSchema covers the public NewSchema / NewSchemaFor entry points and
@@ -316,6 +360,23 @@ func TestNewSchema(t *testing.T) {
 		assert.Equal(t, 0, schema.ColumnCount(), "Schema for empty struct should have zero columns")
 		assert.Empty(t, schema.Columns(), "Columns slice for empty struct should be empty")
 		assert.Empty(t, schema.ColumnNames(), "ColumnNames for empty struct should be empty")
+	})
+
+	t.Run("DuplicateNameLastWinsInLookup", func(t *testing.T) {
+		type DuplicateNameStruct struct {
+			First  string `tabular:"name=Same"`
+			Second string `tabular:"name=Same"`
+		}
+
+		schema := NewSchemaFor[DuplicateNameStruct]()
+
+		// Both columns are still emitted; the byName index resolves to the last
+		// one (the documented, now-warned last-wins behavior).
+		require.Equal(t, 2, schema.ColumnCount(), "Both same-name columns should be emitted")
+
+		column, ok := schema.ColumnByName("Same")
+		require.True(t, ok, "ColumnByName should resolve a duplicated name")
+		assert.Equal(t, "Second", column.Key, "The later column should shadow the earlier one in the name index")
 	})
 }
 

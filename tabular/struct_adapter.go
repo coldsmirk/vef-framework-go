@@ -140,7 +140,16 @@ func (v *structRowView) Get(column *Column) (any, error) {
 			ErrSchemaMismatch, column.Key)
 	}
 
-	field := v.elem.FieldByIndex(column.Index)
+	// FieldByIndexErr (instead of FieldByIndex) returns an error rather than
+	// panicking when the path steps through a nil embedded pointer.
+	field, err := v.elem.FieldByIndexErr(column.Index)
+	if err != nil {
+		// A nil pointer along a dive path means the nested value is absent;
+		// surface it as an empty cell rather than an error so export keeps
+		// working for partially-populated rows.
+		//nolint:nilerr // absent nested value is an empty cell, not an error
+		return nil, nil
+	}
 
 	return field.Interface(), nil
 }
@@ -190,7 +199,10 @@ func (b *structRowBuilder) Set(column *Column, value any) error {
 		return fmt.Errorf("%w: struct column %q has no Index", ErrSchemaMismatch, column.Key)
 	}
 
-	field := b.value.FieldByIndex(column.Index)
+	// fieldByIndexAlloc allocates intermediate nil embedded pointers along the
+	// dive path so that Set into a pointer-embedded field does not panic the way
+	// reflect.Value.FieldByIndex would.
+	field := fieldByIndexAlloc(b.value, column.Index)
 	if !field.CanSet() {
 		return fmt.Errorf("%w: %s", ErrUnsetField, column.Key)
 	}
@@ -221,4 +233,27 @@ func (b *structRowBuilder) Validate() error {
 // Value returns the underlying struct value.
 func (b *structRowBuilder) Value() any {
 	return b.value.Interface()
+}
+
+// fieldByIndexAlloc resolves the field addressed by a (possibly multi-segment)
+// index path, allocating any nil embedded pointers encountered along the way.
+// It mirrors reflect.Value.FieldByIndex for single-segment paths but, unlike
+// the stdlib, never panics when a dive descends through a nil pointer because
+// it initializes those pointers before stepping into them.
+func fieldByIndexAlloc(v reflect.Value, index []int) reflect.Value {
+	for i, idx := range index {
+		if i > 0 {
+			for v.Kind() == reflect.Pointer {
+				if v.IsNil() {
+					v.Set(reflect.New(v.Type().Elem()))
+				}
+
+				v = v.Elem()
+			}
+		}
+
+		v = v.Field(idx)
+	}
+
+	return v
 }

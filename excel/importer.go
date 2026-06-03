@@ -58,7 +58,9 @@ func (i *importer) ImportFromFile(filename string) (any, []tabular.ImportError, 
 	return i.doImport(f)
 }
 
-// Import reads Excel data from an io.Reader.
+// Import reads Excel data from an io.Reader. excelize loads the whole workbook
+// into memory and all sheet rows are read up front, so peak memory scales with
+// the file size in addition to the materialized result slice.
 func (i *importer) Import(reader io.Reader) (any, []tabular.ImportError, error) {
 	f, err := excelize.OpenReader(reader)
 	if err != nil {
@@ -123,6 +125,9 @@ func (i *importer) doImport(f *excelize.File) (any, []tabular.ImportError, error
 	dataRows := rows[dataStartIndex:]
 	writer := i.adapter.Writer(len(dataRows))
 
+	parseOpts := tabular.ParseRowOptions{TrimSpace: i.options.trimSpace}
+	parsers := tabular.ResolveParsers(schema, i.parsers)
+
 	var importErrors []tabular.ImportError
 
 	for rowIndex, row := range dataRows {
@@ -138,7 +143,7 @@ func (i *importer) doImport(f *excelize.File) (any, []tabular.ImportError, error
 
 		builder := writer.NewRow()
 
-		rowErrors := tabular.ParseRow(row, columnMapping, schema, builder, i.parsers, excelRow, tabular.ParseRowOptions{TrimSpace: i.options.trimSpace})
+		rowErrors := tabular.ParseRow(row, columnMapping, schema, builder, parsers, excelRow, parseOpts)
 		if len(rowErrors) > 0 {
 			importErrors = append(importErrors, rowErrors...)
 
