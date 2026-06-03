@@ -175,28 +175,31 @@ func TestRangeIntersection(t *testing.T) {
 		r1       Range[int]
 		r2       Range[int]
 		expected Range[int]
-		isEmpty  bool
+		wantOK   bool
 	}{
-		{"CompleteOverlap", NewRange(1, 10), NewRange(3, 7), NewRange(3, 7), false},
-		{"PartialOverlap", NewRange(1, 5), NewRange(3, 8), NewRange(3, 5), false},
-		{"AdjacentRanges", NewRange(1, 5), NewRange(5, 10), NewRange(5, 5), false},
-		{"NoOverlap", NewRange(1, 3), NewRange(5, 10), NewRange(3, 1), true},
-		{"SameRange", NewRange(1, 10), NewRange(1, 10), NewRange(1, 10), false},
-		{"ReverseOverlap", NewRange(5, 10), NewRange(1, 7), NewRange(5, 7), false},
-		{"SinglePoint", NewRange(1, 5), NewRange(5, 5), NewRange(5, 5), false},
+		{"CompleteOverlap", NewRange(1, 10), NewRange(3, 7), NewRange(3, 7), true},
+		{"PartialOverlap", NewRange(1, 5), NewRange(3, 8), NewRange(3, 5), true},
+		{"AdjacentRanges", NewRange(1, 5), NewRange(5, 10), NewRange(5, 5), true},
+		{"NoOverlap", NewRange(1, 3), NewRange(5, 10), Range[int]{}, false},
+		{"SameRange", NewRange(1, 10), NewRange(1, 10), NewRange(1, 10), true},
+		{"ReverseOverlap", NewRange(5, 10), NewRange(1, 7), NewRange(5, 7), true},
+		{"SinglePoint", NewRange(1, 5), NewRange(5, 5), NewRange(5, 5), true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.r1.Intersection(tt.r2)
-			reverseResult := tt.r2.Intersection(tt.r1)
+			result, ok := tt.r1.Intersection(tt.r2)
+			reverseResult, reverseOK := tt.r2.Intersection(tt.r1)
 
-			if tt.isEmpty {
-				assert.True(t, result.IsEmpty(), "Should return empty intersection")
-				assert.True(t, reverseResult.IsEmpty(), "Should return symmetric empty intersection")
-			} else {
+			assert.Equal(t, tt.wantOK, ok, "Should report expected overlap")
+			assert.Equal(t, tt.wantOK, reverseOK, "Should report symmetric overlap")
+
+			if tt.wantOK {
 				assert.Equal(t, tt.expected, result, "Should return expected intersection")
 				assert.Equal(t, tt.expected, reverseResult, "Should return symmetric intersection")
+			} else {
+				assert.Equal(t, Range[int]{}, result, "Should return zero range when there is no overlap")
+				assert.Equal(t, Range[int]{}, reverseResult, "Should return symmetric zero range when there is no overlap")
 			}
 		})
 	}
@@ -205,13 +208,15 @@ func TestRangeIntersection(t *testing.T) {
 // TestRangeIntersectionString tests intersection calculation with string ranges.
 func TestRangeIntersectionString(t *testing.T) {
 	t.Run("OverlappingStringRanges", func(t *testing.T) {
-		intersection := NewRange("c", "m").Intersection(NewRange("f", "z"))
+		intersection, ok := NewRange("c", "m").Intersection(NewRange("f", "z"))
+		assert.True(t, ok, "Should report overlap for intersecting string ranges")
 		assert.Equal(t, NewRange("f", "m"), intersection, "Should return correct string intersection")
 	})
 
 	t.Run("NonOverlappingStringRanges", func(t *testing.T) {
-		noOverlap := NewRange("a", "b").Intersection(NewRange("x", "z"))
-		assert.True(t, noOverlap.IsEmpty(), "Should return empty intersection for non-overlapping string ranges")
+		noOverlap, ok := NewRange("a", "b").Intersection(NewRange("x", "z"))
+		assert.False(t, ok, "Should report no overlap for non-overlapping string ranges")
+		assert.Equal(t, Range[string]{}, noOverlap, "Should return zero range for non-overlapping string ranges")
 	})
 }
 
@@ -292,7 +297,10 @@ func TestRangeEdgeCases(t *testing.T) {
 		r1 := NewRange(-10, 0)
 		r2 := NewRange(-5, 5)
 		assert.True(t, r1.Overlaps(r2), "Should detect overlap in negative ranges")
-		assert.Equal(t, NewRange(-5, 0), r1.Intersection(r2), "Should return correct negative intersection")
+
+		intersection, ok := r1.Intersection(r2)
+		assert.True(t, ok, "Should report overlap in negative ranges")
+		assert.Equal(t, NewRange(-5, 0), intersection, "Should return correct negative intersection")
 	})
 }
 
@@ -309,7 +317,8 @@ func TestRangeStringOperations(t *testing.T) {
 		r2 := NewRange("banana", "zebra")
 		assert.True(t, r1.Overlaps(r2), "Should detect overlap in string ranges")
 
-		intersection := r1.Intersection(r2)
+		intersection, ok := r1.Intersection(r2)
+		assert.True(t, ok, "Should report overlap in string ranges")
 		assert.Equal(t, "banana", intersection.Start, "Should have correct intersection Start")
 		assert.Equal(t, "orange", intersection.End, "Should have correct intersection End")
 	})
@@ -318,6 +327,8 @@ func TestRangeStringOperations(t *testing.T) {
 		r3 := NewRange("aaa", "bbb")
 		r4 := NewRange("yyy", "zzz")
 		assert.False(t, r3.Overlaps(r4), "Should not overlap for distant string ranges")
-		assert.True(t, r3.Intersection(r4).IsEmpty(), "Should have empty intersection for non-overlapping string ranges")
+
+		_, ok := r3.Intersection(r4)
+		assert.False(t, ok, "Should report no overlap for non-overlapping string ranges")
 	})
 }
