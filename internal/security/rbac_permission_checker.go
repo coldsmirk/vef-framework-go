@@ -26,6 +26,10 @@ func (c *RBACPermissionChecker) HasPermission(
 		return false, nil
 	}
 
+	if c.loader == nil {
+		return false, nil
+	}
+
 	for _, role := range principal.Roles {
 		permissions, err := c.loader.LoadPermissions(ctx, role)
 		if err != nil {
