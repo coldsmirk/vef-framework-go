@@ -143,7 +143,7 @@ const (
 	FrameBoundFollowing          = orm.FrameBoundFollowing
 
 	// StatisticalMode constants.
-	StatisticalDefault    = ""
+	StatisticalDefault    = orm.StatisticalDefault
 	StatisticalPopulation = orm.StatisticalPopulation
 	StatisticalSample     = orm.StatisticalSample
 
