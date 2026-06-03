@@ -104,9 +104,7 @@ func newBus(
 }
 
 func defaultErrorSink() event.ErrorSink {
-	return func(err error, env event.Envelope) {
-		busLogger.Errorf("async publish failed (type=%s, id=%s): %v", env.Type, env.ID, err)
-	}
+	return newDefaultErrorSink()
 }
 
 // Middleware constructors. Each returns nil when the corresponding

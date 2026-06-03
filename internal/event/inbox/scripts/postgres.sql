@@ -25,4 +25,4 @@ COMMENT ON COLUMN sys_event_inbox.lock_id IS 'Lock ID';
 COMMENT ON COLUMN sys_event_inbox.locked_until IS 'Lease';
 COMMENT ON COLUMN sys_event_inbox.completed_at IS 'Done';
 
-CREATE INDEX idx_sys_event_inbox__completed_at ON sys_event_inbox(completed_at);
+CREATE INDEX IF NOT EXISTS idx_sys_event_inbox__completed_at ON sys_event_inbox(completed_at);

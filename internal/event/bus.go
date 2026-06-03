@@ -139,6 +139,10 @@ func NewBus(
 		registry[t.Name()] = t
 	}
 
+	if sink == nil {
+		sink = newDefaultErrorSink()
+	}
+
 	b := &Bus{
 		transports: registry,
 		cfg:        cfg,
@@ -450,14 +454,12 @@ func (b *Bus) subscribeNow(eventType string, h event.Handler, cfg event.Subscrib
 		}
 	}
 
-	effectiveGroup := cfg.Group
-
 	unsubs := make([]transport.Unsubscribe, 0, len(transports))
 	for _, t := range transports {
-		consumer := b.buildConsumer(t, effectiveGroup, h)
+		consumer := b.buildConsumer(t, cfg.Group, h)
 
-		unsub, err := t.Subscribe(eventType, effectiveGroup, consumer, transport.SubscribeConfig{
-			Group:       effectiveGroup,
+		unsub, err := t.Subscribe(eventType, cfg.Group, consumer, transport.SubscribeConfig{
+			Group:       cfg.Group,
 			Concurrency: cfg.Concurrency,
 		})
 		if err != nil {
@@ -751,14 +753,16 @@ func (b *Bus) buildEnvelope(ctx context.Context, evt event.Event, cfg event.Publ
 	}
 }
 
-func (b *Bus) reportAsyncError(err error, env event.Envelope) {
-	if b.errorSink != nil {
-		b.errorSink(err, env)
-
-		return
+// newDefaultErrorSink returns the fallback async-error logger used when
+// no explicit ErrorSink is wired by the application.
+func newDefaultErrorSink() event.ErrorSink {
+	return func(err error, env event.Envelope) {
+		busLogger.Errorf("async publish failed (type=%s, id=%s): %v", env.Type, env.ID, err)
 	}
+}
 
-	busLogger.Errorf("async publish failed (type=%s): %v", env.Type, err)
+func (b *Bus) reportAsyncError(err error, env event.Envelope) {
+	b.errorSink(err, env)
 }
 
 func (*Bus) translateTransportError(err error, t transport.Transport) error {

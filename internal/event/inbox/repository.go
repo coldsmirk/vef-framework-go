@@ -173,7 +173,3 @@ func (r *DefaultRepository) DeleteOlderThan(ctx context.Context, cutoff timex.Da
 
 	return res.RowsAffected()
 }
-
-// ErrDuplicate is exported for callers that want to bypass Acquire
-// and detect duplicates from a raw insert error.
-var ErrDuplicate = errors.New("inbox: duplicate (consumer_group, event_id)")
