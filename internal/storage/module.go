@@ -54,10 +54,10 @@ var Module = fx.Module(
 		// modules override via vef.SupplyFileACL when they need to grant
 		// access to private keys based on their own ownership / ACL data.
 		newDefaultFileACL,
-		// Default URLKeyMapper: identity. Business modules override via
-		// vef.SupplyURLKeyMapper when they embed proxy / CDN URLs in
-		// richtext / markdown fields and need them translated back to
-		// storage keys during reconciliation.
+		// Default URLKeyMapper: ProxyURLKeyMapper, which translates the
+		// framework's own proxy URLs (served by NewProxyMiddleware) back to
+		// storage keys during reconciliation. Business modules override via
+		// vef.SupplyURLKeyMapper when they embed external CDN URLs instead.
 		newDefaultURLKeyMapper,
 	),
 

@@ -29,8 +29,9 @@ import (
 // framework caches nothing about mapper return values and may invoke
 // it many times per request.
 //
-// The framework registers IdentityURLKeyMapper by default. Business
-// modules that embed proxy / CDN URLs override it via vef.SupplyURLKeyMapper.
+// The framework registers ProxyURLKeyMapper by default (it serves files
+// through the built-in proxy middleware). Business modules that embed
+// external CDN URLs override it via vef.SupplyURLKeyMapper.
 type URLKeyMapper interface {
 	// URLToKey returns (key, ok) for the given embedded URL.
 	//

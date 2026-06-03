@@ -19,6 +19,7 @@ func NewService(cfg *config.StorageConfig, appCfg *config.AppConfig) (storage.Se
 	provider := cfg.Provider
 	if provider == "" {
 		provider = config.StorageMemory
+		logger.Warnf("storage provider not configured; defaulting to in-memory storage — objects are lost on restart. Set vef.storage.provider (filesystem or minio) for any non-test deployment.")
 	}
 
 	switch provider {
@@ -29,6 +30,6 @@ func NewService(cfg *config.StorageConfig, appCfg *config.AppConfig) (storage.Se
 	case config.StorageFilesystem:
 		return filesystem.New(cfg.Filesystem)
 	default:
-		return nil, fmt.Errorf("%w: %s", ErrUnsupportedStorageProvider, cfg.Provider)
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedStorageProvider, provider)
 	}
 }
