@@ -28,9 +28,7 @@ type eciesCipher struct {
 	publicKey  *ecdh.PublicKey
 }
 
-type ECIESOption func(*eciesCipher)
-
-func NewECIES(privateKey *ecdh.PrivateKey, publicKey *ecdh.PublicKey, opts ...ECIESOption) (Cipher, error) {
+func NewECIES(privateKey *ecdh.PrivateKey, publicKey *ecdh.PublicKey) (Cipher, error) {
 	if privateKey == nil && publicKey == nil {
 		return nil, ErrAtLeastOneKeyRequired
 	}
@@ -40,10 +38,6 @@ func NewECIES(privateKey *ecdh.PrivateKey, publicKey *ecdh.PublicKey, opts ...EC
 		publicKey:  publicKey,
 	}
 
-	for _, opt := range opts {
-		opt(cipher)
-	}
-
 	if publicKey == nil && privateKey != nil {
 		cipher.publicKey = privateKey.PublicKey()
 	}
@@ -51,7 +45,7 @@ func NewECIES(privateKey *ecdh.PrivateKey, publicKey *ecdh.PublicKey, opts ...EC
 	return cipher, nil
 }
 
-func NewECIESFromBytes(privateKeyBytes, publicKeyBytes []byte, curve ECIESCurve, opts ...ECIESOption) (Cipher, error) {
+func NewECIESFromBytes(privateKeyBytes, publicKeyBytes []byte, curve ECIESCurve) (Cipher, error) {
 	var (
 		privateKey *ecdh.PrivateKey
 		publicKey  *ecdh.PublicKey
@@ -72,10 +66,10 @@ func NewECIESFromBytes(privateKeyBytes, publicKeyBytes []byte, curve ECIESCurve,
 		}
 	}
 
-	return NewECIES(privateKey, publicKey, opts...)
+	return NewECIES(privateKey, publicKey)
 }
 
-func NewECIESFromHex(privateKeyHex, publicKeyHex string, curve ECIESCurve, opts ...ECIESOption) (Cipher, error) {
+func NewECIESFromHex(privateKeyHex, publicKeyHex string, curve ECIESCurve) (Cipher, error) {
 	var (
 		privateBytes []byte
 		publicBytes  []byte
@@ -94,10 +88,10 @@ func NewECIESFromHex(privateKeyHex, publicKeyHex string, curve ECIESCurve, opts 
 		}
 	}
 
-	return NewECIESFromBytes(privateBytes, publicBytes, curve, opts...)
+	return NewECIESFromBytes(privateBytes, publicBytes, curve)
 }
 
-func NewECIESFromBase64(privateKeyBase64, publicKeyBase64 string, curve ECIESCurve, opts ...ECIESOption) (Cipher, error) {
+func NewECIESFromBase64(privateKeyBase64, publicKeyBase64 string, curve ECIESCurve) (Cipher, error) {
 	var (
 		privateBytes []byte
 		publicBytes  []byte
@@ -116,7 +110,7 @@ func NewECIESFromBase64(privateKeyBase64, publicKeyBase64 string, curve ECIESCur
 		}
 	}
 
-	return NewECIESFromBytes(privateBytes, publicBytes, curve, opts...)
+	return NewECIESFromBytes(privateBytes, publicBytes, curve)
 }
 
 func GenerateECIESKey(curve ECIESCurve) (*ecdh.PrivateKey, error) {

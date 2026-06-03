@@ -38,7 +38,7 @@ func WithSM4Mode(mode SM4Mode) SM4Option {
 
 func NewSM4(key []byte, opts ...SM4Option) (Cipher, error) {
 	if len(key) != sm4.BlockSize {
-		return nil, fmt.Errorf("%w: %d bytes (must be %d)", ErrInvalidSm4KeySize, len(key), sm4.BlockSize)
+		return nil, fmt.Errorf("%w: %d bytes (must be %d)", ErrInvalidSM4KeySize, len(key), sm4.BlockSize)
 	}
 
 	cipher := &sm4Cipher{
@@ -52,7 +52,7 @@ func NewSM4(key []byte, opts ...SM4Option) (Cipher, error) {
 
 	if cipher.mode == SM4ModeCBC {
 		if len(cipher.iv) != sm4.BlockSize {
-			return nil, fmt.Errorf("%w: %d bytes (must be %d)", ErrInvalidIvSizeCbc, len(cipher.iv), sm4.BlockSize)
+			return nil, fmt.Errorf("%w: %d bytes (must be %d)", ErrInvalidIVSizeCBC, len(cipher.iv), sm4.BlockSize)
 		}
 	}
 
@@ -115,7 +115,7 @@ func (s *sm4Cipher) decryptECB(ciphertext string) (string, error) {
 		return "", fmt.Errorf("failed to decrypt: %w", err)
 	}
 
-	unpaddedData, err := pkcs7Unpadding(plaintext)
+	unpaddedData, err := pkcs7Unpadding(plaintext, sm4.BlockSize)
 	if err != nil {
 		return "", fmt.Errorf("failed to remove padding: %w", err)
 	}
@@ -157,7 +157,7 @@ func (s *sm4Cipher) decryptCBC(ciphertext string) (string, error) {
 	mode := cipher.NewCBCDecrypter(block, s.iv)
 	mode.CryptBlocks(plaintext, encryptedData)
 
-	unpaddedData, err := pkcs7Unpadding(plaintext)
+	unpaddedData, err := pkcs7Unpadding(plaintext, sm4.BlockSize)
 	if err != nil {
 		return "", fmt.Errorf("failed to remove padding: %w", err)
 	}

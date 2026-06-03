@@ -89,7 +89,7 @@ func parseRSAKeysFromBytes(privateKeyBytes, publicKeyBytes []byte) (*rsa.Private
 
 			privateKey, ok = key.(*rsa.PrivateKey)
 			if !ok {
-				return nil, nil, ErrNotRsaPrivateKey
+				return nil, nil, ErrNotRSAPrivateKey
 			}
 		}
 	}
@@ -106,7 +106,7 @@ func parseRSAKeysFromBytes(privateKeyBytes, publicKeyBytes []byte) (*rsa.Private
 
 			publicKey, ok = key.(*rsa.PublicKey)
 			if !ok {
-				return nil, nil, ErrNotRsaPublicKey
+				return nil, nil, ErrNotRSAPublicKey
 			}
 		}
 	}
@@ -114,21 +114,21 @@ func parseRSAKeysFromBytes(privateKeyBytes, publicKeyBytes []byte) (*rsa.Private
 	return privateKey, publicKey, nil
 }
 
-func NewRSAFromPem(privatePem, publicPem []byte, opts ...RSAOption) (CipherSigner, error) {
+func NewRSAFromPEM(privatePEM, publicPEM []byte, opts ...RSAOption) (CipherSigner, error) {
 	var (
 		privateKey *rsa.PrivateKey
 		publicKey  *rsa.PublicKey
 		err        error
 	)
 
-	if privatePem != nil {
-		if privateKey, err = parseRSAPrivateKeyFromPem(privatePem); err != nil {
+	if privatePEM != nil {
+		if privateKey, err = parseRSAPrivateKeyFromPEM(privatePEM); err != nil {
 			return nil, fmt.Errorf("failed to parse private key: %w", err)
 		}
 	}
 
-	if publicPem != nil {
-		if publicKey, err = parseRSAPublicKeyFromPem(publicPem); err != nil {
+	if publicPEM != nil {
+		if publicKey, err = parseRSAPublicKeyFromPEM(publicPEM); err != nil {
 			return nil, fmt.Errorf("failed to parse public key: %w", err)
 		}
 	}
@@ -239,10 +239,10 @@ func (r *rsaCipher) Decrypt(ciphertext string) (string, error) {
 	return string(plaintext), nil
 }
 
-func parseRSAPrivateKeyFromPem(pemData []byte) (*rsa.PrivateKey, error) {
+func parseRSAPrivateKeyFromPEM(pemData []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(pemData)
 	if block == nil {
-		return nil, ErrFailedDecodePemBlock
+		return nil, ErrFailedDecodePEMBlock
 	}
 
 	if block.Type == "RSA PRIVATE KEY" {
@@ -257,19 +257,19 @@ func parseRSAPrivateKeyFromPem(pemData []byte) (*rsa.PrivateKey, error) {
 
 		rsaKey, ok := key.(*rsa.PrivateKey)
 		if !ok {
-			return nil, ErrNotRsaPrivateKey
+			return nil, ErrNotRSAPrivateKey
 		}
 
 		return rsaKey, nil
 	}
 
-	return nil, fmt.Errorf("%w: %s", ErrUnsupportedPemType, block.Type)
+	return nil, fmt.Errorf("%w: %s", ErrUnsupportedPEMType, block.Type)
 }
 
-func parseRSAPublicKeyFromPem(pemData []byte) (*rsa.PublicKey, error) {
+func parseRSAPublicKeyFromPEM(pemData []byte) (*rsa.PublicKey, error) {
 	block, _ := pem.Decode(pemData)
 	if block == nil {
-		return nil, ErrFailedDecodePemBlock
+		return nil, ErrFailedDecodePEMBlock
 	}
 
 	if block.Type == "PUBLIC KEY" {
@@ -280,7 +280,7 @@ func parseRSAPublicKeyFromPem(pemData []byte) (*rsa.PublicKey, error) {
 
 		rsaKey, ok := key.(*rsa.PublicKey)
 		if !ok {
-			return nil, ErrNotRsaPublicKey
+			return nil, ErrNotRSAPublicKey
 		}
 
 		return rsaKey, nil
@@ -290,7 +290,7 @@ func parseRSAPublicKeyFromPem(pemData []byte) (*rsa.PublicKey, error) {
 		return x509.ParsePKCS1PublicKey(block.Bytes)
 	}
 
-	return nil, fmt.Errorf("%w: %s", ErrUnsupportedPemType, block.Type)
+	return nil, fmt.Errorf("%w: %s", ErrUnsupportedPEMType, block.Type)
 }
 
 func (r *rsaCipher) Sign(data string) (string, error) {

@@ -230,10 +230,31 @@ func TestPkcs7Padding(t *testing.T) {
 
 			assert.Equal(t, 0, len(padded)%tt.blockSize, "Padded length should be multiple of block size")
 
-			unpadded, err := pkcs7Unpadding(padded)
+			unpadded, err := pkcs7Unpadding(padded, tt.blockSize)
 			require.NoError(t, err, "Should unpad successfully")
 
 			assert.Equal(t, tt.input, string(unpadded), "Unpadded text should match original input")
+		})
+	}
+}
+
+// TestPkcs7UnpaddingInvalid tests that malformed PKCS7 padding is rejected.
+func TestPkcs7UnpaddingInvalid(t *testing.T) {
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{"Empty", []byte{}},
+		{"ZeroPaddingByte", []byte{0x41, 0x42, 0x00}},
+		{"PaddingExceedsLength", []byte{0x41, 0x05}},
+		{"PaddingExceedsBlockSize", append(make([]byte, 32), 0x11)},
+		{"InconsistentPaddingBytes", []byte{0x41, 0x03, 0x03}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := pkcs7Unpadding(tt.data, 16)
+			require.Error(t, err, "Should reject malformed padding")
 		})
 	}
 }

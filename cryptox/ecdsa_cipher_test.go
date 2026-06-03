@@ -66,7 +66,7 @@ func TestEcdsaFromPem(t *testing.T) {
 		Bytes: publicKeyBytes,
 	})
 
-	cipher, err := NewECDSAFromPem(privatePem, publicPem)
+	cipher, err := NewECDSAFromPEM(privatePem, publicPem)
 	require.NoError(t, err, "Should create ECDSA cipher from PEM")
 
 	data := "Test message"
@@ -204,7 +204,7 @@ func TestEcdsaPkcs8PrivateKey(t *testing.T) {
 		Bytes: privateKeyBytes,
 	})
 
-	cipher, err := NewECDSAFromPem(privatePem, nil)
+	cipher, err := NewECDSAFromPEM(privatePem, nil)
 	require.NoError(t, err, "Should create ECDSA cipher from PKCS8 PEM")
 
 	data := "Test message"
@@ -219,12 +219,12 @@ func TestEcdsaPkcs8PrivateKey(t *testing.T) {
 // TestEcdsaInvalidPem tests ECDSA cipher with invalid PEM data.
 func TestEcdsaInvalidPem(t *testing.T) {
 	t.Run("InvalidPrivatePem", func(t *testing.T) {
-		_, err := NewECDSAFromPem([]byte("not-a-pem"), nil)
+		_, err := NewECDSAFromPEM([]byte("not-a-pem"), nil)
 		assert.Error(t, err, "Should return error for invalid private PEM")
 	})
 
 	t.Run("InvalidPublicPem", func(t *testing.T) {
-		_, err := NewECDSAFromPem(nil, []byte("not-a-pem"))
+		_, err := NewECDSAFromPEM(nil, []byte("not-a-pem"))
 		assert.Error(t, err, "Should return error for invalid public PEM")
 	})
 
@@ -233,7 +233,7 @@ func TestEcdsaInvalidPem(t *testing.T) {
 			Type:  "CERTIFICATE",
 			Bytes: []byte("fake-data"),
 		})
-		_, err := NewECDSAFromPem(badPEM, nil)
+		_, err := NewECDSAFromPEM(badPEM, nil)
 		assert.Error(t, err, "Should return error for unsupported PEM type")
 	})
 
@@ -242,7 +242,7 @@ func TestEcdsaInvalidPem(t *testing.T) {
 			Type:  "CERTIFICATE",
 			Bytes: []byte("fake-data"),
 		})
-		_, err := NewECDSAFromPem(nil, badPEM)
+		_, err := NewECDSAFromPEM(nil, badPEM)
 		assert.Error(t, err, "Should return error for unsupported public PEM type")
 	})
 }

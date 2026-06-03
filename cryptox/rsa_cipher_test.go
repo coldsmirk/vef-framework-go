@@ -97,7 +97,7 @@ func TestRsaCipherFromPem(t *testing.T) {
 		Bytes: publicKeyBytes,
 	})
 
-	cipher, err := NewRSAFromPem(privatePEM, publicPEM, WithRSAMode(RsaModeOAEP))
+	cipher, err := NewRSAFromPEM(privatePEM, publicPEM, WithRSAMode(RsaModeOAEP))
 	require.NoError(t, err, "Should create RSA cipher from PEM")
 
 	plaintext := "Test message"
@@ -163,7 +163,7 @@ func TestRsaCipherPkcs8PrivateKey(t *testing.T) {
 		Bytes: privateKeyBytes,
 	})
 
-	cipher, err := NewRSAFromPem(privatePEM, nil, WithRSAMode(RsaModeOAEP))
+	cipher, err := NewRSAFromPEM(privatePEM, nil, WithRSAMode(RsaModeOAEP))
 	require.NoError(t, err, "Should create RSA cipher from PKCS8 PEM")
 
 	plaintext := "Test message"
@@ -402,12 +402,12 @@ func TestRsaCipherInvalidSignature(t *testing.T) {
 // TestRsaCipherInvalidPem tests RSA cipher with invalid PEM data.
 func TestRsaCipherInvalidPem(t *testing.T) {
 	t.Run("InvalidPrivatePem", func(t *testing.T) {
-		_, err := NewRSAFromPem([]byte("not-a-pem"), nil)
+		_, err := NewRSAFromPEM([]byte("not-a-pem"), nil)
 		assert.Error(t, err, "Should return error for invalid private PEM")
 	})
 
 	t.Run("InvalidPublicPem", func(t *testing.T) {
-		_, err := NewRSAFromPem(nil, []byte("not-a-pem"))
+		_, err := NewRSAFromPEM(nil, []byte("not-a-pem"))
 		assert.Error(t, err, "Should return error for invalid public PEM")
 	})
 
@@ -416,7 +416,7 @@ func TestRsaCipherInvalidPem(t *testing.T) {
 			Type:  "CERTIFICATE",
 			Bytes: []byte("fake-data"),
 		})
-		_, err := NewRSAFromPem(badPEM, nil)
+		_, err := NewRSAFromPEM(badPEM, nil)
 		assert.Error(t, err, "Should return error for unsupported PEM type")
 	})
 
@@ -425,7 +425,7 @@ func TestRsaCipherInvalidPem(t *testing.T) {
 			Type:  "CERTIFICATE",
 			Bytes: []byte("fake-data"),
 		})
-		_, err := NewRSAFromPem(nil, badPEM)
+		_, err := NewRSAFromPEM(nil, badPEM)
 		assert.Error(t, err, "Should return error for unsupported public PEM type")
 	})
 
@@ -439,7 +439,7 @@ func TestRsaCipherInvalidPem(t *testing.T) {
 			Bytes: publicKeyBytes,
 		})
 
-		cipher, err := NewRSAFromPem(nil, publicPEM)
+		cipher, err := NewRSAFromPEM(nil, publicPEM)
 		require.NoError(t, err, "Should parse PKCS1 public key PEM")
 
 		_, err = cipher.Encrypt("test")

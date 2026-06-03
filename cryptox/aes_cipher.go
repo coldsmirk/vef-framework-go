@@ -39,7 +39,7 @@ func WithAESMode(mode AESMode) AESOption {
 
 func NewAES(key []byte, opts ...AESOption) (Cipher, error) {
 	if len(key) != 16 && len(key) != 24 && len(key) != 32 {
-		return nil, fmt.Errorf("%w: %d bytes (must be 16, 24, or 32)", ErrInvalidAesKeySize, len(key))
+		return nil, fmt.Errorf("%w: %d bytes (must be 16, 24, or 32)", ErrInvalidAESKeySize, len(key))
 	}
 
 	cipher := &aesCipher{
@@ -53,7 +53,7 @@ func NewAES(key []byte, opts ...AESOption) (Cipher, error) {
 
 	if cipher.mode == AesModeCbc {
 		if len(cipher.iv) != aes.BlockSize {
-			return nil, fmt.Errorf("%w: %d bytes (must be %d)", ErrInvalidIvSizeCbc, len(cipher.iv), aes.BlockSize)
+			return nil, fmt.Errorf("%w: %d bytes (must be %d)", ErrInvalidIVSizeCBC, len(cipher.iv), aes.BlockSize)
 		}
 	}
 
@@ -128,7 +128,7 @@ func (a *aesCipher) decryptCBC(ciphertext string) (string, error) {
 	mode := cipher.NewCBCDecrypter(block, a.iv)
 	mode.CryptBlocks(plaintext, encryptedData)
 
-	unpaddedData, err := pkcs7Unpadding(plaintext)
+	unpaddedData, err := pkcs7Unpadding(plaintext, aes.BlockSize)
 	if err != nil {
 		return "", fmt.Errorf("failed to remove padding: %w", err)
 	}
@@ -202,14 +202,14 @@ func pkcs7Padding(data []byte, blockSize int) []byte {
 	return result
 }
 
-func pkcs7Unpadding(data []byte) ([]byte, error) {
+func pkcs7Unpadding(data []byte, blockSize int) ([]byte, error) {
 	length := len(data)
 	if length == 0 {
 		return nil, ErrDataEmpty
 	}
 
 	padding := int(data[length-1])
-	if padding > length || padding > aes.BlockSize {
+	if padding == 0 || padding > length || padding > blockSize {
 		return nil, ErrInvalidPadding
 	}
 
