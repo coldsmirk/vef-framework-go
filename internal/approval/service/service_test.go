@@ -47,18 +47,18 @@ func setupSvcFixture(t testing.TB, ctx context.Context, db orm.DB) *SvcFixture {
 
 	cat := &approval.FlowCategory{TenantID: "default", Code: "svc-test-cat", Name: "Svc Test Cat"}
 	_, err := db.NewInsert().Model(cat).Exec(ctx)
-	require.NoError(t, err, "TestAll should complete without error")
+	require.NoError(t, err, "should insert flow category")
 
 	flow := &approval.Flow{
 		TenantID: "default", CategoryID: cat.ID, Code: "svc-test-flow", Name: "Svc Test Flow",
 		BindingMode: approval.BindingStandalone, IsAllInitiationAllowed: true, IsActive: true,
 	}
 	_, err = db.NewInsert().Model(flow).Exec(ctx)
-	require.NoError(t, err, "TestAll should complete without error")
+	require.NoError(t, err, "should insert flow")
 
 	version := &approval.FlowVersion{FlowID: flow.ID, Version: 1, Status: approval.VersionPublished}
 	_, err = db.NewInsert().Model(version).Exec(ctx)
-	require.NoError(t, err, "TestAll should complete without error")
+	require.NoError(t, err, "should insert flow version")
 
 	var nodeIDs []string
 	for i := range 6 {
@@ -67,7 +67,7 @@ func setupSvcFixture(t testing.TB, ctx context.Context, db orm.DB) *SvcFixture {
 			Kind: approval.NodeApproval, Name: "Svc Node",
 		}
 		_, err = db.NewInsert().Model(node).Exec(ctx)
-		require.NoError(t, err, "TestAll should complete without error")
+		require.NoError(t, err, "should insert flow node %d", i)
 
 		nodeIDs = append(nodeIDs, node.ID)
 	}
@@ -86,7 +86,7 @@ func (f *SvcFixture) createInstance(t testing.TB, ctx context.Context, db orm.DB
 		ApplicantID: "applicant", Status: status,
 	}
 	_, err := db.NewInsert().Model(inst).Exec(ctx)
-	require.NoError(t, err, "TestAll should complete without error")
+	require.NoError(t, err, "should insert instance")
 
 	return inst
 }
@@ -102,7 +102,7 @@ func insertTask(t testing.TB, ctx context.Context, db orm.DB, fix *SvcFixture, s
 		AssigneeID: "user-svc-test", SortOrder: 1, Status: status,
 	}
 	_, err := db.NewInsert().Model(task).Exec(ctx)
-	require.NoError(t, err, "TestAll should complete without error")
+	require.NoError(t, err, "should insert task")
 
 	return task
 }
@@ -116,7 +116,7 @@ func insertTaskWithDetails(t testing.TB, ctx context.Context, db orm.DB, instanc
 		AssigneeID: fmt.Sprintf("user-default-%d", sortOrder), SortOrder: sortOrder, Status: status,
 	}
 	_, err := db.NewInsert().Model(task).Exec(ctx)
-	require.NoError(t, err, "TestAll should complete without error")
+	require.NoError(t, err, "should insert task with details")
 
 	return task
 }
@@ -130,7 +130,7 @@ func insertTaskWithAssignee(t testing.TB, ctx context.Context, db orm.DB, instan
 		AssigneeID: assigneeID, SortOrder: sortOrder, Status: status,
 	}
 	_, err := db.NewInsert().Model(task).Exec(ctx)
-	require.NoError(t, err, "TestAll should complete without error")
+	require.NoError(t, err, "should insert task with assignee")
 
 	return task
 }
@@ -154,7 +154,7 @@ func setupPrepareOperationData(
 		Name:          "Prep Node",
 	}
 	_, err := db.NewInsert().Model(node).Exec(ctx)
-	require.NoError(t, err, "TestAll should complete without error")
+	require.NoError(t, err, "should insert prep flow node")
 
 	instance := &approval.Instance{
 		TenantID: "default", FlowID: fix.FlowID, FlowVersionID: fix.VersionID,
@@ -163,14 +163,14 @@ func setupPrepareOperationData(
 		CurrentNodeID: &node.ID,
 	}
 	_, err = db.NewInsert().Model(instance).Exec(ctx)
-	require.NoError(t, err, "TestAll should complete without error")
+	require.NoError(t, err, "should insert prep instance")
 
 	task := &approval.Task{
 		TenantID: "default", InstanceID: instance.ID, NodeID: node.ID,
 		AssigneeID: assigneeID, SortOrder: 1, Status: taskStatus,
 	}
 	_, err = db.NewInsert().Model(task).Exec(ctx)
-	require.NoError(t, err, "TestAll should complete without error")
+	require.NoError(t, err, "should insert prep task")
 
 	return node.ID, instance.ID, task.ID
 }

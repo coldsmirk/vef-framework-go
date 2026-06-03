@@ -41,7 +41,7 @@ type TaskService struct{}
 
 // NewTaskService creates a new TaskService.
 func NewTaskService() *TaskService {
-	return &TaskService{}
+	return new(TaskService)
 }
 
 // FinishTask transitions a task to the given status and sets its FinishedAt timestamp.
@@ -241,13 +241,11 @@ func (*TaskService) IsAuthorizedForNodeOperation(ctx context.Context, db orm.DB,
 	return slices.Contains(flow.AdminUserIDs, operatorID), nil
 }
 
-// IsUrgeAuthorized reports whether userID may dispatch an urge for tasks
-// belonging to instanceID. Narrower than IsInstanceParticipant: only the
-// applicant and users who have (or had) an assignee task on the instance
-// count; CC recipients are excluded because they are not on the hook for
-// the decision and the right to urge has been abused by random observers
-// in prior incidents.
-func (*TaskService) IsUrgeAuthorized(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
+// isApplicantOrAssignee loads the instance's applicant_id, returns true if
+// userID matches the applicant, or if the user has any assignee task on the
+// instance. DB errors are propagated; a not-found instance maps to
+// shared.ErrInstanceNotFound.
+func isApplicantOrAssignee(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
 	var instance approval.Instance
 
 	instance.ID = instanceID
@@ -261,44 +259,7 @@ func (*TaskService) IsUrgeAuthorized(ctx context.Context, db orm.DB, instanceID,
 			return false, shared.ErrInstanceNotFound
 		}
 
-		return false, fmt.Errorf("load instance for urge auth: %w", err)
-	}
-
-	if instance.ApplicantID == userID {
-		return true, nil
-	}
-
-	hasTask, err := db.NewSelect().
-		Model((*approval.Task)(nil)).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", instanceID).
-				Equals("assignee_id", userID)
-		}).
-		Exists(ctx)
-	if err != nil {
-		return false, fmt.Errorf("check task participation for urge: %w", err)
-	}
-
-	return hasTask, nil
-}
-
-// IsInstanceParticipant checks whether the user is related to the instance as
-// applicant, task assignee, or CC recipient.
-func (*TaskService) IsInstanceParticipant(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
-	var instance approval.Instance
-
-	instance.ID = instanceID
-
-	if err := db.NewSelect().
-		Model(&instance).
-		Select("applicant_id").
-		WherePK().
-		Scan(ctx); err != nil {
-		if result.IsRecordNotFound(err) {
-			return false, shared.ErrInstanceNotFound
-		}
-
-		return false, fmt.Errorf("load instance for participant check: %w", err)
+		return false, fmt.Errorf("load instance: %w", err)
 	}
 
 	if instance.ApplicantID == userID {
@@ -316,8 +277,25 @@ func (*TaskService) IsInstanceParticipant(ctx context.Context, db orm.DB, instan
 		return false, fmt.Errorf("check task participation: %w", err)
 	}
 
-	if hasTask {
-		return true, nil
+	return hasTask, nil
+}
+
+// IsUrgeAuthorized reports whether userID may dispatch an urge for tasks
+// belonging to instanceID. Narrower than IsInstanceParticipant: only the
+// applicant and users who have (or had) an assignee task on the instance
+// count; CC recipients are excluded because they are not on the hook for
+// the decision and the right to urge has been abused by random observers
+// in prior incidents.
+func (*TaskService) IsUrgeAuthorized(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
+	return isApplicantOrAssignee(ctx, db, instanceID, userID)
+}
+
+// IsInstanceParticipant checks whether the user is related to the instance as
+// applicant, task assignee, or CC recipient.
+func (*TaskService) IsInstanceParticipant(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
+	ok, err := isApplicantOrAssignee(ctx, db, instanceID, userID)
+	if err != nil || ok {
+		return ok, err
 	}
 
 	hasCC, err := db.NewSelect().

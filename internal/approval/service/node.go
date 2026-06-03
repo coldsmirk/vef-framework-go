@@ -22,8 +22,8 @@ type NodeService struct {
 }
 
 // NewNodeService creates a new NodeService.
-func NewNodeService(eng *engine.FlowEngine, pub event.Bus, taskSvc *TaskService, userResolver approval.UserInfoResolver) *NodeService {
-	return &NodeService{engine: eng, bus: pub, taskSvc: taskSvc, userResolver: userResolver}
+func NewNodeService(engine *engine.FlowEngine, bus event.Bus, taskSvc *TaskService, userResolver approval.UserInfoResolver) *NodeService {
+	return &NodeService{engine: engine, bus: bus, taskSvc: taskSvc, userResolver: userResolver}
 }
 
 // HandleNodeCompletion evaluates node completion and handles the result.
