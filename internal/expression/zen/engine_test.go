@@ -74,4 +74,50 @@ func TestEngine(t *testing.T) {
 		require.Error(t, err, "An invalid expression should error")
 		assert.ErrorIs(t, err, expression.ErrEvaluationFailed, "Error should wrap ErrEvaluationFailed")
 	})
+
+	t.Run("CompileDefersMalformedErrorToRun", func(t *testing.T) {
+		program, err := eng.Compile("a +")
+		require.NoError(t, err, "Compile must defer parse errors and report no error")
+		require.NotNil(t, program, "Compile must return a usable program even for malformed source")
+		assert.Equal(t, "a +", program.Source(), "Source should return the original malformed expression")
+
+		_, err = program.Run(ctx, nil)
+		require.Error(t, err, "Run should surface the deferred parse error")
+		assert.ErrorIs(t, err, expression.ErrEvaluationFailed, "Run error should wrap ErrEvaluationFailed")
+	})
+
+	t.Run("CompilePredicate", func(t *testing.T) {
+		program, err := eng.Compile(">= 5", expression.AsPredicate())
+		require.NoError(t, err, "Compile as predicate should succeed")
+
+		hit, err := program.Run(ctx, map[string]any{"$": 10})
+		require.NoError(t, err, "Predicate run should succeed")
+		ok, err := hit.Bool()
+		require.NoError(t, err, "Predicate result should be boolean")
+		assert.True(t, ok, "Predicate 10 >= 5 should be true")
+
+		miss, err := program.Run(ctx, map[string]any{"$": 1})
+		require.NoError(t, err, "Predicate run should succeed")
+		ok, err = miss.Bool()
+		require.NoError(t, err, "Predicate result should be boolean")
+		assert.False(t, ok, "Predicate 1 >= 5 should be false")
+	})
+
+	t.Run("CanceledContext", func(t *testing.T) {
+		canceled, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := eng.Evaluate(canceled, "a + b", map[string]any{"a": 1, "b": 2})
+		require.Error(t, err, "Evaluate should honor an already-canceled context")
+		assert.ErrorIs(t, err, context.Canceled, "Evaluate should return the raw context error")
+		assert.NotErrorIs(t, err, expression.ErrEvaluationFailed, "Cancellation must not be wrapped as an evaluation failure")
+
+		program, err := eng.Compile("a + b")
+		require.NoError(t, err, "Compile should succeed")
+
+		_, err = program.Run(canceled, map[string]any{"a": 1, "b": 2})
+		require.Error(t, err, "Run should honor an already-canceled context")
+		assert.ErrorIs(t, err, context.Canceled, "Run should return the raw context error")
+		assert.NotErrorIs(t, err, expression.ErrEvaluationFailed, "Cancellation must not be wrapped as an evaluation failure")
+	})
 }

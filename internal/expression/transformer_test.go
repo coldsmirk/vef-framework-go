@@ -13,14 +13,18 @@ import (
 	"github.com/coldsmirk/vef-framework-go/mold"
 )
 
-// CapturingEngine records the inputs it receives and returns a preset value.
+// CapturingEngine records the inputs it receives and returns a preset value. It
+// keeps every source in declaration order (sources) alongside the most recent
+// source/env, so a single fake serves both the input-capture and ordering tests.
 type CapturingEngine struct {
 	value     expression.Value
+	sources   []string
 	gotSource string
 	gotEnv    any
 }
 
 func (e *CapturingEngine) Evaluate(_ context.Context, source string, env any) (expression.Value, error) {
+	e.sources = append(e.sources, source)
 	e.gotSource = source
 	e.gotEnv = env
 
@@ -49,21 +53,6 @@ func (f FakeFieldLevel) Struct() reflect.Value                   { return f.str 
 
 func settableFloat() reflect.Value {
 	return reflect.New(reflect.TypeFor[float64]()).Elem()
-}
-
-// OrderingEngine records the order in which expressions are evaluated.
-type OrderingEngine struct {
-	sources []string
-}
-
-func (e *OrderingEngine) Evaluate(_ context.Context, source string, _ any) (expression.Value, error) {
-	e.sources = append(e.sources, source)
-
-	return expression.NewValue(float64(0)), nil
-}
-
-func (*OrderingEngine) Compile(string, ...expression.CompileOption) (expression.Program, error) {
-	return nil, nil
 }
 
 func TestFieldTransformer(t *testing.T) {
@@ -168,7 +157,7 @@ func TestFieldTransformerEvaluationOrder(t *testing.T) {
 	}
 
 	for range 25 {
-		eng := new(OrderingEngine)
+		eng := &CapturingEngine{value: expression.NewValue(float64(0))}
 		transformer := moldimpl.New()
 		field := NewFieldTransformer(eng)
 		transformer.Register(field.Tag(), field.Transform)

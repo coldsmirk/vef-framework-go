@@ -7,8 +7,9 @@ import (
 )
 
 // Module wires the expression feature: the Zen-backed engine plus the API
-// handler parameter resolver and the mold field transformer. It is re-exported
-// through the public expression/zen package.
+// handler parameter resolver and the mold field transformer. The engine is
+// provided only as the public expression.Engine contract, so consumers depend
+// on the interface and the backend can be swapped without touching them.
 var Module = fx.Module(
 	"vef:expression",
 	fx.Provide(

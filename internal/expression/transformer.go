@@ -46,7 +46,9 @@ func (t *fieldTransformer) Transform(ctx context.Context, fl mold.FieldLevel) er
 	}
 
 	// The containing struct is the evaluation environment so the expression can
-	// reference sibling fields by their serialized names.
+	// reference sibling fields by their serialized names. The whole struct is
+	// passed (and serialized by the backend) once per expr field; this is linear
+	// per field and acceptable for the small structs derived fields target.
 	var env any
 	if s := fl.Struct(); s.IsValid() {
 		env = s.Interface()
