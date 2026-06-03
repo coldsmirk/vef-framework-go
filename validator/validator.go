@@ -3,10 +3,10 @@ package validator
 import (
 	"errors"
 	"fmt"
-	"os"
 	"reflect"
 
 	"github.com/coldsmirk/go-streams"
+	"github.com/go-playground/locales"
 	"github.com/gofiber/fiber/v3"
 	"github.com/samber/lo"
 
@@ -17,7 +17,6 @@ import (
 	entranslation "github.com/go-playground/validator/v10/translations/en"
 	zhtranslation "github.com/go-playground/validator/v10/translations/zh"
 
-	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -28,42 +27,37 @@ const (
 	tagLabelI18n = "label_i18n"
 )
 
+// Built-in (go-playground) rule messages are translated through a dedicated
+// translator per language so that, like custom rules, they follow the language
+// selected at validation time via i18n.CurrentLanguage rather than being frozen
+// to the language present when the package was initialized.
+const (
+	langZh = "zh"
+	langEn = "en"
+)
+
 var (
-	logger     = logx.Named("validator")
-	translator ut.Translator
-	validator  *v.Validate
+	logger      = logx.Named("validator")
+	translators map[string]ut.Translator
+	validator   *v.Validate
 )
 
 func init() {
-	preferredLanguage := lo.CoalesceOrEmpty(os.Getenv(config.EnvI18NLanguage), i18n.DefaultLanguage)
-	localeTranslator := lo.TernaryF(
-		preferredLanguage == i18n.DefaultLanguage,
-		zhlocale.New,
-		enlocale.New,
-	)
-	universalTranslator := ut.New(localeTranslator, localeTranslator)
+	enTranslator := newLocaleTranslator(enlocale.New())
+	zhTranslator := newLocaleTranslator(zhlocale.New())
+	translators = map[string]ut.Translator{
+		langZh: zhTranslator,
+		langEn: enTranslator,
+	}
 
-	translator, _ = universalTranslator.GetTranslator(
-		lo.Ternary(
-			preferredLanguage == i18n.DefaultLanguage,
-			"zh",
-			"en",
-		),
-	)
 	validator = v.New(v.WithRequiredStructEnabled())
 
-	if err := lo.TernaryF(
-		preferredLanguage == i18n.DefaultLanguage,
-		func() error {
-			return zhtranslation.RegisterDefaultTranslations(validator, translator)
-		},
-		func() error {
-			return entranslation.RegisterDefaultTranslations(validator, translator)
-		},
-	); err != nil {
-		panic(
-			fmt.Errorf("failed to register default translations: %w", err),
-		)
+	if err := zhtranslation.RegisterDefaultTranslations(validator, zhTranslator); err != nil {
+		panic(fmt.Errorf("failed to register zh default translations: %w", err))
+	}
+
+	if err := entranslation.RegisterDefaultTranslations(validator, enTranslator); err != nil {
+		panic(fmt.Errorf("failed to register en default translations: %w", err))
 	}
 
 	validator.RegisterTagNameFunc(func(field reflect.StructField) string {
@@ -83,9 +77,27 @@ func init() {
 	setup()
 }
 
+// newLocaleTranslator builds a go-playground translator for a single locale.
+func newLocaleTranslator(locale locales.Translator) ut.Translator {
+	translator, _ := ut.New(locale, locale).GetTranslator(locale.Locale())
+
+	return translator
+}
+
+// activeTranslator returns the go-playground translator matching the current
+// i18n language. Chinese maps to the zh translator; every other supported
+// language falls back to en, mirroring the framework's locale set.
+func activeTranslator() ut.Translator {
+	if i18n.CurrentLanguage() == i18n.DefaultLanguage {
+		return translators[langZh]
+	}
+
+	return translators[langEn]
+}
+
 func RegisterValidationRules(rules ...ValidationRule) error {
 	return streams.FromSlice(rules).ForEachErr(func(rule ValidationRule) error {
-		return rule.register(validator)
+		return rule.register(validator, translators)
 	})
 }
 
@@ -103,15 +115,16 @@ func Validate(value any) error {
 
 	var validationErrors v.ValidationErrors
 	if !errors.As(err, &validationErrors) || len(validationErrors) == 0 {
-		return result.Err(
-			err.Error(),
-			result.WithCode(result.ErrCodeBadRequest),
-			result.WithStatus(fiber.StatusBadRequest),
-		)
+		return badRequest(err.Error())
 	}
 
+	return badRequest(validationErrors[0].Translate(activeTranslator()))
+}
+
+// badRequest wraps a validation message as an outward-facing bad-request error.
+func badRequest(message string) result.Error {
 	return result.Err(
-		validationErrors[0].Translate(translator),
+		message,
 		result.WithCode(result.ErrCodeBadRequest),
 		result.WithStatus(fiber.StatusBadRequest),
 	)

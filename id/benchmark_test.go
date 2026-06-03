@@ -16,101 +16,96 @@ func BenchmarkGenerateUUID(b *testing.B) {
 	}
 }
 
-func BenchmarkSnowflakeIdGenerator(b *testing.B) {
+func BenchmarkSnowflakeIDGenerator(b *testing.B) {
 	generator, err := NewSnowflakeIDGenerator(1)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	for b.Loop() {
-		_ = generator.Generate()
-	}
-}
-
-func BenchmarkSnowflakeIDGenerator_Parallel(b *testing.B) {
-	generator, err := NewSnowflakeIDGenerator(1)
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
+	b.Run("Sequential", func(b *testing.B) {
+		for b.Loop() {
 			_ = generator.Generate()
 		}
+	})
+
+	b.Run("Parallel", func(b *testing.B) {
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				_ = generator.Generate()
+			}
+		})
 	})
 }
 
 func BenchmarkXIDGenerator(b *testing.B) {
 	generator := NewXIDGenerator()
 
-	for b.Loop() {
-		_ = generator.Generate()
-	}
-}
-
-func BenchmarkXIDGenerator_Parallel(b *testing.B) {
-	generator := NewXIDGenerator()
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
+	b.Run("Sequential", func(b *testing.B) {
+		for b.Loop() {
 			_ = generator.Generate()
 		}
+	})
+
+	b.Run("Parallel", func(b *testing.B) {
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				_ = generator.Generate()
+			}
+		})
 	})
 }
 
 func BenchmarkUUIDGenerator(b *testing.B) {
 	generator := NewUUIDGenerator()
 
-	for b.Loop() {
-		_ = generator.Generate()
-	}
-}
-
-func BenchmarkUUIDGenerator_Parallel(b *testing.B) {
-	generator := NewUUIDGenerator()
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
+	b.Run("Sequential", func(b *testing.B) {
+		for b.Loop() {
 			_ = generator.Generate()
 		}
 	})
+
+	b.Run("Parallel", func(b *testing.B) {
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				_ = generator.Generate()
+			}
+		})
+	})
 }
 
-func BenchmarkRandomIDGenerator_Short(b *testing.B) {
-	generator := NewRandomIDGenerator(WithAlphabet("0123456789abcdef"), WithLength(8))
+func BenchmarkRandomIDGenerator(b *testing.B) {
+	b.Run("Short", func(b *testing.B) {
+		generator := NewRandomIDGenerator(WithAlphabet("0123456789abcdef"), WithLength(8))
 
-	for b.Loop() {
-		_ = generator.Generate()
-	}
-}
-
-func BenchmarkRandomIDGenerator_Medium(b *testing.B) {
-	generator := NewRandomIDGenerator(WithAlphabet("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), WithLength(21))
-
-	for b.Loop() {
-		_ = generator.Generate()
-	}
-}
-
-func BenchmarkRandomIDGenerator_Long(b *testing.B) {
-	generator := NewRandomIDGenerator(WithAlphabet("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-"), WithLength(64))
-
-	for b.Loop() {
-		_ = generator.Generate()
-	}
-}
-
-func BenchmarkRandomIDGenerator_Parallel(b *testing.B) {
-	generator := NewRandomIDGenerator(WithAlphabet("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), WithLength(21))
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
+		for b.Loop() {
 			_ = generator.Generate()
 		}
+	})
+
+	b.Run("Medium", func(b *testing.B) {
+		generator := NewRandomIDGenerator(WithAlphabet("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), WithLength(21))
+
+		for b.Loop() {
+			_ = generator.Generate()
+		}
+	})
+
+	b.Run("Long", func(b *testing.B) {
+		generator := NewRandomIDGenerator(WithAlphabet("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-"), WithLength(64))
+
+		for b.Loop() {
+			_ = generator.Generate()
+		}
+	})
+
+	b.Run("Parallel", func(b *testing.B) {
+		generator := NewRandomIDGenerator(WithAlphabet("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), WithLength(21))
+
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				_ = generator.Generate()
+			}
+		})
 	})
 }
 

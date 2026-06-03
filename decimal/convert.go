@@ -1,17 +1,14 @@
 package decimal
 
-import (
-	"errors"
-	"fmt"
-)
-
-var errUnsupportedType = errors.New("decimal: unsupported type")
+import "fmt"
 
 // NewFromAny creates a Decimal from an arbitrary value.
 // Supported types: Decimal, *Decimal, int/int8/int16/int32/int64,
 // uint/uint8/uint16/uint32/uint64, float32, float64, string, []byte,
 // bool (true=1, false=0), and fmt.Stringer.
-// Returns an error for unsupported types.
+// string, []byte and fmt.Stringer inputs are parsed and return a parse error for
+// unparseable text, whereas a nil *Decimal yields Zero. Returns an error for
+// unsupported types.
 func NewFromAny(v any) (Decimal, error) {
 	switch val := v.(type) {
 	case Decimal:

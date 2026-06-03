@@ -68,6 +68,45 @@ func TestValidatorI18nMessages(t *testing.T) {
 	})
 }
 
+// TestValidatorBuiltInRuleLanguage verifies that built-in (go-playground) rule
+// messages follow i18n.SetLanguage at validation time, consistently with custom rules.
+func TestValidatorBuiltInRuleLanguage(t *testing.T) {
+	type testStruct struct {
+		Email string `validate:"required,email" label:"Email"`
+	}
+
+	data := testStruct{Email: "not-an-email"}
+
+	tests := []struct {
+		name     string
+		language string
+		contains string
+		absent   string
+	}{
+		{"Chinese", "zh-CN", "必须是一个有效的邮箱", "must be a valid"},
+		{"English", "en", "must be a valid email address", "必须是一个有效的邮箱"},
+	}
+
+	t.Cleanup(func() {
+		_ = i18n.SetLanguage("")
+	})
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := i18n.SetLanguage(tt.language)
+			require.NoError(t, err, "Should set language to %s", tt.language)
+
+			err = Validate(&data)
+			require.Error(t, err, "Invalid email should fail validation")
+
+			assert.Contains(t, err.Error(), tt.contains,
+				"Built-in rule message should be localized to %s", tt.language)
+			assert.NotContains(t, err.Error(), tt.absent,
+				"Built-in rule message should not leak the other language")
+		})
+	}
+}
+
 // TestValidatorI18nPhoneNumber tests phone number validation with i18n support in both languages.
 func TestValidatorI18nPhoneNumber(t *testing.T) {
 	type testStruct struct {

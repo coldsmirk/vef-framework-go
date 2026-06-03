@@ -2,8 +2,12 @@ package i18n
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/nicksnyder/go-i18n/v2/i18n"
+	"github.com/samber/lo"
+
+	vefconfig "github.com/coldsmirk/vef-framework-go/config"
 )
 
 // Translator defines the interface for message translation services.
@@ -57,11 +61,14 @@ func (t *translatorImpl) Te(messageID string, templateData ...map[string]any) (s
 }
 
 // New creates a new translator instance with the provided configuration.
+// The language is resolved from the environment variable or the default language.
 func New(config Config) (Translator, error) {
-	localizer, err := newLocalizer(config)
+	preferredLanguage := lo.CoalesceOrEmpty(os.Getenv(vefconfig.EnvI18NLanguage), DefaultLanguage)
+
+	st, err := newState(config.Locales, preferredLanguage)
 	if err != nil {
 		return nil, err
 	}
 
-	return &translatorImpl{localizer: localizer}, nil
+	return st.translator, nil
 }

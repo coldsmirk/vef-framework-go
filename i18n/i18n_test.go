@@ -75,7 +75,7 @@ func TestConfig(t *testing.T) {
 
 // TestSetLanguage tests the SetLanguage function.
 func TestSetLanguage(t *testing.T) {
-	originalTranslator := translator
+	originalState := current.Load()
 
 	t.Run("SetToChinese", func(t *testing.T) {
 		err := SetLanguage("zh-CN")
@@ -123,7 +123,61 @@ func TestSetLanguage(t *testing.T) {
 		assert.Contains(t, err.Error(), "unsupported language code", "Error should mention unsupported language")
 	})
 
-	translator = originalTranslator
+	current.Store(originalState)
+}
+
+// TestCurrentLanguage tests that CurrentLanguage reflects the active global language.
+func TestCurrentLanguage(t *testing.T) {
+	originalState := current.Load()
+	t.Cleanup(func() {
+		current.Store(originalState)
+	})
+
+	tests := []struct {
+		name string
+		set  string
+		want string
+	}{
+		{"Chinese", "zh-CN", "zh-CN"},
+		{"English", "en", "en"},
+		{"EmptyUsesDefault", "", DefaultLanguage},
+	}
+
+	originalEnv := os.Getenv("VEF_I18N_LANGUAGE")
+
+	os.Unsetenv("VEF_I18N_LANGUAGE")
+	t.Cleanup(func() {
+		if originalEnv != "" {
+			os.Setenv("VEF_I18N_LANGUAGE", originalEnv)
+		}
+	})
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := SetLanguage(tt.set)
+			require.NoError(t, err, "Should set language to %q", tt.set)
+			assert.Equal(t, tt.want, CurrentLanguage(), "CurrentLanguage should report the active language")
+		})
+	}
+}
+
+// TestSetLanguagePreservesLocales verifies SetLanguage keeps the active locale set
+// rather than reverting to the framework's embedded default locales.
+func TestSetLanguagePreservesLocales(t *testing.T) {
+	originalState := current.Load()
+	t.Cleanup(func() {
+		current.Store(originalState)
+	})
+
+	custom, err := newState(locales.EmbedLocales, DefaultLanguage)
+	require.NoError(t, err, "Should build a custom translation state")
+	current.Store(custom)
+
+	err = SetLanguage("en")
+	require.NoError(t, err, "Should switch language")
+
+	assert.Equal(t, locales.EmbedLocales, current.Load().locales,
+		"SetLanguage should preserve the active locale set")
 }
 
 // TestGetSupportedLanguages tests the GetSupportedLanguages function.

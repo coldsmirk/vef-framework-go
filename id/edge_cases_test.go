@@ -1,7 +1,6 @@
 package id
 
 import (
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -169,23 +168,6 @@ func TestXidEdgeCases(t *testing.T) {
 					"XID should always use base32 alphabet")
 			}
 		}
-	})
-}
-
-// TestEnvironmentVariables tests environment variables functionality.
-func TestEnvironmentVariables(t *testing.T) {
-	t.Run("InvalidNodeIDEnvironmentVariable", func(t *testing.T) {
-		originalNodeID := os.Getenv("NODE_ID")
-
-		defer func() {
-			if originalNodeID != "" {
-				_ = os.Setenv("NODE_ID", originalNodeID)
-			} else {
-				_ = os.Unsetenv("NODE_ID")
-			}
-		}()
-
-		assert.NotNil(t, DefaultSnowflakeIDGenerator, "Default generator should be initialized")
 	})
 }
 

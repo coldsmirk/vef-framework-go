@@ -7,17 +7,8 @@ type Decimal = decimal.Decimal
 
 // Common decimal constants.
 var (
-	Zero  = decimal.Zero
-	One   = decimal.NewFromInt(1)
-	Two   = decimal.NewFromInt(2)
-	Three = decimal.NewFromInt(3)
-	Four  = decimal.NewFromInt(4)
-	Five  = decimal.NewFromInt(5)
-	Six   = decimal.NewFromInt(6)
-	Seven = decimal.NewFromInt(7)
-	Eight = decimal.NewFromInt(8)
-	Nine  = decimal.NewFromInt(9)
-	Ten   = decimal.NewFromInt(10)
+	Zero = decimal.Zero
+	One  = decimal.NewFromInt(1)
 )
 
 // Constructors for creating Decimal values.
