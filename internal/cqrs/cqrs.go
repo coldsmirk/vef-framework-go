@@ -34,17 +34,23 @@ type Behavior interface {
 // Ordered is an optional interface for Behavior implementations that need
 // deterministic wrapping order. The Bus sorts behaviors by Order ascending
 // at construction time, so a behavior with a lower Order wraps a behavior
-// with a higher Order (outermost first → innermost last). Behaviors that
-// do not implement Ordered are placed at Order 0, in the order Uber FX
-// produced them — which is not stable for value groups, so production
-// pipelines should implement Ordered.
+// with a higher Order (outermost first → innermost last). Behaviors that do
+// not implement Ordered default to Order 0, in the order Uber FX produced
+// them — which is not stable for value groups, so any behavior whose
+// position matters MUST implement Ordered.
+//
+// Order 0 is the outermost transactional band: an unordered behavior shares
+// that band and wraps everything, which is rarely what a custom host
+// behavior wants. Custom host behaviors must implement Ordered with a value
+// in the 1000+ band to run inside the framework's own behaviors.
 //
 // Conventional bands:
 //
-//   - 0–99    : transactional / contextual setup (must wrap everything)
+//   - 0–99    : transactional / contextual setup (must wrap everything;
+//     the default Order 0 falls here)
 //   - 100–199 : audit / collector lifecycle (writes after handler succeeds)
 //   - 200–299 : event publish / outbox (last buffered side effect)
-//   - 1000+   : custom host behaviors
+//   - 1000+   : custom host behaviors (must implement Ordered to reach this band)
 type Ordered interface {
 	// Order returns the sort key for the behavior. Lower values wrap
 	// outer; behaviors share an Order at the cost of an unstable relative

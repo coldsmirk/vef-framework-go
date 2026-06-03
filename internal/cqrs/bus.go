@@ -97,5 +97,10 @@ func Send[TAction Action, TResult any](ctx context.Context, bus Bus, action TAct
 		return lo.Empty[TResult](), nil
 	}
 
-	return raw.(TResult), nil
+	res, ok := raw.(TResult)
+	if !ok {
+		return lo.Empty[TResult](), fmt.Errorf("%w: expected %s, got %T", ErrResultTypeMismatch, reflect.TypeFor[TResult](), raw)
+	}
+
+	return res, nil
 }

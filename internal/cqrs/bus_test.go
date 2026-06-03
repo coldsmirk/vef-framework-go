@@ -60,6 +60,20 @@ func (b OrderedRecordingBehavior) Order() int {
 	return b.order
 }
 
+// OrderedPassthrough is a stateless Ordered behavior that only threads the
+// pipeline, used by concurrency tests that must not introduce their own races.
+type OrderedPassthrough struct {
+	order int
+}
+
+func (OrderedPassthrough) Handle(ctx context.Context, _ Action, next func(context.Context) (any, error)) (any, error) {
+	return next(ctx)
+}
+
+func (b OrderedPassthrough) Order() int {
+	return b.order
+}
+
 func TestRegisterAndSend(t *testing.T) {
 	t.Run("SingleHandler", func(t *testing.T) {
 		bus := NewBus(nil)
@@ -259,6 +273,27 @@ func TestBehaviorPipeline(t *testing.T) {
 		assert.False(t, handlerCalled, "Handler should not be called when behavior short-circuits")
 	})
 
+	t.Run("ShortCircuitWrongType", func(t *testing.T) {
+		// A misbehaving behavior that short-circuits with a non-nil value of the
+		// wrong concrete type must surface a typed error, not panic on the
+		// result assertion deep inside Send.
+		wrongType := BehaviorFunc(func(context.Context, Action, func(context.Context) (any, error)) (any, error) {
+			return GetUserResult{Name: "wrong"}, nil
+		})
+
+		bus := NewBus([]Behavior{wrongType})
+		Register(bus, HandlerFunc[CreateUserCmd, CreateUserResult](func(context.Context, CreateUserCmd) (CreateUserResult, error) {
+			return CreateUserResult{}, nil
+		}))
+
+		got, err := Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{})
+
+		require.ErrorIs(t, err, ErrResultTypeMismatch, "Wrong-typed short-circuit value should return ErrResultTypeMismatch")
+		assert.Contains(t, err.Error(), "CreateUserResult", "Type mismatch error should name the expected result type")
+		assert.Contains(t, err.Error(), "GetUserResult", "Type mismatch error should name the actual value type")
+		assert.Empty(t, got.ID, "Type mismatch should return a zero-value result")
+	})
+
 	t.Run("ModifyContext", func(t *testing.T) {
 		type ctxKey struct{}
 
@@ -365,30 +400,56 @@ func TestBehaviorPipeline(t *testing.T) {
 }
 
 func TestConcurrentSend(t *testing.T) {
-	bus := NewBus(nil)
-	Register(bus, HandlerFunc[CreateUserCmd, CreateUserResult](func(_ context.Context, cmd CreateUserCmd) (CreateUserResult, error) {
-		return CreateUserResult{ID: cmd.Name}, nil
-	}))
-
 	const n = 100
 
-	var wg sync.WaitGroup
+	runConcurrent := func(t *testing.T, bus Bus) {
+		t.Helper()
 
-	errs := make([]error, n)
-	results := make([]CreateUserResult, n)
+		var wg sync.WaitGroup
 
-	for i := range n {
-		wg.Go(func() {
-			results[i], errs[i] = Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{Name: "user"})
+		errs := make([]error, n)
+		results := make([]CreateUserResult, n)
+
+		for i := range n {
+			wg.Go(func() {
+				results[i], errs[i] = Send[CreateUserCmd, CreateUserResult](context.Background(), bus, CreateUserCmd{Name: "user"})
+			})
+		}
+
+		wg.Wait()
+
+		for i := range n {
+			require.NoError(t, errs[i], "Concurrent send should not return error")
+			assert.Equal(t, "user", results[i].ID, "Concurrent send should return correct result")
+		}
+	}
+
+	t.Run("NoBehaviors", func(t *testing.T) {
+		bus := NewBus(nil)
+		Register(bus, HandlerFunc[CreateUserCmd, CreateUserResult](func(_ context.Context, cmd CreateUserCmd) (CreateUserResult, error) {
+			return CreateUserResult{ID: cmd.Name}, nil
+		}))
+
+		runConcurrent(t, bus)
+	})
+
+	t.Run("WithBehaviorPipeline", func(t *testing.T) {
+		// Drives many goroutines through a multi-behavior, Ordered pipeline so
+		// the shared behaviors slice is read concurrently and the per-call
+		// chain is rebuilt under contention (run under -race to catch any
+		// shared mutable pipeline state). Behaviors are stateless so the test
+		// itself introduces no races.
+		bus := NewBus([]Behavior{
+			OrderedPassthrough{order: 10},
+			OrderedPassthrough{order: 20},
+			OrderedPassthrough{order: 30},
 		})
-	}
+		Register(bus, HandlerFunc[CreateUserCmd, CreateUserResult](func(_ context.Context, cmd CreateUserCmd) (CreateUserResult, error) {
+			return CreateUserResult{ID: cmd.Name}, nil
+		}))
 
-	wg.Wait()
-
-	for i := range n {
-		require.NoError(t, errs[i], "Concurrent send should not return error")
-		assert.Equal(t, "user", results[i].ID, "Concurrent send should return correct result")
-	}
+		runConcurrent(t, bus)
+	})
 }
 
 func TestHandlerFunc(t *testing.T) {

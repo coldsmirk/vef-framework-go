@@ -21,6 +21,7 @@ type (
 
 	Behavior     = icqrs.Behavior
 	BehaviorFunc = icqrs.BehaviorFunc
+	Ordered      = icqrs.Ordered
 )
 
 const (
@@ -28,7 +29,18 @@ const (
 	Query   = icqrs.Query
 )
 
-var ErrHandlerNotFound = icqrs.ErrHandlerNotFound
+var (
+	ErrHandlerNotFound    = icqrs.ErrHandlerNotFound
+	ErrResultTypeMismatch = icqrs.ErrResultTypeMismatch
+)
+
+// NewBus creates a Bus with the given behavior middlewares. Behaviors
+// implementing Ordered are wrapped outside-in by ascending Order. Hosts
+// normally obtain the Bus via dependency injection; this constructor exists
+// for standalone use and tests.
+func NewBus(behaviors []Behavior) Bus {
+	return icqrs.NewBus(behaviors)
+}
 
 // Register registers a type-safe handler for command type C.
 // Panics if a handler is already registered for the same command type.
