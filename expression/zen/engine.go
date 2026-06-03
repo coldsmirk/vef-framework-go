@@ -21,7 +21,7 @@ func (*engine) Evaluate(ctx context.Context, source string, env any) (expression
 		return expression.Value{}, err
 	}
 
-	return evaluate(source, env)
+	return wrap(zengo.EvaluateExpression[any](source, env))
 }
 
 func (*engine) Compile(source string, opts ...expression.CompileOption) (expression.Program, error) {
@@ -52,19 +52,16 @@ func (p *program) Run(ctx context.Context, env any) (expression.Value, error) {
 	}
 
 	if p.predicate {
-		result, err := zengo.EvaluateUnaryExpression(p.source, env)
-		if err != nil {
-			return expression.Value{}, fmt.Errorf("%w: %w", expression.ErrEvaluationFailed, err)
-		}
-
-		return expression.NewValue(result), nil
+		return wrap(zengo.EvaluateUnaryExpression(p.source, env))
 	}
 
-	return evaluate(p.source, env)
+	return wrap(zengo.EvaluateExpression[any](p.source, env))
 }
 
-func evaluate(source string, env any) (expression.Value, error) {
-	result, err := zengo.EvaluateExpression[any](source, env)
+// wrap adapts a Zen (result, error) pair into the expression contract, joining
+// any backend error under ErrEvaluationFailed so the stable code drives API
+// mapping while the cause stays available for logs.
+func wrap[T any](result T, err error) (expression.Value, error) {
 	if err != nil {
 		return expression.Value{}, fmt.Errorf("%w: %w", expression.ErrEvaluationFailed, err)
 	}
