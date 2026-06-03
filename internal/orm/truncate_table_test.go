@@ -2,6 +2,8 @@ package orm_test
 
 import (
 	"github.com/stretchr/testify/suite"
+
+	"github.com/coldsmirk/vef-framework-go/config"
 )
 
 func init() {
@@ -17,6 +19,22 @@ type TruncateTableTestSuite struct {
 
 func (suite *TruncateTableTestSuite) SetupSuite() {
 	suite.db.RegisterModel((*DDLModel)(nil))
+}
+
+// TestString tests String() output for TruncateTable.
+func (suite *TruncateTableTestSuite) TestString() {
+	suite.T().Logf("Testing TruncateTable String for %s", suite.ds.Kind)
+
+	sql := suite.db.NewTruncateTable().
+		Model((*DDLModel)(nil)).
+		String()
+	suite.Contains(sql, "test_ddl_model", "Should render the target table name")
+	// SQLite has no TRUNCATE; bun renders DELETE FROM instead.
+	if suite.ds.Kind == config.SQLite {
+		suite.Contains(sql, "DELETE FROM", "Should fall back to DELETE FROM on SQLite")
+	} else {
+		suite.Contains(sql, "TRUNCATE TABLE", "Should render the TRUNCATE TABLE keyword")
+	}
 }
 
 // TestTruncate tests truncating a table via the orm.DB interface.

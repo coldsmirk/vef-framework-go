@@ -9,12 +9,14 @@ import (
 
 // BunDropIndexQuery implements the DropIndexQuery interface.
 type BunDropIndexQuery struct {
+	db    *BunDB
 	query *bun.DropIndexQuery
 }
 
 // NewDropIndexQuery creates a new DropIndexQuery.
 func NewDropIndexQuery(db *BunDB) *BunDropIndexQuery {
 	return &BunDropIndexQuery{
+		db:    db,
 		query: db.db.NewDropIndex(),
 	}
 }
@@ -51,4 +53,8 @@ func (q *BunDropIndexQuery) Restrict() DropIndexQuery {
 
 func (q *BunDropIndexQuery) Exec(ctx context.Context, dest ...any) (sql.Result, error) {
 	return q.query.Exec(ctx, dest...)
+}
+
+func (q *BunDropIndexQuery) String() string {
+	return renderDDLString(q.db, q.query)
 }

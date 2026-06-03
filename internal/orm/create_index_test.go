@@ -22,6 +22,19 @@ func (suite *CreateIndexTestSuite) SetupSuite() {
 	suite.db.RegisterModel((*DDLModel)(nil))
 }
 
+// TestString tests String() output for CreateIndex.
+func (suite *CreateIndexTestSuite) TestString() {
+	suite.T().Logf("Testing CreateIndex String for %s", suite.ds.Kind)
+
+	sql := suite.db.NewCreateIndex().
+		Model((*DDLModel)(nil)).
+		Index("idx_ddl_model_label").
+		Column("label").
+		String()
+	suite.Contains(sql, "CREATE INDEX", "Should render the CREATE INDEX keyword")
+	suite.Contains(sql, "idx_ddl_model_label", "Should render the index name")
+}
+
 // TestCreateAndDrop tests creating and dropping indexes via the orm.DB interface.
 func (suite *CreateIndexTestSuite) TestCreateAndDrop() {
 	suite.T().Logf("Testing CreateIndex for %s", suite.ds.Kind)

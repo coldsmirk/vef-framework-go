@@ -9,12 +9,14 @@ import (
 
 // BunTruncateTableQuery implements the TruncateTableQuery interface.
 type BunTruncateTableQuery struct {
+	db    *BunDB
 	query *bun.TruncateTableQuery
 }
 
 // NewTruncateTableQuery creates a new TruncateTableQuery.
 func NewTruncateTableQuery(db *BunDB) *BunTruncateTableQuery {
 	return &BunTruncateTableQuery{
+		db:    db,
 		query: db.db.NewTruncateTable(),
 	}
 }
@@ -51,4 +53,8 @@ func (q *BunTruncateTableQuery) Restrict() TruncateTableQuery {
 
 func (q *BunTruncateTableQuery) Exec(ctx context.Context, dest ...any) (sql.Result, error) {
 	return q.query.Exec(ctx, dest...)
+}
+
+func (q *BunTruncateTableQuery) String() string {
+	return renderDDLString(q.db, q.query)
 }

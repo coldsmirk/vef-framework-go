@@ -104,3 +104,7 @@ func (q *BunCreateIndexQuery) Where(builder func(ConditionBuilder)) CreateIndexQ
 func (q *BunCreateIndexQuery) Exec(ctx context.Context, dest ...any) (sql.Result, error) {
 	return q.query.Exec(ctx, dest...)
 }
+
+func (q *BunCreateIndexQuery) String() string {
+	return renderDDLString(q.db, q.query)
+}

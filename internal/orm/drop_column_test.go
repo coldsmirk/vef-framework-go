@@ -15,6 +15,18 @@ type DropColumnTestSuite struct {
 	*BaseTestSuite
 }
 
+// TestString tests String() output for DropColumn.
+func (suite *DropColumnTestSuite) TestString() {
+	suite.T().Logf("Testing DropColumn String for %s", suite.ds.Kind)
+
+	sql := suite.db.NewDropColumn().
+		Table("test_ddl_model").
+		Column("extra").
+		String()
+	suite.Contains(sql, "ALTER TABLE", "Should render the ALTER TABLE keyword")
+	suite.Contains(sql, "DROP COLUMN", "Should render the DROP COLUMN clause")
+}
+
 // TestExtended tests DropColumn query building with Model and Table.
 func (suite *DropColumnTestSuite) TestExtended() {
 	suite.T().Logf("Testing DropColumn for %s", suite.ds.Kind)

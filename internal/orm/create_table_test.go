@@ -121,6 +121,7 @@ func (suite *CreateTableTestSuite) TestExtended() {
 
 	if suite.ds.Kind == config.Postgres {
 		suite.Run("PartitionByAndTableSpace", func() {
+			quote := suite.identQuote()
 			query := suite.db.NewCreateTable().
 				Model((*Tag)(nil)).
 				Table("test_ddl_partition").
@@ -128,6 +129,9 @@ func (suite *CreateTableTestSuite) TestExtended() {
 				TableSpace("pg_default")
 
 			suite.NotNil(query, "Should return non-nil query with partitioning")
+			// The model path must quote the tablespace identically to the model-less path.
+			suite.Contains(query.String(), "TABLESPACE "+quote+"pg_default"+quote,
+				"Should quote the tablespace on the model path")
 		})
 
 		suite.Run("ForeignKey", func() {

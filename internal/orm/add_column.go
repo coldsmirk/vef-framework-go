@@ -55,3 +55,7 @@ func (q *BunAddColumnQuery) IfNotExists() AddColumnQuery {
 func (q *BunAddColumnQuery) Exec(ctx context.Context, dest ...any) (sql.Result, error) {
 	return q.query.Exec(ctx, dest...)
 }
+
+func (q *BunAddColumnQuery) String() string {
+	return renderDDLString(q.db, q.query)
+}

@@ -41,8 +41,10 @@ type DropTableQuery interface {
 	// IfExists adds IF EXISTS to prevent errors when the table does not exist.
 	IfExists() DropTableQuery
 	// Cascade automatically drops dependent objects (e.g., indexes, views).
+	// Cascade and Restrict are mutually exclusive; the last call wins.
 	Cascade() DropTableQuery
-	// Restrict refuses to drop the table if any dependent objects exist (default behavior).
+	// Restrict refuses to drop the table if any dependent objects exist (the database default).
+	// Cascade and Restrict are mutually exclusive; the last call wins.
 	Restrict() DropTableQuery
 }
 
@@ -50,6 +52,7 @@ type DropTableQuery interface {
 type CreateIndexQuery interface {
 	Executor
 	TableTarget[CreateIndexQuery]
+	fmt.Stringer
 
 	// Index sets the index name.
 	Index(name string) CreateIndexQuery
@@ -76,6 +79,7 @@ type CreateIndexQuery interface {
 // DropIndexQuery builds and executes DROP INDEX queries.
 type DropIndexQuery interface {
 	Executor
+	fmt.Stringer
 
 	// Index sets the index name to drop.
 	Index(name string) DropIndexQuery
@@ -84,8 +88,10 @@ type DropIndexQuery interface {
 	// Concurrently drops the index concurrently (PostgreSQL only).
 	Concurrently() DropIndexQuery
 	// Cascade automatically drops dependent objects.
+	// Cascade and Restrict are mutually exclusive; the last call wins.
 	Cascade() DropIndexQuery
-	// Restrict refuses to drop the index if any dependent objects exist.
+	// Restrict refuses to drop the index if any dependent objects exist (the database default).
+	// Cascade and Restrict are mutually exclusive; the last call wins.
 	Restrict() DropIndexQuery
 }
 
@@ -93,12 +99,15 @@ type DropIndexQuery interface {
 type TruncateTableQuery interface {
 	Executor
 	TableTarget[TruncateTableQuery]
+	fmt.Stringer
 
-	// ContinueIdentity preserves the current sequence values (default behavior, opposite of RESTART IDENTITY).
+	// ContinueIdentity preserves the current sequence values (the database default, opposite of RESTART IDENTITY).
 	ContinueIdentity() TruncateTableQuery
 	// Cascade automatically truncates dependent tables via foreign key references.
+	// Cascade and Restrict are mutually exclusive; the last call wins.
 	Cascade() TruncateTableQuery
-	// Restrict refuses to truncate if other tables reference this one via foreign keys.
+	// Restrict refuses to truncate if other tables reference this one via foreign keys (the database default).
+	// Cascade and Restrict are mutually exclusive; the last call wins.
 	Restrict() TruncateTableQuery
 }
 
@@ -106,6 +115,7 @@ type TruncateTableQuery interface {
 type AddColumnQuery interface {
 	Executor
 	TableTarget[AddColumnQuery]
+	fmt.Stringer
 
 	// Column defines the new column with data type and optional constraints.
 	Column(name string, dataType DataTypeDef, constraints ...ColumnConstraint) AddColumnQuery
@@ -117,6 +127,7 @@ type AddColumnQuery interface {
 type DropColumnQuery interface {
 	Executor
 	TableTarget[DropColumnQuery]
+	fmt.Stringer
 
 	// Column specifies the columns to drop.
 	Column(columns ...string) DropColumnQuery

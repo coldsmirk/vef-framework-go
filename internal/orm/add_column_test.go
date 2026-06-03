@@ -21,6 +21,19 @@ func (suite *AddColumnTestSuite) SetupSuite() {
 	suite.db.RegisterModel((*DDLModel)(nil))
 }
 
+// TestString tests String() output for AddColumn, including the parameterized string DEFAULT.
+func (suite *AddColumnTestSuite) TestString() {
+	suite.T().Logf("Testing AddColumn String for %s", suite.ds.Kind)
+
+	sql := suite.db.NewAddColumn().
+		Table("test_ddl_model").
+		Column("nickname", orm.DataType.VarChar(50), orm.Default("guest")).
+		String()
+	suite.Contains(sql, "ALTER TABLE", "Should render the ALTER TABLE keyword")
+	suite.Contains(sql, "nickname", "Should render the new column name")
+	suite.Contains(sql, "DEFAULT 'guest'", "Should inline the bound string default as a quoted literal")
+}
+
 // TestAddAndDrop tests adding and dropping columns via the orm.DB interface.
 func (suite *AddColumnTestSuite) TestAddAndDrop() {
 	suite.T().Logf("Testing AddColumn for %s", suite.ds.Kind)

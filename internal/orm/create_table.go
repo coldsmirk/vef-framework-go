@@ -8,29 +8,41 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// RawColumnDef stores a column definition for model-less table creation.
-type RawColumnDef struct {
+// columnDef stores a rendered column or table-level constraint fragment with its bound args.
+type columnDef struct {
 	sql  string
 	args []any
 }
 
 // BunCreateTableQuery implements the CreateTableQuery interface with type-safe DDL operations.
+//
+// Bun's CreateTableQuery can only render a statement when a model is bound (it derives the
+// column list from the model's schema.Table and errors otherwise), so model-less CREATE TABLE
+// must be rendered as raw SQL. To keep both rendering strategies coherent, every builder option
+// is recorded once into this struct, which is the single source of truth: the bun query is
+// populated from that state lazily in applyToBun (model path), and buildRawSQL renders it
+// directly (model-less path). Setters never mutate the bun query directly, so the two renderers
+// cannot drift.
 type BunCreateTableQuery struct {
 	*BaseQueryBuilder
 
 	query *bun.CreateTableQuery
 
-	// hasModel tracks whether Model() was called. When false, Exec/String
-	// build raw SQL to avoid Bun panics on model-less queries.
+	// hasModel tracks whether Model() was called. It selects the rendering strategy at
+	// execution time (Model() may be called after column/option setters).
 	hasModel bool
 
-	// State for model-less raw SQL building.
+	// applied guards applyToBun so repeated Exec/String calls do not append options twice.
+	applied bool
+
 	tableName     string
-	columnDefs    []RawColumnDef
+	columnDefs    []columnDef
 	isTemp        bool
 	ifNotExists   bool
+	defaultVarLen int
 	partitionExpr string
 	tableSpace    string
+	withFKs       bool
 }
 
 // NewCreateTableQuery creates a new CreateTableQuery with BaseQueryBuilder for expression support.
@@ -65,56 +77,51 @@ func (q *BunCreateTableQuery) Table(tables ...string) CreateTableQuery {
 
 func (q *BunCreateTableQuery) Column(name string, dataType DataTypeDef, constraints ...ColumnConstraint) CreateTableQuery {
 	queryStr, args := renderColumnDef(q.Dialect(), name, dataType, constraints, q)
-	q.query.ColumnExpr(queryStr, args...)
-	q.columnDefs = append(q.columnDefs, RawColumnDef{sql: queryStr, args: args})
+	q.columnDefs = append(q.columnDefs, columnDef{sql: queryStr, args: args})
 
 	return q
 }
 
 func (q *BunCreateTableQuery) Temp() CreateTableQuery {
-	q.query.Temp()
 	q.isTemp = true
 
 	return q
 }
 
 func (q *BunCreateTableQuery) IfNotExists() CreateTableQuery {
-	q.query.IfNotExists()
 	q.ifNotExists = true
 
 	return q
 }
 
 func (q *BunCreateTableQuery) DefaultVarChar(n int) CreateTableQuery {
-	q.query.Varchar(n)
+	q.defaultVarLen = n
 
 	return q
 }
 
 func (q *BunCreateTableQuery) PrimaryKey(builder func(PrimaryKeyBuilder)) CreateTableQuery {
-	pk := &PrimaryKeyDef{}
+	pk := new(PrimaryKeyDef)
 	builder(pk)
 
 	rendered := renderTableKeyConstraint(q.Dialect().IdentQuote(), "PRIMARY KEY", pk.name, pk.columns)
-	q.query.ColumnExpr(rendered)
-	q.columnDefs = append(q.columnDefs, RawColumnDef{sql: rendered})
+	q.columnDefs = append(q.columnDefs, columnDef{sql: rendered})
 
 	return q
 }
 
 func (q *BunCreateTableQuery) Unique(builder func(UniqueBuilder)) CreateTableQuery {
-	u := &UniqueDef{}
+	u := new(UniqueDef)
 	builder(u)
 
 	rendered := renderTableKeyConstraint(q.Dialect().IdentQuote(), "UNIQUE", u.name, u.columns)
-	q.query.ColumnExpr(rendered)
-	q.columnDefs = append(q.columnDefs, RawColumnDef{sql: rendered})
+	q.columnDefs = append(q.columnDefs, columnDef{sql: rendered})
 
 	return q
 }
 
 func (q *BunCreateTableQuery) Check(builder func(CheckBuilder)) CreateTableQuery {
-	ck := &CheckDef{}
+	ck := new(CheckDef)
 	builder(ck)
 
 	if ck.conditionBuilder == nil {
@@ -130,66 +137,107 @@ func (q *BunCreateTableQuery) Check(builder func(CheckBuilder)) CreateTableQuery
 		queryStr = "CHECK (?)"
 	}
 
-	q.query.ColumnExpr(queryStr, condition)
-	q.columnDefs = append(q.columnDefs, RawColumnDef{sql: queryStr, args: []any{condition}})
+	q.columnDefs = append(q.columnDefs, columnDef{sql: queryStr, args: []any{condition}})
 
 	return q
 }
 
 func (q *BunCreateTableQuery) ForeignKey(builder func(ForeignKeyBuilder)) CreateTableQuery {
-	fk := &ForeignKeyDef{}
+	fk := new(ForeignKeyDef)
 	builder(fk)
 
 	rendered := renderTableForeignKey(q.Dialect().IdentQuote(), fk)
-	q.query.ColumnExpr(rendered)
-	q.columnDefs = append(q.columnDefs, RawColumnDef{sql: rendered})
+	q.columnDefs = append(q.columnDefs, columnDef{sql: rendered})
 
 	return q
 }
 
 func (q *BunCreateTableQuery) PartitionBy(strategy PartitionStrategy, columns ...string) CreateTableQuery {
-	rendered := renderPartitionBy(q.Dialect().IdentQuote(), strategy, columns)
-	q.query.PartitionBy(rendered)
-	q.partitionExpr = rendered
+	q.partitionExpr = renderPartitionBy(q.Dialect().IdentQuote(), strategy, columns)
 
 	return q
 }
 
 func (q *BunCreateTableQuery) TableSpace(tableSpace string) CreateTableQuery {
-	q.query.TableSpace(tableSpace)
 	q.tableSpace = tableSpace
 
 	return q
 }
 
 func (q *BunCreateTableQuery) WithForeignKeys() CreateTableQuery {
-	q.query.WithForeignKeys()
+	q.withFKs = true
 
 	return q
 }
 
 func (q *BunCreateTableQuery) Exec(ctx context.Context, dest ...any) (sql.Result, error) {
 	if q.hasModel {
+		q.applyToBun()
+
 		return q.query.Exec(ctx, dest...)
 	}
 
-	rawSQL, rawArgs := q.buildRawCreateSQL()
+	rawSQL, rawArgs := q.buildRawSQL()
 
 	return q.BaseQueryBuilder.db.db.NewRaw(rawSQL, rawArgs...).Exec(ctx)
 }
 
 func (q *BunCreateTableQuery) String() string {
 	if q.hasModel {
+		q.applyToBun()
+
 		return q.query.String()
 	}
 
-	rawSQL, _ := q.buildRawCreateSQL()
+	rawSQL, _ := q.buildRawSQL()
 
 	return rawSQL
 }
 
-// buildRawCreateSQL generates CREATE TABLE SQL from tracked state (for model-less queries).
-func (q *BunCreateTableQuery) buildRawCreateSQL() (string, []any) {
+// applyToBun projects the recorded option state onto the bun query for model-based rendering.
+// It runs at most once so repeated Exec/String calls remain idempotent.
+func (q *BunCreateTableQuery) applyToBun() {
+	if q.applied {
+		return
+	}
+
+	q.applied = true
+
+	if q.isTemp {
+		q.query.Temp()
+	}
+
+	if q.ifNotExists {
+		q.query.IfNotExists()
+	}
+
+	if q.defaultVarLen > 0 {
+		q.query.Varchar(q.defaultVarLen)
+	}
+
+	for _, col := range q.columnDefs {
+		q.query.ColumnExpr(col.sql, col.args...)
+	}
+
+	if q.partitionExpr != "" {
+		q.query.PartitionBy(q.partitionExpr)
+	}
+
+	if q.tableSpace != "" {
+		// bun quotes the tablespace identifier itself, so pass the raw name to
+		// avoid double-quoting (the model-less buildRawSQL path quotes manually).
+		q.query.TableSpace(q.tableSpace)
+	}
+
+	if q.withFKs {
+		q.query.WithForeignKeys()
+	}
+}
+
+// buildRawSQL renders the CREATE TABLE statement from the recorded option state for the
+// model-less path. Identifiers (table name, tablespace) are quoted via quoteIdent so the
+// output matches the model path.
+func (q *BunCreateTableQuery) buildRawSQL() (string, []any) {
 	quote := q.Dialect().IdentQuote()
 
 	var (

@@ -109,6 +109,10 @@ func (DataTypeFactory) BigInt() DataTypeDef {
 	return DataTypeDef{kind: DataTypeBigInt}
 }
 
+// Numeric creates an exact NUMERIC/DECIMAL type with the given precision and scale.
+// On SQLite this renders as REAL (floating point): SQLite has no exact decimal type, so the
+// precision and scale are not enforced and values are not stored exactly. Callers needing exact
+// decimals on SQLite should store as TEXT or integer cents instead.
 func (DataTypeFactory) Numeric(precision, scale int) DataTypeDef {
 	return DataTypeDef{kind: DataTypeNumeric, precision: precision, scale: scale}
 }

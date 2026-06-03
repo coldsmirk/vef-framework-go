@@ -9,12 +9,14 @@ import (
 
 // BunDropColumnQuery implements the DropColumnQuery interface.
 type BunDropColumnQuery struct {
+	db    *BunDB
 	query *bun.DropColumnQuery
 }
 
 // NewDropColumnQuery creates a new DropColumnQuery.
 func NewDropColumnQuery(db *BunDB) *BunDropColumnQuery {
 	return &BunDropColumnQuery{
+		db:    db,
 		query: db.db.NewDropColumn(),
 	}
 }
@@ -39,4 +41,8 @@ func (q *BunDropColumnQuery) Column(columns ...string) DropColumnQuery {
 
 func (q *BunDropColumnQuery) Exec(ctx context.Context, dest ...any) (sql.Result, error) {
 	return q.query.Exec(ctx, dest...)
+}
+
+func (q *BunDropColumnQuery) String() string {
+	return renderDDLString(q.db, q.query)
 }

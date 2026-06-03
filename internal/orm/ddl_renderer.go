@@ -5,7 +5,21 @@ import (
 	"strings"
 
 	"github.com/uptrace/bun/dialect"
+	"github.com/uptrace/bun/schema"
 )
+
+// renderDDLString renders a bun DDL query to its SQL string using the database query generator.
+// It mirrors bun's own Stringer behavior (panic on append error) and exists because several bun
+// DDL queries (CREATE INDEX, ALTER TABLE ADD/DROP COLUMN, DROP INDEX, TRUNCATE) do not implement
+// fmt.Stringer themselves.
+func renderDDLString(db *BunDB, query schema.QueryAppender) string {
+	buf, err := query.AppendQuery(db.getBunDB().QueryGen(), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return string(buf)
+}
 
 // DDLDialect defines the dialect methods needed by DDL renderers.
 // Schema.Dialect satisfies this interface implicitly.
@@ -35,34 +49,42 @@ func renderColumnDef(
 	sb.WriteString(dt.render(d.Name()))
 
 	for _, c := range constraints {
-		if c.kind == ConstraintCheck {
-			if c.checkBuilder != nil && qb != nil {
-				sb.WriteString(" CHECK (?)")
+		switch c.kind {
+		case ConstraintCheck:
+			// qb is required to compile the condition. Production callers always pass a
+			// non-nil builder, so a nil qb is a programming error and panics here rather
+			// than silently dropping the constraint.
+			sb.WriteString(" CHECK (?)")
 
-				args = append(args, qb.BuildCondition(c.checkBuilder))
-			}
+			args = append(args, qb.BuildCondition(c.checkBuilder))
+		case ConstraintDefault:
+			fragment, defaultArgs := renderDefault(d.Name(), c.defaultValue)
 
-			continue
-		}
-
-		if fragment := renderConstraint(d, c); fragment != "" {
 			sb.WriteByte(' ')
 			sb.WriteString(fragment)
+
+			args = append(args, defaultArgs...)
+
+		default:
+			if fragment := renderConstraint(d, c); fragment != "" {
+				sb.WriteByte(' ')
+				sb.WriteString(fragment)
+			}
 		}
 	}
 
 	return sb.String(), args
 }
 
-// renderConstraint renders a single column constraint SQL fragment.
+// renderConstraint renders a single column constraint SQL fragment that carries no bound args.
+// DEFAULT (which may bind a literal) and CHECK (which binds a condition) are handled directly
+// in renderColumnDef.
 func renderConstraint(d DDLDialect, c ColumnConstraint) string {
 	switch c.kind {
 	case ConstraintNotNull:
 		return "NOT NULL"
 	case ConstraintNullable:
 		return "NULL"
-	case ConstraintDefault:
-		return renderDefault(d.Name(), c.defaultValue)
 	case ConstraintPrimaryKey:
 		return "PRIMARY KEY"
 	case ConstraintUnique:
@@ -76,20 +98,22 @@ func renderConstraint(d DDLDialect, c ColumnConstraint) string {
 	}
 }
 
-// renderDefault renders a DEFAULT clause.
-func renderDefault(dialectName dialect.Name, value any) string {
+// renderDefault renders a DEFAULT clause and any bound args. String literals are bound through a
+// ? placeholder so the driver applies dialect-correct escaping (hand-rolled single-quote doubling
+// is unsafe on MySQL with backslash escaping enabled). NULL, booleans, and numerics render as SQL
+// keywords/literals with no bound args.
+func renderDefault(dialectName dialect.Name, value any) (string, []any) {
 	if value == nil {
-		return "DEFAULT NULL"
+		return "DEFAULT NULL", nil
 	}
 
 	switch v := value.(type) {
 	case string:
-		// Escape single quotes to keep DEFAULT string literals SQL-safe.
-		return fmt.Sprintf("DEFAULT '%s'", strings.ReplaceAll(v, "'", "''"))
+		return "DEFAULT ?", []any{v}
 	case bool:
-		return renderDefaultBool(dialectName, v)
+		return renderDefaultBool(dialectName, v), nil
 	default:
-		return fmt.Sprintf("DEFAULT %v", v)
+		return fmt.Sprintf("DEFAULT %v", v), nil
 	}
 }
 

@@ -17,6 +17,18 @@ type DropIndexTestSuite struct {
 	*BaseTestSuite
 }
 
+// TestString tests String() output for DropIndex.
+func (suite *DropIndexTestSuite) TestString() {
+	suite.T().Logf("Testing DropIndex String for %s", suite.ds.Kind)
+
+	sql := suite.db.NewDropIndex().
+		Index("idx_nonexistent").
+		IfExists().
+		String()
+	suite.Contains(sql, "DROP INDEX", "Should render the DROP INDEX keyword")
+	suite.Contains(sql, "idx_nonexistent", "Should render the index name")
+}
+
 // TestExtended tests extended DropIndex methods.
 func (suite *DropIndexTestSuite) TestExtended() {
 	suite.T().Logf("Testing DropIndex for %s", suite.ds.Kind)

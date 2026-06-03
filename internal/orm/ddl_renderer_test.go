@@ -87,31 +87,36 @@ func TestRenderConstraint(t *testing.T) {
 	}
 }
 
-// TestRenderDefault verifies DEFAULT clause rendering across types and dialects.
+// TestRenderDefault verifies DEFAULT clause rendering across types and dialects. String literals
+// are bound through a ? placeholder so the dialect applies safe escaping; non-strings render as
+// keywords/literals with no bound args.
 func TestRenderDefault(t *testing.T) {
 	tests := []struct {
-		name        string
-		dialectName dialect.Name
-		value       any
-		expected    string
+		name         string
+		dialectName  dialect.Name
+		value        any
+		expected     string
+		expectedArgs []any
 	}{
-		{"NilValue", dialect.PG, nil, "DEFAULT NULL"},
-		{"StringValue", dialect.PG, "hello", "DEFAULT 'hello'"},
-		{"StringValueWithQuote", dialect.PG, "O'Reilly", "DEFAULT 'O''Reilly'"},
-		{"EmptyString", dialect.PG, "", "DEFAULT ''"},
-		{"IntValue", dialect.PG, 42, "DEFAULT 42"},
-		{"FloatValue", dialect.PG, 3.14, "DEFAULT 3.14"},
-		{"BoolTruePG", dialect.PG, true, "DEFAULT TRUE"},
-		{"BoolFalsePG", dialect.PG, false, "DEFAULT FALSE"},
-		{"BoolTrueMySQL", dialect.MySQL, true, "DEFAULT TRUE"},
-		{"BoolTrueSQLite", dialect.SQLite, true, "DEFAULT 1"},
-		{"BoolFalseSQLite", dialect.SQLite, false, "DEFAULT 0"},
+		{"NilValue", dialect.PG, nil, "DEFAULT NULL", nil},
+		{"StringValue", dialect.PG, "hello", "DEFAULT ?", []any{"hello"}},
+		{"StringValueWithQuote", dialect.PG, "O'Reilly", "DEFAULT ?", []any{"O'Reilly"}},
+		{"StringValueWithBackslash", dialect.MySQL, `a\'b`, "DEFAULT ?", []any{`a\'b`}},
+		{"EmptyString", dialect.PG, "", "DEFAULT ?", []any{""}},
+		{"IntValue", dialect.PG, 42, "DEFAULT 42", nil},
+		{"FloatValue", dialect.PG, 3.14, "DEFAULT 3.14", nil},
+		{"BoolTruePG", dialect.PG, true, "DEFAULT TRUE", nil},
+		{"BoolFalsePG", dialect.PG, false, "DEFAULT FALSE", nil},
+		{"BoolTrueMySQL", dialect.MySQL, true, "DEFAULT TRUE", nil},
+		{"BoolTrueSQLite", dialect.SQLite, true, "DEFAULT 1", nil},
+		{"BoolFalseSQLite", dialect.SQLite, false, "DEFAULT 0", nil},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, renderDefault(tt.dialectName, tt.value),
-				"Should render the correct DEFAULT clause")
+			fragment, args := renderDefault(tt.dialectName, tt.value)
+			assert.Equal(t, tt.expected, fragment, "Should render the correct DEFAULT clause")
+			assert.Equal(t, tt.expectedArgs, args, "Should bind string literals and leave other types as literals")
 		})
 	}
 }
@@ -374,12 +379,20 @@ func TestRenderColumnDef(t *testing.T) {
 		assert.Empty(t, args, "Should produce no args")
 	})
 
-	t.Run("CheckWithoutQueryBuilder", func(t *testing.T) {
+	t.Run("StringDefaultIsParameterized", func(t *testing.T) {
+		constraints := []ColumnConstraint{NotNull(), Default("active")}
+		query, args := renderColumnDef(pgDialect, "status", DataType.VarChar(20), constraints, nil)
+		assert.Equal(t, `"status" VARCHAR(20) NOT NULL DEFAULT ?`, query,
+			"Should bind string DEFAULT through a placeholder")
+		assert.Equal(t, []any{"active"}, args, "Should pass the string default as a bound arg")
+	})
+
+	t.Run("CheckWithoutQueryBuilderPanics", func(t *testing.T) {
 		constraints := []ColumnConstraint{Check(func(cb ConditionBuilder) { cb.GreaterThan("age", 0) })}
-		// Without a QueryBuilder, Check constraints are silently skipped
-		query, args := renderColumnDef(pgDialect, "age", DataType.Integer(), constraints, nil)
-		assert.Equal(t, `"age" INTEGER`, query,
-			"Should skip CHECK constraint when QueryBuilder is nil")
-		assert.Empty(t, args, "Should produce no args")
+		// A nil QueryBuilder is a programming error: the CHECK condition cannot be compiled,
+		// so renderColumnDef fails fast rather than silently dropping the constraint.
+		assert.Panics(t, func() {
+			renderColumnDef(pgDialect, "age", DataType.Integer(), constraints, nil)
+		}, "Should panic when CHECK is present but QueryBuilder is nil")
 	})
 }
