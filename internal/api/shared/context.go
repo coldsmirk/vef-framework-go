@@ -12,6 +12,7 @@ type contextKey uint
 const (
 	contextKeyRequest contextKey = iota
 	contextKeyOperation
+	contextKeyHandler
 )
 
 func Request(ctx fiber.Ctx) *api.Request {
@@ -28,4 +29,14 @@ func Operation(ctx fiber.Ctx) *api.Operation {
 
 func SetOperation(ctx fiber.Ctx, op *api.Operation) {
 	fiber.Locals(ctx, contextKeyOperation, op)
+}
+
+// Handler returns the resolved fiber.Handler stored in context by the RPC resolver.
+func Handler(ctx fiber.Ctx) fiber.Handler {
+	return fiber.Locals[fiber.Handler](ctx, contextKeyHandler)
+}
+
+// SetHandler stores the resolved fiber.Handler in the request context.
+func SetHandler(ctx fiber.Ctx, h fiber.Handler) {
+	fiber.Locals(ctx, contextKeyHandler, h)
 }

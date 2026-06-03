@@ -6,9 +6,6 @@ var (
 	// ErrOperationNotFound indicates the operation was not found in context.
 	ErrOperationNotFound = errors.New("operation not found in request context")
 
-	// ErrPrincipalNotFound indicates the principal was not found in context.
-	ErrPrincipalNotFound = errors.New("principal not found in request context")
-
 	// ErrRequestNotFound indicates the request was not found in context.
 	ErrRequestNotFound = errors.New("request not found in request context")
 
@@ -32,7 +29,4 @@ var (
 
 	// ErrAuditEventBuildFailed indicates an error occurred while building audit event.
 	ErrAuditEventBuildFailed = errors.New("failed to build audit event")
-
-	// ErrResponseDecodeFailed indicates an error occurred while decoding response body.
-	ErrResponseDecodeFailed = errors.New("failed to decode response body")
 )

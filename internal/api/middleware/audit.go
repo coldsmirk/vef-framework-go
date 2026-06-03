@@ -3,7 +3,6 @@ package middleware
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -99,17 +98,20 @@ func buildAuditEvent(ctx fiber.Ctx, elapsed int64, err error) (*api.AuditEvent, 
 	if err != nil {
 		resultCode, resultMsg = extractErrorInfo(err)
 	} else {
+		// Attempt to decode the result envelope; for non-JSON responses (file
+		// downloads, streamed content) fall back to the HTTP status code so
+		// the audit record is always published.
 		var res result.Result
-		if decodeErr := json.Unmarshal(utils.CopyBytes(ctx.Response().Body()), &res); decodeErr != nil {
-			return nil, fmt.Errorf("%w: %w", ErrResponseDecodeFailed, decodeErr)
+		if decodeErr := json.Unmarshal(utils.CopyBytes(ctx.Response().Body()), &res); decodeErr == nil {
+			resultCode = res.Code
+			resultMsg = res.Message
+			resultData = res.Data
+		} else {
+			resultCode = ctx.Response().StatusCode()
 		}
-
-		resultCode = res.Code
-		resultMsg = res.Message
-		resultData = res.Data
 	}
 
-	return api.NewAuditEvent(api.AuditEventParams{
+	return &api.AuditEvent{
 		Resource:      req.Resource,
 		Action:        req.Action,
 		Version:       req.Version,
@@ -123,7 +125,7 @@ func buildAuditEvent(ctx fiber.Ctx, elapsed int64, err error) (*api.AuditEvent, 
 		ResultMessage: resultMsg,
 		ResultData:    resultData,
 		ElapsedTime:   elapsed,
-	}), nil
+	}, nil
 }
 
 func extractErrorInfo(err error) (code int, message string) {

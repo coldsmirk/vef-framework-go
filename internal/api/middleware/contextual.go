@@ -30,7 +30,7 @@ func (*Contextual) Name() string {
 }
 
 // Order returns the middleware order.
-// Runs after authentication (-100) but before authorization (-90).
+// Runs after authentication (-100) but before data permission (-80).
 func (*Contextual) Order() int {
 	return -90
 }

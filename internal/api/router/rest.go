@@ -120,10 +120,12 @@ func (r *REST) parseRequest(ctx fiber.Ctx, op *api.Operation) (*api.Request, err
 }
 
 // extractMeta extracts meta values from HTTP headers with prefix X-Meta-.
+// Keys are lowercased to match the raw JSON key convention used by the RPC
+// transport, so the same meta field resolves identically regardless of transport.
 func (*REST) extractMeta(ctx fiber.Ctx, req *api.Request) {
 	for key, values := range ctx.GetReqHeaders() {
 		if metaKey, found := strings.CutPrefix(key, api.HeaderXMetaPrefix); found && len(values) > 0 {
-			req.Meta[metaKey] = values[0]
+			req.Meta[strings.ToLower(metaKey)] = values[0]
 		}
 	}
 }

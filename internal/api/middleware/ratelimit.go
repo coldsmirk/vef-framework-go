@@ -32,14 +32,14 @@ func NewRateLimit() api.Middleware {
 		h: limiter.New(limiter.Config{
 			LimiterMiddleware: limiter.SlidingWindow{},
 			MaxFunc: func(ctx fiber.Ctx) int {
-				if op := shared.Operation(ctx); op != nil {
+				if op := shared.Operation(ctx); op != nil && op.RateLimit != nil && op.RateLimit.Max > 0 {
 					return op.RateLimit.Max
 				}
 
 				return defaultRateLimitMax
 			},
 			ExpirationFunc: func(c fiber.Ctx) time.Duration {
-				if op := shared.Operation(c); op != nil {
+				if op := shared.Operation(c); op != nil && op.RateLimit != nil && op.RateLimit.Period > 0 {
 					return op.RateLimit.Period
 				}
 

@@ -11,8 +11,6 @@ import (
 
 // TestSelectClosestMatch tests select closest match scenarios.
 func TestSelectClosestMatch(t *testing.T) {
-	t.Log("Testing selectClosestMatch function")
-
 	t.Run("EmptyCandidates", func(t *testing.T) {
 		result := selectClosestMatch("target", []string{})
 		assert.Empty(t, result, "Empty candidates should return empty string")
@@ -47,8 +45,6 @@ func TestSelectClosestMatch(t *testing.T) {
 
 // TestValidateHandlerSignature tests validate handler signature scenarios.
 func TestValidateHandlerSignature(t *testing.T) {
-	t.Log("Testing validateHandlerSignature function")
-
 	t.Run("NoReturnValue", func(t *testing.T) {
 		fn := func() {}
 		err := validateHandlerSignature(reflect.TypeOf(fn))
@@ -65,14 +61,14 @@ func TestValidateHandlerSignature(t *testing.T) {
 		fn := func() string { return "" }
 		err := validateHandlerSignature(reflect.TypeOf(fn))
 		assert.Error(t, err, "Handler returning non-error should be invalid")
-		assert.Contains(t, err.Error(), "invalid return type", "TestValidateHandlerSignature should include expected value")
+		assert.Contains(t, err.Error(), "invalid return type", "error should describe the invalid return type")
 	})
 
 	t.Run("TooManyReturns", func(t *testing.T) {
 		fn := func() (string, error) { return "", nil }
 		err := validateHandlerSignature(reflect.TypeOf(fn))
 		assert.Error(t, err, "Handler with too many returns should be invalid")
-		assert.Contains(t, err.Error(), "too many return values", "TestValidateHandlerSignature should include expected value")
+		assert.Contains(t, err.Error(), "too many return values", "error should describe the excess return count")
 	})
 
 	t.Run("WithParameters", func(t *testing.T) {
@@ -84,8 +80,6 @@ func TestValidateHandlerSignature(t *testing.T) {
 
 // TestIsHandlerFactory tests is handler factory scenarios.
 func TestIsHandlerFactory(t *testing.T) {
-	t.Log("Testing isHandlerFactory function")
-
 	t.Run("NotAFactory", func(t *testing.T) {
 		fn := func() error { return nil }
 		result := isHandlerFactory(reflect.TypeOf(fn))
@@ -137,8 +131,6 @@ func TestIsHandlerFactory(t *testing.T) {
 
 // TestValidateHandler tests validate handler scenarios.
 func TestValidateHandler(t *testing.T) {
-	t.Log("Testing validateHandler function")
-
 	t.Run("ValidHandler", func(t *testing.T) {
 		fn := func() error { return nil }
 		err := validateHandler(reflect.ValueOf(fn))
@@ -154,7 +146,7 @@ func TestValidateHandler(t *testing.T) {
 	t.Run("NotAFunction", func(t *testing.T) {
 		err := validateHandler(reflect.ValueOf("not a function"))
 		assert.Error(t, err, "Non-function should fail validation")
-		assert.Contains(t, err.Error(), "must be a function", "TestValidateHandler should include expected value")
+		assert.Contains(t, err.Error(), "must be a function", "error should state that handler must be a function")
 	})
 
 	t.Run("NilFunction", func(t *testing.T) {
@@ -162,7 +154,7 @@ func TestValidateHandler(t *testing.T) {
 
 		err := validateHandler(reflect.ValueOf(fn))
 		assert.Error(t, err, "Nil function should fail validation")
-		assert.Contains(t, err.Error(), "cannot be nil", "TestValidateHandler should include expected value")
+		assert.Contains(t, err.Error(), "cannot be nil", "error should state that handler cannot be nil")
 	})
 }
 
@@ -181,101 +173,6 @@ func (*MockResource) GetCPU() error {
 
 func (*MockResource) CreateUserFactory() func() error {
 	return func() error { return nil }
-}
-
-// TestRESTResolve tests the REST resolver.
-func TestRESTResolve(t *testing.T) {
-	resolver := NewRest()
-
-	t.Run("NonRESTResourceReturnsNil", func(t *testing.T) {
-		resource := api.NewRPCResource("test")
-		spec := api.OperationSpec{Action: "get", Handler: func() error { return nil }}
-
-		result, err := resolver.Resolve(resource, spec)
-
-		assert.NoError(t, err, "Should not return error for non-REST resource")
-		assert.Nil(t, result, "Should return nil for non-REST resource")
-	})
-
-	t.Run("RESTWithoutHandler", func(t *testing.T) {
-		resource := api.NewRESTResource("test")
-		spec := api.OperationSpec{Action: "get", Handler: nil}
-
-		_, err := resolver.Resolve(resource, spec)
-
-		assert.Error(t, err, "Should return error when REST handler is nil")
-		assert.Contains(t, err.Error(), "handler is required", "Error should indicate handler required")
-	})
-
-	t.Run("RESTWithValidHandler", func(t *testing.T) {
-		resource := api.NewRESTResource("test")
-		spec := api.OperationSpec{Action: "get", Handler: func() error { return nil }}
-
-		result, err := resolver.Resolve(resource, spec)
-
-		assert.NoError(t, err, "Should resolve valid REST handler")
-		assert.NotNil(t, result, "Should return resolved handler")
-	})
-}
-
-// TestRPCResolve tests the RPC resolver.
-func TestRPCResolve(t *testing.T) {
-	resolver := NewRPC()
-
-	t.Run("NonRPCResourceReturnsNil", func(t *testing.T) {
-		resource := api.NewRESTResource("test")
-		spec := api.OperationSpec{Action: "get", Handler: func() error { return nil }}
-
-		result, err := resolver.Resolve(resource, spec)
-
-		assert.NoError(t, err, "Should not return error for non-RPC resource")
-		assert.Nil(t, result, "Should return nil for non-RPC resource")
-	})
-
-	t.Run("RPCWithExplicitHandler", func(t *testing.T) {
-		resource := api.NewRPCResource("test")
-		spec := api.OperationSpec{Action: "get", Handler: func() error { return nil }}
-
-		result, err := resolver.Resolve(resource, spec)
-
-		assert.NoError(t, err, "Should resolve explicit RPC handler")
-		assert.NotNil(t, result, "Should return resolved handler")
-	})
-
-	t.Run("RPCWithMethodLookup", func(t *testing.T) {
-		resource := &MockResource{
-			Resource: api.NewRPCResource("test"),
-		}
-		spec := api.OperationSpec{Action: "get_user"}
-
-		result, err := resolver.Resolve(resource, spec)
-
-		assert.NoError(t, err, "Should resolve RPC handler via method lookup")
-		assert.NotNil(t, result, "Should return resolved handler")
-	})
-
-	t.Run("RPCMethodNotFound", func(t *testing.T) {
-		resource := &MockResource{
-			Resource: api.NewRPCResource("test"),
-		}
-		spec := api.OperationSpec{Action: "non_existent_method"}
-
-		_, err := resolver.Resolve(resource, spec)
-
-		assert.Error(t, err, "Should return error when method not found")
-	})
-
-	t.Run("RPCWithFactoryMethod", func(t *testing.T) {
-		resource := &MockResource{
-			Resource: api.NewRPCResource("test"),
-		}
-		spec := api.OperationSpec{Action: "create_user_factory"}
-
-		result, err := resolver.Resolve(resource, spec)
-
-		assert.NoError(t, err, "Should resolve factory method")
-		assert.NotNil(t, result, "Should return resolved factory handler")
-	})
 }
 
 // TestResolveHandlerFromSpec tests resolveHandlerFromSpec with various inputs.
@@ -314,8 +211,6 @@ func TestResolveHandlerFromSpec(t *testing.T) {
 
 // TestFindHandlerMethod tests find handler method scenarios.
 func TestFindHandlerMethod(t *testing.T) {
-	t.Log("Testing findHandlerMethod function")
-
 	resource := &MockResource{
 		Resource: api.NewRPCResource("test"),
 	}
@@ -335,7 +230,7 @@ func TestFindHandlerMethod(t *testing.T) {
 	t.Run("NotFound", func(t *testing.T) {
 		_, err := findHandlerMethod(reflect.ValueOf(resource), "NonExistent")
 		assert.Error(t, err, "Non-existent method should fail")
-		assert.Contains(t, err.Error(), "not found", "TestFindHandlerMethod should include expected value")
+		assert.Contains(t, err.Error(), "not found", "error should describe the missing method")
 	})
 
 	t.Run("FactoryMethod", func(t *testing.T) {

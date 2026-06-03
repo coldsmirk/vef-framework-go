@@ -75,17 +75,23 @@ func (r *RPC) resolve(ctx fiber.Ctx) error {
 
 	entry, ok := r.operations.Get(req.Identifier)
 	if !ok {
-		return &shared.NotFoundError{
+		nfe := &shared.NotFoundError{
 			BaseError: shared.BaseError{
 				Identifier: &req.Identifier,
 				Err:        fiber.ErrNotFound,
 			},
 			Suggestion: r.findClosestAPI(req.Identifier),
 		}
+		// Log the full message (including "did you mean" suggestion) since the
+		// global error handler only surfaces the generic not-found response.
+		contextx.Logger(ctx).Warnf("RPC resolve: %s", nfe.Error())
+
+		return nfe
 	}
 
 	shared.SetRequest(ctx, req)
 	shared.SetOperation(ctx, entry.op)
+	shared.SetHandler(ctx, entry.handler)
 
 	return ctx.Next()
 }
@@ -97,10 +103,8 @@ func (r *RPC) Route(handler fiber.Handler, op *api.Operation) {
 	})
 }
 
-func (r *RPC) dispatch(ctx fiber.Ctx) error {
-	entry, _ := r.operations.Get(shared.Request(ctx).Identifier)
-
-	return entry.handler(ctx)
+func (*RPC) dispatch(ctx fiber.Ctx) error {
+	return shared.Handler(ctx)(ctx)
 }
 
 func (*RPC) parseRequest(ctx fiber.Ctx) (*api.Request, error) {
@@ -128,18 +132,24 @@ func (r *RPC) findClosestAPI(requested api.Identifier) *api.Identifier {
 	var (
 		closest     *api.Identifier
 		minDistance = math.MaxInt
+		ambiguous   bool
 	)
 
 	for id := range r.operations.SeqKeys() {
-		if distance := edlib.LevenshteinDistance(requestedStr, identifierToString(id)); distance < minDistance {
+		distance := edlib.LevenshteinDistance(requestedStr, identifierToString(id))
+		switch {
+		case distance < minDistance:
 			minDistance = distance
-			id := id
 			closest = &id
+			ambiguous = false
+		case distance == minDistance:
+			ambiguous = true
 		}
 	}
 
 	// Only suggest if the distance is less than half the requested string length
-	if closest != nil && minDistance < len(requestedStr)/2 {
+	// and there is no ambiguity (two equally close candidates).
+	if !ambiguous && closest != nil && minDistance < len(requestedStr)/2 {
 		return closest
 	}
 

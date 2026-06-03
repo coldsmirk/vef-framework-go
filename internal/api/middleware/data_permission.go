@@ -31,7 +31,7 @@ func (*DataPermission) Name() string {
 }
 
 // Order returns the middleware order.
-// Runs after authentication (-100) but before rate limiting (-80).
+// Runs after contextual (-90) but before rate limiting (-70).
 func (*DataPermission) Order() int {
 	return -80
 }
@@ -47,9 +47,7 @@ func (m *DataPermission) Process(ctx fiber.Ctx) error {
 
 	principal := contextx.Principal(ctx)
 	if principal == nil {
-		contextx.Logger(ctx).Errorf("Data permission check failed: %v", ErrPrincipalNotFound)
-
-		return fiber.ErrUnauthorized
+		principal = security.PrincipalAnonymous
 	}
 
 	if principal.Type != security.PrincipalTypeSystem {
