@@ -250,21 +250,43 @@ func (s *DefaultService) shouldSkipMountPoint(mountPoint string) bool {
 	return false
 }
 
-// partitionSuffix matches a trailing partition designator so sibling partitions
-// of the same physical disk collapse to one container key. It strips an optional
-// 's' (APFS, e.g. disk1s1) or 'p' (NVMe, e.g. nvme0n1p1) prefix followed by the
-// partition number, and bare trailing digits (SATA, e.g. sda1).
-var partitionSuffix = regexp.MustCompile(`[sp]?[0-9]+$`)
+var (
+	// pPartitionSuffix strips a trailing "pN" partition from NVMe/eMMC devices
+	// (nvme0n1p2 -> nvme0n1, mmcblk0p1 -> mmcblk0). The nN namespace is part of
+	// the device identity and is preserved, so distinct namespaces such as
+	// nvme0n1 and nvme0n2 are NOT merged into one container.
+	pPartitionSuffix = regexp.MustCompile(`p[0-9]+$`)
+	// apfsSliceSuffix strips an APFS slice from a disk device (disk1s2 -> disk1).
+	apfsSliceSuffix = regexp.MustCompile(`s[0-9]+$`)
+	// wholeDeviceSuffix matches device families whose names legitimately end in a
+	// digit and have no sibling-partition concept; their suffix must never be
+	// stripped, or independent devices (dm-0/dm-1, loop0/loop1, md0/md1) collapse.
+	wholeDeviceSuffix = regexp.MustCompile(`(dm-|loop|md|ram|zram|sr|fd)[0-9]+$`)
+	// digitSuffix strips a trailing partition number from letter-named disks
+	// (sda1 -> sda, vdb2 -> vdb); applied only after the cases above are ruled out.
+	digitSuffix = regexp.MustCompile(`[0-9]+$`)
+)
 
 // getDeviceContainer extracts the base container device name from a partition
-// device, stripping the trailing partition suffix so APFS volumes and sibling
-// partitions of the same disk de-duplicate to a single container.
+// device so sibling partitions of one physical disk de-duplicate to a single
+// container, WITHOUT merging genuinely independent devices. Device families are
+// handled separately because a single trailing-digit rule cannot tell an NVMe
+// namespace (nvme0n2) or an LVM volume (dm-1) from a partition (sda2).
 func getDeviceContainer(device string) string {
 	if device == "" {
 		return ""
 	}
 
-	return partitionSuffix.ReplaceAllString(device, "")
+	switch {
+	case strings.Contains(device, "nvme"), strings.Contains(device, "mmcblk"):
+		return pPartitionSuffix.ReplaceAllString(device, "")
+	case strings.Contains(device, "disk"):
+		return apfsSliceSuffix.ReplaceAllString(device, "")
+	case wholeDeviceSuffix.MatchString(device):
+		return device
+	default:
+		return digitSuffix.ReplaceAllString(device, "")
+	}
 }
 
 // CPU returns detailed CPU information including usage percentages.

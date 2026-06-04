@@ -24,6 +24,11 @@ func TestGetDeviceContainer(t *testing.T) {
 		{name: "LinuxSATASecondDisk", device: "/dev/sdb2", want: "/dev/sdb"},
 		{name: "LinuxNVMePartition", device: "/dev/nvme0n1p1", want: "/dev/nvme0n1"},
 		{name: "LinuxNVMeSecondPartition", device: "/dev/nvme0n1p2", want: "/dev/nvme0n1"},
+		{name: "LinuxNVMeWholeNamespace", device: "/dev/nvme0n1", want: "/dev/nvme0n1"},
+		{name: "LinuxNVMeSecondNamespace", device: "/dev/nvme0n2", want: "/dev/nvme0n2"},
+		{name: "LinuxDeviceMapper", device: "/dev/dm-0", want: "/dev/dm-0"},
+		{name: "LinuxLoopDevice", device: "/dev/loop0", want: "/dev/loop0"},
+		{name: "LinuxEMMCPartition", device: "/dev/mmcblk0p1", want: "/dev/mmcblk0"},
 		{name: "Empty", device: "", want: ""},
 	}
 
@@ -44,6 +49,14 @@ func TestGetDeviceContainerDeduplicatesSiblings(t *testing.T) {
 		"disk1 and disk2 must not collapse to the same container key")
 	assert.NotEqual(t, getDeviceContainer("/dev/sda1"), getDeviceContainer("/dev/sdb1"),
 		"sda and sdb must not collapse to the same container key")
+	assert.Equal(t, getDeviceContainer("/dev/nvme0n1p1"), getDeviceContainer("/dev/nvme0n1p2"),
+		"sibling partitions on the same NVMe namespace should share a container key")
+	assert.NotEqual(t, getDeviceContainer("/dev/nvme0n1"), getDeviceContainer("/dev/nvme0n2"),
+		"distinct NVMe namespaces are independent devices and must not collapse")
+	assert.NotEqual(t, getDeviceContainer("/dev/dm-0"), getDeviceContainer("/dev/dm-1"),
+		"distinct device-mapper volumes must not collapse")
+	assert.NotEqual(t, getDeviceContainer("/dev/loop0"), getDeviceContainer("/dev/loop1"),
+		"distinct loop devices must not collapse")
 }
 
 func TestResolveConfig(t *testing.T) {
