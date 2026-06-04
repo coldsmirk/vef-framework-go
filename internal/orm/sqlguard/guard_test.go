@@ -103,3 +103,43 @@ func TestGuardError(t *testing.T) {
 		assert.True(t, errors.Is(err, ErrSQLParseFailed), "GuardError should match ErrSQLParseFailed")
 	})
 }
+
+// TestEnsureReadOnly verifies the fail-closed read-only gate used by the MCP
+// database query tool, including rejection of data-modifying CTEs whose
+// top-level statement is a SELECT.
+func TestEnsureReadOnly(t *testing.T) {
+	tests := []struct {
+		name    string
+		sql     string
+		wantErr bool
+	}{
+		{"PlainSelect", "SELECT * FROM users WHERE id = 1", false},
+		{"ReadOnlyCTE", "WITH t AS (SELECT id FROM users) SELECT * FROM t", false},
+		{"Insert", "INSERT INTO users (name) VALUES ('x')", true},
+		{"Update", "UPDATE users SET name = 'x' WHERE id = 1", true},
+		{"Delete", "DELETE FROM users WHERE id = 1", true},
+		{"Drop", "DROP TABLE users", true},
+		{"Truncate", "TRUNCATE TABLE users", true},
+		{"DataModifyingDeleteCTE", "WITH t AS (DELETE FROM users WHERE id = 1 RETURNING *) SELECT * FROM t", true},
+		{"DataModifyingInsertCTE", "WITH t AS (INSERT INTO users (id) VALUES (1) RETURNING id) SELECT * FROM t", true},
+		{"DataModifyingUpdateCTE", "WITH t AS (UPDATE users SET name = 'x' RETURNING *) SELECT count(*) FROM t", true},
+		{"MultiStatement", "SELECT 1; DROP TABLE users", true},
+		{"DangerousReadFileFunction", "SELECT pg_read_file('/etc/passwd')", true},
+		{"DangerousSleepFunction", "SELECT pg_sleep(10)", true},
+		{"Empty", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := EnsureReadOnly(tt.sql)
+
+			if tt.wantErr {
+				require.Error(t, err, "EnsureReadOnly must reject non-read-only SQL")
+				assert.True(t, errors.Is(err, ErrNotReadOnly) || errors.Is(err, ErrSQLParseFailed),
+					"rejection should surface a read-only or parse error")
+			} else {
+				assert.NoError(t, err, "EnsureReadOnly must allow read-only SQL")
+			}
+		})
+	}
+}

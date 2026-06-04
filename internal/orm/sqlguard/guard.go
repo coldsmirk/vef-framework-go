@@ -3,6 +3,7 @@ package sqlguard
 import (
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/ajitpratap0/GoSQLX/pkg/gosqlx"
 	"github.com/ajitpratap0/GoSQLX/pkg/sql/ast"
@@ -81,9 +82,19 @@ func (g *Guard) Check(sql string) error {
 	return nil
 }
 
+// dangerousFnCall matches PostgreSQL functions that, although callable inside a
+// SELECT, perform side effects (server-side file IO, large-object export, remote
+// execution, sequence mutation) or enable resource-exhaustion DoS. This is a
+// best-effort, defense-in-depth heuristic only — the authoritative protection
+// for a tool that runs caller-supplied SQL is to connect with a least-privilege,
+// read-only database role.
+var dangerousFnCall = regexp.MustCompile(`(?i)\b(pg_read_file|pg_read_binary_file|pg_ls_dir|pg_stat_file|lo_export|lo_import|lo_get|dblink|dblink_exec|pg_sleep|setval)\s*\(`)
+
 // EnsureReadOnly verifies that sql consists solely of read-only statements
 // (SELECT/SHOW/DESCRIBE). Unlike Check it fails closed: a parse error, an empty
-// statement list, or any non-read statement returns an error. It is intended for
+// statement list, or any non-read statement returns an error. It also rejects
+// data-modifying CTEs (e.g. WITH x AS (DELETE ... RETURNING ...) SELECT ...),
+// whose top-level type is SELECT but which execute writes. It is intended for
 // surfaces that execute caller-supplied SQL, such as the MCP database query tool.
 func EnsureReadOnly(sql string) error {
 	astNode, err := gosqlx.Parse(sql)
@@ -96,20 +107,64 @@ func EnsureReadOnly(sql string) error {
 	}
 
 	for _, stmt := range astNode.Statements {
-		switch stmt.(type) {
-		case *ast.SelectStatement, *ast.Select, *ast.ShowStatement, *ast.DescribeStatement:
-		default:
-			return &GuardError{
-				Err: ErrNotReadOnly,
-				SQL: sql,
-				Violation: &Violation{
-					Rule:        "read_only",
-					Statement:   fmt.Sprintf("%T", stmt),
-					Description: "only read-only (SELECT) statements are permitted",
-				},
-			}
+		if !isReadOnlyStatement(stmt) {
+			return newReadOnlyViolation(sql, fmt.Sprintf("%T", stmt))
+		}
+
+		if writer := firstWritingCTE(stmt); writer != nil {
+			return newReadOnlyViolation(sql, fmt.Sprintf("CTE:%T", writer))
 		}
 	}
 
+	if dangerousFnCall.MatchString(sql) {
+		return newReadOnlyViolation(sql, "dangerous_function")
+	}
+
 	return nil
+}
+
+// isReadOnlyStatement reports whether stmt is a read-only statement type.
+func isReadOnlyStatement(stmt ast.Statement) bool {
+	switch stmt.(type) {
+	case *ast.SelectStatement, *ast.Select, *ast.ShowStatement, *ast.DescribeStatement:
+		return true
+	default:
+		return false
+	}
+}
+
+// firstWritingCTE returns the first CTE body in stmt's tree that is not a
+// read-only statement, or nil. Descending the whole tree covers nested WITH
+// clauses and subqueries, so a write hidden inside any CTE is caught.
+func firstWritingCTE(stmt ast.Statement) ast.Statement {
+	var writer ast.Statement
+
+	ast.Inspect(stmt, func(n ast.Node) bool {
+		if writer != nil {
+			return false
+		}
+
+		if cte, ok := n.(*ast.CommonTableExpr); ok && cte.Statement != nil && !isReadOnlyStatement(cte.Statement) {
+			writer = cte.Statement
+
+			return false
+		}
+
+		return true
+	})
+
+	return writer
+}
+
+// newReadOnlyViolation builds a fail-closed read-only guard error.
+func newReadOnlyViolation(sql, statement string) error {
+	return &GuardError{
+		Err: ErrNotReadOnly,
+		SQL: sql,
+		Violation: &Violation{
+			Rule:        "read_only",
+			Statement:   statement,
+			Description: "only read-only (SELECT) statements are permitted",
+		},
+	}
 }
