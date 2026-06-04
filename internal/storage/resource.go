@@ -16,7 +16,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/httpx"
-	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/id"
 	"github.com/coldsmirk/vef-framework-go/internal/storage/store"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -133,11 +132,11 @@ func loadActiveClaim(
 	}
 
 	if claim.Status != store.ClaimStatusPending {
-		return nil, result.Err(i18n.T("storage_claim_not_pending"))
+		return nil, storage.ErrClaimNotPending
 	}
 
 	if time.Time(claim.ExpiresAt).Before(time.Now()) {
-		return nil, result.Err(i18n.T("storage_claim_expired"))
+		return nil, storage.ErrClaimExpired
 	}
 
 	return claim, nil
@@ -155,7 +154,7 @@ func loadActiveClaim(
 // callers through storage.Service directly).
 func (r *Resource) validateUploadInput(size int64) error {
 	if maxSize := r.cfg.EffectiveMaxUploadSize(); maxSize > 0 && size > maxSize {
-		return result.Err(i18n.T("storage_upload_size_exceeds_limit"))
+		return storage.ErrUploadSizeExceedsLimit
 	}
 
 	return nil
@@ -287,18 +286,18 @@ func (r *Resource) InitUpload(ctx fiber.Ctx, principal *security.Principal, para
 	if r.multipart == nil {
 		// Backend opted out of chunked uploads; clients hitting a
 		// multipart path must reconfigure or switch to single-shot upload.
-		return result.Err(i18n.T("storage_multipart_not_supported"))
+		return storage.ErrMultipartNotSupported
 	}
 
 	if params.Public && !r.cfg.AllowPublicUploads {
-		return result.Err(i18n.T("storage_public_uploads_not_allowed"))
+		return storage.ErrPublicUploadsNotAllowed
 	}
 
 	partSize := r.multipart.PartSize()
 	partCount := int((params.Size + partSize - 1) / partSize)
 
 	if maxParts := r.multipart.MaxPartCount(); maxParts > 0 && partCount > maxParts {
-		return result.Err(i18n.T("storage_upload_too_many_parts"))
+		return storage.ErrUploadTooManyParts
 	}
 
 	contentType := sanitizeContentType(params.ContentType, params.Filename)
@@ -319,7 +318,7 @@ func (r *Resource) InitUpload(ctx fiber.Ctx, principal *security.Principal, para
 	}
 
 	if pendingCount >= r.cfg.EffectiveMaxPendingClaims() {
-		return result.Err(i18n.T("storage_too_many_pending_uploads"))
+		return storage.ErrTooManyPendingUploads
 	}
 
 	key := r.generateObjectKey(params.Filename, params.Public)
@@ -420,15 +419,15 @@ type UploadPartResult struct {
 // (clients never round-trip ETags themselves).
 func (r *Resource) UploadPart(ctx fiber.Ctx, principal *security.Principal, params UploadPartParams) error {
 	if httpx.IsJSON(ctx) {
-		return result.Err(i18n.T("storage_upload_requires_multipart"))
+		return storage.ErrUploadRequiresMultipart
 	}
 
 	if params.File == nil {
-		return result.Err(i18n.T("storage_upload_requires_file"))
+		return storage.ErrUploadRequiresFile
 	}
 
 	if r.multipart == nil {
-		return result.Err(i18n.T("storage_multipart_not_supported"))
+		return storage.ErrMultipartNotSupported
 	}
 
 	claim, err := loadActiveClaim(ctx.Context(), r.claimStore, principal, params.ClaimID)
@@ -446,11 +445,11 @@ func (r *Resource) UploadPart(ctx fiber.Ctx, principal *security.Principal, para
 	}
 
 	if !claim.IsMultipart() {
-		return result.Err(i18n.T("storage_claim_not_multipart"))
+		return storage.ErrClaimNotMultipart
 	}
 
 	if params.PartNumber < 1 || params.PartNumber > claim.PartCount {
-		return result.Err(i18n.T("storage_part_number_out_of_range"))
+		return storage.ErrUploadPartNumberOutOfRange
 	}
 
 	file, err := params.File.Open()
@@ -465,11 +464,11 @@ func (r *Resource) UploadPart(ctx fiber.Ctx, principal *security.Principal, para
 	}()
 
 	if params.File.Size > claim.PartSize {
-		return result.Err(i18n.T("storage_upload_part_too_large"))
+		return storage.ErrUploadPartTooLarge
 	}
 
 	if params.PartNumber < claim.PartCount && params.File.Size < claim.PartSize {
-		return result.Err(i18n.T("storage_upload_part_too_small"))
+		return storage.ErrUploadPartTooSmall
 	}
 
 	partInfo, err := r.multipart.PutPart(ctx.Context(), storage.PutPartOptions{
@@ -549,7 +548,7 @@ func (r *Resource) ListParts(ctx fiber.Ctx, principal *security.Principal, param
 	}
 
 	if !claim.IsMultipart() {
-		return result.Err(i18n.T("storage_claim_not_multipart"))
+		return storage.ErrClaimNotMultipart
 	}
 
 	parts, err := r.partStore.ListByClaim(ctx.Context(), claim.ID)
@@ -634,11 +633,11 @@ func (r *Resource) CompleteUpload(ctx fiber.Ctx, principal *security.Principal, 
 	}
 
 	if claim.Status != store.ClaimStatusPending {
-		return result.Err(i18n.T("storage_claim_not_pending"))
+		return storage.ErrClaimNotPending
 	}
 
 	if time.Time(claim.ExpiresAt).Before(time.Now()) {
-		return result.Err(i18n.T("storage_claim_expired"))
+		return storage.ErrClaimExpired
 	}
 
 	// Re-validate against the current MaxUploadSize. A claim opened
@@ -651,13 +650,13 @@ func (r *Resource) CompleteUpload(ctx fiber.Ctx, principal *security.Principal, 
 	}
 
 	if !claim.IsMultipart() {
-		return result.Err(i18n.T("storage_claim_not_multipart"))
+		return storage.ErrClaimNotMultipart
 	}
 
 	if r.multipart == nil {
 		// Backend opted out of chunked uploads; clients hitting a
 		// multipart path must reconfigure or switch to single-shot upload.
-		return result.Err(i18n.T("storage_multipart_not_supported"))
+		return storage.ErrMultipartNotSupported
 	}
 
 	parts, err := r.partStore.ListByClaim(ctx.Context(), claim.ID)
@@ -666,7 +665,7 @@ func (r *Resource) CompleteUpload(ctx fiber.Ctx, principal *security.Principal, 
 	}
 
 	if len(parts) != claim.PartCount {
-		return result.Err(i18n.T("storage_upload_parts_incomplete"))
+		return storage.ErrUploadPartsIncomplete
 	}
 
 	completed := make([]storage.CompletedPart, len(parts))
@@ -694,7 +693,7 @@ func (r *Resource) CompleteUpload(ctx fiber.Ctx, principal *security.Principal, 
 		stat, statErr := r.service.StatObject(ctx.Context(), storage.StatObjectOptions{Key: claim.Key})
 		if statErr != nil {
 			if errors.Is(statErr, storage.ErrObjectNotFound) {
-				return result.Err(i18n.T("storage_object_not_found"))
+				return storage.ErrUploadObjectNotFound
 			}
 
 			return statErr
@@ -720,7 +719,7 @@ func (r *Resource) CompleteUpload(ctx fiber.Ctx, principal *security.Principal, 
 			logger.Warnf("Delete object %s after size mismatch failed: %v (relying on sweeper for cleanup)", claim.Key, delErr)
 		}
 
-		return result.Err(i18n.T("storage_upload_size_mismatch"))
+		return storage.ErrUploadSizeMismatch
 	}
 
 	if err := r.db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
@@ -790,7 +789,7 @@ func (r *Resource) AbortUpload(ctx fiber.Ctx, principal *security.Principal, par
 		}); abortErr != nil {
 			logger.Errorf("AbortMultipart failed for claim %s: %v", claim.ID, abortErr)
 
-			return result.Err(i18n.T("storage_abort_failed"))
+			return storage.ErrAbortFailed
 		}
 	}
 

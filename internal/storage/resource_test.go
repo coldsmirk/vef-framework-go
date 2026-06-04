@@ -523,10 +523,10 @@ func (s *StorageResourceTestSuite) initUploadPublic(filename string, size int64)
 func (s *StorageResourceTestSuite) TestInitUploadRejectsPublicWhenNotAllowed() {
 	// The suite fixture sets AllowPublicUploads to its zero value (false),
 	// so any public=true request must be rejected with the
-	// storage_public_uploads_not_allowed business error (code 2000).
+	// storage_public_uploads_not_allowed business error.
 	_, body := s.initUploadPublic("photo.jpg", singleShotSize)
 	s.False(body.IsOk(), "InitUpload with public=true must fail when AllowPublicUploads=false")
-	s.Equal(2000, body.Code, "Error code must be the default business error code")
+	s.Equal(storage.ErrCodePublicUploadsNotAllowed, body.Code, "Error code must be the public-uploads-not-allowed business code")
 }
 
 // ── complete_upload idempotent retry ────────────────────────────────────
