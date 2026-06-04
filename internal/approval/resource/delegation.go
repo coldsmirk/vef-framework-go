@@ -85,7 +85,33 @@ func NewDelegationResource() api.Resource {
 
 				return nil
 			}),
-		Update: crud.NewUpdate[approval.Delegation, DelegationParams]().RequiredPermission("approval:delegation:update"),
-		Delete: crud.NewDelete[approval.Delegation]().RequiredPermission("approval:delegation:delete"),
+		Update: crud.NewUpdate[approval.Delegation, DelegationParams]().
+			RequiredPermission("approval:delegation:update").
+			WithPreUpdate(func(oldModel, _ *approval.Delegation, _ *DelegationParams, _ orm.UpdateQuery, ctx fiber.Ctx, _ orm.DB) error {
+				return authorizeDelegationOwner(ctx, oldModel)
+			}),
+		Delete: crud.NewDelete[approval.Delegation]().
+			RequiredPermission("approval:delegation:delete").
+			WithPreDelete(func(model *approval.Delegation, _ orm.DeleteQuery, ctx fiber.Ctx, _ orm.DB) error {
+				return authorizeDelegationOwner(ctx, model)
+			}),
 	}
+}
+
+// authorizeDelegationOwner confines non-super-admin callers to delegations they
+// own as delegator. crud loads and mutates the target row purely by primary key,
+// so without this check any caller holding the update/delete permission could
+// modify or remove another delegator's record by supplying its id. Mirrors the
+// delegator_id scoping already enforced on FindPage.
+func authorizeDelegationOwner(ctx fiber.Ctx, model *approval.Delegation) error {
+	principal := contextx.Principal(ctx)
+	if approval.IsSuperAdmin(principal) {
+		return nil
+	}
+
+	if principal == nil || model.DelegatorID != principal.ID {
+		return approval.ErrCrossTenantAccess
+	}
+
+	return nil
 }
