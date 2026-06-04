@@ -170,10 +170,18 @@ func (r *MyResource) FindCCRecords(ctx fiber.Ctx, principal *security.Principal,
 	return result.Ok(res).Response(ctx)
 }
 
+// GetPendingCountsParams contains the parameters for querying pending counts.
+type GetPendingCountsParams struct {
+	api.P
+
+	TenantID *string `json:"tenantId"`
+}
+
 // GetPendingCounts retrieves pending task and unread CC counts for the current user.
-func (r *MyResource) GetPendingCounts(ctx fiber.Ctx, principal *security.Principal) error {
+func (r *MyResource) GetPendingCounts(ctx fiber.Ctx, principal *security.Principal, params GetPendingCountsParams) error {
 	res, err := cqrs.Send[query.GetMyPendingCountsQuery, *my.PendingCounts](ctx.Context(), r.bus, query.GetMyPendingCountsQuery{
-		UserID: principal.ID,
+		UserID:   principal.ID,
+		TenantID: params.TenantID,
 	})
 	if err != nil {
 		return err
