@@ -105,8 +105,10 @@ func TestGuardError(t *testing.T) {
 }
 
 // TestEnsureReadOnly verifies the fail-closed read-only gate used by the MCP
-// database query tool, including rejection of data-modifying CTEs whose
-// top-level statement is a SELECT.
+// database query tool: rejection of data-modifying CTEs whose top-level
+// statement is a SELECT (including nested CTEs), and the AST-based dangerous
+// function denylist — which catches comment/quote-obfuscated calls yet does not
+// trip on a function name appearing inside a string literal.
 func TestEnsureReadOnly(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -115,6 +117,7 @@ func TestEnsureReadOnly(t *testing.T) {
 	}{
 		{"PlainSelect", "SELECT * FROM users WHERE id = 1", false},
 		{"ReadOnlyCTE", "WITH t AS (SELECT id FROM users) SELECT * FROM t", false},
+		{"AggregateFunctionAllowed", "SELECT count(*) FROM users", false},
 		{"Insert", "INSERT INTO users (name) VALUES ('x')", true},
 		{"Update", "UPDATE users SET name = 'x' WHERE id = 1", true},
 		{"Delete", "DELETE FROM users WHERE id = 1", true},
@@ -123,9 +126,14 @@ func TestEnsureReadOnly(t *testing.T) {
 		{"DataModifyingDeleteCTE", "WITH t AS (DELETE FROM users WHERE id = 1 RETURNING *) SELECT * FROM t", true},
 		{"DataModifyingInsertCTE", "WITH t AS (INSERT INTO users (id) VALUES (1) RETURNING id) SELECT * FROM t", true},
 		{"DataModifyingUpdateCTE", "WITH t AS (UPDATE users SET name = 'x' RETURNING *) SELECT count(*) FROM t", true},
+		{"NestedDataModifyingCTE", "WITH a AS (WITH b AS (DELETE FROM users RETURNING *) SELECT * FROM b) SELECT * FROM a", true},
 		{"MultiStatement", "SELECT 1; DROP TABLE users", true},
 		{"DangerousReadFileFunction", "SELECT pg_read_file('/etc/passwd')", true},
 		{"DangerousSleepFunction", "SELECT pg_sleep(10)", true},
+		{"DangerousSequenceMutation", "SELECT nextval('seq')", true},
+		{"DangerousFunctionViaComment", "SELECT pg_sleep/**/(10)", true},
+		{"DangerousFunctionQuotedIdentifier", `SELECT "pg_read_file"('/etc/passwd')`, true},
+		{"FunctionNameInsideStringLiteralAllowed", "SELECT 'pg_read_file(' AS note", false},
 		{"Empty", "", true},
 	}
 

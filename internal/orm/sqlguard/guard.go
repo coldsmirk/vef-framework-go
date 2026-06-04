@@ -3,10 +3,12 @@ package sqlguard
 import (
 	"errors"
 	"fmt"
-	"regexp"
+	"strings"
 
 	"github.com/ajitpratap0/GoSQLX/pkg/gosqlx"
 	"github.com/ajitpratap0/GoSQLX/pkg/sql/ast"
+
+	collections "github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/logx"
 )
@@ -82,13 +84,22 @@ func (g *Guard) Check(sql string) error {
 	return nil
 }
 
-// dangerousFnCall matches PostgreSQL functions that, although callable inside a
-// SELECT, perform side effects (server-side file IO, large-object export, remote
-// execution, sequence mutation) or enable resource-exhaustion DoS. This is a
-// best-effort, defense-in-depth heuristic only — the authoritative protection
-// for a tool that runs caller-supplied SQL is to connect with a least-privilege,
-// read-only database role.
-var dangerousFnCall = regexp.MustCompile(`(?i)\b(pg_read_file|pg_read_binary_file|pg_ls_dir|pg_stat_file|lo_export|lo_import|lo_get|dblink|dblink_exec|pg_sleep|setval)\s*\(`)
+// dangerousFunctions lists PostgreSQL functions that, although callable inside a
+// SELECT, perform side effects (server-side file IO, large-object transfer,
+// remote execution, sequence mutation) or enable resource-exhaustion DoS. They
+// are matched against parsed AST function-call nodes (see firstDangerousFunction),
+// so the check cannot be evaded by casing, comments, or quoting and never trips
+// on a name that merely appears inside a string literal. This remains a
+// best-effort, non-exhaustive defense-in-depth heuristic — the authoritative
+// protection for a surface that runs caller-supplied SQL is to connect with a
+// least-privilege, read-only database role.
+var dangerousFunctions = collections.NewHashSetFrom(
+	"pg_read_file", "pg_read_binary_file", "pg_ls_dir", "pg_stat_file",
+	"lo_export", "lo_import", "lo_get",
+	"dblink", "dblink_exec",
+	"pg_sleep",
+	"setval", "nextval",
+)
 
 // EnsureReadOnly verifies that sql consists solely of read-only statements
 // (SELECT/SHOW/DESCRIBE). Unlike Check it fails closed: a parse error, an empty
@@ -114,10 +125,10 @@ func EnsureReadOnly(sql string) error {
 		if writer := firstWritingCTE(stmt); writer != nil {
 			return newReadOnlyViolation(sql, fmt.Sprintf("CTE:%T", writer))
 		}
-	}
 
-	if dangerousFnCall.MatchString(sql) {
-		return newReadOnlyViolation(sql, "dangerous_function")
+		if fn := firstDangerousFunction(stmt); fn != "" {
+			return newReadOnlyViolation(sql, "dangerous_function:"+fn)
+		}
 	}
 
 	return nil
@@ -154,6 +165,30 @@ func firstWritingCTE(stmt ast.Statement) ast.Statement {
 	})
 
 	return writer
+}
+
+// firstDangerousFunction returns the name of the first side-effecting function
+// called anywhere in stmt's tree, or "". Inspecting parsed call nodes (rather
+// than scanning raw text) ignores names inside string literals and cannot be
+// evaded by casing, comments, or quoting.
+func firstDangerousFunction(stmt ast.Statement) string {
+	var found string
+
+	ast.Inspect(stmt, func(n ast.Node) bool {
+		if found != "" {
+			return false
+		}
+
+		if call, ok := n.(*ast.FunctionCall); ok && dangerousFunctions.Contains(strings.ToLower(call.Name)) {
+			found = call.Name
+
+			return false
+		}
+
+		return true
+	})
+
+	return found
 }
 
 // newReadOnlyViolation builds a fail-closed read-only guard error.
