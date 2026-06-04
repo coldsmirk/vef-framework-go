@@ -8,7 +8,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
-	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/storage"
@@ -77,7 +76,7 @@ func (d *deleteOperation[TModel]) delete(db orm.DB, files storage.Files) (func(c
 		for _, pk := range pks {
 			value, ok := params[pk.Name]
 			if !ok {
-				return result.Err(i18n.T("crud_primary_key_required", map[string]any{"field": pk.Name}))
+				return ErrPrimaryKeyRequired(pk.Name)
 			}
 
 			if err := pk.Set(modelValue, value); err != nil {

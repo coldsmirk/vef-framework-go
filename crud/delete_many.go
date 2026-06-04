@@ -8,7 +8,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
-	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/storage"
@@ -82,7 +81,7 @@ func (d *deleteManyOperation[TModel]) deleteMany(db orm.DB, files storage.Files)
 				for _, pk := range pks {
 					value, ok := pkMap[pk.Name]
 					if !ok {
-						return result.Err(i18n.T("crud_primary_key_required", map[string]any{"field": pk.Name}))
+						return ErrPrimaryKeyRequired(pk.Name)
 					}
 
 					if err := pk.Set(modelValue, value); err != nil {
@@ -91,7 +90,7 @@ func (d *deleteManyOperation[TModel]) deleteMany(db orm.DB, files storage.Files)
 				}
 			} else {
 				if len(pks) != 1 {
-					return result.Err(i18n.T("crud_composite_primary_key_requires_map"))
+					return ErrCompositePrimaryKeyRequiresMap
 				}
 
 				if err := pks[0].Set(modelValue, pkValue); err != nil {

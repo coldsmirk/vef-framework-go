@@ -10,7 +10,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/copier"
-	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/storage"
@@ -91,7 +90,7 @@ func (u *updateManyOperation[TModel, TParams]) updateMany(db orm.DB, files stora
 				}
 
 				if reflect.ValueOf(pkValue).IsZero() {
-					return result.Err(i18n.T("crud_primary_key_required", map[string]any{"field": pk.Name}))
+					return ErrPrimaryKeyRequired(pk.Name)
 				}
 			}
 

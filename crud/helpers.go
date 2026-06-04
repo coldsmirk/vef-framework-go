@@ -10,9 +10,7 @@ import (
 	"github.com/uptrace/bun/schema"
 
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // columnRef pairs a logical name with a column identifier for validation.
@@ -25,11 +23,7 @@ type columnRef struct {
 func validateColumnsExist(table *schema.Table, columns ...columnRef) error {
 	for _, c := range columns {
 		if c.column != "" && !table.HasField(c.column) {
-			return result.Err(i18n.T("crud_field_not_exist_in_model", map[string]any{
-				"field": c.column,
-				"name":  c.name,
-				"model": table.TypeName,
-			}))
+			return ErrFieldNotExistInModel(c.column, c.name, table.TypeName)
 		}
 	}
 
@@ -148,11 +142,7 @@ func parseMetaColumns(specs []string) []orm.ColumnInfo {
 func validateMetaColumns(table *schema.Table, metaColumns []orm.ColumnInfo) error {
 	for _, col := range metaColumns {
 		if !table.HasField(col.Name) {
-			return result.Err(i18n.T("crud_field_not_exist_in_model", map[string]any{
-				"field": col.Name,
-				"name":  "metaColumns",
-				"model": table.TypeName,
-			}))
+			return ErrFieldNotExistInModel(col.Name, "metaColumns", table.TypeName)
 		}
 	}
 

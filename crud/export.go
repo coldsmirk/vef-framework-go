@@ -7,10 +7,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/csv"
 	"github.com/coldsmirk/vef-framework-go/excel"
-	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/mold"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/tabular"
 )
 
@@ -120,7 +118,7 @@ func (a *exportOperation[TModel, TSearch]) exportData(db orm.DB) (func(ctx fiber
 			contentType = contentTypeCsv
 			defaultFilename = defaultFilenameCsv
 		default:
-			return result.Err(i18n.T("crud_unsupported_export_format"))
+			return ErrUnsupportedExportFormat
 		}
 
 		var (
