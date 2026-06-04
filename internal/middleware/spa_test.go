@@ -63,6 +63,9 @@ func TestHasAnyPrefix(t *testing.T) {
 		{name: "MatchesFirst", reqPath: "/api/users", prefixes: []string{"/api", "/ws"}, want: true},
 		{name: "MatchesSecond", reqPath: "/ws/feed", prefixes: []string{"/api", "/ws"}, want: true},
 		{name: "NoMatch", reqPath: "/dashboard", prefixes: []string{"/api", "/ws"}, want: false},
+		{name: "ExactPrefixMatches", reqPath: "/api", prefixes: []string{"/api"}, want: true},
+		{name: "SharedStringPrefixNotMatched", reqPath: "/apidocs", prefixes: []string{"/api"}, want: false},
+		{name: "TrailingSlashPrefixNormalized", reqPath: "/api/users", prefixes: []string{"/api/"}, want: true},
 		{name: "NilPrefixes", reqPath: "/api/users", prefixes: nil, want: false},
 		{name: "EmptyPrefixIgnored", reqPath: "/anything", prefixes: []string{""}, want: false},
 	}

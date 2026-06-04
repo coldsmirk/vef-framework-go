@@ -123,10 +123,18 @@ func NewSPAMiddleware(configs []*middleware.SPAConfig) app.Middleware {
 	}
 }
 
-// hasAnyPrefix reports whether reqPath starts with any of the given non-empty prefixes.
+// hasAnyPrefix reports whether reqPath lies under any of the given non-empty
+// prefixes, matching on path-segment boundaries. A prefix "/api" excludes "/api"
+// and "/api/*" but NOT "/apidocs", so SPA front-end routes that merely share a
+// string prefix with an excluded path are not swallowed by the catch-all.
 func hasAnyPrefix(reqPath string, prefixes []string) bool {
 	for _, prefix := range prefixes {
-		if prefix != "" && strings.HasPrefix(reqPath, prefix) {
+		if prefix == "" {
+			continue
+		}
+
+		p := strings.TrimSuffix(prefix, "/")
+		if reqPath == p || strings.HasPrefix(reqPath, p+"/") {
 			return true
 		}
 	}
