@@ -21,6 +21,8 @@ const (
 	KeyLogger
 	KeyDB
 	KeyDataPermApplier
+	KeyRequestMethod
+	KeyRequestPath
 )
 
 // setValue stores a value in the context, handling both fiber.Ctx and standard context.Context.
@@ -108,4 +110,28 @@ func RequestIP(ctx context.Context) string {
 
 func SetRequestIP(ctx context.Context, ip string) context.Context {
 	return setValue(ctx, KeyRequestIP, ip)
+}
+
+// RequestMethod returns the HTTP method of the current request, if the auth
+// middleware recorded it. Used by signature auth to bind the method.
+func RequestMethod(ctx context.Context) string {
+	method, _ := ctx.Value(KeyRequestMethod).(string)
+
+	return method
+}
+
+func SetRequestMethod(ctx context.Context, method string) context.Context {
+	return setValue(ctx, KeyRequestMethod, method)
+}
+
+// RequestPath returns the request path of the current request, if the auth
+// middleware recorded it. Used by signature auth to bind the path.
+func RequestPath(ctx context.Context) string {
+	path, _ := ctx.Value(KeyRequestPath).(string)
+
+	return path
+}
+
+func SetRequestPath(ctx context.Context, path string) context.Context {
+	return setValue(ctx, KeyRequestPath, path)
 }

@@ -46,9 +46,13 @@ func (m *Auth) Process(ctx fiber.Ctx) error {
 		return fiber.ErrUnauthorized
 	}
 
-	// Make the resolved client IP available to authenticators (e.g. the
-	// signature authenticator's IP whitelist) via the request context.
-	ctx.SetContext(contextx.SetRequestIP(ctx.Context(), httpx.GetIP(ctx)))
+	// Make the resolved client IP and the request method/path available to
+	// authenticators via the request context: the signature authenticator
+	// uses the IP for its whitelist and binds the method+path into the HMAC.
+	reqCtx := contextx.SetRequestIP(ctx.Context(), httpx.GetIP(ctx))
+	reqCtx = contextx.SetRequestMethod(reqCtx, ctx.Method())
+	reqCtx = contextx.SetRequestPath(reqCtx, ctx.Path())
+	ctx.SetContext(reqCtx)
 
 	strategy, found := m.registry.Get(op.Auth.Strategy)
 	if !found {

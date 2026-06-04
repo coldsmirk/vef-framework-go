@@ -88,7 +88,13 @@ func (a *SignatureAuthenticator) verifySignature(
 		return mapSignatureError(err)
 	}
 
-	if err := sig.Verify(ctx, appID, credentials.Timestamp, credentials.Nonce, credentials.Signature); err != nil {
+	// The auth middleware records the request method/path on ctx; the
+	// signature binds them so a captured signature cannot be replayed against
+	// a different endpoint.
+	method := contextx.RequestMethod(ctx)
+	path := contextx.RequestPath(ctx)
+
+	if err := sig.Verify(ctx, appID, method, path, credentials.Timestamp, credentials.Nonce, credentials.Signature); err != nil {
 		logger.Warnf("Signature verify failed for app %q: %v", appID, err)
 
 		return mapSignatureError(err)
