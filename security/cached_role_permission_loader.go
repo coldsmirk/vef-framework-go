@@ -7,7 +7,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/cache"
 	"github.com/coldsmirk/vef-framework-go/event"
 	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
-	"github.com/coldsmirk/vef-framework-go/logx"
 )
 
 // eventTypeRolePermissionsChanged is the event type for role permissions changes.
@@ -28,12 +27,10 @@ func PublishRolePermissionsChangedEvent(ctx context.Context, bus event.Bus, role
 	return bus.Publish(ctx, &RolePermissionsChangedEvent{Roles: roles})
 }
 
-// CachedRolePermissionsLoader is a decorator that adds caching to a RolePermissionsLoader.
-// It uses the cache system and event bus for automatic cache invalidation.
+// CachedRolePermissionsLoader is a decorator that adds caching to a
+// RolePermissionsLoader, invalidating entries on RolePermissionsChangedEvent.
 type CachedRolePermissionsLoader struct {
-	loader    RolePermissionsLoader
-	permCache cache.Cache[map[string]DataScope]
-	logger    logx.Logger
+	cache *cache.Invalidating[map[string]DataScope]
 }
 
 // NewCachedRolePermissionsLoader creates a new cached role permissions loader.
@@ -43,9 +40,10 @@ func NewCachedRolePermissionsLoader(
 	bus event.Bus,
 ) RolePermissionsLoader {
 	cached := &CachedRolePermissionsLoader{
-		loader:    loader,
-		permCache: cache.NewMemory[map[string]DataScope](),
-		logger:    ilogx.Named("security:cached_role_permissions_loader"),
+		cache: cache.NewInvalidating(
+			loader.LoadPermissions,
+			ilogx.Named("security:cached_role_permissions_loader"),
+		),
 	}
 
 	if _, err := event.SubscribeTyped[*RolePermissionsChangedEvent](bus, cached.handlePermissionsChanged); err != nil {
@@ -56,35 +54,9 @@ func NewCachedRolePermissionsLoader(
 }
 
 func (c *CachedRolePermissionsLoader) handlePermissionsChanged(ctx context.Context, evt *RolePermissionsChangedEvent, _ event.Envelope) error {
-	// Empty roles means clear all cache
-	if len(evt.Roles) == 0 {
-		if err := c.permCache.Clear(ctx); err != nil {
-			c.logger.Errorf("Failed to clear all role permissions cache: %v", err)
-
-			return err
-		}
-
-		c.logger.Info("Cleared all role permissions cache")
-
-		return nil
-	}
-
-	// Clear cache for specific roles
-	for _, role := range evt.Roles {
-		if err := c.permCache.Delete(ctx, role); err != nil {
-			c.logger.Errorf("Failed to delete cache for role %s: %v", role, err)
-
-			return err
-		}
-
-		c.logger.Infof("Cleared cache for role: %s", role)
-	}
-
-	return nil
+	return c.cache.Invalidate(ctx, evt.Roles...)
 }
 
 func (c *CachedRolePermissionsLoader) LoadPermissions(ctx context.Context, role string) (map[string]DataScope, error) {
-	return c.permCache.GetOrLoad(ctx, role, func(ctx context.Context) (map[string]DataScope, error) {
-		return c.loader.LoadPermissions(ctx, role)
-	})
+	return c.cache.Get(ctx, role)
 }

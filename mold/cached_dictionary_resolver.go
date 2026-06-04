@@ -7,7 +7,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/cache"
 	"github.com/coldsmirk/vef-framework-go/event"
 	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
-	"github.com/coldsmirk/vef-framework-go/logx"
 )
 
 // eventTypeDictionaryChanged is the topic used to invalidate cached
@@ -40,9 +39,7 @@ func PublishDictionaryChangedEvent(ctx context.Context, bus event.Bus, keys ...s
 // CachedDictionaryResolver adds caching and event-based invalidation around a DictionaryLoader implementation.
 // Underlying cache implementations already coordinate concurrent loads to prevent stampede.
 type CachedDictionaryResolver struct {
-	loader    DictionaryLoader
-	dictCache cache.Cache[map[string]string]
-	logger    logx.Logger
+	cache *cache.Invalidating[map[string]string]
 }
 
 // NewCachedDictionaryResolver constructs a caching resolver for dictionary lookups.
@@ -59,9 +56,21 @@ func NewCachedDictionaryResolver(
 	}
 
 	resolver := &CachedDictionaryResolver{
-		loader:    loader,
-		dictCache: cache.NewMemory[map[string]string](),
-		logger:    ilogx.Named("translate:cached_dictionary_resolver"),
+		cache: cache.NewInvalidating(
+			func(ctx context.Context, key string) (map[string]string, error) {
+				entries, err := loader.Load(ctx, key)
+				if err != nil {
+					return nil, err
+				}
+
+				if entries == nil {
+					entries = make(map[string]string)
+				}
+
+				return entries, nil
+			},
+			ilogx.Named("translate:cached_dictionary_resolver"),
+		),
 	}
 
 	if _, err := event.SubscribeTyped[*DictionaryChangedEvent](bus, resolver.handleInvalidation); err != nil {
@@ -79,7 +88,7 @@ func (r *CachedDictionaryResolver) Resolve(ctx context.Context, key, code string
 		return "", nil
 	}
 
-	entries, err := r.getEntries(ctx, key)
+	entries, err := r.cache.Get(ctx, key)
 	if err != nil {
 		return "", fmt.Errorf("failed to load dictionary %q: %w", key, err)
 	}
@@ -92,49 +101,6 @@ func (r *CachedDictionaryResolver) Resolve(ctx context.Context, key, code string
 	return name, nil
 }
 
-func (r *CachedDictionaryResolver) getEntries(ctx context.Context, key string) (map[string]string, error) {
-	entries, err := r.dictCache.GetOrLoad(ctx, key, func(ctx context.Context) (map[string]string, error) {
-		// Load from underlying loader
-		entries, err := r.loader.Load(ctx, key)
-		if err != nil {
-			return nil, err
-		}
-
-		if entries == nil {
-			entries = make(map[string]string)
-		}
-
-		return entries, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return entries, nil
-}
-
 func (r *CachedDictionaryResolver) handleInvalidation(ctx context.Context, evt *DictionaryChangedEvent, _ event.Envelope) error {
-	if len(evt.Keys) == 0 {
-		if err := r.dictCache.Clear(ctx); err != nil {
-			r.logger.Errorf("Failed to clear dictionary cache: %v", err)
-
-			return err
-		}
-
-		r.logger.Info("Cleared all dictionary cache entries")
-
-		return nil
-	}
-
-	for _, dictKey := range evt.Keys {
-		if err := r.dictCache.Delete(ctx, dictKey); err != nil {
-			r.logger.Errorf("Failed to delete cache for dictionary %q: %v", dictKey, err)
-
-			return err
-		}
-
-		r.logger.Infof("Cleared cache for dictionary %q", dictKey)
-	}
-
-	return nil
+	return r.cache.Invalidate(ctx, evt.Keys...)
 }
