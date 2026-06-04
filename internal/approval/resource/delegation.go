@@ -87,8 +87,20 @@ func NewDelegationResource() api.Resource {
 			}),
 		Update: crud.NewUpdate[approval.Delegation, DelegationParams]().
 			RequiredPermission("approval:delegation:update").
-			WithPreUpdate(func(oldModel, _ *approval.Delegation, _ *DelegationParams, _ orm.UpdateQuery, ctx fiber.Ctx, _ orm.DB) error {
-				return authorizeDelegationOwner(ctx, oldModel)
+			WithPreUpdate(func(oldModel, newModel *approval.Delegation, _ *DelegationParams, _ orm.UpdateQuery, ctx fiber.Ctx, _ orm.DB) error {
+				if err := authorizeDelegationOwner(ctx, oldModel); err != nil {
+					return err
+				}
+
+				// Pin ownership to the original delegator for non-super-admins:
+				// the params carry a client-supplied, required DelegatorID, and
+				// the merge that follows would otherwise reassign the record to
+				// another user. Mirrors the delegatorId stamping done on create.
+				if !approval.IsSuperAdmin(contextx.Principal(ctx)) {
+					newModel.DelegatorID = oldModel.DelegatorID
+				}
+
+				return nil
 			}),
 		Delete: crud.NewDelete[approval.Delegation]().
 			RequiredPermission("approval:delegation:delete").
