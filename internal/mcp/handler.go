@@ -31,7 +31,9 @@ func NewHandler(params HandlerParams) *Handler {
 	}
 
 	httpHandler := createHTTPHandler(params.Server)
-	if params.MCPConfig.RequireAuth {
+	// Secure by default: require auth unless the operator explicitly opted into
+	// anonymous access (require_auth = false).
+	if params.MCPConfig.RequireAuth == nil || *params.MCPConfig.RequireAuth {
 		httpHandler = applyAuthMiddleware(httpHandler, params.AuthManager)
 	}
 

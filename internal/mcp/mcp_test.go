@@ -17,6 +17,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
 	"github.com/coldsmirk/vef-framework-go/password"
+	"github.com/coldsmirk/vef-framework-go/ptr"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
@@ -96,7 +97,7 @@ func (suite *MCPTestSuite) setupTestApp() {
 		fx.Replace(
 			&config.MCPConfig{
 				Enabled:     true,
-				RequireAuth: true,
+				RequireAuth: ptr.Of(true),
 			},
 			&config.SecurityConfig{
 				Secret:       security.DefaultJWTSecret,
