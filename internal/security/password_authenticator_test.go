@@ -148,7 +148,8 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 
 		encoder := new(MockPasswordEncoder)
 		// Dummy comparison is performed on the not-found path to equalize timing.
-		encoder.On("Matches", "password123", dummyPasswordHash).Return(false)
+		encoder.On("Encode", dummyComparePlaintext).Return("dummy-hash", nil)
+		encoder.On("Matches", "password123", "dummy-hash").Return(false)
 		auth := NewPasswordAuthenticator(loader, encoder)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
@@ -171,7 +172,8 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 
 		encoder := new(MockPasswordEncoder)
 		// Dummy comparison is performed on the error path to equalize timing.
-		encoder.On("Matches", "password123", dummyPasswordHash).Return(false)
+		encoder.On("Encode", dummyComparePlaintext).Return("dummy-hash", nil)
+		encoder.On("Matches", "password123", "dummy-hash").Return(false)
 		auth := NewPasswordAuthenticator(loader, encoder)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
@@ -193,7 +195,8 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 
 		encoder := new(MockPasswordEncoder)
 		// Dummy comparison is performed on the nil-principal path to equalize timing.
-		encoder.On("Matches", "password123", dummyPasswordHash).Return(false)
+		encoder.On("Encode", dummyComparePlaintext).Return("dummy-hash", nil)
+		encoder.On("Matches", "password123", "dummy-hash").Return(false)
 		auth := NewPasswordAuthenticator(loader, encoder)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
@@ -216,7 +219,8 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 
 		encoder := new(MockPasswordEncoder)
 		// Dummy comparison is performed on the empty-hash path to equalize timing.
-		encoder.On("Matches", "password123", dummyPasswordHash).Return(false)
+		encoder.On("Encode", dummyComparePlaintext).Return("dummy-hash", nil)
+		encoder.On("Matches", "password123", "dummy-hash").Return(false)
 		auth := NewPasswordAuthenticator(loader, encoder)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{

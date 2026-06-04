@@ -2,6 +2,7 @@ package security
 
 import (
 	"context"
+	"sync"
 
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -14,17 +15,20 @@ const (
 	AuthTypePassword = "password"
 )
 
-// dummyPasswordHash is a pre-computed bcrypt hash (cost 4) used to equalize
-// response time on the user-not-found path, preventing username enumeration
-// via timing side-channel. The hash is bcrypt cost 4 for the sentinel string
-// "__vef_dummy__", computed at build time and never used as a real credential.
-const dummyPasswordHash = "$2a$04$mk2k3PgSLa1KgLOM/.Qs7OlWyDXJTp/ezuzkG0eDJwqdG0.HflGHG"
+// dummyComparePlaintext is hashed (lazily, once) with the injected encoder to
+// produce the comparison hash used on the user-not-found path. Deriving it from
+// the real encoder keeps the timing-equalization comparison on the same
+// algorithm and cost as a genuine verification, which a fixed low-cost hash does
+// not — closing the username-enumeration timing side-channel.
+const dummyComparePlaintext = "__vef_dummy_password__"
 
 // PasswordAuthenticator verifies username/password credentials with optional decryption support
 // for scenarios where clients encrypt passwords before transmission.
 type PasswordAuthenticator struct {
-	loader  security.UserLoader
-	encoder password.Encoder
+	loader    security.UserLoader
+	encoder   password.Encoder
+	dummyOnce sync.Once
+	dummyHash string
 }
 
 func NewPasswordAuthenticator(
@@ -68,14 +72,14 @@ func (p *PasswordAuthenticator) Authenticate(ctx context.Context, authentication
 
 		// Perform a dummy comparison to equalize response time regardless of user existence,
 		// preventing username enumeration via timing side-channel.
-		p.encoder.Matches(plaintext, dummyPasswordHash)
+		p.equalizeTiming(plaintext)
 
 		return nil, security.ErrCredentialsInvalid(i18n.T("security_invalid_credentials"))
 	}
 
 	if principal == nil || passwordHash == "" {
 		// Equalize timing with the found-user path by running a comparison.
-		p.encoder.Matches(plaintext, dummyPasswordHash)
+		p.equalizeTiming(plaintext)
 
 		return nil, security.ErrCredentialsInvalid(i18n.T("security_invalid_credentials"))
 	}
@@ -87,4 +91,21 @@ func (p *PasswordAuthenticator) Authenticate(ctx context.Context, authentication
 	logger.Infof("Password authentication successful for principal %q", principal.ID)
 
 	return principal, nil
+}
+
+// equalizeTiming runs a dummy password comparison so the user-not-found,
+// nil-principal and empty-hash paths take the same time as a real verification,
+// preventing username enumeration via a timing side-channel (CWE-208). The dummy
+// hash is derived once from the configured encoder, so the comparison uses the
+// same algorithm and cost as a genuine check.
+func (p *PasswordAuthenticator) equalizeTiming(plaintext string) {
+	p.dummyOnce.Do(func() {
+		if p.encoder != nil {
+			if hash, err := p.encoder.Encode(dummyComparePlaintext); err == nil {
+				p.dummyHash = hash
+			}
+		}
+	})
+
+	p.encoder.Matches(plaintext, p.dummyHash)
 }
