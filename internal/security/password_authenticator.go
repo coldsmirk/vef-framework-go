@@ -107,5 +107,15 @@ func (p *PasswordAuthenticator) equalizeTiming(plaintext string) {
 		}
 	})
 
-	p.encoder.Matches(plaintext, p.dummyHash)
+	if p.dummyHash != "" {
+		p.encoder.Matches(plaintext, p.dummyHash)
+
+		return
+	}
+
+	// Deriving the dummy hash failed (e.g. a misconfigured cost or a custom
+	// encoder whose Encode errored). Matches against an empty hash returns
+	// immediately, which would reopen the enumeration timing channel, so run the
+	// encoder's KDF directly to keep the not-found path's cost comparable.
+	_, _ = p.encoder.Encode(plaintext)
 }

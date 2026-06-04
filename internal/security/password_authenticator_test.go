@@ -166,6 +166,33 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		encoder.AssertExpectations(s.T())
 	})
 
+	s.Run("DummyHashDerivationFailsFallsBackToEncode", func() {
+		loader := new(MockUserLoader)
+		loader.On("LoadByUsername", mock.Anything, "alice").Return(nil, "", result.ErrRecordNotFound)
+
+		encoder := new(MockPasswordEncoder)
+		// Dummy-hash derivation fails (e.g. a misconfigured cost). The
+		// not-found path must still run the encoder's KDF on the supplied
+		// password instead of cheaply comparing against an empty hash,
+		// otherwise the enumeration timing channel reopens.
+		encoder.On("Encode", dummyComparePlaintext).Return("", errors.New("encode failed"))
+		encoder.On("Encode", "password123").Return("ignored", nil)
+		auth := NewPasswordAuthenticator(loader, encoder)
+
+		_, err := auth.Authenticate(ctx, security.Authentication{
+			Type:        AuthTypePassword,
+			Principal:   "alice",
+			Credentials: "password123",
+		})
+		s.Require().Error(err, "Should return error when user not found")
+
+		resErr, ok := result.AsErr(err)
+		s.Require().True(ok, "Should return a result.Error")
+		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should not leak user existence")
+		encoder.AssertExpectations(s.T())
+		encoder.AssertNotCalled(s.T(), "Matches", mock.Anything, mock.Anything)
+	})
+
 	s.Run("LoaderReturnsGenericError", func() {
 		loader := new(MockUserLoader)
 		loader.On("LoadByUsername", mock.Anything, "alice").Return(nil, "", errors.New("db error"))
