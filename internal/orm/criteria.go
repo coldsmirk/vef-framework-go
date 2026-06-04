@@ -744,14 +744,45 @@ func (cb *CriteriaBuilder) anyGroup(group func(func(ConditionBuilder)) Condition
 	return cb
 }
 
+// fuzzyExpr builds a fuzzy LIKE expression through the ExprBuilder, which escapes
+// the value's LIKE metacharacters (%, _) and emits a portable ESCAPE clause.
+// CriteriaBuilder's fuzzy string methods delegate here so a search value such as
+// "50%" matches literally instead of acting as a wildcard.
+func (cb *CriteriaBuilder) fuzzyExpr(column, value string, kind FuzzyKind, ignoreCase bool) schema.QueryAppender {
+	col := cb.eb.Column(column)
+
+	switch kind {
+	case FuzzyStarts:
+		if ignoreCase {
+			return cb.eb.StartsWithIgnoreCase(col, value)
+		}
+
+		return cb.eb.StartsWith(col, value)
+
+	case FuzzyEnds:
+		if ignoreCase {
+			return cb.eb.EndsWithIgnoreCase(col, value)
+		}
+
+		return cb.eb.EndsWith(col, value)
+
+	default:
+		if ignoreCase {
+			return cb.eb.ContainsIgnoreCase(col, value)
+		}
+
+		return cb.eb.Contains(col, value)
+	}
+}
+
 func (cb *CriteriaBuilder) Contains(column, value string) ConditionBuilder {
-	cb.and("? LIKE ?", cb.eb.Column(column), FuzzyContains.BuildPattern(value))
+	cb.and("?", cb.fuzzyExpr(column, value, FuzzyContains, false))
 
 	return cb
 }
 
 func (cb *CriteriaBuilder) OrContains(column, value string) ConditionBuilder {
-	cb.or("? LIKE ?", cb.eb.Column(column), FuzzyContains.BuildPattern(value))
+	cb.or("?", cb.fuzzyExpr(column, value, FuzzyContains, false))
 
 	return cb
 }
@@ -769,13 +800,13 @@ func (cb *CriteriaBuilder) OrContainsAny(column string, values []string) Conditi
 }
 
 func (cb *CriteriaBuilder) ContainsIgnoreCase(column, value string) ConditionBuilder {
-	cb.and("?", cb.buildLikeIgnoreCase(column, FuzzyContains.BuildPattern(value), false))
+	cb.and("?", cb.fuzzyExpr(column, value, FuzzyContains, true))
 
 	return cb
 }
 
 func (cb *CriteriaBuilder) OrContainsIgnoreCase(column, value string) ConditionBuilder {
-	cb.or("?", cb.buildLikeIgnoreCase(column, FuzzyContains.BuildPattern(value), false))
+	cb.or("?", cb.fuzzyExpr(column, value, FuzzyContains, true))
 
 	return cb
 }
@@ -793,13 +824,13 @@ func (cb *CriteriaBuilder) OrContainsAnyIgnoreCase(column string, values []strin
 }
 
 func (cb *CriteriaBuilder) NotContains(column, value string) ConditionBuilder {
-	cb.and("? NOT LIKE ?", cb.eb.Column(column), FuzzyContains.BuildPattern(value))
+	cb.and("?", cb.eb.Not(cb.fuzzyExpr(column, value, FuzzyContains, false)))
 
 	return cb
 }
 
 func (cb *CriteriaBuilder) OrNotContains(column, value string) ConditionBuilder {
-	cb.or("? NOT LIKE ?", cb.eb.Column(column), FuzzyContains.BuildPattern(value))
+	cb.or("?", cb.eb.Not(cb.fuzzyExpr(column, value, FuzzyContains, false)))
 
 	return cb
 }
@@ -817,13 +848,13 @@ func (cb *CriteriaBuilder) OrNotContainsAny(column string, values []string) Cond
 }
 
 func (cb *CriteriaBuilder) NotContainsIgnoreCase(column, value string) ConditionBuilder {
-	cb.and("?", cb.buildLikeIgnoreCase(column, FuzzyContains.BuildPattern(value), true))
+	cb.and("?", cb.eb.Not(cb.fuzzyExpr(column, value, FuzzyContains, true)))
 
 	return cb
 }
 
 func (cb *CriteriaBuilder) OrNotContainsIgnoreCase(column, value string) ConditionBuilder {
-	cb.or("?", cb.buildLikeIgnoreCase(column, FuzzyContains.BuildPattern(value), true))
+	cb.or("?", cb.eb.Not(cb.fuzzyExpr(column, value, FuzzyContains, true)))
 
 	return cb
 }
@@ -841,13 +872,13 @@ func (cb *CriteriaBuilder) OrNotContainsAnyIgnoreCase(column string, values []st
 }
 
 func (cb *CriteriaBuilder) StartsWith(column, value string) ConditionBuilder {
-	cb.and("? LIKE ?", cb.eb.Column(column), FuzzyStarts.BuildPattern(value))
+	cb.and("?", cb.fuzzyExpr(column, value, FuzzyStarts, false))
 
 	return cb
 }
 
 func (cb *CriteriaBuilder) OrStartsWith(column, value string) ConditionBuilder {
-	cb.or("? LIKE ?", cb.eb.Column(column), FuzzyStarts.BuildPattern(value))
+	cb.or("?", cb.fuzzyExpr(column, value, FuzzyStarts, false))
 
 	return cb
 }
@@ -865,13 +896,13 @@ func (cb *CriteriaBuilder) OrStartsWithAny(column string, values []string) Condi
 }
 
 func (cb *CriteriaBuilder) StartsWithIgnoreCase(column, value string) ConditionBuilder {
-	cb.and("?", cb.buildLikeIgnoreCase(column, FuzzyStarts.BuildPattern(value), false))
+	cb.and("?", cb.fuzzyExpr(column, value, FuzzyStarts, true))
 
 	return cb
 }
 
 func (cb *CriteriaBuilder) OrStartsWithIgnoreCase(column, value string) ConditionBuilder {
-	cb.or("?", cb.buildLikeIgnoreCase(column, FuzzyStarts.BuildPattern(value), false))
+	cb.or("?", cb.fuzzyExpr(column, value, FuzzyStarts, true))
 
 	return cb
 }
@@ -889,13 +920,13 @@ func (cb *CriteriaBuilder) OrStartsWithAnyIgnoreCase(column string, values []str
 }
 
 func (cb *CriteriaBuilder) NotStartsWith(column, value string) ConditionBuilder {
-	cb.and("? NOT LIKE ?", cb.eb.Column(column), FuzzyStarts.BuildPattern(value))
+	cb.and("?", cb.eb.Not(cb.fuzzyExpr(column, value, FuzzyStarts, false)))
 
 	return cb
 }
 
 func (cb *CriteriaBuilder) OrNotStartsWith(column, value string) ConditionBuilder {
-	cb.or("? NOT LIKE ?", cb.eb.Column(column), FuzzyStarts.BuildPattern(value))
+	cb.or("?", cb.eb.Not(cb.fuzzyExpr(column, value, FuzzyStarts, false)))
 
 	return cb
 }
@@ -913,13 +944,13 @@ func (cb *CriteriaBuilder) OrNotStartsWithAny(column string, values []string) Co
 }
 
 func (cb *CriteriaBuilder) NotStartsWithIgnoreCase(column, value string) ConditionBuilder {
-	cb.and("?", cb.buildLikeIgnoreCase(column, FuzzyStarts.BuildPattern(value), true))
+	cb.and("?", cb.eb.Not(cb.fuzzyExpr(column, value, FuzzyStarts, true)))
 
 	return cb
 }
 
 func (cb *CriteriaBuilder) OrNotStartsWithIgnoreCase(column, value string) ConditionBuilder {
-	cb.or("?", cb.buildLikeIgnoreCase(column, FuzzyStarts.BuildPattern(value), true))
+	cb.or("?", cb.eb.Not(cb.fuzzyExpr(column, value, FuzzyStarts, true)))
 
 	return cb
 }
@@ -937,13 +968,13 @@ func (cb *CriteriaBuilder) OrNotStartsWithAnyIgnoreCase(column string, values []
 }
 
 func (cb *CriteriaBuilder) EndsWith(column, value string) ConditionBuilder {
-	cb.and("? LIKE ?", cb.eb.Column(column), FuzzyEnds.BuildPattern(value))
+	cb.and("?", cb.fuzzyExpr(column, value, FuzzyEnds, false))
 
 	return cb
 }
 
 func (cb *CriteriaBuilder) OrEndsWith(column, value string) ConditionBuilder {
-	cb.or("? LIKE ?", cb.eb.Column(column), FuzzyEnds.BuildPattern(value))
+	cb.or("?", cb.fuzzyExpr(column, value, FuzzyEnds, false))
 
 	return cb
 }
@@ -961,13 +992,13 @@ func (cb *CriteriaBuilder) OrEndsWithAny(column string, values []string) Conditi
 }
 
 func (cb *CriteriaBuilder) EndsWithIgnoreCase(column, value string) ConditionBuilder {
-	cb.and("?", cb.buildLikeIgnoreCase(column, FuzzyEnds.BuildPattern(value), false))
+	cb.and("?", cb.fuzzyExpr(column, value, FuzzyEnds, true))
 
 	return cb
 }
 
 func (cb *CriteriaBuilder) OrEndsWithIgnoreCase(column, value string) ConditionBuilder {
-	cb.or("?", cb.buildLikeIgnoreCase(column, FuzzyEnds.BuildPattern(value), false))
+	cb.or("?", cb.fuzzyExpr(column, value, FuzzyEnds, true))
 
 	return cb
 }
@@ -985,13 +1016,13 @@ func (cb *CriteriaBuilder) OrEndsWithAnyIgnoreCase(column string, values []strin
 }
 
 func (cb *CriteriaBuilder) NotEndsWith(column, value string) ConditionBuilder {
-	cb.and("? NOT LIKE ?", cb.eb.Column(column), FuzzyEnds.BuildPattern(value))
+	cb.and("?", cb.eb.Not(cb.fuzzyExpr(column, value, FuzzyEnds, false)))
 
 	return cb
 }
 
 func (cb *CriteriaBuilder) OrNotEndsWith(column, value string) ConditionBuilder {
-	cb.or("? NOT LIKE ?", cb.eb.Column(column), FuzzyEnds.BuildPattern(value))
+	cb.or("?", cb.eb.Not(cb.fuzzyExpr(column, value, FuzzyEnds, false)))
 
 	return cb
 }
@@ -1009,13 +1040,13 @@ func (cb *CriteriaBuilder) OrNotEndsWithAny(column string, values []string) Cond
 }
 
 func (cb *CriteriaBuilder) NotEndsWithIgnoreCase(column, value string) ConditionBuilder {
-	cb.and("?", cb.buildLikeIgnoreCase(column, FuzzyEnds.BuildPattern(value), true))
+	cb.and("?", cb.eb.Not(cb.fuzzyExpr(column, value, FuzzyEnds, true)))
 
 	return cb
 }
 
 func (cb *CriteriaBuilder) OrNotEndsWithIgnoreCase(column, value string) ConditionBuilder {
-	cb.or("?", cb.buildLikeIgnoreCase(column, FuzzyEnds.BuildPattern(value), true))
+	cb.or("?", cb.eb.Not(cb.fuzzyExpr(column, value, FuzzyEnds, true)))
 
 	return cb
 }
@@ -1029,24 +1060,6 @@ func (cb *CriteriaBuilder) NotEndsWithAnyIgnoreCase(column string, values []stri
 func (cb *CriteriaBuilder) OrNotEndsWithAnyIgnoreCase(column string, values []string) ConditionBuilder {
 	return cb.anyGroup(cb.OrGroup, values, func(cb ConditionBuilder, value string) {
 		cb.NotEndsWithIgnoreCase(column, value)
-	})
-}
-
-// buildLikeIgnoreCase builds a dialect-aware case-insensitive LIKE/NOT LIKE expression.
-// Uses ILIKE/NOT ILIKE on Postgres; falls back to LOWER(column) LIKE/NOT LIKE LOWER(pattern) on other dialects.
-func (cb *CriteriaBuilder) buildLikeIgnoreCase(column string, pattern any, negate bool) schema.QueryAppender {
-	pgOp, defaultOp := "ILIKE", "LIKE"
-	if negate {
-		pgOp, defaultOp = "NOT ILIKE", "NOT LIKE"
-	}
-
-	return cb.eb.ExprByDialect(DialectExprs{
-		Postgres: func() schema.QueryAppender {
-			return cb.eb.Expr("? "+pgOp+" ?", cb.eb.Column(column), pattern)
-		},
-		Default: func() schema.QueryAppender {
-			return cb.eb.Expr("? "+defaultOp+" ?", cb.eb.Lower(cb.eb.Column(column)), cb.eb.Lower(pattern))
-		},
 	})
 }
 
