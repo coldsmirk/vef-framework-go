@@ -208,13 +208,12 @@ func (s *Scanner) autoFinishTask(
 		actionType = approval.ActionReject
 	}
 
-	// For sequential approval auto-pass, activate the next waiting task before evaluating
-	// node completion. If the node completes, HandleNodeCompletion will cancel all remaining tasks.
-	// If not, the next task is correctly activated for the next assignee.
-	if status == approval.TaskApproved && node.ApprovalMethod == approval.ApprovalSequential {
-		if err := s.taskSvc.ActivateNextSequentialTask(ctx, tx, instance, node); err != nil {
-			return nil, fmt.Errorf("activate next sequential task: %w", err)
-		}
+	// Unblock whatever this task's completion enables — the next task in a
+	// sequential queue, or a suspended "before" parent / queued "after" child
+	// on a parallel node — before evaluating node completion. If the node
+	// completes, HandleNodeCompletion cancels all remaining tasks anyway.
+	if err := s.taskSvc.ActivateDependentTasks(ctx, tx, instance, node, task); err != nil {
+		return nil, fmt.Errorf("activate dependent tasks: %w", err)
 	}
 
 	events := make([]approval.DomainEvent, 0, 2)

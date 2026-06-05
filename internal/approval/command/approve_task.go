@@ -80,10 +80,8 @@ func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cq
 
 	events := []approval.DomainEvent{taskEvent}
 
-	if node.ApprovalMethod == approval.ApprovalSequential {
-		if err := h.taskSvc.ActivateNextSequentialTask(ctx, db, instance, node); err != nil {
-			return cqrs.Unit{}, err
-		}
+	if err := h.taskSvc.ActivateDependentTasks(ctx, db, instance, node, task); err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	completionEvents, err := h.nodeSvc.HandleNodeCompletion(ctx, db, instance, node)

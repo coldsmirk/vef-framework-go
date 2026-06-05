@@ -85,11 +85,31 @@ func (*TaskService) FinishTask(ctx context.Context, db orm.DB, task *approval.Ta
 	return nil
 }
 
-// ActivateNextSequentialTask activates the next waiting task in sequential approval.
+// ActivateNextSequentialTask activates the next waiting task in a node's
+// sort-ordered queue. It is a no-op while any task on the node is still
+// Pending, which makes it idempotent and safe to call after any task finishes
+// — or after a queued (Waiting) task is removed — without ever leaving two
+// tasks active at once.
 func (*TaskService) ActivateNextSequentialTask(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode) error {
+	pendingExists, err := db.NewSelect().
+		Model((*approval.Task)(nil)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("instance_id", instance.ID).
+				Equals("node_id", node.ID).
+				Equals("status", approval.TaskPending)
+		}).
+		Exists(ctx)
+	if err != nil {
+		return fmt.Errorf("check pending task before sequential activation: %w", err)
+	}
+
+	if pendingExists {
+		return nil
+	}
+
 	var nextTask approval.Task
 
-	err := db.NewSelect().
+	err = db.NewSelect().
 		Model(&nextTask).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("instance_id", instance.ID).
@@ -133,6 +153,105 @@ func (*TaskService) ActivateNextSequentialTask(ctx context.Context, db orm.DB, i
 
 	if affected > 0 {
 		nextTask.Status = approval.TaskPending
+	}
+
+	return nil
+}
+
+// ActivateDependentTasks activates whatever the completion of finishedTask
+// unblocks on its node, so the node keeps making progress.
+//
+// Sequential nodes advance their single sort-ordered queue; an add-assignee
+// task carries a sort order and is picked up by that queue like any other, so
+// no special handling is needed.
+//
+// Parallel nodes have no implicit queue, so a task suspended or queued by
+// add-assignee would otherwise never become actionable — that was the deadlock
+// where a "before" add-assignee permanently stranded the original assignee on
+// an all/ratio node. Their dependencies are resolved explicitly via the
+// parent/child link instead:
+//   - a "before" parent, suspended to Waiting while its pre-approvers act, is
+//     reactivated once all of its before-children finish;
+//   - "after" children, queued as Waiting, are activated once the parent they
+//     were attached to finishes.
+//
+// Transfer and rollback intentionally do not call this: a transfer replaces a
+// task in place (the work is not done), and a rollback abandons the node.
+func (s *TaskService) ActivateDependentTasks(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, finishedTask *approval.Task) error {
+	if node.ApprovalMethod == approval.ApprovalSequential {
+		return s.ActivateNextSequentialTask(ctx, db, instance, node)
+	}
+
+	return s.activateParallelDependents(ctx, db, node, finishedTask)
+}
+
+// activateParallelDependents resolves add-assignee task dependencies on a
+// parallel node via the parent/child link, since there is no sort-ordered
+// queue to do it implicitly.
+func (s *TaskService) activateParallelDependents(ctx context.Context, db orm.DB, node *approval.FlowNode, finishedTask *approval.Task) error {
+	// A finished "before" child may unblock its suspended parent.
+	if finishedTask.ParentTaskID != nil &&
+		finishedTask.AddAssigneeType != nil &&
+		*finishedTask.AddAssigneeType == approval.AddAssigneeBefore {
+		if err := s.reactivateBeforeParent(ctx, db, node, *finishedTask.ParentTaskID); err != nil {
+			return err
+		}
+	}
+
+	// The finished task may itself be the parent that "after" children wait on.
+	return s.activateAfterChildren(ctx, db, node, finishedTask.ID)
+}
+
+// reactivateBeforeParent returns a "before"-suspended parent task to Pending
+// once all of its before-children have finished. The optimistic
+// WHERE status = waiting makes it a no-op if the parent was already
+// reactivated, was canceled, or is not actually suspended.
+func (*TaskService) reactivateBeforeParent(ctx context.Context, db orm.DB, node *approval.FlowNode, parentTaskID string) error {
+	activeBeforeChildren, err := db.NewSelect().
+		Model((*approval.Task)(nil)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("parent_task_id", parentTaskID).
+				Equals("add_assignee_type", string(approval.AddAssigneeBefore)).
+				In("status", cancelableTaskStatuses)
+		}).
+		Count(ctx)
+	if err != nil {
+		return fmt.Errorf("count active before-children: %w", err)
+	}
+
+	if activeBeforeChildren > 0 {
+		return nil
+	}
+
+	if _, err := db.NewUpdate().
+		Model((*approval.Task)(nil)).
+		Set("status", approval.TaskPending).
+		Set("deadline", computeTaskDeadline(node)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.PKEquals(parentTaskID).
+				Equals("status", string(approval.TaskWaiting))
+		}).
+		Exec(ctx); err != nil {
+		return fmt.Errorf("reactivate before-parent task: %w", err)
+	}
+
+	return nil
+}
+
+// activateAfterChildren promotes the Waiting "after" children of a just-
+// finished parent task to Pending so they take their turn.
+func (*TaskService) activateAfterChildren(ctx context.Context, db orm.DB, node *approval.FlowNode, parentTaskID string) error {
+	if _, err := db.NewUpdate().
+		Model((*approval.Task)(nil)).
+		Set("status", approval.TaskPending).
+		Set("deadline", computeTaskDeadline(node)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("parent_task_id", parentTaskID).
+				Equals("add_assignee_type", string(approval.AddAssigneeAfter)).
+				Equals("status", string(approval.TaskWaiting))
+		}).
+		Exec(ctx); err != nil {
+		return fmt.Errorf("activate after-children: %w", err)
 	}
 
 	return nil

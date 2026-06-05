@@ -79,15 +79,12 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 		return cqrs.Unit{}, shared.ErrLastAssigneeRemoval
 	}
 
-	originalStatus := task.Status
 	if err := h.taskSvc.FinishTask(ctx, db, task, approval.TaskRemoved); err != nil {
 		return cqrs.Unit{}, err
 	}
 
-	if node.ApprovalMethod == approval.ApprovalSequential && originalStatus == approval.TaskPending {
-		if err := h.taskSvc.ActivateNextSequentialTask(ctx, db, instance, node); err != nil {
-			return cqrs.Unit{}, err
-		}
+	if err := h.taskSvc.ActivateDependentTasks(ctx, db, instance, node, task); err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	actionLog := cmd.Operator.NewActionLog(task.InstanceID, approval.ActionRemoveAssignee)

@@ -68,6 +68,14 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 		approval.NewTaskRejectedEvent(task.ID, task.TenantID, instance.ID, node.ID, cmd.Operator.ID, cmd.Opinion),
 	}
 
+	// A rejected task may still leave the node running (e.g. "any" pass rule),
+	// so unblock whatever its completion enables before evaluating the node —
+	// otherwise a suspended "before" parent or queued "after" child could
+	// strand the node short of a decision.
+	if err := h.taskSvc.ActivateDependentTasks(ctx, db, instance, node, task); err != nil {
+		return cqrs.Unit{}, err
+	}
+
 	completionEvents, err := h.nodeSvc.HandleNodeCompletion(ctx, db, instance, node)
 	if err != nil {
 		return cqrs.Unit{}, err
