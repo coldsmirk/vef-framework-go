@@ -19,11 +19,24 @@ type NodeService struct {
 	bus          event.Bus
 	taskSvc      *TaskService
 	userResolver approval.UserInfoResolver
+	ccResolver   *shared.CCRecipientResolver
 }
 
 // NewNodeService creates a new NodeService.
-func NewNodeService(engine *engine.FlowEngine, bus event.Bus, taskSvc *TaskService, userResolver approval.UserInfoResolver) *NodeService {
-	return &NodeService{engine: engine, bus: bus, taskSvc: taskSvc, userResolver: userResolver}
+func NewNodeService(
+	engine *engine.FlowEngine,
+	bus event.Bus,
+	taskSvc *TaskService,
+	userResolver approval.UserInfoResolver,
+	ccResolver *shared.CCRecipientResolver,
+) *NodeService {
+	return &NodeService{
+		engine:       engine,
+		bus:          bus,
+		taskSvc:      taskSvc,
+		userResolver: userResolver,
+		ccResolver:   ccResolver,
+	}
 }
 
 // HandleNodeCompletion evaluates node completion and handles the result.
@@ -108,9 +121,10 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 	formData := approval.NewFormData(instance.FormData)
 
 	resolved, err := shared.CollectUniqueCCUserIDs(
+		ctx,
 		ccConfigs,
 		formData,
-		shared.ResolveCCUserIDs,
+		s.ccResolver.Resolve,
 		func(cfg approval.FlowNodeCC) bool {
 			switch cfg.Timing {
 			case approval.CCTimingAlways:

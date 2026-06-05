@@ -7,6 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -34,7 +35,7 @@ type CCProcessorTestSuite struct {
 }
 
 func (s *CCProcessorTestSuite) SetupSuite() {
-	s.processor = engine.NewCCProcessor()
+	s.processor = engine.NewCCProcessor(shared.NewCCRecipientResolver(nil))
 
 	// Build FK chain: FlowCategory → Flow → FlowVersion → FlowNode
 	category := &approval.FlowCategory{TenantID: "default", Code: "cc-test", Name: "CC Test"}

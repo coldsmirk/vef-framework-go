@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -52,13 +53,13 @@ func (s *NodeServiceTestSuite) SetupSuite() {
 		engine.NewConditionProcessor(),
 		engine.NewApprovalProcessor(nil),
 		engine.NewHandleProcessor(nil),
-		engine.NewCCProcessor(),
+		engine.NewCCProcessor(shared.NewCCRecipientResolver(nil)),
 	}
 
 	s.bus = eventtest.NewFakeBus()
 	eng := engine.NewFlowEngine(registry, processors, s.bus, nil, nil, nil)
 	taskSvc := service.NewTaskService()
-	s.svc = service.NewNodeService(eng, s.bus, taskSvc, nil)
+	s.svc = service.NewNodeService(eng, s.bus, taskSvc, nil, shared.NewCCRecipientResolver(nil))
 	s.fixture = setupSvcFixture(s.T(), s.ctx, s.db)
 }
 

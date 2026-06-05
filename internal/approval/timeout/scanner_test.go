@@ -13,6 +13,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/timeout"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
@@ -57,10 +58,10 @@ func (s *ScannerTestSuite) SetupSuite() {
 		engine.NewConditionProcessor(),
 		engine.NewApprovalProcessor(nil),
 		engine.NewHandleProcessor(nil),
-		engine.NewCCProcessor(),
+		engine.NewCCProcessor(shared.NewCCRecipientResolver(nil)),
 	}, s.bus, nil, nil, nil)
 	taskSvc := service.NewTaskService()
-	nodeSvc := service.NewNodeService(eng, s.bus, taskSvc, nil)
+	nodeSvc := service.NewNodeService(eng, s.bus, taskSvc, nil, shared.NewCCRecipientResolver(nil))
 
 	cfg := new(config.ApprovalConfig)
 	cfg.ApplyDefaults()

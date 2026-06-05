@@ -14,6 +14,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
@@ -294,7 +295,7 @@ func buildTestEngine() *engine.FlowEngine {
 		engine.NewConditionProcessor(),
 		engine.NewApprovalProcessor(nil),
 		engine.NewHandleProcessor(nil),
-		engine.NewCCProcessor(),
+		engine.NewCCProcessor(shared.NewCCRecipientResolver(nil)),
 	}
 
 	return engine.NewFlowEngine(registry, processors, eventtest.NewFakeBus(), nil, nil, nil)
@@ -303,7 +304,7 @@ func buildTestEngine() *engine.FlowEngine {
 // buildTestServices creates the standard service instances for command tests.
 func buildTestServices(eng *engine.FlowEngine) (*service.TaskService, *service.NodeService, *service.ValidationService) {
 	taskSvc := service.NewTaskService()
-	nodeSvc := service.NewNodeService(eng, eventtest.NewFakeBus(), taskSvc, nil)
+	nodeSvc := service.NewNodeService(eng, eventtest.NewFakeBus(), taskSvc, nil, shared.NewCCRecipientResolver(nil))
 	validSvc := service.NewValidationService(nil)
 
 	return taskSvc, nodeSvc, validSvc

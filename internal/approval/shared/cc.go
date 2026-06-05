@@ -17,24 +17,25 @@ import (
 var (
 	errUnsupportedCCKind          = errors.New("unsupported cc kind")
 	errUnsupportedCCFormFieldType = errors.New("unsupported cc form field type")
+	errCCAssigneeServiceNil       = errors.New("assignee service is required to resolve role/department cc recipients")
 )
 
 // CCUserResolver resolves CC user IDs from a single FlowNodeCC configuration.
-type CCUserResolver func(cfg approval.FlowNodeCC, formData approval.FormData) ([]string, error)
+// The context is threaded through for kinds (role / department) that resolve
+// recipients via the host AssigneeService.
+type CCUserResolver func(ctx context.Context, cfg approval.FlowNodeCC, formData approval.FormData) ([]string, error)
 
 // CCConfigSelector decides whether a FlowNodeCC config should be included.
 type CCConfigSelector func(cfg approval.FlowNodeCC) bool
 
-// ResolveCCUserIDs resolves CC recipients from static IDs or form-field values.
-// CCRole and CCDepartment kinds require external user resolution and are not supported here.
+// ResolveCCUserIDs resolves CC recipients from static user IDs or form-field
+// values. Role and department kinds are organizational lookups handled by
+// CCRecipientResolver, not here — this function only covers the kinds that
+// need no external service.
 func ResolveCCUserIDs(cfg approval.FlowNodeCC, formData approval.FormData) ([]string, error) {
 	switch cfg.Kind {
 	case approval.CCUser:
 		return NormalizeUniqueIDs(cfg.IDs), nil
-	case approval.CCRole, approval.CCDepartment:
-		// Role and department CC kinds require external user resolution (e.g., via AssigneeService).
-		// Skip silently here; callers that need role/department resolution should inject an alternative resolver.
-		return nil, nil
 	case approval.CCFormField:
 		// handled below
 	default:
@@ -76,9 +77,74 @@ func ResolveCCUserIDs(cfg approval.FlowNodeCC, formData approval.FormData) ([]st
 	}
 }
 
+// CCRecipientResolver resolves CC recipients for every CC kind. User and
+// form-field kinds resolve from the config / form directly; role and
+// department kinds resolve through the host AssigneeService, mirroring how
+// assignees of the same kinds are resolved. This keeps CC symmetric with
+// assignees instead of silently dropping role/department recipients.
+type CCRecipientResolver struct {
+	assigneeSvc approval.AssigneeService
+}
+
+// NewCCRecipientResolver creates a CCRecipientResolver. assigneeSvc may be nil
+// when the host registers no organizational service; in that case role and
+// department CC configs surface an explicit error rather than silently
+// resolving to nobody.
+func NewCCRecipientResolver(assigneeSvc approval.AssigneeService) *CCRecipientResolver {
+	return &CCRecipientResolver{assigneeSvc: assigneeSvc}
+}
+
+// Resolve resolves a single CC configuration to user IDs. Its signature
+// satisfies CCUserResolver so it can be handed to CollectUniqueCCUserIDs.
+func (r *CCRecipientResolver) Resolve(ctx context.Context, cfg approval.FlowNodeCC, formData approval.FormData) ([]string, error) {
+	switch cfg.Kind {
+	case approval.CCRole:
+		if r.assigneeSvc == nil {
+			return nil, errCCAssigneeServiceNil
+		}
+
+		return resolveOrgCCUsers(ctx, cfg.IDs, r.assigneeSvc.GetRoleUsers)
+
+	case approval.CCDepartment:
+		if r.assigneeSvc == nil {
+			return nil, errCCAssigneeServiceNil
+		}
+
+		return resolveOrgCCUsers(ctx, cfg.IDs, r.assigneeSvc.GetDepartmentLeaders)
+
+	default:
+		// CCUser, CCFormField, and unsupported kinds (which surface their own
+		// error) are handled by the static resolver.
+		return ResolveCCUserIDs(cfg, formData)
+	}
+}
+
+// resolveOrgCCUsers resolves CC recipients for organizational kinds (role /
+// department) by querying lookup for each configured ID and collecting unique
+// user IDs in first-seen order.
+func resolveOrgCCUsers(ctx context.Context, ids []string, lookup func(context.Context, string) ([]approval.UserInfo, error)) ([]string, error) {
+	out := NewOrderedUnique[string](len(ids))
+
+	for _, id := range NormalizeUniqueIDs(ids) {
+		users, err := lookup(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("resolve role/department cc recipients: %w", err)
+		}
+
+		for _, u := range users {
+			if u.ID != "" {
+				out.Add(u.ID)
+			}
+		}
+	}
+
+	return out.ToSlice(), nil
+}
+
 // CollectUniqueCCUserIDs resolves and deduplicates CC user IDs while preserving
 // first-seen order.
 func CollectUniqueCCUserIDs(
+	ctx context.Context,
 	configs []approval.FlowNodeCC,
 	formData approval.FormData,
 	resolver CCUserResolver,
@@ -91,7 +157,7 @@ func CollectUniqueCCUserIDs(
 			continue
 		}
 
-		resolvedIDs, err := resolver(cfg, formData)
+		resolvedIDs, err := resolver(ctx, cfg, formData)
 		if err != nil {
 			return nil, err
 		}

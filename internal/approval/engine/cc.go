@@ -10,10 +10,14 @@ import (
 )
 
 // CCProcessor handles CC (carbon copy) notification nodes.
-type CCProcessor struct{}
+type CCProcessor struct {
+	ccResolver *shared.CCRecipientResolver
+}
 
 // NewCCProcessor creates a CCProcessor.
-func NewCCProcessor() *CCProcessor { return new(CCProcessor) }
+func NewCCProcessor(ccResolver *shared.CCRecipientResolver) *CCProcessor {
+	return &CCProcessor{ccResolver: ccResolver}
+}
 
 func (*CCProcessor) NodeKind() approval.NodeKind { return approval.NodeCC }
 
@@ -39,7 +43,7 @@ func (p *CCProcessor) Process(ctx context.Context, pc *ProcessContext) (*Process
 
 // createCCRecords loads FlowNodeCC configurations and creates CC records for all CC users.
 // Returns the list of CC user IDs and their names for event publishing.
-func (*CCProcessor) createCCRecords(ctx context.Context, pc *ProcessContext) ([]string, map[string]string, error) {
+func (p *CCProcessor) createCCRecords(ctx context.Context, pc *ProcessContext) ([]string, map[string]string, error) {
 	var ccConfigs []approval.FlowNodeCC
 
 	if err := pc.DB.NewSelect().
@@ -52,7 +56,7 @@ func (*CCProcessor) createCCRecords(ctx context.Context, pc *ProcessContext) ([]
 		return nil, nil, fmt.Errorf("load cc configs: %w", err)
 	}
 
-	resolved, err := shared.CollectUniqueCCUserIDs(ccConfigs, pc.FormData, shared.ResolveCCUserIDs, nil)
+	resolved, err := shared.CollectUniqueCCUserIDs(ctx, ccConfigs, pc.FormData, p.ccResolver.Resolve, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve cc users: %w", err)
 	}
