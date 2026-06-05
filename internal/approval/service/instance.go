@@ -68,6 +68,53 @@ func (*InstanceService) LoadForUpdate(
 	return instance, nil
 }
 
+// ApplyRollbackFormData resolves the instance form data for a rollback to
+// targetNodeID according to the node's RollbackDataStrategy, mutating
+// instance.FormData in memory. The rollback handler persists the result in the
+// same UPDATE / Transition that writes current_node_id.
+//
+//   - RollbackDataKeep: restore the form snapshot captured when the target
+//     node was first entered, so the applicant resumes from that node's state.
+//   - RollbackDataClear: wipe the form data so the flow restarts with a clean
+//     form. (nullzero on Instance.FormData persists the nil map as NULL.)
+//   - default (including unset): leave the current form data untouched.
+//
+// This exhaustively handles the RollbackDataStrategy enum so a configured
+// strategy can never silently no-op.
+func (*InstanceService) ApplyRollbackFormData(
+	ctx context.Context,
+	db orm.DB,
+	instance *approval.Instance,
+	targetNodeID string,
+	strategy approval.RollbackDataStrategy,
+) error {
+	switch strategy {
+	case approval.RollbackDataKeep:
+		var snapshot approval.FormSnapshot
+
+		err := db.NewSelect().
+			Model(&snapshot).
+			Select("form_data").
+			Where(func(cb orm.ConditionBuilder) {
+				cb.Equals("instance_id", instance.ID).
+					Equals("node_id", targetNodeID)
+			}).
+			Scan(ctx)
+
+		switch {
+		case err == nil && snapshot.FormData != nil:
+			instance.FormData = snapshot.FormData
+		case err != nil && !result.IsRecordNotFound(err):
+			return fmt.Errorf("load form snapshot: %w", err)
+		}
+
+	case approval.RollbackDataClear:
+		instance.FormData = nil
+	}
+
+	return nil
+}
+
 // Transition validates the instance status transition through the state
 // machine, applies it atomically with an optimistic-lock UPDATE, and
 // invokes lifecycle hooks when the new status is final.

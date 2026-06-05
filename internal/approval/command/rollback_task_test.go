@@ -195,3 +195,121 @@ func (s *RollbackTaskTestSuite) TestRollbackTargetShouldNotBeCurrentNode() {
 	)
 	s.Assert().Equal(approval.TaskPending, reloaded.Status, "Task should remain pending when rollback target validation fails")
 }
+
+// seedStartNode inserts a start node into the fixture version that a rollback
+// can return to without re-entering the engine (the NodeStart path returns the
+// instance to the applicant).
+func (s *RollbackTaskTestSuite) seedStartNode(key string) *approval.FlowNode {
+	startNode := &approval.FlowNode{
+		FlowVersionID: s.fixture.VersionID,
+		Key:           key,
+		Kind:          approval.NodeStart,
+		Name:          "Start",
+	}
+	_, err := s.db.NewInsert().Model(startNode).Exec(s.ctx)
+	s.Require().NoError(err, "Should create start node")
+
+	return startNode
+}
+
+// TestRollbackDataClearWipesFormData pins the F1 fix: a node configured with
+// RollbackDataStrategy=clear must wipe the instance form data on rollback.
+// Before the fix the clear branch was unimplemented, so stale data survived.
+func (s *RollbackTaskTestSuite) TestRollbackDataClearWipesFormData() {
+	startNode := s.seedStartNode("clear-start")
+
+	inst, task := s.setupData("rollback-clear-op")
+	_, err := s.db.NewUpdate().
+		Model((*approval.Instance)(nil)).
+		Set("form_data", map[string]any{"amount": 100, "reason": "lunch"}).
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(inst.ID) }).
+		Exec(s.ctx)
+	s.Require().NoError(err, "Should seed instance form data")
+
+	// s.rollbackNode is configured RollbackDataClear + RollbackAny.
+	operator := approval.OperatorInfo{ID: "rollback-clear-op", Name: "Operator"}
+	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
+		TaskID:       task.ID,
+		Operator:     operator,
+		TargetNodeID: startNode.ID,
+		Opinion:      "rollback and clear",
+		Caller:       approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Rollback to start with clear strategy should succeed")
+
+	var reloaded approval.Instance
+
+	reloaded.ID = inst.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload instance after rollback")
+	s.Assert().Equal(approval.InstanceReturned, reloaded.Status, "Instance should be returned to the applicant")
+	s.Assert().Empty(reloaded.FormData, "RollbackDataClear must wipe instance form data, not retain it")
+}
+
+// TestRollbackDataKeepRestoresSnapshot guards the complementary branch: keep
+// restores the snapshot captured at the target node.
+func (s *RollbackTaskTestSuite) TestRollbackDataKeepRestoresSnapshot() {
+	startNode := s.seedStartNode("keep-start")
+
+	keepNode := &approval.FlowNode{
+		FlowVersionID:        s.fixture.VersionID,
+		Key:                  "rollback-keep-node",
+		Kind:                 approval.NodeApproval,
+		Name:                 "Rollback Keep Node",
+		IsRollbackAllowed:    true,
+		RollbackType:         approval.RollbackAny,
+		RollbackDataStrategy: approval.RollbackDataKeep,
+	}
+	_, err := s.db.NewInsert().Model(keepNode).Exec(s.ctx)
+	s.Require().NoError(err, "Should create keep node")
+
+	s.instanceSeq++
+	currentNodeID := keepNode.ID
+	inst := &approval.Instance{
+		TenantID:      "default",
+		FlowID:        s.fixture.FlowID,
+		FlowVersionID: s.fixture.VersionID,
+		Title:         "Rollback Keep Test",
+		InstanceNo:    fmt.Sprintf("RB-KEEP-%03d", s.instanceSeq),
+		ApplicantID:   "applicant-1",
+		Status:        approval.InstanceRunning,
+		CurrentNodeID: &currentNodeID,
+		FormData:      map[string]any{"current": "value"},
+	}
+	_, err = s.db.NewInsert().Model(inst).Exec(s.ctx)
+	s.Require().NoError(err, "Should create running instance")
+
+	task := &approval.Task{
+		TenantID:   "default",
+		InstanceID: inst.ID,
+		NodeID:     keepNode.ID,
+		AssigneeID: "rollback-keep-op",
+		SortOrder:  1,
+		Status:     approval.TaskPending,
+	}
+	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
+	s.Require().NoError(err, "Should create pending task")
+
+	snapshot := &approval.FormSnapshot{
+		InstanceID: inst.ID,
+		NodeID:     startNode.ID,
+		FormData:   map[string]any{"restored": "from-snapshot"},
+	}
+	_, err = s.db.NewInsert().Model(snapshot).Exec(s.ctx)
+	s.Require().NoError(err, "Should seed form snapshot for target node")
+
+	operator := approval.OperatorInfo{ID: "rollback-keep-op", Name: "Operator"}
+	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
+		TaskID:       task.ID,
+		Operator:     operator,
+		TargetNodeID: startNode.ID,
+		Opinion:      "rollback and keep",
+		Caller:       approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Rollback to start with keep strategy should succeed")
+
+	var reloaded approval.Instance
+
+	reloaded.ID = inst.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload instance after rollback")
+	s.Assert().Equal("from-snapshot", reloaded.FormData["restored"], "RollbackDataKeep must restore the target node's form snapshot")
+}

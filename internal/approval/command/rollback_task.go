@@ -13,7 +13,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
@@ -90,25 +89,9 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 		return cqrs.Unit{}, err
 	}
 
-	// Restore form snapshot if rollback data strategy is "keep"
-	if node.RollbackDataStrategy == approval.RollbackDataKeep {
-		var snapshot approval.FormSnapshot
-
-		err := db.NewSelect().
-			Model(&snapshot).
-			Select("form_data").
-			Where(func(cb orm.ConditionBuilder) {
-				cb.Equals("instance_id", instance.ID).
-					Equals("node_id", targetNodeID)
-			}).
-			Scan(ctx)
-
-		switch {
-		case err == nil && snapshot.FormData != nil:
-			instance.FormData = snapshot.FormData
-		case err != nil && !result.IsRecordNotFound(err):
-			return cqrs.Unit{}, fmt.Errorf("load form snapshot: %w", err)
-		}
+	// Resolve form data per the node's rollback data strategy (keep / clear).
+	if err := h.instanceSvc.ApplyRollbackFormData(ctx, db, instance, targetNodeID, node.RollbackDataStrategy); err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	instance.CurrentNodeID = new(targetNodeID)
