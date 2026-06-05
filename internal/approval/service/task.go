@@ -485,6 +485,15 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID st
 
 	MergeFormData(tc.Instance, formData, tc.Node.FieldPermissions)
 
+	// Re-validate the merged total size. The 64 KiB cap enforced at
+	// start / resubmit must also hold for every task action, otherwise an
+	// approver could grow instance.FormData unbounded one editable field at
+	// a time across nodes (FilterEditableFormData bounds the keys, not the
+	// encoded size).
+	if err := validateFormDataSize(tc.Instance.FormData); err != nil {
+		return nil, err
+	}
+
 	return tc, nil
 }
 

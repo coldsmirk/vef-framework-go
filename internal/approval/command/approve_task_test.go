@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"strings"
 
 	"github.com/stretchr/testify/suite"
 
@@ -216,4 +217,63 @@ func (s *ApproveTaskTestSuite) TestApproveShouldResolveCCFromFormField() {
 	s.Assert().True(userSet.Contains("cc-user-1"), "Should keep existing static CC recipient")
 	s.Assert().True(userSet.Contains("cc-user-2"), "Should include CC recipient resolved from form field")
 	s.Assert().True(userSet.Contains("cc-user-3"), "Should include CC recipient resolved from form field")
+}
+
+// TestApproveRejectsOversizedFormData pins the F4 fix: the 64 KiB form-data cap
+// is re-checked on the task-action path, so an approver cannot grow the
+// instance form past the limit one editable field at a time.
+func (s *ApproveTaskTestSuite) TestApproveRejectsOversizedFormData() {
+	node := &approval.FlowNode{
+		FlowVersionID:    s.fixture.VersionID,
+		Key:              "approve-oversized-node",
+		Kind:             approval.NodeApproval,
+		Name:             "Oversized Form Node",
+		PassRule:         approval.PassAll,
+		FieldPermissions: map[string]approval.Permission{"blob": approval.PermissionEditable},
+	}
+	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
+	s.Require().NoError(err, "Should create node with an editable field")
+
+	inst := &approval.Instance{
+		TenantID:      "default",
+		FlowID:        s.fixture.FlowID,
+		FlowVersionID: s.fixture.VersionID,
+		Title:         "Oversized Form Test",
+		InstanceNo:    "APV-OVERSIZE-001",
+		ApplicantID:   "applicant-1",
+		Status:        approval.InstanceRunning,
+		CurrentNodeID: &node.ID,
+	}
+	_, err = s.db.NewInsert().Model(inst).Exec(s.ctx)
+	s.Require().NoError(err, "Should create running instance")
+
+	task := &approval.Task{
+		TenantID:   "default",
+		InstanceID: inst.ID,
+		NodeID:     node.ID,
+		AssigneeID: "approver-oversize",
+		SortOrder:  1,
+		Status:     approval.TaskPending,
+	}
+	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
+	s.Require().NoError(err, "Should create pending task")
+
+	// 70 KiB of editable-field content exceeds the 64 KiB FormDataMaxBytes cap.
+	oversized := strings.Repeat("x", 70*1024)
+
+	operator := approval.OperatorInfo{ID: "approver-oversize", Name: "Approver"}
+	_, err = s.handler.Handle(s.ctx, command.ApproveTaskCmd{
+		TaskID:   task.ID,
+		Operator: operator,
+		FormData: map[string]any{"blob": oversized},
+		Caller:   approval.SystemCaller,
+	})
+	s.Require().Error(err, "Approving with oversized form data should fail")
+	s.Assert().ErrorIs(err, shared.ErrFormDataTooLarge, "Should reject form data exceeding the size cap on the approve path")
+
+	var reloaded approval.Task
+
+	reloaded.ID = task.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload task after rejection")
+	s.Assert().Equal(approval.TaskPending, reloaded.Status, "Task must stay pending — the size guard runs before any state change")
 }

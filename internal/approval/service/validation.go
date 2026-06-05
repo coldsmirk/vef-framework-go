@@ -48,15 +48,8 @@ func (*ValidationService) ValidateOpinion(node *approval.FlowNode, opinion strin
 func (*ValidationService) ValidateFormData(schema *approval.FormDefinition, formData map[string]any) error {
 	// Size guard runs first — applies even to flows without a schema so
 	// callers cannot bypass the cap by omitting the form definition.
-	if formData != nil {
-		raw, err := json.Marshal(formData)
-		if err != nil {
-			return fmt.Errorf("encode form data for size check: %w", err)
-		}
-
-		if len(raw) > FormDataMaxBytes {
-			return shared.ErrFormDataTooLarge
-		}
+	if err := validateFormDataSize(formData); err != nil {
+		return err
 	}
 
 	if schema == nil || len(schema.Fields) == 0 {
@@ -412,6 +405,28 @@ func toFloat64(value any) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// validateFormDataSize enforces FormDataMaxBytes on the JSON-encoded form
+// payload. It is shared by ValidateFormData (start / resubmit) and the
+// task-action chokepoint PrepareOperation (approve / reject / transfer /
+// rollback), so an approver cannot grow the instance form past the cap by
+// drip-feeding editable-field data across steps.
+func validateFormDataSize(formData map[string]any) error {
+	if formData == nil {
+		return nil
+	}
+
+	raw, err := json.Marshal(formData)
+	if err != nil {
+		return fmt.Errorf("encode form data for size check: %w", err)
+	}
+
+	if len(raw) > FormDataMaxBytes {
+		return shared.ErrFormDataTooLarge
+	}
+
+	return nil
 }
 
 // MergeFormData filters editable form data and merges it into the instance.
