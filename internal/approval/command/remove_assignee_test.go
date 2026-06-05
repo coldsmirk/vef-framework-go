@@ -12,6 +12,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
@@ -200,6 +201,34 @@ func (s *RemoveAssigneeTestSuite) TestRemoveWaitingTaskShouldSucceed() {
 		"Should reload peer pending task",
 	)
 	s.Assert().Equal(approval.TaskPending, reloadedPending.Status, "Peer pending task should stay actionable")
+}
+
+// TestCanRemoveWhenSiblingsNonActionable pins the F3 fix: when removing the
+// last actionable task leaves every sibling in a non-actionable terminal state,
+// the real engine advances the node via its deadlock guard. The removal
+// simulation must apply the same guard, otherwise a legitimate removal is
+// wrongly blocked with ErrLastAssigneeRemoval.
+func (s *RemoveAssigneeTestSuite) TestCanRemoveWhenSiblingsNonActionable() {
+	_, task1, task2 := s.setupData()
+
+	// task1 is transferred away (non-actionable); task2 is the only actionable
+	// task left and is the removal target.
+	_, err := s.db.NewUpdate().
+		Model((*approval.Task)(nil)).
+		Set("status", approval.TaskTransferred).
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(task1.ID) }).
+		Exec(s.ctx)
+	s.Require().NoError(err, "Should mark sibling task as transferred")
+
+	var node approval.FlowNode
+
+	node.ID = s.nodeID
+	s.Require().NoError(s.db.NewSelect().Model(&node).WherePK().Scan(s.ctx), "Should load node")
+
+	canRemove, err := service.NewTaskService().CanRemoveAssigneeTask(s.ctx, s.db, buildTestEngine(), &node, *task2)
+	s.Require().NoError(err, "CanRemoveAssigneeTask should not error")
+	s.Assert().True(canRemove,
+		"Removing the last actionable task when all siblings are non-actionable must be allowed via the deadlock guard, not blocked")
 }
 
 func (s *RemoveAssigneeTestSuite) TestRemoveNotAllowed() {

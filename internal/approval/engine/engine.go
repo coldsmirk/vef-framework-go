@@ -290,6 +290,22 @@ func (e *FlowEngine) EvaluateNodeCompletion(ctx context.Context, db orm.DB, inst
 		return approval.PassRulePending, fmt.Errorf("query tasks: %w", err)
 	}
 
+	return e.evaluatePassRule(node, tasks)
+}
+
+// EvaluatePassRuleWithTasks evaluates the pass rule for a node using the provided tasks.
+// This is used for simulation (e.g., checking if removing an assignee would deadlock the node).
+func (e *FlowEngine) EvaluatePassRuleWithTasks(node *approval.FlowNode, tasks []approval.Task) (approval.PassRuleResult, error) {
+	return e.evaluatePassRule(node, tasks)
+}
+
+// evaluatePassRule applies the node's pass rule to the given task set,
+// including the deadlock guard. Both the DB-backed EvaluateNodeCompletion and
+// the in-memory EvaluatePassRuleWithTasks (used by the remove-assignee
+// simulation) route through here so the two cannot diverge on guard
+// semantics — a removal the engine would let through must not be rejected by
+// the simulation, and vice versa.
+func (e *FlowEngine) evaluatePassRule(node *approval.FlowNode, tasks []approval.Task) (approval.PassRuleResult, error) {
 	passStrategy, err := e.registry.GetPassRuleStrategy(node.PassRule)
 	if err != nil {
 		return approval.PassRulePending, err
@@ -304,19 +320,6 @@ func (e *FlowEngine) EvaluateNodeCompletion(ctx context.Context, db orm.DB, inst
 	if len(tasks) > 0 && prc.TotalCount == 0 {
 		return approval.PassRulePassed, nil
 	}
-
-	return passStrategy.Evaluate(prc), nil
-}
-
-// EvaluatePassRuleWithTasks evaluates the pass rule for a node using the provided tasks.
-// This is used for simulation (e.g., checking if removing an assignee would deadlock the node).
-func (e *FlowEngine) EvaluatePassRuleWithTasks(node *approval.FlowNode, tasks []approval.Task) (approval.PassRuleResult, error) {
-	passStrategy, err := e.registry.GetPassRuleStrategy(node.PassRule)
-	if err != nil {
-		return approval.PassRulePending, err
-	}
-
-	prc := buildPassRuleContext(node, tasks)
 
 	return passStrategy.Evaluate(prc), nil
 }
