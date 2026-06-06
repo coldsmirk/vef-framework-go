@@ -11,13 +11,15 @@ import (
 	collections "github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
+
+var logger = logx.Named("approval:cc")
 
 var (
 	errUnsupportedCCKind          = errors.New("unsupported cc kind")
 	errUnsupportedCCFormFieldType = errors.New("unsupported cc form field type")
-	errCCAssigneeServiceNil       = errors.New("assignee service is required to resolve role/department cc recipients")
 )
 
 // CCUserResolver resolves CC user IDs from a single FlowNodeCC configuration.
@@ -87,36 +89,67 @@ type CCRecipientResolver struct {
 }
 
 // NewCCRecipientResolver creates a CCRecipientResolver. assigneeSvc may be nil
-// when the host registers no organizational service; in that case role and
-// department CC configs surface an explicit error rather than silently
-// resolving to nobody.
+// when the host registers no organizational service; role and department CC
+// configs are then skipped best-effort (logged, no recipients) rather than
+// failing the approval — see Resolve.
 func NewCCRecipientResolver(assigneeSvc approval.AssigneeService) *CCRecipientResolver {
 	return &CCRecipientResolver{assigneeSvc: assigneeSvc}
 }
 
 // Resolve resolves a single CC configuration to user IDs. Its signature
 // satisfies CCUserResolver so it can be handed to CollectUniqueCCUserIDs.
+//
+// Role and department kinds are resolved through the host AssigneeService when
+// one is available, keeping CC symmetric with assignees. Because CC is a
+// best-effort notification — never a gate on the business decision — a missing
+// AssigneeService or a transient org-lookup error is logged and yields no
+// recipients rather than rolling back the approval that triggered it, mirroring
+// the best-effort username resolution on the same path (ResolveUserNameMapSilent).
 func (r *CCRecipientResolver) Resolve(ctx context.Context, cfg approval.FlowNodeCC, formData approval.FormData) ([]string, error) {
 	switch cfg.Kind {
 	case approval.CCRole:
-		if r.assigneeSvc == nil {
-			return nil, errCCAssigneeServiceNil
-		}
-
-		return resolveOrgCCUsers(ctx, cfg.IDs, r.assigneeSvc.GetRoleUsers)
+		return r.resolveOrgCC(ctx, "role", cfg.IDs, func(ctx context.Context, id string) ([]approval.UserInfo, error) {
+			return r.assigneeSvc.GetRoleUsers(ctx, id)
+		})
 
 	case approval.CCDepartment:
-		if r.assigneeSvc == nil {
-			return nil, errCCAssigneeServiceNil
-		}
-
-		return resolveOrgCCUsers(ctx, cfg.IDs, r.assigneeSvc.GetDepartmentLeaders)
+		return r.resolveOrgCC(ctx, "department", cfg.IDs, func(ctx context.Context, id string) ([]approval.UserInfo, error) {
+			return r.assigneeSvc.GetDepartmentLeaders(ctx, id)
+		})
 
 	default:
 		// CCUser, CCFormField, and unsupported kinds (which surface their own
 		// error) are handled by the static resolver.
 		return ResolveCCUserIDs(cfg, formData)
 	}
+}
+
+// resolveOrgCC resolves organizational (role / department) CC recipients
+// best-effort: it never fails the caller's transaction. With no AssigneeService
+// registered, or on a lookup error, it logs and returns no recipients so the
+// triggering approval still commits — a CC notification must not roll back the
+// decision it accompanies. The lookup closure defers the assigneeSvc method
+// access past the nil guard.
+func (r *CCRecipientResolver) resolveOrgCC(
+	ctx context.Context,
+	kind string,
+	ids []string,
+	lookup func(context.Context, string) ([]approval.UserInfo, error),
+) ([]string, error) {
+	if r.assigneeSvc == nil {
+		logger.Warnf("skipping %s CC for ids %v: no AssigneeService registered", kind, NormalizeUniqueIDs(ids))
+
+		return nil, nil
+	}
+
+	users, err := resolveOrgCCUsers(ctx, ids, lookup)
+	if err != nil {
+		logger.Warnf("skipping %s CC for ids %v after lookup error: %v", kind, NormalizeUniqueIDs(ids), err)
+
+		return nil, nil
+	}
+
+	return users, nil
 }
 
 // resolveOrgCCUsers resolves CC recipients for organizational kinds (role /

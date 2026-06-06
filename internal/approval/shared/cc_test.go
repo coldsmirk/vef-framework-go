@@ -70,28 +70,33 @@ func TestCCRecipientResolver(t *testing.T) {
 		assert.Equal(t, []string{"a", "b"}, got, "user CC should resolve static unique IDs")
 	})
 
-	t.Run("Propagates AssigneeService error instead of swallowing it", func(t *testing.T) {
+	t.Run("Org lookup error is skipped best-effort, not fatal to the approval", func(t *testing.T) {
 		failing := shared.NewCCRecipientResolver(&FakeAssigneeService{Err: errors.New("boom")})
-		_, err := failing.Resolve(ctx, approval.FlowNodeCC{Kind: approval.CCRole, IDs: []string{"role-a"}}, nil)
-		require.Error(t, err, "role CC should surface AssigneeService errors, not drop recipients silently")
+		got, err := failing.Resolve(ctx, approval.FlowNodeCC{Kind: approval.CCRole, IDs: []string{"role-a"}}, nil)
+		require.NoError(t, err, "a CC org-lookup error must not fail the approval — CC is a best-effort notification")
+		assert.Empty(t, got, "role CC yields no recipients when the org lookup fails")
 	})
 }
 
-// TestCCRecipientResolverNilService pins the F5 fix: role/department CC must
-// fail loudly when no AssigneeService is registered, rather than the old
-// behavior of silently resolving to nobody.
+// TestCCRecipientResolverNilService pins the best-effort contract for role /
+// department CC: a missing AssigneeService is logged and resolves to no
+// recipients rather than failing the approval that triggered the CC. The
+// earlier release made it fatal, which wedged every approval transition on any
+// flow using role/department CC without an org service registered.
 func TestCCRecipientResolverNilService(t *testing.T) {
 	resolver := shared.NewCCRecipientResolver(nil)
 	ctx := context.Background()
 
-	t.Run("Role without service errors loudly", func(t *testing.T) {
-		_, err := resolver.Resolve(ctx, approval.FlowNodeCC{Kind: approval.CCRole, IDs: []string{"role-a"}}, nil)
-		require.Error(t, err, "role CC without an AssigneeService must error, not silently notify nobody")
+	t.Run("Role without service skips best-effort", func(t *testing.T) {
+		got, err := resolver.Resolve(ctx, approval.FlowNodeCC{Kind: approval.CCRole, IDs: []string{"role-a"}}, nil)
+		require.NoError(t, err, "role CC without an AssigneeService must not fail the approval")
+		assert.Empty(t, got, "role CC resolves to no recipients when no AssigneeService is registered")
 	})
 
-	t.Run("Department without service errors loudly", func(t *testing.T) {
-		_, err := resolver.Resolve(ctx, approval.FlowNodeCC{Kind: approval.CCDepartment, IDs: []string{"dept-1"}}, nil)
-		require.Error(t, err, "department CC without an AssigneeService must error, not silently notify nobody")
+	t.Run("Department without service skips best-effort", func(t *testing.T) {
+		got, err := resolver.Resolve(ctx, approval.FlowNodeCC{Kind: approval.CCDepartment, IDs: []string{"dept-1"}}, nil)
+		require.NoError(t, err, "department CC without an AssigneeService must not fail the approval")
+		assert.Empty(t, got, "department CC resolves to no recipients when no AssigneeService is registered")
 	})
 
 	t.Run("User kind still works without a service", func(t *testing.T) {
