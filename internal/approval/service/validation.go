@@ -407,22 +407,34 @@ func toFloat64(value any) (float64, bool) {
 	}
 }
 
-// validateFormDataSize enforces FormDataMaxBytes on the JSON-encoded form
-// payload. It is shared by ValidateFormData (start / resubmit) and the
-// task-action chokepoint PrepareOperation (approve / reject / transfer /
-// rollback), so an approver cannot grow the instance form past the cap by
-// drip-feeding editable-field data across steps.
-func validateFormDataSize(formData map[string]any) error {
+// encodedFormDataSize returns the byte length of the JSON-encoded form data
+// (0 for nil). It is the basis for both the absolute cap at start / resubmit
+// and the growth check on task actions.
+func encodedFormDataSize(formData map[string]any) (int, error) {
 	if formData == nil {
-		return nil
+		return 0, nil
 	}
 
 	raw, err := json.Marshal(formData)
 	if err != nil {
-		return fmt.Errorf("encode form data for size check: %w", err)
+		return 0, fmt.Errorf("encode form data for size check: %w", err)
 	}
 
-	if len(raw) > FormDataMaxBytes {
+	return len(raw), nil
+}
+
+// validateFormDataSize enforces FormDataMaxBytes on the JSON-encoded form
+// payload. It guards ValidateFormData (start / resubmit), where the applicant
+// owns the whole payload, so the absolute cap applies. Task actions instead
+// enforce the cap on the growth they introduce (see PrepareOperation) so a
+// pre-existing oversize instance is not wedged.
+func validateFormDataSize(formData map[string]any) error {
+	size, err := encodedFormDataSize(formData)
+	if err != nil {
+		return err
+	}
+
+	if size > FormDataMaxBytes {
 		return shared.ErrFormDataTooLarge
 	}
 

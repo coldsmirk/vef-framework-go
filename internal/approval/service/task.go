@@ -507,15 +507,29 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID st
 		return nil, err
 	}
 
+	// Capture the pre-merge size so the cap is enforced on the growth this
+	// action introduces, not on the standing payload. An instance whose stored
+	// form data already exceeds the cap (created before the cap existed, or
+	// after lowering FormDataMaxBytes at build time) must stay actionable —
+	// approvers can still push it forward and a rollback-clear can shrink it.
+	beforeSize, err := encodedFormDataSize(tc.Instance.FormData)
+	if err != nil {
+		return nil, err
+	}
+
 	MergeFormData(tc.Instance, formData, tc.Node.FieldPermissions)
 
-	// Re-validate the merged total size. The 64 KiB cap enforced at
-	// start / resubmit must also hold for every task action, otherwise an
-	// approver could grow instance.FormData unbounded one editable field at
-	// a time across nodes (FilterEditableFormData bounds the keys, not the
-	// encoded size).
-	if err := validateFormDataSize(tc.Instance.FormData); err != nil {
+	afterSize, err := encodedFormDataSize(tc.Instance.FormData)
+	if err != nil {
 		return nil, err
+	}
+
+	// Reject only when this action grows the encoded form past the cap — the
+	// drip-feed-growth vector, since FilterEditableFormData bounds the keys but
+	// not the encoded size. ValidateFormData still enforces the absolute cap at
+	// start / resubmit, where the applicant owns the whole payload.
+	if afterSize > FormDataMaxBytes && afterSize > beforeSize {
+		return nil, shared.ErrFormDataTooLarge
 	}
 
 	return tc, nil
