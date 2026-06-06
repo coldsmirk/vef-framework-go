@@ -299,24 +299,38 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 
 	adminNames := shared.ResolveUserNameMapSilent(ctx, s.userResolver, eligibleAdminIDs)
 
+	// standInTaskID is the first admin replacement; the timed-out task's active
+	// "after" children are re-parented onto it (below) so they are not orphaned.
+	var standInTaskID string
+
 	// Create new tasks for eligible admin users
 	for _, adminID := range eligibleAdminIDs {
 		adminName := adminNames[adminID]
 
+		// Each replacement inherits the timed-out task's parent link and sort
+		// order, so auto-transferring a "before" add-assignee child still
+		// reactivates its suspended parent once an admin acts (mirrors the
+		// user-initiated transfer path).
 		newTask := &approval.Task{
-			TenantID:     task.TenantID,
-			InstanceID:   task.InstanceID,
-			NodeID:       task.NodeID,
-			AssigneeID:   adminID,
-			AssigneeName: adminName,
-			SortOrder:    0,
-			Status:       approval.TaskPending,
-			Deadline:     pendingDeadline,
+			TenantID:        task.TenantID,
+			InstanceID:      task.InstanceID,
+			NodeID:          task.NodeID,
+			AssigneeID:      adminID,
+			AssigneeName:    adminName,
+			SortOrder:       task.SortOrder,
+			Status:          approval.TaskPending,
+			Deadline:        pendingDeadline,
+			ParentTaskID:    task.ParentTaskID,
+			AddAssigneeType: task.AddAssigneeType,
 		}
 		if _, err := tx.NewInsert().
 			Model(newTask).
 			Exec(ctx); err != nil {
 			return nil, fmt.Errorf("create admin task: %w", err)
+		}
+
+		if standInTaskID == "" {
+			standInTaskID = newTask.ID
 		}
 
 		events = append(events, approval.NewTaskTransferredEvent(
@@ -353,6 +367,12 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 			Exec(ctx); err != nil {
 			return nil, fmt.Errorf("insert transfer action log: %w", err)
 		}
+	}
+
+	// Adopt the timed-out task's active "after" children onto the stand-in so a
+	// parent-of-after-children that times out does not orphan them.
+	if err := s.taskSvc.RepointAddAssigneeChildren(ctx, tx, task.ID, standInTaskID, task.InstanceID); err != nil {
+		return nil, err
 	}
 
 	return events, nil

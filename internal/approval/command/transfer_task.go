@@ -87,18 +87,30 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 
 	transferToName := shared.ResolveUserName(ctx, h.userResolver, transferToID)
 
+	// The replacement stands in for the original in the add-assignee dependency
+	// graph: it inherits the original's parent link (so transferring a "before"
+	// child still reactivates its suspended parent once the new assignee acts)
+	// and, below, adopts the original's active children (so transferring the
+	// parent of "after" children does not orphan them). Without this a transfer
+	// severs the parent/child link and reintroduces the parallel-node deadlock.
 	newTask := &approval.Task{
-		TenantID:     instance.TenantID,
-		InstanceID:   instance.ID,
-		NodeID:       task.NodeID,
-		AssigneeID:   transferToID,
-		AssigneeName: transferToName,
-		SortOrder:    task.SortOrder,
-		Status:       approval.TaskPending,
-		Deadline:     task.Deadline,
+		TenantID:        instance.TenantID,
+		InstanceID:      instance.ID,
+		NodeID:          task.NodeID,
+		AssigneeID:      transferToID,
+		AssigneeName:    transferToName,
+		SortOrder:       task.SortOrder,
+		Status:          approval.TaskPending,
+		Deadline:        task.Deadline,
+		ParentTaskID:    task.ParentTaskID,
+		AddAssigneeType: task.AddAssigneeType,
 	}
 	if _, err := db.NewInsert().Model(newTask).Exec(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("insert transfer task: %w", err)
+	}
+
+	if err := h.taskSvc.RepointAddAssigneeChildren(ctx, db, task.ID, newTask.ID, instance.ID); err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	events := []approval.DomainEvent{

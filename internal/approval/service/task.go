@@ -257,6 +257,30 @@ func (*TaskService) activateAfterChildren(ctx context.Context, db orm.DB, node *
 	return nil
 }
 
+// RepointAddAssigneeChildren re-parents the still-active add-assignee children
+// of a replaced task onto its stand-in. A transfer finishes the original task
+// and inserts a replacement with a new ID; the parallel-node dependency
+// resolution keys off parent_task_id, so without re-pointing, the "after"
+// children queued against the original would never be activated by the
+// replacement's completion — orphaning them and re-creating the very deadlock
+// the parent/child activation was built to avoid. Scoped to the instance for
+// defense-in-depth on top of the globally-unique parent id.
+func (*TaskService) RepointAddAssigneeChildren(ctx context.Context, db orm.DB, fromParentID, toParentID, instanceID string) error {
+	if _, err := db.NewUpdate().
+		Model((*approval.Task)(nil)).
+		Set("parent_task_id", toParentID).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("instance_id", instanceID).
+				Equals("parent_task_id", fromParentID).
+				In("status", cancelableTaskStatuses)
+		}).
+		Exec(ctx); err != nil {
+		return fmt.Errorf("repoint add-assignee children: %w", err)
+	}
+
+	return nil
+}
+
 // computeTaskDeadline calculates task deadline from node timeout configuration.
 // Returns nil when timeout is disabled.
 func computeTaskDeadline(node *approval.FlowNode) *timex.DateTime {
