@@ -30,6 +30,28 @@ func TestAddAssigneeTypeIsValid(t *testing.T) {
 	}
 }
 
+// TestCCKindIsValid tests CCKind IsValid scenarios.
+func TestCCKindIsValid(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    approval.CCKind
+		expected bool
+	}{
+		{"User", approval.CCUser, true},
+		{"Role", approval.CCRole, true},
+		{"Department", approval.CCDepartment, true},
+		{"FormField", approval.CCFormField, true},
+		{"InvalidEmpty", approval.CCKind(""), false},
+		{"InvalidRandom", approval.CCKind("invalid"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.value.IsValid(), "%s: IsValid should report %v", tt.name, tt.expected)
+		})
+	}
+}
+
 // TestAddAssigneeTypeUnmarshalJSON tests AddAssigneeType JSON decoding validation.
 func TestAddAssigneeTypeUnmarshalJSON(t *testing.T) {
 	t.Run("Valid", func(t *testing.T) {

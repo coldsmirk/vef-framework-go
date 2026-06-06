@@ -270,6 +270,11 @@ const (
 	CCFormField  CCKind = "form_field"
 )
 
+// IsValid reports whether the CC kind is one of the defined kinds.
+func (k CCKind) IsValid() bool {
+	return k == CCUser || k == CCRole || k == CCDepartment || k == CCFormField
+}
+
 // CCTiming represents the timing of CC notification.
 type CCTiming string
 

@@ -33,4 +33,5 @@ var (
 	errCondDupHandle      = errors.New("duplicate outgoing edge for handle")
 	errCondBranchNoEdge   = errors.New("branch has no outgoing edge")
 	errUnexpectedCondData = errors.New("unexpected condition node data type")
+	errInvalidCCKind      = errors.New("invalid cc kind")
 )

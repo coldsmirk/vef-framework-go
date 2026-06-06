@@ -197,6 +197,36 @@ func TestValidateFlowDefinition(t *testing.T) {
 			"Should reject condition node with invalid JSON data")
 	})
 
+	t.Run("RejectsInvalidCCKind", func(t *testing.T) {
+		def := linearFlow()
+		data, err := json.Marshal(&approval.ApprovalNodeData{
+			TaskNodeData: approval.TaskNodeData{
+				CCs: []approval.CCDefinition{{Kind: approval.CCKind("bogus"), IDs: []string{"x"}}},
+			},
+		})
+		require.NoError(t, err, "Should marshal approval node data")
+
+		def.Nodes[1].Data = data // a1
+
+		assert.ErrorIs(t, svc.ValidateFlowDefinition(def), errInvalidCCKind,
+			"Should reject a node whose CC config uses an unknown kind at deploy time")
+	})
+
+	t.Run("AcceptsValidCCKind", func(t *testing.T) {
+		def := linearFlow()
+		data, err := json.Marshal(&approval.ApprovalNodeData{
+			TaskNodeData: approval.TaskNodeData{
+				CCs: []approval.CCDefinition{{Kind: approval.CCUser, IDs: []string{"u1"}}},
+			},
+		})
+		require.NoError(t, err, "Should marshal approval node data")
+
+		def.Nodes[1].Data = data
+
+		require.NoError(t, svc.ValidateFlowDefinition(def),
+			"Should accept a node with a valid CC kind")
+	})
+
 	// --- Phase 2: Edge validation ---
 
 	t.Run("EmptyEdgeID", func(t *testing.T) {

@@ -81,6 +81,11 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 			}
 
 			condBranches[node.ID] = cnd.Branches
+
+		case approval.NodeApproval, approval.NodeHandle, approval.NodeCC:
+			if err := validateNodeCCKinds(node); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -190,6 +195,36 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 			if !canReachEnd.Contains(node.ID) {
 				return fmt.Errorf("%w: %q", errNodeCannotReachEnd, node.ID)
 			}
+		}
+	}
+
+	return nil
+}
+
+// ccCarrier is implemented by node data types that carry CC configurations
+// (approval, handle, and cc nodes).
+type ccCarrier interface {
+	GetCCs() []approval.CCDefinition
+}
+
+// validateNodeCCKinds rejects CC configurations referencing an unknown CC kind,
+// so a misconfigured kind fails loud at deploy time instead of silently
+// resolving to no recipients during approval (CC resolution is best-effort at
+// runtime — see shared.CollectUniqueCCUserIDs).
+func validateNodeCCKinds(node *approval.NodeDefinition) error {
+	data, err := node.ParseData()
+	if err != nil {
+		return fmt.Errorf("parse node %q data: %w", node.ID, err)
+	}
+
+	carrier, ok := data.(ccCarrier)
+	if !ok {
+		return nil
+	}
+
+	for _, cc := range carrier.GetCCs() {
+		if !cc.Kind.IsValid() {
+			return fmt.Errorf("%w: %q in node %q", errInvalidCCKind, cc.Kind, node.ID)
 		}
 	}
 
