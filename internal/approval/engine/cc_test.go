@@ -165,6 +165,44 @@ func (s *CCProcessorTestSuite) TestNoCCConfigs() {
 	})
 }
 
+// TestUnresolvableCCConfigIsSkipped pins the best-effort boundary at the CC node:
+// a config that cannot be resolved (here a role CC with no AssigneeService wired)
+// is skipped, so the CC node proceeds instead of failing the flow.
+func (s *CCProcessorTestSuite) TestUnresolvableCCConfigIsSkipped() {
+	defer s.cleanTransientData()
+
+	instance := s.newInstance()
+
+	cfg := &approval.FlowNodeCC{
+		NodeID: s.nodeID,
+		Kind:   approval.CCRole,
+		IDs:    []string{"role-a"},
+		Timing: approval.CCTimingAlways,
+	}
+	_, err := s.db.NewInsert().Model(cfg).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert role cc config")
+
+	pc := &engine.ProcessContext{
+		DB:       s.db,
+		Instance: instance,
+		Node:     s.newNode(false),
+	}
+
+	result, err := s.processor.Process(s.ctx, pc)
+	s.Require().NoError(err, "An unresolvable CC config must not fail the CC node")
+	s.Assert().Equal(engine.NodeActionContinue, result.Action, "Should continue past an unresolvable CC config")
+	s.Assert().Empty(result.Events, "No CC event when the only config could not be resolved")
+
+	var records []approval.CCRecord
+	s.Require().NoError(
+		s.db.NewSelect().Model(&records).
+			Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instance.ID) }).
+			Scan(s.ctx),
+		"Should query cc records",
+	)
+	s.Assert().Empty(records, "No CC records created for an unresolvable config")
+}
+
 func (s *CCProcessorTestSuite) TestSingleCCConfig() {
 	s.Run("Continue", func() {
 		defer s.cleanTransientData()

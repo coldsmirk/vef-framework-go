@@ -56,19 +56,18 @@ func (p *CCProcessor) createCCRecords(ctx context.Context, pc *ProcessContext) (
 		return nil, nil, fmt.Errorf("load cc configs: %w", err)
 	}
 
-	resolved, err := shared.CollectUniqueCCUserIDs(ctx, ccConfigs, pc.FormData, p.ccResolver.Resolve, nil)
-	if err != nil {
-		return nil, nil, fmt.Errorf("resolve cc users: %w", err)
-	}
+	// CC resolution is best-effort (unresolvable configs are logged and skipped);
+	// it never fails the approval that triggered the CC node.
+	resolved := shared.CollectUniqueCCUserIDs(ctx, ccConfigs, pc.FormData, p.ccResolver.Resolve, nil)
 
 	if len(resolved) == 0 {
 		return nil, nil, nil
 	}
 
-	ccUserNames, err := shared.ResolveUserNameMap(ctx, pc.UserResolver, resolved)
-	if err != nil {
-		return nil, nil, fmt.Errorf("resolve cc user names: %w", err)
-	}
+	// Display-name lookup is likewise best-effort: a name-resolution failure
+	// must not roll back the approval (matches the timing-based CC path in
+	// NodeService.TriggerNodeCC).
+	ccUserNames := shared.ResolveUserNameMapSilent(ctx, pc.UserResolver, resolved)
 
 	insertedUserIDs, err := shared.InsertAutoCCRecords(ctx, pc.DB, pc.Instance.ID, pc.Node.ID, resolved, ccUserNames)
 	if err != nil {

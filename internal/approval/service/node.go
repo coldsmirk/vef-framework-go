@@ -120,7 +120,9 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 
 	formData := approval.NewFormData(instance.FormData)
 
-	resolved, err := shared.CollectUniqueCCUserIDs(
+	// CC resolution is best-effort (unresolvable configs are logged and skipped);
+	// it never fails the approval whose completion triggered the CC.
+	resolved := shared.CollectUniqueCCUserIDs(
 		ctx,
 		ccConfigs,
 		formData,
@@ -138,9 +140,6 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 			}
 		},
 	)
-	if err != nil {
-		return fmt.Errorf("resolve node cc users: %w", err)
-	}
 
 	if len(resolved) == 0 {
 		return nil

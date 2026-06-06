@@ -70,33 +70,29 @@ func TestCCRecipientResolver(t *testing.T) {
 		assert.Equal(t, []string{"a", "b"}, got, "user CC should resolve static unique IDs")
 	})
 
-	t.Run("Org lookup error is skipped best-effort, not fatal to the approval", func(t *testing.T) {
+	t.Run("Org lookup error is reported honestly by Resolve", func(t *testing.T) {
 		failing := shared.NewCCRecipientResolver(&FakeAssigneeService{Err: errors.New("boom")})
-		got, err := failing.Resolve(ctx, approval.FlowNodeCC{Kind: approval.CCRole, IDs: []string{"role-a"}}, nil)
-		require.NoError(t, err, "a CC org-lookup error must not fail the approval — CC is a best-effort notification")
-		assert.Empty(t, got, "role CC yields no recipients when the org lookup fails")
+		_, err := failing.Resolve(ctx, approval.FlowNodeCC{Kind: approval.CCRole, IDs: []string{"role-a"}}, nil)
+		require.Error(t, err, "Resolve surfaces org-lookup failures; the best-effort skip lives at the CollectUniqueCCUserIDs boundary")
 	})
 }
 
-// TestCCRecipientResolverNilService pins the best-effort contract for role /
-// department CC: a missing AssigneeService is logged and resolves to no
-// recipients rather than failing the approval that triggered the CC. The
-// earlier release made it fatal, which wedged every approval transition on any
-// flow using role/department CC without an org service registered.
+// TestCCRecipientResolverNilService: Resolve reports role/department CC as an
+// error when no AssigneeService is registered. The best-effort skip that keeps
+// such a config from failing an approval lives at the CollectUniqueCCUserIDs
+// boundary (see TestCollectUniqueCCUserIDsBestEffort), not in Resolve.
 func TestCCRecipientResolverNilService(t *testing.T) {
 	resolver := shared.NewCCRecipientResolver(nil)
 	ctx := context.Background()
 
-	t.Run("Role without service skips best-effort", func(t *testing.T) {
-		got, err := resolver.Resolve(ctx, approval.FlowNodeCC{Kind: approval.CCRole, IDs: []string{"role-a"}}, nil)
-		require.NoError(t, err, "role CC without an AssigneeService must not fail the approval")
-		assert.Empty(t, got, "role CC resolves to no recipients when no AssigneeService is registered")
+	t.Run("Role without service is an error", func(t *testing.T) {
+		_, err := resolver.Resolve(ctx, approval.FlowNodeCC{Kind: approval.CCRole, IDs: []string{"role-a"}}, nil)
+		require.Error(t, err, "role CC without an AssigneeService must surface an error from Resolve")
 	})
 
-	t.Run("Department without service skips best-effort", func(t *testing.T) {
-		got, err := resolver.Resolve(ctx, approval.FlowNodeCC{Kind: approval.CCDepartment, IDs: []string{"dept-1"}}, nil)
-		require.NoError(t, err, "department CC without an AssigneeService must not fail the approval")
-		assert.Empty(t, got, "department CC resolves to no recipients when no AssigneeService is registered")
+	t.Run("Department without service is an error", func(t *testing.T) {
+		_, err := resolver.Resolve(ctx, approval.FlowNodeCC{Kind: approval.CCDepartment, IDs: []string{"dept-1"}}, nil)
+		require.Error(t, err, "department CC without an AssigneeService must surface an error from Resolve")
 	})
 
 	t.Run("User kind still works without a service", func(t *testing.T) {
@@ -104,4 +100,23 @@ func TestCCRecipientResolverNilService(t *testing.T) {
 		require.NoError(t, err, "user CC needs no AssigneeService")
 		assert.Equal(t, []string{"a"}, got, "user CC should still resolve without a service")
 	})
+}
+
+// TestCollectUniqueCCUserIDsBestEffort pins the best-effort boundary: a CC config
+// the resolver cannot resolve (a role CC with no AssigneeService, or an unknown
+// kind) is logged and skipped, while the resolvable configs in the same batch
+// still produce recipients — so a CC notification never fails the approval that
+// triggered it.
+func TestCollectUniqueCCUserIDsBestEffort(t *testing.T) {
+	ctx := context.Background()
+	resolver := shared.NewCCRecipientResolver(nil) // no org service → role/department fail
+
+	configs := []approval.FlowNodeCC{
+		{Kind: approval.CCRole, IDs: []string{"role-a"}},     // unresolvable (no service) → skipped
+		{Kind: approval.CCUser, IDs: []string{"u1", "u2"}},   // resolvable
+		{Kind: approval.CCKind("bogus"), IDs: []string{"x"}}, // unknown kind → skipped
+	}
+
+	got := shared.CollectUniqueCCUserIDs(ctx, configs, nil, resolver.Resolve, nil)
+	assert.Equal(t, []string{"u1", "u2"}, got, "unresolvable CC configs are skipped; resolvable ones still yield recipients")
 }
