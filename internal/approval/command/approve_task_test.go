@@ -277,3 +277,100 @@ func (s *ApproveTaskTestSuite) TestApproveRejectsOversizedFormData() {
 	s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload task after rejection")
 	s.Assert().Equal(approval.TaskPending, reloaded.Status, "Task must stay pending — the size guard runs before any state change")
 }
+
+// TestApproveDoesNotWedgeAlreadyOversizeInstance pins the delta-based size cap:
+// an instance whose stored form data already exceeds the cap stays actionable
+// (a no-op approval succeeds), while an action that grows it further is still
+// rejected. Before the delta fix every action on a pre-existing oversize
+// instance hard-failed, wedging the instance.
+func (s *ApproveTaskTestSuite) TestApproveDoesNotWedgeAlreadyOversizeInstance() {
+	node := &approval.FlowNode{
+		FlowVersionID:    s.fixture.VersionID,
+		Key:              "approve-oversize-noop-node",
+		Kind:             approval.NodeApproval,
+		Name:             "Oversize No-op Node",
+		ApprovalMethod:   approval.ApprovalParallel,
+		PassRule:         approval.PassAll,
+		FieldPermissions: map[string]approval.Permission{"blob": approval.PermissionEditable},
+	}
+	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
+	s.Require().NoError(err, "Should create node with an editable field")
+
+	oversized := strings.Repeat("x", 70*1024) // already over the 64 KiB cap
+
+	// seedOversizeInstance creates a running instance whose stored form data is
+	// already over the cap, plus the approver's task and a pending peer so a
+	// single approval leaves the PassAll node running (no outgoing edge needed).
+	seedOversizeInstance := func(no, approver string) *approval.Task {
+		inst := &approval.Instance{
+			TenantID:      "default",
+			FlowID:        s.fixture.FlowID,
+			FlowVersionID: s.fixture.VersionID,
+			Title:         "Oversize Instance",
+			InstanceNo:    no,
+			ApplicantID:   "applicant-1",
+			Status:        approval.InstanceRunning,
+			CurrentNodeID: &node.ID,
+			FormData:      map[string]any{"blob": oversized},
+		}
+		_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
+		s.Require().NoError(err, "Should create oversize running instance")
+
+		task := &approval.Task{
+			TenantID:   "default",
+			InstanceID: inst.ID,
+			NodeID:     node.ID,
+			AssigneeID: approver,
+			SortOrder:  1,
+			Status:     approval.TaskPending,
+		}
+		_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
+		s.Require().NoError(err, "Should create approver task")
+
+		peer := &approval.Task{
+			TenantID:   "default",
+			InstanceID: inst.ID,
+			NodeID:     node.ID,
+			AssigneeID: approver + "-peer",
+			SortOrder:  2,
+			Status:     approval.TaskPending,
+		}
+		_, err = s.db.NewInsert().Model(peer).Exec(s.ctx)
+		s.Require().NoError(err, "Should create peer task")
+
+		return task
+	}
+
+	s.Run("No-op approval on an oversize instance is allowed", func() {
+		task := seedOversizeInstance("APV-OVERSIZE-NOOP-1", "approver-noop")
+		_, err := s.handler.Handle(s.ctx, command.ApproveTaskCmd{
+			TaskID:   task.ID,
+			Operator: approval.OperatorInfo{ID: "approver-noop", Name: "Approver"},
+			Caller:   approval.SystemCaller,
+		})
+		s.Require().NoError(err, "A no-op approval must not be wedged by a pre-existing oversize instance")
+
+		var reloaded approval.Task
+
+		reloaded.ID = task.ID
+		s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload task")
+		s.Assert().Equal(approval.TaskApproved, reloaded.Status, "The no-op approval should go through")
+	})
+
+	s.Run("Drip-feed growth past the cap is still rejected", func() {
+		task := seedOversizeInstance("APV-OVERSIZE-NOOP-2", "approver-grow")
+		_, err := s.handler.Handle(s.ctx, command.ApproveTaskCmd{
+			TaskID:   task.ID,
+			Operator: approval.OperatorInfo{ID: "approver-grow", Name: "Approver"},
+			FormData: map[string]any{"blob": strings.Repeat("y", 80*1024)},
+			Caller:   approval.SystemCaller,
+		})
+		s.Require().ErrorIs(err, shared.ErrFormDataTooLarge, "Growing an already-oversize instance further must still be rejected")
+
+		var reloaded approval.Task
+
+		reloaded.ID = task.ID
+		s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload task")
+		s.Assert().Equal(approval.TaskPending, reloaded.Status, "Task must stay pending after a rejected oversize growth")
+	})
+}

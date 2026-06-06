@@ -3,6 +3,7 @@ package command_test
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/stretchr/testify/suite"
 
@@ -64,6 +65,17 @@ func (s *RollbackTaskTestSuite) SetupSuite() {
 	}
 	_, err = s.db.NewInsert().Model(s.targetNode).Exec(s.ctx)
 	s.Require().NoError(err, "Should create rollback target node")
+
+	// Give the intermediate target an assignee so a rollback that re-enters it
+	// through ProcessNode (the non-start persistence branch) can create a task
+	// and leave the instance running.
+	_, err = s.db.NewInsert().Model(&approval.FlowNodeAssignee{
+		NodeID:    s.targetNode.ID,
+		Kind:      approval.AssigneeUser,
+		IDs:       []string{"target-approver"},
+		SortOrder: 1,
+	}).Exec(s.ctx)
+	s.Require().NoError(err, "Should seed rollback target node assignee")
 }
 
 func (s *RollbackTaskTestSuite) TearDownTest() {
@@ -312,4 +324,141 @@ func (s *RollbackTaskTestSuite) TestRollbackDataKeepRestoresSnapshot() {
 	reloaded.ID = inst.ID
 	s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload instance after rollback")
 	s.Assert().Equal("from-snapshot", reloaded.FormData["restored"], "RollbackDataKeep must restore the target node's form snapshot")
+}
+
+// TestRollbackToIntermediateNodeClearsFormData exercises the intermediate-node
+// persistence branch (a column-scoped UPDATE + ProcessNode, distinct from the
+// NodeStart "return to applicant" path that the other clear test covers): the
+// clear strategy must persist NULL form data there too, and the instance keeps
+// running at the target node.
+func (s *RollbackTaskTestSuite) TestRollbackToIntermediateNodeClearsFormData() {
+	inst, task := s.setupData("rollback-clear-mid-op")
+	_, err := s.db.NewUpdate().
+		Model((*approval.Instance)(nil)).
+		Set("form_data", map[string]any{"amount": 100, "reason": "lunch"}).
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(inst.ID) }).
+		Exec(s.ctx)
+	s.Require().NoError(err, "Should seed instance form data")
+
+	// s.rollbackNode is RollbackDataClear; s.targetNode is an intermediate
+	// approval node (not a start node), so rollback takes the else branch.
+	operator := approval.OperatorInfo{ID: "rollback-clear-mid-op", Name: "Operator"}
+	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
+		TaskID:       task.ID,
+		Operator:     operator,
+		TargetNodeID: s.targetNode.ID,
+		Opinion:      "rollback to intermediate and clear",
+		Caller:       approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Rollback to an intermediate node with clear strategy should succeed")
+
+	var reloaded approval.Instance
+
+	reloaded.ID = inst.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload instance after rollback")
+	s.Assert().Equal(approval.InstanceRunning, reloaded.Status, "Rollback to an intermediate node keeps the instance running")
+	s.Require().NotNil(reloaded.CurrentNodeID, "Current node should be set after rollback")
+	s.Assert().Equal(s.targetNode.ID, *reloaded.CurrentNodeID, "Instance should move to the rollback target node")
+	s.Assert().Empty(reloaded.FormData, "RollbackDataClear must persist NULL form data on the intermediate-node path too")
+}
+
+// TestRollbackToIntermediateNodeKeepsSnapshot is the keep counterpart on the
+// intermediate-node branch: the target node's snapshot must be restored and
+// persisted while the instance keeps running at that node.
+func (s *RollbackTaskTestSuite) TestRollbackToIntermediateNodeKeepsSnapshot() {
+	keepNode := &approval.FlowNode{
+		FlowVersionID:        s.fixture.VersionID,
+		Key:                  "rollback-keep-mid-node",
+		Kind:                 approval.NodeApproval,
+		Name:                 "Rollback Keep Mid Node",
+		IsRollbackAllowed:    true,
+		RollbackType:         approval.RollbackAny,
+		RollbackDataStrategy: approval.RollbackDataKeep,
+	}
+	_, err := s.db.NewInsert().Model(keepNode).Exec(s.ctx)
+	s.Require().NoError(err, "Should create keep node")
+
+	s.instanceSeq++
+	currentNodeID := keepNode.ID
+	inst := &approval.Instance{
+		TenantID:      "default",
+		FlowID:        s.fixture.FlowID,
+		FlowVersionID: s.fixture.VersionID,
+		Title:         "Rollback Keep Intermediate Test",
+		InstanceNo:    fmt.Sprintf("RB-KEEP-MID-%03d", s.instanceSeq),
+		ApplicantID:   "applicant-1",
+		Status:        approval.InstanceRunning,
+		CurrentNodeID: &currentNodeID,
+		FormData:      map[string]any{"current": "value"},
+	}
+	_, err = s.db.NewInsert().Model(inst).Exec(s.ctx)
+	s.Require().NoError(err, "Should create running instance")
+
+	task := &approval.Task{
+		TenantID:   "default",
+		InstanceID: inst.ID,
+		NodeID:     keepNode.ID,
+		AssigneeID: "rollback-keep-mid-op",
+		SortOrder:  1,
+		Status:     approval.TaskPending,
+	}
+	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
+	s.Require().NoError(err, "Should create pending task")
+
+	snapshot := &approval.FormSnapshot{
+		InstanceID: inst.ID,
+		NodeID:     s.targetNode.ID,
+		FormData:   map[string]any{"restored": "from-snapshot"},
+	}
+	_, err = s.db.NewInsert().Model(snapshot).Exec(s.ctx)
+	s.Require().NoError(err, "Should seed form snapshot for the intermediate target node")
+
+	operator := approval.OperatorInfo{ID: "rollback-keep-mid-op", Name: "Operator"}
+	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
+		TaskID:       task.ID,
+		Operator:     operator,
+		TargetNodeID: s.targetNode.ID,
+		Opinion:      "rollback to intermediate and keep",
+		Caller:       approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Rollback to an intermediate node with keep strategy should succeed")
+
+	var reloaded approval.Instance
+
+	reloaded.ID = inst.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload instance after rollback")
+	s.Assert().Equal(approval.InstanceRunning, reloaded.Status, "Rollback to an intermediate node keeps the instance running")
+	s.Assert().Equal("from-snapshot", reloaded.FormData["restored"], "RollbackDataKeep must restore the snapshot on the intermediate-node path too")
+}
+
+// TestRollbackClearIsNotWedgedByOversizeFormData proves the size-cap delta and
+// rollback-clear compose: an instance whose stored form data is already over the
+// cap can still be rolled back (the no-op-merge passes PrepareOperation's growth
+// check) and the clear then wipes it — it is not wedged.
+func (s *RollbackTaskTestSuite) TestRollbackClearIsNotWedgedByOversizeFormData() {
+	startNode := s.seedStartNode("oversize-clear-start")
+
+	inst, task := s.setupData("rollback-oversize-op")
+	_, err := s.db.NewUpdate().
+		Model((*approval.Instance)(nil)).
+		Set("form_data", map[string]any{"blob": strings.Repeat("x", 70*1024)}).
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(inst.ID) }).
+		Exec(s.ctx)
+	s.Require().NoError(err, "Should seed an over-cap instance form payload")
+
+	operator := approval.OperatorInfo{ID: "rollback-oversize-op", Name: "Operator"}
+	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
+		TaskID:       task.ID,
+		Operator:     operator,
+		TargetNodeID: startNode.ID,
+		Opinion:      "rollback an oversize instance and clear",
+		Caller:       approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Rollback-clear must not be wedged by a pre-existing oversize instance")
+
+	var reloaded approval.Instance
+
+	reloaded.ID = inst.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload instance after rollback")
+	s.Assert().Empty(reloaded.FormData, "RollbackDataClear must still wipe the oversize form data")
 }

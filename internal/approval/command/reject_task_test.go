@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"strings"
 
 	"github.com/stretchr/testify/suite"
 
@@ -147,4 +148,60 @@ func (s *RejectTaskTestSuite) TestRejectTaskNotCurrentNode() {
 	})
 	s.Require().Error(err, "Should fail when rejecting a task not in current node")
 	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should return task not pending for stale node task")
+}
+
+// TestRejectEnforcesFormDataSizeCap proves the form-data size cap is enforced on
+// the reject path too, not only approve: every task action shares the
+// PrepareOperation chokepoint, so growing the instance past the cap via reject's
+// form data is rejected before any state change.
+func (s *RejectTaskTestSuite) TestRejectEnforcesFormDataSizeCap() {
+	node := &approval.FlowNode{
+		FlowVersionID:    s.fixture.VersionID,
+		Key:              "reject-oversize-node",
+		Kind:             approval.NodeApproval,
+		Name:             "Reject Oversize Node",
+		PassRule:         approval.PassAll,
+		FieldPermissions: map[string]approval.Permission{"blob": approval.PermissionEditable},
+	}
+	_, err := s.db.NewInsert().Model(node).Exec(s.ctx)
+	s.Require().NoError(err, "Should create node with an editable field")
+
+	inst := &approval.Instance{
+		TenantID:      "default",
+		FlowID:        s.fixture.FlowID,
+		FlowVersionID: s.fixture.VersionID,
+		Title:         "Reject Oversize Test",
+		InstanceNo:    "RJ-OVERSIZE-001",
+		ApplicantID:   "applicant-1",
+		Status:        approval.InstanceRunning,
+		CurrentNodeID: &node.ID,
+	}
+	_, err = s.db.NewInsert().Model(inst).Exec(s.ctx)
+	s.Require().NoError(err, "Should create running instance")
+
+	task := &approval.Task{
+		TenantID:   "default",
+		InstanceID: inst.ID,
+		NodeID:     node.ID,
+		AssigneeID: "rejector-oversize",
+		SortOrder:  1,
+		Status:     approval.TaskPending,
+	}
+	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
+	s.Require().NoError(err, "Should create pending task")
+
+	_, err = s.handler.Handle(s.ctx, command.RejectTaskCmd{
+		TaskID:   task.ID,
+		Operator: approval.OperatorInfo{ID: "rejector-oversize", Name: "Rejector"},
+		Opinion:  "reject with oversized form",
+		FormData: map[string]any{"blob": strings.Repeat("x", 70*1024)},
+		Caller:   approval.SystemCaller,
+	})
+	s.Require().ErrorIs(err, shared.ErrFormDataTooLarge, "Reject must enforce the form-data size cap via PrepareOperation")
+
+	var reloaded approval.Task
+
+	reloaded.ID = task.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload task")
+	s.Assert().Equal(approval.TaskPending, reloaded.Status, "Task must stay pending — the size guard runs before the reject")
 }

@@ -588,3 +588,193 @@ func (s *ScannerTestSuite) TestScanPreWarningsShouldIgnoreWaitingTasks() {
 		"Ignoring waiting task should not emit warning events",
 	)
 }
+
+func (s *ScannerTestSuite) makeNodeParallel(nodeID string) {
+	_, err := s.db.NewUpdate().
+		Model((*approval.FlowNode)(nil)).
+		Set("approval_method", approval.ApprovalParallel).
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(nodeID) }).
+		Exec(s.ctx)
+	s.Require().NoError(err, "Should set node approval method to parallel")
+}
+
+func (s *ScannerTestSuite) setNodeAdmins(nodeID string, adminIDs ...string) {
+	_, err := s.db.NewUpdate().
+		Model((*approval.FlowNode)(nil)).
+		Set("admin_user_ids", adminIDs).
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(nodeID) }).
+		Exec(s.ctx)
+	s.Require().NoError(err, "Should set node admin users")
+}
+
+func (s *ScannerTestSuite) taskByAssignee(instanceID, assigneeID string) approval.Task {
+	var t approval.Task
+
+	// Order by id (a sortable XID) so the lookup is deterministic even if a
+	// scenario ever produces more than one task for the assignee.
+	s.Require().NoError(
+		s.db.NewSelect().Model(&t).
+			Where(func(cb orm.ConditionBuilder) {
+				cb.Equals("instance_id", instanceID).Equals("assignee_id", assigneeID)
+			}).
+			OrderBy("id").
+			Limit(1).
+			Scan(s.ctx),
+		"Should load task for assignee "+assigneeID,
+	)
+
+	return t
+}
+
+// TestTransferAdminTimeoutShouldPreserveBeforeChildParentLink pins the scanner
+// half of the transfer fix: auto-transferring a timed-out "before" add-assignee
+// child must carry its parent link and sort order onto the admin replacement,
+// or the suspended parent could never be reactivated (the parallel deadlock).
+func (s *ScannerTestSuite) TestTransferAdminTimeoutShouldPreserveBeforeChildParentLink() {
+	// approver-1 stands in as the suspended parent (Waiting, so it is not scanned).
+	_, parent := s.createTimeoutScenarioWithTaskStatus(approval.TimeoutActionTransferAdmin, approval.TaskWaiting)
+	s.makeNodeParallel(parent.NodeID)
+	s.setNodeAdmins(parent.NodeID, "admin-1")
+
+	before := approval.AddAssigneeBefore
+	parentID := parent.ID
+	pastDeadline := timex.Now().AddHours(-1)
+	child := &approval.Task{
+		TenantID:        "default",
+		InstanceID:      parent.InstanceID,
+		NodeID:          parent.NodeID,
+		AssigneeID:      "before-B",
+		SortOrder:       7,
+		Status:          approval.TaskPending,
+		Deadline:        &pastDeadline,
+		ParentTaskID:    &parentID,
+		AddAssigneeType: &before,
+	}
+	_, err := s.db.NewInsert().Model(child).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert timed-out before-child")
+
+	s.scanner.ScanTimeouts(s.ctx)
+
+	admin := s.taskByAssignee(parent.InstanceID, "admin-1")
+	s.Require().NotNil(admin.ParentTaskID, "Admin replacement must inherit the before-child's parent link")
+	s.Assert().Equal(parent.ID, *admin.ParentTaskID, "Admin replacement must point at the same suspended parent")
+	s.Require().NotNil(admin.AddAssigneeType, "Admin replacement must inherit the add-assignee type")
+	s.Assert().Equal(approval.AddAssigneeBefore, *admin.AddAssigneeType, "Admin replacement must remain a before-child")
+	s.Assert().Equal(7, admin.SortOrder, "Admin replacement must inherit the sort order, not reset it to 0")
+}
+
+// TestTransferAdminTimeoutShouldRepointAfterChildrenToStandIn pins the
+// symmetric scanner case: when the parent of "after" children is auto-
+// transferred, those children must be re-pointed onto the admin stand-in so
+// they are not orphaned.
+func (s *ScannerTestSuite) TestTransferAdminTimeoutShouldRepointAfterChildrenToStandIn() {
+	_, parent := s.createTimeoutScenarioWithTaskStatus(approval.TimeoutActionTransferAdmin, approval.TaskPending)
+	s.makeNodeParallel(parent.NodeID)
+	s.setNodeAdmins(parent.NodeID, "admin-1")
+
+	after := approval.AddAssigneeAfter
+	parentID := parent.ID
+	child := &approval.Task{
+		TenantID:        "default",
+		InstanceID:      parent.InstanceID,
+		NodeID:          parent.NodeID,
+		AssigneeID:      "after-B",
+		SortOrder:       7,
+		Status:          approval.TaskWaiting,
+		ParentTaskID:    &parentID,
+		AddAssigneeType: &after,
+	}
+	_, err := s.db.NewInsert().Model(child).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert queued after-child")
+
+	s.scanner.ScanTimeouts(s.ctx)
+
+	admin := s.taskByAssignee(parent.InstanceID, "admin-1")
+
+	var reloadedChild approval.Task
+
+	reloadedChild.ID = child.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloadedChild).WherePK().Scan(s.ctx), "Should reload after-child")
+	s.Require().NotNil(reloadedChild.ParentTaskID, "After-child must keep a parent link")
+	s.Assert().Equal(admin.ID, *reloadedChild.ParentTaskID, "After-child must be re-pointed onto the admin stand-in, not orphaned on the transferred parent")
+}
+
+// TestAutoPassTimeoutShouldActivateAfterChildOnParallelNode covers the scanner's
+// parallel dependent-activation path: an auto-pass timeout on a parallel node
+// must activate the queued after-child via ActivateDependentTasks.
+func (s *ScannerTestSuite) TestAutoPassTimeoutShouldActivateAfterChildOnParallelNode() {
+	// PassAll so the node stays running after the auto-pass (the parent approves
+	// but the now-activated after-child has not), making the activation observable.
+	_, parent := s.createTimeoutScenarioWithTaskStatus(approval.TimeoutActionAutoPass, approval.TaskPending)
+	s.makeNodeParallel(parent.NodeID)
+
+	after := approval.AddAssigneeAfter
+	parentID := parent.ID
+	child := &approval.Task{
+		TenantID:        "default",
+		InstanceID:      parent.InstanceID,
+		NodeID:          parent.NodeID,
+		AssigneeID:      "after-B",
+		SortOrder:       7,
+		Status:          approval.TaskWaiting,
+		ParentTaskID:    &parentID,
+		AddAssigneeType: &after,
+	}
+	_, err := s.db.NewInsert().Model(child).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert queued after-child")
+
+	s.scanner.ScanTimeouts(s.ctx)
+
+	var reloadedChild approval.Task
+
+	reloadedChild.ID = child.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloadedChild).WherePK().Scan(s.ctx), "Should reload after-child")
+	s.Assert().Equal(approval.TaskPending, reloadedChild.Status,
+		"Auto-pass timeout on a parallel node must activate the queued after-child")
+
+	var inst approval.Instance
+
+	inst.ID = parent.InstanceID
+	s.Require().NoError(s.db.NewSelect().Model(&inst).WherePK().Scan(s.ctx), "Should reload instance")
+	s.Assert().Equal(approval.InstanceRunning, inst.Status, "PassAll node stays running until the activated after-child also acts")
+}
+
+// TestTransferAdminTimeoutRepointsAfterChildToFirstOfMultipleAdmins covers the
+// multi-admin re-point branch: when a parent of an "after" child times out and is
+// transferred to several admins, the after-child is re-pointed onto the FIRST
+// admin stand-in (not orphaned on the transferred parent).
+func (s *ScannerTestSuite) TestTransferAdminTimeoutRepointsAfterChildToFirstOfMultipleAdmins() {
+	_, parent := s.createTimeoutScenarioWithTaskStatus(approval.TimeoutActionTransferAdmin, approval.TaskPending)
+	s.makeNodeParallel(parent.NodeID)
+	s.setNodeAdmins(parent.NodeID, "admin-1", "admin-2")
+
+	after := approval.AddAssigneeAfter
+	parentID := parent.ID
+	child := &approval.Task{
+		TenantID:        "default",
+		InstanceID:      parent.InstanceID,
+		NodeID:          parent.NodeID,
+		AssigneeID:      "after-B",
+		SortOrder:       7,
+		Status:          approval.TaskWaiting,
+		ParentTaskID:    &parentID,
+		AddAssigneeType: &after,
+	}
+	_, err := s.db.NewInsert().Model(child).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert queued after-child")
+
+	s.scanner.ScanTimeouts(s.ctx)
+
+	// Both admins get a distinct replacement; the after-child re-points onto the
+	// first one created (admin-1, first in AdminUserIDs order).
+	firstAdmin := s.taskByAssignee(parent.InstanceID, "admin-1")
+	secondAdmin := s.taskByAssignee(parent.InstanceID, "admin-2")
+	s.Require().NotEqual(firstAdmin.ID, secondAdmin.ID, "Both admins should get a distinct replacement task")
+
+	var reloadedChild approval.Task
+
+	reloadedChild.ID = child.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloadedChild).WherePK().Scan(s.ctx), "Should reload after-child")
+	s.Require().NotNil(reloadedChild.ParentTaskID, "After-child must not be orphaned")
+	s.Assert().Equal(firstAdmin.ID, *reloadedChild.ParentTaskID, "After-child must re-point onto the first admin stand-in")
+}

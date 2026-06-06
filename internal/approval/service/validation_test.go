@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -222,5 +223,15 @@ func TestValidateFormData(t *testing.T) {
 		var re result.Error
 		require.ErrorAs(t, err, &re, "Should return business error")
 		assert.Equal(t, shared.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
+	})
+
+	t.Run("RejectsPayloadOverTheAbsoluteCap", func(t *testing.T) {
+		err := svc.ValidateFormData(schema, map[string]any{"reason": "Travel", "amount": 20, "blob": strings.Repeat("x", FormDataMaxBytes+1)})
+		require.ErrorIs(t, err, shared.ErrFormDataTooLarge, "Start / resubmit must reject a payload over the absolute size cap")
+	})
+
+	t.Run("SizeGuardAppliesWithoutSchema", func(t *testing.T) {
+		err := svc.ValidateFormData(nil, map[string]any{"blob": strings.Repeat("x", FormDataMaxBytes+1)})
+		require.ErrorIs(t, err, shared.ErrFormDataTooLarge, "Size guard must apply even when the flow has no form schema")
 	})
 }
