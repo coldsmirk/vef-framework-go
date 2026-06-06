@@ -34,7 +34,23 @@ func (p *CCProcessor) Process(ctx context.Context, pc *ProcessContext) (*Process
 		}
 	}
 
-	if pc.Node.IsReadConfirmRequired {
+	if !pc.Node.IsReadConfirmRequired {
+		return &ProcessResult{Action: NodeActionContinue, Events: events}, nil
+	}
+
+	// A read-confirm CC node may only wait when a record actually awaits
+	// confirmation. Consult the same source of truth the mark-read path uses
+	// (NodeService.CheckCCNodeCompletion) so entry and exit cannot disagree: if
+	// the node resolved to zero recipients — no configs, or configs that yield
+	// nobody such as a role/department CC skipped best-effort with no
+	// AssigneeService — there is no record to confirm and nobody to ever drive
+	// CheckCCNodeCompletion, so the node must continue rather than wait forever.
+	hasUnread, err := shared.HasUnreadCCRecords(ctx, pc.DB, pc.Instance.ID, pc.Node.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if hasUnread {
 		return &ProcessResult{Action: NodeActionWait, Events: events}, nil
 	}
 

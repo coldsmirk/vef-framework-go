@@ -148,7 +148,7 @@ func (s *CCProcessorTestSuite) TestNoCCConfigs() {
 		s.Assert().Empty(result.Events, "Should have no events when no CC users")
 	})
 
-	s.Run("WaitWhenReadConfirmRequired", func() {
+	s.Run("ContinuesWhenReadConfirmRequiredButNoRecipients", func() {
 		defer s.cleanTransientData()
 
 		instance := s.newInstance()
@@ -160,7 +160,10 @@ func (s *CCProcessorTestSuite) TestNoCCConfigs() {
 
 		result, err := s.processor.Process(s.ctx, pc)
 		s.Require().NoError(err, "Should not error when no CC configs exist")
-		s.Assert().Equal(engine.NodeActionWait, result.Action, "Should wait when read confirm required even with no CC users")
+		// A read-confirm CC node with no recipients has nothing to confirm, so
+		// it must continue rather than wait forever (there are no CC records for
+		// mark_cc_read → CheckCCNodeCompletion to ever advance).
+		s.Assert().Equal(engine.NodeActionContinue, result.Action, "Should continue when read confirm required but no CC users to confirm")
 		s.Assert().Empty(result.Events, "Should have no events when no CC users")
 	})
 }
@@ -201,6 +204,91 @@ func (s *CCProcessorTestSuite) TestUnresolvableCCConfigIsSkipped() {
 		"Should query cc records",
 	)
 	s.Assert().Empty(records, "No CC records created for an unresolvable config")
+}
+
+// TestReadConfirmCCNodeDoesNotDeadlockWhenConfigsResolveToNobody pins the
+// interaction between best-effort CC resolution and the read-confirm gate: a
+// read-confirm CC node whose only config resolves to zero recipients (a role CC
+// with no AssigneeService wired) must continue, not wait. Waiting would wedge
+// the instance forever — no CC records exist, so no mark_cc_read can ever drive
+// CheckCCNodeCompletion to advance it. Before the fix the node entered WAIT on
+// IsReadConfirmRequired alone, turning a best-effort skip into a silent deadlock.
+func (s *CCProcessorTestSuite) TestReadConfirmCCNodeDoesNotDeadlockWhenConfigsResolveToNobody() {
+	defer s.cleanTransientData()
+
+	instance := s.newInstance()
+
+	cfg := &approval.FlowNodeCC{
+		NodeID: s.nodeID,
+		Kind:   approval.CCRole,
+		IDs:    []string{"role-a"},
+		Timing: approval.CCTimingAlways,
+	}
+	_, err := s.db.NewInsert().Model(cfg).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert role cc config")
+
+	pc := &engine.ProcessContext{
+		DB:       s.db,
+		Instance: instance,
+		Node:     s.newNode(true), // read-confirm required
+	}
+
+	result, err := s.processor.Process(s.ctx, pc)
+	s.Require().NoError(err, "An unresolvable CC config must not fail the CC node")
+	s.Assert().Equal(engine.NodeActionContinue, result.Action, "A read-confirm CC node with no resolvable recipients must continue, not deadlock")
+	s.Assert().Empty(result.Events, "No CC event when the only config could not be resolved")
+
+	var records []approval.CCRecord
+	s.Require().NoError(
+		s.db.NewSelect().Model(&records).
+			Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instance.ID) }).
+			Scan(s.ctx),
+		"Should query cc records",
+	)
+	s.Assert().Empty(records, "No CC records created for an unresolvable config")
+}
+
+// TestReadConfirmCCNodeWaitsForPreexistingUnreadRecord pins the source-of-truth
+// unification: node entry decides wait-vs-continue from the actual unread CC
+// records (shared.HasUnreadCCRecords) — the same query the mark-read path uses —
+// not from the count of records this Process call happened to insert. On a
+// re-entry (e.g. a rollback back to the CC node) InsertCCRecords dedups the
+// record created on the first visit, so the freshly-inserted set is empty even
+// though an unread record still awaits confirmation; entry must still wait. A
+// proxy keyed on the fresh-insert count would wrongly continue, skipping the gate.
+func (s *CCProcessorTestSuite) TestReadConfirmCCNodeWaitsForPreexistingUnreadRecord() {
+	defer s.cleanTransientData()
+
+	instance := s.newInstance()
+	s.insertCCConfig([]string{"cc-user-1"})
+
+	// Simulate a record left unread by a prior visit to this CC node.
+	nodeID := s.nodeID
+	preexisting := &approval.CCRecord{
+		InstanceID: instance.ID,
+		NodeID:     &nodeID,
+		CCUserID:   "cc-user-1",
+		CCUserName: "CC User 1",
+	}
+	_, err := s.db.NewInsert().Model(preexisting).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert a pre-existing unread cc record")
+
+	pc := &engine.ProcessContext{
+		DB:       s.db,
+		Instance: instance,
+		Node:     s.newNode(true), // read-confirm required
+	}
+
+	result, err := s.processor.Process(s.ctx, pc)
+	s.Require().NoError(err, "Re-processing a CC node must not error")
+	s.Assert().Equal(engine.NodeActionWait, result.Action, "Must wait on a pre-existing unread record even though this entry inserted nothing new")
+
+	count, err := s.db.NewSelect().
+		Model((*approval.CCRecord)(nil)).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instance.ID) }).
+		Count(s.ctx)
+	s.Require().NoError(err, "Should count cc records")
+	s.Assert().Equal(int64(1), count, "InsertCCRecords dedups the existing recipient; no duplicate row")
 }
 
 func (s *CCProcessorTestSuite) TestSingleCCConfig() {

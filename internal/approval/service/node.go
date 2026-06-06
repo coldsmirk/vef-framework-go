@@ -221,19 +221,12 @@ func (s *NodeService) CheckCCNodeCompletion(ctx context.Context, db orm.DB, inst
 		return nil
 	}
 
-	unreadCount, err := db.NewSelect().
-		Model((*approval.CCRecord)(nil)).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", instanceID).
-				Equals("node_id", currentNodeID).
-				IsNull("read_at")
-		}).
-		Count(ctx)
+	hasUnread, err := shared.HasUnreadCCRecords(ctx, db, instanceID, currentNodeID)
 	if err != nil {
-		return fmt.Errorf("count unread cc records: %w", err)
+		return err
 	}
 
-	if unreadCount > 0 {
+	if hasUnread {
 		return nil
 	}
 

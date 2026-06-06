@@ -264,3 +264,26 @@ func InsertAutoCCRecords(ctx context.Context, db orm.DB, instanceID, nodeID stri
 func InsertManualCCRecords(ctx context.Context, db orm.DB, instanceID, nodeID string, userIDs []string, userNames map[string]string) ([]string, error) {
 	return InsertCCRecords(ctx, db, instanceID, &nodeID, userIDs, userNames, true)
 }
+
+// HasUnreadCCRecords reports whether the CC node still has any record awaiting a
+// read confirmation. It is the single source of truth for read-confirm CC node
+// completion: both node entry (engine.CCProcessor deciding wait vs. continue)
+// and the mark-read path (NodeService.CheckCCNodeCompletion deciding whether to
+// advance) consult it, so the two can never disagree about whether the node is
+// done. A node that resolved to zero recipients has no records and is therefore
+// already complete — it must not wait, or nothing could ever advance it.
+func HasUnreadCCRecords(ctx context.Context, db orm.DB, instanceID, nodeID string) (bool, error) {
+	unread, err := db.NewSelect().
+		Model((*approval.CCRecord)(nil)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("instance_id", instanceID).
+				Equals("node_id", nodeID).
+				IsNull("read_at")
+		}).
+		Exists(ctx)
+	if err != nil {
+		return false, fmt.Errorf("check unread cc records: %w", err)
+	}
+
+	return unread, nil
+}
