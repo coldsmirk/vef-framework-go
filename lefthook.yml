@@ -1,0 +1,17 @@
+# Git hooks for vef-framework-go. Run `lefthook install` once after cloning to
+# wire these into .git/hooks (Go has no install lifecycle to do it automatically).
+
+commit-msg:
+  commands:
+    commitlint:
+      # Conventional Commits check via npx — no devDependencies, no node_modules.
+      # Versions pinned to match vef-framework-react; {1} is the commit message file.
+      run: npx --yes -p @commitlint/cli@21 -p @commitlint/config-conventional@21 commitlint --edit {1}
+
+pre-push:
+  piped: true # run sequentially, stop at the first failure
+  commands:
+    1_golangci-lint:
+      run: golangci-lint run
+    2_modernize:
+      run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./...

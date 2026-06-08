@@ -1,0 +1,62 @@
+# Developer tasks for vef-framework-go. Install go-task (https://taskfile.dev),
+# then run `task setup` once after cloning to install missing tooling and wire git hooks.
+# Task runs commands through its built-in mvdan/sh interpreter, so `status:` / `command -v`
+# work on Windows too. Every install task is guarded — a tool is installed only if missing.
+version: "3"
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  setup:
+    desc: One-time dev setup — install missing tooling and wire git hooks
+    deps: [install:lefthook, install:golangci-lint]
+    cmds:
+      - lefthook install
+
+  install:lefthook:
+    desc: Install lefthook if missing
+    # Prefer Homebrew so the binary lands on PATH; fall back to `go install` (needs GOPATH/bin on PATH).
+    cmds:
+      - cmd: |
+          if command -v brew >/dev/null 2>&1; then
+            brew install lefthook
+          else
+            go install github.com/evilmartians/lefthook@latest
+          fi
+        platforms: [linux, darwin]
+      - cmd: go install github.com/evilmartians/lefthook@latest
+        platforms: [windows]
+    status:
+      - command -v lefthook
+
+  install:golangci-lint:
+    desc: Install golangci-lint v2 if missing
+    # Upstream does not support `go install`. On Unix prefer Homebrew when available and
+    # fall back to the official pinned script; on Windows use winget (no `sh` there).
+    cmds:
+      - cmd: |
+          if command -v brew >/dev/null 2>&1; then
+            brew install golangci-lint
+          else
+            curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.12.2
+          fi
+        platforms: [linux, darwin]
+      - cmd: winget install -e --id GolangCI.golangci-lint
+        platforms: [windows]
+    status:
+      - command -v golangci-lint
+
+  lint:
+    desc: Run golangci-lint
+    deps: [install:golangci-lint]
+    cmds:
+      - golangci-lint run
+
+  modernize:
+    desc: Run the gopls modernize analyzer
+    cmds:
+      - go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./...

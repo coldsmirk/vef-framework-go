@@ -1,0 +1,8 @@
+{
+  "extends": ["@commitlint/config-conventional"],
+  "formatter": "@commitlint/format",
+  "rules": {
+    "body-empty": [2, "always"],
+    "footer-empty": [2, "always"]
+  }
+}

@@ -13,6 +13,12 @@ golangci-lint run              # Lint (auto-fix: golangci-lint run --fix)
 go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./...  # Modernize checks
 ```
 
+## Local Setup & Git Hooks
+
+- After cloning, run `task setup` (install [go-task](https://taskfile.dev) first). It installs `lefthook` (via `go install`) and, when missing, `golangci-lint` (Homebrew if available, else the official pinned script on Unix / winget on Windows), then wires the git hooks. Each install task is `status:`-guarded — a tool is installed only when absent.
+- Hooks are managed by **lefthook** (`lefthook.yml`): the `commit-msg` hook runs commitlint (`.commitlintrc.json`, Conventional Commits + single-line); the `pre-push` hook runs `golangci-lint` then the modernize analyzer.
+- `Taskfile.yml` also exposes `task lint` and `task modernize` as shortcuts for those checks.
+
 ## Task Workflow
 
 1. **Simple tasks**: directly implement, write tests, run verification.
@@ -89,7 +95,7 @@ Compression (`-1000`) → Headers (`-900`) → CORS (`-800`) → Content-Type (`
 
 ## Development Conventions
 
-- **Commits**: [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Single logical change per commit, message **strictly one line**, concise. No co-author trailers. Split by feature granularity. Types: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`. Scopes optional: `refactor(test):`, `feat(crud):`.
+- **Commits**: [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Single logical change per commit, message **strictly one line** — enforced by commitlint via the `commit-msg` hook (`body`/`footer` must be empty), so flag breaking changes with the header `!` form (`feat!:`, `fix(scope)!:`) instead of a `BREAKING CHANGE:` footer. No co-author trailers. Split by feature granularity. Types: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`. Scopes optional: `refactor(test):`, `feat(crud):`.
 - **Releasing**: update `version/version.go` (`VEFVersion` constant) → commit with `chore: bump version to vX.Y.Z` → `git tag vX.Y.Z` on that commit → push. The tag must always point at the version-bump commit, not an earlier one.
 - **Code style**: lean handlers (delegate to services), composable FX modules, `fx.Annotate` with precise tags.
 - **Identifier naming**: when a name contains consecutive acronyms, keep the semantically more important acronym in standard form and Pascal-case the other for readability. Prefer `HTTPSUrl`, `HttpsURL`, `JSONApi`, or `JsonAPI`; avoid fully stacked forms like `HTTPSURL` or `JSONAPI`.
