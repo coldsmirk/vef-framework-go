@@ -19,16 +19,27 @@ tasks:
 
   install:lefthook:
     desc: Install lefthook if missing
-    # Prefer Homebrew so the binary lands on PATH; fall back to `go install` (needs GOPATH/bin on PATH).
+    # Prefer Homebrew so the binary lands on PATH; otherwise `go install` into GOPATH/bin,
+    # which must be on PATH — we verify and tell the user how to fix it if it isn't.
     cmds:
       - cmd: |
           if command -v brew >/dev/null 2>&1; then
             brew install lefthook
           else
             go install github.com/evilmartians/lefthook@latest
+            command -v lefthook >/dev/null 2>&1 || {
+              echo "⚠  lefthook is in $(go env GOPATH)/bin, but that dir is not on your PATH."
+              echo '   Add it to your shell profile, then re-run: export PATH="$PATH:$(go env GOPATH)/bin"'
+              exit 1
+            }
           fi
         platforms: [linux, darwin]
-      - cmd: go install github.com/evilmartians/lefthook@latest
+      - cmd: |
+          go install github.com/evilmartians/lefthook@latest
+          command -v lefthook >/dev/null 2>&1 || {
+            echo "lefthook is in your Go bin directory (go env GOPATH) but not on PATH. Add that bin dir to PATH, then re-run 'task setup'."
+            exit 1
+          }
         platforms: [windows]
     status:
       - command -v lefthook

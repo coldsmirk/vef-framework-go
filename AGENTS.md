@@ -15,7 +15,7 @@ go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest
 
 ## Local Setup & Git Hooks
 
-- After cloning, run `task setup` (install [go-task](https://taskfile.dev) first). It installs `lefthook` (via `go install`) and, when missing, `golangci-lint` (Homebrew if available, else the official pinned script on Unix / winget on Windows), then wires the git hooks. Each install task is `status:`-guarded — a tool is installed only when absent.
+- After cloning, run `task setup` (install [go-task](https://taskfile.dev) first). It installs `lefthook` and, when missing, `golangci-lint` — preferring Homebrew, else falling back to `go install` (lefthook) or the official pinned script / winget (golangci-lint) — then wires the git hooks. Each install task is `status:`-guarded, so a tool is installed only when absent. **Without Homebrew, `lefthook` is installed via `go install` into `$(go env GOPATH)/bin`, which must be on your `PATH` or the hooks won't be found.**
 - Hooks are managed by **lefthook** (`lefthook.yml`): the `commit-msg` hook runs commitlint (`.commitlintrc.json`, Conventional Commits + single-line); the `pre-push` hook runs `golangci-lint` then the modernize analyzer.
 - `Taskfile.yml` also exposes `task lint` and `task modernize` as shortcuts for those checks.
 
