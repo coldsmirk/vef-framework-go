@@ -2,13 +2,50 @@ package approval
 
 import "context"
 
+// ConditionOperator enumerates the comparison operators a field condition may
+// use. The set is the shared contract between the flow designer (which offers
+// operators per field kind) and the engine's field-condition evaluator; both
+// sides must stay in lockstep with this list.
+type ConditionOperator string
+
+const (
+	OperatorEquals      ConditionOperator = "eq"
+	OperatorNotEquals   ConditionOperator = "ne"
+	OperatorGreater     ConditionOperator = "gt"
+	OperatorGreaterOrEq ConditionOperator = "gte"
+	OperatorLess        ConditionOperator = "lt"
+	OperatorLessOrEq    ConditionOperator = "lte"
+	OperatorIn          ConditionOperator = "in"
+	OperatorNotIn       ConditionOperator = "not_in"
+	OperatorContains    ConditionOperator = "contains"
+	OperatorNotContains ConditionOperator = "not_contains"
+	OperatorStartsWith  ConditionOperator = "starts_with"
+	OperatorEndsWith    ConditionOperator = "ends_with"
+	OperatorIsEmpty     ConditionOperator = "is_empty"
+	OperatorIsNotEmpty  ConditionOperator = "is_not_empty"
+)
+
+// IsValid reports whether the operator is one of the defined values.
+func (o ConditionOperator) IsValid() bool {
+	switch o {
+	case OperatorEquals, OperatorNotEquals,
+		OperatorGreater, OperatorGreaterOrEq, OperatorLess, OperatorLessOrEq,
+		OperatorIn, OperatorNotIn,
+		OperatorContains, OperatorNotContains, OperatorStartsWith, OperatorEndsWith,
+		OperatorIsEmpty, OperatorIsNotEmpty:
+		return true
+	default:
+		return false
+	}
+}
+
 // Condition represents a branch condition evaluated by condition nodes.
 type Condition struct {
-	Kind       ConditionKind `json:"kind"`
-	Subject    string        `json:"subject"`
-	Operator   string        `json:"operator"`
-	Value      any           `json:"value"`
-	Expression string        `json:"expression"`
+	Kind       ConditionKind     `json:"kind"`
+	Subject    string            `json:"subject"`
+	Operator   ConditionOperator `json:"operator"`
+	Value      any               `json:"value"`
+	Expression string            `json:"expression"`
 }
 
 // ConditionGroup represents a group of conditions evaluated with AND logic.

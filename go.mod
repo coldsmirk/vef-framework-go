@@ -11,7 +11,6 @@ require (
 	github.com/dlclark/regexp2 v1.12.0
 	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c
 	github.com/dustin/go-humanize v1.0.1
-	github.com/expr-lang/expr v1.17.8
 	github.com/go-co-op/gocron/v2 v2.21.2
 	github.com/go-playground/locales v0.14.1
 	github.com/go-playground/universal-translator v0.18.1

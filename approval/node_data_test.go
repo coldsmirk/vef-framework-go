@@ -50,13 +50,13 @@ func TestApprovalNodeDataApplyTo(t *testing.T) {
 		TaskNodeData: approval.TaskNodeData{
 			ExecutionType:     approval.ExecutionManual,
 			FallbackUserIDs:   []string{"u1"},
-			IsTransferAllowed: true,
+			IsTransferAllowed: new(true),
 			TimeoutHours:      48,
 		},
-		ApprovalMethod:       approval.ApprovalParallel,
-		PassRule:             approval.PassAll,
-		IsRollbackAllowed:    true,
-		IsAddAssigneeAllowed: true,
+		ApprovalMethod:       approval.ApprovalSequential,
+		PassRule:             approval.PassAny,
+		IsRollbackAllowed:    new(true),
+		IsAddAssigneeAllowed: new(true),
 		AddAssigneeTypes:     []approval.AddAssigneeType{approval.AddAssigneeBefore},
 	}
 
@@ -68,26 +68,60 @@ func TestApprovalNodeDataApplyTo(t *testing.T) {
 	assert.Equal(t, []string{"u1"}, node.FallbackUserIDs, "ApplyTo should set FallbackUserIDs")
 	assert.True(t, node.IsTransferAllowed, "ApplyTo should set IsTransferAllowed")
 	assert.Equal(t, 48, node.TimeoutHours, "ApplyTo should set TimeoutHours")
-	assert.Equal(t, approval.ApprovalParallel, node.ApprovalMethod, "ApplyTo should set ApprovalMethod")
-	assert.Equal(t, approval.PassAll, node.PassRule, "ApplyTo should set PassRule")
+	assert.Equal(t, approval.ApprovalSequential, node.ApprovalMethod, "ApplyTo should keep an explicit ApprovalMethod")
+	assert.Equal(t, approval.PassAny, node.PassRule, "ApplyTo should keep an explicit PassRule")
 	assert.True(t, node.IsRollbackAllowed, "ApplyTo should set IsRollbackAllowed")
 	assert.True(t, node.IsAddAssigneeAllowed, "ApplyTo should set IsAddAssigneeAllowed")
 	assert.Equal(t, []approval.AddAssigneeType{approval.AddAssigneeBefore}, node.AddAssigneeTypes, "ApplyTo should set AddAssigneeTypes")
 	assert.Equal(t, approval.NodeApproval, data.Kind(), "Kind() should return NodeApproval")
 }
 
-func TestApprovalNodeDataApplyToZeroEnums(t *testing.T) {
-	// When enum fields are empty string (zero), they must overwrite the node
-	// (full-snapshot semantics — caller is responsible for providing complete data).
-	data := &approval.ApprovalNodeData{
-		BaseNodeData: approval.BaseNodeData{Name: "Blank"},
-	}
-	node := newFreshNode(approval.NodeApproval)
-	node.ApprovalMethod = approval.ApprovalSequential // pre-populate to verify overwrite
-	data.ApplyTo(node)
+func TestApprovalNodeDataApplyToDefaults(t *testing.T) {
+	t.Run("OmittedFieldsResolveToDesignerDefaults", func(t *testing.T) {
+		// The designer serializes only touched controls, so a bare payload
+		// must deploy to a fully-configured node carrying the same defaults
+		// the designer displays.
+		data := &approval.ApprovalNodeData{
+			BaseNodeData: approval.BaseNodeData{Name: "Blank"},
+		}
+		node := newFreshNode(approval.NodeApproval)
+		data.ApplyTo(node)
 
-	assert.Equal(t, approval.ApprovalMethod(""), node.ApprovalMethod,
-		"ApplyTo with empty ApprovalMethod should overwrite (full-snapshot semantics)")
+		assert.Equal(t, approval.DefaultExecutionType, node.ExecutionType, "omitted ExecutionType should resolve to manual")
+		assert.Equal(t, approval.DefaultApprovalMethod, node.ApprovalMethod, "omitted ApprovalMethod should resolve to parallel")
+		assert.Equal(t, approval.DefaultPassRule, node.PassRule, "omitted PassRule should resolve to all")
+		assert.Equal(t, approval.DefaultEmptyAssigneeAction, node.EmptyAssigneeAction, "omitted EmptyAssigneeAction should resolve to auto_pass")
+		assert.Equal(t, approval.DefaultSameApplicantAction, node.SameApplicantAction, "omitted SameApplicantAction should resolve to self_approve")
+		assert.Equal(t, approval.DefaultConsecutiveApproverAction, node.ConsecutiveApproverAction, "omitted ConsecutiveApproverAction should resolve to none")
+		assert.Equal(t, approval.DefaultRollbackType, node.RollbackType, "omitted RollbackType should resolve to previous")
+		assert.Equal(t, approval.DefaultRollbackDataStrategy, node.RollbackDataStrategy, "omitted RollbackDataStrategy should resolve to keep")
+		assert.Equal(t, approval.DefaultTimeoutAction, node.TimeoutAction, "omitted TimeoutAction should resolve to none")
+		assert.True(t, node.IsTransferAllowed, "omitted IsTransferAllowed should resolve to allowed")
+		assert.True(t, node.IsRollbackAllowed, "omitted IsRollbackAllowed should resolve to allowed")
+		assert.True(t, node.IsAddAssigneeAllowed, "omitted IsAddAssigneeAllowed should resolve to allowed")
+		assert.True(t, node.IsRemoveAssigneeAllowed, "omitted IsRemoveAssigneeAllowed should resolve to allowed")
+		assert.True(t, node.IsManualCCAllowed, "omitted IsManualCCAllowed should resolve to allowed")
+	})
+
+	t.Run("ExplicitFalseSurvivesDefaulting", func(t *testing.T) {
+		// Pointer booleans exist precisely so explicit false is
+		// distinguishable from omitted; defaulting must not flip it back.
+		data := &approval.ApprovalNodeData{
+			TaskNodeData:            approval.TaskNodeData{IsTransferAllowed: new(false)},
+			IsRollbackAllowed:       new(false),
+			IsAddAssigneeAllowed:    new(false),
+			IsRemoveAssigneeAllowed: new(false),
+			IsManualCCAllowed:       new(false),
+		}
+		node := newFreshNode(approval.NodeApproval)
+		data.ApplyTo(node)
+
+		assert.False(t, node.IsTransferAllowed, "explicit false IsTransferAllowed must persist")
+		assert.False(t, node.IsRollbackAllowed, "explicit false IsRollbackAllowed must persist")
+		assert.False(t, node.IsAddAssigneeAllowed, "explicit false IsAddAssigneeAllowed must persist")
+		assert.False(t, node.IsRemoveAssigneeAllowed, "explicit false IsRemoveAssigneeAllowed must persist")
+		assert.False(t, node.IsManualCCAllowed, "explicit false IsManualCCAllowed must persist")
+	})
 }
 
 func TestHandleNodeDataApplyTo(t *testing.T) {
@@ -130,7 +164,7 @@ func TestHandleNodeDataDefaultsApprovalMethodAndPassRule(t *testing.T) {
 		// defaults still apply (only ApprovalMethod and PassRule are defaulted).
 		data := &approval.HandleNodeData{
 			BaseNodeData: approval.BaseNodeData{Name: "H"},
-			TaskNodeData: approval.TaskNodeData{ExecutionType: approval.ExecutionAuto},
+			TaskNodeData: approval.TaskNodeData{ExecutionType: approval.ExecutionAutoPass},
 		}
 		node := newFreshNode(approval.NodeHandle)
 		data.ApplyTo(node)
@@ -139,7 +173,7 @@ func TestHandleNodeDataDefaultsApprovalMethodAndPassRule(t *testing.T) {
 			"Default ApprovalMethod should be applied regardless of other fields")
 		assert.Equal(t, approval.PassAny, node.PassRule,
 			"Default PassRule should be applied regardless of other fields")
-		assert.Equal(t, approval.ExecutionAuto, node.ExecutionType,
+		assert.Equal(t, approval.ExecutionAutoPass, node.ExecutionType,
 			"ExecutionType from TaskNodeData should be propagated")
 	})
 }

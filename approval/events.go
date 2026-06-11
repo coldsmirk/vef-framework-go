@@ -67,13 +67,13 @@ const (
 	EventTypeInstanceResubmitted   = "approval.instance.resubmitted"
 	EventTypeInstanceBindingFailed = "approval.instance.binding_failed"
 
-	EventTypeNodeEntered    = "approval.node.entered"
 	EventTypeNodeAutoPassed = "approval.node.auto_passed"
 
 	EventTypeTaskCreated         = "approval.task.created"
 	EventTypeTaskApproved        = "approval.task.approved"
 	EventTypeTaskHandled         = "approval.task.handled"
 	EventTypeTaskRejected        = "approval.task.rejected"
+	EventTypeTaskCanceled        = "approval.task.canceled"
 	EventTypeTaskTransferred     = "approval.task.transferred"
 	EventTypeTaskReassigned      = "approval.task.reassigned"
 	EventTypeTaskTimedOut        = "approval.task.timed_out"

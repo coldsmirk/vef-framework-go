@@ -227,9 +227,12 @@ func (*FormFieldAssigneeResolver) Resolve(ctx context.Context, rc *ResolveContex
 	case nil:
 		return []approval.ResolvedAssignee{}, nil
 	case string:
+		// A blank value means the applicant left the field empty — same as
+		// an absent key. Resolve to no assignees so the node's
+		// EmptyAssigneeAction decides, instead of failing the whole step.
 		userID := strings.TrimSpace(v)
 		if userID == "" {
-			return nil, ErrFormFieldValueEmpty
+			return []approval.ResolvedAssignee{}, nil
 		}
 
 		ids = []string{userID}

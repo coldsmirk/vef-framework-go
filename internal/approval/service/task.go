@@ -291,35 +291,73 @@ func computeTaskDeadline(node *approval.FlowNode) *timex.DateTime {
 	return shared.ComputeTaskDeadline(node.TimeoutHours)
 }
 
-// CancelRemainingTasks cancels all pending/waiting tasks on the given node.
-func (*TaskService) CancelRemainingTasks(ctx context.Context, db orm.DB, instanceID, nodeID string) error {
-	_, err := db.NewUpdate().
-		Model((*approval.Task)(nil)).
-		Set("status", approval.TaskCanceled).
-		Set("finished_at", timex.Now()).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", instanceID).
-				Equals("node_id", nodeID).
-				In("status", cancelableTaskStatuses)
-		}).
-		Exec(ctx)
-
-	return err
+// CancelRemainingTasks cancels all pending/waiting tasks on the given node
+// and returns one TaskCanceledEvent per canceled task, so assignees whose
+// decision is no longer needed can have their pending to-dos retracted.
+// Callers attach the events to their own event flow (the caller holds the
+// instance row lock, which serializes this two-step read-then-update against
+// every other task mutation path).
+func (s *TaskService) CancelRemainingTasks(ctx context.Context, db orm.DB, instanceID, nodeID, reason string) ([]approval.DomainEvent, error) {
+	return s.cancelActiveTasks(ctx, db, reason, func(cb orm.ConditionBuilder) {
+		cb.Equals("instance_id", instanceID).
+			Equals("node_id", nodeID).
+			In("status", cancelableTaskStatuses)
+	})
 }
 
-// CancelInstanceTasks cancels all pending/waiting tasks for an entire instance.
-func (*TaskService) CancelInstanceTasks(ctx context.Context, db orm.DB, instanceID string) error {
-	_, err := db.NewUpdate().
+// CancelInstanceTasks cancels all pending/waiting tasks for an entire
+// instance, returning the corresponding TaskCanceledEvents.
+func (s *TaskService) CancelInstanceTasks(ctx context.Context, db orm.DB, instanceID, reason string) ([]approval.DomainEvent, error) {
+	return s.cancelActiveTasks(ctx, db, reason, func(cb orm.ConditionBuilder) {
+		cb.Equals("instance_id", instanceID).
+			In("status", cancelableTaskStatuses)
+	})
+}
+
+// cancelActiveTasks loads the tasks matching filter, marks them canceled, and
+// returns their cancellation events in load order.
+func (*TaskService) cancelActiveTasks(ctx context.Context, db orm.DB, reason string, filter func(orm.ConditionBuilder)) ([]approval.DomainEvent, error) {
+	var tasks []approval.Task
+
+	if err := db.NewSelect().
+		Model(&tasks).
+		Select("id", "tenant_id", "instance_id", "node_id", "assignee_id", "assignee_name").
+		Where(filter).
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("load tasks to cancel: %w", err)
+	}
+
+	if len(tasks) == 0 {
+		return nil, nil
+	}
+
+	taskIDs := make([]string, len(tasks))
+	for i := range tasks {
+		taskIDs[i] = tasks[i].ID
+	}
+
+	if _, err := db.NewUpdate().
 		Model((*approval.Task)(nil)).
 		Set("status", approval.TaskCanceled).
 		Set("finished_at", timex.Now()).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", instanceID).
+			cb.In("id", taskIDs).
 				In("status", cancelableTaskStatuses)
 		}).
-		Exec(ctx)
+		Exec(ctx); err != nil {
+		return nil, fmt.Errorf("cancel tasks: %w", err)
+	}
 
-	return err
+	events := make([]approval.DomainEvent, len(tasks))
+	for i := range tasks {
+		task := &tasks[i]
+		events[i] = approval.NewTaskCanceledEvent(
+			task.ID, task.TenantID, task.InstanceID, task.NodeID,
+			task.AssigneeID, task.AssigneeName, reason,
+		)
+	}
+
+	return events, nil
 }
 
 // IsAuthorizedForNodeOperation reports whether the operator may perform

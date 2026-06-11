@@ -10,6 +10,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
+	"github.com/coldsmirk/vef-framework-go/internal/expression/zen"
 )
 
 // --- Test Helpers ---
@@ -398,7 +399,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 		nil,
 		[]approval.ConditionEvaluator{
 			strategy.NewFieldConditionEvaluator(),
-			strategy.NewExpressionConditionEvaluator(),
+			strategy.NewExpressionConditionEvaluator(zen.New()),
 		},
 	)
 
@@ -493,7 +494,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 				name     string
 				formData map[string]any
 				subject  string
-				operator string
+				operator approval.ConditionOperator
 				value    any
 			}{
 				{"LessThan", map[string]any{"amount": float64(100)}, "amount", "lt", float64(200)},
@@ -570,7 +571,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 
 		t.Run("ComplexExpression", func(t *testing.T) {
 			conditions := []approval.Condition{
-				{Kind: approval.ConditionExpression, Expression: `formData["amount"] > 100 && applicantId != "admin"`},
+				{Kind: approval.ConditionExpression, Expression: `formData.amount > 100 and applicantId != "admin"`},
 			}
 			evalCtx := &approval.EvaluationContext{FormData: approval.NewFormData(map[string]any{"amount": float64(500)}), ApplicantID: "user1"}
 

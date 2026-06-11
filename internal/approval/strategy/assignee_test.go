@@ -312,6 +312,8 @@ func TestFormFieldAssigneeResolver(t *testing.T) {
 		{"AnySliceWithEmptyElement", "approvers", approval.FormData{"approvers": []any{"u1", "", "u2"}}, []string{"u1", "u2"}},
 		{"AnySliceWithWhitespaceElement", "approvers", approval.FormData{"approvers": []any{" u1 ", " ", "u2"}}, []string{"u1", "u2"}},
 		{"NilValue", "missing", approval.FormData{}, nil},
+		{"EmptyStringValue", "approver", approval.FormData{"approver": ""}, nil},
+		{"WhitespaceStringValue", "approver", approval.FormData{"approver": "   "}, nil},
 	}
 
 	for _, tt := range successTests {
@@ -343,16 +345,6 @@ func TestFormFieldAssigneeResolver(t *testing.T) {
 			"WhitespaceFormFieldName",
 			&ResolveContext{FormField: new("   "), FormData: approval.FormData{"approver": "user1"}},
 			ErrFormFieldNameEmpty,
-		},
-		{
-			"EmptyStringValue",
-			&ResolveContext{FormField: new("approver"), FormData: approval.FormData{"approver": ""}},
-			ErrFormFieldValueEmpty,
-		},
-		{
-			"WhitespaceStringValue",
-			&ResolveContext{FormField: new("approver"), FormData: approval.FormData{"approver": "   "}},
-			ErrFormFieldValueEmpty,
 		},
 		{
 			"UnsupportedValueType",

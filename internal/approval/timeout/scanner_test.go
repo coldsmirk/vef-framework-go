@@ -44,7 +44,6 @@ func (s *ScannerTestSuite) SetupSuite() {
 		strategy.NewAllPassStrategy(),
 		strategy.NewOnePassStrategy(),
 		strategy.NewRatioPassStrategy(),
-		strategy.NewOneRejectStrategy(),
 	}
 	assigneeResolvers := []strategy.AssigneeResolver{
 		strategy.NewUserAssigneeResolver(),

@@ -48,7 +48,7 @@ func NewCreateFlowHandler(db orm.DB) *CreateFlowHandler {
 
 func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*approval.Flow, error) {
 	db := contextx.DB(ctx, h.db)
-	tenantID := lo.CoalesceOrEmpty(cmd.TenantID, "default")
+	tenantID := lo.CoalesceOrEmpty(cmd.TenantID, approval.DefaultTenantID)
 
 	if err := cmd.Caller.Authorize(tenantID); err != nil {
 		return nil, shared.ErrFlowNotFound

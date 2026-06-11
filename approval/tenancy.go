@@ -8,6 +8,10 @@ import (
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
+// DefaultTenantID is the tenant identifier used when a caller does not carry
+// an explicit tenant — the conventional single-tenant deployment value.
+const DefaultTenantID = "default"
+
 // SuperAdminRole is the role string that grants cross-tenant access to
 // admin queries and operations. Hosts assign this role to platform-level
 // operators that legitimately need to act across tenants (audit teams,

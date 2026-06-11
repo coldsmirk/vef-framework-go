@@ -112,6 +112,37 @@ func NewTaskRejectedEvent(taskID, tenantID, instanceID, nodeID, operatorID, opin
 
 func (*TaskRejectedEvent) EventType() string { return EventTypeTaskRejected }
 
+// TaskCanceledEvent fired when the engine cancels a task that no longer needs
+// a decision — its node completed through other votes, or the whole instance
+// was withdrawn, rolled back, or terminated. Subscribers use it to retract
+// pending to-do entries for the canceled assignee. Reason carries the
+// triggering operation.
+type TaskCanceledEvent struct {
+	TaskID       string         `json:"taskId"`
+	TenantID     string         `json:"tenantId"`
+	InstanceID   string         `json:"instanceId"`
+	NodeID       string         `json:"nodeId"`
+	AssigneeID   string         `json:"assigneeId"`
+	AssigneeName string         `json:"assigneeName"`
+	Reason       string         `json:"reason"`
+	OccurredTime timex.DateTime `json:"occurredTime"`
+}
+
+func NewTaskCanceledEvent(taskID, tenantID, instanceID, nodeID, assigneeID, assigneeName, reason string) *TaskCanceledEvent {
+	return &TaskCanceledEvent{
+		TaskID:       taskID,
+		TenantID:     tenantID,
+		InstanceID:   instanceID,
+		NodeID:       nodeID,
+		AssigneeID:   assigneeID,
+		AssigneeName: assigneeName,
+		Reason:       reason,
+		OccurredTime: timex.Now(),
+	}
+}
+
+func (*TaskCanceledEvent) EventType() string { return EventTypeTaskCanceled }
+
 // TaskTransferredEvent fired when a task is transferred.
 type TaskTransferredEvent struct {
 	TaskID       string         `json:"taskId"`

@@ -61,16 +61,21 @@ const (
 	NodeCC        NodeKind = "cc"        // CC node: sends notifications to specified users
 )
 
-// ExecutionType represents how a node is executed.
-// It determines whether the node requires manual intervention or can be processed automatically.
+// ExecutionType represents how a task node is executed.
+// It determines whether the node waits for human decisions or resolves itself
+// the moment the instance enters it.
 type ExecutionType string
 
 const (
-	ExecutionManual     ExecutionType = "manual"      // Manual: requires human intervention to process
-	ExecutionAuto       ExecutionType = "auto"        // Auto: automatically executed by the system
-	ExecutionAutoPass   ExecutionType = "auto_pass"   // AutoPass: automatically approved when no assignee is found
-	ExecutionAutoReject ExecutionType = "auto_reject" // AutoReject: automatically rejected when no assignee is found
+	ExecutionManual     ExecutionType = "manual"      // Manual: creates tasks and waits for assignees to act
+	ExecutionAutoPass   ExecutionType = "auto_pass"   // AutoPass: the node passes immediately on entry, no tasks are created
+	ExecutionAutoReject ExecutionType = "auto_reject" // AutoReject: the instance is rejected immediately on entry
 )
+
+// IsValid reports whether the execution type is one of the defined values.
+func (t ExecutionType) IsValid() bool {
+	return t == ExecutionManual || t == ExecutionAutoPass || t == ExecutionAutoReject
+}
 
 // ApprovalMethod represents the method of approval for a node with multiple assignees.
 // It defines how the approval decision is made when there are multiple approvers.
@@ -81,15 +86,24 @@ const (
 	ApprovalParallel   ApprovalMethod = "parallel"   // Parallel: approvers process simultaneously, decision based on consensus rules
 )
 
+// IsValid reports whether the approval method is one of the defined values.
+func (m ApprovalMethod) IsValid() bool {
+	return m == ApprovalSequential || m == ApprovalParallel
+}
+
 // PassRule represents the strategy for passing the node (for Parallel/Or methods).
 type PassRule string
 
 const (
-	PassAll       PassRule = "all"        // All assignees must approve
-	PassAny       PassRule = "any"        // At least one assignee must approve
-	PassRatio     PassRule = "ratio"      // A certain percentage of assignees must approve
-	PassAnyReject PassRule = "any_reject" // Any one rejection fails
+	PassAll   PassRule = "all"   // All assignees must approve; any rejection fails the node
+	PassAny   PassRule = "any"   // At least one assignee must approve
+	PassRatio PassRule = "ratio" // A certain percentage of assignees must approve
 )
+
+// IsValid reports whether the pass rule is one of the defined values.
+func (r PassRule) IsValid() bool {
+	return r == PassAll || r == PassAny || r == PassRatio
+}
 
 // EmptyAssigneeAction represents the action when no assignee is found.
 type EmptyAssigneeAction string
@@ -102,6 +116,17 @@ const (
 	EmptyAssigneeTransferSpecified EmptyAssigneeAction = "transfer_specified"
 )
 
+// IsValid reports whether the empty-assignee action is one of the defined values.
+func (a EmptyAssigneeAction) IsValid() bool {
+	switch a {
+	case EmptyAssigneeAutoPass, EmptyAssigneeTransferAdmin, EmptyAssigneeTransferSuperior,
+		EmptyAssigneeTransferApplicant, EmptyAssigneeTransferSpecified:
+		return true
+	default:
+		return false
+	}
+}
+
 // SameApplicantAction represents the action when the assignee is the same as the applicant.
 type SameApplicantAction string
 
@@ -110,6 +135,11 @@ const (
 	SameApplicantSelfApprove      SameApplicantAction = "self_approve"      // Default
 	SameApplicantTransferSuperior SameApplicantAction = "transfer_superior" // Transfer to superior
 )
+
+// IsValid reports whether the same-applicant action is one of the defined values.
+func (a SameApplicantAction) IsValid() bool {
+	return a == SameApplicantAutoPass || a == SameApplicantSelfApprove || a == SameApplicantTransferSuperior
+}
 
 // RollbackType represents the type of rollback allowed.
 type RollbackType string
@@ -122,13 +152,28 @@ const (
 	RollbackSpecified RollbackType = "specified" // To specified nodes
 )
 
+// IsValid reports whether the rollback type is one of the defined values.
+func (t RollbackType) IsValid() bool {
+	switch t {
+	case RollbackNone, RollbackPrevious, RollbackStart, RollbackAny, RollbackSpecified:
+		return true
+	default:
+		return false
+	}
+}
+
 // RollbackDataStrategy represents the strategy for handling form data during rollback.
 type RollbackDataStrategy string
 
 const (
 	RollbackDataClear RollbackDataStrategy = "clear" // Clear form data
-	RollbackDataKeep  RollbackDataStrategy = "keep"  // Keep history data
+	RollbackDataKeep  RollbackDataStrategy = "keep"  // Restore the form snapshot captured when the target node was first entered
 )
+
+// IsValid reports whether the rollback data strategy is one of the defined values.
+func (s RollbackDataStrategy) IsValid() bool {
+	return s == RollbackDataClear || s == RollbackDataKeep
+}
 
 var errInvalidAddAssigneeType = errors.New("invalid AddAssigneeType")
 
@@ -173,6 +218,11 @@ const (
 	ConsecutiveApproverAutoPass ConsecutiveApproverAction = "auto_pass"
 )
 
+// IsValid reports whether the consecutive-approver action is one of the defined values.
+func (a ConsecutiveApproverAction) IsValid() bool {
+	return a == ConsecutiveApproverNone || a == ConsecutiveApproverAutoPass
+}
+
 // AssigneeKind represents the kind of assignee.
 type AssigneeKind string
 
@@ -185,6 +235,17 @@ const (
 	AssigneeDepartmentLeader AssigneeKind = "department_leader" // Continuous multi-level supervisor
 	AssigneeFormField        AssigneeKind = "form_field"        // Based on form field
 )
+
+// IsValid reports whether the assignee kind is one of the defined values.
+func (k AssigneeKind) IsValid() bool {
+	switch k {
+	case AssigneeUser, AssigneeRole, AssigneeDepartment, AssigneeSelf,
+		AssigneeSuperior, AssigneeDepartmentLeader, AssigneeFormField:
+		return true
+	default:
+		return false
+	}
+}
 
 // InstanceStatus represents the status of a flow instance.
 type InstanceStatus string
@@ -239,6 +300,11 @@ const (
 	ConditionExpression ConditionKind = "expression" // Expression-based condition
 )
 
+// IsValid reports whether the condition kind is one of the defined values.
+func (k ConditionKind) IsValid() bool {
+	return k == ConditionField || k == ConditionExpression
+}
+
 // ActionType represents the type of action performed by an operator.
 type ActionType string
 
@@ -284,6 +350,11 @@ const (
 	CCTimingOnReject  CCTiming = "on_reject"  // OnReject: send CC only when rejected
 )
 
+// IsValid reports whether the CC timing is one of the defined values.
+func (t CCTiming) IsValid() bool {
+	return t == CCTimingAlways || t == CCTimingOnApprove || t == CCTimingOnReject
+}
+
 // FieldKind represents the kind of a form field.
 type FieldKind string
 
@@ -306,6 +377,17 @@ const (
 	TimeoutActionNotify        TimeoutAction = "notify"         // Send notification only
 	TimeoutActionTransferAdmin TimeoutAction = "transfer_admin" // Transfer to node admin
 )
+
+// IsValid reports whether the timeout action is one of the defined values.
+func (a TimeoutAction) IsValid() bool {
+	switch a {
+	case TimeoutActionNone, TimeoutActionAutoPass, TimeoutActionAutoReject,
+		TimeoutActionNotify, TimeoutActionTransferAdmin:
+		return true
+	default:
+		return false
+	}
+}
 
 // Permission represents the permission level.
 type Permission string

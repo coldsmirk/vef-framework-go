@@ -69,7 +69,8 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Uni
 		return cqrs.Unit{}, err
 	}
 
-	if err := h.taskSvc.CancelInstanceTasks(ctx, db, cmd.InstanceID); err != nil {
+	canceledEvents, err := h.taskSvc.CancelInstanceTasks(ctx, db, cmd.InstanceID, "申请已撤回，任务取消")
+	if err != nil {
 		return cqrs.Unit{}, fmt.Errorf("cancel tasks on withdraw: %w", err)
 	}
 
@@ -80,9 +81,9 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Uni
 
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
-	behavior.EventCollectorFromContext(ctx).Add(
+	behavior.EventCollectorFromContext(ctx).Add(append(canceledEvents,
 		approval.NewInstanceWithdrawnEvent(cmd.InstanceID, instance.TenantID, cmd.Operator.ID),
-	)
+	)...)
 
 	return cqrs.Unit{}, nil
 }

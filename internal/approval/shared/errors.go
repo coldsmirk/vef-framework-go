@@ -33,6 +33,7 @@ const (
 	ErrCodeInvalidRollbackTarget    = 40213
 	ErrCodeLastAssigneeRemoval      = 40214
 	ErrCodeInvalidTransferTarget    = 40215
+	ErrCodeNoUsersSpecified         = 40216
 
 	ErrCodeNoAssignee            = 40301
 	ErrCodeAssigneeResolveFailed = 40302

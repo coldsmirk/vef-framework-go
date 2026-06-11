@@ -126,27 +126,3 @@ func TestRatioPassStrategy(t *testing.T) {
 		})
 	}
 }
-
-// TestOneRejectStrategy tests one reject strategy scenarios.
-func TestOneRejectStrategy(t *testing.T) {
-	s := NewOneRejectStrategy()
-	assert.Equal(t, approval.PassAnyReject, s.Rule(), "Rule should be PassAnyReject")
-
-	tests := []struct {
-		name     string
-		ctx      approval.PassRuleContext
-		expected approval.PassRuleResult
-	}{
-		{"OneRejected", approval.PassRuleContext{ApprovedCount: 2, RejectedCount: 1, TotalCount: 3}, approval.PassRuleRejected},
-		{"AllApproved", approval.PassRuleContext{ApprovedCount: 3, RejectedCount: 0, TotalCount: 3}, approval.PassRulePassed},
-		{"PartialApproved", approval.PassRuleContext{ApprovedCount: 1, RejectedCount: 0, TotalCount: 3}, approval.PassRulePending},
-		{"EmptyTasks", approval.PassRuleContext{ApprovedCount: 0, RejectedCount: 0, TotalCount: 0}, approval.PassRulePending},
-		{"FirstRejected", approval.PassRuleContext{ApprovedCount: 0, RejectedCount: 1, TotalCount: 3}, approval.PassRuleRejected},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, s.Evaluate(tt.ctx), "Evaluate result should match expected")
-		})
-	}
-}

@@ -7,7 +7,9 @@ func NewAllPassStrategy() approval.PassRuleStrategy {
 	return new(AllPassStrategy)
 }
 
-// AllPassStrategy requires all assignees to approve.
+// AllPassStrategy requires all assignees to approve; any single rejection
+// fails the node, so "everyone must agree" and "one veto rejects" are the
+// same rule under this strategy.
 type AllPassStrategy struct{}
 
 func (*AllPassStrategy) Rule() approval.PassRule { return approval.PassAll }
@@ -69,33 +71,6 @@ func (*RatioPassStrategy) Evaluate(ctx approval.PassRuleContext) approval.PassRu
 	maxRatio := float64(ctx.TotalCount-ctx.RejectedCount) / float64(ctx.TotalCount) * 100.0
 	if maxRatio < ctx.PassRatio {
 		return approval.PassRuleRejected
-	}
-
-	return approval.PassRulePending
-}
-
-// NewOneRejectStrategy creates a new OneRejectStrategy.
-func NewOneRejectStrategy() approval.PassRuleStrategy {
-	return new(OneRejectStrategy)
-}
-
-// OneRejectStrategy fails when any assignee rejects (veto power).
-// Note: the Evaluate logic is identical to AllPassStrategy because both strategies
-// share the same semantics under the current PassRuleContext model — any rejection
-// causes failure, and all must approve for success. They are kept separate as distinct
-// PassRule enum values so they can diverge if PassRuleContext is extended in the future
-// (e.g., with an "abstain" status).
-type OneRejectStrategy struct{}
-
-func (*OneRejectStrategy) Rule() approval.PassRule { return approval.PassAnyReject }
-
-func (*OneRejectStrategy) Evaluate(ctx approval.PassRuleContext) approval.PassRuleResult {
-	if ctx.RejectedCount > 0 {
-		return approval.PassRuleRejected
-	}
-
-	if ctx.ApprovedCount == ctx.TotalCount && ctx.TotalCount > 0 {
-		return approval.PassRulePassed
 	}
 
 	return approval.PassRulePending

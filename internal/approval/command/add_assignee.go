@@ -69,7 +69,7 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 
 	userIDs := shared.NormalizeUniqueIDs(cmd.UserIDs)
 	if len(userIDs) == 0 {
-		return cqrs.Unit{}, nil
+		return cqrs.Unit{}, shared.ErrNoUsersSpecified
 	}
 
 	var nodeTasks []approval.Task

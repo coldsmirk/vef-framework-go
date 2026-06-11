@@ -7,12 +7,85 @@ import (
 	collections "github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
+
+// Audit reasons stamped on engine-initiated decisions. User-facing text
+// follows the framework's default language, matching the timeout scanner's
+// system-action opinions.
+const (
+	autoPassReasonExecutionType       = "节点执行类型为自动通过"
+	autoRejectReasonExecutionType     = "节点执行类型为自动拒绝"
+	autoPassReasonEmptyAssignee       = "无审批人，按节点配置自动通过"
+	autoPassReasonSameApplicant       = "审批人与发起人相同，按节点配置自动通过"
+	autoPassReasonConsecutiveApprover = "审批人在上一节点已通过，自动通过"
+)
+
+// resolveAutoExecution short-circuits task nodes whose ExecutionType decides
+// the outcome without human input. AutoPass advances past the node and emits
+// NodeAutoPassedEvent so timelines render the skipped step; AutoReject
+// completes the instance as rejected (handleProcessResult publishes the
+// completion event). Both record a system action log when a request-scoped
+// collector is present.
+func resolveAutoExecution(ctx context.Context, pc *ProcessContext) (*ProcessResult, bool) {
+	switch pc.Node.ExecutionType {
+	case approval.ExecutionAutoPass:
+		recordSystemActionLog(ctx, pc, autoPassReasonExecutionType)
+
+		return &ProcessResult{
+			Action: NodeActionContinue,
+			Events: []approval.DomainEvent{
+				approval.NewNodeAutoPassedEvent(pc.Instance.ID, pc.Instance.TenantID, pc.Node.ID, autoPassReasonExecutionType),
+			},
+		}, true
+
+	case approval.ExecutionAutoReject:
+		recordSystemActionLog(ctx, pc, autoRejectReasonExecutionType)
+
+		return &ProcessResult{
+			Action:      NodeActionComplete,
+			FinalStatus: new(approval.InstanceRejected),
+		}, true
+
+	default:
+		return nil, false
+	}
+}
+
+// nodeAutoPassResult builds the standard "advance without tasks" result for
+// rule-driven automatic passes (empty assignee, same applicant), pairing the
+// advance with its audit event and system action log.
+func nodeAutoPassResult(ctx context.Context, pc *ProcessContext, reason string) *ProcessResult {
+	recordSystemActionLog(ctx, pc, reason)
+
+	return &ProcessResult{
+		Action: NodeActionContinue,
+		Events: []approval.DomainEvent{
+			approval.NewNodeAutoPassedEvent(pc.Instance.ID, pc.Instance.TenantID, pc.Node.ID, reason),
+		},
+	}
+}
+
+// recordSystemActionLog appends a system-operated ActionLog entry when the
+// request-scoped collector is available. Outside the CQRS pipeline (timeout
+// scanner driving the engine) the collector is absent and the corresponding
+// domain event remains the audit record.
+func recordSystemActionLog(ctx context.Context, pc *ProcessContext, reason string) {
+	collector, ok := behavior.TryActionLogCollectorFromContext(ctx)
+	if !ok {
+		return
+	}
+
+	entry := shared.SystemOperator.NewActionLog(pc.Instance.ID, approval.ActionExecute)
+	entry.NodeID = new(pc.Node.ID)
+	entry.Opinion = new(reason)
+	collector.Add(entry)
+}
 
 // saveFormSnapshot persists a snapshot of the form data at the current node.
 func saveFormSnapshot(ctx context.Context, pc *ProcessContext) error {
@@ -27,6 +100,29 @@ func saveFormSnapshot(ctx context.Context, pc *ProcessContext) error {
 	}
 
 	return nil
+}
+
+// resolveNodeAssignees is the single assignee-resolution pipeline for task
+// nodes: load configs, resolve to concrete users, deduplicate, apply
+// delegation, then deduplicate again. The second pass matters because two
+// distinct assignees may delegate to the same person; without it the
+// delegatee would receive duplicate tasks and double-count in pass-rule
+// totals. When delegations collide, the first delegation chain (by assignee
+// order) wins and keeps its delegator attribution.
+func resolveNodeAssignees(ctx context.Context, pc *ProcessContext) ([]approval.ResolvedAssignee, error) {
+	assignees, err := resolveAssignees(ctx, pc)
+	if err != nil {
+		return nil, err
+	}
+
+	assignees = deduplicateAssignees(assignees)
+
+	assignees, err = applyDelegation(ctx, pc.DB, pc.Instance.FlowID, assignees, pc.UserResolver)
+	if err != nil {
+		return nil, err
+	}
+
+	return deduplicateAssignees(assignees), nil
 }
 
 // resolveAssignees loads the node's assignee configs and resolves them to concrete users.
@@ -274,7 +370,7 @@ func createTasksForUsers(ctx context.Context, pc *ProcessContext, userIDs []stri
 func handleEmptyAssignee(ctx context.Context, pc *ProcessContext, assigneeService approval.AssigneeService) (*ProcessResult, error) {
 	switch pc.Node.EmptyAssigneeAction {
 	case approval.EmptyAssigneeAutoPass:
-		return &ProcessResult{Action: NodeActionContinue}, nil
+		return nodeAutoPassResult(ctx, pc, autoPassReasonEmptyAssignee), nil
 
 	case approval.EmptyAssigneeTransferAdmin:
 		return createTasksForUsers(ctx, pc, pc.Node.AdminUserIDs)

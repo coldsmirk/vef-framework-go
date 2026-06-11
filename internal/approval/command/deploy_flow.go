@@ -1,6 +1,7 @@
 package command
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -154,7 +155,10 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 					Kind:      ccDef.Kind,
 					IDs:       ccDef.IDs,
 					FormField: ccDef.FormField,
-					Timing:    ccDef.Timing,
+					// An omitted timing resolves to "always" at deploy, the
+					// designer's displayed default — the runtime timing match
+					// only fires for concrete values.
+					Timing: cmp.Or(ccDef.Timing, approval.DefaultCCTiming),
 				})
 			}
 		}

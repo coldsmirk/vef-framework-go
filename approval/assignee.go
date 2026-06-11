@@ -29,6 +29,17 @@ type AssigneeService interface {
 	GetRoleUsers(ctx context.Context, roleID string) ([]UserInfo, error)
 }
 
+// RoleMembershipChecker is an optional capability of AssigneeService. Hosts
+// that can answer "does this user hold this role" directly should implement
+// it: membership checks (e.g. role-based initiation permission) then skip
+// the GetRoleUsers full-listing fallback, which scales poorly for large
+// roles. Detected via type assertion, so existing implementations keep
+// working unchanged.
+type RoleMembershipChecker interface {
+	// UserHasRole reports whether the user currently holds the role.
+	UserHasRole(ctx context.Context, userID, roleID string) (bool, error)
+}
+
 // ResolvedAssignee represents a resolved assignee with optional delegation info.
 type ResolvedAssignee struct {
 	UserID        string

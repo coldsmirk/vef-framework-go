@@ -21,11 +21,15 @@ func NewHandleProcessor(assigneeService approval.AssigneeService) *HandleProcess
 func (*HandleProcessor) NodeKind() approval.NodeKind { return approval.NodeHandle }
 
 func (p *HandleProcessor) Process(ctx context.Context, pc *ProcessContext) (*ProcessResult, error) {
+	if result, handled := resolveAutoExecution(ctx, pc); handled {
+		return result, nil
+	}
+
 	if err := saveFormSnapshot(ctx, pc); err != nil {
 		return nil, err
 	}
 
-	assignees, err := p.resolveAndDeduplicateAssignees(ctx, pc)
+	assignees, err := resolveNodeAssignees(ctx, pc)
 	if err != nil {
 		return nil, err
 	}
@@ -34,24 +38,10 @@ func (p *HandleProcessor) Process(ctx context.Context, pc *ProcessContext) (*Pro
 		return handleEmptyAssignee(ctx, pc, p.assigneeService)
 	}
 
-	assignees, err = applyDelegation(ctx, pc.DB, pc.Instance.FlowID, assignees, pc.UserResolver)
-	if err != nil {
-		return nil, err
-	}
-
 	events, err := createTasksWithDelegation(ctx, pc, assignees)
 	if err != nil {
 		return nil, err
 	}
 
 	return &ProcessResult{Action: NodeActionWait, Events: events}, nil
-}
-
-func (*HandleProcessor) resolveAndDeduplicateAssignees(ctx context.Context, pc *ProcessContext) ([]approval.ResolvedAssignee, error) {
-	assignees, err := resolveAssignees(ctx, pc)
-	if err != nil {
-		return nil, err
-	}
-
-	return deduplicateAssignees(assignees), nil
 }

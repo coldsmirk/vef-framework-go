@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	collections "github.com/coldsmirk/go-collections"
 
@@ -95,10 +96,14 @@ func (*ValidationService) ValidateRollbackTarget(ctx context.Context, db orm.DB,
 		return shared.ErrInvalidRollbackTarget
 	}
 
-	switch currentNode.RollbackType {
-	case approval.RollbackNone:
+	// RollbackNone denies by configuration; an out-of-enum value (deploy
+	// normalization resolves omitted values, so this means corrupt data)
+	// must also deny rather than silently behaving like "any".
+	if currentNode.RollbackType == approval.RollbackNone || !currentNode.RollbackType.IsValid() {
 		return shared.ErrRollbackNotAllowed
+	}
 
+	switch currentNode.RollbackType {
 	case approval.RollbackPrevious:
 		count, err := db.NewSelect().
 			Model((*approval.FlowEdge)(nil)).
@@ -194,7 +199,7 @@ func validateFormField(field approval.FormFieldDefinition, value any) error {
 		return validateUploadField(field, value)
 
 	case approval.FieldNumber:
-		number, ok := toFloat64(value)
+		number, ok := shared.ToFloat64(value)
 		if !ok {
 			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMustBeNumber, map[string]any{"field": fieldLabel(field)}))
 		}
@@ -214,14 +219,19 @@ func validateStringRule(field approval.FormFieldDefinition, value string) error 
 		return nil
 	}
 
-	if field.Validation.MinLength != nil && len(value) < *field.Validation.MinLength {
+	// Length limits count characters, not bytes — the designer and form UI
+	// both express limits in characters, and multi-byte text (e.g. CJK) must
+	// validate identically on both sides.
+	length := utf8.RuneCountInString(value)
+
+	if field.Validation.MinLength != nil && length < *field.Validation.MinLength {
 		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMinLength, map[string]any{
 			"field": fieldLabel(field),
 			"min":   *field.Validation.MinLength,
 		}))
 	}
 
-	if field.Validation.MaxLength != nil && len(value) > *field.Validation.MaxLength {
+	if field.Validation.MaxLength != nil && length > *field.Validation.MaxLength {
 		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMaxLength, map[string]any{
 			"field": fieldLabel(field),
 			"max":   *field.Validation.MaxLength,
@@ -376,37 +386,6 @@ func isEmptyFormValue(value any) bool {
 	}
 }
 
-func toFloat64(value any) (float64, bool) {
-	switch typed := value.(type) {
-	case int:
-		return float64(typed), true
-	case int8:
-		return float64(typed), true
-	case int16:
-		return float64(typed), true
-	case int32:
-		return float64(typed), true
-	case int64:
-		return float64(typed), true
-	case uint:
-		return float64(typed), true
-	case uint8:
-		return float64(typed), true
-	case uint16:
-		return float64(typed), true
-	case uint32:
-		return float64(typed), true
-	case uint64:
-		return float64(typed), true
-	case float32:
-		return float64(typed), true
-	case float64:
-		return typed, true
-	default:
-		return 0, false
-	}
-}
-
 // encodedFormDataSize returns the byte length of the JSON-encoded form data
 // (0 for nil). It is the basis for both the absolute cap at start / resubmit
 // and the growth check on task actions.
@@ -482,6 +461,27 @@ func FilterEditableFormData(formData map[string]any, permissions map[string]appr
 	return filtered
 }
 
+// userHasRole answers role membership through the host's direct
+// RoleMembershipChecker capability when available, falling back to listing
+// the role's users — correct for any host, but linear in role size.
+func (s *ValidationService) userHasRole(ctx context.Context, userID, roleID string) (bool, error) {
+	if checker, ok := s.assigneeService.(approval.RoleMembershipChecker); ok {
+		member, err := checker.UserHasRole(ctx, userID, roleID)
+		if err != nil {
+			return false, fmt.Errorf("check role membership %s: %w", roleID, err)
+		}
+
+		return member, nil
+	}
+
+	users, err := s.assigneeService.GetRoleUsers(ctx, roleID)
+	if err != nil {
+		return false, fmt.Errorf("get users by role %s: %w", roleID, err)
+	}
+
+	return slices.ContainsFunc(users, func(u approval.UserInfo) bool { return u.ID == userID }), nil
+}
+
 // CheckInitiationPermission checks if the applicant is allowed to initiate the flow.
 func (s *ValidationService) CheckInitiationPermission(ctx context.Context, db orm.DB, flowID, applicantID string, applicantDepartmentID *string) (bool, error) {
 	var initiators []approval.FlowInitiator
@@ -522,12 +522,12 @@ func (s *ValidationService) CheckInitiationPermission(ctx context.Context, db or
 			}
 
 			for _, roleID := range initiator.IDs {
-				users, err := s.assigneeService.GetRoleUsers(ctx, roleID)
+				member, err := s.userHasRole(ctx, applicantID, roleID)
 				if err != nil {
-					return false, fmt.Errorf("get users by role %s: %w", roleID, err)
+					return false, err
 				}
 
-				if slices.ContainsFunc(users, func(u approval.UserInfo) bool { return u.ID == applicantID }) {
+				if member {
 					return true, nil
 				}
 			}

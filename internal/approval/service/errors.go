@@ -35,3 +35,32 @@ var (
 	errUnexpectedCondData = errors.New("unexpected condition node data type")
 	errInvalidCCKind      = errors.New("invalid cc kind")
 )
+
+// Node-configuration validation sentinels. Deploy-time guards that reject any
+// enum or dependent-field combination the engine could not execute, so a
+// misconfigured node fails loudly at deploy instead of stalling an instance
+// at runtime. Like the structural sentinels above, they surface wrapped in
+// shared.ErrInvalidFlowDesign.
+var (
+	errInvalidExecutionType       = errors.New("invalid execution type")
+	errInvalidApprovalMethod      = errors.New("invalid approval method")
+	errInvalidPassRule            = errors.New("invalid pass rule")
+	errPassRatioOutOfRange        = errors.New("pass ratio must be within (0, 1] as a fraction or (1, 100] as a percentage")
+	errInvalidEmptyAssigneeAction = errors.New("invalid empty-assignee action")
+	errInvalidSameApplicantAction = errors.New("invalid same-applicant action")
+	errInvalidConsecutiveAction   = errors.New("invalid consecutive-approver action")
+	errInvalidRollbackType        = errors.New("invalid rollback type")
+	errInvalidRollbackStrategy    = errors.New("invalid rollback data strategy")
+	errRollbackTargetsRequired    = errors.New("rollback type 'specified' requires rollbackTargetKeys")
+	errInvalidTimeoutAction       = errors.New("invalid timeout action")
+	errInvalidAssigneeKind        = errors.New("invalid assignee kind")
+	errAssigneeFormFieldRequired  = errors.New("assignee kind 'form_field' requires a form field name")
+	errInvalidCCTiming            = errors.New("invalid cc timing")
+	errCCFormFieldRequired        = errors.New("cc kind 'form_field' requires a form field name")
+	errFallbackUsersRequired      = errors.New("empty-assignee action 'transfer_specified' requires fallbackUserIds")
+	errAdminUsersRequired         = errors.New("empty-assignee action 'transfer_admin' requires adminUserIds")
+	errInvalidConditionKind       = errors.New("invalid condition kind")
+	errInvalidConditionOperator   = errors.New("invalid condition operator")
+	errConditionSubjectRequired   = errors.New("field condition requires a subject")
+	errConditionExprRequired      = errors.New("expression condition requires an expression")
+)

@@ -279,7 +279,6 @@ func buildTestEngine() *engine.FlowEngine {
 		strategy.NewAllPassStrategy(),
 		strategy.NewOnePassStrategy(),
 		strategy.NewRatioPassStrategy(),
-		strategy.NewOneRejectStrategy(),
 	}
 
 	assigneeResolvers := []strategy.AssigneeResolver{

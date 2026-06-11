@@ -39,3 +39,10 @@ func NewActionLogBehavior(db orm.DB) cqrs.Behavior {
 func ActionLogCollectorFromContext(ctx context.Context) *ActionLogCollector {
 	return collectorFromContextOrWarn[*approval.ActionLog](ctx, "ActionLogCollector", "ActionLogBehavior")
 }
+
+// TryActionLogCollectorFromContext returns the collector silently when
+// missing, for engine paths that may legitimately run outside the CQRS
+// pipeline (e.g. the timeout scanner) and fall back to event-only auditing.
+func TryActionLogCollectorFromContext(ctx context.Context) (*ActionLogCollector, bool) {
+	return TryCollectorFromContext[*approval.ActionLog](ctx)
+}

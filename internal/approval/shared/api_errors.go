@@ -51,6 +51,7 @@ var (
 	ErrInvalidRollbackTarget    = result.Err(i18n.T("approval_invalid_rollback_target"), result.WithCode(ErrCodeInvalidRollbackTarget))
 	ErrLastAssigneeRemoval      = result.Err(i18n.T("approval_last_assignee_removal"), result.WithCode(ErrCodeLastAssigneeRemoval))
 	ErrInvalidTransferTarget    = result.Err(i18n.T("approval_invalid_transfer_target"), result.WithCode(ErrCodeInvalidTransferTarget))
+	ErrNoUsersSpecified         = result.Err(i18n.T("approval_no_users_specified"), result.WithCode(ErrCodeNoUsersSpecified))
 
 	ErrNoAssignee            = result.Err(i18n.T("approval_no_assignee"), result.WithCode(ErrCodeNoAssignee))
 	ErrAssigneeResolveFailed = result.Err(i18n.T("approval_assignee_resolve_failed"), result.WithCode(ErrCodeAssigneeResolveFailed))

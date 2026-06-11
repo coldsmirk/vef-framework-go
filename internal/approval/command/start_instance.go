@@ -62,7 +62,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	db := contextx.DB(ctx, h.db)
 
 	var (
-		tenantID = lo.CoalesceOrEmpty(cmd.TenantID, "default")
+		tenantID = lo.CoalesceOrEmpty(cmd.TenantID, approval.DefaultTenantID)
 		flow     approval.Flow
 	)
 

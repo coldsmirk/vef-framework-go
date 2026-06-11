@@ -1,6 +1,8 @@
 package approval
 
 import (
+	"cmp"
+
 	"github.com/coldsmirk/vef-framework-go/decimal"
 )
 
@@ -12,8 +14,44 @@ type NodeData interface {
 	GetName() string
 	// GetDescription returns the optional description of the node.
 	GetDescription() *string
-	// ApplyTo applies this node data's configuration to the given FlowNode.
+	// ApplyTo applies this node data's configuration to the given FlowNode,
+	// resolving omitted optional fields to their documented defaults so the
+	// persisted node always carries complete, valid configuration.
 	ApplyTo(node *FlowNode)
+}
+
+// Designer-aligned defaults resolved by ApplyTo when a field is omitted from
+// the node data payload. The flow editor displays exactly these values for
+// untouched controls, so resolving them here keeps "what the designer shows"
+// and "what the engine runs" identical by construction.
+const (
+	DefaultExecutionType             = ExecutionManual
+	DefaultApprovalMethod            = ApprovalParallel
+	DefaultPassRule                  = PassAll
+	DefaultEmptyAssigneeAction       = EmptyAssigneeAutoPass
+	DefaultSameApplicantAction       = SameApplicantSelfApprove
+	DefaultConsecutiveApproverAction = ConsecutiveApproverNone
+	DefaultRollbackType              = RollbackPrevious
+	DefaultRollbackDataStrategy      = RollbackDataKeep
+	DefaultTimeoutAction             = TimeoutActionNone
+	DefaultCCTiming                  = CCTimingAlways
+
+	// Handle nodes default to sequential execution with the PassAny rule,
+	// since any handler completing the task is sufficient.
+	DefaultHandleApprovalMethod = ApprovalSequential
+	DefaultHandlePassRule       = PassAny
+)
+
+// orTrue resolves an omitted optional bool to true. Permission toggles
+// (rollback / transfer / add-assignee / remove-assignee / manual-CC) default
+// to allowed, which a plain bool cannot express — its zero value would
+// silently flip an omitted field to "forbidden".
+func orTrue(value *bool) bool {
+	if value == nil {
+		return true
+	}
+
+	return *value
 }
 
 // BaseNodeData contains common fields shared across all node data types.
@@ -37,13 +75,17 @@ func applyBaseNodeData(node *FlowNode, data *BaseNodeData) {
 // --- TaskNodeData ---
 
 // TaskNodeData contains fields shared by approval and handle nodes.
+//
+// IsTransferAllowed is a pointer because its default is true: an omitted
+// field must resolve to "allowed", which a plain bool zero value cannot
+// represent.
 type TaskNodeData struct {
 	Assignees                []AssigneeDefinition  `json:"assignees,omitempty"`
 	ExecutionType            ExecutionType         `json:"executionType,omitempty"`
 	EmptyAssigneeAction      EmptyAssigneeAction   `json:"emptyAssigneeAction,omitempty"`
 	FallbackUserIDs          []string              `json:"fallbackUserIds,omitempty"`
 	AdminUserIDs             []string              `json:"adminUserIds,omitempty"`
-	IsTransferAllowed        bool                  `json:"isTransferAllowed,omitempty"`
+	IsTransferAllowed        *bool                 `json:"isTransferAllowed,omitempty"`
 	IsOpinionRequired        bool                  `json:"isOpinionRequired,omitempty"`
 	TimeoutHours             int                   `json:"timeoutHours,omitempty"`
 	TimeoutAction            TimeoutAction         `json:"timeoutAction,omitempty"`
@@ -63,19 +105,19 @@ func (d *TaskNodeData) GetCCs() []CCDefinition {
 	return d.CCs
 }
 
-// applyTaskNodeData applies TaskNodeData fields to a FlowNode.
-// ApplyTo assumes the target node is freshly constructed (zero value) so all
-// fields are overwritten unconditionally — this is intentional full-snapshot
-// semantics, not a partial update.
+// applyTaskNodeData applies TaskNodeData fields to a FlowNode, resolving
+// omitted fields to their defaults. The target node is assumed to be freshly
+// constructed (zero value) so all fields are overwritten unconditionally —
+// this is intentional full-snapshot semantics, not a partial update.
 func applyTaskNodeData(node *FlowNode, data *TaskNodeData) {
-	node.ExecutionType = data.ExecutionType
-	node.EmptyAssigneeAction = data.EmptyAssigneeAction
+	node.ExecutionType = cmp.Or(data.ExecutionType, DefaultExecutionType)
+	node.EmptyAssigneeAction = cmp.Or(data.EmptyAssigneeAction, DefaultEmptyAssigneeAction)
 	node.FallbackUserIDs = data.FallbackUserIDs
 	node.AdminUserIDs = data.AdminUserIDs
-	node.IsTransferAllowed = data.IsTransferAllowed
+	node.IsTransferAllowed = orTrue(data.IsTransferAllowed)
 	node.IsOpinionRequired = data.IsOpinionRequired
 	node.TimeoutHours = data.TimeoutHours
-	node.TimeoutAction = data.TimeoutAction
+	node.TimeoutAction = cmp.Or(data.TimeoutAction, DefaultTimeoutAction)
 	node.TimeoutNotifyBeforeHours = data.TimeoutNotifyBeforeHours
 	node.UrgeCooldownMinutes = data.UrgeCooldownMinutes
 	node.FieldPermissions = data.FieldPermissions
@@ -114,6 +156,9 @@ func (d *EndNodeData) ApplyTo(node *FlowNode) {
 // --- ApprovalNodeData ---
 
 // ApprovalNodeData contains data specific to approval nodes.
+//
+// The Is*Allowed permission toggles are pointers because their default is
+// true; see TaskNodeData for the rationale.
 type ApprovalNodeData struct {
 	BaseNodeData
 	TaskNodeData
@@ -126,36 +171,37 @@ type ApprovalNodeData struct {
 	RollbackType              RollbackType              `json:"rollbackType,omitempty"`
 	RollbackDataStrategy      RollbackDataStrategy      `json:"rollbackDataStrategy,omitempty"`
 	RollbackTargetKeys        []string                  `json:"rollbackTargetKeys,omitempty"`
-	IsRollbackAllowed         bool                      `json:"isRollbackAllowed,omitempty"`
-	IsAddAssigneeAllowed      bool                      `json:"isAddAssigneeAllowed,omitempty"`
+	IsRollbackAllowed         *bool                     `json:"isRollbackAllowed,omitempty"`
+	IsAddAssigneeAllowed      *bool                     `json:"isAddAssigneeAllowed,omitempty"`
 	AddAssigneeTypes          []AddAssigneeType         `json:"addAssigneeTypes,omitempty"`
-	IsRemoveAssigneeAllowed   bool                      `json:"isRemoveAssigneeAllowed,omitempty"`
-	IsManualCCAllowed         bool                      `json:"isManualCcAllowed,omitempty"`
+	IsRemoveAssigneeAllowed   *bool                     `json:"isRemoveAssigneeAllowed,omitempty"`
+	IsManualCCAllowed         *bool                     `json:"isManualCcAllowed,omitempty"`
 }
 
 // Kind returns the node kind.
 func (*ApprovalNodeData) Kind() NodeKind { return NodeApproval }
 
-// ApplyTo applies approval node data to a FlowNode.
-// The target node is assumed to be freshly constructed (zero value); all fields
-// are overwritten unconditionally as a full-snapshot deploy operation.
+// ApplyTo applies approval node data to a FlowNode, resolving omitted fields
+// to the designer defaults. The target node is assumed to be freshly
+// constructed (zero value); all fields are overwritten unconditionally as a
+// full-snapshot deploy operation.
 func (d *ApprovalNodeData) ApplyTo(node *FlowNode) {
 	applyBaseNodeData(node, &d.BaseNodeData)
 	applyTaskNodeData(node, &d.TaskNodeData)
 
-	node.ApprovalMethod = d.ApprovalMethod
-	node.PassRule = d.PassRule
+	node.ApprovalMethod = cmp.Or(d.ApprovalMethod, DefaultApprovalMethod)
+	node.PassRule = cmp.Or(d.PassRule, DefaultPassRule)
 	node.PassRatio = d.PassRatio
-	node.SameApplicantAction = d.SameApplicantAction
-	node.ConsecutiveApproverAction = d.ConsecutiveApproverAction
-	node.RollbackType = d.RollbackType
-	node.RollbackDataStrategy = d.RollbackDataStrategy
+	node.SameApplicantAction = cmp.Or(d.SameApplicantAction, DefaultSameApplicantAction)
+	node.ConsecutiveApproverAction = cmp.Or(d.ConsecutiveApproverAction, DefaultConsecutiveApproverAction)
+	node.RollbackType = cmp.Or(d.RollbackType, DefaultRollbackType)
+	node.RollbackDataStrategy = cmp.Or(d.RollbackDataStrategy, DefaultRollbackDataStrategy)
 	node.RollbackTargetKeys = d.RollbackTargetKeys
-	node.IsRollbackAllowed = d.IsRollbackAllowed
-	node.IsAddAssigneeAllowed = d.IsAddAssigneeAllowed
+	node.IsRollbackAllowed = orTrue(d.IsRollbackAllowed)
+	node.IsAddAssigneeAllowed = orTrue(d.IsAddAssigneeAllowed)
 	node.AddAssigneeTypes = d.AddAssigneeTypes
-	node.IsRemoveAssigneeAllowed = d.IsRemoveAssigneeAllowed
-	node.IsManualCCAllowed = d.IsManualCCAllowed
+	node.IsRemoveAssigneeAllowed = orTrue(d.IsRemoveAssigneeAllowed)
+	node.IsManualCCAllowed = orTrue(d.IsManualCCAllowed)
 }
 
 // --- HandleNodeData ---
@@ -169,20 +215,14 @@ type HandleNodeData struct {
 // Kind returns the node kind.
 func (*HandleNodeData) Kind() NodeKind { return NodeHandle }
 
-// ApplyTo applies handle node data to a FlowNode.
-// Handle nodes default to sequential execution with PassAny rule,
-// since any handler completing the task is sufficient.
+// ApplyTo applies handle node data to a FlowNode, resolving omitted fields to
+// the handle defaults (sequential execution, PassAny rule).
 func (d *HandleNodeData) ApplyTo(node *FlowNode) {
 	applyBaseNodeData(node, &d.BaseNodeData)
 	applyTaskNodeData(node, &d.TaskNodeData)
 
-	if node.ApprovalMethod == "" {
-		node.ApprovalMethod = ApprovalSequential
-	}
-
-	if node.PassRule == "" {
-		node.PassRule = PassAny
-	}
+	node.ApprovalMethod = DefaultHandleApprovalMethod
+	node.PassRule = DefaultHandlePassRule
 }
 
 // --- CCNodeData ---

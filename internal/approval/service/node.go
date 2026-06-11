@@ -62,7 +62,8 @@ func (s *NodeService) HandleNodeCompletion(
 			return nil, fmt.Errorf("trigger node cc: %w", err)
 		}
 
-		if err := s.taskSvc.CancelRemainingTasks(ctx, db, instance.ID, node.ID); err != nil {
+		canceledEvents, err := s.taskSvc.CancelRemainingTasks(ctx, db, instance.ID, node.ID, "节点已通过，剩余任务无需处理")
+		if err != nil {
 			return nil, err
 		}
 
@@ -70,14 +71,15 @@ func (s *NodeService) HandleNodeCompletion(
 			return nil, fmt.Errorf("advance to next node: %w", err)
 		}
 
-		return nil, nil
+		return canceledEvents, nil
 
 	case approval.PassRuleRejected:
 		if err := s.TriggerNodeCC(ctx, db, instance, node, approval.PassRuleRejected); err != nil {
 			return nil, fmt.Errorf("trigger node cc: %w", err)
 		}
 
-		if err := s.taskSvc.CancelRemainingTasks(ctx, db, instance.ID, node.ID); err != nil {
+		canceledEvents, err := s.taskSvc.CancelRemainingTasks(ctx, db, instance.ID, node.ID, "节点已拒绝，剩余任务无需处理")
+		if err != nil {
 			return nil, err
 		}
 
@@ -91,9 +93,9 @@ func (s *NodeService) HandleNodeCompletion(
 			return nil, fmt.Errorf("apply rejection transition: %w", err)
 		}
 
-		return []approval.DomainEvent{
+		return append(canceledEvents,
 			approval.NewInstanceCompletedEvent(instance.ID, instance.TenantID, approval.InstanceRejected),
-		}, nil
+		), nil
 
 	default:
 		return nil, nil

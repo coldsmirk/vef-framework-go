@@ -4,56 +4,295 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
-
-	"github.com/expr-lang/expr"
-	"github.com/expr-lang/expr/vm"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/expression"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 )
 
-// NewFieldConditionEvaluator creates a new FieldConditionEvaluator.
+// Condition subjects resolved from the evaluation context instead of form data.
+const (
+	subjectApplicantID           = "applicantId"
+	subjectApplicantDepartmentID = "applicantDepartmentId"
+)
+
+// NewFieldConditionEvaluator creates the evaluator for structured field
+// conditions.
 func NewFieldConditionEvaluator() approval.ConditionEvaluator {
-	return &FieldConditionEvaluator{delegate: NewExpressionConditionEvaluator()}
+	return new(FieldConditionEvaluator)
 }
 
-// FieldConditionEvaluator evaluates field-based conditions by converting them to expressions
-// and delegating to ExpressionConditionEvaluator.
-type FieldConditionEvaluator struct {
-	delegate approval.ConditionEvaluator
-}
+// FieldConditionEvaluator evaluates structured field conditions natively in
+// Go. Field conditions are data, not code: comparing them directly keeps the
+// operator semantics typed per field kind (no string templating, no injection
+// surface, no expression-engine round-trip) and guarantees the operator set
+// stays in lockstep with the approval.ConditionOperator contract — adding an
+// operator there without handling it here fails loudly at evaluation.
+type FieldConditionEvaluator struct{}
 
 func (*FieldConditionEvaluator) Kind() approval.ConditionKind {
 	return approval.ConditionField
 }
 
-func (e *FieldConditionEvaluator) Evaluate(ctx context.Context, cond approval.Condition, ec *approval.EvaluationContext) (bool, error) {
-	expression := buildFieldExpression(cond)
+func (*FieldConditionEvaluator) Evaluate(_ context.Context, cond approval.Condition, ec *approval.EvaluationContext) (bool, error) {
+	subject := resolveSubjectValue(cond.Subject, ec)
 
-	return e.delegate.Evaluate(ctx, approval.Condition{Expression: expression}, ec)
+	result, err := compareCondition(cond.Operator, subject, cond.Value)
+	if err != nil {
+		return false, fmt.Errorf("field condition %q %s: %w", cond.Subject, cond.Operator, err)
+	}
+
+	return result, nil
 }
 
-// NewExpressionConditionEvaluator creates a new ExpressionConditionEvaluator.
-func NewExpressionConditionEvaluator() approval.ConditionEvaluator {
-	return new(ExpressionConditionEvaluator)
+// resolveSubjectValue maps a condition subject to its runtime value: the two
+// applicant attributes come from the evaluation context, everything else is a
+// form-data key.
+func resolveSubjectValue(subject string, ec *approval.EvaluationContext) any {
+	switch subject {
+	case subjectApplicantID:
+		return ec.ApplicantID
+	case subjectApplicantDepartmentID:
+		if ec.ApplicantDepartmentID == nil {
+			return nil
+		}
+
+		return *ec.ApplicantDepartmentID
+
+	default:
+		return ec.FormData.Get(subject)
+	}
 }
 
-// ExpressionConditionEvaluator evaluates approval conditions written in expr-lang syntax
-// (e.g. startsWith, ??"", contains). It deliberately uses expr-lang directly rather than
-// the framework's swappable expression.Engine, whose only current backend is Zen (CGO).
-// Routing approval evaluation through expression.Engine would force a CGO dependency into
-// every framework build and break pure-Go environments. Migrate to expression.Engine only
-// once a pure-Go backend is available. Compiled programs are cached by expression source
-// to avoid repeated parse+type-check costs across multiple condition evaluations.
+// compareCondition dispatches one operator over the subject/expected pair.
+// Operators that cannot apply to the runtime value type return an error
+// rather than silently evaluating to false: routing a request down the wrong
+// branch is a business incident, a failed evaluation is a visible one.
+func compareCondition(operator approval.ConditionOperator, subject, expected any) (bool, error) {
+	switch operator {
+	case approval.OperatorEquals:
+		return valuesEqual(subject, expected), nil
+	case approval.OperatorNotEquals:
+		return !valuesEqual(subject, expected), nil
+
+	case approval.OperatorGreater, approval.OperatorGreaterOrEq, approval.OperatorLess, approval.OperatorLessOrEq:
+		return compareOrdered(operator, subject, expected)
+
+	case approval.OperatorIn:
+		return valueInList(subject, expected)
+	case approval.OperatorNotIn:
+		contains, err := valueInList(subject, expected)
+		if err != nil {
+			return false, err
+		}
+
+		return !contains, nil
+
+	case approval.OperatorContains:
+		return subjectContains(subject, expected)
+	case approval.OperatorNotContains:
+		contains, err := subjectContains(subject, expected)
+		if err != nil {
+			return false, err
+		}
+
+		return !contains, nil
+
+	case approval.OperatorStartsWith:
+		return compareStringPair(subject, expected, strings.HasPrefix)
+	case approval.OperatorEndsWith:
+		return compareStringPair(subject, expected, strings.HasSuffix)
+
+	case approval.OperatorIsEmpty:
+		return isEmptyValue(subject), nil
+	case approval.OperatorIsNotEmpty:
+		return !isEmptyValue(subject), nil
+
+	default:
+		return false, fmt.Errorf("%w: %q", ErrUnsupportedOperator, operator)
+	}
+}
+
+// valuesEqual compares two values with numeric awareness: numbers compare by
+// value regardless of concrete type (json decodes to float64, Go callers may
+// supply ints), everything else falls back to its canonical string form —
+// the same normalization the form validator applies to select options.
+func valuesEqual(a, b any) bool {
+	if aNum, aOK := shared.ToFloat64(a); aOK {
+		if bNum, bOK := shared.ToFloat64(b); bOK {
+			return aNum == bNum
+		}
+	}
+
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+
+	return fmt.Sprint(a) == fmt.Sprint(b)
+}
+
+// compareOrdered applies an ordering operator. Two numbers compare
+// numerically; two strings compare lexicographically, which orders ISO-8601
+// dates chronologically. Mixed or unordered types are an error.
+func compareOrdered(operator approval.ConditionOperator, subject, expected any) (bool, error) {
+	if subjectNum, ok := shared.ToFloat64(subject); ok {
+		expectedNum, ok := shared.ToFloat64(expected)
+		if !ok {
+			return false, fmt.Errorf("%w: number vs %T", ErrIncomparableValues, expected)
+		}
+
+		return orderedResult(operator, subjectNum > expectedNum, subjectNum == expectedNum), nil
+	}
+
+	subjectStr, subjectOK := subject.(string)
+
+	expectedStr, expectedOK := expected.(string)
+	if subjectOK && expectedOK {
+		return orderedResult(operator, subjectStr > expectedStr, subjectStr == expectedStr), nil
+	}
+
+	return false, fmt.Errorf("%w: %T vs %T", ErrIncomparableValues, subject, expected)
+}
+
+// orderedResult folds a three-way comparison (greater / equal) into the
+// boolean answer for the given ordering operator.
+func orderedResult(operator approval.ConditionOperator, greater, equal bool) bool {
+	switch operator {
+	case approval.OperatorGreater:
+		return greater
+	case approval.OperatorGreaterOrEq:
+		return greater || equal
+	case approval.OperatorLess:
+		return !greater && !equal
+	case approval.OperatorLessOrEq:
+		return !greater
+	default:
+		return false
+	}
+}
+
+// valueInList reports whether subject equals any element of the expected
+// list. The designer always supplies a list for in / not_in; a non-list is a
+// configuration error.
+func valueInList(subject, expected any) (bool, error) {
+	list, err := toAnySlice(expected)
+	if err != nil {
+		return false, err
+	}
+
+	for _, item := range list {
+		if valuesEqual(subject, item) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// subjectContains implements the contains operator for both shapes the form
+// can produce: substring match on text fields, element match on multi-value
+// fields (multi-select, upload lists).
+func subjectContains(subject, expected any) (bool, error) {
+	switch typed := subject.(type) {
+	case nil:
+		return false, nil
+	case string:
+		expectedStr, ok := expected.(string)
+		if !ok {
+			return false, fmt.Errorf("%w: string contains %T", ErrIncomparableValues, expected)
+		}
+
+		return strings.Contains(typed, expectedStr), nil
+
+	default:
+		list, err := toAnySlice(subject)
+		if err != nil {
+			return false, fmt.Errorf("%w: contains on %T", ErrIncomparableValues, subject)
+		}
+
+		for _, item := range list {
+			if valuesEqual(item, expected) {
+				return true, nil
+			}
+		}
+
+		return false, nil
+	}
+}
+
+// compareStringPair applies a string predicate, requiring both sides to be
+// text.
+func compareStringPair(subject, expected any, predicate func(s, prefix string) bool) (bool, error) {
+	subjectStr, subjectOK := subject.(string)
+
+	expectedStr, expectedOK := expected.(string)
+	if !subjectOK || !expectedOK {
+		return false, fmt.Errorf("%w: %T vs %T", ErrIncomparableValues, subject, expected)
+	}
+
+	return predicate(subjectStr, expectedStr), nil
+}
+
+// isEmptyValue is the typed emptiness check behind is_empty / is_not_empty:
+// nil, blank text, and empty collections are empty; numbers and booleans
+// never are. This is deliberately total over all value types so the operator
+// is safe on every field kind the designer offers it for.
+func isEmptyValue(value any) bool {
+	switch typed := value.(type) {
+	case nil:
+		return true
+	case string:
+		return strings.TrimSpace(typed) == ""
+	case []any:
+		return len(typed) == 0
+	case []string:
+		return len(typed) == 0
+	case map[string]any:
+		return len(typed) == 0
+	default:
+		return false
+	}
+}
+
+// toAnySlice normalizes the two list shapes a JSON decoder or Go caller can
+// produce.
+func toAnySlice(value any) ([]any, error) {
+	switch typed := value.(type) {
+	case []any:
+		return typed, nil
+	case []string:
+		list := make([]any, len(typed))
+		for i, item := range typed {
+			list[i] = item
+		}
+
+		return list, nil
+
+	default:
+		return nil, fmt.Errorf("%w: expected a list, got %T", ErrIncomparableValues, value)
+	}
+}
+
+// NewExpressionConditionEvaluator creates the evaluator for free-form
+// expression conditions backed by the framework expression engine.
+func NewExpressionConditionEvaluator(engine expression.Engine) approval.ConditionEvaluator {
+	return &ExpressionConditionEvaluator{engine: engine}
+}
+
+// ExpressionConditionEvaluator evaluates expression conditions through the
+// framework's expression.Engine abstraction, so approval depends on the
+// engine contract rather than any concrete backend. The expression reads a
+// fixed environment: formData (the instance form), applicantId, and
+// applicantDepartmentId.
 type ExpressionConditionEvaluator struct {
-	cache sync.Map // key: string (expression source), value: *vm.Program
+	engine expression.Engine
 }
 
 func (*ExpressionConditionEvaluator) Kind() approval.ConditionKind {
 	return approval.ConditionExpression
 }
 
-func (e *ExpressionConditionEvaluator) Evaluate(_ context.Context, cond approval.Condition, ec *approval.EvaluationContext) (bool, error) {
+func (e *ExpressionConditionEvaluator) Evaluate(ctx context.Context, cond approval.Condition, ec *approval.EvaluationContext) (bool, error) {
 	var departmentID string
 	if ec.ApplicantDepartmentID != nil {
 		departmentID = *ec.ApplicantDepartmentID
@@ -65,114 +304,15 @@ func (e *ExpressionConditionEvaluator) Evaluate(_ context.Context, cond approval
 		"applicantDepartmentId": departmentID,
 	}
 
-	program, err := e.compile(cond.Expression, env)
+	value, err := e.engine.Evaluate(ctx, cond.Expression, env)
 	if err != nil {
-		return false, fmt.Errorf("compile expression: %w", err)
+		return false, fmt.Errorf("evaluate condition expression: %w", err)
 	}
 
-	result, err := expr.Run(program, env)
+	result, err := value.Bool()
 	if err != nil {
-		return false, fmt.Errorf("run expression: %w", err)
+		return false, fmt.Errorf("%w: %w", ErrExpressionReturnedNonBool, err)
 	}
 
-	boolResult, ok := result.(bool)
-	if !ok {
-		return false, fmt.Errorf("%w: %T", ErrExpressionReturnedNonBool, result)
-	}
-
-	return boolResult, nil
-}
-
-// compile returns the compiled program for the given expression, using the cache to avoid
-// repeated compilation. env is used only for type-checking on first compile.
-func (e *ExpressionConditionEvaluator) compile(source string, env map[string]any) (*vm.Program, error) {
-	if cached, ok := e.cache.Load(source); ok {
-		return cached.(*vm.Program), nil
-	}
-
-	program, err := expr.Compile(source, expr.Env(env), expr.AsBool())
-	if err != nil {
-		return nil, err
-	}
-
-	e.cache.Store(source, program)
-
-	return program, nil
-}
-
-// buildFieldExpression converts a structured field condition to an expr-lang expression string.
-func buildFieldExpression(cond approval.Condition) string {
-	subject := resolveSubjectExpr(cond.Subject)
-	rhs := formatExprValue(cond.Value)
-
-	switch cond.Operator {
-	case "eq":
-		return subject + " == " + rhs
-	case "ne":
-		return subject + " != " + rhs
-	case "gt":
-		return subject + " > " + rhs
-	case "gte":
-		return subject + " >= " + rhs
-	case "lt":
-		return subject + " < " + rhs
-	case "lte":
-		return subject + " <= " + rhs
-	case "in":
-		return subject + " in " + rhs
-	case "not_in":
-		return "not (" + subject + " in " + rhs + ")"
-	case "contains":
-		return subject + " contains " + rhs
-	case "not_contains":
-		return "not (" + subject + " contains " + rhs + ")"
-	case "starts_with":
-		return subject + " startsWith " + rhs
-	case "ends_with":
-		return subject + " endsWith " + rhs
-	case "is_empty":
-		return `len(` + subject + ` ?? "") == 0`
-	case "is_not_empty":
-		return `len(` + subject + ` ?? "") > 0`
-	default:
-		return "false"
-	}
-}
-
-// resolveSubjectExpr maps a condition subject to its expr-lang accessor.
-func resolveSubjectExpr(subject string) string {
-	switch subject {
-	case "applicantId", "applicantDepartmentId":
-		return subject
-	default:
-		return fmt.Sprintf(`formData["%s"]`, subject)
-	}
-}
-
-// formatExprValue converts a Go value to its expr-lang literal representation.
-func formatExprValue(v any) string {
-	switch val := v.(type) {
-	case nil:
-		return "nil"
-	case string:
-		return fmt.Sprintf("%q", val)
-	case []string:
-		parts := make([]string, len(val))
-		for i, s := range val {
-			parts[i] = fmt.Sprintf("%q", s)
-		}
-
-		return "[" + strings.Join(parts, ", ") + "]"
-
-	case []any:
-		parts := make([]string, len(val))
-		for i, item := range val {
-			parts[i] = formatExprValue(item)
-		}
-
-		return "[" + strings.Join(parts, ", ") + "]"
-
-	default:
-		return fmt.Sprint(val)
-	}
+	return result, nil
 }

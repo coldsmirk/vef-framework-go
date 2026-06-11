@@ -85,7 +85,8 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 		return cqrs.Unit{}, err
 	}
 
-	if err := h.taskSvc.CancelRemainingTasks(ctx, db, instance.ID, node.ID); err != nil {
+	canceledEvents, err := h.taskSvc.CancelRemainingTasks(ctx, db, instance.ID, node.ID, "节点被回退，剩余任务取消")
+	if err != nil {
 		return cqrs.Unit{}, err
 	}
 
@@ -107,7 +108,7 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 		return cqrs.Unit{}, fmt.Errorf("find target node: %w", err)
 	}
 
-	var events []approval.DomainEvent
+	events := canceledEvents
 
 	if targetNode.Kind == approval.NodeStart {
 		// Return to initiator: pause instance as returned. State machine
@@ -123,9 +124,9 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 			return cqrs.Unit{}, err
 		}
 
-		events = []approval.DomainEvent{
+		events = append(events,
 			approval.NewInstanceReturnedEvent(instance.ID, instance.TenantID, node.ID, targetNodeID, cmd.Operator.ID),
-		}
+		)
 	} else {
 		// Rollback to intermediate node: status stays running but
 		// form_data / current_node_id need to be persisted before the
@@ -143,9 +144,9 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 			return cqrs.Unit{}, fmt.Errorf("process rollback target node: %w", err)
 		}
 
-		events = []approval.DomainEvent{
+		events = append(events,
 			approval.NewInstanceRolledBackEvent(instance.ID, instance.TenantID, node.ID, targetNodeID, cmd.Operator.ID),
-		}
+		)
 	}
 
 	actionLog := h.taskSvc.BuildActionLog(

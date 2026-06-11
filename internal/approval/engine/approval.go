@@ -24,11 +24,15 @@ func NewApprovalProcessor(assigneeService approval.AssigneeService) *ApprovalPro
 func (*ApprovalProcessor) NodeKind() approval.NodeKind { return approval.NodeApproval }
 
 func (p *ApprovalProcessor) Process(ctx context.Context, pc *ProcessContext) (*ProcessResult, error) {
+	if result, handled := resolveAutoExecution(ctx, pc); handled {
+		return result, nil
+	}
+
 	if err := saveFormSnapshot(ctx, pc); err != nil {
 		return nil, err
 	}
 
-	assignees, err := p.resolveAndProcessAssignees(ctx, pc)
+	assignees, err := resolveNodeAssignees(ctx, pc)
 	if err != nil {
 		return nil, err
 	}
@@ -60,22 +64,6 @@ func (p *ApprovalProcessor) Process(ctx context.Context, pc *ProcessContext) (*P
 	}
 
 	return &ProcessResult{Action: NodeActionWait, Events: events}, nil
-}
-
-func (*ApprovalProcessor) resolveAndProcessAssignees(ctx context.Context, pc *ProcessContext) ([]approval.ResolvedAssignee, error) {
-	assignees, err := resolveAssignees(ctx, pc)
-	if err != nil {
-		return nil, err
-	}
-
-	assignees = deduplicateAssignees(assignees)
-
-	assignees, err = applyDelegation(ctx, pc.DB, pc.Instance.FlowID, assignees, pc.UserResolver)
-	if err != nil {
-		return nil, err
-	}
-
-	return assignees, nil
 }
 
 // createApprovalTasks creates tasks with sequential ordering support and
@@ -112,7 +100,7 @@ func (*ApprovalProcessor) createApprovalTasks(ctx context.Context, pc *ProcessCo
 func (p *ApprovalProcessor) handleSameApplicant(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) (*ProcessResult, error) {
 	switch pc.Node.SameApplicantAction {
 	case approval.SameApplicantAutoPass:
-		return &ProcessResult{Action: NodeActionContinue}, nil
+		return nodeAutoPassResult(ctx, pc, autoPassReasonSameApplicant), nil
 
 	case approval.SameApplicantTransferSuperior:
 		superiorInfo, err := getSuperior(ctx, p.assigneeService, pc.ApplicantID)
@@ -170,6 +158,8 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 	now := timex.Now()
 	autoPassedAny := false
 
+	var events []approval.DomainEvent
+
 	for i := range tasks {
 		task := &tasks[i]
 
@@ -208,6 +198,15 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 		}
 
 		autoPassedAny = true
+
+		// The pass happened without the approver acting, so it must leave the
+		// same audit trail a manual approval would: a task-approved event
+		// (system-operated) and an action log entry.
+		events = append(events, approval.NewTaskApprovedEvent(
+			task.ID, task.TenantID, pc.Instance.ID, pc.Node.ID,
+			shared.SystemOperator.ID, autoPassReasonConsecutiveApprover,
+		))
+		recordSystemActionLog(ctx, pc, autoPassReasonConsecutiveApprover)
 
 		// For sequential approval, activate the next waiting task.
 		// The outer loop will then check if this newly activated task
@@ -255,10 +254,10 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 	})
 
 	if allComplete {
-		return &ProcessResult{Action: NodeActionContinue}, nil
+		return &ProcessResult{Action: NodeActionContinue, Events: events}, nil
 	}
 
-	return &ProcessResult{Action: NodeActionWait}, nil
+	return &ProcessResult{Action: NodeActionWait, Events: events}, nil
 }
 
 func (*ApprovalProcessor) isSameApplicant(assignees []approval.ResolvedAssignee, applicantID string) bool {
