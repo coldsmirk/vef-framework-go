@@ -93,7 +93,7 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 
 	cooldownMinutes := node.UrgeCooldownMinutes
 	if cooldownMinutes <= 0 {
-		cooldownMinutes = 30
+		cooldownMinutes = approval.DefaultUrgeCooldownMinutes
 	}
 
 	cooldownSince := timex.Now().Add(-time.Duration(cooldownMinutes) * time.Minute)

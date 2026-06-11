@@ -40,6 +40,11 @@ const (
 	// since any handler completing the task is sufficient.
 	DefaultHandleApprovalMethod = ApprovalSequential
 	DefaultHandlePassRule       = PassAny
+
+	// DefaultUrgeCooldownMinutes is the urge cooldown applied when a node
+	// leaves UrgeCooldownMinutes at 0. The flow editor surfaces the same
+	// value in its placeholder text; keep the two in lockstep.
+	DefaultUrgeCooldownMinutes = 30
 )
 
 // orTrue resolves an omitted optional bool to true. Permission toggles
