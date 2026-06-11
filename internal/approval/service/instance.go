@@ -92,6 +92,9 @@ func (*InstanceService) ApplyRollbackFormData(
 	case approval.RollbackDataKeep:
 		var snapshot approval.FormSnapshot
 
+		// A node entered more than once (rollback, then advance again) has
+		// one snapshot per entry; the latest one reflects the state the
+		// approver actually saw last, so that is the one to restore.
 		err := db.NewSelect().
 			Model(&snapshot).
 			Select("form_data").
@@ -99,6 +102,8 @@ func (*InstanceService) ApplyRollbackFormData(
 				cb.Equals("instance_id", instance.ID).
 					Equals("node_id", targetNodeID)
 			}).
+			OrderByDesc("created_at").
+			Limit(1).
 			Scan(ctx)
 
 		switch {
