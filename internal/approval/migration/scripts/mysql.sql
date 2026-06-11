@@ -208,28 +208,6 @@ CREATE INDEX idx_apv_flow_edge__source_node_id ON apv_flow_edge(source_node_id);
 CREATE INDEX idx_apv_flow_edge__target_node_id ON apv_flow_edge(target_node_id);
 
 -- --------------------------------------------------------------------------------
--- Form Field Definition
--- --------------------------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS apv_flow_form_field (
-    id VARCHAR(32) NOT NULL COMMENT 'ID',
-    flow_version_id VARCHAR(32) NOT NULL COMMENT 'Version',
-    name VARCHAR(64) NOT NULL COMMENT 'Name',
-    kind VARCHAR(32) NOT NULL COMMENT 'Kind',
-    label VARCHAR(128) NOT NULL COMMENT 'Label',
-    placeholder VARCHAR(256) COMMENT 'Placeholder',
-    default_value TEXT COMMENT 'Default',
-    is_required BOOLEAN NOT NULL DEFAULT false COMMENT 'Required',
-    is_readonly BOOLEAN NOT NULL DEFAULT false COMMENT 'Readonly',
-    validation JSON COMMENT 'Validation',
-    sort_order INTEGER NOT NULL DEFAULT 0 COMMENT 'Sort',
-    meta JSON COMMENT 'Meta',
-    CONSTRAINT pk_apv_flow_form_field PRIMARY KEY (id),
-    CONSTRAINT uk_apv_flow_form_field__flow_version_id_name UNIQUE (flow_version_id, name),
-    CONSTRAINT fk_apv_flow_form_field__flow_version_id FOREIGN KEY (flow_version_id) REFERENCES apv_flow_version(id) ON DELETE CASCADE ON UPDATE CASCADE
-) COMMENT 'Form Field';
-
--- --------------------------------------------------------------------------------
 -- Runtime Tables
 -- --------------------------------------------------------------------------------
 

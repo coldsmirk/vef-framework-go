@@ -23,7 +23,6 @@ var expectedTables = []string{
 	"apv_flow_node_assignee",
 	"apv_flow_node_cc",
 	"apv_flow_edge",
-	"apv_flow_form_field",
 	"apv_instance",
 	"apv_task",
 	"apv_action_log",
@@ -34,12 +33,15 @@ var expectedTables = []string{
 }
 
 // obsoleteTables lists tables that earlier versions of the approval
-// module created but no longer uses. Migrate drops them unconditionally
-// so upgrades clean up after the framework-level outbox replaced
-// per-module bookkeeping.
+// module created but no longer uses. Migrate drops them unconditionally:
+// apv_event_outbox / apv_parallel_record were replaced by the
+// framework-level outbox, and apv_flow_form_field was dead DDL — form
+// schemas live in apv_flow_version.form_schema (JSONB) and no code ever
+// read or wrote the table.
 var obsoleteTables = []string{
 	"apv_event_outbox",
 	"apv_parallel_record",
+	"apv_flow_form_field",
 }
 
 // Migrate runs the approval module's DDL migration for the given

@@ -203,27 +203,6 @@ CREATE INDEX IF NOT EXISTS idx_apv_flow_edge__source_node_id ON apv_flow_edge(so
 CREATE INDEX IF NOT EXISTS idx_apv_flow_edge__target_node_id ON apv_flow_edge(target_node_id);
 
 --------------------------------------------------------------------------------
--- Form Field Definition
---------------------------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS apv_flow_form_field (
-    id VARCHAR(32) CONSTRAINT pk_apv_flow_form_field PRIMARY KEY,
-    flow_version_id VARCHAR(32) NOT NULL,
-    name VARCHAR(64) NOT NULL,
-    kind VARCHAR(32) NOT NULL,
-    label VARCHAR(128) NOT NULL,
-    placeholder VARCHAR(256),
-    default_value TEXT,
-    is_required BOOLEAN NOT NULL DEFAULT 0,
-    is_readonly BOOLEAN NOT NULL DEFAULT 0,
-    validation TEXT,
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    meta TEXT,
-    CONSTRAINT uk_apv_flow_form_field__flow_version_id_name UNIQUE (flow_version_id, name),
-    CONSTRAINT fk_apv_flow_form_field__flow_version_id FOREIGN KEY (flow_version_id) REFERENCES apv_flow_version(id) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
---------------------------------------------------------------------------------
 -- Runtime Tables
 --------------------------------------------------------------------------------
 
