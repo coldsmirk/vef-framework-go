@@ -17,11 +17,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
-var (
-	errNilDeadline        = errors.New("task has nil deadline in timeout notify")
-	errNoAdminUsers       = errors.New("node configured TimeoutActionTransferAdmin but has no admin users")
-	errAllAdminsHaveTasks = errors.New("all admin users already have active tasks")
-)
+var errNilDeadline = errors.New("task has nil deadline in timeout notify")
 
 // Scanner scans for timed-out tasks and processes them.
 type Scanner struct {
@@ -32,9 +28,6 @@ type Scanner struct {
 	userResolver approval.UserInfoResolver
 	cfg          *config.ApprovalConfig
 }
-
-// systemOperator is the operator identity used for system-initiated actions.
-var systemOperator = approval.OperatorInfo{ID: "system", Name: "系统"}
 
 // NewScanner creates a new timeout scanner.
 func NewScanner(
@@ -219,11 +212,11 @@ func (s *Scanner) autoFinishTask(
 	events := make([]approval.DomainEvent, 0, 2)
 	if status == approval.TaskApproved {
 		events = append(events,
-			approval.NewTaskApprovedEvent(task.ID, task.TenantID, task.InstanceID, node.ID, systemOperator.ID, "任务处理超时，系统自动通过"),
+			approval.NewTaskApprovedEvent(task.ID, task.TenantID, task.InstanceID, node.ID, shared.SystemOperator.ID, "任务处理超时，系统自动通过"),
 		)
 	} else {
 		events = append(events,
-			approval.NewTaskRejectedEvent(task.ID, task.TenantID, task.InstanceID, node.ID, systemOperator.ID, "任务处理超时，系统自动驳回"),
+			approval.NewTaskRejectedEvent(task.ID, task.TenantID, task.InstanceID, node.ID, shared.SystemOperator.ID, "任务处理超时，系统自动驳回"),
 		)
 	}
 
@@ -238,7 +231,7 @@ func (s *Scanner) autoFinishTask(
 	// finished_at change through the state machine — no extra UPDATE is
 	// required here. autoFinishTask never touches form_data.
 
-	actionLog := systemOperator.NewActionLog(task.InstanceID, actionType)
+	actionLog := shared.SystemOperator.NewActionLog(task.InstanceID, actionType)
 	actionLog.NodeID = new(task.NodeID)
 	actionLog.TaskID = new(task.ID)
 
@@ -253,23 +246,24 @@ func (s *Scanner) autoFinishTask(
 }
 
 // transferToAdmin transfers a timed-out task to the node's admin users.
+//
+// Unresolvable transfers — no admins configured, or every admin already
+// holding an active task — degrade to a timeout notification instead of
+// failing: returning an error would roll back the is_timeout marker and turn
+// every scanner tick into a fresh, identical failure. The task stays pending
+// with its timeout flagged, and the emitted TaskTimedOutEvent gives operators
+// the signal to intervene.
 func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval.Task, node *approval.FlowNode) ([]approval.DomainEvent, error) {
 	targetAdminIDs := shared.NormalizeUniqueIDs(node.AdminUserIDs)
 	if len(targetAdminIDs) == 0 {
-		return nil, fmt.Errorf("%w: node %q", errNoAdminUsers, node.Key)
+		logger.Warnf("Node %q configured transfer_admin timeout but has no admin users; marking task %s timeout only", node.Key, task.ID)
+
+		return s.recordTimeoutNotify(ctx, tx, task)
 	}
 
-	// Finish the original task as transferred via the state machine so the
-	// transition is validated and the optimistic-lock UPDATE is consistent
-	// with every other finish path.
-	if err := s.taskSvc.FinishTask(ctx, tx, task, approval.TaskTransferred); err != nil {
-		return nil, fmt.Errorf("finish transferred task: %w", err)
-	}
-
-	events := make([]approval.DomainEvent, 0, len(targetAdminIDs)*2)
-	pendingDeadline := shared.ComputeTaskDeadline(node.TimeoutHours)
-
-	// Filter out admins who already have active tasks on this node.
+	// Resolve eligible admins (those without an active task on this node)
+	// before finishing the original task, so a fully-occupied admin pool
+	// degrades cleanly while the task is still pending.
 	var existingAssigneeIDs []string
 	if err := tx.NewSelect().
 		Model((*approval.Task)(nil)).
@@ -294,8 +288,20 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 	}
 
 	if len(eligibleAdminIDs) == 0 {
-		return nil, fmt.Errorf("%w: node %q", errAllAdminsHaveTasks, node.Key)
+		logger.Warnf("All admin users of node %q already hold active tasks; marking task %s timeout only", node.Key, task.ID)
+
+		return s.recordTimeoutNotify(ctx, tx, task)
 	}
+
+	// Finish the original task as transferred via the state machine so the
+	// transition is validated and the optimistic-lock UPDATE is consistent
+	// with every other finish path.
+	if err := s.taskSvc.FinishTask(ctx, tx, task, approval.TaskTransferred); err != nil {
+		return nil, fmt.Errorf("finish transferred task: %w", err)
+	}
+
+	events := make([]approval.DomainEvent, 0, len(eligibleAdminIDs)*2)
+	pendingDeadline := shared.ComputeTaskDeadline(node.TimeoutHours)
 
 	adminNames := shared.ResolveUserNameMapSilent(ctx, s.userResolver, eligibleAdminIDs)
 
@@ -355,7 +361,7 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 			pendingDeadline,
 		))
 
-		actionLog := systemOperator.NewActionLog(task.InstanceID, approval.ActionTransfer)
+		actionLog := shared.SystemOperator.NewActionLog(task.InstanceID, approval.ActionTransfer)
 		actionLog.NodeID = new(task.NodeID)
 		actionLog.TaskID = new(task.ID)
 		actionLog.TransferToID = new(adminID)
