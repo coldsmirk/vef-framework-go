@@ -243,6 +243,51 @@ func (s *ScannerTestSuite) TestAutoPassTimeoutShouldAdvanceFlow() {
 	s.Assert().Equal(approval.InstanceApproved, updatedInstance.Status, "Instance should advance to approved after timeout auto-pass")
 }
 
+func (s *ScannerTestSuite) TestAutoPassTimeoutOnHandleNodeShouldFinishAsHandled() {
+	instance, task := s.createTimeoutScenario(approval.TimeoutActionAutoPass)
+
+	// Re-kind the task node to handle: a timed-out handle task must finish
+	// with the same semantics a human completion would produce — "handled",
+	// a task.handled event, and a handle action log — never "approved".
+	_, err := s.db.NewUpdate().
+		Model((*approval.FlowNode)(nil)).
+		Set("kind", approval.NodeHandle).
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(task.NodeID) }).
+		Exec(s.ctx)
+	s.Require().NoError(err, "Should re-kind task node to handle")
+
+	s.scanner.ScanTimeouts(s.ctx)
+
+	var updatedTask approval.Task
+
+	updatedTask.ID = task.ID
+	s.Require().NoError(
+		s.db.NewSelect().Model(&updatedTask).WherePK().Scan(s.ctx),
+		"Should load updated timed-out task",
+	)
+	s.Assert().Equal(approval.TaskHandled, updatedTask.Status, "Timed-out handle task should finish as handled")
+
+	var updatedInstance approval.Instance
+
+	updatedInstance.ID = instance.ID
+	s.Require().NoError(
+		s.db.NewSelect().Model(&updatedInstance).WherePK().Scan(s.ctx),
+		"Should load updated instance after auto-handle",
+	)
+	s.Assert().Equal(approval.InstanceApproved, updatedInstance.Status, "Instance should advance after timeout auto-handle")
+
+	handledEvents := s.bus.CapturedByType(approval.EventTypeTaskHandled)
+	s.Require().Len(handledEvents, 1, "Should publish exactly one task.handled event")
+	s.Assert().Empty(s.bus.CapturedByType(approval.EventTypeTaskApproved), "Should not publish task.approved for a handle task")
+
+	var logs []approval.ActionLog
+	s.Require().NoError(s.db.NewSelect().Model(&logs).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instance.ID) }).
+		Scan(s.ctx), "Should load action logs")
+	s.Require().Len(logs, 1, "Should insert one system action log")
+	s.Assert().Equal(approval.ActionHandle, logs[0].Action, "System action should be handle, not approve")
+}
+
 func (s *ScannerTestSuite) TestAutoRejectTimeoutShouldCompleteFlowAsRejected() {
 	instance, task := s.createTimeoutScenario(approval.TimeoutActionAutoReject)
 

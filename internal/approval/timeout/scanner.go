@@ -153,9 +153,9 @@ func (s *Scanner) executeTimeoutAction(
 	case approval.TimeoutActionNotify:
 		return s.recordTimeoutNotify(ctx, tx, task)
 	case approval.TimeoutActionAutoPass:
-		return s.autoFinishTask(ctx, tx, task, instance, node, approval.TaskApproved)
+		return s.autoFinishTask(ctx, tx, task, instance, node, true)
 	case approval.TimeoutActionAutoReject:
-		return s.autoFinishTask(ctx, tx, task, instance, node, approval.TaskRejected)
+		return s.autoFinishTask(ctx, tx, task, instance, node, false)
 	case approval.TimeoutActionTransferAdmin:
 		return s.transferToAdmin(ctx, tx, task, node)
 	default:
@@ -183,22 +183,68 @@ func (*Scanner) recordTimeoutNotify(_ context.Context, _ orm.DB, task *approval.
 	}, nil
 }
 
-// autoFinishTask finishes a task with the given status and logs the action.
+// timeoutResolution describes how a timed-out task is auto-finished: the
+// terminal status to apply, the audit action, the system opinion, and the
+// matching domain event. Deriving it from the node kind keeps the timeout
+// path's semantics identical to a human completing the same task — a handle
+// task finishes as "handled", never as "approved".
+type timeoutResolution struct {
+	status   approval.TaskStatus
+	action   approval.ActionType
+	opinion  string
+	newEvent func(task *approval.Task, nodeID, opinion string) approval.DomainEvent
+}
+
+// resolveTimeoutCompletion maps the configured auto action onto the node
+// kind's natural completion semantics.
+func resolveTimeoutCompletion(node *approval.FlowNode, autoApprove bool) timeoutResolution {
+	switch {
+	case !autoApprove:
+		return timeoutResolution{
+			status:  approval.TaskRejected,
+			action:  approval.ActionReject,
+			opinion: "任务处理超时，系统自动驳回",
+			newEvent: func(task *approval.Task, nodeID, opinion string) approval.DomainEvent {
+				return approval.NewTaskRejectedEvent(task.ID, task.TenantID, task.InstanceID, nodeID, shared.SystemOperator.ID, opinion)
+			},
+		}
+
+	case node.Kind == approval.NodeHandle:
+		return timeoutResolution{
+			status:  approval.TaskHandled,
+			action:  approval.ActionHandle,
+			opinion: "任务处理超时，系统自动办结",
+			newEvent: func(task *approval.Task, nodeID, opinion string) approval.DomainEvent {
+				return approval.NewTaskHandledEvent(task.ID, task.TenantID, task.InstanceID, nodeID, shared.SystemOperator.ID, opinion)
+			},
+		}
+
+	default:
+		return timeoutResolution{
+			status:  approval.TaskApproved,
+			action:  approval.ActionApprove,
+			opinion: "任务处理超时，系统自动通过",
+			newEvent: func(task *approval.Task, nodeID, opinion string) approval.DomainEvent {
+				return approval.NewTaskApprovedEvent(task.ID, task.TenantID, task.InstanceID, nodeID, shared.SystemOperator.ID, opinion)
+			},
+		}
+	}
+}
+
+// autoFinishTask finishes a timed-out task with the node-appropriate terminal
+// status and logs the action.
 func (s *Scanner) autoFinishTask(
 	ctx context.Context,
 	tx orm.DB,
 	task *approval.Task,
 	instance *approval.Instance,
 	node *approval.FlowNode,
-	status approval.TaskStatus,
+	autoApprove bool,
 ) ([]approval.DomainEvent, error) {
-	if err := s.taskSvc.FinishTask(ctx, tx, task, status); err != nil {
-		return nil, fmt.Errorf("finish task: %w", err)
-	}
+	resolution := resolveTimeoutCompletion(node, autoApprove)
 
-	actionType := approval.ActionApprove
-	if status == approval.TaskRejected {
-		actionType = approval.ActionReject
+	if err := s.taskSvc.FinishTask(ctx, tx, task, resolution.status); err != nil {
+		return nil, fmt.Errorf("finish task: %w", err)
 	}
 
 	// Unblock whatever this task's completion enables — the next task in a
@@ -210,15 +256,7 @@ func (s *Scanner) autoFinishTask(
 	}
 
 	events := make([]approval.DomainEvent, 0, 2)
-	if status == approval.TaskApproved {
-		events = append(events,
-			approval.NewTaskApprovedEvent(task.ID, task.TenantID, task.InstanceID, node.ID, shared.SystemOperator.ID, "任务处理超时，系统自动通过"),
-		)
-	} else {
-		events = append(events,
-			approval.NewTaskRejectedEvent(task.ID, task.TenantID, task.InstanceID, node.ID, shared.SystemOperator.ID, "任务处理超时，系统自动驳回"),
-		)
-	}
+	events = append(events, resolution.newEvent(task, node.ID, resolution.opinion))
 
 	completionEvents, err := s.nodeSvc.HandleNodeCompletion(ctx, tx, instance, node)
 	if err != nil {
@@ -231,11 +269,11 @@ func (s *Scanner) autoFinishTask(
 	// finished_at change through the state machine — no extra UPDATE is
 	// required here. autoFinishTask never touches form_data.
 
-	actionLog := shared.SystemOperator.NewActionLog(task.InstanceID, actionType)
+	actionLog := shared.SystemOperator.NewActionLog(task.InstanceID, resolution.action)
 	actionLog.NodeID = new(task.NodeID)
 	actionLog.TaskID = new(task.ID)
 
-	actionLog.Opinion = new("系统超时自动处理")
+	actionLog.Opinion = new(resolution.opinion)
 	if _, err := tx.NewInsert().
 		Model(actionLog).
 		Exec(ctx); err != nil {
