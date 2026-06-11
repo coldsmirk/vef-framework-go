@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -14,6 +15,12 @@ import (
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
+
+// errUnsupportedTaskAction guards the ProcessTask dispatch switch: it can
+// only fire if a new action is added to the validate tag without a matching
+// case, which must fail loudly instead of reporting success while doing
+// nothing.
+var errUnsupportedTaskAction = errors.New("unsupported task action")
 
 // resolveOperator builds an OperatorInfo from the authenticated principal.
 func resolveOperator(ctx context.Context, resolver approval.PrincipalDepartmentResolver, principal *security.Principal) (approval.OperatorInfo, error) {
@@ -101,6 +108,13 @@ func NewInstanceResource(
 				// Submission and the per-task decision are the two highest-value
 				// state changes — keep audit on so framework-level IP/UA/RequestID
 				// land beside the business action_log.
+				//
+				// process_task deliberately bundles approve/reject/transfer/
+				// rollback/handle under one permission: per-action RBAC would
+				// fragment what is semantically "act on my task", and the
+				// designer's node-level toggles (IsTransferAllowed,
+				// IsRollbackAllowed, …) already govern which actions a node
+				// offers at runtime.
 				api.OperationSpec{Action: "start", RequiredPermission: "approval:instance:start", EnableAudit: true},
 				api.OperationSpec{Action: "process_task", RequiredPermission: "approval:task:process", EnableAudit: true},
 				api.OperationSpec{Action: "withdraw", RequiredPermission: "approval:instance:withdraw", EnableAudit: true},
@@ -211,6 +225,12 @@ func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Princi
 			TargetNodeID: params.TargetNodeID,
 			Caller:       actor.Caller,
 		})
+
+	default:
+		// Unreachable behind the oneof validator; guards against a future
+		// action being added to the validate tag without a dispatch case,
+		// which would otherwise report success while doing nothing.
+		return fmt.Errorf("%w: %q", errUnsupportedTaskAction, params.Action)
 	}
 
 	if err != nil {
