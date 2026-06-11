@@ -35,7 +35,7 @@ const (
 func resolveAutoExecution(ctx context.Context, pc *ProcessContext) (*ProcessResult, bool) {
 	switch pc.Node.ExecutionType {
 	case approval.ExecutionAutoPass:
-		recordSystemActionLog(ctx, pc, autoPassReasonExecutionType)
+		recordSystemActionLog(ctx, pc, nil, autoPassReasonExecutionType)
 
 		return &ProcessResult{
 			Action: NodeActionContinue,
@@ -45,7 +45,7 @@ func resolveAutoExecution(ctx context.Context, pc *ProcessContext) (*ProcessResu
 		}, true
 
 	case approval.ExecutionAutoReject:
-		recordSystemActionLog(ctx, pc, autoRejectReasonExecutionType)
+		recordSystemActionLog(ctx, pc, nil, autoRejectReasonExecutionType)
 
 		return &ProcessResult{
 			Action:      NodeActionComplete,
@@ -61,7 +61,7 @@ func resolveAutoExecution(ctx context.Context, pc *ProcessContext) (*ProcessResu
 // rule-driven automatic passes (empty assignee, same applicant), pairing the
 // advance with its audit event and system action log.
 func nodeAutoPassResult(ctx context.Context, pc *ProcessContext, reason string) *ProcessResult {
-	recordSystemActionLog(ctx, pc, reason)
+	recordSystemActionLog(ctx, pc, nil, reason)
 
 	return &ProcessResult{
 		Action: NodeActionContinue,
@@ -72,10 +72,12 @@ func nodeAutoPassResult(ctx context.Context, pc *ProcessContext, reason string) 
 }
 
 // recordSystemActionLog appends a system-operated ActionLog entry when the
-// request-scoped collector is available. Outside the CQRS pipeline (timeout
-// scanner driving the engine) the collector is absent and the corresponding
-// domain event remains the audit record.
-func recordSystemActionLog(ctx context.Context, pc *ProcessContext, reason string) {
+// request-scoped collector is available. task pins the entry to a specific
+// task for task-scoped decisions (e.g. a consecutive-approver auto-pass);
+// node-scoped decisions pass nil. Outside the CQRS pipeline (timeout scanner
+// driving the engine) the collector is absent and the corresponding domain
+// event remains the audit record.
+func recordSystemActionLog(ctx context.Context, pc *ProcessContext, task *approval.Task, reason string) {
 	collector, ok := behavior.TryActionLogCollectorFromContext(ctx)
 	if !ok {
 		return
@@ -84,6 +86,11 @@ func recordSystemActionLog(ctx context.Context, pc *ProcessContext, reason strin
 	entry := shared.SystemOperator.NewActionLog(pc.Instance.ID, approval.ActionExecute)
 	entry.NodeID = new(pc.Node.ID)
 	entry.Opinion = new(reason)
+
+	if task != nil {
+		entry.TaskID = new(task.ID)
+	}
+
 	collector.Add(entry)
 }
 

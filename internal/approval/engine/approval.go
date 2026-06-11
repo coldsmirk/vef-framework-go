@@ -206,7 +206,7 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 			task.ID, task.TenantID, pc.Instance.ID, pc.Node.ID,
 			shared.SystemOperator.ID, autoPassReasonConsecutiveApprover,
 		))
-		recordSystemActionLog(ctx, pc, autoPassReasonConsecutiveApprover)
+		recordSystemActionLog(ctx, pc, task, autoPassReasonConsecutiveApprover)
 
 		// For sequential approval, activate the next waiting task.
 		// The outer loop will then check if this newly activated task
