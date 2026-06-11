@@ -59,15 +59,15 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 		return cqrs.Unit{}, fmt.Errorf("load task: %w", err)
 	}
 
-	if task.Status != approval.TaskPending {
-		return cqrs.Unit{}, shared.ErrTaskNotPending
-	}
-
-	// Tenant guard before opening any further information: an attacker
-	// knowing a task ID from another tenant gets the same TaskNotFound
-	// response as if the task didn't exist at all.
+	// Tenant guard before any state detail leaks: a cross-tenant caller
+	// gets the same TaskNotFound response as if the task didn't exist at
+	// all — even learning "exists but not pending" would confirm the ID.
 	if !cmd.Caller.Allows(task.TenantID) {
 		return cqrs.Unit{}, shared.ErrTaskNotFound
+	}
+
+	if task.Status != approval.TaskPending {
+		return cqrs.Unit{}, shared.ErrTaskNotPending
 	}
 
 	authorized, err := h.taskSvc.IsUrgeAuthorized(ctx, db, task.InstanceID, cmd.UrgerID)
