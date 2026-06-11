@@ -70,6 +70,9 @@ var (
 	ErrDelegationNotFound = result.Err(i18n.T("approval_delegation_not_found"), result.WithCode(ErrCodeDelegationNotFound))
 	ErrDelegationConflict = result.Err(i18n.T("approval_delegation_conflict"), result.WithCode(ErrCodeDelegationConflict))
 
-	ErrAccessDenied       = result.Err(i18n.T("approval_access_denied"), result.WithCode(ErrCodeAccessDenied))
-	ErrInstanceNotRunning = result.Err(i18n.T("approval_instance_not_running"), result.WithCode(ErrCodeInstanceNotRunning))
+	ErrAccessDenied = result.Err(i18n.T("approval_access_denied"), result.WithCode(ErrCodeAccessDenied))
+	// ErrTerminateNotAllowed rejects force-closing an instance whose status
+	// has no terminate transition on the instance state machine (already in
+	// a final status).
+	ErrTerminateNotAllowed = result.Err(i18n.T("approval_terminate_not_allowed"), result.WithCode(ErrCodeTerminateNotAllowed))
 )

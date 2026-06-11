@@ -140,6 +140,32 @@ func (s *TerminateInstanceTestSuite) TestTerminateInstanceNotFound() {
 	s.Assert().ErrorIs(err, shared.ErrInstanceNotFound, "Should return ErrInstanceNotFound")
 }
 
+func (s *TerminateInstanceTestSuite) TestTerminatePausedInstances() {
+	// Returned and withdrawn instances are paused, not final — an admin must
+	// be able to close them, otherwise an abandoned instance lingers forever.
+	for _, status := range []approval.InstanceStatus{approval.InstanceReturned, approval.InstanceWithdrawn} {
+		s.Run(string(status), func() {
+			inst := s.insertInstance(status)
+
+			operator := approval.OperatorInfo{ID: "admin-1", Name: "Admin"}
+			_, err := s.handler.Handle(s.ctx, command.TerminateInstanceCmd{
+				InstanceID: inst.ID,
+				Operator:   operator,
+				Reason:     "清理滞留实例",
+				Caller:     approval.SystemCaller,
+			})
+			s.Require().NoError(err, "Should terminate a paused instance")
+
+			var updated approval.Instance
+
+			updated.ID = inst.ID
+			s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "Should reload instance")
+			s.Assert().Equal(approval.InstanceTerminated, updated.Status, "Paused instance should close as terminated")
+			s.Assert().NotNil(updated.FinishedAt, "Should set finished_at")
+		})
+	}
+}
+
 func (s *TerminateInstanceTestSuite) TestTerminateAlreadyCompleted() {
 	inst := s.insertInstance(approval.InstanceApproved)
 
@@ -150,7 +176,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateAlreadyCompleted() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestTerminateAlreadyCompleted should return an error")
-	s.Assert().ErrorIs(err, shared.ErrInstanceNotRunning, "Should not allow terminating approved instance")
+	s.Assert().ErrorIs(err, shared.ErrTerminateNotAllowed, "Should not allow terminating approved instance")
 }
 
 func (s *TerminateInstanceTestSuite) TestTerminateAlreadyTerminated() {
@@ -163,5 +189,5 @@ func (s *TerminateInstanceTestSuite) TestTerminateAlreadyTerminated() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestTerminateAlreadyTerminated should return an error")
-	s.Assert().ErrorIs(err, shared.ErrInstanceNotRunning, "Should not allow terminating already terminated instance")
+	s.Assert().ErrorIs(err, shared.ErrTerminateNotAllowed, "Should not allow terminating already terminated instance")
 }

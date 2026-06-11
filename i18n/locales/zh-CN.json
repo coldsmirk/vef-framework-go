@@ -145,7 +145,7 @@
   "approval_delegation_conflict": "委托时间段冲突",
   "approval_urge_too_frequent": "催办操作过于频繁，请 {{.minutes}} 分钟后再试",
   "approval_access_denied": "无权访问此审批实例",
-  "approval_instance_not_running": "实例非运行状态，无法操作",
+  "approval_terminate_not_allowed": "当前状态不允许终止",
   "approval_form_field_not_defined": "字段 {{.field}} 未在表单定义中",
   "approval_form_field_required": "字段 {{.field}} 为必填项",
   "approval_form_field_must_be_string": "字段 {{.field}} 类型无效，应为字符串",

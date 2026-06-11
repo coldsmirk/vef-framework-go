@@ -103,6 +103,9 @@ func TestInstanceStateMachine(t *testing.T) {
 			{"RunningToReturned", approval.InstanceRunning, approval.InstanceReturned},
 			{"ReturnedToRunning", approval.InstanceReturned, approval.InstanceRunning},
 			{"WithdrawnToRunning", approval.InstanceWithdrawn, approval.InstanceRunning},
+			{"ReturnedToWithdrawn", approval.InstanceReturned, approval.InstanceWithdrawn},
+			{"ReturnedToTerminated", approval.InstanceReturned, approval.InstanceTerminated},
+			{"WithdrawnToTerminated", approval.InstanceWithdrawn, approval.InstanceTerminated},
 		}
 
 		for _, tt := range tests {

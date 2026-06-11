@@ -46,6 +46,6 @@ const (
 
 	ErrCodeUrgeCooldown = 40601
 
-	ErrCodeAccessDenied       = 40701
-	ErrCodeInstanceNotRunning = 40702
+	ErrCodeAccessDenied        = 40701
+	ErrCodeTerminateNotAllowed = 40702
 )

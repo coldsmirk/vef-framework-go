@@ -145,7 +145,7 @@
   "approval_delegation_conflict": "Delegation time range conflicts with an existing record",
   "approval_urge_too_frequent": "Urge is too frequent; please try again in {{.minutes}} minutes",
   "approval_access_denied": "No permission to access this approval instance",
-  "approval_instance_not_running": "Instance is not running; operation denied",
+  "approval_terminate_not_allowed": "The instance status does not allow termination",
   "approval_form_field_not_defined": "Field {{.field}} is not defined in the form",
   "approval_form_field_required": "Field {{.field}} is required",
   "approval_form_field_must_be_string": "Field {{.field}} has an invalid type; must be a string",

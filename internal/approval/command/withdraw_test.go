@@ -155,6 +155,28 @@ func (s *WithdrawTestSuite) TestWithdrawNotAllowed() {
 	s.Assert().ErrorIs(err, shared.ErrWithdrawNotAllowed, "Should not allow withdrawal of approved instance")
 }
 
+func (s *WithdrawTestSuite) TestWithdrawReturnedInstance() {
+	// A returned instance is paused with the applicant; withdrawing it is the
+	// applicant's "abandon" path — without it the instance can only resubmit
+	// or linger forever.
+	inst := s.insertInstance("applicant-1", approval.InstanceReturned)
+
+	operator := approval.OperatorInfo{ID: "applicant-1", Name: "Applicant"}
+	_, err := s.handler.Handle(s.ctx, command.WithdrawCmd{
+		InstanceID: inst.ID,
+		Operator:   operator,
+		Reason:     "放弃重新提交",
+		Caller:     approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Should withdraw a returned instance")
+
+	var updated approval.Instance
+
+	updated.ID = inst.ID
+	s.Require().NoError(s.db.NewSelect().Model(&updated).WherePK().Scan(s.ctx), "Should reload instance")
+	s.Assert().Equal(approval.InstanceWithdrawn, updated.Status, "Returned instance should become withdrawn")
+}
+
 func (s *WithdrawTestSuite) TestWithdrawInstanceNotFound() {
 	operator := approval.OperatorInfo{ID: "applicant-1", Name: "Applicant"}
 	_, err := s.handler.Handle(s.ctx, command.WithdrawCmd{

@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
@@ -15,7 +16,9 @@ import (
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
-// TerminateInstanceCmd terminates a running approval instance (admin operation).
+// TerminateInstanceCmd force-closes an approval instance (admin operation).
+// Running, returned, and withdrawn instances can all be terminated — the
+// state machine is the single authority on which statuses may close.
 type TerminateInstanceCmd struct {
 	cqrs.BaseCommand
 
@@ -49,8 +52,8 @@ func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInst
 		return cqrs.Unit{}, err
 	}
 
-	if instance.Status != approval.InstanceRunning {
-		return cqrs.Unit{}, shared.ErrInstanceNotRunning
+	if !engine.InstanceStateMachine.CanTransition(instance.Status, approval.InstanceTerminated) {
+		return cqrs.Unit{}, shared.ErrTerminateNotAllowed
 	}
 
 	now := timex.Now()
@@ -58,7 +61,7 @@ func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInst
 
 	if err := h.instanceSvc.Transition(ctx, db, instance, approval.InstanceTerminated, "finished_at"); err != nil {
 		if errors.Is(err, shared.ErrInvalidInstanceTransition) {
-			return cqrs.Unit{}, shared.ErrInstanceNotRunning
+			return cqrs.Unit{}, shared.ErrTerminateNotAllowed
 		}
 
 		return cqrs.Unit{}, err

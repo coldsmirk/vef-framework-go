@@ -6,6 +6,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/my"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
@@ -134,11 +135,15 @@ func (*GetMyInstanceDetailHandler) computeActions(
 
 	isApplicant := instance.ApplicantID == userID
 
-	if isApplicant && instance.Status == approval.InstanceRunning {
+	// Applicant lifecycle actions are derived from the instance state machine
+	// so the offered set can never drift from what the command handlers accept
+	// (withdraw covers both "cancel a running instance" and "abandon a
+	// returned one"; resubmit reactivates returned / withdrawn instances).
+	if isApplicant && engine.InstanceStateMachine.CanTransition(instance.Status, approval.InstanceWithdrawn) {
 		actions.Add("withdraw")
 	}
 
-	if isApplicant && (instance.Status == approval.InstanceRejected || instance.Status == approval.InstanceReturned) {
+	if isApplicant && engine.InstanceStateMachine.CanTransition(instance.Status, approval.InstanceRunning) {
 		actions.Add("resubmit")
 	}
 
