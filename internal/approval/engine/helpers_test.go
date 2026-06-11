@@ -286,11 +286,11 @@ func TestBuildPassRuleContext(t *testing.T) {
 		assert.Equal(t, 0, prc.TotalCount, "Should have zero total")
 		assert.Equal(t, 0, prc.ApprovedCount, "Should have zero approved")
 		assert.Equal(t, 0, prc.RejectedCount, "Should have zero rejected")
-		assert.InDelta(t, 50.0, prc.PassRatio, 0.001, "Should normalize ratio")
+		assert.InDelta(t, 50.0, prc.PassRatio, 0.001, "Should carry the stored percentage verbatim")
 	})
 
 	t.Run("CountsActionableTasks", func(t *testing.T) {
-		node := &approval.FlowNode{PassRatio: decimal.NewFromFloat(0.8)}
+		node := &approval.FlowNode{PassRatio: decimal.NewFromInt(80)}
 		tasks := []approval.Task{
 			{Status: approval.TaskApproved},
 			{Status: approval.TaskRejected},
@@ -302,7 +302,7 @@ func TestBuildPassRuleContext(t *testing.T) {
 		assert.Equal(t, 4, prc.TotalCount, "Should count all actionable tasks")
 		assert.Equal(t, 2, prc.ApprovedCount, "Should count approved + handled")
 		assert.Equal(t, 1, prc.RejectedCount, "Should count rejected")
-		assert.InDelta(t, 80.0, prc.PassRatio, 0.001, "Should normalize 0.8 to 80")
+		assert.InDelta(t, 80.0, prc.PassRatio, 0.001, "Should carry the stored percentage verbatim")
 	})
 
 	t.Run("ExcludesNonActionable", func(t *testing.T) {

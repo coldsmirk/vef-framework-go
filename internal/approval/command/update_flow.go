@@ -60,6 +60,10 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		return nil, shared.ErrFlowNotFound
 	}
 
+	if err := validateInstanceTitleTemplate(cmd.InstanceTitleTemplate); err != nil {
+		return nil, err
+	}
+
 	flow.Name = cmd.Name
 	flow.Icon = cmd.Icon
 	flow.Description = cmd.Description

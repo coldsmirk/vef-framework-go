@@ -2,6 +2,7 @@ package command
 
 import (
 	"errors"
+	"text/template"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -31,6 +32,23 @@ func validateBusinessIdentifiers(mode approval.BindingMode, table, pkField, stat
 
 			return err
 		}
+	}
+
+	return nil
+}
+
+// validateInstanceTitleTemplate parses the configured title template so a
+// syntax error is rejected when the admin saves the flow, not when the first
+// applicant tries to start an instance (where a broken template would fail
+// every submission while the admin sees nothing). An empty template is valid
+// — start_instance falls back to "flowName-instanceNo".
+func validateInstanceTitleTemplate(titleTemplate string) error {
+	if titleTemplate == "" {
+		return nil
+	}
+
+	if _, err := template.New("title").Parse(titleTemplate); err != nil {
+		return shared.ErrInvalidTitleTemplate
 	}
 
 	return nil

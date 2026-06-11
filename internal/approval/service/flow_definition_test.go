@@ -22,8 +22,8 @@ func conditionNode(id string, branches ...approval.ConditionBranch) approval.Nod
 	return approval.NodeDefinition{ID: id, Kind: approval.NodeCondition, Data: data}
 }
 
-func branch(id string, isDefault bool) approval.ConditionBranch {
-	return approval.ConditionBranch{ID: id, IsDefault: isDefault}
+func branch(id string, priority int, isDefault bool) approval.ConditionBranch {
+	return approval.ConditionBranch{ID: id, Priority: priority, IsDefault: isDefault}
 }
 
 func edge(id, source, target string) approval.EdgeDefinition {
@@ -68,8 +68,8 @@ func conditionFlow() *approval.FlowDefinition {
 		Nodes: []approval.NodeDefinition{
 			node("start", approval.NodeStart),
 			conditionNode("cond",
-				branch("b1", false),
-				branch("b2", true),
+				branch("b1", 1, false),
+				branch("b2", 2, true),
 			),
 			node("a1", approval.NodeApproval),
 			node("h1", approval.NodeHandle),
@@ -91,7 +91,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 	// --- Phase 1: Node validation ---
 
 	t.Run("EmptyNodes", func(t *testing.T) {
-		err := svc.ValidateFlowDefinition(&approval.FlowDefinition{})
+		_, err := svc.ValidateFlowDefinition(&approval.FlowDefinition{})
 		assert.EqualError(t, err, "flow must have at least one node",
 			"Should reject flow with no nodes")
 	})
@@ -99,7 +99,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 	t.Run("EmptyNodeID", func(t *testing.T) {
 		def := minimalFlow()
 		def.Nodes[0].ID = ""
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.EqualError(t, err, "node ID must not be empty",
 			"Should reject node with empty ID")
 	})
@@ -109,7 +109,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 		def.Nodes[1].ID = "start"
 		def.Nodes[1].Kind = approval.NodeEnd
 		def.Edges[0].Target = "start"
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.EqualError(t, err, `duplicate node ID: "start"`,
 			"Should reject duplicate node IDs")
 	})
@@ -117,7 +117,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 	t.Run("InvalidNodeKind", func(t *testing.T) {
 		def := minimalFlow()
 		def.Nodes[0].Kind = "invalid"
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.ErrorContains(t, err, `invalid node kind: "invalid"`,
 			"Should reject unknown node kind")
 	})
@@ -130,7 +130,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 			},
 			Edges: []approval.EdgeDefinition{edge("e1", "a1", "end")},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.EqualError(t, err, "flow must have exactly 1 start node, found 0",
 			"Should reject flow without start node")
 	})
@@ -147,7 +147,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e2", "s2", "end"),
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.EqualError(t, err, "flow must have exactly 1 start node, found 2",
 			"Should reject flow with multiple start nodes")
 	})
@@ -160,7 +160,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 			},
 			Edges: []approval.EdgeDefinition{edge("e1", "start", "a1")},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.EqualError(t, err, "flow must have at least 1 end node, found 0",
 			"Should reject flow without end node")
 	})
@@ -169,7 +169,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 		def := &approval.FlowDefinition{
 			Nodes: []approval.NodeDefinition{
 				node("start", approval.NodeStart),
-				conditionNode("cond", branch("b1", false), branch("b2", true)),
+				conditionNode("cond", branch("b1", 1, false), branch("b2", 2, true)),
 				node("end1", approval.NodeEnd),
 				node("end2", approval.NodeEnd),
 			},
@@ -179,7 +179,8 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edgeWithHandle("e3", "cond", "end2", "b2"),
 			},
 		}
-		require.NoError(t, svc.ValidateFlowDefinition(def),
+		_, err := svc.ValidateFlowDefinition(def)
+		require.NoError(t, err,
 			"Should accept flow with multiple end nodes")
 	})
 
@@ -192,7 +193,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 			},
 			Edges: []approval.EdgeDefinition{edge("e1", "start", "end")},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.ErrorContains(t, err, `parse node "cond" data`,
 			"Should reject condition node with invalid JSON data")
 	})
@@ -208,7 +209,8 @@ func TestValidateFlowDefinition(t *testing.T) {
 
 		def.Nodes[1].Data = data // a1
 
-		assert.ErrorIs(t, svc.ValidateFlowDefinition(def), errInvalidCCKind,
+		_, err = svc.ValidateFlowDefinition(def)
+		assert.ErrorIs(t, err, errInvalidCCKind,
 			"Should reject a node whose CC config uses an unknown kind at deploy time")
 	})
 
@@ -223,8 +225,67 @@ func TestValidateFlowDefinition(t *testing.T) {
 
 		def.Nodes[1].Data = data
 
-		require.NoError(t, svc.ValidateFlowDefinition(def),
+		_, err = svc.ValidateFlowDefinition(def)
+		require.NoError(t, err,
 			"Should accept a node with a valid CC kind")
+	})
+
+	// --- Cross-node references ---
+
+	t.Run("RollbackTargets", func(t *testing.T) {
+		// start → a1 → a2 → end, with a2 configured for specified rollback.
+		flowWithTargets := func(targets ...string) *approval.FlowDefinition {
+			data, err := json.Marshal(&approval.ApprovalNodeData{
+				RollbackType:       approval.RollbackSpecified,
+				RollbackTargetKeys: targets,
+			})
+			require.NoError(t, err, "Should marshal approval node data")
+
+			def := &approval.FlowDefinition{
+				Nodes: []approval.NodeDefinition{
+					node("start", approval.NodeStart),
+					node("a1", approval.NodeApproval),
+					{ID: "a2", Kind: approval.NodeApproval, Data: data},
+					node("cc1", approval.NodeCC),
+					node("end", approval.NodeEnd),
+				},
+				Edges: []approval.EdgeDefinition{
+					edge("e1", "start", "a1"),
+					edge("e2", "a1", "a2"),
+					edge("e3", "a2", "cc1"),
+					edge("e4", "cc1", "end"),
+				},
+			}
+
+			return def
+		}
+
+		t.Run("AcceptsTaskNodeTarget", func(t *testing.T) {
+			_, err := svc.ValidateFlowDefinition(flowWithTargets("a1"))
+			require.NoError(t, err, "A rollback target referencing an upstream approval node should pass")
+		})
+
+		t.Run("RejectsUnknownTarget", func(t *testing.T) {
+			_, err := svc.ValidateFlowDefinition(flowWithTargets("ghost"))
+			assert.ErrorIs(t, err, errRollbackTargetUnknown, "A dangling rollback target key should be rejected")
+		})
+
+		t.Run("RejectsNonTaskTarget", func(t *testing.T) {
+			_, err := svc.ValidateFlowDefinition(flowWithTargets("cc1"))
+			assert.ErrorIs(t, err, errRollbackTargetUnknown, "Only approval / handle nodes are valid rollback targets")
+		})
+
+		t.Run("RejectsSelfTarget", func(t *testing.T) {
+			_, err := svc.ValidateFlowDefinition(flowWithTargets("a2"))
+			assert.ErrorIs(t, err, errRollbackTargetSelf, "A node must not list itself as a rollback target")
+		})
+	})
+
+	t.Run("ReturnsParsedNodeData", func(t *testing.T) {
+		parsed, err := svc.ValidateFlowDefinition(linearFlow())
+		require.NoError(t, err, "Linear flow should validate")
+		require.Len(t, parsed, 3, "Should return parsed data for every node")
+		assert.IsType(t, &approval.ApprovalNodeData{}, parsed["a1"], "Parsed entry should carry the typed node data")
 	})
 
 	// --- Phase 2: Edge validation ---
@@ -232,7 +293,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 	t.Run("EmptyEdgeID", func(t *testing.T) {
 		def := minimalFlow()
 		def.Edges[0].ID = ""
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.EqualError(t, err, "edge ID must not be empty",
 			"Should reject edge with empty ID")
 	})
@@ -240,7 +301,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 	t.Run("DuplicateEdgeID", func(t *testing.T) {
 		def := linearFlow()
 		def.Edges[1].ID = "e1"
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.EqualError(t, err, `duplicate edge ID: "e1"`,
 			"Should reject duplicate edge IDs")
 	})
@@ -248,7 +309,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 	t.Run("UnknownSourceNode", func(t *testing.T) {
 		def := minimalFlow()
 		def.Edges[0].Source = "ghost"
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.ErrorContains(t, err, `edge references unknown source node: edge "e1" references "ghost"`,
 			"Should reject edge referencing non-existent source node")
 	})
@@ -256,7 +317,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 	t.Run("UnknownTargetNode", func(t *testing.T) {
 		def := minimalFlow()
 		def.Edges[0].Target = "ghost"
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.ErrorContains(t, err, `edge references unknown target node: edge "e1" references "ghost"`,
 			"Should reject edge referencing non-existent target node")
 	})
@@ -266,7 +327,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 	t.Run("StartHasIncomingEdge", func(t *testing.T) {
 		def := linearFlow()
 		def.Edges = append(def.Edges, edge("e3", "a1", "start"))
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.EqualError(t, err, "start node must not have incoming edges",
 			"Should reject start node with incoming edges")
 	})
@@ -279,7 +340,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 			},
 			Edges: nil,
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.EqualError(t, err, "start node must have exactly 1 outgoing edge, found 0",
 			"Should reject start node without outgoing edge")
 	})
@@ -299,7 +360,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e4", "a2", "end"),
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.EqualError(t, err, "start node must have exactly 1 outgoing edge, found 2",
 			"Should reject start node with multiple outgoing edges")
 	})
@@ -307,7 +368,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 	t.Run("EndHasOutgoingEdge", func(t *testing.T) {
 		def := linearFlow()
 		def.Edges = append(def.Edges, edge("e3", "end", "a1"))
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.EqualError(t, err, `end node must not have outgoing edges: "end"`,
 			"Should reject end node with outgoing edges")
 	})
@@ -323,7 +384,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e1", "start", "a1"),
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.EqualError(t, err, `end node must have at least 1 incoming edge: "end"`,
 			"Should reject end node without incoming edges")
 	})
@@ -333,7 +394,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 		def := &approval.FlowDefinition{
 			Nodes: []approval.NodeDefinition{
 				node("start", approval.NodeStart),
-				conditionNode("cond", branch("b1", false), branch("b2", true)),
+				conditionNode("cond", branch("b1", 1, false), branch("b2", 2, true)),
 				node("a1", approval.NodeApproval),
 				node("end", approval.NodeEnd),
 			},
@@ -343,7 +404,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edgeWithHandle("e3", "cond", "end", "b2"),
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.EqualError(t, err, `node must have exactly 1 outgoing edge: node "a1" has 0`,
 			"Should reject regular node without outgoing edge")
 	})
@@ -363,7 +424,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e4", "h1", "end"),
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.EqualError(t, err, `node must have exactly 1 outgoing edge: node "a1" has 2`,
 			"Should reject regular node with multiple outgoing edges")
 	})
@@ -371,7 +432,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 	t.Run("NonConditionNodeWithSourceHandle", func(t *testing.T) {
 		def := linearFlow()
 		def.Edges[1].SourceHandle = new("some-handle")
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.ErrorContains(t, err, `must not have sourceHandle`,
 			"Should reject sourceHandle on non-condition node's outgoing edge")
 	})
@@ -380,7 +441,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 		def := &approval.FlowDefinition{
 			Nodes: []approval.NodeDefinition{
 				node("start", approval.NodeStart),
-				conditionNode("cond", branch("b1", true)),
+				conditionNode("cond", branch("b1", 1, true)),
 				node("end", approval.NodeEnd),
 			},
 			Edges: []approval.EdgeDefinition{
@@ -388,7 +449,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edgeWithHandle("e2", "cond", "end", "b1"),
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.ErrorContains(t, err, "condition node must have at least 2 branches: node \"cond\" has 1",
 			"Should reject condition node with less than 2 branches")
 	})
@@ -397,7 +458,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 		def := &approval.FlowDefinition{
 			Nodes: []approval.NodeDefinition{
 				node("start", approval.NodeStart),
-				conditionNode("cond", branch("b1", false), branch("b2", false)),
+				conditionNode("cond", branch("b1", 1, false), branch("b2", 2, false)),
 				node("a1", approval.NodeApproval),
 				node("end", approval.NodeEnd),
 			},
@@ -408,7 +469,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e4", "a1", "end"),
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.ErrorContains(t, err, "condition node must have exactly 1 default branch: node \"cond\" has 0",
 			"Should reject condition node without default branch")
 	})
@@ -417,7 +478,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 		def := &approval.FlowDefinition{
 			Nodes: []approval.NodeDefinition{
 				node("start", approval.NodeStart),
-				conditionNode("cond", branch("b1", true), branch("b2", true)),
+				conditionNode("cond", branch("b1", 1, true), branch("b2", 2, true)),
 				node("a1", approval.NodeApproval),
 				node("end", approval.NodeEnd),
 			},
@@ -428,7 +489,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e4", "a1", "end"),
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.ErrorContains(t, err, "condition node must have exactly 1 default branch: node \"cond\" has 2",
 			"Should reject condition node with multiple default branches")
 	})
@@ -437,7 +498,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 		def := &approval.FlowDefinition{
 			Nodes: []approval.NodeDefinition{
 				node("start", approval.NodeStart),
-				conditionNode("cond", branch("b1", false), branch("b1", true)),
+				conditionNode("cond", branch("b1", 1, false), branch("b1", 1, true)),
 				node("end", approval.NodeEnd),
 			},
 			Edges: []approval.EdgeDefinition{
@@ -445,7 +506,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edgeWithHandle("e2", "cond", "end", "b1"),
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.ErrorContains(t, err, `condition node has duplicate branch ID: node "cond" branch "b1"`,
 			"Should reject condition node with duplicate branch IDs")
 	})
@@ -454,7 +515,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 		def := &approval.FlowDefinition{
 			Nodes: []approval.NodeDefinition{
 				node("start", approval.NodeStart),
-				conditionNode("cond", branch("b1", false), branch("b2", true)),
+				conditionNode("cond", branch("b1", 1, false), branch("b2", 2, true)),
 				node("a1", approval.NodeApproval),
 				node("end", approval.NodeEnd),
 			},
@@ -465,7 +526,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e4", "a1", "end"),
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.ErrorContains(t, err, "must have a sourceHandle",
 			"Should reject condition outgoing edge without sourceHandle")
 	})
@@ -474,7 +535,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 		def := &approval.FlowDefinition{
 			Nodes: []approval.NodeDefinition{
 				node("start", approval.NodeStart),
-				conditionNode("cond", branch("b1", false), branch("b2", true)),
+				conditionNode("cond", branch("b1", 1, false), branch("b2", 2, true)),
 				node("a1", approval.NodeApproval),
 				node("end", approval.NodeEnd),
 			},
@@ -485,7 +546,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e4", "a1", "end"),
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.ErrorContains(t, err, `edge has unknown sourceHandle: node "cond" edge "e2" handle "unknown"`,
 			"Should reject condition edge with unknown sourceHandle")
 	})
@@ -494,7 +555,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 		def := &approval.FlowDefinition{
 			Nodes: []approval.NodeDefinition{
 				node("start", approval.NodeStart),
-				conditionNode("cond", branch("b1", false), branch("b2", true)),
+				conditionNode("cond", branch("b1", 1, false), branch("b2", 2, true)),
 				node("a1", approval.NodeApproval),
 				node("a2", approval.NodeApproval),
 				node("end", approval.NodeEnd),
@@ -508,7 +569,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e6", "a2", "end"),
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.ErrorContains(t, err, `duplicate outgoing edge for handle: node "cond" handle "b1"`,
 			"Should reject condition node with duplicate edge for same handle")
 	})
@@ -517,7 +578,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 		def := &approval.FlowDefinition{
 			Nodes: []approval.NodeDefinition{
 				node("start", approval.NodeStart),
-				conditionNode("cond", branch("b1", false), branch("b2", true)),
+				conditionNode("cond", branch("b1", 1, false), branch("b2", 2, true)),
 				node("a1", approval.NodeApproval),
 				node("end", approval.NodeEnd),
 			},
@@ -527,7 +588,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e3", "a1", "end"),
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		assert.ErrorContains(t, err, `branch has no outgoing edge: node "cond" branch "b2"`,
 			"Should reject condition node with branch missing outgoing edge")
 	})
@@ -539,8 +600,8 @@ func TestValidateFlowDefinition(t *testing.T) {
 			Nodes: []approval.NodeDefinition{
 				node("start", approval.NodeStart),
 				conditionNode("cond",
-					branch("b1", false),
-					branch("b2", true),
+					branch("b1", 1, false),
+					branch("b2", 2, true),
 				),
 				node("a1", approval.NodeApproval),
 				node("end", approval.NodeEnd),
@@ -552,7 +613,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e4", "a1", "cond"), // back-edge creates cycle
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		require.Error(t, err, "Should return an error for cyclic flow")
 		assert.ErrorContains(t, err, "cycle", "Error should mention cycle")
 	})
@@ -569,7 +630,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e2", "a1", "end"),
 			},
 		}
-		err := svc.ValidateFlowDefinition(def)
+		_, err := svc.ValidateFlowDefinition(def)
 		require.Error(t, err, "Should return an error for unreachable node")
 		assert.ErrorContains(t, err, `not reachable from start node`,
 			"Error should indicate unreachable node")
@@ -578,17 +639,20 @@ func TestValidateFlowDefinition(t *testing.T) {
 	// --- Valid flows ---
 
 	t.Run("MinimalFlow", func(t *testing.T) {
-		require.NoError(t, svc.ValidateFlowDefinition(minimalFlow()),
+		_, err := svc.ValidateFlowDefinition(minimalFlow())
+		require.NoError(t, err,
 			"Minimal flow (start → end) should be valid")
 	})
 
 	t.Run("LinearFlow", func(t *testing.T) {
-		require.NoError(t, svc.ValidateFlowDefinition(linearFlow()),
+		_, err := svc.ValidateFlowDefinition(linearFlow())
+		require.NoError(t, err,
 			"Linear flow (start → approval → end) should be valid")
 	})
 
 	t.Run("ConditionFlow", func(t *testing.T) {
-		require.NoError(t, svc.ValidateFlowDefinition(conditionFlow()),
+		_, err := svc.ValidateFlowDefinition(conditionFlow())
+		require.NoError(t, err,
 			"Condition flow with two branches should be valid")
 	})
 
@@ -598,8 +662,8 @@ func TestValidateFlowDefinition(t *testing.T) {
 				node("start", approval.NodeStart),
 				node("a1", approval.NodeApproval),
 				conditionNode("cond",
-					branch("high", false),
-					branch("low", true),
+					branch("high", 1, false),
+					branch("low", 2, true),
 				),
 				node("a2", approval.NodeApproval),
 				node("h1", approval.NodeHandle),
@@ -616,7 +680,8 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e7", "h1", "end"),
 			},
 		}
-		require.NoError(t, svc.ValidateFlowDefinition(def),
+		_, err := svc.ValidateFlowDefinition(def)
+		require.NoError(t, err,
 			"Complex flow with all node types should be valid")
 	})
 
@@ -624,8 +689,8 @@ func TestValidateFlowDefinition(t *testing.T) {
 		def := &approval.FlowDefinition{
 			Nodes: []approval.NodeDefinition{
 				node("start", approval.NodeStart),
-				conditionNode("cond1", branch("b1", false), branch("b2", true)),
-				conditionNode("cond2", branch("c1", false), branch("c2", true)),
+				conditionNode("cond1", branch("b1", 1, false), branch("b2", 2, true)),
+				conditionNode("cond2", branch("c1", 1, false), branch("c2", 2, true)),
 				node("a1", approval.NodeApproval),
 				node("end", approval.NodeEnd),
 			},
@@ -638,7 +703,8 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e6", "a1", "end"),
 			},
 		}
-		require.NoError(t, svc.ValidateFlowDefinition(def),
+		_, err := svc.ValidateFlowDefinition(def)
+		require.NoError(t, err,
 			"Flow with nested condition nodes should be valid")
 	})
 
@@ -647,9 +713,9 @@ func TestValidateFlowDefinition(t *testing.T) {
 			Nodes: []approval.NodeDefinition{
 				node("start", approval.NodeStart),
 				conditionNode("cond",
-					branch("b1", false),
-					branch("b2", false),
-					branch("b3", true),
+					branch("b1", 1, false),
+					branch("b2", 2, false),
+					branch("b3", 3, true),
 				),
 				node("a1", approval.NodeApproval),
 				node("a2", approval.NodeApproval),
@@ -664,7 +730,8 @@ func TestValidateFlowDefinition(t *testing.T) {
 				edge("e6", "a2", "end"),
 			},
 		}
-		require.NoError(t, svc.ValidateFlowDefinition(def),
+		_, err := svc.ValidateFlowDefinition(def)
+		require.NoError(t, err,
 			"Condition node with 3 branches should be valid")
 	})
 }

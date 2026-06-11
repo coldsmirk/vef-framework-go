@@ -114,6 +114,8 @@
   "approval_flow_code_exists": "Flow code already exists",
   "approval_version_not_found": "Flow version not found",
   "approval_invalid_business_identifier": "Invalid business table or field name; must match ^[A-Za-z_][A-Za-z0-9_]{0,62}$",
+  "approval_invalid_title_template": "Invalid instance title template syntax",
+  "approval_invalid_form_design": "Invalid form definition",
   "approval_instance_not_found": "Approval instance not found",
   "approval_instance_completed": "Approval instance is already completed",
   "approval_not_allowed_initiate": "Not allowed to initiate this flow",

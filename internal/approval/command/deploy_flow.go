@@ -48,8 +48,13 @@ func NewDeployFlowHandler(db orm.DB, flowDefSvc *service.FlowDefinitionService) 
 }
 
 func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*approval.FlowVersion, error) {
-	if err := h.flowDefSvc.ValidateFlowDefinition(&cmd.FlowDefinition); err != nil {
+	parsedNodeData, err := h.flowDefSvc.ValidateFlowDefinition(&cmd.FlowDefinition)
+	if err != nil {
 		return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFlowDesign, err)
+	}
+
+	if err := h.flowDefSvc.ValidateFormDefinition(cmd.FormDefinition); err != nil {
+		return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFormDesign, err)
 	}
 
 	db := contextx.DB(ctx, h.db)
@@ -87,7 +92,9 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 		return nil, fmt.Errorf("insert version: %w", err)
 	}
 
-	// Phase 1: Parse all node data and build node models (fail fast on parse errors)
+	// Phase 1: Build node models from the data already parsed (and approved)
+	// by ValidateFlowDefinition — the persisted configuration is exactly what
+	// passed validation, by construction.
 	type parsedNode struct {
 		node approval.FlowNode
 		data approval.NodeData
@@ -95,10 +102,7 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 
 	parsedNodes := make([]parsedNode, 0, len(cmd.FlowDefinition.Nodes))
 	for _, nodeDef := range cmd.FlowDefinition.Nodes {
-		nodeData, err := nodeDef.ParseData()
-		if err != nil {
-			return nil, fmt.Errorf("parse node %q data: %w", nodeDef.ID, err)
-		}
+		nodeData := parsedNodeData[nodeDef.ID]
 
 		node := approval.FlowNode{
 			FlowVersionID: version.ID,

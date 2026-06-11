@@ -10,6 +10,8 @@ const (
 	ErrCodeFlowCodeExists            = 40006
 	ErrCodeVersionNotFound           = 40007
 	ErrCodeInvalidBusinessIdentifier = 40008
+	ErrCodeInvalidTitleTemplate      = 40009
+	ErrCodeInvalidFormDesign         = 40010
 
 	ErrCodeInstanceNotFound          = 40101
 	ErrCodeInstanceCompleted         = 40102

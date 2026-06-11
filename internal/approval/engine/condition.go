@@ -24,8 +24,15 @@ func (*ConditionProcessor) Process(ctx context.Context, pc *ProcessContext) (*Pr
 		return nil, ErrNoBranches
 	}
 
+	// Branch ID breaks priority ties so evaluation order is deterministic:
+	// deploy validation rejects duplicate priorities among non-default
+	// branches, but data predating that guard (or written directly) must
+	// still route the same way on every evaluation.
 	slices.SortFunc(branches, func(a, b approval.ConditionBranch) int {
-		return cmp.Compare(a.Priority, b.Priority)
+		return cmp.Or(
+			cmp.Compare(a.Priority, b.Priority),
+			cmp.Compare(a.ID, b.ID),
+		)
 	})
 
 	formData := approval.NewFormData(pc.Instance.FormData)

@@ -45,7 +45,7 @@ var (
 	errInvalidExecutionType       = errors.New("invalid execution type")
 	errInvalidApprovalMethod      = errors.New("invalid approval method")
 	errInvalidPassRule            = errors.New("invalid pass rule")
-	errPassRatioOutOfRange        = errors.New("pass ratio must be within (0, 1] as a fraction or (1, 100] as a percentage")
+	errPassRatioOutOfRange        = errors.New("pass ratio must be a percentage within (0, 100]")
 	errInvalidEmptyAssigneeAction = errors.New("invalid empty-assignee action")
 	errInvalidSameApplicantAction = errors.New("invalid same-applicant action")
 	errInvalidConsecutiveAction   = errors.New("invalid consecutive-approver action")
@@ -63,4 +63,23 @@ var (
 	errInvalidConditionOperator   = errors.New("invalid condition operator")
 	errConditionSubjectRequired   = errors.New("field condition requires a subject")
 	errConditionExprRequired      = errors.New("expression condition requires an expression")
+	errDuplicateBranchPriority    = errors.New("condition branches must have unique priorities")
+	errHandleExecutionAutoReject  = errors.New("handle nodes do not support execution type 'auto_reject'")
+	errHandleTimeoutAutoReject    = errors.New("handle nodes do not support timeout action 'auto_reject'")
+	errRollbackTargetUnknown      = errors.New("rollback target key does not reference an approval or handle node in the flow")
+	errRollbackTargetSelf         = errors.New("rollback target keys must not include the node itself")
+)
+
+// Form-definition validation sentinels. Deploy-time guards over the form
+// schema attached to a flow version; without them a broken schema (duplicate
+// keys, invalid kind, uncompilable pattern) only surfaces when an applicant
+// submits — misreported as a data error. Surface wrapped in
+// shared.ErrInvalidFormDesign.
+var (
+	errFormFieldKeyEmpty      = errors.New("form field key must not be empty")
+	errDuplicateFormFieldKey  = errors.New("duplicate form field key")
+	errInvalidFormFieldKind   = errors.New("invalid form field kind")
+	errInvalidFormPattern     = errors.New("form field validation pattern does not compile")
+	errInvalidFormLengthRange = errors.New("form field minLength must not exceed maxLength")
+	errInvalidFormValueRange  = errors.New("form field min must not exceed max")
 )

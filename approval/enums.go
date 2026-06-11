@@ -367,6 +367,16 @@ const (
 	FieldUpload   FieldKind = "upload"
 )
 
+// IsValid reports whether the field kind is one of the defined values.
+func (k FieldKind) IsValid() bool {
+	switch k {
+	case FieldInput, FieldTextarea, FieldSelect, FieldNumber, FieldDate, FieldUpload:
+		return true
+	default:
+		return false
+	}
+}
+
 // TimeoutAction represents the action to take when a task times out.
 type TimeoutAction string
 

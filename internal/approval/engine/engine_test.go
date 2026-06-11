@@ -60,30 +60,6 @@ func init() {
 
 // --- Standalone Tests (no DB required) ---
 
-// TestNormalizePassRatio tests normalize pass ratio scenarios.
-func TestNormalizePassRatio(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    float64
-		expected float64
-	}{
-		{"Negative", -1.0, 0},
-		{"Zero", 0, 0},
-		{"ProportionHalf", 0.5, 50},
-		{"ProportionSixtyPercent", 0.6, 60},
-		{"ProportionOne", 1.0, 100},
-		{"PercentageFifty", 50, 50},
-		{"PercentageHundred", 100, 100},
-		{"AboveHundred", 150, 100},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.InDelta(t, tt.expected, engine.NormalizePassRatio(tt.input), 0.001, "NormalizePassRatio(%v) should produce expected result", tt.input)
-		})
-	}
-}
-
 // TestNewFlowEngine tests new flow engine constructor via behavior.
 func TestNewFlowEngine(t *testing.T) {
 	t.Run("EmptyProcessors", func(t *testing.T) {

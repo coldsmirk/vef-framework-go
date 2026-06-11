@@ -58,6 +58,10 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 		return nil, err
 	}
 
+	if err := validateInstanceTitleTemplate(cmd.InstanceTitleTemplate); err != nil {
+		return nil, err
+	}
+
 	exists, err := db.NewSelect().
 		Model((*approval.Flow)(nil)).
 		Where(func(cb orm.ConditionBuilder) {

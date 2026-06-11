@@ -19,7 +19,7 @@ func validateNodeConfig(nodeID string, data approval.NodeData) error {
 	case *approval.ApprovalNodeData:
 		return validateApprovalNodeData(nodeID, typed)
 	case *approval.HandleNodeData:
-		return validateTaskNodeData(nodeID, &typed.TaskNodeData)
+		return validateHandleNodeData(nodeID, typed)
 	case *approval.CCNodeData:
 		return validateCCDefinitions(nodeID, typed.CCs)
 	case *approval.ConditionNodeData:
@@ -27,6 +27,26 @@ func validateNodeConfig(nodeID string, data approval.NodeData) error {
 	default:
 		return nil
 	}
+}
+
+// validateHandleNodeData applies the shared task-node checks plus the
+// handle-specific restriction: a handle node performs work, it is not a
+// decision point, so neither its execution type nor its timeout action may
+// reject the whole instance. The designer offers the same narrowed sets.
+func validateHandleNodeData(nodeID string, data *approval.HandleNodeData) error {
+	if err := validateTaskNodeData(nodeID, &data.TaskNodeData); err != nil {
+		return err
+	}
+
+	if data.ExecutionType == approval.ExecutionAutoReject {
+		return fmt.Errorf("%w: node %q", errHandleExecutionAutoReject, nodeID)
+	}
+
+	if data.TimeoutAction == approval.TimeoutActionAutoReject {
+		return fmt.Errorf("%w: node %q", errHandleTimeoutAutoReject, nodeID)
+	}
+
+	return nil
 }
 
 func validateApprovalNodeData(nodeID string, data *approval.ApprovalNodeData) error {
@@ -70,10 +90,11 @@ func validateApprovalNodeData(nodeID string, data *approval.ApprovalNodeData) er
 }
 
 // validatePassRatio requires an explicit, in-range ratio whenever the node
-// resolves to the ratio pass rule. Accepts both storage conventions handled
-// by engine.NormalizePassRatio: a fraction in (0, 1] or a percentage in
-// (1, 100]. Zero is rejected rather than defaulted — a ratio node without a
-// threshold would otherwise pass on the first evaluation regardless of votes.
+// resolves to the ratio pass rule. The single storage convention is a
+// percentage in (0, 100] — the engine consumes the stored value verbatim, so
+// anything outside that range could never pass (or always would). Zero is
+// rejected rather than defaulted: a ratio node without a threshold would
+// otherwise pass on the first evaluation regardless of votes.
 func validatePassRatio(nodeID string, data *approval.ApprovalNodeData) error {
 	if data.PassRule != approval.PassRatio {
 		return nil
@@ -153,8 +174,23 @@ func validateCCDefinitions(nodeID string, ccs []approval.CCDefinition) error {
 // Expression syntax itself cannot be verified at deploy time — the Zen
 // backend compiles lazily — so a syntactically broken expression still
 // surfaces at evaluation; this guard eliminates the structurally-empty cases.
+//
+// Non-default branches must also carry unique priorities: "first match wins"
+// is only a meaningful contract when the evaluation order is total, so a tie
+// is a design error rather than something to resolve arbitrarily at runtime.
 func validateConditionBranches(nodeID string, branches []approval.ConditionBranch) error {
+	seenPriorities := make(map[int]string, len(branches))
+
 	for _, branch := range branches {
+		if !branch.IsDefault {
+			if prevID, dup := seenPriorities[branch.Priority]; dup {
+				return fmt.Errorf("%w: priority %d shared by branches %q and %q in node %q",
+					errDuplicateBranchPriority, branch.Priority, prevID, branch.ID, nodeID)
+			}
+
+			seenPriorities[branch.Priority] = branch.ID
+		}
+
 		for _, group := range branch.ConditionGroups {
 			for _, cond := range group.Conditions {
 				if err := validateCondition(nodeID, branch.ID, cond); err != nil {

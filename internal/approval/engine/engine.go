@@ -326,7 +326,10 @@ func (e *FlowEngine) evaluatePassRule(node *approval.FlowNode, tasks []approval.
 
 func buildPassRuleContext(node *approval.FlowNode, tasks []approval.Task) approval.PassRuleContext {
 	ctx := approval.PassRuleContext{
-		PassRatio: NormalizePassRatio(node.PassRatio.InexactFloat64()),
+		// PassRatio is stored as a percentage in (0, 100] — the single
+		// storage convention enforced by deploy validation — and consumed
+		// verbatim by RatioPassStrategy.
+		PassRatio: node.PassRatio.InexactFloat64(),
 	}
 
 	for _, t := range tasks {
@@ -348,24 +351,4 @@ func buildPassRuleContext(node *approval.FlowNode, tasks []approval.Task) approv
 	}
 
 	return ctx
-}
-
-// NormalizePassRatio normalizes pass ratio to 0-100 scale.
-// Values in (0, 1] range are treated as proportions and converted to percentage.
-// E.g., 0.6 → 60, 1.0 → 100. Values > 1 are kept as-is (already percentage).
-// Negative values are clamped to 0, values above 100 are clamped to 100.
-func NormalizePassRatio(ratio float64) float64 {
-	if ratio <= 0 {
-		return 0
-	}
-
-	if ratio <= 1 {
-		return ratio * 100
-	}
-
-	if ratio > 100 {
-		return 100
-	}
-
-	return ratio
 }

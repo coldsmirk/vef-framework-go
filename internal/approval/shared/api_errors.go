@@ -28,6 +28,15 @@ var (
 		i18n.T("approval_invalid_business_identifier"),
 		result.WithCode(ErrCodeInvalidBusinessIdentifier),
 	)
+	// ErrInvalidTitleTemplate rejects an instance title template that does
+	// not parse as a Go text/template at flow create / update time, so a
+	// broken template cannot silently break every subsequent submission.
+	ErrInvalidTitleTemplate = result.Err(i18n.T("approval_invalid_title_template"), result.WithCode(ErrCodeInvalidTitleTemplate))
+	// ErrInvalidFormDesign rejects a structurally broken form schema at
+	// deploy time (duplicate keys, unknown field kind, uncompilable
+	// validation pattern) so configuration faults never surface as data
+	// errors to the applicant.
+	ErrInvalidFormDesign = result.Err(i18n.T("approval_invalid_form_design"), result.WithCode(ErrCodeInvalidFormDesign))
 
 	ErrInstanceNotFound          = result.Err(i18n.T("approval_instance_not_found"), result.WithCode(ErrCodeInstanceNotFound))
 	ErrInstanceCompleted         = result.Err(i18n.T("approval_instance_completed"), result.WithCode(ErrCodeInstanceCompleted))

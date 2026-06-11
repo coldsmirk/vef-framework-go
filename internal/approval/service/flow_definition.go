@@ -28,18 +28,24 @@ func NewFlowDefinitionService() *FlowDefinitionService {
 	return new(FlowDefinitionService)
 }
 
-// ValidateFlowDefinition validates the structural integrity of a flow definition.
+// ValidateFlowDefinition validates the structural integrity of a flow
+// definition and returns the parsed node data keyed by node ID, so callers
+// (deploy) persist exactly the configuration that passed validation instead
+// of re-parsing the raw JSON a second time.
 //
 //nolint:gocyclo // validation function inherently requires many checks
-func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinition) error {
+func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinition) (map[string]approval.NodeData, error) {
 	if len(def.Nodes) == 0 {
-		return errNoNodes
+		return nil, errNoNodes
 	}
 
 	// --- Phase 1: Node validation ---
 	var (
 		nodeIDs      = collections.NewHashSet[string]()
+		taskNodeIDs  = collections.NewHashSet[string]()
+		parsed       = make(map[string]approval.NodeData, len(def.Nodes))
 		condBranches = make(map[string][]approval.ConditionBranch)
+		rollbackRefs = make(map[string][]string)
 
 		startCount, endCount int
 		startID              string
@@ -50,25 +56,27 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 		node := &def.Nodes[i]
 
 		if node.ID == "" {
-			return errEmptyNodeID
+			return nil, errEmptyNodeID
 		}
 
 		if !nodeIDs.Add(node.ID) {
-			return fmt.Errorf("%w: %q", errDuplicateNodeID, node.ID)
+			return nil, fmt.Errorf("%w: %q", errDuplicateNodeID, node.ID)
 		}
 
 		if !validNodeKinds.Contains(node.Kind) {
-			return fmt.Errorf("%w: %q for node %q", errInvalidNodeKind, node.Kind, node.ID)
+			return nil, fmt.Errorf("%w: %q for node %q", errInvalidNodeKind, node.Kind, node.ID)
 		}
 
 		data, err := node.ParseData()
 		if err != nil {
-			return fmt.Errorf("parse node %q data: %w", node.ID, err)
+			return nil, fmt.Errorf("parse node %q data: %w", node.ID, err)
 		}
 
 		if err := validateNodeConfig(node.ID, data); err != nil {
-			return err
+			return nil, err
 		}
+
+		parsed[node.ID] = data
 
 		switch node.Kind {
 		case approval.NodeStart:
@@ -81,19 +89,41 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 		case approval.NodeCondition:
 			cnd, ok := data.(*approval.ConditionNodeData)
 			if !ok {
-				return fmt.Errorf("node %q: %w", node.ID, errUnexpectedCondData)
+				return nil, fmt.Errorf("node %q: %w", node.ID, errUnexpectedCondData)
 			}
 
 			condBranches[node.ID] = cnd.Branches
+
+		case approval.NodeApproval, approval.NodeHandle:
+			taskNodeIDs.Add(node.ID)
+
+			if ad, ok := data.(*approval.ApprovalNodeData); ok && len(ad.RollbackTargetKeys) > 0 {
+				rollbackRefs[node.ID] = ad.RollbackTargetKeys
+			}
 		}
 	}
 
 	if startCount != 1 {
-		return fmt.Errorf("%w, found %d", errStartNodeCount, startCount)
+		return nil, fmt.Errorf("%w, found %d", errStartNodeCount, startCount)
 	}
 
 	if endCount < 1 {
-		return fmt.Errorf("%w, found %d", errEndNodeCount, endCount)
+		return nil, fmt.Errorf("%w, found %d", errEndNodeCount, endCount)
+	}
+
+	// Rollback target keys are cross-node references — resolvable only now
+	// that every node ID is known. Targets must be task nodes (the designer
+	// offers exactly approval / handle candidates) and never the node itself.
+	for nodeID, targetKeys := range rollbackRefs {
+		for _, key := range targetKeys {
+			if key == nodeID {
+				return nil, fmt.Errorf("%w: node %q", errRollbackTargetSelf, nodeID)
+			}
+
+			if !taskNodeIDs.Contains(key) {
+				return nil, fmt.Errorf("%w: %q in node %q", errRollbackTargetUnknown, key, nodeID)
+			}
+		}
 	}
 
 	// --- Phase 2: Edge validation & adjacency ---
@@ -107,19 +137,19 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 
 	for _, edge := range def.Edges {
 		if edge.ID == "" {
-			return errEmptyEdgeID
+			return nil, errEmptyEdgeID
 		}
 
 		if !edgeIDs.Add(edge.ID) {
-			return fmt.Errorf("%w: %q", errDuplicateEdgeID, edge.ID)
+			return nil, fmt.Errorf("%w: %q", errDuplicateEdgeID, edge.ID)
 		}
 
 		if !nodeIDs.Contains(edge.Source) {
-			return fmt.Errorf("%w: edge %q references %q", errUnknownSourceNode, edge.ID, edge.Source)
+			return nil, fmt.Errorf("%w: edge %q references %q", errUnknownSourceNode, edge.ID, edge.Source)
 		}
 
 		if !nodeIDs.Contains(edge.Target) {
-			return fmt.Errorf("%w: edge %q references %q", errUnknownTargetNode, edge.ID, edge.Target)
+			return nil, fmt.Errorf("%w: edge %q references %q", errUnknownTargetNode, edge.ID, edge.Target)
 		}
 
 		outEdges[edge.Source] = append(outEdges[edge.Source], edge)
@@ -130,20 +160,20 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 
 	// --- Phase 3: Degree constraints ---
 	if inDegree[startID] > 0 {
-		return errStartIncoming
+		return nil, errStartIncoming
 	}
 
 	if len(outEdges[startID]) != 1 {
-		return fmt.Errorf("%w, found %d", errStartOutgoing, len(outEdges[startID]))
+		return nil, fmt.Errorf("%w, found %d", errStartOutgoing, len(outEdges[startID]))
 	}
 
 	for _, endID := range endIDs {
 		if len(outEdges[endID]) > 0 {
-			return fmt.Errorf("%w: %q", errEndOutgoing, endID)
+			return nil, fmt.Errorf("%w: %q", errEndOutgoing, endID)
 		}
 
 		if inDegree[endID] == 0 {
-			return fmt.Errorf("%w: %q", errEndIncoming, endID)
+			return nil, fmt.Errorf("%w: %q", errEndIncoming, endID)
 		}
 	}
 
@@ -157,15 +187,15 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 		switch node.Kind {
 		case approval.NodeCondition:
 			if err := validateConditionEdges(node.ID, condBranches[node.ID], outs); err != nil {
-				return err
+				return nil, err
 			}
 		default:
 			if len(outs) != 1 {
-				return fmt.Errorf("%w: node %q has %d", errNodeOutgoingCount, node.ID, len(outs))
+				return nil, fmt.Errorf("%w: node %q has %d", errNodeOutgoingCount, node.ID, len(outs))
 			}
 
 			if outs[0].SourceHandle != nil {
-				return fmt.Errorf("%w: node %q", errNodeSourceHandle, node.ID)
+				return nil, fmt.Errorf("%w: node %q", errNodeSourceHandle, node.ID)
 			}
 		}
 	}
@@ -176,14 +206,14 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 	}).Collect()
 
 	if detectCycle(nodeIDSlice, adjacency) {
-		return errGraphCycle
+		return nil, errGraphCycle
 	}
 
 	reachable := collectReachable(adjacency, startID)
 	if reachable.Size() != nodeIDs.Size() {
 		for _, node := range def.Nodes {
 			if !reachable.Contains(node.ID) {
-				return fmt.Errorf("%w: %q", errNodeUnreachable, node.ID)
+				return nil, fmt.Errorf("%w: %q", errNodeUnreachable, node.ID)
 			}
 		}
 	}
@@ -192,12 +222,12 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 	if canReachEnd.Size() != nodeIDs.Size() {
 		for _, node := range def.Nodes {
 			if !canReachEnd.Contains(node.ID) {
-				return fmt.Errorf("%w: %q", errNodeCannotReachEnd, node.ID)
+				return nil, fmt.Errorf("%w: %q", errNodeCannotReachEnd, node.ID)
 			}
 		}
 	}
 
-	return nil
+	return parsed, nil
 }
 
 // validateConditionEdges validates that a condition node's outgoing edges match its branches exactly.
