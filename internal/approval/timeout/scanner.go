@@ -48,34 +48,54 @@ func NewScanner(
 	}
 }
 
-// ScanTimeouts finds tasks that have passed their deadline and processes them.
+// scanBatchSize bounds how many rows a single scanner pass loads at once so
+// a large backlog cannot blow up memory or stretch one tick indefinitely.
+// Successfully processed rows flip their marker column (is_timeout /
+// is_pre_warning_sent), so re-querying naturally pages through the backlog.
+const scanBatchSize = 500
+
+// ScanTimeouts finds tasks that have passed their deadline and processes
+// them in batches. The loop stops when a batch comes back short (backlog
+// drained) or when an entire batch fails — failed rows keep is_timeout
+// false and would be re-selected forever otherwise.
 func (s *Scanner) ScanTimeouts(ctx context.Context) {
-	var tasks []approval.Task
+	for {
+		var tasks []approval.Task
 
-	if err := s.db.NewSelect().
-		Model(&tasks).
-		Select("id", "node_id", "instance_id", "assignee_id", "assignee_name", "deadline", "tenant_id", "status").
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("status", string(approval.TaskPending)).
-				IsNotNull("deadline").
-				LessThan("deadline", timex.Now()).
-				IsFalse("is_timeout")
-		}).
-		Scan(ctx); err != nil {
-		logger.Errorf("Failed to scan timeout tasks: %v", err)
+		if err := s.db.NewSelect().
+			Model(&tasks).
+			Select("id", "node_id", "instance_id", "assignee_id", "assignee_name", "deadline", "tenant_id", "status").
+			Where(func(cb orm.ConditionBuilder) {
+				cb.Equals("status", string(approval.TaskPending)).
+					IsNotNull("deadline").
+					LessThan("deadline", timex.Now()).
+					IsFalse("is_timeout")
+			}).
+			Limit(scanBatchSize).
+			Scan(ctx); err != nil {
+			logger.Errorf("Failed to scan timeout tasks: %v", err)
 
-		return
-	}
+			return
+		}
 
-	if len(tasks) == 0 {
-		return
-	}
+		if len(tasks) == 0 {
+			return
+		}
 
-	logger.Infof("Found %d timed-out tasks", len(tasks))
+		logger.Infof("Processing %d timed-out tasks", len(tasks))
 
-	for i := range tasks {
-		if err := s.processTimeout(ctx, &tasks[i]); err != nil {
-			logger.Errorf("Failed to process timeout for task %s: %v", tasks[i].ID, err)
+		succeeded := 0
+
+		for i := range tasks {
+			if err := s.processTimeout(ctx, &tasks[i]); err != nil {
+				logger.Errorf("Failed to process timeout for task %s: %v", tasks[i].ID, err)
+			} else {
+				succeeded++
+			}
+		}
+
+		if succeeded == 0 || len(tasks) < scanBatchSize {
+			return
 		}
 	}
 }
@@ -422,43 +442,60 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 	return events, nil
 }
 
-// ScanPreWarnings finds tasks approaching their deadline and sends warning notifications.
+// ScanPreWarnings finds tasks approaching their deadline and sends warning
+// notifications in batches (same paging strategy as ScanTimeouts: processed
+// rows flip is_pre_warning_sent, an all-failed batch stops the loop).
 func (s *Scanner) ScanPreWarnings(ctx context.Context) {
-	var tasks []approval.Task
+	for {
+		var tasks []approval.Task
 
-	if err := s.db.NewSelect().
-		Model(&tasks).
-		SelectModelColumns().
-		Join((*approval.FlowNode)(nil), func(cb orm.ConditionBuilder) {
-			cb.EqualsColumn("afn.id", "at.node_id")
-		}).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("at.status", approval.TaskPending).
-				IsNotNull("at.deadline").
-				IsFalse("at.is_timeout").
-				GreaterThan("afn.timeout_notify_before_hours", 0).
-				// deadline - hours <= NOW(), equivalent to: deadline <= NOW() + hours
-				LessThanOrEqualExpr("at.deadline", func(eb orm.ExprBuilder) any {
-					return eb.DateAdd(eb.Now(), eb.Column("afn.timeout_notify_before_hours"), orm.UnitHour)
-				}).
-				IsFalse("at.is_pre_warning_sent")
-		}).
-		Scan(ctx); err != nil {
-		logger.Errorf("Failed to scan pre-warning tasks: %v", err)
+		if err := s.db.NewSelect().
+			Model(&tasks).
+			SelectModelColumns().
+			Join((*approval.FlowNode)(nil), func(cb orm.ConditionBuilder) {
+				cb.EqualsColumn("afn.id", "at.node_id")
+			}).
+			Where(func(cb orm.ConditionBuilder) {
+				cb.Equals("at.status", approval.TaskPending).
+					IsNotNull("at.deadline").
+					IsFalse("at.is_timeout").
+					GreaterThan("afn.timeout_notify_before_hours", 0).
+					// deadline - hours <= NOW(), equivalent to: deadline <= NOW() + hours
+					LessThanOrEqualExpr("at.deadline", func(eb orm.ExprBuilder) any {
+						return eb.DateAdd(eb.Now(), eb.Column("afn.timeout_notify_before_hours"), orm.UnitHour)
+					}).
+					IsFalse("at.is_pre_warning_sent")
+			}).
+			Limit(scanBatchSize).
+			Scan(ctx); err != nil {
+			logger.Errorf("Failed to scan pre-warning tasks: %v", err)
 
-		return
-	}
-
-	for i := range tasks {
-		task := &tasks[i]
-		if task.Deadline == nil {
-			continue
+			return
 		}
 
-		hoursLeft := max(int(task.Deadline.Until().Hours()), 0)
+		if len(tasks) == 0 {
+			return
+		}
 
-		if err := s.sendPreWarning(ctx, task, hoursLeft); err != nil {
-			logger.Errorf("Failed to send pre-warning for task %s: %v", task.ID, err)
+		succeeded := 0
+
+		for i := range tasks {
+			task := &tasks[i]
+			if task.Deadline == nil {
+				continue
+			}
+
+			hoursLeft := max(int(task.Deadline.Until().Hours()), 0)
+
+			if err := s.sendPreWarning(ctx, task, hoursLeft); err != nil {
+				logger.Errorf("Failed to send pre-warning for task %s: %v", task.ID, err)
+			} else {
+				succeeded++
+			}
+		}
+
+		if succeeded == 0 || len(tasks) < scanBatchSize {
+			return
 		}
 	}
 }
