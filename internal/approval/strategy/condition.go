@@ -47,7 +47,10 @@ func (*FieldConditionEvaluator) Evaluate(_ context.Context, cond approval.Condit
 
 // resolveSubjectValue maps a condition subject to its runtime value: the two
 // applicant attributes come from the evaluation context, everything else is a
-// form-data key.
+// form-data key. The applicant subjects are reserved names — a form field
+// whose key collides with one of them is shadowed and can never be referenced
+// by a field condition, matching the expression environment where formData
+// lives under its own namespace.
 func resolveSubjectValue(subject string, ec *approval.EvaluationContext) any {
 	switch subject {
 	case subjectApplicantID:
