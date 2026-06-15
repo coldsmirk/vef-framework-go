@@ -230,7 +230,11 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 					}
 
 					if activateAffected == 0 {
+						// A concurrent writer already advanced this row; fully revert
+						// the optimistic in-memory mutation, deadline included, so the
+						// reverted task keeps the waiting invariant (nil deadline).
 						tasks[j].Status = approval.TaskWaiting
+						tasks[j].Deadline = nil
 					}
 
 					break
