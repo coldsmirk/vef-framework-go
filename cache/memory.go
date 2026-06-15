@@ -51,7 +51,7 @@ type memoryCache[T any] struct {
 	stopGC          chan struct{}
 	gcInterval      time.Duration
 	size            atomic.Int64 // Atomic counter for cache size
-	mu              sync.Mutex   // Serializes Set's size check + eviction decision; handlers carry their own locks
+	mu              sync.Mutex   // Serializes every membership/size mutation (Set, Delete, Clear, expiry removal) so the map, size counter, and eviction handler never drift; live reads stay off it
 	loadMixin       SingleflightMixin[T]
 	closed          atomic.Bool // Tracks if cache is closed
 }
@@ -97,24 +97,49 @@ func newMemoryCache[T any](cfg *memoryConfig) Cache[T] {
 	return m
 }
 
-// checkExpired checks if an entry is expired and removes it if so.
-// Returns true if the entry was expired and removed.
+// checkExpired reports whether an entry has expired, removing it when it has.
+// The cheap isExpired probe stays off m.mu so a live (non-expired) Get/Contains
+// hit never contends; only the actual removal is serialized and identity-guarded
+// via removeExpiredEntry.
 func (m *memoryCache[T]) checkExpired(key string, entry *cacheEntry[T]) bool {
-	if entry.isExpired() {
-		// Gate OnEvict + size decrement on actually removing the entry, mirroring
-		// every other deletion path (Set eviction, Delete, cleanupExpired). Get and
-		// Contains call this without holding m.mu, so two goroutines can observe the
-		// same key as expired concurrently; LoadAndDelete makes the delete-and-account
-		// atomic so the size counter never double-decrements below the true entry count.
-		if _, loaded := m.data.LoadAndDelete(key); loaded {
-			m.evictionHandler.OnEvict(key)
-			m.size.Add(-1)
-		}
-
-		return true
+	if !entry.isExpired() {
+		return false
 	}
 
-	return false
+	m.removeExpiredEntry(key, entry)
+
+	return true
+}
+
+// removeExpiredEntry deletes key only while it still maps to the exact expired
+// entry the caller observed, accounting for eviction tracking and the size
+// counter under m.mu. Holding m.mu serializes this compound (map + size +
+// handler) mutation against Set/Delete/Clear, and the identity guard inside
+// Compute cancels the delete when a concurrent Set has already replaced the key
+// with a fresh entry — so a just-written value is never clobbered and the size
+// counter never drifts from the live entry count. Get/Contains observe the
+// entry before acquiring m.mu, hence the identity recheck rather than a blind
+// delete-by-key.
+func (m *memoryCache[T]) removeExpiredEntry(key string, entry *cacheEntry[T]) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	deleted := false
+
+	m.data.Compute(key, func(current *cacheEntry[T], loaded bool) (*cacheEntry[T], xsync.ComputeOp) {
+		if loaded && current == entry {
+			deleted = true
+
+			return current, xsync.DeleteOp
+		}
+
+		return current, xsync.CancelOp
+	})
+
+	if deleted {
+		m.evictionHandler.OnEvict(key)
+		m.size.Add(-1)
+	}
 }
 
 // Get retrieves a value by key.
@@ -222,6 +247,11 @@ func (m *memoryCache[T]) Delete(_ context.Context, key string) error {
 		return nil
 	}
 
+	// Serialize with Set/Clear/expiry so the map, size counter, and eviction
+	// handler stay consistent when a Delete races a Set on the same key.
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if _, loaded := m.data.LoadAndDelete(key); loaded {
 		m.evictionHandler.OnEvict(key)
 		m.size.Add(-1)
@@ -236,7 +266,11 @@ func (m *memoryCache[T]) Clear(context.Context) error {
 		return nil
 	}
 
-	// Clear all entries and reset eviction handler
+	// Serialize the bulk reset with concurrent membership mutations so the size
+	// counter cannot be zeroed while a racing Set leaves a live entry behind.
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.data.Clear()
 	m.evictionHandler.Reset()
 	m.size.Store(0)
@@ -353,22 +387,25 @@ func (m *memoryCache[T]) cleanupExpired() {
 		return
 	}
 
-	var keysToDelete []string
+	type staleEntry struct {
+		key   string
+		entry *cacheEntry[T]
+	}
 
-	// Find expired entries
+	var stale []staleEntry
+
+	// Snapshot the expired (key, entry) pairs, then remove each identity-guarded:
+	// a concurrent Set that refreshes a key between this scan and the delete must
+	// survive, so the entry pointer is matched, not just the key.
 	m.data.Range(func(key string, entry *cacheEntry[T]) bool {
 		if entry.isExpired() {
-			keysToDelete = append(keysToDelete, key)
+			stale = append(stale, staleEntry{key: key, entry: entry})
 		}
 
 		return true
 	})
 
-	// Delete expired entries and notify eviction handler
-	for _, key := range keysToDelete {
-		if _, loaded := m.data.LoadAndDelete(key); loaded {
-			m.evictionHandler.OnEvict(key)
-			m.size.Add(-1)
-		}
+	for _, e := range stale {
+		m.removeExpiredEntry(e.key, e.entry)
 	}
 }

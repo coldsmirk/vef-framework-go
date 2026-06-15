@@ -1031,6 +1031,54 @@ func TestMemoryCacheConcurrentExpiry(t *testing.T) {
 		assert.LessOrEqual(t, size, int64(maxSize), "size must never exceed maxSize even after concurrent expiry of prior entries")
 		assert.GreaterOrEqual(t, size, int64(0), "size must never drift negative")
 	})
+
+	t.Run("ConcurrentSetSurvivesExpiryRemoval", func(t *testing.T) {
+		// A Set that refreshes a key must never be clobbered by a concurrent
+		// lazy-expiry removal of the prior (expired) entry. Before identity-guarded
+		// removal, a racing Get could delete the freshly-Set value by key, silently
+		// losing an acknowledged write and undercounting size.
+		const rounds = 1000
+
+		for range rounds {
+			cache := newTestCache[int](100, 0, EvictionPolicyLRU, time.Hour)
+
+			// Seed an entry already expired by the time the racers run.
+			require.NoError(t, cache.Set(ctx, "k", 1, time.Nanosecond), "seeding the expiring key should succeed")
+			time.Sleep(time.Millisecond)
+
+			start := make(chan struct{})
+
+			var (
+				wg     sync.WaitGroup
+				setErr error
+			)
+
+			wg.Go(func() {
+				<-start
+				cache.Get(ctx, "k") // observes the expired entry and removes it
+			})
+			wg.Go(func() {
+				<-start
+
+				setErr = cache.Set(ctx, "k", 2) // permanent refresh that must survive
+			})
+
+			close(start)
+			wg.Wait()
+
+			require.NoError(t, setErr, "refreshing the key should succeed")
+
+			got, ok := cache.Get(ctx, "k")
+			require.True(t, ok, "the freshly Set value must survive a concurrent expiry removal")
+			assert.Equal(t, 2, got, "Get should return the value written by the racing Set")
+
+			size, err := cache.Size(ctx)
+			require.NoError(t, err, "Size should not error")
+			assert.Equal(t, int64(1), size, "size must match the single live entry after the race")
+
+			cache.Close()
+		}
+	})
 }
 
 // TestMemoryCacheEdgeCases tests memory cache edge cases functionality.
