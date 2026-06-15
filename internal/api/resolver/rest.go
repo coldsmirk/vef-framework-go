@@ -9,7 +9,7 @@ import (
 
 type REST struct{}
 
-func NewRest() api.HandlerResolver {
+func NewREST() api.HandlerResolver {
 	return new(REST)
 }
 

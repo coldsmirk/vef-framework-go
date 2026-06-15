@@ -41,30 +41,6 @@ type engine struct {
 	router           fiber.Router
 }
 
-func WithDefaultTimeout(timeout time.Duration) EngineOption {
-	return func(e *engine) {
-		e.defaultTimeout = timeout
-	}
-}
-
-func WithDefaultVersion(version string) EngineOption {
-	return func(e *engine) {
-		e.defaultVersion = version
-	}
-}
-
-func WithDefaultAuth(auth *api.AuthConfig) EngineOption {
-	return func(e *engine) {
-		e.defaultAuth = auth
-	}
-}
-
-func WithDefaultRateLimit(rateLimit *api.RateLimitConfig) EngineOption {
-	return func(e *engine) {
-		e.defaultRateLimit = rateLimit
-	}
-}
-
 func WithRouters(routers ...api.RouterStrategy) EngineOption {
 	return func(e *engine) {
 		e.routerOperations = streams.ToHashMapC(

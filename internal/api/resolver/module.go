@@ -6,7 +6,7 @@ var Module = fx.Module(
 	"vef:api:resolver",
 	fx.Provide(
 		fx.Annotate(
-			NewRest,
+			NewREST,
 			fx.ResultTags(`group:"vef:api:handler_resolvers"`),
 		),
 		fx.Annotate(

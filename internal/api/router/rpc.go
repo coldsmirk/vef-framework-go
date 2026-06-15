@@ -3,12 +3,10 @@ package router
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"slices"
 
 	"github.com/coldsmirk/go-collections"
 	"github.com/gofiber/fiber/v3"
-	"github.com/hbollon/go-edlib"
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/contextx"
@@ -129,28 +127,12 @@ func (*RPC) parseRequest(ctx fiber.Ctx) (*api.Request, error) {
 func (r *RPC) findClosestAPI(requested api.Identifier) *api.Identifier {
 	requestedStr := identifierToString(requested)
 
-	var (
-		closest     *api.Identifier
-		minDistance = math.MaxInt
-		ambiguous   bool
-	)
+	match, distance, ok := shared.Closest(requestedStr, r.operations.SeqKeys(), identifierToString)
 
-	for id := range r.operations.SeqKeys() {
-		distance := edlib.LevenshteinDistance(requestedStr, identifierToString(id))
-		switch {
-		case distance < minDistance:
-			minDistance = distance
-			closest = &id
-			ambiguous = false
-		case distance == minDistance:
-			ambiguous = true
-		}
-	}
-
-	// Only suggest if the distance is less than half the requested string length
-	// and there is no ambiguity (two equally close candidates).
-	if !ambiguous && closest != nil && minDistance < len(requestedStr)/2 {
-		return closest
+	// Only suggest if the match is unambiguous and the distance is less than
+	// half the requested string length.
+	if ok && distance < len(requestedStr)/2 {
+		return &match
 	}
 
 	return nil

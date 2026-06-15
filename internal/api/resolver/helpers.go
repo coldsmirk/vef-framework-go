@@ -2,11 +2,9 @@ package resolver
 
 import (
 	"fmt"
-	"math"
 	"reflect"
+	"slices"
 	"strings"
-
-	"github.com/hbollon/go-edlib"
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/internal/api/handler"
@@ -73,30 +71,12 @@ func findHandlerMethod(target reflect.Value, name string) (reflect.Value, error)
 // selectClosestMatch finds the closest match from candidates using Levenshtein distance.
 // Returns empty string if candidates is empty or multiple candidates share the same minimum distance.
 func selectClosestMatch(target string, candidates []string) string {
-	var (
-		bestMatch   string
-		minDistance = math.MaxInt
-		ambiguous   bool
-	)
-
-	for _, candidate := range candidates {
-		distance := edlib.LevenshteinDistance(target, candidate)
-
-		switch {
-		case distance < minDistance:
-			minDistance = distance
-			bestMatch = candidate
-			ambiguous = false
-		case distance == minDistance:
-			ambiguous = true
-		}
-	}
-
-	if ambiguous {
+	match, _, ok := shared.Closest(target, slices.Values(candidates), func(s string) string { return s })
+	if !ok {
 		return ""
 	}
 
-	return bestMatch
+	return match
 }
 
 func validateHandlerSignature(method reflect.Type) error {

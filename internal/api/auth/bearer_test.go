@@ -83,7 +83,7 @@ func TestBearerStrategyAuthenticate(t *testing.T) {
 
 		_, err := runBearerRequest(t, strategy, "some-token")
 		require.Error(t, err, "Authenticate should propagate authenticator errors")
-		assert.True(t, errors.Is(err, authErr), "Propagated error should wrap the authenticator error")
+		assert.ErrorIs(t, err, authErr, "Propagated error should wrap the authenticator error")
 	})
 
 	t.Run("AllAuthenticatorsReturnNilPrincipal401", func(t *testing.T) {

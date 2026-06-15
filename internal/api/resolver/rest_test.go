@@ -10,7 +10,7 @@ import (
 
 // TestRESTResolve tests the REST resolver.
 func TestRESTResolve(t *testing.T) {
-	resolver := NewRest()
+	resolver := NewREST()
 
 	t.Run("NonRESTResourceReturnsNil", func(t *testing.T) {
 		resource := api.NewRPCResource("test")

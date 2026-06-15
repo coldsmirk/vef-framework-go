@@ -29,28 +29,12 @@ type BearerStrategy struct {
 	authenticators []TokenAuthenticator
 }
 
-// BearerOption configures BearerStrategy.
-type BearerOption func(*BearerStrategy)
-
-// WithTokenExtractor sets a custom token extractor.
-func WithTokenExtractor(e extractors.Extractor) BearerOption {
-	return func(s *BearerStrategy) {
-		s.extractor = e
-	}
-}
-
 // NewBearer creates a new Bearer token authentication strategy.
-func NewBearer(authenticators []TokenAuthenticator, opts ...BearerOption) api.AuthStrategy {
-	s := &BearerStrategy{
+func NewBearer(authenticators []TokenAuthenticator) api.AuthStrategy {
+	return &BearerStrategy{
 		authenticators: authenticators,
 		extractor:      defaultTokenExtractor,
 	}
-
-	for _, opt := range opts {
-		opt(s)
-	}
-
-	return s
 }
 
 // Name returns the strategy name.

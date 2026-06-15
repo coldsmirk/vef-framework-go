@@ -1,4 +1,3 @@
-//nolint:revive // package name is intentional
 package api
 
 import (
@@ -57,26 +56,4 @@ type Request struct {
 
 	Params Params `json:"params"`
 	Meta   Meta   `json:"meta"`
-}
-
-// GetParam retrieves a value from the request params by key.
-func (r *Request) GetParam(key string) (any, bool) {
-	if r.Params == nil {
-		return nil, false
-	}
-
-	value, exists := r.Params[key]
-
-	return value, exists
-}
-
-// GetMeta retrieves a value from the request metadata by key.
-func (r *Request) GetMeta(key string) (any, bool) {
-	if r.Meta == nil {
-		return nil, false
-	}
-
-	value, exists := r.Meta[key]
-
-	return value, exists
 }

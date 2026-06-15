@@ -1,4 +1,3 @@
-//nolint:revive // package name is intentional
 package api
 
 import "time"
@@ -37,21 +36,9 @@ type Operation struct {
 	RateLimit *RateLimitConfig
 	// Handler is the resolved handler (before adaptation).
 	Handler any
-	// Dynamic indicates whether this operation is registered dynamically.
-	Dynamic bool
 	// Meta holds additional operation-specific data.
 	// For REST: may contain parsed method, path pattern, etc.
 	Meta map[string]any
-}
-
-// HasRateLimit returns true if rate limiting is configured.
-func (o *Operation) HasRateLimit() bool {
-	return o.RateLimit != nil && o.RateLimit.Max > 0
-}
-
-// RequiresAuth returns true if authentication is required.
-func (o *Operation) RequiresAuth() bool {
-	return o.Auth.Strategy != AuthStrategyNone
 }
 
 // RateLimitConfig defines rate limiting configuration.

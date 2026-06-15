@@ -174,31 +174,19 @@ func TestNewEngine(t *testing.T) {
 	})
 }
 
+// TestEngineDefaults verifies NewEngine seeds the hardcoded defaults.
+func TestEngineDefaults(t *testing.T) {
+	e := newTestEngine(t)
+
+	assert.Equal(t, 30*time.Second, e.defaultTimeout, "Default timeout should be 30s")
+	assert.Equal(t, api.VersionV1, e.defaultVersion, "Default version should be v1")
+	assert.Equal(t, api.AuthStrategyBearer, e.defaultAuth.Strategy, "Default auth should be bearer")
+	assert.Equal(t, 100, e.defaultRateLimit.Max, "Default rate limit max should be 100")
+	assert.Equal(t, 5*time.Minute, e.defaultRateLimit.Period, "Default rate limit period should be 5m")
+}
+
 // TestEngineOptions tests engine options scenarios.
 func TestEngineOptions(t *testing.T) {
-	t.Run("WithDefaultTimeout", func(t *testing.T) {
-		customTimeout := 60 * time.Second
-		e := newTestEngine(t, WithDefaultTimeout(customTimeout))
-		assert.Equal(t, customTimeout, e.defaultTimeout, "Custom timeout should be applied")
-	})
-
-	t.Run("WithDefaultVersion", func(t *testing.T) {
-		e := newTestEngine(t, WithDefaultVersion("v2"))
-		assert.Equal(t, "v2", e.defaultVersion, "Custom version should be applied")
-	})
-
-	t.Run("WithDefaultAuth", func(t *testing.T) {
-		e := newTestEngine(t, WithDefaultAuth(api.SignatureAuth()))
-		assert.Equal(t, api.AuthStrategySignature, e.defaultAuth.Strategy, "Custom auth strategy should be applied")
-	})
-
-	t.Run("WithDefaultRateLimit", func(t *testing.T) {
-		customRateLimit := &api.RateLimitConfig{Max: 50, Period: 1 * time.Minute}
-		e := newTestEngine(t, WithDefaultRateLimit(customRateLimit))
-		assert.Equal(t, 50, e.defaultRateLimit.Max, "Custom rate limit max should be applied")
-		assert.Equal(t, 1*time.Minute, e.defaultRateLimit.Period, "Custom rate limit period should be applied")
-	})
-
 	t.Run("WithRouters", func(t *testing.T) {
 		router1 := &MockRouterStrategy{name: "rpc"}
 		router2 := &MockRouterStrategy{name: "rest"}
@@ -226,14 +214,22 @@ func TestEngineOptions(t *testing.T) {
 	})
 
 	t.Run("MultipleOptions", func(t *testing.T) {
+		router := &MockRouterStrategy{name: "rpc"}
+		collector := &MockOperationsCollector{}
+		resolver := &MockHandlerResolver{handler: DummyHandler}
+		adapter := &MockHandlerAdapter{}
+
 		e := newTestEngine(t,
-			WithDefaultTimeout(45*time.Second),
-			WithDefaultVersion("v3"),
-			WithDefaultAuth(api.Public()),
+			WithRouters(router),
+			WithOperationCollectors(collector),
+			WithHandlerResolvers(resolver),
+			WithHandlerAdapters(adapter),
 		)
-		assert.Equal(t, 45*time.Second, e.defaultTimeout, "Custom timeout should be applied")
-		assert.Equal(t, "v3", e.defaultVersion, "Custom version should be applied")
-		assert.Equal(t, api.AuthStrategyNone, e.defaultAuth.Strategy, "Custom auth should be applied")
+		require.NotNil(t, e.routerOperations, "Router operations map should be initialized")
+		assert.Equal(t, 1, e.routerOperations.Size(), "Should have 1 router")
+		assert.Len(t, e.collectors, 1, "Should have 1 collector")
+		assert.Len(t, e.resolvers, 1, "Should have 1 resolver")
+		assert.Len(t, e.adapters, 1, "Should have 1 adapter")
 	})
 }
 
@@ -566,7 +562,7 @@ func TestEngineMount(t *testing.T) {
 
 // TestResolveTimeout tests resolve timeout scenarios.
 func TestResolveTimeout(t *testing.T) {
-	e := newTestEngine(t, WithDefaultTimeout(30*time.Second))
+	e := newTestEngine(t)
 
 	tests := []struct {
 		name     string
@@ -589,7 +585,7 @@ func TestResolveTimeout(t *testing.T) {
 func TestResolveRateLimit(t *testing.T) {
 	defaultLimit := &api.RateLimitConfig{Max: 100, Period: 5 * time.Minute}
 	customLimit := &api.RateLimitConfig{Max: 10, Period: 1 * time.Minute}
-	e := newTestEngine(t, WithDefaultRateLimit(defaultLimit))
+	e := newTestEngine(t)
 
 	tests := []struct {
 		name     string
@@ -774,7 +770,7 @@ func TestWrapHandlerIfNecessary(t *testing.T) {
 
 // TestResolveAuthConfig tests resolve auth config scenarios.
 func TestResolveAuthConfig(t *testing.T) {
-	e := newTestEngine(t, WithDefaultAuth(api.BearerAuth()))
+	e := newTestEngine(t)
 	res := &MockResource{kind: api.KindRPC, name: "test/resource"}
 
 	t.Run("PublicSpecReturnsPublicAuth", func(t *testing.T) {
@@ -803,14 +799,15 @@ func TestResolveAuthConfig(t *testing.T) {
 	})
 
 	t.Run("AuthConfigIsCloned", func(t *testing.T) {
-		defaultAuth := api.BearerAuth()
-		cloneEngine := newTestEngine(t, WithDefaultAuth(defaultAuth))
-
 		spec := api.OperationSpec{Action: "create"}
-		result := cloneEngine.resolveAuthConfig(res, spec)
+
+		result := e.resolveAuthConfig(res, spec)
 		result.Strategy = "modified"
 
-		assert.Equal(t, api.AuthStrategyBearer, defaultAuth.Strategy, "Original auth should not be modified")
+		// A second resolve must still see the pristine default, proving the
+		// engine's stored default auth was cloned rather than shared.
+		again := e.resolveAuthConfig(res, spec)
+		assert.Equal(t, api.AuthStrategyBearer, again.Strategy, "Engine default auth should not be modified by a resolved clone")
 	})
 
 	t.Run("ResourceAuthConfigIsCloned", func(t *testing.T) {
