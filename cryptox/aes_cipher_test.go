@@ -1,6 +1,8 @@
 package cryptox
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
 	"testing"
@@ -9,16 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAesCipherCbc tests AES encryption and decryption in CBC mode.
+// TestAesCipherCbc tests AES encryption and decryption round-trip in CBC mode.
 func TestAesCipherCbc(t *testing.T) {
 	key := make([]byte, 32)
-	iv := make([]byte, 16)
 	_, err := rand.Read(key)
 	require.NoError(t, err, "Should generate random key")
-	_, err = rand.Read(iv)
-	require.NoError(t, err, "Should generate random IV")
 
-	cipher, err := NewAES(key, WithAESIv(iv), WithAESMode(AesModeCbc))
+	cipher, err := NewAES(key, WithAESMode(AesModeCbc))
 	require.NoError(t, err, "Should create AES cipher in CBC mode")
 
 	tests := []struct {
@@ -43,6 +42,79 @@ func TestAesCipherCbc(t *testing.T) {
 			assert.Equal(t, tt.plaintext, decrypted, "Decrypted text should match original plaintext")
 		})
 	}
+}
+
+// TestAesCipherCbcRandomIv asserts CBC encryption uses a fresh random IV per
+// call: encrypting the same plaintext twice must yield different ciphertext,
+// and both must still decrypt back to the original.
+func TestAesCipherCbcRandomIv(t *testing.T) {
+	key := make([]byte, 32)
+	_, err := rand.Read(key)
+	require.NoError(t, err, "Should generate random key")
+
+	cipher, err := NewAES(key, WithAESMode(AesModeCbc))
+	require.NoError(t, err, "Should create AES cipher in CBC mode")
+
+	plaintext := "Test message"
+
+	ciphertext1, err := cipher.Encrypt(plaintext)
+	require.NoError(t, err, "Should encrypt plaintext successfully")
+
+	ciphertext2, err := cipher.Encrypt(plaintext)
+	require.NoError(t, err, "Should encrypt plaintext successfully")
+
+	assert.NotEqual(t, ciphertext1, ciphertext2,
+		"CBC encryption of the same plaintext must differ due to a fresh random IV")
+
+	decrypted1, err := cipher.Decrypt(ciphertext1)
+	require.NoError(t, err, "Should decrypt first ciphertext successfully")
+	decrypted2, err := cipher.Decrypt(ciphertext2)
+	require.NoError(t, err, "Should decrypt second ciphertext successfully")
+
+	assert.Equal(t, plaintext, decrypted1, "First decrypted text should match original plaintext")
+	assert.Equal(t, plaintext, decrypted2, "Second decrypted text should match original plaintext")
+}
+
+// TestAesCipherDecryptWithFixedIv covers the interop decrypt path: data that an
+// external client produced with a constant IV (no prepended IV) is decrypted
+// using the fixed IV configured via WithAESIv.
+func TestAesCipherDecryptWithFixedIv(t *testing.T) {
+	key := make([]byte, 32)
+	iv := make([]byte, aes.BlockSize)
+	_, err := rand.Read(key)
+	require.NoError(t, err, "Should generate random key")
+	_, err = rand.Read(iv)
+	require.NoError(t, err, "Should generate random IV")
+
+	plaintext := "client-encrypted password"
+	external := aesFixedIvCiphertext(t, key, iv, plaintext)
+
+	c, err := NewAES(key, WithAESMode(AesModeCbc), WithAESIv(iv))
+	require.NoError(t, err, "Should create AES cipher with fixed interop IV")
+
+	decrypter, ok := c.(FixedIVDecrypter)
+	require.True(t, ok, "AES cipher should implement FixedIVDecrypter")
+
+	decrypted, err := decrypter.DecryptWithFixedIV(external)
+	require.NoError(t, err, "Should decrypt fixed-IV interop ciphertext")
+	assert.Equal(t, plaintext, decrypted, "Decrypted text should match client plaintext")
+}
+
+// TestAesCipherDecryptWithFixedIvRequiresIv verifies the interop path fails
+// cleanly when no fixed IV was configured.
+func TestAesCipherDecryptWithFixedIvRequiresIv(t *testing.T) {
+	key := make([]byte, 32)
+	_, err := rand.Read(key)
+	require.NoError(t, err, "Should generate random key")
+
+	c, err := NewAES(key, WithAESMode(AesModeCbc))
+	require.NoError(t, err, "Should create AES cipher")
+
+	decrypter, ok := c.(FixedIVDecrypter)
+	require.True(t, ok, "AES cipher should implement FixedIVDecrypter")
+
+	_, err = decrypter.DecryptWithFixedIV(base64.StdEncoding.EncodeToString(make([]byte, aes.BlockSize)))
+	require.ErrorIs(t, err, ErrInvalidIVSizeCBC, "Should reject interop decrypt without a configured IV")
 }
 
 // TestAesCipherGcm tests AES encryption and decryption in GCM mode.
@@ -81,9 +153,8 @@ func TestAesCipherGcm(t *testing.T) {
 // TestAesCipherFromHex tests creating AES cipher from hex-encoded key.
 func TestAesCipherFromHex(t *testing.T) {
 	keyHex := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	iv := []byte{0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef}
 
-	cipher, err := NewAESFromHex(keyHex, WithAESIv(iv), WithAESMode(AesModeCbc))
+	cipher, err := NewAESFromHex(keyHex, WithAESMode(AesModeCbc))
 	require.NoError(t, err, "Should create AES cipher from hex")
 
 	plaintext := "Test message"
@@ -99,15 +170,12 @@ func TestAesCipherFromHex(t *testing.T) {
 // TestAesCipherFromBase64 tests creating AES cipher from base64-encoded key.
 func TestAesCipherFromBase64(t *testing.T) {
 	key := make([]byte, 32)
-	iv := make([]byte, 16)
 	_, err := rand.Read(key)
 	require.NoError(t, err, "Should generate random key")
-	_, err = rand.Read(iv)
-	require.NoError(t, err, "Should generate random IV")
 
 	keyBase64 := base64.StdEncoding.EncodeToString(key)
 
-	cipher, err := NewAESFromBase64(keyBase64, WithAESIv(iv), WithAESMode(AesModeCbc))
+	cipher, err := NewAESFromBase64(keyBase64, WithAESMode(AesModeCbc))
 	require.NoError(t, err, "Should create AES cipher from base64")
 
 	plaintext := "Test message with base64 encoded key"
@@ -123,19 +191,18 @@ func TestAesCipherFromBase64(t *testing.T) {
 // TestAesCipherInvalidKeySize tests that invalid key size is rejected.
 func TestAesCipherInvalidKeySize(t *testing.T) {
 	invalidKey := make([]byte, 15)
-	iv := make([]byte, 16)
 
-	_, err := NewAES(invalidKey, WithAESIv(iv), WithAESMode(AesModeCbc))
+	_, err := NewAES(invalidKey, WithAESMode(AesModeCbc))
 	assert.Error(t, err, "Should reject invalid key size")
 }
 
-// TestAesCipherInvalidIvSize tests that invalid IV size is rejected.
+// TestAesCipherInvalidIvSize tests that an invalid fixed interop IV is rejected.
 func TestAesCipherInvalidIvSize(t *testing.T) {
 	key := make([]byte, 32)
 	invalidIV := make([]byte, 8)
 
-	_, err := NewAES(key, WithAESIv(invalidIV), WithAESMode(AesModeCbc))
-	assert.Error(t, err, "Should reject invalid IV size")
+	_, err := NewAES(key, WithAESMode(AesModeCbc), WithAESIv(invalidIV))
+	assert.Error(t, err, "Should reject invalid fixed IV size")
 }
 
 // TestAesCipherGcmAuthentication tests GCM mode authentication tag verification.
@@ -157,6 +224,34 @@ func TestAesCipherGcmAuthentication(t *testing.T) {
 	assert.Error(t, err, "Should reject tampered ciphertext")
 }
 
+// TestAesCipherCbcDecryptShortCiphertext verifies short/invalid CBC ciphertext
+// is rejected cleanly rather than panicking.
+func TestAesCipherCbcDecryptShortCiphertext(t *testing.T) {
+	key := make([]byte, 32)
+	_, err := rand.Read(key)
+	require.NoError(t, err, "Should generate random key")
+
+	cipher, err := NewAES(key, WithAESMode(AesModeCbc))
+	require.NoError(t, err, "Should create AES cipher in CBC mode")
+
+	tests := []struct {
+		name       string
+		ciphertext string
+	}{
+		{"NotBase64", "not valid base64 !!!"},
+		{"ShorterThanIv", base64.StdEncoding.EncodeToString(make([]byte, aes.BlockSize-1))},
+		{"IvOnlyNoPayload", base64.StdEncoding.EncodeToString(make([]byte, aes.BlockSize))},
+		{"PayloadNotBlockMultiple", base64.StdEncoding.EncodeToString(make([]byte, aes.BlockSize+1))},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := cipher.Decrypt(tt.ciphertext)
+			require.Error(t, err, "Should reject malformed ciphertext")
+		})
+	}
+}
+
 // TestAesCipherKeySizes tests AES with different key sizes.
 func TestAesCipherKeySizes(t *testing.T) {
 	tests := []struct {
@@ -171,13 +266,10 @@ func TestAesCipherKeySizes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			key := make([]byte, tt.keySize)
-			iv := make([]byte, 16)
 			_, err := rand.Read(key)
 			require.NoError(t, err, "Should generate random key")
-			_, err = rand.Read(iv)
-			require.NoError(t, err, "Should generate random IV")
 
-			cipher, err := NewAES(key, WithAESIv(iv), WithAESMode(AesModeCbc))
+			cipher, err := NewAES(key, WithAESMode(AesModeCbc))
 			require.NoError(t, err, "Should create AES cipher")
 
 			plaintext := "Test message"
@@ -257,4 +349,19 @@ func TestPkcs7UnpaddingInvalid(t *testing.T) {
 			require.Error(t, err, "Should reject malformed padding")
 		})
 	}
+}
+
+// aesFixedIvCiphertext emulates an external client encrypting with a constant
+// IV and no prepended IV, mirroring the interop input DecryptWithFixedIV reads.
+func aesFixedIvCiphertext(t *testing.T, key, iv []byte, plaintext string) string {
+	t.Helper()
+
+	block, err := aes.NewCipher(key)
+	require.NoError(t, err, "Should create AES block cipher")
+
+	padded := pkcs7Padding([]byte(plaintext), aes.BlockSize)
+	out := make([]byte, len(padded))
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(out, padded)
+
+	return base64.StdEncoding.EncodeToString(out)
 }

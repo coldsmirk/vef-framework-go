@@ -18,16 +18,22 @@ const (
 )
 
 type aesCipher struct {
-	key  []byte
-	iv   []byte
-	mode AESMode
+	key       []byte
+	interopIV []byte
+	mode      AESMode
 }
 
 type AESOption func(*aesCipher)
 
+// WithAESIv supplies a fixed IV for the CBC interop decrypt path only.
+//
+// It does NOT affect Encrypt: CBC encryption always generates a fresh random
+// IV and prepends it to the ciphertext (layout: IV || ciphertext). The fixed
+// IV configured here is consumed solely by DecryptWithFixedIV, which decrypts
+// bare ciphertext produced by an external client that uses a constant IV.
 func WithAESIv(iv []byte) AESOption {
 	return func(c *aesCipher) {
-		c.iv = iv
+		c.interopIV = iv
 	}
 }
 
@@ -51,10 +57,8 @@ func NewAES(key []byte, opts ...AESOption) (Cipher, error) {
 		opt(cipher)
 	}
 
-	if cipher.mode == AesModeCbc {
-		if len(cipher.iv) != aes.BlockSize {
-			return nil, fmt.Errorf("%w: %d bytes (must be %d)", ErrInvalidIVSizeCBC, len(cipher.iv), aes.BlockSize)
-		}
+	if len(cipher.interopIV) != 0 && len(cipher.interopIV) != aes.BlockSize {
+		return nil, fmt.Errorf("%w: %d bytes (must be %d)", ErrInvalidIVSizeCBC, len(cipher.interopIV), aes.BlockSize)
 	}
 
 	return cipher, nil
@@ -100,19 +104,42 @@ func (a *aesCipher) encryptCBC(plaintext string) (string, error) {
 		return "", fmt.Errorf("failed to create AES cipher: %w", err)
 	}
 
+	iv := make([]byte, aes.BlockSize)
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		return "", fmt.Errorf("failed to generate IV: %w", err)
+	}
+
 	paddedData := pkcs7Padding([]byte(plaintext), aes.BlockSize)
 
-	ciphertext := make([]byte, len(paddedData))
-	mode := cipher.NewCBCEncrypter(block, a.iv)
-	mode.CryptBlocks(ciphertext, paddedData)
+	ciphertext := make([]byte, len(iv)+len(paddedData))
+	copy(ciphertext, iv)
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(ciphertext[len(iv):], paddedData)
 
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
 func (a *aesCipher) decryptCBC(ciphertext string) (string, error) {
-	block, err := aes.NewCipher(a.key)
+	encryptedData, err := base64.StdEncoding.DecodeString(ciphertext)
 	if err != nil {
-		return "", fmt.Errorf("failed to create AES cipher: %w", err)
+		return "", fmt.Errorf("failed to decode base64: %w", err)
+	}
+
+	if len(encryptedData) < aes.BlockSize {
+		return "", ErrCiphertextTooShort
+	}
+
+	iv, payload := encryptedData[:aes.BlockSize], encryptedData[aes.BlockSize:]
+
+	return a.cbcDecrypt(iv, payload)
+}
+
+// DecryptWithFixedIV decrypts bare CBC ciphertext (no prepended IV) using the
+// fixed IV configured via WithAESIv. It exists solely for interop with an
+// external client that encrypts with a constant IV; native VEF ciphertext from
+// Encrypt must be read back with Decrypt, which derives the IV from the prefix.
+func (a *aesCipher) DecryptWithFixedIV(ciphertext string) (string, error) {
+	if len(a.interopIV) != aes.BlockSize {
+		return "", fmt.Errorf("%w: %d bytes (must be %d)", ErrInvalidIVSizeCBC, len(a.interopIV), aes.BlockSize)
 	}
 
 	encryptedData, err := base64.StdEncoding.DecodeString(ciphertext)
@@ -120,13 +147,21 @@ func (a *aesCipher) decryptCBC(ciphertext string) (string, error) {
 		return "", fmt.Errorf("failed to decode base64: %w", err)
 	}
 
-	if len(encryptedData)%aes.BlockSize != 0 {
+	return a.cbcDecrypt(a.interopIV, encryptedData)
+}
+
+func (a *aesCipher) cbcDecrypt(iv, payload []byte) (string, error) {
+	if len(payload) == 0 || len(payload)%aes.BlockSize != 0 {
 		return "", ErrCiphertextNotMultipleOfBlock
 	}
 
-	plaintext := make([]byte, len(encryptedData))
-	mode := cipher.NewCBCDecrypter(block, a.iv)
-	mode.CryptBlocks(plaintext, encryptedData)
+	block, err := aes.NewCipher(a.key)
+	if err != nil {
+		return "", fmt.Errorf("failed to create AES cipher: %w", err)
+	}
+
+	plaintext := make([]byte, len(payload))
+	cipher.NewCBCDecrypter(block, iv).CryptBlocks(plaintext, payload)
 
 	unpaddedData, err := pkcs7Unpadding(plaintext, aes.BlockSize)
 	if err != nil {
@@ -187,6 +222,11 @@ func (a *aesCipher) decryptGCM(ciphertext string) (string, error) {
 
 	return string(plaintext), nil
 }
+
+var (
+	_ Cipher           = (*aesCipher)(nil)
+	_ FixedIVDecrypter = (*aesCipher)(nil)
+)
 
 func pkcs7Padding(data []byte, blockSize int) []byte {
 	padding := blockSize - len(data)%blockSize

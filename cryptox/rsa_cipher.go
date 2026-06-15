@@ -15,7 +15,12 @@ import (
 type RSAMode string
 
 const (
-	RsaModeOAEP     RSAMode = "OAEP"
+	RsaModeOAEP RSAMode = "OAEP"
+	// RsaModePKCS1v15 selects RSAES-PKCS1-v1_5 encryption padding.
+	// WARNING: insecure — PKCS#1 v1.5 decryption is a Bleichenbacher padding
+	// oracle (Go 1.26 deprecated the standard-library primitives for this
+	// reason). Use only for interop with legacy peers that cannot do OAEP;
+	// the default RsaModeOAEP should be preferred for all new systems.
 	RsaModePKCS1v15 RSAMode = "PKCS1v15"
 )
 
@@ -204,7 +209,8 @@ func (r *rsaCipher) Encrypt(plaintext string) (string, error) {
 		hash := sha256.New()
 		ciphertext, err = rsa.EncryptOAEP(hash, rand.Reader, r.publicKey, []byte(plaintext), nil)
 	} else {
-		ciphertext, err = rsa.EncryptPKCS1v15(rand.Reader, r.publicKey, []byte(plaintext)) //nolint:staticcheck // PKCS1v15 mode is user-configurable for legacy interop
+		//nolint:staticcheck // SA1019: PKCS#1 v1.5 is a Bleichenbacher padding oracle deprecated in Go 1.26; kept as opt-in interop only (see RsaModePKCS1v15). OAEP is the default.
+		ciphertext, err = rsa.EncryptPKCS1v15(rand.Reader, r.publicKey, []byte(plaintext))
 	}
 
 	if err != nil {
@@ -229,7 +235,8 @@ func (r *rsaCipher) Decrypt(ciphertext string) (string, error) {
 		hash := sha256.New()
 		plaintext, err = rsa.DecryptOAEP(hash, rand.Reader, r.privateKey, encryptedData, nil)
 	} else {
-		plaintext, err = rsa.DecryptPKCS1v15(rand.Reader, r.privateKey, encryptedData) //nolint:staticcheck // PKCS1v15 mode is user-configurable for legacy interop
+		//nolint:staticcheck // SA1019: DecryptPKCS1v15's error return is a Bleichenbacher padding oracle deprecated in Go 1.26; kept as opt-in interop only (see RsaModePKCS1v15). OAEP is the default.
+		plaintext, err = rsa.DecryptPKCS1v15(rand.Reader, r.privateKey, encryptedData)
 	}
 
 	if err != nil {

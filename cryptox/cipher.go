@@ -29,3 +29,18 @@ type CipherSigner interface {
 	Cipher
 	Signer
 }
+
+// FixedIVDecrypter is implemented by block ciphers (AES-CBC, SM4-CBC) that can
+// decrypt bare ciphertext using a caller-supplied constant IV.
+//
+// It is an interop escape hatch: native VEF ciphertext prepends a fresh random
+// IV and is read back through Cipher.Decrypt, but an external client that
+// encrypts with a fixed IV produces ciphertext without that prefix.
+// DecryptWithFixedIV decrypts such input using the IV configured at
+// construction (WithAESIv / WithSM4Iv).
+type FixedIVDecrypter interface {
+	// DecryptWithFixedIV decrypts base64-encoded ciphertext that carries no
+	// prepended IV, using the fixed IV the cipher was constructed with.
+	// Returns an error if no valid fixed IV was configured or decryption fails.
+	DecryptWithFixedIV(ciphertext string) (string, error)
+}

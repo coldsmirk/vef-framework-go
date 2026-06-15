@@ -2,37 +2,32 @@ package cryptox
 
 import (
 	"crypto/cipher"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 
 	"github.com/tjfoc/gmsm/sm4"
 )
 
-type SM4Mode string
-
-const (
-	SM4ModeCBC SM4Mode = "CBC"
-	SM4ModeECB SM4Mode = "ECB"
-)
-
 type sm4Cipher struct {
-	key  []byte
-	iv   []byte
-	mode SM4Mode
+	key       []byte
+	interopIV []byte
 }
 
 type SM4Option func(*sm4Cipher)
 
+// WithSM4Iv supplies a fixed IV for the CBC interop decrypt path only.
+//
+// It does NOT affect Encrypt: SM4-CBC encryption always generates a fresh
+// random IV and prepends it to the ciphertext (layout: IV || ciphertext). The
+// fixed IV configured here is consumed solely by DecryptWithFixedIV, which
+// decrypts bare ciphertext produced by an external client that uses a constant
+// IV.
 func WithSM4Iv(iv []byte) SM4Option {
 	return func(c *sm4Cipher) {
-		c.iv = iv
-	}
-}
-
-func WithSM4Mode(mode SM4Mode) SM4Option {
-	return func(c *sm4Cipher) {
-		c.mode = mode
+		c.interopIV = iv
 	}
 }
 
@@ -42,18 +37,15 @@ func NewSM4(key []byte, opts ...SM4Option) (Cipher, error) {
 	}
 
 	cipher := &sm4Cipher{
-		key:  key,
-		mode: SM4ModeCBC,
+		key: key,
 	}
 
 	for _, opt := range opts {
 		opt(cipher)
 	}
 
-	if cipher.mode == SM4ModeCBC {
-		if len(cipher.iv) != sm4.BlockSize {
-			return nil, fmt.Errorf("%w: %d bytes (must be %d)", ErrInvalidIVSizeCBC, len(cipher.iv), sm4.BlockSize)
-		}
+	if len(cipher.interopIV) != 0 && len(cipher.interopIV) != sm4.BlockSize {
+		return nil, fmt.Errorf("%w: %d bytes (must be %d)", ErrInvalidIVSizeCBC, len(cipher.interopIV), sm4.BlockSize)
 	}
 
 	return cipher, nil
@@ -78,70 +70,47 @@ func NewSM4FromBase64(keyBase64 string, opts ...SM4Option) (Cipher, error) {
 }
 
 func (s *sm4Cipher) Encrypt(plaintext string) (string, error) {
-	if s.mode == SM4ModeECB {
-		return s.encryptECB(plaintext)
+	block, err := sm4.NewCipher(s.key)
+	if err != nil {
+		return "", fmt.Errorf("failed to create SM4 cipher: %w", err)
 	}
 
-	return s.encryptCBC(plaintext)
+	iv := make([]byte, sm4.BlockSize)
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		return "", fmt.Errorf("failed to generate IV: %w", err)
+	}
+
+	paddedData := pkcs7Padding([]byte(plaintext), sm4.BlockSize)
+
+	ciphertext := make([]byte, len(iv)+len(paddedData))
+	copy(ciphertext, iv)
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(ciphertext[len(iv):], paddedData)
+
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
 func (s *sm4Cipher) Decrypt(ciphertext string) (string, error) {
-	if s.mode == SM4ModeECB {
-		return s.decryptECB(ciphertext)
-	}
-
-	return s.decryptCBC(ciphertext)
-}
-
-func (s *sm4Cipher) encryptECB(plaintext string) (string, error) {
-	paddedData := pkcs7Padding([]byte(plaintext), sm4.BlockSize)
-
-	ciphertext, err := sm4.Sm4Ecb(s.key, paddedData, true)
-	if err != nil {
-		return "", fmt.Errorf("failed to encrypt: %w", err)
-	}
-
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
-}
-
-func (s *sm4Cipher) decryptECB(ciphertext string) (string, error) {
 	encryptedData, err := base64.StdEncoding.DecodeString(ciphertext)
 	if err != nil {
 		return "", fmt.Errorf("failed to decode base64: %w", err)
 	}
 
-	plaintext, err := sm4.Sm4Ecb(s.key, encryptedData, false)
-	if err != nil {
-		return "", fmt.Errorf("failed to decrypt: %w", err)
+	if len(encryptedData) < sm4.BlockSize {
+		return "", ErrCiphertextTooShort
 	}
 
-	unpaddedData, err := pkcs7Unpadding(plaintext, sm4.BlockSize)
-	if err != nil {
-		return "", fmt.Errorf("failed to remove padding: %w", err)
-	}
+	iv, payload := encryptedData[:sm4.BlockSize], encryptedData[sm4.BlockSize:]
 
-	return string(unpaddedData), nil
+	return s.cbcDecrypt(iv, payload)
 }
 
-func (s *sm4Cipher) encryptCBC(plaintext string) (string, error) {
-	block, err := sm4.NewCipher(s.key)
-	if err != nil {
-		return "", fmt.Errorf("failed to create SM4 cipher: %w", err)
-	}
-
-	paddedData := pkcs7Padding([]byte(plaintext), sm4.BlockSize)
-
-	ciphertext := make([]byte, len(paddedData))
-	mode := cipher.NewCBCEncrypter(block, s.iv)
-	mode.CryptBlocks(ciphertext, paddedData)
-
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
-}
-
-func (s *sm4Cipher) decryptCBC(ciphertext string) (string, error) {
-	block, err := sm4.NewCipher(s.key)
-	if err != nil {
-		return "", fmt.Errorf("failed to create SM4 cipher: %w", err)
+// DecryptWithFixedIV decrypts bare CBC ciphertext (no prepended IV) using the
+// fixed IV configured via WithSM4Iv. It exists solely for interop with an
+// external client that encrypts with a constant IV; native VEF ciphertext from
+// Encrypt must be read back with Decrypt, which derives the IV from the prefix.
+func (s *sm4Cipher) DecryptWithFixedIV(ciphertext string) (string, error) {
+	if len(s.interopIV) != sm4.BlockSize {
+		return "", fmt.Errorf("%w: %d bytes (must be %d)", ErrInvalidIVSizeCBC, len(s.interopIV), sm4.BlockSize)
 	}
 
 	encryptedData, err := base64.StdEncoding.DecodeString(ciphertext)
@@ -149,13 +118,21 @@ func (s *sm4Cipher) decryptCBC(ciphertext string) (string, error) {
 		return "", fmt.Errorf("failed to decode base64: %w", err)
 	}
 
-	if len(encryptedData)%sm4.BlockSize != 0 {
+	return s.cbcDecrypt(s.interopIV, encryptedData)
+}
+
+func (s *sm4Cipher) cbcDecrypt(iv, payload []byte) (string, error) {
+	if len(payload) == 0 || len(payload)%sm4.BlockSize != 0 {
 		return "", ErrCiphertextNotMultipleOfBlock
 	}
 
-	plaintext := make([]byte, len(encryptedData))
-	mode := cipher.NewCBCDecrypter(block, s.iv)
-	mode.CryptBlocks(plaintext, encryptedData)
+	block, err := sm4.NewCipher(s.key)
+	if err != nil {
+		return "", fmt.Errorf("failed to create SM4 cipher: %w", err)
+	}
+
+	plaintext := make([]byte, len(payload))
+	cipher.NewCBCDecrypter(block, iv).CryptBlocks(plaintext, payload)
 
 	unpaddedData, err := pkcs7Unpadding(plaintext, sm4.BlockSize)
 	if err != nil {
@@ -165,4 +142,7 @@ func (s *sm4Cipher) decryptCBC(ciphertext string) (string, error) {
 	return string(unpaddedData), nil
 }
 
-var _ Cipher = (*sm4Cipher)(nil)
+var (
+	_ Cipher           = (*sm4Cipher)(nil)
+	_ FixedIVDecrypter = (*sm4Cipher)(nil)
+)
