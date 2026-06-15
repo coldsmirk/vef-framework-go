@@ -143,22 +143,27 @@ func TestGenerateOverflowResetShouldUseSingleIncrementCall(t *testing.T) {
 	assert.Equal(t, 1, store.ReserveCallCount(), "Generation should complete with a single atomic reserve call")
 }
 
-// ---------------------------------------------------------------------------
-// EngineTestSuite — base suite with all common Engine test methods.
-// Concrete suites embed this and configure generator/registerRule in SetupTest.
-// ---------------------------------------------------------------------------
-
 type EngineTestSuite struct {
 	suite.Suite
 
-	generator    sequence.Generator
-	ctx          context.Context
-	registerRule func(rule *sequence.Rule)
+	store     *sequence.MemoryStore
+	generator sequence.Generator
+	ctx       context.Context
+}
+
+func TestEngine(t *testing.T) {
+	suite.Run(t, new(EngineTestSuite))
+}
+
+func (s *EngineTestSuite) SetupTest() {
+	s.store = sequence.NewMemoryStore()
+	s.generator = NewGenerator(s.store)
+	s.ctx = context.Background()
 }
 
 func (s *EngineTestSuite) TestGenerate() {
 	s.Run("BasicGeneration", func() {
-		s.registerRule(newTestRule("gen-basic"))
+		s.store.Register(newTestRule("gen-basic"))
 
 		result, err := s.generator.Generate(s.ctx, "gen-basic")
 
@@ -167,7 +172,7 @@ func (s *EngineTestSuite) TestGenerate() {
 	})
 
 	s.Run("ConsecutiveGeneration", func() {
-		s.registerRule(newTestRule("gen-consec"))
+		s.store.Register(newTestRule("gen-consec"))
 
 		r1, err := s.generator.Generate(s.ctx, "gen-consec")
 		s.Require().NoError(err, "First generation should succeed")
@@ -183,7 +188,7 @@ func (s *EngineTestSuite) TestGenerate() {
 	})
 
 	s.Run("WithPrefix", func() {
-		s.registerRule(newTestRule("gen-prefix", func(rule *sequence.Rule) {
+		s.store.Register(newTestRule("gen-prefix", func(rule *sequence.Rule) {
 			rule.Prefix = "ORD-"
 		}))
 
@@ -194,7 +199,7 @@ func (s *EngineTestSuite) TestGenerate() {
 	})
 
 	s.Run("WithSuffix", func() {
-		s.registerRule(newTestRule("gen-suffix", func(rule *sequence.Rule) {
+		s.store.Register(newTestRule("gen-suffix", func(rule *sequence.Rule) {
 			rule.Suffix = "-SH"
 		}))
 
@@ -205,7 +210,7 @@ func (s *EngineTestSuite) TestGenerate() {
 	})
 
 	s.Run("WithPrefixAndSuffix", func() {
-		s.registerRule(newTestRule("gen-both", func(rule *sequence.Rule) {
+		s.store.Register(newTestRule("gen-both", func(rule *sequence.Rule) {
 			rule.Prefix = "INV-"
 			rule.Suffix = "-CN"
 		}))
@@ -217,7 +222,7 @@ func (s *EngineTestSuite) TestGenerate() {
 	})
 
 	s.Run("WithDateFormat", func() {
-		s.registerRule(newTestRule("gen-date", func(rule *sequence.Rule) {
+		s.store.Register(newTestRule("gen-date", func(rule *sequence.Rule) {
 			rule.Prefix = "ORD"
 			rule.DateFormat = "yyyyMMdd"
 		}))
@@ -230,7 +235,7 @@ func (s *EngineTestSuite) TestGenerate() {
 	})
 
 	s.Run("EmptyPrefixSuffixDate", func() {
-		s.registerRule(newTestRule("gen-empty"))
+		s.store.Register(newTestRule("gen-empty"))
 
 		result, err := s.generator.Generate(s.ctx, "gen-empty")
 
@@ -239,7 +244,7 @@ func (s *EngineTestSuite) TestGenerate() {
 	})
 
 	s.Run("SeqLengthOne", func() {
-		s.registerRule(newTestRule("gen-len1", func(rule *sequence.Rule) {
+		s.store.Register(newTestRule("gen-len1", func(rule *sequence.Rule) {
 			rule.SeqLength = 1
 		}))
 
@@ -250,7 +255,7 @@ func (s *EngineTestSuite) TestGenerate() {
 	})
 
 	s.Run("StepGreaterThanOne", func() {
-		s.registerRule(newTestRule("gen-step5", func(rule *sequence.Rule) {
+		s.store.Register(newTestRule("gen-step5", func(rule *sequence.Rule) {
 			rule.SeqStep = 5
 		}))
 
@@ -272,7 +277,7 @@ func (s *EngineTestSuite) TestGenerate() {
 
 func (s *EngineTestSuite) TestGenerateN() {
 	s.Run("BatchOfThree", func() {
-		s.registerRule(newTestRule("batch-three"))
+		s.store.Register(newTestRule("batch-three"))
 
 		results, err := s.generator.GenerateN(s.ctx, "batch-three", 3)
 
@@ -284,7 +289,7 @@ func (s *EngineTestSuite) TestGenerateN() {
 	})
 
 	s.Run("BatchOfOne", func() {
-		s.registerRule(newTestRule("batch-one"))
+		s.store.Register(newTestRule("batch-one"))
 
 		results, err := s.generator.GenerateN(s.ctx, "batch-one", 1)
 
@@ -294,7 +299,7 @@ func (s *EngineTestSuite) TestGenerateN() {
 	})
 
 	s.Run("InvalidCountZero", func() {
-		s.registerRule(newTestRule("batch-zero"))
+		s.store.Register(newTestRule("batch-zero"))
 
 		_, err := s.generator.GenerateN(s.ctx, "batch-zero", 0)
 
@@ -302,7 +307,7 @@ func (s *EngineTestSuite) TestGenerateN() {
 	})
 
 	s.Run("InvalidCountNegative", func() {
-		s.registerRule(newTestRule("batch-neg"))
+		s.store.Register(newTestRule("batch-neg"))
 
 		_, err := s.generator.GenerateN(s.ctx, "batch-neg", -1)
 
@@ -310,7 +315,7 @@ func (s *EngineTestSuite) TestGenerateN() {
 	})
 
 	s.Run("BatchWithStep", func() {
-		s.registerRule(newTestRule("batch-step", func(rule *sequence.Rule) {
+		s.store.Register(newTestRule("batch-step", func(rule *sequence.Rule) {
 			rule.SeqStep = 2
 		}))
 
@@ -324,7 +329,7 @@ func (s *EngineTestSuite) TestGenerateN() {
 	})
 
 	s.Run("ConsecutiveBatches", func() {
-		s.registerRule(newTestRule("batch-consec"))
+		s.store.Register(newTestRule("batch-consec"))
 
 		batch1, err := s.generator.GenerateN(s.ctx, "batch-consec", 2)
 		s.Require().NoError(err, "First batch should succeed")
@@ -340,7 +345,7 @@ func (s *EngineTestSuite) TestGenerateN() {
 
 func (s *EngineTestSuite) TestOverflow() {
 	s.Run("NoMaxValue", func() {
-		s.registerRule(newTestRule("ovf-nomax", func(rule *sequence.Rule) {
+		s.store.Register(newTestRule("ovf-nomax", func(rule *sequence.Rule) {
 			rule.CurrentValue = 9999
 			rule.MaxValue = 0 // unlimited
 		}))
@@ -352,7 +357,7 @@ func (s *EngineTestSuite) TestOverflow() {
 	})
 
 	s.Run("ErrorStrategy", func() {
-		s.registerRule(newTestRule("ovf-error", func(rule *sequence.Rule) {
+		s.store.Register(newTestRule("ovf-error", func(rule *sequence.Rule) {
 			rule.CurrentValue = 9999
 			rule.MaxValue = 9999
 			rule.OverflowStrategy = sequence.OverflowError
@@ -364,7 +369,7 @@ func (s *EngineTestSuite) TestOverflow() {
 	})
 
 	s.Run("ResetStrategy", func() {
-		s.registerRule(newTestRule("ovf-reset", func(rule *sequence.Rule) {
+		s.store.Register(newTestRule("ovf-reset", func(rule *sequence.Rule) {
 			rule.CurrentValue = 9999
 			rule.MaxValue = 9999
 			rule.OverflowStrategy = sequence.OverflowReset
@@ -378,7 +383,7 @@ func (s *EngineTestSuite) TestOverflow() {
 	})
 
 	s.Run("ExtendStrategy", func() {
-		s.registerRule(newTestRule("ovf-extend", func(rule *sequence.Rule) {
+		s.store.Register(newTestRule("ovf-extend", func(rule *sequence.Rule) {
 			rule.CurrentValue = 9999
 			rule.MaxValue = 9999
 			rule.OverflowStrategy = sequence.OverflowExtend
@@ -391,7 +396,7 @@ func (s *EngineTestSuite) TestOverflow() {
 	})
 
 	s.Run("ResetWithStartValue", func() {
-		s.registerRule(newTestRule("ovf-reset-sv", func(rule *sequence.Rule) {
+		s.store.Register(newTestRule("ovf-reset-sv", func(rule *sequence.Rule) {
 			rule.CurrentValue = 9999
 			rule.MaxValue = 9999
 			rule.OverflowStrategy = sequence.OverflowReset
@@ -405,7 +410,7 @@ func (s *EngineTestSuite) TestOverflow() {
 	})
 
 	s.Run("WithinMaxValue", func() {
-		s.registerRule(newTestRule("ovf-within", func(rule *sequence.Rule) {
+		s.store.Register(newTestRule("ovf-within", func(rule *sequence.Rule) {
 			rule.CurrentValue = 0
 			rule.MaxValue = 9999
 		}))
@@ -419,7 +424,7 @@ func (s *EngineTestSuite) TestOverflow() {
 
 func (s *EngineTestSuite) TestStartValue() {
 	s.Run("NonZeroStartValue", func() {
-		s.registerRule(newTestRule("sv-nonzero", func(rule *sequence.Rule) {
+		s.store.Register(newTestRule("sv-nonzero", func(rule *sequence.Rule) {
 			rule.StartValue = 100
 			rule.CurrentValue = 100
 		}))
@@ -431,28 +436,7 @@ func (s *EngineTestSuite) TestStartValue() {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// MemoryEngineTestSuite — Engine backed by MemoryStore.
-// ---------------------------------------------------------------------------
-
-type MemoryEngineTestSuite struct {
-	EngineTestSuite
-}
-
-func TestMemoryEngine(t *testing.T) {
-	suite.Run(t, new(MemoryEngineTestSuite))
-}
-
-func (s *MemoryEngineTestSuite) SetupTest() {
-	store := sequence.NewMemoryStore()
-	s.generator = NewGenerator(store)
-	s.ctx = context.Background()
-	s.registerRule = func(rule *sequence.Rule) {
-		store.Register(rule)
-	}
-}
-
-func (s *MemoryEngineTestSuite) TestConcurrentGenerate() {
+func (s *EngineTestSuite) TestConcurrentGenerate() {
 	store := sequence.NewMemoryStore()
 	store.Register(newTestRule("conc-mem", func(rule *sequence.Rule) {
 		rule.SeqLength = 6
