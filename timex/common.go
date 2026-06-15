@@ -149,3 +149,48 @@ func unquoteJSON(bs []byte) (value string, ok bool) {
 
 	return utils.UnsafeString(bs[1 : len(bs)-1]), true
 }
+
+// Calendar anchor helpers shared by Date and DateTime. Each returns midnight in
+// t's location at a period boundary; the End-of-* methods of each type apply
+// their own backoff (Date subtracts a whole day to stay at midnight, DateTime
+// subtracts a nanosecond to reach 23:59:59.999999999), so the begin-of and
+// next-period anchors are the only type-independent parts and live here.
+
+// beginOfMonth returns midnight on the first day of t's month.
+func beginOfMonth(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
+}
+
+// firstOfNextMonth returns midnight on the first day of the month after t's.
+func firstOfNextMonth(t time.Time) time.Time {
+	next := t.AddDate(0, 1, 0)
+
+	return time.Date(next.Year(), next.Month(), 1, 0, 0, 0, 0, t.Location())
+}
+
+// quarterStartMonth returns the first calendar month (1, 4, 7, 10) of the
+// quarter containing month.
+func quarterStartMonth(month time.Month) time.Month {
+	return time.Month(((int(month)-1)/3)*3 + 1)
+}
+
+// beginOfQuarter returns midnight on the first day of t's quarter.
+func beginOfQuarter(t time.Time) time.Time {
+	return time.Date(t.Year(), quarterStartMonth(t.Month()), 1, 0, 0, 0, 0, t.Location())
+}
+
+// firstOfNextQuarter returns midnight on the first day of the quarter after t's.
+func firstOfNextQuarter(t time.Time) time.Time {
+	return time.Date(t.Year(), quarterStartMonth(t.Month())+3, 1, 0, 0, 0, 0, t.Location())
+}
+
+// beginOfYear returns midnight on January 1 of t's year.
+func beginOfYear(t time.Time) time.Time {
+	return time.Date(t.Year(), 1, 1, 0, 0, 0, 0, t.Location())
+}
+
+// weekdayDelta returns the number of days from t's weekday to the target
+// weekday within the same Sunday-based week (negative for earlier days).
+func weekdayDelta(t time.Time, weekday time.Weekday) int {
+	return int(weekday) - int(t.Weekday())
+}

@@ -184,58 +184,37 @@ func (d Date) EndOfDay() Date {
 
 // BeginOfWeek returns the beginning of the week (Sunday) for d.
 func (d Date) BeginOfWeek() Date {
-	t := d.Unwrap()
-	weekday := int(t.Weekday())
-
-	return d.AddDays(-weekday)
+	return d.AddDays(weekdayDelta(d.Unwrap(), time.Sunday))
 }
 
 // EndOfWeek returns the end of the week (Saturday) for d.
 func (d Date) EndOfWeek() Date {
-	t := d.Unwrap()
-	weekday := int(t.Weekday())
-
-	return d.AddDays(6 - weekday)
+	return d.AddDays(weekdayDelta(d.Unwrap(), time.Saturday))
 }
 
 // BeginOfMonth returns the beginning of the month for d.
 func (d Date) BeginOfMonth() Date {
-	t := d.Unwrap()
-
-	return DateOf(time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location()))
+	return DateOf(beginOfMonth(d.Unwrap()))
 }
 
 // EndOfMonth returns the end of the month for d.
 func (d Date) EndOfMonth() Date {
-	t := d.Unwrap()
-	nextMonth := t.AddDate(0, 1, 0)
-	firstOfNextMonth := time.Date(nextMonth.Year(), nextMonth.Month(), 1, 0, 0, 0, 0, t.Location())
-
-	return DateOf(firstOfNextMonth.AddDate(0, 0, -1))
+	return DateOf(firstOfNextMonth(d.Unwrap()).AddDate(0, 0, -1))
 }
 
 // BeginOfQuarter returns the beginning of the quarter for d.
 func (d Date) BeginOfQuarter() Date {
-	t := d.Unwrap()
-	month := ((int(t.Month())-1)/3)*3 + 1
-
-	return DateOf(time.Date(t.Year(), time.Month(month), 1, 0, 0, 0, 0, t.Location()))
+	return DateOf(beginOfQuarter(d.Unwrap()))
 }
 
 // EndOfQuarter returns the end of the quarter for d.
 func (d Date) EndOfQuarter() Date {
-	t := d.Unwrap()
-	month := ((int(t.Month())-1)/3)*3 + 3
-	lastDayOfQuarter := time.Date(t.Year(), time.Month(month+1), 1, 0, 0, 0, 0, t.Location()).AddDate(0, 0, -1)
-
-	return DateOf(lastDayOfQuarter)
+	return DateOf(firstOfNextQuarter(d.Unwrap()).AddDate(0, 0, -1))
 }
 
 // BeginOfYear returns the beginning of the year for d.
 func (d Date) BeginOfYear() Date {
-	t := d.Unwrap()
-
-	return DateOf(time.Date(t.Year(), 1, 1, 0, 0, 0, 0, t.Location()))
+	return DateOf(beginOfYear(d.Unwrap()))
 }
 
 // EndOfYear returns the end of the year for d.
@@ -282,12 +261,7 @@ func (d Date) Sunday() Date {
 
 // weekdayOffset is a helper function to get a specific weekday of the current week.
 func (d Date) weekdayOffset(weekday time.Weekday) Date {
-	t := d.Unwrap()
-	currentWeekday := int(t.Weekday())
-	targetWeekday := int(weekday)
-	offset := targetWeekday - currentWeekday
-
-	return d.AddDays(offset)
+	return d.AddDays(weekdayDelta(d.Unwrap(), weekday))
 }
 
 // MarshalText implements the encoding.TextMarshaler interface.

@@ -256,41 +256,27 @@ func (dt DateTime) EndOfDay() DateTime {
 
 // BeginOfWeek returns the beginning of the week (Sunday) for dt.
 func (dt DateTime) BeginOfWeek() DateTime {
-	t := dt.Unwrap()
-	weekday := int(t.Weekday())
-
-	return dt.BeginOfDay().AddDays(-weekday)
+	return dt.BeginOfDay().AddDays(weekdayDelta(dt.Unwrap(), time.Sunday))
 }
 
 // EndOfWeek returns the end of the week (Saturday) for dt.
 func (dt DateTime) EndOfWeek() DateTime {
-	t := dt.Unwrap()
-	weekday := int(t.Weekday())
-
-	return dt.EndOfDay().AddDays(6 - weekday)
+	return dt.EndOfDay().AddDays(weekdayDelta(dt.Unwrap(), time.Saturday))
 }
 
 // BeginOfMonth returns the beginning of the month for dt.
 func (dt DateTime) BeginOfMonth() DateTime {
-	t := dt.Unwrap()
-
-	return DateTime(time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location()))
+	return DateTime(beginOfMonth(dt.Unwrap()))
 }
 
 // EndOfMonth returns the end of the month for dt.
 func (dt DateTime) EndOfMonth() DateTime {
-	t := dt.Unwrap()
-	nextMonth := t.AddDate(0, 1, 0)
-	firstOfNextMonth := time.Date(nextMonth.Year(), nextMonth.Month(), 1, 0, 0, 0, 0, t.Location())
-
-	return DateTime(firstOfNextMonth.Add(-time.Nanosecond))
+	return DateTime(firstOfNextMonth(dt.Unwrap()).Add(-time.Nanosecond))
 }
 
 // BeginOfYear returns the beginning of the year for dt.
 func (dt DateTime) BeginOfYear() DateTime {
-	t := dt.Unwrap()
-
-	return DateTime(time.Date(t.Year(), 1, 1, 0, 0, 0, 0, t.Location()))
+	return DateTime(beginOfYear(dt.Unwrap()))
 }
 
 // EndOfYear returns the end of the year for dt.
@@ -302,18 +288,12 @@ func (dt DateTime) EndOfYear() DateTime {
 
 // BeginOfQuarter returns the beginning of the quarter for dt.
 func (dt DateTime) BeginOfQuarter() DateTime {
-	t := dt.Unwrap()
-	month := ((int(t.Month())-1)/3)*3 + 1
-
-	return DateTime(time.Date(t.Year(), time.Month(month), 1, 0, 0, 0, 0, t.Location()))
+	return DateTime(beginOfQuarter(dt.Unwrap()))
 }
 
 // EndOfQuarter returns the end of the quarter for dt.
 func (dt DateTime) EndOfQuarter() DateTime {
-	t := dt.Unwrap()
-	month := ((int(t.Month())-1)/3)*3 + 3
-
-	return DateTime(time.Date(t.Year(), time.Month(month+1), 1, 0, 0, 0, 0, t.Location()).Add(-time.Nanosecond))
+	return DateTime(firstOfNextQuarter(dt.Unwrap()).Add(-time.Nanosecond))
 }
 
 // Monday returns the Monday of the week containing dt.
@@ -353,12 +333,7 @@ func (dt DateTime) Sunday() DateTime {
 
 // weekdayOffset is a helper function to get a specific weekday of the current week.
 func (dt DateTime) weekdayOffset(weekday time.Weekday) DateTime {
-	t := dt.Unwrap()
-	currentWeekday := int(t.Weekday())
-	targetWeekday := int(weekday)
-	offset := targetWeekday - currentWeekday
-
-	return dt.BeginOfDay().AddDays(offset)
+	return dt.BeginOfDay().AddDays(weekdayDelta(dt.Unwrap(), weekday))
 }
 
 // MarshalText implements the encoding.TextMarshaler interface.
