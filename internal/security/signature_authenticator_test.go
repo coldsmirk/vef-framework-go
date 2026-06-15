@@ -614,6 +614,37 @@ func (s *SignatureAuthenticatorTestSuite) TestIPWhitelist() {
 	})
 }
 
+// TestServerSideReplayProtection verifies that the authenticator enforces
+// replay protection across requests using its single long-lived verifier, even
+// when no explicit nonce store is injected (secure-by-default in-memory store).
+// This guards the regression where a per-request Signature reconstruction made
+// the in-memory store a no-op.
+func (s *SignatureAuthenticatorTestSuite) TestServerSideReplayProtection() {
+	ctx := context.Background()
+
+	loader := new(MockExternalAppLoader)
+	principal := security.NewExternalApp("app1", "Test App", "api_user")
+	loader.On("LoadByID", mock.Anything, "app1").Return(principal, testSecretHex, nil)
+
+	// nil nonce store => the verifier falls back to its in-memory default,
+	// which must still reject a replayed nonce.
+	auth := NewSignatureAuthenticator(loader, nil)
+	credentials := s.generateValidCredentials("app1", testSecretHex)
+
+	authentication := security.Authentication{
+		Type:        AuthTypeSignature,
+		Principal:   "app1",
+		Credentials: credentials,
+	}
+
+	_, err := auth.Authenticate(ctx, authentication)
+	s.Require().NoError(err, "First request with a fresh nonce should authenticate")
+
+	_, err = auth.Authenticate(ctx, authentication)
+	s.Require().Error(err, "Replaying the same nonce should be rejected")
+	s.ErrorIs(err, security.ErrNonceAlreadyUsed, "Replay should be rejected as nonce-already-used")
+}
+
 // TestSuccessfulAuthentication verifies successful authentication scenarios.
 func (s *SignatureAuthenticatorTestSuite) TestSuccessfulAuthentication() {
 	ctx := context.Background()

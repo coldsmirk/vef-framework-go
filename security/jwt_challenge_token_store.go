@@ -14,12 +14,12 @@ const (
 	ClaimChallengePending       = "pnd"
 	ClaimChallengePrincipalType = "ptp"
 	ClaimChallengeResolved      = "rsd"
-	// ClaimChallengePrincipalName stores the principal Name as a dedicated claim,
-	// removing the fragile "@"-delimited subject encoding.
-	// PUBLIC BEHAVIOR CHANGE: tokens generated after this change use a separate "pnm" claim
-	// for Name; the subject carries only the principal ID. Tokens issued before this change
-	// cannot be parsed (they will fail the empty-subject guard in Parse).
+	// ClaimChallengePrincipalName stores the principal Name as a dedicated claim;
+	// the subject carries only the principal ID.
 	ClaimChallengePrincipalName = "pnm"
+	// ClaimChallengeUsername stores the original login identifier so audit events
+	// emitted after a challenge report the same identifier as the initial login.
+	ClaimChallengeUsername = "unm"
 )
 
 // JWTChallengeTokenStore implements ChallengeTokenStore using stateless JWT tokens.
@@ -34,7 +34,7 @@ func NewJWTChallengeTokenStore(jwt *JWT) ChallengeTokenStore {
 	return &JWTChallengeTokenStore{jwt: jwt}
 }
 
-func (s *JWTChallengeTokenStore) Generate(_ context.Context, principal *Principal, pending, resolved []string) (string, error) {
+func (s *JWTChallengeTokenStore) Generate(_ context.Context, principal *Principal, username string, pending, resolved []string) (string, error) {
 	claimsBuilder := NewJWTClaimsBuilder().
 		WithID(id.GenerateUUID()).
 		WithSubject(principal.ID).
@@ -43,6 +43,7 @@ func (s *JWTChallengeTokenStore) Generate(_ context.Context, principal *Principa
 		WithType(TokenTypeChallenge).
 		WithClaim(ClaimChallengePrincipalType, principal.Type).
 		WithClaim(ClaimChallengePrincipalName, principal.Name).
+		WithClaim(ClaimChallengeUsername, username).
 		WithClaim(ClaimChallengePending, pending).
 		WithClaim(ClaimChallengeResolved, resolved)
 
@@ -69,8 +70,7 @@ func (s *JWTChallengeTokenStore) Parse(_ context.Context, token string) (*Challe
 
 	var principal *Principal
 	switch principalType {
-	case "", PrincipalTypeUser:
-		// Empty type keeps backward compatibility for tokens generated before type claim was added.
+	case PrincipalTypeUser:
 		principal = NewUser(principalID, principalName, claimsAccessor.Roles()...)
 	case PrincipalTypeExternalApp:
 		principal = NewExternalApp(principalID, principalName, claimsAccessor.Roles()...)
@@ -90,6 +90,7 @@ func (s *JWTChallengeTokenStore) Parse(_ context.Context, token string) (*Challe
 
 	return &ChallengeState{
 		Principal: principal,
+		Username:  cast.ToString(claimsAccessor.Claim(ClaimChallengeUsername)),
 		Pending:   cast.ToStringSlice(claimsAccessor.Claim(ClaimChallengePending)),
 		Resolved:  cast.ToStringSlice(claimsAccessor.Claim(ClaimChallengeResolved)),
 	}, nil

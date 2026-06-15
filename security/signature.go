@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/hashx"
@@ -58,7 +59,7 @@ func WithTimestampTolerance(tolerance time.Duration) SignatureOption {
 }
 
 // WithNonceStore sets the nonce store for replay attack prevention.
-// If not set, nonce validation is skipped.
+// Defaults to an in-memory store; pass WithNonceStore(nil) to disable nonce validation.
 func WithNonceStore(store NonceStore) SignatureOption {
 	return func(s *Signature) {
 		s.nonceStore = store
@@ -99,8 +100,8 @@ func NewSignature(secret string, opts ...SignatureOption) (*Signature, error) {
 		secret:             secretBytes,
 		algorithm:          defaultSignatureAlgorithm,
 		timestampTolerance: defaultSignatureTimestampTolerance,
-		nonceGenerator:     id.NewRandomIDGenerator(),
 		nonceStore:         NewMemoryNonceStore(),
+		nonceGenerator:     id.NewRandomIDGenerator(),
 	}
 
 	for _, opt := range opts {
@@ -171,17 +172,11 @@ func (s *Signature) verifyWithSecret(ctx context.Context, secret []byte, appID, 
 	payload := s.buildPayload(appID, method, path, timestamp, nonce)
 	expectedSignature := s.computeHMACWithSecret(secret, payload)
 
-	expectedMAC, err := hex.DecodeString(expectedSignature)
-	if err != nil {
-		return fmt.Errorf("failed to decode expected signature: %w", err)
-	}
-
-	providedMAC, err := hex.DecodeString(signature)
-	if err != nil {
-		return ErrSignatureInvalid
-	}
-
-	if !hmac.Equal(expectedMAC, providedMAC) {
+	// computeHMACWithSecret returns lower-case hex.EncodeToString output. Lower-
+	// case the client-provided signature so upper-case hex (some third-party SDKs
+	// emit it) still verifies, then compare in constant time. strings.ToLower is
+	// input-independent, so it introduces no timing oracle on the secret.
+	if !hmac.Equal([]byte(expectedSignature), []byte(strings.ToLower(signature))) {
 		return ErrSignatureInvalid
 	}
 

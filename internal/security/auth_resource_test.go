@@ -200,6 +200,14 @@ func (suite *AuthResourceTestSuite) setupTestApp() {
 				Return(nil, nil).
 				Maybe()
 
+			// "ghost" logs in successfully but its principal ID resolves to
+			// "nonexistent", which LoadByID rejects — exercising the refresh
+			// user-not-found path without any token-state surgery.
+			ghostUser := security.NewUser("nonexistent", "Ghost User")
+			suite.userLoader.On("LoadByUsername", mock.Anything, "ghost").
+				Return(ghostUser, hashedPassword, nil).
+				Maybe()
+
 			suite.publisher.On("Publish", mock.Anything).
 				Maybe()
 		}),
@@ -562,7 +570,9 @@ func (suite *AuthResourceTestSuite) TestRefreshWithAccessToken() {
 	suite.Equal(security.ErrCodeTokenInvalid, body.Code, "Should return token invalid error")
 }
 
-// TestRefreshUserNotFound tests refresh failure when user is not found.
+// TestRefreshUserNotFound tests refresh failure when the user backing the
+// refresh token no longer exists. The "ghost" login issues a token whose
+// principal ID ("nonexistent") is rejected by LoadByID.
 func (suite *AuthResourceTestSuite) TestRefreshUserNotFound() {
 	loginResp := suite.MakeRPCRequest(api.Request{
 		Identifier: api.Identifier{
@@ -572,7 +582,7 @@ func (suite *AuthResourceTestSuite) TestRefreshUserNotFound() {
 		},
 		Params: map[string]any{
 			"type":        isecurity.AuthTypePassword,
-			"principal":   "testuser",
+			"principal":   "ghost",
 			"credentials": "password123",
 		},
 	})
@@ -583,16 +593,6 @@ func (suite *AuthResourceTestSuite) TestRefreshUserNotFound() {
 	loginData := suite.ReadDataAsMap(loginBody.Data)
 	tokens := suite.extractTokensFromLoginResult(loginData)
 	refreshToken := tokens["refreshToken"].(string)
-
-	prevExpected := append([]*mock.Call(nil), suite.userLoader.ExpectedCalls...)
-	defer func() { suite.userLoader.ExpectedCalls = prevExpected }()
-
-	call := suite.userLoader.On("LoadByID", mock.Anything, mock.Anything).Return((*security.Principal)(nil), nil).Once()
-	if n := len(suite.userLoader.ExpectedCalls); n > 1 {
-		last := suite.userLoader.ExpectedCalls[n-1]
-		suite.userLoader.ExpectedCalls = append([]*mock.Call{last}, suite.userLoader.ExpectedCalls[:n-1]...)
-		_ = call
-	}
 
 	resp := suite.MakeRPCRequest(api.Request{
 		Identifier: api.Identifier{
@@ -1432,6 +1432,108 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeProviderRejectsResponse() {
 	body := s.ReadResult(resp)
 	s.False(body.IsOk(), "Rejected challenge response should not be ok")
 	s.Equal(security.ErrCodeChallengeResolveFailed, body.Code, "Rejected challenge response should return resolve failed code")
+
+	// A challenge-step rejection must be audited like a failed login, carrying
+	// the original login identifier threaded through the challenge token.
+	events := s.publisher.GetPublishedEvents()
+	s.Require().Len(events, 1, "A rejected challenge response should publish exactly one login event")
+	loginEvent, ok := events[0].(*security.LoginEvent)
+	s.Require().True(ok, "Published event should be a LoginEvent")
+	s.False(loginEvent.IsOk, "Challenge rejection event should be marked failed")
+	s.Equal("totp", loginEvent.AuthType, "Challenge rejection event should carry the challenge type")
+	s.Equal("testuser", loginEvent.Username, "Challenge rejection event should carry the original login identifier")
+	s.Equal(security.ErrCodeChallengeResolveFailed, loginEvent.ErrorCode, "Challenge rejection event should carry the resolve-failed code")
+}
+
+// TestResolveChallengePlainErrorNormalized verifies that a bare (non-result.Error)
+// provider rejection is normalized to ErrChallengeResolveFailed rather than
+// leaking an opaque 500, and is still audited as a failed login.
+func (s *ChallengeFlowTestSuite) TestResolveChallengePlainErrorNormalized() {
+	s.challengeProvider.On("Type").Return("totp").Maybe()
+	s.challengeProvider.On("Evaluate", mock.Anything, mock.Anything).
+		Return(&security.LoginChallenge{
+			Type:     "totp",
+			Required: true,
+		}, nil).Once()
+
+	data := s.loginAndGetResult()
+	challengeToken := data["challengeToken"].(string)
+
+	s.publisher.ClearPublishedEvents()
+
+	s.challengeProvider.On("Resolve", mock.Anything, mock.Anything, "wrong_code").
+		Return((*security.Principal)(nil), errors.New("totp backend unavailable")).Once()
+
+	resp := s.MakeRPCRequest(api.Request{
+		Identifier: api.Identifier{
+			Resource: "security/auth",
+			Action:   "resolve_challenge",
+			Version:  "v1",
+		},
+		Params: map[string]any{
+			"challengeToken": challengeToken,
+			"type":           "totp",
+			"response":       "wrong_code",
+		},
+	})
+
+	s.Equal(401, resp.StatusCode, "Normalized resolve failure should return HTTP 401")
+
+	body := s.ReadResult(resp)
+	s.False(body.IsOk(), "Normalized resolve failure response should not be ok")
+	s.Equal(security.ErrCodeChallengeResolveFailed, body.Code, "Bare provider error should map to the resolve-failed code")
+
+	events := s.publisher.GetPublishedEvents()
+	s.Require().Len(events, 1, "A normalized resolve failure should publish exactly one login event")
+	loginEvent, ok := events[0].(*security.LoginEvent)
+	s.Require().True(ok, "Published event should be a LoginEvent")
+	s.False(loginEvent.IsOk, "Normalized resolve failure event should be marked failed")
+	s.Equal("testuser", loginEvent.Username, "Normalized resolve failure event should carry the original login identifier")
+	s.Equal(security.ErrCodeChallengeResolveFailed, loginEvent.ErrorCode, "Normalized resolve failure event should carry the resolve-failed code")
+}
+
+// TestResolveChallengeSuccessEventUsername verifies the success event after an
+// MFA challenge carries the original login identifier, not the principal's
+// display name.
+func (s *ChallengeFlowTestSuite) TestResolveChallengeSuccessEventUsername() {
+	s.challengeProvider.On("Type").Return("totp").Maybe()
+	s.challengeProvider.On("Evaluate", mock.Anything, mock.Anything).
+		Return(&security.LoginChallenge{
+			Type:     "totp",
+			Required: true,
+		}, nil).Once()
+
+	data := s.loginAndGetResult()
+	challengeToken := data["challengeToken"].(string)
+
+	s.publisher.ClearPublishedEvents()
+
+	s.challengeProvider.On("Resolve", mock.Anything, mock.Anything, "123456").
+		Return(s.testUser, nil).Once()
+
+	resp := s.MakeRPCRequest(api.Request{
+		Identifier: api.Identifier{
+			Resource: "security/auth",
+			Action:   "resolve_challenge",
+			Version:  "v1",
+		},
+		Params: map[string]any{
+			"challengeToken": challengeToken,
+			"type":           "totp",
+			"response":       "123456",
+		},
+	})
+
+	s.Equal(200, resp.StatusCode, "Resolved challenge should return HTTP 200")
+
+	events := s.publisher.GetPublishedEvents()
+	s.Require().Len(events, 1, "A resolved challenge should publish exactly one login event")
+	loginEvent, ok := events[0].(*security.LoginEvent)
+	s.Require().True(ok, "Published event should be a LoginEvent")
+	s.True(loginEvent.IsOk, "Resolved challenge event should be marked successful")
+	s.Equal("testuser", loginEvent.Username, "Success event should carry the login identifier, not the display name")
+	s.Require().NotNil(loginEvent.UserID, "Success event should carry the user ID")
+	s.Equal("user001", *loginEvent.UserID, "Success event should carry the resolved principal ID")
 }
 
 // TestLoginEvaluateChallengeError tests that login propagates errors from challenge evaluation.
@@ -1522,8 +1624,8 @@ type MockChallengeTokenStore struct {
 	mock.Mock
 }
 
-func (m *MockChallengeTokenStore) Generate(ctx context.Context, principal *security.Principal, pending, resolved []string) (string, error) {
-	args := m.Called(ctx, principal, pending, resolved)
+func (m *MockChallengeTokenStore) Generate(ctx context.Context, principal *security.Principal, username string, pending, resolved []string) (string, error) {
+	args := m.Called(ctx, principal, username, pending, resolved)
 
 	return args.String(0), args.Error(1)
 }
@@ -1721,7 +1823,7 @@ func (s *AuthResourceErrorPathTestSuite) TestLoginChallengeStoreError() {
 		Return(s.testUser, nil).Once()
 	s.challengeProviderA.On("Evaluate", mock.Anything, mock.Anything).
 		Return(&security.LoginChallenge{Type: "totp", Required: true}, nil).Once()
-	s.challengeTokenStore.On("Generate", mock.Anything, s.testUser, mock.Anything, mock.Anything).
+	s.challengeTokenStore.On("Generate", mock.Anything, s.testUser, "testuser", mock.Anything, mock.Anything).
 		Return("", errors.New("store unavailable")).Once()
 
 	resp := s.MakeRPCRequest(s.loginRequest())
@@ -1817,7 +1919,7 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeMoreRemain() {
 		Return(s.testUser, nil).Once()
 	s.challengeProviderB.On("Evaluate", mock.Anything, s.testUser).
 		Return(&security.LoginChallenge{Type: "sms", Required: true}, nil).Once()
-	s.challengeTokenStore.On("Generate", mock.Anything, s.testUser, []string{"sms"}, []string{"totp"}).
+	s.challengeTokenStore.On("Generate", mock.Anything, s.testUser, "", []string{"sms"}, []string{"totp"}).
 		Return("new-challenge-token", nil).Once()
 
 	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
@@ -1848,7 +1950,7 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeStoreErrorOnRemain(
 		Return(s.testUser, nil).Once()
 	s.challengeProviderB.On("Evaluate", mock.Anything, s.testUser).
 		Return(&security.LoginChallenge{Type: "sms", Required: true}, nil).Once()
-	s.challengeTokenStore.On("Generate", mock.Anything, s.testUser, []string{"sms"}, []string{"totp"}).
+	s.challengeTokenStore.On("Generate", mock.Anything, s.testUser, "", []string{"sms"}, []string{"totp"}).
 		Return("", errors.New("store failure")).Once()
 
 	resp := s.MakeRPCRequest(s.resolveChallengeRequest())

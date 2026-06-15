@@ -146,28 +146,36 @@ func TestSelfDataScopeSupports(t *testing.T) {
 }
 
 // TestSelfDataScopeApply tests SelfDataScope.Apply behavior.
-// Apply adds a WHERE clause to the query; we verify it returns nil and does not panic
-// by running it against a real (in-memory SQLite) SelectQuery.
+// Apply must add a WHERE clause filtering on the creator column bound to
+// principal.ID; we materialize the query to SQL and assert both the column and
+// the bound principal value appear so a wrong column or value is caught.
 func TestSelfDataScopeApply(t *testing.T) {
-	t.Run("ReturnsNilForDefaultCreatedByColumn", func(t *testing.T) {
+	t.Run("FiltersOnDefaultCreatedByColumn", func(t *testing.T) {
 		db := testx.NewTestDB(t)
 		scope := NewSelfDataScope("")
 		principal := NewUser("user-42", "Alice")
 
 		query := db.NewSelect().Model((*selfScopeModel)(nil))
 		err := scope.Apply(principal, query)
-
 		require.NoError(t, err, "Apply should return nil for default created_by column")
+
+		sql := query.String()
+		assert.Contains(t, sql, "created_by", "WHERE clause should filter on the default created_by column")
+		assert.Contains(t, sql, "user-42", "WHERE clause should bind the principal ID")
 	})
 
-	t.Run("ReturnsNilForCustomColumn", func(t *testing.T) {
+	t.Run("FiltersOnCustomColumn", func(t *testing.T) {
 		db := testx.NewTestDB(t)
 		scope := NewSelfDataScope("creator_id")
 		principal := NewUser("user-99", "Bob")
 
 		query := db.NewSelect().Model((*customCreatorModel)(nil))
 		err := scope.Apply(principal, query)
-
 		require.NoError(t, err, "Apply should return nil for custom creator column")
+
+		sql := query.String()
+		assert.Contains(t, sql, "creator_id", "WHERE clause should filter on the custom creator column")
+		assert.Contains(t, sql, "user-99", "WHERE clause should bind the principal ID")
+		assert.NotContains(t, sql, "created_by", "WHERE clause should not reference the default column when a custom one is set")
 	})
 }

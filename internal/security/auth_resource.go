@@ -106,30 +106,7 @@ func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
 		Credentials: params.Credentials,
 	})
 	if err != nil {
-		var (
-			failReason string
-			errorCode  int
-		)
-
-		if resErr, ok := result.AsErr(err); ok {
-			failReason = resErr.Message
-			errorCode = resErr.Code
-		} else {
-			failReason = err.Error()
-			errorCode = result.ErrCodeUnknown
-		}
-
-		loginEvent := security.NewLoginEvent(security.LoginEventParams{
-			AuthType:   params.Type,
-			Username:   params.Principal,
-			LoginIP:    httpx.GetIP(ctx),
-			UserAgent:  ctx.Get(fiber.HeaderUserAgent),
-			TraceID:    contextx.RequestID(ctx),
-			IsOk:       false,
-			FailReason: failReason,
-			ErrorCode:  errorCode,
-		})
-		_ = a.bus.Publish(ctx.Context(), loginEvent, event.WithAsync())
+		a.publishLoginFailure(ctx, params.Type, params.Principal, err)
 
 		return err
 	}
@@ -145,7 +122,7 @@ func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
 	}
 
 	if challenge != nil {
-		challengeToken, err := a.challengeTokenStore.Generate(ctx.Context(), principal, pending, nil)
+		challengeToken, err := a.challengeTokenStore.Generate(ctx.Context(), principal, params.Principal, pending, nil)
 		if err != nil {
 			return err
 		}
@@ -161,16 +138,7 @@ func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
 		return err
 	}
 
-	loginEvent := security.NewLoginEvent(security.LoginEventParams{
-		AuthType:  params.Type,
-		UserID:    &principal.ID,
-		Username:  params.Principal,
-		LoginIP:   httpx.GetIP(ctx),
-		UserAgent: ctx.Get(fiber.HeaderUserAgent),
-		TraceID:   contextx.RequestID(ctx),
-		IsOk:      true,
-	})
-	_ = a.bus.Publish(ctx.Context(), loginEvent, event.WithAsync())
+	a.publishLoginSuccess(ctx, params.Type, params.Principal, principal)
 
 	return result.Ok(&security.LoginResult{Tokens: tokens}).Response(ctx)
 }
@@ -219,6 +187,11 @@ type ResolveChallengeParams struct {
 // ResolveChallenge validates a user's response to a login challenge.
 // On success, either issues real auth tokens (all challenges resolved)
 // or evaluates the next challenge sequentially.
+//
+// A ChallengeProvider may reject a response by returning a typed result.Error
+// (e.g. security.ErrOTPCodeInvalid) to control the client-facing code; a bare
+// error is normalized to security.ErrChallengeResolveFailed (code
+// security.ErrCodeChallengeResolveFailed).
 func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengeParams) error {
 	state, err := a.challengeTokenStore.Parse(ctx.Context(), params.ChallengeToken)
 	if err != nil {
@@ -234,8 +207,23 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 		return security.ErrChallengeTypeInvalid
 	}
 
+	// provider.Resolve is the second-factor analog of authManager.Authenticate:
+	// a rejection here is a genuine failed credential attempt, so audit it like
+	// a failed login. The earlier guards (invalid/expired token, wrong type) are
+	// protocol/tampering errors that Login's analogous infra paths do not audit,
+	// so they are deliberately left unaudited.
 	principal, err := provider.Resolve(ctx.Context(), state.Principal, params.Response)
 	if err != nil {
+		// Providers that return a typed result.Error keep their chosen code
+		// (e.g. ErrOTPCodeInvalid); a bare error is normalized to the stable
+		// challenge-resolve-failed code so the framework never leaks an opaque
+		// 500 from a custom ChallengeProvider.
+		if _, ok := result.AsErr(err); !ok {
+			err = security.ErrChallengeResolveFailed
+		}
+
+		a.publishLoginFailure(ctx, params.Type, state.Username, err)
+
 		return err
 	}
 
@@ -248,7 +236,7 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 	}
 
 	if challenge != nil {
-		challengeToken, err := a.challengeTokenStore.Generate(ctx.Context(), principal, remaining, resolved)
+		challengeToken, err := a.challengeTokenStore.Generate(ctx.Context(), principal, state.Username, remaining, resolved)
 		if err != nil {
 			return err
 		}
@@ -264,16 +252,7 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 		return err
 	}
 
-	loginEvent := security.NewLoginEvent(security.LoginEventParams{
-		AuthType:  params.Type,
-		UserID:    &principal.ID,
-		Username:  principal.Name,
-		LoginIP:   httpx.GetIP(ctx),
-		UserAgent: ctx.Get(fiber.HeaderUserAgent),
-		TraceID:   contextx.RequestID(ctx),
-		IsOk:      true,
-	})
-	_ = a.bus.Publish(ctx.Context(), loginEvent, event.WithAsync())
+	a.publishLoginSuccess(ctx, params.Type, state.Username, principal)
 
 	return result.Ok(&security.LoginResult{Tokens: tokens}).Response(ctx)
 }
@@ -291,6 +270,49 @@ func (a *AuthResource) GetUserInfo(ctx fiber.Ctx, principal *security.Principal,
 	}
 
 	return result.Ok(userInfo).Response(ctx)
+}
+
+// publishLoginSuccess publishes a successful-login audit event. username is the
+// original login identifier (threaded through the challenge state on MFA flows)
+// so success events carry the same identifier regardless of whether a challenge
+// was involved.
+func (a *AuthResource) publishLoginSuccess(ctx fiber.Ctx, authType, username string, principal *security.Principal) {
+	loginEvent := security.NewLoginEvent(security.LoginEventParams{
+		AuthType:  authType,
+		UserID:    &principal.ID,
+		Username:  username,
+		LoginIP:   httpx.GetIP(ctx),
+		UserAgent: ctx.Get(fiber.HeaderUserAgent),
+		TraceID:   contextx.RequestID(ctx),
+		IsOk:      true,
+	})
+	_ = a.bus.Publish(ctx.Context(), loginEvent, event.WithAsync())
+}
+
+// publishLoginFailure publishes a failed-login audit event, deriving the failure
+// reason and business code from err. It mirrors publishLoginSuccess so password
+// and challenge-step failures land in the same audit pipeline with the same
+// username semantics.
+func (a *AuthResource) publishLoginFailure(ctx fiber.Ctx, authType, username string, err error) {
+	failReason := err.Error()
+	errorCode := result.ErrCodeUnknown
+
+	if resErr, ok := result.AsErr(err); ok {
+		failReason = resErr.Message
+		errorCode = resErr.Code
+	}
+
+	loginEvent := security.NewLoginEvent(security.LoginEventParams{
+		AuthType:   authType,
+		Username:   username,
+		LoginIP:    httpx.GetIP(ctx),
+		UserAgent:  ctx.Get(fiber.HeaderUserAgent),
+		TraceID:    contextx.RequestID(ctx),
+		IsOk:       false,
+		FailReason: failReason,
+		ErrorCode:  errorCode,
+	})
+	_ = a.bus.Publish(ctx.Context(), loginEvent, event.WithAsync())
 }
 
 // findProvider returns the challenge provider matching the given type, or nil.

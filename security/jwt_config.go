@@ -22,8 +22,8 @@ const (
 
 // JWTConfig is the configuration for the JWT token.
 type JWTConfig struct {
-	Secret   string `config:"secret"`   // Secret key for JWT signing
-	Audience string `config:"audience"` // JWT audience
+	Secret   string // Secret key for JWT signing
+	Audience string // JWT audience
 }
 
 // JWTClaimsBuilder helps build JWT claims for different token types.

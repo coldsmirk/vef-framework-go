@@ -178,6 +178,11 @@ var (
 		result.WithCode(ErrCodeChallengeTypeInvalid),
 		result.WithStatus(fiber.StatusBadRequest),
 	)
+	ErrChallengeResolveFailed = result.Err(
+		i18n.T(ErrMessageChallengeResolveFailed),
+		result.WithCode(ErrCodeChallengeResolveFailed),
+		result.WithStatus(fiber.StatusUnauthorized),
+	)
 	ErrOTPCodeRequired = result.Err(
 		i18n.T("security_otp_code_required"),
 		result.WithCode(ErrCodeOTPCodeRequired),

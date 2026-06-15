@@ -33,7 +33,7 @@ func TestMemoryChallengeTokenStoreGenerate(t *testing.T) {
 		store := NewMemoryChallengeTokenStore()
 		principal := NewUser("user1", "Alice", "admin")
 
-		token, err := store.Generate(context.Background(), principal, []string{"totp", "department"}, []string{"sms"})
+		token, err := store.Generate(context.Background(), principal, "", []string{"totp", "department"}, []string{"sms"})
 
 		require.NoError(t, err, "Should generate token without error")
 		assert.NotEmpty(t, token, "Should return a non-empty token")
@@ -43,7 +43,7 @@ func TestMemoryChallengeTokenStoreGenerate(t *testing.T) {
 		store := NewMemoryChallengeTokenStore()
 		principal := NewUser("user2", "Bob")
 
-		token, err := store.Generate(context.Background(), principal, []string{"totp"}, nil)
+		token, err := store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
 
 		require.NoError(t, err, "Should generate token without error")
 		assert.NotEmpty(t, token, "Should return a non-empty token")
@@ -53,7 +53,7 @@ func TestMemoryChallengeTokenStoreGenerate(t *testing.T) {
 		store := NewMemoryChallengeTokenStore()
 		principal := NewUser("user3", "Charlie")
 
-		token, err := store.Generate(context.Background(), principal, []string{}, []string{})
+		token, err := store.Generate(context.Background(), principal, "", []string{}, []string{})
 
 		require.NoError(t, err, "Should generate token with empty slices")
 		assert.NotEmpty(t, token, "Should return a non-empty token")
@@ -64,7 +64,7 @@ func TestMemoryChallengeTokenStoreGenerate(t *testing.T) {
 		principal := NewUser("user4", "Diana", "editor")
 		principal.Details = map[string]any{"department": "engineering", "level": 3}
 
-		token, err := store.Generate(context.Background(), principal, []string{"totp"}, nil)
+		token, err := store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
 
 		require.NoError(t, err, "Should generate token with details")
 		assert.NotEmpty(t, token, "Should return a non-empty token")
@@ -74,7 +74,7 @@ func TestMemoryChallengeTokenStoreGenerate(t *testing.T) {
 		store := NewMemoryChallengeTokenStore()
 		principal := NewUser("user5", "Eve")
 
-		token, err := store.Generate(context.Background(), principal, []string{"totp"}, nil)
+		token, err := store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
 
 		require.NoError(t, err, "Should generate token without roles")
 		assert.NotEmpty(t, token, "Should return a non-empty token")
@@ -89,7 +89,7 @@ func TestMemoryChallengeTokenStoreParse(t *testing.T) {
 		pending := []string{"totp", "department"}
 		resolved := []string{"sms"}
 
-		token, err := store.Generate(context.Background(), principal, pending, resolved)
+		token, err := store.Generate(context.Background(), principal, "alice@login", pending, resolved)
 		require.NoError(t, err, "Should generate token without error")
 
 		state, err := store.Parse(context.Background(), token)
@@ -98,6 +98,7 @@ func TestMemoryChallengeTokenStoreParse(t *testing.T) {
 
 		assert.Equal(t, "user1", state.Principal.ID, "Should preserve principal ID")
 		assert.Equal(t, "Alice", state.Principal.Name, "Should preserve principal name")
+		assert.Equal(t, "alice@login", state.Username, "Should preserve the original login identifier")
 		assert.Equal(t, PrincipalTypeUser, state.Principal.Type, "Should create user principal")
 		assert.Equal(t, []string{"admin", "editor"}, state.Principal.Roles, "Should preserve roles")
 		assert.Equal(t, pending, state.Pending, "Should preserve pending list")
@@ -108,7 +109,7 @@ func TestMemoryChallengeTokenStoreParse(t *testing.T) {
 		store := NewMemoryChallengeTokenStore()
 		principal := NewUser("user2", "Bob")
 
-		token, err := store.Generate(context.Background(), principal, []string{"totp"}, nil)
+		token, err := store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
 		require.NoError(t, err, "Should generate token without error")
 
 		state, err := store.Parse(context.Background(), token)
@@ -123,7 +124,7 @@ func TestMemoryChallengeTokenStoreParse(t *testing.T) {
 		store := NewMemoryChallengeTokenStore()
 		principal := NewUser("user3", "Charlie")
 
-		token, err := store.Generate(context.Background(), principal, []string{"totp"}, nil)
+		token, err := store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
 		require.NoError(t, err, "Should generate token without error")
 
 		state, err := store.Parse(context.Background(), token)
@@ -138,7 +139,7 @@ func TestMemoryChallengeTokenStoreParse(t *testing.T) {
 		principal := NewUser("user4", "Diana", "admin")
 		principal.Details = map[string]any{"department": "engineering"}
 
-		token, err := store.Generate(context.Background(), principal, []string{"totp"}, nil)
+		token, err := store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
 		require.NoError(t, err, "Should generate token without error")
 
 		state, err := store.Parse(context.Background(), token)
@@ -155,7 +156,7 @@ func TestMemoryChallengeTokenStoreParse(t *testing.T) {
 		store := NewMemoryChallengeTokenStore()
 		principal := NewUser("user5", "user@example.com")
 
-		token, err := store.Generate(context.Background(), principal, []string{"totp"}, nil)
+		token, err := store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
 		require.NoError(t, err, "Should generate token without error")
 
 		state, err := store.Parse(context.Background(), token)
@@ -197,7 +198,7 @@ func TestMemoryChallengeTokenStoreTokenUniqueness(t *testing.T) {
 
 		tokens := make(map[string]struct{}, 100)
 		for range 100 {
-			token, err := store.Generate(context.Background(), principal, []string{"totp"}, nil)
+			token, err := store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
 			require.NoError(t, err, "Should generate token without error")
 
 			tokens[token] = struct{}{}
@@ -214,7 +215,7 @@ func TestMemoryChallengeTokenStoreTTLExpiration(t *testing.T) {
 		store := NewMemoryChallengeTokenStore()
 		principal := NewUser("user1", "Alice", "admin")
 
-		token, err := store.Generate(context.Background(), principal, []string{"totp"}, nil)
+		token, err := store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
 		require.NoError(t, err, "Should generate token without error")
 
 		state, err := store.Parse(context.Background(), token)
@@ -236,7 +237,7 @@ func TestMemoryChallengeTokenStoreConcurrency(t *testing.T) {
 			wg.Go(func() {
 				principal := NewUser(fmt.Sprintf("user-%d", i), fmt.Sprintf("Name-%d", i))
 
-				token, err := store.Generate(context.Background(), principal, []string{"totp"}, []string{"sms"})
+				token, err := store.Generate(context.Background(), principal, "", []string{"totp"}, []string{"sms"})
 				assert.NoError(t, err, "Should generate token without error in goroutine %d", i)
 				assert.NotEmpty(t, token, "Should return non-empty token in goroutine %d", i)
 

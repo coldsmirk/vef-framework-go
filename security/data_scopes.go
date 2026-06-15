@@ -37,7 +37,7 @@ type AllDataScope struct{}
 
 // NewAllDataScope creates a new AllDataScope instance.
 func NewAllDataScope() DataScope {
-	return &AllDataScope{}
+	return new(AllDataScope)
 }
 
 func (*AllDataScope) Key() string {

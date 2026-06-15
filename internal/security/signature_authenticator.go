@@ -15,25 +15,52 @@ const AuthTypeSignature = "signature"
 
 // SignatureAuthenticator validates HMAC-based signatures for external app authentication.
 type SignatureAuthenticator struct {
-	loader  security.ExternalAppLoader
-	options []security.SignatureOption
+	loader   security.ExternalAppLoader
+	verifier *security.Signature
 }
 
 // NewSignatureAuthenticator creates a new signature authenticator.
+//
+// A single long-lived Signature verifier is built here and reused across every
+// request. This is what makes server-side replay protection actually work: the
+// nonce store is shared process-wide rather than recreated per request (a fresh
+// per-request in-memory store would always see every nonce as absent, turning
+// replay detection into a no-op and leaking a GC goroutine on each call). The
+// per-request app secret is supplied to VerifyWithSecret at verification time,
+// so the verifier's own bound secret is never used.
 func NewSignatureAuthenticator(
 	loader security.ExternalAppLoader,
 	nonceStore security.NonceStore,
 ) security.Authenticator {
+	// Only override the nonce store when one is injected. A nil store is left
+	// to NewSignature's secure-by-default in-memory store rather than passed
+	// through WithNonceStore(nil), which would disable replay protection.
 	var options []security.SignatureOption
 	if nonceStore != nil {
 		options = append(options, security.WithNonceStore(nonceStore))
 	}
 
+	// The verifier always authenticates with the caller-supplied per-request
+	// secret via VerifyWithSecret, so signatureVerifierPlaceholderSecret is a
+	// compile-time-constant placeholder that never computes or checks an HMAC.
+	// NewSignature only fails on an invalid secret, so a constant valid hex
+	// secret makes the error path unreachable.
+	verifier, err := security.NewSignature(signatureVerifierPlaceholderSecret, options...)
+	if err != nil {
+		panic(err)
+	}
+
 	return &SignatureAuthenticator{
-		loader:  loader,
-		options: options,
+		loader:   loader,
+		verifier: verifier,
 	}
 }
+
+// signatureVerifierPlaceholderSecret is a syntactically valid hex secret used
+// only to satisfy NewSignature's construction-time validation. It never
+// participates in signature verification — VerifyWithSecret always overrides it
+// with the per-request app secret.
+const signatureVerifierPlaceholderSecret = "00"
 
 func (*SignatureAuthenticator) Supports(authType string) bool {
 	return authType == AuthTypeSignature
@@ -81,20 +108,14 @@ func (a *SignatureAuthenticator) verifySignature(
 	appID, secret string,
 	credentials *security.SignatureCredentials,
 ) error {
-	sig, err := security.NewSignature(secret, a.options...)
-	if err != nil {
-		logger.Warnf("Signature construction failed for app %q (likely misconfigured secret): %v", appID, err)
-
-		return mapSignatureError(err)
-	}
-
 	// The auth middleware records the request method/path on ctx; the
 	// signature binds them so a captured signature cannot be replayed against
-	// a different endpoint.
+	// a different endpoint. The per-request app secret is supplied here so the
+	// shared verifier's placeholder secret is never used.
 	method := contextx.RequestMethod(ctx)
 	path := contextx.RequestPath(ctx)
 
-	if err := sig.Verify(ctx, appID, method, path, credentials.Timestamp, credentials.Nonce, credentials.Signature); err != nil {
+	if err := a.verifier.VerifyWithSecret(ctx, secret, appID, method, path, credentials.Timestamp, credentials.Nonce, credentials.Signature); err != nil {
 		logger.Warnf("Signature verify failed for app %q: %v", appID, err)
 
 		return mapSignatureError(err)
@@ -132,13 +153,13 @@ func (*SignatureAuthenticator) validateIPWhitelist(ctx context.Context, principa
 	return nil
 }
 
-// mapSignatureError converts errors raised during signature construction
-// or verification into the corresponding API-facing error.
+// mapSignatureError converts errors raised during signature verification into
+// the corresponding API-facing error.
 //
-// Server-side configuration errors (signature secret decode failure or
-// missing secret) are explicitly mapped to the generic invalid-signature
-// reply so they never leak to the client. The originating cause is
-// always logged at the call site in verifySignature for ops diagnosis.
+// Server-side configuration errors (signature secret decode failure or missing
+// secret) are explicitly mapped to the generic invalid-signature reply so they
+// never leak to the client. The originating cause is always logged at the call
+// site in verifySignature for ops diagnosis.
 func mapSignatureError(err error) error {
 	switch {
 	case err == nil:

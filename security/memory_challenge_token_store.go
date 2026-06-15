@@ -20,10 +20,10 @@ func NewMemoryChallengeTokenStore() ChallengeTokenStore {
 	}
 }
 
-func (s *MemoryChallengeTokenStore) Generate(ctx context.Context, principal *Principal, pending, resolved []string) (string, error) {
+func (s *MemoryChallengeTokenStore) Generate(ctx context.Context, principal *Principal, username string, pending, resolved []string) (string, error) {
 	token := id.GenerateUUID()
 
-	state := ChallengeState{Principal: principal, Pending: pending, Resolved: resolved}
+	state := ChallengeState{Principal: principal, Username: username, Pending: pending, Resolved: resolved}
 	if err := s.cache.Set(ctx, token, state, ChallengeTokenExpires); err != nil {
 		return "", err
 	}
