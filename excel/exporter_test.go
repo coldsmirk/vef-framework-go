@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/xuri/excelize/v2"
 
+	"github.com/coldsmirk/vef-framework-go/decimal"
 	"github.com/coldsmirk/vef-framework-go/tabular"
 )
 
@@ -212,6 +213,40 @@ func TestExporterNativeCellTypes(t *testing.T) {
 		require.NoError(t, err, "Reading the Tagged cell value should succeed")
 		assert.Equal(t, "T: 7", value, "Custom formatter output should be written as text")
 	})
+}
+
+// TestExporterDecimalNativeCell verifies that a decimal.Decimal column using the
+// default formatter exports as a native numeric cell (not a string), so money
+// columns stay summable in the spreadsheet. The conversion goes through
+// InexactFloat64, which is exact for values within float64 precision.
+func TestExporterDecimalNativeCell(t *testing.T) {
+	type MoneyRow struct {
+		Amount decimal.Decimal `tabular:"Amount"`
+	}
+
+	rows := []MoneyRow{
+		{Amount: decimal.NewFromFloat(1234.56)},
+	}
+
+	exporter := NewExporterFor[MoneyRow]()
+
+	buf, err := exporter.Export(rows)
+	require.NoError(t, err, "Exporting a decimal column should succeed")
+
+	f, err := excelize.OpenReader(buf)
+	require.NoError(t, err, "Opening the exported workbook should succeed")
+	t.Cleanup(func() { _ = f.Close() })
+
+	cellType, err := f.GetCellType("Sheet1", "A2")
+	require.NoError(t, err, "Reading the Amount cell type should succeed")
+	assert.NotEqual(t, excelize.CellTypeInlineString, cellType,
+		"A default-formatted decimal should not be an inline string")
+	assert.NotEqual(t, excelize.CellTypeSharedString, cellType,
+		"A default-formatted decimal should not be a shared string")
+
+	raw, err := f.GetCellValue("Sheet1", "A2", excelize.Options{RawCellValue: true})
+	require.NoError(t, err, "Reading the raw Amount cell value should succeed")
+	assert.Equal(t, "1234.56", raw, "The decimal should store its numeric value, not text")
 }
 
 // TestMapExporter covers the dynamic []map[string]any exporter path including

@@ -7,6 +7,7 @@ import (
 
 	"github.com/xuri/excelize/v2"
 
+	"github.com/coldsmirk/vef-framework-go/decimal"
 	"github.com/coldsmirk/vef-framework-go/tabular"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -210,9 +211,14 @@ func (e *exporter) writeData(f *excelize.File, sheetName string, data any) error
 // nativeCellValue normalizes a raw cell value into a form excelize stores as a
 // typed cell: nil pointers collapse to an empty cell and pointers are
 // dereferenced. timex.DateTime / timex.Date are unwrapped to time.Time so
-// excelize stores a native date(time) cell that sorts chronologically. Other
-// values pass through unchanged so SetSheetRow's type switch handles ints,
-// floats, bools and time.Time directly, and stringifies the rest.
+// excelize stores a native date(time) cell that sorts chronologically.
+// decimal.Decimal is converted to float64 so money columns stay summable; the
+// conversion is exact for values within float64's ~15-16 significant digits and
+// lossy beyond that, which is the deliberate tradeoff for a native numeric cell
+// (a column that needs full decimal precision should declare an explicit Format
+// to render exact text instead). Other values pass through unchanged so
+// SetSheetRow's type switch handles ints, floats, bools and time.Time directly,
+// and stringifies the rest.
 //
 // timex.Time (time-of-day) is deliberately left unwrapped: its underlying date
 // is the zero date, which predates the Excel epoch and would render a bogus
@@ -236,6 +242,8 @@ func nativeCellValue(raw any) any {
 		return v.Unwrap()
 	case timex.Date:
 		return v.Unwrap()
+	case decimal.Decimal:
+		return v.InexactFloat64()
 	default:
 		return raw
 	}

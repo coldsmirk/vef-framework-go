@@ -93,72 +93,9 @@ func (i *importer) doImport(f *excelize.File) (any, []tabular.ImportError, error
 		return nil, nil, fmt.Errorf("get rows: %w", err)
 	}
 
-	minRows := i.options.skipRows
-	if i.options.hasHeader {
-		minRows++
-	}
-
-	if len(rows) <= minRows {
-		return nil, nil, fmt.Errorf("%w (total rows: %d, skip rows: %d, has header: %v)",
-			tabular.ErrNoDataRowsFound, len(rows), i.options.skipRows, i.options.hasHeader)
-	}
-
-	schema := i.adapter.Schema()
-	dataStartIndex := i.options.skipRows
-
-	var columnMapping tabular.ColumnMapping
-
-	if i.options.hasHeader {
-		rawMapping, mappingErr := tabular.BuildHeaderMapping(
-			rows[i.options.skipRows], schema, tabular.MappingOptions{TrimSpace: i.options.trimSpace},
-		)
-		if mappingErr != nil {
-			return nil, nil, fmt.Errorf("build column mapping: %w", mappingErr)
-		}
-
-		columnMapping = tabular.NewColumnMapping(rawMapping)
-		dataStartIndex++
-	} else {
-		columnMapping = tabular.NewColumnMapping(tabular.DefaultPositionalMapping(schema))
-	}
-
-	dataRows := rows[dataStartIndex:]
-	writer := i.adapter.Writer(len(dataRows))
-
-	parseOpts := tabular.ParseRowOptions{TrimSpace: i.options.trimSpace}
-	parsers := tabular.ResolveParsers(schema, i.parsers)
-
-	var importErrors []tabular.ImportError
-
-	for rowIndex, row := range dataRows {
-		// 1-based row number that accounts for skipped rows and the header row,
-		// matching what a user sees in a spreadsheet.
-		excelRow := dataStartIndex + rowIndex + 1
-
-		// Trim whitespace for empty-row detection so that rows containing only
-		// spaces are skipped.
-		if tabular.IsEmptyRow(row, i.options.trimSpace) {
-			continue
-		}
-
-		builder := writer.NewRow()
-
-		rowErrors := tabular.ParseRow(row, columnMapping, schema, builder, parsers, excelRow, parseOpts)
-		if len(rowErrors) > 0 {
-			importErrors = append(importErrors, rowErrors...)
-
-			continue
-		}
-
-		if err := writer.Commit(builder); err != nil {
-			importErrors = append(importErrors, tabular.ImportError{
-				Row: excelRow,
-				Err: fmt.Errorf("validation failed: %w", err),
-			})
-
-			continue
-		}
-	}
-
-	return writer.Build(), importErrors, nil
+	return tabular.ImportRows(rows, i.adapter, i.parsers, tabular.ImportRowsOptions{
+		SkipRows:  i.options.skipRows,
+		HasHeader: i.options.hasHeader,
+		TrimSpace: i.options.trimSpace,
+	})
 }
