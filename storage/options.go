@@ -14,7 +14,12 @@ type PutObjectOptions struct {
 	Size int64
 	// ContentType specifies the MIME type of the object
 	ContentType string
-	// Metadata contains custom key-value pairs to store with the object
+	// Metadata contains custom key-value pairs to store with the object.
+	// Keys follow S3/HTTP-header canonicalization (see
+	// CanonicalizeMetadataKeys): every backend normalizes them at the store
+	// boundary, so a key supplied as "author" round-trips as "Author"
+	// identically across all backends. Callers should treat metadata keys
+	// case-insensitively and canonicalize their own lookups.
 	Metadata map[string]string
 }
 

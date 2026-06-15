@@ -12,8 +12,14 @@ import (
 type Service interface {
 	// PutObject uploads an object to storage.
 	PutObject(ctx context.Context, opts PutObjectOptions) (*ObjectInfo, error)
-	// GetObject retrieves an object from storage.
-	GetObject(ctx context.Context, opts GetObjectOptions) (io.ReadCloser, error)
+	// GetObject retrieves an object from storage, returning a reader for
+	// the object body together with its ObjectInfo so a single fetch
+	// serves both the payload and the response headers (Content-Length,
+	// ETag, Content-Type). The ObjectInfo is best-effort: a backend that
+	// successfully opens the body but fails to resolve metadata returns a
+	// non-nil reader with a nil ObjectInfo rather than failing the read.
+	// Callers MUST close the reader and MUST nil-check the ObjectInfo.
+	GetObject(ctx context.Context, opts GetObjectOptions) (io.ReadCloser, *ObjectInfo, error)
 	// DeleteObject deletes a single object from storage.
 	DeleteObject(ctx context.Context, opts DeleteObjectOptions) error
 	// DeleteObjects deletes multiple objects from storage in a batch operation.
@@ -127,6 +133,10 @@ type ObjectInfo struct {
 	ContentType string `json:"contentType"`
 	// LastModified is the timestamp when the object was last modified
 	LastModified time.Time `json:"lastModified"`
-	// Metadata contains custom key-value pairs associated with the object
+	// Metadata contains custom key-value pairs associated with the object.
+	// Keys are returned in S3/HTTP-header canonical form (see
+	// CanonicalizeMetadataKeys) identically across every backend, so a key
+	// stored as "author" reads back as "Author". Treat keys
+	// case-insensitively and canonicalize lookups.
 	Metadata map[string]string `json:"metadata,omitempty"`
 }

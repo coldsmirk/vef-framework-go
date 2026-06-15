@@ -115,7 +115,7 @@ func (suite *MinIOServiceTestSuite) TestGetObject() {
 	suite.Run("Success", func() {
 		suite.uploadTestObject()
 
-		reader, err := suite.service.GetObject(suite.ctx, storage.GetObjectOptions{
+		reader, info, err := suite.service.GetObject(suite.ctx, storage.GetObjectOptions{
 			Key: suite.testObjectKey,
 		})
 
@@ -124,18 +124,26 @@ func (suite *MinIOServiceTestSuite) TestGetObject() {
 		suite.NotNil(reader, "Reader should not be nil")
 		defer reader.Close()
 
+		// GetObject returns the object metadata from its single fetch.
+		suite.Require().NotNil(info, "GetObject should return ObjectInfo alongside the reader")
+		suite.Equal(suite.testObjectKey, info.Key, "Info key should match")
+		suite.Equal(int64(len(suite.testObjectData)), info.Size, "Info size should match")
+		suite.Equal(suite.testContentType, info.ContentType, "Info content type should round-trip")
+		suite.NotEmpty(info.ETag, "Info ETag should be populated")
+
 		data, err := io.ReadAll(reader)
 		suite.Require().NoError(err, "Reading data should succeed")
 		suite.Equal(suite.testObjectData, data, "Data should match uploaded content")
 	})
 
 	suite.Run("NotFound", func() {
-		reader, err := suite.service.GetObject(suite.ctx, storage.GetObjectOptions{
+		reader, info, err := suite.service.GetObject(suite.ctx, storage.GetObjectOptions{
 			Key: "non-existent-key.txt",
 		})
 
 		suite.Error(err, "GetObject should return error for non-existent key")
 		suite.Nil(reader, "Reader should be nil for non-existent key")
+		suite.Nil(info, "Info should be nil for non-existent key")
 		suite.Equal(storage.ErrObjectNotFound, err, "Error should be ErrObjectNotFound")
 	})
 }
@@ -150,7 +158,7 @@ func (suite *MinIOServiceTestSuite) TestDeleteObject() {
 
 		suite.NoError(err, "DeleteObject should succeed")
 
-		_, err = suite.service.GetObject(suite.ctx, storage.GetObjectOptions{
+		_, _, err = suite.service.GetObject(suite.ctx, storage.GetObjectOptions{
 			Key: suite.testObjectKey,
 		})
 		suite.Error(err, "Deleted object should not be retrievable")
@@ -179,7 +187,7 @@ func (suite *MinIOServiceTestSuite) TestDeleteObjects() {
 		suite.NoError(err, "DeleteObjects should succeed")
 
 		for _, key := range keys {
-			_, err := suite.service.GetObject(suite.ctx, storage.GetObjectOptions{
+			_, _, err := suite.service.GetObject(suite.ctx, storage.GetObjectOptions{
 				Key: key,
 			})
 			suite.Error(err, "Deleted object should not be retrievable")
@@ -203,7 +211,7 @@ func (suite *MinIOServiceTestSuite) TestCopyObject() {
 		suite.Equal(destKey, info.Key, "Destination key should match")
 		suite.NotEmpty(info.ETag, "ETag should not be empty")
 
-		reader, err := suite.service.GetObject(suite.ctx, storage.GetObjectOptions{
+		reader, _, err := suite.service.GetObject(suite.ctx, storage.GetObjectOptions{
 			Key: destKey,
 		})
 		suite.Require().NoError(err, "Should be able to get copied object")
@@ -251,6 +259,114 @@ func (suite *MinIOServiceTestSuite) TestStatObject() {
 
 		suite.Error(err, "StatObject should return error for non-existent key")
 		suite.Equal(storage.ErrObjectNotFound, err, "Error should be ErrObjectNotFound")
+	})
+}
+
+// TestMetadataRoundTrip pins the MinIO backend to the provider-neutral metadata
+// contract across PutObject -> StatObject/GetObject and CopyObject propagation.
+//
+// The MinIO/S3 protocol canonicalizes user-metadata keys (minio-go sends them as
+// "X-Amz-Meta-<key>" HTTP headers and strips the prefix from the Go-canonical
+// response header on read), so "author" -> "Author", "lower" -> "Lower", while
+// already-canonical keys survive. Rather than leave this as a backend-specific
+// quirk, the contract canonicalizes keys in EVERY backend, so the expectation is
+// single-sourced from storage.CanonicalizeMetadataKeys — the exact helper the
+// memory and filesystem backends apply at their store boundary. This test and
+// the cross-backend contract suite (multipart_contract_test.go) therefore assert
+// the identical guarantee.
+func (suite *MinIOServiceTestSuite) TestMetadataRoundTrip() {
+	input := map[string]string{
+		"author":         "alice",    // lowercase -> canonicalized to "Author"
+		"lower":          "value",    // lowercase -> canonicalized to "Lower"
+		"X-Custom":       "custom",   // already canonical -> survives
+		"Mixed-Case-Key": "mixedval", // already canonical -> survives
+	}
+
+	expected := storage.CanonicalizeMetadataKeys(input)
+
+	suite.Run("PutObjectThenStatObject", func() {
+		key := "meta/put-stat.bin"
+		_, err := suite.service.PutObject(suite.ctx, storage.PutObjectOptions{
+			Key:         key,
+			Reader:      bytes.NewReader([]byte("payload")),
+			Size:        int64(len("payload")),
+			ContentType: suite.testContentType,
+			Metadata:    input,
+		})
+		suite.Require().NoError(err, "PutObject with metadata should succeed")
+
+		info, err := suite.service.StatObject(suite.ctx, storage.StatObjectOptions{Key: key})
+		suite.Require().NoError(err, "StatObject should succeed")
+
+		for k, v := range expected {
+			suite.Equal(v, info.Metadata[k],
+				"StatObject must return metadata under the MinIO-canonicalized key %q", k)
+		}
+
+		// Document the divergence explicitly: the lowercase key the caller
+		// supplied is NOT what comes back.
+		suite.NotContains(info.Metadata, "author",
+			"MinIO canonicalizes keys: the verbatim lowercase 'author' must not survive (provider-neutral contract divergence)")
+		suite.Contains(info.Metadata, "Author",
+			"MinIO returns the canonicalized 'Author' key instead of the caller's 'author'")
+	})
+
+	suite.Run("GetObjectReturnsMetadata", func() {
+		key := "meta/get.bin"
+		_, err := suite.service.PutObject(suite.ctx, storage.PutObjectOptions{
+			Key:         key,
+			Reader:      bytes.NewReader([]byte("payload")),
+			Size:        int64(len("payload")),
+			ContentType: suite.testContentType,
+			Metadata:    input,
+		})
+		suite.Require().NoError(err, "PutObject with metadata should succeed")
+
+		reader, info, err := suite.service.GetObject(suite.ctx, storage.GetObjectOptions{Key: key})
+		suite.Require().NoError(err, "GetObject should succeed")
+
+		defer reader.Close()
+
+		suite.Require().NotNil(info, "GetObject should return ObjectInfo")
+
+		for k, v := range expected {
+			suite.Equal(v, info.Metadata[k],
+				"GetObject must surface metadata under the MinIO-canonicalized key %q", k)
+		}
+	})
+
+	suite.Run("CopyObjectPropagatesMetadata", func() {
+		srcKey := "meta/copy-src.bin"
+		destKey := "meta/copy-dest.bin"
+
+		_, err := suite.service.PutObject(suite.ctx, storage.PutObjectOptions{
+			Key:         srcKey,
+			Reader:      bytes.NewReader([]byte("payload")),
+			Size:        int64(len("payload")),
+			ContentType: suite.testContentType,
+			Metadata:    input,
+		})
+		suite.Require().NoError(err, "PutObject of copy source should succeed")
+
+		info, err := suite.service.CopyObject(suite.ctx, storage.CopyObjectOptions{
+			SourceKey: srcKey,
+			DestKey:   destKey,
+		})
+		suite.Require().NoError(err, "CopyObject should succeed")
+
+		for k, v := range expected {
+			suite.Equal(v, info.Metadata[k],
+				"CopyObject result must propagate the source metadata under canonicalized key %q", k)
+		}
+
+		// And the propagation must survive a fresh Stat of the destination.
+		statInfo, err := suite.service.StatObject(suite.ctx, storage.StatObjectOptions{Key: destKey})
+		suite.Require().NoError(err, "StatObject of copy destination should succeed")
+
+		for k, v := range expected {
+			suite.Equal(v, statInfo.Metadata[k],
+				"copied object's metadata must persist under canonicalized key %q", k)
+		}
 	})
 }
 
@@ -332,7 +448,6 @@ func (suite *MinIOServiceTestSuite) TestBucketPolicy() {
 	})
 }
 
-// TestMinIOServiceTestSuite tests MinIO service test suite functionality.
 func TestMinIOService(t *testing.T) {
 	suite.Run(t, new(MinIOServiceTestSuite))
 }

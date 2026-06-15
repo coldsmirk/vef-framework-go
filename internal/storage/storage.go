@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/coldsmirk/vef-framework-go/config"
@@ -10,10 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/storage/minio"
 	"github.com/coldsmirk/vef-framework-go/storage"
 )
-
-// ErrUnsupportedStorageProvider is returned by NewService when the
-// configured provider does not match any of the known backends.
-var ErrUnsupportedStorageProvider = errors.New("unsupported storage provider")
 
 func NewService(cfg *config.StorageConfig, appCfg *config.AppConfig) (storage.Service, error) {
 	provider := cfg.Provider

@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestExtractHTMLURLs tests HTML URL extraction from various HTML content.
-func TestExtractHTMLURLs(t *testing.T) {
+// TestExtractHtmlURLs tests HTML URL extraction from various HTML content.
+func TestExtractHtmlURLs(t *testing.T) {
 	tests := []struct {
 		name     string
 		html     string
@@ -82,7 +82,7 @@ func TestExtractHTMLURLs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			urls := extractHtmlURLs(tt.html)
 			if len(tt.expected) == 0 {
-				assert.Empty(t, urls, "TestExtractHTMLURLs should return empty value")
+				assert.Empty(t, urls, "TestExtractHtmlURLs should return empty value")
 			} else {
 				assert.ElementsMatch(t, tt.expected, urls, "ElementsMatch assertion should pass")
 			}
@@ -90,8 +90,8 @@ func TestExtractHTMLURLs(t *testing.T) {
 	}
 }
 
-// TestReplaceHTMLURLs tests HTML URL replacement in various HTML content.
-func TestReplaceHTMLURLs(t *testing.T) {
+// TestReplaceHtmlURLs tests HTML URL replacement in various HTML content.
+func TestReplaceHtmlURLs(t *testing.T) {
 	tests := []struct {
 		name         string
 		html         string
@@ -172,7 +172,7 @@ func TestReplaceHTMLURLs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ReplaceHtmlURLs(tt.html, tt.replacements)
-			assert.Equal(t, tt.expected, result, "TestReplaceHTMLURLs should match expected value")
+			assert.Equal(t, tt.expected, result, "TestReplaceHtmlURLs should match expected value")
 		})
 	}
 }
@@ -328,6 +328,24 @@ func TestReplaceMarkdownURLs(t *testing.T) {
 				"temp/doc.pdf":  "uploads/doc.pdf",
 			},
 			expected: `![Image1](uploads/pic1.jpg) [Link](uploads/doc.pdf) ![Image2](keep/pic2.jpg)`,
+		},
+		{
+			// An image's rewritten URL must not be re-processed by a link
+			// pass: with a chained map an image rewrite of k1->k2 must stop
+			// there even though k2 is itself a key (k2->k3). A two-pass
+			// image-then-link implementation would yield k3.
+			name:         "ImageChainedKeyAppliedOnce",
+			markdown:     `![Alt](k1)`,
+			replacements: map[string]string{"k1": "k2", "k2": "k3"},
+			expected:     `![Alt](k2)`,
+		},
+		{
+			// The link suffix of an image construct must not be replaced a
+			// second time as a bare link.
+			name:         "ImageNotDoubleReplacedAsLink",
+			markdown:     `![Alt](temp/pic.jpg) and [Doc](temp/pic.jpg)`,
+			replacements: map[string]string{"temp/pic.jpg": "uploads/pic.jpg", "uploads/pic.jpg": "WRONG"},
+			expected:     `![Alt](uploads/pic.jpg) and [Doc](uploads/pic.jpg)`,
 		},
 	}
 

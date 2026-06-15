@@ -64,7 +64,7 @@ func (s *MultipartContractSuite) TestHappyPath() {
 	s.Require().NoError(err, "CompleteMultipart should succeed")
 	s.Equal(int64(len(part1Data)+len(part2Data)), info.Size, "Assembled size should match")
 
-	reader, err := s.service.GetObject(context.Background(), storage.GetObjectOptions{Key: session.Key})
+	reader, _, err := s.service.GetObject(context.Background(), storage.GetObjectOptions{Key: session.Key})
 	s.Require().NoError(err, "GetObject should succeed after Complete")
 
 	defer reader.Close()
@@ -87,7 +87,7 @@ func (s *MultipartContractSuite) TestPutPartOverwrite() {
 	})
 	s.Require().NoError(err, "Complete with latest ETag should succeed")
 
-	reader, _ := s.service.GetObject(context.Background(), storage.GetObjectOptions{Key: session.Key})
+	reader, _, _ := s.service.GetObject(context.Background(), storage.GetObjectOptions{Key: session.Key})
 	defer reader.Close()
 
 	got, _ := io.ReadAll(reader)
@@ -196,6 +196,46 @@ func (s *MultipartContractSuite) TestNonFinalPartTooSmall() {
 		Parts: []storage.CompletedPart{{PartNumber: 1, ETag: p1.ETag}, {PartNumber: 2, ETag: p2.ETag}},
 	})
 	s.ErrorIs(err, storage.ErrPartTooSmall, "Non-final part smaller than PartSize must return ErrPartTooSmall")
+}
+
+// TestMetadataRoundTrip pins the provider-neutral contract that custom object
+// Metadata supplied to PutObject is echoed back by StatObject under
+// S3/HTTP-canonical keys, identically across every backend. The MinIO/S3
+// protocol forces this canonicalization; memory and filesystem adopt the same
+// rule at their store boundary (via storage.CanonicalizeMetadataKeys), so this
+// suite — and the MinIO suite's own TestMetadataRoundTrip — assert the SAME
+// guarantee against the identical helper, turning the MinIO finding into an
+// enforced cross-backend invariant.
+//
+// The input is deliberately mixed-case so canonicalization is actually
+// exercised: a lowercase key ("author") and an unconventional-case key
+// ("mixed-KEY") must come back canonicalized, while an already-canonical key
+// ("X-Custom") survives unchanged.
+func (s *MultipartContractSuite) TestMetadataRoundTrip() {
+	meta := map[string]string{"author": "a", "X-Custom": "b", "mixed-KEY": "c"}
+	expected := storage.CanonicalizeMetadataKeys(meta)
+	payload := []byte("metadata-payload")
+
+	_, err := s.service.PutObject(context.Background(), storage.PutObjectOptions{
+		Key:         "contract/metadata.bin",
+		Reader:      bytes.NewReader(payload),
+		Size:        int64(len(payload)),
+		ContentType: "application/octet-stream",
+		Metadata:    meta,
+	})
+	s.Require().NoError(err, "PutObject with metadata should succeed")
+
+	info, err := s.service.StatObject(context.Background(), storage.StatObjectOptions{Key: "contract/metadata.bin"})
+	s.Require().NoError(err, "StatObject should succeed")
+
+	for k, v := range expected {
+		s.Equal(v, info.Metadata[k],
+			"StatObject must round-trip custom metadata under the canonical key %q across backends", k)
+	}
+
+	// The raw lowercase key must NOT survive — every backend canonicalizes.
+	s.NotContains(info.Metadata, "author",
+		"the verbatim lowercase 'author' must not survive; backends canonicalize to 'Author'")
 }
 
 // ── Entry points ────────────────────────────────────────────────────────

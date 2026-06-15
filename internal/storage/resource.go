@@ -309,7 +309,11 @@ func (r *Resource) InitUpload(ctx fiber.Ctx, principal *security.Principal, para
 		return result.ErrAccessDenied
 	}
 
-	// Enforce per-principal in-flight session cap.
+	// Enforce the per-principal in-flight session cap. Best-effort: this
+	// count and the Create below are separate statements, so a concurrent
+	// burst from one principal may briefly overshoot the cap. That is
+	// acceptable — the cap is DoS hygiene against a user opening thousands
+	// of sessions, not a hard boundary (see StorageConfig.MaxPendingClaims).
 	owner := principal.ID
 
 	pendingCount, err := r.claimStore.CountPendingByOwner(ctx.Context(), owner)

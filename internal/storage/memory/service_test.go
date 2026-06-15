@@ -12,7 +12,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/storage"
 )
 
-// TestMemoryService tests memory service functionality.
 func TestMemoryService(t *testing.T) {
 	ctx := context.Background()
 	service := New()
@@ -41,7 +40,7 @@ func TestMemoryService(t *testing.T) {
 	t.Run("GetObjectSuccess", func(t *testing.T) {
 		expectedData := []byte("Hello, Memory Storage!")
 
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{
+		reader, _, err := service.GetObject(ctx, storage.GetObjectOptions{
 			Key: "test.txt",
 		})
 
@@ -56,7 +55,7 @@ func TestMemoryService(t *testing.T) {
 	})
 
 	t.Run("GetObjectNotFound", func(t *testing.T) {
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{
+		reader, _, err := service.GetObject(ctx, storage.GetObjectOptions{
 			Key: "nonexistent.txt",
 		})
 
@@ -86,7 +85,7 @@ func TestMemoryService(t *testing.T) {
 		assert.NotNil(t, info, "ObjectInfo should not be nil")
 		assert.Equal(t, "test-copy.txt", info.Key, "Destination key should match")
 
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{
+		reader, _, err := service.GetObject(ctx, storage.GetObjectOptions{
 			Key: "test-copy.txt",
 		})
 		require.NoError(t, err, "Should be able to get copied object")
@@ -105,7 +104,7 @@ func TestMemoryService(t *testing.T) {
 
 		assert.NoError(t, err, "DeleteObject should succeed")
 
-		_, err = service.GetObject(ctx, storage.GetObjectOptions{
+		_, _, err = service.GetObject(ctx, storage.GetObjectOptions{
 			Key: "test.txt",
 		})
 		assert.Error(t, err, "Deleted object should not be retrievable")
@@ -128,7 +127,7 @@ func TestMemoryService(t *testing.T) {
 		assert.NoError(t, err, "DeleteObjects should succeed")
 
 		for _, key := range keys {
-			_, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
+			_, _, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
 			assert.Error(t, err, "Deleted object "+key+" should not be retrievable")
 		}
 	})

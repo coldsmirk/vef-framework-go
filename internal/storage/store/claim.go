@@ -115,7 +115,11 @@ type ClaimStore interface {
 
 	// CountPendingByOwner returns the number of claims with
 	// status='pending' owned by the given principal. Used by init_upload
-	// to enforce the per-user in-flight session cap.
+	// to enforce the per-user in-flight session cap. The cap is
+	// best-effort: this count and the follow-up Create are separate
+	// statements, so a concurrent burst from one principal may overshoot
+	// the limit by the number of in-flight requests (a DoS-hygiene limit,
+	// not a hard boundary).
 	CountPendingByOwner(ctx context.Context, owner string) (int, error)
 
 	// ListExpired returns up to limit pending claims whose ExpiresAt is

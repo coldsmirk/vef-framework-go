@@ -3,6 +3,7 @@ package filesystem
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -28,7 +29,6 @@ func setupTestService(t *testing.T) (storage.Service, func()) {
 	return service, cleanup
 }
 
-// TestFilesystemService tests filesystem service functionality.
 func TestFilesystemService(t *testing.T) {
 	ctx := context.Background()
 
@@ -54,12 +54,13 @@ func TestFilesystemService(t *testing.T) {
 		assert.Equal(t, "test.txt", info.Key, "PutObject should echo the caller-supplied key")
 		assert.Equal(t, int64(len(data)), info.Size, "PutObject should report the number of bytes written")
 		assert.Equal(t, "text/plain", info.ContentType, "PutObject should preserve the caller-supplied ContentType")
+		assert.Equal(t, map[string]string{"Author": "test"}, info.Metadata, "PutObject should echo the Metadata under canonical keys (author -> Author)")
 	})
 
 	t.Run("GetObjectSuccess", func(t *testing.T) {
 		expectedData := []byte("Hello, Filesystem Storage!")
 
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{
+		reader, _, err := service.GetObject(ctx, storage.GetObjectOptions{
 			Key: "test.txt",
 		})
 
@@ -74,7 +75,7 @@ func TestFilesystemService(t *testing.T) {
 	})
 
 	t.Run("GetObjectNotFound", func(t *testing.T) {
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{
+		reader, _, err := service.GetObject(ctx, storage.GetObjectOptions{
 			Key: "nonexistent.txt",
 		})
 
@@ -104,7 +105,7 @@ func TestFilesystemService(t *testing.T) {
 		assert.NotNil(t, info, "CopyObject should return a non-nil ObjectInfo")
 		assert.Equal(t, "test-copy.txt", info.Key, "CopyObject should report the destination key")
 
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{
+		reader, _, err := service.GetObject(ctx, storage.GetObjectOptions{
 			Key: "test-copy.txt",
 		})
 		require.NoError(t, err, "GetObject should find the copied object at the destination key")
@@ -123,7 +124,7 @@ func TestFilesystemService(t *testing.T) {
 
 		assert.NoError(t, err, "DeleteObject should not return an error for an existing key")
 
-		_, err = service.GetObject(ctx, storage.GetObjectOptions{
+		_, _, err = service.GetObject(ctx, storage.GetObjectOptions{
 			Key: "test.txt",
 		})
 		assert.Error(t, err, "GetObject after DeleteObject should return an error")
@@ -146,7 +147,7 @@ func TestFilesystemService(t *testing.T) {
 		assert.NoError(t, err, "DeleteObjects should not return an error when all keys exist")
 
 		for _, key := range keys {
-			_, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
+			_, _, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
 			assert.Error(t, err, "Deleted batch object reads should return an error")
 		}
 	})
@@ -162,7 +163,7 @@ func TestFilesystemService(t *testing.T) {
 		})
 		require.NoError(t, err, "PutObject should not return an error for a deeply nested key")
 
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{
+		reader, _, err := service.GetObject(ctx, storage.GetObjectOptions{
 			Key: nestedKey,
 		})
 		require.NoError(t, err, "GetObject should find the object stored under a nested key")
@@ -175,7 +176,166 @@ func TestFilesystemService(t *testing.T) {
 	})
 }
 
-// TestCleanupEmptyDirs tests cleanup empty dirs functionality.
+// TestMetadataRoundTrip verifies the filesystem backend persists and returns
+// custom Metadata under S3/HTTP-canonical keys, matching the provider-neutral
+// Service contract (memory and minio canonicalize identically). The input is
+// mixed-case so canonicalization is exercised; the expectation is single-sourced
+// from storage.CanonicalizeMetadataKeys, the same helper the backend applies.
+func TestMetadataRoundTrip(t *testing.T) {
+	ctx := context.Background()
+
+	service, cleanup := setupTestService(t)
+	defer cleanup()
+
+	meta := map[string]string{"author": "alice", "X-Purpose": "round-trip"}
+	expected := storage.CanonicalizeMetadataKeys(meta)
+
+	t.Run("PutThenStatAndGet", func(t *testing.T) {
+		put, err := service.PutObject(ctx, storage.PutObjectOptions{
+			Key:         "meta/put.txt",
+			Reader:      bytes.NewReader([]byte("body")),
+			Size:        4,
+			ContentType: "text/plain",
+			Metadata:    meta,
+		})
+		require.NoError(t, err, "PutObject should not return an error")
+		assert.Equal(t, expected, put.Metadata, "PutObject result should echo the Metadata under canonical keys")
+
+		stat, err := service.StatObject(ctx, storage.StatObjectOptions{Key: "meta/put.txt"})
+		require.NoError(t, err, "StatObject should not return an error")
+		assert.Equal(t, expected, stat.Metadata, "StatObject should return the persisted Metadata under canonical keys")
+
+		_, info, err := service.GetObject(ctx, storage.GetObjectOptions{Key: "meta/put.txt"})
+		require.NoError(t, err, "GetObject should not return an error")
+		require.NotNil(t, info, "GetObject should return ObjectInfo")
+		assert.Equal(t, expected, info.Metadata, "GetObject should return the persisted Metadata under canonical keys")
+	})
+
+	t.Run("CopyInheritsMetadata", func(t *testing.T) {
+		copied, err := service.CopyObject(ctx, storage.CopyObjectOptions{
+			SourceKey: "meta/put.txt",
+			DestKey:   "meta/copy.txt",
+		})
+		require.NoError(t, err, "CopyObject should not return an error")
+		assert.Equal(t, expected, copied.Metadata, "CopyObject should inherit source Metadata under canonical keys")
+
+		stat, err := service.StatObject(ctx, storage.StatObjectOptions{Key: "meta/copy.txt"})
+		require.NoError(t, err, "StatObject on the copy should not return an error")
+		assert.Equal(t, expected, stat.Metadata, "Copied object should carry the inherited Metadata under canonical keys")
+	})
+
+	t.Run("MultipartCarriesMetadata", func(t *testing.T) {
+		mp := storage.MultipartFor(service)
+		require.NotNil(t, mp, "filesystem backend should expose Multipart")
+
+		session, err := mp.InitMultipart(ctx, storage.InitMultipartOptions{
+			Key:         "meta/multipart.bin",
+			ContentType: "application/octet-stream",
+			Metadata:    meta,
+		})
+		require.NoError(t, err, "InitMultipart should not return an error")
+
+		partData := bytes.Repeat([]byte{'z'}, 8)
+		part, err := mp.PutPart(ctx, storage.PutPartOptions{
+			Key:        session.Key,
+			UploadID:   session.UploadID,
+			PartNumber: 1,
+			Reader:     bytes.NewReader(partData),
+			Size:       int64(len(partData)),
+		})
+		require.NoError(t, err, "PutPart should not return an error")
+
+		done, err := mp.CompleteMultipart(ctx, storage.CompleteMultipartOptions{
+			Key:      session.Key,
+			UploadID: session.UploadID,
+			Parts:    []storage.CompletedPart{{PartNumber: 1, ETag: part.ETag}},
+		})
+		require.NoError(t, err, "CompleteMultipart should not return an error")
+		assert.Equal(t, expected, done.Metadata, "CompleteMultipart should carry the session Metadata under canonical keys")
+
+		stat, err := service.StatObject(ctx, storage.StatObjectOptions{Key: "meta/multipart.bin"})
+		require.NoError(t, err, "StatObject on the assembled object should not return an error")
+		assert.Equal(t, expected, stat.Metadata, "Assembled object should carry the session Metadata under canonical keys")
+	})
+
+	t.Run("StoredMetadataIsNotAliasedToCaller", func(t *testing.T) {
+		input := map[string]string{"k": "v"}
+
+		_, err := service.PutObject(ctx, storage.PutObjectOptions{
+			Key:      "meta/isolation.txt",
+			Reader:   bytes.NewReader([]byte("x")),
+			Size:     1,
+			Metadata: input,
+		})
+		require.NoError(t, err, "PutObject should not return an error")
+
+		// Mutating the caller's map after the write must not affect what the
+		// backend persisted — the sidecar holds a clone (under the canonical key).
+		input["k"] = "mutated"
+
+		stat, err := service.StatObject(ctx, storage.StatObjectOptions{Key: "meta/isolation.txt"})
+		require.NoError(t, err, "StatObject should not return an error")
+		assert.Equal(t, map[string]string{"K": "v"}, stat.Metadata, "Persisted Metadata must not alias the caller's map (and is canonicalized)")
+	})
+
+	t.Run("EmptyMetadataYieldsNil", func(t *testing.T) {
+		_, err := service.PutObject(ctx, storage.PutObjectOptions{
+			Key:    "meta/empty.txt",
+			Reader: bytes.NewReader([]byte("x")),
+			Size:   1,
+		})
+		require.NoError(t, err, "PutObject should not return an error")
+
+		stat, err := service.StatObject(ctx, storage.StatObjectOptions{Key: "meta/empty.txt"})
+		require.NoError(t, err, "StatObject should not return an error")
+		assert.Nil(t, stat.Metadata, "Absent Metadata should read back as nil, not an empty map")
+	})
+}
+
+// TestSidecarWriteFailureStillSucceeds asserts that a failure to write the
+// advisory .etags sidecar does NOT fail an already-committed object: the
+// object file has been atomically renamed into place, so PutObject /
+// CopyObject / CompleteMultipart return a usable ObjectInfo (with the
+// freshly computed ETag) and the object remains readable.
+func TestSidecarWriteFailureStillSucceeds(t *testing.T) {
+	ctx := context.Background()
+
+	tempDir := t.TempDir()
+
+	service, err := New(config.FilesystemConfig{Root: tempDir})
+	require.NoError(t, err, "New should not return an error when root is writable")
+
+	// Plant a regular file where the .etags sidecar tree must live. writeMeta
+	// then fails its os.MkdirAll (a file is not a directory), exercising the
+	// advisory-failure path while object writes (which live elsewhere under
+	// root) keep working.
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, ".etags"), []byte("blocker"), 0o644),
+		"planting the .etags blocker file should succeed")
+
+	data := []byte("committed despite sidecar failure")
+
+	info, err := service.PutObject(ctx, storage.PutObjectOptions{
+		Key:         "blocked.txt",
+		Reader:      bytes.NewReader(data),
+		Size:        int64(len(data)),
+		ContentType: "text/plain",
+	})
+	require.NoError(t, err, "PutObject must succeed even when the advisory sidecar write fails")
+	require.NotNil(t, info, "PutObject must return a usable ObjectInfo")
+	assert.NotEmpty(t, info.ETag, "ObjectInfo must carry the freshly computed ETag")
+	assert.Equal(t, int64(len(data)), info.Size, "ObjectInfo must report the written size")
+
+	// The object is fully readable; only the advisory ETag sidecar is missing.
+	reader, _, err := service.GetObject(ctx, storage.GetObjectOptions{Key: "blocked.txt"})
+	require.NoError(t, err, "GetObject must find the committed object")
+
+	defer reader.Close()
+
+	got, err := io.ReadAll(reader)
+	require.NoError(t, err, "Reading the committed object should not return an error")
+	assert.Equal(t, data, got, "The committed object must contain the written bytes")
+}
+
 func TestCleanupEmptyDirs(t *testing.T) {
 	tempDir := t.TempDir()
 	service := &Service{root: tempDir}
@@ -192,7 +352,6 @@ func TestCleanupEmptyDirs(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), "cleanupEmptyDirs should remove all empty parent directories up to root")
 }
 
-// TestEdgeCases tests edge cases functionality.
 func TestEdgeCases(t *testing.T) {
 	ctx := context.Background()
 
@@ -210,7 +369,7 @@ func TestEdgeCases(t *testing.T) {
 		assert.Equal(t, int64(0), info.Size, "PutObject of an empty body should report size zero")
 		assert.NotEmpty(t, info.ETag, "PutObject of an empty body should still produce an ETag")
 
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{Key: "empty.txt"})
+		reader, _, err := service.GetObject(ctx, storage.GetObjectOptions{Key: "empty.txt"})
 		require.NoError(t, err, "GetObject should find an empty object that was stored")
 
 		defer reader.Close()
@@ -241,7 +400,7 @@ func TestEdgeCases(t *testing.T) {
 			})
 			require.NoError(t, err, "Failed to put object with key: %s", key)
 
-			reader, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
+			reader, _, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
 			require.NoError(t, err, "Failed to get object with key: %s", key)
 
 			defer reader.Close()
@@ -277,7 +436,7 @@ func TestEdgeCases(t *testing.T) {
 				})
 				assert.Error(t, err, "PutObject should reject invalid key %q", tc.key)
 
-				_, err = service.GetObject(ctx, storage.GetObjectOptions{Key: tc.key})
+				_, _, err = service.GetObject(ctx, storage.GetObjectOptions{Key: tc.key})
 				assert.Error(t, err, "GetObject should reject invalid key %q", tc.key)
 
 				err = service.DeleteObject(ctx, storage.DeleteObjectOptions{Key: tc.key})
@@ -315,7 +474,7 @@ func TestEdgeCases(t *testing.T) {
 		require.NoError(t, err, "Overwrite PutObject should not return an error")
 		assert.Equal(t, int64(len(newData)), info.Size, "Overwrite PutObject should report the new object size")
 
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
+		reader, _, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
 		require.NoError(t, err, "GetObject after overwrite should not return an error")
 
 		defer reader.Close()
@@ -377,7 +536,7 @@ func TestEdgeCases(t *testing.T) {
 		})
 		require.NoError(t, err, "PutObject should not return an error for a deeply nested long path")
 
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{Key: longPath})
+		reader, _, err := service.GetObject(ctx, storage.GetObjectOptions{Key: longPath})
 		require.NoError(t, err, "GetObject should find an object stored under a very long nested path")
 
 		defer reader.Close()
@@ -526,7 +685,6 @@ func TestEdgeCases(t *testing.T) {
 	})
 }
 
-// TestConcurrency tests concurrency functionality.
 func TestConcurrency(t *testing.T) {
 	ctx := context.Background()
 
@@ -539,8 +697,8 @@ func TestConcurrency(t *testing.T) {
 
 		for i := range concurrency {
 			go func(id int) {
-				key := filepath.Join("concurrent", "put", "file"+string(rune('0'+id))+".txt")
-				data := []byte("concurrent content " + string(rune('0'+id)))
+				key := fmt.Sprintf("concurrent/put/file%d.txt", id)
+				data := fmt.Appendf(nil, "concurrent content %d", id)
 				_, err := service.PutObject(ctx, storage.PutObjectOptions{
 					Key:    key,
 					Reader: bytes.NewReader(data),
@@ -556,10 +714,9 @@ func TestConcurrency(t *testing.T) {
 			<-done
 		}
 
-		// Verify each concurrent put landed via StatObject; ListObjects
-		// used to play this role before it was removed.
+		// Verify each concurrent put landed via StatObject.
 		for i := range concurrency {
-			key := filepath.Join("concurrent", "put", "file"+string(rune('0'+i))+".txt")
+			key := fmt.Sprintf("concurrent/put/file%d.txt", i)
 			_, err := service.StatObject(ctx, storage.StatObjectOptions{Key: key})
 			require.NoError(t, err, "Concurrent put %q should be visible via StatObject", key)
 		}
@@ -581,7 +738,7 @@ func TestConcurrency(t *testing.T) {
 
 		for range concurrency {
 			go func() {
-				reader, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
+				reader, _, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
 				assert.NoError(t, err, "Concurrent GetObject should not return an error")
 
 				if reader != nil {
@@ -605,7 +762,7 @@ func TestConcurrency(t *testing.T) {
 		concurrency := 10
 
 		for i := range concurrency {
-			key := filepath.Join("concurrent", "delete", "file"+string(rune('0'+i))+".txt")
+			key := fmt.Sprintf("concurrent/delete/file%d.txt", i)
 			_, err := service.PutObject(ctx, storage.PutObjectOptions{
 				Key:    key,
 				Reader: bytes.NewReader([]byte("content")),
@@ -617,7 +774,7 @@ func TestConcurrency(t *testing.T) {
 		done := make(chan bool, concurrency)
 		for i := range concurrency {
 			go func(id int) {
-				key := filepath.Join("concurrent", "delete", "file"+string(rune('0'+id))+".txt")
+				key := fmt.Sprintf("concurrent/delete/file%d.txt", id)
 				err := service.DeleteObject(ctx, storage.DeleteObjectOptions{Key: key})
 				assert.NoError(t, err, "Concurrent DeleteObject should not return an error")
 
@@ -630,16 +787,15 @@ func TestConcurrency(t *testing.T) {
 		}
 
 		// Each concurrent delete should have removed its key; verify
-		// via StatObject (ListObjects no longer exists).
+		// via StatObject.
 		for i := range concurrency {
-			key := filepath.Join("concurrent", "delete", "file"+string(rune('0'+i))+".txt")
+			key := fmt.Sprintf("concurrent/delete/file%d.txt", i)
 			_, err := service.StatObject(ctx, storage.StatObjectOptions{Key: key})
 			assert.ErrorIs(t, err, storage.ErrObjectNotFound, "Concurrent delete of %q should leave it gone", key)
 		}
 	})
 }
 
-// TestLargeFile tests large file functionality.
 func TestLargeFile(t *testing.T) {
 	ctx := context.Background()
 
@@ -663,7 +819,7 @@ func TestLargeFile(t *testing.T) {
 		require.NoError(t, err, "PutObject should not return an error for a 10 MiB object")
 		assert.Equal(t, int64(size), info.Size, "PutObject should report the full 10 MiB size")
 
-		reader, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
+		reader, _, err := service.GetObject(ctx, storage.GetObjectOptions{Key: key})
 		require.NoError(t, err, "GetObject should not return an error for a large stored object")
 
 		defer reader.Close()

@@ -42,6 +42,17 @@ var (
 		markdownImagePattern,
 		markdownLinkPattern,
 	}
+
+	// markdownReplacePattern matches both `![alt](url)` and `[text](url)`
+	// in a single pass: group 1 captures the optional leading '!' that
+	// distinguishes an image from a link. A single pass is required for
+	// correctness — running the image pattern then the link pattern over
+	// the rewritten text would let the link pass re-process the
+	// `[alt](url)` body of an image, double-applying a replacement when
+	// the first rewrite produces a URL that is itself a key in the map.
+	// RE2 has no lookbehind, so the '!' prefix is captured rather than
+	// asserted.
+	markdownReplacePattern = regexp.MustCompile(`(!?)\[([^]]*)]\(([^)]+)\)`)
 )
 
 // extractHtmlURLs extracts every URL appearing in supported HTML
@@ -193,33 +204,29 @@ func ReplaceMarkdownURLs(content string, replacements map[string]string) string 
 		return content
 	}
 
-	replaceFunc := func(pattern *regexp.Regexp, prefix string) func(string) string {
-		return func(match string) string {
-			subMatches := pattern.FindStringSubmatch(match)
-			if len(subMatches) <= 2 {
-				return match
-			}
-
-			text := subMatches[1]
-			url := strings.TrimSpace(subMatches[2])
-
-			// Preserve optional title if present
-			title := ""
-			if index := strings.IndexAny(url, `"'`); index > 0 {
-				title = url[index:]
-				url = strings.TrimSpace(url[:index])
-			}
-
-			if newURL, ok := replacements[url]; ok {
-				return buildMarkdownReplacement(prefix, text, newURL, title)
-			}
-
+	return markdownReplacePattern.ReplaceAllStringFunc(content, func(match string) string {
+		subMatches := markdownReplacePattern.FindStringSubmatch(match)
+		if len(subMatches) <= 3 {
 			return match
 		}
-	}
 
-	result := markdownImagePattern.ReplaceAllStringFunc(content, replaceFunc(markdownImagePattern, "!"))
-	result = markdownLinkPattern.ReplaceAllStringFunc(result, replaceFunc(markdownLinkPattern, ""))
+		// Group 1: optional '!' image prefix, Group 2: alt/text,
+		// Group 3: URL (+ optional title).
+		prefix := subMatches[1]
+		text := subMatches[2]
+		url := strings.TrimSpace(subMatches[3])
 
-	return result
+		// Preserve optional title if present
+		title := ""
+		if index := strings.IndexAny(url, `"'`); index > 0 {
+			title = url[index:]
+			url = strings.TrimSpace(url[:index])
+		}
+
+		if newURL, ok := replacements[url]; ok {
+			return buildMarkdownReplacement(prefix, text, newURL, title)
+		}
+
+		return match
+	})
 }

@@ -68,9 +68,14 @@ func (p *ProxyMiddleware) handleFileProxy(ctx fiber.Ctx) error {
 	// reader ownership: from this point on, the io.ReadCloser is handed
 	// off to ctx.SendStream below, which is responsible for closing it
 	// after the response body is flushed. Do NOT add an early return
-	// (e.g. on a StatObject failure) between here and SendStream without
-	// closing reader first, or the descriptor will leak.
-	reader, err := p.service.GetObject(ctx.Context(), storage.GetObjectOptions{
+	// between here and SendStream without closing reader first, or the
+	// descriptor will leak.
+	//
+	// GetObject returns the object metadata alongside the reader from a
+	// single backend fetch (no separate StatObject round-trip on this hot
+	// path). stat is best-effort: a nil stat is non-fatal — the response
+	// still streams the body, just without Content-Length / ETag headers.
+	reader, stat, err := p.service.GetObject(ctx.Context(), storage.GetObjectOptions{
 		Key: key,
 	})
 	if err != nil {
@@ -81,16 +86,6 @@ func (p *ProxyMiddleware) handleFileProxy(ctx fiber.Ctx) error {
 		logger.Errorf("Failed to get object %s: %v", key, err)
 
 		return storage.ErrFailedToGetFile
-	}
-
-	// Stat failure is intentionally non-fatal: the response still streams
-	// the body, just without Content-Length / ETag headers. Treating it
-	// as fatal would force closing reader here.
-	stat, err := p.service.StatObject(ctx.Context(), storage.StatObjectOptions{
-		Key: key,
-	})
-	if err != nil {
-		logger.Warnf("Failed to stat object %s: %v", key, err)
 	}
 
 	contentType := detectContentType(stat, key)
@@ -171,10 +166,5 @@ func detectContentType(stat *storage.ObjectInfo, key string) string {
 		raw = mime.TypeByExtension(filepath.Ext(key))
 	}
 
-	sanitized := sanitizeContentType(raw, key)
-	if sanitized == "" {
-		return fiber.MIMEOctetStream
-	}
-
-	return sanitized
+	return sanitizeContentType(raw, key)
 }

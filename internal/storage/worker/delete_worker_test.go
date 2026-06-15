@@ -101,7 +101,7 @@ func TestDeleteWorker(t *testing.T) {
 
 		worker.NewDeleteWorker(env.Svc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
-		_, err := env.Svc.GetObject(env.Ctx, storage.GetObjectOptions{Key: item.Key})
+		_, _, err := env.Svc.GetObject(env.Ctx, storage.GetObjectOptions{Key: item.Key})
 		assert.ErrorIs(t, err, storage.ErrObjectNotFound, "Deleted object should no longer exist")
 
 		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
@@ -227,7 +227,7 @@ func TestDeleteWorker(t *testing.T) {
 		assert.Equal(t, 1, tracker.abortCount, "AbortMultipart must be called once before failure")
 
 		// Object must still be reachable — the worker did not proceed to DeleteObject.
-		_, err := env.Svc.GetObject(env.Ctx, storage.GetObjectOptions{Key: item.Key})
+		_, _, err := env.Svc.GetObject(env.Ctx, storage.GetObjectOptions{Key: item.Key})
 		assert.NoError(t, err, "Object must survive when AbortMultipart fails")
 
 		// Row must be deferred (not removed): a far-future lease reveals it with Attempts=1.
@@ -266,7 +266,7 @@ func TestDeleteWorker(t *testing.T) {
 		worker.NewDeleteWorker(nonMPSvc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
 		// Object should be deleted despite the row carrying an UploadID.
-		_, err := env.Svc.GetObject(env.Ctx, storage.GetObjectOptions{Key: item.Key})
+		_, _, err := env.Svc.GetObject(env.Ctx, storage.GetObjectOptions{Key: item.Key})
 		assert.ErrorIs(t, err, storage.ErrObjectNotFound,
 			"Worker must delete the object even when the backend does not support multipart")
 
@@ -309,7 +309,7 @@ func TestDeleteWorker(t *testing.T) {
 
 		// All objects must be deleted.
 		for _, key := range keys {
-			_, err := env.Svc.GetObject(env.Ctx, storage.GetObjectOptions{Key: key})
+			_, _, err := env.Svc.GetObject(env.Ctx, storage.GetObjectOptions{Key: key})
 			assert.ErrorIs(t, err, storage.ErrObjectNotFound,
 				"Object %s must be deleted by the worker", key)
 		}

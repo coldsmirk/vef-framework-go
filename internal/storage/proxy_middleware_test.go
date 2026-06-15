@@ -25,14 +25,19 @@ func (*MockStorageService) PutObject(context.Context, storage.PutObjectOptions) 
 	return nil, nil
 }
 
-func (m *MockStorageService) GetObject(_ context.Context, opts storage.GetObjectOptions) (io.ReadCloser, error) {
+func (m *MockStorageService) GetObject(_ context.Context, opts storage.GetObjectOptions) (io.ReadCloser, *storage.ObjectInfo, error) {
 	args := m.Called(opts)
 
 	if args.Get(0) == nil {
-		return nil, args.Error(1)
+		return nil, nil, args.Error(2)
 	}
 
-	return args.Get(0).(io.ReadCloser), args.Error(1)
+	var info *storage.ObjectInfo
+	if args.Get(1) != nil {
+		info = args.Get(1).(*storage.ObjectInfo)
+	}
+
+	return args.Get(0).(io.ReadCloser), info, args.Error(2)
 }
 
 func (*MockStorageService) DeleteObject(context.Context, storage.DeleteObjectOptions) error {
@@ -76,7 +81,6 @@ func (*MockStorageService) AbortMultipart(context.Context, storage.AbortMultipar
 	return nil
 }
 
-// TestProxyMiddleware tests proxy middleware functionality.
 func TestProxyMiddleware(t *testing.T) {
 	// Helper function to create a configured Fiber app with error handler
 	createApp := func() *fiber.App {
@@ -94,11 +98,7 @@ func TestProxyMiddleware(t *testing.T) {
 
 		mockService.On("GetObject", storage.GetObjectOptions{
 			Key: "pub/2025/01/15/test.jpg",
-		}).Return(io.NopCloser(bytes.NewReader(fileContent)), nil)
-
-		mockService.On("StatObject", storage.StatObjectOptions{
-			Key: "pub/2025/01/15/test.jpg",
-		}).Return(&storage.ObjectInfo{
+		}).Return(io.NopCloser(bytes.NewReader(fileContent)), &storage.ObjectInfo{
 			ContentType: "image/jpeg",
 			ETag:        "etag123",
 			Size:        17,
@@ -128,7 +128,7 @@ func TestProxyMiddleware(t *testing.T) {
 
 		mockService.On("GetObject", storage.GetObjectOptions{
 			Key: "pub/nonexistent.jpg",
-		}).Return(nil, storage.ErrObjectNotFound)
+		}).Return(nil, nil, storage.ErrObjectNotFound)
 
 		app := createApp()
 		middleware := NewProxyMiddleware(mockService, new(storage.DefaultFileACL))
@@ -166,11 +166,7 @@ func TestProxyMiddleware(t *testing.T) {
 
 		mockService.On("GetObject", storage.GetObjectOptions{
 			Key: "pub/测试文件.jpg",
-		}).Return(io.NopCloser(bytes.NewReader(fileContent)), nil)
-
-		mockService.On("StatObject", storage.StatObjectOptions{
-			Key: "pub/测试文件.jpg",
-		}).Return(&storage.ObjectInfo{
+		}).Return(io.NopCloser(bytes.NewReader(fileContent)), &storage.ObjectInfo{
 			ContentType: "image/jpeg",
 		}, nil)
 
@@ -192,7 +188,7 @@ func TestProxyMiddleware(t *testing.T) {
 
 		mockService.On("GetObject", storage.GetObjectOptions{
 			Key: "pub/error.jpg",
-		}).Return(nil, errors.New("storage error"))
+		}).Return(nil, nil, errors.New("storage error"))
 
 		app := createApp()
 		middleware := NewProxyMiddleware(mockService, new(storage.DefaultFileACL))
@@ -207,17 +203,16 @@ func TestProxyMiddleware(t *testing.T) {
 		mockService.AssertExpectations(t)
 	})
 
-	t.Run("ContentTypeFallbackWhenStatFails", func(t *testing.T) {
+	t.Run("ContentTypeFallbackWhenInfoNil", func(t *testing.T) {
 		mockService := new(MockStorageService)
 		fileContent := []byte("test content")
 
+		// A nil ObjectInfo models a backend that opened the body but could
+		// not resolve metadata (best-effort contract). The proxy must still
+		// stream the body and fall back to the extension for Content-Type.
 		mockService.On("GetObject", storage.GetObjectOptions{
 			Key: "pub/test.png",
-		}).Return(io.NopCloser(bytes.NewReader(fileContent)), nil)
-
-		mockService.On("StatObject", storage.StatObjectOptions{
-			Key: "pub/test.png",
-		}).Return(nil, errors.New("stat failed"))
+		}).Return(io.NopCloser(bytes.NewReader(fileContent)), nil, nil)
 
 		app := createApp()
 		middleware := NewProxyMiddleware(mockService, new(storage.DefaultFileACL))
@@ -227,7 +222,7 @@ func TestProxyMiddleware(t *testing.T) {
 		resp, err := app.Test(req)
 
 		assert.NoError(t, err, "TestProxyMiddleware should complete without error")
-		assert.Equal(t, http.StatusOK, resp.StatusCode, "Proxy should return 200 OK when stat metadata fails")
+		assert.Equal(t, http.StatusOK, resp.StatusCode, "Proxy should return 200 OK when object metadata is unavailable")
 		assert.Equal(t, "image/png", resp.Header.Get("Content-Type"), "Should fallback to extension")
 
 		mockService.AssertExpectations(t)
@@ -239,11 +234,7 @@ func TestProxyMiddleware(t *testing.T) {
 
 		mockService.On("GetObject", storage.GetObjectOptions{
 			Key: "pub/document.pdf",
-		}).Return(io.NopCloser(bytes.NewReader(fileContent)), nil)
-
-		mockService.On("StatObject", storage.StatObjectOptions{
-			Key: "pub/document.pdf",
-		}).Return(&storage.ObjectInfo{
+		}).Return(io.NopCloser(bytes.NewReader(fileContent)), &storage.ObjectInfo{
 			ContentType: "",
 			ETag:        "etag456",
 		}, nil)

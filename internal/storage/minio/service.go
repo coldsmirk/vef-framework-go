@@ -123,19 +123,34 @@ func (s *Service) PutObject(ctx context.Context, opts storage.PutObjectOptions) 
 	}, nil
 }
 
-func (s *Service) GetObject(ctx context.Context, opts storage.GetObjectOptions) (io.ReadCloser, error) {
+func (s *Service) GetObject(ctx context.Context, opts storage.GetObjectOptions) (io.ReadCloser, *storage.ObjectInfo, error) {
 	object, err := s.client.GetObject(ctx, s.bucket, opts.Key, minio.GetObjectOptions{})
 	if err != nil {
-		return nil, s.translateError(err)
+		return nil, nil, s.translateError(err)
 	}
 
-	if _, err = object.Stat(); err != nil {
+	// GetObject is lazy; object.Stat both validates the object exists (so a
+	// missing key fails the read rather than streaming an empty body) and
+	// yields the metadata the proxy needs for Content-Length / ETag — no
+	// separate StatObject HEAD round-trip required.
+	stat, err := object.Stat()
+	if err != nil {
 		_ = object.Close()
 
-		return nil, s.translateError(err)
+		return nil, nil, s.translateError(err)
 	}
 
-	return object, nil
+	info := &storage.ObjectInfo{
+		Bucket:       s.bucket,
+		Key:          stat.Key,
+		ETag:         stat.ETag,
+		Size:         stat.Size,
+		ContentType:  stat.ContentType,
+		LastModified: stat.LastModified,
+		Metadata:     stat.UserMetadata,
+	}
+
+	return object, info, nil
 }
 
 func (s *Service) DeleteObject(ctx context.Context, opts storage.DeleteObjectOptions) error {
@@ -214,6 +229,7 @@ func (s *Service) CopyObject(ctx context.Context, opts storage.CopyObjectOptions
 		ETag:         info.ETag,
 		Size:         info.Size,
 		ContentType:  destStat.ContentType,
+		Metadata:     destStat.UserMetadata,
 		LastModified: info.LastModified,
 	}, nil
 }

@@ -65,6 +65,10 @@ func (s *Service) PutObject(_ context.Context, opts storage.PutObjectOptions) (*
 
 	etag := hashx.MD5Bytes(data)
 
+	// Canonicalize keys at the store boundary so reads return them in the same
+	// provider-neutral form MinIO is forced into by the S3 protocol.
+	metadata := storage.CanonicalizeMetadataKeys(opts.Metadata)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -73,7 +77,7 @@ func (s *Service) PutObject(_ context.Context, opts storage.PutObjectOptions) (*
 		data:         data,
 		etag:         etag,
 		contentType:  opts.ContentType,
-		metadata:     opts.Metadata,
+		metadata:     metadata,
 		lastModified: now,
 	}
 
@@ -84,20 +88,30 @@ func (s *Service) PutObject(_ context.Context, opts storage.PutObjectOptions) (*
 		Size:         int64(len(data)),
 		ContentType:  opts.ContentType,
 		LastModified: now,
-		Metadata:     opts.Metadata,
+		Metadata:     maps.Clone(metadata),
 	}, nil
 }
 
-func (s *Service) GetObject(_ context.Context, opts storage.GetObjectOptions) (io.ReadCloser, error) {
+func (s *Service) GetObject(_ context.Context, opts storage.GetObjectOptions) (io.ReadCloser, *storage.ObjectInfo, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	obj, exists := s.objects[opts.Key]
 	if !exists {
-		return nil, storage.ErrObjectNotFound
+		return nil, nil, storage.ErrObjectNotFound
 	}
 
-	return io.NopCloser(bytes.NewReader(obj.data)), nil
+	info := &storage.ObjectInfo{
+		Bucket:       bucketName,
+		Key:          opts.Key,
+		ETag:         obj.etag,
+		Size:         int64(len(obj.data)),
+		ContentType:  obj.contentType,
+		LastModified: obj.lastModified,
+		Metadata:     maps.Clone(obj.metadata),
+	}
+
+	return io.NopCloser(bytes.NewReader(obj.data)), info, nil
 }
 
 func (s *Service) DeleteObject(_ context.Context, opts storage.DeleteObjectOptions) error {
@@ -132,8 +146,10 @@ func (s *Service) CopyObject(_ context.Context, opts storage.CopyObjectOptions) 
 	dataCopy := make([]byte, len(source.data))
 	copy(dataCopy, source.data)
 
-	metadataCopy := make(map[string]string, len(source.metadata))
-	maps.Copy(metadataCopy, source.metadata)
+	// Source metadata is already canonical (stored canonical); re-canonicalizing
+	// is idempotent and yields nil for an empty source, keeping the empty-vs-nil
+	// contract consistent with PutObject.
+	metadataCopy := storage.CanonicalizeMetadataKeys(source.metadata)
 
 	copyEtag := hashx.MD5Bytes(dataCopy)
 
@@ -191,7 +207,7 @@ func (s *Service) InitMultipart(_ context.Context, opts storage.InitMultipartOpt
 	s.sessions[uploadID] = &multipartSession{
 		key:         opts.Key,
 		contentType: opts.ContentType,
-		metadata:    opts.Metadata,
+		metadata:    storage.CanonicalizeMetadataKeys(opts.Metadata),
 		parts:       make(map[int]*memoryPart),
 	}
 
