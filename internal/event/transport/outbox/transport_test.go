@@ -333,6 +333,61 @@ func TestOutboxCleanerDeletesCompletedRowsByProcessedAt(t *testing.T) {
 	require.Equal(t, freshRows[0].ID, remaining.ID, "Fresh completed row should remain")
 }
 
+// TestOutboxClaimBatchClaimsAllEligibleInOneCall pins the set-based claim:
+// a single ClaimBatch call must transition every eligible row to
+// processing with the supplied lease in one round-trip, leave nothing
+// re-claimable while the lease is live, and exclude dead/budget-exhausted
+// rows.
+func TestOutboxClaimBatchClaimsAllEligibleInOneCall(t *testing.T) {
+	ctx := context.Background()
+	db, repo, tp, _ := setupOutbox(t)
+
+	const eligible = 5
+
+	frames := make([]transport.Frame, eligible)
+	for i := range frames {
+		frames[i] = newFrame(fmt.Sprintf("evt-claim-%d", i), "test.claim", fmt.Sprintf(`{"i":%d}`, i))
+	}
+
+	require.NoError(t, tp.Publish(ctx, frames), "Publishing the eligible batch should succeed")
+
+	lease := timex.Now().Add(time.Minute)
+
+	claimed, err := repo.ClaimBatch(ctx, 100, 3, lease)
+	require.NoError(t, err, "Claiming the batch should not error")
+	require.Len(t, claimed, eligible, "A single ClaimBatch must claim every eligible row at once")
+
+	seen := make(map[string]struct{}, eligible)
+	for i := range claimed {
+		rec := claimed[i]
+		require.Equal(t, outbox.StatusProcessing, rec.Status, "Claimed record must be returned as processing")
+		require.NotNil(t, rec.RetryAfter, "Claimed record must carry the lease deadline")
+		require.WithinDuration(t, lease.Unwrap(), rec.RetryAfter.Unwrap(), time.Second,
+			"Claimed record lease must equal the requested leaseUntil")
+		seen[rec.EventID] = struct{}{}
+	}
+
+	require.Len(t, seen, eligible, "Claimed records must be the distinct eligible rows, none duplicated")
+
+	// The rows are now processing under a live (future) lease, so an
+	// immediate re-claim must observe none of them.
+	again, err := repo.ClaimBatch(ctx, 100, 3, timex.Now().Add(time.Minute))
+	require.NoError(t, err, "Re-claiming should not error")
+	require.Empty(t, again, "Rows under a live lease must not be re-claimed")
+
+	// The persisted rows must also reflect processing — the set-based
+	// UPDATE is what the relay relies on for cross-worker exclusivity.
+	var processing int64
+
+	processing, err = db.NewSelect().Model((*outbox.Record)(nil)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("status", string(outbox.StatusProcessing))
+		}).
+		Count(ctx)
+	require.NoError(t, err, "Counting processing rows should succeed")
+	require.EqualValues(t, eligible, processing, "Every claimed row must be persisted as processing")
+}
+
 // forceRetryReady backs the retry_after timestamp into the past so a
 // subsequent ClaimBatch call observes the row as retry-eligible.
 func forceRetryReady(t *testing.T, db orm.DB, eventID string) {

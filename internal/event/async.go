@@ -36,19 +36,15 @@ type asyncFanIn struct {
 	closed bool
 }
 
+// newAsyncFanIn builds the fan-in. queueSize and workers must be
+// positive; the sole production caller feeds the config-effective values
+// (config.EventConfig is the single source of the defaults), so the
+// constructor does not re-derive them here.
 func newAsyncFanIn(
 	queueSize, workers int,
 	publish func(ctx context.Context, evt event.Event, opts []event.PublishOption) error,
 	sink event.ErrorSink,
 ) *asyncFanIn {
-	if queueSize <= 0 {
-		queueSize = 4096
-	}
-
-	if workers <= 0 {
-		workers = 4
-	}
-
 	return &asyncFanIn{
 		queue:   make(chan asyncJob, queueSize),
 		workers: workers,

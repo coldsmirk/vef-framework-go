@@ -5,6 +5,7 @@ import (
 	"path"
 
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
 )
 
@@ -79,19 +80,11 @@ func resolveTransports(registry map[string]transport.Transport, names []string) 
 	for _, name := range names {
 		t, ok := registry[name]
 		if !ok {
-			return nil, &unknownTransportError{name: name}
+			return nil, fmt.Errorf("%w: %q", event.ErrTransportNotFound, name)
 		}
 
 		out = append(out, t)
 	}
 
 	return out, nil
-}
-
-type unknownTransportError struct {
-	name string
-}
-
-func (e *unknownTransportError) Error() string {
-	return "event: unknown transport: " + e.name
 }

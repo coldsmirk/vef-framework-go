@@ -341,7 +341,10 @@ func (b *Bus) Stop(ctx context.Context) error {
 	var errs []error
 	if err := b.async.shutdown(ctx); err != nil {
 		busLogger.Warnf("async shutdown timed out: %v", err)
-		errs = append(errs, fmt.Errorf("async shutdown: %w", err))
+		// Wrap with the public sentinel so callers can detect a graceful
+		// shutdown that blew past its deadline via errors.Is; the raw
+		// context error is preserved in the chain for diagnostics.
+		errs = append(errs, fmt.Errorf("%w: async shutdown: %w", event.ErrShutdownTimeout, err))
 	}
 
 	for _, sub := range active {

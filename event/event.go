@@ -28,7 +28,10 @@ type Envelope struct {
 	Source string
 	// OccurredAt is the business time of the event; defaults to now.
 	OccurredAt time.Time
-	// PublishedAt is when a transport first accepted the frame.
+	// PublishedAt is stamped by the bus at the publish call (and, on the
+	// outbox path, equals the outbox row's insert time). It is not the
+	// moment a transport accepted the frame — for relayed events the gap
+	// to actual sink delivery can be large.
 	PublishedAt time.Time
 	// TraceID / SpanID propagate W3C tracing context across transports.
 	TraceID string

@@ -131,6 +131,35 @@ var errStopBoom = errors.New("transport stop boom")
 
 func (*FailingStopTransport) Stop(context.Context) error { return errStopBoom }
 
+// BlockingPublishTransport parks every Publish call until release is
+// closed, signaling entry via entered. It lets a test pin an async
+// worker so Bus.Stop's async drain cannot complete within its deadline.
+type BlockingPublishTransport struct {
+	RecordingTransport
+
+	entered chan struct{}
+	release chan struct{}
+}
+
+func newBlockingPublishTransport(name string) *BlockingPublishTransport {
+	return &BlockingPublishTransport{
+		RecordingTransport: RecordingTransport{name: name, caps: transport.Capabilities{}},
+		entered:            make(chan struct{}, 1),
+		release:            make(chan struct{}),
+	}
+}
+
+func (b *BlockingPublishTransport) Publish(context.Context, []transport.Frame) error {
+	select {
+	case b.entered <- struct{}{}:
+	default:
+	}
+
+	<-b.release
+
+	return nil
+}
+
 // ---------- helpers ----------
 
 func newTestBus(t *testing.T, transports []transport.Transport, mws ...any) *Bus {
@@ -334,6 +363,38 @@ func TestBusStopAggregatesTransportErrors(t *testing.T) {
 	err := bus.Stop(t.Context())
 	require.Error(t, err, "Stop must surface transport failures, not swallow them")
 	require.ErrorIs(t, err, errStopBoom, "Stop error should wrap the failing transport error")
+}
+
+func TestBusStopReportsShutdownTimeout(t *testing.T) {
+	blocking := newBlockingPublishTransport("memory")
+	cfg := &config.EventConfig{DefaultTransport: "memory"}
+
+	bus := NewBus(cfg, "test-app", []transport.Transport{blocking}, nil, nil, nil)
+	require.NoError(t, bus.Start(t.Context()), "Bus should start before the shutdown-timeout path is exercised")
+	// Release the parked worker after the assertions so the goroutine
+	// unwinds cleanly once the deadline-bounded Stop has returned.
+	t.Cleanup(func() { close(blocking.release) })
+
+	// Enqueue an async publish and wait until a worker is parked inside
+	// the blocking transport, so the async fan-in cannot drain.
+	require.NoError(t, bus.Publish(context.Background(), &BusTestEvent{Value: "stuck"}, event.WithAsync()),
+		"Async publish should enqueue without error")
+
+	select {
+	case <-blocking.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("async worker never entered the blocking transport Publish")
+	}
+
+	// Stop with an already-expired deadline: the async drain cannot finish,
+	// so Stop must surface the public ErrShutdownTimeout sentinel.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+
+	err := bus.Stop(ctx)
+	require.Error(t, err, "Stop must report that the async drain blew past its deadline")
+	require.ErrorIs(t, err, event.ErrShutdownTimeout,
+		"Stop must wrap the public event.ErrShutdownTimeout sentinel so callers can errors.Is against it")
 }
 
 func TestBusPublishWithoutStartFails(t *testing.T) {

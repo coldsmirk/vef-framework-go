@@ -193,8 +193,15 @@ func redactError(msg string) string {
 	}
 
 	if len(cleaned) > maxLastErrorBytes {
+		// Cap by byte length to keep the column metadata-sized.
 		cleaned = cleaned[:maxLastErrorBytes]
 	}
+
+	// Always strip invalid UTF-8: a low-level driver string may itself contain
+	// invalid bytes, and a byte-length cut above may leave a dangling partial
+	// rune. The stored value is serialized through a JSONB column, which must
+	// never hold invalid UTF-8.
+	cleaned = strings.ToValidUTF8(cleaned, "")
 
 	return strings.TrimSpace(cleaned)
 }
@@ -225,9 +232,10 @@ func defaultDLQTopic(eventType string) string {
 	return "vef-dlq." + eventType
 }
 
-// toFrame reconstructs a transport.Frame from a stored Record. The
-// occurredAt and publishedAt values reflect when the original publisher
-// committed; subscribers can use them for end-to-end latency metrics.
+// toFrame reconstructs a transport.Frame from a stored Record. PublishedAt
+// carries the outbox row's insert time (when the event was published, not
+// when the relay forwarded it); subscribers can use it together with
+// OccurredAt for end-to-end latency metrics.
 func toFrame(record outbox.Record) transport.Frame {
 	return transport.Frame{
 		ID:            record.EventID,

@@ -46,13 +46,16 @@ func redisStreamConfig(cfg *config.EventConfig) redisstream.Config {
 	c := cfg.Transports.RedisStream
 
 	return redisstream.Config{
-		StreamPrefix:   c.StreamPrefix,
-		MaxLenApprox:   c.MaxLenApprox,
-		BlockTimeout:   c.BlockTimeout,
-		ClaimIdle:      c.ClaimIdle,
-		ClaimInterval:  c.ClaimInterval,
-		ClaimBatchSize: c.ClaimBatchSize,
-		ConsumerID:     c.ConsumerID,
-		StartID:        c.StartID,
+		StreamPrefix:      c.StreamPrefix,
+		MaxLenApprox:      c.MaxLenApprox,
+		BlockTimeout:      c.BlockTimeout,
+		ClaimIdle:         c.ClaimIdle,
+		ClaimInterval:     c.ClaimInterval,
+		ClaimBatchSize:    c.ClaimBatchSize,
+		ReaperConcurrency: c.ReaperConcurrency,
+		HandlerTimeout:    c.HandlerTimeout,
+		SetupTimeout:      c.SetupTimeout,
+		ConsumerID:        c.ConsumerID,
+		StartID:           c.StartID,
 	}
 }

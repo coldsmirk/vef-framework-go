@@ -1,6 +1,7 @@
 package redisstream
 
 import (
+	"sync"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -27,15 +28,42 @@ func (t *Transport) reaperLoop() {
 	}
 }
 
+// reapOnce reclaims pending messages for every active subscription. It
+// fans out across subscriptions with bounded concurrency so a slow or
+// hung handler on one stream cannot serialize failover for the others;
+// the call blocks until the whole cycle drains, so the reaper ticker
+// never overlaps two reaps of the same subscription set.
 func (t *Transport) reapOnce() {
 	t.mu.Lock()
 	subs := make([]*subscription, len(t.subs))
 	copy(subs, t.subs)
 	t.mu.Unlock()
 
-	for _, sub := range subs {
-		t.reapSub(sub)
+	if len(subs) == 0 {
+		return
 	}
+
+	limit := min(t.cfg.EffectiveReaperConcurrency(), len(subs))
+	sem := make(chan struct{}, limit)
+
+	var wg sync.WaitGroup
+	for _, sub := range subs {
+		select {
+		case <-t.stopCh:
+			wg.Wait()
+
+			return
+		case sem <- struct{}{}:
+		}
+
+		wg.Go(func() {
+			defer func() { <-sem }()
+
+			t.reapSub(sub)
+		})
+	}
+
+	wg.Wait()
 }
 
 func (t *Transport) reapSub(sub *subscription) {

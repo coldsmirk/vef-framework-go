@@ -23,6 +23,24 @@ type Config struct {
 	// ClaimBatchSize bounds the number of pending entries the reaper
 	// inspects per cycle. Defaults to 64.
 	ClaimBatchSize int64
+	// ReaperConcurrency bounds how many subscriptions the reaper reclaims
+	// in parallel per cycle. Reclaim invokes the user handler inline, so
+	// a single slow handler must not serialize failover across unrelated
+	// streams; fanning out with a bounded pool isolates the blast radius.
+	// Defaults to 4.
+	ReaperConcurrency int
+	// HandlerTimeout bounds a single handler invocation (both fresh
+	// XREADGROUP deliveries and reaper redeliveries). A hung handler is
+	// canceled via context once the deadline elapses, freeing the worker
+	// instead of pinning it indefinitely; the message stays pending for a
+	// later retry. Zero disables the deadline (handlers run under the
+	// transport lifecycle context only).
+	HandlerTimeout time.Duration
+	// SetupTimeout bounds the XGROUP CREATE issued by Subscribe so a
+	// stalled Redis fails the subscription loudly instead of wedging the
+	// caller (and fx startup) on the deadline-less transport lifecycle
+	// context. Defaults to 5s.
+	SetupTimeout time.Duration
 	// ConsumerID is an optional human-readable prefix for the consumer
 	// name within a group (useful for observability via XINFO CONSUMERS).
 	// A unique per-process suffix is always appended so replicas sharing
@@ -80,6 +98,24 @@ func (c Config) EffectiveClaimBatchSize() int64 {
 	}
 
 	return 64
+}
+
+// EffectiveReaperConcurrency applies the default when unset.
+func (c Config) EffectiveReaperConcurrency() int {
+	if c.ReaperConcurrency > 0 {
+		return c.ReaperConcurrency
+	}
+
+	return 4
+}
+
+// EffectiveSetupTimeout applies the default when unset.
+func (c Config) EffectiveSetupTimeout() time.Duration {
+	if c.SetupTimeout > 0 {
+		return c.SetupTimeout
+	}
+
+	return 5 * time.Second
 }
 
 // EffectiveStartID applies the default when unset.

@@ -198,8 +198,13 @@ func (t *Transport) Subscribe(eventType, group string, fn transport.ConsumeFunc,
 	stream := t.cfg.StreamKey(eventType)
 	// XGroupCreateMkStream is idempotent via BUSYGROUP error. We use
 	// the configured StartID (default "0") so a group created after
-	// some messages have been published still observes them.
-	if err := t.client.XGroupCreateMkStream(t.ctx, stream, group, t.cfg.EffectiveStartID()).Err(); err != nil &&
+	// some messages have been published still observes them. Bound the
+	// call with the setup timeout so a stalled Redis fails Subscribe
+	// loudly rather than hanging on the deadline-less lifecycle context.
+	setupCtx, cancel := context.WithTimeout(t.ctx, t.cfg.EffectiveSetupTimeout())
+	defer cancel()
+
+	if err := t.client.XGroupCreateMkStream(setupCtx, stream, group, t.cfg.EffectiveStartID()).Err(); err != nil &&
 		!isBusyGroup(err) {
 		return nil, fmt.Errorf("redis_stream: create group %s on %s: %w", group, stream, err)
 	}
@@ -330,8 +335,23 @@ func (t *Transport) deliver(ctx context.Context, sub *subscription, msg goredis.
 		return
 	}
 
+	// Bound only the HANDLER with the configured deadline so a hung handler is
+	// canceled instead of pinning the worker (and, on the reaper path, starving
+	// a bounded reaper slot). The message is left pending for a later retry. Zero
+	// HandlerTimeout disables the deadline. The XACK below deliberately runs under
+	// the parent context, not handlerCtx: acking a successfully processed message
+	// must not fail just because the handler consumed most of its budget, which
+	// would leave the message pending and cause a needless reaper redelivery.
+	handlerCtx := ctx
+	if timeout := t.cfg.HandlerTimeout; timeout > 0 {
+		var cancel context.CancelFunc
+
+		handlerCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
 	delivery := &streamDelivery{frame: frame, attempt: attempt, msgID: msg.ID}
-	if err := sub.fn(ctx, delivery); err != nil {
+	if err := sub.fn(handlerCtx, delivery); err != nil {
 		t.logger.Warnf("redis_stream: handler returned error on %s id=%s: %v — leaving pending for retry", sub.stream, msg.ID, err)
 
 		return

@@ -141,6 +141,87 @@ func TestPublishFanOutContinuesOnFullQueue(t *testing.T) {
 	drainOne(t, healthyReceived, "healthy subscriber must still receive frame 3 despite the full subscriber")
 }
 
+// TestPublishContinuesToLaterFramesAcrossBatch verifies that a hard
+// enqueue failure on the FIRST frame of a multi-frame batch does not
+// suppress delivery of the LATER frames to other, healthy subscribers.
+// Before the fix, Publish returned after the first frame's errors.Join,
+// so one saturated subscriber head-of-line-blocked the rest of the batch.
+//
+// The three frames target distinct event types so each healthy
+// subscriber receives exactly one frame (a 1-slot queue is sufficient),
+// isolating the cross-frame-continuation behavior from per-subscriber
+// queue saturation.
+func TestPublishContinuesToLaterFramesAcrossBatch(t *testing.T) {
+	const (
+		blockedType = "memory.batch.blocked"
+		typeA       = "memory.batch.a"
+		typeB       = "memory.batch.b"
+	)
+
+	tp := imemory.New(memory.Config{QueueSize: 1, FullPolicy: memory.FullPolicyError})
+	require.NoError(t, tp.Start(context.Background()), "Start should succeed")
+
+	unblock := make(chan struct{})
+	t.Cleanup(func() {
+		close(unblock)
+
+		_ = tp.Stop(context.Background())
+	})
+
+	// Saturated subscriber on blockedType: its single worker blocks in the
+	// handler so its 1-slot queue fills and the next enqueue hard-fails.
+	entered := make(chan struct{}, 2)
+	_, err := tp.Subscribe(blockedType, "", func(ctx context.Context, _ transport.Delivery) error {
+		entered <- struct{}{}
+
+		select {
+		case <-unblock:
+		case <-ctx.Done():
+		}
+
+		return nil
+	}, transport.SubscribeConfig{Concurrency: 1})
+	require.NoError(t, err, "Subscribe blocked should succeed")
+
+	// Healthy subscribers on the later frames' types.
+	gotA := make(chan struct{}, 1)
+	_, err = tp.Subscribe(typeA, "", func(_ context.Context, _ transport.Delivery) error {
+		gotA <- struct{}{}
+
+		return nil
+	}, transport.SubscribeConfig{Concurrency: 1})
+	require.NoError(t, err, "Subscribe A should succeed")
+
+	gotB := make(chan struct{}, 1)
+	_, err = tp.Subscribe(typeB, "", func(_ context.Context, _ transport.Delivery) error {
+		gotB <- struct{}{}
+
+		return nil
+	}, transport.SubscribeConfig{Concurrency: 1})
+	require.NoError(t, err, "Subscribe B should succeed")
+
+	// Saturate the blocked subscriber: one frame parks its worker, a second
+	// fills its 1-slot queue so any further enqueue fails immediately.
+	require.NoError(t, tp.Publish(context.Background(), []transport.Frame{makeFrame(blockedType)}),
+		"priming publish should park the blocked subscriber's worker")
+	drainOne(t, entered, "blocked subscriber handler should have started")
+	require.NoError(t, tp.Publish(context.Background(), []transport.Frame{makeFrame(blockedType)}),
+		"priming publish should fill the blocked subscriber's 1-slot queue")
+
+	// Single batch: frame[0] (blockedType) hard-fails, but frames[1:] must
+	// still reach the healthy A/B subscribers and the error stays queue-full.
+	pubErr := tp.Publish(context.Background(), []transport.Frame{
+		makeFrame(blockedType),
+		makeFrame(typeA),
+		makeFrame(typeB),
+	})
+	require.Error(t, pubErr, "Publish must surface the saturated subscriber's failure")
+	require.True(t, imemory.IsQueueFull(pubErr), "Batch error must remain detectable as queue-full")
+
+	drainOne(t, gotA, "later frame A must be delivered despite the earlier frame's failure")
+	drainOne(t, gotB, "later frame B must be delivered despite the earlier frame's failure")
+}
+
 // TestSubscribeAfterStopReturnsBusStopped verifies that Subscribe called
 // after Stop returns ErrBusStopped and does not leak subscription goroutines.
 func TestSubscribeAfterStopReturnsBusStopped(t *testing.T) {

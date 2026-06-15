@@ -2,7 +2,6 @@ package event
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,13 +20,13 @@ type FakeNamedTransport struct {
 
 func (f *FakeNamedTransport) Name() string                         { return f.name }
 func (f *FakeNamedTransport) Capabilities() transport.Capabilities { return f.caps }
-func (*FakeNamedTransport) Start(_ context.Context) error          { return nil }
-func (*FakeNamedTransport) Stop(_ context.Context) error           { return nil }
-func (*FakeNamedTransport) Publish(_ context.Context, _ []transport.Frame) error {
+func (*FakeNamedTransport) Start(context.Context) error            { return nil }
+func (*FakeNamedTransport) Stop(context.Context) error             { return nil }
+func (*FakeNamedTransport) Publish(context.Context, []transport.Frame) error {
 	return nil
 }
 
-func (*FakeNamedTransport) Subscribe(_, _ string, _ transport.ConsumeFunc, _ transport.SubscribeConfig) (transport.Unsubscribe, error) {
+func (*FakeNamedTransport) Subscribe(string, string, transport.ConsumeFunc, transport.SubscribeConfig) (transport.Unsubscribe, error) {
 	return func() {}, nil
 }
 
@@ -81,7 +80,7 @@ func TestValidateOutboxSinkRoute(t *testing.T) {
 		}
 		err := validateOutboxSinkRoute(cfg, "memory", all)
 		require.Error(t, err, "Misaligned sink must fail startup")
-		require.True(t, errors.Is(err, ErrOutboxSinkRouteMismatch),
+		require.ErrorIs(t, err, ErrOutboxSinkRouteMismatch,
 			"Error must wrap ErrOutboxSinkRouteMismatch so operators can match it")
 		require.Contains(t, err.Error(), "approval.*",
 			"Error must name the offending pattern")

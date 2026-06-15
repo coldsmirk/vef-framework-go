@@ -80,7 +80,7 @@ func (r *DefaultRepository) ClaimBatch(
 						LessThanOrEqual("retry_after", now)
 				})
 			}).
-			OrderBy("created_at").
+			OrderBy("created_at", "id").
 			Limit(batchSize).
 			ForUpdateSkipLocked().
 			Scan(ctx); err != nil {
@@ -91,42 +91,35 @@ func (r *DefaultRepository) ClaimBatch(
 			return nil
 		}
 
-		claimed = make([]outbox.Record, 0, len(records))
-		for _, rec := range records {
-			res, err := tx.NewUpdate().
-				Model((*outbox.Record)(nil)).
-				Set("status", string(outbox.StatusProcessing)).
-				Set("retry_after", leaseUntil).
-				Where(func(cb orm.ConditionBuilder) {
-					cb.PKEquals(rec.ID)
+		// SKIP LOCKED already holds every selected row exclusively for the
+		// lifetime of this transaction, so a single set-based UPDATE over
+		// the claimed IDs is sufficient — no per-row status/retry_after
+		// re-check is needed, and one round-trip replaces the former N
+		// updates. The SET clause is status-independent, so all claimed
+		// rows transition with the same statement.
+		ids := make([]string, len(records))
+		for i := range records {
+			ids[i] = records[i].ID
+		}
 
-					switch rec.Status {
-					case outbox.StatusPending:
-						cb.Equals("status", string(outbox.StatusPending)).IsNull("retry_after")
-					case outbox.StatusFailed:
-						cb.Equals("status", string(outbox.StatusFailed)).LessThanOrEqual("retry_after", now)
-					case outbox.StatusProcessing:
-						cb.Equals("status", string(outbox.StatusProcessing)).LessThanOrEqual("retry_after", now)
-					}
-				}).
-				Exec(ctx)
-			if err != nil {
-				return fmt.Errorf("outbox: claim %s: %w", rec.ID, err)
-			}
+		if _, err := tx.NewUpdate().
+			Model((*outbox.Record)(nil)).
+			Set("status", string(outbox.StatusProcessing)).
+			Set("retry_after", leaseUntil).
+			Where(func(cb orm.ConditionBuilder) {
+				cb.PKIn(ids)
+			}).
+			Exec(ctx); err != nil {
+			return fmt.Errorf("outbox: claim batch: %w", err)
+		}
 
-			affected, err := res.RowsAffected()
-			if err != nil {
-				return fmt.Errorf("outbox: rows affected for %s: %w", rec.ID, err)
-			}
-
-			if affected == 0 {
-				continue
-			}
-
+		claimed = make([]outbox.Record, len(records))
+		for i := range records {
+			rec := records[i]
 			rec.Status = outbox.StatusProcessing
 			leaseCopy := leaseUntil
 			rec.RetryAfter = &leaseCopy
-			claimed = append(claimed, rec)
+			claimed[i] = rec
 		}
 
 		return nil

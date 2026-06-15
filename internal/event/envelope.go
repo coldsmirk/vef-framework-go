@@ -8,11 +8,12 @@ import (
 	"github.com/coldsmirk/vef-framework-go/event/transport"
 )
 
-// encodeFrame serializes an Envelope into a Frame. The Payload is
-// JSON-encoded so cross-process transports can ship the wire-compatible
-// form; in-process transports may keep the original payload reference
-// alongside via the Headers map for zero-copy delivery, but that
-// optimisation is delegated to the transport implementation.
+// encodeFrame serializes an Envelope into a Frame. The Payload is always
+// JSON-encoded into Frame.Body so every transport ships the same
+// wire-compatible form; decodeFrame reconstructs it as a RawPayload. The
+// live Event reference is intentionally not carried through the Frame, so
+// in-process delivery pays the same marshal/unmarshal round trip as the
+// cross-process path.
 func encodeFrame(env event.Envelope) (transport.Frame, error) {
 	body, err := json.Marshal(env.Payload)
 	if err != nil {

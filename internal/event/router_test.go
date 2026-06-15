@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
 )
 
@@ -80,8 +81,29 @@ func TestRouterRejectsInvalidPatternAtBuildTime(t *testing.T) {
 }
 
 func TestRouterUnknownTransportFails(t *testing.T) {
-	registry := map[string]transport.Transport{}
+	t.Run("UnknownDefaultTransport", func(t *testing.T) {
+		registry := map[string]transport.Transport{}
 
-	_, err := buildRouter(&config.EventConfig{DefaultTransport: "memory"}, registry)
-	require.Error(t, err, "Unknown default transport must surface as a build error")
+		_, err := buildRouter(&config.EventConfig{DefaultTransport: "memory"}, registry)
+		require.Error(t, err, "Unknown default transport must surface as a build error")
+		require.ErrorIs(t, err, event.ErrTransportNotFound,
+			"Unknown transport must wrap the public event.ErrTransportNotFound sentinel so callers can errors.Is against it")
+	})
+
+	t.Run("UnknownTransportInRule", func(t *testing.T) {
+		mem := &StubTransport{name: "memory"}
+		registry := map[string]transport.Transport{mem.name: mem}
+
+		cfg := &config.EventConfig{
+			DefaultTransport: "memory",
+			Routing: []config.EventRoutingRule{
+				{Pattern: "billing.*", Transports: []string{"does_not_exist"}},
+			},
+		}
+
+		_, err := buildRouter(cfg, registry)
+		require.Error(t, err, "A routing rule naming an unknown transport must fail the build")
+		require.ErrorIs(t, err, event.ErrTransportNotFound,
+			"Rule-level unknown transport must also wrap event.ErrTransportNotFound")
+	})
 }

@@ -35,7 +35,9 @@ type Frame struct {
 	Source string
 	// OccurredAt is the business time of the event.
 	OccurredAt time.Time
-	// PublishedAt is when the transport first accepted the frame.
+	// PublishedAt is stamped by the bus at the publish call (the outbox
+	// row insert time on the outbox path), not when a transport accepted
+	// the frame.
 	PublishedAt time.Time
 	// TraceID / SpanID propagate W3C tracing context.
 	TraceID string

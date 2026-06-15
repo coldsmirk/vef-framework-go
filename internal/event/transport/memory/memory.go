@@ -134,6 +134,13 @@ func (t *Transport) Publish(ctx context.Context, frames []transport.Frame) error
 		return ErrBusStopped
 	}
 
+	// Best-effort across the whole batch: a hard enqueue failure on one
+	// frame (e.g. a saturated subscriber under FullPolicyError) must not
+	// suppress delivery of later frames to other, healthy subscribers.
+	// Errors are accumulated and joined once after every frame has been
+	// attempted, preserving errors.Is matching for the bus translation.
+	var errs []error
+
 	for _, frame := range frames {
 		t.mu.RLock()
 		byType := t.subs[frame.Type]
@@ -145,8 +152,6 @@ func (t *Transport) Publish(ctx context.Context, frames []transport.Frame) error
 
 		t.mu.RUnlock()
 
-		var errs []error
-
 		for _, sub := range targets {
 			err := sub.enqueue(ctx, frame)
 			if err == nil || errors.Is(err, errSubscriptionStopped) {
@@ -157,13 +162,9 @@ func (t *Transport) Publish(ctx context.Context, frames []transport.Frame) error
 
 			errs = append(errs, err)
 		}
-
-		if err := errors.Join(errs...); err != nil {
-			return err
-		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 // Subscribe registers a consumer for the given event type. Group is

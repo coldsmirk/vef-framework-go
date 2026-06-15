@@ -73,16 +73,19 @@ func (t *Transport) Sink() transport.Transport {
 // Name implements transport.Transport.
 func (*Transport) Name() string { return outbox.Name }
 
-// Capabilities reports outbox semantics: durable, transactional,
-// ordered per-key, and at-least-once. PublishOnly is true because the
-// outbox itself does not deliver to subscribers — the relay forwards
-// claimed records to the sink transport, and subscribers must attach
-// to the sink directly.
+// Capabilities reports outbox semantics: durable, transactional, and
+// at-least-once. Ordered is false on purpose — the relay claims rows
+// under FOR UPDATE SKIP LOCKED across processes and dispatches per sink,
+// so even with a deterministic claim order (created_at, id) concurrent
+// relay workers interleave delivery and no per-key order can be
+// guaranteed. PublishOnly is true because the outbox itself does not
+// deliver to subscribers — the relay forwards claimed records to the
+// sink transport, and subscribers must attach to the sink directly.
 func (*Transport) Capabilities() transport.Capabilities {
 	return transport.Capabilities{
 		Durable:        true,
 		Transactional:  true,
-		Ordered:        true,
+		Ordered:        false,
 		AtLeastOnce:    true,
 		SupportsGroups: false,
 		PublishOnly:    true,
