@@ -381,6 +381,52 @@ func TestSignatureVerify(t *testing.T) {
 	})
 }
 
+// recordingTTLNonceStore captures the TTL passed to StoreIfAbsent so tests can
+// assert the nonce is retained long enough to cover the full replay window.
+type recordingTTLNonceStore struct {
+	ttl   time.Duration
+	calls int
+}
+
+func (r *recordingTTLNonceStore) StoreIfAbsent(_ context.Context, _, _ string, ttl time.Duration) (bool, error) {
+	r.ttl = ttl
+	r.calls++
+
+	return true, nil
+}
+
+// TestSignatureNonceTTLCoversReplayWindow pins the fix for the replay window
+// where a future-dated timestamp outlived its nonce. validateTimestamp accepts
+// ±timestampTolerance, so a single request stays valid for 2*timestampTolerance;
+// the nonce must be retained at least that long or it could be replayed after
+// expiry while its timestamp is still fresh.
+func TestSignatureNonceTTLCoversReplayWindow(t *testing.T) {
+	t.Run("TTLSpansFullSymmetricWindow", func(t *testing.T) {
+		store := &recordingTTLNonceStore{}
+		tolerance := 5 * time.Minute
+		sig, err := NewSignature(testSignatureSecret, WithTimestampTolerance(tolerance), WithNonceStore(store))
+		require.NoError(t, err, "Should create signature without error")
+
+		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		require.NoError(t, err, "Should sign without error")
+
+		err = sig.Verify(context.Background(), result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+		require.NoError(t, err, "Should verify without error")
+
+		require.Equal(t, 1, store.calls, "Verify should store the nonce exactly once")
+		assert.GreaterOrEqual(t, store.ttl, 2*tolerance, "Nonce TTL must cover the full 2*tolerance replay window")
+		assert.Equal(t, 2*tolerance+nonceTTLBuffer, store.ttl, "Nonce TTL should be 2*tolerance plus the jitter buffer")
+	})
+
+	t.Run("DefaultTolerance", func(t *testing.T) {
+		sig, err := NewSignature(testSignatureSecret)
+		require.NoError(t, err, "Should create signature without error")
+
+		assert.Equal(t, 2*defaultSignatureTimestampTolerance+nonceTTLBuffer, sig.nonceTTL(),
+			"Default nonce TTL should span the full default window plus buffer")
+	})
+}
+
 // TestSignatureVerifyWithSecret tests Signature verify with secret scenarios.
 func TestSignatureVerifyWithSecret(t *testing.T) {
 	ctx := context.Background()

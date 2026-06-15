@@ -189,7 +189,7 @@ func (s *Signature) checkAndStoreNonce(ctx context.Context, appID, nonce string)
 		return nil
 	}
 
-	stored, err := s.nonceStore.StoreIfAbsent(ctx, appID, nonce, s.timestampTolerance+nonceTTLBuffer)
+	stored, err := s.nonceStore.StoreIfAbsent(ctx, appID, nonce, s.nonceTTL())
 	if err != nil {
 		return fmt.Errorf("failed to store nonce: %w", err)
 	}
@@ -236,4 +236,16 @@ func (s *Signature) validateTimestamp(timestamp int64) error {
 	}
 
 	return nil
+}
+
+// nonceTTL is how long a verified nonce must be retained to fully cover a
+// request's replay window. validateTimestamp accepts any timestamp within
+// ±timestampTolerance of now, so a single signed request stays valid for the
+// whole 2*timestampTolerance span [ts-tolerance, ts+tolerance]. A nonce first
+// seen at the earliest accepting moment (ts-tolerance) must therefore live until
+// the latest (ts+tolerance) — i.e. 2*timestampTolerance — or a maximally
+// future-dated request could be replayed after the nonce expired but while its
+// timestamp was still fresh. nonceTTLBuffer adds margin for store/clock jitter.
+func (s *Signature) nonceTTL() time.Duration {
+	return 2*s.timestampTolerance + nonceTTLBuffer
 }
