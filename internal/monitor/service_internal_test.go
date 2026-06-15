@@ -189,3 +189,56 @@ func TestShouldSkipMountPoint(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildDiskSummary(t *testing.T) {
+	t.Run("PartitionsCountsOnlyContributingDisks", func(t *testing.T) {
+		s := &DefaultService{config: config.MonitorConfig{}}
+
+		// Two sibling slices of disk1 (dedup to one), a distinct disk2, plus a
+		// pseudo-mount that must be skipped entirely. The summary must report the
+		// de-duplicated contributing count, consistent with Total/Used.
+		info := &monitor.DiskInfo{
+			Partitions: []*monitor.PartitionInfo{
+				{Device: "/dev/disk1s1", MountPoint: "/", Total: 100, Used: 40},
+				{Device: "/dev/disk1s2", MountPoint: "/data", Total: 100, Used: 40},
+				{Device: "/dev/disk2s1", MountPoint: "/mnt", Total: 50, Used: 10},
+				{Device: "/dev/disk3s1", MountPoint: "/System/Volumes/Data", Total: 999, Used: 999},
+			},
+		}
+
+		summary := s.buildDiskSummary(info)
+
+		assert.Equal(t, 2, summary.Partitions, "Partitions must count only the de-duplicated, non-skipped disks (disk1 + disk2)")
+		assert.Equal(t, uint64(150), summary.Total, "Total must sum only the contributing disks (disk1 first slice + disk2)")
+		assert.Equal(t, uint64(50), summary.Used, "Used must sum only the contributing disks")
+		assert.InDelta(t, float64(50)/float64(150)*100, summary.UsedPercent, 0.0001, "UsedPercent derives from the de-duplicated totals")
+	})
+
+	t.Run("EmptyPartitionsYieldsZeroes", func(t *testing.T) {
+		s := &DefaultService{config: config.MonitorConfig{}}
+
+		summary := s.buildDiskSummary(&monitor.DiskInfo{})
+
+		assert.Equal(t, 0, summary.Partitions, "no partitions means a zero count")
+		assert.Equal(t, uint64(0), summary.Total, "no partitions means zero total")
+		assert.Equal(t, uint64(0), summary.Used, "no partitions means zero used")
+		assert.Equal(t, float64(0), summary.UsedPercent, "zero total must not divide by zero")
+	})
+
+	t.Run("PartitionsWithoutDeviceAreEachCounted", func(t *testing.T) {
+		s := &DefaultService{config: config.MonitorConfig{}}
+
+		// Device-less partitions skip the dedup guard, so each contributes once.
+		info := &monitor.DiskInfo{
+			Partitions: []*monitor.PartitionInfo{
+				{Device: "", MountPoint: "/a", Total: 10, Used: 1},
+				{Device: "", MountPoint: "/b", Total: 20, Used: 2},
+			},
+		}
+
+		summary := s.buildDiskSummary(info)
+
+		assert.Equal(t, 2, summary.Partitions, "device-less partitions are each counted")
+		assert.Equal(t, uint64(30), summary.Total, "Total sums both device-less partitions")
+	})
+}

@@ -160,6 +160,7 @@ func (s *DefaultService) Overview(ctx context.Context) (*monitor.SystemOverview,
 func (s *DefaultService) buildDiskSummary(diskInfo *monitor.DiskInfo) *monitor.DiskSummary {
 	var (
 		total, used uint64
+		partitions  int
 		seenDevices = make(map[string]bool)
 	)
 
@@ -179,6 +180,7 @@ func (s *DefaultService) buildDiskSummary(diskInfo *monitor.DiskInfo) *monitor.D
 
 		total += part.Total
 		used += part.Used
+		partitions++
 	}
 
 	var usedPercent float64
@@ -190,7 +192,7 @@ func (s *DefaultService) buildDiskSummary(diskInfo *monitor.DiskInfo) *monitor.D
 		Total:       total,
 		Used:        used,
 		UsedPercent: usedPercent,
-		Partitions:  len(diskInfo.Partitions),
+		Partitions:  partitions,
 	}
 }
 
