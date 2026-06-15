@@ -38,12 +38,13 @@ func New() *MoldTransformer {
 	sc.m.Store(make(map[reflect.Type]*cStruct))
 
 	return &MoldTransformer{
-		tagName:         "mold",
-		aliases:         make(map[string]string),
-		transformations: make(map[string]mold.Func),
-		interceptors:    make(map[reflect.Type]mold.InterceptorFunc),
-		cCache:          sc,
-		tCache:          tc,
+		tagName:          "mold",
+		aliases:          make(map[string]string),
+		transformations:  make(map[string]mold.Func),
+		structLevelFuncs: make(map[reflect.Type]mold.StructLevelFunc),
+		interceptors:     make(map[reflect.Type]mold.InterceptorFunc),
+		cCache:           sc,
+		tCache:           tc,
 	}
 }
 
@@ -59,7 +60,7 @@ func (t *MoldTransformer) Register(tag string, fn mold.Func) {
 		panic("mold: transformation function cannot be nil")
 	}
 
-	if _, ok := restrictedTags[tag]; ok || strings.ContainsAny(tag, restrictedTagChars) {
+	if restrictedTags.Contains(tag) || strings.ContainsAny(tag, restrictedTagChars) {
 		panic(fmt.Sprintf(restrictedTagErr, tag))
 	}
 
@@ -79,7 +80,7 @@ func (t *MoldTransformer) RegisterAlias(alias, tags string) {
 		panic("mold: aliased tags cannot be empty")
 	}
 
-	if _, ok := restrictedTags[alias]; ok || strings.ContainsAny(alias, restrictedTagChars) {
+	if restrictedTags.Contains(alias) || strings.ContainsAny(alias, restrictedTagChars) {
 		panic(fmt.Sprintf(restrictedAliasErr, alias))
 	}
 
@@ -90,10 +91,6 @@ func (t *MoldTransformer) RegisterAlias(alias, tags string) {
 //
 // NOTE: This method is not thread-safe; register all struct-level functions before use.
 func (t *MoldTransformer) RegisterStructLevel(fn mold.StructLevelFunc, types ...any) {
-	if t.structLevelFuncs == nil {
-		t.structLevelFuncs = make(map[reflect.Type]mold.StructLevelFunc)
-	}
-
 	for _, typ := range types {
 		t.structLevelFuncs[reflect.TypeOf(typ)] = fn
 	}
@@ -188,7 +185,7 @@ func (t *MoldTransformer) getOrParseTagCache(tags string) (*cTag, error) {
 		return ctag, nil
 	}
 
-	ctag, _, err := t.parseFieldTagsRecursive(tags, "", "", false)
+	ctag, _, err := t.parseFieldTagsRecursive(tags, "")
 	if err != nil {
 		return nil, err
 	}

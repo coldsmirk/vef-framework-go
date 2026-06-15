@@ -1,5 +1,7 @@
 package mold
 
+import "github.com/coldsmirk/go-collections"
+
 const (
 	diveTag            = "dive"
 	restrictedTagChars = ".[],|=+()`~!@#$%^&*\\\"/?<>{}"
@@ -11,7 +13,4 @@ const (
 	endKeysTag         = "endkeys"
 )
 
-var restrictedTags = map[string]struct{}{
-	diveTag:   {},
-	ignoreTag: {},
-}
+var restrictedTags = collections.NewHashSetFrom(diveTag, ignoreTag)

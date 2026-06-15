@@ -72,16 +72,13 @@ type cField struct {
 }
 
 type cTag struct {
-	tag            string
-	aliasTag       string
-	actualAliasTag string
-	hasAlias       bool
-	typeof         tagType
-	hasTag         bool
-	fn             mold.Func
-	keys           *cTag
-	next           *cTag
-	param          string
+	tag    string
+	typeof tagType
+	hasTag bool
+	fn     mold.Func
+	keys   *cTag
+	next   *cTag
+	param  string
 }
 
 func (t *MoldTransformer) extractStructCache(current reflect.Value) (*cStruct, error) {
@@ -125,7 +122,7 @@ func (t *MoldTransformer) extractStructCache(current reflect.Value) (*cStruct, e
 		// NOTE: cannot use shared tag cache, because tags may be equal, but things like alias may be different
 		// and so only struct level caching can be used instead of combined with Field tag caching
 		if len(tag) > 0 {
-			if ctag, _, err = t.parseFieldTagsRecursive(tag, field.Name, "", false); err != nil {
+			if ctag, _, err = t.parseFieldTagsRecursive(tag, field.Name); err != nil {
 				return nil, err
 			}
 		} else {
@@ -147,29 +144,25 @@ func (t *MoldTransformer) extractStructCache(current reflect.Value) (*cStruct, e
 	return sc, nil
 }
 
-func (t *MoldTransformer) parseFieldTagsRecursive(tagString, fieldName, alias string, hasAlias bool) (firstCTag, currentCTag *cTag, err error) {
+func (t *MoldTransformer) parseFieldTagsRecursive(tagString, fieldName string) (firstCTag, currentCTag *cTag, err error) {
 	var (
-		tag     string
-		ok      bool
-		noAlias = len(alias) == 0
-		tags    = strings.Split(tagString, tagSeparator)
+		tag  string
+		ok   bool
+		tags = strings.Split(tagString, tagSeparator)
 	)
 
 	for i := 0; i < len(tags); i++ {
 		tag = tags[i]
-		if noAlias {
-			alias = tag
-		}
 
 		// check map for alias and process new tags, otherwise process as usual
 		if tagsVal, found := t.aliases[tag]; found {
 			if i == 0 {
-				firstCTag, currentCTag, err = t.parseFieldTagsRecursive(tagsVal, fieldName, tag, true)
+				firstCTag, currentCTag, err = t.parseFieldTagsRecursive(tagsVal, fieldName)
 				if err != nil {
 					return firstCTag, currentCTag, err
 				}
 			} else {
-				if currentCTag.next, currentCTag, err = t.parseFieldTagsRecursive(tagsVal, fieldName, tag, true); err != nil {
+				if currentCTag.next, currentCTag, err = t.parseFieldTagsRecursive(tagsVal, fieldName); err != nil {
 					return firstCTag, currentCTag, err
 				}
 			}
@@ -180,11 +173,11 @@ func (t *MoldTransformer) parseFieldTagsRecursive(tagString, fieldName, alias st
 		var prevTag tagType
 
 		if i == 0 {
-			currentCTag = &cTag{aliasTag: alias, hasAlias: hasAlias, hasTag: true}
+			currentCTag = &cTag{hasTag: true}
 			firstCTag = currentCTag
 		} else {
 			prevTag = currentCTag.typeof
-			currentCTag.next = &cTag{aliasTag: alias, hasAlias: hasAlias, hasTag: true}
+			currentCTag.next = &cTag{hasTag: true}
 			currentCTag = currentCTag.next
 		}
 
@@ -203,8 +196,6 @@ func (t *MoldTransformer) parseFieldTagsRecursive(tagString, fieldName, alias st
 				return firstCTag, currentCTag, err
 			}
 
-			currentCTag.typeof = typeKeys
-
 			// need to pass along only keys tag
 			// need to increment i to skip over the keys tags
 			b := make([]byte, 0, 64)
@@ -220,7 +211,7 @@ func (t *MoldTransformer) parseFieldTagsRecursive(tagString, fieldName, alias st
 				}
 			}
 
-			if currentCTag.keys, _, err = t.parseFieldTagsRecursive(string(b[:len(b)-1]), fieldName, "", false); err != nil {
+			if currentCTag.keys, _, err = t.parseFieldTagsRecursive(string(b[:len(b)-1]), fieldName); err != nil {
 				return firstCTag, currentCTag, err
 			}
 
@@ -239,13 +230,6 @@ func (t *MoldTransformer) parseFieldTagsRecursive(tagString, fieldName, alias st
 
 		default:
 			vals := strings.SplitN(tag, tagKeySeparator, 2)
-
-			if noAlias {
-				alias = vals[0]
-				currentCTag.aliasTag = alias
-			} else {
-				currentCTag.actualAliasTag = tag
-			}
 
 			currentCTag.tag = vals[0]
 			if len(currentCTag.tag) == 0 {

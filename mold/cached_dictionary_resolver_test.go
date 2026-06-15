@@ -2,7 +2,6 @@ package mold
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 
@@ -143,7 +142,7 @@ func (s *CachedDictionaryResolverTestSuite) TestLoaderError() {
 
 	result, err := resolver.Resolve(s.ctx, "status", "draft")
 	s.Error(err, "Loader failure should return an error")
-	s.True(errors.Is(err, expectedErr), "Error should wrap the original error")
+	s.ErrorIs(err, expectedErr, "Error should wrap the original error")
 	s.Contains(err.Error(), "failed to load dictionary \"status\"", "Error message should describe the failure")
 	s.Equal("", result, "Loader failure should return an empty result")
 	s.T().Logf("Loader error correctly propagated: %v", err)

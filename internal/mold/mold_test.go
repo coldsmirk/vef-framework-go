@@ -689,7 +689,7 @@ func TestTimeType(t *testing.T) {
 
 		err := transformer.Field(context.Background(), &tt, "default,dive")
 		assert.Error(t, err, "Should return error for dive on time field")
-		assert.True(t, errors.Is(err, ErrInvalidDive), "Error should be ErrInvalidDive")
+		assert.ErrorIs(t, err, ErrInvalidDive, "Error should be ErrInvalidDive")
 	})
 }
 
