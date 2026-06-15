@@ -20,9 +20,6 @@ func newScheduler(lc fx.Lifecycle) (gocron.Scheduler, error) {
 		gocron.WithLogger(newCronLogger()),
 		gocron.WithMonitorStatus(newJobMonitor()),
 		gocron.WithLimitConcurrentJobs(1000, gocron.LimitModeWait),
-		// gocron.WithGlobalJobOptions(
-		// 	gocron.WithSingletonMode(gocron.LimitModeWait),
-		// ),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cron scheduler: %w", err)
