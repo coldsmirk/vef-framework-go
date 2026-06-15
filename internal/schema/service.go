@@ -252,8 +252,10 @@ func hasAutoIncrement(col *as.Column) bool {
 	}
 
 	// PostgreSQL SERIAL pseudo-types surface only in the raw type string.
+	// Atlas normalizes these to the lowercase driver constants, so only the
+	// lowercase forms can ever appear here.
 	switch col.Type.Raw {
-	case "serial", "bigserial", "smallserial", "SERIAL", "BIGSERIAL", "SMALLSERIAL":
+	case "serial", "bigserial", "smallserial":
 		return true
 	default:
 		return false

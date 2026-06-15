@@ -93,7 +93,7 @@ func (i *AtlasInspector) InspectViews(ctx context.Context) ([]*as.View, error) {
 }
 
 func (i *AtlasInspector) inspectPostgresViews(ctx context.Context) ([]*as.View, error) {
-	rows, err := i.db.QueryContext(ctx, `
+	return scanViews(ctx, i.db, "postgres", `
 SELECT
 	v.table_schema,
 	v.table_name,
@@ -106,16 +106,7 @@ FROM
 WHERE
 	v.table_schema = $1
 ORDER BY
-	v.table_name`, i.schema)
-	if err != nil {
-		return nil, fmt.Errorf("query postgres views: %w", err)
-	}
-	defer func() {
-		_ = rows.Close()
-	}()
-
-	var views []*as.View
-	for rows.Next() {
+	v.table_name`, []any{i.schema}, func(rows *sql.Rows) (*as.View, error) {
 		var schemaName, name, definition, comment string
 		if err := rows.Scan(&schemaName, &name, &definition, &comment); err != nil {
 			return nil, fmt.Errorf("scan postgres view: %w", err)
@@ -126,14 +117,8 @@ ORDER BY
 			return nil, err
 		}
 
-		views = append(views, newAtlasView(schemaName, name, definition, comment, columns))
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate postgres views: %w", err)
-	}
-
-	return views, nil
+		return newAtlasView(schemaName, name, definition, comment, columns), nil
+	})
 }
 
 func (i *AtlasInspector) inspectPostgresViewColumns(ctx context.Context, schemaName, viewName string) ([]string, error) {
@@ -150,7 +135,7 @@ ORDER BY
 }
 
 func (i *AtlasInspector) inspectMySQLViews(ctx context.Context) ([]*as.View, error) {
-	rows, err := i.db.QueryContext(ctx, `
+	return scanViews(ctx, i.db, "mysql", `
 SELECT
 	v.table_schema,
 	v.table_name,
@@ -163,16 +148,7 @@ FROM
 WHERE
 	v.table_schema = DATABASE()
 ORDER BY
-	v.table_name`)
-	if err != nil {
-		return nil, fmt.Errorf("query mysql views: %w", err)
-	}
-	defer func() {
-		_ = rows.Close()
-	}()
-
-	var views []*as.View
-	for rows.Next() {
+	v.table_name`, nil, func(rows *sql.Rows) (*as.View, error) {
 		var schemaName, name, definition, comment string
 		if err := rows.Scan(&schemaName, &name, &definition, &comment); err != nil {
 			return nil, fmt.Errorf("scan mysql view: %w", err)
@@ -183,14 +159,8 @@ ORDER BY
 			return nil, err
 		}
 
-		views = append(views, newAtlasView(schemaName, name, definition, comment, columns))
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate mysql views: %w", err)
-	}
-
-	return views, nil
+		return newAtlasView(schemaName, name, definition, comment, columns), nil
+	})
 }
 
 func (i *AtlasInspector) inspectMySQLViewColumns(ctx context.Context, schemaName, viewName string) ([]string, error) {
@@ -207,7 +177,7 @@ ORDER BY
 }
 
 func (i *AtlasInspector) inspectSQLiteViews(ctx context.Context) ([]*as.View, error) {
-	rows, err := i.db.QueryContext(ctx, `
+	return scanViews(ctx, i.db, "sqlite", `
 SELECT
 	name,
 	COALESCE(sql, '')
@@ -217,16 +187,7 @@ WHERE
 	type = 'view'
 	AND name NOT LIKE 'sqlite_%'
 ORDER BY
-	name`)
-	if err != nil {
-		return nil, fmt.Errorf("query sqlite views: %w", err)
-	}
-	defer func() {
-		_ = rows.Close()
-	}()
-
-	var views []*as.View
-	for rows.Next() {
+	name`, nil, func(rows *sql.Rows) (*as.View, error) {
 		var name, definition string
 		if err := rows.Scan(&name, &definition); err != nil {
 			return nil, fmt.Errorf("scan sqlite view: %w", err)
@@ -237,14 +198,8 @@ ORDER BY
 			return nil, err
 		}
 
-		views = append(views, newAtlasView(i.schema, name, definition, "", columns))
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate sqlite views: %w", err)
-	}
-
-	return views, nil
+		return newAtlasView(i.schema, name, definition, "", columns), nil
+	})
 }
 
 func (i *AtlasInspector) inspectSQLiteViewColumns(ctx context.Context, viewName string) ([]string, error) {
@@ -255,6 +210,37 @@ FROM
 	pragma_table_info(?)
 ORDER BY
 	cid`, viewName)
+}
+
+// scanViews runs the dialect view query and drives the shared iteration loop: it
+// owns the *sql.Rows lifecycle (open and close), invokes the per-dialect build
+// closure once per row, and wraps query/iteration errors with the dialect label.
+// Each dialect supplies only its SQL, args, and a build closure that scans the
+// row, resolves columns, and assembles the view.
+func scanViews(ctx context.Context, db *sql.DB, dialect, query string, args []any, build func(*sql.Rows) (*as.View, error)) ([]*as.View, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query %s views: %w", dialect, err)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	var views []*as.View
+	for rows.Next() {
+		view, err := build(rows)
+		if err != nil {
+			return nil, err
+		}
+
+		views = append(views, view)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate %s views: %w", dialect, err)
+	}
+
+	return views, nil
 }
 
 func queryColumnNames(ctx context.Context, db *sql.DB, query string, args ...any) ([]string, error) {
