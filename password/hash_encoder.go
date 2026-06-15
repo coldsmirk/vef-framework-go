@@ -1,6 +1,7 @@
 package password
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"strings"
 )
@@ -43,23 +44,29 @@ func (e *hashEncoder) Encode(password string) (string, error) {
 
 func (e *hashEncoder) Matches(password, encodedPassword string) bool {
 	prefix := "{" + e.algorithm + "}$"
-	if strings.HasPrefix(encodedPassword, prefix) {
-		parts := strings.Split(encodedPassword, "$")
-		if len(parts) != 3 {
+	if rest, ok := strings.CutPrefix(encodedPassword, prefix); ok {
+		// Stored form is {algo}$salt$hash. Split on the LAST '$' so a salt that
+		// itself contains '$' cannot corrupt the parse (hex hashes never do).
+		sep := strings.LastIndex(rest, "$")
+		if sep < 0 {
 			return false
 		}
 
-		salt := parts[1]
-		expectedHash := parts[2]
-		input := e.prepareInput(password, salt)
-		actualHash := e.hashFn([]byte(input))
+		salt, expectedHash := rest[:sep], rest[sep+1:]
+		actualHash := e.hashFn([]byte(e.prepareInput(password, salt)))
 
-		return actualHash == expectedHash
+		return constantTimeEqual(actualHash, expectedHash)
 	}
 
-	actualHash := e.hashFn([]byte(password))
+	// No prefix: still apply the configured salt so a salted encoder never
+	// accepts a bare unsalted hash of the password.
+	actualHash := e.hashFn([]byte(e.prepareInput(password, e.salt)))
 
-	return actualHash == encodedPassword
+	return constantTimeEqual(actualHash, encodedPassword)
+}
+
+func constantTimeEqual(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
 func (*hashEncoder) UpgradeEncoding(string) bool {

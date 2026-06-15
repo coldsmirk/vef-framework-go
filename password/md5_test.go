@@ -236,6 +236,19 @@ func TestMd5EncoderMatches(t *testing.T) {
 
 		assert.True(t, result, "Should match raw MD5 hash")
 	})
+
+	t.Run("SaltedEncoderRejectsUnsaltedHash", func(t *testing.T) {
+		// A salted encoder must apply its salt even on the unprefixed path, so a
+		// bare unsalted hash of the password must NOT verify.
+		saltedEncoder := NewMd5Encoder(WithMd5Salt("mysalt"))
+		password := "password"
+
+		unsaltedHash, err := NewMd5Encoder().Encode(password)
+		require.NoError(t, err, "Unsalted encoding should succeed")
+
+		assert.False(t, saltedEncoder.Matches(password, unsaltedHash),
+			"Salted encoder must reject a bare unsalted hash")
+	})
 }
 
 // TestMd5EncoderUpgradeEncoding tests the UpgradeEncoding method of MD5Encoder.
