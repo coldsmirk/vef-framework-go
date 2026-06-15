@@ -7,6 +7,14 @@ import (
 )
 
 // Predefined authorization and request errors.
+//
+// Every sentinel below resolves its message through i18n.T at package-init
+// time, capturing the language selected by VEF_I18N_LANGUAGE. These are
+// cross-cutting sentinels that any module may surface; callers match them with
+// errors.Is, which compares Code alone, so the frozen Message never affects
+// identity. Switching i18n language at runtime (e.g. via i18n.SetLanguage in
+// tests) will not update these frozen messages — new translations only take
+// effect on process restart.
 var (
 	ErrAccessDenied = Err(
 		i18n.T(ErrMessageAccessDenied),
@@ -31,7 +39,8 @@ var (
 )
 
 // Predefined ORM/persistence errors (HTTP 200 with error code) that
-// any module may surface.
+// any module may surface. The init-time i18n freeze documented above applies
+// to these sentinels too.
 var (
 	ErrRecordNotFound = Err(
 		i18n.T(ErrMessageRecordNotFound),
