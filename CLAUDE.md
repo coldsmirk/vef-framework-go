@@ -89,6 +89,7 @@ RPC uses `POST /api`; REST routes are mounted under `/api/<resource>`.
 
 - `application.toml` from `./configs`, `./`, or `VEF_CONFIG_PATH`. Sections: `vef.app`, `vef.data_sources.<name>` (primary mandatory), `vef.cors`, `vef.security`, `vef.redis`, `vef.cache`, `vef.storage`.
 - `config.Config.Unmarshal` with `config:""` struct tags. Env overrides: `VEF_CONFIG_PATH`, `VEF_LOG_LEVEL`, `VEF_NODE_ID`, `VEF_I18N_LANGUAGE`.
+- **Defaulting convention**: prefer immutable `Effective*()` accessors on the config struct (e.g. `StorageConfig.EffectiveClaimTTL`, `EventConfig` accessors) over mutating the parsed value — the default lives next to the field, the parsed config is never silently rewritten, and consumers opt in at the read site. Treat the parsed struct as raw input that may hold zero values; do not assume a field is populated. (`ApprovalConfig.ApplyDefaults`, called once in `internal/config`, predates this rule and is the lone mutate-at-load exception.)
 
 ## Middleware Stack (by `Order()`)
 
