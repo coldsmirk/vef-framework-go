@@ -26,13 +26,10 @@ func NewRedisContainer(ctx context.Context, t testing.TB) *RedisContainer {
 	require.NoError(t, err)
 	t.Log("Redis container started successfully")
 
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
+	host, port := hostPort(ctx, t, container, "6379")
+	terminateOnCleanup(ctx, t, container, "redis")
 
-	port, err := container.MappedPort(ctx, "6379")
-	require.NoError(t, err)
-
-	rc := &RedisContainer{
+	return &RedisContainer{
 		container: container,
 		Redis: &config.RedisConfig{
 			Enabled:  true,
@@ -41,22 +38,10 @@ func NewRedisContainer(ctx context.Context, t testing.TB) *RedisContainer {
 			Database: 0,
 		},
 	}
-
-	t.Cleanup(func() {
-		if err := rc.Terminate(ctx); err != nil {
-			t.Logf("Failed to terminate redis container: %v", err)
-		}
-	})
-
-	return rc
 }
 
 type RedisContainer struct {
 	Redis *config.RedisConfig
 
 	container *redis.RedisContainer
-}
-
-func (c *RedisContainer) Terminate(ctx context.Context) error {
-	return c.container.Terminate(ctx)
 }

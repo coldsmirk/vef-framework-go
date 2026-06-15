@@ -38,13 +38,10 @@ func NewMySQLContainer(ctx context.Context, t testing.TB) *MySQLContainer {
 	require.NoError(t, err)
 	t.Log("MySQL container started successfully")
 
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
+	host, port := hostPort(ctx, t, container, "3306")
+	terminateOnCleanup(ctx, t, container, "mysql")
 
-	port, err := container.MappedPort(ctx, "3306")
-	require.NoError(t, err)
-
-	mc := &MySQLContainer{
+	return &MySQLContainer{
 		container: container,
 		DataSource: &config.DataSourceConfig{
 			Kind:     "mysql",
@@ -55,22 +52,10 @@ func NewMySQLContainer(ctx context.Context, t testing.TB) *MySQLContainer {
 			Database: TestDatabaseName,
 		},
 	}
-
-	t.Cleanup(func() {
-		if err := mc.Terminate(ctx); err != nil {
-			t.Logf("Failed to terminate mysql container: %v", err)
-		}
-	})
-
-	return mc
 }
 
 type MySQLContainer struct {
 	DataSource *config.DataSourceConfig
 
 	container *mysql.MySQLContainer
-}
-
-func (c *MySQLContainer) Terminate(ctx context.Context) error {
-	return c.container.Terminate(ctx)
 }

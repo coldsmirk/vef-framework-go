@@ -9,12 +9,12 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/orm"
 )
 
-// DBSetupFunc creates a DataSourceConfig (spinning up a container if needed).
-type DBSetupFunc func(ctx context.Context, t *testing.T) *config.DataSourceConfig
+// dbSetupFunc creates a DataSourceConfig (spinning up a container if needed).
+type dbSetupFunc func(ctx context.Context, t *testing.T) *config.DataSourceConfig
 
 var providers = []struct {
 	name  string
-	setup DBSetupFunc
+	setup dbSetupFunc
 }{
 	{"Postgres", func(ctx context.Context, t *testing.T) *config.DataSourceConfig {
 		return NewPostgresContainer(ctx, t).DataSource

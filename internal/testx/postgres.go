@@ -30,13 +30,10 @@ func NewPostgresContainer(ctx context.Context, t testing.TB) *PostgresContainer 
 	require.NoError(t, err)
 	t.Log("PostgreSQL container started successfully")
 
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
+	host, port := hostPort(ctx, t, container, "5432")
+	terminateOnCleanup(ctx, t, container, "postgres")
 
-	port, err := container.MappedPort(ctx, "5432")
-	require.NoError(t, err)
-
-	pc := &PostgresContainer{
+	return &PostgresContainer{
 		container: container,
 		DataSource: &config.DataSourceConfig{
 			Kind:     "postgres",
@@ -47,22 +44,10 @@ func NewPostgresContainer(ctx context.Context, t testing.TB) *PostgresContainer 
 			Database: TestDatabaseName,
 		},
 	}
-
-	t.Cleanup(func() {
-		if err := pc.Terminate(ctx); err != nil {
-			t.Logf("Failed to terminate postgres container: %v", err)
-		}
-	})
-
-	return pc
 }
 
 type PostgresContainer struct {
 	DataSource *config.DataSourceConfig
 
 	container *postgres.PostgresContainer
-}
-
-func (c *PostgresContainer) Terminate(ctx context.Context) error {
-	return c.container.Terminate(ctx)
 }

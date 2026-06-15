@@ -32,13 +32,10 @@ func NewMinIOContainer(ctx context.Context, t testing.TB) *MinIOContainer {
 	require.NoError(t, err)
 	t.Log("MinIO container started successfully")
 
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
+	host, port := hostPort(ctx, t, container, "9000")
+	terminateOnCleanup(ctx, t, container, "minio")
 
-	port, err := container.MappedPort(ctx, "9000")
-	require.NoError(t, err)
-
-	mc := &MinIOContainer{
+	return &MinIOContainer{
 		container: container,
 		MinIO: &config.MinIOConfig{
 			Endpoint:  fmt.Sprintf("%s:%s", host, port.Port()),
@@ -48,22 +45,10 @@ func NewMinIOContainer(ctx context.Context, t testing.TB) *MinIOContainer {
 			Bucket:    TestMinIOBucket,
 		},
 	}
-
-	t.Cleanup(func() {
-		if err := mc.Terminate(ctx); err != nil {
-			t.Logf("Failed to terminate MinIO container: %v", err)
-		}
-	})
-
-	return mc
 }
 
 type MinIOContainer struct {
 	MinIO *config.MinIOConfig
 
 	container *minio.MinioContainer
-}
-
-func (c *MinIOContainer) Terminate(ctx context.Context) error {
-	return c.container.Terminate(ctx)
 }
