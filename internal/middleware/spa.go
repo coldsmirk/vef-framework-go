@@ -64,7 +64,11 @@ func (s *spaMiddleware) Apply(router fiber.Router) {
 					continue
 				}
 
-				if strings.HasPrefix(reqPath, entry) {
+				// Match on path-segment boundaries so a nested mount ("/app")
+				// only catches "/app/*", not siblings like "/application/*" that
+				// merely share a string prefix. The exact-entry case is already
+				// handled by the skip-guard above.
+				if matchesEntry(reqPath, entry) {
 					ctx.Path(entry)
 
 					return ctx.RestartRouting()
@@ -123,6 +127,17 @@ func NewSPAMiddleware(configs []*middleware.SPAConfig) app.Middleware {
 	}
 }
 
+// matchesEntry reports whether reqPath equals prefix or lies under it on a
+// path-segment boundary: prefix "/app" matches "/app" and "/app/*" but NOT
+// "/application". A root prefix "/" matches everything. This is the single
+// segment-aware matcher shared by the SPA entry rewrite and the ExcludePaths
+// check so the two stay consistent.
+func matchesEntry(reqPath, prefix string) bool {
+	p := strings.TrimSuffix(prefix, "/")
+
+	return reqPath == p || strings.HasPrefix(reqPath, p+"/")
+}
+
 // hasAnyPrefix reports whether reqPath lies under any of the given non-empty
 // prefixes, matching on path-segment boundaries. A prefix "/api" excludes "/api"
 // and "/api/*" but NOT "/apidocs", so SPA front-end routes that merely share a
@@ -133,8 +148,7 @@ func hasAnyPrefix(reqPath string, prefixes []string) bool {
 			continue
 		}
 
-		p := strings.TrimSuffix(prefix, "/")
-		if reqPath == p || strings.HasPrefix(reqPath, p+"/") {
+		if matchesEntry(reqPath, prefix) {
 			return true
 		}
 	}

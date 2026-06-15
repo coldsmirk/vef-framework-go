@@ -5,7 +5,6 @@ import (
 )
 
 type SimpleMiddleware struct {
-	path    string
 	handler fiber.Handler
 	name    string
 	order   int
@@ -20,11 +19,5 @@ func (m *SimpleMiddleware) Order() int {
 }
 
 func (m *SimpleMiddleware) Apply(router fiber.Router) {
-	if m.path == "" {
-		router.Use(m.handler)
-
-		return
-	}
-
-	router.Use(m.path, m.handler)
+	router.Use(m.handler)
 }

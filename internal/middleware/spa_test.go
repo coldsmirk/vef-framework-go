@@ -153,3 +153,60 @@ func TestSPAMiddlewareApply(t *testing.T) {
 		assert.Equal(t, "ok", body, "API handler response should pass through untouched")
 	})
 }
+
+// TestSPAMiddlewareNestedMount guards the segment-aware entry matcher: a nested
+// mount at "/app" must catch its own routes but must NOT swallow sibling routes
+// like "/application/*" that merely share the "/app" string prefix.
+func TestSPAMiddlewareNestedMount(t *testing.T) {
+	spaFS := fstest.MapFS{
+		"index.html": {Data: []byte("<!doctype html><title>spa</title>")},
+	}
+
+	app := fiber.New()
+	// A sibling route under a path that string-prefixes the "/app" mount. Before
+	// the segment-aware fix, "/application/*" was rewritten to the SPA index.
+	app.Get("/application/info", func(c fiber.Ctx) error {
+		return c.SendString("sibling")
+	})
+
+	mw := NewSPAMiddleware([]*middleware.SPAConfig{{Path: "/app", Fs: spaFS}})
+	require.NotNil(t, mw, "middleware should be built for the nested config")
+	mw.Apply(app)
+
+	get := func(t *testing.T, path string) (int, string) {
+		t.Helper()
+
+		req := httptest.NewRequestWithContext(context.Background(), fiber.MethodGet, path, nil)
+		resp, err := app.Test(req)
+		require.NoError(t, err, "request should complete without error")
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, "reading the response body should not fail")
+
+		return resp.StatusCode, string(body)
+	}
+
+	t.Run("SiblingRouteNotRewritten", func(t *testing.T) {
+		status, body := get(t, "/application/info")
+		assert.Equal(t, fiber.StatusOK, status, "the sibling route must reach its real handler")
+		assert.Equal(t, "sibling", body, "the sibling route must not be rewritten to the SPA index")
+	})
+
+	t.Run("UnknownSiblingPathNotRewritten", func(t *testing.T) {
+		status, body := get(t, "/application/missing")
+		assert.Equal(t, fiber.StatusNotFound, status, "an unknown sibling path must 404, not fall back to the SPA index")
+		assert.NotContains(t, body, "<title>spa</title>", "sibling paths must never be rewritten to index.html")
+	})
+
+	t.Run("MountEntryServesIndex", func(t *testing.T) {
+		status, body := get(t, "/app")
+		assert.Equal(t, fiber.StatusOK, status, "the nested mount entry must serve the SPA index")
+		assert.Contains(t, body, "<title>spa</title>", "the mount entry should return index.html")
+	})
+
+	t.Run("DeepClientRouteUnderMountFallsBackToIndex", func(t *testing.T) {
+		status, body := get(t, "/app/dashboard")
+		assert.Equal(t, fiber.StatusOK, status, "deep client routes under the mount must fall back to the index")
+		assert.Contains(t, body, "<title>spa</title>", "client routes under the mount should receive index.html")
+	})
+}
