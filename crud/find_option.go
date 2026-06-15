@@ -183,7 +183,7 @@ func withSearchApplier[TSearch any](parts ...QueryPart) *FindOperationOption {
 
 				return fmt.Errorf(
 					"%w: expected search type %T, but got %T. "+
-						"Make sure the TSearch type parameter in WithSearch matches the search type used in NewFindXxx/NewExport",
+						"Make sure the TSearch type parameter matches the search type used in NewFindXxx/NewExport",
 					errSearchTypeMismatch, expectedType, search,
 				)
 			}
@@ -210,7 +210,7 @@ func withQueryApplier[TSearch any](applier func(query orm.SelectQuery, search TS
 
 				return fmt.Errorf(
 					"%w: expected search type %T, but got %T. "+
-						"Make sure the TSearch type parameter in WithQueryApplier matches the search type used in NewFindXxx/NewExport",
+						"Make sure the TSearch type parameter matches the search type used in NewFindXxx/NewExport",
 					errSearchTypeMismatch, expectedType, search,
 				)
 			}

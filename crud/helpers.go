@@ -65,6 +65,32 @@ func mergeOptionColumnMapping(mapping, defaultMapping *DataOptionColumnMapping) 
 	}
 }
 
+// requirePKFields resolves the primary key fields of TModel, returning
+// ErrModelNoPrimaryKey (qualified by the table name) when the model has none.
+func requirePKFields[TModel any](db orm.DB) ([]*orm.PKField, error) {
+	table := db.TableOf((*TModel)(nil))
+
+	pks := db.ModelPKFields((*TModel)(nil))
+	if len(pks) == 0 {
+		return nil, fmt.Errorf("%w: %s", ErrModelNoPrimaryKey, table.Name)
+	}
+
+	return pks, nil
+}
+
+// loadExistingByPK loads the persisted row matching pkModel's primary key into
+// dest, scoping the query by data permission unless dataPermDisabled is set.
+func loadExistingByPK[TModel any](ctx fiber.Ctx, db orm.DB, pkModel, dest *TModel, dataPermDisabled bool) error {
+	query := db.NewSelect().Model(pkModel).WherePK()
+	if !dataPermDisabled {
+		if err := ApplyDataPermission(query, ctx); err != nil {
+			return err
+		}
+	}
+
+	return query.Scan(ctx.Context(), dest)
+}
+
 // ApplyDataPermission applies data permission filtering to a SelectQuery.
 func ApplyDataPermission(query orm.SelectQuery, ctx fiber.Ctx) error {
 	if applier := contextx.DataPermApplier(ctx); applier != nil {

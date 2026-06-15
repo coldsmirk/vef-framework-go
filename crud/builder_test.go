@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/crud"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -39,11 +38,6 @@ func TestBuilderMethods(t *testing.T) {
 		assert.NotNil(t, specs[0].RateLimit, "RateLimit should be set")
 		assert.Equal(t, 100, specs[0].RateLimit.Max, "RateLimit max should be set")
 		assert.Equal(t, 1*time.Minute, specs[0].RateLimit.Period, "RateLimit period should be set")
-	})
-
-	t.Run("ResourceKind", func(t *testing.T) {
-		c := crud.NewCreate[orm.FullAuditedModel, orm.FullAuditedModel]().ResourceKind(api.KindREST)
-		assert.NotNil(t, c, "ResourceKind should return the builder")
 	})
 
 	t.Run("CombinedOptions", func(t *testing.T) {

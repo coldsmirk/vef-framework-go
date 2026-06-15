@@ -82,7 +82,6 @@ func (a *baseFindOperation[TModel, TSearch, TProcessorIn, TOperation]) Setup(db 
 	if a.setupDone {
 		return nil
 	}
-	defer func() { a.setupDone = true }()
 
 	if config != nil && config.QueryParts != nil {
 		if err := a.setupQueryParts(db, config.QueryParts); err != nil {
@@ -99,6 +98,8 @@ func (a *baseFindOperation[TModel, TSearch, TProcessorIn, TOperation]) Setup(db 
 			a.optionsByPart[part] = append(a.optionsByPart[part], opt)
 		}
 	}
+
+	a.setupDone = true
 
 	return nil
 }

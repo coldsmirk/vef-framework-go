@@ -1,7 +1,6 @@
 package crud
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -75,7 +74,7 @@ func TestWithSortPrecedence(t *testing.T) {
 			err = opt.Applier(nil, struct{}{}, meta, nil)
 		}()
 		// If meta decoded a sort, the error (if any) must not be a meta-decode error.
-		assert.False(t, errors.Is(err, errSearchTypeMismatch), "Sort applier must not return search type mismatch")
+		assert.NotErrorIs(t, err, errSearchTypeMismatch, "Sort applier must not return search type mismatch")
 	})
 }
 
@@ -98,7 +97,7 @@ func TestWithSearchApplierTypeMismatch(t *testing.T) {
 
 			err = opt.Applier(nil, ExpectedSearch{Name: "ok"}, api.Meta{}, nil)
 		}()
-		assert.False(t, errors.Is(err, errSearchTypeMismatch), "Correct type must not yield errSearchTypeMismatch")
+		assert.NotErrorIs(t, err, errSearchTypeMismatch, "Correct type must not yield errSearchTypeMismatch")
 	})
 
 	t.Run("FailsWithWrongType", func(t *testing.T) {
@@ -106,14 +105,14 @@ func TestWithSearchApplierTypeMismatch(t *testing.T) {
 
 		err := opt.Applier(nil, WrongSearch{Age: 42}, api.Meta{}, nil)
 		require.Error(t, err, "Should return an error when search type does not match")
-		assert.True(t, errors.Is(err, errSearchTypeMismatch), "Error should wrap errSearchTypeMismatch")
+		assert.ErrorIs(t, err, errSearchTypeMismatch, "Error should wrap errSearchTypeMismatch")
 	})
 
 	t.Run("FailsWithNilSearch", func(t *testing.T) {
 		// nil (untyped) cannot satisfy ExpectedSearch
 		err := opt.Applier(nil, nil, api.Meta{}, nil)
 		require.Error(t, err, "Should return an error when search is nil")
-		assert.True(t, errors.Is(err, errSearchTypeMismatch), "Error should wrap errSearchTypeMismatch for nil search")
+		assert.ErrorIs(t, err, errSearchTypeMismatch, "Error should wrap errSearchTypeMismatch for nil search")
 	})
 }
 
@@ -137,12 +136,12 @@ func TestWithQueryApplierTypeMismatch(t *testing.T) {
 
 		err := opt.Applier(nil, WrongSearch{Code: "x"}, api.Meta{}, nil)
 		require.Error(t, err, "Should return an error when search type does not match")
-		assert.True(t, errors.Is(err, errSearchTypeMismatch), "Error should wrap errSearchTypeMismatch")
+		assert.ErrorIs(t, err, errSearchTypeMismatch, "Error should wrap errSearchTypeMismatch")
 	})
 
 	t.Run("FailsWithNilSearch", func(t *testing.T) {
 		err := opt.Applier(nil, nil, api.Meta{}, nil)
 		require.Error(t, err, "Should return an error when search is nil")
-		assert.True(t, errors.Is(err, errSearchTypeMismatch), "Error should wrap errSearchTypeMismatch for nil search")
+		assert.ErrorIs(t, err, errSearchTypeMismatch, "Error should wrap errSearchTypeMismatch for nil search")
 	})
 }

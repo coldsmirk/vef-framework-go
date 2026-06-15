@@ -2,7 +2,6 @@ package crud
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 
 	"github.com/gofiber/fiber/v3"
@@ -58,11 +57,9 @@ func (d *deleteOperation[TModel]) DisableDataPerm() Delete[TModel] {
 }
 
 func (d *deleteOperation[TModel]) delete(db orm.DB, files storage.Files) (func(ctx fiber.Ctx, db orm.DB, params api.Params) error, error) {
-	schema := db.TableOf((*TModel)(nil))
-	pks := db.ModelPKFields((*TModel)(nil))
-
-	if len(pks) == 0 {
-		return nil, fmt.Errorf("%w: %s", ErrModelNoPrimaryKey, schema.Name)
+	pks, err := requirePKFields[TModel](db)
+	if err != nil {
+		return nil, err
 	}
 
 	typedFiles := storage.NewFilesFor[TModel](files)
@@ -84,14 +81,7 @@ func (d *deleteOperation[TModel]) delete(db orm.DB, files storage.Files) (func(c
 			}
 		}
 
-		query := db.NewSelect().Model(&model).WherePK()
-		if !d.dataPermDisabled {
-			if err := ApplyDataPermission(query, ctx); err != nil {
-				return err
-			}
-		}
-
-		if err := query.Scan(ctx.Context(), &model); err != nil {
+		if err := loadExistingByPK(ctx, db, &model, &model, d.dataPermDisabled); err != nil {
 			return err
 		}
 

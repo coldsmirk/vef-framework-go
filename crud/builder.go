@@ -8,8 +8,6 @@ import (
 
 // Builder defines the interface for building API endpoints.
 type Builder[T any] interface {
-	// ResourceKind sets the resource kind (RPC or REST) for this endpoint.
-	ResourceKind(kind api.Kind) T
 	// Action sets the action name for this endpoint.
 	Action(action string) T
 	// EnableAudit enables audit logging for this endpoint.
@@ -36,12 +34,6 @@ type baseBuilder[T any] struct {
 	rateLimit          *api.RateLimitConfig
 
 	self T
-}
-
-func (b *baseBuilder[T]) ResourceKind(kind api.Kind) T {
-	b.kind = kind
-
-	return b.self
 }
 
 func (b *baseBuilder[T]) Action(action string) T {
