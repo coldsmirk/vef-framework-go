@@ -461,27 +461,6 @@ func FilterEditableFormData(formData map[string]any, permissions map[string]appr
 	return filtered
 }
 
-// userHasRole answers role membership through the host's direct
-// RoleMembershipChecker capability when available, falling back to listing
-// the role's users — correct for any host, but linear in role size.
-func (s *ValidationService) userHasRole(ctx context.Context, userID, roleID string) (bool, error) {
-	if checker, ok := s.assigneeService.(approval.RoleMembershipChecker); ok {
-		member, err := checker.UserHasRole(ctx, userID, roleID)
-		if err != nil {
-			return false, fmt.Errorf("check role membership %s: %w", roleID, err)
-		}
-
-		return member, nil
-	}
-
-	users, err := s.assigneeService.GetRoleUsers(ctx, roleID)
-	if err != nil {
-		return false, fmt.Errorf("get users by role %s: %w", roleID, err)
-	}
-
-	return slices.ContainsFunc(users, func(u approval.UserInfo) bool { return u.ID == userID }), nil
-}
-
 // CheckInitiationPermission checks if the applicant is allowed to initiate the flow.
 func (s *ValidationService) CheckInitiationPermission(ctx context.Context, db orm.DB, flowID, applicantID string, applicantDepartmentID *string) (bool, error) {
 	var initiators []approval.FlowInitiator
@@ -522,7 +501,7 @@ func (s *ValidationService) CheckInitiationPermission(ctx context.Context, db or
 			}
 
 			for _, roleID := range initiator.IDs {
-				member, err := s.userHasRole(ctx, applicantID, roleID)
+				member, err := shared.UserHasRole(ctx, s.assigneeService, applicantID, roleID)
 				if err != nil {
 					return false, err
 				}

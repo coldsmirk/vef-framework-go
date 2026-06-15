@@ -10,6 +10,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/my"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/page"
@@ -236,12 +237,13 @@ func (h *FindAvailableFlowsHandler) matchesAnyRole(
 	for _, roleID := range roleIDs {
 		matched, ok := cache[roleID]
 		if !ok {
-			users, err := h.assigneeService.GetRoleUsers(ctx, roleID)
+			var err error
+
+			matched, err = shared.UserHasRole(ctx, h.assigneeService, userID, roleID)
 			if err != nil {
-				return false, fmt.Errorf("get users by role %s: %w", roleID, err)
+				return false, err
 			}
 
-			matched = slices.ContainsFunc(users, func(u approval.UserInfo) bool { return u.ID == userID })
 			cache[roleID] = matched
 		}
 

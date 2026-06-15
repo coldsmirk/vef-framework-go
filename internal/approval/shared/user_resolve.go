@@ -2,9 +2,39 @@ package shared
 
 import (
 	"context"
+	"fmt"
+	"slices"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
+
+// UserHasRole reports whether the user currently holds the role. It is the
+// single source of truth for role-membership checks: it prefers the host's
+// direct RoleMembershipChecker capability and falls back to listing the role's
+// members (correct for any host, but linear in role size). Routing every caller
+// through it keeps the read and validation paths from answering the same
+// question two different ways. A nil service reports no membership.
+func UserHasRole(ctx context.Context, svc approval.AssigneeService, userID, roleID string) (bool, error) {
+	if svc == nil {
+		return false, nil
+	}
+
+	if checker, ok := svc.(approval.RoleMembershipChecker); ok {
+		member, err := checker.UserHasRole(ctx, userID, roleID)
+		if err != nil {
+			return false, fmt.Errorf("check role membership %s: %w", roleID, err)
+		}
+
+		return member, nil
+	}
+
+	users, err := svc.GetRoleUsers(ctx, roleID)
+	if err != nil {
+		return false, fmt.Errorf("get users by role %s: %w", roleID, err)
+	}
+
+	return slices.ContainsFunc(users, func(u approval.UserInfo) bool { return u.ID == userID }), nil
+}
 
 // ResolveUserNameMap batch-resolves user IDs to a map of ID→Name.
 // Returns an error if the resolver fails.
