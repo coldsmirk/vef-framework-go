@@ -34,21 +34,21 @@ var (
 	ErrResultTypeMismatch = icqrs.ErrResultTypeMismatch
 )
 
-// NewBus creates a Bus with the given behavior middlewares. Behaviors
-// implementing Ordered are wrapped outside-in by ascending Order. Hosts
-// normally obtain the Bus via dependency injection; this constructor exists
-// for standalone use and tests.
+// NewBus delegates to the internal Bus constructor; see internal/cqrs.NewBus
+// for the behavior-ordering contract. Hosts normally obtain the Bus via
+// dependency injection; this constructor exists for standalone use and tests.
 func NewBus(behaviors []Behavior) Bus {
 	return icqrs.NewBus(behaviors)
 }
 
-// Register registers a type-safe handler for command type C.
-// Panics if a handler is already registered for the same command type.
+// Register delegates to internal/cqrs.Register; see that function for the
+// handler-registration contract.
 func Register[TAction icqrs.Action, TResult any](bus Bus, handler Handler[TAction, TResult]) {
 	icqrs.Register(bus, handler)
 }
 
-// Send dispatches a command through the behavior pipeline to its registered handler.
+// Send delegates to internal/cqrs.Send; see that function for the dispatch
+// contract.
 func Send[TAction icqrs.Action, TResult any](ctx context.Context, bus Bus, action TAction) (TResult, error) {
 	return icqrs.Send[TAction, TResult](ctx, bus, action)
 }
