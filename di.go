@@ -345,33 +345,40 @@ func ProvideApprovalLifecycleHook(constructor any, paramTags ...string) fx.Optio
 }
 
 // SupplyURLKeyMapper replaces the framework-provided default
-// storage.URLKeyMapper (identity) with a business-specific
-// implementation. The default mapper assumes the frontend embeds bare
-// storage keys verbatim in <img src> / ![](...) constructs; applications
-// that embed proxy paths (e.g. "/storage/files/<key>"), CDN URLs, or any
-// other URL convention MUST register their own mapper here so meta:
-// "rich_text" / "markdown" reconciliation can resolve those URLs back to
-// storage keys before consuming claims or scheduling deletions.
+// storage.URLKeyMapper (storage.ProxyURLKeyMapper) with a
+// business-specific implementation. The default mapper strips and
+// prepends the framework's proxy prefix ("/storage/files/"), so it
+// resolves the proxy URLs served by the built-in proxy middleware back
+// to storage keys during meta:"rich_text" / "markdown" reconciliation.
+// Applications that embed a different URL convention — external CDN
+// URLs, or bare storage keys — register their own mapper here so those
+// URLs can be resolved back to storage keys before consuming claims or
+// scheduling deletions.
 //
 // constructor is an fx-style factory that returns storage.URLKeyMapper
 // (or a type implementing it). It may declare any dependencies already
 // registered in the fx graph.
 //
-// Example: stripping the framework's default proxy prefix.
+// Example: serving files from an external CDN whose URLs embed bare
+// storage keys after a fixed host prefix.
 //
-//	type proxyURLMapper struct{}
+//	type cdnURLMapper struct{}
 //
-//	func (proxyURLMapper) URLToKey(u string) string {
-//	    return strings.TrimPrefix(u, "/storage/files/")
+//	func (cdnURLMapper) URLToKey(u string) (key string, ok bool) {
+//	    const prefix = "https://cdn.example.com/"
+//	    if !strings.HasPrefix(u, prefix) {
+//	        return "", false
+//	    }
+//	    return strings.TrimPrefix(u, prefix), true
 //	}
 //
-//	func (proxyURLMapper) KeyToURL(k string) string {
-//	    return "/storage/files/" + k
+//	func (cdnURLMapper) KeyToURL(k string) string {
+//	    return "https://cdn.example.com/" + k
 //	}
 //
 //	fx.New(
 //	    vef.Module,
-//	    vef.SupplyURLKeyMapper(func() storage.URLKeyMapper { return proxyURLMapper{} }),
+//	    vef.SupplyURLKeyMapper(func() storage.URLKeyMapper { return cdnURLMapper{} }),
 //	)
 func SupplyURLKeyMapper(constructor any) fx.Option {
 	return fx.Decorate(constructor)
