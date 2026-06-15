@@ -12,11 +12,11 @@ type valueSerializer[T any] interface {
 // It provides human-readable serialization format and cross-language compatibility.
 type jsonSerializer[T any] struct{}
 
-func (jsonSerializer[T]) Serialize(value T) ([]byte, error) {
+func (*jsonSerializer[T]) Serialize(value T) ([]byte, error) {
 	return json.Marshal(value)
 }
 
-func (jsonSerializer[T]) Deserialize(data []byte) (value T, err error) {
+func (*jsonSerializer[T]) Deserialize(data []byte) (value T, err error) {
 	err = json.Unmarshal(data, &value)
 
 	return value, err
@@ -24,5 +24,5 @@ func (jsonSerializer[T]) Deserialize(data []byte) (value T, err error) {
 
 // newJSONSerializer creates a new JSON-based serializer.
 func newJSONSerializer[T any]() valueSerializer[T] {
-	return jsonSerializer[T]{}
+	return new(jsonSerializer[T])
 }

@@ -79,18 +79,29 @@ func (h *lruHandler) OnAccess(key string) {
 	defer h.mu.Unlock()
 
 	if elem, exists := h.accessMap[key]; exists {
-		// Move to front (most recently used)
+		// Move to front (most recently used).
 		h.accessList.MoveToFront(elem)
-	} else {
-		// Add to front
-		elem := h.accessList.PushFront(key)
-		h.accessMap[key] = elem
 	}
+	// A key absent from accessMap is intentionally NOT inserted here: a live
+	// entry always enters tracking via OnInsert (Set calls it before any Get can
+	// OnAccess the key), so an absent key means it was concurrently evicted or
+	// deleted in the unsynchronized window between the cache's data.Load and this
+	// OnAccess. Re-inserting would resurrect a phantom key with no backing entry,
+	// distorting the eviction order and risking an eviction-loop livelock. LFU
+	// and FIFO already no-op on this path; LRU now matches them.
 }
 
 func (h *lruHandler) OnInsert(key string) {
-	// Treat insert as access
-	h.OnAccess(key)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if elem, exists := h.accessMap[key]; exists {
+		h.accessList.MoveToFront(elem)
+
+		return
+	}
+
+	h.accessMap[key] = h.accessList.PushFront(key)
 }
 
 func (h *lruHandler) OnEvict(key string) {

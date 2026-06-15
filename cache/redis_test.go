@@ -127,6 +127,41 @@ func TestRedisBuildPattern(t *testing.T) {
 	}
 }
 
+// TestNewRedisCacheGuards pins the construction-time invariants that keep Clear
+// and Size scoped to a namespace. An empty base prefix would let SCAN match the
+// entire keyspace, so newRedisCache must reject a nil or empty-prefix builder
+// rather than degrade to a database-wide cache. The client is never dialed, so
+// no Redis container is required: the panics fire during construction.
+func TestNewRedisCacheGuards(t *testing.T) {
+	client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:0"})
+	t.Cleanup(func() { _ = client.Close() })
+
+	t.Run("NilClientPanics", func(t *testing.T) {
+		assert.PanicsWithValue(t, "redis cache requires a non-nil redis client", func() {
+			newRedisCache[string](nil, NewPrefixKeyBuilder("vef:cache:ns"), nil)
+		}, "a nil client must fail fast")
+	})
+
+	t.Run("NilKeyBuilderPanics", func(t *testing.T) {
+		assert.PanicsWithValue(t, "redis cache requires a non-nil key builder", func() {
+			newRedisCache[string](client, nil, nil)
+		}, "a nil key builder must fail fast instead of degrading to an empty prefix")
+	})
+
+	t.Run("EmptyPrefixPanics", func(t *testing.T) {
+		assert.PanicsWithValue(t, "redis cache requires a non-empty key prefix", func() {
+			newRedisCache[string](client, NewPrefixKeyBuilder(""), nil)
+		}, "an empty base prefix must be rejected so Clear/Size never widen to the whole database")
+	})
+
+	t.Run("NonEmptyPrefixSucceeds", func(t *testing.T) {
+		assert.NotPanics(t, func() {
+			c := newRedisCache[string](client, NewPrefixKeyBuilder("vef:cache:ns"), nil)
+			assert.NotNil(t, c, "a non-empty prefix must construct a usable cache")
+		}, "the happy path must not panic")
+	})
+}
+
 func (suite *RedisCacheTestSuite) TestRedisCacheBasicOperations() {
 	userCache := suite.setupRedisCache("test-users")
 	defer userCache.Close()

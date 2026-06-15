@@ -101,9 +101,15 @@ func newMemoryCache[T any](cfg *memoryConfig) Cache[T] {
 // Returns true if the entry was expired and removed.
 func (m *memoryCache[T]) checkExpired(key string, entry *cacheEntry[T]) bool {
 	if entry.isExpired() {
-		m.data.Delete(key)
-		m.evictionHandler.OnEvict(key)
-		m.size.Add(-1)
+		// Gate OnEvict + size decrement on actually removing the entry, mirroring
+		// every other deletion path (Set eviction, Delete, cleanupExpired). Get and
+		// Contains call this without holding m.mu, so two goroutines can observe the
+		// same key as expired concurrently; LoadAndDelete makes the delete-and-account
+		// atomic so the size counter never double-decrements below the true entry count.
+		if _, loaded := m.data.LoadAndDelete(key); loaded {
+			m.evictionHandler.OnEvict(key)
+			m.size.Add(-1)
+		}
 
 		return true
 	}

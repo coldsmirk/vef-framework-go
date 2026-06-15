@@ -45,14 +45,22 @@ type redisCache[T any] struct {
 }
 
 // newRedisCache constructs a Redis-backed cache instance.
-// KeyBuilder should encapsulate the namespace/prefix for this cache instance.
+// The keyBuilder encapsulates the namespace/prefix for this cache instance and
+// MUST produce a non-empty base prefix: Clear and Size scope themselves to that
+// prefix via SCAN, so an empty prefix would widen them to the entire Redis
+// keyspace (every other application's keys included).
 func newRedisCache[T any](client *redis.Client, keyBuilder KeyBuilder, cfg *redisConfig) Cache[T] {
 	if client == nil {
 		panic("redis cache requires a non-nil redis client")
 	}
 
 	if keyBuilder == nil {
-		keyBuilder = defaultKeyBuilder
+		panic("redis cache requires a non-nil key builder")
+	}
+
+	basePrefix := keyBuilder.Build()
+	if basePrefix == "" {
+		panic("redis cache requires a non-empty key prefix")
 	}
 
 	if cfg == nil {
@@ -62,7 +70,7 @@ func newRedisCache[T any](client *redis.Client, keyBuilder KeyBuilder, cfg *redi
 	return &redisCache[T]{
 		client:     client,
 		keyBuilder: keyBuilder,
-		basePrefix: keyBuilder.Build(),
+		basePrefix: basePrefix,
 		defaultTTL: cfg.defaultTTL,
 		serializer: newJSONSerializer[T](),
 	}
@@ -90,10 +98,6 @@ func (c *redisCache[T]) buildPattern(prefix string) string {
 
 // stripPrefix removes the basePrefix from a Redis key to return the user's original key.
 func (c *redisCache[T]) stripPrefix(cacheKey string) string {
-	if c.basePrefix == "" {
-		return cacheKey
-	}
-
 	// Remove "basePrefix:" from the key
 	prefix := c.basePrefix + ":"
 	if strings.HasPrefix(cacheKey, prefix) {
@@ -221,10 +225,6 @@ func (c *redisCache[T]) Clear(ctx context.Context) error {
 		return nil
 	}
 
-	if c.basePrefix == "" {
-		return c.client.FlushDB(ctx).Err()
-	}
-
 	pattern := c.buildPattern("")
 	iter := c.client.Scan(ctx, 0, pattern, 0).Iterator()
 
@@ -326,10 +326,6 @@ func (c *redisCache[T]) ForEach(ctx context.Context, callback func(key string, v
 func (c *redisCache[T]) Size(ctx context.Context) (int64, error) {
 	if c.closed.Load() {
 		return 0, nil
-	}
-
-	if c.basePrefix == "" {
-		return c.client.DBSize(ctx).Result()
 	}
 
 	pattern := c.buildPattern("")

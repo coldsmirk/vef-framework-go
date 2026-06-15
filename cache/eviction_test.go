@@ -133,14 +133,44 @@ func TestLRUHandler(t *testing.T) {
 		assert.Equal(t, "key1", candidate, "TestLRUHandler should match expected value")
 	})
 
-	t.Run("AccessNonExistentKeyCreatesEntry", func(*testing.T) {
+	t.Run("AccessAbsentKeyDoesNotResurrect", func(*testing.T) {
+		// Regression: OnAccess must NOT insert a key it has never tracked. A live
+		// entry always enters tracking via OnInsert before any Get can OnAccess
+		// it; an absent key on OnAccess means it was concurrently evicted/deleted.
+		// The pre-fix else-branch re-inserted it, resurrecting a phantom key with
+		// no backing entry and distorting the eviction order.
 		handler := newLruHandler()
 
 		handler.OnInsert("key1")
-		handler.OnAccess("key2")
+		handler.OnAccess("key2") // key2 was never inserted
+
+		assert.NotContains(t, handler.accessMap, "key2",
+			"OnAccess on an absent key must not resurrect it into the tracking map")
+		assert.Equal(t, 1, handler.accessList.Len(),
+			"only the one inserted key should be tracked, no phantom entry")
 
 		candidate := handler.SelectEvictionCandidate()
-		assert.Equal(t, "key1", candidate, "TestLRUHandler should match expected value")
+		assert.Equal(t, "key1", candidate, "the sole tracked key remains the eviction candidate")
+	})
+
+	t.Run("AccessAfterEvictDoesNotResurrect", func(*testing.T) {
+		// Models the exact race the fix targets: a key is evicted, then a stale
+		// in-flight Get calls OnAccess for it. The handler must stay empty rather
+		// than re-tracking a key whose backing entry is already gone.
+		handler := newLruHandler()
+
+		handler.OnInsert("a")
+		handler.OnInsert("b")
+		handler.OnEvict("a")
+		handler.OnAccess("a") // late access for the already-evicted key
+
+		assert.NotContains(t, handler.accessMap, "a",
+			"an evicted key must not be resurrected by a late OnAccess")
+		assert.Equal(t, 1, handler.accessList.Len(),
+			"tracking should hold only the surviving key b")
+
+		candidate := handler.SelectEvictionCandidate()
+		assert.Equal(t, "b", candidate, "only the surviving key b should be selectable for eviction")
 	})
 
 	t.Run("ConcurrentOperations", func(*testing.T) {

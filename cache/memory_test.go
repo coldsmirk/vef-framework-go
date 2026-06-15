@@ -881,6 +881,156 @@ func TestMemoryCacheConcurrency(t *testing.T) {
 		size, _ := cache.Size(ctx)
 		assert.LessOrEqual(t, size, int64(10), "Should match expected")
 	})
+
+	// ConcurrentSetGetDeleteUnderEvictionPressure drives a small LRU cache with
+	// far more distinct keys than its capacity, interleaving Set/Get/Delete from
+	// many goroutines. The LRU resurrection bug (OnAccess re-inserting an absent
+	// key) created phantom tracking entries with no backing data; Set's eviction
+	// loop could then keep selecting a phantom candidate that LoadAndDelete never
+	// removes, so size.Load() never drops below maxSize and the loop spins
+	// forever. This test asserts (a) every Set returns — i.e. the fill never
+	// hangs — and (b) the size bound holds throughout.
+	t.Run("ConcurrentSetGetDeleteUnderEvictionPressure", func(t *testing.T) {
+		const (
+			maxSize    = 16
+			goroutines = 64
+			opsEach    = 200
+			keySpace   = 256 // distinct keys >> capacity to force constant eviction
+		)
+
+		cache := newTestCache[int](maxSize, 0, EvictionPolicyLRU, time.Hour)
+		defer cache.Close()
+
+		done := make(chan struct{})
+
+		go func() {
+			defer close(done)
+
+			var wg sync.WaitGroup
+
+			for g := range goroutines {
+				wg.Go(func() {
+					for op := range opsEach {
+						key := fmt.Sprintf("key%d", (g*opsEach+op)%keySpace)
+
+						switch op % 3 {
+						case 0:
+							// A Set that never returns is the livelock symptom.
+							require.NoError(t, cache.Set(ctx, key, op),
+								"Set must return under eviction pressure (no eviction-loop livelock)")
+						case 1:
+							cache.Get(ctx, key)
+						default:
+							_ = cache.Delete(ctx, key)
+						}
+					}
+				})
+			}
+
+			wg.Wait()
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(30 * time.Second):
+			require.FailNow(t, "concurrent Set/Get/Delete under eviction pressure did not finish",
+				"a Set call is hanging in the eviction loop — phantom LRU tracking entries (resurrection) are the likely cause")
+		}
+
+		size, err := cache.Size(ctx)
+		require.NoError(t, err, "Size should succeed")
+		assert.LessOrEqual(t, size, int64(maxSize),
+			"cache size must never exceed maxSize despite concurrent eviction pressure")
+		assert.GreaterOrEqual(t, size, int64(0), "size must not go negative")
+	})
+}
+
+// TestMemoryCacheConcurrentExpiry guards checkExpired against double-decrementing
+// the size counter when several goroutines observe the same expired key at once.
+// Before the LoadAndDelete fix, every racing Get/Contains ran size.Add(-1)
+// unconditionally, driving size negative and silently breaking the maxSize bound.
+func TestMemoryCacheConcurrentExpiry(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("ConcurrentGetOnExpiredKeyKeepsSizeAccurate", func(t *testing.T) {
+		cache := newTestCache[int](100, 0, EvictionPolicyLRU, time.Hour)
+		defer cache.Close()
+
+		require.NoError(t, cache.Set(ctx, "doomed", 1, 10*time.Millisecond), "seeding the expiring key should succeed")
+
+		// Let the entry expire so every concurrent reader sees isExpired()==true.
+		time.Sleep(30 * time.Millisecond)
+
+		// Release all readers at once so many of them Load the still-present entry
+		// before any one deletes it: that is the exact window where the buggy
+		// unconditional size.Add(-1) double-decrements once per racing reader.
+		const readers = 256
+
+		start := make(chan struct{})
+
+		var wg sync.WaitGroup
+		for range readers {
+			wg.Go(func() {
+				<-start
+				cache.Get(ctx, "doomed")
+				cache.Contains(ctx, "doomed")
+			})
+		}
+
+		close(start)
+		wg.Wait()
+
+		size, err := cache.Size(ctx)
+		require.NoError(t, err, "Size should not error")
+		assert.Equal(t, int64(0), size, "concurrent expiry of a single key must decrement size exactly once, not once per racing reader")
+	})
+
+	t.Run("ExpiryDriftDoesNotDefeatMaxSize", func(t *testing.T) {
+		const (
+			maxSize         = 10
+			readersPerEntry = 16
+		)
+
+		cache := newTestCache[int](maxSize, 0, EvictionPolicyLRU, time.Hour)
+		defer cache.Close()
+
+		// Fill with short-lived entries, expire them, then have several goroutines
+		// race to read EACH expired key simultaneously. A drifting (negative)
+		// counter would later let the fresh fill exceed maxSize, because Set's
+		// eviction loop gates on size.Load().
+		for i := range maxSize {
+			require.NoError(t, cache.Set(ctx, fmt.Sprintf("old%d", i), i, 10*time.Millisecond), "seeding short-lived entries should succeed")
+		}
+
+		time.Sleep(30 * time.Millisecond)
+
+		start := make(chan struct{})
+
+		var wg sync.WaitGroup
+		for i := range maxSize {
+			for range readersPerEntry {
+				wg.Go(func() {
+					key := fmt.Sprintf("old%d", i)
+
+					<-start
+					cache.Get(ctx, key)
+				})
+			}
+		}
+
+		close(start)
+		wg.Wait()
+
+		// Now overfill with fresh entries; the maxSize bound must still hold.
+		for i := range maxSize * 3 {
+			require.NoError(t, cache.Set(ctx, fmt.Sprintf("new%d", i), i), "filling fresh entries should succeed")
+		}
+
+		size, err := cache.Size(ctx)
+		require.NoError(t, err, "Size should not error")
+		assert.LessOrEqual(t, size, int64(maxSize), "size must never exceed maxSize even after concurrent expiry of prior entries")
+		assert.GreaterOrEqual(t, size, int64(0), "size must never drift negative")
+	})
 }
 
 // TestMemoryCacheEdgeCases tests memory cache edge cases functionality.
