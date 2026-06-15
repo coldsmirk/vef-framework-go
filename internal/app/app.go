@@ -19,7 +19,9 @@ import (
 type Middleware interface {
 	// Name returns the name of the middleware.
 	Name() string
-	// Order returns the order of the middleware.
+	// Order returns the order of the middleware. Negative orders register
+	// before the route handlers and positive orders after, each sorted
+	// ascending; the zero default registers in the before group.
 	Order() int
 	// Apply applies the middleware to the router.
 	Apply(router fiber.Router)
