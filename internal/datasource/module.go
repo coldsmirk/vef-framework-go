@@ -25,11 +25,19 @@ var Module = fx.Module(
 	fx.Provide(
 		provideRegistry,
 		providePrimary,
+		providePrimaryKind,
 	),
 )
 
 func providePrimary(r datasource.Registry) orm.DB {
 	return r.Primary()
+}
+
+// providePrimaryKind exposes the primary data source's dialect. It is the
+// canonical, drift-free source for callers that must branch on the primary
+// dialect (e.g. the MCP query tool's dialect-aware read-only guard).
+func providePrimaryKind(cfg *config.DataSourcesConfig) config.DBKind {
+	return cfg.Primary().Kind
 }
 
 type registryOut struct {

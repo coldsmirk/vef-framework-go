@@ -10,8 +10,9 @@ import (
 // PrimaryName is the reserved name for the data source declared under
 // vef.data_sources.primary. The primary source is constructed from the TOML
 // configuration, exposed in the FX container as orm.DB, and cannot be mutated
-// through Register/Update/Unregister.
-const PrimaryName = "primary"
+// through Register/Update/Unregister. It aliases config.PrimaryDataSourceName
+// (the lowest-layer canonical definition) so the two can never diverge.
+const PrimaryName = config.PrimaryDataSourceName
 
 // Registry is the set of named orm.DB instances. Applications inject it whenever
 // they need to reach a data source other than the primary one.
