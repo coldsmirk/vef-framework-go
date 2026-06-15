@@ -40,7 +40,9 @@ func (p *Provider) Connect(cfg *config.DataSourceConfig) (*sql.DB, error) {
 }
 
 func (*Provider) Version(ctx context.Context, db *sql.DB) (string, error) {
-	return queryVersion(ctx, db)
+	var version string
+
+	return version, db.QueryRowContext(ctx, "SELECT sqlite_version()").Scan(&version)
 }
 
 // buildDsn returns the DSN for SQLite. When no path is specified, it uses

@@ -9,6 +9,7 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/internal/database/dbtls"
 )
 
 type Provider struct {
@@ -30,7 +31,12 @@ func (p *Provider) Connect(cfg *config.DataSourceConfig) (*sql.DB, error) {
 		return nil, ErrMySQLDatabaseRequired
 	}
 
-	connector, err := mysql.NewConnector(p.buildConfig(cfg))
+	mysqlCfg, err := p.buildConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	connector, err := mysql.NewConnector(mysqlCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create mysql connector: %w", err)
 	}
@@ -39,23 +45,34 @@ func (p *Provider) Connect(cfg *config.DataSourceConfig) (*sql.DB, error) {
 }
 
 func (*Provider) Version(ctx context.Context, db *sql.DB) (string, error) {
-	return queryVersion(ctx, db)
+	var version string
+
+	return version, db.QueryRowContext(ctx, "SELECT version()").Scan(&version)
 }
 
-func (*Provider) buildConfig(cfg *config.DataSourceConfig) *mysql.Config {
+func (*Provider) buildConfig(cfg *config.DataSourceConfig) (*mysql.Config, error) {
+	host := lo.Ternary(cfg.Host != "", cfg.Host, "127.0.0.1")
+
+	tlsConfig, err := dbtls.Config(cfg.SSLMode, cfg.SSLRootCert, host)
+	if err != nil {
+		return nil, fmt.Errorf("configure mysql tls: %w", err)
+	}
+
 	mysqlCfg := mysql.NewConfig()
 	mysqlCfg.User = lo.Ternary(cfg.User != "", cfg.User, "root")
 	mysqlCfg.Passwd = cfg.Password
 	mysqlCfg.Net = "tcp"
 	mysqlCfg.Addr = fmt.Sprintf(
 		"%s:%d",
-		lo.Ternary(cfg.Host != "", cfg.Host, "127.0.0.1"),
+		host,
 		lo.Ternary(cfg.Port != 0, cfg.Port, uint16(3306)),
 	)
 	mysqlCfg.DBName = cfg.Database
 	mysqlCfg.ParseTime = true
 	mysqlCfg.Collation = "utf8mb4_unicode_ci"
 	mysqlCfg.MultiStatements = true
+	// A nil TLS config leaves the driver in its default plaintext mode.
+	mysqlCfg.TLS = tlsConfig
 
-	return mysqlCfg
+	return mysqlCfg, nil
 }
