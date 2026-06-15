@@ -55,8 +55,7 @@ func (h *FindAdminTasksHandler) Handle(ctx context.Context, query FindAdminTasks
 		}).
 		OrderByDesc("created_at")
 
-	query.Normalize(20)
-	sq = sq.Limit(query.Size).Offset(query.Offset())
+	sq = applyPageable(sq, &query.Pageable)
 
 	count, err := sq.ScanAndCount(ctx)
 	if err != nil {
@@ -78,22 +77,7 @@ func (h *FindAdminTasksHandler) Handle(ctx context.Context, query FindAdminTasks
 		nodeIDs = append(nodeIDs, t.NodeID)
 	}
 
-	instanceMap, err := loadInstanceMap(ctx, db, instanceIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	flowIDs := make([]string, 0, len(instanceMap))
-	for _, inst := range instanceMap {
-		flowIDs = append(flowIDs, inst.FlowID)
-	}
-
-	flowMap, err := loadFlowMap(ctx, db, flowIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	nodeMap, err := loadNodeNameMap(ctx, db, nodeIDs)
+	instanceMap, flowMap, nodeMap, err := loadEnrichmentMaps(ctx, db, instanceIDs, nodeIDs)
 	if err != nil {
 		return nil, err
 	}

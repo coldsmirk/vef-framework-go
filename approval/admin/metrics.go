@@ -23,7 +23,10 @@ type Metrics struct {
 	// finished_at) for instances that reached a final status in the
 	// reporting window. -1 indicates "no completed instances yet".
 	AvgCompletionSeconds float64 `json:"avgCompletionSeconds"`
-	// PendingBindingFailures is the number of distinct instances that have
-	// an unresolved business-binding failure event (best-effort estimate).
+	// PendingBindingFailures is a best-effort count of unresolved
+	// business-binding failure events in the outbox. It counts outbox rows,
+	// not distinct instances: a single instance whose binding keeps failing
+	// is re-published on each retry, so this value may exceed the number of
+	// distinct failing instances.
 	PendingBindingFailures int `json:"pendingBindingFailures"`
 }

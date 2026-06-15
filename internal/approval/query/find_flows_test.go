@@ -131,3 +131,20 @@ func (s *FindFlowsTestSuite) TestEmpty() {
 	s.Assert().Equal(int64(0), result.Total, "Should find 0 flows")
 	s.Assert().Empty(result.Items, "Should return empty slice")
 }
+
+func (s *FindFlowsTestSuite) TestNonSuperAdminIgnoresForeignTenantOverride() {
+	// A non-super-admin caller in t1 supplying a foreign override (t2) must be
+	// pinned to its own tenant via EffectiveTenantID, so it sees only t1 rows
+	// (3 flows) and never the t2 flow — the override carries no authority.
+	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
+		TenantID: new("t2"),
+		Pageable: page.Pageable{Page: 1, Size: 10},
+		Caller:   approval.CallerContext{TenantID: "t1"},
+	})
+	s.Require().NoError(err, "Should query without error")
+	s.Assert().Equal(int64(3), result.Total, "Non-super-admin caller is confined to its own tenant regardless of override")
+
+	for _, flow := range result.Items {
+		s.Assert().Equal("t1", flow.TenantID, "Only own-tenant rows must be returned")
+	}
+}

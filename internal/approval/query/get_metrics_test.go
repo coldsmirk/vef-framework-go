@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 
@@ -47,6 +48,11 @@ func (s *GetMetricsTestSuite) SetupSuite() {
 	// Two tenant-t1 instances: one running (non-final), one approved (final,
 	// with finished_at set so AvgCompletionSeconds is computable).
 	now := timex.Now()
+	// finishedAt is deterministically ~1h after creation so finished_at -
+	// created_at is a clearly-positive completion duration. Reusing now would
+	// place finished_at at (or just before) the audit-hook created_at, which
+	// MySQL's integer TIMESTAMPDIFF truncates to a flaky sub-second negative.
+	finishedAt := timex.Of(time.Now().Add(time.Hour))
 
 	running := &approval.Instance{
 		TenantID:      "t1",
@@ -68,7 +74,7 @@ func (s *GetMetricsTestSuite) SetupSuite() {
 		InstanceNo:    "MET-002",
 		ApplicantID:   "user-x",
 		Status:        approval.InstanceApproved,
-		FinishedAt:    &now,
+		FinishedAt:    &finishedAt,
 	}
 	_, err = s.db.NewInsert().Model(approved).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert approved instance")
@@ -82,7 +88,7 @@ func (s *GetMetricsTestSuite) SetupSuite() {
 		InstanceNo:    "MET-003",
 		ApplicantID:   "user-y",
 		Status:        approval.InstanceRejected,
-		FinishedAt:    &now,
+		FinishedAt:    &finishedAt,
 	}
 	_, err = s.db.NewInsert().Model(t2inst).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert t2 instance")
@@ -157,10 +163,9 @@ func (s *GetMetricsTestSuite) TestCrossTenantSnapshot() {
 	// Timeout task count: only the t1 timed-out pending task.
 	s.Assert().Equal(1, metrics.TimeoutTaskCount, "Should count 1 timeout task")
 
-	// AvgCompletionSeconds: 2 completed instances (approved + rejected) exist.
-	// Both have finished_at == created_at (insertion time), so the avg is near 0
-	// but must not be the sentinel -1.
-	s.Assert().GreaterOrEqual(metrics.AvgCompletionSeconds, float64(0), "AvgCompletionSeconds should be >= 0 when completed instances exist")
+	// AvgCompletionSeconds: 2 completed instances (approved + rejected) exist,
+	// each finished ~1h after creation, so the cross-tenant average is ~3600s.
+	s.Assert().InDelta(3600, metrics.AvgCompletionSeconds, 120, "AvgCompletionSeconds should be ~3600s (≈1h) across completed instances")
 
 	// PendingBindingFailures: 2 undelivered (pending + failed), 1 completed excluded.
 	s.Assert().Equal(2, metrics.PendingBindingFailures, "Should count 2 pending binding failures")
@@ -179,8 +184,8 @@ func (s *GetMetricsTestSuite) TestTenantScopedMetrics() {
 	// Timeout task count: only t1 timed-out tasks.
 	s.Assert().Equal(1, metrics.TimeoutTaskCount, "Should count 1 timeout task for t1")
 
-	// AvgCompletionSeconds for t1: 1 approved instance with finished_at.
-	s.Assert().GreaterOrEqual(metrics.AvgCompletionSeconds, float64(0), "AvgCompletionSeconds should be >= 0 for t1")
+	// AvgCompletionSeconds for t1: 1 approved instance finished ~1h after creation.
+	s.Assert().InDelta(3600, metrics.AvgCompletionSeconds, 120, "AvgCompletionSeconds should be ~3600s (≈1h) for t1")
 }
 
 func (s *GetMetricsTestSuite) TestEmptyTenantReturnsNegativeOneAvg() {

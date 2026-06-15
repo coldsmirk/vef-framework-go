@@ -184,8 +184,11 @@ func (r *FlowResource) PublishVersion(ctx fiber.Ctx, principal *security.Princip
 type GetGraphParams struct {
 	api.P
 
-	FlowID   string `json:"flowId" validate:"required"`
-	TenantID string `json:"tenantId"`
+	FlowID string `json:"flowId" validate:"required"`
+	// TenantID is an optional pre-filter (matching the *string shape of the
+	// other flow params); the actual cross-tenant gate is Caller.Allows in the
+	// query handler, so this only narrows the lookup.
+	TenantID *string `json:"tenantId"`
 }
 
 // GetGraph returns the flow graph for the published version.
@@ -195,12 +198,17 @@ func (r *FlowResource) GetGraph(ctx fiber.Ctx, principal *security.Principal, pa
 		return err
 	}
 
+	tenantID := ""
+	if params.TenantID != nil {
+		tenantID = *params.TenantID
+	}
+
 	graph, err := cqrs.Send[query.GetFlowGraphQuery, *shared.FlowGraph](
 		ctx.Context(),
 		r.bus,
 		query.GetFlowGraphQuery{
 			FlowID:   params.FlowID,
-			TenantID: params.TenantID,
+			TenantID: tenantID,
 			Caller:   caller,
 		},
 	)

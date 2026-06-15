@@ -17,7 +17,10 @@ type FindMyCCRecordsQuery struct {
 	cqrs.BaseQuery
 	page.Pageable
 
-	UserID   string
+	UserID string
+	// TenantID is a self-scoped narrowing filter, NOT an authorization
+	// boundary: rows are already pinned to UserID, so it only narrows the
+	// caller's own CC records and does not gate access.
 	TenantID *string
 	IsRead   *bool
 }
@@ -49,18 +52,10 @@ func (h *FindMyCCRecordsHandler) Handle(ctx context.Context, query FindMyCCRecor
 				}
 			}
 		}).
-		ApplyIf(query.TenantID != nil, func(sq orm.SelectQuery) {
-			sq.Join((*approval.Instance)(nil), func(cb orm.ConditionBuilder) {
-				cb.EqualsColumn("instance_id", "i.id")
-			}, "i").
-				Where(func(cb orm.ConditionBuilder) {
-					cb.Equals("i.tenant_id", *query.TenantID)
-				})
-		}).
+		ApplyIf(query.TenantID != nil, scopeCCByTenant(query.TenantID)).
 		OrderByDesc("created_at")
 
-	query.Normalize(20)
-	sq = sq.Limit(query.Size).Offset(query.Offset())
+	sq = applyPageable(sq, &query.Pageable)
 
 	count, err := sq.ScanAndCount(ctx)
 	if err != nil {
@@ -83,22 +78,7 @@ func (h *FindMyCCRecordsHandler) Handle(ctx context.Context, query FindMyCCRecor
 		}
 	}
 
-	instanceMap, err := loadInstanceMap(ctx, db, instanceIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	flowIDs := make([]string, 0, len(instanceMap))
-	for _, inst := range instanceMap {
-		flowIDs = append(flowIDs, inst.FlowID)
-	}
-
-	flowMap, err := loadFlowMap(ctx, db, flowIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	nodeMap, err := loadNodeNameMap(ctx, db, nodeIDs)
+	instanceMap, flowMap, nodeMap, err := loadEnrichmentMaps(ctx, db, instanceIDs, nodeIDs)
 	if err != nil {
 		return nil, err
 	}

@@ -94,3 +94,24 @@ func (s *GetFlowGraphTestSuite) TestNoPublishedVersion() {
 	s.Require().Error(err, "TestNoPublishedVersion should return an error")
 	s.Assert().ErrorIs(err, shared.ErrNoPublishedVersion, "Should return expected error")
 }
+
+func (s *GetFlowGraphTestSuite) TestForeignTenantOpaqueDeny() {
+	// Seed a t2-owned flow inline (the suite fixture is "default" tenant).
+	cat := &approval.FlowCategory{TenantID: "t2", Code: "qfg-foreign-cat", Name: "Foreign"}
+	_, err := s.db.NewInsert().Model(cat).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert foreign-tenant category")
+
+	foreignFlow := &approval.Flow{TenantID: "t2", CategoryID: cat.ID, Code: "qfg-foreign", Name: "Foreign Flow"}
+	_, err = s.db.NewInsert().Model(foreignFlow).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert foreign-tenant flow")
+
+	// A non-super-admin caller in t1 must get the opaque ErrFlowNotFound for a
+	// t2-owned flow — never a distinct cross-tenant signal that would let a
+	// caller probe for existence across tenants.
+	_, err = s.handler.Handle(s.ctx, query.GetFlowGraphQuery{
+		FlowID: foreignFlow.ID,
+		Caller: approval.CallerContext{TenantID: "t1"},
+	})
+	s.Require().Error(err, "Foreign-tenant flow must be denied")
+	s.Assert().ErrorIs(err, shared.ErrFlowNotFound, "Cross-tenant deny must mimic not-found")
+}

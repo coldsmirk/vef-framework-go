@@ -90,6 +90,25 @@ func categoryTenantApplier(resolver approval.PrincipalTenantResolver) func(query
 	}
 }
 
+// authorizeCategoryTenant gates a category mutation on tenant ownership:
+// super-admin callers pass, every other caller must be authorized for the
+// entity's tenant. Mirrors authorizeDelegationOwner and collapses the
+// byte-identical Update/Delete pre-hook bodies into one place. The resolver is
+// passed in because the pre-hooks close over it rather than reading a field.
+func authorizeCategoryTenant(ctx fiber.Ctx, resolver approval.PrincipalTenantResolver, entityTenantID string) error {
+	principal := contextx.Principal(ctx)
+	if approval.IsSuperAdmin(principal) {
+		return nil
+	}
+
+	caller, err := resolveCaller(ctx.Context(), resolver, principal)
+	if err != nil {
+		return err
+	}
+
+	return caller.Authorize(entityTenantID)
+}
+
 // NewCategoryResource creates a new category resource with standard CRUD operations.
 func NewCategoryResource(tenantResolver approval.PrincipalTenantResolver) api.Resource {
 	tenantApplier := categoryTenantApplier(tenantResolver)
@@ -127,32 +146,12 @@ func NewCategoryResource(tenantResolver approval.PrincipalTenantResolver) api.Re
 		Update: crud.NewUpdate[approval.FlowCategory, CategoryParams]().
 			RequiredPermission("approval:category:update").
 			WithPreUpdate(func(oldModel, _ *approval.FlowCategory, _ *CategoryParams, _ orm.UpdateQuery, ctx fiber.Ctx, _ orm.DB) error {
-				principal := contextx.Principal(ctx)
-				if approval.IsSuperAdmin(principal) {
-					return nil
-				}
-
-				caller, err := resolveCaller(ctx.Context(), tenantResolver, principal)
-				if err != nil {
-					return err
-				}
-
-				return caller.Authorize(oldModel.TenantID)
+				return authorizeCategoryTenant(ctx, tenantResolver, oldModel.TenantID)
 			}),
 		Delete: crud.NewDelete[approval.FlowCategory]().
 			RequiredPermission("approval:category:delete").
 			WithPreDelete(func(model *approval.FlowCategory, _ orm.DeleteQuery, ctx fiber.Ctx, _ orm.DB) error {
-				principal := contextx.Principal(ctx)
-				if approval.IsSuperAdmin(principal) {
-					return nil
-				}
-
-				caller, err := resolveCaller(ctx.Context(), tenantResolver, principal)
-				if err != nil {
-					return err
-				}
-
-				return caller.Authorize(model.TenantID)
+				return authorizeCategoryTenant(ctx, tenantResolver, model.TenantID)
 			}),
 	}
 }

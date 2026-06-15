@@ -17,7 +17,11 @@ type FindMyInitiatedQuery struct {
 	cqrs.BaseQuery
 	page.Pageable
 
-	UserID   string
+	UserID string
+	// TenantID is a self-scoped narrowing filter, NOT an authorization
+	// boundary: rows are already pinned to UserID, so a user can only ever
+	// see their own instances regardless of the tenant value. It applies an
+	// extra WHERE only; it does not gate access.
 	TenantID *string
 	Status   *approval.InstanceStatus
 	Keyword  *string
@@ -53,8 +57,7 @@ func (h *FindMyInitiatedHandler) Handle(ctx context.Context, query FindMyInitiat
 		}).
 		OrderByDesc("created_at")
 
-	query.Normalize(20)
-	sq = sq.Limit(query.Size).Offset(query.Offset())
+	sq = applyPageable(sq, &query.Pageable)
 
 	count, err := sq.ScanAndCount(ctx)
 	if err != nil {
@@ -67,23 +70,7 @@ func (h *FindMyInitiatedHandler) Handle(ctx context.Context, query FindMyInitiat
 		return &result, nil
 	}
 
-	// Collect flow IDs and current node IDs for batch lookup.
-	flowIDs := make([]string, 0, len(instances))
-
-	nodeIDs := make([]string, 0, len(instances))
-	for _, inst := range instances {
-		flowIDs = append(flowIDs, inst.FlowID)
-		if inst.CurrentNodeID != nil {
-			nodeIDs = append(nodeIDs, *inst.CurrentNodeID)
-		}
-	}
-
-	flowMap, err := loadFlowMap(ctx, db, flowIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	nodeMap, err := loadNodeNameMap(ctx, db, nodeIDs)
+	flowMap, nodeMap, err := loadInstanceEnrichment(ctx, db, instances)
 	if err != nil {
 		return nil, err
 	}

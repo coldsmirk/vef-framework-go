@@ -82,3 +82,29 @@ func (s *FindFlowVersionsTestSuite) TestEmpty() {
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Empty(result, "Should return empty slice for non-existent flow")
 }
+
+func (s *FindFlowVersionsTestSuite) TestForeignTenantReturnsEmptyNonNil() {
+	// Fixture flows belong to t1. A non-super-admin caller in t2 must get an
+	// empty (non-nil) slice — opaque, indistinguishable from "no such flow".
+	result, err := s.handler.Handle(s.ctx, query.FindFlowVersionsQuery{
+		FlowID: s.flowID1,
+		Caller: approval.CallerContext{TenantID: "t2"},
+	})
+	s.Require().NoError(err, "Cross-tenant access must be an opaque empty result, not an error")
+	s.Require().NotNil(result, "Result must be a non-nil empty slice for response-shape uniformity")
+	s.Assert().Empty(result, "A foreign-tenant caller must see no versions")
+}
+
+func (s *FindFlowVersionsTestSuite) TestMismatchedQueryTenantReturnsEmpty() {
+	// Even an authorized caller (super-admin) gets empty when the explicit
+	// query.TenantID does not match the flow's tenant.
+	mismatch := "t2"
+	result, err := s.handler.Handle(s.ctx, query.FindFlowVersionsQuery{
+		FlowID:   s.flowID1,
+		TenantID: &mismatch,
+		Caller:   approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Mismatched tenant filter must not error")
+	s.Require().NotNil(result, "Result must be a non-nil empty slice")
+	s.Assert().Empty(result, "A query.TenantID that does not match the flow's tenant returns no versions")
+}

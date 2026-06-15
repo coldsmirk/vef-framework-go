@@ -69,9 +69,3 @@ func dropObsoleteTables(ctx context.Context, db orm.DB) error {
 
 	return nil
 }
-
-// GetMigrationSQL returns the approval DDL script for the given dialect.
-// Retained for tests and tooling that needs the raw SQL.
-func GetMigrationSQL(kind config.DBKind) (string, error) {
-	return sqlmigration.LoadScript(scripts, kind)
-}

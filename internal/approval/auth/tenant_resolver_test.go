@@ -97,8 +97,9 @@ func TestDefaultPrincipalTenantResolver(t *testing.T) {
 	}
 
 	type principalWithCommaTag struct {
-		// The json tag has omitempty — extractJSONName must strip the option.
-		Tenant string `json:"Tenant,omitempty"` //nolint:tagliatelle // intentional non-camel tag to exercise extractJSONName option stripping
+		// The json tag has omitempty — isTenantField must strip the option
+		// (via strings.Cut on ",") before comparing the base name.
+		Tenant string `json:"Tenant,omitempty"` //nolint:tagliatelle // intentional non-camel tag to exercise json-tag option stripping in isTenantField
 	}
 
 	type principalWithoutTenant struct {
@@ -128,7 +129,7 @@ func TestDefaultPrincipalTenantResolver(t *testing.T) {
 	})
 
 	t.Run("StructFieldJSONTagWithOption", func(t *testing.T) {
-		// Ensures extractJSONName correctly strips the ,omitempty option via strings.Cut.
+		// Ensures isTenantField correctly strips the ,omitempty option via strings.Cut.
 		p := &security.Principal{Details: principalWithCommaTag{Tenant: "t-struct-04"}}
 		tenant, err := resolver.Resolve(ctx, p)
 		require.NoError(t, err, "Struct with json tag containing options should still resolve by base tag name")

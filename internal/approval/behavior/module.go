@@ -15,11 +15,20 @@ import (
 // CQRS bus sorts them by their Order() method so wrapping order is
 // independent of FX's group-resolution timing.
 //
-// Order assignments (see cqrs.Ordered):
+// Order assignments (see cqrs.Ordered). Lower Order wraps outer, and each
+// collector flushes AFTER the wrapped handler returns, so the innermost
+// behavior flushes first:
 //
-//   - Transaction  (Order 0)   wraps every inner behavior and the handler.
-//   - ActionLog    (Order 100) persists audit rows after the handler succeeds.
-//   - EventPublish (Order 200) emits events last, still inside the same tx.
+//   - Transaction  (Order 0)   wraps every inner behavior and the handler;
+//     commits once they all succeed.
+//   - ActionLog    (Order 100) wraps EventPublish; its audit rows therefore
+//     flush AFTER EventPublish has published.
+//   - EventPublish (Order 200) is the innermost behavior, so it flushes
+//     (publishes events) FIRST — before the ActionLog rows are inserted.
+//
+// All three flushes run inside the single Transaction tx, so the relative
+// order is invisible outside the commit: the events become visible iff the
+// transaction (audit rows included) commits.
 //
 // The fx.Invoke hook runs a boot-time self-check that fails fast if either
 // the ActionLog or EventPublish behavior is missing — the alternative is

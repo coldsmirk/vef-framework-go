@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/cache"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
@@ -58,7 +59,7 @@ func (s *ScannerTestSuite) SetupSuite() {
 		engine.NewApprovalProcessor(nil),
 		engine.NewHandleProcessor(nil),
 		engine.NewCCProcessor(shared.NewCCRecipientResolver(nil)),
-	}, s.bus, nil, nil, nil)
+	}, s.bus, nil, nil, engine.NewFlowCache(s.db, cache.NewMemory[*engine.CompiledFlow]()))
 	taskSvc := service.NewTaskService()
 	nodeSvc := service.NewNodeService(eng, s.bus, taskSvc, nil, shared.NewCCRecipientResolver(nil))
 

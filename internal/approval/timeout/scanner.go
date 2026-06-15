@@ -114,7 +114,7 @@ func (s *Scanner) processTimeout(ctx context.Context, task *approval.Task) error
 			return fmt.Errorf("load instance %s: %w", task.InstanceID, err)
 		}
 
-		freshTask := &approval.Task{}
+		freshTask := new(approval.Task)
 
 		freshTask.ID = task.ID
 		if err := tx.NewSelect().
@@ -402,10 +402,8 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 			task.TenantID,
 			task.InstanceID,
 			task.NodeID,
-			task.AssigneeID,
-			task.AssigneeName,
-			adminID,
-			adminName,
+			approval.UserInfo{ID: task.AssigneeID, Name: task.AssigneeName},
+			approval.UserInfo{ID: adminID, Name: adminName},
 			"任务处理超时，系统自动转交管理员",
 		))
 

@@ -18,8 +18,10 @@ type ActionLogCollector = Collector[*approval.ActionLog]
 // Failed handlers short-circuit so audit rows never describe a non-event.
 //
 // Order positions the behavior between Transaction (outermost) and
-// EventPublish (innermost), so logs persist inside the tx but before
-// events emit.
+// EventPublish (innermost). Because each collector flushes after the wrapped
+// handler returns, EventPublish (inner) flushes first and these audit rows
+// persist AFTER the events publish — all inside the same Transaction tx, so
+// the commit is still atomic.
 func NewActionLogBehavior(db orm.DB) cqrs.Behavior {
 	return &collectorBehavior[*approval.ActionLog]{
 		order: 100,

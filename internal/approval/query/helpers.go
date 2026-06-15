@@ -8,8 +8,25 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/page"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
+
+// defaultListPageSize is the default page size for the approval list queries.
+// They share one value (rather than orm.Paginate's framework default of 15)
+// so admin / my list endpoints page uniformly.
+const defaultListPageSize = 20
+
+// applyPageable normalizes the pageable to defaultListPageSize and applies the
+// resulting Limit/Offset to sq. It collapses the Normalize + Limit/Offset pair
+// that every approval list handler repeats verbatim; each handler keeps its own
+// ScanAndCount, empty-guard, and page.New since those legitimately differ by
+// the result DTO type and error context.
+func applyPageable(sq orm.SelectQuery, pageable *page.Pageable) orm.SelectQuery {
+	pageable.Normalize(defaultListPageSize)
+
+	return sq.Limit(pageable.Size).Offset(pageable.Offset())
+}
 
 // instanceDetailBundle holds the full set of related records needed to build an
 // instance-detail DTO. Both GetAdminInstanceDetailHandler and
@@ -88,6 +105,22 @@ func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string)
 	}, nil
 }
 
+// scopeCCByTenant returns the CC→instance tenant-scoping closure shared by the
+// cc-records and pending-counts queries: it joins apv_instance (alias "i") on
+// instance_id and filters i.tenant_id. Apply it via ApplyIf so the nil guard
+// stays at the call site (the closure dereferences tenantID). Keeping the join
+// in one place stops the two queries' tenant-scoping semantics from drifting.
+func scopeCCByTenant(tenantID *string) func(orm.SelectQuery) {
+	return func(sq orm.SelectQuery) {
+		sq.Join((*approval.Instance)(nil), func(cb orm.ConditionBuilder) {
+			cb.EqualsColumn("instance_id", "i.id")
+		}, "i").
+			Where(func(cb orm.ConditionBuilder) {
+				cb.Equals("i.tenant_id", *tenantID)
+			})
+	}
+}
+
 // dedup returns a deduplicated copy of the given string slice.
 func dedup(ids []string) []string {
 	s := slices.Clone(ids)
@@ -96,25 +129,35 @@ func dedup(ids []string) []string {
 	return slices.Compact(s)
 }
 
-// loadFlowMap loads flows by IDs and returns a map keyed by flow ID.
-func loadFlowMap(ctx context.Context, db orm.DB, flowIDs []string) (map[string]*approval.Flow, error) {
-	if len(flowIDs) == 0 {
+// loadByIDs loads rows of model type M whose id is in ids (deduplicated) and
+// returns them as a map keyed by keyOf. The id column is matched literally, so
+// every model must store its identifier there (true for all approval models —
+// the id lives in the embedded orm audit models). bun resolves the table from
+// the slice element type, the same generic Model(&slice) pattern crud uses.
+func loadByIDs[M any](ctx context.Context, db orm.DB, ids []string, keyOf func(*M) string) (map[string]*M, error) {
+	if len(ids) == 0 {
 		return nil, nil
 	}
 
-	var flows []approval.Flow
-	if err := db.NewSelect().Model(&flows).
-		Where(func(cb orm.ConditionBuilder) { cb.In("id", dedup(flowIDs)) }).
+	var rows []M
+	if err := db.NewSelect().Model(&rows).
+		Where(func(cb orm.ConditionBuilder) { cb.In("id", dedup(ids)) }).
 		Scan(ctx); err != nil {
-		return nil, fmt.Errorf("query flows: %w", err)
+		return nil, fmt.Errorf("query %T by ids: %w", rows, err)
 	}
 
-	m := make(map[string]*approval.Flow, len(flows))
-	for i := range flows {
-		m[flows[i].ID] = &flows[i]
+	m := make(map[string]*M, len(rows))
+	for i := range rows {
+		row := &rows[i]
+		m[keyOf(row)] = row
 	}
 
 	return m, nil
+}
+
+// loadFlowMap loads flows by IDs and returns a map keyed by flow ID.
+func loadFlowMap(ctx context.Context, db orm.DB, flowIDs []string) (map[string]*approval.Flow, error) {
+	return loadByIDs(ctx, db, flowIDs, func(f *approval.Flow) string { return f.ID })
 }
 
 // loadNodeNameMap loads flow node names by IDs and returns a map keyed by node ID.
@@ -137,6 +180,73 @@ func loadNodeNameMap(ctx context.Context, db orm.DB, nodeIDs []string) (map[stri
 	}
 
 	return m, nil
+}
+
+// loadEnrichmentMaps performs the three batched loads that the task- and
+// CC-list handlers all share: instances by ID, then the flows those instances
+// reference, then node names. Callers keep their own ID-collection loop (which
+// differs by source type — Task.NodeID is a string, CCRecord.NodeID a *string)
+// and pass the collected slices here, sharing the assembly that an N+1 guard
+// or batching change would otherwise have to edit in four places.
+func loadEnrichmentMaps(ctx context.Context, db orm.DB, instanceIDs, nodeIDs []string) (
+	instanceMap map[string]*approval.Instance,
+	flowMap map[string]*approval.Flow,
+	nodeMap map[string]string,
+	err error,
+) {
+	instanceMap, err = loadInstanceMap(ctx, db, instanceIDs)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	flowIDs := make([]string, 0, len(instanceMap))
+	for _, inst := range instanceMap {
+		flowIDs = append(flowIDs, inst.FlowID)
+	}
+
+	flowMap, err = loadFlowMap(ctx, db, flowIDs)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	nodeMap, err = loadNodeNameMap(ctx, db, nodeIDs)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return instanceMap, flowMap, nodeMap, nil
+}
+
+// loadInstanceEnrichment hydrates an instance list: it collects the flow IDs
+// and current-node IDs from instances, then loads the flow map and node-name
+// map. Shared by the my-initiated and admin-instances list handlers, which
+// resolve the same flow + current-node-name columns.
+func loadInstanceEnrichment(ctx context.Context, db orm.DB, instances []approval.Instance) (
+	flowMap map[string]*approval.Flow,
+	nodeMap map[string]string,
+	err error,
+) {
+	flowIDs := make([]string, 0, len(instances))
+
+	nodeIDs := make([]string, 0, len(instances))
+	for i := range instances {
+		flowIDs = append(flowIDs, instances[i].FlowID)
+		if instances[i].CurrentNodeID != nil {
+			nodeIDs = append(nodeIDs, *instances[i].CurrentNodeID)
+		}
+	}
+
+	flowMap, err = loadFlowMap(ctx, db, flowIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	nodeMap, err = loadNodeNameMap(ctx, db, nodeIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return flowMap, nodeMap, nil
 }
 
 // loadPublishedFlowIDs returns the subset of flowIDs that have at least one
@@ -162,42 +272,10 @@ func loadPublishedFlowIDs(ctx context.Context, db orm.DB, flowIDs []string) ([]s
 
 // loadCategoryMap loads flow categories by IDs and returns a map keyed by category ID.
 func loadCategoryMap(ctx context.Context, db orm.DB, categoryIDs []string) (map[string]*approval.FlowCategory, error) {
-	if len(categoryIDs) == 0 {
-		return nil, nil
-	}
-
-	var categories []approval.FlowCategory
-	if err := db.NewSelect().Model(&categories).
-		Where(func(cb orm.ConditionBuilder) { cb.In("id", dedup(categoryIDs)) }).
-		Scan(ctx); err != nil {
-		return nil, fmt.Errorf("query flow categories: %w", err)
-	}
-
-	m := make(map[string]*approval.FlowCategory, len(categories))
-	for i := range categories {
-		m[categories[i].ID] = &categories[i]
-	}
-
-	return m, nil
+	return loadByIDs(ctx, db, categoryIDs, func(c *approval.FlowCategory) string { return c.ID })
 }
 
 // loadInstanceMap loads instances by IDs and returns a map keyed by instance ID.
 func loadInstanceMap(ctx context.Context, db orm.DB, instanceIDs []string) (map[string]*approval.Instance, error) {
-	if len(instanceIDs) == 0 {
-		return nil, nil
-	}
-
-	var instances []approval.Instance
-	if err := db.NewSelect().Model(&instances).
-		Where(func(cb orm.ConditionBuilder) { cb.In("id", dedup(instanceIDs)) }).
-		Scan(ctx); err != nil {
-		return nil, fmt.Errorf("query instances: %w", err)
-	}
-
-	m := make(map[string]*approval.Instance, len(instances))
-	for i := range instances {
-		m[instances[i].ID] = &instances[i]
-	}
-
-	return m, nil
+	return loadByIDs(ctx, db, instanceIDs, func(i *approval.Instance) string { return i.ID })
 }

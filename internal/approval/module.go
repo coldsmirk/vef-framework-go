@@ -2,7 +2,6 @@ package approval
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"go.uber.org/fx"
@@ -21,27 +20,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/timeout"
 )
-
-// ErrEventRouteNotTransactional indicates the framework's event bus is
-// not configured to deliver an approval domain event through a
-// transactional transport. Approval publishes every business-side event
-// with event.WithTx (via EventPublishBehavior and engine.PublishEventsTx)
-// so subscribers see the event iff the originating business transaction
-// commits; without a transactional route the first publish would fail at
-// runtime with event.ErrTxRequired and roll the business transaction
-// back. The wrapped formatted error names the offending event type and
-// points operators at the configuration that must be set.
-var ErrEventRouteNotTransactional = errors.New("approval: event must route to a transactional transport")
-
-// ErrEventRouteNotSubscribable indicates the framework's event bus has
-// no subscribable transport on the route for an event that approval
-// itself subscribes to. The binding listener subscribes to
-// InstanceCompletedEvent; a route resolving only to publish-only
-// transports (e.g. just the outbox) would let the application start,
-// then silently drop every event because Subscribe is filtered at
-// routing time. The wrapped formatted error names the offending event
-// type and points operators at the configuration that must be set.
-var ErrEventRouteNotSubscribable = errors.New("approval: event must route to a subscribable transport")
 
 // Module is the approval workflow engine module.
 var Module = fx.Module(
@@ -62,41 +40,43 @@ var Module = fx.Module(
 	fx.Invoke(verifyEventRouting),
 )
 
-// transactionalEventTypes lists the approval event types that must route
-// to a transactional transport. InstanceBindingFailedEvent is deliberately
-// excluded: it is emitted by the asynchronous binding listener outside any
-// business transaction, so requiring a transactional route for it would
-// force misconfiguration on hosts that legitimately route only binding_failed
-// through non-tx paths.
+// nonTransactionalEventTypes is the explicit, reviewed set of approval event
+// types that are NOT required to route through a transactional transport.
+// InstanceBindingFailedEvent is the sole member: it is emitted by the
+// asynchronous binding listener outside any business transaction (the
+// listener falls back to a plain publish on event.ErrTxRequired), so
+// requiring a transactional route for it would force misconfiguration on
+// hosts that legitimately route only binding_failed through non-tx paths.
 //
-// This slice is the single source of truth consumed by both verifyEventRouting
-// and its tests so the two cannot drift.
-var transactionalEventTypes = []string{
-	approval.EventTypeInstanceCreated,
-	approval.EventTypeInstanceCompleted,
-	approval.EventTypeInstanceWithdrawn,
-	approval.EventTypeInstanceRolledBack,
-	approval.EventTypeInstanceReturned,
-	approval.EventTypeInstanceResubmitted,
-	approval.EventTypeNodeAutoPassed,
-	approval.EventTypeTaskCreated,
-	approval.EventTypeTaskApproved,
-	approval.EventTypeTaskHandled,
-	approval.EventTypeTaskRejected,
-	approval.EventTypeTaskCanceled,
-	approval.EventTypeTaskTransferred,
-	approval.EventTypeTaskReassigned,
-	approval.EventTypeTaskTimedOut,
-	approval.EventTypeAssigneesAdded,
-	approval.EventTypeAssigneesRemoved,
-	approval.EventTypeTaskDeadlineWarning,
-	approval.EventTypeTaskUrged,
-	approval.EventTypeCCNotified,
-	approval.EventTypeFlowCreated,
-	approval.EventTypeFlowUpdated,
-	approval.EventTypeFlowDeployed,
-	approval.EventTypeFlowToggled,
-	approval.EventTypeFlowPublished,
+// Any future intentional exclusion must be added here as a conscious edit;
+// TestTransactionalEventTypesCoverAllEvents asserts that
+// transactionalEventTypes == approval.AllEventTypes() minus this set, so an
+// accidentally-omitted new event constant fails the test instead of silently
+// bypassing the fail-fast routing check.
+var nonTransactionalEventTypes = map[string]struct{}{
+	approval.EventTypeInstanceBindingFailed: {},
+}
+
+// transactionalEventTypes lists the approval event types that must route to a
+// transactional transport, derived from the canonical approval.AllEventTypes()
+// minus the documented nonTransactionalEventTypes. Deriving it (rather than
+// hand-maintaining a parallel list) means a new event constant is transactional
+// by default and a drift test guards the one allowed exclusion.
+var transactionalEventTypes = buildTransactionalEventTypes()
+
+func buildTransactionalEventTypes() []string {
+	all := approval.AllEventTypes()
+	out := make([]string, 0, len(all))
+
+	for _, et := range all {
+		if _, excluded := nonTransactionalEventTypes[et]; excluded {
+			continue
+		}
+
+		out = append(out, et)
+	}
+
+	return out
 }
 
 // verifyEventRouting fails fast at start-up when the framework's event

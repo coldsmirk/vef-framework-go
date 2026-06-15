@@ -139,13 +139,15 @@ func (h *GetMetricsHandler) Handle(ctx context.Context, query GetMetricsQuery) (
 
 	// Count of outbox records for binding-failure events that have not yet been
 	// delivered (status pending, processing, or failed). This is a best-effort
-	// estimate — records are removed after delivery or after the dead-letter
-	// budget is exhausted (status "dead" means the relay gave up, not that the
-	// failure was resolved, so we count dead as well). Tenant scoping is not
-	// applied here because the outbox payload is opaque JSON and cross-dialect
-	// JSON extraction would add complexity for what the DTO already documents
-	// as a best-effort count; callers with tenant-specific dashboards should
-	// interpret this as the global unresolved count.
+	// row count, NOT a distinct-instance count: the binding listener
+	// re-publishes a fresh failure event on every transient retry, so one
+	// flaky instance can contribute multiple rows. Records are removed after
+	// delivery or after the dead-letter budget is exhausted (status "dead"
+	// means the relay gave up, not that the failure was resolved, so we count
+	// dead as well). Tenant scoping is not applied here because the outbox
+	// payload is opaque JSON and cross-dialect JSON extraction would add
+	// complexity for a best-effort metric; callers with tenant-specific
+	// dashboards should interpret this as the global unresolved count.
 	pendingStatuses := []string{
 		string(outboxmodel.StatusPending),
 		string(outboxmodel.StatusProcessing),

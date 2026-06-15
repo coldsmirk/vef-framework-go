@@ -58,8 +58,7 @@ func (h *FindAdminActionLogsHandler) Handle(ctx context.Context, query FindAdmin
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", query.InstanceID) }).
 		OrderBy("created_at")
 
-	query.Normalize(20)
-	sq = sq.Limit(query.Size).Offset(query.Offset())
+	sq = applyPageable(sq, &query.Pageable)
 
 	count, err := sq.ScanAndCount(ctx)
 	if err != nil {

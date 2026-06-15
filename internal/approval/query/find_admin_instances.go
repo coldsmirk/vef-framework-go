@@ -59,8 +59,7 @@ func (h *FindAdminInstancesHandler) Handle(ctx context.Context, query FindAdminI
 		}).
 		OrderByDesc("created_at")
 
-	query.Normalize(20)
-	sq = sq.Limit(query.Size).Offset(query.Offset())
+	sq = applyPageable(sq, &query.Pageable)
 
 	count, err := sq.ScanAndCount(ctx)
 	if err != nil {
@@ -73,23 +72,7 @@ func (h *FindAdminInstancesHandler) Handle(ctx context.Context, query FindAdminI
 		return &result, nil
 	}
 
-	// Collect flow IDs and current node IDs for batch lookup.
-	flowIDs := make([]string, 0, len(instances))
-
-	nodeIDs := make([]string, 0, len(instances))
-	for _, inst := range instances {
-		flowIDs = append(flowIDs, inst.FlowID)
-		if inst.CurrentNodeID != nil {
-			nodeIDs = append(nodeIDs, *inst.CurrentNodeID)
-		}
-	}
-
-	flowMap, err := loadFlowMap(ctx, db, flowIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	nodeMap, err := loadNodeNameMap(ctx, db, nodeIDs)
+	flowMap, nodeMap, err := loadInstanceEnrichment(ctx, db, instances)
 	if err != nil {
 		return nil, err
 	}

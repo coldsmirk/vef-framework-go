@@ -62,7 +62,7 @@ type collectorKey[T any] struct{}
 // derived context together with the collector handle. The collectorBehavior
 // uses this to bracket each command invocation.
 func installCollector[T any](ctx context.Context) (context.Context, *Collector[T]) {
-	collector := &Collector[T]{}
+	collector := new(Collector[T])
 
 	return context.WithValue(ctx, collectorKey[T]{}, collector), collector
 }

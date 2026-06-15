@@ -141,8 +141,7 @@ func (h *FindAvailableFlowsHandler) Handle(ctx context.Context, query FindAvaila
 		}).
 		OrderBy("name")
 
-	query.Normalize(20)
-	sq = sq.Limit(query.Size).Offset(query.Offset())
+	sq = applyPageable(sq, &query.Pageable)
 
 	count, err := sq.ScanAndCount(ctx)
 	if err != nil {

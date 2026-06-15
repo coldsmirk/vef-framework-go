@@ -2,6 +2,7 @@ package approval
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -154,5 +155,48 @@ func TestVerifyEventRouting(t *testing.T) {
 			"Subscribable transport on InstanceCompleted should let the module start")
 
 		lc.RequireStop()
+	})
+}
+
+// TestTransactionalEventTypesCoverAllEvents is the drift guard: it asserts the
+// transactional route-check list is exactly the canonical event set minus the
+// reviewed non-transactional exclusions. A new approval event constant that is
+// added to approval.AllEventTypes() but neither marked transactional nor
+// explicitly excluded fails here, instead of silently bypassing the fail-fast
+// startup routing check and failing at runtime with event.ErrTxRequired.
+func TestTransactionalEventTypesCoverAllEvents(t *testing.T) {
+	t.Run("TransactionalListEqualsAllEventsMinusExclusions", func(t *testing.T) {
+		var expected []string
+
+		for _, et := range approval.AllEventTypes() {
+			if _, excluded := nonTransactionalEventTypes[et]; !excluded {
+				expected = append(expected, et)
+			}
+		}
+
+		got := slices.Clone(transactionalEventTypes)
+
+		slices.Sort(expected)
+		slices.Sort(got)
+
+		assert.Equal(t, expected, got,
+			"transactionalEventTypes must equal approval.AllEventTypes() minus nonTransactionalEventTypes; "+
+				"a new event constant must be added to the transactional set or the documented exclusion set")
+	})
+
+	t.Run("ExcludedEventsAreRealEventTypes", func(t *testing.T) {
+		all := approval.AllEventTypes()
+		for et := range nonTransactionalEventTypes {
+			assert.True(t, slices.Contains(all, et),
+				"excluded event %q must be a member of approval.AllEventTypes()", et)
+		}
+	})
+
+	t.Run("BindingFailedIsExcluded", func(t *testing.T) {
+		_, excluded := nonTransactionalEventTypes[approval.EventTypeInstanceBindingFailed]
+		assert.True(t, excluded,
+			"binding_failed is emitted outside a business transaction and must remain excluded")
+		assert.False(t, slices.Contains(transactionalEventTypes, approval.EventTypeInstanceBindingFailed),
+			"binding_failed must not be in the transactional route-check list")
 	})
 }

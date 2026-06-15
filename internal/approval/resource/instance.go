@@ -2,7 +2,6 @@ package resource
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -15,12 +14,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
-
-// errUnsupportedTaskAction guards the ProcessTask dispatch switch: it can
-// only fire if a new action is added to the validate tag without a matching
-// case, which must fail loudly instead of reporting success while doing
-// nothing.
-var errUnsupportedTaskAction = errors.New("unsupported task action")
 
 // resolveOperator builds an OperatorInfo from the authenticated principal.
 func resolveOperator(ctx context.Context, resolver approval.PrincipalDepartmentResolver, principal *security.Principal) (approval.OperatorInfo, error) {
@@ -180,34 +173,43 @@ type ProcessTaskParams struct {
 	TargetNodeID string         `json:"targetNodeId"`
 }
 
-// ProcessTask handles task actions (approve/reject/transfer/rollback/handle).
-func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Principal, params ProcessTaskParams) error {
-	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
-	if err != nil {
+// processTaskAction is the typed key for the ProcessTask dispatch table.
+type processTaskAction string
+
+// processTaskActions enumerates the actions ProcessTaskParams.Action accepts
+// and must stay in lockstep with the `oneof=...` tag on that field — the
+// stringified keys here are the single source of truth and are asserted to
+// match the tag by TestProcessTaskActionsCoverOneofTag. approve and handle
+// share the same command (a handle node finishes the same way an approval
+// does, the difference is in the node's execution semantics, not the API).
+const (
+	actionApprove  processTaskAction = "approve"
+	actionHandle   processTaskAction = "handle"
+	actionReject   processTaskAction = "reject"
+	actionTransfer processTaskAction = "transfer"
+	actionRollback processTaskAction = "rollback"
+)
+
+// processTaskDispatch maps each task action to the command it sends. Using a
+// map keyed by a typed constant makes the action set a single compile-time
+// source of truth: a missing action surfaces as an absent key (caught by the
+// coverage test) rather than a dead runtime default arm.
+var processTaskDispatch = map[processTaskAction]func(context.Context, cqrs.Bus, resolvedActor, ProcessTaskParams) error{
+	actionApprove: sendApprove,
+	actionHandle:  sendApprove,
+	actionReject: func(ctx context.Context, bus cqrs.Bus, actor resolvedActor, params ProcessTaskParams) error {
+		_, err := cqrs.Send[command.RejectTaskCmd, cqrs.Unit](ctx, bus, command.RejectTaskCmd{
+			TaskID:   params.TaskID,
+			Operator: actor.Operator,
+			Opinion:  params.Opinion,
+			FormData: params.FormData,
+			Caller:   actor.Caller,
+		})
+
 		return err
-	}
-
-	switch params.Action {
-	case "approve", "handle":
-		_, err = cqrs.Send[command.ApproveTaskCmd, cqrs.Unit](ctx.Context(), r.bus, command.ApproveTaskCmd{
-			TaskID:   params.TaskID,
-			Operator: actor.Operator,
-			Opinion:  params.Opinion,
-			FormData: params.FormData,
-			Caller:   actor.Caller,
-		})
-
-	case "reject":
-		_, err = cqrs.Send[command.RejectTaskCmd, cqrs.Unit](ctx.Context(), r.bus, command.RejectTaskCmd{
-			TaskID:   params.TaskID,
-			Operator: actor.Operator,
-			Opinion:  params.Opinion,
-			FormData: params.FormData,
-			Caller:   actor.Caller,
-		})
-
-	case "transfer":
-		_, err = cqrs.Send[command.TransferTaskCmd, cqrs.Unit](ctx.Context(), r.bus, command.TransferTaskCmd{
+	},
+	actionTransfer: func(ctx context.Context, bus cqrs.Bus, actor resolvedActor, params ProcessTaskParams) error {
+		_, err := cqrs.Send[command.TransferTaskCmd, cqrs.Unit](ctx, bus, command.TransferTaskCmd{
 			TaskID:       params.TaskID,
 			Operator:     actor.Operator,
 			Opinion:      params.Opinion,
@@ -216,8 +218,10 @@ func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Princi
 			Caller:       actor.Caller,
 		})
 
-	case "rollback":
-		_, err = cqrs.Send[command.RollbackTaskCmd, cqrs.Unit](ctx.Context(), r.bus, command.RollbackTaskCmd{
+		return err
+	},
+	actionRollback: func(ctx context.Context, bus cqrs.Bus, actor resolvedActor, params ProcessTaskParams) error {
+		_, err := cqrs.Send[command.RollbackTaskCmd, cqrs.Unit](ctx, bus, command.RollbackTaskCmd{
 			TaskID:       params.TaskID,
 			Operator:     actor.Operator,
 			Opinion:      params.Opinion,
@@ -226,14 +230,40 @@ func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Princi
 			Caller:       actor.Caller,
 		})
 
-	default:
-		// Unreachable behind the oneof validator; guards against a future
-		// action being added to the validate tag without a dispatch case,
-		// which would otherwise report success while doing nothing.
-		return fmt.Errorf("%w: %q", errUnsupportedTaskAction, params.Action)
+		return err
+	},
+}
+
+func sendApprove(ctx context.Context, bus cqrs.Bus, actor resolvedActor, params ProcessTaskParams) error {
+	_, err := cqrs.Send[command.ApproveTaskCmd, cqrs.Unit](ctx, bus, command.ApproveTaskCmd{
+		TaskID:   params.TaskID,
+		Operator: actor.Operator,
+		Opinion:  params.Opinion,
+		FormData: params.FormData,
+		Caller:   actor.Caller,
+	})
+
+	return err
+}
+
+// ProcessTask handles task actions (approve/reject/transfer/rollback/handle).
+func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Principal, params ProcessTaskParams) error {
+	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
+	if err != nil {
+		return err
 	}
 
-	if err != nil {
+	// The oneof validator on ProcessTaskParams.Action runs before this handler
+	// (and TestProcessTaskActionsCoverOneofTag pins the table to that tag), so a
+	// miss is unreachable on the validated HTTP/RPC path. Guard it anyway so a
+	// direct or validation-bypassing caller fails fast with a clear message
+	// instead of a bare nil-func panic.
+	dispatch, ok := processTaskDispatch[processTaskAction(params.Action)]
+	if !ok {
+		panic(fmt.Sprintf("approval: ProcessTask dispatched on unknown action %q (oneof validation bypassed)", params.Action))
+	}
+
+	if err := dispatch(ctx.Context(), r.bus, actor, params); err != nil {
 		return err
 	}
 
