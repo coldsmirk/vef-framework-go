@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 )
 
@@ -40,7 +41,7 @@ func TestGuardCheck(t *testing.T) {
 
 				var guardErr *GuardError
 				require.True(t, errors.As(err, &guardErr), "Guard error should unwrap as GuardError")
-				assert.True(t, errors.Is(guardErr.Err, tt.errType), "Guard error should wrap expected type")
+				assert.ErrorIs(t, guardErr.Err, tt.errType, "Guard error should wrap expected type")
 			} else {
 				assert.NoError(t, err, "Guard should allow SQL that is not blocked")
 			}
@@ -71,7 +72,7 @@ func TestGuardEmptyRulesUsesDefaults(t *testing.T) {
 	logger := logx.Named("test")
 	guard := NewGuard(logger)
 
-	assert.Len(t, guard.rules, 3, "Guard should use three default rules when none provided")
+	assert.Len(t, guard.rules, 4, "Guard should use four default rules when none provided")
 }
 
 // TestGuardError tests guard error functionality.
@@ -90,7 +91,7 @@ func TestGuardError(t *testing.T) {
 		assert.Contains(t, err.Error(), "dangerous sql detected", "GuardError should include dangerous SQL prefix")
 		assert.Contains(t, err.Error(), "no_drop", "GuardError should include violation rule")
 		assert.Contains(t, err.Error(), "DROP", "GuardError should include blocked statement")
-		assert.True(t, errors.Is(err, ErrDangerousSQL), "GuardError should match ErrDangerousSQL")
+		assert.ErrorIs(t, err, ErrDangerousSQL, "GuardError should match ErrDangerousSQL")
 	})
 
 	t.Run("WithoutViolation", func(t *testing.T) {
@@ -100,46 +101,59 @@ func TestGuardError(t *testing.T) {
 		}
 
 		assert.Equal(t, ErrSQLParseFailed.Error(), err.Error(), "GuardError without violation should use wrapped error message")
-		assert.True(t, errors.Is(err, ErrSQLParseFailed), "GuardError should match ErrSQLParseFailed")
+		assert.ErrorIs(t, err, ErrSQLParseFailed, "GuardError should match ErrSQLParseFailed")
 	})
 }
 
 // TestEnsureReadOnly verifies the fail-closed read-only gate used by the MCP
 // database query tool: rejection of data-modifying CTEs whose top-level
-// statement is a SELECT (including nested CTEs), and the AST-based dangerous
-// function denylist — which catches comment/quote-obfuscated calls yet does not
-// trip on a function name appearing inside a string literal.
+// statement is a SELECT (including nested CTEs), and the dialect-aware AST-based
+// dangerous function denylist — which catches comment/quote-obfuscated calls yet
+// does not trip on a function name appearing inside a string literal, and which
+// blocks each dialect's own side-effecting primitives.
 func TestEnsureReadOnly(t *testing.T) {
 	tests := []struct {
 		name    string
+		kind    config.DBKind
 		sql     string
 		wantErr bool
 	}{
-		{"PlainSelect", "SELECT * FROM users WHERE id = 1", false},
-		{"ReadOnlyCTE", "WITH t AS (SELECT id FROM users) SELECT * FROM t", false},
-		{"AggregateFunctionAllowed", "SELECT count(*) FROM users", false},
-		{"Insert", "INSERT INTO users (name) VALUES ('x')", true},
-		{"Update", "UPDATE users SET name = 'x' WHERE id = 1", true},
-		{"Delete", "DELETE FROM users WHERE id = 1", true},
-		{"Drop", "DROP TABLE users", true},
-		{"Truncate", "TRUNCATE TABLE users", true},
-		{"DataModifyingDeleteCTE", "WITH t AS (DELETE FROM users WHERE id = 1 RETURNING *) SELECT * FROM t", true},
-		{"DataModifyingInsertCTE", "WITH t AS (INSERT INTO users (id) VALUES (1) RETURNING id) SELECT * FROM t", true},
-		{"DataModifyingUpdateCTE", "WITH t AS (UPDATE users SET name = 'x' RETURNING *) SELECT count(*) FROM t", true},
-		{"NestedDataModifyingCTE", "WITH a AS (WITH b AS (DELETE FROM users RETURNING *) SELECT * FROM b) SELECT * FROM a", true},
-		{"MultiStatement", "SELECT 1; DROP TABLE users", true},
-		{"DangerousReadFileFunction", "SELECT pg_read_file('/etc/passwd')", true},
-		{"DangerousSleepFunction", "SELECT pg_sleep(10)", true},
-		{"DangerousSequenceMutation", "SELECT nextval('seq')", true},
-		{"DangerousFunctionViaComment", "SELECT pg_sleep/**/(10)", true},
-		{"DangerousFunctionQuotedIdentifier", `SELECT "pg_read_file"('/etc/passwd')`, true},
-		{"FunctionNameInsideStringLiteralAllowed", "SELECT 'pg_read_file(' AS note", false},
-		{"Empty", "", true},
+		{"PlainSelect", config.Postgres, "SELECT * FROM users WHERE id = 1", false},
+		{"ReadOnlyCTE", config.Postgres, "WITH t AS (SELECT id FROM users) SELECT * FROM t", false},
+		{"AggregateFunctionAllowed", config.Postgres, "SELECT count(*) FROM users", false},
+		{"Insert", config.Postgres, "INSERT INTO users (name) VALUES ('x')", true},
+		{"Update", config.Postgres, "UPDATE users SET name = 'x' WHERE id = 1", true},
+		{"Delete", config.Postgres, "DELETE FROM users WHERE id = 1", true},
+		{"Drop", config.Postgres, "DROP TABLE users", true},
+		{"Truncate", config.Postgres, "TRUNCATE TABLE users", true},
+		{"DataModifyingDeleteCTE", config.Postgres, "WITH t AS (DELETE FROM users WHERE id = 1 RETURNING *) SELECT * FROM t", true},
+		{"DataModifyingInsertCTE", config.Postgres, "WITH t AS (INSERT INTO users (id) VALUES (1) RETURNING id) SELECT * FROM t", true},
+		{"DataModifyingUpdateCTE", config.Postgres, "WITH t AS (UPDATE users SET name = 'x' RETURNING *) SELECT count(*) FROM t", true},
+		{"NestedDataModifyingCTE", config.Postgres, "WITH a AS (WITH b AS (DELETE FROM users RETURNING *) SELECT * FROM b) SELECT * FROM a", true},
+		{"MultiStatement", config.Postgres, "SELECT 1; DROP TABLE users", true},
+		{"DangerousReadFileFunction", config.Postgres, "SELECT pg_read_file('/etc/passwd')", true},
+		{"DangerousSleepFunction", config.Postgres, "SELECT pg_sleep(10)", true},
+		{"DangerousSequenceMutation", config.Postgres, "SELECT nextval('seq')", true},
+		{"DangerousFunctionViaComment", config.Postgres, "SELECT pg_sleep/**/(10)", true},
+		{"DangerousFunctionQuotedIdentifier", config.Postgres, `SELECT "pg_read_file"('/etc/passwd')`, true},
+		{"FunctionNameInsideStringLiteralAllowed", config.Postgres, "SELECT 'pg_read_file(' AS note", false},
+		{"Empty", config.Postgres, "", true},
+		// Dialect-aware denylist: each dialect blocks its own primitives.
+		{"MySQLLoadFile", config.MySQL, "SELECT load_file('/etc/passwd')", true},
+		{"MySQLSleep", config.MySQL, "SELECT sleep(10)", true},
+		{"MySQLBenchmark", config.MySQL, "SELECT benchmark(1000000, md5('x'))", true},
+		{"SQLServerXpCmdshell", config.SQLServer, "SELECT xp_cmdshell('dir')", true},
+		{"OracleUtlFile", config.Oracle, "SELECT utl_file.fopen('d', 'f', 'r') FROM dual", true},
+		// A dialect's own functions are blocked even though they are absent from
+		// other dialects' lists: an unknown kind falls back to the union.
+		{"MySQLSleepBlockedUnderUnknownKind", config.DBKind("unknown"), "SELECT sleep(10)", true},
+		// A harmless MySQL function under a Postgres guard passes (sleep is not a PG primitive).
+		{"MySQLSleepAllowedUnderPostgres", config.Postgres, "SELECT sleep(10)", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := EnsureReadOnly(tt.sql)
+			err := EnsureReadOnly(tt.kind, tt.sql)
 
 			if tt.wantErr {
 				require.Error(t, err, "EnsureReadOnly must reject non-read-only SQL")

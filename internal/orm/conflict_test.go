@@ -78,3 +78,46 @@ func TestConflictTargetWhere(t *testing.T) {
 		require.Contains(t, sql, "DO NOTHING", "DoNothing should emit DO NOTHING")
 	})
 }
+
+// TestConflictMisuseFailsFast verifies that build-time misuse of the conflict
+// builder panics with a clear message instead of emitting invalid SQL: DoUpdate
+// without any Set, and Columns combined with Constraint as mutually-exclusive
+// conflict targets.
+func TestConflictMisuseFailsFast(t *testing.T) {
+	rawDB, err := database.Open(config.DataSourceConfig{Kind: config.SQLite})
+	require.NoError(t, err, "Database.Open should succeed")
+
+	t.Cleanup(func() { _ = rawDB.Close() })
+
+	db, err := Open(rawDB, config.SQLite)
+	require.NoError(t, err, "ORM open should succeed")
+
+	bunDB := db.(*BunDB)
+
+	build := func(build func(ConflictBuilder)) {
+		q := NewInsertQuery(bunDB)
+		q.Model(&ConflictModel{ID: "row-1", Name: "n"}).OnConflict(build)
+	}
+
+	t.Run("DoUpdateWithoutSetPanics", func(t *testing.T) {
+		require.PanicsWithValue(t,
+			"conflict: DoUpdate requires at least one Set - call Set() or SetExpr() first",
+			func() {
+				build(func(cb ConflictBuilder) {
+					cb.Columns("id").DoUpdate()
+				})
+			},
+			"DoUpdate with no Set must panic with a clear message")
+	})
+
+	t.Run("ColumnsAndConstraintPanics", func(t *testing.T) {
+		require.PanicsWithValue(t,
+			"conflict: Columns() and Constraint() are mutually exclusive conflict targets",
+			func() {
+				build(func(cb ConflictBuilder) {
+					cb.Columns("id").Constraint("conflict_model_pkey").DoUpdate().Set("name")
+				})
+			},
+			"Columns combined with Constraint must panic with a clear message")
+	})
+}

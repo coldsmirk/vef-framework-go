@@ -17,19 +17,17 @@ var autoColumnHandlers = []ColumnHandler{
 	new(UpdatedByHandler),
 }
 
-type insertAutoColumnPlanItem struct {
-	field   *schema.Field
-	handler InsertColumnHandler
-}
-
-type updateAutoColumnPlanItem struct {
-	field   *schema.Field
-	handler UpdateColumnHandler
+// autoColumnPlanItem binds a schema field to the handler callback that sets it.
+// apply is the per-direction terminal call (OnInsert or OnUpdate) captured at plan
+// build time, so the slice-recursion driver is shared across insert and update.
+type autoColumnPlanItem[Q any] struct {
+	field *schema.Field
+	apply func(query Q, table *schema.Table, field *schema.Field, model any, value reflect.Value)
 }
 
 var (
-	insertAutoColumnPlanCache = collections.NewConcurrentHashMap[*schema.Table, []insertAutoColumnPlanItem]()
-	updateAutoColumnPlanCache = collections.NewConcurrentHashMap[*schema.Table, []updateAutoColumnPlanItem]()
+	insertAutoColumnPlanCache = collections.NewConcurrentHashMap[*schema.Table, []autoColumnPlanItem[*BunInsertQuery]]()
+	updateAutoColumnPlanCache = collections.NewConcurrentHashMap[*schema.Table, []autoColumnPlanItem[*BunUpdateQuery]]()
 )
 
 // ColumnHandler provides the column name that the handler manages.
@@ -53,83 +51,76 @@ type UpdateColumnHandler interface {
 }
 
 // processAutoColumns applies auto column handlers to a model before insert/update operations.
+// Callers pass mv = reflect.Indirect(reflect.ValueOf(modelValue)), so a nil pointer model has
+// already collapsed to an invalid Value and the single validity check covers it.
 func processAutoColumns(query any, table *schema.Table, modelValue any, mv reflect.Value) {
-	if !mv.IsValid() || (mv.Kind() == reflect.Pointer && mv.IsNil()) {
+	if !mv.IsValid() {
 		return
 	}
 
 	switch q := query.(type) {
 	case *BunInsertQuery:
-		applyInsertAutoColumns(q, table, modelValue, mv, getInsertAutoColumnPlan(table))
+		applyAutoColumns(q, table, modelValue, mv, getInsertAutoColumnPlan(table))
 	case *BunUpdateQuery:
-		applyUpdateAutoColumns(q, table, modelValue, mv, getUpdateAutoColumnPlan(table))
+		applyAutoColumns(q, table, modelValue, mv, getUpdateAutoColumnPlan(table))
 	}
 }
 
-func getInsertAutoColumnPlan(table *schema.Table) []insertAutoColumnPlanItem {
-	plan, _ := insertAutoColumnPlanCache.GetOrCompute(table, func() []insertAutoColumnPlanItem {
-		items := make([]insertAutoColumnPlanItem, 0, len(autoColumnHandlers))
-		for _, handler := range autoColumnHandlers {
-			insertHandler, ok := handler.(InsertColumnHandler)
-			if !ok {
-				continue
-			}
-
-			field, ok := table.FieldMap[handler.Name()]
-			if !ok {
-				continue
-			}
-
-			items = append(items, insertAutoColumnPlanItem{
-				field:   field,
-				handler: insertHandler,
-			})
-		}
-
-		return items
+func getInsertAutoColumnPlan(table *schema.Table) []autoColumnPlanItem[*BunInsertQuery] {
+	plan, _ := insertAutoColumnPlanCache.GetOrCompute(table, func() []autoColumnPlanItem[*BunInsertQuery] {
+		return buildAutoColumnPlan(table, func(h InsertColumnHandler) func(*BunInsertQuery, *schema.Table, *schema.Field, any, reflect.Value) {
+			return h.OnInsert
+		})
 	})
 
 	return plan
 }
 
-func getUpdateAutoColumnPlan(table *schema.Table) []updateAutoColumnPlanItem {
-	plan, _ := updateAutoColumnPlanCache.GetOrCompute(table, func() []updateAutoColumnPlanItem {
-		items := make([]updateAutoColumnPlanItem, 0, len(autoColumnHandlers))
-		for _, handler := range autoColumnHandlers {
-			updateHandler, ok := handler.(UpdateColumnHandler)
-			if !ok {
-				continue
-			}
-
-			field, ok := table.FieldMap[handler.Name()]
-			if !ok {
-				continue
-			}
-
-			items = append(items, updateAutoColumnPlanItem{
-				field:   field,
-				handler: updateHandler,
-			})
-		}
-
-		return items
+func getUpdateAutoColumnPlan(table *schema.Table) []autoColumnPlanItem[*BunUpdateQuery] {
+	plan, _ := updateAutoColumnPlanCache.GetOrCompute(table, func() []autoColumnPlanItem[*BunUpdateQuery] {
+		return buildAutoColumnPlan(table, func(h UpdateColumnHandler) func(*BunUpdateQuery, *schema.Table, *schema.Field, any, reflect.Value) {
+			return h.OnUpdate
+		})
 	})
 
 	return plan
 }
 
-func applyInsertAutoColumns(
-	query *BunInsertQuery,
+// buildAutoColumnPlan builds the ordered auto-column plan for one direction. It
+// keeps the handler/field iteration in one place; bind selects the typed terminal
+// callback (OnInsert or OnUpdate) for each handler that implements H.
+func buildAutoColumnPlan[Q any, H ColumnHandler](
+	table *schema.Table,
+	bind func(H) func(Q, *schema.Table, *schema.Field, any, reflect.Value),
+) []autoColumnPlanItem[Q] {
+	items := make([]autoColumnPlanItem[Q], 0, len(autoColumnHandlers))
+	for _, handler := range autoColumnHandlers {
+		typed, ok := handler.(H)
+		if !ok {
+			continue
+		}
+
+		field, ok := table.FieldMap[handler.Name()]
+		if !ok {
+			continue
+		}
+
+		items = append(items, autoColumnPlanItem[Q]{field: field, apply: bind(typed)})
+	}
+
+	return items
+}
+
+// applyAutoColumns runs an auto-column plan against a model, recursing into slice
+// elements for batch operations. The per-direction terminal call lives on each
+// plan item, so this driver is shared by insert and update.
+func applyAutoColumns[Q any](
+	query Q,
 	table *schema.Table,
 	modelValue any,
 	mv reflect.Value,
-	plan []insertAutoColumnPlanItem,
+	plan []autoColumnPlanItem[Q],
 ) {
-	if !mv.IsValid() {
-		return
-	}
-
-	// Handle slice values (batch operations) by processing each element.
 	if mv.Kind() == reflect.Slice {
 		for i := range mv.Len() {
 			elem := mv.Index(i)
@@ -145,51 +136,13 @@ func applyInsertAutoColumns(
 				continue
 			}
 
-			applyInsertAutoColumns(query, table, elem.Interface(), elem, plan)
+			applyAutoColumns(query, table, elem.Interface(), elem, plan)
 		}
 
 		return
 	}
 
 	for _, item := range plan {
-		item.handler.OnInsert(query, table, item.field, modelValue, item.field.Value(mv))
-	}
-}
-
-func applyUpdateAutoColumns(
-	query *BunUpdateQuery,
-	table *schema.Table,
-	modelValue any,
-	mv reflect.Value,
-	plan []updateAutoColumnPlanItem,
-) {
-	if !mv.IsValid() {
-		return
-	}
-
-	// Handle slice values (batch operations) by processing each element.
-	if mv.Kind() == reflect.Slice {
-		for i := range mv.Len() {
-			elem := mv.Index(i)
-			if elem.Kind() == reflect.Pointer {
-				if elem.IsNil() {
-					continue
-				}
-
-				elem = elem.Elem()
-			}
-
-			if !elem.IsValid() {
-				continue
-			}
-
-			applyUpdateAutoColumns(query, table, elem.Interface(), elem, plan)
-		}
-
-		return
-	}
-
-	for _, item := range plan {
-		item.handler.OnUpdate(query, table, item.field, modelValue, item.field.Value(mv))
+		item.apply(query, table, item.field, modelValue, item.field.Value(mv))
 	}
 }

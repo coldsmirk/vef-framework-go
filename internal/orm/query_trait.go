@@ -44,7 +44,10 @@ type CTE[T Executor] interface {
 	// With adds a named CTE built from a SELECT subquery.
 	With(name string, builder func(query SelectQuery)) T
 	// WithValues adds a named CTE from a model's values (useful for bulk operations).
-	WithValues(name string, model any, withOrder ...bool) T
+	WithValues(name string, model any) T
+	// WithOrderedValues is like WithValues but appends an ordinal column so the
+	// CTE rows preserve the model's slice order.
+	WithOrderedValues(name string, model any) T
 	// WithRecursive adds a recursive CTE built from a SELECT subquery.
 	WithRecursive(name string, builder func(query SelectQuery)) T
 }
@@ -157,9 +160,11 @@ type Limitable[T Executor] interface {
 
 // ColumnUpdatable defines methods for setting column values in queries.
 type ColumnUpdatable[T Executor] interface {
-	// Column sets a column to a literal value.
+	// Column sets a column to a literal value (bun.Value). On UPDATE this requires
+	// a bound model and emits the full model, marking the statement as an explicit
+	// full-model write; contrast UpdateQuery.Set for a free-form, model-less assignment.
 	Column(name string, value any) T
-	// ColumnExpr sets a column to a SQL expression.
+	// ColumnExpr is the expression form of Column.
 	ColumnExpr(name string, builder func(ExprBuilder) any) T
 }
 

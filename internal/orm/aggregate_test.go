@@ -63,6 +63,34 @@ func TestAggregateFilterCompat(t *testing.T) {
 		assert.NotContains(t, got, "FILTER (WHERE", "MySQL has no native FILTER clause")
 	})
 
+	// Regression for the ELSE-branch divergence: COUNT counts excluded rows as 0
+	// (so an all-excluded set yields 0), but SUM (and every non-COUNT aggregate)
+	// must use ELSE NULL so excluded rows contribute nothing and an all-excluded
+	// set yields NULL — matching native FILTER semantics. A naive ELSE 0 on SUM
+	// would skew the total toward 0 instead of NULL.
+	t.Run("CountUsesElseZero", func(t *testing.T) {
+		got := f.render(t, f.eb.Count(func(b CountBuilder) {
+			b.All().Filter(func(cb ConditionBuilder) {
+				cb.Equals("status", "published")
+			})
+		}))
+
+		assert.Contains(t, got, "ELSE 0", "COUNT FILTER emulation must count excluded rows as 0")
+		assert.NotContains(t, got, "ELSE NULL", "COUNT FILTER must not use ELSE NULL")
+	})
+
+	t.Run("SumUsesElseNull", func(t *testing.T) {
+		got := f.render(t, f.eb.Sum(func(b SumBuilder) {
+			b.Column("view_count").Filter(func(cb ConditionBuilder) {
+				cb.GreaterThan("view_count", 80)
+			})
+		}))
+
+		assert.Contains(t, got, "SUM(CASE WHEN", "SUM FILTER should fold into SUM(CASE ...) on MySQL")
+		assert.Contains(t, got, "ELSE NULL", "SUM FILTER emulation must use ELSE NULL so excluded rows contribute nothing")
+		assert.NotContains(t, got, "ELSE 0", "SUM FILTER must not use ELSE 0 (that would skew the total toward 0 instead of NULL)")
+	})
+
 	// Regression: the FILTER-emulation path must not silently drop an ORDER BY
 	// or NULLS suffix that survives into it. jsonArrayAgg keeps its ORDER BY on
 	// MySQL (the strategy does not clear it), so the compat rewrite must still

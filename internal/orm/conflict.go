@@ -124,6 +124,14 @@ func (b *InsertQueryConflictUpdateBuilder) Where(builder func(ConditionBuilder))
 
 // build applies the configured conflict handling to the underlying bun.InsertQuery.
 func (b *InsertQueryConflictBuilder) build(query *bun.InsertQuery) {
+	if b.constraint != "" && len(b.columns) > 0 {
+		panic("conflict: Columns() and Constraint() are mutually exclusive conflict targets")
+	}
+
+	if b.action == ConflictDoUpdate && len(b.sets) == 0 {
+		panic("conflict: DoUpdate requires at least one Set - call Set() or SetExpr() first")
+	}
+
 	b.eb.ExecByDialect(DialectExecs{
 		MySQL:   func() { b.buildMySQL(query) },
 		Default: func() { b.buildPostgresSQLite(query) },

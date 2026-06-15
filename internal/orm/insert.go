@@ -6,7 +6,6 @@ import (
 	"reflect"
 
 	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/schema"
 )
 
 // NewInsertQuery creates a new InsertQuery instance with the provided database instance.
@@ -18,10 +17,7 @@ func NewInsertQuery(db *BunDB) *BunInsertQuery {
 	query := &BunInsertQuery{
 		QueryBuilder: newQueryBuilder(db, dialect, iq, eb),
 
-		db:      db,
-		dialect: dialect,
-		eb:      eb,
-		query:   iq,
+		query: iq,
 
 		returningColumns: newReturningColumns(),
 	}
@@ -35,16 +31,9 @@ func NewInsertQuery(db *BunDB) *BunInsertQuery {
 type BunInsertQuery struct {
 	QueryBuilder
 
-	db      *BunDB
-	dialect schema.Dialect
-	eb      ExprBuilder
-	query   *bun.InsertQuery
+	query *bun.InsertQuery
 
 	returningColumns *returningColumns
-}
-
-func (q *BunInsertQuery) DB() DB {
-	return q.db
 }
 
 func (q *BunInsertQuery) With(name string, builder func(SelectQuery)) InsertQuery {
@@ -53,13 +42,14 @@ func (q *BunInsertQuery) With(name string, builder func(SelectQuery)) InsertQuer
 	return q
 }
 
-func (q *BunInsertQuery) WithValues(name string, model any, withOrder ...bool) InsertQuery {
-	values := q.query.NewValues(model)
-	if len(withOrder) > 0 && withOrder[0] {
-		values.WithOrder()
-	}
+func (q *BunInsertQuery) WithValues(name string, model any) InsertQuery {
+	q.query.With(name, q.query.NewValues(model))
 
-	q.query.With(name, values)
+	return q
+}
+
+func (q *BunInsertQuery) WithOrderedValues(name string, model any) InsertQuery {
+	q.query.With(name, q.query.NewValues(model).WithOrder())
 
 	return q
 }
@@ -89,13 +79,13 @@ func (q *BunInsertQuery) Table(name string, alias ...string) InsertQuery {
 }
 
 func (q *BunInsertQuery) TableFrom(model any, alias ...string) InsertQuery {
-	applyTableFrom(q.query.TableExpr, q.db, model, alias)
+	applyTableFrom(q.query.TableExpr, q.DB(), model, alias)
 
 	return q
 }
 
 func (q *BunInsertQuery) TableExpr(builder func(ExprBuilder) any, alias ...string) InsertQuery {
-	applyTableExpr(q.query.TableExpr, q.eb, builder, alias)
+	applyTableExpr(q.query.TableExpr, q.ExprBuilder(), builder, alias)
 
 	return q
 }
@@ -146,7 +136,7 @@ func (q *BunInsertQuery) Column(name string, value any) InsertQuery {
 }
 
 func (q *BunInsertQuery) ColumnExpr(name string, builder func(ExprBuilder) any) InsertQuery {
-	q.query.Value(name, "?", builder(q.eb))
+	q.query.Value(name, "?", builder(q.ExprBuilder()))
 
 	return q
 }
@@ -200,7 +190,7 @@ func (q *BunInsertQuery) beforeInsert() {
 	}
 
 	if q.returningColumns.IsNotEmpty() {
-		q.query.Returning("?", buildReturningExpr(q.returningColumns.Values(), q.eb))
+		q.query.Returning("?", buildReturningExpr(q.returningColumns.Values(), q.ExprBuilder()))
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 
 	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/schema"
 )
 
 // NewDeleteQuery creates a new DeleteQuery instance with the provided database instance.
@@ -17,10 +16,7 @@ func NewDeleteQuery(db *BunDB) *BunDeleteQuery {
 	query := &BunDeleteQuery{
 		QueryBuilder: newQueryBuilder(db, dialect, dq, eb),
 
-		db:      db,
-		dialect: dialect,
-		query:   dq,
-		eb:      eb,
+		query: dq,
 
 		returningColumns: newReturningColumns(),
 	}
@@ -34,16 +30,9 @@ func NewDeleteQuery(db *BunDB) *BunDeleteQuery {
 type BunDeleteQuery struct {
 	QueryBuilder
 
-	db      *BunDB
-	dialect schema.Dialect
-	eb      ExprBuilder
-	query   *bun.DeleteQuery
+	query *bun.DeleteQuery
 
 	returningColumns *returningColumns
-}
-
-func (q *BunDeleteQuery) DB() DB {
-	return q.db
 }
 
 func (q *BunDeleteQuery) With(name string, builder func(SelectQuery)) DeleteQuery {
@@ -52,13 +41,14 @@ func (q *BunDeleteQuery) With(name string, builder func(SelectQuery)) DeleteQuer
 	return q
 }
 
-func (q *BunDeleteQuery) WithValues(name string, model any, withOrder ...bool) DeleteQuery {
-	values := q.query.NewValues(model)
-	if len(withOrder) > 0 && withOrder[0] {
-		values.WithOrder()
-	}
+func (q *BunDeleteQuery) WithValues(name string, model any) DeleteQuery {
+	q.query.With(name, q.query.NewValues(model))
 
-	q.query.With(name, values)
+	return q
+}
+
+func (q *BunDeleteQuery) WithOrderedValues(name string, model any) DeleteQuery {
+	q.query.With(name, q.query.NewValues(model).WithOrder())
 
 	return q
 }
@@ -88,13 +78,13 @@ func (q *BunDeleteQuery) Table(name string, alias ...string) DeleteQuery {
 }
 
 func (q *BunDeleteQuery) TableFrom(model any, alias ...string) DeleteQuery {
-	applyTableFrom(q.query.TableExpr, q.db, model, alias)
+	applyTableFrom(q.query.TableExpr, q.DB(), model, alias)
 
 	return q
 }
 
 func (q *BunDeleteQuery) TableExpr(builder func(ExprBuilder) any, alias ...string) DeleteQuery {
-	applyTableExpr(q.query.TableExpr, q.eb, builder, alias)
+	applyTableExpr(q.query.TableExpr, q.ExprBuilder(), builder, alias)
 
 	return q
 }
@@ -138,14 +128,14 @@ func (q *BunDeleteQuery) OrderBy(columns ...string) DeleteQuery {
 
 func (q *BunDeleteQuery) OrderByDesc(columns ...string) DeleteQuery {
 	for _, column := range columns {
-		q.query.OrderExpr("? DESC", q.eb.Column(column))
+		q.query.OrderExpr("? DESC", q.ExprBuilder().Column(column))
 	}
 
 	return q
 }
 
 func (q *BunDeleteQuery) OrderByExpr(builder func(ExprBuilder) any) DeleteQuery {
-	q.query.OrderExpr("?", builder(q.eb))
+	q.query.OrderExpr("?", builder(q.ExprBuilder()))
 
 	return q
 }
@@ -202,7 +192,7 @@ func (q *BunDeleteQuery) ApplyIf(condition bool, fns ...ApplyFunc[DeleteQuery]) 
 
 func (q *BunDeleteQuery) beforeDelete() {
 	if q.returningColumns.IsNotEmpty() {
-		q.query.Returning("?", buildReturningExpr(q.returningColumns.Values(), q.eb))
+		q.query.Returning("?", buildReturningExpr(q.returningColumns.Values(), q.ExprBuilder()))
 	}
 }
 

@@ -2,9 +2,12 @@ package orm
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect"
+	"github.com/uptrace/bun/schema"
 )
 
 // TestDialect is a minimal DDLDialect implementation for unit testing renderers.
@@ -87,10 +90,13 @@ func TestRenderConstraint(t *testing.T) {
 	}
 }
 
-// TestRenderDefault verifies DEFAULT clause rendering across types and dialects. String literals
-// are bound through a ? placeholder so the dialect applies safe escaping; non-strings render as
-// keywords/literals with no bound args.
+// TestRenderDefault verifies DEFAULT clause rendering across types and dialects. NULL, booleans,
+// and numerics render as keywords/literals with no bound args; RawDefault renders verbatim; every
+// other value (strings, time.Time, []byte, custom types) is bound through a ? placeholder so the
+// driver applies safe escaping rather than being interpolated raw.
 func TestRenderDefault(t *testing.T) {
+	ts := time.Date(2026, 6, 14, 10, 30, 0, 0, time.UTC)
+
 	tests := []struct {
 		name         string
 		dialectName  dialect.Name
@@ -104,19 +110,23 @@ func TestRenderDefault(t *testing.T) {
 		{"StringValueWithBackslash", dialect.MySQL, `a\'b`, "DEFAULT ?", []any{`a\'b`}},
 		{"EmptyString", dialect.PG, "", "DEFAULT ?", []any{""}},
 		{"IntValue", dialect.PG, 42, "DEFAULT 42", nil},
+		{"UintValue", dialect.PG, uint(7), "DEFAULT 7", nil},
 		{"FloatValue", dialect.PG, 3.14, "DEFAULT 3.14", nil},
 		{"BoolTruePG", dialect.PG, true, "DEFAULT TRUE", nil},
 		{"BoolFalsePG", dialect.PG, false, "DEFAULT FALSE", nil},
 		{"BoolTrueMySQL", dialect.MySQL, true, "DEFAULT TRUE", nil},
 		{"BoolTrueSQLite", dialect.SQLite, true, "DEFAULT 1", nil},
 		{"BoolFalseSQLite", dialect.SQLite, false, "DEFAULT 0", nil},
+		{"RawDefaultFunction", dialect.PG, RawDefault("CURRENT_TIMESTAMP"), "DEFAULT CURRENT_TIMESTAMP", nil},
+		{"TimeValueBound", dialect.PG, ts, "DEFAULT ?", []any{ts}},
+		{"ByteSliceBound", dialect.PG, []byte("x"), "DEFAULT ?", []any{[]byte("x")}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fragment, args := renderDefault(tt.dialectName, tt.value)
 			assert.Equal(t, tt.expected, fragment, "Should render the correct DEFAULT clause")
-			assert.Equal(t, tt.expectedArgs, args, "Should bind string literals and leave other types as literals")
+			assert.Equal(t, tt.expectedArgs, args, "Should bind non-literal values and render numerics/RawDefault inline")
 		})
 	}
 }
@@ -158,7 +168,7 @@ func TestRenderInlineFK(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, renderInlineFK(tt.quote, tt.table, tt.columns),
+			assert.Equal(t, tt.expected, renderInlineFK(TestDialect{quote: tt.quote}, tt.table, tt.columns),
 				"Should render the correct inline FK clause")
 		})
 	}
@@ -215,7 +225,7 @@ func TestRenderTableForeignKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, renderTableForeignKey(tt.quote, tt.fk),
+			assert.Equal(t, tt.expected, renderTableForeignKey(TestDialect{quote: tt.quote}, tt.fk),
 				"Should render the correct table-level FK constraint")
 		})
 	}
@@ -267,7 +277,7 @@ func TestRenderTableKeyConstraint(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, renderTableKeyConstraint(tt.quote, tt.keyword, tt.cName, tt.columns),
+			assert.Equal(t, tt.expected, renderTableKeyConstraint(TestDialect{quote: tt.quote}, tt.keyword, tt.cName, tt.columns),
 				"Should render the correct key constraint")
 		})
 	}
@@ -289,7 +299,7 @@ func TestRenderPartitionBy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, renderPartitionBy(tt.quote, tt.strategy, tt.columns),
+			assert.Equal(t, tt.expected, renderPartitionBy(TestDialect{quote: tt.quote}, tt.strategy, tt.columns),
 				"Should render the correct partition clause")
 		})
 	}
@@ -298,27 +308,27 @@ func TestRenderPartitionBy(t *testing.T) {
 // TestRenderColumnDef verifies full column definition rendering with types and constraints.
 func TestRenderColumnDef(t *testing.T) {
 	t.Run("SimpleColumn", func(t *testing.T) {
-		query, args := renderColumnDef(pgDialect, "name", DataType.VarChar(100), nil, nil)
+		query, args := renderColumnDef(pgDialect, "name", DataType.VarChar(100), nil)
 		assert.Equal(t, `"name" VARCHAR(100)`, query, "Should render column name and type")
 		assert.Empty(t, args, "Should produce no args for simple column")
 	})
 
 	t.Run("NotNullColumn", func(t *testing.T) {
-		query, args := renderColumnDef(pgDialect, "email", DataType.Text(), []ColumnConstraint{NotNull()}, nil)
+		query, args := renderColumnDef(pgDialect, "email", DataType.Text(), []ColumnConstraint{NotNull()})
 		assert.Equal(t, `"email" TEXT NOT NULL`, query, "Should include NOT NULL constraint")
 		assert.Empty(t, args, "Should produce no args")
 	})
 
 	t.Run("MultipleConstraints", func(t *testing.T) {
 		constraints := []ColumnConstraint{NotNull(), Default(0)}
-		query, args := renderColumnDef(pgDialect, "score", DataType.Integer(), constraints, nil)
+		query, args := renderColumnDef(pgDialect, "score", DataType.Integer(), constraints)
 		assert.Equal(t, `"score" INTEGER NOT NULL DEFAULT 0`, query, "Should include all constraints in order")
 		assert.Empty(t, args, "Should produce no args")
 	})
 
 	t.Run("PrimaryKeyPG", func(t *testing.T) {
 		constraints := []ColumnConstraint{PrimaryKey(), AutoIncrement()}
-		query, args := renderColumnDef(pgDialect, "id", DataType.BigInt(), constraints, nil)
+		query, args := renderColumnDef(pgDialect, "id", DataType.BigInt(), constraints)
 		assert.Equal(t, `"id" BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY`, query,
 			"Should render PG-style auto-increment")
 		assert.Empty(t, args, "Should produce no args")
@@ -326,7 +336,7 @@ func TestRenderColumnDef(t *testing.T) {
 
 	t.Run("PrimaryKeyMySQL", func(t *testing.T) {
 		constraints := []ColumnConstraint{PrimaryKey(), AutoIncrement()}
-		query, args := renderColumnDef(mysqlDialect, "id", DataType.BigInt(), constraints, nil)
+		query, args := renderColumnDef(mysqlDialect, "id", DataType.BigInt(), constraints)
 		assert.Equal(t, "`id` BIGINT PRIMARY KEY AUTO_INCREMENT", query,
 			"Should render MySQL-style auto-increment")
 		assert.Empty(t, args, "Should produce no args")
@@ -334,7 +344,7 @@ func TestRenderColumnDef(t *testing.T) {
 
 	t.Run("PrimaryKeySQLite", func(t *testing.T) {
 		constraints := []ColumnConstraint{PrimaryKey(), AutoIncrement()}
-		query, args := renderColumnDef(sqliteDialect, "id", DataType.BigInt(), constraints, nil)
+		query, args := renderColumnDef(sqliteDialect, "id", DataType.BigInt(), constraints)
 		assert.Equal(t, `"id" INTEGER PRIMARY KEY AUTOINCREMENT`, query,
 			"Should render SQLite-style auto-increment")
 		assert.Empty(t, args, "Should produce no args")
@@ -342,7 +352,7 @@ func TestRenderColumnDef(t *testing.T) {
 
 	t.Run("InlineFK", func(t *testing.T) {
 		constraints := []ColumnConstraint{References("users", "id")}
-		query, args := renderColumnDef(pgDialect, "user_id", DataType.BigInt(), constraints, nil)
+		query, args := renderColumnDef(pgDialect, "user_id", DataType.BigInt(), constraints)
 		assert.Equal(t, `"user_id" BIGINT REFERENCES "users" ("id")`, query,
 			"Should include inline REFERENCES clause")
 		assert.Empty(t, args, "Should produce no args")
@@ -350,14 +360,14 @@ func TestRenderColumnDef(t *testing.T) {
 
 	t.Run("NullableColumn", func(t *testing.T) {
 		constraints := []ColumnConstraint{Nullable()}
-		query, args := renderColumnDef(pgDialect, "bio", DataType.Text(), constraints, nil)
+		query, args := renderColumnDef(pgDialect, "bio", DataType.Text(), constraints)
 		assert.Equal(t, `"bio" TEXT NULL`, query, "Should include explicit NULL constraint")
 		assert.Empty(t, args, "Should produce no args")
 	})
 
 	t.Run("UniqueNotNullMySQL", func(t *testing.T) {
 		constraints := []ColumnConstraint{NotNull(), Unique()}
-		query, args := renderColumnDef(mysqlDialect, "email", DataType.VarChar(255), constraints, nil)
+		query, args := renderColumnDef(mysqlDialect, "email", DataType.VarChar(255), constraints)
 		assert.Equal(t, "`email` VARCHAR(255) NOT NULL UNIQUE", query,
 			"Should include both NOT NULL and UNIQUE")
 		assert.Empty(t, args, "Should produce no args")
@@ -365,7 +375,7 @@ func TestRenderColumnDef(t *testing.T) {
 
 	t.Run("BoolDefaultTrueSQLite", func(t *testing.T) {
 		constraints := []ColumnConstraint{Default(true)}
-		query, args := renderColumnDef(sqliteDialect, "active", DataType.Boolean(), constraints, nil)
+		query, args := renderColumnDef(sqliteDialect, "active", DataType.Boolean(), constraints)
 		assert.Equal(t, `"active" INTEGER DEFAULT 1`, query,
 			"SQLite should render boolean default as integer")
 		assert.Empty(t, args, "Should produce no args")
@@ -373,7 +383,7 @@ func TestRenderColumnDef(t *testing.T) {
 
 	t.Run("BoolDefaultFalsePG", func(t *testing.T) {
 		constraints := []ColumnConstraint{Default(false)}
-		query, args := renderColumnDef(pgDialect, "active", DataType.Boolean(), constraints, nil)
+		query, args := renderColumnDef(pgDialect, "active", DataType.Boolean(), constraints)
 		assert.Equal(t, `"active" BOOLEAN DEFAULT FALSE`, query,
 			"PG should render boolean default as FALSE")
 		assert.Empty(t, args, "Should produce no args")
@@ -381,18 +391,28 @@ func TestRenderColumnDef(t *testing.T) {
 
 	t.Run("StringDefaultIsParameterized", func(t *testing.T) {
 		constraints := []ColumnConstraint{NotNull(), Default("active")}
-		query, args := renderColumnDef(pgDialect, "status", DataType.VarChar(20), constraints, nil)
+		query, args := renderColumnDef(pgDialect, "status", DataType.VarChar(20), constraints)
 		assert.Equal(t, `"status" VARCHAR(20) NOT NULL DEFAULT ?`, query,
 			"Should bind string DEFAULT through a placeholder")
 		assert.Equal(t, []any{"active"}, args, "Should pass the string default as a bound arg")
 	})
 
-	t.Run("CheckWithoutQueryBuilderPanics", func(t *testing.T) {
-		constraints := []ColumnConstraint{Check(func(cb ConditionBuilder) { cb.GreaterThan("age", 0) })}
-		// A nil QueryBuilder is a programming error: the CHECK condition cannot be compiled,
-		// so renderColumnDef fails fast rather than silently dropping the constraint.
-		assert.Panics(t, func() {
-			renderColumnDef(pgDialect, "age", DataType.Integer(), constraints, nil)
-		}, "Should panic when CHECK is present but QueryBuilder is nil")
+	t.Run("RawDefaultRendersVerbatim", func(t *testing.T) {
+		constraints := []ColumnConstraint{NotNull(), Default(RawDefault("CURRENT_TIMESTAMP"))}
+		query, args := renderColumnDef(pgDialect, "created_at", DataType.Timestamp(), constraints)
+		assert.Equal(t, `"created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`, query,
+			"RawDefault should render the SQL function verbatim, unquoted")
+		assert.Empty(t, args, "RawDefault should not bind any args")
+	})
+
+	t.Run("PrecompiledCheck", func(t *testing.T) {
+		// CHECK conditions are compiled into checkExpr before rendering (compileChecks),
+		// so the renderer emits a CHECK (?) fragment carrying the compiled expression as a
+		// bound arg and never needs a QueryBuilder of its own.
+		checkExpr := bun.Safe(`"age" > 0`)
+		constraints := []ColumnConstraint{{kind: ConstraintCheck, checkExpr: checkExpr}}
+		query, args := renderColumnDef(pgDialect, "age", DataType.Integer(), constraints)
+		assert.Equal(t, `"age" INTEGER CHECK (?)`, query, "Should render a CHECK clause with a placeholder")
+		assert.Equal(t, []any{schema.QueryAppender(checkExpr)}, args, "Should bind the precompiled CHECK expression")
 	})
 }

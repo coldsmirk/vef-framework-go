@@ -1,5 +1,7 @@
 package orm
 
+import "github.com/uptrace/bun/schema"
+
 // ConstraintKind identifies the type of column constraint.
 type ConstraintKind int
 
@@ -19,8 +21,29 @@ type ColumnConstraint struct {
 	kind         ConstraintKind
 	defaultValue any
 	checkBuilder func(ConditionBuilder)
+	checkExpr    schema.QueryAppender
 	refTable     string
 	refColumns   []string
+}
+
+// compileChecks pre-compiles any CHECK condition against qb, returning a copy of
+// the constraints with the compiled expression attached. It is called by the DDL
+// query types at column-definition time, where a QueryBuilder is available, so
+// the renderer never needs one and a CHECK can never fail late on a nil builder.
+func compileChecks(qb QueryBuilder, constraints []ColumnConstraint) []ColumnConstraint {
+	compiled := make([]ColumnConstraint, len(constraints))
+	for i, c := range constraints {
+		if c.kind == ConstraintCheck {
+			// A nil checkBuilder (Check(nil) misuse) fails fast here via
+			// BuildCondition's nil-func call, instead of silently rendering an
+			// invalid `CHECK (?)` with a nil bound argument that errors at Exec.
+			c.checkExpr = qb.BuildCondition(c.checkBuilder)
+		}
+
+		compiled[i] = c
+	}
+
+	return compiled
 }
 
 // NotNull creates a NOT NULL column constraint.
@@ -33,7 +56,17 @@ func Nullable() ColumnConstraint {
 	return ColumnConstraint{kind: ConstraintNullable}
 }
 
-// Default creates a DEFAULT column constraint with the given value.
+// RawDefault is a raw SQL expression used as a column DEFAULT. Unlike a plain
+// value, it is rendered verbatim (unquoted, no bound placeholder) so SQL
+// functions and keywords such as CURRENT_TIMESTAMP or gen_random_uuid() work as
+// defaults. The caller is responsible for the expression being valid for the
+// target dialect; do not build it from untrusted input.
+type RawDefault string
+
+// Default creates a DEFAULT column constraint with the given value. String,
+// boolean, and numeric values are rendered safely (literals through a bound
+// placeholder where escaping is required); wrap a SQL function or keyword in
+// RawDefault to render it verbatim.
 func Default(value any) ColumnConstraint {
 	return ColumnConstraint{kind: ConstraintDefault, defaultValue: value}
 }

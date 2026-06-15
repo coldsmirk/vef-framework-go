@@ -2139,11 +2139,8 @@ func (b *QueryExprBuilder) Decode(args ...any) schema.QueryAppender {
 }
 
 // convertDecodeToCase converts DECODE syntax to CASE WHEN expression using the existing Case builder.
+// The sole caller (Decode) already guarantees len(args) >= 3.
 func (b *QueryExprBuilder) convertDecodeToCase(args ...any) schema.QueryAppender {
-	if len(args) < 3 {
-		return b.Null()
-	}
-
 	return b.Case(func(cb CaseBuilder) {
 		cb.Case(args[0])
 

@@ -22,10 +22,7 @@ func NewUpdateQuery(db *BunDB) *BunUpdateQuery {
 	query := &BunUpdateQuery{
 		QueryBuilder: newQueryBuilder(db, dialect, uq, eb),
 
-		db:      db,
-		dialect: dialect,
-		eb:      eb,
-		query:   uq,
+		query: uq,
 
 		selectedColumns:  collections.NewHashSet[string](),
 		returningColumns: newReturningColumns(),
@@ -40,18 +37,11 @@ func NewUpdateQuery(db *BunDB) *BunUpdateQuery {
 type BunUpdateQuery struct {
 	QueryBuilder
 
-	db               *BunDB
-	dialect          schema.Dialect
-	eb               ExprBuilder
 	query            *bun.UpdateQuery
 	hasSet           bool
 	isBulk           bool
 	selectedColumns  collections.Set[string]
 	returningColumns *returningColumns
-}
-
-func (q *BunUpdateQuery) DB() DB {
-	return q.db
 }
 
 func (q *BunUpdateQuery) With(name string, builder func(SelectQuery)) UpdateQuery {
@@ -60,13 +50,14 @@ func (q *BunUpdateQuery) With(name string, builder func(SelectQuery)) UpdateQuer
 	return q
 }
 
-func (q *BunUpdateQuery) WithValues(name string, model any, withOrder ...bool) UpdateQuery {
-	values := q.query.NewValues(model)
-	if len(withOrder) > 0 && withOrder[0] {
-		values.WithOrder()
-	}
+func (q *BunUpdateQuery) WithValues(name string, model any) UpdateQuery {
+	q.query.With(name, q.query.NewValues(model))
 
-	q.query.With(name, values)
+	return q
+}
+
+func (q *BunUpdateQuery) WithOrderedValues(name string, model any) UpdateQuery {
+	q.query.With(name, q.query.NewValues(model).WithOrder())
 
 	return q
 }
@@ -96,13 +87,13 @@ func (q *BunUpdateQuery) Table(name string, alias ...string) UpdateQuery {
 }
 
 func (q *BunUpdateQuery) TableFrom(model any, alias ...string) UpdateQuery {
-	applyTableFrom(q.query.TableExpr, q.db, model, alias)
+	applyTableFrom(q.query.TableExpr, q.DB(), model, alias)
 
 	return q
 }
 
 func (q *BunUpdateQuery) TableExpr(builder func(ExprBuilder) any, alias ...string) UpdateQuery {
-	applyTableExpr(q.query.TableExpr, q.eb, builder, alias)
+	applyTableExpr(q.query.TableExpr, q.ExprBuilder(), builder, alias)
 
 	return q
 }
@@ -170,7 +161,7 @@ func (q *BunUpdateQuery) Column(name string, value any) UpdateQuery {
 }
 
 func (q *BunUpdateQuery) ColumnExpr(name string, builder func(ExprBuilder) any) UpdateQuery {
-	q.query.Value(name, "?", builder(q.eb))
+	q.query.Value(name, "?", builder(q.ExprBuilder()))
 
 	return q
 }
@@ -182,7 +173,7 @@ func (q *BunUpdateQuery) Set(name string, value any) UpdateQuery {
 }
 
 func (q *BunUpdateQuery) SetExpr(name string, builder func(ExprBuilder) any) UpdateQuery {
-	q.setColumn(name, builder(q.eb))
+	q.setColumn(name, builder(q.ExprBuilder()))
 
 	return q
 }
@@ -190,7 +181,7 @@ func (q *BunUpdateQuery) SetExpr(name string, builder func(ExprBuilder) any) Upd
 // setColumn applies a SET clause using qualified or simple column names based on dialect support.
 func (q *BunUpdateQuery) setColumn(name string, value any) {
 	if q.query.DB().HasFeature(feature.UpdateMultiTable) {
-		q.query.Set("? = ?", q.eb.Column(name), value)
+		q.query.Set("? = ?", q.ExprBuilder().Column(name), value)
 	} else {
 		// Strip table alias prefix (e.g., "t.field_name" → "field_name")
 		// since databases without UpdateMultiTable do not support aliased SET targets.
@@ -218,14 +209,14 @@ func (q *BunUpdateQuery) OrderBy(columns ...string) UpdateQuery {
 
 func (q *BunUpdateQuery) OrderByDesc(columns ...string) UpdateQuery {
 	for _, column := range columns {
-		q.query.OrderExpr("? DESC", q.eb.Column(column))
+		q.query.OrderExpr("? DESC", q.ExprBuilder().Column(column))
 	}
 
 	return q
 }
 
 func (q *BunUpdateQuery) OrderByExpr(builder func(ExprBuilder) any) UpdateQuery {
-	q.query.OrderExpr("?", builder(q.eb))
+	q.query.OrderExpr("?", builder(q.ExprBuilder()))
 
 	return q
 }
@@ -292,7 +283,7 @@ func (q *BunUpdateQuery) beforeUpdate() {
 	}
 
 	if q.returningColumns.IsNotEmpty() {
-		q.query.Returning("?", buildReturningExpr(q.returningColumns.Values(), q.eb))
+		q.query.Returning("?", buildReturningExpr(q.returningColumns.Values(), q.ExprBuilder()))
 	}
 }
 

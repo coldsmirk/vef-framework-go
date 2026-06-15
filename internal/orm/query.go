@@ -120,9 +120,12 @@ type UpdateQuery interface {
 	Returnable[UpdateQuery]
 	Applier[UpdateQuery]
 
-	// Set is an alias for Column.
+	// Set adds a free-form SET assignment (bun.Set). It works without a bound
+	// model and, unlike Column, does not mark the update as a full-model write, so
+	// auto-managed creation-audit columns are not excluded. Use it to update a
+	// subset of columns or to set expressions on a model-less UPDATE.
 	Set(name string, value any) UpdateQuery
-	// SetExpr is an alias for ColumnExpr.
+	// SetExpr is the expression form of Set.
 	SetExpr(name string, builder func(ExprBuilder) any) UpdateQuery
 	// OmitZero skips zero-value fields when building SET clauses from the model.
 	OmitZero() UpdateQuery

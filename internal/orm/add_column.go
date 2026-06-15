@@ -40,7 +40,7 @@ func (q *BunAddColumnQuery) Table(tables ...string) AddColumnQuery {
 }
 
 func (q *BunAddColumnQuery) Column(name string, dataType DataTypeDef, constraints ...ColumnConstraint) AddColumnQuery {
-	queryStr, args := renderColumnDef(q.Dialect(), name, dataType, constraints, q)
+	queryStr, args := renderColumnDef(q.Dialect(), name, dataType, compileChecks(q, constraints))
 	q.query.ColumnExpr(queryStr, args...)
 
 	return q

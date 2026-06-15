@@ -95,6 +95,7 @@ type (
 	// DDL type-safe types.
 	DataTypeDef       = orm.DataTypeDef
 	ColumnConstraint  = orm.ColumnConstraint
+	RawDefault        = orm.RawDefault
 	PrimaryKeyBuilder = orm.PrimaryKeyBuilder
 	UniqueBuilder     = orm.UniqueBuilder
 	CheckBuilder      = orm.CheckBuilder

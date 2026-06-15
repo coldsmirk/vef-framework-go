@@ -208,12 +208,14 @@ func (u DateTimeUnit) String() string {
 	}
 }
 
-// ForPostgres returns the PostgreSQL interval unit string.
-// Currently identical to String(); kept as a named accessor for dialect-specific extensibility.
+// ForPostgres returns the PostgreSQL interval unit keyword. It is the dialect
+// adapter used at the PostgreSQL call sites; the PostgreSQL keyword happens to
+// coincide with String() (e.g. DAY), so it delegates to it.
 func (u DateTimeUnit) ForPostgres() string { return u.String() }
 
-// ForMySQL returns the MySQL interval unit string.
-// Currently identical to String(); kept as a named accessor for dialect-specific extensibility.
+// ForMySQL returns the MySQL interval unit keyword. It is the dialect adapter
+// used at the MySQL call sites; the MySQL keyword happens to coincide with
+// String() (e.g. DAY), so it delegates to it.
 func (u DateTimeUnit) ForMySQL() string { return u.String() }
 
 // ForSQLite returns the SQLite datetime modifier string (years, months, days, etc.).

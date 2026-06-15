@@ -488,13 +488,13 @@ func (a *baseAggregateExpr) appendQueryWithState(gen schema.QueryGen, b []byte, 
 
 // appendCompatibleFilterQueryWithState emulates a FILTER clause on dialects that
 // lack native support by folding the predicate into a CASE argument. COUNT becomes
-// SUM(CASE WHEN filter THEN 1 ELSE 0 END); other aggregates wrap their argument and
-// fall back to NULL so excluded rows do not contribute. ORDER BY and NULLS handling
-// are rendered exactly as the native path does, so combining FILTER with those clauses
-// keeps its semantics instead of silently dropping them.
+// SUM(CASE WHEN filter THEN 1 ELSE 0 END); every other aggregate (including SUM)
+// falls back to ELSE NULL so excluded rows do not contribute and an all-excluded
+// set yields NULL, matching native FILTER semantics rather than 0. ORDER BY and
+// NULLS handling are rendered exactly as the native path does, so combining FILTER
+// with those clauses keeps its semantics instead of silently dropping them.
 func (a *baseAggregateExpr) appendCompatibleFilterQueryWithState(gen schema.QueryGen, b []byte, state aggregateQueryState) (_ []byte, err error) {
 	countLike := state.funcName == "COUNT"
-	sumLike := countLike || state.funcName == "SUM"
 
 	if countLike {
 		b = append(b, "SUM"...)
@@ -512,13 +512,9 @@ func (a *baseAggregateExpr) appendCompatibleFilterQueryWithState(gen schema.Quer
 		when := cb.WhenExpr(state.filter)
 		if countLike {
 			when.Then(1)
-		} else {
-			when.Then(state.argsExpr)
-		}
-
-		if sumLike {
 			cb.Else(0)
 		} else {
+			when.Then(state.argsExpr)
 			cb.Else(a.eb.Null())
 		}
 	}).AppendQuery(gen, b); err != nil {

@@ -84,7 +84,7 @@ func (b *mergeWhenBuilder) buildWhenExpr() string {
 	if b.cb != nil {
 		condition := b.parent.BuildCondition(b.cb)
 
-		whenExpr, err := b.parent.eb.
+		whenExpr, err := b.parent.ExprBuilder().
 			Expr("? AND ?", bun.Safe(b.when), condition).
 			AppendQuery(b.parent.query.DB().QueryGen(), nil)
 		if err != nil {
@@ -99,7 +99,7 @@ func (b *mergeWhenBuilder) buildWhenExpr() string {
 
 func (b *mergeWhenBuilder) ThenUpdate(builder func(MergeUpdateBuilder)) MergeQuery {
 	b.parent.query.WhenUpdate(b.buildWhenExpr(), func(query *bun.UpdateQuery) *bun.UpdateQuery {
-		mub := newMergeUpdateBuilder(getTableSchemaFromQuery(b.parent.query), b.parent.eb, b.srcAlias, query)
+		mub := newMergeUpdateBuilder(getTableSchemaFromQuery(b.parent.query), b.parent.ExprBuilder(), b.srcAlias, query)
 		builder(mub)
 		mub.apply()
 
@@ -111,7 +111,7 @@ func (b *mergeWhenBuilder) ThenUpdate(builder func(MergeUpdateBuilder)) MergeQue
 
 func (b *mergeWhenBuilder) ThenInsert(builder func(MergeInsertBuilder)) MergeQuery {
 	b.parent.query.WhenInsert(b.buildWhenExpr(), func(query *bun.InsertQuery) *bun.InsertQuery {
-		mib := newMergeInsertBuilder(getTableSchemaFromQuery(b.parent.query), b.parent.eb, b.srcAlias, query)
+		mib := newMergeInsertBuilder(getTableSchemaFromQuery(b.parent.query), b.parent.ExprBuilder(), b.srcAlias, query)
 		builder(mib)
 		mib.apply()
 

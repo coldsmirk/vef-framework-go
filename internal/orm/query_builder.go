@@ -11,6 +11,8 @@ import (
 type QueryBuilder interface {
 	fmt.Stringer
 
+	// DB returns the DB that created this query.
+	DB() DB
 	// Dialect returns the current database dialect (PostgreSQL, MySQL, or SQLite).
 	Dialect() schema.Dialect
 	// GetTable returns the Bun schema table metadata for the query's model.
@@ -44,6 +46,11 @@ type BaseQueryBuilder struct {
 	eb ExprBuilder
 }
 
+// DB returns the DB that created this query.
+func (b *BaseQueryBuilder) DB() DB {
+	return b.db
+}
+
 // Dialect returns the dialect of the current database connection.
 func (b *BaseQueryBuilder) Dialect() schema.Dialect {
 	return b.dialect
@@ -69,10 +76,7 @@ func (b *BaseQueryBuilder) CreateSubQuery(subQuery *bun.SelectQuery) SelectQuery
 	eb := &QueryExprBuilder{}
 	query := &BunSelectQuery{
 		QueryBuilder: newQueryBuilder(b.db, b.dialect, subQuery, eb),
-		db:           b.db,
-		dialect:      b.dialect,
 		query:        subQuery,
-		eb:           eb,
 		isSubQuery:   true,
 	}
 	eb.qb = query

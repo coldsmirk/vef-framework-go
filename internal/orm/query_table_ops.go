@@ -23,7 +23,7 @@ func applyTable[TExpr, TTable any](
 	}
 }
 
-func applyTableFrom[T any](tableExpr func(string, ...any) T, db *BunDB, model any, alias []string) {
+func applyTableFrom[T any](tableExpr func(string, ...any) T, db DB, model any, alias []string) {
 	table := db.TableOf(model)
 
 	aliasToUse := table.Alias

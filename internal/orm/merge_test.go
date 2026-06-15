@@ -862,6 +862,55 @@ func (suite *MergeTestSuite) TestReturningMethods() {
 			suite.T().Logf("RETURNING NONE affected %d rows", affected)
 		}
 	})
+
+	suite.Run("ReturningResetAndDedup", func() {
+		type UserMergeData struct {
+			ID    string `bun:"id,pk"`
+			Name  string `bun:"name"`
+			Email string `bun:"email"`
+		}
+
+		sourceData := []UserMergeData{{ID: "retr1", Name: "ReturnReset User", Email: "retr1@example.com"}}
+
+		defer func() {
+			_, _ = suite.db.NewDelete().
+				Model(&User{}).
+				Where(func(cb orm.ConditionBuilder) {
+					cb.Equals("id", "retr1")
+				}).
+				Exec(suite.ctx)
+		}()
+
+		type ReturnResult struct {
+			ID   string `bun:"id"`
+			Name string `bun:"name"`
+		}
+
+		var returnedUsers []ReturnResult
+
+		// ReturningAll then Returning must reset the "*" to the specific columns,
+		// and duplicate column names must collapse to a single occurrence, mirroring
+		// the order-preserving, de-duplicating behavior of Insert/Update/Delete
+		// rather than rendering invalid SQL like "RETURNING *, id, name, id".
+		err := suite.db.NewMerge().
+			Model(&User{}).
+			WithValues("_src", &sourceData).
+			UsingTable("_src").
+			On(func(cb orm.ConditionBuilder) {
+				cb.EqualsColumn("u.id", "_src.id")
+			}).
+			WhenNotMatched().
+			ThenInsert(func(ib orm.MergeInsertBuilder) {
+				ib.Values("id", "name", "email")
+			}).
+			ReturningAll().
+			Returning("id", "name", "id").
+			Scan(suite.ctx, &returnedUsers)
+
+		suite.Require().NoError(err, "RETURNING reset+dedup should produce valid SQL")
+		suite.Require().Len(returnedUsers, 1, "the inserted row should be returned")
+		suite.Equal("ReturnReset User", returnedUsers[0].Name, "RETURNING should expose the reset specific columns")
+	})
 }
 
 // TestMergeDuplicateKeyError verifies MERGE routes duplicate-key violations through the

@@ -70,23 +70,36 @@ func (*DeleteWithoutWhereRule) Name() string {
 
 func (r *DeleteWithoutWhereRule) Check(astNode *ast.AST) *Violation {
 	for _, stmt := range astNode.Statements {
-		switch s := stmt.(type) {
-		case *ast.DeleteStatement:
-			if s.Where == nil {
-				return &Violation{
-					Rule:        r.Name(),
-					Statement:   "DELETE",
-					Description: "DELETE statements without WHERE clause are prohibited",
-				}
+		// gosqlx.Parse only produces *ast.DeleteStatement (never the simplified
+		// *ast.Delete form), so matching the single Statement type is sufficient.
+		if s, ok := stmt.(*ast.DeleteStatement); ok && s.Where == nil {
+			return &Violation{
+				Rule:        r.Name(),
+				Statement:   "DELETE",
+				Description: "DELETE statements without WHERE clause are prohibited",
 			}
+		}
+	}
 
-		case *ast.Delete:
-			if s.Where == nil {
-				return &Violation{
-					Rule:        r.Name(),
-					Statement:   "DELETE",
-					Description: "DELETE statements without WHERE clause are prohibited",
-				}
+	return nil
+}
+
+// UpdateWithoutWhereRule blocks UPDATE statements without WHERE clause.
+type UpdateWithoutWhereRule struct{}
+
+func (*UpdateWithoutWhereRule) Name() string {
+	return "update_requires_where"
+}
+
+func (r *UpdateWithoutWhereRule) Check(astNode *ast.AST) *Violation {
+	for _, stmt := range astNode.Statements {
+		// gosqlx.Parse only produces *ast.UpdateStatement (never the simplified
+		// *ast.Update form), so matching the single Statement type is sufficient.
+		if s, ok := stmt.(*ast.UpdateStatement); ok && s.Where == nil {
+			return &Violation{
+				Rule:        r.Name(),
+				Statement:   "UPDATE",
+				Description: "UPDATE statements without WHERE clause are prohibited",
 			}
 		}
 	}
@@ -100,5 +113,6 @@ func DefaultRules() []Rule {
 		new(DropStatementRule),
 		new(TruncateStatementRule),
 		new(DeleteWithoutWhereRule),
+		new(UpdateWithoutWhereRule),
 	}
 }

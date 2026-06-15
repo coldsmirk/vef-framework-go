@@ -1099,7 +1099,7 @@ func (cb *CriteriaBuilder) auditUserCompareSubQuery(addFn func(string, ...any), 
 
 // auditUserCompareCurrent adds a comparison condition against the current operator for an audit user column.
 func (*CriteriaBuilder) auditUserCompareCurrent(addFn func(string, ...any), op, col string, alias ...string) {
-	addFn("? "+op+" ?Operator", buildColumnExpr(col, alias...))
+	addFn("? "+op+" "+ExprOperator, buildColumnExpr(col, alias...))
 }
 
 // auditUserIn adds an IN/NOT IN condition for an audit user column.

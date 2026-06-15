@@ -7,7 +7,8 @@ import (
 
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect"
-	"github.com/uptrace/bun/schema"
+
+	collections "github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/page"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -22,10 +23,7 @@ func NewSelectQuery(db *BunDB) *BunSelectQuery {
 	query := &BunSelectQuery{
 		QueryBuilder: newQueryBuilder(db, dialect, sq, eb),
 
-		db:      db,
-		dialect: dialect,
-		eb:      eb,
-		query:   sq,
+		query: sq,
 	}
 	eb.qb = query
 
@@ -37,9 +35,6 @@ func NewSelectQuery(db *BunDB) *BunSelectQuery {
 type BunSelectQuery struct {
 	QueryBuilder
 
-	db         *BunDB
-	dialect    schema.Dialect
-	eb         ExprBuilder
 	query      *bun.SelectQuery
 	isSubQuery bool
 
@@ -52,23 +47,20 @@ type BunSelectQuery struct {
 	selectStateApplied    bool
 }
 
-func (q *BunSelectQuery) DB() DB {
-	return q.db
-}
-
 func (q *BunSelectQuery) With(name string, builder func(query SelectQuery)) SelectQuery {
 	q.query.With(name, q.BuildSubQuery(builder))
 
 	return q
 }
 
-func (q *BunSelectQuery) WithValues(name string, model any, withOrder ...bool) SelectQuery {
-	values := q.query.NewValues(model)
-	if len(withOrder) > 0 && withOrder[0] {
-		values.WithOrder()
-	}
+func (q *BunSelectQuery) WithValues(name string, model any) SelectQuery {
+	q.query.With(name, q.query.NewValues(model))
 
-	q.query.With(name, values)
+	return q
+}
+
+func (q *BunSelectQuery) WithOrderedValues(name string, model any) SelectQuery {
+	q.query.With(name, q.query.NewValues(model).WithOrder())
 
 	return q
 }
@@ -91,7 +83,7 @@ func (q *BunSelectQuery) Select(columns ...string) SelectQuery {
 
 	for _, column := range columns {
 		q.explicitSelects = append(q.explicitSelects, func() {
-			q.query.ColumnExpr("?", q.eb.Column(column))
+			q.query.ColumnExpr("?", q.ExprBuilder().Column(column))
 		})
 	}
 
@@ -102,14 +94,14 @@ func (q *BunSelectQuery) SelectAs(column, alias string) SelectQuery {
 	q.hasSelectAll = false
 
 	q.explicitSelects = append(q.explicitSelects, func() {
-		q.query.ColumnExpr("? AS ?", q.eb.Column(column), bun.Name(alias))
+		q.query.ColumnExpr("? AS ?", q.ExprBuilder().Column(column), bun.Name(alias))
 	})
 
 	return q
 }
 
 func (q *BunSelectQuery) SelectExpr(builder func(ExprBuilder) any, alias ...string) SelectQuery {
-	expr := builder(q.eb)
+	expr := builder(q.ExprBuilder())
 
 	q.exprSelects = append(q.exprSelects, func() {
 		if len(alias) > 0 && alias[0] != "" {
@@ -158,14 +150,14 @@ func (q *BunSelectQuery) Distinct() SelectQuery {
 
 func (q *BunSelectQuery) DistinctOnColumns(columns ...string) SelectQuery {
 	for _, column := range columns {
-		q.query.DistinctOn("?", q.eb.Column(column))
+		q.query.DistinctOn("?", q.ExprBuilder().Column(column))
 	}
 
 	return q
 }
 
 func (q *BunSelectQuery) DistinctOnExpr(builder func(ExprBuilder) any) SelectQuery {
-	expr := builder(q.eb)
+	expr := builder(q.ExprBuilder())
 	q.query.DistinctOn("?", expr)
 
 	return q
@@ -190,13 +182,13 @@ func (q *BunSelectQuery) Table(name string, alias ...string) SelectQuery {
 }
 
 func (q *BunSelectQuery) TableFrom(model any, alias ...string) SelectQuery {
-	applyTableFrom(q.query.TableExpr, q.db, model, alias)
+	applyTableFrom(q.query.TableExpr, q.DB(), model, alias)
 
 	return q
 }
 
 func (q *BunSelectQuery) TableExpr(builder func(ExprBuilder) any, alias ...string) SelectQuery {
-	applyTableExpr(q.query.TableExpr, q.eb, builder, alias)
+	applyTableExpr(q.query.TableExpr, q.ExprBuilder(), builder, alias)
 
 	return q
 }
@@ -229,7 +221,7 @@ func (q *BunSelectQuery) JoinSubQuery(sqBuilder func(query SelectQuery), cBuilde
 }
 
 func (q *BunSelectQuery) JoinExpr(eBuilder func(ExprBuilder) any, cBuilder func(ConditionBuilder), alias ...string) SelectQuery {
-	q.joinSource(JoinInner, eBuilder(q.eb), alias...)
+	q.joinSource(JoinInner, eBuilder(q.ExprBuilder()), alias...)
 	q.query.JoinOn("?", q.BuildCondition(cBuilder))
 
 	return q
@@ -257,7 +249,7 @@ func (q *BunSelectQuery) LeftJoinSubQuery(sqBuilder func(query SelectQuery), cBu
 }
 
 func (q *BunSelectQuery) LeftJoinExpr(eBuilder func(ExprBuilder) any, cBuilder func(ConditionBuilder), alias ...string) SelectQuery {
-	q.joinSource(JoinLeft, eBuilder(q.eb), alias...)
+	q.joinSource(JoinLeft, eBuilder(q.ExprBuilder()), alias...)
 	q.query.JoinOn("?", q.BuildCondition(cBuilder))
 
 	return q
@@ -285,7 +277,7 @@ func (q *BunSelectQuery) RightJoinSubQuery(sqBuilder func(query SelectQuery), cB
 }
 
 func (q *BunSelectQuery) RightJoinExpr(eBuilder func(ExprBuilder) any, cBuilder func(ConditionBuilder), alias ...string) SelectQuery {
-	q.joinSource(JoinRight, eBuilder(q.eb), alias...)
+	q.joinSource(JoinRight, eBuilder(q.ExprBuilder()), alias...)
 	q.query.JoinOn("?", q.BuildCondition(cBuilder))
 
 	return q
@@ -313,7 +305,7 @@ func (q *BunSelectQuery) FullJoinSubQuery(sqBuilder func(query SelectQuery), cBu
 }
 
 func (q *BunSelectQuery) FullJoinExpr(eBuilder func(ExprBuilder) any, cBuilder func(ConditionBuilder), alias ...string) SelectQuery {
-	q.joinSource(JoinFull, eBuilder(q.eb), alias...)
+	q.joinSource(JoinFull, eBuilder(q.ExprBuilder()), alias...)
 	q.query.JoinOn("?", q.BuildCondition(cBuilder))
 
 	return q
@@ -338,14 +330,14 @@ func (q *BunSelectQuery) CrossJoinSubQuery(sqBuilder func(query SelectQuery), al
 }
 
 func (q *BunSelectQuery) CrossJoinExpr(eBuilder func(ExprBuilder) any, alias ...string) SelectQuery {
-	q.joinSource(JoinCross, eBuilder(q.eb), alias...)
+	q.joinSource(JoinCross, eBuilder(q.ExprBuilder()), alias...)
 
 	return q
 }
 
 // joinModel adds a JOIN clause using a model's table schema.
 func (q *BunSelectQuery) joinModel(joinType JoinType, model any, alias ...string) {
-	table := q.db.TableOf(model)
+	table := q.DB().TableOf(model)
 
 	aliasToUse := table.Alias
 	if len(alias) > 0 && alias[0] != "" {
@@ -425,14 +417,14 @@ func (q *BunSelectQuery) IncludeDeleted() SelectQuery {
 
 func (q *BunSelectQuery) GroupBy(columns ...string) SelectQuery {
 	for _, column := range columns {
-		q.query.GroupExpr("?", q.eb.Column(column))
+		q.query.GroupExpr("?", q.ExprBuilder().Column(column))
 	}
 
 	return q
 }
 
 func (q *BunSelectQuery) GroupByExpr(builder func(ExprBuilder) any) SelectQuery {
-	expr := builder(q.eb)
+	expr := builder(q.ExprBuilder())
 	q.query.GroupExpr("?", expr)
 
 	return q
@@ -446,7 +438,7 @@ func (q *BunSelectQuery) Having(builder func(ConditionBuilder)) SelectQuery {
 
 func (q *BunSelectQuery) OrderBy(columns ...string) SelectQuery {
 	for _, column := range columns {
-		q.query.OrderExpr("? ASC", q.eb.Column(column))
+		q.query.OrderExpr("? ASC", q.ExprBuilder().Column(column))
 	}
 
 	return q
@@ -454,14 +446,14 @@ func (q *BunSelectQuery) OrderBy(columns ...string) SelectQuery {
 
 func (q *BunSelectQuery) OrderByDesc(columns ...string) SelectQuery {
 	for _, column := range columns {
-		q.query.OrderExpr("? DESC", q.eb.Column(column))
+		q.query.OrderExpr("? DESC", q.ExprBuilder().Column(column))
 	}
 
 	return q
 }
 
 func (q *BunSelectQuery) OrderByExpr(builder func(ExprBuilder) any) SelectQuery {
-	expr := builder(q.eb)
+	expr := builder(q.ExprBuilder())
 	q.query.OrderExpr("?", expr)
 
 	return q
@@ -534,17 +526,14 @@ func (q *BunSelectQuery) ForNoKeyUpdateSkipLocked(tables ...any) SelectQuery {
 }
 
 // postgresOnlyLockModes contains lock modes that are only supported by PostgreSQL.
-var postgresOnlyLockModes = map[string]bool{
-	"NO KEY UPDATE": true,
-	"KEY SHARE":     true,
-}
+var postgresOnlyLockModes = collections.NewHashSetFrom("NO KEY UPDATE", "KEY SHARE")
 
 // forLock builds a FOR lock clause with the given lock mode, optional suffix, and optional table references.
 // Each table can be a string (alias/name) or a model pointer (resolved to its table alias via TableOf).
 // SQLite does not support row-level locking; calls are silently ignored with a warning log.
 // FOR NO KEY UPDATE and FOR KEY SHARE are PostgreSQL-only; on MySQL they are silently ignored with a warning log.
 func (q *BunSelectQuery) forLock(mode, suffix string, tables ...any) SelectQuery {
-	dialectName := q.dialect.Name()
+	dialectName := q.Dialect().Name()
 
 	if dialectName == dialect.SQLite {
 		logger.Warnf("Row-level locking is not supported by SQLite, FOR %q clause will be ignored", mode)
@@ -552,7 +541,7 @@ func (q *BunSelectQuery) forLock(mode, suffix string, tables ...any) SelectQuery
 		return q
 	}
 
-	if dialectName == dialect.MySQL && postgresOnlyLockModes[mode] {
+	if dialectName == dialect.MySQL && postgresOnlyLockModes.Contains(mode) {
 		logger.Warnf("FOR %q is only supported by PostgreSQL, locking clause will be ignored", mode)
 
 		return q
@@ -586,7 +575,7 @@ func (q *BunSelectQuery) resolveTableAliases(tables []any) []string {
 		if s, ok := t.(string); ok {
 			aliases[i] = s
 		} else {
-			aliases[i] = q.db.TableOf(t).Alias
+			aliases[i] = q.DB().TableOf(t).Alias
 		}
 	}
 
@@ -692,73 +681,75 @@ func (q *BunSelectQuery) applySelectState() {
 	q.selectStateApplied = true
 }
 
-func (q *BunSelectQuery) Exec(ctx context.Context, dest ...any) (res sql.Result, err error) {
-	if q.isSubQuery {
-		return nil, ErrSubQuery
-	}
-
-	q.applySelectState()
-
-	if res, err = q.query.Exec(ctx, dest...); err != nil && errors.Is(err, sql.ErrNoRows) {
-		return nil, result.ErrRecordNotFound
-	}
-
-	return res, err
-}
-
-func (q *BunSelectQuery) Scan(ctx context.Context, dest ...any) (err error) {
+// prepareExec rejects direct execution of a subquery and applies the deferred
+// select state. Every executor calls it first; it is the single place the
+// subquery guard and state-flush contract lives.
+func (q *BunSelectQuery) prepareExec() error {
 	if q.isSubQuery {
 		return ErrSubQuery
 	}
 
 	q.applySelectState()
 
-	if err = q.query.Scan(ctx, dest...); err != nil && errors.Is(err, sql.ErrNoRows) {
+	return nil
+}
+
+// translateNoRows maps bun's sql.ErrNoRows to the framework's record-not-found
+// sentinel, passing every other error (and nil) through unchanged. Count and
+// Exists intentionally skip this translation: an empty result is a valid 0/false.
+func translateNoRows(err error) error {
+	if err != nil && errors.Is(err, sql.ErrNoRows) {
 		return result.ErrRecordNotFound
 	}
 
 	return err
 }
 
-func (q *BunSelectQuery) Rows(ctx context.Context) (rows *sql.Rows, err error) {
-	if q.isSubQuery {
-		return nil, ErrSubQuery
+func (q *BunSelectQuery) Exec(ctx context.Context, dest ...any) (sql.Result, error) {
+	if err := q.prepareExec(); err != nil {
+		return nil, err
 	}
 
-	q.applySelectState()
+	res, err := q.query.Exec(ctx, dest...)
 
-	if rows, err = q.query.Rows(ctx); err != nil && errors.Is(err, sql.ErrNoRows) {
-		return nil, result.ErrRecordNotFound
+	return res, translateNoRows(err)
+}
+
+func (q *BunSelectQuery) Scan(ctx context.Context, dest ...any) error {
+	if err := q.prepareExec(); err != nil {
+		return err
 	}
 
-	return rows, err
+	return translateNoRows(q.query.Scan(ctx, dest...))
+}
+
+func (q *BunSelectQuery) Rows(ctx context.Context) (*sql.Rows, error) {
+	if err := q.prepareExec(); err != nil {
+		return nil, err
+	}
+
+	rows, err := q.query.Rows(ctx)
+
+	return rows, translateNoRows(err)
 }
 
 func (q *BunSelectQuery) ScanAndCount(ctx context.Context, dest ...any) (int64, error) {
-	if q.isSubQuery {
-		return 0, ErrSubQuery
+	if err := q.prepareExec(); err != nil {
+		return 0, err
 	}
-
-	q.applySelectState()
 
 	total, err := q.query.ScanAndCount(ctx, dest...)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return 0, result.ErrRecordNotFound
-		}
-
-		return 0, err
+		return 0, translateNoRows(err)
 	}
 
 	return int64(total), nil
 }
 
 func (q *BunSelectQuery) Count(ctx context.Context) (int64, error) {
-	if q.isSubQuery {
-		return 0, ErrSubQuery
+	if err := q.prepareExec(); err != nil {
+		return 0, err
 	}
-
-	q.applySelectState()
 
 	total, err := q.query.Count(ctx)
 
@@ -766,11 +757,9 @@ func (q *BunSelectQuery) Count(ctx context.Context) (int64, error) {
 }
 
 func (q *BunSelectQuery) Exists(ctx context.Context) (bool, error) {
-	if q.isSubQuery {
-		return false, ErrSubQuery
+	if err := q.prepareExec(); err != nil {
+		return false, err
 	}
-
-	q.applySelectState()
 
 	return q.query.Exists(ctx)
 }

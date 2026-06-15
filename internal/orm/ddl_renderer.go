@@ -2,6 +2,7 @@ package orm
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/uptrace/bun/dialect"
@@ -31,13 +32,13 @@ type DDLDialect interface {
 }
 
 // renderColumnDef renders a complete column definition as a Bun-compatible query string with args.
-// The returned query uses ? Placeholders for dynamic args (e.g., CHECK conditions).
+// The returned query uses ? placeholders for dynamic args (e.g., CHECK conditions). CHECK
+// conditions must be pre-compiled into ColumnConstraint.checkExpr via compileChecks before calling.
 func renderColumnDef(
 	d DDLDialect,
 	name string,
 	dt DataTypeDef,
 	constraints []ColumnConstraint,
-	qb QueryBuilder,
 ) (string, []any) {
 	var (
 		sb   strings.Builder
@@ -51,12 +52,9 @@ func renderColumnDef(
 	for _, c := range constraints {
 		switch c.kind {
 		case ConstraintCheck:
-			// qb is required to compile the condition. Production callers always pass a
-			// non-nil builder, so a nil qb is a programming error and panics here rather
-			// than silently dropping the constraint.
 			sb.WriteString(" CHECK (?)")
 
-			args = append(args, qb.BuildCondition(c.checkBuilder))
+			args = append(args, c.checkExpr)
 		case ConstraintDefault:
 			fragment, defaultArgs := renderDefault(d.Name(), c.defaultValue)
 
@@ -92,28 +90,37 @@ func renderConstraint(d DDLDialect, c ColumnConstraint) string {
 	case ConstraintAutoIncrement:
 		return renderAutoIncrement(d.Name())
 	case ConstraintReferences:
-		return renderInlineFK(d.IdentQuote(), c.refTable, c.refColumns)
+		return renderInlineFK(d, c.refTable, c.refColumns)
 	default:
 		return ""
 	}
 }
 
-// renderDefault renders a DEFAULT clause and any bound args. String literals are bound through a
-// ? placeholder so the driver applies dialect-correct escaping (hand-rolled single-quote doubling
-// is unsafe on MySQL with backslash escaping enabled). NULL, booleans, and numerics render as SQL
-// keywords/literals with no bound args.
+// renderDefault renders a DEFAULT clause and any bound args. NULL, booleans, and
+// numeric values render as SQL keywords/literals with no bound args. RawDefault
+// renders verbatim for SQL-function/keyword defaults (e.g. CURRENT_TIMESTAMP).
+// Every other value (strings, time.Time, []byte, custom types) is bound through a
+// ? placeholder so the driver applies dialect-correct escaping — interpolating it
+// raw would be invalid SQL at best and a DDL-injection vector at worst.
 func renderDefault(dialectName dialect.Name, value any) (string, []any) {
 	if value == nil {
 		return "DEFAULT NULL", nil
 	}
 
 	switch v := value.(type) {
-	case string:
-		return "DEFAULT ?", []any{v}
+	case RawDefault:
+		return "DEFAULT " + string(v), nil
 	case bool:
 		return renderDefaultBool(dialectName, v), nil
+	}
+
+	switch reflect.ValueOf(value).Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return fmt.Sprintf("DEFAULT %v", value), nil
 	default:
-		return fmt.Sprintf("DEFAULT %v", v), nil
+		return "DEFAULT ?", []any{value}
 	}
 }
 
@@ -147,7 +154,9 @@ func renderAutoIncrement(dialectName dialect.Name) string {
 }
 
 // renderInlineFK renders an inline REFERENCES constraint.
-func renderInlineFK(quote byte, table string, columns []string) string {
+func renderInlineFK(d DDLDialect, table string, columns []string) string {
+	quote := d.IdentQuote()
+
 	var sb strings.Builder
 
 	sb.WriteString("REFERENCES ")
@@ -164,7 +173,9 @@ func renderInlineFK(quote byte, table string, columns []string) string {
 
 // renderTableForeignKey renders a full table-level FOREIGN KEY constraint.
 // The output includes "FOREIGN KEY" prefix and optional "CONSTRAINT name".
-func renderTableForeignKey(quote byte, fk *ForeignKeyDef) string {
+func renderTableForeignKey(d DDLDialect, fk *ForeignKeyDef) string {
+	quote := d.IdentQuote()
+
 	var sb strings.Builder
 
 	if fk.name != "" {
@@ -195,7 +206,9 @@ func renderTableForeignKey(quote byte, fk *ForeignKeyDef) string {
 }
 
 // renderTableKeyConstraint renders a table-level key constraint (PRIMARY KEY or UNIQUE).
-func renderTableKeyConstraint(quote byte, keyword, name string, columns []string) string {
+func renderTableKeyConstraint(d DDLDialect, keyword, name string, columns []string) string {
+	quote := d.IdentQuote()
+
 	var sb strings.Builder
 
 	if name != "" {
@@ -213,8 +226,8 @@ func renderTableKeyConstraint(quote byte, keyword, name string, columns []string
 }
 
 // renderPartitionBy renders a PARTITION BY clause.
-func renderPartitionBy(quote byte, strategy PartitionStrategy, columns []string) string {
-	return strategy.String() + " (" + joinQuotedIdents(quote, columns) + ")"
+func renderPartitionBy(d DDLDialect, strategy PartitionStrategy, columns []string) string {
+	return strategy.String() + " (" + joinQuotedIdents(d.IdentQuote(), columns) + ")"
 }
 
 // quoteIdent quotes an identifier using dialect.AppendName for proper escaping.

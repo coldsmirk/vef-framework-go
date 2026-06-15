@@ -6,24 +6,21 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/coldsmirk/vef-framework-go/config"
-	"github.com/coldsmirk/vef-framework-go/internal/orm/sqlguard"
 )
 
 // Option configures how Open wraps a *sql.DB into an orm.DB.
 type Option func(*options)
 
 type options struct {
-	sqlGuard *sqlguard.Config
+	sqlGuard bool
 }
 
 // WithSQLGuard toggles the SQL-guard query hook. When enabled, dangerous
-// statements (DROP / TRUNCATE / DELETE without WHERE) are blocked unless the
-// query context is whitelisted. It is disabled by default.
+// statements (DROP / TRUNCATE / DELETE without WHERE / UPDATE without WHERE) are
+// blocked unless the query context is whitelisted. It is disabled by default.
 func WithSQLGuard(enabled bool) Option {
 	return func(o *options) {
-		if enabled {
-			o.sqlGuard = sqlguard.DefaultConfig()
-		}
+		o.sqlGuard = enabled
 	}
 }
 

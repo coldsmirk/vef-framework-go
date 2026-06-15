@@ -145,9 +145,9 @@ func (qh *queryHook) formatQuery(query string) termenv.Style {
 	return qh.output.String(normalized).Foreground(termenv.ANSIBrightBlack)
 }
 
-func addQueryHook(db *bun.DB, logger logx.Logger, guardConfig *sqlguard.Config) {
+func addQueryHook(db *bun.DB, logger logx.Logger, enableGuard bool) {
 	var guard *sqlguard.Guard
-	if guardConfig != nil && guardConfig.Enabled {
+	if enableGuard {
 		guard = sqlguard.NewGuard(logger)
 	}
 

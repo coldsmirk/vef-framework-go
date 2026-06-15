@@ -112,11 +112,43 @@ func TestDeleteWithoutWhereRule(t *testing.T) {
 	}
 }
 
+// TestUpdateWithoutWhereRule tests update without where rule functionality.
+func TestUpdateWithoutWhereRule(t *testing.T) {
+	rule := new(UpdateWithoutWhereRule)
+
+	tests := []struct {
+		name      string
+		sql       string
+		wantBlock bool
+	}{
+		{"UpdateWithoutWhere", "UPDATE users SET name = 'test'", true},
+		{"UpdateWithWhere", "UPDATE users SET name = 'test' WHERE id = 1", false},
+		{"UpdateWithComplexWhere", "UPDATE users SET status = 'x' WHERE created_at < '2023-01-01' AND active = true", false},
+		{"SelectQuery", "SELECT * FROM users", false},
+		{"DeleteWithoutWhere", "DELETE FROM users", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			astNode := parseSQL(t, tt.sql)
+			violation := rule.Check(astNode)
+
+			if tt.wantBlock {
+				require.NotNil(t, violation, "Update rule should block UPDATE without WHERE")
+				assert.Equal(t, "update_requires_where", violation.Rule, "Update violation should use update_requires_where rule")
+				assert.Equal(t, "UPDATE", violation.Statement, "Update violation should record UPDATE statement")
+			} else {
+				assert.Nil(t, violation, "Update rule should allow safe statement")
+			}
+		})
+	}
+}
+
 // TestDefaultRules tests default rules functionality.
 func TestDefaultRules(t *testing.T) {
 	rules := DefaultRules()
 
-	assert.Len(t, rules, 3, "DefaultRules should return three rules")
+	assert.Len(t, rules, 4, "DefaultRules should return four rules")
 
 	ruleNames := make([]string, len(rules))
 	for i, rule := range rules {
@@ -126,4 +158,5 @@ func TestDefaultRules(t *testing.T) {
 	assert.Contains(t, ruleNames, "no_drop", "Default rules should include no_drop")
 	assert.Contains(t, ruleNames, "no_truncate", "Default rules should include no_truncate")
 	assert.Contains(t, ruleNames, "delete_requires_where", "Default rules should include delete_requires_where")
+	assert.Contains(t, ruleNames, "update_requires_where", "Default rules should include update_requires_where")
 }

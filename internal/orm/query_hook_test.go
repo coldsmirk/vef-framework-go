@@ -103,6 +103,29 @@ func TestSQLGuard(t *testing.T) {
 		require.NoError(t, err, "DELETE with WHERE should be allowed")
 	})
 
+	t.Run("UpdateWithoutWhereBlocked", func(t *testing.T) {
+		db := newGuardedDB(t, true)
+
+		_, err := db.NewRaw("INSERT INTO test_guard (name) VALUES ('test')").Exec(ctx)
+		require.NoError(t, err, "Insert should succeed")
+
+		_, err = db.NewRaw("UPDATE test_guard SET name = 'changed'").Exec(ctx)
+		require.Error(t, err, "UPDATE without WHERE should be blocked by SQL guard")
+		require.ErrorIs(t, err, context.Canceled, "Blocked query should cancel the context")
+
+		var name string
+		require.NoError(t, db.NewRaw("SELECT name FROM test_guard").Scan(ctx, &name),
+			"Select should succeed after blocked UPDATE")
+		require.Equal(t, "test", name, "Row should be unchanged after blocked UPDATE without WHERE")
+	})
+
+	t.Run("UpdateWithWhereAllowed", func(t *testing.T) {
+		db := newGuardedDB(t, true)
+
+		_, err := db.NewRaw("UPDATE test_guard SET name = 'x' WHERE name = 'nonexistent'").Exec(ctx)
+		require.NoError(t, err, "UPDATE with WHERE should be allowed")
+	})
+
 	t.Run("SelectAllowed", func(t *testing.T) {
 		db := newGuardedDB(t, true)
 

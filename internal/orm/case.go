@@ -131,6 +131,12 @@ func (cw *caseWhenExpr) ThenSubQuery(builder func(query SelectQuery)) CaseBuilde
 }
 
 func (c *caseExpr) AppendQuery(gen schema.QueryGen, b []byte) (_ []byte, err error) {
+	// A CASE with no WHEN clause renders the invalid "CASE END" (or "CASE ELSE x
+	// END") in every supported dialect, so fail fast at query-build time instead.
+	if len(c.clauses) == 0 {
+		return nil, ErrCaseMissingWhen
+	}
+
 	b = append(b, "CASE"...)
 
 	if c.caseExpr != nil {

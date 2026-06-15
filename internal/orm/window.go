@@ -319,7 +319,10 @@ func (p *partitionExpr) AppendQuery(gen schema.QueryGen, b []byte) (_ []byte, er
 		return p.eb.Expr("?", p.expr).AppendQuery(gen, b)
 	}
 
-	return b, nil
+	// A partition entry with neither a column nor an expression (e.g. PartitionBy("")
+	// or PartitionByExpr(nil)) would render an empty/malformed PARTITION BY term, so
+	// fail fast instead, symmetric with orderExpr.AppendQuery.
+	return nil, ErrMissingColumnOrExpression
 }
 
 type baseWindowExpr struct {
@@ -759,7 +762,6 @@ type leadExpr struct {
 }
 
 type firstValueExpr struct {
-	*baseWindowExpr
 	*baseWindowNullHandlingBuilder[FirstValueBuilder]
 }
 
@@ -780,7 +782,6 @@ func (fv *firstValueExpr) Expr(expr any) FirstValueBuilder {
 }
 
 type lastValueExpr struct {
-	*baseWindowExpr
 	*baseWindowNullHandlingBuilder[LastValueBuilder]
 }
 
@@ -801,7 +802,6 @@ func (lv *lastValueExpr) Expr(expr any) LastValueBuilder {
 }
 
 type nthValueExpr struct {
-	*baseWindowExpr
 	*baseWindowNullHandlingBuilder[NthValueBuilder]
 
 	column string
@@ -1160,7 +1160,6 @@ func newFirstValueExpr(eb ExprBuilder) *firstValueExpr {
 		baseWindowExpr: baseExpr,
 	}
 	expr := &firstValueExpr{
-		baseWindowExpr:                baseExpr,
 		baseWindowNullHandlingBuilder: baseBuilder,
 	}
 
@@ -1178,7 +1177,6 @@ func newLastValueExpr(eb ExprBuilder) *lastValueExpr {
 		baseWindowExpr: baseExpr,
 	}
 	expr := &lastValueExpr{
-		baseWindowExpr:                baseExpr,
 		baseWindowNullHandlingBuilder: baseBuilder,
 	}
 
@@ -1196,7 +1194,6 @@ func newNthValueExpr(eb ExprBuilder) *nthValueExpr {
 		baseWindowExpr: baseExpr,
 	}
 	expr := &nthValueExpr{
-		baseWindowExpr:                baseExpr,
 		baseWindowNullHandlingBuilder: baseBuilder,
 	}
 

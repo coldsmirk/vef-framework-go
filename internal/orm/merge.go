@@ -5,7 +5,6 @@ import (
 	"database/sql"
 
 	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/schema"
 )
 
 const defaultSourceAlias = "src"
@@ -19,10 +18,9 @@ func NewMergeQuery(db *BunDB) *BunMergeQuery {
 	query := &BunMergeQuery{
 		QueryBuilder: newQueryBuilder(db, dialect, mq, eb),
 
-		db:      db,
-		dialect: dialect,
-		query:   mq,
-		eb:      eb,
+		query: mq,
+
+		returningColumns: newReturningColumns(),
 	}
 	eb.qb = query
 
@@ -34,15 +32,10 @@ func NewMergeQuery(db *BunDB) *BunMergeQuery {
 type BunMergeQuery struct {
 	QueryBuilder
 
-	db       *BunDB
-	dialect  schema.Dialect
-	eb       ExprBuilder
 	query    *bun.MergeQuery
 	srcAlias string
-}
 
-func (q *BunMergeQuery) DB() DB {
-	return q.db
+	returningColumns *returningColumns
 }
 
 func (q *BunMergeQuery) With(name string, builder func(SelectQuery)) MergeQuery {
@@ -51,13 +44,14 @@ func (q *BunMergeQuery) With(name string, builder func(SelectQuery)) MergeQuery 
 	return q
 }
 
-func (q *BunMergeQuery) WithValues(name string, model any, withOrder ...bool) MergeQuery {
-	values := q.query.NewValues(model)
-	if len(withOrder) > 0 && withOrder[0] {
-		values.WithOrder()
-	}
+func (q *BunMergeQuery) WithValues(name string, model any) MergeQuery {
+	q.query.With(name, q.query.NewValues(model))
 
-	q.query.With(name, values)
+	return q
+}
+
+func (q *BunMergeQuery) WithOrderedValues(name string, model any) MergeQuery {
+	q.query.With(name, q.query.NewValues(model).WithOrder())
 
 	return q
 }
@@ -87,13 +81,13 @@ func (q *BunMergeQuery) Table(name string, alias ...string) MergeQuery {
 }
 
 func (q *BunMergeQuery) TableFrom(model any, alias ...string) MergeQuery {
-	applyTableFrom(q.query.TableExpr, q.db, model, alias)
+	applyTableFrom(q.query.TableExpr, q.DB(), model, alias)
 
 	return q
 }
 
 func (q *BunMergeQuery) TableExpr(builder func(ExprBuilder) any, alias ...string) MergeQuery {
-	applyTableExpr(q.query.TableExpr, q.eb, builder, alias)
+	applyTableExpr(q.query.TableExpr, q.ExprBuilder(), builder, alias)
 
 	return q
 }
@@ -105,7 +99,7 @@ func (q *BunMergeQuery) TableSubQuery(builder func(SelectQuery), alias ...string
 }
 
 func (q *BunMergeQuery) Using(model any, alias ...string) MergeQuery {
-	table := q.db.TableOf(model)
+	table := q.DB().TableOf(model)
 
 	q.srcAlias = table.Alias
 	if len(alias) > 0 && alias[0] != "" {
@@ -139,7 +133,7 @@ func (q *BunMergeQuery) UsingExpr(builder func(ExprBuilder) any, alias ...string
 		q.srcAlias = alias[0]
 	}
 
-	q.query.Using("(?) AS ?", builder(q.eb), bun.Name(q.srcAlias))
+	q.query.Using("(?) AS ?", builder(q.ExprBuilder()), bun.Name(q.srcAlias))
 
 	return q
 }
@@ -178,24 +172,21 @@ func (q *BunMergeQuery) WhenNotMatchedBySource(builder ...func(ConditionBuilder)
 }
 
 func (q *BunMergeQuery) Returning(columns ...string) MergeQuery {
-	exprs := make([]any, len(columns))
-	for i, column := range columns {
-		exprs[i] = q.eb.Column(column)
-	}
-
-	q.query.Returning("?", q.eb.Exprs(exprs...))
+	q.returningColumns.AddAll(columns...)
 
 	return q
 }
 
 func (q *BunMergeQuery) ReturningAll() MergeQuery {
-	q.query.Returning(columnAll)
+	q.returningColumns.Clear()
+	q.returningColumns.AddAll(columnAll)
 
 	return q
 }
 
 func (q *BunMergeQuery) ReturningNone() MergeQuery {
-	q.query.Returning(sqlNull)
+	q.returningColumns.Clear()
+	q.returningColumns.AddAll(sqlNull)
 
 	return q
 }
@@ -218,7 +209,33 @@ func (q *BunMergeQuery) ApplyIf(condition bool, fns ...ApplyFunc[MergeQuery]) Me
 	return q
 }
 
+func (q *BunMergeQuery) beforeMerge() {
+	if q.returningColumns.IsEmpty() {
+		return
+	}
+
+	// MERGE joins target and source, so a bare column name in RETURNING is
+	// ambiguous; specific columns are qualified through eb.Column (which resolves
+	// the target ?TableAlias). columnAll/sqlNull are emitted verbatim for
+	// ReturningAll/ReturningNone.
+	values := q.returningColumns.Values()
+	exprs := make([]any, len(values))
+
+	for i, column := range values {
+		switch column {
+		case columnAll, sqlNull:
+			exprs[i] = bun.Safe(column)
+		default:
+			exprs[i] = q.ExprBuilder().Column(column)
+		}
+	}
+
+	q.query.Returning("?", q.ExprBuilder().Exprs(exprs...))
+}
+
 func (q *BunMergeQuery) Exec(ctx context.Context, dest ...any) (sql.Result, error) {
+	q.beforeMerge()
+
 	res, err := q.query.Exec(ctx, dest...)
 	if err != nil {
 		return nil, translateWriteError(err)
@@ -228,6 +245,8 @@ func (q *BunMergeQuery) Exec(ctx context.Context, dest ...any) (sql.Result, erro
 }
 
 func (q *BunMergeQuery) Scan(ctx context.Context, dest ...any) error {
+	q.beforeMerge()
+
 	if err := q.query.Scan(ctx, dest...); err != nil {
 		return translateWriteError(err)
 	}

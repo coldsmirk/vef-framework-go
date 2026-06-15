@@ -76,7 +76,7 @@ func (q *BunCreateTableQuery) Table(tables ...string) CreateTableQuery {
 }
 
 func (q *BunCreateTableQuery) Column(name string, dataType DataTypeDef, constraints ...ColumnConstraint) CreateTableQuery {
-	queryStr, args := renderColumnDef(q.Dialect(), name, dataType, constraints, q)
+	queryStr, args := renderColumnDef(q.Dialect(), name, dataType, compileChecks(q, constraints))
 	q.columnDefs = append(q.columnDefs, columnDef{sql: queryStr, args: args})
 
 	return q
@@ -104,7 +104,7 @@ func (q *BunCreateTableQuery) PrimaryKey(builder func(PrimaryKeyBuilder)) Create
 	pk := new(PrimaryKeyDef)
 	builder(pk)
 
-	rendered := renderTableKeyConstraint(q.Dialect().IdentQuote(), "PRIMARY KEY", pk.name, pk.columns)
+	rendered := renderTableKeyConstraint(q.Dialect(), "PRIMARY KEY", pk.name, pk.columns)
 	q.columnDefs = append(q.columnDefs, columnDef{sql: rendered})
 
 	return q
@@ -114,7 +114,7 @@ func (q *BunCreateTableQuery) Unique(builder func(UniqueBuilder)) CreateTableQue
 	u := new(UniqueDef)
 	builder(u)
 
-	rendered := renderTableKeyConstraint(q.Dialect().IdentQuote(), "UNIQUE", u.name, u.columns)
+	rendered := renderTableKeyConstraint(q.Dialect(), "UNIQUE", u.name, u.columns)
 	q.columnDefs = append(q.columnDefs, columnDef{sql: rendered})
 
 	return q
@@ -146,14 +146,14 @@ func (q *BunCreateTableQuery) ForeignKey(builder func(ForeignKeyBuilder)) Create
 	fk := new(ForeignKeyDef)
 	builder(fk)
 
-	rendered := renderTableForeignKey(q.Dialect().IdentQuote(), fk)
+	rendered := renderTableForeignKey(q.Dialect(), fk)
 	q.columnDefs = append(q.columnDefs, columnDef{sql: rendered})
 
 	return q
 }
 
 func (q *BunCreateTableQuery) PartitionBy(strategy PartitionStrategy, columns ...string) CreateTableQuery {
-	q.partitionExpr = renderPartitionBy(q.Dialect().IdentQuote(), strategy, columns)
+	q.partitionExpr = renderPartitionBy(q.Dialect(), strategy, columns)
 
 	return q
 }
