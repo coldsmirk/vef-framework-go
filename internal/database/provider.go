@@ -12,7 +12,9 @@ import (
 
 // Provider defines the contract for database-specific connection logic.
 type Provider interface {
-	// Connect establishes a database connection and returns the *sql.DB and any error.
+	// Connect establishes a database connection and returns the *sql.DB and any
+	// error. On success (nil error) the returned *sql.DB MUST be non-nil — Open
+	// applies the connection pool to it without a nil check.
 	Connect(config *config.DataSourceConfig) (*sql.DB, error)
 	// Kind returns the database kind this provider handles (postgres, mysql, or sqlite).
 	Kind() config.DBKind
