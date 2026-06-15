@@ -74,70 +74,9 @@ func (i *importer) Import(reader io.Reader) (any, []tabular.ImportError, error) 
 		return nil, nil, fmt.Errorf("read CSV: %w", err)
 	}
 
-	minRows := i.options.skipRows
-	if i.options.hasHeader {
-		minRows++
-	}
-
-	if len(rows) <= minRows {
-		return nil, nil, fmt.Errorf("%w (total rows: %d, skip rows: %d, has header: %v)",
-			tabular.ErrNoDataRowsFound, len(rows), i.options.skipRows, i.options.hasHeader)
-	}
-
-	schema := i.adapter.Schema()
-	dataStartIndex := i.options.skipRows
-
-	var columnMapping tabular.ColumnMapping
-
-	if i.options.hasHeader {
-		mappingOpts := tabular.MappingOptions{TrimSpace: i.options.trimSpace}
-
-		rawMapping, mappingErr := tabular.BuildHeaderMapping(rows[i.options.skipRows], schema, mappingOpts)
-		if mappingErr != nil {
-			return nil, nil, fmt.Errorf("build column mapping: %w", mappingErr)
-		}
-
-		columnMapping = tabular.NewColumnMapping(rawMapping)
-		dataStartIndex++
-	} else {
-		columnMapping = tabular.NewColumnMapping(tabular.DefaultPositionalMapping(schema))
-	}
-
-	dataRows := rows[dataStartIndex:]
-	writer := i.adapter.Writer(len(dataRows))
-
-	parseOpts := tabular.ParseRowOptions{TrimSpace: i.options.trimSpace}
-	parsers := tabular.ResolveParsers(schema, i.parsers)
-
-	var importErrors []tabular.ImportError
-
-	for rowIndex, row := range dataRows {
-		// 1-based row number that accounts for skipped rows and the header row,
-		// matching what a user sees in a spreadsheet or text editor.
-		csvRow := dataStartIndex + rowIndex + 1
-
-		if tabular.IsEmptyRow(row, i.options.trimSpace) {
-			continue
-		}
-
-		builder := writer.NewRow()
-
-		rowErrors := tabular.ParseRow(row, columnMapping, schema, builder, parsers, csvRow, parseOpts)
-		if len(rowErrors) > 0 {
-			importErrors = append(importErrors, rowErrors...)
-
-			continue
-		}
-
-		if err := writer.Commit(builder); err != nil {
-			importErrors = append(importErrors, tabular.ImportError{
-				Row: csvRow,
-				Err: fmt.Errorf("validation failed: %w", err),
-			})
-
-			continue
-		}
-	}
-
-	return writer.Build(), importErrors, nil
+	return tabular.ImportRows(rows, i.adapter, i.parsers, tabular.ImportRowsOptions{
+		SkipRows:  i.options.skipRows,
+		HasHeader: i.options.hasHeader,
+		TrimSpace: i.options.trimSpace,
+	})
 }
