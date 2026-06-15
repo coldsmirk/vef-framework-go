@@ -134,7 +134,7 @@ func (s *FindFlowsTestSuite) TestEmpty() {
 
 func (s *FindFlowsTestSuite) TestNonSuperAdminIgnoresForeignTenantOverride() {
 	// A non-super-admin caller in t1 supplying a foreign override (t2) must be
-	// pinned to its own tenant via EffectiveTenantID, so it sees only t1 rows
+	// pinned to its own tenant via TenantScopeFilter, so it sees only t1 rows
 	// (3 flows) and never the t2 flow — the override carries no authority.
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 		TenantID: new("t2"),

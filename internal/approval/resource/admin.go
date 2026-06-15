@@ -89,9 +89,9 @@ func (r *AdminResource) FindInstances(ctx fiber.Ctx, principal *security.Princip
 
 // resolveTenantFilter derives the tenant filter for an admin query: a
 // non-super-admin caller always filters by their own tenant (override is
-// ignored); a super-admin may pass an explicit override or leave it empty
-// for cross-tenant visibility. Returns nil when the resolved filter is
-// empty so query handlers treat it as "no tenant filter".
+// ignored) and fails closed if it has no tenant; a super-admin may pass an
+// explicit override or leave it empty for cross-tenant visibility. A nil result
+// means "no tenant filter" and is only ever produced for a privileged caller.
 func (r *AdminResource) resolveTenantFilter(ctx fiber.Ctx, principal *security.Principal, override *string) (*string, error) {
 	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
@@ -103,12 +103,7 @@ func (r *AdminResource) resolveTenantFilter(ctx fiber.Ctx, principal *security.P
 		overrideValue = strings.TrimSpace(*override)
 	}
 
-	effective := caller.EffectiveTenantID(overrideValue)
-	if effective == "" {
-		return nil, nil
-	}
-
-	return &effective, nil
+	return caller.TenantScopeFilter(overrideValue)
 }
 
 // AdminFindTasksParams contains the query parameters for admin task listing.

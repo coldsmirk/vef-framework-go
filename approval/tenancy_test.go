@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/security"
@@ -103,27 +104,76 @@ func TestCallerContextAllows(t *testing.T) {
 	assert.False(t, approval.CallerContext{}.Allows("t1"), "Zero caller should deny")
 }
 
-func TestCallerContextEffectiveTenantID(t *testing.T) {
+func TestCallerContextTenantScopeFilter(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		name     string
 		caller   approval.CallerContext
 		override string
-		want     string
+		want     *string // nil = unfiltered cross-tenant
+		wantErr  bool
 	}{
-		{"SuperAdminPassthroughOverride", approval.CallerContext{IsSuperAdmin: true}, "tenant-x", "tenant-x"},
-		{"SuperAdminEmptyOverride", approval.CallerContext{IsSuperAdmin: true}, "", ""},
-		{"SystemPassthroughOverride", approval.SystemCaller, "tenant-x", "tenant-x"},
-		{"NonSuperPinsToOwnTenant", approval.CallerContext{TenantID: "tenant-a"}, "tenant-b", "tenant-a"},
-		{"NonSuperEmptyOverrideKeepsOwn", approval.CallerContext{TenantID: "tenant-a"}, "", "tenant-a"},
-		{"ZeroCallerReturnsEmpty", approval.CallerContext{}, "tenant-x", ""},
+		{"SuperAdminOverrideScopes", approval.CallerContext{IsSuperAdmin: true}, "tenant-x", new("tenant-x"), false},
+		{"SuperAdminEmptyOverrideCrossTenant", approval.CallerContext{IsSuperAdmin: true}, "", nil, false},
+		{"SystemOverrideScopes", approval.SystemCaller, "tenant-x", new("tenant-x"), false},
+		{"SystemEmptyOverrideCrossTenant", approval.SystemCaller, "", nil, false},
+		{"NonSuperPinsToOwnTenant", approval.CallerContext{TenantID: "tenant-a"}, "tenant-b", new("tenant-a"), false},
+		{"NonSuperEmptyOverrideKeepsOwn", approval.CallerContext{TenantID: "tenant-a"}, "", new("tenant-a"), false},
+		// The fail-closed cornerstone: an ordinary caller with no tenant must be
+		// denied, never collapsed to an unfiltered cross-tenant query.
+		{"ZeroCallerFailsClosed", approval.CallerContext{}, "tenant-x", nil, true},
+		{"EmptyTenantNonSuperFailsClosed", approval.CallerContext{}, "", nil, true},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.want, tc.caller.EffectiveTenantID(tc.override), "Should return expected effective tenant for %s", tc.name)
+
+			got, err := tc.caller.TenantScopeFilter(tc.override)
+			if tc.wantErr {
+				require.ErrorIs(t, err, approval.ErrCrossTenantAccess, "Empty-tenant ordinary caller must fail closed for %s", tc.name)
+				assert.Nil(t, got, "Failed scope must not return a filter for %s", tc.name)
+
+				return
+			}
+
+			require.NoError(t, err, "Should not error for %s", tc.name)
+			assert.Equal(t, tc.want, got, "Should return expected tenant filter for %s", tc.name)
+		})
+	}
+}
+
+func TestCallerContextResolveWriteTenant(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name         string
+		caller       approval.CallerContext
+		clientTenant string
+		want         string
+		wantErr      bool
+	}{
+		{"SuperAdminHonorsClient", approval.CallerContext{IsSuperAdmin: true}, "tenant-x", "tenant-x", false},
+		{"SystemHonorsClient", approval.SystemCaller, "tenant-x", "tenant-x", false},
+		{"NonSuperPinsToOwnTenant", approval.CallerContext{TenantID: "tenant-a"}, "tenant-b", "tenant-a", false},
+		{"EmptyTenantNonSuperFailsClosed", approval.CallerContext{}, "tenant-b", "", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := tc.caller.ResolveWriteTenant(tc.clientTenant)
+			if tc.wantErr {
+				require.ErrorIs(t, err, approval.ErrCrossTenantAccess, "Empty-tenant ordinary caller must fail closed for %s", tc.name)
+				assert.Empty(t, got, "Failed write-tenant must be empty for %s", tc.name)
+
+				return
+			}
+
+			require.NoError(t, err, "Should not error for %s", tc.name)
+			assert.Equal(t, tc.want, got, "Should return expected write tenant for %s", tc.name)
 		})
 	}
 }

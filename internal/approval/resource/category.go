@@ -64,25 +64,26 @@ func buildFlowCategoryTree(flatCategories []approval.FlowCategory) []approval.Fl
 
 // categoryTenantApplier returns a query applier that scopes category reads to
 // the caller's tenant. Super-admin callers see all tenants; every other caller
-// is confined to their own tenant, preventing cross-tenant data exposure.
+// is confined to their own tenant and fails closed if it has none, preventing
+// cross-tenant data exposure.
 func categoryTenantApplier(resolver approval.PrincipalTenantResolver) func(query orm.SelectQuery, search CategorySearch, ctx fiber.Ctx) error {
 	return func(query orm.SelectQuery, _ CategorySearch, ctx fiber.Ctx) error {
 		// fiber.Ctx.Value reads fasthttp UserValues (Locals), which is where
 		// the principal is stored; ctx.Context() returns the embedded Go
 		// context which does NOT carry Locals.
-		principal := contextx.Principal(ctx)
-		if approval.IsSuperAdmin(principal) {
-			return nil
-		}
-
-		caller, err := resolveCaller(ctx.Context(), resolver, principal)
+		caller, err := resolveCaller(ctx.Context(), resolver, contextx.Principal(ctx))
 		if err != nil {
 			return err
 		}
 
-		if caller.TenantID != "" {
+		scope, err := caller.TenantScopeFilter("")
+		if err != nil {
+			return err
+		}
+
+		if scope != nil {
 			query.Where(func(cb orm.ConditionBuilder) {
-				cb.Equals("tenant_id", caller.TenantID)
+				cb.Equals("tenant_id", *scope)
 			})
 		}
 
@@ -124,22 +125,21 @@ func NewCategoryResource(tenantResolver approval.PrincipalTenantResolver) api.Re
 		Create: crud.NewCreate[approval.FlowCategory, CategoryParams]().
 			RequiredPermission("approval:category:create").
 			WithPreCreate(func(model *approval.FlowCategory, _ *CategoryParams, _ orm.InsertQuery, ctx fiber.Ctx, _ orm.DB) error {
-				principal := contextx.Principal(ctx)
-				if approval.IsSuperAdmin(principal) {
-					return nil
-				}
-
-				caller, err := resolveCaller(ctx.Context(), tenantResolver, principal)
+				caller, err := resolveCaller(ctx.Context(), tenantResolver, contextx.Principal(ctx))
 				if err != nil {
 					return err
 				}
 
 				// Non-super-admin callers can only create categories for their own
-				// tenant; ignore any tenant the client submitted and stamp the
-				// caller's resolved tenant instead.
-				if caller.TenantID != "" {
-					model.TenantID = caller.TenantID
+				// tenant: ResolveWriteTenant ignores the client-submitted tenant and
+				// stamps the caller's own (failing closed if it has none), while
+				// super-admins keep the requested tenant.
+				tenant, err := caller.ResolveWriteTenant(model.TenantID)
+				if err != nil {
+					return err
 				}
+
+				model.TenantID = tenant
 
 				return nil
 			}),

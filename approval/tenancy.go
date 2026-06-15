@@ -96,19 +96,53 @@ func (c CallerContext) Allows(entityTenantID string) bool {
 	return c.Authorize(entityTenantID) == nil
 }
 
-// EffectiveTenantID returns the tenant filter the caller is actually
-// allowed to query. Non-super-admin callers always operate within their
-// own tenant; their override (if any) is ignored. Super-admin and
-// system-internal callers may pass a specific tenant through override, or
-// empty for cross-tenant visibility. This is the single source of truth
-// for list queries — the resource layer should never read params.TenantID
+// TenantScopeFilter resolves the tenant filter for a LIST / metrics query,
+// applying the same fail-closed posture as Authorize. A non-nil result scopes
+// the query to that tenant; a nil result means unfiltered cross-tenant access
+// and is only ever returned to super-admin / system-internal callers. An
+// ordinary caller that resolves to an empty tenant fails closed with
+// ErrCrossTenantAccess, so a forgotten or empty PrincipalTenantResolver result
+// can never silently widen a list query to every tenant's rows — mirroring
+// Authorize's rejection of a zero-value context. The override is honored only
+// for privileged callers; ordinary callers are always pinned to their own
+// tenant regardless of what the client sent. This is the single source of truth
+// for list queries — the resource layer must never read params.TenantID
 // directly.
-func (c CallerContext) EffectiveTenantID(override string) string {
+func (c CallerContext) TenantScopeFilter(override string) (*string, error) {
 	if c.IsSuperAdmin || c.IsSystemInternal {
-		return override
+		if override == "" {
+			return nil, nil
+		}
+
+		scoped := override
+
+		return &scoped, nil
 	}
 
-	return c.TenantID
+	if c.TenantID == "" {
+		return nil, ErrCrossTenantAccess
+	}
+
+	scoped := c.TenantID
+
+	return &scoped, nil
+}
+
+// ResolveWriteTenant returns the tenant a new or mutated entity must be stamped
+// with. Super-admin / system-internal callers may target any tenant, so the
+// client-supplied value is honored verbatim; every other caller is pinned to
+// their own tenant and fails closed with ErrCrossTenantAccess when they have
+// none — preventing a non-privileged caller from writing into another tenant.
+func (c CallerContext) ResolveWriteTenant(clientTenant string) (string, error) {
+	if c.IsSuperAdmin || c.IsSystemInternal {
+		return clientTenant, nil
+	}
+
+	if c.TenantID == "" {
+		return "", ErrCrossTenantAccess
+	}
+
+	return c.TenantID, nil
 }
 
 // PrincipalTenantResolver extracts the caller's tenant ID from a security
@@ -116,9 +150,11 @@ func (c CallerContext) EffectiveTenantID(override string) string {
 // schema-less; the framework cannot know where the host stores tenant
 // affiliation.
 //
-// Returning an empty string is valid (e.g. system principals, platform
-// super-admins, or anonymous callers) — CallerContext.Authorize then falls
-// back to its zero-value pass-through.
+// Returning an empty string is only meaningful for super-admin or
+// system-internal callers, which bypass tenant scoping. For an ordinary
+// authenticated principal an empty tenant fails closed: CallerContext.Authorize
+// returns ErrCrossTenantAccess and TenantScopeFilter / ResolveWriteTenant
+// likewise reject it, rather than waving the request through.
 type PrincipalTenantResolver interface {
 	// Resolve returns the tenant identifier for the given principal.
 	Resolve(ctx context.Context, principal *security.Principal) (string, error)

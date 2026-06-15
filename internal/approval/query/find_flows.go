@@ -36,21 +36,22 @@ func NewFindFlowsHandler(db orm.DB) *FindFlowsHandler {
 func (h *FindFlowsHandler) Handle(ctx context.Context, query FindFlowsQuery) (*page.Page[approval.Flow], error) {
 	db := contextx.DB(ctx, h.db)
 
-	// EffectiveTenantID is the single source of truth for the tenant filter:
+	// TenantScopeFilter is the single source of truth for the tenant filter:
 	// super-admin keeps the caller-supplied override (possibly empty for
 	// cross-tenant view); every other caller is pinned to their own tenant
-	// regardless of what the client sent. Mirrors the admin resource's
-	// resolveTenantFilter helper.
+	// regardless of what the client sent, and fails closed if it has none.
+	// Mirrors the admin resource's resolveTenantFilter helper.
 	override := ""
 	if query.TenantID != nil {
 		override = *query.TenantID
 	}
 
-	if effective := query.Caller.EffectiveTenantID(override); effective != "" {
-		query.TenantID = &effective
-	} else {
-		query.TenantID = nil
+	scope, err := query.Caller.TenantScopeFilter(override)
+	if err != nil {
+		return nil, err
 	}
+
+	query.TenantID = scope
 
 	var flows []approval.Flow
 
