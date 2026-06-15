@@ -176,25 +176,20 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 		task.Status = approval.TaskApproved
 		task.FinishedAt = new(now)
 
-		res, err := pc.DB.NewUpdate().
+		// The SELECT ... FOR UPDATE above holds the row lock for this tx, and
+		// the in-memory guard already established status == pending, so the
+		// status="pending" CAS predicate is guaranteed to match: no concurrent
+		// writer can flip the row between the locked read and this update. The
+		// predicate is retained as a defense-in-depth invariant assertion.
+		if _, err := pc.DB.NewUpdate().
 			Model(task).
 			Select("status", "finished_at").
 			Where(func(cb orm.ConditionBuilder) {
 				cb.PKEquals(task.ID).
 					Equals("status", string(approval.TaskPending))
 			}).
-			Exec(ctx)
-		if err != nil {
+			Exec(ctx); err != nil {
 			return nil, fmt.Errorf("auto-pass consecutive approver task: %w", err)
-		}
-
-		affected, err := res.RowsAffected()
-		if err != nil {
-			return nil, fmt.Errorf("auto-pass rows affected: %w", err)
-		}
-
-		if affected == 0 {
-			continue
 		}
 
 		autoPassedAny = true
@@ -248,7 +243,17 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 		return &ProcessResult{Action: NodeActionWait}, nil
 	}
 
-	// If all tasks are now complete, advance to the next node
+	// If all tasks are now complete, advance to the next node.
+	//
+	// Entry-time auto-pass paths (consecutive-approver here, plus
+	// same-applicant / empty-assignee / execution) intentionally do NOT fire
+	// timing-based node CC (CCTimingOnApprove): they return NodeActionContinue
+	// so the engine advances directly, bypassing service.HandleNodeCompletion
+	// where TriggerNodeCC(PassRulePassed) lives. The engine cannot call into
+	// the service layer (service imports engine, not vice versa), and a node
+	// cleared without any human approval has no approver action to notify CC
+	// about. This suppression is uniform across all entry-time auto-pass paths
+	// and is pinned by TestConsecutiveApproverAutoPass.
 	allComplete := !slices.ContainsFunc(tasks, func(t approval.Task) bool {
 		return t.Status == approval.TaskPending || t.Status == approval.TaskWaiting
 	})

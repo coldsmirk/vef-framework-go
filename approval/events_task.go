@@ -157,17 +157,19 @@ type TaskTransferredEvent struct {
 	OccurredTime timex.DateTime `json:"occurredTime"`
 }
 
-//nolint:revive // 9 positional args are clearer than a wrapper struct here; callers map flat task fields directly.
-func NewTaskTransferredEvent(taskID, tenantID, instanceID, nodeID, fromUserID, fromUserName, toUserID, toUserName, reason string) *TaskTransferredEvent {
+// NewTaskTransferredEvent builds the event for a task moved from one user to
+// another. The from/to identities are passed as UserInfo values rather than
+// four flat strings so the id↔name pairs cannot be transposed at a call site.
+func NewTaskTransferredEvent(taskID, tenantID, instanceID, nodeID string, from, to UserInfo, reason string) *TaskTransferredEvent {
 	return &TaskTransferredEvent{
 		TaskID:       taskID,
 		TenantID:     tenantID,
 		InstanceID:   instanceID,
 		NodeID:       nodeID,
-		FromUserID:   fromUserID,
-		FromUserName: fromUserName,
-		ToUserID:     toUserID,
-		ToUserName:   toUserName,
+		FromUserID:   from.ID,
+		FromUserName: from.Name,
+		ToUserID:     to.ID,
+		ToUserName:   to.Name,
 		Reason:       stringPtrOrNil(reason),
 		OccurredTime: timex.Now(),
 	}
@@ -189,17 +191,18 @@ type TaskReassignedEvent struct {
 	OccurredTime timex.DateTime `json:"occurredTime"`
 }
 
-//nolint:revive // 9 positional args are clearer than a wrapper struct here; callers map flat task fields directly.
-func NewTaskReassignedEvent(taskID, tenantID, instanceID, nodeID, fromUserID, fromUserName, toUserID, toUserName, reason string) *TaskReassignedEvent {
+// NewTaskReassignedEvent builds the event for an admin reassigning a task.
+// from/to are UserInfo values so the id↔name pairs cannot be transposed.
+func NewTaskReassignedEvent(taskID, tenantID, instanceID, nodeID string, from, to UserInfo, reason string) *TaskReassignedEvent {
 	return &TaskReassignedEvent{
 		TaskID:       taskID,
 		TenantID:     tenantID,
 		InstanceID:   instanceID,
 		NodeID:       nodeID,
-		FromUserID:   fromUserID,
-		FromUserName: fromUserName,
-		ToUserID:     toUserID,
-		ToUserName:   toUserName,
+		FromUserID:   from.ID,
+		FromUserName: from.Name,
+		ToUserID:     to.ID,
+		ToUserName:   to.Name,
 		Reason:       stringPtrOrNil(reason),
 		OccurredTime: timex.Now(),
 	}

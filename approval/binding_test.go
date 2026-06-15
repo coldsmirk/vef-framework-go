@@ -1,7 +1,6 @@
 package approval_test
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
@@ -67,7 +66,7 @@ func TestValidateBusinessIdentifier(t *testing.T) {
 			err := approval.ValidateBusinessIdentifier(tt.id)
 			if tt.wantErr {
 				require.Error(t, err, "%s: expected rejection but got nil", tt.name)
-				assert.True(t, errors.Is(err, approval.ErrInvalidBusinessIdentifier), "%s: error should be ErrInvalidBusinessIdentifier", tt.name)
+				assert.ErrorIs(t, err, approval.ErrInvalidBusinessIdentifier, "%s: error should be ErrInvalidBusinessIdentifier", tt.name)
 			} else {
 				assert.NoError(t, err, "%s: expected acceptance but got error", tt.name)
 			}

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -233,5 +235,116 @@ func TestValidateFormData(t *testing.T) {
 	t.Run("SizeGuardAppliesWithoutSchema", func(t *testing.T) {
 		err := svc.ValidateFormData(nil, map[string]any{"blob": strings.Repeat("x", FormDataMaxBytes+1)})
 		require.ErrorIs(t, err, shared.ErrFormDataTooLarge, "Size guard must apply even when the flow has no form schema")
+	})
+}
+
+// --- userHasRole ---
+
+// listOnlyAssigneeService implements approval.AssigneeService WITHOUT
+// RoleMembershipChecker, so userHasRole must fall back to listing role users.
+type listOnlyAssigneeService struct {
+	usersByRole map[string][]approval.UserInfo
+	err         error
+}
+
+func (*listOnlyAssigneeService) GetSuperior(context.Context, string) (*approval.UserInfo, error) {
+	return nil, nil
+}
+
+func (*listOnlyAssigneeService) GetDepartmentLeaders(context.Context, string) ([]approval.UserInfo, error) {
+	return nil, nil
+}
+
+func (s *listOnlyAssigneeService) GetRoleUsers(_ context.Context, roleID string) ([]approval.UserInfo, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+
+	return s.usersByRole[roleID], nil
+}
+
+// checkerAssigneeService additionally implements RoleMembershipChecker, so
+// userHasRole must take the direct fast path and never call GetRoleUsers.
+type checkerAssigneeService struct {
+	listOnlyAssigneeService
+
+	member       bool
+	checkErr     error
+	getRoleUsers bool // set true if GetRoleUsers is (wrongly) called
+}
+
+func (s *checkerAssigneeService) UserHasRole(context.Context, string, string) (bool, error) {
+	if s.checkErr != nil {
+		return false, s.checkErr
+	}
+
+	return s.member, nil
+}
+
+func (s *checkerAssigneeService) GetRoleUsers(ctx context.Context, roleID string) ([]approval.UserInfo, error) {
+	s.getRoleUsers = true
+
+	return s.listOnlyAssigneeService.GetRoleUsers(ctx, roleID)
+}
+
+func TestUserHasRole(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("FallbackMatchViaGetRoleUsers", func(t *testing.T) {
+		svc := NewValidationService(&listOnlyAssigneeService{
+			usersByRole: map[string][]approval.UserInfo{"role-1": {{ID: "u1"}, {ID: "u2"}}},
+		})
+
+		member, err := svc.userHasRole(ctx, "u2", "role-1")
+		require.NoError(t, err, "Fallback membership check should not error")
+		assert.True(t, member, "User present in the role's user list is a member")
+	})
+
+	t.Run("FallbackNoMatch", func(t *testing.T) {
+		svc := NewValidationService(&listOnlyAssigneeService{
+			usersByRole: map[string][]approval.UserInfo{"role-1": {{ID: "u1"}}},
+		})
+
+		member, err := svc.userHasRole(ctx, "stranger", "role-1")
+		require.NoError(t, err, "Fallback membership check should not error")
+		assert.False(t, member, "User absent from the role's user list is not a member")
+	})
+
+	t.Run("FallbackPropagatesError", func(t *testing.T) {
+		sentinel := errors.New("role listing failed")
+		svc := NewValidationService(&listOnlyAssigneeService{err: sentinel})
+
+		_, err := svc.userHasRole(ctx, "u1", "role-1")
+		require.ErrorIs(t, err, sentinel, "GetRoleUsers error must propagate")
+	})
+
+	t.Run("FastPathMember", func(t *testing.T) {
+		checker := &checkerAssigneeService{member: true}
+		svc := NewValidationService(checker)
+
+		member, err := svc.userHasRole(ctx, "u1", "role-1")
+		require.NoError(t, err, "Fast-path membership check should not error")
+		assert.True(t, member, "Fast-path checker reporting membership returns true")
+		assert.False(t, checker.getRoleUsers, "Fast path must NOT fall back to GetRoleUsers")
+	})
+
+	t.Run("FastPathNonMember", func(t *testing.T) {
+		checker := &checkerAssigneeService{member: false}
+		svc := NewValidationService(checker)
+
+		member, err := svc.userHasRole(ctx, "u1", "role-1")
+		require.NoError(t, err, "Fast-path membership check should not error")
+		assert.False(t, member, "Fast-path checker reporting non-membership returns false")
+		assert.False(t, checker.getRoleUsers, "Fast path must NOT fall back to GetRoleUsers")
+	})
+
+	t.Run("FastPathPropagatesError", func(t *testing.T) {
+		sentinel := errors.New("membership check failed")
+		checker := &checkerAssigneeService{checkErr: sentinel}
+		svc := NewValidationService(checker)
+
+		_, err := svc.userHasRole(ctx, "u1", "role-1")
+		require.ErrorIs(t, err, sentinel, "UserHasRole error must propagate")
+		assert.False(t, checker.getRoleUsers, "Fast path must NOT fall back to GetRoleUsers on error")
 	})
 }

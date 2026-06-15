@@ -60,7 +60,7 @@ func bareApprovalFlowDef(approverID string) approval.FlowDefinition {
 }
 
 func (s *DesignerDefaultsTestSuite) SetupSuite() {
-	s.engine = buildTestEngine()
+	s.engine = buildTestEngine(s.db)
 	taskSvc, nodeSvc, validSvc := buildTestServices(s.engine)
 	s.approve = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewApproveTaskHandler(s.db, taskSvc, nodeSvc, validSvc))
 }

@@ -103,12 +103,14 @@ func TestLifecycleHookRunnerOnInstanceCompleted(t *testing.T) {
 		runner := NewLifecycleHookRunner([]approval.InstanceLifecycleHook{
 			&RecordingHook{name: "a", createdInvoked: &created, completedInvoked: &completed, lastFinalStatus: &seenStatus, lastInstanceID: &seenID},
 		})
-		err := runner.OnInstanceCompleted(context.Background(), nil, &approval.Instance{}, approval.InstanceTerminated)
-		// Set ID after construction so the recording hook captures it.
-		_ = err
 
+		instance := &approval.Instance{}
+		instance.ID = "inst-1"
+
+		err := runner.OnInstanceCompleted(context.Background(), nil, instance, approval.InstanceTerminated)
 		assert.NoError(t, err, "Should run without error")
 		assert.Equal(t, approval.InstanceTerminated, seenStatus, "Should propagate final status to hooks")
+		assert.Equal(t, "inst-1", seenID, "Should propagate the instance ID to hooks")
 		assert.Equal(t, []string{"a"}, completed, "Should invoke every hook")
 	})
 

@@ -30,9 +30,10 @@ type FlowEngine struct {
 // panic on construction — silent overwrite is a deployment bug we want to
 // surface at boot rather than mask at runtime.
 //
-// flowCache may be nil; the engine then falls back to per-request DB lookups
-// for node/edge traversal. Production wiring always supplies a cache so
-// hot paths become map lookups.
+// flowCache is required: node/edge traversal resolves entirely through the
+// compiled-flow cache (a series of map lookups over the immutable published
+// version), so callers must supply one. Tests that exercise traversal build
+// it with engine.NewFlowCache(db, cache.NewMemory[*CompiledFlow]()).
 func NewFlowEngine(
 	registry *strategy.StrategyRegistry,
 	processors []NodeProcessor,
@@ -94,32 +95,16 @@ func (e *FlowEngine) publishEvents(ctx context.Context, db orm.DB, events ...app
 
 // StartProcess starts a flow process by finding the start node and processing it.
 func (e *FlowEngine) StartProcess(ctx context.Context, db orm.DB, instance *approval.Instance) error {
-	if e.flowCache != nil {
-		compiled, err := e.flowCache.Get(ctx, instance.FlowVersionID)
-		if err != nil {
-			return fmt.Errorf("compile flow: %w", err)
-		}
-
-		if compiled.StartNode == nil {
-			return fmt.Errorf("%w: %s", ErrFlowMissingStartNode, instance.FlowVersionID)
-		}
-
-		return e.ProcessNode(ctx, db, instance, compiled.StartNode)
+	compiled, err := e.flowCache.Get(ctx, instance.FlowVersionID)
+	if err != nil {
+		return fmt.Errorf("compile flow: %w", err)
 	}
 
-	var startNode approval.FlowNode
-
-	if err := db.NewSelect().
-		Model(&startNode).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("flow_version_id", instance.FlowVersionID).
-				Equals("kind", string(approval.NodeStart))
-		}).
-		Scan(ctx); err != nil {
-		return fmt.Errorf("find start node: %w", err)
+	if compiled.StartNode == nil {
+		return fmt.Errorf("%w: %s", ErrFlowMissingStartNode, instance.FlowVersionID)
 	}
 
-	return e.ProcessNode(ctx, db, instance, &startNode)
+	return e.ProcessNode(ctx, db, instance, compiled.StartNode)
 }
 
 // ProcessNode dispatches a node to the appropriate processor.
@@ -209,69 +194,22 @@ func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instanc
 // AdvanceToNextNode finds the matching edge from the current node and advances to the next one.
 // BranchID is used by condition nodes to select the edge matching the branch.
 func (e *FlowEngine) AdvanceToNextNode(ctx context.Context, db orm.DB, instance *approval.Instance, fromNode *approval.FlowNode, branchID *string) error {
-	if e.flowCache != nil {
-		compiled, err := e.flowCache.Get(ctx, instance.FlowVersionID)
-		if err != nil {
-			return fmt.Errorf("compile flow: %w", err)
-		}
-
-		edge, err := compiled.FindOutgoing(fromNode.ID, branchID)
-		if err != nil {
-			return err
-		}
-
-		nextNode, ok := compiled.Nodes[edge.TargetNodeID]
-		if !ok {
-			return fmt.Errorf("%w: %s", ErrFlowMissingTargetNode, edge.TargetNodeID)
-		}
-
-		return e.ProcessNode(ctx, db, instance, nextNode)
+	compiled, err := e.flowCache.Get(ctx, instance.FlowVersionID)
+	if err != nil {
+		return fmt.Errorf("compile flow: %w", err)
 	}
 
-	edge, err := e.findMatchingEdge(ctx, db, fromNode.ID, branchID)
+	edge, err := compiled.FindOutgoing(fromNode.ID, branchID)
 	if err != nil {
 		return err
 	}
 
-	var nextNode approval.FlowNode
-
-	nextNode.ID = edge.TargetNodeID
-
-	if err = db.NewSelect().
-		Model(&nextNode).
-		WherePK().
-		Scan(ctx); err != nil {
-		return fmt.Errorf("find next node: %w", err)
+	nextNode, ok := compiled.Nodes[edge.TargetNodeID]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrFlowMissingTargetNode, edge.TargetNodeID)
 	}
 
-	return e.ProcessNode(ctx, db, instance, &nextNode)
-}
-
-func (*FlowEngine) findMatchingEdge(ctx context.Context, db orm.DB, sourceNodeID string, branchID *string) (*approval.FlowEdge, error) {
-	var edges []approval.FlowEdge
-
-	if err := db.NewSelect().
-		Model(&edges).
-		Select("target_node_id").
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("source_node_id", sourceNodeID).
-				ApplyIf(branchID != nil, func(cb orm.ConditionBuilder) {
-					cb.Equals("source_handle", *branchID)
-				})
-		}).
-		Scan(ctx); err != nil {
-		return nil, fmt.Errorf("find edges: %w", err)
-	}
-
-	if len(edges) == 0 {
-		return nil, ErrNoMatchingEdge
-	}
-
-	if len(edges) > 1 {
-		return nil, fmt.Errorf("%w: found %d edges from node %q", errAmbiguousEdges, len(edges), sourceNodeID)
-	}
-
-	return &edges[0], nil
+	return e.ProcessNode(ctx, db, instance, nextNode)
 }
 
 // EvaluateNodeCompletion evaluates whether a node is complete based on its tasks and pass rule.

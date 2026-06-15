@@ -2,7 +2,6 @@ package approval_test
 
 import (
 	"encoding/json"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -96,7 +95,7 @@ func TestNodeDefinitionParseDataUnknownKind(t *testing.T) {
 
 	require.Error(t, err, "ParseData should error for unknown kind")
 	assert.Nil(t, got, "ParseData should return nil NodeData for unknown kind")
-	assert.True(t, errors.Is(err, approval.ErrUnknownNodeKind),
+	assert.ErrorIs(t, err, approval.ErrUnknownNodeKind,
 		"Error should wrap ErrUnknownNodeKind for unknown kind")
 }
 
@@ -111,6 +110,6 @@ func TestNodeDefinitionParseDataMalformedJSON(t *testing.T) {
 
 	require.Error(t, err, "ParseData should error on malformed node data")
 	assert.Nil(t, got, "ParseData should return nil on unmarshal error")
-	assert.True(t, errors.Is(err, approval.ErrNodeDataUnmarshal),
+	assert.ErrorIs(t, err, approval.ErrNodeDataUnmarshal,
 		"Error should wrap ErrNodeDataUnmarshal for bad payload")
 }

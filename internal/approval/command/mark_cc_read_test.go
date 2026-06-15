@@ -30,7 +30,7 @@ type MarkCCReadTestSuite struct {
 }
 
 func (s *MarkCCReadTestSuite) SetupSuite() {
-	eng := buildTestEngine()
+	eng := buildTestEngine(s.db)
 	_, nodeSvc, _ := buildTestServices(eng)
 	s.handler = command.NewMarkCCReadHandler(s.db, nodeSvc)
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "mark-cc")

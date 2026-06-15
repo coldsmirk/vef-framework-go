@@ -5,8 +5,6 @@ import (
 
 	"github.com/coldsmirk/go-collections"
 
-	streams "github.com/coldsmirk/go-streams"
-
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
@@ -33,24 +31,72 @@ func NewFlowDefinitionService() *FlowDefinitionService {
 // (deploy) persist exactly the configuration that passed validation instead
 // of re-parsing the raw JSON a second time.
 //
-//nolint:gocyclo // validation function inherently requires many checks
+// nodeScan holds the Phase 1 node-validation outputs that the later edge,
+// degree, and topology phases consume. Carrying them in one struct (rather
+// than a wide return list) keeps each phase helper within revive's
+// function-result-limit while still flowing the cross-phase state through.
+type nodeScan struct {
+	nodeIDs      collections.Set[string]
+	taskNodeIDs  collections.Set[string]
+	parsed       map[string]approval.NodeData
+	condBranches map[string][]approval.ConditionBranch
+	startID      string
+	endIDs       []string
+}
+
+// edgeScan holds the Phase 2 edge-validation outputs (adjacency + degree maps)
+// that the degree-constraint and topology phases consume.
+type edgeScan struct {
+	outEdges    map[string][]approval.EdgeDefinition
+	inDegree    map[string]int
+	adjacency   map[string][]string
+	reversedAdj map[string][]string
+}
+
+// ValidateFlowDefinition validates a flow graph and returns the parsed node
+// data (which deploy persists verbatim — it is never re-parsed). It runs four
+// independent phases — node validation, edge/adjacency, degree constraints,
+// topology — each extracted into a focused helper that the orchestrator below
+// sequences.
 func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinition) (map[string]approval.NodeData, error) {
 	if len(def.Nodes) == 0 {
 		return nil, errNoNodes
 	}
 
-	// --- Phase 1: Node validation ---
-	var (
-		nodeIDs      = collections.NewHashSet[string]()
-		taskNodeIDs  = collections.NewHashSet[string]()
-		parsed       = make(map[string]approval.NodeData, len(def.Nodes))
-		condBranches = make(map[string][]approval.ConditionBranch)
-		rollbackRefs = make(map[string][]string)
+	nodes, err := validateNodes(def)
+	if err != nil {
+		return nil, err
+	}
 
-		startCount, endCount int
-		startID              string
-		endIDs               []string
-	)
+	edges, err := validateEdges(def, nodes.nodeIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateDegreeConstraints(def, nodes, edges); err != nil {
+		return nil, err
+	}
+
+	if err := validateTopology(def, nodes, edges); err != nil {
+		return nil, err
+	}
+
+	return nodes.parsed, nil
+}
+
+// validateNodes performs Phase 1: per-node ID/kind/data validation, start/end
+// counts, and the cross-node rollback-target reference check.
+func validateNodes(def *approval.FlowDefinition) (*nodeScan, error) {
+	scan := &nodeScan{
+		nodeIDs:      collections.NewHashSet[string](),
+		taskNodeIDs:  collections.NewHashSet[string](),
+		parsed:       make(map[string]approval.NodeData, len(def.Nodes)),
+		condBranches: make(map[string][]approval.ConditionBranch),
+	}
+
+	rollbackRefs := make(map[string][]string)
+
+	var startCount, endCount int
 
 	for i := range def.Nodes {
 		node := &def.Nodes[i]
@@ -59,7 +105,7 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 			return nil, errEmptyNodeID
 		}
 
-		if !nodeIDs.Add(node.ID) {
+		if !scan.nodeIDs.Add(node.ID) {
 			return nil, fmt.Errorf("%w: %q", errDuplicateNodeID, node.ID)
 		}
 
@@ -76,26 +122,26 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 			return nil, err
 		}
 
-		parsed[node.ID] = data
+		scan.parsed[node.ID] = data
 
 		switch node.Kind {
 		case approval.NodeStart:
 			startCount++
-			startID = node.ID
+			scan.startID = node.ID
 		case approval.NodeEnd:
 			endCount++
 
-			endIDs = append(endIDs, node.ID)
+			scan.endIDs = append(scan.endIDs, node.ID)
 		case approval.NodeCondition:
 			cnd, ok := data.(*approval.ConditionNodeData)
 			if !ok {
 				return nil, fmt.Errorf("node %q: %w", node.ID, errUnexpectedCondData)
 			}
 
-			condBranches[node.ID] = cnd.Branches
+			scan.condBranches[node.ID] = cnd.Branches
 
 		case approval.NodeApproval, approval.NodeHandle:
-			taskNodeIDs.Add(node.ID)
+			scan.taskNodeIDs.Add(node.ID)
 
 			if ad, ok := data.(*approval.ApprovalNodeData); ok && len(ad.RollbackTargetKeys) > 0 {
 				rollbackRefs[node.ID] = ad.RollbackTargetKeys
@@ -111,29 +157,42 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 		return nil, fmt.Errorf("%w, found %d", errEndNodeCount, endCount)
 	}
 
-	// Rollback target keys are cross-node references — resolvable only now
-	// that every node ID is known. Targets must be task nodes (the designer
-	// offers exactly approval / handle candidates) and never the node itself.
+	if err := validateRollbackRefs(rollbackRefs, scan.taskNodeIDs); err != nil {
+		return nil, err
+	}
+
+	return scan, nil
+}
+
+// validateRollbackRefs resolves cross-node rollback target keys — possible
+// only once every node ID is known. Targets must be task nodes (the designer
+// offers exactly approval / handle candidates) and never the node itself.
+func validateRollbackRefs(rollbackRefs map[string][]string, taskNodeIDs collections.Set[string]) error {
 	for nodeID, targetKeys := range rollbackRefs {
 		for _, key := range targetKeys {
 			if key == nodeID {
-				return nil, fmt.Errorf("%w: node %q", errRollbackTargetSelf, nodeID)
+				return fmt.Errorf("%w: node %q", errRollbackTargetSelf, nodeID)
 			}
 
 			if !taskNodeIDs.Contains(key) {
-				return nil, fmt.Errorf("%w: %q in node %q", errRollbackTargetUnknown, key, nodeID)
+				return fmt.Errorf("%w: %q in node %q", errRollbackTargetUnknown, key, nodeID)
 			}
 		}
 	}
 
-	// --- Phase 2: Edge validation & adjacency ---
-	var (
-		edgeIDs     = collections.NewHashSet[string]()
-		outEdges    = make(map[string][]approval.EdgeDefinition, len(def.Nodes))
-		inDegree    = make(map[string]int, len(def.Nodes))
-		adjacency   = make(map[string][]string, len(def.Nodes))
-		reversedAdj = make(map[string][]string, len(def.Nodes))
-	)
+	return nil
+}
+
+// validateEdges performs Phase 2: per-edge ID/endpoint validation, building the
+// adjacency and degree maps the later phases consume.
+func validateEdges(def *approval.FlowDefinition, nodeIDs collections.Set[string]) (*edgeScan, error) {
+	edgeIDs := collections.NewHashSet[string]()
+	scan := &edgeScan{
+		outEdges:    make(map[string][]approval.EdgeDefinition, len(def.Nodes)),
+		inDegree:    make(map[string]int, len(def.Nodes)),
+		adjacency:   make(map[string][]string, len(def.Nodes)),
+		reversedAdj: make(map[string][]string, len(def.Nodes)),
+	}
 
 	for _, edge := range def.Edges {
 		if edge.ID == "" {
@@ -152,28 +211,34 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 			return nil, fmt.Errorf("%w: edge %q references %q", errUnknownTargetNode, edge.ID, edge.Target)
 		}
 
-		outEdges[edge.Source] = append(outEdges[edge.Source], edge)
-		inDegree[edge.Target]++
-		adjacency[edge.Source] = append(adjacency[edge.Source], edge.Target)
-		reversedAdj[edge.Target] = append(reversedAdj[edge.Target], edge.Source)
+		scan.outEdges[edge.Source] = append(scan.outEdges[edge.Source], edge)
+		scan.inDegree[edge.Target]++
+		scan.adjacency[edge.Source] = append(scan.adjacency[edge.Source], edge.Target)
+		scan.reversedAdj[edge.Target] = append(scan.reversedAdj[edge.Target], edge.Source)
 	}
 
-	// --- Phase 3: Degree constraints ---
-	if inDegree[startID] > 0 {
-		return nil, errStartIncoming
+	return scan, nil
+}
+
+// validateDegreeConstraints performs Phase 3: start/end in/out-degree rules and
+// the per-node outgoing-edge constraints (condition branch coverage, single
+// unguarded out-edge for everything else).
+func validateDegreeConstraints(def *approval.FlowDefinition, nodes *nodeScan, edges *edgeScan) error {
+	if edges.inDegree[nodes.startID] > 0 {
+		return errStartIncoming
 	}
 
-	if len(outEdges[startID]) != 1 {
-		return nil, fmt.Errorf("%w, found %d", errStartOutgoing, len(outEdges[startID]))
+	if len(edges.outEdges[nodes.startID]) != 1 {
+		return fmt.Errorf("%w, found %d", errStartOutgoing, len(edges.outEdges[nodes.startID]))
 	}
 
-	for _, endID := range endIDs {
-		if len(outEdges[endID]) > 0 {
-			return nil, fmt.Errorf("%w: %q", errEndOutgoing, endID)
+	for _, endID := range nodes.endIDs {
+		if len(edges.outEdges[endID]) > 0 {
+			return fmt.Errorf("%w: %q", errEndOutgoing, endID)
 		}
 
-		if inDegree[endID] == 0 {
-			return nil, fmt.Errorf("%w: %q", errEndIncoming, endID)
+		if edges.inDegree[endID] == 0 {
+			return fmt.Errorf("%w: %q", errEndIncoming, endID)
 		}
 	}
 
@@ -182,52 +247,58 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 			continue
 		}
 
-		outs := outEdges[node.ID]
+		outs := edges.outEdges[node.ID]
 
 		switch node.Kind {
 		case approval.NodeCondition:
-			if err := validateConditionEdges(node.ID, condBranches[node.ID], outs); err != nil {
-				return nil, err
+			if err := validateConditionEdges(node.ID, nodes.condBranches[node.ID], outs); err != nil {
+				return err
 			}
 		default:
 			if len(outs) != 1 {
-				return nil, fmt.Errorf("%w: node %q has %d", errNodeOutgoingCount, node.ID, len(outs))
+				return fmt.Errorf("%w: node %q has %d", errNodeOutgoingCount, node.ID, len(outs))
 			}
 
 			if outs[0].SourceHandle != nil {
-				return nil, fmt.Errorf("%w: node %q", errNodeSourceHandle, node.ID)
+				return fmt.Errorf("%w: node %q", errNodeSourceHandle, node.ID)
 			}
 		}
 	}
 
-	// --- Phase 4: Topology ---
-	nodeIDSlice := streams.MapTo(streams.FromSlice(def.Nodes), func(n approval.NodeDefinition) string {
-		return n.ID
-	}).Collect()
+	return nil
+}
 
-	if detectCycle(nodeIDSlice, adjacency) {
-		return nil, errGraphCycle
+// validateTopology performs Phase 4: cycle detection plus forward (from start)
+// and backward (to an end) reachability over the whole node set.
+func validateTopology(def *approval.FlowDefinition, nodes *nodeScan, edges *edgeScan) error {
+	nodeIDSlice := make([]string, 0, len(def.Nodes))
+	for i := range def.Nodes {
+		nodeIDSlice = append(nodeIDSlice, def.Nodes[i].ID)
 	}
 
-	reachable := collectReachable(adjacency, startID)
-	if reachable.Size() != nodeIDs.Size() {
+	if detectCycle(nodeIDSlice, edges.adjacency) {
+		return errGraphCycle
+	}
+
+	reachable := collectReachable(edges.adjacency, nodes.startID)
+	if reachable.Size() != nodes.nodeIDs.Size() {
 		for _, node := range def.Nodes {
 			if !reachable.Contains(node.ID) {
-				return nil, fmt.Errorf("%w: %q", errNodeUnreachable, node.ID)
+				return fmt.Errorf("%w: %q", errNodeUnreachable, node.ID)
 			}
 		}
 	}
 
-	canReachEnd := collectReachable(reversedAdj, endIDs...)
-	if canReachEnd.Size() != nodeIDs.Size() {
+	canReachEnd := collectReachable(edges.reversedAdj, nodes.endIDs...)
+	if canReachEnd.Size() != nodes.nodeIDs.Size() {
 		for _, node := range def.Nodes {
 			if !canReachEnd.Contains(node.ID) {
-				return nil, fmt.Errorf("%w: %q", errNodeCannotReachEnd, node.ID)
+				return fmt.Errorf("%w: %q", errNodeCannotReachEnd, node.ID)
 			}
 		}
 	}
 
-	return parsed, nil
+	return nil
 }
 
 // validateConditionEdges validates that a condition node's outgoing edges match its branches exactly.

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/cache"
 	"github.com/coldsmirk/vef-framework-go/decimal"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/migration"
@@ -211,11 +212,13 @@ func (s *FlowEngineTestSuite) SetupSuite() {
 		nil,
 	)
 
+	// The engine traverses via the compiled-flow cache (production wiring),
+	// so back it with a real memory-backed FlowCache over the suite DB.
 	s.engine = engine.NewFlowEngine(reg, []engine.NodeProcessor{
 		engine.NewStartProcessor(),
 		engine.NewEndProcessor(),
 		engine.NewApprovalProcessor(nil),
-	}, nil, nil, nil, nil)
+	}, nil, nil, nil, engine.NewFlowCache(s.db, cache.NewMemory[*engine.CompiledFlow]()))
 
 	// Build FK chain: FlowCategory → Flow → FlowVersion
 	category := &approval.FlowCategory{TenantID: "default", Code: "engine-test", Name: "Engine Test"}

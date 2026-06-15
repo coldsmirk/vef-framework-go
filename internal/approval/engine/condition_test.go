@@ -53,13 +53,18 @@ func newRegistry(evaluators ...approval.ConditionEvaluator) *strategy.StrategyRe
 }
 
 func newProcessContext(branches []approval.ConditionBranch, registry *strategy.StrategyRegistry) *ProcessContext {
+	instance := &approval.Instance{
+		ApplicantID: "u1",
+		FormData:    map[string]any{"amount": 1000},
+	}
+
 	return &ProcessContext{
-		Instance: &approval.Instance{
-			ApplicantID: "u1",
-			FormData:    map[string]any{"amount": 1000},
-		},
+		Instance: instance,
 		Node:     &approval.FlowNode{Branches: branches},
 		Registry: registry,
+		// Mirror production ProcessNode, which prepares pc.FormData from the
+		// instance form data; ConditionProcessor consumes pc.FormData.
+		FormData: approval.NewFormData(instance.FormData),
 	}
 }
 
@@ -230,14 +235,16 @@ func TestConditionProcessor(t *testing.T) {
 				{Conditions: []approval.Condition{{Kind: "test"}}},
 			}},
 		}
+		instance := &approval.Instance{
+			ApplicantID:           "user_42",
+			ApplicantDepartmentID: &departmentID,
+			FormData:              map[string]any{"key": "value"},
+		}
 		pc := &ProcessContext{
-			Instance: &approval.Instance{
-				ApplicantID:           "user_42",
-				ApplicantDepartmentID: &departmentID,
-				FormData:              map[string]any{"key": "value"},
-			},
+			Instance: instance,
 			Node:     &approval.FlowNode{Branches: branches},
 			Registry: registry,
+			FormData: approval.NewFormData(instance.FormData),
 		}
 
 		_, err := processor.Process(context.Background(), pc)
@@ -265,10 +272,12 @@ func TestConditionProcessor(t *testing.T) {
 				{Conditions: []approval.Condition{{Kind: "test"}}},
 			}},
 		}
+		instance := &approval.Instance{ApplicantID: "u1"}
 		pc := &ProcessContext{
-			Instance: &approval.Instance{ApplicantID: "u1"},
+			Instance: instance,
 			Node:     &approval.FlowNode{Branches: branches},
 			Registry: registry,
+			FormData: approval.NewFormData(instance.FormData),
 		}
 
 		_, err := processor.Process(context.Background(), pc)

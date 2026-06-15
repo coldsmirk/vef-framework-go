@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"text/template"
+	"unicode/utf8"
 
 	"github.com/samber/lo"
 
@@ -174,7 +175,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	// Resolve the business binding (if any). The default hook is a no-op;
 	// hosts that override it can allocate a business row inside the same
 	// transaction. Returning empty string keeps BusinessRecordID nil.
-	if flow.BindingMode == approval.BindingBusiness && h.bindingHook != nil {
+	if flow.BindingMode == approval.BindingBusiness {
 		businessID, err := h.bindingHook.OnInstanceCreated(ctx, db, &flow, instance)
 		if err != nil {
 			return nil, fmt.Errorf("business binding on create: %w", err)
@@ -213,6 +214,14 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	return instance, nil
 }
 
+// instanceTitleMaxRunes bounds the rendered instance title to the width of
+// the apv_instance.title column (VARCHAR(256) in every dialect). The title
+// template input is admin-controlled but interpolates applicant-controlled
+// form fields, so an oversize value is degraded gracefully here rather than
+// failing the whole StartInstance INSERT (Postgres rejects, MySQL silently
+// truncates). Keep in sync with the column definition in migration scripts.
+const instanceTitleMaxRunes = 256
+
 // renderInstanceTitle renders an instance title from a Go text/template
 // string. text/template (unlike Jinja2) cannot execute arbitrary code, so
 // the only escape hatch is reading fields out of the data map. The data
@@ -220,12 +229,16 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 // the flow-definition admin, who already sees the same form payload they
 // could embed here. Future tightening (allowlisting formData keys) would
 // be a host-policy concern rather than a framework concern.
+//
+// The result is rune-aware truncated to instanceTitleMaxRunes so an
+// oversize template output (e.g. a template interpolating a multi-KB form
+// field) cannot overflow the title column.
 func renderInstanceTitle(titleTemplate string, data map[string]any) (string, error) {
 	if titleTemplate == "" {
 		flowName, _ := data["flowName"].(string)
 		instanceNo, _ := data["instanceNo"].(string)
 
-		return flowName + "-" + instanceNo, nil
+		return truncateRunes(flowName+"-"+instanceNo, instanceTitleMaxRunes), nil
 	}
 
 	tmpl, err := template.New("title").Parse(titleTemplate)
@@ -238,5 +251,17 @@ func renderInstanceTitle(titleTemplate string, data map[string]any) (string, err
 		return "", fmt.Errorf("execute title template: %w", err)
 	}
 
-	return buf.String(), nil
+	return truncateRunes(buf.String(), instanceTitleMaxRunes), nil
+}
+
+// truncateRunes returns s limited to at most maxRunes runes, counting
+// characters rather than bytes so multi-byte text (e.g. CJK) is never split
+// mid-rune — matching the rune-counting idiom used by form-field length
+// validation (service/validation.go).
+func truncateRunes(s string, maxRunes int) string {
+	if utf8.RuneCountInString(s) <= maxRunes {
+		return s
+	}
+
+	return string([]rune(s)[:maxRunes])
 }

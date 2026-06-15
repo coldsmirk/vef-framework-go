@@ -386,7 +386,7 @@ func (s *TaskServiceTestSuite) TestIsAuthorizedForNodeOperation() {
 		insertTaskWithDetails(s.T(), s.ctx, s.db, inst.ID, nodeID, approval.TaskPending, 1)
 		peerTask := insertTaskWithAssignee(s.T(), s.ctx, s.db, inst.ID, nodeID, approval.TaskPending, 2, "peer-user")
 
-		result, err := s.svc.IsAuthorizedForNodeOperation(s.ctx, s.db, *peerTask, "peer-user")
+		result, err := s.svc.IsAuthorizedForNodeOperation(s.ctx, s.db, peerTask.InstanceID, peerTask.NodeID, "peer-user")
 		s.Require().NoError(err, "Authorization check should not error")
 		s.Assert().True(result, "Peer assignee should be authorized")
 	})
@@ -402,27 +402,13 @@ func (s *TaskServiceTestSuite) TestIsAuthorizedForNodeOperation() {
 
 		inst := s.fixture.createInstance(s.T(), s.ctx, s.db, approval.InstanceRunning)
 
-		task := approval.Task{
-			InstanceID: inst.ID,
-			NodeID:     s.fixture.NodeIDs[1],
-			AssigneeID: "other-user",
-			Status:     approval.TaskPending,
-		}
-
-		result, err := s.svc.IsAuthorizedForNodeOperation(s.ctx, s.db, task, "admin-user")
+		result, err := s.svc.IsAuthorizedForNodeOperation(s.ctx, s.db, inst.ID, s.fixture.NodeIDs[1], "admin-user")
 		s.Require().NoError(err, "Authorization check should not error")
 		s.Assert().True(result, "Flow admin should be authorized")
 	})
 
 	s.Run("Unauthorized", func() {
-		task := approval.Task{
-			InstanceID: "non-existent",
-			NodeID:     "non-existent-node",
-			AssigneeID: "other",
-			Status:     approval.TaskPending,
-		}
-
-		result, err := s.svc.IsAuthorizedForNodeOperation(s.ctx, s.db, task, "random-user")
+		result, err := s.svc.IsAuthorizedForNodeOperation(s.ctx, s.db, "non-existent", "non-existent-node", "random-user")
 		s.Require().NoError(err, "A non-existent instance is a denial, not an error")
 		s.Assert().False(result, "Random user should not be authorized")
 	})

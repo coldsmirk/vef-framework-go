@@ -90,3 +90,41 @@ const (
 	EventTypeFlowToggled   = "approval.flow.toggled"
 	EventTypeFlowPublished = "approval.flow.published"
 )
+
+// AllEventTypes returns every approval domain event type identifier. It is
+// the canonical, enumerable registry of the event surface: callers that must
+// stay exhaustive over the event set (e.g. the start-up routing check, which
+// asserts each transactional event resolves to a transactional transport)
+// derive from this list so adding a new event constant cannot silently slip
+// past them. Keep this in sync with the EventType* constants above — the only
+// reason a new constant would be omitted is a deliberate, reviewed decision.
+func AllEventTypes() []string {
+	return []string{
+		EventTypeInstanceCreated,
+		EventTypeInstanceCompleted,
+		EventTypeInstanceWithdrawn,
+		EventTypeInstanceRolledBack,
+		EventTypeInstanceReturned,
+		EventTypeInstanceResubmitted,
+		EventTypeInstanceBindingFailed,
+		EventTypeNodeAutoPassed,
+		EventTypeTaskCreated,
+		EventTypeTaskApproved,
+		EventTypeTaskHandled,
+		EventTypeTaskRejected,
+		EventTypeTaskCanceled,
+		EventTypeTaskTransferred,
+		EventTypeTaskReassigned,
+		EventTypeTaskTimedOut,
+		EventTypeAssigneesAdded,
+		EventTypeAssigneesRemoved,
+		EventTypeTaskDeadlineWarning,
+		EventTypeTaskUrged,
+		EventTypeCCNotified,
+		EventTypeFlowCreated,
+		EventTypeFlowUpdated,
+		EventTypeFlowDeployed,
+		EventTypeFlowToggled,
+		EventTypeFlowPublished,
+	}
+}

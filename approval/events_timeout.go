@@ -45,17 +45,19 @@ type TaskUrgedEvent struct {
 	OccurredTime   timex.DateTime `json:"occurredTime"`
 }
 
-//nolint:revive // 9 positional args are clearer than a wrapper struct here; callers map flat task fields directly.
-func NewTaskUrgedEvent(instanceID, tenantID, nodeID, taskID, urgerID, urgerName, targetUserID, targetUserName, message string) *TaskUrgedEvent {
+// NewTaskUrgedEvent builds the event for an urge/reminder. The urger and
+// target identities are passed as UserInfo values so the id↔name pairs cannot
+// be transposed at a call site.
+func NewTaskUrgedEvent(instanceID, tenantID, nodeID, taskID string, urger, target UserInfo, message string) *TaskUrgedEvent {
 	return &TaskUrgedEvent{
 		InstanceID:     instanceID,
 		TenantID:       tenantID,
 		NodeID:         nodeID,
 		TaskID:         taskID,
-		UrgerID:        urgerID,
-		UrgerName:      urgerName,
-		TargetUserID:   targetUserID,
-		TargetUserName: targetUserName,
+		UrgerID:        urger.ID,
+		UrgerName:      urger.Name,
+		TargetUserID:   target.ID,
+		TargetUserName: target.Name,
 		Message:        stringPtrOrNil(message),
 		OccurredTime:   timex.Now(),
 	}

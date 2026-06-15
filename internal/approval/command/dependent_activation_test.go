@@ -44,7 +44,7 @@ type DependentActivationTestSuite struct {
 }
 
 func (s *DependentActivationTestSuite) SetupSuite() {
-	eng := buildTestEngine()
+	eng := buildTestEngine(s.db)
 	taskSvc, nodeSvc, validSvc := buildTestServices(eng)
 
 	s.addHandler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewAddAssigneeHandler(s.db, taskSvc, nil))

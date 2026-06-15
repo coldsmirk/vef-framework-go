@@ -1,7 +1,6 @@
 package command
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,14 +40,14 @@ func TestValidateBusinessIdentifiers(t *testing.T) {
 		t.Parallel()
 
 		err := validateBusinessIdentifiers(approval.BindingBusiness, ptr("orders; DROP TABLE apv_instance --"), ptr("id"), ptr("status"), nil)
-		assert.True(t, errors.Is(err, shared.ErrInvalidBusinessIdentifier), "Identifier with semicolon should be rejected")
+		assert.ErrorIs(t, err, shared.ErrInvalidBusinessIdentifier, "Identifier with semicolon should be rejected")
 	})
 
 	t.Run("RejectQuotedIdentifier", func(t *testing.T) {
 		t.Parallel()
 
 		err := validateBusinessIdentifiers(approval.BindingBusiness, ptr(`"orders"`), ptr("id"), ptr("status"), nil)
-		assert.True(t, errors.Is(err, shared.ErrInvalidBusinessIdentifier), "Quoted identifier should be rejected")
+		assert.ErrorIs(t, err, shared.ErrInvalidBusinessIdentifier, "Quoted identifier should be rejected")
 	})
 
 	t.Run("RejectOverlongIdentifier", func(t *testing.T) {
@@ -60,6 +59,6 @@ func TestValidateBusinessIdentifiers(t *testing.T) {
 		}
 
 		err := validateBusinessIdentifiers(approval.BindingBusiness, ptr(string(long)), ptr("id"), ptr("status"), nil)
-		assert.True(t, errors.Is(err, shared.ErrInvalidBusinessIdentifier), "Identifier over 63 chars should be rejected")
+		assert.ErrorIs(t, err, shared.ErrInvalidBusinessIdentifier, "Identifier over 63 chars should be rejected")
 	})
 }

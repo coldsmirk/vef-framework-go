@@ -40,7 +40,7 @@ type RemoveAssigneeTestSuite struct {
 }
 
 func (s *RemoveAssigneeTestSuite) SetupSuite() {
-	eng := buildTestEngine()
+	eng := buildTestEngine(s.db)
 	taskSvc, nodeSvc, _ := buildTestServices(eng)
 
 	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewRemoveAssigneeHandler(s.db, taskSvc, nodeSvc, eng))
@@ -225,7 +225,7 @@ func (s *RemoveAssigneeTestSuite) TestCanRemoveWhenSiblingsNonActionable() {
 	node.ID = s.nodeID
 	s.Require().NoError(s.db.NewSelect().Model(&node).WherePK().Scan(s.ctx), "Should load node")
 
-	canRemove, err := service.NewTaskService().CanRemoveAssigneeTask(s.ctx, s.db, buildTestEngine(), &node, *task2)
+	canRemove, err := service.NewTaskService().CanRemoveAssigneeTask(s.ctx, s.db, buildTestEngine(s.db), &node, *task2)
 	s.Require().NoError(err, "CanRemoveAssigneeTask should not error")
 	s.Assert().True(canRemove,
 		"Removing the last actionable task when all siblings are non-actionable must be allowed via the deadlock guard, not blocked")

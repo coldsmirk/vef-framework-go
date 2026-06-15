@@ -53,18 +53,22 @@ type CallerContext struct {
 	TenantID string
 	// IsSuperAdmin grants cross-tenant access regardless of TenantID.
 	IsSuperAdmin bool
-	// IsSystemInternal marks a caller without an HTTP / RPC principal
-	// (timeout scanner, binding listener, engine-internal saga, test
-	// fixtures). Authorize passes unconditionally for such callers; resource
-	// paths must NEVER populate this — it's only legitimate for in-process
-	// system code that already established scope by other means.
+	// IsSystemInternal marks a caller without an HTTP / RPC principal whose
+	// scope is established by other means, so Authorize passes
+	// unconditionally. Resource paths must NEVER populate this. In the
+	// current tree only test fixtures set it (the in-tree system paths —
+	// timeout scanner, binding listener — act directly on already-loaded,
+	// trusted rows and never construct a CallerContext); it remains the
+	// intended marker for any host or future in-process system code that
+	// legitimately needs to bypass tenant scoping.
 	IsSystemInternal bool
 }
 
-// SystemCaller is the canonical CallerContext for in-process system code
-// (timeout scanner, binding listener, engine-internal sagas, test fixtures
-// that intentionally bypass tenant scoping). Use this instead of the zero
-// value so the intent is explicit at the call site.
+// SystemCaller is the canonical CallerContext for callers that bypass tenant
+// scoping by carrying IsSystemInternal. In the current tree its only
+// consumers are test fixtures (production system paths operate on trusted,
+// pre-scoped rows without a CallerContext); use it instead of the zero value
+// so the bypass intent is explicit at the call site.
 var SystemCaller = CallerContext{IsSystemInternal: true}
 
 // Authorize reports whether the caller is allowed to act on an entity owned

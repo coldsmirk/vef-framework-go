@@ -2,7 +2,6 @@ package command
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
@@ -103,12 +102,8 @@ func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cq
 	// state machine through HandleNodeCompletion → ApplyInstanceTransition
 	// (or by the engine's NodeActionComplete / NodeActionWait paths). Only
 	// form_data — mutated locally via MergeFormData — still needs writing.
-	if _, err := db.NewUpdate().
-		Model(instance).
-		Select("form_data").
-		WherePK().
-		Exec(ctx); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("update instance form_data: %w", err)
+	if err := h.taskSvc.PersistInstanceFormData(ctx, db, instance); err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	behavior.EventCollectorFromContext(ctx).Add(events...)

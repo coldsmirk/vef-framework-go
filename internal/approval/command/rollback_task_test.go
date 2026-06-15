@@ -38,7 +38,7 @@ type RollbackTaskTestSuite struct {
 }
 
 func (s *RollbackTaskTestSuite) SetupSuite() {
-	eng := buildTestEngine()
+	eng := buildTestEngine(s.db)
 	taskSvc := service.NewTaskService()
 	validSvc := service.NewValidationService(nil)
 	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewRollbackTaskHandler(s.db, taskSvc, service.NewInstanceService(nil), validSvc, eng))

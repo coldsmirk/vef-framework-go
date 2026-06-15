@@ -136,7 +136,8 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewTaskUrgedEvent(
 			task.InstanceID, task.TenantID, task.NodeID, cmd.TaskID,
-			cmd.UrgerID, urgerName, task.AssigneeID, task.AssigneeName, cmd.Message,
+			approval.UserInfo{ID: cmd.UrgerID, Name: urgerName},
+			approval.UserInfo{ID: task.AssigneeID, Name: task.AssigneeName}, cmd.Message,
 		),
 	)
 

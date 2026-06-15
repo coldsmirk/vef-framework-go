@@ -85,6 +85,23 @@ func (*TaskService) FinishTask(ctx context.Context, db orm.DB, task *approval.Ta
 	return nil
 }
 
+// PersistInstanceFormData writes back only the instance's form_data column.
+// Task-action handlers (approve / reject / transfer) mutate form_data locally
+// via MergeFormData while the state machine already persists status /
+// current_node_id / finished_at, so this is the single column those handlers
+// still need to flush — shared here so the verbatim UPDATE is not copy-pasted.
+func (*TaskService) PersistInstanceFormData(ctx context.Context, db orm.DB, instance *approval.Instance) error {
+	if _, err := db.NewUpdate().
+		Model(instance).
+		Select("form_data").
+		WherePK().
+		Exec(ctx); err != nil {
+		return fmt.Errorf("update instance form_data: %w", err)
+	}
+
+	return nil
+}
+
 // ActivateNextSequentialTask activates the next waiting task in a node's
 // sort-ordered queue. It is a no-op while any task on the node is still
 // Pending, which makes it idempotent and safe to call after any task finishes
@@ -366,12 +383,12 @@ func (*TaskService) cancelActiveTasks(ctx context.Context, db orm.DB, reason str
 // returned to the caller rather than swallowed, so an infrastructure
 // failure surfaces as a server error instead of a silent authorization
 // denial.
-func (*TaskService) IsAuthorizedForNodeOperation(ctx context.Context, db orm.DB, task approval.Task, operatorID string) (bool, error) {
+func (*TaskService) IsAuthorizedForNodeOperation(ctx context.Context, db orm.DB, instanceID, nodeID, operatorID string) (bool, error) {
 	peerCount, err := db.NewSelect().
 		Model((*approval.Task)(nil)).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", task.InstanceID).
-				Equals("node_id", task.NodeID).
+			cb.Equals("instance_id", instanceID).
+				Equals("node_id", nodeID).
 				Equals("assignee_id", operatorID).
 				In("status", cancelableTaskStatuses)
 		}).
@@ -386,7 +403,7 @@ func (*TaskService) IsAuthorizedForNodeOperation(ctx context.Context, db orm.DB,
 
 	var instance approval.Instance
 
-	instance.ID = task.InstanceID
+	instance.ID = instanceID
 
 	// A missing instance/flow means no flow-admin grant exists — a
 	// legitimate "not authorized" answer — so it returns (false, nil).

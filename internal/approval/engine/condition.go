@@ -35,10 +35,8 @@ func (*ConditionProcessor) Process(ctx context.Context, pc *ProcessContext) (*Pr
 		)
 	})
 
-	formData := approval.NewFormData(pc.Instance.FormData)
-
 	evalCtx := &approval.EvaluationContext{
-		FormData:              formData,
+		FormData:              pc.FormData,
 		ApplicantID:           pc.Instance.ApplicantID,
 		ApplicantDepartmentID: pc.Instance.ApplicantDepartmentID,
 	}

@@ -101,7 +101,9 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	behavior.EventCollectorFromContext(ctx).Add(
-		approval.NewTaskReassignedEvent(task.ID, task.TenantID, task.InstanceID, task.NodeID, oldAssigneeID, oldAssigneeName, newAssigneeID, newAssigneeName, cmd.Reason),
+		approval.NewTaskReassignedEvent(task.ID, task.TenantID, task.InstanceID, task.NodeID,
+			approval.UserInfo{ID: oldAssigneeID, Name: oldAssigneeName},
+			approval.UserInfo{ID: newAssigneeID, Name: newAssigneeName}, cmd.Reason),
 	)
 
 	return cqrs.Unit{}, nil

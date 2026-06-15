@@ -32,8 +32,8 @@ type CompiledFlow struct {
 
 // FindOutgoing returns the first edge from sourceNodeID matching branchID
 // (when branchID is nil, the unique unguarded out-edge). Returns
-// ErrNoMatchingEdge / errAmbiguousEdges to keep behavior identical with
-// the legacy DB-driven path so callers don't change their error handling.
+// ErrNoMatchingEdge when no edge matches and errAmbiguousEdges when more
+// than one does (the engine relies on a total edge order per source).
 func (c *CompiledFlow) FindOutgoing(sourceNodeID string, branchID *string) (*approval.FlowEdge, error) {
 	candidates := c.EdgesBySource[sourceNodeID]
 	if len(candidates) == 0 {

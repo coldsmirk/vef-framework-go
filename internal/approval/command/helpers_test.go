@@ -10,6 +10,7 @@ import (
 	"github.com/uptrace/bun/dialect"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/cache"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
@@ -272,9 +273,13 @@ func skipSQLiteConcurrencyTest(t testing.TB, ctx context.Context, db orm.DB, rea
 	}
 }
 
-// buildTestEngine constructs a FlowEngine with all built-in processors and strategies
-// suitable for integration tests. AssigneeService is nil since tests insert tasks directly.
-func buildTestEngine() *engine.FlowEngine {
+// buildTestEngine constructs a FlowEngine with all built-in processors and
+// strategies suitable for integration tests, backed by a memory FlowCache
+// over db (the engine resolves node/edge traversal through the cache, the
+// production path). AssigneeService is nil since tests insert tasks directly.
+// Command suites deploy an immutable flow version once, so a single compiled
+// entry per version stays valid for the suite.
+func buildTestEngine(db orm.DB) *engine.FlowEngine {
 	passRules := []approval.PassRuleStrategy{
 		strategy.NewAllPassStrategy(),
 		strategy.NewOnePassStrategy(),
@@ -297,7 +302,8 @@ func buildTestEngine() *engine.FlowEngine {
 		engine.NewCCProcessor(shared.NewCCRecipientResolver(nil)),
 	}
 
-	return engine.NewFlowEngine(registry, processors, eventtest.NewFakeBus(), nil, nil, nil)
+	return engine.NewFlowEngine(registry, processors, eventtest.NewFakeBus(), nil, nil,
+		engine.NewFlowCache(db, cache.NewMemory[*engine.CompiledFlow]()))
 }
 
 // buildTestServices creates the standard service instances for command tests.

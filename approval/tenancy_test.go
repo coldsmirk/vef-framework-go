@@ -1,7 +1,6 @@
 package approval_test
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -86,7 +85,7 @@ func TestCallerContextAuthorize(t *testing.T) {
 
 			err := tc.caller.Authorize(tc.entityTenantID)
 			if tc.wantErr {
-				assert.True(t, errors.Is(err, approval.ErrCrossTenantAccess), "Should surface ErrCrossTenantAccess for %s", tc.name)
+				assert.ErrorIs(t, err, approval.ErrCrossTenantAccess, "Should surface ErrCrossTenantAccess for %s", tc.name)
 			} else {
 				assert.NoError(t, err, "Should allow %s", tc.name)
 			}

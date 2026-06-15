@@ -103,7 +103,8 @@ func NewDepartmentAssigneeResolver(svc approval.AssigneeService) AssigneeResolve
 	return &DepartmentAssigneeResolver{svc: svc}
 }
 
-// DepartmentAssigneeResolver resolves department leaders as assignees.
+// DepartmentAssigneeResolver resolves the leaders of the configured
+// department IDs (rc.IDs) as assignees.
 type DepartmentAssigneeResolver struct {
 	svc approval.AssigneeService
 }
@@ -177,7 +178,9 @@ func NewDepartmentLeaderAssigneeResolver(svc approval.AssigneeService) AssigneeR
 	return &DepartmentLeaderAssigneeResolver{svc: svc}
 }
 
-// DepartmentLeaderAssigneeResolver resolves department leaders as assignees.
+// DepartmentLeaderAssigneeResolver resolves the leaders of the applicant's
+// own department as assignees. This is a single-level lookup
+// (GetDepartmentLeaders); it does not walk a multi-level supervisor chain.
 type DepartmentLeaderAssigneeResolver struct {
 	svc approval.AssigneeService
 }

@@ -49,7 +49,7 @@ type StartInstanceTestSuite struct {
 func (s *StartInstanceTestSuite) SetupSuite() {
 	s.fixture = setupApprovalFlow(s.T(), s.ctx, s.db)
 
-	eng := buildTestEngine()
+	eng := buildTestEngine(s.db)
 	validSvc := service.NewValidationService(nil)
 
 	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, validSvc, binding.NewDefaultHook()))

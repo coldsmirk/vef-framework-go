@@ -36,7 +36,7 @@ type ApproveTaskTestSuite struct {
 func (s *ApproveTaskTestSuite) SetupSuite() {
 	s.fixture = setupApprovalFlow(s.T(), s.ctx, s.db)
 
-	eng := buildTestEngine()
+	eng := buildTestEngine(s.db)
 	taskSvc, nodeSvc, validSvc := buildTestServices(eng)
 
 	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewApproveTaskHandler(s.db, taskSvc, nodeSvc, validSvc))

@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/cache"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -34,6 +35,18 @@ type NodeServiceTestSuite struct {
 }
 
 func (s *NodeServiceTestSuite) SetupSuite() {
+	s.bus = eventtest.NewFakeBus()
+	s.fixture = setupSvcFixture(s.T(), s.ctx, s.db)
+}
+
+// SetupTest rebuilds the engine (and its NodeService) with a fresh
+// memory-backed FlowCache before each test. Tests in this suite mutate the
+// structure (nodes/edges) of the shared fixture flow version and TearDownTest
+// deletes those rows, so a suite-lifetime cache would serve a stale
+// compilation to a later test that re-seeds the same version. A per-test
+// cache keeps the production traversal path under test without cross-test
+// contamination.
+func (s *NodeServiceTestSuite) SetupTest() {
 	passRules := []approval.PassRuleStrategy{
 		strategy.NewAllPassStrategy(),
 		strategy.NewOnePassStrategy(),
@@ -55,11 +68,10 @@ func (s *NodeServiceTestSuite) SetupSuite() {
 		engine.NewCCProcessor(shared.NewCCRecipientResolver(nil)),
 	}
 
-	s.bus = eventtest.NewFakeBus()
-	eng := engine.NewFlowEngine(registry, processors, s.bus, nil, nil, nil)
+	eng := engine.NewFlowEngine(registry, processors, s.bus, nil, nil,
+		engine.NewFlowCache(s.db, cache.NewMemory[*engine.CompiledFlow]()))
 	taskSvc := service.NewTaskService()
 	s.svc = service.NewNodeService(eng, s.bus, taskSvc, nil, shared.NewCCRecipientResolver(nil))
-	s.fixture = setupSvcFixture(s.T(), s.ctx, s.db)
 }
 
 func (s *NodeServiceTestSuite) TearDownTest() {

@@ -114,7 +114,9 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 	}
 
 	events := []approval.DomainEvent{
-		approval.NewTaskTransferredEvent(task.ID, task.TenantID, instance.ID, node.ID, cmd.Operator.ID, cmd.Operator.Name, transferToID, transferToName, cmd.Opinion),
+		approval.NewTaskTransferredEvent(task.ID, task.TenantID, instance.ID, node.ID,
+			approval.UserInfo{ID: cmd.Operator.ID, Name: cmd.Operator.Name},
+			approval.UserInfo{ID: transferToID, Name: transferToName}, cmd.Opinion),
 		approval.NewTaskCreatedEvent(newTask.ID, newTask.TenantID, instance.ID, node.ID, transferToID, transferToName, task.Deadline),
 	}
 
@@ -127,12 +129,8 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 	)
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
-	if _, err := db.NewUpdate().
-		Model(instance).
-		Select("form_data").
-		WherePK().
-		Exec(ctx); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("update instance: %w", err)
+	if err := h.taskSvc.PersistInstanceFormData(ctx, db, instance); err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	behavior.EventCollectorFromContext(ctx).Add(events...)

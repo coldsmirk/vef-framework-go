@@ -232,7 +232,7 @@ const (
 	AssigneeDepartment       AssigneeKind = "department"        // Department head
 	AssigneeSelf             AssigneeKind = "self"              // Applicant themselves
 	AssigneeSuperior         AssigneeKind = "superior"          // Direct superior
-	AssigneeDepartmentLeader AssigneeKind = "department_leader" // Continuous multi-level supervisor
+	AssigneeDepartmentLeader AssigneeKind = "department_leader" // Leaders of the applicant's own department (single level)
 	AssigneeFormField        AssigneeKind = "form_field"        // Based on form field
 )
 
@@ -299,11 +299,6 @@ const (
 	ConditionField      ConditionKind = "field"      // Field-based condition
 	ConditionExpression ConditionKind = "expression" // Expression-based condition
 )
-
-// IsValid reports whether the condition kind is one of the defined values.
-func (k ConditionKind) IsValid() bool {
-	return k == ConditionField || k == ConditionExpression
-}
 
 // ActionType represents the type of action performed by an operator.
 type ActionType string

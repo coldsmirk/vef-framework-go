@@ -41,7 +41,7 @@ func (s *ResubmitTestSuite) SetupSuite() {
 	s.fixture = setupApprovalFlow(s.T(), s.ctx, s.db)
 	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewResubmitHandler(
 		s.db,
-		buildTestEngine(),
+		buildTestEngine(s.db),
 		service.NewValidationService(nil),
 		service.NewInstanceService(nil),
 	))
