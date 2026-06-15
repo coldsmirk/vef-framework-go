@@ -22,7 +22,7 @@ import (
 // injects a default in-memory SQLite primary so the framework's
 // newDataSourcesConfig (which requires a primary entry) can boot. Tests that
 // need a different primary or extra sources override the result via
-// fx.Replace(&config.DataSourcesConfig{...}) or apptest.WithDataSourcesConfig.
+// fx.Replace(&config.DataSourcesConfig{...}).
 type NopConfig struct{}
 
 func (*NopConfig) Unmarshal(key string, target any) error {
@@ -49,13 +49,6 @@ func (*NopConfig) Unmarshal(key string, target any) error {
 // Returns the app instance and a cleanup function.
 func NewTestApp(t testing.TB, options ...fx.Option) (*app.App, func()) {
 	return newTestApp(t, buildOptions(options...))
-}
-
-// NewTestAppWithDB creates a test application that uses an existing *bun.DB
-// instead of creating a new connection via datasource.Module.
-// This avoids redundant database connections when tests already manage their own.
-func NewTestAppWithDB(t testing.TB, db *bun.DB, options ...fx.Option) (*app.App, func()) {
-	return NewTestAppWithDBConfig(t, db, config.DataSourceConfig{Kind: config.SQLite}, options...)
 }
 
 // NewTestAppWithDBConfig creates a test application that uses an existing
@@ -85,7 +78,7 @@ func coreOptions(dataSourceOption fx.Option) []fx.Option {
 	opts := []fx.Option{
 		fx.NopLogger,
 		fx.Replace(
-			fx.Annotate(&NopConfig{}, fx.As(new(config.Config))),
+			fx.Annotate(new(NopConfig), fx.As(new(config.Config))),
 			&config.AppConfig{
 				Name:      testAppName,
 				Port:      0,
@@ -162,12 +155,4 @@ func buildOptionsWith(dataSourceOption fx.Option, extra ...fx.Option) []fx.Optio
 	opts := coreOptions(dataSourceOption)
 
 	return append(opts, extra...)
-}
-
-// WithDataSourcesConfig replaces the DataSourcesConfig produced by the
-// framework's config module. Equivalent to fx.Replace(&config.DataSourcesConfig{...}),
-// but exposed as a helper so tests do not have to import the internal config
-// package or remember the type.
-func WithDataSourcesConfig(cfg *config.DataSourcesConfig) fx.Option {
-	return fx.Replace(cfg)
 }

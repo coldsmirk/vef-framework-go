@@ -42,7 +42,7 @@ const testJWTSecret = security.DefaultJWTSecret
 type Suite struct {
 	suite.Suite
 
-	// App is the test application instance, available after SetupApp/SetupAppWithDB.
+	// App is the test application instance, available after SetupApp/SetupAppWithDBConfig.
 	App  *app.App
 	stop func()
 }
@@ -52,12 +52,6 @@ type Suite struct {
 // SetupApp creates a test app with the given FX options.
 func (s *Suite) SetupApp(opts ...fx.Option) {
 	s.App, s.stop = NewTestApp(s.T(), opts...)
-}
-
-// SetupAppWithDB creates a test app using an existing *bun.DB
-// instead of creating a new database connection.
-func (s *Suite) SetupAppWithDB(db *bun.DB, opts ...fx.Option) {
-	s.App, s.stop = NewTestAppWithDB(s.T(), db, opts...)
 }
 
 // SetupAppWithDBConfig creates a test app using an existing *bun.DB and the
@@ -117,7 +111,12 @@ func (s *Suite) doRequest(method, path, body, token string) *http.Response {
 		req.Header.Set(fiber.HeaderAuthorization, security.AuthSchemeBearer+" "+token)
 	}
 
-	resp, err := s.App.Test(req)
+	// Use a 30s timeout (matching the framework's request-dispatch deadline)
+	// rather than app.Test's 5s default: integration tests boot a full FX app
+	// and do real work (DB queries, disk sampling) that can exceed 5s under
+	// heavy parallel test load, where the default would flake rather than catch
+	// a real hang.
+	resp, err := s.App.Test(req, 30*time.Second)
 	s.Require().NoError(err)
 
 	return resp
