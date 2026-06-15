@@ -1,7 +1,6 @@
 package tabular
 
 import (
-	"errors"
 	"reflect"
 	"testing"
 
@@ -149,7 +148,7 @@ func TestStructAdapter(t *testing.T) {
 		row := writer.NewRow()
 		err := row.Set(columns[0], []byte{1, 2, 3})
 		require.Error(t, err, "Set should reject incompatible types")
-		assert.True(t, errors.Is(err, ErrSchemaMismatch), "Error should wrap ErrSchemaMismatch")
+		assert.ErrorIs(t, err, ErrSchemaMismatch, "Error should wrap ErrSchemaMismatch")
 	})
 
 	t.Run("ViewGetReturnsFieldValue", func(t *testing.T) {

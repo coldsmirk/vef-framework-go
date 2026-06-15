@@ -3,6 +3,8 @@ package tabular
 import (
 	"fmt"
 	"strings"
+
+	"github.com/coldsmirk/go-collections"
 )
 
 // MappingOptions controls header-to-schema resolution.
@@ -25,7 +27,7 @@ func BuildHeaderMapping(
 		nameToSchemaIdx[column.Name] = i
 	}
 
-	seen := make(map[string]bool, len(headerRow))
+	seen := collections.NewHashSet[string]()
 
 	for srcIndex, headerName := range headerRow {
 		if opts.TrimSpace {
@@ -36,11 +38,11 @@ func BuildHeaderMapping(
 			continue
 		}
 
-		if seen[headerName] {
+		if seen.Contains(headerName) {
 			return nil, fmt.Errorf("%w: %s", ErrDuplicateHeaderName, headerName)
 		}
 
-		seen[headerName] = true
+		seen.Add(headerName)
 
 		if schemaIndex, ok := nameToSchemaIdx[headerName]; ok {
 			mapping[srcIndex] = schemaIndex
