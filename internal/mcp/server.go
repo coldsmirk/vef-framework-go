@@ -13,6 +13,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/mcp"
+	"github.com/coldsmirk/vef-framework-go/version"
 )
 
 var logger = logx.Named("mcp")
@@ -156,7 +157,7 @@ func getServerVersion(params ServerParams) string {
 		return params.ServerInfo.Version
 	}
 
-	return "v1.0.0"
+	return version.VEFVersion
 }
 
 func getInstructions(params ServerParams) string {

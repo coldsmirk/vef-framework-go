@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"unicode/utf8"
 
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/orm/sqlguard"
 	"github.com/coldsmirk/vef-framework-go/mcp"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -18,12 +19,14 @@ type QueryArgs struct {
 
 // QueryTool provides MCP tool for executing parameterized SQL queries.
 type QueryTool struct {
-	db orm.DB
+	db   orm.DB
+	kind config.DBKind
 }
 
-// NewQueryTool creates a new QueryTool instance.
-func NewQueryTool(db orm.DB) mcp.ToolProvider {
-	return &QueryTool{db: db}
+// NewQueryTool creates a new QueryTool instance. kind is the dialect of db, used
+// to select the dialect-specific dangerous-function denylist in the read-only guard.
+func NewQueryTool(db orm.DB, kind config.DBKind) mcp.ToolProvider {
+	return &QueryTool{db: db, kind: kind}
 }
 
 // Tools implements mcp.ToolProvider.
@@ -52,7 +55,7 @@ func (t *QueryTool) handleQuery(ctx context.Context, req *mcp.CallToolRequest) (
 		return mcp.NewToolResultError("Sql parameter is required and must not be empty"), nil
 	}
 
-	if err := sqlguard.EnsureReadOnly(args.SQL); err != nil {
+	if err := sqlguard.EnsureReadOnly(t.kind, args.SQL); err != nil {
 		//nolint:nilerr // MCP handler should return error result with nil error
 		return mcp.NewToolResultError("Only read-only (SELECT) queries are permitted: " + err.Error()), nil
 	}
