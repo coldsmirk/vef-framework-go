@@ -48,8 +48,6 @@ const (
 
 	// Type tokens for schema field type identification.
 	TypeInt      = "int"
-	TypeString   = "str"
-	TypeBool     = "bool"
 	TypeDecimal  = "dec"
 	TypeDate     = "date"
 	TypeDateTime = "datetime"
