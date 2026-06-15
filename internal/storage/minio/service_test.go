@@ -284,6 +284,26 @@ func (suite *MinIOServiceTestSuite) TestMetadataRoundTrip() {
 
 	expected := storage.CanonicalizeMetadataKeys(input)
 
+	suite.Run("PutObjectReturnIsCanonical", func() {
+		key := "meta/put-return.bin"
+		info, err := suite.service.PutObject(suite.ctx, storage.PutObjectOptions{
+			Key:         key,
+			Reader:      bytes.NewReader([]byte("payload")),
+			Size:        int64(len("payload")),
+			ContentType: suite.testContentType,
+			Metadata:    input,
+		})
+		suite.Require().NoError(err, "PutObject with metadata should succeed")
+		suite.Require().NotNil(info, "PutObject should return ObjectInfo")
+
+		// The echoed metadata must already be canonical — identical to every
+		// other backend — not the caller's verbatim keys.
+		suite.Equal(expected, info.Metadata,
+			"PutObject return metadata must be canonicalized to match the cross-backend contract")
+		suite.NotContains(info.Metadata, "author",
+			"PutObject return must not echo the caller's verbatim lowercase 'author' key")
+	})
+
 	suite.Run("PutObjectThenStatObject", func() {
 		key := "meta/put-stat.bin"
 		_, err := suite.service.PutObject(suite.ctx, storage.PutObjectOptions{

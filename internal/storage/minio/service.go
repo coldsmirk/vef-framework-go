@@ -119,7 +119,10 @@ func (s *Service) PutObject(ctx context.Context, opts storage.PutObjectOptions) 
 		Size:         info.Size,
 		ContentType:  opts.ContentType,
 		LastModified: info.LastModified,
-		Metadata:     opts.Metadata,
+		// Canonicalize the echoed metadata so the PutObject return matches the
+		// canonical form every other backend (and MinIO's own Stat/Get/Copy)
+		// exposes, honoring the ObjectInfo.Metadata cross-backend contract.
+		Metadata: storage.CanonicalizeMetadataKeys(opts.Metadata),
 	}, nil
 }
 
