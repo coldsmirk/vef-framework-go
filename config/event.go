@@ -60,13 +60,22 @@ type EventOutboxTransportConfig struct {
 
 // EventRedisStreamTransportConfig configures the Redis Streams transport.
 type EventRedisStreamTransportConfig struct {
-	Enabled        bool          `config:"enabled"`
-	StreamPrefix   string        `config:"stream_prefix"`
-	MaxLenApprox   int64         `config:"max_len_approx"`
-	BlockTimeout   time.Duration `config:"block_timeout"`
-	ClaimIdle      time.Duration `config:"claim_idle"`
-	ClaimInterval  time.Duration `config:"claim_interval"`
-	ClaimBatchSize int64         `config:"claim_batch_size"`
+	Enabled           bool          `config:"enabled"`
+	StreamPrefix      string        `config:"stream_prefix"`
+	MaxLenApprox      int64         `config:"max_len_approx"`
+	BlockTimeout      time.Duration `config:"block_timeout"`
+	ClaimIdle         time.Duration `config:"claim_idle"`
+	ClaimInterval     time.Duration `config:"claim_interval"`
+	ClaimBatchSize    int64         `config:"claim_batch_size"`
+	ReaperConcurrency int           `config:"reaper_concurrency"`
+	// HandlerTimeout bounds each delivery so a hung handler cannot pin a worker.
+	// Zero disables the deadline — but the deadline is also the ONLY thing that
+	// frees a wedged reaper slot before shutdown: a reclaimed handler that blocks
+	// forever holds its bounded slot until Stop, so with HandlerTimeout=0 a few
+	// stuck reclaims can starve reaper failover for all other streams. Operators
+	// who disable it should size ReaperConcurrency with that risk in mind.
+	HandlerTimeout time.Duration `config:"handler_timeout"`
+	SetupTimeout   time.Duration `config:"setup_timeout"`
 	ConsumerID     string        `config:"consumer_id"`
 	StartID        string        `config:"start_id"`
 }

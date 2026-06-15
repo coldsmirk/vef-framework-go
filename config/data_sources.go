@@ -18,6 +18,30 @@ const (
 	SQLite    DBKind = "sqlite"
 )
 
+// SSLMode controls the TLS posture of a database connection. The values follow
+// the PostgreSQL libpq vocabulary so operators familiar with `sslmode` can
+// reuse it. It applies to the network-based dialects (Postgres, MySQL); SQLite
+// is a local file and ignores it.
+type SSLMode string
+
+// Supported SSL modes. The empty value is treated as SSLModeDisable so a
+// zero-config data source keeps connecting over plaintext exactly as before —
+// TLS is strictly opt-in.
+const (
+	// SSLModeDisable connects without TLS. This is the default when the field
+	// is omitted.
+	SSLModeDisable SSLMode = "disable"
+	// SSLModeRequire negotiates TLS but performs no certificate or hostname
+	// verification (encryption without authentication; vulnerable to MITM).
+	SSLModeRequire SSLMode = "require"
+	// SSLModeVerifyCA negotiates TLS and verifies that the server certificate
+	// chains to a trusted CA, but does not check the hostname.
+	SSLModeVerifyCA SSLMode = "verify-ca"
+	// SSLModeVerifyFull negotiates TLS and verifies both the CA chain and that
+	// the certificate matches the server hostname. This is the strongest mode.
+	SSLModeVerifyFull SSLMode = "verify-full"
+)
+
 // DataSourceConfig defines database connection settings for one named
 // data source. Sources live under `vef.data_sources.<name>` in the TOML
 // configuration; the entry under name "primary" is mandatory and is the
@@ -32,6 +56,15 @@ type DataSourceConfig struct {
 	Schema         string `config:"schema"`
 	Path           string `config:"path"`
 	EnableSQLGuard bool   `config:"enable_sql_guard"`
+
+	// SSLMode selects the TLS posture for network dialects (Postgres, MySQL).
+	// It defaults to SSLModeDisable (plaintext) when omitted, so TLS is opt-in
+	// and existing zero-config deployments are unaffected. SQLite ignores it.
+	SSLMode SSLMode `config:"ssl_mode"`
+	// SSLRootCert is an optional path to a PEM file holding the CA
+	// certificate(s) used to verify the server in the verify-ca / verify-full
+	// modes. When empty, the host's system certificate pool is used.
+	SSLRootCert string `config:"ssl_root_cert"`
 }
 
 // DataSourcesConfig groups every entry under vef.data_sources. Map keys are

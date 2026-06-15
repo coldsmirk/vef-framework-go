@@ -39,7 +39,11 @@ type StorageConfig struct {
 	// MaxPendingClaims caps the number of in-flight (status='pending')
 	// upload claims a single principal may hold simultaneously. Prevents
 	// a single user from exhausting backend resources by opening
-	// thousands of multipart sessions. Default: 100.
+	// thousands of multipart sessions. Enforcement is best-effort: the
+	// init-upload check is a count-then-insert, so a concurrent burst from
+	// one principal may briefly overshoot the cap by the number of
+	// in-flight requests before settling. This is a DoS-hygiene limit, not
+	// a hard security boundary. Default: 100.
 	MaxPendingClaims int `config:"max_pending_claims"`
 
 	// AllowPublicUploads controls whether clients may set public=true on
