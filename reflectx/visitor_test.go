@@ -127,6 +127,81 @@ func TestVisitDepthFirst(t *testing.T) {
 	assert.Contains(t, visitedMethods, "EmbeddedMethod", "Should visit EmbeddedMethod")
 }
 
+// The VisitorBreadth* types form a balanced two-branch tree so depth-first and breadth-first
+// traversal produce observably different struct visit orders.
+type VisitorBreadthLeafA struct{ AV string }
+
+type VisitorBreadthLeafB struct{ BV string }
+
+type VisitorBreadthMidA struct {
+	A VisitorBreadthLeafA `visit:"dive"`
+}
+
+type VisitorBreadthMidB struct {
+	B VisitorBreadthLeafB `visit:"dive"`
+}
+
+type VisitorBreadthRoot struct {
+	MidA VisitorBreadthMidA `visit:"dive"`
+	MidB VisitorBreadthMidB `visit:"dive"`
+}
+
+// TestVisitBreadthFirst verifies WithTraversalMode(BreadthFirst) visits shallower
+// structs before deeper ones, contrasting with the depth-first default.
+func TestVisitBreadthFirst(t *testing.T) {
+	target := VisitorBreadthRoot{
+		MidA: VisitorBreadthMidA{A: VisitorBreadthLeafA{AV: "a"}},
+		MidB: VisitorBreadthMidB{B: VisitorBreadthLeafB{BV: "b"}},
+	}
+
+	collect := func(opts ...VisitorOption) []string {
+		var visited []string
+
+		visitor := Visitor{
+			VisitStruct: func(structType reflect.Type, _ reflect.Value, _ int) VisitAction {
+				visited = append(visited, structType.Name())
+
+				return Continue
+			},
+		}
+
+		Visit(reflect.ValueOf(target), visitor, opts...)
+
+		return visited
+	}
+
+	assert.Equal(t,
+		[]string{"VisitorBreadthRoot", "VisitorBreadthMidA", "VisitorBreadthMidB", "VisitorBreadthLeafA", "VisitorBreadthLeafB"},
+		collect(WithTraversalMode(BreadthFirst)),
+		"Breadth-first should visit both mid-level structs before either leaf")
+
+	assert.Equal(t,
+		[]string{"VisitorBreadthRoot", "VisitorBreadthMidA", "VisitorBreadthLeafA", "VisitorBreadthMidB", "VisitorBreadthLeafB"},
+		collect(),
+		"Depth-first default should descend each branch fully before the next")
+}
+
+// TestVisitTypeBreadthFirst verifies type-based traversal honors
+// WithTraversalMode(BreadthFirst) the same way value traversal does.
+func TestVisitTypeBreadthFirst(t *testing.T) {
+	var visited []string
+
+	visitor := TypeVisitor{
+		VisitStructType: func(structType reflect.Type, _ int) VisitAction {
+			visited = append(visited, structType.Name())
+
+			return Continue
+		},
+	}
+
+	VisitType(reflect.TypeFor[VisitorBreadthRoot](), visitor, WithTraversalMode(BreadthFirst))
+
+	assert.Equal(t,
+		[]string{"VisitorBreadthRoot", "VisitorBreadthMidA", "VisitorBreadthMidB", "VisitorBreadthLeafA", "VisitorBreadthLeafB"},
+		visited,
+		"Breadth-first type traversal should visit shallower structs before deeper ones")
+}
+
 // TestVisitSameTypedSiblings verifies that distinct fields sharing the same struct
 // type are each recursed into, so neither subtree's field index paths are dropped.
 func TestVisitSameTypedSiblings(t *testing.T) {
