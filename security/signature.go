@@ -74,6 +74,10 @@ type Signature struct {
 	timestampTolerance time.Duration
 	nonceGenerator     id.IDGenerator
 	nonceStore         NonceStore
+	// clock is the time source for signing and timestamp validation. It
+	// defaults to time.Now; tests override it to drive the replay window
+	// deterministically without real-time waits.
+	clock func() time.Time
 }
 
 // SignatureResult contains the result of a signature operation.
@@ -102,6 +106,7 @@ func NewSignature(secret string, opts ...SignatureOption) (*Signature, error) {
 		timestampTolerance: defaultSignatureTimestampTolerance,
 		nonceStore:         NewMemoryNonceStore(),
 		nonceGenerator:     id.NewRandomIDGenerator(),
+		clock:              time.Now,
 	}
 
 	for _, opt := range opts {
@@ -120,7 +125,7 @@ func (s *Signature) Sign(appID, method, path string) (*SignatureResult, error) {
 	}
 
 	nonce := s.nonceGenerator.Generate()
-	timestampSec := time.Now().Unix()
+	timestampSec := s.clock().Unix()
 	payload := s.buildPayload(appID, method, path, timestampSec, nonce)
 	signature := s.computeHMAC(payload)
 
@@ -231,7 +236,7 @@ func (s *Signature) computeHMACWithSecret(secret, data []byte) string {
 
 // validateTimestamp checks if the timestamp is within the allowed tolerance.
 func (s *Signature) validateTimestamp(timestamp int64) error {
-	if diff := time.Since(time.Unix(timestamp, 0)).Abs(); diff > s.timestampTolerance {
+	if diff := s.clock().Sub(time.Unix(timestamp, 0)).Abs(); diff > s.timestampTolerance {
 		return ErrSignatureExpired
 	}
 
