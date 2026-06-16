@@ -22,6 +22,20 @@ func TestPrefixKeyBuilder(t *testing.T) {
 		assert.Equal(t, "app:user:123", result, "TestPrefixKeyBuilder should match expected value")
 	})
 
+	t.Run("BuildWithCustomSeparator", func(t *testing.T) {
+		builder := NewPrefixKeyBuilderWithSeparator("app", "/")
+
+		result := builder.Build("user", "123")
+		assert.Equal(t, "app/user/123", result, "Custom separator should join the prefix and key parts")
+	})
+
+	t.Run("BuildWithCustomSeparatorNoPrefix", func(t *testing.T) {
+		builder := NewPrefixKeyBuilderWithSeparator("", "-")
+
+		result := builder.Build("user", "123")
+		assert.Equal(t, "user-123", result, "Custom separator should join key parts when no prefix is set")
+	})
+
 	t.Run("BuildWithEmptyKeyParts", func(t *testing.T) {
 		builder := NewPrefixKeyBuilder("app")
 
