@@ -34,7 +34,7 @@ type UserMenu struct {
 	Path     string         `json:"path"`
 	Name     string         `json:"name"`
 	Icon     *string        `json:"icon"`
-	Meta     map[string]any `json:"metadata,omitempty"`
+	Meta     map[string]any `json:"meta,omitempty"`
 	Children []UserMenu     `json:"children,omitempty"`
 }
 
