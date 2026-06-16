@@ -427,6 +427,68 @@ func TestSignatureNonceTTLCoversReplayWindow(t *testing.T) {
 	})
 }
 
+// clockNonceStore is a NonceStore whose entries expire against a test-controlled
+// logical clock, mirroring MemoryNonceStore's StoreIfAbsent semantics (a still-
+// live nonce reports present; an absent or expired one is (re)stored). Sharing
+// the clock with the Signature lets a test advance the timestamp window and the
+// nonce TTL in lockstep with no real-time waits.
+type clockNonceStore struct {
+	now     func() time.Time
+	entries map[string]time.Time // key -> expiry instant
+}
+
+func (s *clockNonceStore) StoreIfAbsent(_ context.Context, appID, nonce string, ttl time.Duration) (bool, error) {
+	key := appID + "\x00" + nonce
+	now := s.now()
+
+	if expiry, ok := s.entries[key]; ok && now.Before(expiry) {
+		return false, nil
+	}
+
+	s.entries[key] = now.Add(ttl)
+
+	return true, nil
+}
+
+// TestSignatureNonceOutlivesReplayWindowEndToEnd drives the full verify path on
+// a shared logical clock to prove the nonce stays live for as long as a request
+// is replayable. A maximally future-dated timestamp (ts = now + tolerance) is
+// valid across the whole 2*tolerance span; advancing to the last fresh instant
+// must still reject the replay. Under the pre-fix TTL (tolerance + buffer) the
+// nonce would have expired by then and this very request would replay.
+func TestSignatureNonceOutlivesReplayWindowEndToEnd(t *testing.T) {
+	ctx := context.Background()
+	tolerance := 5 * time.Minute
+
+	current := time.Unix(1_700_000_000, 0)
+	clock := func() time.Time { return current }
+
+	store := &clockNonceStore{now: clock, entries: map[string]time.Time{}}
+
+	sig, err := NewSignature(testSignatureSecret, WithTimestampTolerance(tolerance), WithNonceStore(store))
+	require.NoError(t, err, "Should create signature without error")
+
+	sig.clock = clock
+
+	// Worst case for replay: the timestamp sits a full tolerance in the future,
+	// so it stays valid across [ts-tolerance, ts+tolerance].
+	ts := current.Add(tolerance).Unix()
+	nonce := "replay-nonce"
+	signature := sig.computeHMAC(sig.buildPayload("app", testSigMethod, testSigPath, ts, nonce))
+
+	err = sig.Verify(ctx, "app", testSigMethod, testSigPath, ts, nonce, signature)
+	require.NoError(t, err, "First request must verify and register the nonce")
+
+	// Jump to the last instant the timestamp is still fresh (ts + tolerance, less
+	// one second so validateTimestamp still accepts it).
+	current = time.Unix(ts, 0).Add(tolerance - time.Second)
+	require.NoError(t, sig.validateTimestamp(ts), "Timestamp must still be valid at the edge of its window")
+
+	err = sig.Verify(ctx, "app", testSigMethod, testSigPath, ts, nonce, signature)
+	require.ErrorIs(t, err, ErrNonceAlreadyUsed,
+		"Replay at the edge of the timestamp window must be rejected — the nonce must outlive the request's validity")
+}
+
 // TestSignatureVerifyWithSecret tests Signature verify with secret scenarios.
 func TestSignatureVerifyWithSecret(t *testing.T) {
 	ctx := context.Background()
