@@ -47,7 +47,7 @@ VEF Framework Go 把依赖注入、HTTP 路由和数据访问整合成一套一�
 
 环境要求：
 - Go 1.26.0 或更高版本
-- `CGO_ENABLED=1` 及 C 工具链 —— 内置表达式引擎链接基于 cgo 的 `zen-go` 库，因此框架无法在 `CGO_ENABLED=0` 下构建
+- 无需 C 工具链 —— 框架可在 `CGO_ENABLED=0` 下构建；内置表达式引擎使用纯 Go 的 `expr-lang` 库
 - PostgreSQL、MySQL 或 SQLite 等受支持的数据库
 
 安装：
