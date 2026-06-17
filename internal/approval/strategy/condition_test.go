@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/internal/expression/zen"
+	"github.com/coldsmirk/vef-framework-go/internal/expression/exprlang"
 )
 
 // TestFieldConditionEvaluator tests field condition evaluator scenarios.
@@ -181,9 +181,9 @@ func TestFieldConditionEvaluatorEmptyCollections(t *testing.T) {
 }
 
 // TestExpressionConditionEvaluator exercises the expression path through the
-// framework expression.Engine (Zen backend).
+// framework expression.Engine (expr-lang backend).
 func TestExpressionConditionEvaluator(t *testing.T) {
-	e := NewExpressionConditionEvaluator(zen.New())
+	e := NewExpressionConditionEvaluator(exprlang.New())
 	assert.Equal(t, approval.ConditionExpression, e.Kind(), "Should return ConditionExpression type")
 
 	ctx := context.Background()

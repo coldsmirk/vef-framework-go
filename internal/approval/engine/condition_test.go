@@ -10,7 +10,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
-	"github.com/coldsmirk/vef-framework-go/internal/expression/zen"
+	"github.com/coldsmirk/vef-framework-go/internal/expression/exprlang"
 )
 
 // --- Test Helpers ---
@@ -408,7 +408,7 @@ func TestEvaluateGroupConditions(t *testing.T) {
 		nil,
 		[]approval.ConditionEvaluator{
 			strategy.NewFieldConditionEvaluator(),
-			strategy.NewExpressionConditionEvaluator(zen.New()),
+			strategy.NewExpressionConditionEvaluator(exprlang.New()),
 		},
 	)
 

@@ -171,8 +171,8 @@ func validateCCDefinitions(nodeID string, ccs []approval.CCDefinition) error {
 // validateConditionBranches checks every branch condition is executable:
 // known kind, and the kind-specific payload present (subject + whitelisted
 // operator for field conditions, non-blank source for expression conditions).
-// Expression syntax itself cannot be verified at deploy time — the Zen
-// backend compiles lazily — so a syntactically broken expression still
+// Expression syntax itself is not verified at deploy time — deploy only
+// checks the source is non-blank — so a syntactically broken expression still
 // surfaces at evaluation; this guard eliminates the structurally-empty cases.
 //
 // Non-default branches must also carry unique priorities: "first match wins"

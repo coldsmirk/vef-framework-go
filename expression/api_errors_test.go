@@ -18,7 +18,7 @@ func TestErrEvaluationFailed(t *testing.T) {
 	})
 
 	t.Run("WrappedIdentity", func(t *testing.T) {
-		cause := errors.New("zen: bad expression")
+		cause := errors.New("backend: bad expression")
 		err := fmt.Errorf("%w: %w", expression.ErrEvaluationFailed, cause)
 
 		assert.ErrorIs(t, err, expression.ErrEvaluationFailed, "Wrapped error should match the sentinel by code")
