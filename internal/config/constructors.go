@@ -19,8 +19,8 @@ func newAppConfig(cfg config.Config) (*config.AppConfig, error) {
 	return unmarshalConfig(cfg, "vef.app", new(config.AppConfig))
 }
 
-func newCorsConfig(cfg config.Config) (*config.CorsConfig, error) {
-	return unmarshalConfig(cfg, "vef.cors", new(config.CorsConfig))
+func newCORSConfig(cfg config.Config) (*config.CORSConfig, error) {
+	return unmarshalConfig(cfg, "vef.cors", new(config.CORSConfig))
 }
 
 func newSecurityConfig(cfg config.Config) (*config.SecurityConfig, error) {

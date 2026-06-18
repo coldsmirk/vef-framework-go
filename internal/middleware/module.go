@@ -23,7 +23,7 @@ var Module = fx.Module(
 			fx.ResultTags(`group:"vef:app:middlewares"`),
 		),
 		fx.Annotate(
-			NewCorsMiddleware,
+			NewCORSMiddleware,
 			fx.ResultTags(`group:"vef:app:middlewares"`),
 		),
 		fx.Annotate(

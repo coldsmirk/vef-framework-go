@@ -9,7 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/app"
 )
 
-func NewCorsMiddleware(config *config.CorsConfig) app.Middleware {
+func NewCORSMiddleware(config *config.CORSConfig) app.Middleware {
 	handler := cors.New(cors.Config{
 		Next: func(fiber.Ctx) bool {
 			return !config.Enabled
