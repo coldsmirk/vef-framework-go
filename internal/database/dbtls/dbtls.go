@@ -36,14 +36,14 @@ var (
 // when empty the host system pool is used.
 func Config(mode config.SSLMode, rootCertPath, serverName string) (*tls.Config, error) {
 	switch mode {
-	case "", config.SSLModeDisable:
+	case "", config.SSLDisable:
 		return nil, nil
 
-	case config.SSLModeRequire:
+	case config.SSLRequire:
 		// Encryption without authentication: deliberately skip verification.
 		return &tls.Config{InsecureSkipVerify: true}, nil //nolint:gosec // require mode is encryption-only by design
 
-	case config.SSLModeVerifyCA:
+	case config.SSLVerifyCA:
 		roots, err := rootCAs(rootCertPath)
 		if err != nil {
 			return nil, err
@@ -60,7 +60,7 @@ func Config(mode config.SSLMode, rootCertPath, serverName string) (*tls.Config, 
 			VerifyConnection:   chainOnlyVerifier(roots),
 		}, nil
 
-	case config.SSLModeVerifyFull:
+	case config.SSLVerifyFull:
 		roots, err := rootCAs(rootCertPath)
 		if err != nil {
 			return nil, err

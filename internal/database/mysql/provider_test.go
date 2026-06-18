@@ -47,7 +47,7 @@ func TestBuildConfig(t *testing.T) {
 	t.Run("SSLModeRequireEnablesTLS", func(t *testing.T) {
 		mysqlCfg, err := provider.buildConfig(&config.DataSourceConfig{
 			Database: "vef_test",
-			SSLMode:  config.SSLModeRequire,
+			SSLMode:  config.SSLRequire,
 		})
 		require.NoError(t, err, "require mode should build without error")
 
@@ -59,7 +59,7 @@ func TestBuildConfig(t *testing.T) {
 		mysqlCfg, err := provider.buildConfig(&config.DataSourceConfig{
 			Host:     "db.internal",
 			Database: "vef_test",
-			SSLMode:  config.SSLModeVerifyFull,
+			SSLMode:  config.SSLVerifyFull,
 		})
 		require.NoError(t, err, "verify-full mode should build without error")
 

@@ -24,22 +24,22 @@ const (
 // is a local file and ignores it.
 type SSLMode string
 
-// Supported SSL modes. The empty value is treated as SSLModeDisable so a
+// Supported SSL modes. The empty value is treated as SSLDisable so a
 // zero-config data source keeps connecting over plaintext exactly as before —
 // TLS is strictly opt-in.
 const (
-	// SSLModeDisable connects without TLS. This is the default when the field
+	// SSLDisable connects without TLS. This is the default when the field
 	// is omitted.
-	SSLModeDisable SSLMode = "disable"
-	// SSLModeRequire negotiates TLS but performs no certificate or hostname
+	SSLDisable SSLMode = "disable"
+	// SSLRequire negotiates TLS but performs no certificate or hostname
 	// verification (encryption without authentication; vulnerable to MITM).
-	SSLModeRequire SSLMode = "require"
-	// SSLModeVerifyCA negotiates TLS and verifies that the server certificate
+	SSLRequire SSLMode = "require"
+	// SSLVerifyCA negotiates TLS and verifies that the server certificate
 	// chains to a trusted CA, but does not check the hostname.
-	SSLModeVerifyCA SSLMode = "verify-ca"
-	// SSLModeVerifyFull negotiates TLS and verifies both the CA chain and that
+	SSLVerifyCA SSLMode = "verify-ca"
+	// SSLVerifyFull negotiates TLS and verifies both the CA chain and that
 	// the certificate matches the server hostname. This is the strongest mode.
-	SSLModeVerifyFull SSLMode = "verify-full"
+	SSLVerifyFull SSLMode = "verify-full"
 )
 
 // DataSourceConfig defines database connection settings for one named
@@ -58,7 +58,7 @@ type DataSourceConfig struct {
 	EnableSQLGuard bool   `config:"enable_sql_guard"`
 
 	// SSLMode selects the TLS posture for network dialects (Postgres, MySQL).
-	// It defaults to SSLModeDisable (plaintext) when omitted, so TLS is opt-in
+	// It defaults to SSLDisable (plaintext) when omitted, so TLS is opt-in
 	// and existing zero-config deployments are unaffected. SQLite ignores it.
 	SSLMode SSLMode `config:"ssl_mode"`
 	// SSLRootCert is an optional path to a PEM file holding the CA

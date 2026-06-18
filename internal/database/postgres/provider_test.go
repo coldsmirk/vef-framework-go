@@ -23,7 +23,7 @@ func TestConnectSSLMode(t *testing.T) {
 	t.Run("RequireConnects", func(t *testing.T) {
 		db, err := provider.Connect(&config.DataSourceConfig{
 			Kind:    config.Postgres,
-			SSLMode: config.SSLModeRequire,
+			SSLMode: config.SSLRequire,
 		})
 
 		require.NoError(t, err, "require mode should build the connector without error")

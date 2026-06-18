@@ -22,7 +22,7 @@ import (
 
 func TestConfig(t *testing.T) {
 	t.Run("DisableReturnsNilForPlaintext", func(t *testing.T) {
-		got, err := dbtls.Config(config.SSLModeDisable, "", "db.example.com")
+		got, err := dbtls.Config(config.SSLDisable, "", "db.example.com")
 
 		require.NoError(t, err, "disable mode should not error")
 		assert.Nil(t, got, "disable mode should yield a nil config signaling plaintext")
@@ -36,7 +36,7 @@ func TestConfig(t *testing.T) {
 	})
 
 	t.Run("RequireSkipsAllVerification", func(t *testing.T) {
-		got, err := dbtls.Config(config.SSLModeRequire, "", "db.example.com")
+		got, err := dbtls.Config(config.SSLRequire, "", "db.example.com")
 
 		require.NoError(t, err, "require mode should not error")
 		require.NotNil(t, got, "require mode should yield a TLS config")
@@ -46,7 +46,7 @@ func TestConfig(t *testing.T) {
 	})
 
 	t.Run("VerifyCASkipsHostnameButVerifiesChain", func(t *testing.T) {
-		got, err := dbtls.Config(config.SSLModeVerifyCA, "", "db.example.com")
+		got, err := dbtls.Config(config.SSLVerifyCA, "", "db.example.com")
 
 		require.NoError(t, err, "verify-ca mode should not error with system pool")
 		require.NotNil(t, got, "verify-ca mode should yield a TLS config")
@@ -56,7 +56,7 @@ func TestConfig(t *testing.T) {
 	})
 
 	t.Run("VerifyFullPinsHostnameAndChain", func(t *testing.T) {
-		got, err := dbtls.Config(config.SSLModeVerifyFull, "", "db.example.com")
+		got, err := dbtls.Config(config.SSLVerifyFull, "", "db.example.com")
 
 		require.NoError(t, err, "verify-full mode should not error with system pool")
 		require.NotNil(t, got, "verify-full mode should yield a TLS config")
@@ -75,7 +75,7 @@ func TestConfig(t *testing.T) {
 	t.Run("RootCertLoadedIntoPool", func(t *testing.T) {
 		certPath := writeTestCA(t)
 
-		for _, mode := range []config.SSLMode{config.SSLModeVerifyCA, config.SSLModeVerifyFull} {
+		for _, mode := range []config.SSLMode{config.SSLVerifyCA, config.SSLVerifyFull} {
 			got, err := dbtls.Config(mode, certPath, "db.example.com")
 
 			require.NoError(t, err, "valid CA file should load for mode %s", mode)
@@ -85,7 +85,7 @@ func TestConfig(t *testing.T) {
 	})
 
 	t.Run("MissingRootCertErrors", func(t *testing.T) {
-		got, err := dbtls.Config(config.SSLModeVerifyFull, "/no/such/ca.pem", "db.example.com")
+		got, err := dbtls.Config(config.SSLVerifyFull, "/no/such/ca.pem", "db.example.com")
 
 		require.Error(t, err, "a missing CA file should surface an error")
 		assert.Nil(t, got, "no config should be returned when the CA file cannot be read")
@@ -95,7 +95,7 @@ func TestConfig(t *testing.T) {
 		bad := filepath.Join(t.TempDir(), "bad.pem")
 		require.NoError(t, os.WriteFile(bad, []byte("not a certificate"), 0o600), "writing the bad PEM should succeed")
 
-		got, err := dbtls.Config(config.SSLModeVerifyCA, bad, "db.example.com")
+		got, err := dbtls.Config(config.SSLVerifyCA, bad, "db.example.com")
 
 		require.ErrorIs(t, err, dbtls.ErrNoRootCert, "a PEM file with no certificates should report ErrNoRootCert")
 		assert.Nil(t, got, "no config should be returned for an invalid CA file")
@@ -103,11 +103,11 @@ func TestConfig(t *testing.T) {
 
 	t.Run("RootCertIgnoredWhenNotVerifying", func(t *testing.T) {
 		// disable/require never read the CA file, so a bogus path must not fail them.
-		disable, err := dbtls.Config(config.SSLModeDisable, "/no/such/ca.pem", "db.example.com")
+		disable, err := dbtls.Config(config.SSLDisable, "/no/such/ca.pem", "db.example.com")
 		require.NoError(t, err, "disable must not read the CA file")
 		assert.Nil(t, disable, "disable still yields plaintext")
 
-		require0, err := dbtls.Config(config.SSLModeRequire, "/no/such/ca.pem", "db.example.com")
+		require0, err := dbtls.Config(config.SSLRequire, "/no/such/ca.pem", "db.example.com")
 		require.NoError(t, err, "require must not read the CA file")
 		require.NotNil(t, require0, "require still yields a TLS config")
 	})
