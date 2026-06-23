@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/copier"
+	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/storage"
@@ -53,7 +54,7 @@ func (c *createManyOperation[TModel, TParams]) createMany(files storage.Files) (
 
 	return func(ctx fiber.Ctx, db orm.DB, params CreateManyParams[TParams]) error {
 		if len(params.List) == 0 {
-			return result.Ok([]map[string]any{}).Response(ctx)
+			return result.Ok([]map[string]any{}, result.WithMessage(i18n.T(MessageCreated))).Response(ctx)
 		}
 
 		models := make([]TModel, len(params.List))
@@ -99,7 +100,7 @@ func (c *createManyOperation[TModel, TParams]) createMany(files storage.Files) (
 				pks[i] = pk
 			}
 
-			return result.Ok(pks).Response(ctx)
+			return result.Ok(pks, result.WithMessage(i18n.T(MessageCreated))).Response(ctx)
 		})
 	}, nil
 }

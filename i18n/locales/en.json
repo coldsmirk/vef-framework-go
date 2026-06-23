@@ -1,6 +1,10 @@
 {
   "ok": "Success",
   "error": "Error",
+  "created": "Created successfully",
+  "updated": "Saved successfully",
+  "deleted": "Deleted successfully",
+  "imported": "Imported successfully",
   "record_not_found": "Record not found",
   "record_already_exists": "Record already exists",
   "foreign_key_violation": "Cannot delete or update a record with existing references",

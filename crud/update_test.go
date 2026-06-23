@@ -205,7 +205,7 @@ func (suite *UpdateTestSuite) TestUpdateBasic() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(result.OkMessage), "Should return OK message")
+	suite.Equal(body.Message, i18n.T(crud.MessageUpdated), "Should return updated message")
 
 	suite.T().Logf("Updated ut_emp001 successfully")
 }
@@ -233,7 +233,7 @@ func (suite *UpdateTestSuite) TestUpdateWithPreHook() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(result.OkMessage), "Should return OK message")
+	suite.Equal(body.Message, i18n.T(crud.MessageUpdated), "Should return updated message")
 
 	suite.T().Logf("Updated ut_emp002 with PreUpdate hook successfully")
 }
@@ -262,7 +262,7 @@ func (suite *UpdateTestSuite) TestUpdateWithPostHook() {
 
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(result.OkMessage), "Should return OK message")
+	suite.Equal(body.Message, i18n.T(crud.MessageUpdated), "Should return updated message")
 
 	suite.T().Logf("Updated ut_emp003 with PostUpdate hook, header: %s", resp.Header.Get("X-Updated-User-Name"))
 }
@@ -412,7 +412,7 @@ func (suite *UpdateTestSuite) TestPartialUpdate() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(result.OkMessage), "Should return OK message")
+	suite.Equal(body.Message, i18n.T(crud.MessageUpdated), "Should return updated message")
 
 	suite.T().Logf("Partially updated ut_emp007 successfully")
 }
@@ -439,7 +439,7 @@ func (suite *UpdateTestSuite) TestUpdateWithDisableDataPerm() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(result.OkMessage), "Should return OK message")
+	suite.Equal(body.Message, i18n.T(crud.MessageUpdated), "Should return updated message")
 
 	suite.T().Logf("Updated ut_emp001 with DisableDataPerm successfully")
 }

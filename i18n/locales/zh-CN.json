@@ -1,6 +1,10 @@
 {
   "ok": "成功",
   "error": "失败",
+  "created": "新增成功",
+  "updated": "保存成功",
+  "deleted": "删除成功",
+  "imported": "导入成功",
   "record_not_found": "记录不存在",
   "record_already_exists": "记录已存在",
   "foreign_key_violation": "数据存在关联，无法删除或更新",
