@@ -236,7 +236,7 @@ func (suite *DeleteManyTestSuite) TestDeleteManyBasic() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(crud.MessageDeleted), "Should return deleted message")
+	suite.Equal(i18n.T(crud.MessageDeleted), body.Message, "Should return deleted message")
 
 	suite.T().Logf("Successfully deleted 3 users in batch")
 }
@@ -261,7 +261,7 @@ func (suite *DeleteManyTestSuite) TestDeleteManyWithPreHook() {
 
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(crud.MessageDeleted), "Should return deleted message")
+	suite.Equal(i18n.T(crud.MessageDeleted), body.Message, "Should return deleted message")
 
 	activeCount := resp.Header.Get("X-Delete-Active-Count")
 	suite.T().Logf("Deleted 2 users with PreDeleteMany hook, active count: %s", activeCount)
@@ -287,7 +287,7 @@ func (suite *DeleteManyTestSuite) TestDeleteManyWithPostHook() {
 
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(crud.MessageDeleted), "Should return deleted message")
+	suite.Equal(i18n.T(crud.MessageDeleted), body.Message, "Should return deleted message")
 
 	deletedCount := resp.Header.Get("X-Deleted-Count")
 	suite.T().Logf("Deleted %s users with PostDeleteMany hook", deletedCount)
@@ -651,7 +651,7 @@ func (suite *DeleteManyTestSuite) TestDeleteManyWithDisableDataPerm() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(crud.MessageDeleted), "Should return deleted message")
+	suite.Equal(i18n.T(crud.MessageDeleted), body.Message, "Should return deleted message")
 
 	suite.T().Logf("Deleted 2 employees with DisableDataPerm successfully")
 }

@@ -177,7 +177,7 @@ func (suite *CreateTestSuite) TestCreateBasic() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(crud.MessageCreated), "Should return created message")
+	suite.Equal(i18n.T(crud.MessageCreated), body.Message, "Should return created message")
 	suite.NotNil(body.Data, "Should return data")
 
 	pk := suite.ReadDataAsMap(body.Data)

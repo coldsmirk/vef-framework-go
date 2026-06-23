@@ -69,7 +69,7 @@ func (u *updateManyOperation[TModel, TParams]) updateMany(db orm.DB, files stora
 
 	return func(ctx fiber.Ctx, db orm.DB, params UpdateManyParams[TParams]) error {
 		if len(params.List) == 0 {
-			return result.Ok(result.WithMessage(i18n.T(MessageUpdated))).Response(ctx)
+			return result.Ok().Response(ctx)
 		}
 
 		oldModels := make([]TModel, len(params.List))

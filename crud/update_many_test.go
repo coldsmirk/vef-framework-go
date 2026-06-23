@@ -221,7 +221,7 @@ func (suite *UpdateManyTestSuite) TestUpdateManyBasic() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(crud.MessageUpdated), "Should return updated message")
+	suite.Equal(i18n.T(crud.MessageUpdated), body.Message, "Should return updated message")
 
 	suite.T().Logf("Successfully updated 2 users in batch")
 }
@@ -261,7 +261,7 @@ func (suite *UpdateManyTestSuite) TestUpdateManyWithPreHook() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(crud.MessageUpdated), "Should return updated message")
+	suite.Equal(i18n.T(crud.MessageUpdated), body.Message, "Should return updated message")
 
 	suite.T().Logf("Successfully updated 2 users with PreUpdateMany hook")
 }
@@ -301,7 +301,7 @@ func (suite *UpdateManyTestSuite) TestUpdateManyWithPostHook() {
 
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(crud.MessageUpdated), "Should return updated message")
+	suite.Equal(i18n.T(crud.MessageUpdated), body.Message, "Should return updated message")
 
 	updatedCount := resp.Header.Get("X-Updated-Count")
 	suite.T().Logf("Updated %s users with PostUpdateMany hook", updatedCount)
@@ -614,7 +614,7 @@ func (suite *UpdateManyTestSuite) TestUpdateManyPartialUpdate() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(crud.MessageUpdated), "Should return updated message")
+	suite.Equal(i18n.T(crud.MessageUpdated), body.Message, "Should return updated message")
 
 	suite.T().Logf("Successfully partially updated 2 users")
 }
@@ -652,7 +652,7 @@ func (suite *UpdateManyTestSuite) TestUpdateManyWithDisableDataPerm() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(crud.MessageUpdated), "Should return updated message")
+	suite.Equal(i18n.T(crud.MessageUpdated), body.Message, "Should return updated message")
 
 	suite.T().Logf("Updated 2 employees with DisableDataPerm successfully")
 }

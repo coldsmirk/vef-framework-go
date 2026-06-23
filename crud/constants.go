@@ -18,10 +18,10 @@ const (
 
 // Success message i18n keys for CRUD mutation operations.
 const (
-	MessageCreated  = "created"
-	MessageUpdated  = "updated"
-	MessageDeleted  = "deleted"
-	MessageImported = "imported"
+	MessageCreated  = "crud_created"
+	MessageUpdated  = "crud_updated"
+	MessageDeleted  = "crud_deleted"
+	MessageImported = "crud_imported"
 )
 
 // RPC action names (snake_case identifiers).

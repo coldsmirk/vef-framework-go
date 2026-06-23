@@ -195,7 +195,7 @@ func (suite *DeleteTestSuite) TestDeleteBasic() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(crud.MessageDeleted), "Should return deleted message")
+	suite.Equal(i18n.T(crud.MessageDeleted), body.Message, "Should return deleted message")
 
 	suite.T().Logf("Deleted dt_emp001 successfully")
 }
@@ -220,7 +220,7 @@ func (suite *DeleteTestSuite) TestDeleteWithPreHook() {
 
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(crud.MessageDeleted), "Should return deleted message")
+	suite.Equal(i18n.T(crud.MessageDeleted), body.Message, "Should return deleted message")
 
 	suite.T().Logf("Deleted dt_emp002 with PreDelete hook, warning: %s", resp.Header.Get("X-Delete-Warning"))
 }
@@ -245,7 +245,7 @@ func (suite *DeleteTestSuite) TestDeleteWithPostHook() {
 
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(crud.MessageDeleted), "Should return deleted message")
+	suite.Equal(i18n.T(crud.MessageDeleted), body.Message, "Should return deleted message")
 
 	suite.T().Logf("Deleted dt_emp003 with PostDelete hook, user id: %s", resp.Header.Get("X-Deleted-User-ID"))
 }
@@ -399,7 +399,7 @@ func (suite *DeleteTestSuite) TestDeleteWithDisableDataPerm() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(crud.MessageDeleted), "Should return deleted message")
+	suite.Equal(i18n.T(crud.MessageDeleted), body.Message, "Should return deleted message")
 
 	suite.T().Logf("Deleted dt_emp005 with DisableDataPerm successfully")
 }

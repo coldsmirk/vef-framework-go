@@ -67,7 +67,7 @@ func (d *deleteManyOperation[TModel]) deleteMany(db orm.DB, files storage.Files)
 
 	return func(ctx fiber.Ctx, db orm.DB, params DeleteManyParams) error {
 		if len(params.PKs) == 0 {
-			return result.Ok(result.WithMessage(i18n.T(MessageDeleted))).Response(ctx)
+			return result.Ok().Response(ctx)
 		}
 
 		models := make([]TModel, len(params.PKs))
