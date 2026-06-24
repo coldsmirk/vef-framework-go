@@ -46,7 +46,7 @@ For **cross-database suite tests** (e.g., ORM tests running on PostgreSQL/MySQL/
 
 ```go
 func (suite *YourTestSuite) TestFeature() {
-    suite.T().Logf("Testing Feature for %s", suite.dbKind)
+    suite.T().Logf("Testing Feature for %s", suite.ds.Kind)
     // ...
 }
 ```
@@ -129,8 +129,8 @@ The ORM abstracts database differences. **Do not skip tests** just because a dat
 
 ```go
 // Skip only when truly unsimulatable
-if suite.dbKind == config.MySQL {
-    suite.T().Skipf("FILTER clause not supported on %s (cannot be simulated)", suite.dbKind)
+if suite.ds.Kind == config.MySQL {
+    suite.T().Skipf("FILTER clause not supported on %s (cannot be simulated)", suite.ds.Kind)
     return
 }
 ```
