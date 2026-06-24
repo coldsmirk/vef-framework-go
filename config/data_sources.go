@@ -9,7 +9,9 @@ const PrimaryDataSourceName = "primary"
 // DBKind represents supported database kinds.
 type DBKind string
 
-// Supported database kinds.
+// Supported database kinds. The constants are intentionally unprefixed
+// (MySQL, not DBMySQL): a DB* prefix would produce the stacked-acronym form
+// DBSQLServer, which the identifier convention avoids, so bare names are kept.
 const (
 	Oracle    DBKind = "oracle"
 	SQLServer DBKind = "sqlserver"
