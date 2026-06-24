@@ -44,7 +44,7 @@ func TestBuildConfig(t *testing.T) {
 		assert.True(t, mysqlCfg.MultiStatements, "Should keep multi-statements enabled")
 	})
 
-	t.Run("SSLModeRequireEnablesTLS", func(t *testing.T) {
+	t.Run("SSLRequireEnablesTLS", func(t *testing.T) {
 		mysqlCfg, err := provider.buildConfig(&config.DataSourceConfig{
 			Database: "vef_test",
 			SSLMode:  config.SSLRequire,
@@ -55,7 +55,7 @@ func TestBuildConfig(t *testing.T) {
 		assert.True(t, mysqlCfg.TLS.InsecureSkipVerify, "require mode should skip verification")
 	})
 
-	t.Run("SSLModeVerifyFullPinsHost", func(t *testing.T) {
+	t.Run("SSLVerifyFullPinsHost", func(t *testing.T) {
 		mysqlCfg, err := provider.buildConfig(&config.DataSourceConfig{
 			Host:     "db.internal",
 			Database: "vef_test",
