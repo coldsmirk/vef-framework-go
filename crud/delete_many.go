@@ -7,6 +7,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
+	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/storage"
@@ -124,7 +125,7 @@ func (d *deleteManyOperation[TModel]) deleteMany(db orm.DB, files storage.Files)
 				}
 			}
 
-			return result.Ok().Response(ctx)
+			return result.Ok(result.WithMessage(i18n.T(MessageDeleted))).Response(ctx)
 		})
 	}, nil
 }

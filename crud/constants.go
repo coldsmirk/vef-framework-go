@@ -16,6 +16,14 @@ const (
 	ErrCodeProcessorInvalidReturn = 2400
 )
 
+// Success message i18n keys for CRUD mutation operations.
+const (
+	MessageCreated  = "crud_created"
+	MessageUpdated  = "crud_updated"
+	MessageDeleted  = "crud_deleted"
+	MessageImported = "crud_imported"
+)
+
 // RPC action names (snake_case identifiers).
 const (
 	RPCActionCreate          = "create"

@@ -189,7 +189,7 @@ func (suite *CreateManyTestSuite) TestCreateManyBasic() {
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return successful response")
-	suite.Equal(body.Message, i18n.T(result.OkMessage), "Should return OK message")
+	suite.Equal(i18n.T(crud.MessageCreated), body.Message, "Should return created message")
 	suite.NotNil(body.Data, "Should return data")
 
 	// CreateManyAPI returns array of primary keys
@@ -566,10 +566,12 @@ func (suite *CreateManyTestSuite) TestCreateManyEmptyList() {
 		},
 	})
 
-	// Empty list fails validation and returns 400
-	suite.Contains([]int{200, 400, 500}, resp.StatusCode, "Should handle empty list")
-
-	suite.T().Logf("CreateMany with empty list handled")
+	// An empty list violates the `min=1` rule on CreateManyParams.List, so the
+	// request is rejected by parameter validation before reaching the handler.
+	suite.Equal(400, resp.StatusCode, "Empty list should be rejected with HTTP 400")
+	body := suite.ReadResult(resp)
+	suite.False(body.IsOk(), "Empty list should not yield a success result")
+	suite.Equal(result.ErrCodeBadRequest, body.Code, "Empty list should fail request validation")
 }
 
 // TestCreateManyPreHookError tests CreateMany with a pre-hook that returns error.

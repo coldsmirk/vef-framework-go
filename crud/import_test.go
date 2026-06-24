@@ -20,7 +20,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/orm"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 func init() {
@@ -244,7 +243,7 @@ func (suite *ImportTestSuite) TestImportBasic() {
 	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return success response")
-	suite.Equal(i18n.T(result.OkMessage), body.Message, "Should return OK message")
+	suite.Equal(i18n.T(crud.MessageImported), body.Message, "Should return imported message")
 
 	// Verify response data
 	data := suite.ReadDataAsMap(body.Data)
@@ -570,7 +569,7 @@ func (suite *ImportTestSuite) TestImportCSVBasic() {
 	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
 	body := suite.ReadResult(resp)
 	suite.True(body.IsOk(), "Should return success response")
-	suite.Equal(i18n.T(result.OkMessage), body.Message, "Should return OK message")
+	suite.Equal(i18n.T(crud.MessageImported), body.Message, "Should return imported message")
 
 	// Verify response data
 	data := suite.ReadDataAsMap(body.Data)

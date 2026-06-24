@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/copier"
+	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/storage"
@@ -134,7 +135,7 @@ func (u *updateManyOperation[TModel, TParams]) updateMany(db orm.DB, files stora
 				}
 			}
 
-			return result.Ok().Response(ctx)
+			return result.Ok(result.WithMessage(i18n.T(MessageUpdated))).Response(ctx)
 		})
 	}, nil
 }
