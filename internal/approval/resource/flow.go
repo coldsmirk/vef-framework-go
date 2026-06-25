@@ -32,14 +32,15 @@ func NewFlowResource(bus cqrs.Bus, tenantResolver approval.PrincipalTenantResolv
 			api.WithOperations(
 				// Flow CRUD writes touch shared definition state and warrant
 				// framework-level audit beyond business events.
-				api.OperationSpec{Action: "create", RequiredPermission: "approval:flow:create", EnableAudit: true},
-				api.OperationSpec{Action: "deploy", RequiredPermission: "approval:flow:deploy", EnableAudit: true},
-				api.OperationSpec{Action: "publish_version", RequiredPermission: "approval:flow:publish", EnableAudit: true},
-				api.OperationSpec{Action: "update_flow", RequiredPermission: "approval:flow:update", EnableAudit: true},
-				api.OperationSpec{Action: "toggle_active", RequiredPermission: "approval:flow:update", EnableAudit: true},
-				api.OperationSpec{Action: "get_graph", RequiredPermission: "approval:flow:query"},
-				api.OperationSpec{Action: "find_flows", RequiredPermission: "approval:flow:query"},
-				api.OperationSpec{Action: "find_versions", RequiredPermission: "approval:flow:query"},
+				api.OperationSpec{Action: "create", RequiredPermission: "approval.flow.create", EnableAudit: true},
+				api.OperationSpec{Action: "deploy", RequiredPermission: "approval.flow.deploy", EnableAudit: true},
+				api.OperationSpec{Action: "publish_version", RequiredPermission: "approval.flow.publish", EnableAudit: true},
+				api.OperationSpec{Action: "update_flow", RequiredPermission: "approval.flow.update", EnableAudit: true},
+				api.OperationSpec{Action: "toggle_active", RequiredPermission: "approval.flow.update", EnableAudit: true},
+				api.OperationSpec{Action: "get_graph", RequiredPermission: "approval.flow.query"},
+				api.OperationSpec{Action: "find_flows", RequiredPermission: "approval.flow.query"},
+				api.OperationSpec{Action: "find_versions", RequiredPermission: "approval.flow.query"},
+				api.OperationSpec{Action: "find_initiators", RequiredPermission: "approval.flow.query"},
 			),
 		),
 	}
@@ -58,7 +59,6 @@ type CreateFlowParams struct {
 	BindingMode            approval.BindingMode    `json:"bindingMode" validate:"required"`
 	BusinessTable          *string                 `json:"businessTable"`
 	BusinessPkField        *string                 `json:"businessPkField"`
-	BusinessTitleField     *string                 `json:"businessTitleField"`
 	BusinessStatusField    *string                 `json:"businessStatusField"`
 	AdminUserIDs           []string                `json:"adminUserIds"`
 	IsAllInitiationAllowed bool                    `json:"isAllInitiationAllowed"`
@@ -100,7 +100,6 @@ func (r *FlowResource) Create(ctx fiber.Ctx, principal *security.Principal, para
 			BindingMode:            params.BindingMode,
 			BusinessTable:          params.BusinessTable,
 			BusinessPkField:        params.BusinessPkField,
-			BusinessTitleField:     params.BusinessTitleField,
 			BusinessStatusField:    params.BusinessStatusField,
 			AdminUserIDs:           params.AdminUserIDs,
 			IsAllInitiationAllowed: params.IsAllInitiationAllowed,
@@ -122,6 +121,7 @@ type DeployFlowParams struct {
 
 	FlowID         string                   `json:"flowId" validate:"required"`
 	Description    *string                  `json:"description"`
+	StorageMode    approval.StorageMode     `json:"storageMode"`
 	FlowDefinition approval.FlowDefinition  `json:"flowDefinition" validate:"required"`
 	FormDefinition *approval.FormDefinition `json:"formDefinition"`
 }
@@ -139,6 +139,7 @@ func (r *FlowResource) Deploy(ctx fiber.Ctx, principal *security.Principal, para
 		command.DeployFlowCmd{
 			FlowID:         params.FlowID,
 			Description:    params.Description,
+			StorageMode:    params.StorageMode,
 			FlowDefinition: params.FlowDefinition,
 			FormDefinition: params.FormDefinition,
 			Caller:         caller,
@@ -265,6 +266,10 @@ type UpdateFlowParams struct {
 	Name                   string                  `json:"name" validate:"required"`
 	Icon                   *string                 `json:"icon"`
 	Description            *string                 `json:"description"`
+	BindingMode            approval.BindingMode    `json:"bindingMode" validate:"required"`
+	BusinessTable          *string                 `json:"businessTable"`
+	BusinessPkField        *string                 `json:"businessPkField"`
+	BusinessStatusField    *string                 `json:"businessStatusField"`
 	AdminUserIDs           []string                `json:"adminUserIds"`
 	IsAllInitiationAllowed bool                    `json:"isAllInitiationAllowed"`
 	InstanceTitleTemplate  string                  `json:"instanceTitleTemplate" validate:"required"`
@@ -294,6 +299,10 @@ func (r *FlowResource) UpdateFlow(ctx fiber.Ctx, principal *security.Principal, 
 			Name:                   params.Name,
 			Icon:                   params.Icon,
 			Description:            params.Description,
+			BindingMode:            params.BindingMode,
+			BusinessTable:          params.BusinessTable,
+			BusinessPkField:        params.BusinessPkField,
+			BusinessStatusField:    params.BusinessStatusField,
 			AdminUserIDs:           params.AdminUserIDs,
 			IsAllInitiationAllowed: params.IsAllInitiationAllowed,
 			InstanceTitleTemplate:  params.InstanceTitleTemplate,
@@ -367,4 +376,35 @@ func (r *FlowResource) FindVersions(ctx fiber.Ctx, principal *security.Principal
 	}
 
 	return result.Ok(versions).Response(ctx)
+}
+
+// FindInitiatorsParams contains the parameters for finding flow initiators.
+type FindInitiatorsParams struct {
+	api.P
+
+	FlowID   string  `json:"flowId" validate:"required"`
+	TenantID *string `json:"tenantId"`
+}
+
+// FindInitiators queries the initiator configurations of a specific flow.
+func (r *FlowResource) FindInitiators(ctx fiber.Ctx, principal *security.Principal, params FindInitiatorsParams) error {
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	if err != nil {
+		return err
+	}
+
+	initiators, err := cqrs.Send[query.FindFlowInitiatorsQuery, []approval.FlowInitiator](
+		ctx.Context(),
+		r.bus,
+		query.FindFlowInitiatorsQuery{
+			FlowID:   params.FlowID,
+			TenantID: params.TenantID,
+			Caller:   caller,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	return result.Ok(initiators).Response(ctx)
 }

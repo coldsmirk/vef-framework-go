@@ -108,20 +108,20 @@ func NewInstanceResource(
 				// designer's node-level toggles (IsTransferAllowed,
 				// IsRollbackAllowed, …) already govern which actions a node
 				// offers at runtime.
-				api.OperationSpec{Action: "start", RequiredPermission: "approval:instance:start", EnableAudit: true},
-				api.OperationSpec{Action: "process_task", RequiredPermission: "approval:task:process", EnableAudit: true},
-				api.OperationSpec{Action: "withdraw", RequiredPermission: "approval:instance:withdraw", EnableAudit: true},
-				api.OperationSpec{Action: "resubmit", RequiredPermission: "approval:instance:resubmit", EnableAudit: true},
-				api.OperationSpec{Action: "add_cc", RequiredPermission: "approval:instance:cc", EnableAudit: true},
+				api.OperationSpec{Action: "start", RequiredPermission: "approval.instance.start", EnableAudit: true},
+				api.OperationSpec{Action: "process_task", RequiredPermission: "approval.task.process", EnableAudit: true},
+				api.OperationSpec{Action: "withdraw", RequiredPermission: "approval.instance.withdraw", EnableAudit: true},
+				api.OperationSpec{Action: "resubmit", RequiredPermission: "approval.instance.resubmit", EnableAudit: true},
+				api.OperationSpec{Action: "add_cc", RequiredPermission: "approval.instance.cc", EnableAudit: true},
 				// mark_cc_read is a self-service read receipt — low impact, no audit.
-				api.OperationSpec{Action: "mark_cc_read", RequiredPermission: "approval:instance:cc"},
-				api.OperationSpec{Action: "add_assignee", RequiredPermission: "approval:task:add_assignee", EnableAudit: true},
-				api.OperationSpec{Action: "remove_assignee", RequiredPermission: "approval:task:remove_assignee", EnableAudit: true},
+				api.OperationSpec{Action: "mark_cc_read", RequiredPermission: "approval.instance.cc"},
+				api.OperationSpec{Action: "add_assignee", RequiredPermission: "approval.task.add_assignee", EnableAudit: true},
+				api.OperationSpec{Action: "remove_assignee", RequiredPermission: "approval.task.remove_assignee", EnableAudit: true},
 				// urge_task additionally rate-limited to deter notification
 				// flooding even when the per-task cooldown is satisfied.
 				api.OperationSpec{
 					Action:             "urge_task",
-					RequiredPermission: "approval:task:urge",
+					RequiredPermission: "approval.task.urge",
 					RateLimit:          &api.RateLimitConfig{Max: 10, Period: time.Minute},
 				},
 			),

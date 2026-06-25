@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -26,16 +27,19 @@ type PublishVersionCmd struct {
 
 // PublishVersionHandler handles the PublishVersionCmd command.
 type PublishVersionHandler struct {
-	db        orm.DB
-	flowCache *engine.FlowCache
+	db          orm.DB
+	flowCache   *engine.FlowCache
+	formStorage *storage.Dispatcher
 }
 
 // NewPublishVersionHandler creates a new PublishVersionHandler. flowCache
 // may be nil in test fixtures; production wiring always supplies it so
 // archived versions are evicted from the compiled-flow cache before any
-// new instance picks up a stale plan.
-func NewPublishVersionHandler(db orm.DB, flowCache *engine.FlowCache) *PublishVersionHandler {
-	return &PublishVersionHandler{db: db, flowCache: flowCache}
+// new instance picks up a stale plan. formStorage provisions the version's
+// physical form table when its StorageMode is StorageTable; it may be nil in
+// test fixtures that do not exercise table-mode storage.
+func NewPublishVersionHandler(db orm.DB, flowCache *engine.FlowCache, formStorage *storage.Dispatcher) *PublishVersionHandler {
+	return &PublishVersionHandler{db: db, flowCache: flowCache, formStorage: formStorage}
 }
 
 func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCmd) (cqrs.Unit, error) {
@@ -67,7 +71,7 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 	var flow approval.Flow
 
 	flow.ID = version.FlowID
-	if err := db.NewSelect().Model(&flow).Select("tenant_id").WherePK().Scan(ctx); err != nil {
+	if err := db.NewSelect().Model(&flow).Select("tenant_id", "code").WherePK().Scan(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("load flow tenant: %w", err)
 	}
 
@@ -124,6 +128,26 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 		}).
 		Exec(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("update flow current version: %w", err)
+	}
+
+	// Provision the version's form storage in two phases with distinct
+	// transactional needs. Table creation (DDL) runs on the handler's base
+	// connection h.db, OUTSIDE this publish transaction: a CREATE TABLE
+	// implicitly commits the in-flight transaction on MySQL, so issuing it on
+	// the transaction's connection would prematurely commit the archive/publish
+	// writes above and defeat their atomicity. It is idempotent (CREATE TABLE IF
+	// NOT EXISTS), so if this publish later rolls back, the leftover table is
+	// reused on the next attempt. The metadata insert then runs INSIDE the
+	// transaction (db) so the recorded schema commits or rolls back together
+	// with the version's published state. For StorageJSON both calls are no-ops.
+	if h.formStorage != nil {
+		if err := h.formStorage.ProvisionTable(ctx, h.db, &flow, &version); err != nil {
+			return cqrs.Unit{}, fmt.Errorf("provision form table: %w", err)
+		}
+
+		if err := h.formStorage.RecordMetadata(ctx, db, &flow, &version); err != nil {
+			return cqrs.Unit{}, fmt.Errorf("record form storage metadata: %w", err)
+		}
 	}
 
 	// Invalidate the compiled-flow cache for the newly-published version

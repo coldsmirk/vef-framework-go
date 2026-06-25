@@ -42,7 +42,6 @@ type Flow struct {
 	BindingMode            BindingMode `json:"bindingMode" bun:"binding_mode"`
 	BusinessTable          *string     `json:"businessTable" bun:"business_table,nullzero"`
 	BusinessPkField        *string     `json:"businessPkField" bun:"business_pk_field,nullzero"`
-	BusinessTitleField     *string     `json:"businessTitleField" bun:"business_title_field,nullzero"`
 	BusinessStatusField    *string     `json:"businessStatusField" bun:"business_status_field,nullzero"`
 	AdminUserIDs           []string    `json:"adminUserIds" bun:"admin_user_ids,type:jsonb"`
 	IsAllInitiationAllowed bool        `json:"isAllInitiationAllowed" bun:"is_all_initiation_allowed"`
@@ -83,6 +82,36 @@ type FlowVersion struct {
 	PublishedBy *string         `json:"publishedBy" bun:"published_by,nullzero"`
 }
 
+// FormTable records the dedicated physical table generated for a published
+// version whose StorageMode is StorageTable. It is the single source of truth
+// for what DDL the framework generated: the engine consults it (idempotency)
+// before creating a table for a version, and operators can map a version to
+// its projection table through it. One row per version (version_id is unique).
+type FormTable struct {
+	orm.BaseModel `bun:"table:apv_form_table,alias:aft"`
+	orm.CreationAuditedModel
+
+	FlowID            string `json:"flowId" bun:"flow_id"`
+	VersionID         string `json:"versionId" bun:"version_id"`
+	PhysicalTableName string `json:"physicalTableName" bun:"physical_table_name"`
+}
+
+// FormTableColumn records a single generated column of a FormTable. It mirrors
+// the physical column produced from one form field (or the built-in id /
+// instance_id / created_at columns), so the generated schema can be inspected
+// without reflecting on the database catalog.
+type FormTableColumn struct {
+	orm.BaseModel `bun:"table:apv_form_table_column,alias:aftc"`
+	orm.CreationAuditedModel
+
+	FormTableID    string  `json:"formTableId" bun:"form_table_id"`
+	ColumnName     string  `json:"columnName" bun:"column_name"`
+	ColumnType     string  `json:"columnType" bun:"column_type"`
+	IsNullable     bool    `json:"isNullable" bun:"is_nullable"`
+	SourceFieldKey *string `json:"sourceFieldKey" bun:"source_field_key,nullzero"`
+	SortOrder      int     `json:"sortOrder" bun:"sort_order"`
+}
+
 // FlowNode represents a node within a flow version.
 type FlowNode struct {
 	orm.BaseModel `bun:"table:apv_flow_node,alias:afn"`
@@ -96,7 +125,7 @@ type FlowNode struct {
 	ExecutionType             ExecutionType             `json:"executionType" bun:"execution_type"`
 	ApprovalMethod            ApprovalMethod            `json:"approvalMethod" bun:"approval_method"`
 	PassRule                  PassRule                  `json:"passRule" bun:"pass_rule"`
-	PassRatio                 decimal.Decimal           `json:"passRatio" bun:"pass_ratio"`
+	PassRatio                 decimal.Decimal           `json:"passRatio" bun:"pass_ratio,type:numeric(5,2)"`
 	EmptyAssigneeAction       EmptyAssigneeAction       `json:"emptyAssigneeAction" bun:"empty_assignee_action"`
 	FallbackUserIDs           []string                  `json:"fallbackUserIds" bun:"fallback_user_ids,type:jsonb"`
 	AdminUserIDs              []string                  `json:"adminUserIds" bun:"admin_user_ids,type:jsonb"`

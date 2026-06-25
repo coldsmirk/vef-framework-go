@@ -50,7 +50,6 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     binding_mode VARCHAR(16) NOT NULL DEFAULT 'standalone',
     business_table VARCHAR(64),
     business_pk_field VARCHAR(64),
-    business_title_field VARCHAR(64),
     business_status_field VARCHAR(64),
     -- Permission config
     admin_user_ids TEXT NOT NULL DEFAULT '[]',
@@ -123,7 +122,7 @@ CREATE TABLE IF NOT EXISTS apv_flow_node (
     -- Approval behavior config (for approval nodes)
     approval_method VARCHAR(16) NOT NULL DEFAULT 'parallel',
     pass_rule VARCHAR(16) NOT NULL DEFAULT 'all',
-    pass_ratio REAL NOT NULL DEFAULT 1.00 CONSTRAINT ck_apv_flow_node__pass_ratio CHECK (pass_ratio >= 0 AND pass_ratio <= 1),
+    pass_ratio REAL NOT NULL DEFAULT 100.00 CONSTRAINT ck_apv_flow_node__pass_ratio CHECK (pass_ratio >= 0 AND pass_ratio <= 100),
     -- Empty assignee config
     empty_assignee_action VARCHAR(32) NOT NULL DEFAULT 'auto_pass',
     fallback_user_ids TEXT NOT NULL DEFAULT '[]',
@@ -411,3 +410,36 @@ CREATE TABLE IF NOT EXISTS apv_urge_record (
 
 CREATE INDEX IF NOT EXISTS idx_apv_urge_record__task_id_urger_id_created_at ON apv_urge_record(task_id, urger_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_apv_urge_record__instance_id ON apv_urge_record(instance_id);
+
+--------------------------------------------------------------------------------
+-- Table-Storage Metadata (StorageTable mode)
+--------------------------------------------------------------------------------
+
+-- Form table: one physical form table per published version
+CREATE TABLE IF NOT EXISTS apv_form_table (
+    id VARCHAR(32) CONSTRAINT pk_apv_form_table PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime')),
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    flow_id VARCHAR(32) NOT NULL,
+    version_id VARCHAR(32) NOT NULL,
+    physical_table_name VARCHAR(64) NOT NULL,
+    CONSTRAINT fk_apv_form_table__version_id FOREIGN KEY (version_id) REFERENCES apv_flow_version(id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_apv_form_table__version_id ON apv_form_table(version_id);
+
+-- Form table column: column definitions projected from the form schema
+CREATE TABLE IF NOT EXISTS apv_form_table_column (
+    id VARCHAR(32) CONSTRAINT pk_apv_form_table_column PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime')),
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    form_table_id VARCHAR(32) NOT NULL,
+    column_name VARCHAR(64) NOT NULL,
+    column_type VARCHAR(32) NOT NULL,
+    is_nullable BOOLEAN NOT NULL DEFAULT 1,
+    source_field_key VARCHAR(64),
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    CONSTRAINT fk_apv_form_table_column__form_table_id FOREIGN KEY (form_table_id) REFERENCES apv_form_table(id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_apv_form_table_column__form_table_id ON apv_form_table_column(form_table_id);

@@ -17,6 +17,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/resource"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/timeout"
 )
@@ -31,6 +32,7 @@ var Module = fx.Module(
 	binding.Module,
 	engine.Module,
 	service.Module,
+	storage.Module,
 	command.Module,
 	query.Module,
 	resource.Module,

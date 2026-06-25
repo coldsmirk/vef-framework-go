@@ -62,7 +62,7 @@ func (s *PublishVersionTestSuite) SetupSuite() {
 	s.flowID = flow.ID
 	s.bus = eventtest.NewFakeBus()
 	s.deployHandler = wrapWithBus(s.bus, command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService()))
-	s.publishHandler = wrapWithBus(s.bus, command.NewPublishVersionHandler(s.db, nil))
+	s.publishHandler = wrapWithBus(s.bus, command.NewPublishVersionHandler(s.db, nil, nil))
 }
 
 func (s *PublishVersionTestSuite) TearDownTest() {

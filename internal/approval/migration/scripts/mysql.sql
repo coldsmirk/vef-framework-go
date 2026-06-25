@@ -20,11 +20,13 @@ CREATE TABLE IF NOT EXISTS apv_flow_category (
     CONSTRAINT pk_apv_flow_category PRIMARY KEY (id),
     CONSTRAINT uk_apv_flow_category__tenant_id_code UNIQUE (tenant_id, code),
     CONSTRAINT fk_apv_flow_category__parent_id FOREIGN KEY (parent_id)
-        REFERENCES apv_flow_category(id) ON DELETE RESTRICT ON UPDATE CASCADE
+        REFERENCES apv_flow_category(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    -- Indexes are declared inline so a re-run of this idempotent script skips
+    -- them together with the table (CREATE TABLE IF NOT EXISTS); MySQL has no
+    -- CREATE INDEX IF NOT EXISTS, so a standalone index would error on re-run.
+    INDEX idx_apv_flow_category__tenant_id (tenant_id),
+    INDEX idx_apv_flow_category__parent_id (parent_id)
 ) COMMENT 'Flow Category';
-
-CREATE INDEX idx_apv_flow_category__tenant_id ON apv_flow_category(tenant_id);
-CREATE INDEX idx_apv_flow_category__parent_id ON apv_flow_category(parent_id);
 
 -- Flow definition
 CREATE TABLE IF NOT EXISTS apv_flow (
@@ -43,7 +45,6 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     binding_mode VARCHAR(16) NOT NULL DEFAULT 'standalone' COMMENT 'Binding Mode',
     business_table VARCHAR(64) COMMENT 'Biz Table',
     business_pk_field VARCHAR(64) COMMENT 'Biz PK',
-    business_title_field VARCHAR(64) COMMENT 'Title Field',
     business_status_field VARCHAR(64) COMMENT 'Status Field',
     -- Permission config
     admin_user_ids JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Admins',
@@ -55,11 +56,10 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     CONSTRAINT pk_apv_flow PRIMARY KEY (id),
     CONSTRAINT uk_apv_flow__tenant_id_code UNIQUE (tenant_id, code),
     CONSTRAINT fk_apv_flow__category_id FOREIGN KEY (category_id)
-        REFERENCES apv_flow_category(id) ON DELETE RESTRICT ON UPDATE CASCADE
+        REFERENCES apv_flow_category(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    INDEX idx_apv_flow__category_id (category_id),
+    INDEX idx_apv_flow__tenant_id (tenant_id)
 ) COMMENT 'Flow';
-
-CREATE INDEX idx_apv_flow__category_id ON apv_flow(category_id);
-CREATE INDEX idx_apv_flow__tenant_id ON apv_flow(tenant_id);
 
 -- Flow initiator config
 CREATE TABLE IF NOT EXISTS apv_flow_initiator (
@@ -68,10 +68,9 @@ CREATE TABLE IF NOT EXISTS apv_flow_initiator (
     kind VARCHAR(16) NOT NULL COMMENT 'Kind',
     ids JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Subjects',
     CONSTRAINT pk_apv_flow_initiator PRIMARY KEY (id),
-    CONSTRAINT fk_apv_flow_initiator__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT fk_apv_flow_initiator__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    INDEX idx_apv_flow_initiator__flow_id (flow_id)
 ) COMMENT 'Initiator';
-
-CREATE INDEX idx_apv_flow_initiator__flow_id ON apv_flow_initiator(flow_id);
 
 -- Flow version
 CREATE TABLE IF NOT EXISTS apv_flow_version (
@@ -97,10 +96,9 @@ CREATE TABLE IF NOT EXISTS apv_flow_version (
     CONSTRAINT pk_apv_flow_version PRIMARY KEY (id),
     CONSTRAINT uk_apv_flow_version__flow_id_version UNIQUE (flow_id, version),
     CONSTRAINT uk_apv_flow_version__flow_id_published UNIQUE (flow_id, is_published_flag),
-    CONSTRAINT fk_apv_flow_version__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT fk_apv_flow_version__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    INDEX idx_apv_flow_version__flow_id_status (flow_id, status)
 ) COMMENT 'Version';
-
-CREATE INDEX idx_apv_flow_version__flow_id_status ON apv_flow_version(flow_id, status);
 
 -- Flow node
 CREATE TABLE IF NOT EXISTS apv_flow_node (
@@ -120,7 +118,7 @@ CREATE TABLE IF NOT EXISTS apv_flow_node (
     -- Approval behavior config (for approval nodes)
     approval_method VARCHAR(16) NOT NULL DEFAULT 'parallel' COMMENT 'Method',
     pass_rule VARCHAR(16) NOT NULL DEFAULT 'all' COMMENT 'Pass Rule',
-    pass_ratio DECIMAL(3,2) NOT NULL DEFAULT 1.00 COMMENT 'Pass Ratio',
+    pass_ratio DECIMAL(5,2) NOT NULL DEFAULT 100.00 COMMENT 'Pass Ratio',
     -- Empty assignee config
     empty_assignee_action VARCHAR(32) NOT NULL DEFAULT 'auto_pass' COMMENT 'Empty Action',
     fallback_user_ids JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Fallbacks',
@@ -153,7 +151,7 @@ CREATE TABLE IF NOT EXISTS apv_flow_node (
     CONSTRAINT pk_apv_flow_node PRIMARY KEY (id),
     CONSTRAINT uk_apv_flow_node__flow_version_id_key UNIQUE (flow_version_id, `key`),
     CONSTRAINT fk_apv_flow_node__flow_version_id FOREIGN KEY (flow_version_id) REFERENCES apv_flow_version(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT ck_apv_flow_node__pass_ratio CHECK (pass_ratio >= 0 AND pass_ratio <= 1),
+    CONSTRAINT ck_apv_flow_node__pass_ratio CHECK (pass_ratio >= 0 AND pass_ratio <= 100),
     CONSTRAINT ck_apv_flow_node__timeout_hours CHECK (timeout_hours >= 0),
     CONSTRAINT ck_apv_flow_node__timeout_notify_before_hours CHECK (timeout_notify_before_hours >= 0),
     CONSTRAINT ck_apv_flow_node__urge_cooldown_minutes CHECK (urge_cooldown_minutes >= 0)
@@ -168,10 +166,9 @@ CREATE TABLE IF NOT EXISTS apv_flow_node_assignee (
     form_field VARCHAR(64) COMMENT 'Form Field',
     sort_order INTEGER NOT NULL DEFAULT 0 COMMENT 'Sort',
     CONSTRAINT pk_apv_flow_node_assignee PRIMARY KEY (id),
-    CONSTRAINT fk_apv_flow_node_assignee__node_id FOREIGN KEY (node_id) REFERENCES apv_flow_node(id) ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT fk_apv_flow_node_assignee__node_id FOREIGN KEY (node_id) REFERENCES apv_flow_node(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    INDEX idx_apv_flow_node_assignee__node_id (node_id)
 ) COMMENT 'Assignee';
-
-CREATE INDEX idx_apv_flow_node_assignee__node_id ON apv_flow_node_assignee(node_id);
 
 -- Node CC config
 CREATE TABLE IF NOT EXISTS apv_flow_node_cc (
@@ -182,10 +179,9 @@ CREATE TABLE IF NOT EXISTS apv_flow_node_cc (
     form_field VARCHAR(64) COMMENT 'Form Field',
     timing VARCHAR(16) NOT NULL DEFAULT 'always' COMMENT 'Timing',
     CONSTRAINT pk_apv_flow_node_cc PRIMARY KEY (id),
-    CONSTRAINT fk_apv_flow_node_cc__node_id FOREIGN KEY (node_id) REFERENCES apv_flow_node(id) ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT fk_apv_flow_node_cc__node_id FOREIGN KEY (node_id) REFERENCES apv_flow_node(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    INDEX idx_apv_flow_node_cc__node_id (node_id)
 ) COMMENT 'Node CC';
-
-CREATE INDEX idx_apv_flow_node_cc__node_id ON apv_flow_node_cc(node_id);
 
 -- Flow edge (directed connection between nodes)
 CREATE TABLE IF NOT EXISTS apv_flow_edge (
@@ -200,12 +196,11 @@ CREATE TABLE IF NOT EXISTS apv_flow_edge (
     CONSTRAINT pk_apv_flow_edge PRIMARY KEY (id),
     CONSTRAINT fk_apv_flow_edge__flow_version_id FOREIGN KEY (flow_version_id) REFERENCES apv_flow_version(id) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_apv_flow_edge__source_node_id FOREIGN KEY (source_node_id) REFERENCES apv_flow_node(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT fk_apv_flow_edge__target_node_id FOREIGN KEY (target_node_id) REFERENCES apv_flow_node(id) ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT fk_apv_flow_edge__target_node_id FOREIGN KEY (target_node_id) REFERENCES apv_flow_node(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    INDEX idx_apv_flow_edge__flow_version_id_source_node_id (flow_version_id, source_node_id),
+    INDEX idx_apv_flow_edge__source_node_id (source_node_id),
+    INDEX idx_apv_flow_edge__target_node_id (target_node_id)
 ) COMMENT 'Edge';
-
-CREATE INDEX idx_apv_flow_edge__flow_version_id_source_node_id ON apv_flow_edge(flow_version_id, source_node_id);
-CREATE INDEX idx_apv_flow_edge__source_node_id ON apv_flow_edge(source_node_id);
-CREATE INDEX idx_apv_flow_edge__target_node_id ON apv_flow_edge(target_node_id);
 
 -- --------------------------------------------------------------------------------
 -- Runtime Tables
@@ -239,15 +234,14 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     CONSTRAINT pk_apv_instance PRIMARY KEY (id),
     CONSTRAINT fk_apv_instance__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_instance__flow_version_id FOREIGN KEY (flow_version_id) REFERENCES apv_flow_version(id) ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT uk_apv_instance__instance_no UNIQUE (instance_no)
+    CONSTRAINT uk_apv_instance__instance_no UNIQUE (instance_no),
+    INDEX idx_apv_instance__tenant_id (tenant_id),
+    INDEX idx_apv_instance__tenant_id_status_created_at (tenant_id, status, created_at DESC),
+    INDEX idx_apv_instance__tenant_id_applicant_id_status (tenant_id, applicant_id, status),
+    INDEX idx_apv_instance__flow_id_status_created_at (flow_id, status, created_at),
+    INDEX idx_apv_instance__applicant_id_status_created_at (applicant_id, status, created_at DESC),
+    INDEX idx_apv_instance__current_node_id (current_node_id)
 ) COMMENT 'Instance';
-
-CREATE INDEX idx_apv_instance__tenant_id ON apv_instance(tenant_id);
-CREATE INDEX idx_apv_instance__tenant_id_status_created_at ON apv_instance(tenant_id, status, created_at DESC);
-CREATE INDEX idx_apv_instance__tenant_id_applicant_id_status ON apv_instance(tenant_id, applicant_id, status);
-CREATE INDEX idx_apv_instance__flow_id_status_created_at ON apv_instance(flow_id, status, created_at);
-CREATE INDEX idx_apv_instance__applicant_id_status_created_at ON apv_instance(applicant_id, status, created_at DESC);
-CREATE INDEX idx_apv_instance__current_node_id ON apv_instance(current_node_id);
 
 -- --------------------------------------------------------------------------------
 -- Form Data Storage (JSON index)
@@ -292,15 +286,14 @@ CREATE TABLE IF NOT EXISTS apv_task (
     CONSTRAINT fk_apv_task__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_task__node_id FOREIGN KEY (node_id) REFERENCES apv_flow_node(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_task__parent_task_id FOREIGN KEY (parent_task_id) REFERENCES apv_task(id) ON DELETE SET NULL ON UPDATE CASCADE,
-    CONSTRAINT uk_apv_task__instance_id_node_id_assignee_id_active UNIQUE (instance_id, node_id, assignee_id, active_flag)
+    CONSTRAINT uk_apv_task__instance_id_node_id_assignee_id_active UNIQUE (instance_id, node_id, assignee_id, active_flag),
+    INDEX idx_apv_task__tenant_id (tenant_id),
+    INDEX idx_apv_task__tenant_id_assignee_id_status (tenant_id, assignee_id, status),
+    INDEX idx_apv_task__instance_id_node_id_status (instance_id, node_id, status),
+    INDEX idx_apv_task__assignee_id_status_created_at (assignee_id, status, created_at),
+    INDEX idx_apv_task__instance_id_status_assignee_id (instance_id, status, assignee_id),
+    INDEX idx_apv_task__deadline_active (is_timeout, status, deadline)
 ) COMMENT 'Task';
-
-CREATE INDEX idx_apv_task__tenant_id ON apv_task(tenant_id);
-CREATE INDEX idx_apv_task__tenant_id_assignee_id_status ON apv_task(tenant_id, assignee_id, status);
-CREATE INDEX idx_apv_task__instance_id_node_id_status ON apv_task(instance_id, node_id, status);
-CREATE INDEX idx_apv_task__assignee_id_status_created_at ON apv_task(assignee_id, status, created_at);
-CREATE INDEX idx_apv_task__instance_id_status_assignee_id ON apv_task(instance_id, status, assignee_id);
-CREATE INDEX idx_apv_task__deadline_active ON apv_task(is_timeout, status, deadline);
 
 -- Action log
 CREATE TABLE IF NOT EXISTS apv_action_log (
@@ -335,11 +328,10 @@ CREATE TABLE IF NOT EXISTS apv_action_log (
     CONSTRAINT pk_apv_action_log PRIMARY KEY (id),
     CONSTRAINT fk_apv_action_log__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_apv_action_log__node_id FOREIGN KEY (node_id) REFERENCES apv_flow_node(id) ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT fk_apv_action_log__task_id FOREIGN KEY (task_id) REFERENCES apv_task(id) ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT fk_apv_action_log__task_id FOREIGN KEY (task_id) REFERENCES apv_task(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    INDEX idx_apv_action_log__operator_id (operator_id),
+    INDEX idx_apv_action_log__instance_id_created_at (instance_id, created_at)
 ) COMMENT 'Action Log';
-
-CREATE INDEX idx_apv_action_log__operator_id ON apv_action_log(operator_id);
-CREATE INDEX idx_apv_action_log__instance_id_created_at ON apv_action_log(instance_id, created_at);
 
 -- CC record
 CREATE TABLE IF NOT EXISTS apv_cc_record (
@@ -357,11 +349,10 @@ CREATE TABLE IF NOT EXISTS apv_cc_record (
     _unique_node_id VARCHAR(32) AS (node_id) STORED,
     CONSTRAINT pk_apv_cc_record PRIMARY KEY (id),
     CONSTRAINT fk_apv_cc_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT uk_apv_cc_record__instance_id_node_id_cc_user_id UNIQUE (instance_id, _unique_node_id, cc_user_id)
+    CONSTRAINT uk_apv_cc_record__instance_id_node_id_cc_user_id UNIQUE (instance_id, _unique_node_id, cc_user_id),
+    INDEX idx_apv_cc_record__instance_id (instance_id),
+    INDEX idx_apv_cc_record__cc_user_id_read_at (cc_user_id, read_at)
 ) COMMENT 'CC Record';
-
-CREATE INDEX idx_apv_cc_record__instance_id ON apv_cc_record(instance_id);
-CREATE INDEX idx_apv_cc_record__cc_user_id_read_at ON apv_cc_record(cc_user_id, read_at);
 
 -- --------------------------------------------------------------------------------
 -- Extension Tables
@@ -388,13 +379,12 @@ CREATE TABLE IF NOT EXISTS apv_delegation (
     CONSTRAINT fk_apv_delegation__flow_id FOREIGN KEY (flow_id)
         REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT ck_apv_delegation__time_range CHECK (start_time < end_time),
-    CONSTRAINT ck_apv_delegation__no_self CHECK (delegator_id != delegatee_id)
+    CONSTRAINT ck_apv_delegation__no_self CHECK (delegator_id != delegatee_id),
+    -- delegatee index: "my received delegations" (reserved); delegator index:
+    -- delegation chain resolution in engine (active use)
+    INDEX idx_apv_delegation__delegatee_id_is_active_end_time (delegatee_id, is_active, end_time),
+    INDEX idx_apv_delegation__delegator_id_is_active (delegator_id, is_active)
 ) COMMENT 'Delegation';
-
--- For "my received delegations" query (reserved for future use)
-CREATE INDEX idx_apv_delegation__delegatee_id_is_active_end_time ON apv_delegation(delegatee_id, is_active, end_time);
--- For delegation chain resolution in engine (active use)
-CREATE INDEX idx_apv_delegation__delegator_id_is_active ON apv_delegation(delegator_id, is_active);
 
 -- Form snapshot (for rollback strategies: snapshot/merge)
 CREATE TABLE IF NOT EXISTS apv_form_snapshot (
@@ -405,10 +395,9 @@ CREATE TABLE IF NOT EXISTS apv_form_snapshot (
     node_id VARCHAR(32) NOT NULL COMMENT 'Node',
     form_data JSON NOT NULL COMMENT 'Form Data',
     CONSTRAINT pk_apv_form_snapshot PRIMARY KEY (id),
-    CONSTRAINT fk_apv_form_snapshot__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT fk_apv_form_snapshot__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    INDEX idx_apv_form_snapshot__instance_id_node_id (instance_id, node_id)
 ) COMMENT 'Snapshot';
-
-CREATE INDEX idx_apv_form_snapshot__instance_id_node_id ON apv_form_snapshot(instance_id, node_id);
 
 -- --------------------------------------------------------------------------------
 -- Auxiliary Tables
@@ -431,8 +420,40 @@ CREATE TABLE IF NOT EXISTS apv_urge_record (
     target_user_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Target Name',
     message TEXT NOT NULL COMMENT 'Message',
     CONSTRAINT pk_apv_urge_record PRIMARY KEY (id),
-    CONSTRAINT fk_apv_urge_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT fk_apv_urge_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    INDEX idx_apv_urge_record__task_id_urger_id_created_at (task_id, urger_id, created_at),
+    INDEX idx_apv_urge_record__instance_id (instance_id)
 ) COMMENT 'Urge';
 
-CREATE INDEX idx_apv_urge_record__task_id_urger_id_created_at ON apv_urge_record(task_id, urger_id, created_at);
-CREATE INDEX idx_apv_urge_record__instance_id ON apv_urge_record(instance_id);
+-- --------------------------------------------------------------------------------
+-- Table-Storage Metadata (StorageTable mode)
+-- --------------------------------------------------------------------------------
+
+-- Form table: one physical form table per published version
+CREATE TABLE IF NOT EXISTS apv_form_table (
+    id VARCHAR(32) NOT NULL COMMENT 'ID',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created',
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT 'Creator',
+    flow_id VARCHAR(32) NOT NULL COMMENT 'Flow',
+    version_id VARCHAR(32) NOT NULL COMMENT 'Version',
+    physical_table_name VARCHAR(64) NOT NULL COMMENT 'Physical Table Name',
+    CONSTRAINT pk_apv_form_table PRIMARY KEY (id),
+    CONSTRAINT fk_apv_form_table__version_id FOREIGN KEY (version_id) REFERENCES apv_flow_version(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    UNIQUE INDEX uk_apv_form_table__version_id (version_id)
+) COMMENT 'Form Table';
+
+-- Form table column: column definitions projected from the form schema
+CREATE TABLE IF NOT EXISTS apv_form_table_column (
+    id VARCHAR(32) NOT NULL COMMENT 'ID',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created',
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT 'Creator',
+    form_table_id VARCHAR(32) NOT NULL COMMENT 'Form Table',
+    column_name VARCHAR(64) NOT NULL COMMENT 'Column Name',
+    column_type VARCHAR(32) NOT NULL COMMENT 'Column Type',
+    is_nullable BOOLEAN NOT NULL DEFAULT true COMMENT 'Nullable',
+    source_field_key VARCHAR(64) COMMENT 'Source Field Key',
+    sort_order INTEGER NOT NULL DEFAULT 0 COMMENT 'Sort',
+    CONSTRAINT pk_apv_form_table_column PRIMARY KEY (id),
+    CONSTRAINT fk_apv_form_table_column__form_table_id FOREIGN KEY (form_table_id) REFERENCES apv_form_table(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    INDEX idx_apv_form_table_column__form_table_id (form_table_id)
+) COMMENT 'Form Table Column';

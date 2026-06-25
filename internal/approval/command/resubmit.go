@@ -12,6 +12,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -32,16 +33,21 @@ type ResubmitHandler struct {
 	engine        *engine.FlowEngine
 	validationSvc *service.ValidationService
 	instanceSvc   *service.InstanceService
+	formStorage   *storage.Dispatcher
 }
 
-// NewResubmitHandler creates a new ResubmitHandler.
+// NewResubmitHandler creates a new ResubmitHandler. formStorage refreshes the
+// version's physical projection row — replacing the instance's prior row, never
+// appending — when its StorageMode is StorageTable; it may be nil in test
+// fixtures that do not exercise table-mode storage.
 func NewResubmitHandler(
 	db orm.DB,
 	eng *engine.FlowEngine,
 	validationSvc *service.ValidationService,
 	instanceSvc *service.InstanceService,
+	formStorage *storage.Dispatcher,
 ) *ResubmitHandler {
-	return &ResubmitHandler{db: db, engine: eng, validationSvc: validationSvc, instanceSvc: instanceSvc}
+	return &ResubmitHandler{db: db, engine: eng, validationSvc: validationSvc, instanceSvc: instanceSvc, formStorage: formStorage}
 }
 
 func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Unit, error) {
@@ -65,7 +71,7 @@ func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Uni
 	version.ID = instance.FlowVersionID
 	if err := db.NewSelect().
 		Model(&version).
-		Select("form_schema").
+		Select("form_schema", "storage_mode").
 		WherePK().
 		Scan(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("load flow version: %w", err)
@@ -97,6 +103,17 @@ func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Uni
 		}
 
 		return cqrs.Unit{}, err
+	}
+
+	// Refresh the table-mode projection so the physical table reflects the
+	// resubmitted form data. SyncInstanceProjection replaces the instance's
+	// existing row (idempotent per instance), so a resubmit refreshes rather
+	// than duplicates; the merged form_data is already persisted above, so JSON
+	// mode is a no-op.
+	if h.formStorage != nil {
+		if err := h.formStorage.SyncInstanceProjection(ctx, db, instance); err != nil {
+			return cqrs.Unit{}, fmt.Errorf("sync form projection on resubmit: %w", err)
+		}
 	}
 
 	if err := h.engine.StartProcess(ctx, db, instance); err != nil {

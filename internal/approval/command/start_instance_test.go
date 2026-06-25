@@ -52,7 +52,7 @@ func (s *StartInstanceTestSuite) SetupSuite() {
 	eng := buildTestEngine(s.db)
 	validSvc := service.NewValidationService(nil)
 
-	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, validSvc, binding.NewDefaultHook()))
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, validSvc, binding.NewDefaultHook(), nil))
 }
 
 func (s *StartInstanceTestSuite) TearDownTest() {

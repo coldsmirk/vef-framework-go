@@ -12,6 +12,9 @@ const (
 	ErrCodeInvalidBusinessIdentifier = 40008
 	ErrCodeInvalidTitleTemplate      = 40009
 	ErrCodeInvalidFormDesign         = 40010
+	ErrCodeBindingIncomplete         = 40011
+	ErrCodeInvalidStorageMode        = 40012
+	ErrCodeFlowBindingLocked         = 40013
 
 	ErrCodeInstanceNotFound          = 40101
 	ErrCodeInstanceCompleted         = 40102

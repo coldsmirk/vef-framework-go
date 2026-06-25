@@ -52,6 +52,26 @@ func TestCCKindIsValid(t *testing.T) {
 	}
 }
 
+// TestStorageModeIsValid tests StorageMode IsValid scenarios.
+func TestStorageModeIsValid(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    approval.StorageMode
+		expected bool
+	}{
+		{"JSON", approval.StorageJSON, true},
+		{"Table", approval.StorageTable, true},
+		{"InvalidEmpty", approval.StorageMode(""), false},
+		{"InvalidRandom", approval.StorageMode("xml"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.value.IsValid(), "%s: IsValid should report %v", tt.name, tt.expected)
+		})
+	}
+}
+
 // TestAddAssigneeTypeUnmarshalJSON tests AddAssigneeType JSON decoding validation.
 func TestAddAssigneeTypeUnmarshalJSON(t *testing.T) {
 	t.Run("Valid", func(t *testing.T) {

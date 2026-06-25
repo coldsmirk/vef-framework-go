@@ -44,9 +44,18 @@ type StorageMode string
 
 const (
 	// StorageJSON stores form data in the apv_instance.form_data JSONB column.
-	// It is currently the only implemented storage mode.
 	StorageJSON StorageMode = "json"
+	// StorageTable stores form data in a dedicated physical table generated per
+	// published version (one table per version). The apv_instance.form_data
+	// JSONB column is still populated so existing read paths keep working; the
+	// physical table is the structured, queryable projection.
+	StorageTable StorageMode = "table"
 )
+
+// IsValid reports whether the storage mode is one of the defined values.
+func (m StorageMode) IsValid() bool {
+	return m == StorageJSON || m == StorageTable
+}
 
 // NodeKind represents the kind of a flow node.
 // It defines the different types of nodes that can exist in a workflow.
@@ -366,6 +375,38 @@ const (
 func (k FieldKind) IsValid() bool {
 	switch k {
 	case FieldInput, FieldTextarea, FieldSelect, FieldNumber, FieldDate, FieldUpload:
+		return true
+	default:
+		return false
+	}
+}
+
+// ColumnDataType is the dialect-independent logical column type a form field
+// materializes into when the flow version's StorageMode is StorageTable. The
+// form designer infers it from the widget (and lets the user override the few
+// ambiguous ones); the storage layer maps it to a concrete SQL type per dialect.
+//
+// It is deliberately separate from FieldKind: Kind stays the coarse bucket the
+// field-permission matrix keys off, while a field's physical storage type is an
+// orthogonal concern. An empty ColumnType falls back to a Kind-derived type.
+type ColumnDataType string
+
+const (
+	ColumnString   ColumnDataType = "string"   // short text → VARCHAR(maxLength), TEXT without one
+	ColumnText     ColumnDataType = "text"     // long/free text → TEXT
+	ColumnInteger  ColumnDataType = "integer"  // whole number → BIGINT
+	ColumnDecimal  ColumnDataType = "decimal"  // fixed-point number → NUMERIC/DECIMAL(38, scale)
+	ColumnBoolean  ColumnDataType = "boolean"  // true/false → BOOLEAN
+	ColumnDate     ColumnDataType = "date"     // calendar date → DATE
+	ColumnDatetime ColumnDataType = "datetime" // date + time → TIMESTAMP/DATETIME
+	ColumnJSON     ColumnDataType = "json"     // array/composite → JSONB/JSON
+)
+
+// IsValid reports whether the column data type is one of the defined values.
+func (c ColumnDataType) IsValid() bool {
+	switch c {
+	case ColumnString, ColumnText, ColumnInteger, ColumnDecimal,
+		ColumnBoolean, ColumnDate, ColumnDatetime, ColumnJSON:
 		return true
 	default:
 		return false

@@ -37,8 +37,8 @@ COMMENT ON COLUMN apv_flow_category.sort_order IS 'Sort';
 COMMENT ON COLUMN apv_flow_category.is_active IS 'Active';
 COMMENT ON COLUMN apv_flow_category.remark IS 'Remark';
 
-CREATE INDEX idx_apv_flow_category__tenant_id ON apv_flow_category(tenant_id);
-CREATE INDEX idx_apv_flow_category__parent_id ON apv_flow_category(parent_id);
+CREATE INDEX IF NOT EXISTS idx_apv_flow_category__tenant_id ON apv_flow_category(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_apv_flow_category__parent_id ON apv_flow_category(parent_id);
 
 -- Flow definition
 CREATE TABLE IF NOT EXISTS apv_flow (
@@ -57,7 +57,6 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     binding_mode VARCHAR(16) NOT NULL DEFAULT 'standalone',
     business_table VARCHAR(64),
     business_pk_field VARCHAR(64),
-    business_title_field VARCHAR(64),
     business_status_field VARCHAR(64),
     -- Permission config
     admin_user_ids JSONB NOT NULL DEFAULT '[]',
@@ -86,7 +85,6 @@ COMMENT ON COLUMN apv_flow.description IS 'Description';
 COMMENT ON COLUMN apv_flow.binding_mode IS 'Binding Mode';
 COMMENT ON COLUMN apv_flow.business_table IS 'Biz Table';
 COMMENT ON COLUMN apv_flow.business_pk_field IS 'Biz PK';
-COMMENT ON COLUMN apv_flow.business_title_field IS 'Title Field';
 COMMENT ON COLUMN apv_flow.business_status_field IS 'Status Field';
 COMMENT ON COLUMN apv_flow.admin_user_ids IS 'Admins';
 COMMENT ON COLUMN apv_flow.is_all_initiation_allowed IS 'Open Start';
@@ -94,8 +92,8 @@ COMMENT ON COLUMN apv_flow.instance_title_template IS 'Title Template';
 COMMENT ON COLUMN apv_flow.is_active IS 'Active';
 COMMENT ON COLUMN apv_flow.current_version IS 'Version';
 
-CREATE INDEX idx_apv_flow__category_id ON apv_flow(category_id);
-CREATE INDEX idx_apv_flow__tenant_id ON apv_flow(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_apv_flow__category_id ON apv_flow(category_id);
+CREATE INDEX IF NOT EXISTS idx_apv_flow__tenant_id ON apv_flow(tenant_id);
 
 -- Flow initiator config
 CREATE TABLE IF NOT EXISTS apv_flow_initiator (
@@ -112,7 +110,7 @@ COMMENT ON COLUMN apv_flow_initiator.flow_id IS 'Flow';
 COMMENT ON COLUMN apv_flow_initiator.kind IS 'Kind';
 COMMENT ON COLUMN apv_flow_initiator.ids IS 'Subjects';
 
-CREATE INDEX idx_apv_flow_initiator__flow_id ON apv_flow_initiator(flow_id);
+CREATE INDEX IF NOT EXISTS idx_apv_flow_initiator__flow_id ON apv_flow_initiator(flow_id);
 
 -- Flow version
 CREATE TABLE IF NOT EXISTS apv_flow_version (
@@ -153,9 +151,9 @@ COMMENT ON COLUMN apv_flow_version.form_schema IS 'Form Schema';
 COMMENT ON COLUMN apv_flow_version.published_at IS 'Published';
 COMMENT ON COLUMN apv_flow_version.published_by IS 'Publisher';
 
-CREATE INDEX idx_apv_flow_version__flow_id_status ON apv_flow_version(flow_id, status);
+CREATE INDEX IF NOT EXISTS idx_apv_flow_version__flow_id_status ON apv_flow_version(flow_id, status);
 -- Ensure at most one published version per flow
-CREATE UNIQUE INDEX uk_apv_flow_version__flow_id_published ON apv_flow_version(flow_id) WHERE status = 'published';
+CREATE UNIQUE INDEX IF NOT EXISTS uk_apv_flow_version__flow_id_published ON apv_flow_version(flow_id) WHERE status = 'published';
 
 -- Flow node
 CREATE TABLE IF NOT EXISTS apv_flow_node (
@@ -175,7 +173,7 @@ CREATE TABLE IF NOT EXISTS apv_flow_node (
     -- Approval behavior config (for approval nodes)
     approval_method VARCHAR(16) NOT NULL DEFAULT 'parallel',
     pass_rule VARCHAR(16) NOT NULL DEFAULT 'all',
-    pass_ratio NUMERIC(3,2) NOT NULL DEFAULT 1.00 CONSTRAINT ck_apv_flow_node__pass_ratio CHECK (pass_ratio >= 0 AND pass_ratio <= 1),
+    pass_ratio NUMERIC(5,2) NOT NULL DEFAULT 100.00 CONSTRAINT ck_apv_flow_node__pass_ratio CHECK (pass_ratio >= 0 AND pass_ratio <= 100),
     -- Empty assignee config
     empty_assignee_action VARCHAR(32) NOT NULL DEFAULT 'auto_pass',
     fallback_user_ids JSONB NOT NULL DEFAULT '[]',
@@ -266,7 +264,7 @@ COMMENT ON COLUMN apv_flow_node_assignee.ids IS 'Subjects';
 COMMENT ON COLUMN apv_flow_node_assignee.form_field IS 'Form Field';
 COMMENT ON COLUMN apv_flow_node_assignee.sort_order IS 'Sort';
 
-CREATE INDEX idx_apv_flow_node_assignee__node_id ON apv_flow_node_assignee(node_id);
+CREATE INDEX IF NOT EXISTS idx_apv_flow_node_assignee__node_id ON apv_flow_node_assignee(node_id);
 
 -- Node CC config
 CREATE TABLE IF NOT EXISTS apv_flow_node_cc (
@@ -287,7 +285,7 @@ COMMENT ON COLUMN apv_flow_node_cc.ids IS 'Subjects';
 COMMENT ON COLUMN apv_flow_node_cc.form_field IS 'Form Field';
 COMMENT ON COLUMN apv_flow_node_cc.timing IS 'Timing';
 
-CREATE INDEX idx_apv_flow_node_cc__node_id ON apv_flow_node_cc(node_id);
+CREATE INDEX IF NOT EXISTS idx_apv_flow_node_cc__node_id ON apv_flow_node_cc(node_id);
 
 -- Flow edge (directed connection between nodes)
 CREATE TABLE IF NOT EXISTS apv_flow_edge (
@@ -314,9 +312,9 @@ COMMENT ON COLUMN apv_flow_edge.target_node_id IS 'Target';
 COMMENT ON COLUMN apv_flow_edge.target_node_key IS 'Target Key';
 COMMENT ON COLUMN apv_flow_edge.source_handle IS 'Handle';
 
-CREATE INDEX idx_apv_flow_edge__flow_version_id_source_node_id ON apv_flow_edge(flow_version_id, source_node_id);
-CREATE INDEX idx_apv_flow_edge__source_node_id ON apv_flow_edge(source_node_id);
-CREATE INDEX idx_apv_flow_edge__target_node_id ON apv_flow_edge(target_node_id);
+CREATE INDEX IF NOT EXISTS idx_apv_flow_edge__flow_version_id_source_node_id ON apv_flow_edge(flow_version_id, source_node_id);
+CREATE INDEX IF NOT EXISTS idx_apv_flow_edge__source_node_id ON apv_flow_edge(source_node_id);
+CREATE INDEX IF NOT EXISTS idx_apv_flow_edge__target_node_id ON apv_flow_edge(target_node_id);
 
 --------------------------------------------------------------------------------
 -- Runtime Tables
@@ -373,18 +371,18 @@ COMMENT ON COLUMN apv_instance.finished_at IS 'Finished';
 COMMENT ON COLUMN apv_instance.business_record_id IS 'Biz Record';
 COMMENT ON COLUMN apv_instance.form_data IS 'Form Data';
 
-CREATE INDEX idx_apv_instance__tenant_id ON apv_instance(tenant_id);
-CREATE INDEX idx_apv_instance__tenant_id_status_created_at ON apv_instance(tenant_id, status, created_at DESC);
-CREATE INDEX idx_apv_instance__tenant_id_applicant_id_status ON apv_instance(tenant_id, applicant_id, status);
-CREATE INDEX idx_apv_instance__flow_id_status_created_at ON apv_instance(flow_id, status, created_at);
-CREATE INDEX idx_apv_instance__applicant_id_status_created_at ON apv_instance(applicant_id, status, created_at DESC);
-CREATE INDEX idx_apv_instance__current_node_id ON apv_instance(current_node_id);
+CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id ON apv_instance(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id_status_created_at ON apv_instance(tenant_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id_applicant_id_status ON apv_instance(tenant_id, applicant_id, status);
+CREATE INDEX IF NOT EXISTS idx_apv_instance__flow_id_status_created_at ON apv_instance(flow_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_apv_instance__applicant_id_status_created_at ON apv_instance(applicant_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_apv_instance__current_node_id ON apv_instance(current_node_id);
 --------------------------------------------------------------------------------
 -- Form Data Storage (GIN index for JSON hybrid mode)
 --------------------------------------------------------------------------------
 
 -- Create GIN index on form_data JSONB field for efficient queries
-CREATE INDEX idx_apv_instance__form_data ON apv_instance USING GIN (form_data);
+CREATE INDEX IF NOT EXISTS idx_apv_instance__form_data ON apv_instance USING GIN (form_data);
 
 -- Approval task
 CREATE TABLE IF NOT EXISTS apv_task (
@@ -443,13 +441,13 @@ COMMENT ON COLUMN apv_task.is_timeout IS 'Timeout';
 COMMENT ON COLUMN apv_task.is_pre_warning_sent IS 'Pre-warned';
 COMMENT ON COLUMN apv_task.finished_at IS 'Finished';
 
-CREATE INDEX idx_apv_task__tenant_id ON apv_task(tenant_id);
-CREATE INDEX idx_apv_task__tenant_id_assignee_id_status ON apv_task(tenant_id, assignee_id, status);
-CREATE INDEX idx_apv_task__instance_id_node_id_status ON apv_task(instance_id, node_id, status);
-CREATE INDEX idx_apv_task__assignee_id_status_created_at ON apv_task(assignee_id, status, created_at);
-CREATE INDEX idx_apv_task__instance_id_status_assignee_id ON apv_task(instance_id, status, assignee_id);
-CREATE INDEX idx_apv_task__deadline_active ON apv_task(deadline) WHERE deadline IS NOT NULL AND is_timeout = FALSE AND status IN ('pending', 'waiting');
-CREATE UNIQUE INDEX uk_apv_task__instance_id_node_id_assignee_id_active ON apv_task(instance_id, node_id, assignee_id) WHERE status IN ('pending', 'waiting');
+CREATE INDEX IF NOT EXISTS idx_apv_task__tenant_id ON apv_task(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_apv_task__tenant_id_assignee_id_status ON apv_task(tenant_id, assignee_id, status);
+CREATE INDEX IF NOT EXISTS idx_apv_task__instance_id_node_id_status ON apv_task(instance_id, node_id, status);
+CREATE INDEX IF NOT EXISTS idx_apv_task__assignee_id_status_created_at ON apv_task(assignee_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_apv_task__instance_id_status_assignee_id ON apv_task(instance_id, status, assignee_id);
+CREATE INDEX IF NOT EXISTS idx_apv_task__deadline_active ON apv_task(deadline) WHERE deadline IS NOT NULL AND is_timeout = FALSE AND status IN ('pending', 'waiting');
+CREATE UNIQUE INDEX IF NOT EXISTS uk_apv_task__instance_id_node_id_assignee_id_active ON apv_task(instance_id, node_id, assignee_id) WHERE status IN ('pending', 'waiting');
 
 -- Action log
 CREATE TABLE IF NOT EXISTS apv_action_log (
@@ -511,8 +509,8 @@ COMMENT ON COLUMN apv_action_log.removed_assignee_ids IS 'Removed';
 COMMENT ON COLUMN apv_action_log.cc_user_ids IS 'CC List';
 COMMENT ON COLUMN apv_action_log.attachments IS 'Attachments';
 
-CREATE INDEX idx_apv_action_log__operator_id ON apv_action_log(operator_id);
-CREATE INDEX idx_apv_action_log__instance_id_created_at ON apv_action_log(instance_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_apv_action_log__operator_id ON apv_action_log(operator_id);
+CREATE INDEX IF NOT EXISTS idx_apv_action_log__instance_id_created_at ON apv_action_log(instance_id, created_at);
 
 -- CC record
 CREATE TABLE IF NOT EXISTS apv_cc_record (
@@ -541,9 +539,9 @@ COMMENT ON COLUMN apv_cc_record.cc_user_name IS 'User Name';
 COMMENT ON COLUMN apv_cc_record.is_manual IS 'Manual';
 COMMENT ON COLUMN apv_cc_record.read_at IS 'Read';
 
-CREATE INDEX idx_apv_cc_record__instance_id ON apv_cc_record(instance_id);
-CREATE INDEX idx_apv_cc_record__cc_user_id_read_at ON apv_cc_record(cc_user_id, read_at);
-CREATE UNIQUE INDEX uk_apv_cc_record__instance_id_node_id_cc_user_id ON apv_cc_record(instance_id, node_id, cc_user_id) WHERE node_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_apv_cc_record__instance_id ON apv_cc_record(instance_id);
+CREATE INDEX IF NOT EXISTS idx_apv_cc_record__cc_user_id_read_at ON apv_cc_record(cc_user_id, read_at);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_apv_cc_record__instance_id_node_id_cc_user_id ON apv_cc_record(instance_id, node_id, cc_user_id) WHERE node_id IS NOT NULL;
 
 --------------------------------------------------------------------------------
 -- Extension Tables
@@ -588,9 +586,9 @@ COMMENT ON COLUMN apv_delegation.is_active IS 'Active';
 COMMENT ON COLUMN apv_delegation.reason IS 'Reason';
 
 -- For "my received delegations" query (reserved for future use)
-CREATE INDEX idx_apv_delegation__delegatee_id_is_active_end_time ON apv_delegation(delegatee_id, is_active, end_time);
+CREATE INDEX IF NOT EXISTS idx_apv_delegation__delegatee_id_is_active_end_time ON apv_delegation(delegatee_id, is_active, end_time);
 -- For delegation chain resolution in engine (active use)
-CREATE INDEX idx_apv_delegation__delegator_id_is_active ON apv_delegation(delegator_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_apv_delegation__delegator_id_is_active ON apv_delegation(delegator_id, is_active);
 
 -- Form snapshot (for rollback strategies: snapshot/merge)
 CREATE TABLE IF NOT EXISTS apv_form_snapshot (
@@ -611,7 +609,7 @@ COMMENT ON COLUMN apv_form_snapshot.instance_id IS 'Instance';
 COMMENT ON COLUMN apv_form_snapshot.node_id IS 'Node';
 COMMENT ON COLUMN apv_form_snapshot.form_data IS 'Form Data';
 
-CREATE INDEX idx_apv_form_snapshot__instance_id_node_id ON apv_form_snapshot(instance_id, node_id);
+CREATE INDEX IF NOT EXISTS idx_apv_form_snapshot__instance_id_node_id ON apv_form_snapshot(instance_id, node_id);
 
 --------------------------------------------------------------------------------
 -- Auxiliary Tables
@@ -649,5 +647,57 @@ COMMENT ON COLUMN apv_urge_record.target_user_id IS 'Target';
 COMMENT ON COLUMN apv_urge_record.target_user_name IS 'Target Name';
 COMMENT ON COLUMN apv_urge_record.message IS 'Message';
 
-CREATE INDEX idx_apv_urge_record__task_id_urger_id_created_at ON apv_urge_record(task_id, urger_id, created_at);
-CREATE INDEX idx_apv_urge_record__instance_id ON apv_urge_record(instance_id);
+CREATE INDEX IF NOT EXISTS idx_apv_urge_record__task_id_urger_id_created_at ON apv_urge_record(task_id, urger_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_apv_urge_record__instance_id ON apv_urge_record(instance_id);
+
+--------------------------------------------------------------------------------
+-- Table-Storage Metadata (StorageTable mode)
+--------------------------------------------------------------------------------
+
+-- Form table: one physical form table per published version
+CREATE TABLE IF NOT EXISTS apv_form_table (
+    id VARCHAR(32) CONSTRAINT pk_apv_form_table PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT LOCALTIMESTAMP,
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    flow_id VARCHAR(32) NOT NULL,
+    version_id VARCHAR(32) NOT NULL,
+    physical_table_name VARCHAR(64) NOT NULL,
+    CONSTRAINT fk_apv_form_table__version_id FOREIGN KEY (version_id) REFERENCES apv_flow_version(id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+COMMENT ON TABLE apv_form_table IS 'Form Table';
+COMMENT ON COLUMN apv_form_table.id IS 'ID';
+COMMENT ON COLUMN apv_form_table.created_at IS 'Created';
+COMMENT ON COLUMN apv_form_table.created_by IS 'Creator';
+COMMENT ON COLUMN apv_form_table.flow_id IS 'Flow';
+COMMENT ON COLUMN apv_form_table.version_id IS 'Version';
+COMMENT ON COLUMN apv_form_table.physical_table_name IS 'Physical Table Name';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_apv_form_table__version_id ON apv_form_table(version_id);
+
+-- Form table column: column definitions projected from the form schema
+CREATE TABLE IF NOT EXISTS apv_form_table_column (
+    id VARCHAR(32) CONSTRAINT pk_apv_form_table_column PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT LOCALTIMESTAMP,
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    form_table_id VARCHAR(32) NOT NULL,
+    column_name VARCHAR(64) NOT NULL,
+    column_type VARCHAR(32) NOT NULL,
+    is_nullable BOOLEAN NOT NULL DEFAULT true,
+    source_field_key VARCHAR(64),
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    CONSTRAINT fk_apv_form_table_column__form_table_id FOREIGN KEY (form_table_id) REFERENCES apv_form_table(id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+COMMENT ON TABLE apv_form_table_column IS 'Form Table Column';
+COMMENT ON COLUMN apv_form_table_column.id IS 'ID';
+COMMENT ON COLUMN apv_form_table_column.created_at IS 'Created';
+COMMENT ON COLUMN apv_form_table_column.created_by IS 'Creator';
+COMMENT ON COLUMN apv_form_table_column.form_table_id IS 'Form Table';
+COMMENT ON COLUMN apv_form_table_column.column_name IS 'Column Name';
+COMMENT ON COLUMN apv_form_table_column.column_type IS 'Column Type';
+COMMENT ON COLUMN apv_form_table_column.is_nullable IS 'Nullable';
+COMMENT ON COLUMN apv_form_table_column.source_field_key IS 'Source Field Key';
+COMMENT ON COLUMN apv_form_table_column.sort_order IS 'Sort';
+
+CREATE INDEX IF NOT EXISTS idx_apv_form_table_column__form_table_id ON apv_form_table_column(form_table_id);

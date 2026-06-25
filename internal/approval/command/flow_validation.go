@@ -2,11 +2,30 @@ package command
 
 import (
 	"errors"
+	"strings"
 	"text/template"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 )
+
+// validateBusinessBindingComplete requires the table / pk / status binding
+// columns to be present and non-blank whenever BindingMode == BindingBusiness,
+// so a half-configured business flow is rejected when the admin saves it rather
+// than silently no-op'ing the status write-back on the first completed instance.
+func validateBusinessBindingComplete(mode approval.BindingMode, table, pkField, statusField *string) error {
+	if mode != approval.BindingBusiness {
+		return nil
+	}
+
+	for _, v := range []*string{table, pkField, statusField} {
+		if v == nil || strings.TrimSpace(*v) == "" {
+			return shared.ErrBindingIncomplete
+		}
+	}
+
+	return nil
+}
 
 // validateBusinessIdentifiers enforces the SQL-identifier whitelist on
 // every business binding field whenever BindingMode == BindingBusiness.
@@ -15,12 +34,12 @@ import (
 // shared.ErrInvalidBusinessIdentifier so the API surface emits a stable
 // error code; the regex itself lives in approval.ValidateBusinessIdentifier
 // so binding.DefaultHook can reuse it for defense-in-depth.
-func validateBusinessIdentifiers(mode approval.BindingMode, table, pkField, statusField, titleField *string) error {
+func validateBusinessIdentifiers(mode approval.BindingMode, table, pkField, statusField *string) error {
 	if mode != approval.BindingBusiness {
 		return nil
 	}
 
-	for _, v := range []*string{table, pkField, statusField, titleField} {
+	for _, v := range []*string{table, pkField, statusField} {
 		if v == nil {
 			continue
 		}

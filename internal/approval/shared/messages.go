@@ -17,6 +17,7 @@ const (
 	ErrMessageFormFieldRequired          = "approval_form_field_required"
 	ErrMessageFormFieldMustBeString      = "approval_form_field_must_be_string"
 	ErrMessageFormFieldMustBeNumber      = "approval_form_field_must_be_number"
+	ErrMessageFormFieldMustBeInteger     = "approval_form_field_must_be_integer"
 	ErrMessageFormFieldMinLength         = "approval_form_field_min_length"
 	ErrMessageFormFieldMaxLength         = "approval_form_field_max_length"
 	ErrMessageFormFieldInvalidValidation = "approval_form_field_invalid_validation"

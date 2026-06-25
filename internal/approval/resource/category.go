@@ -117,13 +117,13 @@ func NewCategoryResource(tenantResolver approval.PrincipalTenantResolver) api.Re
 	return &CategoryResource{
 		Resource: api.NewRPCResource("approval/category"),
 		FindTree: crud.NewFindTree[approval.FlowCategory, CategorySearch](buildFlowCategoryTree).
-			RequiredPermission("approval:category:query").
+			RequiredPermission("approval.category.query").
 			WithQueryApplier(tenantApplier, crud.QueryBase),
 		FindTreeOptions: crud.NewFindTreeOptions[approval.FlowCategory, CategorySearch]().
-			RequiredPermission("approval:category:query").
+			RequiredPermission("approval.category.query").
 			WithQueryApplier(tenantApplier, crud.QueryBase),
 		Create: crud.NewCreate[approval.FlowCategory, CategoryParams]().
-			RequiredPermission("approval:category:create").
+			RequiredPermission("approval.category.create").
 			WithPreCreate(func(model *approval.FlowCategory, _ *CategoryParams, _ orm.InsertQuery, ctx fiber.Ctx, _ orm.DB) error {
 				caller, err := resolveCaller(ctx.Context(), tenantResolver, contextx.Principal(ctx))
 				if err != nil {
@@ -144,12 +144,12 @@ func NewCategoryResource(tenantResolver approval.PrincipalTenantResolver) api.Re
 				return nil
 			}),
 		Update: crud.NewUpdate[approval.FlowCategory, CategoryParams]().
-			RequiredPermission("approval:category:update").
+			RequiredPermission("approval.category.update").
 			WithPreUpdate(func(oldModel, _ *approval.FlowCategory, _ *CategoryParams, _ orm.UpdateQuery, ctx fiber.Ctx, _ orm.DB) error {
 				return authorizeCategoryTenant(ctx, tenantResolver, oldModel.TenantID)
 			}),
 		Delete: crud.NewDelete[approval.FlowCategory]().
-			RequiredPermission("approval:category:delete").
+			RequiredPermission("approval.category.delete").
 			WithPreDelete(func(model *approval.FlowCategory, _ orm.DeleteQuery, ctx fiber.Ctx, _ orm.DB) error {
 				return authorizeCategoryTenant(ctx, tenantResolver, model.TenantID)
 			}),

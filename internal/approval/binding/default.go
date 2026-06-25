@@ -34,9 +34,10 @@ func (*DefaultHook) OnInstanceCreated(context.Context, orm.DB, *approval.Flow, *
 	return "", nil
 }
 
-// WriteBackStatus writes finalStatus to the business table. Skipped when
-// BindingMode != BindingBusiness or when BusinessRecordID is empty (the host
-// never produced one). Misconfigured flows return ErrBindingMisconfigured.
+// WriteBackStatus writes finalStatus to the business table, so the business
+// record reflects the approval outcome. Skipped when BindingMode !=
+// BindingBusiness or when BusinessRecordID is empty (the host never produced
+// one). Misconfigured flows return ErrBindingMisconfigured.
 func (*DefaultHook) WriteBackStatus(ctx context.Context, db orm.DB, flow *approval.Flow, instance *approval.Instance, finalStatus approval.InstanceStatus) error {
 	if flow.BindingMode != approval.BindingBusiness {
 		return nil
@@ -58,16 +59,21 @@ func (*DefaultHook) WriteBackStatus(ctx context.Context, db orm.DB, flow *approv
 		return fmt.Errorf("%w: flow %q has blank table/pk/status", ErrBindingMisconfigured, flow.ID)
 	}
 
+	idents := []string{table, pkField, statusField}
+
 	// Defense-in-depth: even though CreateFlow/UpdateFlow already enforce
 	// the same regex, reject any identifier that does not match here so
 	// rows persisted before the validator existed (or smuggled in via a
 	// direct DB write) cannot turn fmt.Sprintf into a SQL injection vector.
-	for _, ident := range []string{table, pkField, statusField} {
+	for _, ident := range idents {
 		if err := approval.ValidateBusinessIdentifier(ident); err != nil {
 			return fmt.Errorf("%w: flow %q identifier %q rejected: %w", ErrBindingMisconfigured, flow.ID, ident, err)
 		}
 	}
 
+	// A single-column write-back: only the status column is updated. (An earlier
+	// revision also wrote a title column through a multi-assignment builder; that
+	// column was removed, so this is now a plain one-column UPDATE.)
 	sql := fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ?", table, statusField, pkField)
 	if _, err := db.NewRaw(sql, string(finalStatus), *instance.BusinessRecordID).Exec(ctx); err != nil {
 		return fmt.Errorf("write business status: %w", err)

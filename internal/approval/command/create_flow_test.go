@@ -170,3 +170,47 @@ func (s *CreateFlowTestSuite) TestCreateFlowWithInitiators() {
 	s.Assert().Equal(approval.InitiatorUser, initiators[1].Kind, "Should set second initiator kind")
 	s.Assert().Equal([]string{"user-1", "user-2"}, initiators[1].IDs, "Should set second initiator IDs")
 }
+
+func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingComplete() {
+	table := "t_leave"
+	pk := "id"
+	status := "approval_status"
+
+	result, err := s.handler.Handle(s.ctx, command.CreateFlowCmd{
+		TenantID:              "tenant-binding",
+		Code:                  "business-complete",
+		Name:                  "Business Bound",
+		CategoryID:            s.categoryID,
+		BindingMode:           approval.BindingBusiness,
+		BusinessTable:         &table,
+		BusinessPkField:       &pk,
+		BusinessStatusField:   &status,
+		InstanceTitleTemplate: "Title",
+		Caller:                approval.SystemCaller,
+	})
+	s.Require().NoError(err, "A complete business binding should be accepted")
+	s.Assert().Equal(approval.BindingBusiness, result.BindingMode)
+	s.Require().NotNil(result.BusinessTable)
+	s.Assert().Equal("t_leave", *result.BusinessTable)
+}
+
+func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingIncomplete() {
+	pk := "id"
+	status := "approval_status"
+
+	// Business mode with a missing table must be rejected, not silently saved
+	// (it would no-op the status write-back on the first completed instance).
+	_, err := s.handler.Handle(s.ctx, command.CreateFlowCmd{
+		TenantID:              "tenant-binding-bad",
+		Code:                  "business-incomplete",
+		Name:                  "Half Bound",
+		CategoryID:            s.categoryID,
+		BindingMode:           approval.BindingBusiness,
+		BusinessPkField:       &pk,
+		BusinessStatusField:   &status,
+		InstanceTitleTemplate: "Title",
+		Caller:                approval.SystemCaller,
+	})
+	s.Require().Error(err, "An incomplete business binding should be rejected")
+	s.Assert().ErrorIs(err, shared.ErrBindingIncomplete)
+}

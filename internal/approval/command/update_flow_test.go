@@ -77,6 +77,10 @@ func (s *UpdateFlowTestSuite) TearDownTest() {
 		Set("admin_user_ids", nil).
 		Set("is_all_initiation_allowed", false).
 		Set("instance_title_template", "Original Template").
+		Set("binding_mode", approval.BindingStandalone).
+		Set("business_table", nil).
+		Set("business_pk_field", nil).
+		Set("business_status_field", nil).
 		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.flowID) }).
 		Exec(s.ctx)
 	_, _ = s.db.NewDelete().
@@ -152,6 +156,80 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowNotFound() {
 	s.Assert().ErrorIs(err, shared.ErrFlowNotFound, "Should return ErrFlowNotFound")
 }
 
+// TestUpdateFlowBindingGuardWhileRunning verifies that the business-binding
+// configuration is frozen while an instance of the flow is still running — a
+// binding change is rejected, but a non-binding edit (name only) is still
+// allowed.
+func (s *UpdateFlowTestSuite) TestUpdateFlowBindingGuardWhileRunning() {
+	version := &approval.FlowVersion{FlowID: s.flowID, Version: 99, Status: approval.VersionDraft}
+	_, err := s.db.NewInsert().Model(version).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert flow version for the running instance")
+
+	inst := &approval.Instance{
+		TenantID:      "tenant-1",
+		FlowID:        s.flowID,
+		FlowVersionID: version.ID,
+		Title:         "Running",
+		InstanceNo:    "BIND-GUARD-001",
+		ApplicantID:   "applicant-1",
+		Status:        approval.InstanceRunning,
+	}
+	_, err = s.db.NewInsert().Model(inst).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert running instance")
+
+	// Clean up in FK-RESTRICT order (instance → version); flow/category are
+	// removed by TearDownSuite. Without this, deleting the flow later would fail.
+	defer func() {
+		_, _ = s.db.NewDelete().Model((*approval.Instance)(nil)).
+			Where(func(cb orm.ConditionBuilder) { cb.PKEquals(inst.ID) }).Exec(s.ctx)
+		_, _ = s.db.NewDelete().Model((*approval.FlowVersion)(nil)).
+			Where(func(cb orm.ConditionBuilder) { cb.PKEquals(version.ID) }).Exec(s.ctx)
+	}()
+
+	// Reset to a deterministic standalone baseline: sibling tests in this suite may
+	// leave the flow in another binding state (the command layer does not enforce
+	// the resource layer's "bindingMode required"), and this test asserts on the
+	// binding-change transition specifically.
+	_, err = s.db.NewUpdate().
+		Model((*approval.Flow)(nil)).
+		Set("binding_mode", approval.BindingStandalone).
+		Set("business_table", nil).
+		Set("business_pk_field", nil).
+		Set("business_status_field", nil).
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.flowID) }).
+		Exec(s.ctx)
+	s.Require().NoError(err, "Should reset flow to a standalone baseline")
+
+	table, pk, status := "biz_orders", "id", "approval_status"
+
+	// Switching the binding mode (standalone → business) while the instance runs
+	// is rejected.
+	_, err = s.handler.Handle(s.ctx, command.UpdateFlowCmd{
+		FlowID:                s.flowID,
+		Name:                  "Original Flow",
+		BindingMode:           approval.BindingBusiness,
+		BusinessTable:         &table,
+		BusinessPkField:       &pk,
+		BusinessStatusField:   &status,
+		InstanceTitleTemplate: "Original Template",
+		Caller:                approval.SystemCaller,
+	})
+	s.Require().Error(err, "Binding change must be blocked while an instance runs")
+	s.Assert().ErrorIs(err, shared.ErrFlowBindingLocked, "Should return ErrFlowBindingLocked")
+
+	// A non-binding edit (name only, binding unchanged from the baseline) is still
+	// allowed even though an instance is running.
+	updated, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
+		FlowID:                s.flowID,
+		Name:                  "Renamed While Running",
+		BindingMode:           approval.BindingStandalone,
+		InstanceTitleTemplate: "Original Template",
+		Caller:                approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Non-binding edit must be allowed while an instance runs")
+	s.Assert().Equal("Renamed While Running", updated.Name, "Should apply the non-binding edit")
+}
+
 func (s *UpdateFlowTestSuite) TestUpdateAllFields() {
 	icon := "all-fields-icon"
 	desc := "All fields description"
@@ -192,4 +270,88 @@ func (s *UpdateFlowTestSuite) TestUpdateAllFields() {
 		Scan(s.ctx)
 	s.Require().NoError(err, "Should query initiators")
 	s.Require().Len(initiators, 2, "Should have two initiators")
+}
+
+func (s *UpdateFlowTestSuite) TestUpdateFlowToBusinessBinding() {
+	table := "t_orders"
+	pk := "id"
+	status := "approval_status"
+
+	result, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
+		FlowID:                 s.flowID,
+		Name:                   "Now Business Bound",
+		BindingMode:            approval.BindingBusiness,
+		BusinessTable:          &table,
+		BusinessPkField:        &pk,
+		BusinessStatusField:    &status,
+		IsAllInitiationAllowed: true,
+		InstanceTitleTemplate:  "Template",
+		Caller:                 approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Should switch to a complete business binding")
+	s.Assert().Equal(approval.BindingBusiness, result.BindingMode)
+
+	var flow approval.Flow
+
+	flow.ID = s.flowID
+	s.Require().NoError(s.db.NewSelect().Model(&flow).WherePK().Scan(s.ctx))
+	s.Assert().Equal(approval.BindingBusiness, flow.BindingMode, "binding_mode should persist")
+	s.Require().NotNil(flow.BusinessStatusField)
+	s.Assert().Equal("approval_status", *flow.BusinessStatusField, "business_status_field should persist")
+}
+
+func (s *UpdateFlowTestSuite) TestUpdateFlowBusinessBindingIncomplete() {
+	status := "approval_status"
+
+	_, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
+		FlowID:                 s.flowID,
+		Name:                   "Half Bound",
+		BindingMode:            approval.BindingBusiness,
+		BusinessStatusField:    &status,
+		IsAllInitiationAllowed: true,
+		InstanceTitleTemplate:  "Template",
+		Caller:                 approval.SystemCaller,
+	})
+	s.Require().Error(err, "An incomplete business binding on update should be rejected")
+	s.Assert().ErrorIs(err, shared.ErrBindingIncomplete)
+}
+
+func (s *UpdateFlowTestSuite) TestUpdateFlowBusinessToStandaloneClearsFields() {
+	table := "t_orders"
+	pk := "id"
+	status := "approval_status"
+
+	_, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
+		FlowID:                 s.flowID,
+		Name:                   "Business",
+		BindingMode:            approval.BindingBusiness,
+		BusinessTable:          &table,
+		BusinessPkField:        &pk,
+		BusinessStatusField:    &status,
+		IsAllInitiationAllowed: true,
+		InstanceTitleTemplate:  "Template",
+		Caller:                 approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Should set the business binding first")
+
+	// Switch back to standalone with the business fields omitted: the nullzero
+	// columns plus the Select list must clear them to NULL, not leave them set.
+	_, err = s.handler.Handle(s.ctx, command.UpdateFlowCmd{
+		FlowID:                 s.flowID,
+		Name:                   "Back To Standalone",
+		BindingMode:            approval.BindingStandalone,
+		IsAllInitiationAllowed: true,
+		InstanceTitleTemplate:  "Template",
+		Caller:                 approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Should switch back to standalone")
+
+	var flow approval.Flow
+
+	flow.ID = s.flowID
+	s.Require().NoError(s.db.NewSelect().Model(&flow).WherePK().Scan(s.ctx))
+	s.Assert().Equal(approval.BindingStandalone, flow.BindingMode)
+	s.Assert().Nil(flow.BusinessTable, "business_table should clear to NULL")
+	s.Assert().Nil(flow.BusinessPkField, "business_pk_field should clear to NULL")
+	s.Assert().Nil(flow.BusinessStatusField, "business_status_field should clear to NULL")
 }

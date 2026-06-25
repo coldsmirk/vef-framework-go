@@ -44,7 +44,7 @@ type BusinessBindingHook interface {
 }
 
 // businessIdentifierPattern restricts business_table / business_pk_field /
-// business_status_field / business_title_field to safe SQL identifiers.
+// business_status_field to safe SQL identifiers.
 // The default BusinessBindingHook interpolates these values into a raw
 // `UPDATE %s SET %s = ? WHERE %s = ?` template, so anything outside this
 // whitelist (spaces, quotes, semicolons, brackets, sub-selects) could open

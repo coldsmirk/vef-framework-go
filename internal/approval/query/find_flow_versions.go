@@ -8,7 +8,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // FindFlowVersionsQuery queries flow versions for a specific flow.
@@ -33,37 +32,15 @@ func NewFindFlowVersionsHandler(db orm.DB) *FindFlowVersionsHandler {
 func (h *FindFlowVersionsHandler) Handle(ctx context.Context, query FindFlowVersionsQuery) ([]approval.FlowVersion, error) {
 	db := contextx.DB(ctx, h.db)
 
-	// Authorize before disclosing any data. Returning an empty slice (rather
-	// than ErrFlowNotFound) for both missing and out-of-tenant flows keeps
-	// the response shape uniform so callers can't distinguish "does not
-	// exist" from "exists in another tenant".
-	var flow approval.Flow
-
-	flow.ID = query.FlowID
-
-	err := db.NewSelect().
-		Model(&flow).
-		Select("tenant_id").
-		WherePK().
-		Scan(ctx)
-	switch {
-	case result.IsRecordNotFound(err):
-		// Indistinguishable response for "no such flow" and "exists but
-		// outside caller tenant" so the API does not reveal cross-tenant
-		// existence to a probing caller.
-		return []approval.FlowVersion{}, nil
-
-	case err != nil:
-		return nil, fmt.Errorf("load flow for tenant check: %w", err)
+	// Authorize before disclosing any data. An empty slice (rather than an
+	// error) for a missing or out-of-tenant flow keeps the response uniform so
+	// callers cannot distinguish "does not exist" from "exists in another tenant".
+	ok, err := authorizeFlowDisclosure(ctx, db, query.FlowID, query.TenantID, query.Caller)
+	if err != nil {
+		return nil, err
 	}
 
-	if authErr := query.Caller.Authorize(flow.TenantID); authErr != nil {
-		// Indistinguishable from "no such flow" on purpose — see comment
-		// above. The auth failure is intentionally swallowed.
-		return []approval.FlowVersion{}, nil //nolint:nilerr // tenant isolation requires opaque response
-	}
-
-	if query.TenantID != nil && *query.TenantID != flow.TenantID {
+	if !ok {
 		return []approval.FlowVersion{}, nil
 	}
 

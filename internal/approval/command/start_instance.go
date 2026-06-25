@@ -16,6 +16,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -40,15 +41,20 @@ type StartInstanceHandler struct {
 	instanceNoGenerator approval.InstanceNoGenerator
 	validationSvc       *service.ValidationService
 	bindingHook         approval.BusinessBindingHook
+	formStorage         *storage.Dispatcher
 }
 
-// NewStartInstanceHandler creates a new StartInstanceHandler.
+// NewStartInstanceHandler creates a new StartInstanceHandler. formStorage
+// projects the submitted form data into the version's physical table when its
+// StorageMode is StorageTable; it may be nil in test fixtures that do not
+// exercise table-mode storage.
 func NewStartInstanceHandler(
 	db orm.DB,
 	engine *engine.FlowEngine,
 	instanceNoGenerator approval.InstanceNoGenerator,
 	validationSvc *service.ValidationService,
 	bindingHook approval.BusinessBindingHook,
+	formStorage *storage.Dispatcher,
 ) *StartInstanceHandler {
 	return &StartInstanceHandler{
 		db:                  db,
@@ -56,6 +62,7 @@ func NewStartInstanceHandler(
 		instanceNoGenerator: instanceNoGenerator,
 		validationSvc:       validationSvc,
 		bindingHook:         bindingHook,
+		formStorage:         formStorage,
 	}
 }
 
@@ -191,6 +198,16 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 				Exec(ctx); err != nil {
 				return nil, fmt.Errorf("persist business_record_id: %w", err)
 			}
+		}
+	}
+
+	// Project the form data into the version's physical table when the version
+	// uses StorageTable. The instance row (with form_data) is already persisted,
+	// so JSON mode is a no-op; table mode inserts the structured projection row
+	// inside this same transaction, so a projection failure rolls the start back.
+	if h.formStorage != nil {
+		if err := h.formStorage.SyncInstanceProjection(ctx, db, instance); err != nil {
+			return nil, fmt.Errorf("sync form projection: %w", err)
 		}
 	}
 

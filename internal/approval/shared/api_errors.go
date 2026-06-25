@@ -20,10 +20,10 @@ var (
 	ErrInvalidFlowDesign  = result.Err(i18n.T("approval_invalid_flow_design"), result.WithCode(ErrCodeInvalidFlowDesign))
 	ErrFlowCodeExists     = result.Err(i18n.T("approval_flow_code_exists"), result.WithCode(ErrCodeFlowCodeExists))
 	ErrVersionNotFound    = result.Err(i18n.T("approval_version_not_found"), result.WithCode(ErrCodeVersionNotFound))
-	// ErrInvalidBusinessIdentifier rejects business_table / pk / status /
-	// title field values that do not match a strict SQL-identifier regex.
-	// Flow definitions interpolate these into UPDATE statements at runtime
-	// so accepting arbitrary user input would open a SQL injection vector.
+	// ErrInvalidBusinessIdentifier rejects business_table / pk / status field
+	// values that do not match a strict SQL-identifier regex. Flow definitions
+	// interpolate these into UPDATE statements at runtime so accepting arbitrary
+	// user input would open a SQL injection vector.
 	ErrInvalidBusinessIdentifier = result.Err(
 		i18n.T("approval_invalid_business_identifier"),
 		result.WithCode(ErrCodeInvalidBusinessIdentifier),
@@ -37,6 +37,23 @@ var (
 	// validation pattern) so configuration faults never surface as data
 	// errors to the applicant.
 	ErrInvalidFormDesign = result.Err(i18n.T("approval_invalid_form_design"), result.WithCode(ErrCodeInvalidFormDesign))
+	// ErrBindingIncomplete rejects a BindingMode=business flow missing any of
+	// business_table / business_pk_field / business_status_field at create or
+	// update time, so a half-configured business binding is caught when the
+	// admin saves the flow rather than silently no-op'ing the status write-back
+	// on the first completed instance.
+	ErrBindingIncomplete = result.Err(i18n.T("approval_binding_incomplete"), result.WithCode(ErrCodeBindingIncomplete))
+	// ErrInvalidStorageMode rejects a deploy whose storage mode is neither
+	// "json" nor "table". The mode is fixed for the version's lifetime and
+	// drives whether a dedicated physical form table is generated at publish,
+	// so an unrecognized value must be caught when the version is created.
+	ErrInvalidStorageMode = result.Err(i18n.T("approval_invalid_storage_mode"), result.WithCode(ErrCodeInvalidStorageMode))
+	// ErrFlowBindingLocked rejects changing a flow's business-binding
+	// configuration (mode / table / pk / status) while any instance of the flow
+	// is still running. Re-pointing the binding mid-flight would make in-flight
+	// instances write their outcome back to a different business record than they
+	// were started against, so the binding is frozen until they complete.
+	ErrFlowBindingLocked = result.Err(i18n.T("approval_flow_binding_locked"), result.WithCode(ErrCodeFlowBindingLocked))
 
 	ErrInstanceNotFound          = result.Err(i18n.T("approval_instance_not_found"), result.WithCode(ErrCodeInstanceNotFound))
 	ErrInstanceCompleted         = result.Err(i18n.T("approval_instance_completed"), result.WithCode(ErrCodeInstanceCompleted))

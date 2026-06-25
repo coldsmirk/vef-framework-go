@@ -10,6 +10,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -32,20 +33,25 @@ type TransferTaskHandler struct {
 	taskSvc       *service.TaskService
 	validationSvc *service.ValidationService
 	userResolver  approval.UserInfoResolver
+	formStorage   *storage.Dispatcher
 }
 
-// NewTransferTaskHandler creates a new TransferTaskHandler.
+// NewTransferTaskHandler creates a new TransferTaskHandler. formStorage refreshes
+// the table-mode physical projection after a transferring user edits form data; it may
+// be nil in test fixtures that do not exercise table-mode storage.
 func NewTransferTaskHandler(
 	db orm.DB,
 	taskSvc *service.TaskService,
 	validationSvc *service.ValidationService,
 	userResolver approval.UserInfoResolver,
+	formStorage *storage.Dispatcher,
 ) *TransferTaskHandler {
 	return &TransferTaskHandler{
 		db:            db,
 		taskSvc:       taskSvc,
 		validationSvc: validationSvc,
 		userResolver:  userResolver,
+		formStorage:   formStorage,
 	}
 }
 
@@ -131,6 +137,15 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 
 	if err := h.taskSvc.PersistInstanceFormData(ctx, db, instance); err != nil {
 		return cqrs.Unit{}, err
+	}
+
+	// Keep the table-mode physical projection in lockstep with the form_data
+	// just written — a transferring user can edit the fields a node grants them, and
+	// those edits must reach the projection too. JSON mode is a no-op.
+	if h.formStorage != nil {
+		if err := h.formStorage.SyncInstanceProjection(ctx, db, instance); err != nil {
+			return cqrs.Unit{}, fmt.Errorf("sync form projection: %w", err)
+		}
 	}
 
 	behavior.EventCollectorFromContext(ctx).Add(events...)

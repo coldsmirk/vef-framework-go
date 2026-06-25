@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"math"
 	"regexp"
 	"slices"
 	"strings"
@@ -253,6 +254,13 @@ func validateStringRule(field approval.FormFieldDefinition, value string) error 
 }
 
 func validateNumberRule(field approval.FormFieldDefinition, value float64) error {
+	// An integer-typed column rejects a fractional value regardless of any
+	// min/max rule, so this gate runs before the Validation nil-check. It mirrors
+	// the BIGINT/INTEGER projection the storage layer generates for ColumnInteger.
+	if field.ColumnType == approval.ColumnInteger && value != math.Trunc(value) {
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMustBeInteger, map[string]any{"field": fieldLabel(field)}))
+	}
+
 	if field.Validation == nil {
 		return nil
 	}

@@ -30,6 +30,8 @@ var expectedTables = []string{
 	"apv_delegation",
 	"apv_form_snapshot",
 	"apv_urge_record",
+	"apv_form_table",
+	"apv_form_table_column",
 }
 
 // obsoleteTables lists tables that earlier versions of the approval
@@ -47,6 +49,16 @@ var obsoleteTables = []string{
 // Migrate runs the approval module's DDL migration for the given
 // database kind. Obsolete tables from earlier revisions are dropped
 // before the schema probe so upgrades stay clean.
+//
+// The migration is forward-only: each script is a set of CREATE TABLE IF NOT
+// EXISTS statements guarded by a presence probe (needsMigration), so it
+// provisions missing tables on a fresh or partially-migrated database but never
+// alters an existing table. In-place column changes — a type/constraint change
+// such as the pass_ratio rescale, or a dropped column — therefore take effect
+// only on a freshly created database; an existing deployment that must adopt
+// them has to be recreated. The approval module is pre-1.0 and assumes
+// recreation over in-place schema evolution; table removals are the one
+// exception, handled explicitly through dropObsoleteTables.
 func Migrate(ctx context.Context, db orm.DB, kind config.DBKind) error {
 	return sqlmigration.Run(ctx, db, sqlmigration.Plan{
 		Label:          "approval",

@@ -22,14 +22,15 @@ func TestManagementResourceRequiredPermissions(t *testing.T) {
 		specs := collectSpecs(resource, collectors...)
 
 		expected := map[string]string{
-			"create":          "approval:flow:create",
-			"deploy":          "approval:flow:deploy",
-			"publish_version": "approval:flow:publish",
-			"get_graph":       "approval:flow:query",
-			"find_flows":      "approval:flow:query",
-			"update_flow":     "approval:flow:update",
-			"toggle_active":   "approval:flow:update",
-			"find_versions":   "approval:flow:query",
+			"create":          "approval.flow.create",
+			"deploy":          "approval.flow.deploy",
+			"publish_version": "approval.flow.publish",
+			"get_graph":       "approval.flow.query",
+			"find_flows":      "approval.flow.query",
+			"update_flow":     "approval.flow.update",
+			"toggle_active":   "approval.flow.update",
+			"find_versions":   "approval.flow.query",
+			"find_initiators": "approval.flow.query",
 		}
 
 		assertRequiredPermissions(t, specs, expected)
@@ -40,11 +41,11 @@ func TestManagementResourceRequiredPermissions(t *testing.T) {
 		specs := collectSpecs(resource, collectors...)
 
 		expected := map[string]string{
-			"find_tree":         "approval:category:query",
-			"find_tree_options": "approval:category:query",
-			"create":            "approval:category:create",
-			"update":            "approval:category:update",
-			"delete":            "approval:category:delete",
+			"find_tree":         "approval.category.query",
+			"find_tree_options": "approval.category.query",
+			"create":            "approval.category.create",
+			"update":            "approval.category.update",
+			"delete":            "approval.category.delete",
 		}
 
 		assertRequiredPermissions(t, specs, expected)
@@ -55,10 +56,10 @@ func TestManagementResourceRequiredPermissions(t *testing.T) {
 		specs := collectSpecs(resource, collectors...)
 
 		expected := map[string]string{
-			"find_page": "approval:delegation:query",
-			"create":    "approval:delegation:create",
-			"update":    "approval:delegation:update",
-			"delete":    "approval:delegation:delete",
+			"find_page": "approval.delegation.query",
+			"create":    "approval.delegation.create",
+			"update":    "approval.delegation.update",
+			"delete":    "approval.delegation.delete",
 		}
 
 		assertRequiredPermissions(t, specs, expected)
@@ -88,5 +89,13 @@ func assertRequiredPermissions(t *testing.T, specs []api.OperationSpec, expected
 		actual, exists := permByAction[action]
 		require.True(t, exists, "Should expose %s action", action)
 		assert.Equal(t, permission, actual, "Action %s should declare the expected RequiredPermission", action)
+	}
+
+	// Reverse direction: every exposed action must be covered by the expected
+	// map, so a newly-added operation cannot ship without a permission assertion
+	// (the gap that let find_initiators slip through unchecked).
+	for action := range permByAction {
+		_, covered := expected[action]
+		assert.Truef(t, covered, "Action %q is exposed but missing from the expected permission map", action)
 	}
 }

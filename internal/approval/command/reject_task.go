@@ -2,11 +2,13 @@ package command
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -28,20 +30,25 @@ type RejectTaskHandler struct {
 	taskSvc       *service.TaskService
 	nodeSvc       *service.NodeService
 	validationSvc *service.ValidationService
+	formStorage   *storage.Dispatcher
 }
 
-// NewRejectTaskHandler creates a new RejectTaskHandler.
+// NewRejectTaskHandler creates a new RejectTaskHandler. formStorage refreshes
+// the table-mode physical projection after a rejecter edits form data; it may
+// be nil in test fixtures that do not exercise table-mode storage.
 func NewRejectTaskHandler(
 	db orm.DB,
 	taskSvc *service.TaskService,
 	nodeSvc *service.NodeService,
 	validationSvc *service.ValidationService,
+	formStorage *storage.Dispatcher,
 ) *RejectTaskHandler {
 	return &RejectTaskHandler{
 		db:            db,
 		taskSvc:       taskSvc,
 		nodeSvc:       nodeSvc,
 		validationSvc: validationSvc,
+		formStorage:   formStorage,
 	}
 }
 
@@ -90,6 +97,15 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 	// Only form_data — mutated locally via MergeFormData — still needs writing.
 	if err := h.taskSvc.PersistInstanceFormData(ctx, db, instance); err != nil {
 		return cqrs.Unit{}, err
+	}
+
+	// Keep the table-mode physical projection in lockstep with the form_data
+	// just written — a rejecter can edit the fields a node grants them, and
+	// those edits must reach the projection too. JSON mode is a no-op.
+	if h.formStorage != nil {
+		if err := h.formStorage.SyncInstanceProjection(ctx, db, instance); err != nil {
+			return cqrs.Unit{}, fmt.Errorf("sync form projection: %w", err)
+		}
 	}
 
 	behavior.EventCollectorFromContext(ctx).Add(events...)

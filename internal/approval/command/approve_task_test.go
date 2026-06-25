@@ -39,7 +39,7 @@ func (s *ApproveTaskTestSuite) SetupSuite() {
 	eng := buildTestEngine(s.db)
 	taskSvc, nodeSvc, validSvc := buildTestServices(eng)
 
-	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewApproveTaskHandler(s.db, taskSvc, nodeSvc, validSvc))
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewApproveTaskHandler(s.db, taskSvc, nodeSvc, validSvc, nil))
 }
 
 func (s *ApproveTaskTestSuite) TearDownTest() {

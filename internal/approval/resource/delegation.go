@@ -51,7 +51,7 @@ func NewDelegationResource() api.Resource {
 	return &DelegationResource{
 		Resource: api.NewRPCResource("approval/delegation"),
 		FindPage: crud.NewFindPage[approval.Delegation, DelegationSearch]().
-			RequiredPermission("approval:delegation:query").
+			RequiredPermission("approval.delegation.query").
 			WithQueryApplier(func(query orm.SelectQuery, _ DelegationSearch, ctx fiber.Ctx) error {
 				principal := contextx.Principal(ctx)
 				// Super-admin callers may query all delegations; everyone else
@@ -69,7 +69,7 @@ func NewDelegationResource() api.Resource {
 				return nil
 			}),
 		Create: crud.NewCreate[approval.Delegation, DelegationParams]().
-			RequiredPermission("approval:delegation:create").
+			RequiredPermission("approval.delegation.create").
 			WithPreCreate(func(model *approval.Delegation, _ *DelegationParams, _ orm.InsertQuery, ctx fiber.Ctx, _ orm.DB) error {
 				principal := contextx.Principal(ctx)
 				// Non-super-admin callers can only create delegations on their
@@ -86,7 +86,7 @@ func NewDelegationResource() api.Resource {
 				return nil
 			}),
 		Update: crud.NewUpdate[approval.Delegation, DelegationParams]().
-			RequiredPermission("approval:delegation:update").
+			RequiredPermission("approval.delegation.update").
 			WithPreUpdate(func(oldModel, newModel *approval.Delegation, _ *DelegationParams, _ orm.UpdateQuery, ctx fiber.Ctx, _ orm.DB) error {
 				if err := authorizeDelegationOwner(ctx, oldModel); err != nil {
 					return err
@@ -103,7 +103,7 @@ func NewDelegationResource() api.Resource {
 				return nil
 			}),
 		Delete: crud.NewDelete[approval.Delegation]().
-			RequiredPermission("approval:delegation:delete").
+			RequiredPermission("approval.delegation.delete").
 			WithPreDelete(func(model *approval.Delegation, _ orm.DeleteQuery, ctx fiber.Ctx, _ orm.DB) error {
 				return authorizeDelegationOwner(ctx, model)
 			}),

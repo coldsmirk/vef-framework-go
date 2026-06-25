@@ -406,7 +406,7 @@ func deployAndPublishFlow(t testing.TB, ctx context.Context, db orm.DB, code str
 	})
 	require.NoError(t, err, "Should deploy flow")
 
-	publishHandler := command.NewPublishVersionHandler(db, nil)
+	publishHandler := command.NewPublishVersionHandler(db, nil, nil)
 	_, err = publishHandler.Handle(ctx, command.PublishVersionCmd{
 		VersionID:  version.ID,
 		OperatorID: "admin",

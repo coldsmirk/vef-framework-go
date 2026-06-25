@@ -10,6 +10,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -21,6 +22,7 @@ type DeployFlowCmd struct {
 
 	FlowID         string
 	Description    *string
+	StorageMode    approval.StorageMode
 	FlowDefinition approval.FlowDefinition
 	FormDefinition *approval.FormDefinition
 	Caller         approval.CallerContext
@@ -57,6 +59,23 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 		return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFormDesign, err)
 	}
 
+	// An omitted storage mode resolves to the JSON default (the displayed
+	// designer default); any other unrecognized value is a client error.
+	storageMode := cmp.Or(cmd.StorageMode, approval.StorageJSON)
+	if !storageMode.IsValid() {
+		return nil, shared.ErrInvalidStorageMode
+	}
+
+	// In table mode every form field key becomes a physical column, so reject a
+	// schema whose keys cannot map to safe, unique, non-reserved identifiers now
+	// — surfaced as a form-design error the admin sees on save — instead of
+	// deferring the failure to publish, where it would surface opaquely.
+	if storageMode == approval.StorageTable {
+		if err := storage.ValidateTableFormSchema(cmd.FormDefinition); err != nil {
+			return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFormDesign, err)
+		}
+	}
+
 	db := contextx.DB(ctx, h.db)
 
 	var flow approval.Flow
@@ -83,6 +102,7 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 		Version:     flow.CurrentVersion + 1,
 		Status:      approval.VersionDraft,
 		Description: cmd.Description,
+		StorageMode: storageMode,
 		FlowSchema:  &cmd.FlowDefinition,
 		FormSchema:  cmd.FormDefinition,
 	}

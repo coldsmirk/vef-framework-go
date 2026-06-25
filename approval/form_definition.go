@@ -27,6 +27,13 @@ type FormFieldDefinition struct {
 	Props map[string]any `json:"props,omitempty"`
 	// SortOrder controls the display order.
 	SortOrder int `json:"sortOrder"`
+	// ColumnType is the dialect-independent logical column type used when the
+	// flow version's StorageMode is StorageTable. Empty falls back to a coarse
+	// type derived from Kind (back-compat with schemas authored before this field).
+	ColumnType ColumnDataType `json:"columnType,omitempty"`
+	// Scale is the number of fractional digits for a ColumnDecimal column (the
+	// DECIMAL/NUMERIC scale). Nil means an integer-shaped decimal (scale 0).
+	Scale *int `json:"scale,omitempty"`
 }
 
 // FieldOption represents a selectable option for select/radio/checkbox fields.

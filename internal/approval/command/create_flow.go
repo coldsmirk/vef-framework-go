@@ -27,7 +27,6 @@ type CreateFlowCmd struct {
 	BindingMode            approval.BindingMode
 	BusinessTable          *string
 	BusinessPkField        *string
-	BusinessTitleField     *string
 	BusinessStatusField    *string
 	AdminUserIDs           []string
 	IsAllInitiationAllowed bool
@@ -54,7 +53,11 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 		return nil, shared.ErrFlowNotFound
 	}
 
-	if err := validateBusinessIdentifiers(cmd.BindingMode, cmd.BusinessTable, cmd.BusinessPkField, cmd.BusinessStatusField, cmd.BusinessTitleField); err != nil {
+	if err := validateBusinessIdentifiers(cmd.BindingMode, cmd.BusinessTable, cmd.BusinessPkField, cmd.BusinessStatusField); err != nil {
+		return nil, err
+	}
+
+	if err := validateBusinessBindingComplete(cmd.BindingMode, cmd.BusinessTable, cmd.BusinessPkField, cmd.BusinessStatusField); err != nil {
 		return nil, err
 	}
 
@@ -87,7 +90,6 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 		BindingMode:            cmd.BindingMode,
 		BusinessTable:          cmd.BusinessTable,
 		BusinessPkField:        cmd.BusinessPkField,
-		BusinessTitleField:     cmd.BusinessTitleField,
 		BusinessStatusField:    cmd.BusinessStatusField,
 		AdminUserIDs:           cmd.AdminUserIDs,
 		IsAllInitiationAllowed: cmd.IsAllInitiationAllowed,

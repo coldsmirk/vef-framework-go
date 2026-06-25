@@ -11,6 +11,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -35,15 +36,19 @@ type RollbackTaskHandler struct {
 	instanceSvc   *service.InstanceService
 	validationSvc *service.ValidationService
 	engine        *engine.FlowEngine
+	formStorage   *storage.Dispatcher
 }
 
-// NewRollbackTaskHandler creates a new RollbackTaskHandler.
+// NewRollbackTaskHandler creates a new RollbackTaskHandler. formStorage refreshes
+// the table-mode physical projection after a rollback rewrites form data; it may
+// be nil in test fixtures that do not exercise table-mode storage.
 func NewRollbackTaskHandler(
 	db orm.DB,
 	taskSvc *service.TaskService,
 	instanceSvc *service.InstanceService,
 	validationSvc *service.ValidationService,
 	eng *engine.FlowEngine,
+	formStorage *storage.Dispatcher,
 ) *RollbackTaskHandler {
 	return &RollbackTaskHandler{
 		db:            db,
@@ -51,6 +56,7 @@ func NewRollbackTaskHandler(
 		instanceSvc:   instanceSvc,
 		validationSvc: validationSvc,
 		engine:        eng,
+		formStorage:   formStorage,
 	}
 }
 
@@ -147,6 +153,15 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 		events = append(events,
 			approval.NewInstanceRolledBackEvent(instance.ID, instance.TenantID, node.ID, targetNodeID, cmd.Operator.ID),
 		)
+	}
+
+	// Keep the table-mode physical projection in lockstep with the rolled-back
+	// form data — the node's rollback strategy may have cleared or retained
+	// fields, and either way the projection must match. JSON mode is a no-op.
+	if h.formStorage != nil {
+		if err := h.formStorage.SyncInstanceProjection(ctx, db, instance); err != nil {
+			return cqrs.Unit{}, fmt.Errorf("sync form projection: %w", err)
+		}
 	}
 
 	actionLog := h.taskSvc.BuildActionLog(

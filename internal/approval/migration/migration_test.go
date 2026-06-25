@@ -1,6 +1,7 @@
 package migration
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,17 +11,24 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/sqlmigration"
 )
 
-// TestMigrationScripts is a smoke check that this module's embedded DDL
-// resolves through the shared sqlmigration.LoadScript loader (the same one
-// Migrate uses) and produces the expected apv_* schema for a known dialect.
+// TestMigrationScripts is a smoke check that this module's embedded DDL resolves
+// through the shared sqlmigration.LoadScript loader (the same one Migrate uses)
+// and that every expected table is created in EVERY supported dialect — so the
+// three scripts and expectedTables can never silently drift apart.
 func TestMigrationScripts(t *testing.T) {
-	t.Run("Postgres", func(t *testing.T) {
-		sql, err := sqlmigration.LoadScript(scripts, config.Postgres)
-		require.NoError(t, err, "Should load Postgres migration SQL")
-		assert.Contains(t, sql, "CREATE TABLE IF NOT EXISTS apv_flow", "Should contain flow table DDL")
-		assert.Contains(t, sql, "CREATE TABLE IF NOT EXISTS apv_instance", "Should contain instance table DDL")
-		assert.Contains(t, sql, "CREATE TABLE IF NOT EXISTS apv_task", "Should contain task table DDL")
-	})
+	for _, kind := range []config.DBKind{config.Postgres, config.MySQL, config.SQLite} {
+		t.Run(string(kind), func(t *testing.T) {
+			sql, err := sqlmigration.LoadScript(scripts, kind)
+			require.NoErrorf(t, err, "Should load %s migration SQL", kind)
+
+			for _, table := range expectedTables {
+				// Trailing \b is a word boundary so apv_form_table does not
+				// satisfy the assertion for apv_form_table_column (its prefix).
+				pattern := regexp.MustCompile("CREATE TABLE IF NOT EXISTS " + regexp.QuoteMeta(table) + "\\b")
+				assert.Regexpf(t, pattern, sql, "%s script should create table %s", kind, table)
+			}
+		})
+	}
 
 	t.Run("UnsupportedKind", func(t *testing.T) {
 		_, err := sqlmigration.LoadScript(scripts, "unknown")
