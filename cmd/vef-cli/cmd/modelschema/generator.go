@@ -428,7 +428,7 @@ func extractEmbedPrefixFromTag(tag string) string {
 func extractColumnNameFromTag(tag, fieldName string) string {
 	bunTag := extractStructTag(tag, "bun")
 	if bunTag == "" {
-		return lo.SnakeCase(fieldName)
+		return underscore(fieldName)
 	}
 
 	if bunTag == "-" {
@@ -453,8 +453,37 @@ func extractColumnNameFromTag(tag, fieldName string) string {
 		return name
 	}
 
-	return lo.SnakeCase(fieldName)
+	return underscore(fieldName)
 }
+
+// underscore converts a Go identifier to its bun snake_case form (used for both
+// column and default table/alias names), mirroring bun's internal.Underscore
+// byte-for-byte. An underscore is inserted only before an uppercase letter that
+// neighbors a lowercase letter, so digits are never split from the preceding
+// word: "Name2" → "name2" and "Sha256Sum" → "sha256_sum", matching bun, whereas
+// lo.SnakeCase would yield "name_2" / "sha_256_sum". bun's implementation lives in
+// an internal package and cannot be imported, so it is replicated here to keep
+// generated names in lockstep with the ORM.
+func underscore(s string) string {
+	r := make([]byte, 0, len(s)+5)
+	for i := range len(s) {
+		c := s[i]
+		switch {
+		case !isASCIIUpper(c):
+			r = append(r, c)
+		case i > 0 && i+1 < len(s) && (isASCIILower(s[i-1]) || isASCIILower(s[i+1])):
+			r = append(r, '_', c+('a'-'A'))
+		default:
+			r = append(r, c+('a'-'A'))
+		}
+	}
+
+	return string(r)
+}
+
+func isASCIIUpper(c byte) bool { return c >= 'A' && c <= 'Z' }
+
+func isASCIILower(c byte) bool { return c >= 'a' && c <= 'z' }
 
 // bunColumnOption returns the value of an explicit "column:" option, which bun
 // treats as the authoritative column name overriding both the first tag segment

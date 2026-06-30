@@ -22,6 +22,10 @@ type User struct {
 	// (payload), not be mistaken for the "type:jsonb" option text.
 	Payload string `bun:"type:jsonb"`
 
+	// Digit-suffixed field: bun derives "address2" (no underscore before the
+	// digit); lo.SnakeCase would wrongly produce "address_2".
+	Address2 string
+
 	// Relationship fields must be skipped entirely.
 	Profile *Profile  `json:"profile" bun:"rel:has-one,join:id=user_id"`
 	Posts   []Profile `json:"posts"   bun:"rel:has-many,join:id=user_id"`

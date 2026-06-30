@@ -159,11 +159,48 @@ func TestExtractColumnNameFromTag(t *testing.T) {
 		{"ColumnOptionOverridesFirstSegment", `bun:"first_seg,column:explicit_col"`, "Foo", "explicit_col"},
 		// Bun keeps a bare option-like first segment as the column name (it only warns).
 		{"BareOptionNameKept", `bun:"notnull"`, "Foo", "notnull"},
+		// Digit handling must match bun: no underscore between a letter and a digit.
+		{"DigitSuffixField", "", "Name2", "name2"},
+		{"DigitInfixField", "", "Sha256Sum", "sha256_sum"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := extractColumnNameFromTag(tt.tag, tt.fieldName)
 			assert.Equal(t, tt.want, got, "Column name should match")
+		})
+	}
+}
+
+func TestUnderscore(t *testing.T) {
+	// Golden values captured from bun's schema.(*Table).newField column derivation
+	// (internal.Underscore). The digit cases are where lo.SnakeCase diverges and
+	// must never be reintroduced.
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"Empty", "", ""},
+		{"SingleUpper", "X", "x"},
+		{"Simple", "Name", "name"},
+		{"TwoWords", "CreatedAt", "created_at"},
+		{"TrailingAcronym", "UserID", "user_id"},
+		{"AllUpperShort", "ID", "id"},
+		{"AllUpperAcronym", "UUID", "uuid"},
+		{"LeadingAcronym", "HTTPServer", "http_server"},
+		{"DigitSuffix", "Name2", "name2"},
+		{"DigitInfixWord", "Line1Item", "line1_item"},
+		{"AcronymThenDigit", "OAuth2", "o_auth2"},
+		{"AcronymDigitWord", "ISO8601Date", "iso8601_date"},
+		{"LetterDigit", "V2", "v2"},
+		{"WordDigitWord", "Sha256Sum", "sha256_sum"},
+		{"AcronymDigitTail", "HTML5Parser", "html5_parser"},
+		{"MixedCaseAcronym", "IPv4", "i_pv4"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := underscore(tt.input)
+			assert.Equal(t, tt.want, got, "underscore must match bun's internal.Underscore byte-for-byte")
 		})
 	}
 }
@@ -310,6 +347,11 @@ func TestGenerateFile(t *testing.T) {
 			assert.Contains(t, code, `payload: "payload"`, `bun:"type:jsonb" must derive column from field name, not the option text`)
 			assert.NotContains(t, code, "type:jsonb", "bun option text must never leak into generated column names")
 			assert.Contains(t, code, "func (s *userSchema) Payload(raw ...bool) string", "Payload accessor must be generated")
+		})
+
+		t.Run("DigitFieldMatchesBunUnderscore", func(t *testing.T) {
+			assert.Contains(t, code, `"address2"`, `Digit-suffixed field must derive bun column "address2"`)
+			assert.NotContains(t, code, `"address_2"`, "lo.SnakeCase-style digit splitting must not appear")
 		})
 
 		t.Run("ReservedMethodNameEscaped", func(t *testing.T) {
