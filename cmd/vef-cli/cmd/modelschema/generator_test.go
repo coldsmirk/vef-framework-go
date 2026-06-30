@@ -80,10 +80,12 @@ func TestIsRelationFieldFromTag(t *testing.T) {
 		{"BelongsTo", `bun:"rel:belongs-to,join:user_id=id"`, true},
 		{"HasOne", `bun:"rel:has-one,join:id=user_id"`, true},
 		{"HasMany", `bun:"rel:has-many,join:id=user_id"`, true},
-		{"ManyToMany", `bun:"rel:many-to-many"`, true},
+		{"ManyToManyViaRel", `bun:"rel:many-to-many"`, true},
 		{"NormalColumn", `bun:"name"`, false},
 		{"ColumnContainingRelLiteral", `bun:"my_rel"`, false},
-		{"M2MWithoutRelPrefix", `bun:"m2m:user_tags,join:User=Tag"`, false},
+		// bun treats m2m join-table fields as relations (addField), so skip them.
+		{"M2MJoinTable", `bun:"m2m:user_tags,join:User=Tag"`, true},
+		{"ColumnContainingM2MLiteral", `bun:"m2m_count"`, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -301,6 +303,12 @@ func TestGenerateFile(t *testing.T) {
 			// Relation field names (Profile, Posts) lower-cased should not appear as struct fields.
 			assert.NotRegexp(t, `\bprofile\s+string`, code, "User.Profile rel field must be skipped")
 			assert.NotRegexp(t, `\bposts\s+string`, code, "User.Posts rel field must be skipped")
+		})
+
+		t.Run("M2MRelationFieldSkipped", func(t *testing.T) {
+			// m2m join-table fields are relations in bun and must be skipped.
+			assert.NotRegexp(t, `\bgroups\s+string`, code, "User.Groups m2m field must be skipped")
+			assert.NotContains(t, code, `"user_groups"`, "m2m join-table name must not leak as a column")
 		})
 
 		t.Run("BunDashFieldSkipped", func(t *testing.T) {

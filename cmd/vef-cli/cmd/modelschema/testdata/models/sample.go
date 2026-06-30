@@ -30,6 +30,9 @@ type User struct {
 	Profile *Profile  `json:"profile" bun:"rel:has-one,join:id=user_id"`
 	Posts   []Profile `json:"posts"   bun:"rel:has-many,join:id=user_id"`
 
+	// m2m join-table fields are relations in bun and must be skipped like rel fields.
+	Groups []Profile `bun:"m2m:user_groups,join:User=Group"`
+
 	// Address is embedded with a column name prefix.
 	Address Address `bun:"embed:addr_"`
 

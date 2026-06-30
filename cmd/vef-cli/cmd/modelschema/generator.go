@@ -504,7 +504,10 @@ func bunColumnOption(bunTag string) (string, bool) {
 	return "", false
 }
 
-// isRelationFieldFromTag checks if a bun tag declares a model relationship (rel:has-one, rel:has-many, rel:belongs-to, rel:many-to-many).
+// isRelationFieldFromTag reports whether a bun tag declares a model relationship.
+// bun's schema.(*Table).addField treats both "rel:" (has-one/has-many/belongs-to/
+// many-to-many) and "m2m:" (many-to-many join table) fields as relations with no
+// data column, so both must be skipped when generating column accessors.
 func isRelationFieldFromTag(tag string) bool {
 	bunTag := extractStructTag(tag, "bun")
 	if bunTag == "" {
@@ -513,7 +516,8 @@ func isRelationFieldFromTag(tag string) bool {
 
 	parts := strings.SplitSeq(bunTag, ",")
 	for part := range parts {
-		if strings.HasPrefix(strings.TrimSpace(part), "rel:") {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "rel:") || strings.HasPrefix(part, "m2m:") {
 			return true
 		}
 	}
