@@ -217,6 +217,11 @@ func TestParseBunTag(t *testing.T) {
 		{"TableAndAlias", `bun:"table:users,alias:u"`, "users", "u"},
 		{"AliasOnly", `bun:"alias:u"`, "", "u"},
 		{"WithExtras", `bun:"table:users,alias:u,select:active_users"`, "users", "u"},
+		// bun's bare-name table form: the first non-option segment is the table.
+		{"BareName", `bun:"tags"`, "tags", ""},
+		{"BareNameWithAlias", `bun:"tags,alias:t"`, "tags", "t"},
+		{"TableOptionOverridesBareName", `bun:"wrong,table:right"`, "right", ""},
+		{"LeadingOptionIsNotTable", `bun:"select:active"`, "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -363,9 +368,25 @@ func TestGenerateFile(t *testing.T) {
 			assert.Contains(t, code, `_alias: "u"`, "Alias from BaseModel tag should be applied")
 		})
 
-		t.Run("DefaultTableAliasFromModelName", func(t *testing.T) {
-			// Profile uses bun:"table:profiles" without alias, so alias defaults to table.
-			assert.Contains(t, code, `_alias: "profiles"`, "Alias should default to table when not specified")
+		t.Run("ExplicitTableUsesSingularAliasDefault", func(t *testing.T) {
+			// Profile uses bun:"table:profiles" without an alias. bun defaults the
+			// alias to the singular snake_case model name ("profile"), NOT the table.
+			assert.Contains(t, code, `_table: "profiles"`, "Explicit table name should be applied")
+			assert.Contains(t, code, `_alias: "profile"`, "Alias should default to the singular model name, not the table name")
+		})
+
+		t.Run("DefaultTableAndAliasMirrorBun", func(t *testing.T) {
+			// Category embeds BaseModel with no table/alias tag, so both defaults
+			// kick in: pluralized table name and singular alias, matching bun.
+			assert.Contains(t, code, `_table: "categories"`, "Default table name should be the pluralized snake_case model name")
+			assert.Contains(t, code, `_alias: "category"`, "Default alias should be the singular snake_case model name")
+		})
+
+		t.Run("BareNameTableForm", func(t *testing.T) {
+			// Tag uses bun:"tags" (bare-name form). The table is the bare segment,
+			// and the alias still defaults to the singular model name.
+			assert.Contains(t, code, `_table: "tags"`, "Bare-name bun tag should set the table name")
+			assert.Contains(t, code, `_alias: "tag"`, "Alias should default to the singular model name for bare-name tables")
 		})
 	})
 

@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/coldsmirk/go-streams"
+	"github.com/jinzhu/inflection"
 	"github.com/samber/lo"
 	"golang.org/x/tools/go/packages"
 )
@@ -202,12 +203,16 @@ func extractTableMetadata(structType *ast.StructType, modelName string, pkg *pac
 			tableName, aliasName = parseBunTag(f.Tag.Value)
 		}
 
+		// Defaults mirror bun's schema.(*Table).init: the table name is the
+		// pluralized snake_case of the model name, while the alias defaults to the
+		// singular snake_case of the model name (NOT the table name). inflection.Plural
+		// is the exact inflector bun uses (tableNameInflector).
 		if tableName == "" {
-			tableName = lo.SnakeCase(modelName)
+			tableName = inflection.Plural(underscore(modelName))
 		}
 
 		if aliasName == "" {
-			aliasName = tableName
+			aliasName = underscore(modelName)
 		}
 
 		return true, tableName, aliasName
@@ -551,6 +556,13 @@ func parseBunTag(tagValue string) (table, alias string) {
 	bunTag := extractStructTag(tagValue, "bun")
 	if bunTag == "" {
 		return table, alias
+	}
+
+	// bun's tag.Name — the first bare segment, when it is not a key:value option —
+	// sets the table name (bun:"users" == bun:"table:users"). A "table:" option
+	// overrides it. Mirrors bun's schema.(*Table).processBaseModelField.
+	if name, _, _ := strings.Cut(bunTag, ","); !strings.Contains(name, ":") {
+		table = name
 	}
 
 	parts := strings.SplitSeq(bunTag, ",")

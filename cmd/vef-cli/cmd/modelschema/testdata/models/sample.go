@@ -66,6 +66,24 @@ type AuditInfo struct {
 	CreatedByName string `bun:",scanonly"`
 }
 
+// Category embeds BaseModel with no table/alias tag, exercising bun-aligned
+// defaults: the table name is pluralized ("categories") while the alias is the
+// singular snake_case model name ("category"), not the table name.
+type Category struct {
+	orm.BaseModel
+
+	Name string `bun:"name"`
+}
+
+// Tag uses bun's bare-name table form (bun:"tags") instead of table:tags. The
+// table comes from the bare segment, while the alias still defaults to the
+// singular model name ("tag").
+type Tag struct {
+	orm.BaseModel `bun:"tags"`
+
+	Name string `bun:"name"`
+}
+
 // NotAModel does not embed orm.BaseModel and must not appear in the output.
 type NotAModel struct {
 	Name string
