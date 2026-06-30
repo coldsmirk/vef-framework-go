@@ -159,6 +159,12 @@ func TestExtractColumnNameFromTag(t *testing.T) {
 		{"ColumnOptionOverridesFirstSegment", `bun:"first_seg,column:explicit_col"`, "Foo", "explicit_col"},
 		// Bun keeps a bare option-like first segment as the column name (it only warns).
 		{"BareOptionNameKept", `bun:"notnull"`, "Foo", "notnull"},
+		// Derived names use bun's Underscore, which (unlike lo.SnakeCase) does not insert
+		// an underscore before a digit, so generated columns match bun's runtime columns.
+		{"DigitDerivedFromTypeOption", `bun:"type:jsonb"`, "Name2", "name2"},
+		{"DigitDerivedMidName", `bun:",nullzero"`, "Addr2Line", "addr2_line"},
+		{"DigitDerivedNoTag", "", "Line2", "line2"},
+		{"AcronymDerived", `bun:",notnull"`, "OrganizationID", "organization_id"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

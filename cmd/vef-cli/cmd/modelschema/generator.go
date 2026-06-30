@@ -428,7 +428,7 @@ func extractEmbedPrefixFromTag(tag string) string {
 func extractColumnNameFromTag(tag, fieldName string) string {
 	bunTag := extractStructTag(tag, "bun")
 	if bunTag == "" {
-		return lo.SnakeCase(fieldName)
+		return underscore(fieldName)
 	}
 
 	if bunTag == "-" {
@@ -453,7 +453,7 @@ func extractColumnNameFromTag(tag, fieldName string) string {
 		return name
 	}
 
-	return lo.SnakeCase(fieldName)
+	return underscore(fieldName)
 }
 
 // bunColumnOption returns the value of an explicit "column:" option, which bun
@@ -468,6 +468,39 @@ func bunColumnOption(bunTag string) (string, bool) {
 	}
 
 	return "", false
+}
+
+// underscore converts a Go field name to a column name using the SAME algorithm bun
+// uses at runtime (internal.Underscore), so generated column names match the columns bun
+// actually reads and writes. Unlike lo.SnakeCase it does not insert an underscore before a
+// digit (e.g. Addr2Line -> addr2_line, not addr_2_line); an uppercase byte is
+// underscore-separated only when an adjacent byte is lowercase.
+func underscore(s string) string {
+	isUpper := func(c byte) bool { return c >= 'A' && c <= 'Z' }
+	isLower := func(c byte) bool { return c >= 'a' && c <= 'z' }
+	toLower := func(c byte) byte {
+		if isUpper(c) {
+			return c + ('a' - 'A')
+		}
+
+		return c
+	}
+
+	r := make([]byte, 0, len(s)+5)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if isUpper(c) {
+			if i > 0 && i+1 < len(s) && (isLower(s[i-1]) || isLower(s[i+1])) {
+				r = append(r, '_', toLower(c))
+			} else {
+				r = append(r, toLower(c))
+			}
+		} else {
+			r = append(r, c)
+		}
+	}
+
+	return string(r)
 }
 
 // isRelationFieldFromTag checks if a bun tag declares a model relationship (rel:has-one, rel:has-many, rel:belongs-to, rel:many-to-many).
