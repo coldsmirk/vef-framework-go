@@ -148,6 +148,17 @@ func TestExtractColumnNameFromTag(t *testing.T) {
 		{"ExplicitWithFlags", `bun:"my_col,notnull,pk"`, "Foo", "my_col"},
 		{"OnlyFlagsScanonly", `bun:",scanonly"`, "Total", "total"},
 		{"OnlyFlagsNotnull", `bun:",notnull"`, "CreatedAt", "created_at"},
+		// A leading key:value option (e.g. type:jsonb) is not a column name; bun
+		// derives the column from the field name (regression guard).
+		{"TypeOptionOnly", `bun:"type:jsonb"`, "Payload", "payload"},
+		{"TypeOptionWithValueOption", `bun:"type:jsonb,default:'{}'"`, "Meta", "meta"},
+		{"NameThenTypeOption", `bun:"my_col,type:jsonb"`, "Foo", "my_col"},
+		// Explicit column: option is authoritative and overrides everything.
+		{"ColumnOption", `bun:"column:explicit_col"`, "Foo", "explicit_col"},
+		{"ColumnOptionWithTypeOption", `bun:"column:explicit_col,type:jsonb"`, "Foo", "explicit_col"},
+		{"ColumnOptionOverridesFirstSegment", `bun:"first_seg,column:explicit_col"`, "Foo", "explicit_col"},
+		// Bun keeps a bare option-like first segment as the column name (it only warns).
+		{"BareOptionNameKept", `bun:"notnull"`, "Foo", "notnull"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -293,6 +304,12 @@ func TestGenerateFile(t *testing.T) {
 
 		t.Run("GoKeywordFieldEscaped", func(t *testing.T) {
 			assert.Contains(t, code, "__type:", "Go keyword field name (Type) should be prefixed with __ in goName")
+		})
+
+		t.Run("LeadingOptionTagDerivesColumnFromField", func(t *testing.T) {
+			assert.Contains(t, code, `payload: "payload"`, `bun:"type:jsonb" must derive column from field name, not the option text`)
+			assert.NotContains(t, code, "type:jsonb", "bun option text must never leak into generated column names")
+			assert.Contains(t, code, "func (s *userSchema) Payload(raw ...bool) string", "Payload accessor must be generated")
 		})
 
 		t.Run("ReservedMethodNameEscaped", func(t *testing.T) {

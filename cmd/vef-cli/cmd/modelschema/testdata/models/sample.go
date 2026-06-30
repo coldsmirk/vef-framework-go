@@ -18,6 +18,10 @@ type User struct {
 	Internal string `bun:"-"`
 	Computed string `bun:",scanonly"`
 
+	// Leading key:value option: the column name must derive from the field
+	// (payload), not be mistaken for the "type:jsonb" option text.
+	Payload string `bun:"type:jsonb"`
+
 	// Relationship fields must be skipped entirely.
 	Profile *Profile  `json:"profile" bun:"rel:has-one,join:id=user_id"`
 	Posts   []Profile `json:"posts"   bun:"rel:has-many,join:id=user_id"`

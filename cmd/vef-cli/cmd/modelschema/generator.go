@@ -435,11 +435,39 @@ func extractColumnNameFromTag(tag, fieldName string) string {
 		return "-"
 	}
 
-	if column, _, _ := strings.Cut(bunTag, ","); column != "" {
-		return column
+	// The column name is the first comma-separated segment, but only when it is a
+	// bare name. A segment containing ':' is a key:value option (e.g. "type:jsonb"),
+	// which bun parses as an option rather than a name, so the column then derives
+	// from the field name. An explicit "column:" option always wins. This mirrors
+	// bun's schema.(*Table).newField.
+	name, _, _ := strings.Cut(bunTag, ",")
+	if strings.Contains(name, ":") {
+		name = ""
+	}
+
+	if column, ok := bunColumnOption(bunTag); ok {
+		name = column
+	}
+
+	if name != "" {
+		return name
 	}
 
 	return lo.SnakeCase(fieldName)
+}
+
+// bunColumnOption returns the value of an explicit "column:" option, which bun
+// treats as the authoritative column name overriding both the first tag segment
+// and the field-name default.
+func bunColumnOption(bunTag string) (string, bool) {
+	parts := strings.SplitSeq(bunTag, ",")
+	for part := range parts {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(part), "column:"); ok {
+			return value, true
+		}
+	}
+
+	return "", false
 }
 
 // isRelationFieldFromTag checks if a bun tag declares a model relationship (rel:has-one, rel:has-many, rel:belongs-to, rel:many-to-many).
