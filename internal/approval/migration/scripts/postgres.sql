@@ -474,9 +474,12 @@ CREATE TABLE IF NOT EXISTS apv_action_log (
     -- Dynamic assignee info
     add_assignee_type VARCHAR(16),
     added_assignee_ids JSONB NOT NULL DEFAULT '[]',
+    added_assignee_names JSONB NOT NULL DEFAULT '[]',
     removed_assignee_ids JSONB NOT NULL DEFAULT '[]',
+    removed_assignee_names JSONB NOT NULL DEFAULT '[]',
     -- CC info
     cc_user_ids JSONB NOT NULL DEFAULT '[]',
+    cc_user_names JSONB NOT NULL DEFAULT '[]',
     -- Attachments
     attachments JSONB,
     CONSTRAINT fk_apv_action_log__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -505,8 +508,11 @@ COMMENT ON COLUMN apv_action_log.transfer_to_name IS 'Transferee Name';
 COMMENT ON COLUMN apv_action_log.rollback_to_node_id IS 'Rollback Node';
 COMMENT ON COLUMN apv_action_log.add_assignee_type IS 'Add Type';
 COMMENT ON COLUMN apv_action_log.added_assignee_ids IS 'Added';
+COMMENT ON COLUMN apv_action_log.added_assignee_names IS 'Added Names';
 COMMENT ON COLUMN apv_action_log.removed_assignee_ids IS 'Removed';
+COMMENT ON COLUMN apv_action_log.removed_assignee_names IS 'Removed Names';
 COMMENT ON COLUMN apv_action_log.cc_user_ids IS 'CC List';
+COMMENT ON COLUMN apv_action_log.cc_user_names IS 'CC Names';
 COMMENT ON COLUMN apv_action_log.attachments IS 'Attachments';
 
 CREATE INDEX IF NOT EXISTS idx_apv_action_log__operator_id ON apv_action_log(operator_id);

@@ -52,29 +52,31 @@ func (h *GetAdminInstanceDetailHandler) Handle(ctx context.Context, query GetAdm
 	flow := bundle.Flow
 	tasks := bundle.Tasks
 	actionLogs := bundle.ActionLogs
-	flowNodes := bundle.FlowNodes
 	nodeNameMap := bundle.NodeNameMap
 
 	detail := &admin.InstanceDetail{
 		Instance: admin.InstanceDetailInfo{
-			InstanceID:       instance.ID,
-			InstanceNo:       instance.InstanceNo,
-			Title:            instance.Title,
-			TenantID:         instance.TenantID,
-			FlowID:           instance.FlowID,
-			FlowName:         flow.Name,
-			FlowVersionID:    instance.FlowVersionID,
-			ApplicantID:      instance.ApplicantID,
-			ApplicantName:    instance.ApplicantName,
-			Status:           string(instance.Status),
-			BusinessRecordID: instance.BusinessRecordID,
-			FormData:         instance.FormData,
-			CreatedAt:        instance.CreatedAt,
-			FinishedAt:       instance.FinishedAt,
+			InstanceID:              instance.ID,
+			InstanceNo:              instance.InstanceNo,
+			Title:                   instance.Title,
+			TenantID:                instance.TenantID,
+			FlowID:                  instance.FlowID,
+			FlowName:                flow.Name,
+			FlowVersionID:           instance.FlowVersionID,
+			ApplicantID:             instance.ApplicantID,
+			ApplicantName:           instance.ApplicantName,
+			ApplicantDepartmentName: instance.ApplicantDepartmentName,
+			Status:                  string(instance.Status),
+			CurrentNodeID:           instance.CurrentNodeID,
+			BusinessRecordID:        instance.BusinessRecordID,
+			FormData:                instance.FormData,
+			FormSchema:              bundle.FormSchema,
+			CreatedAt:               instance.CreatedAt,
+			FinishedAt:              instance.FinishedAt,
 		},
 		Tasks:      make([]admin.TaskDetailInfo, len(tasks)),
 		ActionLogs: make([]admin.ActionLog, len(actionLogs)),
-		FlowNodes:  make([]admin.FlowNodeInfo, len(flowNodes)),
+		FlowGraph:  buildInstanceFlowGraph(bundle),
 	}
 
 	if instance.CurrentNodeID != nil {
@@ -102,27 +104,7 @@ func (h *GetAdminInstanceDetailHandler) Handle(ctx context.Context, query GetAdm
 	}
 
 	for i, log := range actionLogs {
-		detail.ActionLogs[i] = admin.ActionLog{
-			LogID:                  log.ID,
-			Action:                 string(log.Action),
-			OperatorID:             log.OperatorID,
-			OperatorName:           log.OperatorName,
-			OperatorDepartmentName: log.OperatorDepartmentName,
-			TransferToID:           log.TransferToID,
-			TransferToName:         log.TransferToName,
-			Opinion:                log.Opinion,
-			CreatedAt:              log.CreatedAt,
-		}
-	}
-
-	for i, n := range flowNodes {
-		detail.FlowNodes[i] = admin.FlowNodeInfo{
-			NodeID:        n.ID,
-			Key:           n.Key,
-			Kind:          string(n.Kind),
-			Name:          n.Name,
-			ExecutionType: string(n.ExecutionType),
-		}
+		detail.ActionLogs[i] = toAdminActionLog(log)
 	}
 
 	return detail, nil

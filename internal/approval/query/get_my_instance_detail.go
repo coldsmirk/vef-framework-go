@@ -60,22 +60,25 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 
 	detail := &my.InstanceDetail{
 		Instance: my.InstanceInfo{
-			InstanceID:       instance.ID,
-			InstanceNo:       instance.InstanceNo,
-			Title:            instance.Title,
-			FlowName:         flow.Name,
-			FlowIcon:         flow.Icon,
-			ApplicantID:      instance.ApplicantID,
-			ApplicantName:    instance.ApplicantName,
-			Status:           string(instance.Status),
-			BusinessRecordID: instance.BusinessRecordID,
-			FormData:         instance.FormData,
-			CreatedAt:        instance.CreatedAt,
-			FinishedAt:       instance.FinishedAt,
+			InstanceID:              instance.ID,
+			InstanceNo:              instance.InstanceNo,
+			Title:                   instance.Title,
+			FlowName:                flow.Name,
+			FlowIcon:                flow.Icon,
+			ApplicantID:             instance.ApplicantID,
+			ApplicantName:           instance.ApplicantName,
+			ApplicantDepartmentName: instance.ApplicantDepartmentName,
+			Status:                  string(instance.Status),
+			CurrentNodeID:           instance.CurrentNodeID,
+			BusinessRecordID:        instance.BusinessRecordID,
+			FormData:                instance.FormData,
+			FormSchema:              bundle.FormSchema,
+			CreatedAt:               instance.CreatedAt,
+			FinishedAt:              instance.FinishedAt,
 		},
 		Tasks:            make([]my.TaskInfo, len(tasks)),
 		ActionLogs:       make([]my.ActionLogInfo, len(actionLogs)),
-		FlowNodes:        make([]my.FlowNodeInfo, len(flowNodes)),
+		FlowGraph:        buildInstanceFlowGraph(bundle),
 		AvailableActions: h.computeActions(instance, tasks, flowNodes, query.UserID),
 	}
 
@@ -87,32 +90,39 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 
 	for i, t := range tasks {
 		detail.Tasks[i] = my.TaskInfo{
-			TaskID:       t.ID,
-			NodeName:     nodeNameMap[t.NodeID],
-			AssigneeID:   t.AssigneeID,
-			AssigneeName: t.AssigneeName,
-			Status:       string(t.Status),
-			SortOrder:    t.SortOrder,
-			CreatedAt:    t.CreatedAt,
-			FinishedAt:   t.FinishedAt,
+			TaskID:        t.ID,
+			NodeID:        t.NodeID,
+			NodeName:      nodeNameMap[t.NodeID],
+			AssigneeID:    t.AssigneeID,
+			AssigneeName:  t.AssigneeName,
+			DelegatorID:   t.DelegatorID,
+			DelegatorName: t.DelegatorName,
+			Status:        string(t.Status),
+			SortOrder:     t.SortOrder,
+			Deadline:      t.Deadline,
+			IsTimeout:     t.IsTimeout,
+			CreatedAt:     t.CreatedAt,
+			FinishedAt:    t.FinishedAt,
 		}
 	}
 
 	for i, log := range actionLogs {
 		detail.ActionLogs[i] = my.ActionLogInfo{
-			Action:       string(log.Action),
-			OperatorName: log.OperatorName,
-			Opinion:      log.Opinion,
-			CreatedAt:    log.CreatedAt,
-		}
-	}
-
-	for i, n := range flowNodes {
-		detail.FlowNodes[i] = my.FlowNodeInfo{
-			NodeID: n.ID,
-			Key:    n.Key,
-			Kind:   string(n.Kind),
-			Name:   n.Name,
+			LogID:                  log.ID,
+			Action:                 string(log.Action),
+			NodeID:                 log.NodeID,
+			OperatorID:             log.OperatorID,
+			OperatorName:           log.OperatorName,
+			OperatorDepartmentName: log.OperatorDepartmentName,
+			TransferToID:           log.TransferToID,
+			TransferToName:         log.TransferToName,
+			RollbackToNodeID:       log.RollbackToNodeID,
+			AddedAssignees:         zipUserBriefs(log.AddedAssigneeIDs, log.AddedAssigneeNames),
+			RemovedAssignees:       zipUserBriefs(log.RemovedAssigneeIDs, log.RemovedAssigneeNames),
+			CCUsers:                zipUserBriefs(log.CCUserIDs, log.CCUserNames),
+			Opinion:                log.Opinion,
+			Attachments:            log.Attachments,
+			CreatedAt:              log.CreatedAt,
 		}
 	}
 

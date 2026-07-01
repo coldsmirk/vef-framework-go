@@ -308,9 +308,12 @@ CREATE TABLE IF NOT EXISTS apv_action_log (
     -- Dynamic assignee info
     add_assignee_type VARCHAR(16),
     added_assignee_ids TEXT NOT NULL DEFAULT '[]',
+    added_assignee_names TEXT NOT NULL DEFAULT '[]',
     removed_assignee_ids TEXT NOT NULL DEFAULT '[]',
+    removed_assignee_names TEXT NOT NULL DEFAULT '[]',
     -- CC info
     cc_user_ids TEXT NOT NULL DEFAULT '[]',
+    cc_user_names TEXT NOT NULL DEFAULT '[]',
     -- Attachments
     attachments TEXT,
     CONSTRAINT fk_apv_action_log__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE,

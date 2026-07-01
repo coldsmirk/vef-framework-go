@@ -59,10 +59,11 @@ func (s *ApproveTaskTestSuite) TestApproveSuccess() {
 
 	operator := approval.OperatorInfo{ID: "approver-1", Name: "Approver"}
 	_, err := s.handler.Handle(s.ctx, command.ApproveTaskCmd{
-		TaskID:   task.ID,
-		Operator: operator,
-		Opinion:  "Approved",
-		Caller:   approval.SystemCaller,
+		TaskID:      task.ID,
+		Operator:    operator,
+		Opinion:     "Approved",
+		Attachments: []string{"signed.pdf"},
+		Caller:      approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should approve task without error")
 
@@ -86,6 +87,7 @@ func (s *ApproveTaskTestSuite) TestApproveSuccess() {
 			found = true
 
 			s.Assert().Equal("approver-1", log.OperatorID, "TestApproveSuccess should match expected value")
+			s.Assert().Equal([]string{"signed.pdf"}, log.Attachments, "Approve log should persist the attachments")
 		}
 	}
 

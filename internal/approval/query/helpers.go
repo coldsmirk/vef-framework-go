@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/approval/admin"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/page"
@@ -40,6 +41,15 @@ type instanceDetailBundle struct {
 	ActionLogs  []approval.ActionLog
 	FlowNodes   []approval.FlowNode
 	NodeNameMap map[string]string
+	// FormSchema is the form definition snapshot pinned to the instance's own
+	// FlowVersionID, so a detail view renders form data against the exact
+	// schema the instance was submitted under — not whatever version is
+	// published now. Nil when the flow has no form or the version is missing.
+	FormSchema *approval.FormDefinition
+	// FlowSchema is the React Flow graph definition (node positions + edges)
+	// pinned to the same version, used to build the read-only progress graph.
+	// Nil when the version has no graph or is missing.
+	FlowSchema *approval.FlowDefinition
 }
 
 // loadInstanceDetailBundle loads the instance identified by instanceID together
@@ -64,6 +74,15 @@ func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string)
 	flow.ID = instance.FlowID
 	if err := db.NewSelect().Model(&flow).WherePK().Scan(ctx); err != nil && !result.IsRecordNotFound(err) {
 		return nil, fmt.Errorf("query flow: %w", err)
+	}
+
+	// Load the form + flow schema snapshots from the instance's own version;
+	// the rest of the version row is not needed here.
+	var version approval.FlowVersion
+
+	version.ID = instance.FlowVersionID
+	if err := db.NewSelect().Model(&version).Select("form_schema", "flow_schema").WherePK().Scan(ctx); err != nil && !result.IsRecordNotFound(err) {
+		return nil, fmt.Errorf("query flow version: %w", err)
 	}
 
 	var tasks []approval.Task
@@ -102,6 +121,8 @@ func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string)
 		ActionLogs:  actionLogs,
 		FlowNodes:   flowNodes,
 		NodeNameMap: nodeNameMap,
+		FormSchema:  version.FormSchema,
+		FlowSchema:  version.FlowSchema,
 	}, nil
 }
 
@@ -127,6 +148,51 @@ func dedup(ids []string) []string {
 	slices.Sort(s)
 
 	return slices.Compact(s)
+}
+
+// toAdminActionLog projects a persisted action log into the admin API shape.
+// Shared by the admin instance-detail and the admin action-log list so the two
+// projections cannot drift.
+func toAdminActionLog(log approval.ActionLog) admin.ActionLog {
+	return admin.ActionLog{
+		LogID:                  log.ID,
+		Action:                 string(log.Action),
+		NodeID:                 log.NodeID,
+		OperatorID:             log.OperatorID,
+		OperatorName:           log.OperatorName,
+		OperatorDepartmentName: log.OperatorDepartmentName,
+		TransferToID:           log.TransferToID,
+		TransferToName:         log.TransferToName,
+		RollbackToNodeID:       log.RollbackToNodeID,
+		AddedAssignees:         zipUserBriefs(log.AddedAssigneeIDs, log.AddedAssigneeNames),
+		RemovedAssignees:       zipUserBriefs(log.RemovedAssigneeIDs, log.RemovedAssigneeNames),
+		CCUsers:                zipUserBriefs(log.CCUserIDs, log.CCUserNames),
+		Opinion:                log.Opinion,
+		Attachments:            log.Attachments,
+		CreatedAt:              log.CreatedAt,
+	}
+}
+
+// zipUserBriefs pairs an action log's parallel id/name arrays into UserBrief
+// values for the API. Names are matched positionally — they are captured
+// together at action time — and a short names slice yields an empty name rather
+// than panicking. Returns nil for an empty id slice so the field omits cleanly.
+func zipUserBriefs(ids, names []string) []approval.UserBrief {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	out := make([]approval.UserBrief, len(ids))
+	for i, id := range ids {
+		brief := approval.UserBrief{ID: id}
+		if i < len(names) {
+			brief.Name = names[i]
+		}
+
+		out[i] = brief
+	}
+
+	return out
 }
 
 // loadByIDs loads rows of model type M whose id is in ids (deduplicated) and

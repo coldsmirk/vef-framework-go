@@ -174,6 +174,13 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	actionLog.AddAssigneeType = &cmd.AddType
 
 	actionLog.AddedAssigneeIDs = insertUsers
+
+	addedNames := make([]string, len(insertUsers))
+	for i, id := range insertUsers {
+		addedNames[i] = userNames[id]
+	}
+
+	actionLog.AddedAssigneeNames = addedNames
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	eventCollector.Add(

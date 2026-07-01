@@ -92,6 +92,7 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 	actionLog.TaskID = new(task.ID)
 
 	actionLog.RemovedAssigneeIDs = []string{task.AssigneeID}
+	actionLog.RemovedAssigneeNames = []string{task.AssigneeName}
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	events := []approval.DomainEvent{

@@ -24,6 +24,7 @@ type TransferTaskCmd struct {
 	Opinion      string
 	FormData     map[string]any
 	TransferToID string
+	Attachments  []string
 	Caller       approval.CallerContext
 }
 
@@ -131,7 +132,7 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 		task,
 		cmd.Operator,
 		approval.ActionTransfer,
-		service.ActionLogParams{Opinion: cmd.Opinion, TransferToID: transferToID, TransferToName: transferToName},
+		service.ActionLogParams{Opinion: cmd.Opinion, TransferToID: transferToID, TransferToName: transferToName, Attachments: cmd.Attachments},
 	)
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 

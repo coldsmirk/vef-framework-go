@@ -279,8 +279,11 @@ type ActionLog struct {
 	RollbackToNodeID       *string          `json:"rollbackToNodeId" bun:"rollback_to_node_id,nullzero"`
 	AddAssigneeType        *AddAssigneeType `json:"addAssigneeType" bun:"add_assignee_type,nullzero"`
 	AddedAssigneeIDs       []string         `json:"addedAssigneeIds" bun:"added_assignee_ids,type:jsonb"`
+	AddedAssigneeNames     []string         `json:"addedAssigneeNames" bun:"added_assignee_names,type:jsonb"`
 	RemovedAssigneeIDs     []string         `json:"removedAssigneeIds" bun:"removed_assignee_ids,type:jsonb"`
+	RemovedAssigneeNames   []string         `json:"removedAssigneeNames" bun:"removed_assignee_names,type:jsonb"`
 	CCUserIDs              []string         `json:"ccUserIds" bun:"cc_user_ids,type:jsonb"`
+	CCUserNames            []string         `json:"ccUserNames" bun:"cc_user_names,type:jsonb"`
 	Attachments            []string         `json:"attachments" bun:"attachments,type:jsonb,nullzero"`
 	Meta                   map[string]any   `json:"meta" bun:"meta,type:jsonb,nullzero"`
 }

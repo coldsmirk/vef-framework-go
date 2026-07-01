@@ -169,6 +169,7 @@ type ProcessTaskParams struct {
 	Action       string         `json:"action" validate:"required,oneof=approve reject transfer rollback handle"`
 	Opinion      string         `json:"opinion" validate:"max=2000"`
 	FormData     map[string]any `json:"formData"`
+	Attachments  []string       `json:"attachments" validate:"max=20,dive,max=512"`
 	TransferToID string         `json:"transferToId"`
 	TargetNodeID string         `json:"targetNodeId"`
 }
@@ -199,11 +200,12 @@ var processTaskDispatch = map[processTaskAction]func(context.Context, cqrs.Bus, 
 	actionHandle:  sendApprove,
 	actionReject: func(ctx context.Context, bus cqrs.Bus, actor resolvedActor, params ProcessTaskParams) error {
 		_, err := cqrs.Send[command.RejectTaskCmd, cqrs.Unit](ctx, bus, command.RejectTaskCmd{
-			TaskID:   params.TaskID,
-			Operator: actor.Operator,
-			Opinion:  params.Opinion,
-			FormData: params.FormData,
-			Caller:   actor.Caller,
+			TaskID:      params.TaskID,
+			Operator:    actor.Operator,
+			Opinion:     params.Opinion,
+			FormData:    params.FormData,
+			Attachments: params.Attachments,
+			Caller:      actor.Caller,
 		})
 
 		return err
@@ -215,6 +217,7 @@ var processTaskDispatch = map[processTaskAction]func(context.Context, cqrs.Bus, 
 			Opinion:      params.Opinion,
 			FormData:     params.FormData,
 			TransferToID: params.TransferToID,
+			Attachments:  params.Attachments,
 			Caller:       actor.Caller,
 		})
 
@@ -227,6 +230,7 @@ var processTaskDispatch = map[processTaskAction]func(context.Context, cqrs.Bus, 
 			Opinion:      params.Opinion,
 			FormData:     params.FormData,
 			TargetNodeID: params.TargetNodeID,
+			Attachments:  params.Attachments,
 			Caller:       actor.Caller,
 		})
 
@@ -236,11 +240,12 @@ var processTaskDispatch = map[processTaskAction]func(context.Context, cqrs.Bus, 
 
 func sendApprove(ctx context.Context, bus cqrs.Bus, actor resolvedActor, params ProcessTaskParams) error {
 	_, err := cqrs.Send[command.ApproveTaskCmd, cqrs.Unit](ctx, bus, command.ApproveTaskCmd{
-		TaskID:   params.TaskID,
-		Operator: actor.Operator,
-		Opinion:  params.Opinion,
-		FormData: params.FormData,
-		Caller:   actor.Caller,
+		TaskID:      params.TaskID,
+		Operator:    actor.Operator,
+		Opinion:     params.Opinion,
+		FormData:    params.FormData,
+		Attachments: params.Attachments,
+		Caller:      actor.Caller,
 	})
 
 	return err

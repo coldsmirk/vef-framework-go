@@ -73,17 +73,7 @@ func (h *FindAdminActionLogsHandler) Handle(ctx context.Context, query FindAdmin
 
 	items := make([]admin.ActionLog, len(logs))
 	for i, log := range logs {
-		items[i] = admin.ActionLog{
-			LogID:                  log.ID,
-			Action:                 string(log.Action),
-			OperatorID:             log.OperatorID,
-			OperatorName:           log.OperatorName,
-			OperatorDepartmentName: log.OperatorDepartmentName,
-			TransferToID:           log.TransferToID,
-			TransferToName:         log.TransferToName,
-			Opinion:                log.Opinion,
-			CreatedAt:              log.CreatedAt,
-		}
+		items[i] = toAdminActionLog(log)
 	}
 
 	result := page.New(query.Pageable, count, items)

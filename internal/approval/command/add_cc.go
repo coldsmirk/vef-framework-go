@@ -99,6 +99,13 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 	actionLog := cmd.Operator.NewActionLog(cmd.InstanceID, approval.ActionAddCC)
 	actionLog.NodeID = new(*instance.CurrentNodeID)
 	actionLog.CCUserIDs = insertedUserIDs
+
+	ccNames := make([]string, len(insertedUserIDs))
+	for i, id := range insertedUserIDs {
+		ccNames[i] = ccUserNames[id]
+	}
+
+	actionLog.CCUserNames = ccNames
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	behavior.EventCollectorFromContext(ctx).Add(

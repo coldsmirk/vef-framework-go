@@ -94,12 +94,13 @@ func (s *RemoveAssigneeTestSuite) setupData() (inst *approval.Instance, task1, t
 	s.Require().NoError(err, "Remove assignee should complete without error")
 
 	task2 = &approval.Task{
-		TenantID:   "default",
-		InstanceID: inst.ID,
-		NodeID:     s.nodeID,
-		AssigneeID: "assignee-2",
-		SortOrder:  2,
-		Status:     approval.TaskPending,
+		TenantID:     "default",
+		InstanceID:   inst.ID,
+		NodeID:       s.nodeID,
+		AssigneeID:   "assignee-2",
+		AssigneeName: "Assignee 2",
+		SortOrder:    2,
+		Status:       approval.TaskPending,
 	}
 	_, err = s.db.NewInsert().Model(task2).Exec(s.ctx)
 	s.Require().NoError(err, "Remove assignee should complete without error")
@@ -132,14 +133,17 @@ func (s *RemoveAssigneeTestSuite) TestRemoveSuccess() {
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", task2.InstanceID) }).
 		Scan(s.ctx), "TestRemoveSuccess should complete without error")
 
-	found := false
-	for _, log := range logs {
-		if log.Action == approval.ActionRemoveAssignee {
-			found = true
+	var removeLog *approval.ActionLog
+
+	for i := range logs {
+		if logs[i].Action == approval.ActionRemoveAssignee {
+			removeLog = &logs[i]
 		}
 	}
 
-	s.Assert().True(found, "Should have a remove_assignee action log")
+	s.Require().NotNil(removeLog, "Should have a remove_assignee action log")
+	s.Assert().Equal([]string{"assignee-2"}, removeLog.RemovedAssigneeIDs, "Remove log should record the removed id")
+	s.Assert().Equal([]string{"Assignee 2"}, removeLog.RemovedAssigneeNames, "Remove log should snapshot the removed name")
 }
 
 func (s *RemoveAssigneeTestSuite) TestRemoveWaitingTaskShouldSucceed() {

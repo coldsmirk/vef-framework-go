@@ -26,6 +26,7 @@ type RollbackTaskCmd struct {
 	Opinion      string
 	FormData     map[string]any
 	TargetNodeID string
+	Attachments  []string
 	Caller       approval.CallerContext
 }
 
@@ -169,7 +170,7 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 		task,
 		cmd.Operator,
 		approval.ActionRollback,
-		service.ActionLogParams{Opinion: cmd.Opinion, RollbackToNodeID: targetNodeID},
+		service.ActionLogParams{Opinion: cmd.Opinion, RollbackToNodeID: targetNodeID, Attachments: cmd.Attachments},
 	)
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 

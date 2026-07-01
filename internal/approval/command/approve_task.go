@@ -17,11 +17,12 @@ import (
 type ApproveTaskCmd struct {
 	cqrs.BaseCommand
 
-	TaskID   string
-	Operator approval.OperatorInfo
-	Opinion  string
-	FormData map[string]any
-	Caller   approval.CallerContext
+	TaskID      string
+	Operator    approval.OperatorInfo
+	Opinion     string
+	FormData    map[string]any
+	Attachments []string
+	Caller      approval.CallerContext
 }
 
 // ApproveTaskHandler handles the ApproveTaskCmd command.
@@ -102,7 +103,7 @@ func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cq
 		actionType = approval.ActionHandle
 	}
 
-	actionLog := h.taskSvc.BuildActionLog(instance.ID, task, cmd.Operator, actionType, service.ActionLogParams{Opinion: cmd.Opinion})
+	actionLog := h.taskSvc.BuildActionLog(instance.ID, task, cmd.Operator, actionType, service.ActionLogParams{Opinion: cmd.Opinion, Attachments: cmd.Attachments})
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	// Status / current_node_id / finished_at are already persisted by the

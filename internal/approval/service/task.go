@@ -596,6 +596,11 @@ type ActionLogParams struct {
 	TransferToID     string
 	TransferToName   string
 	RollbackToNodeID string
+	// Attachments holds storage file references the operator attached to this
+	// action (e.g. a signed document uploaded with an approval opinion). The
+	// approval module persists them verbatim; upload/resolution is the caller's
+	// concern (the storage module).
+	Attachments []string
 }
 
 // BuildActionLog constructs a task-scoped ActionLog entry. Persistence is
@@ -627,6 +632,10 @@ func (*TaskService) BuildActionLog(
 
 	if params.RollbackToNodeID != "" {
 		actionLog.RollbackToNodeID = new(params.RollbackToNodeID)
+	}
+
+	if len(params.Attachments) > 0 {
+		actionLog.Attachments = params.Attachments
 	}
 
 	return actionLog

@@ -320,9 +320,12 @@ CREATE TABLE IF NOT EXISTS apv_action_log (
     -- Dynamic assignee info
     add_assignee_type VARCHAR(16) COMMENT 'Add Type',
     added_assignee_ids JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Added',
+    added_assignee_names JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Added Names',
     removed_assignee_ids JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Removed',
+    removed_assignee_names JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Removed Names',
     -- CC info
     cc_user_ids JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'CC List',
+    cc_user_names JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'CC Names',
     -- Attachments
     attachments JSON COMMENT 'Attachments',
     CONSTRAINT pk_apv_action_log PRIMARY KEY (id),

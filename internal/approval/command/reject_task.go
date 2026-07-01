@@ -17,11 +17,12 @@ import (
 type RejectTaskCmd struct {
 	cqrs.BaseCommand
 
-	TaskID   string
-	Operator approval.OperatorInfo
-	Opinion  string
-	FormData map[string]any
-	Caller   approval.CallerContext
+	TaskID      string
+	Operator    approval.OperatorInfo
+	Opinion     string
+	FormData    map[string]any
+	Attachments []string
+	Caller      approval.CallerContext
 }
 
 // RejectTaskHandler handles the RejectTaskCmd command.
@@ -89,7 +90,7 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 
 	events = append(events, completionEvents...)
 
-	actionLog := h.taskSvc.BuildActionLog(instance.ID, task, cmd.Operator, approval.ActionReject, service.ActionLogParams{Opinion: cmd.Opinion})
+	actionLog := h.taskSvc.BuildActionLog(instance.ID, task, cmd.Operator, approval.ActionReject, service.ActionLogParams{Opinion: cmd.Opinion, Attachments: cmd.Attachments})
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	// Status / current_node_id / finished_at are already persisted by the
