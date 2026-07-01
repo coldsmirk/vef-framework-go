@@ -202,4 +202,116 @@ func TestBuildInstanceFlowGraph(t *testing.T) {
 		assert.Equal(t, "first-pass", *parts[0].Opinion, "First task's participant keeps the first log's opinion")
 		assert.Equal(t, "second-pass", *parts[1].Opinion, "Second task's participant keeps the second log's opinion")
 	})
+
+	t.Run("RollbackKeepsDownstreamNodePending", func(t *testing.T) {
+		// start -> A -> B -> end. The instance reached B, then B was rolled back to
+		// A: current is A (redo pending) while B keeps a rolled_back task and a
+		// rollback log. B is downstream of the current node, so it must fall back to
+		// pending — never render as completed on stale evidence.
+		b := &instanceDetailBundle{
+			FlowNodes: []approval.FlowNode{
+				flowNode("ns", "kstart", approval.NodeStart),
+				flowNode("na", "kA", approval.NodeApproval),
+				flowNode("nb", "kB", approval.NodeApproval),
+				flowNode("ne", "kend", approval.NodeEnd),
+			},
+			FlowSchema: &approval.FlowDefinition{
+				Nodes: []approval.NodeDefinition{
+					{ID: "kstart", Kind: approval.NodeStart},
+					{ID: "kA", Kind: approval.NodeApproval},
+					{ID: "kB", Kind: approval.NodeApproval},
+					{ID: "kend", Kind: approval.NodeEnd},
+				},
+				Edges: []approval.EdgeDefinition{
+					{ID: "e1", Source: "kstart", Target: "kA"},
+					{ID: "e2", Source: "kA", Target: "kB"},
+					{ID: "e3", Source: "kB", Target: "kend"},
+				},
+			},
+		}
+		b.Instance.Status = approval.InstanceRunning
+		b.Instance.CurrentNodeID = new("na")
+		b.Tasks = []approval.Task{
+			task("t1", "na", "u1", approval.TaskPending),
+			task("t2", "nb", "u2", approval.TaskRolledBack),
+		}
+		rollback := approval.ActionLog{Action: approval.ActionRollback, OperatorID: "u2", NodeID: new("nb"), RollbackToNodeID: new("na")}
+		rollback.ID = "l1"
+		b.ActionLogs = []approval.ActionLog{rollback}
+
+		byKey := nodesByKey(buildInstanceFlowGraph(b))
+
+		assert.Equal(t, approval.NodeProgressCompleted, byKey["kstart"].Data.Status, "Start node stays completed")
+		assert.Equal(t, approval.NodeProgressCurrent, byKey["kA"].Data.Status, "Rolled-back-to node is current again")
+		assert.Equal(t, approval.NodeProgressPending, byKey["kB"].Data.Status, "Rolled-back-from node ahead of the current node must be pending, not completed")
+		assert.Equal(t, approval.NodeProgressPending, byKey["kend"].Data.Status, "Unreached end stays pending")
+	})
+
+	t.Run("WithdrawnRendersNoCurrentNode", func(t *testing.T) {
+		// A withdrawn instance is closed but not "final": its current pointer is
+		// retained and its tasks are canceled. No node may render as current, and
+		// the paused node falls back to pending rather than completed.
+		b := linearBundle()
+		b.Instance.Status = approval.InstanceWithdrawn
+		b.Instance.CurrentNodeID = new("na")
+		b.Tasks = []approval.Task{task("t1", "na", "u1", approval.TaskCanceled)}
+
+		byKey := nodesByKey(buildInstanceFlowGraph(b))
+
+		for key, n := range byKey {
+			assert.NotEqual(t, approval.NodeProgressCurrent, n.Data.Status, "Closed (withdrawn) instance must not mark any node current, got current on %q", key)
+		}
+
+		assert.Equal(t, approval.NodeProgressCompleted, byKey["kstart"].Data.Status, "Start stays completed")
+		assert.Equal(t, approval.NodeProgressPending, byKey["kappr"].Data.Status, "Paused node with only a canceled task is pending, not current or completed")
+	})
+
+	t.Run("UntakenBranchApprovalNodeStaysPending", func(t *testing.T) {
+		// start -> C(condition) -> {A, B} -> M -> end. The instance took the A
+		// branch (A approved) and now sits on the merge M. The condition on the
+		// taken path is structural and completes; the *untaken* branch's approval
+		// node B is a business node with no evidence and must stay pending — the
+		// business/structural split is what keeps topology from over-reporting it.
+		b := &instanceDetailBundle{
+			FlowNodes: []approval.FlowNode{
+				flowNode("ns", "kstart", approval.NodeStart),
+				flowNode("nc", "kcond", approval.NodeCondition),
+				flowNode("na", "kA", approval.NodeApproval),
+				flowNode("nb", "kB", approval.NodeApproval),
+				flowNode("nm", "kM", approval.NodeApproval),
+				flowNode("ne", "kend", approval.NodeEnd),
+			},
+			FlowSchema: &approval.FlowDefinition{
+				Nodes: []approval.NodeDefinition{
+					{ID: "kstart", Kind: approval.NodeStart},
+					{ID: "kcond", Kind: approval.NodeCondition},
+					{ID: "kA", Kind: approval.NodeApproval},
+					{ID: "kB", Kind: approval.NodeApproval},
+					{ID: "kM", Kind: approval.NodeApproval},
+					{ID: "kend", Kind: approval.NodeEnd},
+				},
+				Edges: []approval.EdgeDefinition{
+					{ID: "e1", Source: "kstart", Target: "kcond"},
+					{ID: "e2", Source: "kcond", Target: "kA"},
+					{ID: "e3", Source: "kcond", Target: "kB"},
+					{ID: "e4", Source: "kA", Target: "kM"},
+					{ID: "e5", Source: "kB", Target: "kM"},
+					{ID: "e6", Source: "kM", Target: "kend"},
+				},
+			},
+		}
+		b.Instance.Status = approval.InstanceRunning
+		b.Instance.CurrentNodeID = new("nm")
+		b.Tasks = []approval.Task{
+			task("t1", "na", "u1", approval.TaskApproved),
+			task("t2", "nm", "u2", approval.TaskPending),
+		}
+
+		byKey := nodesByKey(buildInstanceFlowGraph(b))
+
+		assert.Equal(t, approval.NodeProgressCompleted, byKey["kcond"].Data.Status, "Condition on the taken path is a traversed structural node → completed")
+		assert.Equal(t, approval.NodeProgressCompleted, byKey["kA"].Data.Status, "Taken-branch approval node with an approved task → completed")
+		assert.Equal(t, approval.NodeProgressCurrent, byKey["kM"].Data.Status, "Merge node with a pending task → current")
+		assert.Equal(t, approval.NodeProgressPending, byKey["kB"].Data.Status, "Untaken-branch approval node has no evidence → pending, not completed")
+	})
 }

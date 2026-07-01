@@ -8,14 +8,15 @@ import "github.com/coldsmirk/vef-framework-go/approval"
 // (tasks, action logs, current-node pointer) is recorded against the flow-node
 // DB id, so it is mapped into Key space before any graph reasoning.
 //
-// Progress is derived topologically, not from log side-effects: a node is
-// current when the instance sits on it, completed when the flow has demonstrably
-// passed it (the start node, a node with task/log evidence, the terminal node of
-// a finished instance, or a graph ancestor of any of those), otherwise pending.
-// This is correct for linear flows and single-path branches; a structural node
-// on an *untaken* branch that reconverges into a reached node may over-report as
-// completed — a known limitation of inferring visitation from topology rather
-// than from a recorded node-visit fact.
+// Progress is read from real runtime evidence rather than pure topology (see
+// deriveProgressSets): a node is current when work is open on it, completed when
+// it produced an advancing decision (business nodes) or was provably traversed
+// (structural nodes), otherwise pending. This keeps a rolled-back-from node ahead
+// of the current pointer, and every node of a paused/closed instance, from
+// mis-rendering. The one residual imprecision is a purely structural node on an
+// *untaken* branch that reconverges into a reached node, which can still
+// over-report as completed — the graph carries no node-visit fact to tell which
+// incoming edge a merge was reached through.
 func buildInstanceFlowGraph(bundle *instanceDetailBundle) approval.InstanceFlowGraph {
 	positions, edges := graphLayout(bundle.FlowSchema)
 
@@ -40,7 +41,7 @@ func buildInstanceFlowGraph(bundle *instanceDetailBundle) approval.InstanceFlowG
 		}
 	}
 
-	active, passed := deriveProgressSets(bundle, idToKey, tasksByKey)
+	active, completed := deriveProgressSets(bundle, idToKey, tasksByKey)
 
 	nodes := make([]approval.FlowGraphNode, len(bundle.FlowNodes))
 	for i := range bundle.FlowNodes {
@@ -48,7 +49,7 @@ func buildInstanceFlowGraph(bundle *instanceDetailBundle) approval.InstanceFlowG
 
 		data := approval.FlowGraphNodeData{
 			Name:   fn.Name,
-			Status: nodeProgressStatus(fn.Key, active, passed),
+			Status: nodeProgressStatus(fn.Key, active, completed),
 		}
 
 		switch fn.Kind {
@@ -108,14 +109,26 @@ func graphLayout(def *approval.FlowDefinition) (map[string]approval.Position, []
 	return positions, edges
 }
 
-// deriveProgressSets computes the active (in-progress) and passed (completed or
-// active) node-key sets. active is empty for a finished instance. passed is the
-// reverse-reachability closure of the frontier — current node + pending-task
-// nodes + directly-evidenced nodes (any task or action log), the start node, and
-// the terminal node of a finished instance — over the graph edges, so structural
-// nodes the flow traversed are marked completed even though they leave no task
-// or log.
-func deriveProgressSets(bundle *instanceDetailBundle, idToKey map[string]string, tasksByKey map[string][]approval.Task) (active, passed map[string]struct{}) {
+// deriveProgressSets classifies every node key into the active (in-progress) and
+// completed sets that nodeProgressStatus reads; a key in neither is pending.
+// Progress comes from real runtime evidence, never from raw topology:
+//
+//   - active: a node with an unfinished task (someone is still acting on it), plus
+//     — only while the instance is actually running — the node its current pointer
+//     sits on. A paused or closed instance (withdrawn/returned/final) contributes
+//     no current pointer, so its last node never renders a stale "current".
+//   - completed, business node (approval/handle): only on its own advancing
+//     evidence — a task in a decision-final state (approved/rejected/handled/
+//     transferred/skipped). A node whose tasks were merely rolled back or canceled
+//     is not completed, so a rolled-back-from node ahead of the current pointer
+//     falls back to pending instead of showing as passed.
+//   - completed, structural node (start/condition/gateway/end): when it is a graph
+//     ancestor of the frontier (the start node, active nodes, advanced business
+//     nodes, and a finished instance's terminal node). Business nodes are excluded
+//     from this closure so an approval node on an untaken branch that reconverges
+//     into a reached node is never marked completed on topology alone.
+func deriveProgressSets(bundle *instanceDetailBundle, idToKey map[string]string, tasksByKey map[string][]approval.Task) (active, completed map[string]struct{}) {
+	running := bundle.Instance.Status == approval.InstanceRunning
 	final := bundle.Instance.Status.IsFinal()
 
 	currentKey := ""
@@ -123,38 +136,44 @@ func deriveProgressSets(bundle *instanceDetailBundle, idToKey map[string]string,
 		currentKey = idToKey[*bundle.Instance.CurrentNodeID]
 	}
 
+	// A node with an unfinished task is in progress regardless of instance status;
+	// the current pointer only counts while the instance runs, so a closed instance
+	// shows no current node.
 	active = make(map[string]struct{})
-	if !final {
-		if currentKey != "" {
-			active[currentKey] = struct{}{}
-		}
+	for key, tasks := range tasksByKey {
+		for _, t := range tasks {
+			if !t.Status.IsFinal() {
+				active[key] = struct{}{}
 
-		for key, tasks := range tasksByKey {
-			for _, t := range tasks {
-				if t.Status == approval.TaskPending {
-					active[key] = struct{}{}
-
-					break
-				}
+				break
 			}
 		}
 	}
 
-	seeds := make(map[string]struct{}, len(active)+len(tasksByKey))
+	if running && currentKey != "" {
+		active[currentKey] = struct{}{}
+	}
+
+	// A business node counts as passed only when it produced an advancing decision;
+	// this is also the frontier seed that drives structural completion.
+	progressedBusiness := make(map[string]struct{})
+	for key, tasks := range tasksByKey {
+		for _, t := range tasks {
+			if isAdvancingTaskStatus(t.Status) {
+				progressedBusiness[key] = struct{}{}
+
+				break
+			}
+		}
+	}
+
+	seeds := make(map[string]struct{}, len(active)+len(progressedBusiness)+1)
 	for k := range active {
 		seeds[k] = struct{}{}
 	}
 
-	for key := range tasksByKey {
-		seeds[key] = struct{}{}
-	}
-
-	for _, l := range bundle.ActionLogs {
-		if l.NodeID != nil {
-			if key := idToKey[*l.NodeID]; key != "" {
-				seeds[key] = struct{}{}
-			}
-		}
+	for k := range progressedBusiness {
+		seeds[k] = struct{}{}
 	}
 
 	for i := range bundle.FlowNodes {
@@ -167,7 +186,48 @@ func deriveProgressSets(bundle *instanceDetailBundle, idToKey map[string]string,
 		seeds[currentKey] = struct{}{}
 	}
 
-	return active, reverseReachable(seeds, bundle.FlowSchema)
+	ancestors := reverseReachable(seeds, bundle.FlowSchema)
+
+	// Business nodes earn completion from their own evidence; structural nodes from
+	// the ancestor closure. Splitting the two is what keeps an untaken branch's
+	// approval node out of the completed set.
+	completed = make(map[string]struct{}, len(ancestors))
+	for i := range bundle.FlowNodes {
+		fn := bundle.FlowNodes[i]
+
+		if isBusinessNode(fn.Kind) {
+			if _, ok := progressedBusiness[fn.Key]; ok {
+				completed[fn.Key] = struct{}{}
+			}
+
+			continue
+		}
+
+		if _, ok := ancestors[fn.Key]; ok {
+			completed[fn.Key] = struct{}{}
+		}
+	}
+
+	return active, completed
+}
+
+// isBusinessNode reports whether a node kind performs assignee work (approval or
+// handle). Only these carry participants and derive completion from their own task
+// evidence; every other kind is structural and completes via the ancestor closure.
+func isBusinessNode(kind approval.NodeKind) bool {
+	return kind == approval.NodeApproval || kind == approval.NodeHandle
+}
+
+// isAdvancingTaskStatus reports whether a task status represents a decision that
+// carried the flow past its node, as opposed to being rolled back, canceled, or
+// removed. It is the evidence that marks a business node completed.
+func isAdvancingTaskStatus(s approval.TaskStatus) bool {
+	switch s {
+	case approval.TaskApproved, approval.TaskRejected, approval.TaskHandled, approval.TaskTransferred, approval.TaskSkipped:
+		return true
+	default:
+		return false
+	}
 }
 
 // reverseReachable returns the seed set plus every node that can reach a seed by
@@ -208,13 +268,14 @@ func reverseReachable(seeds map[string]struct{}, def *approval.FlowDefinition) m
 	return result
 }
 
-// nodeProgressStatus classifies a node key against the active and passed sets.
-func nodeProgressStatus(key string, active, passed map[string]struct{}) approval.NodeProgressStatus {
+// nodeProgressStatus classifies a node key against the active and completed sets,
+// with active taking precedence so a node still being worked reads as current.
+func nodeProgressStatus(key string, active, completed map[string]struct{}) approval.NodeProgressStatus {
 	if _, ok := active[key]; ok {
 		return approval.NodeProgressCurrent
 	}
 
-	if _, ok := passed[key]; ok {
+	if _, ok := completed[key]; ok {
 		return approval.NodeProgressCompleted
 	}
 
