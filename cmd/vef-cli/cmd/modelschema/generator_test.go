@@ -104,7 +104,13 @@ func TestHasScanonlyTagFromTag(t *testing.T) {
 		{"NoTag", "", false},
 		{"ScanonlyOnly", `bun:",scanonly"`, true},
 		{"ScanonlyWithColumn", `bun:"col_name,scanonly"`, true},
-		{"ScanonlyWithSpaces", `bun:" , scanonly "`, true},
+		// bun's tag parser does NOT trim whitespace: a space makes " scanonly" an
+		// unrecognized option, not the scanonly flag — so these are NOT scanonly,
+		// matching how bun binds the field.
+		{"ScanonlyWithSurroundingSpaces", `bun:" , scanonly "`, false},
+		{"ScanonlyWithLeadingSpace", `bun:"col_name, scanonly"`, false},
+		// A bare bun:"scanonly" is a column literally named scanonly, not the flag.
+		{"BareScanonlyIsColumnName", `bun:"scanonly"`, false},
 		{"NoScanonly", `bun:"name,notnull"`, false},
 		{"ScanonlySubstringNotMatch", `bun:"scanonlyish"`, false},
 	}
@@ -118,20 +124,25 @@ func TestHasScanonlyTagFromTag(t *testing.T) {
 
 func TestExtractEmbedPrefixFromTag(t *testing.T) {
 	tests := []struct {
-		name string
-		tag  string
-		want string
+		name   string
+		tag    string
+		want   string
+		wantOK bool
 	}{
-		{"NoTag", "", ""},
-		{"NoEmbed", `bun:"name"`, ""},
-		{"EmbedAtStart", `bun:"embed:addr_"`, "addr_"},
-		{"EmbedAfterFlag", `bun:",embed:addr_"`, "addr_"},
-		{"EmbedAmongFlags", `bun:"name,notnull,embed:p_"`, "p_"},
-		{"EmptyEmbedPrefix", `bun:",embed:"`, ""},
+		{"NoTag", "", "", false},
+		{"NoEmbed", `bun:"name"`, "", false},
+		{"EmbedAtStart", `bun:"embed:addr_"`, "addr_", true},
+		{"EmbedAfterFlag", `bun:",embed:addr_"`, "addr_", true},
+		{"EmbedAmongFlags", `bun:"name,notnull,embed:p_"`, "p_", true},
+		// Empty-prefix embed is still an embed (flatten with no prefix); bun treats
+		// embed as an option, so it must be distinguished from "no embed" — hence
+		// the boolean rather than an "" sentinel.
+		{"EmptyEmbedPrefix", `bun:",embed:"`, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := extractEmbedPrefixFromTag(tt.tag)
+			got, ok := extractEmbedPrefixFromTag(tt.tag)
+			assert.Equal(t, tt.wantOK, ok, "Embed detection should match")
 			assert.Equal(t, tt.want, got, "Embed prefix should match")
 		})
 	}
@@ -161,6 +172,10 @@ func TestExtractColumnNameFromTag(t *testing.T) {
 		{"ColumnOptionOverridesFirstSegment", `bun:"first_seg,column:explicit_col"`, "Foo", "explicit_col"},
 		// Bun keeps a bare option-like first segment as the column name (it only warns).
 		{"BareOptionNameKept", `bun:"notnull"`, "Foo", "notnull"},
+		// A bare bun:"scanonly" is the column name in bun, not the scanonly flag.
+		{"BareScanonlyIsColumnName", `bun:"scanonly"`, "Foo", "scanonly"},
+		// bun's Option() returns the last value, so a duplicated column: wins last.
+		{"DuplicateColumnOptionLastWins", `bun:"column:a,column:b"`, "Foo", "b"},
 		// Digit handling must match bun: no underscore between a letter and a digit.
 		{"DigitSuffixField", "", "Name2", "name2"},
 		{"DigitInfixField", "", "Sha256Sum", "sha256_sum"},

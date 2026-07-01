@@ -277,7 +277,7 @@ func parseStructFields(structType *ast.StructType, pkg *packages.Package) []Mode
 				continue
 			}
 
-			if embedPrefix := extractEmbedPrefixFromTag(tag); embedPrefix != "" {
+			if embedPrefix, ok := extractEmbedPrefixFromTag(tag); ok {
 				fields = append(fields, parseInheritedFields(f.Type, embedPrefix, pkg)...)
 
 				continue
@@ -385,7 +385,7 @@ func parseInheritedFieldsFromType(typ types.Type, prefix string) []ModelField {
 			continue
 		}
 
-		if embedPrefix := extractEmbedPrefixFromTag(tag); embedPrefix != "" {
+		if embedPrefix, ok := extractEmbedPrefixFromTag(tag); ok {
 			nestedPrefix := prefix + embedPrefix
 			nestedFields := parseInheritedFieldsFromType(field.Type(), nestedPrefix)
 			fields = append(fields, nestedFields...)
@@ -412,53 +412,31 @@ func parseInheritedFieldsFromType(typ types.Type, prefix string) []ModelField {
 	return fields
 }
 
-// extractEmbedPrefixFromTag extracts the embed prefix from a bun struct tag.
-func extractEmbedPrefixFromTag(tag string) string {
-	bunTag := extractStructTag(tag, "bun")
-	if bunTag == "" {
-		return ""
-	}
-
-	parts := strings.SplitSeq(bunTag, ",")
-	for part := range parts {
-		part = strings.TrimSpace(part)
-		if prefix, ok := strings.CutPrefix(part, "embed:"); ok {
-			return prefix
-		}
-	}
-
-	return ""
+// extractEmbedPrefixFromTag returns the embed prefix and whether the field is an
+// embed at all. bun treats "embed" as an option, so an empty prefix (bun:"embed:")
+// is still an embed (flatten with no prefix) and must be distinguished from a
+// field with no embed option — hence the boolean rather than a "" sentinel.
+func extractEmbedPrefixFromTag(tag string) (string, bool) {
+	return parseBunStructTag(extractStructTag(tag, "bun")).option("embed")
 }
 
 func extractColumnNameFromTag(tag, fieldName string) string {
-	bunTag := extractStructTag(tag, "bun")
-	if bunTag == "" {
-		return underscore(fieldName)
+	parsed := parseBunStructTag(extractStructTag(tag, "bun"))
+
+	// Mirror bun's schema.(*Table).newField: the column defaults to the underscored
+	// field name, is overridden by the tag's bare name segment (a segment such as
+	// "type:jsonb" is an option, not a name), and an explicit "column:" option wins
+	// over both.
+	column := underscore(fieldName)
+	if parsed.Name != "" {
+		column = parsed.Name
 	}
 
-	if bunTag == "-" {
-		return "-"
+	if c, ok := parsed.option("column"); ok {
+		column = c
 	}
 
-	// The column name is the first comma-separated segment, but only when it is a
-	// bare name. A segment containing ':' is a key:value option (e.g. "type:jsonb"),
-	// which bun parses as an option rather than a name, so the column then derives
-	// from the field name. An explicit "column:" option always wins. This mirrors
-	// bun's schema.(*Table).newField.
-	name, _, _ := strings.Cut(bunTag, ",")
-	if strings.Contains(name, ":") {
-		name = ""
-	}
-
-	if column, ok := bunColumnOption(bunTag); ok {
-		name = column
-	}
-
-	if name != "" {
-		return name
-	}
-
-	return underscore(fieldName)
+	return column
 }
 
 // underscore converts a Go identifier to its bun snake_case form (used for both
@@ -490,58 +468,23 @@ func isASCIIUpper(c byte) bool { return c >= 'A' && c <= 'Z' }
 
 func isASCIILower(c byte) bool { return c >= 'a' && c <= 'z' }
 
-// bunColumnOption returns the value of an explicit "column:" option, which bun
-// treats as the authoritative column name overriding both the first tag segment
-// and the field-name default.
-func bunColumnOption(bunTag string) (string, bool) {
-	parts := strings.SplitSeq(bunTag, ",")
-	for part := range parts {
-		if value, ok := strings.CutPrefix(strings.TrimSpace(part), "column:"); ok {
-			return value, true
-		}
-	}
-
-	return "", false
-}
-
 // isRelationFieldFromTag reports whether a bun tag declares a model relationship.
-// bun's schema.(*Table).addField treats both "rel:" (has-one/has-many/belongs-to/
-// many-to-many) and "m2m:" (many-to-many join table) fields as relations with no
+// bun's schema.(*Table).addField treats both "rel" (has-one/has-many/belongs-to/
+// many-to-many) and "m2m" (many-to-many join table) options as relations with no
 // data column, so both must be skipped when generating column accessors.
 func isRelationFieldFromTag(tag string) bool {
-	bunTag := extractStructTag(tag, "bun")
-	if bunTag == "" {
-		return false
-	}
+	parsed := parseBunStructTag(extractStructTag(tag, "bun"))
 
-	parts := strings.SplitSeq(bunTag, ",")
-	for part := range parts {
-		part = strings.TrimSpace(part)
-		if strings.HasPrefix(part, "rel:") || strings.HasPrefix(part, "m2m:") {
-			return true
-		}
-	}
-
-	return false
+	return parsed.hasOption("rel") || parsed.hasOption("m2m")
 }
 
-// hasScanonlyTagFromTag reports whether a bun tag contains the scanonly flag.
+// hasScanonlyTagFromTag reports whether a bun tag carries the scanonly option.
 // Scanonly fields are scan-only result aliases and have no real database column,
 // so they must be excluded from Columns() but still expose a per-field accessor.
+// It must be the scanonly *option* (bun:",scanonly"); a bare bun:"scanonly" is a
+// column literally named scanonly, exactly as bun parses it.
 func hasScanonlyTagFromTag(tag string) bool {
-	bunTag := extractStructTag(tag, "bun")
-	if bunTag == "" {
-		return false
-	}
-
-	parts := strings.SplitSeq(bunTag, ",")
-	for part := range parts {
-		if strings.TrimSpace(part) == "scanonly" {
-			return true
-		}
-	}
-
-	return false
+	return parseBunStructTag(extractStructTag(tag, "bun")).hasOption("scanonly")
 }
 
 func extractLabelFromTag(tag string) string {
@@ -557,26 +500,18 @@ func extractStructTag(tag, key string) string {
 }
 
 func parseBunTag(tagValue string) (table, alias string) {
-	bunTag := extractStructTag(tagValue, "bun")
-	if bunTag == "" {
-		return table, alias
+	parsed := parseBunStructTag(extractStructTag(tagValue, "bun"))
+
+	// Mirror bun's schema.(*Table).processBaseModelField: the bare name segment is
+	// the table name (bun:"users" == bun:"table:users"), a "table:" option overrides
+	// it, and "alias:" sets the alias.
+	table = parsed.Name
+	if t, ok := parsed.option("table"); ok {
+		table = t
 	}
 
-	// bun's tag.Name — the first bare segment, when it is not a key:value option —
-	// sets the table name (bun:"users" == bun:"table:users"). A "table:" option
-	// overrides it. Mirrors bun's schema.(*Table).processBaseModelField.
-	if name, _, _ := strings.Cut(bunTag, ","); !strings.Contains(name, ":") {
-		table = name
-	}
-
-	parts := strings.SplitSeq(bunTag, ",")
-	for part := range parts {
-		part = strings.TrimSpace(part)
-		if after, ok := strings.CutPrefix(part, "table:"); ok {
-			table = after
-		} else if after, ok := strings.CutPrefix(part, "alias:"); ok {
-			alias = after
-		}
+	if a, ok := parsed.option("alias"); ok {
+		alias = a
 	}
 
 	return table, alias
