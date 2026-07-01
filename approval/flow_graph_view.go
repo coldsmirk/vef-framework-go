@@ -30,10 +30,14 @@ type InstanceFlowGraph struct {
 	Edges []FlowGraphEdge `json:"edges"`
 }
 
-// FlowGraphNode is one React Flow node: its identity, kind, canvas position, and
-// a data payload carrying display config plus this instance's progress.
+// FlowGraphNode is one React Flow node. ID is the React Flow identity — the
+// design-time node key that Position and Edges reference. NodeID is the node's
+// persistent flow-node id: the value action-log nodeId / rollbackToNodeId carry
+// and the process_task rollback API expects as targetNodeId, so a client can map
+// those references onto this graph and drive a rollback without a second lookup.
 type FlowGraphNode struct {
 	ID       string            `json:"id"`
+	NodeID   string            `json:"nodeId"`
 	Kind     string            `json:"kind"`
 	Position Position          `json:"position"`
 	Data     FlowGraphNodeData `json:"data"`

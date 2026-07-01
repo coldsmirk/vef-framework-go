@@ -82,6 +82,7 @@ func TestBuildInstanceFlowGraph(t *testing.T) {
 		assert.Equal(t, "u1", byKey["kappr"].Data.Participants[0].UserID, "Participant should be the assignee")
 		assert.Equal(t, string(approval.TaskPending), byKey["kappr"].Data.Participants[0].Status, "Pending participant status")
 		assert.InDelta(t, 100.0, byKey["kappr"].Position.Y, 0, "Node position should come from the schema")
+		assert.Equal(t, "na", byKey["kappr"].NodeID, "Node must expose its persistent DB id for rollback targeting and action-log correlation")
 	})
 
 	t.Run("FinalMarksAllCompletedIncludingEnd", func(t *testing.T) {
