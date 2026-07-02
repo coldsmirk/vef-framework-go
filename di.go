@@ -89,6 +89,38 @@ func ProvideMiddleware(constructor any, paramTags ...string) fx.Option {
 	)
 }
 
+// ProvideAuthStrategy provides a custom API authentication strategy to the
+// dependency injection container. The strategy will be registered in the
+// "vef:api:auth_strategies" group and is selected per resource through
+// api.AuthConfig.Strategy by the name it reports from Name().
+// The constructor must return api.AuthStrategy (not a concrete type).
+//
+// Example:
+//
+//	type apiKeyStrategy struct{ /* ... */ }
+//
+//	func (*apiKeyStrategy) Name() string { return "api-key" }
+//
+//	func (s *apiKeyStrategy) Authenticate(ctx fiber.Ctx, options map[string]any) (*security.Principal, error) {
+//	    /* validate the credential and return the principal */
+//	}
+//
+//	func newAPIKeyStrategy(db orm.DB) api.AuthStrategy { return &apiKeyStrategy{ /* ... */ } }
+//
+//	fx.New(
+//	    vef.Module,
+//	    vef.ProvideAuthStrategy(newAPIKeyStrategy),
+//	)
+func ProvideAuthStrategy(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:api:auth_strategies"`),
+		),
+	)
+}
+
 // ProvideSPAConfig provides a Single Page Application configuration to the dependency injection container.
 // The config will be registered in the "vef:spa" group.
 func ProvideSPAConfig(constructor any, paramTags ...string) fx.Option {
