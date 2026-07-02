@@ -60,7 +60,7 @@ func buildInstanceFlowGraph(bundle *instanceDetailBundle) approval.InstanceFlowG
 		nodes[i] = approval.FlowGraphNode{
 			ID:       fn.Key,
 			NodeID:   fn.ID,
-			Kind:     string(fn.Kind),
+			Kind:     fn.Kind,
 			Position: positions[fn.Key],
 			Data:     data,
 		}

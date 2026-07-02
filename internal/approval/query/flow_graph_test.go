@@ -93,6 +93,7 @@ func TestBuildInstanceFlowGraph(t *testing.T) {
 		assert.Equal(t, string(approval.TaskPending), byKey["kappr"].Data.Participants[0].Status, "Pending participant status")
 		assert.InDelta(t, 100.0, byKey["kappr"].Position.Y, 0, "Node position should come from the schema")
 		assert.Equal(t, "na", byKey["kappr"].NodeID, "Node must expose its persistent DB id for rollback targeting and action-log correlation")
+		assert.Equal(t, approval.NodeApproval, byKey["kappr"].Kind, "Node must carry its NodeKind, serialized as React Flow's type discriminator")
 	})
 
 	t.Run("FinalMarksTrailPassedIncludingEnd", func(t *testing.T) {

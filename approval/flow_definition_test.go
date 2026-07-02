@@ -10,6 +10,27 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
+// TestNodeDefinitionWireFormat pins the JSON contract: the node kind travels
+// in `kind`, never React Flow's `type` — `type` is the client-owned rendering
+// discriminator, so the persisted contract stays decoupled from it.
+func TestNodeDefinitionWireFormat(t *testing.T) {
+	t.Run("UnmarshalReadsKindField", func(t *testing.T) {
+		var def approval.FlowDefinition
+
+		payload := `{"nodes":[{"id":"n1","kind":"approval","position":{"x":1,"y":2}}],"edges":[]}`
+		require.NoError(t, json.Unmarshal([]byte(payload), &def), "Editor-serialized definitions should unmarshal directly")
+		require.Len(t, def.Nodes, 1, "Payload contains one node")
+		assert.Equal(t, approval.NodeApproval, def.Nodes[0].Kind, "The wire `kind` field should populate Kind")
+	})
+
+	t.Run("MarshalWritesKindField", func(t *testing.T) {
+		raw, err := json.Marshal(approval.NodeDefinition{ID: "n1", Kind: approval.NodeStart})
+		require.NoError(t, err, "NodeDefinition should marshal")
+		assert.Contains(t, string(raw), `"kind":"start"`, "The kind must serialize into the `kind` field")
+		assert.NotContains(t, string(raw), `"type"`, "React Flow's `type` key must not appear on the wire")
+	})
+}
+
 // TestNodeDefinitionParseData_HappyPath verifies that ParseData dispatches
 // correctly to the right NodeData type for every supported NodeKind.
 func TestNodeDefinitionParseDataHappyPath(t *testing.T) {

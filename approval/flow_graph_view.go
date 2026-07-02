@@ -31,10 +31,12 @@ const (
 // InstanceFlowGraph is a React Flow–ready, read-only projection of an instance's
 // flow definition annotated with runtime progress. Its Nodes and Edges map
 // directly onto React Flow's node/edge shape so a client can render it without
-// reshaping — a node's Kind is what the client converts into React Flow's own
-// `type` field. It is distinct from the editor-facing shared.FlowGraph (raw
-// definition rows without progress): this one is pinned to the instance's
-// version and carries per-node progress.
+// reshaping — except the node kind, which stays in `kind` (mirroring
+// NodeDefinition's wire format): React Flow's `type` selects the rendering
+// component and belongs to the client, so the graph carries the business
+// discriminator instead. It is distinct from the editor-facing
+// shared.FlowGraph (raw definition rows without progress): this one is pinned
+// to the instance's version and carries per-node progress.
 type InstanceFlowGraph struct {
 	Nodes []FlowGraphNode `json:"nodes"`
 	Edges []FlowGraphEdge `json:"edges"`
@@ -48,7 +50,7 @@ type InstanceFlowGraph struct {
 type FlowGraphNode struct {
 	ID       string            `json:"id"`
 	NodeID   string            `json:"nodeId"`
-	Kind     string            `json:"kind"`
+	Kind     NodeKind          `json:"kind"`
 	Position Position          `json:"position"`
 	Data     FlowGraphNodeData `json:"data"`
 }

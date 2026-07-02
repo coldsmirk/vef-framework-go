@@ -24,7 +24,11 @@ type Position struct {
 	Y float64 `json:"y"`
 }
 
-// NodeDefinition represents a node in the flow definition.
+// NodeDefinition represents a node in the flow definition. The node kind
+// travels in `kind`, deliberately not React Flow's `type`: in React Flow,
+// `type` selects the rendering component and belongs to whichever client
+// renders the graph, so the persisted contract carries the business
+// discriminator and stays decoupled from rendering concerns.
 type NodeDefinition struct {
 	ID       string          `json:"id"`
 	Kind     NodeKind        `json:"kind"`
