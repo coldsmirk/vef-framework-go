@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"maps"
 
 	"github.com/gofiber/fiber/v3"
@@ -31,12 +32,22 @@ const (
 	AuthStrategyNone      = "none"
 	AuthStrategyBearer    = "bearer"
 	AuthStrategySignature = "signature"
+	AuthStrategyIP        = "ip"
 )
+
+// AuthOptionWhitelist is the AuthConfig.Options key holding the name of the
+// IP whitelist the "ip" strategy authenticates against.
+const AuthOptionWhitelist = "whitelist"
+
+// DefaultIPWhitelist is the whitelist name IPAuth falls back to when called
+// without an explicit name; configure it as the "default" key under
+// vef.security.ip_whitelists (or serve it from a custom loader).
+const DefaultIPWhitelist = "default"
 
 // AuthConfig defines authentication configuration for an operation.
 type AuthConfig struct {
 	// Strategy specifies the auth strategy name. default is "bearer".
-	// Built-in: "none", "bearer", "signature"
+	// Built-in: "none", "bearer", "signature", "ip"
 	// Custom strategies can be registered via AuthStrategyRegistry.
 	Strategy string
 	// Options holds strategy-specific configuration.
@@ -78,5 +89,29 @@ func BearerAuth() *AuthConfig {
 func SignatureAuth() *AuthConfig {
 	return &AuthConfig{
 		Strategy: AuthStrategySignature,
+	}
+}
+
+// IPAuth creates an AuthConfig for source-IP whitelist authentication. The
+// request is authenticated when the client IP matches the named whitelist,
+// resolved through the registered security.IPWhitelistLoader (by default the
+// vef.security.ip_whitelists configuration). Call it with no argument to
+// target the DefaultIPWhitelist name, or with exactly one name to target a
+// specific whitelist; passing more than one name panics. The client IP is the
+// one resolved by Fiber, so behind a reverse proxy vef.app.trusted_proxies
+// must be configured for the whitelist to see the real client address.
+func IPAuth(whitelistName ...string) *AuthConfig {
+	if len(whitelistName) > 1 {
+		panic(fmt.Sprintf("api.IPAuth accepts at most one whitelist name, got %d", len(whitelistName)))
+	}
+
+	name := DefaultIPWhitelist
+	if len(whitelistName) == 1 {
+		name = whitelistName[0]
+	}
+
+	return &AuthConfig{
+		Strategy: AuthStrategyIP,
+		Options:  map[string]any{AuthOptionWhitelist: name},
 	}
 }

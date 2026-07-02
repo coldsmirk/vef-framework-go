@@ -12,4 +12,11 @@ type SecurityConfig struct {
 	RefreshNotBefore time.Duration `config:"refresh_not_before"`
 	LoginRateLimit   int           `config:"login_rate_limit"`
 	RefreshRateLimit int           `config:"refresh_rate_limit"`
+	// IPWhitelists names the source-IP whitelists served by the framework's
+	// default security.IPWhitelistLoader; the built-in "ip" auth strategy
+	// resolves api.IPAuth(name) against them, and the no-arg api.IPAuth()
+	// targets the "default" key. Each entry is a single IP address or CIDR
+	// range. Note: the config layer lowercases TOML keys, so whitelist names
+	// are effectively lowercase.
+	IPWhitelists map[string][]string `config:"ip_whitelists"`
 }

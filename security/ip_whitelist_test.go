@@ -38,6 +38,67 @@ func TestNewIPWhitelistValidator(t *testing.T) {
 	})
 }
 
+// TestNewIPWhitelistValidatorFromEntries tests the slice-based constructor.
+func TestNewIPWhitelistValidatorFromEntries(t *testing.T) {
+	t.Run("NilEntries", func(t *testing.T) {
+		validator := NewIPWhitelistValidatorFromEntries(nil)
+
+		assert.True(t, validator.IsEmpty(), "Nil entries should be empty")
+		assert.True(t, validator.IsAllowed("192.168.1.1"), "Nil entries should allow any IP")
+	})
+
+	t.Run("EmptySlice", func(t *testing.T) {
+		validator := NewIPWhitelistValidatorFromEntries([]string{})
+
+		assert.True(t, validator.IsEmpty(), "Empty slice should be empty")
+		assert.True(t, validator.IsAllowed("10.0.0.1"), "Empty slice should allow any IP")
+	})
+
+	t.Run("BlankEntriesOnly", func(t *testing.T) {
+		validator := NewIPWhitelistValidatorFromEntries([]string{"", "   ", "\t"})
+
+		assert.True(t, validator.IsEmpty(), "Blank-only entries should be empty")
+		assert.True(t, validator.IsAllowed("192.168.1.1"), "Blank-only entries should allow any IP")
+	})
+
+	t.Run("MixedIPAndCIDR", func(t *testing.T) {
+		validator := NewIPWhitelistValidatorFromEntries([]string{"192.168.1.100", "10.0.0.0/8"})
+
+		assert.False(t, validator.IsEmpty(), "Populated entries should not be empty")
+		assert.True(t, validator.IsAllowed("192.168.1.100"), "Exact IP entry should be allowed")
+		assert.True(t, validator.IsAllowed("10.1.2.3"), "IP inside CIDR entry should be allowed")
+		assert.False(t, validator.IsAllowed("192.168.1.101"), "Unlisted IP should not be allowed")
+	})
+
+	t.Run("EntriesWithSurroundingWhitespace", func(t *testing.T) {
+		validator := NewIPWhitelistValidatorFromEntries([]string{"  192.168.1.100  ", "\n10.0.0.1"})
+
+		assert.True(t, validator.IsAllowed("192.168.1.100"), "Whitespace around an entry should be trimmed")
+		assert.True(t, validator.IsAllowed("10.0.0.1"), "Leading newline should be trimmed")
+	})
+
+	t.Run("InvalidEntryDeniesAll", func(t *testing.T) {
+		validator := NewIPWhitelistValidatorFromEntries([]string{"192.168.1.100", "not-an-ip"})
+
+		assert.False(t, validator.IsEmpty(), "Invalid entries should not be treated as empty")
+		assert.False(t, validator.IsAllowed("192.168.1.100"), "Any parse error should deny all IPs")
+	})
+
+	t.Run("EquivalentToCommaSeparatedForm", func(t *testing.T) {
+		const whitelist = " 192.168.1.0/24 ,10.0.0.100,, invalid-later "
+
+		fromString := NewIPWhitelistValidator(whitelist)
+		fromEntries := NewIPWhitelistValidatorFromEntries([]string{" 192.168.1.0/24 ", "10.0.0.100", "", " invalid-later "})
+
+		for _, ip := range []string{"192.168.1.50", "10.0.0.100", "8.8.8.8"} {
+			assert.Equal(t, fromString.IsAllowed(ip), fromEntries.IsAllowed(ip),
+				"String and entries constructors must agree for IP %s", ip)
+		}
+
+		assert.Equal(t, fromString.IsEmpty(), fromEntries.IsEmpty(), "String and entries constructors must agree on emptiness")
+	})
+}
+
 // TestIPWhitelistValidatorIsEmpty tests IPWhitelistValidator IsEmpty scenarios.
 func TestIPWhitelistValidatorIsEmpty(t *testing.T) {
 	tests := []struct {

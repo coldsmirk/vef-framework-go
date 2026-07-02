@@ -41,7 +41,7 @@ go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest
 - **Structure**: public packages at root (`api`, `crud`, `orm`, `datasource`, `security`, `result`, etc.), internal implementations under `internal/`.
 - **Boot sequence** (`vef.Run()` in `bootstrap.go`): `config → datasource → middleware → api → security → event → cqrs → cron → redis → mold → storage → sequence → event outbox → event redis stream → event inbox → schema → monitor → mcp → app`. The `datasource` step is a single FX module — `datasource.Module` builds the registry, seeds static/provider sources, exposes the primary `*sql.DB`, and derives the primary `orm.DB` from the Registry. **Layering is `datasource → orm → database`, with `orm` and `database` mutually unaware**: `internal/database` connects a `config.DataSourceConfig` into a `*sql.DB` (no bun ORM imports beyond the SQL drivers, no FX module); `internal/orm` takes an already-connected `*sql.DB` and wraps it into `orm.DB` via `orm.Open(sqlDB, kind, opts...)` (it owns all bun assembly — dialect via `orm.DialectFor`, query hook, `internal/orm/sqlguard` — and never imports `database`); `internal/datasource` is the only composition root that knows both, calling `database.Open` then `orm.Open`. The registry stores `orm.DB` + the `*sql.DB` lifecycle handle; the `*bun.DB` lives only inside the `orm.DB` wrapper. The public **`datasource`** package defines the contract (`Registry`, `Provider`, `Spec`, options, errors); `internal/datasource` implements it (internal → public, like `storage`). The `*bun.DB` wrapper and connection internals are never re-exported through the public `orm` package; `orm/bun.go` does deliberately re-export a curated set of bun model/query types and hook interfaces for model authoring.
 - **Modules**: each exposes `fx.Module` in `internal/<module>/module.go`, constructors annotated into FX groups.
-- **DI helpers** (`di.go`): `vef.ProvideAPIResource(...)`, `vef.ProvideMiddleware(...)`, `vef.ProvideSPAConfig(...)`, `vef.SupplySPAConfigs(...)`, `vef.ProvideCQRSBehavior(...)`, `vef.ProvideMCPTools(...)`, etc. The shared, ordered business-module list lives in `internal/bootmodules.Core()` — both `vef.Run` and the `internal/apptest` harness consume it so the production and test graphs cannot drift.
+- **DI helpers** (`di.go`): `vef.ProvideAPIResource(...)`, `vef.ProvideMiddleware(...)`, `vef.ProvideAuthStrategy(...)`, `vef.ProvideSPAConfig(...)`, `vef.SupplySPAConfigs(...)`, `vef.ProvideCQRSBehavior(...)`, `vef.ProvideMCPTools(...)`, etc. The shared, ordered business-module list lives in `internal/bootmodules.Core()` — both `vef.Run` and the `internal/apptest` harness consume it so the production and test graphs cannot drift.
 - **Optional feature modules**: not in the default boot; enable by passing to `vef.Run(...)`. `vef.ApprovalModule` turns on the approval/workflow feature (its `approval.*` events need a transactional route with a subscribable sink — see the approval gotcha).
 
 ## API Patterns
@@ -54,7 +54,7 @@ go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest
 
 ## Request Lifecycle (`/api`)
 
-Request parsing → Authentication (JWT/signature/password) → Context enrichment (DB, logger, principal) → Authorization (`RequiredPermission`) → Rate limiting (100 req/5min default) → Handler dispatch (30s timeout).
+Request parsing → Authentication (JWT/signature/IP/password) → Context enrichment (DB, logger, principal) → Authorization (`RequiredPermission`) → Rate limiting (100 req/5min default) → Handler dispatch (30s timeout).
 RPC uses `POST /api`; REST routes are mounted under `/api/<resource>`.
 
 ## Data Access
@@ -69,6 +69,7 @@ RPC uses `POST /api`; REST routes are mounted under `/api/<resource>`.
 - `security.Module`: JWT, password, OpenAPI authenticators + `AuthManager` aggregator.
 - `security.Principal`: `Type`, `Id`, `Name`, `Roles`, `Details`. Config in `vef.security`.
 - RBAC via `NewRBACPermissionChecker` + user-provided `RolePermissionsLoader`.
+- **API auth strategies** (`internal/api/auth`): built-in `none` / `bearer` / `signature` / `ip`, selected per resource via `api.WithAuth` (`api.Public()`, `api.BearerAuth()`, `api.SignatureAuth()`, `api.IPAuth(name)` — the no-arg `api.IPAuth()` targets the `default` whitelist); custom strategies register with `vef.ProvideAuthStrategy(...)`. The `ip` strategy treats the client IP as the credential: it resolves the named whitelist through `security.IPWhitelistLoader` — default is the config-backed loader over `vef.security.ip_whitelists` (map of name → IP/CIDR entries, validated fail-fast at boot; TOML keys are lowercased); registering a custom loader (DB / config center) replaces it entirely. All failures deny with `security.ErrIPNotAllowed` (fail closed; an empty whitelist denies, never allows). Behind a reverse proxy `vef.app.trusted_proxies` must be configured or the whitelist sees the proxy address.
 
 ## Infrastructure Modules
 

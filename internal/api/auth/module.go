@@ -24,6 +24,11 @@ var Module = fx.Module(
 			fx.ParamTags(`optional:"true"`),
 			fx.ResultTags(`group:"vef:api:auth_strategies"`),
 		),
+		fx.Annotate(
+			NewIP,
+			fx.ParamTags(`optional:"true"`),
+			fx.ResultTags(`group:"vef:api:auth_strategies"`),
+		),
 	),
 	fx.Provide(
 		fx.Annotate(

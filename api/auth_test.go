@@ -68,6 +68,8 @@ func TestAuthConfigConstructors(t *testing.T) {
 		{"Public", api.Public(), api.AuthStrategyNone},
 		{"BearerAuth", api.BearerAuth(), api.AuthStrategyBearer},
 		{"SignatureAuth", api.SignatureAuth(), api.AuthStrategySignature},
+		{"IPAuth", api.IPAuth("internal"), api.AuthStrategyIP},
+		{"IPAuthDefault", api.IPAuth(), api.AuthStrategyIP},
 	}
 
 	for _, tc := range tests {
@@ -76,4 +78,27 @@ func TestAuthConfigConstructors(t *testing.T) {
 			assert.Equal(t, tc.want, tc.cfg.Strategy, "constructor should set the expected strategy")
 		})
 	}
+}
+
+// TestIPAuthOptions verifies IPAuth records the whitelist name where the ip
+// strategy reads it.
+func TestIPAuthOptions(t *testing.T) {
+	t.Run("ExplicitName", func(t *testing.T) {
+		cfg := api.IPAuth("internal")
+
+		assert.Equal(t, map[string]any{api.AuthOptionWhitelist: "internal"}, cfg.Options,
+			"IPAuth should store the whitelist name under AuthOptionWhitelist")
+	})
+
+	t.Run("NoArgumentTargetsDefault", func(t *testing.T) {
+		cfg := api.IPAuth()
+
+		assert.Equal(t, map[string]any{api.AuthOptionWhitelist: api.DefaultIPWhitelist}, cfg.Options,
+			"IPAuth without a name should target the default whitelist")
+	})
+
+	t.Run("MultipleNamesPanic", func(t *testing.T) {
+		assert.Panics(t, func() { api.IPAuth("a", "b") },
+			"IPAuth must reject more than one whitelist name at construction time")
+	})
 }

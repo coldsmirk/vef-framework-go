@@ -1,11 +1,30 @@
 package security
 
 import (
+	"context"
 	"net"
 	"strings"
 
 	"github.com/coldsmirk/go-collections"
 )
+
+// IPWhitelist describes a named source-IP whitelist resolved by an IPWhitelistLoader.
+type IPWhitelist struct {
+	// Entries lists the allowed IP addresses and CIDR ranges,
+	// e.g. "10.0.0.1", "192.168.0.0/16".
+	Entries []string
+}
+
+// IPWhitelistLoader resolves named IP whitelists for the "ip" auth strategy.
+// The framework ships a configuration-backed implementation
+// (vef.security.ip_whitelists); applications may register their own to load
+// whitelists from a database, a config center, or any other source. Matching
+// against the resolved entries always stays in the framework (IPWhitelistValidator),
+// so every implementation shares the same fail-closed semantics.
+type IPWhitelistLoader interface {
+	// LoadByName returns the named whitelist, or nil when the name is unknown.
+	LoadByName(ctx context.Context, name string) (*IPWhitelist, error)
+}
 
 // IPWhitelistValidator validates IP addresses against a whitelist.
 // It supports both individual IP addresses and CIDR notation.
@@ -24,20 +43,21 @@ type IPWhitelistValidator struct {
 // Supports individual IP addresses (e.g., "192.168.1.1") and CIDR notation (e.g., "192.168.1.0/24").
 // An empty whitelist means all IPs are allowed.
 func NewIPWhitelistValidator(whitelist string) *IPWhitelistValidator {
+	return NewIPWhitelistValidatorFromEntries(strings.Split(whitelist, ","))
+}
+
+// NewIPWhitelistValidatorFromEntries creates a new IP whitelist validator from
+// individual entries, each a single IP address (e.g., "192.168.1.1") or CIDR
+// range (e.g., "192.168.1.0/24"). Blank entries are skipped; an empty entry
+// list means all IPs are allowed.
+func NewIPWhitelistValidatorFromEntries(entries []string) *IPWhitelistValidator {
 	validator := &IPWhitelistValidator{
 		ips: collections.NewHashSet[string](),
 	}
 
-	whitelist = strings.TrimSpace(whitelist)
-	if whitelist == "" {
-		validator.isEmpty = true
-
-		return validator
-	}
-
 	hasValidEntry := false
 
-	for entry := range strings.SplitSeq(whitelist, ",") {
+	for _, entry := range entries {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
 			continue
