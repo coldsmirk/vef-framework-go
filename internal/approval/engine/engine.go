@@ -121,10 +121,19 @@ func (e *FlowEngine) ProcessNode(ctx context.Context, db orm.DB, instance *appro
 		return fmt.Errorf("%w: %s", ErrProcessorNotFound, node.Kind)
 	}
 
+	// Begin the visit before the processor runs so tasks created during
+	// processing can reference it; the visit is concluded by whichever path
+	// decides the node's outcome.
+	visit, err := beginNodeVisit(ctx, db, instance, node)
+	if err != nil {
+		return err
+	}
+
 	pc := &ProcessContext{
 		DB:            db,
 		Instance:      instance,
 		Node:          node,
+		Visit:         visit,
 		FormData:      approval.NewFormData(instance.FormData),
 		ApplicantID:   instance.ApplicantID,
 		ApplicantName: instance.ApplicantName,
@@ -137,10 +146,10 @@ func (e *FlowEngine) ProcessNode(ctx context.Context, db orm.DB, instance *appro
 		return err
 	}
 
-	return e.handleProcessResult(ctx, db, instance, node, result)
+	return e.handleProcessResult(ctx, db, instance, node, visit, result)
 }
 
-func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, result *ProcessResult) error {
+func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, visit *approval.NodeVisit, result *ProcessResult) error {
 	// Publish any events collected during processing
 	if err := e.publishEvents(ctx, db, result.Events...); err != nil {
 		return fmt.Errorf("publish processor events: %w", err)
@@ -159,9 +168,24 @@ func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instanc
 		return err
 
 	case NodeActionContinue:
+		if err := concludeNodeVisit(ctx, db, visit, approval.NodeVisitPassed); err != nil {
+			return err
+		}
+
 		return e.AdvanceToNextNode(ctx, db, instance, node, result.BranchID)
 
 	case NodeActionComplete:
+		// An end node completes the instance as approved (visit passed); an
+		// auto-reject execution completes it as rejected (visit rejected).
+		visitStatus := approval.NodeVisitPassed
+		if *result.FinalStatus == approval.InstanceRejected {
+			visitStatus = approval.NodeVisitRejected
+		}
+
+		if err := concludeNodeVisit(ctx, db, visit, visitStatus); err != nil {
+			return err
+		}
+
 		instance.CurrentNodeID = new(node.ID)
 		instance.FinishedAt = new(timex.Now())
 
@@ -212,16 +236,23 @@ func (e *FlowEngine) AdvanceToNextNode(ctx context.Context, db orm.DB, instance 
 	return e.ProcessNode(ctx, db, instance, nextNode)
 }
 
-// EvaluateNodeCompletion evaluates whether a node is complete based on its tasks and pass rule.
+// EvaluateNodeCompletion evaluates whether a node is complete based on its
+// tasks and pass rule. Counting is scoped to the node's open visit, so tasks
+// left behind by an earlier traversal — e.g. an approval that survived a
+// peer-initiated rollback — cannot contaminate the redo round's decision.
 func (e *FlowEngine) EvaluateNodeCompletion(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode) (approval.PassRuleResult, error) {
+	visit, err := findActiveNodeVisit(ctx, db, instance.ID, node.ID)
+	if err != nil {
+		return approval.PassRulePending, err
+	}
+
 	var tasks []approval.Task
 
-	err := db.NewSelect().
+	err = db.NewSelect().
 		Model(&tasks).
 		Select("status").
 		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", instance.ID).
-				Equals("node_id", node.ID)
+			cb.Equals("visit_id", visit.ID)
 		}).
 		Scan(ctx)
 	if err != nil {

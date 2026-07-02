@@ -53,76 +53,31 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 	// Build DTO.
 	instance := bundle.Instance
 	flow := bundle.Flow
-	tasks := bundle.Tasks
-	actionLogs := bundle.ActionLogs
-	flowNodes := bundle.FlowNodes
-	nodeNameMap := bundle.NodeNameMap
 
 	detail := &my.InstanceDetail{
 		Instance: my.InstanceInfo{
-			InstanceID:              instance.ID,
-			InstanceNo:              instance.InstanceNo,
-			Title:                   instance.Title,
-			FlowName:                flow.Name,
-			FlowIcon:                flow.Icon,
-			ApplicantID:             instance.ApplicantID,
-			ApplicantName:           instance.ApplicantName,
-			ApplicantDepartmentName: instance.ApplicantDepartmentName,
-			Status:                  string(instance.Status),
-			CurrentNodeID:           instance.CurrentNodeID,
-			BusinessRecordID:        instance.BusinessRecordID,
-			FormData:                instance.FormData,
-			FormSchema:              bundle.FormSchema,
-			CreatedAt:               instance.CreatedAt,
-			FinishedAt:              instance.FinishedAt,
+			InstanceID:       instance.ID,
+			InstanceNo:       instance.InstanceNo,
+			Title:            instance.Title,
+			FlowName:         flow.Name,
+			FlowIcon:         flow.Icon,
+			Applicant:        instance.Applicant(),
+			Status:           string(instance.Status),
+			CurrentNodeID:    instance.CurrentNodeID,
+			BusinessRecordID: instance.BusinessRecordID,
+			FormData:         instance.FormData,
+			CreatedAt:        instance.CreatedAt,
+			FinishedAt:       instance.FinishedAt,
 		},
-		Tasks:            make([]my.TaskInfo, len(tasks)),
-		ActionLogs:       make([]my.ActionLogInfo, len(actionLogs)),
+		FormSchema:       bundle.FormSchema,
+		Timeline:         buildInstanceTimeline(bundle),
 		FlowGraph:        buildInstanceFlowGraph(bundle),
-		AvailableActions: h.computeActions(instance, tasks, flowNodes, query.UserID),
+		AvailableActions: h.computeActions(instance, bundle.Tasks, bundle.FlowNodes, query.UserID),
 	}
 
 	if instance.CurrentNodeID != nil {
-		if name, ok := nodeNameMap[*instance.CurrentNodeID]; ok {
+		if name, ok := bundle.NodeNameMap[*instance.CurrentNodeID]; ok {
 			detail.Instance.CurrentNodeName = &name
-		}
-	}
-
-	for i, t := range tasks {
-		detail.Tasks[i] = my.TaskInfo{
-			TaskID:        t.ID,
-			NodeID:        t.NodeID,
-			NodeName:      nodeNameMap[t.NodeID],
-			AssigneeID:    t.AssigneeID,
-			AssigneeName:  t.AssigneeName,
-			DelegatorID:   t.DelegatorID,
-			DelegatorName: t.DelegatorName,
-			Status:        string(t.Status),
-			SortOrder:     t.SortOrder,
-			Deadline:      t.Deadline,
-			IsTimeout:     t.IsTimeout,
-			CreatedAt:     t.CreatedAt,
-			FinishedAt:    t.FinishedAt,
-		}
-	}
-
-	for i, log := range actionLogs {
-		detail.ActionLogs[i] = my.ActionLogInfo{
-			LogID:                  log.ID,
-			Action:                 string(log.Action),
-			NodeID:                 log.NodeID,
-			OperatorID:             log.OperatorID,
-			OperatorName:           log.OperatorName,
-			OperatorDepartmentName: log.OperatorDepartmentName,
-			TransferToID:           log.TransferToID,
-			TransferToName:         log.TransferToName,
-			RollbackToNodeID:       log.RollbackToNodeID,
-			AddedAssignees:         zipUserBriefs(log.AddedAssigneeIDs, log.AddedAssigneeNames),
-			RemovedAssignees:       zipUserBriefs(log.RemovedAssigneeIDs, log.RemovedAssigneeNames),
-			CCUsers:                zipUserBriefs(log.CCUserIDs, log.CCUserNames),
-			Opinion:                log.Opinion,
-			Attachments:            log.Attachments,
-			CreatedAt:              log.CreatedAt,
 		}
 	}
 

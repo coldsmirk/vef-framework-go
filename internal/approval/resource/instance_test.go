@@ -899,7 +899,31 @@ func (s *InstanceResourceTestSuite) TestQuery() {
 
 		detail := s.ReadDataAsMap(res.Data)
 		s.Assert().NotNil(detail["instance"], "Detail should contain instance")
-		s.Assert().NotNil(detail["tasks"], "Detail should contain tasks")
+		s.Assert().NotNil(detail["flowGraph"], "Detail should contain the flow graph")
+
+		// The timeline mirrors the engine-recorded visit trail: the start node
+		// passed (carrying the submit activity) and the approval node open.
+		timeline, ok := detail["timeline"].([]any)
+		s.Require().True(ok, "Detail should contain the timeline")
+		s.Require().Len(timeline, 2, "Timeline should carry the start and open approval entries")
+
+		start := timeline[0].(map[string]any)
+		s.Assert().Equal("start", start["kind"], "First entry should be the start node")
+		s.Assert().Equal("passed", start["status"], "Start entry should be passed")
+
+		activities, ok := start["activities"].([]any)
+		s.Require().True(ok, "Start entry should carry activities")
+		s.Require().NotEmpty(activities, "Start entry should carry the submit activity")
+		s.Assert().Equal("submit", activities[0].(map[string]any)["action"], "Start activity should be the submission")
+
+		current := timeline[1].(map[string]any)
+		s.Assert().Equal("approval", current["kind"], "Second entry should be the approval node")
+		s.Assert().Equal("active", current["status"], "Approval entry should be the open visit")
+
+		participants, ok := current["participants"].([]any)
+		s.Require().True(ok, "Approval entry should carry participants")
+		s.Require().NotEmpty(participants, "Approval entry should list its assignee")
+		s.Assert().NotEmpty(participants[0].(map[string]any)["taskId"], "Participant should expose the actionable task id")
 	})
 
 	s.Run("FindActionLogs", func() {

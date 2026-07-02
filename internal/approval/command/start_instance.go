@@ -28,7 +28,7 @@ type StartInstanceCmd struct {
 
 	TenantID         string
 	FlowCode         string
-	Applicant        approval.OperatorInfo
+	Applicant        approval.UserInfo
 	BusinessRecordID *string
 	FormData         map[string]any
 	Caller           approval.CallerContext

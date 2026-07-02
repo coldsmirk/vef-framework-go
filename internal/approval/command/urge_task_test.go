@@ -84,6 +84,7 @@ func (s *UrgeTaskTestSuite) insertTask(assigneeID string) *approval.Task {
 		TenantID:   "default",
 		InstanceID: s.instID,
 		NodeID:     s.nodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", s.instID, s.nodeID).ID,
 		AssigneeID: assigneeID,
 		SortOrder:  1,
 		Status:     approval.TaskPending,

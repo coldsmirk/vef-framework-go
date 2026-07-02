@@ -46,6 +46,7 @@ func (s *GetMyPendingCountsTestSuite) SetupSuite() {
 		{TenantID: "t1", InstanceID: inst.ID, NodeID: fix.NodeIDs[2], AssigneeID: "user-a", SortOrder: 3, Status: approval.TaskApproved},
 	}
 	for i := range tasks {
+		tasks[i].VisitID = ensureActiveVisit(s.T(), s.ctx, s.db, tasks[i].TenantID, tasks[i].InstanceID, tasks[i].NodeID).ID
 		_, err := s.db.NewInsert().Model(&tasks[i]).Exec(s.ctx)
 		s.Require().NoError(err, "Should insert task")
 	}

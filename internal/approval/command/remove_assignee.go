@@ -18,7 +18,7 @@ type RemoveAssigneeCmd struct {
 	cqrs.BaseCommand
 
 	TaskID   string
-	Operator approval.OperatorInfo
+	Operator approval.UserInfo
 	Caller   approval.CallerContext
 }
 
@@ -90,9 +90,12 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 	actionLog := cmd.Operator.NewActionLog(task.InstanceID, approval.ActionRemoveAssignee)
 	actionLog.NodeID = new(task.NodeID)
 	actionLog.TaskID = new(task.ID)
-
-	actionLog.RemovedAssigneeIDs = []string{task.AssigneeID}
-	actionLog.RemovedAssigneeNames = []string{task.AssigneeName}
+	actionLog.RemovedAssignees = []approval.UserInfo{{
+		ID:             task.AssigneeID,
+		Name:           task.AssigneeName,
+		DepartmentID:   task.AssigneeDepartmentID,
+		DepartmentName: task.AssigneeDepartmentName,
+	}}
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	events := []approval.DomainEvent{

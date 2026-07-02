@@ -15,11 +15,12 @@ import (
 
 // ResolveContext provides context for assignee resolution.
 type ResolveContext struct {
-	ApplicantID           string
-	ApplicantName         string
-	ApplicantDepartmentID *string
-	FormData              approval.FormData
-	UserResolver          approval.UserInfoResolver
+	ApplicantID             string
+	ApplicantName           string
+	ApplicantDepartmentID   *string
+	ApplicantDepartmentName *string
+	FormData                approval.FormData
+	UserResolver            approval.UserInfoResolver
 
 	IDs       []string
 	FormField *string
@@ -55,20 +56,7 @@ func (*UserAssigneeResolver) Resolve(ctx context.Context, rc *ResolveContext) ([
 		return nil, nil
 	}
 
-	names, err := shared.ResolveUserNameMap(ctx, rc.UserResolver, ids)
-	if err != nil {
-		return nil, fmt.Errorf("user assignee resolver: %w", err)
-	}
-
-	result := make([]approval.ResolvedAssignee, 0, len(ids))
-	for _, userID := range ids {
-		result = append(result, approval.ResolvedAssignee{
-			UserID:   userID,
-			UserName: names[userID],
-		})
-	}
-
-	return result, nil
+	return resolveAssigneesByIDs(ctx, rc, ids, "user assignee resolver")
 }
 
 // NewRoleAssigneeResolver creates a new RoleAssigneeResolver.
@@ -141,7 +129,12 @@ func (*SelfAssigneeResolver) Resolve(_ context.Context, rc *ResolveContext) ([]a
 		return nil, ErrApplicantIDEmpty
 	}
 
-	return []approval.ResolvedAssignee{{UserID: rc.ApplicantID, UserName: rc.ApplicantName}}, nil
+	return []approval.ResolvedAssignee{{User: approval.UserInfo{
+		ID:             rc.ApplicantID,
+		Name:           rc.ApplicantName,
+		DepartmentID:   rc.ApplicantDepartmentID,
+		DepartmentName: rc.ApplicantDepartmentName,
+	}}}, nil
 }
 
 // NewSuperiorAssigneeResolver creates a new SuperiorAssigneeResolver.
@@ -170,7 +163,7 @@ func (r *SuperiorAssigneeResolver) Resolve(ctx context.Context, rc *ResolveConte
 		return []approval.ResolvedAssignee{}, nil
 	}
 
-	return []approval.ResolvedAssignee{{UserID: info.ID, UserName: info.Name}}, nil
+	return []approval.ResolvedAssignee{{User: *info}}, nil
 }
 
 // NewDepartmentLeaderAssigneeResolver creates a new DepartmentLeaderAssigneeResolver.
@@ -262,17 +255,25 @@ func (*FormFieldAssigneeResolver) Resolve(ctx context.Context, rc *ResolveContex
 		return []approval.ResolvedAssignee{}, nil
 	}
 
-	names, err := shared.ResolveUserNameMap(ctx, rc.UserResolver, ids)
+	return resolveAssigneesByIDs(ctx, rc, ids, "form field assignee resolver")
+}
+
+// resolveAssigneesByIDs resolves user info for explicit IDs and converts them
+// to assignees, preserving input order. IDs the resolver cannot find still
+// yield an assignee (empty name) so a stale reference remains visible instead
+// of silently vanishing.
+func resolveAssigneesByIDs(ctx context.Context, rc *ResolveContext, ids []string, label string) ([]approval.ResolvedAssignee, error) {
+	infos, err := shared.ResolveUserInfoMap(ctx, rc.UserResolver, ids)
 	if err != nil {
-		return nil, fmt.Errorf("form field assignee resolver: %w", err)
+		return nil, fmt.Errorf("%s: %w", label, err)
 	}
 
 	result := make([]approval.ResolvedAssignee, 0, len(ids))
+
 	for _, userID := range ids {
-		result = append(result, approval.ResolvedAssignee{
-			UserID:   userID,
-			UserName: names[userID],
-		})
+		info := infos[userID]
+		info.ID = userID
+		result = append(result, approval.ResolvedAssignee{User: info})
 	}
 
 	return result, nil
@@ -280,7 +281,7 @@ func (*FormFieldAssigneeResolver) Resolve(ctx context.Context, rc *ResolveContex
 
 // userInfoToResolvedAssignee converts a UserInfo to a ResolvedAssignee.
 func userInfoToResolvedAssignee(info approval.UserInfo) approval.ResolvedAssignee {
-	return approval.ResolvedAssignee{UserID: info.ID, UserName: info.Name}
+	return approval.ResolvedAssignee{User: info}
 }
 
 // CompositeAssigneeResolver chains multiple resolvers and resolves assignees based on config kind.

@@ -33,9 +33,9 @@ func TestAllPassStrategy(t *testing.T) {
 	}
 }
 
-// TestOnePassStrategy tests one pass strategy scenarios.
-func TestOnePassStrategy(t *testing.T) {
-	s := NewOnePassStrategy()
+// TestAnyPassStrategy tests one pass strategy scenarios.
+func TestAnyPassStrategy(t *testing.T) {
+	s := NewAnyPassStrategy()
 	assert.Equal(t, approval.PassAny, s.Rule(), "Rule should be PassAny")
 
 	tests := []struct {

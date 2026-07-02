@@ -361,7 +361,7 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 	events := make([]approval.DomainEvent, 0, len(eligibleAdminIDs)*2)
 	pendingDeadline := shared.ComputeTaskDeadline(node.TimeoutHours)
 
-	adminNames := shared.ResolveUserNameMapSilent(ctx, s.userResolver, eligibleAdminIDs)
+	adminInfos := shared.ResolveUserInfoMapSilent(ctx, s.userResolver, eligibleAdminIDs)
 
 	// standInTaskID is the first admin replacement; the timed-out task's active
 	// "after" children are re-parented onto it (below) so they are not orphaned.
@@ -369,23 +369,27 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 
 	// Create new tasks for eligible admin users
 	for _, adminID := range eligibleAdminIDs {
-		adminName := adminNames[adminID]
+		admin := adminInfos[adminID]
+		admin.ID = adminID
 
-		// Each replacement inherits the timed-out task's parent link and sort
-		// order, so auto-transferring a "before" add-assignee child still
-		// reactivates its suspended parent once an admin acts (mirrors the
-		// user-initiated transfer path).
+		// Each replacement inherits the timed-out task's parent link, sort
+		// order, and visit binding, so auto-transferring a "before"
+		// add-assignee child still reactivates its suspended parent once an
+		// admin acts (mirrors the user-initiated transfer path).
 		newTask := &approval.Task{
-			TenantID:        task.TenantID,
-			InstanceID:      task.InstanceID,
-			NodeID:          task.NodeID,
-			AssigneeID:      adminID,
-			AssigneeName:    adminName,
-			SortOrder:       task.SortOrder,
-			Status:          approval.TaskPending,
-			Deadline:        pendingDeadline,
-			ParentTaskID:    task.ParentTaskID,
-			AddAssigneeType: task.AddAssigneeType,
+			TenantID:               task.TenantID,
+			InstanceID:             task.InstanceID,
+			NodeID:                 task.NodeID,
+			VisitID:                task.VisitID,
+			AssigneeID:             admin.ID,
+			AssigneeName:           admin.Name,
+			AssigneeDepartmentID:   admin.DepartmentID,
+			AssigneeDepartmentName: admin.DepartmentName,
+			SortOrder:              task.SortOrder,
+			Status:                 approval.TaskPending,
+			Deadline:               pendingDeadline,
+			ParentTaskID:           task.ParentTaskID,
+			AddAssigneeType:        task.AddAssigneeType,
 		}
 		if _, err := tx.NewInsert().
 			Model(newTask).
@@ -403,7 +407,7 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 			task.InstanceID,
 			task.NodeID,
 			approval.UserInfo{ID: task.AssigneeID, Name: task.AssigneeName},
-			approval.UserInfo{ID: adminID, Name: adminName},
+			admin,
 			"任务处理超时，系统自动转交管理员",
 		))
 
@@ -412,16 +416,18 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 			newTask.TenantID,
 			task.InstanceID,
 			task.NodeID,
-			adminID,
-			adminName,
+			admin.ID,
+			admin.Name,
 			pendingDeadline,
 		))
 
 		actionLog := shared.SystemOperator.NewActionLog(task.InstanceID, approval.ActionTransfer)
 		actionLog.NodeID = new(task.NodeID)
 		actionLog.TaskID = new(task.ID)
-		actionLog.TransferToID = new(adminID)
-		actionLog.TransferToName = &adminName
+		actionLog.TransferToID = new(admin.ID)
+		actionLog.TransferToName = new(admin.Name)
+		actionLog.TransferToDepartmentID = admin.DepartmentID
+		actionLog.TransferToDepartmentName = admin.DepartmentName
 
 		actionLog.Opinion = new("任务处理超时，系统自动转交管理员")
 		if _, err := tx.NewInsert().

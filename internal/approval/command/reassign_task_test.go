@@ -75,6 +75,7 @@ func (s *ReassignTaskTestSuite) insertInstanceAndTask(assigneeID string, taskSta
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     s.nodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.nodeID).ID,
 		AssigneeID: assigneeID,
 		SortOrder:  1,
 		Status:     taskStatus,
@@ -88,7 +89,7 @@ func (s *ReassignTaskTestSuite) insertInstanceAndTask(assigneeID string, taskSta
 func (s *ReassignTaskTestSuite) TestReassignSuccess() {
 	_, task := s.insertInstanceAndTask("original-user", approval.TaskPending)
 
-	operator := approval.OperatorInfo{ID: "admin-1", Name: "Admin"}
+	operator := approval.UserInfo{ID: "admin-1", Name: "Admin"}
 	_, err := s.handler.Handle(s.ctx, command.ReassignTaskCmd{
 		TaskID:        task.ID,
 		NewAssigneeID: "new-user",
@@ -117,7 +118,7 @@ func (s *ReassignTaskTestSuite) TestReassignSuccess() {
 }
 
 func (s *ReassignTaskTestSuite) TestReassignTaskNotFound() {
-	operator := approval.OperatorInfo{ID: "admin-1", Name: "Admin"}
+	operator := approval.UserInfo{ID: "admin-1", Name: "Admin"}
 	_, err := s.handler.Handle(s.ctx, command.ReassignTaskCmd{
 		TaskID:        "non-existent",
 		NewAssigneeID: "new-user",
@@ -131,7 +132,7 @@ func (s *ReassignTaskTestSuite) TestReassignTaskNotFound() {
 func (s *ReassignTaskTestSuite) TestReassignTaskNotPending() {
 	_, task := s.insertInstanceAndTask("original-user", approval.TaskApproved)
 
-	operator := approval.OperatorInfo{ID: "admin-1", Name: "Admin"}
+	operator := approval.UserInfo{ID: "admin-1", Name: "Admin"}
 	_, err := s.handler.Handle(s.ctx, command.ReassignTaskCmd{
 		TaskID:        task.ID,
 		NewAssigneeID: "new-user",
@@ -145,7 +146,7 @@ func (s *ReassignTaskTestSuite) TestReassignTaskNotPending() {
 func (s *ReassignTaskTestSuite) TestReassignShouldRejectBlankTarget() {
 	_, task := s.insertInstanceAndTask("original-user", approval.TaskPending)
 
-	operator := approval.OperatorInfo{ID: "admin-1", Name: "Admin"}
+	operator := approval.UserInfo{ID: "admin-1", Name: "Admin"}
 	_, err := s.handler.Handle(s.ctx, command.ReassignTaskCmd{
 		TaskID:        task.ID,
 		NewAssigneeID: "   ",
@@ -159,7 +160,7 @@ func (s *ReassignTaskTestSuite) TestReassignShouldRejectBlankTarget() {
 func (s *ReassignTaskTestSuite) TestReassignShouldRejectSameAssignee() {
 	_, task := s.insertInstanceAndTask("original-user", approval.TaskPending)
 
-	operator := approval.OperatorInfo{ID: "admin-1", Name: "Admin"}
+	operator := approval.UserInfo{ID: "admin-1", Name: "Admin"}
 	_, err := s.handler.Handle(s.ctx, command.ReassignTaskCmd{
 		TaskID:        task.ID,
 		NewAssigneeID: "original-user",
@@ -177,6 +178,7 @@ func (s *ReassignTaskTestSuite) TestReassignShouldRejectExistingActiveTarget() {
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     s.nodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.nodeID).ID,
 		AssigneeID: "existing-user",
 		SortOrder:  2,
 		Status:     approval.TaskWaiting,
@@ -184,7 +186,7 @@ func (s *ReassignTaskTestSuite) TestReassignShouldRejectExistingActiveTarget() {
 	_, err := s.db.NewInsert().Model(existing).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert existing active task for reassignment target")
 
-	operator := approval.OperatorInfo{ID: "admin-1", Name: "Admin"}
+	operator := approval.UserInfo{ID: "admin-1", Name: "Admin"}
 	_, err = s.handler.Handle(s.ctx, command.ReassignTaskCmd{
 		TaskID:        task.ID,
 		NewAssigneeID: "existing-user",

@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/approval/admin"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -88,9 +87,20 @@ func (s *GetAdminInstanceDetailTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Should insert instance")
 	s.instanceID = instance.ID
 
-	// Create tasks.
+	// Record the visit trail the engine would have written: start passed,
+	// approval currently open.
+	visits := []approval.NodeVisit{
+		{TenantID: "default", InstanceID: instance.ID, NodeID: nodes[0].ID, Sequence: 1, Status: approval.NodeVisitPassed},
+		{TenantID: "default", InstanceID: instance.ID, NodeID: nodes[1].ID, Sequence: 2, Status: approval.NodeVisitActive},
+	}
+	for i := range visits {
+		_, err := s.db.NewInsert().Model(&visits[i]).Exec(s.ctx)
+		s.Require().NoError(err, "Should insert node visit")
+	}
+
+	// Create tasks bound to the approval visit.
 	tasks := []approval.Task{
-		{TenantID: "default", InstanceID: instance.ID, NodeID: nodes[1].ID, AssigneeID: "user-2", SortOrder: 1, Status: approval.TaskPending},
+		{TenantID: "default", InstanceID: instance.ID, NodeID: nodes[1].ID, VisitID: visits[1].ID, AssigneeID: "user-2", SortOrder: 1, Status: approval.TaskPending},
 	}
 	for i := range tasks {
 		_, err := s.db.NewInsert().Model(&tasks[i]).Exec(s.ctx)
@@ -101,7 +111,7 @@ func (s *GetAdminInstanceDetailTestSuite) SetupSuite() {
 	rollbackTarget := nodes[0].ID
 
 	logs := []approval.ActionLog{
-		{InstanceID: instance.ID, Action: approval.ActionSubmit, OperatorID: "user-1", OperatorName: "Applicant", NodeID: &nodes[1].ID},
+		{InstanceID: instance.ID, Action: approval.ActionSubmit, OperatorID: "user-1", OperatorName: "Applicant"},
 		{InstanceID: instance.ID, Action: approval.ActionRollback, OperatorID: "user-2", OperatorName: "Approver", NodeID: &nodes[1].ID, RollbackToNodeID: &rollbackTarget},
 	}
 	for i := range logs {
@@ -125,11 +135,9 @@ func (s *GetAdminInstanceDetailTestSuite) TestGetDetailSuccess() {
 	s.Assert().Equal(s.instanceID, detail.Instance.InstanceID, "Should return correct instance")
 	s.Assert().Equal("Admin Detail Test", detail.Instance.Title, "Should return correct title")
 	s.Assert().Equal("default", detail.Instance.TenantID, "Should include tenant ID")
-	s.Assert().Len(detail.Tasks, 1, "Should return 1 task")
-	s.Assert().Len(detail.ActionLogs, 2, "Should return both action logs")
 
 	// The flow graph is a React Flow–ready projection: 3 nodes + 2 edges with
-	// positions, and the approval node marked current (it has a pending task).
+	// positions, and the approval node reporting its open visit as active.
 	s.Require().Len(detail.FlowGraph.Nodes, 3, "Graph should carry all 3 nodes")
 	s.Require().Len(detail.FlowGraph.Edges, 2, "Graph should carry both edges")
 
@@ -140,28 +148,47 @@ func (s *GetAdminInstanceDetailTestSuite) TestGetDetailSuccess() {
 
 	approvalNode, ok := byKey["approval-1"]
 	s.Require().True(ok, "Graph should contain the approval node keyed by its flow-node key")
-	s.Assert().Equal(approval.NodeProgressCurrent, approvalNode.Data.Status, "Approval node with a pending task should be current")
+	s.Assert().Equal(approval.NodeProgressActive, approvalNode.Data.Status, "Approval node with an open visit should be active")
 	s.Assert().Equal(float64(100), approvalNode.Position.Y, "Approval node should carry its designed position")
 	s.Require().Len(approvalNode.Data.Participants, 1, "Approval node should list its assignee")
-	s.Assert().Equal("user-2", approvalNode.Data.Participants[0].UserID, "Participant should be the node's assignee")
+	s.Assert().Equal("user-2", approvalNode.Data.Participants[0].User.ID, "Participant should be the node's assignee")
 
-	// Form metadata and applicant department must ship with the admin detail too.
-	s.Require().NotNil(detail.Instance.FormSchema, "Detail should carry the version's form schema")
-	s.Assert().Len(detail.Instance.FormSchema.Fields, 1, "Form schema should carry its field")
-	s.Require().NotNil(detail.Instance.ApplicantDepartmentName, "Detail should carry the applicant department")
-	s.Assert().Equal("Finance", *detail.Instance.ApplicantDepartmentName, "Applicant department should pass through")
+	// Form metadata and the applicant snapshot must ship with the admin detail too.
+	s.Require().NotNil(detail.FormSchema, "Detail should carry the version's form schema")
+	s.Assert().Len(detail.FormSchema.Fields, 1, "Form schema should carry its field")
+	s.Assert().Equal("user-1", detail.Instance.Applicant.ID, "Applicant snapshot should carry the id")
+	s.Require().NotNil(detail.Instance.Applicant.DepartmentName, "Applicant snapshot should carry the department")
+	s.Assert().Equal("Finance", *detail.Instance.Applicant.DepartmentName, "Applicant department should pass through")
 
-	var rollback *admin.ActionLog
+	// The timeline is the visit trail: start (with the submit activity zipped
+	// onto it) then the open approval entry carrying the rollback activity.
+	s.Require().Len(detail.Timeline, 2, "Timeline should carry the start and approval entries (end unvisited)")
 
-	for i := range detail.ActionLogs {
-		if detail.ActionLogs[i].Action == string(approval.ActionRollback) {
-			rollback = &detail.ActionLogs[i]
+	start := detail.Timeline[0]
+	s.Assert().Equal(approval.TimelineEntryStart, start.Kind, "First entry should be the start node")
+	s.Assert().Equal(approval.NodeVisitPassed, start.Status, "Start entry should report its passed visit")
+	s.Require().Len(start.Activities, 1, "Start entry should carry the submit activity")
+	s.Assert().Equal(string(approval.ActionSubmit), start.Activities[0].Action, "Start activity should be the submission")
+	s.Assert().Equal("Applicant", start.Activities[0].Operator.Name, "Submit activity should name the applicant")
+
+	entry := detail.Timeline[1]
+	s.Assert().Equal(approval.TimelineEntryApproval, entry.Kind, "Second entry should be the approval node")
+	s.Assert().Equal(approval.NodeVisitActive, entry.Status, "Approval entry should be the open visit")
+	s.Require().Len(entry.Participants, 1, "Approval entry should list its participant")
+	s.Assert().Equal("user-2", entry.Participants[0].User.ID, "Participant should be the assignee")
+
+	var rollback *approval.Activity
+
+	for i := range entry.Activities {
+		if entry.Activities[i].Action == string(approval.ActionRollback) {
+			rollback = &entry.Activities[i]
 		}
 	}
 
-	s.Require().NotNil(rollback, "Detail should include the rollback log")
-	s.Require().NotNil(rollback.NodeID, "Rollback log should carry the node id")
-	s.Require().NotNil(rollback.RollbackToNodeID, "Rollback log should carry the rollback target node id")
+	s.Require().NotNil(rollback, "Approval entry should carry the rollback activity")
+	s.Require().NotNil(rollback.RollbackToNodeID, "Rollback activity should carry the target node id")
+	s.Require().NotNil(rollback.RollbackToNodeName, "Rollback activity should resolve the target node name")
+	s.Assert().Equal("Start", *rollback.RollbackToNodeName, "Rollback target name should resolve from the flow nodes")
 }
 
 func (s *GetAdminInstanceDetailTestSuite) TestNotFound() {

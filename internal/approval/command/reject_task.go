@@ -18,7 +18,7 @@ type RejectTaskCmd struct {
 	cqrs.BaseCommand
 
 	TaskID      string
-	Operator    approval.OperatorInfo
+	Operator    approval.UserInfo
 	Opinion     string
 	FormData    map[string]any
 	Attachments []string

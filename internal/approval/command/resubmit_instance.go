@@ -17,18 +17,18 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// ResubmitCmd resubmits a returned instance.
-type ResubmitCmd struct {
+// ResubmitInstanceCmd resubmits a returned instance.
+type ResubmitInstanceCmd struct {
 	cqrs.BaseCommand
 
 	InstanceID string
-	Operator   approval.OperatorInfo
+	Operator   approval.UserInfo
 	FormData   map[string]any
 	Caller     approval.CallerContext
 }
 
-// ResubmitHandler handles the ResubmitCmd command.
-type ResubmitHandler struct {
+// ResubmitInstanceHandler handles the ResubmitInstanceCmd command.
+type ResubmitInstanceHandler struct {
 	db            orm.DB
 	engine        *engine.FlowEngine
 	validationSvc *service.ValidationService
@@ -36,21 +36,21 @@ type ResubmitHandler struct {
 	formStorage   *storage.Dispatcher
 }
 
-// NewResubmitHandler creates a new ResubmitHandler. formStorage refreshes the
+// NewResubmitInstanceHandler creates a new ResubmitInstanceHandler. formStorage refreshes the
 // version's physical projection row — replacing the instance's prior row, never
 // appending — when its StorageMode is StorageTable; it may be nil in test
 // fixtures that do not exercise table-mode storage.
-func NewResubmitHandler(
+func NewResubmitInstanceHandler(
 	db orm.DB,
 	eng *engine.FlowEngine,
 	validationSvc *service.ValidationService,
 	instanceSvc *service.InstanceService,
 	formStorage *storage.Dispatcher,
-) *ResubmitHandler {
-	return &ResubmitHandler{db: db, engine: eng, validationSvc: validationSvc, instanceSvc: instanceSvc, formStorage: formStorage}
+) *ResubmitInstanceHandler {
+	return &ResubmitInstanceHandler{db: db, engine: eng, validationSvc: validationSvc, instanceSvc: instanceSvc, formStorage: formStorage}
 }
 
-func (h *ResubmitHandler) Handle(ctx context.Context, cmd ResubmitCmd) (cqrs.Unit, error) {
+func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstanceCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
 	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID, cmd.Caller)

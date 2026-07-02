@@ -20,7 +20,7 @@ type AddCCCmd struct {
 
 	InstanceID string
 	CCUserIDs  []string
-	Operator   approval.OperatorInfo
+	Operator   approval.UserInfo
 	Caller     approval.CallerContext
 }
 
@@ -85,9 +85,9 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 		return cqrs.Unit{}, nil
 	}
 
-	ccUserNames := shared.ResolveUserNameMapSilent(ctx, h.userResolver, userIDs)
+	ccUserInfos := shared.ResolveUserInfoMapSilent(ctx, h.userResolver, userIDs)
 
-	insertedUserIDs, err := shared.InsertManualCCRecords(ctx, db, cmd.InstanceID, *instance.CurrentNodeID, userIDs, ccUserNames)
+	insertedUserIDs, err := shared.InsertManualCCRecords(ctx, db, cmd.InstanceID, *instance.CurrentNodeID, userIDs, ccUserInfos)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
@@ -98,18 +98,11 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 
 	actionLog := cmd.Operator.NewActionLog(cmd.InstanceID, approval.ActionAddCC)
 	actionLog.NodeID = new(*instance.CurrentNodeID)
-	actionLog.CCUserIDs = insertedUserIDs
-
-	ccNames := make([]string, len(insertedUserIDs))
-	for i, id := range insertedUserIDs {
-		ccNames[i] = ccUserNames[id]
-	}
-
-	actionLog.CCUserNames = ccNames
+	actionLog.CCUsers = shared.UserInfos(insertedUserIDs, ccUserInfos)
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	behavior.EventCollectorFromContext(ctx).Add(
-		approval.NewCCNotifiedEvent(cmd.InstanceID, instance.TenantID, *instance.CurrentNodeID, insertedUserIDs, ccUserNames, true),
+		approval.NewCCNotifiedEvent(cmd.InstanceID, instance.TenantID, *instance.CurrentNodeID, insertedUserIDs, shared.UserInfoNames(ccUserInfos), true),
 	)
 
 	return cqrs.Unit{}, nil

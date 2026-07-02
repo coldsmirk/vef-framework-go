@@ -384,6 +384,34 @@ CREATE INDEX IF NOT EXISTS idx_apv_instance__current_node_id ON apv_instance(cur
 -- Create GIN index on form_data JSONB field for efficient queries
 CREATE INDEX IF NOT EXISTS idx_apv_instance__form_data ON apv_instance USING GIN (form_data);
 
+-- Node visit (one traversal of a flow node by an instance; the engine begins
+-- a visit on node entry and stamps the outcome when the node concludes)
+CREATE TABLE IF NOT EXISTS apv_node_visit (
+    id VARCHAR(32) CONSTRAINT pk_apv_node_visit PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT LOCALTIMESTAMP,
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    tenant_id VARCHAR(32) NOT NULL,
+    instance_id VARCHAR(32) NOT NULL,
+    node_id VARCHAR(32) NOT NULL,
+    sequence INTEGER NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'active',
+    finished_at TIMESTAMP,
+    CONSTRAINT fk_apv_node_visit__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_apv_node_visit__node_id FOREIGN KEY (node_id) REFERENCES apv_flow_node(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT uk_apv_node_visit__instance_id_sequence UNIQUE (instance_id, sequence)
+);
+
+COMMENT ON TABLE apv_node_visit IS 'Node Visit';
+COMMENT ON COLUMN apv_node_visit.id IS 'ID';
+COMMENT ON COLUMN apv_node_visit.created_at IS 'Entered';
+COMMENT ON COLUMN apv_node_visit.created_by IS 'Creator';
+COMMENT ON COLUMN apv_node_visit.tenant_id IS 'Tenant';
+COMMENT ON COLUMN apv_node_visit.instance_id IS 'Instance';
+COMMENT ON COLUMN apv_node_visit.node_id IS 'Node';
+COMMENT ON COLUMN apv_node_visit.sequence IS 'Step No.';
+COMMENT ON COLUMN apv_node_visit.status IS 'Status';
+COMMENT ON COLUMN apv_node_visit.finished_at IS 'Finished';
+
 -- Approval task
 CREATE TABLE IF NOT EXISTS apv_task (
     id VARCHAR(32) CONSTRAINT pk_apv_task PRIMARY KEY,
@@ -394,11 +422,16 @@ CREATE TABLE IF NOT EXISTS apv_task (
     tenant_id VARCHAR(32) NOT NULL,
     instance_id VARCHAR(32) NOT NULL,
     node_id VARCHAR(32) NOT NULL,
+    visit_id VARCHAR(32) NOT NULL,
     -- Assignee info
     assignee_id VARCHAR(32) NOT NULL,
     assignee_name VARCHAR(128) NOT NULL DEFAULT '',
+    assignee_department_id VARCHAR(32),
+    assignee_department_name VARCHAR(128),
     delegator_id VARCHAR(32),
     delegator_name VARCHAR(128),
+    delegator_department_id VARCHAR(32),
+    delegator_department_name VARCHAR(128),
     sort_order INTEGER NOT NULL DEFAULT 0,
     -- Task status
     status VARCHAR(16) NOT NULL DEFAULT 'pending',
@@ -415,6 +448,7 @@ CREATE TABLE IF NOT EXISTS apv_task (
     CONSTRAINT ck_apv_task__assignee_id_not_empty CHECK (btrim(assignee_id) <> ''),
     CONSTRAINT fk_apv_task__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_task__node_id FOREIGN KEY (node_id) REFERENCES apv_flow_node(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_apv_task__visit_id FOREIGN KEY (visit_id) REFERENCES apv_node_visit(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_task__parent_task_id FOREIGN KEY (parent_task_id) REFERENCES apv_task(id) ON DELETE SET NULL ON UPDATE CASCADE
 );
 
@@ -427,10 +461,15 @@ COMMENT ON COLUMN apv_task.updated_by IS 'Updater';
 COMMENT ON COLUMN apv_task.tenant_id IS 'Tenant';
 COMMENT ON COLUMN apv_task.instance_id IS 'Instance';
 COMMENT ON COLUMN apv_task.node_id IS 'Node';
+COMMENT ON COLUMN apv_task.visit_id IS 'Visit';
 COMMENT ON COLUMN apv_task.assignee_id IS 'Assignee';
 COMMENT ON COLUMN apv_task.assignee_name IS 'Assignee Name';
+COMMENT ON COLUMN apv_task.assignee_department_id IS 'Assignee Dept';
+COMMENT ON COLUMN apv_task.assignee_department_name IS 'Assignee Dept Name';
 COMMENT ON COLUMN apv_task.delegator_id IS 'Delegator';
 COMMENT ON COLUMN apv_task.delegator_name IS 'Delegator Name';
+COMMENT ON COLUMN apv_task.delegator_department_id IS 'Delegator Dept';
+COMMENT ON COLUMN apv_task.delegator_department_name IS 'Delegator Dept Name';
 COMMENT ON COLUMN apv_task.sort_order IS 'Sort';
 COMMENT ON COLUMN apv_task.status IS 'Status';
 COMMENT ON COLUMN apv_task.read_at IS 'Read';
@@ -470,16 +509,14 @@ CREATE TABLE IF NOT EXISTS apv_action_log (
     -- Transfer/rollback info
     transfer_to_id VARCHAR(32),
     transfer_to_name VARCHAR(128),
+    transfer_to_department_id VARCHAR(32),
+    transfer_to_department_name VARCHAR(128),
     rollback_to_node_id VARCHAR(32),
-    -- Dynamic assignee info
+    -- Person lists as UserBrief object arrays: [{id, name, departmentId, departmentName}]
     add_assignee_type VARCHAR(16),
-    added_assignee_ids JSONB NOT NULL DEFAULT '[]',
-    added_assignee_names JSONB NOT NULL DEFAULT '[]',
-    removed_assignee_ids JSONB NOT NULL DEFAULT '[]',
-    removed_assignee_names JSONB NOT NULL DEFAULT '[]',
-    -- CC info
-    cc_user_ids JSONB NOT NULL DEFAULT '[]',
-    cc_user_names JSONB NOT NULL DEFAULT '[]',
+    added_assignees JSONB NOT NULL DEFAULT '[]',
+    removed_assignees JSONB NOT NULL DEFAULT '[]',
+    cc_users JSONB NOT NULL DEFAULT '[]',
     -- Attachments
     attachments JSONB,
     CONSTRAINT fk_apv_action_log__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -505,14 +542,13 @@ COMMENT ON COLUMN apv_action_log.opinion IS 'Opinion';
 COMMENT ON COLUMN apv_action_log.meta IS 'Meta';
 COMMENT ON COLUMN apv_action_log.transfer_to_id IS 'Transferee';
 COMMENT ON COLUMN apv_action_log.transfer_to_name IS 'Transferee Name';
+COMMENT ON COLUMN apv_action_log.transfer_to_department_id IS 'Transferee Dept';
+COMMENT ON COLUMN apv_action_log.transfer_to_department_name IS 'Transferee Dept Name';
 COMMENT ON COLUMN apv_action_log.rollback_to_node_id IS 'Rollback Node';
 COMMENT ON COLUMN apv_action_log.add_assignee_type IS 'Add Type';
-COMMENT ON COLUMN apv_action_log.added_assignee_ids IS 'Added';
-COMMENT ON COLUMN apv_action_log.added_assignee_names IS 'Added Names';
-COMMENT ON COLUMN apv_action_log.removed_assignee_ids IS 'Removed';
-COMMENT ON COLUMN apv_action_log.removed_assignee_names IS 'Removed Names';
-COMMENT ON COLUMN apv_action_log.cc_user_ids IS 'CC List';
-COMMENT ON COLUMN apv_action_log.cc_user_names IS 'CC Names';
+COMMENT ON COLUMN apv_action_log.added_assignees IS 'Added';
+COMMENT ON COLUMN apv_action_log.removed_assignees IS 'Removed';
+COMMENT ON COLUMN apv_action_log.cc_users IS 'CC List';
 COMMENT ON COLUMN apv_action_log.attachments IS 'Attachments';
 
 CREATE INDEX IF NOT EXISTS idx_apv_action_log__operator_id ON apv_action_log(operator_id);
@@ -528,6 +564,8 @@ CREATE TABLE IF NOT EXISTS apv_cc_record (
     task_id VARCHAR(32),
     cc_user_id VARCHAR(32) NOT NULL,
     cc_user_name VARCHAR(128) NOT NULL DEFAULT '',
+    cc_user_department_id VARCHAR(32),
+    cc_user_department_name VARCHAR(128),
     is_manual BOOLEAN NOT NULL DEFAULT false,
     read_at TIMESTAMP,
     CONSTRAINT fk_apv_cc_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE
@@ -542,6 +580,8 @@ COMMENT ON COLUMN apv_cc_record.node_id IS 'Node';
 COMMENT ON COLUMN apv_cc_record.task_id IS 'Task';
 COMMENT ON COLUMN apv_cc_record.cc_user_id IS 'User';
 COMMENT ON COLUMN apv_cc_record.cc_user_name IS 'User Name';
+COMMENT ON COLUMN apv_cc_record.cc_user_department_id IS 'User Dept';
+COMMENT ON COLUMN apv_cc_record.cc_user_department_name IS 'User Dept Name';
 COMMENT ON COLUMN apv_cc_record.is_manual IS 'Manual';
 COMMENT ON COLUMN apv_cc_record.read_at IS 'Read';
 
@@ -634,8 +674,12 @@ CREATE TABLE IF NOT EXISTS apv_urge_record (
     task_id VARCHAR(32),
     urger_id VARCHAR(32) NOT NULL,
     urger_name VARCHAR(128) NOT NULL DEFAULT '',
+    urger_department_id VARCHAR(32),
+    urger_department_name VARCHAR(128),
     target_user_id VARCHAR(32) NOT NULL,
     target_user_name VARCHAR(128) NOT NULL DEFAULT '',
+    target_user_department_id VARCHAR(32),
+    target_user_department_name VARCHAR(128),
     message TEXT NOT NULL,
     CONSTRAINT fk_apv_urge_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
@@ -649,8 +693,12 @@ COMMENT ON COLUMN apv_urge_record.node_id IS 'Node';
 COMMENT ON COLUMN apv_urge_record.task_id IS 'Task';
 COMMENT ON COLUMN apv_urge_record.urger_id IS 'Urger';
 COMMENT ON COLUMN apv_urge_record.urger_name IS 'Urger Name';
+COMMENT ON COLUMN apv_urge_record.urger_department_id IS 'Urger Dept';
+COMMENT ON COLUMN apv_urge_record.urger_department_name IS 'Urger Dept Name';
 COMMENT ON COLUMN apv_urge_record.target_user_id IS 'Target';
 COMMENT ON COLUMN apv_urge_record.target_user_name IS 'Target Name';
+COMMENT ON COLUMN apv_urge_record.target_user_department_id IS 'Target Dept';
+COMMENT ON COLUMN apv_urge_record.target_user_department_name IS 'Target Dept Name';
 COMMENT ON COLUMN apv_urge_record.message IS 'Message';
 
 CREATE INDEX IF NOT EXISTS idx_apv_urge_record__task_id_urger_id_created_at ON apv_urge_record(task_id, urger_id, created_at);

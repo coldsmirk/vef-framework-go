@@ -8,6 +8,10 @@ var (
 	ErrProcessorNotFound = errors.New("node processor not found for node kind")
 	ErrMaxNodeDepth      = errors.New("max node processing depth exceeded")
 
+	// ErrActiveVisitNotFound signals a broken visit-trail invariant: a path
+	// that requires an executing node found no open visit for it.
+	ErrActiveVisitNotFound = errors.New("no active node visit")
+
 	// Approval node errors.
 	ErrAssigneeServiceNotConfigured = errors.New("assignee service is not configured")
 

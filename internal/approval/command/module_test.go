@@ -32,8 +32,8 @@ func TestRegisterHandlers(t *testing.T) {
 		new(TransferTaskHandler),
 		new(RollbackTaskHandler),
 		new(StartInstanceHandler),
-		new(WithdrawHandler),
-		new(ResubmitHandler),
+		new(WithdrawInstanceHandler),
+		new(ResubmitInstanceHandler),
 		new(AddCCHandler),
 		new(MarkCCReadHandler),
 		new(AddAssigneeHandler),
@@ -123,14 +123,14 @@ func TestRegisterHandlers(t *testing.T) {
 		{"Withdraw", func() (err error) {
 			defer recoverDispatch(&err)
 
-			_, err = cqrs.Send[WithdrawCmd, cqrs.Unit](context.Background(), bus, WithdrawCmd{})
+			_, err = cqrs.Send[WithdrawInstanceCmd, cqrs.Unit](context.Background(), bus, WithdrawInstanceCmd{})
 
 			return err
 		}},
 		{"Resubmit", func() (err error) {
 			defer recoverDispatch(&err)
 
-			_, err = cqrs.Send[ResubmitCmd, cqrs.Unit](context.Background(), bus, ResubmitCmd{})
+			_, err = cqrs.Send[ResubmitInstanceCmd, cqrs.Unit](context.Background(), bus, ResubmitInstanceCmd{})
 
 			return err
 		}},

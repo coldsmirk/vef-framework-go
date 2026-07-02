@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
@@ -172,15 +173,54 @@ func (b *ProcessorTestBase) InsertPreviousApprovalNode(t require.TestingT, key s
 	return node.ID
 }
 
-// InsertApprovedTasks creates approved tasks for a given node/instance.
+// EnsureVisit returns the instance's visit of the node with the given status,
+// recording it when absent — every inserted task must bind to a visit.
+func (b *ProcessorTestBase) EnsureVisit(t require.TestingT, instanceID, nodeID string, status approval.NodeVisitStatus) *approval.NodeVisit {
+	var visit approval.NodeVisit
+
+	err := b.DB.NewSelect().Model(&visit).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("instance_id", instanceID).
+				Equals("node_id", nodeID).
+				Equals("status", status)
+		}).
+		Scan(b.Ctx)
+	if err == nil {
+		return &visit
+	}
+
+	require.True(t, result.IsRecordNotFound(err), "Visit lookup should only miss, not fail: %v", err)
+
+	count, err := b.DB.NewSelect().Model((*approval.NodeVisit)(nil)).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instanceID) }).
+		Count(b.Ctx)
+	require.NoError(t, err, "Should count instance visits")
+
+	created := &approval.NodeVisit{
+		TenantID:   "default",
+		InstanceID: instanceID,
+		NodeID:     nodeID,
+		Sequence:   int(count) + 1,
+		Status:     status,
+	}
+	_, err = b.DB.NewInsert().Model(created).Exec(b.Ctx)
+	require.NoError(t, err, "Should insert node visit")
+
+	return created
+}
+
+// InsertApprovedTasks creates approved tasks for a given node/instance, bound
+// to a passed visit of that node.
 func (b *ProcessorTestBase) InsertApprovedTasks(t require.TestingT, instanceID, nodeID string, assigneeIDs []string) {
 	now := timex.Now()
+	visit := b.EnsureVisit(t, instanceID, nodeID, approval.NodeVisitPassed)
 
 	for _, assigneeID := range assigneeIDs {
 		task := &approval.Task{
 			TenantID:   "default",
 			InstanceID: instanceID,
 			NodeID:     nodeID,
+			VisitID:    visit.ID,
 			AssigneeID: assigneeID,
 			Status:     approval.TaskApproved,
 			FinishedAt: new(now),
@@ -190,15 +230,18 @@ func (b *ProcessorTestBase) InsertApprovedTasks(t require.TestingT, instanceID, 
 	}
 }
 
-// InsertRejectedTasks creates rejected tasks for a given node/instance.
+// InsertRejectedTasks creates rejected tasks for a given node/instance, bound
+// to a rejected visit of that node.
 func (b *ProcessorTestBase) InsertRejectedTasks(t require.TestingT, instanceID, nodeID string, assigneeIDs []string) {
 	now := timex.Now()
+	visit := b.EnsureVisit(t, instanceID, nodeID, approval.NodeVisitRejected)
 
 	for _, assigneeID := range assigneeIDs {
 		task := &approval.Task{
 			TenantID:   "default",
 			InstanceID: instanceID,
 			NodeID:     nodeID,
+			VisitID:    visit.ID,
 			AssigneeID: assigneeID,
 			Status:     approval.TaskRejected,
 			FinishedAt: new(now),
@@ -208,12 +251,15 @@ func (b *ProcessorTestBase) InsertRejectedTasks(t require.TestingT, instanceID, 
 	}
 }
 
-// NewProcessContext creates a ProcessContext from the given instance and node.
-func (b *ProcessorTestBase) NewProcessContext(instance *approval.Instance, node *approval.FlowNode) *engine.ProcessContext {
+// NewProcessContext creates a ProcessContext from the given instance and node,
+// opening the node's visit exactly as ProcessNode would before dispatching to
+// a processor.
+func (b *ProcessorTestBase) NewProcessContext(t require.TestingT, instance *approval.Instance, node *approval.FlowNode) *engine.ProcessContext {
 	return &engine.ProcessContext{
 		DB:          b.DB,
 		Instance:    instance,
 		Node:        node,
+		Visit:       b.EnsureVisit(t, instance.ID, node.ID, approval.NodeVisitActive),
 		FormData:    approval.NewFormData(instance.FormData),
 		ApplicantID: instance.ApplicantID,
 		Registry:    b.Registry,

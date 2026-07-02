@@ -242,7 +242,7 @@ func (s *TaskServiceTestSuite) TestPrepareOperation() {
 	s.Run("Success", func() {
 		nodeID, instanceID, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "op-user-1")
 
-		tc, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.OperatorInfo{ID: "op-user-1"}, approval.SystemCaller, nil)
+		tc, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "op-user-1"}, approval.SystemCaller, nil)
 		s.Require().NoError(err, "Should prepare operation context")
 		s.Assert().Equal(instanceID, tc.Instance.ID, "Prepared instance ID should match")
 		s.Assert().Equal(taskID, tc.Task.ID, "Prepared task ID should match")
@@ -250,28 +250,28 @@ func (s *TaskServiceTestSuite) TestPrepareOperation() {
 	})
 
 	s.Run("TaskNotFound", func() {
-		_, err := s.svc.PrepareOperation(s.ctx, s.db, "non-existent", approval.OperatorInfo{ID: "op-user-1"}, approval.SystemCaller, nil)
+		_, err := s.svc.PrepareOperation(s.ctx, s.db, "non-existent", approval.UserInfo{ID: "op-user-1"}, approval.SystemCaller, nil)
 		s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return task not found for missing task ID")
 	})
 
 	s.Run("InstanceCompleted", func() {
 		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceApproved, approval.TaskPending, "op-user-2")
 
-		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.OperatorInfo{ID: "op-user-2"}, approval.SystemCaller, nil)
+		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "op-user-2"}, approval.SystemCaller, nil)
 		s.Assert().ErrorIs(err, shared.ErrInstanceCompleted, "Should reject operation on completed instance")
 	})
 
 	s.Run("NotAssignee", func() {
 		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "op-user-3")
 
-		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.OperatorInfo{ID: "wrong-user"}, approval.SystemCaller, nil)
+		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "wrong-user"}, approval.SystemCaller, nil)
 		s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should reject non-assignee operator")
 	})
 
 	s.Run("TaskNotPending", func() {
 		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskApproved, "op-user-4")
 
-		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.OperatorInfo{ID: "op-user-4"}, approval.SystemCaller, nil)
+		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "op-user-4"}, approval.SystemCaller, nil)
 		s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject non-pending task")
 	})
 
@@ -296,7 +296,7 @@ func (s *TaskServiceTestSuite) TestPrepareOperation() {
 			Exec(s.ctx)
 		s.Require().NoError(err, "Should move instance current node away from task node")
 
-		_, err = s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.OperatorInfo{ID: "op-user-5"}, approval.SystemCaller, nil)
+		_, err = s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "op-user-5"}, approval.SystemCaller, nil)
 		s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject operations on tasks outside current node")
 	})
 }
@@ -341,10 +341,12 @@ func (s *TaskServiceTestSuite) TestBuildActionLog() {
 	s.Run("WithAllFields", func() {
 		inst := s.fixture.createInstance(s.T(), s.ctx, s.db, approval.InstanceRunning)
 		task := insertTaskWithDetails(s.T(), s.ctx, s.db, inst.ID, s.fixture.NodeIDs[0], approval.TaskPending, 1)
-		operator := approval.OperatorInfo{ID: "log-user-1", Name: "Logger"}
+		operator := approval.UserInfo{ID: "log-user-1", Name: "Logger"}
 
 		log := s.svc.BuildActionLog(inst.ID, task, operator, approval.ActionApprove, service.ActionLogParams{
-			Opinion: "looks good", TransferToID: "transfer-to-1", TransferToName: "Transfer User", RollbackToNodeID: "rollback-node-1",
+			Opinion:          "looks good",
+			TransferTo:       &approval.UserInfo{ID: "transfer-to-1", Name: "Transfer User", DepartmentName: new("研发部")},
+			RollbackToNodeID: "rollback-node-1",
 		})
 
 		s.Assert().Equal(approval.ActionApprove, log.Action, "Action should be approve")
@@ -359,6 +361,8 @@ func (s *TaskServiceTestSuite) TestBuildActionLog() {
 		s.Assert().Equal("transfer-to-1", *log.TransferToID, "Transfer target should match input")
 		s.Assert().NotNil(log.TransferToName, "Transfer target name should be set when provided")
 		s.Assert().Equal("Transfer User", *log.TransferToName, "Transfer target name should match input")
+		s.Assert().NotNil(log.TransferToDepartmentName, "Transfer target department should be snapshotted when provided")
+		s.Assert().Equal("研发部", *log.TransferToDepartmentName, "Transfer target department should match input")
 		s.Assert().NotNil(log.RollbackToNodeID, "Rollback target should be set when provided")
 		s.Assert().Equal("rollback-node-1", *log.RollbackToNodeID, "Rollback target should match input")
 	})
@@ -366,7 +370,7 @@ func (s *TaskServiceTestSuite) TestBuildActionLog() {
 	s.Run("WithEmptyOptionalFields", func() {
 		inst := s.fixture.createInstance(s.T(), s.ctx, s.db, approval.InstanceRunning)
 		task := insertTaskWithDetails(s.T(), s.ctx, s.db, inst.ID, s.fixture.NodeIDs[1], approval.TaskPending, 1)
-		operator := approval.OperatorInfo{ID: "log-user-2", Name: "Logger2"}
+		operator := approval.UserInfo{ID: "log-user-2", Name: "Logger2"}
 
 		log := s.svc.BuildActionLog(inst.ID, task, operator, approval.ActionSubmit, service.ActionLogParams{})
 

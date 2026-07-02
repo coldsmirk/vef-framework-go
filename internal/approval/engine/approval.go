@@ -275,6 +275,6 @@ func (*ApprovalProcessor) isSameApplicant(assignees []approval.ResolvedAssignee,
 	}
 
 	return !slices.ContainsFunc(assignees, func(a approval.ResolvedAssignee) bool {
-		return a.UserID != applicantID
+		return a.User.ID != applicantID
 	})
 }

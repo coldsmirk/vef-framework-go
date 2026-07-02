@@ -20,7 +20,7 @@ type ReassignTaskCmd struct {
 
 	TaskID        string
 	NewAssigneeID string
-	Operator      approval.OperatorInfo
+	Operator      approval.UserInfo
 	Reason        string
 	Caller        approval.CallerContext
 }
@@ -75,12 +75,14 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 
 	oldAssigneeID := task.AssigneeID
 	oldAssigneeName := task.AssigneeName
-	newAssigneeName := shared.ResolveUserName(ctx, h.userResolver, newAssigneeID)
+	newAssignee := shared.ResolveUserInfo(ctx, h.userResolver, newAssigneeID)
 
 	if _, err := db.NewUpdate().
 		Model((*approval.Task)(nil)).
-		Set("assignee_id", newAssigneeID).
-		Set("assignee_name", newAssigneeName).
+		Set("assignee_id", newAssignee.ID).
+		Set("assignee_name", newAssignee.Name).
+		Set("assignee_department_id", newAssignee.DepartmentID).
+		Set("assignee_department_name", newAssignee.DepartmentName).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.PKEquals(task.ID)
 		}).
@@ -91,9 +93,11 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 	actionLog := cmd.Operator.NewActionLog(task.InstanceID, approval.ActionReassign)
 	actionLog.TaskID = &task.ID
 	actionLog.NodeID = &task.NodeID
-	actionLog.TransferToID = &newAssigneeID
+	actionLog.TransferToID = new(newAssignee.ID)
+	actionLog.TransferToName = new(newAssignee.Name)
+	actionLog.TransferToDepartmentID = newAssignee.DepartmentID
+	actionLog.TransferToDepartmentName = newAssignee.DepartmentName
 
-	actionLog.TransferToName = &newAssigneeName
 	if cmd.Reason != "" {
 		actionLog.Opinion = &cmd.Reason
 	}
@@ -103,7 +107,7 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewTaskReassignedEvent(task.ID, task.TenantID, task.InstanceID, task.NodeID,
 			approval.UserInfo{ID: oldAssigneeID, Name: oldAssigneeName},
-			approval.UserInfo{ID: newAssigneeID, Name: newAssigneeName}, cmd.Reason),
+			newAssignee, cmd.Reason),
 	)
 
 	return cqrs.Unit{}, nil

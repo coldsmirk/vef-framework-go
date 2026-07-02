@@ -6,23 +6,16 @@ import (
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
-// OperatorInfo bundles operator identity for action logging.
-type OperatorInfo struct {
-	ID             string  `json:"id"`
-	Name           string  `json:"name"`
-	DepartmentID   *string `json:"departmentId,omitempty"`
-	DepartmentName *string `json:"departmentName,omitempty"`
-}
-
-// NewActionLog creates an ActionLog with the operator fields pre-filled.
-func (o OperatorInfo) NewActionLog(instanceID string, action ActionType) *ActionLog {
+// NewActionLog creates an ActionLog with the operator fields pre-filled from
+// the acting user.
+func (u UserInfo) NewActionLog(instanceID string, action ActionType) *ActionLog {
 	return &ActionLog{
 		InstanceID:             instanceID,
 		Action:                 action,
-		OperatorID:             o.ID,
-		OperatorName:           o.Name,
-		OperatorDepartmentID:   o.DepartmentID,
-		OperatorDepartmentName: o.DepartmentName,
+		OperatorID:             u.ID,
+		OperatorName:           u.Name,
+		OperatorDepartmentID:   u.DepartmentID,
+		OperatorDepartmentName: u.DepartmentName,
 	}
 }
 
@@ -221,27 +214,91 @@ type Instance struct {
 	FormData                map[string]any  `json:"formData" bun:"form_data,type:jsonb,nullzero"`
 }
 
+// Applicant returns the applicant as a person snapshot.
+func (i *Instance) Applicant() UserInfo {
+	return UserInfo{
+		ID:             i.ApplicantID,
+		Name:           i.ApplicantName,
+		DepartmentID:   i.ApplicantDepartmentID,
+		DepartmentName: i.ApplicantDepartmentName,
+	}
+}
+
 // Task represents an approval task.
 type Task struct {
 	orm.BaseModel `bun:"table:apv_task,alias:at"`
 	orm.FullAuditedModel
 
-	TenantID         string           `json:"tenantId" bun:"tenant_id"`
-	InstanceID       string           `json:"instanceId" bun:"instance_id"`
-	NodeID           string           `json:"nodeId" bun:"node_id"`
-	AssigneeID       string           `json:"assigneeId" bun:"assignee_id"`
-	AssigneeName     string           `json:"assigneeName" bun:"assignee_name"`
-	DelegatorID      *string          `json:"delegatorId" bun:"delegator_id,nullzero"`
-	DelegatorName    *string          `json:"delegatorName" bun:"delegator_name,nullzero"`
-	SortOrder        int              `json:"sortOrder" bun:"sort_order"`
-	Status           TaskStatus       `json:"status" bun:"status"`
-	ReadAt           *timex.DateTime  `json:"readAt" bun:"read_at,nullzero"`
-	ParentTaskID     *string          `json:"parentTaskId" bun:"parent_task_id,nullzero"`
-	AddAssigneeType  *AddAssigneeType `json:"addAssigneeType" bun:"add_assignee_type,nullzero"`
-	Deadline         *timex.DateTime  `json:"deadline" bun:"deadline,nullzero"`
-	IsTimeout        bool             `json:"isTimeout" bun:"is_timeout"`
-	IsPreWarningSent bool             `json:"isPreWarningSent" bun:"is_pre_warning_sent"`
-	FinishedAt       *timex.DateTime  `json:"finishedAt" bun:"finished_at,nullzero"`
+	TenantID                string           `json:"tenantId" bun:"tenant_id"`
+	InstanceID              string           `json:"instanceId" bun:"instance_id"`
+	NodeID                  string           `json:"nodeId" bun:"node_id"`
+	VisitID                 string           `json:"visitId" bun:"visit_id"`
+	AssigneeID              string           `json:"assigneeId" bun:"assignee_id"`
+	AssigneeName            string           `json:"assigneeName" bun:"assignee_name"`
+	AssigneeDepartmentID    *string          `json:"assigneeDepartmentId" bun:"assignee_department_id,nullzero"`
+	AssigneeDepartmentName  *string          `json:"assigneeDepartmentName" bun:"assignee_department_name,nullzero"`
+	DelegatorID             *string          `json:"delegatorId" bun:"delegator_id,nullzero"`
+	DelegatorName           *string          `json:"delegatorName" bun:"delegator_name,nullzero"`
+	DelegatorDepartmentID   *string          `json:"delegatorDepartmentId" bun:"delegator_department_id,nullzero"`
+	DelegatorDepartmentName *string          `json:"delegatorDepartmentName" bun:"delegator_department_name,nullzero"`
+	SortOrder               int              `json:"sortOrder" bun:"sort_order"`
+	Status                  TaskStatus       `json:"status" bun:"status"`
+	ReadAt                  *timex.DateTime  `json:"readAt" bun:"read_at,nullzero"`
+	ParentTaskID            *string          `json:"parentTaskId" bun:"parent_task_id,nullzero"`
+	AddAssigneeType         *AddAssigneeType `json:"addAssigneeType" bun:"add_assignee_type,nullzero"`
+	Deadline                *timex.DateTime  `json:"deadline" bun:"deadline,nullzero"`
+	IsTimeout               bool             `json:"isTimeout" bun:"is_timeout"`
+	IsPreWarningSent        bool             `json:"isPreWarningSent" bun:"is_pre_warning_sent"`
+	FinishedAt              *timex.DateTime  `json:"finishedAt" bun:"finished_at,nullzero"`
+}
+
+// Assignee returns the task assignee as a person snapshot.
+func (t *Task) Assignee() UserInfo {
+	return UserInfo{
+		ID:             t.AssigneeID,
+		Name:           t.AssigneeName,
+		DepartmentID:   t.AssigneeDepartmentID,
+		DepartmentName: t.AssigneeDepartmentName,
+	}
+}
+
+// Delegator returns the delegator as a person snapshot, or nil when the
+// task did not arrive via delegation.
+func (t *Task) Delegator() *UserInfo {
+	if t.DelegatorID == nil {
+		return nil
+	}
+
+	info := UserInfo{
+		ID:             *t.DelegatorID,
+		DepartmentID:   t.DelegatorDepartmentID,
+		DepartmentName: t.DelegatorDepartmentName,
+	}
+
+	if t.DelegatorName != nil {
+		info.Name = *t.DelegatorName
+	}
+
+	return &info
+}
+
+// NodeVisit records one traversal of a flow node by an instance: the engine
+// inserts an active row when it enters a node and stamps the outcome
+// (passed / rejected / returned / canceled) plus FinishedAt when the node
+// concludes. Sequence is the per-instance step number, so ordering visits by
+// it reconstructs the exact path the instance took — the authoritative source
+// for the instance timeline and flow-graph progress projections. A node
+// re-entered after a rollback gets a fresh visit row.
+type NodeVisit struct {
+	orm.BaseModel `bun:"table:apv_node_visit,alias:anv"`
+	orm.CreationAuditedModel
+
+	TenantID   string          `json:"tenantId" bun:"tenant_id"`
+	InstanceID string          `json:"instanceId" bun:"instance_id"`
+	NodeID     string          `json:"nodeId" bun:"node_id"`
+	Sequence   int             `json:"sequence" bun:"sequence"`
+	Status     NodeVisitStatus `json:"status" bun:"status"`
+	FinishedAt *timex.DateTime `json:"finishedAt" bun:"finished_at,nullzero"`
 }
 
 // FormSnapshot represents a form snapshot for rollback strategies.
@@ -257,35 +314,67 @@ type FormSnapshot struct {
 
 // ── Records & Logs ──────────────────────────────────────────────────────────
 
-// ActionLog represents an action log entry.
+// ActionLog represents an action log entry. Person lists (added / removed
+// assignees, CC recipients) are stored as UserInfo arrays so each person
+// carries id, name, and the department snapshotted at action time — no
+// parallel-array zipping.
 type ActionLog struct {
 	orm.BaseModel `bun:"table:apv_action_log,alias:aal"`
 	orm.Model
 	orm.CreationTrackedModel
 
-	InstanceID             string           `json:"instanceId" bun:"instance_id"`
-	NodeID                 *string          `json:"nodeId" bun:"node_id,nullzero"`
-	TaskID                 *string          `json:"taskId" bun:"task_id,nullzero"`
-	Action                 ActionType       `json:"action" bun:"action"`
-	OperatorID             string           `json:"operatorId" bun:"operator_id"`
-	OperatorName           string           `json:"operatorName" bun:"operator_name"`
-	OperatorDepartmentID   *string          `json:"operatorDepartmentId" bun:"operator_department_id,nullzero"`
-	OperatorDepartmentName *string          `json:"operatorDepartmentName" bun:"operator_department_name,nullzero"`
-	IPAddress              *string          `json:"ipAddress" bun:"ip_address,nullzero"`
-	UserAgent              *string          `json:"userAgent" bun:"user_agent,nullzero"`
-	Opinion                *string          `json:"opinion" bun:"opinion,nullzero"`
-	TransferToID           *string          `json:"transferToId" bun:"transfer_to_id,nullzero"`
-	TransferToName         *string          `json:"transferToName" bun:"transfer_to_name,nullzero"`
-	RollbackToNodeID       *string          `json:"rollbackToNodeId" bun:"rollback_to_node_id,nullzero"`
-	AddAssigneeType        *AddAssigneeType `json:"addAssigneeType" bun:"add_assignee_type,nullzero"`
-	AddedAssigneeIDs       []string         `json:"addedAssigneeIds" bun:"added_assignee_ids,type:jsonb"`
-	AddedAssigneeNames     []string         `json:"addedAssigneeNames" bun:"added_assignee_names,type:jsonb"`
-	RemovedAssigneeIDs     []string         `json:"removedAssigneeIds" bun:"removed_assignee_ids,type:jsonb"`
-	RemovedAssigneeNames   []string         `json:"removedAssigneeNames" bun:"removed_assignee_names,type:jsonb"`
-	CCUserIDs              []string         `json:"ccUserIds" bun:"cc_user_ids,type:jsonb"`
-	CCUserNames            []string         `json:"ccUserNames" bun:"cc_user_names,type:jsonb"`
-	Attachments            []string         `json:"attachments" bun:"attachments,type:jsonb,nullzero"`
-	Meta                   map[string]any   `json:"meta" bun:"meta,type:jsonb,nullzero"`
+	InstanceID               string           `json:"instanceId" bun:"instance_id"`
+	NodeID                   *string          `json:"nodeId" bun:"node_id,nullzero"`
+	TaskID                   *string          `json:"taskId" bun:"task_id,nullzero"`
+	Action                   ActionType       `json:"action" bun:"action"`
+	OperatorID               string           `json:"operatorId" bun:"operator_id"`
+	OperatorName             string           `json:"operatorName" bun:"operator_name"`
+	OperatorDepartmentID     *string          `json:"operatorDepartmentId" bun:"operator_department_id,nullzero"`
+	OperatorDepartmentName   *string          `json:"operatorDepartmentName" bun:"operator_department_name,nullzero"`
+	IPAddress                *string          `json:"ipAddress" bun:"ip_address,nullzero"`
+	UserAgent                *string          `json:"userAgent" bun:"user_agent,nullzero"`
+	Opinion                  *string          `json:"opinion" bun:"opinion,nullzero"`
+	TransferToID             *string          `json:"transferToId" bun:"transfer_to_id,nullzero"`
+	TransferToName           *string          `json:"transferToName" bun:"transfer_to_name,nullzero"`
+	TransferToDepartmentID   *string          `json:"transferToDepartmentId" bun:"transfer_to_department_id,nullzero"`
+	TransferToDepartmentName *string          `json:"transferToDepartmentName" bun:"transfer_to_department_name,nullzero"`
+	RollbackToNodeID         *string          `json:"rollbackToNodeId" bun:"rollback_to_node_id,nullzero"`
+	AddAssigneeType          *AddAssigneeType `json:"addAssigneeType" bun:"add_assignee_type,nullzero"`
+	AddedAssignees           []UserInfo       `json:"addedAssignees" bun:"added_assignees,type:jsonb"`
+	RemovedAssignees         []UserInfo       `json:"removedAssignees" bun:"removed_assignees,type:jsonb"`
+	CCUsers                  []UserInfo       `json:"ccUsers" bun:"cc_users,type:jsonb"`
+	Attachments              []string         `json:"attachments" bun:"attachments,type:jsonb,nullzero"`
+	Meta                     map[string]any   `json:"meta" bun:"meta,type:jsonb,nullzero"`
+}
+
+// Operator returns the operator as a person snapshot.
+func (l *ActionLog) Operator() UserInfo {
+	return UserInfo{
+		ID:             l.OperatorID,
+		Name:           l.OperatorName,
+		DepartmentID:   l.OperatorDepartmentID,
+		DepartmentName: l.OperatorDepartmentName,
+	}
+}
+
+// TransferTo returns the transfer recipient as a person snapshot, or nil
+// when the action carried no transfer target.
+func (l *ActionLog) TransferTo() *UserInfo {
+	if l.TransferToID == nil {
+		return nil
+	}
+
+	info := UserInfo{
+		ID:             *l.TransferToID,
+		DepartmentID:   l.TransferToDepartmentID,
+		DepartmentName: l.TransferToDepartmentName,
+	}
+
+	if l.TransferToName != nil {
+		info.Name = *l.TransferToName
+	}
+
+	return &info
 }
 
 // CCRecord represents a CC notification record.
@@ -294,13 +383,29 @@ type CCRecord struct {
 	orm.Model
 	orm.CreationTrackedModel
 
-	InstanceID string          `json:"instanceId" bun:"instance_id"`
-	NodeID     *string         `json:"nodeId" bun:"node_id,nullzero"`
-	TaskID     *string         `json:"taskId" bun:"task_id,nullzero"`
-	CCUserID   string          `json:"ccUserId" bun:"cc_user_id"`
-	CCUserName string          `json:"ccUserName" bun:"cc_user_name"`
-	IsManual   bool            `json:"isManual" bun:"is_manual"`
-	ReadAt     *timex.DateTime `json:"readAt" bun:"read_at,nullzero"`
+	InstanceID           string          `json:"instanceId" bun:"instance_id"`
+	NodeID               *string         `json:"nodeId" bun:"node_id,nullzero"`
+	TaskID               *string         `json:"taskId" bun:"task_id,nullzero"`
+	CCUserID             string          `json:"ccUserId" bun:"cc_user_id"`
+	CCUserName           string          `json:"ccUserName" bun:"cc_user_name"`
+	CCUserDepartmentID   *string         `json:"ccUserDepartmentId" bun:"cc_user_department_id,nullzero"`
+	CCUserDepartmentName *string         `json:"ccUserDepartmentName" bun:"cc_user_department_name,nullzero"`
+	IsManual             bool            `json:"isManual" bun:"is_manual"`
+	ReadAt               *timex.DateTime `json:"readAt" bun:"read_at,nullzero"`
+}
+
+// Recipient returns the record as a timeline CC recipient: the person snapshot
+// plus the read receipt.
+func (r *CCRecord) Recipient() CCRecipient {
+	return CCRecipient{
+		User: UserInfo{
+			ID:             r.CCUserID,
+			Name:           r.CCUserName,
+			DepartmentID:   r.CCUserDepartmentID,
+			DepartmentName: r.CCUserDepartmentName,
+		},
+		ReadAt: r.ReadAt,
+	}
 }
 
 // Delegation represents an approval delegation.
@@ -324,12 +429,36 @@ type UrgeRecord struct {
 	orm.Model
 	orm.CreationTrackedModel
 
-	InstanceID     string  `json:"instanceId" bun:"instance_id"`
-	NodeID         string  `json:"nodeId" bun:"node_id"`
-	TaskID         *string `json:"taskId" bun:"task_id,nullzero"`
-	UrgerID        string  `json:"urgerId" bun:"urger_id"`
-	UrgerName      string  `json:"urgerName" bun:"urger_name"`
-	TargetUserID   string  `json:"targetUserId" bun:"target_user_id"`
-	TargetUserName string  `json:"targetUserName" bun:"target_user_name"`
-	Message        string  `json:"message" bun:"message"`
+	InstanceID               string  `json:"instanceId" bun:"instance_id"`
+	NodeID                   string  `json:"nodeId" bun:"node_id"`
+	TaskID                   *string `json:"taskId" bun:"task_id,nullzero"`
+	UrgerID                  string  `json:"urgerId" bun:"urger_id"`
+	UrgerName                string  `json:"urgerName" bun:"urger_name"`
+	UrgerDepartmentID        *string `json:"urgerDepartmentId" bun:"urger_department_id,nullzero"`
+	UrgerDepartmentName      *string `json:"urgerDepartmentName" bun:"urger_department_name,nullzero"`
+	TargetUserID             string  `json:"targetUserId" bun:"target_user_id"`
+	TargetUserName           string  `json:"targetUserName" bun:"target_user_name"`
+	TargetUserDepartmentID   *string `json:"targetUserDepartmentId" bun:"target_user_department_id,nullzero"`
+	TargetUserDepartmentName *string `json:"targetUserDepartmentName" bun:"target_user_department_name,nullzero"`
+	Message                  string  `json:"message" bun:"message"`
+}
+
+// Urger returns the urging user as a person snapshot.
+func (r *UrgeRecord) Urger() UserInfo {
+	return UserInfo{
+		ID:             r.UrgerID,
+		Name:           r.UrgerName,
+		DepartmentID:   r.UrgerDepartmentID,
+		DepartmentName: r.UrgerDepartmentName,
+	}
+}
+
+// Target returns the urged assignee as a person snapshot.
+func (r *UrgeRecord) Target() UserInfo {
+	return UserInfo{
+		ID:             r.TargetUserID,
+		Name:           r.TargetUserName,
+		DepartmentID:   r.TargetUserDepartmentID,
+		DepartmentName: r.TargetUserDepartmentName,
+	}
 }

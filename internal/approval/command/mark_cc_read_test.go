@@ -180,6 +180,9 @@ func (s *MarkCCReadTestSuite) TestMarkReadIdempotent() {
 func (s *MarkCCReadTestSuite) TestMarkReadShouldAdvanceCCNodeWhenAllRead() {
 	currentNodeID := s.ccNodeID
 	instID := s.createInstance("MCC-003", &currentNodeID)
+	// The instance is waiting on the read-confirm CC node, so its visit is open;
+	// the final read concludes it and advances the flow.
+	insertActiveVisit(s.T(), s.ctx, s.db, "default", instID, s.ccNodeID, 1)
 
 	records := []approval.CCRecord{
 		{InstanceID: instID, NodeID: &s.ccNodeID, CCUserID: "cc-advance-1", IsManual: false},

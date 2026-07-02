@@ -20,7 +20,7 @@ type TransferTaskCmd struct {
 	cqrs.BaseCommand
 
 	TaskID       string
-	Operator     approval.OperatorInfo
+	Operator     approval.UserInfo
 	Opinion      string
 	FormData     map[string]any
 	TransferToID string
@@ -92,7 +92,7 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 		return cqrs.Unit{}, err
 	}
 
-	transferToName := shared.ResolveUserName(ctx, h.userResolver, transferToID)
+	transferTo := shared.ResolveUserInfo(ctx, h.userResolver, transferToID)
 
 	// The replacement stands in for the original in the add-assignee dependency
 	// graph: it inherits the original's parent link (so transferring a "before"
@@ -100,17 +100,22 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 	// and, below, adopts the original's active children (so transferring the
 	// parent of "after" children does not orphan them). Without this a transfer
 	// severs the parent/child link and reintroduces the parallel-node deadlock.
+	// It also inherits the original's visit binding — the replacement acts in
+	// the same traversal of the node.
 	newTask := &approval.Task{
-		TenantID:        instance.TenantID,
-		InstanceID:      instance.ID,
-		NodeID:          task.NodeID,
-		AssigneeID:      transferToID,
-		AssigneeName:    transferToName,
-		SortOrder:       task.SortOrder,
-		Status:          approval.TaskPending,
-		Deadline:        task.Deadline,
-		ParentTaskID:    task.ParentTaskID,
-		AddAssigneeType: task.AddAssigneeType,
+		TenantID:               instance.TenantID,
+		InstanceID:             instance.ID,
+		NodeID:                 task.NodeID,
+		VisitID:                task.VisitID,
+		AssigneeID:             transferTo.ID,
+		AssigneeName:           transferTo.Name,
+		AssigneeDepartmentID:   transferTo.DepartmentID,
+		AssigneeDepartmentName: transferTo.DepartmentName,
+		SortOrder:              task.SortOrder,
+		Status:                 approval.TaskPending,
+		Deadline:               task.Deadline,
+		ParentTaskID:           task.ParentTaskID,
+		AddAssigneeType:        task.AddAssigneeType,
 	}
 	if _, err := db.NewInsert().Model(newTask).Exec(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("insert transfer task: %w", err)
@@ -122,9 +127,9 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 
 	events := []approval.DomainEvent{
 		approval.NewTaskTransferredEvent(task.ID, task.TenantID, instance.ID, node.ID,
-			approval.UserInfo{ID: cmd.Operator.ID, Name: cmd.Operator.Name},
-			approval.UserInfo{ID: transferToID, Name: transferToName}, cmd.Opinion),
-		approval.NewTaskCreatedEvent(newTask.ID, newTask.TenantID, instance.ID, node.ID, transferToID, transferToName, task.Deadline),
+			cmd.Operator,
+			transferTo, cmd.Opinion),
+		approval.NewTaskCreatedEvent(newTask.ID, newTask.TenantID, instance.ID, node.ID, transferTo.ID, transferTo.Name, task.Deadline),
 	}
 
 	actionLog := h.taskSvc.BuildActionLog(
@@ -132,7 +137,7 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 		task,
 		cmd.Operator,
 		approval.ActionTransfer,
-		service.ActionLogParams{Opinion: cmd.Opinion, TransferToID: transferToID, TransferToName: transferToName, Attachments: cmd.Attachments},
+		service.ActionLogParams{Opinion: cmd.Opinion, TransferTo: new(transferTo), Attachments: cmd.Attachments},
 	)
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 

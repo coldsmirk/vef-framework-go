@@ -9,7 +9,7 @@ var Module = fx.Module(
 	fx.Provide(
 		// Pass rule strategies
 		fx.Annotate(NewAllPassStrategy, fx.ResultTags(`group:"vef:approval:pass_rule_strategies"`)),
-		fx.Annotate(NewOnePassStrategy, fx.ResultTags(`group:"vef:approval:pass_rule_strategies"`)),
+		fx.Annotate(NewAnyPassStrategy, fx.ResultTags(`group:"vef:approval:pass_rule_strategies"`)),
 		fx.Annotate(NewRatioPassStrategy, fx.ResultTags(`group:"vef:approval:pass_rule_strategies"`)),
 
 		// Assignee resolvers

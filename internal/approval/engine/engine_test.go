@@ -61,7 +61,10 @@ func init() {
 
 // --- Standalone Tests (no DB required) ---
 
-// TestNewFlowEngine tests new flow engine constructor via behavior.
+// TestNewFlowEngine tests the constructor's registration contract. Positive
+// dispatch (a registered processor actually receiving ProcessNode calls) is
+// pinned by the DB-backed suites — ProcessNode begins a node visit before
+// dispatching, so it cannot run without a database.
 func TestNewFlowEngine(t *testing.T) {
 	t.Run("EmptyProcessors", func(t *testing.T) {
 		eng := engine.NewFlowEngine(nil, nil, nil, nil, nil, nil)
@@ -71,39 +74,6 @@ func TestNewFlowEngine(t *testing.T) {
 		node.ID = "test-start"
 		err := eng.ProcessNode(t.Context(), nil, &approval.Instance{}, node)
 		assert.ErrorIs(t, err, engine.ErrProcessorNotFound, "Should fail for any node kind")
-	})
-
-	t.Run("RegistersProcessors", func(t *testing.T) {
-		stubErr := errors.New("stub reached")
-		eng := engine.NewFlowEngine(nil, []engine.NodeProcessor{
-			&StubProcessor{kind: approval.NodeStart, err: stubErr},
-		}, nil, nil, nil, nil)
-
-		node := &approval.FlowNode{Kind: approval.NodeStart, Name: "Start"}
-		node.ID = "test-start"
-		err := eng.ProcessNode(t.Context(), nil, &approval.Instance{}, node)
-		assert.ErrorIs(t, err, stubErr, "Should reach the registered processor")
-		assert.NotErrorIs(t, err, engine.ErrProcessorNotFound, "Should not be processor-not-found")
-	})
-
-	t.Run("AllProcessorTypes", func(t *testing.T) {
-		kinds := []approval.NodeKind{
-			approval.NodeStart, approval.NodeEnd, approval.NodeApproval,
-			approval.NodeCC, approval.NodeCondition, approval.NodeHandle,
-		}
-
-		var procs []engine.NodeProcessor
-		for _, k := range kinds {
-			procs = append(procs, &StubProcessor{kind: k, err: errors.New("reached-" + string(k))})
-		}
-
-		eng := engine.NewFlowEngine(nil, procs, nil, nil, nil, nil)
-		for _, k := range kinds {
-			node := &approval.FlowNode{Kind: k, Name: string(k)}
-			node.ID = "test-" + string(k)
-			err := eng.ProcessNode(t.Context(), nil, &approval.Instance{}, node)
-			assert.NotErrorIs(t, err, engine.ErrProcessorNotFound, "Processor for %s should be found", k)
-		}
 	})
 
 	t.Run("DuplicatesPanic", func(t *testing.T) {
@@ -456,29 +426,49 @@ func (s *FlowEngineTestSuite) TestAdvanceToNextNode() {
 	})
 }
 
+// insertActiveVisitWithTasks opens a visit of the approval node and inserts
+// one task per assignee status, bound to it — the shape visit-scoped
+// evaluation reads.
+func (s *FlowEngineTestSuite) insertActiveVisitWithTasks(instanceID string, statuses map[string]approval.TaskStatus) {
+	visit := &approval.NodeVisit{
+		TenantID:   "default",
+		InstanceID: instanceID,
+		NodeID:     s.approvalNodeID,
+		Sequence:   1,
+		Status:     approval.NodeVisitActive,
+	}
+	_, err := s.db.NewInsert().Model(visit).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert node visit")
+
+	for uid, status := range statuses {
+		task := &approval.Task{
+			TenantID:   "default",
+			InstanceID: instanceID,
+			NodeID:     s.approvalNodeID,
+			VisitID:    visit.ID,
+			AssigneeID: uid,
+			Status:     status,
+		}
+		_, err := s.db.NewInsert().Model(task).Exec(s.ctx)
+		s.Require().NoError(err, "Should insert task")
+	}
+}
+
 func (s *FlowEngineTestSuite) TestEvaluateNodeCompletion() {
+	node := &approval.FlowNode{
+		PassRule:  approval.PassAll,
+		PassRatio: decimal.NewFromInt(0),
+	}
+	node.ID = s.approvalNodeID
+
 	s.Run("AllApproved", func() {
 		defer s.cleanTransientData()
 
 		instance := s.newInstance("applicant-1")
-		node := &approval.FlowNode{
-			PassRule:  approval.PassAll,
-			PassRatio: decimal.NewFromInt(0),
-		}
-		node.ID = s.approvalNodeID
-
-		// Insert approved tasks
-		for _, uid := range []string{"user-1", "user-2"} {
-			task := &approval.Task{
-				TenantID:   "default",
-				InstanceID: instance.ID,
-				NodeID:     s.approvalNodeID,
-				AssigneeID: uid,
-				Status:     approval.TaskApproved,
-			}
-			_, err := s.db.NewInsert().Model(task).Exec(s.ctx)
-			s.Require().NoError(err, "Should insert task")
-		}
+		s.insertActiveVisitWithTasks(instance.ID, map[string]approval.TaskStatus{
+			"user-1": approval.TaskApproved,
+			"user-2": approval.TaskApproved,
+		})
 
 		result, err := s.engine.EvaluateNodeCompletion(s.ctx, s.db, instance, node)
 		s.Require().NoError(err, "Should evaluate without error")
@@ -489,20 +479,10 @@ func (s *FlowEngineTestSuite) TestEvaluateNodeCompletion() {
 		defer s.cleanTransientData()
 
 		instance := s.newInstance("applicant-1")
-		node := &approval.FlowNode{
-			PassRule:  approval.PassAll,
-			PassRatio: decimal.NewFromInt(0),
-		}
-		node.ID = s.approvalNodeID
-
-		tasks := []approval.Task{
-			{TenantID: "default", InstanceID: instance.ID, NodeID: s.approvalNodeID, AssigneeID: "user-1", Status: approval.TaskApproved},
-			{TenantID: "default", InstanceID: instance.ID, NodeID: s.approvalNodeID, AssigneeID: "user-2", Status: approval.TaskPending},
-		}
-		for i := range tasks {
-			_, err := s.db.NewInsert().Model(&tasks[i]).Exec(s.ctx)
-			s.Require().NoError(err, "Should insert task")
-		}
+		s.insertActiveVisitWithTasks(instance.ID, map[string]approval.TaskStatus{
+			"user-1": approval.TaskApproved,
+			"user-2": approval.TaskPending,
+		})
 
 		result, err := s.engine.EvaluateNodeCompletion(s.ctx, s.db, instance, node)
 		s.Require().NoError(err, "Should evaluate without error")
@@ -513,24 +493,23 @@ func (s *FlowEngineTestSuite) TestEvaluateNodeCompletion() {
 		defer s.cleanTransientData()
 
 		instance := s.newInstance("applicant-1")
-		node := &approval.FlowNode{
-			PassRule:  approval.PassAll,
-			PassRatio: decimal.NewFromInt(0),
-		}
-		node.ID = s.approvalNodeID
-
-		tasks := []approval.Task{
-			{TenantID: "default", InstanceID: instance.ID, NodeID: s.approvalNodeID, AssigneeID: "user-1", Status: approval.TaskApproved},
-			{TenantID: "default", InstanceID: instance.ID, NodeID: s.approvalNodeID, AssigneeID: "user-2", Status: approval.TaskRejected},
-		}
-		for i := range tasks {
-			_, err := s.db.NewInsert().Model(&tasks[i]).Exec(s.ctx)
-			s.Require().NoError(err, "Should insert task")
-		}
+		s.insertActiveVisitWithTasks(instance.ID, map[string]approval.TaskStatus{
+			"user-1": approval.TaskApproved,
+			"user-2": approval.TaskRejected,
+		})
 
 		result, err := s.engine.EvaluateNodeCompletion(s.ctx, s.db, instance, node)
 		s.Require().NoError(err, "Should evaluate without error")
 		s.Assert().Equal(approval.PassRuleRejected, result, "Should reject when one task is rejected")
+	})
+
+	s.Run("NoOpenVisitIsABrokenInvariant", func() {
+		defer s.cleanTransientData()
+
+		instance := s.newInstance("applicant-1")
+
+		_, err := s.engine.EvaluateNodeCompletion(s.ctx, s.db, instance, node)
+		s.Require().ErrorIs(err, engine.ErrActiveVisitNotFound, "Evaluating a node without an open visit must fail loudly")
 	})
 }
 

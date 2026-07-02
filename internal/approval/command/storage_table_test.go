@@ -125,7 +125,7 @@ func (s *StorageTableTestSuite) startTableInstance(code string, formData map[str
 
 	instance, err := start.Handle(s.ctx, command.StartInstanceCmd{
 		FlowCode:  code,
-		Applicant: approval.OperatorInfo{ID: "user-1", Name: "User One"},
+		Applicant: approval.UserInfo{ID: "user-1", Name: "User One"},
 		FormData:  formData,
 		Caller:    approval.SystemCaller,
 	})
@@ -258,7 +258,7 @@ func (s *StorageTableTestSuite) TestResubmitReplacesProjectionRow() {
 
 	instance := s.startTableInstance("storage-tbl-replace", map[string]any{"reason": "first", "amount": 1})
 
-	// Mirror what ResubmitHandler does: refresh the instance's form data and
+	// Mirror what ResubmitInstanceHandler does: refresh the instance's form data and
 	// re-project it through SyncInstanceProjection — the same single entry point
 	// every handler funnels form_data mutations through.
 	instance.FormData = map[string]any{"reason": "second", "amount": 2}
@@ -382,6 +382,7 @@ func (s *StorageTableTestSuite) TestApproveSyncsProjection() {
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     node.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, node.ID).ID,
 		AssigneeID: "approver-1",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -395,6 +396,7 @@ func (s *StorageTableTestSuite) TestApproveSyncsProjection() {
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     node.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, node.ID).ID,
 		AssigneeID: "approver-1-peer",
 		SortOrder:  2,
 		Status:     approval.TaskPending,
@@ -409,7 +411,7 @@ func (s *StorageTableTestSuite) TestApproveSyncsProjection() {
 
 	_, err = approve.Handle(s.ctx, command.ApproveTaskCmd{
 		TaskID:   task.ID,
-		Operator: approval.OperatorInfo{ID: "approver-1", Name: "Approver"},
+		Operator: approval.UserInfo{ID: "approver-1", Name: "Approver"},
 		Opinion:  "ok",
 		FormData: map[string]any{"reason": "edited-by-approver"},
 		Caller:   approval.SystemCaller,

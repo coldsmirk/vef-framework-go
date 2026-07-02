@@ -43,7 +43,7 @@ type ScannerTestSuite struct {
 func (s *ScannerTestSuite) SetupSuite() {
 	passRules := []approval.PassRuleStrategy{
 		strategy.NewAllPassStrategy(),
-		strategy.NewOnePassStrategy(),
+		strategy.NewAnyPassStrategy(),
 		strategy.NewRatioPassStrategy(),
 	}
 	assigneeResolvers := []strategy.AssigneeResolver{
@@ -205,11 +205,14 @@ func (s *ScannerTestSuite) createTimeoutScenarioWithTaskStatus(
 	_, err = s.db.NewInsert().Model(instance).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert running instance")
 
+	visit := s.insertActiveVisit(instance.ID, approvalNode.ID)
+
 	deadline := timex.Now().AddHours(-1)
 	task := &approval.Task{
 		TenantID:   "default",
 		InstanceID: instance.ID,
 		NodeID:     approvalNode.ID,
+		VisitID:    visit.ID,
 		AssigneeID: "approver-1",
 		Status:     taskStatus,
 		Deadline:   &deadline,
@@ -218,6 +221,22 @@ func (s *ScannerTestSuite) createTimeoutScenarioWithTaskStatus(
 	s.Require().NoError(err, "Should insert timed-out task")
 
 	return instance, task
+}
+
+// insertActiveVisit records the open visit the timed-out node is executing in;
+// scanner-driven completion evaluates and concludes it like any other path.
+func (s *ScannerTestSuite) insertActiveVisit(instanceID, nodeID string) *approval.NodeVisit {
+	visit := &approval.NodeVisit{
+		TenantID:   "default",
+		InstanceID: instanceID,
+		NodeID:     nodeID,
+		Sequence:   1,
+		Status:     approval.NodeVisitActive,
+	}
+	_, err := s.db.NewInsert().Model(visit).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert node visit")
+
+	return visit
 }
 
 func (s *ScannerTestSuite) TestAutoPassTimeoutShouldAdvanceFlow() {
@@ -688,6 +707,7 @@ func (s *ScannerTestSuite) TestTransferAdminTimeoutShouldPreserveBeforeChildPare
 		TenantID:        "default",
 		InstanceID:      parent.InstanceID,
 		NodeID:          parent.NodeID,
+		VisitID:         parent.VisitID,
 		AssigneeID:      "before-B",
 		SortOrder:       7,
 		Status:          approval.TaskPending,
@@ -723,6 +743,7 @@ func (s *ScannerTestSuite) TestTransferAdminTimeoutShouldRepointAfterChildrenToS
 		TenantID:        "default",
 		InstanceID:      parent.InstanceID,
 		NodeID:          parent.NodeID,
+		VisitID:         parent.VisitID,
 		AssigneeID:      "after-B",
 		SortOrder:       7,
 		Status:          approval.TaskWaiting,
@@ -759,6 +780,7 @@ func (s *ScannerTestSuite) TestAutoPassTimeoutShouldActivateAfterChildOnParallel
 		TenantID:        "default",
 		InstanceID:      parent.InstanceID,
 		NodeID:          parent.NodeID,
+		VisitID:         parent.VisitID,
 		AssigneeID:      "after-B",
 		SortOrder:       7,
 		Status:          approval.TaskWaiting,
@@ -799,6 +821,7 @@ func (s *ScannerTestSuite) TestTransferAdminTimeoutRepointsAfterChildToFirstOfMu
 		TenantID:        "default",
 		InstanceID:      parent.InstanceID,
 		NodeID:          parent.NodeID,
+		VisitID:         parent.VisitID,
 		AssigneeID:      "after-B",
 		SortOrder:       7,
 		Status:          approval.TaskWaiting,

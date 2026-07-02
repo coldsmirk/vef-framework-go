@@ -22,24 +22,24 @@ import (
 
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
-		return &WithdrawTestSuite{ctx: env.Ctx, db: env.DB}
+		return &WithdrawInstanceTestSuite{ctx: env.Ctx, db: env.DB}
 	})
 }
 
-// WithdrawTestSuite tests the WithdrawHandler.
-type WithdrawTestSuite struct {
+// WithdrawInstanceTestSuite tests the WithdrawInstanceHandler.
+type WithdrawInstanceTestSuite struct {
 	suite.Suite
 
 	ctx         context.Context
 	db          orm.DB
-	handler     cqrs.Handler[command.WithdrawCmd, cqrs.Unit]
+	handler     cqrs.Handler[command.WithdrawInstanceCmd, cqrs.Unit]
 	fixture     *MinimalFixture
 	nodeID      string
 	instanceSeq int
 }
 
-func (s *WithdrawTestSuite) SetupSuite() {
-	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewWithdrawHandler(s.db, service.NewTaskService(), service.NewInstanceService(nil)))
+func (s *WithdrawInstanceTestSuite) SetupSuite() {
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewWithdrawInstanceHandler(s.db, service.NewTaskService(), service.NewInstanceService(nil)))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "withdraw")
 
 	node := &approval.FlowNode{
@@ -53,15 +53,15 @@ func (s *WithdrawTestSuite) SetupSuite() {
 	s.nodeID = node.ID
 }
 
-func (s *WithdrawTestSuite) TearDownTest() {
+func (s *WithdrawInstanceTestSuite) TearDownTest() {
 	cleanRuntimeData(s.ctx, s.db)
 }
 
-func (s *WithdrawTestSuite) TearDownSuite() {
+func (s *WithdrawInstanceTestSuite) TearDownSuite() {
 	cleanAllApprovalData(s.ctx, s.db)
 }
 
-func (s *WithdrawTestSuite) insertInstance(applicantID string, status approval.InstanceStatus) *approval.Instance {
+func (s *WithdrawInstanceTestSuite) insertInstance(applicantID string, status approval.InstanceStatus) *approval.Instance {
 	s.instanceSeq++
 	inst := &approval.Instance{
 		TenantID:      "default",
@@ -78,11 +78,12 @@ func (s *WithdrawTestSuite) insertInstance(applicantID string, status approval.I
 	return inst
 }
 
-func (s *WithdrawTestSuite) insertTask(instanceID string, status approval.TaskStatus) {
+func (s *WithdrawInstanceTestSuite) insertTask(instanceID string, status approval.TaskStatus) {
 	task := &approval.Task{
 		TenantID:   "default",
 		InstanceID: instanceID,
 		NodeID:     s.nodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", instanceID, s.nodeID).ID,
 		AssigneeID: "approver-1",
 		SortOrder:  1,
 		Status:     status,
@@ -91,12 +92,12 @@ func (s *WithdrawTestSuite) insertTask(instanceID string, status approval.TaskSt
 	s.Require().NoError(err, "Withdraw should complete without error")
 }
 
-func (s *WithdrawTestSuite) TestWithdrawSuccess() {
+func (s *WithdrawInstanceTestSuite) TestWithdrawSuccess() {
 	inst := s.insertInstance("applicant-1", approval.InstanceRunning)
 	s.insertTask(inst.ID, approval.TaskPending)
 
-	operator := approval.OperatorInfo{ID: "applicant-1", Name: "Applicant"}
-	_, err := s.handler.Handle(s.ctx, command.WithdrawCmd{
+	operator := approval.UserInfo{ID: "applicant-1", Name: "Applicant"}
+	_, err := s.handler.Handle(s.ctx, command.WithdrawInstanceCmd{
 		InstanceID: inst.ID,
 		Operator:   operator,
 		Caller:     approval.SystemCaller,
@@ -129,11 +130,11 @@ func (s *WithdrawTestSuite) TestWithdrawSuccess() {
 	s.Assert().Equal(approval.ActionWithdraw, logs[0].Action, "Action should be withdraw")
 }
 
-func (s *WithdrawTestSuite) TestWithdrawNotApplicant() {
+func (s *WithdrawInstanceTestSuite) TestWithdrawNotApplicant() {
 	inst := s.insertInstance("applicant-1", approval.InstanceRunning)
 
-	operator := approval.OperatorInfo{ID: "other-user", Name: "Other"}
-	_, err := s.handler.Handle(s.ctx, command.WithdrawCmd{
+	operator := approval.UserInfo{ID: "other-user", Name: "Other"}
+	_, err := s.handler.Handle(s.ctx, command.WithdrawInstanceCmd{
 		InstanceID: inst.ID,
 		Operator:   operator,
 		Caller:     approval.SystemCaller,
@@ -142,11 +143,11 @@ func (s *WithdrawTestSuite) TestWithdrawNotApplicant() {
 	s.Assert().ErrorIs(err, shared.ErrNotApplicant, "Should return ErrNotApplicant")
 }
 
-func (s *WithdrawTestSuite) TestWithdrawNotAllowed() {
+func (s *WithdrawInstanceTestSuite) TestWithdrawNotAllowed() {
 	inst := s.insertInstance("applicant-1", approval.InstanceApproved)
 
-	operator := approval.OperatorInfo{ID: "applicant-1", Name: "Applicant"}
-	_, err := s.handler.Handle(s.ctx, command.WithdrawCmd{
+	operator := approval.UserInfo{ID: "applicant-1", Name: "Applicant"}
+	_, err := s.handler.Handle(s.ctx, command.WithdrawInstanceCmd{
 		InstanceID: inst.ID,
 		Operator:   operator,
 		Caller:     approval.SystemCaller,
@@ -155,14 +156,14 @@ func (s *WithdrawTestSuite) TestWithdrawNotAllowed() {
 	s.Assert().ErrorIs(err, shared.ErrWithdrawNotAllowed, "Should not allow withdrawal of approved instance")
 }
 
-func (s *WithdrawTestSuite) TestWithdrawReturnedInstance() {
+func (s *WithdrawInstanceTestSuite) TestWithdrawReturnedInstance() {
 	// A returned instance is paused with the applicant; withdrawing it is the
 	// applicant's "abandon" path — without it the instance can only resubmit
 	// or linger forever.
 	inst := s.insertInstance("applicant-1", approval.InstanceReturned)
 
-	operator := approval.OperatorInfo{ID: "applicant-1", Name: "Applicant"}
-	_, err := s.handler.Handle(s.ctx, command.WithdrawCmd{
+	operator := approval.UserInfo{ID: "applicant-1", Name: "Applicant"}
+	_, err := s.handler.Handle(s.ctx, command.WithdrawInstanceCmd{
 		InstanceID: inst.ID,
 		Operator:   operator,
 		Reason:     "放弃重新提交",
@@ -177,9 +178,9 @@ func (s *WithdrawTestSuite) TestWithdrawReturnedInstance() {
 	s.Assert().Equal(approval.InstanceWithdrawn, updated.Status, "Returned instance should become withdrawn")
 }
 
-func (s *WithdrawTestSuite) TestWithdrawInstanceNotFound() {
-	operator := approval.OperatorInfo{ID: "applicant-1", Name: "Applicant"}
-	_, err := s.handler.Handle(s.ctx, command.WithdrawCmd{
+func (s *WithdrawInstanceTestSuite) TestWithdrawInstanceNotFound() {
+	operator := approval.UserInfo{ID: "applicant-1", Name: "Applicant"}
+	_, err := s.handler.Handle(s.ctx, command.WithdrawInstanceCmd{
 		InstanceID: "non-existent",
 		Operator:   operator,
 		Caller:     approval.SystemCaller,
@@ -188,7 +189,7 @@ func (s *WithdrawTestSuite) TestWithdrawInstanceNotFound() {
 	s.Assert().ErrorIs(err, shared.ErrInstanceNotFound, "Should return ErrInstanceNotFound")
 }
 
-func (s *WithdrawTestSuite) TestWithdrawShouldBeConcurrencySafe() {
+func (s *WithdrawInstanceTestSuite) TestWithdrawShouldBeConcurrencySafe() {
 	skipSQLiteConcurrencyTest(s.T(), s.ctx, s.db, "SQLite returns SQLITE_BUSY under write races in this concurrency scenario")
 
 	inst := s.insertInstance("applicant-1", approval.InstanceRunning)
@@ -198,7 +199,7 @@ func (s *WithdrawTestSuite) TestWithdrawShouldBeConcurrencySafe() {
 
 	<-lockReady
 
-	operator := approval.OperatorInfo{ID: "applicant-1", Name: "Applicant"}
+	operator := approval.UserInfo{ID: "applicant-1", Name: "Applicant"}
 	start := make(chan struct{})
 	errCh := make(chan error, 2)
 
@@ -209,7 +210,7 @@ func (s *WithdrawTestSuite) TestWithdrawShouldBeConcurrencySafe() {
 
 		err := s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error {
 			txCtx := contextx.SetDB(ctx, tx)
-			_, err := s.handler.Handle(txCtx, command.WithdrawCmd{
+			_, err := s.handler.Handle(txCtx, command.WithdrawInstanceCmd{
 				InstanceID: inst.ID,
 				Operator:   operator,
 				Caller:     approval.SystemCaller,

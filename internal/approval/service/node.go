@@ -67,6 +67,10 @@ func (s *NodeService) HandleNodeCompletion(
 			return nil, err
 		}
 
+		if err := engine.ConcludeActiveNodeVisit(ctx, db, instance.ID, node.ID, approval.NodeVisitPassed); err != nil {
+			return nil, err
+		}
+
 		if err := s.engine.AdvanceToNextNode(ctx, db, instance, node, nil); err != nil {
 			return nil, fmt.Errorf("advance to next node: %w", err)
 		}
@@ -80,6 +84,10 @@ func (s *NodeService) HandleNodeCompletion(
 
 		canceledEvents, err := s.taskSvc.CancelRemainingTasks(ctx, db, instance.ID, node.ID, "节点已拒绝，剩余任务无需处理")
 		if err != nil {
+			return nil, err
+		}
+
+		if err := engine.ConcludeActiveNodeVisit(ctx, db, instance.ID, node.ID, approval.NodeVisitRejected); err != nil {
 			return nil, err
 		}
 
@@ -147,9 +155,9 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 		return nil
 	}
 
-	ccUserNames := shared.ResolveUserNameMapSilent(ctx, s.userResolver, resolved)
+	ccUserInfos := shared.ResolveUserInfoMapSilent(ctx, s.userResolver, resolved)
 
-	insertedUserIDs, err := shared.InsertAutoCCRecords(ctx, db, instance.ID, node.ID, resolved, ccUserNames)
+	insertedUserIDs, err := shared.InsertAutoCCRecords(ctx, db, instance.ID, node.ID, resolved, ccUserInfos)
 	if err != nil {
 		return fmt.Errorf("insert cc records: %w", err)
 	}
@@ -158,7 +166,7 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 		return nil
 	}
 
-	evt := approval.NewCCNotifiedEvent(instance.ID, instance.TenantID, node.ID, insertedUserIDs, ccUserNames, false)
+	evt := approval.NewCCNotifiedEvent(instance.ID, instance.TenantID, node.ID, insertedUserIDs, shared.UserInfoNames(ccUserInfos), false)
 
 	if collector, ok := behavior.TryEventCollectorFromContext(ctx); ok {
 		collector.Add(evt)
@@ -169,8 +177,8 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 	return engine.PublishEventsTx(ctx, s.bus, db, evt)
 }
 
-// CheckCCNodeCompletion checks if all CC records for CC nodes are read and advances the flow.
-func (s *NodeService) CheckCCNodeCompletion(ctx context.Context, db orm.DB, instanceID string, records []approval.CCRecord) error {
+// AdvanceCCNodeIfAllRead checks if all CC records for CC nodes are read and advances the flow.
+func (s *NodeService) AdvanceCCNodeIfAllRead(ctx context.Context, db orm.DB, instanceID string, records []approval.CCRecord) error {
 	nodeIDs := shared.NewOrderedUnique[string](len(records))
 	for _, record := range records {
 		if record.NodeID == nil {
@@ -230,6 +238,12 @@ func (s *NodeService) CheckCCNodeCompletion(ctx context.Context, db orm.DB, inst
 
 	if hasUnread {
 		return nil
+	}
+
+	// The read-confirm gate has cleared: the CC node's visit concludes here,
+	// not in the engine — AdvanceToNextNode enters the next node directly.
+	if err := engine.ConcludeActiveNodeVisit(ctx, db, instanceID, currentNodeID, approval.NodeVisitPassed); err != nil {
+		return err
 	}
 
 	if err := s.engine.AdvanceToNextNode(ctx, db, &instance, &node, nil); err != nil {

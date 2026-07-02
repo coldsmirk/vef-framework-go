@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/approval/my"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -64,14 +63,23 @@ func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Should insert instance")
 	s.instanceID = inst.ID
 
-	delegatorID, delegatorName := "user-deleg", "Delegator D"
+	// Record the visit the engine would have opened on the approval node.
+	nodeVisit := &approval.NodeVisit{
+		TenantID: "t1", InstanceID: inst.ID, NodeID: fix.NodeIDs[0],
+		Sequence: 1, Status: approval.NodeVisitActive,
+	}
+	_, err = s.db.NewInsert().Model(nodeVisit).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert node visit")
+
+	delegatorID, delegatorName, delegatorDept := "user-deleg", "Delegator D", "Ops"
 	deadline := timex.Now()
 
 	tasks := []approval.Task{
 		{
-			TenantID: "t1", InstanceID: inst.ID, NodeID: fix.NodeIDs[0], AssigneeID: "user-b",
-			SortOrder: 1, Status: approval.TaskPending,
-			DelegatorID: &delegatorID, DelegatorName: &delegatorName, Deadline: &deadline, IsTimeout: true,
+			TenantID: "t1", InstanceID: inst.ID, NodeID: fix.NodeIDs[0], VisitID: nodeVisit.ID,
+			AssigneeID: "user-b", SortOrder: 1, Status: approval.TaskPending,
+			DelegatorID: &delegatorID, DelegatorName: &delegatorName, DelegatorDepartmentName: &delegatorDept,
+			Deadline: &deadline, IsTimeout: true,
 		},
 	}
 	for i := range tasks {
@@ -83,7 +91,7 @@ func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
 	rollbackToNodeID := fix.NodeIDs[0]
 
 	logs := []approval.ActionLog{
-		{InstanceID: inst.ID, Action: approval.ActionSubmit, OperatorID: "user-a", OperatorName: "Applicant A", NodeID: &fix.NodeIDs[0]},
+		{InstanceID: inst.ID, Action: approval.ActionSubmit, OperatorID: "user-a", OperatorName: "Applicant A"},
 		{
 			InstanceID:     inst.ID,
 			Action:         approval.ActionTransfer,
@@ -95,14 +103,13 @@ func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
 		},
 		{InstanceID: inst.ID, Action: approval.ActionRollback, OperatorID: "user-b", OperatorName: "Approver B", NodeID: &fix.NodeIDs[0], RollbackToNodeID: &rollbackToNodeID},
 		{
-			InstanceID:         inst.ID,
-			Action:             approval.ActionAddAssignee,
-			OperatorID:         "user-b",
-			OperatorName:       "Approver B",
-			NodeID:             &fix.NodeIDs[0],
-			AddedAssigneeIDs:   []string{"user-e"},
-			AddedAssigneeNames: []string{"Ellen"},
-			Attachments:        []string{"file-1.pdf"},
+			InstanceID:     inst.ID,
+			Action:         approval.ActionAddAssignee,
+			OperatorID:     "user-b",
+			OperatorName:   "Approver B",
+			NodeID:         &fix.NodeIDs[0],
+			AddedAssignees: []approval.UserInfo{{ID: "user-e", Name: "Ellen"}},
+			Attachments:    []string{"file-1.pdf"},
 		},
 	}
 	for i := range logs {
@@ -110,9 +117,11 @@ func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
 		s.Require().NoError(err, "Should insert action log")
 	}
 
-	// Add CC record for user-c.
+	// Add CC record for user-c (auto CC configured on the approval node).
+	ccDept := "Legal"
+
 	ccRecords := []approval.CCRecord{
-		{InstanceID: inst.ID, NodeID: &fix.NodeIDs[0], CCUserID: "user-c", IsManual: false},
+		{InstanceID: inst.ID, NodeID: &fix.NodeIDs[0], CCUserID: "user-c", CCUserName: "CC User", CCUserDepartmentName: &ccDept, IsManual: false},
 	}
 	for i := range ccRecords {
 		_, err := s.db.NewInsert().Model(&ccRecords[i]).Exec(s.ctx)
@@ -132,16 +141,15 @@ func (s *GetMyInstanceDetailTestSuite) TestApplicantAccess() {
 	s.Require().NoError(err, "Should get detail without error")
 	s.Assert().Equal(s.instanceID, detail.Instance.InstanceID, "Should return correct instance")
 	s.Assert().Equal("Detail Instance", detail.Instance.Title, "Should return correct title")
-	s.Assert().Len(detail.Tasks, 1, "Should return 1 task")
-	s.Assert().Len(detail.ActionLogs, 4, "Should return all 4 action logs")
 	s.Assert().Contains(detail.AvailableActions, "withdraw", "Applicant should be able to withdraw")
 	s.Assert().Contains(detail.AvailableActions, "urge", "Applicant should be able to urge when the instance has pending tasks")
 
 	// Form metadata must ship with the detail so the UI can render form data.
-	s.Require().NotNil(detail.Instance.FormSchema, "Detail should carry the version's form schema")
-	s.Assert().Len(detail.Instance.FormSchema.Fields, 2, "Form schema should carry both fields")
-	s.Require().NotNil(detail.Instance.ApplicantDepartmentName, "Detail should carry the applicant department")
-	s.Assert().Equal("Engineering", *detail.Instance.ApplicantDepartmentName, "Applicant department should pass through")
+	s.Require().NotNil(detail.FormSchema, "Detail should carry the version's form schema")
+	s.Assert().Len(detail.FormSchema.Fields, 2, "Form schema should carry both fields")
+	s.Assert().Equal("user-a", detail.Instance.Applicant.ID, "Applicant snapshot should carry the id")
+	s.Require().NotNil(detail.Instance.Applicant.DepartmentName, "Applicant snapshot should carry the department")
+	s.Assert().Equal("Engineering", *detail.Instance.Applicant.DepartmentName, "Applicant department should pass through")
 	s.Require().NotNil(detail.Instance.CurrentNodeID, "Detail should carry the current node id")
 
 	// The flow graph is React Flow–ready and marks the node the instance sits on
@@ -151,58 +159,71 @@ func (s *GetMyInstanceDetailTestSuite) TestApplicantAccess() {
 	var current *approval.FlowGraphNode
 
 	for i := range detail.FlowGraph.Nodes {
-		if detail.FlowGraph.Nodes[i].Data.Status == approval.NodeProgressCurrent {
+		if detail.FlowGraph.Nodes[i].Data.Status == approval.NodeProgressActive {
 			current = &detail.FlowGraph.Nodes[i]
 		}
 	}
 
-	s.Require().NotNil(current, "Graph should mark the current node")
-	s.Require().Len(current.Data.Participants, 1, "Current node should list its pending assignee")
-	s.Assert().Equal("user-b", current.Data.Participants[0].UserID, "Participant should be the pending assignee")
+	s.Require().NotNil(current, "Graph should mark the node with the open visit as active")
+	s.Require().Len(current.Data.Participants, 1, "Active node should list its pending assignee")
+	s.Assert().Equal("user-b", current.Data.Participants[0].User.ID, "Participant should be the pending assignee")
 }
 
-func (s *GetMyInstanceDetailTestSuite) TestProjectsTaskAndLogDetails() {
+func (s *GetMyInstanceDetailTestSuite) TestProjectsTimelineDetails() {
 	detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: s.instanceID,
 		UserID:     "user-a",
 	})
 	s.Require().NoError(err, "Applicant should get detail")
 
-	s.Require().Len(detail.Tasks, 1, "Should return the single task")
-	task := detail.Tasks[0]
-	s.Require().NotNil(task.DelegatorName, "Task should carry the delegator name")
-	s.Assert().Equal("Delegator D", *task.DelegatorName, "Delegator name should pass through")
-	s.Require().NotNil(task.Deadline, "Task should carry the deadline")
-	s.Assert().True(task.IsTimeout, "Task timeout flag should pass through")
+	// One approval visit → one timeline entry carrying everything that
+	// happened at the node: the participant, the CC delivery, and the side
+	// activities.
+	s.Require().Len(detail.Timeline, 1, "Timeline should carry the single visited node")
+	entry := detail.Timeline[0]
+	s.Assert().Equal(approval.TimelineEntryApproval, entry.Kind, "Entry kind should mirror the node kind")
+	s.Assert().Equal(approval.NodeVisitActive, entry.Status, "Entry should report the open visit")
 
-	// Locate logs by action rather than index (created_at order is not asserted).
-	var transfer, rollback, addAssignee *my.ActionLogInfo
+	s.Require().Len(entry.Participants, 1, "Entry should list the single participant")
+	participant := entry.Participants[0]
+	s.Assert().Equal("user-b", participant.User.ID, "Participant should be the assignee")
+	s.Require().NotNil(participant.Delegator, "Participant should carry the delegator snapshot")
+	s.Assert().Equal("Delegator D", participant.Delegator.Name, "Delegator name should pass through")
+	s.Require().NotNil(participant.Delegator.DepartmentName, "Delegator department should pass through")
+	s.Require().NotNil(participant.Deadline, "Participant should carry the deadline")
+	s.Assert().True(participant.IsTimeout, "Participant timeout flag should pass through")
 
-	for i := range detail.ActionLogs {
-		switch detail.ActionLogs[i].Action {
+	s.Require().Len(entry.CCRecipients, 1, "Entry should list the CC recipient")
+	s.Assert().Equal("user-c", entry.CCRecipients[0].User.ID, "CC recipient id should pass through")
+	s.Require().NotNil(entry.CCRecipients[0].User.DepartmentName, "CC recipient department should pass through")
+	s.Assert().Equal("Legal", *entry.CCRecipients[0].User.DepartmentName, "CC recipient department should match the snapshot")
+
+	// Locate activities by action rather than index (same-second inserts).
+	var transfer, rollback, addAssignee *approval.Activity
+
+	for i := range entry.Activities {
+		switch entry.Activities[i].Action {
 		case string(approval.ActionTransfer):
-			transfer = &detail.ActionLogs[i]
+			transfer = &entry.Activities[i]
 		case string(approval.ActionRollback):
-			rollback = &detail.ActionLogs[i]
+			rollback = &entry.Activities[i]
 		case string(approval.ActionAddAssignee):
-			addAssignee = &detail.ActionLogs[i]
+			addAssignee = &entry.Activities[i]
 		}
 	}
 
-	s.Require().NotNil(transfer, "Detail should include the transfer log")
-	s.Assert().NotEmpty(transfer.LogID, "Log should carry a stable id for list rendering")
-	s.Assert().Equal("user-b", transfer.OperatorID, "Operator id should pass through")
-	s.Require().NotNil(transfer.NodeID, "Transfer log should carry the node id")
-	s.Require().NotNil(transfer.TransferToName, "Transfer log should carry the transfer target name")
-	s.Assert().Equal("Transfer Target", *transfer.TransferToName, "Transfer target name should pass through")
+	s.Require().NotNil(transfer, "Entry should include the transfer activity")
+	s.Assert().Equal("user-b", transfer.Operator.ID, "Operator id should pass through")
+	s.Require().NotNil(transfer.TransferTo, "Transfer activity should carry the transfer target")
+	s.Assert().Equal("Transfer Target", transfer.TransferTo.Name, "Transfer target name should pass through")
 
-	s.Require().NotNil(rollback, "Detail should include the rollback log")
-	s.Require().NotNil(rollback.RollbackToNodeID, "Rollback log should carry the rollback target node id")
+	s.Require().NotNil(rollback, "Entry should include the rollback activity")
+	s.Require().NotNil(rollback.RollbackToNodeID, "Rollback activity should carry the target node id")
 	s.Assert().Equal(s.nodeID, *rollback.RollbackToNodeID, "Rollback target node id should pass through")
 
-	// Name snapshots and attachments must reach the DTO for display.
-	s.Require().NotNil(addAssignee, "Detail should include the add-assignee log")
-	s.Require().Len(addAssignee.AddedAssignees, 1, "Add-assignee log should carry the added user")
+	// Person snapshots and attachments must reach the DTO for display.
+	s.Require().NotNil(addAssignee, "Entry should include the add-assignee activity")
+	s.Require().Len(addAssignee.AddedAssignees, 1, "Add-assignee activity should carry the added user")
 	s.Assert().Equal("user-e", addAssignee.AddedAssignees[0].ID, "Added assignee id should pass through")
 	s.Assert().Equal("Ellen", addAssignee.AddedAssignees[0].Name, "Added assignee name snapshot should pass through")
 	s.Assert().Equal([]string{"file-1.pdf"}, addAssignee.Attachments, "Attachments should pass through")
@@ -266,6 +287,7 @@ func (s *GetMyInstanceDetailTestSuite) TestAssigneeConditionalActions() {
 		TenantID:   inst.TenantID,
 		InstanceID: inst.ID,
 		NodeID:     node.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, inst.TenantID, inst.ID, node.ID).ID,
 		AssigneeID: "user-conditional",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -316,6 +338,7 @@ func (s *GetMyInstanceDetailTestSuite) TestHandleNodeShouldExposeHandleAction() 
 		TenantID:   inst.TenantID,
 		InstanceID: inst.ID,
 		NodeID:     node.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, inst.TenantID, inst.ID, node.ID).ID,
 		AssigneeID: "user-handle",
 		SortOrder:  1,
 		Status:     approval.TaskPending,

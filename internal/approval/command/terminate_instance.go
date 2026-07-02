@@ -23,7 +23,7 @@ type TerminateInstanceCmd struct {
 	cqrs.BaseCommand
 
 	InstanceID string
-	Operator   approval.OperatorInfo
+	Operator   approval.UserInfo
 	Reason     string
 	Caller     approval.CallerContext
 }
@@ -70,6 +70,10 @@ func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInst
 	canceledEvents, err := h.taskSvc.CancelInstanceTasks(ctx, db, cmd.InstanceID, "申请已被终止，任务取消")
 	if err != nil {
 		return cqrs.Unit{}, fmt.Errorf("cancel tasks on terminate: %w", err)
+	}
+
+	if err := engine.CancelActiveNodeVisits(ctx, db, cmd.InstanceID); err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	actionLog := cmd.Operator.NewActionLog(cmd.InstanceID, approval.ActionTerminate)

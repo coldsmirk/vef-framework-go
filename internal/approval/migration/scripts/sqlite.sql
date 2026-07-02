@@ -242,6 +242,23 @@ CREATE INDEX IF NOT EXISTS idx_apv_instance__flow_id_status_created_at ON apv_in
 CREATE INDEX IF NOT EXISTS idx_apv_instance__applicant_id_status_created_at ON apv_instance(applicant_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__current_node_id ON apv_instance(current_node_id);
 
+-- Node visit (one traversal of a flow node by an instance; the engine begins
+-- a visit on node entry and stamps the outcome when the node concludes)
+CREATE TABLE IF NOT EXISTS apv_node_visit (
+    id VARCHAR(32) CONSTRAINT pk_apv_node_visit PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime')),
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    tenant_id VARCHAR(32) NOT NULL,
+    instance_id VARCHAR(32) NOT NULL,
+    node_id VARCHAR(32) NOT NULL,
+    sequence INTEGER NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'active',
+    finished_at TIMESTAMP,
+    CONSTRAINT fk_apv_node_visit__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_apv_node_visit__node_id FOREIGN KEY (node_id) REFERENCES apv_flow_node(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT uk_apv_node_visit__instance_id_sequence UNIQUE (instance_id, sequence)
+);
+
 -- Approval task
 CREATE TABLE IF NOT EXISTS apv_task (
     id VARCHAR(32) CONSTRAINT pk_apv_task PRIMARY KEY,
@@ -252,11 +269,16 @@ CREATE TABLE IF NOT EXISTS apv_task (
     tenant_id VARCHAR(32) NOT NULL,
     instance_id VARCHAR(32) NOT NULL,
     node_id VARCHAR(32) NOT NULL,
+    visit_id VARCHAR(32) NOT NULL,
     -- Assignee info
     assignee_id VARCHAR(32) NOT NULL CONSTRAINT ck_apv_task__assignee_id_not_empty CHECK (TRIM(assignee_id) <> ''),
     assignee_name VARCHAR(128) NOT NULL DEFAULT '',
+    assignee_department_id VARCHAR(32),
+    assignee_department_name VARCHAR(128),
     delegator_id VARCHAR(32),
     delegator_name VARCHAR(128),
+    delegator_department_id VARCHAR(32),
+    delegator_department_name VARCHAR(128),
     sort_order INTEGER NOT NULL DEFAULT 0,
     -- Task status
     status VARCHAR(16) NOT NULL DEFAULT 'pending',
@@ -272,6 +294,7 @@ CREATE TABLE IF NOT EXISTS apv_task (
     finished_at TIMESTAMP,
     CONSTRAINT fk_apv_task__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_task__node_id FOREIGN KEY (node_id) REFERENCES apv_flow_node(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_apv_task__visit_id FOREIGN KEY (visit_id) REFERENCES apv_node_visit(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_task__parent_task_id FOREIGN KEY (parent_task_id) REFERENCES apv_task(id) ON DELETE SET NULL ON UPDATE CASCADE
 );
 
@@ -304,16 +327,14 @@ CREATE TABLE IF NOT EXISTS apv_action_log (
     -- Transfer/rollback info
     transfer_to_id VARCHAR(32),
     transfer_to_name VARCHAR(128),
+    transfer_to_department_id VARCHAR(32),
+    transfer_to_department_name VARCHAR(128),
     rollback_to_node_id VARCHAR(32),
-    -- Dynamic assignee info
+    -- Person lists as UserBrief object arrays: [{id, name, departmentId, departmentName}]
     add_assignee_type VARCHAR(16),
-    added_assignee_ids TEXT NOT NULL DEFAULT '[]',
-    added_assignee_names TEXT NOT NULL DEFAULT '[]',
-    removed_assignee_ids TEXT NOT NULL DEFAULT '[]',
-    removed_assignee_names TEXT NOT NULL DEFAULT '[]',
-    -- CC info
-    cc_user_ids TEXT NOT NULL DEFAULT '[]',
-    cc_user_names TEXT NOT NULL DEFAULT '[]',
+    added_assignees TEXT NOT NULL DEFAULT '[]',
+    removed_assignees TEXT NOT NULL DEFAULT '[]',
+    cc_users TEXT NOT NULL DEFAULT '[]',
     -- Attachments
     attachments TEXT,
     CONSTRAINT fk_apv_action_log__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -334,6 +355,8 @@ CREATE TABLE IF NOT EXISTS apv_cc_record (
     task_id VARCHAR(32),
     cc_user_id VARCHAR(32) NOT NULL,
     cc_user_name VARCHAR(128) NOT NULL DEFAULT '',
+    cc_user_department_id VARCHAR(32),
+    cc_user_department_name VARCHAR(128),
     is_manual BOOLEAN NOT NULL DEFAULT 0,
     read_at TIMESTAMP,
     CONSTRAINT fk_apv_cc_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE
@@ -405,8 +428,12 @@ CREATE TABLE IF NOT EXISTS apv_urge_record (
     task_id VARCHAR(32),
     urger_id VARCHAR(32) NOT NULL,
     urger_name VARCHAR(128) NOT NULL DEFAULT '',
+    urger_department_id VARCHAR(32),
+    urger_department_name VARCHAR(128),
     target_user_id VARCHAR(32) NOT NULL,
     target_user_name VARCHAR(128) NOT NULL DEFAULT '',
+    target_user_department_id VARCHAR(32),
+    target_user_department_name VARCHAR(128),
     message TEXT NOT NULL,
     CONSTRAINT fk_apv_urge_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE
 );

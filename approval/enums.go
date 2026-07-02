@@ -301,6 +301,20 @@ func (s TaskStatus) IsFinal() bool {
 		s == TaskSkipped
 }
 
+// NodeVisitStatus represents the lifecycle status of a node visit — one
+// traversal of a flow node by an instance.
+type NodeVisitStatus string
+
+const (
+	NodeVisitActive   NodeVisitStatus = "active"   // The instance is currently sitting on the node
+	NodeVisitPassed   NodeVisitStatus = "passed"   // The node concluded and the flow moved on
+	NodeVisitRejected NodeVisitStatus = "rejected" // The node concluded by rejecting the instance
+	NodeVisitReturned NodeVisitStatus = "returned" // The flow was sent back from this node (rollback)
+	NodeVisitCanceled NodeVisitStatus = "canceled" // The visit was cut short (withdraw / terminate)
+)
+
+func (s NodeVisitStatus) String() string { return string(s) }
+
 // ConditionKind represents the kind of condition for condition branches.
 type ConditionKind string
 

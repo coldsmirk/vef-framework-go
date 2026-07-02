@@ -64,7 +64,7 @@ func (s *StartInstanceTestSuite) TearDownSuite() {
 }
 
 func (s *StartInstanceTestSuite) TestStartSuccess() {
-	applicant := approval.OperatorInfo{ID: "user-1", Name: "User One"}
+	applicant := approval.UserInfo{ID: "user-1", Name: "User One"}
 	instance, err := s.handler.Handle(s.ctx, command.StartInstanceCmd{
 		FlowCode:  "apv-cmd-test-flow",
 		Applicant: applicant,
@@ -88,7 +88,7 @@ func (s *StartInstanceTestSuite) TestStartSuccess() {
 }
 
 func (s *StartInstanceTestSuite) TestStartFlowNotFound() {
-	applicant := approval.OperatorInfo{ID: "user-1", Name: "User One"}
+	applicant := approval.UserInfo{ID: "user-1", Name: "User One"}
 	_, err := s.handler.Handle(s.ctx, command.StartInstanceCmd{
 		FlowCode:  "non-existent-flow",
 		Applicant: applicant,
@@ -115,7 +115,7 @@ func (s *StartInstanceTestSuite) TestStartFlowNotActive() {
 			Exec(s.ctx)
 	}()
 
-	applicant := approval.OperatorInfo{ID: "user-1", Name: "User One"}
+	applicant := approval.UserInfo{ID: "user-1", Name: "User One"}
 	_, err = s.handler.Handle(s.ctx, command.StartInstanceCmd{
 		FlowCode:  "apv-cmd-test-flow",
 		Applicant: applicant,
@@ -134,7 +134,7 @@ func (s *StartInstanceTestSuite) TestStartWithFormData() {
 	})
 	defer setPublishedFormSchema(s.T(), s.ctx, s.db, s.fixture.VersionID, nil)
 
-	applicant := approval.OperatorInfo{ID: "user-2", Name: "User Two"}
+	applicant := approval.UserInfo{ID: "user-2", Name: "User Two"}
 	formData := map[string]any{
 		"amount":      1000,
 		"description": "Business trip",
@@ -167,7 +167,7 @@ func (s *StartInstanceTestSuite) TestStartShouldRenderTemplateWithCompatibleKeys
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should update instance title template")
 
-	applicant := approval.OperatorInfo{ID: "user-template", Name: "Template User"}
+	applicant := approval.UserInfo{ID: "user-template", Name: "Template User"}
 	instance, err := s.handler.Handle(s.ctx, command.StartInstanceCmd{
 		FlowCode:  "apv-cmd-test-flow",
 		Applicant: applicant,
@@ -188,7 +188,7 @@ func (s *StartInstanceTestSuite) TestStartShouldRejectInvalidFormDataBySchema() 
 
 	_, err := s.handler.Handle(s.ctx, command.StartInstanceCmd{
 		FlowCode:  "apv-cmd-test-flow",
-		Applicant: approval.OperatorInfo{ID: "user-invalid", Name: "Invalid User"},
+		Applicant: approval.UserInfo{ID: "user-invalid", Name: "Invalid User"},
 		FormData:  map[string]any{"unknown": "value"},
 		Caller:    approval.SystemCaller,
 	})

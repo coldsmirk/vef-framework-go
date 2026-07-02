@@ -162,7 +162,7 @@ func (s *CCProcessorTestSuite) TestNoCCConfigs() {
 		s.Require().NoError(err, "Should not error when no CC configs exist")
 		// A read-confirm CC node with no recipients has nothing to confirm, so
 		// it must continue rather than wait forever (there are no CC records for
-		// mark_cc_read → CheckCCNodeCompletion to ever advance).
+		// mark_cc_read → AdvanceCCNodeIfAllRead to ever advance).
 		s.Assert().Equal(engine.NodeActionContinue, result.Action, "Should continue when read confirm required but no CC users to confirm")
 		s.Assert().Empty(result.Events, "Should have no events when no CC users")
 	})
@@ -211,7 +211,7 @@ func (s *CCProcessorTestSuite) TestUnresolvableCCConfigIsSkipped() {
 // read-confirm CC node whose only config resolves to zero recipients (a role CC
 // with no AssigneeService wired) must continue, not wait. Waiting would wedge
 // the instance forever — no CC records exist, so no mark_cc_read can ever drive
-// CheckCCNodeCompletion to advance it. Before the fix the node entered WAIT on
+// AdvanceCCNodeIfAllRead to advance it. Before the fix the node entered WAIT on
 // IsReadConfirmRequired alone, turning a best-effort skip into a silent deadlock.
 func (s *CCProcessorTestSuite) TestReadConfirmCCNodeDoesNotDeadlockWhenConfigsResolveToNobody() {
 	defer s.cleanTransientData()

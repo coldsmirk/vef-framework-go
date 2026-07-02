@@ -16,33 +16,33 @@ import (
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
-// WithdrawCmd withdraws an approval instance.
-type WithdrawCmd struct {
+// WithdrawInstanceCmd withdraws an approval instance.
+type WithdrawInstanceCmd struct {
 	cqrs.BaseCommand
 
 	InstanceID string
-	Operator   approval.OperatorInfo
+	Operator   approval.UserInfo
 	Reason     string
 	Caller     approval.CallerContext
 }
 
-// WithdrawHandler handles the WithdrawCmd command.
-type WithdrawHandler struct {
+// WithdrawInstanceHandler handles the WithdrawInstanceCmd command.
+type WithdrawInstanceHandler struct {
 	db          orm.DB
 	taskSvc     *service.TaskService
 	instanceSvc *service.InstanceService
 }
 
-// NewWithdrawHandler creates a new WithdrawHandler.
-func NewWithdrawHandler(
+// NewWithdrawInstanceHandler creates a new WithdrawInstanceHandler.
+func NewWithdrawInstanceHandler(
 	db orm.DB,
 	taskSvc *service.TaskService,
 	instanceSvc *service.InstanceService,
-) *WithdrawHandler {
-	return &WithdrawHandler{db: db, taskSvc: taskSvc, instanceSvc: instanceSvc}
+) *WithdrawInstanceHandler {
+	return &WithdrawInstanceHandler{db: db, taskSvc: taskSvc, instanceSvc: instanceSvc}
 }
 
-func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Unit, error) {
+func (h *WithdrawInstanceHandler) Handle(ctx context.Context, cmd WithdrawInstanceCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
 	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID, cmd.Caller)
@@ -72,6 +72,10 @@ func (h *WithdrawHandler) Handle(ctx context.Context, cmd WithdrawCmd) (cqrs.Uni
 	canceledEvents, err := h.taskSvc.CancelInstanceTasks(ctx, db, cmd.InstanceID, "申请已撤回，任务取消")
 	if err != nil {
 		return cqrs.Unit{}, fmt.Errorf("cancel tasks on withdraw: %w", err)
+	}
+
+	if err := engine.CancelActiveNodeVisits(ctx, db, cmd.InstanceID); err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	actionLog := cmd.Operator.NewActionLog(cmd.InstanceID, approval.ActionWithdraw)

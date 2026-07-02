@@ -24,6 +24,7 @@ var expectedTables = []string{
 	"apv_flow_node_cc",
 	"apv_flow_edge",
 	"apv_instance",
+	"apv_node_visit",
 	"apv_task",
 	"apv_action_log",
 	"apv_cc_record",

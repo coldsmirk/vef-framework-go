@@ -11,6 +11,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/migration"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // registry holds all service test suite factories, populated by init() in each suite file.
@@ -93,12 +94,50 @@ func (f *SvcFixture) createInstance(t testing.TB, ctx context.Context, db orm.DB
 
 // --- Shared insert helpers ---
 
+// ensureActiveVisit returns the node's open visit, recording one when the
+// fixture has not opened it yet — every inserted task must bind to a visit.
+//
+//nolint:revive // t testing.TB is conventionally the first parameter in test helpers
+func ensureActiveVisit(t testing.TB, ctx context.Context, db orm.DB, instanceID, nodeID string) *approval.NodeVisit {
+	t.Helper()
+
+	var visit approval.NodeVisit
+
+	err := db.NewSelect().Model(&visit).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("instance_id", instanceID).
+				Equals("node_id", nodeID).
+				Equals("status", approval.NodeVisitActive)
+		}).
+		Scan(ctx)
+	if err == nil {
+		return &visit
+	}
+
+	require.True(t, result.IsRecordNotFound(err), "Active-visit lookup should only miss, not fail: %v", err)
+
+	count, err := db.NewSelect().Model((*approval.NodeVisit)(nil)).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instanceID) }).
+		Count(ctx)
+	require.NoError(t, err, "should count instance visits")
+
+	created := &approval.NodeVisit{
+		TenantID: "default", InstanceID: instanceID, NodeID: nodeID,
+		Sequence: int(count) + 1, Status: approval.NodeVisitActive,
+	}
+	_, err = db.NewInsert().Model(created).Exec(ctx)
+	require.NoError(t, err, "should insert node visit")
+
+	return created
+}
+
 //nolint:revive // t testing.TB is conventionally the first parameter in test helpers
 func insertTask(t testing.TB, ctx context.Context, db orm.DB, fix *SvcFixture, status approval.TaskStatus) *approval.Task {
 	t.Helper()
 	inst := fix.createInstance(t, ctx, db, approval.InstanceRunning)
 	task := &approval.Task{
 		TenantID: "default", InstanceID: inst.ID, NodeID: fix.NodeIDs[0],
+		VisitID:    ensureActiveVisit(t, ctx, db, inst.ID, fix.NodeIDs[0]).ID,
 		AssigneeID: "user-svc-test", SortOrder: 1, Status: status,
 	}
 	_, err := db.NewInsert().Model(task).Exec(ctx)
@@ -113,6 +152,7 @@ func insertTaskWithDetails(t testing.TB, ctx context.Context, db orm.DB, instanc
 
 	task := &approval.Task{
 		TenantID: "default", InstanceID: instanceID, NodeID: nodeID,
+		VisitID:    ensureActiveVisit(t, ctx, db, instanceID, nodeID).ID,
 		AssigneeID: fmt.Sprintf("user-default-%d", sortOrder), SortOrder: sortOrder, Status: status,
 	}
 	_, err := db.NewInsert().Model(task).Exec(ctx)
@@ -127,6 +167,7 @@ func insertTaskWithAssignee(t testing.TB, ctx context.Context, db orm.DB, instan
 
 	task := &approval.Task{
 		TenantID: "default", InstanceID: instanceID, NodeID: nodeID,
+		VisitID:    ensureActiveVisit(t, ctx, db, instanceID, nodeID).ID,
 		AssigneeID: assigneeID, SortOrder: sortOrder, Status: status,
 	}
 	_, err := db.NewInsert().Model(task).Exec(ctx)
@@ -167,6 +208,7 @@ func setupPrepareOperationData(
 
 	task := &approval.Task{
 		TenantID: "default", InstanceID: instance.ID, NodeID: node.ID,
+		VisitID:    ensureActiveVisit(t, ctx, db, instance.ID, node.ID).ID,
 		AssigneeID: assigneeID, SortOrder: 1, Status: taskStatus,
 	}
 	_, err = db.NewInsert().Model(task).Exec(ctx)
@@ -191,6 +233,7 @@ func cleanAllServiceData(ctx context.Context, db orm.DB) {
 		(*approval.UrgeRecord)(nil),
 		(*approval.CCRecord)(nil),
 		(*approval.Task)(nil),
+		(*approval.NodeVisit)(nil),
 		(*approval.Instance)(nil),
 		(*approval.FlowEdge)(nil),
 		(*approval.FlowNodeCC)(nil),

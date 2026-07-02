@@ -57,7 +57,7 @@ func (s *ApproveTaskTestSuite) newRunningInstance(assigneeID string) (*approval.
 func (s *ApproveTaskTestSuite) TestApproveSuccess() {
 	inst, task := s.newRunningInstance("approver-1")
 
-	operator := approval.OperatorInfo{ID: "approver-1", Name: "Approver"}
+	operator := approval.UserInfo{ID: "approver-1", Name: "Approver"}
 	_, err := s.handler.Handle(s.ctx, command.ApproveTaskCmd{
 		TaskID:      task.ID,
 		Operator:    operator,
@@ -95,7 +95,7 @@ func (s *ApproveTaskTestSuite) TestApproveSuccess() {
 }
 
 func (s *ApproveTaskTestSuite) TestApproveTaskNotFound() {
-	operator := approval.OperatorInfo{ID: "approver-1", Name: "Approver"}
+	operator := approval.UserInfo{ID: "approver-1", Name: "Approver"}
 	_, err := s.handler.Handle(s.ctx, command.ApproveTaskCmd{
 		TaskID:   "non-existent",
 		Operator: operator,
@@ -108,7 +108,7 @@ func (s *ApproveTaskTestSuite) TestApproveTaskNotFound() {
 func (s *ApproveTaskTestSuite) TestApproveNotAssignee() {
 	_, task := s.newRunningInstance("approver-1")
 
-	operator := approval.OperatorInfo{ID: "wrong-user", Name: "Wrong"}
+	operator := approval.UserInfo{ID: "wrong-user", Name: "Wrong"}
 	_, err := s.handler.Handle(s.ctx, command.ApproveTaskCmd{
 		TaskID:   task.ID,
 		Operator: operator,
@@ -129,7 +129,7 @@ func (s *ApproveTaskTestSuite) TestApproveAlreadyCompleted() {
 		Exec(s.ctx)
 	s.Require().NoError(err, "TestApproveAlreadyCompleted should complete without error")
 
-	operator := approval.OperatorInfo{ID: "approver-1", Name: "Approver"}
+	operator := approval.UserInfo{ID: "approver-1", Name: "Approver"}
 	_, err = s.handler.Handle(s.ctx, command.ApproveTaskCmd{
 		TaskID:   task.ID,
 		Operator: operator,
@@ -158,7 +158,7 @@ func (s *ApproveTaskTestSuite) TestApproveTaskNotCurrentNode() {
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should move instance current node away from task node")
 
-	operator := approval.OperatorInfo{ID: "approver-current", Name: "Approver"}
+	operator := approval.UserInfo{ID: "approver-current", Name: "Approver"}
 	_, err = s.handler.Handle(s.ctx, command.ApproveTaskCmd{
 		TaskID:   task.ID,
 		Operator: operator,
@@ -191,7 +191,7 @@ func (s *ApproveTaskTestSuite) TestApproveShouldResolveCCFromFormField() {
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should update node field permissions")
 
-	operator := approval.OperatorInfo{ID: "approver-cc-form", Name: "Approver"}
+	operator := approval.UserInfo{ID: "approver-cc-form", Name: "Approver"}
 	_, err = s.handler.Handle(s.ctx, command.ApproveTaskCmd{
 		TaskID:   task.ID,
 		Operator: operator,
@@ -253,6 +253,7 @@ func (s *ApproveTaskTestSuite) TestApproveRejectsOversizedFormData() {
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     node.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, node.ID).ID,
 		AssigneeID: "approver-oversize",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -263,7 +264,7 @@ func (s *ApproveTaskTestSuite) TestApproveRejectsOversizedFormData() {
 	// 70 KiB of editable-field content exceeds the 64 KiB FormDataMaxBytes cap.
 	oversized := strings.Repeat("x", 70*1024)
 
-	operator := approval.OperatorInfo{ID: "approver-oversize", Name: "Approver"}
+	operator := approval.UserInfo{ID: "approver-oversize", Name: "Approver"}
 	_, err = s.handler.Handle(s.ctx, command.ApproveTaskCmd{
 		TaskID:   task.ID,
 		Operator: operator,
@@ -322,6 +323,7 @@ func (s *ApproveTaskTestSuite) TestApproveDoesNotWedgeAlreadyOversizeInstance() 
 			TenantID:   "default",
 			InstanceID: inst.ID,
 			NodeID:     node.ID,
+			VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, node.ID).ID,
 			AssigneeID: approver,
 			SortOrder:  1,
 			Status:     approval.TaskPending,
@@ -333,6 +335,7 @@ func (s *ApproveTaskTestSuite) TestApproveDoesNotWedgeAlreadyOversizeInstance() 
 			TenantID:   "default",
 			InstanceID: inst.ID,
 			NodeID:     node.ID,
+			VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, node.ID).ID,
 			AssigneeID: approver + "-peer",
 			SortOrder:  2,
 			Status:     approval.TaskPending,
@@ -347,7 +350,7 @@ func (s *ApproveTaskTestSuite) TestApproveDoesNotWedgeAlreadyOversizeInstance() 
 		task := seedOversizeInstance("APV-OVERSIZE-NOOP-1", "approver-noop")
 		_, err := s.handler.Handle(s.ctx, command.ApproveTaskCmd{
 			TaskID:   task.ID,
-			Operator: approval.OperatorInfo{ID: "approver-noop", Name: "Approver"},
+			Operator: approval.UserInfo{ID: "approver-noop", Name: "Approver"},
 			Caller:   approval.SystemCaller,
 		})
 		s.Require().NoError(err, "A no-op approval must not be wedged by a pre-existing oversize instance")
@@ -363,7 +366,7 @@ func (s *ApproveTaskTestSuite) TestApproveDoesNotWedgeAlreadyOversizeInstance() 
 		task := seedOversizeInstance("APV-OVERSIZE-NOOP-2", "approver-grow")
 		_, err := s.handler.Handle(s.ctx, command.ApproveTaskCmd{
 			TaskID:   task.ID,
-			Operator: approval.OperatorInfo{ID: "approver-grow", Name: "Approver"},
+			Operator: approval.UserInfo{ID: "approver-grow", Name: "Approver"},
 			FormData: map[string]any{"blob": strings.Repeat("y", 80*1024)},
 			Caller:   approval.SystemCaller,
 		})

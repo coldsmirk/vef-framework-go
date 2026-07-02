@@ -180,8 +180,10 @@ func CollectUniqueCCUserIDs(
 	return ccUserIDs.ToSlice()
 }
 
-// InsertCCRecords inserts CC records for the given users and returns only the newly
-// inserted user IDs (existing records are ignored).
+// InsertCCRecords inserts CC records for the given users and returns only the
+// newly inserted user IDs (existing records are ignored). Each record
+// snapshots the recipient's display info — name and department — as resolved
+// at send time.
 //
 // Callers must hold an instance-level FOR UPDATE lock to prevent concurrent
 // inserts from racing on the existence check.
@@ -191,7 +193,7 @@ func InsertCCRecords(
 	instanceID string,
 	nodeID *string,
 	userIDs []string,
-	userNames map[string]string,
+	userInfos map[string]approval.UserInfo,
 	isManual bool,
 ) ([]string, error) {
 	normalizedUserIDs := NormalizeUniqueIDs(userIDs)
@@ -234,17 +236,15 @@ func InsertCCRecords(
 
 	records := make([]approval.CCRecord, len(insertedUserIDs))
 	for i, userID := range insertedUserIDs {
-		var ccUserName string
-		if userNames != nil {
-			ccUserName = userNames[userID]
-		}
-
+		info := userInfos[userID]
 		records[i] = approval.CCRecord{
-			InstanceID: instanceID,
-			NodeID:     nodeID,
-			CCUserID:   userID,
-			CCUserName: ccUserName,
-			IsManual:   isManual,
+			InstanceID:           instanceID,
+			NodeID:               nodeID,
+			CCUserID:             userID,
+			CCUserName:           info.Name,
+			CCUserDepartmentID:   info.DepartmentID,
+			CCUserDepartmentName: info.DepartmentName,
+			IsManual:             isManual,
 		}
 	}
 
@@ -256,19 +256,19 @@ func InsertCCRecords(
 }
 
 // InsertAutoCCRecords inserts non-manual CC records and returns newly inserted IDs.
-func InsertAutoCCRecords(ctx context.Context, db orm.DB, instanceID, nodeID string, userIDs []string, userNames map[string]string) ([]string, error) {
-	return InsertCCRecords(ctx, db, instanceID, &nodeID, userIDs, userNames, false)
+func InsertAutoCCRecords(ctx context.Context, db orm.DB, instanceID, nodeID string, userIDs []string, userInfos map[string]approval.UserInfo) ([]string, error) {
+	return InsertCCRecords(ctx, db, instanceID, &nodeID, userIDs, userInfos, false)
 }
 
 // InsertManualCCRecords inserts manual CC records and returns newly inserted IDs.
-func InsertManualCCRecords(ctx context.Context, db orm.DB, instanceID, nodeID string, userIDs []string, userNames map[string]string) ([]string, error) {
-	return InsertCCRecords(ctx, db, instanceID, &nodeID, userIDs, userNames, true)
+func InsertManualCCRecords(ctx context.Context, db orm.DB, instanceID, nodeID string, userIDs []string, userInfos map[string]approval.UserInfo) ([]string, error) {
+	return InsertCCRecords(ctx, db, instanceID, &nodeID, userIDs, userInfos, true)
 }
 
 // HasUnreadCCRecords reports whether the CC node still has any record awaiting a
 // read confirmation. It is the single source of truth for read-confirm CC node
 // completion: both node entry (engine.CCProcessor deciding wait vs. continue)
-// and the mark-read path (NodeService.CheckCCNodeCompletion deciding whether to
+// and the mark-read path (NodeService.AdvanceCCNodeIfAllRead deciding whether to
 // advance) consult it, so the two can never disagree about whether the node is
 // done. A node that resolved to zero recipients has no records and is therefore
 // already complete — it must not wait, or nothing could ever advance it.

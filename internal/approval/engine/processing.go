@@ -30,6 +30,7 @@ type ProcessContext struct {
 	DB            orm.DB
 	Instance      *approval.Instance
 	Node          *approval.FlowNode
+	Visit         *approval.NodeVisit
 	FormData      approval.FormData
 	ApplicantID   string
 	ApplicantName string

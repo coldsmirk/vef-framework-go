@@ -26,17 +26,17 @@ func (*AllPassStrategy) Evaluate(ctx approval.PassRuleContext) approval.PassRule
 	return approval.PassRulePending
 }
 
-// NewOnePassStrategy creates a new OnePassStrategy.
-func NewOnePassStrategy() approval.PassRuleStrategy {
-	return new(OnePassStrategy)
+// NewAnyPassStrategy creates a new AnyPassStrategy.
+func NewAnyPassStrategy() approval.PassRuleStrategy {
+	return new(AnyPassStrategy)
 }
 
-// OnePassStrategy passes when at least one assignee approves.
-type OnePassStrategy struct{}
+// AnyPassStrategy passes when at least one assignee approves.
+type AnyPassStrategy struct{}
 
-func (*OnePassStrategy) Rule() approval.PassRule { return approval.PassAny }
+func (*AnyPassStrategy) Rule() approval.PassRule { return approval.PassAny }
 
-func (*OnePassStrategy) Evaluate(ctx approval.PassRuleContext) approval.PassRuleResult {
+func (*AnyPassStrategy) Evaluate(ctx approval.PassRuleContext) approval.PassRuleResult {
 	if ctx.ApprovedCount > 0 {
 		return approval.PassRulePassed
 	}

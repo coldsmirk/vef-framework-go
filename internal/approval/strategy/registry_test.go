@@ -13,7 +13,7 @@ import (
 func TestNewStrategyRegistry(t *testing.T) {
 	t.Run("RegistersAll", func(t *testing.T) {
 		r := NewStrategyRegistry(
-			[]approval.PassRuleStrategy{NewAllPassStrategy(), NewOnePassStrategy()},
+			[]approval.PassRuleStrategy{NewAllPassStrategy(), NewAnyPassStrategy()},
 			[]AssigneeResolver{NewUserAssigneeResolver(), NewSelfAssigneeResolver()},
 			[]approval.ConditionEvaluator{NewFieldConditionEvaluator()},
 		)

@@ -14,6 +14,12 @@ import (
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
+// assigneeOf builds a ResolvedAssignee carrying just the user ID, for
+// dedup-focused table cases.
+func assigneeOf(userID string) approval.ResolvedAssignee {
+	return approval.ResolvedAssignee{User: approval.UserInfo{ID: userID}}
+}
+
 // TestDeduplicateAssignees tests deduplicate assignees scenarios.
 func TestDeduplicateAssignees(t *testing.T) {
 	tests := []struct {
@@ -24,19 +30,19 @@ func TestDeduplicateAssignees(t *testing.T) {
 		{
 			name: "RemoveDuplicates",
 			assignees: []approval.ResolvedAssignee{
-				{UserID: "u1"}, {UserID: "u2"}, {UserID: "u1"}, {UserID: "u3"},
+				assigneeOf("u1"), assigneeOf("u2"), assigneeOf("u1"), assigneeOf("u3"),
 			},
 			expected: []approval.ResolvedAssignee{
-				{UserID: "u1"}, {UserID: "u2"}, {UserID: "u3"},
+				assigneeOf("u1"), assigneeOf("u2"), assigneeOf("u3"),
 			},
 		},
 		{
 			name: "NoDuplicates",
 			assignees: []approval.ResolvedAssignee{
-				{UserID: "u1"}, {UserID: "u2"}, {UserID: "u3"},
+				assigneeOf("u1"), assigneeOf("u2"), assigneeOf("u3"),
 			},
 			expected: []approval.ResolvedAssignee{
-				{UserID: "u1"}, {UserID: "u2"}, {UserID: "u3"},
+				assigneeOf("u1"), assigneeOf("u2"), assigneeOf("u3"),
 			},
 		},
 		{
@@ -46,19 +52,19 @@ func TestDeduplicateAssignees(t *testing.T) {
 		{
 			name: "AllSame",
 			assignees: []approval.ResolvedAssignee{
-				{UserID: "u1"}, {UserID: "u1"}, {UserID: "u1"},
+				assigneeOf("u1"), assigneeOf("u1"), assigneeOf("u1"),
 			},
 			expected: []approval.ResolvedAssignee{
-				{UserID: "u1"},
+				assigneeOf("u1"),
 			},
 		},
 		{
 			name: "IgnoreEmptyUserID",
 			assignees: []approval.ResolvedAssignee{
-				{UserID: ""}, {UserID: "u1"}, {UserID: ""},
+				assigneeOf(""), assigneeOf("u1"), assigneeOf(""),
 			},
 			expected: []approval.ResolvedAssignee{
-				{UserID: "u1"},
+				assigneeOf("u1"),
 			},
 		},
 	}

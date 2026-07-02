@@ -55,7 +55,7 @@ func (s *RejectTaskTestSuite) newRunningInstance(assigneeID string) (*approval.I
 func (s *RejectTaskTestSuite) TestRejectSuccess() {
 	inst, task := s.newRunningInstance("rejector-1")
 
-	operator := approval.OperatorInfo{ID: "rejector-1", Name: "Rejector"}
+	operator := approval.UserInfo{ID: "rejector-1", Name: "Rejector"}
 	_, err := s.handler.Handle(s.ctx, command.RejectTaskCmd{
 		TaskID:   task.ID,
 		Operator: operator,
@@ -97,7 +97,7 @@ func (s *RejectTaskTestSuite) TestRejectSuccess() {
 }
 
 func (s *RejectTaskTestSuite) TestRejectTaskNotFound() {
-	operator := approval.OperatorInfo{ID: "rejector-1", Name: "Rejector"}
+	operator := approval.UserInfo{ID: "rejector-1", Name: "Rejector"}
 	_, err := s.handler.Handle(s.ctx, command.RejectTaskCmd{
 		TaskID:   "non-existent",
 		Operator: operator,
@@ -110,7 +110,7 @@ func (s *RejectTaskTestSuite) TestRejectTaskNotFound() {
 func (s *RejectTaskTestSuite) TestRejectNotAssignee() {
 	_, task := s.newRunningInstance("rejector-1")
 
-	operator := approval.OperatorInfo{ID: "wrong-user", Name: "Wrong"}
+	operator := approval.UserInfo{ID: "wrong-user", Name: "Wrong"}
 	_, err := s.handler.Handle(s.ctx, command.RejectTaskCmd{
 		TaskID:   task.ID,
 		Operator: operator,
@@ -139,7 +139,7 @@ func (s *RejectTaskTestSuite) TestRejectTaskNotCurrentNode() {
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should move instance current node away from task node")
 
-	operator := approval.OperatorInfo{ID: "rejector-current", Name: "Rejector"}
+	operator := approval.UserInfo{ID: "rejector-current", Name: "Rejector"}
 	_, err = s.handler.Handle(s.ctx, command.RejectTaskCmd{
 		TaskID:   task.ID,
 		Operator: operator,
@@ -183,6 +183,7 @@ func (s *RejectTaskTestSuite) TestRejectEnforcesFormDataSizeCap() {
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     node.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, node.ID).ID,
 		AssigneeID: "rejector-oversize",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -192,7 +193,7 @@ func (s *RejectTaskTestSuite) TestRejectEnforcesFormDataSizeCap() {
 
 	_, err = s.handler.Handle(s.ctx, command.RejectTaskCmd{
 		TaskID:   task.ID,
-		Operator: approval.OperatorInfo{ID: "rejector-oversize", Name: "Rejector"},
+		Operator: approval.UserInfo{ID: "rejector-oversize", Name: "Rejector"},
 		Opinion:  "reject with oversized form",
 		FormData: map[string]any{"blob": strings.Repeat("x", 70*1024)},
 		Caller:   approval.SystemCaller,

@@ -90,6 +90,7 @@ func (s *AddCCTestSuite) insertInstance(currentNodeID, operatorID string) *appro
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     currentNodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, currentNodeID).ID,
 		AssigneeID: operatorID,
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -106,7 +107,7 @@ func (s *AddCCTestSuite) TestAddCCSuccess() {
 	_, err := s.handler.Handle(s.ctx, command.AddCCCmd{
 		InstanceID: inst.ID,
 		CCUserIDs:  []string{"cc-user-1", "cc-user-2"},
-		Operator:   approval.OperatorInfo{ID: "operator-1"},
+		Operator:   approval.UserInfo{ID: "operator-1"},
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should add CC without error")
@@ -138,7 +139,7 @@ func (s *AddCCTestSuite) TestAddCCDuplicateFiltered() {
 	_, err = s.handler.Handle(s.ctx, command.AddCCCmd{
 		InstanceID: inst.ID,
 		CCUserIDs:  []string{"cc-user-1", "cc-user-3"},
-		Operator:   approval.OperatorInfo{ID: "operator-2"},
+		Operator:   approval.UserInfo{ID: "operator-2"},
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should add CC without error")
@@ -172,7 +173,7 @@ func (s *AddCCTestSuite) TestAddCCManualNotAllowed() {
 	_, err = s.handler.Handle(s.ctx, command.AddCCCmd{
 		InstanceID: inst.ID,
 		CCUserIDs:  []string{"cc-user-1"},
-		Operator:   approval.OperatorInfo{ID: "operator-3"},
+		Operator:   approval.UserInfo{ID: "operator-3"},
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Manual CC should be rejected when node disallows it")
@@ -183,7 +184,7 @@ func (s *AddCCTestSuite) TestAddCCInstanceNotFound() {
 	_, err := s.handler.Handle(s.ctx, command.AddCCCmd{
 		InstanceID: "non-existent",
 		CCUserIDs:  []string{"cc-user-1"},
-		Operator:   approval.OperatorInfo{ID: "operator-4"},
+		Operator:   approval.UserInfo{ID: "operator-4"},
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Adding CC to a missing instance should fail")
@@ -206,7 +207,7 @@ func (s *AddCCTestSuite) TestAddCCInstanceCompleted() {
 	_, err = s.handler.Handle(s.ctx, command.AddCCCmd{
 		InstanceID: inst.ID,
 		CCUserIDs:  []string{"cc-user-1"},
-		Operator:   approval.OperatorInfo{ID: "operator-5"},
+		Operator:   approval.UserInfo{ID: "operator-5"},
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Adding CC to a completed instance should fail")
@@ -231,7 +232,7 @@ func (s *AddCCTestSuite) TestAddCCCurrentNodeNotFound() {
 	_, err = s.handler.Handle(s.ctx, command.AddCCCmd{
 		InstanceID: inst.ID,
 		CCUserIDs:  []string{"cc-user-1"},
-		Operator:   approval.OperatorInfo{ID: "operator-6"},
+		Operator:   approval.UserInfo{ID: "operator-6"},
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when current node cannot be loaded")
@@ -253,7 +254,7 @@ func (s *AddCCTestSuite) TestAddCCEventUsesInsertedUserIDs() {
 	_, err = s.handler.Handle(s.ctx, command.AddCCCmd{
 		InstanceID: inst.ID,
 		CCUserIDs:  []string{"cc-user-1", "cc-user-2", "cc-user-3"},
-		Operator:   approval.OperatorInfo{ID: "operator-7"},
+		Operator:   approval.UserInfo{ID: "operator-7"},
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Adding CC should succeed after filtering existing users")
@@ -277,7 +278,7 @@ func (s *AddCCTestSuite) TestAddCCShouldDeduplicateAndIgnoreEmptyUserIDs() {
 	_, err := s.handler.Handle(s.ctx, command.AddCCCmd{
 		InstanceID: inst.ID,
 		CCUserIDs:  []string{"cc-user-2", "", "cc-user-2", "cc-user-3"},
-		Operator:   approval.OperatorInfo{ID: "operator-8"},
+		Operator:   approval.UserInfo{ID: "operator-8"},
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should add CC without error")
@@ -310,7 +311,7 @@ func (s *AddCCTestSuite) TestAddCCShouldRejectUnauthorizedOperator() {
 	_, err := s.handler.Handle(s.ctx, command.AddCCCmd{
 		InstanceID: inst.ID,
 		CCUserIDs:  []string{"cc-user-1"},
-		Operator:   approval.OperatorInfo{ID: "unauthorized-operator"},
+		Operator:   approval.UserInfo{ID: "unauthorized-operator"},
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Unauthorized operator should not add manual CC")
@@ -341,7 +342,7 @@ func (s *AddCCTestSuite) TestAddCCShouldAllowSameUserOnDifferentNodes() {
 	_, err = s.handler.Handle(s.ctx, command.AddCCCmd{
 		InstanceID: inst.ID,
 		CCUserIDs:  []string{"cc-user-cross-node"},
-		Operator:   approval.OperatorInfo{ID: "node-operator"},
+		Operator:   approval.UserInfo{ID: "node-operator"},
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Current node should still allow CC for user already CC'd on another node")
@@ -380,7 +381,7 @@ func (s *AddCCTestSuite) TestAddCCShouldBeConcurrencySafe() {
 			_, err := s.handler.Handle(txCtx, command.AddCCCmd{
 				InstanceID: inst.ID,
 				CCUserIDs:  []string{"cc-user-concurrency"},
-				Operator:   approval.OperatorInfo{ID: operatorID},
+				Operator:   approval.UserInfo{ID: operatorID},
 				Caller:     approval.SystemCaller,
 			})
 

@@ -67,7 +67,7 @@ func assertUserIDs(t *testing.T, result []approval.ResolvedAssignee, expected ..
 	require.Len(t, result, len(expected), "Should resolve expected number of assignees")
 
 	for i, uid := range expected {
-		assert.Equal(t, uid, result[i].UserID, "Assignee[%d] should be %s", i, uid)
+		assert.Equal(t, uid, result[i].User.ID, "Assignee[%d] should be %s", i, uid)
 	}
 }
 
@@ -77,8 +77,8 @@ func assertResolvedAssignees(t *testing.T, result []approval.ResolvedAssignee, e
 	require.Len(t, result, len(expected), "Should resolve expected number of assignees")
 
 	for i, exp := range expected {
-		assert.Equal(t, exp.ID, result[i].UserID, "Assignee[%d].UserID should be %s", i, exp.ID)
-		assert.Equal(t, exp.Name, result[i].UserName, "Assignee[%d].UserName should be %s", i, exp.Name)
+		assert.Equal(t, exp.ID, result[i].User.ID, "Assignee[%d].User.ID should be %s", i, exp.ID)
+		assert.Equal(t, exp.Name, result[i].User.Name, "Assignee[%d].User.Name should be %s", i, exp.Name)
 	}
 }
 

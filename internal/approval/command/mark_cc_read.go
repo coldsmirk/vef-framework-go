@@ -85,7 +85,7 @@ func (h *MarkCCReadHandler) Handle(ctx context.Context, cmd MarkCCReadCmd) (cqrs
 		return cqrs.Unit{}, fmt.Errorf("update cc records read_at: %w", err)
 	}
 
-	if err := h.nodeSvc.CheckCCNodeCompletion(ctx, db, cmd.InstanceID, records); err != nil {
+	if err := h.nodeSvc.AdvanceCCNodeIfAllRead(ctx, db, cmd.InstanceID, records); err != nil {
 		return cqrs.Unit{}, err
 	}
 

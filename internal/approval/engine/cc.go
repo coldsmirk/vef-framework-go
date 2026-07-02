@@ -40,11 +40,11 @@ func (p *CCProcessor) Process(ctx context.Context, pc *ProcessContext) (*Process
 
 	// A read-confirm CC node may only wait when a record actually awaits
 	// confirmation. Consult the same source of truth the mark-read path uses
-	// (NodeService.CheckCCNodeCompletion) so entry and exit cannot disagree: if
+	// (NodeService.AdvanceCCNodeIfAllRead) so entry and exit cannot disagree: if
 	// the node resolved to zero recipients — no configs, or configs that yield
 	// nobody such as a role/department CC skipped best-effort with no
 	// AssigneeService — there is no record to confirm and nobody to ever drive
-	// CheckCCNodeCompletion, so the node must continue rather than wait forever.
+	// AdvanceCCNodeIfAllRead, so the node must continue rather than wait forever.
 	hasUnread, err := shared.HasUnreadCCRecords(ctx, pc.DB, pc.Instance.ID, pc.Node.ID)
 	if err != nil {
 		return nil, err
@@ -80,15 +80,15 @@ func (p *CCProcessor) createCCRecords(ctx context.Context, pc *ProcessContext) (
 		return nil, nil, nil
 	}
 
-	// Display-name lookup is likewise best-effort: a name-resolution failure
-	// must not roll back the approval (matches the timing-based CC path in
+	// Display-info lookup is likewise best-effort: a resolution failure must
+	// not roll back the approval (matches the timing-based CC path in
 	// NodeService.TriggerNodeCC).
-	ccUserNames := shared.ResolveUserNameMapSilent(ctx, pc.UserResolver, resolved)
+	ccUserInfos := shared.ResolveUserInfoMapSilent(ctx, pc.UserResolver, resolved)
 
-	insertedUserIDs, err := shared.InsertAutoCCRecords(ctx, pc.DB, pc.Instance.ID, pc.Node.ID, resolved, ccUserNames)
+	insertedUserIDs, err := shared.InsertAutoCCRecords(ctx, pc.DB, pc.Instance.ID, pc.Node.ID, resolved, ccUserInfos)
 	if err != nil {
 		return nil, nil, fmt.Errorf("insert cc records: %w", err)
 	}
 
-	return insertedUserIDs, ccUserNames, nil
+	return insertedUserIDs, shared.UserInfoNames(ccUserInfos), nil
 }

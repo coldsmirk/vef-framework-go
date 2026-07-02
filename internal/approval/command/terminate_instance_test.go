@@ -79,6 +79,7 @@ func (s *TerminateInstanceTestSuite) insertTask(instanceID, assigneeID string, s
 		TenantID:   "default",
 		InstanceID: instanceID,
 		NodeID:     s.nodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", instanceID, s.nodeID).ID,
 		AssigneeID: assigneeID,
 		SortOrder:  1,
 		Status:     status,
@@ -92,7 +93,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateSuccess() {
 	s.insertTask(inst.ID, "approver-1", approval.TaskPending)
 	s.insertTask(inst.ID, "approver-2", approval.TaskWaiting)
 
-	operator := approval.OperatorInfo{ID: "admin-1", Name: "Admin"}
+	operator := approval.UserInfo{ID: "admin-1", Name: "Admin"}
 	_, err := s.handler.Handle(s.ctx, command.TerminateInstanceCmd{
 		InstanceID: inst.ID,
 		Operator:   operator,
@@ -130,7 +131,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateSuccess() {
 }
 
 func (s *TerminateInstanceTestSuite) TestTerminateInstanceNotFound() {
-	operator := approval.OperatorInfo{ID: "admin-1", Name: "Admin"}
+	operator := approval.UserInfo{ID: "admin-1", Name: "Admin"}
 	_, err := s.handler.Handle(s.ctx, command.TerminateInstanceCmd{
 		InstanceID: "non-existent",
 		Operator:   operator,
@@ -147,7 +148,7 @@ func (s *TerminateInstanceTestSuite) TestTerminatePausedInstances() {
 		s.Run(string(status), func() {
 			inst := s.insertInstance(status)
 
-			operator := approval.OperatorInfo{ID: "admin-1", Name: "Admin"}
+			operator := approval.UserInfo{ID: "admin-1", Name: "Admin"}
 			_, err := s.handler.Handle(s.ctx, command.TerminateInstanceCmd{
 				InstanceID: inst.ID,
 				Operator:   operator,
@@ -169,7 +170,7 @@ func (s *TerminateInstanceTestSuite) TestTerminatePausedInstances() {
 func (s *TerminateInstanceTestSuite) TestTerminateAlreadyCompleted() {
 	inst := s.insertInstance(approval.InstanceApproved)
 
-	operator := approval.OperatorInfo{ID: "admin-1", Name: "Admin"}
+	operator := approval.UserInfo{ID: "admin-1", Name: "Admin"}
 	_, err := s.handler.Handle(s.ctx, command.TerminateInstanceCmd{
 		InstanceID: inst.ID,
 		Operator:   operator,
@@ -182,7 +183,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateAlreadyCompleted() {
 func (s *TerminateInstanceTestSuite) TestTerminateAlreadyTerminated() {
 	inst := s.insertInstance(approval.InstanceTerminated)
 
-	operator := approval.OperatorInfo{ID: "admin-1", Name: "Admin"}
+	operator := approval.UserInfo{ID: "admin-1", Name: "Admin"}
 	_, err := s.handler.Handle(s.ctx, command.TerminateInstanceCmd{
 		InstanceID: inst.ID,
 		Operator:   operator,

@@ -64,7 +64,7 @@ func (s *FindAdminActionLogsTestSuite) TestSuccessWithPagination() {
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(3), result.Total, "Total should be 3")
 	s.Assert().Len(result.Items, 2, "Page 1 with size 2 should return 2 items")
-	s.Assert().Equal("Alice", result.Items[0].OperatorName, "First log should be Alice (ordered by created_at ASC)")
+	s.Assert().Equal("Alice", result.Items[0].Operator.Name, "First log should be Alice (ordered by created_at ASC)")
 }
 
 func (s *FindAdminActionLogsTestSuite) TestEmpty() {

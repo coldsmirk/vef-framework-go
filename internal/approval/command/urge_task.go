@@ -48,7 +48,8 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 
 	if err := db.NewSelect().
 		Model(&task).
-		Select("status", "node_id", "instance_id", "assignee_id", "assignee_name", "tenant_id").
+		Select("status", "node_id", "instance_id", "assignee_id", "assignee_name",
+			"assignee_department_id", "assignee_department_name", "tenant_id").
 		ForUpdate().
 		WherePK().
 		Scan(ctx); err != nil {
@@ -117,17 +118,21 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 		)
 	}
 
-	urgerName := shared.ResolveUserName(ctx, h.userResolver, cmd.UrgerID)
+	urger := shared.ResolveUserInfo(ctx, h.userResolver, cmd.UrgerID)
 
 	record := &approval.UrgeRecord{
-		InstanceID:     task.InstanceID,
-		NodeID:         task.NodeID,
-		TaskID:         &cmd.TaskID,
-		UrgerID:        cmd.UrgerID,
-		UrgerName:      urgerName,
-		TargetUserID:   task.AssigneeID,
-		TargetUserName: task.AssigneeName,
-		Message:        cmd.Message,
+		InstanceID:               task.InstanceID,
+		NodeID:                   task.NodeID,
+		TaskID:                   &cmd.TaskID,
+		UrgerID:                  urger.ID,
+		UrgerName:                urger.Name,
+		UrgerDepartmentID:        urger.DepartmentID,
+		UrgerDepartmentName:      urger.DepartmentName,
+		TargetUserID:             task.AssigneeID,
+		TargetUserName:           task.AssigneeName,
+		TargetUserDepartmentID:   task.AssigneeDepartmentID,
+		TargetUserDepartmentName: task.AssigneeDepartmentName,
+		Message:                  cmd.Message,
 	}
 	if _, err := db.NewInsert().Model(record).Exec(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("insert urge record: %w", err)
@@ -136,8 +141,13 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewTaskUrgedEvent(
 			task.InstanceID, task.TenantID, task.NodeID, cmd.TaskID,
-			approval.UserInfo{ID: cmd.UrgerID, Name: urgerName},
-			approval.UserInfo{ID: task.AssigneeID, Name: task.AssigneeName}, cmd.Message,
+			urger,
+			approval.UserInfo{
+				ID:             task.AssigneeID,
+				Name:           task.AssigneeName,
+				DepartmentID:   task.AssigneeDepartmentID,
+				DepartmentName: task.AssigneeDepartmentName,
+			}, cmd.Message,
 		),
 	)
 

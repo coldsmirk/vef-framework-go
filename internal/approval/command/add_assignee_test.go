@@ -85,6 +85,7 @@ func (s *AddAssigneeTestSuite) setupData(assigneeID string) (*approval.Instance,
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     s.nodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.nodeID).ID,
 		AssigneeID: assigneeID,
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -98,7 +99,7 @@ func (s *AddAssigneeTestSuite) setupData(assigneeID string) (*approval.Instance,
 func (s *AddAssigneeTestSuite) TestAddAssigneeSuccess() {
 	_, task := s.setupData("operator-1")
 
-	operator := approval.OperatorInfo{ID: "operator-1", Name: "Operator"}
+	operator := approval.UserInfo{ID: "operator-1", Name: "Operator"}
 	_, err := s.handler.Handle(s.ctx, command.AddAssigneeCmd{
 		TaskID:   task.ID,
 		UserIDs:  []string{"new-user-1", "new-user-2"},
@@ -166,6 +167,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeNotAllowed() {
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     node.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, node.ID).ID,
 		AssigneeID: "operator-2",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -173,7 +175,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeNotAllowed() {
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
 	s.Require().NoError(err, "Task on add-assignee-disabled node should insert successfully")
 
-	operator := approval.OperatorInfo{ID: "operator-2", Name: "Operator"}
+	operator := approval.UserInfo{ID: "operator-2", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
 		TaskID:   task.ID,
 		UserIDs:  []string{"new-user-1"},
@@ -188,7 +190,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeNotAllowed() {
 func (s *AddAssigneeTestSuite) TestAddAssigneeNotAssignee() {
 	_, task := s.setupData("operator-1")
 
-	operator := approval.OperatorInfo{ID: "wrong-user", Name: "Wrong"}
+	operator := approval.UserInfo{ID: "wrong-user", Name: "Wrong"}
 	_, err := s.handler.Handle(s.ctx, command.AddAssigneeCmd{
 		TaskID:   task.ID,
 		UserIDs:  []string{"new-user-1"},
@@ -201,7 +203,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeNotAssignee() {
 }
 
 func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotFound() {
-	operator := approval.OperatorInfo{ID: "operator-1", Name: "Operator"}
+	operator := approval.UserInfo{ID: "operator-1", Name: "Operator"}
 	_, err := s.handler.Handle(s.ctx, command.AddAssigneeCmd{
 		TaskID:   "non-existent",
 		UserIDs:  []string{"new-user-1"},
@@ -230,6 +232,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeInstanceCompleted() {
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     s.nodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.nodeID).ID,
 		AssigneeID: "operator-3",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -237,7 +240,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeInstanceCompleted() {
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
 	s.Require().NoError(err, "Task on completed instance should insert before add-assignee rejection")
 
-	operator := approval.OperatorInfo{ID: "operator-3", Name: "Operator"}
+	operator := approval.UserInfo{ID: "operator-3", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
 		TaskID:   task.ID,
 		UserIDs:  []string{"new-user-1"},
@@ -282,6 +285,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeRejectsDisallowedConfiguredType() 
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     node.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, node.ID).ID,
 		AssigneeID: "operator-limited",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -289,7 +293,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeRejectsDisallowedConfiguredType() 
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
 	s.Require().NoError(err, "Should create pending task")
 
-	operator := approval.OperatorInfo{ID: "operator-limited", Name: "Operator"}
+	operator := approval.UserInfo{ID: "operator-limited", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
 		TaskID:   task.ID,
 		UserIDs:  []string{"new-user-1"},
@@ -311,7 +315,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotPending() {
 		Exec(s.ctx)
 	s.Require().NoError(err, "Task status should update to approved before add-assignee rejection")
 
-	operator := approval.OperatorInfo{ID: "operator-4", Name: "Operator"}
+	operator := approval.UserInfo{ID: "operator-4", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
 		TaskID:   task.ID,
 		UserIDs:  []string{"new-user-1"},
@@ -342,7 +346,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotCurrentNode() {
 		Exec(s.ctx)
 	s.Require().NoError(err, "Instance current node should update before add-assignee rejection")
 
-	operator := approval.OperatorInfo{ID: "operator-5", Name: "Operator"}
+	operator := approval.UserInfo{ID: "operator-5", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
 		TaskID:   task.ID,
 		UserIDs:  []string{"new-user-1"},
@@ -384,7 +388,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldStartTimeoutWhenNewTaskIsPen
 	s.Require().NotNil(seeded.Deadline, "Seeded original deadline should be persisted")
 	originalBaseline := seeded.Deadline.Unwrap()
 
-	operator := approval.OperatorInfo{ID: "operator-deadline", Name: "Operator"}
+	operator := approval.UserInfo{ID: "operator-deadline", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
 		TaskID:   task.ID,
 		UserIDs:  []string{"new-deadline-user"},
@@ -440,7 +444,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldKeepWaitingTaskDeadlineEmpty
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should set original task deadline")
 
-	operator := approval.OperatorInfo{ID: "operator-waiting-deadline", Name: "Operator"}
+	operator := approval.UserInfo{ID: "operator-waiting-deadline", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
 		TaskID:   task.ID,
 		UserIDs:  []string{"new-waiting-user"},
@@ -482,7 +486,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeBeforeShouldResetOriginalTaskDeadl
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should set original task deadline")
 
-	operator := approval.OperatorInfo{ID: "operator-before-deadline", Name: "Operator"}
+	operator := approval.UserInfo{ID: "operator-before-deadline", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
 		TaskID:   task.ID,
 		UserIDs:  []string{"new-before-user"},
@@ -506,7 +510,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeBeforeShouldResetOriginalTaskDeadl
 func (s *AddAssigneeTestSuite) TestAddAssigneeShouldDeduplicateUserIDsAndIgnoreEmpty() {
 	_, task := s.setupData("operator-dedup")
 
-	operator := approval.OperatorInfo{ID: "operator-dedup", Name: "Operator"}
+	operator := approval.UserInfo{ID: "operator-dedup", Name: "Operator"}
 	_, err := s.handler.Handle(s.ctx, command.AddAssigneeCmd{
 		TaskID:   task.ID,
 		UserIDs:  []string{"new-user-1", "", "new-user-1", "new-user-2"},
@@ -547,6 +551,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldSkipExistingActiveAssignee()
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     s.nodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.nodeID).ID,
 		AssigneeID: "new-user-1",
 		SortOrder:  2,
 		Status:     approval.TaskPending,
@@ -554,7 +559,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldSkipExistingActiveAssignee()
 	_, err := s.db.NewInsert().Model(existingTask).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert existing active assignee task")
 
-	operator := approval.OperatorInfo{ID: "operator-existing", Name: "Operator"}
+	operator := approval.UserInfo{ID: "operator-existing", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
 		TaskID:   task.ID,
 		UserIDs:  []string{"new-user-1", "new-user-2"},
@@ -589,7 +594,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldBeConcurrencySafe() {
 	skipSQLiteConcurrencyTest(s.T(), s.ctx, s.db, "SQLite returns SQLITE_BUSY under write races in this concurrency scenario")
 
 	_, task := s.setupData("operator-concurrency")
-	operator := approval.OperatorInfo{ID: "operator-concurrency", Name: "Operator"}
+	operator := approval.UserInfo{ID: "operator-concurrency", Name: "Operator"}
 
 	lockReady, releaseLock, lockDone := holdSharedTableLock(s.ctx, s.db, "apv_task")
 
@@ -687,7 +692,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeAndPrepareOperationShouldAvoidDead
 				TaskID:   task.ID,
 				UserIDs:  []string{"lock-order-user"},
 				AddType:  approval.AddAssigneeParallel,
-				Operator: approval.OperatorInfo{ID: "operator-lock-order", Name: "Operator"},
+				Operator: approval.UserInfo{ID: "operator-lock-order", Name: "Operator"},
 				Caller:   approval.SystemCaller,
 			})
 
@@ -699,7 +704,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeAndPrepareOperationShouldAvoidDead
 	go func() {
 		prepareDone <- s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error {
 			txCtx := contextx.SetDB(ctx, tx)
-			_, err := taskSvc.PrepareOperation(txCtx, tx, task.ID, approval.OperatorInfo{ID: "operator-lock-order"}, approval.SystemCaller, nil)
+			_, err := taskSvc.PrepareOperation(txCtx, tx, task.ID, approval.UserInfo{ID: "operator-lock-order"}, approval.SystemCaller, nil)
 
 			return err
 		})

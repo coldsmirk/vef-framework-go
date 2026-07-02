@@ -516,11 +516,13 @@ func (*TaskService) IsInstanceParticipant(ctx context.Context, db orm.DB, instan
 func (*TaskService) CanRemoveAssigneeTask(ctx context.Context, db orm.DB, eng *engine.FlowEngine, node *approval.FlowNode, task approval.Task) (bool, error) {
 	var tasks []approval.Task
 
+	// Scoped to the candidate's visit so the simulation evaluates the same
+	// task set the engine's completion evaluation will — tasks left behind by
+	// an earlier traversal are excluded.
 	if err := db.NewSelect().
 		Model(&tasks).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", task.InstanceID).
-				Equals("node_id", task.NodeID)
+			cb.Equals("visit_id", task.VisitID)
 		}).
 		ForUpdate().
 		Scan(ctx); err != nil {
@@ -550,7 +552,7 @@ func (*TaskService) CanRemoveAssigneeTask(ctx context.Context, db orm.DB, eng *e
 
 // PrepareOperation loads task context and merges editable form data.
 // Callers that require opinion validation should invoke ValidateOpinion separately.
-func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID string, operator approval.OperatorInfo, caller approval.CallerContext, formData map[string]any) (*TaskContext, error) {
+func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID string, operator approval.UserInfo, caller approval.CallerContext, formData map[string]any) (*TaskContext, error) {
 	tc, err := s.LoadTaskContextForNodeOperation(ctx, db, taskID, TaskContextLoadOptions{
 		OperatorID:              operator.ID,
 		RequireOperatorAssignee: true,
@@ -592,9 +594,10 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID st
 
 // ActionLogParams holds optional fields for BuildActionLog.
 type ActionLogParams struct {
-	Opinion          string
-	TransferToID     string
-	TransferToName   string
+	Opinion string
+	// TransferTo names the recipient of a transfer-style action, snapshotting
+	// identity and department at action time.
+	TransferTo       *approval.UserInfo
 	RollbackToNodeID string
 	// Attachments holds storage file references the operator attached to this
 	// action (e.g. a signed document uploaded with an approval opinion). The
@@ -610,7 +613,7 @@ type ActionLogParams struct {
 func (*TaskService) BuildActionLog(
 	instanceID string,
 	task *approval.Task,
-	operator approval.OperatorInfo,
+	operator approval.UserInfo,
 	action approval.ActionType,
 	params ActionLogParams,
 ) *approval.ActionLog {
@@ -622,12 +625,11 @@ func (*TaskService) BuildActionLog(
 		actionLog.Opinion = new(params.Opinion)
 	}
 
-	if params.TransferToID != "" {
-		actionLog.TransferToID = new(params.TransferToID)
-	}
-
-	if params.TransferToName != "" {
-		actionLog.TransferToName = new(params.TransferToName)
+	if params.TransferTo != nil {
+		actionLog.TransferToID = new(params.TransferTo.ID)
+		actionLog.TransferToName = new(params.TransferTo.Name)
+		actionLog.TransferToDepartmentID = params.TransferTo.DepartmentID
+		actionLog.TransferToDepartmentName = params.TransferTo.DepartmentName
 	}
 
 	if params.RollbackToNodeID != "" {

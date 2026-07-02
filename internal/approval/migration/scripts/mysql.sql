@@ -251,6 +251,24 @@ CREATE TABLE IF NOT EXISTS apv_instance (
 -- For general JSON field queries, a regular index is not directly applicable.
 -- Use application-level indexing or virtual columns for specific JSON paths as needed.
 
+-- Node visit (one traversal of a flow node by an instance; the engine begins
+-- a visit on node entry and stamps the outcome when the node concludes)
+CREATE TABLE IF NOT EXISTS apv_node_visit (
+    id VARCHAR(32) NOT NULL COMMENT 'ID',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Entered',
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT 'Creator',
+    tenant_id VARCHAR(32) NOT NULL COMMENT 'Tenant',
+    instance_id VARCHAR(32) NOT NULL COMMENT 'Instance',
+    node_id VARCHAR(32) NOT NULL COMMENT 'Node',
+    sequence INTEGER NOT NULL COMMENT 'Step No.',
+    status VARCHAR(16) NOT NULL DEFAULT 'active' COMMENT 'Status',
+    finished_at DATETIME NULL COMMENT 'Finished',
+    CONSTRAINT pk_apv_node_visit PRIMARY KEY (id),
+    CONSTRAINT fk_apv_node_visit__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_apv_node_visit__node_id FOREIGN KEY (node_id) REFERENCES apv_flow_node(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT uk_apv_node_visit__instance_id_sequence UNIQUE (instance_id, sequence)
+) COMMENT 'Node Visit';
+
 -- Approval task
 CREATE TABLE IF NOT EXISTS apv_task (
     id VARCHAR(32) NOT NULL COMMENT 'ID',
@@ -261,11 +279,16 @@ CREATE TABLE IF NOT EXISTS apv_task (
     tenant_id VARCHAR(32) NOT NULL COMMENT 'Tenant',
     instance_id VARCHAR(32) NOT NULL COMMENT 'Instance',
     node_id VARCHAR(32) NOT NULL COMMENT 'Node',
+    visit_id VARCHAR(32) NOT NULL COMMENT 'Visit',
     -- Assignee info
     assignee_id VARCHAR(32) NOT NULL COMMENT 'Assignee',
     assignee_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Assignee Name',
+    assignee_department_id VARCHAR(32) COMMENT 'Assignee Dept',
+    assignee_department_name VARCHAR(128) COMMENT 'Assignee Dept Name',
     delegator_id VARCHAR(32) COMMENT 'Delegator',
     delegator_name VARCHAR(128) COMMENT 'Delegator Name',
+    delegator_department_id VARCHAR(32) COMMENT 'Delegator Dept',
+    delegator_department_name VARCHAR(128) COMMENT 'Delegator Dept Name',
     sort_order INTEGER NOT NULL DEFAULT 0 COMMENT 'Sort',
     -- Task status
     status VARCHAR(16) NOT NULL DEFAULT 'pending' COMMENT 'Status',
@@ -285,6 +308,7 @@ CREATE TABLE IF NOT EXISTS apv_task (
     CONSTRAINT ck_apv_task__assignee_id_not_empty CHECK (TRIM(assignee_id) <> ''),
     CONSTRAINT fk_apv_task__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_task__node_id FOREIGN KEY (node_id) REFERENCES apv_flow_node(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_apv_task__visit_id FOREIGN KEY (visit_id) REFERENCES apv_node_visit(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_task__parent_task_id FOREIGN KEY (parent_task_id) REFERENCES apv_task(id) ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT uk_apv_task__instance_id_node_id_assignee_id_active UNIQUE (instance_id, node_id, assignee_id, active_flag),
     INDEX idx_apv_task__tenant_id (tenant_id),
@@ -316,16 +340,14 @@ CREATE TABLE IF NOT EXISTS apv_action_log (
     -- Transfer/rollback info
     transfer_to_id VARCHAR(32) COMMENT 'Transferee',
     transfer_to_name VARCHAR(128) COMMENT 'Transferee Name',
+    transfer_to_department_id VARCHAR(32) COMMENT 'Transferee Dept',
+    transfer_to_department_name VARCHAR(128) COMMENT 'Transferee Dept Name',
     rollback_to_node_id VARCHAR(32) COMMENT 'Rollback Node',
-    -- Dynamic assignee info
+    -- Person lists as UserBrief object arrays: [{id, name, departmentId, departmentName}]
     add_assignee_type VARCHAR(16) COMMENT 'Add Type',
-    added_assignee_ids JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Added',
-    added_assignee_names JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Added Names',
-    removed_assignee_ids JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Removed',
-    removed_assignee_names JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Removed Names',
-    -- CC info
-    cc_user_ids JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'CC List',
-    cc_user_names JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'CC Names',
+    added_assignees JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Added',
+    removed_assignees JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Removed',
+    cc_users JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'CC List',
     -- Attachments
     attachments JSON COMMENT 'Attachments',
     CONSTRAINT pk_apv_action_log PRIMARY KEY (id),
@@ -346,6 +368,8 @@ CREATE TABLE IF NOT EXISTS apv_cc_record (
     task_id VARCHAR(32) COMMENT 'Task',
     cc_user_id VARCHAR(32) NOT NULL COMMENT 'User',
     cc_user_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'User Name',
+    cc_user_department_id VARCHAR(32) COMMENT 'User Dept',
+    cc_user_department_name VARCHAR(128) COMMENT 'User Dept Name',
     is_manual BOOLEAN NOT NULL DEFAULT false COMMENT 'Manual',
     read_at DATETIME NULL COMMENT 'Read',
     -- Generated column for partial unique index: only enforce when node_id IS NOT NULL
@@ -419,8 +443,12 @@ CREATE TABLE IF NOT EXISTS apv_urge_record (
     task_id VARCHAR(32) COMMENT 'Task',
     urger_id VARCHAR(32) NOT NULL COMMENT 'Urger',
     urger_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Urger Name',
+    urger_department_id VARCHAR(32) COMMENT 'Urger Dept',
+    urger_department_name VARCHAR(128) COMMENT 'Urger Dept Name',
     target_user_id VARCHAR(32) NOT NULL COMMENT 'Target',
     target_user_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Target Name',
+    target_user_department_id VARCHAR(32) COMMENT 'Target Dept',
+    target_user_department_name VARCHAR(128) COMMENT 'Target Dept Name',
     message TEXT NOT NULL COMMENT 'Message',
     CONSTRAINT pk_apv_urge_record PRIMARY KEY (id),
     CONSTRAINT fk_apv_urge_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE,

@@ -6,16 +6,29 @@ import (
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
-// UserInfo represents a user identity with ID and display name.
+// UserInfo is the approval module's uniform person reference — identity plus
+// optional department — used everywhere a user appears: resolver lookups,
+// command operators, persisted snapshots (task assignees and delegators, CC
+// recipients, urge parties, action-log person lists), and detail projections,
+// so a client renders every person with one component and no second lookup.
+// The role a value plays is carried by the field holding it (Operator,
+// Applicant, User, Delegator, TransferTo, …), never by a separate type.
+// Department fields hold whatever the writing side captured at the time and
+// are omitted when unknown; hosts opt in by filling them in
+// UserInfoResolver.ResolveUsers.
 type UserInfo struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID             string  `json:"id"`
+	Name           string  `json:"name"`
+	DepartmentID   *string `json:"departmentId,omitempty"`
+	DepartmentName *string `json:"departmentName,omitempty"`
 }
 
-// UserInfoResolver resolves user display names by IDs (implemented by host app).
+// UserInfoResolver resolves user display info by IDs (implemented by host app).
 type UserInfoResolver interface {
 	// ResolveUsers returns user info for the given IDs.
 	// Missing IDs should be returned with empty Name (not omitted).
+	// Department fields are optional; fill them to enrich the person
+	// snapshots the approval module records.
 	ResolveUsers(ctx context.Context, userIDs []string) (map[string]UserInfo, error)
 }
 
@@ -40,12 +53,12 @@ type RoleMembershipChecker interface {
 	UserHasRole(ctx context.Context, userID, roleID string) (bool, error)
 }
 
-// ResolvedAssignee represents a resolved assignee with optional delegation info.
+// ResolvedAssignee represents a resolved assignee with optional delegation
+// info: User is who receives the task; Delegator is set when the task arrived
+// via delegation and names the original assignee.
 type ResolvedAssignee struct {
-	UserID        string
-	UserName      string
-	DelegatorID   *string
-	DelegatorName *string
+	User      UserInfo
+	Delegator *UserInfo
 }
 
 // PrincipalDepartmentResolver resolves department info from a security principal.

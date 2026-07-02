@@ -15,14 +15,14 @@ import (
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
-// resolveOperator builds an OperatorInfo from the authenticated principal.
-func resolveOperator(ctx context.Context, resolver approval.PrincipalDepartmentResolver, principal *security.Principal) (approval.OperatorInfo, error) {
+// resolveOperator builds an UserInfo from the authenticated principal.
+func resolveOperator(ctx context.Context, resolver approval.PrincipalDepartmentResolver, principal *security.Principal) (approval.UserInfo, error) {
 	departmentID, departmentName, err := resolver.Resolve(ctx, principal)
 	if err != nil {
-		return approval.OperatorInfo{}, fmt.Errorf("resolve operator department: %w", err)
+		return approval.UserInfo{}, fmt.Errorf("resolve operator department: %w", err)
 	}
 
-	return approval.OperatorInfo{
+	return approval.UserInfo{
 		ID:             principal.ID,
 		Name:           principal.Name,
 		DepartmentID:   departmentID,
@@ -46,7 +46,7 @@ func resolveCaller(ctx context.Context, resolver approval.PrincipalTenantResolve
 }
 
 type resolvedActor struct {
-	Operator approval.OperatorInfo
+	Operator approval.UserInfo
 	Caller   approval.CallerContext
 }
 
@@ -290,7 +290,7 @@ func (r *InstanceResource) Withdraw(ctx fiber.Ctx, principal *security.Principal
 		return err
 	}
 
-	if _, err := cqrs.Send[command.WithdrawCmd, cqrs.Unit](ctx.Context(), r.bus, command.WithdrawCmd{
+	if _, err := cqrs.Send[command.WithdrawInstanceCmd, cqrs.Unit](ctx.Context(), r.bus, command.WithdrawInstanceCmd{
 		InstanceID: params.InstanceID,
 		Operator:   actor.Operator,
 		Reason:     params.Reason,
@@ -317,7 +317,7 @@ func (r *InstanceResource) Resubmit(ctx fiber.Ctx, principal *security.Principal
 		return err
 	}
 
-	if _, err := cqrs.Send[command.ResubmitCmd, cqrs.Unit](ctx.Context(), r.bus, command.ResubmitCmd{
+	if _, err := cqrs.Send[command.ResubmitInstanceCmd, cqrs.Unit](ctx.Context(), r.bus, command.ResubmitInstanceCmd{
 		InstanceID: params.InstanceID,
 		Operator:   actor.Operator,
 		FormData:   params.FormData,

@@ -108,6 +108,7 @@ func (s *RollbackTaskTestSuite) setupData(assigneeID string) (*approval.Instance
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     s.rollbackNode.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.rollbackNode.ID).ID,
 		AssigneeID: assigneeID,
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -119,7 +120,7 @@ func (s *RollbackTaskTestSuite) setupData(assigneeID string) (*approval.Instance
 }
 
 func (s *RollbackTaskTestSuite) TestRollbackTaskNotFound() {
-	operator := approval.OperatorInfo{ID: "rollback-operator", Name: "Rollback Operator"}
+	operator := approval.UserInfo{ID: "rollback-operator", Name: "Rollback Operator"}
 	_, err := s.handler.Handle(s.ctx, command.RollbackTaskCmd{
 		TaskID:       "non-existent",
 		Operator:     operator,
@@ -140,7 +141,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTaskNotCurrentNode() {
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should move instance current node away from task node")
 
-	operator := approval.OperatorInfo{ID: "rollback-operator", Name: "Rollback Operator"}
+	operator := approval.UserInfo{ID: "rollback-operator", Name: "Rollback Operator"}
 	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
 		TaskID:       task.ID,
 		Operator:     operator,
@@ -156,7 +157,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTargetRequired() {
 	s.Run("EmptyTarget", func() {
 		_, task := s.setupData("rollback-empty")
 
-		operator := approval.OperatorInfo{ID: "rollback-empty", Name: "Rollback Operator"}
+		operator := approval.UserInfo{ID: "rollback-empty", Name: "Rollback Operator"}
 		_, err := s.handler.Handle(s.ctx, command.RollbackTaskCmd{
 			TaskID:       task.ID,
 			Operator:     operator,
@@ -171,7 +172,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTargetRequired() {
 	s.Run("BlankTarget", func() {
 		_, task := s.setupData("rollback-blank")
 
-		operator := approval.OperatorInfo{ID: "rollback-blank", Name: "Rollback Operator"}
+		operator := approval.UserInfo{ID: "rollback-blank", Name: "Rollback Operator"}
 		_, err := s.handler.Handle(s.ctx, command.RollbackTaskCmd{
 			TaskID:       task.ID,
 			Operator:     operator,
@@ -187,7 +188,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTargetRequired() {
 func (s *RollbackTaskTestSuite) TestRollbackTargetShouldNotBeCurrentNode() {
 	_, task := s.setupData("rollback-current-node")
 
-	operator := approval.OperatorInfo{ID: "rollback-current-node", Name: "Rollback Operator"}
+	operator := approval.UserInfo{ID: "rollback-current-node", Name: "Rollback Operator"}
 	_, err := s.handler.Handle(s.ctx, command.RollbackTaskCmd{
 		TaskID:       task.ID,
 		Operator:     operator,
@@ -239,7 +240,7 @@ func (s *RollbackTaskTestSuite) TestRollbackDataClearWipesFormData() {
 	s.Require().NoError(err, "Should seed instance form data")
 
 	// s.rollbackNode is configured RollbackDataClear + RollbackAny.
-	operator := approval.OperatorInfo{ID: "rollback-clear-op", Name: "Operator"}
+	operator := approval.UserInfo{ID: "rollback-clear-op", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
 		TaskID:       task.ID,
 		Operator:     operator,
@@ -294,6 +295,7 @@ func (s *RollbackTaskTestSuite) TestRollbackDataKeepRestoresSnapshot() {
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     keepNode.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, keepNode.ID).ID,
 		AssigneeID: "rollback-keep-op",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -309,7 +311,7 @@ func (s *RollbackTaskTestSuite) TestRollbackDataKeepRestoresSnapshot() {
 	_, err = s.db.NewInsert().Model(snapshot).Exec(s.ctx)
 	s.Require().NoError(err, "Should seed form snapshot for target node")
 
-	operator := approval.OperatorInfo{ID: "rollback-keep-op", Name: "Operator"}
+	operator := approval.UserInfo{ID: "rollback-keep-op", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
 		TaskID:       task.ID,
 		Operator:     operator,
@@ -342,7 +344,7 @@ func (s *RollbackTaskTestSuite) TestRollbackToIntermediateNodeClearsFormData() {
 
 	// s.rollbackNode is RollbackDataClear; s.targetNode is an intermediate
 	// approval node (not a start node), so rollback takes the else branch.
-	operator := approval.OperatorInfo{ID: "rollback-clear-mid-op", Name: "Operator"}
+	operator := approval.UserInfo{ID: "rollback-clear-mid-op", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
 		TaskID:       task.ID,
 		Operator:     operator,
@@ -398,6 +400,7 @@ func (s *RollbackTaskTestSuite) TestRollbackToIntermediateNodeKeepsSnapshot() {
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     keepNode.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, keepNode.ID).ID,
 		AssigneeID: "rollback-keep-mid-op",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -413,7 +416,7 @@ func (s *RollbackTaskTestSuite) TestRollbackToIntermediateNodeKeepsSnapshot() {
 	_, err = s.db.NewInsert().Model(snapshot).Exec(s.ctx)
 	s.Require().NoError(err, "Should seed form snapshot for the intermediate target node")
 
-	operator := approval.OperatorInfo{ID: "rollback-keep-mid-op", Name: "Operator"}
+	operator := approval.UserInfo{ID: "rollback-keep-mid-op", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
 		TaskID:       task.ID,
 		Operator:     operator,
@@ -446,7 +449,7 @@ func (s *RollbackTaskTestSuite) TestRollbackClearIsNotWedgedByOversizeFormData()
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should seed an over-cap instance form payload")
 
-	operator := approval.OperatorInfo{ID: "rollback-oversize-op", Name: "Operator"}
+	operator := approval.UserInfo{ID: "rollback-oversize-op", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
 		TaskID:       task.ID,
 		Operator:     operator,

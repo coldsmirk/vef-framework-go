@@ -22,7 +22,7 @@ type RollbackTaskCmd struct {
 	cqrs.BaseCommand
 
 	TaskID       string
-	Operator     approval.OperatorInfo
+	Operator     approval.UserInfo
 	Opinion      string
 	FormData     map[string]any
 	TargetNodeID string
@@ -94,6 +94,13 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 
 	canceledEvents, err := h.taskSvc.CancelRemainingTasks(ctx, db, instance.ID, node.ID, "节点被回退，剩余任务取消")
 	if err != nil {
+		return cqrs.Unit{}, err
+	}
+
+	// The node the flow is leaving concludes as "returned"; re-entering the
+	// target below (ProcessNode, or a later resubmit for start targets) begins
+	// a fresh visit.
+	if err := engine.ConcludeActiveNodeVisit(ctx, db, instance.ID, node.ID, approval.NodeVisitReturned); err != nil {
 		return cqrs.Unit{}, err
 	}
 
@@ -170,7 +177,11 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 		task,
 		cmd.Operator,
 		approval.ActionRollback,
-		service.ActionLogParams{Opinion: cmd.Opinion, RollbackToNodeID: targetNodeID, Attachments: cmd.Attachments},
+		service.ActionLogParams{
+			Opinion:          cmd.Opinion,
+			RollbackToNodeID: targetNodeID,
+			Attachments:      cmd.Attachments,
+		},
 	)
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 

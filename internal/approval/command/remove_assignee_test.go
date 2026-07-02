@@ -86,6 +86,7 @@ func (s *RemoveAssigneeTestSuite) setupData() (inst *approval.Instance, task1, t
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     s.nodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.nodeID).ID,
 		AssigneeID: "assignee-1",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -97,6 +98,7 @@ func (s *RemoveAssigneeTestSuite) setupData() (inst *approval.Instance, task1, t
 		TenantID:     "default",
 		InstanceID:   inst.ID,
 		NodeID:       s.nodeID,
+		VisitID:      ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.nodeID).ID,
 		AssigneeID:   "assignee-2",
 		AssigneeName: "Assignee 2",
 		SortOrder:    2,
@@ -112,7 +114,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveSuccess() {
 	_, _, task2 := s.setupData()
 
 	// assignee-1 removes assignee-2 (peer operation)
-	operator := approval.OperatorInfo{ID: "assignee-1", Name: "Assignee 1"}
+	operator := approval.UserInfo{ID: "assignee-1", Name: "Assignee 1"}
 	_, err := s.handler.Handle(s.ctx, command.RemoveAssigneeCmd{
 		TaskID:   task2.ID,
 		Operator: operator,
@@ -142,8 +144,9 @@ func (s *RemoveAssigneeTestSuite) TestRemoveSuccess() {
 	}
 
 	s.Require().NotNil(removeLog, "Should have a remove_assignee action log")
-	s.Assert().Equal([]string{"assignee-2"}, removeLog.RemovedAssigneeIDs, "Remove log should record the removed id")
-	s.Assert().Equal([]string{"Assignee 2"}, removeLog.RemovedAssigneeNames, "Remove log should snapshot the removed name")
+	s.Require().Len(removeLog.RemovedAssignees, 1, "Remove log should record exactly one removed assignee")
+	s.Assert().Equal("assignee-2", removeLog.RemovedAssignees[0].ID, "Remove log should record the removed id")
+	s.Assert().Equal("Assignee 2", removeLog.RemovedAssignees[0].Name, "Remove log should snapshot the removed name")
 }
 
 func (s *RemoveAssigneeTestSuite) TestRemoveWaitingTaskShouldSucceed() {
@@ -164,6 +167,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveWaitingTaskShouldSucceed() {
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     s.nodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.nodeID).ID,
 		AssigneeID: "assignee-pending",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -175,6 +179,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveWaitingTaskShouldSucceed() {
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     s.nodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.nodeID).ID,
 		AssigneeID: "assignee-waiting",
 		SortOrder:  2,
 		Status:     approval.TaskWaiting,
@@ -182,7 +187,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveWaitingTaskShouldSucceed() {
 	_, err = s.db.NewInsert().Model(waitingTask).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert waiting task to remove")
 
-	operator := approval.OperatorInfo{ID: "assignee-pending", Name: "Pending Assignee"}
+	operator := approval.UserInfo{ID: "assignee-pending", Name: "Pending Assignee"}
 	_, err = s.handler.Handle(s.ctx, command.RemoveAssigneeCmd{
 		TaskID:   waitingTask.ID,
 		Operator: operator,
@@ -268,6 +273,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveNotAllowed() {
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     node.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, node.ID).ID,
 		AssigneeID: "assignee-3",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -275,7 +281,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveNotAllowed() {
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
 	s.Require().NoError(err, "TestRemoveNotAllowed should complete without error")
 
-	operator := approval.OperatorInfo{ID: "assignee-3", Name: "Assignee"}
+	operator := approval.UserInfo{ID: "assignee-3", Name: "Assignee"}
 	_, err = s.handler.Handle(s.ctx, command.RemoveAssigneeCmd{
 		TaskID:   task.ID,
 		Operator: operator,
@@ -286,7 +292,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveNotAllowed() {
 }
 
 func (s *RemoveAssigneeTestSuite) TestRemoveTaskNotFound() {
-	operator := approval.OperatorInfo{ID: "assignee-1", Name: "Assignee"}
+	operator := approval.UserInfo{ID: "assignee-1", Name: "Assignee"}
 	_, err := s.handler.Handle(s.ctx, command.RemoveAssigneeCmd{
 		TaskID:   "non-existent",
 		Operator: operator,
@@ -314,6 +320,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveInstanceCompleted() {
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     s.nodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.nodeID).ID,
 		AssigneeID: "assignee-3",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -321,7 +328,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveInstanceCompleted() {
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert task on completed instance")
 
-	operator := approval.OperatorInfo{ID: "assignee-3", Name: "Assignee"}
+	operator := approval.UserInfo{ID: "assignee-3", Name: "Assignee"}
 	_, err = s.handler.Handle(s.ctx, command.RemoveAssigneeCmd{
 		TaskID:   task.ID,
 		Operator: operator,
@@ -352,7 +359,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveTaskNotCurrentNode() {
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should update instance current node")
 
-	operator := approval.OperatorInfo{ID: "assignee-1", Name: "Assignee 1"}
+	operator := approval.UserInfo{ID: "assignee-1", Name: "Assignee 1"}
 	_, err = s.handler.Handle(s.ctx, command.RemoveAssigneeCmd{
 		TaskID:   task2.ID,
 		Operator: operator,
@@ -383,7 +390,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveAssigneeShouldBeConcurrencySafe() {
 			txCtx := contextx.SetDB(ctx, tx)
 			_, err := s.handler.Handle(txCtx, command.RemoveAssigneeCmd{
 				TaskID:   taskID,
-				Operator: approval.OperatorInfo{ID: operatorID, Name: operatorID},
+				Operator: approval.UserInfo{ID: operatorID, Name: operatorID},
 				Caller:   approval.SystemCaller,
 			})
 

@@ -128,7 +128,7 @@ func (s *DesignerDefaultsTestSuite) TestBareApprovalNode() {
 
 		_, err := s.approve.Handle(s.ctx, command.ApproveTaskCmd{
 			TaskID:   task.ID,
-			Operator: approval.OperatorInfo{ID: "dd-approver", Name: "Approver"},
+			Operator: approval.UserInfo{ID: "dd-approver", Name: "Approver"},
 			Opinion:  "ok",
 			Caller:   approval.SystemCaller,
 		})

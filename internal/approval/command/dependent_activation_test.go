@@ -179,6 +179,7 @@ func (s *DependentActivationTestSuite) seedInstanceOnNode(nodeID string, sequent
 			TenantID:   "default",
 			InstanceID: inst.ID,
 			NodeID:     nodeID,
+			VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, nodeID).ID,
 			AssigneeID: a,
 			SortOrder:  i + 1,
 			Status:     status,
@@ -195,7 +196,7 @@ func (s *DependentActivationTestSuite) addAssignees(taskID, operatorID string, a
 		TaskID:   taskID,
 		UserIDs:  userIDs,
 		AddType:  addType,
-		Operator: approval.OperatorInfo{ID: operatorID, Name: operatorID},
+		Operator: approval.UserInfo{ID: operatorID, Name: operatorID},
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Add-assignee should succeed")
@@ -204,7 +205,7 @@ func (s *DependentActivationTestSuite) addAssignees(taskID, operatorID string, a
 func (s *DependentActivationTestSuite) transferTo(taskID, fromUserID, toUserID string) {
 	_, err := s.transfer.Handle(s.ctx, command.TransferTaskCmd{
 		TaskID:       taskID,
-		Operator:     approval.OperatorInfo{ID: fromUserID, Name: fromUserID},
+		Operator:     approval.UserInfo{ID: fromUserID, Name: fromUserID},
 		TransferToID: toUserID,
 		Caller:       approval.SystemCaller,
 	})
@@ -214,7 +215,7 @@ func (s *DependentActivationTestSuite) transferTo(taskID, fromUserID, toUserID s
 func (s *DependentActivationTestSuite) rejectAs(taskID, userID string) {
 	_, err := s.reject.Handle(s.ctx, command.RejectTaskCmd{
 		TaskID:   taskID,
-		Operator: approval.OperatorInfo{ID: userID, Name: userID},
+		Operator: approval.UserInfo{ID: userID, Name: userID},
 		Opinion:  "rejected by " + userID,
 		Caller:   approval.SystemCaller,
 	})
@@ -224,7 +225,7 @@ func (s *DependentActivationTestSuite) rejectAs(taskID, userID string) {
 func (s *DependentActivationTestSuite) removeAs(taskID, operatorID string) {
 	_, err := s.remove.Handle(s.ctx, command.RemoveAssigneeCmd{
 		TaskID:   taskID,
-		Operator: approval.OperatorInfo{ID: operatorID, Name: operatorID},
+		Operator: approval.UserInfo{ID: operatorID, Name: operatorID},
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Remove by "+operatorID+" should not error")
@@ -253,7 +254,7 @@ func (s *DependentActivationTestSuite) taskFor(instanceID, assigneeID string) ap
 func (s *DependentActivationTestSuite) approveAs(taskID, userID string) {
 	_, err := s.approve.Handle(s.ctx, command.ApproveTaskCmd{
 		TaskID:   taskID,
-		Operator: approval.OperatorInfo{ID: userID, Name: userID},
+		Operator: approval.UserInfo{ID: userID, Name: userID},
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Approve by "+userID+" should not error")
@@ -279,7 +280,7 @@ func (s *DependentActivationTestSuite) TestBeforeAddAssigneeOnParallelNodeReacti
 		TaskID:   origA.ID,
 		UserIDs:  []string{"before-C"},
 		AddType:  approval.AddAssigneeBefore,
-		Operator: approval.OperatorInfo{ID: "orig-A", Name: "orig-A"},
+		Operator: approval.UserInfo{ID: "orig-A", Name: "orig-A"},
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Add-before should succeed")
@@ -313,7 +314,7 @@ func (s *DependentActivationTestSuite) TestAfterAddAssigneeOnParallelNodeActivat
 		TaskID:   origA.ID,
 		UserIDs:  []string{"after-C"},
 		AddType:  approval.AddAssigneeAfter,
-		Operator: approval.OperatorInfo{ID: "orig-A", Name: "orig-A"},
+		Operator: approval.UserInfo{ID: "orig-A", Name: "orig-A"},
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Add-after should succeed")

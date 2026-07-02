@@ -31,7 +31,7 @@ func applyPageable(sq orm.SelectQuery, pageable *page.Pageable) orm.SelectQuery 
 
 // instanceDetailBundle holds the full set of related records needed to build an
 // instance-detail DTO. Both GetAdminInstanceDetailHandler and
-// GetMyInstanceDetailHandler load the same five queries; this struct lets them
+// GetMyInstanceDetailHandler load the same record set; this struct lets them
 // share a single loadInstanceDetailBundle helper and apply their own auth gate
 // and DTO projection on top.
 type instanceDetailBundle struct {
@@ -41,6 +41,13 @@ type instanceDetailBundle struct {
 	ActionLogs  []approval.ActionLog
 	FlowNodes   []approval.FlowNode
 	NodeNameMap map[string]string
+	// Visits is the engine-recorded traversal trail in sequence order — the
+	// authoritative source for the timeline and flow-graph progress.
+	Visits []approval.NodeVisit
+	// CCRecords and UrgeRecords feed the timeline's CC recipient lists and
+	// urge activities, both in chronological order.
+	CCRecords   []approval.CCRecord
+	UrgeRecords []approval.UrgeRecord
 	// FormSchema is the form definition snapshot pinned to the instance's own
 	// FlowVersionID, so a detail view renders form data against the exact
 	// schema the instance was submitted under — not whatever version is
@@ -85,10 +92,13 @@ func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string)
 		return nil, fmt.Errorf("query flow version: %w", err)
 	}
 
+	// Secondary "id" ordering keeps every list deterministic when the primary
+	// key ties (same sort_order, or same-second timestamps on dialects with
+	// second precision) — ids are XIDs, which sort by creation time.
 	var tasks []approval.Task
 	if err := db.NewSelect().Model(&tasks).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instanceID) }).
-		OrderBy("sort_order").
+		OrderBy("sort_order", "id").
 		Scan(ctx); err != nil {
 		return nil, fmt.Errorf("query tasks: %w", err)
 	}
@@ -96,7 +106,7 @@ func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string)
 	var actionLogs []approval.ActionLog
 	if err := db.NewSelect().Model(&actionLogs).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instanceID) }).
-		OrderBy("created_at").
+		OrderBy("created_at", "id").
 		Scan(ctx); err != nil {
 		return nil, fmt.Errorf("query action logs: %w", err)
 	}
@@ -107,6 +117,30 @@ func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string)
 		OrderBy("created_at").
 		Scan(ctx); err != nil {
 		return nil, fmt.Errorf("query flow nodes: %w", err)
+	}
+
+	var visits []approval.NodeVisit
+	if err := db.NewSelect().Model(&visits).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instanceID) }).
+		OrderBy("sequence").
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("query node visits: %w", err)
+	}
+
+	var ccRecords []approval.CCRecord
+	if err := db.NewSelect().Model(&ccRecords).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instanceID) }).
+		OrderBy("created_at", "id").
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("query cc records: %w", err)
+	}
+
+	var urgeRecords []approval.UrgeRecord
+	if err := db.NewSelect().Model(&urgeRecords).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instanceID) }).
+		OrderBy("created_at", "id").
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("query urge records: %w", err)
 	}
 
 	nodeNameMap := make(map[string]string, len(flowNodes))
@@ -121,6 +155,9 @@ func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string)
 		ActionLogs:  actionLogs,
 		FlowNodes:   flowNodes,
 		NodeNameMap: nodeNameMap,
+		Visits:      visits,
+		CCRecords:   ccRecords,
+		UrgeRecords: urgeRecords,
 		FormSchema:  version.FormSchema,
 		FlowSchema:  version.FlowSchema,
 	}, nil
@@ -155,44 +192,20 @@ func dedup(ids []string) []string {
 // projections cannot drift.
 func toAdminActionLog(log approval.ActionLog) admin.ActionLog {
 	return admin.ActionLog{
-		LogID:                  log.ID,
-		Action:                 string(log.Action),
-		NodeID:                 log.NodeID,
-		OperatorID:             log.OperatorID,
-		OperatorName:           log.OperatorName,
-		OperatorDepartmentName: log.OperatorDepartmentName,
-		TransferToID:           log.TransferToID,
-		TransferToName:         log.TransferToName,
-		RollbackToNodeID:       log.RollbackToNodeID,
-		AddedAssignees:         zipUserBriefs(log.AddedAssigneeIDs, log.AddedAssigneeNames),
-		RemovedAssignees:       zipUserBriefs(log.RemovedAssigneeIDs, log.RemovedAssigneeNames),
-		CCUsers:                zipUserBriefs(log.CCUserIDs, log.CCUserNames),
-		Opinion:                log.Opinion,
-		Attachments:            log.Attachments,
-		CreatedAt:              log.CreatedAt,
+		LogID:            log.ID,
+		Action:           string(log.Action),
+		NodeID:           log.NodeID,
+		TaskID:           log.TaskID,
+		Operator:         log.Operator(),
+		TransferTo:       log.TransferTo(),
+		RollbackToNodeID: log.RollbackToNodeID,
+		AddedAssignees:   log.AddedAssignees,
+		RemovedAssignees: log.RemovedAssignees,
+		CCUsers:          log.CCUsers,
+		Opinion:          log.Opinion,
+		Attachments:      log.Attachments,
+		CreatedAt:        log.CreatedAt,
 	}
-}
-
-// zipUserBriefs pairs an action log's parallel id/name arrays into UserBrief
-// values for the API. Names are matched positionally — they are captured
-// together at action time — and a short names slice yields an empty name rather
-// than panicking. Returns nil for an empty id slice so the field omits cleanly.
-func zipUserBriefs(ids, names []string) []approval.UserBrief {
-	if len(ids) == 0 {
-		return nil
-	}
-
-	out := make([]approval.UserBrief, len(ids))
-	for i, id := range ids {
-		brief := approval.UserBrief{ID: id}
-		if i < len(names) {
-			brief.Name = names[i]
-		}
-
-		out[i] = brief
-	}
-
-	return out
 }
 
 // loadByIDs loads rows of model type M whose id is in ids (deduplicated) and

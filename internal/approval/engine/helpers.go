@@ -147,25 +147,27 @@ func resolveAssignees(ctx context.Context, pc *ProcessContext) ([]approval.Resol
 	}
 
 	return pc.Registry.CompositeAssigneeResolver().ResolveAll(ctx, assignees, &strategy.ResolveContext{
-		ApplicantID:           pc.ApplicantID,
-		ApplicantName:         pc.ApplicantName,
-		ApplicantDepartmentID: pc.Instance.ApplicantDepartmentID,
-		FormData:              pc.FormData,
-		UserResolver:          pc.UserResolver,
+		ApplicantID:             pc.ApplicantID,
+		ApplicantName:           pc.ApplicantName,
+		ApplicantDepartmentID:   pc.Instance.ApplicantDepartmentID,
+		ApplicantDepartmentName: pc.Instance.ApplicantDepartmentName,
+		FormData:                pc.FormData,
+		UserResolver:            pc.UserResolver,
 	})
 }
 
-// deduplicateAssignees removes duplicate assignees based on UserID.
+// deduplicateAssignees removes duplicate assignees based on the receiving
+// user's ID.
 func deduplicateAssignees(assignees []approval.ResolvedAssignee) []approval.ResolvedAssignee {
 	seen := collections.NewHashSet[string]()
 	result := make([]approval.ResolvedAssignee, 0, len(assignees))
 
 	for _, a := range assignees {
-		if a.UserID == "" {
+		if a.User.ID == "" {
 			continue
 		}
 
-		if !seen.Add(a.UserID) {
+		if !seen.Add(a.User.ID) {
 			continue
 		}
 
@@ -243,53 +245,47 @@ func findPreviousApprovalApprovers(ctx context.Context, db orm.DB, instance *app
 	return collections.NewHashSetFrom(approvedAssigneeIDs...), nil
 }
 
-// applyDelegation resolves delegation chains for each assignee, replacing delegators with delegates.
+// applyDelegation resolves delegation chains for each assignee, replacing
+// delegators with delegatees. A delegated entry keeps the original assignee as
+// Delegator so the task can attribute both parties.
 func applyDelegation(ctx context.Context, db orm.DB, flowID string, assignees []approval.ResolvedAssignee, userResolver approval.UserInfoResolver) ([]approval.ResolvedAssignee, error) {
 	categoryID, err := loadFlowCategoryID(ctx, db, flowID)
 	if err != nil {
 		return nil, err
 	}
 
-	type delegationInfo struct {
-		delegateeID string
-		delegatorID string
-	}
-
-	infos := make([]delegationInfo, len(assignees))
+	delegateeByIndex := make([]string, len(assignees))
 
 	var delegateeIDs []string
 
 	for i, assignee := range assignees {
-		delegateeID, delegatorID, err := resolveDelegationChain(ctx, db, assignee.UserID, flowID, categoryID)
+		delegateeID, _, err := resolveDelegationChain(ctx, db, assignee.User.ID, flowID, categoryID)
 		if err != nil {
 			return nil, err
 		}
 
-		infos[i] = delegationInfo{delegateeID: delegateeID, delegatorID: delegatorID}
+		delegateeByIndex[i] = delegateeID
 
-		if delegateeID != assignee.UserID {
+		if delegateeID != assignee.User.ID {
 			delegateeIDs = append(delegateeIDs, delegateeID)
 		}
 	}
 
-	// Batch resolve delegatee names
-	delegateeNames, err := shared.ResolveUserNameMap(ctx, userResolver, delegateeIDs)
+	// Batch resolve delegatee display info
+	delegateeInfos, err := shared.ResolveUserInfoMap(ctx, userResolver, delegateeIDs)
 	if err != nil {
-		return nil, fmt.Errorf("resolve delegatee names: %w", err)
+		return nil, fmt.Errorf("resolve delegatee info: %w", err)
 	}
 
 	result := make([]approval.ResolvedAssignee, len(assignees))
 
 	for i, assignee := range assignees {
-		di := infos[i]
-		if di.delegateeID != assignee.UserID {
-			delegatorName := assignee.UserName
-			result[i] = approval.ResolvedAssignee{
-				UserID:        di.delegateeID,
-				UserName:      delegateeNames[di.delegateeID],
-				DelegatorID:   &di.delegatorID,
-				DelegatorName: &delegatorName,
-			}
+		delegateeID := delegateeByIndex[i]
+		if delegateeID != assignee.User.ID {
+			delegatee := delegateeInfos[delegateeID]
+			delegatee.ID = delegateeID
+			delegator := assignee.User
+			result[i] = approval.ResolvedAssignee{User: delegatee, Delegator: &delegator}
 		} else {
 			result[i] = assignee
 		}
@@ -298,20 +294,32 @@ func applyDelegation(ctx context.Context, db orm.DB, flowID string, assignees []
 	return result, nil
 }
 
-// buildTask creates a base task from the process context with the given assignee.
+// buildTask creates a base task from the process context with the given
+// assignee, snapshotting both parties' identity and department, bound to the
+// node visit that created it — every task belongs to exactly one visit.
 func buildTask(pc *ProcessContext, assignee approval.ResolvedAssignee, deadline *timex.DateTime) *approval.Task {
-	return &approval.Task{
-		TenantID:      pc.Instance.TenantID,
-		InstanceID:    pc.Instance.ID,
-		NodeID:        pc.Node.ID,
-		AssigneeID:    assignee.UserID,
-		AssigneeName:  assignee.UserName,
-		DelegatorID:   assignee.DelegatorID,
-		DelegatorName: assignee.DelegatorName,
-		SortOrder:     0,
-		Status:        approval.TaskPending,
-		Deadline:      deadline,
+	task := &approval.Task{
+		TenantID:               pc.Instance.TenantID,
+		InstanceID:             pc.Instance.ID,
+		NodeID:                 pc.Node.ID,
+		VisitID:                pc.Visit.ID,
+		AssigneeID:             assignee.User.ID,
+		AssigneeName:           assignee.User.Name,
+		AssigneeDepartmentID:   assignee.User.DepartmentID,
+		AssigneeDepartmentName: assignee.User.DepartmentName,
+		SortOrder:              0,
+		Status:                 approval.TaskPending,
+		Deadline:               deadline,
 	}
+
+	if assignee.Delegator != nil {
+		task.DelegatorID = new(assignee.Delegator.ID)
+		task.DelegatorName = new(assignee.Delegator.Name)
+		task.DelegatorDepartmentID = assignee.Delegator.DepartmentID
+		task.DelegatorDepartmentName = assignee.Delegator.DepartmentName
+	}
+
+	return task
 }
 
 // newTaskCreatedEvent returns the TaskCreatedEvent describing a just-
@@ -353,16 +361,19 @@ func createTasksForUsers(ctx context.Context, pc *ProcessContext, userIDs []stri
 		return nil, shared.ErrNoAssignee
 	}
 
-	names, err := shared.ResolveUserNameMap(ctx, pc.UserResolver, normalizedIDs)
+	infos, err := shared.ResolveUserInfoMap(ctx, pc.UserResolver, normalizedIDs)
 	if err != nil {
-		return nil, fmt.Errorf("resolve user names: %w", err)
+		return nil, fmt.Errorf("resolve user info: %w", err)
 	}
 
 	deadline := computeDeadline(pc.Node)
 
 	tasks := make([]*approval.Task, len(normalizedIDs))
+
 	for i, uid := range normalizedIDs {
-		tasks[i] = buildTask(pc, approval.ResolvedAssignee{UserID: uid, UserName: names[uid]}, deadline)
+		info := infos[uid]
+		info.ID = uid
+		tasks[i] = buildTask(pc, approval.ResolvedAssignee{User: info}, deadline)
 	}
 
 	if _, err := pc.DB.NewInsert().Model(&tasks).Exec(ctx); err != nil {

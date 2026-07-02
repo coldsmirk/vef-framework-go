@@ -120,8 +120,15 @@ func (s *MyPendingCountsTestSuite) seedPendingTask(tenant, assignee string) {
 	_, err = s.db.NewInsert().Model(instance).Exec(s.ctx)
 	s.Require().NoError(err, "seed instance")
 
-	task := &approval.Task{
+	visit := &approval.NodeVisit{
 		TenantID: tenant, InstanceID: instance.ID, NodeID: node.ID,
+		Sequence: 1, Status: approval.NodeVisitActive,
+	}
+	_, err = s.db.NewInsert().Model(visit).Exec(s.ctx)
+	s.Require().NoError(err, "seed node visit")
+
+	task := &approval.Task{
+		TenantID: tenant, InstanceID: instance.ID, NodeID: node.ID, VisitID: visit.ID,
 		AssigneeID: assignee, SortOrder: 1, Status: approval.TaskPending,
 	}
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)

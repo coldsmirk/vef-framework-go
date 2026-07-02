@@ -21,7 +21,7 @@ type AddAssigneeCmd struct {
 	TaskID   string
 	UserIDs  []string
 	AddType  approval.AddAssigneeType
-	Operator approval.OperatorInfo
+	Operator approval.UserInfo
 	Caller   approval.CallerContext
 }
 
@@ -110,7 +110,7 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	}
 
 	pendingDeadline := shared.ComputeTaskDeadline(node.TimeoutHours)
-	userNames := shared.ResolveUserNameMapSilent(ctx, h.userResolver, insertUsers)
+	userInfos := shared.ResolveUserInfoMapSilent(ctx, h.userResolver, insertUsers)
 
 	// For AddAssigneeBefore, suspend the original task before inserting new
 	// ones. The task was already validated as Pending by LoadTaskContextForNodeOperation
@@ -132,15 +132,20 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	eventCollector := behavior.EventCollectorFromContext(ctx)
 
 	for i, userID := range insertUsers {
+		info := userInfos[userID]
+
 		newTask := &approval.Task{
-			TenantID:        instance.TenantID,
-			InstanceID:      instance.ID,
-			NodeID:          task.NodeID,
-			AssigneeID:      userID,
-			AssigneeName:    userNames[userID],
-			SortOrder:       baseSortOrder + i + 1,
-			ParentTaskID:    new(task.ID),
-			AddAssigneeType: &cmd.AddType,
+			TenantID:               instance.TenantID,
+			InstanceID:             instance.ID,
+			NodeID:                 task.NodeID,
+			VisitID:                task.VisitID,
+			AssigneeID:             userID,
+			AssigneeName:           info.Name,
+			AssigneeDepartmentID:   info.DepartmentID,
+			AssigneeDepartmentName: info.DepartmentName,
+			SortOrder:              baseSortOrder + i + 1,
+			ParentTaskID:           new(task.ID),
+			AddAssigneeType:        &cmd.AddType,
 		}
 		switch cmd.AddType {
 		case approval.AddAssigneeBefore, approval.AddAssigneeParallel:
@@ -163,7 +168,7 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 			instance.ID,
 			task.NodeID,
 			userID,
-			userNames[userID],
+			info.Name,
 			newTask.Deadline,
 		))
 	}
@@ -172,19 +177,11 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	actionLog.NodeID = new(task.NodeID)
 	actionLog.TaskID = new(task.ID)
 	actionLog.AddAssigneeType = &cmd.AddType
-
-	actionLog.AddedAssigneeIDs = insertUsers
-
-	addedNames := make([]string, len(insertUsers))
-	for i, id := range insertUsers {
-		addedNames[i] = userNames[id]
-	}
-
-	actionLog.AddedAssigneeNames = addedNames
+	actionLog.AddedAssignees = shared.UserInfos(insertUsers, userInfos)
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	eventCollector.Add(
-		approval.NewAssigneesAddedEvent(instance.ID, instance.TenantID, task.NodeID, task.ID, cmd.AddType, insertUsers, userNames),
+		approval.NewAssigneesAddedEvent(instance.ID, instance.TenantID, task.NodeID, task.ID, cmd.AddType, insertUsers, shared.UserInfoNames(userInfos)),
 	)
 
 	return cqrs.Unit{}, nil

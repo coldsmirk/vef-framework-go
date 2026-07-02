@@ -36,44 +36,75 @@ func UserHasRole(ctx context.Context, svc approval.AssigneeService, userID, role
 	return slices.ContainsFunc(users, func(u approval.UserInfo) bool { return u.ID == userID }), nil
 }
 
-// ResolveUserNameMap batch-resolves user IDs to a map of ID→Name.
+// ResolveUserInfoMap batch-resolves user IDs to a map of ID→UserInfo (name
+// plus optional department, per the host resolver). Missing IDs are simply
+// absent — indexing the map yields a zero UserInfo whose fields are empty.
 // Returns an error if the resolver fails.
-func ResolveUserNameMap(ctx context.Context, resolver approval.UserInfoResolver, ids []string) (map[string]string, error) {
-	names := make(map[string]string, len(ids))
+func ResolveUserInfoMap(ctx context.Context, resolver approval.UserInfoResolver, ids []string) (map[string]approval.UserInfo, error) {
+	infos := make(map[string]approval.UserInfo, len(ids))
 	if resolver == nil || len(ids) == 0 {
-		return names, nil
+		return infos, nil
 	}
 
-	infos, err := resolver.ResolveUsers(ctx, ids)
+	resolved, err := resolver.ResolveUsers(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, id := range ids {
-		if info, ok := infos[id]; ok {
-			names[id] = info.Name
+		if info, ok := resolved[id]; ok {
+			infos[id] = info
 		}
 	}
 
-	return names, nil
+	return infos, nil
 }
 
-// ResolveUserNameMapSilent batch-resolves user IDs to a map of ID→Name.
-// Silently returns an empty map on resolver failure (best-effort for display-only fields).
-func ResolveUserNameMapSilent(ctx context.Context, resolver approval.UserInfoResolver, ids []string) map[string]string {
-	names, _ := ResolveUserNameMap(ctx, resolver, ids)
+// ResolveUserInfoMapSilent batch-resolves user IDs to a map of ID→UserInfo.
+// Silently returns an empty map on resolver failure (best-effort for
+// display-only fields).
+func ResolveUserInfoMapSilent(ctx context.Context, resolver approval.UserInfoResolver, ids []string) map[string]approval.UserInfo {
+	infos, _ := ResolveUserInfoMap(ctx, resolver, ids)
+
+	return infos
+}
+
+// ResolveUserInfo resolves a single user ID to its display info. Returns a
+// zero UserInfo on failure (best-effort for display-only fields); the ID field
+// is always populated so callers can snapshot it verbatim.
+func ResolveUserInfo(ctx context.Context, resolver approval.UserInfoResolver, userID string) approval.UserInfo {
+	if userID == "" {
+		return approval.UserInfo{}
+	}
+
+	info := ResolveUserInfoMapSilent(ctx, resolver, []string{userID})[userID]
+	info.ID = userID
+
+	return info
+}
+
+// UserInfoNames projects an ID→UserInfo map onto the ID→Name map carried by
+// event payloads.
+func UserInfoNames(infos map[string]approval.UserInfo) map[string]string {
+	names := make(map[string]string, len(infos))
+	for id, info := range infos {
+		names[id] = info.Name
+	}
 
 	return names
 }
 
-// ResolveUserName resolves a single user ID to a display name.
-// Returns empty string on failure (best-effort for display-only fields).
-func ResolveUserName(ctx context.Context, resolver approval.UserInfoResolver, userID string) string {
-	if resolver == nil || userID == "" {
-		return ""
+// UserInfos builds the ordered person list for the given IDs from a resolved
+// info map. An ID missing from the map still yields an entry carrying the ID,
+// so unresolvable users stay visible in the record.
+func UserInfos(ids []string, infos map[string]approval.UserInfo) []approval.UserInfo {
+	users := make([]approval.UserInfo, len(ids))
+
+	for i, id := range ids {
+		info := infos[id]
+		info.ID = id
+		users[i] = info
 	}
 
-	names := ResolveUserNameMapSilent(ctx, resolver, []string{userID})
-
-	return names[userID]
+	return users
 }

@@ -50,7 +50,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessWithAssignees() {
 	instance := s.NewInstance(s.T(), "applicant-1")
 	s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2"})
 
-	pc := s.NewProcessContext(instance, s.NewNode())
+	pc := s.NewProcessContext(s.T(), instance, s.NewNode())
 
 	result, err := s.processor.Process(s.Ctx, pc)
 	s.Require().NoError(err, "Should process without error")
@@ -74,7 +74,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessSequentialApproval() {
 	instance := s.NewInstance(s.T(), "applicant-1")
 	s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2", "user-3"})
 
-	pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+	pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 		n.ApprovalMethod = approval.ApprovalSequential
 	}))
 
@@ -99,7 +99,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessSequentialApprovalShouldStartTim
 	instance := s.NewInstance(s.T(), "applicant-1")
 	s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2", "user-3"})
 
-	pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+	pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 		n.ApprovalMethod = approval.ApprovalSequential
 		n.TimeoutHours = 24
 	}))
@@ -127,7 +127,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessSetsTaskDeadlineFromTimeoutHours
 	instance := s.NewInstance(s.T(), "applicant-1")
 	s.InsertAssigneeConfig(s.T(), []string{"user-1"})
 
-	pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+	pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 		n.TimeoutHours = 24
 	}))
 
@@ -153,7 +153,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessEmptyAssignee() {
 
 		instance := s.NewInstance(s.T(), "applicant-1")
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.EmptyAssigneeAction = approval.EmptyAssigneeAutoPass
 		}))
 
@@ -170,7 +170,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessEmptyAssignee() {
 
 		instance := s.NewInstance(s.T(), "applicant-1")
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.EmptyAssigneeAction = approval.EmptyAssigneeTransferApplicant
 		}))
 
@@ -188,7 +188,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessEmptyAssignee() {
 
 		instance := s.NewInstance(s.T(), "applicant-1")
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.EmptyAssigneeAction = approval.EmptyAssigneeTransferSpecified
 			n.FallbackUserIDs = []string{"fallback-user-1"}
 		}))
@@ -207,7 +207,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessEmptyAssignee() {
 
 		instance := s.NewInstance(s.T(), "applicant-1")
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.EmptyAssigneeAction = approval.EmptyAssigneeTransferAdmin
 			n.AdminUserIDs = []string{"admin-1", "admin-2"}
 		}))
@@ -227,7 +227,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessEmptyAssignee() {
 
 		instance := s.NewInstance(s.T(), "applicant-1")
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.EmptyAssigneeAction = approval.EmptyAssigneeTransferSuperior
 		}))
 
@@ -240,7 +240,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessEmptyAssignee() {
 
 		instance := s.NewInstance(s.T(), "applicant-1")
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.EmptyAssigneeAction = "unknown_action"
 		}))
 
@@ -256,7 +256,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessSameApplicant() {
 		instance := s.NewInstance(s.T(), "user-1")
 		s.InsertAssigneeConfig(s.T(), []string{"user-1"})
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.SameApplicantAction = approval.SameApplicantAutoPass
 		}))
 
@@ -274,7 +274,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessSameApplicant() {
 		instance := s.NewInstance(s.T(), "user-1")
 		s.InsertAssigneeConfig(s.T(), []string{"user-1"})
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.SameApplicantAction = approval.SameApplicantSelfApprove
 		}))
 
@@ -293,7 +293,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessSameApplicant() {
 		instance := s.NewInstance(s.T(), "applicant-1")
 		s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2"})
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.SameApplicantAction = approval.SameApplicantAutoPass
 		}))
 
@@ -311,7 +311,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessSameApplicant() {
 		instance := s.NewInstance(s.T(), "user-1")
 		s.InsertAssigneeConfig(s.T(), []string{"user-1"})
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.SameApplicantAction = approval.SameApplicantTransferSuperior
 		}))
 
@@ -325,7 +325,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessSameApplicant() {
 		instance := s.NewInstance(s.T(), "user-1")
 		s.InsertAssigneeConfig(s.T(), []string{"user-1"})
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.SameApplicantAction = "unknown_action"
 		}))
 
@@ -347,7 +347,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessFormSnapshot() {
 
 	s.InsertAssigneeConfig(s.T(), []string{"user-1"})
 
-	pc := s.NewProcessContext(instance, s.NewNode())
+	pc := s.NewProcessContext(s.T(), instance, s.NewNode())
 
 	_, err = s.processor.Process(s.Ctx, pc)
 	s.Require().NoError(err, "Should process without error")
@@ -362,7 +362,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessDeduplication() {
 	instance := s.NewInstance(s.T(), "applicant-1")
 	s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-1", "user-2"})
 
-	pc := s.NewProcessContext(instance, s.NewNode())
+	pc := s.NewProcessContext(s.T(), instance, s.NewNode())
 
 	result, err := s.processor.Process(s.Ctx, pc)
 	s.Require().NoError(err, "Should process without error")
@@ -383,7 +383,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessShouldIgnoreEmptyAssigneeIDs() {
 	instance := s.NewInstance(s.T(), "applicant-1")
 	s.InsertAssigneeConfig(s.T(), []string{"", "user-1", "", "user-1"})
 
-	pc := s.NewProcessContext(instance, s.NewNode())
+	pc := s.NewProcessContext(s.T(), instance, s.NewNode())
 
 	result, err := s.processor.Process(s.Ctx, pc)
 	s.Require().NoError(err, "Should process assignee config with empty user IDs")
@@ -415,7 +415,7 @@ func (s *ApprovalProcessorTestSuite) TestProcessMultipleAssigneeConfigs() {
 	_, err = s.DB.NewInsert().Model(cfg2).Exec(s.Ctx)
 	s.Require().NoError(err, "Should insert second assignee config")
 
-	pc := s.NewProcessContext(instance, s.NewNode())
+	pc := s.NewProcessContext(s.T(), instance, s.NewNode())
 
 	result, err := s.processor.Process(s.Ctx, pc)
 	s.Require().NoError(err, "Should process without error")
@@ -441,7 +441,7 @@ func (s *ApprovalProcessorTestSuite) TestConsecutiveApproverAutoPass() {
 		s.InsertApprovedTasks(s.T(), instance.ID, prevNodeID, []string{"user-1", "user-2"})
 		s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2", "user-3"})
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.ConsecutiveApproverAction = approval.ConsecutiveApproverAutoPass
 		}))
 
@@ -486,7 +486,7 @@ func (s *ApprovalProcessorTestSuite) TestConsecutiveApproverAutoPass() {
 		s.InsertApprovedTasks(s.T(), instance.ID, prevNodeID, []string{"user-1"})
 		s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2"})
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.ConsecutiveApproverAction = approval.ConsecutiveApproverNone
 		}))
 
@@ -518,7 +518,7 @@ func (s *ApprovalProcessorTestSuite) TestConsecutiveApproverAutoPass() {
 		s.InsertRejectedTasks(s.T(), instance.ID, prevNodeID, []string{"user-1"})
 		s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2"})
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.ConsecutiveApproverAction = approval.ConsecutiveApproverAutoPass
 		}))
 
@@ -546,7 +546,7 @@ func (s *ApprovalProcessorTestSuite) TestConsecutiveApproverAutoPass() {
 		instance := s.NewInstance(s.T(), "applicant-1")
 		s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2"})
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.ConsecutiveApproverAction = approval.ConsecutiveApproverAutoPass
 		}))
 
@@ -568,7 +568,7 @@ func (s *ApprovalProcessorTestSuite) TestConsecutiveApproverAutoPass() {
 		s.InsertApprovedTasks(s.T(), instance.ID, prevNodeID, []string{"user-1", "user-2"})
 		s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2"})
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.ConsecutiveApproverAction = approval.ConsecutiveApproverAutoPass
 		}))
 
@@ -585,7 +585,7 @@ func (s *ApprovalProcessorTestSuite) TestConsecutiveApproverAutoPass() {
 		s.InsertApprovedTasks(s.T(), instance.ID, prevNodeID, []string{"user-1", "user-2"})
 		s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2", "user-3"})
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.ApprovalMethod = approval.ApprovalSequential
 			n.ConsecutiveApproverAction = approval.ConsecutiveApproverAutoPass
 			n.TimeoutHours = 24
@@ -623,7 +623,7 @@ func (s *ApprovalProcessorTestSuite) TestConsecutiveApproverAutoPass() {
 		s.InsertApprovedTasks(s.T(), instance.ID, prevNodeID, []string{"user-1", "user-2"})
 		s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2"})
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.ApprovalMethod = approval.ApprovalSequential
 			n.ConsecutiveApproverAction = approval.ConsecutiveApproverAutoPass
 		}))

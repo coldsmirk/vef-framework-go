@@ -23,23 +23,23 @@ import (
 
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
-		return &ResubmitTestSuite{ctx: env.Ctx, db: env.DB}
+		return &ResubmitInstanceTestSuite{ctx: env.Ctx, db: env.DB}
 	})
 }
 
-// ResubmitTestSuite tests the ResubmitHandler.
-type ResubmitTestSuite struct {
+// ResubmitInstanceTestSuite tests the ResubmitInstanceHandler.
+type ResubmitInstanceTestSuite struct {
 	suite.Suite
 
 	ctx     context.Context
 	db      orm.DB
-	handler cqrs.Handler[command.ResubmitCmd, cqrs.Unit]
+	handler cqrs.Handler[command.ResubmitInstanceCmd, cqrs.Unit]
 	fixture *FlowFixture
 }
 
-func (s *ResubmitTestSuite) SetupSuite() {
+func (s *ResubmitInstanceTestSuite) SetupSuite() {
 	s.fixture = setupApprovalFlow(s.T(), s.ctx, s.db)
-	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewResubmitHandler(
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewResubmitInstanceHandler(
 		s.db,
 		buildTestEngine(s.db),
 		service.NewValidationService(nil),
@@ -48,15 +48,15 @@ func (s *ResubmitTestSuite) SetupSuite() {
 	))
 }
 
-func (s *ResubmitTestSuite) TearDownTest() {
+func (s *ResubmitInstanceTestSuite) TearDownTest() {
 	cleanRuntimeData(s.ctx, s.db)
 }
 
-func (s *ResubmitTestSuite) TearDownSuite() {
+func (s *ResubmitInstanceTestSuite) TearDownSuite() {
 	cleanAllApprovalData(s.ctx, s.db)
 }
 
-func (s *ResubmitTestSuite) TestResubmitClearsFinishedAt() {
+func (s *ResubmitInstanceTestSuite) TestResubmitClearsFinishedAt() {
 	startNodeID := s.fixture.NodeIDs["start-1"]
 	s.Require().NotEmpty(startNodeID, "Should have start node")
 
@@ -75,9 +75,9 @@ func (s *ResubmitTestSuite) TestResubmitClearsFinishedAt() {
 	_, err := s.db.NewInsert().Model(instance).Exec(s.ctx)
 	s.Require().NoError(err, "TestResubmitClearsFinishedAt should complete without error")
 
-	_, err = s.handler.Handle(s.ctx, command.ResubmitCmd{
+	_, err = s.handler.Handle(s.ctx, command.ResubmitInstanceCmd{
 		InstanceID: instance.ID,
-		Operator:   approval.OperatorInfo{ID: "applicant-1", Name: "Applicant"},
+		Operator:   approval.UserInfo{ID: "applicant-1", Name: "Applicant"},
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should resubmit returned instance")
@@ -91,7 +91,7 @@ func (s *ResubmitTestSuite) TestResubmitClearsFinishedAt() {
 	s.Assert().Nil(updated.FinishedAt, "Resubmitted running instance should clear finished_at")
 }
 
-func (s *ResubmitTestSuite) TestResubmitShouldBeConcurrencySafe() {
+func (s *ResubmitInstanceTestSuite) TestResubmitShouldBeConcurrencySafe() {
 	skipSQLiteConcurrencyTest(s.T(), s.ctx, s.db, "SQLite returns SQLITE_BUSY under write races in this concurrency scenario")
 
 	startNodeID := s.fixture.NodeIDs["start-1"]
@@ -126,9 +126,9 @@ func (s *ResubmitTestSuite) TestResubmitShouldBeConcurrencySafe() {
 
 		err := s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error {
 			txCtx := contextx.SetDB(ctx, tx)
-			_, err := s.handler.Handle(txCtx, command.ResubmitCmd{
+			_, err := s.handler.Handle(txCtx, command.ResubmitInstanceCmd{
 				InstanceID: instance.ID,
-				Operator:   approval.OperatorInfo{ID: "applicant-1", Name: "Applicant"},
+				Operator:   approval.UserInfo{ID: "applicant-1", Name: "Applicant"},
 				Caller:     approval.SystemCaller,
 			})
 
@@ -179,7 +179,7 @@ func (s *ResubmitTestSuite) TestResubmitShouldBeConcurrencySafe() {
 	s.Assert().Len(tasks, 2, "Concurrent resubmit should create only one batch of approval tasks")
 }
 
-func (s *ResubmitTestSuite) TestResubmitShouldRejectInvalidFormDataBySchema() {
+func (s *ResubmitInstanceTestSuite) TestResubmitShouldRejectInvalidFormDataBySchema() {
 	setPublishedFormSchema(s.T(), s.ctx, s.db, s.fixture.VersionID, &approval.FormDefinition{
 		Fields: []approval.FormFieldDefinition{
 			{Key: "amount", Kind: approval.FieldNumber, Label: "Amount", IsRequired: true},
@@ -203,9 +203,9 @@ func (s *ResubmitTestSuite) TestResubmitShouldRejectInvalidFormDataBySchema() {
 	_, err := s.db.NewInsert().Model(instance).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert returned instance")
 
-	_, err = s.handler.Handle(s.ctx, command.ResubmitCmd{
+	_, err = s.handler.Handle(s.ctx, command.ResubmitInstanceCmd{
 		InstanceID: instance.ID,
-		Operator:   approval.OperatorInfo{ID: "applicant-1", Name: "Applicant"},
+		Operator:   approval.UserInfo{ID: "applicant-1", Name: "Applicant"},
 		FormData:   map[string]any{"amount": "invalid"},
 		Caller:     approval.SystemCaller,
 	})

@@ -20,6 +20,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // BusPublishingHandler wraps a cqrs.Handler with ActionLogBehavior and
@@ -282,7 +283,7 @@ func skipSQLiteConcurrencyTest(t testing.TB, ctx context.Context, db orm.DB, rea
 func buildTestEngine(db orm.DB) *engine.FlowEngine {
 	passRules := []approval.PassRuleStrategy{
 		strategy.NewAllPassStrategy(),
-		strategy.NewOnePassStrategy(),
+		strategy.NewAnyPassStrategy(),
 		strategy.NewRatioPassStrategy(),
 	}
 
@@ -457,6 +458,7 @@ func cleanRuntimeData(ctx context.Context, db orm.DB) {
 		(*approval.UrgeRecord)(nil),
 		(*approval.CCRecord)(nil),
 		(*approval.Task)(nil),
+		(*approval.NodeVisit)(nil),
 		(*approval.Instance)(nil),
 	)
 }
@@ -476,8 +478,67 @@ func cleanAllApprovalData(ctx context.Context, db orm.DB) {
 	)
 }
 
-// setupRunningInstance creates a running instance with a pending task for the given assignee.
-// It finds the first non-start/non-end node from the fixture to use as the approval node.
+// insertActiveVisit records an open visit of the given node — every inserted
+// task must bind to one, mirroring the engine's traversal invariant.
+//
+//nolint:revive // t testing.TB is conventionally the first parameter in test helpers
+func insertActiveVisit(
+	t require.TestingT,
+	ctx context.Context,
+	db orm.DB,
+	tenantID, instanceID, nodeID string,
+	sequence int,
+) *approval.NodeVisit {
+	visit := &approval.NodeVisit{
+		TenantID:   tenantID,
+		InstanceID: instanceID,
+		NodeID:     nodeID,
+		Sequence:   sequence,
+		Status:     approval.NodeVisitActive,
+	}
+	_, err := db.NewInsert().Model(visit).Exec(ctx)
+	require.NoError(t, err, "Should insert node visit")
+
+	return visit
+}
+
+// ensureActiveVisit returns the node's open visit, recording one when the
+// fixture has not opened it yet (sequence = the instance's next step number).
+// Task-insert helpers call it so every fixture task binds to a visit without
+// each call site managing visit state.
+//
+//nolint:revive // t testing.TB is conventionally the first parameter in test helpers
+func ensureActiveVisit(
+	t require.TestingT,
+	ctx context.Context,
+	db orm.DB,
+	tenantID, instanceID, nodeID string,
+) *approval.NodeVisit {
+	var visit approval.NodeVisit
+
+	err := db.NewSelect().Model(&visit).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("instance_id", instanceID).
+				Equals("node_id", nodeID).
+				Equals("status", approval.NodeVisitActive)
+		}).
+		Scan(ctx)
+	if err == nil {
+		return &visit
+	}
+
+	require.True(t, result.IsRecordNotFound(err), "Active-visit lookup should only miss, not fail: %v", err)
+
+	count, err := db.NewSelect().Model((*approval.NodeVisit)(nil)).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instanceID) }).
+		Count(ctx)
+	require.NoError(t, err, "Should count instance visits")
+
+	return insertActiveVisit(t, ctx, db, tenantID, instanceID, nodeID, int(count)+1)
+}
+
+// setupRunningInstance creates a running instance with an open visit and a
+// pending task for the given assignee on the fixture's approval node.
 //
 //nolint:revive // t testing.TB is conventionally the first parameter in test helpers
 func setupRunningInstance(
@@ -503,10 +564,13 @@ func setupRunningInstance(
 	_, err := db.NewInsert().Model(inst).Exec(ctx)
 	require.NoError(t, err, "Should insert instance")
 
+	visit := insertActiveVisit(t, ctx, db, "default", inst.ID, approvalNodeID, 1)
+
 	task := &approval.Task{
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     approvalNodeID,
+		VisitID:    visit.ID,
 		AssigneeID: assigneeID,
 		SortOrder:  1,
 		Status:     approval.TaskPending,

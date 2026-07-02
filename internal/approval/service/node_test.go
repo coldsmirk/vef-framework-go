@@ -49,7 +49,7 @@ func (s *NodeServiceTestSuite) SetupSuite() {
 func (s *NodeServiceTestSuite) SetupTest() {
 	passRules := []approval.PassRuleStrategy{
 		strategy.NewAllPassStrategy(),
-		strategy.NewOnePassStrategy(),
+		strategy.NewAnyPassStrategy(),
 		strategy.NewRatioPassStrategy(),
 	}
 
@@ -93,7 +93,7 @@ func (s *NodeServiceTestSuite) TearDownSuite() {
 	cleanAllServiceData(s.ctx, s.db)
 }
 
-func (s *NodeServiceTestSuite) TestCheckCCNodeCompletionShouldNotAdvanceTwice() {
+func (s *NodeServiceTestSuite) TestAdvanceCCNodeIfAllReadShouldNotAdvanceTwice() {
 	ccNode := &approval.FlowNode{
 		FlowVersionID:         s.fixture.VersionID,
 		Key:                   "svc-cc-node",
@@ -143,6 +143,10 @@ func (s *NodeServiceTestSuite) TestCheckCCNodeCompletionShouldNotAdvanceTwice() 
 	_, err = s.db.NewInsert().Model(instance).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert running instance")
 
+	// The instance waits on the read-confirm CC node, so its visit is open;
+	// completing the reads concludes it and advances the flow.
+	ensureActiveVisit(s.T(), s.ctx, s.db, instance.ID, ccNode.ID)
+
 	readAt := timex.Now()
 	ccRecord := &approval.CCRecord{
 		InstanceID: instance.ID,
@@ -160,10 +164,10 @@ func (s *NodeServiceTestSuite) TestCheckCCNodeCompletionShouldNotAdvanceTwice() 
 		},
 	}
 
-	err = s.svc.CheckCCNodeCompletion(s.ctx, s.db, instance.ID, records)
+	err = s.svc.AdvanceCCNodeIfAllRead(s.ctx, s.db, instance.ID, records)
 	s.Require().NoError(err, "First completion check should advance flow")
 
-	err = s.svc.CheckCCNodeCompletion(s.ctx, s.db, instance.ID, records)
+	err = s.svc.AdvanceCCNodeIfAllRead(s.ctx, s.db, instance.ID, records)
 	s.Require().NoError(err, "Second completion check should be idempotent")
 
 	var nextTasks []approval.Task
@@ -192,7 +196,7 @@ func (s *NodeServiceTestSuite) TestCheckCCNodeCompletionShouldNotAdvanceTwice() 
 	s.Assert().Equal(nextNode.ID, *updatedInstance.CurrentNodeID, "Instance should advance to next node once")
 }
 
-func (s *NodeServiceTestSuite) TestCheckCCNodeCompletionShouldFailWhenCCNodeMissing() {
+func (s *NodeServiceTestSuite) TestAdvanceCCNodeIfAllReadShouldFailWhenCCNodeMissing() {
 	missingNodeID := "missing-cc-node"
 	instance := &approval.Instance{
 		TenantID:      "default",
@@ -213,7 +217,7 @@ func (s *NodeServiceTestSuite) TestCheckCCNodeCompletionShouldFailWhenCCNodeMiss
 		},
 	}
 
-	err = s.svc.CheckCCNodeCompletion(s.ctx, s.db, instance.ID, records)
+	err = s.svc.AdvanceCCNodeIfAllRead(s.ctx, s.db, instance.ID, records)
 	s.Require().Error(err, "Should return error when referenced CC node is missing")
 	s.Assert().ErrorContains(err, "load cc node", "Error should include missing CC node load context")
 }

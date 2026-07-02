@@ -50,7 +50,7 @@ func (s *HandleProcessorTestSuite) TestProcessWithAssignees() {
 	instance := s.NewInstance(s.T(), "applicant-1")
 	s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2"})
 
-	pc := s.NewProcessContext(instance, s.NewNode())
+	pc := s.NewProcessContext(s.T(), instance, s.NewNode())
 
 	result, err := s.processor.Process(s.Ctx, pc)
 	s.Require().NoError(err, "Should process without error")
@@ -77,7 +77,7 @@ func (s *HandleProcessorTestSuite) TestProcessEmptyAssignee() {
 
 		instance := s.NewInstance(s.T(), "applicant-1")
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.EmptyAssigneeAction = approval.EmptyAssigneeAutoPass
 		}))
 
@@ -94,7 +94,7 @@ func (s *HandleProcessorTestSuite) TestProcessEmptyAssignee() {
 
 		instance := s.NewInstance(s.T(), "applicant-1")
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.EmptyAssigneeAction = approval.EmptyAssigneeTransferApplicant
 		}))
 
@@ -112,7 +112,7 @@ func (s *HandleProcessorTestSuite) TestProcessEmptyAssignee() {
 
 		instance := s.NewInstance(s.T(), "applicant-1")
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.EmptyAssigneeAction = approval.EmptyAssigneeTransferAdmin
 			n.AdminUserIDs = []string{"admin-1"}
 		}))
@@ -131,7 +131,7 @@ func (s *HandleProcessorTestSuite) TestProcessEmptyAssignee() {
 
 		instance := s.NewInstance(s.T(), "applicant-1")
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.EmptyAssigneeAction = approval.EmptyAssigneeTransferSpecified
 			n.FallbackUserIDs = []string{"fallback-1"}
 		}))
@@ -150,7 +150,7 @@ func (s *HandleProcessorTestSuite) TestProcessEmptyAssignee() {
 
 		instance := s.NewInstance(s.T(), "applicant-1")
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.EmptyAssigneeAction = approval.EmptyAssigneeTransferSuperior
 		}))
 
@@ -163,7 +163,7 @@ func (s *HandleProcessorTestSuite) TestProcessEmptyAssignee() {
 
 		instance := s.NewInstance(s.T(), "applicant-1")
 
-		pc := s.NewProcessContext(instance, s.NewNode(func(n *approval.FlowNode) {
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
 			n.EmptyAssigneeAction = "unknown_action"
 		}))
 
@@ -180,7 +180,7 @@ func (s *HandleProcessorTestSuite) TestProcessFormSnapshot() {
 
 	s.InsertAssigneeConfig(s.T(), []string{"user-1"})
 
-	pc := s.NewProcessContext(instance, s.NewNode())
+	pc := s.NewProcessContext(s.T(), instance, s.NewNode())
 
 	_, err = s.processor.Process(s.Ctx, pc)
 	s.Require().NoError(err, "Should process without error")
@@ -195,7 +195,7 @@ func (s *HandleProcessorTestSuite) TestProcessDeduplication() {
 	instance := s.NewInstance(s.T(), "applicant-1")
 	s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-1", "user-2"})
 
-	pc := s.NewProcessContext(instance, s.NewNode())
+	pc := s.NewProcessContext(s.T(), instance, s.NewNode())
 
 	result, err := s.processor.Process(s.Ctx, pc)
 	s.Require().NoError(err, "Should process without error")
@@ -233,7 +233,7 @@ func (s *HandleProcessorTestSuite) TestProcessMultipleAssigneeConfigs() {
 	_, err = s.DB.NewInsert().Model(cfg2).Exec(s.Ctx)
 	s.Require().NoError(err, "Should insert second assignee config")
 
-	pc := s.NewProcessContext(instance, s.NewNode())
+	pc := s.NewProcessContext(s.T(), instance, s.NewNode())
 
 	result, err := s.processor.Process(s.Ctx, pc)
 	s.Require().NoError(err, "Should process without error")

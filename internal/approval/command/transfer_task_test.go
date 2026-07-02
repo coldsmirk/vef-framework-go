@@ -82,6 +82,7 @@ func (s *TransferTaskTestSuite) setupData(assigneeID string) (*approval.Instance
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     s.nodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.nodeID).ID,
 		AssigneeID: assigneeID,
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -95,7 +96,7 @@ func (s *TransferTaskTestSuite) setupData(assigneeID string) (*approval.Instance
 func (s *TransferTaskTestSuite) TestTransferSuccess() {
 	_, task := s.setupData("assignee-1")
 
-	operator := approval.OperatorInfo{ID: "assignee-1", Name: "Original Assignee"}
+	operator := approval.UserInfo{ID: "assignee-1", Name: "Original Assignee"}
 	_, err := s.handler.Handle(s.ctx, command.TransferTaskCmd{
 		TaskID:       task.ID,
 		Operator:     operator,
@@ -157,6 +158,7 @@ func (s *TransferTaskTestSuite) TestTransferNotAllowed() {
 		TenantID:   "default",
 		InstanceID: inst.ID,
 		NodeID:     node.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, node.ID).ID,
 		AssigneeID: "assignee-2",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
@@ -164,7 +166,7 @@ func (s *TransferTaskTestSuite) TestTransferNotAllowed() {
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
 	s.Require().NoError(err, "TestTransferNotAllowed should complete without error")
 
-	operator := approval.OperatorInfo{ID: "assignee-2", Name: "Assignee"}
+	operator := approval.UserInfo{ID: "assignee-2", Name: "Assignee"}
 	_, err = s.handler.Handle(s.ctx, command.TransferTaskCmd{
 		TaskID:       task.ID,
 		Operator:     operator,
@@ -176,7 +178,7 @@ func (s *TransferTaskTestSuite) TestTransferNotAllowed() {
 }
 
 func (s *TransferTaskTestSuite) TestTransferTaskNotFound() {
-	operator := approval.OperatorInfo{ID: "assignee-1", Name: "Assignee"}
+	operator := approval.UserInfo{ID: "assignee-1", Name: "Assignee"}
 	_, err := s.handler.Handle(s.ctx, command.TransferTaskCmd{
 		TaskID:       "non-existent",
 		Operator:     operator,
@@ -190,7 +192,7 @@ func (s *TransferTaskTestSuite) TestTransferTaskNotFound() {
 func (s *TransferTaskTestSuite) TestTransferNotAssignee() {
 	_, task := s.setupData("assignee-1")
 
-	operator := approval.OperatorInfo{ID: "wrong-user", Name: "Wrong"}
+	operator := approval.UserInfo{ID: "wrong-user", Name: "Wrong"}
 	_, err := s.handler.Handle(s.ctx, command.TransferTaskCmd{
 		TaskID:       task.ID,
 		Operator:     operator,
@@ -221,7 +223,7 @@ func (s *TransferTaskTestSuite) TestTransferTaskNotCurrentNode() {
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should move instance current node away from task node")
 
-	operator := approval.OperatorInfo{ID: "assignee-current", Name: "Assignee"}
+	operator := approval.UserInfo{ID: "assignee-current", Name: "Assignee"}
 	_, err = s.handler.Handle(s.ctx, command.TransferTaskCmd{
 		TaskID:       task.ID,
 		Operator:     operator,
@@ -236,7 +238,7 @@ func (s *TransferTaskTestSuite) TestTransferTargetValidation() {
 	s.Run("EmptyTarget", func() {
 		_, task := s.setupData("assignee-empty")
 
-		operator := approval.OperatorInfo{ID: "assignee-empty", Name: "Assignee"}
+		operator := approval.UserInfo{ID: "assignee-empty", Name: "Assignee"}
 		_, err := s.handler.Handle(s.ctx, command.TransferTaskCmd{
 			TaskID:       task.ID,
 			Operator:     operator,
@@ -250,7 +252,7 @@ func (s *TransferTaskTestSuite) TestTransferTargetValidation() {
 	s.Run("SelfTarget", func() {
 		_, task := s.setupData("assignee-self")
 
-		operator := approval.OperatorInfo{ID: "assignee-self", Name: "Assignee"}
+		operator := approval.UserInfo{ID: "assignee-self", Name: "Assignee"}
 		_, err := s.handler.Handle(s.ctx, command.TransferTaskCmd{
 			TaskID:       task.ID,
 			Operator:     operator,
@@ -268,6 +270,7 @@ func (s *TransferTaskTestSuite) TestTransferTargetValidation() {
 			TenantID:   "default",
 			InstanceID: task.InstanceID,
 			NodeID:     task.NodeID,
+			VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", task.InstanceID, task.NodeID).ID,
 			AssigneeID: "assignee-target",
 			SortOrder:  2,
 			Status:     approval.TaskPending,
@@ -275,7 +278,7 @@ func (s *TransferTaskTestSuite) TestTransferTargetValidation() {
 		_, err := s.db.NewInsert().Model(existingTargetTask).Exec(s.ctx)
 		s.Require().NoError(err, "Should create existing active task for transfer target")
 
-		operator := approval.OperatorInfo{ID: "assignee-source", Name: "Assignee"}
+		operator := approval.UserInfo{ID: "assignee-source", Name: "Assignee"}
 		_, err = s.handler.Handle(s.ctx, command.TransferTaskCmd{
 			TaskID:       task.ID,
 			Operator:     operator,
