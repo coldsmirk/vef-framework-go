@@ -212,6 +212,12 @@ type Instance struct {
 	FinishedAt              *timex.DateTime `json:"finishedAt" bun:"finished_at,nullzero"`
 	BusinessRecordID        *string         `json:"businessRecordId" bun:"business_record_id,nullzero"`
 	FormData                map[string]any  `json:"formData" bun:"form_data,type:jsonb,nullzero"`
+	// Globals is the host-supplied global-variable snapshot taken at instance
+	// start (tenant attributes, applicant roles, business limits, …). Condition
+	// evaluation resolves field subjects and expression bindings against it, so
+	// routing stays deterministic across re-evaluation — like the applicant
+	// department, it reflects the world at initiation, not live state.
+	Globals map[string]any `json:"globals" bun:"globals,type:jsonb,nullzero"`
 }
 
 // Applicant returns the applicant as a person snapshot.

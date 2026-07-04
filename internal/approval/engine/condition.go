@@ -39,6 +39,7 @@ func (*ConditionProcessor) Process(ctx context.Context, pc *ProcessContext) (*Pr
 		FormData:              pc.FormData,
 		ApplicantID:           pc.Instance.ApplicantID,
 		ApplicantDepartmentID: pc.Instance.ApplicantDepartmentID,
+		Globals:               pc.Instance.Globals,
 	}
 
 	var defaultBranch *approval.ConditionBranch

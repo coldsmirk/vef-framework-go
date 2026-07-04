@@ -345,6 +345,8 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     business_record_id VARCHAR(128),
     -- Form data
     form_data JSONB,
+    -- Host-supplied global variables snapshotted at instance start
+    globals JSONB,
     CONSTRAINT fk_apv_instance__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_instance__flow_version_id FOREIGN KEY (flow_version_id) REFERENCES apv_flow_version(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT uk_apv_instance__instance_no UNIQUE (instance_no)
@@ -370,6 +372,7 @@ COMMENT ON COLUMN apv_instance.current_node_id IS 'Current Node';
 COMMENT ON COLUMN apv_instance.finished_at IS 'Finished';
 COMMENT ON COLUMN apv_instance.business_record_id IS 'Biz Record';
 COMMENT ON COLUMN apv_instance.form_data IS 'Form Data';
+COMMENT ON COLUMN apv_instance.globals IS 'Instance Globals';
 
 CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id ON apv_instance(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id_status_created_at ON apv_instance(tenant_id, status, created_at DESC);

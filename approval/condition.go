@@ -1,6 +1,10 @@
 package approval
 
-import "context"
+import (
+	"context"
+
+	"github.com/coldsmirk/vef-framework-go/security"
+)
 
 // ConditionOperator enumerates the comparison operators a field condition may
 // use. The set is the shared contract between the flow designer (which offers
@@ -69,6 +73,27 @@ type EvaluationContext struct {
 	FormData              FormData
 	ApplicantID           string
 	ApplicantDepartmentID *string
+	// Globals carries host-supplied global variables snapshotted at instance
+	// start (Instance.Globals). Field conditions resolve a subject against
+	// Globals before form data — the same shadowing the built-in applicant
+	// subjects apply — and expression conditions see each entry as a top-level
+	// binding (the built-in formData / applicantId / applicantDepartmentId
+	// bindings always win a name collision).
+	Globals map[string]any
+}
+
+// InstanceGlobalsResolver resolves the host-defined global variables for a
+// new instance — attributes the flow's conditions may reference beyond the
+// form data and the built-in applicant subjects (tenant attributes, applicant
+// roles, business limits, …). Resolved SERVER-SIDE from the authenticated
+// principal at instance start and snapshotted onto Instance.Globals: globals
+// participate in routing, so they must never be accepted from the client
+// request body. Implemented by host apps (override via fx.Replace); the
+// default resolver returns no globals.
+type InstanceGlobalsResolver interface {
+	// Resolve returns the global-variable snapshot for an instance the given
+	// principal is starting on the given flow. A nil map means "no globals".
+	Resolve(ctx context.Context, principal *security.Principal, flowCode string) (map[string]any, error)
 }
 
 // ConditionEvaluator evaluates branch conditions.

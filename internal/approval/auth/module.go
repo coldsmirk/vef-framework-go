@@ -6,9 +6,11 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
-// Module provides identity-resolution defaults (tenant resolver). Hosts
-// override the resolver via fx.Replace when their principal carries tenant
-// info in a typed struct instead of a generic map.
+// Module provides identity-resolution defaults (tenant resolver, instance
+// globals resolver). Hosts override a resolver via fx.Replace — the tenant
+// resolver when their principal carries tenant info in a typed struct instead
+// of a generic map, the globals resolver when their flows route on
+// host-defined global variables.
 var Module = fx.Module(
 	"vef:approval:auth",
 
@@ -16,6 +18,10 @@ var Module = fx.Module(
 		fx.Annotate(
 			NewDefaultPrincipalTenantResolver,
 			fx.As(new(approval.PrincipalTenantResolver)),
+		),
+		fx.Annotate(
+			NewDefaultInstanceGlobalsResolver,
+			fx.As(new(approval.InstanceGlobalsResolver)),
 		),
 	),
 )

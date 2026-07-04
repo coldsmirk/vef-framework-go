@@ -31,7 +31,12 @@ type StartInstanceCmd struct {
 	Applicant        approval.UserInfo
 	BusinessRecordID *string
 	FormData         map[string]any
-	Caller           approval.CallerContext
+	// Globals is the host-supplied global-variable snapshot persisted onto the
+	// instance (Instance.Globals) and resolved by condition evaluation — field
+	// subjects and expression bindings alike. Snapshotting at start keeps
+	// routing deterministic across re-evaluation.
+	Globals map[string]any
+	Caller  approval.CallerContext
 }
 
 // StartInstanceHandler handles the StartInstanceCmd command.
@@ -171,6 +176,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		Status:                  approval.InstanceRunning,
 		BusinessRecordID:        cmd.BusinessRecordID,
 		FormData:                cmd.FormData,
+		Globals:                 cmd.Globals,
 	}
 
 	if _, err := db.NewInsert().

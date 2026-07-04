@@ -83,6 +83,7 @@ type InstanceResource struct {
 	bus                cqrs.Bus
 	departmentResolver approval.PrincipalDepartmentResolver
 	tenantResolver     approval.PrincipalTenantResolver
+	globalsResolver    approval.InstanceGlobalsResolver
 }
 
 // NewInstanceResource creates a new instance resource.
@@ -90,11 +91,13 @@ func NewInstanceResource(
 	bus cqrs.Bus,
 	departmentResolver approval.PrincipalDepartmentResolver,
 	tenantResolver approval.PrincipalTenantResolver,
+	globalsResolver approval.InstanceGlobalsResolver,
 ) api.Resource {
 	return &InstanceResource{
 		bus:                bus,
 		departmentResolver: departmentResolver,
 		tenantResolver:     tenantResolver,
+		globalsResolver:    globalsResolver,
 		Resource: api.NewRPCResource(
 			"approval/instance",
 			api.WithOperations(
@@ -146,12 +149,21 @@ func (r *InstanceResource) Start(ctx fiber.Ctx, principal *security.Principal, p
 		return err
 	}
 
+	// Globals participate in condition routing, so they are resolved
+	// server-side from the principal — never accepted from the request body,
+	// where an applicant could forge them to steer the flow.
+	globals, err := r.globalsResolver.Resolve(ctx.Context(), principal, params.FlowCode)
+	if err != nil {
+		return fmt.Errorf("resolve instance globals: %w", err)
+	}
+
 	instance, err := cqrs.Send[command.StartInstanceCmd, *approval.Instance](ctx.Context(), r.bus, command.StartInstanceCmd{
 		TenantID:         params.TenantID,
 		FlowCode:         params.FlowCode,
 		Applicant:        actor.Operator,
 		BusinessRecordID: params.BusinessRecordID,
 		FormData:         params.FormData,
+		Globals:          globals,
 		Caller:           actor.Caller,
 	})
 	if err != nil {

@@ -180,6 +180,45 @@ func TestFieldConditionEvaluatorEmptyCollections(t *testing.T) {
 	}
 }
 
+// TestFieldConditionEvaluatorGlobals tests subject resolution against
+// host-supplied globals: a global resolves like any subject, shadows a
+// same-named form field (mirroring the built-in applicant subjects), and an
+// absent global falls through to form data.
+func TestFieldConditionEvaluatorGlobals(t *testing.T) {
+	e := NewFieldConditionEvaluator()
+	ctx := context.Background()
+	ec := &approval.EvaluationContext{
+		FormData: approval.FormData{
+			"amount":     5000,
+			"quotaLimit": 100, // shadowed by the global below
+		},
+		ApplicantID: "user1",
+		Globals: map[string]any{
+			"quotaLimit":     8000,
+			"applicantRoles": []string{"manager", "finance"},
+		},
+	}
+
+	tests := []struct {
+		name     string
+		cond     approval.Condition
+		expected bool
+	}{
+		{"GlobalResolves", approval.Condition{Kind: approval.ConditionField, Subject: "quotaLimit", Operator: "gte", Value: 8000}, true},
+		{"GlobalShadowsFormField", approval.Condition{Kind: approval.ConditionField, Subject: "quotaLimit", Operator: "eq", Value: 100}, false},
+		{"GlobalListContains", approval.Condition{Kind: approval.ConditionField, Subject: "applicantRoles", Operator: "contains", Value: "finance"}, true},
+		{"AbsentGlobalFallsThroughToForm", approval.Condition{Kind: approval.ConditionField, Subject: "amount", Operator: "eq", Value: 5000}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := e.Evaluate(ctx, tt.cond, ec)
+			require.NoError(t, err, "Should evaluate without error")
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 // TestExpressionConditionEvaluator exercises the expression path through the
 // framework expression.Engine (expr-lang backend).
 func TestExpressionConditionEvaluator(t *testing.T) {
@@ -267,5 +306,24 @@ func TestExpressionConditionEvaluator(t *testing.T) {
 		}
 		_, err := e.Evaluate(ctx, approval.Condition{Expression: "formData.amount"}, ec)
 		require.ErrorIs(t, err, ErrExpressionReturnedNonBool, "Numeric result should be rejected as non-bool")
+	})
+
+	t.Run("Globals", func(t *testing.T) {
+		ec := &approval.EvaluationContext{
+			FormData:    approval.FormData{"amount": 5000},
+			ApplicantID: "user1",
+			Globals: map[string]any{
+				"quotaLimit":  8000,
+				"applicantId": "forged", // must lose to the built-in binding
+			},
+		}
+
+		result, err := e.Evaluate(ctx, approval.Condition{Expression: "formData.amount < quotaLimit"}, ec)
+		require.NoError(t, err, "Should evaluate a global binding")
+		assert.True(t, result, "Should read the host-supplied global")
+
+		result, err = e.Evaluate(ctx, approval.Condition{Expression: `applicantId == "user1"`}, ec)
+		require.NoError(t, err, "Should evaluate the built-in binding")
+		assert.True(t, result, "Built-in bindings must win a collision with a global")
 	})
 }

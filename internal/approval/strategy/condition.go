@@ -3,6 +3,7 @@ package strategy
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -46,11 +47,11 @@ func (*FieldConditionEvaluator) Evaluate(_ context.Context, cond approval.Condit
 }
 
 // resolveSubjectValue maps a condition subject to its runtime value: the two
-// applicant attributes come from the evaluation context, everything else is a
-// form-data key. The applicant subjects are reserved names — a form field
-// whose key collides with one of them is shadowed and can never be referenced
-// by a field condition, matching the expression environment where formData
-// lives under its own namespace.
+// applicant attributes come from the evaluation context, then host-supplied
+// globals, then form data. Applicant subjects and globals are resolved before
+// form data — a form field whose key collides with one of them is shadowed
+// and can never be referenced by a field condition, matching the expression
+// environment where formData lives under its own namespace.
 func resolveSubjectValue(subject string, ec *approval.EvaluationContext) any {
 	switch subject {
 	case subjectApplicantID:
@@ -63,6 +64,10 @@ func resolveSubjectValue(subject string, ec *approval.EvaluationContext) any {
 		return *ec.ApplicantDepartmentID
 
 	default:
+		if value, ok := ec.Globals[subject]; ok {
+			return value
+		}
+
 		return ec.FormData.Get(subject)
 	}
 }
@@ -284,9 +289,11 @@ func NewExpressionConditionEvaluator(engine expression.Engine) approval.Conditio
 
 // ExpressionConditionEvaluator evaluates expression conditions through the
 // framework's expression.Engine abstraction, so approval depends on the
-// engine contract rather than any concrete backend. The expression reads a
-// fixed environment: formData (the instance form), applicantId, and
-// applicantDepartmentId.
+// engine contract rather than any concrete backend. The expression
+// environment carries formData (the instance form), applicantId,
+// applicantDepartmentId, and every host-supplied global from
+// EvaluationContext.Globals as a top-level binding (built-ins win a name
+// collision).
 type ExpressionConditionEvaluator struct {
 	engine expression.Engine
 }
@@ -301,11 +308,14 @@ func (e *ExpressionConditionEvaluator) Evaluate(ctx context.Context, cond approv
 		departmentID = *ec.ApplicantDepartmentID
 	}
 
-	env := map[string]any{
-		"formData":              ec.FormData.ToMap(),
-		"applicantId":           ec.ApplicantID,
-		"applicantDepartmentId": departmentID,
-	}
+	env := make(map[string]any, len(ec.Globals)+3)
+	maps.Copy(env, ec.Globals)
+
+	// Built-in bindings are assigned last so they always win a collision with
+	// a host-supplied global.
+	env["formData"] = ec.FormData.ToMap()
+	env["applicantId"] = ec.ApplicantID
+	env["applicantDepartmentId"] = departmentID
 
 	value, err := e.engine.Evaluate(ctx, cond.Expression, env)
 	if err != nil {

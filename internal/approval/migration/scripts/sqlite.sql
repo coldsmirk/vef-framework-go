@@ -230,6 +230,8 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     business_record_id VARCHAR(128),
     -- Form data
     form_data TEXT,
+    -- Host-supplied global variables snapshotted at instance start
+    globals TEXT,
     CONSTRAINT fk_apv_instance__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_instance__flow_version_id FOREIGN KEY (flow_version_id) REFERENCES apv_flow_version(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT uk_apv_instance__instance_no UNIQUE (instance_no)
