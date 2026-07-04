@@ -1,6 +1,7 @@
 package approval_test
 
 import (
+	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -16,6 +17,101 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
+
+// newEventFixtures builds the instance / task / node trio event constructors
+// snapshot from.
+func newEventFixtures() (*approval.Instance, *approval.Task, *approval.FlowNode) {
+	ref := "ord-1"
+	dept := "d1"
+	deptName := "Finance"
+
+	instance := &approval.Instance{
+		TenantID:                "t1",
+		FlowID:                  "f1",
+		FlowCode:                "expense",
+		FlowVersionID:           "fv1",
+		Title:                   "Trip reimbursement",
+		InstanceNo:              "APV-001",
+		ApplicantID:             "u1",
+		ApplicantName:           "Alice",
+		ApplicantDepartmentID:   &dept,
+		ApplicantDepartmentName: &deptName,
+		Status:                  approval.InstanceRunning,
+		BusinessRef:             &ref,
+	}
+	instance.ID = "i1"
+
+	task := &approval.Task{
+		TenantID:     "t1",
+		InstanceID:   "i1",
+		NodeID:       "n1",
+		VisitID:      "v1",
+		AssigneeID:   "u2",
+		AssigneeName: "Bob",
+		Status:       approval.TaskPending,
+	}
+	task.ID = "ta1"
+
+	node := &approval.FlowNode{
+		FlowVersionID: "fv1",
+		Key:           "approve1",
+		Kind:          approval.NodeApproval,
+		Name:          "Manager approval",
+	}
+	node.ID = "n1"
+
+	return instance, task, node
+}
+
+// TestInstanceEventBaseEnvelope pins the shared envelope contract: the base
+// snapshots the instance verbatim and serializes flat (embedded fields are
+// promoted, never nested under a struct key).
+func TestInstanceEventBaseEnvelope(t *testing.T) {
+	t.Parallel()
+
+	instance, _, _ := newEventFixtures()
+	evt := approval.NewInstanceCreatedEvent(instance)
+
+	assert.Equal(t, "i1", evt.InstanceID, "InstanceID should snapshot the instance id")
+	assert.Equal(t, "APV-001", evt.InstanceNo, "InstanceNo should snapshot")
+	assert.Equal(t, "t1", evt.TenantID, "TenantID should snapshot")
+	assert.Equal(t, "Trip reimbursement", evt.Title, "Title should snapshot")
+	assert.Equal(t, "f1", evt.FlowID, "FlowID should snapshot")
+	assert.Equal(t, "expense", evt.FlowCode, "FlowCode should snapshot")
+	require.NotNil(t, evt.BusinessRef, "BusinessRef should carry over when bound")
+	assert.Equal(t, "ord-1", *evt.BusinessRef, "BusinessRef should snapshot")
+	assert.Equal(t, instance.Applicant(), evt.Applicant, "Applicant should be the full person snapshot")
+	assert.False(t, evt.OccurredTime.IsZero(), "OccurredTime should be stamped")
+
+	raw, err := json.Marshal(evt)
+	require.NoError(t, err, "event should marshal")
+
+	var flat map[string]any
+
+	require.NoError(t, json.Unmarshal(raw, &flat), "event JSON should be an object")
+	assert.Contains(t, flat, "instanceId", "envelope fields must serialize flat at the top level")
+	assert.Contains(t, flat, "flowCode", "envelope fields must serialize flat at the top level")
+	assert.NotContains(t, string(raw), "InstanceEventBase", "the embedded base must not appear as a nested key")
+
+	applicant, ok := flat["applicant"].(map[string]any)
+	require.True(t, ok, "applicant should be a nested UserInfo object")
+	assert.Equal(t, "Alice", applicant["name"], "applicant should carry the person snapshot")
+}
+
+// TestTaskEventBaseEnvelope pins the task-level envelope: instance envelope
+// plus task/node coordinates.
+func TestTaskEventBaseEnvelope(t *testing.T) {
+	t.Parallel()
+
+	instance, task, node := newEventFixtures()
+	evt := approval.NewTaskCreatedEvent(instance, task, node)
+
+	assert.Equal(t, "ta1", evt.TaskID, "TaskID should snapshot")
+	assert.Equal(t, "n1", evt.NodeID, "NodeID should come from the node")
+	assert.Equal(t, "Manager approval", evt.NodeName, "NodeName should come from the node")
+	assert.Equal(t, "expense", evt.FlowCode, "task events should inherit the instance envelope")
+	assert.Equal(t, task.Assignee(), evt.Assignee, "assignee should be the full person snapshot")
+}
 
 // EventInnerWithoutOccurredTime is nested in EventWithoutOccurredTime so the
 // reflection fallback can see a struct with no OccurredTime field.
@@ -35,7 +131,8 @@ func TestPayloadOccurredAt(t *testing.T) {
 	t.Run("InstanceCreated", func(t *testing.T) {
 		t.Parallel()
 
-		evt := approval.NewInstanceCreatedEvent("i1", "t1", "f1", "title", "u1", "Alice")
+		instance, _, _ := newEventFixtures()
+		evt := approval.NewInstanceCreatedEvent(instance)
 		got := approval.PayloadOccurredAt(evt)
 		assert.False(t, got.IsZero(), "InstanceCreatedEvent should carry OccurredTime")
 		assert.WithinDuration(t, time.Now(), got.Unwrap(), 2*time.Second, "OccurredTime should be wall-clock close to now")
@@ -44,9 +141,10 @@ func TestPayloadOccurredAt(t *testing.T) {
 	t.Run("TaskApproved", func(t *testing.T) {
 		t.Parallel()
 
-		evt := approval.NewTaskApprovedEvent("ta1", "t1", "i1", "n1", "u1", "ok")
+		instance, task, node := newEventFixtures()
+		evt := approval.NewTaskApprovedEvent(instance, task, node, approval.UserInfo{ID: "u1", Name: "Alice"}, "ok")
 		got := approval.PayloadOccurredAt(evt)
-		assert.False(t, got.IsZero(), "TaskApprovedEvent should carry OccurredTime")
+		assert.False(t, got.IsZero(), "TaskApprovedEvent should carry OccurredTime — embedded base fields must stay reachable by reflection")
 	})
 
 	t.Run("NilPayloadReturnsZero", func(t *testing.T) {
@@ -71,10 +169,12 @@ func TestPayloadOccurredAt(t *testing.T) {
 		t.Parallel()
 
 		evt := &approval.InstanceCompletedEvent{
-			InstanceID:   "i1",
-			TenantID:     "t1",
-			FinalStatus:  approval.InstanceRejected,
-			OccurredTime: timex.DateTime{},
+			InstanceEventBase: approval.InstanceEventBase{
+				InstanceID:   "i1",
+				TenantID:     "t1",
+				OccurredTime: timex.DateTime{},
+			},
+			FinalStatus: approval.InstanceRejected,
 		}
 		got := approval.PayloadOccurredAt(evt)
 		assert.True(t, got.IsZero(), "Explicit zero OccurredTime should report zero")

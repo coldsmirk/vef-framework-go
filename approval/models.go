@@ -198,8 +198,13 @@ type Instance struct {
 	orm.BaseModel `bun:"table:apv_instance,alias:ai"`
 	orm.FullAuditedModel
 
-	TenantID                string          `json:"tenantId" bun:"tenant_id"`
-	FlowID                  string          `json:"flowId" bun:"flow_id"`
+	TenantID string `json:"tenantId" bun:"tenant_id"`
+	FlowID   string `json:"flowId" bun:"flow_id"`
+	// FlowCode snapshots the flow's business code at instance creation, like
+	// the applicant fields. Flow codes are immutable (update_flow never
+	// touches code), so the snapshot cannot drift; carrying it here lets
+	// every event and projection self-describe without joining apv_flow.
+	FlowCode                string          `json:"flowCode" bun:"flow_code"`
 	FlowVersionID           string          `json:"flowVersionId" bun:"flow_version_id"`
 	Title                   string          `json:"title" bun:"title"`
 	InstanceNo              string          `json:"instanceNo" bun:"instance_no"`

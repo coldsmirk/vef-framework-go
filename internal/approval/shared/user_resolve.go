@@ -83,17 +83,6 @@ func ResolveUserInfo(ctx context.Context, resolver approval.UserInfoResolver, us
 	return info
 }
 
-// UserInfoNames projects an ID→UserInfo map onto the ID→Name map carried by
-// event payloads.
-func UserInfoNames(infos map[string]approval.UserInfo) map[string]string {
-	names := make(map[string]string, len(infos))
-	for id, info := range infos {
-		names[id] = info.Name
-	}
-
-	return names
-}
-
 // UserInfos builds the ordered person list for the given IDs from a resolved
 // info map. An ID missing from the map still yields an entry carrying the ID,
 // so unresolvable users stay visible in the record.

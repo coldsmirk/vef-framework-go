@@ -67,7 +67,7 @@ func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInst
 		return cqrs.Unit{}, err
 	}
 
-	canceledEvents, err := h.taskSvc.CancelInstanceTasks(ctx, db, cmd.InstanceID, "申请已被终止，任务取消")
+	canceledEvents, err := h.taskSvc.CancelInstanceTasks(ctx, db, instance, "申请已被终止，任务取消")
 	if err != nil {
 		return cqrs.Unit{}, fmt.Errorf("cancel tasks on terminate: %w", err)
 	}
@@ -84,7 +84,7 @@ func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInst
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	behavior.EventCollectorFromContext(ctx).Add(append(canceledEvents,
-		approval.NewInstanceCompletedEvent(cmd.InstanceID, instance.TenantID, approval.InstanceTerminated),
+		approval.NewInstanceCompletedEvent(instance, approval.InstanceTerminated),
 	)...)
 
 	return cqrs.Unit{}, nil

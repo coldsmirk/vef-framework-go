@@ -57,7 +57,7 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 		return cqrs.Unit{}, err
 	}
 
-	task := tc.Task
+	instance, task, node := tc.Instance, tc.Task, tc.Node
 
 	newAssigneeID := strings.TrimSpace(cmd.NewAssigneeID)
 	if newAssigneeID == "" || newAssigneeID == task.AssigneeID {
@@ -73,8 +73,7 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 		return cqrs.Unit{}, shared.ErrInvalidTransferTarget
 	}
 
-	oldAssigneeID := task.AssigneeID
-	oldAssigneeName := task.AssigneeName
+	oldAssignee := task.Assignee()
 	newAssignee := shared.ResolveUserInfo(ctx, h.userResolver, newAssigneeID)
 
 	if _, err := db.NewUpdate().
@@ -105,9 +104,7 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	behavior.EventCollectorFromContext(ctx).Add(
-		approval.NewTaskReassignedEvent(task.ID, task.TenantID, task.InstanceID, task.NodeID,
-			approval.UserInfo{ID: oldAssigneeID, Name: oldAssigneeName},
-			newAssignee, cmd.Reason),
+		approval.NewTaskReassignedEvent(instance, task, node, oldAssignee, newAssignee, cmd.Reason),
 	)
 
 	return cqrs.Unit{}, nil

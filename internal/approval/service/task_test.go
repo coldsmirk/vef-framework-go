@@ -101,7 +101,10 @@ func (s *TaskServiceTestSuite) TestCancelRemainingTasks() {
 		insertTaskWithDetails(s.T(), s.ctx, s.db, inst.ID, nodeID, approval.TaskWaiting, 2)
 		insertTaskWithDetails(s.T(), s.ctx, s.db, inst.ID, nodeID, approval.TaskApproved, 3)
 
-		events, err := s.svc.CancelRemainingTasks(s.ctx, s.db, inst.ID, nodeID, "test cancel")
+		node := &approval.FlowNode{}
+		node.ID = nodeID
+
+		events, err := s.svc.CancelRemainingTasks(s.ctx, s.db, inst, node, "test cancel")
 		s.Require().NoError(err, "Should cancel remaining tasks without error")
 		s.Require().Len(events, 2, "Should emit one TaskCanceledEvent per canceled task")
 
@@ -129,7 +132,7 @@ func (s *TaskServiceTestSuite) TestCancelInstanceTasks() {
 		insertTaskWithDetails(s.T(), s.ctx, s.db, inst.ID, s.fixture.NodeIDs[1], approval.TaskWaiting, 1)
 		insertTaskWithDetails(s.T(), s.ctx, s.db, inst.ID, s.fixture.NodeIDs[0], approval.TaskRejected, 2)
 
-		events, err := s.svc.CancelInstanceTasks(s.ctx, s.db, inst.ID, "test cancel")
+		events, err := s.svc.CancelInstanceTasks(s.ctx, s.db, inst, "test cancel")
 		s.Require().NoError(err, "Should cancel instance tasks without error")
 		s.Require().Len(events, 2, "Should emit one TaskCanceledEvent per canceled task")
 

@@ -329,6 +329,7 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     updated_by VARCHAR(32) NOT NULL DEFAULT 'system',
     tenant_id VARCHAR(32) NOT NULL,
     flow_id VARCHAR(32) NOT NULL,
+    flow_code VARCHAR(64) NOT NULL,
     flow_version_id VARCHAR(32) NOT NULL,
     -- Application info
     title VARCHAR(256) NOT NULL,
@@ -360,6 +361,7 @@ COMMENT ON COLUMN apv_instance.created_by IS 'Creator';
 COMMENT ON COLUMN apv_instance.updated_by IS 'Updater';
 COMMENT ON COLUMN apv_instance.tenant_id IS 'Tenant';
 COMMENT ON COLUMN apv_instance.flow_id IS 'Flow';
+COMMENT ON COLUMN apv_instance.flow_code IS 'Flow Code';
 COMMENT ON COLUMN apv_instance.flow_version_id IS 'Version';
 COMMENT ON COLUMN apv_instance.title IS 'Title';
 COMMENT ON COLUMN apv_instance.instance_no IS 'No.';
@@ -372,7 +374,6 @@ COMMENT ON COLUMN apv_instance.current_node_id IS 'Current Node';
 COMMENT ON COLUMN apv_instance.finished_at IS 'Finished';
 COMMENT ON COLUMN apv_instance.business_ref IS 'Biz Ref';
 COMMENT ON COLUMN apv_instance.form_data IS 'Form Data';
-COMMENT ON COLUMN apv_instance.globals IS 'Instance Globals';
 
 CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id ON apv_instance(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id_status_created_at ON apv_instance(tenant_id, status, created_at DESC);

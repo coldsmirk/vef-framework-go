@@ -203,7 +203,7 @@ func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instanc
 		// Publish completion event
 		if err := e.publishEvents(
 			ctx, db,
-			approval.NewInstanceCompletedEvent(instance.ID, instance.TenantID, *result.FinalStatus),
+			approval.NewInstanceCompletedEvent(instance, *result.FinalStatus),
 		); err != nil {
 			return fmt.Errorf("publish instance completed event: %w", err)
 		}

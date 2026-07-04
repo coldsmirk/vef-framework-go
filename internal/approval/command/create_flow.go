@@ -121,7 +121,7 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 	}
 
 	behavior.EventCollectorFromContext(ctx).Add(
-		approval.NewFlowCreatedEvent(flow.ID, flow.TenantID, flow.Code, flow.Name, flow.CategoryID),
+		approval.NewFlowCreatedEvent(&flow),
 	)
 
 	return &flow, nil

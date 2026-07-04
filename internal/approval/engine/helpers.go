@@ -40,7 +40,7 @@ func resolveAutoExecution(ctx context.Context, pc *ProcessContext) (*ProcessResu
 		return &ProcessResult{
 			Action: NodeActionContinue,
 			Events: []approval.DomainEvent{
-				approval.NewNodeAutoPassedEvent(pc.Instance.ID, pc.Instance.TenantID, pc.Node.ID, autoPassReasonExecutionType),
+				approval.NewNodeAutoPassedEvent(pc.Instance, pc.Node, autoPassReasonExecutionType),
 			},
 		}, true
 
@@ -66,7 +66,7 @@ func nodeAutoPassResult(ctx context.Context, pc *ProcessContext, reason string) 
 	return &ProcessResult{
 		Action: NodeActionContinue,
 		Events: []approval.DomainEvent{
-			approval.NewNodeAutoPassedEvent(pc.Instance.ID, pc.Instance.TenantID, pc.Node.ID, reason),
+			approval.NewNodeAutoPassedEvent(pc.Instance, pc.Node, reason),
 		},
 	}
 }
@@ -329,15 +329,7 @@ func buildTask(pc *ProcessContext, assignee approval.ResolvedAssignee, deadline 
 // downstream consumers can distinguish "queued behind a predecessor" from
 // "immediately actionable" without an extra event type.
 func newTaskCreatedEvent(pc *ProcessContext, task *approval.Task) approval.DomainEvent {
-	return approval.NewTaskCreatedEvent(
-		task.ID,
-		task.TenantID,
-		pc.Instance.ID,
-		pc.Node.ID,
-		task.AssigneeID,
-		task.AssigneeName,
-		task.Deadline,
-	)
+	return approval.NewTaskCreatedEvent(pc.Instance, task, pc.Node)
 }
 
 // taskCreatedEventsFor returns the slice of TaskCreatedEvents corresponding

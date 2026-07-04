@@ -22,15 +22,15 @@ func NewCCProcessor(ccResolver *shared.CCRecipientResolver) *CCProcessor {
 func (*CCProcessor) NodeKind() approval.NodeKind { return approval.NodeCC }
 
 func (p *CCProcessor) Process(ctx context.Context, pc *ProcessContext) (*ProcessResult, error) {
-	ccUserIDs, ccUserNames, err := p.createCCRecords(ctx, pc)
+	recipients, err := p.createCCRecords(ctx, pc)
 	if err != nil {
 		return nil, err
 	}
 
 	var events []approval.DomainEvent
-	if len(ccUserIDs) > 0 {
+	if len(recipients) > 0 {
 		events = []approval.DomainEvent{
-			approval.NewCCNotifiedEvent(pc.Instance.ID, pc.Instance.TenantID, pc.Node.ID, ccUserIDs, ccUserNames, false),
+			approval.NewCCNotifiedEvent(pc.Instance, pc.Node, recipients, false),
 		}
 	}
 
@@ -58,8 +58,8 @@ func (p *CCProcessor) Process(ctx context.Context, pc *ProcessContext) (*Process
 }
 
 // createCCRecords loads FlowNodeCC configurations and creates CC records for all CC users.
-// Returns the list of CC user IDs and their names for event publishing.
-func (p *CCProcessor) createCCRecords(ctx context.Context, pc *ProcessContext) ([]string, map[string]string, error) {
+// Returns the notified recipients for event publishing.
+func (p *CCProcessor) createCCRecords(ctx context.Context, pc *ProcessContext) ([]approval.UserInfo, error) {
 	var ccConfigs []approval.FlowNodeCC
 
 	if err := pc.DB.NewSelect().
@@ -69,7 +69,7 @@ func (p *CCProcessor) createCCRecords(ctx context.Context, pc *ProcessContext) (
 			cb.Equals("node_id", pc.Node.ID)
 		}).
 		Scan(ctx); err != nil {
-		return nil, nil, fmt.Errorf("load cc configs: %w", err)
+		return nil, fmt.Errorf("load cc configs: %w", err)
 	}
 
 	// CC resolution is best-effort (unresolvable configs are logged and skipped);
@@ -77,7 +77,7 @@ func (p *CCProcessor) createCCRecords(ctx context.Context, pc *ProcessContext) (
 	resolved := shared.CollectUniqueCCUserIDs(ctx, ccConfigs, pc.FormData, p.ccResolver.Resolve, nil)
 
 	if len(resolved) == 0 {
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	// Display-info lookup is likewise best-effort: a resolution failure must
@@ -87,8 +87,8 @@ func (p *CCProcessor) createCCRecords(ctx context.Context, pc *ProcessContext) (
 
 	insertedUserIDs, err := shared.InsertAutoCCRecords(ctx, pc.DB, pc.Instance.ID, pc.Node.ID, resolved, ccUserInfos)
 	if err != nil {
-		return nil, nil, fmt.Errorf("insert cc records: %w", err)
+		return nil, fmt.Errorf("insert cc records: %w", err)
 	}
 
-	return insertedUserIDs, shared.UserInfoNames(ccUserInfos), nil
+	return shared.UserInfos(insertedUserIDs, ccUserInfos), nil
 }

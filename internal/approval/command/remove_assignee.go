@@ -99,7 +99,7 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	events := []approval.DomainEvent{
-		approval.NewAssigneesRemovedEvent(task.InstanceID, task.TenantID, task.NodeID, task.ID, []string{task.AssigneeID}, map[string]string{task.AssigneeID: task.AssigneeName}),
+		approval.NewAssigneesRemovedEvent(instance, task, node, []approval.UserInfo{task.Assignee()}),
 	}
 
 	completionEvents, err := h.nodeSvc.HandleNodeCompletion(ctx, db, instance, node)

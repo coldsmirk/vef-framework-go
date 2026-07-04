@@ -198,8 +198,8 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 		// same audit trail a manual approval would: a task-approved event
 		// (system-operated) and an action log entry.
 		events = append(events, approval.NewTaskApprovedEvent(
-			task.ID, task.TenantID, pc.Instance.ID, pc.Node.ID,
-			shared.SystemOperator.ID, autoPassReasonConsecutiveApprover,
+			pc.Instance, task, pc.Node,
+			shared.SystemOperator, autoPassReasonConsecutiveApprover,
 		))
 		recordSystemActionLog(ctx, pc, task, autoPassReasonConsecutiveApprover)
 

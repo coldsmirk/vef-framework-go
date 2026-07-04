@@ -341,6 +341,6 @@ func (s *NodeServiceTestSuite) TestTriggerNodeCCShouldIgnoreExistingRecordsAndPu
 	s.Require().NotEmpty(captured, "Should publish at least one cc-notified event")
 	evt, ok := captured[len(captured)-1].(*approval.CCNotifiedEvent)
 	s.Require().True(ok, "Latest captured event should be *CCNotifiedEvent")
-	s.Require().Len(evt.CCUserIDs, 1, "CC event should include only newly inserted users")
-	s.Assert().Equal("cc-user-new", evt.CCUserIDs[0], "CC event should exclude already existing CC users")
+	s.Require().Len(evt.Recipients, 1, "CC event should include only newly inserted users")
+	s.Assert().Equal("cc-user-new", evt.Recipients[0].ID, "CC event should exclude already existing CC users")
 }

@@ -135,6 +135,19 @@ func (s *PublishVersionTestSuite) TestPublishSuccess() {
 	evt, ok := captured[0].(*approval.FlowPublishedEvent)
 	s.Require().True(ok, "Captured event should be *FlowPublishedEvent")
 	s.Assert().Equal(version.ID, evt.VersionID, "Event should reference the published version")
+	s.Assert().Equal("publish-test-flow", evt.Code, "Event envelope should carry the flow code")
+	s.Assert().Equal("Publish Test Flow", evt.Name, "Event envelope should carry the flow name")
+
+	// The deploy step feeding this test publishes the deployed event through
+	// the same bus — assert its envelope too so a partial flow load (missing
+	// code/name columns) cannot regress silently.
+	deployed := s.bus.CapturedByType("approval.flow.deployed")
+	s.Require().NotEmpty(deployed, "Deploy should publish a flow-deployed event")
+	deployedEvt, ok := deployed[len(deployed)-1].(*approval.FlowDeployedEvent)
+	s.Require().True(ok, "Captured event should be *FlowDeployedEvent")
+	s.Assert().Equal("publish-test-flow", deployedEvt.Code, "Deployed event envelope should carry the flow code")
+	s.Assert().Equal("Publish Test Flow", deployedEvt.Name, "Deployed event envelope should carry the flow name")
+	s.Assert().Equal(version.ID, deployedEvt.VersionID, "Deployed event should reference the draft version")
 }
 
 func (s *PublishVersionTestSuite) TestPublishVersionNotFound() {

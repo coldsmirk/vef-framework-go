@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/coldsmirk/go-collections"
+
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -314,31 +316,34 @@ func computeTaskDeadline(node *approval.FlowNode) *timex.DateTime {
 // Callers attach the events to their own event flow (the caller holds the
 // instance row lock, which serializes this two-step read-then-update against
 // every other task mutation path).
-func (s *TaskService) CancelRemainingTasks(ctx context.Context, db orm.DB, instanceID, nodeID, reason string) ([]approval.DomainEvent, error) {
-	return s.cancelActiveTasks(ctx, db, reason, func(cb orm.ConditionBuilder) {
-		cb.Equals("instance_id", instanceID).
-			Equals("node_id", nodeID).
+func (s *TaskService) CancelRemainingTasks(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, reason string) ([]approval.DomainEvent, error) {
+	return s.cancelActiveTasks(ctx, db, instance, reason, func(cb orm.ConditionBuilder) {
+		cb.Equals("instance_id", instance.ID).
+			Equals("node_id", node.ID).
 			In("status", cancelableTaskStatuses)
 	})
 }
 
 // CancelInstanceTasks cancels all pending/waiting tasks for an entire
 // instance, returning the corresponding TaskCanceledEvents.
-func (s *TaskService) CancelInstanceTasks(ctx context.Context, db orm.DB, instanceID, reason string) ([]approval.DomainEvent, error) {
-	return s.cancelActiveTasks(ctx, db, reason, func(cb orm.ConditionBuilder) {
-		cb.Equals("instance_id", instanceID).
+func (s *TaskService) CancelInstanceTasks(ctx context.Context, db orm.DB, instance *approval.Instance, reason string) ([]approval.DomainEvent, error) {
+	return s.cancelActiveTasks(ctx, db, instance, reason, func(cb orm.ConditionBuilder) {
+		cb.Equals("instance_id", instance.ID).
 			In("status", cancelableTaskStatuses)
 	})
 }
 
 // cancelActiveTasks loads the tasks matching filter, marks them canceled, and
-// returns their cancellation events in load order.
-func (*TaskService) cancelActiveTasks(ctx context.Context, db orm.DB, reason string, filter func(orm.ConditionBuilder)) ([]approval.DomainEvent, error) {
+// returns their cancellation events in load order. Canceled tasks may span
+// several nodes (instance-wide cancellation), so node names for the events
+// are batch-loaded by ID.
+func (*TaskService) cancelActiveTasks(ctx context.Context, db orm.DB, instance *approval.Instance, reason string, filter func(orm.ConditionBuilder)) ([]approval.DomainEvent, error) {
 	var tasks []approval.Task
 
 	if err := db.NewSelect().
 		Model(&tasks).
-		Select("id", "tenant_id", "instance_id", "node_id", "assignee_id", "assignee_name").
+		Select("id", "tenant_id", "instance_id", "node_id",
+			"assignee_id", "assignee_name", "assignee_department_id", "assignee_department_name").
 		Where(filter).
 		Scan(ctx); err != nil {
 		return nil, fmt.Errorf("load tasks to cancel: %w", err)
@@ -365,16 +370,57 @@ func (*TaskService) cancelActiveTasks(ctx context.Context, db orm.DB, reason str
 		return nil, fmt.Errorf("cancel tasks: %w", err)
 	}
 
+	nodeByID, err := loadNodesByID(ctx, db, tasks)
+	if err != nil {
+		return nil, err
+	}
+
 	events := make([]approval.DomainEvent, len(tasks))
+
 	for i := range tasks {
 		task := &tasks[i]
-		events[i] = approval.NewTaskCanceledEvent(
-			task.ID, task.TenantID, task.InstanceID, task.NodeID,
-			task.AssigneeID, task.AssigneeName, reason,
-		)
+
+		node := nodeByID[task.NodeID]
+		if node == nil {
+			// Defensive: the FK guarantees the node row exists; an absent
+			// entry would mean the load above raced a deletion. Emit the
+			// event with the ID-only coordinates rather than dropping it.
+			node = &approval.FlowNode{}
+			node.ID = task.NodeID
+		}
+
+		events[i] = approval.NewTaskCanceledEvent(instance, task, node, reason)
 	}
 
 	return events, nil
+}
+
+// loadNodesByID batch-loads the flow nodes referenced by the given tasks,
+// keyed by node ID.
+func loadNodesByID(ctx context.Context, db orm.DB, tasks []approval.Task) (map[string]*approval.FlowNode, error) {
+	nodeIDs := collections.NewHashSet[string]()
+	for i := range tasks {
+		nodeIDs.Add(tasks[i].NodeID)
+	}
+
+	var nodes []approval.FlowNode
+
+	if err := db.NewSelect().
+		Model(&nodes).
+		Select("id", "name").
+		Where(func(cb orm.ConditionBuilder) {
+			cb.In("id", nodeIDs.ToSlice())
+		}).
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("load nodes for canceled tasks: %w", err)
+	}
+
+	nodeByID := make(map[string]*approval.FlowNode, len(nodes))
+	for i := range nodes {
+		nodeByID[nodes[i].ID] = &nodes[i]
+	}
+
+	return nodeByID, nil
 }
 
 // IsAuthorizedForNodeOperation reports whether the operator may perform

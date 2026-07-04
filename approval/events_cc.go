@@ -1,27 +1,23 @@
 package approval
 
-import "github.com/coldsmirk/vef-framework-go/timex"
-
-// CCNotifiedEvent fired when users are carbon-copied.
+// CCNotifiedEvent fired when CC recipients are notified — automatically when
+// a node's CC timing triggers, or manually when a participant adds CCs.
 type CCNotifiedEvent struct {
-	InstanceID   string            `json:"instanceId"`
-	TenantID     string            `json:"tenantId"`
-	NodeID       string            `json:"nodeId"`
-	CCUserIDs    []string          `json:"ccUserIds"`
-	CCUserNames  map[string]string `json:"ccUserNames"`
-	IsManual     bool              `json:"isManual"`
-	OccurredTime timex.DateTime    `json:"occurredTime"`
+	InstanceEventBase
+
+	NodeID     string     `json:"nodeId"`
+	NodeName   string     `json:"nodeName"`
+	Recipients []UserInfo `json:"recipients"`
+	IsManual   bool       `json:"isManual"`
 }
 
-func NewCCNotifiedEvent(instanceID, tenantID, nodeID string, ccUserIDs []string, ccUserNames map[string]string, isManual bool) *CCNotifiedEvent {
+func NewCCNotifiedEvent(instance *Instance, node *FlowNode, recipients []UserInfo, isManual bool) *CCNotifiedEvent {
 	return &CCNotifiedEvent{
-		InstanceID:   instanceID,
-		TenantID:     tenantID,
-		NodeID:       nodeID,
-		CCUserIDs:    ccUserIDs,
-		CCUserNames:  ccUserNames,
-		IsManual:     isManual,
-		OccurredTime: timex.Now(),
+		InstanceEventBase: NewInstanceEventBase(instance),
+		NodeID:            node.ID,
+		NodeName:          node.Name,
+		Recipients:        recipients,
+		IsManual:          isManual,
 	}
 }
 

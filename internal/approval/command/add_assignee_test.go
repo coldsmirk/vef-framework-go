@@ -127,7 +127,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeSuccess() {
 		tc, ok := evt.(*approval.TaskCreatedEvent)
 		s.Require().True(ok, "Event should be *TaskCreatedEvent")
 
-		assignees = append(assignees, tc.AssigneeID)
+		assignees = append(assignees, tc.Assignee.ID)
 	}
 
 	s.Assert().ElementsMatch([]string{"new-user-1", "new-user-2"}, assignees,
@@ -539,9 +539,9 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldDeduplicateUserIDsAndIgnoreE
 	s.Require().NotEmpty(captured, "Should publish at least one assignee-added event")
 	evt, ok := captured[len(captured)-1].(*approval.AssigneesAddedEvent)
 	s.Require().True(ok, "Latest captured event should be *AssigneesAddedEvent")
-	s.Require().Len(evt.AssigneeIDs, 2, "Event should carry deduplicated assignee IDs")
-	s.Assert().Equal("new-user-1", evt.AssigneeIDs[0], "Event should preserve first-seen assignee order")
-	s.Assert().Equal("new-user-2", evt.AssigneeIDs[1], "Event should preserve first-seen assignee order")
+	s.Require().Len(evt.Assignees, 2, "Event should carry deduplicated assignees")
+	s.Assert().Equal("new-user-1", evt.Assignees[0].ID, "Event should preserve first-seen assignee order")
+	s.Assert().Equal("new-user-2", evt.Assignees[1].ID, "Event should preserve first-seen assignee order")
 }
 
 func (s *AddAssigneeTestSuite) TestAddAssigneeShouldSkipExistingActiveAssignee() {
@@ -586,8 +586,8 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldSkipExistingActiveAssignee()
 	s.Require().NotEmpty(captured, "Should publish at least one assignee-added event")
 	evt, ok := captured[len(captured)-1].(*approval.AssigneesAddedEvent)
 	s.Require().True(ok, "Latest captured event should be *AssigneesAddedEvent")
-	s.Require().Len(evt.AssigneeIDs, 1, "Event should only include newly inserted assignee")
-	s.Assert().Equal("new-user-2", evt.AssigneeIDs[0], "Event should exclude existing active assignee")
+	s.Require().Len(evt.Assignees, 1, "Event should only include newly inserted assignee")
+	s.Assert().Equal("new-user-2", evt.Assignees[0].ID, "Event should exclude existing active assignee")
 }
 
 func (s *AddAssigneeTestSuite) TestAddAssigneeShouldBeConcurrencySafe() {

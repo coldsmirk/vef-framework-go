@@ -83,7 +83,7 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 	flow.ID = cmd.FlowID
 	if err := db.NewSelect().
 		Model(&flow).
-		Select("current_version", "tenant_id").
+		Select("current_version", "tenant_id", "code", "name").
 		WherePK().
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
@@ -231,7 +231,7 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 	}
 
 	behavior.EventCollectorFromContext(ctx).Add(
-		approval.NewFlowDeployedEvent(version.FlowID, flow.TenantID, version.ID, version.Version),
+		approval.NewFlowDeployedEvent(&flow, version.ID, version.Version),
 	)
 
 	return &version, nil

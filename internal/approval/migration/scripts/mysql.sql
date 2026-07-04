@@ -215,6 +215,7 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     updated_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT 'Updater',
     tenant_id VARCHAR(32) NOT NULL COMMENT 'Tenant',
     flow_id VARCHAR(32) NOT NULL COMMENT 'Flow',
+    flow_code VARCHAR(64) NOT NULL COMMENT 'Flow Code',
     flow_version_id VARCHAR(32) NOT NULL COMMENT 'Version',
     -- Application info
     title VARCHAR(256) NOT NULL COMMENT 'Title',

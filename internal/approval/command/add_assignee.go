@@ -162,15 +162,7 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 			return cqrs.Unit{}, fmt.Errorf("insert assignee task: %w", err)
 		}
 
-		eventCollector.Add(approval.NewTaskCreatedEvent(
-			newTask.ID,
-			newTask.TenantID,
-			instance.ID,
-			task.NodeID,
-			userID,
-			info.Name,
-			newTask.Deadline,
-		))
+		eventCollector.Add(approval.NewTaskCreatedEvent(instance, newTask, node))
 	}
 
 	actionLog := cmd.Operator.NewActionLog(instance.ID, approval.ActionAddAssignee)
@@ -181,7 +173,7 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	eventCollector.Add(
-		approval.NewAssigneesAddedEvent(instance.ID, instance.TenantID, task.NodeID, task.ID, cmd.AddType, insertUsers, shared.UserInfoNames(userInfos)),
+		approval.NewAssigneesAddedEvent(instance, task, node, cmd.AddType, shared.UserInfos(insertUsers, userInfos)),
 	)
 
 	return cqrs.Unit{}, nil

@@ -72,7 +72,7 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 	}
 
 	events := []approval.DomainEvent{
-		approval.NewTaskRejectedEvent(task.ID, task.TenantID, instance.ID, node.ID, cmd.Operator.ID, cmd.Opinion),
+		approval.NewTaskRejectedEvent(instance, task, node, cmd.Operator, cmd.Opinion),
 	}
 
 	// A rejected task may still leave the node running (e.g. "any" pass rule),

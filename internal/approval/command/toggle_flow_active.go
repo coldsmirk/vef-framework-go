@@ -38,12 +38,12 @@ func (h *ToggleFlowActiveHandler) Handle(ctx context.Context, cmd ToggleFlowActi
 	var flow approval.Flow
 
 	flow.ID = cmd.FlowID
-	if err := db.NewSelect().Model(&flow).Select("tenant_id").WherePK().Scan(ctx); err != nil {
+	if err := db.NewSelect().Model(&flow).Select("tenant_id", "code", "name").WherePK().Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
 			return cqrs.Unit{}, shared.ErrFlowNotFound
 		}
 
-		return cqrs.Unit{}, fmt.Errorf("load flow tenant: %w", err)
+		return cqrs.Unit{}, fmt.Errorf("load flow: %w", err)
 	}
 
 	if err := cmd.Caller.Authorize(flow.TenantID); err != nil {
@@ -71,7 +71,7 @@ func (h *ToggleFlowActiveHandler) Handle(ctx context.Context, cmd ToggleFlowActi
 	}
 
 	behavior.EventCollectorFromContext(ctx).Add(
-		approval.NewFlowToggledEvent(cmd.FlowID, flow.TenantID, cmd.IsActive),
+		approval.NewFlowToggledEvent(&flow, cmd.IsActive),
 	)
 
 	return cqrs.Unit{}, nil

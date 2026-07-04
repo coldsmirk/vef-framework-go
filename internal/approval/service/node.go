@@ -62,7 +62,7 @@ func (s *NodeService) HandleNodeCompletion(
 			return nil, fmt.Errorf("trigger node cc: %w", err)
 		}
 
-		canceledEvents, err := s.taskSvc.CancelRemainingTasks(ctx, db, instance.ID, node.ID, "节点已通过，剩余任务无需处理")
+		canceledEvents, err := s.taskSvc.CancelRemainingTasks(ctx, db, instance, node, "节点已通过，剩余任务无需处理")
 		if err != nil {
 			return nil, err
 		}
@@ -82,7 +82,7 @@ func (s *NodeService) HandleNodeCompletion(
 			return nil, fmt.Errorf("trigger node cc: %w", err)
 		}
 
-		canceledEvents, err := s.taskSvc.CancelRemainingTasks(ctx, db, instance.ID, node.ID, "节点已拒绝，剩余任务无需处理")
+		canceledEvents, err := s.taskSvc.CancelRemainingTasks(ctx, db, instance, node, "节点已拒绝，剩余任务无需处理")
 		if err != nil {
 			return nil, err
 		}
@@ -102,7 +102,7 @@ func (s *NodeService) HandleNodeCompletion(
 		}
 
 		return append(canceledEvents,
-			approval.NewInstanceCompletedEvent(instance.ID, instance.TenantID, approval.InstanceRejected),
+			approval.NewInstanceCompletedEvent(instance, approval.InstanceRejected),
 		), nil
 
 	default:
@@ -166,7 +166,7 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 		return nil
 	}
 
-	evt := approval.NewCCNotifiedEvent(instance.ID, instance.TenantID, node.ID, insertedUserIDs, shared.UserInfoNames(ccUserInfos), false)
+	evt := approval.NewCCNotifiedEvent(instance, node, shared.UserInfos(insertedUserIDs, ccUserInfos), false)
 
 	if collector, ok := behavior.TryEventCollectorFromContext(ctx); ok {
 		collector.Add(evt)

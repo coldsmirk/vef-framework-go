@@ -171,13 +171,13 @@ func (s *Scanner) executeTimeoutAction(
 ) ([]approval.DomainEvent, error) {
 	switch node.TimeoutAction {
 	case approval.TimeoutActionNotify:
-		return s.recordTimeoutNotify(ctx, tx, task)
+		return recordTimeoutNotify(task, instance, node)
 	case approval.TimeoutActionAutoPass:
 		return s.autoFinishTask(ctx, tx, task, instance, node, true)
 	case approval.TimeoutActionAutoReject:
 		return s.autoFinishTask(ctx, tx, task, instance, node, false)
 	case approval.TimeoutActionTransferAdmin:
-		return s.transferToAdmin(ctx, tx, task, node)
+		return s.transferToAdmin(ctx, tx, task, instance, node)
 	default:
 		return nil, nil
 	}
@@ -185,21 +185,13 @@ func (s *Scanner) executeTimeoutAction(
 
 // recordTimeoutNotify returns the timeout event for the timed-out task.
 // Deduplication is handled by the is_timeout flag set in processTimeout.
-func (*Scanner) recordTimeoutNotify(_ context.Context, _ orm.DB, task *approval.Task) ([]approval.DomainEvent, error) {
+func recordTimeoutNotify(task *approval.Task, instance *approval.Instance, node *approval.FlowNode) ([]approval.DomainEvent, error) {
 	if task.Deadline == nil {
 		return nil, fmt.Errorf("%w: task %s", errNilDeadline, task.ID)
 	}
 
 	return []approval.DomainEvent{
-		approval.NewTaskTimedOutEvent(
-			task.ID,
-			task.TenantID,
-			task.InstanceID,
-			task.NodeID,
-			task.AssigneeID,
-			task.AssigneeName,
-			*task.Deadline,
-		),
+		approval.NewTaskTimedOutEvent(instance, task, node),
 	}, nil
 }
 
@@ -212,7 +204,7 @@ type timeoutResolution struct {
 	status   approval.TaskStatus
 	action   approval.ActionType
 	opinion  string
-	newEvent func(task *approval.Task, nodeID, opinion string) approval.DomainEvent
+	newEvent func(instance *approval.Instance, task *approval.Task, node *approval.FlowNode, opinion string) approval.DomainEvent
 }
 
 // resolveTimeoutCompletion maps the configured auto action onto the node
@@ -224,8 +216,8 @@ func resolveTimeoutCompletion(node *approval.FlowNode, autoApprove bool) timeout
 			status:  approval.TaskRejected,
 			action:  approval.ActionReject,
 			opinion: "任务处理超时，系统自动驳回",
-			newEvent: func(task *approval.Task, nodeID, opinion string) approval.DomainEvent {
-				return approval.NewTaskRejectedEvent(task.ID, task.TenantID, task.InstanceID, nodeID, shared.SystemOperator.ID, opinion)
+			newEvent: func(instance *approval.Instance, task *approval.Task, node *approval.FlowNode, opinion string) approval.DomainEvent {
+				return approval.NewTaskRejectedEvent(instance, task, node, shared.SystemOperator, opinion)
 			},
 		}
 
@@ -234,8 +226,8 @@ func resolveTimeoutCompletion(node *approval.FlowNode, autoApprove bool) timeout
 			status:  approval.TaskHandled,
 			action:  approval.ActionHandle,
 			opinion: "任务处理超时，系统自动办结",
-			newEvent: func(task *approval.Task, nodeID, opinion string) approval.DomainEvent {
-				return approval.NewTaskHandledEvent(task.ID, task.TenantID, task.InstanceID, nodeID, shared.SystemOperator.ID, opinion)
+			newEvent: func(instance *approval.Instance, task *approval.Task, node *approval.FlowNode, opinion string) approval.DomainEvent {
+				return approval.NewTaskHandledEvent(instance, task, node, shared.SystemOperator, opinion)
 			},
 		}
 
@@ -244,8 +236,8 @@ func resolveTimeoutCompletion(node *approval.FlowNode, autoApprove bool) timeout
 			status:  approval.TaskApproved,
 			action:  approval.ActionApprove,
 			opinion: "任务处理超时，系统自动通过",
-			newEvent: func(task *approval.Task, nodeID, opinion string) approval.DomainEvent {
-				return approval.NewTaskApprovedEvent(task.ID, task.TenantID, task.InstanceID, nodeID, shared.SystemOperator.ID, opinion)
+			newEvent: func(instance *approval.Instance, task *approval.Task, node *approval.FlowNode, opinion string) approval.DomainEvent {
+				return approval.NewTaskApprovedEvent(instance, task, node, shared.SystemOperator, opinion)
 			},
 		}
 	}
@@ -276,7 +268,7 @@ func (s *Scanner) autoFinishTask(
 	}
 
 	events := make([]approval.DomainEvent, 0, 2)
-	events = append(events, resolution.newEvent(task, node.ID, resolution.opinion))
+	events = append(events, resolution.newEvent(instance, task, node, resolution.opinion))
 
 	completionEvents, err := s.nodeSvc.HandleNodeCompletion(ctx, tx, instance, node)
 	if err != nil {
@@ -311,12 +303,12 @@ func (s *Scanner) autoFinishTask(
 // every scanner tick into a fresh, identical failure. The task stays pending
 // with its timeout flagged, and the emitted TaskTimedOutEvent gives operators
 // the signal to intervene.
-func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval.Task, node *approval.FlowNode) ([]approval.DomainEvent, error) {
+func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval.Task, instance *approval.Instance, node *approval.FlowNode) ([]approval.DomainEvent, error) {
 	targetAdminIDs := shared.NormalizeUniqueIDs(node.AdminUserIDs)
 	if len(targetAdminIDs) == 0 {
 		logger.Warnf("Node %q configured transfer_admin timeout but has no admin users; marking task %s timeout only", node.Key, task.ID)
 
-		return s.recordTimeoutNotify(ctx, tx, task)
+		return recordTimeoutNotify(task, instance, node)
 	}
 
 	// Resolve eligible admins (those without an active task on this node)
@@ -348,7 +340,7 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 	if len(eligibleAdminIDs) == 0 {
 		logger.Warnf("All admin users of node %q already hold active tasks; marking task %s timeout only", node.Key, task.ID)
 
-		return s.recordTimeoutNotify(ctx, tx, task)
+		return recordTimeoutNotify(task, instance, node)
 	}
 
 	// Finish the original task as transferred via the state machine so the
@@ -402,24 +394,13 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 		}
 
 		events = append(events, approval.NewTaskTransferredEvent(
-			task.ID,
-			task.TenantID,
-			task.InstanceID,
-			task.NodeID,
-			approval.UserInfo{ID: task.AssigneeID, Name: task.AssigneeName},
+			instance, task, node,
+			task.Assignee(),
 			admin,
 			"任务处理超时，系统自动转交管理员",
 		))
 
-		events = append(events, approval.NewTaskCreatedEvent(
-			newTask.ID,
-			newTask.TenantID,
-			task.InstanceID,
-			task.NodeID,
-			admin.ID,
-			admin.Name,
-			pendingDeadline,
-		))
+		events = append(events, approval.NewTaskCreatedEvent(instance, newTask, node))
 
 		actionLog := shared.SystemOperator.NewActionLog(task.InstanceID, approval.ActionTransfer)
 		actionLog.NodeID = new(task.NodeID)
@@ -530,16 +511,28 @@ func (s *Scanner) sendPreWarning(ctx context.Context, task *approval.Task, hours
 
 		task.IsPreWarningSent = true
 
-		evt := approval.NewTaskDeadlineWarningEvent(
-			task.ID,
-			task.TenantID,
-			task.InstanceID,
-			task.NodeID,
-			task.AssigneeID,
-			task.AssigneeName,
-			*task.Deadline,
-			hoursLeft,
-		)
+		var instance approval.Instance
+
+		instance.ID = task.InstanceID
+		if err := tx.NewSelect().
+			Model(&instance).
+			WherePK().
+			Scan(ctx); err != nil {
+			return fmt.Errorf("load instance %s: %w", task.InstanceID, err)
+		}
+
+		var node approval.FlowNode
+
+		node.ID = task.NodeID
+		if err := tx.NewSelect().
+			Model(&node).
+			Select("name").
+			WherePK().
+			Scan(ctx); err != nil {
+			return fmt.Errorf("load node %s: %w", task.NodeID, err)
+		}
+
+		evt := approval.NewTaskDeadlineWarningEvent(&instance, task, &node, hoursLeft)
 
 		return engine.PublishEventsTx(ctx, s.bus, tx, evt)
 	})

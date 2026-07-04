@@ -12,26 +12,17 @@ import "github.com/coldsmirk/vef-framework-go/timex"
 // If this contract proves insufficient, the right extension is to add a
 // dedicated TaskActivatedEvent rather than overloading TaskCreatedEvent.
 type TaskCreatedEvent struct {
-	TaskID       string          `json:"taskId"`
-	TenantID     string          `json:"tenantId"`
-	InstanceID   string          `json:"instanceId"`
-	NodeID       string          `json:"nodeId"`
-	AssigneeID   string          `json:"assigneeId"`
-	AssigneeName string          `json:"assigneeName"`
-	Deadline     *timex.DateTime `json:"deadline,omitempty"`
-	OccurredTime timex.DateTime  `json:"occurredTime"`
+	TaskEventBase
+
+	Assignee UserInfo        `json:"assignee"`
+	Deadline *timex.DateTime `json:"deadline,omitempty"`
 }
 
-func NewTaskCreatedEvent(taskID, tenantID, instanceID, nodeID, assigneeID, assigneeName string, deadline *timex.DateTime) *TaskCreatedEvent {
+func NewTaskCreatedEvent(instance *Instance, task *Task, node *FlowNode) *TaskCreatedEvent {
 	return &TaskCreatedEvent{
-		TaskID:       taskID,
-		TenantID:     tenantID,
-		InstanceID:   instanceID,
-		NodeID:       nodeID,
-		AssigneeID:   assigneeID,
-		AssigneeName: assigneeName,
-		Deadline:     deadline,
-		OccurredTime: timex.Now(),
+		TaskEventBase: NewTaskEventBase(instance, task, node),
+		Assignee:      task.Assignee(),
+		Deadline:      task.Deadline,
 	}
 }
 
@@ -39,24 +30,17 @@ func (*TaskCreatedEvent) EventType() string { return EventTypeTaskCreated }
 
 // TaskApprovedEvent fired when a task is approved.
 type TaskApprovedEvent struct {
-	TaskID       string         `json:"taskId"`
-	TenantID     string         `json:"tenantId"`
-	InstanceID   string         `json:"instanceId"`
-	NodeID       string         `json:"nodeId"`
-	OperatorID   string         `json:"operatorId"`
-	Opinion      *string        `json:"opinion,omitempty"`
-	OccurredTime timex.DateTime `json:"occurredTime"`
+	TaskEventBase
+
+	Operator UserInfo `json:"operator"`
+	Opinion  *string  `json:"opinion,omitempty"`
 }
 
-func NewTaskApprovedEvent(taskID, tenantID, instanceID, nodeID, operatorID, opinion string) *TaskApprovedEvent {
+func NewTaskApprovedEvent(instance *Instance, task *Task, node *FlowNode, operator UserInfo, opinion string) *TaskApprovedEvent {
 	return &TaskApprovedEvent{
-		TaskID:       taskID,
-		TenantID:     tenantID,
-		InstanceID:   instanceID,
-		NodeID:       nodeID,
-		OperatorID:   operatorID,
-		Opinion:      stringPtrOrNil(opinion),
-		OccurredTime: timex.Now(),
+		TaskEventBase: NewTaskEventBase(instance, task, node),
+		Operator:      operator,
+		Opinion:       stringPtrOrNil(opinion),
 	}
 }
 
@@ -64,24 +48,17 @@ func (*TaskApprovedEvent) EventType() string { return EventTypeTaskApproved }
 
 // TaskHandledEvent fired when a handle-type task is completed.
 type TaskHandledEvent struct {
-	TaskID       string         `json:"taskId"`
-	TenantID     string         `json:"tenantId"`
-	InstanceID   string         `json:"instanceId"`
-	NodeID       string         `json:"nodeId"`
-	OperatorID   string         `json:"operatorId"`
-	Opinion      *string        `json:"opinion,omitempty"`
-	OccurredTime timex.DateTime `json:"occurredTime"`
+	TaskEventBase
+
+	Operator UserInfo `json:"operator"`
+	Opinion  *string  `json:"opinion,omitempty"`
 }
 
-func NewTaskHandledEvent(taskID, tenantID, instanceID, nodeID, operatorID, opinion string) *TaskHandledEvent {
+func NewTaskHandledEvent(instance *Instance, task *Task, node *FlowNode, operator UserInfo, opinion string) *TaskHandledEvent {
 	return &TaskHandledEvent{
-		TaskID:       taskID,
-		TenantID:     tenantID,
-		InstanceID:   instanceID,
-		NodeID:       nodeID,
-		OperatorID:   operatorID,
-		Opinion:      stringPtrOrNil(opinion),
-		OccurredTime: timex.Now(),
+		TaskEventBase: NewTaskEventBase(instance, task, node),
+		Operator:      operator,
+		Opinion:       stringPtrOrNil(opinion),
 	}
 }
 
@@ -89,24 +66,17 @@ func (*TaskHandledEvent) EventType() string { return EventTypeTaskHandled }
 
 // TaskRejectedEvent fired when a task is rejected.
 type TaskRejectedEvent struct {
-	TaskID       string         `json:"taskId"`
-	TenantID     string         `json:"tenantId"`
-	InstanceID   string         `json:"instanceId"`
-	NodeID       string         `json:"nodeId"`
-	OperatorID   string         `json:"operatorId"`
-	Opinion      *string        `json:"opinion,omitempty"`
-	OccurredTime timex.DateTime `json:"occurredTime"`
+	TaskEventBase
+
+	Operator UserInfo `json:"operator"`
+	Opinion  *string  `json:"opinion,omitempty"`
 }
 
-func NewTaskRejectedEvent(taskID, tenantID, instanceID, nodeID, operatorID, opinion string) *TaskRejectedEvent {
+func NewTaskRejectedEvent(instance *Instance, task *Task, node *FlowNode, operator UserInfo, opinion string) *TaskRejectedEvent {
 	return &TaskRejectedEvent{
-		TaskID:       taskID,
-		TenantID:     tenantID,
-		InstanceID:   instanceID,
-		NodeID:       nodeID,
-		OperatorID:   operatorID,
-		Opinion:      stringPtrOrNil(opinion),
-		OccurredTime: timex.Now(),
+		TaskEventBase: NewTaskEventBase(instance, task, node),
+		Operator:      operator,
+		Opinion:       stringPtrOrNil(opinion),
 	}
 }
 
@@ -118,60 +88,37 @@ func (*TaskRejectedEvent) EventType() string { return EventTypeTaskRejected }
 // pending to-do entries for the canceled assignee. Reason carries the
 // triggering operation.
 type TaskCanceledEvent struct {
-	TaskID       string         `json:"taskId"`
-	TenantID     string         `json:"tenantId"`
-	InstanceID   string         `json:"instanceId"`
-	NodeID       string         `json:"nodeId"`
-	AssigneeID   string         `json:"assigneeId"`
-	AssigneeName string         `json:"assigneeName"`
-	Reason       string         `json:"reason"`
-	OccurredTime timex.DateTime `json:"occurredTime"`
+	TaskEventBase
+
+	Assignee UserInfo `json:"assignee"`
+	Reason   string   `json:"reason"`
 }
 
-func NewTaskCanceledEvent(taskID, tenantID, instanceID, nodeID, assigneeID, assigneeName, reason string) *TaskCanceledEvent {
+func NewTaskCanceledEvent(instance *Instance, task *Task, node *FlowNode, reason string) *TaskCanceledEvent {
 	return &TaskCanceledEvent{
-		TaskID:       taskID,
-		TenantID:     tenantID,
-		InstanceID:   instanceID,
-		NodeID:       nodeID,
-		AssigneeID:   assigneeID,
-		AssigneeName: assigneeName,
-		Reason:       reason,
-		OccurredTime: timex.Now(),
+		TaskEventBase: NewTaskEventBase(instance, task, node),
+		Assignee:      task.Assignee(),
+		Reason:        reason,
 	}
 }
 
 func (*TaskCanceledEvent) EventType() string { return EventTypeTaskCanceled }
 
-// TaskTransferredEvent fired when a task is transferred.
+// TaskTransferredEvent fired when a task is transferred by its assignee.
 type TaskTransferredEvent struct {
-	TaskID       string         `json:"taskId"`
-	TenantID     string         `json:"tenantId"`
-	InstanceID   string         `json:"instanceId"`
-	NodeID       string         `json:"nodeId"`
-	FromUserID   string         `json:"fromUserId"`
-	FromUserName string         `json:"fromUserName"`
-	ToUserID     string         `json:"toUserId"`
-	ToUserName   string         `json:"toUserName"`
-	Reason       *string        `json:"reason,omitempty"`
-	OccurredTime timex.DateTime `json:"occurredTime"`
+	TaskEventBase
+
+	From   UserInfo `json:"from"`
+	To     UserInfo `json:"to"`
+	Reason *string  `json:"reason,omitempty"`
 }
 
-// NewTaskTransferredEvent builds the event for a task moved from one user to
-// another. The from/to identities are passed as UserInfo values rather than
-// four flat strings so the id↔name pairs cannot be transposed at a call site.
-func NewTaskTransferredEvent(taskID, tenantID, instanceID, nodeID string, from, to UserInfo, reason string) *TaskTransferredEvent {
+func NewTaskTransferredEvent(instance *Instance, task *Task, node *FlowNode, from, to UserInfo, reason string) *TaskTransferredEvent {
 	return &TaskTransferredEvent{
-		TaskID:       taskID,
-		TenantID:     tenantID,
-		InstanceID:   instanceID,
-		NodeID:       nodeID,
-		FromUserID:   from.ID,
-		FromUserName: from.Name,
-		ToUserID:     to.ID,
-		ToUserName:   to.Name,
-		Reason:       stringPtrOrNil(reason),
-		OccurredTime: timex.Now(),
+		TaskEventBase: NewTaskEventBase(instance, task, node),
+		From:          from,
+		To:            to,
+		Reason:        stringPtrOrNil(reason),
 	}
 }
 
@@ -179,32 +126,19 @@ func (*TaskTransferredEvent) EventType() string { return EventTypeTaskTransferre
 
 // TaskReassignedEvent fired when an admin reassigns a task to a different user.
 type TaskReassignedEvent struct {
-	TaskID       string         `json:"taskId"`
-	TenantID     string         `json:"tenantId"`
-	InstanceID   string         `json:"instanceId"`
-	NodeID       string         `json:"nodeId"`
-	FromUserID   string         `json:"fromUserId"`
-	FromUserName string         `json:"fromUserName"`
-	ToUserID     string         `json:"toUserId"`
-	ToUserName   string         `json:"toUserName"`
-	Reason       *string        `json:"reason,omitempty"`
-	OccurredTime timex.DateTime `json:"occurredTime"`
+	TaskEventBase
+
+	From   UserInfo `json:"from"`
+	To     UserInfo `json:"to"`
+	Reason *string  `json:"reason,omitempty"`
 }
 
-// NewTaskReassignedEvent builds the event for an admin reassigning a task.
-// from/to are UserInfo values so the id↔name pairs cannot be transposed.
-func NewTaskReassignedEvent(taskID, tenantID, instanceID, nodeID string, from, to UserInfo, reason string) *TaskReassignedEvent {
+func NewTaskReassignedEvent(instance *Instance, task *Task, node *FlowNode, from, to UserInfo, reason string) *TaskReassignedEvent {
 	return &TaskReassignedEvent{
-		TaskID:       taskID,
-		TenantID:     tenantID,
-		InstanceID:   instanceID,
-		NodeID:       nodeID,
-		FromUserID:   from.ID,
-		FromUserName: from.Name,
-		ToUserID:     to.ID,
-		ToUserName:   to.Name,
-		Reason:       stringPtrOrNil(reason),
-		OccurredTime: timex.Now(),
+		TaskEventBase: NewTaskEventBase(instance, task, node),
+		From:          from,
+		To:            to,
+		Reason:        stringPtrOrNil(reason),
 	}
 }
 
@@ -212,78 +146,58 @@ func (*TaskReassignedEvent) EventType() string { return EventTypeTaskReassigned 
 
 // TaskTimedOutEvent fired when a task times out.
 type TaskTimedOutEvent struct {
-	TaskID       string         `json:"taskId"`
-	TenantID     string         `json:"tenantId"`
-	InstanceID   string         `json:"instanceId"`
-	NodeID       string         `json:"nodeId"`
-	AssigneeID   string         `json:"assigneeId"`
-	AssigneeName string         `json:"assigneeName"`
-	Deadline     timex.DateTime `json:"deadline"`
-	OccurredTime timex.DateTime `json:"occurredTime"`
+	TaskEventBase
+
+	Assignee UserInfo       `json:"assignee"`
+	Deadline timex.DateTime `json:"deadline"`
 }
 
-func NewTaskTimedOutEvent(taskID, tenantID, instanceID, nodeID, assigneeID, assigneeName string, deadline timex.DateTime) *TaskTimedOutEvent {
+func NewTaskTimedOutEvent(instance *Instance, task *Task, node *FlowNode) *TaskTimedOutEvent {
+	var deadline timex.DateTime
+	if task.Deadline != nil {
+		deadline = *task.Deadline
+	}
+
 	return &TaskTimedOutEvent{
-		TaskID:       taskID,
-		TenantID:     tenantID,
-		InstanceID:   instanceID,
-		NodeID:       nodeID,
-		AssigneeID:   assigneeID,
-		AssigneeName: assigneeName,
-		Deadline:     deadline,
-		OccurredTime: timex.Now(),
+		TaskEventBase: NewTaskEventBase(instance, task, node),
+		Assignee:      task.Assignee(),
+		Deadline:      deadline,
 	}
 }
 
 func (*TaskTimedOutEvent) EventType() string { return EventTypeTaskTimedOut }
 
-// AssigneesAddedEvent fired when assignees are dynamically added.
+// AssigneesAddedEvent fired when assignees are dynamically added. TaskID is
+// the task whose assignee initiated the addition.
 type AssigneesAddedEvent struct {
-	InstanceID    string            `json:"instanceId"`
-	TenantID      string            `json:"tenantId"`
-	NodeID        string            `json:"nodeId"`
-	TaskID        string            `json:"taskId"`
-	AddType       AddAssigneeType   `json:"addType"`
-	AssigneeIDs   []string          `json:"assigneeIds"`
-	AssigneeNames map[string]string `json:"assigneeNames"`
-	OccurredTime  timex.DateTime    `json:"occurredTime"`
+	TaskEventBase
+
+	AddType   AddAssigneeType `json:"addType"`
+	Assignees []UserInfo      `json:"assignees"`
 }
 
-func NewAssigneesAddedEvent(instanceID, tenantID, nodeID, taskID string, addType AddAssigneeType, assigneeIDs []string, assigneeNames map[string]string) *AssigneesAddedEvent {
+func NewAssigneesAddedEvent(instance *Instance, task *Task, node *FlowNode, addType AddAssigneeType, assignees []UserInfo) *AssigneesAddedEvent {
 	return &AssigneesAddedEvent{
-		InstanceID:    instanceID,
-		TenantID:      tenantID,
-		NodeID:        nodeID,
-		TaskID:        taskID,
+		TaskEventBase: NewTaskEventBase(instance, task, node),
 		AddType:       addType,
-		AssigneeIDs:   assigneeIDs,
-		AssigneeNames: assigneeNames,
-		OccurredTime:  timex.Now(),
+		Assignees:     assignees,
 	}
 }
 
 func (*AssigneesAddedEvent) EventType() string { return EventTypeAssigneesAdded }
 
-// AssigneesRemovedEvent fired when assignees are dynamically removed.
+// AssigneesRemovedEvent fired when assignees are dynamically removed. TaskID
+// is the removed assignee's task.
 type AssigneesRemovedEvent struct {
-	InstanceID    string            `json:"instanceId"`
-	TenantID      string            `json:"tenantId"`
-	NodeID        string            `json:"nodeId"`
-	TaskID        string            `json:"taskId"`
-	AssigneeIDs   []string          `json:"assigneeIds"`
-	AssigneeNames map[string]string `json:"assigneeNames"`
-	OccurredTime  timex.DateTime    `json:"occurredTime"`
+	TaskEventBase
+
+	Assignees []UserInfo `json:"assignees"`
 }
 
-func NewAssigneesRemovedEvent(instanceID, tenantID, nodeID, taskID string, assigneeIDs []string, assigneeNames map[string]string) *AssigneesRemovedEvent {
+func NewAssigneesRemovedEvent(instance *Instance, task *Task, node *FlowNode, assignees []UserInfo) *AssigneesRemovedEvent {
 	return &AssigneesRemovedEvent{
-		InstanceID:    instanceID,
-		TenantID:      tenantID,
-		NodeID:        nodeID,
-		TaskID:        taskID,
-		AssigneeIDs:   assigneeIDs,
-		AssigneeNames: assigneeNames,
-		OccurredTime:  timex.Now(),
+		TaskEventBase: NewTaskEventBase(instance, task, node),
+		Assignees:     assignees,
 	}
 }
 

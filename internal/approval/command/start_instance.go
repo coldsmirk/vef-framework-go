@@ -166,6 +166,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	instance := &approval.Instance{
 		TenantID:                flow.TenantID,
 		FlowID:                  flow.ID,
+		FlowCode:                flow.Code,
 		FlowVersionID:           version.ID,
 		Title:                   title,
 		InstanceNo:              instanceNo,
@@ -231,7 +232,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	}
 
 	behavior.EventCollectorFromContext(ctx).Add(
-		approval.NewInstanceCreatedEvent(instance.ID, instance.TenantID, flow.ID, title, cmd.Applicant.ID, cmd.Applicant.Name),
+		approval.NewInstanceCreatedEvent(instance),
 	)
 
 	return instance, nil

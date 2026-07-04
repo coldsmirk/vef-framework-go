@@ -338,7 +338,9 @@ func TestPublishEventsNilPublisher(t *testing.T) {
 	})
 
 	t.Run("NilPublisherWithEvents", func(t *testing.T) {
-		err := eng.publishEvents(t.Context(), nil, approval.NewInstanceCompletedEvent("inst-1", "tenant-1", approval.InstanceApproved))
+		inst := &approval.Instance{TenantID: "tenant-1"}
+		inst.ID = "inst-1"
+		err := eng.publishEvents(t.Context(), nil, approval.NewInstanceCompletedEvent(inst, approval.InstanceApproved))
 		assert.NoError(t, err, "Should not error with nil publisher even with events")
 	})
 }
@@ -383,8 +385,8 @@ func TestNewTaskCreatedEvent(t *testing.T) {
 		assert.Equal(t, "tenant-1", evt.TenantID, "Event should map Task.TenantID")
 		assert.Equal(t, "inst-1", evt.InstanceID, "Event should map ProcessContext.Instance.ID")
 		assert.Equal(t, "node-1", evt.NodeID, "Event should map ProcessContext.Node.ID")
-		assert.Equal(t, "user-7", evt.AssigneeID, "Event should map Task.AssigneeID")
-		assert.Equal(t, "测试用户", evt.AssigneeName, "Event should map Task.AssigneeName")
+		assert.Equal(t, "user-7", evt.Assignee.ID, "Event should map the assignee snapshot ID")
+		assert.Equal(t, "测试用户", evt.Assignee.Name, "Event should map the assignee snapshot name")
 		require.NotNil(t, evt.Deadline, "Pending task should include deadline")
 		assert.True(t, evt.Deadline.Equal(deadline), "Deadline should preserve the original value")
 		assert.False(t, evt.OccurredTime.IsZero(), "OccurredTime should be populated")

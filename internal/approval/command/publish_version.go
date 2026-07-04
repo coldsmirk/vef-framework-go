@@ -71,8 +71,8 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 	var flow approval.Flow
 
 	flow.ID = version.FlowID
-	if err := db.NewSelect().Model(&flow).Select("tenant_id", "code").WherePK().Scan(ctx); err != nil {
-		return cqrs.Unit{}, fmt.Errorf("load flow tenant: %w", err)
+	if err := db.NewSelect().Model(&flow).Select("tenant_id", "code", "name").WherePK().Scan(ctx); err != nil {
+		return cqrs.Unit{}, fmt.Errorf("load flow: %w", err)
 	}
 
 	if err := cmd.Caller.Authorize(flow.TenantID); err != nil {
@@ -169,7 +169,7 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 	}
 
 	behavior.EventCollectorFromContext(ctx).Add(
-		approval.NewFlowPublishedEvent(version.FlowID, flow.TenantID, cmd.VersionID),
+		approval.NewFlowPublishedEvent(&flow, cmd.VersionID),
 	)
 
 	return cqrs.Unit{}, nil

@@ -124,7 +124,7 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	behavior.EventCollectorFromContext(ctx).Add(
-		approval.NewInstanceResubmittedEvent(cmd.InstanceID, instance.TenantID, cmd.Operator.ID),
+		approval.NewInstanceResubmittedEvent(instance, cmd.Operator),
 	)
 
 	return cqrs.Unit{}, nil

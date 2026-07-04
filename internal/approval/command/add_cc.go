@@ -56,7 +56,7 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 
 	if err := db.NewSelect().
 		Model(&node).
-		Select("is_manual_cc_allowed").
+		Select("name", "is_manual_cc_allowed").
 		WherePK().
 		Scan(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("load current node: %w", err)
@@ -102,7 +102,7 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	behavior.EventCollectorFromContext(ctx).Add(
-		approval.NewCCNotifiedEvent(cmd.InstanceID, instance.TenantID, *instance.CurrentNodeID, insertedUserIDs, shared.UserInfoNames(ccUserInfos), true),
+		approval.NewCCNotifiedEvent(instance, &node, shared.UserInfos(insertedUserIDs, ccUserInfos), true),
 	)
 
 	return cqrs.Unit{}, nil

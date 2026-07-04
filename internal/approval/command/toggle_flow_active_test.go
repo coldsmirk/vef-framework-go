@@ -8,6 +8,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -27,7 +29,8 @@ type ToggleFlowActiveTestSuite struct {
 
 	ctx        context.Context
 	db         orm.DB
-	handler    *command.ToggleFlowActiveHandler
+	bus        *eventtest.FakeBus
+	handler    *BusPublishingHandler[command.ToggleFlowActiveCmd, cqrs.Unit]
 	categoryID string
 	flowID     string
 }
@@ -56,7 +59,8 @@ func (s *ToggleFlowActiveTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Should insert test flow")
 	s.flowID = flow.ID
 
-	s.handler = command.NewToggleFlowActiveHandler(s.db)
+	s.bus = eventtest.NewFakeBus()
+	s.handler = wrapWithBus(s.bus, command.NewToggleFlowActiveHandler(s.db))
 }
 
 func (s *ToggleFlowActiveTestSuite) TearDownTest() {
@@ -100,6 +104,14 @@ func (s *ToggleFlowActiveTestSuite) TestActivate() {
 		Scan(s.ctx)
 	s.Require().NoError(err, "Should query flow")
 	s.Assert().True(flow.IsActive, "Flow should be active")
+
+	captured := s.bus.CapturedByType("approval.flow.toggled")
+	s.Require().NotEmpty(captured, "Should publish a flow-toggled event")
+	evt, ok := captured[len(captured)-1].(*approval.FlowToggledEvent)
+	s.Require().True(ok, "Captured event should be *FlowToggledEvent")
+	s.Assert().True(evt.IsActive, "Event should carry the new active state")
+	s.Assert().Equal("toggle-flow", evt.Code, "Event envelope should carry the flow code")
+	s.Assert().Equal("Toggle Flow", evt.Name, "Event envelope should carry the flow name")
 }
 
 func (s *ToggleFlowActiveTestSuite) TestDeactivate() {

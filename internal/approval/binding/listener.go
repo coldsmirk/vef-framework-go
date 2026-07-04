@@ -101,7 +101,7 @@ func (l *Listener) handle(ctx context.Context, evt *approval.InstanceCompletedEv
 		}
 
 		failureEvent := approval.NewInstanceBindingFailedEvent(
-			instance.ID, instance.TenantID, flow.ID, evt.FinalStatus, businessTable, err.Error(),
+			&instance, evt.FinalStatus, businessTable, err.Error(),
 		)
 
 		if pubErr := l.publishFailure(ctx, failureEvent); pubErr != nil {

@@ -86,7 +86,7 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 
 	if err := db.NewSelect().
 		Model(&node).
-		Select("urge_cooldown_minutes").
+		Select("name", "urge_cooldown_minutes").
 		WherePK().
 		Scan(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("load node: %w", err)
@@ -138,17 +138,19 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 		return cqrs.Unit{}, fmt.Errorf("insert urge record: %w", err)
 	}
 
+	var instance approval.Instance
+
+	instance.ID = task.InstanceID
+
+	if err := db.NewSelect().
+		Model(&instance).
+		WherePK().
+		Scan(ctx); err != nil {
+		return cqrs.Unit{}, fmt.Errorf("load instance: %w", err)
+	}
+
 	behavior.EventCollectorFromContext(ctx).Add(
-		approval.NewTaskUrgedEvent(
-			task.InstanceID, task.TenantID, task.NodeID, cmd.TaskID,
-			urger,
-			approval.UserInfo{
-				ID:             task.AssigneeID,
-				Name:           task.AssigneeName,
-				DepartmentID:   task.AssigneeDepartmentID,
-				DepartmentName: task.AssigneeDepartmentName,
-			}, cmd.Message,
-		),
+		approval.NewTaskUrgedEvent(&instance, &task, &node, urger, cmd.Message),
 	)
 
 	return cqrs.Unit{}, nil

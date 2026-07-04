@@ -126,10 +126,8 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 	}
 
 	events := []approval.DomainEvent{
-		approval.NewTaskTransferredEvent(task.ID, task.TenantID, instance.ID, node.ID,
-			cmd.Operator,
-			transferTo, cmd.Opinion),
-		approval.NewTaskCreatedEvent(newTask.ID, newTask.TenantID, instance.ID, node.ID, transferTo.ID, transferTo.Name, task.Deadline),
+		approval.NewTaskTransferredEvent(instance, task, node, cmd.Operator, transferTo, cmd.Opinion),
+		approval.NewTaskCreatedEvent(instance, newTask, node),
 	}
 
 	actionLog := h.taskSvc.BuildActionLog(

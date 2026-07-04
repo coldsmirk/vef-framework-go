@@ -64,13 +64,20 @@ func TestListenerStartSubscribesWithStableGroup(t *testing.T) {
 		"Group name is the inbox dedupe scope and must remain stable")
 }
 
+func bindingFailureInstance() *approval.Instance {
+	instance := &approval.Instance{TenantID: "tenant-1", FlowID: "flow-1"}
+	instance.ID = "inst-1"
+
+	return instance
+}
+
 func TestListenerPublishFailure(t *testing.T) {
 	t.Run("UsesTxWhenDatabaseAvailable", func(t *testing.T) {
 		bus := &SpyBus{}
 		listener := NewListener(testx.NewTestDB(t), bus, nil)
 
 		err := listener.publishFailure(t.Context(), approval.NewInstanceBindingFailedEvent(
-			"inst-1", "tenant-1", "flow-1", approval.InstanceApproved, "biz_table", "boom"))
+			bindingFailureInstance(), approval.InstanceApproved, "biz_table", "boom"))
 
 		require.NoError(t, err, "Binding failure should publish through a short transaction when DB is available")
 		require.Len(t, bus.publishCalls, 1, "Binding failure should publish once to avoid outbox plus memory double delivery")
@@ -82,7 +89,7 @@ func TestListenerPublishFailure(t *testing.T) {
 		listener := NewListener(testx.NewTestDB(t), bus, nil)
 
 		err := listener.publishFailure(t.Context(), approval.NewInstanceBindingFailedEvent(
-			"inst-1", "tenant-1", "flow-1", approval.InstanceApproved, "biz_table", "boom"))
+			bindingFailureInstance(), approval.InstanceApproved, "biz_table", "boom"))
 
 		require.NoError(t, err, "Binding failure should fall back to non-transactional publish when no Tx route exists")
 		require.Len(t, bus.publishCalls, 2, "Binding failure should retry once without Tx after ErrTxRequired")
@@ -95,7 +102,7 @@ func TestListenerPublishFailure(t *testing.T) {
 		listener := NewListener(nil, bus, nil)
 
 		err := listener.publishFailure(t.Context(), approval.NewInstanceBindingFailedEvent(
-			"inst-1", "tenant-1", "flow-1", approval.InstanceApproved, "biz_table", "boom"))
+			bindingFailureInstance(), approval.InstanceApproved, "biz_table", "boom"))
 
 		require.NoError(t, err, "Binding failure should publish directly when DB is unavailable")
 		require.Len(t, bus.publishCalls, 1, "Binding failure should publish exactly once")

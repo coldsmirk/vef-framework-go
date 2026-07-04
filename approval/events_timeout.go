@@ -2,64 +2,47 @@ package approval
 
 import "github.com/coldsmirk/vef-framework-go/timex"
 
-// TaskDeadlineWarningEvent fired when a task is approaching its deadline.
+// TaskDeadlineWarningEvent fired ahead of a task's deadline so subscribers
+// can nudge the assignee before the timeout action kicks in.
 type TaskDeadlineWarningEvent struct {
-	TaskID       string         `json:"taskId"`
-	TenantID     string         `json:"tenantId"`
-	InstanceID   string         `json:"instanceId"`
-	NodeID       string         `json:"nodeId"`
-	AssigneeID   string         `json:"assigneeId"`
-	AssigneeName string         `json:"assigneeName"`
-	Deadline     timex.DateTime `json:"deadline"`
-	HoursLeft    int            `json:"hoursLeft"`
-	OccurredTime timex.DateTime `json:"occurredTime"`
+	TaskEventBase
+
+	Assignee  UserInfo       `json:"assignee"`
+	Deadline  timex.DateTime `json:"deadline"`
+	HoursLeft int            `json:"hoursLeft"`
 }
 
-func NewTaskDeadlineWarningEvent(taskID, tenantID, instanceID, nodeID, assigneeID, assigneeName string, deadline timex.DateTime, hoursLeft int) *TaskDeadlineWarningEvent {
+func NewTaskDeadlineWarningEvent(instance *Instance, task *Task, node *FlowNode, hoursLeft int) *TaskDeadlineWarningEvent {
+	var deadline timex.DateTime
+	if task.Deadline != nil {
+		deadline = *task.Deadline
+	}
+
 	return &TaskDeadlineWarningEvent{
-		TaskID:       taskID,
-		TenantID:     tenantID,
-		InstanceID:   instanceID,
-		NodeID:       nodeID,
-		AssigneeID:   assigneeID,
-		AssigneeName: assigneeName,
-		Deadline:     deadline,
-		HoursLeft:    hoursLeft,
-		OccurredTime: timex.Now(),
+		TaskEventBase: NewTaskEventBase(instance, task, node),
+		Assignee:      task.Assignee(),
+		Deadline:      deadline,
+		HoursLeft:     hoursLeft,
 	}
 }
 
 func (*TaskDeadlineWarningEvent) EventType() string { return EventTypeTaskDeadlineWarning }
 
-// TaskUrgedEvent fired when a task assignee is urged/reminded.
+// TaskUrgedEvent fired when a participant urges the pending assignee.
 type TaskUrgedEvent struct {
-	InstanceID     string         `json:"instanceId"`
-	TenantID       string         `json:"tenantId"`
-	NodeID         string         `json:"nodeId"`
-	TaskID         string         `json:"taskId"`
-	UrgerID        string         `json:"urgerId"`
-	UrgerName      string         `json:"urgerName"`
-	TargetUserID   string         `json:"targetUserId"`
-	TargetUserName string         `json:"targetUserName"`
-	Message        *string        `json:"message,omitempty"`
-	OccurredTime   timex.DateTime `json:"occurredTime"`
+	TaskEventBase
+
+	Urger   UserInfo `json:"urger"`
+	Target  UserInfo `json:"target"`
+	Message *string  `json:"message,omitempty"`
 }
 
-// NewTaskUrgedEvent builds the event for an urge/reminder. The urger and
-// target identities are passed as UserInfo values so the id↔name pairs cannot
-// be transposed at a call site.
-func NewTaskUrgedEvent(instanceID, tenantID, nodeID, taskID string, urger, target UserInfo, message string) *TaskUrgedEvent {
+func NewTaskUrgedEvent(instance *Instance, task *Task, node *FlowNode, urger UserInfo, message string) *TaskUrgedEvent {
 	return &TaskUrgedEvent{
-		InstanceID:     instanceID,
-		TenantID:       tenantID,
-		NodeID:         nodeID,
-		TaskID:         taskID,
-		UrgerID:        urger.ID,
-		UrgerName:      urger.Name,
-		TargetUserID:   target.ID,
-		TargetUserName: target.Name,
-		Message:        stringPtrOrNil(message),
-		OccurredTime:   timex.Now(),
+		TaskEventBase: NewTaskEventBase(instance, task, node),
+		Urger:         urger,
+		Target:        task.Assignee(),
+		Message:       stringPtrOrNil(message),
 	}
 }
 
