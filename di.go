@@ -338,13 +338,18 @@ func ProvideEventErrorSink(constructor any, paramTags ...string) fx.Option {
 	)
 }
 
-// SupplyBusinessBindingHook replaces the framework-provided default
-// approval.BusinessBindingHook (no-op create + status write-back) with a
-// host-supplied implementation. Hosts override this when their business
-// row needs to be allocated during start_instance or when the write-back
-// must touch additional columns / cross-service calls.
+// SupplyBusinessRefProvider replaces the default no-op
+// approval.BusinessRefProvider with a host implementation that resolves or
+// allocates the business row during start_instance, inside the same
+// transaction. Register one when the business record must come into
+// existence together with the instance; callers that already know the
+// reference can simply pass businessRef in the start parameters instead.
 //
-// constructor is an fx-style factory that returns approval.BusinessBindingHook
+// The engine-owned write-back of approval outcomes is not affected by this
+// hook and cannot be replaced — hosts extend around it with
+// ProvideApprovalLifecycleHook or event subscriptions.
+//
+// constructor is an fx-style factory that returns approval.BusinessRefProvider
 // (or a type implementing it). It may declare any dependencies already
 // registered in the fx graph.
 //
@@ -352,9 +357,29 @@ func ProvideEventErrorSink(constructor any, paramTags ...string) fx.Option {
 //
 //	fx.New(
 //	    vef.Module,
-//	    vef.SupplyBusinessBindingHook(newMyHook),
+//	    vef.SupplyBusinessRefProvider(newOrderRefProvider),
 //	)
-func SupplyBusinessBindingHook(constructor any) fx.Option {
+func SupplyBusinessRefProvider(constructor any) fx.Option {
+	return fx.Decorate(constructor)
+}
+
+// SupplyBusinessRefResolver replaces the default identity
+// approval.BusinessRefResolver. Register one when Instance.BusinessRef is
+// not the bare business primary key — e.g. a composite key encoded as JSON —
+// so the engine-owned write-back can still resolve the row to target in
+// `WHERE pk_field = ?`.
+//
+// constructor is an fx-style factory that returns approval.BusinessRefResolver
+// (or a type implementing it). It may declare any dependencies already
+// registered in the fx graph.
+//
+// Example:
+//
+//	fx.New(
+//	    vef.Module,
+//	    vef.SupplyBusinessRefResolver(newCompositeRefResolver),
+//	)
+func SupplyBusinessRefResolver(constructor any) fx.Option {
 	return fx.Decorate(constructor)
 }
 

@@ -22,17 +22,17 @@ type InstanceDetail struct {
 
 // InstanceInfo holds the instance's runtime state within a detail view.
 type InstanceInfo struct {
-	InstanceID       string            `json:"instanceId"`
-	InstanceNo       string            `json:"instanceNo"`
-	Title            string            `json:"title"`
-	FlowName         string            `json:"flowName"`
-	FlowIcon         *string           `json:"flowIcon,omitempty"`
-	Applicant        approval.UserInfo `json:"applicant"`
-	Status           string            `json:"status"`
-	CurrentNodeID    *string           `json:"currentNodeId,omitempty"`
-	CurrentNodeName  *string           `json:"currentNodeName,omitempty"`
-	BusinessRecordID *string           `json:"businessRecordId,omitempty"`
-	FormData         map[string]any    `json:"formData,omitempty"`
-	CreatedAt        timex.DateTime    `json:"createdAt"`
-	FinishedAt       *timex.DateTime   `json:"finishedAt,omitempty"`
+	InstanceID      string            `json:"instanceId"`
+	InstanceNo      string            `json:"instanceNo"`
+	Title           string            `json:"title"`
+	FlowName        string            `json:"flowName"`
+	FlowIcon        *string           `json:"flowIcon,omitempty"`
+	Applicant       approval.UserInfo `json:"applicant"`
+	Status          string            `json:"status"`
+	CurrentNodeID   *string           `json:"currentNodeId,omitempty"`
+	CurrentNodeName *string           `json:"currentNodeName,omitempty"`
+	BusinessRef     *string           `json:"businessRef,omitempty"`
+	FormData        map[string]any    `json:"formData,omitempty"`
+	CreatedAt       timex.DateTime    `json:"createdAt"`
+	FinishedAt      *timex.DateTime   `json:"finishedAt,omitempty"`
 }

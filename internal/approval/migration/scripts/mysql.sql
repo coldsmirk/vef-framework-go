@@ -228,7 +228,7 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     current_node_id VARCHAR(32) COMMENT 'Current Node',
     finished_at DATETIME NULL COMMENT 'Finished',
     -- Business association
-    business_record_id VARCHAR(128) COMMENT 'Biz Record',
+    business_ref VARCHAR(512) COMMENT 'Biz Ref',
     -- Form data
     form_data JSON COMMENT 'Form Data',
     -- Host-supplied global variables snapshotted at instance start
@@ -239,6 +239,7 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     CONSTRAINT uk_apv_instance__instance_no UNIQUE (instance_no),
     INDEX idx_apv_instance__tenant_id (tenant_id),
     INDEX idx_apv_instance__tenant_id_status_created_at (tenant_id, status, created_at DESC),
+    INDEX idx_apv_instance__business_ref (business_ref),
     INDEX idx_apv_instance__tenant_id_applicant_id_status (tenant_id, applicant_id, status),
     INDEX idx_apv_instance__flow_id_status_created_at (flow_id, status, created_at),
     INDEX idx_apv_instance__applicant_id_status_created_at (applicant_id, status, created_at DESC),

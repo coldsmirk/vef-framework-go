@@ -26,11 +26,11 @@ import (
 type StartInstanceCmd struct {
 	cqrs.BaseCommand
 
-	TenantID         string
-	FlowCode         string
-	Applicant        approval.UserInfo
-	BusinessRecordID *string
-	FormData         map[string]any
+	TenantID    string
+	FlowCode    string
+	Applicant   approval.UserInfo
+	BusinessRef *string
+	FormData    map[string]any
 	// Globals is the host-supplied global-variable snapshot persisted onto the
 	// instance (Instance.Globals) and resolved by condition evaluation — field
 	// subjects and expression bindings alike. Snapshotting at start keeps
@@ -45,7 +45,7 @@ type StartInstanceHandler struct {
 	engine              *engine.FlowEngine
 	instanceNoGenerator approval.InstanceNoGenerator
 	validationSvc       *service.ValidationService
-	bindingHook         approval.BusinessBindingHook
+	refProvider         approval.BusinessRefProvider
 	formStorage         *storage.Dispatcher
 }
 
@@ -58,7 +58,7 @@ func NewStartInstanceHandler(
 	engine *engine.FlowEngine,
 	instanceNoGenerator approval.InstanceNoGenerator,
 	validationSvc *service.ValidationService,
-	bindingHook approval.BusinessBindingHook,
+	refProvider approval.BusinessRefProvider,
 	formStorage *storage.Dispatcher,
 ) *StartInstanceHandler {
 	return &StartInstanceHandler{
@@ -66,7 +66,7 @@ func NewStartInstanceHandler(
 		engine:              engine,
 		instanceNoGenerator: instanceNoGenerator,
 		validationSvc:       validationSvc,
-		bindingHook:         bindingHook,
+		refProvider:         refProvider,
 		formStorage:         formStorage,
 	}
 }
@@ -174,7 +174,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		ApplicantDepartmentID:   cmd.Applicant.DepartmentID,
 		ApplicantDepartmentName: cmd.Applicant.DepartmentName,
 		Status:                  approval.InstanceRunning,
-		BusinessRecordID:        cmd.BusinessRecordID,
+		BusinessRef:             cmd.BusinessRef,
 		FormData:                cmd.FormData,
 		Globals:                 cmd.Globals,
 	}
@@ -185,24 +185,24 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		return nil, fmt.Errorf("insert instance: %w", err)
 	}
 
-	// Resolve the business binding (if any). The default hook is a no-op;
-	// hosts that override it can allocate a business row inside the same
-	// transaction. Returning empty string keeps BusinessRecordID nil.
+	// Resolve the business binding (if any). The default provider is a
+	// no-op; hosts that replace it can allocate a business row inside the
+	// same transaction. Returning empty string keeps BusinessRef nil.
 	if flow.BindingMode == approval.BindingBusiness {
-		businessID, err := h.bindingHook.OnInstanceCreated(ctx, db, &flow, instance)
+		businessRef, err := h.refProvider.OnInstanceCreated(ctx, db, &flow, instance)
 		if err != nil {
 			return nil, fmt.Errorf("business binding on create: %w", err)
 		}
 
-		trimmed := strings.TrimSpace(businessID)
-		if trimmed != "" && (instance.BusinessRecordID == nil || *instance.BusinessRecordID == "") {
-			instance.BusinessRecordID = &trimmed
+		trimmed := strings.TrimSpace(businessRef)
+		if trimmed != "" && (instance.BusinessRef == nil || *instance.BusinessRef == "") {
+			instance.BusinessRef = &trimmed
 			if _, err := db.NewUpdate().
 				Model(instance).
-				Select("business_record_id").
+				Select("business_ref").
 				WherePK().
 				Exec(ctx); err != nil {
-				return nil, fmt.Errorf("persist business_record_id: %w", err)
+				return nil, fmt.Errorf("persist business_ref: %w", err)
 			}
 		}
 	}

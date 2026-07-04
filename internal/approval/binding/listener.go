@@ -14,23 +14,23 @@ import (
 
 var logger = logx.Named("approval:binding")
 
-// Listener subscribes to InstanceCompletedEvent and runs the business
-// binding write-back asynchronously, decoupled from the approval transaction.
+// Listener subscribes to InstanceCompletedEvent and runs the engine-owned
+// business write-back asynchronously, decoupled from the approval
+// transaction.
 //
-// Failure semantics: if OnInstanceCompleted returns an error, the listener
+// Failure semantics: if the write-back returns an error, the listener
 // publishes InstanceBindingFailedEvent so operators (or compensating workers)
 // can retry. The approval status itself is never rolled back — the workflow
 // has already decided.
 type Listener struct {
-	db   orm.DB
-	bus  event.Bus
-	hook approval.BusinessBindingHook
+	db     orm.DB
+	bus    event.Bus
+	writer *Writer
 }
 
-// NewListener constructs the listener. The hook is the host-overridable
-// BusinessBindingHook bound via FX (defaults to DefaultHook).
-func NewListener(db orm.DB, bus event.Bus, hook approval.BusinessBindingHook) *Listener {
-	return &Listener{db: db, bus: bus, hook: hook}
+// NewListener constructs the listener around the engine-owned Writer.
+func NewListener(db orm.DB, bus event.Bus, writer *Writer) *Listener {
+	return &Listener{db: db, bus: bus, writer: writer}
 }
 
 // bindingConsumerGroup is the stable consumer group name for the binding
@@ -53,7 +53,7 @@ func (l *Listener) Start() error {
 }
 
 func (l *Listener) handle(ctx context.Context, evt *approval.InstanceCompletedEvent, _ event.Envelope) error {
-	if l.hook == nil {
+	if l.writer == nil {
 		return nil
 	}
 
@@ -89,7 +89,7 @@ func (l *Listener) handle(ctx context.Context, evt *approval.InstanceCompletedEv
 		return nil
 	}
 
-	if err := l.hook.WriteBackStatus(ctx, l.db, &flow, &instance, evt.FinalStatus); err != nil {
+	if err := l.writer.WriteBackStatus(ctx, l.db, &flow, &instance, evt.FinalStatus); err != nil {
 		// Surface as a domain event so operators / Saga workers can
 		// retry. Failed bindings on a misconfigured flow surface with
 		// ErrBindingMisconfigured; transient failures show their wrapped

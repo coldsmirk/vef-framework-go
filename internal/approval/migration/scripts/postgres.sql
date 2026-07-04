@@ -342,7 +342,7 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     current_node_id VARCHAR(32),
     finished_at TIMESTAMP,
     -- Business association
-    business_record_id VARCHAR(128),
+    business_ref VARCHAR(512),
     -- Form data
     form_data JSONB,
     -- Host-supplied global variables snapshotted at instance start
@@ -370,12 +370,13 @@ COMMENT ON COLUMN apv_instance.applicant_department_name IS 'Dept Name';
 COMMENT ON COLUMN apv_instance.status IS 'Status';
 COMMENT ON COLUMN apv_instance.current_node_id IS 'Current Node';
 COMMENT ON COLUMN apv_instance.finished_at IS 'Finished';
-COMMENT ON COLUMN apv_instance.business_record_id IS 'Biz Record';
+COMMENT ON COLUMN apv_instance.business_ref IS 'Biz Ref';
 COMMENT ON COLUMN apv_instance.form_data IS 'Form Data';
 COMMENT ON COLUMN apv_instance.globals IS 'Instance Globals';
 
 CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id ON apv_instance(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id_status_created_at ON apv_instance(tenant_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_apv_instance__business_ref ON apv_instance(business_ref);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id_applicant_id_status ON apv_instance(tenant_id, applicant_id, status);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__flow_id_status_created_at ON apv_instance(flow_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__applicant_id_status_created_at ON apv_instance(applicant_id, status, created_at DESC);

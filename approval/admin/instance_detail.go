@@ -21,21 +21,21 @@ type InstanceDetail struct {
 // InstanceDetailInfo carries the instance's runtime state within an admin
 // detail view.
 type InstanceDetailInfo struct {
-	InstanceID       string            `json:"instanceId"`
-	InstanceNo       string            `json:"instanceNo"`
-	Title            string            `json:"title"`
-	TenantID         string            `json:"tenantId"`
-	FlowID           string            `json:"flowId"`
-	FlowName         string            `json:"flowName"`
-	FlowVersionID    string            `json:"flowVersionId"`
-	Applicant        approval.UserInfo `json:"applicant"`
-	Status           string            `json:"status"`
-	CurrentNodeID    *string           `json:"currentNodeId,omitempty"`
-	CurrentNodeName  *string           `json:"currentNodeName,omitempty"`
-	BusinessRecordID *string           `json:"businessRecordId,omitempty"`
-	FormData         map[string]any    `json:"formData,omitempty"`
-	CreatedAt        timex.DateTime    `json:"createdAt"`
-	FinishedAt       *timex.DateTime   `json:"finishedAt,omitempty"`
+	InstanceID      string            `json:"instanceId"`
+	InstanceNo      string            `json:"instanceNo"`
+	Title           string            `json:"title"`
+	TenantID        string            `json:"tenantId"`
+	FlowID          string            `json:"flowId"`
+	FlowName        string            `json:"flowName"`
+	FlowVersionID   string            `json:"flowVersionId"`
+	Applicant       approval.UserInfo `json:"applicant"`
+	Status          string            `json:"status"`
+	CurrentNodeID   *string           `json:"currentNodeId,omitempty"`
+	CurrentNodeName *string           `json:"currentNodeName,omitempty"`
+	BusinessRef     *string           `json:"businessRef,omitempty"`
+	FormData        map[string]any    `json:"formData,omitempty"`
+	CreatedAt       timex.DateTime    `json:"createdAt"`
+	FinishedAt      *timex.DateTime   `json:"finishedAt,omitempty"`
 }
 
 // ActionLog represents an action log entry in the admin audit view. Person

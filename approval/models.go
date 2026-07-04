@@ -210,8 +210,13 @@ type Instance struct {
 	Status                  InstanceStatus  `json:"status" bun:"status"`
 	CurrentNodeID           *string         `json:"currentNodeId" bun:"current_node_id,nullzero"`
 	FinishedAt              *timex.DateTime `json:"finishedAt" bun:"finished_at,nullzero"`
-	BusinessRecordID        *string         `json:"businessRecordId" bun:"business_record_id,nullzero"`
-	FormData                map[string]any  `json:"formData" bun:"form_data,type:jsonb,nullzero"`
+	// BusinessRef is the opaque reference to the bound business record. The
+	// engine never parses it — hosts choose the shape (single primary key,
+	// composite key as JSON, business number, …). The engine-owned write-back
+	// resolves it through BusinessRefResolver; non-single-key shapes register
+	// a custom resolver.
+	BusinessRef *string        `json:"businessRef" bun:"business_ref,nullzero"`
+	FormData    map[string]any `json:"formData" bun:"form_data,type:jsonb,nullzero"`
 	// Globals is the host-supplied global-variable snapshot taken at instance
 	// start (tenant attributes, applicant roles, business limits, …). Condition
 	// evaluation resolves field subjects and expression bindings against it, so

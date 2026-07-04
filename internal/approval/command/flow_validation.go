@@ -29,11 +29,12 @@ func validateBusinessBindingComplete(mode approval.BindingMode, table, pkField, 
 
 // validateBusinessIdentifiers enforces the SQL-identifier whitelist on
 // every business binding field whenever BindingMode == BindingBusiness.
-// Empty values are tolerated here (the runtime check in DefaultHook rejects
-// flows with blank table/pk/status separately). Returns the domain-level
-// shared.ErrInvalidBusinessIdentifier so the API surface emits a stable
-// error code; the regex itself lives in approval.ValidateBusinessIdentifier
-// so binding.DefaultHook can reuse it for defense-in-depth.
+// Empty values are tolerated here (the runtime check in the binding Writer
+// rejects flows with blank table/pk/status separately). Returns the
+// domain-level shared.ErrInvalidBusinessIdentifier so the API surface emits
+// a stable error code; the regex itself lives in
+// approval.ValidateBusinessIdentifier so the write-back can reuse it for
+// defense-in-depth.
 func validateBusinessIdentifiers(mode approval.BindingMode, table, pkField, statusField *string) error {
 	if mode != approval.BindingBusiness {
 		return nil

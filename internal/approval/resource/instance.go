@@ -136,10 +136,10 @@ func NewInstanceResource(
 type StartInstanceParams struct {
 	api.P
 
-	TenantID         string         `json:"tenantId" validate:"required"`
-	FlowCode         string         `json:"flowCode" validate:"required"`
-	BusinessRecordID *string        `json:"businessRecordId"`
-	FormData         map[string]any `json:"formData"`
+	TenantID    string         `json:"tenantId" validate:"required"`
+	FlowCode    string         `json:"flowCode" validate:"required"`
+	BusinessRef *string        `json:"businessRef" validate:"omitempty,max=512"`
+	FormData    map[string]any `json:"formData"`
 }
 
 // Start creates a new flow instance.
@@ -158,13 +158,13 @@ func (r *InstanceResource) Start(ctx fiber.Ctx, principal *security.Principal, p
 	}
 
 	instance, err := cqrs.Send[command.StartInstanceCmd, *approval.Instance](ctx.Context(), r.bus, command.StartInstanceCmd{
-		TenantID:         params.TenantID,
-		FlowCode:         params.FlowCode,
-		Applicant:        actor.Operator,
-		BusinessRecordID: params.BusinessRecordID,
-		FormData:         params.FormData,
-		Globals:          globals,
-		Caller:           actor.Caller,
+		TenantID:    params.TenantID,
+		FlowCode:    params.FlowCode,
+		Applicant:   actor.Operator,
+		BusinessRef: params.BusinessRef,
+		FormData:    params.FormData,
+		Globals:     globals,
+		Caller:      actor.Caller,
 	})
 	if err != nil {
 		return err

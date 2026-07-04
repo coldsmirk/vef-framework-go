@@ -30,7 +30,7 @@ func TestValidateBusinessIdentifiers(t *testing.T) {
 
 	t.Run("EmptyTolerated", func(t *testing.T) {
 		t.Parallel()
-		// DefaultHook handles blank table/pk/status separately; the
+		// The binding Writer handles blank table/pk/status separately; the
 		// validator only rejects non-empty values that aren't SQL-safe.
 		err := validateBusinessIdentifiers(approval.BindingBusiness, nil, nil, nil)
 		assert.NoError(t, err, "Nil identifiers should not trigger rejection")
