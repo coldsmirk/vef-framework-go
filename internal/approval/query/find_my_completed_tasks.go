@@ -56,7 +56,7 @@ func (h *FindMyCompletedTasksHandler) Handle(ctx context.Context, query FindMyCo
 					cb.Equals("tenant_id", *query.TenantID)
 				})
 		}).
-		OrderByDesc("finished_at")
+		OrderByDesc("finished_at", "id")
 
 	sq = applyPageable(sq, &query.Pageable)
 

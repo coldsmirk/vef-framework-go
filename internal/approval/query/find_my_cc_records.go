@@ -53,7 +53,7 @@ func (h *FindMyCCRecordsHandler) Handle(ctx context.Context, query FindMyCCRecor
 			}
 		}).
 		ApplyIf(query.TenantID != nil, scopeCCByTenant(query.TenantID)).
-		OrderByDesc("created_at")
+		OrderByDesc("created_at", "id")
 
 	sq = applyPageable(sq, &query.Pageable)
 

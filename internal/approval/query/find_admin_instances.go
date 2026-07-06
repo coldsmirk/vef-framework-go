@@ -57,7 +57,7 @@ func (h *FindAdminInstancesHandler) Handle(ctx context.Context, query FindAdminI
 					cb.Contains("title", *query.Keyword)
 				})
 		}).
-		OrderByDesc("created_at")
+		OrderByDesc("created_at", "id")
 
 	sq = applyPageable(sq, &query.Pageable)
 

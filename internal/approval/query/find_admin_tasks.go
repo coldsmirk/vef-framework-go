@@ -53,7 +53,7 @@ func (h *FindAdminTasksHandler) Handle(ctx context.Context, query FindAdminTasks
 					cb.Equals("status", *query.Status)
 				})
 		}).
-		OrderByDesc("created_at")
+		OrderByDesc("created_at", "id")
 
 	sq = applyPageable(sq, &query.Pageable)
 

@@ -47,7 +47,7 @@ func (h *FindMyPendingTasksHandler) Handle(ctx context.Context, query FindMyPend
 					cb.Equals("tenant_id", *query.TenantID)
 				})
 		}).
-		OrderByDesc("created_at")
+		OrderByDesc("created_at", "id")
 
 	sq = applyPageable(sq, &query.Pageable)
 

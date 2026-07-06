@@ -55,7 +55,7 @@ func (h *FindMyInitiatedHandler) Handle(ctx context.Context, query FindMyInitiat
 					cb.Contains("title", *query.Keyword)
 				})
 		}).
-		OrderByDesc("created_at")
+		OrderByDesc("created_at", "id")
 
 	sq = applyPageable(sq, &query.Pageable)
 

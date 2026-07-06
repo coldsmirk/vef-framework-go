@@ -56,7 +56,7 @@ func (h *FindAdminActionLogsHandler) Handle(ctx context.Context, query FindAdmin
 
 	sq := db.NewSelect().Model(&logs).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", query.InstanceID) }).
-		OrderBy("created_at")
+		OrderBy("created_at", "id")
 
 	sq = applyPageable(sq, &query.Pageable)
 
