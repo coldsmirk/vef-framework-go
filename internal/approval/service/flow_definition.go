@@ -19,11 +19,29 @@ var validNodeKinds = collections.NewHashSetFrom(
 )
 
 // FlowDefinitionService provides flow-level domain operations.
-type FlowDefinitionService struct{}
+type FlowDefinitionService struct {
+	// aggregateKinds is the set of aggregate kinds with a registered
+	// approval.Aggregator. Deploy validation accepts exactly this set, so a
+	// host-registered aggregate (vef.ProvideApprovalAggregator) becomes
+	// deployable with no framework changes — the open-closed contract the
+	// Aggregator interface promises.
+	aggregateKinds map[approval.AggregateKind]struct{}
+}
 
-// NewFlowDefinitionService creates a new FlowDefinitionService.
-func NewFlowDefinitionService() *FlowDefinitionService {
-	return new(FlowDefinitionService)
+// NewFlowDefinitionService creates a new FlowDefinitionService. The
+// registered aggregate kinds default to the built-ins when omitted (the
+// production module passes the full boot-registered set).
+func NewFlowDefinitionService(aggregateKinds ...approval.AggregateKind) *FlowDefinitionService {
+	if len(aggregateKinds) == 0 {
+		aggregateKinds = []approval.AggregateKind{approval.AggregateSum, approval.AggregateCount, approval.AggregateAvg}
+	}
+
+	kinds := make(map[approval.AggregateKind]struct{}, len(aggregateKinds))
+	for _, kind := range aggregateKinds {
+		kinds[kind] = struct{}{}
+	}
+
+	return &FlowDefinitionService{aggregateKinds: kinds}
 }
 
 // ValidateFlowDefinition validates the structural integrity of a flow

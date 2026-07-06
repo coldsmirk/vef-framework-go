@@ -327,3 +327,95 @@ func TestExpressionConditionEvaluator(t *testing.T) {
 		assert.True(t, result, "Built-in bindings must win a collision with a global")
 	})
 }
+
+func TestAggregateConditions(t *testing.T) {
+	e := NewFieldConditionEvaluator(NewSumAggregator(), NewCountAggregator(), NewAvgAggregator())
+	ec := &approval.EvaluationContext{FormData: approval.NewFormData(map[string]any{
+		"items": []any{
+			map[string]any{"amount": 100, "note": "a"},
+			map[string]any{"amount": 250.5},
+			map[string]any{"amount": nil},
+		},
+		"empty":  []any{},
+		"broken": "not-a-list",
+		"badRow": []any{map[string]any{"amount": "NaN"}},
+	})}
+
+	cond := func(agg approval.AggregateKind, column string, op approval.ConditionOperator, value any) approval.Condition {
+		return approval.Condition{Kind: approval.ConditionField, Subject: "items", Aggregate: agg, Column: column, Operator: op, Value: value}
+	}
+
+	t.Run("SumComparesTotal", func(t *testing.T) {
+		matched, err := e.Evaluate(context.Background(), cond(approval.AggregateSum, "amount", approval.OperatorGreater, 300), ec)
+		require.NoError(t, err, "sum should evaluate")
+		assert.True(t, matched, "350.5 > 300 should match")
+
+		matched, err = e.Evaluate(context.Background(), cond(approval.AggregateSum, "amount", approval.OperatorGreater, 400), ec)
+		require.NoError(t, err, "sum should evaluate")
+		assert.False(t, matched, "350.5 > 400 should not match")
+	})
+
+	t.Run("CountFoldsRowsIncludingNilCells", func(t *testing.T) {
+		matched, err := e.Evaluate(context.Background(), cond(approval.AggregateCount, "", approval.OperatorEquals, 3), ec)
+		require.NoError(t, err, "count should evaluate")
+		assert.True(t, matched, "count folds rows, not non-nil cells")
+	})
+
+	t.Run("AvgSkipsNilCells", func(t *testing.T) {
+		matched, err := e.Evaluate(context.Background(), cond(approval.AggregateAvg, "amount", approval.OperatorGreaterOrEq, 175.25), ec)
+		require.NoError(t, err, "avg should evaluate")
+		assert.True(t, matched, "avg over the two non-nil amounts is 175.25")
+	})
+
+	t.Run("MissingTableFoldsAsEmpty", func(t *testing.T) {
+		missing := approval.Condition{Kind: approval.ConditionField, Subject: "absent", Aggregate: approval.AggregateSum, Column: "amount", Operator: approval.OperatorEquals, Value: 0}
+		matched, err := e.Evaluate(context.Background(), missing, ec)
+		require.NoError(t, err, "a missing table folds as zero rows")
+		assert.True(t, matched, "sum over an empty table is 0")
+
+		count := approval.Condition{Kind: approval.ConditionField, Subject: "empty", Aggregate: approval.AggregateCount, Operator: approval.OperatorEquals, Value: 0}
+		matched, err = e.Evaluate(context.Background(), count, ec)
+		require.NoError(t, err, "count over an empty table should evaluate")
+		assert.True(t, matched, "count of an empty table is 0")
+	})
+
+	t.Run("AvgOverEmptyMatchesNothing", func(t *testing.T) {
+		empty := approval.Condition{Kind: approval.ConditionField, Subject: "empty", Aggregate: approval.AggregateAvg, Column: "amount", Operator: approval.OperatorLessOrEq, Value: 1e18}
+		matched, err := e.Evaluate(context.Background(), empty, ec)
+		require.NoError(t, err, "avg over an empty table is not an error")
+		assert.False(t, matched, "avg over zero rows has no value and must match nothing — SQL NULL semantics")
+	})
+
+	t.Run("NonListValueFailsLoudly", func(t *testing.T) {
+		bad := approval.Condition{Kind: approval.ConditionField, Subject: "broken", Aggregate: approval.AggregateCount, Operator: approval.OperatorEquals, Value: 0}
+		_, err := e.Evaluate(context.Background(), bad, ec)
+		require.Error(t, err, "a non-list table value must fail the evaluation, not silently mismatch")
+	})
+
+	t.Run("NonNumericCellFailsLoudly", func(t *testing.T) {
+		bad := approval.Condition{Kind: approval.ConditionField, Subject: "badRow", Aggregate: approval.AggregateSum, Column: "amount", Operator: approval.OperatorEquals, Value: 0}
+		_, err := e.Evaluate(context.Background(), bad, ec)
+		require.Error(t, err, "a present non-numeric cell must fail the evaluation")
+	})
+
+	t.Run("UnknownAggregatorFailsLoudly", func(t *testing.T) {
+		bare := NewFieldConditionEvaluator()
+		_, err := bare.Evaluate(context.Background(), cond(approval.AggregateSum, "amount", approval.OperatorEquals, 0), ec)
+		require.ErrorIs(t, err, ErrAggregatorNotFound, "an unregistered aggregate kind must fail loudly")
+	})
+}
+
+func TestAggregateIgnoresCollidingGlobal(t *testing.T) {
+	e := NewFieldConditionEvaluator(NewCountAggregator())
+	ec := &approval.EvaluationContext{
+		// A host global colliding with the table key shadows SCALAR subjects,
+		// but aggregates fold form data by contract — globals are scalars.
+		Globals:  map[string]any{"items": "shadow"},
+		FormData: approval.NewFormData(map[string]any{"items": []any{map[string]any{"qty": 1}}}),
+	}
+
+	cond := approval.Condition{Kind: approval.ConditionField, Subject: "items", Aggregate: approval.AggregateCount, Operator: approval.OperatorEquals, Value: 1}
+	matched, err := e.Evaluate(context.Background(), cond, ec)
+	require.NoError(t, err, "the colliding global must not shadow the aggregate's table read")
+	assert.True(t, matched, "count folds the form table, not the global")
+}

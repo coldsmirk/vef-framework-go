@@ -72,6 +72,14 @@ var (
 	errSequentialParallelAdd      = errors.New("sequential nodes do not support add-assignee type 'parallel'")
 	errBranchConditionsRequired   = errors.New("non-default condition branch requires at least one condition group")
 	errConditionGroupEmpty        = errors.New("condition group must contain at least one condition")
+	errUnregisteredAggregate      = errors.New("aggregate kind has no registered aggregator")
+	errAggregateOnExpression      = errors.New("expression conditions must not declare an aggregate")
+	errAggregateOperator          = errors.New("aggregate conditions support numeric comparison operators only")
+	errAggregateColumnRequired    = errors.New("sum/avg aggregates require a column")
+	errAggregateColumnForbidden   = errors.New("count aggregates must not declare a column")
+	errAggregateSubjectNotTable   = errors.New("aggregate subject must reference a table field")
+	errAggregateColumnUnknown     = errors.New("aggregate column does not exist in the table field")
+	errAggregateColumnNotNumeric  = errors.New("aggregate column must be a number field")
 )
 
 // Form-definition validation sentinels. Deploy-time guards over the form

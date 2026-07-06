@@ -59,6 +59,12 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 		return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFormDesign, err)
 	}
 
+	// Aggregate conditions reference form fields, so they can only be fully
+	// validated where the flow and form schemas meet.
+	if err := h.flowDefSvc.ValidateConditionAggregates(parsedNodeData, cmd.FormDefinition); err != nil {
+		return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFlowDesign, err)
+	}
+
 	// An omitted storage mode resolves to the JSON default (the displayed
 	// designer default); any other unrecognized value is a client error.
 	storageMode := cmp.Or(cmd.StorageMode, approval.StorageJSON)

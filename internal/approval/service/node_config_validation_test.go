@@ -172,6 +172,48 @@ func TestValidateNodeConfig(t *testing.T) {
 		})
 	})
 
+	t.Run("AggregateShape", func(t *testing.T) {
+		aggBranches := func(cond approval.Condition) *approval.ConditionNodeData {
+			return &approval.ConditionNodeData{Branches: []approval.ConditionBranch{
+				{ID: "b1", Priority: 1, ConditionGroups: []approval.ConditionGroup{{Conditions: []approval.Condition{cond}}}},
+				{ID: "bd", Priority: 99, IsDefault: true},
+			}}
+		}
+
+		t.Run("AcceptsUnknownKindStructurally", func(t *testing.T) {
+			// Kind registration is a service-level concern checked by
+			// ValidateConditionAggregates against the boot-registered set — a
+			// closed gate here would break host-supplied aggregates.
+			cond := approval.Condition{Kind: approval.ConditionField, Subject: "items", Aggregate: "median", Column: "qty", Operator: approval.OperatorGreater, Value: 1}
+			assert.NoError(t, validateNodeConfig("n1", aggBranches(cond)),
+				"structural validation must stay open to host-registered aggregate kinds")
+		})
+
+		t.Run("RejectsNonNumericOperator", func(t *testing.T) {
+			cond := approval.Condition{Kind: approval.ConditionField, Subject: "items", Aggregate: approval.AggregateSum, Column: "qty", Operator: approval.OperatorContains, Value: 1}
+			assert.ErrorIs(t, validateNodeConfig("n1", aggBranches(cond)), errAggregateOperator,
+				"set/text operators are meaningless over a numeric fold")
+		})
+
+		t.Run("RejectsCountWithColumn", func(t *testing.T) {
+			cond := approval.Condition{Kind: approval.ConditionField, Subject: "items", Aggregate: approval.AggregateCount, Column: "qty", Operator: approval.OperatorEquals, Value: 1}
+			assert.ErrorIs(t, validateNodeConfig("n1", aggBranches(cond)), errAggregateColumnForbidden,
+				"count folds rows; a column would be silently ignored")
+		})
+
+		t.Run("RejectsSumWithoutColumn", func(t *testing.T) {
+			cond := approval.Condition{Kind: approval.ConditionField, Subject: "items", Aggregate: approval.AggregateSum, Operator: approval.OperatorEquals, Value: 1}
+			assert.ErrorIs(t, validateNodeConfig("n1", aggBranches(cond)), errAggregateColumnRequired,
+				"sum/avg fold a column and must name one")
+		})
+
+		t.Run("RejectsAggregateOnExpression", func(t *testing.T) {
+			cond := approval.Condition{Kind: approval.ConditionExpression, Expression: "true", Aggregate: approval.AggregateSum}
+			assert.ErrorIs(t, validateNodeConfig("n1", aggBranches(cond)), errAggregateOnExpression,
+				"expression conditions fold inside the expression, not via the aggregate field")
+		})
+	})
+
 	t.Run("HandleRestrictions", func(t *testing.T) {
 		t.Run("RejectsAutoRejectExecution", func(t *testing.T) {
 			data := &approval.HandleNodeData{

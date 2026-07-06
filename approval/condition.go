@@ -43,10 +43,59 @@ func (o ConditionOperator) IsValid() bool {
 	}
 }
 
+// AggregateKind enumerates the aggregations a field condition may apply
+// over a detail-table field's rows. Semantics follow SQL aggregates:
+// count is the row count, sum of an empty table is 0, and avg over an
+// empty table matches no comparison (NULL semantics) instead of being 0.
+// Folds compute in float64 — prefer ordering operators over eq/ne when
+// comparing sums or averages of fractional amounts.
+type AggregateKind string
+
+const (
+	AggregateSum   AggregateKind = "sum"
+	AggregateCount AggregateKind = "count"
+	AggregateAvg   AggregateKind = "avg"
+)
+
+// IsValid reports whether the aggregate is one of the defined values.
+func (a AggregateKind) IsValid() bool {
+	return a == AggregateSum || a == AggregateCount || a == AggregateAvg
+}
+
+// FoldsColumn reports whether the aggregate reduces a numeric column
+// (sum / avg) or the rows themselves (count). It is the single source of
+// the column contract: deploy validation derives the "column required /
+// forbidden" rule from it and the evaluator derives what to extract, so a
+// new aggregate kind declares its shape here once and both sides follow.
+func (a AggregateKind) FoldsColumn() bool { return a != AggregateCount }
+
+// Aggregator folds a detail-table field's rows into one comparable number
+// for an aggregate field condition. Implementations are collected through
+// the FX group "vef:approval:aggregators" — adding an aggregate (built-in
+// or host-supplied) registers a new implementation; the evaluator, the
+// deploy validation, and existing aggregators stay untouched.
+type Aggregator interface {
+	// Kind returns the aggregate kind this implementation folds.
+	Kind() AggregateKind
+	// Fold reduces the extracted column values (for column aggregates) or
+	// the row count (for row aggregates such as count) into the comparison
+	// operand. matchable=false means the aggregate has no defined value for
+	// the input — e.g. avg over zero rows — and the condition must not
+	// match, mirroring SQL NULL comparison semantics.
+	Fold(values []float64, rowCount int) (result float64, matchable bool)
+}
+
 // Condition represents a branch condition evaluated by condition nodes.
 type Condition struct {
-	Kind       ConditionKind     `json:"kind"`
-	Subject    string            `json:"subject"`
+	Kind    ConditionKind `json:"kind"`
+	Subject string        `json:"subject"`
+	// Aggregate, when set, evaluates the condition over a detail-table
+	// field's rows instead of a scalar subject: Subject names the table
+	// field, Column the numeric column to fold (sum / avg; count works on
+	// rows and must leave Column empty). Structured on purpose — no string
+	// DSL to parse, and the designer offers it as table → column → aggregate.
+	Aggregate  AggregateKind     `json:"aggregate,omitempty"`
+	Column     string            `json:"column,omitempty"`
 	Operator   ConditionOperator `json:"operator"`
 	Value      any               `json:"value"`
 	Expression string            `json:"expression"`

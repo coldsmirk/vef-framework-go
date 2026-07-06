@@ -401,6 +401,22 @@ func ProvideApprovalLifecycleHook(constructor any, paramTags ...string) fx.Optio
 	)
 }
 
+// ProvideApprovalAggregator registers a custom detail-table aggregator for
+// approval field conditions alongside the built-in sum / count / avg. The
+// constructor must return an approval.Aggregator; the condition evaluator
+// picks it up by its AggregateKind with no changes to existing code.
+//
+//	vef.ProvideApprovalAggregator(func() approval.Aggregator { return myMedian{} })
+func ProvideApprovalAggregator(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:approval:aggregators"`),
+		),
+	)
+}
+
 // SupplyURLKeyMapper replaces the framework-provided default
 // storage.URLKeyMapper (storage.ProxyURLKeyMapper) with a
 // business-specific implementation. The default mapper strips and

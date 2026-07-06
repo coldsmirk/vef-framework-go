@@ -1,6 +1,10 @@
 package strategy
 
-import "go.uber.org/fx"
+import (
+	"go.uber.org/fx"
+
+	"github.com/coldsmirk/vef-framework-go/approval"
+)
 
 // Module provides built-in strategies with FX group extensibility.
 var Module = fx.Module(
@@ -21,8 +25,19 @@ var Module = fx.Module(
 		fx.Annotate(NewDepartmentLeaderAssigneeResolver, fx.ResultTags(`group:"vef:approval:assignee_resolvers"`)),
 		fx.Annotate(NewFormFieldAssigneeResolver, fx.ResultTags(`group:"vef:approval:assignee_resolvers"`)),
 
+		// Aggregators (detail-table folds for aggregate field conditions)
+		fx.Annotate(NewSumAggregator, fx.ResultTags(`group:"vef:approval:aggregators"`)),
+		fx.Annotate(NewCountAggregator, fx.ResultTags(`group:"vef:approval:aggregators"`)),
+		fx.Annotate(NewAvgAggregator, fx.ResultTags(`group:"vef:approval:aggregators"`)),
+
 		// Condition evaluators
-		fx.Annotate(NewFieldConditionEvaluator, fx.ResultTags(`group:"vef:approval:condition_evaluators"`)),
+		fx.Annotate(
+			func(aggregators []approval.Aggregator) approval.ConditionEvaluator {
+				return NewFieldConditionEvaluator(aggregators...)
+			},
+			fx.ParamTags(`group:"vef:approval:aggregators"`),
+			fx.ResultTags(`group:"vef:approval:condition_evaluators"`),
+		),
 		fx.Annotate(NewExpressionConditionEvaluator, fx.ResultTags(`group:"vef:approval:condition_evaluators"`)),
 
 		// Strategy registry
@@ -37,4 +52,8 @@ var Module = fx.Module(
 	),
 
 	fx.Invoke(func(r *StrategyRegistry) error { return r.ValidateBuiltins() }),
+	fx.Invoke(fx.Annotate(
+		func(aggregators []approval.Aggregator) error { return ValidateBuiltinAggregators(aggregators) },
+		fx.ParamTags(`group:"vef:approval:aggregators"`),
+	)),
 )
