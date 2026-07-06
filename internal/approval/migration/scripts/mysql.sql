@@ -370,6 +370,7 @@ CREATE TABLE IF NOT EXISTS apv_cc_record (
     created_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT 'Creator',
     instance_id VARCHAR(32) NOT NULL COMMENT 'Instance',
     node_id VARCHAR(32) COMMENT 'Node',
+    visit_id VARCHAR(32) COMMENT 'Visit',
     task_id VARCHAR(32) COMMENT 'Task',
     cc_user_id VARCHAR(32) NOT NULL COMMENT 'User',
     cc_user_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'User Name',
@@ -377,11 +378,10 @@ CREATE TABLE IF NOT EXISTS apv_cc_record (
     cc_user_department_name VARCHAR(128) COMMENT 'User Dept Name',
     is_manual BOOLEAN NOT NULL DEFAULT false COMMENT 'Manual',
     read_at DATETIME NULL COMMENT 'Read',
-    -- Generated column for partial unique index: only enforce when node_id IS NOT NULL
-    _unique_node_id VARCHAR(32) AS (node_id) STORED,
     CONSTRAINT pk_apv_cc_record PRIMARY KEY (id),
     CONSTRAINT fk_apv_cc_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT uk_apv_cc_record__instance_id_node_id_cc_user_id UNIQUE (instance_id, _unique_node_id, cc_user_id),
+    -- NULL visit_ids never conflict, so the pair enforces per-visit dedup only
+    CONSTRAINT uk_apv_cc_record__visit_id_cc_user_id UNIQUE (visit_id, cc_user_id),
     INDEX idx_apv_cc_record__instance_id (instance_id),
     INDEX idx_apv_cc_record__cc_user_id_read_at (cc_user_id, read_at)
 ) COMMENT 'CC Record';

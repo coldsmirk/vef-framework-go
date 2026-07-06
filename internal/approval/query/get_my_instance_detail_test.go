@@ -121,7 +121,7 @@ func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
 	ccDept := "Legal"
 
 	ccRecords := []approval.CCRecord{
-		{InstanceID: inst.ID, NodeID: &fix.NodeIDs[0], CCUserID: "user-c", CCUserName: "CC User", CCUserDepartmentName: &ccDept, IsManual: false},
+		{InstanceID: inst.ID, NodeID: &fix.NodeIDs[0], VisitID: &nodeVisit.ID, CCUserID: "user-c", CCUserName: "CC User", CCUserDepartmentName: &ccDept, IsManual: false},
 	}
 	for i := range ccRecords {
 		_, err := s.db.NewInsert().Model(&ccRecords[i]).Exec(s.ctx)

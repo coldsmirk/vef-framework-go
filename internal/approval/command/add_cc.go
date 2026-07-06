@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
@@ -87,7 +88,12 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 
 	ccUserInfos := shared.ResolveUserInfoMapSilent(ctx, h.userResolver, userIDs)
 
-	insertedUserIDs, err := shared.InsertManualCCRecords(ctx, db, cmd.InstanceID, *instance.CurrentNodeID, userIDs, ccUserInfos)
+	visit, err := engine.FindActiveNodeVisit(ctx, db, cmd.InstanceID, *instance.CurrentNodeID)
+	if err != nil {
+		return cqrs.Unit{}, err
+	}
+
+	insertedUserIDs, err := shared.InsertManualCCRecords(ctx, db, cmd.InstanceID, *instance.CurrentNodeID, visit.ID, userIDs, ccUserInfos)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}

@@ -177,7 +177,7 @@ func TestBuildInstanceFlowGraph(t *testing.T) {
 		submit.ID = "l0"
 		b.ActionLogs = []approval.ActionLog{submit}
 
-		cc := approval.CCRecord{NodeID: new("na"), CCUserID: "cc-1", CCUserName: "CC One"}
+		cc := approval.CCRecord{NodeID: new("na"), VisitID: new("v2"), CCUserID: "cc-1", CCUserName: "CC One"}
 		cc.ID = "ccr-1"
 		b.CCRecords = []approval.CCRecord{cc}
 

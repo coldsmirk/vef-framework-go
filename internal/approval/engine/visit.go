@@ -61,10 +61,10 @@ func concludeNodeVisit(ctx context.Context, db orm.DB, visit *approval.NodeVisit
 	return nil
 }
 
-// findActiveNodeVisit returns the node's open visit. The node must be
+// FindActiveNodeVisit returns the node's open visit. The node must be
 // executing when this is called, so a missing visit is a broken invariant and
 // surfaces as an error rather than a silent fallback.
-func findActiveNodeVisit(ctx context.Context, db orm.DB, instanceID, nodeID string) (*approval.NodeVisit, error) {
+func FindActiveNodeVisit(ctx context.Context, db orm.DB, instanceID, nodeID string) (*approval.NodeVisit, error) {
 	var visit approval.NodeVisit
 
 	err := db.NewSelect().

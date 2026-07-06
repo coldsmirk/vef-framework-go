@@ -182,11 +182,11 @@ func (s *MarkCCReadTestSuite) TestMarkReadShouldAdvanceCCNodeWhenAllRead() {
 	instID := s.createInstance("MCC-003", &currentNodeID)
 	// The instance is waiting on the read-confirm CC node, so its visit is open;
 	// the final read concludes it and advances the flow.
-	insertActiveVisit(s.T(), s.ctx, s.db, "default", instID, s.ccNodeID, 1)
+	visit := insertActiveVisit(s.T(), s.ctx, s.db, "default", instID, s.ccNodeID, 1)
 
 	records := []approval.CCRecord{
-		{InstanceID: instID, NodeID: &s.ccNodeID, CCUserID: "cc-advance-1", IsManual: false},
-		{InstanceID: instID, NodeID: &s.ccNodeID, CCUserID: "cc-advance-2", IsManual: false},
+		{InstanceID: instID, NodeID: &s.ccNodeID, VisitID: &visit.ID, CCUserID: "cc-advance-1", IsManual: false},
+		{InstanceID: instID, NodeID: &s.ccNodeID, VisitID: &visit.ID, CCUserID: "cc-advance-2", IsManual: false},
 	}
 	for i := range records {
 		_, err := s.db.NewInsert().Model(&records[i]).Exec(s.ctx)

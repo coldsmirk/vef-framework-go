@@ -187,11 +187,16 @@ func CollectUniqueCCUserIDs(
 //
 // Callers must hold an instance-level FOR UPDATE lock to prevent concurrent
 // inserts from racing on the existence check.
+//
+// nodeID and visitID are set together: a node-anchored record always belongs
+// to one traversal, so dedup is visit-scoped — a rollback redo notifies (and
+// waits) again. Instance-level records (both nil) dedup across the lifetime.
 func InsertCCRecords(
 	ctx context.Context,
 	db orm.DB,
 	instanceID string,
 	nodeID *string,
+	visitID *string,
 	userIDs []string,
 	userInfos map[string]approval.UserInfo,
 	isManual bool,
@@ -212,7 +217,8 @@ func InsertCCRecords(
 					cb.IsNull("node_id")
 				}).
 				ApplyIf(nodeID != nil, func(cb orm.ConditionBuilder) {
-					cb.Equals("node_id", *nodeID)
+					cb.Equals("node_id", *nodeID).
+						Equals("visit_id", *visitID)
 				})
 		}).
 		Scan(ctx, &existingUserIDs); err != nil {
@@ -240,6 +246,7 @@ func InsertCCRecords(
 		records[i] = approval.CCRecord{
 			InstanceID:           instanceID,
 			NodeID:               nodeID,
+			VisitID:              visitID,
 			CCUserID:             userID,
 			CCUserName:           info.Name,
 			CCUserDepartmentID:   info.DepartmentID,
@@ -256,13 +263,13 @@ func InsertCCRecords(
 }
 
 // InsertAutoCCRecords inserts non-manual CC records and returns newly inserted IDs.
-func InsertAutoCCRecords(ctx context.Context, db orm.DB, instanceID, nodeID string, userIDs []string, userInfos map[string]approval.UserInfo) ([]string, error) {
-	return InsertCCRecords(ctx, db, instanceID, &nodeID, userIDs, userInfos, false)
+func InsertAutoCCRecords(ctx context.Context, db orm.DB, instanceID, nodeID, visitID string, userIDs []string, userInfos map[string]approval.UserInfo) ([]string, error) {
+	return InsertCCRecords(ctx, db, instanceID, &nodeID, &visitID, userIDs, userInfos, false)
 }
 
 // InsertManualCCRecords inserts manual CC records and returns newly inserted IDs.
-func InsertManualCCRecords(ctx context.Context, db orm.DB, instanceID, nodeID string, userIDs []string, userInfos map[string]approval.UserInfo) ([]string, error) {
-	return InsertCCRecords(ctx, db, instanceID, &nodeID, userIDs, userInfos, true)
+func InsertManualCCRecords(ctx context.Context, db orm.DB, instanceID, nodeID, visitID string, userIDs []string, userInfos map[string]approval.UserInfo) ([]string, error) {
+	return InsertCCRecords(ctx, db, instanceID, &nodeID, &visitID, userIDs, userInfos, true)
 }
 
 // HasUnreadCCRecords reports whether the CC node still has any record awaiting a
@@ -272,12 +279,13 @@ func InsertManualCCRecords(ctx context.Context, db orm.DB, instanceID, nodeID st
 // advance) consult it, so the two can never disagree about whether the node is
 // done. A node that resolved to zero recipients has no records and is therefore
 // already complete — it must not wait, or nothing could ever advance it.
-func HasUnreadCCRecords(ctx context.Context, db orm.DB, instanceID, nodeID string) (bool, error) {
+func HasUnreadCCRecords(ctx context.Context, db orm.DB, instanceID, nodeID, visitID string) (bool, error) {
 	unread, err := db.NewSelect().
 		Model((*approval.CCRecord)(nil)).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("instance_id", instanceID).
 				Equals("node_id", nodeID).
+				Equals("visit_id", visitID).
 				IsNull("read_at")
 		}).
 		Exists(ctx)

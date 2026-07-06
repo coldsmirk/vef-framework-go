@@ -568,6 +568,8 @@ CREATE TABLE IF NOT EXISTS apv_cc_record (
     created_by VARCHAR(32) NOT NULL DEFAULT 'system',
     instance_id VARCHAR(32) NOT NULL,
     node_id VARCHAR(32),
+    -- One node traversal owns each record; nil for instance-level records
+    visit_id VARCHAR(32),
     task_id VARCHAR(32),
     cc_user_id VARCHAR(32) NOT NULL,
     cc_user_name VARCHAR(128) NOT NULL DEFAULT '',
@@ -594,7 +596,7 @@ COMMENT ON COLUMN apv_cc_record.read_at IS 'Read';
 
 CREATE INDEX IF NOT EXISTS idx_apv_cc_record__instance_id ON apv_cc_record(instance_id);
 CREATE INDEX IF NOT EXISTS idx_apv_cc_record__cc_user_id_read_at ON apv_cc_record(cc_user_id, read_at);
-CREATE UNIQUE INDEX IF NOT EXISTS uk_apv_cc_record__instance_id_node_id_cc_user_id ON apv_cc_record(instance_id, node_id, cc_user_id) WHERE node_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uk_apv_cc_record__visit_id_cc_user_id ON apv_cc_record(visit_id, cc_user_id) WHERE visit_id IS NOT NULL;
 
 --------------------------------------------------------------------------------
 -- Extension Tables

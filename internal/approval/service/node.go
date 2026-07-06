@@ -157,7 +157,14 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 
 	ccUserInfos := shared.ResolveUserInfoMapSilent(ctx, s.userResolver, resolved)
 
-	insertedUserIDs, err := shared.InsertAutoCCRecords(ctx, db, instance.ID, node.ID, resolved, ccUserInfos)
+	// Completion-timing CC belongs to the traversal being concluded; the
+	// visit is still open here (HandleNodeCompletion concludes it after).
+	visit, err := engine.FindActiveNodeVisit(ctx, db, instance.ID, node.ID)
+	if err != nil {
+		return err
+	}
+
+	insertedUserIDs, err := shared.InsertAutoCCRecords(ctx, db, instance.ID, node.ID, visit.ID, resolved, ccUserInfos)
 	if err != nil {
 		return fmt.Errorf("insert cc records: %w", err)
 	}
@@ -231,7 +238,12 @@ func (s *NodeService) AdvanceCCNodeIfAllRead(ctx context.Context, db orm.DB, ins
 		return nil
 	}
 
-	hasUnread, err := shared.HasUnreadCCRecords(ctx, db, instanceID, currentNodeID)
+	visit, err := engine.FindActiveNodeVisit(ctx, db, instanceID, currentNodeID)
+	if err != nil {
+		return err
+	}
+
+	hasUnread, err := shared.HasUnreadCCRecords(ctx, db, instanceID, currentNodeID, visit.ID)
 	if err != nil {
 		return err
 	}

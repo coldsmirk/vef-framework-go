@@ -45,7 +45,7 @@ func (p *CCProcessor) Process(ctx context.Context, pc *ProcessContext) (*Process
 	// nobody such as a role/department CC skipped best-effort with no
 	// AssigneeService — there is no record to confirm and nobody to ever drive
 	// AdvanceCCNodeIfAllRead, so the node must continue rather than wait forever.
-	hasUnread, err := shared.HasUnreadCCRecords(ctx, pc.DB, pc.Instance.ID, pc.Node.ID)
+	hasUnread, err := shared.HasUnreadCCRecords(ctx, pc.DB, pc.Instance.ID, pc.Node.ID, pc.Visit.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func (p *CCProcessor) createCCRecords(ctx context.Context, pc *ProcessContext) (
 	// NodeService.TriggerNodeCC).
 	ccUserInfos := shared.ResolveUserInfoMapSilent(ctx, pc.UserResolver, resolved)
 
-	insertedUserIDs, err := shared.InsertAutoCCRecords(ctx, pc.DB, pc.Instance.ID, pc.Node.ID, resolved, ccUserInfos)
+	insertedUserIDs, err := shared.InsertAutoCCRecords(ctx, pc.DB, pc.Instance.ID, pc.Node.ID, pc.Visit.ID, resolved, ccUserInfos)
 	if err != nil {
 		return nil, fmt.Errorf("insert cc records: %w", err)
 	}

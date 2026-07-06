@@ -10,6 +10,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 func init() {
@@ -106,6 +107,22 @@ func (s *CCProcessorTestSuite) newInstance() *approval.Instance {
 	return instance
 }
 
+// newVisit opens a traversal of the suite's CC node for the instance —
+// CC records and the read-confirm gate are scoped per visit.
+func (s *CCProcessorTestSuite) newVisit(instance *approval.Instance, sequence int, status approval.NodeVisitStatus) *approval.NodeVisit {
+	visit := &approval.NodeVisit{
+		TenantID:   "default",
+		InstanceID: instance.ID,
+		NodeID:     s.nodeID,
+		Sequence:   sequence,
+		Status:     status,
+	}
+	_, err := s.db.NewInsert().Model(visit).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert node visit")
+
+	return visit
+}
+
 // newNode builds a FlowNode value with the suite's nodeID and the given IsReadConfirmRequired flag.
 func (s *CCProcessorTestSuite) newNode(readConfirm bool) *approval.FlowNode {
 	node := &approval.FlowNode{IsReadConfirmRequired: readConfirm}
@@ -139,6 +156,7 @@ func (s *CCProcessorTestSuite) TestNoCCConfigs() {
 		pc := &engine.ProcessContext{
 			DB:       s.db,
 			Instance: instance,
+			Visit:    s.newVisit(instance, 1, approval.NodeVisitActive),
 			Node:     s.newNode(false),
 		}
 
@@ -155,6 +173,7 @@ func (s *CCProcessorTestSuite) TestNoCCConfigs() {
 		pc := &engine.ProcessContext{
 			DB:       s.db,
 			Instance: instance,
+			Visit:    s.newVisit(instance, 1, approval.NodeVisitActive),
 			Node:     s.newNode(true),
 		}
 
@@ -188,6 +207,7 @@ func (s *CCProcessorTestSuite) TestUnresolvableCCConfigIsSkipped() {
 	pc := &engine.ProcessContext{
 		DB:       s.db,
 		Instance: instance,
+		Visit:    s.newVisit(instance, 1, approval.NodeVisitActive),
 		Node:     s.newNode(false),
 	}
 
@@ -230,6 +250,7 @@ func (s *CCProcessorTestSuite) TestReadConfirmCCNodeDoesNotDeadlockWhenConfigsRe
 	pc := &engine.ProcessContext{
 		DB:       s.db,
 		Instance: instance,
+		Visit:    s.newVisit(instance, 1, approval.NodeVisitActive),
 		Node:     s.newNode(true), // read-confirm required
 	}
 
@@ -252,21 +273,23 @@ func (s *CCProcessorTestSuite) TestReadConfirmCCNodeDoesNotDeadlockWhenConfigsRe
 // unification: node entry decides wait-vs-continue from the actual unread CC
 // records (shared.HasUnreadCCRecords) — the same query the mark-read path uses —
 // not from the count of records this Process call happened to insert. On a
-// re-entry (e.g. a rollback back to the CC node) InsertCCRecords dedups the
-// record created on the first visit, so the freshly-inserted set is empty even
-// though an unread record still awaits confirmation; entry must still wait. A
-// proxy keyed on the fresh-insert count would wrongly continue, skipping the gate.
+// same-visit re-entry InsertCCRecords dedups the record created earlier in the
+// visit, so the freshly-inserted set is empty even though an unread record
+// still awaits confirmation; entry must still wait. (A rollback redo is a NEW
+// visit with its own cycle — see TestRedoVisitGetsFreshCycle.)
 func (s *CCProcessorTestSuite) TestReadConfirmCCNodeWaitsForPreexistingUnreadRecord() {
 	defer s.cleanTransientData()
 
 	instance := s.newInstance()
 	s.insertCCConfig([]string{"cc-user-1"})
 
-	// Simulate a record left unread by a prior visit to this CC node.
+	// Simulate a record left unread earlier in this same open visit.
+	visit := s.newVisit(instance, 1, approval.NodeVisitActive)
 	nodeID := s.nodeID
 	preexisting := &approval.CCRecord{
 		InstanceID: instance.ID,
 		NodeID:     &nodeID,
+		VisitID:    &visit.ID,
 		CCUserID:   "cc-user-1",
 		CCUserName: "CC User 1",
 	}
@@ -276,6 +299,7 @@ func (s *CCProcessorTestSuite) TestReadConfirmCCNodeWaitsForPreexistingUnreadRec
 	pc := &engine.ProcessContext{
 		DB:       s.db,
 		Instance: instance,
+		Visit:    visit,
 		Node:     s.newNode(true), // read-confirm required
 	}
 
@@ -301,6 +325,7 @@ func (s *CCProcessorTestSuite) TestSingleCCConfig() {
 		pc := &engine.ProcessContext{
 			DB:       s.db,
 			Instance: instance,
+			Visit:    s.newVisit(instance, 1, approval.NodeVisitActive),
 			Node:     s.newNode(false),
 		}
 
@@ -340,6 +365,7 @@ func (s *CCProcessorTestSuite) TestSingleCCConfig() {
 		pc := &engine.ProcessContext{
 			DB:       s.db,
 			Instance: instance,
+			Visit:    s.newVisit(instance, 1, approval.NodeVisitActive),
 			Node:     s.newNode(true),
 		}
 
@@ -358,6 +384,7 @@ func (s *CCProcessorTestSuite) TestMultipleCCConfigs() {
 	pc := &engine.ProcessContext{
 		DB:       s.db,
 		Instance: instance,
+		Visit:    s.newVisit(instance, 1, approval.NodeVisitActive),
 		Node:     s.newNode(false),
 	}
 
@@ -385,6 +412,7 @@ func (s *CCProcessorTestSuite) TestCCDeduplication() {
 	pc := &engine.ProcessContext{
 		DB:       s.db,
 		Instance: instance,
+		Visit:    s.newVisit(instance, 1, approval.NodeVisitActive),
 		Node:     s.newNode(false),
 	}
 
@@ -417,6 +445,7 @@ func (s *CCProcessorTestSuite) TestCCConfigWithEmptyIDs() {
 	pc := &engine.ProcessContext{
 		DB:       s.db,
 		Instance: instance,
+		Visit:    s.newVisit(instance, 1, approval.NodeVisitActive),
 		Node:     s.newNode(false),
 	}
 
@@ -433,6 +462,7 @@ func (s *CCProcessorTestSuite) TestCCConfigShouldIgnoreEmptyStaticIDs() {
 	pc := &engine.ProcessContext{
 		DB:       s.db,
 		Instance: instance,
+		Visit:    s.newVisit(instance, 1, approval.NodeVisitActive),
 		Node:     s.newNode(false),
 	}
 
@@ -459,6 +489,7 @@ func (s *CCProcessorTestSuite) TestCCConfigShouldTrimStaticIDs() {
 	pc := &engine.ProcessContext{
 		DB:       s.db,
 		Instance: instance,
+		Visit:    s.newVisit(instance, 1, approval.NodeVisitActive),
 		Node:     s.newNode(false),
 	}
 
@@ -509,6 +540,7 @@ func (s *CCProcessorTestSuite) TestCCConfigFromFormField() {
 	pc := &engine.ProcessContext{
 		DB:       s.db,
 		Instance: instance,
+		Visit:    s.newVisit(instance, 1, approval.NodeVisitActive),
 		Node:     s.newNode(false),
 		FormData: approval.NewFormData(instance.FormData),
 	}
@@ -557,6 +589,7 @@ func (s *CCProcessorTestSuite) TestCCConfigFromFormFieldShouldTrimValues() {
 	pc := &engine.ProcessContext{
 		DB:       s.db,
 		Instance: instance,
+		Visit:    s.newVisit(instance, 1, approval.NodeVisitActive),
 		Node:     s.newNode(false),
 		FormData: approval.NewFormData(instance.FormData),
 	}
@@ -588,10 +621,43 @@ func (s *CCProcessorTestSuite) TestDBError() {
 	pc := &engine.ProcessContext{
 		DB:       s.db,
 		Instance: instance,
+		Visit:    s.newVisit(instance, 1, approval.NodeVisitActive),
 		Node:     s.newNode(false),
 	}
 
 	_, err := s.processor.Process(canceledCtx, pc)
 	s.Require().Error(err, "Should return error when context is canceled")
 	s.Assert().Contains(err.Error(), "load cc configs", "Should wrap with select error context")
+}
+
+func (s *CCProcessorTestSuite) TestRedoVisitGetsFreshCycle() {
+	instance := s.newInstance()
+	s.insertCCConfig([]string{"cc-user-1"})
+
+	// First traversal: notified and read.
+	prior := s.newVisit(instance, 1, approval.NodeVisitPassed)
+	readAt := timex.Now()
+	record := &approval.CCRecord{
+		InstanceID: instance.ID,
+		NodeID:     &s.nodeID,
+		VisitID:    &prior.ID,
+		CCUserID:   "cc-user-1",
+		ReadAt:     &readAt,
+	}
+	_, err := s.db.NewInsert().Model(record).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert prior-round CC record")
+
+	// Rollback redo: a fresh visit re-enters the node.
+	pc := &engine.ProcessContext{
+		DB:       s.db,
+		Instance: instance,
+		Visit:    s.newVisit(instance, 2, approval.NodeVisitActive),
+		Node:     s.newNode(true),
+	}
+
+	result, err := s.processor.Process(s.ctx, pc)
+	s.Require().NoError(err, "Redo traversal should process without error")
+	s.Assert().Equal(engine.NodeActionWait, result.Action,
+		"A redo round must wait for its own read confirmation, not be satisfied by the prior round's")
+	s.Require().Len(result.Events, 1, "A redo round must re-notify its recipients")
 }

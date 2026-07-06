@@ -132,13 +132,12 @@ func newVisitIndex(bundle *instanceDetailBundle) *visitIndex {
 
 	for i := range bundle.CCRecords {
 		record := &bundle.CCRecords[i]
-		if record.NodeID == nil {
+		if record.VisitID == nil {
+			// Instance-level records are not anchored to a node traversal.
 			continue
 		}
 
-		if visit := visitAt(idx.visitsByNode, *record.NodeID, record.CreatedAt); visit != nil {
-			idx.ccByVisit[visit.ID] = append(idx.ccByVisit[visit.ID], record.Recipient())
-		}
+		idx.ccByVisit[*record.VisitID] = append(idx.ccByVisit[*record.VisitID], record.Recipient())
 	}
 
 	for i := range bundle.UrgeRecords {

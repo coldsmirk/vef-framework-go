@@ -399,8 +399,13 @@ type CCRecord struct {
 	orm.Model
 	orm.CreationTrackedModel
 
-	InstanceID           string          `json:"instanceId" bun:"instance_id"`
-	NodeID               *string         `json:"nodeId" bun:"node_id,nullzero"`
+	InstanceID string  `json:"instanceId" bun:"instance_id"`
+	NodeID     *string `json:"nodeId" bun:"node_id,nullzero"`
+	// VisitID scopes the record to one node traversal: a rollback redo gets
+	// its own notification and read-confirm cycle instead of being silently
+	// satisfied by a prior round's records. Nil only for instance-level
+	// records that are not anchored to a node.
+	VisitID              *string         `json:"visitId" bun:"visit_id,nullzero"`
 	TaskID               *string         `json:"taskId" bun:"task_id,nullzero"`
 	CCUserID             string          `json:"ccUserId" bun:"cc_user_id"`
 	CCUserName           string          `json:"ccUserName" bun:"cc_user_name"`

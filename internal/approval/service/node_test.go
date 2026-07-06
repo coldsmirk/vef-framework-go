@@ -256,6 +256,11 @@ func (s *NodeServiceTestSuite) TestTriggerNodeCCShouldRespectTimingAndDeduplicat
 	_, err = s.db.NewInsert().Model(&ccConfigs).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert CC configs with mixed timing and duplicates")
 
+	_, err = s.db.NewInsert().
+		Model(&approval.NodeVisit{TenantID: instance.TenantID, InstanceID: instance.ID, NodeID: node.ID, Sequence: 1, Status: approval.NodeVisitActive}).
+		Exec(s.ctx)
+	s.Require().NoError(err, "Should open the node visit TriggerNodeCC resolves")
+
 	err = s.svc.TriggerNodeCC(s.ctx, s.db, instance, node, approval.PassRulePassed)
 	s.Require().NoError(err, "Should trigger CC notifications for approved node completion")
 
@@ -312,9 +317,14 @@ func (s *NodeServiceTestSuite) TestTriggerNodeCCShouldIgnoreExistingRecordsAndPu
 	_, err = s.db.NewInsert().Model(&ccConfigs).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert CC config for existing-record dedup scenario")
 
+	visit := &approval.NodeVisit{TenantID: instance.TenantID, InstanceID: instance.ID, NodeID: node.ID, Sequence: 1, Status: approval.NodeVisitActive}
+	_, err = s.db.NewInsert().Model(visit).Exec(s.ctx)
+	s.Require().NoError(err, "Should open the node visit TriggerNodeCC resolves")
+
 	_, err = s.db.NewInsert().Model(&approval.CCRecord{
 		InstanceID: instance.ID,
 		NodeID:     &node.ID,
+		VisitID:    &visit.ID,
 		CCUserID:   "cc-user-existing",
 		IsManual:   true,
 	}).Exec(s.ctx)

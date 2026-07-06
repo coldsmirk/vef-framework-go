@@ -202,7 +202,7 @@ func TestBuildInstanceTimeline(t *testing.T) {
 		b.ActionLogs = []approval.ActionLog{addCC}
 
 		dept := "Legal"
-		cc := approval.CCRecord{NodeID: new("na"), CCUserID: "cc-1", CCUserName: "CC One", CCUserDepartmentName: &dept}
+		cc := approval.CCRecord{NodeID: new("na"), VisitID: new("v2"), CCUserID: "cc-1", CCUserName: "CC One", CCUserDepartmentName: &dept}
 		cc.ID = "ccr-1"
 		cc.CreatedAt = at(3)
 		readAt := at(4)

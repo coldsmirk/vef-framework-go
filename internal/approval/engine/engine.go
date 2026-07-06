@@ -241,7 +241,7 @@ func (e *FlowEngine) AdvanceToNextNode(ctx context.Context, db orm.DB, instance 
 // left behind by an earlier traversal — e.g. an approval that survived a
 // peer-initiated rollback — cannot contaminate the redo round's decision.
 func (e *FlowEngine) EvaluateNodeCompletion(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode) (approval.PassRuleResult, error) {
-	visit, err := findActiveNodeVisit(ctx, db, instance.ID, node.ID)
+	visit, err := FindActiveNodeVisit(ctx, db, instance.ID, node.ID)
 	if err != nil {
 		return approval.PassRulePending, err
 	}

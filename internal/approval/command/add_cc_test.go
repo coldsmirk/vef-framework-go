@@ -126,9 +126,11 @@ func (s *AddCCTestSuite) TestAddCCDuplicateFiltered() {
 	// Insert existing CC record
 	nodeIDPtr := new(string)
 	*nodeIDPtr = s.nodeID
+	visit := ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.nodeID)
 	existing := &approval.CCRecord{
 		InstanceID: inst.ID,
 		NodeID:     nodeIDPtr,
+		VisitID:    &visit.ID,
 		CCUserID:   "cc-user-1",
 		IsManual:   true,
 	}
@@ -242,9 +244,11 @@ func (s *AddCCTestSuite) TestAddCCEventUsesInsertedUserIDs() {
 	inst := s.insertInstance(s.nodeID, "operator-7")
 
 	// Existing user should be filtered out from insertion and event payload.
+	visit := ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.nodeID)
 	existing := &approval.CCRecord{
 		InstanceID: inst.ID,
 		NodeID:     &s.nodeID,
+		VisitID:    &visit.ID,
 		CCUserID:   "cc-user-1",
 		IsManual:   true,
 	}
