@@ -13,6 +13,8 @@ const (
 	ErrCodeInvalidTitleTemplate      = 40009
 	ErrCodeInvalidFormDesign         = 40010
 	ErrCodeBindingIncomplete         = 40011
+	ErrCodeInvalidBindingMode        = 40012
+	ErrCodeInvalidInitiatorKind      = 40013
 	ErrCodeInvalidStorageMode        = 40012
 	ErrCodeFlowBindingLocked         = 40013
 

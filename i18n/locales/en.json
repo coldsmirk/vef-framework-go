@@ -121,6 +121,8 @@
   "approval_invalid_title_template": "Invalid instance title template syntax",
   "approval_invalid_form_design": "Invalid form definition",
   "approval_binding_incomplete": "A business-bound flow must configure the business table, primary-key field, and status field",
+  "approval_invalid_binding_mode": "Invalid flow binding mode",
+  "approval_invalid_initiator_kind": "Invalid flow initiator kind",
   "approval_invalid_storage_mode": "Invalid storage mode; must be \"json\" or \"table\"",
   "approval_flow_binding_locked": "Cannot change the business binding while instances are in progress",
   "approval_instance_not_found": "Approval instance not found",

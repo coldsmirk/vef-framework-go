@@ -68,6 +68,10 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		return nil, err
 	}
 
+	if err := validateFlowEnums(cmd.BindingMode, cmd.Initiators); err != nil {
+		return nil, err
+	}
+
 	if err := validateBusinessIdentifiers(cmd.BindingMode, cmd.BusinessTable, cmd.BusinessPkField, cmd.BusinessStatusField); err != nil {
 		return nil, err
 	}

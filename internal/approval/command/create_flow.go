@@ -53,6 +53,10 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 		return nil, shared.ErrFlowNotFound
 	}
 
+	if err := validateFlowEnums(cmd.BindingMode, cmd.Initiators); err != nil {
+		return nil, err
+	}
+
 	if err := validateBusinessIdentifiers(cmd.BindingMode, cmd.BusinessTable, cmd.BusinessPkField, cmd.BusinessStatusField); err != nil {
 		return nil, err
 	}

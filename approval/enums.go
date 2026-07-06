@@ -15,6 +15,11 @@ const (
 	BindingBusiness   BindingMode = "business"   // Business: links to existing business data table
 )
 
+// IsValid checks if the BindingMode is a valid value.
+func (m BindingMode) IsValid() bool {
+	return m == BindingStandalone || m == BindingBusiness
+}
+
 // VersionStatus represents the status of a flow version.
 type VersionStatus string
 
@@ -32,6 +37,11 @@ const (
 	InitiatorRole       InitiatorKind = "role"
 	InitiatorDepartment InitiatorKind = "department"
 )
+
+// IsValid checks if the InitiatorKind is a valid value.
+func (k InitiatorKind) IsValid() bool {
+	return k == InitiatorUser || k == InitiatorRole || k == InitiatorDepartment
+}
 
 // StorageMode represents the storage mode of form data at the FlowVersion level.
 // It determines the physical storage location and format of form data, and is fixed when a version is published.

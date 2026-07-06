@@ -44,6 +44,14 @@ var (
 	// on the first completed instance.
 	ErrBindingIncomplete = result.Err(i18n.T("approval_binding_incomplete"), result.WithCode(ErrCodeBindingIncomplete))
 
+	// ErrInvalidBindingMode rejects an out-of-enum flow binding mode at save
+	// time — an unknown value would silently behave like "standalone" and
+	// disable the business write-back.
+	ErrInvalidBindingMode = result.Err(i18n.T("approval_invalid_binding_mode"), result.WithCode(ErrCodeInvalidBindingMode))
+
+	// ErrInvalidInitiatorKind rejects an out-of-enum initiator kind at save
+	// time — an unknown value would silently never match any user.
+	ErrInvalidInitiatorKind = result.Err(i18n.T("approval_invalid_initiator_kind"), result.WithCode(ErrCodeInvalidInitiatorKind))
 	// ErrInvalidStorageMode rejects a deploy whose storage mode is neither
 	// "json" nor "table". The mode is fixed for the version's lifetime and
 	// drives whether a dedicated physical form table is generated at publish,

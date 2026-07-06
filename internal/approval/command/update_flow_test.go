@@ -104,6 +104,7 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowSuccess() {
 	desc := "Updated description"
 
 	cmd := command.UpdateFlowCmd{
+		BindingMode:            approval.BindingStandalone,
 		FlowID:                 s.flowID,
 		Name:                   "Updated Flow",
 		Icon:                   &icon,
@@ -144,6 +145,7 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowSuccess() {
 
 func (s *UpdateFlowTestSuite) TestUpdateFlowNotFound() {
 	cmd := command.UpdateFlowCmd{
+		BindingMode:            approval.BindingStandalone,
 		FlowID:                 "non-existent-flow-id",
 		Name:                   "Updated Flow",
 		IsAllInitiationAllowed: true,
@@ -235,6 +237,7 @@ func (s *UpdateFlowTestSuite) TestUpdateAllFields() {
 	desc := "All fields description"
 
 	cmd := command.UpdateFlowCmd{
+		BindingMode:            approval.BindingStandalone,
 		FlowID:                 s.flowID,
 		Name:                   "All Fields Updated",
 		Icon:                   &icon,
@@ -354,4 +357,35 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowBusinessToStandaloneClearsFields() {
 	s.Assert().Nil(flow.BusinessTable, "business_table should clear to NULL")
 	s.Assert().Nil(flow.BusinessPkField, "business_pk_field should clear to NULL")
 	s.Assert().Nil(flow.BusinessStatusField, "business_status_field should clear to NULL")
+}
+
+func (s *UpdateFlowTestSuite) TestUpdateFlowRejectsInvalidEnums() {
+	s.Run("BindingMode", func() {
+		_, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
+			FlowID:                 s.flowID,
+			BindingMode:            "bogus",
+			Name:                   "Enum Guard Flow",
+			IsAllInitiationAllowed: true,
+			InstanceTitleTemplate:  "t",
+			Caller:                 approval.SystemCaller,
+		})
+		s.Require().ErrorIs(err, shared.ErrInvalidBindingMode,
+			"An out-of-enum binding mode would silently disable the business write-back and must be rejected")
+	})
+
+	s.Run("InitiatorKind", func() {
+		_, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
+			FlowID:                 s.flowID,
+			BindingMode:            approval.BindingStandalone,
+			Name:                   "Enum Guard Flow",
+			IsAllInitiationAllowed: true,
+			InstanceTitleTemplate:  "t",
+			Initiators: []shared.CreateFlowInitiatorCmd{
+				{Kind: "sideways", IDs: []string{"u1"}},
+			},
+			Caller: approval.SystemCaller,
+		})
+		s.Require().ErrorIs(err, shared.ErrInvalidInitiatorKind,
+			"An out-of-enum initiator kind would silently never match and must be rejected")
+	})
 }

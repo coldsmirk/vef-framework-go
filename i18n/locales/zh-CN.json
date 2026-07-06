@@ -121,6 +121,8 @@
   "approval_invalid_title_template": "实例标题模板语法不合法",
   "approval_invalid_form_design": "表单定义不合法",
   "approval_binding_incomplete": "业务绑定流程必须配置业务表、主键字段和状态字段",
+  "approval_invalid_binding_mode": "无效的流程绑定模式",
+  "approval_invalid_initiator_kind": "无效的发起人类型",
   "approval_invalid_storage_mode": "存储模式不合法，必须为 json 或 table",
   "approval_flow_binding_locked": "流程存在进行中的实例，无法修改业务绑定配置",
   "approval_instance_not_found": "审批实例不存在",
