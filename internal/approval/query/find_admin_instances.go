@@ -82,16 +82,15 @@ func (h *FindAdminInstancesHandler) Handle(ctx context.Context, query FindAdminI
 		flow := flowMap[inst.FlowID]
 
 		item := admin.Instance{
-			InstanceID:    inst.ID,
-			InstanceNo:    inst.InstanceNo,
-			Title:         inst.Title,
-			TenantID:      inst.TenantID,
-			FlowID:        inst.FlowID,
-			ApplicantID:   inst.ApplicantID,
-			ApplicantName: inst.ApplicantName,
-			Status:        string(inst.Status),
-			CreatedAt:     inst.CreatedAt,
-			FinishedAt:    inst.FinishedAt,
+			InstanceID: inst.ID,
+			InstanceNo: inst.InstanceNo,
+			Title:      inst.Title,
+			TenantID:   inst.TenantID,
+			FlowID:     inst.FlowID,
+			Applicant:  inst.Applicant(),
+			Status:     string(inst.Status),
+			CreatedAt:  inst.CreatedAt,
+			FinishedAt: inst.FinishedAt,
 		}
 		if flow != nil {
 			item.FlowName = flow.Name

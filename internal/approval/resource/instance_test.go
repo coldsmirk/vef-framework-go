@@ -206,6 +206,10 @@ func (s *InstanceResourceTestSuite) findPendingTasks(instanceID string) []map[st
 			m["id"] = tid
 		}
 
+		// Flatten the nested assignee so callers can match on "assigneeId".
+		if assignee, ok := m["assignee"].(map[string]any); ok {
+			m["assigneeId"] = assignee["id"]
+		}
 
 		tasks[i] = m
 	}

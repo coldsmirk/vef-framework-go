@@ -101,7 +101,7 @@ func (h *FindMyCCRecordsHandler) Handle(ctx context.Context, query FindMyCCRecor
 			item.InstanceTitle = inst.Title
 			item.InstanceNo = inst.InstanceNo
 
-			item.ApplicantName = inst.ApplicantName
+			item.Applicant = inst.Applicant()
 			if flow := flowMap[inst.FlowID]; flow != nil {
 				item.FlowName = flow.Name
 				item.FlowIcon = flow.Icon
