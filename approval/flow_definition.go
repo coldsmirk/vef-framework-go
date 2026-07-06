@@ -8,7 +8,12 @@ import (
 )
 
 var (
-	ErrUnknownNodeKind   = errors.New("unknown node kind")
+	// ErrUnknownNodeKind reports a node definition whose kind is not one of
+	// the NodeKind enum values.
+	ErrUnknownNodeKind = errors.New("unknown node kind")
+
+	// ErrNodeDataUnmarshal reports node data JSON that failed to decode into
+	// the kind's typed payload.
 	ErrNodeDataUnmarshal = errors.New("node data unmarshal failed")
 )
 
