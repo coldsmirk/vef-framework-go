@@ -122,6 +122,11 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 		return cqrs.Unit{}, fmt.Errorf("find target node: %w", err)
 	}
 
+	var opinion *string
+	if cmd.Opinion != "" {
+		opinion = &cmd.Opinion
+	}
+
 	events := canceledEvents
 
 	if targetNode.Kind == approval.NodeStart {
@@ -139,7 +144,7 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 		}
 
 		events = append(events,
-			approval.NewInstanceReturnedEvent(instance, node, &targetNode, cmd.Operator),
+			approval.NewInstanceReturnedEvent(instance, node, &targetNode, cmd.Operator, opinion),
 		)
 	} else {
 		// Rollback to intermediate node: status stays running but
@@ -159,7 +164,7 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 		}
 
 		events = append(events,
-			approval.NewInstanceRolledBackEvent(instance, node, &targetNode, cmd.Operator),
+			approval.NewInstanceRolledBackEvent(instance, node, &targetNode, cmd.Operator, opinion),
 		)
 	}
 

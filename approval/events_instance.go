@@ -22,6 +22,11 @@ type InstanceCompletedEvent struct {
 	// fire this event.
 	FinalStatus InstanceStatus `json:"finalStatus"`
 	FinishedAt  timex.DateTime `json:"finishedAt"`
+
+	// Reason is the administrator's stated reason when FinalStatus is
+	// terminated; nil for approved / rejected completions, whose deciding
+	// opinions live on the task events.
+	Reason *string `json:"reason,omitempty"`
 }
 
 // NewInstanceCompletedEvent builds the completion event. FinishedAt is taken
@@ -47,12 +52,16 @@ type InstanceWithdrawnEvent struct {
 	InstanceEventBase
 
 	Operator UserInfo `json:"operator"`
+
+	// Reason is the applicant's stated withdrawal reason, when provided.
+	Reason *string `json:"reason,omitempty"`
 }
 
-func NewInstanceWithdrawnEvent(instance *Instance, operator UserInfo) *InstanceWithdrawnEvent {
+func NewInstanceWithdrawnEvent(instance *Instance, operator UserInfo, reason *string) *InstanceWithdrawnEvent {
 	return &InstanceWithdrawnEvent{
 		InstanceEventBase: NewInstanceEventBase(instance),
 		Operator:          operator,
+		Reason:            reason,
 	}
 }
 
@@ -69,9 +78,12 @@ type InstanceRolledBackEvent struct {
 	ToNodeID     string   `json:"toNodeId"`
 	ToNodeName   string   `json:"toNodeName"`
 	Operator     UserInfo `json:"operator"`
+
+	// Opinion is the rollback opinion provided by the operator, if any.
+	Opinion *string `json:"opinion,omitempty"`
 }
 
-func NewInstanceRolledBackEvent(instance *Instance, fromNode, toNode *FlowNode, operator UserInfo) *InstanceRolledBackEvent {
+func NewInstanceRolledBackEvent(instance *Instance, fromNode, toNode *FlowNode, operator UserInfo, opinion *string) *InstanceRolledBackEvent {
 	return &InstanceRolledBackEvent{
 		InstanceEventBase: NewInstanceEventBase(instance),
 		FromNodeID:        fromNode.ID,
@@ -79,6 +91,7 @@ func NewInstanceRolledBackEvent(instance *Instance, fromNode, toNode *FlowNode, 
 		ToNodeID:          toNode.ID,
 		ToNodeName:        toNode.Name,
 		Operator:          operator,
+		Opinion:           opinion,
 	}
 }
 
@@ -94,9 +107,12 @@ type InstanceReturnedEvent struct {
 	ToNodeID     string   `json:"toNodeId"`
 	ToNodeName   string   `json:"toNodeName"`
 	Operator     UserInfo `json:"operator"`
+
+	// Opinion is the rollback opinion provided by the operator, if any.
+	Opinion *string `json:"opinion,omitempty"`
 }
 
-func NewInstanceReturnedEvent(instance *Instance, fromNode, toNode *FlowNode, operator UserInfo) *InstanceReturnedEvent {
+func NewInstanceReturnedEvent(instance *Instance, fromNode, toNode *FlowNode, operator UserInfo, opinion *string) *InstanceReturnedEvent {
 	return &InstanceReturnedEvent{
 		InstanceEventBase: NewInstanceEventBase(instance),
 		FromNodeID:        fromNode.ID,
@@ -104,6 +120,7 @@ func NewInstanceReturnedEvent(instance *Instance, fromNode, toNode *FlowNode, op
 		ToNodeID:          toNode.ID,
 		ToNodeName:        toNode.Name,
 		Operator:          operator,
+		Opinion:           opinion,
 	}
 }
 

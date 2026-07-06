@@ -267,3 +267,29 @@ func TestAllEventTypesMatchesSourceConstants(t *testing.T) {
 				"otherwise the new event silently bypasses the start-up routing check")
 	})
 }
+
+func TestInstanceLifecycleEventOpinions(t *testing.T) {
+	instance, _, node := newEventFixtures()
+	operator := approval.UserInfo{ID: "op1", Name: "Olivia"}
+	opinion := "needs a revised quote"
+
+	withdrawn := approval.NewInstanceWithdrawnEvent(instance, operator, &opinion)
+	require.Equal(t, &opinion, withdrawn.Reason, "Withdrawn event should carry the applicant reason")
+
+	rolled := approval.NewInstanceRolledBackEvent(instance, node, node, operator, &opinion)
+	require.Equal(t, &opinion, rolled.Opinion, "RolledBack event should carry the operator opinion")
+
+	returned := approval.NewInstanceReturnedEvent(instance, node, node, operator, nil)
+	require.Nil(t, returned.Opinion, "Returned event opinion should stay nil when none was provided")
+
+	completed := approval.NewInstanceCompletedEvent(instance, approval.InstanceTerminated)
+	require.Nil(t, completed.Reason, "Completed event reason defaults to nil; only the terminate path sets it")
+
+	payload, err := json.Marshal(withdrawn)
+	require.NoError(t, err, "Withdrawn event should marshal")
+	require.Contains(t, string(payload), `"reason":"needs a revised quote"`, "Reason should serialize on the wire")
+
+	payload, err = json.Marshal(returned)
+	require.NoError(t, err, "Returned event should marshal")
+	require.NotContains(t, string(payload), `"opinion"`, "Nil opinion should be omitted from the wire")
+}

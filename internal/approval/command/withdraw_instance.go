@@ -78,15 +78,18 @@ func (h *WithdrawInstanceHandler) Handle(ctx context.Context, cmd WithdrawInstan
 		return cqrs.Unit{}, err
 	}
 
-	actionLog := cmd.Operator.NewActionLog(cmd.InstanceID, approval.ActionWithdraw)
+	var reason *string
 	if cmd.Reason != "" {
-		actionLog.Opinion = &cmd.Reason
+		reason = &cmd.Reason
 	}
+
+	actionLog := cmd.Operator.NewActionLog(cmd.InstanceID, approval.ActionWithdraw)
+	actionLog.Opinion = reason
 
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
 	behavior.EventCollectorFromContext(ctx).Add(append(canceledEvents,
-		approval.NewInstanceWithdrawnEvent(instance, cmd.Operator),
+		approval.NewInstanceWithdrawnEvent(instance, cmd.Operator, reason),
 	)...)
 
 	return cqrs.Unit{}, nil

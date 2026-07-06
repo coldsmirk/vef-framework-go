@@ -76,16 +76,20 @@ func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInst
 		return cqrs.Unit{}, err
 	}
 
-	actionLog := cmd.Operator.NewActionLog(cmd.InstanceID, approval.ActionTerminate)
+	var reason *string
 	if cmd.Reason != "" {
-		actionLog.Opinion = &cmd.Reason
+		reason = &cmd.Reason
 	}
+
+	actionLog := cmd.Operator.NewActionLog(cmd.InstanceID, approval.ActionTerminate)
+	actionLog.Opinion = reason
 
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
-	behavior.EventCollectorFromContext(ctx).Add(append(canceledEvents,
-		approval.NewInstanceCompletedEvent(instance, approval.InstanceTerminated),
-	)...)
+	completed := approval.NewInstanceCompletedEvent(instance, approval.InstanceTerminated)
+	completed.Reason = reason
+
+	behavior.EventCollectorFromContext(ctx).Add(append(canceledEvents, completed)...)
 
 	return cqrs.Unit{}, nil
 }
