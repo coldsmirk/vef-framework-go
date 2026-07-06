@@ -474,9 +474,10 @@ CREATE TABLE IF NOT EXISTS apv_form_table (
     flow_id VARCHAR(32) NOT NULL COMMENT 'Flow',
     version_id VARCHAR(32) NOT NULL COMMENT 'Version',
     physical_table_name VARCHAR(64) NOT NULL COMMENT 'Physical Table Name',
+    source_field_key VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Source Field',
     CONSTRAINT pk_apv_form_table PRIMARY KEY (id),
     CONSTRAINT fk_apv_form_table__version_id FOREIGN KEY (version_id) REFERENCES apv_flow_version(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    UNIQUE INDEX uk_apv_form_table__version_id (version_id)
+    UNIQUE INDEX uk_apv_form_table__version_id_source_field_key (version_id, source_field_key)
 ) COMMENT 'Form Table';
 
 -- Form table column: column definitions projected from the form schema

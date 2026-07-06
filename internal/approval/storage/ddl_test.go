@@ -12,6 +12,18 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 )
 
+// mainTableColumns adapts the single-table call shape most DDL tests assert
+// on: it resolves the full table-spec set and returns the main projection
+// table's columns.
+func mainTableColumns(kind config.DBKind, schema *approval.FormDefinition) ([]columnSpec, error) {
+	tables, err := buildTableSpecs(kind, "demo", "d95k65k5cmcbd4737ag0", schema)
+	if err != nil {
+		return nil, err
+	}
+
+	return tables[0].Columns, nil
+}
+
 func TestBuildPhysicalTableName(t *testing.T) {
 	const versionID = "c0v1d2e3f4g5h6i7j8k9" // XID-shaped: 20 chars from [0-9a-v]
 
@@ -106,7 +118,7 @@ func TestBuildColumnSpecs(t *testing.T) {
 		},
 	}
 
-	specs, err := buildColumnSpecs(config.Postgres, schema)
+	specs, err := mainTableColumns(config.Postgres, schema)
 	require.NoError(t, err)
 
 	// id, instance_id, 4 fields, created_at.
@@ -159,7 +171,7 @@ func TestBuildColumnSpecsPreciseColumnTypes(t *testing.T) {
 		},
 	}
 
-	specs, err := buildColumnSpecs(config.Postgres, schema)
+	specs, err := mainTableColumns(config.Postgres, schema)
 	require.NoError(t, err)
 
 	byName := columnsByName(specs)
@@ -189,7 +201,7 @@ func TestBuildColumnSpecsDialectVariants(t *testing.T) {
 		},
 	}
 
-	mysqlSpecs, err := buildColumnSpecs(config.MySQL, schema)
+	mysqlSpecs, err := mainTableColumns(config.MySQL, schema)
 	require.NoError(t, err)
 
 	mysql := columnsByName(mysqlSpecs)
@@ -201,7 +213,7 @@ func TestBuildColumnSpecsDialectVariants(t *testing.T) {
 
 	// SQLite has no native varchar-length / decimal / date / json: each degrades
 	// to a lossless TEXT (or NUMERIC affinity) column.
-	sqliteSpecs, err := buildColumnSpecs(config.SQLite, schema)
+	sqliteSpecs, err := mainTableColumns(config.SQLite, schema)
 	require.NoError(t, err)
 
 	sqlite := columnsByName(sqliteSpecs)
@@ -226,7 +238,7 @@ func TestColumnTypeFallbackAndStringWithoutLength(t *testing.T) {
 		},
 	}
 
-	specs, err := buildColumnSpecs(config.Postgres, schema)
+	specs, err := mainTableColumns(config.Postgres, schema)
 	require.NoError(t, err)
 
 	byName := columnsByName(specs)
@@ -255,14 +267,14 @@ func TestColumnTypeBoundsDegradeBeyondDialectLimits(t *testing.T) {
 		},
 	}
 
-	mysqlSpecs, err := buildColumnSpecs(config.MySQL, schema)
+	mysqlSpecs, err := mainTableColumns(config.MySQL, schema)
 	require.NoError(t, err)
 
 	mysql := columnsByName(mysqlSpecs)
 	assert.Equal(t, "TEXT", mysql["mid"].Type, "length beyond MySQL VARCHAR ceiling → TEXT")
 	assert.Equal(t, "DECIMAL(38,30)", mysql["deep"].Type, "scale clamped to MySQL's max of 30")
 
-	pgSpecs, err := buildColumnSpecs(config.Postgres, schema)
+	pgSpecs, err := mainTableColumns(config.Postgres, schema)
 	require.NoError(t, err)
 
 	pg := columnsByName(pgSpecs)
@@ -274,7 +286,7 @@ func TestColumnTypeBoundsDegradeBeyondDialectLimits(t *testing.T) {
 			{Key: "vast", ColumnType: approval.ColumnString, Validation: &approval.ValidationRule{MaxLength: &pgOverLen}},
 		},
 	}
-	pgOverSpecs, err := buildColumnSpecs(config.Postgres, pgOverSchema)
+	pgOverSpecs, err := mainTableColumns(config.Postgres, pgOverSchema)
 	require.NoError(t, err)
 	assert.Equal(t, "TEXT", columnsByName(pgOverSpecs)["vast"].Type, "length beyond Postgres VARCHAR ceiling → TEXT")
 }
@@ -288,7 +300,7 @@ func TestBuildColumnSpecsSanitizesInjectionShapedKey(t *testing.T) {
 		},
 	}
 
-	specs, err := buildColumnSpecs(config.Postgres, schema)
+	specs, err := mainTableColumns(config.Postgres, schema)
 	require.NoError(t, err)
 
 	var fieldCol *columnSpec
@@ -312,7 +324,7 @@ func TestBuildColumnSpecsRejectsUnmappableFieldKey(t *testing.T) {
 		},
 	}
 
-	_, err := buildColumnSpecs(config.Postgres, schema)
+	_, err := mainTableColumns(config.Postgres, schema)
 	require.Error(t, err, "a field key that cannot map to a safe identifier must be rejected")
 	assert.True(t, errors.Is(err, ErrInvalidGeneratedIdentifier))
 }
@@ -323,7 +335,7 @@ func TestBuildColumnSpecsRejectsReservedColumn(t *testing.T) {
 			Fields: []approval.FormFieldDefinition{{Key: reserved, Kind: approval.FieldInput}},
 		}
 
-		_, err := buildColumnSpecs(config.Postgres, schema)
+		_, err := mainTableColumns(config.Postgres, schema)
 		require.Errorf(t, err, "field key %q collides with a built-in column", reserved)
 		assert.True(t, errors.Is(err, ErrReservedColumnName), "expected reserved-column error for %q", reserved)
 	}
@@ -338,13 +350,13 @@ func TestBuildColumnSpecsRejectsDuplicateAfterSanitize(t *testing.T) {
 		},
 	}
 
-	_, err := buildColumnSpecs(config.Postgres, schema)
+	_, err := mainTableColumns(config.Postgres, schema)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrDuplicateColumnName))
 }
 
 func TestBuildColumnSpecsUnsupportedDialect(t *testing.T) {
-	_, err := buildColumnSpecs(config.Oracle, &approval.FormDefinition{})
+	_, err := mainTableColumns(config.Oracle, &approval.FormDefinition{})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrUnsupportedDialect))
 }
@@ -357,10 +369,10 @@ func TestRenderCreateTableShapes(t *testing.T) {
 		},
 	}
 
-	specs, err := buildColumnSpecs(config.Postgres, schema)
+	specs, err := mainTableColumns(config.Postgres, schema)
 	require.NoError(t, err)
 
-	createSQL, err := renderCreateTable(config.Postgres, "apv_form_demo_v1", specs)
+	createSQL, err := renderCreateTable(config.Postgres, tableSpec{Name: "apv_form_demo_v1", Columns: specs})
 	require.NoError(t, err)
 
 	assert.Contains(t, createSQL, "CREATE TABLE IF NOT EXISTS apv_form_demo_v1")
@@ -385,9 +397,9 @@ func TestRenderCreateTablePreciseTypesAndNotNull(t *testing.T) {
 		},
 	}
 
-	specs, err := buildColumnSpecs(config.Postgres, schema)
+	specs, err := mainTableColumns(config.Postgres, schema)
 	require.NoError(t, err)
-	createSQL, err := renderCreateTable(config.Postgres, "apv_form_demo_v1", specs)
+	createSQL, err := renderCreateTable(config.Postgres, tableSpec{Name: "apv_form_demo_v1", Columns: specs})
 	require.NoError(t, err)
 
 	// Required field → NOT NULL with its precise type; optional field → no NOT NULL.
@@ -398,7 +410,7 @@ func TestRenderCreateTablePreciseTypesAndNotNull(t *testing.T) {
 }
 
 func TestRenderCreateTableRejectsUnsafeTableName(t *testing.T) {
-	_, err := renderCreateTable(config.Postgres, "apv_form demo; DROP TABLE x", nil)
+	_, err := renderCreateTable(config.Postgres, tableSpec{Name: "apv_form demo; DROP TABLE x", Columns: nil})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrInvalidGeneratedIdentifier))
 }
@@ -406,21 +418,159 @@ func TestRenderCreateTableRejectsUnsafeTableName(t *testing.T) {
 func TestRenderCreateTableSQLiteAndMySQL(t *testing.T) {
 	schema := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{{Key: "n", Kind: approval.FieldNumber}}}
 
-	sqliteSpecs, err := buildColumnSpecs(config.SQLite, schema)
+	sqliteSpecs, err := mainTableColumns(config.SQLite, schema)
 	require.NoError(t, err)
-	sqliteCreate, err := renderCreateTable(config.SQLite, "apv_form_demo_v1", sqliteSpecs)
+	sqliteCreate, err := renderCreateTable(config.SQLite, tableSpec{Name: "apv_form_demo_v1", Columns: sqliteSpecs})
 	require.NoError(t, err)
 	assert.Contains(t, sqliteCreate, "id TEXT PRIMARY KEY")
 	assert.Contains(t, sqliteCreate, "instance_id TEXT NOT NULL UNIQUE")
 	assert.Contains(t, sqliteCreate, "n NUMERIC")
 	assert.Contains(t, sqliteCreate, "created_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime'))")
 
-	mysqlSpecs, err := buildColumnSpecs(config.MySQL, schema)
+	mysqlSpecs, err := mainTableColumns(config.MySQL, schema)
 	require.NoError(t, err)
-	mysqlCreate, err := renderCreateTable(config.MySQL, "apv_form_demo_v1", mysqlSpecs)
+	mysqlCreate, err := renderCreateTable(config.MySQL, tableSpec{Name: "apv_form_demo_v1", Columns: mysqlSpecs})
 	require.NoError(t, err)
 	assert.Contains(t, mysqlCreate, "id VARCHAR(32) PRIMARY KEY")
 	assert.Contains(t, mysqlCreate, "instance_id VARCHAR(32) NOT NULL UNIQUE")
 	assert.Contains(t, mysqlCreate, "n DECIMAL(38,10)")
 	assert.Contains(t, mysqlCreate, "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
+}
+
+func TestBuildTableSpecsWithDetailTables(t *testing.T) {
+	schema := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+		{Key: "reason", Kind: approval.FieldTextarea},
+		{Key: "items", Kind: approval.FieldTable, Columns: []approval.FormFieldDefinition{
+			{Key: "name", Kind: approval.FieldInput, IsRequired: true},
+			{Key: "qty", Kind: approval.FieldNumber},
+		}},
+	}}
+
+	tables, err := buildTableSpecs(config.Postgres, "demo", "d95k65k5cmcbd4737ag0", schema)
+	require.NoError(t, err, "specs should resolve")
+	require.Len(t, tables, 2, "one main table plus one child per table field")
+
+	main, child := tables[0], tables[1]
+	assert.False(t, main.IsChild(), "first spec is the main table")
+	assert.Equal(t, "items", child.SourceFieldKey, "child spec carries its source field")
+	assert.Equal(t, "apv_form_d95k65k5cmcbd4737ag0__items", child.Name,
+		"child names anchor on the version id with a fixed suffix budget, independent of the flow code")
+
+	mainNames := make([]string, len(main.Columns))
+	for i, c := range main.Columns {
+		mainNames[i] = c.Name
+	}
+
+	assert.Equal(t, []string{"id", "instance_id", "reason", "created_at"}, mainNames,
+		"the main table projects only scalar fields")
+
+	childNames := make([]string, len(child.Columns))
+	for i, c := range child.Columns {
+		childNames[i] = c.Name
+	}
+
+	assert.Equal(t, []string{"id", "instance_id", "row_index", "name", "qty", "created_at"}, childNames,
+		"child tables carry row_index between the built-ins and the columns")
+}
+
+func TestRenderTableStatementsForChild(t *testing.T) {
+	schema := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+		{Key: "items", Kind: approval.FieldTable, Columns: []approval.FormFieldDefinition{
+			{Key: "qty", Kind: approval.FieldNumber},
+		}},
+	}}
+
+	t.Run("PostgresAddsSeparateIndex", func(t *testing.T) {
+		tables, err := buildTableSpecs(config.Postgres, "demo", "d95k65k5cmcbd4737ag0", schema)
+		require.NoError(t, err, "specs should resolve")
+
+		statements, err := renderTableStatements(config.Postgres, tables[1])
+		require.NoError(t, err, "child statements should render")
+		require.Len(t, statements, 2, "CREATE TABLE plus the instance_id index")
+		assert.Contains(t, statements[0], "row_index", "child DDL declares row_index")
+		assert.NotContains(t, statements[0], "instance_id VARCHAR(32) NOT NULL UNIQUE",
+			"child instance_id must not be unique — many rows per instance")
+		assert.Contains(t, statements[1], "CREATE INDEX IF NOT EXISTS", "index statement must be idempotent")
+		assert.Contains(t, statements[1], "(instance_id)", "index covers the lookup key")
+	})
+
+	t.Run("MySQLInlinesTheIndex", func(t *testing.T) {
+		tables, err := buildTableSpecs(config.MySQL, "demo", "d95k65k5cmcbd4737ag0", schema)
+		require.NoError(t, err, "specs should resolve")
+
+		statements, err := renderTableStatements(config.MySQL, tables[1])
+		require.NoError(t, err, "child statements should render")
+		require.Len(t, statements, 1, "MySQL has no CREATE INDEX IF NOT EXISTS; the index is inlined")
+		assert.Contains(t, statements[0], "INDEX idx_instance_id (instance_id)", "inline index keeps the DDL idempotent")
+	})
+
+	t.Run("MainTableKeepsUniqueInstance", func(t *testing.T) {
+		tables, err := buildTableSpecs(config.Postgres, "demo", "d95k65k5cmcbd4737ag0", schema)
+		require.NoError(t, err, "specs should resolve")
+
+		statements, err := renderTableStatements(config.Postgres, tables[0])
+		require.NoError(t, err, "main statements should render")
+		require.Len(t, statements, 1, "the main table needs no extra index")
+		assert.Contains(t, statements[0], "instance_id VARCHAR(32) NOT NULL UNIQUE",
+			"one row per instance stays database-enforced")
+	})
+}
+
+func TestValidateTableFormSchemaChildRules(t *testing.T) {
+	t.Run("RejectsReservedChildColumn", func(t *testing.T) {
+		schema := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+			{Key: "items", Kind: approval.FieldTable, Columns: []approval.FormFieldDefinition{
+				{Key: "row_index", Kind: approval.FieldNumber},
+			}},
+		}}
+		assert.ErrorIs(t, ValidateTableFormSchema(schema), ErrReservedColumnName,
+			"child columns must not shadow the built-in row_index")
+	})
+
+	t.Run("RejectsTableKeysSanitizingToSameName", func(t *testing.T) {
+		schema := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+			{Key: "line items", Kind: approval.FieldTable, Columns: []approval.FormFieldDefinition{{Key: "a", Kind: approval.FieldInput}}},
+			{Key: "line-items", Kind: approval.FieldTable, Columns: []approval.FormFieldDefinition{{Key: "a", Kind: approval.FieldInput}}},
+		}}
+		assert.ErrorIs(t, ValidateTableFormSchema(schema), ErrDuplicateColumnName,
+			"two table fields must not map to the same child table name")
+	})
+
+	t.Run("AllowsSameColumnKeyAcrossTables", func(t *testing.T) {
+		schema := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+			{Key: "amount", Kind: approval.FieldNumber},
+			{Key: "a", Kind: approval.FieldTable, Columns: []approval.FormFieldDefinition{{Key: "amount", Kind: approval.FieldNumber}}},
+			{Key: "b", Kind: approval.FieldTable, Columns: []approval.FormFieldDefinition{{Key: "amount", Kind: approval.FieldNumber}}},
+		}}
+		assert.NoError(t, ValidateTableFormSchema(schema),
+			"column pools are per table — the same key may appear in different tables and the main form")
+	})
+}
+
+func TestChildTableNamingIsFlowCodeIndependent(t *testing.T) {
+	schema := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+		{Key: "items", Kind: approval.FieldTable, Columns: []approval.FormFieldDefinition{
+			{Key: "qty", Kind: approval.FieldNumber},
+		}},
+	}}
+
+	// A long, entirely ordinary flow code consumes the main table's whole
+	// readable budget; child tables must not be starved by it.
+	tables, err := buildTableSpecs(config.Postgres, "marketing_budget_approval_request_process", "d95k65k5cmcbd4737ag0", schema)
+	require.NoError(t, err, "a long flow code must not block child table generation")
+	require.Len(t, tables, 2, "main plus child")
+	assert.Equal(t, "apv_form_d95k65k5cmcbd4737ag0__items", tables[1].Name,
+		"the child name budget is fixed and never depends on the flow code")
+	assert.NoError(t, approval.ValidateBusinessIdentifier(tables[1].Name))
+}
+
+func TestValidateTableFormSchemaDeduplicatesTruncatedSuffixes(t *testing.T) {
+	long := func(tail string) string { return "expense_details_breakdown_lines_" + tail }
+	schema := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+		{Key: long("january"), Kind: approval.FieldTable, Columns: []approval.FormFieldDefinition{{Key: "a", Kind: approval.FieldInput}}},
+		{Key: long("february"), Kind: approval.FieldTable, Columns: []approval.FormFieldDefinition{{Key: "a", Kind: approval.FieldInput}}},
+	}}
+
+	assert.ErrorIs(t, ValidateTableFormSchema(schema), ErrDuplicateColumnName,
+		"keys colliding after suffix truncation must fail at deploy, not silently share one physical table at publish")
 }

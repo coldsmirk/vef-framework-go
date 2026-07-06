@@ -79,7 +79,9 @@ type FlowVersion struct {
 // version whose StorageMode is StorageTable. It is the single source of truth
 // for what DDL the framework generated: the engine consults it (idempotency)
 // before creating a table for a version, and operators can map a version to
-// its projection table through it. One row per version (version_id is unique).
+// its projection table through it. One row per physical table: the main
+// projection table plus one child table per detail-table field, disambiguated
+// by SourceFieldKey ((version_id, source_field_key) is unique).
 type FormTable struct {
 	orm.BaseModel `bun:"table:apv_form_table,alias:aft"`
 	orm.CreationAuditedModel
@@ -87,6 +89,9 @@ type FormTable struct {
 	FlowID            string `json:"flowId" bun:"flow_id"`
 	VersionID         string `json:"versionId" bun:"version_id"`
 	PhysicalTableName string `json:"physicalTableName" bun:"physical_table_name"`
+	// SourceFieldKey names the detail-table field this child table projects;
+	// empty for the version's main projection table.
+	SourceFieldKey string `json:"sourceFieldKey" bun:"source_field_key"`
 }
 
 // FormTableColumn records a single generated column of a FormTable. It mirrors

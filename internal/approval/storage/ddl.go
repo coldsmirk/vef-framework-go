@@ -27,6 +27,7 @@ const physicalTablePrefix = "apv_form_"
 var reservedColumns = map[string]struct{}{
 	"id":          {},
 	"instance_id": {},
+	"row_index":   {},
 	"created_at":  {},
 }
 
@@ -46,6 +47,20 @@ type columnSpec struct {
 	SourceFieldKey *string
 	SortOrder      int
 }
+
+// tableSpec is one resolved physical table: the main projection table
+// (SourceFieldKey == "") or one child table per detail-table field. All
+// generation paths — CREATE TABLE, metadata registration, row writes —
+// consume the same specs, so the three can never disagree on identifiers.
+type tableSpec struct {
+	Name           string
+	SourceFieldKey string
+	Columns        []columnSpec
+}
+
+// IsChild reports whether the spec projects a detail-table field rather
+// than the main form row.
+func (s tableSpec) IsChild() bool { return s.SourceFieldKey != "" }
 
 // buildPhysicalTableName derives the physical table name for a version. The
 // version's globally-unique id (an XID) is the uniqueness guarantee, so the
@@ -111,48 +126,114 @@ func ValidateTableFormSchema(schema *approval.FormDefinition) error {
 
 	// Seed with the built-in columns so a field key colliding with one of them
 	// is reported as reserved, and two field keys sanitizing to the same column
-	// are reported as a duplicate.
-	seen := map[string]struct{}{"id": {}, "instance_id": {}, "created_at": {}}
+	// are reported as a duplicate. Table fields get their own pool per child
+	// table — a child column only has to be unique within its table — plus a
+	// shared pool of sanitized table keys, which become child table names.
+	seen := reservedColumnPool()
+	childNames := map[string]struct{}{}
 
 	for _, field := range schema.Fields {
-		// An explicit column-type override must be one of the defined logical
-		// types; an empty ColumnType is valid (it falls back to a kind-derived
-		// type). Catching it here fails an unknown type at deploy rather than
-		// silently widening it to TEXT at publish.
-		if field.ColumnType != "" && !field.ColumnType.IsValid() {
-			return fmt.Errorf("%w: field key %q declares column type %q",
-				ErrInvalidColumnType, field.Key, field.ColumnType)
+		if field.Kind == approval.FieldTable {
+			if err := validateChildTableSchema(field, childNames); err != nil {
+				return err
+			}
+
+			continue
 		}
 
-		column := sanitizeForIdentifier(field.Key)
-
-		if err := approval.ValidateBusinessIdentifier(column); err != nil {
-			return fmt.Errorf("%w: field key %q maps to invalid column %q: %w",
-				ErrInvalidGeneratedIdentifier, field.Key, column, err)
+		if err := validateColumnField(field, seen); err != nil {
+			return err
 		}
-
-		if _, reserved := reservedColumns[column]; reserved {
-			return fmt.Errorf("%w: field key %q collides with built-in column %q",
-				ErrReservedColumnName, field.Key, column)
-		}
-
-		if _, dup := seen[column]; dup {
-			return fmt.Errorf("%w: field key %q maps to already-used column %q",
-				ErrDuplicateColumnName, field.Key, column)
-		}
-
-		seen[column] = struct{}{}
 	}
 
 	return nil
 }
 
-// buildColumnSpecs resolves the full ordered column set for a form schema in a
-// given dialect: the built-in id / instance_id columns first, then one column
-// per form field (in the schema's declared order), then created_at last. Field
-// keys are validated as safe, unique, non-reserved identifiers up front by
-// ValidateTableFormSchema, so the per-field names produced here are known good.
-func buildColumnSpecs(kind config.DBKind, schema *approval.FormDefinition) ([]columnSpec, error) {
+// reservedColumnPool seeds a fresh identifier pool with the built-in columns.
+func reservedColumnPool() map[string]struct{} {
+	pool := make(map[string]struct{}, len(reservedColumns))
+	for name := range reservedColumns {
+		pool[name] = struct{}{}
+	}
+
+	return pool
+}
+
+// validateColumnField checks one field's mapping into the given identifier
+// pool: a known column-type override, a safe sanitized identifier, and no
+// collision with built-ins or earlier fields.
+func validateColumnField(field approval.FormFieldDefinition, seen map[string]struct{}) error {
+	// An explicit column-type override must be one of the defined logical
+	// types; an empty ColumnType is valid (it falls back to a kind-derived
+	// type). Catching it here fails an unknown type at deploy rather than
+	// silently widening it to TEXT at publish.
+	if field.ColumnType != "" && !field.ColumnType.IsValid() {
+		return fmt.Errorf("%w: field key %q declares column type %q",
+			ErrInvalidColumnType, field.Key, field.ColumnType)
+	}
+
+	column := sanitizeForIdentifier(field.Key)
+
+	if err := approval.ValidateBusinessIdentifier(column); err != nil {
+		return fmt.Errorf("%w: field key %q maps to invalid column %q: %w",
+			ErrInvalidGeneratedIdentifier, field.Key, column, err)
+	}
+
+	if _, reserved := reservedColumns[column]; reserved {
+		return fmt.Errorf("%w: field key %q collides with built-in column %q",
+			ErrReservedColumnName, field.Key, column)
+	}
+
+	if _, dup := seen[column]; dup {
+		return fmt.Errorf("%w: field key %q maps to already-used column %q",
+			ErrDuplicateColumnName, field.Key, column)
+	}
+
+	seen[column] = struct{}{}
+
+	return nil
+}
+
+// validateChildTableSchema checks a detail-table field's physical mapping:
+// the sanitized table key (the child table's name suffix) must be a safe,
+// unique identifier, and every column must map safely within the child
+// table's own pool.
+func validateChildTableSchema(field approval.FormFieldDefinition, childNames map[string]struct{}) error {
+	// De-dupe on the SAME truncated suffix generation will emit — two long
+	// keys sharing a prefix must collide here, at deploy, not silently at
+	// publish where CREATE TABLE IF NOT EXISTS would mask the second table.
+	suffix := childTableSuffix(field.Key)
+
+	if err := approval.ValidateBusinessIdentifier(suffix); err != nil {
+		return fmt.Errorf("%w: table field key %q maps to invalid name %q: %w",
+			ErrInvalidGeneratedIdentifier, field.Key, suffix, err)
+	}
+
+	if _, dup := childNames[suffix]; dup {
+		return fmt.Errorf("%w: table field key %q maps to already-used table name %q",
+			ErrDuplicateColumnName, field.Key, suffix)
+	}
+
+	childNames[suffix] = struct{}{}
+
+	pool := reservedColumnPool()
+	for _, column := range field.Columns {
+		if err := validateColumnField(column, pool); err != nil {
+			return fmt.Errorf("in table %q: %w", field.Key, err)
+		}
+	}
+
+	return nil
+}
+
+// buildTableSpecs resolves every physical table for a form schema in a given
+// dialect: the main projection table (built-in id / instance_id columns, one
+// column per scalar field in declared order, created_at last) plus one child
+// table per detail-table field (id / instance_id / row_index, the table's
+// columns, created_at). Field keys are validated as safe, unique,
+// non-reserved identifiers up front by ValidateTableFormSchema, so the names
+// produced here are known good.
+func buildTableSpecs(kind config.DBKind, flowCode, versionID string, schema *approval.FormDefinition) ([]tableSpec, error) {
 	t := typesFor(kind)
 	if t == (sqlTypes{}) {
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedDialect, kind)
@@ -162,22 +243,39 @@ func buildColumnSpecs(kind config.DBKind, schema *approval.FormDefinition) ([]co
 		return nil, err
 	}
 
-	specs := make([]columnSpec, 0, fieldCount(schema)+3)
+	mainName, err := buildPhysicalTableName(flowCode, versionID)
+	if err != nil {
+		return nil, err
+	}
+
+	main := tableSpec{Name: mainName}
 
 	// Built-in leading columns. id is the table PK; instance_id links back to
 	// apv_instance.id and carries a UNIQUE constraint so each instance projects
 	// exactly one row (start and resubmit replace, never append).
-	specs = append(specs,
+	main.Columns = append(main.Columns,
 		columnSpec{Name: "id", Type: t.pk, IsNullable: false, SortOrder: 0},
 		columnSpec{Name: "instance_id", Type: t.id, IsNullable: false, SortOrder: 1},
 	)
 
+	specs := []tableSpec{main}
 	sortOrder := 2
 
 	if schema != nil {
 		for _, field := range schema.Fields {
+			if field.Kind == approval.FieldTable {
+				child, err := buildChildTableSpec(kind, t, versionID, field)
+				if err != nil {
+					return nil, err
+				}
+
+				specs = append(specs, child)
+
+				continue
+			}
+
 			key := field.Key
-			specs = append(specs, columnSpec{
+			specs[0].Columns = append(specs[0].Columns, columnSpec{
 				Name:           sanitizeForIdentifier(field.Key),
 				Type:           columnTypeFor(kind, t, field),
 				IsNullable:     !field.IsRequired,
@@ -188,9 +286,79 @@ func buildColumnSpecs(kind config.DBKind, schema *approval.FormDefinition) ([]co
 		}
 	}
 
-	specs = append(specs, columnSpec{Name: "created_at", Type: t.timestamp, IsNullable: false, SortOrder: sortOrder})
+	specs[0].Columns = append(specs[0].Columns, columnSpec{Name: "created_at", Type: t.timestamp, IsNullable: false, SortOrder: sortOrder})
 
 	return specs, nil
+}
+
+// buildChildTableSpec resolves one detail-table field into its child table:
+// name = apv_form_<versionID>__<sanitized field key> (fixed suffix budget),
+// rows keyed by instance_id (indexed, NOT unique — many rows per instance)
+// and ordered by row_index.
+func buildChildTableSpec(kind config.DBKind, t sqlTypes, versionID string, field approval.FormFieldDefinition) (tableSpec, error) {
+	name, err := buildChildTableName(versionID, field.Key)
+	if err != nil {
+		return tableSpec{}, err
+	}
+
+	child := tableSpec{Name: name, SourceFieldKey: field.Key}
+
+	child.Columns = append(child.Columns,
+		columnSpec{Name: "id", Type: t.pk, IsNullable: false, SortOrder: 0},
+		columnSpec{Name: "instance_id", Type: t.id, IsNullable: false, SortOrder: 1},
+		columnSpec{Name: "row_index", Type: t.integer, IsNullable: false, SortOrder: 2},
+	)
+
+	sortOrder := 3
+
+	for _, column := range field.Columns {
+		key := column.Key
+		child.Columns = append(child.Columns, columnSpec{
+			Name:           sanitizeForIdentifier(column.Key),
+			Type:           columnTypeFor(kind, t, column),
+			IsNullable:     !column.IsRequired,
+			SourceFieldKey: &key,
+			SortOrder:      sortOrder,
+		})
+		sortOrder++
+	}
+
+	child.Columns = append(child.Columns, columnSpec{Name: "created_at", Type: t.timestamp, IsNullable: false, SortOrder: sortOrder})
+
+	return child, nil
+}
+
+// childSuffixBudget is the fixed identifier budget for a child table's
+// field-key suffix: the 63-char cap minus the always-present prefix, the
+// 20-char version XID, and the "__" separator. Deliberately independent of
+// how much of the identifier space the main table's human-readable flow
+// code consumed — a long flow code must never starve child tables.
+const childSuffixBudget = identifierMaxLen - len(physicalTablePrefix) - 20 - 2
+
+// buildChildTableName composes apv_form_<versionID>__<sanitized field key>.
+// The version XID alone guarantees global uniqueness and the truncated
+// suffix is unique per schema (ValidateTableFormSchema de-dupes the same
+// truncation childTableSuffix applies), so composed names cannot collide.
+func buildChildTableName(versionID, fieldKey string) (string, error) {
+	name := physicalTablePrefix + versionID + "__" + childTableSuffix(fieldKey)
+
+	if err := approval.ValidateBusinessIdentifier(name); err != nil {
+		return "", fmt.Errorf("%w: generated child table name %q rejected: %w", ErrInvalidGeneratedIdentifier, name, err)
+	}
+
+	return name, nil
+}
+
+// childTableSuffix sanitizes and truncates a table field's key into the
+// fixed child-name budget. Validation and generation share this single
+// transform, so what validation approves is exactly what generation emits.
+func childTableSuffix(fieldKey string) string {
+	suffix := sanitizeForIdentifier(fieldKey)
+	if len(suffix) > childSuffixBudget {
+		suffix = strings.TrimRight(suffix[:childSuffixBudget], "_")
+	}
+
+	return suffix
 }
 
 // renderCreateTable builds the CREATE TABLE statement for the resolved column
@@ -201,9 +369,45 @@ func buildColumnSpecs(kind config.DBKind, schema *approval.FormDefinition) ([]co
 // named implicit index — enforcing one row per instance and serving instance_id
 // lookups without a separately-named (and potentially truncation-colliding)
 // index.
-func renderCreateTable(kind config.DBKind, tableName string, specs []columnSpec) (string, error) {
-	if err := approval.ValidateBusinessIdentifier(tableName); err != nil {
-		return "", fmt.Errorf("%w: %q: %w", ErrInvalidGeneratedIdentifier, tableName, err)
+// renderTableStatements renders every DDL statement one physical table
+// needs: the CREATE TABLE plus, for child tables on dialects without inline
+// index syntax, the instance_id lookup index. All statements are idempotent
+// so a republish or retry re-runs safely.
+func renderTableStatements(kind config.DBKind, table tableSpec) ([]string, error) {
+	createSQL, err := renderCreateTable(kind, table)
+	if err != nil {
+		return nil, err
+	}
+
+	statements := []string{createSQL}
+
+	// MySQL inlines the index inside CREATE TABLE (no CREATE INDEX IF NOT
+	// EXISTS); the other dialects add it as a separate idempotent statement.
+	if table.IsChild() && kind != config.MySQL {
+		statements = append(statements, fmt.Sprintf(
+			"CREATE INDEX IF NOT EXISTS %s ON %s(instance_id)", childIndexName(table.Name), table.Name,
+		))
+	}
+
+	return statements, nil
+}
+
+// childIndexName derives the child table's instance_id index name within
+// the shared identifier budget.
+func childIndexName(tableName string) string {
+	const suffix = "__instance_id"
+
+	base := "idx_" + tableName
+	if len(base)+len(suffix) > identifierMaxLen {
+		base = strings.TrimRight(base[:identifierMaxLen-len(suffix)], "_")
+	}
+
+	return base + suffix
+}
+
+func renderCreateTable(kind config.DBKind, table tableSpec) (string, error) {
+	if err := approval.ValidateBusinessIdentifier(table.Name); err != nil {
+		return "", fmt.Errorf("%w: %q: %w", ErrInvalidGeneratedIdentifier, table.Name, err)
 	}
 
 	t := typesFor(kind)
@@ -211,8 +415,8 @@ func renderCreateTable(kind config.DBKind, tableName string, specs []columnSpec)
 		return "", fmt.Errorf("%w: %q", ErrUnsupportedDialect, kind)
 	}
 
-	lines := make([]string, 0, len(specs))
-	for _, spec := range specs {
+	lines := make([]string, 0, len(table.Columns)+1)
+	for _, spec := range table.Columns {
 		// Defense-in-depth: re-validate every column name at the render step so
 		// a spec smuggled in from elsewhere cannot turn the format string into
 		// an injection vector.
@@ -227,9 +431,16 @@ func renderCreateTable(kind config.DBKind, tableName string, specs []columnSpec)
 
 		switch spec.Name {
 		case "id":
-			lines = append(lines, fmt.Sprintf("    %s %s %s", spec.Name, spec.Type, pkConstraint(kind, tableName)))
+			lines = append(lines, fmt.Sprintf("    %s %s %s", spec.Name, spec.Type, pkConstraint(kind, table.Name)))
 		case "instance_id":
-			lines = append(lines, fmt.Sprintf("    %s %s NOT NULL UNIQUE", spec.Name, spec.Type))
+			// The main table projects exactly one row per instance (start and
+			// resubmit replace); child tables hold one row per detail line.
+			if table.IsChild() {
+				lines = append(lines, fmt.Sprintf("    %s %s NOT NULL", spec.Name, spec.Type))
+			} else {
+				lines = append(lines, fmt.Sprintf("    %s %s NOT NULL UNIQUE", spec.Name, spec.Type))
+			}
+
 		case "created_at":
 			lines = append(lines, fmt.Sprintf("    %s %s NOT NULL DEFAULT %s", spec.Name, spec.Type, t.now))
 		default:
@@ -237,13 +448,9 @@ func renderCreateTable(kind config.DBKind, tableName string, specs []columnSpec)
 		}
 	}
 
-	return fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n%s\n)", tableName, strings.Join(lines, ",\n")), nil
-}
-
-func fieldCount(schema *approval.FormDefinition) int {
-	if schema == nil {
-		return 0
+	if table.IsChild() && kind == config.MySQL {
+		lines = append(lines, "    INDEX idx_instance_id (instance_id)")
 	}
 
-	return len(schema.Fields)
+	return fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n%s\n)", table.Name, strings.Join(lines, ",\n")), nil
 }

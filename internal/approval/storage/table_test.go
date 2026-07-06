@@ -28,7 +28,7 @@ func TestBuildInsertBindsValuesAndSkipsCreatedAt(t *testing.T) {
 		"tags":   []any{"a", "b"},
 	}
 
-	sql, args, err := buildInsert("apv_form_demo_v1", "inst-123", columnsFixture(), formData)
+	sql, args, err := buildInsert("apv_form_demo_v1", "inst-123", columnsFixture(), []map[string]any{formData})
 	require.NoError(t, err)
 
 	// created_at is omitted (database default); every other column is present
@@ -51,7 +51,7 @@ func TestBuildInsertBindsValuesAndSkipsCreatedAt(t *testing.T) {
 func TestBuildInsertMissingFieldBindsNil(t *testing.T) {
 	// "amount" and "tags" absent from form data -> NULL binds, not skipped
 	// columns, so the row shape matches the column metadata.
-	sql, args, err := buildInsert("apv_form_demo_v1", "inst-9", columnsFixture(), map[string]any{"reason": "x"})
+	sql, args, err := buildInsert("apv_form_demo_v1", "inst-9", columnsFixture(), []map[string]any{{"reason": "x"}})
 	require.NoError(t, err)
 
 	assert.Equal(t,
@@ -73,7 +73,7 @@ func TestBuildInsertEmptyStringNullsNonTextColumns(t *testing.T) {
 
 	// Both present but empty: the DATE column nulls out (a real DATE rejects ""),
 	// the TEXT column keeps "" as a value distinct from NULL.
-	_, args, err := buildInsert("apv_form_demo_v1", "inst-1", cols, map[string]any{"when": "", "note": ""})
+	_, args, err := buildInsert("apv_form_demo_v1", "inst-1", cols, []map[string]any{{"when": "", "note": ""}})
 	require.NoError(t, err)
 	require.Len(t, args, 4)
 	assert.Nil(t, args[2], "empty date binds NULL, not empty string")
@@ -93,7 +93,7 @@ func TestBuildInsertRejectsUnsafeColumnName(t *testing.T) {
 		{ColumnName: "bad name; --", SourceFieldKey: new("x"), SortOrder: 2},
 	}
 
-	_, _, err := buildInsert("apv_form_demo_v1", "inst-1", cols, map[string]any{"x": "y"})
+	_, _, err := buildInsert("apv_form_demo_v1", "inst-1", cols, []map[string]any{{"x": "y"}})
 	require.Error(t, err, "a column smuggled in from metadata must still be validated at render")
 	assert.True(t, errors.Is(err, ErrInvalidGeneratedIdentifier))
 }

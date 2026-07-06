@@ -3,6 +3,11 @@ package storage
 import "errors"
 
 var (
+	// ErrInvalidDetailValue indicates a detail-table field's runtime value is
+	// not the list-of-row-objects shape the projection expects. Submit
+	// validation rejects this earlier; hitting it here means corrupt data.
+	ErrInvalidDetailValue = errors.New("approval/storage: invalid detail-table value")
+
 	// ErrUnsupportedDialect indicates the configured database dialect has no
 	// type mapping for generating dynamic form tables.
 	ErrUnsupportedDialect = errors.New("approval/storage: unsupported database dialect")

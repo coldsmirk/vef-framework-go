@@ -433,3 +433,70 @@ func (s *StorageTableTestSuite) TestApproveSyncsProjection() {
 	s.Assert().Equal("edited-by-approver", *row.Reason,
 		"approve must refresh the table-mode projection, not only apv_instance.form_data")
 }
+
+func (s *StorageTableTestSuite) TestDetailTableProjectsChildRows() {
+	schema := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+		{Key: "reason", Kind: approval.FieldTextarea, Label: "Reason"},
+		{Key: "items", Kind: approval.FieldTable, Label: "Items", Columns: []approval.FormFieldDefinition{
+			{Key: "name", Kind: approval.FieldInput, Label: "Name"},
+			{Key: "qty", Kind: approval.FieldNumber, Label: "Qty"},
+		}},
+	}}
+	flowID, versionID := s.deployTableFlow("default", "storage-tbl-detail", schema)
+
+	var formTables []approval.FormTable
+	s.Require().NoError(s.db.NewSelect().Model(&formTables).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("version_id", versionID) }).
+		OrderBy("source_field_key").
+		Scan(s.ctx), "metadata should exist for main and child tables")
+	s.Require().Len(formTables, 2, "one main table plus one child table")
+	s.Assert().Equal("", formTables[0].SourceFieldKey, "main table carries the empty sentinel")
+	s.Assert().Equal("items", formTables[1].SourceFieldKey, "child table carries its source field")
+	s.Assert().Equal("apv_form_"+versionID+"__items", formTables[1].PhysicalTableName,
+		"child names anchor on the version id, independent of the flow code")
+
+	instance := s.startTableInstance("storage-tbl-detail", map[string]any{
+		"reason": "trip",
+		"items": []any{
+			map[string]any{"name": "hotel", "qty": 2},
+			map[string]any{"name": "taxi", "qty": 1},
+		},
+	})
+
+	type childRow struct {
+		RowIndex int    `bun:"row_index"`
+		Name     string `bun:"name"`
+	}
+
+	var rows []childRow
+	s.Require().NoError(s.db.NewRaw(
+		"SELECT row_index, name FROM "+formTables[1].PhysicalTableName+" WHERE instance_id = ? ORDER BY row_index",
+		instance.ID,
+	).Scan(s.ctx, &rows), "child rows should be queryable")
+	s.Require().Len(rows, 2, "each detail line projects one child row")
+	s.Assert().Equal([]childRow{{0, "hotel"}, {1, "taxi"}}, rows, "row order follows the submitted list")
+
+	// Resubmit-style rewrite replaces, never appends.
+	var version approval.FlowVersion
+
+	version.ID = versionID
+	s.Require().NoError(s.db.NewSelect().Model(&version).WherePK().Scan(s.ctx), "load version")
+
+	var flow approval.Flow
+
+	flow.ID = flowID
+	s.Require().NoError(s.db.NewSelect().Model(&flow).WherePK().Scan(s.ctx), "load flow")
+
+	s.Require().NoError(s.dispatcher.For(approval.StorageTable).Write(s.ctx, s.db, &flow, &version, instance.ID, map[string]any{
+		"reason": "trip-v2",
+		"items":  []any{map[string]any{"name": "train", "qty": 3}},
+	}), "rewrite should succeed")
+
+	rows = nil
+	s.Require().NoError(s.db.NewRaw(
+		"SELECT row_index, name FROM "+formTables[1].PhysicalTableName+" WHERE instance_id = ? ORDER BY row_index",
+		instance.ID,
+	).Scan(s.ctx, &rows), "child rows should be queryable after rewrite")
+	s.Require().Len(rows, 1, "a rewrite replaces the previous detail lines")
+	s.Assert().Equal(childRow{0, "train"}, rows[0], "the fresh line lands at row_index 0")
+}

@@ -10,7 +10,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/id"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // TableStorage is the StorageTable strategy. At publish it generates a
@@ -42,23 +41,22 @@ func NewTableStorage(kind config.DBKind) *TableStorage {
 // that left the table behind — a no-op at the DDL level. The table name and
 // columns are derived from the version's form schema; see ddl.go.
 func (s *TableStorage) ProvisionTable(ctx context.Context, db orm.DB, flow *approval.Flow, version *approval.FlowVersion) error {
-	tableName, err := buildPhysicalTableName(flow.Code, version.ID)
+	tables, err := buildTableSpecs(s.kind, flow.Code, version.ID, version.FormSchema)
 	if err != nil {
 		return err
 	}
 
-	specs, err := buildColumnSpecs(s.kind, version.FormSchema)
-	if err != nil {
-		return err
-	}
+	for _, table := range tables {
+		statements, err := renderTableStatements(s.kind, table)
+		if err != nil {
+			return err
+		}
 
-	createSQL, err := renderCreateTable(s.kind, tableName, specs)
-	if err != nil {
-		return err
-	}
-
-	if _, err := db.NewRaw(createSQL).Exec(ctx); err != nil {
-		return fmt.Errorf("create form table %q: %w", tableName, err)
+		for _, statement := range statements {
+			if _, err := db.NewRaw(statement).Exec(ctx); err != nil {
+				return fmt.Errorf("create form table %q: %w", table.Name, err)
+			}
+		}
 	}
 
 	return nil
@@ -86,39 +84,37 @@ func (s *TableStorage) RecordMetadata(ctx context.Context, db orm.DB, flow *appr
 		return nil
 	}
 
-	tableName, err := buildPhysicalTableName(flow.Code, version.ID)
+	tables, err := buildTableSpecs(s.kind, flow.Code, version.ID, version.FormSchema)
 	if err != nil {
 		return err
 	}
 
-	specs, err := buildColumnSpecs(s.kind, version.FormSchema)
-	if err != nil {
-		return err
-	}
+	for _, table := range tables {
+		formTable := &approval.FormTable{
+			FlowID:            version.FlowID,
+			VersionID:         version.ID,
+			PhysicalTableName: table.Name,
+			SourceFieldKey:    table.SourceFieldKey,
+		}
+		if _, err := db.NewInsert().Model(formTable).Exec(ctx); err != nil {
+			return fmt.Errorf("insert form table metadata: %w", err)
+		}
 
-	formTable := &approval.FormTable{
-		FlowID:            version.FlowID,
-		VersionID:         version.ID,
-		PhysicalTableName: tableName,
-	}
-	if _, err := db.NewInsert().Model(formTable).Exec(ctx); err != nil {
-		return fmt.Errorf("insert form table metadata: %w", err)
-	}
+		columns := make([]approval.FormTableColumn, 0, len(table.Columns))
+		for _, spec := range table.Columns {
+			columns = append(columns, approval.FormTableColumn{
+				FormTableID:    formTable.ID,
+				ColumnName:     spec.Name,
+				ColumnType:     spec.Type,
+				IsNullable:     spec.IsNullable,
+				SourceFieldKey: spec.SourceFieldKey,
+				SortOrder:      spec.SortOrder,
+			})
+		}
 
-	columns := make([]approval.FormTableColumn, 0, len(specs))
-	for _, spec := range specs {
-		columns = append(columns, approval.FormTableColumn{
-			FormTableID:    formTable.ID,
-			ColumnName:     spec.Name,
-			ColumnType:     spec.Type,
-			IsNullable:     spec.IsNullable,
-			SourceFieldKey: spec.SourceFieldKey,
-			SortOrder:      spec.SortOrder,
-		})
-	}
-
-	if _, err := db.NewInsert().Model(&columns).Exec(ctx); err != nil {
-		return fmt.Errorf("insert form table column metadata: %w", err)
+		if _, err := db.NewInsert().Model(&columns).Exec(ctx); err != nil {
+			return fmt.Errorf("insert form table column metadata: %w", err)
+		}
 	}
 
 	return nil
@@ -138,24 +134,39 @@ func (s *TableStorage) RecordMetadata(ctx context.Context, db orm.DB, flow *appr
 // argument and created_at defaults at the database. Every value is bound as a
 // `?` argument.
 func (*TableStorage) Write(ctx context.Context, db orm.DB, _ *approval.Flow, version *approval.FlowVersion, instanceID string, formData map[string]any) error {
-	var formTable approval.FormTable
+	var formTables []approval.FormTable
 	if err := db.NewSelect().
-		Model(&formTable).
+		Model(&formTables).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("version_id", version.ID)
 		}).
+		OrderBy("source_field_key").
 		Scan(ctx); err != nil {
-		if result.IsRecordNotFound(err) {
-			// In table mode the metadata must exist (publish creates it). Its
-			// absence means an instance is being created against a version that
-			// was never (successfully) published in table mode — fail loudly
-			// rather than silently dropping the projection.
-			return fmt.Errorf("%w: version %q", ErrFormTableMetadataMissing, version.ID)
-		}
-
 		return fmt.Errorf("load form table metadata: %w", err)
 	}
 
+	if len(formTables) == 0 {
+		// In table mode the metadata must exist (publish creates it). Its
+		// absence means an instance is being created against a version that
+		// was never (successfully) published in table mode — fail loudly
+		// rather than silently dropping the projection.
+		return fmt.Errorf("%w: version %q", ErrFormTableMetadataMissing, version.ID)
+	}
+
+	for i := range formTables {
+		if err := writeProjection(ctx, db, &formTables[i], instanceID, formData); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// writeProjection replaces one physical table's rows for the instance: the
+// main table projects the scalar fields as exactly one row, a child table
+// projects its detail-table field as one row per detail line (ordered by
+// row_index). Replace-never-append keeps resubmits from stacking history.
+func writeProjection(ctx context.Context, db orm.DB, formTable *approval.FormTable, instanceID string, formData map[string]any) error {
 	var columns []approval.FormTableColumn
 	if err := db.NewSelect().
 		Model(&columns).
@@ -167,28 +178,67 @@ func (*TableStorage) Write(ctx context.Context, db orm.DB, _ *approval.Flow, ver
 		return fmt.Errorf("load form table columns: %w", err)
 	}
 
-	// Replace, never append: clear any prior projection for this instance so a
-	// resubmit refreshes the single row instead of stacking duplicates. On the
-	// first write (start) this deletes nothing.
 	deleteSQL, err := buildDelete(formTable.PhysicalTableName)
 	if err != nil {
 		return err
 	}
 
 	if _, err := db.NewRaw(deleteSQL, instanceID).Exec(ctx); err != nil {
-		return fmt.Errorf("clear existing form row in %q: %w", formTable.PhysicalTableName, err)
+		return fmt.Errorf("clear existing form rows in %q: %w", formTable.PhysicalTableName, err)
 	}
 
-	insertSQL, args, err := buildInsert(formTable.PhysicalTableName, instanceID, columns, formData)
+	rows, err := projectionRows(formTable, formData)
+	if err != nil {
+		return err
+	}
+
+	if len(rows) == 0 {
+		return nil
+	}
+
+	insertSQL, args, err := buildInsert(formTable.PhysicalTableName, instanceID, columns, rows)
 	if err != nil {
 		return err
 	}
 
 	if _, err := db.NewRaw(insertSQL, args...).Exec(ctx); err != nil {
-		return fmt.Errorf("insert form row into %q: %w", formTable.PhysicalTableName, err)
+		return fmt.Errorf("insert form rows into %q: %w", formTable.PhysicalTableName, err)
 	}
 
 	return nil
+}
+
+// projectionRows resolves the data rows one table projects: the whole form
+// data as the main table's single row, or a detail-table field's row list
+// for a child table. A missing or empty detail value projects zero rows —
+// the delete has already cleared any prior lines.
+func projectionRows(formTable *approval.FormTable, formData map[string]any) ([]map[string]any, error) {
+	if formTable.SourceFieldKey == "" {
+		return []map[string]any{formData}, nil
+	}
+
+	raw, present := formData[formTable.SourceFieldKey]
+	if !present || raw == nil {
+		return nil, nil
+	}
+
+	list, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("%w: field %q holds %T, expected a row list", ErrInvalidDetailValue, formTable.SourceFieldKey, raw)
+	}
+
+	rows := make([]map[string]any, len(list))
+
+	for i, item := range list {
+		row, ok := item.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("%w: field %q row %d holds %T, expected an object", ErrInvalidDetailValue, formTable.SourceFieldKey, i+1, item)
+		}
+
+		rows[i] = row
+	}
+
+	return rows, nil
 }
 
 // buildDelete composes the DELETE that clears an instance's existing projection
@@ -209,14 +259,12 @@ func buildDelete(tableName string) (string, error) {
 // interpolated; all values are returned as positional bind arguments. The raw
 // INSERT bypasses the ORM's PK default hook, so id is populated explicitly from
 // a generated identifier; created_at is omitted so its database DEFAULT applies.
-func buildInsert(tableName, instanceID string, columns []approval.FormTableColumn, formData map[string]any) (string, []any, error) {
+func buildInsert(tableName, instanceID string, columns []approval.FormTableColumn, rows []map[string]any) (string, []any, error) {
 	if err := approval.ValidateBusinessIdentifier(tableName); err != nil {
 		return "", nil, fmt.Errorf("%w: %q: %w", ErrInvalidGeneratedIdentifier, tableName, err)
 	}
 
 	names := make([]string, 0, len(columns))
-	placeholders := make([]string, 0, len(columns))
-	args := make([]any, 0, len(columns))
 
 	for _, column := range columns {
 		// created_at is database-defaulted; skip it so the DEFAULT fires.
@@ -228,6 +276,44 @@ func buildInsert(tableName, instanceID string, columns []approval.FormTableColum
 			return "", nil, fmt.Errorf("%w: column %q: %w", ErrInvalidGeneratedIdentifier, column.ColumnName, err)
 		}
 
+		names = append(names, column.ColumnName)
+	}
+
+	rowPlaceholders := "(" + strings.TrimSuffix(strings.Repeat("?, ", len(names)), ", ") + ")"
+	placeholders := make([]string, 0, len(rows))
+	args := make([]any, 0, len(rows)*len(names))
+
+	for rowIndex, row := range rows {
+		rowArgs, err := rowValues(columns, instanceID, rowIndex, row)
+		if err != nil {
+			return "", nil, err
+		}
+
+		placeholders = append(placeholders, rowPlaceholders)
+		args = append(args, rowArgs...)
+	}
+
+	insertSQL := fmt.Sprintf(
+		"INSERT INTO %s (%s) VALUES %s",
+		tableName,
+		strings.Join(names, ", "),
+		strings.Join(placeholders, ", "),
+	)
+
+	return insertSQL, args, nil
+}
+
+// rowValues binds one row's values in column order. The column set decides
+// the shape: main tables have no row_index column, child tables do — one
+// value resolver serves both.
+func rowValues(columns []approval.FormTableColumn, instanceID string, rowIndex int, data map[string]any) ([]any, error) {
+	args := make([]any, 0, len(columns))
+
+	for _, column := range columns {
+		if column.ColumnName == "created_at" {
+			continue
+		}
+
 		var value any
 
 		switch {
@@ -235,14 +321,16 @@ func buildInsert(tableName, instanceID string, columns []approval.FormTableColum
 			value = id.Generate()
 		case column.ColumnName == "instance_id":
 			value = instanceID
+		case column.ColumnName == "row_index" && column.SourceFieldKey == nil:
+			value = rowIndex
 		case column.SourceFieldKey != nil:
-			raw, present := formData[*column.SourceFieldKey]
+			raw, present := data[*column.SourceFieldKey]
 			if !present {
 				value = nil
 			} else {
 				coerced, err := coerceValue(raw)
 				if err != nil {
-					return "", nil, fmt.Errorf("encode form field %q: %w", *column.SourceFieldKey, err)
+					return nil, fmt.Errorf("encode form field %q: %w", *column.SourceFieldKey, err)
 				}
 
 				value = nullEmptyForNonText(coerced, column.ColumnType)
@@ -256,19 +344,10 @@ func buildInsert(tableName, instanceID string, columns []approval.FormTableColum
 			value = nil
 		}
 
-		names = append(names, column.ColumnName)
-		placeholders = append(placeholders, "?")
 		args = append(args, value)
 	}
 
-	insertSQL := fmt.Sprintf(
-		"INSERT INTO %s (%s) VALUES (%s)",
-		tableName,
-		strings.Join(names, ", "),
-		strings.Join(placeholders, ", "),
-	)
-
-	return insertSQL, args, nil
+	return args, nil
 }
 
 // coerceValue converts a decoded JSON form value into something the database

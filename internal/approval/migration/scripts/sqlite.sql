@@ -461,10 +461,12 @@ CREATE TABLE IF NOT EXISTS apv_form_table (
     flow_id VARCHAR(32) NOT NULL,
     version_id VARCHAR(32) NOT NULL,
     physical_table_name VARCHAR(64) NOT NULL,
+    -- Detail-table field this child table projects; '' = the main table
+    source_field_key VARCHAR(64) NOT NULL DEFAULT '',
     CONSTRAINT fk_apv_form_table__version_id FOREIGN KEY (version_id) REFERENCES apv_flow_version(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uk_apv_form_table__version_id ON apv_form_table(version_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_apv_form_table__version_id_source_field_key ON apv_form_table(version_id, source_field_key);
 
 -- Form table column: column definitions projected from the form schema
 CREATE TABLE IF NOT EXISTS apv_form_table_column (
