@@ -134,3 +134,42 @@ func TestCoerceValue(t *testing.T) {
 		})
 	}
 }
+
+func TestCoerceTextColumnValue(t *testing.T) {
+	cases := []struct {
+		name       string
+		value      any
+		columnType string
+		want       any
+	}{
+		{"float into VARCHAR is stringified", 1.0, "VARCHAR(255)", "1"},
+		{"fractional float into TEXT is stringified", 42.5, "TEXT", "42.5"},
+		{"bool into TEXT is stringified", true, "TEXT", "true"},
+		{"string into TEXT passes through", "hi", "TEXT", "hi"},
+		{"nil passes through", nil, "TEXT", nil},
+		{"float into BIGINT passes through", 1.0, "BIGINT", 1.0},
+		{"float into untyped column passes through", 1.0, "", 1.0},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, coerceTextColumnValue(tc.value, tc.columnType),
+				"text-column coercion must match the fmt.Sprint form the option check validated")
+		})
+	}
+}
+
+func TestBuildInsertStringifiesNumericValueForTextColumn(t *testing.T) {
+	// A numeric select option value decodes to float64; bound as-is, Postgres
+	// rejects a numeric expression on a TEXT/VARCHAR column (42804).
+	columns := []approval.FormTableColumn{
+		{ColumnName: "id", SortOrder: 0},
+		{ColumnName: "instance_id", SortOrder: 1},
+		{ColumnName: "grade", SourceFieldKey: new("grade"), ColumnType: "VARCHAR(64)", SortOrder: 2},
+	}
+
+	_, args, err := buildInsert("apv_form_demo_v1", "inst-123", columns, []map[string]any{{"grade": 2.0}})
+	require.NoError(t, err, "insert build should succeed for a numeric option value")
+	require.Len(t, args, 3, "id, instance_id, and grade should be bound")
+	assert.Equal(t, "2", args[2], "numeric option value must bind as its fmt.Sprint text form")
+}

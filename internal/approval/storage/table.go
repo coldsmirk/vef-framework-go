@@ -334,6 +334,7 @@ func rowValues(columns []approval.FormTableColumn, instanceID string, rowIndex i
 				}
 
 				value = nullEmptyForNonText(coerced, column.ColumnType)
+				value = coerceTextColumnValue(value, column.ColumnType)
 				value = coerceIntegerColumnValue(value, column.ColumnType)
 			}
 
@@ -399,6 +400,23 @@ func isTextColumnType(columnType string) bool {
 	return strings.HasPrefix(upper, "TEXT") ||
 		strings.HasPrefix(upper, "VARCHAR") ||
 		strings.HasPrefix(upper, "CHAR")
+}
+
+// coerceTextColumnValue stringifies a non-string scalar bound to a text column
+// (TEXT/VARCHAR/CHAR). A numeric select option value decodes to float64, and a
+// strongly-typed dialect (Postgres) rejects binding a numeric expression to a
+// text column; fmt.Sprint mirrors the representation the submit-time option
+// check compares with, so the stored text equals the validated text.
+func coerceTextColumnValue(value any, columnType string) any {
+	if value == nil || !isTextColumnType(columnType) {
+		return value
+	}
+
+	if _, ok := value.(string); ok {
+		return value
+	}
+
+	return fmt.Sprint(value)
 }
 
 // isIntegerColumnType reports whether a generated column's SQL type is an
