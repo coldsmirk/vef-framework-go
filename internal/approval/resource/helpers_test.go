@@ -246,7 +246,7 @@ func approvalFlowDef() approval.FlowDefinition {
 				IsRollbackAllowed:       new(true),
 				RollbackType:            approval.RollbackPrevious,
 				IsAddAssigneeAllowed:    new(true),
-				AddAssigneeTypes:        []approval.AddAssigneeType{approval.AddAssigneeBefore, approval.AddAssigneeAfter, approval.AddAssigneeParallel},
+				AddAssigneeTypes:        []approval.AddAssigneeType{approval.AddAssigneeBefore, approval.AddAssigneeAfter},
 				IsRemoveAssigneeAllowed: new(true),
 			})},
 			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{BaseNodeData: approval.BaseNodeData{Name: "结束"}})},

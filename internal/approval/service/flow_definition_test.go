@@ -23,7 +23,18 @@ func conditionNode(id string, branches ...approval.ConditionBranch) approval.Nod
 }
 
 func branch(id string, priority int, isDefault bool) approval.ConditionBranch {
-	return approval.ConditionBranch{ID: id, Priority: priority, IsDefault: isDefault}
+	b := approval.ConditionBranch{ID: id, Priority: priority, IsDefault: isDefault}
+
+	// Non-default branches must carry at least one executable condition to
+	// pass node-config validation; fixtures targeting other rules reuse this
+	// minimal valid one.
+	if !isDefault {
+		b.ConditionGroups = []approval.ConditionGroup{{Conditions: []approval.Condition{
+			{Kind: approval.ConditionField, Subject: "amount", Operator: approval.OperatorEquals, Value: 1},
+		}}}
+	}
+
+	return b
 }
 
 func edge(id, source, target string) approval.EdgeDefinition {

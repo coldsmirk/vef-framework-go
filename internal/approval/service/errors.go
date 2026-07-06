@@ -68,6 +68,10 @@ var (
 	errHandleTimeoutAutoReject    = errors.New("handle nodes do not support timeout action 'auto_reject'")
 	errRollbackTargetUnknown      = errors.New("rollback target key does not reference an approval or handle node in the flow")
 	errRollbackTargetSelf         = errors.New("rollback target keys must not include the node itself")
+	errInvalidAddAssigneeType     = errors.New("invalid add-assignee type")
+	errSequentialParallelAdd      = errors.New("sequential nodes do not support add-assignee type 'parallel'")
+	errBranchConditionsRequired   = errors.New("non-default condition branch requires at least one condition group")
+	errConditionGroupEmpty        = errors.New("condition group must contain at least one condition")
 )
 
 // Form-definition validation sentinels. Deploy-time guards over the form

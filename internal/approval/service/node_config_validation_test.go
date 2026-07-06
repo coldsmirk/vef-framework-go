@@ -9,6 +9,14 @@ import (
 	"github.com/coldsmirk/vef-framework-go/decimal"
 )
 
+// condGroups returns a minimal valid condition payload for a non-default
+// branch, letting fixtures target other validation rules.
+func condGroups() []approval.ConditionGroup {
+	return []approval.ConditionGroup{{Conditions: []approval.Condition{
+		{Kind: approval.ConditionField, Subject: "amount", Operator: approval.OperatorEquals, Value: 1},
+	}}}
+}
+
 func TestValidateNodeConfig(t *testing.T) {
 	t.Run("PassRatio", func(t *testing.T) {
 		tests := []struct {
@@ -50,8 +58,8 @@ func TestValidateNodeConfig(t *testing.T) {
 		t.Run("RejectsDuplicateAmongNonDefault", func(t *testing.T) {
 			data := &approval.ConditionNodeData{
 				Branches: []approval.ConditionBranch{
-					{ID: "b1", Priority: 1},
-					{ID: "b2", Priority: 1},
+					{ID: "b1", Priority: 1, ConditionGroups: condGroups()},
+					{ID: "b2", Priority: 1, ConditionGroups: condGroups()},
 					{ID: "bd", Priority: 99, IsDefault: true},
 				},
 			}
@@ -63,8 +71,8 @@ func TestValidateNodeConfig(t *testing.T) {
 		t.Run("AcceptsUniquePriorities", func(t *testing.T) {
 			data := &approval.ConditionNodeData{
 				Branches: []approval.ConditionBranch{
-					{ID: "b1", Priority: 1},
-					{ID: "b2", Priority: 2},
+					{ID: "b1", Priority: 1, ConditionGroups: condGroups()},
+					{ID: "b2", Priority: 2, ConditionGroups: condGroups()},
 					{ID: "bd", Priority: 99, IsDefault: true},
 				},
 			}
@@ -75,13 +83,92 @@ func TestValidateNodeConfig(t *testing.T) {
 		t.Run("DefaultBranchDoesNotParticipate", func(t *testing.T) {
 			data := &approval.ConditionNodeData{
 				Branches: []approval.ConditionBranch{
-					{ID: "b1", Priority: 1},
+					{ID: "b1", Priority: 1, ConditionGroups: condGroups()},
 					{ID: "bd", Priority: 1, IsDefault: true},
 				},
 			}
 
 			assert.NoError(t, validateNodeConfig("n1", data),
 				"A default branch sharing a priority with a non-default one should pass — defaults are not ordered")
+		})
+	})
+
+	t.Run("BranchConditions", func(t *testing.T) {
+		t.Run("RejectsNonDefaultBranchWithoutGroups", func(t *testing.T) {
+			data := &approval.ConditionNodeData{
+				Branches: []approval.ConditionBranch{
+					{ID: "b1", Priority: 1},
+					{ID: "bd", Priority: 99, IsDefault: true},
+				},
+			}
+
+			assert.ErrorIs(t, validateNodeConfig("n1", data), errBranchConditionsRequired,
+				"A non-default branch with no condition groups would match unconditionally and must be rejected")
+		})
+
+		t.Run("RejectsEmptyConditionGroup", func(t *testing.T) {
+			data := &approval.ConditionNodeData{
+				Branches: []approval.ConditionBranch{
+					{ID: "b1", Priority: 1, ConditionGroups: []approval.ConditionGroup{{}}},
+					{ID: "bd", Priority: 99, IsDefault: true},
+				},
+			}
+
+			assert.ErrorIs(t, validateNodeConfig("n1", data), errConditionGroupEmpty,
+				"An empty condition group evaluates to true and must be rejected")
+		})
+
+		t.Run("AcceptsDefaultBranchWithoutGroups", func(t *testing.T) {
+			data := &approval.ConditionNodeData{
+				Branches: []approval.ConditionBranch{
+					{ID: "b1", Priority: 1, ConditionGroups: condGroups()},
+					{ID: "bd", Priority: 99, IsDefault: true},
+				},
+			}
+
+			assert.NoError(t, validateNodeConfig("n1", data),
+				"The default branch is the fallback and legitimately carries no conditions")
+		})
+	})
+
+	t.Run("AddAssigneeTypes", func(t *testing.T) {
+		t.Run("RejectsUnknownType", func(t *testing.T) {
+			data := &approval.ApprovalNodeData{
+				AddAssigneeTypes: []approval.AddAssigneeType{"sideways"},
+			}
+
+			assert.ErrorIs(t, validateNodeConfig("n1", data), errInvalidAddAssigneeType,
+				"Out-of-enum add-assignee types should fail at deploy")
+		})
+
+		t.Run("RejectsParallelOnSequential", func(t *testing.T) {
+			data := &approval.ApprovalNodeData{
+				ApprovalMethod:   approval.ApprovalSequential,
+				AddAssigneeTypes: []approval.AddAssigneeType{approval.AddAssigneeParallel},
+			}
+
+			assert.ErrorIs(t, validateNodeConfig("n1", data), errSequentialParallelAdd,
+				"A sequential queue has no parallel lane to join")
+		})
+
+		t.Run("AcceptsParallelOnParallel", func(t *testing.T) {
+			data := &approval.ApprovalNodeData{
+				ApprovalMethod:   approval.ApprovalParallel,
+				AddAssigneeTypes: []approval.AddAssigneeType{approval.AddAssigneeParallel},
+			}
+
+			assert.NoError(t, validateNodeConfig("n1", data),
+				"Parallel additions are the normal case on parallel nodes")
+		})
+
+		t.Run("AcceptsBeforeAfterOnSequential", func(t *testing.T) {
+			data := &approval.ApprovalNodeData{
+				ApprovalMethod:   approval.ApprovalSequential,
+				AddAssigneeTypes: []approval.AddAssigneeType{approval.AddAssigneeBefore, approval.AddAssigneeAfter},
+			}
+
+			assert.NoError(t, validateNodeConfig("n1", data),
+				"Before/after splice into the sequential queue and stay valid")
 		})
 	})
 

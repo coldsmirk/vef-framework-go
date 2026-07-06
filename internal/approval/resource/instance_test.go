@@ -206,6 +206,7 @@ func (s *InstanceResourceTestSuite) findPendingTasks(instanceID string) []map[st
 			m["id"] = tid
 		}
 
+
 		tasks[i] = m
 	}
 
@@ -691,27 +692,52 @@ func (s *InstanceResourceTestSuite) TestAddAssignee() {
 	})
 
 	s.Run("Parallel", func() {
+		// A sequential queue has no parallel lane, so the sequential approval
+		// flow must reject the addition...
 		data := s.startInstance(s.approval.FlowCode, nil)
 		instanceID := data["id"].(string)
 
 		tasks := s.findPendingTasks(instanceID)
 		s.Require().NotEmpty(tasks, "Approval flow should create a task before add-parallel")
-		originalTaskID := tasks[0]["id"].(string)
 
 		res := s.rpcCall("add_assignee", map[string]any{
-			"taskId":  originalTaskID,
+			"taskId":  tasks[0]["id"].(string),
 			"userIds": []string{"parallel-user"},
 			"addType": "parallel",
 		})
-		s.Assert().True(res.IsOk(), "Should add assignee parallel")
+		s.assertErrorCode(res, shared.ErrCodeInvalidAddAssigneeType, "Sequential nodes must reject parallel additions")
 
-		// Original task should still be pending
-		original := s.loadTask(originalTaskID)
+		// ...while the parallel flow accepts it and the new task joins the
+		// active group as immediately actionable.
+		data = s.startInstance(s.parallel.FlowCode, nil)
+		instanceID = data["id"].(string)
+
+		tasks = s.findPendingTasks(instanceID)
+		s.Require().Len(tasks, 2, "Parallel flow should start with 2 pending tasks")
+
+		var adminTaskID string
+		for _, t := range tasks {
+			if t["assigneeId"] == "test-admin" {
+				adminTaskID = t["id"].(string)
+
+				break
+			}
+		}
+
+		s.Require().NotEmpty(adminTaskID, "Parallel flow should include a test-admin task")
+
+		res = s.rpcCall("add_assignee", map[string]any{
+			"taskId":  adminTaskID,
+			"userIds": []string{"parallel-user"},
+			"addType": "parallel",
+		})
+		s.Assert().True(res.IsOk(), "Should add assignee parallel on a parallel node")
+
+		original := s.loadTask(adminTaskID)
 		s.Assert().Equal(approval.TaskPending, original.Status, "Original task should remain pending")
 
-		// New parallel task should also be pending
 		pendingTasks := s.findPendingTasks(instanceID)
-		s.Assert().GreaterOrEqual(len(pendingTasks), 2, "Should have at least 2 pending tasks")
+		s.Assert().GreaterOrEqual(len(pendingTasks), 3, "The parallel addition should be immediately pending")
 	})
 
 	s.Run("NotAllowed", func() {
@@ -740,17 +766,18 @@ func (s *InstanceResourceTestSuite) TestRemoveAssignee() {
 		s.Require().NotEmpty(tasks, "Approval flow should create a task before removing an assignee")
 		originalTaskID := tasks[0]["id"].(string)
 
-		// First add a parallel assignee so the node has 2+ tasks
+		// Add a "before" assignee so the node has 2+ tasks (parallel
+		// additions are rejected on this sequential node). The spliced-in
+		// task takes over the queue head as the only pending one.
 		res := s.rpcCall("add_assignee", map[string]any{
 			"taskId":  originalTaskID,
 			"userIds": []string{"extra-user"},
-			"addType": "parallel",
+			"addType": "before",
 		})
-		s.Require().True(res.IsOk(), "Should add parallel assignee")
+		s.Require().True(res.IsOk(), "Should add a before assignee")
 
-		// Find the newly added task
 		pendingTasks := s.findPendingTasks(instanceID)
-		s.Require().GreaterOrEqual(len(pendingTasks), 2, "Should have at least 2 pending tasks")
+		s.Require().NotEmpty(pendingTasks, "Should have a pending task after the before-add")
 
 		// Find the task for extra-user and remove it
 		var removeTaskID string

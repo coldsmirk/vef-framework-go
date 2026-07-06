@@ -1,7 +1,9 @@
 package service
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -84,6 +86,20 @@ func validateApprovalNodeData(nodeID string, data *approval.ApprovalNodeData) er
 
 	if data.RollbackDataStrategy != "" && !data.RollbackDataStrategy.IsValid() {
 		return fmt.Errorf("%w: %q in node %q", errInvalidRollbackStrategy, data.RollbackDataStrategy, nodeID)
+	}
+
+	for _, addType := range data.AddAssigneeTypes {
+		if !addType.IsValid() {
+			return fmt.Errorf("%w: %q in node %q", errInvalidAddAssigneeType, addType, nodeID)
+		}
+	}
+
+	// A sequential node advances its queue one task at a time, so a
+	// "parallel" addition has nothing to join — reject the configuration at
+	// deploy instead of letting every add attempt fail at runtime.
+	if cmp.Or(data.ApprovalMethod, approval.DefaultApprovalMethod) == approval.ApprovalSequential &&
+		slices.Contains(data.AddAssigneeTypes, approval.AddAssigneeParallel) {
+		return fmt.Errorf("%w: node %q", errSequentialParallelAdd, nodeID)
 	}
 
 	return nil
@@ -178,6 +194,10 @@ func validateCCDefinitions(nodeID string, ccs []approval.CCDefinition) error {
 // Non-default branches must also carry unique priorities: "first match wins"
 // is only a meaningful contract when the evaluation order is total, so a tie
 // is a design error rather than something to resolve arbitrarily at runtime.
+//
+// Structurally-empty conditions are rejected for the same reason: the engine
+// treats an empty group list (or an empty group) as an unconditional match,
+// which would silently shadow every lower-priority branch and the default.
 func validateConditionBranches(nodeID string, branches []approval.ConditionBranch) error {
 	seenPriorities := make(map[int]string, len(branches))
 
@@ -189,9 +209,17 @@ func validateConditionBranches(nodeID string, branches []approval.ConditionBranc
 			}
 
 			seenPriorities[branch.Priority] = branch.ID
+
+			if len(branch.ConditionGroups) == 0 {
+				return fmt.Errorf("%w: branch %q in node %q", errBranchConditionsRequired, branch.ID, nodeID)
+			}
 		}
 
 		for _, group := range branch.ConditionGroups {
+			if len(group.Conditions) == 0 {
+				return fmt.Errorf("%w: branch %q in node %q", errConditionGroupEmpty, branch.ID, nodeID)
+			}
+
 			for _, cond := range group.Conditions {
 				if err := validateCondition(nodeID, branch.ID, cond); err != nil {
 					return err
