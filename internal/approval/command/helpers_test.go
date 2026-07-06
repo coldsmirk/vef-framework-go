@@ -537,6 +537,34 @@ func ensureActiveVisit(
 	return insertActiveVisit(t, ctx, db, tenantID, instanceID, nodeID, int(count)+1)
 }
 
+// insertConcludedVisit seeds a finished traversal of the node — the shape a
+// legitimate rollback target has (the flow has actually been there).
+//
+//nolint:revive // t testing.TB is conventionally the first parameter in test helpers
+func insertConcludedVisit(
+	t require.TestingT,
+	ctx context.Context,
+	db orm.DB,
+	tenantID, instanceID, nodeID string,
+) *approval.NodeVisit {
+	count, err := db.NewSelect().Model((*approval.NodeVisit)(nil)).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instanceID) }).
+		Count(ctx)
+	require.NoError(t, err, "Should count instance visits")
+
+	visit := insertActiveVisit(t, ctx, db, tenantID, instanceID, nodeID, int(count)+1)
+
+	_, err = db.NewUpdate().Model((*approval.NodeVisit)(nil)).
+		Set("status", approval.NodeVisitPassed).
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(visit.ID) }).
+		Exec(ctx)
+	require.NoError(t, err, "Should conclude the seeded visit")
+
+	visit.Status = approval.NodeVisitPassed
+
+	return visit
+}
+
 // setupRunningInstance creates a running instance with an open visit and a
 // pending task for the given assignee on the fixture's approval node.
 //

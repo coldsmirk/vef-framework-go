@@ -145,19 +145,37 @@ func (*ValidationService) ValidateRollbackTarget(ctx context.Context, db orm.DB,
 		}
 
 	case approval.RollbackAny:
-		count, err := db.NewSelect().
-			Model((*approval.FlowNode)(nil)).
+		// "Any" is bounded by the visit trail, not the whole graph: the
+		// target must be a decision point (approval / handle) or the start
+		// node, and one this instance actually traversed. "Any node in the
+		// version" would let a task holder target the End node and
+		// force-complete the instance as approved, or teleport onto a
+		// branch that routing never chose.
+		var targetNode approval.FlowNode
+
+		if err := db.NewSelect().
+			Model(&targetNode).
+			Select("kind").
 			Where(func(cb orm.ConditionBuilder) {
 				cb.Equals("id", targetNodeID).
 					Equals("flow_version_id", instance.FlowVersionID)
 			}).
-			Count(ctx)
-		if err != nil {
+			Scan(ctx); err != nil {
+			if result.IsRecordNotFound(err) {
+				return shared.ErrInvalidRollbackTarget
+			}
+
 			return fmt.Errorf("find rollback target node: %w", err)
 		}
 
-		if count == 0 {
+		switch targetNode.Kind {
+		case approval.NodeApproval, approval.NodeHandle, approval.NodeStart:
+		default:
 			return shared.ErrInvalidRollbackTarget
+		}
+
+		if err := requireConcludedVisit(ctx, db, instance.ID, targetNodeID); err != nil {
+			return err
 		}
 
 	case approval.RollbackSpecified:
@@ -181,6 +199,40 @@ func (*ValidationService) ValidateRollbackTarget(ctx context.Context, db orm.DB,
 		if !slices.Contains(currentNode.RollbackTargetKeys, targetNode.Key) {
 			return shared.ErrInvalidRollbackTarget
 		}
+
+		// Deploy validation pins the keys to approval/handle nodes; at
+		// runtime the target must additionally have been traversed — a key
+		// on a branch that routing never chose is not a valid destination.
+		if err := requireConcludedVisit(ctx, db, instance.ID, targetNodeID); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// requireConcludedVisit checks the instance has finished at least one
+// traversal of the node — the visit trail is the source of truth for
+// "rollback returns to somewhere the flow has actually been".
+func requireConcludedVisit(ctx context.Context, db orm.DB, instanceID, nodeID string) error {
+	visited, err := db.NewSelect().
+		Model((*approval.NodeVisit)(nil)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("instance_id", instanceID).
+				Equals("node_id", nodeID).
+				In("status", []approval.NodeVisitStatus{
+					approval.NodeVisitPassed,
+					approval.NodeVisitRejected,
+					approval.NodeVisitReturned,
+				})
+		}).
+		Exists(ctx)
+	if err != nil {
+		return fmt.Errorf("check rollback target visits: %w", err)
+	}
+
+	if !visited {
+		return shared.ErrInvalidRollbackTarget
 	}
 
 	return nil

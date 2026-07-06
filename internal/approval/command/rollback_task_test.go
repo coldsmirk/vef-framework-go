@@ -239,6 +239,8 @@ func (s *RollbackTaskTestSuite) TestRollbackDataClearWipesFormData() {
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should seed instance form data")
 
+	insertConcludedVisit(s.T(), s.ctx, s.db, "default", inst.ID, startNode.ID)
+
 	// s.rollbackNode is configured RollbackDataClear + RollbackAny.
 	operator := approval.UserInfo{ID: "rollback-clear-op", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
@@ -311,6 +313,8 @@ func (s *RollbackTaskTestSuite) TestRollbackDataKeepRestoresSnapshot() {
 	_, err = s.db.NewInsert().Model(snapshot).Exec(s.ctx)
 	s.Require().NoError(err, "Should seed form snapshot for target node")
 
+	insertConcludedVisit(s.T(), s.ctx, s.db, "default", inst.ID, startNode.ID)
+
 	operator := approval.UserInfo{ID: "rollback-keep-op", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
 		TaskID:       task.ID,
@@ -344,6 +348,8 @@ func (s *RollbackTaskTestSuite) TestRollbackToIntermediateNodeClearsFormData() {
 
 	// s.rollbackNode is RollbackDataClear; s.targetNode is an intermediate
 	// approval node (not a start node), so rollback takes the else branch.
+	insertConcludedVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.targetNode.ID)
+
 	operator := approval.UserInfo{ID: "rollback-clear-mid-op", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
 		TaskID:       task.ID,
@@ -416,6 +422,8 @@ func (s *RollbackTaskTestSuite) TestRollbackToIntermediateNodeKeepsSnapshot() {
 	_, err = s.db.NewInsert().Model(snapshot).Exec(s.ctx)
 	s.Require().NoError(err, "Should seed form snapshot for the intermediate target node")
 
+	insertConcludedVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.targetNode.ID)
+
 	operator := approval.UserInfo{ID: "rollback-keep-mid-op", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
 		TaskID:       task.ID,
@@ -449,6 +457,8 @@ func (s *RollbackTaskTestSuite) TestRollbackClearIsNotWedgedByOversizeFormData()
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should seed an over-cap instance form payload")
 
+	insertConcludedVisit(s.T(), s.ctx, s.db, "default", inst.ID, startNode.ID)
+
 	operator := approval.UserInfo{ID: "rollback-oversize-op", Name: "Operator"}
 	_, err = s.handler.Handle(s.ctx, command.RollbackTaskCmd{
 		TaskID:       task.ID,
@@ -464,4 +474,52 @@ func (s *RollbackTaskTestSuite) TestRollbackClearIsNotWedgedByOversizeFormData()
 	reloaded.ID = inst.ID
 	s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload instance after rollback")
 	s.Assert().Empty(reloaded.FormData, "RollbackDataClear must still wipe the oversize form data")
+}
+
+func (s *RollbackTaskTestSuite) TestRollbackTargetGuards() {
+	endNode := &approval.FlowNode{
+		FlowVersionID: s.fixture.VersionID,
+		Key:           "guard-end-node",
+		Kind:          approval.NodeEnd,
+		Name:          "Guard End",
+	}
+	_, err := s.db.NewInsert().Model(endNode).Exec(s.ctx)
+	s.Require().NoError(err, "Should create end node for guard test")
+
+	freshNode := &approval.FlowNode{
+		FlowVersionID: s.fixture.VersionID,
+		Key:           "guard-unvisited-node",
+		Kind:          approval.NodeApproval,
+		Name:          "Guard Unvisited",
+	}
+	_, err = s.db.NewInsert().Model(freshNode).Exec(s.ctx)
+	s.Require().NoError(err, "Should create unvisited node for guard test")
+
+	operator := approval.UserInfo{ID: "guard-op", Name: "Operator"}
+
+	s.Run("RejectsEndNodeTarget", func() {
+		_, task := s.setupData("guard-op")
+
+		_, err := s.handler.Handle(s.ctx, command.RollbackTaskCmd{
+			TaskID:       task.ID,
+			Operator:     operator,
+			TargetNodeID: endNode.ID,
+			Caller:       approval.SystemCaller,
+		})
+		s.Require().ErrorIs(err, shared.ErrInvalidRollbackTarget,
+			"Rolling back to the End node would force-approve the instance and must be rejected")
+	})
+
+	s.Run("RejectsUnvisitedTarget", func() {
+		_, task := s.setupData("guard-op")
+
+		_, err := s.handler.Handle(s.ctx, command.RollbackTaskCmd{
+			TaskID:       task.ID,
+			Operator:     operator,
+			TargetNodeID: freshNode.ID,
+			Caller:       approval.SystemCaller,
+		})
+		s.Require().ErrorIs(err, shared.ErrInvalidRollbackTarget,
+			"Rolling back to a node the flow never traversed must be rejected")
+	})
 }

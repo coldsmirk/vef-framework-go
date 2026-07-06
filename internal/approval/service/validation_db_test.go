@@ -225,6 +225,36 @@ func (s *ValidationServiceTestSuite) TestValidateRollbackTarget() {
 		return &approval.Instance{TenantID: "default", FlowVersionID: versionID}
 	}
 
+	// seedVisitedInstance persists an instance with a concluded visit of the
+	// node — the shape a legitimate any/specified rollback target requires.
+	seedVisitedInstance := func(versionID, nodeID string) *approval.Instance {
+		var version approval.FlowVersion
+
+		version.ID = versionID
+		s.Require().NoError(
+			s.db.NewSelect().Model(&version).Select("flow_id").WherePK().Scan(s.ctx),
+			"Should load version for visited instance",
+		)
+
+		inst := &approval.Instance{
+			TenantID:      "default",
+			FlowID:        version.FlowID,
+			FlowVersionID: versionID,
+			Title:         "Visited",
+			InstanceNo:    "VIS-" + versionID,
+			ApplicantID:   "applicant-1",
+			Status:        approval.InstanceRunning,
+		}
+		_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
+		s.Require().NoError(err, "Should insert visited instance")
+
+		visit := &approval.NodeVisit{TenantID: "default", InstanceID: inst.ID, NodeID: nodeID, Sequence: 1, Status: approval.NodeVisitPassed}
+		_, err = s.db.NewInsert().Model(visit).Exec(s.ctx)
+		s.Require().NoError(err, "Should insert concluded visit")
+
+		return inst
+	}
+
 	svc := service.NewValidationService(nil)
 
 	s.Run("TargetEqualsCurrentNodeRejected", func() {
@@ -309,15 +339,27 @@ func (s *ValidationServiceTestSuite) TestValidateRollbackTarget() {
 			"Start rollback to a non-start node must be rejected")
 	})
 
-	s.Run("AnyAcceptsNodeInVersion", func() {
+	s.Run("AnyAcceptsVisitedDecisionNode", func() {
 		defer cleanAllServiceData(s.ctx, s.db)
 
 		versionID, _, nodeAID, nodeBID := seedVersionWithNodes("rb-any-ok")
 		current := &approval.FlowNode{RollbackType: approval.RollbackAny}
 		current.ID = nodeBID
 
+		err := svc.ValidateRollbackTarget(s.ctx, s.db, seedVisitedInstance(versionID, nodeAID), current, nodeAID)
+		s.Require().NoError(err, "Any rollback to a traversed decision node must be allowed")
+	})
+
+	s.Run("AnyRejectsUnvisitedNode", func() {
+		defer cleanAllServiceData(s.ctx, s.db)
+
+		versionID, _, nodeAID, nodeBID := seedVersionWithNodes("rb-any-fresh")
+		current := &approval.FlowNode{RollbackType: approval.RollbackAny}
+		current.ID = nodeBID
+
 		err := svc.ValidateRollbackTarget(s.ctx, s.db, instanceFor(versionID), current, nodeAID)
-		s.Require().NoError(err, "Any rollback to a node belonging to the version must be allowed")
+		s.Require().ErrorIs(err, shared.ErrInvalidRollbackTarget,
+			"Any rollback to a node the instance never traversed must be rejected")
 	})
 
 	s.Run("AnyRejectsNodeOutsideVersion", func() {
@@ -340,8 +382,8 @@ func (s *ValidationServiceTestSuite) TestValidateRollbackTarget() {
 		current := &approval.FlowNode{RollbackType: approval.RollbackSpecified, RollbackTargetKeys: []string{"a"}}
 		current.ID = nodeBID
 
-		err := svc.ValidateRollbackTarget(s.ctx, s.db, instanceFor(versionID), current, nodeAID)
-		s.Require().NoError(err, "Specified rollback to a whitelisted target key must be allowed")
+		err := svc.ValidateRollbackTarget(s.ctx, s.db, seedVisitedInstance(versionID, nodeAID), current, nodeAID)
+		s.Require().NoError(err, "Specified rollback to a whitelisted, traversed target must be allowed")
 	})
 
 	s.Run("SpecifiedRejectsKeyNotInWhitelist", func() {
