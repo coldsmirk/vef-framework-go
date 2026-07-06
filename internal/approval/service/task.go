@@ -180,9 +180,9 @@ func (*TaskService) ActivateNextSequentialTask(ctx context.Context, db orm.DB, i
 // ActivateDependentTasks activates whatever the completion of finishedTask
 // unblocks on its node, so the node keeps making progress.
 //
-// Sequential nodes advance their single sort-ordered queue; an add-assignee
-// task carries a sort order and is picked up by that queue like any other, so
-// no special handling is needed.
+// Sequential nodes advance their single sort-ordered queue; add-assignee
+// splices its tasks into that queue at the anchor's position, so they are
+// picked up like any other — no special handling is needed.
 //
 // Parallel nodes have no implicit queue, so a task suspended or queued by
 // add-assignee would otherwise never become actionable — that was the deadlock
