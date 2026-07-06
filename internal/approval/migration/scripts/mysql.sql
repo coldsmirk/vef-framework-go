@@ -319,6 +319,7 @@ CREATE TABLE IF NOT EXISTS apv_task (
     INDEX idx_apv_task__tenant_id_assignee_id_status (tenant_id, assignee_id, status),
     INDEX idx_apv_task__instance_id_node_id_status (instance_id, node_id, status),
     INDEX idx_apv_task__assignee_id_status_created_at (assignee_id, status, created_at),
+    INDEX idx_apv_task__assignee_id_status_finished_at (assignee_id, status, finished_at),
     INDEX idx_apv_task__instance_id_status_assignee_id (instance_id, status, assignee_id),
     INDEX idx_apv_task__visit_id (visit_id),
     INDEX idx_apv_task__deadline_active (is_timeout, status, deadline)
