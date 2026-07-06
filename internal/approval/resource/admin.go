@@ -41,7 +41,7 @@ func NewAdminResource(
 				api.OperationSpec{Action: "find_instances", RequiredPermission: "approval.instance.query"},
 				api.OperationSpec{Action: "find_tasks", RequiredPermission: "approval.task.query"},
 				api.OperationSpec{Action: "get_instance_detail", RequiredPermission: "approval.instance.detail"},
-				api.OperationSpec{Action: "find_action_logs", RequiredPermission: "approval.log.query"},
+				api.OperationSpec{Action: "find_action_logs", RequiredPermission: "approval.action_log.query"},
 				api.OperationSpec{Action: "get_metrics", RequiredPermission: "approval.metrics.query"},
 				// Admin write actions: framework-level audit captures who/when/IP
 				// in addition to the business-table action_log.

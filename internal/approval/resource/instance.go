@@ -132,8 +132,8 @@ func NewInstanceResource(
 	}
 }
 
-// StartInstanceParams contains the parameters for starting a new instance.
-type StartInstanceParams struct {
+// StartParams contains the parameters for starting a new instance.
+type StartParams struct {
 	api.P
 
 	TenantID    string         `json:"tenantId" validate:"required"`
@@ -143,7 +143,7 @@ type StartInstanceParams struct {
 }
 
 // Start creates a new flow instance.
-func (r *InstanceResource) Start(ctx fiber.Ctx, principal *security.Principal, params StartInstanceParams) error {
+func (r *InstanceResource) Start(ctx fiber.Ctx, principal *security.Principal, params StartParams) error {
 	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err

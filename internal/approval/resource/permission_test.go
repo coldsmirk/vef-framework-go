@@ -27,7 +27,7 @@ func TestManagementResourceRequiredPermissions(t *testing.T) {
 			"publish_version": "approval.flow.publish",
 			"get_graph":       "approval.flow.query",
 			"find_flows":      "approval.flow.query",
-			"update_flow":     "approval.flow.update",
+			"update":          "approval.flow.update",
 			"toggle_active":   "approval.flow.update",
 			"find_versions":   "approval.flow.query",
 			"find_initiators": "approval.flow.query",

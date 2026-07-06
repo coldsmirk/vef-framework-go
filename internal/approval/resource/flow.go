@@ -35,7 +35,7 @@ func NewFlowResource(bus cqrs.Bus, tenantResolver approval.PrincipalTenantResolv
 				api.OperationSpec{Action: "create", RequiredPermission: "approval.flow.create", EnableAudit: true},
 				api.OperationSpec{Action: "deploy", RequiredPermission: "approval.flow.deploy", EnableAudit: true},
 				api.OperationSpec{Action: "publish_version", RequiredPermission: "approval.flow.publish", EnableAudit: true},
-				api.OperationSpec{Action: "update_flow", RequiredPermission: "approval.flow.update", EnableAudit: true},
+				api.OperationSpec{Action: "update", RequiredPermission: "approval.flow.update", EnableAudit: true},
 				api.OperationSpec{Action: "toggle_active", RequiredPermission: "approval.flow.update", EnableAudit: true},
 				api.OperationSpec{Action: "get_graph", RequiredPermission: "approval.flow.query"},
 				api.OperationSpec{Action: "find_flows", RequiredPermission: "approval.flow.query"},
@@ -258,8 +258,8 @@ func (r *FlowResource) FindFlows(ctx fiber.Ctx, principal *security.Principal, p
 	return result.Ok(res).Response(ctx)
 }
 
-// UpdateFlowParams contains the parameters for updating a flow.
-type UpdateFlowParams struct {
+// UpdateParams contains the parameters for updating a flow.
+type UpdateParams struct {
 	api.P
 
 	FlowID                 string                  `json:"flowId" validate:"required"`
@@ -277,7 +277,7 @@ type UpdateFlowParams struct {
 }
 
 // UpdateFlow updates an existing flow.
-func (r *FlowResource) UpdateFlow(ctx fiber.Ctx, principal *security.Principal, params UpdateFlowParams) error {
+func (r *FlowResource) Update(ctx fiber.Ctx, principal *security.Principal, params UpdateParams) error {
 	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
