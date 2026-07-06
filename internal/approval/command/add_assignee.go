@@ -85,7 +85,7 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	var nodeTasks []approval.Task
 	if err := db.NewSelect().
 		Model(&nodeTasks).
-		Select("assignee_id", "status", "sort_order").
+		Select("assignee_id", "status", "sort_order", "visit_id").
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("instance_id", instance.ID).
 				Equals("node_id", task.NodeID)
@@ -105,6 +105,19 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 
 		if nodeTask.Status == approval.TaskPending || nodeTask.Status == approval.TaskWaiting {
 			existingAssignees.Add(nodeTask.AssigneeID)
+
+			continue
+		}
+
+		// A user who already decided in the open visit must not be added
+		// back: pass rules count per task, so a second task would force the
+		// same person to decide twice in one round. Removed / transferred
+		// users exited the round and may legitimately be re-added.
+		if nodeTask.VisitID == task.VisitID {
+			switch nodeTask.Status {
+			case approval.TaskApproved, approval.TaskRejected, approval.TaskHandled:
+				existingAssignees.Add(nodeTask.AssigneeID)
+			}
 		}
 	}
 

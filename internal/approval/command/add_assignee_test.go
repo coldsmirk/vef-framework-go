@@ -881,3 +881,34 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeAndPrepareOperationShouldAvoidDead
 		s.FailNow("PrepareOperation should not block indefinitely")
 	}
 }
+
+func (s *AddAssigneeTestSuite) TestAddAssigneeSkipsDecidedUserInOpenVisit() {
+	inst, task := s.setupData("decider-b")
+
+	finished := timex.Now()
+	decided := &approval.Task{
+		TenantID:   "default",
+		InstanceID: inst.ID,
+		NodeID:     s.nodeID,
+		VisitID:    task.VisitID,
+		AssigneeID: "decider-a",
+		SortOrder:  2,
+		Status:     approval.TaskApproved,
+		FinishedAt: &finished,
+	}
+	_, err := s.db.NewInsert().Model(decided).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert already-decided task")
+
+	_, err = s.handler.Handle(s.ctx, command.AddAssigneeCmd{
+		TaskID:   task.ID,
+		UserIDs:  []string{"decider-a"},
+		AddType:  approval.AddAssigneeParallel,
+		Operator: approval.UserInfo{ID: "decider-b", Name: "Decider B"},
+		Caller:   approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Re-adding a decided user is silently skipped, not an error")
+
+	queue := s.loadQueue(inst.ID)
+	s.Assert().Len(queue, 2,
+		"No task may be inserted for a user who already decided in the open visit — pass rules count per task")
+}
