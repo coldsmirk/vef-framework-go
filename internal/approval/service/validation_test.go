@@ -238,3 +238,63 @@ func TestValidateFormData(t *testing.T) {
 
 // Role-membership resolution moved to shared.UserHasRole; its tests live in
 // internal/approval/shared/user_resolve_test.go.
+
+func TestValidateFormDataTableField(t *testing.T) {
+	svc := NewValidationService(nil)
+
+	minRows, maxRows := 1, 2
+	schema := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+		{
+			Key: "items", Kind: approval.FieldTable, Label: "Items", IsRequired: true,
+			Validation: &approval.ValidationRule{MinLength: &minRows, MaxLength: &maxRows},
+			Columns: []approval.FormFieldDefinition{
+				{Key: "name", Kind: approval.FieldInput, Label: "Name", IsRequired: true},
+				{Key: "qty", Kind: approval.FieldNumber, Label: "Qty"},
+			},
+		},
+	}}
+
+	valid := func(rows ...any) map[string]any { return map[string]any{"items": rows} }
+
+	t.Run("AcceptsValidRows", func(t *testing.T) {
+		err := svc.ValidateFormData(schema, valid(map[string]any{"name": "hotel", "qty": 2}))
+		assert.NoError(t, err, "a well-shaped detail row should validate")
+	})
+
+	t.Run("RequiredMeansAtLeastOneRow", func(t *testing.T) {
+		err := svc.ValidateFormData(schema, map[string]any{"items": []any{}})
+		assert.Error(t, err, "an empty list on a required table is an empty value")
+	})
+
+	t.Run("RejectsNonListValue", func(t *testing.T) {
+		err := svc.ValidateFormData(schema, map[string]any{"items": "oops"})
+		assert.Error(t, err, "a non-list table value must be rejected")
+	})
+
+	t.Run("RejectsNonObjectRow", func(t *testing.T) {
+		err := svc.ValidateFormData(schema, valid("not-a-row"))
+		assert.Error(t, err, "a non-object row must be rejected")
+	})
+
+	t.Run("EnforcesRowBounds", func(t *testing.T) {
+		err := svc.ValidateFormData(schema, valid(
+			map[string]any{"name": "a"}, map[string]any{"name": "b"}, map[string]any{"name": "c"},
+		))
+		assert.Error(t, err, "row count above MaxLength must be rejected")
+	})
+
+	t.Run("EnforcesRequiredColumns", func(t *testing.T) {
+		err := svc.ValidateFormData(schema, valid(map[string]any{"qty": 1}))
+		assert.Error(t, err, "a required column missing in a row must be rejected")
+	})
+
+	t.Run("RejectsUndeclaredRowKeys", func(t *testing.T) {
+		err := svc.ValidateFormData(schema, valid(map[string]any{"name": "ok", "ghost": 1}))
+		assert.Error(t, err, "rows are closed like the top-level form — undeclared keys must be rejected")
+	})
+
+	t.Run("ValidatesColumnValuesPerRow", func(t *testing.T) {
+		err := svc.ValidateFormData(schema, valid(map[string]any{"name": "ok", "qty": "NaN"}))
+		assert.Error(t, err, "a non-numeric value in a number column must be rejected")
+	})
+}

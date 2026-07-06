@@ -38,6 +38,56 @@ func (*FlowDefinitionService) ValidateFormDefinition(def *approval.FormDefinitio
 		if err := validateFieldValidationRule(field); err != nil {
 			return err
 		}
+
+		if err := validateTableColumns(field); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateTableColumns checks the row shape of a table field: at least one
+// column, column keys unique within the table, known column kinds, and no
+// nested tables — detail tables are single-level by design (deep structures
+// belong to business tables reached via the business binding). Column
+// validation rules reuse the scalar-field checks. Scalar fields must not
+// declare columns at all; silently ignoring them would hide a designer bug.
+func validateTableColumns(field approval.FormFieldDefinition) error {
+	if field.Kind != approval.FieldTable {
+		if len(field.Columns) > 0 {
+			return fmt.Errorf("%w: field %q", errColumnsOnScalarField, field.Key)
+		}
+
+		return nil
+	}
+
+	if len(field.Columns) == 0 {
+		return fmt.Errorf("%w: field %q", errTableColumnsRequired, field.Key)
+	}
+
+	keys := collections.NewHashSetWithCapacity[string](len(field.Columns))
+
+	for _, column := range field.Columns {
+		if column.Key == "" {
+			return fmt.Errorf("%w: in table %q", errFormFieldKeyEmpty, field.Key)
+		}
+
+		if !keys.Add(column.Key) {
+			return fmt.Errorf("%w: column %q in table %q", errDuplicateFormFieldKey, column.Key, field.Key)
+		}
+
+		if column.Kind == approval.FieldTable {
+			return fmt.Errorf("%w: column %q in table %q", errNestedTableColumn, column.Key, field.Key)
+		}
+
+		if !column.Kind.IsValid() {
+			return fmt.Errorf("%w: %q for column %q in table %q", errInvalidFormFieldKind, column.Kind, column.Key, field.Key)
+		}
+
+		if err := validateFieldValidationRule(column); err != nil {
+			return err
+		}
 	}
 
 	return nil

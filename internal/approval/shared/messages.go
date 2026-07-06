@@ -28,4 +28,9 @@ const (
 	ErrMessageFormFieldInvalidFileItem   = "approval_form_field_invalid_file_item"
 	ErrMessageFormFieldMustBeFile        = "approval_form_field_must_be_file"
 	ErrMessageFormFieldInvalidValue      = "approval_form_field_invalid_value"
+	ErrMessageFormFieldMustBeRowList     = "approval_form_field_must_be_row_list"
+	ErrMessageFormFieldMustBeRowObject   = "approval_form_field_must_be_row_object"
+	ErrMessageFormFieldMinRows           = "approval_form_field_min_rows"
+	ErrMessageFormFieldMaxRows           = "approval_form_field_max_rows"
+	ErrMessageFormFieldTableCell         = "approval_form_field_table_cell"
 )

@@ -168,5 +168,10 @@
   "approval_form_field_empty": "Field {{.field}} cannot be empty",
   "approval_form_field_invalid_file_item": "Field {{.field}} contains an invalid file item",
   "approval_form_field_must_be_file": "Field {{.field}} has an invalid type; must be a file string or array of file strings",
-  "approval_form_field_invalid_value": "Field {{.field}} has an invalid value"
+  "approval_form_field_invalid_value": "Field {{.field}} has an invalid value",
+  "approval_form_field_must_be_row_list": "Field {{.field}} must be a list of rows",
+  "approval_form_field_must_be_row_object": "Field {{.field}} row {{.row}} must be an object",
+  "approval_form_field_min_rows": "Field {{.field}} requires at least {{.min}} rows",
+  "approval_form_field_max_rows": "Field {{.field}} allows at most {{.max}} rows",
+  "approval_form_field_table_cell": "Field {{.field}} row {{.row}}: {{.message}}"
 }

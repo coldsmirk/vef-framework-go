@@ -186,3 +186,15 @@ func TestTaskStatusIsFinal(t *testing.T) {
 		})
 	}
 }
+
+func TestFieldKindIsValid(t *testing.T) {
+	valid := []approval.FieldKind{
+		approval.FieldInput, approval.FieldTextarea, approval.FieldSelect,
+		approval.FieldNumber, approval.FieldDate, approval.FieldUpload, approval.FieldTable,
+	}
+	for _, kind := range valid {
+		assert.True(t, kind.IsValid(), "field kind %q should be valid", kind)
+	}
+
+	assert.False(t, approval.FieldKind("subform").IsValid(), "unknown field kinds are rejected")
+}

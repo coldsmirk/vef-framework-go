@@ -393,12 +393,17 @@ const (
 	FieldNumber   FieldKind = "number"
 	FieldDate     FieldKind = "date"
 	FieldUpload   FieldKind = "upload"
+	// FieldTable is a single-level detail table: its value is a list of rows,
+	// each row an object keyed by the field's Columns. Columns must not nest
+	// another table — approval forms are applications, not data models; deep
+	// structures belong to business tables reached via the business binding.
+	FieldTable FieldKind = "table"
 )
 
 // IsValid reports whether the field kind is one of the defined values.
 func (k FieldKind) IsValid() bool {
 	switch k {
-	case FieldInput, FieldTextarea, FieldSelect, FieldNumber, FieldDate, FieldUpload:
+	case FieldInput, FieldTextarea, FieldSelect, FieldNumber, FieldDate, FieldUpload, FieldTable:
 		return true
 	default:
 		return false

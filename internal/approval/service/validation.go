@@ -251,6 +251,9 @@ func validateFormField(field approval.FormFieldDefinition, value any) error {
 	case approval.FieldUpload:
 		return validateUploadField(field, value)
 
+	case approval.FieldTable:
+		return validateTableField(field, value)
+
 	case approval.FieldNumber:
 		number, ok := shared.ToFloat64(value)
 		if !ok {
@@ -265,6 +268,89 @@ func validateFormField(field approval.FormFieldDefinition, value any) error {
 	default:
 		return nil
 	}
+}
+
+// validateTableField checks a detail-table value: a list of row objects,
+// each row validated column by column with the same rules scalar fields
+// use. For the table itself, Validation.MinLength / MaxLength bound the
+// row count; "required = at least one row" is enforced by the caller's
+// shared empty-value check (an empty list is an empty value).
+func validateTableField(field approval.FormFieldDefinition, value any) error {
+	rows, ok := value.([]any)
+	if !ok {
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMustBeRowList, map[string]any{"field": fieldLabel(field)}))
+	}
+
+	if field.Validation != nil {
+		if field.Validation.MinLength != nil && len(rows) < *field.Validation.MinLength {
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMinRows, map[string]any{
+				"field": fieldLabel(field), "min": *field.Validation.MinLength,
+			}))
+		}
+
+		if field.Validation.MaxLength != nil && len(rows) > *field.Validation.MaxLength {
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMaxRows, map[string]any{
+				"field": fieldLabel(field), "max": *field.Validation.MaxLength,
+			}))
+		}
+	}
+
+	for i, raw := range rows {
+		row, ok := raw.(map[string]any)
+		if !ok {
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMustBeRowObject, map[string]any{
+				"field": fieldLabel(field), "row": i + 1,
+			}))
+		}
+
+		if err := validateTableRow(field, row, i+1); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateTableRow applies each column definition to one row, mirroring the
+// top-level required/empty handling before delegating to the scalar checks.
+// Rows are closed like the top-level form: a key with no matching column is
+// rejected instead of silently accumulating in the stored form data.
+func validateTableRow(field approval.FormFieldDefinition, row map[string]any, rowNumber int) error {
+	columnKeys := collections.NewHashSetWithCapacity[string](len(field.Columns))
+	for _, column := range field.Columns {
+		columnKeys.Add(column.Key)
+	}
+
+	for key := range row {
+		if !columnKeys.Contains(key) {
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldTableCell, map[string]any{
+				"field": fieldLabel(field), "row": rowNumber,
+				"message": i18n.T(shared.ErrMessageFormFieldNotDefined, map[string]any{"field": key}),
+			}))
+		}
+	}
+
+	for _, column := range field.Columns {
+		cell, exists := row[column.Key]
+		if !exists || isEmptyFormValue(cell) {
+			if column.IsRequired {
+				return newFormValidationError(i18n.T(shared.ErrMessageFormFieldTableCell, map[string]any{
+					"field": fieldLabel(field), "row": rowNumber,
+					"message": i18n.T(shared.ErrMessageFormFieldRequired, map[string]any{"field": fieldLabel(column)}),
+				}))
+			}
+
+			continue
+		}
+
+		if err := validateFormField(column, cell); err != nil {
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldTableCell, map[string]any{
+				"field": fieldLabel(field), "row": rowNumber, "message": err.Error(),
+			}))
+		}
+	}
+
+	return nil
 }
 
 func validateStringRule(field approval.FormFieldDefinition, value string) error {

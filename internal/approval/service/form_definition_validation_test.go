@@ -81,3 +81,49 @@ func TestValidateFormDefinition(t *testing.T) {
 		assert.ErrorIs(t, svc.ValidateFormDefinition(def), errInvalidFormValueRange, "min > max is unsatisfiable")
 	})
 }
+
+func TestValidateFormDefinitionTableColumns(t *testing.T) {
+	svc := new(FlowDefinitionService)
+
+	table := func(columns ...approval.FormFieldDefinition) *approval.FormDefinition {
+		return &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+			{Key: "items", Kind: approval.FieldTable, Label: "Items", Columns: columns},
+		}}
+	}
+
+	t.Run("AcceptsValidTable", func(t *testing.T) {
+		def := table(
+			approval.FormFieldDefinition{Key: "name", Kind: approval.FieldInput},
+			approval.FormFieldDefinition{Key: "qty", Kind: approval.FieldNumber},
+		)
+		assert.NoError(t, svc.ValidateFormDefinition(def), "a table with valid columns should deploy")
+	})
+
+	t.Run("RejectsTableWithoutColumns", func(t *testing.T) {
+		assert.ErrorIs(t, svc.ValidateFormDefinition(table()), errTableColumnsRequired,
+			"a table field with no columns has no row shape and must be rejected")
+	})
+
+	t.Run("RejectsNestedTable", func(t *testing.T) {
+		def := table(approval.FormFieldDefinition{Key: "sub", Kind: approval.FieldTable})
+		assert.ErrorIs(t, svc.ValidateFormDefinition(def), errNestedTableColumn,
+			"detail tables are single-level by design")
+	})
+
+	t.Run("RejectsDuplicateColumnKeys", func(t *testing.T) {
+		def := table(
+			approval.FormFieldDefinition{Key: "name", Kind: approval.FieldInput},
+			approval.FormFieldDefinition{Key: "name", Kind: approval.FieldInput},
+		)
+		assert.ErrorIs(t, svc.ValidateFormDefinition(def), errDuplicateFormFieldKey,
+			"column keys must be unique within their table")
+	})
+
+	t.Run("RejectsColumnsOnScalarField", func(t *testing.T) {
+		def := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+			{Key: "reason", Kind: approval.FieldInput, Columns: []approval.FormFieldDefinition{{Key: "x", Kind: approval.FieldInput}}},
+		}}
+		assert.ErrorIs(t, svc.ValidateFormDefinition(def), errColumnsOnScalarField,
+			"columns on a scalar field hide a designer bug and must be rejected")
+	})
+}

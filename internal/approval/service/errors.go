@@ -86,4 +86,7 @@ var (
 	errInvalidFormPattern     = errors.New("form field validation pattern does not compile")
 	errInvalidFormLengthRange = errors.New("form field minLength must not exceed maxLength")
 	errInvalidFormValueRange  = errors.New("form field min must not exceed max")
+	errTableColumnsRequired   = errors.New("table field requires at least one column")
+	errNestedTableColumn      = errors.New("table columns must not nest another table")
+	errColumnsOnScalarField   = errors.New("only table fields may declare columns")
 )

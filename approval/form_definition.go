@@ -9,7 +9,7 @@ type FormDefinition struct {
 type FormFieldDefinition struct {
 	// Key is the unique identifier for this field (used in form data keys).
 	Key string `json:"key"`
-	// Kind is the field type (e.g., "input", "textarea", "select", "number", "date", "upload").
+	// Kind is the field type (e.g., "input", "textarea", "select", "number", "date", "upload", "table").
 	Kind FieldKind `json:"kind"`
 	// Label is the display label.
 	Label string `json:"label"`
@@ -34,6 +34,13 @@ type FormFieldDefinition struct {
 	// Scale is the number of fractional digits for a ColumnDecimal column (the
 	// DECIMAL/NUMERIC scale). Nil means an integer-shaped decimal (scale 0).
 	Scale *int `json:"scale,omitempty"`
+	// Columns defines the row shape of a table field (Kind == FieldTable):
+	// each column is itself a field definition and reuses the same kinds and
+	// validation rules, except that a column must not be another table —
+	// detail tables are single-level by design. For a table field itself,
+	// Validation.MinLength / MaxLength bound the ROW COUNT, and IsRequired
+	// means "at least one row".
+	Columns []FormFieldDefinition `json:"columns,omitempty"`
 }
 
 // FieldOption represents a selectable option for select/radio/checkbox fields.
