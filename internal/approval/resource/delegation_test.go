@@ -208,3 +208,19 @@ func (s *DelegationOwnershipTestSuite) delegationExists(id string) bool {
 
 	return exists
 }
+
+func (s *DelegationOwnershipTestSuite) TestDelegationCreateRequiresTimeWindow() {
+	token := s.GenerateToken(newTenantUser("tim", "Tim", "user"))
+
+	resp := s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{Resource: "approval/delegation", Action: "create", Version: "v1"},
+		Params: map[string]any{
+			"delegatorId": "tim",
+			"delegateeId": "tom",
+			"endTime":     delegationEnd,
+		},
+	}, token)
+
+	s.Require().Equal(http.StatusBadRequest, resp.StatusCode,
+		"create without startTime must fail validation instead of persisting a zero-dated window")
+}

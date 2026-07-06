@@ -20,8 +20,8 @@ type DelegationParams struct {
 	DelegateeID    string          `json:"delegateeId" validate:"required"`
 	FlowCategoryID *string         `json:"flowCategoryId"`
 	FlowID         *string         `json:"flowId"`
-	StartTime      *timex.DateTime `json:"startTime"`
-	EndTime        *timex.DateTime `json:"endTime"`
+	StartTime      *timex.DateTime `json:"startTime" validate:"required"`
+	EndTime        *timex.DateTime `json:"endTime" validate:"required"`
 	IsActive       bool            `json:"isActive"`
 	Reason         *string         `json:"reason"`
 }
