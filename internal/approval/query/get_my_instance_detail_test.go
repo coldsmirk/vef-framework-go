@@ -247,7 +247,7 @@ func (s *GetMyInstanceDetailTestSuite) TestCCAccess() {
 	})
 	s.Require().NoError(err, "CC user should have access")
 	s.Assert().Equal(s.instanceID, detail.Instance.InstanceID, "Should return correct instance")
-	s.Assert().Contains(detail.AvailableActions, "urge", "CC participant should be able to urge when the instance has pending tasks")
+	s.Assert().NotContains(detail.AvailableActions, "urge", "CC-only participants must not be offered urge — mirrors IsUrgeAuthorized")
 }
 
 func (s *GetMyInstanceDetailTestSuite) TestAssigneeConditionalActions() {
