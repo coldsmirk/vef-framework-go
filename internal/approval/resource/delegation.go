@@ -1,8 +1,6 @@
 package resource
 
 import (
-	"time"
-
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
@@ -10,21 +8,22 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/crud"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 // DelegationParams contains the create/update parameters for delegation.
 type DelegationParams struct {
 	api.P
 
-	ID             string     `json:"id"`
-	DelegatorID    string     `json:"delegatorId" validate:"required"`
-	DelegateeID    string     `json:"delegateeId" validate:"required"`
-	FlowCategoryID *string    `json:"flowCategoryId"`
-	FlowID         *string    `json:"flowId"`
-	StartTime      *time.Time `json:"startTime"`
-	EndTime        *time.Time `json:"endTime"`
-	IsActive       bool       `json:"isActive"`
-	Reason         *string    `json:"reason"`
+	ID             string          `json:"id"`
+	DelegatorID    string          `json:"delegatorId" validate:"required"`
+	DelegateeID    string          `json:"delegateeId" validate:"required"`
+	FlowCategoryID *string         `json:"flowCategoryId"`
+	FlowID         *string         `json:"flowId"`
+	StartTime      *timex.DateTime `json:"startTime"`
+	EndTime        *timex.DateTime `json:"endTime"`
+	IsActive       bool            `json:"isActive"`
+	Reason         *string         `json:"reason"`
 }
 
 // DelegationSearch contains the search parameters for delegation.
