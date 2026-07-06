@@ -44,10 +44,6 @@ const (
 	ErrCodeAssigneeResolveFailed = 40302
 
 	ErrCodeFormValidationFailed = 40401
-	ErrCodeFieldNotEditable     = 40402
-
-	ErrCodeDelegationNotFound = 40501
-	ErrCodeDelegationConflict = 40502
 
 	ErrCodeUrgeCooldown = 40601
 

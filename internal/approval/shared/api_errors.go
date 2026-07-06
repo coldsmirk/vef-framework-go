@@ -43,6 +43,7 @@ var (
 	// admin saves the flow rather than silently no-op'ing the status write-back
 	// on the first completed instance.
 	ErrBindingIncomplete = result.Err(i18n.T("approval_binding_incomplete"), result.WithCode(ErrCodeBindingIncomplete))
+
 	// ErrInvalidStorageMode rejects a deploy whose storage mode is neither
 	// "json" nor "table". The mode is fixed for the version's lifetime and
 	// drives whether a dedicated physical form table is generated at publish,
@@ -83,7 +84,6 @@ var (
 	ErrAssigneeResolveFailed = result.Err(i18n.T("approval_assignee_resolve_failed"), result.WithCode(ErrCodeAssigneeResolveFailed))
 
 	ErrFormValidationFailed = result.Err(i18n.T("approval_form_validation_failed"), result.WithCode(ErrCodeFormValidationFailed))
-	ErrFieldNotEditable     = result.Err(i18n.T("approval_field_not_editable"), result.WithCode(ErrCodeFieldNotEditable))
 	// ErrFormDataTooLarge rejects submissions whose JSON-encoded form data
 	// would exceed FormDataMaxBytes. Stops malicious clients from blowing
 	// up the JSONB column or driving the runtime into OOM via deeply
@@ -92,9 +92,6 @@ var (
 		i18n.T("approval_form_data_too_large"),
 		result.WithCode(ErrCodeFormValidationFailed),
 	)
-
-	ErrDelegationNotFound = result.Err(i18n.T("approval_delegation_not_found"), result.WithCode(ErrCodeDelegationNotFound))
-	ErrDelegationConflict = result.Err(i18n.T("approval_delegation_conflict"), result.WithCode(ErrCodeDelegationConflict))
 
 	ErrAccessDenied = result.Err(i18n.T("approval_access_denied"), result.WithCode(ErrCodeAccessDenied))
 	// ErrTerminateNotAllowed rejects force-closing an instance whose status
