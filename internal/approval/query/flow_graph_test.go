@@ -215,6 +215,23 @@ func TestBuildInstanceFlowGraph(t *testing.T) {
 		assert.Equal(t, approval.NodeProgressReturned, byKey["kappr"].Data.Status, "The node the flow was sent back from should be returned")
 	})
 
+	t.Run("WithdrawnFromReturnedKeepsRestingNodeActive", func(t *testing.T) {
+		b := linearBundle()
+		// Returned → Withdrawn closing path: the applicant abandoned instead of
+		// resubmitting; the instance still rests on the start node with no open
+		// visit there, and the graph must agree with instance.currentNodeId.
+		b.Instance.Status = approval.InstanceWithdrawn
+		b.Instance.CurrentNodeID = new("ns")
+		b.Visits = []approval.NodeVisit{
+			visit("v1", "ns", 1, approval.NodeVisitPassed),
+			visit("v2", "na", 2, approval.NodeVisitReturned),
+		}
+
+		byKey := nodesByKey(buildInstanceFlowGraph(b))
+
+		assert.Equal(t, approval.NodeProgressActive, byKey["kstart"].Data.Status, "Resting node of a withdrawn-from-returned instance should stay active")
+	})
+
 	t.Run("NilSchemaStillBuildsNodesWithoutEdges", func(t *testing.T) {
 		b := linearBundle()
 		b.FlowSchema = nil

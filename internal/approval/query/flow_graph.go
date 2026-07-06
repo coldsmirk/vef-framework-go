@@ -118,9 +118,10 @@ func graphLayout(def *approval.FlowDefinition) (map[string]approval.Position, []
 // deriveNodeProgress reads each node's progress from the visit trail. Visits
 // arrive in sequence order, so the latest visit of a node decides its status —
 // and NodeVisitStatus values map onto NodeProgressStatus verbatim (an open
-// visit is "active"). One overlay: a returned-paused instance shows its
-// current node (the rollback target, waiting on the applicant to resubmit) as
-// active even though no visit is open there yet.
+// visit is "active"). One overlay: a paused instance (returned, or withdrawn
+// while resting there) shows its current node — the resting point waiting on
+// the applicant — as active even though no visit is open there yet; nodes
+// that do carry visits keep their visit-derived status.
 func deriveNodeProgress(bundle *instanceDetailBundle, idToKey map[string]string) map[string]approval.NodeProgressStatus {
 	status := make(map[string]approval.NodeProgressStatus, len(bundle.Visits))
 
@@ -130,9 +131,16 @@ func deriveNodeProgress(bundle *instanceDetailBundle, idToKey map[string]string)
 		}
 	}
 
-	if bundle.Instance.Status == approval.InstanceReturned && bundle.Instance.CurrentNodeID != nil {
+	paused := bundle.Instance.Status == approval.InstanceReturned ||
+		bundle.Instance.Status == approval.InstanceWithdrawn
+	if paused && bundle.Instance.CurrentNodeID != nil {
 		if key := idToKey[*bundle.Instance.CurrentNodeID]; key != "" {
-			status[key] = approval.NodeProgressActive
+			// A canceled visit means a mid-flow withdraw cut the node short —
+			// keep that verdict. Every other resting point (a passed historical
+			// visit, or none at all after return-to-initiator) renders active.
+			if status[key] != approval.NodeProgressCanceled {
+				status[key] = approval.NodeProgressActive
+			}
 		}
 	}
 
