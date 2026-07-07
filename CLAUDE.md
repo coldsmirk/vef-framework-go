@@ -33,7 +33,7 @@ go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest
 - The requested behavior or analysis is complete and scoped correctly.
 - Relevant tests or documentation are added or updated when needed.
 - Verification was run and the result was reported.
-- If you changed workflow-critical conventions, `AGENTS.md` is updated as well.
+- `AGENTS.md` is a pointer to this file — never duplicate guide content there; all conventions live here only.
 
 ## Architecture Overview
 
@@ -89,7 +89,7 @@ RPC uses `POST /api`; REST routes are mounted under `/api/<resource>`.
 ## Configuration
 
 - `application.toml` from `./configs`, `./`, or `VEF_CONFIG_PATH`. Sections: `vef.app`, `vef.data_sources.<name>` (primary mandatory), `vef.cors`, `vef.security`, `vef.redis`, `vef.cache`, `vef.storage`.
-- `config.Config.Unmarshal` with `config:""` struct tags. Env overrides: `VEF_CONFIG_PATH`, `VEF_LOG_LEVEL`, `VEF_NODE_ID`, `VEF_I18N_LANGUAGE`.
+- `config.Config.Unmarshal` with `config:""` struct tags. Env overrides: `VEF_CONFIG_PATH`, `VEF_LOG_LEVEL`, `VEF_I18N_LANGUAGE`.
 - **Defaulting convention**: prefer immutable `Effective*()` accessors on the config struct (e.g. `StorageConfig.EffectiveClaimTTL`, `EventConfig` accessors) over mutating the parsed value — the default lives next to the field, the parsed config is never silently rewritten, and consumers opt in at the read site. Treat the parsed struct as raw input that may hold zero values; do not assume a field is populated. (`ApprovalConfig.ApplyDefaults`, called once in `internal/config`, predates this rule and is the lone mutate-at-load exception.)
 
 ## Middleware Stack (by `Order()`)
