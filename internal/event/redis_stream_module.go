@@ -6,6 +6,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/event/transport"
 	"github.com/coldsmirk/vef-framework-go/event/transport/redisstream"
 	iredisstream "github.com/coldsmirk/vef-framework-go/internal/event/transport/redisstream"
@@ -31,6 +32,10 @@ var RedisStreamTransportModule = fx.Module(
 			fx.ResultTags(`group:"vef:event:transports"`),
 			fx.As(new(transport.Transport)),
 		),
+		fx.Annotate(
+			newRedisStreamInspector,
+			fx.ParamTags(``, `optional:"true"`),
+		),
 	),
 )
 
@@ -42,20 +47,33 @@ func newRedisStreamTransport(cfg *config.EventConfig, client *goredis.Client) tr
 	return iredisstream.New(client, redisStreamConfig(cfg), redisStreamLogger)
 }
 
+// newRedisStreamInspector exposes the transport keyspace to the monitor
+// module. A nil inspector (transport disabled or redis absent) tells the
+// monitor endpoint to report the feature as unavailable.
+func newRedisStreamInspector(cfg *config.EventConfig, client *goredis.Client) event.StreamInspector {
+	if !cfg.Transports.RedisStream.Enabled || client == nil {
+		return nil
+	}
+
+	return iredisstream.NewInspector(client, redisStreamConfig(cfg))
+}
+
 func redisStreamConfig(cfg *config.EventConfig) redisstream.Config {
 	c := cfg.Transports.RedisStream
 
 	return redisstream.Config{
-		StreamPrefix:      c.StreamPrefix,
-		MaxLenApprox:      c.MaxLenApprox,
-		BlockTimeout:      c.BlockTimeout,
-		ClaimIdle:         c.ClaimIdle,
-		ClaimInterval:     c.ClaimInterval,
-		ClaimBatchSize:    c.ClaimBatchSize,
-		ReaperConcurrency: c.ReaperConcurrency,
-		HandlerTimeout:    c.HandlerTimeout,
-		SetupTimeout:      c.SetupTimeout,
-		ConsumerID:        c.ConsumerID,
-		StartID:           c.StartID,
+		StreamPrefix:           c.StreamPrefix,
+		MaxLenApprox:           c.MaxLenApprox,
+		BlockTimeout:           c.BlockTimeout,
+		ClaimIdle:              c.ClaimIdle,
+		ClaimInterval:          c.ClaimInterval,
+		ClaimBatchSize:         c.ClaimBatchSize,
+		ReaperConcurrency:      c.ReaperConcurrency,
+		HandlerTimeout:         c.HandlerTimeout,
+		SetupTimeout:           c.SetupTimeout,
+		ConsumerID:             c.ConsumerID,
+		StartID:                c.StartID,
+		IdleGroupRetention:     c.IdleGroupRetention,
+		IdleGroupSweepInterval: c.IdleGroupSweepInterval,
 	}
 }

@@ -110,6 +110,11 @@ func (t *Transport) Start(ctx context.Context) error {
 	t.wg.Add(1)
 	go t.reaperLoop()
 
+	if t.cfg.IdleGroupRetention > 0 {
+		t.wg.Add(1)
+		go t.sweepLoop()
+	}
+
 	return nil
 }
 

@@ -53,6 +53,18 @@ type Config struct {
 	// to "$" for fire-and-forget topics where backlog should be
 	// dropped on first subscribe.
 	StartID string
+	// IdleGroupRetention enables reclamation of orphaned consumer groups —
+	// the leftovers of a subscriber that was removed or renamed without
+	// decommissioning its group. A group is destroyed only when it has no
+	// pending entries, is not an active subscription of this process, and
+	// every one of its consumer records has been idle longer than this
+	// window (a group that never registered a consumer is left alone: it
+	// may be a peer's subscription racing its first read). Zero (the
+	// default) disables the sweep entirely.
+	IdleGroupRetention time.Duration
+	// IdleGroupSweepInterval is the period of the orphan-group sweep when
+	// IdleGroupRetention is enabled. Defaults to 10m.
+	IdleGroupSweepInterval time.Duration
 }
 
 // EffectiveStreamPrefix applies the default when unset.
@@ -125,6 +137,15 @@ func (c Config) EffectiveStartID() string {
 	}
 
 	return "0"
+}
+
+// EffectiveIdleGroupSweepInterval applies the default when unset.
+func (c Config) EffectiveIdleGroupSweepInterval() time.Duration {
+	if c.IdleGroupSweepInterval > 0 {
+		return c.IdleGroupSweepInterval
+	}
+
+	return 10 * time.Minute
 }
 
 // StreamKey composes the Redis key for an event type.

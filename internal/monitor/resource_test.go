@@ -368,6 +368,30 @@ func (suite *MonitorResourceTestSuite) TestGetBuildInfo() {
 	})
 }
 
+func (suite *MonitorResourceTestSuite) TestGetEventStreams() {
+	suite.T().Log("Testing get_event_streams endpoint")
+
+	suite.Run("DisabledWithoutRedisStreamTransport", func() {
+		resp := suite.MakeRPCRequestWithToken(api.Request{
+			Identifier: api.Identifier{
+				Resource: "sys/monitor",
+				Action:   "get_event_streams",
+				Version:  "v1",
+			},
+		}, suite.token)
+
+		suite.Equal(200, resp.StatusCode, "Should return 200 OK")
+
+		body := suite.ReadResult(resp)
+		suite.True(body.IsOk(), "Event streams request should succeed even without the transport")
+
+		data := suite.ReadDataAsMap(body.Data)
+
+		suite.Equal(false, data["enabled"], "Inspector should report disabled when redis_stream is off")
+		suite.Empty(data["streams"], "No streams should be listed when the transport is off")
+	})
+}
+
 // TestMonitorResourceTestSuite tests monitor resource test suite functionality.
 func TestMonitorResource(t *testing.T) {
 	suite.Run(t, new(MonitorResourceTestSuite))

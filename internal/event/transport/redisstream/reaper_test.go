@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -183,4 +184,146 @@ func TestReaperHandlerTimeoutUnblocksStuckHandler(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("reapOnce did not return after the handler deadline freed the worker")
 	}
+}
+
+// seedOrphanGroup creates a stream + group and optionally registers a
+// consumer record by reading one seeded entry (acked or not), simulating a
+// subscriber that has since been decommissioned.
+func seedOrphanGroup(t *testing.T, client *goredis.Client, stream, group string, readEntry, ack bool) {
+	t.Helper()
+
+	ctx := context.Background()
+
+	require.NoError(t, client.XGroupCreateMkStream(ctx, stream, group, "0").Err(),
+		"orphan group create should succeed")
+
+	require.NoError(t, client.XAdd(ctx, &goredis.XAddArgs{
+		Stream: stream,
+		Values: map[string]any{"frame": "{}"},
+	}).Err(), "orphan stream seed should succeed")
+
+	if !readEntry {
+		return
+	}
+
+	res, err := client.XReadGroup(ctx, &goredis.XReadGroupArgs{
+		Group:    group,
+		Consumer: "dead-consumer",
+		Streams:  []string{stream, ">"},
+		Count:    1,
+		Block:    -1,
+	}).Result()
+	require.NoError(t, err, "dead consumer read should succeed")
+
+	if ack {
+		require.Len(t, res, 1, "dead consumer should have read one stream")
+		require.Len(t, res[0].Messages, 1, "dead consumer should have read one message")
+		require.NoError(t, client.XAck(ctx, stream, group, res[0].Messages[0].ID).Err(),
+			"dead consumer ack should succeed")
+	}
+}
+
+func groupNames(t *testing.T, client *goredis.Client, stream string) []string {
+	t.Helper()
+
+	groups, err := client.XInfoGroups(context.Background(), stream).Result()
+	require.NoError(t, err, "xinfo groups should succeed")
+
+	names := make([]string, 0, len(groups))
+	for _, g := range groups {
+		names = append(names, g.Name)
+	}
+
+	return names
+}
+
+func TestSweepIdleGroups(t *testing.T) {
+	t.Run("ReclaimsIdleOrphanGroup", func(t *testing.T) {
+		tp, client := newReaperTestTransport(t, redisstream.Config{
+			IdleGroupRetention:     time.Millisecond,
+			IdleGroupSweepInterval: time.Hour, // tests drive sweepIdleGroupsOnce directly
+		})
+
+		stream := tp.cfg.StreamKey("orphan.event")
+		seedOrphanGroup(t, client, stream, "orphan:group", true, true)
+
+		time.Sleep(50 * time.Millisecond) // let the dead consumer's idle exceed retention
+
+		tp.sweepIdleGroupsOnce()
+
+		assert.NotContains(t, groupNames(t, client, stream), "orphan:group",
+			"An orphan group with no pending entries and only idle consumers must be destroyed")
+	})
+
+	t.Run("KeepsGroupWithPendingEntries", func(t *testing.T) {
+		tp, client := newReaperTestTransport(t, redisstream.Config{
+			IdleGroupRetention:     time.Millisecond,
+			IdleGroupSweepInterval: time.Hour,
+		})
+
+		stream := tp.cfg.StreamKey("orphan.pending")
+		seedOrphanGroup(t, client, stream, "orphan:pending", true, false)
+
+		time.Sleep(50 * time.Millisecond)
+
+		tp.sweepIdleGroupsOnce()
+
+		assert.Contains(t, groupNames(t, client, stream), "orphan:pending",
+			"A group with pending entries died uncleanly and must be left for manual inspection")
+	})
+
+	t.Run("KeepsGroupWithoutConsumers", func(t *testing.T) {
+		tp, client := newReaperTestTransport(t, redisstream.Config{
+			IdleGroupRetention:     time.Millisecond,
+			IdleGroupSweepInterval: time.Hour,
+		})
+
+		stream := tp.cfg.StreamKey("orphan.fresh")
+		seedOrphanGroup(t, client, stream, "orphan:fresh", false, false)
+
+		time.Sleep(50 * time.Millisecond)
+
+		tp.sweepIdleGroupsOnce()
+
+		assert.Contains(t, groupNames(t, client, stream), "orphan:fresh",
+			"A group that never registered a consumer may be a peer racing its first read and must survive")
+	})
+
+	t.Run("KeepsActiveSubscription", func(t *testing.T) {
+		tp, client := newReaperTestTransport(t, redisstream.Config{
+			IdleGroupRetention:     time.Millisecond,
+			IdleGroupSweepInterval: time.Hour,
+		})
+
+		unsubscribe, err := tp.Subscribe("active.event", "active:group",
+			func(context.Context, transport.Delivery) error { return nil },
+			transport.SubscribeConfig{})
+		require.NoError(t, err, "active subscription should register")
+
+		t.Cleanup(unsubscribe)
+
+		// Give the consumer loop a moment to enter its blocking read: its
+		// idle time will exceed the 1ms retention while blocked, so only the
+		// active-subscription exclusion protects the group here.
+		time.Sleep(50 * time.Millisecond)
+
+		tp.sweepIdleGroupsOnce()
+
+		assert.Contains(t, groupNames(t, client, tp.cfg.StreamKey("active.event")), "active:group",
+			"This process's own subscriptions must never be swept regardless of idle time")
+	})
+
+	t.Run("DisabledWithoutRetention", func(t *testing.T) {
+		tp, client := newReaperTestTransport(t, redisstream.Config{})
+
+		stream := tp.cfg.StreamKey("orphan.disabled")
+		seedOrphanGroup(t, client, stream, "orphan:disabled", true, true)
+
+		time.Sleep(20 * time.Millisecond)
+
+		tp.sweepIdleGroupsOnce()
+
+		assert.Contains(t, groupNames(t, client, stream), "orphan:disabled",
+			"Zero retention disables the sweep entirely")
+	})
 }

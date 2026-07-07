@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
+	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/monitor"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -11,10 +12,13 @@ import (
 // defaultRateLimit is the default rate limit configuration for monitor endpoints.
 var defaultRateLimit = &api.RateLimitConfig{Max: 60}
 
-// NewResource creates a new monitor resource with the provided service.
-func NewResource(service monitor.Service) api.Resource {
+// NewResource creates a new monitor resource with the provided service. The
+// stream inspector is optional — nil when the redis_stream transport is off —
+// and gates the event-streams endpoint.
+func NewResource(service monitor.Service, streams event.StreamInspector) api.Resource {
 	return &Resource{
 		service: service,
+		streams: streams,
 		Resource: api.NewRPCResource(
 			"sys/monitor",
 			api.WithOperations(
@@ -27,6 +31,7 @@ func NewResource(service monitor.Service) api.Resource {
 				api.OperationSpec{Action: "get_process", RateLimit: defaultRateLimit},
 				api.OperationSpec{Action: "get_load", RateLimit: defaultRateLimit},
 				api.OperationSpec{Action: "get_build_info", RateLimit: defaultRateLimit},
+				api.OperationSpec{Action: "get_event_streams", RateLimit: defaultRateLimit},
 			),
 		),
 	}
@@ -37,6 +42,7 @@ type Resource struct {
 	api.Resource
 
 	service monitor.Service
+	streams event.StreamInspector
 }
 
 // GetOverview returns a comprehensive system overview.
@@ -132,4 +138,27 @@ func (r *Resource) GetLoad(ctx fiber.Ctx) error {
 // GetBuildInfo returns application build information.
 func (r *Resource) GetBuildInfo(ctx fiber.Ctx) error {
 	return result.Ok(r.service.BuildInfo()).Response(ctx)
+}
+
+// GetEventStreams reports cross-process event stream and consumer-group
+// state so operators can spot orphaned groups (see monitor.EventStreamsInfo).
+func (r *Resource) GetEventStreams(ctx fiber.Ctx) error {
+	info := &monitor.EventStreamsInfo{Streams: []event.StreamInfo{}}
+	if r.streams == nil {
+		return result.Ok(info).Response(ctx)
+	}
+
+	streams, err := r.streams.Streams(ctx.Context())
+	if err != nil {
+		logger.Errorf("Failed to inspect event streams: %v", err)
+
+		return monitor.ErrCollectionFailed
+	}
+
+	info.Enabled = true
+	if len(streams) > 0 {
+		info.Streams = streams
+	}
+
+	return result.Ok(info).Response(ctx)
 }

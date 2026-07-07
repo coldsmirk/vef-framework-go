@@ -66,6 +66,113 @@ func (t *Transport) reapOnce() {
 	wg.Wait()
 }
 
+// sweepLoop periodically reclaims orphaned consumer groups when
+// IdleGroupRetention is enabled. It runs alongside the reaper: the reaper
+// keeps live groups moving, the sweeper retires dead ones.
+func (t *Transport) sweepLoop() {
+	defer t.wg.Done()
+
+	ticker := time.NewTicker(t.cfg.EffectiveIdleGroupSweepInterval())
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-t.stopCh:
+			return
+		case <-ticker.C:
+			t.sweepIdleGroupsOnce()
+		}
+	}
+}
+
+// sweepIdleGroupsOnce destroys consumer groups that are demonstrably dead:
+// not an active subscription of this process, no pending entries, and every
+// consumer record idle beyond the retention window. Groups without any
+// consumer record are left alone — they may belong to a peer racing between
+// XGROUP CREATE and its first read, and a group that never consumed carries
+// no state worth reclaiming anyway.
+func (t *Transport) sweepIdleGroupsOnce() {
+	retention := t.cfg.IdleGroupRetention
+	if retention <= 0 {
+		return
+	}
+
+	keys, err := scanStreamKeys(t.ctx, t.client, t.cfg.EffectiveStreamPrefix())
+	if err != nil {
+		t.logger.Warnf("redis_stream sweeper: %v", err)
+
+		return
+	}
+
+	active := t.activeGroups()
+
+	for _, stream := range keys {
+		groups, err := t.client.XInfoGroups(t.ctx, stream).Result()
+		if err != nil {
+			t.logger.Warnf("redis_stream sweeper: xinfo groups %s: %v", stream, err)
+
+			continue
+		}
+
+		for _, group := range groups {
+			if _, isOurs := active[stream+"\x00"+group.Name]; isOurs {
+				continue
+			}
+
+			if group.Pending > 0 {
+				continue
+			}
+
+			consumers, err := t.client.XInfoConsumers(t.ctx, stream, group.Name).Result()
+			if err != nil {
+				t.logger.Warnf("redis_stream sweeper: xinfo consumers %s %s: %v", stream, group.Name, err)
+
+				continue
+			}
+
+			if len(consumers) == 0 || !allConsumersIdle(consumers, retention) {
+				continue
+			}
+
+			if err := t.client.XGroupDestroy(t.ctx, stream, group.Name).Err(); err != nil {
+				t.logger.Warnf("redis_stream sweeper: destroy group %s on %s: %v", group.Name, stream, err)
+
+				continue
+			}
+
+			t.logger.Infof("redis_stream sweeper: reclaimed idle consumer group %q on %s (all consumers idle > %s, no pending)",
+				group.Name, stream, retention)
+		}
+	}
+}
+
+// activeGroups snapshots the (stream, group) pairs this process is
+// subscribed to, keyed with a NUL separator that cannot appear inside a
+// stream key or group name from configuration.
+func (t *Transport) activeGroups() map[string]struct{} {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	set := make(map[string]struct{}, len(t.subs))
+	for _, sub := range t.subs {
+		set[sub.stream+"\x00"+sub.group] = struct{}{}
+	}
+
+	return set
+}
+
+// allConsumersIdle reports whether every consumer record has been idle
+// longer than the retention window.
+func allConsumersIdle(consumers []goredis.XInfoConsumer, retention time.Duration) bool {
+	for _, c := range consumers {
+		if c.Idle < retention {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (t *Transport) reapSub(sub *subscription) {
 	pending, err := t.client.XPendingExt(t.ctx, &goredis.XPendingExtArgs{
 		Stream: sub.stream,

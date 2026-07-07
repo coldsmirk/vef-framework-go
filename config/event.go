@@ -78,6 +78,14 @@ type EventRedisStreamTransportConfig struct {
 	SetupTimeout   time.Duration `config:"setup_timeout"`
 	ConsumerID     string        `config:"consumer_id"`
 	StartID        string        `config:"start_id"`
+	// IdleGroupRetention enables reclamation of orphaned consumer groups
+	// (a decommissioned subscriber's leftovers): a group with no pending
+	// entries whose every consumer record has been idle beyond this window
+	// is destroyed. Zero (default) disables the sweep.
+	IdleGroupRetention time.Duration `config:"idle_group_retention"`
+	// IdleGroupSweepInterval is the sweep period when IdleGroupRetention
+	// is enabled. Defaults to 10m.
+	IdleGroupSweepInterval time.Duration `config:"idle_group_sweep_interval"`
 }
 
 // EventMiddlewareConfig toggles the built-in consume/publish middlewares.
