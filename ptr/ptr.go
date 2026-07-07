@@ -1,12 +1,11 @@
 package ptr
 
-// Of returns a pointer to v, or nil if v is the zero value.
+// Of returns a pointer to v — always, including for zero values, matching
+// the semantics of new(v) and lo.ToPtr. (An earlier revision returned nil
+// for zero values, which silently swallowed legitimate &0 / &"" / &false in
+// DB and JSON round-trips; callers that want nil-for-zero must decide that
+// explicitly at the call site.)
 func Of[T comparable](v T) *T {
-	var zero T
-	if v == zero {
-		return nil
-	}
-
 	return new(v)
 }
 

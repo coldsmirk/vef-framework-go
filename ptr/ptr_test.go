@@ -7,35 +7,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestOf tests conditional pointer creation based on zero value.
+// TestOf tests unconditional pointer creation, zero values included.
 func TestOf(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		wantNil  bool
-		expected string
+		name  string
+		input string
 	}{
-		{"EmptyString", "", true, ""},
-		{"NonEmptyString", "hello", false, "hello"},
-		{"Whitespace", " ", false, " "},
+		{"EmptyString", ""},
+		{"NonEmptyString", "hello"},
+		{"Whitespace", " "},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := Of(tt.input)
-			if tt.wantNil {
-				assert.Nil(t, p, "Should return nil for zero value")
-			} else {
-				require.NotNil(t, p, "Should return non-nil for non-zero value")
-				assert.Equal(t, tt.expected, *p, "Should point to the input value")
-			}
+			require.NotNil(t, p, "Of must return a pointer for every value, zero included")
+			assert.Equal(t, tt.input, *p, "Should point to the input value")
 		})
 	}
 }
 
 // TestOfInt tests Of with int type.
 func TestOfInt(t *testing.T) {
-	assert.Nil(t, Of(0), "Should return nil for zero int")
+	zero := Of(0)
+	require.NotNil(t, zero, "Of(0) must yield a pointer to a legitimate zero, not nil")
+	assert.Equal(t, 0, *zero, "Should point to the zero int")
 
 	p := Of(42)
 	require.NotNil(t, p, "Should return non-nil for non-zero int")
@@ -44,11 +40,20 @@ func TestOfInt(t *testing.T) {
 
 // TestOfBool tests Of with bool type.
 func TestOfBool(t *testing.T) {
-	assert.Nil(t, Of(false), "Should return nil for false")
+	f := Of(false)
+	require.NotNil(t, f, "Of(false) must yield a pointer to false, not nil")
+	assert.False(t, *f, "Should point to false")
 
 	p := Of(true)
 	require.NotNil(t, p, "Should return non-nil for true")
 	assert.True(t, *p, "Should point to true")
+}
+
+// TestOfDistinctPointers ensures each call allocates independently so mutating
+// one result can never alias another.
+func TestOfDistinctPointers(t *testing.T) {
+	a, b := Of(7), Of(7)
+	assert.NotSame(t, a, b, "Each Of call should allocate a fresh pointer")
 }
 
 // TestZero tests zero value generation for various types.
