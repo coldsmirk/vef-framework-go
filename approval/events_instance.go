@@ -142,24 +142,30 @@ func NewInstanceResubmittedEvent(instance *Instance, operator UserInfo) *Instanc
 
 func (*InstanceResubmittedEvent) EventType() string { return EventTypeInstanceResubmitted }
 
-// InstanceBindingFailedEvent fires when business binding (writing the final
-// status back to the host's business table) fails after the approval itself
-// has already committed. Subscribers retry asynchronously; the approval is
-// not rolled back. Operators can grep these events for stuck bindings.
+// InstanceBindingFailedEvent fires when the engine-owned business write-back
+// fails after the driving approval action has already committed. Subscribers
+// retry asynchronously; the approval is not rolled back. Operators can grep
+// these events for stuck bindings. The started trigger never appears here —
+// its write-back runs inside the start transaction and a failure rolls back
+// the initiation instead of firing this event.
 type InstanceBindingFailedEvent struct {
 	InstanceEventBase
 
-	// FinalStatus is the terminal status the write-back attempted to persist,
-	// always one of the IsFinal() statuses (approved / rejected / terminated).
-	FinalStatus   InstanceStatus `json:"finalStatus"`
+	// Trigger is the lifecycle moment whose write-back failed (completed /
+	// returned / withdrawn / resubmitted).
+	Trigger BindingTrigger `json:"trigger"`
+	// Status is the instance status the write-back attempted to persist into
+	// the business status column at that moment.
+	Status        InstanceStatus `json:"status"`
 	BusinessTable string         `json:"businessTable"`
 	ErrorMessage  string         `json:"errorMessage"`
 }
 
-func NewInstanceBindingFailedEvent(instance *Instance, finalStatus InstanceStatus, businessTable, errorMessage string) *InstanceBindingFailedEvent {
+func NewInstanceBindingFailedEvent(instance *Instance, trigger BindingTrigger, status InstanceStatus, businessTable, errorMessage string) *InstanceBindingFailedEvent {
 	return &InstanceBindingFailedEvent{
 		InstanceEventBase: NewInstanceEventBase(instance),
-		FinalStatus:       finalStatus,
+		Trigger:           trigger,
+		Status:            status,
 		BusinessTable:     businessTable,
 		ErrorMessage:      errorMessage,
 	}

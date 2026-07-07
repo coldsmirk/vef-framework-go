@@ -125,6 +125,7 @@
   "approval_invalid_initiator_kind": "Invalid flow initiator kind",
   "approval_invalid_storage_mode": "Invalid storage mode; must be \"json\" or \"table\"",
   "approval_flow_binding_locked": "Cannot change the business binding while instances are in progress",
+  "approval_binding_columns_conflict": "Business binding write-back fields must not point at the same column",
   "approval_instance_not_found": "Approval instance not found",
   "approval_instance_completed": "Approval instance is already completed",
   "approval_not_allowed_initiate": "Not allowed to initiate this flow",

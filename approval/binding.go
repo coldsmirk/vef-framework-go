@@ -34,7 +34,7 @@ type BusinessRefProvider interface {
 
 // BusinessRefResolver turns the opaque Instance.BusinessRef into the record
 // identifier the engine-owned write-back matches against
-// Flow.BusinessPkField (`WHERE pk_field = ?`). The default resolver returns
+// Flow.BusinessPKField (`WHERE pk_field = ?`). The default resolver returns
 // the ref verbatim — correct when the ref is the business primary key
 // itself. Hosts that encode composite refs (e.g. JSON) register a resolver
 // that extracts the key value, which keeps the built-in write-back
@@ -47,6 +47,33 @@ type BusinessRefResolver interface {
 	// instance (surfaced through InstanceBindingFailedEvent and retried).
 	ResolveRecordID(ctx context.Context, flow *Flow, businessRef string) (string, error)
 }
+
+// BindingTrigger identifies which instance-lifecycle moment drove an
+// engine-owned business write-back. Each trigger projects a fixed column
+// subset onto the business table — the status column always, the optional
+// columns per the linkage matrix below (a column is only ever written when
+// the flow configures it):
+//
+//	trigger      | status         | instance_id | started_at | finished_at
+//	started      | running        | instance.ID | now        | NULL
+//	completed    | final status   | —           | —          | FinishedAt
+//	returned     | returned       | —           | —          | —
+//	withdrawn    | withdrawn      | —           | —          | —
+//	resubmitted  | running        | —           | —          | NULL
+//
+// The started projection runs synchronously inside the start_instance
+// transaction (a failure rolls back the whole initiation); the other four
+// run asynchronously through the binding listener with
+// InstanceBindingFailedEvent compensation.
+type BindingTrigger string
+
+const (
+	BindingTriggerStarted     BindingTrigger = "started"
+	BindingTriggerCompleted   BindingTrigger = "completed"
+	BindingTriggerReturned    BindingTrigger = "returned"
+	BindingTriggerWithdrawn   BindingTrigger = "withdrawn"
+	BindingTriggerResubmitted BindingTrigger = "resubmitted"
+)
 
 // businessIdentifierPattern restricts business_table / business_pk_field /
 // business_status_field to safe SQL identifiers.

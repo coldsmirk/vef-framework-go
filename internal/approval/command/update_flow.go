@@ -17,19 +17,22 @@ import (
 type UpdateFlowCmd struct {
 	cqrs.BaseCommand
 
-	FlowID                 string
-	Name                   string
-	Icon                   *string
-	Description            *string
-	BindingMode            approval.BindingMode
-	BusinessTable          *string
-	BusinessPkField        *string
-	BusinessStatusField    *string
-	AdminUserIDs           []string
-	IsAllInitiationAllowed bool
-	InstanceTitleTemplate  string
-	Initiators             []shared.CreateFlowInitiatorCmd
-	Caller                 approval.CallerContext
+	FlowID                  string
+	Name                    string
+	Icon                    *string
+	Description             *string
+	BindingMode             approval.BindingMode
+	BusinessTable           *string
+	BusinessPKField         *string
+	BusinessStatusField     *string
+	BusinessInstanceIDField *string
+	BusinessStartedAtField  *string
+	BusinessFinishedAtField *string
+	AdminUserIDs            []string
+	IsAllInitiationAllowed  bool
+	InstanceTitleTemplate   string
+	Initiators              []shared.CreateFlowInitiatorCmd
+	Caller                  approval.CallerContext
 }
 
 // UpdateFlowHandler handles the UpdateFlowCmd command.
@@ -72,11 +75,20 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		return nil, err
 	}
 
-	if err := validateBusinessIdentifiers(cmd.BindingMode, cmd.BusinessTable, cmd.BusinessPkField, cmd.BusinessStatusField); err != nil {
+	if err := validateBusinessIdentifiers(cmd.BindingMode,
+		cmd.BusinessTable, cmd.BusinessPKField, cmd.BusinessStatusField,
+		cmd.BusinessInstanceIDField, cmd.BusinessStartedAtField, cmd.BusinessFinishedAtField,
+	); err != nil {
 		return nil, err
 	}
 
-	if err := validateBusinessBindingComplete(cmd.BindingMode, cmd.BusinessTable, cmd.BusinessPkField, cmd.BusinessStatusField); err != nil {
+	if err := validateBusinessBindingComplete(cmd.BindingMode, cmd.BusinessTable, cmd.BusinessPKField, cmd.BusinessStatusField); err != nil {
+		return nil, err
+	}
+
+	if err := validateBusinessColumnsDistinct(cmd.BindingMode,
+		cmd.BusinessStatusField, cmd.BusinessInstanceIDField, cmd.BusinessStartedAtField, cmd.BusinessFinishedAtField,
+	); err != nil {
 		return nil, err
 	}
 
@@ -107,8 +119,11 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 	flow.Description = cmd.Description
 	flow.BindingMode = cmd.BindingMode
 	flow.BusinessTable = cmd.BusinessTable
-	flow.BusinessPkField = cmd.BusinessPkField
+	flow.BusinessPKField = cmd.BusinessPKField
 	flow.BusinessStatusField = cmd.BusinessStatusField
+	flow.BusinessInstanceIDField = cmd.BusinessInstanceIDField
+	flow.BusinessStartedAtField = cmd.BusinessStartedAtField
+	flow.BusinessFinishedAtField = cmd.BusinessFinishedAtField
 	flow.AdminUserIDs = cmd.AdminUserIDs
 	flow.IsAllInitiationAllowed = cmd.IsAllInitiationAllowed
 	flow.InstanceTitleTemplate = cmd.InstanceTitleTemplate
@@ -118,6 +133,7 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		Select(
 			"name", "icon", "description",
 			"binding_mode", "business_table", "business_pk_field", "business_status_field",
+			"business_instance_id_field", "business_started_at_field", "business_finished_at_field",
 			"admin_user_ids", "is_all_initiation_allowed", "instance_title_template",
 		).
 		WherePK().
@@ -159,14 +175,17 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 }
 
 // bindingConfigChanged reports whether cmd alters any business-binding field
-// (mode / table / pk / status) relative to the flow's persisted state. Only a
-// binding change is gated by the running-instance guard; non-binding edits are
-// always allowed.
+// (mode / table / pk / status / optional linkage columns) relative to the
+// flow's persisted state. Only a binding change is gated by the
+// running-instance guard; non-binding edits are always allowed.
 func bindingConfigChanged(current *approval.Flow, cmd UpdateFlowCmd) bool {
 	return current.BindingMode != cmd.BindingMode ||
 		!stringPtrEqual(current.BusinessTable, cmd.BusinessTable) ||
-		!stringPtrEqual(current.BusinessPkField, cmd.BusinessPkField) ||
-		!stringPtrEqual(current.BusinessStatusField, cmd.BusinessStatusField)
+		!stringPtrEqual(current.BusinessPKField, cmd.BusinessPKField) ||
+		!stringPtrEqual(current.BusinessStatusField, cmd.BusinessStatusField) ||
+		!stringPtrEqual(current.BusinessInstanceIDField, cmd.BusinessInstanceIDField) ||
+		!stringPtrEqual(current.BusinessStartedAtField, cmd.BusinessStartedAtField) ||
+		!stringPtrEqual(current.BusinessFinishedAtField, cmd.BusinessFinishedAtField)
 }
 
 // stringPtrEqual reports whether two optional strings hold the same value,

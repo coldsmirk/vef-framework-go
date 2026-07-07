@@ -13,6 +13,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -46,6 +47,7 @@ type StartInstanceHandler struct {
 	instanceNoGenerator approval.InstanceNoGenerator
 	validationSvc       *service.ValidationService
 	refProvider         approval.BusinessRefProvider
+	bindingWriter       *binding.Writer
 	formStorage         *storage.Dispatcher
 }
 
@@ -59,6 +61,7 @@ func NewStartInstanceHandler(
 	instanceNoGenerator approval.InstanceNoGenerator,
 	validationSvc *service.ValidationService,
 	refProvider approval.BusinessRefProvider,
+	bindingWriter *binding.Writer,
 	formStorage *storage.Dispatcher,
 ) *StartInstanceHandler {
 	return &StartInstanceHandler{
@@ -67,6 +70,7 @@ func NewStartInstanceHandler(
 		instanceNoGenerator: instanceNoGenerator,
 		validationSvc:       validationSvc,
 		refProvider:         refProvider,
+		bindingWriter:       bindingWriter,
 		formStorage:         formStorage,
 	}
 }
@@ -204,6 +208,16 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 				WherePK().
 				Exec(ctx); err != nil {
 				return nil, fmt.Errorf("persist business_ref: %w", err)
+			}
+		}
+
+		// The started leg of the engine-owned write-back runs synchronously
+		// inside this transaction so the business row and the instance flip
+		// together — a failure rolls back the whole initiation. The Writer
+		// itself skips instances without a BusinessRef.
+		if h.bindingWriter != nil {
+			if err := h.bindingWriter.WriteBack(ctx, db, &flow, instance, approval.BindingTriggerStarted); err != nil {
+				return nil, fmt.Errorf("business binding write-back on start: %w", err)
 			}
 		}
 	}

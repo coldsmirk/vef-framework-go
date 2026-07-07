@@ -125,6 +125,7 @@
   "approval_invalid_initiator_kind": "无效的发起人类型",
   "approval_invalid_storage_mode": "存储模式不合法，必须为 json 或 table",
   "approval_flow_binding_locked": "流程存在进行中的实例，无法修改业务绑定配置",
+  "approval_binding_columns_conflict": "业务绑定的写回字段不能重复指向同一列",
   "approval_instance_not_found": "审批实例不存在",
   "approval_instance_completed": "审批实例已结束",
   "approval_not_allowed_initiate": "无权发起此流程",

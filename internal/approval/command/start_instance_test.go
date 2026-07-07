@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
@@ -52,7 +53,11 @@ func (s *StartInstanceTestSuite) SetupSuite() {
 	eng := buildTestEngine(s.db)
 	validSvc := service.NewValidationService(nil)
 
-	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, validSvc, binding.NewNoopRefProvider(), nil))
+	s.handler = wrapWithBusAndDB(
+		s.db,
+		eventtest.NewFakeBus(),
+		command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, validSvc, binding.NewNoopRefProvider(), binding.NewWriter(binding.NewIdentityResolver()), nil),
+	)
 }
 
 func (s *StartInstanceTestSuite) TearDownTest() {
@@ -175,7 +180,10 @@ func (s *StartInstanceTestSuite) TestStartShouldRenderTemplateWithCompatibleKeys
 		Caller:    approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should start instance with lowerCamel title template keys")
-	s.Assert().Equal("TEST-1-Template User-apv-cmd-test-flow-Travel", instance.Title, "Should render lowerCamel template keys consistently")
+	// Build the expectation from the generated instance number: the mock
+	// generator's counter is shared across the whole suite, so a hard-coded
+	// "TEST-1" would couple this test to its alphabetical position.
+	s.Assert().Equal(instance.InstanceNo+"-Template User-apv-cmd-test-flow-Travel", instance.Title, "Should render lowerCamel template keys consistently")
 }
 
 func (s *StartInstanceTestSuite) TestStartShouldRejectInvalidFormDataBySchema() {
@@ -197,4 +205,112 @@ func (s *StartInstanceTestSuite) TestStartShouldRejectInvalidFormDataBySchema() 
 	var re result.Error
 	require.ErrorAs(s.T(), err, &re, "Should return business error")
 	s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
+}
+
+// flipFlowToBusinessBinding points the fixture flow at table with the full
+// linkage-column set and returns a restore func for the standalone baseline.
+func (s *StartInstanceTestSuite) flipFlowToBusinessBinding(table string) func() {
+	s.T().Helper()
+
+	_, err := s.db.NewUpdate().
+		Model((*approval.Flow)(nil)).
+		Set("binding_mode", approval.BindingBusiness).
+		Set("business_table", table).
+		Set("business_pk_field", "id").
+		Set("business_status_field", "approval_status").
+		Set("business_instance_id_field", "apv_instance_id").
+		Set("business_started_at_field", "apv_started_at").
+		Set("business_finished_at_field", "apv_finished_at").
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.fixture.FlowID) }).
+		Exec(s.ctx)
+	s.Require().NoError(err, "Should flip the fixture flow to a business binding")
+
+	return func() {
+		_, _ = s.db.NewUpdate().
+			Model((*approval.Flow)(nil)).
+			Set("binding_mode", approval.BindingStandalone).
+			Set("business_table", nil).
+			Set("business_pk_field", nil).
+			Set("business_status_field", nil).
+			Set("business_instance_id_field", nil).
+			Set("business_started_at_field", nil).
+			Set("business_finished_at_field", nil).
+			Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.fixture.FlowID) }).
+			Exec(s.ctx)
+	}
+}
+
+func (s *StartInstanceTestSuite) TestStartBusinessLinkageWriteBack() {
+	_, err := s.db.NewRaw(`CREATE TABLE biz_start_order (
+		id VARCHAR(64) PRIMARY KEY,
+		approval_status VARCHAR(32),
+		apv_instance_id VARCHAR(32),
+		apv_started_at TIMESTAMP,
+		apv_finished_at TIMESTAMP
+	)`).Exec(s.ctx)
+	s.Require().NoError(err, "Should create the business table")
+
+	defer func() { _, _ = s.db.NewRaw(`DROP TABLE biz_start_order`).Exec(s.ctx) }()
+
+	// The row carries leftovers from a previous approval round so the test can
+	// prove the started projection overwrites and clears them.
+	_, err = s.db.NewRaw(`INSERT INTO biz_start_order (id, approval_status, apv_instance_id, apv_finished_at)
+		VALUES ('ord-1', 'rejected', 'inst-old', CURRENT_TIMESTAMP)`).Exec(s.ctx)
+	s.Require().NoError(err, "Should seed the business row")
+
+	restore := s.flipFlowToBusinessBinding("biz_start_order")
+	defer restore()
+
+	ref := "ord-1"
+	instance, err := s.handler.Handle(s.ctx, command.StartInstanceCmd{
+		FlowCode:    "apv-cmd-test-flow",
+		Applicant:   approval.UserInfo{ID: "user-1", Name: "User One"},
+		BusinessRef: &ref,
+		Caller:      approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Should start a business-bound instance")
+
+	var (
+		status, instanceID            string
+		startedAtNull, finishedAtNull bool
+	)
+
+	s.Require().NoError(s.db.NewRaw(`SELECT approval_status, COALESCE(apv_instance_id, ''),
+		apv_started_at IS NULL, apv_finished_at IS NULL
+		FROM biz_start_order WHERE id = 'ord-1'`).
+		Scan(s.ctx, &status, &instanceID, &startedAtNull, &finishedAtNull),
+		"Should read back the business row")
+
+	s.Assert().Equal("running", status, "Business status should flip to running at initiation")
+	s.Assert().Equal(instance.ID, instanceID, "Business row should carry the new instance id")
+	s.Assert().False(startedAtNull, "Business row should carry the start time")
+	s.Assert().True(finishedAtNull, "The finish time left by the previous round should be cleared")
+}
+
+func (s *StartInstanceTestSuite) TestStartRollsBackWhenLinkageWriteFails() {
+	// The flow points at a table that does not exist, so the synchronous
+	// started write-back fails inside the start transaction and the whole
+	// initiation must roll back — no instance may survive.
+	restore := s.flipFlowToBusinessBinding("biz_missing_table")
+	defer restore()
+
+	ref := "ord-x"
+	err := s.db.RunInTx(s.ctx, func(txCtx context.Context, tx orm.DB) error {
+		_, handleErr := s.handler.Handle(contextx.SetDB(txCtx, tx), command.StartInstanceCmd{
+			FlowCode:    "apv-cmd-test-flow",
+			Applicant:   approval.UserInfo{ID: "user-1", Name: "User One"},
+			BusinessRef: &ref,
+			Caller:      approval.SystemCaller,
+		})
+
+		return handleErr
+	})
+	s.Require().Error(err, "Start must fail when the linkage write-back fails")
+
+	count, countErr := s.db.NewSelect().
+		Model((*approval.Instance)(nil)).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("business_ref", "ord-x") }).
+		Count(s.ctx)
+	s.Require().NoError(countErr, "Should count instances after the failed start")
+	s.Assert().Zero(count, "The rolled-back initiation must not leave an instance behind")
 }

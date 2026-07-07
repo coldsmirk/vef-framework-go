@@ -17,6 +17,7 @@ const (
 	ErrCodeInvalidInitiatorKind      = 40013
 	ErrCodeInvalidStorageMode        = 40014
 	ErrCodeFlowBindingLocked         = 40015
+	ErrCodeBindingColumnsConflict    = 40016
 
 	ErrCodeInstanceNotFound          = 40101
 	ErrCodeInstanceCompleted         = 40102

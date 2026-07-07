@@ -120,7 +120,7 @@ func (s *StorageTableTestSuite) startTableInstance(code string, formData map[str
 	start := wrapWithBusAndDB(s.db, eventtest.NewFakeBus(),
 		command.NewStartInstanceHandler(
 			s.db, eng, &MockInstanceNoGenerator{}, service.NewValidationService(nil),
-			binding.NewNoopRefProvider(), s.dispatcher,
+			binding.NewNoopRefProvider(), binding.NewWriter(binding.NewIdentityResolver()), s.dispatcher,
 		))
 
 	instance, err := start.Handle(s.ctx, command.StartInstanceCmd{

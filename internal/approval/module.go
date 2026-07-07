@@ -93,10 +93,11 @@ func buildTransactionalEventTypes() []string {
 //
 //  2. Events that approval itself subscribes to must additionally
 //     route to a subscribable (non publish-only) transport. The
-//     binding listener attaches to InstanceCompletedEvent; a route
-//     resolving only to a publish-only outbox would silently filter
-//     the subscription at registration time, so no binding write-back
-//     would ever happen even though the application started cleanly.
+//     binding listener attaches to the completed / returned /
+//     withdrawn / resubmitted instance events; a route resolving only
+//     to a publish-only outbox would silently filter the subscriptions
+//     at registration time, so no binding write-back would ever happen
+//     even though the application started cleanly.
 //
 // The check itself is deferred to OnStart so the bus has built its
 // router by the time we query it (bus.Start runs first in the lifecycle
@@ -123,6 +124,9 @@ func verifyEventRouting(lc fx.Lifecycle, inspector event.RouteInspector) {
 			// listener is silently dead.
 			subscribed := []string{
 				approval.EventTypeInstanceCompleted,
+				approval.EventTypeInstanceReturned,
+				approval.EventTypeInstanceWithdrawn,
+				approval.EventTypeInstanceResubmitted,
 			}
 			for _, et := range subscribed {
 				if !inspector.HasSubscribableTransport(et) {

@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     business_table VARCHAR(64) COMMENT 'Biz Table',
     business_pk_field VARCHAR(64) COMMENT 'Biz PK',
     business_status_field VARCHAR(64) COMMENT 'Status Field',
+    business_instance_id_field VARCHAR(64) COMMENT 'Instance ID Field',
+    business_started_at_field VARCHAR(64) COMMENT 'Started At Field',
+    business_finished_at_field VARCHAR(64) COMMENT 'Finished At Field',
     -- Permission config
     admin_user_ids JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Admins',
     is_all_initiation_allowed BOOLEAN NOT NULL DEFAULT true COMMENT 'Open Start',

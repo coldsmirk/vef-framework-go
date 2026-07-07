@@ -12,24 +12,23 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 )
 
-// SpyBus captures the most recent Subscribe arguments so tests can verify
-// the listener supplies a stable consumer group via WithGroup. It is
-// intentionally minimal: only Subscribe is exercised, and Publish /
-// PublishBatch return nil without recording so the listener's failure
-// branch can run without a real bus.
+// SpyBus captures Subscribe arguments so tests can verify the listener
+// attaches every write-back trigger with a stable consumer group via
+// WithGroup. It is intentionally minimal: only Subscribe is exercised, and
+// Publish / PublishBatch return nil without recording so the listener's
+// failure branch can run without a real bus.
 type SpyBus struct {
-	subscribeCalls int
-	capturedType   string
-	capturedGroup  string
+	capturedTypes  []string
+	capturedGroups []string
 	publishErrs    []error
 	publishCalls   []event.PublishConfig
 }
 
 func (b *SpyBus) Subscribe(eventType string, _ event.Handler, opts ...event.SubscribeOption) (event.Unsubscribe, error) {
 	cfg := event.ApplySubscribeOptions(opts)
-	b.subscribeCalls++
-	b.capturedType = eventType
-	b.capturedGroup = cfg.Group
+
+	b.capturedTypes = append(b.capturedTypes, eventType)
+	b.capturedGroups = append(b.capturedGroups, cfg.Group)
 
 	return func() {}, nil
 }
@@ -55,17 +54,22 @@ func TestListenerStartSubscribesWithStableGroup(t *testing.T) {
 	listener := NewListener(nil, bus, nil)
 
 	require.NoError(t, listener.Start(), "Start should not return an error")
-	assert.Equal(t, 1, bus.subscribeCalls, "Listener should subscribe exactly once")
-	assert.Equal(t, approval.EventTypeInstanceCompleted, bus.capturedType,
-		"Listener should subscribe to InstanceCompletedEvent")
-	assert.Equal(t, bindingConsumerGroup, bus.capturedGroup,
-		"Listener must set a stable consumer group for at-least-once routes")
-	assert.Equal(t, "approval:binding", bus.capturedGroup,
-		"Group name is the inbox dedupe scope and must remain stable")
+	assert.Equal(t, []string{
+		approval.EventTypeInstanceCompleted,
+		approval.EventTypeInstanceReturned,
+		approval.EventTypeInstanceWithdrawn,
+		approval.EventTypeInstanceResubmitted,
+	}, bus.capturedTypes,
+		"Listener should subscribe to every asynchronous write-back trigger")
+
+	for i, group := range bus.capturedGroups {
+		assert.Equal(t, "approval:binding", group,
+			"Subscription %s must set the stable consumer group (inbox dedupe scope)", bus.capturedTypes[i])
+	}
 }
 
 func bindingFailureInstance() *approval.Instance {
-	instance := &approval.Instance{TenantID: "tenant-1", FlowID: "flow-1"}
+	instance := &approval.Instance{TenantID: "tenant-1", FlowID: "flow-1", Status: approval.InstanceApproved}
 	instance.ID = "inst-1"
 
 	return instance
@@ -77,7 +81,7 @@ func TestListenerPublishFailure(t *testing.T) {
 		listener := NewListener(testx.NewTestDB(t), bus, nil)
 
 		err := listener.publishFailure(t.Context(), approval.NewInstanceBindingFailedEvent(
-			bindingFailureInstance(), approval.InstanceApproved, "biz_table", "boom"))
+			bindingFailureInstance(), approval.BindingTriggerCompleted, approval.InstanceApproved, "biz_table", "boom"))
 
 		require.NoError(t, err, "Binding failure should publish through a short transaction when DB is available")
 		require.Len(t, bus.publishCalls, 1, "Binding failure should publish once to avoid outbox plus memory double delivery")
@@ -89,7 +93,7 @@ func TestListenerPublishFailure(t *testing.T) {
 		listener := NewListener(testx.NewTestDB(t), bus, nil)
 
 		err := listener.publishFailure(t.Context(), approval.NewInstanceBindingFailedEvent(
-			bindingFailureInstance(), approval.InstanceApproved, "biz_table", "boom"))
+			bindingFailureInstance(), approval.BindingTriggerCompleted, approval.InstanceApproved, "biz_table", "boom"))
 
 		require.NoError(t, err, "Binding failure should fall back to non-transactional publish when no Tx route exists")
 		require.Len(t, bus.publishCalls, 2, "Binding failure should retry once without Tx after ErrTxRequired")
@@ -102,7 +106,7 @@ func TestListenerPublishFailure(t *testing.T) {
 		listener := NewListener(nil, bus, nil)
 
 		err := listener.publishFailure(t.Context(), approval.NewInstanceBindingFailedEvent(
-			bindingFailureInstance(), approval.InstanceApproved, "biz_table", "boom"))
+			bindingFailureInstance(), approval.BindingTriggerCompleted, approval.InstanceApproved, "biz_table", "boom"))
 
 		require.NoError(t, err, "Binding failure should publish directly when DB is unavailable")
 		require.Len(t, bus.publishCalls, 1, "Binding failure should publish exactly once")

@@ -48,7 +48,11 @@ func (s *NodeVisitTrailTestSuite) SetupSuite() {
 	instanceSvc := service.NewInstanceService(nil)
 	bus := eventtest.NewFakeBus()
 
-	s.start = wrapWithBusAndDB(s.db, bus, command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, validSvc, binding.NewNoopRefProvider(), nil))
+	s.start = wrapWithBusAndDB(
+		s.db,
+		bus,
+		command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, validSvc, binding.NewNoopRefProvider(), binding.NewWriter(binding.NewIdentityResolver()), nil),
+	)
 	s.approve = wrapWithBusAndDB(s.db, bus, command.NewApproveTaskHandler(s.db, taskSvc, nodeSvc, validSvc, nil))
 	s.reject = wrapWithBusAndDB(s.db, bus, command.NewRejectTaskHandler(s.db, taskSvc, nodeSvc, validSvc, nil))
 	s.rollback = wrapWithBusAndDB(s.db, bus, command.NewRollbackTaskHandler(s.db, taskSvc, instanceSvc, validSvc, eng, nil))

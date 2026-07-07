@@ -58,6 +58,9 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     business_table VARCHAR(64),
     business_pk_field VARCHAR(64),
     business_status_field VARCHAR(64),
+    business_instance_id_field VARCHAR(64),
+    business_started_at_field VARCHAR(64),
+    business_finished_at_field VARCHAR(64),
     -- Permission config
     admin_user_ids JSONB NOT NULL DEFAULT '[]',
     is_all_initiation_allowed BOOLEAN NOT NULL DEFAULT true,
@@ -86,6 +89,9 @@ COMMENT ON COLUMN apv_flow.binding_mode IS 'Binding Mode';
 COMMENT ON COLUMN apv_flow.business_table IS 'Biz Table';
 COMMENT ON COLUMN apv_flow.business_pk_field IS 'Biz PK';
 COMMENT ON COLUMN apv_flow.business_status_field IS 'Status Field';
+COMMENT ON COLUMN apv_flow.business_instance_id_field IS 'Instance ID Field';
+COMMENT ON COLUMN apv_flow.business_started_at_field IS 'Started At Field';
+COMMENT ON COLUMN apv_flow.business_finished_at_field IS 'Finished At Field';
 COMMENT ON COLUMN apv_flow.admin_user_ids IS 'Admins';
 COMMENT ON COLUMN apv_flow.is_all_initiation_allowed IS 'Open Start';
 COMMENT ON COLUMN apv_flow.instance_title_template IS 'Title Template';
