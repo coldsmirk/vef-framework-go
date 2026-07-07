@@ -87,6 +87,17 @@ func TestParse(t *testing.T) {
 			false,
 			MakeTimeUTC(2023, 12, 25, 14, 30, 45),
 		},
+		{
+			// A T-separated zone-less string misses the primary layout and
+			// takes the cast fallback: it must be interpreted in time.Local
+			// like the primary path, not UTC — near midnight the UTC reading
+			// lands on a different calendar day.
+			"FallbackZonelessParsesInLocal",
+			"2023-12-25T23:30:45",
+			nil,
+			false,
+			MakeTime(2023, 12, 25, 23, 30, 45),
+		},
 	}
 
 	for _, tt := range tests {

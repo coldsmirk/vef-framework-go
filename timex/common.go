@@ -111,6 +111,12 @@ func assignValue(dest, value any) error {
 // parseTimeWithFallback provides a standardized way to parse time strings with fallback support.
 // It first tries the provided layout in the local timezone, then falls back to the cast library
 // for common formats (RFC3339, ISO-8601, etc.). Used by the lenient public Parse* entry points.
+//
+// Both paths interpret zone-less input in the SAME location (time.Local):
+// cast's plain ToTimeE would assume UTC, so a string that happened to miss
+// the primary layout used to land up to a day away on the calendar once the
+// UTC instant was rendered back in local time. Inputs carrying an explicit
+// offset keep it on either path.
 func parseTimeWithFallback(value, layout string) (time.Time, error) {
 	// Primary: try with the specified layout in the local timezone.
 	parsed, err := time.ParseInLocation(layout, value, time.Local)
@@ -119,7 +125,7 @@ func parseTimeWithFallback(value, layout string) (time.Time, error) {
 	}
 
 	// Fallback: try cast library for common time formats.
-	if castTime, castErr := cast.ToTimeE(value); castErr == nil {
+	if castTime, castErr := cast.ToTimeInDefaultLocationE(value, time.Local); castErr == nil {
 		return castTime, nil
 	}
 
