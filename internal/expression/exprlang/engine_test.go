@@ -147,3 +147,45 @@ func TestEngine(t *testing.T) {
 		assert.NotErrorIs(t, err, expression.ErrEvaluationFailed, "Cancellation must not be wrapped as an evaluation failure")
 	})
 }
+
+// TestNormalizeEnvFastPath pins the JSON-native pass-through: a native map
+// evaluates identically to the round-trip path, envs containing non-native
+// values still normalize (ints compare as numbers, structs expose json tags),
+// and the pass-through never mutates the caller's map.
+func TestNormalizeEnvFastPath(t *testing.T) {
+	engine := exprlang.New()
+
+	t.Run("NativeMapPassesThrough", func(t *testing.T) {
+		env := map[string]any{
+			"amount": 12.5,
+			"tags":   []any{"a", "b"},
+			"nested": map[string]any{"ok": true},
+		}
+
+		out, err := engine.Evaluate(t.Context(), `amount > 10 and nested.ok and tags[1] == "b"`, env)
+		require.NoError(t, err, "JSON-native env should evaluate without normalization errors")
+
+		verdict, err := out.Bool()
+		require.NoError(t, err, "Predicate result should decode as bool")
+		assert.True(t, verdict, "Fast-path evaluation must behave like the round-trip path")
+		assert.Len(t, env, 3, "Evaluation must not mutate the caller's env")
+	})
+
+	t.Run("NonNativeValuesStillNormalize", func(t *testing.T) {
+		type payload struct {
+			Amount int `json:"amount"`
+		}
+
+		env := map[string]any{
+			"qty":  3, // int forces the round trip
+			"data": payload{Amount: 7},
+		}
+
+		out, err := engine.Evaluate(t.Context(), `qty == 3 and data.amount == 7`, env)
+		require.NoError(t, err, "Non-native env should fall back to the JSON round trip")
+
+		verdict, err := out.Bool()
+		require.NoError(t, err, "Predicate result should decode as bool")
+		assert.True(t, verdict, "Round-trip path must expose json tags and normalized numbers")
+	})
+}

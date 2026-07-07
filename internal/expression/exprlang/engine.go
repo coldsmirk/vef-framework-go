@@ -108,9 +108,26 @@ func run(prog *vm.Program, env any) (expression.Value, error) {
 // names — and keeps result types consistent with Value.Decode, which is also
 // JSON-based. A nil env becomes an empty map so undefined-variable lookups
 // resolve to nil rather than panicking.
+//
+// Environments that are ALREADY JSON-native (map[string]any trees decoded
+// from request bodies or jsonb columns — the hot path for approval condition
+// evaluation) pass through by reference: the verification walk allocates
+// nothing, versus a full marshal/unmarshal round trip per evaluation.
+// Evaluation never mutates the env (the expression language has no
+// assignment), so sharing the reference is safe.
+//
+// Precision note: the JSON round trip converts every number to float64, so
+// integers beyond 2^53 (e.g. int64 snowflake ids placed in a Go-built env)
+// lose precision inside expressions. Values that are float64 already —
+// anything that arrived via JSON — are unaffected. Model such identifiers as
+// strings when they must participate in expressions.
 func normalizeEnv(env any) (any, error) {
 	if env == nil {
 		return map[string]any{}, nil
+	}
+
+	if m, ok := env.(map[string]any); ok && jsonNativeMap(m) {
+		return m, nil
 	}
 
 	data, err := json.Marshal(env)
@@ -124,6 +141,40 @@ func normalizeEnv(env any) (any, error) {
 	}
 
 	return out, nil
+}
+
+// jsonNative reports whether v consists solely of the value shapes
+// json.Unmarshal produces into any: nil, bool, string, float64, []any, and
+// map[string]any. Anything else (structs, ints, custom types) needs the full
+// JSON round trip for tag-based field naming and number normalization.
+func jsonNative(v any) bool {
+	switch value := v.(type) {
+	case nil, bool, string, float64:
+		return true
+	case []any:
+		for _, item := range value {
+			if !jsonNative(item) {
+				return false
+			}
+		}
+
+		return true
+
+	case map[string]any:
+		return jsonNativeMap(value)
+	default:
+		return false
+	}
+}
+
+func jsonNativeMap(m map[string]any) bool {
+	for _, item := range m {
+		if !jsonNative(item) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func wrapErr(err error) error {
