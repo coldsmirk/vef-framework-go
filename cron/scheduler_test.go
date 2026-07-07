@@ -314,12 +314,29 @@ func TestSchedulerUpdateJob(t *testing.T) {
 	updatedJob, err := scheduler.Update(originalID, jobDef2)
 	require.NoError(t, err, "Should update job")
 	assert.Equal(t, "updated-job", updatedJob.Name(), "Updated job name should match")
+	assert.Equal(t, originalID, updatedJob.ID(),
+		"Update must preserve the job identifier so the caller's handle stays valid")
+
+	// A second update through the SAME id must target the same job — before
+	// the identifier fix it silently created an additional job, leaving the
+	// previous one running in parallel.
+	updatedAgain, err := scheduler.Update(originalID, NewOneTimeJob(nil,
+		WithName("updated-job-2"),
+		WithTask(testFunc2),
+	))
+	require.NoError(t, err, "Should update the job again via the original id")
+	assert.Equal(t, originalID, updatedAgain.ID(), "Repeated updates must keep the identifier")
+	assert.Len(t, scheduler.Jobs(), 1, "Updating must replace the job, never accumulate copies")
 
 	scheduler.Start()
 	time.Sleep(100 * time.Millisecond)
 
 	assert.Equal(t, int32(0), executed1.Load(), "Original task should not execute")
 	assert.Equal(t, int32(1), executed2.Load(), "Updated task should execute once")
+
+	require.NoError(t, scheduler.RemoveJob(originalID),
+		"The original id must remain a valid management handle after updates")
+	assert.Empty(t, scheduler.Jobs(), "Job should be removable through its stable id")
 }
 
 // TestSchedulerWithContext tests job cancellation via context.

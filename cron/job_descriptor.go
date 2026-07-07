@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-co-op/gocron/v2"
-	"github.com/google/uuid"
 )
 
 // jobInfo contains metadata and configuration options for a cron job.
@@ -28,13 +27,13 @@ func (i *jobInfo) buildJobOptions() ([]gocron.JobOption, error) {
 		return nil, ErrJobNameRequired
 	}
 
-	id, err := uuid.NewRandom()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate uuid: %w", err)
-	}
-
+	// Deliberately NO gocron.WithIdentifier here: gocron mints a fresh UUID
+	// for NewJob (nil id path) and, crucially, Scheduler.Update applies job
+	// options AFTER seeding the new job with the caller's id — injecting an
+	// identifier option would overwrite that id on every update, orphaning
+	// the handle the caller holds and breaking the "preserve the identifier"
+	// contract of Scheduler.Update.
 	options := []gocron.JobOption{
-		gocron.WithIdentifier(id),
 		gocron.WithName(i.name),
 	}
 
