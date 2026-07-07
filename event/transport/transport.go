@@ -74,6 +74,8 @@ type SubscribeConfig struct {
 	// SupportsGroups balance deliveries between same-group consumers.
 	Group string
 	// Concurrency is the desired worker count per subscription.
+	// Values above 1 trade ordering for throughput even on Ordered
+	// transports — the workers race on one feed (see Capabilities.Ordered).
 	Concurrency int
 }
 
@@ -85,8 +87,12 @@ type Capabilities struct {
 	Durable bool
 	// Transactional means the transport implements TxTransport.
 	Transactional bool
-	// Ordered means messages arrive in publish order within a single
-	// consumer for the same key/partition.
+	// Ordered means messages are HANDED to a subscription in publish
+	// order. The guarantee holds only for serial consumption: a
+	// subscription that opts into SubscribeConfig.Concurrency > 1 has
+	// multiple workers pulling from the same ordered feed, so handler
+	// executions interleave and observable processing order is lost —
+	// order-sensitive subscribers must keep the default concurrency of 1.
 	Ordered bool
 	// AtLeastOnce means messages may be delivered more than once;
 	// consumers must dedupe and Inbox middleware activates.

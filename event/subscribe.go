@@ -35,7 +35,11 @@ func WithGroup(name string) SubscribeOption {
 	return func(c *SubscribeConfig) { c.Group = name }
 }
 
-// WithConcurrency sets the per-subscription worker count.
+// WithConcurrency sets the per-subscription worker count. Values above 1
+// trade ordering for throughput: the workers race on the subscription's
+// single feed, so handler executions interleave even on transports that
+// advertise Ordered delivery. Keep the default of 1 for order-sensitive
+// subscribers.
 func WithConcurrency(n int) SubscribeOption {
 	return func(c *SubscribeConfig) {
 		if n > 0 {
