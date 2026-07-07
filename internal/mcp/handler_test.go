@@ -73,9 +73,9 @@ func (s *MCPAuthModeTestSuite) TestUnsetRequireAuthDefaultsToSecure() {
 }
 
 // TestExplicitFalseAllowsAnonymous verifies the opt-in: require_auth=false
-// lets an unauthenticated request through. The pointer is built with a local
-// variable, not ptr.Of(false), which returns nil for the zero value and would
-// silently exercise the nil-default branch instead.
+// lets an unauthenticated request through. A local variable gives an
+// addressable *bool so the explicit-false case is exercised, distinct from
+// the nil (unset) default covered above.
 func (s *MCPAuthModeTestSuite) TestExplicitFalseAllowsAnonymous() {
 	anonymous := false
 
