@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // TestGenerate tests generate functionality.
@@ -80,10 +79,6 @@ func TestDefaultGenerators(t *testing.T) {
 
 		uuid := DefaultUUIDGenerator.Generate()
 		assert.NotEmpty(t, uuid, "UUID generator should produce ID")
-
-		snowflakeGenerator, err := NewSnowflakeIDGenerator(0)
-		require.NoError(t, err, "Constructing a snowflake generator should succeed")
-		assert.NotEmpty(t, snowflakeGenerator.Generate(), "Snowflake generator should produce ID")
 	})
 }
 

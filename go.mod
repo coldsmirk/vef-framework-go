@@ -5,7 +5,6 @@ go 1.26.1
 require (
 	ariga.io/atlas v1.2.0
 	github.com/ajitpratap0/GoSQLX v1.14.0
-	github.com/bwmarrin/snowflake v0.3.0
 	github.com/coldsmirk/go-collections v0.4.0
 	github.com/coldsmirk/go-streams v0.5.0
 	github.com/dlclark/regexp2 v1.12.0

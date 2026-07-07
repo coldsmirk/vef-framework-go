@@ -16,27 +16,6 @@ func BenchmarkGenerateUUID(b *testing.B) {
 	}
 }
 
-func BenchmarkSnowflakeIDGenerator(b *testing.B) {
-	generator, err := NewSnowflakeIDGenerator(1)
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	b.Run("Sequential", func(b *testing.B) {
-		for b.Loop() {
-			_ = generator.Generate()
-		}
-	})
-
-	b.Run("Parallel", func(b *testing.B) {
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				_ = generator.Generate()
-			}
-		})
-	})
-}
-
 func BenchmarkXIDGenerator(b *testing.B) {
 	generator := NewXIDGenerator()
 
@@ -125,30 +104,9 @@ func BenchmarkDefaultGenerators(b *testing.B) {
 			_ = DefaultUUIDGenerator.Generate()
 		}
 	})
-
-	b.Run("SharedSnowflakeIDGenerator", func(b *testing.B) {
-		generator, _ := NewSnowflakeIDGenerator(0)
-
-		b.ResetTimer()
-
-		for b.Loop() {
-			_ = generator.Generate()
-		}
-	})
 }
 
 func BenchmarkMemoryAllocation(b *testing.B) {
-	b.Run("SnowflakeID", func(b *testing.B) {
-		generator, _ := NewSnowflakeIDGenerator(1)
-
-		b.ResetTimer()
-		b.ReportAllocs()
-
-		for b.Loop() {
-			_ = generator.Generate()
-		}
-	})
-
 	b.Run("XID", func(b *testing.B) {
 		generator := NewXIDGenerator()
 
@@ -184,17 +142,6 @@ func BenchmarkMemoryAllocation(b *testing.B) {
 }
 
 func BenchmarkConcurrentPerformance(b *testing.B) {
-	b.Run("SnowflakeIDConcurrent", func(b *testing.B) {
-		generator, _ := NewSnowflakeIDGenerator(1)
-
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				_ = generator.Generate()
-			}
-		})
-	})
-
 	b.Run("XIDConcurrent", func(b *testing.B) {
 		generator := NewXIDGenerator()
 
