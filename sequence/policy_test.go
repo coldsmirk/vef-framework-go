@@ -26,6 +26,24 @@ func TestEvaluateReserve(t *testing.T) {
 		})
 	})
 
+	t.Run("InvalidStep", func(t *testing.T) {
+		t.Run("Zero", func(t *testing.T) {
+			rule := &Rule{SeqStep: 0, ResetCycle: ResetNone}
+
+			_, err := evaluateReserve(rule, 1, now)
+			assert.ErrorIs(t, err, ErrInvalidStep,
+				"step=0 would mint identical numbers for a whole batch and must be rejected")
+		})
+
+		t.Run("Negative", func(t *testing.T) {
+			rule := &Rule{SeqStep: -1, ResetCycle: ResetNone}
+
+			_, err := evaluateReserve(rule, 1, now)
+			assert.ErrorIs(t, err, ErrInvalidStep,
+				"A negative step regresses past issued numbers and must be rejected")
+		})
+	})
+
 	t.Run("NoOverflow", func(t *testing.T) {
 		t.Run("UnlimitedMaxValue", func(t *testing.T) {
 			rule := &Rule{SeqStep: 1, CurrentValue: 99999, MaxValue: 0, ResetCycle: ResetNone}

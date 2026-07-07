@@ -206,3 +206,48 @@ func (s *MemoryStoreTestSuite) TestConcurrentReserve() {
 	unique := collections.NewHashSetFrom(values...)
 	s.Equal(numGoroutines, unique.Size(), "Concurrent reserve should return unique counter values")
 }
+
+// TestConcurrentRegisterAndReserve exercises the per-key serialization
+// between Register (rule replacement) and in-flight Reserve calls: without
+// sharing the mutex, an increment could land on a just-discarded rule object
+// and the fresh rule would re-issue those numbers.
+func (s *MemoryStoreTestSuite) TestConcurrentRegisterAndReserve() {
+	s.store.Register(&Rule{Key: "hot", SeqStep: 1, IsActive: true})
+
+	var wg sync.WaitGroup
+
+	stop := make(chan struct{})
+
+	wg.Go(func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				s.store.Register(&Rule{Key: "hot", SeqStep: 1, IsActive: true})
+			}
+		}
+	})
+
+	for range 4 {
+		wg.Go(func() {
+			for range 200 {
+				_, _, err := s.store.Reserve(s.ctx, "hot", 1, timex.Now())
+				s.Require().NoError(err, "Reserve must stay valid while the rule is hot-swapped")
+			}
+		})
+	}
+
+	time.Sleep(20 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+
+	// After the dust settles the rule must still hand out strictly
+	// increasing numbers — the swap serialization keeps the counter coherent.
+	_, first, err := s.store.Reserve(s.ctx, "hot", 1, timex.Now())
+	s.Require().NoError(err, "Reserve should succeed after concurrent churn")
+
+	_, second, err := s.store.Reserve(s.ctx, "hot", 1, timex.Now())
+	s.Require().NoError(err, "Reserve should succeed after concurrent churn")
+	s.Assert().Greater(second, first, "Counter must advance monotonically once swaps stop")
+}

@@ -27,9 +27,17 @@ func NewMemoryStore() *MemoryStore {
 // Register preloads rules into the memory store.
 // Existing rules with the same key will be overwritten.
 // A deep copy of each rule is stored to prevent external mutation.
+// Each replacement takes the same per-key mutex as Reserve, so a rule is
+// never swapped out from under an in-flight reservation — without it, the
+// increment would land on the discarded object and the numbers handed out
+// against it could be re-issued from the fresh rule's counter.
 func (s *MemoryStore) Register(rules ...*Rule) {
 	for _, rule := range rules {
+		mu, _ := s.locks.GetOrCompute(rule.Key, func() *sync.Mutex { return new(sync.Mutex) })
+
+		mu.Lock()
 		s.rules.Put(rule.Key, rule.Clone())
+		mu.Unlock()
 	}
 }
 

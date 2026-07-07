@@ -9,6 +9,13 @@ func evaluateReserve(rule *Rule, count int, now timex.DateTime) (bool, error) {
 		return false, ErrInvalidCount
 	}
 
+	// Every store funnels through here, so a misconfigured step is rejected
+	// on the first reservation instead of silently issuing duplicate (step 0)
+	// or regressing (negative step) serial numbers.
+	if rule.SeqStep < 1 {
+		return false, ErrInvalidStep
+	}
+
 	resetNeeded := needsResetByCycle(rule, now)
 
 	// A cycle reset rebases the counter to StartValue before incrementing;
