@@ -21,6 +21,11 @@ type InstanceEventBase struct {
 	OccurredTime timex.DateTime `json:"occurredTime"`
 }
 
+// instanceEventBase exposes the embedded envelope to the closed
+// InstanceEvent interface: every event type embedding InstanceEventBase
+// implements it automatically, and no type outside this package can.
+func (b InstanceEventBase) instanceEventBase() InstanceEventBase { return b }
+
 // NewInstanceEventBase snapshots the instance into the shared event envelope,
 // stamping OccurredTime with the current time.
 func NewInstanceEventBase(instance *Instance) InstanceEventBase {

@@ -33,3 +33,47 @@ type InstanceLifecycleHook interface {
 	// instead so the outbox can guarantee delivery.
 	OnInstanceCompleted(ctx context.Context, db orm.DB, instance *Instance, finalStatus InstanceStatus) error
 }
+
+// NewFilteredLifecycleHook wraps a hook with the same declarative routing
+// filters used by SubscribeInstance, so the hook only sees instances it
+// declared interest in (non-matching instances pass through as a no-op).
+// Hooks are global by default; hosts whose hook serves a single flow wrap it
+// at registration:
+//
+//	vef.ProvideApprovalLifecycleHook(func() approval.InstanceLifecycleHook {
+//	    return approval.NewFilteredLifecycleHook(newRightApplicationHook(), approval.ForFlows("right_application"))
+//	})
+//
+// No filters returns the hook unchanged.
+func NewFilteredLifecycleHook(hook InstanceLifecycleHook, filters ...InstanceFilter) InstanceLifecycleHook {
+	if len(filters) == 0 {
+		return hook
+	}
+
+	return &filteredLifecycleHook{inner: hook, filters: filters}
+}
+
+type filteredLifecycleHook struct {
+	inner   InstanceLifecycleHook
+	filters []InstanceFilter
+}
+
+// OnInstanceCreated forwards to the wrapped hook when the instance matches
+// every filter.
+func (h *filteredLifecycleHook) OnInstanceCreated(ctx context.Context, db orm.DB, instance *Instance) error {
+	if !matchesAll(h.filters, instance.FlowCode, instance.TenantID) {
+		return nil
+	}
+
+	return h.inner.OnInstanceCreated(ctx, db, instance)
+}
+
+// OnInstanceCompleted forwards to the wrapped hook when the instance matches
+// every filter.
+func (h *filteredLifecycleHook) OnInstanceCompleted(ctx context.Context, db orm.DB, instance *Instance, finalStatus InstanceStatus) error {
+	if !matchesAll(h.filters, instance.FlowCode, instance.TenantID) {
+		return nil
+	}
+
+	return h.inner.OnInstanceCompleted(ctx, db, instance, finalStatus)
+}
