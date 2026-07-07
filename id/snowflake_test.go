@@ -71,13 +71,13 @@ func TestSnowflakeGenerator(t *testing.T) {
 	})
 }
 
-// TestSnowflakeEnvironmentVariables tests snowflake environment variables functionality.
-func TestSnowflakeEnvironmentVariables(t *testing.T) {
-	t.Run("UseNodeIDEnvironmentVariable", func(t *testing.T) {
-		assert.NotNil(t, DefaultSnowflakeIDGenerator, "Default generator should be initialized")
-
-		id := DefaultSnowflakeIDGenerator.Generate()
-		assert.NotEmpty(t, id, "Default generator should produce valid IDs")
+// TestSnowflakeExplicitConstruction verifies the constructor is the only
+// initialization path: importing the package performs no configuration and
+// cannot panic; the node id is validated with an error instead.
+func TestSnowflakeExplicitConstruction(t *testing.T) {
+	t.Run("OutOfRangeNodeIDReturnsError", func(t *testing.T) {
+		_, err := NewSnowflakeIDGenerator(64)
+		assert.Error(t, err, "A node id beyond the 6-bit layout must fail with an error, not a panic")
 	})
 
 	t.Run("ConcurrentGeneration", func(t *testing.T) {

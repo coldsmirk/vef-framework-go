@@ -174,13 +174,16 @@ func TestXidEdgeCases(t *testing.T) {
 // TestInterfaceCompliance tests interface compliance functionality.
 func TestInterfaceCompliance(t *testing.T) {
 	t.Run("AllGeneratorsImplementInterface", func(t *testing.T) {
+		snowflakeGenerator, err := NewSnowflakeIDGenerator(0)
+		require.NoError(t, err, "Constructing a snowflake generator should succeed")
+
 		generators := []IDGenerator{
 			NewXIDGenerator(),
 			NewUUIDGenerator(),
 			NewRandomIDGenerator(WithAlphabet("abc"), WithLength(10)),
 			DefaultXIDGenerator,
 			DefaultUUIDGenerator,
-			DefaultSnowflakeIDGenerator,
+			snowflakeGenerator,
 		}
 
 		for i, generator := range generators {
@@ -203,6 +206,9 @@ func TestInterfaceCompliance(t *testing.T) {
 // TestMemoryUsage tests memory usage functionality.
 func TestMemoryUsage(t *testing.T) {
 	t.Run("GeneratorsShouldNotLeakMemory", func(t *testing.T) {
+		snowflakeGenerator, err := NewSnowflakeIDGenerator(0)
+		require.NoError(t, err, "Constructing a snowflake generator should succeed")
+
 		for i := range 1000 {
 			_ = NewXIDGenerator()
 			_ = NewUUIDGenerator()
@@ -211,7 +217,7 @@ func TestMemoryUsage(t *testing.T) {
 			if i%100 == 0 {
 				DefaultXIDGenerator.Generate()
 				DefaultUUIDGenerator.Generate()
-				DefaultSnowflakeIDGenerator.Generate()
+				snowflakeGenerator.Generate()
 			}
 		}
 
@@ -222,10 +228,13 @@ func TestMemoryUsage(t *testing.T) {
 // TestStringManipulation tests string manipulation functionality.
 func TestStringManipulation(t *testing.T) {
 	t.Run("IdsSafeForCommonStringOperations", func(t *testing.T) {
+		snowflakeGenerator, err := NewSnowflakeIDGenerator(0)
+		require.NoError(t, err, "Constructing a snowflake generator should succeed")
+
 		generators := []IDGenerator{
 			DefaultXIDGenerator,
 			DefaultUUIDGenerator,
-			DefaultSnowflakeIDGenerator,
+			snowflakeGenerator,
 			NewRandomIDGenerator(WithAlphabet("0123456789abcdef"), WithLength(16)),
 		}
 

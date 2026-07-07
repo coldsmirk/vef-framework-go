@@ -126,11 +126,13 @@ func BenchmarkDefaultGenerators(b *testing.B) {
 		}
 	})
 
-	b.Run("DefaultSnowflakeIDGenerator", func(b *testing.B) {
+	b.Run("SharedSnowflakeIDGenerator", func(b *testing.B) {
+		generator, _ := NewSnowflakeIDGenerator(0)
+
 		b.ResetTimer()
 
 		for b.Loop() {
-			_ = DefaultSnowflakeIDGenerator.Generate()
+			_ = generator.Generate()
 		}
 	})
 }
