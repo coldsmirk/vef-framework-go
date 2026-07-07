@@ -70,6 +70,10 @@ func NewCachedDictionaryResolver(
 				return entries, nil
 			},
 			ilogx.Named("translate:cached_dictionary_resolver"),
+			// Dictionary keys originate from mold tags but flow through
+			// host-provided loaders; the LRU bound caps growth if a caller
+			// probes with unbounded keys (evicted entries reload on demand).
+			cache.WithMemMaxSize(4096),
 		),
 	}
 

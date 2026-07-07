@@ -43,6 +43,10 @@ func NewCachedRolePermissionsLoader(
 		cache: cache.NewInvalidating(
 			loader.LoadPermissions,
 			ilogx.Named("security:cached_role_permissions_loader"),
+			// Role ids come from principals, so the key space grows with
+			// domain data; the LRU bound keeps a miss storm from growing the
+			// cache without limit (evicted entries reload on next use).
+			cache.WithMemMaxSize(4096),
 		),
 	}
 

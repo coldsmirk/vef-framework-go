@@ -23,10 +23,14 @@ type Invalidating[T any] struct {
 }
 
 // NewInvalidating builds an Invalidating cache that loads missing keys with
-// loader and reports eviction activity through logger.
-func NewInvalidating[T any](loader KeyedLoaderFunc[T], logger logx.Logger) *Invalidating[T] {
+// loader and reports eviction activity through logger. Options are forwarded
+// to the underlying in-memory cache — pass WithMemMaxSize (LRU eviction kicks
+// in automatically) or WithMemDefaultTTL when the key space is driven by
+// unbounded domain data, otherwise a read-through miss storm can grow the
+// cache without limit.
+func NewInvalidating[T any](loader KeyedLoaderFunc[T], logger logx.Logger, opts ...MemoryOption) *Invalidating[T] {
 	return &Invalidating[T]{
-		cache:  NewMemory[T](),
+		cache:  NewMemory[T](opts...),
 		loader: loader,
 		logger: logger,
 	}
