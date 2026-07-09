@@ -27,6 +27,7 @@ type AuthResourceParams struct {
 	TokenGenerator      security.TokenGenerator
 	ChallengeTokenStore security.ChallengeTokenStore
 	UserInfoLoader      security.UserInfoLoader      `optional:"true"`
+	LoginGuard          security.LoginGuard          `optional:"true"`
 	ChallengeProviders  []security.ChallengeProvider `group:"vef:security:challenge_providers"`
 	Bus                 event.Bus
 	SecurityConfig      *config.SecurityConfig
@@ -43,6 +44,7 @@ func NewAuthResource(params AuthResourceParams) api.Resource {
 		tokenGenerator:      params.TokenGenerator,
 		challengeTokenStore: params.ChallengeTokenStore,
 		userInfoLoader:      params.UserInfoLoader,
+		loginGuard:          params.LoginGuard,
 		challengeProviders:  params.ChallengeProviders,
 		bus:                 params.Bus,
 
@@ -83,6 +85,7 @@ type AuthResource struct {
 	tokenGenerator      security.TokenGenerator
 	challengeTokenStore security.ChallengeTokenStore
 	userInfoLoader      security.UserInfoLoader
+	loginGuard          security.LoginGuard
 	challengeProviders  []security.ChallengeProvider
 	bus                 event.Bus
 }
@@ -100,16 +103,25 @@ type LoginParams struct {
 // When challenge providers are configured and applicable, the result contains
 // a challenge token and pending challenges instead of auth tokens.
 func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
+	attempt := security.LoginAttempt{Identity: params.Principal, ClientIP: httpx.GetIP(ctx)}
+
+	if locked := a.guardCheck(ctx, params.Type, attempt); locked != nil {
+		return locked
+	}
+
 	principal, err := a.authManager.Authenticate(ctx.Context(), security.Authentication{
 		Type:        params.Type,
 		Principal:   params.Principal,
 		Credentials: params.Credentials,
 	})
 	if err != nil {
+		a.guardRecordFailure(ctx, attempt)
 		a.publishLoginFailure(ctx, params.Type, params.Principal, err)
 
 		return err
 	}
+
+	a.guardRecordSuccess(ctx, attempt)
 
 	pending := streams.MapTo(
 		streams.FromSlice(a.challengeProviders),
@@ -313,6 +325,59 @@ func (a *AuthResource) publishLoginFailure(ctx fiber.Ctx, authType, username str
 		ErrorCode:  errorCode,
 	})
 	_ = a.bus.Publish(ctx.Context(), loginEvent, event.WithAsync())
+}
+
+// guardCheck consults the brute-force guard before authentication. It returns a
+// non-nil error to abort the login when the identity is currently locked out,
+// and nil to proceed. A nil guard (lockout disabled) or a guard backend failure
+// both fail open so an unavailable counter store never denies every login; the
+// backend error is logged.
+func (a *AuthResource) guardCheck(ctx fiber.Ctx, authType string, attempt security.LoginAttempt) error {
+	if a.loginGuard == nil {
+		return nil
+	}
+
+	decision, err := a.loginGuard.Check(ctx.Context(), attempt)
+	if err != nil {
+		logger.Warnf("Login guard check failed for %s, allowing attempt: %v", maskPrincipal(attempt.Identity), err)
+
+		return nil
+	}
+
+	if decision.Allowed {
+		return nil
+	}
+
+	lockErr := security.ErrAccountLocked(decision.RetryAfter)
+	a.publishLoginFailure(ctx, authType, attempt.Identity, lockErr)
+
+	return lockErr
+}
+
+// guardRecordFailure registers a failed attempt with the guard. Failures to
+// persist are logged but never surfaced: the guard is defense-in-depth, not the
+// authoritative auth result.
+func (a *AuthResource) guardRecordFailure(ctx fiber.Ctx, attempt security.LoginAttempt) {
+	if a.loginGuard == nil {
+		return
+	}
+
+	if _, err := a.loginGuard.RecordFailure(ctx.Context(), attempt); err != nil {
+		logger.Warnf("Login guard failed to record failure for %s: %v", maskPrincipal(attempt.Identity), err)
+	}
+}
+
+// guardRecordSuccess clears accumulated failures once the credential verifies.
+// It runs as soon as the password is accepted, before any second-factor
+// challenge, since the brute-forced credential has already succeeded.
+func (a *AuthResource) guardRecordSuccess(ctx fiber.Ctx, attempt security.LoginAttempt) {
+	if a.loginGuard == nil {
+		return
+	}
+
+	if err := a.loginGuard.RecordSuccess(ctx.Context(), attempt); err != nil {
+		logger.Warnf("Login guard failed to clear failures for %s: %v", maskPrincipal(attempt.Identity), err)
+	}
 }
 
 // findProvider returns the challenge provider matching the given type, or nil.

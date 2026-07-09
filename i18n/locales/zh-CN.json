@@ -41,6 +41,7 @@
   "security_nonce_already_used": "随机数已被使用",
   "security_auth_header_missing": "缺少认证头",
   "security_auth_header_invalid": "认证头格式无效",
+  "security_account_locked": "失败次数过多，请在 {{.minutes}} 分钟后重试。",
   "crud_created": "新增成功",
   "crud_updated": "保存成功",
   "crud_deleted": "删除成功",

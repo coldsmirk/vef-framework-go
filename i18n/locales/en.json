@@ -41,6 +41,7 @@
   "security_nonce_already_used": "Nonce has already been used",
   "security_auth_header_missing": "Authentication header is missing",
   "security_auth_header_invalid": "Invalid authentication header format",
+  "security_account_locked": "Too many failed attempts. Please try again in {{.minutes}} minute(s).",
   "crud_created": "Created successfully",
   "crud_updated": "Saved successfully",
   "crud_deleted": "Deleted successfully",

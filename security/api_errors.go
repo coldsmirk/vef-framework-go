@@ -1,6 +1,9 @@
 package security
 
 import (
+	"math"
+	"time"
+
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/i18n"
@@ -19,6 +22,7 @@ const (
 	ErrMessageUserLoaderNotImplemented        = "security_user_loader_not_implemented"
 	ErrMessageUserInfoLoaderNotImplemented    = "security_user_info_loader_not_implemented"
 	ErrMessageChallengeResolveFailed          = "security_challenge_resolve_failed"
+	ErrMessageAccountLocked                   = "security_account_locked"
 )
 
 // Response codes for security-domain API errors.
@@ -47,6 +51,7 @@ const (
 	ErrCodeNonceAlreadyUsed              = 1020
 	ErrCodeAuthHeaderMissing             = 1021
 	ErrCodeAuthHeaderInvalid             = 1022
+	ErrCodeAccountLocked                 = 1023
 
 	// Challenge errors (1030-1039). 1030 and 1032 are absent: they were never wired to a sentinel.
 	ErrCodeChallengeTokenInvalid  = 1031
@@ -204,6 +209,22 @@ var (
 		result.WithStatus(fiber.StatusBadRequest),
 	)
 )
+
+// ErrAccountLocked reports that brute-force protection has blocked further login
+// attempts for the identity (HTTP 429). retryAfter is surfaced to the caller,
+// rounded up to whole minutes (never below one).
+func ErrAccountLocked(retryAfter time.Duration) result.Error {
+	minutes := int(math.Ceil(retryAfter.Minutes()))
+	if minutes < 1 {
+		minutes = 1
+	}
+
+	return result.Err(
+		i18n.T(ErrMessageAccountLocked, map[string]any{"minutes": minutes}),
+		result.WithCode(ErrCodeAccountLocked),
+		result.WithStatus(fiber.StatusTooManyRequests),
+	)
+}
 
 // ErrCredentialsInvalid creates a credentials invalid error with custom message (HTTP 401).
 func ErrCredentialsInvalid(message string) result.Error {

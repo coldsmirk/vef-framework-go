@@ -2016,3 +2016,102 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeRemainingProviderNo
 func TestAuthResourceErrorPath(t *testing.T) {
 	suite.Run(t, new(AuthResourceErrorPathTestSuite))
 }
+
+// LockoutFlowTestSuite drives the brute-force guard end-to-end through the login
+// RPC to prove the guard is wired ahead of authentication.
+type LockoutFlowTestSuite struct {
+	apptest.Suite
+
+	authManager *MockAuthManager
+	publisher   *MockPublisher
+}
+
+func (s *LockoutFlowTestSuite) SetupSuite() {
+	s.authManager = new(MockAuthManager)
+	s.publisher = new(MockPublisher)
+	s.publisher.On("Publish", mock.Anything).Maybe()
+
+	s.SetupApp(
+		fx.Decorate(func() security.AuthManager { return s.authManager }),
+		// PasswordAuthenticator needs a UserLoader in the graph even though the
+		// mocked AuthManager makes it unreachable.
+		fx.Supply(
+			fx.Annotate(
+				new(MockUserLoader),
+				fx.As(new(security.UserLoader)),
+			),
+		),
+		fx.Replace(
+			fx.Annotate(
+				s.publisher,
+				fx.As(new(event.Bus)),
+			),
+		),
+		fx.Replace(
+			&config.SecurityConfig{
+				Secret:           testJWTSecret,
+				TokenExpires:     24 * time.Hour,
+				RefreshNotBefore: 1 * time.Millisecond,
+				LoginRateLimit:   1000,
+				RefreshRateLimit: 1000,
+				Lockout:          config.LockoutConfig{MaxFailures: 2},
+			},
+		),
+	)
+}
+
+func (s *LockoutFlowTestSuite) TearDownSuite() {
+	s.TearDownApp()
+}
+
+func (s *LockoutFlowTestSuite) SetupTest() {
+	resetMock(&s.authManager.Mock)
+	s.publisher.Calls = nil
+	s.publisher.ClearPublishedEvents()
+	s.publisher.On("Publish", mock.Anything).Maybe()
+}
+
+func (*LockoutFlowTestSuite) loginRequest() api.Request {
+	return api.Request{
+		Identifier: api.Identifier{
+			Resource: "security/auth",
+			Action:   "login",
+			Version:  "v1",
+		},
+		Params: map[string]any{
+			"type":        "password",
+			"principal":   "locked-user",
+			"credentials": "password123",
+		},
+	}
+}
+
+// TestLockoutBlocksAfterThreshold verifies the guard admits failures up to the
+// configured threshold, then blocks further attempts before authentication.
+func (s *LockoutFlowTestSuite) TestLockoutBlocksAfterThreshold() {
+	s.authManager.On("Authenticate", mock.Anything, mock.Anything).
+		Return((*security.Principal)(nil), security.ErrCredentialsInvalid(i18n.T("security_invalid_credentials")))
+
+	// The first two failed attempts reach the authenticator and are denied with
+	// the credential error.
+	for range 2 {
+		resp := s.MakeRPCRequest(s.loginRequest())
+		s.Equal(401, resp.StatusCode, "A wrong-password attempt below the threshold should return HTTP 401")
+
+		body := s.ReadResult(resp)
+		s.Equal(security.ErrCodeCredentialsInvalid, body.Code, "Below the threshold the credential error should surface")
+	}
+
+	// The third attempt is blocked by the guard before authentication runs.
+	resp := s.MakeRPCRequest(s.loginRequest())
+	s.Equal(429, resp.StatusCode, "A locked account should return HTTP 429")
+
+	body := s.ReadResult(resp)
+	s.Equal(security.ErrCodeAccountLocked, body.Code, "A locked account should return the account-locked code")
+
+	s.authManager.AssertNumberOfCalls(s.T(), "Authenticate", 2)
+}
+
+func TestLockoutFlow(t *testing.T) {
+	suite.Run(t, new(LockoutFlowTestSuite))
+}

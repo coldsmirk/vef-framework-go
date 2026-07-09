@@ -48,6 +48,7 @@ var Module = fx.Module(
 	),
 	fx.Provide(
 		password.NewBcryptEncoder,
+		newLoginGuard,
 		newJWT,
 		fx.Annotate(
 			NewJWTAuthenticator,
@@ -88,6 +89,32 @@ var Module = fx.Module(
 		),
 	),
 )
+
+// newLoginGuard builds the default in-memory brute-force guard for the login
+// endpoint from configuration. It returns nil when lockout is disabled (the
+// AuthResource treats a nil guard as "no protection"), and fails fast on an
+// out-of-enum strategy or key so a config typo surfaces at boot. Multi-node
+// deployments override this with security.NewRedisLoginGuard via fx.Decorate so
+// the failure counters are shared across nodes.
+func newLoginGuard(cfg *config.SecurityConfig) (security.LoginGuard, error) {
+	if !cfg.Lockout.IsEnabled() {
+		return nil, nil
+	}
+
+	if err := cfg.Lockout.Validate(); err != nil {
+		return nil, err
+	}
+
+	return security.NewMemoryLoginGuard(security.LockoutPolicy{
+		MaxFailures:  cfg.Lockout.EffectiveMaxFailures(),
+		Window:       cfg.Lockout.EffectiveWindow(),
+		LockDuration: cfg.Lockout.EffectiveLockDuration(),
+		Strategy:     security.LockoutStrategy(cfg.Lockout.EffectiveStrategy()),
+		BackoffBase:  cfg.Lockout.EffectiveBackoffBase(),
+		BackoffMax:   cfg.Lockout.EffectiveBackoffMax(),
+		Key:          security.LockoutKey(cfg.Lockout.EffectiveKey()),
+	}), nil
+}
 
 // newJWT builds the JWT signer from configuration. It never silently falls back
 // to the built-in public DefaultJWTSecret: an unset secret yields an ephemeral
