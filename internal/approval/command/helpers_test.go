@@ -671,3 +671,65 @@ func setupRunningInstance(
 
 	return inst, task
 }
+
+// setupFormFieldInstance publishes the given form-field schema on the fixture
+// version, then creates a running instance whose current node carries the given
+// kind and field permissions, plus a pending task for assigneeID. It returns the
+// instance and task so the form-validation and required-permission tests share
+// one setup. The node uses PassAll, so a lone approval would complete it —
+// callers that need it to stay running after one decision add a pending peer.
+//
+//nolint:revive // t testing.TB is conventionally the first parameter in test helpers
+func setupFormFieldInstance(
+	t testing.TB,
+	ctx context.Context,
+	db orm.DB,
+	fixture *FlowFixture,
+	nodeKind approval.NodeKind,
+	permissions map[string]approval.Permission,
+	fields []approval.FormFieldDefinition,
+	instanceFormData map[string]any,
+	assigneeID string,
+) (*approval.Instance, *approval.Task) {
+	setPublishedFormFields(t, ctx, db, fixture.VersionID, fields)
+
+	node := &approval.FlowNode{
+		FlowVersionID:    fixture.VersionID,
+		Key:              "form-field-node-" + assigneeID,
+		Kind:             nodeKind,
+		Name:             "Form Field Node",
+		ApprovalMethod:   approval.ApprovalParallel,
+		PassRule:         approval.PassAll,
+		FieldPermissions: permissions,
+	}
+	_, err := db.NewInsert().Model(node).Exec(ctx)
+	require.NoError(t, err, "Should insert form-field node")
+
+	inst := &approval.Instance{
+		TenantID:      "default",
+		FlowID:        fixture.FlowID,
+		FlowVersionID: fixture.VersionID,
+		Title:         "Form Field Test",
+		InstanceNo:    "FF-" + assigneeID,
+		ApplicantID:   "applicant-1",
+		Status:        approval.InstanceRunning,
+		CurrentNodeID: &node.ID,
+		FormData:      instanceFormData,
+	}
+	_, err = db.NewInsert().Model(inst).Exec(ctx)
+	require.NoError(t, err, "Should insert form-field instance")
+
+	task := &approval.Task{
+		TenantID:   "default",
+		InstanceID: inst.ID,
+		NodeID:     node.ID,
+		VisitID:    ensureActiveVisit(t, ctx, db, "default", inst.ID, node.ID).ID,
+		AssigneeID: assigneeID,
+		SortOrder:  1,
+		Status:     approval.TaskPending,
+	}
+	_, err = db.NewInsert().Model(task).Exec(ctx)
+	require.NoError(t, err, "Should insert form-field task")
+
+	return inst, task
+}

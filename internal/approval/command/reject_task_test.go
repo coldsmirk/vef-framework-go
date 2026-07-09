@@ -13,6 +13,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 func init() {
@@ -155,6 +156,12 @@ func (s *RejectTaskTestSuite) TestRejectTaskNotCurrentNode() {
 // PrepareOperation chokepoint, so growing the instance past the cap via reject's
 // form data is rejected before any state change.
 func (s *RejectTaskTestSuite) TestRejectEnforcesFormDataSizeCap() {
+	// blob is an unconstrained text field, so value validation passes and the
+	// size guard is what rejects the oversized payload.
+	setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, []approval.FormFieldDefinition{
+		{Key: "blob", Kind: approval.FieldTextarea, Label: "Blob"},
+	})
+
 	node := &approval.FlowNode{
 		FlowVersionID:    s.fixture.VersionID,
 		Key:              "reject-oversize-node",
@@ -205,4 +212,62 @@ func (s *RejectTaskTestSuite) TestRejectEnforcesFormDataSizeCap() {
 	reloaded.ID = task.ID
 	s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload task")
 	s.Assert().Equal(approval.TaskPending, reloaded.Status, "Task must stay pending — the size guard runs before the reject")
+}
+
+// TestRejectAllowsEmptyRequiredField proves reject is exempt from the required-
+// permission must-fill rule: a rejection must never be blocked by an unfilled
+// field, even one the node marks required.
+func (s *RejectTaskTestSuite) TestRejectAllowsEmptyRequiredField() {
+	fields := []approval.FormFieldDefinition{{Key: "note", Kind: approval.FieldInput, Label: "Note"}}
+	required := map[string]approval.Permission{"note": approval.PermissionRequired}
+	inst, task := setupFormFieldInstance(s.T(), s.ctx, s.db, s.fixture, approval.NodeApproval, required, fields, nil, "reject-req-empty")
+
+	_, err := s.handler.Handle(s.ctx, command.RejectTaskCmd{
+		TaskID:   task.ID,
+		Operator: approval.UserInfo{ID: "reject-req-empty", Name: "Rejector"},
+		Opinion:  "not acceptable",
+		Caller:   approval.SystemCaller,
+	})
+	s.Require().NoError(err, "reject must succeed even when a required-permission field is empty")
+
+	var reloadedTask approval.Task
+
+	reloadedTask.ID = task.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloadedTask).WherePK().Scan(s.ctx), "Should reload task")
+	s.Assert().Equal(approval.TaskRejected, reloadedTask.Status, "task should be rejected")
+
+	var reloadedInst approval.Instance
+
+	reloadedInst.ID = inst.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloadedInst).WherePK().Scan(s.ctx), "Should reload instance")
+	s.Assert().Equal(approval.InstanceRejected, reloadedInst.Status, "PassAll node with one rejection rejects the instance")
+}
+
+// TestRejectRejectsInvalidEditableValue proves the editable-subset value
+// validation runs on the reject path too: a submitted editable value that
+// violates its schema rule is rejected before any state change.
+func (s *RejectTaskTestSuite) TestRejectRejectsInvalidEditableValue() {
+	fields := []approval.FormFieldDefinition{
+		{Key: "amount", Kind: approval.FieldNumber, Label: "Amount", Validation: &approval.ValidationRule{Min: new(10.0)}},
+	}
+	editable := map[string]approval.Permission{"amount": approval.PermissionEditable}
+	_, task := setupFormFieldInstance(s.T(), s.ctx, s.db, s.fixture, approval.NodeApproval, editable, fields, nil, "reject-invalid-value")
+
+	_, err := s.handler.Handle(s.ctx, command.RejectTaskCmd{
+		TaskID:   task.ID,
+		Operator: approval.UserInfo{ID: "reject-invalid-value", Name: "Rejector"},
+		Opinion:  "reject with a bad edit",
+		FormData: map[string]any{"amount": 5},
+		Caller:   approval.SystemCaller,
+	})
+
+	var re result.Error
+	s.Require().ErrorAs(err, &re, "an editable value below its schema minimum must fail reject")
+	s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "should be a form validation error")
+
+	var reloaded approval.Task
+
+	reloaded.ID = task.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload task")
+	s.Assert().Equal(approval.TaskPending, reloaded.Status, "task must stay pending after a rejected invalid value")
 }

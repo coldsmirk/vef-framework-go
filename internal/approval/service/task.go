@@ -20,6 +20,11 @@ type TaskContext struct {
 	Instance *approval.Instance
 	Task     *approval.Task
 	Node     *approval.FlowNode
+	// FormFields is the flow version's form schema. PrepareOperation loads it so
+	// submitted-value validation and the approve/handle required-permission check
+	// share one query; it is nil for contexts loaded directly via
+	// LoadTaskContextForNodeOperation.
+	FormFields []approval.FormFieldDefinition
 }
 
 // TaskContextLoadOptions controls validations when loading task operation context.
@@ -607,6 +612,30 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID st
 		Caller:                  caller,
 	})
 	if err != nil {
+		return nil, err
+	}
+
+	// Load the version's form schema so submitted edits validate against it, and
+	// expose it on the context so the approve/handle required-permission check
+	// reuses the same field list without a second query.
+	var version approval.FlowVersion
+
+	version.ID = tc.Instance.FlowVersionID
+	if err := db.NewSelect().
+		Model(&version).
+		Select("form_fields").
+		WherePK().
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("load flow version form fields: %w", err)
+	}
+
+	tc.FormFields = version.FormFields
+
+	// Validate the submitted editable subset against the schema before merging,
+	// so a malformed approver edit is rejected instead of persisted. Emptiness is
+	// deferred to the approve/handle required-permission check, not treated as a
+	// value error here.
+	if err := validateEditableFormData(tc.FormFields, formData, tc.Node.FieldPermissions); err != nil {
 		return nil, err
 	}
 

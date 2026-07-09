@@ -15,6 +15,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 func init() {
@@ -173,6 +174,12 @@ func (s *ApproveTaskTestSuite) TestApproveShouldResolveCCFromFormField() {
 	inst, task := s.newRunningInstance("approver-cc-form")
 
 	ccField := "ccUsers"
+	// The approver submits ccUsers as an editable field, so it must be part of
+	// the version's form schema or PrepareOperation rejects it as undefined.
+	setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, []approval.FormFieldDefinition{
+		{Key: ccField, Kind: approval.FieldSelect, Label: "CC Users"},
+	})
+
 	_, err := s.db.NewInsert().Model(&approval.FlowNodeCC{
 		NodeID:    task.NodeID,
 		Kind:      approval.CCFormField,
@@ -225,6 +232,12 @@ func (s *ApproveTaskTestSuite) TestApproveShouldResolveCCFromFormField() {
 // is re-checked on the task-action path, so an approver cannot grow the
 // instance form past the limit one editable field at a time.
 func (s *ApproveTaskTestSuite) TestApproveRejectsOversizedFormData() {
+	// blob is an unconstrained text field, so value validation passes and the
+	// size guard — not schema validation — is what rejects the oversized payload.
+	setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, []approval.FormFieldDefinition{
+		{Key: "blob", Kind: approval.FieldTextarea, Label: "Blob"},
+	})
+
 	node := &approval.FlowNode{
 		FlowVersionID:    s.fixture.VersionID,
 		Key:              "approve-oversized-node",
@@ -287,6 +300,12 @@ func (s *ApproveTaskTestSuite) TestApproveRejectsOversizedFormData() {
 // rejected. Before the delta fix every action on a pre-existing oversize
 // instance hard-failed, wedging the instance.
 func (s *ApproveTaskTestSuite) TestApproveDoesNotWedgeAlreadyOversizeInstance() {
+	// blob is an unconstrained text field, so the delta size guard — not schema
+	// validation — governs the drip-feed-growth subtest.
+	setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, []approval.FormFieldDefinition{
+		{Key: "blob", Kind: approval.FieldTextarea, Label: "Blob"},
+	})
+
 	node := &approval.FlowNode{
 		FlowVersionID:    s.fixture.VersionID,
 		Key:              "approve-oversize-noop-node",
@@ -378,4 +397,108 @@ func (s *ApproveTaskTestSuite) TestApproveDoesNotWedgeAlreadyOversizeInstance() 
 		s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload task")
 		s.Assert().Equal(approval.TaskPending, reloaded.Status, "Task must stay pending after a rejected oversize growth")
 	})
+}
+
+// TestApproveEnforcesRequiredPermissionField pins the required-permission
+// must-fill rule: approve / handle complete the decision, so every field the
+// node marks required must hold a value by then — checked against the merged
+// form data so an earlier participant's value counts.
+func (s *ApproveTaskTestSuite) TestApproveEnforcesRequiredPermissionField() {
+	fields := []approval.FormFieldDefinition{{Key: "note", Kind: approval.FieldInput, Label: "Note"}}
+	required := map[string]approval.Permission{"note": approval.PermissionRequired}
+
+	s.Run("BlocksWhenRequiredFieldEmpty", func() {
+		_, task := setupFormFieldInstance(s.T(), s.ctx, s.db, s.fixture, approval.NodeApproval, required, fields, nil, "req-empty-approver")
+
+		_, err := s.handler.Handle(s.ctx, command.ApproveTaskCmd{
+			TaskID:   task.ID,
+			Operator: approval.UserInfo{ID: "req-empty-approver", Name: "Approver"},
+			Opinion:  "ok",
+			Caller:   approval.SystemCaller,
+		})
+
+		var re result.Error
+		s.Require().ErrorAs(err, &re, "approve must be blocked while a required-permission field is empty")
+		s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "should be a form validation error")
+
+		var reloaded approval.Task
+
+		reloaded.ID = task.ID
+		s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload task")
+		s.Assert().Equal(approval.TaskPending, reloaded.Status, "task must stay pending — the required check runs before any state change")
+	})
+
+	s.Run("PassesWhenRequiredFieldFilledByEarlierStep", func() {
+		// An earlier participant already filled the required field; the approver
+		// submits nothing, and the merged value must satisfy the requirement.
+		inst, task := setupFormFieldInstance(s.T(), s.ctx, s.db, s.fixture, approval.NodeApproval, required, fields, map[string]any{"note": "filled earlier"}, "req-filled-approver")
+
+		// A still-pending peer keeps the PassAll node running after the approval,
+		// so no node-completion / edge traversal is needed on this dedicated node.
+		peer := &approval.Task{
+			TenantID: "default", InstanceID: inst.ID, NodeID: task.NodeID,
+			VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, task.NodeID).ID,
+			AssigneeID: "req-filled-peer", SortOrder: 2, Status: approval.TaskPending,
+		}
+		_, err := s.db.NewInsert().Model(peer).Exec(s.ctx)
+		s.Require().NoError(err, "Should create pending peer")
+
+		_, err = s.handler.Handle(s.ctx, command.ApproveTaskCmd{
+			TaskID:   task.ID,
+			Operator: approval.UserInfo{ID: "req-filled-approver", Name: "Approver"},
+			Opinion:  "ok",
+			Caller:   approval.SystemCaller,
+		})
+		s.Require().NoError(err, "approve must pass when the required field was filled by an earlier step")
+
+		var reloaded approval.Task
+
+		reloaded.ID = task.ID
+		s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload task")
+		s.Assert().Equal(approval.TaskApproved, reloaded.Status, "task should be approved")
+	})
+
+	s.Run("HandleNodeBlocksWhenRequiredFieldEmpty", func() {
+		_, task := setupFormFieldInstance(s.T(), s.ctx, s.db, s.fixture, approval.NodeHandle, required, fields, nil, "req-empty-handler")
+
+		_, err := s.handler.Handle(s.ctx, command.ApproveTaskCmd{
+			TaskID:   task.ID,
+			Operator: approval.UserInfo{ID: "req-empty-handler", Name: "Handler"},
+			Opinion:  "ok",
+			Caller:   approval.SystemCaller,
+		})
+
+		var re result.Error
+		s.Require().ErrorAs(err, &re, "handle must enforce required-permission fields like approve")
+		s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "should be a form validation error")
+	})
+}
+
+// TestApproveRejectsInvalidEditableValue proves the editable-subset value
+// validation runs on the approve path: a submitted editable value that violates
+// its schema rule is rejected before any state change.
+func (s *ApproveTaskTestSuite) TestApproveRejectsInvalidEditableValue() {
+	fields := []approval.FormFieldDefinition{
+		{Key: "amount", Kind: approval.FieldNumber, Label: "Amount", Validation: &approval.ValidationRule{Min: new(10.0)}},
+	}
+	editable := map[string]approval.Permission{"amount": approval.PermissionEditable}
+	_, task := setupFormFieldInstance(s.T(), s.ctx, s.db, s.fixture, approval.NodeApproval, editable, fields, nil, "approve-invalid-value")
+
+	_, err := s.handler.Handle(s.ctx, command.ApproveTaskCmd{
+		TaskID:   task.ID,
+		Operator: approval.UserInfo{ID: "approve-invalid-value", Name: "Approver"},
+		Opinion:  "ok",
+		FormData: map[string]any{"amount": 5},
+		Caller:   approval.SystemCaller,
+	})
+
+	var re result.Error
+	s.Require().ErrorAs(err, &re, "an editable value below its schema minimum must fail approve")
+	s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "should be a form validation error")
+
+	var reloaded approval.Task
+
+	reloaded.ID = task.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload task")
+	s.Assert().Equal(approval.TaskPending, reloaded.Status, "task must stay pending after a rejected invalid value")
 }

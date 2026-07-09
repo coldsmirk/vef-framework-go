@@ -11,6 +11,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
@@ -28,6 +29,7 @@ type TaskServiceTestSuite struct {
 	db      orm.DB
 	svc     *service.TaskService
 	fixture *SvcFixture
+	formSeq int
 }
 
 func (s *TaskServiceTestSuite) SetupSuite() {
@@ -301,6 +303,105 @@ func (s *TaskServiceTestSuite) TestPrepareOperation() {
 
 		_, err = s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "op-user-5"}, approval.SystemCaller, nil)
 		s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject operations on tasks outside current node")
+	})
+}
+
+// --- PrepareOperation: submitted-value validation ---
+
+// setupFormValidationTask seeds a draft version carrying the given form schema,
+// a node carrying the given field permissions, and a running instance + pending
+// task on it, returning the task ID. A draft version sidesteps the one-published-
+// version-per-flow unique index while still exercising PrepareOperation's schema
+// load, which reads form_fields regardless of version status.
+func (s *TaskServiceTestSuite) setupFormValidationTask(
+	fields []approval.FormFieldDefinition,
+	permissions map[string]approval.Permission,
+	instanceFormData map[string]any,
+	assigneeID string,
+) string {
+	s.formSeq++
+
+	version := &approval.FlowVersion{
+		FlowID: s.fixture.FlowID, Version: 1000 + s.formSeq, Status: approval.VersionDraft,
+		FormFields: fields,
+	}
+	_, err := s.db.NewInsert().Model(version).Exec(s.ctx)
+	s.Require().NoError(err, "should insert form-validation flow version")
+
+	node := &approval.FlowNode{
+		FlowVersionID:    version.ID,
+		Key:              "form-val-node-" + assigneeID,
+		Kind:             approval.NodeApproval,
+		Name:             "Form Val Node",
+		FieldPermissions: permissions,
+	}
+	_, err = s.db.NewInsert().Model(node).Exec(s.ctx)
+	s.Require().NoError(err, "should insert form-validation node")
+
+	instance := &approval.Instance{
+		TenantID: "default", FlowID: s.fixture.FlowID, FlowVersionID: version.ID,
+		Title: "Form Val", InstanceNo: "FORMVAL-" + assigneeID,
+		ApplicantID: "applicant", Status: approval.InstanceRunning,
+		CurrentNodeID: &node.ID, FormData: instanceFormData,
+	}
+	_, err = s.db.NewInsert().Model(instance).Exec(s.ctx)
+	s.Require().NoError(err, "should insert form-validation instance")
+
+	task := &approval.Task{
+		TenantID: "default", InstanceID: instance.ID, NodeID: node.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, instance.ID, node.ID).ID,
+		AssigneeID: assigneeID, SortOrder: 1, Status: approval.TaskPending,
+	}
+	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
+	s.Require().NoError(err, "should insert form-validation task")
+
+	return task.ID
+}
+
+func (s *TaskServiceTestSuite) TestPrepareOperationFormValidation() {
+	fields := []approval.FormFieldDefinition{
+		{Key: "reason", Kind: approval.FieldInput, Label: "Reason", Validation: &approval.ValidationRule{MinLength: new(3)}},
+		{Key: "locked", Kind: approval.FieldInput, Label: "Locked", Validation: &approval.ValidationRule{MinLength: new(3)}},
+	}
+	editable := map[string]approval.Permission{"reason": approval.PermissionEditable}
+
+	s.Run("RejectsInvalidEditableValue", func() {
+		taskID := s.setupFormValidationTask(fields, editable, nil, "form-val-invalid")
+
+		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "form-val-invalid"}, approval.SystemCaller, map[string]any{"reason": "no"})
+
+		var re result.Error
+		s.Require().ErrorAs(err, &re, "an editable value violating its schema rule must be rejected")
+		s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "should carry the form validation error code")
+	})
+
+	s.Run("IgnoresInvalidNonEditableValue", func() {
+		taskID := s.setupFormValidationTask(fields, editable, nil, "form-val-noneditable")
+
+		// "locked" is submitted but not granted editable permission, so it is
+		// filtered out before validation — and never merged.
+		tc, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "form-val-noneditable"}, approval.SystemCaller, map[string]any{"locked": "no"})
+		s.Require().NoError(err, "a non-editable submitted key is filtered before validation")
+		s.Assert().NotContains(tc.Instance.FormData, "locked", "the non-editable value must not be merged")
+	})
+
+	s.Run("RejectsUnknownEditableKey", func() {
+		perms := map[string]approval.Permission{"ghost": approval.PermissionEditable}
+		taskID := s.setupFormValidationTask(fields, perms, nil, "form-val-unknown")
+
+		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "form-val-unknown"}, approval.SystemCaller, map[string]any{"ghost": "value"})
+
+		var re result.Error
+		s.Require().ErrorAs(err, &re, "an editable key with no schema field must be rejected")
+		s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "should carry the form validation error code")
+	})
+
+	s.Run("AllowsEmptyEditableValue", func() {
+		taskID := s.setupFormValidationTask(fields, editable, nil, "form-val-empty")
+
+		tc, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "form-val-empty"}, approval.SystemCaller, map[string]any{"reason": ""})
+		s.Require().NoError(err, "emptiness is deferred to the required-permission check, not rejected at this layer")
+		s.Assert().Equal("", tc.Instance.FormData["reason"], "the empty editable value is still merged")
 	})
 }
 
