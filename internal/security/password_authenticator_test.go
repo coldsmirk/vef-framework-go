@@ -19,7 +19,7 @@ type PasswordAuthenticatorTestSuite struct {
 
 // TestSupports verifies type matching.
 func (s *PasswordAuthenticatorTestSuite) TestSupports() {
-	auth := NewPasswordAuthenticator(nil, nil)
+	auth := NewPasswordAuthenticator(nil, nil, nil)
 	s.True(auth.Supports(AuthTypePassword), "Should support password type")
 	s.False(auth.Supports("token"), "Should not support token type")
 	s.False(auth.Supports(""), "Should not support empty type")
@@ -30,7 +30,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 	ctx := context.Background()
 
 	s.Run("NilLoader", func() {
-		auth := NewPasswordAuthenticator(nil, nil)
+		auth := NewPasswordAuthenticator(nil, nil, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
 			Type:        AuthTypePassword,
@@ -47,7 +47,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 	s.Run("EmptyUsername", func() {
 		loader := new(MockUserLoader)
 		encoder := new(MockPasswordEncoder)
-		auth := NewPasswordAuthenticator(loader, encoder)
+		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
 			Type:        AuthTypePassword,
@@ -75,7 +75,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 			s.Run(tc.name, func() {
 				loader := new(MockUserLoader)
 				encoder := new(MockPasswordEncoder)
-				auth := NewPasswordAuthenticator(loader, encoder)
+				auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 				_, err := auth.Authenticate(ctx, security.Authentication{
 					Type:        AuthTypePassword,
@@ -94,7 +94,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 	s.Run("NilCredentials", func() {
 		loader := new(MockUserLoader)
 		encoder := new(MockPasswordEncoder)
-		auth := NewPasswordAuthenticator(loader, encoder)
+		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
 			Type:        AuthTypePassword,
@@ -111,7 +111,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 	s.Run("CredentialsNotString", func() {
 		loader := new(MockUserLoader)
 		encoder := new(MockPasswordEncoder)
-		auth := NewPasswordAuthenticator(loader, encoder)
+		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
 			Type:        AuthTypePassword,
@@ -128,7 +128,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 	s.Run("EmptyPassword", func() {
 		loader := new(MockUserLoader)
 		encoder := new(MockPasswordEncoder)
-		auth := NewPasswordAuthenticator(loader, encoder)
+		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
 			Type:        AuthTypePassword,
@@ -150,7 +150,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		// Dummy comparison is performed on the not-found path to equalize timing.
 		encoder.On("Encode", dummyComparePlaintext).Return("dummy-hash", nil)
 		encoder.On("Matches", "password123", "dummy-hash").Return(false)
-		auth := NewPasswordAuthenticator(loader, encoder)
+		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
 			Type:        AuthTypePassword,
@@ -177,7 +177,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		// otherwise the enumeration timing channel reopens.
 		encoder.On("Encode", dummyComparePlaintext).Return("", errors.New("encode failed"))
 		encoder.On("Encode", "password123").Return("ignored", nil)
-		auth := NewPasswordAuthenticator(loader, encoder)
+		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
 			Type:        AuthTypePassword,
@@ -201,7 +201,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		// Dummy comparison is performed on the error path to equalize timing.
 		encoder.On("Encode", dummyComparePlaintext).Return("dummy-hash", nil)
 		encoder.On("Matches", "password123", "dummy-hash").Return(false)
-		auth := NewPasswordAuthenticator(loader, encoder)
+		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
 			Type:        AuthTypePassword,
@@ -224,7 +224,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		// Dummy comparison is performed on the nil-principal path to equalize timing.
 		encoder.On("Encode", dummyComparePlaintext).Return("dummy-hash", nil)
 		encoder.On("Matches", "password123", "dummy-hash").Return(false)
-		auth := NewPasswordAuthenticator(loader, encoder)
+		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
 			Type:        AuthTypePassword,
@@ -248,7 +248,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		// Dummy comparison is performed on the empty-hash path to equalize timing.
 		encoder.On("Encode", dummyComparePlaintext).Return("dummy-hash", nil)
 		encoder.On("Matches", "password123", "dummy-hash").Return(false)
-		auth := NewPasswordAuthenticator(loader, encoder)
+		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
 			Type:        AuthTypePassword,
@@ -271,7 +271,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		encoder := new(MockPasswordEncoder)
 		encoder.On("Matches", "wrongpass", "$2a$hash").Return(false)
 
-		auth := NewPasswordAuthenticator(loader, encoder)
+		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
 			Type:        AuthTypePassword,
@@ -294,7 +294,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		encoder := new(MockPasswordEncoder)
 		encoder.On("Matches", "correct", "$2a$hash").Return(true)
 
-		auth := NewPasswordAuthenticator(loader, encoder)
+		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		got, err := auth.Authenticate(ctx, security.Authentication{
 			Type:        AuthTypePassword,
@@ -307,6 +307,61 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		s.Equal([]string{"admin"}, got.Roles, "Should return expected roles")
 		loader.AssertExpectations(s.T())
 		encoder.AssertExpectations(s.T())
+	})
+
+	s.Run("DecryptorRecoversPlaintextBeforeVerification", func() {
+		principal := security.NewUser("user1", "Alice", "admin")
+		loader := new(MockUserLoader)
+		loader.On("LoadByUsername", mock.Anything, "alice").Return(principal, "$2a$hash", nil)
+
+		encoder := new(MockPasswordEncoder)
+		// The stored hash is a KDF of the recovered plaintext, never the ciphertext.
+		encoder.On("Matches", "plaintext-pw", "$2a$hash").Return(true)
+
+		decryptor := new(MockPasswordDecryptor)
+		decryptor.On("Decrypt", "rsa-ciphertext").Return("plaintext-pw", nil)
+
+		auth := NewPasswordAuthenticator(loader, encoder, decryptor)
+
+		got, err := auth.Authenticate(ctx, security.Authentication{
+			Type:        AuthTypePassword,
+			Principal:   "alice",
+			Credentials: "rsa-ciphertext",
+		})
+		s.Require().NoError(err, "Should authenticate after decrypting the transmitted credential")
+		s.Equal("user1", got.ID, "Should return expected principal ID")
+		decryptor.AssertExpectations(s.T())
+		encoder.AssertExpectations(s.T())
+	})
+
+	s.Run("DecryptFailureEqualizesTimingAndDeniesGenerically", func() {
+		loader := new(MockUserLoader)
+
+		encoder := new(MockPasswordEncoder)
+		// A malformed ciphertext must still run one dummy KDF comparison so the
+		// decrypt-failure path is timing-indistinguishable from a wrong password.
+		encoder.On("Encode", dummyComparePlaintext).Return("dummy-hash", nil)
+		encoder.On("Matches", dummyComparePlaintext, "dummy-hash").Return(false)
+
+		decryptor := new(MockPasswordDecryptor)
+		decryptor.On("Decrypt", "garbage").Return("", errors.New("decrypt failed"))
+
+		auth := NewPasswordAuthenticator(loader, encoder, decryptor)
+
+		_, err := auth.Authenticate(ctx, security.Authentication{
+			Type:        AuthTypePassword,
+			Principal:   "alice",
+			Credentials: "garbage",
+		})
+		s.Require().Error(err, "Should deny when the ciphertext cannot be decrypted")
+
+		resErr, ok := result.AsErr(err)
+		s.Require().True(ok, "Should return a result.Error")
+		s.Equal(security.ErrCodeCredentialsInvalid, resErr.Code, "Should deny generically without leaking the decrypt failure")
+		decryptor.AssertExpectations(s.T())
+		encoder.AssertExpectations(s.T())
+		// The user store is never consulted on a decrypt failure.
+		loader.AssertNotCalled(s.T(), "LoadByUsername", mock.Anything, mock.Anything)
 	})
 }
 

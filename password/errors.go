@@ -17,8 +17,4 @@ var (
 	ErrInvalidHashFormat = errors.New("invalid hash format")
 	// ErrDefaultEncoderNotFound is returned when the default encoder ID is not registered in CompositeEncoder.
 	ErrDefaultEncoderNotFound = errors.New("default encoder not found in registered encoders")
-	// ErrCipherRequired is returned when cipher is not provided to CipherEncoder.
-	ErrCipherRequired = errors.New("cipher is required")
-	// ErrEncoderRequired is returned when encoder is not provided to CipherEncoder.
-	ErrEncoderRequired = errors.New("encoder is required")
 )

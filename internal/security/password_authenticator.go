@@ -22,11 +22,16 @@ const (
 // not — closing the username-enumeration timing side-channel.
 const dummyComparePlaintext = "__vef_dummy_password__"
 
-// PasswordAuthenticator verifies username/password credentials with optional decryption support
-// for scenarios where clients encrypt passwords before transmission.
+// PasswordAuthenticator verifies username/password credentials against a UserLoader.
+// When a PasswordDecryptor is configured, the transmitted credential is treated as
+// transport-encrypted (e.g. RSA-encrypted by the client before transmission) and
+// decrypted to plaintext before verification; the password Encoder stays a plain
+// KDF used identically for storage and comparison, so registration and reset flows
+// that hash a server-side plaintext are unaffected.
 type PasswordAuthenticator struct {
 	loader    security.UserLoader
 	encoder   password.Encoder
+	decryptor security.PasswordDecryptor
 	dummyOnce sync.Once
 	dummyHash string
 }
@@ -34,10 +39,12 @@ type PasswordAuthenticator struct {
 func NewPasswordAuthenticator(
 	loader security.UserLoader,
 	encoder password.Encoder,
+	decryptor security.PasswordDecryptor,
 ) security.Authenticator {
 	return &PasswordAuthenticator{
-		loader:  loader,
-		encoder: encoder,
+		loader:    loader,
+		encoder:   encoder,
+		decryptor: decryptor,
 	}
 }
 
@@ -57,9 +64,25 @@ func (p *PasswordAuthenticator) Authenticate(ctx context.Context, authentication
 		return nil, security.ErrPrincipalInvalid(i18n.T("security_system_principal_login_forbidden"))
 	}
 
-	plaintext, ok := authentication.Credentials.(string)
-	if !ok || plaintext == "" {
+	credential, ok := authentication.Credentials.(string)
+	if !ok || credential == "" {
 		return nil, security.ErrCredentialsInvalid(i18n.T("security_password_required"))
+	}
+
+	plaintext := credential
+	if p.decryptor != nil {
+		decrypted, err := p.decryptor.Decrypt(credential)
+		if err != nil {
+			// A malformed ciphertext must cost the same as a genuine wrong
+			// password: run a dummy KDF comparison so the decrypt-failure path
+			// cannot be exploited as a timing oracle (matters when a non-OAEP
+			// cipher is configured).
+			p.equalizeTiming(dummyComparePlaintext)
+
+			return nil, security.ErrCredentialsInvalid(i18n.T("security_invalid_credentials"))
+		}
+
+		plaintext = decrypted
 	}
 
 	principal, passwordHash, err := p.loader.LoadByUsername(ctx, username)

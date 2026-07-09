@@ -67,7 +67,7 @@ var Module = fx.Module(
 		),
 		fx.Annotate(
 			NewPasswordAuthenticator,
-			fx.ParamTags(`optional:"true"`, `optional:"true"`),
+			fx.ParamTags(`optional:"true"`, `optional:"true"`, `optional:"true"`),
 			fx.ResultTags(`group:"vef:security:authenticators"`),
 		),
 		fx.Annotate(

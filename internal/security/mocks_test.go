@@ -93,6 +93,17 @@ func (m *MockPasswordEncoder) UpgradeEncoding(encodedPassword string) bool {
 	return m.Called(encodedPassword).Bool(0)
 }
 
+// MockPasswordDecryptor is a mock implementation of security.PasswordDecryptor.
+type MockPasswordDecryptor struct {
+	mock.Mock
+}
+
+func (m *MockPasswordDecryptor) Decrypt(encryptedPassword string) (string, error) {
+	args := m.Called(encryptedPassword)
+
+	return args.String(0), args.Error(1)
+}
+
 // MockRolePermissionsLoader is a mock implementation of security.RolePermissionsLoader.
 type MockRolePermissionsLoader struct {
 	mock.Mock
