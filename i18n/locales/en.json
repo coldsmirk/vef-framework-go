@@ -42,6 +42,7 @@
   "security_auth_header_missing": "Authentication header is missing",
   "security_auth_header_invalid": "Invalid authentication header format",
   "security_account_locked": "Too many failed attempts. Please try again in {{.minutes}} minute(s).",
+  "security_too_many_concurrent_sessions": "The maximum number of concurrent sessions has been reached.",
   "security_password_too_short": "Password must be at least {{.min}} characters.",
   "security_password_too_long": "Password must be at most {{.max}} characters.",
   "security_password_missing_uppercase": "Password must contain an uppercase letter.",

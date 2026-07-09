@@ -97,7 +97,7 @@ func (s *JWTRefreshAuthenticatorTestSuite) TestAuthenticate() {
 
 	s.Run("AccessTokenRejected", func() {
 		principal := security.NewUser("user1", "Alice")
-		tokens, err := s.gen.Generate(principal)
+		tokens, err := s.gen.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens")
 
 		loader := new(MockUserLoader)
@@ -112,7 +112,7 @@ func (s *JWTRefreshAuthenticatorTestSuite) TestAuthenticate() {
 
 	s.Run("UserNotFoundOnReload", func() {
 		principal := security.NewUser("user1", "Alice")
-		tokens, err := s.gen.Generate(principal)
+		tokens, err := s.gen.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens")
 
 		loader := new(MockUserLoader)
@@ -130,7 +130,7 @@ func (s *JWTRefreshAuthenticatorTestSuite) TestAuthenticate() {
 
 	s.Run("LoaderReturnsError", func() {
 		principal := security.NewUser("user1", "Alice")
-		tokens, err := s.gen.Generate(principal)
+		tokens, err := s.gen.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens")
 
 		loader := new(MockUserLoader)
@@ -149,7 +149,7 @@ func (s *JWTRefreshAuthenticatorTestSuite) TestAuthenticate() {
 
 	s.Run("SuccessfulRefresh", func() {
 		original := security.NewUser("user1", "Alice", "admin")
-		tokens, err := s.gen.Generate(original)
+		tokens, err := s.gen.Generate(context.Background(), original, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens")
 
 		// Reload returns updated principal with new roles

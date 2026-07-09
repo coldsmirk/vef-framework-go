@@ -42,6 +42,7 @@
   "security_auth_header_missing": "缺少认证头",
   "security_auth_header_invalid": "认证头格式无效",
   "security_account_locked": "失败次数过多，请在 {{.minutes}} 分钟后重试。",
+  "security_too_many_concurrent_sessions": "已达到最大同时在线会话数。",
   "security_password_too_short": "密码长度至少为 {{.min}} 个字符。",
   "security_password_too_long": "密码长度不能超过 {{.max}} 个字符。",
   "security_password_missing_uppercase": "密码必须包含大写字母。",

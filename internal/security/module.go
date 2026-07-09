@@ -64,6 +64,14 @@ var Module = fx.Module(
 			fx.ResultTags(`group:"vef:security:authenticators"`),
 		),
 		NewJWTTokenGenerator,
+		NewOpaqueTokenGenerator,
+		newSessionStore,
+		newSessionPolicy,
+		newTokenGenerator,
+		fx.Annotate(
+			NewOpaqueTokenAuthenticator,
+			fx.ResultTags(`group:"vef:security:authenticators"`),
+		),
 		security.NewJWTChallengeTokenStore,
 		fx.Annotate(
 			NewSignatureAuthenticator,
@@ -172,6 +180,46 @@ func newStrengthValidator(policy config.PasswordPolicyConfig) security.PasswordV
 	}
 
 	return security.NewRuleBasedValidator(rules...)
+}
+
+// newSessionStore provides the default in-memory opaque-token session store.
+// Multi-node deployments override it with security.NewRedisSessionStore via
+// fx.Decorate so sessions are shared across nodes.
+func newSessionStore() security.SessionStore {
+	return security.NewMemorySessionStore()
+}
+
+// newSessionPolicy resolves the opaque-token session behavior from config.
+func newSessionPolicy(cfg *config.SecurityConfig) security.SessionPolicy {
+	session := cfg.Session
+
+	return security.SessionPolicy{
+		MaxConcurrent: session.MaxConcurrent,
+		OnExceed:      security.SessionExceedPolicy(session.EffectiveOnExceed()),
+		IdleTTL:       session.EffectiveIdleTTL(),
+		MaxLifetime:   session.EffectiveMaxLifetime(),
+		Sliding:       session.IsSliding(),
+	}
+}
+
+// newTokenGenerator selects the active login-token mechanism from
+// vef.security.token_type, validating the token-type and session config so a
+// typo fails fast at boot. Both underlying generators are always constructed;
+// only the configured one issues login tokens.
+func newTokenGenerator(
+	cfg *config.SecurityConfig,
+	jwtGenerator *JWTTokenGenerator,
+	opaqueGenerator *OpaqueTokenGenerator,
+) (security.TokenGenerator, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	if cfg.EffectiveTokenType() == config.TokenTypeOpaque {
+		return opaqueGenerator, nil
+	}
+
+	return jwtGenerator, nil
 }
 
 // newJWT builds the JWT signer from configuration. It never silently falls back

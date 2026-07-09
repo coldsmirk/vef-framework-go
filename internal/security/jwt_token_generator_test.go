@@ -1,6 +1,7 @@
 package security
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -28,7 +29,7 @@ func (s *JWTTokenGeneratorTestSuite) TestGenerate() {
 		principal := security.NewUser("user1", "Alice", "admin", "editor")
 		principal.Details = map[string]any{"department": "engineering"}
 
-		tokens, err := s.generator.Generate(principal)
+		tokens, err := s.generator.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens without error")
 		s.Require().NotNil(tokens, "Should return non-nil tokens")
 		s.NotEmpty(tokens.AccessToken, "Should have non-empty access token")
@@ -38,7 +39,7 @@ func (s *JWTTokenGeneratorTestSuite) TestGenerate() {
 	s.Run("WithNoRoles", func() {
 		principal := security.NewUser("user2", "Bob")
 
-		tokens, err := s.generator.Generate(principal)
+		tokens, err := s.generator.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens without error")
 		s.Require().NotNil(tokens, "Should return non-nil tokens")
 		s.NotEmpty(tokens.AccessToken, "Should have non-empty access token")
@@ -48,7 +49,7 @@ func (s *JWTTokenGeneratorTestSuite) TestGenerate() {
 	s.Run("WithNoDetails", func() {
 		principal := security.NewUser("user3", "Charlie", "viewer")
 
-		tokens, err := s.generator.Generate(principal)
+		tokens, err := s.generator.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens without error")
 		s.Require().NotNil(tokens, "Should return non-nil tokens")
 	})
@@ -56,7 +57,7 @@ func (s *JWTTokenGeneratorTestSuite) TestGenerate() {
 	s.Run("ExternalAppPrincipal", func() {
 		principal := security.NewExternalApp("app1", "MyApp", "api_access")
 
-		tokens, err := s.generator.Generate(principal)
+		tokens, err := s.generator.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens for external app")
 		s.Require().NotNil(tokens, "Should return non-nil tokens")
 		s.NotEmpty(tokens.AccessToken, "Should have non-empty access token")
@@ -67,7 +68,7 @@ func (s *JWTTokenGeneratorTestSuite) TestGenerate() {
 		principal := security.NewUser("user4", "Diana")
 		principal.Details = make(chan int) // channels cannot be JSON-marshaled
 
-		tokens, err := s.generator.Generate(principal)
+		tokens, err := s.generator.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Error(err, "Should fail when details cannot be serialized")
 		s.Nil(tokens, "Should return nil tokens on error")
 	})
@@ -79,7 +80,7 @@ func (s *JWTTokenGeneratorTestSuite) TestAccessTokenClaims() {
 		principal := security.NewUser("user1", "Alice", "admin", "editor")
 		principal.Details = map[string]any{"department": "engineering"}
 
-		tokens, err := s.generator.Generate(principal)
+		tokens, err := s.generator.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens without error")
 
 		claims, err := s.jwt.Parse(tokens.AccessToken)
@@ -94,7 +95,7 @@ func (s *JWTTokenGeneratorTestSuite) TestAccessTokenClaims() {
 		principal := security.NewUser("user2", "Bob", "admin", "editor")
 		principal.Details = map[string]any{"level": 5}
 
-		tokens, err := s.generator.Generate(principal)
+		tokens, err := s.generator.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens without error")
 
 		claims, err := s.jwt.Parse(tokens.AccessToken)
@@ -107,7 +108,7 @@ func (s *JWTTokenGeneratorTestSuite) TestAccessTokenClaims() {
 	s.Run("EmptyRolesAndNilDetails", func() {
 		principal := security.NewUser("user3", "Charlie")
 
-		tokens, err := s.generator.Generate(principal)
+		tokens, err := s.generator.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens without error")
 
 		claims, err := s.jwt.Parse(tokens.AccessToken)
@@ -123,7 +124,7 @@ func (s *JWTTokenGeneratorTestSuite) TestRefreshTokenClaims() {
 	principal := security.NewUser("user1", "Alice", "admin")
 	principal.Details = map[string]any{"department": "engineering"}
 
-	tokens, err := s.generator.Generate(principal)
+	tokens, err := s.generator.Generate(context.Background(), principal, security.SessionMeta{})
 	s.Require().NoError(err, "Should generate tokens without error")
 
 	claims, err := s.jwt.Parse(tokens.RefreshToken)
@@ -156,7 +157,7 @@ func (s *JWTTokenGeneratorTestSuite) TestTokenTTLs() {
 	s.Run("AccessTokenUsesHardcodedTTL", func() {
 		principal := security.NewUser("user1", "Alice")
 
-		tokens, err := s.generator.Generate(principal)
+		tokens, err := s.generator.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens without error")
 
 		claims, err := s.jwt.Parse(tokens.AccessToken)
@@ -173,7 +174,7 @@ func (s *JWTTokenGeneratorTestSuite) TestTokenTTLs() {
 		gen := NewJWTTokenGenerator(s.jwt, &config.SecurityConfig{TokenExpires: refreshTTL})
 		principal := security.NewUser("user1", "Alice")
 
-		tokens, err := gen.Generate(principal)
+		tokens, err := gen.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens without error")
 
 		claims, err := s.jwt.Parse(tokens.RefreshToken)
@@ -189,7 +190,7 @@ func (s *JWTTokenGeneratorTestSuite) TestTokenTTLs() {
 func (s *JWTTokenGeneratorTestSuite) TestSharedJWTID() {
 	principal := security.NewUser("user1", "Alice", "admin")
 
-	tokens, err := s.generator.Generate(principal)
+	tokens, err := s.generator.Generate(context.Background(), principal, security.SessionMeta{})
 	s.Require().NoError(err, "Should generate tokens without error")
 
 	accessClaims, err := s.jwt.Parse(tokens.AccessToken)
@@ -205,7 +206,7 @@ func (s *JWTTokenGeneratorTestSuite) TestSharedJWTID() {
 func (s *JWTTokenGeneratorTestSuite) TestSubjectWithAtSignInName() {
 	principal := security.NewUser("user1", "user@example.com", "admin")
 
-	tokens, err := s.generator.Generate(principal)
+	tokens, err := s.generator.Generate(context.Background(), principal, security.SessionMeta{})
 	s.Require().NoError(err, "Should generate tokens without error")
 
 	claims, err := s.jwt.Parse(tokens.AccessToken)

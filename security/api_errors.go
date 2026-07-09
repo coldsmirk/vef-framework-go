@@ -55,6 +55,7 @@ const (
 	ErrCodeAuthHeaderMissing             = 1021
 	ErrCodeAuthHeaderInvalid             = 1022
 	ErrCodeAccountLocked                 = 1023
+	ErrCodeTooManyConcurrentSessions     = 1024
 
 	// Challenge errors (1030-1039). 1030 and 1032 are absent: they were never wired to a sentinel.
 	ErrCodeChallengeTokenInvalid  = 1031
@@ -175,6 +176,11 @@ var (
 		i18n.T("security_auth_header_invalid"),
 		result.WithCode(ErrCodeAuthHeaderInvalid),
 		result.WithStatus(fiber.StatusUnauthorized),
+	)
+	ErrTooManyConcurrentSessions = result.Err(
+		i18n.T("security_too_many_concurrent_sessions"),
+		result.WithCode(ErrCodeTooManyConcurrentSessions),
+		result.WithStatus(fiber.StatusForbidden),
 	)
 )
 

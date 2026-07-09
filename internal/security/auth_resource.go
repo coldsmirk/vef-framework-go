@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"slices"
+	"strings"
 
 	"github.com/coldsmirk/go-streams"
 	"github.com/gofiber/fiber/v3"
@@ -26,8 +27,9 @@ type AuthResourceParams struct {
 	AuthManager         security.AuthManager
 	TokenGenerator      security.TokenGenerator
 	ChallengeTokenStore security.ChallengeTokenStore
-	UserInfoLoader      security.UserInfoLoader      `optional:"true"`
-	LoginGuard          security.LoginGuard          `optional:"true"`
+	UserInfoLoader      security.UserInfoLoader `optional:"true"`
+	LoginGuard          security.LoginGuard     `optional:"true"`
+	SessionStore        security.SessionStore
 	ChallengeProviders  []security.ChallengeProvider `group:"vef:security:challenge_providers"`
 	Bus                 event.Bus
 	SecurityConfig      *config.SecurityConfig
@@ -45,6 +47,7 @@ func NewAuthResource(params AuthResourceParams) api.Resource {
 		challengeTokenStore: params.ChallengeTokenStore,
 		userInfoLoader:      params.UserInfoLoader,
 		loginGuard:          params.LoginGuard,
+		sessionStore:        params.SessionStore,
 		challengeProviders:  params.ChallengeProviders,
 		bus:                 params.Bus,
 
@@ -86,6 +89,7 @@ type AuthResource struct {
 	challengeTokenStore security.ChallengeTokenStore
 	userInfoLoader      security.UserInfoLoader
 	loginGuard          security.LoginGuard
+	sessionStore        security.SessionStore
 	challengeProviders  []security.ChallengeProvider
 	bus                 event.Bus
 }
@@ -145,7 +149,7 @@ func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
 		}).Response(ctx)
 	}
 
-	tokens, err := a.tokenGenerator.Generate(principal)
+	tokens, err := a.tokenGenerator.Generate(ctx.Context(), principal, sessionMeta(ctx))
 	if err != nil {
 		return err
 	}
@@ -173,7 +177,7 @@ func (a *AuthResource) Refresh(ctx fiber.Ctx, params RefreshParams) error {
 		return err
 	}
 
-	credentials, err := a.tokenGenerator.Generate(principal)
+	credentials, err := a.tokenGenerator.Generate(ctx.Context(), principal, sessionMeta(ctx))
 	if err != nil {
 		return err
 	}
@@ -181,10 +185,32 @@ func (a *AuthResource) Refresh(ctx fiber.Ctx, params RefreshParams) error {
 	return result.Ok(credentials).Response(ctx)
 }
 
-// Logout returns success immediately.
-// Token invalidation should be handled on the client side by removing stored tokens.
-func (*AuthResource) Logout(ctx fiber.Ctx) error {
+// Logout revokes the opaque session backing the presented token so it can no
+// longer authenticate. Under the stateless JWT mechanism no session exists, so
+// it is a no-op and clients must drop their stored tokens.
+func (a *AuthResource) Logout(ctx fiber.Ctx) error {
+	a.revokeCurrentSession(ctx)
+
 	return result.Ok().Response(ctx)
+}
+
+// revokeCurrentSession revokes the session for the presented bearer token, if
+// one exists. It is best-effort: a missing session (JWT, already expired) or a
+// store error never fails logout.
+func (a *AuthResource) revokeCurrentSession(ctx fiber.Ctx) {
+	token := extractBearerToken(ctx)
+	if token == "" {
+		return
+	}
+
+	session, err := a.sessionStore.Lookup(ctx.Context(), security.HashOpaqueToken(token))
+	if err != nil || session == nil {
+		return
+	}
+
+	if err := a.sessionStore.Revoke(ctx.Context(), session.ID); err != nil {
+		logger.Warnf("Failed to revoke session on logout: %v", err)
+	}
 }
 
 // ResolveChallengeParams represents the request for resolving a login challenge.
@@ -259,7 +285,7 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 		}).Response(ctx)
 	}
 
-	tokens, err := a.tokenGenerator.Generate(principal)
+	tokens, err := a.tokenGenerator.Generate(ctx.Context(), principal, sessionMeta(ctx))
 	if err != nil {
 		return err
 	}
@@ -378,6 +404,26 @@ func (a *AuthResource) guardRecordSuccess(ctx fiber.Ctx, attempt security.LoginA
 	if err := a.loginGuard.RecordSuccess(ctx.Context(), attempt); err != nil {
 		logger.Warnf("Login guard failed to clear failures for %s: %v", maskPrincipal(attempt.Identity), err)
 	}
+}
+
+// sessionMeta captures the client context recorded on a session at token issue.
+func sessionMeta(ctx fiber.Ctx) security.SessionMeta {
+	return security.SessionMeta{
+		ClientIP:  httpx.GetIP(ctx),
+		UserAgent: ctx.Get(fiber.HeaderUserAgent),
+	}
+}
+
+// extractBearerToken reads the access token from the Authorization header or the
+// access-token query parameter, mirroring the bearer auth strategy.
+func extractBearerToken(ctx fiber.Ctx) string {
+	if header := ctx.Get(fiber.HeaderAuthorization); header != "" {
+		if token, ok := strings.CutPrefix(header, security.AuthSchemeBearer+" "); ok {
+			return strings.TrimSpace(token)
+		}
+	}
+
+	return ctx.Query(security.QueryKeyAccessToken)
 }
 
 // findProvider returns the challenge provider matching the given type, or nil.

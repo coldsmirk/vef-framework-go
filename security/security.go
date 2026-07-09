@@ -39,11 +39,12 @@ type Authenticator interface {
 	Authenticate(ctx context.Context, authentication Authentication) (*Principal, error)
 }
 
-// TokenGenerator creates access and refresh tokens for an authenticated Principal.
-// Used after successful authentication to issue JWT tokens or similar credentials.
+// TokenGenerator issues tokens for an authenticated Principal after login. meta
+// carries the client context at issuance: a stateless generator (JWT) ignores
+// it, while a stateful one (opaque) records it on the session it creates.
 type TokenGenerator interface {
-	// Generate creates a new token pair for the given Principal.
-	Generate(principal *Principal) (*AuthTokens, error)
+	// Generate creates the tokens for the given Principal.
+	Generate(ctx context.Context, principal *Principal, meta SessionMeta) (*AuthTokens, error)
 }
 
 // AuthManager orchestrates authentication by delegating to registered Authenticators.

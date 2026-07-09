@@ -1611,8 +1611,8 @@ type MockTokenGenerator struct {
 	mock.Mock
 }
 
-func (m *MockTokenGenerator) Generate(principal *security.Principal) (*security.AuthTokens, error) {
-	args := m.Called(principal)
+func (m *MockTokenGenerator) Generate(ctx context.Context, principal *security.Principal, meta security.SessionMeta) (*security.AuthTokens, error) {
+	args := m.Called(ctx, principal, meta)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -1805,7 +1805,7 @@ func (s *AuthResourceErrorPathTestSuite) TestLoginTokenGenerateError() {
 	s.authManager.On("Authenticate", mock.Anything, mock.Anything).
 		Return(s.testUser, nil).Once()
 	s.skipChallenges()
-	s.tokenGenerator.On("Generate", s.testUser).
+	s.tokenGenerator.On("Generate", mock.Anything, s.testUser, mock.Anything).
 		Return((*security.AuthTokens)(nil), errors.New("token signing failed")).Once()
 
 	resp := s.MakeRPCRequest(s.loginRequest())
@@ -1839,7 +1839,7 @@ func (s *AuthResourceErrorPathTestSuite) TestLoginChallengeStoreError() {
 func (s *AuthResourceErrorPathTestSuite) TestRefreshTokenGenerateError() {
 	s.authManager.On("Authenticate", mock.Anything, mock.Anything).
 		Return(s.testUser, nil).Once()
-	s.tokenGenerator.On("Generate", s.testUser).
+	s.tokenGenerator.On("Generate", mock.Anything, s.testUser, mock.Anything).
 		Return((*security.AuthTokens)(nil), errors.New("token generation failed")).Once()
 
 	resp := s.MakeRPCRequest(api.Request{
@@ -1896,7 +1896,7 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeTokenGenerateError(
 		}, nil).Once()
 	s.challengeProviderA.On("Resolve", mock.Anything, s.testUser, "123456").
 		Return(s.testUser, nil).Once()
-	s.tokenGenerator.On("Generate", s.testUser).
+	s.tokenGenerator.On("Generate", mock.Anything, s.testUser, mock.Anything).
 		Return((*security.AuthTokens)(nil), errors.New("token signing failed")).Once()
 
 	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
@@ -1993,7 +1993,7 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeRemainingProviderNo
 		}, nil).Once()
 	s.challengeProviderA.On("Resolve", mock.Anything, s.testUser, "123456").
 		Return(s.testUser, nil).Once()
-	s.tokenGenerator.On("Generate", s.testUser).
+	s.tokenGenerator.On("Generate", mock.Anything, s.testUser, mock.Anything).
 		Return(&security.AuthTokens{AccessToken: "at", RefreshToken: "rt"}, nil).Once()
 
 	resp := s.MakeRPCRequest(s.resolveChallengeRequest())

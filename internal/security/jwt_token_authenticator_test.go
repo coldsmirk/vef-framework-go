@@ -54,7 +54,7 @@ func (s *JWTTokenAuthenticatorTestSuite) TestAuthenticate() {
 
 	s.Run("RefreshTokenRejected", func() {
 		principal := security.NewUser("user1", "Alice", "admin")
-		tokens, err := s.gen.Generate(principal)
+		tokens, err := s.gen.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens")
 
 		_, err = s.auth.Authenticate(ctx, security.Authentication{
@@ -82,7 +82,7 @@ func (s *JWTTokenAuthenticatorTestSuite) TestAuthenticate() {
 		principal := security.NewUser("user1", "Alice", "admin", "editor")
 		principal.Details = map[string]any{"department": "engineering"}
 
-		tokens, err := s.gen.Generate(principal)
+		tokens, err := s.gen.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens")
 
 		got, err := s.auth.Authenticate(ctx, security.Authentication{
@@ -98,7 +98,7 @@ func (s *JWTTokenAuthenticatorTestSuite) TestAuthenticate() {
 
 	s.Run("ValidAccessTokenWithoutRoles", func() {
 		principal := security.NewUser("user2", "Bob")
-		tokens, err := s.gen.Generate(principal)
+		tokens, err := s.gen.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens")
 
 		got, err := s.auth.Authenticate(ctx, security.Authentication{
@@ -113,7 +113,7 @@ func (s *JWTTokenAuthenticatorTestSuite) TestAuthenticate() {
 
 	s.Run("SubjectWithAtSign", func() {
 		principal := security.NewUser("user3", "user@example.com")
-		tokens, err := s.gen.Generate(principal)
+		tokens, err := s.gen.Generate(context.Background(), principal, security.SessionMeta{})
 		s.Require().NoError(err, "Should generate tokens")
 
 		got, err := s.auth.Authenticate(ctx, security.Authentication{

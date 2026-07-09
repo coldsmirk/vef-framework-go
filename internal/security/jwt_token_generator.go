@@ -1,6 +1,7 @@
 package security
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -20,7 +21,7 @@ type JWTTokenGenerator struct {
 	refreshNotBefore time.Duration
 }
 
-func NewJWTTokenGenerator(jwt *security.JWT, securityConfig *config.SecurityConfig) security.TokenGenerator {
+func NewJWTTokenGenerator(jwt *security.JWT, securityConfig *config.SecurityConfig) *JWTTokenGenerator {
 	return &JWTTokenGenerator{
 		jwt:              jwt,
 		refreshExpires:   securityConfig.TokenExpires,
@@ -28,7 +29,7 @@ func NewJWTTokenGenerator(jwt *security.JWT, securityConfig *config.SecurityConf
 	}
 }
 
-func (g *JWTTokenGenerator) Generate(principal *security.Principal) (*security.AuthTokens, error) {
+func (g *JWTTokenGenerator) Generate(_ context.Context, principal *security.Principal, _ security.SessionMeta) (*security.AuthTokens, error) {
 	jwtID := id.GenerateUUID()
 
 	accessToken, err := g.generateAccessToken(jwtID, principal)
