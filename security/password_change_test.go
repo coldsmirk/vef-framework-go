@@ -365,6 +365,7 @@ func TestPasswordChangeChallengeProviderValidatesStrength(t *testing.T) {
 
 	t.Run("AcceptsCompliantPassword", func(t *testing.T) {
 		var received string
+
 		provider := NewPasswordChangeChallengeProvider(
 			noopChecker,
 			&MockPasswordChanger{ChangePasswordFn: func(_ context.Context, _ *Principal, pw string) error {

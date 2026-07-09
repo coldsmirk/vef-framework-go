@@ -75,8 +75,10 @@ func (s *RedisLoginGuardTestSuite) TestLockout() {
 		for range 3 {
 			d, err := s.guard.RecordFailure(ctx, attempt)
 			s.Require().NoError(err, "Should record a failure without error")
+
 			last = d
 		}
+
 		s.False(last.Allowed, "Third failure should trip the lock")
 		s.Positive(last.RetryAfter, "Locked failure should report a positive retry-after")
 

@@ -44,6 +44,7 @@ func TestMemoryLoginGuardLockStrategy(t *testing.T) {
 		for range 3 {
 			d, err := guard.RecordFailure(ctx, attempt)
 			require.NoError(t, err, "recording a failure should not error")
+
 			last = d
 		}
 

@@ -1,8 +1,15 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"time"
+)
+
+// Sentinel errors for lockout configuration validation.
+var (
+	ErrInvalidLockoutStrategy = errors.New("invalid lockout strategy")
+	ErrInvalidLockoutKey      = errors.New("invalid lockout key")
 )
 
 // SecurityConfig defines security settings.
@@ -193,13 +200,13 @@ func (c *LockoutConfig) Validate() error {
 	switch c.EffectiveStrategy() {
 	case LockoutStrategyLock, LockoutStrategyBackoff:
 	default:
-		return fmt.Errorf("invalid lockout strategy %q (want %q or %q)", c.Strategy, LockoutStrategyLock, LockoutStrategyBackoff)
+		return fmt.Errorf("%w %q (want %q or %q)", ErrInvalidLockoutStrategy, c.Strategy, LockoutStrategyLock, LockoutStrategyBackoff)
 	}
 
 	switch c.EffectiveKey() {
 	case LockoutKeyUser, LockoutKeyIP, LockoutKeyUserIP:
 	default:
-		return fmt.Errorf("invalid lockout key %q (want %q, %q or %q)", c.Key, LockoutKeyUser, LockoutKeyIP, LockoutKeyUserIP)
+		return fmt.Errorf("%w %q (want %q, %q or %q)", ErrInvalidLockoutKey, c.Key, LockoutKeyUser, LockoutKeyIP, LockoutKeyUserIP)
 	}
 
 	return nil

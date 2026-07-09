@@ -283,10 +283,7 @@ func ErrPasswordTooFewCharClasses(minClasses int) result.Error {
 // attempts for the identity (HTTP 429). retryAfter is surfaced to the caller,
 // rounded up to whole minutes (never below one).
 func ErrAccountLocked(retryAfter time.Duration) result.Error {
-	minutes := int(math.Ceil(retryAfter.Minutes()))
-	if minutes < 1 {
-		minutes = 1
-	}
+	minutes := max(int(math.Ceil(retryAfter.Minutes())), 1)
 
 	return result.Err(
 		i18n.T(ErrMessageAccountLocked, map[string]any{"minutes": minutes}),

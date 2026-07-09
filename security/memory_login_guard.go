@@ -49,6 +49,7 @@ func (g *MemoryLoginGuard) RecordFailure(ctx context.Context, attempt LoginAttem
 	defer g.mu.Unlock()
 
 	count, _ := g.failures.Get(ctx, key)
+
 	count++
 	if err := g.failures.Set(ctx, key, count, g.policy.Window); err != nil {
 		return LoginDecision{Allowed: true}, err
