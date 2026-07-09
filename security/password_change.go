@@ -35,14 +35,16 @@ type PasswordChanger interface {
 // PasswordChangeChallengeProvider orchestrates forced password change evaluation and resolution.
 // It implements the ChallengeProvider interface.
 type PasswordChangeChallengeProvider struct {
-	checker PasswordChangeChecker
-	changer PasswordChanger
+	checker   PasswordChangeChecker
+	changer   PasswordChanger
+	validator PasswordValidator
 }
 
 // NewPasswordChangeChallengeProvider creates a forced password change challenge provider.
 // Default type "password_change", order 400.
-// Panics if checker or changer is nil.
-func NewPasswordChangeChallengeProvider(checker PasswordChangeChecker, changer PasswordChanger) *PasswordChangeChallengeProvider {
+// The validator enforces password strength before the new password is persisted;
+// pass nil to skip strength validation. Panics if checker or changer is nil.
+func NewPasswordChangeChallengeProvider(checker PasswordChangeChecker, changer PasswordChanger, validator PasswordValidator) *PasswordChangeChallengeProvider {
 	if checker == nil {
 		panic("security: PasswordChangeChecker is required")
 	}
@@ -51,7 +53,7 @@ func NewPasswordChangeChallengeProvider(checker PasswordChangeChecker, changer P
 		panic("security: PasswordChanger is required")
 	}
 
-	return &PasswordChangeChallengeProvider{checker: checker, changer: changer}
+	return &PasswordChangeChallengeProvider{checker: checker, changer: changer, validator: validator}
 }
 
 func (*PasswordChangeChallengeProvider) Type() string { return ChallengeTypePasswordChange }
@@ -74,6 +76,12 @@ func (p *PasswordChangeChallengeProvider) Resolve(ctx context.Context, principal
 	newPassword, ok := response.(string)
 	if !ok || newPassword == "" {
 		return nil, ErrNewPasswordRequired
+	}
+
+	if p.validator != nil {
+		if err := p.validator.Validate(ctx, principal, newPassword); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := p.changer.ChangePassword(ctx, principal, newPassword); err != nil {

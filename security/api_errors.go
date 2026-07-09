@@ -23,6 +23,9 @@ const (
 	ErrMessageUserInfoLoaderNotImplemented    = "security_user_info_loader_not_implemented"
 	ErrMessageChallengeResolveFailed          = "security_challenge_resolve_failed"
 	ErrMessageAccountLocked                   = "security_account_locked"
+	ErrMessagePasswordTooShort                = "security_password_too_short"
+	ErrMessagePasswordTooLong                 = "security_password_too_long"
+	ErrMessagePasswordTooFewCharClasses       = "security_password_too_few_char_classes"
 )
 
 // Response codes for security-domain API errors.
@@ -61,6 +64,10 @@ const (
 	ErrCodeOTPCodeInvalid         = 1036
 	ErrCodeNewPasswordRequired    = 1037
 	ErrCodeDepartmentRequired     = 1038
+
+	// Password policy errors (1050). Every policy violation shares one code; the
+	// i18n message identifies which rule was broken.
+	ErrCodePasswordPolicyViolation = 1050
 )
 
 // Predefined authentication errors (HTTP 401).
@@ -209,6 +216,68 @@ var (
 		result.WithStatus(fiber.StatusBadRequest),
 	)
 )
+
+// Predefined password-policy errors (HTTP 400). All carry
+// ErrCodePasswordPolicyViolation; the message states which rule was broken.
+var (
+	ErrPasswordMissingUppercase = result.Err(
+		i18n.T("security_password_missing_uppercase"),
+		result.WithCode(ErrCodePasswordPolicyViolation),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
+	ErrPasswordMissingLowercase = result.Err(
+		i18n.T("security_password_missing_lowercase"),
+		result.WithCode(ErrCodePasswordPolicyViolation),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
+	ErrPasswordMissingDigit = result.Err(
+		i18n.T("security_password_missing_digit"),
+		result.WithCode(ErrCodePasswordPolicyViolation),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
+	ErrPasswordMissingSymbol = result.Err(
+		i18n.T("security_password_missing_symbol"),
+		result.WithCode(ErrCodePasswordPolicyViolation),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
+	ErrPasswordContainsIdentity = result.Err(
+		i18n.T("security_password_contains_identity"),
+		result.WithCode(ErrCodePasswordPolicyViolation),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
+	ErrPasswordBlocked = result.Err(
+		i18n.T("security_password_blocked"),
+		result.WithCode(ErrCodePasswordPolicyViolation),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
+)
+
+// ErrPasswordTooShort reports a password below the minimum length (HTTP 400).
+func ErrPasswordTooShort(minLength int) result.Error {
+	return result.Err(
+		i18n.T(ErrMessagePasswordTooShort, map[string]any{"min": minLength}),
+		result.WithCode(ErrCodePasswordPolicyViolation),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
+}
+
+// ErrPasswordTooLong reports a password above the maximum length (HTTP 400).
+func ErrPasswordTooLong(maxLength int) result.Error {
+	return result.Err(
+		i18n.T(ErrMessagePasswordTooLong, map[string]any{"max": maxLength}),
+		result.WithCode(ErrCodePasswordPolicyViolation),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
+}
+
+// ErrPasswordTooFewCharClasses reports too few distinct character classes (HTTP 400).
+func ErrPasswordTooFewCharClasses(minClasses int) result.Error {
+	return result.Err(
+		i18n.T(ErrMessagePasswordTooFewCharClasses, map[string]any{"count": minClasses}),
+		result.WithCode(ErrCodePasswordPolicyViolation),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
+}
 
 // ErrAccountLocked reports that brute-force protection has blocked further login
 // attempts for the identity (HTTP 429). retryAfter is surfaced to the caller,

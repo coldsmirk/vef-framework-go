@@ -29,6 +29,12 @@ func (m *MockPasswordChanger) ChangePassword(ctx context.Context, principal *Pri
 	return m.ChangePasswordFn(ctx, principal, newPassword)
 }
 
+// newTestProvider builds a provider without strength validation, the common case
+// for the checker/changer/resolve tests below.
+func newTestProvider(checker PasswordChangeChecker, changer PasswordChanger) *PasswordChangeChallengeProvider {
+	return NewPasswordChangeChallengeProvider(checker, changer, nil)
+}
+
 // ─── Constructor validation ───
 
 func TestNewPasswordChangeChallengeProvider(t *testing.T) {
@@ -37,19 +43,19 @@ func TestNewPasswordChangeChallengeProvider(t *testing.T) {
 
 	t.Run("MissingChecker", func(t *testing.T) {
 		assert.PanicsWithValue(t, "security: PasswordChangeChecker is required", func() {
-			NewPasswordChangeChallengeProvider(nil, validChanger)
+			NewPasswordChangeChallengeProvider(nil, validChanger, nil)
 		}, "Should panic when checker is nil")
 	})
 
 	t.Run("MissingChanger", func(t *testing.T) {
 		assert.PanicsWithValue(t, "security: PasswordChanger is required", func() {
-			NewPasswordChangeChallengeProvider(validChecker, nil)
+			NewPasswordChangeChallengeProvider(validChecker, nil, nil)
 		}, "Should panic when changer is nil")
 	})
 
 	t.Run("ValidConfig", func(t *testing.T) {
 		assert.NotPanics(t, func() {
-			NewPasswordChangeChallengeProvider(validChecker, validChanger)
+			NewPasswordChangeChallengeProvider(validChecker, validChanger, nil)
 		}, "Should not panic with valid config")
 	})
 }
@@ -57,7 +63,7 @@ func TestNewPasswordChangeChallengeProvider(t *testing.T) {
 // ─── Type and Order ───
 
 func TestPasswordChangeChallengeProviderTypeAndOrder(t *testing.T) {
-	provider := NewPasswordChangeChallengeProvider(
+	provider := newTestProvider(
 		&MockPasswordChangeChecker{CheckFn: func(context.Context, *Principal) (*PasswordChangeChallengeData, error) { return nil, nil }},
 		&MockPasswordChanger{ChangePasswordFn: func(context.Context, *Principal, string) error { return nil }},
 	)
@@ -79,7 +85,7 @@ func TestPasswordChangeChallengeProviderEvaluate(t *testing.T) {
 
 	t.Run("ChangeNotRequired", func(t *testing.T) {
 		changerCalled := false
-		provider := NewPasswordChangeChallengeProvider(
+		provider := newTestProvider(
 			&MockPasswordChangeChecker{CheckFn: func(context.Context, *Principal) (*PasswordChangeChallengeData, error) { return nil, nil }},
 			&MockPasswordChanger{ChangePasswordFn: func(context.Context, *Principal, string) error {
 				changerCalled = true
@@ -97,7 +103,7 @@ func TestPasswordChangeChallengeProviderEvaluate(t *testing.T) {
 
 	t.Run("ChangeRequired", func(t *testing.T) {
 		data := &PasswordChangeChallengeData{Reason: PasswordChangeReasonFirstLogin}
-		provider := NewPasswordChangeChallengeProvider(
+		provider := newTestProvider(
 			&MockPasswordChangeChecker{CheckFn: func(context.Context, *Principal) (*PasswordChangeChallengeData, error) { return data, nil }},
 			&MockPasswordChanger{ChangePasswordFn: func(context.Context, *Principal, string) error { return nil }},
 		)
@@ -113,7 +119,7 @@ func TestPasswordChangeChallengeProviderEvaluate(t *testing.T) {
 
 	t.Run("CheckerError", func(t *testing.T) {
 		checkErr := errors.New("check failed")
-		provider := NewPasswordChangeChallengeProvider(
+		provider := newTestProvider(
 			&MockPasswordChangeChecker{CheckFn: func(context.Context, *Principal) (*PasswordChangeChallengeData, error) { return nil, checkErr }},
 			&MockPasswordChanger{ChangePasswordFn: func(context.Context, *Principal, string) error { return nil }},
 		)
@@ -127,7 +133,7 @@ func TestPasswordChangeChallengeProviderEvaluate(t *testing.T) {
 	t.Run("CheckerReturnsDataAndError", func(t *testing.T) {
 		checkErr := errors.New("partial failure")
 		data := &PasswordChangeChallengeData{Reason: PasswordChangeReasonExpired}
-		provider := NewPasswordChangeChallengeProvider(
+		provider := newTestProvider(
 			&MockPasswordChangeChecker{CheckFn: func(context.Context, *Principal) (*PasswordChangeChallengeData, error) { return data, checkErr }},
 			&MockPasswordChanger{ChangePasswordFn: func(context.Context, *Principal, string) error { return nil }},
 		)
@@ -141,7 +147,7 @@ func TestPasswordChangeChallengeProviderEvaluate(t *testing.T) {
 	t.Run("ChallengeDataWithMeta", func(t *testing.T) {
 		meta := map[string]any{"daysUntilExpiry": 0, "policy": "90-day"}
 		data := &PasswordChangeChallengeData{Reason: PasswordChangeReasonExpired, Meta: meta}
-		provider := NewPasswordChangeChallengeProvider(
+		provider := newTestProvider(
 			&MockPasswordChangeChecker{CheckFn: func(context.Context, *Principal) (*PasswordChangeChallengeData, error) { return data, nil }},
 			&MockPasswordChanger{ChangePasswordFn: func(context.Context, *Principal, string) error { return nil }},
 		)
@@ -164,7 +170,7 @@ func TestPasswordChangeChallengeProviderResolve(t *testing.T) {
 	t.Run("ValidPassword", func(t *testing.T) {
 		var receivedPassword string
 
-		provider := NewPasswordChangeChallengeProvider(
+		provider := newTestProvider(
 			noopChecker,
 			&MockPasswordChanger{ChangePasswordFn: func(_ context.Context, _ *Principal, pw string) error {
 				receivedPassword = pw
@@ -181,7 +187,7 @@ func TestPasswordChangeChallengeProviderResolve(t *testing.T) {
 	})
 
 	t.Run("ResponseNotString", func(t *testing.T) {
-		provider := NewPasswordChangeChallengeProvider(
+		provider := newTestProvider(
 			noopChecker,
 			&MockPasswordChanger{ChangePasswordFn: func(context.Context, *Principal, string) error { return nil }},
 		)
@@ -194,7 +200,7 @@ func TestPasswordChangeChallengeProviderResolve(t *testing.T) {
 	})
 
 	t.Run("ResponseNil", func(t *testing.T) {
-		provider := NewPasswordChangeChallengeProvider(
+		provider := newTestProvider(
 			noopChecker,
 			&MockPasswordChanger{ChangePasswordFn: func(context.Context, *Principal, string) error { return nil }},
 		)
@@ -207,7 +213,7 @@ func TestPasswordChangeChallengeProviderResolve(t *testing.T) {
 	})
 
 	t.Run("ResponseEmpty", func(t *testing.T) {
-		provider := NewPasswordChangeChallengeProvider(
+		provider := newTestProvider(
 			noopChecker,
 			&MockPasswordChanger{ChangePasswordFn: func(context.Context, *Principal, string) error { return nil }},
 		)
@@ -222,7 +228,7 @@ func TestPasswordChangeChallengeProviderResolve(t *testing.T) {
 	t.Run("WhitespacePassword", func(t *testing.T) {
 		var receivedPassword string
 
-		provider := NewPasswordChangeChallengeProvider(
+		provider := newTestProvider(
 			noopChecker,
 			&MockPasswordChanger{ChangePasswordFn: func(_ context.Context, _ *Principal, pw string) error {
 				receivedPassword = pw
@@ -240,7 +246,7 @@ func TestPasswordChangeChallengeProviderResolve(t *testing.T) {
 
 	t.Run("ChangerError", func(t *testing.T) {
 		changeErr := errors.New("password too weak")
-		provider := NewPasswordChangeChallengeProvider(
+		provider := newTestProvider(
 			noopChecker,
 			&MockPasswordChanger{ChangePasswordFn: func(context.Context, *Principal, string) error { return changeErr }},
 		)
@@ -253,7 +259,7 @@ func TestPasswordChangeChallengeProviderResolve(t *testing.T) {
 	t.Run("PrincipalPassthrough", func(t *testing.T) {
 		var checkerPrincipal, changerPrincipal *Principal
 
-		provider := NewPasswordChangeChallengeProvider(
+		provider := newTestProvider(
 			&MockPasswordChangeChecker{CheckFn: func(_ context.Context, p *Principal) (*PasswordChangeChallengeData, error) {
 				checkerPrincipal = p
 
@@ -271,6 +277,54 @@ func TestPasswordChangeChallengeProviderResolve(t *testing.T) {
 
 		assert.Same(t, principal, checkerPrincipal, "Should pass the same principal to checker")
 		assert.Same(t, principal, changerPrincipal, "Should pass the same principal to changer")
+	})
+}
+
+// ─── Strength validation ───
+
+func TestPasswordChangeChallengeProviderValidatesStrength(t *testing.T) {
+	ctx := context.Background()
+	principal := NewUser("u1", "Alice")
+	noopChecker := &MockPasswordChangeChecker{CheckFn: func(context.Context, *Principal) (*PasswordChangeChallengeData, error) { return nil, nil }}
+	validator := NewRuleBasedValidator(NewMinLengthRule(8))
+
+	t.Run("RejectsWeakPasswordBeforeChanger", func(t *testing.T) {
+		changerCalled := false
+		provider := NewPasswordChangeChallengeProvider(
+			noopChecker,
+			&MockPasswordChanger{ChangePasswordFn: func(context.Context, *Principal, string) error {
+				changerCalled = true
+
+				return nil
+			}},
+			validator,
+		)
+
+		_, err := provider.Resolve(ctx, principal, "short")
+
+		resErr, ok := result.AsErr(err)
+		require.True(t, ok, "Should return a result.Error for a weak password")
+		assert.Equal(t, ErrCodePasswordPolicyViolation, resErr.Code, "Should return the password-policy violation code")
+		assert.False(t, changerCalled, "Changer must not run when validation fails")
+	})
+
+	t.Run("AcceptsCompliantPassword", func(t *testing.T) {
+		var received string
+		provider := NewPasswordChangeChallengeProvider(
+			noopChecker,
+			&MockPasswordChanger{ChangePasswordFn: func(_ context.Context, _ *Principal, pw string) error {
+				received = pw
+
+				return nil
+			}},
+			validator,
+		)
+
+		resolved, err := provider.Resolve(ctx, principal, "longenough")
+
+		require.NoError(t, err, "Should accept a compliant password")
+		assert.Same(t, principal, resolved, "Should return the principal on success")
+		assert.Equal(t, "longenough", received, "Should pass the validated password to the changer")
 	})
 }
 

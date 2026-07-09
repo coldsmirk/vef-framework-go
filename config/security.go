@@ -24,6 +24,46 @@ type SecurityConfig struct {
 	IPWhitelists map[string][]string `config:"ip_whitelists"`
 	// Lockout configures brute-force protection on the login endpoint.
 	Lockout LockoutConfig `config:"lockout"`
+	// PasswordPolicy configures strength rules enforced when a password is set.
+	PasswordPolicy PasswordPolicyConfig `config:"password_policy"`
+}
+
+// PasswordPolicyConfig configures password strength rules. Every field is
+// opt-in: a zero value disables the corresponding rule, so an unconfigured
+// policy accepts any password and enabling a rule is an explicit choice.
+type PasswordPolicyConfig struct {
+	// MinLength requires at least this many characters when > 0.
+	MinLength int `config:"min_length"`
+	// MaxLength requires at most this many characters when > 0.
+	MaxLength int `config:"max_length"`
+	// RequireUpper requires at least one uppercase letter.
+	RequireUpper bool `config:"require_upper"`
+	// RequireLower requires at least one lowercase letter.
+	RequireLower bool `config:"require_lower"`
+	// RequireDigit requires at least one digit.
+	RequireDigit bool `config:"require_digit"`
+	// RequireSymbol requires at least one symbol (non-space, non-alphanumeric).
+	RequireSymbol bool `config:"require_symbol"`
+	// MinCharClasses requires at least this many distinct character classes
+	// (uppercase, lowercase, digit, symbol) when > 0.
+	MinCharClasses int `config:"min_char_classes"`
+	// DisallowUsername rejects a password that contains the account id or name.
+	DisallowUsername bool `config:"disallow_username"`
+	// Blocklist rejects passwords matching any listed entry (case-insensitive).
+	Blocklist []string `config:"blocklist"`
+}
+
+// HasRules reports whether any strength rule is configured.
+func (c *PasswordPolicyConfig) HasRules() bool {
+	return c.MinLength > 0 ||
+		c.MaxLength > 0 ||
+		c.RequireUpper ||
+		c.RequireLower ||
+		c.RequireDigit ||
+		c.RequireSymbol ||
+		c.MinCharClasses > 0 ||
+		c.DisallowUsername ||
+		len(c.Blocklist) > 0
 }
 
 // LockoutStrategy selects how repeated login failures are penalized.

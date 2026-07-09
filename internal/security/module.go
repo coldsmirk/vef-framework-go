@@ -49,6 +49,7 @@ var Module = fx.Module(
 	fx.Provide(
 		password.NewBcryptEncoder,
 		newLoginGuard,
+		newPasswordValidator,
 		newJWT,
 		fx.Annotate(
 			NewJWTAuthenticator,
@@ -114,6 +115,44 @@ func newLoginGuard(cfg *config.SecurityConfig) (security.LoginGuard, error) {
 		BackoffMax:   cfg.Lockout.EffectiveBackoffMax(),
 		Key:          security.LockoutKey(cfg.Lockout.EffectiveKey()),
 	}), nil
+}
+
+// newPasswordValidator builds the config-backed password strength validator
+// injected into password-setting flows (e.g. the forced-change challenge). Every
+// rule is opt-in: with no policy configured the validator has no rules and
+// accepts any password, preserving zero-config behavior. Applications can inject
+// the resulting security.PasswordValidator into their own registration flows.
+func newPasswordValidator(cfg *config.SecurityConfig) security.PasswordValidator {
+	policy := cfg.PasswordPolicy
+
+	var rules []security.PasswordRule
+	if policy.MinLength > 0 {
+		rules = append(rules, security.NewMinLengthRule(policy.MinLength))
+	}
+
+	if policy.MaxLength > 0 {
+		rules = append(rules, security.NewMaxLengthRule(policy.MaxLength))
+	}
+
+	if policy.RequireUpper || policy.RequireLower || policy.RequireDigit || policy.RequireSymbol || policy.MinCharClasses > 0 {
+		rules = append(rules, security.NewCharacterClassRule(
+			policy.RequireUpper,
+			policy.RequireLower,
+			policy.RequireDigit,
+			policy.RequireSymbol,
+			policy.MinCharClasses,
+		))
+	}
+
+	if policy.DisallowUsername {
+		rules = append(rules, security.NewDisallowIdentityRule())
+	}
+
+	if len(policy.Blocklist) > 0 {
+		rules = append(rules, security.NewBlocklistRule(policy.Blocklist))
+	}
+
+	return security.NewRuleBasedValidator(rules...)
 }
 
 // newJWT builds the JWT signer from configuration. It never silently falls back
