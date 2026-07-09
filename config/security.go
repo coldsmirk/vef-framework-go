@@ -58,6 +58,9 @@ type PasswordPolicyConfig struct {
 	DisallowUsername bool `config:"disallow_username"`
 	// Blocklist rejects passwords matching any listed entry (case-insensitive).
 	Blocklist []string `config:"blocklist"`
+	// HistoryDepth rejects a new password that repeats any of the subject's last
+	// N passwords when > 0. Enforcement requires a security.PasswordHistoryStore.
+	HistoryDepth int `config:"history_depth"`
 	// MaxAge forces a password change once the password is older than this.
 	// Zero disables expiry. Enforcement requires a security.PasswordMetadataLoader
 	// and a security.ExpiryPasswordChangeChecker wired into the login flow.

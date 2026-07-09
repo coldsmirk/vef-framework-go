@@ -51,6 +51,7 @@
   "security_password_too_few_char_classes": "Password must contain at least {{.count}} character types.",
   "security_password_contains_identity": "Password must not contain your account name.",
   "security_password_blocked": "This password is too common or not allowed.",
+  "security_password_reused": "Password must not repeat a recently used one.",
   "crud_created": "Created successfully",
   "crud_updated": "Saved successfully",
   "crud_deleted": "Deleted successfully",

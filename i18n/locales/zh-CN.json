@@ -51,6 +51,7 @@
   "security_password_too_few_char_classes": "密码必须包含至少 {{.count}} 种字符类型。",
   "security_password_contains_identity": "密码不能包含账号信息。",
   "security_password_blocked": "该密码过于常见或不被允许。",
+  "security_password_reused": "新密码不能与最近使用过的密码重复。",
   "crud_created": "新增成功",
   "crud_updated": "保存成功",
   "crud_deleted": "删除成功",

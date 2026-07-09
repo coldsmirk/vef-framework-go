@@ -250,6 +250,11 @@ var (
 		result.WithCode(ErrCodePasswordPolicyViolation),
 		result.WithStatus(fiber.StatusBadRequest),
 	)
+	ErrPasswordReused = result.Err(
+		i18n.T("security_password_reused"),
+		result.WithCode(ErrCodePasswordPolicyViolation),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
 )
 
 // ErrPasswordTooShort reports a password below the minimum length (HTTP 400).

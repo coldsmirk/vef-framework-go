@@ -49,7 +49,10 @@ var Module = fx.Module(
 	fx.Provide(
 		password.NewBcryptEncoder,
 		newLoginGuard,
-		newPasswordValidator,
+		fx.Annotate(
+			newPasswordValidator,
+			fx.ParamTags(``, ``, `optional:"true"`),
+		),
 		newJWT,
 		fx.Annotate(
 			NewJWTAuthenticator,
@@ -117,14 +120,30 @@ func newLoginGuard(cfg *config.SecurityConfig) (security.LoginGuard, error) {
 	}), nil
 }
 
-// newPasswordValidator builds the config-backed password strength validator
-// injected into password-setting flows (e.g. the forced-change challenge). Every
-// rule is opt-in: with no policy configured the validator has no rules and
-// accepts any password, preserving zero-config behavior. Applications can inject
-// the resulting security.PasswordValidator into their own registration flows.
-func newPasswordValidator(cfg *config.SecurityConfig) security.PasswordValidator {
+// newPasswordValidator builds the config-backed password validator injected into
+// password-setting flows (e.g. the forced-change challenge): strength rules,
+// plus a history-reuse check when a PasswordHistoryStore is registered and
+// history_depth > 0. Every rule is opt-in, so with no policy configured the
+// validator accepts any password, preserving zero-config behavior. Applications
+// can inject the resulting security.PasswordValidator into their own flows.
+func newPasswordValidator(
+	cfg *config.SecurityConfig,
+	encoder password.Encoder,
+	historyStore security.PasswordHistoryStore,
+) security.PasswordValidator {
 	policy := cfg.PasswordPolicy
 
+	validators := []security.PasswordValidator{newStrengthValidator(policy)}
+
+	if historyStore != nil && policy.HistoryDepth > 0 {
+		validators = append(validators, security.NewHistoryValidator(historyStore, encoder, policy.HistoryDepth))
+	}
+
+	return security.NewChainValidator(validators...)
+}
+
+// newStrengthValidator assembles the opt-in strength rules from config.
+func newStrengthValidator(policy config.PasswordPolicyConfig) security.PasswordValidator {
 	var rules []security.PasswordRule
 	if policy.MinLength > 0 {
 		rules = append(rules, security.NewMinLengthRule(policy.MinLength))
