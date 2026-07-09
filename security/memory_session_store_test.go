@@ -96,6 +96,25 @@ func TestMemorySessionStore(t *testing.T) {
 		assert.Equal(t, "a", sessions[1].ID, "the older session should sort last")
 	})
 
+	t.Run("ListAllSpansUsersAndExcludesExpired", func(t *testing.T) {
+		store := NewMemorySessionStore()
+		inspector, ok := store.(SessionInspector)
+		require.True(t, ok, "the memory store should implement SessionInspector")
+
+		newest := makeSession("s1", "u1", future)
+		older := makeSession("s2", "u2", future)
+		older.LastSeenAt = time.Now().Add(-time.Hour)
+		require.NoError(t, store.Create(ctx, "h1", newest, time.Hour), "create should succeed")
+		require.NoError(t, store.Create(ctx, "h2", older, time.Hour), "create should succeed")
+		require.NoError(t, store.Create(ctx, "h3", makeSession("s3", "u2", time.Now().Add(-time.Minute)), time.Hour), "create should succeed")
+
+		all, err := inspector.ListAll(ctx)
+		require.NoError(t, err, "list-all should not error")
+		require.Len(t, all, 2, "list-all should span users and drop the expired session")
+		assert.Equal(t, "s1", all[0].ID, "the most recently seen session should sort first")
+		assert.Equal(t, "s2", all[1].ID, "the older session should sort last")
+	})
+
 	t.Run("RevokeUserClearsOnlyThatUser", func(t *testing.T) {
 		store := NewMemorySessionStore()
 		require.NoError(t, store.Create(ctx, "h1", makeSession("s1", "u1", future), time.Hour), "create should succeed")

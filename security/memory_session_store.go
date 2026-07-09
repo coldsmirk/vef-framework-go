@@ -32,6 +32,8 @@ func NewMemorySessionStore() SessionStore {
 	}
 }
 
+var _ SessionInspector = (*MemorySessionStore)(nil)
+
 func (s *MemorySessionStore) Create(_ context.Context, tokenHash string, session Session, _ time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -146,6 +148,31 @@ func (s *MemorySessionStore) RevokeUser(_ context.Context, userID string) error 
 	delete(s.byUser, userID)
 
 	return nil
+}
+
+// ListAll returns every live session across all users, newest activity first.
+func (s *MemorySessionStore) ListAll(_ context.Context) ([]Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+
+	var sessions []Session
+	for _, record := range s.byID {
+		if !record.session.ExpiresAt.After(now) {
+			s.remove(record)
+
+			continue
+		}
+
+		sessions = append(sessions, record.session)
+	}
+
+	slices.SortFunc(sessions, func(a, b Session) int {
+		return b.LastSeenAt.Compare(a.LastSeenAt)
+	})
+
+	return sessions, nil
 }
 
 // remove deletes a record from all three indexes. The caller holds the lock.

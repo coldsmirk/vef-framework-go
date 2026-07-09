@@ -75,6 +75,18 @@ func (s *RedisSessionStoreTestSuite) TestSessionLifecycle() {
 		s.Nil(got, "an expired session key should be gone")
 	})
 
+	s.Run("ListAllSpansUsers", func() {
+		s.Require().NoError(s.store.Create(ctx, "ha", makeSession("sa", "u1", future), time.Hour), "create should succeed")
+		s.Require().NoError(s.store.Create(ctx, "hb", makeSession("sb", "u2", future), time.Hour), "create should succeed")
+
+		inspector, ok := s.store.(SessionInspector)
+		s.Require().True(ok, "the redis store should implement SessionInspector")
+
+		all, err := inspector.ListAll(ctx)
+		s.Require().NoError(err, "list-all should not error")
+		s.Len(all, 2, "list-all should span every user's sessions")
+	})
+
 	s.Run("ListAndRevokeUser", func() {
 		s.Require().NoError(s.store.Create(ctx, "h1", makeSession("s1", "u1", future), time.Hour), "create should succeed")
 		s.Require().NoError(s.store.Create(ctx, "h2", makeSession("s2", "u1", future), time.Hour), "create should succeed")

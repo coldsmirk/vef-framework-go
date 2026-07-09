@@ -15,11 +15,14 @@ const (
 	redisSessionByID    = redisSessionPrefix + "id:"
 	redisSessionByToken = redisSessionPrefix + "token:"
 	redisSessionByUser  = redisSessionPrefix + "user:"
+	redisSessionAll     = redisSessionPrefix + "all"
 )
 
 // RedisSessionStore implements SessionStore on Redis so sessions are shared
 // across nodes. Session and token keys carry a TTL that Redis expires
-// automatically; the per-user id set is pruned lazily on read and on revoke.
+// automatically; the per-user and global id sets are pruned lazily on read and
+// on revoke. Every multi-key mutation runs in a MULTI/EXEC transaction so a
+// reader never observes a half-written or half-deleted session.
 type RedisSessionStore struct {
 	client *redis.Client
 }
@@ -28,6 +31,8 @@ type RedisSessionStore struct {
 func NewRedisSessionStore(client *redis.Client) SessionStore {
 	return &RedisSessionStore{client: client}
 }
+
+var _ SessionInspector = (*RedisSessionStore)(nil)
 
 type redisSessionRecord struct {
 	Session   Session `json:"session"`
@@ -44,15 +49,16 @@ func (s *RedisSessionStore) Create(ctx context.Context, tokenHash string, sessio
 		return err
 	}
 
-	if err := s.client.Set(ctx, s.idKey(session.ID), payload, ttl).Err(); err != nil {
-		return err
-	}
+	// Write the record, token index, and both id sets atomically so a lookup can
+	// never resolve a token to a session that is not yet fully indexed.
+	pipe := s.client.TxPipeline()
+	pipe.Set(ctx, s.idKey(session.ID), payload, ttl)
+	pipe.Set(ctx, s.tokenKey(tokenHash), session.ID, ttl)
+	pipe.SAdd(ctx, s.userKey(session.UserID), session.ID)
+	pipe.SAdd(ctx, redisSessionAll, session.ID)
+	_, err = pipe.Exec(ctx)
 
-	if err := s.client.Set(ctx, s.tokenKey(tokenHash), session.ID, ttl).Err(); err != nil {
-		return err
-	}
-
-	return s.client.SAdd(ctx, s.userKey(session.UserID), session.ID).Err()
+	return err
 }
 
 func (s *RedisSessionStore) Lookup(ctx context.Context, tokenHash string) (*Session, error) {
@@ -98,11 +104,18 @@ func (s *RedisSessionStore) Renew(ctx context.Context, tokenHash string, expires
 		return err
 	}
 
-	if err := s.client.Set(ctx, s.idKey(id), payload, ttl).Err(); err != nil {
+	// SET ... XX rewrites the record only if it still exists, so a renewal that
+	// races a concurrent Revoke can never resurrect a just-deleted session. The
+	// token TTL is refreshed in the same transaction.
+	pipe := s.client.TxPipeline()
+	pipe.SetArgs(ctx, s.idKey(id), payload, redis.SetArgs{Mode: "XX", TTL: ttl})
+	pipe.Expire(ctx, s.tokenKey(tokenHash), ttl)
+
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
 		return err
 	}
 
-	return s.client.Expire(ctx, s.tokenKey(tokenHash), ttl).Err()
+	return nil
 }
 
 func (s *RedisSessionStore) Revoke(ctx context.Context, id string) error {
@@ -115,20 +128,83 @@ func (s *RedisSessionStore) Revoke(ctx context.Context, id string) error {
 }
 
 func (s *RedisSessionStore) ListByUser(ctx context.Context, userID string) ([]Session, error) {
-	ids, err := s.client.SMembers(ctx, s.userKey(userID)).Result()
+	sessions, stale, err := s.collect(ctx, s.userKey(userID))
 	if err != nil {
 		return nil, err
 	}
 
-	var (
-		sessions []Session
-		stale    []string
-	)
+	// Drop expired ids from both the user set and the global set.
+	if len(stale) > 0 {
+		pipe := s.client.Pipeline()
+		pipe.SRem(ctx, s.userKey(userID), stale)
+		pipe.SRem(ctx, redisSessionAll, stale)
+		_, _ = pipe.Exec(ctx)
+	}
+
+	return sessions, nil
+}
+
+func (s *RedisSessionStore) ListAll(ctx context.Context) ([]Session, error) {
+	sessions, stale, err := s.collect(ctx, redisSessionAll)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(stale) > 0 {
+		s.client.SRem(ctx, redisSessionAll, stale)
+	}
+
+	return sessions, nil
+}
+
+func (s *RedisSessionStore) RevokeUser(ctx context.Context, userID string) error {
+	ids, err := s.client.SMembers(ctx, s.userKey(userID)).Result()
+	if err != nil {
+		return err
+	}
+
+	keys := make([]string, 0, len(ids)*2)
+	for _, id := range ids {
+		record, err := s.load(ctx, id)
+		if err != nil {
+			return err
+		}
+
+		keys = append(keys, s.idKey(id))
+		if record != nil {
+			keys = append(keys, s.tokenKey(record.TokenHash))
+		}
+	}
+
+	// Delete every record and token key, drop all ids from the global set, and
+	// remove the user set itself in one transaction.
+	pipe := s.client.TxPipeline()
+	if len(keys) > 0 {
+		pipe.Del(ctx, keys...)
+	}
+
+	if len(ids) > 0 {
+		pipe.SRem(ctx, redisSessionAll, ids)
+	}
+
+	pipe.Del(ctx, s.userKey(userID))
+	_, err = pipe.Exec(ctx)
+
+	return err
+}
+
+// collect loads every session id in setKey, returning the live sessions (newest
+// activity first) and the ids whose records have expired.
+func (s *RedisSessionStore) collect(ctx context.Context, setKey string) (sessions []Session, stale []string, err error) {
+	ids, err := s.client.SMembers(ctx, setKey).Result()
+	if err != nil {
+		return nil, nil, err
+	}
 
 	for _, id := range ids {
 		record, err := s.load(ctx, id)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		if record == nil {
@@ -140,37 +216,11 @@ func (s *RedisSessionStore) ListByUser(ctx context.Context, userID string) ([]Se
 		sessions = append(sessions, record.Session)
 	}
 
-	if len(stale) > 0 {
-		s.client.SRem(ctx, s.userKey(userID), stale)
-	}
-
 	slices.SortFunc(sessions, func(a, b Session) int {
 		return b.LastSeenAt.Compare(a.LastSeenAt)
 	})
 
-	return sessions, nil
-}
-
-func (s *RedisSessionStore) RevokeUser(ctx context.Context, userID string) error {
-	ids, err := s.client.SMembers(ctx, s.userKey(userID)).Result()
-	if err != nil {
-		return err
-	}
-
-	for _, id := range ids {
-		record, err := s.load(ctx, id)
-		if err != nil {
-			return err
-		}
-
-		if record != nil {
-			if err := s.client.Del(ctx, s.idKey(id), s.tokenKey(record.TokenHash)).Err(); err != nil {
-				return err
-			}
-		}
-	}
-
-	return s.client.Del(ctx, s.userKey(userID)).Err()
+	return sessions, stale, nil
 }
 
 // load reads and decodes a session record by id, returning nil when the key has
@@ -193,11 +243,13 @@ func (s *RedisSessionStore) load(ctx context.Context, id string) (*redisSessionR
 	return &record, nil
 }
 
-// deleteRecord removes a record from all keys.
+// deleteRecord removes a record from every key and set in one transaction.
 func (s *RedisSessionStore) deleteRecord(ctx context.Context, record *redisSessionRecord) error {
-	if err := s.client.Del(ctx, s.idKey(record.Session.ID), s.tokenKey(record.TokenHash)).Err(); err != nil {
-		return err
-	}
+	pipe := s.client.TxPipeline()
+	pipe.Del(ctx, s.idKey(record.Session.ID), s.tokenKey(record.TokenHash))
+	pipe.SRem(ctx, s.userKey(record.Session.UserID), record.Session.ID)
+	pipe.SRem(ctx, redisSessionAll, record.Session.ID)
+	_, err := pipe.Exec(ctx)
 
-	return s.client.SRem(ctx, s.userKey(record.Session.UserID), record.Session.ID).Err()
+	return err
 }

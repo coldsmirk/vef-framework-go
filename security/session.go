@@ -88,6 +88,20 @@ type SessionStore interface {
 	RevokeUser(ctx context.Context, userID string) error
 }
 
+// SessionInspector is an optional capability a SessionStore may implement to
+// support cross-user administration and monitoring — for example an "all online
+// sessions" dashboard. It is kept out of SessionStore because the
+// authentication mechanism never needs it, so custom stores are not forced to
+// implement it; callers type-assert for it (mirroring event.StreamInspector).
+//
+// ListAll enumerates every live session and is O(all sessions); it is intended
+// for infrequent administrative views, not a request-path call. Deployments
+// large enough to need pagination should build it on their own store.
+type SessionInspector interface {
+	// ListAll returns every live session across all users, newest activity first.
+	ListAll(ctx context.Context) ([]Session, error)
+}
+
 // GenerateOpaqueToken returns a new high-entropy, URL-safe opaque token.
 func GenerateOpaqueToken() (string, error) {
 	buf := make([]byte, opaqueTokenBytes)
