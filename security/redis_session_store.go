@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -15,14 +16,16 @@ const (
 	redisSessionByID    = redisSessionPrefix + "id:"
 	redisSessionByToken = redisSessionPrefix + "token:"
 	redisSessionByUser  = redisSessionPrefix + "user:"
-	redisSessionAll     = redisSessionPrefix + "all"
+
+	// redisSessionScanCount is the COUNT hint for the ListAll keyspace scan.
+	redisSessionScanCount = 100
 )
 
 // RedisSessionStore implements SessionStore on Redis so sessions are shared
 // across nodes. Session and token keys carry a TTL that Redis expires
-// automatically; the per-user and global id sets are pruned lazily on read and
-// on revoke. Every multi-key mutation runs in a MULTI/EXEC transaction so a
-// reader never observes a half-written or half-deleted session.
+// automatically; the per-user id set is pruned lazily on read and on revoke.
+// Every multi-key mutation runs in a MULTI/EXEC transaction so a reader never
+// observes a half-written or half-deleted session.
 type RedisSessionStore struct {
 	client *redis.Client
 }
@@ -47,13 +50,12 @@ func (s *RedisSessionStore) Create(ctx context.Context, tokenHash string, sessio
 		return err
 	}
 
-	// Write the record, token index, and both id sets atomically so a lookup can
+	// Write the record, token index, and user set atomically so a lookup can
 	// never resolve a token to a session that is not yet fully indexed.
 	pipe := s.client.TxPipeline()
 	pipe.Set(ctx, s.idKey(session.ID), payload, ttl)
 	pipe.Set(ctx, s.tokenKey(tokenHash), session.ID, ttl)
 	pipe.SAdd(ctx, s.userKey(session.UserID), session.ID)
-	pipe.SAdd(ctx, redisSessionAll, session.ID)
 	_, err = pipe.Exec(ctx)
 
 	return err
@@ -131,26 +133,39 @@ func (s *RedisSessionStore) ListByUser(ctx context.Context, userID string) ([]Se
 		return nil, err
 	}
 
-	// Drop expired ids from both the user set and the global set.
+	// Drop expired ids from the user set.
 	if len(stale) > 0 {
-		pipe := s.client.Pipeline()
-		pipe.SRem(ctx, s.userKey(userID), stale)
-		pipe.SRem(ctx, redisSessionAll, stale)
-		_, _ = pipe.Exec(ctx)
+		s.client.SRem(ctx, s.userKey(userID), stale)
 	}
 
 	return sessions, nil
 }
 
+// ListAll enumerates every live session by scanning the id keyspace. It keeps no
+// global index set — which would accumulate tombstones for one-time users — at
+// the cost of a keyspace SCAN, acceptable for an infrequent admin view.
 func (s *RedisSessionStore) ListAll(ctx context.Context) ([]Session, error) {
-	sessions, stale, err := s.collect(ctx, redisSessionAll)
-	if err != nil {
+	var sessions []Session
+
+	iter := s.client.Scan(ctx, 0, redisSessionByID+"*", redisSessionScanCount).Iterator()
+	for iter.Next(ctx) {
+		record, err := s.load(ctx, strings.TrimPrefix(iter.Val(), redisSessionByID))
+		if err != nil {
+			return nil, err
+		}
+
+		if record != nil {
+			sessions = append(sessions, record.Session)
+		}
+	}
+
+	if err := iter.Err(); err != nil {
 		return nil, err
 	}
 
-	if len(stale) > 0 {
-		s.client.SRem(ctx, redisSessionAll, stale)
-	}
+	slices.SortFunc(sessions, func(a, b Session) int {
+		return b.LastSeenAt.Compare(a.LastSeenAt)
+	})
 
 	return sessions, nil
 }
@@ -174,15 +189,11 @@ func (s *RedisSessionStore) RevokeUser(ctx context.Context, userID string) error
 		}
 	}
 
-	// Delete every record and token key, drop all ids from the global set, and
-	// remove the user set itself in one transaction.
+	// Delete every record and token key, then remove the user set itself in one
+	// transaction.
 	pipe := s.client.TxPipeline()
 	if len(keys) > 0 {
 		pipe.Del(ctx, keys...)
-	}
-
-	if len(ids) > 0 {
-		pipe.SRem(ctx, redisSessionAll, ids)
 	}
 
 	pipe.Del(ctx, s.userKey(userID))
@@ -254,7 +265,6 @@ func (s *RedisSessionStore) deleteRecord(ctx context.Context, record *redisSessi
 	pipe := s.client.TxPipeline()
 	pipe.Del(ctx, s.idKey(record.Session.ID), s.tokenKey(record.TokenHash))
 	pipe.SRem(ctx, s.userKey(record.Session.UserID), record.Session.ID)
-	pipe.SRem(ctx, redisSessionAll, record.Session.ID)
 	_, err := pipe.Exec(ctx)
 
 	return err

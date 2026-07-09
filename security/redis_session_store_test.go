@@ -49,7 +49,12 @@ func (s *RedisSessionStoreTestSuite) TestSessionLifecycle() {
 	ctx := context.Background()
 	future := time.Now().Add(time.Hour)
 
+	// SetupTest flushes only between top-level Test methods, not between s.Run
+	// subtests, so each subtest flushes for isolation (ListAll spans the whole DB).
+	flush := func() { s.client.FlushDB(ctx) }
+
 	s.Run("CreateLookupRevoke", func() {
+		flush()
 		s.Require().NoError(s.store.Create(ctx, "hash-1", makeSession("s1", "u1", future), time.Hour), "create should succeed")
 
 		got, err := s.store.Lookup(ctx, "hash-1")
@@ -66,6 +71,8 @@ func (s *RedisSessionStoreTestSuite) TestSessionLifecycle() {
 	})
 
 	s.Run("TTLExpiry", func() {
+		flush()
+
 		s.Require().NoError(s.store.Create(ctx, "hash-ttl", makeSession("sttl", "u1", time.Now().Add(300*time.Millisecond)), 200*time.Millisecond), "create should succeed")
 
 		time.Sleep(400 * time.Millisecond)
@@ -76,6 +83,8 @@ func (s *RedisSessionStoreTestSuite) TestSessionLifecycle() {
 	})
 
 	s.Run("RenewExtendsExpiryThenNoOpAfterRevoke", func() {
+		flush()
+
 		s.Require().NoError(s.store.Create(ctx, "hren", makeSession("sren", "u1", time.Now().Add(time.Minute)), time.Minute), "create should succeed")
 
 		newExpiry := time.Now().Add(2 * time.Hour)
@@ -96,6 +105,8 @@ func (s *RedisSessionStoreTestSuite) TestSessionLifecycle() {
 	})
 
 	s.Run("ExpiresAtIsAuthoritativeOverKeyTTL", func() {
+		flush()
+
 		// Past ExpiresAt but a long Redis key TTL: Lookup must still reject the
 		// session so the absolute max-lifetime cap holds on the multi-node path.
 		s.Require().NoError(s.store.Create(ctx, "hpast", makeSession("spast", "u1", time.Now().Add(-time.Minute)), time.Hour), "create should succeed")
@@ -106,6 +117,8 @@ func (s *RedisSessionStoreTestSuite) TestSessionLifecycle() {
 	})
 
 	s.Run("ListAllSpansUsers", func() {
+		flush()
+
 		s.Require().NoError(s.store.Create(ctx, "ha", makeSession("sa", "u1", future), time.Hour), "create should succeed")
 		s.Require().NoError(s.store.Create(ctx, "hb", makeSession("sb", "u2", future), time.Hour), "create should succeed")
 
@@ -118,6 +131,8 @@ func (s *RedisSessionStoreTestSuite) TestSessionLifecycle() {
 	})
 
 	s.Run("ListAndRevokeUser", func() {
+		flush()
+
 		s.Require().NoError(s.store.Create(ctx, "h1", makeSession("s1", "u1", future), time.Hour), "create should succeed")
 		s.Require().NoError(s.store.Create(ctx, "h2", makeSession("s2", "u1", future), time.Hour), "create should succeed")
 		s.Require().NoError(s.store.Create(ctx, "h3", makeSession("s3", "u2", future), time.Hour), "create should succeed")
