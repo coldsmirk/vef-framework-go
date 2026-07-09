@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	AuthTypeToken = "token"
+	AuthTypeJWTToken = "jwt_token"
 )
 
 type JWTTokenAuthenticator struct {
@@ -22,7 +22,7 @@ func NewJWTAuthenticator(jwt *security.JWT) security.Authenticator {
 }
 
 func (*JWTTokenAuthenticator) Supports(authType string) bool {
-	return authType == AuthTypeToken
+	return authType == AuthTypeJWTToken
 }
 
 func (ja *JWTTokenAuthenticator) Authenticate(_ context.Context, authentication security.Authentication) (*security.Principal, error) {

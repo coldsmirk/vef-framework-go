@@ -19,7 +19,7 @@ func NewAccessTokenAuthenticator(manager security.AuthManager) TokenAuthenticato
 
 func (a *AccessTokenAuthenticator) Authenticate(ctx context.Context, token string) (*security.Principal, error) {
 	return a.manager.Authenticate(ctx, security.Authentication{
-		Type:      isecurity.AuthTypeToken,
+		Type:      isecurity.AuthTypeJWTToken,
 		Principal: token,
 	})
 }

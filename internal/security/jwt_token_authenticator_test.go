@@ -27,7 +27,7 @@ func (s *JWTTokenAuthenticatorTestSuite) SetupSuite() {
 
 // TestSupports verifies type matching.
 func (s *JWTTokenAuthenticatorTestSuite) TestSupports() {
-	s.True(s.auth.Supports(AuthTypeToken), "Should support token type")
+	s.True(s.auth.Supports(AuthTypeJWTToken), "Should support token type")
 	s.False(s.auth.Supports("password"), "Should not support password type")
 	s.False(s.auth.Supports(""), "Should not support empty type")
 }
@@ -38,7 +38,7 @@ func (s *JWTTokenAuthenticatorTestSuite) TestAuthenticate() {
 
 	s.Run("EmptyToken", func() {
 		_, err := s.auth.Authenticate(ctx, security.Authentication{
-			Type:      AuthTypeToken,
+			Type:      AuthTypeJWTToken,
 			Principal: "",
 		})
 		s.Require().Error(err, "Should return error for empty token")
@@ -46,7 +46,7 @@ func (s *JWTTokenAuthenticatorTestSuite) TestAuthenticate() {
 
 	s.Run("InvalidJWT", func() {
 		_, err := s.auth.Authenticate(ctx, security.Authentication{
-			Type:      AuthTypeToken,
+			Type:      AuthTypeJWTToken,
 			Principal: "invalid.jwt.token",
 		})
 		s.Require().Error(err, "Should return error for invalid JWT")
@@ -58,7 +58,7 @@ func (s *JWTTokenAuthenticatorTestSuite) TestAuthenticate() {
 		s.Require().NoError(err, "Should generate tokens")
 
 		_, err = s.auth.Authenticate(ctx, security.Authentication{
-			Type:      AuthTypeToken,
+			Type:      AuthTypeJWTToken,
 			Principal: tokens.RefreshToken,
 		})
 		s.Require().Error(err, "Should reject refresh token")
@@ -72,7 +72,7 @@ func (s *JWTTokenAuthenticatorTestSuite) TestAuthenticate() {
 		s.Require().NoError(err, "Should generate challenge token")
 
 		_, err = s.auth.Authenticate(ctx, security.Authentication{
-			Type:      AuthTypeToken,
+			Type:      AuthTypeJWTToken,
 			Principal: token,
 		})
 		s.Require().Error(err, "Should reject challenge token")
@@ -86,7 +86,7 @@ func (s *JWTTokenAuthenticatorTestSuite) TestAuthenticate() {
 		s.Require().NoError(err, "Should generate tokens")
 
 		got, err := s.auth.Authenticate(ctx, security.Authentication{
-			Type:      AuthTypeToken,
+			Type:      AuthTypeJWTToken,
 			Principal: tokens.AccessToken,
 		})
 		s.Require().NoError(err, "Should authenticate with valid access token")
@@ -102,7 +102,7 @@ func (s *JWTTokenAuthenticatorTestSuite) TestAuthenticate() {
 		s.Require().NoError(err, "Should generate tokens")
 
 		got, err := s.auth.Authenticate(ctx, security.Authentication{
-			Type:      AuthTypeToken,
+			Type:      AuthTypeJWTToken,
 			Principal: tokens.AccessToken,
 		})
 		s.Require().NoError(err, "Should authenticate without roles")
@@ -117,7 +117,7 @@ func (s *JWTTokenAuthenticatorTestSuite) TestAuthenticate() {
 		s.Require().NoError(err, "Should generate tokens")
 
 		got, err := s.auth.Authenticate(ctx, security.Authentication{
-			Type:      AuthTypeToken,
+			Type:      AuthTypeJWTToken,
 			Principal: tokens.AccessToken,
 		})
 		s.Require().NoError(err, "Should authenticate with @ in name")
@@ -133,7 +133,7 @@ func (s *JWTTokenAuthenticatorTestSuite) TestAuthenticate() {
 		s.Require().NoError(err, "Should generate token with malformed subject")
 
 		_, err = s.auth.Authenticate(ctx, security.Authentication{
-			Type:      AuthTypeToken,
+			Type:      AuthTypeJWTToken,
 			Principal: token,
 		})
 		s.Require().Error(err, "Should reject token with malformed subject")
@@ -147,7 +147,7 @@ func (s *JWTTokenAuthenticatorTestSuite) TestAuthenticate() {
 		s.Require().NoError(err, "Should generate expired token")
 
 		_, err = s.auth.Authenticate(ctx, security.Authentication{
-			Type:      AuthTypeToken,
+			Type:      AuthTypeJWTToken,
 			Principal: token,
 		})
 		s.Require().Error(err, "Should reject expired token")

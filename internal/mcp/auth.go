@@ -19,7 +19,7 @@ import (
 func CreateTokenVerifier(authManager security.AuthManager) auth.TokenVerifier {
 	return func(ctx context.Context, tokenString string, _ *http.Request) (*auth.TokenInfo, error) {
 		principal, err := authManager.Authenticate(ctx, security.Authentication{
-			Type:      isecurity.AuthTypeToken,
+			Type:      isecurity.AuthTypeJWTToken,
 			Principal: tokenString,
 		})
 		if err != nil {
