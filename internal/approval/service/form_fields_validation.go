@@ -9,20 +9,17 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
-// ValidateFormDefinition validates the structural integrity of a form schema
-// at deploy time: unique non-empty field keys, known field kinds, compilable
-// validation patterns, and coherent min/max bounds. Everything checked here
-// would otherwise only fail when an applicant submits — and an uncompilable
-// pattern would even be misreported to them as a data error — so a broken
-// schema must be rejected before the version is created.
-func (*FlowDefinitionService) ValidateFormDefinition(def *approval.FormDefinition) error {
-	if def == nil {
-		return nil
-	}
+// ValidateFormFields validates the structural integrity of the parsed form
+// fields at deploy time: unique non-empty field keys, known field kinds,
+// compilable validation patterns, and coherent min/max bounds. Everything
+// checked here would otherwise only fail when an applicant submits — and an
+// uncompilable pattern would even be misreported to them as a data error — so
+// a broken field list must be rejected before the version is created. A nil
+// list (a flow without a form) is valid.
+func (*FlowDefinitionService) ValidateFormFields(fields []approval.FormFieldDefinition) error {
+	keys := collections.NewHashSetWithCapacity[string](len(fields))
 
-	keys := collections.NewHashSetWithCapacity[string](len(def.Fields))
-
-	for _, field := range def.Fields {
+	for _, field := range fields {
 		if field.Key == "" {
 			return errFormFieldKeyEmpty
 		}

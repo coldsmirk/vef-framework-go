@@ -46,15 +46,16 @@ func (*ValidationService) ValidateOpinion(node *approval.FlowNode, opinion strin
 	return nil
 }
 
-// ValidateFormData validates submitted form data against the published form schema.
-func (*ValidationService) ValidateFormData(schema *approval.FormDefinition, formData map[string]any) error {
-	// Size guard runs first — applies even to flows without a schema so
-	// callers cannot bypass the cap by omitting the form definition.
+// ValidateFormData validates submitted form data against the version's parsed
+// form fields (nil = a flow without a form).
+func (*ValidationService) ValidateFormData(fields []approval.FormFieldDefinition, formData map[string]any) error {
+	// Size guard runs first — applies even to flows without a form so
+	// callers cannot bypass the cap by omitting the field list.
 	if err := validateFormDataSize(formData); err != nil {
 		return err
 	}
 
-	if schema == nil || len(schema.Fields) == 0 {
+	if len(fields) == 0 {
 		return nil
 	}
 
@@ -62,8 +63,8 @@ func (*ValidationService) ValidateFormData(schema *approval.FormDefinition, form
 		formData = map[string]any{}
 	}
 
-	fieldByKey := make(map[string]approval.FormFieldDefinition, len(schema.Fields))
-	for _, field := range schema.Fields {
+	fieldByKey := make(map[string]approval.FormFieldDefinition, len(fields))
+	for _, field := range fields {
 		fieldByKey[field.Key] = field
 	}
 
@@ -73,7 +74,7 @@ func (*ValidationService) ValidateFormData(schema *approval.FormDefinition, form
 		}
 	}
 
-	for _, field := range schema.Fields {
+	for _, field := range fields {
 		value, exists := formData[field.Key]
 		if !exists || isEmptyFormValue(value) {
 			if field.IsRequired {

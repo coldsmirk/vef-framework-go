@@ -1,0 +1,9 @@
+[
+  {
+    "key": "items", "kind": "table", "label": "明细", "sortOrder": 0,
+    "columns": [
+      { "key": "desc", "kind": "input", "label": "说明", "sortOrder": 0, "columnType": "text" },
+      { "key": "qty", "kind": "number", "label": "数量", "sortOrder": 1 }
+    ]
+  }
+]

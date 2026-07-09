@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "F1", "type": "textfield", "key": "name", "label": "姓名",
+          "linkage": {
+            "rules": [
+              {
+                "id": "L1",
+                "trigger": { "kind": "condition", "condition": { "kind": "leaf", "sourceKey": "other", "operator": "eq", "value": "x" } },
+                "actions": [{ "type": "hide" }]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": { "children": [ { "id": "P1", "type": "textfield", "key": "name", "label": "PC 姓名" } ] },
+    "mobile": {
+      "children": [
+        { "id": "M1", "type": "textfield", "key": "name", "label": "移动端姓名" },
+        { "id": "M2", "type": "textfield", "key": "mobileOnly", "label": "仅移动端" }
+      ]
+    }
+  }
+}

@@ -39,9 +39,9 @@ func NewTableStorage(kind config.DBKind) *TableStorage {
 // MySQL, which would break the publish's atomicity) and is idempotent: CREATE
 // TABLE IF NOT EXISTS makes a republish — or a retry after a rolled-back publish
 // that left the table behind — a no-op at the DDL level. The table name and
-// columns are derived from the version's form schema; see ddl.go.
+// columns are derived from the version's parsed form fields; see ddl.go.
 func (s *TableStorage) ProvisionTable(ctx context.Context, db orm.DB, flow *approval.Flow, version *approval.FlowVersion) error {
-	tables, err := buildTableSpecs(s.kind, flow.Code, version.ID, version.FormSchema)
+	tables, err := buildTableSpecs(s.kind, flow.Code, version.ID, version.FormFields)
 	if err != nil {
 		return err
 	}
@@ -67,8 +67,9 @@ func (s *TableStorage) ProvisionTable(ctx context.Context, db orm.DB, flow *appr
 // commits or rolls back with the version's published state. It is idempotent: if
 // metadata already exists for the version (a republish or a retry), it returns
 // without re-inserting. The table name and column specs are recomputed from the
-// version's form schema — the same deterministic derivation ProvisionTable used,
-// so the recorded metadata always describes the physical table.
+// version's parsed form fields — the same deterministic derivation
+// ProvisionTable used, so the recorded metadata always describes the physical
+// table.
 func (s *TableStorage) RecordMetadata(ctx context.Context, db orm.DB, flow *approval.Flow, version *approval.FlowVersion) error {
 	exists, err := db.NewSelect().
 		Model((*approval.FormTable)(nil)).
@@ -84,7 +85,7 @@ func (s *TableStorage) RecordMetadata(ctx context.Context, db orm.DB, flow *appr
 		return nil
 	}
 
-	tables, err := buildTableSpecs(s.kind, flow.Code, version.ID, version.FormSchema)
+	tables, err := buildTableSpecs(s.kind, flow.Code, version.ID, version.FormFields)
 	if err != nil {
 		return err
 	}

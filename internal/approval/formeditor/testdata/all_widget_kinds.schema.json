@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        { "id": "F1", "type": "textfield", "key": "plain", "label": "文本" },
+        { "id": "F2", "type": "code-editor", "key": "script", "label": "脚本" },
+        { "id": "F3", "type": "textarea", "key": "remark", "label": "备注" },
+        { "id": "F7", "type": "radio", "key": "grade", "label": "等级", "dataSource": { "kind": "static", "options": [{ "label": "甲", "value": 1 }] } },
+        { "id": "F4", "type": "date", "key": "day", "label": "日期" },
+        { "id": "F5", "type": "datetime", "key": "moment", "label": "时刻" },
+        { "id": "F6", "type": "checkbox-group", "key": "tags", "label": "标签", "dataSource": { "kind": "static", "options": [{ "label": "A", "value": "a" }] } }
+      ]
+    }
+  }
+}

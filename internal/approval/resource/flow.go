@@ -1,6 +1,8 @@
 package resource
 
 import (
+	"encoding/json"
+
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
@@ -122,14 +124,16 @@ func (r *FlowResource) Create(ctx fiber.Ctx, principal *security.Principal, para
 }
 
 // DeployFlowParams contains the parameters for deploying a flow definition.
+// FormSchema is the host-owned form designer document, passed through opaque
+// and optional — flows without forms exist.
 type DeployFlowParams struct {
 	api.P
 
-	FlowID         string                   `json:"flowId" validate:"required"`
-	Description    *string                  `json:"description"`
-	StorageMode    approval.StorageMode     `json:"storageMode"`
-	FlowDefinition approval.FlowDefinition  `json:"flowDefinition" validate:"required"`
-	FormDefinition *approval.FormDefinition `json:"formDefinition"`
+	FlowID         string                  `json:"flowId" validate:"required"`
+	Description    *string                 `json:"description"`
+	StorageMode    approval.StorageMode    `json:"storageMode"`
+	FlowDefinition approval.FlowDefinition `json:"flowDefinition" validate:"required"`
+	FormSchema     json.RawMessage         `json:"formSchema"`
 }
 
 // Deploy deploys a flow definition.
@@ -147,7 +151,7 @@ func (r *FlowResource) Deploy(ctx fiber.Ctx, principal *security.Principal, para
 			Description:    params.Description,
 			StorageMode:    params.StorageMode,
 			FlowDefinition: params.FlowDefinition,
-			FormDefinition: params.FormDefinition,
+			FormSchema:     params.FormSchema,
 			Caller:         caller,
 		},
 	)

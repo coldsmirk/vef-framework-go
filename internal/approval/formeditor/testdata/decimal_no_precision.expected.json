@@ -1,0 +1,3 @@
+[
+  { "key": "amount", "kind": "number", "label": "金额", "sortOrder": 0, "columnType": "decimal" }
+]

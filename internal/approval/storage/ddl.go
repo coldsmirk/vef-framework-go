@@ -113,17 +113,13 @@ func sanitizeForIdentifier(s string) string {
 }
 
 // ValidateTableFormSchema verifies that every form field key in a table-mode
-// schema can be turned into a safe, unique, non-reserved physical column
+// field list can be turned into a safe, unique, non-reserved physical column
 // identifier. It is the deploy-time gate for StorageTable: calling it when a
 // version is deployed surfaces an unmappable field key as a configuration error
 // the admin sees on save, instead of deferring the failure to publish (where it
 // would surface opaquely). The publish-time generator re-derives and re-checks
 // the same identifiers as defense-in-depth, so this never weakens the guarantee.
-func ValidateTableFormSchema(schema *approval.FormDefinition) error {
-	if schema == nil {
-		return nil
-	}
-
+func ValidateTableFormSchema(fields []approval.FormFieldDefinition) error {
 	// Seed with the built-in columns so a field key colliding with one of them
 	// is reported as reserved, and two field keys sanitizing to the same column
 	// are reported as a duplicate. Table fields get their own pool per child
@@ -132,7 +128,7 @@ func ValidateTableFormSchema(schema *approval.FormDefinition) error {
 	seen := reservedColumnPool()
 	childNames := map[string]struct{}{}
 
-	for _, field := range schema.Fields {
+	for _, field := range fields {
 		if field.Kind == approval.FieldTable {
 			if err := validateChildTableSchema(field, childNames); err != nil {
 				return err
@@ -226,20 +222,20 @@ func validateChildTableSchema(field approval.FormFieldDefinition, childNames map
 	return nil
 }
 
-// buildTableSpecs resolves every physical table for a form schema in a given
-// dialect: the main projection table (built-in id / instance_id columns, one
-// column per scalar field in declared order, created_at last) plus one child
-// table per detail-table field (id / instance_id / row_index, the table's
-// columns, created_at). Field keys are validated as safe, unique,
-// non-reserved identifiers up front by ValidateTableFormSchema, so the names
-// produced here are known good.
-func buildTableSpecs(kind config.DBKind, flowCode, versionID string, schema *approval.FormDefinition) ([]tableSpec, error) {
+// buildTableSpecs resolves every physical table for a version's parsed form
+// fields in a given dialect: the main projection table (built-in id /
+// instance_id columns, one column per scalar field in declared order,
+// created_at last) plus one child table per detail-table field (id /
+// instance_id / row_index, the table's columns, created_at). Field keys are
+// validated as safe, unique, non-reserved identifiers up front by
+// ValidateTableFormSchema, so the names produced here are known good.
+func buildTableSpecs(kind config.DBKind, flowCode, versionID string, fields []approval.FormFieldDefinition) ([]tableSpec, error) {
 	t := typesFor(kind)
 	if t == (sqlTypes{}) {
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedDialect, kind)
 	}
 
-	if err := ValidateTableFormSchema(schema); err != nil {
+	if err := ValidateTableFormSchema(fields); err != nil {
 		return nil, err
 	}
 
@@ -261,29 +257,27 @@ func buildTableSpecs(kind config.DBKind, flowCode, versionID string, schema *app
 	specs := []tableSpec{main}
 	sortOrder := 2
 
-	if schema != nil {
-		for _, field := range schema.Fields {
-			if field.Kind == approval.FieldTable {
-				child, err := buildChildTableSpec(kind, t, versionID, field)
-				if err != nil {
-					return nil, err
-				}
-
-				specs = append(specs, child)
-
-				continue
+	for _, field := range fields {
+		if field.Kind == approval.FieldTable {
+			child, err := buildChildTableSpec(kind, t, versionID, field)
+			if err != nil {
+				return nil, err
 			}
 
-			key := field.Key
-			specs[0].Columns = append(specs[0].Columns, columnSpec{
-				Name:           sanitizeForIdentifier(field.Key),
-				Type:           columnTypeFor(kind, t, field),
-				IsNullable:     !field.IsRequired,
-				SourceFieldKey: &key,
-				SortOrder:      sortOrder,
-			})
-			sortOrder++
+			specs = append(specs, child)
+
+			continue
 		}
+
+		key := field.Key
+		specs[0].Columns = append(specs[0].Columns, columnSpec{
+			Name:           sanitizeForIdentifier(field.Key),
+			Type:           columnTypeFor(kind, t, field),
+			IsNullable:     !field.IsRequired,
+			SourceFieldKey: &key,
+			SortOrder:      sortOrder,
+		})
+		sortOrder++
 	}
 
 	specs[0].Columns = append(specs[0].Columns, columnSpec{Name: "created_at", Type: t.timestamp, IsNullable: false, SortOrder: sortOrder})

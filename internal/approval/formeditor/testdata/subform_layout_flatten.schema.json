@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "Sub", "type": "subform", "variant": "stack", "key": "items", "label": "明细",
+          "template": [
+            {
+              "id": "Sec", "type": "section", "variant": "card", "title": "行内分组",
+              "children": [
+                { "id": "C1", "type": "textfield", "key": "desc", "label": "说明" },
+                { "id": "C2", "type": "number", "key": "qty", "label": "数量" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

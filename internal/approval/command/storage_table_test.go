@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/stretchr/testify/suite"
@@ -10,6 +11,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/formeditor"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
@@ -51,15 +53,15 @@ func (s *StorageTableTestSuite) TearDownSuite() {
 	cleanAllApprovalData(s.ctx, s.db)
 }
 
-// formSchema is the default schema deployed for the table-mode flow.
-func (*StorageTableTestSuite) formSchema() *approval.FormDefinition {
-	return &approval.FormDefinition{
-		Fields: []approval.FormFieldDefinition{
-			{Key: "reason", Kind: approval.FieldTextarea, Label: "Reason"},
-			{Key: "amount", Kind: approval.FieldNumber, Label: "Amount"},
-			{Key: "tags", Kind: approval.FieldSelect, Label: "Tags"},
-		},
-	}
+// formSchema is the default form-editor document deployed for the table-mode
+// flow; the deploy pipeline's parser derives textarea/number/select fields
+// from it.
+func (s *StorageTableTestSuite) formSchema() json.RawMessage {
+	return formEditorSchemaJSON(s.T(),
+		formEditorWidget{Type: "textarea", Key: "reason", Label: "Reason"},
+		formEditorWidget{Type: "number", Key: "amount", Label: "Amount"},
+		formEditorWidget{Type: "select", Key: "tags", Label: "Tags"},
+	)
 }
 
 // deployPublishedTableFlow deploys + publishes a table-mode flow in the default
@@ -69,10 +71,10 @@ func (s *StorageTableTestSuite) deployPublishedTableFlow(code string) (flowID, v
 }
 
 // deployTableFlow creates a category + flow in the given tenant, deploys a
-// table-mode version with the supplied form schema, and publishes it through a
-// handler wired with the real storage dispatcher. It returns the flow ID and
-// version ID.
-func (s *StorageTableTestSuite) deployTableFlow(tenant, code string, schema *approval.FormDefinition) (flowID, versionID string) {
+// table-mode version with the supplied form-editor document, and publishes it
+// through a handler wired with the real storage dispatcher. It returns the
+// flow ID and version ID.
+func (s *StorageTableTestSuite) deployTableFlow(tenant, code string, schema json.RawMessage) (flowID, versionID string) {
 	category := &approval.FlowCategory{TenantID: tenant, Code: code + "-cat", Name: code}
 	_, err := s.db.NewInsert().Model(category).Exec(s.ctx)
 	s.Require().NoError(err, "insert category")
@@ -90,12 +92,12 @@ func (s *StorageTableTestSuite) deployTableFlow(tenant, code string, schema *app
 	_, err = s.db.NewInsert().Model(flow).Exec(s.ctx)
 	s.Require().NoError(err, "insert flow")
 
-	deploy := command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService())
+	deploy := command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser())
 	version, err := deploy.Handle(s.ctx, command.DeployFlowCmd{
 		FlowID:         flow.ID,
 		StorageMode:    approval.StorageTable,
 		FlowDefinition: simpleFlowDef(),
-		FormDefinition: schema,
+		FormSchema:     schema,
 		Caller:         approval.SystemCaller,
 	})
 	s.Require().NoError(err, "deploy flow")
@@ -289,14 +291,14 @@ func (s *StorageTableTestSuite) TestResubmitReplacesProjectionRow() {
 
 // TestStartInstanceProjectsDateField covers the date-field projection path: a
 // filled date round-trips, and an OPTIONAL empty-string date must not fail the
-// INSERT (dates project into TEXT, not a temporal column that rejects ”).
+// INSERT. The widgets override the parser's DATE inference with an explicit
+// "text" column type, pinning the lossless TEXT projection (a temporal column
+// would reject ” on strict dialects and scan back dialect-dependently).
 func (s *StorageTableTestSuite) TestStartInstanceProjectsDateField() {
-	schema := &approval.FormDefinition{
-		Fields: []approval.FormFieldDefinition{
-			{Key: "event_date", Kind: approval.FieldDate, Label: "Event Date"},
-			{Key: "opt_date", Kind: approval.FieldDate, Label: "Optional Date"},
-		},
-	}
+	schema := formEditorSchemaJSON(s.T(),
+		formEditorWidget{Type: "date", Key: "event_date", Label: "Event Date", ColumnType: "text"},
+		formEditorWidget{Type: "date", Key: "opt_date", Label: "Optional Date", ColumnType: "text"},
+	)
 	_, versionID := s.deployTableFlow("default", "storage-tbl-date", schema)
 
 	instance := s.startTableInstance("storage-tbl-date", map[string]any{
@@ -435,13 +437,13 @@ func (s *StorageTableTestSuite) TestApproveSyncsProjection() {
 }
 
 func (s *StorageTableTestSuite) TestDetailTableProjectsChildRows() {
-	schema := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
-		{Key: "reason", Kind: approval.FieldTextarea, Label: "Reason"},
-		{Key: "items", Kind: approval.FieldTable, Label: "Items", Columns: []approval.FormFieldDefinition{
-			{Key: "name", Kind: approval.FieldInput, Label: "Name"},
-			{Key: "qty", Kind: approval.FieldNumber, Label: "Qty"},
+	schema := formEditorSchemaJSON(s.T(),
+		formEditorWidget{Type: "textarea", Key: "reason", Label: "Reason"},
+		formEditorWidget{Type: "subform", Key: "items", Label: "Items", Columns: []formEditorWidget{
+			{Type: "textfield", Key: "name", Label: "Name"},
+			{Type: "number", Key: "qty", Label: "Qty"},
 		}},
-	}}
+	)
 	flowID, versionID := s.deployTableFlow("default", "storage-tbl-detail", schema)
 
 	var formTables []approval.FormTable

@@ -1,0 +1,7 @@
+[
+  { "key": "a", "kind": "input", "label": "A", "sortOrder": 0, "columnType": "text" },
+  { "key": "b", "kind": "input", "label": "B", "sortOrder": 1, "columnType": "text" },
+  { "key": "c", "kind": "number", "label": "C", "sortOrder": 2 },
+  { "key": "d", "kind": "date", "label": "D", "sortOrder": 3, "columnType": "date" },
+  { "key": "e", "kind": "input", "label": "E", "sortOrder": 4, "columnType": "text" }
+]

@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "Sec", "type": "section", "variant": "card", "title": "分组",
+          "children": [
+            { "id": "A", "type": "textfield", "key": "a", "label": "A" },
+            {
+              "id": "Tabs", "type": "tabs",
+              "tabs": [
+                {
+                  "id": "T1", "label": "页1",
+                  "children": [
+                    { "id": "B", "type": "textfield", "key": "b", "label": "B" },
+                    {
+                      "id": "Grid", "type": "grid", "columns": 2,
+                      "children": [
+                        { "id": "C", "type": "number", "key": "c", "label": "C" },
+                        { "id": "D", "type": "date", "key": "d", "label": "D" }
+                      ]
+                    }
+                  ]
+                },
+                { "id": "T2", "label": "页2", "children": [ { "id": "E", "type": "textfield", "key": "e", "label": "E" } ] }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

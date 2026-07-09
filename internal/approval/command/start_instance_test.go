@@ -131,13 +131,11 @@ func (s *StartInstanceTestSuite) TestStartFlowNotActive() {
 }
 
 func (s *StartInstanceTestSuite) TestStartWithFormData() {
-	setPublishedFormSchema(s.T(), s.ctx, s.db, s.fixture.VersionID, &approval.FormDefinition{
-		Fields: []approval.FormFieldDefinition{
-			{Key: "amount", Kind: approval.FieldNumber, Label: "Amount"},
-			{Key: "description", Kind: approval.FieldTextarea, Label: "Description"},
-		},
+	setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, []approval.FormFieldDefinition{
+		{Key: "amount", Kind: approval.FieldNumber, Label: "Amount"},
+		{Key: "description", Kind: approval.FieldTextarea, Label: "Description"},
 	})
-	defer setPublishedFormSchema(s.T(), s.ctx, s.db, s.fixture.VersionID, nil)
+	defer setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, nil)
 
 	applicant := approval.UserInfo{ID: "user-2", Name: "User Two"}
 	formData := map[string]any{
@@ -187,12 +185,10 @@ func (s *StartInstanceTestSuite) TestStartShouldRenderTemplateWithCompatibleKeys
 }
 
 func (s *StartInstanceTestSuite) TestStartShouldRejectInvalidFormDataBySchema() {
-	setPublishedFormSchema(s.T(), s.ctx, s.db, s.fixture.VersionID, &approval.FormDefinition{
-		Fields: []approval.FormFieldDefinition{
-			{Key: "reason", Kind: approval.FieldInput, Label: "Reason", IsRequired: true},
-		},
+	setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, []approval.FormFieldDefinition{
+		{Key: "reason", Kind: approval.FieldInput, Label: "Reason", IsRequired: true},
 	})
-	defer setPublishedFormSchema(s.T(), s.ctx, s.db, s.fixture.VersionID, nil)
+	defer setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, nil)
 
 	_, err := s.handler.Handle(s.ctx, command.StartInstanceCmd{
 		FlowCode:  "apv-cmd-test-flow",

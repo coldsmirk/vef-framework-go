@@ -1,0 +1,12 @@
+[
+  {
+    "key": "items", "kind": "table", "label": "明细", "isRequired": true,
+    "validation": { "minLength": 2, "maxLength": 5 },
+    "sortOrder": 0,
+    "columns": [
+      { "key": "desc", "kind": "input", "label": "说明", "validation": { "maxLength": 100 }, "sortOrder": 0, "columnType": "string" },
+      { "key": "price", "kind": "number", "label": "单价", "sortOrder": 1, "columnType": "decimal", "scale": 2 },
+      { "key": "unit", "kind": "select", "label": "单位", "options": [{ "label": "个", "value": "pcs" }], "sortOrder": 2, "columnType": "text" }
+    ]
+  }
+]

@@ -417,6 +417,29 @@ func ProvideApprovalAggregator(constructor any, paramTags ...string) fx.Option {
 	)
 }
 
+// ProvideApprovalFormSchemaParser overrides the framework's default
+// approval.FormSchemaParser — the built-in vef-framework-react form-editor
+// parser — with a host implementation. The replacement is wholesale, not
+// additive: every deployed form schema goes through it, so it must understand
+// every designer document the host submits. The constructor must return
+// approval.FormSchemaParser. Parsing runs once at flow deploy; versions
+// deployed earlier keep the form_fields they were persisted with.
+//
+// Example:
+//
+//	fx.New(
+//	    vef.Module,
+//	    vef.ProvideApprovalFormSchemaParser(newMyDesignerParser),
+//	)
+func ProvideApprovalFormSchemaParser(constructor any, paramTags ...string) fx.Option {
+	return fx.Decorate(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+		),
+	)
+}
+
 // SupplyURLKeyMapper replaces the framework-provided default
 // storage.URLKeyMapper (storage.ProxyURLKeyMapper) with a
 // business-specific implementation. The default mapper strips and

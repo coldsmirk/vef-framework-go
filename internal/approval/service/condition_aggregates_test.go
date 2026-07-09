@@ -11,13 +11,13 @@ import (
 func TestValidateConditionAggregates(t *testing.T) {
 	svc := NewFlowDefinitionService()
 
-	form := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+	form := []approval.FormFieldDefinition{
 		{Key: "amount", Kind: approval.FieldNumber},
 		{Key: "items", Kind: approval.FieldTable, Columns: []approval.FormFieldDefinition{
 			{Key: "qty", Kind: approval.FieldNumber},
 			{Key: "name", Kind: approval.FieldInput},
 		}},
-	}}
+	}
 
 	nodes := func(cond approval.Condition) map[string]approval.NodeData {
 		return map[string]approval.NodeData{

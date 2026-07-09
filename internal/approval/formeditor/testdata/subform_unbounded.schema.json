@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "Sub", "type": "subform", "variant": "stack", "key": "items", "label": "明细",
+          "template": [ { "id": "C1", "type": "textfield", "key": "desc", "label": "说明" } ]
+        }
+      ]
+    }
+  }
+}

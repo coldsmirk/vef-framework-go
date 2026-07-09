@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 
@@ -48,11 +49,16 @@ type instanceDetailBundle struct {
 	// urge activities, both in chronological order.
 	CCRecords   []approval.CCRecord
 	UrgeRecords []approval.UrgeRecord
-	// FormSchema is the form definition snapshot pinned to the instance's own
-	// FlowVersionID, so a detail view renders form data against the exact
-	// schema the instance was submitted under — not whatever version is
-	// published now. Nil when the flow has no form or the version is missing.
-	FormSchema *approval.FormDefinition
+	// FormSchema is the host-owned form designer document pinned to the
+	// instance's own FlowVersionID, passed through verbatim to the detail
+	// DTOs so a detail view renders form data against the exact schema the
+	// instance was submitted under — not whatever version is published now.
+	// Nil when the flow has no form or the version is missing.
+	FormSchema json.RawMessage
+	// FormFields is the flat field list derived from FormSchema at deploy —
+	// the framework-consumable counterpart (e.g. for viewer-permission
+	// resolution). Nil when the flow has no form or the version is missing.
+	FormFields []approval.FormFieldDefinition
 	// FlowSchema is the React Flow graph definition (node positions + edges)
 	// pinned to the same version, used to build the read-only progress graph.
 	// Nil when the version has no graph or is missing.
@@ -88,7 +94,7 @@ func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string)
 	var version approval.FlowVersion
 
 	version.ID = instance.FlowVersionID
-	if err := db.NewSelect().Model(&version).Select("form_schema", "flow_schema").WherePK().Scan(ctx); err != nil && !result.IsRecordNotFound(err) {
+	if err := db.NewSelect().Model(&version).Select("form_schema", "form_fields", "flow_schema").WherePK().Scan(ctx); err != nil && !result.IsRecordNotFound(err) {
 		return nil, fmt.Errorf("query flow version: %w", err)
 	}
 
@@ -159,6 +165,7 @@ func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string)
 		CCRecords:   ccRecords,
 		UrgeRecords: urgeRecords,
 		FormSchema:  version.FormSchema,
+		FormFields:  version.FormFields,
 		FlowSchema:  version.FlowSchema,
 	}, nil
 }

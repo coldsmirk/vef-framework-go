@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        { "id": "Sub-pc", "type": "subform", "variant": "stack", "key": "items", "label": "明细",
+          "template": [
+            { "id": "pc-a", "type": "textfield", "key": "a", "label": "a" },
+            { "id": "pc-b", "type": "textfield", "key": "b", "label": "b" }
+          ] }
+      ]
+    },
+    "mobile": {
+      "children": [
+        { "id": "Sub-mobile", "type": "subform", "variant": "stack", "key": "items", "label": "明细",
+          "template": [
+            { "id": "m-a", "type": "textfield", "key": "a", "label": "a" },
+            { "id": "m-b", "type": "textfield", "key": "b", "label": "b" },
+            { "id": "m-c", "type": "textfield", "key": "c", "label": "c" }
+          ] }
+      ]
+    }
+  }
+}

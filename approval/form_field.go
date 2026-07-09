@@ -1,10 +1,5 @@
 package approval
 
-// FormDefinition represents the form schema definition for a flow version.
-type FormDefinition struct {
-	Fields []FormFieldDefinition `json:"fields"`
-}
-
 // FormFieldDefinition represents a single form field.
 type FormFieldDefinition struct {
 	// Key is the unique identifier for this field (used in form data keys).

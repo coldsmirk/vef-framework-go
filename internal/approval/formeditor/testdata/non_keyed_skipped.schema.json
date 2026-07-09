@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        { "id": "F1", "type": "button", "label": "提交" },
+        { "id": "F2", "type": "divider", "title": "分组" },
+        { "id": "F3", "type": "alert-block", "message": "提示" },
+        { "id": "F4", "type": "paragraph", "text": "说明文本" },
+        { "id": "F5", "type": "textfield", "key": "name", "label": "姓名" }
+      ]
+    }
+  }
+}

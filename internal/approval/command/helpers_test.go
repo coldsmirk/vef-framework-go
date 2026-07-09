@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/formeditor"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
@@ -112,15 +114,76 @@ func (h *BusPublishingHandler[TCmd, TResult]) Handle(ctx context.Context, cmd TC
 }
 
 //nolint:revive // t testing.TB is conventionally the first parameter in test helpers
-func setPublishedFormSchema(t testing.TB, ctx context.Context, db orm.DB, versionID string, schema *approval.FormDefinition) {
+func setPublishedFormFields(t testing.TB, ctx context.Context, db orm.DB, versionID string, fields []approval.FormFieldDefinition) {
 	t.Helper()
 
 	_, err := db.NewUpdate().
 		Model((*approval.FlowVersion)(nil)).
-		Set("form_schema", schema).
+		Set("form_fields", fields).
 		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(versionID) }).
 		Exec(ctx)
-	require.NoError(t, err, "Should update published form schema")
+	require.NoError(t, err, "Should update published form fields")
+}
+
+// formEditorWidget is one simplified widget spec consumed by
+// formEditorSchemaJSON: the designer widget type, the bound key, and the few
+// value-bearing props the command tests exercise. Columns holds a subform's
+// template (Type == "subform").
+type formEditorWidget struct {
+	Type       string
+	Key        string
+	Label      string
+	ColumnType string
+	Columns    []formEditorWidget
+}
+
+// block renders one widget spec as a form-editor block node.
+func (w formEditorWidget) block(id string) map[string]any {
+	node := map[string]any{"id": id, "type": w.Type, "key": w.Key}
+
+	if w.Label != "" {
+		node["label"] = w.Label
+	}
+
+	if w.ColumnType != "" {
+		node["columnType"] = w.ColumnType
+	}
+
+	if w.Type == "subform" {
+		template := make([]map[string]any, len(w.Columns))
+		for i, column := range w.Columns {
+			template[i] = column.block(fmt.Sprintf("%s_C%d", id, i+1))
+		}
+
+		node["template"] = template
+	}
+
+	return node
+}
+
+// formEditorSchemaJSON assembles a minimal vef-framework-react form-editor
+// document — {"version":2,"presentations":{"pc":{"children":[...]}}} — from
+// simple widget specs, so deploy-pipeline tests feed the built-in parser the
+// rich schema shape instead of hand-building flat field lists.
+//
+//nolint:revive // t testing.TB is conventionally the first parameter in test helpers
+func formEditorSchemaJSON(t testing.TB, widgets ...formEditorWidget) json.RawMessage {
+	t.Helper()
+
+	children := make([]map[string]any, len(widgets))
+	for i, widget := range widgets {
+		children[i] = widget.block(fmt.Sprintf("W%d", i+1))
+	}
+
+	raw, err := json.Marshal(map[string]any{
+		"version": 2,
+		"presentations": map[string]any{
+			"pc": map[string]any{"children": children},
+		},
+	})
+	require.NoError(t, err, "Should marshal form-editor schema")
+
+	return raw
 }
 
 // LockDialect is the database dialect family used by table-lock test helpers.
@@ -399,7 +462,7 @@ func deployAndPublishFlow(t testing.TB, ctx context.Context, db orm.DB, code str
 	_, err = db.NewInsert().Model(flow).Exec(ctx)
 	require.NoError(t, err, "Should insert test flow")
 
-	deployHandler := command.NewDeployFlowHandler(db, service.NewFlowDefinitionService())
+	deployHandler := command.NewDeployFlowHandler(db, service.NewFlowDefinitionService(), formeditor.NewParser())
 	version, err := deployHandler.Handle(ctx, command.DeployFlowCmd{
 		FlowID:         flow.ID,
 		FlowDefinition: def,

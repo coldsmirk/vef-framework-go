@@ -180,10 +180,8 @@ func (s *ResubmitInstanceTestSuite) TestResubmitShouldBeConcurrencySafe() {
 }
 
 func (s *ResubmitInstanceTestSuite) TestResubmitShouldRejectInvalidFormDataBySchema() {
-	setPublishedFormSchema(s.T(), s.ctx, s.db, s.fixture.VersionID, &approval.FormDefinition{
-		Fields: []approval.FormFieldDefinition{
-			{Key: "amount", Kind: approval.FieldNumber, Label: "Amount", IsRequired: true},
-		},
+	setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, []approval.FormFieldDefinition{
+		{Key: "amount", Kind: approval.FieldNumber, Label: "Amount", IsRequired: true},
 	})
 
 	startNodeID := s.fixture.NodeIDs["start-1"]

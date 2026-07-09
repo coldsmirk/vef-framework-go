@@ -1,0 +1,4 @@
+[
+  { "key": "name", "kind": "input", "label": "PC 姓名", "sortOrder": 0, "columnType": "text" },
+  { "key": "mobileOnly", "kind": "input", "label": "仅移动端", "sortOrder": 1, "columnType": "text" }
+]

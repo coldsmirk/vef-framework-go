@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "dataSources": [
+    { "id": "DS1", "kind": "static", "name": "cities", "options": [{ "label": "北京", "value": "bj" }] },
+    { "id": "DS2", "kind": "remote", "name": "remote", "request": { "resource": "city", "action": "list" } }
+  ],
+  "presentations": {
+    "pc": {
+      "children": [
+        { "id": "F1", "type": "select", "key": "inline", "label": "内联", "dataSource": { "kind": "static", "options": [{ "label": "上海", "value": "sh" }] } },
+        { "id": "F2", "type": "select", "key": "refStatic", "label": "引用静态", "dataSource": { "kind": "ref", "dataSourceId": "DS1" } },
+        { "id": "F3", "type": "select", "key": "remoteInline", "label": "内联远程", "dataSource": { "kind": "remote", "request": { "resource": "city", "action": "list" } } },
+        { "id": "F4", "type": "select", "key": "refRemote", "label": "引用远程", "dataSource": { "kind": "ref", "dataSourceId": "DS2" } },
+        { "id": "F5", "type": "select", "key": "dangling", "label": "悬空引用", "dataSource": { "kind": "ref", "dataSourceId": "missing" } },
+        { "id": "F6", "type": "select", "key": "noSource", "label": "无来源" }
+      ]
+    }
+  }
+}

@@ -7,18 +7,18 @@ import (
 )
 
 // ValidateConditionAggregates cross-checks every aggregate field condition in
-// the parsed node data against the version's form schema: the subject must
-// name a table field and, for column-folding aggregates, the column must
+// the parsed node data against the version's parsed form fields: the subject
+// must name a table field and, for column-folding aggregates, the column must
 // exist in that table and be a number field. The structural per-condition
 // rules (known aggregate, operator whitelist, column presence contract) live
-// in validateCondition; this pass adds what only the form schema and the
+// in validateCondition; this pass adds what only the form fields and the
 // boot-registered aggregator set can answer, so it runs at deploy — the one
 // place they all meet.
 //
 // The column contract is derived from AggregateKind.FoldsColumn, so a new
 // aggregate kind extends this validation without modifying it.
-func (s *FlowDefinitionService) ValidateConditionAggregates(nodeData map[string]approval.NodeData, form *approval.FormDefinition) error {
-	tables := tableFieldIndex(form)
+func (s *FlowDefinitionService) ValidateConditionAggregates(nodeData map[string]approval.NodeData, fields []approval.FormFieldDefinition) error {
+	tables := tableFieldIndex(fields)
 
 	for nodeID, data := range nodeData {
 		condData, ok := data.(*approval.ConditionNodeData)
@@ -81,14 +81,10 @@ func (s *FlowDefinitionService) validateAggregateReference(
 }
 
 // tableFieldIndex maps each table field's key to its columns by key.
-func tableFieldIndex(form *approval.FormDefinition) map[string]map[string]approval.FormFieldDefinition {
-	if form == nil {
-		return nil
-	}
-
+func tableFieldIndex(fields []approval.FormFieldDefinition) map[string]map[string]approval.FormFieldDefinition {
 	tables := make(map[string]map[string]approval.FormFieldDefinition)
 
-	for _, field := range form.Fields {
+	for _, field := range fields {
 		if field.Kind != approval.FieldTable {
 			continue
 		}

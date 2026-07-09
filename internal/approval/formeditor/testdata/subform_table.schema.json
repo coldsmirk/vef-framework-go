@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "Sub", "type": "subform", "variant": "table", "key": "items", "label": "明细",
+          "minRows": 2, "maxRows": 5,
+          "template": [
+            { "id": "C1", "type": "textfield", "key": "desc", "label": "说明", "validate": { "maxLength": 100 } },
+            { "id": "C2", "type": "number", "key": "price", "label": "单价", "precision": 2 },
+            { "id": "C3", "type": "select", "key": "unit", "label": "单位", "dataSource": { "kind": "static", "options": [{ "label": "个", "value": "pcs" }] } }
+          ]
+        }
+      ]
+    }
+  }
+}

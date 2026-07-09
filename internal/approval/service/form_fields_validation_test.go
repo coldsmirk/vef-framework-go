@@ -8,21 +8,21 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
-func TestValidateFormDefinition(t *testing.T) {
+func TestValidateFormFields(t *testing.T) {
 	svc := NewFlowDefinitionService()
 
 	field := func(key string, kind approval.FieldKind) approval.FormFieldDefinition {
 		return approval.FormFieldDefinition{Key: key, Kind: kind, Label: key}
 	}
 
-	t.Run("AcceptsNilDefinition", func(t *testing.T) {
-		assert.NoError(t, svc.ValidateFormDefinition(nil), "A flow without a form schema is valid")
+	t.Run("AcceptsNilFields", func(t *testing.T) {
+		assert.NoError(t, svc.ValidateFormFields(nil), "A flow without a form is valid")
 	})
 
-	t.Run("AcceptsValidSchema", func(t *testing.T) {
+	t.Run("AcceptsValidFields", func(t *testing.T) {
 		minLen, maxLen := 1, 100
 		minVal, maxVal := 0.0, 10.0
-		def := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+		fields := []approval.FormFieldDefinition{
 			{
 				Key: "title", Kind: approval.FieldInput, Label: "标题",
 				Validation: &approval.ValidationRule{MinLength: &minLen, MaxLength: &maxLen, Pattern: `^\w+$`},
@@ -31,35 +31,34 @@ func TestValidateFormDefinition(t *testing.T) {
 				Key: "amount", Kind: approval.FieldNumber, Label: "金额",
 				Validation: &approval.ValidationRule{Min: &minVal, Max: &maxVal},
 			},
-		}}
+		}
 
-		assert.NoError(t, svc.ValidateFormDefinition(def), "A well-formed schema should pass")
+		assert.NoError(t, svc.ValidateFormFields(fields), "A well-formed field list should pass")
 	})
 
 	t.Run("RejectsEmptyKey", func(t *testing.T) {
-		def := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{field("", approval.FieldInput)}}
-		assert.ErrorIs(t, svc.ValidateFormDefinition(def), errFormFieldKeyEmpty, "A blank field key should be rejected")
+		fields := []approval.FormFieldDefinition{field("", approval.FieldInput)}
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errFormFieldKeyEmpty, "A blank field key should be rejected")
 	})
 
 	t.Run("RejectsDuplicateKey", func(t *testing.T) {
-		def := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+		fields := []approval.FormFieldDefinition{
 			field("amount", approval.FieldNumber),
 			field("amount", approval.FieldInput),
-		}}
-		assert.ErrorIs(t, svc.ValidateFormDefinition(def), errDuplicateFormFieldKey, "Duplicate field keys should be rejected")
+		}
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errDuplicateFormFieldKey, "Duplicate field keys should be rejected")
 	})
 
 	t.Run("RejectsUnknownKind", func(t *testing.T) {
-		def := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{field("x", approval.FieldKind("matrix"))}}
-		assert.ErrorIs(t, svc.ValidateFormDefinition(def), errInvalidFormFieldKind, "An unknown field kind should be rejected")
+		fields := []approval.FormFieldDefinition{field("x", approval.FieldKind("matrix"))}
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errInvalidFormFieldKind, "An unknown field kind should be rejected")
 	})
 
 	t.Run("RejectsUncompilablePattern", func(t *testing.T) {
 		f := field("title", approval.FieldInput)
 		f.Validation = &approval.ValidationRule{Pattern: "(unclosed"}
-		def := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{f}}
 
-		assert.ErrorIs(t, svc.ValidateFormDefinition(def), errInvalidFormPattern,
+		assert.ErrorIs(t, svc.ValidateFormFields([]approval.FormFieldDefinition{f}), errInvalidFormPattern,
 			"A pattern that does not compile must fail at deploy, not at submission")
 	})
 
@@ -67,63 +66,63 @@ func TestValidateFormDefinition(t *testing.T) {
 		minLen, maxLen := 10, 2
 		f := field("title", approval.FieldInput)
 		f.Validation = &approval.ValidationRule{MinLength: &minLen, MaxLength: &maxLen}
-		def := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{f}}
 
-		assert.ErrorIs(t, svc.ValidateFormDefinition(def), errInvalidFormLengthRange, "minLength > maxLength is unsatisfiable")
+		assert.ErrorIs(t, svc.ValidateFormFields([]approval.FormFieldDefinition{f}), errInvalidFormLengthRange,
+			"minLength > maxLength is unsatisfiable")
 	})
 
 	t.Run("RejectsInvertedValueBounds", func(t *testing.T) {
 		minVal, maxVal := 10.0, 2.0
 		f := field("amount", approval.FieldNumber)
 		f.Validation = &approval.ValidationRule{Min: &minVal, Max: &maxVal}
-		def := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{f}}
 
-		assert.ErrorIs(t, svc.ValidateFormDefinition(def), errInvalidFormValueRange, "min > max is unsatisfiable")
+		assert.ErrorIs(t, svc.ValidateFormFields([]approval.FormFieldDefinition{f}), errInvalidFormValueRange,
+			"min > max is unsatisfiable")
 	})
 }
 
-func TestValidateFormDefinitionTableColumns(t *testing.T) {
+func TestValidateFormFieldsTableColumns(t *testing.T) {
 	svc := new(FlowDefinitionService)
 
-	table := func(columns ...approval.FormFieldDefinition) *approval.FormDefinition {
-		return &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+	table := func(columns ...approval.FormFieldDefinition) []approval.FormFieldDefinition {
+		return []approval.FormFieldDefinition{
 			{Key: "items", Kind: approval.FieldTable, Label: "Items", Columns: columns},
-		}}
+		}
 	}
 
 	t.Run("AcceptsValidTable", func(t *testing.T) {
-		def := table(
+		fields := table(
 			approval.FormFieldDefinition{Key: "name", Kind: approval.FieldInput},
 			approval.FormFieldDefinition{Key: "qty", Kind: approval.FieldNumber},
 		)
-		assert.NoError(t, svc.ValidateFormDefinition(def), "a table with valid columns should deploy")
+		assert.NoError(t, svc.ValidateFormFields(fields), "a table with valid columns should deploy")
 	})
 
 	t.Run("RejectsTableWithoutColumns", func(t *testing.T) {
-		assert.ErrorIs(t, svc.ValidateFormDefinition(table()), errTableColumnsRequired,
+		assert.ErrorIs(t, svc.ValidateFormFields(table()), errTableColumnsRequired,
 			"a table field with no columns has no row shape and must be rejected")
 	})
 
 	t.Run("RejectsNestedTable", func(t *testing.T) {
-		def := table(approval.FormFieldDefinition{Key: "sub", Kind: approval.FieldTable})
-		assert.ErrorIs(t, svc.ValidateFormDefinition(def), errNestedTableColumn,
+		fields := table(approval.FormFieldDefinition{Key: "sub", Kind: approval.FieldTable})
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errNestedTableColumn,
 			"detail tables are single-level by design")
 	})
 
 	t.Run("RejectsDuplicateColumnKeys", func(t *testing.T) {
-		def := table(
+		fields := table(
 			approval.FormFieldDefinition{Key: "name", Kind: approval.FieldInput},
 			approval.FormFieldDefinition{Key: "name", Kind: approval.FieldInput},
 		)
-		assert.ErrorIs(t, svc.ValidateFormDefinition(def), errDuplicateFormFieldKey,
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errDuplicateFormFieldKey,
 			"column keys must be unique within their table")
 	})
 
 	t.Run("RejectsColumnsOnScalarField", func(t *testing.T) {
-		def := &approval.FormDefinition{Fields: []approval.FormFieldDefinition{
+		fields := []approval.FormFieldDefinition{
 			{Key: "reason", Kind: approval.FieldInput, Columns: []approval.FormFieldDefinition{{Key: "x", Kind: approval.FieldInput}}},
-		}}
-		assert.ErrorIs(t, svc.ValidateFormDefinition(def), errColumnsOnScalarField,
+		}
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errColumnsOnScalarField,
 			"columns on a scalar field hide a designer bug and must be rejected")
 	})
 }

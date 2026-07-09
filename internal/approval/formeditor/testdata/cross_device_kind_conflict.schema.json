@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": { "children": [ { "id": "P1", "type": "textfield", "key": "amount", "label": "文本" } ] },
+    "mobile": { "children": [ { "id": "M1", "type": "number", "key": "amount", "label": "数字" } ] }
+  }
+}

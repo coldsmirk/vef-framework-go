@@ -1,0 +1,6 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": { "children": [ { "id": "F1", "type": "number", "key": "amount", "label": "金额", "columnType": "decimal" } ] }
+  }
+}

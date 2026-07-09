@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/stretchr/testify/suite"
 
@@ -27,6 +28,7 @@ type GetAdminInstanceDetailTestSuite struct {
 	handler *query.GetAdminInstanceDetailHandler
 
 	instanceID string
+	formSchema json.RawMessage
 }
 
 func (s *GetAdminInstanceDetailTestSuite) SetupSuite() {
@@ -34,14 +36,12 @@ func (s *GetAdminInstanceDetailTestSuite) SetupSuite() {
 
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "adid", 0)
 
-	// Pin form + flow schema on the instance's version so the detail can project
-	// the form metadata and a React Flow–ready graph (positions + edges). The
-	// graph node ids match the flow-node Keys created below.
-	formSchema := &approval.FormDefinition{
-		Fields: []approval.FormFieldDefinition{
-			{Key: "reason", Kind: approval.FieldTextarea, Label: "Reason", SortOrder: 1},
-		},
-	}
+	// Pin form + flow schema on the instance's version: the host designer
+	// document must pass through verbatim, and the flow schema feeds a React
+	// Flow–ready graph (positions + edges). The graph node ids match the
+	// flow-node Keys created below.
+	s.formSchema = json.RawMessage(`{"version":2,"presentations":{"pc":{"children":[` +
+		`{"id":"F1","type":"textarea","key":"reason","label":"Reason"}]}}}`)
 	flowSchema := &approval.FlowDefinition{
 		Nodes: []approval.NodeDefinition{
 			{ID: "start-1", Kind: approval.NodeStart, Position: approval.Position{X: 0, Y: 0}},
@@ -54,7 +54,7 @@ func (s *GetAdminInstanceDetailTestSuite) SetupSuite() {
 		},
 	}
 	_, err := s.db.NewUpdate().Model((*approval.FlowVersion)(nil)).
-		Set("form_schema", formSchema).
+		Set("form_schema", s.formSchema).
 		Set("flow_schema", flowSchema).
 		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(fix.VersionID) }).
 		Exec(s.ctx)
@@ -153,9 +153,10 @@ func (s *GetAdminInstanceDetailTestSuite) TestGetDetailSuccess() {
 	s.Require().Len(approvalNode.Data.Participants, 1, "Approval node should list its assignee")
 	s.Assert().Equal("user-2", approvalNode.Data.Participants[0].User.ID, "Participant should be the node's assignee")
 
-	// Form metadata and the applicant snapshot must ship with the admin detail too.
-	s.Require().NotNil(detail.FormSchema, "Detail should carry the version's form schema")
-	s.Assert().Len(detail.FormSchema.Fields, 1, "Form schema should carry its field")
+	// The verbatim designer document and the applicant snapshot must ship with
+	// the admin detail too.
+	s.Require().NotEmpty(detail.FormSchema, "Detail should carry the version's form schema")
+	s.Assert().JSONEq(string(s.formSchema), string(detail.FormSchema), "Form schema should pass through verbatim")
 	s.Assert().Equal("user-1", detail.Instance.Applicant.ID, "Applicant snapshot should carry the id")
 	s.Require().NotNil(detail.Instance.Applicant.DepartmentName, "Applicant snapshot should carry the department")
 	s.Assert().Equal("Finance", *detail.Instance.Applicant.DepartmentName, "Applicant department should pass through")

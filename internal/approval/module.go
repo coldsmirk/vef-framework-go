@@ -13,6 +13,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/formeditor"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/migration"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/resource"
@@ -25,6 +26,10 @@ import (
 // Module is the approval workflow engine module.
 var Module = fx.Module(
 	"vef:approval",
+
+	// The built-in form-schema parser (vef-framework-react form-editor);
+	// hosts replace it wholesale with vef.ProvideApprovalFormSchemaParser.
+	fx.Provide(formeditor.NewParser),
 
 	auth.Module,
 	strategy.Module,

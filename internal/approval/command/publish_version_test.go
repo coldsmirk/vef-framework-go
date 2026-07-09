@@ -7,6 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/formeditor"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
@@ -61,7 +62,7 @@ func (s *PublishVersionTestSuite) SetupSuite() {
 
 	s.flowID = flow.ID
 	s.bus = eventtest.NewFakeBus()
-	s.deployHandler = wrapWithBus(s.bus, command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService()))
+	s.deployHandler = wrapWithBus(s.bus, command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser()))
 	s.publishHandler = wrapWithBus(s.bus, command.NewPublishVersionHandler(s.db, nil, nil))
 }
 

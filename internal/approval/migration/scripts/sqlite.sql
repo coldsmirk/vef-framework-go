@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS apv_flow_version (
     storage_mode VARCHAR(8) NOT NULL DEFAULT 'json',
     flow_schema TEXT,
     form_schema TEXT,
+    form_fields TEXT,
     -- Publish info
     published_at TIMESTAMP,
     published_by VARCHAR(32),

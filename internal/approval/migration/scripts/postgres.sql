@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS apv_flow_version (
     storage_mode VARCHAR(8) NOT NULL DEFAULT 'json',
     flow_schema JSONB,
     form_schema JSONB,
+    form_fields JSONB,
     -- Publish info
     published_at TIMESTAMP,
     published_by VARCHAR(32),
@@ -153,7 +154,8 @@ COMMENT ON COLUMN apv_flow_version.status IS 'Status';
 COMMENT ON COLUMN apv_flow_version.description IS 'Description';
 COMMENT ON COLUMN apv_flow_version.storage_mode IS 'Storage Mode';
 COMMENT ON COLUMN apv_flow_version.flow_schema IS 'Flow Schema';
-COMMENT ON COLUMN apv_flow_version.form_schema IS 'Form Schema';
+COMMENT ON COLUMN apv_flow_version.form_schema IS 'Form Schema (host designer document, verbatim)';
+COMMENT ON COLUMN apv_flow_version.form_fields IS 'Form Fields (derived at deploy)';
 COMMENT ON COLUMN apv_flow_version.published_at IS 'Published';
 COMMENT ON COLUMN apv_flow_version.published_by IS 'Publisher';
 

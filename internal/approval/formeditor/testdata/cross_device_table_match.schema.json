@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        { "id": "Sub-pc", "type": "subform", "variant": "stack", "key": "items", "label": "明细",
+          "template": [ { "id": "pc-C0", "type": "number", "key": "qty", "label": "qty" } ] }
+      ]
+    },
+    "mobile": {
+      "children": [
+        { "id": "Sub-mobile", "type": "subform", "variant": "stack", "key": "items", "label": "明细",
+          "template": [ { "id": "mobile-C0", "type": "number", "key": "qty", "label": "qty" } ] }
+      ]
+    }
+  }
+}

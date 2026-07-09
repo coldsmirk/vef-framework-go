@@ -3,6 +3,7 @@ package command
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -16,7 +17,9 @@ import (
 	"github.com/coldsmirk/vef-framework-go/result"
 )
 
-// DeployFlowCmd deploys a flow definition to an existing flow.
+// DeployFlowCmd deploys a flow definition to an existing flow. FormSchema is
+// the host-owned form designer document, persisted verbatim; the handler's
+// FormSchemaParser derives the flat field list the framework consumes.
 type DeployFlowCmd struct {
 	cqrs.BaseCommand
 
@@ -24,7 +27,7 @@ type DeployFlowCmd struct {
 	Description    *string
 	StorageMode    approval.StorageMode
 	FlowDefinition approval.FlowDefinition
-	FormDefinition *approval.FormDefinition
+	FormSchema     json.RawMessage
 	Caller         approval.CallerContext
 }
 
@@ -42,11 +45,12 @@ type ccProvider interface {
 type DeployFlowHandler struct {
 	db         orm.DB
 	flowDefSvc *service.FlowDefinitionService
+	formParser approval.FormSchemaParser
 }
 
 // NewDeployFlowHandler creates a new DeployFlowHandler.
-func NewDeployFlowHandler(db orm.DB, flowDefSvc *service.FlowDefinitionService) *DeployFlowHandler {
-	return &DeployFlowHandler{db: db, flowDefSvc: flowDefSvc}
+func NewDeployFlowHandler(db orm.DB, flowDefSvc *service.FlowDefinitionService, formParser approval.FormSchemaParser) *DeployFlowHandler {
+	return &DeployFlowHandler{db: db, flowDefSvc: flowDefSvc, formParser: formParser}
 }
 
 func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*approval.FlowVersion, error) {
@@ -55,13 +59,23 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 		return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFlowDesign, err)
 	}
 
-	if err := h.flowDefSvc.ValidateFormDefinition(cmd.FormDefinition); err != nil {
+	// Derive the flat field list from the host-owned designer document; the
+	// schema itself stays opaque and is persisted verbatim below. The plain
+	// context wrap keeps the parser's outward result.Error first in the chain,
+	// so the API caller sees its specific message (the built-in parser's
+	// errors already carry shared.ErrCodeInvalidFormDesign).
+	fields, err := h.formParser.ParseFormFields(cmd.FormSchema)
+	if err != nil {
+		return nil, fmt.Errorf("parse form schema: %w", err)
+	}
+
+	if err := h.flowDefSvc.ValidateFormFields(fields); err != nil {
 		return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFormDesign, err)
 	}
 
 	// Aggregate conditions reference form fields, so they can only be fully
-	// validated where the flow and form schemas meet.
-	if err := h.flowDefSvc.ValidateConditionAggregates(parsedNodeData, cmd.FormDefinition); err != nil {
+	// validated where the flow definition and form fields meet.
+	if err := h.flowDefSvc.ValidateConditionAggregates(parsedNodeData, fields); err != nil {
 		return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFlowDesign, err)
 	}
 
@@ -77,7 +91,7 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 	// — surfaced as a form-design error the admin sees on save — instead of
 	// deferring the failure to publish, where it would surface opaquely.
 	if storageMode == approval.StorageTable {
-		if err := storage.ValidateTableFormSchema(cmd.FormDefinition); err != nil {
+		if err := storage.ValidateTableFormSchema(fields); err != nil {
 			return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFormDesign, err)
 		}
 	}
@@ -110,7 +124,8 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 		Description: cmd.Description,
 		StorageMode: storageMode,
 		FlowSchema:  &cmd.FlowDefinition,
-		FormSchema:  cmd.FormDefinition,
+		FormSchema:  cmd.FormSchema,
+		FormFields:  fields,
 	}
 	if _, err := db.NewInsert().
 		Model(&version).

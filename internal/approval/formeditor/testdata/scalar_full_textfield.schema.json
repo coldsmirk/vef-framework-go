@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "F1",
+          "type": "textfield",
+          "key": "name",
+          "label": "姓名",
+          "placeholder": "请输入姓名",
+          "validate": {
+            "required": true,
+            "minLength": 2,
+            "maxLength": 50,
+            "pattern": "^\\S+$",
+            "message": "格式不正确"
+          }
+        }
+      ]
+    }
+  }
+}

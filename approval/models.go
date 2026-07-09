@@ -1,6 +1,8 @@
 package approval
 
 import (
+	"encoding/json"
+
 	"github.com/coldsmirk/vef-framework-go/decimal"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -79,9 +81,14 @@ type FlowVersion struct {
 	Description *string         `json:"description" bun:"description,nullzero"`
 	StorageMode StorageMode     `json:"storageMode" bun:"storage_mode"`
 	FlowSchema  *FlowDefinition `json:"flowSchema" bun:"flow_schema,type:jsonb,nullzero"`
-	FormSchema  *FormDefinition `json:"formSchema" bun:"form_schema,type:jsonb,nullzero"`
-	PublishedAt *timex.DateTime `json:"publishedAt" bun:"published_at,nullzero"`
-	PublishedBy *string         `json:"publishedBy" bun:"published_by,nullzero"`
+	// FormSchema is the host-owned form designer document, stored and returned
+	// verbatim; the framework never interprets it (see FormSchemaParser).
+	FormSchema json.RawMessage `json:"formSchema" bun:"form_schema,type:jsonb,nullzero"`
+	// FormFields is the flat field list derived from FormSchema at deploy —
+	// the only form shape the framework itself consumes.
+	FormFields  []FormFieldDefinition `json:"formFields" bun:"form_fields,type:jsonb,nullzero"`
+	PublishedAt *timex.DateTime       `json:"publishedAt" bun:"published_at,nullzero"`
+	PublishedBy *string               `json:"publishedBy" bun:"published_by,nullzero"`
 }
 
 // FormTable records the dedicated physical table generated for a published

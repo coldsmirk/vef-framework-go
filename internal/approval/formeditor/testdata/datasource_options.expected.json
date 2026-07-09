@@ -1,0 +1,8 @@
+[
+  { "key": "inline", "kind": "select", "label": "内联", "options": [{ "label": "上海", "value": "sh" }], "sortOrder": 0, "columnType": "text" },
+  { "key": "refStatic", "kind": "select", "label": "引用静态", "options": [{ "label": "北京", "value": "bj" }], "sortOrder": 1, "columnType": "text" },
+  { "key": "remoteInline", "kind": "select", "label": "内联远程", "sortOrder": 2, "columnType": "text" },
+  { "key": "refRemote", "kind": "select", "label": "引用远程", "sortOrder": 3, "columnType": "text" },
+  { "key": "dangling", "kind": "select", "label": "悬空引用", "sortOrder": 4, "columnType": "text" },
+  { "key": "noSource", "kind": "select", "label": "无来源", "sortOrder": 5, "columnType": "text" }
+]

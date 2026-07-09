@@ -174,5 +174,12 @@
   "approval_form_field_must_be_row_object": "Field {{.field}} row {{.row}} must be an object",
   "approval_form_field_min_rows": "Field {{.field}} requires at least {{.min}} rows",
   "approval_form_field_max_rows": "Field {{.field}} allows at most {{.max}} rows",
-  "approval_form_field_table_cell": "Field {{.field}} row {{.row}}: {{.message}}"
+  "approval_form_field_table_cell": "Field {{.field}} row {{.row}}: {{.message}}",
+  "approval_form_unmappable_field_type": "Field {{.field}} uses widget type {{.type}}, which cannot be mapped to an approval form field (its value shape is incompatible with server-side validation)",
+  "approval_form_unknown_field_type": "Field {{.field}} uses an unregistered widget type {{.type}} and cannot be projected",
+  "approval_form_nested_subform": "Detail table template nests a subform {{.field}}; approval detail tables are single-level only",
+  "approval_form_table_columns_empty": "Detail table {{.field}} has no projectable columns",
+  "approval_form_cross_device_kind_mismatch": "Field {{.field}} maps to different kinds on PC and mobile ({{.pc}} / {{.mobile}}); both devices must submit the same value shape",
+  "approval_form_cross_device_table_mismatch": "Detail table {{.field}} has different columns on PC and mobile; both devices must submit the same row shape",
+  "approval_form_schema_malformed": "Form schema is not valid JSON: {{.error}}"
 }

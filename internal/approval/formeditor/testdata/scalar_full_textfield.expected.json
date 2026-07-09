@@ -1,0 +1,12 @@
+[
+  {
+    "key": "name",
+    "kind": "input",
+    "label": "姓名",
+    "placeholder": "请输入姓名",
+    "isRequired": true,
+    "validation": { "minLength": 2, "maxLength": 50, "pattern": "^\\S+$", "message": "格式不正确" },
+    "sortOrder": 0,
+    "columnType": "string"
+  }
+]

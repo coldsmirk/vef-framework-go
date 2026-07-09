@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        { "id": "F1", "type": "number", "key": "score", "label": "分值", "precision": 2, "columnType": "integer" }
+      ]
+    }
+  }
+}

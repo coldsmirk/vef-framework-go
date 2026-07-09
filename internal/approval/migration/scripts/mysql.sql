@@ -90,7 +90,8 @@ CREATE TABLE IF NOT EXISTS apv_flow_version (
     -- Design data
     storage_mode VARCHAR(8) NOT NULL DEFAULT 'json' COMMENT 'Storage Mode',
     flow_schema JSON COMMENT 'Flow Schema',
-    form_schema JSON COMMENT 'Form Schema',
+    form_schema JSON COMMENT 'Form Schema (host designer document, verbatim)',
+    form_fields JSON COMMENT 'Form Fields (derived at deploy)',
     -- Publish info
     published_at DATETIME NULL COMMENT 'Published',
     published_by VARCHAR(32) COMMENT 'Publisher',

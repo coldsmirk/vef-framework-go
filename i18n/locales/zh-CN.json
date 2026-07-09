@@ -174,5 +174,12 @@
   "approval_form_field_must_be_row_object": "字段 {{.field}} 第 {{.row}} 行必须是对象",
   "approval_form_field_min_rows": "字段 {{.field}} 至少需要 {{.min}} 行",
   "approval_form_field_max_rows": "字段 {{.field}} 最多允许 {{.max}} 行",
-  "approval_form_field_table_cell": "字段 {{.field}} 第 {{.row}} 行：{{.message}}"
+  "approval_form_field_table_cell": "字段 {{.field}} 第 {{.row}} 行：{{.message}}",
+  "approval_form_unmappable_field_type": "字段 {{.field}} 的控件类型 {{.type}} 无法映射到审批表单（值形状与服务端校验不兼容）",
+  "approval_form_unknown_field_type": "字段 {{.field}} 的控件类型 {{.type}} 未注册，无法投影",
+  "approval_form_nested_subform": "明细表模板中嵌套了子表 {{.field}}，审批明细表仅支持单级",
+  "approval_form_table_columns_empty": "明细表 {{.field}} 没有可投影的列",
+  "approval_form_cross_device_kind_mismatch": "字段 {{.field}} 在 PC 与移动端映射到不同的类型（{{.pc}} / {{.mobile}}），两端提交的值形状必须一致",
+  "approval_form_cross_device_table_mismatch": "明细表 {{.field}} 在 PC 与移动端的列结构不一致，两端提交的行结构必须一致",
+  "approval_form_schema_malformed": "表单 schema 不是合法的 JSON：{{.error}}"
 }

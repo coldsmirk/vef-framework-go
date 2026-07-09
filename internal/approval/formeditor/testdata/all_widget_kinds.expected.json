@@ -1,0 +1,9 @@
+[
+  { "key": "plain", "kind": "input", "label": "文本", "sortOrder": 0, "columnType": "text" },
+  { "key": "script", "kind": "textarea", "label": "脚本", "sortOrder": 1, "columnType": "text" },
+  { "key": "remark", "kind": "textarea", "label": "备注", "sortOrder": 2, "columnType": "text" },
+  { "key": "grade", "kind": "select", "label": "等级", "options": [{ "label": "甲", "value": 1 }], "sortOrder": 3, "columnType": "text" },
+  { "key": "day", "kind": "date", "label": "日期", "sortOrder": 4, "columnType": "date" },
+  { "key": "moment", "kind": "date", "label": "时刻", "sortOrder": 5, "columnType": "datetime" },
+  { "key": "tags", "kind": "select", "label": "标签", "options": [{ "label": "A", "value": "a" }], "sortOrder": 6, "columnType": "json" }
+]

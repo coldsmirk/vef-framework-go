@@ -71,7 +71,7 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 	version.ID = instance.FlowVersionID
 	if err := db.NewSelect().
 		Model(&version).
-		Select("form_schema", "storage_mode").
+		Select("form_fields", "storage_mode").
 		WherePK().
 		Scan(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("load flow version: %w", err)
@@ -85,7 +85,7 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 		maps.Copy(instance.FormData, cmd.FormData)
 	}
 
-	if err := h.validationSvc.ValidateFormData(version.FormSchema, instance.FormData); err != nil {
+	if err := h.validationSvc.ValidateFormData(version.FormFields, instance.FormData); err != nil {
 		return cqrs.Unit{}, err
 	}
 

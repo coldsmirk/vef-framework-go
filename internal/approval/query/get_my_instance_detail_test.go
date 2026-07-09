@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/stretchr/testify/suite"
 
@@ -30,6 +31,7 @@ type GetMyInstanceDetailTestSuite struct {
 
 	instanceID string
 	nodeID     string
+	formSchema json.RawMessage
 }
 
 func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
@@ -38,16 +40,13 @@ func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "mid-flow", 1)
 	s.nodeID = fix.NodeIDs[0]
 
-	// Pin a form schema on the instance's version so the detail can project the
-	// metadata the UI needs to render form data (labels, field kinds, order).
-	formSchema := &approval.FormDefinition{
-		Fields: []approval.FormFieldDefinition{
-			{Key: "reason", Kind: approval.FieldTextarea, Label: "Reason", IsRequired: true, SortOrder: 1},
-			{Key: "days", Kind: approval.FieldNumber, Label: "Days", SortOrder: 2},
-		},
-	}
+	// Pin a host form-designer document on the instance's version; the detail
+	// must return it verbatim — the framework never interprets it.
+	s.formSchema = json.RawMessage(`{"version":2,"presentations":{"pc":{"children":[` +
+		`{"id":"F1","type":"textarea","key":"reason","label":"Reason"},` +
+		`{"id":"F2","type":"number","key":"days","label":"Days"}]}}}`)
 	_, err := s.db.NewUpdate().Model((*approval.FlowVersion)(nil)).
-		Set("form_schema", formSchema).
+		Set("form_schema", s.formSchema).
 		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(fix.VersionID) }).
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should set form schema on version")
@@ -144,9 +143,10 @@ func (s *GetMyInstanceDetailTestSuite) TestApplicantAccess() {
 	s.Assert().Contains(detail.AvailableActions, "withdraw", "Applicant should be able to withdraw")
 	s.Assert().Contains(detail.AvailableActions, "urge", "Applicant should be able to urge when the instance has pending tasks")
 
-	// Form metadata must ship with the detail so the UI can render form data.
-	s.Require().NotNil(detail.FormSchema, "Detail should carry the version's form schema")
-	s.Assert().Len(detail.FormSchema.Fields, 2, "Form schema should carry both fields")
+	// The designer document must ship with the detail verbatim so the UI can
+	// render form data against the exact schema the instance was submitted under.
+	s.Require().NotEmpty(detail.FormSchema, "Detail should carry the version's form schema")
+	s.Assert().JSONEq(string(s.formSchema), string(detail.FormSchema), "Form schema should pass through verbatim")
 	s.Assert().Equal("user-a", detail.Instance.Applicant.ID, "Applicant snapshot should carry the id")
 	s.Require().NotNil(detail.Instance.Applicant.DepartmentName, "Applicant snapshot should carry the department")
 	s.Assert().Equal("Engineering", *detail.Instance.Applicant.DepartmentName, "Applicant department should pass through")

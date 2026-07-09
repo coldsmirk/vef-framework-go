@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "dataSources": [ { "id": "DS1", "kind": "static", "name": "units", "options": [{ "label": "个", "value": "pcs" }] } ],
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "Sub", "type": "subform", "variant": "stack", "key": "items", "label": "明细",
+          "template": [ { "id": "C1", "type": "select", "key": "unit", "label": "单位", "dataSource": { "kind": "ref", "dataSourceId": "DS1" } } ]
+        }
+      ]
+    }
+  }
+}

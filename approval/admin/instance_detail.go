@@ -1,19 +1,21 @@
 package admin
 
 import (
+	"encoding/json"
+
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 // InstanceDetail represents the full admin detail view of an approval
 // instance. Each top-level field is one renderable concern: the instance's
-// runtime state, the version-pinned form definition (the counterpart of
-// FlowGraph, which pins the flow definition), the node-by-node timeline, and
-// the progress-annotated flow graph. The raw audit trail stays available
-// through the paginated admin action-log query.
+// runtime state, the version-pinned host form-designer document returned
+// verbatim (the counterpart of FlowGraph, which pins the flow definition),
+// the node-by-node timeline, and the progress-annotated flow graph. The raw
+// audit trail stays available through the paginated admin action-log query.
 type InstanceDetail struct {
 	Instance   InstanceDetailInfo         `json:"instance"`
-	FormSchema *approval.FormDefinition   `json:"formSchema,omitempty"`
+	FormSchema json.RawMessage            `json:"formSchema,omitempty"`
 	Timeline   []approval.TimelineEntry   `json:"timeline"`
 	FlowGraph  approval.InstanceFlowGraph `json:"flowGraph"`
 }

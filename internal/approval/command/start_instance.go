@@ -135,7 +135,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		return nil, fmt.Errorf("load published version: %w", err)
 	}
 
-	if err := h.validationSvc.ValidateFormData(version.FormSchema, cmd.FormData); err != nil {
+	if err := h.validationSvc.ValidateFormData(version.FormFields, cmd.FormData); err != nil {
 		return nil, err
 	}
 

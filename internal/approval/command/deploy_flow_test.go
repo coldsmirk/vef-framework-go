@@ -7,6 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/formeditor"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -56,7 +57,7 @@ func (s *DeployFlowTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Should insert test flow")
 
 	s.flowID = flow.ID
-	s.handler = command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService())
+	s.handler = command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser())
 }
 
 func (s *DeployFlowTestSuite) TearDownTest() {
@@ -290,6 +291,61 @@ func (s *DeployFlowTestSuite) TestDeployEdgesWithNodeKeys() {
 	s.Assert().Equal("end-1", edges[0].TargetNodeKey, "Should set TargetNodeKey")
 	s.Assert().NotEmpty(edges[0].SourceNodeID, "Should set SourceNodeID")
 	s.Assert().NotEmpty(edges[0].TargetNodeID, "Should set TargetNodeID")
+}
+
+func (s *DeployFlowTestSuite) TestDeployPersistsFormSchemaVerbatimAndDerivesFields() {
+	schema := formEditorSchemaJSON(s.T(),
+		formEditorWidget{Type: "textfield", Key: "reason", Label: "Reason"},
+		formEditorWidget{Type: "number", Key: "amount", Label: "Amount"},
+	)
+
+	result, err := s.handler.Handle(s.ctx, command.DeployFlowCmd{
+		FlowID:         s.flowID,
+		FlowDefinition: simpleFlowDef(),
+		FormSchema:     schema,
+		Caller:         approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Should deploy flow with a form schema")
+
+	var version approval.FlowVersion
+
+	version.ID = result.ID
+	err = s.db.NewSelect().Model(&version).WherePK().Scan(s.ctx)
+	s.Require().NoError(err, "Should find version in DB")
+
+	// The designer document is opaque to the framework and must round-trip
+	// verbatim (JSON-semantically — the jsonb column normalizes whitespace).
+	s.Assert().JSONEq(string(schema), string(version.FormSchema), "form_schema should persist the designer document verbatim")
+
+	// form_fields carries the parser-derived flat list the framework consumes.
+	s.Require().Len(version.FormFields, 2, "form_fields should hold both derived fields")
+	s.Assert().Equal("reason", version.FormFields[0].Key, "First derived field should keep its key")
+	s.Assert().Equal(approval.FieldInput, version.FormFields[0].Kind, "textfield should project to the input kind")
+	s.Assert().Equal("Reason", version.FormFields[0].Label, "Derived field should keep its label")
+	s.Assert().Equal("amount", version.FormFields[1].Key, "Second derived field should keep its key")
+	s.Assert().Equal(approval.FieldNumber, version.FormFields[1].Kind, "number should project to the number kind")
+}
+
+func (s *DeployFlowTestSuite) TestDeployParserErrorAbortsDeploy() {
+	// switch binds a boolean the approval value contract cannot carry, so the
+	// built-in parser rejects it with an outward invalid-form-design error.
+	schema := formEditorSchemaJSON(s.T(), formEditorWidget{Type: "switch", Key: "toggle"})
+
+	_, err := s.handler.Handle(s.ctx, command.DeployFlowCmd{
+		FlowID:         s.flowID,
+		FlowDefinition: simpleFlowDef(),
+		FormSchema:     schema,
+		Caller:         approval.SystemCaller,
+	})
+	s.Require().Error(err, "Should fail when the form schema cannot be parsed")
+	s.Assert().ErrorIs(err, shared.ErrInvalidFormDesign, "Parser errors should surface as invalid form design")
+
+	count, err := s.db.NewSelect().
+		Model((*approval.FlowVersion)(nil)).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("flow_id", s.flowID) }).
+		Count(s.ctx)
+	s.Require().NoError(err, "Should count versions")
+	s.Assert().Zero(count, "A parser failure must abort the deploy before any version is created")
 }
 
 func (s *DeployFlowTestSuite) TestDeployDoesNotUpdateFlowCurrentVersion() {
