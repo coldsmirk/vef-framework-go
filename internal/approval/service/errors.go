@@ -98,3 +98,13 @@ var (
 	errNestedTableColumn      = errors.New("table columns must not nest another table")
 	errColumnsOnScalarField   = errors.New("only table fields may declare columns")
 )
+
+// Field-permission validation sentinels, raised by ValidateFieldPermissions
+// when a node's FieldPermissions matrix disagrees with the deployed form
+// fields or the per-kind vocabulary. Surface wrapped in
+// shared.ErrInvalidFlowDesign.
+var (
+	errInvalidFieldPermission      = errors.New("invalid field permission")
+	errFieldPermissionKeyUnknown   = errors.New("field permission key does not exist in the form")
+	errCCFieldPermissionNotAllowed = errors.New("cc nodes only support field permissions 'visible' and 'hidden'")
+)

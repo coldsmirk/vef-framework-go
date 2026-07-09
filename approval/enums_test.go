@@ -198,3 +198,25 @@ func TestFieldKindIsValid(t *testing.T) {
 
 	assert.False(t, approval.FieldKind("subform").IsValid(), "unknown field kinds are rejected")
 }
+
+// TestPermissionIsValid tests Permission IsValid scenarios.
+func TestPermissionIsValid(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    approval.Permission
+		expected bool
+	}{
+		{"Visible", approval.PermissionVisible, true},
+		{"Editable", approval.PermissionEditable, true},
+		{"Hidden", approval.PermissionHidden, true},
+		{"Required", approval.PermissionRequired, true},
+		{"InvalidEmpty", approval.Permission(""), false},
+		{"InvalidRandom", approval.Permission("locked"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.value.IsValid(), "%s: IsValid should report %v", tt.name, tt.expected)
+		})
+	}
+}

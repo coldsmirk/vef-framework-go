@@ -473,3 +473,8 @@ const (
 	PermissionHidden   Permission = "hidden"
 	PermissionRequired Permission = "required"
 )
+
+// IsValid reports whether the permission is one of the defined values.
+func (p Permission) IsValid() bool {
+	return p == PermissionVisible || p == PermissionEditable || p == PermissionHidden || p == PermissionRequired
+}
