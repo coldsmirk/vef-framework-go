@@ -80,6 +80,40 @@ func (s *OpaqueTokenGeneratorTestSuite) TestGenerate() {
 		s.Len(active, 1, "the concurrency limit should hold at exactly one session")
 	})
 
+	s.Run("EvictOldestPreservesNewerSessionAtLimitTwo", func() {
+		store := security.NewMemorySessionStore()
+		gen := NewOpaqueTokenGenerator(store, security.SessionPolicy{
+			MaxConcurrent: 2,
+			OnExceed:      security.SessionExceedEvictOldest,
+			IdleTTL:       time.Hour,
+		})
+
+		now := time.Now()
+		future := now.Add(time.Hour)
+		// Seed two sessions with distinct creation times so the eviction ordering
+		// (oldest, not newest) is actually distinguishable — a reversed sort would
+		// evict the wrong one and fail this test.
+		oldest := security.Session{ID: "old", UserID: "u1", Principal: principal, CreatedAt: now.Add(-2 * time.Hour), LastSeenAt: now.Add(-2 * time.Hour), ExpiresAt: future}
+		middle := security.Session{ID: "mid", UserID: "u1", Principal: principal, CreatedAt: now.Add(-time.Hour), LastSeenAt: now.Add(-time.Hour), ExpiresAt: future}
+		s.Require().NoError(store.Create(ctx, "hash-old", oldest, time.Hour), "seeding the oldest session should succeed")
+		s.Require().NoError(store.Create(ctx, "hash-mid", middle, time.Hour), "seeding the middle session should succeed")
+
+		_, err := gen.Generate(ctx, principal, meta)
+		s.Require().NoError(err, "evict-oldest should admit the new session at the limit")
+
+		gone, err := store.Lookup(ctx, "hash-old")
+		s.Require().NoError(err, "lookup should not error")
+		s.Nil(gone, "the oldest session should be the one evicted")
+
+		survived, err := store.Lookup(ctx, "hash-mid")
+		s.Require().NoError(err, "lookup should not error")
+		s.NotNil(survived, "the newer of the two existing sessions must survive")
+
+		active, err := store.ListByUser(ctx, "u1")
+		s.Require().NoError(err, "list should not error")
+		s.Len(active, 2, "the concurrency limit should hold at exactly two sessions")
+	})
+
 	s.Run("UnlimitedWhenMaxConcurrentZero", func() {
 		store := security.NewMemorySessionStore()
 		gen := NewOpaqueTokenGenerator(store, security.SessionPolicy{IdleTTL: time.Hour})
