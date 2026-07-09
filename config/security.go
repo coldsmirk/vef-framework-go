@@ -6,10 +6,12 @@ import (
 	"time"
 )
 
-// Sentinel errors for lockout configuration validation.
+// Sentinel errors for security configuration validation.
 var (
 	ErrInvalidLockoutStrategy = errors.New("invalid lockout strategy")
 	ErrInvalidLockoutKey      = errors.New("invalid lockout key")
+	ErrInvalidTokenType       = errors.New("invalid token type")
+	ErrInvalidSessionOnExceed = errors.New("invalid session on_exceed policy")
 )
 
 // SecurityConfig defines security settings.
@@ -33,6 +35,110 @@ type SecurityConfig struct {
 	Lockout LockoutConfig `config:"lockout"`
 	// PasswordPolicy configures strength rules enforced when a password is set.
 	PasswordPolicy PasswordPolicyConfig `config:"password_policy"`
+	// TokenType selects the login token mechanism: stateless "jwt_token"
+	// (default) or stateful "opaque_token". Session control (concurrency limits,
+	// force-offline, renewal) is only available with opaque tokens.
+	TokenType TokenType `config:"token_type"`
+	// Session configures opaque-token session behavior; it has no effect under
+	// the jwt_token mechanism.
+	Session SessionConfig `config:"session"`
+}
+
+// TokenType selects the login token mechanism.
+type TokenType string
+
+const (
+	// TokenTypeJWT issues stateless, self-contained JWT access/refresh tokens.
+	TokenTypeJWT TokenType = "jwt_token"
+	// TokenTypeOpaque issues stateful opaque tokens backed by a session store.
+	TokenTypeOpaque TokenType = "opaque_token"
+)
+
+// EffectiveTokenType returns TokenType or its default (jwt_token).
+func (c *SecurityConfig) EffectiveTokenType() TokenType {
+	if c.TokenType == "" {
+		return TokenTypeJWT
+	}
+
+	return c.TokenType
+}
+
+// SessionExceedPolicy selects what happens when a login exceeds the concurrent
+// session limit.
+type SessionExceedPolicy string
+
+const (
+	// SessionExceedReject denies the new login once the limit is reached.
+	SessionExceedReject SessionExceedPolicy = "reject"
+	// SessionExceedEvictOldest revokes the oldest session to admit the new login.
+	SessionExceedEvictOldest SessionExceedPolicy = "evict_oldest"
+)
+
+// Default values for SessionConfig, applied by the Effective* accessors.
+const (
+	DefaultSessionIdleTTL     = 30 * time.Minute
+	DefaultSessionMaxLifetime = 7 * 24 * time.Hour
+)
+
+// SessionConfig configures opaque-token sessions. Zero values resolve to
+// defaults through the Effective* accessors.
+type SessionConfig struct {
+	// MaxConcurrent bounds simultaneous sessions per account; 0 is unlimited.
+	MaxConcurrent int `config:"max_concurrent"`
+	// OnExceed selects reject vs. evict-oldest when the limit is hit.
+	// Default: evict_oldest (a new login kicks the earliest device offline).
+	OnExceed SessionExceedPolicy `config:"on_exceed"`
+	// IdleTTL is the inactivity timeout and the sliding renewal window applied on
+	// each authenticated request. Default: 30m.
+	IdleTTL time.Duration `config:"idle_ttl"`
+	// MaxLifetime caps a session's total age regardless of renewal; 0 is
+	// uncapped. Default: 7 days.
+	MaxLifetime time.Duration `config:"max_lifetime"`
+	// Sliding enables idle-timeout renewal on each request. A nil pointer
+	// resolves to enabled.
+	Sliding *bool `config:"sliding"`
+}
+
+// EffectiveOnExceed returns OnExceed or its default.
+func (c *SessionConfig) EffectiveOnExceed() SessionExceedPolicy {
+	if c.OnExceed == "" {
+		return SessionExceedEvictOldest
+	}
+
+	return c.OnExceed
+}
+
+// EffectiveIdleTTL returns IdleTTL or its default.
+func (c *SessionConfig) EffectiveIdleTTL() time.Duration {
+	return coalescePositive(c.IdleTTL, DefaultSessionIdleTTL)
+}
+
+// EffectiveMaxLifetime returns MaxLifetime or its default.
+func (c *SessionConfig) EffectiveMaxLifetime() time.Duration {
+	return coalescePositive(c.MaxLifetime, DefaultSessionMaxLifetime)
+}
+
+// IsSliding reports whether idle-timeout renewal is enabled. Omitted means on.
+func (c *SessionConfig) IsSliding() bool {
+	return c.Sliding == nil || *c.Sliding
+}
+
+// Validate rejects out-of-enum token type and session policy so a configuration
+// typo fails fast at boot.
+func (c *SecurityConfig) Validate() error {
+	switch c.EffectiveTokenType() {
+	case TokenTypeJWT, TokenTypeOpaque:
+	default:
+		return fmt.Errorf("%w %q (want %q or %q)", ErrInvalidTokenType, c.TokenType, TokenTypeJWT, TokenTypeOpaque)
+	}
+
+	switch c.Session.EffectiveOnExceed() {
+	case SessionExceedReject, SessionExceedEvictOldest:
+	default:
+		return fmt.Errorf("%w %q (want %q or %q)", ErrInvalidSessionOnExceed, c.Session.OnExceed, SessionExceedReject, SessionExceedEvictOldest)
+	}
+
+	return nil
 }
 
 // PasswordPolicyConfig configures password strength rules. Every field is
