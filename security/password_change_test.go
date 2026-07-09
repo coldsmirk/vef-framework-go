@@ -280,6 +280,61 @@ func TestPasswordChangeChallengeProviderResolve(t *testing.T) {
 	})
 }
 
+// ─── Composite checker ───
+
+func TestCompositePasswordChangeChecker(t *testing.T) {
+	ctx := context.Background()
+	principal := NewUser("u1", "Alice")
+	firstLogin := &PasswordChangeChallengeData{Reason: PasswordChangeReasonFirstLogin}
+	expired := &PasswordChangeChallengeData{Reason: PasswordChangeReasonExpired}
+
+	noChange := func() PasswordChangeChecker {
+		return &MockPasswordChangeChecker{CheckFn: func(context.Context, *Principal) (*PasswordChangeChallengeData, error) { return nil, nil }}
+	}
+	requires := func(data *PasswordChangeChallengeData) PasswordChangeChecker {
+		return &MockPasswordChangeChecker{CheckFn: func(context.Context, *Principal) (*PasswordChangeChallengeData, error) { return data, nil }}
+	}
+
+	t.Run("ReturnsFirstRequiringChecker", func(t *testing.T) {
+		checker := NewCompositePasswordChangeChecker(noChange(), requires(firstLogin), requires(expired))
+
+		data, err := checker.Check(ctx, principal)
+
+		require.NoError(t, err, "composite should not error")
+		assert.Same(t, firstLogin, data, "the first requiring checker should win")
+	})
+
+	t.Run("SkipsNilCheckers", func(t *testing.T) {
+		checker := NewCompositePasswordChangeChecker(nil, requires(expired))
+
+		data, err := checker.Check(ctx, principal)
+
+		require.NoError(t, err, "nil checkers should be skipped without error")
+		assert.Same(t, expired, data, "the first non-nil requiring checker should win")
+	})
+
+	t.Run("PropagatesError", func(t *testing.T) {
+		checkErr := errors.New("check failed")
+		checker := NewCompositePasswordChangeChecker(
+			&MockPasswordChangeChecker{CheckFn: func(context.Context, *Principal) (*PasswordChangeChallengeData, error) { return nil, checkErr }},
+			requires(expired),
+		)
+
+		_, err := checker.Check(ctx, principal)
+
+		require.ErrorIs(t, err, checkErr, "a checker error should short-circuit and propagate")
+	})
+
+	t.Run("NoneRequireChange", func(t *testing.T) {
+		checker := NewCompositePasswordChangeChecker(noChange(), noChange())
+
+		data, err := checker.Check(ctx, principal)
+
+		require.NoError(t, err, "composite should not error when no checker requires a change")
+		assert.Nil(t, data, "no change is required when every checker passes")
+	})
+}
+
 // ─── Strength validation ───
 
 func TestPasswordChangeChallengeProviderValidatesStrength(t *testing.T) {

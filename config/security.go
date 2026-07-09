@@ -51,6 +51,10 @@ type PasswordPolicyConfig struct {
 	DisallowUsername bool `config:"disallow_username"`
 	// Blocklist rejects passwords matching any listed entry (case-insensitive).
 	Blocklist []string `config:"blocklist"`
+	// MaxAge forces a password change once the password is older than this.
+	// Zero disables expiry. Enforcement requires a security.PasswordMetadataLoader
+	// and a security.ExpiryPasswordChangeChecker wired into the login flow.
+	MaxAge time.Duration `config:"max_age"`
 }
 
 // HasRules reports whether any strength rule is configured.

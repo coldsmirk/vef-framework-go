@@ -26,6 +26,36 @@ type PasswordChangeChecker interface {
 	Check(ctx context.Context, principal *Principal) (*PasswordChangeChallengeData, error)
 }
 
+// NewCompositePasswordChangeChecker runs checkers in order and returns the first
+// one that requires a change, letting several reasons (first login, expiry, …)
+// share one forced-change challenge. Nil checkers are skipped.
+func NewCompositePasswordChangeChecker(checkers ...PasswordChangeChecker) PasswordChangeChecker {
+	return &compositePasswordChangeChecker{checkers: checkers}
+}
+
+type compositePasswordChangeChecker struct {
+	checkers []PasswordChangeChecker
+}
+
+func (c *compositePasswordChangeChecker) Check(ctx context.Context, principal *Principal) (*PasswordChangeChallengeData, error) {
+	for _, checker := range c.checkers {
+		if checker == nil {
+			continue
+		}
+
+		data, err := checker.Check(ctx, principal)
+		if err != nil {
+			return nil, err
+		}
+
+		if data != nil {
+			return data, nil
+		}
+	}
+
+	return nil, nil
+}
+
 // PasswordChanger validates and persists a new password.
 type PasswordChanger interface {
 	// ChangePassword validates password strength and persists the new password.
