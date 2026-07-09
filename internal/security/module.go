@@ -109,12 +109,14 @@ var Module = fx.Module(
 // deployments override this with security.NewRedisLoginGuard via fx.Decorate so
 // the failure counters are shared across nodes.
 func newLoginGuard(cfg *config.SecurityConfig) (security.LoginGuard, error) {
-	if !cfg.Lockout.IsEnabled() {
-		return nil, nil
-	}
-
+	// Validate unconditionally so a typo'd strategy/key surfaces at boot even
+	// when lockout is currently disabled (the operator may flip it on later).
 	if err := cfg.Lockout.Validate(); err != nil {
 		return nil, err
+	}
+
+	if !cfg.Lockout.IsEnabled() {
+		return nil, nil
 	}
 
 	return security.NewMemoryLoginGuard(security.LockoutPolicy{

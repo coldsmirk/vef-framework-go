@@ -173,19 +173,6 @@ type PasswordPolicyConfig struct {
 	MaxAge time.Duration `config:"max_age"`
 }
 
-// HasRules reports whether any strength rule is configured.
-func (c *PasswordPolicyConfig) HasRules() bool {
-	return c.MinLength > 0 ||
-		c.MaxLength > 0 ||
-		c.RequireUpper ||
-		c.RequireLower ||
-		c.RequireDigit ||
-		c.RequireSymbol ||
-		c.MinCharClasses > 0 ||
-		c.DisallowUsername ||
-		len(c.Blocklist) > 0
-}
-
 // LockoutStrategy selects how repeated login failures are penalized.
 type LockoutStrategy string
 

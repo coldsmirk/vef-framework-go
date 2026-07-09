@@ -131,24 +131,19 @@ func (r *characterClassRule) Check(_ *Principal, plaintext string) error {
 	}
 
 	if r.minClasses > 0 {
-		classes := countTrue(hasUpper, hasLower, hasDigit, hasSymbol)
+		classes := 0
+		for _, present := range []bool{hasUpper, hasLower, hasDigit, hasSymbol} {
+			if present {
+				classes++
+			}
+		}
+
 		if classes < r.minClasses {
 			return ErrPasswordTooFewCharClasses(r.minClasses)
 		}
 	}
 
 	return nil
-}
-
-func countTrue(flags ...bool) int {
-	count := 0
-	for _, f := range flags {
-		if f {
-			count++
-		}
-	}
-
-	return count
 }
 
 // identityMinToken is the shortest identity fragment the disallow-identity rule
