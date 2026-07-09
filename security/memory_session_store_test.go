@@ -38,6 +38,22 @@ func TestMemorySessionStore(t *testing.T) {
 		assert.Equal(t, "u1", got.Principal.ID, "lookup should carry the principal snapshot")
 	})
 
+	t.Run("LookupReturnsIsolatedPrincipalRoles", func(t *testing.T) {
+		store := NewMemorySessionStore()
+		session := makeSession("s1", "u1", future)
+		session.Principal = NewUser("u1", "Alice", "admin")
+		require.NoError(t, store.Create(ctx, "h1", session, time.Hour), "create should succeed")
+
+		first, err := store.Lookup(ctx, "h1")
+		require.NoError(t, err, "lookup should not error")
+
+		first.Principal.Roles[0] = "mutated"
+
+		second, err := store.Lookup(ctx, "h1")
+		require.NoError(t, err, "lookup should not error")
+		assert.Equal(t, "admin", second.Principal.Roles[0], "mutating one lookup's roles must not affect the stored principal")
+	})
+
 	t.Run("LookupMissing", func(t *testing.T) {
 		store := NewMemorySessionStore()
 

@@ -70,7 +70,7 @@ func (s *MemorySessionStore) Lookup(_ context.Context, tokenHash string) (*Sessi
 		return nil, nil
 	}
 
-	session := record.session
+	session := cloneSessionPrincipal(record.session)
 
 	return &session, nil
 }
@@ -122,7 +122,7 @@ func (s *MemorySessionStore) ListByUser(_ context.Context, userID string) ([]Ses
 			continue
 		}
 
-		sessions = append(sessions, record.session)
+		sessions = append(sessions, cloneSessionPrincipal(record.session))
 	}
 
 	slices.SortFunc(sessions, func(a, b Session) int {
@@ -163,7 +163,7 @@ func (s *MemorySessionStore) ListAll(context.Context) ([]Session, error) {
 			continue
 		}
 
-		sessions = append(sessions, record.session)
+		sessions = append(sessions, cloneSessionPrincipal(record.session))
 	}
 
 	slices.SortFunc(sessions, func(a, b Session) int {
@@ -171,6 +171,21 @@ func (s *MemorySessionStore) ListAll(context.Context) ([]Session, error) {
 	})
 
 	return sessions, nil
+}
+
+// cloneSessionPrincipal returns session with an isolated Principal — its Roles
+// slice cloned — so callers cannot mutate the principal shared with the stored
+// record and with other concurrent requests. This matches the fresh-per-read
+// principal the Redis store yields by deserialization. (Details is an opaque
+// any and is left aliased, since it cannot be deep-copied generically.)
+func cloneSessionPrincipal(session Session) Session {
+	if session.Principal != nil {
+		principal := *session.Principal
+		principal.Roles = slices.Clone(principal.Roles)
+		session.Principal = &principal
+	}
+
+	return session
 }
 
 // remove deletes a record from all three indexes. The caller holds the lock.
