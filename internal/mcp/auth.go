@@ -10,16 +10,17 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/spf13/cast"
 
-	isecurity "github.com/coldsmirk/vef-framework-go/internal/security"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
 // CreateTokenVerifier creates an auth.TokenVerifier that bridges MCP SDK auth
-// with the vef's AuthManager.
-func CreateTokenVerifier(authManager security.AuthManager) auth.TokenVerifier {
+// with the vef's AuthManager, dispatching the deployment's configured token
+// mechanism (jwt_token or opaque_token) so MCP accepts the same tokens the /api
+// surface issues.
+func CreateTokenVerifier(authManager security.AuthManager, authType string) auth.TokenVerifier {
 	return func(ctx context.Context, tokenString string, _ *http.Request) (*auth.TokenInfo, error) {
 		principal, err := authManager.Authenticate(ctx, security.Authentication{
-			Type:      isecurity.AuthTypeJWTToken,
+			Type:      authType,
 			Principal: tokenString,
 		})
 		if err != nil {

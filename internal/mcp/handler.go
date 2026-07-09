@@ -20,9 +20,10 @@ type Handler struct {
 type HandlerParams struct {
 	fx.In
 
-	MCPConfig   *config.MCPConfig
-	Server      *mcp.Server `optional:"true"`
-	AuthManager security.AuthManager
+	MCPConfig      *config.MCPConfig
+	SecurityConfig *config.SecurityConfig
+	Server         *mcp.Server `optional:"true"`
+	AuthManager    security.AuthManager
 }
 
 func NewHandler(params HandlerParams) *Handler {
@@ -34,7 +35,7 @@ func NewHandler(params HandlerParams) *Handler {
 	// Secure by default: require auth unless the operator explicitly opted into
 	// anonymous access (require_auth = false).
 	if params.MCPConfig.RequireAuth == nil || *params.MCPConfig.RequireAuth {
-		httpHandler = applyAuthMiddleware(httpHandler, params.AuthManager)
+		httpHandler = applyAuthMiddleware(httpHandler, params.AuthManager, string(params.SecurityConfig.EffectiveTokenType()))
 	}
 
 	return &Handler{httpHandler: httpHandler}
@@ -47,8 +48,8 @@ func createHTTPHandler(server *mcp.Server) http.Handler {
 	)
 }
 
-func applyAuthMiddleware(handler http.Handler, authManager security.AuthManager) http.Handler {
-	verifier := CreateTokenVerifier(authManager)
+func applyAuthMiddleware(handler http.Handler, authManager security.AuthManager, authType string) http.Handler {
+	verifier := CreateTokenVerifier(authManager, authType)
 
 	return auth.RequireBearerToken(verifier, nil)(handler)
 }
