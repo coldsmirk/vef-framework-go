@@ -32,8 +32,6 @@ func NewRedisSessionStore(client *redis.Client) SessionStore {
 	return &RedisSessionStore{client: client}
 }
 
-var _ SessionInspector = (*RedisSessionStore)(nil)
-
 type redisSessionRecord struct {
 	Session   Session `json:"session"`
 	TokenHash string  `json:"tokenHash"`

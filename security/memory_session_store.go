@@ -32,8 +32,6 @@ func NewMemorySessionStore() SessionStore {
 	}
 }
 
-var _ SessionInspector = (*MemorySessionStore)(nil)
-
 func (s *MemorySessionStore) Create(_ context.Context, tokenHash string, session Session, _ time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -151,7 +149,7 @@ func (s *MemorySessionStore) RevokeUser(_ context.Context, userID string) error 
 }
 
 // ListAll returns every live session across all users, newest activity first.
-func (s *MemorySessionStore) ListAll(_ context.Context) ([]Session, error) {
+func (s *MemorySessionStore) ListAll(context.Context) ([]Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
