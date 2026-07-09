@@ -238,6 +238,14 @@ func (s *RedisSessionStore) load(ctx context.Context, id string) (*redisSessionR
 		return nil, err
 	}
 
+	// Session.ExpiresAt is authoritative (it carries the absolute max-lifetime
+	// cap, which the Redis key TTL — refreshed to the idle window on every
+	// renewal — does not). Treat a past-expiry record as gone so both stores
+	// enforce the cap identically.
+	if !record.Session.ExpiresAt.After(time.Now()) {
+		return nil, nil
+	}
+
 	return &record, nil
 }
 

@@ -75,6 +75,36 @@ func (s *RedisSessionStoreTestSuite) TestSessionLifecycle() {
 		s.Nil(got, "an expired session key should be gone")
 	})
 
+	s.Run("RenewExtendsExpiryThenNoOpAfterRevoke", func() {
+		s.Require().NoError(s.store.Create(ctx, "hren", makeSession("sren", "u1", time.Now().Add(time.Minute)), time.Minute), "create should succeed")
+
+		newExpiry := time.Now().Add(2 * time.Hour)
+		s.Require().NoError(s.store.Renew(ctx, "hren", newExpiry, 2*time.Hour), "renew should succeed")
+
+		got, err := s.store.Lookup(ctx, "hren")
+		s.Require().NoError(err, "lookup should not error")
+		s.Require().NotNil(got, "the renewed session should still be found")
+		s.WithinDuration(newExpiry, got.ExpiresAt, time.Second, "renew should extend the stored expiry")
+
+		// Renewing after the session is revoked must not recreate it.
+		s.Require().NoError(s.store.Revoke(ctx, "sren"), "revoke should succeed")
+		s.Require().NoError(s.store.Renew(ctx, "hren", time.Now().Add(time.Hour), time.Hour), "renew after revoke should be a safe no-op")
+
+		after, err := s.store.Lookup(ctx, "hren")
+		s.Require().NoError(err, "lookup should not error")
+		s.Nil(after, "renew must not resurrect a revoked session")
+	})
+
+	s.Run("ExpiresAtIsAuthoritativeOverKeyTTL", func() {
+		// Past ExpiresAt but a long Redis key TTL: Lookup must still reject the
+		// session so the absolute max-lifetime cap holds on the multi-node path.
+		s.Require().NoError(s.store.Create(ctx, "hpast", makeSession("spast", "u1", time.Now().Add(-time.Minute)), time.Hour), "create should succeed")
+
+		got, err := s.store.Lookup(ctx, "hpast")
+		s.Require().NoError(err, "lookup should not error")
+		s.Nil(got, "a past-ExpiresAt session must be rejected even while its Redis key TTL is alive")
+	})
+
 	s.Run("ListAllSpansUsers", func() {
 		s.Require().NoError(s.store.Create(ctx, "ha", makeSession("sa", "u1", future), time.Hour), "create should succeed")
 		s.Require().NoError(s.store.Create(ctx, "hb", makeSession("sb", "u2", future), time.Hour), "create should succeed")
