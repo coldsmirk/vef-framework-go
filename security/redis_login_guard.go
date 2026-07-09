@@ -47,23 +47,23 @@ func (g *RedisLoginGuard) Check(ctx context.Context, attempt LoginAttempt) (Logi
 func (g *RedisLoginGuard) RecordFailure(ctx context.Context, attempt LoginAttempt) (LoginDecision, error) {
 	failureKey := g.failureKey(attempt)
 
-	count, err := g.client.Incr(ctx, failureKey).Result()
-	if err != nil {
+	// Increment and (re)set the counting window atomically so the counter can
+	// never be left without a TTL — a bare INCR whose EXPIRE is lost to a
+	// canceled context or crash would never reset the window.
+	pipe := g.client.TxPipeline()
+	incr := pipe.Incr(ctx, failureKey)
+	pipe.Expire(ctx, failureKey, g.policy.Window)
+
+	if _, err := pipe.Exec(ctx); err != nil {
 		return LoginDecision{Allowed: true}, err
 	}
 
-	// Refresh the counting window on each failure; a spell of no failures this
-	// long lets the key expire and the counter reset.
-	if err := g.client.Expire(ctx, failureKey, g.policy.Window).Err(); err != nil {
-		return LoginDecision{Allowed: true}, err
-	}
-
-	cooldown := g.policy.cooldownFor(int(count))
+	cooldown := g.policy.cooldownFor(int(incr.Val()))
 	if cooldown <= 0 {
 		return LoginDecision{Allowed: true}, nil
 	}
 
-	err = g.client.Set(ctx, g.cooldownKey(attempt), "1", cooldown).Err()
+	err := g.client.Set(ctx, g.cooldownKey(attempt), "1", cooldown).Err()
 
 	return LoginDecision{Allowed: false, RetryAfter: cooldown}, err
 }
