@@ -354,6 +354,85 @@ func (s *GetMyInstanceDetailTestSuite) TestHandleNodeShouldExposeHandleAction() 
 	s.Assert().NotContains(detail.AvailableActions, "approve", "Handle node should not expose approve action")
 }
 
+func (s *GetMyInstanceDetailTestSuite) TestFieldPermissionsProjection() {
+	// A dedicated flow whose version carries form fields and whose approval node
+	// declares field permissions — the fixture flow has neither, so the viewer
+	// projection needs its own isolated chain.
+	category := &approval.FlowCategory{TenantID: "default", Code: "perm-cat", Name: "Perm Category"}
+	_, err := s.db.NewInsert().Model(category).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert category")
+
+	flow := &approval.Flow{
+		TenantID: "default", CategoryID: category.ID, Code: "perm-flow", Name: "Perm Flow",
+		BindingMode: approval.BindingStandalone, IsAllInitiationAllowed: true,
+		InstanceTitleTemplate: "Test", IsActive: true,
+	}
+	_, err = s.db.NewInsert().Model(flow).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert flow")
+
+	version := &approval.FlowVersion{
+		FlowID: flow.ID, Version: 1, Status: approval.VersionPublished,
+		FormFields: []approval.FormFieldDefinition{{Key: "reason"}, {Key: "secret"}},
+	}
+	_, err = s.db.NewInsert().Model(version).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert version with form fields")
+
+	node := &approval.FlowNode{
+		FlowVersionID: version.ID, Key: "perm-node", Kind: approval.NodeApproval, Name: "Perm Node",
+		FieldPermissions: map[string]approval.Permission{
+			"reason": approval.PermissionEditable,
+			"secret": approval.PermissionHidden,
+		},
+	}
+	_, err = s.db.NewInsert().Model(node).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert node with field permissions")
+
+	inst := &approval.Instance{
+		TenantID: "default", FlowID: flow.ID, FlowVersionID: version.ID,
+		Title: "Perm Instance", InstanceNo: "PERM-001", ApplicantID: "perm-applicant",
+		Status: approval.InstanceRunning, CurrentNodeID: &node.ID,
+		FormData: map[string]any{"reason": "please approve", "secret": "confidential", "legacy": "kept"},
+	}
+	_, err = s.db.NewInsert().Model(inst).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert instance with form data")
+
+	_, err = s.db.NewInsert().Model(&approval.Task{
+		TenantID: inst.TenantID, InstanceID: inst.ID, NodeID: node.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, inst.TenantID, inst.ID, node.ID).ID,
+		AssigneeID: "perm-approver", SortOrder: 1, Status: approval.TaskPending,
+	}).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert pending task")
+
+	detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
+		InstanceID: inst.ID,
+		UserID:     "perm-approver",
+	})
+	s.Require().NoError(err, "Pending approver should get detail")
+
+	// The response carries the viewer projection over every top-level field: the
+	// pending approver edits "reason" (full strength from the node) and cannot
+	// see "secret".
+	s.Require().NotNil(detail.FieldPermissions, "Detail should carry the field-permission projection")
+	s.Assert().Equal(map[string]approval.Permission{
+		"reason": approval.PermissionEditable,
+		"secret": approval.PermissionHidden,
+	}, detail.FieldPermissions, "Projection should reflect the node's field permissions for a pending approver")
+
+	// The hidden field is stripped from the returned form data; the visible field
+	// and the schemaless legacy key both survive.
+	s.Assert().Contains(detail.Instance.FormData, "reason", "Visible field should reach the viewer")
+	s.Assert().Contains(detail.Instance.FormData, "legacy", "Schemaless legacy field should survive stripping")
+	s.Assert().NotContains(detail.Instance.FormData, "secret", "Hidden field must be stripped from the returned form data")
+
+	// The stored form data is untouched — stripping is a read-path projection.
+	var stored approval.Instance
+
+	stored.ID = inst.ID
+	err = s.db.NewSelect().Model(&stored).WherePK().Scan(s.ctx)
+	s.Require().NoError(err, "Should reload the stored instance")
+	s.Assert().Contains(stored.FormData, "secret", "Hidden field must remain in the database")
+}
+
 func (s *GetMyInstanceDetailTestSuite) TestAccessDenied() {
 	_, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: s.instanceID,

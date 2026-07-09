@@ -54,6 +54,10 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 	instance := bundle.Instance
 	flow := bundle.Flow
 
+	// Resolve the viewer-scoped field permissions once — they both ship in the
+	// DTO and gate which form-data fields this viewer is allowed to see.
+	fieldPermissions := resolveViewerFieldPermissions(bundle, query.UserID)
+
 	detail := &my.InstanceDetail{
 		Instance: my.InstanceInfo{
 			InstanceID:    instance.ID,
@@ -65,7 +69,7 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 			Status:        string(instance.Status),
 			CurrentNodeID: instance.CurrentNodeID,
 			BusinessRef:   instance.BusinessRef,
-			FormData:      instance.FormData,
+			FormData:      stripHiddenFormData(instance.FormData, fieldPermissions),
 			CreatedAt:     instance.CreatedAt,
 			FinishedAt:    instance.FinishedAt,
 		},
@@ -73,6 +77,7 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 		Timeline:         buildInstanceTimeline(bundle),
 		FlowGraph:        buildInstanceFlowGraph(bundle),
 		AvailableActions: h.computeActions(instance, bundle.Tasks, bundle.FlowNodes, query.UserID),
+		FieldPermissions: fieldPermissions,
 	}
 
 	if instance.CurrentNodeID != nil {

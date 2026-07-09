@@ -20,6 +20,11 @@ type InstanceDetail struct {
 	Timeline         []approval.TimelineEntry   `json:"timeline"`
 	FlowGraph        approval.InstanceFlowGraph `json:"flowGraph"`
 	AvailableActions []string                   `json:"availableActions"`
+	// FieldPermissions is the viewer-scoped field interactivity projection,
+	// materialized for every top-level form field — the client applies it
+	// verbatim (no default resolution). Instance.FormData is already stripped
+	// of the fields this viewer may not see.
+	FieldPermissions map[string]approval.Permission `json:"fieldPermissions,omitempty"`
 }
 
 // InstanceInfo holds the instance's runtime state within a detail view.
