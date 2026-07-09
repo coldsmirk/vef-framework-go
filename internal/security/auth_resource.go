@@ -4,10 +4,10 @@ import (
 	"cmp"
 	"context"
 	"slices"
-	"strings"
 
 	"github.com/coldsmirk/go-streams"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/api"
@@ -414,16 +414,19 @@ func sessionMeta(ctx fiber.Ctx) security.SessionMeta {
 	}
 }
 
-// extractBearerToken reads the access token from the Authorization header or the
-// access-token query parameter, mirroring the bearer auth strategy.
-func extractBearerToken(ctx fiber.Ctx) string {
-	if header := ctx.Get(fiber.HeaderAuthorization); header != "" {
-		if token, ok := strings.CutPrefix(header, security.AuthSchemeBearer+" "); ok {
-			return strings.TrimSpace(token)
-		}
-	}
+// logoutTokenExtractor mirrors the bearer auth strategy's extraction exactly
+// (case-insensitive scheme match, header then query) so the token logout revokes
+// can never diverge from the token the request authenticated with.
+var logoutTokenExtractor = extractors.Chain(
+	extractors.FromAuthHeader(security.AuthSchemeBearer),
+	extractors.FromQuery(security.QueryKeyAccessToken),
+)
 
-	return ctx.Query(security.QueryKeyAccessToken)
+// extractBearerToken reads the presented access token, or "" when absent.
+func extractBearerToken(ctx fiber.Ctx) string {
+	token, _ := logoutTokenExtractor.Extract(ctx)
+
+	return token
 }
 
 // findProvider returns the challenge provider matching the given type, or nil.
