@@ -53,6 +53,12 @@ func (g *OpaqueTokenGenerator) Generate(ctx context.Context, principal *security
 
 // enforceConcurrency applies the per-account session limit before a new session
 // is opened: reject the login, or evict the oldest sessions to make room.
+//
+// Enforcement is best-effort: the count-then-create sequence is not atomic
+// across store calls, so simultaneous logins for one account may briefly
+// overshoot MaxConcurrent by the number of racing requests (evict-oldest
+// self-heals on the next login). It is a policy/blast-radius limit, not a hard
+// security boundary.
 func (g *OpaqueTokenGenerator) enforceConcurrency(ctx context.Context, userID string) error {
 	if g.policy.MaxConcurrent <= 0 {
 		return nil

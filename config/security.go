@@ -84,6 +84,9 @@ const (
 // defaults through the Effective* accessors.
 type SessionConfig struct {
 	// MaxConcurrent bounds simultaneous sessions per account; 0 is unlimited.
+	// Enforcement is best-effort under concurrent logins: a burst of simultaneous
+	// logins for one account may briefly exceed the limit by the number of racing
+	// requests before it settles.
 	MaxConcurrent int `config:"max_concurrent"`
 	// OnExceed selects reject vs. evict-oldest when the limit is hit.
 	// Default: evict_oldest (a new login kicks the earliest device offline).
