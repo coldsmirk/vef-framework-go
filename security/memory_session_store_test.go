@@ -71,6 +71,20 @@ func TestMemorySessionStore(t *testing.T) {
 		assert.Nil(t, got, "an expired session should not be returned")
 	})
 
+	t.Run("EntryReclaimedByStoreTTL", func(t *testing.T) {
+		store := NewMemorySessionStore()
+		// A far-future ExpiresAt with a tiny store TTL: the cache TTL must reclaim
+		// the entry on its own, proving the store honors the ttl parameter instead
+		// of holding records until something re-reads them.
+		require.NoError(t, store.Create(ctx, "hash-ttl", makeSession("sttl", "u1", future), 30*time.Millisecond), "create should succeed")
+
+		time.Sleep(60 * time.Millisecond)
+
+		got, err := store.Lookup(ctx, "hash-ttl")
+		require.NoError(t, err, "lookup should not error")
+		assert.Nil(t, got, "the cache TTL should have reclaimed the session entry")
+	})
+
 	t.Run("RenewExtendsExpiry", func(t *testing.T) {
 		store := NewMemorySessionStore()
 		require.NoError(t, store.Create(ctx, "hash-2", makeSession("s2", "u1", time.Now().Add(time.Minute)), time.Minute), "create should succeed")
