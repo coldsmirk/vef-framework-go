@@ -615,21 +615,26 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID st
 		return nil, err
 	}
 
-	// Load the version's form schema so submitted edits validate against it, and
-	// expose it on the context so the approve/handle required-permission check
-	// reuses the same field list without a second query.
-	var version approval.FlowVersion
+	// A permission-less node exposes nothing for editing and demands no required
+	// value, so both the editable-subset validation and the approve-side required
+	// check are no-ops — skip the form_fields load entirely (tc.FormFields stays nil).
+	if len(tc.Node.FieldPermissions) > 0 {
+		// Load the version's form schema so submitted edits validate against it, and
+		// expose it on the context so the approve/handle required-permission check
+		// reuses the same field list without a second query.
+		var version approval.FlowVersion
 
-	version.ID = tc.Instance.FlowVersionID
-	if err := db.NewSelect().
-		Model(&version).
-		Select("form_fields").
-		WherePK().
-		Scan(ctx); err != nil {
-		return nil, fmt.Errorf("load flow version form fields: %w", err)
+		version.ID = tc.Instance.FlowVersionID
+		if err := db.NewSelect().
+			Model(&version).
+			Select("form_fields").
+			WherePK().
+			Scan(ctx); err != nil {
+			return nil, fmt.Errorf("load flow version form fields: %w", err)
+		}
+
+		tc.FormFields = version.FormFields
 	}
-
-	tc.FormFields = version.FormFields
 
 	// Validate the submitted editable subset against the schema before merging,
 	// so a malformed approver edit is rejected instead of persisted. Emptiness is

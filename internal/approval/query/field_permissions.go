@@ -39,6 +39,13 @@ func strongerPermission(a, b approval.Permission) approval.Permission {
 // context the viewer holds under the permissionRank lattice. The result carries
 // an entry for each key in bundle.FormFields (table fields count as one key) so
 // the client applies it verbatim; it is nil when the flow has no form fields.
+//
+// Fail-closed: a viewer with zero recognized contexts (own task, CC delivery,
+// applicant) contributes nothing, so the hidden seed stands and they see no
+// field. Reachability is guarded by IsInstanceParticipant in the handler, whose
+// participant set (applicant / assignee / CC) MUST stay a subset of the contexts
+// recognized here — if the two ever diverge, the failure mode is now "sees
+// nothing" instead of the former "sees everything".
 func resolveViewerFieldPermissions(bundle *instanceDetailBundle, userID string) map[string]approval.Permission {
 	if len(bundle.FormFields) == 0 {
 		return nil
@@ -54,9 +61,9 @@ func resolveViewerFieldPermissions(bundle *instanceDetailBundle, userID string) 
 		nodePerms[bundle.FlowNodes[i].ID] = bundle.FlowNodes[i].FieldPermissions
 	}
 
-	// Seed every field at hidden — the identity for the max merge below. A
-	// viewer with at least one context overwrites it; a viewer with none falls
-	// through to the all-visible default at the end.
+	// Seed every field at hidden — the identity for the max merge below and the
+	// fail-closed floor: a viewer with no recognized context overwrites nothing,
+	// so the map stays all-hidden and they see no field.
 	result := make(map[string]approval.Permission, len(keys))
 	for _, k := range keys {
 		result[k] = approval.PermissionHidden
@@ -89,8 +96,6 @@ func resolveViewerFieldPermissions(bundle *instanceDetailBundle, userID string) 
 		}
 	}
 
-	hasContext := false
-
 	// Task contexts: the viewer's own tasks. A pending task grants the node's
 	// permissions at full strength — the only task context whose edits the write
 	// path accepts; any other status (including queued Waiting) is read-only.
@@ -98,8 +103,6 @@ func resolveViewerFieldPermissions(bundle *instanceDetailBundle, userID string) 
 		if bundle.Tasks[i].AssigneeID != userID {
 			continue
 		}
-
-		hasContext = true
 
 		contributeNodeMap(bundle.Tasks[i].NodeID, bundle.Tasks[i].Status != approval.TaskPending)
 	}
@@ -113,8 +116,6 @@ func resolveViewerFieldPermissions(bundle *instanceDetailBundle, userID string) 
 			continue
 		}
 
-		hasContext = true
-
 		if cc.NodeID == nil {
 			contributeUniform(approval.PermissionVisible)
 		} else {
@@ -126,20 +127,12 @@ func resolveViewerFieldPermissions(bundle *instanceDetailBundle, userID string) 
 	// so the applicant sees the whole form — editable while the instance can be
 	// resubmitted (that path accepts the full form), visible otherwise.
 	if bundle.Instance.ApplicantID == userID {
-		hasContext = true
-
 		applicantPerm := approval.PermissionVisible
 		if engine.InstanceStateMachine.CanTransition(bundle.Instance.Status, approval.InstanceRunning) {
 			applicantPerm = approval.PermissionEditable
 		}
 
 		contributeUniform(applicantPerm)
-	}
-
-	if !hasContext {
-		for _, k := range keys {
-			result[k] = approval.PermissionVisible
-		}
 	}
 
 	return result

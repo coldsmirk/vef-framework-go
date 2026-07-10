@@ -217,7 +217,9 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 			want:   nil,
 		},
 		{
-			name: "ViewerWithNoContextsDefaultsToAllVisible",
+			// Fail-closed: a viewer with no recognized participation context
+			// contributes nothing, so the hidden seed stands and they see no field.
+			name: "ViewerWithNoContextsSeesNothing",
 			bundle: &instanceDetailBundle{
 				FormFields: permFields("a", "b"),
 				FlowNodes:  []approval.FlowNode{permNode("N1", vocab)},
@@ -227,7 +229,7 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 			},
 			userID: "stranger",
 			want: map[string]approval.Permission{
-				"a": approval.PermissionVisible, "b": approval.PermissionVisible,
+				"a": approval.PermissionHidden, "b": approval.PermissionHidden,
 			},
 		},
 	}

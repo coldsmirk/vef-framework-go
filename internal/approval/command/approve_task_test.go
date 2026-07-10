@@ -502,3 +502,48 @@ func (s *ApproveTaskTestSuite) TestApproveRejectsInvalidEditableValue() {
 	s.Require().NoError(s.db.NewSelect().Model(&reloaded).WherePK().Scan(s.ctx), "Should reload task")
 	s.Assert().Equal(approval.TaskPending, reloaded.Status, "task must stay pending after a rejected invalid value")
 }
+
+// TestApprovePermissionlessNodeDropsSubmittedFormData pins the permission-less
+// skip: a node with no field permissions loads no form_fields, so submitted form
+// data is neither validated nor merged — the approver's edit is silently dropped
+// and the approval still succeeds.
+func (s *ApproveTaskTestSuite) TestApprovePermissionlessNodeDropsSubmittedFormData() {
+	// amount carries a Min:10 rule that a below-min value would fail IF the node
+	// exposed it for editing — proving the data is dropped by the filter, not
+	// validated, since the node grants no field permissions.
+	fields := []approval.FormFieldDefinition{
+		{Key: "amount", Kind: approval.FieldNumber, Label: "Amount", Validation: &approval.ValidationRule{Min: new(10.0)}},
+	}
+	inst, task := setupFormFieldInstance(s.T(), s.ctx, s.db, s.fixture, approval.NodeApproval, nil, fields, nil, "permless-approver")
+
+	// A still-pending peer keeps the PassAll node running after the approval, so
+	// no node completion / edge traversal is needed on this dedicated node.
+	peer := &approval.Task{
+		TenantID: "default", InstanceID: inst.ID, NodeID: task.NodeID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, task.NodeID).ID,
+		AssigneeID: "permless-peer", SortOrder: 2, Status: approval.TaskPending,
+	}
+	_, err := s.db.NewInsert().Model(peer).Exec(s.ctx)
+	s.Require().NoError(err, "Should create pending peer")
+
+	_, err = s.handler.Handle(s.ctx, command.ApproveTaskCmd{
+		TaskID:   task.ID,
+		Operator: approval.UserInfo{ID: "permless-approver", Name: "Approver"},
+		Opinion:  "ok",
+		FormData: map[string]any{"amount": 5}, // below Min:10 — dropped, so never validated
+		Caller:   approval.SystemCaller,
+	})
+	s.Require().NoError(err, "a permission-less node must approve with submitted data dropped, not validated")
+
+	var reloadedTask approval.Task
+
+	reloadedTask.ID = task.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloadedTask).WherePK().Scan(s.ctx), "Should reload task")
+	s.Assert().Equal(approval.TaskApproved, reloadedTask.Status, "task should be approved")
+
+	var reloadedInst approval.Instance
+
+	reloadedInst.ID = inst.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloadedInst).WherePK().Scan(s.ctx), "Should reload instance")
+	s.Assert().NotContains(reloadedInst.FormData, "amount", "submitted data on a permission-less node must be dropped, not merged")
+}
