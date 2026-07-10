@@ -88,6 +88,13 @@ func TestCharacterClassRule(t *testing.T) {
 		assertPolicyViolation(t, rule.Check(nil, "abc def"), "whitespace must not count as a symbol")
 		assert.NoError(t, rule.Check(nil, "abc!def"), "a punctuation mark should count as a symbol")
 	})
+
+	t.Run("CaselessLettersAreNotSymbols", func(t *testing.T) {
+		rule := NewCharacterClassRule(false, false, false, true, 0)
+
+		assertPolicyViolation(t, rule.Check(nil, "abc密码def"), "CJK letters must not satisfy the symbol requirement")
+		assert.NoError(t, rule.Check(nil, "abc密码#def"), "a genuine symbol alongside CJK letters should satisfy the requirement")
+	})
 }
 
 func TestDisallowIdentityRule(t *testing.T) {
@@ -109,6 +116,14 @@ func TestDisallowIdentityRule(t *testing.T) {
 	t.Run("IgnoresShortIdentityTokens", func(t *testing.T) {
 		shortName := NewUser("ab", "Al")
 		assert.NoError(t, rule.Check(shortName, "album-cover-ab"), "identity fragments shorter than the minimum must not match")
+	})
+
+	t.Run("MinimumTokenLengthCountsRunes", func(t *testing.T) {
+		cjkName := NewUser("u1", "王五")
+		assert.NoError(t, rule.Check(cjkName, "王五secret"), "a two-rune CJK name is below the minimum and must not match, even though it is six bytes")
+
+		longCJKName := NewUser("u2", "欧阳明月")
+		assertPolicyViolation(t, rule.Check(longCJKName, "pw欧阳明月pw"), "a four-rune CJK name meets the minimum and should match")
 	})
 
 	t.Run("NilPrincipalPasses", func(t *testing.T) {

@@ -85,7 +85,8 @@ func (r *maxLengthRule) Check(_ *Principal, plaintext string) error {
 
 // NewCharacterClassRule enforces required character classes and, when
 // minClasses > 0, a minimum count of distinct classes present. The four classes
-// are uppercase, lowercase, digit, and symbol (any non-space, non-alphanumeric).
+// are uppercase, lowercase, digit, and symbol (any non-space, non-letter,
+// non-digit rune); caseless letters such as CJK count toward no class.
 func NewCharacterClassRule(requireUpper, requireLower, requireDigit, requireSymbol bool, minClasses int) PasswordRule {
 	return &characterClassRule{
 		requireUpper:  requireUpper,
@@ -114,7 +115,9 @@ func (r *characterClassRule) Check(_ *Principal, plaintext string) error {
 			hasLower = true
 		case unicode.IsDigit(c):
 			hasDigit = true
-		case !unicode.IsSpace(c):
+		case !unicode.IsLetter(c) && !unicode.IsSpace(c):
+			// Caseless letters (e.g. CJK) are excluded: they are not symbols and
+			// must not satisfy a require_symbol or min-classes policy.
 			hasSymbol = true
 		}
 	}
@@ -146,8 +149,9 @@ func (r *characterClassRule) Check(_ *Principal, plaintext string) error {
 	return nil
 }
 
-// identityMinToken is the shortest identity fragment the disallow-identity rule
-// will match on, so a two-letter name cannot reject most passwords.
+// identityMinToken is the shortest identity fragment (in runes) the
+// disallow-identity rule will match on, so a two-character name cannot reject
+// most passwords.
 const identityMinToken = 3
 
 // NewDisallowIdentityRule rejects a password that contains the principal's login
@@ -166,7 +170,7 @@ func (*disallowIdentityRule) Check(principal *Principal, plaintext string) error
 	lowered := strings.ToLower(plaintext)
 	for _, token := range []string{principal.ID, principal.Name} {
 		token = strings.ToLower(strings.TrimSpace(token))
-		if len(token) >= identityMinToken && strings.Contains(lowered, token) {
+		if utf8.RuneCountInString(token) >= identityMinToken && strings.Contains(lowered, token) {
 			return ErrPasswordContainsIdentity
 		}
 	}

@@ -158,7 +158,8 @@ type PasswordPolicyConfig struct {
 	RequireLower bool `config:"require_lower"`
 	// RequireDigit requires at least one digit.
 	RequireDigit bool `config:"require_digit"`
-	// RequireSymbol requires at least one symbol (non-space, non-alphanumeric).
+	// RequireSymbol requires at least one symbol (non-space, non-letter,
+	// non-digit; caseless letters such as CJK do not count).
 	RequireSymbol bool `config:"require_symbol"`
 	// MinCharClasses requires at least this many distinct character classes
 	// (uppercase, lowercase, digit, symbol) when > 0.
