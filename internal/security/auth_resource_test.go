@@ -304,6 +304,38 @@ func (suite *AuthResourceTestSuite) TestLoginInvalidCredentials() {
 	})
 }
 
+// TestLoginRefusesInternalTokenTypes proves the login endpoint cannot be used
+// to exchange framework-issued tokens for fresh ones (e.g. laundering a stolen
+// short-lived access token into a long-lived refresh token).
+func (suite *AuthResourceTestSuite) TestLoginRefusesInternalTokenTypes() {
+	for _, authType := range []string{
+		isecurity.AuthTypeJWTToken,
+		isecurity.AuthTypeOpaqueToken,
+		isecurity.AuthTypeRefresh,
+	} {
+		suite.Run(authType, func() {
+			resp := suite.MakeRPCRequest(api.Request{
+				Identifier: api.Identifier{
+					Resource: "security/auth",
+					Action:   "login",
+					Version:  "v1",
+				},
+				Params: map[string]any{
+					"type":        authType,
+					"principal":   "some-token-value",
+					"credentials": "irrelevant",
+				},
+			})
+
+			suite.Equal(400, resp.StatusCode, "a framework token type must be refused as a login credential")
+
+			body := suite.ReadResult(resp)
+			suite.False(body.IsOk(), "login must fail for internal token types")
+			suite.Equal(security.ErrCodeUnsupportedAuthenticationType, body.Code, "the refusal should surface the unsupported-type code")
+		})
+	}
+}
+
 // TestLoginMissingParameters tests login failures with missing or invalid parameters.
 func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 	suite.Run("MissingUsername", func() {

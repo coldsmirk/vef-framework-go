@@ -9,10 +9,12 @@ import (
 
 var logger = logx.Named("security")
 
-// AuthTokens holds the access and refresh token pair issued after successful authentication.
+// AuthTokens holds the tokens issued after successful authentication. The
+// refresh token exists only under the stateless JWT mechanism; an opaque login
+// issues a single self-renewing access token and omits the field.
 type AuthTokens struct {
 	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
+	RefreshToken string `json:"refreshToken,omitempty"`
 }
 
 // Authentication carries the client-supplied authentication payload.

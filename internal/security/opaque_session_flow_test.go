@@ -114,6 +114,17 @@ func (s *OpaqueSessionFlowTestSuite) TestLoginAuthenticateLogout() {
 	s.Equal(401, revokedResp.StatusCode, "a revoked opaque token must no longer authenticate")
 }
 
+// TestRefreshUnavailable proves the refresh operation is not mounted under the
+// opaque mechanism: sessions renew themselves on use, and a leftover refresh
+// JWT from a previous jwt_token deployment must not mint opaque sessions.
+func (s *OpaqueSessionFlowTestSuite) TestRefreshUnavailable() {
+	resp := s.MakeRPCRequest(api.Request{
+		Identifier: api.Identifier{Resource: "security/auth", Action: "refresh", Version: "v1"},
+		Params:     map[string]any{"refreshToken": "any-value"},
+	})
+	s.Equal(404, resp.StatusCode, "the refresh operation must not exist under the opaque mechanism")
+}
+
 func TestOpaqueSessionFlow(t *testing.T) {
 	suite.Run(t, new(OpaqueSessionFlowTestSuite))
 }

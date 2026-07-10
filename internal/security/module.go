@@ -55,23 +55,15 @@ var Module = fx.Module(
 		),
 		newJWT,
 		fx.Annotate(
-			NewJWTAuthenticator,
-			fx.ResultTags(`group:"vef:security:authenticators"`),
-		),
-		fx.Annotate(
-			NewJWTRefreshAuthenticator,
-			fx.ParamTags(``, `optional:"true"`),
-			fx.ResultTags(`group:"vef:security:authenticators"`),
+			newTokenAuthenticators,
+			fx.ParamTags(``, ``, `optional:"true"`),
+			fx.ResultTags(`group:"vef:security:authenticators,flatten"`),
 		),
 		NewJWTTokenGenerator,
 		NewOpaqueTokenGenerator,
 		newSessionStore,
 		newSessionPolicy,
 		newTokenGenerator,
-		fx.Annotate(
-			NewOpaqueTokenAuthenticator,
-			fx.ResultTags(`group:"vef:security:authenticators"`),
-		),
 		security.NewJWTChallengeTokenStore,
 		fx.Annotate(
 			NewSignatureAuthenticator,
@@ -201,6 +193,29 @@ func newSessionPolicy(cfg *config.SecurityConfig) security.SessionPolicy {
 		IdleTTL:       session.EffectiveIdleTTL(),
 		MaxLifetime:   session.EffectiveMaxLifetime(),
 		Sliding:       session.IsSliding(),
+	}
+}
+
+// newTokenAuthenticators registers only the configured login-token mechanism's
+// authenticators: the JWT access + refresh pair under jwt_token, the opaque
+// session authenticator under opaque_token. Keeping the inactive mechanism out
+// of the authenticator group closes its surfaces entirely — after a deployment
+// switches to opaque tokens, a leftover JWT (access or refresh) can no longer
+// authenticate a request or mint fresh sessions through the refresh flow.
+func newTokenAuthenticators(
+	cfg *config.SecurityConfig,
+	jwt *security.JWT,
+	userLoader security.UserLoader,
+	store security.SessionStore,
+	policy security.SessionPolicy,
+) []security.Authenticator {
+	if cfg.EffectiveTokenType() == config.TokenTypeOpaque {
+		return []security.Authenticator{NewOpaqueTokenAuthenticator(store, policy)}
+	}
+
+	return []security.Authenticator{
+		NewJWTAuthenticator(jwt),
+		NewJWTRefreshAuthenticator(jwt, userLoader),
 	}
 }
 

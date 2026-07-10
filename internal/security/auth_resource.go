@@ -5,6 +5,7 @@ import (
 	"context"
 	"slices"
 
+	"github.com/coldsmirk/go-collections"
 	"github.com/coldsmirk/go-streams"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
@@ -41,6 +42,38 @@ func NewAuthResource(params AuthResourceParams) api.Resource {
 		return cmp.Compare(a.Order(), b.Order())
 	})
 
+	operations := []api.OperationSpec{
+		{
+			Action:    "login",
+			Public:    true,
+			RateLimit: &api.RateLimitConfig{Max: params.SecurityConfig.LoginRateLimit},
+		},
+	}
+
+	// The refresh flow exists only under the stateless JWT mechanism; an opaque
+	// session renews itself on use, so the operation is not mounted at all.
+	if params.SecurityConfig.EffectiveTokenType() == config.TokenTypeJWT {
+		operations = append(operations, api.OperationSpec{
+			Action:    "refresh",
+			Public:    true,
+			RateLimit: &api.RateLimitConfig{Max: params.SecurityConfig.RefreshRateLimit},
+		})
+	}
+
+	operations = append(operations,
+		api.OperationSpec{
+			Action: "logout",
+		},
+		api.OperationSpec{
+			Action:    "resolve_challenge",
+			Public:    true,
+			RateLimit: &api.RateLimitConfig{Max: params.SecurityConfig.LoginRateLimit},
+		},
+		api.OperationSpec{
+			Action: "get_user_info",
+		},
+	)
+
 	return &AuthResource{
 		authManager:         params.AuthManager,
 		tokenGenerator:      params.TokenGenerator,
@@ -53,29 +86,7 @@ func NewAuthResource(params AuthResourceParams) api.Resource {
 
 		Resource: api.NewRPCResource(
 			"security/auth",
-			api.WithOperations(
-				api.OperationSpec{
-					Action:    "login",
-					Public:    true,
-					RateLimit: &api.RateLimitConfig{Max: params.SecurityConfig.LoginRateLimit},
-				},
-				api.OperationSpec{
-					Action:    "refresh",
-					Public:    true,
-					RateLimit: &api.RateLimitConfig{Max: params.SecurityConfig.RefreshRateLimit},
-				},
-				api.OperationSpec{
-					Action: "logout",
-				},
-				api.OperationSpec{
-					Action:    "resolve_challenge",
-					Public:    true,
-					RateLimit: &api.RateLimitConfig{Max: params.SecurityConfig.LoginRateLimit},
-				},
-				api.OperationSpec{
-					Action: "get_user_info",
-				},
-			),
+			api.WithOperations(operations...),
 		),
 	}
 }
@@ -103,10 +114,20 @@ type LoginParams struct {
 	Credentials any    `json:"credentials" validate:"required" label_i18n:"auth_credentials"`
 }
 
+// internalTokenAuthTypes are the mechanisms whose credentials the framework
+// itself issues. Login refuses them: exchanging an issued token for a fresh
+// token pair would let a stolen short-lived access token be laundered into a
+// long-lived refresh token or an additional server-side session.
+var internalTokenAuthTypes = collections.NewHashSetFrom(AuthTypeJWTToken, AuthTypeOpaqueToken, AuthTypeRefresh)
+
 // Login authenticates a user and returns a LoginResult.
 // When challenge providers are configured and applicable, the result contains
 // a challenge token and pending challenges instead of auth tokens.
 func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
+	if internalTokenAuthTypes.Contains(params.Type) {
+		return errUnsupportedAuthenticationType(params.Type)
+	}
+
 	attempt := security.LoginAttempt{Identity: params.Principal, ClientIP: httpx.GetIP(ctx)}
 
 	if locked := a.guardCheck(ctx, params.Type, attempt); locked != nil {

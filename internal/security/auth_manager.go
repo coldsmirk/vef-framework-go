@@ -25,11 +25,7 @@ func (am *AuthenticatorAuthManager) Authenticate(ctx context.Context, authentica
 	if authenticator == nil {
 		logger.Warnf("No authenticator found for authentication type: %s", authentication.Type)
 
-		return nil, result.Err(
-			i18n.T(security.ErrMessageUnsupportedAuthenticationType, map[string]any{"kind": authentication.Type}),
-			result.WithCode(security.ErrCodeUnsupportedAuthenticationType),
-			result.WithStatus(fiber.StatusBadRequest),
-		)
+		return nil, errUnsupportedAuthenticationType(authentication.Type)
 	}
 
 	principal, err := authenticator.Authenticate(ctx, authentication)
@@ -54,6 +50,17 @@ func (am *AuthenticatorAuthManager) findAuthenticator(authType string) security.
 	}
 
 	return nil
+}
+
+// errUnsupportedAuthenticationType reports an authentication type no registered
+// authenticator accepts; Login also raises it to refuse framework-issued token
+// types presented as login credentials.
+func errUnsupportedAuthenticationType(kind string) error {
+	return result.Err(
+		i18n.T(security.ErrMessageUnsupportedAuthenticationType, map[string]any{"kind": kind}),
+		result.WithCode(security.ErrCodeUnsupportedAuthenticationType),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
 }
 
 // maskPrincipal prevents credential leakage in logs by showing only the first 3 chars.
