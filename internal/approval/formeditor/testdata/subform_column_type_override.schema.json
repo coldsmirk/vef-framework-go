@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "Sub", "type": "subform", "variant": "table", "key": "items", "label": "明细",
+          "template": [
+            { "id": "C1", "type": "number", "key": "qty", "label": "数量", "precision": 2, "columnType": "integer" }
+          ]
+        }
+      ]
+    }
+  }
+}

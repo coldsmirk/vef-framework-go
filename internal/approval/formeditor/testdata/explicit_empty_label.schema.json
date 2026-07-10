@@ -1,0 +1,6 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": { "children": [ { "id": "F1", "type": "textfield", "key": "code", "label": "" } ] }
+  }
+}

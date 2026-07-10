@@ -90,4 +90,43 @@ func TestValidateFieldPermissions(t *testing.T) {
 		assert.ErrorIs(t, svc.ValidateFieldPermissions(approvalNode(perms), nil), errFieldPermissionKeyUnknown,
 			"a flow without a form makes every permission entry a dangling reference")
 	})
+
+	requiredPerms := map[string]approval.Permission{"reason": approval.PermissionRequired}
+
+	approvalWithTimeout := func(perms map[string]approval.Permission, action approval.TimeoutAction) map[string]approval.NodeData {
+		return map[string]approval.NodeData{
+			"n1": &approval.ApprovalNodeData{
+				TaskNodeData: approval.TaskNodeData{FieldPermissions: perms, TimeoutAction: action},
+			},
+		}
+	}
+
+	handleWithTimeout := func(perms map[string]approval.Permission, action approval.TimeoutAction) map[string]approval.NodeData {
+		return map[string]approval.NodeData{
+			"n1": &approval.HandleNodeData{
+				TaskNodeData: approval.TaskNodeData{FieldPermissions: perms, TimeoutAction: action},
+			},
+		}
+	}
+
+	t.Run("RejectsRequiredPermissionWithAutoPassOnApprovalNode", func(t *testing.T) {
+		assert.ErrorIs(t, svc.ValidateFieldPermissions(approvalWithTimeout(requiredPerms, approval.TimeoutActionAutoPass), form), errRequiredPermissionAutoPass,
+			"auto_pass finishes a task without the required-field check, so a required permission on an auto_pass node is unenforceable")
+	})
+
+	t.Run("RejectsRequiredPermissionWithAutoPassOnHandleNode", func(t *testing.T) {
+		assert.ErrorIs(t, svc.ValidateFieldPermissions(handleWithTimeout(requiredPerms, approval.TimeoutActionAutoPass), form), errRequiredPermissionAutoPass,
+			"handle nodes enforce required fields the same way, so auto_pass with a required permission is equally unenforceable")
+	})
+
+	t.Run("AcceptsRequiredPermissionWithAutoReject", func(t *testing.T) {
+		assert.NoError(t, svc.ValidateFieldPermissions(approvalWithTimeout(requiredPerms, approval.TimeoutActionAutoReject), form),
+			"auto_reject does not pass the node, so a required field permission stays enforceable")
+	})
+
+	t.Run("AcceptsVisibleOnlyWithAutoPass", func(t *testing.T) {
+		visible := map[string]approval.Permission{"reason": approval.PermissionVisible}
+		assert.NoError(t, svc.ValidateFieldPermissions(approvalWithTimeout(visible, approval.TimeoutActionAutoPass), form),
+			"auto_pass is only rejected alongside a required permission — a visible-only node passes")
+	})
 }

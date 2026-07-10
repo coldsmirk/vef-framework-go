@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        { "id": "F1", "type": "textfield", "key": "a", "label": "First" },
+        { "id": "F2", "type": "textfield", "key": "a", "label": "Second" }
+      ]
+    }
+  }
+}

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cmp"
 	"fmt"
 
 	"github.com/coldsmirk/go-collections"
@@ -26,14 +27,44 @@ func (*FlowDefinitionService) ValidateFieldPermissions(nodeData map[string]appro
 	for nodeID, data := range nodeData {
 		permissions, isCC := fieldPermissionsOf(data)
 
+		hasRequired := false
 		for key, perm := range permissions {
 			if err := validateFieldPermissionEntry(nodeID, key, perm, isCC, fieldKeys); err != nil {
 				return err
 			}
+
+			if perm == approval.PermissionRequired {
+				hasRequired = true
+			}
+		}
+
+		// The write path enforces "a node passes ⇒ its required fields are filled"
+		// on approve / handle, but the timeout scanner's auto_pass finishes tasks
+		// without that check — so a required field permission on an auto_pass node
+		// is an unenforceable contract and must be unrepresentable. Validated
+		// against the resolved timeout action (deploy normalization defaults an
+		// omitted value), mirroring the sibling checks in validateNodeConfig.
+		if hasRequired && resolvedTimeoutAction(data) == approval.TimeoutActionAutoPass {
+			return fmt.Errorf("%w: node %q", errRequiredPermissionAutoPass, nodeID)
 		}
 	}
 
 	return nil
+}
+
+// resolvedTimeoutAction returns a task node's timeout action with deploy
+// normalization applied (an omitted value resolves to DefaultTimeoutAction, as
+// ApplyTo does). Node kinds with no timeout surface — CC, start, end, condition
+// — return the empty action.
+func resolvedTimeoutAction(data approval.NodeData) approval.TimeoutAction {
+	switch typed := data.(type) {
+	case *approval.ApprovalNodeData:
+		return cmp.Or(typed.TimeoutAction, approval.DefaultTimeoutAction)
+	case *approval.HandleNodeData:
+		return cmp.Or(typed.TimeoutAction, approval.DefaultTimeoutAction)
+	default:
+		return ""
+	}
 }
 
 // fieldPermissionsOf extracts a node's field-permission matrix and reports

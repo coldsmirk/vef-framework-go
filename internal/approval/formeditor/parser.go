@@ -2,6 +2,7 @@ package formeditor
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -28,7 +29,10 @@ type parser struct{}
 // conflict, an unmappable / unknown widget, a nested subform, or an empty detail
 // table aborts with an outward-facing error; a nil, empty, or null document
 // yields no fields.
-func (*parser) ParseFormFields(schema json.RawMessage) ([]approval.FormFieldDefinition, error) {
+//
+// The parser is pure, so it ignores ctx; the parameter exists for host parsers
+// that resolve remote sources while deriving fields (see FormSchemaParser).
+func (*parser) ParseFormFields(_ context.Context, schema json.RawMessage) ([]approval.FormFieldDefinition, error) {
 	if isBlankSchema(schema) {
 		return nil, nil
 	}
@@ -52,6 +56,16 @@ func (*parser) ParseFormFields(schema json.RawMessage) ([]approval.FormFieldDefi
 		}
 
 		err := walkRootKeyed(layer.Children, func(node *richBlock) error {
+			// Classify the widget BEFORE the seen check so an unmappable / unknown
+			// type aborts identically regardless of sighting order or device. Were
+			// this deferred to projectNode (first sighting only), a conflicting type
+			// on the second device would be silently deduped and the losing device
+			// would submit values the deployed definition rejects — the exact hazard
+			// the cross-device check exists to prevent.
+			if err := classifyWidget(node); err != nil {
+				return err
+			}
+
 			if prev, ok := seen[node.Key]; ok {
 				return checkCrossDevice(node, prev)
 			}
@@ -96,13 +110,14 @@ func newSeenProjection(node *richBlock, kind approval.FieldKind) seenProjection 
 // checkCrossDevice reports whether a second sighting of an already-projected key
 // would deploy a contract the first sighting's device cannot submit against. The
 // submitted data contract is shared across devices, so a differing kind or table
-// column-set is an error, not a preference. A same-kind options / validation
-// divergence is not detected (documented limitation), and a second sighting that
-// is itself unprojectable is silently deduped — pc already won the key.
+// column-set is an error, not a preference. classifyWidget has already rejected
+// unmappable / unknown types before this runs, so peekKind resolves to a real
+// kind here; a same-kind options / validation divergence is not detected
+// (documented limitation).
 func checkCrossDevice(node *richBlock, prev seenProjection) error {
 	kind := peekKind(node)
 
-	if kind != "" && kind != prev.kind {
+	if kind != prev.kind {
 		return errCrossDeviceKindMismatch(node.Key, prev.kind, kind)
 	}
 

@@ -46,6 +46,31 @@ var columnTypeByWidget = map[string]approval.ColumnDataType{
 	"code-editor":    approval.ColumnText,
 }
 
+// classifyWidget reports the projection-blocking fault of a root-scope keyed
+// node's widget type: an unmappable (switch / daterange) or unknown type. A
+// subform (table) and every mapped leaf widget pass. The parser runs this on
+// every sighting before the cross-device dedupe, so a type conflict fails
+// identically no matter which device sees the key first.
+//
+// The TS twin (@vef-framework-react/approval-form-bridge, project.ts) must
+// mirror this order — classify before dedupe — or the two projectors disagree
+// on a key sighted first as a valid widget and again as an unmappable one.
+func classifyWidget(node *richBlock) error {
+	if node.Type == "subform" {
+		return nil
+	}
+
+	if _, ok := kindByType[node.Type]; ok {
+		return nil
+	}
+
+	if unmappableTypes.Contains(node.Type) {
+		return errUnmappableFieldType(node.Key, node.Type)
+	}
+
+	return errUnknownFieldType(node.Key, node.Type)
+}
+
 // projectNode projects one root-scope keyed node: a subform becomes a table
 // field, a keyed leaf a scalar field.
 func projectNode(node *richBlock, dataSources map[string]richDataSource) (*approval.FormFieldDefinition, error) {

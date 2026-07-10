@@ -1,0 +1,8 @@
+[
+  {
+    "key": "items", "kind": "table", "label": "明细", "sortOrder": 0,
+    "columns": [
+      { "key": "qty", "kind": "number", "label": "数量", "sortOrder": 0, "columnType": "integer" }
+    ]
+  }
+]

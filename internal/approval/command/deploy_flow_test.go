@@ -2,6 +2,8 @@ package command_test
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 
 	"github.com/stretchr/testify/suite"
 
@@ -13,6 +15,14 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
+
+// BoomFormParser is a host FormSchemaParser stand-in whose failure carries no
+// result.Error, exercising the deploy handler's bare-error wrap branch.
+type BoomFormParser struct{}
+
+func (*BoomFormParser) ParseFormFields(context.Context, json.RawMessage) ([]approval.FormFieldDefinition, error) {
+	return nil, errors.New("boom")
+}
 
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
@@ -210,6 +220,55 @@ func (s *DeployFlowTestSuite) TestDeployInvalidAddAssigneeTypeInNodeData() {
 	s.Assert().ErrorContains(err, "invalid AddAssigneeType", "Should surface invalid add assignee type")
 }
 
+// TestDeployRejectsDanglingFieldPermission proves ValidateFieldPermissions is
+// wired into the deploy pipeline: a node whose fieldPermissions reference a form
+// field key the derived schema does not define fails the deploy with
+// ErrInvalidFlowDesign, before any version row is written. The field permission
+// / form-field pairing can only be checked where the flow definition and the
+// derived form fields meet — this pins that they actually do.
+func (s *DeployFlowTestSuite) TestDeployRejectsDanglingFieldPermission() {
+	cmd := command.DeployFlowCmd{
+		FlowID: s.flowID,
+		FlowDefinition: approval.FlowDefinition{
+			Nodes: []approval.NodeDefinition{
+				{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{BaseNodeData: approval.BaseNodeData{Name: "开始"}})},
+				{ID: "approval-1", Kind: approval.NodeApproval, Data: mustMarshal(approval.ApprovalNodeData{
+					BaseNodeData: approval.BaseNodeData{Name: "审批"},
+					TaskNodeData: approval.TaskNodeData{
+						Assignees:           []approval.AssigneeDefinition{{Kind: approval.AssigneeUser, IDs: []string{"user-1"}, SortOrder: 1}},
+						ExecutionType:       approval.ExecutionManual,
+						EmptyAssigneeAction: approval.EmptyAssigneeAutoPass,
+						// "ghost" is not a key of the derived form (only "reason" is),
+						// so this permission is a dangling reference.
+						FieldPermissions: map[string]approval.Permission{"ghost": approval.PermissionEditable},
+					},
+					ApprovalMethod: approval.ApprovalSequential,
+					PassRule:       approval.PassAll,
+				})},
+				{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{BaseNodeData: approval.BaseNodeData{Name: "结束"}})},
+			},
+			Edges: []approval.EdgeDefinition{
+				{ID: "edge-1", Source: "start-1", Target: "approval-1"},
+				{ID: "edge-2", Source: "approval-1", Target: "end-1"},
+			},
+		},
+		FormSchema: formEditorSchemaJSON(s.T(), formEditorWidget{Type: "textfield", Key: "reason", Label: "Reason"}),
+		Caller:     approval.SystemCaller,
+	}
+
+	_, err := s.handler.Handle(s.ctx, cmd)
+	s.Require().Error(err, "Should fail when a field permission references an undefined form field")
+	s.Assert().ErrorIs(err, shared.ErrInvalidFlowDesign, "A dangling field permission must surface as invalid flow design")
+	s.Assert().ErrorContains(err, "ghost", "The error must name the dangling field key")
+
+	count, err := s.db.NewSelect().
+		Model((*approval.FlowVersion)(nil)).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("flow_id", s.flowID) }).
+		Count(s.ctx)
+	s.Require().NoError(err, "Should count versions")
+	s.Assert().Zero(count, "A field-permission validation failure must abort the deploy before any version is created")
+}
+
 func (s *DeployFlowTestSuite) TestDeployWithAssigneesAndCCs() {
 	cmd := command.DeployFlowCmd{
 		FlowID:         s.flowID,
@@ -339,6 +398,35 @@ func (s *DeployFlowTestSuite) TestDeployParserErrorAbortsDeploy() {
 	})
 	s.Require().Error(err, "Should fail when the form schema cannot be parsed")
 	s.Assert().ErrorIs(err, shared.ErrInvalidFormDesign, "Parser errors should surface as invalid form design")
+
+	// The built-in parser's specific message survives the wrap: a bare context
+	// wrap keeps it first, so the caller sees which field / widget was rejected.
+	s.Assert().ErrorContains(err, "toggle", "The built-in parser's message must name the offending field key")
+	s.Assert().ErrorContains(err, "switch", "The built-in parser's message must name the offending widget type")
+
+	count, err := s.db.NewSelect().
+		Model((*approval.FlowVersion)(nil)).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("flow_id", s.flowID) }).
+		Count(s.ctx)
+	s.Require().NoError(err, "Should count versions")
+	s.Assert().Zero(count, "A parser failure must abort the deploy before any version is created")
+}
+
+// TestDeployHostParserBareErrorWrapsAsInvalidFormDesign pins the host-parser
+// opacity fix: a parser whose error carries no result.Error is wrapped in the
+// form-design sentinel so it surfaces as an invalid-form-design outcome rather
+// than a raw 500.
+func (s *DeployFlowTestSuite) TestDeployHostParserBareErrorWrapsAsInvalidFormDesign() {
+	handler := command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), new(BoomFormParser))
+
+	_, err := handler.Handle(s.ctx, command.DeployFlowCmd{
+		FlowID:         s.flowID,
+		FlowDefinition: simpleFlowDef(),
+		FormSchema:     json.RawMessage(`{"version":2}`),
+		Caller:         approval.SystemCaller,
+	})
+	s.Require().Error(err, "A host parser failure must abort the deploy")
+	s.Assert().ErrorIs(err, shared.ErrInvalidFormDesign, "A bare parser error must be wrapped in the form-design sentinel")
 
 	count, err := s.db.NewSelect().
 		Model((*approval.FlowVersion)(nil)).

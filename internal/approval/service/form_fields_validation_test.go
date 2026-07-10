@@ -41,6 +41,12 @@ func TestValidateFormFields(t *testing.T) {
 		assert.ErrorIs(t, svc.ValidateFormFields(fields), errFormFieldKeyEmpty, "A blank field key should be rejected")
 	})
 
+	t.Run("RejectsWhitespaceKey", func(t *testing.T) {
+		fields := []approval.FormFieldDefinition{field("   ", approval.FieldInput)}
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errFormFieldKeyEmpty,
+			"a whitespace-only key sanitizes to an empty identifier at publish and must be rejected at deploy")
+	})
+
 	t.Run("RejectsDuplicateKey", func(t *testing.T) {
 		fields := []approval.FormFieldDefinition{
 			field("amount", approval.FieldNumber),
@@ -124,5 +130,11 @@ func TestValidateFormFieldsTableColumns(t *testing.T) {
 		}
 		assert.ErrorIs(t, svc.ValidateFormFields(fields), errColumnsOnScalarField,
 			"columns on a scalar field hide a designer bug and must be rejected")
+	})
+
+	t.Run("RejectsWhitespaceColumnKey", func(t *testing.T) {
+		fields := table(approval.FormFieldDefinition{Key: "  ", Kind: approval.FieldInput})
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errFormFieldKeyEmpty,
+			"a whitespace-only column key sanitizes to an empty identifier at publish and must be rejected at deploy")
 	})
 }

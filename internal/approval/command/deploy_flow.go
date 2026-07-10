@@ -53,6 +53,25 @@ func NewDeployFlowHandler(db orm.DB, flowDefSvc *service.FlowDefinitionService, 
 	return &DeployFlowHandler{db: db, flowDefSvc: flowDefSvc, formParser: formParser}
 }
 
+// deriveFormFields runs the injected parser over the host schema and normalizes
+// its failure into a form-design outcome. The built-in parser's faults already
+// carry a result.Error (with shared.ErrCodeInvalidFormDesign), so a plain
+// context wrap keeps that specific message first for the API caller. A host
+// parser may return a bare error with no result.Error; wrap it in the form-design
+// sentinel so it still surfaces as an invalid-form-design outcome, not a raw 500.
+func (h *DeployFlowHandler) deriveFormFields(ctx context.Context, schema json.RawMessage) ([]approval.FormFieldDefinition, error) {
+	fields, err := h.formParser.ParseFormFields(ctx, schema)
+	if err != nil {
+		if _, ok := result.AsErr(err); ok {
+			return nil, fmt.Errorf("parse form schema: %w", err)
+		}
+
+		return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFormDesign, err)
+	}
+
+	return fields, nil
+}
+
 func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*approval.FlowVersion, error) {
 	parsedNodeData, err := h.flowDefSvc.ValidateFlowDefinition(&cmd.FlowDefinition)
 	if err != nil {
@@ -60,13 +79,10 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 	}
 
 	// Derive the flat field list from the host-owned designer document; the
-	// schema itself stays opaque and is persisted verbatim below. The plain
-	// context wrap keeps the parser's outward result.Error first in the chain,
-	// so the API caller sees its specific message (the built-in parser's
-	// errors already carry shared.ErrCodeInvalidFormDesign).
-	fields, err := h.formParser.ParseFormFields(cmd.FormSchema)
+	// schema itself stays opaque and is persisted verbatim below.
+	fields, err := h.deriveFormFields(ctx, cmd.FormSchema)
 	if err != nil {
-		return nil, fmt.Errorf("parse form schema: %w", err)
+		return nil, err
 	}
 
 	if err := h.flowDefSvc.ValidateFormFields(fields); err != nil {

@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	collections "github.com/coldsmirk/go-collections"
 
@@ -20,7 +21,10 @@ func (*FlowDefinitionService) ValidateFormFields(fields []approval.FormFieldDefi
 	keys := collections.NewHashSetWithCapacity[string](len(fields))
 
 	for _, field := range fields {
-		if field.Key == "" {
+		// TrimSpace, not == "": a whitespace-only key survives to publish and the
+		// storage DDL sanitizes it to an empty identifier, exploding as a bare SQL
+		// syntax error instead of a form-design rejection here.
+		if strings.TrimSpace(field.Key) == "" {
 			return errFormFieldKeyEmpty
 		}
 
@@ -66,7 +70,7 @@ func validateTableColumns(field approval.FormFieldDefinition) error {
 	keys := collections.NewHashSetWithCapacity[string](len(field.Columns))
 
 	for _, column := range field.Columns {
-		if column.Key == "" {
+		if strings.TrimSpace(column.Key) == "" {
 			return fmt.Errorf("%w: in table %q", errFormFieldKeyEmpty, field.Key)
 		}
 
