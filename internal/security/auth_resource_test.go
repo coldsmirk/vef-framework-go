@@ -2050,21 +2050,36 @@ func TestAuthResourceErrorPath(t *testing.T) {
 }
 
 // LockoutFlowTestSuite drives the brute-force guard end-to-end through the login
-// RPC to prove the guard is wired ahead of authentication.
+// and resolve_challenge RPCs to prove the guard is wired ahead of every
+// credential-verification leg.
 type LockoutFlowTestSuite struct {
 	apptest.Suite
 
-	authManager *MockAuthManager
-	publisher   *MockPublisher
+	authManager         *MockAuthManager
+	challengeTokenStore *MockChallengeTokenStore
+	challengeProvider   *MockChallengeProvider
+	publisher           *MockPublisher
 }
 
 func (s *LockoutFlowTestSuite) SetupSuite() {
 	s.authManager = new(MockAuthManager)
+	s.challengeTokenStore = new(MockChallengeTokenStore)
+	s.challengeProvider = new(MockChallengeProvider)
+	s.challengeProvider.On("Type").Return("totp")
+	s.challengeProvider.On("Order").Return(0).Maybe()
 	s.publisher = new(MockPublisher)
 	s.publisher.On("Publish", mock.Anything).Maybe()
 
 	s.SetupApp(
 		fx.Decorate(func() security.AuthManager { return s.authManager }),
+		fx.Decorate(func() security.ChallengeTokenStore { return s.challengeTokenStore }),
+		fx.Supply(
+			fx.Annotate(
+				s.challengeProvider,
+				fx.As(new(security.ChallengeProvider)),
+				fx.ResultTags(`group:"vef:security:challenge_providers"`),
+			),
+		),
 		// PasswordAuthenticator needs a UserLoader in the graph even though the
 		// mocked AuthManager makes it unreachable.
 		fx.Supply(
@@ -2098,6 +2113,11 @@ func (s *LockoutFlowTestSuite) TearDownSuite() {
 
 func (s *LockoutFlowTestSuite) SetupTest() {
 	resetMock(&s.authManager.Mock)
+	resetMock(&s.challengeTokenStore.Mock)
+	s.challengeProvider.Calls = nil
+	s.challengeProvider.ExpectedCalls = nil
+	s.challengeProvider.On("Type").Return("totp")
+	s.challengeProvider.On("Order").Return(0).Maybe()
 	s.publisher.Calls = nil
 	s.publisher.ClearPublishedEvents()
 	s.publisher.On("Publish", mock.Anything).Maybe()
@@ -2142,6 +2162,68 @@ func (s *LockoutFlowTestSuite) TestLockoutBlocksAfterThreshold() {
 	s.Equal(security.ErrCodeAccountLocked, body.Code, "A locked account should return the account-locked code")
 
 	s.authManager.AssertNumberOfCalls(s.T(), "Authenticate", 2)
+}
+
+// TestChallengeGuessesTripLockout verifies second-factor guesses feed the same
+// brute-force guard as password guesses: failed resolves count toward the
+// threshold, further resolves are blocked before the provider runs, and the
+// lockout carries over to the login endpoint for the same identity.
+func (s *LockoutFlowTestSuite) TestChallengeGuessesTripLockout() {
+	challengeUser := security.NewUser("challenge-user", "Challenge User")
+	s.challengeTokenStore.On("Parse", mock.Anything, "challenge-token").
+		Return(&security.ChallengeState{
+			Principal: challengeUser,
+			Username:  "challenge-user",
+			Pending:   []string{"totp"},
+		}, nil)
+	s.challengeProvider.On("Resolve", mock.Anything, challengeUser, "000000").
+		Return((*security.Principal)(nil), security.ErrOTPCodeInvalid).Twice()
+
+	resolveRequest := api.Request{
+		Identifier: api.Identifier{
+			Resource: "security/auth",
+			Action:   "resolve_challenge",
+			Version:  "v1",
+		},
+		Params: map[string]any{
+			"challengeToken": "challenge-token",
+			"type":           "totp",
+			"response":       "000000",
+		},
+	}
+
+	// Two wrong second-factor guesses reach the provider and surface its error.
+	for range 2 {
+		resp := s.MakeRPCRequest(resolveRequest)
+		s.Equal(401, resp.StatusCode, "A wrong challenge response below the threshold should return HTTP 401")
+
+		body := s.ReadResult(resp)
+		s.Equal(security.ErrCodeOTPCodeInvalid, body.Code, "Below the threshold the provider's error should surface")
+	}
+
+	// The third guess is blocked by the guard before the provider runs.
+	resp := s.MakeRPCRequest(resolveRequest)
+	s.Equal(429, resp.StatusCode, "A locked identity's challenge resolve should return HTTP 429")
+
+	body := s.ReadResult(resp)
+	s.Equal(security.ErrCodeAccountLocked, body.Code, "A locked challenge resolve should return the account-locked code")
+	s.challengeProvider.AssertNumberOfCalls(s.T(), "Resolve", 2)
+
+	// The lockout keys on the same identity, so a login attempt is blocked too.
+	loginResp := s.MakeRPCRequest(api.Request{
+		Identifier: api.Identifier{
+			Resource: "security/auth",
+			Action:   "login",
+			Version:  "v1",
+		},
+		Params: map[string]any{
+			"type":        "password",
+			"principal":   "challenge-user",
+			"credentials": "password123",
+		},
+	})
+	s.Equal(429, loginResp.StatusCode, "The lockout tripped by challenge guesses should also block login")
+	s.authManager.AssertNumberOfCalls(s.T(), "Authenticate", 0)
 }
 
 func TestLockoutFlow(t *testing.T) {

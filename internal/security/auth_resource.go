@@ -267,12 +267,22 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 	}
 
 	// provider.Resolve is the second-factor analog of authManager.Authenticate:
-	// a rejection here is a genuine failed credential attempt, so audit it like
-	// a failed login. The earlier guards (invalid/expired token, wrong type) are
-	// protocol/tampering errors that Login's analogous infra paths do not audit,
-	// so they are deliberately left unaudited.
+	// a rejection here is a genuine failed credential attempt, so gate it with
+	// the brute-force guard and audit it like a failed login — otherwise an
+	// attacker holding a valid password could guess the second factor bounded
+	// only by the endpoint rate limit. The earlier guards (invalid/expired
+	// token, wrong type) are protocol/tampering errors that Login's analogous
+	// infra paths do not audit, so they are deliberately left unguarded.
+	attempt := security.LoginAttempt{Identity: state.Username, ClientIP: httpx.GetIP(ctx)}
+
+	if locked := a.guardCheck(ctx, params.Type, attempt); locked != nil {
+		return locked
+	}
+
 	principal, err := provider.Resolve(ctx.Context(), state.Principal, params.Response)
 	if err != nil {
+		a.guardRecordFailure(ctx, attempt)
+
 		// Providers that return a typed result.Error keep their chosen code
 		// (e.g. ErrOTPCodeInvalid); a bare error is normalized to the stable
 		// challenge-resolve-failed code so the framework never leaks an opaque
@@ -285,6 +295,8 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 
 		return err
 	}
+
+	a.guardRecordSuccess(ctx, attempt)
 
 	resolved := append(state.Resolved, params.Type)
 	remaining := state.Pending[1:]
