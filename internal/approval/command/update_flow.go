@@ -79,32 +79,13 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 	}
 
 	cmd.BusinessBinding = businessBinding
+	bindingChanged := flow.BindingMode != cmd.BindingMode || !reflect.DeepEqual(flow.BusinessBinding, businessBinding)
 
-	// Freeze the business binding while instances are running: re-pointing (or
-	// clearing) the binding mid-flight would make in-flight instances write their
-	// outcome back to a different business record — or none — than they were
-	// started against. Only a real binding change is blocked, so editing name,
-	// initiators, admins, etc. stays allowed while instances run.
-	if bindingConfigChanged(&flow, cmd) {
-		running, err := db.NewSelect().
-			Model((*approval.Instance)(nil)).
-			Where(func(cb orm.ConditionBuilder) {
-				cb.Equals("flow_id", cmd.FlowID)
-				cb.Equals("status", string(approval.InstanceRunning))
-			}).
-			Exists(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("check running instances before binding change: %w", err)
-		}
-
-		if running {
-			return nil, shared.ErrFlowBindingLocked
-		}
-
-		if businessBinding != nil {
-			if err := h.bindingValidator.ValidateSchema(ctx, businessBinding); err != nil {
-				return nil, err
-			}
+	// Published versions own immutable binding snapshots, so changing the flow
+	// only affects the next deployed version and cannot redirect live instances.
+	if bindingChanged && businessBinding != nil {
+		if err := h.bindingValidator.ValidateSchema(ctx, businessBinding); err != nil {
+			return nil, err
 		}
 	}
 
@@ -160,13 +141,4 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 	)
 
 	return &flow, nil
-}
-
-// bindingConfigChanged reports whether cmd alters any business-binding field
-// (mode / table / key / status / optional linkage columns) relative to the
-// flow's persisted state. Only a binding change is gated by the
-// running-instance guard; non-binding edits are always allowed.
-func bindingConfigChanged(current *approval.Flow, cmd UpdateFlowCmd) bool {
-	return current.BindingMode != cmd.BindingMode ||
-		!reflect.DeepEqual(current.BusinessBinding, cmd.BusinessBinding)
 }

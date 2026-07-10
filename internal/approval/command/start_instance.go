@@ -47,7 +47,7 @@ type StartInstanceHandler struct {
 	instanceNoGenerator approval.InstanceNoGenerator
 	validationSvc       *service.ValidationService
 	refProvider         approval.BusinessRefProvider
-	bindingWriter       *binding.Writer
+	bindingProjector    *binding.Projector
 	formStorage         *storage.Dispatcher
 }
 
@@ -61,7 +61,7 @@ func NewStartInstanceHandler(
 	instanceNoGenerator approval.InstanceNoGenerator,
 	validationSvc *service.ValidationService,
 	refProvider approval.BusinessRefProvider,
-	bindingWriter *binding.Writer,
+	bindingProjector *binding.Projector,
 	formStorage *storage.Dispatcher,
 ) *StartInstanceHandler {
 	return &StartInstanceHandler{
@@ -70,7 +70,7 @@ func NewStartInstanceHandler(
 		instanceNoGenerator: instanceNoGenerator,
 		validationSvc:       validationSvc,
 		refProvider:         refProvider,
-		bindingWriter:       bindingWriter,
+		bindingProjector:    bindingProjector,
 		formStorage:         formStorage,
 	}
 }
@@ -190,17 +190,21 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		return nil, fmt.Errorf("insert instance: %w", err)
 	}
 
-	// Resolve the business binding (if any). The default provider is a
-	// no-op; hosts that replace it can allocate a business row inside the
-	// same transaction. Returning empty string keeps BusinessRef nil.
-	if flow.BindingMode == approval.BindingBusiness {
-		businessRef, err := h.refProvider.OnInstanceCreated(ctx, db, &flow, instance)
+	// Resolve and claim the version-pinned business binding. The mutable flow
+	// may already carry configuration for a later version; existing published
+	// versions deliberately keep the snapshot captured at deploy.
+	if version.BusinessBinding != nil {
+		bindingFlow := flow
+		bindingFlow.BindingMode = approval.BindingBusiness
+		bindingFlow.BusinessBinding = version.BusinessBinding
+
+		businessRef, err := h.refProvider.OnInstanceCreated(ctx, db, &bindingFlow, instance)
 		if err != nil {
 			return nil, fmt.Errorf("business binding on create: %w", err)
 		}
 
 		trimmed := strings.TrimSpace(businessRef)
-		if trimmed != "" && (instance.BusinessRef == nil || *instance.BusinessRef == "") {
+		if trimmed != "" && (instance.BusinessRef == nil || strings.TrimSpace(*instance.BusinessRef) == "") {
 			instance.BusinessRef = &trimmed
 			if _, err := db.NewUpdate().
 				Model(instance).
@@ -211,13 +215,9 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 			}
 		}
 
-		// The started leg of the engine-owned write-back runs synchronously
-		// inside this transaction so the business row and the instance flip
-		// together — a failure rolls back the whole initiation. The Writer
-		// itself skips instances without a BusinessRef.
-		if h.bindingWriter != nil {
-			if err := h.bindingWriter.WriteBack(ctx, db, &flow, instance, approval.BindingTriggerStarted); err != nil {
-				return nil, fmt.Errorf("business binding write-back on start: %w", err)
+		if h.bindingProjector != nil {
+			if err := h.bindingProjector.Bind(ctx, db, &bindingFlow, &version, instance); err != nil {
+				return nil, fmt.Errorf("bind business projection on start: %w", err)
 			}
 		}
 	}

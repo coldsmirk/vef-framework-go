@@ -175,6 +175,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingComplete() {
 	table := "t_leave"
 	pk := "id"
 	status := "approval_status"
+	instanceCol := "apv_instance_id"
 
 	result, err := s.handler.Handle(s.ctx, command.CreateFlowCmd{
 		TenantID:    "tenant-binding",
@@ -183,9 +184,10 @@ func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingComplete() {
 		CategoryID:  s.categoryID,
 		BindingMode: approval.BindingBusiness,
 		BusinessBinding: &approval.BusinessBindingConfig{
-			TableName:    table,
-			KeyColumns:   []string{pk},
-			StatusColumn: status,
+			TableName:        table,
+			KeyColumns:       []string{pk},
+			StatusColumn:     status,
+			InstanceIDColumn: &instanceCol,
 		},
 		InstanceTitleTemplate: "Title",
 		Caller:                approval.SystemCaller,
@@ -223,6 +225,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowLinkageColumns() {
 	table := "t_leave"
 	pk := "id"
 	status := "approval_status"
+	instanceCol := "apv_instance_id"
 
 	linkageCmd := func(code string) command.CreateFlowCmd {
 		return command.CreateFlowCmd{
@@ -232,9 +235,10 @@ func (s *CreateFlowTestSuite) TestCreateFlowLinkageColumns() {
 			CategoryID:  s.categoryID,
 			BindingMode: approval.BindingBusiness,
 			BusinessBinding: &approval.BusinessBindingConfig{
-				TableName:    table,
-				KeyColumns:   []string{pk},
-				StatusColumn: status,
+				TableName:        table,
+				KeyColumns:       []string{pk},
+				StatusColumn:     status,
+				InstanceIDColumn: &instanceCol,
 			},
 			InstanceTitleTemplate: "Title",
 			Caller:                approval.SystemCaller,

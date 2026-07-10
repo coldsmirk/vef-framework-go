@@ -2,26 +2,16 @@ package binding
 
 import (
 	"go.uber.org/fx"
+
+	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/cron"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 )
 
-// Module provides the engine-owned write-back Writer (with its default
-// no-op BusinessRefProvider and identity BusinessRefResolver) and starts
-// the Listener that runs the asynchronous write-back legs when the
-// completed / returned / withdrawn / resubmitted instance events fire.
-// (The started leg is invoked synchronously by the start_instance
-// command inside its transaction.) Hosts replace the provider / resolver
-// via vef.SupplyBusinessRefProvider / vef.SupplyBusinessRefResolver; the
-// Writer itself is not an extension point.
-//
-// Reliability note: the Listener is best-effort under the default
-// in-memory event transport — a process crash between event publication
-// and listener execution drops the write-back. Production deployments
-// that rely on business-table consistency MUST route the approval.*
-// instance events through the framework's outbox transport so the
-// listener retries until acknowledged. The Listener publishes
-// InstanceBindingFailedEvent on persistent failure so operators / saga
-// workers can compensate; misconfigured flows (ErrBindingMisconfigured)
-// ack immediately to avoid an infinite retry loop.
+// Module provides version-pinned business projection, its default reference
+// provider/resolver, and the durable eventual-consistency worker. Hosts can
+// replace the provider or resolver; projection ownership and write-back remain
+// engine-owned.
 var Module = fx.Module(
 	"vef:approval:binding",
 
@@ -30,8 +20,32 @@ var Module = fx.Module(
 		NewIdentityResolver,
 		NewConfigValidator,
 		NewWriter,
-		NewListener,
+		fx.Annotate(
+			NewProjector,
+			fx.As(fx.Self()),
+			fx.As(new(engine.InstanceProjector)),
+		),
+		NewWorker,
 	),
 
-	fx.Invoke(func(l *Listener) error { return l.Start() }),
+	fx.Invoke(registerProjectionJob),
 )
+
+func registerProjectionJob(scheduler cron.Scheduler, worker *Worker, cfg *config.ApprovalConfig) error {
+	interval := cfg.BusinessBinding.EffectiveScanInterval()
+
+	job, err := scheduler.NewJob(cron.NewDurationJob(
+		interval,
+		cron.WithName("approval:binding:project"),
+		cron.WithTags("approval", "binding"),
+		cron.WithStartImmediately(),
+		cron.WithTask(worker.Run),
+	))
+	if err != nil {
+		return err
+	}
+
+	logger.Infof("Business projection job [%s] registered, polling every %s", job.Name(), interval)
+
+	return nil
+}

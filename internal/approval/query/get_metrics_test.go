@@ -7,9 +7,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
-	outboxmodel "github.com/coldsmirk/vef-framework-go/event/transport/outbox"
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
-	ioutbox "github.com/coldsmirk/vef-framework-go/internal/event/transport/outbox"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -32,13 +31,6 @@ type GetMetricsTestSuite struct {
 }
 
 func (s *GetMetricsTestSuite) SetupSuite() {
-	// The baseFactory already ran the approval migration; run the outbox
-	// migration so sys_event_outbox exists for PendingBindingFailures queries.
-	s.Require().NoError(
-		ioutbox.Migrate(s.ctx, s.db, s.env.DS.Kind),
-		"Should run outbox migration",
-	)
-
 	s.handler = query.NewGetMetricsHandler(s.db)
 
 	// ── Fixtures ──────────────────────────────────────────────────────────
@@ -105,47 +97,79 @@ func (s *GetMetricsTestSuite) SetupSuite() {
 		s.Require().NoError(err, "Should insert task")
 	}
 
-	// Two undelivered binding-failure outbox records.
-	bindingRecords := []outboxmodel.Record{
+	instanceIDColumn := "approval_instance_id"
+
+	projections := []approval.BusinessProjection{
 		{
-			EventID:    "evt-bf-001",
-			EventType:  approval.EventTypeInstanceBindingFailed,
-			Source:     "test",
-			Payload:    []byte(`{"instanceId":"inst-1","tenantId":"t1"}`),
-			Status:     outboxmodel.StatusPending,
-			OccurredAt: now,
+			TenantID:        "t1",
+			FlowID:          fix.FlowID,
+			FlowVersionID:   fix.VersionID,
+			OwnerInstanceID: running.ID,
+			TargetHash:      "metrics-pending-target",
+			Consistency:     config.ApprovalBindingEventual,
+			Binding: &approval.BusinessBindingConfig{
+				TableName:        "business_order",
+				KeyColumns:       []string{"id"},
+				StatusColumn:     "approval_status",
+				InstanceIDColumn: &instanceIDColumn,
+			},
+			RecordKey:        []byte(`[{"column":"id","kind":"string","value":"order-1"}]`),
+			DesiredStatus:    approval.InstanceRunning,
+			DesiredStartedAt: now,
+			DesiredRevision:  2,
+			AppliedRevision:  1,
+			Status:           approval.BindingProjectionPending,
 		},
 		{
-			EventID:    "evt-bf-002",
-			EventType:  approval.EventTypeInstanceBindingFailed,
-			Source:     "test",
-			Payload:    []byte(`{"instanceId":"inst-2","tenantId":"t1"}`),
-			Status:     outboxmodel.StatusFailed,
-			OccurredAt: now,
+			TenantID:        "t1",
+			FlowID:          fix.FlowID,
+			FlowVersionID:   fix.VersionID,
+			OwnerInstanceID: approved.ID,
+			TargetHash:      "metrics-failed-target",
+			Consistency:     config.ApprovalBindingEventual,
+			Binding: &approval.BusinessBindingConfig{
+				TableName:        "business_order",
+				KeyColumns:       []string{"id"},
+				StatusColumn:     "approval_status",
+				InstanceIDColumn: &instanceIDColumn,
+			},
+			RecordKey:         []byte(`[{"column":"id","kind":"string","value":"order-2"}]`),
+			DesiredStatus:     approval.InstanceApproved,
+			DesiredStartedAt:  now,
+			DesiredFinishedAt: &finishedAt,
+			DesiredRevision:   3,
+			AppliedRevision:   2,
+			Status:            approval.BindingProjectionFailed,
 		},
-		// A completed binding-failure record should NOT be counted.
 		{
-			EventID:    "evt-bf-003",
-			EventType:  approval.EventTypeInstanceBindingFailed,
-			Source:     "test",
-			Payload:    []byte(`{"instanceId":"inst-3","tenantId":"t1"}`),
-			Status:     outboxmodel.StatusCompleted,
-			OccurredAt: now,
+			TenantID:        "t2",
+			FlowID:          fix.FlowID,
+			FlowVersionID:   fix.VersionID,
+			OwnerInstanceID: t2inst.ID,
+			TargetHash:      "metrics-applied-target",
+			Consistency:     config.ApprovalBindingEventual,
+			Binding: &approval.BusinessBindingConfig{
+				TableName:        "business_order",
+				KeyColumns:       []string{"id"},
+				StatusColumn:     "approval_status",
+				InstanceIDColumn: &instanceIDColumn,
+			},
+			RecordKey:         []byte(`[{"column":"id","kind":"string","value":"order-3"}]`),
+			DesiredStatus:     approval.InstanceRejected,
+			DesiredStartedAt:  now,
+			DesiredFinishedAt: &finishedAt,
+			DesiredRevision:   1,
+			AppliedRevision:   1,
+			Status:            approval.BindingProjectionApplied,
 		},
 	}
-	for i := range bindingRecords {
-		_, err := s.db.NewInsert().Model(&bindingRecords[i]).Exec(s.ctx)
-		s.Require().NoError(err, "Should insert outbox record")
+	for i := range projections {
+		_, err := s.db.NewInsert().Model(&projections[i]).Exec(s.ctx)
+		s.Require().NoError(err, "Should insert business projection")
 	}
 }
 
 func (s *GetMetricsTestSuite) TearDownSuite() {
-	// Remove outbox records before cleaning approval data.
-	_, _ = s.db.NewDelete().
-		Model((*outboxmodel.Record)(nil)).
-		Where(func(cb orm.ConditionBuilder) { cb.IsNotNull("id") }).
-		Exec(s.ctx)
-
 	cleanAllQueryData(s.ctx, s.db)
 }
 
@@ -168,8 +192,11 @@ func (s *GetMetricsTestSuite) TestCrossTenantSnapshot() {
 	// each finished ~1h after creation, so the cross-tenant average is ~3600s.
 	s.Assert().InDelta(3600, metrics.AvgCompletionSeconds, 120, "AvgCompletionSeconds should be ~3600s (≈1h) across completed instances")
 
-	// PendingBindingFailures: 2 undelivered (pending + failed), 1 completed excluded.
-	s.Assert().Equal(2, metrics.PendingBindingFailures, "Should count 2 pending binding failures")
+	s.Assert().Equal(1, metrics.BusinessProjectionCounts[string(approval.BindingProjectionPending)], "Should count 1 pending projection")
+	s.Assert().Equal(1, metrics.BusinessProjectionCounts[string(approval.BindingProjectionFailed)], "Should count 1 failed projection")
+	s.Assert().Equal(1, metrics.BusinessProjectionCounts[string(approval.BindingProjectionApplied)], "Should count 1 applied projection")
+	s.Assert().Equal(2, metrics.PendingBusinessProjections, "Should count pending and failed eventual projections whose desired revision is unapplied")
+	s.Assert().Equal(1, metrics.PendingBindingFailures, "Should count the failed projection target")
 }
 
 func (s *GetMetricsTestSuite) TestTenantScopedMetrics() {
@@ -187,6 +214,11 @@ func (s *GetMetricsTestSuite) TestTenantScopedMetrics() {
 
 	// AvgCompletionSeconds for t1: 1 approved instance finished ~1h after creation.
 	s.Assert().InDelta(3600, metrics.AvgCompletionSeconds, 120, "AvgCompletionSeconds should be ~3600s (≈1h) for t1")
+	s.Assert().Equal(1, metrics.BusinessProjectionCounts[string(approval.BindingProjectionPending)], "Should count 1 pending projection for t1")
+	s.Assert().Equal(1, metrics.BusinessProjectionCounts[string(approval.BindingProjectionFailed)], "Should count 1 failed projection for t1")
+	s.Assert().Equal(0, metrics.BusinessProjectionCounts[string(approval.BindingProjectionApplied)], "Should exclude t2 applied projections")
+	s.Assert().Equal(2, metrics.PendingBusinessProjections, "Should count 2 unapplied eventual projections for t1")
+	s.Assert().Equal(1, metrics.PendingBindingFailures, "Should count 1 failed projection for t1")
 }
 
 func (s *GetMetricsTestSuite) TestEmptyTenantReturnsNegativeOneAvg() {
@@ -198,4 +230,7 @@ func (s *GetMetricsTestSuite) TestEmptyTenantReturnsNegativeOneAvg() {
 	s.Assert().Equal(-1.0, metrics.AvgCompletionSeconds, "Should return -1 sentinel when no completed instances exist")
 	s.Assert().Empty(metrics.InstanceCounts, "Should return empty instance counts for unknown tenant")
 	s.Assert().Equal(0, metrics.TimeoutTaskCount, "Should return 0 timeout tasks for unknown tenant")
+	s.Assert().Empty(metrics.BusinessProjectionCounts, "Should return empty projection counts for unknown tenant")
+	s.Assert().Equal(0, metrics.PendingBusinessProjections, "Should return 0 pending projections for unknown tenant")
+	s.Assert().Equal(0, metrics.PendingBindingFailures, "Should return 0 failed projections for unknown tenant")
 }

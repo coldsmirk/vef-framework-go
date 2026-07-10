@@ -76,13 +76,20 @@ func TestNormalizeConfig(t *testing.T) {
 		config.TableName = "  biz_order "
 		config.KeyColumns = []string{" order_no ", "tenant_id"}
 		config.FinishedAtColumn = &blank
+		config.StatusMapping = map[approval.InstanceStatus]string{
+			approval.InstanceRunning: "  in_review  ",
+		}
 
 		normalized, err := NormalizeConfig(approval.BindingBusiness, config)
 		require.NoError(t, err, "Complete business binding should normalize")
 		assert.Equal(t, "biz_order", normalized.TableName, "Table name should be trimmed")
 		assert.Equal(t, []string{"order_no", "tenant_id"}, normalized.KeyColumns, "Key columns should be sorted and trimmed")
 		assert.Nil(t, normalized.FinishedAtColumn, "Blank optional column should normalize to nil")
+		assert.Equal(t, "in_review", normalized.StatusMapping[approval.InstanceRunning], "Status mapping values should be trimmed")
 		assert.NotSame(t, config, normalized, "Normalization should detach persisted configuration from request input")
+
+		config.StatusMapping[approval.InstanceRunning] = "changed"
+		assert.Equal(t, "in_review", normalized.StatusMapping[approval.InstanceRunning], "Normalized status mapping should not alias request input")
 	})
 
 	t.Run("RejectsMissing", func(t *testing.T) {
@@ -90,6 +97,36 @@ func TestNormalizeConfig(t *testing.T) {
 
 		_, err := NormalizeConfig(approval.BindingBusiness, nil)
 		assert.ErrorIs(t, err, shared.ErrBindingIncomplete, "Business flow requires binding configuration")
+	})
+
+	t.Run("RejectsMissingInstanceIDColumn", func(t *testing.T) {
+		t.Parallel()
+
+		config := testBindingConfig()
+		config.InstanceIDColumn = nil
+
+		_, err := NormalizeConfig(approval.BindingBusiness, config)
+		assert.ErrorIs(t, err, shared.ErrBindingIncomplete, "Business flow requires an instance-ID fencing column")
+	})
+
+	t.Run("RejectsInvalidStatusMapping", func(t *testing.T) {
+		t.Parallel()
+
+		for name, mapping := range map[string]map[approval.InstanceStatus]string{
+			"UnknownStatus": {approval.InstanceStatus("paused"): "paused"},
+			"BlankValue":    {approval.InstanceRunning: "  "},
+		} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
+				config := testBindingConfig()
+				config.StatusMapping = mapping
+
+				_, err := NormalizeConfig(approval.BindingBusiness, config)
+				assert.ErrorIs(t, err, shared.ErrBindingStatusMappingInvalid,
+					"Invalid status mapping should be rejected")
+			})
+		}
 	})
 
 	t.Run("RejectsUnsafeIdentifier", func(t *testing.T) {

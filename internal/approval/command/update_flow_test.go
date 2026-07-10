@@ -156,11 +156,7 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowNotFound() {
 	s.Assert().ErrorIs(err, shared.ErrFlowNotFound, "Should return ErrFlowNotFound")
 }
 
-// TestUpdateFlowBindingGuardWhileRunning verifies that the business-binding
-// configuration is frozen while an instance of the flow is still running — a
-// binding change is rejected, but a non-binding edit (name only) is still
-// allowed.
-func (s *UpdateFlowTestSuite) TestUpdateFlowBindingGuardWhileRunning() {
+func (s *UpdateFlowTestSuite) TestUpdateFlowBindingDoesNotMutateRunningVersion() {
 	version := &approval.FlowVersion{FlowID: s.flowID, Version: 99, Status: approval.VersionDraft}
 	_, err := s.db.NewInsert().Model(version).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert flow version for the running instance")
@@ -186,65 +182,9 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowBindingGuardWhileRunning() {
 			Where(func(cb orm.ConditionBuilder) { cb.PKEquals(version.ID) }).Exec(s.ctx)
 	}()
 
-	// Reset to a deterministic standalone baseline: sibling tests in this suite may
-	// leave the flow in another binding state (the command layer does not enforce
-	// the resource layer's "bindingMode required"), and this test asserts on the
-	// binding-change transition specifically.
-	_, err = s.db.NewUpdate().
-		Model((*approval.Flow)(nil)).
-		Set("binding_mode", approval.BindingStandalone).
-		Set("business_binding", nil).
-		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.flowID) }).
-		Exec(s.ctx)
-	s.Require().NoError(err, "Should reset flow to a standalone baseline")
-
 	table, pk, status := "biz_orders", "id", "approval_status"
-
-	// Switching the binding mode (standalone → business) while the instance runs
-	// is rejected.
-	_, err = s.handler.Handle(s.ctx, command.UpdateFlowCmd{
-		FlowID:      s.flowID,
-		Name:        "Original Flow",
-		BindingMode: approval.BindingBusiness,
-		BusinessBinding: &approval.BusinessBindingConfig{
-			TableName:    table,
-			KeyColumns:   []string{pk},
-			StatusColumn: status,
-		},
-		InstanceTitleTemplate: "Original Template",
-		Caller:                approval.SystemCaller,
-	})
-	s.Require().Error(err, "Binding change must be blocked while an instance runs")
-	s.Assert().ErrorIs(err, shared.ErrFlowBindingLocked, "Should return ErrFlowBindingLocked")
-
-	// A non-binding edit (name only, binding unchanged from the baseline) is still
-	// allowed even though an instance is running.
-	updated, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
-		FlowID:                s.flowID,
-		Name:                  "Renamed While Running",
-		BindingMode:           approval.BindingStandalone,
-		InstanceTitleTemplate: "Original Template",
-		Caller:                approval.SystemCaller,
-	})
-	s.Require().NoError(err, "Non-binding edit must be allowed while an instance runs")
-	s.Assert().Equal("Renamed While Running", updated.Name, "Should apply the non-binding edit")
-
-	// Re-baseline to a business binding so a linkage-column-only change can be
-	// probed against the same running instance.
-	baseline := &approval.Flow{
-		BindingMode: approval.BindingBusiness,
-		BusinessBinding: &approval.BusinessBindingConfig{
-			TableName:    table,
-			KeyColumns:   []string{pk},
-			StatusColumn: status,
-		},
-	}
-	baseline.ID = s.flowID
-	_, err = s.db.NewUpdate().Model(baseline).Select("binding_mode", "business_binding").WherePK().Exec(s.ctx)
-	s.Require().NoError(err, "Should reset flow to a business baseline")
-
 	instanceCol := "apv_instance_id"
-	_, err = s.handler.Handle(s.ctx, command.UpdateFlowCmd{
+	updated, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
 		FlowID:      s.flowID,
 		Name:        "Renamed While Running",
 		BindingMode: approval.BindingBusiness,
@@ -257,8 +197,14 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowBindingGuardWhileRunning() {
 		InstanceTitleTemplate: "Original Template",
 		Caller:                approval.SystemCaller,
 	})
-	s.Require().Error(err, "Adding a linkage column is a binding change and must be blocked while an instance runs")
-	s.Assert().ErrorIs(err, shared.ErrFlowBindingLocked, "Should return ErrFlowBindingLocked for a linkage-column change")
+	s.Require().NoError(err, "Flow binding edits should be allowed while old versions are in use")
+	s.Assert().Equal("Renamed While Running", updated.Name, "Should apply the non-binding edit")
+
+	var reloadedVersion approval.FlowVersion
+
+	reloadedVersion.ID = version.ID
+	s.Require().NoError(s.db.NewSelect().Model(&reloadedVersion).WherePK().Scan(s.ctx), "Should reload old flow version")
+	s.Assert().Nil(reloadedVersion.BusinessBinding, "Updating Flow must not rewrite an existing version snapshot")
 }
 
 func (s *UpdateFlowTestSuite) TestUpdateAllFields() {
@@ -308,15 +254,17 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowToBusinessBinding() {
 	table := "t_orders"
 	pk := "id"
 	status := "approval_status"
+	instanceCol := "apv_instance_id"
 
 	result, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
 		FlowID:      s.flowID,
 		Name:        "Now Business Bound",
 		BindingMode: approval.BindingBusiness,
 		BusinessBinding: &approval.BusinessBindingConfig{
-			TableName:    table,
-			KeyColumns:   []string{pk},
-			StatusColumn: status,
+			TableName:        table,
+			KeyColumns:       []string{pk},
+			StatusColumn:     status,
+			InstanceIDColumn: &instanceCol,
 		},
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Template",

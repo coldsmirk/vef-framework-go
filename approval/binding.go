@@ -36,17 +36,34 @@ type BusinessRefProvider interface {
 // columns that receive approval lifecycle state. KeyColumns must exactly match
 // a non-null primary or unique key on TableName.
 type BusinessBindingConfig struct {
-	TableName        string   `json:"tableName"`
-	KeyColumns       []string `json:"keyColumns"`
-	StatusColumn     string   `json:"statusColumn"`
-	InstanceIDColumn *string  `json:"instanceIdColumn,omitempty"`
-	StartedAtColumn  *string  `json:"startedAtColumn,omitempty"`
-	FinishedAtColumn *string  `json:"finishedAtColumn,omitempty"`
+	TableName    string   `json:"tableName"`
+	KeyColumns   []string `json:"keyColumns"`
+	StatusColumn string   `json:"statusColumn"`
+	// InstanceIDColumn is mandatory for business bindings. The projector uses
+	// it as a compare-and-set fence so a stale instance cannot overwrite the
+	// state owned by a newer approval round.
+	InstanceIDColumn *string `json:"instanceIdColumn,omitempty"`
+	StartedAtColumn  *string `json:"startedAtColumn,omitempty"`
+	FinishedAtColumn *string `json:"finishedAtColumn,omitempty"`
+	// StatusMapping translates approval instance statuses into host business
+	// status values. Missing entries fall back to the InstanceStatus string.
+	StatusMapping map[InstanceStatus]string `json:"statusMapping,omitempty"`
 }
 
 // BusinessRecordKey maps every configured key column to the value resolved
 // from an instance's opaque BusinessRef.
 type BusinessRecordKey map[string]any
+
+// BindingProjectionStatus is the durable convergence state of one business
+// record projection.
+type BindingProjectionStatus string
+
+const (
+	BindingProjectionPending    BindingProjectionStatus = "pending"
+	BindingProjectionProcessing BindingProjectionStatus = "processing"
+	BindingProjectionApplied    BindingProjectionStatus = "applied"
+	BindingProjectionFailed     BindingProjectionStatus = "failed"
+)
 
 // BusinessRefResolver turns the opaque Instance.BusinessRef into the record
 // key the engine-owned write-back matches against. The returned key must name
@@ -61,23 +78,11 @@ type BusinessRefResolver interface {
 	ResolveRecordKey(ctx context.Context, flow *Flow, businessRef string) (BusinessRecordKey, error)
 }
 
-// BindingTrigger identifies which instance-lifecycle moment drove an
-// engine-owned business write-back. Each trigger projects a fixed column
-// subset onto the business table — the status column always, the optional
-// columns per the linkage matrix below (a column is only ever written when
-// the flow configures it):
-//
-//	trigger      | status         | instance_id | started_at | finished_at
-//	started      | running        | instance.ID | now        | NULL
-//	completed    | final status   | —           | —          | FinishedAt
-//	returned     | returned       | —           | —          | —
-//	withdrawn    | withdrawn      | —           | —          | —
-//	resubmitted  | running        | —           | —          | NULL
-//
-// The started projection runs synchronously inside the start_instance
-// transaction (a failure rolls back the whole initiation); the other four
-// run asynchronously through the binding listener with
-// InstanceBindingFailedEvent compensation.
+// BindingTrigger identifies the lifecycle moment associated with a failed
+// business projection. Projection correctness does not depend on triggers:
+// every write applies the latest full desired state. The trigger remains part
+// of InstanceBindingFailedEvent so operators can identify the action that
+// produced that desired state.
 type BindingTrigger string
 
 const (

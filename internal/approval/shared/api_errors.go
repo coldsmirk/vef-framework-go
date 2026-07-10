@@ -36,7 +36,7 @@ var (
 	// errors to the applicant.
 	ErrInvalidFormDesign = result.Err(i18n.T("approval_invalid_form_design"), result.WithCode(ErrCodeInvalidFormDesign))
 	// ErrBindingIncomplete rejects a BindingMode=business flow missing its table,
-	// key columns, or status column at create or update time.
+	// key columns, status column, or instance-ID fencing column at save time.
 	ErrBindingIncomplete = result.Err(i18n.T("approval_binding_incomplete"), result.WithCode(ErrCodeBindingIncomplete))
 
 	// ErrInvalidBindingMode rejects an out-of-enum flow binding mode at save
@@ -52,12 +52,9 @@ var (
 	// drives whether a dedicated physical form table is generated at publish,
 	// so an unrecognized value must be caught when the version is created.
 	ErrInvalidStorageMode = result.Err(i18n.T("approval_invalid_storage_mode"), result.WithCode(ErrCodeInvalidStorageMode))
-	// ErrFlowBindingLocked rejects changing a flow's business-binding
-	// configuration (mode / table / key / optional write-back columns)
-	// while any instance of the flow is still running. Re-pointing the binding
-	// mid-flight would make in-flight instances write their outcome back to a
-	// different business record than they were started against, so the binding
-	// is frozen until they complete.
+	// ErrFlowBindingLocked is retained as a stable error surface for older
+	// consumers. Version-pinned binding snapshots mean current flow commands no
+	// longer return it when a mutable flow binding changes.
 	ErrFlowBindingLocked = result.Err(i18n.T("approval_flow_binding_locked"), result.WithCode(ErrCodeFlowBindingLocked))
 	// ErrBindingColumnsConflict rejects duplicate key/write-back columns, which
 	// could otherwise mutate the lookup key or assign one column twice.
@@ -71,6 +68,12 @@ var (
 	// ErrBindingKeyNotUnique rejects key columns that are not backed by one
 	// complete, non-null primary or unique key.
 	ErrBindingKeyNotUnique = result.Err(i18n.T("approval_binding_key_not_unique"), result.WithCode(ErrCodeBindingKeyNotUnique))
+	// ErrBindingStatusMappingInvalid rejects unknown approval statuses and blank
+	// target values in a business status mapping.
+	ErrBindingStatusMappingInvalid = result.Err(
+		i18n.T("approval_binding_status_mapping_invalid"),
+		result.WithCode(ErrCodeBindingStatusMappingInvalid),
+	)
 
 	ErrInstanceNotFound          = result.Err(i18n.T("approval_instance_not_found"), result.WithCode(ErrCodeInstanceNotFound))
 	ErrInstanceCompleted         = result.Err(i18n.T("approval_instance_completed"), result.WithCode(ErrCodeInstanceCompleted))
@@ -78,6 +81,13 @@ var (
 	ErrWithdrawNotAllowed        = result.Err(i18n.T("approval_withdraw_not_allowed"), result.WithCode(ErrCodeWithdrawNotAllowed))
 	ErrResubmitNotAllowed        = result.Err(i18n.T("approval_resubmit_not_allowed"), result.WithCode(ErrCodeResubmitNotAllowed))
 	ErrInvalidInstanceTransition = result.Err(i18n.T("approval_invalid_instance_transition"), result.WithCode(ErrCodeInvalidInstanceTransition))
+	ErrBusinessRefRequired       = result.Err(i18n.T("approval_business_ref_required"), result.WithCode(ErrCodeBusinessRefRequired))
+	ErrBindingTargetBusy         = result.Err(i18n.T("approval_binding_target_busy"), result.WithCode(ErrCodeBindingTargetBusy))
+	ErrInvalidBusinessRef        = result.Err(i18n.T("approval_invalid_business_ref"), result.WithCode(ErrCodeInvalidBusinessRef))
+	ErrBindingProjectionNotFound = result.Err(
+		i18n.T("approval_binding_projection_not_found"),
+		result.WithCode(ErrCodeBindingProjectionNotFound),
+	)
 
 	ErrTaskNotFound             = result.Err(i18n.T("approval_task_not_found"), result.WithCode(ErrCodeTaskNotFound))
 	ErrTaskNotPending           = result.Err(i18n.T("approval_task_not_pending"), result.WithCode(ErrCodeTaskNotPending))

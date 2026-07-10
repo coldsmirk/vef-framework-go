@@ -18,12 +18,21 @@ import (
 // hooks are reserved for cases that must run inside the business
 // transaction.
 type LifecycleHookRunner struct {
-	hooks []approval.InstanceLifecycleHook
+	projector InstanceProjector
+	hooks     []approval.InstanceLifecycleHook
 }
 
-// NewLifecycleHookRunner constructs a runner from the FX group of hooks.
-func NewLifecycleHookRunner(hooks []approval.InstanceLifecycleHook) *LifecycleHookRunner {
-	return &LifecycleHookRunner{hooks: hooks}
+// InstanceProjector advances the durable business projection after every
+// instance status transition. It runs inside the caller's transaction.
+type InstanceProjector interface {
+	// Project records or applies the instance's latest complete business state.
+	Project(ctx context.Context, db orm.DB, instance *approval.Instance) error
+}
+
+// NewLifecycleHookRunner constructs a runner from the engine projector and FX
+// group of host hooks.
+func NewLifecycleHookRunner(projector InstanceProjector, hooks []approval.InstanceLifecycleHook) *LifecycleHookRunner {
+	return &LifecycleHookRunner{projector: projector, hooks: hooks}
 }
 
 // OnInstanceCreated invokes every registered hook's OnInstanceCreated.
@@ -35,6 +44,16 @@ func (r *LifecycleHookRunner) OnInstanceCreated(ctx context.Context, db orm.DB, 
 	}
 
 	return nil
+}
+
+// OnInstanceTransitioned advances the engine-owned business projection before
+// any host completion hook observes the new status.
+func (r *LifecycleHookRunner) OnInstanceTransitioned(ctx context.Context, db orm.DB, instance *approval.Instance) error {
+	if r == nil || r.projector == nil {
+		return nil
+	}
+
+	return r.projector.Project(ctx, db, instance)
 }
 
 // OnInstanceCompleted invokes every registered hook's OnInstanceCompleted.

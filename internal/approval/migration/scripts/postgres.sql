@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS apv_flow_version (
     -- Publish info
     published_at TIMESTAMP,
     published_by VARCHAR(32),
+    business_binding JSONB,
     CONSTRAINT uk_apv_flow_version__flow_id_version UNIQUE (flow_id, version),
     CONSTRAINT fk_apv_flow_version__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE
 );
@@ -146,6 +147,7 @@ COMMENT ON COLUMN apv_flow_version.storage_mode IS 'Storage Mode';
 COMMENT ON COLUMN apv_flow_version.flow_schema IS 'Flow Schema';
 COMMENT ON COLUMN apv_flow_version.form_schema IS 'Form Schema (host designer document, verbatim)';
 COMMENT ON COLUMN apv_flow_version.form_fields IS 'Form Fields (derived at deploy)';
+COMMENT ON COLUMN apv_flow_version.business_binding IS 'Business Binding Snapshot';
 COMMENT ON COLUMN apv_flow_version.published_at IS 'Published';
 COMMENT ON COLUMN apv_flow_version.published_by IS 'Publisher';
 
@@ -346,6 +348,7 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     form_data JSONB,
     -- Host-supplied global variables snapshotted at instance start
     globals JSONB,
+    business_projection_id VARCHAR(32),
     CONSTRAINT fk_apv_instance__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_instance__flow_version_id FOREIGN KEY (flow_version_id) REFERENCES apv_flow_version(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT uk_apv_instance__instance_no UNIQUE (instance_no)
@@ -371,16 +374,64 @@ COMMENT ON COLUMN apv_instance.status IS 'Status';
 COMMENT ON COLUMN apv_instance.current_node_id IS 'Current Node';
 COMMENT ON COLUMN apv_instance.finished_at IS 'Finished';
 COMMENT ON COLUMN apv_instance.business_ref IS 'Biz Ref';
+COMMENT ON COLUMN apv_instance.business_projection_id IS 'Business Projection';
 COMMENT ON COLUMN apv_instance.form_data IS 'Form Data';
 COMMENT ON COLUMN apv_instance.globals IS 'Instance Globals';
 
 CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id ON apv_instance(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id_status_created_at ON apv_instance(tenant_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__business_ref ON apv_instance(business_ref);
+CREATE INDEX IF NOT EXISTS idx_apv_instance__business_projection_id ON apv_instance(business_projection_id);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id_applicant_id_status ON apv_instance(tenant_id, applicant_id, status);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__flow_id_status_created_at ON apv_instance(flow_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__applicant_id_status_created_at ON apv_instance(applicant_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__current_node_id ON apv_instance(current_node_id);
+
+-- Durable desired state for one business-table target
+CREATE TABLE IF NOT EXISTS apv_business_projection (
+    id VARCHAR(32) CONSTRAINT pk_apv_business_projection PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT LOCALTIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT LOCALTIMESTAMP,
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    updated_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    tenant_id VARCHAR(32) NOT NULL,
+    flow_id VARCHAR(32) NOT NULL,
+    flow_version_id VARCHAR(32) NOT NULL,
+    owner_instance_id VARCHAR(32) NOT NULL,
+    applied_owner_instance_id VARCHAR(32),
+    target_hash VARCHAR(64) NOT NULL,
+    consistency VARCHAR(16) NOT NULL,
+    binding JSONB NOT NULL,
+    record_key JSONB NOT NULL,
+    desired_status VARCHAR(16) NOT NULL,
+    desired_started_at TIMESTAMP NOT NULL,
+    desired_finished_at TIMESTAMP,
+    desired_revision BIGINT NOT NULL,
+    applied_revision BIGINT NOT NULL DEFAULT 0,
+    status VARCHAR(16) NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMP,
+    lease_until TIMESTAMP,
+    last_error TEXT,
+    applied_at TIMESTAMP,
+    CONSTRAINT uk_apv_business_projection__target_hash UNIQUE (target_hash)
+);
+
+COMMENT ON TABLE apv_business_projection IS 'Business Projection';
+COMMENT ON COLUMN apv_business_projection.owner_instance_id IS 'Desired Owner';
+COMMENT ON COLUMN apv_business_projection.applied_owner_instance_id IS 'Applied Owner';
+COMMENT ON COLUMN apv_business_projection.target_hash IS 'Target Hash';
+COMMENT ON COLUMN apv_business_projection.consistency IS 'Consistency Mode';
+COMMENT ON COLUMN apv_business_projection.binding IS 'Binding Snapshot';
+COMMENT ON COLUMN apv_business_projection.record_key IS 'Record Key Snapshot';
+COMMENT ON COLUMN apv_business_projection.desired_revision IS 'Desired Revision';
+COMMENT ON COLUMN apv_business_projection.applied_revision IS 'Applied Revision';
+COMMENT ON COLUMN apv_business_projection.status IS 'Projection Status';
+COMMENT ON COLUMN apv_business_projection.last_error IS 'Last Error';
+
+CREATE INDEX IF NOT EXISTS idx_apv_business_projection__tenant_id_status ON apv_business_projection(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_apv_business_projection__status_next_attempt_at ON apv_business_projection(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_apv_business_projection__owner_instance_id ON apv_business_projection(owner_instance_id);
 --------------------------------------------------------------------------------
 -- Form Data Storage (GIN index for JSON hybrid mode)
 --------------------------------------------------------------------------------

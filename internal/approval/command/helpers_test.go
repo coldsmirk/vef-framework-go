@@ -371,6 +371,12 @@ func skipSQLiteConcurrencyTest(t testing.TB, ctx context.Context, db orm.DB, rea
 // Command suites deploy an immutable flow version once, so a single compiled
 // entry per version stays valid for the suite.
 func buildTestEngine(db orm.DB) *engine.FlowEngine {
+	return buildTestEngineWithHooks(db, nil)
+}
+
+// buildTestEngineWithHooks is the production-shaped variant used by tests that
+// exercise engine-owned transition hooks such as business projection.
+func buildTestEngineWithHooks(db orm.DB, hooks *engine.LifecycleHookRunner) *engine.FlowEngine {
 	passRules := []approval.PassRuleStrategy{
 		strategy.NewAllPassStrategy(),
 		strategy.NewAnyPassStrategy(),
@@ -393,7 +399,7 @@ func buildTestEngine(db orm.DB) *engine.FlowEngine {
 		engine.NewCCProcessor(shared.NewCCRecipientResolver(nil)),
 	}
 
-	return engine.NewFlowEngine(registry, processors, eventtest.NewFakeBus(), nil, nil,
+	return engine.NewFlowEngine(registry, processors, eventtest.NewFakeBus(), nil, hooks,
 		engine.NewFlowCache(db, cache.NewMemory[*engine.CompiledFlow]()))
 }
 
@@ -549,6 +555,7 @@ func cleanRuntimeData(ctx context.Context, db orm.DB) {
 		(*approval.CCRecord)(nil),
 		(*approval.Task)(nil),
 		(*approval.NodeVisit)(nil),
+		(*approval.BusinessProjection)(nil),
 		(*approval.Instance)(nil),
 	)
 }

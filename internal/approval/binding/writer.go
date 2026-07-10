@@ -2,94 +2,41 @@ package binding
 
 import (
 	"context"
-	"database/sql/driver"
 	"fmt"
-	"strings"
-
-	"github.com/uptrace/bun/dialect"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
-// Writer performs the engine-owned write-back of instance state onto the
-// host's business table when Flow.BindingMode == BindingBusiness. It is not
-// an extension point: hosts influence which row it targets through
-// approval.BusinessRefResolver and extend around it with lifecycle hooks or
-// event subscriptions, but the write-back itself belongs to the engine.
-type Writer struct {
-	resolver approval.BusinessRefResolver
-}
+// Writer applies one durable projection snapshot to its host business row. It
+// always writes the complete configured state, so retries and out-of-order
+// lifecycle notifications cannot combine columns from different revisions.
+type Writer struct{}
 
-// NewWriter constructs the Writer around the ref resolver.
-func NewWriter(resolver approval.BusinessRefResolver) *Writer {
-	return &Writer{resolver: resolver}
-}
+// NewWriter constructs the engine-owned Writer.
+func NewWriter() *Writer { return new(Writer) }
 
-// WriteBack projects the instance's current state onto the business table,
-// targeting the row whose configured key matches the resolved BusinessRef. The
-// trigger selects which columns are written (see approval.BindingTrigger for
-// the linkage matrix); the status column is always written, the optional
-// instance-id / started-at / finished-at columns only when the flow
-// configures them. Skipped when the flow is not business-bound or the
-// instance carries no BusinessRef. Misconfigured flows return
-// ErrBindingMisconfigured; resolver failures propagate for the listener to
-// classify as permanent invalid refs or retryable host faults.
-func (w *Writer) WriteBack(ctx context.Context, db orm.DB, flow *approval.Flow, instance *approval.Instance, trigger approval.BindingTrigger) error {
-	if flow.BindingMode != approval.BindingBusiness {
-		return nil
+// Write applies projection.DesiredRevision to the bound business row. When a
+// previous owner has already been applied, the instance-ID column is checked
+// and included in the UPDATE predicate as a compare-and-set fence.
+func (*Writer) Write(ctx context.Context, db orm.DB, projection *approval.BusinessProjection) error {
+	if projection == nil || projection.Binding == nil {
+		return fmt.Errorf("%w: projection has no binding", ErrProjectionStateInvalid)
 	}
 
-	if instance.BusinessRef == nil || strings.TrimSpace(*instance.BusinessRef) == "" {
-		return nil
-	}
-
-	config, err := NormalizeConfig(flow.BindingMode, flow.BusinessBinding)
+	config, err := NormalizeConfig(approval.BindingBusiness, projection.Binding)
 	if err != nil {
-		return fmt.Errorf("%w: flow %q: %w", ErrBindingMisconfigured, flow.ID, err)
+		return fmt.Errorf("%w: projection %q: %w", ErrBindingMisconfigured, projection.ID, err)
 	}
 
-	resolvedFlow := *flow
-	resolvedFlow.BusinessBinding = config
-
-	// The status column is always part of the projection; the optional
-	// columns join per the trigger's row in the linkage matrix.
-	setColumns := []string{config.StatusColumn}
-	setValues := []any{string(instance.Status)}
-
-	if trigger == approval.BindingTriggerStarted {
-		if config.InstanceIDColumn != nil {
-			setColumns = append(setColumns, *config.InstanceIDColumn)
-			setValues = append(setValues, instance.ID)
-		}
-
-		if config.StartedAtColumn != nil {
-			setColumns = append(setColumns, *config.StartedAtColumn)
-			setValues = append(setValues, startedAt(instance))
-		}
-	}
-
-	// started / resubmitted clear the finished-at column (the instance is
-	// running again — or still — so a value left over from a previous round
-	// must not linger); completed stamps the instance's finish time.
-	if trigger == approval.BindingTriggerStarted ||
-		trigger == approval.BindingTriggerCompleted ||
-		trigger == approval.BindingTriggerResubmitted {
-		if config.FinishedAtColumn != nil {
-			setColumns = append(setColumns, *config.FinishedAtColumn)
-			setValues = append(setValues, finishedAt(instance))
-		}
-	}
-
-	recordKey, err := w.resolver.ResolveRecordKey(ctx, &resolvedFlow, *instance.BusinessRef)
+	recordKey, err := decodeRecordKey(projection.RecordKey)
 	if err != nil {
-		return fmt.Errorf("resolve business ref for flow %q: %w", flow.ID, err)
+		return fmt.Errorf("projection %q: %w", projection.ID, err)
 	}
 
 	recordKey, err = validateRecordKey(config, recordKey)
 	if err != nil {
-		return fmt.Errorf("flow %q: %w", flow.ID, err)
+		return fmt.Errorf("projection %q: %w", projection.ID, err)
 	}
 
 	matches, err := lockBindingTarget(ctx, db, config, recordKey)
@@ -98,11 +45,54 @@ func (w *Writer) WriteBack(ctx context.Context, db orm.DB, flow *approval.Flow, 
 	}
 
 	if matches == 0 {
-		return fmt.Errorf("%w: flow %q", ErrBindingTargetMissing, flow.ID)
+		return fmt.Errorf("%w: projection %q", ErrBindingTargetMissing, projection.ID)
 	}
 
 	if matches > 1 {
-		return fmt.Errorf("%w: flow %q", ErrBindingTargetNotUnique, flow.ID)
+		return fmt.Errorf("%w: projection %q", ErrBindingTargetNotUnique, projection.ID)
+	}
+
+	if projection.AppliedRevision > 0 {
+		if projection.AppliedOwnerInstanceID == nil {
+			return fmt.Errorf("%w: projection %q has an applied revision without an owner", ErrProjectionStateInvalid, projection.ID)
+		}
+
+		ownerMatches, err := bindingTargetOwnerMatches(ctx, db, config, recordKey, *projection.AppliedOwnerInstanceID)
+		if err != nil {
+			return err
+		}
+
+		if !ownerMatches {
+			return fmt.Errorf("%w: projection %q expected owner %q", ErrBindingOwnershipConflict,
+				projection.ID, *projection.AppliedOwnerInstanceID)
+		}
+	}
+
+	status, err := projectedStatus(config, projection.DesiredStatus)
+	if err != nil {
+		return err
+	}
+
+	setColumns := []string{config.StatusColumn, *config.InstanceIDColumn}
+	setValues := []any{status, projection.OwnerInstanceID}
+
+	if config.StartedAtColumn != nil {
+		setColumns = append(setColumns, *config.StartedAtColumn)
+		setValues = append(setValues, projection.DesiredStartedAt)
+	}
+
+	if config.FinishedAtColumn != nil {
+		var finishedAt any
+		if projection.DesiredStatus.IsFinal() {
+			if projection.DesiredFinishedAt == nil {
+				return fmt.Errorf("%w: final projection %q has no finish time", ErrProjectionStateInvalid, projection.ID)
+			}
+
+			finishedAt = *projection.DesiredFinishedAt
+		}
+
+		setColumns = append(setColumns, *config.FinishedAtColumn)
+		setValues = append(setValues, finishedAt)
 	}
 
 	query := db.NewUpdate().Table(config.TableName)
@@ -110,44 +100,27 @@ func (w *Writer) WriteBack(ctx context.Context, db orm.DB, flow *approval.Flow, 
 		query.Set(column, setValues[i])
 	}
 
-	result, err := query.Where(recordKeyCondition(config.KeyColumns, recordKey)).Exec(ctx)
+	result, err := query.Where(func(cb orm.ConditionBuilder) {
+		recordKeyCondition(config.KeyColumns, recordKey)(cb)
+
+		if projection.AppliedRevision > 0 {
+			cb.Equals(*config.InstanceIDColumn, *projection.AppliedOwnerInstanceID)
+		}
+	}).Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("write business state (%s): %w", trigger, err)
+		return fmt.Errorf("write business projection %q revision %d: %w", projection.ID, projection.DesiredRevision, err)
 	}
 
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("read business write-back result (%s): %w", trigger, err)
+		return fmt.Errorf("read business projection %q result: %w", projection.ID, err)
 	}
 
 	if affected > 1 {
-		return fmt.Errorf("%w: flow %q updated %d rows", ErrBindingTargetNotUnique, flow.ID, affected)
+		return fmt.Errorf("%w: projection %q updated %d rows", ErrBindingTargetNotUnique, projection.ID, affected)
 	}
 
 	return nil
-}
-
-func validateRecordKey(config *approval.BusinessBindingConfig, key approval.BusinessRecordKey) (approval.BusinessRecordKey, error) {
-	if len(key) != len(config.KeyColumns) {
-		return nil, fmt.Errorf("%w: expected %d key values, got %d", ErrInvalidBusinessRef, len(config.KeyColumns), len(key))
-	}
-
-	validated := make(approval.BusinessRecordKey, len(key))
-	for _, column := range config.KeyColumns {
-		value, ok := key[column]
-		if !ok || value == nil {
-			return nil, fmt.Errorf("%w: missing key column %q", ErrInvalidBusinessRef, column)
-		}
-
-		converted, err := driver.DefaultParameterConverter.ConvertValue(value)
-		if err != nil {
-			return nil, fmt.Errorf("%w: key column %q: %w", ErrInvalidBusinessRef, column, err)
-		}
-
-		validated[column] = converted
-	}
-
-	return validated, nil
 }
 
 func lockBindingTarget(ctx context.Context, db orm.DB, config *approval.BusinessBindingConfig, key approval.BusinessRecordKey) (int, error) {
@@ -158,15 +131,34 @@ func lockBindingTarget(ctx context.Context, db orm.DB, config *approval.Business
 		SelectExpr(func(eb orm.ExprBuilder) any { return eb.Literal(1) }).
 		Where(recordKeyCondition(config.KeyColumns, key)).
 		Limit(2)
-	if query.Dialect().Name() != dialect.SQLite {
-		query.ForUpdate()
-	}
+	query.ForUpdate()
 
 	if err := query.Scan(ctx, &matches); err != nil {
 		return 0, fmt.Errorf("lock business binding target: %w", err)
 	}
 
 	return len(matches), nil
+}
+
+func bindingTargetOwnerMatches(
+	ctx context.Context,
+	db orm.DB,
+	config *approval.BusinessBindingConfig,
+	key approval.BusinessRecordKey,
+	expectedOwner string,
+) (bool, error) {
+	matches, err := db.NewSelect().
+		Table(config.TableName).
+		Where(func(cb orm.ConditionBuilder) {
+			recordKeyCondition(config.KeyColumns, key)(cb)
+			cb.Equals(*config.InstanceIDColumn, expectedOwner)
+		}).
+		Exists(ctx)
+	if err != nil {
+		return false, fmt.Errorf("verify business binding owner: %w", err)
+	}
+
+	return matches, nil
 }
 
 func recordKeyCondition(columns []string, key approval.BusinessRecordKey) func(orm.ConditionBuilder) {
@@ -177,24 +169,18 @@ func recordKeyCondition(columns []string, key approval.BusinessRecordKey) func(o
 	}
 }
 
-// startedAt is the value projected into the started-at column: the instance
-// creation time, falling back to now for instances built outside the audited
-// insert path (defensive; the start transaction always stamps CreatedAt).
-func startedAt(instance *approval.Instance) timex.DateTime {
-	if instance.CreatedAt.IsZero() {
-		return timex.Now()
+func projectedStatus(config *approval.BusinessBindingConfig, status approval.InstanceStatus) (string, error) {
+	if mapped, ok := config.StatusMapping[status]; ok {
+		if mapped == "" {
+			return "", fmt.Errorf("%w: status %q maps to an empty value", ErrBindingMisconfigured, status)
+		}
+
+		return mapped, nil
 	}
 
-	return instance.CreatedAt
-}
-
-// finishedAt is the value projected into the finished-at column. A nil
-// Instance.FinishedAt writes SQL NULL — exactly what started / resubmitted
-// need to clear a leftover value from a previous round.
-func finishedAt(instance *approval.Instance) any {
-	if instance.FinishedAt == nil {
-		return nil
+	if !isProjectableStatus(status) {
+		return "", fmt.Errorf("%w: unknown instance status %q", ErrProjectionStateInvalid, status)
 	}
 
-	return *instance.FinishedAt
+	return status.String(), nil
 }

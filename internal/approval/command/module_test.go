@@ -41,6 +41,7 @@ func TestRegisterHandlers(t *testing.T) {
 		new(UrgeTaskHandler),
 		new(TerminateInstanceHandler),
 		new(ReassignTaskHandler),
+		new(RetryBusinessProjectionHandler),
 	)
 
 	// For each expected command type, send a zero-value command and confirm the
@@ -180,6 +181,13 @@ func TestRegisterHandlers(t *testing.T) {
 			defer recoverDispatch(&err)
 
 			_, err = cqrs.Send[ReassignTaskCmd, cqrs.Unit](context.Background(), bus, ReassignTaskCmd{})
+
+			return err
+		}},
+		{"RetryBusinessProjection", func() (err error) {
+			defer recoverDispatch(&err)
+
+			_, err = cqrs.Send[RetryBusinessProjectionCmd, cqrs.Unit](context.Background(), bus, RetryBusinessProjectionCmd{})
 
 			return err
 		}},

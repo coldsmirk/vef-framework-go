@@ -42,6 +42,7 @@ func TestRegisterHandlers(t *testing.T) {
 		new(FindAdminTasksHandler),
 		new(GetAdminInstanceDetailHandler),
 		new(FindAdminActionLogsHandler),
+		new(FindAdminBusinessProjectionsHandler),
 		new(FindFlowsHandler),
 		new(FindFlowVersionsHandler),
 		new(FindFlowInitiatorsHandler),
@@ -136,6 +137,14 @@ func TestRegisterHandlers(t *testing.T) {
 			defer recoverDispatch(&err)
 
 			_, err = cqrs.Send[FindAdminActionLogsQuery, *page.Page[admin.ActionLog]](context.Background(), bus, FindAdminActionLogsQuery{})
+
+			return err
+		}},
+		{"FindAdminBusinessProjections", func() (err error) {
+			defer recoverDispatch(&err)
+
+			_, err = cqrs.Send[FindAdminBusinessProjectionsQuery, *page.Page[admin.BusinessProjection]](
+				context.Background(), bus, FindAdminBusinessProjectionsQuery{})
 
 			return err
 		}},

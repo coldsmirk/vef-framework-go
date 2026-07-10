@@ -24,6 +24,7 @@ var Module = fx.Module(
 		NewFindAdminTasksHandler,
 		NewGetAdminInstanceDetailHandler,
 		NewFindAdminActionLogsHandler,
+		NewFindAdminBusinessProjectionsHandler,
 		NewFindFlowsHandler,
 		NewFindFlowVersionsHandler,
 		NewFindFlowInitiatorsHandler,
@@ -48,6 +49,7 @@ func registerHandlers(
 	findAdminTasks *FindAdminTasksHandler,
 	getAdminInstanceDetail *GetAdminInstanceDetailHandler,
 	findAdminActionLogs *FindAdminActionLogsHandler,
+	findAdminBusinessProjections *FindAdminBusinessProjectionsHandler,
 	findFlows *FindFlowsHandler,
 	findFlowVersions *FindFlowVersionsHandler,
 	findFlowInitiators *FindFlowInitiatorsHandler,
@@ -65,6 +67,7 @@ func registerHandlers(
 	cqrs.Register(bus, findAdminTasks)
 	cqrs.Register(bus, getAdminInstanceDetail)
 	cqrs.Register(bus, findAdminActionLogs)
+	cqrs.Register(bus, findAdminBusinessProjections)
 	cqrs.Register(bus, findFlows)
 	cqrs.Register(bus, findFlowVersions)
 	cqrs.Register(bus, findFlowInitiators)

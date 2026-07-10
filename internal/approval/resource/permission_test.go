@@ -64,6 +64,25 @@ func TestManagementResourceRequiredPermissions(t *testing.T) {
 
 		assertRequiredPermissions(t, specs, expected)
 	})
+
+	t.Run("AdminResource", func(t *testing.T) {
+		resource := iresource.NewAdminResource(nil, nil, nil)
+		specs := collectSpecs(resource, collectors...)
+
+		expected := map[string]string{
+			"find_instances":            "approval.instance.query",
+			"find_tasks":                "approval.task.query",
+			"get_instance_detail":       "approval.instance.detail",
+			"find_action_logs":          "approval.action_log.query",
+			"get_metrics":               "approval.metrics.query",
+			"find_business_projections": "approval.binding.query",
+			"terminate_instance":        "approval.instance.terminate",
+			"reassign_task":             "approval.task.reassign",
+			"retry_business_projection": "approval.binding.retry",
+		}
+
+		assertRequiredPermissions(t, specs, expected)
+	})
 }
 
 func collectSpecs(resource api.Resource, collectors ...api.OperationsCollector) []api.OperationSpec {

@@ -132,6 +132,7 @@ func cleanAllQueryData(ctx context.Context, db orm.DB) {
 		(*approval.UrgeRecord)(nil),
 		(*approval.CCRecord)(nil),
 		(*approval.Task)(nil),
+		(*approval.BusinessProjection)(nil),
 		(*approval.Instance)(nil),
 		(*approval.FlowEdge)(nil),
 		(*approval.FlowNodeCC)(nil),

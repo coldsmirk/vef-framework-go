@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS apv_flow_version (
     -- Publish info
     published_at DATETIME NULL COMMENT 'Published',
     published_by VARCHAR(32) COMMENT 'Publisher',
+    business_binding JSON COMMENT 'Business Binding Snapshot',
     -- Generated flag for partial unique semantics: at most one published version per flow
     is_published_flag TINYINT AS (CASE WHEN status = 'published' THEN 1 ELSE NULL END) STORED,
     CONSTRAINT pk_apv_flow_version PRIMARY KEY (id),
@@ -233,6 +234,7 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     form_data JSON COMMENT 'Form Data',
     -- Host-supplied global variables snapshotted at instance start
     globals JSON COMMENT 'Instance Globals',
+    business_projection_id VARCHAR(32) COMMENT 'Business Projection',
     CONSTRAINT pk_apv_instance PRIMARY KEY (id),
     CONSTRAINT fk_apv_instance__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_instance__flow_version_id FOREIGN KEY (flow_version_id) REFERENCES apv_flow_version(id) ON DELETE RESTRICT ON UPDATE CASCADE,
@@ -240,11 +242,46 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     INDEX idx_apv_instance__tenant_id (tenant_id),
     INDEX idx_apv_instance__tenant_id_status_created_at (tenant_id, status, created_at DESC),
     INDEX idx_apv_instance__business_ref (business_ref),
+    INDEX idx_apv_instance__business_projection_id (business_projection_id),
     INDEX idx_apv_instance__tenant_id_applicant_id_status (tenant_id, applicant_id, status),
     INDEX idx_apv_instance__flow_id_status_created_at (flow_id, status, created_at),
     INDEX idx_apv_instance__applicant_id_status_created_at (applicant_id, status, created_at DESC),
     INDEX idx_apv_instance__current_node_id (current_node_id)
 ) COMMENT 'Instance';
+
+-- Durable desired state for one business-table target
+CREATE TABLE IF NOT EXISTS apv_business_projection (
+    id VARCHAR(32) NOT NULL COMMENT 'ID',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated',
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT 'Creator',
+    updated_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT 'Updater',
+    tenant_id VARCHAR(32) NOT NULL COMMENT 'Tenant',
+    flow_id VARCHAR(32) NOT NULL COMMENT 'Flow',
+    flow_version_id VARCHAR(32) NOT NULL COMMENT 'Version',
+    owner_instance_id VARCHAR(32) NOT NULL COMMENT 'Desired Owner',
+    applied_owner_instance_id VARCHAR(32) COMMENT 'Applied Owner',
+    target_hash VARCHAR(64) NOT NULL COMMENT 'Target Hash',
+    consistency VARCHAR(16) NOT NULL COMMENT 'Consistency Mode',
+    binding JSON NOT NULL COMMENT 'Binding Snapshot',
+    record_key JSON NOT NULL COMMENT 'Record Key Snapshot',
+    desired_status VARCHAR(16) NOT NULL COMMENT 'Desired Status',
+    desired_started_at DATETIME NOT NULL COMMENT 'Desired Started',
+    desired_finished_at DATETIME NULL COMMENT 'Desired Finished',
+    desired_revision BIGINT NOT NULL COMMENT 'Desired Revision',
+    applied_revision BIGINT NOT NULL DEFAULT 0 COMMENT 'Applied Revision',
+    status VARCHAR(16) NOT NULL COMMENT 'Projection Status',
+    attempt_count INTEGER NOT NULL DEFAULT 0 COMMENT 'Attempts',
+    next_attempt_at DATETIME NULL COMMENT 'Next Attempt',
+    lease_until DATETIME NULL COMMENT 'Lease Until',
+    last_error TEXT COMMENT 'Last Error',
+    applied_at DATETIME NULL COMMENT 'Applied',
+    CONSTRAINT pk_apv_business_projection PRIMARY KEY (id),
+    CONSTRAINT uk_apv_business_projection__target_hash UNIQUE (target_hash),
+    INDEX idx_apv_business_projection__tenant_id_status (tenant_id, status),
+    INDEX idx_apv_business_projection__status_next_attempt_at (status, next_attempt_at),
+    INDEX idx_apv_business_projection__owner_instance_id (owner_instance_id)
+) COMMENT 'Business Projection';
 
 -- --------------------------------------------------------------------------------
 -- Form Data Storage (JSON index)

@@ -66,8 +66,8 @@ func buildInstanceStateMachine() *StateMachine[approval.InstanceStatus] {
 	// Paused states (returned / withdrawn) must have a closing path: the
 	// applicant may abandon a returned instance instead of resubmitting, and
 	// an admin must be able to clean up either paused state. Without these
-	// transitions such instances linger forever and the business binding
-	// write-back (driven by InstanceCompletedEvent) never fires.
+	// transitions such instances linger forever and can never project a final
+	// business state.
 	sm.AddTransition(approval.InstanceReturned, approval.InstanceWithdrawn)
 	sm.AddTransition(approval.InstanceReturned, approval.InstanceTerminated)
 	sm.AddTransition(approval.InstanceWithdrawn, approval.InstanceTerminated)

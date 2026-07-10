@@ -6,8 +6,8 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/admin"
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	outboxmodel "github.com/coldsmirk/vef-framework-go/event/transport/outbox"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -47,11 +47,12 @@ func (h *GetMetricsHandler) Handle(ctx context.Context, query GetMetricsQuery) (
 	db := contextx.DB(ctx, h.db)
 
 	metrics := &admin.Metrics{
-		TenantID:             query.TenantID,
-		CapturedAt:           timex.Now(),
-		InstanceCounts:       map[string]int{},
-		TaskCounts:           map[string]int{},
-		AvgCompletionSeconds: -1,
+		TenantID:                 query.TenantID,
+		CapturedAt:               timex.Now(),
+		InstanceCounts:           map[string]int{},
+		TaskCounts:               map[string]int{},
+		BusinessProjectionCounts: map[string]int{},
+		AvgCompletionSeconds:     -1,
 	}
 
 	var instanceRows []metricStatusRow
@@ -137,36 +138,41 @@ func (h *GetMetricsHandler) Handle(ctx context.Context, query GetMetricsQuery) (
 		metrics.AvgCompletionSeconds = *avgRow.Avg
 	}
 
-	// Count of outbox records for binding-failure events that have not yet been
-	// delivered (status pending, processing, or failed). This is a best-effort
-	// row count, NOT a distinct-instance count: the binding listener
-	// re-publishes a fresh failure event on every transient retry, so one
-	// flaky instance can contribute multiple rows. Records are removed after
-	// delivery or after the dead-letter budget is exhausted (status "dead"
-	// means the relay gave up, not that the failure was resolved, so we count
-	// dead as well). Tenant scoping is not applied here because the outbox
-	// payload is opaque JSON and cross-dialect JSON extraction would add
-	// complexity for a best-effort metric; callers with tenant-specific
-	// dashboards should interpret this as the global unresolved count.
-	pendingStatuses := []string{
-		string(outboxmodel.StatusPending),
-		string(outboxmodel.StatusProcessing),
-		string(outboxmodel.StatusFailed),
-		string(outboxmodel.StatusDead),
+	var projectionRows []metricStatusRow
+	if err := db.NewSelect().
+		Model((*approval.BusinessProjection)(nil)).
+		Select("status").
+		SelectExpr(func(eb orm.ExprBuilder) any { return eb.CountAll() }, "count").
+		Where(func(cb orm.ConditionBuilder) {
+			cb.ApplyIf(query.TenantID != "", func(cb orm.ConditionBuilder) {
+				cb.Equals("tenant_id", query.TenantID)
+			})
+		}).
+		GroupBy("status").
+		Scan(ctx, &projectionRows); err != nil {
+		return nil, fmt.Errorf("query business projection counts: %w", err)
 	}
 
-	bindingFailureCount, err := db.NewSelect().
-		Model((*outboxmodel.Record)(nil)).
+	for _, row := range projectionRows {
+		metrics.BusinessProjectionCounts[row.Status] = int(row.Count)
+	}
+
+	pendingProjectionCount, err := db.NewSelect().
+		Model((*approval.BusinessProjection)(nil)).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("event_type", approval.EventTypeInstanceBindingFailed).
-				In("status", pendingStatuses)
+			cb.Equals("consistency", config.ApprovalBindingEventual).
+				GreaterThanColumn("desired_revision", "applied_revision").
+				ApplyIf(query.TenantID != "", func(cb orm.ConditionBuilder) {
+					cb.Equals("tenant_id", query.TenantID)
+				})
 		}).
 		Count(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("query pending binding failures: %w", err)
+		return nil, fmt.Errorf("query pending business projections: %w", err)
 	}
 
-	metrics.PendingBindingFailures = int(bindingFailureCount)
+	metrics.PendingBusinessProjections = int(pendingProjectionCount)
+	metrics.PendingBindingFailures = metrics.BusinessProjectionCounts[string(approval.BindingProjectionFailed)]
 
 	return metrics, nil
 }

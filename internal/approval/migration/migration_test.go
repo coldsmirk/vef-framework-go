@@ -62,3 +62,40 @@ func TestFlowVersionFormFieldsColumn(t *testing.T) {
 		})
 	}
 }
+
+func TestBusinessProjectionSchemaContract(t *testing.T) {
+	requiredColumns := map[string][]string{
+		"apv_flow_version": {"business_binding"},
+		"apv_instance":     {"business_projection_id"},
+		"apv_business_projection": {
+			"owner_instance_id",
+			"applied_owner_instance_id",
+			"target_hash",
+			"consistency",
+			"binding",
+			"record_key",
+			"desired_status",
+			"desired_revision",
+			"applied_revision",
+			"status",
+			"next_attempt_at",
+			"lease_until",
+		},
+	}
+
+	for _, kind := range []config.DBKind{config.Postgres, config.MySQL, config.SQLite} {
+		t.Run(string(kind), func(t *testing.T) {
+			sql, err := sqlmigration.LoadScript(scripts, kind)
+			require.NoErrorf(t, err, "Should load %s migration SQL", kind)
+
+			for table, columns := range requiredColumns {
+				for _, column := range columns {
+					pattern := regexp.MustCompile(`(?s)CREATE TABLE IF NOT EXISTS\s+` +
+						regexp.QuoteMeta(table) + `\s*\([^;]*\b` + regexp.QuoteMeta(column) + `\b`)
+					assert.Regexpf(t, pattern, sql,
+						"%s table %s should define business projection column %s", kind, table, column)
+				}
+			}
+		})
+	}
+}

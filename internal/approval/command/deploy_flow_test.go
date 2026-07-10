@@ -144,6 +144,61 @@ func (s *DeployFlowTestSuite) TestDeploySuccess() {
 	s.Assert().Len(edges, 1, "Should insert one edge")
 }
 
+func (s *DeployFlowTestSuite) TestDeploySnapshotsBusinessBinding() {
+	instanceIDColumn := "apv_instance_id"
+	bindingConfig := &approval.BusinessBindingConfig{
+		TableName:        "biz_deploy_order",
+		KeyColumns:       []string{" order_no ", "tenant_id"},
+		StatusColumn:     "approval_status",
+		InstanceIDColumn: &instanceIDColumn,
+		StatusMapping: map[approval.InstanceStatus]string{
+			approval.InstanceRunning: "  in_review  ",
+		},
+	}
+	flow := &approval.Flow{BindingMode: approval.BindingBusiness, BusinessBinding: bindingConfig}
+	flow.ID = s.flowID
+	_, err := s.db.NewUpdate().Model(flow).Select("binding_mode", "business_binding").WherePK().Exec(s.ctx)
+
+	s.Require().NoError(err, "Should configure the mutable flow binding before deploy")
+	defer func() {
+		_, _ = s.db.NewUpdate().Model((*approval.Flow)(nil)).
+			Set("binding_mode", approval.BindingStandalone).
+			Set("business_binding", nil).
+			Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.flowID) }).Exec(s.ctx)
+	}()
+
+	version, err := s.handler.Handle(s.ctx, command.DeployFlowCmd{
+		FlowID:         s.flowID,
+		FlowDefinition: simpleFlowDef(),
+		Caller:         approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Deploy should snapshot a complete business binding")
+	s.Require().NotNil(version.BusinessBinding, "Deployed version should carry its binding snapshot")
+	s.Assert().Equal([]string{"order_no", "tenant_id"}, version.BusinessBinding.KeyColumns,
+		"Deployed binding snapshot should use normalized key order")
+	s.Assert().Equal("in_review", version.BusinessBinding.StatusMapping[approval.InstanceRunning],
+		"Deployed binding snapshot should use normalized status mapping")
+
+	replacement := &approval.BusinessBindingConfig{
+		TableName:        "biz_replacement_order",
+		KeyColumns:       []string{"id"},
+		StatusColumn:     "state",
+		InstanceIDColumn: &instanceIDColumn,
+	}
+	_, err = s.db.NewUpdate().Model((*approval.Flow)(nil)).
+		Set("business_binding", replacement).
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.flowID) }).Exec(s.ctx)
+	s.Require().NoError(err, "Should edit the mutable flow after deploy")
+
+	reloaded := new(approval.FlowVersion)
+	reloaded.ID = version.ID
+	s.Require().NoError(s.db.NewSelect().Model(reloaded).WherePK().Scan(s.ctx),
+		"Should reload the deployed version snapshot")
+	s.Require().NotNil(reloaded.BusinessBinding, "Persisted version should retain its binding snapshot")
+	s.Assert().Equal("biz_deploy_order", reloaded.BusinessBinding.TableName,
+		"Mutable flow edits should not rewrite an existing version snapshot")
+}
+
 func (s *DeployFlowTestSuite) TestDeployWithDescription() {
 	desc := "版本描述"
 	cmd := command.DeployFlowCmd{

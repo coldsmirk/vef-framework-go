@@ -43,10 +43,12 @@ func NewAdminResource(
 				api.OperationSpec{Action: "get_instance_detail", RequiredPermission: "approval.instance.detail"},
 				api.OperationSpec{Action: "find_action_logs", RequiredPermission: "approval.action_log.query"},
 				api.OperationSpec{Action: "get_metrics", RequiredPermission: "approval.metrics.query"},
+				api.OperationSpec{Action: "find_business_projections", RequiredPermission: "approval.binding.query"},
 				// Admin write actions: framework-level audit captures who/when/IP
 				// in addition to the business-table action_log.
 				api.OperationSpec{Action: "terminate_instance", RequiredPermission: "approval.instance.terminate", EnableAudit: true},
 				api.OperationSpec{Action: "reassign_task", RequiredPermission: "approval.task.reassign", EnableAudit: true},
+				api.OperationSpec{Action: "retry_business_projection", RequiredPermission: "approval.binding.retry", EnableAudit: true},
 			),
 		),
 	}
@@ -276,4 +278,70 @@ func (r *AdminResource) GetMetrics(ctx fiber.Ctx, principal *security.Principal,
 	}
 
 	return result.Ok(metrics).Response(ctx)
+}
+
+// AdminFindBusinessProjectionsParams contains projection admin filters.
+type AdminFindBusinessProjectionsParams struct {
+	api.P
+
+	TenantID *string                           `json:"tenantId"`
+	Status   *approval.BindingProjectionStatus `json:"status"`
+	Page     int                               `json:"page"`
+	PageSize int                               `json:"pageSize"`
+}
+
+// FindBusinessProjections lists durable binding convergence state.
+func (r *AdminResource) FindBusinessProjections(
+	ctx fiber.Ctx,
+	principal *security.Principal,
+	params AdminFindBusinessProjectionsParams,
+) error {
+	tenantFilter, err := r.resolveTenantFilter(ctx, principal, params.TenantID)
+	if err != nil {
+		return err
+	}
+
+	projections, err := cqrs.Send[query.FindAdminBusinessProjectionsQuery, *page.Page[admin.BusinessProjection]](
+		ctx.Context(),
+		r.bus,
+		query.FindAdminBusinessProjectionsQuery{
+			TenantID: tenantFilter,
+			Status:   params.Status,
+			Pageable: page.Pageable{Page: params.Page, Size: params.PageSize},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	return result.Ok(projections).Response(ctx)
+}
+
+// AdminRetryBusinessProjectionParams identifies a projection to retry now.
+type AdminRetryBusinessProjectionParams struct {
+	api.P
+
+	ProjectionID string `json:"projectionId" validate:"required"`
+}
+
+// RetryBusinessProjection immediately retries one eventual projection.
+func (r *AdminResource) RetryBusinessProjection(
+	ctx fiber.Ctx,
+	principal *security.Principal,
+	params AdminRetryBusinessProjectionParams,
+) error {
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	if err != nil {
+		return err
+	}
+
+	if _, err := cqrs.Send[command.RetryBusinessProjectionCmd, cqrs.Unit](
+		ctx.Context(),
+		r.bus,
+		command.RetryBusinessProjectionCmd{ProjectionID: params.ProjectionID, Caller: caller},
+	); err != nil {
+		return err
+	}
+
+	return result.Ok().Response(ctx)
 }

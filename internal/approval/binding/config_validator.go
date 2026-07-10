@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -48,6 +49,7 @@ func NormalizeConfig(mode approval.BindingMode, config *approval.BusinessBinding
 		InstanceIDColumn: normalizeOptionalColumn(config.InstanceIDColumn),
 		StartedAtColumn:  normalizeOptionalColumn(config.StartedAtColumn),
 		FinishedAtColumn: normalizeOptionalColumn(config.FinishedAtColumn),
+		StatusMapping:    maps.Clone(config.StatusMapping),
 	}
 
 	for i, column := range config.KeyColumns {
@@ -56,8 +58,18 @@ func NormalizeConfig(mode approval.BindingMode, config *approval.BusinessBinding
 
 	slices.Sort(normalized.KeyColumns)
 
-	if normalized.TableName == "" || len(normalized.KeyColumns) == 0 || normalized.StatusColumn == "" {
+	if normalized.TableName == "" || len(normalized.KeyColumns) == 0 ||
+		normalized.StatusColumn == "" || normalized.InstanceIDColumn == nil {
 		return nil, shared.ErrBindingIncomplete
+	}
+
+	for status, value := range normalized.StatusMapping {
+		trimmed := strings.TrimSpace(value)
+		if !isProjectableStatus(status) || trimmed == "" {
+			return nil, shared.ErrBindingStatusMappingInvalid
+		}
+
+		normalized.StatusMapping[status] = trimmed
 	}
 
 	identifiers := make([]string, 0, len(normalized.KeyColumns)+5)
@@ -87,6 +99,20 @@ func NormalizeConfig(mode approval.BindingMode, config *approval.BusinessBinding
 	}
 
 	return normalized, nil
+}
+
+func isProjectableStatus(status approval.InstanceStatus) bool {
+	switch status {
+	case approval.InstanceRunning,
+		approval.InstanceApproved,
+		approval.InstanceRejected,
+		approval.InstanceWithdrawn,
+		approval.InstanceReturned,
+		approval.InstanceTerminated:
+		return true
+	default:
+		return false
+	}
 }
 
 // ValidateSchema verifies that every configured column exists and that the key

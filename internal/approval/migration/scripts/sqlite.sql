@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS apv_flow_version (
     -- Publish info
     published_at TIMESTAMP,
     published_by VARCHAR(32),
+    business_binding TEXT,
     CONSTRAINT uk_apv_flow_version__flow_id_version UNIQUE (flow_id, version),
     CONSTRAINT fk_apv_flow_version__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE
 );
@@ -232,6 +233,7 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     form_data TEXT,
     -- Host-supplied global variables snapshotted at instance start
     globals TEXT,
+    business_projection_id VARCHAR(32),
     CONSTRAINT fk_apv_instance__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_instance__flow_version_id FOREIGN KEY (flow_version_id) REFERENCES apv_flow_version(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT uk_apv_instance__instance_no UNIQUE (instance_no)
@@ -239,11 +241,46 @@ CREATE TABLE IF NOT EXISTS apv_instance (
 
 CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id ON apv_instance(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__business_ref ON apv_instance(business_ref);
+CREATE INDEX IF NOT EXISTS idx_apv_instance__business_projection_id ON apv_instance(business_projection_id);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id_status_created_at ON apv_instance(tenant_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__tenant_id_applicant_id_status ON apv_instance(tenant_id, applicant_id, status);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__flow_id_status_created_at ON apv_instance(flow_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__applicant_id_status_created_at ON apv_instance(applicant_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__current_node_id ON apv_instance(current_node_id);
+
+-- Durable desired state for one business-table target
+CREATE TABLE IF NOT EXISTS apv_business_projection (
+    id VARCHAR(32) CONSTRAINT pk_apv_business_projection PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime')),
+    updated_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime')),
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    updated_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    tenant_id VARCHAR(32) NOT NULL,
+    flow_id VARCHAR(32) NOT NULL,
+    flow_version_id VARCHAR(32) NOT NULL,
+    owner_instance_id VARCHAR(32) NOT NULL,
+    applied_owner_instance_id VARCHAR(32),
+    target_hash VARCHAR(64) NOT NULL,
+    consistency VARCHAR(16) NOT NULL,
+    binding TEXT NOT NULL,
+    record_key TEXT NOT NULL,
+    desired_status VARCHAR(16) NOT NULL,
+    desired_started_at TIMESTAMP NOT NULL,
+    desired_finished_at TIMESTAMP,
+    desired_revision INTEGER NOT NULL,
+    applied_revision INTEGER NOT NULL DEFAULT 0,
+    status VARCHAR(16) NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMP,
+    lease_until TIMESTAMP,
+    last_error TEXT,
+    applied_at TIMESTAMP,
+    CONSTRAINT uk_apv_business_projection__target_hash UNIQUE (target_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_apv_business_projection__tenant_id_status ON apv_business_projection(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_apv_business_projection__status_next_attempt_at ON apv_business_projection(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_apv_business_projection__owner_instance_id ON apv_business_projection(owner_instance_id);
 
 -- Node visit (one traversal of a flow node by an instance; the engine begins
 -- a visit on node entry and stamps the outcome when the node concludes)

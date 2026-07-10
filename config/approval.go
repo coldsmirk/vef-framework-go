@@ -1,6 +1,83 @@
 package config
 
-import "time"
+import (
+	"errors"
+	"fmt"
+	"time"
+)
+
+// ApprovalBindingConsistency selects how business-table projections
+// participate in approval transactions.
+type ApprovalBindingConsistency string
+
+const (
+	// ApprovalBindingSynchronous writes the business row inside the approval
+	// transaction. A projection failure rolls the approval action back.
+	ApprovalBindingSynchronous ApprovalBindingConsistency = "synchronous"
+	// ApprovalBindingEventual commits the desired projection with the approval
+	// action and lets the binding worker converge the business row afterwards.
+	ApprovalBindingEventual ApprovalBindingConsistency = "eventual"
+)
+
+// ErrInvalidApprovalBindingConsistency indicates an unsupported business
+// binding consistency mode.
+var ErrInvalidApprovalBindingConsistency = errors.New("invalid approval business binding consistency")
+
+// ErrInvalidApprovalBusinessBindingWorkerConfig indicates a negative worker
+// interval or batch size. Zero leaves the corresponding setting at its default.
+var ErrInvalidApprovalBusinessBindingWorkerConfig = errors.New("invalid approval business binding worker config")
+
+// ApprovalBusinessBindingConfig controls business-state projection behavior.
+type ApprovalBusinessBindingConfig struct {
+	// Consistency defaults to synchronous so business projection failures abort
+	// the approval action unless eventual consistency is explicitly enabled.
+	Consistency ApprovalBindingConsistency `config:"consistency"`
+	// ScanInterval is the eventual projection worker cadence. Default: 10 seconds.
+	ScanInterval time.Duration `config:"scan_interval"`
+	// BatchSize bounds the number of pending projections processed per scan.
+	// Default: 100.
+	BatchSize int `config:"batch_size"`
+}
+
+// EffectiveConsistency returns Consistency or the synchronous default.
+func (c *ApprovalBusinessBindingConfig) EffectiveConsistency() ApprovalBindingConsistency {
+	if c.Consistency == "" {
+		return ApprovalBindingSynchronous
+	}
+
+	return c.Consistency
+}
+
+// EffectiveScanInterval returns ScanInterval or its default.
+func (c *ApprovalBusinessBindingConfig) EffectiveScanInterval() time.Duration {
+	return coalescePositive(c.ScanInterval, 10*time.Second)
+}
+
+// EffectiveBatchSize returns BatchSize or its default.
+func (c *ApprovalBusinessBindingConfig) EffectiveBatchSize() int {
+	return coalescePositive(c.BatchSize, 100)
+}
+
+// Validate rejects unsupported consistency modes so configuration typos fail
+// at startup instead of silently selecting different transaction semantics.
+func (c *ApprovalBusinessBindingConfig) Validate() error {
+	switch c.EffectiveConsistency() {
+	case ApprovalBindingSynchronous, ApprovalBindingEventual:
+	default:
+		return fmt.Errorf("%w %q (want %q or %q)", ErrInvalidApprovalBindingConsistency,
+			c.Consistency, ApprovalBindingSynchronous, ApprovalBindingEventual)
+	}
+
+	if c.ScanInterval < 0 {
+		return fmt.Errorf("%w: scan_interval must be positive when set", ErrInvalidApprovalBusinessBindingWorkerConfig)
+	}
+
+	if c.BatchSize < 0 {
+		return fmt.Errorf("%w: batch_size must be positive when set", ErrInvalidApprovalBusinessBindingWorkerConfig)
+	}
+
+	return nil
+}
 
 // ApprovalConfig defines approval workflow engine settings.
 //
@@ -39,6 +116,9 @@ type ApprovalConfig struct {
 	// CCRecordRetention is the retention window for apv_cc_record rows
 	// (only records that have been read are pruned). Default: 90 days.
 	CCRecordRetention time.Duration `config:"cc_record_retention"`
+
+	// BusinessBinding controls approval-to-business-table state projection.
+	BusinessBinding ApprovalBusinessBindingConfig `config:"business_binding"`
 }
 
 // ApplyDefaults fills zero-valued fields with sensible defaults so callers
@@ -71,4 +151,9 @@ func (c *ApprovalConfig) ApplyDefaults() {
 	if c.CCRecordRetention <= 0 {
 		c.CCRecordRetention = 90 * 24 * time.Hour
 	}
+}
+
+// Validate checks approval configuration invariants.
+func (c *ApprovalConfig) Validate() error {
+	return c.BusinessBinding.Validate()
 }

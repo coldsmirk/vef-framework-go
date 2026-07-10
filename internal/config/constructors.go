@@ -55,6 +55,10 @@ func newApprovalConfig(cfg config.Config) (*config.ApprovalConfig, error) {
 
 	approvalConfig.ApplyDefaults()
 
+	if err := approvalConfig.Validate(); err != nil {
+		return nil, err
+	}
+
 	return approvalConfig, nil
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
@@ -72,6 +73,39 @@ func (h *DeployFlowHandler) deriveFormFields(ctx context.Context, schema json.Ra
 	return fields, nil
 }
 
+func loadDeployFlow(
+	ctx context.Context,
+	db orm.DB,
+	flowID string,
+	caller approval.CallerContext,
+) (approval.Flow, *approval.BusinessBindingConfig, error) {
+	flow := approval.Flow{}
+	flow.ID = flowID
+
+	if err := db.NewSelect().
+		Model(&flow).
+		Select("current_version", "tenant_id", "code", "name", "binding_mode", "business_binding").
+		WherePK().
+		Scan(ctx); err != nil {
+		if result.IsRecordNotFound(err) {
+			return approval.Flow{}, nil, shared.ErrFlowNotFound
+		}
+
+		return approval.Flow{}, nil, fmt.Errorf("load flow: %w", err)
+	}
+
+	if err := caller.Authorize(flow.TenantID); err != nil {
+		return approval.Flow{}, nil, shared.ErrFlowNotFound
+	}
+
+	businessBinding, err := binding.NormalizeConfig(flow.BindingMode, flow.BusinessBinding)
+	if err != nil {
+		return approval.Flow{}, nil, fmt.Errorf("normalize business binding snapshot: %w", err)
+	}
+
+	return flow, businessBinding, nil
+}
+
 func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*approval.FlowVersion, error) {
 	parsedNodeData, err := h.flowDefSvc.ValidateFlowDefinition(&cmd.FlowDefinition)
 	if err != nil {
@@ -120,34 +154,21 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 
 	db := contextx.DB(ctx, h.db)
 
-	var flow approval.Flow
-
-	flow.ID = cmd.FlowID
-	if err := db.NewSelect().
-		Model(&flow).
-		Select("current_version", "tenant_id", "code", "name").
-		WherePK().
-		Scan(ctx); err != nil {
-		if result.IsRecordNotFound(err) {
-			return nil, shared.ErrFlowNotFound
-		}
-
-		return nil, fmt.Errorf("load flow: %w", err)
-	}
-
-	if err := cmd.Caller.Authorize(flow.TenantID); err != nil {
-		return nil, shared.ErrFlowNotFound
+	flow, businessBinding, err := loadDeployFlow(ctx, db, cmd.FlowID, cmd.Caller)
+	if err != nil {
+		return nil, err
 	}
 
 	version := approval.FlowVersion{
-		FlowID:      flow.ID,
-		Version:     flow.CurrentVersion + 1,
-		Status:      approval.VersionDraft,
-		Description: cmd.Description,
-		StorageMode: storageMode,
-		FlowSchema:  &cmd.FlowDefinition,
-		FormSchema:  cmd.FormSchema,
-		FormFields:  fields,
+		FlowID:          flow.ID,
+		Version:         flow.CurrentVersion + 1,
+		Status:          approval.VersionDraft,
+		Description:     cmd.Description,
+		StorageMode:     storageMode,
+		FlowSchema:      &cmd.FlowDefinition,
+		FormSchema:      cmd.FormSchema,
+		FormFields:      fields,
+		BusinessBinding: businessBinding,
 	}
 	if _, err := db.NewInsert().
 		Model(&version).

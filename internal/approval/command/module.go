@@ -34,6 +34,7 @@ var Module = fx.Module(
 		NewUrgeTaskHandler,
 		NewTerminateInstanceHandler,
 		NewReassignTaskHandler,
+		NewRetryBusinessProjectionHandler,
 	),
 
 	fx.Invoke(registerHandlers),
@@ -61,6 +62,7 @@ func registerHandlers(
 	urgeTask *UrgeTaskHandler,
 	terminateInstance *TerminateInstanceHandler,
 	reassignTask *ReassignTaskHandler,
+	retryBusinessProjection *RetryBusinessProjectionHandler,
 ) {
 	// Commands — Flow
 	cqrs.Register(bus, createFlow)
@@ -86,4 +88,5 @@ func registerHandlers(
 	cqrs.Register(bus, urgeTask)
 	cqrs.Register(bus, terminateInstance)
 	cqrs.Register(bus, reassignTask)
+	cqrs.Register(bus, retryBusinessProjection)
 }

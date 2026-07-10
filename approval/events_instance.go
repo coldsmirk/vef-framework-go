@@ -142,17 +142,15 @@ func NewInstanceResubmittedEvent(instance *Instance, operator UserInfo) *Instanc
 
 func (*InstanceResubmittedEvent) EventType() string { return EventTypeInstanceResubmitted }
 
-// InstanceBindingFailedEvent fires when the engine-owned business write-back
-// fails after the driving approval action has already committed. Subscribers
-// retry asynchronously; the approval is not rolled back. Operators can grep
-// these events for stuck bindings. The started trigger never appears here —
-// its write-back runs inside the start transaction and a failure rolls back
-// the initiation instead of firing this event.
+// InstanceBindingFailedEvent fires when an eventual business projection
+// attempt fails after the desired approval state has committed. The durable
+// worker keeps retrying; this event is an operator notification, not the retry
+// mechanism. Synchronous failures roll back the approval transaction and do
+// not emit this event.
 type InstanceBindingFailedEvent struct {
 	InstanceEventBase
 
-	// Trigger is the lifecycle moment whose write-back failed (completed /
-	// returned / withdrawn / resubmitted).
+	// Trigger is the lifecycle moment represented by the failed desired state.
 	Trigger BindingTrigger `json:"trigger"`
 	// Status is the instance status the write-back attempted to persist into
 	// the business status column at that moment.

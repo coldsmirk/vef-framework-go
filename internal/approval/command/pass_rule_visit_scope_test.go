@@ -50,7 +50,15 @@ func (s *PassRuleVisitScopeTestSuite) SetupSuite() {
 	s.start = wrapWithBusAndDB(
 		s.db,
 		bus,
-		command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, validSvc, binding.NewNoopRefProvider(), binding.NewWriter(binding.NewIdentityResolver()), nil),
+		command.NewStartInstanceHandler(
+			s.db,
+			eng,
+			&MockInstanceNoGenerator{},
+			validSvc,
+			binding.NewNoopRefProvider(),
+			binding.NewProjector(binding.NewIdentityResolver(), binding.NewWriter(), nil),
+			nil,
+		),
 	)
 	s.approve = wrapWithBusAndDB(s.db, bus, command.NewApproveTaskHandler(s.db, taskSvc, nodeSvc, validSvc, nil))
 	s.rollback = wrapWithBusAndDB(s.db, bus, command.NewRollbackTaskHandler(s.db, taskSvc, instanceSvc, validSvc, eng, nil))

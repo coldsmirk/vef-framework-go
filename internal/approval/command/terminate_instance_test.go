@@ -7,7 +7,10 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
@@ -178,6 +181,77 @@ func (s *TerminateInstanceTestSuite) TestTerminateAlreadyCompleted() {
 	})
 	s.Require().Error(err, "TestTerminateAlreadyCompleted should return an error")
 	s.Assert().ErrorIs(err, shared.ErrTerminateNotAllowed, "Should not allow terminating approved instance")
+}
+
+func (s *TerminateInstanceTestSuite) TestSynchronousProjectionFailureRollsBackFinalStatus() {
+	_, err := s.db.NewRaw(`CREATE TABLE biz_terminate_projection (
+		id VARCHAR(64) PRIMARY KEY,
+		approval_status VARCHAR(32),
+		apv_instance_id VARCHAR(32)
+	)`).Exec(s.ctx)
+	s.Require().NoError(err, "Should create the termination business table")
+
+	_, err = s.db.NewRaw(`INSERT INTO biz_terminate_projection (id, approval_status)
+		VALUES ('term-order-1', 'submitted')`).Exec(s.ctx)
+	s.Require().NoError(err, "Should seed the termination business row")
+
+	ref := "term-order-1"
+	instance := s.insertInstance(approval.InstanceRunning)
+	instance.BusinessRef = &ref
+	instanceIDColumn := "apv_instance_id"
+	businessBinding := &approval.BusinessBindingConfig{
+		TableName:        "biz_terminate_projection",
+		KeyColumns:       []string{"id"},
+		StatusColumn:     "approval_status",
+		InstanceIDColumn: &instanceIDColumn,
+	}
+	flow := &approval.Flow{BindingMode: approval.BindingBusiness, BusinessBinding: businessBinding}
+	flow.ID = s.fixture.FlowID
+	version := &approval.FlowVersion{BusinessBinding: businessBinding}
+	version.ID = s.fixture.VersionID
+
+	projector := binding.NewProjector(binding.NewIdentityResolver(), binding.NewWriter(), nil)
+	s.Require().NoError(projector.Bind(s.ctx, s.db, flow, version, instance),
+		"Initial synchronous projection should claim the business row")
+
+	_, err = s.db.NewRaw(`DROP TABLE biz_terminate_projection`).Exec(s.ctx)
+	s.Require().NoError(err, "Test setup should make the final business write fail")
+
+	hooks := engine.NewLifecycleHookRunner(projector, nil)
+	handler := command.NewTerminateInstanceHandler(
+		s.db,
+		service.NewTaskService(),
+		service.NewInstanceService(hooks),
+	)
+	err = s.db.RunInTx(s.ctx, func(txCtx context.Context, tx orm.DB) error {
+		_, handleErr := handler.Handle(contextx.SetDB(txCtx, tx), command.TerminateInstanceCmd{
+			InstanceID: instance.ID,
+			Operator:   approval.UserInfo{ID: "admin-1", Name: "Admin"},
+			Reason:     "business write should fail",
+			Caller:     approval.SystemCaller,
+		})
+
+		return handleErr
+	})
+	s.Require().Error(err, "Synchronous business write failure should abort the final approval action")
+
+	reloaded := new(approval.Instance)
+	reloaded.ID = instance.ID
+	s.Require().NoError(s.db.NewSelect().Model(reloaded).WherePK().Scan(s.ctx),
+		"Should reload the instance after the failed final transition")
+	s.Assert().Equal(approval.InstanceRunning, reloaded.Status,
+		"Failed synchronous projection must roll the approval status back")
+	s.Assert().Nil(reloaded.FinishedAt,
+		"Failed synchronous projection must roll the approval finish time back")
+
+	projection := new(approval.BusinessProjection)
+	projection.ID = *instance.BusinessProjectionID
+	s.Require().NoError(s.db.NewSelect().Model(projection).WherePK().Scan(s.ctx),
+		"Should reload the projection after the failed final transition")
+	s.Assert().Equal(approval.InstanceRunning, projection.DesiredStatus,
+		"Failed synchronous projection must roll its desired state back")
+	s.Assert().Equal(projection.AppliedRevision, projection.DesiredRevision,
+		"Projection should remain converged at the last committed revision")
 }
 
 func (s *TerminateInstanceTestSuite) TestTerminateAlreadyTerminated() {

@@ -57,7 +57,7 @@ type CallerContext struct {
 	// scope is established by other means, so Authorize passes
 	// unconditionally. Resource paths must NEVER populate this. In the
 	// current tree only test fixtures set it (the in-tree system paths —
-	// timeout scanner, binding listener — act directly on already-loaded,
+	// timeout scanner, projection worker — act directly on already-loaded,
 	// trusted rows and never construct a CallerContext); it remains the
 	// intended marker for any host or future in-process system code that
 	// legitimately needs to bypass tenant scoping.

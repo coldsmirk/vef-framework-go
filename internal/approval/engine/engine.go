@@ -82,7 +82,7 @@ func (e *FlowEngine) publishEvents(ctx context.Context, db orm.DB, events ...app
 	// Prefer the collector so command handlers see a single batched
 	// publish at the end of the pipeline with consistent OccurredAt /
 	// trace handling. The collector is absent when this engine runs
-	// outside a CQRS pipeline (timeout scanner, binding listener); in
+	// outside a CQRS pipeline (for example, the timeout scanner); in
 	// that case fall back to direct bus.Publish.
 	if collector, ok := behavior.TryEventCollectorFromContext(ctx); ok {
 		collector.Add(events...)

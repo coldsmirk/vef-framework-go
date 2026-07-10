@@ -28,7 +28,7 @@ var Module = fx.Module(
 		// Lifecycle hooks aggregator: collects host-registered hooks via FX group.
 		fx.Annotate(
 			NewLifecycleHookRunner,
-			fx.ParamTags(`group:"vef:approval:lifecycle_hooks"`),
+			fx.ParamTags(``, `group:"vef:approval:lifecycle_hooks"`),
 		),
 
 		// CompiledFlow cache backed by the in-process memory store. Hosts
