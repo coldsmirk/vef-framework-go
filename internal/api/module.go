@@ -5,6 +5,7 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/api"
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/api/adapter"
 	"github.com/coldsmirk/vef-framework-go/internal/api/auth"
 	"github.com/coldsmirk/vef-framework-go/internal/api/collector"
@@ -29,6 +30,8 @@ var Module = fx.Module(
 type EngineParams struct {
 	fx.In
 
+	APIConfig *config.APIConfig
+
 	Resources        []api.Resource       `group:"vef:api:resources"`
 	RouterStrategies []api.RouterStrategy `group:"vef:api:router_strategies"`
 
@@ -44,6 +47,10 @@ func provideEngine(p EngineParams) (api.Engine, error) {
 		WithHandlerAdapters(p.HandlerAdapters...),
 		WithHandlerResolvers(p.HandlerResolvers...),
 		WithOperationCollectors(p.OperationsCollectors...),
+		WithDefaultRateLimit(&api.RateLimitConfig{
+			Max:    p.APIConfig.RateLimit.EffectiveMax(),
+			Period: p.APIConfig.RateLimit.EffectivePeriod(),
+		}),
 	)
 	if err != nil {
 		return nil, err

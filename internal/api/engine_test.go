@@ -213,6 +213,22 @@ func TestEngineOptions(t *testing.T) {
 		assert.Len(t, e.adapters, 1, "Should have 1 adapter")
 	})
 
+	t.Run("WithDefaultRateLimit", func(t *testing.T) {
+		e := newTestEngine(t, WithDefaultRateLimit(&api.RateLimitConfig{Max: 42, Period: time.Minute}))
+		assert.Equal(t, 42, e.defaultRateLimit.Max, "The configured default rate limit max should replace the built-in")
+		assert.Equal(t, time.Minute, e.defaultRateLimit.Period, "The configured default rate limit period should replace the built-in")
+
+		op := e.buildOperation(&MockResource{name: "test"}, api.OperationSpec{Action: "list"}, DummyHandler)
+		require.NotNil(t, op.RateLimit, "An operation without its own rate limit should get the default")
+		assert.Equal(t, 42, op.RateLimit.Max, "The stamped operation rate limit should be the configured default")
+	})
+
+	t.Run("WithDefaultRateLimitNilKeepsBuiltIn", func(t *testing.T) {
+		e := newTestEngine(t, WithDefaultRateLimit(nil))
+		require.NotNil(t, e.defaultRateLimit, "A nil override must not clear the built-in default")
+		assert.Equal(t, 100, e.defaultRateLimit.Max, "A nil override should keep the built-in default max")
+	})
+
 	t.Run("MultipleOptions", func(t *testing.T) {
 		router := &MockRouterStrategy{name: "rpc"}
 		collector := &MockOperationsCollector{}

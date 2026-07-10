@@ -19,6 +19,10 @@ func newAppConfig(cfg config.Config) (*config.AppConfig, error) {
 	return unmarshalConfig(cfg, "vef.app", new(config.AppConfig))
 }
 
+func newAPIConfig(cfg config.Config) (*config.APIConfig, error) {
+	return unmarshalConfig(cfg, "vef.api", new(config.APIConfig))
+}
+
 func newCORSConfig(cfg config.Config) (*config.CORSConfig, error) {
 	return unmarshalConfig(cfg, "vef.cors", new(config.CORSConfig))
 }

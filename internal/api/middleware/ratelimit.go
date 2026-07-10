@@ -8,16 +8,12 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/limiter"
 
 	"github.com/coldsmirk/vef-framework-go/api"
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/httpx"
 	"github.com/coldsmirk/vef-framework-go/internal/api/shared"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
-)
-
-const (
-	defaultRateLimitMax        = 100
-	defaultRateLimitExpiration = 5 * time.Minute
 )
 
 // RateLimit handles rate limiting based on operation config.
@@ -26,8 +22,11 @@ type RateLimit struct {
 	h fiber.Handler
 }
 
-// NewRateLimit creates a new rate limit middleware with shared state.
-func NewRateLimit() api.Middleware {
+// NewRateLimit creates a new rate limit middleware with shared state. The
+// engine stamps a resolved rate limit onto every operation, so the
+// vef.api.rate_limit fallback here only covers requests that carry no
+// operation context.
+func NewRateLimit(apiConfig *config.APIConfig) api.Middleware {
 	return &RateLimit{
 		h: limiter.New(limiter.Config{
 			LimiterMiddleware: limiter.SlidingWindow{},
@@ -36,14 +35,14 @@ func NewRateLimit() api.Middleware {
 					return op.RateLimit.Max
 				}
 
-				return defaultRateLimitMax
+				return apiConfig.RateLimit.EffectiveMax()
 			},
 			ExpirationFunc: func(c fiber.Ctx) time.Duration {
 				if op := shared.Operation(c); op != nil && op.RateLimit != nil && op.RateLimit.Period > 0 {
 					return op.RateLimit.Period
 				}
 
-				return defaultRateLimitExpiration
+				return apiConfig.RateLimit.EffectivePeriod()
 			},
 			KeyGenerator: func(ctx fiber.Ctx) string {
 				var sb strings.Builder

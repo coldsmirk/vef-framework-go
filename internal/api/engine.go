@@ -70,6 +70,17 @@ func WithHandlerAdapters(adapters ...api.HandlerAdapter) EngineOption {
 	}
 }
 
+// WithDefaultRateLimit overrides the built-in default rate limit applied to
+// operations that declare none of their own (wired from vef.api.rate_limit).
+// A nil limit is ignored so the built-in default survives.
+func WithDefaultRateLimit(limit *api.RateLimitConfig) EngineOption {
+	return func(e *engine) {
+		if limit != nil {
+			e.defaultRateLimit = limit
+		}
+	}
+}
+
 // NewEngine creates a new API engine with the given options.
 func NewEngine(opts ...EngineOption) (api.Engine, error) {
 	eng := &engine{

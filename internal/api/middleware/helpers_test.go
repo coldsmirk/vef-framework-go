@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/coldsmirk/vef-framework-go/api"
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/api/shared"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -113,7 +114,7 @@ func TestExtractErrorInfo(t *testing.T) {
 
 // TestNewRateLimit tests NewRateLimit constructor and its methods.
 func TestNewRateLimit(t *testing.T) {
-	rl := NewRateLimit()
+	rl := NewRateLimit(new(config.APIConfig))
 
 	assert.NotNil(t, rl, "RateLimit should not be nil")
 	assert.Equal(t, "ratelimit", rl.Name(), "Name should be 'ratelimit'")
