@@ -1,6 +1,9 @@
 package lock
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // Default values applied when the corresponding Option is omitted.
 const (
@@ -8,6 +11,9 @@ const (
 	DefaultTTL = 30 * time.Second
 	// DefaultRetryInterval is the polling cadence of a waiting Acquire.
 	DefaultRetryInterval = 100 * time.Millisecond
+	// MinAutoRenewTTL is the shortest lease supported by the renewal watchdog.
+	// It leaves three renewal intervals inside one lease lifetime.
+	MinAutoRenewTTL = 30 * time.Millisecond
 )
 
 // Option customizes a single acquisition.
@@ -22,7 +28,9 @@ type acquireConfig struct {
 
 // WithTTL sets the lease duration. The lease auto-expires this long after the
 // acquisition (or the last refresh), bounding how long a crashed holder can
-// block others. Non-positive values fall back to DefaultTTL.
+// block others. Non-positive values fall back to DefaultTTL. When auto-renewal
+// is enabled, values below MinAutoRenewTTL fail with
+// ErrAutoRenewTTLTooShort.
 func WithTTL(ttl time.Duration) Option {
 	return func(c *acquireConfig) {
 		c.ttl = ttl
@@ -48,16 +56,18 @@ func WithRetryInterval(interval time.Duration) Option {
 
 // WithAutoRenew toggles the background watchdog that refreshes the lease at a
 // third of its TTL, so a healthy holder never expires mid-work while a crashed
-// one still frees the lock within one TTL. Off by default for bare Acquire /
-// TryAcquire; WithLock turns it on unless explicitly disabled.
+// one still frees the lock within one TTL. Auto-renewal requires a TTL of at
+// least MinAutoRenewTTL. It is off by default for bare Acquire / TryAcquire;
+// WithLock turns it on unless explicitly disabled.
 func WithAutoRenew(enabled bool) Option {
 	return func(c *acquireConfig) {
 		c.autoRenew = enabled
 	}
 }
 
-// resolveAcquireConfig applies opts over the defaults.
-func resolveAcquireConfig(opts []Option) acquireConfig {
+// resolveAcquireConfig applies opts over the defaults and validates option
+// combinations that the lease implementation cannot honor.
+func resolveAcquireConfig(opts []Option) (acquireConfig, error) {
 	cfg := acquireConfig{
 		ttl:           DefaultTTL,
 		retryInterval: DefaultRetryInterval,
@@ -75,5 +85,14 @@ func resolveAcquireConfig(opts []Option) acquireConfig {
 		cfg.retryInterval = DefaultRetryInterval
 	}
 
-	return cfg
+	if cfg.autoRenew && cfg.ttl < MinAutoRenewTTL {
+		return acquireConfig{}, fmt.Errorf(
+			"%w: got %s, minimum %s",
+			ErrAutoRenewTTLTooShort,
+			cfg.ttl,
+			MinAutoRenewTTL,
+		)
+	}
+
+	return cfg, nil
 }

@@ -50,6 +50,28 @@ func runLockerContract(t *testing.T, locker Locker, steal func(t *testing.T, nam
 		require.NoError(t, waited.Release(ctx), "cleanup release should succeed")
 	})
 
+	t.Run("WaitUsesRemainderShorterThanRetryInterval", func(t *testing.T) {
+		held, err := locker.TryAcquire(ctx, name(t))
+		require.NoError(t, err, "seeding the held lock should succeed")
+
+		releaseDone := make(chan error, 1)
+		go func() {
+			time.Sleep(25 * time.Millisecond)
+
+			releaseDone <- held.Release(context.Background())
+		}()
+
+		waited, acquireErr := locker.Acquire(
+			ctx,
+			name(t),
+			WithWait(250*time.Millisecond),
+			WithRetryInterval(time.Second),
+		)
+		require.NoError(t, <-releaseDone, "the seeded holder should release inside the wait window")
+		require.NoError(t, acquireErr, "Acquire must use the final partial interval instead of returning early")
+		require.NoError(t, waited.Release(ctx), "cleanup release should succeed")
+	})
+
 	t.Run("WaitTimesOut", func(t *testing.T) {
 		held, err := locker.TryAcquire(ctx, name(t))
 		require.NoError(t, err, "seeding the held lock should succeed")
@@ -183,6 +205,17 @@ func runLockerContract(t *testing.T, locker Locker, steal func(t *testing.T, nam
 		}
 
 		require.NoError(t, held.Release(ctx), "release should stop the watchdog and succeed")
+	})
+
+	t.Run("WithLockRejectsTooShortAutoRenewTTL", func(t *testing.T) {
+		called := false
+		err := WithLock(ctx, locker, name(t), func(context.Context) error {
+			called = true
+
+			return nil
+		}, WithTTL(MinAutoRenewTTL-time.Nanosecond))
+		require.ErrorIs(t, err, ErrAutoRenewTTLTooShort, "WithLock must reject a TTL the watchdog cannot renew")
+		assert.False(t, called, "the callback must not run without a renewable lease")
 	})
 
 	t.Run("DoneStaysOpenWithoutAutoRenew", func(t *testing.T) {

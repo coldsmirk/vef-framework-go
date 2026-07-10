@@ -9,9 +9,10 @@ import (
 
 func TestResolveAcquireConfig(t *testing.T) {
 	tests := []struct {
-		name string
-		opts []Option
-		want acquireConfig
+		name    string
+		opts    []Option
+		want    acquireConfig
+		wantErr error
 	}{
 		{
 			name: "DefaultsWhenNoOptions",
@@ -38,11 +39,35 @@ func TestResolveAcquireConfig(t *testing.T) {
 			opts: []Option{WithAutoRenew(true), WithAutoRenew(false)},
 			want: acquireConfig{ttl: DefaultTTL, retryInterval: DefaultRetryInterval},
 		},
+		{
+			name: "MinimumAutoRenewTTLAccepted",
+			opts: []Option{WithTTL(MinAutoRenewTTL), WithAutoRenew(true)},
+			want: acquireConfig{ttl: MinAutoRenewTTL, retryInterval: DefaultRetryInterval, autoRenew: true},
+		},
+		{
+			name:    "ShortAutoRenewTTLRejected",
+			opts:    []Option{WithTTL(MinAutoRenewTTL - time.Nanosecond), WithAutoRenew(true)},
+			wantErr: ErrAutoRenewTTLTooShort,
+		},
+		{
+			name: "ShortTTLWithoutAutoRenewAccepted",
+			opts: []Option{WithTTL(time.Millisecond)},
+			want: acquireConfig{ttl: time.Millisecond, retryInterval: DefaultRetryInterval},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, resolveAcquireConfig(tt.opts), "resolved config should apply options over defaults")
+			got, err := resolveAcquireConfig(tt.opts)
+			if tt.wantErr != nil {
+				assert.ErrorIs(t, err, tt.wantErr, "invalid option combinations should return their sentinel error")
+
+				return
+			}
+
+			if assert.NoError(t, err, "valid option combinations should resolve") {
+				assert.Equal(t, tt.want, got, "resolved config should apply options over defaults")
+			}
 		})
 	}
 }

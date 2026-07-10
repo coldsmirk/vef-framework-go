@@ -7,10 +7,6 @@ import (
 	"time"
 )
 
-// minRenewInterval floors the watchdog cadence so a tiny TTL cannot spin the
-// renewal loop.
-const minRenewInterval = 10 * time.Millisecond
-
 // leaseBackend is the store-specific pair of token-guarded primitives a lease
 // runs on; both must return ErrNotHeld when the token no longer owns the lock.
 type leaseBackend struct {
@@ -95,7 +91,7 @@ func (l *lease) startRenew() {
 	}
 
 	go func() {
-		interval := max(l.ttl/3, minRenewInterval)
+		interval := l.ttl / 3
 
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()

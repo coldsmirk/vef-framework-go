@@ -104,14 +104,29 @@ func acquireLoop(ctx context.Context, cfg acquireConfig, tryOnce func(ctx contex
 			return held, err
 		}
 
-		if time.Now().Add(cfg.retryInterval).After(deadline) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
 			return nil, ErrNotAcquired
 		}
 
+		timer := time.NewTimer(min(cfg.retryInterval, remaining))
+
 		select {
 		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+
 			return nil, ctx.Err()
-		case <-time.After(cfg.retryInterval):
+
+		case <-timer.C:
 		}
 	}
 }

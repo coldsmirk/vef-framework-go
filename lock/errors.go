@@ -9,4 +9,7 @@ var (
 	// ErrNotHeld indicates a release or refresh on a lease that is no longer
 	// owned — it expired, was released already, or was taken over.
 	ErrNotHeld = errors.New("lock not held")
+	// ErrAutoRenewTTLTooShort indicates the requested lease is too short for
+	// the watchdog to renew without a tight spin loop.
+	ErrAutoRenewTTLTooShort = errors.New("lock auto-renew TTL too short")
 )

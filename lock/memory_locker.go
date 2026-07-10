@@ -14,24 +14,27 @@ import (
 type MemoryLocker struct {
 	mu      sync.Mutex
 	holders map[string]*memoryHolder
-	fencing map[string]int64
+	fencing int64
 }
 
 type memoryHolder struct {
 	token     string
 	expiresAt time.Time
+	timer     *time.Timer
 }
 
 // NewMemoryLocker creates an empty in-process locker.
 func NewMemoryLocker() Locker {
 	return &MemoryLocker{
 		holders: make(map[string]*memoryHolder),
-		fencing: make(map[string]int64),
 	}
 }
 
 func (m *MemoryLocker) Acquire(ctx context.Context, name string, opts ...Option) (Lock, error) {
-	cfg := resolveAcquireConfig(opts)
+	cfg, err := resolveAcquireConfig(opts)
+	if err != nil {
+		return nil, err
+	}
 
 	return acquireLoop(ctx, cfg, func(ctx context.Context) (Lock, error) {
 		return m.tryOnce(ctx, name, cfg)
@@ -39,7 +42,12 @@ func (m *MemoryLocker) Acquire(ctx context.Context, name string, opts ...Option)
 }
 
 func (m *MemoryLocker) TryAcquire(ctx context.Context, name string, opts ...Option) (Lock, error) {
-	return m.tryOnce(ctx, name, resolveAcquireConfig(opts))
+	cfg, err := resolveAcquireConfig(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return m.tryOnce(ctx, name, cfg)
 }
 
 // tryOnce performs a single acquisition attempt under the mutex. It honors
@@ -62,12 +70,15 @@ func (m *MemoryLocker) tryOnce(ctx context.Context, name string, cfg acquireConf
 		return nil, ErrNotAcquired
 	}
 
-	m.holders[name] = &memoryHolder{token: token, expiresAt: time.Now().Add(cfg.ttl)}
-	m.fencing[name]++
+	expiresAt := time.Now().Add(cfg.ttl)
+	holder := &memoryHolder{token: token, expiresAt: expiresAt}
+	holder.timer = m.expiryTimer(name, token, expiresAt)
+	m.holders[name] = holder
+	m.fencing++
 
 	backend := leaseBackend{release: m.releaseToken, refresh: m.refreshToken}
 
-	return newLease(name, token, cfg, m.fencing[name], backend), nil
+	return newLease(name, token, cfg, m.fencing, backend), nil
 }
 
 // releaseToken removes the holder entry if token still owns a live lease.
@@ -80,6 +91,7 @@ func (m *MemoryLocker) releaseToken(_ context.Context, name, token string) error
 		return ErrNotHeld
 	}
 
+	holder.timer.Stop()
 	delete(m.holders, name)
 
 	return nil
@@ -95,7 +107,23 @@ func (m *MemoryLocker) refreshToken(_ context.Context, name, token string, ttl t
 		return ErrNotHeld
 	}
 
+	holder.timer.Stop()
 	holder.expiresAt = time.Now().Add(ttl)
+	holder.timer = m.expiryTimer(name, token, holder.expiresAt)
 
 	return nil
+}
+
+func (m *MemoryLocker) expiryTimer(name, token string, expiresAt time.Time) *time.Timer {
+	return time.AfterFunc(time.Until(expiresAt), func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+
+		holder := m.holders[name]
+		if holder == nil || holder.token != token || !holder.expiresAt.Equal(expiresAt) {
+			return
+		}
+
+		delete(m.holders, name)
+	})
 }
