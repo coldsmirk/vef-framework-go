@@ -252,24 +252,34 @@ func deriveGroup(handler any) (string, error) {
 	dot += slash + 1
 	pkgPath, symbol := name[:dot], name[dot+1:]
 
-	// Strip the main module prefix so the group does not repeat the module
-	// path on every name; keep the full import path when the build carries
-	// no module info (best effort — the name stays stable either way).
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Path != "" {
-		if trimmed, found := strings.CutPrefix(pkgPath, info.Main.Path); found {
-			trimmed = strings.TrimPrefix(trimmed, "/")
-			if trimmed == "" {
-				trimmed = path.Base(info.Main.Path)
-			}
-
-			pkgPath = trimmed
-		}
-	}
-
 	// "(*Type).Method" → "Type.Method".
 	symbol = strings.NewReplacer("(*", "", ")", "").Replace(symbol)
 
-	return derivedGroupPrefix + pkgPath + "." + symbol, nil
+	return derivedGroupPrefix + trimMainModulePrefix(pkgPath) + "." + symbol, nil
+}
+
+// trimMainModulePrefix strips the main module path from pkgPath so derived
+// consumer-group names do not repeat the module path on every name; the full
+// import path is kept when the build carries no module info (best effort —
+// the name stays stable either way). A package at the module root collapses
+// to the module path's base name.
+func trimMainModulePrefix(pkgPath string) string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info.Main.Path == "" {
+		return pkgPath
+	}
+
+	trimmed, found := strings.CutPrefix(pkgPath, info.Main.Path)
+	if !found {
+		return pkgPath
+	}
+
+	trimmed = strings.TrimPrefix(trimmed, "/")
+	if trimmed == "" {
+		return path.Base(info.Main.Path)
+	}
+
+	return trimmed
 }
 
 // derivedGroups guards against two subscriptions in one process deriving the
