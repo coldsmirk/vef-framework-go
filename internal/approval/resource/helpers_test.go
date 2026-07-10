@@ -84,13 +84,16 @@ func (g *MockInstanceNoGenerator) Generate(_ context.Context, flowCode string) (
 // --- App setup helper ---
 
 // setupResourceApp creates a Postgres container, boots the full app with approval modules,
-// and returns the orm.DB and a JWT token for authenticated requests.
-func setupResourceApp(s *apptest.Suite) (orm.DB, string) {
+// and returns the orm.DB and a JWT token for authenticated requests. Extra fx
+// options let a suite override a framework binding (e.g. the form-schema parser)
+// in the composed graph.
+func setupResourceApp(s *apptest.Suite, extra ...fx.Option) (orm.DB, string) {
 	ctx := context.Background()
 	pgContainer := testx.NewPostgresContainer(ctx, s.T())
 
 	var db orm.DB
-	s.SetupApp(
+
+	opts := []fx.Option{
 		fx.Replace(
 			pgContainer.DataSource,
 			&security.JWTConfig{
@@ -111,7 +114,8 @@ func setupResourceApp(s *apptest.Suite) (orm.DB, string) {
 			fx.Annotate(func() security.PermissionChecker { return &MockPermissionChecker{} }, fx.As(new(security.PermissionChecker))),
 		),
 		fx.Populate(&db),
-	)
+	}
+	s.SetupApp(append(opts, extra...)...)
 
 	// Test admin carries SuperAdminRole so existing tests (which call admin
 	// queries without a TenantID filter) keep working after the G1

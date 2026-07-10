@@ -36,3 +36,29 @@ func TestMigrationScripts(t *testing.T) {
 		assert.Contains(t, err.Error(), "unsupported database kind", "Should include kind info in error")
 	})
 }
+
+// formFieldsColumn matches a form_fields column definition — the column name
+// followed by any JSON/text column type — inside the apv_flow_version CREATE
+// TABLE. The (?s) flag lets .*? span the intervening column lines, and \s
+// tolerance keeps it resilient to reformatting. Anchoring on the CREATE TABLE
+// header (with a non-greedy reach to the first form_fields token) scopes the
+// assertion to the table body: the postgres COMMENT ON COLUMN line naming the
+// same column appears only after the statement closes.
+var formFieldsColumn = regexp.MustCompile(`(?s)CREATE TABLE IF NOT EXISTS\s+apv_flow_version\s*\(.*?\bform_fields\b\s+(?:JSONB|JSON|TEXT)`)
+
+// TestFlowVersionFormFieldsColumn guards the form_fields column: every dialect
+// script must define it on apv_flow_version, so a dialect that forgets the
+// deploy-derived field list (form_schema stored verbatim, form_fields the flat
+// projection the framework reads) fails here instead of at first deploy on that
+// database.
+func TestFlowVersionFormFieldsColumn(t *testing.T) {
+	for _, kind := range []config.DBKind{config.Postgres, config.MySQL, config.SQLite} {
+		t.Run(string(kind), func(t *testing.T) {
+			sql, err := sqlmigration.LoadScript(scripts, kind)
+			require.NoErrorf(t, err, "Should load %s migration SQL", kind)
+
+			assert.Regexpf(t, formFieldsColumn, sql,
+				"%s apv_flow_version CREATE TABLE must define a form_fields column", kind)
+		})
+	}
+}

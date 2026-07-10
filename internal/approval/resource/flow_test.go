@@ -2,6 +2,7 @@ package resource_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -229,6 +230,53 @@ func (s *FlowResourceTestSuite) TestGetGraph() {
 	data := s.ReadDataAsMap(res.Data)
 	s.Assert().NotNil(data["nodes"], "Graph should contain nodes")
 	s.Assert().NotNil(data["edges"], "Graph should contain edges")
+}
+
+// TestDeployPreservesLargeIntegerInFormSchema is the end-to-end proof of the
+// number-preserving request binding (api.Params.UnmarshalJSON with UseNumber +
+// mapx hooks): a deploy whose formSchema carries an integer beyond 2^53 must
+// round-trip through the full HTTP → api.Params → mapx → DeployFlowParams
+// (FormSchema json.RawMessage) → jsonb pipeline with its exact digits intact. A
+// float64 collapse would round 9007199254740993 to ...992, so the persisted
+// form_schema is checked for the exact digits.
+func (s *FlowResourceTestSuite) TestDeployPreservesLargeIntegerInFormSchema() {
+	flowID := s.createFlow("test-flow-bigint", "BigInt Deploy")
+
+	// A valid form-editor document whose select option carries an integer above
+	// 2^53. The document is stored verbatim, so the digits must survive exactly.
+	const bigInt = "9007199254740993"
+
+	const rounded = "9007199254740992" // what a float64 round-trip would produce
+
+	formSchema := json.RawMessage(`{"version":2,"presentations":{"pc":{"children":[` +
+		`{"id":"F1","type":"select","key":"level","label":"Level",` +
+		`"dataSource":{"kind":"static","options":[{"label":"Big","value":` + bigInt + `}]}}]}}}`)
+
+	resp := s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{Resource: "approval/flow", Action: "deploy", Version: "v1"},
+		Params: map[string]any{
+			"flowId":         flowID,
+			"flowDefinition": toMap(simpleFlowDef()),
+			"formSchema":     formSchema,
+		},
+	}, s.token)
+
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "Deploy RPC should return HTTP 200")
+	res := s.ReadResult(resp)
+	s.Require().True(res.IsOk(), "Should deploy flow with a big-integer form schema")
+
+	data := s.ReadDataAsMap(res.Data)
+	versionID, ok := data["id"].(string)
+	s.Require().True(ok, "Version ID should be a string")
+
+	var version approval.FlowVersion
+
+	version.ID = versionID
+	s.Require().NoError(s.db.NewSelect().Model(&version).WherePK().Scan(s.ctx), "Should load the deployed version")
+
+	stored := string(version.FormSchema)
+	s.Assert().Contains(stored, bigInt, "form_schema must persist the integer beyond 2^53 with its exact digits")
+	s.Assert().NotContains(stored, rounded, "form_schema must not have collapsed the integer through float64")
 }
 
 func (s *FlowResourceTestSuite) TestDeployInvalidDefinition() {

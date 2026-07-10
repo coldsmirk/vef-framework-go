@@ -433,6 +433,82 @@ func (s *GetMyInstanceDetailTestSuite) TestFieldPermissionsProjection() {
 	s.Assert().Contains(stored.FormData, "secret", "Hidden field must remain in the database")
 }
 
+// TestTableFieldHiddenStripped pins that a table-kind form field resolved hidden
+// for the viewer has its whole row-array value stripped from the returned form
+// data — a table counts as one permission key, so hiding it drops the array
+// wholesale — while a visible scalar field on the same node survives.
+func (s *GetMyInstanceDetailTestSuite) TestTableFieldHiddenStripped() {
+	category := &approval.FlowCategory{TenantID: "default", Code: "tbl-hidden-cat", Name: "Table Hidden Category"}
+	_, err := s.db.NewInsert().Model(category).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert category")
+
+	flow := &approval.Flow{
+		TenantID: "default", CategoryID: category.ID, Code: "tbl-hidden-flow", Name: "Table Hidden Flow",
+		BindingMode: approval.BindingStandalone, IsAllInitiationAllowed: true,
+		InstanceTitleTemplate: "Test", IsActive: true,
+	}
+	_, err = s.db.NewInsert().Model(flow).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert flow")
+
+	version := &approval.FlowVersion{
+		FlowID: flow.ID, Version: 1, Status: approval.VersionPublished,
+		FormFields: []approval.FormFieldDefinition{
+			{Key: "items", Kind: approval.FieldTable, Columns: []approval.FormFieldDefinition{{Key: "qty", Kind: approval.FieldNumber}}},
+			{Key: "reason", Kind: approval.FieldInput},
+		},
+	}
+	_, err = s.db.NewInsert().Model(version).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert version with a table and a scalar field")
+
+	node := &approval.FlowNode{
+		FlowVersionID: version.ID, Key: "tbl-hidden-node", Kind: approval.NodeApproval, Name: "Table Hidden Node",
+		FieldPermissions: map[string]approval.Permission{
+			"items":  approval.PermissionHidden,
+			"reason": approval.PermissionEditable,
+		},
+	}
+	_, err = s.db.NewInsert().Model(node).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert node hiding the table field")
+
+	inst := &approval.Instance{
+		TenantID: "default", FlowID: flow.ID, FlowVersionID: version.ID,
+		Title: "Table Hidden Instance", InstanceNo: "TBLHID-001", ApplicantID: "tbl-applicant",
+		Status: approval.InstanceRunning, CurrentNodeID: &node.ID,
+		FormData: map[string]any{
+			"items":  []any{map[string]any{"qty": 2}, map[string]any{"qty": 5}},
+			"reason": "please approve",
+			"legacy": "kept",
+		},
+	}
+	_, err = s.db.NewInsert().Model(inst).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert instance with table row data")
+
+	_, err = s.db.NewInsert().Model(&approval.Task{
+		TenantID: inst.TenantID, InstanceID: inst.ID, NodeID: node.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, inst.TenantID, inst.ID, node.ID).ID,
+		AssigneeID: "tbl-approver", SortOrder: 1, Status: approval.TaskPending,
+	}).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert pending task")
+
+	detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
+		InstanceID: inst.ID,
+		UserID:     "tbl-approver",
+	})
+	s.Require().NoError(err, "Pending approver should get detail")
+
+	s.Assert().Equal(approval.PermissionHidden, detail.FieldPermissions["items"], "The table field should resolve hidden for the viewer")
+	s.Assert().NotContains(detail.Instance.FormData, "items", "The hidden table field's row-array value must be stripped wholesale")
+	s.Assert().Contains(detail.Instance.FormData, "reason", "The visible scalar field must survive stripping")
+	s.Assert().Contains(detail.Instance.FormData, "legacy", "A schemaless legacy field must survive stripping")
+
+	// Stripping is a read-path projection; the stored row-array is untouched.
+	var stored approval.Instance
+
+	stored.ID = inst.ID
+	s.Require().NoError(s.db.NewSelect().Model(&stored).WherePK().Scan(s.ctx), "Should reload stored instance")
+	s.Assert().Contains(stored.FormData, "items", "The table row data must remain in the database")
+}
+
 func (s *GetMyInstanceDetailTestSuite) TestAccessDenied() {
 	_, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: s.instanceID,
