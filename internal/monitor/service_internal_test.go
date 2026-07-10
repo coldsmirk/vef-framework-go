@@ -1,63 +1,17 @@
 package monitor
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/monitor"
 	"github.com/coldsmirk/vef-framework-go/version"
 )
-
-func TestGetDeviceContainer(t *testing.T) {
-	tests := []struct {
-		name   string
-		device string
-		want   string
-	}{
-		{name: "MacOSAPFSVolume", device: "/dev/disk1s1", want: "/dev/disk1"},
-		{name: "MacOSAPFSHigherVolume", device: "/dev/disk2s3", want: "/dev/disk2"},
-		{name: "MacOSSecondPhysicalDisk", device: "/dev/disk3s1", want: "/dev/disk3"},
-		{name: "LinuxSATAPartition", device: "/dev/sda1", want: "/dev/sda"},
-		{name: "LinuxSATASecondDisk", device: "/dev/sdb2", want: "/dev/sdb"},
-		{name: "LinuxNVMePartition", device: "/dev/nvme0n1p1", want: "/dev/nvme0n1"},
-		{name: "LinuxNVMeSecondPartition", device: "/dev/nvme0n1p2", want: "/dev/nvme0n1"},
-		{name: "LinuxNVMeWholeNamespace", device: "/dev/nvme0n1", want: "/dev/nvme0n1"},
-		{name: "LinuxNVMeSecondNamespace", device: "/dev/nvme0n2", want: "/dev/nvme0n2"},
-		{name: "LinuxDeviceMapper", device: "/dev/dm-0", want: "/dev/dm-0"},
-		{name: "LinuxLoopDevice", device: "/dev/loop0", want: "/dev/loop0"},
-		{name: "LinuxEMMCPartition", device: "/dev/mmcblk0p1", want: "/dev/mmcblk0"},
-		{name: "Empty", device: "", want: ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := getDeviceContainer(tt.device)
-			assert.Equal(t, tt.want, got, "container for %q should strip the partition suffix", tt.device)
-		})
-	}
-}
-
-func TestGetDeviceContainerDeduplicatesSiblings(t *testing.T) {
-	// Sibling partitions of the same physical disk must collapse to one key,
-	// while distinct physical disks must keep distinct keys.
-	assert.Equal(t, getDeviceContainer("/dev/disk1s1"), getDeviceContainer("/dev/disk1s2"),
-		"sibling APFS volumes on disk1 should share a container key")
-	assert.NotEqual(t, getDeviceContainer("/dev/disk1s1"), getDeviceContainer("/dev/disk2s1"),
-		"disk1 and disk2 must not collapse to the same container key")
-	assert.NotEqual(t, getDeviceContainer("/dev/sda1"), getDeviceContainer("/dev/sdb1"),
-		"sda and sdb must not collapse to the same container key")
-	assert.Equal(t, getDeviceContainer("/dev/nvme0n1p1"), getDeviceContainer("/dev/nvme0n1p2"),
-		"sibling partitions on the same NVMe namespace should share a container key")
-	assert.NotEqual(t, getDeviceContainer("/dev/nvme0n1"), getDeviceContainer("/dev/nvme0n2"),
-		"distinct NVMe namespaces are independent devices and must not collapse")
-	assert.NotEqual(t, getDeviceContainer("/dev/dm-0"), getDeviceContainer("/dev/dm-1"),
-		"distinct device-mapper volumes must not collapse")
-	assert.NotEqual(t, getDeviceContainer("/dev/loop0"), getDeviceContainer("/dev/loop1"),
-		"distinct loop devices must not collapse")
-}
 
 func TestResolveConfig(t *testing.T) {
 	defaults := DefaultConfig()
@@ -94,27 +48,18 @@ func TestResolveConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "FullOverrideWins",
+			name: "NodeExporterPathsArePreserved",
 			in: &config.MonitorConfig{
 				SampleInterval: 7 * time.Second,
 				SampleDuration: time.Second,
+				ProcfsPath:     "/host/proc",
+				RootfsPath:     "/host",
 			},
 			want: config.MonitorConfig{
 				SampleInterval: 7 * time.Second,
 				SampleDuration: time.Second,
-			},
-		},
-		{
-			name: "ExcludedMountsArePreserved",
-			in: &config.MonitorConfig{
-				SampleInterval: 7 * time.Second,
-				SampleDuration: time.Second,
-				ExcludedMounts: []string{"OrbStack"},
-			},
-			want: config.MonitorConfig{
-				SampleInterval: 7 * time.Second,
-				SampleDuration: time.Second,
-				ExcludedMounts: []string{"OrbStack"},
+				ProcfsPath:     "/host/proc",
+				RootfsPath:     "/host",
 			},
 		},
 	}
@@ -150,95 +95,117 @@ func TestResolveBuildInfo(t *testing.T) {
 	})
 }
 
-func TestShouldSkipMountPoint(t *testing.T) {
-	tests := []struct {
-		name       string
-		excluded   []string
-		mountPoint string
-		want       bool
-	}{
-		{name: "Empty", mountPoint: "", want: true},
-		{name: "RealRootKept", mountPoint: "/", want: false},
-		{name: "RealDataVolumeKept", mountPoint: "/data", want: false},
-		{name: "OSPseudoMountSkipped", mountPoint: "/proc/sys", want: true},
-		{name: "MacOSSystemVolumeSkipped", mountPoint: "/System/Volumes/Data", want: true},
-		{
-			name:       "VendorMountSkippedOnlyWhenConfigured",
-			excluded:   []string{"OrbStack"},
-			mountPoint: "/Users/me/OrbStack",
-			want:       true,
-		},
-		{
-			name:       "VendorMountKeptWhenNotConfigured",
-			mountPoint: "/Users/me/OrbStack",
-			want:       false,
-		},
-		{
-			name:       "EmptyConfiguredSubstringIgnored",
-			excluded:   []string{""},
-			mountPoint: "/data",
-			want:       false,
-		},
+// TestApplyCgroupCPUSummary checks the overview CPU override: cores are adopted
+// immediately, but utilization stays the host figure until the container's own
+// delta is ready (#14).
+func TestApplyCgroupCPUSummary(t *testing.T) {
+	newSummary := func() *monitor.CPUSummary {
+		return &monitor.CPUSummary{PhysicalCores: 8, LogicalCores: 8, UsagePercent: 42}
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := &DefaultService{config: config.MonitorConfig{ExcludedMounts: tt.excluded}}
-			got := s.shouldSkipMountPoint(tt.mountPoint)
-			assert.Equal(t, tt.want, got, "skip decision for %q with excludes %v", tt.mountPoint, tt.excluded)
-		})
-	}
+	t.Run("no sample keeps host", func(t *testing.T) {
+		s := &DefaultService{}
+		summary := newSummary()
+		s.applyCgroupCPUSummary(summary)
+		assert.Equal(t, 8, summary.LogicalCores)
+		assert.InDelta(t, 42.0, summary.UsagePercent, 1e-9)
+	})
+
+	t.Run("cores override but usage kept until ready", func(t *testing.T) {
+		s := &DefaultService{}
+		s.cgroupCPUCache.Store(cgroupCPUSample{cores: 2, usageReady: false, ok: true})
+
+		summary := newSummary()
+		s.applyCgroupCPUSummary(summary)
+		assert.Equal(t, 2, summary.LogicalCores, "cores overridden immediately")
+		assert.InDelta(t, 42.0, summary.UsagePercent, 1e-9, "usage kept as host until the delta is ready")
+	})
+
+	t.Run("usage overridden once ready", func(t *testing.T) {
+		s := &DefaultService{}
+		s.cgroupCPUCache.Store(cgroupCPUSample{cores: 2, usagePercent: 30, usageReady: true, ok: true})
+
+		summary := newSummary()
+		s.applyCgroupCPUSummary(summary)
+		assert.Equal(t, 2, summary.LogicalCores)
+		assert.InDelta(t, 30.0, summary.UsagePercent, 1e-9)
+	})
 }
 
-func TestBuildDiskSummary(t *testing.T) {
-	t.Run("PartitionsCountsOnlyContributingDisks", func(t *testing.T) {
-		s := &DefaultService{config: config.MonitorConfig{}}
+func TestMeanPercent(t *testing.T) {
+	assert.Equal(t, 0.0, meanPercent(nil), "empty slice is 0, not a divide-by-zero")
+	assert.InDelta(t, 50.0, meanPercent([]float64{25, 75}), 1e-9)
+	assert.InDelta(t, 30.0, meanPercent([]float64{10, 20, 60}), 1e-9)
+}
 
-		// Two sibling slices of disk1 (dedup to one), a distinct disk2, plus a
-		// pseudo-mount that must be skipped entirely. The summary must report the
-		// de-duplicated contributing count, consistent with Total/Used.
-		info := &monitor.DiskInfo{
-			Partitions: []*monitor.PartitionInfo{
-				{Device: "/dev/disk1s1", MountPoint: "/", Total: 100, Used: 40},
-				{Device: "/dev/disk1s2", MountPoint: "/data", Total: 100, Used: 40},
-				{Device: "/dev/disk2s1", MountPoint: "/mnt", Total: 50, Used: 10},
-				{Device: "/dev/disk3s1", MountPoint: "/System/Volumes/Data", Total: 999, Used: 999},
+// TestSamplerLifecycle checks Init/Close are idempotent, restartable and reset
+// the cgroup CPU baseline (#3/#4).
+func TestSamplerLifecycle(t *testing.T) {
+	s := &DefaultService{config: DefaultConfig()}
+
+	require.NoError(t, s.Init(context.Background()))
+	require.NotNil(t, s.samplerCancel, "Init starts the sampler")
+
+	require.NoError(t, s.Init(context.Background()), "second Init is a no-op")
+
+	require.NoError(t, s.Close())
+	assert.Nil(t, s.samplerCancel, "Close clears the sampler handle so Init can restart")
+
+	// Simulate a stale baseline, then a restart must reset it.
+	s.prevCgroupCPU = cgroupCPUPrev{ok: true, usageMicros: 12345}
+	require.NoError(t, s.Init(context.Background()))
+	assert.False(t, s.prevCgroupCPU.ok, "Init resets the stale cgroup CPU baseline")
+
+	require.NoError(t, s.Close())
+}
+
+// TestApplyCgroupMemorySummary locks the overview memory override: it takes the
+// cgroup limit only when it is finite and below the host total, and otherwise
+// leaves the host figures unchanged.
+func TestApplyCgroupMemorySummary(t *testing.T) {
+	const hostTotal = uint64(8) << 30
+
+	t.Run("LimitBelowHostTotalOverrides", func(t *testing.T) {
+		withCgroupFixture(t, cgroupFixture{
+			procSelfCgroup: "0::/\n",
+			v2: map[string]string{
+				"memory.max":     "536870912\n",
+				"memory.current": "268435456\n",
+				"memory.stat":    "inactive_file 0\n",
 			},
-		}
+		})
 
-		summary := s.buildDiskSummary(info)
+		summary := &monitor.MemorySummary{Total: hostTotal, Used: 1 << 30, UsedPercent: 12.5}
+		applyCgroupMemorySummary(summary)
 
-		assert.Equal(t, 2, summary.Partitions, "Partitions must count only the de-duplicated, non-skipped disks (disk1 + disk2)")
-		assert.Equal(t, uint64(150), summary.Total, "Total must sum only the contributing disks (disk1 first slice + disk2)")
-		assert.Equal(t, uint64(50), summary.Used, "Used must sum only the contributing disks")
-		assert.InDelta(t, float64(50)/float64(150)*100, summary.UsedPercent, 0.0001, "UsedPercent derives from the de-duplicated totals")
+		assert.Equal(t, uint64(536870912), summary.Total, "should adopt the container limit")
+		assert.Equal(t, uint64(268435456), summary.Used)
+		assert.InDelta(t, 50.0, summary.UsedPercent, 0.01)
 	})
 
-	t.Run("EmptyPartitionsYieldsZeroes", func(t *testing.T) {
-		s := &DefaultService{config: config.MonitorConfig{}}
+	t.Run("LimitAtOrAboveHostTotalKeepsHost", func(t *testing.T) {
+		withCgroupFixture(t, cgroupFixture{
+			procSelfCgroup: "0::/\n",
+			v2: map[string]string{
+				"memory.max":     "17179869184\n", // 16Gi > 8Gi host
+				"memory.current": "1\n",
+				"memory.stat":    "inactive_file 0\n",
+			},
+		})
 
-		summary := s.buildDiskSummary(&monitor.DiskInfo{})
+		summary := &monitor.MemorySummary{Total: hostTotal, Used: 1 << 30, UsedPercent: 12.5}
+		applyCgroupMemorySummary(summary)
 
-		assert.Equal(t, 0, summary.Partitions, "no partitions means a zero count")
-		assert.Equal(t, uint64(0), summary.Total, "no partitions means zero total")
-		assert.Equal(t, uint64(0), summary.Used, "no partitions means zero used")
-		assert.Equal(t, float64(0), summary.UsedPercent, "zero total must not divide by zero")
+		assert.Equal(t, hostTotal, summary.Total, "limit >= host total keeps host figures")
+		assert.InDelta(t, 12.5, summary.UsedPercent, 0.01)
 	})
 
-	t.Run("PartitionsWithoutDeviceAreEachCounted", func(t *testing.T) {
-		s := &DefaultService{config: config.MonitorConfig{}}
+	t.Run("NoCgroupKeepsHost", func(t *testing.T) {
+		withCgroupFixture(t, cgroupFixture{procSelfCgroup: "0::/\n"})
 
-		// Device-less partitions skip the dedup guard, so each contributes once.
-		info := &monitor.DiskInfo{
-			Partitions: []*monitor.PartitionInfo{
-				{Device: "", MountPoint: "/a", Total: 10, Used: 1},
-				{Device: "", MountPoint: "/b", Total: 20, Used: 2},
-			},
-		}
+		summary := &monitor.MemorySummary{Total: hostTotal, Used: 1 << 30, UsedPercent: 12.5}
+		applyCgroupMemorySummary(summary)
 
-		summary := s.buildDiskSummary(info)
-
-		assert.Equal(t, 2, summary.Partitions, "device-less partitions are each counted")
-		assert.Equal(t, uint64(30), summary.Total, "Total sums both device-less partitions")
+		assert.Equal(t, hostTotal, summary.Total)
 	})
 }

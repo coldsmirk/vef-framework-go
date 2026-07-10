@@ -59,6 +59,8 @@ func (r *Resource) GetOverview(ctx fiber.Ctx) error {
 func (r *Resource) GetCPU(ctx fiber.Ctx) error {
 	cpuInfo, err := r.service.CPU(ctx.Context())
 	if err != nil {
+		logger.Warnf("Failed to collect CPU info: %v", err)
+
 		return monitor.ErrNotReady
 	}
 
@@ -117,6 +119,8 @@ func (r *Resource) GetHost(ctx fiber.Ctx) error {
 func (r *Resource) GetProcess(ctx fiber.Ctx) error {
 	procInfo, err := r.service.Process(ctx.Context())
 	if err != nil {
+		logger.Warnf("Failed to collect process info: %v", err)
+
 		return monitor.ErrNotReady
 	}
 

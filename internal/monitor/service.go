@@ -3,9 +3,10 @@ package monitor
 import (
 	"context"
 	"errors"
+	"math"
 	"os"
-	"regexp"
-	"strings"
+	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -27,11 +28,41 @@ type DefaultService struct {
 	buildInfo *monitor.BuildInfo
 	config    config.MonitorConfig
 
-	cpuCache     atomic.Value // stores *monitor.CPUInfo
+	cpuCache     atomic.Value // stores *monitor.CPUInfo (host CPU sample)
 	processCache atomic.Value // stores *monitor.ProcessInfo
 
+	// cgroupCPUCache stores the container-scoped CPU sample (effective cores and
+	// the container's own utilization). It is kept separate from cpuCache so the
+	// detailed get_cpu endpoint stays purely host-based while the overview can be
+	// container-aware. prevCgroupCPU holds the previous cpu.stat reading and is
+	// only touched by the single sampler goroutine.
+	cgroupCPUCache atomic.Value // stores cgroupCPUSample
+	prevCgroupCPU  cgroupCPUPrev
+
+	// mu guards the sampler lifecycle fields so Init/Close are safe under
+	// concurrent or interleaved calls.
+	mu            sync.Mutex
 	samplerCancel context.CancelFunc
 	samplerDone   chan struct{}
+}
+
+// cgroupCPUSample is the container's CPU view derived from its cgroup: effective
+// cores (from the CFS quota) and its own utilization (from the cpu.stat delta).
+type cgroupCPUSample struct {
+	cores        int
+	usagePercent float64
+	// usageReady is false until a utilization delta has been computed (needs two
+	// readings); before then the overview keeps the host figure rather than 0.
+	usageReady bool
+	ok         bool
+}
+
+// cgroupCPUPrev is the previous cumulative cgroup CPU reading, used to compute a
+// utilization delta between sampler ticks.
+type cgroupCPUPrev struct {
+	usageMicros uint64
+	at          time.Time
+	ok          bool
 }
 
 // NewService creates a new monitor.Service implementation. A nil cfg or zero-valued
@@ -46,7 +77,7 @@ func NewService(cfg *config.MonitorConfig, buildInfo *monitor.BuildInfo) monitor
 
 // resolveConfig applies DefaultConfig values for any unset (zero) sampling field so
 // the service always has a positive sample interval and duration, while preserving
-// the caller-provided mount exclusions.
+// the caller-provided node_exporter-style filesystem paths.
 func resolveConfig(cfg *config.MonitorConfig) config.MonitorConfig {
 	resolved := DefaultConfig()
 	if cfg == nil {
@@ -61,7 +92,8 @@ func resolveConfig(cfg *config.MonitorConfig) config.MonitorConfig {
 		resolved.SampleDuration = cfg.SampleDuration
 	}
 
-	resolved.ExcludedMounts = cfg.ExcludedMounts
+	resolved.ProcfsPath = cfg.ProcfsPath
+	resolved.RootfsPath = cfg.RootfsPath
 
 	return resolved
 }
@@ -111,6 +143,9 @@ func (s *DefaultService) Overview(ctx context.Context) (*monitor.SystemOverview,
 			LogicalCores:  cpuInfo.LogicalCores,
 			UsagePercent:  cpuInfo.TotalPercent,
 		}
+		// Prefer the container's own cores and utilization when a CPU limit is in
+		// effect; the detailed get_cpu endpoint stays host-based.
+		s.applyCgroupCPUSummary(overview.CPU)
 	}
 
 	if memInfo, err := s.Memory(ctx); err != nil {
@@ -121,12 +156,14 @@ func (s *DefaultService) Overview(ctx context.Context) (*monitor.SystemOverview,
 			Used:        memInfo.Virtual.Used,
 			UsedPercent: memInfo.Virtual.UsedPercent,
 		}
+		// Prefer the container's cgroup memory limit; get_memory stays host-based.
+		applyCgroupMemorySummary(overview.Memory)
 	}
 
-	if diskInfo, err := s.Disk(ctx); err != nil {
+	if diskSummary, err := s.diskSummary(ctx); err != nil {
 		logger.Warnf("Overview: failed to collect disk info: %v", err)
 	} else {
-		overview.Disk = s.buildDiskSummary(diskInfo)
+		overview.Disk = diskSummary
 	}
 
 	if netInfo, err := s.Network(ctx); err != nil {
@@ -157,45 +194,6 @@ func (s *DefaultService) Overview(ctx context.Context) (*monitor.SystemOverview,
 	return &overview, nil
 }
 
-func (s *DefaultService) buildDiskSummary(diskInfo *monitor.DiskInfo) *monitor.DiskSummary {
-	var (
-		total, used uint64
-		partitions  int
-		seenDevices = make(map[string]bool)
-	)
-
-	for _, part := range diskInfo.Partitions {
-		if s.shouldSkipMountPoint(part.MountPoint) {
-			continue
-		}
-
-		if part.Device != "" {
-			container := getDeviceContainer(part.Device)
-			if seenDevices[container] {
-				continue
-			}
-
-			seenDevices[container] = true
-		}
-
-		total += part.Total
-		used += part.Used
-		partitions++
-	}
-
-	var usedPercent float64
-	if total > 0 {
-		usedPercent = float64(used) / float64(total) * 100
-	}
-
-	return &monitor.DiskSummary{
-		Total:       total,
-		Used:        used,
-		UsedPercent: usedPercent,
-		Partitions:  partitions,
-	}
-}
-
 func (*DefaultService) buildNetworkSummary(netInfo *monitor.NetworkInfo) *monitor.NetworkSummary {
 	var bytesSent, bytesRecv, packetsSent, packetsRecv uint64
 	for _, counter := range netInfo.IOCounters {
@@ -214,84 +212,10 @@ func (*DefaultService) buildNetworkSummary(netInfo *monitor.NetworkInfo) *monito
 	}
 }
 
-// excludedMountPrefixes are OS pseudo-filesystem mount points that never
-// represent real storage and are always excluded from disk statistics.
-var excludedMountPrefixes = []string{
-	// macOS special volumes
-	"/System/Volumes/",
-	"/Volumes/Recovery",
-	"/private/var/vm",
-	// Linux special mount points
-	"/snap/",
-	"/run/",
-	"/dev/",
-	"/sys/",
-	"/proc/",
-}
-
-// shouldSkipMountPoint checks if a mount point should be excluded from disk stats.
-// Built-in OS pseudo-mounts are always skipped; host- or vendor-specific volumes
-// are skipped only when their path contains a configured ExcludedMounts substring.
-func (s *DefaultService) shouldSkipMountPoint(mountPoint string) bool {
-	if mountPoint == "" {
-		return true
-	}
-
-	for _, prefix := range excludedMountPrefixes {
-		if strings.HasPrefix(mountPoint, prefix) {
-			return true
-		}
-	}
-
-	for _, substr := range s.config.ExcludedMounts {
-		if substr != "" && strings.Contains(mountPoint, substr) {
-			return true
-		}
-	}
-
-	return false
-}
-
-var (
-	// pPartitionSuffix strips a trailing "pN" partition from NVMe/eMMC devices
-	// (nvme0n1p2 -> nvme0n1, mmcblk0p1 -> mmcblk0). The nN namespace is part of
-	// the device identity and is preserved, so distinct namespaces such as
-	// nvme0n1 and nvme0n2 are NOT merged into one container.
-	pPartitionSuffix = regexp.MustCompile(`p[0-9]+$`)
-	// apfsSliceSuffix strips an APFS slice from a disk device (disk1s2 -> disk1).
-	apfsSliceSuffix = regexp.MustCompile(`s[0-9]+$`)
-	// wholeDeviceSuffix matches device families whose names legitimately end in a
-	// digit and have no sibling-partition concept; their suffix must never be
-	// stripped, or independent devices (dm-0/dm-1, loop0/loop1, md0/md1) collapse.
-	wholeDeviceSuffix = regexp.MustCompile(`(dm-|loop|md|ram|zram|sr|fd)[0-9]+$`)
-	// digitSuffix strips a trailing partition number from letter-named disks
-	// (sda1 -> sda, vdb2 -> vdb); applied only after the cases above are ruled out.
-	digitSuffix = regexp.MustCompile(`[0-9]+$`)
-)
-
-// getDeviceContainer extracts the base container device name from a partition
-// device so sibling partitions of one physical disk de-duplicate to a single
-// container, WITHOUT merging genuinely independent devices. Device families are
-// handled separately because a single trailing-digit rule cannot tell an NVMe
-// namespace (nvme0n2) or an LVM volume (dm-1) from a partition (sda2).
-func getDeviceContainer(device string) string {
-	if device == "" {
-		return ""
-	}
-
-	switch {
-	case strings.Contains(device, "nvme"), strings.Contains(device, "mmcblk"):
-		return pPartitionSuffix.ReplaceAllString(device, "")
-	case strings.Contains(device, "disk"):
-		return apfsSliceSuffix.ReplaceAllString(device, "")
-	case wholeDeviceSuffix.MatchString(device):
-		return device
-	default:
-		return digitSuffix.ReplaceAllString(device, "")
-	}
-}
-
-// CPU returns detailed CPU information including usage percentages.
+// CPU returns detailed CPU information including usage percentages. Like Memory,
+// this is the HOST view (host core count and host-wide utilization); the
+// container's effective cores and its own utilization are applied only to the
+// overview summary via applyCgroupCPUSummary.
 func (s *DefaultService) CPU(context.Context) (*monitor.CPUInfo, error) {
 	cached := s.cpuCache.Load()
 	if cached == nil {
@@ -301,7 +225,11 @@ func (s *DefaultService) CPU(context.Context) (*monitor.CPUInfo, error) {
 	return cached.(*monitor.CPUInfo), nil
 }
 
-// Memory returns memory usage information.
+// Memory returns memory usage information. This is intentionally the HOST view:
+// the detailed get_memory endpoint always reports host figures so the object is
+// internally consistent (Total/Used/Available/Swap all host-based). The
+// container's cgroup memory limit is applied only to the overview summary
+// (get_overview), which is what dashboards consume; see applyCgroupMemorySummary.
 func (*DefaultService) Memory(ctx context.Context) (*monitor.MemoryInfo, error) {
 	vMem, err := mem.VirtualMemoryWithContext(ctx)
 	if err != nil {
@@ -317,6 +245,26 @@ func (*DefaultService) Memory(ctx context.Context) (*monitor.MemoryInfo, error) 
 	}
 
 	return result, nil
+}
+
+// applyCgroupMemorySummary overrides the memory summary with the container's
+// cgroup limit and working-set usage, but only when a finite limit smaller than
+// the host total is configured. In every other case (bare metal, non-Linux, no
+// limit, or read/parse failure) the host figures are left untouched. It acts on
+// the overview summary only, so the detailed get_memory endpoint stays host-based.
+func applyCgroupMemorySummary(summary *monitor.MemorySummary) {
+	limit, used, ok := cgroupMemoryLimit()
+	if !ok || limit == 0 || limit >= summary.Total {
+		return
+	}
+
+	if used > limit {
+		used = limit
+	}
+
+	summary.Total = limit
+	summary.Used = used
+	summary.UsedPercent = float64(used) / float64(limit) * 100
 }
 
 func convertVirtualMemory(v *mem.VirtualMemoryStat) *monitor.VirtualMemory {
@@ -377,8 +325,37 @@ func convertSwapMemory(s *mem.SwapMemoryStat) *monitor.SwapMemory {
 	}
 }
 
-// Disk returns disk usage and partition information.
-func (*DefaultService) Disk(ctx context.Context) (*monitor.DiskInfo, error) {
+// Disk returns disk usage and partition information. On Linux the partition list
+// is built from the same host-filesystem enumeration the overview aggregates, so
+// get_disk and get_overview stay consistent; it falls back to gopsutil's local
+// partition view when the mount table is unavailable or on other platforms.
+func (s *DefaultService) Disk(ctx context.Context) (*monitor.DiskInfo, error) {
+	partitionInfos, err := s.diskPartitions(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &monitor.DiskInfo{Partitions: partitionInfos}
+
+	if ioCountersMap, err := disk.IOCountersWithContext(ctx); err == nil {
+		result.IOCounters = convertDiskIOCounters(ioCountersMap)
+	}
+
+	return result, nil
+}
+
+func (s *DefaultService) diskPartitions(ctx context.Context) ([]*monitor.PartitionInfo, error) {
+	if runtime.GOOS == "linux" {
+		if filesystems, ok := s.hostFilesystems(ctx); ok {
+			partitionInfos := make([]*monitor.PartitionInfo, 0, len(filesystems))
+			for _, fs := range filesystems {
+				partitionInfos = append(partitionInfos, newPartitionInfo(fs.device, fs.mountPoint, fs.fsType, nil, fs.usage))
+			}
+
+			return partitionInfos, nil
+		}
+	}
+
 	partitions, err := disk.PartitionsWithContext(ctx, false)
 	if err != nil {
 		return nil, err
@@ -391,29 +368,27 @@ func (*DefaultService) Disk(ctx context.Context) (*monitor.DiskInfo, error) {
 			continue
 		}
 
-		partitionInfos = append(partitionInfos, &monitor.PartitionInfo{
-			Device:            part.Device,
-			MountPoint:        part.Mountpoint,
-			FSType:            part.Fstype,
-			Options:           part.Opts,
-			Total:             usage.Total,
-			Free:              usage.Free,
-			Used:              usage.Used,
-			UsedPercent:       usage.UsedPercent,
-			INodesTotal:       usage.InodesTotal,
-			INodesUsed:        usage.InodesUsed,
-			INodesFree:        usage.InodesFree,
-			INodesUsedPercent: usage.InodesUsedPercent,
-		})
+		partitionInfos = append(partitionInfos, newPartitionInfo(part.Device, part.Mountpoint, part.Fstype, part.Opts, usage))
 	}
 
-	result := &monitor.DiskInfo{Partitions: partitionInfos}
+	return partitionInfos, nil
+}
 
-	if ioCountersMap, err := disk.IOCountersWithContext(ctx); err == nil {
-		result.IOCounters = convertDiskIOCounters(ioCountersMap)
+func newPartitionInfo(device, mountPoint, fsType string, options []string, usage *disk.UsageStat) *monitor.PartitionInfo {
+	return &monitor.PartitionInfo{
+		Device:            device,
+		MountPoint:        mountPoint,
+		FSType:            fsType,
+		Options:           options,
+		Total:             usage.Total,
+		Free:              usage.Free,
+		Used:              usage.Used,
+		UsedPercent:       usage.UsedPercent,
+		INodesTotal:       usage.InodesTotal,
+		INodesUsed:        usage.InodesUsed,
+		INodesFree:        usage.InodesFree,
+		INodesUsedPercent: usage.InodesUsedPercent,
 	}
-
-	return result, nil
 }
 
 func convertDiskIOCounters(counters map[string]disk.IOCountersStat) map[string]*monitor.IOCounter {
@@ -550,47 +525,75 @@ func (s *DefaultService) BuildInfo() *monitor.BuildInfo {
 // It is idempotent: a second call while a sampler is already running is a no-op, so
 // the running goroutine is never orphaned.
 func (s *DefaultService) Init(context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.samplerCancel != nil {
 		return nil
 	}
 
-	samplerCtx, cancel := context.WithCancel(context.Background())
-	s.samplerCancel = cancel
-	s.samplerDone = make(chan struct{})
+	// Reset the cgroup CPU baseline so a restart (after Close) does not compute a
+	// delta against a stale reading. Safe: no sampler runs while samplerCancel is nil.
+	s.prevCgroupCPU = cgroupCPUPrev{}
 
-	go s.runBackgroundSampler(samplerCtx)
+	samplerCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	s.samplerCancel = cancel
+	s.samplerDone = done
+
+	// Pass the channel explicitly so the goroutine closes the one it was started
+	// with, even after Close has cleared the field for a future restart.
+	go s.runBackgroundSampler(samplerCtx, done)
 
 	return nil
 }
 
-func (s *DefaultService) runBackgroundSampler(ctx context.Context) {
-	defer close(s.samplerDone)
+func (s *DefaultService) runBackgroundSampler(ctx context.Context, done chan struct{}) {
+	defer close(done)
 
 	ticker := time.NewTicker(s.config.SampleInterval)
 	defer ticker.Stop()
 
-	s.sampleCPU(ctx)
-	s.sampleProcess(ctx)
+	s.sampleAll(ctx)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.sampleCPU(ctx)
-			s.sampleProcess(ctx)
+			s.sampleAll(ctx)
 		}
 	}
 }
 
-// Close gracefully stops the background sampling goroutines.
+// sampleAll refreshes every cached metric for one tick. The CPU and process
+// samplers each block for SampleDuration to measure a utilization window, so they
+// run concurrently to keep the tick to roughly one window rather than two. The
+// cgroup CPU delta is cheap and runs afterwards.
+func (s *DefaultService) sampleAll(ctx context.Context) {
+	var wg sync.WaitGroup
+
+	wg.Go(func() { s.sampleCPU(ctx) })
+	wg.Go(func() { s.sampleProcess(ctx) })
+	wg.Wait()
+
+	s.sampleCgroupCPU()
+}
+
+// Close gracefully stops the background sampling goroutines. It clears the
+// sampler handles so a later Init can start a fresh sampler.
 func (s *DefaultService) Close() error {
-	if s.samplerCancel != nil {
-		s.samplerCancel()
+	s.mu.Lock()
+	cancel, done := s.samplerCancel, s.samplerDone
+	s.samplerCancel, s.samplerDone = nil, nil
+	s.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
 	}
 
-	if s.samplerDone != nil {
-		<-s.samplerDone
+	if done != nil {
+		<-done
 	}
 
 	return nil
@@ -633,15 +636,84 @@ func (s *DefaultService) collectCPUInfo(ctx context.Context) (*monitor.CPUInfo, 
 	cpuInfo.PhysicalCores, _ = cpu.CountsWithContext(ctx, false)
 	cpuInfo.LogicalCores, _ = cpu.CountsWithContext(ctx, true)
 
+	// Derive the total from the per-core sample (a self-contained blocking window)
+	// rather than cpu.Percent(interval=0), which relies on gopsutil's process-wide
+	// "since last call" global state: that returns 0 on the first sample and is
+	// corrupted by any other caller of cpu.Percent in the process.
 	if perCorePercent, err := cpu.PercentWithContext(ctx, s.config.SampleDuration, true); err == nil {
 		cpuInfo.UsagePercent = perCorePercent
-	}
-
-	if totalPercent, err := cpu.PercentWithContext(ctx, 0, false); err == nil && len(totalPercent) > 0 {
-		cpuInfo.TotalPercent = totalPercent[0]
+		cpuInfo.TotalPercent = meanPercent(perCorePercent)
 	}
 
 	return &cpuInfo, nil
+}
+
+// meanPercent averages per-core utilization into a single total percentage.
+func meanPercent(perCore []float64) float64 {
+	if len(perCore) == 0 {
+		return 0
+	}
+
+	var sum float64
+	for _, p := range perCore {
+		sum += p
+	}
+
+	return sum / float64(len(perCore))
+}
+
+// applyCgroupCPUSummary overrides the CPU summary with the container's effective
+// cores and its own utilization when a CPU quota is in effect (see sampleCgroupCPU).
+// An unlimited container or bare metal leaves the host figures unchanged.
+func (s *DefaultService) applyCgroupCPUSummary(summary *monitor.CPUSummary) {
+	sample, _ := s.cgroupCPUCache.Load().(cgroupCPUSample)
+	if !sample.ok {
+		return
+	}
+
+	if sample.cores > 0 {
+		summary.LogicalCores = sample.cores
+		if summary.PhysicalCores == 0 || summary.PhysicalCores > sample.cores {
+			summary.PhysicalCores = sample.cores
+		}
+	}
+
+	// Keep the host utilization until the container's own delta is available, so
+	// the first sampling interval does not report a misleading 0%.
+	if sample.usageReady {
+		summary.UsagePercent = sample.usagePercent
+	}
+}
+
+// sampleCgroupCPU records the container's effective cores (from the CFS quota)
+// and its own CPU utilization (from the cpu.stat usage delta between ticks). The
+// host CPU sample (cpuCache) is left untouched, so the detailed get_cpu endpoint
+// stays purely host-based. When no CPU quota applies it clears the sample and the
+// overview keeps host figures.
+func (s *DefaultService) sampleCgroupCPU() {
+	cores, ok := cgroupCPUQuota()
+	if !ok {
+		s.cgroupCPUCache.Store(cgroupCPUSample{})
+		s.prevCgroupCPU = cgroupCPUPrev{}
+
+		return
+	}
+
+	now := time.Now()
+	sample := cgroupCPUSample{cores: int(math.Ceil(cores)), ok: true}
+
+	usage, usageOK := cgroupCPUUsageMicros()
+	if usageOK && s.prevCgroupCPU.ok && usage >= s.prevCgroupCPU.usageMicros {
+		elapsedMicros := float64(now.Sub(s.prevCgroupCPU.at).Microseconds())
+		if elapsedMicros > 0 && cores > 0 {
+			percent := float64(usage-s.prevCgroupCPU.usageMicros) / (elapsedMicros * cores) * 100
+			sample.usagePercent = math.Max(0, math.Min(100, percent))
+			sample.usageReady = true
+		}
+	}
+
+	s.prevCgroupCPU = cgroupCPUPrev{usageMicros: usage, at: now, ok: usageOK}
+	s.cgroupCPUCache.Store(sample)
 }
 
 func (s *DefaultService) sampleProcess(ctx context.Context) {
