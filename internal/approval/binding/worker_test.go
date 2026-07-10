@@ -317,6 +317,15 @@ func TestWorkerClaimBatchUsesDialectIndependentAttemptOrder(t *testing.T) {
 		cfg := &config.ApprovalConfig{BusinessBinding: config.ApprovalBusinessBindingConfig{BatchSize: 1}}
 		worker := NewWorker(env.DB, new(SpyBus), NewWriter(), cfg)
 
+		// Capture the persisted pre-claim update time: scanned timestamps and
+		// in-memory timex.Now() values live in different clock domains (the
+		// column round-trips as a zone-less wall clock), so the refresh
+		// assertion below must compare persisted against persisted.
+		preClaim := new(approval.BusinessProjection)
+		preClaim.ID = failed.ID
+		require.NoError(t, env.DB.NewSelect().Model(preClaim).WherePK().Scan(env.Ctx),
+			"Inserted projection should be queryable before the claim")
+
 		claimed, err := worker.claimBatch(env.Ctx)
 		require.NoError(t, err, "Worker should claim one eligible projection")
 		require.Len(t, claimed, 1, "Configured batch size should limit the claim")
@@ -327,7 +336,7 @@ func TestWorkerClaimBatchUsesDialectIndependentAttemptOrder(t *testing.T) {
 		reloaded.ID = failed.ID
 		require.NoError(t, env.DB.NewSelect().Model(reloaded).WherePK().Scan(env.Ctx),
 			"Claimed projection should remain queryable")
-		assert.True(t, reloaded.UpdatedAt.Unwrap().After(failed.UpdatedAt.Unwrap()),
+		assert.True(t, reloaded.UpdatedAt.Unwrap().After(preClaim.UpdatedAt.Unwrap()),
 			"Claiming a projection should refresh its operator-facing update time")
 	})
 }
