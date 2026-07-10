@@ -46,21 +46,23 @@ func (r *LifecycleHookRunner) OnInstanceCreated(ctx context.Context, db orm.DB, 
 	return nil
 }
 
-// OnInstanceTransitioned advances the engine-owned business projection before
-// any host completion hook observes the new status.
-func (r *LifecycleHookRunner) OnInstanceTransitioned(ctx context.Context, db orm.DB, instance *approval.Instance) error {
-	if r == nil || r.projector == nil {
+// OnInstanceTransition advances the engine-owned business projection, then
+// invokes every registered hook's OnInstanceTransition — hooks always observe
+// the business state as the projector left it.
+func (r *LifecycleHookRunner) OnInstanceTransition(ctx context.Context, db orm.DB, instance *approval.Instance, from, to approval.InstanceStatus) error {
+	if r == nil {
 		return nil
 	}
 
-	return r.projector.Project(ctx, db, instance)
-}
+	if r.projector != nil {
+		if err := r.projector.Project(ctx, db, instance); err != nil {
+			return fmt.Errorf("business projection: %w", err)
+		}
+	}
 
-// OnInstanceCompleted invokes every registered hook's OnInstanceCompleted.
-func (r *LifecycleHookRunner) OnInstanceCompleted(ctx context.Context, db orm.DB, instance *approval.Instance, finalStatus approval.InstanceStatus) error {
 	for i, h := range r.hooks {
-		if err := h.OnInstanceCompleted(ctx, db, instance, finalStatus); err != nil {
-			return fmt.Errorf("lifecycle hook[%d].OnInstanceCompleted: %w", i, err)
+		if err := h.OnInstanceTransition(ctx, db, instance, from, to); err != nil {
+			return fmt.Errorf("lifecycle hook[%d].OnInstanceTransition: %w", i, err)
 		}
 	}
 

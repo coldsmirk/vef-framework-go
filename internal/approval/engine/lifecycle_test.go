@@ -11,32 +11,34 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// RecordingHook captures invocation order and surfaces a controlled
-// error so tests can verify the short-circuit semantics of
-// LifecycleHookRunner.
+// RecordingHook appends its invocations to a shared log and surfaces
+// controlled errors so tests can verify the ordering and short-circuit
+// semantics of LifecycleHookRunner.
 type RecordingHook struct {
-	name             string
-	createdInvoked   *[]string
-	completedInvoked *[]string
-	createdErr       error
-	completedErr     error
-	lastFinalStatus  *approval.InstanceStatus
-	lastInstanceID   *string
+	name           string
+	log            *[]string
+	createdErr     error
+	transitionErr  error
+	lastFrom       *approval.InstanceStatus
+	lastTo         *approval.InstanceStatus
+	lastInstanceID *string
 }
 
+// RecordingProjector appends its invocations to the same shared log so the
+// projector-before-hooks ordering is observable.
 type RecordingProjector struct {
-	instanceIDs *[]string
-	err         error
+	log *[]string
+	err error
 }
 
 func (p *RecordingProjector) Project(_ context.Context, _ orm.DB, instance *approval.Instance) error {
-	*p.instanceIDs = append(*p.instanceIDs, instance.ID)
+	*p.log = append(*p.log, "projector:"+instance.ID)
 
 	return p.err
 }
 
 func (h *RecordingHook) OnInstanceCreated(_ context.Context, _ orm.DB, instance *approval.Instance) error {
-	*h.createdInvoked = append(*h.createdInvoked, h.name)
+	*h.log = append(*h.log, h.name+":created")
 	if h.lastInstanceID != nil {
 		*h.lastInstanceID = instance.ID
 	}
@@ -44,17 +46,21 @@ func (h *RecordingHook) OnInstanceCreated(_ context.Context, _ orm.DB, instance 
 	return h.createdErr
 }
 
-func (h *RecordingHook) OnInstanceCompleted(_ context.Context, _ orm.DB, instance *approval.Instance, finalStatus approval.InstanceStatus) error {
-	*h.completedInvoked = append(*h.completedInvoked, h.name)
-	if h.lastFinalStatus != nil {
-		*h.lastFinalStatus = finalStatus
+func (h *RecordingHook) OnInstanceTransition(_ context.Context, _ orm.DB, instance *approval.Instance, from, to approval.InstanceStatus) error {
+	*h.log = append(*h.log, h.name+":transition")
+	if h.lastFrom != nil {
+		*h.lastFrom = from
+	}
+
+	if h.lastTo != nil {
+		*h.lastTo = to
 	}
 
 	if h.lastInstanceID != nil {
 		*h.lastInstanceID = instance.ID
 	}
 
-	return h.completedErr
+	return h.transitionErr
 }
 
 func TestLifecycleHookRunnerOnInstanceCreated(t *testing.T) {
@@ -63,132 +69,116 @@ func TestLifecycleHookRunnerOnInstanceCreated(t *testing.T) {
 	t.Run("InvokesEveryHookInOrder", func(t *testing.T) {
 		t.Parallel()
 
-		var (
-			created   []string
-			completed []string
-		)
+		var log []string
 
 		runner := NewLifecycleHookRunner(nil, []approval.InstanceLifecycleHook{
-			&RecordingHook{name: "a", createdInvoked: &created, completedInvoked: &completed},
-			&RecordingHook{name: "b", createdInvoked: &created, completedInvoked: &completed},
+			&RecordingHook{name: "a", log: &log},
+			&RecordingHook{name: "b", log: &log},
 		})
 		err := runner.OnInstanceCreated(context.Background(), nil, &approval.Instance{})
 
 		assert.NoError(t, err, "Should run without error")
-		assert.Equal(t, []string{"a", "b"}, created, "Should preserve registration order")
+		assert.Equal(t, []string{"a:created", "b:created"}, log, "Should preserve registration order")
 	})
 
 	t.Run("ShortCircuitsOnError", func(t *testing.T) {
 		t.Parallel()
 
-		var (
-			created   []string
-			completed []string
-		)
+		var log []string
 
 		boom := errors.New("hook failed")
 		runner := NewLifecycleHookRunner(nil, []approval.InstanceLifecycleHook{
-			&RecordingHook{name: "a", createdInvoked: &created, completedInvoked: &completed, createdErr: boom},
-			&RecordingHook{name: "b", createdInvoked: &created, completedInvoked: &completed},
+			&RecordingHook{name: "a", log: &log, createdErr: boom},
+			&RecordingHook{name: "b", log: &log},
 		})
 		err := runner.OnInstanceCreated(context.Background(), nil, &approval.Instance{})
 
 		assert.ErrorIs(t, err, boom, "Should propagate first error")
-		assert.Equal(t, []string{"a"}, created, "Should stop before running later hooks")
+		assert.Equal(t, []string{"a:created"}, log, "Should stop before running later hooks")
 	})
 }
 
-func TestLifecycleHookRunnerOnInstanceCompleted(t *testing.T) {
+func TestLifecycleHookRunnerOnInstanceTransition(t *testing.T) {
 	t.Parallel()
 
-	t.Run("PassesFinalStatus", func(t *testing.T) {
+	t.Run("ProjectsBeforeHooks", func(t *testing.T) {
 		t.Parallel()
 
 		var (
-			created    []string
-			completed  []string
-			seenStatus approval.InstanceStatus
-			seenID     string
+			log      []string
+			seenFrom approval.InstanceStatus
+			seenTo   approval.InstanceStatus
+			seenID   string
 		)
 
-		runner := NewLifecycleHookRunner(nil, []approval.InstanceLifecycleHook{
-			&RecordingHook{name: "a", createdInvoked: &created, completedInvoked: &completed, lastFinalStatus: &seenStatus, lastInstanceID: &seenID},
+		runner := NewLifecycleHookRunner(&RecordingProjector{log: &log}, []approval.InstanceLifecycleHook{
+			&RecordingHook{name: "a", log: &log, lastFrom: &seenFrom, lastTo: &seenTo, lastInstanceID: &seenID},
+			&RecordingHook{name: "b", log: &log},
 		})
 
-		instance := &approval.Instance{}
+		instance := new(approval.Instance)
 		instance.ID = "inst-1"
 
-		err := runner.OnInstanceCompleted(context.Background(), nil, instance, approval.InstanceTerminated)
+		err := runner.OnInstanceTransition(context.Background(), nil, instance, approval.InstanceRunning, approval.InstanceTerminated)
 		assert.NoError(t, err, "Should run without error")
-		assert.Equal(t, approval.InstanceTerminated, seenStatus, "Should propagate final status to hooks")
-		assert.Equal(t, "inst-1", seenID, "Should propagate the instance ID to hooks")
-		assert.Equal(t, []string{"a"}, completed, "Should invoke every hook")
+		assert.Equal(t, []string{"projector:inst-1", "a:transition", "b:transition"}, log,
+			"Projection must complete before any host hook observes the transition")
+		assert.Equal(t, approval.InstanceRunning, seenFrom, "Should pass the pre-transition status to hooks")
+		assert.Equal(t, approval.InstanceTerminated, seenTo, "Should pass the post-transition status to hooks")
+		assert.Equal(t, "inst-1", seenID, "Should pass the transitioned instance to hooks")
 	})
 
-	t.Run("ShortCircuitsOnError", func(t *testing.T) {
+	t.Run("ProjectorErrorSkipsHooks", func(t *testing.T) {
 		t.Parallel()
 
-		var (
-			created   []string
-			completed []string
-		)
+		var log []string
+
+		boom := errors.New("projection failed")
+		runner := NewLifecycleHookRunner(&RecordingProjector{log: &log, err: boom}, []approval.InstanceLifecycleHook{
+			&RecordingHook{name: "a", log: &log},
+		})
+
+		err := runner.OnInstanceTransition(context.Background(), nil, new(approval.Instance), approval.InstanceRunning, approval.InstanceApproved)
+		assert.ErrorIs(t, err, boom, "Projection failure should abort the caller transaction")
+		assert.Equal(t, []string{"projector:"}, log, "No host hook may run after a projection failure")
+	})
+
+	t.Run("HookShortCircuitsOnError", func(t *testing.T) {
+		t.Parallel()
+
+		var log []string
 
 		boom := errors.New("hook failed")
 		runner := NewLifecycleHookRunner(nil, []approval.InstanceLifecycleHook{
-			&RecordingHook{name: "a", createdInvoked: &created, completedInvoked: &completed, completedErr: boom},
-			&RecordingHook{name: "b", createdInvoked: &created, completedInvoked: &completed},
+			&RecordingHook{name: "a", log: &log, transitionErr: boom},
+			&RecordingHook{name: "b", log: &log},
 		})
-		err := runner.OnInstanceCompleted(context.Background(), nil, &approval.Instance{}, approval.InstanceApproved)
 
+		err := runner.OnInstanceTransition(context.Background(), nil, new(approval.Instance), approval.InstanceRunning, approval.InstanceReturned)
 		assert.ErrorIs(t, err, boom, "Should propagate first error")
-		assert.Equal(t, []string{"a"}, completed, "Should stop before running later hooks")
+		assert.Equal(t, []string{"a:transition"}, log, "Should stop before running later hooks")
+	})
+
+	t.Run("NilProjectorRunsHooks", func(t *testing.T) {
+		t.Parallel()
+
+		var log []string
+
+		runner := NewLifecycleHookRunner(nil, []approval.InstanceLifecycleHook{
+			&RecordingHook{name: "a", log: &log},
+		})
+
+		err := runner.OnInstanceTransition(context.Background(), nil, new(approval.Instance), approval.InstanceReturned, approval.InstanceRunning)
+		assert.NoError(t, err, "Missing projector should be a no-op for non-binding test fixtures")
+		assert.Equal(t, []string{"a:transition"}, log, "Hooks should still run without a projector")
 	})
 
 	t.Run("NilRunnerSafe", func(t *testing.T) {
 		t.Parallel()
 
-		runner := NewLifecycleHookRunner(nil, nil)
-		err := runner.OnInstanceCompleted(context.Background(), nil, &approval.Instance{}, approval.InstanceApproved)
-		assert.NoError(t, err, "Nil hook slice should be a no-op")
-	})
-}
+		var runner *LifecycleHookRunner
 
-func TestLifecycleHookRunnerOnInstanceTransitioned(t *testing.T) {
-	t.Parallel()
-
-	t.Run("ProjectsTransitionedInstance", func(t *testing.T) {
-		t.Parallel()
-
-		var instanceIDs []string
-
-		runner := NewLifecycleHookRunner(&RecordingProjector{instanceIDs: &instanceIDs}, nil)
-		instance := new(approval.Instance)
-		instance.ID = "instance-1"
-
-		err := runner.OnInstanceTransitioned(context.Background(), nil, instance)
-		assert.NoError(t, err, "Transition projector should run without error")
-		assert.Equal(t, []string{"instance-1"}, instanceIDs,
-			"Transition projector should receive the transitioned instance")
-	})
-
-	t.Run("PropagatesProjectorError", func(t *testing.T) {
-		t.Parallel()
-
-		var instanceIDs []string
-
-		boom := errors.New("projection failed")
-		runner := NewLifecycleHookRunner(&RecordingProjector{instanceIDs: &instanceIDs, err: boom}, nil)
-
-		err := runner.OnInstanceTransitioned(context.Background(), nil, new(approval.Instance))
-		assert.ErrorIs(t, err, boom, "Transition projector error should abort the caller transaction")
-		assert.Len(t, instanceIDs, 1, "Transition projector should be invoked exactly once")
-	})
-
-	t.Run("NilProjectorIsNoOp", func(t *testing.T) {
-		t.Parallel()
-
-		runner := NewLifecycleHookRunner(nil, nil)
-		err := runner.OnInstanceTransitioned(context.Background(), nil, new(approval.Instance))
-		assert.NoError(t, err, "Missing projector should be a no-op for non-binding test fixtures")
+		err := runner.OnInstanceTransition(context.Background(), nil, new(approval.Instance), approval.InstanceRunning, approval.InstanceApproved)
+		assert.NoError(t, err, "A nil runner must be callable so fixtures can pass hooks=nil")
 	})
 }

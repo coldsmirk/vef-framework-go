@@ -26,12 +26,16 @@ type InstanceLifecycleHook interface {
 	// initial action log is written, but before the engine advances to
 	// the first node. Returning an error rolls back start_instance.
 	OnInstanceCreated(ctx context.Context, db orm.DB, instance *Instance) error
-	// OnInstanceCompleted runs after the engine applies the final state
-	// transition (within the same transaction). Returning an error rolls
-	// back the completion. For at-most-once / fire-and-forget side effects
-	// (webhooks, notifications), subscribe to InstanceCompletedEvent
-	// instead so the outbox can guarantee delivery.
-	OnInstanceCompleted(ctx context.Context, db orm.DB, instance *Instance, finalStatus InstanceStatus) error
+	// OnInstanceTransition runs inside the same transaction as every
+	// instance status transition — completion (to.IsFinal()), return,
+	// withdrawal, resubmission, termination — after the engine-owned
+	// business projection has recorded (and, in synchronous mode, applied)
+	// the new state, so the hook observes the business table as the
+	// transition leaves it. instance.Status already carries to. Returning
+	// an error rolls back the whole transition. For side effects that need
+	// no transactional coupling, subscribe to the corresponding instance
+	// events (or bridge them into commands via BindCommand) instead.
+	OnInstanceTransition(ctx context.Context, db orm.DB, instance *Instance, from, to InstanceStatus) error
 }
 
 // NewFilteredLifecycleHook wraps a hook with the same declarative routing
@@ -68,12 +72,12 @@ func (h *filteredLifecycleHook) OnInstanceCreated(ctx context.Context, db orm.DB
 	return h.inner.OnInstanceCreated(ctx, db, instance)
 }
 
-// OnInstanceCompleted forwards to the wrapped hook when the instance matches
+// OnInstanceTransition forwards to the wrapped hook when the instance matches
 // every filter.
-func (h *filteredLifecycleHook) OnInstanceCompleted(ctx context.Context, db orm.DB, instance *Instance, finalStatus InstanceStatus) error {
+func (h *filteredLifecycleHook) OnInstanceTransition(ctx context.Context, db orm.DB, instance *Instance, from, to InstanceStatus) error {
 	if !matchesAll(h.filters, instance.FlowCode, instance.TenantID) {
 		return nil
 	}
 
-	return h.inner.OnInstanceCompleted(ctx, db, instance, finalStatus)
+	return h.inner.OnInstanceTransition(ctx, db, instance, from, to)
 }

@@ -12,9 +12,9 @@ import (
 // ApplyInstanceTransitionWithHooks is the single write-side primitive for
 // instance status transitions. It validates the transition through
 // InstanceStateMachine, applies it atomically via an optimistic-lock UPDATE
-// (WHERE pk AND status=from), advances the business projection, and — when the
-// new status is final — invokes registered host lifecycle hooks inside the same
-// transaction. All instance paths (engine NodeActionComplete, pass-rule
+// (WHERE pk AND status=from), then — inside the same transaction — advances
+// the business projection and invokes registered host lifecycle hooks with
+// the from/to pair. All instance paths (engine NodeActionComplete, pass-rule
 // rejection, admin terminate, resubmit/withdraw, etc.) funnel through this
 // helper so projection semantics and hooks stay consistent.
 //
@@ -80,18 +80,8 @@ func ApplyInstanceTransitionWithHooks(
 		return fmt.Errorf("%w: pk=%s from=%s", ErrInvalidTransition, instance.ID, from)
 	}
 
-	if hooks != nil {
-		if err := hooks.OnInstanceTransitioned(ctx, db, instance); err != nil {
-			return fmt.Errorf("project transitioned instance: %w", err)
-		}
-	}
-
-	if hooks == nil || !to.IsFinal() {
-		return nil
-	}
-
-	if err := hooks.OnInstanceCompleted(ctx, db, instance, to); err != nil {
-		return fmt.Errorf("lifecycle hooks on instance completed: %w", err)
+	if err := hooks.OnInstanceTransition(ctx, db, instance, from, to); err != nil {
+		return fmt.Errorf("instance transition hooks: %w", err)
 	}
 
 	return nil

@@ -92,7 +92,7 @@ func (s *NodeService) HandleNodeCompletion(
 		}
 
 		instance.FinishedAt = new(timex.Now())
-		// Final-status transition: route through the hooks helper so
+		// Route through the transition helper so the business projection and
 		// host-registered InstanceLifecycleHook implementations see the
 		// rejection (same as NodeActionComplete in the engine).
 		if err := engine.ApplyInstanceTransitionWithHooks(

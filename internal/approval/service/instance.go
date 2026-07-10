@@ -24,8 +24,9 @@ type InstanceService struct {
 
 // NewInstanceService creates a new InstanceService. hooks may be nil in
 // test fixtures; production wiring always supplies the engine's
-// LifecycleHookRunner so completion transitions invoke registered
-// extensions inside the same tx as the status change.
+// LifecycleHookRunner so every status transition advances the business
+// projection and invokes registered extensions inside the same tx as the
+// status change.
 func NewInstanceService(hooks *engine.LifecycleHookRunner) *InstanceService {
 	return &InstanceService{hooks: hooks}
 }
@@ -121,8 +122,9 @@ func (*InstanceService) ApplyRollbackFormData(
 }
 
 // Transition validates the instance status transition through the state
-// machine, applies it atomically with an optimistic-lock UPDATE, and
-// invokes lifecycle hooks when the new status is final.
+// machine, applies it atomically with an optimistic-lock UPDATE, and runs
+// the business projection plus lifecycle hooks for every transition
+// (final-state logic in a hook checks to.IsFinal()).
 //
 // extraCols lists additional columns the caller pre-populated on instance
 // and wants persisted in the same UPDATE (e.g. "finished_at",

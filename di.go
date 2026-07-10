@@ -384,7 +384,7 @@ func SupplyBusinessRefResolver(constructor any) fx.Option {
 
 // ProvideApprovalLifecycleHook registers a synchronous
 // approval.InstanceLifecycleHook into the FX container. Hooks run inside
-// the engine transaction for OnInstanceCreated / OnInstanceCompleted, so
+// the engine transaction for OnInstanceCreated / OnInstanceTransition, so
 // returning an error rolls back the surrounding business operation.
 //
 // The constructor must return approval.InstanceLifecycleHook (not a

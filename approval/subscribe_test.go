@@ -219,8 +219,8 @@ func TestSubscribeInstance(t *testing.T) {
 
 // RecordingLifecycleHook counts invocations so filter behavior is observable.
 type RecordingLifecycleHook struct {
-	created   int
-	completed int
+	created     int
+	transitions int
 }
 
 func (h *RecordingLifecycleHook) OnInstanceCreated(context.Context, orm.DB, *Instance) error {
@@ -229,8 +229,8 @@ func (h *RecordingLifecycleHook) OnInstanceCreated(context.Context, orm.DB, *Ins
 	return nil
 }
 
-func (h *RecordingLifecycleHook) OnInstanceCompleted(context.Context, orm.DB, *Instance, InstanceStatus) error {
-	h.completed++
+func (h *RecordingLifecycleHook) OnInstanceTransition(context.Context, orm.DB, *Instance, InstanceStatus, InstanceStatus) error {
+	h.transitions++
 
 	return nil
 }
@@ -252,10 +252,10 @@ func TestNewFilteredLifecycleHook(t *testing.T) {
 
 		require.NoError(t, hook.OnInstanceCreated(t.Context(), nil, instance("leave", "t1")),
 			"Matching instance should reach the inner hook")
-		require.NoError(t, hook.OnInstanceCompleted(t.Context(), nil, instance("leave", "t1"), InstanceApproved),
-			"Matching instance should reach the inner hook on completion")
+		require.NoError(t, hook.OnInstanceTransition(t.Context(), nil, instance("leave", "t1"), InstanceRunning, InstanceApproved),
+			"Matching instance should reach the inner hook on transition")
 		assert.Equal(t, 1, inner.created, "Created hook should fire once")
-		assert.Equal(t, 1, inner.completed, "Completed hook should fire once")
+		assert.Equal(t, 1, inner.transitions, "Transition hook should fire once")
 	})
 
 	t.Run("NonMatchingInstanceIsNoOp", func(t *testing.T) {
@@ -264,9 +264,9 @@ func TestNewFilteredLifecycleHook(t *testing.T) {
 
 		require.NoError(t, hook.OnInstanceCreated(t.Context(), nil, instance("expense", "t1")),
 			"Non-matching instance should no-op without error")
-		require.NoError(t, hook.OnInstanceCompleted(t.Context(), nil, instance("expense", "t1"), InstanceApproved),
-			"Non-matching instance should no-op on completion")
+		require.NoError(t, hook.OnInstanceTransition(t.Context(), nil, instance("expense", "t1"), InstanceRunning, InstanceApproved),
+			"Non-matching instance should no-op on transition")
 		assert.Zero(t, inner.created, "Created hook must not fire for other flows")
-		assert.Zero(t, inner.completed, "Completed hook must not fire for other flows")
+		assert.Zero(t, inner.transitions, "Transition hook must not fire for other flows")
 	})
 }
