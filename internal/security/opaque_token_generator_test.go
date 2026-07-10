@@ -114,6 +114,24 @@ func (s *OpaqueTokenGeneratorTestSuite) TestGenerate() {
 		s.Len(active, 2, "the concurrency limit should hold at exactly two sessions")
 	})
 
+	s.Run("InitialExpiryCappedByMaxLifetime", func() {
+		store := security.NewMemorySessionStore()
+		gen := NewOpaqueTokenGenerator(store, security.SessionPolicy{
+			IdleTTL:     2 * time.Hour,
+			MaxLifetime: time.Hour,
+		})
+
+		before := time.Now()
+		tokens, err := gen.Generate(ctx, principal, meta)
+		s.Require().NoError(err, "generation should succeed")
+
+		session, err := store.Lookup(ctx, security.HashOpaqueToken(tokens.AccessToken))
+		s.Require().NoError(err, "lookup should not error")
+		s.Require().NotNil(session, "the issued token should resolve to a session")
+		s.LessOrEqual(session.ExpiresAt.Sub(before), time.Hour+time.Minute,
+			"the initial expiry must honor the absolute max-lifetime, not the larger idle window")
+	})
+
 	s.Run("UnlimitedWhenMaxConcurrentZero", func() {
 		store := security.NewMemorySessionStore()
 		gen := NewOpaqueTokenGenerator(store, security.SessionPolicy{IdleTTL: time.Hour})

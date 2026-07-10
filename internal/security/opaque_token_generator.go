@@ -32,6 +32,14 @@ func (g *OpaqueTokenGenerator) Generate(ctx context.Context, principal *security
 		return nil, err
 	}
 
+	// The initial lifetime is the idle window, capped by the absolute
+	// max-lifetime so a session never outlives the cap even when idle_ttl is
+	// configured larger than max_lifetime (mirrors the renewal-time clamp).
+	lifetime := g.policy.IdleTTL
+	if g.policy.MaxLifetime > 0 {
+		lifetime = min(lifetime, g.policy.MaxLifetime)
+	}
+
 	now := time.Now()
 	session := security.Session{
 		ID:         id.Generate(),
@@ -41,10 +49,10 @@ func (g *OpaqueTokenGenerator) Generate(ctx context.Context, principal *security
 		UserAgent:  meta.UserAgent,
 		CreatedAt:  now,
 		LastSeenAt: now,
-		ExpiresAt:  now.Add(g.policy.IdleTTL),
+		ExpiresAt:  now.Add(lifetime),
 	}
 
-	if err := g.store.Create(ctx, security.HashOpaqueToken(token), session, g.policy.IdleTTL); err != nil {
+	if err := g.store.Create(ctx, security.HashOpaqueToken(token), session, lifetime); err != nil {
 		return nil, err
 	}
 
