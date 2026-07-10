@@ -27,9 +27,11 @@ func CreateTokenVerifier(authManager security.AuthManager, authType string) auth
 			return nil, fmt.Errorf("%w: %w", auth.ErrInvalidToken, err)
 		}
 
-		// authManager.Authenticate already validated the JWT (signature, exp, issuer,
-		// audience). Parse it without re-verifying the signature so we can read the real
-		// exp claim and report it accurately to the MCP SDK.
+		// Under jwt_token the (already fully validated) JWT is re-parsed without
+		// signature verification just to report its real exp claim to the MCP SDK.
+		// An opaque token is not a JWT, so it takes the far-future fallback: the
+		// SDK rejects a zero expiration, and per-request verification above — a
+		// live session-store lookup — is what actually bounds its lifetime.
 		expiration := jwtExpiration(tokenString)
 
 		return &auth.TokenInfo{
@@ -44,7 +46,8 @@ func CreateTokenVerifier(authManager security.AuthManager, authType string) auth
 // jwtExpiration parses the exp claim from a JWT without verifying its signature.
 // The caller must have already authenticated the token via AuthManager; this is
 // a read-only claim extraction performed after validation succeeds.
-// Returns a far-future fallback time if the claim is absent or unparseable.
+// Returns a far-future fallback time if the claim is absent or unparseable —
+// including for opaque tokens, which are not JWTs at all.
 func jwtExpiration(tokenString string) time.Time {
 	var claims jwt.MapClaims
 

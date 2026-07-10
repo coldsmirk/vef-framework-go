@@ -29,7 +29,7 @@ const (
 )
 
 // Response codes for security-domain API errors.
-// 1000-1022: authentication; 1030-1039: challenge.
+// 1000-1029: authentication; 1030-1039: challenge; 1050: password policy.
 const (
 	ErrCodeUnauthenticated               = 1000
 	ErrCodeUnsupportedAuthenticationType = 1001
