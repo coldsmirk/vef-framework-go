@@ -52,23 +52,18 @@ func NewFlowResource(bus cqrs.Bus, tenantResolver approval.PrincipalTenantResolv
 type CreateFlowParams struct {
 	api.P
 
-	TenantID                string                  `json:"tenantId" validate:"required"`
-	Code                    string                  `json:"code" validate:"required"`
-	Name                    string                  `json:"name" validate:"required"`
-	CategoryID              string                  `json:"categoryId" validate:"required"`
-	Icon                    *string                 `json:"icon"`
-	Description             *string                 `json:"description"`
-	BindingMode             approval.BindingMode    `json:"bindingMode" validate:"required"`
-	BusinessTable           *string                 `json:"businessTable"`
-	BusinessPKField         *string                 `json:"businessPkField"`
-	BusinessStatusField     *string                 `json:"businessStatusField"`
-	BusinessInstanceIDField *string                 `json:"businessInstanceIdField"`
-	BusinessStartedAtField  *string                 `json:"businessStartedAtField"`
-	BusinessFinishedAtField *string                 `json:"businessFinishedAtField"`
-	AdminUserIDs            []string                `json:"adminUserIds"`
-	IsAllInitiationAllowed  bool                    `json:"isAllInitiationAllowed"`
-	InstanceTitleTemplate   string                  `json:"instanceTitleTemplate"`
-	Initiators              []CreateInitiatorParams `json:"initiators"`
+	TenantID               string                          `json:"tenantId" validate:"required"`
+	Code                   string                          `json:"code" validate:"required"`
+	Name                   string                          `json:"name" validate:"required"`
+	CategoryID             string                          `json:"categoryId" validate:"required"`
+	Icon                   *string                         `json:"icon"`
+	Description            *string                         `json:"description"`
+	BindingMode            approval.BindingMode            `json:"bindingMode" validate:"required"`
+	BusinessBinding        *approval.BusinessBindingConfig `json:"businessBinding"`
+	AdminUserIDs           []string                        `json:"adminUserIds"`
+	IsAllInitiationAllowed bool                            `json:"isAllInitiationAllowed"`
+	InstanceTitleTemplate  string                          `json:"instanceTitleTemplate"`
+	Initiators             []CreateInitiatorParams         `json:"initiators"`
 }
 
 // CreateInitiatorParams contains the parameters for a flow initiator.
@@ -96,24 +91,19 @@ func (r *FlowResource) Create(ctx fiber.Ctx, principal *security.Principal, para
 		ctx.Context(),
 		r.bus,
 		command.CreateFlowCmd{
-			TenantID:                params.TenantID,
-			Code:                    params.Code,
-			Name:                    params.Name,
-			CategoryID:              params.CategoryID,
-			Icon:                    params.Icon,
-			Description:             params.Description,
-			BindingMode:             params.BindingMode,
-			BusinessTable:           params.BusinessTable,
-			BusinessPKField:         params.BusinessPKField,
-			BusinessStatusField:     params.BusinessStatusField,
-			BusinessInstanceIDField: params.BusinessInstanceIDField,
-			BusinessStartedAtField:  params.BusinessStartedAtField,
-			BusinessFinishedAtField: params.BusinessFinishedAtField,
-			AdminUserIDs:            params.AdminUserIDs,
-			IsAllInitiationAllowed:  params.IsAllInitiationAllowed,
-			InstanceTitleTemplate:   params.InstanceTitleTemplate,
-			Initiators:              initiators,
-			Caller:                  caller,
+			TenantID:               params.TenantID,
+			Code:                   params.Code,
+			Name:                   params.Name,
+			CategoryID:             params.CategoryID,
+			Icon:                   params.Icon,
+			Description:            params.Description,
+			BindingMode:            params.BindingMode,
+			BusinessBinding:        params.BusinessBinding,
+			AdminUserIDs:           params.AdminUserIDs,
+			IsAllInitiationAllowed: params.IsAllInitiationAllowed,
+			InstanceTitleTemplate:  params.InstanceTitleTemplate,
+			Initiators:             initiators,
+			Caller:                 caller,
 		},
 	)
 	if err != nil {
@@ -272,21 +262,16 @@ func (r *FlowResource) FindFlows(ctx fiber.Ctx, principal *security.Principal, p
 type UpdateParams struct {
 	api.P
 
-	FlowID                  string                  `json:"flowId" validate:"required"`
-	Name                    string                  `json:"name" validate:"required"`
-	Icon                    *string                 `json:"icon"`
-	Description             *string                 `json:"description"`
-	BindingMode             approval.BindingMode    `json:"bindingMode" validate:"required"`
-	BusinessTable           *string                 `json:"businessTable"`
-	BusinessPKField         *string                 `json:"businessPkField"`
-	BusinessStatusField     *string                 `json:"businessStatusField"`
-	BusinessInstanceIDField *string                 `json:"businessInstanceIdField"`
-	BusinessStartedAtField  *string                 `json:"businessStartedAtField"`
-	BusinessFinishedAtField *string                 `json:"businessFinishedAtField"`
-	AdminUserIDs            []string                `json:"adminUserIds"`
-	IsAllInitiationAllowed  bool                    `json:"isAllInitiationAllowed"`
-	InstanceTitleTemplate   string                  `json:"instanceTitleTemplate" validate:"required"`
-	Initiators              []CreateInitiatorParams `json:"initiators"`
+	FlowID                 string                          `json:"flowId" validate:"required"`
+	Name                   string                          `json:"name" validate:"required"`
+	Icon                   *string                         `json:"icon"`
+	Description            *string                         `json:"description"`
+	BindingMode            approval.BindingMode            `json:"bindingMode" validate:"required"`
+	BusinessBinding        *approval.BusinessBindingConfig `json:"businessBinding"`
+	AdminUserIDs           []string                        `json:"adminUserIds"`
+	IsAllInitiationAllowed bool                            `json:"isAllInitiationAllowed"`
+	InstanceTitleTemplate  string                          `json:"instanceTitleTemplate" validate:"required"`
+	Initiators             []CreateInitiatorParams         `json:"initiators"`
 }
 
 // UpdateFlow updates an existing flow.
@@ -308,22 +293,17 @@ func (r *FlowResource) Update(ctx fiber.Ctx, principal *security.Principal, para
 		ctx.Context(),
 		r.bus,
 		command.UpdateFlowCmd{
-			FlowID:                  params.FlowID,
-			Name:                    params.Name,
-			Icon:                    params.Icon,
-			Description:             params.Description,
-			BindingMode:             params.BindingMode,
-			BusinessTable:           params.BusinessTable,
-			BusinessPKField:         params.BusinessPKField,
-			BusinessStatusField:     params.BusinessStatusField,
-			BusinessInstanceIDField: params.BusinessInstanceIDField,
-			BusinessStartedAtField:  params.BusinessStartedAtField,
-			BusinessFinishedAtField: params.BusinessFinishedAtField,
-			AdminUserIDs:            params.AdminUserIDs,
-			IsAllInitiationAllowed:  params.IsAllInitiationAllowed,
-			InstanceTitleTemplate:   params.InstanceTitleTemplate,
-			Initiators:              initiators,
-			Caller:                  caller,
+			FlowID:                 params.FlowID,
+			Name:                   params.Name,
+			Icon:                   params.Icon,
+			Description:            params.Description,
+			BindingMode:            params.BindingMode,
+			BusinessBinding:        params.BusinessBinding,
+			AdminUserIDs:           params.AdminUserIDs,
+			IsAllInitiationAllowed: params.IsAllInitiationAllowed,
+			InstanceTitleTemplate:  params.InstanceTitleTemplate,
+			Initiators:             initiators,
+			Caller:                 caller,
 		},
 	)
 	if err != nil {

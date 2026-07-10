@@ -142,12 +142,14 @@ func convertColumns(t *as.Table, info *schema.TableSchema, pkColumns map[string]
 // convertIndexes converts Atlas indexes to schema indexes and unique keys.
 func convertIndexes(t *as.Table, info *schema.TableSchema) {
 	for _, idx := range t.Indexes {
-		columns := extractIndexColumns(idx.Parts)
+		columns, hasExpressions := extractIndexColumns(idx.Parts)
 
 		if idx.Unique {
 			info.UniqueKeys = append(info.UniqueKeys, schema.UniqueKey{
-				Name:    idx.Name,
-				Columns: columns,
+				Name:           idx.Name,
+				Columns:        columns,
+				Predicate:      extractIndexPredicate(idx.Attrs),
+				HasExpressions: hasExpressions,
 			})
 		} else {
 			info.Indexes = append(info.Indexes, schema.Index{
@@ -212,15 +214,32 @@ func extractComment(attrs []as.Attr) string {
 }
 
 // extractIndexColumns extracts column names from index parts.
-func extractIndexColumns(parts []*as.IndexPart) []string {
+func extractIndexColumns(parts []*as.IndexPart) ([]string, bool) {
 	columns := make([]string, len(parts))
+	hasExpressions := false
+
 	for i, part := range parts {
 		if part.C != nil {
 			columns[i] = part.C.Name
+		} else {
+			hasExpressions = true
 		}
 	}
 
-	return columns
+	return columns, hasExpressions
+}
+
+func extractIndexPredicate(attrs []as.Attr) string {
+	for _, attr := range attrs {
+		switch predicate := attr.(type) {
+		case *postgres.IndexPredicate:
+			return predicate.P
+		case *sqlite.IndexPredicate:
+			return predicate.P
+		}
+	}
+
+	return ""
 }
 
 // referentialActionToString converts a referential action to string.

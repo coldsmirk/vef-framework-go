@@ -48,12 +48,7 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     description VARCHAR(512),
     -- Data binding
     binding_mode VARCHAR(16) NOT NULL DEFAULT 'standalone',
-    business_table VARCHAR(64),
-    business_pk_field VARCHAR(64),
-    business_status_field VARCHAR(64),
-    business_instance_id_field VARCHAR(64),
-    business_started_at_field VARCHAR(64),
-    business_finished_at_field VARCHAR(64),
+    business_binding TEXT,
     -- Permission config
     admin_user_ids TEXT NOT NULL DEFAULT '[]',
     is_all_initiation_allowed BOOLEAN NOT NULL DEFAULT 1,

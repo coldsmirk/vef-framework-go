@@ -43,10 +43,20 @@ func (s *FlowResourceTestSuite) SetupSuite() {
 	_, err := s.db.NewInsert().Model(cat).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert test category")
 	s.categoryID = cat.ID
+
+	_, err = s.db.NewRaw(`CREATE TABLE resource_binding_order (
+		tenant_id VARCHAR(32) NOT NULL,
+		order_no VARCHAR(64) NOT NULL,
+		approval_status VARCHAR(32),
+		approval_instance_id VARCHAR(32),
+		UNIQUE (tenant_id, order_no)
+	)`).Exec(s.ctx)
+	s.Require().NoError(err, "Should create the business table used by binding API tests")
 }
 
 func (s *FlowResourceTestSuite) TearDownSuite() {
 	cleanAllApprovalData(s.ctx, s.db)
+	_, _ = s.db.NewRaw("DROP TABLE IF EXISTS resource_binding_order").Exec(s.ctx)
 	s.TearDownApp()
 }
 
@@ -144,6 +154,36 @@ func (s *FlowResourceTestSuite) TestCreateFlow() {
 	s.Assert().Equal("test-flow-create", data["code"], "Created flow should echo the submitted code")
 	s.Assert().Equal("Test Flow", data["name"], "Created flow should echo the submitted name")
 	s.Assert().NotEmpty(data["id"], "Should generate an ID")
+}
+
+func (s *FlowResourceTestSuite) TestCreateBusinessBoundFlow() {
+	resp := s.MakeRPCRequestWithToken(api.Request{
+		Identifier: api.Identifier{Resource: "approval/flow", Action: "create", Version: "v1"},
+		Params: map[string]any{
+			"tenantId":    "default",
+			"code":        "test-flow-business-binding",
+			"name":        "Business Binding Flow",
+			"categoryId":  s.categoryID,
+			"bindingMode": "business",
+			"businessBinding": map[string]any{
+				"tableName":        "resource_binding_order",
+				"keyColumns":       []string{"tenant_id", "order_no"},
+				"statusColumn":     "approval_status",
+				"instanceIdColumn": "approval_instance_id",
+			},
+			"instanceTitleTemplate": "Order {{.instanceNo}}",
+		},
+	}, s.token)
+
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "Business-bound flow create RPC should return HTTP 200")
+	res := s.ReadResult(resp)
+	s.Require().True(res.IsOk(), "A composite unique key should pass live schema validation")
+
+	data := s.ReadDataAsMap(res.Data)
+	binding := s.ReadDataAsMap(data["businessBinding"])
+	s.Assert().Equal("resource_binding_order", binding["tableName"], "Response should expose the nested binding config")
+	s.Assert().ElementsMatch([]any{"order_no", "tenant_id"}, binding["keyColumns"],
+		"Response should expose the normalized composite key")
 }
 
 func (s *FlowResourceTestSuite) TestDeployFlow() {

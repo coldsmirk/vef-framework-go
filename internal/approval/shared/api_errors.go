@@ -20,10 +20,8 @@ var (
 	ErrInvalidFlowDesign  = result.Err(i18n.T("approval_invalid_flow_design"), result.WithCode(ErrCodeInvalidFlowDesign))
 	ErrFlowCodeExists     = result.Err(i18n.T("approval_flow_code_exists"), result.WithCode(ErrCodeFlowCodeExists))
 	ErrVersionNotFound    = result.Err(i18n.T("approval_version_not_found"), result.WithCode(ErrCodeVersionNotFound))
-	// ErrInvalidBusinessIdentifier rejects business_table / pk / status field
-	// values that do not match a strict SQL-identifier regex. Flow definitions
-	// interpolate these into UPDATE statements at runtime so accepting arbitrary
-	// user input would open a SQL injection vector.
+	// ErrInvalidBusinessIdentifier rejects dynamic business table / column names
+	// that do not match the strict SQL-identifier policy used by ORM queries.
 	ErrInvalidBusinessIdentifier = result.Err(
 		i18n.T("approval_invalid_business_identifier"),
 		result.WithCode(ErrCodeInvalidBusinessIdentifier),
@@ -37,11 +35,8 @@ var (
 	// validation pattern) so configuration faults never surface as data
 	// errors to the applicant.
 	ErrInvalidFormDesign = result.Err(i18n.T("approval_invalid_form_design"), result.WithCode(ErrCodeInvalidFormDesign))
-	// ErrBindingIncomplete rejects a BindingMode=business flow missing any of
-	// business_table / business_pk_field / business_status_field at create or
-	// update time, so a half-configured business binding is caught when the
-	// admin saves the flow rather than silently no-op'ing the status write-back
-	// on the first completed instance.
+	// ErrBindingIncomplete rejects a BindingMode=business flow missing its table,
+	// key columns, or status column at create or update time.
 	ErrBindingIncomplete = result.Err(i18n.T("approval_binding_incomplete"), result.WithCode(ErrCodeBindingIncomplete))
 
 	// ErrInvalidBindingMode rejects an out-of-enum flow binding mode at save
@@ -58,18 +53,24 @@ var (
 	// so an unrecognized value must be caught when the version is created.
 	ErrInvalidStorageMode = result.Err(i18n.T("approval_invalid_storage_mode"), result.WithCode(ErrCodeInvalidStorageMode))
 	// ErrFlowBindingLocked rejects changing a flow's business-binding
-	// configuration (mode / table / pk / status / optional linkage columns)
+	// configuration (mode / table / key / optional write-back columns)
 	// while any instance of the flow is still running. Re-pointing the binding
 	// mid-flight would make in-flight instances write their outcome back to a
 	// different business record than they were started against, so the binding
 	// is frozen until they complete.
 	ErrFlowBindingLocked = result.Err(i18n.T("approval_flow_binding_locked"), result.WithCode(ErrCodeFlowBindingLocked))
-	// ErrBindingColumnsConflict rejects two business-binding fields naming the
-	// same column. The write-back emits a single UPDATE whose SET list would
-	// then assign the column twice — a runtime SQL error surfacing in the
-	// applicant's start transaction — so the conflict is caught when the admin
-	// saves the flow instead.
+	// ErrBindingColumnsConflict rejects duplicate key/write-back columns, which
+	// could otherwise mutate the lookup key or assign one column twice.
 	ErrBindingColumnsConflict = result.Err(i18n.T("approval_binding_columns_conflict"), result.WithCode(ErrCodeBindingColumnsConflict))
+	// ErrBindingUnexpected rejects business binding configuration on a
+	// standalone flow.
+	ErrBindingUnexpected = result.Err(i18n.T("approval_binding_unexpected"), result.WithCode(ErrCodeBindingUnexpected))
+	// ErrBindingSchemaInvalid rejects a binding whose configured table or
+	// columns do not exist in the primary database.
+	ErrBindingSchemaInvalid = result.Err(i18n.T("approval_binding_schema_invalid"), result.WithCode(ErrCodeBindingSchemaInvalid))
+	// ErrBindingKeyNotUnique rejects key columns that are not backed by one
+	// complete, non-null primary or unique key.
+	ErrBindingKeyNotUnique = result.Err(i18n.T("approval_binding_key_not_unique"), result.WithCode(ErrCodeBindingKeyNotUnique))
 
 	ErrInstanceNotFound          = result.Err(i18n.T("approval_instance_not_found"), result.WithCode(ErrCodeInstanceNotFound))
 	ErrInstanceCompleted         = result.Err(i18n.T("approval_instance_completed"), result.WithCode(ErrCodeInstanceCompleted))

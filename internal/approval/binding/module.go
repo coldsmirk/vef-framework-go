@@ -28,6 +28,7 @@ var Module = fx.Module(
 	fx.Provide(
 		NewNoopRefProvider,
 		NewIdentityResolver,
+		NewConfigValidator,
 		NewWriter,
 		NewListener,
 	),

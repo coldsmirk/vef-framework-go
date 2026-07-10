@@ -88,47 +88,50 @@ func (l *Listener) handle(ctx context.Context, instanceID string, trigger approv
 		return nil
 	}
 
-	var instance approval.Instance
+	var (
+		instance       approval.Instance
+		flow           approval.Flow
+		writeAttempted bool
+	)
 
-	instance.ID = instanceID
+	err := l.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
+		instance.ID = instanceID
+		if err := tx.NewSelect().Model(&instance).WherePK().Scan(ctx); err != nil {
+			if result.IsRecordNotFound(err) {
+				// Instance went away between event publication and consumption;
+				// nothing to bind. Acknowledge so the outbox doesn't retry forever.
+				return nil
+			}
 
-	if err := l.db.NewSelect().
-		Model(&instance).
-		WherePK().
-		Scan(ctx); err != nil {
-		if result.IsRecordNotFound(err) {
-			// Instance went away between event publication and consumption;
-			// nothing to bind. Acknowledge so the outbox doesn't retry forever.
+			return fmt.Errorf("load instance for binding: %w", err)
+		}
+
+		flow.ID = instance.FlowID
+		if err := tx.NewSelect().Model(&flow).WherePK().Scan(ctx); err != nil {
+			return fmt.Errorf("load flow for binding: %w", err)
+		}
+
+		if flow.BindingMode != approval.BindingBusiness {
 			return nil
 		}
 
-		return fmt.Errorf("load instance for binding: %w", err)
-	}
+		writeAttempted = true
 
-	var flow approval.Flow
+		return l.writer.WriteBack(ctx, tx, &flow, &instance, trigger)
+	})
+	if err != nil {
+		if !writeAttempted {
+			return err
+		}
 
-	flow.ID = instance.FlowID
-
-	if err := l.db.NewSelect().
-		Model(&flow).
-		WherePK().
-		Scan(ctx); err != nil {
-		return fmt.Errorf("load flow for binding: %w", err)
-	}
-
-	if flow.BindingMode != approval.BindingBusiness {
-		return nil
-	}
-
-	if err := l.writer.WriteBack(ctx, l.db, &flow, &instance, trigger); err != nil {
 		// Surface as a domain event so operators / Saga workers can
 		// retry. Failed bindings on a misconfigured flow surface with
 		// ErrBindingMisconfigured; transient failures show their wrapped
 		// cause. Either way we do not propagate the error back to the
 		// event bus — the approval action is already committed.
 		businessTable := ""
-		if flow.BusinessTable != nil {
-			businessTable = *flow.BusinessTable
+		if flow.BusinessBinding != nil {
+			businessTable = flow.BusinessBinding.TableName
 		}
 
 		failureEvent := approval.NewInstanceBindingFailedEvent(
@@ -139,12 +142,12 @@ func (l *Listener) handle(ctx context.Context, instanceID string, trigger approv
 			logger.Errorf("publish binding failure event for instance %s: %v", instance.ID, pubErr)
 		}
 
-		// Differentiate misconfiguration (caller bug) from transient
-		// errors. Misconfigured flows shouldn't be retried by the outbox;
-		// returning nil acknowledges the message. Transient errors are
-		// returned so the framework retries until the budget runs out.
-		if errors.Is(err, ErrBindingMisconfigured) {
-			logger.Errorf("binding misconfigured for instance %s: %v", instance.ID, err)
+		// Differentiate permanent binding failures from transient errors.
+		// Invalid configuration, refs, and target cardinality do not heal by
+		// retry; returning nil acknowledges them. Transient errors are returned
+		// so the framework retries until the budget runs out.
+		if isPermanentError(err) {
+			logger.Errorf("binding permanently failed for instance %s: %v", instance.ID, err)
 
 			return nil
 		}

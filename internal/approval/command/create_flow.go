@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -18,34 +19,30 @@ import (
 type CreateFlowCmd struct {
 	cqrs.BaseCommand
 
-	TenantID                string
-	Code                    string
-	Name                    string
-	CategoryID              string
-	Icon                    *string
-	Description             *string
-	BindingMode             approval.BindingMode
-	BusinessTable           *string
-	BusinessPKField         *string
-	BusinessStatusField     *string
-	BusinessInstanceIDField *string
-	BusinessStartedAtField  *string
-	BusinessFinishedAtField *string
-	AdminUserIDs            []string
-	IsAllInitiationAllowed  bool
-	InstanceTitleTemplate   string
-	Initiators              []shared.CreateFlowInitiatorCmd
-	Caller                  approval.CallerContext
+	TenantID               string
+	Code                   string
+	Name                   string
+	CategoryID             string
+	Icon                   *string
+	Description            *string
+	BindingMode            approval.BindingMode
+	BusinessBinding        *approval.BusinessBindingConfig
+	AdminUserIDs           []string
+	IsAllInitiationAllowed bool
+	InstanceTitleTemplate  string
+	Initiators             []shared.CreateFlowInitiatorCmd
+	Caller                 approval.CallerContext
 }
 
 // CreateFlowHandler handles the CreateFlowCmd command.
 type CreateFlowHandler struct {
-	db orm.DB
+	db               orm.DB
+	bindingValidator *binding.ConfigValidator
 }
 
 // NewCreateFlowHandler creates a new CreateFlowHandler.
-func NewCreateFlowHandler(db orm.DB) *CreateFlowHandler {
-	return &CreateFlowHandler{db: db}
+func NewCreateFlowHandler(db orm.DB, bindingValidator *binding.ConfigValidator) *CreateFlowHandler {
+	return &CreateFlowHandler{db: db, bindingValidator: bindingValidator}
 }
 
 func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*approval.Flow, error) {
@@ -60,21 +57,15 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 		return nil, err
 	}
 
-	if err := validateBusinessIdentifiers(cmd.BindingMode,
-		cmd.BusinessTable, cmd.BusinessPKField, cmd.BusinessStatusField,
-		cmd.BusinessInstanceIDField, cmd.BusinessStartedAtField, cmd.BusinessFinishedAtField,
-	); err != nil {
+	businessBinding, err := binding.NormalizeConfig(cmd.BindingMode, cmd.BusinessBinding)
+	if err != nil {
 		return nil, err
 	}
 
-	if err := validateBusinessBindingComplete(cmd.BindingMode, cmd.BusinessTable, cmd.BusinessPKField, cmd.BusinessStatusField); err != nil {
-		return nil, err
-	}
-
-	if err := validateBusinessColumnsDistinct(cmd.BindingMode,
-		cmd.BusinessStatusField, cmd.BusinessInstanceIDField, cmd.BusinessStartedAtField, cmd.BusinessFinishedAtField,
-	); err != nil {
-		return nil, err
+	if businessBinding != nil {
+		if err := h.bindingValidator.ValidateSchema(ctx, businessBinding); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := validateInstanceTitleTemplate(cmd.InstanceTitleTemplate); err != nil {
@@ -97,24 +88,19 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 	}
 
 	flow := approval.Flow{
-		TenantID:                tenantID,
-		CategoryID:              cmd.CategoryID,
-		Code:                    cmd.Code,
-		Name:                    cmd.Name,
-		Icon:                    cmd.Icon,
-		Description:             cmd.Description,
-		BindingMode:             cmd.BindingMode,
-		BusinessTable:           cmd.BusinessTable,
-		BusinessPKField:         cmd.BusinessPKField,
-		BusinessStatusField:     cmd.BusinessStatusField,
-		BusinessInstanceIDField: cmd.BusinessInstanceIDField,
-		BusinessStartedAtField:  cmd.BusinessStartedAtField,
-		BusinessFinishedAtField: cmd.BusinessFinishedAtField,
-		AdminUserIDs:            cmd.AdminUserIDs,
-		IsAllInitiationAllowed:  cmd.IsAllInitiationAllowed,
-		InstanceTitleTemplate:   cmd.InstanceTitleTemplate,
-		IsActive:                true,
-		CurrentVersion:          0,
+		TenantID:               tenantID,
+		CategoryID:             cmd.CategoryID,
+		Code:                   cmd.Code,
+		Name:                   cmd.Name,
+		Icon:                   cmd.Icon,
+		Description:            cmd.Description,
+		BindingMode:            cmd.BindingMode,
+		BusinessBinding:        businessBinding,
+		AdminUserIDs:           cmd.AdminUserIDs,
+		IsAllInitiationAllowed: cmd.IsAllInitiationAllowed,
+		InstanceTitleTemplate:  cmd.InstanceTitleTemplate,
+		IsActive:               true,
+		CurrentVersion:         0,
 	}
 	if _, err := db.NewInsert().
 		Model(&flow).

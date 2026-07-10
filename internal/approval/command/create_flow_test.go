@@ -41,7 +41,7 @@ func (s *CreateFlowTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Should insert test category")
 
 	s.categoryID = category.ID
-	s.handler = command.NewCreateFlowHandler(s.db)
+	s.handler = command.NewCreateFlowHandler(s.db, newTestBindingValidator())
 }
 
 func (s *CreateFlowTestSuite) TearDownSuite() {
@@ -177,21 +177,23 @@ func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingComplete() {
 	status := "approval_status"
 
 	result, err := s.handler.Handle(s.ctx, command.CreateFlowCmd{
-		TenantID:              "tenant-binding",
-		Code:                  "business-complete",
-		Name:                  "Business Bound",
-		CategoryID:            s.categoryID,
-		BindingMode:           approval.BindingBusiness,
-		BusinessTable:         &table,
-		BusinessPKField:       &pk,
-		BusinessStatusField:   &status,
+		TenantID:    "tenant-binding",
+		Code:        "business-complete",
+		Name:        "Business Bound",
+		CategoryID:  s.categoryID,
+		BindingMode: approval.BindingBusiness,
+		BusinessBinding: &approval.BusinessBindingConfig{
+			TableName:    table,
+			KeyColumns:   []string{pk},
+			StatusColumn: status,
+		},
 		InstanceTitleTemplate: "Title",
 		Caller:                approval.SystemCaller,
 	})
 	s.Require().NoError(err, "A complete business binding should be accepted")
 	s.Assert().Equal(approval.BindingBusiness, result.BindingMode)
-	s.Require().NotNil(result.BusinessTable)
-	s.Assert().Equal("t_leave", *result.BusinessTable)
+	s.Require().NotNil(result.BusinessBinding)
+	s.Assert().Equal("t_leave", result.BusinessBinding.TableName)
 }
 
 func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingIncomplete() {
@@ -201,13 +203,15 @@ func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingIncomplete() {
 	// Business mode with a missing table must be rejected, not silently saved
 	// (it would no-op the status write-back on the first completed instance).
 	_, err := s.handler.Handle(s.ctx, command.CreateFlowCmd{
-		TenantID:              "tenant-binding-bad",
-		Code:                  "business-incomplete",
-		Name:                  "Half Bound",
-		CategoryID:            s.categoryID,
-		BindingMode:           approval.BindingBusiness,
-		BusinessPKField:       &pk,
-		BusinessStatusField:   &status,
+		TenantID:    "tenant-binding-bad",
+		Code:        "business-incomplete",
+		Name:        "Half Bound",
+		CategoryID:  s.categoryID,
+		BindingMode: approval.BindingBusiness,
+		BusinessBinding: &approval.BusinessBindingConfig{
+			KeyColumns:   []string{pk},
+			StatusColumn: status,
+		},
 		InstanceTitleTemplate: "Title",
 		Caller:                approval.SystemCaller,
 	})
@@ -222,14 +226,16 @@ func (s *CreateFlowTestSuite) TestCreateFlowLinkageColumns() {
 
 	linkageCmd := func(code string) command.CreateFlowCmd {
 		return command.CreateFlowCmd{
-			TenantID:              "tenant-linkage",
-			Code:                  code,
-			Name:                  "Linkage Bound",
-			CategoryID:            s.categoryID,
-			BindingMode:           approval.BindingBusiness,
-			BusinessTable:         &table,
-			BusinessPKField:       &pk,
-			BusinessStatusField:   &status,
+			TenantID:    "tenant-linkage",
+			Code:        code,
+			Name:        "Linkage Bound",
+			CategoryID:  s.categoryID,
+			BindingMode: approval.BindingBusiness,
+			BusinessBinding: &approval.BusinessBindingConfig{
+				TableName:    table,
+				KeyColumns:   []string{pk},
+				StatusColumn: status,
+			},
 			InstanceTitleTemplate: "Title",
 			Caller:                approval.SystemCaller,
 		}
@@ -239,9 +245,9 @@ func (s *CreateFlowTestSuite) TestCreateFlowLinkageColumns() {
 		instanceCol, startedCol, finishedCol := "apv_instance_id", "apv_started_at", "apv_finished_at"
 
 		cmd := linkageCmd("linkage-full")
-		cmd.BusinessInstanceIDField = &instanceCol
-		cmd.BusinessStartedAtField = &startedCol
-		cmd.BusinessFinishedAtField = &finishedCol
+		cmd.BusinessBinding.InstanceIDColumn = &instanceCol
+		cmd.BusinessBinding.StartedAtColumn = &startedCol
+		cmd.BusinessBinding.FinishedAtColumn = &finishedCol
 
 		result, err := s.handler.Handle(s.ctx, cmd)
 		s.Require().NoError(err, "Optional linkage columns should be accepted")
@@ -250,19 +256,20 @@ func (s *CreateFlowTestSuite) TestCreateFlowLinkageColumns() {
 
 		flow.ID = result.ID
 		s.Require().NoError(s.db.NewSelect().Model(&flow).WherePK().Scan(s.ctx), "Should reload the created flow")
-		s.Require().NotNil(flow.BusinessInstanceIDField, "business_instance_id_field should persist")
-		s.Assert().Equal("apv_instance_id", *flow.BusinessInstanceIDField, "Instance-id column should round-trip")
-		s.Require().NotNil(flow.BusinessStartedAtField, "business_started_at_field should persist")
-		s.Assert().Equal("apv_started_at", *flow.BusinessStartedAtField, "Started-at column should round-trip")
-		s.Require().NotNil(flow.BusinessFinishedAtField, "business_finished_at_field should persist")
-		s.Assert().Equal("apv_finished_at", *flow.BusinessFinishedAtField, "Finished-at column should round-trip")
+		s.Require().NotNil(flow.BusinessBinding, "business_binding should persist")
+		s.Require().NotNil(flow.BusinessBinding.InstanceIDColumn, "instanceIdColumn should persist")
+		s.Assert().Equal("apv_instance_id", *flow.BusinessBinding.InstanceIDColumn, "Instance-id column should round-trip")
+		s.Require().NotNil(flow.BusinessBinding.StartedAtColumn, "startedAtColumn should persist")
+		s.Assert().Equal("apv_started_at", *flow.BusinessBinding.StartedAtColumn, "Started-at column should round-trip")
+		s.Require().NotNil(flow.BusinessBinding.FinishedAtColumn, "finishedAtColumn should persist")
+		s.Assert().Equal("apv_finished_at", *flow.BusinessBinding.FinishedAtColumn, "Finished-at column should round-trip")
 	})
 
 	s.Run("RejectsUnsafeOptionalIdentifier", func() {
 		unsafe := "col; DROP TABLE x"
 
 		cmd := linkageCmd("linkage-unsafe")
-		cmd.BusinessInstanceIDField = &unsafe
+		cmd.BusinessBinding.InstanceIDColumn = &unsafe
 
 		_, err := s.handler.Handle(s.ctx, cmd)
 		s.Require().Error(err, "An unsafe optional identifier must be rejected")
@@ -273,7 +280,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowLinkageColumns() {
 		duplicate := status
 
 		cmd := linkageCmd("linkage-duplicate")
-		cmd.BusinessFinishedAtField = &duplicate
+		cmd.BusinessBinding.FinishedAtColumn = &duplicate
 
 		_, err := s.handler.Handle(s.ctx, cmd)
 		s.Require().Error(err, "Two binding fields naming the same column must be rejected")

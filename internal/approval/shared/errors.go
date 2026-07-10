@@ -18,6 +18,9 @@ const (
 	ErrCodeInvalidStorageMode        = 40014
 	ErrCodeFlowBindingLocked         = 40015
 	ErrCodeBindingColumnsConflict    = 40016
+	ErrCodeBindingUnexpected         = 40017
+	ErrCodeBindingSchemaInvalid      = 40018
+	ErrCodeBindingKeyNotUnique       = 40019
 
 	ErrCodeInstanceNotFound          = 40101
 	ErrCodeInstanceCompleted         = 40102

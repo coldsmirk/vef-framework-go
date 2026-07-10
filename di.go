@@ -363,11 +363,10 @@ func SupplyBusinessRefProvider(constructor any) fx.Option {
 	return fx.Decorate(constructor)
 }
 
-// SupplyBusinessRefResolver replaces the default identity
-// approval.BusinessRefResolver. Register one when Instance.BusinessRef is
-// not the bare business primary key — e.g. a composite key encoded as JSON —
-// so the engine-owned write-back can still resolve the row to target in
-// `WHERE pk_field = ?`.
+// SupplyBusinessRefResolver replaces the default approval.BusinessRefResolver.
+// The default handles a bare single-column key and a composite key encoded as
+// a JSON object. Register a replacement when Instance.BusinessRef uses another
+// shape or resolving the configured key requires a host lookup.
 //
 // constructor is an fx-style factory that returns approval.BusinessRefResolver
 // (or a type implementing it). It may declare any dependencies already

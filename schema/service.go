@@ -47,8 +47,10 @@ type Index struct {
 
 // UniqueKey represents a unique constraint or unique index.
 type UniqueKey struct {
-	Name    string   `json:"name"`
-	Columns []string `json:"columns"`
+	Name           string   `json:"name"`
+	Columns        []string `json:"columns"`
+	Predicate      string   `json:"predicate,omitempty"`
+	HasExpressions bool     `json:"hasExpressions,omitempty"`
 }
 
 // ForeignKey represents a foreign key constraint.

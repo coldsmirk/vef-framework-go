@@ -28,30 +28,19 @@ type Flow struct {
 	orm.BaseModel `bun:"table:apv_flow,alias:af"`
 	orm.FullAuditedModel
 
-	TenantID            string      `json:"tenantId" bun:"tenant_id"`
-	CategoryID          string      `json:"categoryId" bun:"category_id"`
-	Code                string      `json:"code" bun:"code"`
-	Name                string      `json:"name" bun:"name"`
-	Icon                *string     `json:"icon" bun:"icon,nullzero"`
-	Description         *string     `json:"description" bun:"description,nullzero"`
-	BindingMode         BindingMode `json:"bindingMode" bun:"binding_mode"`
-	BusinessTable       *string     `json:"businessTable" bun:"business_table,nullzero"`
-	BusinessPKField     *string     `json:"businessPkField" bun:"business_pk_field,nullzero"`
-	BusinessStatusField *string     `json:"businessStatusField" bun:"business_status_field,nullzero"`
-	// BusinessInstanceIDField / BusinessStartedAtField / BusinessFinishedAtField
-	// are the optional legs of the engine-owned write-back: when set, the
-	// engine keeps the named business columns in sync with the instance
-	// (see BindingTrigger for the linkage matrix); when nil, that column is
-	// simply never touched. Only the status column is mandatory for a
-	// business-bound flow.
-	BusinessInstanceIDField *string  `json:"businessInstanceIdField" bun:"business_instance_id_field,nullzero"`
-	BusinessStartedAtField  *string  `json:"businessStartedAtField" bun:"business_started_at_field,nullzero"`
-	BusinessFinishedAtField *string  `json:"businessFinishedAtField" bun:"business_finished_at_field,nullzero"`
-	AdminUserIDs            []string `json:"adminUserIds" bun:"admin_user_ids,type:jsonb"`
-	IsAllInitiationAllowed  bool     `json:"isAllInitiationAllowed" bun:"is_all_initiation_allowed"`
-	InstanceTitleTemplate   string   `json:"instanceTitleTemplate" bun:"instance_title_template"`
-	IsActive                bool     `json:"isActive" bun:"is_active"`
-	CurrentVersion          int      `json:"currentVersion" bun:"current_version"`
+	TenantID               string                 `json:"tenantId" bun:"tenant_id"`
+	CategoryID             string                 `json:"categoryId" bun:"category_id"`
+	Code                   string                 `json:"code" bun:"code"`
+	Name                   string                 `json:"name" bun:"name"`
+	Icon                   *string                `json:"icon" bun:"icon,nullzero"`
+	Description            *string                `json:"description" bun:"description,nullzero"`
+	BindingMode            BindingMode            `json:"bindingMode" bun:"binding_mode"`
+	BusinessBinding        *BusinessBindingConfig `json:"businessBinding,omitempty" bun:"business_binding,type:jsonb,nullzero"`
+	AdminUserIDs           []string               `json:"adminUserIds" bun:"admin_user_ids,type:jsonb"`
+	IsAllInitiationAllowed bool                   `json:"isAllInitiationAllowed" bun:"is_all_initiation_allowed"`
+	InstanceTitleTemplate  string                 `json:"instanceTitleTemplate" bun:"instance_title_template"`
+	IsActive               bool                   `json:"isActive" bun:"is_active"`
+	CurrentVersion         int                    `json:"currentVersion" bun:"current_version"`
 }
 
 // FlowCategory represents a category for grouping flows.
@@ -239,10 +228,9 @@ type Instance struct {
 	CurrentNodeID           *string         `json:"currentNodeId" bun:"current_node_id,nullzero"`
 	FinishedAt              *timex.DateTime `json:"finishedAt" bun:"finished_at,nullzero"`
 	// BusinessRef is the opaque reference to the bound business record. The
-	// engine never parses it — hosts choose the shape (single primary key,
-	// composite key as JSON, business number, …). The engine-owned write-back
-	// resolves it through BusinessRefResolver; non-single-key shapes register
-	// a custom resolver.
+	// engine only parses the default single-key / composite-JSON shapes — hosts
+	// remain free to choose another shape (business number, encoded tuple, …)
+	// by registering BusinessRefResolver.
 	BusinessRef *string        `json:"businessRef" bun:"business_ref,nullzero"`
 	FormData    map[string]any `json:"formData" bun:"form_data,type:jsonb,nullzero"`
 	// Globals is the host-supplied global-variable snapshot taken at instance

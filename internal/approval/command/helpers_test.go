@@ -13,6 +13,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/cache"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/formeditor"
@@ -23,7 +24,33 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
+	"github.com/coldsmirk/vef-framework-go/schema"
 )
+
+type testBindingSchemaService struct{}
+
+func (*testBindingSchemaService) ListTables(context.Context) ([]schema.Table, error) { return nil, nil }
+func (*testBindingSchemaService) ListViews(context.Context) ([]schema.View, error)   { return nil, nil }
+func (*testBindingSchemaService) GetTableSchema(_ context.Context, name string) (*schema.TableSchema, error) {
+	return &schema.TableSchema{
+		Name: name,
+		Columns: []schema.Column{
+			{Name: "id"},
+			{Name: "tenant_id"},
+			{Name: "order_no"},
+			{Name: "approval_status"},
+			{Name: "apv_instance_id"},
+			{Name: "apv_started_at"},
+			{Name: "apv_finished_at"},
+		},
+		PrimaryKey: &schema.PrimaryKey{Columns: []string{"id"}},
+		UniqueKeys: []schema.UniqueKey{{Columns: []string{"tenant_id", "order_no"}}},
+	}, nil
+}
+
+func newTestBindingValidator() *binding.ConfigValidator {
+	return binding.NewConfigValidator(new(testBindingSchemaService))
+}
 
 // BusPublishingHandler wraps a cqrs.Handler with ActionLogBehavior and
 // EventPublishBehavior so handlers exercise the same context plumbing as

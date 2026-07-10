@@ -2,8 +2,11 @@ package binding
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"strings"
+
+	"github.com/uptrace/bun/dialect"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -25,14 +28,14 @@ func NewWriter(resolver approval.BusinessRefResolver) *Writer {
 }
 
 // WriteBack projects the instance's current state onto the business table,
-// targeting the row whose pk column matches the resolved BusinessRef. The
+// targeting the row whose configured key matches the resolved BusinessRef. The
 // trigger selects which columns are written (see approval.BindingTrigger for
 // the linkage matrix); the status column is always written, the optional
 // instance-id / started-at / finished-at columns only when the flow
 // configures them. Skipped when the flow is not business-bound or the
 // instance carries no BusinessRef. Misconfigured flows return
-// ErrBindingMisconfigured; resolver failures propagate as transient errors
-// so the outbox can retry.
+// ErrBindingMisconfigured; resolver failures propagate for the listener to
+// classify as permanent invalid refs or retryable host faults.
 func (w *Writer) WriteBack(ctx context.Context, db orm.DB, flow *approval.Flow, instance *approval.Instance, trigger approval.BindingTrigger) error {
 	if flow.BindingMode != approval.BindingBusiness {
 		return nil
@@ -42,31 +45,27 @@ func (w *Writer) WriteBack(ctx context.Context, db orm.DB, flow *approval.Flow, 
 		return nil
 	}
 
-	if flow.BusinessTable == nil || flow.BusinessPKField == nil || flow.BusinessStatusField == nil {
-		return fmt.Errorf("%w: flow %q missing table/pk/status configuration", ErrBindingMisconfigured, flow.ID)
+	config, err := NormalizeConfig(flow.BindingMode, flow.BusinessBinding)
+	if err != nil {
+		return fmt.Errorf("%w: flow %q: %w", ErrBindingMisconfigured, flow.ID, err)
 	}
 
-	table := strings.TrimSpace(*flow.BusinessTable)
-	pkField := strings.TrimSpace(*flow.BusinessPKField)
-	statusField := strings.TrimSpace(*flow.BusinessStatusField)
-
-	if table == "" || pkField == "" || statusField == "" {
-		return fmt.Errorf("%w: flow %q has blank table/pk/status", ErrBindingMisconfigured, flow.ID)
-	}
+	resolvedFlow := *flow
+	resolvedFlow.BusinessBinding = config
 
 	// The status column is always part of the projection; the optional
 	// columns join per the trigger's row in the linkage matrix.
-	setColumns := []string{statusField}
+	setColumns := []string{config.StatusColumn}
 	setValues := []any{string(instance.Status)}
 
 	if trigger == approval.BindingTriggerStarted {
-		if col, ok := optionalColumn(flow.BusinessInstanceIDField); ok {
-			setColumns = append(setColumns, col)
+		if config.InstanceIDColumn != nil {
+			setColumns = append(setColumns, *config.InstanceIDColumn)
 			setValues = append(setValues, instance.ID)
 		}
 
-		if col, ok := optionalColumn(flow.BusinessStartedAtField); ok {
-			setColumns = append(setColumns, col)
+		if config.StartedAtColumn != nil {
+			setColumns = append(setColumns, *config.StartedAtColumn)
 			setValues = append(setValues, startedAt(instance))
 		}
 	}
@@ -77,56 +76,105 @@ func (w *Writer) WriteBack(ctx context.Context, db orm.DB, flow *approval.Flow, 
 	if trigger == approval.BindingTriggerStarted ||
 		trigger == approval.BindingTriggerCompleted ||
 		trigger == approval.BindingTriggerResubmitted {
-		if col, ok := optionalColumn(flow.BusinessFinishedAtField); ok {
-			setColumns = append(setColumns, col)
+		if config.FinishedAtColumn != nil {
+			setColumns = append(setColumns, *config.FinishedAtColumn)
 			setValues = append(setValues, finishedAt(instance))
 		}
 	}
 
-	// Defense-in-depth: even though CreateFlow/UpdateFlow already enforce
-	// the same regex, reject any identifier that does not match here so
-	// rows persisted before the validator existed (or smuggled in via a
-	// direct DB write) cannot turn fmt.Sprintf into a SQL injection vector.
-	for _, ident := range append([]string{table, pkField}, setColumns...) {
-		if err := approval.ValidateBusinessIdentifier(ident); err != nil {
-			return fmt.Errorf("%w: flow %q identifier %q rejected: %w", ErrBindingMisconfigured, flow.ID, ident, err)
-		}
-	}
-
-	recordID, err := w.resolver.ResolveRecordID(ctx, flow, *instance.BusinessRef)
+	recordKey, err := w.resolver.ResolveRecordKey(ctx, &resolvedFlow, *instance.BusinessRef)
 	if err != nil {
 		return fmt.Errorf("resolve business ref for flow %q: %w", flow.ID, err)
 	}
 
-	if strings.TrimSpace(recordID) == "" {
-		return fmt.Errorf("%w: flow %q resolver produced an empty record id", ErrBindingMisconfigured, flow.ID)
+	recordKey, err = validateRecordKey(config, recordKey)
+	if err != nil {
+		return fmt.Errorf("flow %q: %w", flow.ID, err)
 	}
 
-	// Values are bound as parameters; only whitelisted identifiers are
-	// interpolated.
-	assignments := make([]string, len(setColumns))
-	for i, col := range setColumns {
-		assignments[i] = col + " = ?"
+	matches, err := lockBindingTarget(ctx, db, config, recordKey)
+	if err != nil {
+		return err
 	}
 
-	sql := fmt.Sprintf("UPDATE %s SET %s WHERE %s = ?", table, strings.Join(assignments, ", "), pkField)
-	if _, err := db.NewRaw(sql, append(setValues, recordID)...).Exec(ctx); err != nil {
+	if matches == 0 {
+		return fmt.Errorf("%w: flow %q", ErrBindingTargetMissing, flow.ID)
+	}
+
+	if matches > 1 {
+		return fmt.Errorf("%w: flow %q", ErrBindingTargetNotUnique, flow.ID)
+	}
+
+	query := db.NewUpdate().Table(config.TableName)
+	for i, column := range setColumns {
+		query.Set(column, setValues[i])
+	}
+
+	result, err := query.Where(recordKeyCondition(config.KeyColumns, recordKey)).Exec(ctx)
+	if err != nil {
 		return fmt.Errorf("write business state (%s): %w", trigger, err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read business write-back result (%s): %w", trigger, err)
+	}
+
+	if affected > 1 {
+		return fmt.Errorf("%w: flow %q updated %d rows", ErrBindingTargetNotUnique, flow.ID, affected)
 	}
 
 	return nil
 }
 
-// optionalColumn unwraps an optional binding column, reporting whether it is
-// configured (non-nil and non-blank).
-func optionalColumn(field *string) (string, bool) {
-	if field == nil {
-		return "", false
+func validateRecordKey(config *approval.BusinessBindingConfig, key approval.BusinessRecordKey) (approval.BusinessRecordKey, error) {
+	if len(key) != len(config.KeyColumns) {
+		return nil, fmt.Errorf("%w: expected %d key values, got %d", ErrInvalidBusinessRef, len(config.KeyColumns), len(key))
 	}
 
-	trimmed := strings.TrimSpace(*field)
+	validated := make(approval.BusinessRecordKey, len(key))
+	for _, column := range config.KeyColumns {
+		value, ok := key[column]
+		if !ok || value == nil {
+			return nil, fmt.Errorf("%w: missing key column %q", ErrInvalidBusinessRef, column)
+		}
 
-	return trimmed, trimmed != ""
+		converted, err := driver.DefaultParameterConverter.ConvertValue(value)
+		if err != nil {
+			return nil, fmt.Errorf("%w: key column %q: %w", ErrInvalidBusinessRef, column, err)
+		}
+
+		validated[column] = converted
+	}
+
+	return validated, nil
+}
+
+func lockBindingTarget(ctx context.Context, db orm.DB, config *approval.BusinessBindingConfig, key approval.BusinessRecordKey) (int, error) {
+	var matches []int
+
+	query := db.NewSelect().
+		Table(config.TableName).
+		SelectExpr(func(eb orm.ExprBuilder) any { return eb.Literal(1) }).
+		Where(recordKeyCondition(config.KeyColumns, key)).
+		Limit(2)
+	if query.Dialect().Name() != dialect.SQLite {
+		query.ForUpdate()
+	}
+
+	if err := query.Scan(ctx, &matches); err != nil {
+		return 0, fmt.Errorf("lock business binding target: %w", err)
+	}
+
+	return len(matches), nil
+}
+
+func recordKeyCondition(columns []string, key approval.BusinessRecordKey) func(orm.ConditionBuilder) {
+	return func(cb orm.ConditionBuilder) {
+		for _, column := range columns {
+			cb.Equals(column, key[column])
+		}
+	}
 }
 
 // startedAt is the value projected into the started-at column: the instance

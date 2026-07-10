@@ -208,29 +208,27 @@ func (s *StartInstanceTestSuite) TestStartShouldRejectInvalidFormDataBySchema() 
 func (s *StartInstanceTestSuite) flipFlowToBusinessBinding(table string) func() {
 	s.T().Helper()
 
-	_, err := s.db.NewUpdate().
-		Model((*approval.Flow)(nil)).
-		Set("binding_mode", approval.BindingBusiness).
-		Set("business_table", table).
-		Set("business_pk_field", "id").
-		Set("business_status_field", "approval_status").
-		Set("business_instance_id_field", "apv_instance_id").
-		Set("business_started_at_field", "apv_started_at").
-		Set("business_finished_at_field", "apv_finished_at").
-		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.fixture.FlowID) }).
-		Exec(s.ctx)
+	instanceID, startedAt, finishedAt := "apv_instance_id", "apv_started_at", "apv_finished_at"
+	flow := &approval.Flow{
+		BindingMode: approval.BindingBusiness,
+		BusinessBinding: &approval.BusinessBindingConfig{
+			TableName:        table,
+			KeyColumns:       []string{"id"},
+			StatusColumn:     "approval_status",
+			InstanceIDColumn: &instanceID,
+			StartedAtColumn:  &startedAt,
+			FinishedAtColumn: &finishedAt,
+		},
+	}
+	flow.ID = s.fixture.FlowID
+	_, err := s.db.NewUpdate().Model(flow).Select("binding_mode", "business_binding").WherePK().Exec(s.ctx)
 	s.Require().NoError(err, "Should flip the fixture flow to a business binding")
 
 	return func() {
 		_, _ = s.db.NewUpdate().
 			Model((*approval.Flow)(nil)).
 			Set("binding_mode", approval.BindingStandalone).
-			Set("business_table", nil).
-			Set("business_pk_field", nil).
-			Set("business_status_field", nil).
-			Set("business_instance_id_field", nil).
-			Set("business_started_at_field", nil).
-			Set("business_finished_at_field", nil).
+			Set("business_binding", nil).
 			Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.fixture.FlowID) }).
 			Exec(s.ctx)
 	}

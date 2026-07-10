@@ -3,10 +3,12 @@ package command
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -17,32 +19,28 @@ import (
 type UpdateFlowCmd struct {
 	cqrs.BaseCommand
 
-	FlowID                  string
-	Name                    string
-	Icon                    *string
-	Description             *string
-	BindingMode             approval.BindingMode
-	BusinessTable           *string
-	BusinessPKField         *string
-	BusinessStatusField     *string
-	BusinessInstanceIDField *string
-	BusinessStartedAtField  *string
-	BusinessFinishedAtField *string
-	AdminUserIDs            []string
-	IsAllInitiationAllowed  bool
-	InstanceTitleTemplate   string
-	Initiators              []shared.CreateFlowInitiatorCmd
-	Caller                  approval.CallerContext
+	FlowID                 string
+	Name                   string
+	Icon                   *string
+	Description            *string
+	BindingMode            approval.BindingMode
+	BusinessBinding        *approval.BusinessBindingConfig
+	AdminUserIDs           []string
+	IsAllInitiationAllowed bool
+	InstanceTitleTemplate  string
+	Initiators             []shared.CreateFlowInitiatorCmd
+	Caller                 approval.CallerContext
 }
 
 // UpdateFlowHandler handles the UpdateFlowCmd command.
 type UpdateFlowHandler struct {
-	db orm.DB
+	db               orm.DB
+	bindingValidator *binding.ConfigValidator
 }
 
 // NewUpdateFlowHandler creates a new UpdateFlowHandler.
-func NewUpdateFlowHandler(db orm.DB) *UpdateFlowHandler {
-	return &UpdateFlowHandler{db: db}
+func NewUpdateFlowHandler(db orm.DB, bindingValidator *binding.ConfigValidator) *UpdateFlowHandler {
+	return &UpdateFlowHandler{db: db, bindingValidator: bindingValidator}
 }
 
 func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*approval.Flow, error) {
@@ -75,22 +73,12 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		return nil, err
 	}
 
-	if err := validateBusinessIdentifiers(cmd.BindingMode,
-		cmd.BusinessTable, cmd.BusinessPKField, cmd.BusinessStatusField,
-		cmd.BusinessInstanceIDField, cmd.BusinessStartedAtField, cmd.BusinessFinishedAtField,
-	); err != nil {
+	businessBinding, err := binding.NormalizeConfig(cmd.BindingMode, cmd.BusinessBinding)
+	if err != nil {
 		return nil, err
 	}
 
-	if err := validateBusinessBindingComplete(cmd.BindingMode, cmd.BusinessTable, cmd.BusinessPKField, cmd.BusinessStatusField); err != nil {
-		return nil, err
-	}
-
-	if err := validateBusinessColumnsDistinct(cmd.BindingMode,
-		cmd.BusinessStatusField, cmd.BusinessInstanceIDField, cmd.BusinessStartedAtField, cmd.BusinessFinishedAtField,
-	); err != nil {
-		return nil, err
-	}
+	cmd.BusinessBinding = businessBinding
 
 	// Freeze the business binding while instances are running: re-pointing (or
 	// clearing) the binding mid-flight would make in-flight instances write their
@@ -112,18 +100,19 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		if running {
 			return nil, shared.ErrFlowBindingLocked
 		}
+
+		if businessBinding != nil {
+			if err := h.bindingValidator.ValidateSchema(ctx, businessBinding); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	flow.Name = cmd.Name
 	flow.Icon = cmd.Icon
 	flow.Description = cmd.Description
 	flow.BindingMode = cmd.BindingMode
-	flow.BusinessTable = cmd.BusinessTable
-	flow.BusinessPKField = cmd.BusinessPKField
-	flow.BusinessStatusField = cmd.BusinessStatusField
-	flow.BusinessInstanceIDField = cmd.BusinessInstanceIDField
-	flow.BusinessStartedAtField = cmd.BusinessStartedAtField
-	flow.BusinessFinishedAtField = cmd.BusinessFinishedAtField
+	flow.BusinessBinding = businessBinding
 	flow.AdminUserIDs = cmd.AdminUserIDs
 	flow.IsAllInitiationAllowed = cmd.IsAllInitiationAllowed
 	flow.InstanceTitleTemplate = cmd.InstanceTitleTemplate
@@ -132,8 +121,7 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		Model(&flow).
 		Select(
 			"name", "icon", "description",
-			"binding_mode", "business_table", "business_pk_field", "business_status_field",
-			"business_instance_id_field", "business_started_at_field", "business_finished_at_field",
+			"binding_mode", "business_binding",
 			"admin_user_ids", "is_all_initiation_allowed", "instance_title_template",
 		).
 		WherePK().
@@ -175,25 +163,10 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 }
 
 // bindingConfigChanged reports whether cmd alters any business-binding field
-// (mode / table / pk / status / optional linkage columns) relative to the
+// (mode / table / key / status / optional linkage columns) relative to the
 // flow's persisted state. Only a binding change is gated by the
 // running-instance guard; non-binding edits are always allowed.
 func bindingConfigChanged(current *approval.Flow, cmd UpdateFlowCmd) bool {
 	return current.BindingMode != cmd.BindingMode ||
-		!stringPtrEqual(current.BusinessTable, cmd.BusinessTable) ||
-		!stringPtrEqual(current.BusinessPKField, cmd.BusinessPKField) ||
-		!stringPtrEqual(current.BusinessStatusField, cmd.BusinessStatusField) ||
-		!stringPtrEqual(current.BusinessInstanceIDField, cmd.BusinessInstanceIDField) ||
-		!stringPtrEqual(current.BusinessStartedAtField, cmd.BusinessStartedAtField) ||
-		!stringPtrEqual(current.BusinessFinishedAtField, cmd.BusinessFinishedAtField)
-}
-
-// stringPtrEqual reports whether two optional strings hold the same value,
-// treating both-nil as equal.
-func stringPtrEqual(a, b *string) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-
-	return *a == *b
+		!reflect.DeepEqual(current.BusinessBinding, cmd.BusinessBinding)
 }
