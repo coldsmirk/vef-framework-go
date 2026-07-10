@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/cron"
 	"github.com/coldsmirk/vef-framework-go/internal/event"
 	"github.com/coldsmirk/vef-framework-go/internal/expression"
+	"github.com/coldsmirk/vef-framework-go/internal/lock"
 	"github.com/coldsmirk/vef-framework-go/internal/mcp"
 	"github.com/coldsmirk/vef-framework-go/internal/middleware"
 	"github.com/coldsmirk/vef-framework-go/internal/mold"
@@ -38,6 +39,7 @@ func Core() []fx.Option {
 		cqrs.Module,
 		cron.Module,
 		redis.Module,
+		lock.Module,
 		mold.Module,
 		storage.Module,
 		sequence.Module,
