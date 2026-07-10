@@ -51,11 +51,15 @@ func (s *RedisSessionStore) Create(ctx context.Context, tokenHash string, sessio
 	}
 
 	// Write the record, token index, and user set atomically so a lookup can
-	// never resolve a token to a session that is not yet fully indexed.
+	// never resolve a token to a session that is not yet fully indexed. The user
+	// set carries the same TTL as the keys written alongside it (refreshed here
+	// and on every renewal), so an abandoned identity's set expires with its last
+	// session instead of lingering as a tombstone.
 	pipe := s.client.TxPipeline()
 	pipe.Set(ctx, s.idKey(session.ID), payload, ttl)
 	pipe.Set(ctx, s.tokenKey(tokenHash), session.ID, ttl)
 	pipe.SAdd(ctx, s.userKey(session.UserID), session.ID)
+	pipe.Expire(ctx, s.userKey(session.UserID), ttl)
 	_, err = pipe.Exec(ctx)
 
 	return err
@@ -106,10 +110,14 @@ func (s *RedisSessionStore) Renew(ctx context.Context, tokenHash string, expires
 
 	// SET ... XX rewrites the record only if it still exists, so a renewal that
 	// races a concurrent Revoke can never resurrect a just-deleted session. The
-	// token TTL is refreshed in the same transaction.
+	// token TTL is refreshed in the same transaction, and the user set is
+	// re-added-to and re-expired so its lifetime keeps pace with the sessions it
+	// indexes (SAdd also self-heals membership should the set have expired early).
 	pipe := s.client.TxPipeline()
 	pipe.SetArgs(ctx, s.idKey(id), payload, redis.SetArgs{Mode: "XX", TTL: ttl})
 	pipe.Expire(ctx, s.tokenKey(tokenHash), ttl)
+	pipe.SAdd(ctx, s.userKey(record.Session.UserID), id)
+	pipe.Expire(ctx, s.userKey(record.Session.UserID), ttl)
 
 	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
 		return err
@@ -189,14 +197,22 @@ func (s *RedisSessionStore) RevokeUser(ctx context.Context, userID string) error
 		}
 	}
 
-	// Delete every record and token key, then remove the user set itself in one
-	// transaction.
-	pipe := s.client.TxPipeline()
-	if len(keys) > 0 {
-		pipe.Del(ctx, keys...)
+	if len(ids) == 0 {
+		return nil
 	}
 
-	pipe.Del(ctx, s.userKey(userID))
+	// Delete every record and token key and remove exactly the enumerated ids
+	// from the user set (Redis drops the set once empty). Deleting the whole set
+	// key instead would erase the membership of a session created concurrently
+	// with this revocation, leaving it live but invisible to ListByUser.
+	members := make([]any, len(ids))
+	for i, id := range ids {
+		members[i] = id
+	}
+
+	pipe := s.client.TxPipeline()
+	pipe.Del(ctx, keys...)
+	pipe.SRem(ctx, s.userKey(userID), members...)
 	_, err = pipe.Exec(ctx)
 
 	return err

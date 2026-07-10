@@ -151,6 +151,43 @@ func (s *RedisSessionStoreTestSuite) TestSessionLifecycle() {
 		s.Require().NoError(err, "lookup should not error")
 		s.NotNil(other, "another user's session must be untouched")
 	})
+
+	s.Run("RenewSelfHealsUserSetMembership", func() {
+		flush()
+
+		s.Require().NoError(s.store.Create(ctx, "h1", makeSession("s1", "u1", future), time.Hour), "create should succeed")
+
+		// Wipe the user set out-of-band (an early expiry or the SMEMBERS/EXEC race
+		// with a concurrent revoke-user): the next renewal must restore the
+		// session's membership so it never stays invisible to ListByUser.
+		userSetKey := "vef:security:session:user:u1"
+		s.Require().NoError(s.client.Del(ctx, userSetKey).Err(), "clearing the user set should succeed")
+
+		s.Require().NoError(s.store.Renew(ctx, "h1", time.Now().Add(time.Hour), time.Hour), "renew should succeed")
+
+		members, err := s.client.SMembers(ctx, userSetKey).Result()
+		s.Require().NoError(err, "reading the user set should not error")
+		s.Equal([]string{"s1"}, members, "renewal must re-add the session id to the user set")
+
+		sessions, err := s.store.ListByUser(ctx, "u1")
+		s.Require().NoError(err, "list should not error")
+		s.Len(sessions, 1, "the healed session must be visible to ListByUser again")
+	})
+
+	s.Run("UserSetCarriesTTL", func() {
+		flush()
+
+		s.Require().NoError(s.store.Create(ctx, "h1", makeSession("s1", "u1", future), time.Hour), "create should succeed")
+
+		userSetTTL := s.client.TTL(ctx, "vef:security:session:user:u1").Val()
+		s.Positive(userSetTTL, "the user set must expire with its sessions instead of lingering as a tombstone")
+
+		// A renewal must extend the set's lifetime alongside the session keys.
+		s.Require().NoError(s.store.Renew(ctx, "h1", time.Now().Add(2*time.Hour), 2*time.Hour), "renew should succeed")
+
+		renewedTTL := s.client.TTL(ctx, "vef:security:session:user:u1").Val()
+		s.Greater(renewedTTL, userSetTTL, "renewal should push the user set's expiry forward")
+	})
 }
 
 func TestRedisSessionStore(t *testing.T) {
