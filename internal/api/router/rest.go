@@ -170,7 +170,9 @@ func (*REST) parseJSONBody(ctx fiber.Ctx, req *api.Request) error {
 		return nil
 	}
 
-	var data map[string]any
+	// Unmarshal into api.Params so its number-preserving UnmarshalJSON keeps
+	// numeric values as json.Number instead of lossy float64.
+	var data api.Params
 	if err := json.Unmarshal(body, &data); err != nil {
 		contextx.Logger(ctx).Warnf("Failed to parse JSON body: %v", err)
 

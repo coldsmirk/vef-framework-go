@@ -82,7 +82,9 @@ type FlowVersion struct {
 	StorageMode StorageMode     `json:"storageMode" bun:"storage_mode"`
 	FlowSchema  *FlowDefinition `json:"flowSchema" bun:"flow_schema,type:jsonb,nullzero"`
 	// FormSchema is the host-owned form designer document, stored and returned
-	// verbatim; the framework never interprets it (see FormSchemaParser).
+	// as semantically equal JSON: the jsonb column normalizes formatting and
+	// key order, while numeric precision is preserved end-to-end. The
+	// framework never interprets it (see FormSchemaParser).
 	FormSchema json.RawMessage `json:"formSchema" bun:"form_schema,type:jsonb,nullzero"`
 	// FormFields is the flat field list derived from FormSchema at deploy —
 	// the only form shape the framework itself consumes.

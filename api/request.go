@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"reflect"
 
@@ -21,7 +23,17 @@ func (id Identifier) String() string {
 }
 
 // Params holds API request parameters.
+//
+// JSON payloads are parsed with number preservation: numeric values arrive as
+// json.Number so Decode can project them into typed numeric fields and
+// json.RawMessage captures without float64 precision loss. Decode surfaces
+// numbers to untyped (any) targets as float64.
 type Params map[string]any
+
+// UnmarshalJSON parses params preserving numeric fidelity via json.Number.
+func (p *Params) UnmarshalJSON(data []byte) error {
+	return unmarshalNumberPreserving(data, (*map[string]any)(p))
+}
 
 // Decode decodes params into a struct.
 func (p Params) Decode(out any) error {
@@ -29,11 +41,27 @@ func (p Params) Decode(out any) error {
 }
 
 // Meta holds API request metadata.
+//
+// JSON payloads are parsed with number preservation, exactly like Params.
 type Meta map[string]any
+
+// UnmarshalJSON parses meta preserving numeric fidelity via json.Number.
+func (m *Meta) UnmarshalJSON(data []byte) error {
+	return unmarshalNumberPreserving(data, (*map[string]any)(m))
+}
 
 // Decode decodes meta into a struct.
 func (m Meta) Decode(out any) error {
 	return decodeMap(m, out, ErrInvalidMetaType)
+}
+
+// unmarshalNumberPreserving decodes JSON with json.Decoder.UseNumber so
+// numbers keep their exact digits instead of collapsing to float64.
+func unmarshalNumberPreserving(data []byte, out *map[string]any) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+
+	return decoder.Decode(out)
 }
 
 // decodeMap decodes a map into a struct with type validation.

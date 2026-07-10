@@ -2,7 +2,9 @@ package router
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -117,6 +119,45 @@ func TestBuildPath(t *testing.T) {
 			assert.Equal(t, tt.expected, path, "built path should combine resource and sub-path correctly")
 		})
 	}
+}
+
+// TestParseJSONBody covers the REST JSON body producer: numbers must arrive
+// in params as json.Number so typed decoding stays digit-exact.
+func TestParseJSONBody(t *testing.T) {
+	var (
+		captured *api.Request
+		parseErr error
+	)
+
+	app := fiber.New()
+	app.Post("/items", func(ctx fiber.Ctx) error {
+		r := &REST{}
+		req := &api.Request{Params: make(api.Params)}
+		parseErr = r.parseBody(ctx, req)
+		captured = req
+
+		return ctx.SendStatus(fiber.StatusOK)
+	})
+
+	body := `{"count":9007199254740993,"ratio":0.5}`
+	httpReq := httptest.NewRequestWithContext(context.Background(), fiber.MethodPost, "/items", strings.NewReader(body))
+	httpReq.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+
+	resp, err := app.Test(httpReq)
+	require.NoError(t, err, "fiber app.Test should not error")
+	require.NotNil(t, resp, "response should not be nil")
+	require.NoError(t, parseErr, "parseBody should succeed")
+
+	assert.Equal(t, json.Number("9007199254740993"), captured.Params["count"], "REST params should hold json.Number")
+
+	var out struct {
+		Count int64   `json:"count"`
+		Ratio float64 `json:"ratio"`
+	}
+
+	require.NoError(t, captured.Params.Decode(&out), "Decode should succeed")
+	assert.Equal(t, int64(9007199254740993), out.Count, "int64 param must keep exact digits")
+	assert.Equal(t, 0.5, out.Ratio, "plain numeric param should bind as before")
 }
 
 // TestExtractMeta covers header-prefix stripping and lowercase normalization.

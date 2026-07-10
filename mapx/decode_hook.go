@@ -3,10 +3,15 @@ package mapx
 import (
 	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"mime/multipart"
 	"reflect"
+	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/coldsmirk/go-collections"
 )
@@ -14,6 +19,10 @@ import (
 // Cached reflect.Type values used by the decode hooks below.
 var (
 	jsonRawMessageType     = reflect.TypeFor[json.RawMessage]()
+	jsonNumberType         = reflect.TypeFor[json.Number]()
+	emptyInterfaceType     = reflect.TypeFor[any]()
+	mapStringAnyType       = reflect.TypeFor[map[string]any]()
+	anySliceType           = reflect.TypeFor[[]any]()
 	fileHeaderPtrType      = reflect.TypeFor[*multipart.FileHeader]()
 	fileHeaderPtrSliceType = reflect.TypeFor[[]*multipart.FileHeader]()
 
@@ -55,6 +64,190 @@ func convertJSONRawMessage(_, to reflect.Type, value any) (any, error) {
 	}
 
 	return json.RawMessage(data), nil
+}
+
+// convertJSONNumber translates json.Number values produced by number-preserving
+// JSON parsing (json.Decoder.UseNumber) so they never leak into decoded results:
+// numeric targets get an exact digit parse (fractional or out-of-range values
+// error, mirroring encoding/json), json.Number targets keep the literal, and
+// every other target — most importantly any/interface{} — sees float64,
+// preserving the pre-json.Number runtime contract. Containers (map[string]any,
+// []any) assigned wholesale into interface{} targets are deep-normalized as
+// copies, because mapstructure does not recurse into interface assignments;
+// the source map is never mutated, so a later json.RawMessage capture of the
+// same data still sees the original literals.
+func convertJSONNumber(from, to reflect.Type, value any) (any, error) {
+	if to == jsonNumberType || to == jsonRawMessageType {
+		return value, nil
+	}
+
+	if from == jsonNumberType {
+		return convertJSONNumberValue(value.(json.Number), to)
+	}
+
+	if to == emptyInterfaceType && (from == mapStringAnyType || from == anySliceType) {
+		normalized, _, err := normalizeJSONNumbers(value)
+
+		return normalized, err
+	}
+
+	return value, nil
+}
+
+// convertJSONNumberValue projects a json.Number onto the decode target with
+// encoding/json-equivalent strictness. Pointer targets pass the number through
+// unchanged: mapstructure re-runs the decode (and this hook) against the
+// pointee type, so the exact-parse rules apply there.
+func convertJSONNumberValue(number json.Number, to reflect.Type) (any, error) {
+	switch to.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		value, err := strconv.ParseInt(number.String(), 10, 64)
+		if err != nil {
+			if errors.Is(err, strconv.ErrRange) {
+				return nil, jsonNumberError(number, to, ErrJSONNumberOverflow)
+			}
+
+			return nil, jsonNumberError(number, to, ErrJSONNumberNotInteger)
+		}
+
+		if reflect.Zero(to).OverflowInt(value) {
+			return nil, jsonNumberError(number, to, ErrJSONNumberOverflow)
+		}
+
+		return value, nil
+
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		value, err := strconv.ParseUint(number.String(), 10, 64)
+		if err != nil {
+			// A negative integer is syntactically valid but does not fit an
+			// unsigned target, so report it as overflow rather than non-integer.
+			if errors.Is(err, strconv.ErrRange) || strings.HasPrefix(number.String(), "-") {
+				return nil, jsonNumberError(number, to, ErrJSONNumberOverflow)
+			}
+
+			return nil, jsonNumberError(number, to, ErrJSONNumberNotInteger)
+		}
+
+		if reflect.Zero(to).OverflowUint(value) {
+			return nil, jsonNumberError(number, to, ErrJSONNumberOverflow)
+		}
+
+		return value, nil
+
+	case reflect.Float32, reflect.Float64:
+		value, err := jsonNumberToFloat64(number)
+		if err != nil {
+			return nil, err
+		}
+
+		if reflect.Zero(to).OverflowFloat(value) {
+			return nil, jsonNumberError(number, to, ErrJSONNumberOverflow)
+		}
+
+		return value, nil
+
+	case reflect.Pointer:
+		return number, nil
+
+	default:
+		// Everything else — interface{} targets and mismatched targets such as
+		// string, bool, or struct — keeps the pre-json.Number contract where
+		// JSON numbers surface as float64: untyped consumers keep receiving
+		// float64, and mismatches fail with the same errors as before.
+		return jsonNumberToFloat64(number)
+	}
+}
+
+// jsonNumberToFloat64 converts a json.Number to float64, mapping range errors
+// to ErrJSONNumberOverflow.
+func jsonNumberToFloat64(number json.Number) (float64, error) {
+	value, err := number.Float64()
+	if err != nil {
+		if errors.Is(err, strconv.ErrRange) {
+			err = ErrJSONNumberOverflow
+		}
+
+		return 0, fmt.Errorf("json number %q: %w", number.String(), err)
+	}
+
+	return value, nil
+}
+
+// jsonNumberError decorates a json.Number conversion sentinel with the source
+// literal and the target type.
+func jsonNumberError(number json.Number, to reflect.Type, sentinel error) error {
+	return fmt.Errorf("json number %q -> %s: %w", number.String(), to, sentinel)
+}
+
+// normalizeJSONNumbers walks JSON-decoded containers (map[string]any, []any)
+// and converts every nested json.Number to float64. The result is
+// copy-on-write: untouched containers are returned as-is, changed ones are
+// cloned so the caller's source data keeps its original values.
+func normalizeJSONNumbers(value any) (converted any, changed bool, err error) {
+	switch v := value.(type) {
+	case json.Number:
+		f, err := jsonNumberToFloat64(v)
+		if err != nil {
+			return nil, false, err
+		}
+
+		return f, true, nil
+
+	case map[string]any:
+		var out map[string]any
+
+		for key, elem := range v {
+			normalized, elemChanged, err := normalizeJSONNumbers(elem)
+			if err != nil {
+				return nil, false, err
+			}
+
+			if !elemChanged {
+				continue
+			}
+
+			if out == nil {
+				out = maps.Clone(v)
+			}
+
+			out[key] = normalized
+		}
+
+		if out == nil {
+			return v, false, nil
+		}
+
+		return out, true, nil
+
+	case []any:
+		var out []any
+
+		for i, elem := range v {
+			normalized, elemChanged, err := normalizeJSONNumbers(elem)
+			if err != nil {
+				return nil, false, err
+			}
+
+			if !elemChanged {
+				continue
+			}
+
+			if out == nil {
+				out = slices.Clone(v)
+			}
+
+			out[i] = normalized
+		}
+
+		if out == nil {
+			return v, false, nil
+		}
+
+		return out, true, nil
+
+	default:
+		return value, false, nil
+	}
 }
 
 // convertFileHeader handles conversion from []*multipart.FileHeader to *multipart.FileHeader.
@@ -169,6 +362,12 @@ func fillSet[T cmp.Ordered, S interface{ Add(T) bool }](rv reflect.Value, out S)
 // would silently overflow, truncate a fractional component, or accept a
 // non-finite float. The returned reflect.Value has type target.
 func convertScalar(src reflect.Value, target reflect.Type) (reflect.Value, error) {
+	// json.Number has Kind String but belongs to the numeric family: parse the
+	// digits exactly instead of allowing a silent string conversion.
+	if src.Type() == jsonNumberType {
+		return convertJSONNumberScalar(json.Number(src.String()), target)
+	}
+
 	targetKind := target.Kind()
 	srcKind := src.Kind()
 
@@ -194,6 +393,24 @@ func convertScalar(src reflect.Value, target reflect.Type) (reflect.Value, error
 	default:
 		return reflect.Value{}, fmt.Errorf("target kind %s: %w", targetKind, ErrCollectionSetUnsupportedTarget)
 	}
+}
+
+// convertJSONNumberScalar converts a json.Number element into a numeric set
+// element type with exact digit parsing; non-numeric element types (for
+// example string) reject numbers, matching the former float64 behavior.
+func convertJSONNumberScalar(number json.Number, target reflect.Type) (reflect.Value, error) {
+	if !isNumericKind(target.Kind()) {
+		return reflect.Value{}, fmt.Errorf("%s -> %s: %w", jsonNumberType, target, ErrCollectionSetIncompatibleKind)
+	}
+
+	converted, err := convertJSONNumberValue(number, target)
+	if err != nil {
+		return reflect.Value{}, err
+	}
+
+	// convertJSONNumberValue already range-checked against target, so the
+	// narrowing conversion below cannot lose information.
+	return reflect.ValueOf(converted).Convert(target), nil
 }
 
 func isNumericKind(k reflect.Kind) bool {

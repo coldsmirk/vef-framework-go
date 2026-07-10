@@ -29,4 +29,11 @@ var (
 	// ErrCollectionSetUnsupportedTarget indicates the target type kind has no
 	// registered conversion strategy.
 	ErrCollectionSetUnsupportedTarget = errors.New("unsupported target kind for collections set")
+
+	// ErrJSONNumberNotInteger indicates a JSON number with a fractional or
+	// exponent form cannot be converted to an integer target.
+	ErrJSONNumberNotInteger = errors.New("non-integer JSON number cannot be converted to integer target")
+	// ErrJSONNumberOverflow indicates a JSON number does not fit the numeric
+	// target type.
+	ErrJSONNumberOverflow = errors.New("JSON number overflows target numeric type")
 )
