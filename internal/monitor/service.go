@@ -165,7 +165,7 @@ func (s *DefaultService) buildDiskSummary(diskInfo *monitor.DiskInfo) *monitor.D
 	)
 
 	for _, part := range diskInfo.Partitions {
-		if s.shouldSkipMountPoint(part.MountPoint) {
+		if s.shouldSkipPartition(part) {
 			continue
 		}
 
@@ -179,7 +179,7 @@ func (s *DefaultService) buildDiskSummary(diskInfo *monitor.DiskInfo) *monitor.D
 		}
 
 		total += part.Total
-		used += part.Used
+		used += partitionUsed(part)
 		partitions++
 	}
 
@@ -194,6 +194,43 @@ func (s *DefaultService) buildDiskSummary(diskInfo *monitor.DiskInfo) *monitor.D
 		UsedPercent: usedPercent,
 		Partitions:  partitions,
 	}
+}
+
+// shouldSkipPartition decides whether a partition contributes to disk totals,
+// combining the mount-point exclusions with device-based rules that mount
+// paths cannot express.
+func (s *DefaultService) shouldSkipPartition(part *monitor.PartitionInfo) bool {
+	if isSnapshotDevice(part.Device, part.FSType) {
+		return true
+	}
+
+	return s.shouldSkipMountPoint(part.MountPoint)
+}
+
+// isSnapshotDevice reports whether the partition is a mounted APFS snapshot
+// (Time Machine local snapshots, update snapshots). Snapshot mounts use the
+// "<snapshot-name>@<device>" source form, appear at unpredictable mount points
+// (e.g. /Volumes/.timemachine/...), and each re-reports the full container
+// size, so they must never contribute to disk totals.
+func isSnapshotDevice(device, fsType string) bool {
+	return fsType == "apfs" && strings.Contains(device, "@")
+}
+
+// partitionUsed returns the space consumed on the partition's underlying
+// storage. On space-sharing filesystems (APFS), statfs reports the whole
+// container as Total and the shared remaining space as Free, while Used covers
+// only the volume's own files — after sibling volumes de-duplicate away, that
+// per-volume Used would drastically undercount (the macOS root snapshot holds
+// ~10GB while the Data volume holds the real data). Total - Free is the
+// container-level consumption and the number that answers "how full is this
+// disk". Other filesystems keep their own Used, which already describes that
+// filesystem alone.
+func partitionUsed(part *monitor.PartitionInfo) uint64 {
+	if part.FSType == "apfs" && part.Total >= part.Free {
+		return part.Total - part.Free
+	}
+
+	return part.Used
 }
 
 func (*DefaultService) buildNetworkSummary(netInfo *monitor.NetworkInfo) *monitor.NetworkSummary {
@@ -238,7 +275,7 @@ func (s *DefaultService) shouldSkipMountPoint(mountPoint string) bool {
 	}
 
 	for _, prefix := range excludedMountPrefixes {
-		if strings.HasPrefix(mountPoint, prefix) {
+		if matchesMountPrefix(mountPoint, prefix) {
 			return true
 		}
 	}
@@ -252,42 +289,57 @@ func (s *DefaultService) shouldSkipMountPoint(mountPoint string) bool {
 	return false
 }
 
+// matchesMountPrefix reports whether mountPoint is the excluded path itself or
+// lives underneath it. Matching on path boundaries means an entry like "/dev/"
+// also excludes the "/dev" mount point itself (devfs on macOS) without falsely
+// matching siblings such as "/devdata".
+func matchesMountPrefix(mountPoint, prefix string) bool {
+	base := strings.TrimSuffix(prefix, "/")
+
+	return mountPoint == base || strings.HasPrefix(mountPoint, base+"/")
+}
+
 var (
 	// pPartitionSuffix strips a trailing "pN" partition from NVMe/eMMC devices
 	// (nvme0n1p2 -> nvme0n1, mmcblk0p1 -> mmcblk0). The nN namespace is part of
 	// the device identity and is preserved, so distinct namespaces such as
 	// nvme0n1 and nvme0n2 are NOT merged into one container.
 	pPartitionSuffix = regexp.MustCompile(`p[0-9]+$`)
-	// apfsSliceSuffix strips an APFS slice from a disk device (disk1s2 -> disk1).
-	apfsSliceSuffix = regexp.MustCompile(`s[0-9]+$`)
-	// wholeDeviceSuffix matches device families whose names legitimately end in a
-	// digit and have no sibling-partition concept; their suffix must never be
-	// stripped, or independent devices (dm-0/dm-1, loop0/loop1, md0/md1) collapse.
-	wholeDeviceSuffix = regexp.MustCompile(`(dm-|loop|md|ram|zram|sr|fd)[0-9]+$`)
-	// digitSuffix strips a trailing partition number from letter-named disks
-	// (sda1 -> sda, vdb2 -> vdb); applied only after the cases above are ruled out.
+	// apfsSliceSuffix strips APFS slice suffixes from a disk device, including
+	// the two-level sealed system snapshot form used by the macOS root volume
+	// since Big Sur (disk3s1s1 -> disk3, disk1s2 -> disk1). Stripping only one
+	// level would leave the root at "disk3s1" while its Data sibling resolves
+	// to "disk3", counting the shared container twice.
+	apfsSliceSuffix = regexp.MustCompile(`(s[0-9]+)+$`)
+	// letterDiskPartition matches the classic letter-named disk families whose
+	// trailing digits are partition numbers (sda1, vdb2, xvda3). Only these
+	// families get their digits stripped: for every other name a trailing digit
+	// is part of the device identity (dm-1, loop0, rbd1, mapper/vg-lv1) and
+	// stripping it would merge independent devices.
+	letterDiskPartition = regexp.MustCompile(`(?:^|/)(?:[shv]|xv)d[a-z]+[0-9]+$`)
+	// digitSuffix strips the partition number off a letter-named disk; applied
+	// only after letterDiskPartition confirmed the family.
 	digitSuffix = regexp.MustCompile(`[0-9]+$`)
 )
 
 // getDeviceContainer extracts the base container device name from a partition
 // device so sibling partitions of one physical disk de-duplicate to a single
-// container, WITHOUT merging genuinely independent devices. Device families are
-// handled separately because a single trailing-digit rule cannot tell an NVMe
-// namespace (nvme0n2) or an LVM volume (dm-1) from a partition (sda2).
+// container, WITHOUT merging genuinely independent devices. Suffix stripping
+// is allowlist-based per device family, and an unrecognized device is returned
+// verbatim: wrongly merging two real disks silently drops capacity, while not
+// merging merely risks counting a shared container twice.
 func getDeviceContainer(device string) string {
-	if device == "" {
-		return ""
-	}
-
 	switch {
+	case device == "":
+		return ""
 	case strings.Contains(device, "nvme"), strings.Contains(device, "mmcblk"):
 		return pPartitionSuffix.ReplaceAllString(device, "")
 	case strings.Contains(device, "disk"):
 		return apfsSliceSuffix.ReplaceAllString(device, "")
-	case wholeDeviceSuffix.MatchString(device):
-		return device
-	default:
+	case letterDiskPartition.MatchString(device):
 		return digitSuffix.ReplaceAllString(device, "")
+	default:
+		return device
 	}
 }
 
