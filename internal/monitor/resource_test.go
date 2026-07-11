@@ -495,12 +495,12 @@ func (suite *MonitorResourceErrorMappingSuite) TestNotReadyMapping() {
 
 	suite.Run("CPU", func() {
 		suite.Equal(monitor.ErrCodeNotReady, suite.requestCode("get_cpu"),
-			"get_cpu should map a failure to the not-ready code")
+			"The get_cpu operation should map a failure to the not-ready code")
 	})
 
 	suite.Run("Process", func() {
 		suite.Equal(monitor.ErrCodeNotReady, suite.requestCode("get_process"),
-			"get_process should map a failure to the not-ready code")
+			"The get_process operation should map a failure to the not-ready code")
 	})
 }
 
