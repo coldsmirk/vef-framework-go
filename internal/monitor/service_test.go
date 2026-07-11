@@ -119,7 +119,16 @@ func (suite *MonitorServiceTestSuite) TestCPU() {
 		suite.Greater(cpuInfo.LogicalCores, 0, "Should have at least 1 logical core")
 		suite.GreaterOrEqual(cpuInfo.LogicalCores, cpuInfo.PhysicalCores, "Logical cores should be >= physical cores")
 
-		suite.NotNil(cpuInfo.UsagePercent, "Per-core usage should be present")
+		// Under an active cgroup CPU quota (running these tests inside a
+		// CPU-limited container) the per-core breakdown is intentionally
+		// dropped and TotalPercent is quota-relative; on an unlimited host
+		// the per-core view must be present.
+		if cpuInfo.UsagePercent == nil {
+			suite.LessOrEqual(cpuInfo.TotalPercent, 100.0, "Quota-relative CPU percent is capped at 100")
+		} else {
+			suite.NotEmpty(cpuInfo.UsagePercent, "Per-core usage should have entries on an unlimited host")
+		}
+
 		suite.GreaterOrEqual(cpuInfo.TotalPercent, 0.0, "Total CPU percent should be >= 0")
 		suite.LessOrEqual(cpuInfo.TotalPercent, 100.0*float64(cpuInfo.LogicalCores), "Total CPU percent should be reasonable")
 	})

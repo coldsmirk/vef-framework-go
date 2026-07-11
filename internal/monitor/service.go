@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"errors"
+	"math"
 	"os"
 	"regexp"
 	"strings"
@@ -23,9 +24,17 @@ import (
 )
 
 // DefaultService implements monitor.Service with background CPU and process sampling.
+//
+// CPU and memory metrics are container-aware: when the process runs under a
+// cgroup (v2 or v1) that actually limits the resource, the limit and the
+// cgroup's own usage replace the host-wide numbers; without a limit the host
+// view is reported unchanged. Process and network metrics are whatever procfs
+// exposes — the host's when reachable (host PID/network namespace), otherwise
+// the container's own namespace.
 type DefaultService struct {
 	buildInfo *monitor.BuildInfo
 	config    config.MonitorConfig
+	cgroups   *cgroupReader
 
 	cpuCache     atomic.Value // stores *monitor.CPUInfo
 	processCache atomic.Value // stores *monitor.ProcessInfo
@@ -41,6 +50,7 @@ func NewService(cfg *config.MonitorConfig, buildInfo *monitor.BuildInfo) monitor
 	return &DefaultService{
 		buildInfo: resolveBuildInfo(buildInfo),
 		config:    resolveConfig(cfg),
+		cgroups:   newCgroupReader(),
 	}
 }
 
@@ -353,15 +363,20 @@ func (s *DefaultService) CPU(context.Context) (*monitor.CPUInfo, error) {
 	return cached.(*monitor.CPUInfo), nil
 }
 
-// Memory returns memory usage information.
-func (*DefaultService) Memory(ctx context.Context) (*monitor.MemoryInfo, error) {
+// Memory returns memory usage information. Inside a memory-limited container
+// the headline figures describe the container's limit and working set rather
+// than the host's /proc/meminfo, which is not namespaced.
+func (s *DefaultService) Memory(ctx context.Context) (*monitor.MemoryInfo, error) {
 	vMem, err := mem.VirtualMemoryWithContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	virtual := convertVirtualMemory(vMem)
+	s.applyCgroupMemoryLimit(virtual)
+
 	result := &monitor.MemoryInfo{
-		Virtual: convertVirtualMemory(vMem),
+		Virtual: virtual,
 	}
 
 	if swapMem, err := mem.SwapMemoryWithContext(ctx); err == nil {
@@ -369,6 +384,34 @@ func (*DefaultService) Memory(ctx context.Context) (*monitor.MemoryInfo, error) 
 	}
 
 	return result, nil
+}
+
+// applyCgroupMemoryLimit overrides the headline memory figures (Total, Used,
+// Available, Free, UsedPercent) with the container's cgroup limit and
+// working-set usage when a real limit is set: inside a limited container the
+// host numbers describe the node, not what this process can allocate before
+// the OOM killer intervenes. Detail fields (buffers, cache breakdowns) keep
+// their host meaning. A limit at or above the host total constrains nothing
+// and is ignored, as is a limit whose usage counter cannot be read — a mixed
+// host/container view would be worse than either.
+func (s *DefaultService) applyCgroupMemoryLimit(virtual *monitor.VirtualMemory) {
+	limit, ok := s.cgroups.memoryLimit()
+	if !ok || (virtual.Total > 0 && limit >= virtual.Total) {
+		return
+	}
+
+	used, ok := s.cgroups.memoryUsage()
+	if !ok {
+		return
+	}
+
+	used = min(used, limit)
+
+	virtual.Total = limit
+	virtual.Used = used
+	virtual.Available = limit - used
+	virtual.Free = limit - used
+	virtual.UsedPercent = float64(used) / float64(limit) * 100
 }
 
 func convertVirtualMemory(v *mem.VirtualMemoryStat) *monitor.VirtualMemory {
@@ -685,6 +728,21 @@ func (s *DefaultService) collectCPUInfo(ctx context.Context) (*monitor.CPUInfo, 
 	cpuInfo.PhysicalCores, _ = cpu.CountsWithContext(ctx, false)
 	cpuInfo.LogicalCores, _ = cpu.CountsWithContext(ctx, true)
 
+	quota, limited := s.cgroups.cpuQuota()
+
+	var (
+		usageBefore   time.Duration
+		usageBeforeOK bool
+		sampleStart   time.Time
+	)
+
+	if limited {
+		usageBefore, usageBeforeOK = s.cgroups.cpuUsage()
+		sampleStart = time.Now()
+	}
+
+	// PercentWithContext with a positive duration sleeps the sampling window,
+	// which doubles as the measurement window for the cgroup usage delta.
 	if perCorePercent, err := cpu.PercentWithContext(ctx, s.config.SampleDuration, true); err == nil {
 		cpuInfo.UsagePercent = perCorePercent
 	}
@@ -693,7 +751,44 @@ func (s *DefaultService) collectCPUInfo(ctx context.Context) (*monitor.CPUInfo, 
 		cpuInfo.TotalPercent = totalPercent[0]
 	}
 
+	if limited {
+		s.applyCgroupCPUQuota(&cpuInfo, quota, usageBefore, usageBeforeOK, sampleStart)
+	}
+
 	return &cpuInfo, nil
+}
+
+// applyCgroupCPUQuota replaces the host-wide CPU view with the container's:
+// core counts become the quota ceiling and TotalPercent becomes the share of
+// the quota consumed over the sampling window (100 = at the limit). The host
+// per-core breakdown is dropped — under a quota there is no per-core
+// dimension. When the cgroup usage counter cannot be read, the host
+// percentages are kept as the best remaining signal.
+func (s *DefaultService) applyCgroupCPUQuota(
+	cpuInfo *monitor.CPUInfo,
+	quota float64,
+	usageBefore time.Duration,
+	usageBeforeOK bool,
+	sampleStart time.Time,
+) {
+	cores := max(int(math.Ceil(quota)), 1)
+	cpuInfo.PhysicalCores = cores
+	cpuInfo.LogicalCores = cores
+
+	if !usageBeforeOK {
+		return
+	}
+
+	usageAfter, ok := s.cgroups.cpuUsage()
+	elapsed := time.Since(sampleStart)
+
+	if !ok || usageAfter < usageBefore || elapsed <= 0 {
+		return
+	}
+
+	percent := (usageAfter - usageBefore).Seconds() / (elapsed.Seconds() * quota) * 100
+	cpuInfo.TotalPercent = min(percent, 100)
+	cpuInfo.UsagePercent = nil
 }
 
 func (s *DefaultService) sampleProcess(ctx context.Context) {
