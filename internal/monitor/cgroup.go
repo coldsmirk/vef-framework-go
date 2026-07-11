@@ -2,8 +2,8 @@ package monitor
 
 import (
 	"os"
+	"path"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -45,76 +45,62 @@ func (r *cgroupReader) path(parts ...string) string {
 	return filepath.Join(append([]string{r.root, "/"}, parts...)...)
 }
 
-func (r *cgroupReader) version() cgroupVersion {
-	if _, err := os.Stat(r.path("sys/fs/cgroup/cgroup.controllers")); err == nil {
-		return cgroupV2
-	}
-
-	if _, err := os.Stat(r.path("sys/fs/cgroup/memory")); err == nil {
-		return cgroupV1
-	}
-
-	return cgroupNone
+type cgroupLocation struct {
+	version    cgroupVersion
+	dir        string
+	mountPoint string
 }
 
-// cpuQuota returns the effective CPU limit in cores (0.5 = half a core).
-// Under v2 the tightest quota along the ancestor chain wins, so a limit set on
-// a pod cgroup or systemd slice is honored even when the leaf says "max".
-func (r *cgroupReader) cpuQuota() (float64, bool) {
-	switch r.version() {
-	case cgroupV2:
-		var best float64
+func (l cgroupLocation) ancestors() []string {
+	var dirs []string
 
-		for _, dir := range r.v2Dirs() {
-			quota, ok := parseV2CPUMax(readFirstLine(filepath.Join(dir, "cpu.max")))
-			if ok && (best == 0 || quota < best) {
-				best = quota
-			}
+	for dir := l.dir; ; dir = filepath.Dir(dir) {
+		dirs = append(dirs, dir)
+		if dir == l.mountPoint {
+			return dirs
 		}
 
-		return best, best > 0
-
-	case cgroupV1:
-		dir, ok := r.v1Dir("cpu")
-		if !ok {
-			return 0, false
+		parent := filepath.Dir(dir)
+		if parent == dir || !pathWithin(parent, l.mountPoint) {
+			return dirs
 		}
-
-		quota, quotaOK := readInt(filepath.Join(dir, "cpu.cfs_quota_us"))
-		period, periodOK := readInt(filepath.Join(dir, "cpu.cfs_period_us"))
-		// A quota of -1 means unlimited.
-		if !quotaOK || !periodOK || quota <= 0 || period <= 0 {
-			return 0, false
-		}
-
-		return float64(quota) / float64(period), true
-
-	default:
-		return 0, false
 	}
 }
 
-// cpuUsage returns the cumulative CPU time consumed by this cgroup, the
-// counterpart to sampling /proc/stat on the host: two reads across a window
-// yield the container's own CPU consumption.
-func (r *cgroupReader) cpuUsage() (time.Duration, bool) {
-	switch r.version() {
+type cgroupLayout struct {
+	v2 *cgroupLocation
+	v1 map[string]cgroupLocation
+}
+
+type cgroupMount struct {
+	version     cgroupVersion
+	root        string
+	mountPoint  string
+	controllers []string
+}
+
+// cgroupCPUScope fixes the usage counter selected alongside the effective CPU
+// capacity. Reusing the scope for both ends of a sample prevents a runtime
+// cgroup move or mount-layout change from mixing unrelated counters.
+type cgroupCPUScope struct {
+	capacity  float64
+	usagePath string
+	version   cgroupVersion
+}
+
+func (s cgroupCPUScope) sample() (time.Duration, bool) {
+	switch s.version {
 	case cgroupV2:
-		usec, ok := readStatField(filepath.Join(r.v2Dirs()[0], "cpu.stat"), "usage_usec")
-		if !ok {
+		usec, ok := readStatField(s.usagePath, "usage_usec")
+		if !ok || usec > maxDurationNanos/uint64(time.Microsecond) {
 			return 0, false
 		}
 
-		return time.Duration(usec) * time.Microsecond, true
+		return time.Duration(usec * uint64(time.Microsecond)), true
 
 	case cgroupV1:
-		dir, ok := r.v1Dir("cpuacct")
-		if !ok {
-			return 0, false
-		}
-
-		nanos, ok := readInt(filepath.Join(dir, "cpuacct.usage"))
-		if !ok {
+		nanos, ok := readUint(s.usagePath)
+		if !ok || nanos > maxDurationNanos {
 			return 0, false
 		}
 
@@ -125,165 +111,428 @@ func (r *cgroupReader) cpuUsage() (time.Duration, bool) {
 	}
 }
 
-// memoryLimit returns the effective memory limit in bytes. Under v2 the
-// tightest limit along the ancestor chain wins.
-func (r *cgroupReader) memoryLimit() (uint64, bool) {
-	switch r.version() {
-	case cgroupV2:
-		var best uint64
+const maxDurationNanos = uint64(1<<63 - 1)
 
-		for _, dir := range r.v2Dirs() {
-			line := readFirstLine(filepath.Join(dir, "memory.max"))
-			if line == "" || line == "max" {
+// memorySample pairs the tightest effective limit below hostTotal with the
+// usage of the same cgroup. This matters when a pod or systemd slice limit is
+// shared by multiple leaf cgroups: leaf usage cannot describe parent headroom.
+func (r *cgroupReader) memorySample(hostTotal uint64) (limit, used uint64, ok bool) {
+	scope, ok := findMemoryLimitScope(r.layout())
+	if !ok || scope.limit == 0 || (hostTotal > 0 && scope.limit >= hostTotal) {
+		return 0, 0, false
+	}
+
+	used, ok = memoryUsageAt(scope)
+	if !ok {
+		return 0, 0, false
+	}
+
+	return scope.limit, min(used, scope.limit), true
+}
+
+// cpuScope resolves the effective CPU capacity and fixes its usage path for a
+// before/after sample. limited is false when cgroup constraints do not reduce
+// hostLogical; the returned capacity still records the host ceiling.
+func (r *cgroupReader) cpuScope(hostLogical int) (scope cgroupCPUScope, limited bool) {
+	layout := r.layout()
+
+	if hostLogical > 0 {
+		scope.capacity = float64(hostLogical)
+	}
+
+	if quota, ok := cpuLimit(layout); ok && (scope.capacity == 0 || quota.capacity < scope.capacity) {
+		scope = quota
+		limited = true
+	}
+
+	if cpuset, ok := cpuSetLimit(layout); ok && (scope.capacity == 0 || cpuset.capacity < scope.capacity) {
+		scope = cpuset
+		limited = true
+	}
+
+	return scope, limited
+}
+
+type memoryLimitScope struct {
+	limit   uint64
+	dir     string
+	version cgroupVersion
+}
+
+func findMemoryLimitScope(layout cgroupLayout) (memoryLimitScope, bool) {
+	var (
+		best  memoryLimitScope
+		found bool
+	)
+
+	consider := func(location cgroupLocation) {
+		// Equal outer limits share the same ceiling with more descendants, so
+		// their aggregate usage is the effective headroom signal.
+		for _, dir := range location.ancestors() {
+			limit, ok := readMemoryLimit(location.version, dir)
+			if ok && (!found || limit <= best.limit) {
+				best = memoryLimitScope{limit: limit, dir: dir, version: location.version}
+				found = true
+			}
+		}
+	}
+
+	if layout.v2 != nil {
+		consider(*layout.v2)
+	}
+
+	if location, ok := layout.v1["memory"]; ok {
+		consider(location)
+	}
+
+	return best, found
+}
+
+func readMemoryLimit(version cgroupVersion, dir string) (uint64, bool) {
+	var file string
+	if version == cgroupV2 {
+		file = "memory.max"
+	} else {
+		file = "memory.limit_in_bytes"
+	}
+
+	line := readFirstLine(filepath.Join(dir, file))
+	if line == "" || line == "max" {
+		return 0, false
+	}
+
+	limit, err := strconv.ParseUint(line, 10, 64)
+	if err != nil || limit == 0 || (version == cgroupV1 && limit >= v1UnlimitedThreshold) {
+		return 0, false
+	}
+
+	return limit, true
+}
+
+func memoryUsageAt(scope memoryLimitScope) (uint64, bool) {
+	if scope.version == cgroupV2 {
+		current, ok := readUint(filepath.Join(scope.dir, "memory.current"))
+		if !ok {
+			return 0, false
+		}
+
+		return subtractInactiveFile(current, filepath.Join(scope.dir, "memory.stat"), "inactive_file"), true
+	}
+
+	usage, ok := readUint(filepath.Join(scope.dir, "memory.usage_in_bytes"))
+	if !ok {
+		return 0, false
+	}
+
+	return subtractInactiveFile(usage, filepath.Join(scope.dir, "memory.stat"), "total_inactive_file"), true
+}
+
+func cpuLimit(layout cgroupLayout) (cgroupCPUScope, bool) {
+	// On equal quotas, the outer scope includes sibling consumption and
+	// therefore describes the shared budget that can throttle first.
+	var (
+		best  cgroupCPUScope
+		found bool
+	)
+
+	if layout.v2 != nil {
+		for _, dir := range layout.v2.ancestors() {
+			quota, ok := parseV2CPUMax(readFirstLine(filepath.Join(dir, "cpu.max")))
+			if ok && (!found || quota <= best.capacity) {
+				best = cgroupCPUScope{
+					capacity:  quota,
+					usagePath: filepath.Join(dir, "cpu.stat"),
+					version:   cgroupV2,
+				}
+				found = true
+			}
+		}
+	}
+
+	cpuLocation, cpuOK := layout.v1["cpu"]
+
+	acctLocation, acctOK := layout.v1["cpuacct"]
+	if cpuOK {
+		for _, dir := range cpuLocation.ancestors() {
+			quota, quotaOK := readInt(filepath.Join(dir, "cpu.cfs_quota_us"))
+
+			period, periodOK := readInt(filepath.Join(dir, "cpu.cfs_period_us"))
+			if !quotaOK || !periodOK || quota <= 0 || period <= 0 {
 				continue
 			}
 
-			limit, err := strconv.ParseUint(line, 10, 64)
-			if err != nil || limit == 0 {
+			capacity := float64(quota) / float64(period)
+			if found && capacity > best.capacity {
 				continue
 			}
 
-			if best == 0 || limit < best {
-				best = limit
+			usagePath := ""
+			if acctOK && acctLocation.mountPoint == cpuLocation.mountPoint && acctLocation.dir == cpuLocation.dir {
+				usagePath = filepath.Join(dir, "cpuacct.usage")
+			}
+
+			best = cgroupCPUScope{capacity: capacity, usagePath: usagePath, version: cgroupV1}
+			found = true
+		}
+	}
+
+	return best, found
+}
+
+func cpuSetLimit(layout cgroupLayout) (cgroupCPUScope, bool) {
+	if layout.v2 != nil {
+		if count, ok := readCPUSet(*layout.v2, "cpuset.cpus.effective"); ok {
+			return cgroupCPUScope{
+				capacity:  float64(count),
+				usagePath: filepath.Join(layout.v2.dir, "cpu.stat"),
+				version:   cgroupV2,
+			}, true
+		}
+	}
+
+	if cpuset, ok := layout.v1["cpuset"]; ok {
+		if count, ok := readCPUSet(cpuset, "cpuset.effective_cpus"); ok {
+			scope := cgroupCPUScope{capacity: float64(count), version: cgroupV1}
+
+			if acct, exists := layout.v1["cpuacct"]; exists &&
+				acct.mountPoint == cpuset.mountPoint && acct.dir == cpuset.dir {
+				scope.usagePath = filepath.Join(cpuset.dir, "cpuacct.usage")
+			}
+
+			return scope, true
+		}
+	}
+
+	return cgroupCPUScope{}, false
+}
+
+func readCPUSet(location cgroupLocation, effectiveFile string) (int, bool) {
+	if count, ok := parseCPUSet(readFirstLine(filepath.Join(location.dir, effectiveFile))); ok {
+		return count, true
+	}
+
+	for _, dir := range location.ancestors() {
+		if count, ok := parseCPUSet(readFirstLine(filepath.Join(dir, "cpuset.cpus"))); ok {
+			return count, true
+		}
+	}
+
+	return 0, false
+}
+
+func parseCPUSet(value string) (int, bool) {
+	if value == "" {
+		return 0, false
+	}
+
+	var (
+		count   int
+		lastEnd = -1
+	)
+
+	for part := range strings.SplitSeq(value, ",") {
+		startField, endField, hasRange := strings.Cut(strings.TrimSpace(part), "-")
+
+		start, err := strconv.Atoi(startField)
+		if err != nil || start < 0 {
+			return 0, false
+		}
+
+		end := start
+		if hasRange {
+			end, err = strconv.Atoi(endField)
+			if err != nil || end < start {
+				return 0, false
 			}
 		}
 
-		return best, best > 0
-
-	case cgroupV1:
-		dir, ok := r.v1Dir("memory")
-		if !ok {
+		maxInt := int(^uint(0) >> 1)
+		if start <= lastEnd || end-start > maxInt-count-1 {
 			return 0, false
 		}
 
-		limit, ok := readUint(filepath.Join(dir, "memory.limit_in_bytes"))
-		if !ok || limit == 0 || limit >= v1UnlimitedThreshold {
-			return 0, false
-		}
-
-		return limit, true
-
-	default:
-		return 0, false
+		count += end - start + 1
+		lastEnd = end
 	}
+
+	return count, count > 0
 }
 
-// memoryUsage returns the cgroup's working-set memory: current usage minus
-// inactive file cache, mirroring what container runtimes report and what the
-// OOM killer pressures. Raw usage would count reclaimable page cache as used
-// and make an I/O-heavy container look permanently full.
-func (r *cgroupReader) memoryUsage() (uint64, bool) {
-	switch r.version() {
-	case cgroupV2:
-		leaf := r.v2Dirs()[0]
+func (r *cgroupReader) layout() cgroupLayout {
+	paths := readSelfCgroupPaths(r.path("proc/self/cgroup"))
+	layout := cgroupLayout{v1: make(map[string]cgroupLocation)}
 
-		current, ok := readUint(filepath.Join(leaf, "memory.current"))
-		if !ok {
-			return 0, false
+	for _, mount := range readCgroupMounts(r.path("proc/self/mountinfo")) {
+		if mount.version == cgroupV2 {
+			if layout.v2 != nil {
+				continue
+			}
+
+			if location, ok := r.translateLocation(mount, paths[""]); ok {
+				layout.v2 = &location
+			}
+
+			continue
 		}
 
-		return subtractInactiveFile(current, filepath.Join(leaf, "memory.stat"), "inactive_file"), true
+		for _, controller := range mount.controllers {
+			if _, exists := layout.v1[controller]; exists {
+				continue
+			}
 
-	case cgroupV1:
-		dir, ok := r.v1Dir("memory")
-		if !ok {
-			return 0, false
+			if location, ok := r.translateLocation(mount, paths[controller]); ok {
+				layout.v1[controller] = location
+			}
 		}
-
-		usage, ok := readUint(filepath.Join(dir, "memory.usage_in_bytes"))
-		if !ok {
-			return 0, false
-		}
-
-		return subtractInactiveFile(usage, filepath.Join(dir, "memory.stat"), "total_inactive_file"), true
-
-	default:
-		return 0, false
 	}
+
+	return layout
 }
 
-// v2Dirs returns the cgroup directories to consult, from the process's own
-// cgroup up to the hierarchy root. When the leaf path from /proc/self/cgroup
-// is not visible in this mount namespace (a host-namespace path inside a
-// container whose runtime mounted only its own subtree), the mount root is
-// the container's cgroup and is returned alone.
-func (r *cgroupReader) v2Dirs() []string {
-	mountRoot := r.path("sys/fs/cgroup")
-
-	rel := r.selfCgroupPath("")
-	if rel == "" || rel == "/" {
-		return []string{mountRoot}
+func (r *cgroupReader) translateLocation(mount cgroupMount, cgroupPath string) (cgroupLocation, bool) {
+	if cgroupPath == "" {
+		return cgroupLocation{}, false
 	}
 
-	leaf := filepath.Join(mountRoot, rel)
-	if !strings.HasPrefix(leaf, mountRoot+string(filepath.Separator)) {
-		return []string{mountRoot}
+	rel, ok := relativeCgroupPath(mount.root, cgroupPath)
+	if !ok {
+		return cgroupLocation{}, false
 	}
 
-	if _, err := os.Stat(leaf); err != nil {
-		return []string{mountRoot}
+	mountPoint := r.rootedPath(mount.mountPoint)
+
+	dir := mountPoint
+	if rel != "" {
+		dir = filepath.Join(mountPoint, filepath.FromSlash(rel))
 	}
 
-	var dirs []string
-	for dir := leaf; ; dir = filepath.Dir(dir) {
-		dirs = append(dirs, dir)
-		if dir == mountRoot {
-			return dirs
-		}
+	if !pathWithin(dir, mountPoint) {
+		return cgroupLocation{}, false
 	}
+
+	if _, err := os.Stat(dir); err != nil {
+		return cgroupLocation{}, false
+	}
+
+	return cgroupLocation{version: mount.version, dir: dir, mountPoint: mountPoint}, true
 }
 
-// v1Dir resolves the directory of a v1 controller for this process: the
-// controller mount joined with the process's cgroup path, falling back to the
-// mount root when that path is not visible in this mount namespace (the
-// common case inside a container, where the runtime mounts the container's
-// own subtree at the controller root).
-func (r *cgroupReader) v1Dir(controller string) (string, bool) {
-	mount := r.path("sys/fs/cgroup", controller)
-	if _, err := os.Stat(mount); err != nil {
+func (r *cgroupReader) rootedPath(absolute string) string {
+	if r.root == "" {
+		return filepath.FromSlash(absolute)
+	}
+
+	return filepath.Join(r.root, filepath.FromSlash(strings.TrimPrefix(absolute, "/")))
+}
+
+func relativeCgroupPath(mountRoot, cgroupPath string) (string, bool) {
+	mountRoot = path.Clean(mountRoot)
+	cgroupPath = path.Clean(cgroupPath)
+
+	// A cgroup namespace reports its own root as "/", regardless of the
+	// hierarchy path represented by the mount root.
+	if cgroupPath == "/" || cgroupPath == mountRoot {
+		return "", true
+	}
+
+	if mountRoot == "/" {
+		return strings.TrimPrefix(cgroupPath, "/"), true
+	}
+
+	prefix := strings.TrimSuffix(mountRoot, "/") + "/"
+	if !strings.HasPrefix(cgroupPath, prefix) {
 		return "", false
 	}
 
-	rel := r.selfCgroupPath(controller)
-	if rel != "" && rel != "/" {
-		if dir := filepath.Join(mount, rel); strings.HasPrefix(dir, mount+string(filepath.Separator)) {
-			if _, err := os.Stat(dir); err == nil {
-				return dir, true
-			}
-		}
-	}
-
-	return mount, true
+	return strings.TrimPrefix(cgroupPath, prefix), true
 }
 
-// selfCgroupPath returns this process's cgroup path for the given v1
-// controller, or for the v2 unified hierarchy when controller is empty.
-func (r *cgroupReader) selfCgroupPath(controller string) string {
-	data, err := os.ReadFile(r.path("proc/self/cgroup"))
+func pathWithin(candidate, root string) bool {
+	return candidate == root || strings.HasPrefix(candidate, root+string(filepath.Separator))
+}
+
+func readSelfCgroupPaths(filename string) map[string]string {
+	data, err := os.ReadFile(filename)
 	if err != nil {
-		return ""
+		return nil
 	}
 
+	paths := make(map[string]string)
 	for line := range strings.Lines(string(data)) {
 		fields := strings.SplitN(strings.TrimSpace(line), ":", 3)
 		if len(fields) != 3 {
 			continue
 		}
 
-		if controller == "" {
-			if fields[0] == "0" && fields[1] == "" {
-				return fields[2]
-			}
+		if fields[0] == "0" && fields[1] == "" {
+			paths[""] = fields[2]
 
 			continue
 		}
 
-		if slices.Contains(strings.Split(fields[1], ","), controller) {
-			return fields[2]
+		for controller := range strings.SplitSeq(fields[1], ",") {
+			if controller != "" {
+				paths[controller] = fields[2]
+			}
 		}
 	}
 
-	return ""
+	return paths
+}
+
+func readCgroupMounts(filename string) []cgroupMount {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil
+	}
+
+	var mounts []cgroupMount
+	for line := range strings.Lines(string(data)) {
+		fields := strings.Fields(line)
+
+		separator := -1
+		for i, field := range fields {
+			if field == "-" {
+				separator = i
+
+				break
+			}
+		}
+
+		if separator < 6 || len(fields) < separator+4 {
+			continue
+		}
+
+		mount := cgroupMount{
+			root:       unescapeMountInfoField(fields[3]),
+			mountPoint: unescapeMountInfoField(fields[4]),
+		}
+
+		switch fields[separator+1] {
+		case "cgroup2":
+			mount.version = cgroupV2
+		case "cgroup":
+			mount.version = cgroupV1
+			for option := range strings.SplitSeq(fields[separator+3], ",") {
+				if option != "" && option != "rw" && option != "ro" && !strings.Contains(option, "=") {
+					mount.controllers = append(mount.controllers, option)
+				}
+			}
+
+		default:
+			continue
+		}
+
+		mounts = append(mounts, mount)
+	}
+
+	return mounts
+}
+
+func unescapeMountInfoField(value string) string {
+	replacer := strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`)
+
+	return replacer.Replace(value)
 }
 
 // parseV2CPUMax parses a cpu.max line ("<quota> <period>" in microseconds, or
@@ -313,8 +562,8 @@ func subtractInactiveFile(usage uint64, statPath, field string) uint64 {
 		return usage
 	}
 
-	if cached := uint64(inactive); cached < usage {
-		return usage - cached
+	if inactive < usage {
+		return usage - inactive
 	}
 
 	return 0
@@ -353,7 +602,7 @@ func readUint(path string) (uint64, bool) {
 
 // readStatField extracts a named numeric field from a flat "name value" stat
 // file such as cpu.stat or memory.stat.
-func readStatField(path, field string) (int64, bool) {
+func readStatField(path, field string) (uint64, bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, false
@@ -365,7 +614,7 @@ func readStatField(path, field string) (int64, bool) {
 			continue
 		}
 
-		value, err := strconv.ParseInt(strings.TrimSpace(valueField), 10, 64)
+		value, err := strconv.ParseUint(strings.TrimSpace(valueField), 10, 64)
 		if err != nil {
 			return 0, false
 		}

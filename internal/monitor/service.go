@@ -3,7 +3,6 @@ package monitor
 import (
 	"context"
 	"errors"
-	"math"
 	"os"
 	"runtime"
 	"sync"
@@ -118,9 +117,10 @@ func (s *DefaultService) Overview(ctx context.Context) (*monitor.SystemOverview,
 		logger.Warnf("Overview: failed to collect CPU info: %v", err)
 	} else {
 		overview.CPU = &monitor.CPUSummary{
-			PhysicalCores: cpuInfo.PhysicalCores,
-			LogicalCores:  cpuInfo.LogicalCores,
-			UsagePercent:  cpuInfo.TotalPercent,
+			PhysicalCores:  cpuInfo.PhysicalCores,
+			LogicalCores:   cpuInfo.LogicalCores,
+			UsagePercent:   cpuInfo.TotalPercent,
+			EffectiveCores: cpuInfo.EffectiveCores,
 		}
 	}
 
@@ -261,17 +261,10 @@ func (s *DefaultService) Memory(ctx context.Context) (*monitor.MemoryInfo, error
 // and is ignored, as is a limit whose usage counter cannot be read — a mixed
 // host/container view would be worse than either.
 func (s *DefaultService) applyCgroupMemoryLimit(virtual *monitor.VirtualMemory) {
-	limit, ok := s.cgroups.memoryLimit()
-	if !ok || (virtual.Total > 0 && limit >= virtual.Total) {
-		return
-	}
-
-	used, ok := s.cgroups.memoryUsage()
+	limit, used, ok := s.cgroups.memorySample(virtual.Total)
 	if !ok {
 		return
 	}
-
-	used = min(used, limit)
 
 	virtual.Total = limit
 	virtual.Used = used
@@ -613,8 +606,9 @@ func (s *DefaultService) collectCPUInfo(ctx context.Context) (*monitor.CPUInfo, 
 
 	cpuInfo.PhysicalCores, _ = cpu.CountsWithContext(ctx, false)
 	cpuInfo.LogicalCores, _ = cpu.CountsWithContext(ctx, true)
+	cpuInfo.EffectiveCores = float64(cpuInfo.LogicalCores)
 
-	quota, limited := s.cgroups.cpuQuota()
+	scope, limited := s.cgroups.cpuScope(cpuInfo.LogicalCores)
 
 	var (
 		usageBefore   time.Duration
@@ -623,7 +617,7 @@ func (s *DefaultService) collectCPUInfo(ctx context.Context) (*monitor.CPUInfo, 
 	)
 
 	if limited {
-		usageBefore, usageBeforeOK = s.cgroups.cpuUsage()
+		usageBefore, usageBeforeOK = scope.sample()
 		sampleStart = time.Now()
 	}
 
@@ -638,7 +632,7 @@ func (s *DefaultService) collectCPUInfo(ctx context.Context) (*monitor.CPUInfo, 
 	}
 
 	if limited {
-		s.applyCgroupCPUQuota(&cpuInfo, quota, usageBefore, usageBeforeOK, sampleStart)
+		s.applyCgroupCPUScope(&cpuInfo, scope, usageBefore, usageBeforeOK, sampleStart)
 	}
 
 	return &cpuInfo, nil
@@ -659,35 +653,30 @@ func meanPercent(perCore []float64) float64 {
 	return sum / float64(len(perCore))
 }
 
-// applyCgroupCPUQuota replaces the host-wide CPU view with the container's:
-// core counts become the quota ceiling and TotalPercent becomes the share of
-// the quota consumed over the sampling window (100 = at the limit). The host
-// per-core breakdown is dropped — under a quota there is no per-core
-// dimension. When the cgroup usage counter cannot be read, the host
-// percentages are kept as the best remaining signal.
-func (s *DefaultService) applyCgroupCPUQuota(
+// applyCgroupCPUScope replaces host utilization with the share of the effective
+// cgroup CPU capacity consumed over the sample window. Host topology remains
+// intact; EffectiveCores carries the quota/cpuset capacity. An incomplete
+// cgroup sample leaves the entire host view unchanged.
+func (*DefaultService) applyCgroupCPUScope(
 	cpuInfo *monitor.CPUInfo,
-	quota float64,
+	scope cgroupCPUScope,
 	usageBefore time.Duration,
 	usageBeforeOK bool,
 	sampleStart time.Time,
 ) {
-	cores := max(int(math.Ceil(quota)), 1)
-	cpuInfo.PhysicalCores = cores
-	cpuInfo.LogicalCores = cores
-
 	if !usageBeforeOK {
 		return
 	}
 
-	usageAfter, ok := s.cgroups.cpuUsage()
+	usageAfter, ok := scope.sample()
 	elapsed := time.Since(sampleStart)
 
-	if !ok || usageAfter < usageBefore || elapsed <= 0 {
+	if !ok || usageAfter < usageBefore || elapsed <= 0 || scope.capacity <= 0 {
 		return
 	}
 
-	percent := (usageAfter - usageBefore).Seconds() / (elapsed.Seconds() * quota) * 100
+	percent := (usageAfter - usageBefore).Seconds() / (elapsed.Seconds() * scope.capacity) * 100
+	cpuInfo.EffectiveCores = scope.capacity
 	cpuInfo.TotalPercent = min(percent, 100)
 	cpuInfo.UsagePercent = nil
 }

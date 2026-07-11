@@ -42,27 +42,34 @@ type HostInfo struct {
 	HostID               string `json:"hostId"`
 }
 
-// CPUSummary provides a summary of CPU metrics for the overview.
+// CPUSummary provides a summary of CPU metrics for the overview. PhysicalCores
+// and LogicalCores describe host topology; EffectiveCores is the capacity used
+// to normalize utilization. It falls back to LogicalCores when constrained
+// usage cannot be sampled coherently.
 type CPUSummary struct {
-	PhysicalCores int     `json:"physicalCores"`
-	LogicalCores  int     `json:"logicalCores"`
-	UsagePercent  float64 `json:"usagePercent"`
+	PhysicalCores  int     `json:"physicalCores"`
+	LogicalCores   int     `json:"logicalCores"`
+	UsagePercent   float64 `json:"usagePercent"`
+	EffectiveCores float64 `json:"effectiveCores"`
 }
 
-// CPUInfo contains detailed CPU information including per-core usage.
+// CPUInfo contains detailed CPU information including per-core usage. Host
+// topology remains stable while EffectiveCores reports the capacity used to
+// normalize utilization.
 type CPUInfo struct {
-	PhysicalCores int       `json:"physicalCores"`
-	LogicalCores  int       `json:"logicalCores"`
-	ModelName     string    `json:"modelName"`
-	Mhz           float64   `json:"mhz"`
-	CacheSize     int32     `json:"cacheSize"`
-	UsagePercent  []float64 `json:"usagePercent"`
-	TotalPercent  float64   `json:"totalPercent"`
-	VendorID      string    `json:"vendorId"`
-	Family        string    `json:"family"`
-	Model         string    `json:"model"`
-	Stepping      int32     `json:"stepping"`
-	Microcode     string    `json:"microcode"`
+	PhysicalCores  int       `json:"physicalCores"`
+	LogicalCores   int       `json:"logicalCores"`
+	ModelName      string    `json:"modelName"`
+	Mhz            float64   `json:"mhz"`
+	CacheSize      int32     `json:"cacheSize"`
+	UsagePercent   []float64 `json:"usagePercent"`
+	TotalPercent   float64   `json:"totalPercent"`
+	VendorID       string    `json:"vendorId"`
+	Family         string    `json:"family"`
+	Model          string    `json:"model"`
+	Stepping       int32     `json:"stepping"`
+	Microcode      string    `json:"microcode"`
+	EffectiveCores float64   `json:"effectiveCores"`
 }
 
 // MemorySummary provides a summary of memory metrics for the overview.

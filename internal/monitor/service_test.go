@@ -87,6 +87,12 @@ func (suite *MonitorServiceTestSuite) TestOverview() {
 		suite.NotNil(overview.Process, "Process info should be present")
 		suite.NotNil(overview.Load, "Load info should be present")
 		suite.NotNil(overview.Build, "Build info should be present")
+		suite.Greater(overview.CPU.EffectiveCores, 0.0, "Effective CPU capacity should be positive")
+		suite.LessOrEqual(
+			overview.CPU.EffectiveCores,
+			float64(overview.CPU.LogicalCores),
+			"Effective CPU capacity should not exceed host topology",
+		)
 
 		suite.Equal("v1.0.0", overview.Build.AppVersion, "AppVersion should match")
 		suite.NotEmpty(overview.Build.VEFVersion, "VEFVersion should be populated")
@@ -118,9 +124,11 @@ func (suite *MonitorServiceTestSuite) TestCPU() {
 		suite.Greater(cpuInfo.PhysicalCores, 0, "Should have at least 1 physical core")
 		suite.Greater(cpuInfo.LogicalCores, 0, "Should have at least 1 logical core")
 		suite.GreaterOrEqual(cpuInfo.LogicalCores, cpuInfo.PhysicalCores, "Logical cores should be >= physical cores")
+		suite.Greater(cpuInfo.EffectiveCores, 0.0, "Effective CPU capacity should be positive")
+		suite.LessOrEqual(cpuInfo.EffectiveCores, float64(cpuInfo.LogicalCores), "Effective CPU capacity should not exceed host topology")
 
-		// Under an active cgroup CPU quota (running these tests inside a
-		// CPU-limited container) the per-core breakdown is intentionally
+		// Under an active cgroup CPU constraint (running these tests inside a
+		// limited container) the per-core breakdown is intentionally
 		// dropped and TotalPercent is quota-relative; on an unlimited host
 		// the per-core view must be present.
 		if cpuInfo.UsagePercent == nil {
