@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/cqrs"
+	"github.com/coldsmirk/vef-framework-go/event"
 )
 
 // ShipOrderCmd is the pointer-dispatched bridge test command.
@@ -16,6 +17,8 @@ type ShipOrderCmd struct {
 	cqrs.BaseCommand
 
 	InstanceID string
+	// EventID carries Envelope.ID as the handler's dedupe key.
+	EventID string
 }
 
 // CloseOrderCmd is the value-dispatched bridge test command.
@@ -47,8 +50,8 @@ func registerRecorder(handlerErr error) (cqrs.Bus, *[]*ShipOrderCmd) {
 	return bus, &received
 }
 
-func shipMapper(evt *InstanceCompletedEvent) (*ShipOrderCmd, bool) {
-	return &ShipOrderCmd{InstanceID: evt.InstanceID}, true
+func shipMapper(evt *InstanceCompletedEvent, env event.Envelope) (*ShipOrderCmd, bool) {
+	return &ShipOrderCmd{InstanceID: evt.InstanceID, EventID: env.ID}, true
 }
 
 func TestBindCommand(t *testing.T) {
@@ -69,7 +72,7 @@ func TestBindCommand(t *testing.T) {
 		spy := new(SubscribeSpyBus)
 
 		unsubscribe, err := BindCommand(spy, cqrs.NewBus(nil),
-			func(*InstanceCompletedEvent) (CloseOrderCmd, bool) { return CloseOrderCmd{}, false })
+			func(*InstanceCompletedEvent, event.Envelope) (CloseOrderCmd, bool) { return CloseOrderCmd{}, false })
 		require.NoError(t, err, "A value command type should bind")
 
 		defer unsubscribe()
@@ -93,6 +96,8 @@ func TestBindCommand(t *testing.T) {
 		require.NoError(t, spy.emit(t, evt), "Delivery should dispatch without error")
 		require.Len(t, *received, 1, "Exactly one command should reach the handler")
 		assert.Equal(t, "inst-1", (*received)[0].InstanceID, "Mapper output must arrive unchanged")
+		assert.Equal(t, "envelope-1", (*received)[0].EventID,
+			"Envelope.ID must flow through the mapper as the command's dedupe key")
 	})
 
 	t.Run("DiscardsHandlerResult", func(t *testing.T) {
@@ -116,7 +121,7 @@ func TestBindCommand(t *testing.T) {
 		commands, received := registerRecorder(nil)
 
 		unsubscribe, err := BindCommand(spy, commands,
-			func(*InstanceCompletedEvent) (*ShipOrderCmd, bool) { return nil, false })
+			func(*InstanceCompletedEvent, event.Envelope) (*ShipOrderCmd, bool) { return nil, false })
 		require.NoError(t, err, "Binding should succeed")
 
 		defer unsubscribe()
@@ -132,7 +137,7 @@ func TestBindCommand(t *testing.T) {
 
 		mapperCalls := 0
 		unsubscribe, err := BindCommand(spy, commands,
-			func(evt *InstanceCompletedEvent) (*ShipOrderCmd, bool) {
+			func(evt *InstanceCompletedEvent, _ event.Envelope) (*ShipOrderCmd, bool) {
 				mapperCalls++
 
 				return &ShipOrderCmd{InstanceID: evt.InstanceID}, true
@@ -175,20 +180,20 @@ func TestBindCommand(t *testing.T) {
 
 	t.Run("RejectsQueryType", func(t *testing.T) {
 		_, err := BindCommand(new(SubscribeSpyBus), cqrs.NewBus(nil),
-			func(*InstanceCompletedEvent) (*FindOrderQry, bool) { return nil, false })
+			func(*InstanceCompletedEvent, event.Envelope) (*FindOrderQry, bool) { return nil, false })
 		assert.ErrorIs(t, err, ErrNonCommandAction, "Queries have no side effect to bind")
 	})
 
 	t.Run("RejectsUnnamedCommandType", func(t *testing.T) {
 		_, err := BindCommand(new(SubscribeSpyBus), cqrs.NewBus(nil),
-			func(*InstanceCompletedEvent) (*struct{ cqrs.BaseCommand }, bool) { return nil, false })
+			func(*InstanceCompletedEvent, event.Envelope) (*struct{ cqrs.BaseCommand }, bool) { return nil, false })
 		assert.ErrorIs(t, err, ErrUnnamedCommandType,
 			"An anonymous struct has no identity to derive a group from")
 	})
 
 	t.Run("RejectsInterfaceCommandType", func(t *testing.T) {
 		_, err := BindCommand[*InstanceCompletedEvent, cqrs.Action](new(SubscribeSpyBus), cqrs.NewBus(nil),
-			func(*InstanceCompletedEvent) (cqrs.Action, bool) { return nil, false })
+			func(*InstanceCompletedEvent, event.Envelope) (cqrs.Action, bool) { return nil, false })
 		assert.ErrorIs(t, err, ErrUnnamedCommandType,
 			"An interface-typed command has no concrete identity to dispatch on")
 	})
@@ -231,7 +236,14 @@ func TestBindCommand(t *testing.T) {
 
 		rebound, err := BindCommand(new(SubscribeSpyBus), commands, shipMapper)
 		require.NoError(t, err, "Unsubscribing must release the derived group for rebinding")
-		rebound()
+
+		defer rebound()
+
+		unsubscribe()
+
+		_, err = BindCommand(new(SubscribeSpyBus), commands, shipMapper)
+		assert.ErrorIs(t, err, ErrDerivedGroupConflict,
+			"A stale unsubscribe must not delete the newer binding's group claim")
 	})
 
 	t.Run("SubscribeFailureReleasesDerivedGroup", func(t *testing.T) {

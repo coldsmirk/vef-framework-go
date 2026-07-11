@@ -52,22 +52,26 @@ func (b *SubscribeSpyBus) emit(t *testing.T, evt event.Event) error {
 	t.Helper()
 	require.NotNil(t, b.handler, "emit requires a captured subscription handler")
 
-	return b.handler(t.Context(), event.Envelope{Type: evt.EventType(), Payload: evt})
+	return b.handler(t.Context(), event.Envelope{ID: "envelope-1", Type: evt.EventType(), Payload: evt})
 }
 
 // SubscribeSpySvc is the method-value subscriber used to exercise group
 // derivation — its runtime identity is stable and assertable.
 type SubscribeSpySvc struct {
 	calls []*InstanceCompletedEvent
+	envs  []event.Envelope
 }
 
-func (s *SubscribeSpySvc) Handle(_ context.Context, evt *InstanceCompletedEvent) error {
+func (s *SubscribeSpySvc) Handle(_ context.Context, evt *InstanceCompletedEvent, env event.Envelope) error {
 	s.calls = append(s.calls, evt)
+	s.envs = append(s.envs, env)
 
 	return nil
 }
 
-func namedInstanceHandler(context.Context, *InstanceCompletedEvent) error { return nil }
+func namedInstanceHandler(context.Context, *InstanceCompletedEvent, event.Envelope) error {
+	return nil
+}
 
 func completedEvent(flowCode, tenantID string) *InstanceCompletedEvent {
 	return &InstanceCompletedEvent{
@@ -94,10 +98,32 @@ func TestDeriveGroup(t *testing.T) {
 	})
 
 	t.Run("AnonymousRejected", func(t *testing.T) {
-		_, err := deriveGroup(func(context.Context, *InstanceCompletedEvent) error { return nil })
+		_, err := deriveGroup(func(context.Context, *InstanceCompletedEvent, event.Envelope) error { return nil })
 		assert.ErrorIs(t, err, ErrAnonymousSubscriberGroup,
 			"Anonymous functions carry positional counters and must not derive a group")
 	})
+}
+
+func TestTrimModulePrefix(t *testing.T) {
+	tests := []struct {
+		name       string
+		pkgPath    string
+		modulePath string
+		want       string
+	}{
+		{"ModuleRootCollapsesToBase", "example.com/foo", "example.com/foo", "foo"},
+		{"SubPackageTrimmed", "example.com/foo/internal/mms", "example.com/foo", "internal/mms"},
+		{"SiblingModuleNotSwallowed", "example.com/foobar/pkg", "example.com/foo", "example.com/foobar/pkg"},
+		{"UnrelatedModuleKept", "other.org/lib", "example.com/foo", "other.org/lib"},
+		{"EmptyModuleKeepsPath", "example.com/foo/pkg", "", "example.com/foo/pkg"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, trimModulePrefix(tt.pkgPath, tt.modulePath),
+				"Trim must strip only at path-segment boundaries")
+		})
+	}
 }
 
 func TestInstanceFilterMatches(t *testing.T) {
@@ -147,13 +173,16 @@ func TestSubscribeInstance(t *testing.T) {
 			"A matching event should be handled")
 		require.Len(t, svc.calls, 1, "Handler should see exactly the matching event")
 		assert.Equal(t, "right_application", svc.calls[0].FlowCode, "Handler should receive the typed event")
+		require.Len(t, svc.envs, 1, "Handler should receive the delivery envelope")
+		assert.Equal(t, "envelope-1", svc.envs[0].ID,
+			"Envelope.ID must reach the handler as the manual idempotency key")
 	})
 
 	t.Run("ExplicitGroupBypassesDerivation", func(t *testing.T) {
 		bus := &SubscribeSpyBus{}
 
 		unsubscribe, err := SubscribeInstance(bus,
-			func(context.Context, *InstanceCompletedEvent) error { return nil },
+			func(context.Context, *InstanceCompletedEvent, event.Envelope) error { return nil },
 			WithGroup("smp:right-application"))
 		require.NoError(t, err, "An explicit group must make anonymous handlers legal")
 
@@ -165,7 +194,7 @@ func TestSubscribeInstance(t *testing.T) {
 	t.Run("AnonymousWithoutGroupFails", func(t *testing.T) {
 		bus := &SubscribeSpyBus{}
 
-		_, err := SubscribeInstance(bus, func(context.Context, *InstanceCompletedEvent) error { return nil })
+		_, err := SubscribeInstance(bus, func(context.Context, *InstanceCompletedEvent, event.Envelope) error { return nil })
 		assert.ErrorIs(t, err, ErrAnonymousSubscriberGroup,
 			"An anonymous handler without WithGroup must fail fast")
 	})
@@ -190,6 +219,25 @@ func TestSubscribeInstance(t *testing.T) {
 		t.Cleanup(retried)
 	})
 
+	t.Run("UnsubscribeIsIdempotent", func(t *testing.T) {
+		svc := new(SubscribeSpySvc)
+
+		unsubscribe, err := SubscribeInstance(new(SubscribeSpyBus), svc.Handle)
+		require.NoError(t, err, "First subscription should succeed")
+		unsubscribe()
+
+		rebound, err := SubscribeInstance(new(SubscribeSpyBus), svc.Handle)
+		require.NoError(t, err, "Released group should be reusable")
+
+		t.Cleanup(rebound)
+
+		unsubscribe()
+
+		_, err = SubscribeInstance(new(SubscribeSpyBus), svc.Handle)
+		assert.ErrorIs(t, err, ErrDerivedGroupConflict,
+			"A stale unsubscribe must not delete the newer subscription's group claim")
+	})
+
 	t.Run("SubscribeErrorReleasesDerivedName", func(t *testing.T) {
 		svc := new(SubscribeSpySvc)
 		failing := &SubscribeSpyBus{subscribeErr: errors.New("route not subscribable")}
@@ -207,7 +255,7 @@ func TestSubscribeInstance(t *testing.T) {
 		bus := &SubscribeSpyBus{}
 
 		unsubscribe, err := SubscribeInstance(bus,
-			func(context.Context, *InstanceCompletedEvent) error { return nil },
+			func(context.Context, *InstanceCompletedEvent, event.Envelope) error { return nil },
 			WithGroup("g"), WithConcurrency(4))
 		require.NoError(t, err, "Subscription with concurrency should succeed")
 

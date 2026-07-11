@@ -136,7 +136,10 @@ func WithConcurrency(n int) InstanceSubscribeOption {
 // with declarative routing filters. Events whose envelope does not match
 // every filter are acknowledged without invoking the handler — the filters
 // answer "is this instance mine?", while business predicates (final status,
-// form values) stay in the handler body.
+// form values) stay in the handler body. The handler also receives the
+// delivery Envelope: Envelope.ID is the Inbox dedupe key, stable across
+// redeliveries, and therefore the key to build manual idempotency on when
+// the route is at-least-once.
 //
 // The consumer group defaults to a name derived from the handler's method
 // identity, normalized into the same "vef:<scope>:<name>" shape as the
@@ -151,7 +154,7 @@ func WithConcurrency(n int) InstanceSubscribeOption {
 // ErrDerivedGroupConflict.
 func SubscribeInstance[T InstanceEvent](
 	bus event.Bus,
-	handler func(ctx context.Context, evt T) error,
+	handler func(ctx context.Context, evt T, env event.Envelope) error,
 	opts ...InstanceSubscribeOption,
 ) (event.Unsubscribe, error) {
 	var cfg instanceSubscribeConfig
@@ -189,13 +192,13 @@ func SubscribeInstance[T InstanceEvent](
 
 	filters := cfg.filters
 
-	unsubscribe, err := event.SubscribeTyped(bus, func(ctx context.Context, evt T, _ event.Envelope) error {
+	unsubscribe, err := event.SubscribeTyped(bus, func(ctx context.Context, evt T, env event.Envelope) error {
 		base := evt.instanceEventBase()
 		if !matchesAll(filters, base.FlowCode, base.TenantID) {
 			return nil
 		}
 
-		return handler(ctx, evt)
+		return handler(ctx, evt, env)
 	}, subscribeOpts...)
 	if err != nil {
 		if derived {
@@ -209,10 +212,22 @@ func SubscribeInstance[T InstanceEvent](
 		return unsubscribe, nil
 	}
 
+	return releaseOnce(unsubscribe, group), nil
+}
+
+// releaseOnce wraps an inner unsubscribe and its derived-group release into
+// one idempotent, concurrency-safe teardown — the Unsubscribe contract says
+// subsequent calls are no-ops, and a repeated release would otherwise delete
+// the claim of a newer subscription that re-derived the same group.
+func releaseOnce(unsubscribe event.Unsubscribe, group string) event.Unsubscribe {
+	var once sync.Once
+
 	return func() {
-		unsubscribe()
-		releaseDerivedGroup(group)
-	}, nil
+		once.Do(func() {
+			unsubscribe()
+			releaseDerivedGroup(group)
+		})
+	}
 }
 
 // derivedGroupPrefix aligns derived names with the framework's existing
@@ -261,22 +276,33 @@ func deriveGroup(handler any) (string, error) {
 // trimMainModulePrefix strips the main module path from pkgPath so derived
 // consumer-group names do not repeat the module path on every name; the full
 // import path is kept when the build carries no module info (best effort —
-// the name stays stable either way). A package at the module root collapses
-// to the module path's base name.
+// the name stays stable either way).
 func trimMainModulePrefix(pkgPath string) string {
 	info, ok := debug.ReadBuildInfo()
-	if !ok || info.Main.Path == "" {
+	if !ok {
 		return pkgPath
 	}
 
-	trimmed, found := strings.CutPrefix(pkgPath, info.Main.Path)
+	return trimModulePrefix(pkgPath, info.Main.Path)
+}
+
+// trimModulePrefix strips modulePath from pkgPath only at a path-segment
+// boundary — module "example.com/foo" must not swallow package
+// "example.com/foobar/pkg", or two unrelated packages could derive the same
+// consumer group. A package at the module root collapses to the module
+// path's base name.
+func trimModulePrefix(pkgPath, modulePath string) string {
+	if modulePath == "" {
+		return pkgPath
+	}
+
+	if pkgPath == modulePath {
+		return path.Base(modulePath)
+	}
+
+	trimmed, found := strings.CutPrefix(pkgPath, modulePath+"/")
 	if !found {
 		return pkgPath
-	}
-
-	trimmed = strings.TrimPrefix(trimmed, "/")
-	if trimmed == "" {
-		return path.Base(info.Main.Path)
 	}
 
 	return trimmed

@@ -33,12 +33,12 @@ const derivedCommandGroupPrefix = "vef:cmd:"
 // BindCommand subscribes to instance event E and dispatches the mapped
 // command C through the host's CQRS bus — the declarative bridge from
 // approval facts to host side effects. mapper is a pure translation: it
-// shapes the command from the event and reports whether the event is
-// relevant (ok=false acknowledges without dispatching). Business logic
-// belongs in the command handler, which runs the host's full behavior
-// pipeline (transaction, audit, validation); the handler's result is
-// discarded — dispatch is fire-and-record, results belong to
-// request/response callers.
+// shapes the command from the event plus its delivery Envelope and reports
+// whether the event is relevant (ok=false acknowledges without
+// dispatching). Business logic belongs in the command handler, which runs
+// the host's full behavior pipeline (transaction, audit, validation); the
+// handler's result is discarded — dispatch is fire-and-record, results
+// belong to request/response callers.
 //
 // The consumer group defaults to the command type's identity ("vef:cmd:" +
 // module-relative package + type name) — renaming or moving the command
@@ -50,14 +50,16 @@ const derivedCommandGroupPrefix = "vef:cmd:"
 //
 // Delivery inherits the event route's semantics: an at-least-once transport
 // (outbox / redis_stream) can redeliver, so the command handler must be
-// idempotent. Unlike the eventual business projection — which converges on
-// the latest desired state and may skip intermediate statuses — every
-// instance transition dispatches its own command, making this the lane for
-// side effects tied to a specific lifecycle moment.
+// idempotent — copy Envelope.ID (the Inbox dedupe key, stable across
+// redeliveries) into the command when the handler needs a dedupe key of its
+// own. Unlike the eventual business projection — which converges on the
+// latest desired state and may skip intermediate statuses — every instance
+// transition dispatches its own command, making this the lane for side
+// effects tied to a specific lifecycle moment.
 func BindCommand[E InstanceEvent, C cqrs.Action](
 	bus event.Bus,
 	commands cqrs.Bus,
-	mapper func(evt E) (cmd C, ok bool),
+	mapper func(evt E, env event.Envelope) (cmd C, ok bool),
 	opts ...InstanceSubscribeOption,
 ) (event.Unsubscribe, error) {
 	commandType, err := namedCommandType[C]()
@@ -91,8 +93,8 @@ func BindCommand[E InstanceEvent, C cqrs.Action](
 		subscribeLogger.Infof("Command binding for %s using derived group %q", zero.EventType(), group)
 	}
 
-	handler := func(ctx context.Context, evt E) error {
-		cmd, ok := mapper(evt)
+	handler := func(ctx context.Context, evt E, env event.Envelope) error {
+		cmd, ok := mapper(evt, env)
 		if !ok {
 			return nil
 		}
@@ -117,10 +119,7 @@ func BindCommand[E InstanceEvent, C cqrs.Action](
 		return unsubscribe, nil
 	}
 
-	return func() {
-		unsubscribe()
-		releaseDerivedGroup(group)
-	}, nil
+	return releaseOnce(unsubscribe, group), nil
 }
 
 // namedCommandType resolves C to its named concrete (non-pointer) type. The
