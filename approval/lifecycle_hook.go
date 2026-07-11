@@ -19,8 +19,10 @@ import (
 // async integrations).
 //
 // Multiple implementations are aggregated via FX group
-// `group:"vef:approval:lifecycle_hooks"` and invoked in registration order;
-// any non-nil error stops further hooks and bubbles back to the caller.
+// `group:"vef:approval:lifecycle_hooks"`. The invocation order is
+// unspecified — FX value groups carry no ordering — so hooks must be
+// mutually independent; any non-nil error stops the remaining hooks and
+// bubbles back to the caller.
 type InstanceLifecycleHook interface {
 	// OnInstanceCreated runs after the instance row is persisted and the
 	// initial action log is written, but before the engine advances to

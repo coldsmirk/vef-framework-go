@@ -9,9 +9,10 @@ import (
 )
 
 // LifecycleHookRunner aggregates host-registered InstanceLifecycleHook
-// implementations and invokes them in registration order. A non-nil error
-// short-circuits the chain so the caller can roll back the surrounding
-// transaction.
+// implementations and invokes each of them; the order is unspecified (FX
+// value groups carry no ordering), so hooks must not depend on one another.
+// A non-nil error short-circuits the remaining hooks so the caller can roll
+// back the surrounding transaction.
 //
 // The runner is intentionally minimal: hosts that want fan-out or async
 // dispatch should subscribe to the corresponding domain events instead;
