@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/coldsmirk/vef-framework-go/releases"><img src="https://img.shields.io/github/v/release/coldsmirk/vef-framework-go?style=flat-square&label=release" alt="GitHub Release"></a>
-  <a href="https://github.com/coldsmirk/vef-framework-go/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/coldsmirk/vef-framework-go/test.yml?branch=main&label=tests&style=flat-square&logo=githubactions" alt="Build Status"></a>
+  <a href="https://github.com/coldsmirk/vef-framework-go/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/coldsmirk/vef-framework-go/ci.yml?branch=main&label=tests&style=flat-square&logo=githubactions" alt="Build Status"></a>
   <a href="https://codecov.io/gh/coldsmirk/vef-framework-go"><img src="https://img.shields.io/codecov/c/github/coldsmirk/vef-framework-go?style=flat-square&logo=codecov&label=codecov" alt="Coverage"></a>
   <a href="https://pkg.go.dev/github.com/coldsmirk/vef-framework-go"><img src="https://img.shields.io/badge/go-reference-00ACD7?style=flat-square&logo=go&logoColor=white" alt="Go Reference"></a>
   <a href="https://goreportcard.com/report/github.com/coldsmirk/vef-framework-go"><img src="https://img.shields.io/badge/go%20report-A%2B-75C46B?style=flat-square" alt="Go Report Card"></a>
