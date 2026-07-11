@@ -5,8 +5,7 @@ import (
 	"errors"
 	"math"
 	"os"
-	"regexp"
-	"strings"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -60,8 +59,7 @@ func NewService(cfg *config.MonitorConfig, buildInfo *monitor.BuildInfo) monitor
 }
 
 // resolveConfig applies DefaultConfig values for any unset (zero) sampling field so
-// the service always has a positive sample interval and duration, while preserving
-// the caller-provided mount exclusions.
+// the service always has a positive sample interval and duration.
 func resolveConfig(cfg *config.MonitorConfig) config.MonitorConfig {
 	resolved := DefaultConfig()
 	if cfg == nil {
@@ -75,8 +73,6 @@ func resolveConfig(cfg *config.MonitorConfig) config.MonitorConfig {
 	if cfg.SampleDuration > 0 {
 		resolved.SampleDuration = cfg.SampleDuration
 	}
-
-	resolved.ExcludedMounts = cfg.ExcludedMounts
 
 	return resolved
 }
@@ -138,10 +134,10 @@ func (s *DefaultService) Overview(ctx context.Context) (*monitor.SystemOverview,
 		}
 	}
 
-	if diskInfo, err := s.Disk(ctx); err != nil {
+	if diskSummary, err := s.rootDiskSummary(ctx); err != nil {
 		logger.Warnf("Overview: failed to collect disk info: %v", err)
 	} else {
-		overview.Disk = s.buildDiskSummary(diskInfo)
+		overview.Disk = diskSummary
 	}
 
 	if netInfo, err := s.Network(ctx); err != nil {
@@ -172,80 +168,37 @@ func (s *DefaultService) Overview(ctx context.Context) (*monitor.SystemOverview,
 	return &overview, nil
 }
 
-func (s *DefaultService) buildDiskSummary(diskInfo *monitor.DiskInfo) *monitor.DiskSummary {
-	var (
-		total, used uint64
-		partitions  int
-		seenDevices = make(map[string]bool)
-	)
-
-	for _, part := range diskInfo.Partitions {
-		if s.shouldSkipPartition(part) {
-			continue
-		}
-
-		if part.Device != "" {
-			container := getDeviceContainer(part.Device)
-			if seenDevices[container] {
-				continue
-			}
-
-			seenDevices[container] = true
-		}
-
-		total += part.Total
-		used += partitionUsed(part)
-		partitions++
-	}
-
-	var usedPercent float64
-	if total > 0 {
-		usedPercent = float64(used) / float64(total) * 100
+// rootDiskSummary reports the filesystem that bounds the process's root path.
+// This avoids treating remote mounts, disk images, and sibling volumes as
+// additional host capacity while retaining the raw mount inventory in Disk.
+func (*DefaultService) rootDiskSummary(ctx context.Context) (*monitor.DiskSummary, error) {
+	usage, err := disk.UsageWithContext(ctx, rootDiskPath())
+	if err != nil {
+		return nil, err
 	}
 
 	return &monitor.DiskSummary{
-		Total:       total,
-		Used:        used,
-		UsedPercent: usedPercent,
-		Partitions:  partitions,
-	}
+		Total:       usage.Total,
+		Used:        usage.Used,
+		UsedPercent: usage.UsedPercent,
+		Partitions:  1,
+	}, nil
 }
 
-// shouldSkipPartition decides whether a partition contributes to disk totals,
-// combining the mount-point exclusions with device-based rules that mount
-// paths cannot express.
-func (s *DefaultService) shouldSkipPartition(part *monitor.PartitionInfo) bool {
-	if isSnapshotDevice(part.Device, part.FSType) {
-		return true
-	}
-
-	return s.shouldSkipMountPoint(part.MountPoint)
+func rootDiskPath() string {
+	return rootDiskPathForOS(runtime.GOOS, os.Getenv("SystemDrive"))
 }
 
-// isSnapshotDevice reports whether the partition is a mounted APFS snapshot
-// (Time Machine local snapshots, update snapshots). Snapshot mounts use the
-// "<snapshot-name>@<device>" source form, appear at unpredictable mount points
-// (e.g. /Volumes/.timemachine/...), and each re-reports the full container
-// size, so they must never contribute to disk totals.
-func isSnapshotDevice(device, fsType string) bool {
-	return fsType == "apfs" && strings.Contains(device, "@")
-}
-
-// partitionUsed returns the space consumed on the partition's underlying
-// storage. On space-sharing filesystems (APFS), statfs reports the whole
-// container as Total and the shared remaining space as Free, while Used covers
-// only the volume's own files — after sibling volumes de-duplicate away, that
-// per-volume Used would drastically undercount (the macOS root snapshot holds
-// ~10GB while the Data volume holds the real data). Total - Free is the
-// container-level consumption and the number that answers "how full is this
-// disk". Other filesystems keep their own Used, which already describes that
-// filesystem alone.
-func partitionUsed(part *monitor.PartitionInfo) uint64 {
-	if part.FSType == "apfs" && part.Total >= part.Free {
-		return part.Total - part.Free
+func rootDiskPathForOS(goos, systemDrive string) string {
+	if goos != "windows" {
+		return "/"
 	}
 
-	return part.Used
+	if systemDrive == "" {
+		systemDrive = "C:"
+	}
+
+	return systemDrive + "\\"
 }
 
 func (*DefaultService) buildNetworkSummary(netInfo *monitor.NetworkInfo) *monitor.NetworkSummary {
@@ -263,98 +216,6 @@ func (*DefaultService) buildNetworkSummary(netInfo *monitor.NetworkInfo) *monito
 		BytesRecv:   bytesRecv,
 		PacketsSent: packetsSent,
 		PacketsRecv: packetsRecv,
-	}
-}
-
-// excludedMountPrefixes are OS pseudo-filesystem mount points that never
-// represent real storage and are always excluded from disk statistics.
-var excludedMountPrefixes = []string{
-	// macOS special volumes
-	"/System/Volumes/",
-	"/Volumes/Recovery",
-	"/private/var/vm",
-	// Linux special mount points
-	"/snap/",
-	"/run/",
-	"/dev/",
-	"/sys/",
-	"/proc/",
-}
-
-// shouldSkipMountPoint checks if a mount point should be excluded from disk stats.
-// Built-in OS pseudo-mounts are always skipped; host- or vendor-specific volumes
-// are skipped only when their path contains a configured ExcludedMounts substring.
-func (s *DefaultService) shouldSkipMountPoint(mountPoint string) bool {
-	if mountPoint == "" {
-		return true
-	}
-
-	for _, prefix := range excludedMountPrefixes {
-		if matchesMountPrefix(mountPoint, prefix) {
-			return true
-		}
-	}
-
-	for _, substr := range s.config.ExcludedMounts {
-		if substr != "" && strings.Contains(mountPoint, substr) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// matchesMountPrefix reports whether mountPoint is the excluded path itself or
-// lives underneath it. Matching on path boundaries means an entry like "/dev/"
-// also excludes the "/dev" mount point itself (devfs on macOS) without falsely
-// matching siblings such as "/devdata".
-func matchesMountPrefix(mountPoint, prefix string) bool {
-	base := strings.TrimSuffix(prefix, "/")
-
-	return mountPoint == base || strings.HasPrefix(mountPoint, base+"/")
-}
-
-var (
-	// pPartitionSuffix strips a trailing "pN" partition from NVMe/eMMC devices
-	// (nvme0n1p2 -> nvme0n1, mmcblk0p1 -> mmcblk0). The nN namespace is part of
-	// the device identity and is preserved, so distinct namespaces such as
-	// nvme0n1 and nvme0n2 are NOT merged into one container.
-	pPartitionSuffix = regexp.MustCompile(`p[0-9]+$`)
-	// apfsSliceSuffix strips APFS slice suffixes from a disk device, including
-	// the two-level sealed system snapshot form used by the macOS root volume
-	// since Big Sur (disk3s1s1 -> disk3, disk1s2 -> disk1). Stripping only one
-	// level would leave the root at "disk3s1" while its Data sibling resolves
-	// to "disk3", counting the shared container twice.
-	apfsSliceSuffix = regexp.MustCompile(`(s[0-9]+)+$`)
-	// letterDiskPartition matches the classic letter-named disk families whose
-	// trailing digits are partition numbers (sda1, vdb2, xvda3). Only these
-	// families get their digits stripped: for every other name a trailing digit
-	// is part of the device identity (dm-1, loop0, rbd1, mapper/vg-lv1) and
-	// stripping it would merge independent devices.
-	letterDiskPartition = regexp.MustCompile(`(?:^|/)(?:[shv]|xv)d[a-z]+[0-9]+$`)
-	// digitSuffix strips the partition number off a letter-named disk; applied
-	// only after letterDiskPartition confirmed the family.
-	digitSuffix = regexp.MustCompile(`[0-9]+$`)
-)
-
-// getDeviceContainer extracts the base container device name from a partition
-// device so sibling partitions of one physical disk de-duplicate to a single
-// container, WITHOUT merging genuinely independent devices. Suffix stripping
-// is allowlist-based per device family, and an unrecognized device is returned
-// verbatim: wrongly merging two real disks silently drops capacity, while not
-// merging merely risks counting a shared container twice.
-func getDeviceContainer(device string) string {
-	switch {
-	case device == "":
-		return ""
-	case strings.Contains(device, "nvme"), strings.Contains(device, "mmcblk"):
-		return pPartitionSuffix.ReplaceAllString(device, "")
-	case strings.Contains(device, "disk"):
-		return apfsSliceSuffix.ReplaceAllString(device, "")
-	case letterDiskPartition.MatchString(device):
-		return digitSuffix.ReplaceAllString(device, "")
-	default:
-		return device
 	}
 }
 
