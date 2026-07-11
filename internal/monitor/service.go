@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -39,6 +40,10 @@ type DefaultService struct {
 	cpuCache     atomic.Value // stores *monitor.CPUInfo
 	processCache atomic.Value // stores *monitor.ProcessInfo
 
+	// mu guards the sampler lifecycle fields so Init/Close are safe under
+	// concurrent or interleaved calls, and Close clears them so a later Init
+	// can start a fresh sampler.
+	mu            sync.Mutex
 	samplerCancel context.CancelFunc
 	samplerDone   chan struct{}
 }
@@ -642,50 +647,70 @@ func (s *DefaultService) BuildInfo() *monitor.BuildInfo {
 }
 
 // Init starts background goroutines to periodically sample CPU and process metrics.
-// It is idempotent: a second call while a sampler is already running is a no-op, so
-// the running goroutine is never orphaned.
+// It is idempotent while a sampler is running, and restartable after Close.
 func (s *DefaultService) Init(context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.samplerCancel != nil {
 		return nil
 	}
 
 	samplerCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 	s.samplerCancel = cancel
-	s.samplerDone = make(chan struct{})
+	s.samplerDone = done
 
-	go s.runBackgroundSampler(samplerCtx)
+	// Pass the channel explicitly so the goroutine closes the one it was
+	// started with, even after Close has cleared the field for a restart.
+	go s.runBackgroundSampler(samplerCtx, done)
 
 	return nil
 }
 
-func (s *DefaultService) runBackgroundSampler(ctx context.Context) {
-	defer close(s.samplerDone)
+func (s *DefaultService) runBackgroundSampler(ctx context.Context, done chan struct{}) {
+	defer close(done)
 
 	ticker := time.NewTicker(s.config.SampleInterval)
 	defer ticker.Stop()
 
-	s.sampleCPU(ctx)
-	s.sampleProcess(ctx)
+	s.sampleAll(ctx)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.sampleCPU(ctx)
-			s.sampleProcess(ctx)
+			s.sampleAll(ctx)
 		}
 	}
 }
 
-// Close gracefully stops the background sampling goroutines.
+// sampleAll refreshes every cached metric for one tick. The CPU and process
+// samplers each block for SampleDuration to measure a utilization window, so
+// they run concurrently to keep the tick to roughly one window rather than two.
+func (s *DefaultService) sampleAll(ctx context.Context) {
+	var wg sync.WaitGroup
+
+	wg.Go(func() { s.sampleCPU(ctx) })
+	wg.Go(func() { s.sampleProcess(ctx) })
+	wg.Wait()
+}
+
+// Close gracefully stops the background sampling goroutines. It clears the
+// sampler handles so a later Init can start a fresh sampler.
 func (s *DefaultService) Close() error {
-	if s.samplerCancel != nil {
-		s.samplerCancel()
+	s.mu.Lock()
+	cancel, done := s.samplerCancel, s.samplerDone
+	s.samplerCancel, s.samplerDone = nil, nil
+	s.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
 	}
 
-	if s.samplerDone != nil {
-		<-s.samplerDone
+	if done != nil {
+		<-done
 	}
 
 	return nil
@@ -742,13 +767,13 @@ func (s *DefaultService) collectCPUInfo(ctx context.Context) (*monitor.CPUInfo, 
 	}
 
 	// PercentWithContext with a positive duration sleeps the sampling window,
-	// which doubles as the measurement window for the cgroup usage delta.
+	// which doubles as the measurement window for the cgroup usage delta. The
+	// total is derived from the same per-core sample rather than
+	// cpu.Percent(0, false), whose process-wide "since last call" state returns
+	// 0 on the first sample and is corrupted by any other caller in the process.
 	if perCorePercent, err := cpu.PercentWithContext(ctx, s.config.SampleDuration, true); err == nil {
 		cpuInfo.UsagePercent = perCorePercent
-	}
-
-	if totalPercent, err := cpu.PercentWithContext(ctx, 0, false); err == nil && len(totalPercent) > 0 {
-		cpuInfo.TotalPercent = totalPercent[0]
+		cpuInfo.TotalPercent = meanPercent(perCorePercent)
 	}
 
 	if limited {
@@ -756,6 +781,21 @@ func (s *DefaultService) collectCPUInfo(ctx context.Context) (*monitor.CPUInfo, 
 	}
 
 	return &cpuInfo, nil
+}
+
+// meanPercent averages per-core utilization into a single total percentage;
+// an empty sample yields 0 rather than a division by zero.
+func meanPercent(perCore []float64) float64 {
+	if len(perCore) == 0 {
+		return 0
+	}
+
+	var sum float64
+	for _, percent := range perCore {
+		sum += percent
+	}
+
+	return sum / float64(len(perCore))
 }
 
 // applyCgroupCPUQuota replaces the host-wide CPU view with the container's:

@@ -1,10 +1,12 @@
 package monitor
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/monitor"
@@ -346,6 +348,40 @@ func TestPartitionUsed(t *testing.T) {
 			assert.Equal(t, tt.want, got, "Used bytes for %s should match", tt.part.FSType)
 		})
 	}
+}
+
+func TestMeanPercent(t *testing.T) {
+	assert.Equal(t, 0.0, meanPercent(nil), "An empty sample must yield 0, not a division by zero")
+	assert.InDelta(t, 50.0, meanPercent([]float64{25, 75}), 0.0001, "The mean of 25 and 75 is 50")
+	assert.InDelta(t, 30.0, meanPercent([]float64{10, 20, 60}), 0.0001, "The mean of 10, 20 and 60 is 30")
+}
+
+func TestSamplerLifecycle(t *testing.T) {
+	s := &DefaultService{
+		config: config.MonitorConfig{
+			SampleInterval: 50 * time.Millisecond,
+			SampleDuration: 10 * time.Millisecond,
+		},
+		cgroups: newCgroupReader(),
+	}
+
+	require.NoError(t, s.Init(context.Background()), "First Init should start the sampler")
+	require.NotNil(t, s.samplerCancel, "Init should record the sampler cancel handle")
+
+	running := s.samplerDone
+
+	require.NoError(t, s.Init(context.Background()), "Second Init while running should be a no-op")
+	assert.Equal(t, running, s.samplerDone, "A second Init must not replace the running sampler")
+
+	require.NoError(t, s.Close(), "Close should stop the sampler")
+	assert.Nil(t, s.samplerCancel, "Close should clear the cancel handle so Init can restart")
+	assert.Nil(t, s.samplerDone, "Close should clear the done handle so Init can restart")
+
+	require.NoError(t, s.Close(), "Close on a stopped service should be a no-op")
+
+	require.NoError(t, s.Init(context.Background()), "Init after Close should restart the sampler")
+	require.NotNil(t, s.samplerCancel, "The restarted sampler should record a fresh cancel handle")
+	require.NoError(t, s.Close(), "Close should stop the restarted sampler")
 }
 
 func TestApplyCgroupMemoryLimit(t *testing.T) {
