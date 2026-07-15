@@ -41,6 +41,10 @@ type System struct {
 	// OutboundAuth selects how the framework authenticates against this
 	// system's HTTP endpoints; nil sends requests unauthenticated.
 	OutboundAuth *OutboundAuthConfig `json:"outboundAuth" bun:"outbound_auth,type:jsonb,nullzero"`
+	// OutboundEnvelope wraps every outbound HTTP call of the system in its
+	// common wire structure, so adapter scripts translate business payloads
+	// only; nil sends adapter requests untouched.
+	OutboundEnvelope *OutboundEnvelopeConfig `json:"outboundEnvelope" bun:"outbound_envelope,type:jsonb,nullzero"`
 	// InboundAuth selects how calls arriving on this system's inbound
 	// endpoints are proven to originate from the system itself; a system
 	// without it refuses inbound delivery entirely (fail closed — the "none"
@@ -133,6 +137,27 @@ const MaskedSecret = "******"
 type OutboundAuthConfig struct {
 	Scheme string            `json:"scheme"`
 	Params map[string]string `json:"params,omitempty"`
+}
+
+// OutboundEnvelopeConfig holds a system's envelope scripts: the common wire
+// structure most external APIs repeat on every endpoint ({code, msg, data}
+// responses, signed request wrappers, SOAP envelopes) is wrapped and unwrapped
+// once at the system level instead of in every adapter. Either script may be
+// empty, leaving that side untouched; adapters bypass both per call with the
+// { envelope: false } request option (deviant endpoints such as file
+// downloads or health checks).
+type OutboundEnvelopeConfig struct {
+	// Request is the wrap script: it receives the request the adapter issued
+	// as `request` ({ method, path, headers, query, body }) and returns the
+	// request to put on the wire — fields it omits keep the adapter's values.
+	Request string `json:"request,omitempty"`
+	// Response is the unwrap script: it receives the completed HTTP response
+	// as `response` (the fetch Response shape) and whatever it returns is
+	// what the adapter's call yields — typically the payload stripped of the
+	// vendor envelope. Vendor-level error codes belong here: throw
+	// errors.upstream(msg) to classify the failure as upstream once for the
+	// whole system.
+	Response string `json:"response,omitempty"`
 }
 
 // InboundAuthConfig selects the InboundAuthScheme verifying calls on a

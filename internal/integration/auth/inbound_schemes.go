@@ -249,7 +249,7 @@ type scriptInboundScheme struct {
 }
 
 func newScriptInboundScheme(engine *js.Engine) *scriptInboundScheme {
-	return &scriptInboundScheme{engine: engine, programs: definition.NewProgramCache()}
+	return &scriptInboundScheme{engine: engine, programs: definition.NewProgramCache(definition.CompileScript)}
 }
 
 func (*scriptInboundScheme) Name() string {

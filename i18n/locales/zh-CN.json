@@ -224,6 +224,7 @@
   "integration_unknown_auth_scheme": "未知的认证方案：{{.scheme}}",
   "integration_invalid_schema": "契约 schema 不合法：{{.detail}}",
   "integration_invalid_script": "适配器脚本编译失败：{{.detail}}",
+  "integration_invalid_envelope": "出站信封配置不合法：{{.detail}}",
   "integration_invalid_auth_params": "认证参数不合法：{{.detail}}",
   "integration_invalid_data_source": "数据源配置不合法：{{.detail}}",
   "integration_invalid_direction": "适配器方向不合法",

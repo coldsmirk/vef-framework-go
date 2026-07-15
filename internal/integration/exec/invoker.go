@@ -30,6 +30,7 @@ type Invoker struct {
 	cfg      *config.IntegrationConfig
 
 	programs  *definition.ProgramCache
+	envelopes *envelopePrograms
 	schemas   *schemaCache
 	clients   *clientFactory
 	databases *systemDatabases
@@ -54,7 +55,8 @@ func NewInvoker(
 		engine:    engine,
 		resolver:  resolver,
 		cfg:       cfg,
-		programs:  definition.NewProgramCache(),
+		programs:  definition.NewProgramCache(definition.CompileScript),
+		envelopes: newEnvelopePrograms(),
 		schemas:   newSchemaCache(),
 		clients:   newClientFactory(registry, codec, cfg.EffectiveMaxResponseBody()),
 		databases: newSystemDatabases(sources, codec),
@@ -259,10 +261,11 @@ func (inv *Invoker) run(ctx context.Context, e *execution) (any, []integration.H
 // newRuntime assembles a fresh runtime carrying the engine baseline plus the
 // system-scoped libraries and the per-execution bindings. Each scoped library
 // joins only when the system configures its transport — http for systems with
-// a base URL, sql (bound to the source, write access gated by the data source
-// mode) for systems with a data source — so a script reaching for an
-// unconfigured capability fails with a plain ReferenceError instead of a
-// misleading transport fault.
+// a base URL (carrying the system envelope when one is configured), sql
+// (bound to the source, write access gated by the data source mode) for
+// systems with a data source — so a script reaching for an unconfigured
+// capability fails with a plain ReferenceError instead of a misleading
+// transport fault.
 func (inv *Invoker) newRuntime(ctx context.Context, e *execution) (*js.Runtime, error) {
 	runtime, err := inv.engine.NewRuntime(js.WithRunTimeout(e.runTimeout))
 	if err != nil {
@@ -277,7 +280,12 @@ func (inv *Invoker) newRuntime(ctx context.Context, e *execution) (*js.Runtime, 
 			return nil, err
 		}
 
-		libs = append(libs, newHTTPLib(client, CallTimeout(e.system)))
+		envelope, err := inv.envelopes.materialize(ctx, runtime, e.system.OutboundEnvelope)
+		if err != nil {
+			return nil, err
+		}
+
+		libs = append(libs, newHTTPLib(client, CallTimeout(e.system), envelope))
 	}
 
 	if e.system.DataSource != nil {

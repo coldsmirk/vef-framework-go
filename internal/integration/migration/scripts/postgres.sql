@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS itg_system (
     name VARCHAR(128) NOT NULL,
     base_url VARCHAR(512) NOT NULL DEFAULT '',
     outbound_auth JSONB,
+    outbound_envelope JSONB,
     inbound_auth JSONB,
     data_source JSONB,
     params JSONB,
@@ -61,6 +62,7 @@ COMMENT ON COLUMN itg_system.code IS 'Code';
 COMMENT ON COLUMN itg_system.name IS 'Name';
 COMMENT ON COLUMN itg_system.base_url IS 'Base URL';
 COMMENT ON COLUMN itg_system.outbound_auth IS 'Outbound Auth Config';
+COMMENT ON COLUMN itg_system.outbound_envelope IS 'Outbound Envelope Scripts';
 COMMENT ON COLUMN itg_system.inbound_auth IS 'Inbound Auth Config';
 COMMENT ON COLUMN itg_system.data_source IS 'Data Source';
 COMMENT ON COLUMN itg_system.params IS 'Script Params';

@@ -34,6 +34,7 @@ const (
 	ErrCodeInboundAuthFailed     = 2622
 	ErrCodeInboundHandlerMissing = 2623
 	ErrCodeInvocationCanceled    = 2624
+	ErrCodeInvalidEnvelope       = 2625
 )
 
 // Predefined integration API errors. These are business errors and keep the
@@ -162,6 +163,16 @@ func ErrInvalidScript(detail string) result.Error {
 	return result.Err(
 		i18n.T("integration_invalid_script", map[string]any{"detail": detail}),
 		result.WithCode(ErrCodeInvalidScript),
+	)
+}
+
+// ErrInvalidEnvelope rejects an outbound envelope configuration: a script
+// that does not compile, an envelope defining no script, or one on a system
+// without an HTTP transport.
+func ErrInvalidEnvelope(detail string) result.Error {
+	return result.Err(
+		i18n.T("integration_invalid_envelope", map[string]any{"detail": detail}),
+		result.WithCode(ErrCodeInvalidEnvelope),
 	)
 }
 

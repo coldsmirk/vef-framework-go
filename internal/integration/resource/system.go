@@ -18,17 +18,18 @@ import (
 type SystemParams struct {
 	api.P
 
-	ID           string                          `json:"id"`
-	Code         string                          `json:"code" validate:"required"`
-	Name         string                          `json:"name" validate:"required"`
-	BaseURL      string                          `json:"baseUrl"`
-	OutboundAuth *integration.OutboundAuthConfig `json:"outboundAuth"`
-	InboundAuth  *integration.InboundAuthConfig  `json:"inboundAuth"`
-	DataSource   *integration.DataSourceConfig   `json:"dataSource"`
-	Params       map[string]string               `json:"params"`
-	TimeoutMs    int                             `json:"timeoutMs"`
-	Retry        *integration.RetryPolicy        `json:"retry"`
-	IsEnabled    bool                            `json:"isEnabled"`
+	ID               string                              `json:"id"`
+	Code             string                              `json:"code" validate:"required"`
+	Name             string                              `json:"name" validate:"required"`
+	BaseURL          string                              `json:"baseUrl"`
+	OutboundAuth     *integration.OutboundAuthConfig     `json:"outboundAuth"`
+	OutboundEnvelope *integration.OutboundEnvelopeConfig `json:"outboundEnvelope"`
+	InboundAuth      *integration.InboundAuthConfig      `json:"inboundAuth"`
+	DataSource       *integration.DataSourceConfig       `json:"dataSource"`
+	Params           map[string]string                   `json:"params"`
+	TimeoutMs        int                                 `json:"timeoutMs"`
+	Retry            *integration.RetryPolicy            `json:"retry"`
+	IsEnabled        bool                                `json:"isEnabled"`
 }
 
 // SystemSearch contains the search parameters for systems.

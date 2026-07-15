@@ -58,12 +58,14 @@ type ModuleTestSuite struct {
 	registry   *auth.OutboundRegistry
 	inboundReg *auth.InboundRegistry
 
-	upstream     *httptest.Server
-	seenAuth     string
-	seenBody     []byte
-	seenSOAPBody []byte
-	seenReport   string
-	countedCalls int
+	upstream           *httptest.Server
+	seenAuth           string
+	seenBody           []byte
+	seenSOAPBody       []byte
+	seenReport         string
+	seenEnvelopeBody   []byte
+	seenEnvelopeBranch string
+	countedCalls       int
 }
 
 func TestModuleSuite(t *testing.T) {
@@ -107,6 +109,19 @@ func (s *ModuleTestSuite) SetupSuite() {
 		s.countedCalls++
 
 		_, _ = w.Write([]byte(`{"n":1}`))
+	})
+
+	mux.HandleFunc("/wrapped/patients", func(w http.ResponseWriter, r *http.Request) {
+		s.seenEnvelopeBody, _ = io.ReadAll(r.Body)
+		s.seenEnvelopeBranch = r.Header.Get("X-Branch")
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"msg":"ok","data":{"name":"张三"}}`))
+	})
+
+	mux.HandleFunc("/wrapped/fail", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":9001,"msg":"branch offline","data":null}`))
 	})
 
 	s.upstream = httptest.NewServer(mux)
@@ -967,6 +982,65 @@ func (s *ModuleTestSuite) TestConnectionProbe() {
 		s.Require().NotNil(check.HTTP, "Dead upstream should still get an HTTP probe")
 		s.False(check.HTTP.Reachable, "Dead upstream should be unreachable")
 		s.NotEmpty(check.HTTP.Error, "Probe should report the transport error")
+	})
+}
+
+func (s *ModuleTestSuite) TestOutboundEnvelope() {
+	contract := s.createContract("envelope.get_patient", nil,
+		json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`))
+	failContract := s.createContract("envelope.fail_call", nil, nil)
+
+	system := &integration.System{
+		Code:    "env-sys",
+		Name:    "env-sys",
+		BaseURL: s.upstream.URL,
+		OutboundEnvelope: &integration.OutboundEnvelopeConfig{
+			Request: `
+				request.headers = Object.assign({}, request.headers, { 'X-Branch': system.params.branch })
+				request.body = { biz: request.body }
+				return request
+			`,
+			Response: `
+				const parsed = response.json()
+				if (parsed.code !== 0) { errors.upstream(parsed.msg) }
+				return parsed.data
+			`,
+		},
+		Params:    map[string]string{"branch": "east-01"},
+		IsEnabled: true,
+	}
+
+	_, err := s.db.NewInsert().Model(system).Exec(s.T().Context())
+	s.Require().NoError(err, "Enveloped system seed should insert")
+
+	s.createAdapter(system, contract, `return http.post('/wrapped/patients', { id: input.id })`)
+	s.createAdapter(system, failContract, `return http.get('/wrapped/fail')`)
+
+	s.Run("WrapsAndUnwraps", func() {
+		result, err := s.invoker.Invoke(s.T().Context(), "envelope.get_patient",
+			map[string]any{"id": "P1"}, integration.WithSystem("env-sys"))
+		s.Require().NoError(err, "Enveloped invocation should succeed")
+
+		output, ok := result.Output().(map[string]any)
+		s.Require().True(ok, "Output should be the standard model object")
+		s.Equal("张三", output["name"], "The adapter should receive the unwrapped payload")
+		s.JSONEq(`{"biz":{"id":"P1"}}`, string(s.seenEnvelopeBody), "The wrap script's body should reach the wire")
+		s.Equal("east-01", s.seenEnvelopeBranch, "The wrap script should read the system binding")
+	})
+
+	s.Run("TraceRecordsTheWrappedRequest", func() {
+		logs := s.findLogs("envelope.get_patient")
+		s.Require().NotEmpty(logs, "Invocation should be logged")
+		s.Require().NotEmpty(logs[0].HTTPTrace, "Log should carry the wire trace")
+		s.Contains(logs[0].HTTPTrace[0].RequestBody, "biz",
+			"The trace should record the wrapped request that crossed the wire")
+	})
+
+	s.Run("VendorErrorClassifiesUpstream", func() {
+		_, err := s.invoker.Invoke(s.T().Context(), "envelope.fail_call", nil, integration.WithSystem("env-sys"))
+		s.Require().Error(err, "A vendor-level error code should fail the invocation")
+		s.ErrorIs(err, integration.ErrUpstreamFailed(""), "errors.upstream in the unwrap script should classify as upstream")
+		s.Contains(err.Error(), "branch offline", "The vendor message should surface")
 	})
 }
 

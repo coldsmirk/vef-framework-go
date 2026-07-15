@@ -57,6 +57,10 @@ func ValidateSystem(registry OutboundAuthSchemeResolver, codec *SecretCodec, sys
 		}
 	}
 
+	if err := validateOutboundEnvelope(system); err != nil {
+		return err
+	}
+
 	if system.OutboundAuth == nil {
 		return nil
 	}
@@ -73,6 +77,37 @@ func ValidateSystem(registry OutboundAuthSchemeResolver, codec *SecretCodec, sys
 
 	if _, err := scheme.Apply(params); err != nil {
 		return integration.ErrInvalidAuthParams(err.Error())
+	}
+
+	return nil
+}
+
+// validateOutboundEnvelope rejects an envelope on a system without an HTTP
+// transport, an envelope defining no script, and scripts that do not compile.
+func validateOutboundEnvelope(system *integration.System) error {
+	envelope := system.OutboundEnvelope
+	if envelope == nil {
+		return nil
+	}
+
+	if system.BaseURL == "" {
+		return integration.ErrInvalidEnvelope("an outbound envelope requires a base URL")
+	}
+
+	if envelope.Request == "" && envelope.Response == "" {
+		return integration.ErrInvalidEnvelope("at least one script is required")
+	}
+
+	if envelope.Request != "" {
+		if _, err := CompileEnvelopeRequestScript(envelope.Request); err != nil {
+			return integration.ErrInvalidEnvelope(err.Error())
+		}
+	}
+
+	if envelope.Response != "" {
+		if _, err := CompileEnvelopeResponseScript(envelope.Response); err != nil {
+			return integration.ErrInvalidEnvelope(err.Error())
+		}
 	}
 
 	return nil

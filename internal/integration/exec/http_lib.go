@@ -31,15 +31,22 @@ const httpLibName = "http"
 // thrown as catchable exceptions. A script-supplied timeout (milliseconds)
 // may only shorten the system call timeout. The fetch "redirect" member is
 // not supported beyond the default follow mode.
+//
+// When the system carries an outbound envelope, every call is wrapped and
+// unwrapped by it — the unwrap script's return value replaces the Response
+// object — unless the call opts out with { envelope: false }.
 type httpLib struct {
 	client *httpx.Client
 	// callTimeout is the system's per-request bound; script timeouts clamp
 	// to it.
 	callTimeout time.Duration
+	// envelope wraps/unwraps every call of the system; nil passes requests
+	// and responses through untouched.
+	envelope *envelope
 }
 
-func newHTTPLib(client *httpx.Client, callTimeout time.Duration) js.Lib {
-	return &httpLib{client: client, callTimeout: callTimeout}
+func newHTTPLib(client *httpx.Client, callTimeout time.Duration, envelope *envelope) js.Lib {
+	return &httpLib{client: client, callTimeout: callTimeout, envelope: envelope}
 }
 
 // requestOptions mirrors the JS-side options object of the verb helpers.
@@ -48,6 +55,9 @@ type requestOptions struct {
 	Query    map[string]string `json:"query"`
 	Redirect string            `json:"redirect"`
 	Timeout  int64             `json:"timeout"`
+	// Envelope opts this call out of the system envelope when false; nil and
+	// true keep it applied.
+	Envelope *bool `json:"envelope"`
 }
 
 // fetchInit mirrors the JS-side init object of http.fetch.
@@ -58,6 +68,7 @@ type fetchInit struct {
 	Body     any               `json:"body"`
 	Redirect string            `json:"redirect"`
 	Timeout  int64             `json:"timeout"`
+	Envelope *bool             `json:"envelope"`
 }
 
 func (*httpLib) Name() string {
@@ -65,7 +76,7 @@ func (*httpLib) Name() string {
 }
 
 func (l *httpLib) Install(rt *js.Runtime) error {
-	fetch := func(path string, init *fetchInit) (map[string]any, error) {
+	fetch := func(path string, init *fetchInit) (any, error) {
 		if init == nil {
 			init = new(fetchInit)
 		}
@@ -75,70 +86,91 @@ func (l *httpLib) Install(rt *js.Runtime) error {
 			method = http.MethodGet
 		}
 
-		opts := &requestOptions{Headers: init.Headers, Query: init.Query, Redirect: init.Redirect, Timeout: init.Timeout}
+		opts := &requestOptions{
+			Headers:  init.Headers,
+			Query:    init.Query,
+			Redirect: init.Redirect,
+			Timeout:  init.Timeout,
+			Envelope: init.Envelope,
+		}
 
 		return l.do(rt, method, path, init.Body, opts)
 	}
 
 	return rt.Set(httpLibName, map[string]any{
 		"fetch": fetch,
-		"get": func(path string, opts *requestOptions) (map[string]any, error) {
+		"get": func(path string, opts *requestOptions) (any, error) {
 			return l.do(rt, http.MethodGet, path, nil, opts)
 		},
-		"post": func(path string, body any, opts *requestOptions) (map[string]any, error) {
+		"post": func(path string, body any, opts *requestOptions) (any, error) {
 			return l.do(rt, http.MethodPost, path, body, opts)
 		},
-		"put": func(path string, body any, opts *requestOptions) (map[string]any, error) {
+		"put": func(path string, body any, opts *requestOptions) (any, error) {
 			return l.do(rt, http.MethodPut, path, body, opts)
 		},
-		"patch": func(path string, body any, opts *requestOptions) (map[string]any, error) {
+		"patch": func(path string, body any, opts *requestOptions) (any, error) {
 			return l.do(rt, http.MethodPatch, path, body, opts)
 		},
-		"delete": func(path string, opts *requestOptions) (map[string]any, error) {
+		"delete": func(path string, opts *requestOptions) (any, error) {
 			return l.do(rt, http.MethodDelete, path, nil, opts)
 		},
 	})
 }
 
 // do validates, executes, and packages one request on behalf of the script,
-// recording the wire exchange into the invocation trace.
-func (l *httpLib) do(rt *js.Runtime, method, path string, body any, opts *requestOptions) (map[string]any, error) {
+// applying the system envelope around the exchange and recording the wire
+// exchange — the wrapped request, the raw response — into the invocation
+// trace.
+func (l *httpLib) do(rt *js.Runtime, method, path string, body any, opts *requestOptions) (any, error) {
 	if opts == nil {
 		opts = new(requestOptions)
-	}
-
-	if err := validatePath(path); err != nil {
-		return nil, err
 	}
 
 	if opts.Redirect != "" && opts.Redirect != "follow" {
 		return nil, fmt.Errorf("%w: %q", ErrRedirectModeUnsupported, opts.Redirect)
 	}
 
-	req := l.client.NewRequest()
+	wire := &wireRequest{method: method, path: path, headers: opts.Headers, query: opts.Query, body: body}
 
-	if len(opts.Headers) > 0 {
-		req.SetHeaders(opts.Headers)
+	useEnvelope := l.envelope != nil && (opts.Envelope == nil || *opts.Envelope)
+	if useEnvelope {
+		wrapped, err := l.envelope.applyRequest(wire)
+		if err != nil {
+			return nil, err
+		}
+
+		wire = wrapped
+		wire.method = strings.ToUpper(wire.method)
 	}
 
-	if len(opts.Query) > 0 {
-		req.SetQueries(opts.Query)
+	if err := validatePath(wire.path); err != nil {
+		return nil, err
+	}
+
+	req := l.client.NewRequest()
+
+	if len(wire.headers) > 0 {
+		req.SetHeaders(wire.headers)
+	}
+
+	if len(wire.query) > 0 {
+		req.SetQueries(wire.query)
 	}
 
 	if timeout := l.requestTimeout(opts.Timeout); timeout > 0 {
 		req.SetTimeout(timeout)
 	}
 
-	if err := setBody(req, body); err != nil {
+	if err := setBody(req, wire.body); err != nil {
 		return nil, err
 	}
 
 	ctx := rt.Context()
 
-	resp, err := req.Do(ctx, method, path)
+	resp, err := req.Do(ctx, wire.method, wire.path)
 	if err != nil {
 		if tc := traceFrom(ctx); tc != nil {
-			tc.record(integration.HTTPExchange{Method: method, URL: path, Error: err.Error()})
+			tc.record(integration.HTTPExchange{Method: wire.method, URL: wire.path, Error: err.Error()})
 		}
 
 		if ctx.Err() != nil {
@@ -152,7 +184,12 @@ func (l *httpLib) do(rt *js.Runtime, method, path string, body any, opts *reques
 		tc.record(exchangeOf(resp))
 	}
 
-	return buildResponse(rt, resp), nil
+	response := buildResponse(rt, resp)
+	if useEnvelope {
+		return l.envelope.applyResponse(response)
+	}
+
+	return response, nil
 }
 
 // validatePath rejects absolute and host-carrying URLs: scripts may only

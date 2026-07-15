@@ -14,16 +14,17 @@ const programCacheCapacity = 256
 
 // ProgramCache caches compiled scripts keyed by content hash, so editing a
 // script invalidates its entry implicitly and unchanged scripts never
-// recompile. Adapter execution and script-scheme verification each own an
-// instance.
+// recompile. Each script wrapper owns an instance: adapter execution,
+// script-scheme verification, and the two envelope directions.
 type ProgramCache struct {
-	mu    sync.Mutex
-	cache *lru.Cache[*js.Program]
+	mu      sync.Mutex
+	compile func(string) (*js.Program, error)
+	cache   *lru.Cache[*js.Program]
 }
 
-// NewProgramCache creates an empty compiled-program cache.
-func NewProgramCache() *ProgramCache {
-	return &ProgramCache{cache: lru.New[*js.Program](programCacheCapacity)}
+// NewProgramCache creates an empty compiled-program cache backed by compile.
+func NewProgramCache(compile func(string) (*js.Program, error)) *ProgramCache {
+	return &ProgramCache{compile: compile, cache: lru.New[*js.Program](programCacheCapacity)}
 }
 
 // Get returns the compiled program for script, compiling and caching it on
@@ -38,7 +39,7 @@ func (c *ProgramCache) Get(script string) (*js.Program, error) {
 		return program, nil
 	}
 
-	program, err := CompileScript(script)
+	program, err := c.compile(script)
 	if err != nil {
 		return nil, err
 	}

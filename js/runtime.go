@@ -109,6 +109,30 @@ func (r *Runtime) VM() *goja.Runtime {
 	return r.vm
 }
 
+// Func is a JavaScript function handle callable from host code. Calls must
+// happen on the goroutine currently driving the runtime — from a host
+// callback, or between runs — matching the runtime's single-goroutine rule.
+// A script exception surfaces as the returned error.
+type Func func(args ...any) (Value, error)
+
+// AsFunction converts a value produced by this runtime into a callable Func;
+// ok is false when the value is not a function.
+func (r *Runtime) AsFunction(value Value) (Func, bool) {
+	callable, ok := goja.AssertFunction(value)
+	if !ok {
+		return nil, false
+	}
+
+	return func(args ...any) (Value, error) {
+		values := make([]goja.Value, len(args))
+		for i, arg := range args {
+			values[i] = r.vm.ToValue(arg)
+		}
+
+		return callable(goja.Undefined(), values...)
+	}, true
+}
+
 // run executes exec under ctx: the context is published for host libraries,
 // its cancellation interrupts the JavaScript loop, and the interrupt
 // lifecycle is fully settled before the runtime is handed back.

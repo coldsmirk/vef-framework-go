@@ -224,6 +224,7 @@
   "integration_unknown_auth_scheme": "Unknown auth scheme: {{.scheme}}",
   "integration_invalid_schema": "Invalid contract schema: {{.detail}}",
   "integration_invalid_script": "Adapter script does not compile: {{.detail}}",
+  "integration_invalid_envelope": "Invalid outbound envelope configuration: {{.detail}}",
   "integration_invalid_auth_params": "Invalid auth parameters: {{.detail}}",
   "integration_invalid_data_source": "Invalid data source configuration: {{.detail}}",
   "integration_invalid_direction": "Invalid adapter direction",

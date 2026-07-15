@@ -170,3 +170,40 @@ func TestContext(t *testing.T) {
 		assert.Equal(t, context.Background(), rt.Context(), "Context should reset to background after the run")
 	})
 }
+
+// TestAsFunction tests the host-side function handle over script values.
+func TestAsFunction(t *testing.T) {
+	rt := newStdRuntime(t)
+
+	t.Run("CallsWithArguments", func(t *testing.T) {
+		value, err := rt.RunString(t.Context(), `(function (a, b) { return a + b.suffix })`)
+		require.NoError(t, err, "Function expression should evaluate")
+
+		fn, ok := rt.AsFunction(value)
+		require.True(t, ok, "A function value should convert")
+
+		result, err := fn("x-", map[string]any{"suffix": "y"})
+		require.NoError(t, err, "Call should succeed")
+		assert.Equal(t, "x-y", result.Export(), "Arguments should reach the script function")
+	})
+
+	t.Run("ScriptExceptionSurfacesAsError", func(t *testing.T) {
+		value, err := rt.RunString(t.Context(), `(function () { throw new Error('boom') })`)
+		require.NoError(t, err, "Function expression should evaluate")
+
+		fn, ok := rt.AsFunction(value)
+		require.True(t, ok, "A function value should convert")
+
+		_, err = fn()
+		require.Error(t, err, "A thrown exception should surface as an error")
+		assert.Contains(t, err.Error(), "boom", "Error should carry the exception message")
+	})
+
+	t.Run("NonFunctionIsRejected", func(t *testing.T) {
+		value, err := rt.RunString(t.Context(), `42`)
+		require.NoError(t, err, "Script should execute successfully")
+
+		_, ok := rt.AsFunction(value)
+		assert.False(t, ok, "A non-function value should not convert")
+	})
+}

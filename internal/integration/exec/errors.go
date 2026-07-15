@@ -14,6 +14,10 @@ var (
 	// ErrOutputNotSerializable rejects a script return value that cannot be
 	// represented as JSON (functions, cycles).
 	ErrOutputNotSerializable = errors.New("integration: script output is not JSON-serializable")
+
+	// ErrEnvelopeRequestNotObject rejects a request envelope script that did
+	// not return the request object.
+	ErrEnvelopeRequestNotObject = errors.New("integration: request envelope script must return the request object")
 )
 
 // upstreamError marks a failure the adapter script attributed to the

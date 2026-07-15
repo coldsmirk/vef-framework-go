@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS itg_system (
     name VARCHAR(128) NOT NULL COMMENT 'Name',
     base_url VARCHAR(512) NOT NULL DEFAULT '' COMMENT 'Base URL',
     outbound_auth JSON COMMENT 'Outbound Auth Config',
+    outbound_envelope JSON COMMENT 'Outbound Envelope Scripts',
     inbound_auth JSON COMMENT 'Inbound Auth Config',
     data_source JSON COMMENT 'Data Source',
     params JSON COMMENT 'Script Params',

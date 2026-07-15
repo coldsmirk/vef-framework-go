@@ -132,6 +132,43 @@ func TestValidateSystem(t *testing.T) {
 			},
 			wantErr: integration.ErrInvalidDataSource(""),
 		},
+		{
+			name: "EnvelopePasses",
+			system: integration.System{
+				BaseURL:          "https://his.example.com",
+				OutboundEnvelope: &integration.OutboundEnvelopeConfig{Request: "return request", Response: "return response.json().data"},
+			},
+		},
+		{
+			name: "RequestOnlyEnvelopePasses",
+			system: integration.System{
+				BaseURL:          "https://his.example.com",
+				OutboundEnvelope: &integration.OutboundEnvelopeConfig{Request: "return request"},
+			},
+		},
+		{
+			name: "EnvelopeWithoutBaseURLFails",
+			system: integration.System{
+				OutboundEnvelope: &integration.OutboundEnvelopeConfig{Request: "return request"},
+			},
+			wantErr: integration.ErrInvalidEnvelope(""),
+		},
+		{
+			name: "EmptyEnvelopeFails",
+			system: integration.System{
+				BaseURL:          "https://his.example.com",
+				OutboundEnvelope: new(integration.OutboundEnvelopeConfig),
+			},
+			wantErr: integration.ErrInvalidEnvelope(""),
+		},
+		{
+			name: "BrokenEnvelopeScriptFails",
+			system: integration.System{
+				BaseURL:          "https://his.example.com",
+				OutboundEnvelope: &integration.OutboundEnvelopeConfig{Response: "return {"},
+			},
+			wantErr: integration.ErrInvalidEnvelope(""),
+		},
 	}
 
 	for _, tt := range tests {
