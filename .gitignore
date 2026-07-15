@@ -30,6 +30,7 @@ go.work.sum
 .cursor/
 .windsurf/
 .kiro/
+.playwright-mcp/
 cmd/CMD_DEV.md
 docs/plans/
 mutagen.yml
