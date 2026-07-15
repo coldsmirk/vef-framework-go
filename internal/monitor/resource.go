@@ -5,6 +5,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/monitor"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -14,11 +15,13 @@ var defaultRateLimit = &api.RateLimitConfig{Max: 60}
 
 // NewResource creates a new monitor resource with the provided service. The
 // stream inspector is optional — nil when the redis_stream transport is off —
-// and gates the event-streams endpoint.
-func NewResource(service monitor.Service, streams event.StreamInspector) api.Resource {
+// and gates the event-streams endpoint; the integration stats inspector is
+// optional likewise — nil when the integration module is off.
+func NewResource(service monitor.Service, streams event.StreamInspector, integrationStats integration.StatsInspector) api.Resource {
 	return &Resource{
-		service: service,
-		streams: streams,
+		service:          service,
+		streams:          streams,
+		integrationStats: integrationStats,
 		Resource: api.NewRPCResource(
 			"sys/monitor",
 			api.WithOperations(
@@ -32,6 +35,7 @@ func NewResource(service monitor.Service, streams event.StreamInspector) api.Res
 				api.OperationSpec{Action: "get_load", RateLimit: defaultRateLimit},
 				api.OperationSpec{Action: "get_build_info", RateLimit: defaultRateLimit},
 				api.OperationSpec{Action: "get_event_streams", RateLimit: defaultRateLimit},
+				api.OperationSpec{Action: "get_integration_stats", RateLimit: defaultRateLimit},
 			),
 		),
 	}
@@ -41,8 +45,9 @@ func NewResource(service monitor.Service, streams event.StreamInspector) api.Res
 type Resource struct {
 	api.Resource
 
-	service monitor.Service
-	streams event.StreamInspector
+	service          monitor.Service
+	streams          event.StreamInspector
+	integrationStats integration.StatsInspector
 }
 
 // GetOverview returns a comprehensive system overview.
@@ -138,6 +143,22 @@ func (r *Resource) GetLoad(ctx fiber.Ctx) error {
 // GetBuildInfo returns application build information.
 func (r *Resource) GetBuildInfo(ctx fiber.Ctx) error {
 	return result.Ok(r.service.BuildInfo()).Response(ctx)
+}
+
+// GetIntegrationStats reports per-node integration invocation statistics so
+// operators can watch external-system health (see monitor.IntegrationStatsInfo).
+func (r *Resource) GetIntegrationStats(ctx fiber.Ctx) error {
+	info := &monitor.IntegrationStatsInfo{Stats: []integration.InvocationStats{}}
+	if r.integrationStats == nil {
+		return result.Ok(info).Response(ctx)
+	}
+
+	info.Enabled = true
+	if stats := r.integrationStats.Stats(); len(stats) > 0 {
+		info.Stats = stats
+	}
+
+	return result.Ok(info).Response(ctx)
 }
 
 // GetEventStreams reports cross-process event stream and consumer-group

@@ -86,7 +86,7 @@ path = "./my-app.db"
 # database = "warehouse"
 ```
 
-This is the smallest runnable configuration. Sections such as `vef.monitor`, `vef.mcp`, and `vef.approval` are optional.
+This is the smallest runnable configuration. Sections such as `vef.monitor`, `vef.mcp`, `vef.approval`, and `vef.integration` are optional.
 
 Run:
 

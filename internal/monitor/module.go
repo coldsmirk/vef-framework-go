@@ -43,11 +43,12 @@ var Module = fx.Module(
 				return nil
 			}),
 		),
-		// Provide monitor resource; the stream inspector is optional so the
-		// endpoint degrades gracefully when the redis_stream transport is off.
+		// Provide monitor resource; the stream inspector and the integration
+		// stats inspector are optional so their endpoints degrade gracefully
+		// when the redis_stream transport / integration module is off.
 		fx.Annotate(
 			NewResource,
-			fx.ParamTags(``, `optional:"true"`),
+			fx.ParamTags(``, `optional:"true"`, `optional:"true"`),
 			fx.ResultTags(`group:"vef:api:resources"`),
 		),
 	),

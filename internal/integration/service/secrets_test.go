@@ -1,0 +1,156 @@
+package service
+
+import (
+	"crypto/rand"
+	"encoding/base64"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/integration"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
+)
+
+// newTestCodec builds a codec with a fresh random key.
+func newTestCodec(t *testing.T) *SecretCodec {
+	t.Helper()
+
+	key := make([]byte, 32)
+	_, err := rand.Read(key)
+	require.NoError(t, err, "Key generation should succeed")
+
+	codec, err := NewSecretCodec(&config.IntegrationConfig{SecretKey: base64.StdEncoding.EncodeToString(key)})
+	require.NoError(t, err, "Codec construction should succeed")
+
+	return codec
+}
+
+// bearerScheme returns the built-in bearer scheme (sensitive param: token).
+func bearerScheme(t *testing.T) integration.AuthScheme {
+	t.Helper()
+
+	scheme, ok := auth.NewRegistry(nil).Get(auth.SchemeBearer)
+	require.True(t, ok, "Built-in bearer scheme should be registered")
+
+	return scheme
+}
+
+func TestSecretCodec(t *testing.T) {
+	codec := newTestCodec(t)
+	scheme := bearerScheme(t)
+
+	t.Run("EncryptDecryptRoundTrip", func(t *testing.T) {
+		cfg := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "top-secret"}}
+
+		require.NoError(t, codec.EncryptAuth(scheme, cfg, nil), "Encryption should succeed")
+		assert.True(t, strings.HasPrefix(cfg.Params["token"], "enc:"), "Stored value should carry the encryption marker")
+		assert.NotContains(t, cfg.Params["token"], "top-secret", "Stored value should not contain the plaintext")
+
+		params, err := codec.DecryptAuth(scheme, cfg)
+		require.NoError(t, err, "Decryption should succeed")
+		assert.Equal(t, "top-secret", params["token"], "Decrypted value should match the original")
+		assert.True(t, strings.HasPrefix(cfg.Params["token"], "enc:"), "DecryptAuth should not mutate the stored config")
+	})
+
+	t.Run("EncryptIsIdempotent", func(t *testing.T) {
+		cfg := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "top-secret"}}
+
+		require.NoError(t, codec.EncryptAuth(scheme, cfg, nil), "First encryption should succeed")
+		sealed := cfg.Params["token"]
+
+		require.NoError(t, codec.EncryptAuth(scheme, cfg, nil), "Second encryption should succeed")
+		assert.Equal(t, sealed, cfg.Params["token"], "Re-encrypting an encrypted value should not double-encrypt")
+	})
+
+	t.Run("MaskedPlaceholderRestoresPriorValue", func(t *testing.T) {
+		prior := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "enc:stored"}}
+		incoming := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": integration.MaskedSecret}}
+
+		require.NoError(t, codec.EncryptAuth(scheme, incoming, prior), "Masked update should succeed")
+		assert.Equal(t, "enc:stored", incoming.Params["token"], "Masked placeholder should restore the stored value")
+	})
+
+	t.Run("MaskedPlaceholderWithoutPriorFails", func(t *testing.T) {
+		incoming := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": integration.MaskedSecret}}
+
+		err := codec.EncryptAuth(scheme, incoming, nil)
+		require.Error(t, err, "Masked value without a stored prior should fail")
+		assert.ErrorIs(t, err, ErrMaskedSecretWithoutPrior, "Error should be the masked-without-prior sentinel")
+	})
+
+	t.Run("NonSensitiveParamsStayPlaintext", func(t *testing.T) {
+		cfg := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "s", "region": "east"}}
+
+		require.NoError(t, codec.EncryptAuth(scheme, cfg, nil), "Encryption should succeed")
+		assert.Equal(t, "east", cfg.Params["region"], "Non-sensitive params should stay plaintext")
+	})
+}
+
+func TestSecretCodecWithoutKey(t *testing.T) {
+	codec, err := NewSecretCodec(new(config.IntegrationConfig))
+	require.NoError(t, err, "Key-less codec construction should succeed")
+
+	scheme := bearerScheme(t)
+
+	t.Run("StoresPlaintext", func(t *testing.T) {
+		cfg := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "plain"}}
+
+		require.NoError(t, codec.EncryptAuth(scheme, cfg, nil), "Key-less encryption should pass through")
+		assert.Equal(t, "plain", cfg.Params["token"], "Value should stay plaintext without a key")
+
+		params, err := codec.DecryptAuth(scheme, cfg)
+		require.NoError(t, err, "Key-less decryption of plaintext should succeed")
+		assert.Equal(t, "plain", params["token"], "Plaintext should pass through")
+	})
+
+	t.Run("RefusesEncryptedValues", func(t *testing.T) {
+		cfg := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "enc:abc"}}
+
+		_, err := codec.DecryptAuth(scheme, cfg)
+		require.Error(t, err, "Encrypted value without a key should fail loudly")
+		assert.ErrorIs(t, err, ErrSecretKeyMissing, "Error should be the missing-key sentinel")
+	})
+}
+
+func TestNewSecretCodecRejectsMalformedKey(t *testing.T) {
+	_, err := NewSecretCodec(&config.IntegrationConfig{SecretKey: "not-base64!!!"})
+	require.Error(t, err, "Malformed key should fail codec construction")
+}
+
+func TestMaskAuth(t *testing.T) {
+	scheme := bearerScheme(t)
+
+	t.Run("MasksSensitiveOnly", func(t *testing.T) {
+		masked := MaskAuth(scheme, &integration.AuthConfig{
+			Scheme: auth.SchemeBearer,
+			Params: map[string]string{"token": "secret", "region": "east"},
+		})
+
+		assert.Equal(t, integration.MaskedSecret, masked.Params["token"], "Sensitive value should be masked")
+		assert.Equal(t, "east", masked.Params["region"], "Non-sensitive value should stay visible")
+	})
+
+	t.Run("NilSchemeMasksEverything", func(t *testing.T) {
+		masked := MaskAuth(nil, &integration.AuthConfig{
+			Scheme: "vanished",
+			Params: map[string]string{"a": "1", "b": "2"},
+		})
+
+		assert.Equal(t, integration.MaskedSecret, masked.Params["a"], "Unknown scheme should mask every value")
+		assert.Equal(t, integration.MaskedSecret, masked.Params["b"], "Unknown scheme should mask every value")
+	})
+
+	t.Run("NilAuthPassesThrough", func(t *testing.T) {
+		assert.Nil(t, MaskAuth(scheme, nil), "Nil auth should stay nil")
+	})
+
+	t.Run("DoesNotMutateOriginal", func(t *testing.T) {
+		original := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "secret"}}
+		_ = MaskAuth(scheme, original)
+
+		assert.Equal(t, "secret", original.Params["token"], "Masking should copy, not mutate")
+	})
+}

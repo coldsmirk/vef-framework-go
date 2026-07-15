@@ -19,5 +19,6 @@ var Module = fx.Module(
 		newMCPConfig,
 		newApprovalConfig,
 		newEventConfig,
+		newIntegrationConfig,
 	),
 )

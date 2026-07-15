@@ -5,6 +5,7 @@ import (
 	"go.uber.org/fx"
 
 	iapproval "github.com/coldsmirk/vef-framework-go/internal/approval"
+	iintegration "github.com/coldsmirk/vef-framework-go/internal/integration"
 	"github.com/coldsmirk/vef-framework-go/mcp"
 	"github.com/coldsmirk/vef-framework-go/middleware"
 )
@@ -17,6 +18,15 @@ import (
 // binding listener subscribes, so the host must route approval.* to a
 // transactional transport with a subscribable sink (see the approval docs).
 var ApprovalModule = iapproval.Module
+
+// IntegrationModule enables the optional integration engine: config- and
+// script-driven adapters that translate between external systems (HIS, LIS,
+// vendor APIs) and the application's standard contracts. It registers the
+// contract/system/adapter/route management resources, the invocation log,
+// the dry-run test console, and provides integration.Invoker for business
+// code. Absent from the default boot sequence so applications that do not
+// integrate pay nothing.
+var IntegrationModule = iintegration.Module
 
 var (
 	Provide    = fx.Provide
@@ -529,6 +539,24 @@ func ProvideJSLib(constructor any, paramTags ...string) fx.Option {
 			constructor,
 			fx.ParamTags(paramTags...),
 			fx.ResultTags(`group:"vef:js:libs"`),
+		),
+	)
+}
+
+// ProvideIntegrationAuthScheme registers a custom auth scheme for the
+// integration engine (requires IntegrationModule). Systems reference schemes
+// by name in their auth config; a scheme whose Name matches a built-in
+// (none / basic / bearer / header / query) replaces it.
+//
+//	vef.ProvideIntegrationAuthScheme(func() integration.AuthScheme { return &hmacScheme{} })
+//
+// constructor is an fx-style factory that returns integration.AuthScheme.
+func ProvideIntegrationAuthScheme(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:integration:auth_schemes"`),
 		),
 	)
 }

@@ -65,3 +65,16 @@ func newApprovalConfig(cfg config.Config) (*config.ApprovalConfig, error) {
 func newEventConfig(cfg config.Config) (*config.EventConfig, error) {
 	return unmarshalConfig(cfg, "vef.event", new(config.EventConfig))
 }
+
+func newIntegrationConfig(cfg config.Config) (*config.IntegrationConfig, error) {
+	integrationConfig, err := unmarshalConfig(cfg, "vef.integration", new(config.IntegrationConfig))
+	if err != nil {
+		return nil, err
+	}
+
+	if err := integrationConfig.Validate(); err != nil {
+		return nil, err
+	}
+
+	return integrationConfig, nil
+}
