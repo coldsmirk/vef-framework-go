@@ -67,6 +67,10 @@ func NewSystemResource(registry *auth.OutboundRegistry, inboundRegistry *auth.In
 			}
 		}
 
+		if err := auth.ValidateOutboundAuth(model.OutboundAuth); err != nil {
+			return err
+		}
+
 		if err := auth.ValidateInboundAuth(inboundRegistry, model.InboundAuth); err != nil {
 			return err
 		}

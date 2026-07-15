@@ -21,7 +21,7 @@ var Module = fx.Module(
 	"vef:integration",
 
 	fx.Provide(
-		fx.Annotate(auth.NewOutboundRegistry, fx.ParamTags(`group:"vef:integration:outbound_auth_schemes"`)),
+		fx.Annotate(auth.NewOutboundRegistry, fx.ParamTags(``, `group:"vef:integration:outbound_auth_schemes"`)),
 		fx.Annotate(auth.NewInboundRegistry, fx.ParamTags(``, `group:"vef:integration:inbound_auth_schemes"`)),
 		definition.NewSecretCodec,
 		exec.NewTableRouteResolver,

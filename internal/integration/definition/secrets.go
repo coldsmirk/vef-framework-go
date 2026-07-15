@@ -86,25 +86,32 @@ func (c *SecretCodec) EncryptOutboundAuth(scheme secretScheme, auth, prior *inte
 	return c.encryptParams(scheme, auth.Params, priorParams)
 }
 
-// DecryptOutboundAuth returns a copy of auth's params with every sensitive parameter
-// decrypted, ready to hand to OutboundAuthScheme.Apply.
-func (c *SecretCodec) DecryptOutboundAuth(scheme secretScheme, auth *integration.OutboundAuthConfig) (map[string]string, error) {
+// DecryptOutboundAuth returns a copy of auth with every sensitive parameter
+// decrypted, ready to hand to OutboundAuthScheme.Apply. A nil auth decrypts
+// to an empty config so schemes never see a nil receiver.
+func (c *SecretCodec) DecryptOutboundAuth(scheme secretScheme, auth *integration.OutboundAuthConfig) (*integration.OutboundAuthConfig, error) {
 	if auth == nil {
-		return nil, nil
+		return new(integration.OutboundAuthConfig), nil
 	}
 
-	return c.decryptParams(scheme, auth.Params)
+	params, err := c.decryptParams(scheme, auth.Params)
+	if err != nil {
+		return nil, err
+	}
+
+	return &integration.OutboundAuthConfig{Scheme: auth.Scheme, Params: params, Script: auth.Script}, nil
 }
 
 // MaskOutboundAuth returns a copy of auth with every non-empty sensitive parameter
 // value replaced by MaskedSecret, for management API responses. A nil scheme
-// (no longer registered) masks every parameter — fail closed.
+// (no longer registered) masks every parameter — fail closed. The signing
+// script is code, not a secret; it passes through.
 func MaskOutboundAuth(scheme secretScheme, auth *integration.OutboundAuthConfig) *integration.OutboundAuthConfig {
 	if auth == nil {
 		return nil
 	}
 
-	return &integration.OutboundAuthConfig{Scheme: auth.Scheme, Params: maskParams(scheme, auth.Params)}
+	return &integration.OutboundAuthConfig{Scheme: auth.Scheme, Params: maskParams(scheme, auth.Params), Script: auth.Script}
 }
 
 // EncryptInboundAuth prepares an inbound auth config for persistence,

@@ -101,12 +101,12 @@ func (f *clientFactory) build(system *integration.System) (*httpx.Client, error)
 		}))
 	}
 
-	params, err := f.codec.DecryptOutboundAuth(scheme, system.OutboundAuth)
+	decrypted, err := f.codec.DecryptOutboundAuth(scheme, system.OutboundAuth)
 	if err != nil {
 		return nil, integration.ErrInvalidAuthParams(err.Error())
 	}
 
-	authOpts, err := scheme.Apply(params)
+	authOpts, err := scheme.Apply(decrypted)
 	if err != nil {
 		return nil, integration.ErrInvalidAuthParams(err.Error())
 	}

@@ -137,6 +137,10 @@ const MaskedSecret = "******"
 type OutboundAuthConfig struct {
 	Scheme string            `json:"scheme"`
 	Params map[string]string `json:"params,omitempty"`
+	// Script is the custom signing body for the "script" scheme: it runs per
+	// request in a runtime with no IO capabilities, sees the built request and
+	// the decrypted params, and returns the credential headers to add.
+	Script string `json:"script,omitempty"`
 }
 
 // OutboundEnvelopeConfig holds a system's envelope scripts: the common wire

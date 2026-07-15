@@ -546,7 +546,8 @@ func ProvideJSLib(constructor any, paramTags ...string) fx.Option {
 // ProvideIntegrationOutboundAuthScheme registers a custom auth scheme for the
 // integration engine (requires IntegrationModule). Systems reference schemes
 // by name in their auth config; a scheme whose Name matches a built-in
-// (none / basic / bearer / header / query) replaces it.
+// (none / http_basic / bearer / header / query / signature / script) replaces
+// it.
 //
 //	vef.ProvideIntegrationOutboundAuthScheme(func() integration.OutboundAuthScheme { return &hmacScheme{} })
 //
@@ -564,8 +565,8 @@ func ProvideIntegrationOutboundAuthScheme(constructor any, paramTags ...string) 
 // ProvideIntegrationInboundAuthScheme registers a custom inbound auth scheme
 // for the integration engine (requires IntegrationModule). Systems reference
 // schemes by name in their inbound auth config; a scheme whose Name matches a
-// built-in (none / ip / api_key / http_basic / signature / script) replaces
-// it.
+// built-in (none / ip / http_basic / bearer / header / query / signature /
+// script) replaces it.
 //
 //	vef.ProvideIntegrationInboundAuthScheme(func() integration.InboundAuthScheme { return &partnerTokenScheme{} })
 //

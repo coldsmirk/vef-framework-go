@@ -14,6 +14,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
+	"github.com/coldsmirk/vef-framework-go/js"
 )
 
 // plainCodec builds a key-less codec for validation tests.
@@ -82,7 +83,10 @@ func TestValidateAdapterScript(t *testing.T) {
 }
 
 func TestValidateSystem(t *testing.T) {
-	registry := auth.NewOutboundRegistry(nil)
+	engine, err := js.NewEngine(js.WithoutStdLibs())
+	require.NoError(t, err, "Engine construction should succeed")
+
+	registry := auth.NewOutboundRegistry(engine, nil)
 	codec := plainCodec(t)
 
 	tests := []struct {
@@ -115,7 +119,7 @@ func TestValidateSystem(t *testing.T) {
 			name: "MissingSchemeParamFails",
 			system: integration.System{
 				BaseURL:      "https://his.example.com",
-				OutboundAuth: &integration.OutboundAuthConfig{Scheme: auth.OutboundSchemeBasic, Params: map[string]string{"username": "u"}},
+				OutboundAuth: &integration.OutboundAuthConfig{Scheme: auth.OutboundSchemeHTTPBasic, Params: map[string]string{"username": "u"}},
 			},
 			wantErr: integration.ErrInvalidAuthParams(""),
 		},

@@ -15,14 +15,16 @@ import (
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
-// Built-in inbound scheme names. The "none" and "http_basic" wire formats
-// match their outbound / api-strategy counterparts; the names differ where
-// the verification semantics differ.
+// Built-in inbound scheme names. They mirror the outbound vocabulary — the
+// same name verifies the wire format its outbound counterpart sends; ip is
+// inbound-only because a source address is only verifiable on receive.
 const (
 	InboundSchemeNone      = "none"
 	InboundSchemeIP        = "ip"
-	InboundSchemeAPIKey    = "api_key"
 	InboundSchemeHTTPBasic = "http_basic"
+	InboundSchemeBearer    = "bearer"
+	InboundSchemeHeader    = "header"
+	InboundSchemeQuery     = "query"
 	InboundSchemeSignature = "signature"
 	InboundSchemeScript    = "script"
 )
@@ -39,8 +41,10 @@ func builtinInboundSchemes(engine *js.Engine) []integration.InboundAuthScheme {
 	return []integration.InboundAuthScheme{
 		new(noneInboundScheme),
 		new(ipInboundScheme),
-		new(apiKeyInboundScheme),
 		new(httpBasicInboundScheme),
+		new(bearerInboundScheme),
+		new(headerInboundScheme),
+		new(queryInboundScheme),
 		newSignatureInboundScheme(),
 		newScriptInboundScheme(engine),
 	}
@@ -94,35 +98,111 @@ func (*ipInboundScheme) SensitiveParams() []string {
 	return nil
 }
 
-// apiKeyInboundScheme verifies a static key presented in a request header
-// (params: key — sensitive; header — optional, defaults to x-api-key).
-type apiKeyInboundScheme struct{}
+// headerInboundScheme verifies static credential headers: each params entry
+// is one header-name → expected-value pair, and the request must present
+// every configured pair (AND). All values are stored encrypted — the names
+// are user-defined, so sensitivity cannot be declared per parameter. It
+// verifies what the outbound header scheme sends.
+type headerInboundScheme struct{}
 
-func (*apiKeyInboundScheme) Name() string {
-	return InboundSchemeAPIKey
+func (*headerInboundScheme) Name() string {
+	return InboundSchemeHeader
 }
 
-func (*apiKeyInboundScheme) Verify(_ context.Context, req *integration.InboundRequest, auth *integration.InboundAuthConfig) error {
-	key, err := requireParam(auth.Params, "key")
-	if err != nil {
-		return err
+func (*headerInboundScheme) Verify(_ context.Context, req *integration.InboundRequest, auth *integration.InboundAuthConfig) error {
+	if len(auth.Params) == 0 {
+		return fmt.Errorf("%w: at least one header", ErrMissingParam)
 	}
 
-	header := auth.Params["header"]
-	if header == "" {
-		header = "x-api-key"
-	}
-
-	presented := req.Headers[strings.ToLower(header)]
-	if presented == "" || subtle.ConstantTimeCompare([]byte(key), []byte(presented)) != 1 {
-		return fmt.Errorf("%w: api key mismatch", ErrVerificationFailed)
+	if !credentialPairsMatch(auth.Params, func(name string) string {
+		return req.Headers[strings.ToLower(name)]
+	}) {
+		return fmt.Errorf("%w: header credentials mismatch", ErrVerificationFailed)
 	}
 
 	return nil
 }
 
-func (*apiKeyInboundScheme) SensitiveParams() []string {
-	return []string{"key"}
+func (*headerInboundScheme) SensitiveParams() []string {
+	return []string{integration.SensitiveAll}
+}
+
+// queryInboundScheme verifies static credential query parameters: each params
+// entry is one name → expected-value pair, and the request must present every
+// configured pair (AND). It verifies what the outbound query scheme sends.
+type queryInboundScheme struct{}
+
+func (*queryInboundScheme) Name() string {
+	return InboundSchemeQuery
+}
+
+func (*queryInboundScheme) Verify(_ context.Context, req *integration.InboundRequest, auth *integration.InboundAuthConfig) error {
+	if len(auth.Params) == 0 {
+		return fmt.Errorf("%w: at least one query parameter", ErrMissingParam)
+	}
+
+	if !credentialPairsMatch(auth.Params, func(name string) string {
+		return req.Query[name]
+	}) {
+		return fmt.Errorf("%w: query credentials mismatch", ErrVerificationFailed)
+	}
+
+	return nil
+}
+
+func (*queryInboundScheme) SensitiveParams() []string {
+	return []string{integration.SensitiveAll}
+}
+
+// credentialPairsMatch compares every expected pair against the presented
+// values, folding the outcomes so the timing does not reveal which pair
+// mismatched.
+func credentialPairsMatch(expected map[string]string, presented func(name string) string) bool {
+	match := 1
+	for name, value := range expected {
+		match &= subtle.ConstantTimeCompare([]byte(value), []byte(presented(name)))
+	}
+
+	return match == 1
+}
+
+// bearerInboundScheme verifies a static bearer token — sugar over the header
+// scheme for the Authorization header's "Bearer " prefix (params: token —
+// sensitive). It verifies what the outbound bearer scheme sends.
+type bearerInboundScheme struct{}
+
+func (*bearerInboundScheme) Name() string {
+	return InboundSchemeBearer
+}
+
+func (*bearerInboundScheme) Verify(_ context.Context, req *integration.InboundRequest, auth *integration.InboundAuthConfig) error {
+	token, err := requireParam(auth.Params, "token")
+	if err != nil {
+		return err
+	}
+
+	presented, ok := extractBearerToken(req.Headers["authorization"])
+	if !ok || subtle.ConstantTimeCompare([]byte(token), []byte(presented)) != 1 {
+		return fmt.Errorf("%w: bearer token mismatch", ErrVerificationFailed)
+	}
+
+	return nil
+}
+
+func (*bearerInboundScheme) SensitiveParams() []string {
+	return []string{"token"}
+}
+
+// extractBearerToken pulls the token from an "Authorization: Bearer" header
+// value, case-insensitive on the scheme.
+func extractBearerToken(header string) (token string, ok bool) {
+	const prefix = "Bearer "
+
+	if len(header) <= len(prefix) || !strings.EqualFold(header[:len(prefix)], prefix) {
+		return "", false
+	}
+
+	return header[len(prefix):], true
 }
 
 // httpBasicInboundScheme verifies RFC 7617 Basic credentials

@@ -70,12 +70,12 @@ func ValidateSystem(registry OutboundAuthSchemeResolver, codec *SecretCodec, sys
 		return integration.ErrUnknownAuthScheme(system.OutboundAuth.Scheme)
 	}
 
-	params, err := codec.DecryptOutboundAuth(scheme, system.OutboundAuth)
+	decrypted, err := codec.DecryptOutboundAuth(scheme, system.OutboundAuth)
 	if err != nil {
 		return integration.ErrInvalidAuthParams(err.Error())
 	}
 
-	if _, err := scheme.Apply(params); err != nil {
+	if _, err := scheme.Apply(decrypted); err != nil {
 		return integration.ErrInvalidAuthParams(err.Error())
 	}
 

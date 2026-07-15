@@ -2,6 +2,7 @@ package auth
 
 import (
 	"github.com/coldsmirk/vef-framework-go/integration"
+	"github.com/coldsmirk/vef-framework-go/js"
 )
 
 // OutboundRegistry resolves auth schemes by name: the built-in schemes overlaid by
@@ -12,9 +13,10 @@ type OutboundRegistry struct {
 }
 
 // NewOutboundRegistry builds the registry from the built-in schemes and the
-// application-provided overlays.
-func NewOutboundRegistry(appSchemes []integration.OutboundAuthScheme) *OutboundRegistry {
-	builtins := builtinOutboundSchemes()
+// application-provided overlays. The engine powers the script scheme's
+// signing runtimes.
+func NewOutboundRegistry(engine *js.Engine, appSchemes []integration.OutboundAuthScheme) *OutboundRegistry {
+	builtins := builtinOutboundSchemes(engine)
 	schemes := make(map[string]integration.OutboundAuthScheme, len(builtins)+len(appSchemes))
 
 	for _, scheme := range builtins {

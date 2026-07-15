@@ -376,6 +376,13 @@ func classify(ctx context.Context, err error) (integration.FailureKind, error) {
 		return integration.FailureUpstream, integration.ErrUpstreamFailed(upstream.message)
 	}
 
+	// Checked before the transport marker: an auth-hook failure reaches the
+	// script wrapped as a failed request, but its root is the system's auth
+	// definition, not the upstream's transport.
+	if authErr, ok := errors.AsType[*auth.OutboundAuthError](err); ok {
+		return integration.FailureConfig, integration.ErrInvalidAuthParams(authErr.Error())
+	}
+
 	if _, ok := errors.AsType[*transportError](err); ok {
 		return integration.FailureTransport, integration.ErrTransportFailed
 	}

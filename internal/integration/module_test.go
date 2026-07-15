@@ -17,6 +17,7 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/hashx"
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
@@ -426,8 +427,8 @@ return { $response: { status: 200, body: { received: ack.accepted } } }
 func (s *ModuleTestSuite) TestInboundDelivery() {
 	contract := s.createContract("lab.result_received", labInputSchema, labOutputSchema)
 	system := s.createInboundSystem("lis-in", &integration.InboundAuthConfig{
-		Scheme: auth.InboundSchemeAPIKey,
-		Params: map[string]string{"key": "cb-key-1"},
+		Scheme: auth.InboundSchemeHeader,
+		Params: map[string]string{"x-api-key": "cb-key-1"},
 	})
 	s.createDirectedAdapter(system, contract, integration.DirectionInbound, labInboundScript)
 
@@ -454,7 +455,8 @@ func (s *ModuleTestSuite) TestInboundDelivery() {
 			cb.Equals("code", "lis-in")
 		}).Scan(s.T().Context())
 		s.Require().NoError(err, "Stored system should load")
-		s.Contains(stored.InboundAuth.Params["key"], "enc:", "The inbound key must be encrypted at rest")
+		s.Contains(stored.InboundAuth.Params["x-api-key"], "enc:",
+			"The credential header value must be encrypted at rest via the sensitive-all wildcard")
 	})
 
 	s.Run("WrongKeyRejectedUniformly", func() {
@@ -478,8 +480,8 @@ func (s *ModuleTestSuite) TestInboundDelivery() {
 
 	s.Run("InputSchemaEnforcedAtDispatch", func() {
 		mistranslating := s.createInboundSystem("lis-mistranslating", &integration.InboundAuthConfig{
-			Scheme: auth.InboundSchemeAPIKey,
-			Params: map[string]string{"key": "cb-key-1"},
+			Scheme: auth.InboundSchemeHeader,
+			Params: map[string]string{"x-api-key": "cb-key-1"},
 		})
 		s.createDirectedAdapter(mistranslating, contract, integration.DirectionInbound,
 			`dispatch({ wrong: true }); return {}`)
@@ -512,8 +514,8 @@ func (s *ModuleTestSuite) TestInboundDelivery() {
 
 	s.Run("ScriptMayShapeTheErrorReply", func() {
 		catching := s.createInboundSystem("lis-catching", &integration.InboundAuthConfig{
-			Scheme: auth.InboundSchemeAPIKey,
-			Params: map[string]string{"key": "cb-key-1"},
+			Scheme: auth.InboundSchemeHeader,
+			Params: map[string]string{"x-api-key": "cb-key-1"},
 		})
 		s.createDirectedAdapter(catching, contract, integration.DirectionInbound, `
 try {
@@ -614,8 +616,8 @@ func (s *ModuleTestSuite) postInbound(system, contract, body string, headers map
 func (s *ModuleTestSuite) TestInboundGateway() {
 	contract := s.createContract("gw.result_received", labInputSchema, labOutputSchema)
 	system := s.createInboundSystem("lis-http", &integration.InboundAuthConfig{
-		Scheme: auth.InboundSchemeAPIKey,
-		Params: map[string]string{"key": "cb-key-9"},
+		Scheme: auth.InboundSchemeHeader,
+		Params: map[string]string{"x-api-key": "cb-key-9"},
 	})
 	s.createDirectedAdapter(system, contract, integration.DirectionInbound, `
 const doc = JSON.parse(request.body)
@@ -982,6 +984,50 @@ func (s *ModuleTestSuite) TestConnectionProbe() {
 		s.Require().NotNil(check.HTTP, "Dead upstream should still get an HTTP probe")
 		s.False(check.HTTP.Reachable, "Dead upstream should be unreachable")
 		s.NotEmpty(check.HTTP.Error, "Probe should report the transport error")
+	})
+}
+
+func (s *ModuleTestSuite) TestOutboundScriptAuth() {
+	contract := s.createContract("auth.echo", nil, nil)
+
+	system := s.createSystem("auth-script-sys", &integration.OutboundAuthConfig{
+		Scheme: auth.OutboundSchemeScript,
+		Params: map[string]string{"secret": "s3cr3t"},
+		Script: `return { 'Authorization': 'Sign ' + crypto.md5(request.method + request.path + params.secret) }`,
+	})
+	s.createAdapter(system, contract, `http.post('/patients/query', { ping: 1 }); return {}`)
+
+	s.Run("SignsEveryAdapterCall", func() {
+		_, err := s.invoker.Invoke(s.T().Context(), "auth.echo", nil, integration.WithSystem("auth-script-sys"))
+		s.Require().NoError(err, "Script-signed invocation should succeed")
+
+		expected := "Sign " + hashx.MD5(http.MethodPost+"/patients/query"+"s3cr3t")
+		s.Equal(expected, s.seenAuth, "The upstream should observe the script-computed credential")
+	})
+
+	s.Run("SecretStoredEncrypted", func() {
+		stored := new(integration.System)
+		err := s.db.NewSelect().Model(stored).Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("code", "auth-script-sys")
+		}).Scan(s.T().Context())
+		s.Require().NoError(err, "Stored system should load")
+		s.Contains(stored.OutboundAuth.Params["secret"], "enc:",
+			"The signing secret must be encrypted at rest via the sensitive-all wildcard")
+		s.Contains(stored.OutboundAuth.Script, "crypto.md5",
+			"The signing script is code, not a secret; it stays plaintext")
+	})
+
+	s.Run("ThrowingAuthScriptClassifiesConfig", func() {
+		broken := s.createSystem("auth-broken-sys", &integration.OutboundAuthConfig{
+			Scheme: auth.OutboundSchemeScript,
+			Script: `throw new Error('vault unreachable')`,
+		})
+		s.createAdapter(broken, contract, `http.get('/patients/query'); return {}`)
+
+		_, err := s.invoker.Invoke(s.T().Context(), "auth.echo", nil, integration.WithSystem("auth-broken-sys"))
+		s.Require().Error(err, "A throwing signing script should fail the invocation")
+		s.ErrorIs(err, integration.ErrInvalidAuthParams(""),
+			"An auth-hook failure should classify as a configuration fault, not transport")
 	})
 }
 

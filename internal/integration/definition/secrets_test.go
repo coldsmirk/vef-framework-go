@@ -53,9 +53,9 @@ func TestSecretCodec(t *testing.T) {
 		assert.True(t, strings.HasPrefix(cfg.Params["token"], "enc:"), "Stored value should carry the encryption marker")
 		assert.NotContains(t, cfg.Params["token"], "top-secret", "Stored value should not contain the plaintext")
 
-		params, err := codec.DecryptOutboundAuth(scheme, cfg)
+		decrypted, err := codec.DecryptOutboundAuth(scheme, cfg)
 		require.NoError(t, err, "Decryption should succeed")
-		assert.Equal(t, "top-secret", params["token"], "Decrypted value should match the original")
+		assert.Equal(t, "top-secret", decrypted.Params["token"], "Decrypted value should match the original")
 		assert.True(t, strings.HasPrefix(cfg.Params["token"], "enc:"), "DecryptOutboundAuth should not mutate the stored config")
 	})
 
@@ -105,9 +105,9 @@ func TestSecretCodecWithoutKey(t *testing.T) {
 		require.NoError(t, codec.EncryptOutboundAuth(scheme, cfg, nil), "Key-less encryption should pass through")
 		assert.Equal(t, "plain", cfg.Params["token"], "Value should stay plaintext without a key")
 
-		params, err := codec.DecryptOutboundAuth(scheme, cfg)
+		decrypted, err := codec.DecryptOutboundAuth(scheme, cfg)
 		require.NoError(t, err, "Key-less decryption of plaintext should succeed")
-		assert.Equal(t, "plain", params["token"], "Plaintext should pass through")
+		assert.Equal(t, "plain", decrypted.Params["token"], "Plaintext should pass through")
 	})
 
 	t.Run("RefusesEncryptedValues", func(t *testing.T) {
