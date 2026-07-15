@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/cache"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/event"
+	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/js"
 	"github.com/coldsmirk/vef-framework-go/js/jscache"
 	"github.com/coldsmirk/vef-framework-go/js/jsconsole"
@@ -25,6 +26,11 @@ import (
 // application to tighten via an override.
 const scriptHTTPTimeout = 30 * time.Second
 
+// logger is the framework logger of the scripting engine; loggers follow the
+// repo-wide package-level convention rather than DI (there is no logx.Logger
+// in the FX graph).
+var logger = ilogx.Named("js")
+
 // Module wires the JavaScript scripting engine: the framework capability
 // libraries are seeded at safe defaults across two tiers — the safe utilities
 // (console, crypto, cache) are always installed, while the side-effecting
@@ -36,18 +42,21 @@ var Module = fx.Module(
 	"vef:js",
 	fx.Provide(
 		fx.Annotate(
-			NewEngine,
-			fx.ParamTags(``, ``, ``, ``, `group:"vef:js:libs"`),
+			func(bus event.Bus, db orm.DB, kind config.DBKind, appLibs []js.Lib) (*js.Engine, error) {
+				return NewEngine(logger, bus, db, kind, appLibs)
+			},
+			fx.ParamTags(``, ``, ``, `group:"vef:js:libs"`),
 		),
 	),
 )
 
 // NewEngine builds the application-wide engine, seeding the always-on utility
 // libraries and the opt-in capability libraries at safe defaults, then
-// overlaying the application-provided libraries.
+// overlaying the application-provided libraries. logger receives the script
+// console output.
 func NewEngine(logger logx.Logger, bus event.Bus, db orm.DB, kind config.DBKind, appLibs []js.Lib) (*js.Engine, error) {
 	alwaysOn := []js.Lib{
-		jsconsole.New(logger.Named("js")),
+		jsconsole.New(logger),
 		jscrypto.New(),
 		jscache.New(cache.NewMemory[any](), jscache.WithKeyPrefix("js:")),
 	}
