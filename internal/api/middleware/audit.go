@@ -11,7 +11,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/event"
-	"github.com/coldsmirk/vef-framework-go/httpx"
+	"github.com/coldsmirk/vef-framework-go/fiberx"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/api/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
@@ -118,7 +118,7 @@ func buildAuditEvent(ctx fiber.Ctx, elapsed int64, err error) (*api.AuditEvent, 
 		UserID:        principal.ID,
 		UserAgent:     utils.CopyString(ctx.Get(fiber.HeaderUserAgent)),
 		RequestID:     contextx.RequestID(ctx),
-		RequestIP:     httpx.GetIP(ctx),
+		RequestIP:     fiberx.GetIP(ctx),
 		RequestParams: req.Params,
 		RequestMeta:   req.Meta,
 		ResultCode:    resultCode,

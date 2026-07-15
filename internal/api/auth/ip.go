@@ -6,7 +6,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/httpx"
+	"github.com/coldsmirk/vef-framework-go/fiberx"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	isecurity "github.com/coldsmirk/vef-framework-go/internal/security"
 	"github.com/coldsmirk/vef-framework-go/security"
@@ -86,7 +86,7 @@ func (s *IPStrategy) Authenticate(ctx fiber.Ctx, options map[string]any) (*secur
 		return nil, security.ErrIPNotAllowed
 	}
 
-	if ip := httpx.GetIP(ctx); ip == "" || !validator.IsAllowed(ip) {
+	if ip := fiberx.GetIP(ctx); ip == "" || !validator.IsAllowed(ip) {
 		return nil, security.ErrIPNotAllowed
 	}
 

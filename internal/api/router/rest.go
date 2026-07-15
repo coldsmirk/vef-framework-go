@@ -10,7 +10,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/httpx"
+	"github.com/coldsmirk/vef-framework-go/fiberx"
 	"github.com/coldsmirk/vef-framework-go/internal/api/middleware"
 	"github.com/coldsmirk/vef-framework-go/internal/api/shared"
 )
@@ -152,11 +152,11 @@ func (r *REST) parseBody(ctx fiber.Ctx, req *api.Request) error {
 		return nil
 	}
 
-	if httpx.IsJSON(ctx) {
+	if fiberx.IsJSON(ctx) {
 		return r.parseJSONBody(ctx, req)
 	}
 
-	if httpx.IsMultipart(ctx) {
+	if fiberx.IsMultipart(ctx) {
 		return r.parseMultipartForm(ctx, req)
 	}
 

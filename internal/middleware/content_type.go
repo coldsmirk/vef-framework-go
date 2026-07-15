@@ -3,7 +3,7 @@ package middleware
 import (
 	"github.com/gofiber/fiber/v3"
 
-	"github.com/coldsmirk/vef-framework-go/httpx"
+	"github.com/coldsmirk/vef-framework-go/fiberx"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
 )
 
@@ -14,7 +14,7 @@ func NewContentTypeMiddleware() app.Middleware {
 			method := ctx.Method()
 
 			isStateChanging := method == fiber.MethodPost || method == fiber.MethodPut
-			if !isStateChanging || httpx.IsJSON(ctx) || httpx.IsMultipart(ctx) {
+			if !isStateChanging || fiberx.IsJSON(ctx) || fiberx.IsMultipart(ctx) {
 				return ctx.Next()
 			}
 

@@ -10,7 +10,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/httpx"
+	"github.com/coldsmirk/vef-framework-go/fiberx"
 	"github.com/coldsmirk/vef-framework-go/internal/api/middleware"
 	"github.com/coldsmirk/vef-framework-go/internal/api/shared"
 )
@@ -111,7 +111,7 @@ func (*RPC) parseRequest(ctx fiber.Ctx) (*api.Request, error) {
 		Meta:   api.Meta{},
 	}
 
-	if httpx.IsJSON(ctx) {
+	if fiberx.IsJSON(ctx) {
 		if err := ctx.Bind().Body(req); err != nil {
 			return nil, err
 		}
@@ -159,7 +159,7 @@ func parseFormRequest(ctx fiber.Ctx, request *api.Request) error {
 		}
 	}
 
-	if httpx.IsMultipart(ctx) {
+	if fiberx.IsMultipart(ctx) {
 		if form, err := ctx.MultipartForm(); err == nil && form != nil {
 			for key, files := range form.File {
 				if len(files) > 0 {

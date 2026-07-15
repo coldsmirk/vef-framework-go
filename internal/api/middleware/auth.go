@@ -8,7 +8,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/httpx"
+	"github.com/coldsmirk/vef-framework-go/fiberx"
 	"github.com/coldsmirk/vef-framework-go/internal/api/shared"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
@@ -49,7 +49,7 @@ func (m *Auth) Process(ctx fiber.Ctx) error {
 	// Make the resolved client IP and the request method/path available to
 	// authenticators via the request context: the signature authenticator
 	// uses the IP for its whitelist and binds the method+path into the HMAC.
-	reqCtx := contextx.SetRequestIP(ctx.Context(), httpx.GetIP(ctx))
+	reqCtx := contextx.SetRequestIP(ctx.Context(), fiberx.GetIP(ctx))
 	reqCtx = contextx.SetRequestMethod(reqCtx, ctx.Method())
 	reqCtx = contextx.SetRequestPath(reqCtx, ctx.Path())
 	ctx.SetContext(reqCtx)

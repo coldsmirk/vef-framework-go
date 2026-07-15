@@ -15,7 +15,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/config"
-	"github.com/coldsmirk/vef-framework-go/httpx"
+	"github.com/coldsmirk/vef-framework-go/fiberx"
 	"github.com/coldsmirk/vef-framework-go/id"
 	"github.com/coldsmirk/vef-framework-go/internal/storage/store"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -422,7 +422,7 @@ type UploadPartResult struct {
 // complete_upload can drive the assemble step from the database
 // (clients never round-trip ETags themselves).
 func (r *Resource) UploadPart(ctx fiber.Ctx, principal *security.Principal, params UploadPartParams) error {
-	if httpx.IsJSON(ctx) {
+	if fiberx.IsJSON(ctx) {
 		return storage.ErrUploadRequiresMultipart
 	}
 

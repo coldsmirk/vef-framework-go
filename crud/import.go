@@ -10,7 +10,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/csv"
 	"github.com/coldsmirk/vef-framework-go/excel"
-	"github.com/coldsmirk/vef-framework-go/httpx"
+	"github.com/coldsmirk/vef-framework-go/fiberx"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/logx"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -98,7 +98,7 @@ func (i *importOperation[TModel]) importData() func(ctx fiber.Ctx, db orm.DB, lo
 
 	return func(ctx fiber.Ctx, db orm.DB, logger logx.Logger, config importConfig, params importParams) error {
 		// Import requests must use multipart/form-data format
-		if httpx.IsJSON(ctx) {
+		if fiberx.IsJSON(ctx) {
 			return ErrImportRequiresMultipart
 		}
 

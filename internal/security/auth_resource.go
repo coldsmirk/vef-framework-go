@@ -15,7 +15,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/event"
-	"github.com/coldsmirk/vef-framework-go/httpx"
+	"github.com/coldsmirk/vef-framework-go/fiberx"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
@@ -128,7 +128,7 @@ func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
 		return errUnsupportedAuthenticationType(params.Type)
 	}
 
-	attempt := security.LoginAttempt{Identity: params.Principal, ClientIP: httpx.GetIP(ctx)}
+	attempt := security.LoginAttempt{Identity: params.Principal, ClientIP: fiberx.GetIP(ctx)}
 
 	if locked := a.guardCheck(ctx, params.Type, attempt); locked != nil {
 		return locked
@@ -273,7 +273,7 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 	// only by the endpoint rate limit. The earlier guards (invalid/expired
 	// token, wrong type) are protocol/tampering errors that Login's analogous
 	// infra paths do not audit, so they are deliberately left unguarded.
-	attempt := security.LoginAttempt{Identity: state.Username, ClientIP: httpx.GetIP(ctx)}
+	attempt := security.LoginAttempt{Identity: state.Username, ClientIP: fiberx.GetIP(ctx)}
 
 	if locked := a.guardCheck(ctx, params.Type, attempt); locked != nil {
 		return locked
@@ -352,7 +352,7 @@ func (a *AuthResource) publishLoginSuccess(ctx fiber.Ctx, authType, username str
 		AuthType:  authType,
 		UserID:    &principal.ID,
 		Username:  username,
-		LoginIP:   httpx.GetIP(ctx),
+		LoginIP:   fiberx.GetIP(ctx),
 		UserAgent: ctx.Get(fiber.HeaderUserAgent),
 		TraceID:   contextx.RequestID(ctx),
 		IsOk:      true,
@@ -376,7 +376,7 @@ func (a *AuthResource) publishLoginFailure(ctx fiber.Ctx, authType, username str
 	loginEvent := security.NewLoginEvent(security.LoginEventParams{
 		AuthType:   authType,
 		Username:   username,
-		LoginIP:    httpx.GetIP(ctx),
+		LoginIP:    fiberx.GetIP(ctx),
 		UserAgent:  ctx.Get(fiber.HeaderUserAgent),
 		TraceID:    contextx.RequestID(ctx),
 		IsOk:       false,
@@ -442,7 +442,7 @@ func (a *AuthResource) guardRecordSuccess(ctx fiber.Ctx, attempt security.LoginA
 // sessionMeta captures the client context recorded on a session at token issue.
 func sessionMeta(ctx fiber.Ctx) security.SessionMeta {
 	return security.SessionMeta{
-		ClientIP:  httpx.GetIP(ctx),
+		ClientIP:  fiberx.GetIP(ctx),
 		UserAgent: ctx.Get(fiber.HeaderUserAgent),
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/httpx"
+	"github.com/coldsmirk/vef-framework-go/fiberx"
 	"github.com/coldsmirk/vef-framework-go/internal/api/shared"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
@@ -53,7 +53,7 @@ func NewRateLimit(apiConfig *config.APIConfig) api.Middleware {
 					sb.WriteByte(':')
 					sb.WriteString(req.Action)
 					sb.WriteByte(':')
-					sb.WriteString(httpx.GetIP(ctx))
+					sb.WriteString(fiberx.GetIP(ctx))
 					sb.WriteByte(':')
 				}
 

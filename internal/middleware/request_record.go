@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cast"
 
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/httpx"
+	"github.com/coldsmirk/vef-framework-go/fiberx"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
 	"github.com/coldsmirk/vef-framework-go/middleware"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -129,7 +129,7 @@ func formatStatus(status int) string {
 
 func formatRequestDetails(ctx fiber.Ctx, data *logger.Data) string {
 	method, reqPath := ctx.Method(), ctx.Path()
-	ip, latency, status := httpx.GetIP(ctx), data.Stop.Sub(data.Start), ctx.Response().StatusCode()
+	ip, latency, status := fiberx.GetIP(ctx), data.Stop.Sub(data.Start), ctx.Response().StatusCode()
 	ua := simplifyUserAgent(ctx.Get(fiber.HeaderUserAgent))
 	ms := latency.Milliseconds()
 
