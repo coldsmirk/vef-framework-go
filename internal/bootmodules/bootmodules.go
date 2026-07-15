@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/cron"
 	"github.com/coldsmirk/vef-framework-go/internal/event"
 	"github.com/coldsmirk/vef-framework-go/internal/expression"
+	"github.com/coldsmirk/vef-framework-go/internal/js"
 	"github.com/coldsmirk/vef-framework-go/internal/lock"
 	"github.com/coldsmirk/vef-framework-go/internal/mcp"
 	"github.com/coldsmirk/vef-framework-go/internal/middleware"
@@ -36,6 +37,7 @@ func Core() []fx.Option {
 		security.Module,
 		event.Module,
 		expression.Module,
+		js.Module,
 		cqrs.Module,
 		cron.Module,
 		redis.Module,

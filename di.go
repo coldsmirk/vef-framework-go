@@ -502,3 +502,33 @@ func ProvideDataSourceProvider(constructor any, paramTags ...string) fx.Option {
 		),
 	)
 }
+
+// ProvideJSLib contributes a JavaScript library to the shared js.Engine. The
+// framework already seeds six libraries at safe defaults: the always-on
+// utilities console / crypto / cache, and the opt-in capabilities events /
+// http / sql. This is for either of two things:
+//
+//   - Overriding a default: return a library whose Name matches a built-in
+//     (jssql.Name, jshttp.Name, ...) and it replaces the default, keeping the
+//     default's tier — an always-on utility stays always-on, an opt-in
+//     capability stays opt-in. Use it to supply your own policy: enable
+//     sql.exec, restrict HTTP hosts, back the cache with Redis, restrict
+//     publishable event types.
+//
+//   - Adding a new library: return a library with a fresh name. New libraries
+//     join the opt-in catalog, seen only when a runtime is created with
+//     js.EnableLibs(...).
+//
+//     vef.ProvideJSLib(func(db orm.DB) js.Lib { return jssql.New(db, config.Postgres, jssql.WithExec()) })
+//     vef.ProvideJSLib(func() js.Lib { return jshttp.New(jshttp.WithPublicNetworkOnly()) })
+//
+// constructor is an fx-style factory that returns a js.Lib.
+func ProvideJSLib(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:js:libs"`),
+		),
+	)
+}
