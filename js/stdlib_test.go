@@ -312,6 +312,79 @@ func TestFxp(t *testing.T) {
 	})
 }
 
+// TestURL tests the embedded URL and URLSearchParams polyfills.
+func TestURL(t *testing.T) {
+	rt := newStdRuntime(t)
+
+	t.Run("ComponentsAndEscaping", func(t *testing.T) {
+		script := `
+			const u = new URL('https://user:pass@example.com:8080/a b/c?x=1#frag');
+			[u.protocol, u.username, u.hostname, u.port, u.pathname, u.hash].join('|')
+		`
+
+		result, err := rt.RunString(t.Context(), script)
+		require.NoError(t, err, "Script should execute successfully")
+		assert.Equal(t, "https:|user|example.com|8080|/a%20b/c|#frag", result.String(), "URL components should parse and escape per spec")
+	})
+
+	t.Run("SearchParamsBuildQuery", func(t *testing.T) {
+		script := `
+			const api = new URL('https://api.example.com/search');
+			api.searchParams.set('keyword', '审批 流程');
+			api.searchParams.set('filter', 'a&b=c');
+			api.href
+		`
+
+		result, err := rt.RunString(t.Context(), script)
+		require.NoError(t, err, "Script should execute successfully")
+
+		want := "https://api.example.com/search?keyword=%E5%AE%A1%E6%89%B9+%E6%B5%81%E7%A8%8B&filter=a%26b%3Dc"
+		assert.Equal(t, want, result.String(), "searchParams should escape query values including CJK and reserved characters")
+	})
+
+	t.Run("RelativeResolution", func(t *testing.T) {
+		result, err := rt.RunString(t.Context(), `new URL('../up?q=2', 'https://host/base/dir/page').href`)
+		require.NoError(t, err, "Script should execute successfully")
+		assert.Equal(t, "https://host/base/up?q=2", result.String(), "Relative URLs should resolve against the base")
+	})
+
+	t.Run("LiveBinding", func(t *testing.T) {
+		script := `
+			const live = new URL('https://example.com/?y=%E4%B8%AD');
+			const wasDecoded = live.searchParams.get('y') === '中';
+			live.searchParams.set('y', '新');
+			wasDecoded && live.href.includes('y=%E6%96%B0')
+		`
+
+		result, err := rt.RunString(t.Context(), script)
+		require.NoError(t, err, "Script should execute successfully")
+		assert.True(t, result.ToBoolean(), "Mutating searchParams should reflect back into href")
+	})
+
+	t.Run("SearchParamsStandalone", func(t *testing.T) {
+		script := `
+			const p = new URLSearchParams('b=2&a=1&a=3');
+			p.sort();
+			[p.getAll('a').join(','), p.get('b'), p.toString()].join('|')
+		`
+
+		result, err := rt.RunString(t.Context(), script)
+		require.NoError(t, err, "Script should execute successfully")
+		assert.Equal(t, "1,3|2|a=1&a=3&b=2", result.String(), "URLSearchParams should support multi-value keys and sort")
+	})
+
+	t.Run("IDNHostname", func(t *testing.T) {
+		result, err := rt.RunString(t.Context(), `new URL('https://例子.中国/path').hostname`)
+		require.NoError(t, err, "Script should execute successfully")
+		assert.Equal(t, "xn--fsqu00a.xn--fiqs8s", result.String(), "IDN hostnames should be punycode-encoded")
+	})
+
+	t.Run("InvalidURLThrows", func(t *testing.T) {
+		_, err := rt.RunString(t.Context(), `new URL('not a url')`)
+		require.Error(t, err, "An unparsable URL should throw")
+	})
+}
+
 // TestCombinedLibraries tests standard libraries working together.
 func TestCombinedLibraries(t *testing.T) {
 	t.Run("DateFormattingAndValidation", func(t *testing.T) {

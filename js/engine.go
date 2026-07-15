@@ -48,8 +48,9 @@ func WithLibs(libs ...Lib) EngineOption {
 }
 
 // WithoutStdLibs builds a bare engine whose runtimes start without the
-// built-in standard library bundle (BigNumber, dayjs, fxp, radashi, z). Libraries
-// added through WithBaseLibs are unaffected.
+// built-in standard library bundle (BigNumber, dayjs, fxp, radashi, z, and
+// the URL / URLSearchParams polyfills). Libraries added through WithBaseLibs
+// are unaffected.
 func WithoutStdLibs() EngineOption {
 	return func(c *engineConfig) {
 		c.skipStdLibs = true

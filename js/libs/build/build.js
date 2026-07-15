@@ -11,7 +11,7 @@ import * as esbuild from "esbuild";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 
-const libs = ["bignumber.js", "dayjs", "fast-xml-parser", "radashi", "zod"];
+const libs = ["bignumber.js", "core-js", "dayjs", "fast-xml-parser", "radashi", "zod"];
 const versions = libs.map((name) => {
   const manifest = path.join(dir, "node_modules", name, "package.json");
 
