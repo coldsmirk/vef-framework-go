@@ -45,6 +45,7 @@ type ModuleTestSuite struct {
 	upstream     *httptest.Server
 	seenAuth     string
 	seenBody     []byte
+	seenSOAPBody []byte
 	countedCalls int
 }
 
@@ -61,6 +62,13 @@ func (s *ModuleTestSuite) SetupSuite() {
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"brxm":"张三","xb":"1"}`))
+	})
+
+	mux.HandleFunc("/soap/patient", func(w http.ResponseWriter, r *http.Request) {
+		s.seenSOAPBody, _ = io.ReadAll(r.Body)
+
+		w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+		_, _ = w.Write([]byte(`<Envelope><Body><PatientResult><brxm>李四</brxm><xb>2</xb></PatientResult></Body></Envelope>`))
 	})
 
 	mux.HandleFunc("/whoami", func(w http.ResponseWriter, _ *http.Request) {
@@ -197,6 +205,14 @@ const d = resp.json()
 return { name: d.brxm, gender: d.xb === '1' ? 'male' : 'female' }
 `
 
+const soapAdapterScript = `
+const reqXml = new fxp.XMLBuilder().build({ Envelope: { Body: { QueryPatient: { zjhm: input.idCardNo } } } })
+const resp = http.post('/soap/patient', reqXml, { headers: { 'Content-Type': 'text/xml; charset=utf-8' } })
+if (!resp.ok) errors.upstream('HIS returned ' + resp.status)
+const d = new fxp.XMLParser().parse(resp.text()).Envelope.Body.PatientResult
+return { name: d.brxm, gender: String(d.xb) === '2' ? 'female' : 'male' }
+`
+
 // --- Tests ---
 
 func (s *ModuleTestSuite) TestInvoke() {
@@ -273,6 +289,28 @@ func (s *ModuleTestSuite) TestInvoke() {
 		}
 
 		s.True(found, "Stats should carry the (system, contract) pair")
+	})
+}
+
+func (s *ModuleTestSuite) TestXMLAdapter() {
+	contract := s.createContract("patient.get_soap", patientInputSchema, patientOutputSchema)
+	system := s.createSystem("his-soap", nil)
+	s.createAdapter(system, contract, soapAdapterScript)
+
+	patient, err := integration.Call[PatientInfo](s.T().Context(), s.invoker, "patient.get_soap",
+		map[string]any{"idCardNo": "110101199001010011"},
+		integration.WithSystem("his-soap"),
+	)
+	s.Require().NoError(err, "SOAP-style invocation should succeed")
+
+	s.Run("ResponseParsedWithXMLParser", func() {
+		s.Equal("李四", patient.Name, "Adapter should extract the name from the XML envelope")
+		s.Equal("female", patient.Gender, "Adapter should translate the vendor gender code")
+	})
+
+	s.Run("RequestBuiltWithXMLBuilder", func() {
+		s.Contains(string(s.seenSOAPBody), "<zjhm>110101199001010011</zjhm>",
+			"Script should serialize the request through fxp.XMLBuilder")
 	})
 }
 
