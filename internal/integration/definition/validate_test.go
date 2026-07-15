@@ -119,6 +119,19 @@ func TestValidateSystem(t *testing.T) {
 			},
 			wantErr: integration.ErrInvalidAuthParams(""),
 		},
+		{
+			name: "ReadWriteDataSourcePasses",
+			system: integration.System{
+				DataSource: &integration.DataSourceConfig{Kind: config.SQLite, Mode: integration.DataSourceModeReadWrite},
+			},
+		},
+		{
+			name: "UnknownDataSourceModeFails",
+			system: integration.System{
+				DataSource: &integration.DataSourceConfig{Kind: config.SQLite, Mode: "admin"},
+			},
+			wantErr: integration.ErrInvalidDataSource(""),
+		},
 	}
 
 	for _, tt := range tests {

@@ -28,9 +28,9 @@ type Contract struct {
 
 // System is one external system instance: where it lives and how to
 // authenticate against it. BaseURL enables the scoped http library,
-// DataSource enables the scoped read-only sql library; a system may carry
-// both. Connection-level defaults (timeout, retry) apply to every adapter of
-// the system unless overridden per adapter.
+// DataSource enables the scoped sql library (read-only unless its Mode says
+// otherwise); a system may carry both. Connection-level defaults (timeout,
+// retry) apply to every adapter of the system unless overridden per adapter.
 type System struct {
 	orm.BaseModel `bun:"table:itg_system,alias:isy"`
 	orm.FullAuditedModel
@@ -60,11 +60,38 @@ type System struct {
 	IsEnabled bool         `json:"isEnabled" bun:"is_enabled"`
 }
 
+// DataSourceMode declares how far adapter scripts may go against a system's
+// database: read-only querying (the default) or full read-write exchange for
+// systems whose integration surface is a writable database.
+type DataSourceMode string
+
+const (
+	// DataSourceModeReadOnly restricts scripts to sql.query; sql.exec throws.
+	// An empty mode resolves to this default.
+	DataSourceModeReadOnly DataSourceMode = "read_only"
+	// DataSourceModeReadWrite additionally enables sql.exec, letting scripts
+	// write back into the system's database.
+	DataSourceModeReadWrite DataSourceMode = "read_write"
+)
+
+// IsValid reports whether the mode is empty (defaulting to read-only) or one
+// of the known modes.
+func (m DataSourceMode) IsValid() bool {
+	return m == "" || m == DataSourceModeReadOnly || m == DataSourceModeReadWrite
+}
+
+// AllowsWrite reports whether scripts may mutate the system's database.
+func (m DataSourceMode) AllowsWrite() bool {
+	return m == DataSourceModeReadWrite
+}
+
 // DataSourceConfig describes a system's direct database connection. It
 // mirrors config.DataSourceConfig with JSON tags for jsonb storage and the
 // management API; ToConfig converts it for the datasource registry.
 type DataSourceConfig struct {
-	Kind        config.DBKind  `json:"kind"`
+	Kind config.DBKind `json:"kind"`
+	// Mode gates script write access to this database; empty means read-only.
+	Mode        DataSourceMode `json:"mode,omitempty"`
 	Host        string         `json:"host,omitempty"`
 	Port        uint16         `json:"port,omitempty"`
 	User        string         `json:"user,omitempty"`
@@ -77,8 +104,8 @@ type DataSourceConfig struct {
 }
 
 // ToConfig converts the connection settings into the framework's data source
-// configuration. Scripts stay read-only through the sql library's own guard,
-// so the connection-level SQL guard is left off.
+// configuration. Script write access is enforced at the sql library layer
+// (per Mode), so the connection-level SQL guard is left off.
 func (c *DataSourceConfig) ToConfig() config.DataSourceConfig {
 	return config.DataSourceConfig{
 		Kind:        c.Kind,

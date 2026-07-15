@@ -259,9 +259,10 @@ func (inv *Invoker) run(ctx context.Context, e *execution) (any, []integration.H
 // newRuntime assembles a fresh runtime carrying the engine baseline plus the
 // system-scoped libraries and the per-execution bindings. Each scoped library
 // joins only when the system configures its transport — http for systems with
-// a base URL, sql (bound to the source, read-only) for systems with a data
-// source — so a script reaching for an unconfigured capability fails with a
-// plain ReferenceError instead of a misleading transport fault.
+// a base URL, sql (bound to the source, write access gated by the data source
+// mode) for systems with a data source — so a script reaching for an
+// unconfigured capability fails with a plain ReferenceError instead of a
+// misleading transport fault.
 func (inv *Invoker) newRuntime(ctx context.Context, e *execution) (*js.Runtime, error) {
 	runtime, err := inv.engine.NewRuntime(js.WithRunTimeout(e.runTimeout))
 	if err != nil {
@@ -285,7 +286,12 @@ func (inv *Invoker) newRuntime(ctx context.Context, e *execution) (*js.Runtime, 
 			return nil, err
 		}
 
-		libs = append(libs, jssql.New(systemDB, kind))
+		var sqlOpts []jssql.Option
+		if e.system.DataSource.Mode.AllowsWrite() {
+			sqlOpts = append(sqlOpts, jssql.WithExec())
+		}
+
+		libs = append(libs, jssql.New(systemDB, kind, sqlOpts...))
 	}
 
 	for _, lib := range libs {

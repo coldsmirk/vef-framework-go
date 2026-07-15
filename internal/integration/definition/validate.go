@@ -2,6 +2,7 @@ package definition
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 
 	"github.com/coldsmirk/vef-framework-go/integration"
@@ -46,8 +47,14 @@ func ValidateSystem(registry OutboundAuthSchemeResolver, codec *SecretCodec, sys
 		}
 	}
 
-	if system.DataSource != nil && system.DataSource.Kind == "" {
-		return integration.ErrInvalidDataSource("kind is required")
+	if system.DataSource != nil {
+		if system.DataSource.Kind == "" {
+			return integration.ErrInvalidDataSource("kind is required")
+		}
+
+		if !system.DataSource.Mode.IsValid() {
+			return integration.ErrInvalidDataSource(fmt.Sprintf("unknown mode %q", system.DataSource.Mode))
+		}
 	}
 
 	if system.OutboundAuth == nil {

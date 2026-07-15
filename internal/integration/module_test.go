@@ -1002,6 +1002,31 @@ func (s *ModuleTestSuite) TestDatabaseSystem() {
 		s.ErrorIs(err, integration.ErrScriptFailed(""), "Read-only violation should classify as a script failure")
 	})
 
+	s.Run("WritesAllowedInReadWriteMode", func() {
+		rwSystem := &integration.System{
+			Code:       "db-sys-rw",
+			Name:       "db-sys-rw",
+			DataSource: &integration.DataSourceConfig{Kind: config.SQLite, Mode: integration.DataSourceModeReadWrite},
+			IsEnabled:  true,
+		}
+
+		_, err := s.db.NewInsert().Model(rwSystem).Exec(s.T().Context())
+		s.Require().NoError(err, "Read-write system seed should insert")
+
+		s.createAdapter(rwSystem, contract, `
+			sql.exec('CREATE TABLE exchange (id INTEGER)')
+			sql.exec('INSERT INTO exchange (id) VALUES (?)', 7)
+			return { count: sql.queryOne('SELECT COUNT(*) AS n FROM exchange').n }
+		`)
+
+		result, err := s.invoker.Invoke(s.T().Context(), "db.op", nil, integration.WithSystem("db-sys-rw"))
+		s.Require().NoError(err, "Write through a read-write system should succeed")
+
+		output, ok := result.Output().(map[string]any)
+		s.Require().True(ok, "Output should be the standard model object")
+		s.InEpsilon(float64(1), output["count"], 0, "The written row should read back")
+	})
+
 	s.Run("DatabaseProbe", func() {
 		check, err := s.concrete.TestConnection(s.T().Context(), system, "", "")
 		s.Require().NoError(err, "Database probe should not error")
