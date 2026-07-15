@@ -9,25 +9,25 @@ import (
 
 // Response codes for integration API errors (2600-2699).
 const (
-	ErrCodeContractNotFound  = 2600
-	ErrCodeContractDisabled  = 2601
-	ErrCodeSystemNotFound    = 2602
-	ErrCodeSystemDisabled    = 2603
-	ErrCodeAdapterNotFound   = 2604
-	ErrCodeAdapterDisabled   = 2605
-	ErrCodeRouteNotFound     = 2606
-	ErrCodeTargetAmbiguous   = 2607
-	ErrCodeInputInvalid      = 2608
-	ErrCodeOutputInvalid     = 2609
-	ErrCodeUpstreamFailed    = 2610
-	ErrCodeTransportFailed   = 2611
-	ErrCodeInvocationTimeout = 2612
-	ErrCodeScriptFailed      = 2613
-	ErrCodeUnknownAuthScheme = 2614
-	ErrCodeInvalidSchema     = 2615
-	ErrCodeInvalidScript     = 2616
-	ErrCodeInvalidAuthParams = 2617
-	ErrCodeInvalidRouteRef   = 2618
+	ErrCodeContractNotFound      = 2600
+	ErrCodeContractDisabled      = 2601
+	ErrCodeSystemNotFound        = 2602
+	ErrCodeSystemDisabled        = 2603
+	ErrCodeAdapterNotFound       = 2604
+	ErrCodeAdapterDisabled       = 2605
+	ErrCodeRouteNotFound         = 2606
+	ErrCodeTargetAmbiguous       = 2607
+	ErrCodeInputInvalid          = 2608
+	ErrCodeOutputInvalid         = 2609
+	ErrCodeUpstreamFailed        = 2610
+	ErrCodeTransportFailed       = 2611
+	ErrCodeInvocationTimeout     = 2612
+	ErrCodeScriptFailed          = 2613
+	ErrCodeUnknownAuthScheme     = 2614
+	ErrCodeInvalidSchema         = 2615
+	ErrCodeInvalidScript         = 2616
+	ErrCodeInvalidAuthParams     = 2617
+	ErrCodeInvalidRouteRef       = 2618
 	ErrCodeInvalidBaseURL        = 2619
 	ErrCodeInvalidDataSource     = 2620
 	ErrCodeInvalidDirection      = 2621

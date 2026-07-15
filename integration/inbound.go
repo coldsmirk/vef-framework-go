@@ -71,7 +71,7 @@ type InboundHandler interface {
 // NewInboundHandler adapts a typed function to an InboundHandler: the
 // schema-validated input is decoded into I through a JSON round-trip before
 // the function runs.
-func NewInboundHandler[I any, O any](contract string, handle func(ctx context.Context, input I) (O, error)) InboundHandler {
+func NewInboundHandler[I, O any](contract string, handle func(ctx context.Context, input I) (O, error)) InboundHandler {
 	return &typedInboundHandler[I, O]{contract: contract, handle: handle}
 }
 
