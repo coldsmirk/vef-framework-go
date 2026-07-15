@@ -6,6 +6,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/exec"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/gateway"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/migration"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/resource"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
@@ -33,6 +34,10 @@ var Module = fx.Module(
 		fx.Annotate(
 			exec.NewReceiver,
 			fx.ParamTags(``, ``, ``, `group:"vef:integration:inbound_handlers"`),
+		),
+		fx.Annotate(
+			gateway.NewHTTPGateway,
+			fx.ResultTags(`group:"vef:app:middlewares"`),
 		),
 	),
 

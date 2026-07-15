@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/integration"
+	"github.com/coldsmirk/vef-framework-go/internal/app"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/exec"
@@ -46,6 +48,7 @@ type LabAck struct {
 type ModuleTestSuite struct {
 	suite.Suite
 
+	app        *app.App
 	cleanup    func()
 	db         orm.DB
 	invoker    integration.Invoker
@@ -108,25 +111,34 @@ func (s *ModuleTestSuite) SetupSuite() {
 
 	s.upstream = httptest.NewServer(mux)
 
-	_, s.cleanup = apptest.NewTestApp(s.T(),
+	labHandler := func(contract string) integration.InboundHandler {
+		return integration.NewInboundHandler(contract, func(_ context.Context, report LabReport) (LabAck, error) {
+			if report.ReportID == "boom" {
+				return LabAck{}, errors.New("laboratory rejected the report")
+			}
+
+			s.seenReport = report.ReportID
+
+			return LabAck{Accepted: true}, nil
+		})
+	}
+
+	s.app, s.cleanup = apptest.NewTestApp(s.T(),
 		fx.Replace(&config.IntegrationConfig{
 			AutoMigrate: true,
 			SecretKey:   base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32)),
 			Log:         config.IntegrationLogConfig{Mode: config.IntegrationLogAll},
+			Inbound: config.IntegrationInboundConfig{
+				RateLimit: config.IntegrationInboundRateLimitConfig{Max: 3, Period: time.Minute},
+			},
 		}),
 		fx.Provide(func() context.Context { return context.Background() }),
 		fx.Provide(fx.Annotate(
-			func() integration.InboundHandler {
-				return integration.NewInboundHandler("lab.result_received", func(_ context.Context, report LabReport) (LabAck, error) {
-					if report.ReportID == "boom" {
-						return LabAck{}, errors.New("laboratory rejected the report")
-					}
-
-					s.seenReport = report.ReportID
-
-					return LabAck{Accepted: true}, nil
-				})
-			},
+			func() integration.InboundHandler { return labHandler("lab.result_received") },
+			fx.ResultTags(`group:"vef:integration:inbound_handlers"`),
+		)),
+		fx.Provide(fx.Annotate(
+			func() integration.InboundHandler { return labHandler("gw.result_received") },
 			fx.ResultTags(`group:"vef:integration:inbound_handlers"`),
 		)),
 		Module,
@@ -557,6 +569,99 @@ try {
 
 		s.True(inbound, "Stats should carry the inbound (system, contract, direction) tuple")
 		s.True(rejected, "Handler failures should surface in stats")
+	})
+}
+
+// postInbound sends one request through the full HTTP stack to the inbound
+// gateway endpoint.
+func (s *ModuleTestSuite) postInbound(system, contract, body string, headers map[string]string) *http.Response {
+	req := httptest.NewRequestWithContext(context.Background(), "POST",
+		"/integration/inbound/"+system+"/"+contract, strings.NewReader(body))
+	for name, value := range headers {
+		req.Header.Set(name, value)
+	}
+
+	resp, err := s.app.Test(req)
+	s.Require().NoError(err, "Gateway test request should not fail")
+
+	return resp
+}
+
+func (s *ModuleTestSuite) TestInboundGateway() {
+	contract := s.createContract("gw.result_received", labInputSchema, labOutputSchema)
+	system := s.createInboundSystem("lis-http", &integration.InboundAuthConfig{
+		Scheme: auth.InboundSchemeAPIKey,
+		Params: map[string]string{"key": "cb-key-9"},
+	})
+	s.createDirectedAdapter(system, contract, integration.DirectionInbound, `
+const doc = JSON.parse(request.body)
+const ack = dispatch({ reportId: doc.rid })
+return { status: 200, headers: { 'Content-Type': 'text/xml' }, body: '<Ack>' + (ack.accepted ? '0' : '1') + '</Ack>' }
+`)
+
+	s.Run("VendorShapedReply", func() {
+		resp := s.postInbound("lis-http", "gw.result_received", `{"rid":"R-GW-1"}`,
+			map[string]string{"X-API-Key": "cb-key-9"})
+
+		s.Equal(http.StatusOK, resp.StatusCode, "The delivery should succeed end to end")
+		s.Equal("text/xml", resp.Header.Get("Content-Type"), "The script should control the content type")
+
+		body, err := io.ReadAll(resp.Body)
+		s.Require().NoError(err, "Response body should read")
+		s.Equal("<Ack>0</Ack>", string(body), "The vendor should receive the script-shaped XML reply")
+		s.Equal("R-GW-1", s.seenReport, "The handler should receive the dispatched standard input")
+	})
+
+	s.Run("AuthFailureRendersUniform401", func() {
+		resp := s.postInbound("lis-http", "gw.result_received", `{"rid":"R-GW-2"}`,
+			map[string]string{"X-API-Key": "wrong"})
+
+		s.Equal(http.StatusUnauthorized, resp.StatusCode, "A failed verification should render 401")
+
+		body, err := io.ReadAll(resp.Body)
+		s.Require().NoError(err, "Response body should read")
+		s.NotContains(string(body), "mismatch", "The rejection reason must stay server-side")
+	})
+
+	s.Run("UnknownSystemRejected", func() {
+		resp := s.postInbound("no-such-system", "gw.result_received", `{}`, nil)
+
+		s.Equal(http.StatusNotFound, resp.StatusCode,
+			"An unknown system must render 404 — a 200 would count as a successful delivery for the vendor")
+	})
+
+	s.Run("PlainReplyRendersAsJSON", func() {
+		jsonSystem := s.createInboundSystem("lis-json", &integration.InboundAuthConfig{Scheme: auth.InboundSchemeNone})
+		s.createDirectedAdapter(jsonSystem, contract, integration.DirectionInbound, `
+const ack = dispatch({ reportId: JSON.parse(request.body).rid })
+return { received: ack.accepted }
+`)
+
+		resp := s.postInbound("lis-json", "gw.result_received", `{"rid":"R-GW-3"}`, nil)
+
+		s.Equal(http.StatusOK, resp.StatusCode, "A plain reply should succeed")
+		s.Contains(resp.Header.Get("Content-Type"), "application/json", "A non-envelope reply should render as JSON")
+
+		body, err := io.ReadAll(resp.Body)
+		s.Require().NoError(err, "Response body should read")
+		s.JSONEq(`{"received":true}`, string(body), "The reply value should be the JSON body")
+	})
+
+	s.Run("PerSystemRateLimit", func() {
+		floodSystem := s.createInboundSystem("lis-flood", &integration.InboundAuthConfig{Scheme: auth.InboundSchemeNone})
+		s.createDirectedAdapter(floodSystem, contract, integration.DirectionInbound,
+			`dispatch({ reportId: 'R-FLOOD' }); return { status: 200, body: 'ok' }`)
+
+		var last int
+		for range 4 {
+			resp := s.postInbound("lis-flood", "gw.result_received", `{}`, nil)
+			last = resp.StatusCode
+		}
+
+		s.Equal(http.StatusTooManyRequests, last, "The fourth delivery should trip the per-system limit")
+
+		resp := s.postInbound("lis-json", "gw.result_received", `{"rid":"R-GW-4"}`, nil)
+		s.Equal(http.StatusOK, resp.StatusCode, "Another system's deliveries must not be starved")
 	})
 }
 

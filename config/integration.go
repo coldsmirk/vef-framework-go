@@ -72,6 +72,47 @@ type IntegrationConfig struct {
 
 	// Log controls invocation logging.
 	Log IntegrationLogConfig `config:"log"`
+
+	// Inbound configures the inbound gateways receiving vendor-initiated
+	// calls.
+	Inbound IntegrationInboundConfig `config:"inbound"`
+}
+
+// Default values for IntegrationInboundRateLimitConfig, applied by the
+// Effective* accessors.
+const (
+	DefaultIntegrationInboundRateLimitMax    = 120
+	DefaultIntegrationInboundRateLimitPeriod = time.Minute
+)
+
+// IntegrationInboundConfig configures the inbound gateways
+// (vef.integration.inbound).
+type IntegrationInboundConfig struct {
+	// RateLimit bounds vendor-initiated deliveries on the HTTP gateway.
+	RateLimit IntegrationInboundRateLimitConfig `config:"rate_limit"`
+}
+
+// IntegrationInboundRateLimitConfig bounds inbound delivery throughput. The
+// limiter counts per (system, client IP) in a sliding window held in process
+// memory, so in a multi-node deployment each node enforces the limit
+// independently.
+type IntegrationInboundRateLimitConfig struct {
+	// Max is the number of deliveries admitted per window; 0 resolves to the
+	// default. Default: 120.
+	Max int `config:"max"`
+	// Period is the sliding-window length; 0 resolves to the default.
+	// Default: 1m.
+	Period time.Duration `config:"period"`
+}
+
+// EffectiveMax returns Max or its default.
+func (c *IntegrationInboundRateLimitConfig) EffectiveMax() int {
+	return coalescePositive(c.Max, DefaultIntegrationInboundRateLimitMax)
+}
+
+// EffectivePeriod returns Period or its default.
+func (c *IntegrationInboundRateLimitConfig) EffectivePeriod() time.Duration {
+	return coalescePositive(c.Period, DefaultIntegrationInboundRateLimitPeriod)
 }
 
 // EffectiveRunTimeout returns RunTimeout or its default.
