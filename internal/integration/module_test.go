@@ -154,9 +154,14 @@ func (s *ModuleTestSuite) createSystem(code string, authCfg *integration.AuthCon
 }
 
 func (s *ModuleTestSuite) createAdapter(system *integration.System, contract *integration.Contract, script string) *integration.Adapter {
+	return s.createDirectedAdapter(system, contract, integration.DirectionOutbound, script)
+}
+
+func (s *ModuleTestSuite) createDirectedAdapter(system *integration.System, contract *integration.Contract, direction integration.Direction, script string) *integration.Adapter {
 	adapter := &integration.Adapter{
 		SystemID:   system.ID,
 		ContractID: contract.ID,
+		Direction:  direction,
 		Script:     script,
 		IsEnabled:  true,
 	}
@@ -468,6 +473,16 @@ func (s *ModuleTestSuite) TestDefinitionGuards() {
 		_, err := s.invoker.Invoke(s.T().Context(), "guard.no-adapter", nil, integration.WithSystem("guard-sys-2"))
 		s.Require().Error(err, "Missing adapter should fail")
 		s.ErrorIs(err, integration.ErrAdapterNotFound, "Error should be adapter-not-found")
+	})
+
+	s.Run("InboundAdapterDoesNotServeOutbound", func() {
+		contract := s.createContract("guard.directed", nil, nil)
+		system := s.createSystem("guard-sys-3", nil)
+		s.createDirectedAdapter(system, contract, integration.DirectionInbound, `return {}`)
+
+		_, err := s.invoker.Invoke(s.T().Context(), "guard.directed", nil, integration.WithSystem("guard-sys-3"))
+		s.Require().Error(err, "An inbound-only binding should not serve outbound invocations")
+		s.ErrorIs(err, integration.ErrAdapterNotFound, "The flows must stay direction-isolated")
 	})
 }
 

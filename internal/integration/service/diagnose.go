@@ -83,10 +83,13 @@ func loadRoutingState(ctx context.Context, db orm.DB) (*routingState, error) {
 
 	var adapters []integration.Adapter
 
+	// Routing serves the outbound flow only, so inbound adapters must not
+	// satisfy a route's serving check.
 	err = db.NewSelect().
 		Model(&adapters).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("is_enabled", true)
+			cb.Equals("is_enabled", true).
+				Equals("direction", integration.DirectionOutbound)
 		}).
 		Scan(ctx)
 	if err != nil {

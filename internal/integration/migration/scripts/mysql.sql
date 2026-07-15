@@ -48,11 +48,12 @@ CREATE TABLE IF NOT EXISTS itg_adapter (
     updated_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT 'Updater',
     system_id VARCHAR(32) NOT NULL COMMENT 'System',
     contract_id VARCHAR(32) NOT NULL COMMENT 'Contract',
+    direction VARCHAR(16) NOT NULL DEFAULT 'outbound' COMMENT 'Flow Direction (outbound / inbound)',
     script TEXT NOT NULL COMMENT 'Adapter Script',
     timeout_ms INTEGER NOT NULL DEFAULT 0 COMMENT 'Timeout Override (ms)',
     is_enabled BOOLEAN NOT NULL DEFAULT true COMMENT 'Enabled',
     CONSTRAINT pk_itg_adapter PRIMARY KEY (id),
-    CONSTRAINT uk_itg_adapter__system_id_contract_id UNIQUE (system_id, contract_id),
+    CONSTRAINT uk_itg_adapter__system_id_contract_id_direction UNIQUE (system_id, contract_id, direction),
     CONSTRAINT fk_itg_adapter__system_id FOREIGN KEY (system_id)
         REFERENCES itg_system(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_itg_adapter__contract_id FOREIGN KEY (contract_id)
@@ -90,6 +91,7 @@ CREATE TABLE IF NOT EXISTS itg_invocation_log (
     created_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT 'Creator',
     system_code VARCHAR(128) NOT NULL COMMENT 'System',
     contract_code VARCHAR(128) NOT NULL COMMENT 'Contract',
+    direction VARCHAR(16) NOT NULL DEFAULT 'outbound' COMMENT 'Flow Direction (outbound / inbound)',
     failure_kind VARCHAR(16) NOT NULL DEFAULT '' COMMENT 'Failure Kind (empty = success)',
     duration_ms BIGINT NOT NULL DEFAULT 0 COMMENT 'Duration (ms)',
     input JSON COMMENT 'Input Capture',

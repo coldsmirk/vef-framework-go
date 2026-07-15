@@ -54,10 +54,11 @@ CREATE TABLE IF NOT EXISTS itg_adapter (
     updated_by VARCHAR(32) NOT NULL DEFAULT 'system',
     system_id VARCHAR(32) NOT NULL,
     contract_id VARCHAR(32) NOT NULL,
+    direction VARCHAR(16) NOT NULL DEFAULT 'outbound',
     script TEXT NOT NULL,
     timeout_ms INTEGER NOT NULL DEFAULT 0,
     is_enabled BOOLEAN NOT NULL DEFAULT 1,
-    CONSTRAINT uk_itg_adapter__system_id_contract_id UNIQUE (system_id, contract_id),
+    CONSTRAINT uk_itg_adapter__system_id_contract_id_direction UNIQUE (system_id, contract_id, direction),
     CONSTRAINT fk_itg_adapter__system_id FOREIGN KEY (system_id)
         REFERENCES itg_system(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_itg_adapter__contract_id FOREIGN KEY (contract_id)
@@ -93,6 +94,7 @@ CREATE TABLE IF NOT EXISTS itg_invocation_log (
     created_by VARCHAR(32) NOT NULL DEFAULT 'system',
     system_code VARCHAR(128) NOT NULL,
     contract_code VARCHAR(128) NOT NULL,
+    direction VARCHAR(16) NOT NULL DEFAULT 'outbound',
     failure_kind VARCHAR(16) NOT NULL DEFAULT '',
     duration_ms BIGINT NOT NULL DEFAULT 0,
     input JSONB,

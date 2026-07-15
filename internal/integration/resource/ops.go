@@ -119,7 +119,8 @@ func (r *OpsResource) TestConnection(ctx fiber.Ctx, db orm.DB, params TestConnec
 	return result.Ok(check).Response(ctx)
 }
 
-// savedScript loads the script of the adapter binding system to contract.
+// savedScript loads the script of the outbound adapter binding system to
+// contract.
 func (*OpsResource) savedScript(ctx context.Context, db orm.DB, system *integration.System, contract *integration.Contract) (string, error) {
 	adapter := new(integration.Adapter)
 
@@ -127,7 +128,8 @@ func (*OpsResource) savedScript(ctx context.Context, db orm.DB, system *integrat
 		Model(adapter).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("system_id", system.ID).
-				Equals("contract_id", contract.ID)
+				Equals("contract_id", contract.ID).
+				Equals("direction", integration.DirectionOutbound)
 		}).
 		Scan(ctx)
 	if err != nil {

@@ -109,16 +109,39 @@ type RetryPolicy struct {
 	MaxBackoffMs int64 `json:"maxBackoffMs,omitempty"`
 }
 
+// Direction distinguishes the two integration flows an adapter can implement:
+// outbound (business code invokes the external system) and inbound (the
+// external system calls in through an inbound gateway).
+type Direction string
+
+const (
+	// DirectionOutbound marks a script translating contract input into vendor
+	// calls and vendor responses into the contract output.
+	DirectionOutbound Direction = "outbound"
+	// DirectionInbound marks a script translating a vendor-initiated request
+	// into a contract dispatch and the dispatch result into the vendor's
+	// expected reply.
+	DirectionInbound Direction = "inbound"
+)
+
+// IsValid reports whether the direction is one of the two known flows.
+func (d Direction) IsValid() bool {
+	return d == DirectionOutbound || d == DirectionInbound
+}
+
 // Adapter binds one system to one contract: its script translates between
 // the system's wire format and the contract's standard models. A system
-// implements a contract with exactly one adapter.
+// implements a contract with exactly one adapter per direction.
 type Adapter struct {
 	orm.BaseModel `bun:"table:itg_adapter,alias:iad"`
 	orm.FullAuditedModel
 
 	SystemID   string `json:"systemId" bun:"system_id"`
 	ContractID string `json:"contractId" bun:"contract_id"`
-	Script     string `json:"script" bun:"script"`
+	// Direction selects the flow the script implements; an empty value is
+	// normalized to outbound at save time.
+	Direction Direction `json:"direction" bun:"direction"`
+	Script    string    `json:"script" bun:"script"`
 	// TimeoutMs overrides the system call timeout for this adapter; zero
 	// inherits it.
 	TimeoutMs int  `json:"timeoutMs" bun:"timeout_ms"`
@@ -147,6 +170,9 @@ type InvocationLog struct {
 
 	SystemCode   string `json:"systemCode" bun:"system_code"`
 	ContractCode string `json:"contractCode" bun:"contract_code"`
+	// Direction records which flow produced the entry: outbound invocations
+	// or inbound deliveries.
+	Direction Direction `json:"direction" bun:"direction"`
 	// FailureKind is empty for a successful invocation.
 	FailureKind FailureKind     `json:"failureKind" bun:"failure_kind"`
 	DurationMs  int64           `json:"durationMs" bun:"duration_ms"`

@@ -28,6 +28,7 @@ const (
 	ErrCodeInvalidRouteRef   = 2618
 	ErrCodeInvalidBaseURL    = 2619
 	ErrCodeInvalidDataSource = 2620
+	ErrCodeInvalidDirection  = 2621
 )
 
 // Predefined integration API errors. These are business errors and keep the
@@ -170,3 +171,9 @@ func ErrInvalidDataSource(detail string) result.Error {
 		result.WithCode(ErrCodeInvalidDataSource),
 	)
 }
+
+// ErrInvalidDirection rejects an adapter direction outside the known flows.
+var ErrInvalidDirection = result.Err(
+	i18n.T("integration_invalid_direction"),
+	result.WithCode(ErrCodeInvalidDirection),
+)

@@ -96,7 +96,7 @@ func (inv *Invoker) Invoke(ctx context.Context, contract string, input any, opts
 		return nil, err
 	}
 
-	adapter, err := inv.loadAdapter(ctx, system.ID, loadedContract.ID)
+	adapter, err := inv.loadAdapter(ctx, system.ID, loadedContract.ID, integration.DirectionOutbound)
 	if err != nil {
 		return nil, err
 	}
@@ -383,6 +383,7 @@ func (inv *Invoker) finish(ctx context.Context, o *outcome) {
 	entry := &integration.InvocationLog{
 		SystemCode:   o.system,
 		ContractCode: o.contract,
+		Direction:    integration.DirectionOutbound,
 		FailureKind:  o.kind,
 		DurationMs:   o.duration.Milliseconds(),
 		Input:        inv.capturer.captureValue(o.input),
@@ -484,15 +485,17 @@ func (inv *Invoker) loadSystem(ctx context.Context, code string) (*integration.S
 	return system, nil
 }
 
-// loadAdapter fetches the enabled adapter binding system to contract.
-func (inv *Invoker) loadAdapter(ctx context.Context, systemID, contractID string) (*integration.Adapter, error) {
+// loadAdapter fetches the enabled adapter binding system to contract in the
+// given flow direction.
+func (inv *Invoker) loadAdapter(ctx context.Context, systemID, contractID string, direction integration.Direction) (*integration.Adapter, error) {
 	adapter := new(integration.Adapter)
 
 	err := inv.db.NewSelect().
 		Model(adapter).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("system_id", systemID).
-				Equals("contract_id", contractID)
+				Equals("contract_id", contractID).
+				Equals("direction", direction)
 		}).
 		Scan(ctx)
 	if err != nil {
