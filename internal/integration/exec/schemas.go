@@ -17,11 +17,11 @@ const schemaCacheCapacity = 256
 // mirroring the program cache: editing a schema implicitly invalidates it.
 type schemaCache struct {
 	mu  sync.Mutex
-	lru *lruCache[*jsonschema.Resolved]
+	lru *service.LRU[*jsonschema.Resolved]
 }
 
 func newSchemaCache() *schemaCache {
-	return &schemaCache{lru: newLRUCache[*jsonschema.Resolved](schemaCacheCapacity)}
+	return &schemaCache{lru: service.NewLRU[*jsonschema.Resolved](schemaCacheCapacity)}
 }
 
 // Get returns the resolved schema for raw, compiling and caching it on first

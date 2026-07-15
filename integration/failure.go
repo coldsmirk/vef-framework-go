@@ -28,4 +28,11 @@ const (
 	// prevented from executing: an auth scheme that is no longer registered
 	// or a credential that cannot be decrypted.
 	FailureConfig FailureKind = "config"
+	// FailureAuth marks an inbound delivery rejected by the system's inbound
+	// auth verification — the caller could not prove it is the system.
+	FailureAuth FailureKind = "auth"
+	// FailureHandler marks an inbound delivery whose business handler
+	// returned an error after a successful dispatch — a business failure, not
+	// an adapter or vendor fault.
+	FailureHandler FailureKind = "handler"
 )

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -30,22 +31,35 @@ type PatientInfo struct {
 	Gender string `json:"gender"`
 }
 
+// LabReport is the standard inbound model dispatched to the test handler.
+type LabReport struct {
+	ReportID string `json:"reportId"`
+}
+
+// LabAck is the standard output the test handler returns.
+type LabAck struct {
+	Accepted bool `json:"accepted"`
+}
+
 // ModuleTestSuite boots the full framework with the integration module
 // against an in-memory SQLite primary and a live httptest upstream.
 type ModuleTestSuite struct {
 	suite.Suite
 
-	cleanup  func()
-	db       orm.DB
-	invoker  integration.Invoker
-	concrete *exec.Invoker
-	codec    *service.SecretCodec
-	registry *auth.Registry
+	cleanup    func()
+	db         orm.DB
+	invoker    integration.Invoker
+	concrete   *exec.Invoker
+	receiver   *exec.Receiver
+	codec      *service.SecretCodec
+	registry   *auth.Registry
+	inboundReg *auth.InboundRegistry
 
 	upstream     *httptest.Server
 	seenAuth     string
 	seenBody     []byte
 	seenSOAPBody []byte
+	seenReport   string
 	countedCalls int
 }
 
@@ -101,8 +115,22 @@ func (s *ModuleTestSuite) SetupSuite() {
 			Log:         config.IntegrationLogConfig{Mode: config.IntegrationLogAll},
 		}),
 		fx.Provide(func() context.Context { return context.Background() }),
+		fx.Provide(fx.Annotate(
+			func() integration.InboundHandler {
+				return integration.NewInboundHandler("lab.result_received", func(_ context.Context, report LabReport) (LabAck, error) {
+					if report.ReportID == "boom" {
+						return LabAck{}, errors.New("laboratory rejected the report")
+					}
+
+					s.seenReport = report.ReportID
+
+					return LabAck{Accepted: true}, nil
+				})
+			},
+			fx.ResultTags(`group:"vef:integration:inbound_handlers"`),
+		)),
 		Module,
-		fx.Populate(&s.db, &s.invoker, &s.concrete, &s.codec, &s.registry),
+		fx.Populate(&s.db, &s.invoker, &s.concrete, &s.receiver, &s.codec, &s.registry, &s.inboundReg),
 	)
 }
 
@@ -151,6 +179,44 @@ func (s *ModuleTestSuite) createSystem(code string, authCfg *integration.AuthCon
 	s.Require().NoError(err, "System seed should insert")
 
 	return system
+}
+
+// createInboundSystem seeds a system reachable only inbound: no base URL,
+// with the given inbound auth sealed the way the management API would store
+// it (sensitive params encrypted).
+func (s *ModuleTestSuite) createInboundSystem(code string, inboundAuth *integration.InboundAuthConfig) *integration.System {
+	if inboundAuth != nil {
+		scheme, ok := s.inboundReg.Resolve(inboundAuth)
+		s.Require().True(ok, "Seed inbound auth scheme should resolve")
+		s.Require().NoError(s.codec.EncryptInboundAuth(scheme, inboundAuth, nil), "Seed inbound auth should encrypt")
+	}
+
+	system := &integration.System{
+		Code:        code,
+		Name:        code,
+		InboundAuth: inboundAuth,
+		IsEnabled:   true,
+	}
+
+	_, err := s.db.NewInsert().Model(system).Exec(s.T().Context())
+	s.Require().NoError(err, "Inbound system seed should insert")
+
+	return system
+}
+
+// inboundRequest builds the envelope an HTTP gateway would hand the receiver;
+// header keys are lowercased per the envelope contract.
+func inboundRequest(system, contract, body string, headers map[string]string) *integration.InboundRequest {
+	return &integration.InboundRequest{
+		SystemCode:   system,
+		ContractCode: contract,
+		Protocol:     "http",
+		Method:       "POST",
+		Path:         "/integration/inbound/" + system + "/" + contract,
+		Headers:      headers,
+		Body:         []byte(body),
+		ClientAddr:   "203.0.113.7",
+	}
 }
 
 func (s *ModuleTestSuite) createAdapter(system *integration.System, contract *integration.Contract, script string) *integration.Adapter {
@@ -316,6 +382,181 @@ func (s *ModuleTestSuite) TestXMLAdapter() {
 	s.Run("RequestBuiltWithXMLBuilder", func() {
 		s.Contains(string(s.seenSOAPBody), "<zjhm>110101199001010011</zjhm>",
 			"Script should serialize the request through fxp.XMLBuilder")
+	})
+}
+
+var (
+	labInputSchema  = json.RawMessage(`{"type":"object","properties":{"reportId":{"type":"string"}},"required":["reportId"]}`)
+	labOutputSchema = json.RawMessage(`{"type":"object","properties":{"accepted":{"type":"boolean"}},"required":["accepted"]}`)
+)
+
+const labInboundScript = `
+const doc = JSON.parse(request.body)
+const ack = dispatch({ reportId: doc.rid })
+return { status: 200, body: { received: ack.accepted } }
+`
+
+func (s *ModuleTestSuite) TestInboundDelivery() {
+	contract := s.createContract("lab.result_received", labInputSchema, labOutputSchema)
+	system := s.createInboundSystem("lis-in", &integration.InboundAuthConfig{
+		Scheme: auth.InboundSchemeAPIKey,
+		Params: map[string]string{"key": "cb-key-1"},
+	})
+	s.createDirectedAdapter(system, contract, integration.DirectionInbound, labInboundScript)
+
+	authed := map[string]string{"x-api-key": "cb-key-1"}
+
+	s.Run("DeliveryDispatchesToHandler", func() {
+		reply, err := s.receiver.Receive(s.T().Context(), inboundRequest("lis-in", "lab.result_received",
+			`{"rid":"R-1001"}`, authed))
+		s.Require().NoError(err, "An authenticated delivery should succeed")
+
+		s.Equal("R-1001", s.seenReport, "The handler should receive the translated standard input")
+
+		replyMap, ok := reply.(map[string]any)
+		s.Require().True(ok, "The script reply should export as a map")
+		s.Equal(map[string]any{"received": true}, replyMap["body"], "The reply should carry the handler output")
+	})
+
+	s.Run("CredentialsStoredEncrypted", func() {
+		stored := new(integration.System)
+		err := s.db.NewSelect().Model(stored).Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("code", "lis-in")
+		}).Scan(s.T().Context())
+		s.Require().NoError(err, "Stored system should load")
+		s.Contains(stored.InboundAuth.Params["key"], "enc:", "The inbound key must be encrypted at rest")
+	})
+
+	s.Run("WrongKeyRejectedUniformly", func() {
+		_, err := s.receiver.Receive(s.T().Context(), inboundRequest("lis-in", "lab.result_received",
+			`{"rid":"R-x"}`, map[string]string{"x-api-key": "wrong"}))
+		s.Require().ErrorIs(err, integration.ErrInboundAuthFailed, "A wrong key must deny with the uniform sentinel")
+
+		_, err = s.receiver.Receive(s.T().Context(), inboundRequest("lis-in", "lab.result_received",
+			`{"rid":"R-x"}`, nil))
+		s.Require().ErrorIs(err, integration.ErrInboundAuthFailed, "A missing key must deny identically")
+	})
+
+	s.Run("NoInboundAuthFailsClosed", func() {
+		s.createInboundSystem("lis-closed", nil)
+
+		_, err := s.receiver.Receive(s.T().Context(), inboundRequest("lis-closed", "lab.result_received",
+			`{"rid":"R-x"}`, authed))
+		s.Require().ErrorIs(err, integration.ErrInboundAuthFailed,
+			"A system without inbound auth must refuse inbound delivery")
+	})
+
+	s.Run("InputSchemaEnforcedAtDispatch", func() {
+		mistranslating := s.createInboundSystem("lis-mistranslating", &integration.InboundAuthConfig{
+			Scheme: auth.InboundSchemeAPIKey,
+			Params: map[string]string{"key": "cb-key-1"},
+		})
+		s.createDirectedAdapter(mistranslating, contract, integration.DirectionInbound,
+			`dispatch({ wrong: true }); return {}`)
+
+		_, err := s.receiver.Receive(s.T().Context(), inboundRequest("lis-mistranslating", "lab.result_received", `{}`, authed))
+		s.Require().Error(err, "A dispatch violating the input schema should fail")
+		s.ErrorIs(err, integration.ErrInputInvalid(""), "The failure should classify as input-invalid")
+	})
+
+	s.Run("HandlerErrorKeepsClassification", func() {
+		_, err := s.receiver.Receive(s.T().Context(), inboundRequest("lis-in", "lab.result_received",
+			`{"rid":"boom"}`, authed))
+		s.Require().Error(err, "An uncaught handler error should surface")
+		s.Contains(err.Error(), "laboratory rejected", "The handler's own error should be preserved")
+
+		logs := s.findLogs("lab.result_received")
+		s.Require().NotEmpty(logs, "Inbound deliveries should be logged")
+
+		found := false
+		for _, entry := range logs {
+			if entry.FailureKind == integration.FailureHandler {
+				found = true
+
+				s.Equal(integration.DirectionInbound, entry.Direction, "The log entry should carry the inbound direction")
+			}
+		}
+
+		s.True(found, "The handler failure should be classified as handler, not script")
+	})
+
+	s.Run("ScriptMayShapeTheErrorReply", func() {
+		catching := s.createInboundSystem("lis-catching", &integration.InboundAuthConfig{
+			Scheme: auth.InboundSchemeAPIKey,
+			Params: map[string]string{"key": "cb-key-1"},
+		})
+		s.createDirectedAdapter(catching, contract, integration.DirectionInbound, `
+try {
+  dispatch({ reportId: 'boom' })
+  return { status: 200, body: 'OK' }
+} catch (e) {
+  return { status: 200, body: 'REJECTED' }
+}`)
+
+		reply, err := s.receiver.Receive(s.T().Context(), inboundRequest("lis-catching", "lab.result_received", `{}`, authed))
+		s.Require().NoError(err, "The script owns the vendor-facing reply when it catches the failure")
+
+		replyMap, ok := reply.(map[string]any)
+		s.Require().True(ok, "The caught-error reply should export as a map")
+		s.Equal("REJECTED", replyMap["body"], "The script should shape the vendor-facing error reply")
+
+		var caughtLog []integration.InvocationLog
+
+		err = s.db.NewSelect().Model(&caughtLog).Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("system_code", "lis-catching")
+		}).Scan(s.T().Context())
+		s.Require().NoError(err, "Log query should succeed")
+		s.Require().NotEmpty(caughtLog, "The delivery should be logged")
+		s.Equal(integration.FailureHandler, caughtLog[0].FailureKind,
+			"The caught dispatch failure must still be classified for the record")
+	})
+
+	s.Run("MissingHandlerIsConfigFault", func() {
+		orphan := s.createContract("lab.orphan", nil, nil)
+		s.createDirectedAdapter(system, orphan, integration.DirectionInbound, `dispatch({}); return {}`)
+
+		_, err := s.receiver.Receive(s.T().Context(), inboundRequest("lis-in", "lab.orphan", `{}`, authed))
+		s.Require().ErrorIs(err, integration.ErrInboundHandlerMissing, "A contract without a handler is a config fault")
+	})
+
+	s.Run("ScriptSchemeVerifies", func() {
+		scripted := s.createInboundSystem("lis-scripted", &integration.InboundAuthConfig{
+			Scheme: auth.InboundSchemeScript,
+			Params: map[string]string{"token": "tok-9"},
+			Script: `return request.headers['x-vendor-token'] === params.token`,
+		})
+		s.createDirectedAdapter(scripted, contract, integration.DirectionInbound, labInboundScript)
+
+		_, err := s.receiver.Receive(s.T().Context(), inboundRequest("lis-scripted", "lab.result_received",
+			`{"rid":"R-2"}`, map[string]string{"x-vendor-token": "tok-9"}))
+		s.Require().NoError(err, "The verification script should decrypt params and grant access")
+
+		_, err = s.receiver.Receive(s.T().Context(), inboundRequest("lis-scripted", "lab.result_received",
+			`{"rid":"R-2"}`, map[string]string{"x-vendor-token": "nope"}))
+		s.Require().ErrorIs(err, integration.ErrInboundAuthFailed, "A falsy script verdict must deny")
+	})
+
+	s.Run("StatsCarryDirection", func() {
+		stats := s.concrete.Stats()
+
+		var inbound, rejected bool
+
+		for _, stat := range stats {
+			if stat.System == "lis-in" && stat.Contract == "lab.result_received" && stat.Direction == integration.DirectionInbound {
+				inbound = true
+
+				s.Positive(stat.Successes, "Successful deliveries should be counted")
+
+				if s.NotNil(stat.Failures, "Failed deliveries should be counted") {
+					s.Positive(stat.Failures[integration.FailureAuth], "Auth rejections should surface in stats")
+				}
+
+				rejected = stat.Failures[integration.FailureHandler] > 0
+			}
+		}
+
+		s.True(inbound, "Stats should carry the inbound (system, contract, direction) tuple")
+		s.True(rejected, "Handler failures should surface in stats")
 	})
 }
 

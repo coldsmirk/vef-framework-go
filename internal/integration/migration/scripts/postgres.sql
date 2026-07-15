@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS itg_system (
     name VARCHAR(128) NOT NULL,
     base_url VARCHAR(512) NOT NULL DEFAULT '',
     auth JSONB,
+    inbound_auth JSONB,
     data_source JSONB,
     params JSONB,
     timeout_ms INTEGER NOT NULL DEFAULT 0,
@@ -60,6 +61,7 @@ COMMENT ON COLUMN itg_system.code IS 'Code';
 COMMENT ON COLUMN itg_system.name IS 'Name';
 COMMENT ON COLUMN itg_system.base_url IS 'Base URL';
 COMMENT ON COLUMN itg_system.auth IS 'Auth Config';
+COMMENT ON COLUMN itg_system.inbound_auth IS 'Inbound Auth Config';
 COMMENT ON COLUMN itg_system.params IS 'Script Params';
 COMMENT ON COLUMN itg_system.timeout_ms IS 'Call Timeout (ms)';
 COMMENT ON COLUMN itg_system.retry IS 'Retry Policy';

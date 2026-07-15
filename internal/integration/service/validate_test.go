@@ -1,4 +1,7 @@
-package service
+// The validation tests exercise the interplay with the real auth schemes, so
+// they live in the external test package to keep service free of an auth
+// import cycle.
+package service_test
 
 import (
 	"encoding/json"
@@ -10,13 +13,14 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
 )
 
 // plainCodec builds a key-less codec for validation tests.
-func plainCodec(t *testing.T) *SecretCodec {
+func plainCodec(t *testing.T) *service.SecretCodec {
 	t.Helper()
 
-	codec, err := NewSecretCodec(new(config.IntegrationConfig))
+	codec, err := service.NewSecretCodec(new(config.IntegrationConfig))
 	require.NoError(t, err, "Codec construction should succeed")
 
 	return codec
@@ -46,7 +50,7 @@ func TestValidateContract(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateContract(&tt.contract)
+			err := service.ValidateContract(&tt.contract)
 
 			if tt.wantCode == 0 {
 				assert.NoError(t, err, "Contract should validate")
@@ -62,16 +66,16 @@ func TestValidateContract(t *testing.T) {
 
 func TestValidateAdapterScript(t *testing.T) {
 	t.Run("ValidScriptCompiles", func(t *testing.T) {
-		assert.NoError(t, ValidateAdapterScript("return { ok: true }"), "Valid script should compile")
+		assert.NoError(t, service.ValidateAdapterScript("return { ok: true }"), "Valid script should compile")
 	})
 
 	t.Run("TopLevelReturnIsSupported", func(t *testing.T) {
-		assert.NoError(t, ValidateAdapterScript("if (input) { return input } return null"),
+		assert.NoError(t, service.ValidateAdapterScript("if (input) { return input } return null"),
 			"The function wrapper should make top-level return legal")
 	})
 
 	t.Run("SyntaxErrorFails", func(t *testing.T) {
-		err := ValidateAdapterScript("return {")
+		err := service.ValidateAdapterScript("return {")
 		require.Error(t, err, "Broken script should be rejected")
 		assert.ErrorIs(t, err, integration.ErrInvalidScript(""), "Error should carry the invalid-script code")
 	})
@@ -119,7 +123,7 @@ func TestValidateSystem(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateSystem(registry, codec, &tt.system)
+			err := service.ValidateSystem(registry, codec, &tt.system)
 
 			if tt.wantErr == nil {
 				assert.NoError(t, err, "System should validate")

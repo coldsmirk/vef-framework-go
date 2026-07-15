@@ -13,13 +13,15 @@ import (
 )
 
 // Module is the integration engine module: contract/system/adapter/route
-// definitions, the script-executing Invoker, the management API, and the
-// invocation statistics the monitor module reads.
+// definitions, the script-executing Invoker (outbound) and Receiver
+// (inbound), the management API, and the invocation statistics the monitor
+// module reads.
 var Module = fx.Module(
 	"vef:integration",
 
 	fx.Provide(
 		fx.Annotate(auth.NewRegistry, fx.ParamTags(`group:"vef:integration:auth_schemes"`)),
+		fx.Annotate(auth.NewInboundRegistry, fx.ParamTags(``, `group:"vef:integration:inbound_auth_schemes"`)),
 		service.NewSecretCodec,
 		exec.NewTableRouteResolver,
 		fx.Annotate(
@@ -27,6 +29,10 @@ var Module = fx.Module(
 			fx.As(fx.Self()),
 			fx.As(new(integration.Invoker)),
 			fx.As(new(integration.StatsInspector)),
+		),
+		fx.Annotate(
+			exec.NewReceiver,
+			fx.ParamTags(``, ``, ``, `group:"vef:integration:inbound_handlers"`),
 		),
 	),
 

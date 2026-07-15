@@ -46,17 +46,120 @@ func NewSecretCodec(cfg *config.IntegrationConfig) (*SecretCodec, error) {
 	return &SecretCodec{cipher: cipher}, nil
 }
 
+// secretScheme is the codec's view of an auth scheme — outbound or inbound —
+// reduced to the declaration of which parameters are secrets.
+type secretScheme interface {
+	// SensitiveParams names the encrypted-at-rest parameters; the
+	// integration.SensitiveAll wildcard marks every parameter sensitive.
+	SensitiveParams() []string
+}
+
+// sensitiveNames resolves a scheme's sensitivity declaration against the
+// actual parameters: a nil scheme (no longer registered) and the SensitiveAll
+// wildcard both select every parameter — fail closed.
+func sensitiveNames(scheme secretScheme, params map[string]string) []string {
+	declared := []string{integration.SensitiveAll}
+	if scheme != nil {
+		declared = scheme.SensitiveParams()
+	}
+
+	if slices.Contains(declared, integration.SensitiveAll) {
+		return slices.Collect(maps.Keys(params))
+	}
+
+	return declared
+}
+
 // EncryptAuth prepares auth for persistence, mutating its params in place:
 // every sensitive parameter is encrypted, and a submitted MaskedSecret
 // placeholder is replaced by the prior stored value (prior is nil on create).
-func (c *SecretCodec) EncryptAuth(scheme integration.AuthScheme, auth, prior *integration.AuthConfig) error {
-	if auth == nil || len(auth.Params) == 0 {
+func (c *SecretCodec) EncryptAuth(scheme secretScheme, auth, prior *integration.AuthConfig) error {
+	if auth == nil {
 		return nil
 	}
 
-	for _, name := range scheme.SensitiveParams() {
-		value, ok := auth.Params[name]
-		if !ok || value == "" {
+	var priorParams map[string]string
+	if prior != nil {
+		priorParams = prior.Params
+	}
+
+	return c.encryptParams(scheme, auth.Params, priorParams)
+}
+
+// DecryptAuth returns a copy of auth's params with every sensitive parameter
+// decrypted, ready to hand to AuthScheme.Apply.
+func (c *SecretCodec) DecryptAuth(scheme secretScheme, auth *integration.AuthConfig) (map[string]string, error) {
+	if auth == nil {
+		return nil, nil
+	}
+
+	return c.decryptParams(scheme, auth.Params)
+}
+
+// MaskAuth returns a copy of auth with every non-empty sensitive parameter
+// value replaced by MaskedSecret, for management API responses. A nil scheme
+// (no longer registered) masks every parameter — fail closed.
+func MaskAuth(scheme secretScheme, auth *integration.AuthConfig) *integration.AuthConfig {
+	if auth == nil {
+		return nil
+	}
+
+	return &integration.AuthConfig{Scheme: auth.Scheme, Params: maskParams(scheme, auth.Params)}
+}
+
+// EncryptInboundAuth prepares an inbound auth config for persistence,
+// mutating its params in place with the same masked-placeholder resolution as
+// EncryptAuth. The verification script is code, not a secret; it stays
+// plaintext.
+func (c *SecretCodec) EncryptInboundAuth(scheme secretScheme, auth, prior *integration.InboundAuthConfig) error {
+	if auth == nil {
+		return nil
+	}
+
+	var priorParams map[string]string
+	if prior != nil {
+		priorParams = prior.Params
+	}
+
+	return c.encryptParams(scheme, auth.Params, priorParams)
+}
+
+// DecryptInboundAuth returns a copy of auth with every sensitive parameter
+// decrypted, ready to hand to InboundAuthScheme.Verify.
+func (c *SecretCodec) DecryptInboundAuth(scheme secretScheme, auth *integration.InboundAuthConfig) (*integration.InboundAuthConfig, error) {
+	if auth == nil {
+		return nil, nil
+	}
+
+	params, err := c.decryptParams(scheme, auth.Params)
+	if err != nil {
+		return nil, err
+	}
+
+	return &integration.InboundAuthConfig{Scheme: auth.Scheme, Params: params, Script: auth.Script}, nil
+}
+
+// MaskInboundAuth returns a copy of auth with every non-empty sensitive
+// parameter value replaced by MaskedSecret, for management API responses. A
+// nil scheme (no longer registered) masks every parameter — fail closed.
+func MaskInboundAuth(scheme secretScheme, auth *integration.InboundAuthConfig) *integration.InboundAuthConfig {
+	if auth == nil {
+		return nil
+	}
+
+	return &integration.InboundAuthConfig{Scheme: auth.Scheme, Params: maskParams(scheme, auth.Params), Script: auth.Script}
+}
+
+// encryptParams encrypts the sensitive parameters in place, resolving
+// submitted MaskedSecret placeholders against the prior stored values.
+func (c *SecretCodec) encryptParams(scheme secretScheme, params, prior map[string]string) error {
+	if len(params) == 0 {
+		return nil
+	}
+
+	for _, name := range sensitiveNames(scheme, params) {
+		value := params[name]
+		if value == "" {
 			continue
 		}
 
@@ -66,7 +169,7 @@ func (c *SecretCodec) EncryptAuth(scheme integration.AuthScheme, auth, prior *in
 				return fmt.Errorf("%w: %s", ErrMaskedSecretWithoutPrior, name)
 			}
 
-			auth.Params[name] = stored
+			params[name] = stored
 
 			continue
 		}
@@ -76,56 +179,46 @@ func (c *SecretCodec) EncryptAuth(scheme integration.AuthScheme, auth, prior *in
 			return fmt.Errorf("integration: encrypt auth parameter %s: %w", name, err)
 		}
 
-		auth.Params[name] = encrypted
+		params[name] = encrypted
 	}
 
 	return nil
 }
 
-// DecryptAuth returns a copy of auth's params with every sensitive parameter
-// decrypted, ready to hand to AuthScheme.Apply.
-func (c *SecretCodec) DecryptAuth(scheme integration.AuthScheme, auth *integration.AuthConfig) (map[string]string, error) {
-	if auth == nil || len(auth.Params) == 0 {
+// decryptParams returns a copy of params with every sensitive parameter
+// decrypted.
+func (c *SecretCodec) decryptParams(scheme secretScheme, params map[string]string) (map[string]string, error) {
+	if len(params) == 0 {
 		return nil, nil
 	}
 
-	params := maps.Clone(auth.Params)
+	decrypted := maps.Clone(params)
 
-	for _, name := range scheme.SensitiveParams() {
-		value, ok := params[name]
+	for _, name := range sensitiveNames(scheme, decrypted) {
+		value, ok := decrypted[name]
 		if !ok {
 			continue
 		}
 
-		decrypted, err := c.decryptValue(value)
+		plain, err := c.decryptValue(value)
 		if err != nil {
 			return nil, fmt.Errorf("integration: decrypt auth parameter %s: %w", name, err)
 		}
 
-		params[name] = decrypted
+		decrypted[name] = plain
 	}
 
-	return params, nil
+	return decrypted, nil
 }
 
-// MaskAuth returns a copy of auth with every non-empty sensitive parameter
-// value replaced by MaskedSecret, for management API responses. A nil scheme
-// (no longer registered) masks every parameter — fail closed.
-func MaskAuth(scheme integration.AuthScheme, auth *integration.AuthConfig) *integration.AuthConfig {
-	if auth == nil {
-		return nil
-	}
+// maskParams returns a copy of params with every non-empty sensitive value
+// replaced by MaskedSecret.
+func maskParams(scheme secretScheme, params map[string]string) map[string]string {
+	masked := maps.Clone(params)
 
-	masked := &integration.AuthConfig{Scheme: auth.Scheme, Params: maps.Clone(auth.Params)}
-
-	sensitive := maps.Keys(masked.Params)
-	if scheme != nil {
-		sensitive = slices.Values(scheme.SensitiveParams())
-	}
-
-	for name := range sensitive {
-		if masked.Params[name] != "" {
-			masked.Params[name] = integration.MaskedSecret
+	for _, name := range sensitiveNames(scheme, masked) {
+		if masked[name] != "" {
+			masked[name] = integration.MaskedSecret
 		}
 	}
 
@@ -221,13 +314,9 @@ func (c *SecretCodec) decryptValue(value string) (string, error) {
 	return c.cipher.Decrypt(payload)
 }
 
-// priorParam looks up a stored parameter value on the prior auth config.
-func priorParam(prior *integration.AuthConfig, name string) (string, bool) {
-	if prior == nil {
-		return "", false
-	}
-
-	value, ok := prior.Params[name]
+// priorParam looks up a stored parameter value on the prior params.
+func priorParam(prior map[string]string, name string) (string, bool) {
+	value, ok := prior[name]
 	if !ok || value == "" {
 		return "", false
 	}

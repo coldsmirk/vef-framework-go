@@ -560,3 +560,41 @@ func ProvideIntegrationAuthScheme(constructor any, paramTags ...string) fx.Optio
 		),
 	)
 }
+
+// ProvideIntegrationInboundAuthScheme registers a custom inbound auth scheme
+// for the integration engine (requires IntegrationModule). Systems reference
+// schemes by name in their inbound auth config; a scheme whose Name matches a
+// built-in (none / ip / api_key / http_basic / signature / script) replaces
+// it.
+//
+//	vef.ProvideIntegrationInboundAuthScheme(func() integration.InboundAuthScheme { return &vendorTokenScheme{} })
+//
+// constructor is an fx-style factory that returns integration.InboundAuthScheme.
+func ProvideIntegrationInboundAuthScheme(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:integration:inbound_auth_schemes"`),
+		),
+	)
+}
+
+// ProvideIntegrationInboundHandler registers the business handler serving one
+// inbound integration contract (requires IntegrationModule). Exactly one
+// handler may serve a contract; duplicates fail at start-up.
+//
+//	vef.ProvideIntegrationInboundHandler(func(db orm.DB) integration.InboundHandler {
+//	    return integration.NewInboundHandler("lab.report_result", func(ctx context.Context, report LabReport) (Ack, error) { ... })
+//	})
+//
+// constructor is an fx-style factory that returns integration.InboundHandler.
+func ProvideIntegrationInboundHandler(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:integration:inbound_handlers"`),
+		),
+	)
+}

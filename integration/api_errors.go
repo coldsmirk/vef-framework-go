@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"github.com/gofiber/fiber/v3"
+
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -26,9 +28,11 @@ const (
 	ErrCodeInvalidScript     = 2616
 	ErrCodeInvalidAuthParams = 2617
 	ErrCodeInvalidRouteRef   = 2618
-	ErrCodeInvalidBaseURL    = 2619
-	ErrCodeInvalidDataSource = 2620
-	ErrCodeInvalidDirection  = 2621
+	ErrCodeInvalidBaseURL        = 2619
+	ErrCodeInvalidDataSource     = 2620
+	ErrCodeInvalidDirection      = 2621
+	ErrCodeInboundAuthFailed     = 2622
+	ErrCodeInboundHandlerMissing = 2623
 )
 
 // Predefined integration API errors. These are business errors and keep the
@@ -176,4 +180,21 @@ func ErrInvalidDataSource(detail string) result.Error {
 var ErrInvalidDirection = result.Err(
 	i18n.T("integration_invalid_direction"),
 	result.WithCode(ErrCodeInvalidDirection),
+)
+
+// ErrInboundAuthFailed denies an inbound delivery that failed verification.
+// It is deliberately uniform — missing configuration, missing credentials,
+// and wrong credentials all yield it; the distinction stays server-side.
+var ErrInboundAuthFailed = result.Err(
+	i18n.T("integration_inbound_auth_failed"),
+	result.WithCode(ErrCodeInboundAuthFailed),
+	result.WithStatus(fiber.StatusUnauthorized),
+)
+
+// ErrInboundHandlerMissing marks an inbound contract no registered handler
+// serves — a deployment fault, not a caller error.
+var ErrInboundHandlerMissing = result.Err(
+	i18n.T("integration_inbound_handler_missing"),
+	result.WithCode(ErrCodeInboundHandlerMissing),
+	result.WithStatus(fiber.StatusNotImplemented),
 )

@@ -19,8 +19,9 @@ type statsRecorder struct {
 }
 
 type statsKey struct {
-	system   string
-	contract string
+	system    string
+	contract  string
+	direction integration.Direction
 }
 
 type statsEntry struct {
@@ -39,11 +40,11 @@ func newStatsRecorder() *statsRecorder {
 
 // Record folds one invocation outcome into the aggregate. An empty kind
 // means success; errMsg accompanies failures.
-func (r *statsRecorder) Record(system, contract string, kind integration.FailureKind, errMsg string, duration time.Duration) {
+func (r *statsRecorder) Record(system, contract string, direction integration.Direction, kind integration.FailureKind, errMsg string, duration time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	key := statsKey{system: system, contract: contract}
+	key := statsKey{system: system, contract: contract, direction: direction}
 
 	entry, ok := r.entries[key]
 	if !ok {
@@ -66,7 +67,7 @@ func (r *statsRecorder) Record(system, contract string, kind integration.Failure
 	entry.lastErrorAt = time.Now()
 }
 
-// Stats returns a snapshot ordered by system then contract.
+// Stats returns a snapshot ordered by system, contract, then direction.
 func (r *statsRecorder) Stats() []integration.InvocationStats {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -77,6 +78,7 @@ func (r *statsRecorder) Stats() []integration.InvocationStats {
 		stat := integration.InvocationStats{
 			System:        key.system,
 			Contract:      key.contract,
+			Direction:     key.direction,
 			Calls:         entry.calls,
 			Successes:     entry.successes,
 			MaxDurationMs: entry.maxDuration.Milliseconds(),
@@ -100,7 +102,11 @@ func (r *statsRecorder) Stats() []integration.InvocationStats {
 			return c
 		}
 
-		return cmp.Compare(a.Contract, b.Contract)
+		if c := cmp.Compare(a.Contract, b.Contract); c != 0 {
+			return c
+		}
+
+		return cmp.Compare(string(a.Direction), string(b.Direction))
 	})
 
 	return stats

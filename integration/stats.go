@@ -7,16 +7,17 @@ import "time"
 // is not enabled), mirroring event.StreamInspector.
 type StatsInspector interface {
 	// Stats returns a snapshot of invocation statistics, one entry per
-	// (system, contract) pair observed since process start, ordered by
-	// system then contract.
+	// (system, contract, direction) tuple observed since process start,
+	// ordered by system, contract, then direction.
 	Stats() []InvocationStats
 }
 
-// InvocationStats aggregates the invocations of one (system, contract) pair
-// on this node since process start.
+// InvocationStats aggregates the invocations of one (system, contract,
+// direction) tuple on this node since process start.
 type InvocationStats struct {
 	System        string                `json:"system"`
 	Contract      string                `json:"contract"`
+	Direction     Direction             `json:"direction"`
 	Calls         int64                 `json:"calls"`
 	Successes     int64                 `json:"successes"`
 	Failures      map[FailureKind]int64 `json:"failures,omitempty"`

@@ -5,9 +5,15 @@ import (
 	"net/url"
 
 	"github.com/coldsmirk/vef-framework-go/integration"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
+
+// AuthSchemeResolver is the validator's view of the outbound scheme registry;
+// keeping it consumer-side avoids an import cycle with the auth package.
+type AuthSchemeResolver interface {
+	// Resolve returns the scheme for cfg, ok=false for an unknown name.
+	Resolve(cfg *integration.AuthConfig) (integration.AuthScheme, bool)
+}
 
 // ValidateContract rejects a contract whose input or output schema does not
 // compile, so a broken schema fails at save time instead of on the first
@@ -32,7 +38,7 @@ func ValidateContract(contract *integration.Contract) error {
 // auth config references an unknown scheme or fails the scheme's own
 // parameter validation. Auth params must already be in their persisted form
 // (EncryptAuth applied) so masked placeholders have been resolved.
-func ValidateSystem(registry *auth.Registry, codec *SecretCodec, system *integration.System) error {
+func ValidateSystem(registry AuthSchemeResolver, codec *SecretCodec, system *integration.System) error {
 	if system.BaseURL != "" {
 		parsed, err := url.Parse(system.BaseURL)
 		if err != nil || !parsed.IsAbs() {

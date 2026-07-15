@@ -18,16 +18,17 @@ import (
 type SystemParams struct {
 	api.P
 
-	ID         string                        `json:"id"`
-	Code       string                        `json:"code" validate:"required"`
-	Name       string                        `json:"name" validate:"required"`
-	BaseURL    string                        `json:"baseUrl"`
-	Auth       *integration.AuthConfig       `json:"auth"`
-	DataSource *integration.DataSourceConfig `json:"dataSource"`
-	Params     map[string]string             `json:"params"`
-	TimeoutMs  int                           `json:"timeoutMs"`
-	Retry      *integration.RetryPolicy      `json:"retry"`
-	IsEnabled  bool                          `json:"isEnabled"`
+	ID          string                         `json:"id"`
+	Code        string                         `json:"code" validate:"required"`
+	Name        string                         `json:"name" validate:"required"`
+	BaseURL     string                         `json:"baseUrl"`
+	Auth        *integration.AuthConfig        `json:"auth"`
+	InboundAuth *integration.InboundAuthConfig `json:"inboundAuth"`
+	DataSource  *integration.DataSourceConfig  `json:"dataSource"`
+	Params      map[string]string              `json:"params"`
+	TimeoutMs   int                            `json:"timeoutMs"`
+	Retry       *integration.RetryPolicy       `json:"retry"`
+	IsEnabled   bool                           `json:"isEnabled"`
 }
 
 // SystemSearch contains the search parameters for systems.
@@ -54,23 +55,36 @@ type SystemResource struct {
 }
 
 // NewSystemResource creates the system management resource.
-func NewSystemResource(registry *auth.Registry, codec *service.SecretCodec, invoker *exec.Invoker) api.Resource {
+func NewSystemResource(registry *auth.Registry, inboundRegistry *auth.InboundRegistry, codec *service.SecretCodec, invoker *exec.Invoker) api.Resource {
 	seal := func(model, prior *integration.System) error {
 		scheme, ok := registry.Resolve(model.Auth)
 		if !ok {
 			return integration.ErrUnknownAuthScheme(model.Auth.Scheme)
 		}
 
+		if err := auth.ValidateInboundAuth(inboundRegistry, model.InboundAuth); err != nil {
+			return err
+		}
+
 		var priorAuth *integration.AuthConfig
+
+		var priorInbound *integration.InboundAuthConfig
 
 		var priorDS *integration.DataSourceConfig
 
 		if prior != nil {
-			priorAuth, priorDS = prior.Auth, prior.DataSource
+			priorAuth, priorInbound, priorDS = prior.Auth, prior.InboundAuth, prior.DataSource
 		}
 
 		if err := codec.EncryptAuth(scheme, model.Auth, priorAuth); err != nil {
 			return integration.ErrInvalidAuthParams(err.Error())
+		}
+
+		if model.InboundAuth != nil {
+			inboundScheme, _ := inboundRegistry.Resolve(model.InboundAuth)
+			if err := codec.EncryptInboundAuth(inboundScheme, model.InboundAuth, priorInbound); err != nil {
+				return integration.ErrInvalidAuthParams(err.Error())
+			}
 		}
 
 		if err := codec.EncryptDataSource(model.DataSource, priorDS); err != nil {
@@ -85,6 +99,8 @@ func NewSystemResource(registry *auth.Registry, codec *service.SecretCodec, invo
 			system := &models[i]
 			scheme, _ := registry.Resolve(system.Auth)
 			system.Auth = service.MaskAuth(scheme, system.Auth)
+			inboundScheme, _ := inboundRegistry.Resolve(system.InboundAuth)
+			system.InboundAuth = service.MaskInboundAuth(inboundScheme, system.InboundAuth)
 			system.DataSource = service.MaskDataSource(system.DataSource)
 		}
 

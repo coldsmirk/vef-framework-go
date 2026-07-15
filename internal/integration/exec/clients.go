@@ -31,7 +31,7 @@ type clientFactory struct {
 	maxResponseBody int64
 
 	mu  sync.Mutex
-	lru *lruCache[*httpx.Client]
+	lru *service.LRU[*httpx.Client]
 }
 
 func newClientFactory(registry *auth.Registry, codec *service.SecretCodec, maxResponseBody int64) *clientFactory {
@@ -39,7 +39,7 @@ func newClientFactory(registry *auth.Registry, codec *service.SecretCodec, maxRe
 		registry:        registry,
 		codec:           codec,
 		maxResponseBody: maxResponseBody,
-		lru:             newLRUCache[*httpx.Client](clientCacheCapacity),
+		lru:             service.NewLRU[*httpx.Client](clientCacheCapacity),
 	}
 }
 

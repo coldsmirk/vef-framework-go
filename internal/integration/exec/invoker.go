@@ -30,7 +30,7 @@ type Invoker struct {
 	resolver integration.RouteResolver
 	cfg      *config.IntegrationConfig
 
-	programs  *programCache
+	programs  *service.ProgramCache
 	schemas   *schemaCache
 	clients   *clientFactory
 	vendors   *vendorSources
@@ -55,7 +55,7 @@ func NewInvoker(
 		engine:    engine,
 		resolver:  resolver,
 		cfg:       cfg,
-		programs:  newProgramCache(),
+		programs:  service.NewProgramCache(),
 		schemas:   newSchemaCache(),
 		clients:   newClientFactory(registry, codec, cfg.EffectiveMaxResponseBody()),
 		vendors:   newVendorSources(sources, codec),
@@ -129,14 +129,15 @@ func (inv *Invoker) Invoke(ctx context.Context, contract string, input any, opts
 	duration := time.Since(start)
 
 	inv.finish(ctx, &outcome{
-		system:   system.Code,
-		contract: contract,
-		kind:     kind,
-		err:      execErr,
-		duration: duration,
-		input:    inputValue,
-		output:   output,
-		trace:    trace,
+		system:    system.Code,
+		contract:  contract,
+		direction: integration.DirectionOutbound,
+		kind:      kind,
+		err:       execErr,
+		duration:  duration,
+		input:     inputValue,
+		output:    output,
+		trace:     trace,
 	})
 
 	if execErr != nil {
@@ -360,14 +361,15 @@ func classify(ctx context.Context, err error) (integration.FailureKind, error) {
 
 // outcome is the recorded result of one executed invocation.
 type outcome struct {
-	system   string
-	contract string
-	kind     integration.FailureKind
-	err      error
-	duration time.Duration
-	input    any
-	output   any
-	trace    []integration.HTTPExchange
+	system    string
+	contract  string
+	direction integration.Direction
+	kind      integration.FailureKind
+	err       error
+	duration  time.Duration
+	input     any
+	output    any
+	trace     []integration.HTTPExchange
 }
 
 // finish folds one invocation outcome into statistics and the invocation
@@ -378,12 +380,12 @@ func (inv *Invoker) finish(ctx context.Context, o *outcome) {
 		message = o.err.Error()
 	}
 
-	inv.stats.Record(o.system, o.contract, o.kind, message, o.duration)
+	inv.stats.Record(o.system, o.contract, o.direction, o.kind, message, o.duration)
 
 	entry := &integration.InvocationLog{
 		SystemCode:   o.system,
 		ContractCode: o.contract,
-		Direction:    integration.DirectionOutbound,
+		Direction:    o.direction,
 		FailureKind:  o.kind,
 		DurationMs:   o.duration.Milliseconds(),
 		Input:        inv.capturer.captureValue(o.input),

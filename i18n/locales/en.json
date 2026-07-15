@@ -225,5 +225,7 @@
   "integration_invalid_script": "Adapter script does not compile: {{.detail}}",
   "integration_invalid_auth_params": "Invalid auth parameters: {{.detail}}",
   "integration_invalid_data_source": "Invalid data source configuration: {{.detail}}",
-  "integration_invalid_direction": "Invalid adapter direction"
+  "integration_invalid_direction": "Invalid adapter direction",
+  "integration_inbound_auth_failed": "Inbound request verification failed",
+  "integration_inbound_handler_missing": "No handler is registered for the inbound contract"
 }

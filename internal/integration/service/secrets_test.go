@@ -11,8 +11,16 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/integration"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
 )
+
+// stubScheme is the codec's view of a scheme, declaring one sensitive param.
+type stubScheme struct {
+	sensitive []string
+}
+
+func (s *stubScheme) SensitiveParams() []string {
+	return s.sensitive
+}
 
 // newTestCodec builds a codec with a fresh random key.
 func newTestCodec(t *testing.T) *SecretCodec {
@@ -28,14 +36,10 @@ func newTestCodec(t *testing.T) *SecretCodec {
 	return codec
 }
 
-// bearerScheme returns the built-in bearer scheme (sensitive param: token).
-func bearerScheme(t *testing.T) integration.AuthScheme {
-	t.Helper()
-
-	scheme, ok := auth.NewRegistry(nil).Get(auth.SchemeBearer)
-	require.True(t, ok, "Built-in bearer scheme should be registered")
-
-	return scheme
+// bearerScheme mimics the built-in bearer scheme's sensitivity declaration
+// (sensitive param: token).
+func bearerScheme(*testing.T) *stubScheme {
+	return &stubScheme{sensitive: []string{"token"}}
 }
 
 func TestSecretCodec(t *testing.T) {
@@ -43,7 +47,7 @@ func TestSecretCodec(t *testing.T) {
 	scheme := bearerScheme(t)
 
 	t.Run("EncryptDecryptRoundTrip", func(t *testing.T) {
-		cfg := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "top-secret"}}
+		cfg := &integration.AuthConfig{Scheme: "bearer", Params: map[string]string{"token": "top-secret"}}
 
 		require.NoError(t, codec.EncryptAuth(scheme, cfg, nil), "Encryption should succeed")
 		assert.True(t, strings.HasPrefix(cfg.Params["token"], "enc:"), "Stored value should carry the encryption marker")
@@ -56,7 +60,7 @@ func TestSecretCodec(t *testing.T) {
 	})
 
 	t.Run("EncryptIsIdempotent", func(t *testing.T) {
-		cfg := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "top-secret"}}
+		cfg := &integration.AuthConfig{Scheme: "bearer", Params: map[string]string{"token": "top-secret"}}
 
 		require.NoError(t, codec.EncryptAuth(scheme, cfg, nil), "First encryption should succeed")
 		sealed := cfg.Params["token"]
@@ -66,15 +70,15 @@ func TestSecretCodec(t *testing.T) {
 	})
 
 	t.Run("MaskedPlaceholderRestoresPriorValue", func(t *testing.T) {
-		prior := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "enc:stored"}}
-		incoming := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": integration.MaskedSecret}}
+		prior := &integration.AuthConfig{Scheme: "bearer", Params: map[string]string{"token": "enc:stored"}}
+		incoming := &integration.AuthConfig{Scheme: "bearer", Params: map[string]string{"token": integration.MaskedSecret}}
 
 		require.NoError(t, codec.EncryptAuth(scheme, incoming, prior), "Masked update should succeed")
 		assert.Equal(t, "enc:stored", incoming.Params["token"], "Masked placeholder should restore the stored value")
 	})
 
 	t.Run("MaskedPlaceholderWithoutPriorFails", func(t *testing.T) {
-		incoming := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": integration.MaskedSecret}}
+		incoming := &integration.AuthConfig{Scheme: "bearer", Params: map[string]string{"token": integration.MaskedSecret}}
 
 		err := codec.EncryptAuth(scheme, incoming, nil)
 		require.Error(t, err, "Masked value without a stored prior should fail")
@@ -82,7 +86,7 @@ func TestSecretCodec(t *testing.T) {
 	})
 
 	t.Run("NonSensitiveParamsStayPlaintext", func(t *testing.T) {
-		cfg := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "s", "region": "east"}}
+		cfg := &integration.AuthConfig{Scheme: "bearer", Params: map[string]string{"token": "s", "region": "east"}}
 
 		require.NoError(t, codec.EncryptAuth(scheme, cfg, nil), "Encryption should succeed")
 		assert.Equal(t, "east", cfg.Params["region"], "Non-sensitive params should stay plaintext")
@@ -96,7 +100,7 @@ func TestSecretCodecWithoutKey(t *testing.T) {
 	scheme := bearerScheme(t)
 
 	t.Run("StoresPlaintext", func(t *testing.T) {
-		cfg := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "plain"}}
+		cfg := &integration.AuthConfig{Scheme: "bearer", Params: map[string]string{"token": "plain"}}
 
 		require.NoError(t, codec.EncryptAuth(scheme, cfg, nil), "Key-less encryption should pass through")
 		assert.Equal(t, "plain", cfg.Params["token"], "Value should stay plaintext without a key")
@@ -107,7 +111,7 @@ func TestSecretCodecWithoutKey(t *testing.T) {
 	})
 
 	t.Run("RefusesEncryptedValues", func(t *testing.T) {
-		cfg := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "enc:abc"}}
+		cfg := &integration.AuthConfig{Scheme: "bearer", Params: map[string]string{"token": "enc:abc"}}
 
 		_, err := codec.DecryptAuth(scheme, cfg)
 		require.Error(t, err, "Encrypted value without a key should fail loudly")
@@ -185,7 +189,7 @@ func TestMaskAuth(t *testing.T) {
 
 	t.Run("MasksSensitiveOnly", func(t *testing.T) {
 		masked := MaskAuth(scheme, &integration.AuthConfig{
-			Scheme: auth.SchemeBearer,
+			Scheme: "bearer",
 			Params: map[string]string{"token": "secret", "region": "east"},
 		})
 
@@ -208,7 +212,7 @@ func TestMaskAuth(t *testing.T) {
 	})
 
 	t.Run("DoesNotMutateOriginal", func(t *testing.T) {
-		original := &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "secret"}}
+		original := &integration.AuthConfig{Scheme: "bearer", Params: map[string]string{"token": "secret"}}
 		_ = MaskAuth(scheme, original)
 
 		assert.Equal(t, "secret", original.Params["token"], "Masking should copy, not mutate")

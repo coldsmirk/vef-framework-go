@@ -39,6 +39,10 @@ type System struct {
 	Name    string      `json:"name" bun:"name"`
 	BaseURL string      `json:"baseUrl" bun:"base_url"`
 	Auth    *AuthConfig `json:"auth" bun:"auth,type:jsonb,nullzero"`
+	// InboundAuth selects how vendor-initiated calls to this system's inbound
+	// endpoints are verified; a system without it refuses inbound delivery
+	// entirely (fail closed — the "none" scheme opens it up deliberately).
+	InboundAuth *InboundAuthConfig `json:"inboundAuth" bun:"inbound_auth,type:jsonb,nullzero"`
 	// DataSource is the system's direct database connection (vendor views /
 	// exchange tables). Its password is stored encrypted and masked in
 	// management API responses.
@@ -93,6 +97,19 @@ func (c *DataSourceConfig) ToConfig() config.DataSourceConfig {
 type AuthConfig struct {
 	Scheme string            `json:"scheme"`
 	Params map[string]string `json:"params,omitempty"`
+}
+
+// InboundAuthConfig selects the InboundAuthScheme verifying vendor-initiated
+// calls to a system's inbound endpoints and carries its parameters. Values of
+// the parameters named by the scheme's SensitiveParams are stored encrypted
+// and masked in management API responses.
+type InboundAuthConfig struct {
+	Scheme string            `json:"scheme"`
+	Params map[string]string `json:"params,omitempty"`
+	// Script is the custom verification body for the "script" scheme: it runs
+	// in a runtime with no IO capabilities, sees request and params, and
+	// grants access by returning a truthy value.
+	Script string `json:"script,omitempty"`
 }
 
 // RetryPolicy is the declarative retry configuration for a system's outbound
