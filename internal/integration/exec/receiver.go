@@ -191,25 +191,30 @@ func flattenDispatches(values []any) any {
 	}
 }
 
-// run executes the inbound adapter script and returns the vendor-facing
-// reply. A script that completes owns the reply even when a dispatch inside
-// it failed — the failure is still classified for the record; a script that
-// throws yields no reply, and an uncaught dispatch error keeps its own
-// classification instead of counting as a script bug.
+// run resolves the business handler and executes the inbound adapter script.
 func (r *Receiver) run(ctx context.Context, d *delivery, adapter *integration.Adapter) (any, integration.FailureKind, error) {
 	handler, ok := r.handlers[d.contract.Code]
 	if !ok {
 		return nil, integration.FailureConfig, integration.ErrInboundHandlerMissing
 	}
 
+	return r.runScript(ctx, d, handler, adapter.Script, r.runTimeout(adapter))
+}
+
+// runScript executes one inbound script against the delivery and returns the
+// vendor-facing reply. A script that completes owns the reply even when a
+// dispatch inside it failed — the failure is still classified for the record;
+// a script that throws yields no reply, and an uncaught dispatch error keeps
+// its own classification instead of counting as a script bug.
+func (r *Receiver) runScript(ctx context.Context, d *delivery, handler integration.InboundHandler, script string, timeout time.Duration) (any, integration.FailureKind, error) {
 	inv := r.invoker
 
-	program, err := inv.programs.Get(adapter.Script)
+	program, err := inv.programs.Get(script)
 	if err != nil {
 		return nil, integration.FailureScript, integration.ErrScriptFailed(err.Error())
 	}
 
-	runtime, err := inv.engine.NewRuntime(js.WithRunTimeout(r.runTimeout(adapter)))
+	runtime, err := inv.engine.NewRuntime(js.WithRunTimeout(timeout))
 	if err != nil {
 		return nil, integration.FailureScript, err
 	}
@@ -298,6 +303,61 @@ func (d *delivery) fail(kind integration.FailureKind, err error) error {
 	d.dispatchErr = err
 
 	return err
+}
+
+// InboundDryRunResult is the outcome of an inbound DryRun: the reply the
+// vendor would receive plus what the script dispatched, so operators verify
+// both translation directions at once.
+type InboundDryRunResult struct {
+	Reply           any                     `json:"reply"`
+	DispatchedInput any                     `json:"dispatchedInput"`
+	FailureKind     integration.FailureKind `json:"failureKind,omitempty"`
+	Error           string                  `json:"error,omitempty"`
+}
+
+// DryRun executes an inbound script (possibly unsaved) against a synthetic
+// request, with the business handler replaced by a stub returning
+// handlerOutput — no business code runs, verification is bypassed (the
+// console tests translation, not credentials), and nothing is recorded to
+// statistics or the invocation log; the contract schemas are enforced for
+// real on both sides of the dispatch.
+func (r *Receiver) DryRun(ctx context.Context, contract *integration.Contract, system *integration.System, script string, req *integration.InboundRequest, handlerOutput any) *InboundDryRunResult {
+	d := &delivery{
+		contract: contract,
+		system:   system,
+		request:  req,
+	}
+
+	reply, kind, err := r.runScript(ctx, d, &stubInboundHandler{output: handlerOutput}, script, r.invoker.cfg.EffectiveRunTimeout())
+
+	dryRun := &InboundDryRunResult{
+		Reply:           reply,
+		DispatchedInput: d.dispatchedInput(),
+		FailureKind:     kind,
+	}
+
+	if err != nil {
+		dryRun.Error = err.Error()
+	}
+
+	return dryRun
+}
+
+// stubInboundHandler stands in for the business handler during a dry run,
+// echoing the operator-supplied sample output.
+type stubInboundHandler struct {
+	output any
+}
+
+// Contract is unused during a dry run; the stub serves whatever contract the
+// run targets.
+func (*stubInboundHandler) Contract() string {
+	return ""
+}
+
+// Handle returns the sample output without touching business code.
+func (h *stubInboundHandler) Handle(context.Context, any) (any, error) {
+	return h.output, nil
 }
 
 // runTimeout resolves the inbound script run timeout: adapter override over

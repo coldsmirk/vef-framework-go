@@ -665,6 +665,48 @@ return { received: ack.accepted }
 	})
 }
 
+func (s *ModuleTestSuite) TestInboundDryRun() {
+	contract := s.createContract("dry.inbound", labInputSchema, labOutputSchema)
+	system := s.createInboundSystem("lis-dry", nil)
+
+	request := inboundRequest("lis-dry", "dry.inbound", `{"rid":"R-DRY"}`, nil)
+
+	s.Run("UnsavedScriptRunsAgainstStubbedHandler", func() {
+		dryRun := s.receiver.DryRun(s.T().Context(), contract, system, `
+const doc = JSON.parse(request.body)
+const ack = dispatch({ reportId: doc.rid })
+return { status: 200, body: '<Ack>' + (ack.accepted ? '0' : '1') + '</Ack>' }
+`, request, map[string]any{"accepted": true})
+
+		s.Empty(dryRun.Error, "The dry run should succeed without a registered handler or inbound auth")
+		s.Equal(map[string]any{"reportId": "R-DRY"}, dryRun.DispatchedInput,
+			"The dispatched standard input should be reported for inspection")
+
+		reply, ok := dryRun.Reply.(map[string]any)
+		s.Require().True(ok, "The reply should export as a map")
+		s.Equal("<Ack>0</Ack>", reply["body"], "The stubbed output should flow through the reply shaping")
+	})
+
+	s.Run("InputSchemaStillEnforced", func() {
+		dryRun := s.receiver.DryRun(s.T().Context(), contract, system,
+			`dispatch({ wrong: true }); return {}`, request, map[string]any{"accepted": true})
+
+		s.Equal(integration.FailureInputInvalid, dryRun.FailureKind,
+			"A dispatch violating the input schema should classify as input-invalid")
+		s.NotEmpty(dryRun.Error, "The schema violation should be reported")
+	})
+
+	s.Run("SampleOutputStillSchemaChecked", func() {
+		dryRun := s.receiver.DryRun(s.T().Context(), contract, system, `
+dispatch({ reportId: JSON.parse(request.body).rid })
+return {}
+`, request, map[string]any{"accepted": "yes"})
+
+		s.Equal(integration.FailureOutputInvalid, dryRun.FailureKind,
+			"A sample output violating the output schema should classify as output-invalid")
+	})
+}
+
 func (s *ModuleTestSuite) TestRouting() {
 	echoScript := `return { sys: system.code }`
 
