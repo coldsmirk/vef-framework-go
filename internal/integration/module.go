@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/integration/migration"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/resource"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/worker"
 )
 
 // Module is the integration engine module: contract/system/adapter/route
@@ -31,4 +32,5 @@ var Module = fx.Module(
 
 	resource.Module,
 	migration.Module,
+	worker.Module,
 )

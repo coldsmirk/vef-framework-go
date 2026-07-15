@@ -32,6 +32,10 @@ type IntegrationLogConfig struct {
 	// MaskFields lists JSON field names (case-insensitive) whose values are
 	// masked in captures, on top of the always-masked credential headers.
 	MaskFields []string `config:"mask_fields"`
+	// Retention prunes invocation log rows older than this window; the sweep
+	// runs hourly. Zero (the default) keeps rows forever — deletion of the
+	// integration evidence trail is strictly opt-in.
+	Retention time.Duration `config:"retention"`
 }
 
 // EffectiveMode returns Mode or the errors-only default.
@@ -80,14 +84,23 @@ func (c *IntegrationConfig) EffectiveMaxResponseBody() int64 {
 	return coalescePositive(c.MaxResponseBody, 8<<20)
 }
 
-// Validate rejects unsupported log modes so configuration typos fail at
-// startup instead of silently recording nothing.
+// ErrInvalidIntegrationLogRetention indicates a negative retention window.
+var ErrInvalidIntegrationLogRetention = errors.New("invalid integration log retention")
+
+// Validate rejects unsupported log modes and negative retention windows so
+// configuration typos fail at startup instead of silently recording nothing
+// or deleting everything.
 func (c *IntegrationConfig) Validate() error {
 	switch c.Log.EffectiveMode() {
 	case IntegrationLogOff, IntegrationLogErrors, IntegrationLogAll:
-		return nil
 	default:
 		return fmt.Errorf("%w %q (want %q, %q, or %q)", ErrInvalidIntegrationLogMode,
 			c.Log.Mode, IntegrationLogOff, IntegrationLogErrors, IntegrationLogAll)
 	}
+
+	if c.Log.Retention < 0 {
+		return fmt.Errorf("%w: must not be negative", ErrInvalidIntegrationLogRetention)
+	}
+
+	return nil
 }
