@@ -57,8 +57,8 @@ func TestDayJs(t *testing.T) {
 	}
 }
 
-// TestBigJs tests the embedded big.js library.
-func TestBigJs(t *testing.T) {
+// TestBigNumber tests the embedded bignumber.js library.
+func TestBigNumber(t *testing.T) {
 	rt := newStdRuntime(t)
 
 	tests := []struct {
@@ -68,27 +68,27 @@ func TestBigJs(t *testing.T) {
 	}{
 		{
 			name:   "PreciseDecimalAddition",
-			script: `Big('0.1').plus('0.2').toString()`,
+			script: `BigNumber('0.1').plus('0.2').toString()`,
 			want:   "0.3",
 		},
 		{
 			name:   "PreciseDecimalMultiplication",
-			script: `Big('19.99').times('1.08').toString()`,
+			script: `BigNumber('19.99').times('1.08').toString()`,
 			want:   "21.5892",
 		},
 		{
 			name:   "PreciseDecimalDivision",
-			script: `Big('10').div('3').toFixed(2)`,
+			script: `BigNumber('10').div('3').toFixed(2)`,
 			want:   "3.33",
 		},
 		{
 			name:   "CompareNumbers",
-			script: `Big('10.5').gt(Big('10.4'))`,
+			script: `BigNumber('10.5').gt(BigNumber('10.4'))`,
 			want:   "true",
 		},
 		{
 			name:   "ChainedOperations",
-			script: `Big('100').minus('10').times('0.5').plus('5').toString()`,
+			script: `BigNumber('100').minus('10').times('0.5').plus('5').toString()`,
 			want:   "50",
 		},
 	}
@@ -102,13 +102,13 @@ func TestBigJs(t *testing.T) {
 	}
 
 	t.Run("InvalidInput", func(t *testing.T) {
-		_, err := rt.RunString(t.Context(), `Big('invalid')`)
-		require.Error(t, err, "Invalid Big.js input should return an error")
+		_, err := rt.RunString(t.Context(), `BigNumber('invalid')`)
+		require.Error(t, err, "Invalid BigNumber input should return an error")
 	})
 }
 
-// TestRadashUtils tests the embedded radash utils library.
-func TestRadashUtils(t *testing.T) {
+// TestRadashi tests the embedded radashi library.
+func TestRadashi(t *testing.T) {
 	rt := newStdRuntime(t)
 
 	tests := []struct {
@@ -118,35 +118,35 @@ func TestRadashUtils(t *testing.T) {
 	}{
 		{
 			name:   "CapitalizeString",
-			script: `utils.capitalize('hello world')`,
+			script: `radashi.capitalize('hello world')`,
 			check: func(t *testing.T, result js.Value) {
 				assert.Equal(t, "Hello world", result.String(), "Should capitalize first letter")
 			},
 		},
 		{
 			name:   "CamelCase",
-			script: `utils.camel('user-name')`,
+			script: `radashi.camel('user-name')`,
 			check: func(t *testing.T, result js.Value) {
 				assert.Equal(t, "userName", result.String(), "Should convert to camelCase")
 			},
 		},
 		{
 			name:   "SnakeCase",
-			script: `utils.snake('userName')`,
+			script: `radashi.snake('userName')`,
 			check: func(t *testing.T, result js.Value) {
 				assert.Equal(t, "user_name", result.String(), "Should convert to snake_case")
 			},
 		},
 		{
 			name:   "UniqueArray",
-			script: `JSON.stringify(utils.unique([1, 2, 2, 3, 3, 4]))`,
+			script: `JSON.stringify(radashi.unique([1, 2, 2, 3, 3, 4]))`,
 			check: func(t *testing.T, result js.Value) {
 				assert.Equal(t, "[1,2,3,4]", result.String(), "Should remove duplicates")
 			},
 		},
 		{
 			name:   "SumArray",
-			script: `utils.sum([1, 2, 3, 4, 5])`,
+			script: `radashi.sum([1, 2, 3, 4, 5])`,
 			check: func(t *testing.T, result js.Value) {
 				assert.Equal(t, int64(15), result.ToInteger(), "Should sum array correctly")
 			},
@@ -159,7 +159,7 @@ func TestRadashUtils(t *testing.T) {
 					{ role: 'user', name: 'Bob' },
 					{ role: 'admin', name: 'Charlie' }
 				];
-				Object.keys(utils.group(users, u => u.role)).sort().join(',')
+				Object.keys(radashi.group(users, u => u.role)).sort().join(',')
 			`,
 			check: func(t *testing.T, result js.Value) {
 				assert.Equal(t, "admin,user", result.String(), "Should group by role")
@@ -169,7 +169,7 @@ func TestRadashUtils(t *testing.T) {
 			name: "SortByKey",
 			script: `
 				const items = [{ price: 30 }, { price: 10 }, { price: 20 }];
-				utils.sort(items, i => i.price).map(i => i.price).join(',')
+				radashi.sort(items, i => i.price).map(i => i.price).join(',')
 			`,
 			check: func(t *testing.T, result js.Value) {
 				assert.Equal(t, "10,20,30", result.String(), "Should sort by price")
@@ -186,74 +186,130 @@ func TestRadashUtils(t *testing.T) {
 	}
 }
 
-// TestValidatorJs tests the embedded validator library.
-func TestValidatorJs(t *testing.T) {
+// TestZod tests the embedded zod schema validation library.
+func TestZod(t *testing.T) {
 	rt := newStdRuntime(t)
 
-	tests := []struct {
-		name   string
-		script string
-		want   bool
-	}{
-		{
-			name:   "ValidEmail",
-			script: `validator.isEmail('test@example.com')`,
-			want:   true,
-		},
-		{
-			name:   "InvalidEmail",
-			script: `validator.isEmail('invalid-email')`,
-			want:   false,
-		},
-		{
-			name:   "ValidURL",
-			script: `validator.isURL('https://github.com/coldsmirk/vef-framework-go')`,
-			want:   true,
-		},
-		{
-			name:   "InvalidURL",
-			script: `validator.isURL('not-a-url')`,
-			want:   false,
-		},
-		{
-			name:   "ValidUUID",
-			script: `validator.isUUID('550e8400-e29b-41d4-a716-446655440000')`,
-			want:   true,
-		},
-		{
-			name:   "InvalidUUID",
-			script: `validator.isUUID('not-a-uuid')`,
-			want:   false,
-		},
-		{
-			name:   "ValidJSON",
-			script: `validator.isJSON('{"name":"test"}')`,
-			want:   true,
-		},
-		{
-			name:   "InvalidJSON",
-			script: `validator.isJSON('{invalid json}')`,
-			want:   false,
-		},
-		{
-			name:   "ValidNumeric",
-			script: `validator.isNumeric('12345')`,
-			want:   true,
-		},
-		{
-			name:   "InvalidNumeric",
-			script: `validator.isNumeric('abc123')`,
-			want:   false,
-		},
-	}
+	t.Run("ParseSuccess", func(t *testing.T) {
+		script := `
+			const User = z.object({
+				name: z.string().min(2),
+				age: z.coerce.number().int().positive(),
+				email: z.email(),
+				tags: z.array(z.string()).default([]),
+			});
+			JSON.stringify(User.parse({ name: 'vef', age: '3', email: 'a@b.co' }))
+		`
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := rt.RunString(t.Context(), tt.script)
-			require.NoError(t, err, "Script should execute successfully")
-			assert.Equal(t, tt.want, result.ToBoolean(), "Validation result should match expected")
-		})
-	}
+		result, err := rt.RunString(t.Context(), script)
+		require.NoError(t, err, "Script should execute successfully")
+		assert.JSONEq(t, `{"name":"vef","age":3,"email":"a@b.co","tags":[]}`, result.String(), "Parse should coerce and apply defaults")
+	})
+
+	t.Run("SafeParseFailure", func(t *testing.T) {
+		script := `
+			const Form = z.object({ name: z.string().min(2), email: z.email() });
+			const result = Form.safeParse({ name: 'v', email: 'nope' });
+			JSON.stringify({ ok: result.success, issues: result.error.issues.map(i => i.code + ':' + i.path.join('.')) })
+		`
+
+		result, err := rt.RunString(t.Context(), script)
+		require.NoError(t, err, "Script should execute successfully")
+		assert.JSONEq(t, `{"ok":false,"issues":["too_small:name","invalid_format:email"]}`, result.String(), "safeParse should report structured issues per field")
+	})
+
+	t.Run("SchemaComposition", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			script string
+			want   string
+		}{
+			{
+				name:   "Transform",
+				script: `z.string().transform(s => s.toUpperCase()).parse('ok')`,
+				want:   "OK",
+			},
+			{
+				name:   "Union",
+				script: `String(z.union([z.string(), z.number()]).parse(7))`,
+				want:   "7",
+			},
+			{
+				name:   "RefineRejects",
+				script: `String(z.number().refine(n => n % 2 === 0).safeParse(3).success)`,
+				want:   "false",
+			},
+			{
+				name:   "UUIDFormat",
+				script: `String(z.uuid().safeParse('550e8400-e29b-41d4-a716-446655440000').success)`,
+				want:   "true",
+			},
+			{
+				name:   "URLFormat",
+				script: `String(z.url().safeParse('not-a-url').success)`,
+				want:   "false",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				result, err := rt.RunString(t.Context(), tt.script)
+				require.NoError(t, err, "Script should execute successfully")
+				assert.Equal(t, tt.want, result.String(), "Result should match expected value")
+			})
+		}
+	})
+
+	t.Run("ChineseDefaultLocale", func(t *testing.T) {
+		result, err := rt.RunString(t.Context(), `z.string().min(2).safeParse('v').error.issues[0].message`)
+		require.NoError(t, err, "Script should execute successfully")
+		assert.Contains(t, result.String(), "过小", "Issue messages should default to the zh-CN locale")
+	})
+
+	t.Run("EnglishLocaleOptIn", func(t *testing.T) {
+		localeRt := newStdRuntime(t)
+
+		script := `
+			z.config(z.locales.en());
+			z.string().min(2).safeParse('v').error.issues[0].message
+		`
+
+		result, err := localeRt.RunString(t.Context(), script)
+		require.NoError(t, err, "Script should execute successfully")
+		assert.Contains(t, result.String(), "Too small", "Scripts should be able to switch issue messages to English")
+	})
+}
+
+// TestFxp tests the embedded fast-xml-parser library.
+func TestFxp(t *testing.T) {
+	rt := newStdRuntime(t)
+
+	t.Run("Validate", func(t *testing.T) {
+		result, err := rt.RunString(t.Context(), `String(fxp.XMLValidator.validate('<a><b/></a>') === true)`)
+		require.NoError(t, err, "Script should execute successfully")
+		assert.Equal(t, "true", result.String(), "Well-formed XML should validate")
+	})
+
+	t.Run("ValidateReportsError", func(t *testing.T) {
+		result, err := rt.RunString(t.Context(), `fxp.XMLValidator.validate('<a><b></a>').err.code`)
+		require.NoError(t, err, "Script should execute successfully")
+		assert.Equal(t, "InvalidTag", result.String(), "Malformed XML should report a structured error")
+	})
+
+	t.Run("ParseRoundTrip", func(t *testing.T) {
+		script := `
+			const options = { ignoreAttributes: false, attributeNamePrefix: '@' };
+			const parsed = new fxp.XMLParser(options).parse('<order id="7"><item qty="2">apple</item><item qty="1">pear</item></order>');
+			const rebuilt = new fxp.XMLBuilder(options).build(parsed);
+			JSON.stringify({ id: parsed.order['@id'], items: parsed.order.item.map(i => i['#text']), rebuilt })
+		`
+
+		result, err := rt.RunString(t.Context(), script)
+		require.NoError(t, err, "Script should execute successfully")
+
+		want := `{"id":"7","items":["apple","pear"],"rebuilt":"<order id=\"7\"><item qty=\"2\">apple</item><item qty=\"1\">pear</item></order>"}`
+		assert.JSONEq(t, want, result.String(), "Parse and build should round-trip attributes and repeated elements")
+	})
 }
 
 // TestCombinedLibraries tests standard libraries working together.
@@ -263,7 +319,7 @@ func TestCombinedLibraries(t *testing.T) {
 
 		script := `
 			const date = dayjs('2025-01-15').format('YYYY-MM-DD');
-			const isValid = validator.isISO8601(date);
+			const isValid = z.iso.date().safeParse(date).success;
 			({ date, isValid })
 		`
 
@@ -279,8 +335,8 @@ func TestCombinedLibraries(t *testing.T) {
 		rt := newStdRuntime(t)
 
 		script := `
-			const total = Big('19.99').times(Big('0.08').plus(1));
-			utils.capitalize('total: $') + total.toFixed(2)
+			const total = BigNumber('19.99').times(BigNumber('0.08').plus(1));
+			radashi.capitalize('total: $') + total.toFixed(2)
 		`
 
 		result, err := rt.RunString(t.Context(), script)
@@ -298,8 +354,8 @@ func TestCombinedLibraries(t *testing.T) {
 				{ email: 'bob@example.com', amount: '30.25' }
 			];
 
-			const valid = data.filter(item => validator.isEmail(item.email));
-			const total = valid.reduce((sum, item) => sum.plus(Big(item.amount)), Big('0'));
+			const valid = data.filter(item => z.email().safeParse(item.email).success);
+			const total = valid.reduce((sum, item) => sum.plus(BigNumber(item.amount)), BigNumber('0'));
 
 			({ count: valid.length, total: total.toString() })
 		`

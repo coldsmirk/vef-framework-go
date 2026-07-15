@@ -1,0 +1,18 @@
+{
+  "name": "vef-js-stdlib-build",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "bignumber.js": "11.1.5",
+    "dayjs": "1.11.19",
+    "fast-xml-parser": "5.10.0",
+    "radashi": "12.7.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  }
+}

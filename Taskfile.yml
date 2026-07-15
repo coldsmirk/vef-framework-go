@@ -61,6 +61,13 @@ tasks:
     status:
       - command -v golangci-lint
 
+  js:stdlib:
+    desc: Rebuild the embedded JS stdlib bundle (requires Node.js)
+    dir: js/libs/build
+    cmds:
+      - npm ci
+      - npm run build
+
   lint:
     desc: Run golangci-lint
     deps: [install:golangci-lint]

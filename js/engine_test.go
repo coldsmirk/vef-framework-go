@@ -48,13 +48,13 @@ func TestNewEngine(t *testing.T) {
 	})
 
 	t.Run("ShadowingStdLib", func(t *testing.T) {
-		_, err := js.NewEngine(js.WithLibs(&StubLib{name: "dayjs"}))
-		require.ErrorIs(t, err, js.ErrDuplicateLib, "A lib shadowing a standard library should fail engine construction")
+		_, err := js.NewEngine(js.WithLibs(&StubLib{name: "stdlib"}))
+		require.ErrorIs(t, err, js.ErrDuplicateLib, "A lib shadowing the standard library bundle should fail engine construction")
 	})
 
 	t.Run("StdLibNameAllowedWhenBare", func(t *testing.T) {
-		_, err := js.NewEngine(js.WithoutStdLibs(), js.WithLibs(&StubLib{name: "dayjs"}))
-		require.NoError(t, err, "A std lib name should be free on a bare engine")
+		_, err := js.NewEngine(js.WithoutStdLibs(), js.WithLibs(&StubLib{name: "stdlib"}))
+		require.NoError(t, err, "The std lib bundle name should be free on a bare engine")
 	})
 }
 
@@ -82,8 +82,8 @@ func TestWithBaseLibs(t *testing.T) {
 	})
 
 	t.Run("CollidesWithStdLib", func(t *testing.T) {
-		_, err := js.NewEngine(js.WithBaseLibs(&StubLib{name: "dayjs"}))
-		require.ErrorIs(t, err, js.ErrDuplicateLib, "A base lib shadowing a standard library should fail construction")
+		_, err := js.NewEngine(js.WithBaseLibs(&StubLib{name: "stdlib"}))
+		require.ErrorIs(t, err, js.ErrDuplicateLib, "A base lib shadowing the standard library bundle should fail construction")
 	})
 
 	t.Run("RejectsNil", func(t *testing.T) {
