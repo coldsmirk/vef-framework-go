@@ -21,6 +21,8 @@
   "security_external_app_not_found": "Application not found",
   "security_external_app_disabled": "Application is disabled",
   "security_ip_not_allowed": "IP address not allowed",
+  "security_api_key_invalid": "Invalid API key",
+  "security_basic_credentials_invalid": "Invalid username or password",
   "security_signature_invalid": "Invalid signature",
   "access_denied": "Access denied",
   "unsupported_media_type": "Unsupported media type. Only JSON and file data are supported",

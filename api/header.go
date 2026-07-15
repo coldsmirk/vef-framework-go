@@ -6,5 +6,6 @@ const (
 	HeaderXTimestamp  = "X-Timestamp"
 	HeaderXNonce      = "X-Nonce"
 	HeaderXSignature  = "X-Signature"
+	HeaderXAPIKey     = "X-API-Key"
 	HeaderXMetaPrefix = "X-Meta-"
 )

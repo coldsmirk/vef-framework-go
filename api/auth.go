@@ -33,11 +33,17 @@ const (
 	AuthStrategyBearer    = "bearer"
 	AuthStrategySignature = "signature"
 	AuthStrategyIP        = "ip"
+	AuthStrategyAPIKey    = "api_key"
+	AuthStrategyHTTPBasic = "http_basic"
 )
 
 // AuthOptionWhitelist is the AuthConfig.Options key holding the name of the
 // IP whitelist the "ip" strategy authenticates against.
 const AuthOptionWhitelist = "whitelist"
+
+// AuthOptionAPIKeyHeader is the AuthConfig.Options key holding the request
+// header the "api_key" strategy reads the key from.
+const AuthOptionAPIKeyHeader = "header"
 
 // DefaultIPWhitelist is the whitelist name IPAuth falls back to when called
 // without an explicit name; configure it as the "default" key under
@@ -113,5 +119,36 @@ func IPAuth(whitelistName ...string) *AuthConfig {
 	return &AuthConfig{
 		Strategy: AuthStrategyIP,
 		Options:  map[string]any{AuthOptionWhitelist: name},
+	}
+}
+
+// APIKeyAuth creates an AuthConfig for static API key authentication. The
+// presented key is resolved through the registered security.APIKeyLoader (by
+// default the vef.security.api_keys configuration). Call it with no argument
+// to read the key from the HeaderXAPIKey header, or with exactly one header
+// name to read a custom header; passing more than one name panics.
+func APIKeyAuth(headerName ...string) *AuthConfig {
+	if len(headerName) > 1 {
+		panic(fmt.Sprintf("api.APIKeyAuth accepts at most one header name, got %d", len(headerName)))
+	}
+
+	header := HeaderXAPIKey
+	if len(headerName) == 1 {
+		header = headerName[0]
+	}
+
+	return &AuthConfig{
+		Strategy: AuthStrategyAPIKey,
+		Options:  map[string]any{AuthOptionAPIKeyHeader: header},
+	}
+}
+
+// HTTPBasicAuth creates an AuthConfig for HTTP Basic authentication
+// (RFC 7617). The presented credentials are resolved through the registered
+// security.BasicAccountLoader (by default the vef.security.basic_accounts
+// configuration) and compared in constant time.
+func HTTPBasicAuth() *AuthConfig {
+	return &AuthConfig{
+		Strategy: AuthStrategyHTTPBasic,
 	}
 }

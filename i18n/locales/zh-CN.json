@@ -21,6 +21,8 @@
   "security_external_app_not_found": "应用不存在",
   "security_external_app_disabled": "应用已被禁用",
   "security_ip_not_allowed": "IP不被允许",
+  "security_api_key_invalid": "API Key 无效",
+  "security_basic_credentials_invalid": "用户名或密码无效",
   "security_signature_invalid": "签名无效",
   "access_denied": "无权限",
   "unsupported_media_type": "请求仅支持JSON或文件数据",

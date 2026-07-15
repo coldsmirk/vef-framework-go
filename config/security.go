@@ -31,6 +31,17 @@ type SecurityConfig struct {
 	// range. Note: the config layer lowercases TOML keys, so whitelist names
 	// are effectively lowercase.
 	IPWhitelists map[string][]string `config:"ip_whitelists"`
+	// APIKeys names the static API keys served by the framework's default
+	// security.APIKeyLoader; the built-in "api_key" auth strategy resolves the
+	// presented key against them. Note: the config layer lowercases TOML keys,
+	// so key names are effectively lowercase.
+	APIKeys map[string]APIKeyConfig `config:"api_keys"`
+	// BasicAccounts names the static service accounts served by the framework's
+	// default security.BasicAccountLoader; the built-in "http_basic" auth
+	// strategy verifies the presented Authorization: Basic credentials against
+	// them. Note: the config layer lowercases TOML keys, so usernames are
+	// effectively lowercase.
+	BasicAccounts map[string]BasicAccountConfig `config:"basic_accounts"`
 	// Lockout configures brute-force protection on the login endpoint.
 	Lockout LockoutConfig `config:"lockout"`
 	// PasswordPolicy configures strength rules enforced when a password is set.
@@ -42,6 +53,25 @@ type SecurityConfig struct {
 	// Session configures opaque-token session behavior; it has no effect under
 	// the jwt_token mechanism.
 	Session SessionConfig `config:"session"`
+}
+
+// APIKeyConfig defines one static API key under vef.security.api_keys.
+type APIKeyConfig struct {
+	// Key is the secret value the client presents; treat it like a password
+	// and use a high-entropy random string.
+	Key string `config:"key"`
+	// Roles are granted to the authenticated principal.
+	Roles []string `config:"roles"`
+}
+
+// BasicAccountConfig defines one static service account under
+// vef.security.basic_accounts; the map key is the username.
+type BasicAccountConfig struct {
+	// Password is the account secret; this is a machine-to-machine credential,
+	// so use a high-entropy random string, not a human password.
+	Password string `config:"password"`
+	// Roles are granted to the authenticated principal.
+	Roles []string `config:"roles"`
 }
 
 // TokenType selects the login token mechanism.

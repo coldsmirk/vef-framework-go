@@ -56,6 +56,8 @@ const (
 	ErrCodeAuthHeaderInvalid             = 1022
 	ErrCodeAccountLocked                 = 1023
 	ErrCodeTooManyConcurrentSessions     = 1024
+	ErrCodeAPIKeyInvalid                 = 1025
+	ErrCodeBasicCredentialsInvalid       = 1026
 
 	// Challenge errors (1030-1039). 1030 and 1032 are absent: they were never wired to a sentinel.
 	ErrCodeChallengeTokenInvalid  = 1031
@@ -150,6 +152,16 @@ var (
 	ErrIPNotAllowed = result.Err(
 		i18n.T("security_ip_not_allowed"),
 		result.WithCode(ErrCodeIPNotAllowed),
+		result.WithStatus(fiber.StatusUnauthorized),
+	)
+	ErrAPIKeyInvalid = result.Err(
+		i18n.T("security_api_key_invalid"),
+		result.WithCode(ErrCodeAPIKeyInvalid),
+		result.WithStatus(fiber.StatusUnauthorized),
+	)
+	ErrBasicCredentialsInvalid = result.Err(
+		i18n.T("security_basic_credentials_invalid"),
+		result.WithCode(ErrCodeBasicCredentialsInvalid),
 		result.WithStatus(fiber.StatusUnauthorized),
 	)
 	ErrNonceRequired = result.Err(
