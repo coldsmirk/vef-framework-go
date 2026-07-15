@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS itg_system (
     name VARCHAR(128) NOT NULL COMMENT 'Name',
     base_url VARCHAR(512) NOT NULL DEFAULT '' COMMENT 'Base URL',
     auth JSON COMMENT 'Auth Config',
+    data_source JSON COMMENT 'Data Source',
     params JSON COMMENT 'Script Params',
     timeout_ms INTEGER NOT NULL DEFAULT 0 COMMENT 'Call Timeout (ms)',
     retry JSON COMMENT 'Retry Policy',

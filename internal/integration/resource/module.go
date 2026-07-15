@@ -2,7 +2,13 @@ package resource
 
 import (
 	"go.uber.org/fx"
+
+	"github.com/coldsmirk/vef-framework-go/internal/logx"
 )
+
+// logger is the integration module's framework logger, following the
+// repo-wide package-level convention.
+var logger = logx.Named("integration")
 
 // Module provides all integration API resources.
 var Module = fx.Module(

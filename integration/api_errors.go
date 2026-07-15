@@ -27,6 +27,7 @@ const (
 	ErrCodeInvalidAuthParams = 2617
 	ErrCodeInvalidRouteRef   = 2618
 	ErrCodeInvalidBaseURL    = 2619
+	ErrCodeInvalidDataSource = 2620
 )
 
 // Predefined integration API errors. These are business errors and keep the
@@ -158,5 +159,14 @@ func ErrInvalidAuthParams(detail string) result.Error {
 	return result.Err(
 		i18n.T("integration_invalid_auth_params", map[string]any{"detail": detail}),
 		result.WithCode(ErrCodeInvalidAuthParams),
+	)
+}
+
+// ErrInvalidDataSource rejects a system data source configuration that is
+// incomplete or whose credential cannot be processed.
+func ErrInvalidDataSource(detail string) result.Error {
+	return result.Err(
+		i18n.T("integration_invalid_data_source", map[string]any{"detail": detail}),
+		result.WithCode(ErrCodeInvalidDataSource),
 	)
 }

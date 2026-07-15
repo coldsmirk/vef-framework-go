@@ -120,6 +120,66 @@ func TestNewSecretCodecRejectsMalformedKey(t *testing.T) {
 	require.Error(t, err, "Malformed key should fail codec construction")
 }
 
+func TestSecretCodecDataSource(t *testing.T) {
+	codec := newTestCodec(t)
+
+	t.Run("PasswordRoundTrip", func(t *testing.T) {
+		ds := &integration.DataSourceConfig{Kind: config.Postgres, Host: "db.example.com", Password: "db-pass"}
+
+		require.NoError(t, codec.EncryptDataSource(ds, nil), "Encryption should succeed")
+		assert.True(t, strings.HasPrefix(ds.Password, "enc:"), "Stored password should carry the encryption marker")
+
+		decrypted, err := codec.DecryptDataSource(ds)
+		require.NoError(t, err, "Decryption should succeed")
+		assert.Equal(t, "db-pass", decrypted.Password, "Decrypted password should match the original")
+		assert.Equal(t, "db.example.com", decrypted.Host, "Non-sensitive fields should pass through")
+		assert.True(t, strings.HasPrefix(ds.Password, "enc:"), "DecryptDataSource should not mutate the stored config")
+	})
+
+	t.Run("MaskedPlaceholderRestoresPriorValue", func(t *testing.T) {
+		prior := &integration.DataSourceConfig{Kind: config.Postgres, Password: "enc:stored"}
+		incoming := &integration.DataSourceConfig{Kind: config.Postgres, Password: integration.MaskedSecret}
+
+		require.NoError(t, codec.EncryptDataSource(incoming, prior), "Masked update should succeed")
+		assert.Equal(t, "enc:stored", incoming.Password, "Masked placeholder should restore the stored value")
+	})
+
+	t.Run("MaskedPlaceholderWithoutPriorFails", func(t *testing.T) {
+		incoming := &integration.DataSourceConfig{Kind: config.Postgres, Password: integration.MaskedSecret}
+
+		err := codec.EncryptDataSource(incoming, nil)
+		require.Error(t, err, "Masked password without a stored prior should fail")
+		assert.ErrorIs(t, err, ErrMaskedSecretWithoutPrior, "Error should be the masked-without-prior sentinel")
+	})
+
+	t.Run("EmptyPasswordPassesThrough", func(t *testing.T) {
+		ds := &integration.DataSourceConfig{Kind: config.SQLite}
+
+		require.NoError(t, codec.EncryptDataSource(ds, nil), "Password-less config should pass")
+		assert.Empty(t, ds.Password, "Empty password should stay empty")
+	})
+}
+
+func TestMaskDataSource(t *testing.T) {
+	t.Run("MasksPassword", func(t *testing.T) {
+		masked := MaskDataSource(&integration.DataSourceConfig{Kind: config.Postgres, User: "u", Password: "p"})
+
+		assert.Equal(t, integration.MaskedSecret, masked.Password, "Password should be masked")
+		assert.Equal(t, "u", masked.User, "User should stay visible")
+	})
+
+	t.Run("NilPassesThrough", func(t *testing.T) {
+		assert.Nil(t, MaskDataSource(nil), "Nil config should stay nil")
+	})
+
+	t.Run("DoesNotMutateOriginal", func(t *testing.T) {
+		original := &integration.DataSourceConfig{Kind: config.Postgres, Password: "p"}
+		_ = MaskDataSource(original)
+
+		assert.Equal(t, "p", original.Password, "Masking should copy, not mutate")
+	})
+}
+
 func TestMaskAuth(t *testing.T) {
 	scheme := bearerScheme(t)
 

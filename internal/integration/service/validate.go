@@ -40,6 +40,10 @@ func ValidateSystem(registry *auth.Registry, codec *SecretCodec, system *integra
 		}
 	}
 
+	if system.DataSource != nil && system.DataSource.Kind == "" {
+		return integration.ErrInvalidDataSource("kind is required")
+	}
+
 	scheme, ok := registry.Resolve(system.Auth)
 	if !ok {
 		return integration.ErrUnknownAuthScheme(system.Auth.Scheme)

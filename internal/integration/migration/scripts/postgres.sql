@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS itg_system (
     name VARCHAR(128) NOT NULL,
     base_url VARCHAR(512) NOT NULL DEFAULT '',
     auth JSONB,
+    data_source JSONB,
     params JSONB,
     timeout_ms INTEGER NOT NULL DEFAULT 0,
     retry JSONB,

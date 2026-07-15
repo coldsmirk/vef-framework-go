@@ -3,6 +3,7 @@ package integration
 import (
 	"encoding/json"
 
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
@@ -26,8 +27,10 @@ type Contract struct {
 }
 
 // System is one external system instance: where it lives and how to
-// authenticate against it. Connection-level defaults (timeout, retry) apply
-// to every adapter of the system unless overridden per adapter.
+// authenticate against it. BaseURL enables the scoped http library,
+// DataSource enables the scoped read-only sql library; a system may carry
+// both. Connection-level defaults (timeout, retry) apply to every adapter of
+// the system unless overridden per adapter.
 type System struct {
 	orm.BaseModel `bun:"table:itg_system,alias:isy"`
 	orm.FullAuditedModel
@@ -36,6 +39,10 @@ type System struct {
 	Name    string      `json:"name" bun:"name"`
 	BaseURL string      `json:"baseUrl" bun:"base_url"`
 	Auth    *AuthConfig `json:"auth" bun:"auth,type:jsonb,nullzero"`
+	// DataSource is the system's direct database connection (vendor views /
+	// exchange tables). Its password is stored encrypted and masked in
+	// management API responses.
+	DataSource *DataSourceConfig `json:"dataSource" bun:"data_source,type:jsonb,nullzero"`
 	// Params are non-sensitive, system-specific values (branch codes,
 	// version flags) exposed to adapter scripts as system.params.
 	Params map[string]string `json:"params" bun:"params,type:jsonb,nullzero"`
@@ -44,6 +51,40 @@ type System struct {
 	TimeoutMs int          `json:"timeoutMs" bun:"timeout_ms"`
 	Retry     *RetryPolicy `json:"retry" bun:"retry,type:jsonb,nullzero"`
 	IsEnabled bool         `json:"isEnabled" bun:"is_enabled"`
+}
+
+// DataSourceConfig describes a system's direct database connection. It
+// mirrors config.DataSourceConfig with JSON tags for jsonb storage and the
+// management API; ToConfig converts it for the datasource registry.
+type DataSourceConfig struct {
+	Kind        config.DBKind  `json:"kind"`
+	Host        string         `json:"host,omitempty"`
+	Port        uint16         `json:"port,omitempty"`
+	User        string         `json:"user,omitempty"`
+	Password    string         `json:"password,omitempty"`
+	Database    string         `json:"database,omitempty"`
+	Schema      string         `json:"schema,omitempty"`
+	Path        string         `json:"path,omitempty"`
+	SSLMode     config.SSLMode `json:"sslMode,omitempty"`
+	SSLRootCert string         `json:"sslRootCert,omitempty"`
+}
+
+// ToConfig converts the connection settings into the framework's data source
+// configuration. Scripts stay read-only through the sql library's own guard,
+// so the connection-level SQL guard is left off.
+func (c *DataSourceConfig) ToConfig() config.DataSourceConfig {
+	return config.DataSourceConfig{
+		Kind:        c.Kind,
+		Host:        c.Host,
+		Port:        c.Port,
+		User:        c.User,
+		Password:    c.Password,
+		Database:    c.Database,
+		Schema:      c.Schema,
+		Path:        c.Path,
+		SSLMode:     c.SSLMode,
+		SSLRootCert: c.SSLRootCert,
+	}
 }
 
 // AuthConfig selects a system's authentication scheme and carries its

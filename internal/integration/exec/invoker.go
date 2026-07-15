@@ -9,11 +9,13 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/datasource"
 	"github.com/coldsmirk/vef-framework-go/httpx"
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
 	"github.com/coldsmirk/vef-framework-go/js"
+	"github.com/coldsmirk/vef-framework-go/js/jssql"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -31,6 +33,7 @@ type Invoker struct {
 	programs  *programCache
 	schemas   *schemaCache
 	clients   *clientFactory
+	vendors   *vendorSources
 	responses *responseCache
 	stats     *statsRecorder
 	recorder  *logRecorder
@@ -44,6 +47,7 @@ func NewInvoker(
 	registry *auth.Registry,
 	codec *service.SecretCodec,
 	resolver integration.RouteResolver,
+	sources datasource.Registry,
 	cfg *config.IntegrationConfig,
 ) *Invoker {
 	return &Invoker{
@@ -54,11 +58,18 @@ func NewInvoker(
 		programs:  newProgramCache(),
 		schemas:   newSchemaCache(),
 		clients:   newClientFactory(registry, codec, cfg.EffectiveMaxResponseBody()),
+		vendors:   newVendorSources(sources, codec),
 		responses: newResponseCache(),
 		stats:     newStatsRecorder(),
 		recorder:  newLogRecorder(db, cfg),
 		capturer:  newCapturer(&cfg.Log),
 	}
+}
+
+// ReleaseSystem drops the datasource registry entry of a deleted system (or
+// one whose data source configuration was removed or renamed).
+func (inv *Invoker) ReleaseSystem(ctx context.Context, systemCode string) error {
+	return inv.vendors.Release(ctx, systemCode)
 }
 
 // Invoke implements integration.Invoker.
@@ -216,8 +227,14 @@ func (inv *Invoker) run(ctx context.Context, e *execution) (any, []integration.H
 		return nil, nil, integration.FailureConfig, err
 	}
 
-	runtime, err := inv.newRuntime(e, client)
+	runtime, err := inv.newRuntime(ctx, e, client)
 	if err != nil {
+		// A vendor database that cannot be dialed is a transport failure;
+		// everything else that blocks runtime assembly is configuration.
+		if _, ok := errors.AsType[*transportError](err); ok {
+			return nil, nil, integration.FailureTransport, integration.ErrTransportFailed
+		}
+
 		return nil, nil, integration.FailureConfig, err
 	}
 
@@ -244,8 +261,10 @@ func (inv *Invoker) run(ctx context.Context, e *execution) (any, []integration.H
 }
 
 // newRuntime assembles a fresh runtime carrying the engine baseline plus the
-// system-scoped libraries and the per-execution bindings.
-func (inv *Invoker) newRuntime(e *execution, client *httpx.Client) (*js.Runtime, error) {
+// system-scoped libraries and the per-execution bindings. The scoped sql
+// library joins only for systems with a data source, bound to that source
+// and read-only.
+func (inv *Invoker) newRuntime(ctx context.Context, e *execution, client *httpx.Client) (*js.Runtime, error) {
 	runtime, err := inv.engine.NewRuntime(js.WithRunTimeout(e.runTimeout))
 	if err != nil {
 		return nil, err
@@ -254,6 +273,15 @@ func (inv *Invoker) newRuntime(e *execution, client *httpx.Client) (*js.Runtime,
 	libs := []js.Lib{
 		newHTTPLib(client, CallTimeout(e.system)),
 		newErrorsLib(),
+	}
+
+	if e.system.DataSource != nil {
+		vendorDB, kind, err := inv.vendors.DBFor(ctx, e.system)
+		if err != nil {
+			return nil, err
+		}
+
+		libs = append(libs, jssql.New(vendorDB, kind))
 	}
 
 	for _, lib := range libs {

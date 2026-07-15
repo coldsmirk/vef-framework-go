@@ -20,6 +20,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/exec"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/worker"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
@@ -496,8 +497,10 @@ func (s *ModuleTestSuite) TestConnectionProbe() {
 	s.Run("Reachable", func() {
 		check, err := s.concrete.TestConnection(s.T().Context(), system, "", "/whoami")
 		s.Require().NoError(err, "Probe should not error on a live upstream")
-		s.True(check.Reachable, "Live upstream should be reachable")
-		s.Equal(http.StatusOK, check.Status, "Probe should report the status")
+		s.Require().NotNil(check.HTTP, "Base-url system should get an HTTP probe")
+		s.True(check.HTTP.Reachable, "Live upstream should be reachable")
+		s.Equal(http.StatusOK, check.HTTP.Status, "Probe should report the status")
+		s.Nil(check.Database, "System without a data source should get no database probe")
 	})
 
 	s.Run("Unreachable", func() {
@@ -508,7 +511,108 @@ func (s *ModuleTestSuite) TestConnectionProbe() {
 
 		check, err := s.concrete.TestConnection(s.T().Context(), system, "", "/")
 		s.Require().NoError(err, "Transport failure is data, not an error")
-		s.False(check.Reachable, "Dead upstream should be unreachable")
-		s.NotEmpty(check.Error, "Probe should report the transport error")
+		s.Require().NotNil(check.HTTP, "Dead upstream should still get an HTTP probe")
+		s.False(check.HTTP.Reachable, "Dead upstream should be unreachable")
+		s.NotEmpty(check.HTTP.Error, "Probe should report the transport error")
 	})
+}
+
+func (s *ModuleTestSuite) TestDatabaseSystem() {
+	contract := s.createContract("db.op", nil, nil)
+
+	system := &integration.System{
+		Code:       "db-sys",
+		Name:       "db-sys",
+		DataSource: &integration.DataSourceConfig{Kind: config.SQLite},
+		IsEnabled:  true,
+	}
+
+	_, err := s.db.NewInsert().Model(system).Exec(s.T().Context())
+	s.Require().NoError(err, "Database system seed should insert")
+
+	s.createAdapter(system, contract, `return { answer: sql.queryOne('SELECT 42 AS answer').answer }`)
+
+	s.Run("ScopedSQLQueries", func() {
+		result, err := s.invoker.Invoke(s.T().Context(), "db.op", nil, integration.WithSystem("db-sys"))
+		s.Require().NoError(err, "Database-backed invocation should succeed")
+
+		output, ok := result.Output().(map[string]any)
+		s.Require().True(ok, "Output should be the standard model object")
+		s.InEpsilon(float64(42), output["answer"], 0, "sql.queryOne should reach the vendor database")
+	})
+
+	s.Run("WritesAreRejected", func() {
+		s.createAdapter(s.createSystemForScript("db-sys-w"), contract, `sql.exec('CREATE TABLE x (y INTEGER)'); return {}`)
+
+		_, err := s.invoker.Invoke(s.T().Context(), "db.op", nil, integration.WithSystem("db-sys-w"))
+		s.Require().Error(err, "Write through the scoped sql lib should fail")
+		s.ErrorIs(err, integration.ErrScriptFailed(""), "Read-only violation should classify as a script failure")
+	})
+
+	s.Run("DatabaseProbe", func() {
+		check, err := s.concrete.TestConnection(s.T().Context(), system, "", "")
+		s.Require().NoError(err, "Database probe should not error")
+		s.Require().NotNil(check.Database, "Data-source system should get a database probe")
+		s.True(check.Database.Reachable, "In-memory SQLite should be reachable")
+		s.NotEmpty(check.Database.Version, "Probe should report the server version")
+		s.Nil(check.HTTP, "System without a base URL should get no HTTP probe")
+	})
+
+	s.Run("ReleaseSystemUnregisters", func() {
+		s.Require().NoError(s.concrete.ReleaseSystem(s.T().Context(), "db-sys"), "Release should succeed")
+
+		result, err := s.invoker.Invoke(s.T().Context(), "db.op", nil, integration.WithSystem("db-sys"))
+		s.Require().NoError(err, "Invocation after release should lazily re-register the source")
+		s.NotNil(result.Output(), "Re-registered source should serve queries")
+	})
+}
+
+// createSystemForScript seeds a database-only system for a single subtest.
+func (s *ModuleTestSuite) createSystemForScript(code string) *integration.System {
+	system := &integration.System{
+		Code:       code,
+		Name:       code,
+		DataSource: &integration.DataSourceConfig{Kind: config.SQLite},
+		IsEnabled:  true,
+	}
+
+	_, err := s.db.NewInsert().Model(system).Exec(s.T().Context())
+	s.Require().NoError(err, "Database system seed should insert")
+
+	return system
+}
+
+func (s *ModuleTestSuite) TestLogRetention() {
+	insertLog := func(age time.Duration) *integration.InvocationLog {
+		entry := &integration.InvocationLog{
+			SystemCode:   "retention-sys",
+			ContractCode: "retention.op",
+		}
+
+		_, err := s.db.NewInsert().Model(entry).Exec(s.T().Context())
+		s.Require().NoError(err, "Log seed should insert")
+
+		if age > 0 {
+			_, err = s.db.NewUpdate().Model(entry).
+				Set("created_at", time.Now().Add(-age)).
+				WherePK().
+				Exec(s.T().Context())
+			s.Require().NoError(err, "Log backdating should persist")
+		}
+
+		return entry
+	}
+
+	old := insertLog(48 * time.Hour)
+	fresh := insertLog(0)
+
+	pruner := worker.NewLogPruner(s.db, &config.IntegrationConfig{
+		Log: config.IntegrationLogConfig{Retention: 24 * time.Hour},
+	})
+	pruner.Run(s.T().Context())
+
+	remaining := s.findLogs("retention.op")
+	s.Require().Len(remaining, 1, "Only the fresh row should survive the sweep")
+	s.Equal(fresh.ID, remaining[0].ID, "The fresh row should survive")
+	s.NotEqual(old.ID, remaining[0].ID, "The aged row should be pruned")
 }

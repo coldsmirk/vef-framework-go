@@ -132,6 +132,65 @@ func MaskAuth(scheme integration.AuthScheme, auth *integration.AuthConfig) *inte
 	return masked
 }
 
+// EncryptDataSource prepares a system's data source config for persistence,
+// mutating it in place: the password is encrypted, and a submitted
+// MaskedSecret placeholder is replaced by the prior stored value (prior is
+// nil on create).
+func (c *SecretCodec) EncryptDataSource(ds, prior *integration.DataSourceConfig) error {
+	if ds == nil || ds.Password == "" {
+		return nil
+	}
+
+	if ds.Password == integration.MaskedSecret {
+		if prior == nil || prior.Password == "" {
+			return fmt.Errorf("%w: password", ErrMaskedSecretWithoutPrior)
+		}
+
+		ds.Password = prior.Password
+
+		return nil
+	}
+
+	encrypted, err := c.encryptValue(ds.Password)
+	if err != nil {
+		return fmt.Errorf("integration: encrypt data source password: %w", err)
+	}
+
+	ds.Password = encrypted
+
+	return nil
+}
+
+// DecryptDataSource returns a copy of ds with the password decrypted, ready
+// for the datasource registry.
+func (c *SecretCodec) DecryptDataSource(ds *integration.DataSourceConfig) (integration.DataSourceConfig, error) {
+	decrypted := *ds
+
+	password, err := c.decryptValue(ds.Password)
+	if err != nil {
+		return integration.DataSourceConfig{}, fmt.Errorf("integration: decrypt data source password: %w", err)
+	}
+
+	decrypted.Password = password
+
+	return decrypted, nil
+}
+
+// MaskDataSource returns a copy of ds with a non-empty password replaced by
+// MaskedSecret, for management API responses.
+func MaskDataSource(ds *integration.DataSourceConfig) *integration.DataSourceConfig {
+	if ds == nil {
+		return nil
+	}
+
+	masked := *ds
+	if masked.Password != "" {
+		masked.Password = integration.MaskedSecret
+	}
+
+	return &masked
+}
+
 // encryptValue seals one plaintext value; already-encrypted values pass
 // through so re-saving a record never double-encrypts.
 func (c *SecretCodec) encryptValue(value string) (string, error) {
