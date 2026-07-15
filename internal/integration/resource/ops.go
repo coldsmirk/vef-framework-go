@@ -10,6 +10,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/exec"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -36,9 +37,9 @@ type TestConnectionParams struct {
 }
 
 // OpsResource hosts the operational endpoints of the integration engine:
-// the script test console (dry_run) and the connection probe
-// (test_connection). Both operate on disabled definitions too — testing
-// precedes enabling.
+// the script test console (dry_run), the connection probe (test_connection),
+// and the routing diagnosis (diagnose_routes). Dry run and probing operate
+// on disabled definitions too — testing precedes enabling.
 type OpsResource struct {
 	api.Resource
 
@@ -54,6 +55,7 @@ func NewOpsResource(invoker *exec.Invoker) api.Resource {
 			api.WithOperations(
 				api.OperationSpec{Action: "dry_run", RequiredPermission: "integration.ops.dry_run"},
 				api.OperationSpec{Action: "test_connection", RequiredPermission: "integration.ops.test_connection"},
+				api.OperationSpec{Action: "diagnose_routes", RequiredPermission: "integration.ops.diagnose_routes"},
 			),
 		),
 	}
@@ -88,6 +90,18 @@ func (r *OpsResource) DryRun(ctx fiber.Ctx, db orm.DB, params DryRunParams) erro
 	}
 
 	return result.Ok(r.invoker.DryRun(ctx.Context(), contract, system, script, input)).Response(ctx)
+}
+
+// DiagnoseRoutes reports the routing table's configuration gaps — dangling
+// adapters, disabled targets, uncovered contracts — before they surface as
+// runtime errors.
+func (*OpsResource) DiagnoseRoutes(ctx fiber.Ctx, db orm.DB) error {
+	report, err := service.DiagnoseRoutes(ctx.Context(), db)
+	if err != nil {
+		return err
+	}
+
+	return result.Ok(report).Response(ctx)
 }
 
 // TestConnection probes a saved system with a single request.

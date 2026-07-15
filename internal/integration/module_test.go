@@ -582,6 +582,77 @@ func (s *ModuleTestSuite) createSystemForScript(code string) *integration.System
 	return system
 }
 
+func (s *ModuleTestSuite) TestDiagnoseRoutes() {
+	echoScript := `return {}`
+
+	healthy := s.createContract("diag.ok", nil, nil)
+	orphan := s.createContract("diag.orphan", nil, nil)
+	s.createContract("diag.uncovered", nil, nil)
+	sysUp := s.createSystem("diag-sys-up", nil)
+	sysDown := s.createSystem("diag-sys-down", nil)
+
+	s.createAdapter(sysUp, healthy, echoScript)
+
+	_, err := s.db.NewUpdate().Model(sysDown).Set("is_enabled", false).WherePK().Exec(s.T().Context())
+	s.Require().NoError(err, "System disable should persist")
+
+	s.createRoute("diag-east", healthy.ID, sysUp.ID) // healthy: adapter exists
+	s.createRoute("diag-east", orphan.ID, sysUp.ID)  // dangling: no adapter for orphan
+	s.createRoute("diag-west", "", sysDown.ID)       // disabled system + wildcard gaps
+	s.createRoute("diag-south", healthy.ID, sysDown.ID)
+
+	report, err := service.DiagnoseRoutes(s.T().Context(), s.db)
+	s.Require().NoError(err, "Diagnosis should succeed")
+
+	type probe struct {
+		kind     integration.RouteFindingKind
+		key      string
+		contract string
+		system   string
+	}
+
+	seen := make(map[probe]bool)
+	for _, f := range report.Findings {
+		seen[probe{kind: f.Kind, key: f.RouteKey, contract: f.ContractCode, system: f.SystemCode}] = true
+	}
+
+	s.Run("DanglingAdapterReported", func() {
+		s.True(seen[probe{integration.RouteFindingDanglingAdapter, "diag-east", "diag.orphan", "diag-sys-up"}],
+			"Contract-scoped route without an adapter should be reported")
+	})
+
+	s.Run("DisabledSystemReported", func() {
+		s.True(seen[probe{integration.RouteFindingDisabledSystem, "diag-west", "", "diag-sys-down"}],
+			"Wildcard route to a disabled system should be reported")
+		s.True(seen[probe{integration.RouteFindingDisabledSystem, "diag-south", "diag.ok", "diag-sys-down"}],
+			"Contract-scoped route to a disabled system should be reported")
+	})
+
+	s.Run("WildcardGapReported", func() {
+		s.True(seen[probe{integration.RouteFindingWildcardGap, "diag-west", "diag.orphan", "diag-sys-down"}],
+			"Wildcard route should report contracts its system cannot serve")
+	})
+
+	s.Run("UncoveredContractReported", func() {
+		s.True(seen[probe{integration.RouteFindingUncoveredContract, "diag-east", "diag.uncovered", ""}],
+			"An exact-only key should report contracts it does not cover")
+
+		s.False(seen[probe{integration.RouteFindingUncoveredContract, "diag-east", "diag.orphan", ""}],
+			"A contract with an exact rule under the key should not be reported, even a dangling one")
+
+		s.False(seen[probe{integration.RouteFindingUncoveredContract, "diag-west", "diag.uncovered", ""}],
+			"A key with a wildcard rule covers every contract")
+	})
+
+	s.Run("HealthyPairSilent", func() {
+		for f := range seen {
+			if f.contract == "diag.ok" && f.system == "diag-sys-up" {
+				s.Failf("unexpected finding", "healthy route should produce no finding, got %+v", f)
+			}
+		}
+	})
+}
+
 func (s *ModuleTestSuite) TestLogRetention() {
 	insertLog := func(age time.Duration) *integration.InvocationLog {
 		entry := &integration.InvocationLog{
