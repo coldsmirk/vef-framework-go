@@ -10,8 +10,8 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/integration"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/exec"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -41,7 +41,7 @@ type DryRunInboundParams struct {
 	HandlerOutput json.RawMessage      `json:"handlerOutput"`
 }
 
-// InboundRequestParams is the synthetic vendor request of an inbound dry run.
+// InboundRequestParams is the synthetic external request of an inbound dry run.
 type InboundRequestParams struct {
 	Method  string            `json:"method"`
 	Path    string            `json:"path"`
@@ -120,7 +120,7 @@ func (r *OpsResource) DryRun(ctx fiber.Ctx, db orm.DB, params DryRunParams) erro
 	return result.Ok(r.invoker.DryRun(ctx.Context(), contract, system, script, input)).Response(ctx)
 }
 
-// DryRunInbound executes an inbound script against a synthetic vendor request
+// DryRunInbound executes an inbound script against a synthetic external request
 // with the business handler stubbed to return the supplied sample output.
 // Nothing runs against business code and nothing is recorded; verification is
 // bypassed — the console tests translation, not credentials.
@@ -178,7 +178,7 @@ func lowercaseKeys(values map[string]string) map[string]string {
 // adapters, disabled targets, uncovered contracts — before they surface as
 // runtime errors.
 func (*OpsResource) DiagnoseRoutes(ctx fiber.Ctx, db orm.DB) error {
-	report, err := service.DiagnoseRoutes(ctx.Context(), db)
+	report, err := definition.DiagnoseRoutes(ctx.Context(), db)
 	if err != nil {
 		return err
 	}

@@ -52,7 +52,7 @@ func (inv *Invoker) TestConnection(ctx context.Context, system *integration.Syst
 	}
 
 	if system.DataSource != nil {
-		probe, err := inv.vendors.Probe(ctx, system.DataSource)
+		probe, err := inv.databases.Probe(ctx, system.DataSource)
 		if err != nil {
 			return nil, err
 		}

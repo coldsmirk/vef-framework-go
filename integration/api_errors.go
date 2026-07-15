@@ -33,6 +33,7 @@ const (
 	ErrCodeInvalidDirection      = 2621
 	ErrCodeInboundAuthFailed     = 2622
 	ErrCodeInboundHandlerMissing = 2623
+	ErrCodeInvocationCanceled    = 2624
 )
 
 // Predefined integration API errors. These are business errors and keep the
@@ -83,6 +84,12 @@ var (
 		i18n.T("integration_invocation_timeout"),
 		result.WithCode(ErrCodeInvocationTimeout),
 	)
+	// ErrInvocationCanceled marks an invocation interrupted by its caller's
+	// cancellation — the caller is typically no longer listening.
+	ErrInvocationCanceled = result.Err(
+		i18n.T("integration_invocation_canceled"),
+		result.WithCode(ErrCodeInvocationCanceled),
+	)
 	// ErrInvalidRouteRef rejects a route referencing a missing contract or
 	// system at save time.
 	ErrInvalidRouteRef = result.Err(
@@ -132,7 +139,7 @@ func ErrScriptFailed(detail string) result.Error {
 }
 
 // ErrUnknownAuthScheme rejects a system whose auth references a scheme no
-// registered AuthScheme reports as its name.
+// registered OutboundAuthScheme reports as its name.
 func ErrUnknownAuthScheme(scheme string) result.Error {
 	return result.Err(
 		i18n.T("integration_unknown_auth_scheme", map[string]any{"scheme": scheme}),
@@ -158,7 +165,7 @@ func ErrInvalidScript(detail string) result.Error {
 	)
 }
 
-// ErrInvalidAuthParams rejects auth parameters an AuthScheme refused at save
+// ErrInvalidAuthParams rejects auth parameters an OutboundAuthScheme refused at save
 // time.
 func ErrInvalidAuthParams(detail string) result.Error {
 	return result.Err(

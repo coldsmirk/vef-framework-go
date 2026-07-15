@@ -1,4 +1,4 @@
-package service
+package definition
 
 import (
 	"context"
@@ -8,11 +8,11 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// AuthSchemeResolver is the validator's view of the outbound scheme registry;
+// OutboundAuthSchemeResolver is the validator's view of the outbound scheme registry;
 // keeping it consumer-side avoids an import cycle with the auth package.
-type AuthSchemeResolver interface {
+type OutboundAuthSchemeResolver interface {
 	// Resolve returns the scheme for cfg, ok=false for an unknown name.
-	Resolve(cfg *integration.AuthConfig) (integration.AuthScheme, bool)
+	Resolve(cfg *integration.OutboundAuthConfig) (integration.OutboundAuthScheme, bool)
 }
 
 // ValidateContract rejects a contract whose input or output schema does not
@@ -37,8 +37,8 @@ func ValidateContract(contract *integration.Contract) error {
 // ValidateSystem rejects a system whose base URL is not absolute or whose
 // auth config references an unknown scheme or fails the scheme's own
 // parameter validation. Auth params must already be in their persisted form
-// (EncryptAuth applied) so masked placeholders have been resolved.
-func ValidateSystem(registry AuthSchemeResolver, codec *SecretCodec, system *integration.System) error {
+// (EncryptOutboundAuth applied) so masked placeholders have been resolved.
+func ValidateSystem(registry OutboundAuthSchemeResolver, codec *SecretCodec, system *integration.System) error {
 	if system.BaseURL != "" {
 		parsed, err := url.Parse(system.BaseURL)
 		if err != nil || !parsed.IsAbs() {
@@ -50,16 +50,16 @@ func ValidateSystem(registry AuthSchemeResolver, codec *SecretCodec, system *int
 		return integration.ErrInvalidDataSource("kind is required")
 	}
 
-	scheme, ok := registry.Resolve(system.Auth)
-	if !ok {
-		return integration.ErrUnknownAuthScheme(system.Auth.Scheme)
-	}
-
-	if system.Auth == nil {
+	if system.OutboundAuth == nil {
 		return nil
 	}
 
-	params, err := codec.DecryptAuth(scheme, system.Auth)
+	scheme, ok := registry.Resolve(system.OutboundAuth)
+	if !ok {
+		return integration.ErrUnknownAuthScheme(system.OutboundAuth.Scheme)
+	}
+
+	params, err := codec.DecryptOutboundAuth(scheme, system.OutboundAuth)
 	if err != nil {
 		return integration.ErrInvalidAuthParams(err.Error())
 	}

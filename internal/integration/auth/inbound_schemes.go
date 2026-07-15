@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/coldsmirk/vef-framework-go/integration"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
 	"github.com/coldsmirk/vef-framework-go/js"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
@@ -47,7 +47,7 @@ func builtinInboundSchemes(engine *js.Engine) []integration.InboundAuthScheme {
 }
 
 // noneInboundScheme deliberately accepts every caller — the explicit opt-out
-// for vendors that cannot authenticate (pair it with network-level controls).
+// for external systems that cannot authenticate (pair it with network-level controls).
 type noneInboundScheme struct{}
 
 func (*noneInboundScheme) Name() string {
@@ -237,7 +237,7 @@ func (*signatureInboundScheme) SensitiveParams() []string {
 }
 
 // scriptInboundScheme runs the system's custom verification body
-// (InboundAuthConfig.Script): the most flexible tier, for vendor conventions
+// (InboundAuthConfig.Script): the most flexible tier, for external conventions
 // no declarative scheme covers. The runtime deliberately carries no IO
 // capability — only the engine baseline plus the request and params bindings
 // — so a script can read decrypted secrets but has no channel to leak them;
@@ -245,11 +245,11 @@ func (*signatureInboundScheme) SensitiveParams() []string {
 // server-side.
 type scriptInboundScheme struct {
 	engine   *js.Engine
-	programs *service.ProgramCache
+	programs *definition.ProgramCache
 }
 
 func newScriptInboundScheme(engine *js.Engine) *scriptInboundScheme {
-	return &scriptInboundScheme{engine: engine, programs: service.NewProgramCache()}
+	return &scriptInboundScheme{engine: engine, programs: definition.NewProgramCache()}
 }
 
 func (*scriptInboundScheme) Name() string {

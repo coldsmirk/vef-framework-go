@@ -2,7 +2,7 @@ package auth
 
 import (
 	"github.com/coldsmirk/vef-framework-go/integration"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
 )
 
 // ValidateInboundAuth rejects an inbound auth config referencing an unknown
@@ -30,7 +30,7 @@ func ValidateInboundAuth(registry *InboundRegistry, cfg *integration.InboundAuth
 		return integration.ErrInvalidAuthParams("the script scheme requires a verification script")
 	}
 
-	if _, err := service.CompileScript(cfg.Script); err != nil {
+	if _, err := definition.CompileScript(cfg.Script); err != nil {
 		return integration.ErrInvalidScript(err.Error())
 	}
 

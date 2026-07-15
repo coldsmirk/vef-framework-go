@@ -9,7 +9,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/httpx"
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/lru"
 )
 
 const (
@@ -26,20 +27,20 @@ const (
 // yields a new key, so stale clients age out of the LRU without any
 // invalidation protocol.
 type clientFactory struct {
-	registry        *auth.Registry
-	codec           *service.SecretCodec
+	registry        *auth.OutboundRegistry
+	codec           *definition.SecretCodec
 	maxResponseBody int64
 
-	mu  sync.Mutex
-	lru *service.LRU[*httpx.Client]
+	mu    sync.Mutex
+	cache *lru.Cache[*httpx.Client]
 }
 
-func newClientFactory(registry *auth.Registry, codec *service.SecretCodec, maxResponseBody int64) *clientFactory {
+func newClientFactory(registry *auth.OutboundRegistry, codec *definition.SecretCodec, maxResponseBody int64) *clientFactory {
 	return &clientFactory{
 		registry:        registry,
 		codec:           codec,
 		maxResponseBody: maxResponseBody,
-		lru:             service.NewLRU[*httpx.Client](clientCacheCapacity),
+		cache:           lru.New[*httpx.Client](clientCacheCapacity),
 	}
 }
 
@@ -51,7 +52,7 @@ func (f *clientFactory) ClientFor(system *integration.System) (*httpx.Client, er
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if client, ok := f.lru.Get(key); ok {
+	if client, ok := f.cache.Get(key); ok {
 		return client, nil
 	}
 
@@ -60,7 +61,7 @@ func (f *clientFactory) ClientFor(system *integration.System) (*httpx.Client, er
 		return nil, err
 	}
 
-	f.lru.Put(key, client)
+	f.cache.Put(key, client)
 
 	return client, nil
 }
@@ -78,9 +79,9 @@ func CallTimeout(system *integration.System) time.Duration {
 // build assembles the httpx client implementing the system's connection
 // settings and auth scheme.
 func (f *clientFactory) build(system *integration.System) (*httpx.Client, error) {
-	scheme, ok := f.registry.Resolve(system.Auth)
+	scheme, ok := f.registry.Resolve(system.OutboundAuth)
 	if !ok {
-		return nil, integration.ErrUnknownAuthScheme(system.Auth.Scheme)
+		return nil, integration.ErrUnknownAuthScheme(system.OutboundAuth.Scheme)
 	}
 
 	opts := []httpx.Option{
@@ -100,7 +101,7 @@ func (f *clientFactory) build(system *integration.System) (*httpx.Client, error)
 		}))
 	}
 
-	params, err := f.codec.DecryptAuth(scheme, system.Auth)
+	params, err := f.codec.DecryptOutboundAuth(scheme, system.OutboundAuth)
 	if err != nil {
 		return nil, integration.ErrInvalidAuthParams(err.Error())
 	}
@@ -123,11 +124,11 @@ func (f *clientFactory) build(system *integration.System) (*httpx.Client, error)
 // detection without holding plaintext in the key.
 func clientKey(system *integration.System) string {
 	payload, _ := json.Marshal(struct {
-		BaseURL   string                   `json:"baseUrl"`
-		TimeoutMs int                      `json:"timeoutMs"`
-		Retry     *integration.RetryPolicy `json:"retry"`
-		Auth      *integration.AuthConfig  `json:"auth"`
-	}{system.BaseURL, system.TimeoutMs, system.Retry, system.Auth})
+		BaseURL      string                          `json:"baseUrl"`
+		TimeoutMs    int                             `json:"timeoutMs"`
+		Retry        *integration.RetryPolicy        `json:"retry"`
+		OutboundAuth *integration.OutboundAuthConfig `json:"outboundAuth"`
+	}{system.BaseURL, system.TimeoutMs, system.Retry, system.OutboundAuth})
 
 	return hashx.SHA256Bytes(payload)
 }

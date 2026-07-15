@@ -6,7 +6,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/crud"
 	"github.com/coldsmirk/vef-framework-go/integration"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
@@ -80,5 +80,5 @@ func sealAdapter(model *integration.Adapter) error {
 		return integration.ErrInvalidDirection
 	}
 
-	return service.ValidateAdapterScript(model.Script)
+	return definition.ValidateAdapterScript(model.Script)
 }

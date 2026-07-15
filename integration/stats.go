@@ -13,7 +13,9 @@ type StatsInspector interface {
 }
 
 // InvocationStats aggregates the invocations of one (system, contract,
-// direction) tuple on this node since process start.
+// direction) tuple on this node since process start. Inbound deliveries
+// rejected by verification aggregate under an empty Contract — the contract
+// code is unvalidated caller input at rejection time.
 type InvocationStats struct {
 	System        string                `json:"system"`
 	Contract      string                `json:"contract"`

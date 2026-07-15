@@ -8,7 +8,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/crud"
 	"github.com/coldsmirk/vef-framework-go/integration"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -50,7 +50,7 @@ type ContractResource struct {
 // compiled at save time so a broken contract never reaches an invocation.
 func NewContractResource() api.Resource {
 	validate := func(model *integration.Contract) error {
-		return service.ValidateContract(model)
+		return definition.ValidateContract(model)
 	}
 
 	return &ContractResource{

@@ -20,6 +20,10 @@ const (
 	FailureTransport FailureKind = "transport"
 	// FailureTimeout marks an invocation that exceeded its run timeout.
 	FailureTimeout FailureKind = "timeout"
+	// FailureCanceled marks an invocation interrupted because its caller
+	// canceled — the caller walked away, not a fault of the upstream, the
+	// adapter, or the deadline.
+	FailureCanceled FailureKind = "canceled"
 	// FailureScript marks a failure of the adapter script itself — an
 	// uncaught exception or a compile error; a bug in the adapter, not in
 	// the upstream.
@@ -33,6 +37,6 @@ const (
 	FailureAuth FailureKind = "auth"
 	// FailureHandler marks an inbound delivery whose business handler
 	// returned an error after a successful dispatch — a business failure, not
-	// an adapter or vendor fault.
+	// an adapter or external-system fault.
 	FailureHandler FailureKind = "handler"
 )

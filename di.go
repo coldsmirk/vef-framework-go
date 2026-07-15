@@ -21,7 +21,7 @@ var ApprovalModule = iapproval.Module
 
 // IntegrationModule enables the optional integration engine: config- and
 // script-driven adapters that translate between external systems (HIS, LIS,
-// vendor APIs) and the application's standard contracts. It registers the
+// third-party APIs) and the application's standard contracts. It registers the
 // contract/system/adapter/route management resources, the invocation log,
 // the dry-run test console, and provides integration.Invoker for business
 // code. Absent from the default boot sequence so applications that do not
@@ -102,7 +102,7 @@ func ProvideMiddleware(constructor any, paramTags ...string) fx.Option {
 // ProvideAuthStrategy provides a custom API authentication strategy to the
 // dependency injection container. The strategy will be registered in the
 // "vef:api:auth_strategies" group and is selected per resource through
-// api.AuthConfig.Strategy by the name it reports from Name().
+// api.OutboundAuthConfig.Strategy by the name it reports from Name().
 // The constructor must return api.AuthStrategy (not a concrete type).
 //
 // Example:
@@ -543,20 +543,20 @@ func ProvideJSLib(constructor any, paramTags ...string) fx.Option {
 	)
 }
 
-// ProvideIntegrationAuthScheme registers a custom auth scheme for the
+// ProvideIntegrationOutboundAuthScheme registers a custom auth scheme for the
 // integration engine (requires IntegrationModule). Systems reference schemes
 // by name in their auth config; a scheme whose Name matches a built-in
 // (none / basic / bearer / header / query) replaces it.
 //
-//	vef.ProvideIntegrationAuthScheme(func() integration.AuthScheme { return &hmacScheme{} })
+//	vef.ProvideIntegrationOutboundAuthScheme(func() integration.OutboundAuthScheme { return &hmacScheme{} })
 //
-// constructor is an fx-style factory that returns integration.AuthScheme.
-func ProvideIntegrationAuthScheme(constructor any, paramTags ...string) fx.Option {
+// constructor is an fx-style factory that returns integration.OutboundAuthScheme.
+func ProvideIntegrationOutboundAuthScheme(constructor any, paramTags ...string) fx.Option {
 	return fx.Provide(
 		fx.Annotate(
 			constructor,
 			fx.ParamTags(paramTags...),
-			fx.ResultTags(`group:"vef:integration:auth_schemes"`),
+			fx.ResultTags(`group:"vef:integration:outbound_auth_schemes"`),
 		),
 	)
 }
@@ -567,7 +567,7 @@ func ProvideIntegrationAuthScheme(constructor any, paramTags ...string) fx.Optio
 // built-in (none / ip / api_key / http_basic / signature / script) replaces
 // it.
 //
-//	vef.ProvideIntegrationInboundAuthScheme(func() integration.InboundAuthScheme { return &vendorTokenScheme{} })
+//	vef.ProvideIntegrationInboundAuthScheme(func() integration.InboundAuthScheme { return &partnerTokenScheme{} })
 //
 // constructor is an fx-style factory that returns integration.InboundAuthScheme.
 func ProvideIntegrationInboundAuthScheme(constructor any, paramTags ...string) fx.Option {

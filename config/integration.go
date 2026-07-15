@@ -73,8 +73,8 @@ type IntegrationConfig struct {
 	// Log controls invocation logging.
 	Log IntegrationLogConfig `config:"log"`
 
-	// Inbound configures the inbound gateways receiving vendor-initiated
-	// calls.
+	// Inbound configures the inbound gateways receiving calls initiated by
+	// external systems.
 	Inbound IntegrationInboundConfig `config:"inbound"`
 }
 
@@ -88,7 +88,7 @@ const (
 // IntegrationInboundConfig configures the inbound gateways
 // (vef.integration.inbound).
 type IntegrationInboundConfig struct {
-	// RateLimit bounds vendor-initiated deliveries on the HTTP gateway.
+	// RateLimit bounds inbound deliveries on the HTTP gateway.
 	RateLimit IntegrationInboundRateLimitConfig `config:"rate_limit"`
 }
 

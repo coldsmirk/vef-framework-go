@@ -1,4 +1,4 @@
-package service
+package definition
 
 import (
 	"fmt"
@@ -70,10 +70,10 @@ func sensitiveNames(scheme secretScheme, params map[string]string) []string {
 	return declared
 }
 
-// EncryptAuth prepares auth for persistence, mutating its params in place:
+// EncryptOutboundAuth prepares auth for persistence, mutating its params in place:
 // every sensitive parameter is encrypted, and a submitted MaskedSecret
 // placeholder is replaced by the prior stored value (prior is nil on create).
-func (c *SecretCodec) EncryptAuth(scheme secretScheme, auth, prior *integration.AuthConfig) error {
+func (c *SecretCodec) EncryptOutboundAuth(scheme secretScheme, auth, prior *integration.OutboundAuthConfig) error {
 	if auth == nil {
 		return nil
 	}
@@ -86,9 +86,9 @@ func (c *SecretCodec) EncryptAuth(scheme secretScheme, auth, prior *integration.
 	return c.encryptParams(scheme, auth.Params, priorParams)
 }
 
-// DecryptAuth returns a copy of auth's params with every sensitive parameter
-// decrypted, ready to hand to AuthScheme.Apply.
-func (c *SecretCodec) DecryptAuth(scheme secretScheme, auth *integration.AuthConfig) (map[string]string, error) {
+// DecryptOutboundAuth returns a copy of auth's params with every sensitive parameter
+// decrypted, ready to hand to OutboundAuthScheme.Apply.
+func (c *SecretCodec) DecryptOutboundAuth(scheme secretScheme, auth *integration.OutboundAuthConfig) (map[string]string, error) {
 	if auth == nil {
 		return nil, nil
 	}
@@ -96,20 +96,20 @@ func (c *SecretCodec) DecryptAuth(scheme secretScheme, auth *integration.AuthCon
 	return c.decryptParams(scheme, auth.Params)
 }
 
-// MaskAuth returns a copy of auth with every non-empty sensitive parameter
+// MaskOutboundAuth returns a copy of auth with every non-empty sensitive parameter
 // value replaced by MaskedSecret, for management API responses. A nil scheme
 // (no longer registered) masks every parameter — fail closed.
-func MaskAuth(scheme secretScheme, auth *integration.AuthConfig) *integration.AuthConfig {
+func MaskOutboundAuth(scheme secretScheme, auth *integration.OutboundAuthConfig) *integration.OutboundAuthConfig {
 	if auth == nil {
 		return nil
 	}
 
-	return &integration.AuthConfig{Scheme: auth.Scheme, Params: maskParams(scheme, auth.Params)}
+	return &integration.OutboundAuthConfig{Scheme: auth.Scheme, Params: maskParams(scheme, auth.Params)}
 }
 
 // EncryptInboundAuth prepares an inbound auth config for persistence,
 // mutating its params in place with the same masked-placeholder resolution as
-// EncryptAuth. The verification script is code, not a secret; it stays
+// EncryptOutboundAuth. The verification script is code, not a secret; it stays
 // plaintext.
 func (c *SecretCodec) EncryptInboundAuth(scheme secretScheme, auth, prior *integration.InboundAuthConfig) error {
 	if auth == nil {

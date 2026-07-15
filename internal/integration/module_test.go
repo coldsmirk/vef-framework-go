@@ -21,8 +21,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/app"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/exec"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/worker"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -54,8 +54,8 @@ type ModuleTestSuite struct {
 	invoker    integration.Invoker
 	concrete   *exec.Invoker
 	receiver   *exec.Receiver
-	codec      *service.SecretCodec
-	registry   *auth.Registry
+	codec      *definition.SecretCodec
+	registry   *auth.OutboundRegistry
 	inboundReg *auth.InboundRegistry
 
 	upstream     *httptest.Server
@@ -171,20 +171,20 @@ func (s *ModuleTestSuite) createContract(code string, input, output json.RawMess
 	return contract
 }
 
-func (s *ModuleTestSuite) createSystem(code string, authCfg *integration.AuthConfig) *integration.System {
+func (s *ModuleTestSuite) createSystem(code string, authCfg *integration.OutboundAuthConfig) *integration.System {
 	if authCfg != nil {
 		scheme, ok := s.registry.Resolve(authCfg)
 		s.Require().True(ok, "Seed auth scheme should resolve")
-		s.Require().NoError(s.codec.EncryptAuth(scheme, authCfg, nil), "Seed auth should encrypt")
+		s.Require().NoError(s.codec.EncryptOutboundAuth(scheme, authCfg, nil), "Seed auth should encrypt")
 	}
 
 	system := &integration.System{
-		Code:      code,
-		Name:      code,
-		BaseURL:   s.upstream.URL,
-		Auth:      authCfg,
-		Params:    map[string]string{"branch": "east-01"},
-		IsEnabled: true,
+		Code:         code,
+		Name:         code,
+		BaseURL:      s.upstream.URL,
+		OutboundAuth: authCfg,
+		Params:       map[string]string{"branch": "east-01"},
+		IsEnabled:    true,
 	}
 
 	_, err := s.db.NewInsert().Model(system).Exec(s.T().Context())
@@ -300,8 +300,8 @@ return { name: d.brxm, gender: String(d.xb) === '2' ? 'female' : 'male' }
 
 func (s *ModuleTestSuite) TestInvoke() {
 	contract := s.createContract("patient.get", patientInputSchema, patientOutputSchema)
-	system := s.createSystem("his-a", &integration.AuthConfig{
-		Scheme: auth.SchemeBearer,
+	system := s.createSystem("his-a", &integration.OutboundAuthConfig{
+		Scheme: auth.OutboundSchemeBearer,
 		Params: map[string]string{"token": "his-token"},
 	})
 	s.createAdapter(system, contract, patientAdapterScript)
@@ -318,8 +318,8 @@ func (s *ModuleTestSuite) TestInvoke() {
 
 		var patient PatientInfo
 		s.Require().NoError(result.Decode(&patient), "Output should decode into the business struct")
-		s.Equal("张三", patient.Name, "Adapter should map the vendor field")
-		s.Equal("male", patient.Gender, "Adapter should translate the vendor code")
+		s.Equal("张三", patient.Name, "Adapter should map the external field")
+		s.Equal("male", patient.Gender, "Adapter should translate the external code")
 	})
 
 	s.Run("CredentialsDecryptedForUpstreamOnly", func() {
@@ -330,7 +330,7 @@ func (s *ModuleTestSuite) TestInvoke() {
 			cb.Equals("code", "his-a")
 		}).Scan(s.T().Context())
 		s.Require().NoError(err, "Stored system should load")
-		s.Contains(stored.Auth.Params["token"], "enc:", "Stored token should be encrypted at rest")
+		s.Contains(stored.OutboundAuth.Params["token"], "enc:", "Stored token should be encrypted at rest")
 	})
 
 	s.Run("ScriptBindingsReachUpstream", func() {
@@ -388,7 +388,7 @@ func (s *ModuleTestSuite) TestXMLAdapter() {
 
 	s.Run("ResponseParsedWithXMLParser", func() {
 		s.Equal("李四", patient.Name, "Adapter should extract the name from the XML envelope")
-		s.Equal("female", patient.Gender, "Adapter should translate the vendor gender code")
+		s.Equal("female", patient.Gender, "Adapter should translate the external gender code")
 	})
 
 	s.Run("RequestBuiltWithXMLBuilder", func() {
@@ -405,7 +405,7 @@ var (
 const labInboundScript = `
 const doc = JSON.parse(request.body)
 const ack = dispatch({ reportId: doc.rid })
-return { status: 200, body: { received: ack.accepted } }
+return { $response: { status: 200, body: { received: ack.accepted } } }
 `
 
 func (s *ModuleTestSuite) TestInboundDelivery() {
@@ -427,7 +427,10 @@ func (s *ModuleTestSuite) TestInboundDelivery() {
 
 		replyMap, ok := reply.(map[string]any)
 		s.Require().True(ok, "The script reply should export as a map")
-		s.Equal(map[string]any{"received": true}, replyMap["body"], "The reply should carry the handler output")
+
+		envelope, ok := replyMap["$response"].(map[string]any)
+		s.Require().True(ok, "The reply should carry the response envelope")
+		s.Equal(map[string]any{"received": true}, envelope["body"], "The reply should carry the handler output")
 	})
 
 	s.Run("CredentialsStoredEncrypted", func() {
@@ -500,17 +503,20 @@ func (s *ModuleTestSuite) TestInboundDelivery() {
 		s.createDirectedAdapter(catching, contract, integration.DirectionInbound, `
 try {
   dispatch({ reportId: 'boom' })
-  return { status: 200, body: 'OK' }
+  return { $response: { status: 200, body: 'OK' } }
 } catch (e) {
-  return { status: 200, body: 'REJECTED' }
+  return { $response: { status: 200, body: 'REJECTED' } }
 }`)
 
 		reply, err := s.receiver.Receive(s.T().Context(), inboundRequest("lis-catching", "lab.result_received", `{}`, authed))
-		s.Require().NoError(err, "The script owns the vendor-facing reply when it catches the failure")
+		s.Require().NoError(err, "The script owns the external-facing reply when it catches the failure")
 
 		replyMap, ok := reply.(map[string]any)
 		s.Require().True(ok, "The caught-error reply should export as a map")
-		s.Equal("REJECTED", replyMap["body"], "The script should shape the vendor-facing error reply")
+
+		envelope, ok := replyMap["$response"].(map[string]any)
+		s.Require().True(ok, "The caught-error reply should carry the response envelope")
+		s.Equal("REJECTED", envelope["body"], "The script should shape the external-facing error reply")
 
 		var caughtLog []integration.InvocationLog
 
@@ -535,23 +541,23 @@ try {
 		scripted := s.createInboundSystem("lis-scripted", &integration.InboundAuthConfig{
 			Scheme: auth.InboundSchemeScript,
 			Params: map[string]string{"token": "tok-9"},
-			Script: `return request.headers['x-vendor-token'] === params.token`,
+			Script: `return request.headers['x-partner-token'] === params.token`,
 		})
 		s.createDirectedAdapter(scripted, contract, integration.DirectionInbound, labInboundScript)
 
 		_, err := s.receiver.Receive(s.T().Context(), inboundRequest("lis-scripted", "lab.result_received",
-			`{"rid":"R-2"}`, map[string]string{"x-vendor-token": "tok-9"}))
+			`{"rid":"R-2"}`, map[string]string{"x-partner-token": "tok-9"}))
 		s.Require().NoError(err, "The verification script should decrypt params and grant access")
 
 		_, err = s.receiver.Receive(s.T().Context(), inboundRequest("lis-scripted", "lab.result_received",
-			`{"rid":"R-2"}`, map[string]string{"x-vendor-token": "nope"}))
+			`{"rid":"R-2"}`, map[string]string{"x-partner-token": "nope"}))
 		s.Require().ErrorIs(err, integration.ErrInboundAuthFailed, "A falsy script verdict must deny")
 	})
 
 	s.Run("StatsCarryDirection", func() {
 		stats := s.concrete.Stats()
 
-		var inbound, rejected bool
+		var inbound, rejected, authRejected bool
 
 		for _, stat := range stats {
 			if stat.System == "lis-in" && stat.Contract == "lab.result_received" && stat.Direction == integration.DirectionInbound {
@@ -559,16 +565,19 @@ try {
 
 				s.Positive(stat.Successes, "Successful deliveries should be counted")
 
-				if s.NotNil(stat.Failures, "Failed deliveries should be counted") {
-					s.Positive(stat.Failures[integration.FailureAuth], "Auth rejections should surface in stats")
-				}
-
 				rejected = stat.Failures[integration.FailureHandler] > 0
+			}
+
+			// Verification rejections aggregate under the system alone: the
+			// contract code is unvalidated caller input at rejection time.
+			if stat.System == "lis-in" && stat.Contract == "" && stat.Direction == integration.DirectionInbound {
+				authRejected = stat.Failures[integration.FailureAuth] > 0
 			}
 		}
 
 		s.True(inbound, "Stats should carry the inbound (system, contract, direction) tuple")
 		s.True(rejected, "Handler failures should surface in stats")
+		s.True(authRejected, "Auth rejections should surface under the system with an empty contract")
 	})
 }
 
@@ -596,10 +605,10 @@ func (s *ModuleTestSuite) TestInboundGateway() {
 	s.createDirectedAdapter(system, contract, integration.DirectionInbound, `
 const doc = JSON.parse(request.body)
 const ack = dispatch({ reportId: doc.rid })
-return { status: 200, headers: { 'Content-Type': 'text/xml' }, body: '<Ack>' + (ack.accepted ? '0' : '1') + '</Ack>' }
+return { $response: { status: 200, headers: { 'Content-Type': 'text/xml' }, body: '<Ack>' + (ack.accepted ? '0' : '1') + '</Ack>' } }
 `)
 
-	s.Run("VendorShapedReply", func() {
+	s.Run("ExternalShapedReply", func() {
 		resp := s.postInbound("lis-http", "gw.result_received", `{"rid":"R-GW-1"}`,
 			map[string]string{"X-API-Key": "cb-key-9"})
 
@@ -608,7 +617,7 @@ return { status: 200, headers: { 'Content-Type': 'text/xml' }, body: '<Ack>' + (
 
 		body, err := io.ReadAll(resp.Body)
 		s.Require().NoError(err, "Response body should read")
-		s.Equal("<Ack>0</Ack>", string(body), "The vendor should receive the script-shaped XML reply")
+		s.Equal("<Ack>0</Ack>", string(body), "The external system should receive the script-shaped XML reply")
 		s.Equal("R-GW-1", s.seenReport, "The handler should receive the dispatched standard input")
 	})
 
@@ -626,8 +635,8 @@ return { status: 200, headers: { 'Content-Type': 'text/xml' }, body: '<Ack>' + (
 	s.Run("UnknownSystemRejected", func() {
 		resp := s.postInbound("no-such-system", "gw.result_received", `{}`, nil)
 
-		s.Equal(http.StatusNotFound, resp.StatusCode,
-			"An unknown system must render 404 — a 200 would count as a successful delivery for the vendor")
+		s.Equal(http.StatusUnauthorized, resp.StatusCode,
+			"An unknown system must deny exactly like a failed verification so system codes cannot be enumerated")
 	})
 
 	s.Run("PlainReplyRendersAsJSON", func() {
@@ -650,7 +659,7 @@ return { received: ack.accepted }
 	s.Run("PerSystemRateLimit", func() {
 		floodSystem := s.createInboundSystem("lis-flood", &integration.InboundAuthConfig{Scheme: auth.InboundSchemeNone})
 		s.createDirectedAdapter(floodSystem, contract, integration.DirectionInbound,
-			`dispatch({ reportId: 'R-FLOOD' }); return { status: 200, body: 'ok' }`)
+			`dispatch({ reportId: 'R-FLOOD' }); return { $response: { status: 200, body: 'ok' } }`)
 
 		var last int
 		for range 4 {
@@ -675,7 +684,7 @@ func (s *ModuleTestSuite) TestInboundDryRun() {
 		dryRun := s.receiver.DryRun(s.T().Context(), contract, system, `
 const doc = JSON.parse(request.body)
 const ack = dispatch({ reportId: doc.rid })
-return { status: 200, body: '<Ack>' + (ack.accepted ? '0' : '1') + '</Ack>' }
+return { $response: { status: 200, body: '<Ack>' + (ack.accepted ? '0' : '1') + '</Ack>' } }
 `, request, map[string]any{"accepted": true})
 
 		s.Empty(dryRun.Error, "The dry run should succeed without a registered handler or inbound auth")
@@ -684,7 +693,10 @@ return { status: 200, body: '<Ack>' + (ack.accepted ? '0' : '1') + '</Ack>' }
 
 		reply, ok := dryRun.Reply.(map[string]any)
 		s.Require().True(ok, "The reply should export as a map")
-		s.Equal("<Ack>0</Ack>", reply["body"], "The stubbed output should flow through the reply shaping")
+
+		envelope, ok := reply["$response"].(map[string]any)
+		s.Require().True(ok, "The reply should carry the response envelope")
+		s.Equal("<Ack>0</Ack>", envelope["body"], "The stubbed output should flow through the reply shaping")
 	})
 
 	s.Run("InputSchemaStillEnforced", func() {
@@ -789,7 +801,7 @@ func (s *ModuleTestSuite) TestFailureClassification() {
 	s.Run("UpstreamFailure", func() {
 		err := invoke(`
 			const resp = http.get('/fail')
-			if (!resp.ok) errors.upstream('vendor said ' + resp.json().msg)
+			if (!resp.ok) errors.upstream('upstream said ' + resp.json().msg)
 			return {}
 		`, validInput)
 		s.Require().Error(err, "Upstream 500 should fail")
@@ -901,8 +913,8 @@ func (s *ModuleTestSuite) TestResponseCache() {
 
 func (s *ModuleTestSuite) TestDryRun() {
 	contract := s.createContract("dry.op", nil, patientOutputSchema)
-	system := s.createSystem("dry-sys", &integration.AuthConfig{
-		Scheme: auth.SchemeBearer,
+	system := s.createSystem("dry-sys", &integration.OutboundAuthConfig{
+		Scheme: auth.OutboundSchemeBearer,
 		Params: map[string]string{"token": "dry-token"},
 	})
 
@@ -979,7 +991,7 @@ func (s *ModuleTestSuite) TestDatabaseSystem() {
 
 		output, ok := result.Output().(map[string]any)
 		s.Require().True(ok, "Output should be the standard model object")
-		s.InEpsilon(float64(42), output["answer"], 0, "sql.queryOne should reach the vendor database")
+		s.InEpsilon(float64(42), output["answer"], 0, "sql.queryOne should reach the system database")
 	})
 
 	s.Run("WritesAreRejected", func() {
@@ -1042,7 +1054,7 @@ func (s *ModuleTestSuite) TestDiagnoseRoutes() {
 	s.createRoute("diag-west", "", sysDown.ID)       // disabled system + wildcard gaps
 	s.createRoute("diag-south", healthy.ID, sysDown.ID)
 
-	report, err := service.DiagnoseRoutes(s.T().Context(), s.db)
+	report, err := definition.DiagnoseRoutes(s.T().Context(), s.db)
 	s.Require().NoError(err, "Diagnosis should succeed")
 
 	type probe struct {

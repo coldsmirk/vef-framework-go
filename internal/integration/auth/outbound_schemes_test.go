@@ -14,7 +14,7 @@ import (
 
 // applyScheme runs one request through a client configured by the scheme and
 // returns what the server observed.
-func applyScheme(t *testing.T, scheme integration.AuthScheme, params map[string]string) *http.Request {
+func applyScheme(t *testing.T, scheme integration.OutboundAuthScheme, params map[string]string) *http.Request {
 	t.Helper()
 
 	var observed *http.Request
@@ -42,10 +42,10 @@ func applyScheme(t *testing.T, scheme integration.AuthScheme, params map[string]
 }
 
 func TestBuiltinSchemes(t *testing.T) {
-	registry := NewRegistry(nil)
+	registry := NewOutboundRegistry(nil)
 
 	t.Run("None", func(t *testing.T) {
-		scheme, ok := registry.Get(SchemeNone)
+		scheme, ok := registry.Get(OutboundSchemeNone)
 		require.True(t, ok, "none scheme should be registered")
 
 		req := applyScheme(t, scheme, nil)
@@ -54,7 +54,7 @@ func TestBuiltinSchemes(t *testing.T) {
 	})
 
 	t.Run("Basic", func(t *testing.T) {
-		scheme, ok := registry.Get(SchemeBasic)
+		scheme, ok := registry.Get(OutboundSchemeBasic)
 		require.True(t, ok, "basic scheme should be registered")
 
 		req := applyScheme(t, scheme, map[string]string{"username": "u", "password": "p"})
@@ -66,7 +66,7 @@ func TestBuiltinSchemes(t *testing.T) {
 	})
 
 	t.Run("Bearer", func(t *testing.T) {
-		scheme, ok := registry.Get(SchemeBearer)
+		scheme, ok := registry.Get(OutboundSchemeBearer)
 		require.True(t, ok, "bearer scheme should be registered")
 
 		req := applyScheme(t, scheme, map[string]string{"token": "tok"})
@@ -75,7 +75,7 @@ func TestBuiltinSchemes(t *testing.T) {
 	})
 
 	t.Run("Header", func(t *testing.T) {
-		scheme, ok := registry.Get(SchemeHeader)
+		scheme, ok := registry.Get(OutboundSchemeHeader)
 		require.True(t, ok, "header scheme should be registered")
 
 		req := applyScheme(t, scheme, map[string]string{"name": "X-Api-Key", "value": "k"})
@@ -84,7 +84,7 @@ func TestBuiltinSchemes(t *testing.T) {
 	})
 
 	t.Run("Query", func(t *testing.T) {
-		scheme, ok := registry.Get(SchemeQuery)
+		scheme, ok := registry.Get(OutboundSchemeQuery)
 		require.True(t, ok, "query scheme should be registered")
 
 		req := applyScheme(t, scheme, map[string]string{"name": "apikey", "value": "k"})
@@ -94,17 +94,17 @@ func TestBuiltinSchemes(t *testing.T) {
 }
 
 func TestSchemeParamValidation(t *testing.T) {
-	registry := NewRegistry(nil)
+	registry := NewOutboundRegistry(nil)
 
 	tests := []struct {
 		scheme string
 		params map[string]string
 	}{
-		{scheme: SchemeBasic, params: map[string]string{"password": "p"}},
-		{scheme: SchemeBasic, params: map[string]string{"username": "u"}},
-		{scheme: SchemeBearer, params: nil},
-		{scheme: SchemeHeader, params: map[string]string{"name": "X"}},
-		{scheme: SchemeQuery, params: map[string]string{"value": "v"}},
+		{scheme: OutboundSchemeBasic, params: map[string]string{"password": "p"}},
+		{scheme: OutboundSchemeBasic, params: map[string]string{"username": "u"}},
+		{scheme: OutboundSchemeBearer, params: nil},
+		{scheme: OutboundSchemeHeader, params: map[string]string{"name": "X"}},
+		{scheme: OutboundSchemeQuery, params: map[string]string{"value": "v"}},
 	}
 
 	for _, tt := range tests {
@@ -122,7 +122,7 @@ func TestSchemeParamValidation(t *testing.T) {
 // OverrideScheme replaces the built-in bearer scheme in registry tests.
 type OverrideScheme struct{}
 
-func (*OverrideScheme) Name() string { return SchemeBearer }
+func (*OverrideScheme) Name() string { return OutboundSchemeBearer }
 
 func (*OverrideScheme) Apply(map[string]string) ([]httpx.Option, error) { return nil, nil }
 
@@ -130,26 +130,26 @@ func (*OverrideScheme) SensitiveParams() []string { return nil }
 
 func TestRegistry(t *testing.T) {
 	t.Run("ResolveNilAuthYieldsNone", func(t *testing.T) {
-		scheme, ok := NewRegistry(nil).Resolve(nil)
+		scheme, ok := NewOutboundRegistry(nil).Resolve(nil)
 		require.True(t, ok, "Nil auth should resolve")
-		assert.Equal(t, SchemeNone, scheme.Name(), "Nil auth should resolve to the none scheme")
+		assert.Equal(t, OutboundSchemeNone, scheme.Name(), "Nil auth should resolve to the none scheme")
 	})
 
 	t.Run("ResolveEmptySchemeYieldsNone", func(t *testing.T) {
-		scheme, ok := NewRegistry(nil).Resolve(&integration.AuthConfig{})
+		scheme, ok := NewOutboundRegistry(nil).Resolve(&integration.OutboundAuthConfig{})
 		require.True(t, ok, "Empty scheme should resolve")
-		assert.Equal(t, SchemeNone, scheme.Name(), "Empty scheme should resolve to the none scheme")
+		assert.Equal(t, OutboundSchemeNone, scheme.Name(), "Empty scheme should resolve to the none scheme")
 	})
 
 	t.Run("UnknownSchemeReportsNotOK", func(t *testing.T) {
-		_, ok := NewRegistry(nil).Resolve(&integration.AuthConfig{Scheme: "kerberos"})
+		_, ok := NewOutboundRegistry(nil).Resolve(&integration.OutboundAuthConfig{Scheme: "kerberos"})
 		assert.False(t, ok, "Unknown scheme should not resolve")
 	})
 
 	t.Run("ApplicationSchemeOverridesBuiltin", func(t *testing.T) {
-		registry := NewRegistry([]integration.AuthScheme{new(OverrideScheme)})
+		registry := NewOutboundRegistry([]integration.OutboundAuthScheme{new(OverrideScheme)})
 
-		scheme, ok := registry.Get(SchemeBearer)
+		scheme, ok := registry.Get(OutboundSchemeBearer)
 		require.True(t, ok, "Overridden scheme should stay registered")
 		assert.IsType(t, new(OverrideScheme), scheme, "Application scheme should replace the built-in by name")
 	})

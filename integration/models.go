@@ -35,15 +35,18 @@ type System struct {
 	orm.BaseModel `bun:"table:itg_system,alias:isy"`
 	orm.FullAuditedModel
 
-	Code    string      `json:"code" bun:"code"`
-	Name    string      `json:"name" bun:"name"`
-	BaseURL string      `json:"baseUrl" bun:"base_url"`
-	Auth    *AuthConfig `json:"auth" bun:"auth,type:jsonb,nullzero"`
-	// InboundAuth selects how vendor-initiated calls to this system's inbound
-	// endpoints are verified; a system without it refuses inbound delivery
-	// entirely (fail closed — the "none" scheme opens it up deliberately).
+	Code    string `json:"code" bun:"code"`
+	Name    string `json:"name" bun:"name"`
+	BaseURL string `json:"baseUrl" bun:"base_url"`
+	// OutboundAuth selects how the framework authenticates against this
+	// system's HTTP endpoints; nil sends requests unauthenticated.
+	OutboundAuth *OutboundAuthConfig `json:"outboundAuth" bun:"outbound_auth,type:jsonb,nullzero"`
+	// InboundAuth selects how calls arriving on this system's inbound
+	// endpoints are proven to originate from the system itself; a system
+	// without it refuses inbound delivery entirely (fail closed — the "none"
+	// scheme opens it up deliberately).
 	InboundAuth *InboundAuthConfig `json:"inboundAuth" bun:"inbound_auth,type:jsonb,nullzero"`
-	// DataSource is the system's direct database connection (vendor views /
+	// DataSource is the system's direct database connection (external views /
 	// exchange tables). Its password is stored encrypted and masked in
 	// management API responses.
 	DataSource *DataSourceConfig `json:"dataSource" bun:"data_source,type:jsonb,nullzero"`
@@ -91,18 +94,24 @@ func (c *DataSourceConfig) ToConfig() config.DataSourceConfig {
 	}
 }
 
-// AuthConfig selects a system's authentication scheme and carries its
-// parameters. Values of the parameters named by the scheme's SensitiveParams
-// are stored encrypted and masked in management API responses.
-type AuthConfig struct {
+// MaskedSecret is the placeholder management APIs return in place of a
+// sensitive auth parameter value. An update submitting the placeholder keeps
+// the stored value unchanged.
+const MaskedSecret = "******"
+
+// OutboundAuthConfig selects the OutboundAuthScheme authenticating a system's
+// outbound calls and carries its parameters. Values of the parameters named
+// by the scheme's SensitiveParams are stored encrypted and masked in
+// management API responses.
+type OutboundAuthConfig struct {
 	Scheme string            `json:"scheme"`
 	Params map[string]string `json:"params,omitempty"`
 }
 
-// InboundAuthConfig selects the InboundAuthScheme verifying vendor-initiated
-// calls to a system's inbound endpoints and carries its parameters. Values of
-// the parameters named by the scheme's SensitiveParams are stored encrypted
-// and masked in management API responses.
+// InboundAuthConfig selects the InboundAuthScheme verifying calls on a
+// system's inbound endpoints and carries its parameters. Values of the
+// parameters named by the scheme's SensitiveParams are stored encrypted and
+// masked in management API responses.
 type InboundAuthConfig struct {
 	Scheme string            `json:"scheme"`
 	Params map[string]string `json:"params,omitempty"`
@@ -132,12 +141,12 @@ type RetryPolicy struct {
 type Direction string
 
 const (
-	// DirectionOutbound marks a script translating contract input into vendor
-	// calls and vendor responses into the contract output.
+	// DirectionOutbound marks a script translating contract input into calls
+	// on the external system and its responses into the contract output.
 	DirectionOutbound Direction = "outbound"
-	// DirectionInbound marks a script translating a vendor-initiated request
-	// into a contract dispatch and the dispatch result into the vendor's
-	// expected reply.
+	// DirectionInbound marks a script translating a request the external
+	// system initiated into a contract dispatch and the dispatch result into
+	// the reply the system expects.
 	DirectionInbound Direction = "inbound"
 )
 

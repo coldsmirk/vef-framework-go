@@ -8,7 +8,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
 	"github.com/coldsmirk/vef-framework-go/js"
 )
 
@@ -26,13 +26,13 @@ var (
 // pipeline every inbound gateway hands its requests to. It verifies the
 // caller against the system's inbound auth, runs the inbound adapter script —
 // which translates the wire request, dispatches the standard input to the
-// registered business handler, and shapes the vendor-facing reply — and folds
+// registered business handler, and shapes the external-facing reply — and folds
 // the delivery into the shared statistics and invocation log. It deliberately
 // shares the Invoker's execution substrate (definition loading, compiled
 // programs, schema cache, capture policy) instead of duplicating it.
 type Receiver struct {
 	invoker  *Invoker
-	codec    *service.SecretCodec
+	codec    *definition.SecretCodec
 	schemes  *auth.InboundRegistry
 	handlers map[string]integration.InboundHandler
 }
@@ -40,7 +40,7 @@ type Receiver struct {
 // NewReceiver assembles the receiver, indexing the registered inbound
 // handlers by contract code and rejecting blank or duplicate registrations at
 // boot.
-func NewReceiver(invoker *Invoker, codec *service.SecretCodec, schemes *auth.InboundRegistry, handlers []integration.InboundHandler) (*Receiver, error) {
+func NewReceiver(invoker *Invoker, codec *definition.SecretCodec, schemes *auth.InboundRegistry, handlers []integration.InboundHandler) (*Receiver, error) {
 	index := make(map[string]integration.InboundHandler, len(handlers))
 
 	for _, handler := range handlers {
@@ -63,7 +63,7 @@ func NewReceiver(invoker *Invoker, codec *service.SecretCodec, schemes *auth.Inb
 	return &Receiver{invoker: invoker, codec: codec, schemes: schemes, handlers: index}, nil
 }
 
-// Receive processes one vendor-initiated request end to end and returns the
+// Receive processes one inbound request end to end and returns the
 // adapter script's reply for the gateway to render. Verification failures
 // return integration.ErrInboundAuthFailed uniformly — the specific reason is
 // recorded server-side only.
@@ -72,6 +72,15 @@ func (r *Receiver) Receive(ctx context.Context, req *integration.InboundRequest)
 
 	system, err := inv.loadSystem(ctx, req.SystemCode)
 	if err != nil {
+		// An unknown or disabled system denies exactly like a failed
+		// verification, so unauthenticated callers cannot enumerate system
+		// codes; the actual reason stays server-side.
+		if errors.Is(err, integration.ErrSystemNotFound) || errors.Is(err, integration.ErrSystemDisabled) {
+			logger.Warnf("Inbound delivery rejected: system %q is unknown or disabled", req.SystemCode)
+
+			return nil, integration.ErrInboundAuthFailed
+		}
+
 		return nil, err
 	}
 
@@ -139,16 +148,20 @@ func (r *Receiver) verify(ctx context.Context, system *integration.System, req *
 
 // recordRejection folds a verification failure into statistics only. Rejected
 // deliveries deliberately stay out of the invocation log: unauthenticated
-// traffic must not be able to grow the durable evidence trail.
+// traffic must not be able to grow the durable evidence trail. The contract
+// code is still caller-supplied free text at this point (it is only resolved
+// after verification), so rejections aggregate under the system alone —
+// otherwise unauthenticated callers could grow the statistics set without
+// bound.
 func (r *Receiver) recordRejection(req *integration.InboundRequest, err error) {
 	kind := integration.FailureAuth
 	if errors.Is(err, auth.ErrMissingParam) {
 		kind = integration.FailureConfig
 	}
 
-	logger.Warnf("Inbound delivery to system %q rejected (%s): %v", req.SystemCode, kind, err)
+	logger.Warnf("Inbound delivery to system %q (contract %q) rejected (%s): %v", req.SystemCode, req.ContractCode, kind, err)
 
-	r.invoker.stats.Record(req.SystemCode, req.ContractCode, integration.DirectionInbound, kind, err.Error(), 0)
+	r.invoker.stats.Record(req.SystemCode, "", integration.DirectionInbound, kind, err.Error(), 0)
 }
 
 // delivery is the per-request state of one inbound run: the resolved
@@ -202,7 +215,7 @@ func (r *Receiver) run(ctx context.Context, d *delivery, adapter *integration.Ad
 }
 
 // runScript executes one inbound script against the delivery and returns the
-// vendor-facing reply. A script that completes owns the reply even when a
+// external-facing reply. A script that completes owns the reply even when a
 // dispatch inside it failed — the failure is still classified for the record;
 // a script that throws yields no reply, and an uncaught dispatch error keeps
 // its own classification instead of counting as a script bug.
@@ -229,11 +242,9 @@ func (r *Receiver) runScript(ctx context.Context, d *delivery, handler integrati
 			return nil, d.dispatchKind, d.dispatchErr
 		}
 
-		if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
-			return nil, integration.FailureTimeout, integration.ErrInvocationTimeout
-		}
+		kind, apiErr := classify(ctx, err)
 
-		return nil, integration.FailureScript, integration.ErrScriptFailed(err.Error())
+		return nil, kind, apiErr
 	}
 
 	reply, err := exportOutput(value)
@@ -306,7 +317,7 @@ func (d *delivery) fail(kind integration.FailureKind, err error) error {
 }
 
 // InboundDryRunResult is the outcome of an inbound DryRun: the reply the
-// vendor would receive plus what the script dispatched, so operators verify
+// external system would receive plus what the script dispatched, so operators verify
 // both translation directions at once.
 type InboundDryRunResult struct {
 	Reply           any                     `json:"reply"`
@@ -370,7 +381,7 @@ func (r *Receiver) runTimeout(adapter *integration.Adapter) time.Duration {
 	return r.invoker.cfg.EffectiveRunTimeout()
 }
 
-// trace renders the vendor-side view of the delivery as one wire exchange,
+// trace renders the caller-side view of the delivery as one wire exchange,
 // masked and truncated by the shared capture policy. Status stays zero — the
 // pipeline is protocol-blind and never interprets the reply.
 func (r *Receiver) trace(req *integration.InboundRequest, reply any) []integration.HTTPExchange {

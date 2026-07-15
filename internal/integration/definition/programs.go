@@ -1,9 +1,10 @@
-package service
+package definition
 
 import (
 	"sync"
 
 	"github.com/coldsmirk/vef-framework-go/hashx"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/lru"
 	"github.com/coldsmirk/vef-framework-go/js"
 )
 
@@ -16,13 +17,13 @@ const programCacheCapacity = 256
 // recompile. Adapter execution and script-scheme verification each own an
 // instance.
 type ProgramCache struct {
-	mu  sync.Mutex
-	lru *LRU[*js.Program]
+	mu    sync.Mutex
+	cache *lru.Cache[*js.Program]
 }
 
 // NewProgramCache creates an empty compiled-program cache.
 func NewProgramCache() *ProgramCache {
-	return &ProgramCache{lru: NewLRU[*js.Program](programCacheCapacity)}
+	return &ProgramCache{cache: lru.New[*js.Program](programCacheCapacity)}
 }
 
 // Get returns the compiled program for script, compiling and caching it on
@@ -33,7 +34,7 @@ func (c *ProgramCache) Get(script string) (*js.Program, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if program, ok := c.lru.Get(key); ok {
+	if program, ok := c.cache.Get(key); ok {
 		return program, nil
 	}
 
@@ -42,7 +43,7 @@ func (c *ProgramCache) Get(script string) (*js.Program, error) {
 		return nil, err
 	}
 
-	c.lru.Put(key, program)
+	c.cache.Put(key, program)
 
 	return program, nil
 }

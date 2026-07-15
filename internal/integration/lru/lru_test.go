@@ -1,4 +1,4 @@
-package service
+package lru
 
 import (
 	"testing"
@@ -8,14 +8,14 @@ import (
 
 func TestLRU(t *testing.T) {
 	t.Run("MissOnEmpty", func(t *testing.T) {
-		cache := NewLRU[int](2)
+		cache := New[int](2)
 
 		_, ok := cache.Get("a")
 		assert.False(t, ok, "Empty cache should miss")
 	})
 
 	t.Run("PutThenGet", func(t *testing.T) {
-		cache := NewLRU[int](2)
+		cache := New[int](2)
 		cache.Put("a", 1)
 
 		value, ok := cache.Get("a")
@@ -24,7 +24,7 @@ func TestLRU(t *testing.T) {
 	})
 
 	t.Run("EvictsLeastRecentlyUsed", func(t *testing.T) {
-		cache := NewLRU[int](2)
+		cache := New[int](2)
 		cache.Put("a", 1)
 		cache.Put("b", 2)
 		cache.Get("a") // refresh a
@@ -41,7 +41,7 @@ func TestLRU(t *testing.T) {
 	})
 
 	t.Run("PutExistingUpdatesValue", func(t *testing.T) {
-		cache := NewLRU[int](2)
+		cache := New[int](2)
 		cache.Put("a", 1)
 		cache.Put("a", 2)
 

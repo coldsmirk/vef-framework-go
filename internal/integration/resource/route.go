@@ -6,7 +6,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/crud"
 	"github.com/coldsmirk/vef-framework-go/integration"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
@@ -57,12 +57,12 @@ func NewRouteResource() api.Resource {
 		Create: crud.NewCreate[integration.Route, RouteParams]().
 			RequiredPermission("integration.route.create").
 			WithPreCreate(func(model *integration.Route, _ *RouteParams, _ orm.InsertQuery, ctx fiber.Ctx, tx orm.DB) error {
-				return service.ValidateRouteRefs(ctx.Context(), tx, model)
+				return definition.ValidateRouteRefs(ctx.Context(), tx, model)
 			}),
 		Update: crud.NewUpdate[integration.Route, RouteParams]().
 			RequiredPermission("integration.route.update").
 			WithPreUpdate(func(_, model *integration.Route, _ *RouteParams, _ orm.UpdateQuery, ctx fiber.Ctx, tx orm.DB) error {
-				return service.ValidateRouteRefs(ctx.Context(), tx, model)
+				return definition.ValidateRouteRefs(ctx.Context(), tx, model)
 			}),
 		Delete: crud.NewDelete[integration.Route]().
 			RequiredPermission("integration.route.delete"),

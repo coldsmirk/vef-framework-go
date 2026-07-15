@@ -10,37 +10,37 @@ import (
 	"github.com/coldsmirk/vef-framework-go/datasource"
 	"github.com/coldsmirk/vef-framework-go/hashx"
 	"github.com/coldsmirk/vef-framework-go/integration"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// vendorSourcePrefix namespaces the registry entries the integration engine
+// systemSourcePrefix namespaces the registry entries the integration engine
 // manages; the prefix is reserved and documented so static sources cannot
 // collide.
-const vendorSourcePrefix = "itg:"
+const systemSourcePrefix = "itg:"
 
-// vendorSources lazily materializes each system's direct database connection
+// systemDatabases lazily materializes each system's direct database connection
 // in the datasource registry. Entries are keyed by the content hash of the
 // stored definition, so a saved change re-registers on the next invocation —
 // the same invalidation-free scheme the HTTP client cache uses.
-type vendorSources struct {
+type systemDatabases struct {
 	registry datasource.Registry
-	codec    *service.SecretCodec
+	codec    *definition.SecretCodec
 
 	mu     sync.Mutex
 	hashes map[string]string
 }
 
-func newVendorSources(registry datasource.Registry, codec *service.SecretCodec) *vendorSources {
-	return &vendorSources{registry: registry, codec: codec, hashes: make(map[string]string)}
+func newSystemDatabases(registry datasource.Registry, codec *definition.SecretCodec) *systemDatabases {
+	return &systemDatabases{registry: registry, codec: codec, hashes: make(map[string]string)}
 }
 
 // DBFor returns the connection and dialect for system's data source,
 // registering or updating the registry entry when the stored definition
 // changed. Credential faults surface as API errors; connection faults are
 // wrapped as transport errors for classification.
-func (v *vendorSources) DBFor(ctx context.Context, system *integration.System) (orm.DB, config.DBKind, error) {
-	name := vendorSourcePrefix + system.Code
+func (v *systemDatabases) DBFor(ctx context.Context, system *integration.System) (orm.DB, config.DBKind, error) {
+	name := systemSourcePrefix + system.Code
 	hash := dataSourceHash(system.DataSource)
 
 	v.mu.Lock()
@@ -79,8 +79,8 @@ func (v *vendorSources) DBFor(ctx context.Context, system *integration.System) (
 // Release drops the registry entry of a deleted system (or one whose data
 // source was removed); the connection closes asynchronously per the
 // registry's grace handling. Releasing an unknown system is a no-op.
-func (v *vendorSources) Release(ctx context.Context, systemCode string) error {
-	name := vendorSourcePrefix + systemCode
+func (v *systemDatabases) Release(ctx context.Context, systemCode string) error {
+	name := systemSourcePrefix + systemCode
 
 	v.mu.Lock()
 	delete(v.hashes, systemCode)
@@ -96,7 +96,7 @@ func (v *vendorSources) Release(ctx context.Context, systemCode string) error {
 // Probe tests the data source with a throwaway connection, never touching
 // the registry. A connection failure is data (Reachable=false); a credential
 // fault is an error.
-func (v *vendorSources) Probe(ctx context.Context, ds *integration.DataSourceConfig) (*DatabaseProbe, error) {
+func (v *systemDatabases) Probe(ctx context.Context, ds *integration.DataSourceConfig) (*DatabaseProbe, error) {
 	decrypted, err := v.codec.DecryptDataSource(ds)
 	if err != nil {
 		return nil, integration.ErrInvalidDataSource(err.Error())

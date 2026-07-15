@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS itg_system (
     code VARCHAR(128) NOT NULL,
     name VARCHAR(128) NOT NULL,
     base_url VARCHAR(512) NOT NULL DEFAULT '',
-    auth JSONB,
+    outbound_auth JSONB,
     inbound_auth JSONB,
     data_source JSONB,
     params JSONB,

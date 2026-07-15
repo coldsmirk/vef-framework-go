@@ -7,7 +7,7 @@ import (
 )
 
 // InboundRequest is the protocol-neutral envelope an inbound gateway builds
-// from one vendor-initiated call. SystemCode and ContractCode identify the
+// from one call an external system initiated. SystemCode and ContractCode identify the
 // target the gateway resolved (for HTTP, from the URL path). Headers carries
 // the protocol's named metadata with lowercased keys — HTTP headers verbatim;
 // a non-HTTP gateway maps its protocol's equivalent (an MLLP gateway could
@@ -28,7 +28,7 @@ type InboundRequest struct {
 	ClientAddr string
 }
 
-// InboundAuthScheme verifies that a vendor-initiated request truly originates
+// InboundAuthScheme verifies that an inbound request truly originates
 // from the system it targets, using the system's stored inbound auth
 // configuration. Built-in schemes cover the common cases; applications
 // register their own via vef.ProvideIntegrationInboundAuthScheme, and a
@@ -57,14 +57,14 @@ const SensitiveAll = "*"
 // consumes the standard input an inbound adapter script dispatched and
 // returns the standard output, both validated against the contract's schemas.
 // Register implementations with vef.ProvideIntegrationInboundHandler — one
-// handler per contract code. Handlers must be idempotent: vendors deliver
+// handler per contract code. Handlers must be idempotent: external systems deliver
 // at-least-once.
 type InboundHandler interface {
 	// Contract returns the code of the contract the handler serves.
 	Contract() string
 	// Handle processes one schema-validated dispatch and returns the standard
 	// output. A returned error is classified as FailureHandler; adapter
-	// scripts may catch it to shape the vendor-facing reply.
+	// scripts may catch it to shape the external-facing reply.
 	Handle(ctx context.Context, input any) (any, error)
 }
 

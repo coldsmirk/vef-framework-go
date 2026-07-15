@@ -213,6 +213,7 @@
   "integration_route_not_found": "No matching integration route",
   "integration_target_ambiguous": "Target system and route key cannot both be specified",
   "integration_transport_failed": "Failed to reach the external system",
+  "integration_invocation_canceled": "Integration invocation canceled",
   "integration_invocation_timeout": "Integration invocation timed out",
   "integration_invalid_route_ref": "Route references a missing contract or system",
   "integration_invalid_base_url": "System base URL must be absolute",

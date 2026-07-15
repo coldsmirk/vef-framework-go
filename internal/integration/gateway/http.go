@@ -28,9 +28,9 @@ const httpPathPrefix = "/integration/inbound"
 
 // HTTPGateway is the HTTP protocol adapter of the inbound flow: an
 // app.Middleware (the framework's route-assembly hook — MCP precedent) that
-// registers the vendor-facing endpoint, translates each request into the
+// registers the external-facing endpoint, translates each request into the
 // protocol-neutral envelope, and renders the adapter script's reply. It
-// deliberately bypasses the /api dispatch model: vendor replies need raw
+// deliberately bypasses the /api dispatch model: external replies need raw
 // control of status and body, never the standard result envelope.
 type HTTPGateway struct {
 	receiver *exec.Receiver
@@ -38,7 +38,7 @@ type HTTPGateway struct {
 }
 
 // NewHTTPGateway creates the HTTP inbound gateway. The rate limiter counts
-// per (system, client IP), so one flooding vendor cannot starve the others.
+// per (system, client IP), so one flooding system cannot starve the others.
 func NewHTTPGateway(receiver *exec.Receiver, cfg *config.IntegrationConfig) app.Middleware {
 	return &HTTPGateway{
 		receiver: receiver,
@@ -76,9 +76,9 @@ func (g *HTTPGateway) Apply(router fiber.Router) {
 
 // handle translates the HTTP request into the protocol-neutral envelope,
 // hands it to the receiver, and renders the reply. Pipeline errors are
-// remapped to vendor-actionable statuses and rendered by the app error
+// remapped to caller-actionable statuses and rendered by the app error
 // handler as the framework's standard envelope — adapters that must control
-// the vendor-facing error format catch dispatch failures in the script
+// the external-facing error format catch dispatch failures in the script
 // instead.
 func (g *HTTPGateway) handle(ctx fiber.Ctx) error {
 	req := &integration.InboundRequest{
@@ -95,30 +95,30 @@ func (g *HTTPGateway) handle(ctx fiber.Ctx) error {
 
 	reply, err := g.receiver.Receive(ctx.Context(), req)
 	if err != nil {
-		return vendorStatus(err)
+		return callerStatus(err)
 	}
 
 	return renderReply(ctx, reply)
 }
 
-// vendorStatus maps a pipeline failure onto an HTTP status a vendor's retry
-// logic can act on. On the API surface business errors deliberately ride
-// HTTP 200 with envelope codes, but vendors do not read the envelope — a 200
-// for "system not found" would count as a successful delivery. Errors already
-// carrying a transport status (401 auth, 429 rate limit, 501 handler) pass
-// through; missing or disabled definitions map uniformly to 404 so callers
-// cannot probe which piece exists, invalid input maps to 400, and everything
-// else is a plain 500.
-func vendorStatus(err error) error {
+// callerStatus maps a pipeline failure onto an HTTP status an external
+// caller's retry logic can act on. On the API surface business errors
+// deliberately ride HTTP 200 with envelope codes, but external callers do not
+// read the envelope — a 200 for "contract not found" would count as a
+// successful delivery. Errors already carrying a transport status (401 auth —
+// which also covers unknown systems, so system codes cannot be enumerated —
+// 429 rate limit, 501 handler) pass through; missing or disabled definitions
+// behind a verified caller map uniformly to 404 so it cannot probe which
+// piece exists, invalid input maps to 400, and everything else is a plain
+// 500.
+func callerStatus(err error) error {
 	resultErr, ok := errors.AsType[result.Error](err)
 	if !ok || resultErr.Status != fiber.StatusOK {
 		return err
 	}
 
 	switch {
-	case errors.Is(err, integration.ErrSystemNotFound),
-		errors.Is(err, integration.ErrSystemDisabled),
-		errors.Is(err, integration.ErrContractNotFound),
+	case errors.Is(err, integration.ErrContractNotFound),
 		errors.Is(err, integration.ErrContractDisabled),
 		errors.Is(err, integration.ErrAdapterNotFound),
 		errors.Is(err, integration.ErrAdapterDisabled):
@@ -143,40 +143,55 @@ func flattenHeaders(headers map[string][]string) map[string]string {
 	return flat
 }
 
-// renderReply writes the script's reply as the HTTP response. A map carrying
-// any of the envelope keys (status, headers, body) is treated as the response
-// envelope; every other value — including a plain map — is sent verbatim as a
-// 200 JSON body.
-func renderReply(ctx fiber.Ctx, reply any) error {
-	envelope, ok := reply.(map[string]any)
-	if !ok || !hasEnvelopeKey(envelope) {
-		if reply == nil {
-			return ctx.SendStatus(fiber.StatusOK)
-		}
+// responseEnvelopeKey marks a script reply as an explicit response envelope:
+// the script returns { $response: { status, headers, body } } to take raw
+// control of the HTTP reply. The "$"-prefixed marker cannot collide with a
+// plausible business payload, so an ordinary reply — even one that happens to
+// carry a "status" or "body" field — is never misread as an envelope.
+const responseEnvelopeKey = "$response"
 
-		return ctx.JSON(reply)
+// renderReply writes the script's reply as the HTTP response: a map carrying
+// the $response marker is rendered as that envelope, every other non-nil
+// value is sent verbatim as a 200 JSON body.
+func renderReply(ctx fiber.Ctx, reply any) error {
+	if reply == nil {
+		return ctx.SendStatus(fiber.StatusOK)
 	}
 
-	if headers, headersOk := envelope["headers"].(map[string]any); headersOk {
+	if wrapper, ok := reply.(map[string]any); ok {
+		if raw, ok := wrapper[responseEnvelopeKey]; ok {
+			envelope, ok := raw.(map[string]any)
+			if !ok {
+				return integration.ErrScriptFailed(responseEnvelopeKey + " must be an object")
+			}
+
+			return renderEnvelope(ctx, envelope)
+		}
+	}
+
+	return ctx.JSON(reply)
+}
+
+// renderEnvelope writes an explicit response envelope: status (default 200),
+// headers, and body. Whether the script set its own content type is tracked
+// here — the response header itself cannot answer that, because fasthttp
+// reports a text/plain default even before anything was set.
+func renderEnvelope(ctx fiber.Ctx, envelope map[string]any) error {
+	contentTypeSet := false
+
+	if headers, ok := envelope["headers"].(map[string]any); ok {
 		for name, value := range headers {
 			ctx.Set(name, cast.ToString(value))
+
+			if strings.EqualFold(name, fiber.HeaderContentType) {
+				contentTypeSet = true
+			}
 		}
 	}
 
 	ctx.Status(replyStatus(envelope))
 
-	return sendReplyBody(ctx, envelope["body"])
-}
-
-// hasEnvelopeKey reports whether the map uses the response envelope contract.
-func hasEnvelopeKey(reply map[string]any) bool {
-	for _, key := range []string{"status", "headers", "body"} {
-		if _, ok := reply[key]; ok {
-			return true
-		}
-	}
-
-	return false
+	return sendReplyBody(ctx, envelope["body"], contentTypeSet)
 }
 
 // replyStatus resolves the envelope status; absent or out-of-range values
@@ -192,9 +207,9 @@ func replyStatus(envelope map[string]any) int {
 
 // sendReplyBody writes the envelope body: strings pass through verbatim
 // (text/plain unless the script set a content type), any other value is JSON.
-func sendReplyBody(ctx fiber.Ctx, body any) error {
+func sendReplyBody(ctx fiber.Ctx, body any, contentTypeSet bool) error {
 	setDefaultContentType := func(value string) {
-		if ctx.GetRespHeader(fiber.HeaderContentType) == "" {
+		if !contentTypeSet {
 			ctx.Set(fiber.HeaderContentType, value)
 		}
 	}

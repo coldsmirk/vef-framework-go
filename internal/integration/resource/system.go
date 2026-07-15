@@ -7,8 +7,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/crud"
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/exec"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
@@ -18,17 +18,17 @@ import (
 type SystemParams struct {
 	api.P
 
-	ID          string                         `json:"id"`
-	Code        string                         `json:"code" validate:"required"`
-	Name        string                         `json:"name" validate:"required"`
-	BaseURL     string                         `json:"baseUrl"`
-	Auth        *integration.AuthConfig        `json:"auth"`
-	InboundAuth *integration.InboundAuthConfig `json:"inboundAuth"`
-	DataSource  *integration.DataSourceConfig  `json:"dataSource"`
-	Params      map[string]string              `json:"params"`
-	TimeoutMs   int                            `json:"timeoutMs"`
-	Retry       *integration.RetryPolicy       `json:"retry"`
-	IsEnabled   bool                           `json:"isEnabled"`
+	ID           string                          `json:"id"`
+	Code         string                          `json:"code" validate:"required"`
+	Name         string                          `json:"name" validate:"required"`
+	BaseURL      string                          `json:"baseUrl"`
+	OutboundAuth *integration.OutboundAuthConfig `json:"outboundAuth"`
+	InboundAuth  *integration.InboundAuthConfig  `json:"inboundAuth"`
+	DataSource   *integration.DataSourceConfig   `json:"dataSource"`
+	Params       map[string]string               `json:"params"`
+	TimeoutMs    int                             `json:"timeoutMs"`
+	Retry        *integration.RetryPolicy        `json:"retry"`
+	IsEnabled    bool                            `json:"isEnabled"`
 }
 
 // SystemSearch contains the search parameters for systems.
@@ -55,28 +55,32 @@ type SystemResource struct {
 }
 
 // NewSystemResource creates the system management resource.
-func NewSystemResource(registry *auth.Registry, inboundRegistry *auth.InboundRegistry, codec *service.SecretCodec, invoker *exec.Invoker) api.Resource {
+func NewSystemResource(registry *auth.OutboundRegistry, inboundRegistry *auth.InboundRegistry, codec *definition.SecretCodec, invoker *exec.Invoker) api.Resource {
 	seal := func(model, prior *integration.System) error {
-		scheme, ok := registry.Resolve(model.Auth)
-		if !ok {
-			return integration.ErrUnknownAuthScheme(model.Auth.Scheme)
+		var scheme integration.OutboundAuthScheme
+
+		if model.OutboundAuth != nil {
+			var ok bool
+			if scheme, ok = registry.Resolve(model.OutboundAuth); !ok {
+				return integration.ErrUnknownAuthScheme(model.OutboundAuth.Scheme)
+			}
 		}
 
 		if err := auth.ValidateInboundAuth(inboundRegistry, model.InboundAuth); err != nil {
 			return err
 		}
 
-		var priorAuth *integration.AuthConfig
+		var priorAuth *integration.OutboundAuthConfig
 
 		var priorInbound *integration.InboundAuthConfig
 
 		var priorDS *integration.DataSourceConfig
 
 		if prior != nil {
-			priorAuth, priorInbound, priorDS = prior.Auth, prior.InboundAuth, prior.DataSource
+			priorAuth, priorInbound, priorDS = prior.OutboundAuth, prior.InboundAuth, prior.DataSource
 		}
 
-		if err := codec.EncryptAuth(scheme, model.Auth, priorAuth); err != nil {
+		if err := codec.EncryptOutboundAuth(scheme, model.OutboundAuth, priorAuth); err != nil {
 			return integration.ErrInvalidAuthParams(err.Error())
 		}
 
@@ -91,17 +95,17 @@ func NewSystemResource(registry *auth.Registry, inboundRegistry *auth.InboundReg
 			return integration.ErrInvalidDataSource(err.Error())
 		}
 
-		return service.ValidateSystem(registry, codec, model)
+		return definition.ValidateSystem(registry, codec, model)
 	}
 
 	mask := func(models []integration.System, _ SystemSearch, _ fiber.Ctx) any {
 		for i := range models {
 			system := &models[i]
-			scheme, _ := registry.Resolve(system.Auth)
-			system.Auth = service.MaskAuth(scheme, system.Auth)
+			scheme, _ := registry.Resolve(system.OutboundAuth)
+			system.OutboundAuth = definition.MaskOutboundAuth(scheme, system.OutboundAuth)
 			inboundScheme, _ := inboundRegistry.Resolve(system.InboundAuth)
-			system.InboundAuth = service.MaskInboundAuth(inboundScheme, system.InboundAuth)
-			system.DataSource = service.MaskDataSource(system.DataSource)
+			system.InboundAuth = definition.MaskInboundAuth(inboundScheme, system.InboundAuth)
+			system.DataSource = definition.MaskDataSource(system.DataSource)
 		}
 
 		return models

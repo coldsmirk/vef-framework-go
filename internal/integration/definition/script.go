@@ -1,4 +1,4 @@
-package service
+package definition
 
 import (
 	"github.com/coldsmirk/vef-framework-go/js"

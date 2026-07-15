@@ -1,7 +1,7 @@
 // The validation tests exercise the interplay with the real auth schemes, so
-// they live in the external test package to keep service free of an auth
+// they live in the external test package to keep definition free of an auth
 // import cycle.
-package service_test
+package definition_test
 
 import (
 	"encoding/json"
@@ -13,14 +13,14 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
 )
 
 // plainCodec builds a key-less codec for validation tests.
-func plainCodec(t *testing.T) *service.SecretCodec {
+func plainCodec(t *testing.T) *definition.SecretCodec {
 	t.Helper()
 
-	codec, err := service.NewSecretCodec(new(config.IntegrationConfig))
+	codec, err := definition.NewSecretCodec(new(config.IntegrationConfig))
 	require.NoError(t, err, "Codec construction should succeed")
 
 	return codec
@@ -50,7 +50,7 @@ func TestValidateContract(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := service.ValidateContract(&tt.contract)
+			err := definition.ValidateContract(&tt.contract)
 
 			if tt.wantCode == 0 {
 				assert.NoError(t, err, "Contract should validate")
@@ -66,23 +66,23 @@ func TestValidateContract(t *testing.T) {
 
 func TestValidateAdapterScript(t *testing.T) {
 	t.Run("ValidScriptCompiles", func(t *testing.T) {
-		assert.NoError(t, service.ValidateAdapterScript("return { ok: true }"), "Valid script should compile")
+		assert.NoError(t, definition.ValidateAdapterScript("return { ok: true }"), "Valid script should compile")
 	})
 
 	t.Run("TopLevelReturnIsSupported", func(t *testing.T) {
-		assert.NoError(t, service.ValidateAdapterScript("if (input) { return input } return null"),
+		assert.NoError(t, definition.ValidateAdapterScript("if (input) { return input } return null"),
 			"The function wrapper should make top-level return legal")
 	})
 
 	t.Run("SyntaxErrorFails", func(t *testing.T) {
-		err := service.ValidateAdapterScript("return {")
+		err := definition.ValidateAdapterScript("return {")
 		require.Error(t, err, "Broken script should be rejected")
 		assert.ErrorIs(t, err, integration.ErrInvalidScript(""), "Error should carry the invalid-script code")
 	})
 }
 
 func TestValidateSystem(t *testing.T) {
-	registry := auth.NewRegistry(nil)
+	registry := auth.NewOutboundRegistry(nil)
 	codec := plainCodec(t)
 
 	tests := []struct {
@@ -94,8 +94,8 @@ func TestValidateSystem(t *testing.T) {
 		{
 			name: "ValidAuthPasses",
 			system: integration.System{
-				BaseURL: "https://his.example.com",
-				Auth:    &integration.AuthConfig{Scheme: auth.SchemeBearer, Params: map[string]string{"token": "t"}},
+				BaseURL:      "https://his.example.com",
+				OutboundAuth: &integration.OutboundAuthConfig{Scheme: auth.OutboundSchemeBearer, Params: map[string]string{"token": "t"}},
 			},
 		},
 		{
@@ -106,16 +106,16 @@ func TestValidateSystem(t *testing.T) {
 		{
 			name: "UnknownSchemeFails",
 			system: integration.System{
-				BaseURL: "https://his.example.com",
-				Auth:    &integration.AuthConfig{Scheme: "kerberos"},
+				BaseURL:      "https://his.example.com",
+				OutboundAuth: &integration.OutboundAuthConfig{Scheme: "kerberos"},
 			},
 			wantErr: integration.ErrUnknownAuthScheme("kerberos"),
 		},
 		{
 			name: "MissingSchemeParamFails",
 			system: integration.System{
-				BaseURL: "https://his.example.com",
-				Auth:    &integration.AuthConfig{Scheme: auth.SchemeBasic, Params: map[string]string{"username": "u"}},
+				BaseURL:      "https://his.example.com",
+				OutboundAuth: &integration.OutboundAuthConfig{Scheme: auth.OutboundSchemeBasic, Params: map[string]string{"username": "u"}},
 			},
 			wantErr: integration.ErrInvalidAuthParams(""),
 		},
@@ -123,7 +123,7 @@ func TestValidateSystem(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := service.ValidateSystem(registry, codec, &tt.system)
+			err := definition.ValidateSystem(registry, codec, &tt.system)
 
 			if tt.wantErr == nil {
 				assert.NoError(t, err, "System should validate")

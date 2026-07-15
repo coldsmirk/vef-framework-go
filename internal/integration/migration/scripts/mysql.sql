@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS itg_system (
     code VARCHAR(128) NOT NULL COMMENT 'Code',
     name VARCHAR(128) NOT NULL COMMENT 'Name',
     base_url VARCHAR(512) NOT NULL DEFAULT '' COMMENT 'Base URL',
-    auth JSON COMMENT 'Auth Config',
+    outbound_auth JSON COMMENT 'Outbound Auth Config',
     inbound_auth JSON COMMENT 'Inbound Auth Config',
     data_source JSON COMMENT 'Data Source',
     params JSON COMMENT 'Script Params',

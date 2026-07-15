@@ -213,6 +213,7 @@
   "integration_route_not_found": "没有匹配的集成路由",
   "integration_target_ambiguous": "不能同时指定目标系统和路由键",
   "integration_transport_failed": "外部系统连接失败",
+  "integration_invocation_canceled": "集成调用已取消",
   "integration_invocation_timeout": "集成调用超时",
   "integration_invalid_route_ref": "路由引用的契约或系统不存在",
   "integration_invalid_base_url": "系统 base URL 必须是绝对地址",

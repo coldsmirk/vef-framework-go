@@ -10,10 +10,9 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/datasource"
-	"github.com/coldsmirk/vef-framework-go/httpx"
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/auth"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/service"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
 	"github.com/coldsmirk/vef-framework-go/js"
 	"github.com/coldsmirk/vef-framework-go/js/jssql"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -30,10 +29,10 @@ type Invoker struct {
 	resolver integration.RouteResolver
 	cfg      *config.IntegrationConfig
 
-	programs  *service.ProgramCache
+	programs  *definition.ProgramCache
 	schemas   *schemaCache
 	clients   *clientFactory
-	vendors   *vendorSources
+	databases *systemDatabases
 	responses *responseCache
 	stats     *statsRecorder
 	recorder  *logRecorder
@@ -44,8 +43,8 @@ type Invoker struct {
 func NewInvoker(
 	db orm.DB,
 	engine *js.Engine,
-	registry *auth.Registry,
-	codec *service.SecretCodec,
+	registry *auth.OutboundRegistry,
+	codec *definition.SecretCodec,
 	resolver integration.RouteResolver,
 	sources datasource.Registry,
 	cfg *config.IntegrationConfig,
@@ -55,10 +54,10 @@ func NewInvoker(
 		engine:    engine,
 		resolver:  resolver,
 		cfg:       cfg,
-		programs:  service.NewProgramCache(),
+		programs:  definition.NewProgramCache(),
 		schemas:   newSchemaCache(),
 		clients:   newClientFactory(registry, codec, cfg.EffectiveMaxResponseBody()),
-		vendors:   newVendorSources(sources, codec),
+		databases: newSystemDatabases(sources, codec),
 		responses: newResponseCache(),
 		stats:     newStatsRecorder(),
 		recorder:  newLogRecorder(db, cfg),
@@ -69,7 +68,7 @@ func NewInvoker(
 // ReleaseSystem drops the datasource registry entry of a deleted system (or
 // one whose data source configuration was removed or renamed).
 func (inv *Invoker) ReleaseSystem(ctx context.Context, systemCode string) error {
-	return inv.vendors.Release(ctx, systemCode)
+	return inv.databases.Release(ctx, systemCode)
 }
 
 // Invoke implements integration.Invoker.
@@ -110,8 +109,9 @@ func (inv *Invoker) Invoke(ctx context.Context, contract string, input any, opts
 
 	// A cache hit represents no upstream interaction, so it bypasses stats
 	// and the invocation log — both track upstream health.
-	cacheKey := responseCacheKey(system.Code, contract, inputValue)
+	var cacheKey string
 	if cfg.CacheTTL > 0 {
+		cacheKey = responseCacheKey(system.Code, contract, inputValue)
 		if output, ok := inv.responses.Get(ctx, cacheKey); ok {
 			return integration.NewResult(output, system.Code, time.Since(start), true), nil
 		}
@@ -223,14 +223,9 @@ func (inv *Invoker) run(ctx context.Context, e *execution) (any, []integration.H
 		return nil, nil, integration.FailureScript, integration.ErrScriptFailed(err.Error())
 	}
 
-	client, err := inv.clients.ClientFor(e.system)
+	runtime, err := inv.newRuntime(ctx, e)
 	if err != nil {
-		return nil, nil, integration.FailureConfig, err
-	}
-
-	runtime, err := inv.newRuntime(ctx, e, client)
-	if err != nil {
-		// A vendor database that cannot be dialed is a transport failure;
+		// A system database that cannot be dialed is a transport failure;
 		// everything else that blocks runtime assembly is configuration.
 		if _, ok := errors.AsType[*transportError](err); ok {
 			return nil, nil, integration.FailureTransport, integration.ErrTransportFailed
@@ -262,27 +257,35 @@ func (inv *Invoker) run(ctx context.Context, e *execution) (any, []integration.H
 }
 
 // newRuntime assembles a fresh runtime carrying the engine baseline plus the
-// system-scoped libraries and the per-execution bindings. The scoped sql
-// library joins only for systems with a data source, bound to that source
-// and read-only.
-func (inv *Invoker) newRuntime(ctx context.Context, e *execution, client *httpx.Client) (*js.Runtime, error) {
+// system-scoped libraries and the per-execution bindings. Each scoped library
+// joins only when the system configures its transport — http for systems with
+// a base URL, sql (bound to the source, read-only) for systems with a data
+// source — so a script reaching for an unconfigured capability fails with a
+// plain ReferenceError instead of a misleading transport fault.
+func (inv *Invoker) newRuntime(ctx context.Context, e *execution) (*js.Runtime, error) {
 	runtime, err := inv.engine.NewRuntime(js.WithRunTimeout(e.runTimeout))
 	if err != nil {
 		return nil, err
 	}
 
-	libs := []js.Lib{
-		newHTTPLib(client, CallTimeout(e.system)),
-		newErrorsLib(),
-	}
+	libs := []js.Lib{newErrorsLib()}
 
-	if e.system.DataSource != nil {
-		vendorDB, kind, err := inv.vendors.DBFor(ctx, e.system)
+	if e.system.BaseURL != "" {
+		client, err := inv.clients.ClientFor(e.system)
 		if err != nil {
 			return nil, err
 		}
 
-		libs = append(libs, jssql.New(vendorDB, kind))
+		libs = append(libs, newHTTPLib(client, CallTimeout(e.system)))
+	}
+
+	if e.system.DataSource != nil {
+		systemDB, kind, err := inv.databases.DBFor(ctx, e.system)
+		if err != nil {
+			return nil, err
+		}
+
+		libs = append(libs, jssql.New(systemDB, kind))
 	}
 
 	for _, lib := range libs {
@@ -343,8 +346,15 @@ func (inv *Invoker) validateSchema(raw json.RawMessage, value any) error {
 }
 
 // classify maps a script execution error to its failure kind and API error.
+// Cancellation is distinguished from timeout: a caller that walked away is
+// neither an upstream fault nor an exceeded deadline, and conflating the two
+// would distort the health statistics.
 func classify(ctx context.Context, err error) (integration.FailureKind, error) {
-	if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+		return integration.FailureCanceled, integration.ErrInvocationCanceled
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return integration.FailureTimeout, integration.ErrInvocationTimeout
 	}
 
