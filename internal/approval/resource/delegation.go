@@ -54,16 +54,19 @@ func NewDelegationResource() api.Resource {
 			WithQueryApplier(func(query orm.SelectQuery, _ DelegationSearch, ctx fiber.Ctx) error {
 				principal := contextx.Principal(ctx)
 				// Super-admin callers may query all delegations; everyone else
-				// is confined to records they own as delegator.
+				// is confined to records they own as delegator. No principal
+				// means no ownership scope — deny, fail closed.
 				if approval.IsSuperAdmin(principal) {
 					return nil
 				}
 
-				if principal != nil {
-					query.Where(func(cb orm.ConditionBuilder) {
-						cb.Equals("delegator_id", principal.ID)
-					})
+				if principal == nil {
+					return approval.ErrCrossTenantAccess
 				}
+
+				query.Where(func(cb orm.ConditionBuilder) {
+					cb.Equals("delegator_id", principal.ID)
+				})
 
 				return nil
 			}),
@@ -73,14 +76,17 @@ func NewDelegationResource() api.Resource {
 				principal := contextx.Principal(ctx)
 				// Non-super-admin callers can only create delegations on their
 				// own behalf; stamp the delegatorId from the principal so the
-				// client cannot forge a delegation for another user.
+				// client cannot forge a delegation for another user. No
+				// principal means no self to stamp — deny, fail closed.
 				if approval.IsSuperAdmin(principal) {
 					return nil
 				}
 
-				if principal != nil {
-					model.DelegatorID = principal.ID
+				if principal == nil {
+					return approval.ErrCrossTenantAccess
 				}
+
+				model.DelegatorID = principal.ID
 
 				return nil
 			}),
