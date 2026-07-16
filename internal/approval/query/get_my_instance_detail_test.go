@@ -509,6 +509,109 @@ func (s *GetMyInstanceDetailTestSuite) TestTableFieldHiddenStripped() {
 	s.Assert().Contains(stored.FormData, "items", "The table row data must remain in the database")
 }
 
+func (s *GetMyInstanceDetailTestSuite) TestViewerTaskContext() {
+	var baseInstance approval.Instance
+
+	baseInstance.ID = s.instanceID
+	err := s.db.NewSelect().Model(&baseInstance).WherePK().Scan(s.ctx)
+	s.Require().NoError(err, "Should load base instance")
+
+	// A prior decision node the instance already passed — the only valid
+	// rollback destination under RollbackAny.
+	priorNode := &approval.FlowNode{
+		FlowVersionID: baseInstance.FlowVersionID,
+		Key:           "vt-prior",
+		Kind:          approval.NodeApproval,
+		Name:          "Prior Node",
+	}
+	_, err = s.db.NewInsert().Model(priorNode).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert prior node")
+
+	currentNode := &approval.FlowNode{
+		FlowVersionID:        baseInstance.FlowVersionID,
+		Key:                  "vt-current",
+		Kind:                 approval.NodeApproval,
+		Name:                 "Current Node",
+		IsOpinionRequired:    true,
+		IsAddAssigneeAllowed: true,
+		AddAssigneeTypes:     []approval.AddAssigneeType{approval.AddAssigneeBefore, approval.AddAssigneeParallel},
+		IsRollbackAllowed:    true,
+		RollbackType:         approval.RollbackAny,
+	}
+	_, err = s.db.NewInsert().Model(currentNode).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert current node")
+
+	inst := &approval.Instance{
+		TenantID:      baseInstance.TenantID,
+		FlowID:        baseInstance.FlowID,
+		FlowVersionID: baseInstance.FlowVersionID,
+		Title:         "Viewer Task Instance",
+		InstanceNo:    "MID-004",
+		ApplicantID:   "user-vt-applicant",
+		Status:        approval.InstanceRunning,
+		CurrentNodeID: &currentNode.ID,
+	}
+	_, err = s.db.NewInsert().Model(inst).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert viewer-task instance")
+
+	// The concluded traversal of the prior node, then the active one.
+	_, err = s.db.NewInsert().Model(&approval.NodeVisit{
+		TenantID: inst.TenantID, InstanceID: inst.ID, NodeID: priorNode.ID,
+		Sequence: 1, Status: approval.NodeVisitPassed,
+	}).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert concluded prior visit")
+
+	task := &approval.Task{
+		TenantID:   inst.TenantID,
+		InstanceID: inst.ID,
+		NodeID:     currentNode.ID,
+		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, inst.TenantID, inst.ID, currentNode.ID).ID,
+		AssigneeID: "user-vt",
+		SortOrder:  1,
+		Status:     approval.TaskPending,
+	}
+	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert pending task")
+
+	s.Run("PackagesNodeConfig", func() {
+		detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
+			InstanceID: inst.ID,
+			UserID:     "user-vt",
+		})
+		s.Require().NoError(err, "Assignee should load the detail")
+		s.Require().NotNil(detail.MyTask, "Pending assignee should get a viewer task context")
+		s.Assert().Equal(task.ID, detail.MyTask.TaskID, "Viewer task should target the pending task")
+		s.Assert().Equal(currentNode.ID, detail.MyTask.NodeID, "Viewer task should carry the task's node")
+		s.Assert().True(detail.MyTask.IsOpinionRequired, "Opinion requirement should mirror the node config")
+		s.Assert().Equal(
+			[]approval.AddAssigneeType{approval.AddAssigneeBefore, approval.AddAssigneeParallel},
+			detail.MyTask.AddAssigneeTypes,
+			"Add-assignee positions should mirror the node config",
+		)
+	})
+
+	s.Run("RollbackTargetsFollowVisitTrail", func() {
+		detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
+			InstanceID: inst.ID,
+			UserID:     "user-vt",
+		})
+		s.Require().NoError(err, "Assignee should load the detail")
+		s.Require().NotNil(detail.MyTask, "Pending assignee should get a viewer task context")
+		s.Require().Len(detail.MyTask.RollbackTargets, 1, "Only the concluded prior node should be offered")
+		s.Assert().Equal(priorNode.ID, detail.MyTask.RollbackTargets[0].NodeID, "Rollback target should be the traversed prior node")
+		s.Assert().Equal("Prior Node", detail.MyTask.RollbackTargets[0].Name, "Rollback target should carry the node name")
+	})
+
+	s.Run("NilWithoutPendingTask", func() {
+		detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
+			InstanceID: inst.ID,
+			UserID:     "user-vt-applicant",
+		})
+		s.Require().NoError(err, "Applicant should load the detail")
+		s.Assert().Nil(detail.MyTask, "A viewer without a pending task gets no task context")
+	})
+}
+
 func (s *GetMyInstanceDetailTestSuite) TestAccessDenied() {
 	_, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: s.instanceID,

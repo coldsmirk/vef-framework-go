@@ -3,6 +3,8 @@ package query
 import (
 	"context"
 
+	"github.com/coldsmirk/go-collections"
+
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/my"
 	"github.com/coldsmirk/vef-framework-go/contextx"
@@ -78,6 +80,7 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 		FlowGraph:        buildInstanceFlowGraph(bundle),
 		AvailableActions: h.computeActions(instance, bundle.Tasks, bundle.FlowNodes, query.UserID),
 		FieldPermissions: fieldPermissions,
+		MyTask:           buildViewerTask(bundle, query.UserID),
 	}
 
 	if instance.CurrentNodeID != nil {
@@ -174,4 +177,142 @@ func (*GetMyInstanceDetailHandler) computeActions(
 	}
 
 	return actions.ToSlice()
+}
+
+// buildViewerTask locates the viewer's pending task and packages the node's
+// action configuration so the client never re-derives engine semantics. Tasks
+// arrive in sort order; when a viewer somehow holds several pending tasks the
+// first is the actionable one (mirroring the queue position semantics).
+func buildViewerTask(bundle *instanceDetailBundle, userID string) *my.ViewerTask {
+	var task *approval.Task
+
+	for i := range bundle.Tasks {
+		t := &bundle.Tasks[i]
+		if t.AssigneeID == userID && t.Status == approval.TaskPending {
+			task = t
+
+			break
+		}
+	}
+
+	if task == nil {
+		return nil
+	}
+
+	viewer := &my.ViewerTask{
+		TaskID: task.ID,
+		NodeID: task.NodeID,
+	}
+
+	var node *approval.FlowNode
+
+	for i := range bundle.FlowNodes {
+		if bundle.FlowNodes[i].ID == task.NodeID {
+			node = &bundle.FlowNodes[i]
+
+			break
+		}
+	}
+
+	if node == nil {
+		return viewer
+	}
+
+	viewer.IsOpinionRequired = node.IsOpinionRequired
+
+	if node.IsAddAssigneeAllowed {
+		viewer.AddAssigneeTypes = node.AddAssigneeTypes
+	}
+
+	if node.IsRollbackAllowed {
+		viewer.RollbackTargets = resolveRollbackTargets(bundle, node)
+	}
+
+	return viewer
+}
+
+// resolveRollbackTargets mirrors ValidationService.ValidateRollbackTarget over
+// the already-loaded detail bundle: the returned set is exactly what the
+// rollback command would accept, so the client's target picker cannot offer a
+// destination the engine rejects.
+func resolveRollbackTargets(bundle *instanceDetailBundle, current *approval.FlowNode) []my.RollbackTarget {
+	nodeByID := make(map[string]*approval.FlowNode, len(bundle.FlowNodes))
+	nodeByKey := make(map[string]*approval.FlowNode, len(bundle.FlowNodes))
+
+	for i := range bundle.FlowNodes {
+		node := &bundle.FlowNodes[i]
+		nodeByID[node.ID] = node
+		nodeByKey[node.Key] = node
+	}
+
+	concluded := collections.NewHashSet[string]()
+
+	for _, visit := range bundle.Visits {
+		switch visit.Status {
+		case approval.NodeVisitPassed, approval.NodeVisitRejected, approval.NodeVisitReturned:
+			concluded.Add(visit.NodeID)
+		}
+	}
+
+	var candidates []*approval.FlowNode
+
+	switch current.RollbackType {
+	case approval.RollbackPrevious:
+		// Direct graph predecessors, matching the command's edge lookup.
+		if bundle.FlowSchema != nil {
+			for _, edge := range bundle.FlowSchema.Edges {
+				if target := nodeByKey[edge.Target]; target != nil && target.ID == current.ID {
+					if source := nodeByKey[edge.Source]; source != nil {
+						candidates = append(candidates, source)
+					}
+				}
+			}
+		}
+
+	case approval.RollbackStart:
+		for _, node := range nodeByID {
+			if node.Kind == approval.NodeStart {
+				candidates = append(candidates, node)
+
+				break
+			}
+		}
+
+	case approval.RollbackAny:
+		// Bounded by the visit trail: decision points (approval / handle) or
+		// the start node the instance actually traversed.
+		for i := range bundle.FlowNodes {
+			node := &bundle.FlowNodes[i]
+
+			switch node.Kind {
+			case approval.NodeApproval, approval.NodeHandle, approval.NodeStart:
+				if concluded.Contains(node.ID) {
+					candidates = append(candidates, node)
+				}
+			}
+		}
+
+	case approval.RollbackSpecified:
+		for _, key := range current.RollbackTargetKeys {
+			if node := nodeByKey[key]; node != nil && concluded.Contains(node.ID) {
+				candidates = append(candidates, node)
+			}
+		}
+
+	case approval.RollbackNone:
+	}
+
+	targets := make([]my.RollbackTarget, 0, len(candidates))
+	seen := collections.NewHashSet[string]()
+
+	for _, node := range candidates {
+		if node.ID == current.ID || seen.Contains(node.ID) {
+			continue
+		}
+
+		seen.Add(node.ID)
+		targets = append(targets, my.RollbackTarget{NodeID: node.ID, Name: node.Name})
+	}
+
+	return targets
 }
