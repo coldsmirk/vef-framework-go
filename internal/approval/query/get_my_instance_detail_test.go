@@ -40,12 +40,20 @@ func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "mid-flow", 1)
 	s.nodeID = fix.NodeIDs[0]
 
+	// Stamp host-owned labels on the flow; the detail must surface them
+	// beside the other flow-identity fields.
+	_, err := s.db.NewUpdate().Model((*approval.Flow)(nil)).
+		Set("labels", map[string]string{"app": "crm"}).
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(fix.FlowID) }).
+		Exec(s.ctx)
+	s.Require().NoError(err, "Should set labels on the fixture flow")
+
 	// Pin a host form-designer document on the instance's version; the detail
 	// must return it verbatim — the framework never interprets it.
 	s.formSchema = json.RawMessage(`{"version":2,"presentations":{"pc":{"children":[` +
 		`{"id":"F1","type":"textarea","key":"reason","label":"Reason"},` +
 		`{"id":"F2","type":"number","key":"days","label":"Days"}]}}}`)
-	_, err := s.db.NewUpdate().Model((*approval.FlowVersion)(nil)).
+	_, err = s.db.NewUpdate().Model((*approval.FlowVersion)(nil)).
 		Set("form_schema", s.formSchema).
 		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(fix.VersionID) }).
 		Exec(s.ctx)
@@ -140,6 +148,7 @@ func (s *GetMyInstanceDetailTestSuite) TestApplicantAccess() {
 	s.Require().NoError(err, "Should get detail without error")
 	s.Assert().Equal(s.instanceID, detail.Instance.InstanceID, "Should return correct instance")
 	s.Assert().Equal("Detail Instance", detail.Instance.Title, "Should return correct title")
+	s.Assert().Equal(map[string]string{"app": "crm"}, detail.Instance.Labels, "Detail should surface the flow's labels")
 	s.Assert().Contains(detail.AvailableActions, "withdraw", "Applicant should be able to withdraw")
 	s.Assert().Contains(detail.AvailableActions, "urge", "Applicant should be able to urge when the instance has pending tasks")
 

@@ -36,6 +36,14 @@ func (s *GetAdminInstanceDetailTestSuite) SetupSuite() {
 
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "adid", 0)
 
+	// Stamp host-owned labels on the flow; the admin detail must surface them
+	// beside the other flow-identity fields.
+	_, labelsErr := s.db.NewUpdate().Model((*approval.Flow)(nil)).
+		Set("labels", map[string]string{"app": "erp"}).
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(fix.FlowID) }).
+		Exec(s.ctx)
+	s.Require().NoError(labelsErr, "Should set labels on the fixture flow")
+
 	// Pin form + flow schema on the instance's version: the host designer
 	// document must pass through verbatim, and the flow schema feeds a React
 	// Flow–ready graph (positions + edges). The graph node ids match the
@@ -135,6 +143,7 @@ func (s *GetAdminInstanceDetailTestSuite) TestGetDetailSuccess() {
 	s.Assert().Equal(s.instanceID, detail.Instance.InstanceID, "Should return correct instance")
 	s.Assert().Equal("Admin Detail Test", detail.Instance.Title, "Should return correct title")
 	s.Assert().Equal("default", detail.Instance.TenantID, "Should include tenant ID")
+	s.Assert().Equal(map[string]string{"app": "erp"}, detail.Instance.Labels, "Detail should surface the flow's labels")
 
 	// The flow graph is a React Flow–ready projection: 3 nodes + 2 edges with
 	// positions, and the approval node reporting its open visit as active.

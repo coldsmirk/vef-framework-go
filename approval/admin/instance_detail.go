@@ -23,13 +23,17 @@ type InstanceDetail struct {
 // InstanceDetailInfo carries the instance's runtime state within an admin
 // detail view.
 type InstanceDetailInfo struct {
-	InstanceID      string            `json:"instanceId"`
-	InstanceNo      string            `json:"instanceNo"`
-	Title           string            `json:"title"`
-	TenantID        string            `json:"tenantId"`
-	FlowID          string            `json:"flowId"`
-	FlowName        string            `json:"flowName"`
-	FlowVersionID   string            `json:"flowVersionId"`
+	InstanceID    string `json:"instanceId"`
+	InstanceNo    string `json:"instanceNo"`
+	Title         string `json:"title"`
+	TenantID      string `json:"tenantId"`
+	FlowID        string `json:"flowId"`
+	FlowName      string `json:"flowName"`
+	FlowVersionID string `json:"flowVersionId"`
+	// Labels are the flow's host-owned selection metadata, read from the
+	// mutable flow at query time (like FlowName — display identity, not a
+	// version-pinned snapshot).
+	Labels          map[string]string `json:"labels,omitempty"`
 	Applicant       approval.UserInfo `json:"applicant"`
 	Status          string            `json:"status"`
 	CurrentNodeID   *string           `json:"currentNodeId,omitempty"`

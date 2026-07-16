@@ -56,12 +56,16 @@ type RollbackTarget struct {
 }
 
 // InstanceInfo holds the instance's runtime state within a detail view.
+// Labels are the flow's host-owned selection metadata, read from the mutable
+// flow at query time (like FlowName / FlowIcon — display identity, not a
+// version-pinned snapshot).
 type InstanceInfo struct {
 	InstanceID      string            `json:"instanceId"`
 	InstanceNo      string            `json:"instanceNo"`
 	Title           string            `json:"title"`
 	FlowName        string            `json:"flowName"`
 	FlowIcon        *string           `json:"flowIcon,omitempty"`
+	Labels          map[string]string `json:"labels,omitempty"`
 	Applicant       approval.UserInfo `json:"applicant"`
 	Status          string            `json:"status"`
 	CurrentNodeID   *string           `json:"currentNodeId,omitempty"`

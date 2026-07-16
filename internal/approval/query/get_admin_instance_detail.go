@@ -60,6 +60,7 @@ func (h *GetAdminInstanceDetailHandler) Handle(ctx context.Context, query GetAdm
 			FlowID:        instance.FlowID,
 			FlowName:      flow.Name,
 			FlowVersionID: instance.FlowVersionID,
+			Labels:        flow.Labels,
 			Applicant:     instance.Applicant(),
 			Status:        string(instance.Status),
 			CurrentNodeID: instance.CurrentNodeID,
