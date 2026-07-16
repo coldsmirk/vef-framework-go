@@ -236,7 +236,7 @@ func (inv *Invoker) run(ctx context.Context, e *execution) (any, []integration.H
 		return nil, nil, integration.FailureConfig, err
 	}
 
-	collector := newTraceCollector(inv.capturer)
+	collector := newTraceCollector(inv.capturer, inv.clients.RedactValues(e.system))
 	runCtx := withTrace(ctx, collector)
 
 	value, err := runtime.RunProgram(runCtx, program)

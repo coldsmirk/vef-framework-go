@@ -48,27 +48,62 @@ func traceFrom(ctx context.Context) *traceCollector {
 // the dry-run trace.
 type traceCollector struct {
 	capturer *capturer
+	// redact holds the invocation's credential values, scrubbed from every
+	// capture on top of the capturer's name-based masking — the multi-pair
+	// header/query and script auth schemes carry credentials under names the
+	// static mask set cannot know.
+	redact []string
 
 	mu        sync.Mutex
 	exchanges []integration.HTTPExchange
 }
 
-func newTraceCollector(capturer *capturer) *traceCollector {
-	return &traceCollector{capturer: capturer}
+func newTraceCollector(capturer *capturer, redact []string) *traceCollector {
+	return &traceCollector{capturer: capturer, redact: redact}
 }
 
 // record captures one exchange; safe for concurrent use.
 func (t *traceCollector) record(exchange integration.HTTPExchange) {
-	exchange.URL = t.capturer.maskURL(exchange.URL)
-	exchange.RequestHeaders = t.capturer.maskHeaderMap(exchange.RequestHeaders)
-	exchange.ResponseHeaders = t.capturer.maskHeaderMap(exchange.ResponseHeaders)
-	exchange.RequestBody = t.capturer.captureBody(exchange.RequestBody)
-	exchange.ResponseBody = t.capturer.captureBody(exchange.ResponseBody)
+	exchange.URL = redactSecrets(t.capturer.maskURL(exchange.URL), t.redact)
+	exchange.RequestHeaders = redactHeaderSecrets(t.capturer.maskHeaderMap(exchange.RequestHeaders), t.redact)
+	exchange.ResponseHeaders = redactHeaderSecrets(t.capturer.maskHeaderMap(exchange.ResponseHeaders), t.redact)
+	exchange.RequestBody = redactSecrets(t.capturer.captureBody(exchange.RequestBody), t.redact)
+	exchange.ResponseBody = redactSecrets(t.capturer.captureBody(exchange.ResponseBody), t.redact)
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	t.exchanges = append(t.exchanges, exchange)
+}
+
+// redactSecrets scrubs every non-empty credential value from a captured
+// string. It catches the credentials the name-based mask misses: the
+// multi-pair header/query schemes send them under admin-chosen names and the
+// script scheme under names known only at runtime, but the value is always
+// the system's own configured secret. Empty values are skipped — replacing
+// "" would corrupt the whole string.
+func redactSecrets(value string, secrets []string) string {
+	for _, secret := range secrets {
+		if secret != "" {
+			value = strings.ReplaceAll(value, secret, integration.MaskedSecret)
+		}
+	}
+
+	return value
+}
+
+// redactHeaderSecrets scrubs credential values from an already name-masked
+// header map, in place.
+func redactHeaderSecrets(headers map[string]string, secrets []string) map[string]string {
+	if len(headers) == 0 || len(secrets) == 0 {
+		return headers
+	}
+
+	for name, value := range headers {
+		headers[name] = redactSecrets(value, secrets)
+	}
+
+	return headers
 }
 
 // Exchanges returns the captured exchanges in arrival order.

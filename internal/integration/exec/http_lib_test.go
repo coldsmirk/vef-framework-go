@@ -45,7 +45,7 @@ func newScopedRuntimeWithEnvelope(t *testing.T, baseURL string, cfg *integration
 	require.NoError(t, newHTTPLib(client, 5*time.Second, envelope).Install(rt), "http lib should install")
 	require.NoError(t, newErrorsLib().Install(rt), "errors lib should install")
 
-	collector := newTraceCollector(newCapturer(new(config.IntegrationLogConfig)))
+	collector := newTraceCollector(newCapturer(new(config.IntegrationLogConfig)), nil)
 
 	return rt, withTrace(t.Context(), collector), collector
 }

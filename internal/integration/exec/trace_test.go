@@ -66,7 +66,7 @@ func TestCapturer(t *testing.T) {
 
 func TestTraceCollector(t *testing.T) {
 	capturer := newCapturer(new(config.IntegrationLogConfig))
-	collector := newTraceCollector(capturer)
+	collector := newTraceCollector(capturer, nil)
 
 	collector.record(integration.HTTPExchange{
 		Method:         "POST",
@@ -81,4 +81,24 @@ func TestTraceCollector(t *testing.T) {
 	assert.Equal(t, integration.MaskedSecret, exchanges[0].RequestHeaders["authorization"],
 		"Recorded headers should arrive masked")
 	assert.NotContains(t, exchanges[0].RequestBody, `"p"`, "Recorded body should arrive masked")
+}
+
+func TestTraceRedaction(t *testing.T) {
+	capturer := newCapturer(new(config.IntegrationLogConfig))
+	// A blank redaction value must be skipped — replacing "" would corrupt the
+	// whole string; the real credential is scrubbed by value under any name.
+	collector := newTraceCollector(capturer, []string{"s3cr3t-value", ""})
+
+	collector.record(integration.HTTPExchange{
+		Method:         "POST",
+		URL:            "https://vendor/api?appkey=s3cr3t-value&page=1",
+		RequestHeaders: map[string]string{"X-App-Secret": "s3cr3t-value", "X-Trace": "keep-me"},
+		RequestBody:    `{"credential":"s3cr3t-value"}`,
+	})
+
+	exchange := collector.Exchanges()[0]
+	assert.NotContains(t, exchange.URL, "s3cr3t-value", "The credential value must be scrubbed from the query, whatever the param name")
+	assert.Equal(t, integration.MaskedSecret, exchange.RequestHeaders["x-app-secret"], "A credential header the name mask cannot know is scrubbed by value")
+	assert.Equal(t, "keep-me", exchange.RequestHeaders["x-trace"], "A non-credential header value is left intact")
+	assert.NotContains(t, exchange.RequestBody, "s3cr3t-value", "The credential value must be scrubbed from the body")
 }

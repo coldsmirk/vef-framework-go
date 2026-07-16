@@ -119,6 +119,25 @@ func (f *clientFactory) build(system *integration.System) (*httpx.Client, error)
 	return client, nil
 }
 
+// RedactValues returns the system's decrypted outbound credential values so
+// the trace collector can scrub them from captured exchanges, regardless of
+// the header or query name the scheme carries them under. A resolution or
+// decryption failure yields nothing — the same fault surfaces when the client
+// is built and the invocation fails before anything is captured.
+func (f *clientFactory) RedactValues(system *integration.System) []string {
+	scheme, ok := f.registry.Resolve(system.OutboundAuth)
+	if !ok {
+		return nil
+	}
+
+	decrypted, err := f.codec.DecryptOutboundAuth(scheme, system.OutboundAuth)
+	if err != nil {
+		return nil
+	}
+
+	return definition.SensitiveValues(scheme.SensitiveParams(), decrypted.Params)
+}
+
 // clientKey derives the cache key from every field that shapes the client.
 // Auth params are hashed in their encrypted form — sufficient for change
 // detection without holding plaintext in the key.

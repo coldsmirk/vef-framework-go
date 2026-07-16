@@ -120,7 +120,7 @@ func (r *Receiver) Receive(ctx context.Context, req *integration.InboundRequest)
 		duration:  duration,
 		input:     delivery.dispatchedInput(),
 		output:    delivery.dispatchedOutput(),
-		trace:     r.trace(req, reply),
+		trace:     r.trace(req, reply, r.inboundRedactValues(system)),
 	})
 
 	if deliverErr != nil {
@@ -384,19 +384,37 @@ func (r *Receiver) runTimeout(adapter *integration.Adapter) time.Duration {
 // trace renders the caller-side view of the delivery as one wire exchange,
 // masked and truncated by the shared capture policy. Status stays zero — the
 // pipeline is protocol-blind and never interprets the reply.
-func (r *Receiver) trace(req *integration.InboundRequest, reply any) []integration.HTTPExchange {
+func (r *Receiver) trace(req *integration.InboundRequest, reply any, redact []string) []integration.HTTPExchange {
 	capturer := r.invoker.capturer
 
 	exchange := integration.HTTPExchange{
 		Method:         req.Method,
-		URL:            capturer.maskURL(req.Path),
-		RequestHeaders: capturer.maskHeaderMap(req.Headers),
-		RequestBody:    capturer.captureBody(string(req.Body)),
+		URL:            redactSecrets(capturer.maskURL(req.Path), redact),
+		RequestHeaders: redactHeaderSecrets(capturer.maskHeaderMap(req.Headers), redact),
+		RequestBody:    redactSecrets(capturer.captureBody(string(req.Body)), redact),
 	}
 
 	if reply != nil {
-		exchange.ResponseBody = capturer.captureBody(string(capturer.captureValue(reply)))
+		exchange.ResponseBody = redactSecrets(capturer.captureBody(string(capturer.captureValue(reply))), redact)
 	}
 
 	return []integration.HTTPExchange{exchange}
+}
+
+// inboundRedactValues returns the system's inbound credential values so the
+// trace scrubs the credentials the caller presented on an accepted delivery
+// out of the invocation log. A resolution or decryption fault yields nothing —
+// a delivery reaching the trace already verified against these params.
+func (r *Receiver) inboundRedactValues(system *integration.System) []string {
+	scheme, ok := r.schemes.Resolve(system.InboundAuth)
+	if !ok {
+		return nil
+	}
+
+	decrypted, err := r.codec.DecryptInboundAuth(scheme, system.InboundAuth)
+	if err != nil {
+		return nil
+	}
+
+	return definition.SensitiveValues(scheme.SensitiveParams(), decrypted.Params)
 }

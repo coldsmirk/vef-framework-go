@@ -61,11 +61,35 @@ func sensitiveNames(scheme secretScheme, params map[string]string) []string {
 		declared = scheme.SensitiveParams()
 	}
 
+	return resolveSensitiveNames(declared, params)
+}
+
+// resolveSensitiveNames turns a sensitivity declaration into the concrete
+// parameter names present: the SensitiveAll wildcard selects every parameter.
+func resolveSensitiveNames(declared []string, params map[string]string) []string {
 	if slices.Contains(declared, integration.SensitiveAll) {
 		return slices.Collect(maps.Keys(params))
 	}
 
 	return declared
+}
+
+// SensitiveValues returns the non-empty values of the parameters declared
+// sensitive (SensitiveAll selecting every parameter). Wire captures scrub
+// these values so a credential never lands in the invocation log or dry-run
+// trace under whatever header or query name a scheme carries it — the point
+// masking by a fixed name set cannot reach.
+func SensitiveValues(declared []string, params map[string]string) []string {
+	names := resolveSensitiveNames(declared, params)
+	values := make([]string, 0, len(names))
+
+	for _, name := range names {
+		if value := params[name]; value != "" {
+			values = append(values, value)
+		}
+	}
+
+	return values
 }
 
 // EncryptOutboundAuth prepares auth for persistence, mutating its params in place:
