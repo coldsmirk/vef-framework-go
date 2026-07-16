@@ -45,10 +45,10 @@ func (s *FindFlowsTestSuite) SetupSuite() {
 
 	// Create flows
 	flows := []approval.Flow{
-		{TenantID: "t1", CategoryID: s.categoryID1, Code: "flow1", Name: "Leave Flow", IsActive: true},
-		{TenantID: "t1", CategoryID: s.categoryID1, Code: "flow2", Name: "Expense Flow", IsActive: false},
-		{TenantID: "t1", CategoryID: s.categoryID2, Code: "flow3", Name: "Travel Flow", IsActive: true},
-		{TenantID: "t2", CategoryID: s.categoryID2, Code: "flow4", Name: "Purchase Flow", IsActive: true},
+		{TenantID: "t1", CategoryID: s.categoryID1, Code: "flow1", Name: "Leave Flow", IsActive: true, Labels: map[string]string{"app": "crm", "mobile": "true"}},
+		{TenantID: "t1", CategoryID: s.categoryID1, Code: "flow2", Name: "Expense Flow", IsActive: false, Labels: map[string]string{"beta": ""}},
+		{TenantID: "t1", CategoryID: s.categoryID2, Code: "flow3", Name: "Travel Flow", IsActive: true, Labels: map[string]string{"app": "erp"}},
+		{TenantID: "t2", CategoryID: s.categoryID2, Code: "flow4", Name: "Purchase Flow", IsActive: true, Labels: map[string]string{"app": "crm"}},
 	}
 	for i := range flows {
 		_, err := s.db.NewInsert().Model(&flows[i]).Exec(s.ctx)
@@ -109,6 +109,74 @@ func (s *FindFlowsTestSuite) TestKeywordSearch() {
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(4), result.Total, "Should find 4 flows with 'Flow' in name")
+}
+
+func (s *FindFlowsTestSuite) TestFilterByLabels() {
+	s.Run("SingleLabel", func() {
+		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
+			Labels:   map[string]string{"app": "crm"},
+			Pageable: page.Pageable{Page: 1, Size: 10},
+			Caller:   approval.SystemCaller,
+		})
+		s.Require().NoError(err, "Should query without error")
+		s.Assert().Equal(int64(2), result.Total, "app=crm should match flow1 and flow4")
+	})
+
+	s.Run("MultipleLabelsAnd", func() {
+		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
+			Labels:   map[string]string{"app": "crm", "mobile": "true"},
+			Pageable: page.Pageable{Page: 1, Size: 10},
+			Caller:   approval.SystemCaller,
+		})
+		s.Require().NoError(err, "Should query without error")
+		s.Require().Equal(int64(1), result.Total, "Label pairs must AND-combine, leaving only flow1")
+		s.Assert().Equal("flow1", result.Items[0].Code, "Only flow1 carries both labels")
+	})
+
+	s.Run("CombinesWithOtherFilters", func() {
+		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
+			TenantID: new("t1"),
+			Labels:   map[string]string{"app": "crm"},
+			Pageable: page.Pageable{Page: 1, Size: 10},
+			Caller:   approval.SystemCaller,
+		})
+		s.Require().NoError(err, "Should query without error")
+		s.Require().Equal(int64(1), result.Total, "Tenant scope should exclude flow4 from the app=crm match")
+		s.Assert().Equal("flow1", result.Items[0].Code, "Only flow1 is app=crm within tenant t1")
+	})
+
+	s.Run("EmptyValueMatches", func() {
+		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
+			Labels:   map[string]string{"beta": ""},
+			Pageable: page.Pageable{Page: 1, Size: 10},
+			Caller:   approval.SystemCaller,
+		})
+		s.Require().NoError(err, "Should query without error")
+		s.Require().Equal(int64(1), result.Total, "Presence-style empty-value label should match flow2")
+		s.Assert().Equal("flow2", result.Items[0].Code, "Only flow2 carries the beta flag")
+	})
+
+	s.Run("NoMatch", func() {
+		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
+			Labels:   map[string]string{"app": "nonexistent"},
+			Pageable: page.Pageable{Page: 1, Size: 10},
+			Caller:   approval.SystemCaller,
+		})
+		s.Require().NoError(err, "Should query without error")
+		s.Assert().Equal(int64(0), result.Total, "Unmatched label value should exclude every flow, labeled or not")
+	})
+
+	s.Run("LabelsReturnedInItems", func() {
+		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
+			Labels:   map[string]string{"mobile": "true"},
+			Pageable: page.Pageable{Page: 1, Size: 10},
+			Caller:   approval.SystemCaller,
+		})
+		s.Require().NoError(err, "Should query without error")
+		s.Require().Equal(int64(1), result.Total, "mobile=true should match only flow1")
+		s.Assert().Equal(map[string]string{"app": "crm", "mobile": "true"}, result.Items[0].Labels,
+			"Stored labels should round-trip through the list projection")
+	})
 }
 
 func (s *FindFlowsTestSuite) TestPagination() {

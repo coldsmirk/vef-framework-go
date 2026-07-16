@@ -79,6 +79,7 @@ func (s *FindAvailableFlowsTestSuite) SetupSuite() {
 		CategoryID:             category.ID,
 		Code:                   "maf-all",
 		Name:                   "All Allowed Flow",
+		Labels:                 map[string]string{"mobile": "true"},
 		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Test",
@@ -95,6 +96,7 @@ func (s *FindAvailableFlowsTestSuite) SetupSuite() {
 		CategoryID:             category.ID,
 		Code:                   "maf-restricted",
 		Name:                   "Restricted Flow",
+		Labels:                 map[string]string{"app": "crm"},
 		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: false,
 		InstanceTitleTemplate:  "Test",
@@ -221,6 +223,46 @@ func (s *FindAvailableFlowsTestSuite) TestAllAllowedFlows() {
 	}
 
 	s.Assert().True(hasAllAllowed, "Should include the all-allowed flow")
+}
+
+func (s *FindAvailableFlowsTestSuite) TestFilterByLabels() {
+	s.Run("MatchesLabeledFlow", func() {
+		result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
+			UserID:   "user-z",
+			Labels:   map[string]string{"mobile": "true"},
+			Pageable: page.Pageable{Page: 1, Size: 10},
+		})
+		s.Require().NoError(err, "Should query without error")
+		s.Require().Equal(int64(1), result.Total, "mobile=true should keep only the labeled all-allowed flow")
+		s.Assert().Equal(s.allAllowedFlowID, result.Items[0].FlowID, "Should return the mobile-labeled flow")
+		s.Assert().Equal(map[string]string{"mobile": "true"}, result.Items[0].Labels,
+			"AvailableFlow should carry the flow's labels")
+	})
+
+	s.Run("ExcludesUnlabeledFlows", func() {
+		result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
+			UserID:   "user-z",
+			Labels:   map[string]string{"app": "crm"},
+			Pageable: page.Pageable{Page: 1, Size: 10},
+		})
+		s.Require().NoError(err, "Should query without error")
+		s.Assert().Equal(int64(0), result.Total,
+			"user-z cannot initiate the crm-labeled flow, and unlabeled flows never match a label filter")
+	})
+
+	s.Run("FiltersInitiatorMatchedFlows", func() {
+		// user-a is allowed both flow1 (all-allowed) and flow2 (initiator
+		// rule); the label filter must also apply to the initiator-matched
+		// path, not just the all-allowed branch.
+		result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
+			UserID:   "user-a",
+			Labels:   map[string]string{"app": "crm"},
+			Pageable: page.Pageable{Page: 1, Size: 10},
+		})
+		s.Require().NoError(err, "Should query without error")
+		s.Require().Equal(int64(1), result.Total, "app=crm should keep only the restricted flow")
+		s.Assert().Equal(s.restrictedFlowID, result.Items[0].FlowID, "Should return the crm-labeled restricted flow")
+	})
 }
 
 func (s *FindAvailableFlowsTestSuite) TestUserWithInitiatorAccess() {

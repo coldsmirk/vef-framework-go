@@ -29,12 +29,18 @@ type Flow struct {
 	orm.BaseModel `bun:"table:apv_flow,alias:af"`
 	orm.FullAuditedModel
 
-	TenantID               string                 `json:"tenantId" bun:"tenant_id"`
-	CategoryID             string                 `json:"categoryId" bun:"category_id"`
-	Code                   string                 `json:"code" bun:"code"`
-	Name                   string                 `json:"name" bun:"name"`
-	Icon                   *string                `json:"icon" bun:"icon,nullzero"`
-	Description            *string                `json:"description" bun:"description,nullzero"`
+	TenantID    string  `json:"tenantId" bun:"tenant_id"`
+	CategoryID  string  `json:"categoryId" bun:"category_id"`
+	Code        string  `json:"code" bun:"code"`
+	Name        string  `json:"name" bun:"name"`
+	Icon        *string `json:"icon" bun:"icon,nullzero"`
+	Description *string `json:"description" bun:"description,nullzero"`
+	// Labels are host-owned selection metadata (e.g. which app a flow belongs
+	// to, mobile availability). The framework stores them verbatim and offers
+	// equality filtering in the flow list queries; it never interprets values.
+	// Keys are restricted at save time to a JSON-path-safe charset — see
+	// validateFlowLabels.
+	Labels                 map[string]string      `json:"labels,omitempty" bun:"labels,type:jsonb,nullzero"`
 	BindingMode            BindingMode            `json:"bindingMode" bun:"binding_mode"`
 	BusinessBinding        *BusinessBindingConfig `json:"businessBinding,omitempty" bun:"business_binding,type:jsonb,nullzero"`
 	AdminUserIDs           []string               `json:"adminUserIds" bun:"admin_user_ids,type:jsonb"`

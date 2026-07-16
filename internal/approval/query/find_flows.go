@@ -20,6 +20,7 @@ type FindFlowsQuery struct {
 	CategoryID *string
 	Keyword    *string
 	IsActive   *bool
+	Labels     map[string]string
 	Caller     approval.CallerContext
 }
 
@@ -69,6 +70,8 @@ func (h *FindFlowsHandler) Handle(ctx context.Context, query FindFlowsQuery) (*p
 				ApplyIf(query.Keyword != nil, func(cb orm.ConditionBuilder) {
 					cb.Contains("name", *query.Keyword)
 				})
+
+			applyLabelsFilter(cb, query.Labels)
 		}).
 		OrderBy("name")
 

@@ -58,6 +58,7 @@ type CreateFlowParams struct {
 	CategoryID             string                          `json:"categoryId" validate:"required"`
 	Icon                   *string                         `json:"icon"`
 	Description            *string                         `json:"description"`
+	Labels                 map[string]string               `json:"labels"`
 	BindingMode            approval.BindingMode            `json:"bindingMode" validate:"required"`
 	BusinessBinding        *approval.BusinessBindingConfig `json:"businessBinding"`
 	AdminUserIDs           []string                        `json:"adminUserIds"`
@@ -97,6 +98,7 @@ func (r *FlowResource) Create(ctx fiber.Ctx, principal *security.Principal, para
 			CategoryID:             params.CategoryID,
 			Icon:                   params.Icon,
 			Description:            params.Description,
+			Labels:                 params.Labels,
 			BindingMode:            params.BindingMode,
 			BusinessBinding:        params.BusinessBinding,
 			AdminUserIDs:           params.AdminUserIDs,
@@ -224,12 +226,13 @@ func (r *FlowResource) GetGraph(ctx fiber.Ctx, principal *security.Principal, pa
 type FindFlowsParams struct {
 	api.P
 
-	TenantID   *string `json:"tenantId"`
-	CategoryID *string `json:"categoryId"`
-	Keyword    *string `json:"keyword"`
-	IsActive   *bool   `json:"isActive"`
-	Page       int     `json:"page"`
-	PageSize   int     `json:"pageSize"`
+	TenantID   *string           `json:"tenantId"`
+	CategoryID *string           `json:"categoryId"`
+	Keyword    *string           `json:"keyword"`
+	IsActive   *bool             `json:"isActive"`
+	Labels     map[string]string `json:"labels"`
+	Page       int               `json:"page"`
+	PageSize   int               `json:"pageSize"`
 }
 
 // FindFlows queries flows for admin management.
@@ -247,6 +250,7 @@ func (r *FlowResource) FindFlows(ctx fiber.Ctx, principal *security.Principal, p
 			CategoryID: params.CategoryID,
 			Keyword:    params.Keyword,
 			IsActive:   params.IsActive,
+			Labels:     params.Labels,
 			Pageable:   page.Pageable{Page: params.Page, Size: params.PageSize},
 			Caller:     caller,
 		},
@@ -266,6 +270,7 @@ type UpdateParams struct {
 	Name                   string                          `json:"name" validate:"required"`
 	Icon                   *string                         `json:"icon"`
 	Description            *string                         `json:"description"`
+	Labels                 map[string]string               `json:"labels"`
 	BindingMode            approval.BindingMode            `json:"bindingMode" validate:"required"`
 	BusinessBinding        *approval.BusinessBindingConfig `json:"businessBinding"`
 	AdminUserIDs           []string                        `json:"adminUserIds"`
@@ -297,6 +302,7 @@ func (r *FlowResource) Update(ctx fiber.Ctx, principal *security.Principal, para
 			Name:                   params.Name,
 			Icon:                   params.Icon,
 			Description:            params.Description,
+			Labels:                 params.Labels,
 			BindingMode:            params.BindingMode,
 			BusinessBinding:        params.BusinessBinding,
 			AdminUserIDs:           params.AdminUserIDs,

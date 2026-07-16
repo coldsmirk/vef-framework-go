@@ -30,6 +30,10 @@ var (
 	// not parse as a Go text/template at flow create / update time, so a
 	// broken template cannot silently break every subsequent submission.
 	ErrInvalidTitleTemplate = result.Err(i18n.T("approval_invalid_title_template"), result.WithCode(ErrCodeInvalidTitleTemplate))
+	// ErrInvalidFlowLabel rejects a flow label whose key would silently break
+	// the label equality filter (see validateFlowLabels) or whose value blows
+	// past the storage bound, at flow create / update time.
+	ErrInvalidFlowLabel = result.Err(i18n.T("approval_invalid_flow_label"), result.WithCode(ErrCodeInvalidFlowLabel))
 	// ErrInvalidFormDesign rejects a structurally broken form schema at
 	// deploy time (duplicate keys, unknown field kind, uncompilable
 	// validation pattern) so configuration faults never surface as data

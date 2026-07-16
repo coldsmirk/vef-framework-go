@@ -25,6 +25,7 @@ type FindAvailableFlowsQuery struct {
 	TenantID              *string
 	ApplicantDepartmentID *string
 	Keyword               *string
+	Labels                map[string]string
 }
 
 // FindAvailableFlowsHandler handles the FindAvailableFlowsQuery.
@@ -55,6 +56,8 @@ func (h *FindAvailableFlowsHandler) Handle(ctx context.Context, query FindAvaila
 				ApplyIf(query.Keyword != nil, func(cb orm.ConditionBuilder) {
 					cb.Contains("name", *query.Keyword)
 				})
+
+			applyLabelsFilter(cb, query.Labels)
 		}).
 		Scan(ctx, &allAllowedIDs); err != nil {
 		return nil, fmt.Errorf("query all-allowed flows: %w", err)
@@ -139,6 +142,8 @@ func (h *FindAvailableFlowsHandler) Handle(ctx context.Context, query FindAvaila
 				ApplyIf(query.Keyword != nil, func(cb orm.ConditionBuilder) {
 					cb.Contains("name", *query.Keyword)
 				})
+
+			applyLabelsFilter(cb, query.Labels)
 		}).
 		OrderBy("name")
 
@@ -174,6 +179,7 @@ func (h *FindAvailableFlowsHandler) Handle(ctx context.Context, query FindAvaila
 			FlowName:    f.Name,
 			FlowIcon:    f.Icon,
 			Description: f.Description,
+			Labels:      f.Labels,
 			CategoryID:  f.CategoryID,
 		}
 		if cat := categoryMap[f.CategoryID]; cat != nil {

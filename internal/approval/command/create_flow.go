@@ -25,6 +25,7 @@ type CreateFlowCmd struct {
 	CategoryID             string
 	Icon                   *string
 	Description            *string
+	Labels                 map[string]string
 	BindingMode            approval.BindingMode
 	BusinessBinding        *approval.BusinessBindingConfig
 	AdminUserIDs           []string
@@ -54,6 +55,10 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 	}
 
 	if err := validateFlowEnums(cmd.BindingMode, cmd.Initiators); err != nil {
+		return nil, err
+	}
+
+	if err := validateFlowLabels(cmd.Labels); err != nil {
 		return nil, err
 	}
 
@@ -94,6 +99,7 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 		Name:                   cmd.Name,
 		Icon:                   cmd.Icon,
 		Description:            cmd.Description,
+		Labels:                 cmd.Labels,
 		BindingMode:            cmd.BindingMode,
 		BusinessBinding:        businessBinding,
 		AdminUserIDs:           cmd.AdminUserIDs,

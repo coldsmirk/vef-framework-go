@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     name VARCHAR(128) NOT NULL,
     icon VARCHAR(128),
     description VARCHAR(512),
+    labels JSONB,
     -- Data binding
     binding_mode VARCHAR(16) NOT NULL DEFAULT 'standalone',
     business_binding JSONB,
@@ -80,6 +81,7 @@ COMMENT ON COLUMN apv_flow.code IS 'Code';
 COMMENT ON COLUMN apv_flow.name IS 'Name';
 COMMENT ON COLUMN apv_flow.icon IS 'Icon';
 COMMENT ON COLUMN apv_flow.description IS 'Description';
+COMMENT ON COLUMN apv_flow.labels IS 'Labels';
 COMMENT ON COLUMN apv_flow.binding_mode IS 'Binding Mode';
 COMMENT ON COLUMN apv_flow.business_binding IS 'Business Binding';
 COMMENT ON COLUMN apv_flow.admin_user_ids IS 'Admins';

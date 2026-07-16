@@ -74,6 +74,7 @@ func (s *UpdateFlowTestSuite) TearDownTest() {
 		Set("name", "Original Flow").
 		Set("icon", nil).
 		Set("description", nil).
+		Set("labels", nil).
 		Set("admin_user_ids", nil).
 		Set("is_all_initiation_allowed", false).
 		Set("instance_title_template", "Original Template").
@@ -139,6 +140,57 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowSuccess() {
 	s.Require().Len(initiators, 1, "Should have one initiator after update")
 	s.Assert().Equal(approval.InitiatorRole, initiators[0].Kind, "Should update initiator kind")
 	s.Assert().Equal([]string{"role-new"}, initiators[0].IDs, "Should update initiator IDs")
+}
+
+func (s *UpdateFlowTestSuite) TestUpdateFlowLabels() {
+	reload := func() approval.Flow {
+		var stored approval.Flow
+
+		stored.ID = s.flowID
+		err := s.db.NewSelect().Model(&stored).WherePK().Scan(s.ctx)
+		s.Require().NoError(err, "Should reload flow")
+
+		return stored
+	}
+
+	baseCmd := func() command.UpdateFlowCmd {
+		return command.UpdateFlowCmd{
+			FlowID:                s.flowID,
+			Name:                  "Original Flow",
+			BindingMode:           approval.BindingStandalone,
+			InstanceTitleTemplate: "Original Template",
+			Caller:                approval.SystemCaller,
+		}
+	}
+
+	s.Run("ReplacesLabels", func() {
+		cmd := baseCmd()
+		cmd.Labels = map[string]string{"app": "crm"}
+		_, err := s.handler.Handle(s.ctx, cmd)
+		s.Require().NoError(err, "Should update flow with labels")
+		s.Assert().Equal(map[string]string{"app": "crm"}, reload().Labels, "Labels should be persisted")
+
+		cmd = baseCmd()
+		cmd.Labels = map[string]string{"app": "erp", "mobile": "true"}
+		_, err = s.handler.Handle(s.ctx, cmd)
+		s.Require().NoError(err, "Should update flow again")
+		s.Assert().Equal(map[string]string{"app": "erp", "mobile": "true"}, reload().Labels,
+			"Update should fully replace the previous label set, not merge into it")
+	})
+
+	s.Run("OmittedLabelsClear", func() {
+		_, err := s.handler.Handle(s.ctx, baseCmd())
+		s.Require().NoError(err, "Should update flow without labels")
+		s.Assert().Empty(reload().Labels, "Update is full-replace: omitting labels clears the stored set")
+	})
+
+	s.Run("RejectsInvalidLabelKey", func() {
+		cmd := baseCmd()
+		cmd.Labels = map[string]string{"app.id": "crm"}
+		_, err := s.handler.Handle(s.ctx, cmd)
+		s.Require().ErrorIs(err, shared.ErrInvalidFlowLabel,
+			"A dotted label key must be rejected at save time — it would silently escape the label filter")
+	})
 }
 
 func (s *UpdateFlowTestSuite) TestUpdateFlowNotFound() {

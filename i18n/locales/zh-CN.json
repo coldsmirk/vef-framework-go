@@ -133,6 +133,7 @@
   "approval_version_not_found": "流程版本不存在",
   "approval_invalid_business_identifier": "业务表名或字段名不合法，必须匹配 ^[A-Za-z_][A-Za-z0-9_]{0,62}$",
   "approval_invalid_title_template": "实例标题模板语法不合法",
+  "approval_invalid_flow_label": "流程标签不合法：键必须匹配 ^[A-Za-z0-9]([A-Za-z0-9_-]*[A-Za-z0-9])?$ 且不超过 63 个字符，值不超过 256 个字符",
   "approval_invalid_form_design": "表单定义不合法",
   "approval_binding_incomplete": "业务绑定流程必须配置业务表、键列、状态列和审批实例 ID 列",
   "approval_invalid_binding_mode": "无效的流程绑定模式",

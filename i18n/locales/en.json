@@ -133,6 +133,7 @@
   "approval_version_not_found": "Flow version not found",
   "approval_invalid_business_identifier": "Invalid business table or field name; must match ^[A-Za-z_][A-Za-z0-9_]{0,62}$",
   "approval_invalid_title_template": "Invalid instance title template syntax",
+  "approval_invalid_flow_label": "Invalid flow label; keys must match ^[A-Za-z0-9]([A-Za-z0-9_-]*[A-Za-z0-9])?$ with at most 63 characters, values at most 256 characters",
   "approval_invalid_form_design": "Invalid form definition",
   "approval_binding_incomplete": "A business-bound flow must configure the business table, key columns, status column, and instance ID column",
   "approval_invalid_binding_mode": "Invalid flow binding mode",

@@ -45,10 +45,11 @@ func NewMyResource(bus cqrs.Bus, departmentResolver approval.PrincipalDepartment
 type FindAvailableFlowsParams struct {
 	api.P
 
-	TenantID *string `json:"tenantId"`
-	Keyword  *string `json:"keyword"`
-	Page     int     `json:"page"`
-	PageSize int     `json:"pageSize"`
+	TenantID *string           `json:"tenantId"`
+	Keyword  *string           `json:"keyword"`
+	Labels   map[string]string `json:"labels"`
+	Page     int               `json:"page"`
+	PageSize int               `json:"pageSize"`
 }
 
 // FindAvailableFlows queries flows the current user is allowed to initiate.
@@ -63,6 +64,7 @@ func (r *MyResource) FindAvailableFlows(ctx fiber.Ctx, principal *security.Princ
 		TenantID:              params.TenantID,
 		ApplicantDepartmentID: departmentID,
 		Keyword:               params.Keyword,
+		Labels:                params.Labels,
 		Pageable:              page.Pageable{Page: params.Page, Size: params.PageSize},
 	})
 	if err != nil {

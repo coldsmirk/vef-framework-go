@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     name VARCHAR(128) NOT NULL,
     icon VARCHAR(128),
     description VARCHAR(512),
+    labels TEXT,
     -- Data binding
     binding_mode VARCHAR(16) NOT NULL DEFAULT 'standalone',
     business_binding TEXT,

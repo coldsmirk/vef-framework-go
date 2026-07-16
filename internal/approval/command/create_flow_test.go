@@ -97,6 +97,51 @@ func (s *CreateFlowTestSuite) TestCreateFlowSuccess() {
 	s.Assert().Equal("leave", flow.Code, "DB record should have correct Code")
 }
 
+func (s *CreateFlowTestSuite) TestCreateFlowLabels() {
+	s.Run("PersistsLabels", func() {
+		cmd := command.CreateFlowCmd{
+			TenantID:              "tenant-1",
+			Code:                  "labeled",
+			Name:                  "Labeled Flow",
+			CategoryID:            s.categoryID,
+			BindingMode:           approval.BindingStandalone,
+			InstanceTitleTemplate: "Test",
+			Labels:                map[string]string{"app": "crm", "mobile": "true"},
+			Caller:                approval.SystemCaller,
+		}
+
+		created, err := s.handler.Handle(s.ctx, cmd)
+		s.Require().NoError(err, "Should create labeled flow without error")
+
+		// Reload to prove the labels survive the jsonb round trip, not just
+		// the in-memory echo of the command.
+		var stored approval.Flow
+
+		stored.ID = created.ID
+		err = s.db.NewSelect().Model(&stored).WherePK().Scan(s.ctx)
+		s.Require().NoError(err, "Should reload created flow")
+		s.Assert().Equal(map[string]string{"app": "crm", "mobile": "true"}, stored.Labels,
+			"Labels should round-trip through storage")
+	})
+
+	s.Run("RejectsInvalidLabelKey", func() {
+		cmd := command.CreateFlowCmd{
+			TenantID:              "tenant-1",
+			Code:                  "bad-label",
+			Name:                  "Bad Label Flow",
+			CategoryID:            s.categoryID,
+			BindingMode:           approval.BindingStandalone,
+			InstanceTitleTemplate: "Test",
+			Labels:                map[string]string{"app.id": "crm"},
+			Caller:                approval.SystemCaller,
+		}
+
+		_, err := s.handler.Handle(s.ctx, cmd)
+		s.Require().ErrorIs(err, shared.ErrInvalidFlowLabel,
+			"A dotted label key must be rejected at save time — it would silently escape the label filter")
+	})
+}
+
 func (s *CreateFlowTestSuite) TestCreateFlowDefaultTenant() {
 	cmd := command.CreateFlowCmd{
 		TenantID:              "", // empty → defaults to "default"

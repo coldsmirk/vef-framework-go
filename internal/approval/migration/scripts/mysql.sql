@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     name VARCHAR(128) NOT NULL COMMENT 'Name',
     icon VARCHAR(128) COMMENT 'Icon',
     description VARCHAR(512) COMMENT 'Description',
+    labels JSON COMMENT 'Labels',
     -- Data binding
     binding_mode VARCHAR(16) NOT NULL DEFAULT 'standalone' COMMENT 'Binding Mode',
     business_binding JSON COMMENT 'Business Binding',

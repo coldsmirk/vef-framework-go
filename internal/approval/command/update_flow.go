@@ -23,6 +23,7 @@ type UpdateFlowCmd struct {
 	Name                   string
 	Icon                   *string
 	Description            *string
+	Labels                 map[string]string
 	BindingMode            approval.BindingMode
 	BusinessBinding        *approval.BusinessBindingConfig
 	AdminUserIDs           []string
@@ -73,6 +74,10 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		return nil, err
 	}
 
+	if err := validateFlowLabels(cmd.Labels); err != nil {
+		return nil, err
+	}
+
 	businessBinding, err := binding.NormalizeConfig(cmd.BindingMode, cmd.BusinessBinding)
 	if err != nil {
 		return nil, err
@@ -92,6 +97,7 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 	flow.Name = cmd.Name
 	flow.Icon = cmd.Icon
 	flow.Description = cmd.Description
+	flow.Labels = cmd.Labels
 	flow.BindingMode = cmd.BindingMode
 	flow.BusinessBinding = businessBinding
 	flow.AdminUserIDs = cmd.AdminUserIDs
@@ -101,7 +107,7 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 	if _, err := db.NewUpdate().
 		Model(&flow).
 		Select(
-			"name", "icon", "description",
+			"name", "icon", "description", "labels",
 			"binding_mode", "business_binding",
 			"admin_user_ids", "is_all_initiation_allowed", "instance_title_template",
 		).

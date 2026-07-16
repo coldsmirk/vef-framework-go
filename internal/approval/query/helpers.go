@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -28,6 +29,18 @@ func applyPageable(sq orm.SelectQuery, pageable *page.Pageable) orm.SelectQuery 
 	pageable.Normalize(defaultListPageSize)
 
 	return sq.Limit(pageable.Size).Offset(pageable.Offset())
+}
+
+// applyLabelsFilter adds one equality predicate per label pair, AND-combined.
+// JSONExtract keeps the predicate portable across dialects; flows without
+// labels never match because extraction over NULL yields NULL. Keys are
+// sorted so the generated SQL is stable across runs.
+func applyLabelsFilter(cb orm.ConditionBuilder, labels map[string]string) {
+	for _, key := range slices.Sorted(maps.Keys(labels)) {
+		cb.Expr(func(eb orm.ExprBuilder) any {
+			return eb.Equals(eb.JSONUnquote(eb.JSONExtract(eb.Column("labels"), key)), labels[key])
+		})
+	}
 }
 
 // instanceDetailBundle holds the full set of related records needed to build an
