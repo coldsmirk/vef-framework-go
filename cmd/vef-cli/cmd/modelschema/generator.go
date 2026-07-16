@@ -58,11 +58,103 @@ type ModelSchemaInfo struct {
 
 // GenerateFile processes a single model file and generates its schema file.
 func GenerateFile(inputFile, outputFile, packageName string) error {
-	schemas, err := parseModelFile(inputFile)
+	pkg, err := loadPackage("file=" + inputFile)
 	if err != nil {
 		return fmt.Errorf("failed to parse model file %s: %w", inputFile, err)
 	}
 
+	absFilename, err := filepath.Abs(inputFile)
+	if err != nil {
+		return fmt.Errorf("failed to resolve model file %s: %w", inputFile, err)
+	}
+
+	targetFile, ok := syntaxByFilename(pkg)[absFilename]
+	if !ok {
+		return fmt.Errorf("failed to parse model file %s: %w", inputFile, ErrFileNotFoundInPackage)
+	}
+
+	return writeSchemaFile(extractFileSchemas(pkg, targetFile), outputFile, packageName)
+}
+
+// GenerateDirectory processes all model files in a directory and generates
+// corresponding schemas. The package is loaded and type-checked once and every
+// file's schemas are extracted from that single load — loading per file would
+// type-check the whole package again for each of its files, making generation
+// time quadratic in package size. Test files and files excluded by build
+// constraints are not part of the loaded package and are skipped.
+func GenerateDirectory(inputDir, outputDir, packageName string) error {
+	// Cheap filesystem probe so an empty or missing directory reports
+	// ErrNoGoFilesFound instead of a package-loader error.
+	files, err := filepath.Glob(filepath.Join(inputDir, "*.go"))
+	if err != nil {
+		return fmt.Errorf("failed to scan directory: %w", err)
+	}
+
+	if len(files) == 0 {
+		return fmt.Errorf("%w: %s", ErrNoGoFilesFound, inputDir)
+	}
+
+	absDir, err := filepath.Abs(inputDir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve input directory %s: %w", inputDir, err)
+	}
+
+	pkg, err := loadPackage(absDir)
+	if err != nil {
+		return fmt.Errorf("failed to parse model package %s: %w", inputDir, err)
+	}
+
+	return streams.FromSlice(pkg.Syntax).ForEachErr(func(file *ast.File) error {
+		filename := pkg.Fset.Position(file.Package).Filename
+		outputFile := filepath.Join(outputDir, filepath.Base(filename))
+
+		return writeSchemaFile(extractFileSchemas(pkg, file), outputFile, packageName)
+	})
+}
+
+// loadPackage loads and type-checks the single package matched by pattern
+// (a "file=..." query or a directory path).
+func loadPackage(pattern string) (*packages.Package, error) {
+	cfg := &packages.Config{
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedImports |
+			packages.NeedTypes | packages.NeedTypesInfo | packages.NeedSyntax,
+	}
+
+	ps, err := packages.Load(cfg, pattern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load package: %w", err)
+	}
+
+	if len(ps) == 0 {
+		return nil, ErrNoPackagesFound
+	}
+
+	if len(ps) > 1 {
+		return nil, fmt.Errorf("%w: %d", ErrMultiplePackages, len(ps))
+	}
+
+	pkg := ps[0]
+	if len(pkg.Errors) > 0 {
+		return nil, fmt.Errorf("package load error: %w", pkg.Errors[0])
+	}
+
+	return pkg, nil
+}
+
+// syntaxByFilename indexes the loaded package's parsed files by the absolute
+// path the loader reported for them.
+func syntaxByFilename(pkg *packages.Package) map[string]*ast.File {
+	files := make(map[string]*ast.File, len(pkg.Syntax))
+	for _, file := range pkg.Syntax {
+		files[pkg.Fset.Position(file.Package).Filename] = file
+	}
+
+	return files
+}
+
+// writeSchemaFile renders schemas into outputFile with the requested package
+// name; a file with no schemas produces no output.
+func writeSchemaFile(schemas []*ModelSchemaInfo, outputFile, packageName string) error {
 	if len(schemas) == 0 {
 		return nil
 	}
@@ -83,73 +175,29 @@ func GenerateFile(inputFile, outputFile, packageName string) error {
 		}
 	}
 
-	if err := os.WriteFile(outputFile, []byte(code), 0o644); err != nil {
+	if err := writeFileIfChanged(outputFile, []byte(code)); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 
 	return nil
 }
 
-// GenerateDirectory processes all .go files in a directory and generates corresponding schemas.
-func GenerateDirectory(inputDir, outputDir, packageName string) error {
-	files, err := filepath.Glob(filepath.Join(inputDir, "*.go"))
-	if err != nil {
-		return fmt.Errorf("failed to scan directory: %w", err)
+// writeFileIfChanged writes data to path only when the existing content
+// differs, so an unchanged output keeps its mtime and does not retrigger
+// file watchers or downstream rebuilds.
+func writeFileIfChanged(path string, data []byte) error {
+	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, data) {
+		return nil
 	}
 
-	if len(files) == 0 {
-		return fmt.Errorf("%w: %s", ErrNoGoFilesFound, inputDir)
-	}
-
-	return streams.FromSlice(files).ForEachErr(func(inputFile string) error {
-		outputFile := filepath.Join(outputDir, filepath.Base(inputFile))
-
-		return GenerateFile(inputFile, outputFile, packageName)
-	})
+	return os.WriteFile(path, data, 0o644)
 }
 
-func parseModelFile(filename string) ([]*ModelSchemaInfo, error) {
-	cfg := &packages.Config{
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedImports |
-			packages.NeedTypes | packages.NeedTypesInfo | packages.NeedSyntax,
-	}
-
-	ps, err := packages.Load(cfg, "file="+filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load package: %w", err)
-	}
-
-	if len(ps) == 0 {
-		return nil, ErrNoPackagesFound
-	}
-
-	if len(ps) > 1 {
-		return nil, fmt.Errorf("%w: %d", ErrMultiplePackages, len(ps))
-	}
-
-	pkg := ps[0]
-	if len(pkg.Errors) > 0 {
-		return nil, fmt.Errorf("package load error: %w", pkg.Errors[0])
-	}
-
-	absFilename, _ := filepath.Abs(filename)
-
-	var targetFile *ast.File
-	for i, goFile := range pkg.GoFiles {
-		absGoFile, _ := filepath.Abs(goFile)
-		if absGoFile == absFilename && i < len(pkg.Syntax) {
-			targetFile = pkg.Syntax[i]
-
-			break
-		}
-	}
-
-	if targetFile == nil {
-		return nil, ErrFileNotFoundInPackage
-	}
-
+// extractFileSchemas collects schema metadata for every orm.BaseModel-embedding
+// struct declared in one parsed file of pkg.
+func extractFileSchemas(pkg *packages.Package, file *ast.File) []*ModelSchemaInfo {
 	var schemas []*ModelSchemaInfo
-	for _, decl := range targetFile.Decls {
+	for _, decl := range file.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
 		if !ok {
 			continue
@@ -186,7 +234,7 @@ func parseModelFile(filename string) ([]*ModelSchemaInfo, error) {
 		}
 	}
 
-	return schemas, nil
+	return schemas
 }
 
 func extractTableMetadata(structType *ast.StructType, modelName string, pkg *packages.Package) (hasBaseModel bool, tableName, aliasName string) {

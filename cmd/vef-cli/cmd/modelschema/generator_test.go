@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -478,5 +479,58 @@ func TestGenerateDirectory(t *testing.T) {
 
 		_, statErr := os.Stat(filepath.Join(outputDir, "empty.go"))
 		assert.True(t, os.IsNotExist(statErr), "No output should be written for files that have no models")
+	})
+
+	t.Run("GeneratesOneOutputPerModelFile", func(t *testing.T) {
+		// The single package load must still fan out into one schema file per
+		// source file: extra.go's Widget lands in extra.go, not in sample.go.
+		inputDir := filepath.Join("testdata", "models")
+		outputDir := t.TempDir()
+
+		err := GenerateDirectory(inputDir, outputDir, "schemas")
+		require.NoError(t, err, "GenerateDirectory should succeed on the models fixture")
+
+		content, err := os.ReadFile(filepath.Join(outputDir, "extra.go"))
+		require.NoError(t, err, "extra.go should get its own generated schema file")
+
+		code := string(content)
+		assert.Contains(t, code, "var Widget = &widgetSchema{", "Widget schema should be generated from extra.go")
+		assert.NotContains(t, code, "userSchema", "Schemas from sample.go must not leak into extra.go's output")
+
+		sampleContent, err := os.ReadFile(filepath.Join(outputDir, "sample.go"))
+		require.NoError(t, err, "sample.go output should still be generated")
+		assert.NotContains(t, string(sampleContent), "widgetSchema", "Schemas from extra.go must not leak into sample.go's output")
+	})
+
+	t.Run("TestFilesProduceNoOutput", func(t *testing.T) {
+		// testdata/models/sample_test.go declares a model but is not part of the
+		// primary package; it must be ignored rather than generated or errored on.
+		inputDir := filepath.Join("testdata", "models")
+		outputDir := t.TempDir()
+
+		err := GenerateDirectory(inputDir, outputDir, "schemas")
+		require.NoError(t, err, "A _test.go file in the model directory must not fail generation")
+
+		_, statErr := os.Stat(filepath.Join(outputDir, "sample_test.go"))
+		assert.True(t, os.IsNotExist(statErr), "No schema file should be generated for _test.go sources")
+	})
+
+	t.Run("UnchangedOutputKeepsModTime", func(t *testing.T) {
+		// Content-identical regeneration must not rewrite the file, so its mtime
+		// stays put and file watchers / build tools see no phantom change.
+		inputDir := filepath.Join("testdata", "models")
+		outputDir := t.TempDir()
+
+		require.NoError(t, GenerateDirectory(inputDir, outputDir, "schemas"), "First generation should succeed")
+
+		outputFile := filepath.Join(outputDir, "sample.go")
+		past := time.Now().Add(-time.Hour).Truncate(time.Second)
+		require.NoError(t, os.Chtimes(outputFile, past, past), "Backdating the output should succeed")
+
+		require.NoError(t, GenerateDirectory(inputDir, outputDir, "schemas"), "Second generation should succeed")
+
+		info, err := os.Stat(outputFile)
+		require.NoError(t, err, "Output file should still exist")
+		assert.True(t, info.ModTime().Equal(past), "Unchanged output must not be rewritten (mtime should stay backdated)")
 	})
 }

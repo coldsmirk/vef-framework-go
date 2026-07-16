@@ -25,7 +25,8 @@ corresponding schema structures with type-safe column accessors. The generated
 schemas help reduce hardcoded column name strings in ORM queries.
 
 Features:
-  - Processes single files or entire directories
+  - Processes single files or entire directories (a directory is loaded and
+    type-checked once as a package; _test.go files are skipped)
   - Generates type-safe column accessors for each model field
   - Recurses into embedded structs (e.g. orm.FullAuditedModel) and bun:",embed:prefix_" fields
   - Skips bun:"-" fields and bun rel:* relationship fields (has-one, has-many, belongs-to, many-to-many)
