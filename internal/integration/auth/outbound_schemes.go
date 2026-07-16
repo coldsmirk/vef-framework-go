@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cast"
 
@@ -30,7 +31,7 @@ const (
 
 // builtinOutboundSchemes returns the framework-provided auth schemes. The
 // script scheme compiles signing bodies through its own cache.
-func builtinOutboundSchemes(engine *js.Engine) []integration.OutboundAuthScheme {
+func builtinOutboundSchemes(engine *js.Engine, runTimeout time.Duration) []integration.OutboundAuthScheme {
 	return []integration.OutboundAuthScheme{
 		new(noneOutboundScheme),
 		new(httpBasicOutboundScheme),
@@ -38,7 +39,7 @@ func builtinOutboundSchemes(engine *js.Engine) []integration.OutboundAuthScheme 
 		new(headerOutboundScheme),
 		new(queryOutboundScheme),
 		new(signatureOutboundScheme),
-		newScriptOutboundScheme(engine),
+		newScriptOutboundScheme(engine, runTimeout),
 	}
 }
 
@@ -249,12 +250,17 @@ func (*signatureOutboundScheme) SensitiveParams() []string {
 // has no channel to leak them. The script returns an object of credential
 // headers to add; returning nothing adds none.
 type scriptOutboundScheme struct {
-	engine   *js.Engine
-	programs *definition.ProgramCache
+	engine     *js.Engine
+	programs   *definition.ProgramCache
+	runTimeout time.Duration
 }
 
-func newScriptOutboundScheme(engine *js.Engine) *scriptOutboundScheme {
-	return &scriptOutboundScheme{engine: engine, programs: definition.NewProgramCache(definition.CompileScript)}
+func newScriptOutboundScheme(engine *js.Engine, runTimeout time.Duration) *scriptOutboundScheme {
+	return &scriptOutboundScheme{
+		engine:     engine,
+		programs:   definition.NewProgramCache(definition.CompileScript),
+		runTimeout: runTimeout,
+	}
 }
 
 func (*scriptOutboundScheme) Name() string {
@@ -296,7 +302,7 @@ func (s *scriptOutboundScheme) Apply(cfg *integration.OutboundAuthConfig) ([]htt
 // concurrently across invocations sharing one cached client, and a js.Runtime
 // is single-goroutine.
 func (s *scriptOutboundScheme) run(req *httpx.Request, program *js.Program, params map[string]string) (map[string]any, error) {
-	runtime, err := s.engine.NewRuntime()
+	runtime, err := s.engine.NewRuntime(js.WithRunTimeout(s.runTimeout))
 	if err != nil {
 		return nil, err
 	}

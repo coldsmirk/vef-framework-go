@@ -23,6 +23,21 @@ func inboundRequest(headers, query map[string]string) *integration.InboundReques
 	}
 }
 
+// TestEmptyCredentialValueFailsClosed guards the fail-closed contract: a blank
+// configured credential value must never authenticate an absent request
+// header, even though ConstantTimeCompare("", "") reports a match.
+func TestEmptyCredentialValueFailsClosed(t *testing.T) {
+	scheme := new(headerInboundScheme)
+	cfg := &integration.InboundAuthConfig{Params: map[string]string{"X-A": "", "X-B": "b"}}
+
+	// The caller presents the correct X-B and nothing for X-A (absent -> "").
+	req := inboundRequest(map[string]string{"x-b": "b"}, nil)
+
+	err := scheme.Verify(t.Context(), req, cfg)
+	require.Error(t, err, "An empty configured credential must not match an absent header")
+	assert.ErrorIs(t, err, ErrVerificationFailed, "The rejection is the uniform verification failure")
+}
+
 // TestHeaderInboundScheme tests the multi-pair credential header verification.
 func TestHeaderInboundScheme(t *testing.T) {
 	scheme := new(headerInboundScheme)

@@ -62,6 +62,7 @@ var Module = fx.Module(
 		NewJWTTokenGenerator,
 		NewOpaqueTokenGenerator,
 		newSessionStore,
+		newNonceStore,
 		newSessionPolicy,
 		newTokenGenerator,
 		security.NewJWTChallengeTokenStore,
@@ -181,6 +182,16 @@ func newStrengthValidator(policy config.PasswordPolicyConfig) security.PasswordV
 // fx.Decorate so sessions are shared across nodes.
 func newSessionStore() security.SessionStore {
 	return security.NewMemorySessionStore()
+}
+
+// newNonceStore provides the default in-memory replay-protection nonce store,
+// shared by every framework signature verifier (the API signature
+// authenticator and the integration inbound signature scheme). Multi-node
+// deployments override it with security.NewRedisNonceStore via fx.Decorate so
+// nonces are shared across nodes and a request cannot be replayed against a
+// second node inside the timestamp tolerance.
+func newNonceStore() security.NonceStore {
+	return security.NewMemoryNonceStore()
 }
 
 // newSessionPolicy resolves the opaque-token session behavior from config.

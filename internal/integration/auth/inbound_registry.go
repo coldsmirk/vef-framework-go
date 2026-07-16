@@ -1,8 +1,10 @@
 package auth
 
 import (
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/js"
+	"github.com/coldsmirk/vef-framework-go/security"
 )
 
 // InboundRegistry resolves inbound auth schemes by name: the built-in schemes
@@ -16,8 +18,8 @@ type InboundRegistry struct {
 // NewInboundRegistry builds the registry from the built-in schemes and the
 // application-provided overlays. The engine powers the built-in script
 // scheme's verification runtimes.
-func NewInboundRegistry(engine *js.Engine, appSchemes []integration.InboundAuthScheme) *InboundRegistry {
-	builtins := builtinInboundSchemes(engine)
+func NewInboundRegistry(engine *js.Engine, cfg *config.IntegrationConfig, nonceStore security.NonceStore, appSchemes []integration.InboundAuthScheme) *InboundRegistry {
+	builtins := builtinInboundSchemes(engine, cfg.EffectiveRunTimeout(), nonceStore)
 	schemes := make(map[string]integration.InboundAuthScheme, len(builtins)+len(appSchemes))
 
 	for _, scheme := range builtins {

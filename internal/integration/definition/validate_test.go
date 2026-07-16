@@ -86,7 +86,7 @@ func TestValidateSystem(t *testing.T) {
 	engine, err := js.NewEngine(js.WithoutStdLibs())
 	require.NoError(t, err, "Engine construction should succeed")
 
-	registry := auth.NewOutboundRegistry(engine, nil)
+	registry := auth.NewOutboundRegistry(engine, new(config.IntegrationConfig), nil)
 	codec := plainCodec(t)
 
 	tests := []struct {

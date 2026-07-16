@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
@@ -37,7 +38,7 @@ var ErrVerificationFailed = errors.New("integration inbound auth: verification f
 
 // builtinInboundSchemes returns the framework-provided inbound auth schemes.
 // The script scheme compiles verification bodies through its own cache.
-func builtinInboundSchemes(engine *js.Engine) []integration.InboundAuthScheme {
+func builtinInboundSchemes(engine *js.Engine, runTimeout time.Duration, nonceStore security.NonceStore) []integration.InboundAuthScheme {
 	return []integration.InboundAuthScheme{
 		new(noneInboundScheme),
 		new(ipInboundScheme),
@@ -45,8 +46,8 @@ func builtinInboundSchemes(engine *js.Engine) []integration.InboundAuthScheme {
 		new(bearerInboundScheme),
 		new(headerInboundScheme),
 		new(queryInboundScheme),
-		newSignatureInboundScheme(),
-		newScriptInboundScheme(engine),
+		newSignatureInboundScheme(nonceStore),
+		newScriptInboundScheme(engine, runTimeout),
 	}
 }
 
@@ -158,9 +159,23 @@ func (*queryInboundScheme) SensitiveParams() []string {
 // values, folding the outcomes so the timing does not reveal which pair
 // mismatched.
 func credentialPairsMatch(expected map[string]string, presented func(name string) string) bool {
+	if len(expected) == 0 {
+		return false
+	}
+
 	match := 1
 	for name, value := range expected {
-		match &= subtle.ConstantTimeCompare([]byte(value), []byte(presented(name)))
+		// An empty configured value must never authenticate: ConstantTimeCompare
+		// of two empty slices returns 1, so a blank credential would match an
+		// absent header — a fail-open in a fail-closed design. Fold in a
+		// non-empty requirement without short-circuiting the compare, so the
+		// timing stays independent of the caller's presented values.
+		nonEmpty := 0
+		if value != "" {
+			nonEmpty = 1
+		}
+
+		match &= nonEmpty & subtle.ConstantTimeCompare([]byte(value), []byte(presented(name)))
 	}
 
 	return match == 1
@@ -275,11 +290,20 @@ type signatureInboundScheme struct {
 	verifier *security.Signature
 }
 
-func newSignatureInboundScheme() *signatureInboundScheme {
+func newSignatureInboundScheme(nonceStore security.NonceStore) *signatureInboundScheme {
 	// The verifier always authenticates with the per-system secret via
 	// VerifyWithSecret; "00" is a syntactically valid placeholder that never
-	// computes an HMAC (mirroring the api signature authenticator).
-	verifier, err := security.NewSignature("00")
+	// computes an HMAC (mirroring the api signature authenticator). The nonce
+	// store is the framework-shared one, so replay protection holds across
+	// nodes once it is swapped for the Redis store. A nil store is left to
+	// NewSignature's in-memory default rather than passed through
+	// WithNonceStore(nil), which would disable replay protection.
+	var options []security.SignatureOption
+	if nonceStore != nil {
+		options = append(options, security.WithNonceStore(nonceStore))
+	}
+
+	verifier, err := security.NewSignature("00", options...)
 	if err != nil {
 		panic(err)
 	}
@@ -324,12 +348,17 @@ func (*signatureInboundScheme) SensitiveParams() []string {
 // access is granted by returning a truthy value, and script errors stay
 // server-side.
 type scriptInboundScheme struct {
-	engine   *js.Engine
-	programs *definition.ProgramCache
+	engine     *js.Engine
+	programs   *definition.ProgramCache
+	runTimeout time.Duration
 }
 
-func newScriptInboundScheme(engine *js.Engine) *scriptInboundScheme {
-	return &scriptInboundScheme{engine: engine, programs: definition.NewProgramCache(definition.CompileScript)}
+func newScriptInboundScheme(engine *js.Engine, runTimeout time.Duration) *scriptInboundScheme {
+	return &scriptInboundScheme{
+		engine:     engine,
+		programs:   definition.NewProgramCache(definition.CompileScript),
+		runTimeout: runTimeout,
+	}
 }
 
 func (*scriptInboundScheme) Name() string {
@@ -346,7 +375,7 @@ func (s *scriptInboundScheme) Verify(ctx context.Context, req *integration.Inbou
 		return err
 	}
 
-	runtime, err := s.engine.NewRuntime()
+	runtime, err := s.engine.NewRuntime(js.WithRunTimeout(s.runTimeout))
 	if err != nil {
 		return err
 	}

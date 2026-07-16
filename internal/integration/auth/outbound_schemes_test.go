@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/hashx"
 	"github.com/coldsmirk/vef-framework-go/httpx"
 	"github.com/coldsmirk/vef-framework-go/integration"
@@ -31,7 +32,7 @@ func newTestEngine(t *testing.T) *js.Engine {
 func newTestRegistry(t *testing.T) *OutboundRegistry {
 	t.Helper()
 
-	return NewOutboundRegistry(newTestEngine(t), nil)
+	return NewOutboundRegistry(newTestEngine(t), new(config.IntegrationConfig), nil)
 }
 
 // applyScheme runs one request through a client configured by the scheme and
@@ -250,24 +251,24 @@ func TestRegistry(t *testing.T) {
 	engine := newTestEngine(t)
 
 	t.Run("ResolveNilAuthYieldsNone", func(t *testing.T) {
-		scheme, ok := NewOutboundRegistry(engine, nil).Resolve(nil)
+		scheme, ok := NewOutboundRegistry(engine, new(config.IntegrationConfig), nil).Resolve(nil)
 		require.True(t, ok, "Nil auth should resolve")
 		assert.Equal(t, OutboundSchemeNone, scheme.Name(), "Nil auth should resolve to the none scheme")
 	})
 
 	t.Run("ResolveEmptySchemeYieldsNone", func(t *testing.T) {
-		scheme, ok := NewOutboundRegistry(engine, nil).Resolve(&integration.OutboundAuthConfig{})
+		scheme, ok := NewOutboundRegistry(engine, new(config.IntegrationConfig), nil).Resolve(&integration.OutboundAuthConfig{})
 		require.True(t, ok, "Empty scheme should resolve")
 		assert.Equal(t, OutboundSchemeNone, scheme.Name(), "Empty scheme should resolve to the none scheme")
 	})
 
 	t.Run("UnknownSchemeReportsNotOK", func(t *testing.T) {
-		_, ok := NewOutboundRegistry(engine, nil).Resolve(&integration.OutboundAuthConfig{Scheme: "kerberos"})
+		_, ok := NewOutboundRegistry(engine, new(config.IntegrationConfig), nil).Resolve(&integration.OutboundAuthConfig{Scheme: "kerberos"})
 		assert.False(t, ok, "Unknown scheme should not resolve")
 	})
 
 	t.Run("ApplicationSchemeOverridesBuiltin", func(t *testing.T) {
-		registry := NewOutboundRegistry(engine, []integration.OutboundAuthScheme{new(OverrideScheme)})
+		registry := NewOutboundRegistry(engine, new(config.IntegrationConfig), []integration.OutboundAuthScheme{new(OverrideScheme)})
 
 		scheme, ok := registry.Get(OutboundSchemeBearer)
 		require.True(t, ok, "Overridden scheme should stay registered")
