@@ -121,7 +121,7 @@ func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string)
 	var flowNodes []approval.FlowNode
 	if err := db.NewSelect().Model(&flowNodes).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("flow_version_id", instance.FlowVersionID) }).
-		OrderBy("created_at").
+		OrderBy("created_at", "id").
 		Scan(ctx); err != nil {
 		return nil, fmt.Errorf("query flow nodes: %w", err)
 	}
