@@ -130,6 +130,11 @@ func (c *DataSourceConfig) ToConfig() config.DataSourceConfig {
 // the stored value unchanged.
 const MaskedSecret = "******"
 
+// SensitiveAll is the SensitiveParams wildcard marking every parameter of a
+// scheme sensitive, for schemes whose parameter names are not known
+// statically (the built-in "script" scheme uses it).
+const SensitiveAll = "*"
+
 // OutboundAuthConfig selects the OutboundAuthScheme authenticating a system's
 // outbound calls and carries its parameters. Values of the parameters named
 // by the scheme's SensitiveParams are stored encrypted and masked in
