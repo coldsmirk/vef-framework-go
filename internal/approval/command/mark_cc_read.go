@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -9,6 +10,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
@@ -43,10 +45,14 @@ func (h *MarkCCReadHandler) Handle(ctx context.Context, cmd MarkCCReadCmd) (cqrs
 
 	instance.ID = cmd.InstanceID
 	if err := db.NewSelect().Model(&instance).Select("tenant_id").WherePK().Scan(ctx); err != nil {
-		// Every load failure — not-found and infrastructure errors alike —
-		// collapses into the opaque zero-records success, so a probe cannot
-		// learn whether the instance exists.
-		return cqrs.Unit{}, nil //nolint:nilerr // tenant isolation requires opaque response
+		// A missing instance collapses into the opaque zero-records success,
+		// so a probe cannot learn whether the instance exists. Opacity only
+		// requires hiding not-found — infrastructure failures propagate.
+		if errors.Is(err, result.ErrRecordNotFound) {
+			return cqrs.Unit{}, nil
+		}
+
+		return cqrs.Unit{}, fmt.Errorf("load instance tenant: %w", err)
 	}
 
 	if !cmd.Caller.Allows(instance.TenantID) {
