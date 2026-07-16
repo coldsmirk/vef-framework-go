@@ -537,15 +537,16 @@ func (s *GetMyInstanceDetailTestSuite) TestViewerTaskContext() {
 	s.Require().NoError(err, "Should insert prior node")
 
 	currentNode := &approval.FlowNode{
-		FlowVersionID:        baseInstance.FlowVersionID,
-		Key:                  "vt-current",
-		Kind:                 approval.NodeApproval,
-		Name:                 "Current Node",
-		IsOpinionRequired:    true,
-		IsAddAssigneeAllowed: true,
-		AddAssigneeTypes:     []approval.AddAssigneeType{approval.AddAssigneeBefore, approval.AddAssigneeParallel},
-		IsRollbackAllowed:    true,
-		RollbackType:         approval.RollbackAny,
+		FlowVersionID:           baseInstance.FlowVersionID,
+		Key:                     "vt-current",
+		Kind:                    approval.NodeApproval,
+		Name:                    "Current Node",
+		IsOpinionRequired:       true,
+		IsAddAssigneeAllowed:    true,
+		AddAssigneeTypes:        []approval.AddAssigneeType{approval.AddAssigneeBefore, approval.AddAssigneeParallel},
+		IsRollbackAllowed:       true,
+		RollbackType:            approval.RollbackAny,
+		IsRemoveAssigneeAllowed: true,
 	}
 	_, err = s.db.NewInsert().Model(currentNode).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert current node")
@@ -564,23 +565,56 @@ func (s *GetMyInstanceDetailTestSuite) TestViewerTaskContext() {
 	s.Require().NoError(err, "Should insert viewer-task instance")
 
 	// The concluded traversal of the prior node, then the active one.
-	_, err = s.db.NewInsert().Model(&approval.NodeVisit{
+	priorVisit := &approval.NodeVisit{
 		TenantID: inst.TenantID, InstanceID: inst.ID, NodeID: priorNode.ID,
 		Sequence: 1, Status: approval.NodeVisitPassed,
-	}).Exec(s.ctx)
+	}
+	_, err = s.db.NewInsert().Model(priorVisit).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert concluded prior visit")
+
+	activeVisitID := ensureActiveVisit(s.T(), s.ctx, s.db, inst.TenantID, inst.ID, currentNode.ID).ID
 
 	task := &approval.Task{
 		TenantID:   inst.TenantID,
 		InstanceID: inst.ID,
 		NodeID:     currentNode.ID,
-		VisitID:    ensureActiveVisit(s.T(), s.ctx, s.db, inst.TenantID, inst.ID, currentNode.ID).ID,
+		VisitID:    activeVisitID,
 		AssigneeID: "user-vt",
 		SortOrder:  1,
 		Status:     approval.TaskPending,
 	}
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert pending task")
+
+	// Peers across statuses and visits: the pending and waiting peers of the
+	// active visit are removable; the finished peer and the pending leftover
+	// from the concluded prior visit are not.
+	peers := []approval.Task{
+		{
+			TenantID: inst.TenantID, InstanceID: inst.ID, NodeID: currentNode.ID,
+			VisitID: activeVisitID, AssigneeID: "user-vt-peer", AssigneeName: "Peer",
+			SortOrder: 2, Status: approval.TaskPending,
+		},
+		{
+			TenantID: inst.TenantID, InstanceID: inst.ID, NodeID: currentNode.ID,
+			VisitID: activeVisitID, AssigneeID: "user-vt-queued", AssigneeName: "Queued",
+			SortOrder: 3, Status: approval.TaskWaiting,
+		},
+		{
+			TenantID: inst.TenantID, InstanceID: inst.ID, NodeID: currentNode.ID,
+			VisitID: activeVisitID, AssigneeID: "user-vt-done", AssigneeName: "Done",
+			SortOrder: 4, Status: approval.TaskApproved,
+		},
+		{
+			TenantID: inst.TenantID, InstanceID: inst.ID, NodeID: priorNode.ID,
+			VisitID: priorVisit.ID, AssigneeID: "user-vt-stale", AssigneeName: "Stale",
+			SortOrder: 5, Status: approval.TaskPending,
+		},
+	}
+	for i := range peers {
+		_, err = s.db.NewInsert().Model(&peers[i]).Exec(s.ctx)
+		s.Require().NoError(err, "Should insert peer task")
+	}
 
 	s.Run("PackagesNodeConfig", func() {
 		detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
@@ -609,6 +643,30 @@ func (s *GetMyInstanceDetailTestSuite) TestViewerTaskContext() {
 		s.Require().Len(detail.MyTask.RollbackTargets, 1, "Only the concluded prior node should be offered")
 		s.Assert().Equal(priorNode.ID, detail.MyTask.RollbackTargets[0].NodeID, "Rollback target should be the traversed prior node")
 		s.Assert().Equal("Prior Node", detail.MyTask.RollbackTargets[0].Name, "Rollback target should carry the node name")
+	})
+
+	s.Run("RemovableAssigneesFollowVisitAndStatus", func() {
+		detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
+			InstanceID: inst.ID,
+			UserID:     "user-vt",
+		})
+		s.Require().NoError(err, "Assignee should load the detail")
+		s.Require().NotNil(detail.MyTask, "Pending assignee should get a viewer task context")
+		s.Assert().Contains(detail.AvailableActions, "remove_assignee", "Node toggle should offer the remove action")
+
+		s.Require().Len(detail.MyTask.RemovableAssignees, 2, "Only still-actionable peers of the active visit are removable")
+
+		statusByAssignee := make(map[string]string, len(detail.MyTask.RemovableAssignees))
+		for _, removable := range detail.MyTask.RemovableAssignees {
+			s.Assert().NotEmpty(removable.TaskID, "Removable entry should carry the peer task id")
+			statusByAssignee[removable.Assignee.ID] = removable.Status
+		}
+
+		s.Assert().Equal(string(approval.TaskPending), statusByAssignee["user-vt-peer"], "Pending peer should be removable")
+		s.Assert().Equal(string(approval.TaskWaiting), statusByAssignee["user-vt-queued"], "Waiting peer should be removable")
+		s.Assert().NotContains(statusByAssignee, "user-vt", "The viewer's own task is never offered")
+		s.Assert().NotContains(statusByAssignee, "user-vt-done", "A finished peer is not removable")
+		s.Assert().NotContains(statusByAssignee, "user-vt-stale", "A leftover task from a concluded visit is not removable")
 	})
 
 	s.Run("NilWithoutPendingTask", func() {

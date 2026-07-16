@@ -164,6 +164,10 @@ func (*GetMyInstanceDetailHandler) computeActions(
 			actions.Add("add_assignee")
 		}
 
+		if node.IsRemoveAssigneeAllowed {
+			actions.Add("remove_assignee")
+		}
+
 		if node.IsManualCCAllowed {
 			actions.Add("add_cc")
 		}
@@ -229,7 +233,39 @@ func buildViewerTask(bundle *instanceDetailBundle, userID string) *my.ViewerTask
 		viewer.RollbackTargets = resolveRollbackTargets(bundle, node)
 	}
 
+	if node.IsRemoveAssigneeAllowed {
+		viewer.RemovableAssignees = resolveRemovableAssignees(bundle.Tasks, task)
+	}
+
 	return viewer
+}
+
+// resolveRemovableAssignees mirrors the remove-assignee command's target
+// eligibility over the already-loaded detail bundle: still-actionable peers
+// (pending / waiting) of the viewer's own visit. The viewer's task is excluded
+// — with it staying actionable, every listed peer also passes the command's
+// last-assignee simulation.
+func resolveRemovableAssignees(tasks []approval.Task, own *approval.Task) []my.RemovableAssignee {
+	var removable []my.RemovableAssignee
+
+	for i := range tasks {
+		task := &tasks[i]
+		if task.ID == own.ID || task.VisitID != own.VisitID {
+			continue
+		}
+
+		if task.Status != approval.TaskPending && task.Status != approval.TaskWaiting {
+			continue
+		}
+
+		removable = append(removable, my.RemovableAssignee{
+			TaskID:   task.ID,
+			Assignee: task.Assignee(),
+			Status:   string(task.Status),
+		})
+	}
+
+	return removable
 }
 
 // resolveRollbackTargets mirrors ValidationService.ValidateRollbackTarget over

@@ -47,12 +47,25 @@ type ViewerTask struct {
 	// node's rollback config and the instance's visit trail exactly like the
 	// rollback command validates them; empty when rollback is not allowed.
 	RollbackTargets []RollbackTarget `json:"rollbackTargets,omitempty"`
+	// RemovableAssignees are the peer tasks the viewer may remove, resolved
+	// exactly like the remove-assignee command authorizes them: still-actionable
+	// peers of the viewer's own visit, excluding the viewer; empty when the
+	// node disallows removal.
+	RemovableAssignees []RemovableAssignee `json:"removableAssignees,omitempty"`
 }
 
 // RollbackTarget is one valid rollback destination.
 type RollbackTarget struct {
 	NodeID string `json:"nodeId"`
 	Name   string `json:"name"`
+}
+
+// RemovableAssignee is one peer task eligible for removal.
+type RemovableAssignee struct {
+	TaskID   string            `json:"taskId"`
+	Assignee approval.UserInfo `json:"assignee"`
+	// Status is the peer task's status verbatim (pending / waiting).
+	Status string `json:"status"`
 }
 
 // InstanceInfo holds the instance's runtime state within a detail view.
