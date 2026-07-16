@@ -273,8 +273,8 @@ func (r *FlowResource) FindFlows(ctx fiber.Ctx, principal *security.Principal, p
 	return result.Ok(res).Response(ctx)
 }
 
-// UpdateParams contains the parameters for updating a flow.
-type UpdateParams struct {
+// UpdateFlowParams contains the parameters for updating a flow.
+type UpdateFlowParams struct {
 	api.P
 
 	FlowID                 string                          `json:"flowId" validate:"required"`
@@ -291,7 +291,7 @@ type UpdateParams struct {
 }
 
 // Update updates an existing flow.
-func (r *FlowResource) Update(ctx fiber.Ctx, principal *security.Principal, params UpdateParams) error {
+func (r *FlowResource) Update(ctx fiber.Ctx, principal *security.Principal, params UpdateFlowParams) error {
 	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
