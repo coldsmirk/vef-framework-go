@@ -10,10 +10,11 @@ import (
 type LogSearch struct {
 	crud.Sortable
 
-	SystemCode   string `json:"systemCode" search:"eq,column=system_code"`
-	ContractCode string `json:"contractCode" search:"eq,column=contract_code"`
-	FailureKind  string `json:"failureKind" search:"eq,column=failure_kind"`
-	RequestID    string `json:"requestId" search:"eq,column=request_id"`
+	SystemCode   string                `json:"systemCode" search:"eq,column=system_code"`
+	ContractCode string                `json:"contractCode" search:"eq,column=contract_code"`
+	Direction    integration.Direction `json:"direction" search:"eq,column=direction"`
+	FailureKind  string                `json:"failureKind" search:"eq,column=failure_kind"`
+	RequestID    string                `json:"requestId" search:"eq,column=request_id"`
 }
 
 // LogResource exposes the invocation log read-only: the page view for
