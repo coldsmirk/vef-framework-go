@@ -95,7 +95,15 @@ func (g *HTTPGateway) handle(ctx fiber.Ctx) error {
 		return callerStatus(err)
 	}
 
-	return renderReply(ctx, reply)
+	// A render fault (a script that returned a malformed $response envelope)
+	// is a business error riding HTTP 200; route it through callerStatus too,
+	// so an external caller sees a 500, not a 200 carrying an error body it
+	// would read as a successful delivery.
+	if err := renderReply(ctx, reply); err != nil {
+		return callerStatus(err)
+	}
+
+	return nil
 }
 
 // callerStatus maps a pipeline failure onto an HTTP status an external
