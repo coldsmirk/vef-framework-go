@@ -2,21 +2,22 @@ package shared
 
 // Error codes for the approval module (40xxx range).
 const (
-	ErrCodeFlowNotFound                = 40001
-	ErrCodeFlowNotActive               = 40002
-	ErrCodeNoPublishedVersion          = 40003
-	ErrCodeVersionNotDraft             = 40004
-	ErrCodeInvalidFlowDesign           = 40005
-	ErrCodeFlowCodeExists              = 40006
-	ErrCodeVersionNotFound             = 40007
-	ErrCodeInvalidBusinessIdentifier   = 40008
-	ErrCodeInvalidTitleTemplate        = 40009
-	ErrCodeInvalidFormDesign           = 40010
-	ErrCodeBindingIncomplete           = 40011
-	ErrCodeInvalidBindingMode          = 40012
-	ErrCodeInvalidInitiatorKind        = 40013
-	ErrCodeInvalidStorageMode          = 40014
-	ErrCodeFlowBindingLocked           = 40015
+	ErrCodeFlowNotFound              = 40001
+	ErrCodeFlowNotActive             = 40002
+	ErrCodeNoPublishedVersion        = 40003
+	ErrCodeVersionNotDraft           = 40004
+	ErrCodeInvalidFlowDesign         = 40005
+	ErrCodeFlowCodeExists            = 40006
+	ErrCodeVersionNotFound           = 40007
+	ErrCodeInvalidBusinessIdentifier = 40008
+	ErrCodeInvalidTitleTemplate      = 40009
+	ErrCodeInvalidFormDesign         = 40010
+	ErrCodeBindingIncomplete         = 40011
+	ErrCodeInvalidBindingMode        = 40012
+	ErrCodeInvalidInitiatorKind      = 40013
+	ErrCodeInvalidStorageMode        = 40014
+	// 40015 is retired (former flow-binding lock); do not reassign it, the
+	// React side keys messages by code.
 	ErrCodeBindingColumnsConflict      = 40016
 	ErrCodeBindingUnexpected           = 40017
 	ErrCodeBindingSchemaInvalid        = 40018

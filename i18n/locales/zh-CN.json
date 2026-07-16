@@ -138,7 +138,6 @@
   "approval_invalid_binding_mode": "无效的流程绑定模式",
   "approval_invalid_initiator_kind": "无效的发起人类型",
   "approval_invalid_storage_mode": "存储模式不合法，必须为 json 或 table",
-  "approval_flow_binding_locked": "流程存在进行中的实例，无法修改业务绑定配置",
   "approval_binding_columns_conflict": "业务绑定的键列和写回列必须互不重复",
   "approval_binding_unexpected": "独立流程不能配置业务绑定",
   "approval_binding_schema_invalid": "业务绑定配置的表或列不存在",

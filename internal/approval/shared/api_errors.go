@@ -52,10 +52,6 @@ var (
 	// drives whether a dedicated physical form table is generated at publish,
 	// so an unrecognized value must be caught when the version is created.
 	ErrInvalidStorageMode = result.Err(i18n.T("approval_invalid_storage_mode"), result.WithCode(ErrCodeInvalidStorageMode))
-	// ErrFlowBindingLocked is retained as a stable error surface for older
-	// consumers. Version-pinned binding snapshots mean current flow commands no
-	// longer return it when a mutable flow binding changes.
-	ErrFlowBindingLocked = result.Err(i18n.T("approval_flow_binding_locked"), result.WithCode(ErrCodeFlowBindingLocked))
 	// ErrBindingColumnsConflict rejects duplicate key/write-back columns, which
 	// could otherwise mutate the lookup key or assign one column twice.
 	ErrBindingColumnsConflict = result.Err(i18n.T("approval_binding_columns_conflict"), result.WithCode(ErrCodeBindingColumnsConflict))
