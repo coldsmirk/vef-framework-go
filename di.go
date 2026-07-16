@@ -102,7 +102,7 @@ func ProvideMiddleware(constructor any, paramTags ...string) fx.Option {
 // ProvideAuthStrategy provides a custom API authentication strategy to the
 // dependency injection container. The strategy will be registered in the
 // "vef:api:auth_strategies" group and is selected per resource through
-// api.OutboundAuthConfig.Strategy by the name it reports from Name().
+// api.AuthConfig.Strategy by the name it reports from Name().
 // The constructor must return api.AuthStrategy (not a concrete type).
 //
 // Example:
