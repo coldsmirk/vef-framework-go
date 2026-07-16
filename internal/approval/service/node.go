@@ -39,9 +39,12 @@ func NewNodeService(
 	}
 }
 
-// HandleNodeCompletion evaluates node completion and handles the result.
-// On PassRulePassed: advances to the next node and cancels remaining tasks.
-// On PassRuleRejected: marks instance as rejected, cancels remaining tasks, and resumes parent flow.
+// HandleNodeCompletion evaluates the node's pass rule and settles the outcome.
+// Both outcomes trigger completion-timing CC, cancel the remaining tasks, and
+// conclude the open node visit; PassRulePassed then advances to the next node
+// while PassRuleRejected finishes the instance as rejected. A pending result is
+// a no-op. The returned events (task cancellations, plus the completion event
+// on rejection) are handed to the caller's own event flow.
 //
 // This method persists status transitions and engine-driven node changes in the
 // caller's transaction while keeping the supplied instance in sync.

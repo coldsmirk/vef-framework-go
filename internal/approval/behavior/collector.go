@@ -70,8 +70,8 @@ func installCollector[T any](ctx context.Context) (context.Context, *Collector[T
 // TryCollectorFromContext returns the request-scoped Collector[T] if one is
 // installed, else (nil, false). Use this when the absence of the collector
 // should not produce a warning — for example, engine helpers that must
-// fall back to direct bus.Publish when invoked from a cron or saga outside
-// the CQRS pipeline.
+// fall back to a direct transactional publish when invoked outside the CQRS
+// pipeline (the timeout scanner driving the engine).
 func TryCollectorFromContext[T any](ctx context.Context) (*Collector[T], bool) {
 	c, ok := ctx.Value(collectorKey[T]{}).(*Collector[T])
 

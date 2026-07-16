@@ -21,9 +21,11 @@ func (*FlowDefinitionService) ValidateFormFields(fields []approval.FormFieldDefi
 	keys := collections.NewHashSetWithCapacity[string](len(fields))
 
 	for _, field := range fields {
-		// TrimSpace, not == "": a whitespace-only key survives to publish and the
-		// storage DDL sanitizes it to an empty identifier, exploding as a bare SQL
-		// syntax error instead of a form-design rejection here.
+		// TrimSpace, not == "": a whitespace-only key is as unusable as an empty
+		// one — it sanitizes to an empty storage identifier, which only the
+		// table-mode identifier checks would catch (as an opaque generated-
+		// identifier fault) — so reject it here as a clear form-design error for
+		// every storage mode.
 		if strings.TrimSpace(field.Key) == "" {
 			return errFormFieldKeyEmpty
 		}

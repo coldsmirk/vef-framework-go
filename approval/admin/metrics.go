@@ -20,8 +20,9 @@ type Metrics struct {
 	// TimeoutTaskCount is the number of pending tasks past their deadline.
 	TimeoutTaskCount int `json:"timeoutTaskCount"`
 	// AvgCompletionSeconds is the average end-to-end duration (created_at →
-	// finished_at) for instances that reached a final status in the
-	// reporting window. -1 indicates "no completed instances yet".
+	// finished_at) over every instance that has reached a final status
+	// within the snapshot's tenant scope. -1 indicates "no completed
+	// instances yet".
 	AvgCompletionSeconds float64 `json:"avgCompletionSeconds"`
 	// PendingBindingFailures is the number of projection targets whose latest
 	// write attempt failed and is scheduled for retry.

@@ -23,7 +23,7 @@ const physicalTablePrefix = "apv_form_"
 
 // reservedColumns are the columns the generator always emits regardless of the
 // form schema. A form field whose key collides with one of these is rejected
-// at generation time rather than silently shadowing the built-in column.
+// rather than silently shadowing the built-in column.
 var reservedColumns = map[string]struct{}{
 	"id":          {},
 	"instance_id": {},
@@ -49,9 +49,10 @@ type columnSpec struct {
 }
 
 // tableSpec is one resolved physical table: the main projection table
-// (SourceFieldKey == "") or one child table per detail-table field. All
-// generation paths — CREATE TABLE, metadata registration, row writes —
-// consume the same specs, so the three can never disagree on identifiers.
+// (SourceFieldKey == "") or one child table per detail-table field. Both
+// generation paths — CREATE TABLE and metadata registration — consume the
+// same specs, so the physical table and its recorded metadata can never
+// disagree on identifiers; row writes then read that metadata.
 type tableSpec struct {
 	Name           string
 	SourceFieldKey string
@@ -355,14 +356,6 @@ func childTableSuffix(fieldKey string) string {
 	return suffix
 }
 
-// renderCreateTable builds the CREATE TABLE statement for the resolved column
-// specs. tableName and every column name are already validated identifiers
-// (buildPhysicalTableName / buildColumnSpecs), so interpolating them with
-// fmt.Sprintf is safe; no caller data reaches this string. instance_id carries
-// an inline UNIQUE constraint, which every dialect backs with an automatically
-// named implicit index — enforcing one row per instance and serving instance_id
-// lookups without a separately-named (and potentially truncation-colliding)
-// index.
 // renderTableStatements renders every DDL statement one physical table
 // needs: the CREATE TABLE plus, for child tables on dialects without inline
 // index syntax, the instance_id lookup index. All statements are idempotent
@@ -399,6 +392,16 @@ func childIndexName(tableName string) string {
 	return base + suffix
 }
 
+// renderCreateTable builds the CREATE TABLE statement for one resolved table
+// spec. The table name and every column name are validated with
+// approval.ValidateBusinessIdentifier before interpolation, so no caller data
+// reaches the fmt.Sprintf string. The main table's instance_id carries an
+// inline UNIQUE constraint, which every dialect backs with an automatically
+// named implicit index — enforcing one row per instance and serving
+// instance_id lookups without a separately-named (and potentially
+// truncation-colliding) index. A child table's instance_id is plain NOT NULL
+// (many rows per instance); its lookup index is inlined here for MySQL and
+// added as a separate statement by renderTableStatements elsewhere.
 func renderCreateTable(kind config.DBKind, table tableSpec) (string, error) {
 	if err := approval.ValidateBusinessIdentifier(table.Name); err != nil {
 		return "", fmt.Errorf("%w: %q: %w", ErrInvalidGeneratedIdentifier, table.Name, err)

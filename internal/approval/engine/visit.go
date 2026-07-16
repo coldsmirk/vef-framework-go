@@ -14,10 +14,11 @@ import (
 // apv_node_visit row whose Sequence is the next step number within the
 // instance. Every ProcessNode call — initial start, advance, rollback
 // re-entry — begins exactly one visit; the row is concluded by whichever path
-// decides the node's outcome (handleProcessResult for auto-advancing nodes,
-// HandleNodeCompletion for human task nodes, the rollback / withdraw /
-// terminate / CC-read paths for the rest). Callers hold the instance row lock,
-// which serializes the count-then-insert against concurrent visits.
+// decides the node's outcome (handleProcessResult for continue/complete
+// outcomes, HandleNodeCompletion for human task nodes, the rollback /
+// withdraw / terminate / CC-read paths for the rest). Callers hold the
+// instance row lock, which serializes the count-then-insert against
+// concurrent visits.
 func beginNodeVisit(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode) (*approval.NodeVisit, error) {
 	count, err := db.NewSelect().
 		Model((*approval.NodeVisit)(nil)).

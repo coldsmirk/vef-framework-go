@@ -88,11 +88,11 @@ func (c *FlowCache) Get(ctx context.Context, versionID string) (*CompiledFlow, e
 	})
 }
 
-// Invalidate evicts the cached compilation for a version. Called by
-// publish_version when superseding a previously-published version (its
-// status flips to archived, but in-flight instances keep their own
-// FlowVersionID so no eviction is strictly required for them — the entry
-// just becomes a one-off historical reference).
+// Invalidate evicts the cached compilation for a version. publish_version
+// calls it for each version it archives and, defensively, for the newly
+// published one (in-flight instances keep their own FlowVersionID, so no
+// eviction is strictly required for archived versions — the entry just
+// becomes a one-off historical reference).
 func (c *FlowCache) Invalidate(ctx context.Context, versionID string) error {
 	return c.cache.Delete(ctx, versionID)
 }

@@ -8,9 +8,9 @@ import (
 )
 
 // JSONStorage is the StorageJSON strategy. Form data lives solely in
-// apv_instance.form_data (JSONB), which the start/resubmit handlers already
-// write, so both lifecycle hooks are no-ops. It exists so the Dispatcher can
-// treat JSON and Table uniformly.
+// apv_instance.form_data (JSONB), which every form-writing command handler
+// already persists, so all three strategy methods are no-ops. It exists so the
+// Dispatcher can treat JSON and Table uniformly.
 type JSONStorage struct{}
 
 // NewJSONStorage constructs a JSONStorage.

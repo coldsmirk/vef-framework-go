@@ -10,8 +10,8 @@ import (
 // the parsed node data against the version's parsed form fields: the subject
 // must name a table field and, for column-folding aggregates, the column must
 // exist in that table and be a number field. The structural per-condition
-// rules (known aggregate, operator whitelist, column presence contract) live
-// in validateCondition; this pass adds what only the form fields and the
+// rules (operator whitelist, column presence contract) live in
+// validateCondition; this pass adds what only the form fields and the
 // boot-registered aggregator set can answer, so it runs at deploy — the one
 // place they all meet.
 //

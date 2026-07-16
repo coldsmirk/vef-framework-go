@@ -44,11 +44,6 @@ func NewFlowDefinitionService(aggregateKinds ...approval.AggregateKind) *FlowDef
 	return &FlowDefinitionService{aggregateKinds: kinds}
 }
 
-// ValidateFlowDefinition validates the structural integrity of a flow
-// definition and returns the parsed node data keyed by node ID, so callers
-// (deploy) persist exactly the configuration that passed validation instead
-// of re-parsing the raw JSON a second time.
-//
 // nodeScan holds the Phase 1 node-validation outputs that the later edge,
 // degree, and topology phases consume. Carrying them in one struct (rather
 // than a wide return list) keeps each phase helper within revive's
@@ -73,9 +68,9 @@ type edgeScan struct {
 
 // ValidateFlowDefinition validates a flow graph and returns the parsed node
 // data (which deploy persists verbatim — it is never re-parsed). It runs four
-// independent phases — node validation, edge/adjacency, degree constraints,
-// topology — each extracted into a focused helper that the orchestrator below
-// sequences.
+// phases in sequence — node validation, edge/adjacency, degree constraints,
+// topology — each extracted into a focused helper; later phases consume the
+// scan state earlier ones produce.
 func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinition) (map[string]approval.NodeData, error) {
 	if len(def.Nodes) == 0 {
 		return nil, errNoNodes

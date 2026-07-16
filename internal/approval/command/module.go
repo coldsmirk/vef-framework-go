@@ -23,7 +23,7 @@ var Module = fx.Module(
 		NewRejectTaskHandler,
 		NewTransferTaskHandler,
 		NewRollbackTaskHandler,
-		// Commands — Instance lifecycle
+		// Commands — Instance lifecycle & runtime operations
 		NewStartInstanceHandler,
 		NewWithdrawInstanceHandler,
 		NewResubmitInstanceHandler,
@@ -77,7 +77,7 @@ func registerHandlers(
 	cqrs.Register(bus, transferTask)
 	cqrs.Register(bus, rollbackTask)
 
-	// Commands — Instance lifecycle
+	// Commands — Instance lifecycle & runtime operations
 	cqrs.Register(bus, startInstance)
 	cqrs.Register(bus, withdraw)
 	cqrs.Register(bus, resubmit)

@@ -12,10 +12,11 @@ import (
 	"github.com/coldsmirk/vef-framework-go/result"
 )
 
-// InstanceService is the single write-side entry point for instance status
-// transitions. Every status change (approve / reject / withdraw / rollback /
-// resubmit / terminate / engine-driven completion) must go through Transition
-// so that state-machine validation, the optimistic-lock UPDATE, and the
+// InstanceService is the command layer's write-side entry point for instance
+// status transitions, wrapping engine.ApplyInstanceTransitionWithHooks (the
+// single write-side primitive, which engine-internal paths call directly).
+// Every status change must funnel through that primitive so that
+// state-machine validation, the optimistic-lock UPDATE, and the
 // host-registered lifecycle hooks fire together. Direct UPDATE statements
 // against apv_instance.status are a bug.
 type InstanceService struct {
@@ -36,11 +37,12 @@ func NewInstanceService(hooks *engine.LifecycleHookRunner) *InstanceService {
 // as ErrInstanceNotFound — the same response shape as "no such instance"
 // — so the API never reveals existence across tenants.
 //
-// caller may be a zero CallerContext (system-internal call, test fixtures);
-// in that case Authorize is permissive and tenant enforcement is skipped.
-// Production resource paths always populate it; making the parameter
-// mandatory means "any tenant-scoped load goes through this guard" is a
-// compile-time invariant, not a code-review hope.
+// caller follows the fail-closed CallerContext contract: a zero value is
+// denied, and only super-admin / system-internal callers (test fixtures use
+// approval.SystemCaller) bypass tenant enforcement. Production resource
+// paths always populate it; making the parameter mandatory means "any
+// tenant-scoped load goes through this guard" is a compile-time invariant,
+// not a code-review hope.
 func (*InstanceService) LoadForUpdate(
 	ctx context.Context,
 	db orm.DB,
@@ -75,7 +77,7 @@ func (*InstanceService) LoadForUpdate(
 // same UPDATE / Transition that writes current_node_id.
 //
 //   - RollbackDataKeep: restore the form snapshot captured when the target
-//     node was first entered, so the applicant resumes from that node's state.
+//     node was entered, so the redo round resumes from that node's state.
 //   - RollbackDataClear: wipe the form data so the flow restarts with a clean
 //     form. (nullzero on Instance.FormData persists the nil map as NULL.)
 //   - default (including unset): leave the current form data untouched.

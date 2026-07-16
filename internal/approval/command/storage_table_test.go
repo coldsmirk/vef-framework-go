@@ -293,7 +293,7 @@ func (s *StorageTableTestSuite) TestResubmitReplacesProjectionRow() {
 // filled date round-trips, and an OPTIONAL empty-string date must not fail the
 // INSERT. The widgets override the parser's DATE inference with an explicit
 // "text" column type, pinning the lossless TEXT projection (a temporal column
-// would reject ” on strict dialects and scan back dialect-dependently).
+// would reject "" on strict dialects and scan back dialect-dependently).
 func (s *StorageTableTestSuite) TestStartInstanceProjectsDateField() {
 	schema := formEditorSchemaJSON(s.T(),
 		formEditorWidget{Type: "date", Key: "event_date", Label: "Event Date", ColumnType: "text"},

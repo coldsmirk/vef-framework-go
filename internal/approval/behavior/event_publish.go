@@ -47,8 +47,8 @@ func PublishEventsTx(ctx context.Context, bus event.Bus, db orm.DB, events ...ap
 }
 
 // NewEventPublishBehavior buffers domain events produced by a command
-// handler and publishes them, in registration order, after the handler
-// succeeds. Publishing runs inside the surrounding transaction so the
+// handler and publishes them, in the order the handler added them, after the
+// handler succeeds. Publishing runs inside the surrounding transaction so the
 // framework's event Bus can enroll via event.WithTx(db); each event also
 // projects its payload OccurredTime onto Envelope.OccurredAt so downstream
 // consumers see business time rather than publish time.
@@ -75,7 +75,8 @@ func EventCollectorFromContext(ctx context.Context) *EventCollector {
 }
 
 // TryEventCollectorFromContext returns the collector silently when missing,
-// for callers (engine helpers, saga drivers) that have a sensible fallback.
+// for callers (the engine and node-service publish paths) that fall back to
+// a direct transactional publish.
 func TryEventCollectorFromContext(ctx context.Context) (*EventCollector, bool) {
 	return TryCollectorFromContext[approval.DomainEvent](ctx)
 }

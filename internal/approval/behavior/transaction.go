@@ -25,8 +25,8 @@ func (*TransactionBehavior) Order() int { return 0 }
 
 // Handle wraps command actions in a database transaction. Query actions pass
 // through unchanged. If a parent transaction is already attached to ctx
-// (e.g. when a Saga or event subscriber re-dispatches a command from within
-// an existing transaction), the inner pipeline reuses that transaction
+// (e.g. when an event subscriber re-dispatches a command from within an
+// existing transaction), the inner pipeline reuses that transaction
 // rather than opening a nested one — concurrent nested transactions on the
 // same connection are driver-specific and the runtime cost of savepoints
 // outweighs the rare benefit here.

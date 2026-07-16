@@ -36,8 +36,8 @@ const (
 	DefaultTimeoutAction             = TimeoutActionNone
 	DefaultCCTiming                  = CCTimingAlways
 
-	// Handle nodes default to sequential execution with the PassAny rule,
-	// since any handler completing the task is sufficient.
+	// Handle nodes default to the sequential approval method with the PassAny
+	// rule, since any handler completing the task is sufficient.
 	DefaultHandleApprovalMethod = ApprovalSequential
 	DefaultHandlePassRule       = PassAny
 
@@ -221,7 +221,7 @@ type HandleNodeData struct {
 func (*HandleNodeData) Kind() NodeKind { return NodeHandle }
 
 // ApplyTo applies handle node data to a FlowNode, resolving omitted fields to
-// the handle defaults (sequential execution, PassAny rule).
+// the handle defaults (sequential approval method, PassAny rule).
 func (d *HandleNodeData) ApplyTo(node *FlowNode) {
 	applyBaseNodeData(node, &d.BaseNodeData)
 	applyTaskNodeData(node, &d.TaskNodeData)

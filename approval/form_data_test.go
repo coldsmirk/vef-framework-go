@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
-// TestNewFormData tests new form data functionality.
 func TestNewFormData(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -30,7 +29,6 @@ func TestNewFormData(t *testing.T) {
 	}
 }
 
-// TestFormDataGet tests form data get functionality.
 func TestFormDataGet(t *testing.T) {
 	fd := approval.NewFormData(map[string]any{"name": "alice", "age": 30})
 
@@ -50,21 +48,18 @@ func TestFormDataGet(t *testing.T) {
 	}
 }
 
-// TestFormDataSet tests form data set functionality.
 func TestFormDataSet(t *testing.T) {
 	fd := approval.NewFormData(nil)
 	fd.Set("key", "value")
 	assert.Equal(t, "value", fd.Get("key"), "Set then Get should round-trip the value")
 }
 
-// TestFormDataToMap tests form data to map functionality.
 func TestFormDataToMap(t *testing.T) {
 	original := map[string]any{"a": 1, "b": "two"}
 	fd := approval.NewFormData(original)
 	assert.Equal(t, original, fd.ToMap(), "ToMap should return the underlying map unchanged")
 }
 
-// TestFormDataClone tests form data clone functionality.
 func TestFormDataClone(t *testing.T) {
 	t.Run("DeepCopy", func(t *testing.T) {
 		fd := approval.NewFormData(map[string]any{

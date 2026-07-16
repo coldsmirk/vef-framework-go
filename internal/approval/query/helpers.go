@@ -22,8 +22,8 @@ const defaultListPageSize = 20
 // applyPageable normalizes the pageable to defaultListPageSize and applies the
 // resulting Limit/Offset to sq. It collapses the Normalize + Limit/Offset pair
 // that every approval list handler repeats verbatim; each handler keeps its own
-// ScanAndCount, empty-guard, and page.New since those legitimately differ by
-// the result DTO type and error context.
+// ScanAndCount, page.New, and any empty-guard since those legitimately differ
+// by the result DTO type and error context.
 func applyPageable(sq orm.SelectQuery, pageable *page.Pageable) orm.SelectQuery {
 	pageable.Normalize(defaultListPageSize)
 
@@ -66,9 +66,10 @@ type instanceDetailBundle struct {
 }
 
 // loadInstanceDetailBundle loads the instance identified by instanceID together
-// with its flow, tasks, action logs, flow nodes, and a node-name lookup map.
-// It returns (nil, shared.ErrInstanceNotFound) when the instance does not exist,
-// so callers can apply their own auth gate before or after this call.
+// with every related record set the bundle carries (flow, version snapshots,
+// tasks, action logs, flow nodes plus their name map, visits, CC and urge
+// records). It returns (nil, shared.ErrInstanceNotFound) when the instance does
+// not exist, so callers can apply their own auth gate before or after this call.
 func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string) (*instanceDetailBundle, error) {
 	var instance approval.Instance
 
@@ -98,9 +99,9 @@ func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string)
 		return nil, fmt.Errorf("query flow version: %w", err)
 	}
 
-	// Secondary "id" ordering keeps every list deterministic when the primary
-	// key ties (same sort_order, or same-second timestamps on dialects with
-	// second precision) — ids are XIDs, which sort by creation time.
+	// Secondary "id" ordering keeps a list deterministic when its primary
+	// sort key ties (same sort_order, or same-second timestamps on dialects
+	// with second precision) — ids are XIDs, which sort by creation time.
 	var tasks []approval.Task
 	if err := db.NewSelect().Model(&tasks).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instanceID) }).

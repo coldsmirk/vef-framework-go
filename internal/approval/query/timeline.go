@@ -4,13 +4,13 @@ import "github.com/coldsmirk/vef-framework-go/approval"
 
 // buildInstanceTimeline projects the visit trail into the chronological,
 // node-by-node account of the path the instance actually took: one entry per
-// node visit (in traversal order, ending at the node currently in progress)
-// interleaved with instance-level milestones (withdraw / terminate) at their
-// time positions. Everything a transit-record view renders is assembled by the
-// shared visit index — participants fused from tasks and their finishing logs,
-// CC recipients with read receipts, and side-action activities — so the client
-// displays the list verbatim. Condition and end visits are structural and
-// skipped.
+// node visit (in traversal order, ending at the node currently in progress
+// while the instance is executing) interleaved with instance-level milestones
+// (withdraw / terminate) at their time positions. Everything a transit-record
+// view renders is assembled by the shared visit index — participants fused
+// from tasks and their finishing logs, CC recipients with read receipts, and
+// side-action activities — so the client displays the list verbatim. Condition
+// and end visits are structural and skipped.
 func buildInstanceTimeline(bundle *instanceDetailBundle) []approval.TimelineEntry {
 	idx := newVisitIndex(bundle)
 

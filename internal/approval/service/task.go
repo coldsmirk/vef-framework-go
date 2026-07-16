@@ -20,9 +20,10 @@ type TaskContext struct {
 	Instance *approval.Instance
 	Task     *approval.Task
 	Node     *approval.FlowNode
-	// FormFields is the flow version's form schema. PrepareOperation loads it so
-	// submitted-value validation and the approve/handle required-permission check
-	// share one query; it is nil for contexts loaded directly via
+	// FormFields is the flow version's parsed form fields. PrepareOperation
+	// loads them (only when the node grants field permissions) so submitted-value
+	// validation and the approve/handle required-permission check share one
+	// query; nil for permission-less nodes and for contexts loaded directly via
 	// LoadTaskContextForNodeOperation.
 	FormFields []approval.FormFieldDefinition
 }
@@ -33,14 +34,17 @@ type TaskContextLoadOptions struct {
 	RequireOperatorAssignee bool
 	RequireTaskPending      bool
 	RequireCurrentNode      bool
-	// Caller asserts the caller's tenant authority. Non-zero values cause
-	// the loader to reject cross-tenant access (mapped to ErrTaskNotFound
-	// so callers cannot probe existence across tenants). Zero / system
-	// callers bypass — see approval.CallerContext for the trust model.
+	// Caller asserts the caller's tenant authority. The loader rejects
+	// cross-tenant access (mapped to ErrTaskNotFound so callers cannot
+	// probe existence across tenants); only super-admin / system-internal
+	// callers bypass, and a zero value is denied fail-closed — see
+	// approval.CallerContext for the trust model.
 	Caller approval.CallerContext
 }
 
-// cancelableTaskStatuses lists statuses eligible for bulk cancellation.
+// cancelableTaskStatuses lists the still-actionable statuses (Pending /
+// Waiting): the set eligible for cancellation, reused wherever a query means
+// "tasks still awaiting action" (dependency activation, peer authorization).
 var cancelableTaskStatuses = []string{string(approval.TaskPending), string(approval.TaskWaiting)}
 
 // TaskService provides task-level domain operations.
@@ -619,9 +623,9 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID st
 	// value, so both the editable-subset validation and the approve-side required
 	// check are no-ops — skip the form_fields load entirely (tc.FormFields stays nil).
 	if len(tc.Node.FieldPermissions) > 0 {
-		// Load the version's form schema so submitted edits validate against it, and
-		// expose it on the context so the approve/handle required-permission check
-		// reuses the same field list without a second query.
+		// Load the version's parsed form fields so submitted edits validate against
+		// them, and expose them on the context so the approve/handle
+		// required-permission check reuses the same field list without a second query.
 		var version approval.FlowVersion
 
 		version.ID = tc.Instance.FlowVersionID

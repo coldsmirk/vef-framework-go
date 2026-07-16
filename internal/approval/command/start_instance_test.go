@@ -223,8 +223,8 @@ func (s *StartInstanceTestSuite) TestStartShouldRejectInvalidFormDataBySchema() 
 	s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
 }
 
-// flipFlowToBusinessBinding points the fixture flow at table with the full
-// linkage-column set and returns a restore func for the standalone baseline.
+// businessBindingForTable builds a complete business binding — full
+// linkage-column set — targeting table.
 func businessBindingForTable(table string) *approval.BusinessBindingConfig {
 	instanceID, startedAt, finishedAt := "apv_instance_id", "apv_started_at", "apv_finished_at"
 
@@ -238,6 +238,8 @@ func businessBindingForTable(table string) *approval.BusinessBindingConfig {
 	}
 }
 
+// flipFlowToBusinessBinding points the fixture flow and its published version
+// snapshot at table and returns a restore func for the standalone baseline.
 func (s *StartInstanceTestSuite) flipFlowToBusinessBinding(table string) func() {
 	s.T().Helper()
 

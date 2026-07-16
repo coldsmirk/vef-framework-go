@@ -3,7 +3,7 @@ package strategy
 import "errors"
 
 var (
-	// Assignee resolver errors.
+	// Assignee resolver and aggregator errors.
 	ErrAssigneeServiceNil        = errors.New("assignee service is nil")
 	ErrApplicantIDEmpty          = errors.New("applicant ID is empty")
 	ErrFormFieldNameEmpty        = errors.New("form field name is empty")

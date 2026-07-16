@@ -88,9 +88,10 @@ type FlowVersion struct {
 
 // FormTable records the dedicated physical table generated for a published
 // version whose StorageMode is StorageTable. It is the single source of truth
-// for what DDL the framework generated: the engine consults it (idempotency)
-// before creating a table for a version, and operators can map a version to
-// its projection table through it. One row per physical table: the main
+// for what DDL the framework generated: the publish path consults it so a
+// republish never re-records a version's metadata (the DDL itself is
+// idempotent via CREATE TABLE IF NOT EXISTS), and operators can map a version
+// to its projection table through it. One row per physical table: the main
 // projection table plus one child table per detail-table field, disambiguated
 // by SourceFieldKey ((version_id, source_field_key) is unique).
 type FormTable struct {

@@ -183,8 +183,8 @@ func cleanAllApprovalData(ctx context.Context, db orm.DB) {
 
 // --- JSON helper ---
 
-// mustMarshal marshals v to json.RawMessage.
-// It returns "{}" for unexpected marshal failures to keep test helpers side-effect free.
+// mustMarshal marshals v to json.RawMessage, returning "{}" on failure so the
+// flow-definition builders stay free of error plumbing.
 func mustMarshal(v any) json.RawMessage {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -194,8 +194,8 @@ func mustMarshal(v any) json.RawMessage {
 	return data
 }
 
-// toMap converts a struct to map[string]any via JSON round-trip.
-// This is needed because mapstructure cannot decode json.RawMessage from map values.
+// toMap converts a struct to map[string]any via JSON round-trip, matching the
+// plain-map shape a JSON client submits in RPC Params.
 func toMap(v any) map[string]any {
 	data, err := json.Marshal(v)
 	if err != nil {

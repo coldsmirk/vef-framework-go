@@ -274,7 +274,7 @@ type UpdateParams struct {
 	Initiators             []CreateInitiatorParams         `json:"initiators"`
 }
 
-// UpdateFlow updates an existing flow.
+// Update updates an existing flow.
 func (r *FlowResource) Update(ctx fiber.Ctx, principal *security.Principal, params UpdateParams) error {
 	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {

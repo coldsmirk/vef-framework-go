@@ -24,9 +24,11 @@ import (
 // mutually independent; any non-nil error stops the remaining hooks and
 // bubbles back to the caller.
 type InstanceLifecycleHook interface {
-	// OnInstanceCreated runs after the instance row is persisted and the
-	// initial action log is written, but before the engine advances to
-	// the first node. Returning an error rolls back start_instance.
+	// OnInstanceCreated runs after the instance row is persisted, but before
+	// the engine advances to the first node. The initial submit action log is
+	// only buffered at this point — audit rows are batch-flushed after the
+	// command handler returns — so the hook must not expect to read it.
+	// Returning an error rolls back start_instance.
 	OnInstanceCreated(ctx context.Context, db orm.DB, instance *Instance) error
 	// OnInstanceTransition runs inside the same transaction as every
 	// instance status transition — completion (to.IsFinal()), return,

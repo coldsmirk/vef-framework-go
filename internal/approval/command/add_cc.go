@@ -50,7 +50,6 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 		return cqrs.Unit{}, shared.ErrInstanceCompleted
 	}
 
-	// Validate manual CC is allowed on current node
 	var node approval.FlowNode
 
 	node.ID = *instance.CurrentNodeID

@@ -150,7 +150,6 @@ func (e *FlowEngine) ProcessNode(ctx context.Context, db orm.DB, instance *appro
 }
 
 func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, visit *approval.NodeVisit, result *ProcessResult) error {
-	// Publish any events collected during processing
 	if err := e.publishEvents(ctx, db, result.Events...); err != nil {
 		return fmt.Errorf("publish processor events: %w", err)
 	}
@@ -200,7 +199,6 @@ func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instanc
 			return fmt.Errorf("apply completion transition: %w", err)
 		}
 
-		// Publish completion event
 		if err := e.publishEvents(
 			ctx, db,
 			approval.NewInstanceCompletedEvent(instance, *result.FinalStatus),
@@ -302,8 +300,8 @@ func buildPassRuleContext(node *approval.FlowNode, tasks []approval.Task) approv
 	}
 
 	for _, t := range tasks {
-		// Exclude non-actionable tasks from total count:
-		// transferred, canceled, removed, skipped are no longer participating
+		// Exclude non-actionable tasks from the total count: transferred,
+		// canceled, removed, skipped, and rolled_back no longer participate.
 		switch t.Status {
 		case approval.TaskTransferred, approval.TaskCanceled, approval.TaskRemoved, approval.TaskSkipped, approval.TaskRolledBack:
 			continue

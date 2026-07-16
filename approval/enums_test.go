@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
-// TestAddAssigneeTypeIsValid tests AddAssigneeType IsValid scenarios.
 func TestAddAssigneeTypeIsValid(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -30,7 +29,6 @@ func TestAddAssigneeTypeIsValid(t *testing.T) {
 	}
 }
 
-// TestCCKindIsValid tests CCKind IsValid scenarios.
 func TestCCKindIsValid(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -52,7 +50,6 @@ func TestCCKindIsValid(t *testing.T) {
 	}
 }
 
-// TestStorageModeIsValid tests StorageMode IsValid scenarios.
 func TestStorageModeIsValid(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -72,7 +69,6 @@ func TestStorageModeIsValid(t *testing.T) {
 	}
 }
 
-// TestAddAssigneeTypeUnmarshalJSON tests AddAssigneeType JSON decoding validation.
 func TestAddAssigneeTypeUnmarshalJSON(t *testing.T) {
 	t.Run("Valid", func(t *testing.T) {
 		var value approval.AddAssigneeType
@@ -92,7 +88,6 @@ func TestAddAssigneeTypeUnmarshalJSON(t *testing.T) {
 	})
 }
 
-// TestInstanceStatusString tests InstanceStatus String scenarios.
 func TestInstanceStatusString(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -113,7 +108,6 @@ func TestInstanceStatusString(t *testing.T) {
 	}
 }
 
-// TestInstanceStatusIsFinal tests InstanceStatus IsFinal scenarios.
 func TestInstanceStatusIsFinal(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -135,7 +129,6 @@ func TestInstanceStatusIsFinal(t *testing.T) {
 	}
 }
 
-// TestTaskStatusString tests TaskStatus String scenarios.
 func TestTaskStatusString(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -161,7 +154,6 @@ func TestTaskStatusString(t *testing.T) {
 	}
 }
 
-// TestTaskStatusIsFinal tests TaskStatus IsFinal scenarios.
 func TestTaskStatusIsFinal(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -199,7 +191,6 @@ func TestFieldKindIsValid(t *testing.T) {
 	assert.False(t, approval.FieldKind("subform").IsValid(), "unknown field kinds are rejected")
 }
 
-// TestPermissionIsValid tests Permission IsValid scenarios.
 func TestPermissionIsValid(t *testing.T) {
 	tests := []struct {
 		name     string

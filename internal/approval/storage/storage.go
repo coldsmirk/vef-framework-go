@@ -3,14 +3,15 @@
 // instances' form data physically lives:
 //
 //   - StorageJSON keeps form data only in apv_instance.form_data (JSONB). The
-//     JSONStorage strategy is a no-op for both publish and write — the existing
-//     start/resubmit code already persists that column.
+//     JSONStorage strategy is a no-op for both publish and write — the command
+//     handlers already persist that column.
 //
-//   - StorageTable additionally projects each instance's form data into a
-//     dedicated physical table generated for that version (one table per
-//     published version, immutable). apv_instance.form_data stays populated so
-//     every existing read path (validation, engine, get_instance_detail) keeps
-//     working unchanged; the physical table is the structured, queryable copy.
+//   - StorageTable additionally projects each instance's form data into
+//     dedicated physical tables generated for that version (a main table plus
+//     one child table per detail-table field, immutable once published).
+//     apv_instance.form_data stays populated so every existing read path
+//     (validation, engine, get_instance_detail) keeps working unchanged; the
+//     physical tables are the structured, queryable copy.
 //
 // The Dispatcher picks the strategy from version.StorageMode and is the only
 // type the command handlers depend on.
@@ -35,7 +36,7 @@ import (
 // rows commit or roll back with the surrounding operation.
 type FormStorage interface {
 	// ProvisionTable creates whatever durable physical structure the mode
-	// needs (TableStorage issues the CREATE TABLE). It runs OUTSIDE the publish
+	// needs (TableStorage issues the DDL statements). It runs OUTSIDE the publish
 	// transaction, on its own connection: a DDL statement implicitly commits
 	// the active transaction on MySQL, so issuing it inside the publish
 	// transaction would silently break that transaction's atomicity. It must be
@@ -56,14 +57,14 @@ type FormStorage interface {
 	// persisted, so JSONStorage has nothing to do. formData is the full,
 	// already-validated form payload for the instance. It is idempotent per
 	// instance: a re-write (resubmit) replaces the prior projection rather than
-	// appending a second row.
+	// appending to it.
 	Write(ctx context.Context, db orm.DB, flow *approval.Flow, version *approval.FlowVersion, instanceID string, formData map[string]any) error
 }
 
 // Dispatcher routes FormStorage calls to the JSON or Table strategy based on a
 // version's StorageMode. An unknown or empty StorageMode resolves to JSON so a
 // version created before storage modes were plumbed (or with a blank value)
-// behaves exactly as today.
+// keeps the original JSON-only behavior.
 type Dispatcher struct {
 	json  FormStorage
 	table FormStorage

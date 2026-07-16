@@ -93,7 +93,6 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 		return cqrs.Unit{}, fmt.Errorf("collect archived versions: %w", err)
 	}
 
-	// Archive old published versions
 	if _, err := db.NewUpdate().
 		Model((*approval.FlowVersion)(nil)).
 		Set("status", approval.VersionArchived).
@@ -105,7 +104,6 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 		return cqrs.Unit{}, fmt.Errorf("archive old versions: %w", err)
 	}
 
-	// Publish this version
 	now := timex.Now()
 	version.Status = approval.VersionPublished
 	version.PublishedAt = &now
@@ -119,7 +117,6 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 		return cqrs.Unit{}, fmt.Errorf("publish version: %w", err)
 	}
 
-	// Update flow's current version number
 	if _, err := db.NewUpdate().
 		Model((*approval.Flow)(nil)).
 		Set("current_version", version.Version).

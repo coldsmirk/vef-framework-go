@@ -11,8 +11,8 @@ import (
 )
 
 // ErrTenantNotResolved indicates the resolver received a principal whose
-// Details shape doesn't expose a tenant_id / tenantId / TenantID key. The
-// resource layer surfaces this as an authentication failure so a
+// Details shape exposes none of the tenantFieldCandidates keys. The
+// resource layer fails the request outright rather than proceeding, so a
 // misconfigured host can't accidentally serve cross-tenant data through
 // a zero-value CallerContext.
 var ErrTenantNotResolved = errors.New("approval: cannot resolve caller tenant from principal")

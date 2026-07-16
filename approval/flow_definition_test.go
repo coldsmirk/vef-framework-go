@@ -31,7 +31,7 @@ func TestNodeDefinitionWireFormat(t *testing.T) {
 	})
 }
 
-// TestNodeDefinitionParseData_HappyPath verifies that ParseData dispatches
+// TestNodeDefinitionParseDataHappyPath verifies that ParseData dispatches
 // correctly to the right NodeData type for every supported NodeKind.
 func TestNodeDefinitionParseDataHappyPath(t *testing.T) {
 	tests := []struct {

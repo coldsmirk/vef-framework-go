@@ -19,7 +19,7 @@ var (
 	ErrInvalidGeneratedIdentifier = errors.New("approval/storage: generated identifier is not SQL-safe")
 
 	// ErrReservedColumnName indicates a form field key maps to one of the
-	// built-in physical columns (id / instance_id / created_at).
+	// built-in physical columns (id / instance_id / row_index / created_at).
 	ErrReservedColumnName = errors.New("approval/storage: field key collides with a reserved column")
 
 	// ErrDuplicateColumnName indicates two distinct field keys sanitized to the

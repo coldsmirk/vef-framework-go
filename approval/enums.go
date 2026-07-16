@@ -44,7 +44,8 @@ func (k InitiatorKind) IsValid() bool {
 }
 
 // StorageMode represents the storage mode of form data at the FlowVersion level.
-// It determines the physical storage location and format of form data, and is fixed when a version is published.
+// It determines the physical storage location and format of form data, chosen
+// when the version is created at deploy and fixed for the version's lifetime.
 // This is different from BindingMode (Flow-level), which controls how the workflow integrates with business systems.
 //
 // Usage scenarios:
@@ -55,10 +56,11 @@ type StorageMode string
 const (
 	// StorageJSON stores form data in the apv_instance.form_data JSONB column.
 	StorageJSON StorageMode = "json"
-	// StorageTable stores form data in a dedicated physical table generated per
-	// published version (one table per version). The apv_instance.form_data
-	// JSONB column is still populated so existing read paths keep working; the
-	// physical table is the structured, queryable projection.
+	// StorageTable stores form data in dedicated physical tables generated per
+	// published version: one main projection table plus one child table per
+	// detail-table field. The apv_instance.form_data JSONB column is still
+	// populated so existing read paths keep working; the physical tables are
+	// the structured, queryable projection.
 	StorageTable StorageMode = "table"
 )
 
@@ -101,8 +103,8 @@ func (t ExecutionType) IsValid() bool {
 type ApprovalMethod string
 
 const (
-	ApprovalSequential ApprovalMethod = "sequential" // Sequential: approvers process one by one in order, all must approve
-	ApprovalParallel   ApprovalMethod = "parallel"   // Parallel: approvers process simultaneously, decision based on consensus rules
+	ApprovalSequential ApprovalMethod = "sequential" // Sequential: approvers process one by one in order
+	ApprovalParallel   ApprovalMethod = "parallel"   // Parallel: approvers process simultaneously
 )
 
 // IsValid reports whether the approval method is one of the defined values.
@@ -110,7 +112,10 @@ func (m ApprovalMethod) IsValid() bool {
 	return m == ApprovalSequential || m == ApprovalParallel
 }
 
-// PassRule represents the strategy for passing the node (for Parallel/Or methods).
+// PassRule represents the strategy for deciding node completion from its
+// task decisions. It applies under both approval methods: parallel nodes
+// count simultaneous votes, and a sequential node still consults its rule
+// after each decision (handle nodes pair sequential with PassAny).
 type PassRule string
 
 const (
@@ -167,7 +172,7 @@ const (
 	RollbackNone      RollbackType = "none"
 	RollbackPrevious  RollbackType = "previous"  // To previous node
 	RollbackStart     RollbackType = "start"     // To start node (applicant)
-	RollbackAny       RollbackType = "any"       // To any node
+	RollbackAny       RollbackType = "any"       // To any traversed approval/handle node, or the start node
 	RollbackSpecified RollbackType = "specified" // To specified nodes
 )
 
@@ -248,7 +253,7 @@ type AssigneeKind string
 const (
 	AssigneeUser             AssigneeKind = "user"
 	AssigneeRole             AssigneeKind = "role"
-	AssigneeDepartment       AssigneeKind = "department"        // Department head
+	AssigneeDepartment       AssigneeKind = "department"        // Leaders of the configured departments
 	AssigneeSelf             AssigneeKind = "self"              // Applicant themselves
 	AssigneeSuperior         AssigneeKind = "superior"          // Direct superior
 	AssigneeDepartmentLeader AssigneeKind = "department_leader" // Leaders of the applicant's own department (single level)

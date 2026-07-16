@@ -40,10 +40,8 @@ type SumAggregator struct{}
 // NewSumAggregator creates the sum aggregator.
 func NewSumAggregator() approval.Aggregator { return new(SumAggregator) }
 
-// Kind returns the aggregate kind this implementation folds.
 func (*SumAggregator) Kind() approval.AggregateKind { return approval.AggregateSum }
 
-// Fold reduces the extracted column values into their total.
 func (*SumAggregator) Fold(values []float64, _ int) (float64, bool) {
 	var sum float64
 	for _, v := range values {
@@ -60,10 +58,8 @@ type CountAggregator struct{}
 // NewCountAggregator creates the count aggregator.
 func NewCountAggregator() approval.Aggregator { return new(CountAggregator) }
 
-// Kind returns the aggregate kind this implementation folds.
 func (*CountAggregator) Kind() approval.AggregateKind { return approval.AggregateCount }
 
-// Fold reduces the table to its row count.
 func (*CountAggregator) Fold(_ []float64, rowCount int) (float64, bool) {
 	return float64(rowCount), true
 }
@@ -76,10 +72,8 @@ type AvgAggregator struct{}
 // NewAvgAggregator creates the avg aggregator.
 func NewAvgAggregator() approval.Aggregator { return new(AvgAggregator) }
 
-// Kind returns the aggregate kind this implementation folds.
 func (*AvgAggregator) Kind() approval.AggregateKind { return approval.AggregateAvg }
 
-// Fold reduces the extracted column values into their mean.
 func (*AvgAggregator) Fold(values []float64, _ int) (float64, bool) {
 	if len(values) == 0 {
 		return 0, false

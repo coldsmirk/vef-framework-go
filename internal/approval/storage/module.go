@@ -8,8 +8,8 @@ import (
 
 // Module provides the form-data storage strategies and their Dispatcher. The
 // TableStorage strategy is bound to the primary data source's dialect — the
-// same dialect migration.go targets — so its generated DDL matches the schema
-// the rest of the module migrates into.
+// same dialect the approval migration module targets — so its generated DDL
+// matches the schema the rest of the module migrates into.
 var Module = fx.Module(
 	"vef:approval:storage",
 

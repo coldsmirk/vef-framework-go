@@ -17,7 +17,6 @@ type identityResolver struct{}
 // NewIdentityResolver constructs the default identity resolver.
 func NewIdentityResolver() approval.BusinessRefResolver { return new(identityResolver) }
 
-// ResolveRecordKey resolves the configured business key.
 func (*identityResolver) ResolveRecordKey(_ context.Context, flow *approval.Flow, businessRef string) (approval.BusinessRecordKey, error) {
 	if flow.BusinessBinding == nil || len(flow.BusinessBinding.KeyColumns) == 0 {
 		return nil, fmt.Errorf("%w: flow has no key columns", ErrBindingMisconfigured)

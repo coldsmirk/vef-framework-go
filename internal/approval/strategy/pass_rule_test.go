@@ -33,7 +33,7 @@ func TestAllPassStrategy(t *testing.T) {
 	}
 }
 
-// TestAnyPassStrategy tests one pass strategy scenarios.
+// TestAnyPassStrategy tests any pass strategy scenarios.
 func TestAnyPassStrategy(t *testing.T) {
 	s := NewAnyPassStrategy()
 	assert.Equal(t, approval.PassAny, s.Rule(), "Rule should be PassAny")

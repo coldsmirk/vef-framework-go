@@ -12,14 +12,16 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// TableStorage is the StorageTable strategy. At publish it generates a
-// dedicated physical table for the version's form schema and records the
-// generated structure in apv_form_table / apv_form_table_column. At write it
-// projects an instance's form data into that table as exactly one row.
+// TableStorage is the StorageTable strategy. At publish it generates the
+// version's physical tables — a main projection table plus one child table per
+// detail-table field — and records the generated structure in apv_form_table /
+// apv_form_table_column. At write it projects an instance's form data into
+// those tables: exactly one main row, plus one child row per detail line.
 //
 // The strategy is dialect-aware: DDL and DML are generated for the primary
-// data source's dialect (the same dialect the migration scripts target), mirrored
-// from how migration.go selects scripts by dataSources.Primary().Kind.
+// data source's dialect (the same dialect the migration scripts target),
+// mirrored from how the migration module selects scripts by
+// dataSources.Primary().Kind.
 //
 // Security: every physical table and column name is a validated SQL identifier
 // (approval.ValidateBusinessIdentifier) before it reaches a DDL/DML string, and
@@ -34,11 +36,11 @@ func NewTableStorage(kind config.DBKind) *TableStorage {
 	return &TableStorage{kind: kind}
 }
 
-// ProvisionTable creates the version's physical form table. It runs outside the
-// publish transaction (DDL implicitly commits the in-flight transaction on
+// ProvisionTable creates the version's physical form tables. It runs outside
+// the publish transaction (DDL implicitly commits the in-flight transaction on
 // MySQL, which would break the publish's atomicity) and is idempotent: CREATE
 // TABLE IF NOT EXISTS makes a republish — or a retry after a rolled-back publish
-// that left the table behind — a no-op at the DDL level. The table name and
+// that left the tables behind — a no-op at the DDL level. The table names and
 // columns are derived from the version's parsed form fields; see ddl.go.
 func (s *TableStorage) ProvisionTable(ctx context.Context, db orm.DB, flow *approval.Flow, version *approval.FlowVersion) error {
 	tables, err := buildTableSpecs(s.kind, flow.Code, version.ID, version.FormFields)
@@ -121,19 +123,21 @@ func (s *TableStorage) RecordMetadata(ctx context.Context, db orm.DB, flow *appr
 	return nil
 }
 
-// Write projects an instance's form data into the version's physical form table
-// as exactly one row. It is idempotent per instance: any existing row for the
-// instance is deleted before the fresh row is inserted, so the first projection
-// (at start) and every later one (at resubmit) leave the table reflecting the
-// instance's current form data — never an accumulating history. The instance_id
-// UNIQUE constraint backs this contract at the database level.
+// Write projects an instance's form data into the version's physical form
+// tables: exactly one row in the main table, one row per detail line in each
+// child table. It is idempotent per instance: each table's existing rows for
+// the instance are deleted before fresh ones are inserted, so the first
+// projection (at start) and every later one (at resubmit) leave the tables
+// reflecting the instance's current form data — never an accumulating history.
+// The main table's instance_id UNIQUE constraint backs the one-row contract at
+// the database level.
 //
-// The physical table name and the set of generated columns are read from the
-// metadata recorded at publish (the single source of truth), so Write and
-// OnVersionPublished can never disagree on identifiers. Only columns sourced
-// from a form field are populated from formData; instance_id is set from the
-// argument and created_at defaults at the database. Every value is bound as a
-// `?` argument.
+// The physical table names and the set of generated columns are read from the
+// metadata recorded at publish (the single source of truth), so Write and the
+// publish-time generation can never disagree on identifiers. Only columns
+// sourced from a form field are populated from formData; instance_id is set
+// from the argument and created_at defaults at the database. Every value is
+// bound as a `?` argument.
 func (*TableStorage) Write(ctx context.Context, db orm.DB, _ *approval.Flow, version *approval.FlowVersion, instanceID string, formData map[string]any) error {
 	var formTables []approval.FormTable
 	if err := db.NewSelect().
@@ -243,7 +247,7 @@ func projectionRows(formTable *approval.FormTable, formData map[string]any) ([]m
 }
 
 // buildDelete composes the DELETE that clears an instance's existing projection
-// row before a fresh one is written. The table name comes from metadata
+// rows before fresh ones are written. The table name comes from metadata
 // (validated when written) and is re-validated here as defense-in-depth before
 // interpolation; instance_id is returned to the caller as a bind argument.
 func buildDelete(tableName string) (string, error) {
@@ -254,12 +258,13 @@ func buildDelete(tableName string) (string, error) {
 	return fmt.Sprintf("DELETE FROM %s WHERE instance_id = ?", tableName), nil
 }
 
-// buildInsert composes the INSERT for one instance row from the recorded column
-// metadata. The table name and column names come from metadata (validated when
-// it was written) and are re-validated here as defense-in-depth before being
-// interpolated; all values are returned as positional bind arguments. The raw
-// INSERT bypasses the ORM's PK default hook, so id is populated explicitly from
-// a generated identifier; created_at is omitted so its database DEFAULT applies.
+// buildInsert composes the multi-row INSERT for an instance's rows from the
+// recorded column metadata. The table name and column names come from metadata
+// (validated when it was written) and are re-validated here as defense-in-depth
+// before being interpolated; all values are returned as positional bind
+// arguments. The raw INSERT bypasses the ORM's PK default hook, so id is
+// populated explicitly from a generated identifier; created_at is omitted so
+// its database DEFAULT applies.
 func buildInsert(tableName, instanceID string, columns []approval.FormTableColumn, rows []map[string]any) (string, []any, error) {
 	if err := approval.ValidateBusinessIdentifier(tableName); err != nil {
 		return "", nil, fmt.Errorf("%w: %q: %w", ErrInvalidGeneratedIdentifier, tableName, err)

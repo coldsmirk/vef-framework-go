@@ -55,15 +55,14 @@ var obsoleteTables = []string{
 // The migration is forward-only: each script is a set of CREATE TABLE IF NOT
 // EXISTS statements guarded by a presence probe (needsMigration), so it
 // provisions missing tables on a fresh or partially-migrated database but never
-// alters an existing table. In-place column changes — an added column (e.g. the
-// v0.33.0 action-log name snapshots added_assignee_names / removed_assignee_names
-// / cc_user_names), a type/constraint change such as the pass_ratio rescale, or a
-// dropped column — therefore take effect only on a freshly created database; an
-// existing deployment that must adopt them has to be recreated. This is a hard
-// requirement, not graceful degradation: once the code writes or reads an added
-// column, an un-recreated older database errors on that column. The approval
-// module is pre-1.0 and assumes recreation over in-place schema evolution; table
-// removals are the one exception, handled explicitly through dropObsoleteTables.
+// alters an existing table. In-place column changes — an added column, a
+// type/constraint change, or a dropped column — therefore take effect only on a
+// freshly created database; an existing deployment that must adopt them has to
+// be recreated. This is a hard requirement, not graceful degradation: once the
+// code writes or reads an added column, an un-recreated older database errors
+// on that column. The approval module is pre-1.0 and assumes recreation over
+// in-place schema evolution; table removals are the one exception, handled
+// explicitly through dropObsoleteTables.
 func Migrate(ctx context.Context, db orm.DB, kind config.DBKind) error {
 	return sqlmigration.Run(ctx, db, sqlmigration.Plan{
 		Label:          "approval",

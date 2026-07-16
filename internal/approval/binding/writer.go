@@ -9,8 +9,8 @@ import (
 )
 
 // Writer applies one durable projection snapshot to its host business row. It
-// always writes the complete configured state, so retries and out-of-order
-// lifecycle notifications cannot combine columns from different revisions.
+// always writes the complete configured state, so retries and superseded
+// revisions can never leave the row combining columns from different revisions.
 type Writer struct{}
 
 // NewWriter constructs the engine-owned Writer.

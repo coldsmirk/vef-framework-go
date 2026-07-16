@@ -15,7 +15,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
-// resolveOperator builds an UserInfo from the authenticated principal.
+// resolveOperator builds a UserInfo from the authenticated principal.
 func resolveOperator(ctx context.Context, resolver approval.PrincipalDepartmentResolver, principal *security.Principal) (approval.UserInfo, error) {
 	departmentID, departmentName, err := resolver.Resolve(ctx, principal)
 	if err != nil {
@@ -30,9 +30,9 @@ func resolveOperator(ctx context.Context, resolver approval.PrincipalDepartmentR
 	}, nil
 }
 
-// resolveCaller bundles tenant authority from the principal. Used by
-// resource handlers to gate cross-tenant access on entity-scoped commands
-// and queries (terminate / reassign / detail / flow mutations).
+// resolveCaller bundles tenant authority from the principal. Resource
+// handlers thread the result into commands and queries, where it gates
+// cross-tenant access (Authorize / Allows / TenantScopeFilter).
 func resolveCaller(ctx context.Context, resolver approval.PrincipalTenantResolver, principal *security.Principal) (approval.CallerContext, error) {
 	tenantID, err := resolver.Resolve(ctx, principal)
 	if err != nil {
@@ -55,7 +55,7 @@ type resolvedActor struct {
 // handlers that hit a command always need both, so threading them together
 // avoids two near-identical pairs of resolve / nil-check / wrap-error per
 // endpoint. Returning the resolved values by value keeps the call site a
-// single assignment — `actor, err := r.resolveActor(...)` — which is the
+// single assignment — `actor, err := resolveActor(...)` — which is the
 // shape most handlers want.
 func resolveActor(
 	ctx context.Context,

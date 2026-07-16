@@ -20,10 +20,6 @@ type QueryFixture struct {
 	NodeIDs    []string
 }
 
-// setupQueryFixture creates a category → flow → version → nodes chain.
-// NodeCount specifies how many approval nodes to create.
-//
-
 // ensureActiveVisit returns the node's open visit, recording one when the
 // fixture has not opened it yet — every inserted task must bind to a visit.
 //
@@ -64,6 +60,9 @@ func ensureActiveVisit(t testing.TB, ctx context.Context, db orm.DB, tenantID, i
 	return created
 }
 
+// setupQueryFixture creates a category → flow → version → nodes chain;
+// nodeCount specifies how many approval nodes to create.
+//
 //nolint:revive // t testing.TB is conventionally the first parameter in test helpers
 func setupQueryFixture(t testing.TB, ctx context.Context, db orm.DB, code string, nodeCount int) *QueryFixture {
 	category := &approval.FlowCategory{

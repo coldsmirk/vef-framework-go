@@ -43,8 +43,9 @@ func (h *MarkCCReadHandler) Handle(ctx context.Context, cmd MarkCCReadCmd) (cqrs
 
 	instance.ID = cmd.InstanceID
 	if err := db.NewSelect().Model(&instance).Select("tenant_id").WherePK().Scan(ctx); err != nil {
-		// Treat "not found" the same as "no unread records" to avoid leaking
-		// existence. Non-not-found errors still propagate.
+		// Every load failure — not-found and infrastructure errors alike —
+		// collapses into the opaque zero-records success, so a probe cannot
+		// learn whether the instance exists.
 		return cqrs.Unit{}, nil //nolint:nilerr // tenant isolation requires opaque response
 	}
 

@@ -271,7 +271,6 @@ func applyDelegation(ctx context.Context, db orm.DB, flowID string, assignees []
 		}
 	}
 
-	// Batch resolve delegatee display info
 	delegateeInfos, err := shared.ResolveUserInfoMap(ctx, userResolver, delegateeIDs)
 	if err != nil {
 		return nil, fmt.Errorf("resolve delegatee info: %w", err)
@@ -408,10 +407,10 @@ func handleEmptyAssignee(ctx context.Context, pc *ProcessContext, assigneeServic
 	}
 }
 
-// createTasksWithDelegation creates tasks for resolved assignees, setting
-// DelegatorID/DelegatorName when applicable. Returns one TaskCreatedEvent
-// per inserted task in input order so the caller can attach them to
-// ProcessResult.Events alongside any node-level events.
+// createTasksWithDelegation creates tasks for resolved assignees, snapshotting
+// the delegator (id, name, department) when applicable. Returns one
+// TaskCreatedEvent per inserted task in input order so the caller can attach
+// them to ProcessResult.Events alongside any node-level events.
 func createTasksWithDelegation(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) ([]approval.DomainEvent, error) {
 	deadline := computeDeadline(pc.Node)
 
