@@ -34,8 +34,8 @@ type RouteSearch struct {
 }
 
 // RouteResource handles route CRUD. The contract reference is validated at
-// save time because the column carries the ” wildcard sentinel and has no
-// foreign key.
+// save time because the column carries the empty-string wildcard sentinel and
+// has no foreign key.
 type RouteResource struct {
 	api.Resource
 

@@ -9,8 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// logger is the integration module's framework logger, following the
-// repo-wide package-level convention.
 var logger = logx.Named("integration")
 
 // logRecorder persists invocation logs per the vef.integration.log mode.

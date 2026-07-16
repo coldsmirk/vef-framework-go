@@ -15,7 +15,7 @@ const programCacheCapacity = 256
 // ProgramCache caches compiled scripts keyed by content hash, so editing a
 // script invalidates its entry implicitly and unchanged scripts never
 // recompile. Each script wrapper owns an instance: adapter execution,
-// script-scheme verification, and the two envelope directions.
+// script-scheme signing and verification, and the two envelope directions.
 type ProgramCache struct {
 	mu      sync.Mutex
 	compile func(string) (*js.Program, error)

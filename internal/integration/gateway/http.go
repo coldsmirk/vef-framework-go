@@ -18,8 +18,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/result"
 )
 
-// logger is the integration module's framework logger, following the
-// repo-wide package-level convention.
 var logger = logx.Named("integration")
 
 // httpPathPrefix anchors the HTTP inbound gateway; the two path parameters
@@ -56,7 +54,6 @@ func NewHTTPGateway(receiver *exec.Receiver, cfg *config.IntegrationConfig) app.
 	}
 }
 
-// Name returns the middleware name.
 func (*HTTPGateway) Name() string {
 	return "integration:inbound"
 }

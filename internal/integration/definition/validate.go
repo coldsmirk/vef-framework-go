@@ -124,7 +124,7 @@ func ValidateAdapterScript(script string) error {
 
 // ValidateRouteRefs rejects a route referencing a missing contract or
 // system. The contract reference is checked here because the column carries
-// the ” wildcard sentinel and therefore has no foreign key.
+// the empty-string wildcard sentinel and therefore has no foreign key.
 func ValidateRouteRefs(ctx context.Context, db orm.DB, route *integration.Route) error {
 	if route.ContractID != "" {
 		exists, err := db.NewSelect().

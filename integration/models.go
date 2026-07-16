@@ -29,8 +29,8 @@ type Contract struct {
 // System is one external system instance: where it lives and how to
 // authenticate against it. BaseURL enables the scoped http library,
 // DataSource enables the scoped sql library (read-only unless its Mode says
-// otherwise); a system may carry both. Connection-level defaults (timeout,
-// retry) apply to every adapter of the system unless overridden per adapter.
+// otherwise); a system may carry both. Connection-level settings (TimeoutMs,
+// Retry) bound every HTTP call its adapters make.
 type System struct {
 	orm.BaseModel `bun:"table:itg_system,alias:isy"`
 	orm.FullAuditedModel
@@ -57,7 +57,7 @@ type System struct {
 	// Params are non-sensitive, system-specific values (branch codes,
 	// version flags) exposed to adapter scripts as system.params.
 	Params map[string]string `json:"params" bun:"params,type:jsonb,nullzero"`
-	// TimeoutMs bounds each outbound call of the system; zero applies the
+	// TimeoutMs bounds each HTTP call against the system; zero applies the
 	// framework default.
 	TimeoutMs int          `json:"timeoutMs" bun:"timeout_ms"`
 	Retry     *RetryPolicy `json:"retry" bun:"retry,type:jsonb,nullzero"`
@@ -132,7 +132,7 @@ const MaskedSecret = "******"
 
 // SensitiveAll is the SensitiveParams wildcard marking every parameter of a
 // scheme sensitive, for schemes whose parameter names are not known
-// statically (the built-in "script" scheme uses it).
+// statically (the built-in script and multi-pair header/query schemes use it).
 const SensitiveAll = "*"
 
 // OutboundAuthConfig selects the OutboundAuthScheme authenticating a system's
@@ -152,7 +152,8 @@ type OutboundAuthConfig struct {
 // structure most external APIs repeat on every endpoint ({code, msg, data}
 // responses, signed request wrappers, SOAP envelopes) is wrapped and unwrapped
 // once at the system level instead of in every adapter. Either script may be
-// empty, leaving that side untouched; adapters bypass both per call with the
+// empty, leaving that side untouched (save-time validation requires at least
+// one); adapters bypass both per call with the
 // { envelope: false } request option (deviant endpoints such as file
 // downloads or health checks).
 type OutboundEnvelopeConfig struct {
@@ -229,8 +230,9 @@ type Adapter struct {
 	// normalized to outbound at save time.
 	Direction Direction `json:"direction" bun:"direction"`
 	Script    string    `json:"script" bun:"script"`
-	// TimeoutMs overrides the system call timeout for this adapter; zero
-	// inherits it.
+	// TimeoutMs overrides the script run timeout for this adapter; zero
+	// inherits vef.integration.run_timeout. The system's TimeoutMs bounds
+	// individual HTTP calls — a different axis.
 	TimeoutMs int  `json:"timeoutMs" bun:"timeout_ms"`
 	IsEnabled bool `json:"isEnabled" bun:"is_enabled"`
 }

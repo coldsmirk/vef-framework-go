@@ -176,8 +176,9 @@ func ErrInvalidEnvelope(detail string) result.Error {
 	)
 }
 
-// ErrInvalidAuthParams rejects auth parameters an OutboundAuthScheme refused at save
-// time.
+// ErrInvalidAuthParams reports an auth configuration a scheme refused:
+// rejected at save-time validation, or failing at runtime when the outbound
+// client is assembled or a request is signed.
 func ErrInvalidAuthParams(detail string) result.Error {
 	return result.Err(
 		i18n.T("integration_invalid_auth_params", map[string]any{"detail": detail}),

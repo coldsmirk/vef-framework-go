@@ -55,7 +55,6 @@ type typedInboundHandler[I any, O any] struct {
 	handle   func(ctx context.Context, input I) (O, error)
 }
 
-// Contract returns the code of the contract the handler serves.
 func (h *typedInboundHandler[I, O]) Contract() string {
 	return h.contract
 }

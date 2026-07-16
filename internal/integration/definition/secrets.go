@@ -12,8 +12,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 )
 
-// logger is the integration module's framework logger, following the
-// repo-wide package-level convention.
 var logger = logx.Named("integration")
 
 // encryptedPrefix marks an auth parameter value as encrypted at rest, so

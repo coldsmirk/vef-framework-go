@@ -76,8 +76,8 @@ func NewContractResource() api.Resource {
 }
 
 // guardContractRoutes blocks deleting a contract still referenced by routes:
-// the route table's contract column has no foreign key (it carries the ”
-// wildcard sentinel), so the check lives here.
+// the route table's contract column has no foreign key (it carries the
+// empty-string wildcard sentinel), so the check lives here.
 func guardContractRoutes(model *integration.Contract, _ orm.DeleteQuery, ctx fiber.Ctx, tx orm.DB) error {
 	referenced, err := tx.NewSelect().
 		Model((*integration.Route)(nil)).

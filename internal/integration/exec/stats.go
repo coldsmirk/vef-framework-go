@@ -10,8 +10,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/integration"
 )
 
-// statsRecorder aggregates per-(system, contract) invocation statistics in
-// memory. Numbers are per node and reset on restart; the invocation log is
+// statsRecorder aggregates per-(system, contract, direction) invocation
+// statistics in memory. Numbers are per node and reset on restart; the invocation log is
 // the durable record.
 type statsRecorder struct {
 	mu      sync.Mutex
