@@ -5,10 +5,9 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/coldsmirk/go-collections"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect"
-
-	collections "github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/page"
 	"github.com/coldsmirk/vef-framework-go/result"

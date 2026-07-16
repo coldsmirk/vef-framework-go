@@ -1,6 +1,6 @@
 package shared
 
-import collections "github.com/coldsmirk/go-collections"
+import "github.com/coldsmirk/go-collections"
 
 // OrderedUnique stores unique values while preserving first-seen order.
 type OrderedUnique[T comparable] struct {

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	collections "github.com/coldsmirk/go-collections"
+	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/i18n"

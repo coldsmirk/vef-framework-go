@@ -4,9 +4,8 @@ import (
 	"context"
 	"strings"
 
+	"github.com/coldsmirk/go-collections"
 	"github.com/stretchr/testify/suite"
-
-	collections "github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"

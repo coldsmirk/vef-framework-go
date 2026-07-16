@@ -3,10 +3,9 @@ package engine
 import (
 	"testing"
 
+	"github.com/coldsmirk/go-collections"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	collections "github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 )

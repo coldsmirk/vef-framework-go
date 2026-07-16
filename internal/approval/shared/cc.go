@@ -6,9 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/coldsmirk/go-collections"
 	"github.com/spf13/cast"
-
-	collections "github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"

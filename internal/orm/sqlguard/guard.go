@@ -7,8 +7,7 @@ import (
 
 	"github.com/ajitpratap0/GoSQLX/pkg/gosqlx"
 	"github.com/ajitpratap0/GoSQLX/pkg/sql/ast"
-
-	collections "github.com/coldsmirk/go-collections"
+	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/logx"

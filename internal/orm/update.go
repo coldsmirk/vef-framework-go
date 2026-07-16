@@ -6,11 +6,10 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/coldsmirk/go-collections"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/feature"
 	"github.com/uptrace/bun/schema"
-
-	collections "github.com/coldsmirk/go-collections"
 )
 
 // NewUpdateQuery creates a new UpdateQuery instance with the provided database instance.

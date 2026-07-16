@@ -1,6 +1,6 @@
 package orm
 
-import collections "github.com/coldsmirk/go-collections"
+import "github.com/coldsmirk/go-collections"
 
 // returningColumns keeps RETURNING columns unique while preserving append order.
 type returningColumns struct {

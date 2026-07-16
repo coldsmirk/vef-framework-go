@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	collections "github.com/coldsmirk/go-collections"
+	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/js"
 )

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	collections "github.com/coldsmirk/go-collections"
+	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"

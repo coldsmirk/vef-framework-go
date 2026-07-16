@@ -3,9 +3,8 @@ package orm
 import (
 	"reflect"
 
+	"github.com/coldsmirk/go-collections"
 	"github.com/uptrace/bun/schema"
-
-	collections "github.com/coldsmirk/go-collections"
 )
 
 // autoColumnHandlers manages audit fields (ID, timestamps, user tracking) on insert/update.

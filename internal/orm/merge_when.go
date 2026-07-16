@@ -3,10 +3,9 @@ package orm
 import (
 	"fmt"
 
+	"github.com/coldsmirk/go-collections"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/schema"
-
-	collections "github.com/coldsmirk/go-collections"
 )
 
 // MergeWhenBuilder is an interface for defining actions in MERGE WHEN clauses.

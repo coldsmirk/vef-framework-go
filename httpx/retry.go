@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	collections "github.com/coldsmirk/go-collections"
+	"github.com/coldsmirk/go-collections"
 )
 
 const (

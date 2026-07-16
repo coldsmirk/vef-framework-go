@@ -3,7 +3,7 @@ package js
 import (
 	"fmt"
 
-	collections "github.com/coldsmirk/go-collections"
+	"github.com/coldsmirk/go-collections"
 )
 
 // Engine holds an immutable, validated set of libraries and stamps out
