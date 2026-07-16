@@ -156,12 +156,7 @@ func (e *envelope) applyResponse(response map[string]any) (any, error) {
 		return response, nil
 	}
 
-	value, err := e.unwrapResponse(response)
-	if err != nil {
-		return nil, err
-	}
-
-	return value, nil
+	return e.unwrapResponse(response)
 }
 
 // widenStringMap copies a string map into the plain object shape scripts

@@ -98,15 +98,11 @@ func (r *statsRecorder) Stats() []integration.InvocationStats {
 	}
 
 	slices.SortFunc(stats, func(a, b integration.InvocationStats) int {
-		if c := cmp.Compare(a.System, b.System); c != 0 {
-			return c
-		}
-
-		if c := cmp.Compare(a.Contract, b.Contract); c != 0 {
-			return c
-		}
-
-		return cmp.Compare(string(a.Direction), string(b.Direction))
+		return cmp.Or(
+			cmp.Compare(a.System, b.System),
+			cmp.Compare(a.Contract, b.Contract),
+			cmp.Compare(string(a.Direction), string(b.Direction)),
+		)
 	})
 
 	return stats
