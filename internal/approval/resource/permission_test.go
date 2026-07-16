@@ -41,11 +41,10 @@ func TestManagementResourceRequiredPermissions(t *testing.T) {
 		specs := collectSpecs(resource, collectors...)
 
 		expected := map[string]string{
-			"find_tree":         "approval.category.query",
-			"find_tree_options": "approval.category.query",
-			"create":            "approval.category.create",
-			"update":            "approval.category.update",
-			"delete":            "approval.category.delete",
+			"find_tree": "approval.category.query",
+			"create":    "approval.category.create",
+			"update":    "approval.category.update",
+			"delete":    "approval.category.delete",
 		}
 
 		assertRequiredPermissions(t, specs, expected)

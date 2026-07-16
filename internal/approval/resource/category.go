@@ -39,7 +39,6 @@ type CategoryResource struct {
 	api.Resource
 
 	crud.FindTree[approval.FlowCategory, CategorySearch]
-	crud.FindTreeOptions[approval.FlowCategory, CategorySearch]
 	crud.Create[approval.FlowCategory, CategoryParams]
 	crud.Update[approval.FlowCategory, CategoryParams]
 	crud.Delete[approval.FlowCategory]
@@ -117,9 +116,6 @@ func NewCategoryResource(tenantResolver approval.PrincipalTenantResolver) api.Re
 	return &CategoryResource{
 		Resource: api.NewRPCResource("approval/category"),
 		FindTree: crud.NewFindTree[approval.FlowCategory, CategorySearch](buildFlowCategoryTree).
-			RequiredPermission("approval.category.query").
-			WithQueryApplier(tenantApplier, crud.QueryBase),
-		FindTreeOptions: crud.NewFindTreeOptions[approval.FlowCategory, CategorySearch]().
 			RequiredPermission("approval.category.query").
 			WithQueryApplier(tenantApplier, crud.QueryBase),
 		Create: crud.NewCreate[approval.FlowCategory, CategoryParams]().
