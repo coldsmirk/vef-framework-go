@@ -48,6 +48,9 @@ type DB interface {
 	// RunInTx executes fn within a read-write transaction (READ COMMITTED isolation).
 	// The transaction is committed if fn returns nil, rolled back otherwise.
 	RunInTx(ctx context.Context, fn func(ctx context.Context, tx DB) error) error
+	// InTx reports whether this handle is transaction-scoped (obtained inside
+	// RunInTx / RunInReadOnlyTx or from BeginTx) rather than pool-scoped.
+	InTx() bool
 	// RunInReadOnlyTx executes fn within a read-only transaction (READ COMMITTED isolation).
 	RunInReadOnlyTx(ctx context.Context, fn func(ctx context.Context, tx DB) error) error
 	// BeginTx starts a manual transaction with the given options. Caller must commit or rollback.
@@ -183,7 +186,7 @@ func (d *BunDB) BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error) {
 }
 
 func (d *BunDB) Connection(ctx context.Context) (*sql.Conn, error) {
-	if d.inTx() {
+	if d.InTx() {
 		return nil, ErrConnectionInTx
 	}
 
@@ -249,7 +252,7 @@ func (d *BunDB) TableOf(model any) *schema.Table {
 
 // inTx reports whether this wrapper is scoped to a transaction rather than the
 // connection pool.
-func (d *BunDB) inTx() bool {
+func (d *BunDB) InTx() bool {
 	_, ok := d.db.(*bun.DB)
 
 	return !ok

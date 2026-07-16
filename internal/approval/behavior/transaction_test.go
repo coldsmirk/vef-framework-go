@@ -11,6 +11,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
+	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
 type TestCmd struct{ cqrs.BaseCommand }
@@ -32,6 +33,39 @@ func TestTransactionBehavior(t *testing.T) {
 
 		require.NoError(t, err, "TestTransactionBehavior should complete without error")
 		assert.Equal(t, "ok", result, "Should return handler result")
+	})
+
+	t.Run("WrapsCommandDespiteRequestScopedDB", func(t *testing.T) {
+		// The API middleware attaches a plain (non-transactional) DB to every
+		// request context; it must not be mistaken for a parent transaction.
+		requestDB := db.WithNamedArg("Operator", "user-1")
+		ctx := contextx.SetDB(context.Background(), requestDB)
+
+		_, err := behavior.Handle(ctx, TestCmd{}, func(ctx context.Context) (any, error) {
+			tx := contextx.DB(ctx)
+			require.NotNil(t, tx, "Should inject tx DB into context")
+			assert.True(t, tx.InTx(), "Handler must run inside a transaction")
+
+			return nil, nil
+		})
+
+		require.NoError(t, err, "Command with request-scoped DB should complete without error")
+	})
+
+	t.Run("ReusesParentTransaction", func(t *testing.T) {
+		err := db.RunInTx(context.Background(), func(ctx context.Context, tx orm.DB) error {
+			ctx = contextx.SetDB(ctx, tx)
+
+			_, err := behavior.Handle(ctx, TestCmd{}, func(ctx context.Context) (any, error) {
+				assert.Same(t, tx, contextx.DB(ctx), "Should reuse the parent transaction handle")
+
+				return nil, nil
+			})
+
+			return err
+		})
+
+		require.NoError(t, err, "Nested dispatch inside a transaction should complete without error")
 	})
 
 	t.Run("BypassesTransactionForQuery", func(t *testing.T) {

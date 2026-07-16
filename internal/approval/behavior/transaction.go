@@ -29,19 +29,30 @@ func (*TransactionBehavior) Order() int { return 0 }
 // existing transaction), the inner pipeline reuses that transaction
 // rather than opening a nested one — concurrent nested transactions on the
 // same connection are driver-specific and the runtime cost of savepoints
-// outweighs the rare benefit here.
+// outweighs the rare benefit here. Only an actual transaction handle counts
+// as a parent: the API middleware attaches a plain request-scoped DB to
+// every request context, and mistaking it for a parent transaction would
+// silently run the whole command pipeline without atomicity. That
+// request-scoped handle is still preferred as the transaction opener — it
+// carries the operator named arg that audit columns render.
 func (b *TransactionBehavior) Handle(ctx context.Context, action cqrs.Action, next func(context.Context) (any, error)) (any, error) {
 	if action.Kind() == cqrs.Query {
 		return next(ctx)
 	}
 
+	db := b.db
+
 	if existing := contextx.DB(ctx); existing != nil {
-		return next(ctx)
+		if existing.InTx() {
+			return next(ctx)
+		}
+
+		db = existing
 	}
 
 	var result any
 
-	err := b.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) (err error) {
+	err := db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) (err error) {
 		ctx = contextx.SetDB(ctx, tx)
 		result, err = next(ctx)
 
