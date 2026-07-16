@@ -183,12 +183,12 @@ func cleanAllApprovalData(ctx context.Context, db orm.DB) {
 
 // --- JSON helper ---
 
-// mustMarshal marshals v to json.RawMessage, returning "{}" on failure so the
-// flow-definition builders stay free of error plumbing.
+// mustMarshal marshals v to json.RawMessage, panicking on failure so a broken
+// fixture surfaces immediately instead of silently becoming "{}".
 func mustMarshal(v any) json.RawMessage {
 	data, err := json.Marshal(v)
 	if err != nil {
-		return json.RawMessage("{}")
+		panic(err)
 	}
 
 	return data

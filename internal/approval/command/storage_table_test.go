@@ -192,7 +192,7 @@ func (s *StorageTableTestSuite) TestPublishGeneratesTableAndMetadata() {
 func (s *StorageTableTestSuite) TestPublishIsIdempotent() {
 	_, versionID := s.deployPublishedTableFlow("storage-tbl-idem")
 
-	// Re-running OnVersionPublished (e.g. a retry) must not error or duplicate.
+	// Re-running the publish provisioning (e.g. a retry) must not error or duplicate.
 	var version approval.FlowVersion
 
 	version.ID = versionID

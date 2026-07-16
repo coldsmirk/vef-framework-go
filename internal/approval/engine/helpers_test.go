@@ -252,9 +252,9 @@ func (m *MockAssigneeService) GetRoleUsers(ctx context.Context, roleID string) (
 
 // TestGetSuperior tests get superior scenarios.
 func TestGetSuperior(t *testing.T) {
-	t.Run("NilOrgService", func(t *testing.T) {
+	t.Run("NilAssigneeService", func(t *testing.T) {
 		_, err := getSuperior(t.Context(), nil, "user1")
-		assert.ErrorIs(t, err, ErrAssigneeServiceNotConfigured, "Should return ErrAssigneeServiceNotConfigured when OrganizationService is nil")
+		assert.ErrorIs(t, err, ErrAssigneeServiceNotConfigured, "Should return ErrAssigneeServiceNotConfigured when the AssigneeService is nil")
 	})
 
 	t.Run("WithService", func(t *testing.T) {

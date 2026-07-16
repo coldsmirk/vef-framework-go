@@ -158,7 +158,7 @@ func TestHandleNodeDataDefaultsApprovalMethodAndPassRule(t *testing.T) {
 			"HandleNodeData.ApplyTo should default PassRule to PassAny")
 	})
 
-	t.Run("DefaultsNotAppliedWhenDataProvidesValues", func(t *testing.T) {
+	t.Run("DefaultsApplyAlongsideProvidedValues", func(t *testing.T) {
 		// When TaskNodeData carries ExecutionType (which sets node.ExecutionType via
 		// applyTaskNodeData) but does NOT carry ApprovalMethod, the handle node
 		// defaults still apply (only ApprovalMethod and PassRule are defaulted).
