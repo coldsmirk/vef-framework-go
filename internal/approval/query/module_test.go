@@ -38,6 +38,7 @@ func TestRegisterHandlers(t *testing.T) {
 		new(GetMyPendingCountsHandler),
 		new(GetMyInstanceDetailHandler),
 		new(FindAvailableFlowsHandler),
+		new(GetStartFormHandler),
 		new(FindAdminInstancesHandler),
 		new(FindAdminTasksHandler),
 		new(GetAdminInstanceDetailHandler),
@@ -109,6 +110,13 @@ func TestRegisterHandlers(t *testing.T) {
 			defer recoverDispatch(&err)
 
 			_, err = cqrs.Send[FindAvailableFlowsQuery, *page.Page[my.AvailableFlow]](context.Background(), bus, FindAvailableFlowsQuery{})
+
+			return err
+		}},
+		{"GetStartForm", func() (err error) {
+			defer recoverDispatch(&err)
+
+			_, err = cqrs.Send[GetStartFormQuery, *my.StartForm](context.Background(), bus, GetStartFormQuery{})
 
 			return err
 		}},

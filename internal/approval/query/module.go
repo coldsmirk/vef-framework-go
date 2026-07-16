@@ -20,6 +20,7 @@ var Module = fx.Module(
 		NewGetMyPendingCountsHandler,
 		NewGetMyInstanceDetailHandler,
 		NewFindAvailableFlowsHandler,
+		NewGetStartFormHandler,
 		NewFindAdminInstancesHandler,
 		NewFindAdminTasksHandler,
 		NewGetAdminInstanceDetailHandler,
@@ -45,6 +46,7 @@ func registerHandlers(
 	getMyPendingCounts *GetMyPendingCountsHandler,
 	getMyInstanceDetail *GetMyInstanceDetailHandler,
 	findAvailableFlows *FindAvailableFlowsHandler,
+	getStartForm *GetStartFormHandler,
 	findAdminInstances *FindAdminInstancesHandler,
 	findAdminTasks *FindAdminTasksHandler,
 	getAdminInstanceDetail *GetAdminInstanceDetailHandler,
@@ -63,6 +65,7 @@ func registerHandlers(
 	cqrs.Register(bus, getMyPendingCounts)
 	cqrs.Register(bus, getMyInstanceDetail)
 	cqrs.Register(bus, findAvailableFlows)
+	cqrs.Register(bus, getStartForm)
 	cqrs.Register(bus, findAdminInstances)
 	cqrs.Register(bus, findAdminTasks)
 	cqrs.Register(bus, getAdminInstanceDetail)

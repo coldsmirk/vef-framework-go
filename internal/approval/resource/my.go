@@ -30,6 +30,7 @@ func NewMyResource(bus cqrs.Bus, departmentResolver approval.PrincipalDepartment
 			"approval/my",
 			api.WithOperations(
 				api.OperationSpec{Action: "find_available_flows"},
+				api.OperationSpec{Action: "get_start_form"},
 				api.OperationSpec{Action: "find_initiated"},
 				api.OperationSpec{Action: "find_pending_tasks"},
 				api.OperationSpec{Action: "find_completed_tasks"},
@@ -72,6 +73,35 @@ func (r *MyResource) FindAvailableFlows(ctx fiber.Ctx, principal *security.Princ
 	}
 
 	return result.Ok(res).Response(ctx)
+}
+
+// GetStartFormParams contains the parameters for loading a flow's start form.
+type GetStartFormParams struct {
+	api.P
+
+	TenantID string `json:"tenantId" validate:"required"`
+	FlowCode string `json:"flowCode" validate:"required"`
+}
+
+// GetStartForm loads the published form document for initiating a flow,
+// gated exactly like starting the instance.
+func (r *MyResource) GetStartForm(ctx fiber.Ctx, principal *security.Principal, params GetStartFormParams) error {
+	departmentID, _, err := r.departmentResolver.Resolve(ctx.Context(), principal)
+	if err != nil {
+		return err
+	}
+
+	form, err := cqrs.Send[query.GetStartFormQuery, *my.StartForm](ctx.Context(), r.bus, query.GetStartFormQuery{
+		TenantID:              params.TenantID,
+		FlowCode:              params.FlowCode,
+		UserID:                principal.ID,
+		ApplicantDepartmentID: departmentID,
+	})
+	if err != nil {
+		return err
+	}
+
+	return result.Ok(form).Response(ctx)
 }
 
 // FindInitiatedParams contains the parameters for querying initiated instances.
