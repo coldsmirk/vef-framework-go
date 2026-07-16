@@ -12,13 +12,18 @@ import (
 	"github.com/coldsmirk/vef-framework-go/result"
 )
 
-// GetFlowGraphQuery retrieves the flow graph for a published flow.
+// GetFlowGraphQuery retrieves a flow's graph: the latest published version by
+// default, or the version named by VersionID — the lane a designer uses to
+// resume editing from the newest deployment, published or not.
 type GetFlowGraphQuery struct {
 	cqrs.BaseQuery
 
 	FlowID   string
 	TenantID string
-	Caller   approval.CallerContext
+	// VersionID selects an explicit version of the flow; empty resolves the
+	// latest published version.
+	VersionID string
+	Caller    approval.CallerContext
 }
 
 // GetFlowGraphHandler handles the GetFlowGraphQuery.
@@ -63,7 +68,26 @@ func (h *GetFlowGraphHandler) Handle(ctx context.Context, query GetFlowGraphQuer
 
 	var version approval.FlowVersion
 
-	if err := db.NewSelect().
+	if query.VersionID != "" {
+		version.ID = query.VersionID
+
+		if err := db.NewSelect().
+			Model(&version).
+			WherePK().
+			Scan(ctx); err != nil {
+			if result.IsRecordNotFound(err) {
+				return nil, shared.ErrVersionNotFound
+			}
+
+			return nil, fmt.Errorf("query version: %w", err)
+		}
+
+		// A version id under a different flow is indistinguishable from a
+		// missing one, so a caller cannot probe versions across flows.
+		if version.FlowID != flow.ID {
+			return nil, shared.ErrVersionNotFound
+		}
+	} else if err := db.NewSelect().
 		Model(&version).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("flow_id", query.FlowID).

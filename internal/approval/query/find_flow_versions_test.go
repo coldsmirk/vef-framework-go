@@ -72,6 +72,14 @@ func (s *FindFlowVersionsTestSuite) TestSuccessWithMultipleVersions() {
 	s.Assert().Equal(3, result[0].Version, "First version should be 3 (DESC order)")
 	s.Assert().Equal(2, result[1].Version, "Second version should be 2")
 	s.Assert().Equal(1, result[2].Version, "Third version should be 1")
+
+	// The summary projection must carry the metadata columns the version list
+	// renders — a dropped Select column would surface here as a zero value.
+	s.Assert().NotEmpty(result[0].ID, "Summary should carry the version id")
+	s.Assert().Equal(s.flowID1, result[0].FlowID, "Summary should carry the flow id")
+	s.Assert().Equal(approval.VersionDraft, result[0].Status, "Summary should carry the status")
+	s.Assert().Equal(approval.StorageJSON, result[0].StorageMode, "Summary should carry the storage mode")
+	s.Assert().False(result[0].CreatedAt.Unwrap().IsZero(), "Summary should carry the deploy time")
 }
 
 func (s *FindFlowVersionsTestSuite) TestEmpty() {

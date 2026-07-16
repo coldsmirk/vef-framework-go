@@ -74,6 +74,61 @@ func (s *GetFlowGraphTestSuite) TestGetGraphSuccess() {
 	s.Assert().Len(graph.Edges, 1, "Should return 1 edge")
 }
 
+func (s *GetFlowGraphTestSuite) TestExplicitVersion() {
+	// A draft v2 beside the published v1 — the state a designer resumes from
+	// after deploying without publishing.
+	draft := &approval.FlowVersion{
+		FlowID:  s.flowID,
+		Version: 2,
+		Status:  approval.VersionDraft,
+	}
+	_, err := s.db.NewInsert().Model(draft).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert draft version")
+
+	draftNode := &approval.FlowNode{
+		FlowVersionID: draft.ID,
+		Key:           "draft-start",
+		Kind:          approval.NodeStart,
+		Name:          "Draft Start",
+	}
+	_, err = s.db.NewInsert().Model(draftNode).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert draft node")
+
+	s.Run("DraftVersion", func() {
+		graph, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{
+			FlowID:    s.flowID,
+			VersionID: draft.ID,
+			Caller:    approval.SystemCaller,
+		})
+		s.Require().NoError(err, "Explicit draft version should resolve")
+		s.Assert().Equal(draft.ID, graph.Version.ID, "Should return the requested version")
+		s.Assert().Equal(approval.VersionDraft, graph.Version.Status, "Should return the draft, not the published version")
+		s.Assert().Len(graph.Nodes, 1, "Nodes must be scoped to the requested version")
+	})
+
+	s.Run("MissingVersion", func() {
+		_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{
+			FlowID:    s.flowID,
+			VersionID: "non-existent",
+			Caller:    approval.SystemCaller,
+		})
+		s.Require().Error(err, "Missing version must fail")
+		s.Assert().ErrorIs(err, shared.ErrVersionNotFound, "Should return version-not-found")
+	})
+
+	s.Run("VersionOfAnotherFlow", func() {
+		otherFix := setupQueryFixture(s.T(), s.ctx, s.db, "qfg-other", 0)
+
+		_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{
+			FlowID:    otherFix.FlowID,
+			VersionID: draft.ID,
+			Caller:    approval.SystemCaller,
+		})
+		s.Require().Error(err, "A version under a different flow must be denied")
+		s.Assert().ErrorIs(err, shared.ErrVersionNotFound, "Cross-flow version must mimic not-found")
+	})
+}
+
 func (s *GetFlowGraphTestSuite) TestFlowNotFound() {
 	_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: "non-existent", Caller: approval.SystemCaller})
 	s.Require().Error(err, "TestFlowNotFound should return an error")

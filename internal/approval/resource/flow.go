@@ -192,9 +192,14 @@ type GetGraphParams struct {
 	// other flow params); the actual cross-tenant gate is Caller.Allows in the
 	// query handler, so this only narrows the lookup.
 	TenantID *string `json:"tenantId"`
+	// VersionID selects an explicit version (a designer resuming from the
+	// newest deployment, published or not); omitted resolves the latest
+	// published version.
+	VersionID *string `json:"versionId"`
 }
 
-// GetGraph returns the flow graph for the published version.
+// GetGraph returns the flow graph: the latest published version by default,
+// or an explicit version when versionId is given.
 func (r *FlowResource) GetGraph(ctx fiber.Ctx, principal *security.Principal, params GetGraphParams) error {
 	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
@@ -206,13 +211,19 @@ func (r *FlowResource) GetGraph(ctx fiber.Ctx, principal *security.Principal, pa
 		tenantID = *params.TenantID
 	}
 
+	versionID := ""
+	if params.VersionID != nil {
+		versionID = *params.VersionID
+	}
+
 	graph, err := cqrs.Send[query.GetFlowGraphQuery, *shared.FlowGraph](
 		ctx.Context(),
 		r.bus,
 		query.GetFlowGraphQuery{
-			FlowID:   params.FlowID,
-			TenantID: tenantID,
-			Caller:   caller,
+			FlowID:    params.FlowID,
+			TenantID:  tenantID,
+			VersionID: versionID,
+			Caller:    caller,
 		},
 	)
 	if err != nil {
@@ -364,7 +375,7 @@ func (r *FlowResource) FindVersions(ctx fiber.Ctx, principal *security.Principal
 		return err
 	}
 
-	versions, err := cqrs.Send[query.FindFlowVersionsQuery, []approval.FlowVersion](
+	versions, err := cqrs.Send[query.FindFlowVersionsQuery, []shared.FlowVersionSummary](
 		ctx.Context(),
 		r.bus,
 		query.FindFlowVersionsQuery{
