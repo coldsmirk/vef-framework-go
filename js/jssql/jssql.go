@@ -16,9 +16,9 @@ const Name = "sql"
 
 // lib exposes parameterized SQL access to scripts as the global "sql" object:
 //
-//	sql.query('SELECT name FROM users WHERE age > ?', 18)  // → [{...}, ...]
-//	sql.queryOne('SELECT ... WHERE id = ?', id)            // → {...} | null
-//	sql.exec('UPDATE ...', args)                           // → { rowsAffected }
+//	sql.queryList('SELECT name FROM users WHERE age > ?', 18)  // → [{...}, ...]
+//	sql.queryOne('SELECT ... WHERE id = ?', id)                // → {...} | null
+//	sql.execute('UPDATE ...', args)                            // → { rowsAffected }
 //
 // Only placeholder binding is offered — there is deliberately no string
 // interpolation helper. The library is read-only unless built with WithExec;
@@ -51,7 +51,7 @@ func (*lib) Name() string {
 
 func (l *lib) Install(rt *js.Runtime) error {
 	return rt.Set(Name, map[string]any{
-		"query": func(query string, args ...any) ([]map[string]any, error) {
+		"queryList": func(query string, args ...any) ([]map[string]any, error) {
 			return l.query(rt, query, args)
 		},
 		"queryOne": func(query string, args ...any) (any, error) {
@@ -66,7 +66,7 @@ func (l *lib) Install(rt *js.Runtime) error {
 
 			return rows[0], nil
 		},
-		"exec": func(query string, args ...any) (map[string]any, error) {
+		"execute": func(query string, args ...any) (map[string]any, error) {
 			return l.exec(rt, query, args)
 		},
 	})

@@ -70,10 +70,10 @@ type System struct {
 type DataSourceMode string
 
 const (
-	// DataSourceModeReadOnly restricts scripts to sql.query; sql.exec throws.
+	// DataSourceModeReadOnly restricts scripts to sql.queryList; sql.execute throws.
 	// An empty mode resolves to this default.
 	DataSourceModeReadOnly DataSourceMode = "read_only"
-	// DataSourceModeReadWrite additionally enables sql.exec, letting scripts
+	// DataSourceModeReadWrite additionally enables sql.execute, letting scripts
 	// write back into the system's database.
 	DataSourceModeReadWrite DataSourceMode = "read_write"
 )

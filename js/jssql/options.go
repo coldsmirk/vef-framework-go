@@ -12,8 +12,8 @@ type libConfig struct {
 // Option customizes the sql library.
 type Option func(*libConfig)
 
-// WithExec enables sql.exec for mutating statements. Without it the library
-// is read-only and exec throws ErrExecDisabled.
+// WithExec enables sql.execute for mutating statements. Without it the library
+// is read-only and execute throws ErrExecDisabled.
 func WithExec() Option {
 	return func(c *libConfig) {
 		c.allowExec = true

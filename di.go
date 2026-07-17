@@ -522,7 +522,7 @@ func ProvideDataSourceProvider(constructor any, paramTags ...string) fx.Option {
 //     (jssql.Name, jshttp.Name, ...) and it replaces the default, keeping the
 //     default's tier — an always-on utility stays always-on, an opt-in
 //     capability stays opt-in. Use it to supply your own policy: enable
-//     sql.exec, restrict HTTP hosts, back the cache with Redis, restrict
+//     sql.execute, restrict HTTP hosts, back the cache with Redis, restrict
 //     publishable event types.
 //
 //   - Adding a new library: return a library with a fresh name. New libraries

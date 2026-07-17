@@ -132,13 +132,13 @@ func TestBuiltinLibraries(t *testing.T) {
 		rt, err := engine.NewRuntime(js.EnableLibs("sql"))
 		require.NoError(t, err, "NewRuntime should succeed")
 
-		count, err := rt.RunString(t.Context(), `sql.query('SELECT COUNT(*) AS c FROM t')[0].c`)
+		count, err := rt.RunString(t.Context(), `sql.queryList('SELECT COUNT(*) AS c FROM t')[0].c`)
 		require.NoError(t, err, "A read query should succeed under the default")
 		assert.Equal(t, int64(2), count.ToInteger(), "Query should read seeded rows")
 
-		_, err = rt.RunString(t.Context(), `sql.exec('DELETE FROM t')`)
+		_, err = rt.RunString(t.Context(), `sql.execute('DELETE FROM t')`)
 		require.Error(t, err, "exec should be disabled under the default")
-		assert.Contains(t, err.Error(), "exec disabled", "Error should carry the capability reason")
+		assert.Contains(t, err.Error(), "execute disabled", "Error should carry the capability reason")
 	})
 }
 
@@ -215,7 +215,7 @@ func TestModuleWiring(t *testing.T) {
 	rt, err := engine.NewRuntime(js.EnableLibs("sql"))
 	require.NoError(t, err, "NewRuntime should succeed")
 
-	result, err := rt.RunString(t.Context(), `[typeof crypto.sha256, typeof sql.query].join(',')`)
+	result, err := rt.RunString(t.Context(), `[typeof crypto.sha256, typeof sql.queryList].join(',')`)
 	require.NoError(t, err, "Script should execute successfully")
 	assert.Equal(t, "function,function", result.String(), "The wired engine should expose the always-on crypto and the opt-in sql libraries")
 }

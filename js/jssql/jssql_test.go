@@ -41,7 +41,7 @@ func TestQuery(t *testing.T) {
 		rt, _ := newSQLRuntime(t)
 
 		result, err := rt.RunString(t.Context(), `
-			const rows = sql.query('SELECT name, age FROM users WHERE age > ? ORDER BY age', 18);
+			const rows = sql.queryList('SELECT name, age FROM users WHERE age > ? ORDER BY age', 18);
 			rows.map(r => r.name + ':' + r.age).join(',')
 		`)
 		require.NoError(t, err, "Script should execute successfully")
@@ -52,7 +52,7 @@ func TestQuery(t *testing.T) {
 		rt, _ := newSQLRuntime(t)
 
 		result, err := rt.RunString(t.Context(), `
-			sql.query('SELECT COUNT(*) AS n FROM users WHERE age > ? AND name <> ?', 10, 'bob')[0].n
+			sql.queryList('SELECT COUNT(*) AS n FROM users WHERE age > ? AND name <> ?', 10, 'bob')[0].n
 		`)
 		require.NoError(t, err, "Script should execute successfully")
 		assert.Equal(t, int64(2), result.ToInteger(), "Both parameters should bind in order")
@@ -62,7 +62,7 @@ func TestQuery(t *testing.T) {
 		rt, _ := newSQLRuntime(t)
 
 		result, err := rt.RunString(t.Context(), `
-			sql.query('WITH adults AS (SELECT * FROM users WHERE age >= 18) SELECT COUNT(*) AS n FROM adults')[0].n
+			sql.queryList('WITH adults AS (SELECT * FROM users WHERE age >= 18) SELECT COUNT(*) AS n FROM adults')[0].n
 		`)
 		require.NoError(t, err, "Script should execute successfully")
 		assert.Equal(t, int64(2), result.ToInteger(), "WITH statements should be accepted as read-only")
@@ -71,7 +71,7 @@ func TestQuery(t *testing.T) {
 	t.Run("MutationRejected", func(t *testing.T) {
 		rt, db := newSQLRuntime(t)
 
-		_, err := rt.RunString(t.Context(), `sql.query('DELETE FROM users')`)
+		_, err := rt.RunString(t.Context(), `sql.queryList('DELETE FROM users')`)
 		require.Error(t, err, "A mutating statement should be rejected by query")
 		assert.Contains(t, err.Error(), "not read-only", "Error should carry the read-only reason")
 
@@ -84,7 +84,7 @@ func TestQuery(t *testing.T) {
 	t.Run("StackedStatementRejected", func(t *testing.T) {
 		rt, db := newSQLRuntime(t)
 
-		_, err := rt.RunString(t.Context(), `sql.query('SELECT 1; DELETE FROM users')`)
+		_, err := rt.RunString(t.Context(), `sql.queryList('SELECT 1; DELETE FROM users')`)
 		require.Error(t, err, "A stacked mutating statement should be rejected by query")
 
 		var count int
@@ -96,7 +96,7 @@ func TestQuery(t *testing.T) {
 	t.Run("UnparseableRejected", func(t *testing.T) {
 		rt, _ := newSQLRuntime(t)
 
-		_, err := rt.RunString(t.Context(), `sql.query('PRAGMA case_sensitive_like = true')`)
+		_, err := rt.RunString(t.Context(), `sql.queryList('PRAGMA case_sensitive_like = true')`)
 		require.Error(t, err, "SQL the guard cannot parse should fail closed")
 		assert.Contains(t, err.Error(), "not read-only", "Error should carry the read-only reason")
 	})
@@ -104,11 +104,11 @@ func TestQuery(t *testing.T) {
 	t.Run("RowLimit", func(t *testing.T) {
 		rt, _ := newSQLRuntime(t, jssql.WithMaxRows(2))
 
-		_, err := rt.RunString(t.Context(), `sql.query('SELECT * FROM users')`)
+		_, err := rt.RunString(t.Context(), `sql.queryList('SELECT * FROM users')`)
 		require.Error(t, err, "A result over the row limit should fail loudly")
 		assert.Contains(t, err.Error(), "row limit", "Error should carry the row limit reason")
 
-		result, err := rt.RunString(t.Context(), `sql.query('SELECT * FROM users LIMIT 2').length`)
+		result, err := rt.RunString(t.Context(), `sql.queryList('SELECT * FROM users LIMIT 2').length`)
 		require.NoError(t, err, "A bounded query should pass")
 		assert.Equal(t, int64(2), result.ToInteger(), "Bounded query should return the limited rows")
 	})
@@ -138,14 +138,14 @@ func TestExec(t *testing.T) {
 
 		result, err := rt.RunString(t.Context(), `
 			try {
-				sql.exec('DELETE FROM users');
+				sql.execute('DELETE FROM users');
 				'no error'
 			} catch (e) {
 				String(e)
 			}
 		`)
 		require.NoError(t, err, "Exec rejection should be catchable in scripts")
-		assert.Contains(t, result.String(), "exec disabled", "Caught error should carry the capability reason")
+		assert.Contains(t, result.String(), "execute disabled", "Caught error should carry the capability reason")
 
 		var count int
 
@@ -157,7 +157,7 @@ func TestExec(t *testing.T) {
 		rt, db := newSQLRuntime(t, jssql.WithExec())
 
 		result, err := rt.RunString(t.Context(), `
-			sql.exec('INSERT INTO users (name, age) VALUES (?, ?)', 'dave', 40).rowsAffected
+			sql.execute('INSERT INTO users (name, age) VALUES (?, ?)', 'dave', 40).rowsAffected
 		`)
 		require.NoError(t, err, "Script should execute successfully")
 		assert.Equal(t, int64(1), result.ToInteger(), "Insert should report one affected row")
@@ -172,7 +172,7 @@ func TestExec(t *testing.T) {
 		rt, _ := newSQLRuntime(t, jssql.WithExec())
 
 		result, err := rt.RunString(t.Context(), `
-			sql.exec('UPDATE users SET age = age + 1 WHERE age >= ?', 25).rowsAffected
+			sql.execute('UPDATE users SET age = age + 1 WHERE age >= ?', 25).rowsAffected
 		`)
 		require.NoError(t, err, "Script should execute successfully")
 		assert.Equal(t, int64(2), result.ToInteger(), "Update should report every affected row")

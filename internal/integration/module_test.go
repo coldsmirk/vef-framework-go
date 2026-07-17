@@ -1115,7 +1115,7 @@ func (s *ModuleTestSuite) TestDatabaseSystem() {
 	})
 
 	s.Run("WritesAreRejected", func() {
-		s.createAdapter(s.createSystemForScript("db-sys-w"), contract, `sql.exec('CREATE TABLE x (y INTEGER)'); return {}`)
+		s.createAdapter(s.createSystemForScript("db-sys-w"), contract, `sql.execute('CREATE TABLE x (y INTEGER)'); return {}`)
 
 		_, err := s.invoker.Invoke(s.T().Context(), "db.op", nil, integration.WithSystem("db-sys-w"))
 		s.Require().Error(err, "Write through the scoped sql lib should fail")
@@ -1134,8 +1134,8 @@ func (s *ModuleTestSuite) TestDatabaseSystem() {
 		s.Require().NoError(err, "Read-write system seed should insert")
 
 		s.createAdapter(rwSystem, contract, `
-			sql.exec('CREATE TABLE exchange (id INTEGER)')
-			sql.exec('INSERT INTO exchange (id) VALUES (?)', 7)
+			sql.execute('CREATE TABLE exchange (id INTEGER)')
+			sql.execute('INSERT INTO exchange (id) VALUES (?)', 7)
 			return { count: sql.queryOne('SELECT COUNT(*) AS n FROM exchange').n }
 		`)
 
