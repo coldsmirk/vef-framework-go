@@ -101,6 +101,17 @@ func TestQuery(t *testing.T) {
 		assert.Contains(t, err.Error(), "not read-only", "Error should carry the read-only reason")
 	})
 
+	t.Run("ReturnsEmptyArrayWhenNoMatch", func(t *testing.T) {
+		rt, _ := newSQLRuntime(t)
+
+		result, err := rt.RunString(t.Context(), `
+			const rows = sql.queryList('SELECT * FROM users WHERE age = ?', 999);
+			Array.isArray(rows) && rows.length === 0
+		`)
+		require.NoError(t, err, "Script should execute successfully")
+		assert.True(t, result.ToBoolean(), "No match should yield an empty array, not null")
+	})
+
 	t.Run("RowLimit", func(t *testing.T) {
 		rt, _ := newSQLRuntime(t, jssql.WithMaxRows(2))
 

@@ -93,6 +93,12 @@ func (l *lib) query(rt *js.Runtime, query string, args []any) ([]map[string]any,
 		return nil, fmt.Errorf("%w: %d rows over limit %d, constrain the query with LIMIT", ErrTooManyRows, len(rows), l.maxRows)
 	}
 
+	if rows == nil {
+		// Scan leaves the slice nil on no match, which would surface in the
+		// script (and its JSON output) as null instead of the documented [].
+		rows = []map[string]any{}
+	}
+
 	return rows, nil
 }
 
