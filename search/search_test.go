@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/coldsmirk/vef-framework-go/monad"
+	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
 // Test structs with various field types and conditions
@@ -467,4 +468,72 @@ func TestNoTagStruct(t *testing.T) {
 			assert.Equal(t, tt.operator, cond.operator, "Should use default operator")
 		})
 	}
+}
+
+// recordingConditionBuilder records the conditions Apply produces. It embeds
+// the interface so only the methods under test need overriding; anything else
+// panics via the nil embed, which would flag an unexpected condition.
+type recordingConditionBuilder struct {
+	orm.ConditionBuilder
+
+	equals   map[string]any
+	contains map[string]string
+}
+
+func newRecordingConditionBuilder() *recordingConditionBuilder {
+	return &recordingConditionBuilder{
+		equals:   map[string]any{},
+		contains: map[string]string{},
+	}
+}
+
+func (r *recordingConditionBuilder) Equals(column string, value any) orm.ConditionBuilder {
+	r.equals[column] = value
+
+	return r
+}
+
+func (r *recordingConditionBuilder) Contains(column, content string) orm.ConditionBuilder {
+	r.contains[column] = content
+
+	return r
+}
+
+// TestApplySkipsZeroValues pins the "non-empty fields only" contract: an
+// omitted JSON field arrives as the Go zero value and must not become a
+// condition (eq "" silently matches no row), while pointer fields keep
+// expressing explicit zero filters.
+func TestApplySkipsZeroValues(t *testing.T) {
+	type target struct {
+		SystemID  string `search:"eq,column=system_id"`
+		Code      string `search:"contains,column=code"`
+		IsEnabled *bool  `search:"eq,column=is_enabled"`
+	}
+
+	t.Run("ZeroValuesProduceNoConditions", func(t *testing.T) {
+		cb := newRecordingConditionBuilder()
+
+		NewFor[target]().Apply(cb, target{})
+
+		assert.Empty(t, cb.equals, "Zero-value eq fields should be skipped")
+		assert.Empty(t, cb.contains, "Zero-value contains fields should be skipped")
+	})
+
+	t.Run("NonZeroValuesProduceConditions", func(t *testing.T) {
+		cb := newRecordingConditionBuilder()
+
+		NewFor[target]().Apply(cb, target{SystemID: "sys-1", Code: "ord"})
+
+		assert.Equal(t, map[string]any{"system_id": "sys-1"}, cb.equals, "Non-zero eq field should filter")
+		assert.Equal(t, map[string]string{"code": "ord"}, cb.contains, "Non-zero contains field should filter")
+	})
+
+	t.Run("PointerFalseIsAnExplicitFilter", func(t *testing.T) {
+		cb := newRecordingConditionBuilder()
+		enabled := false
+
+		NewFor[target]().Apply(cb, target{IsEnabled: &enabled})
+
+		assert.Equal(t, map[string]any{"is_enabled": false}, cb.equals, "Non-nil pointer zero should still filter")
+	})
 }

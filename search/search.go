@@ -49,6 +49,15 @@ func (f Search) Apply(cb orm.ConditionBuilder, target any, defaultAlias ...strin
 			continue
 		}
 
+		// A non-pointer zero value means "not searched": JSON cannot tell an
+		// omitted field from its zero value, and turning it into a condition
+		// silently filters everything out (eq "" matches no row). Pointer
+		// fields express an explicit zero filter (*bool false) and are only
+		// skipped when nil.
+		if field.Kind() != reflect.Pointer && field.IsZero() {
+			continue
+		}
+
 		fieldValue := extractFieldValue(field.Interface())
 
 		alias := getColumnAlias(c.alias, defaultAlias...)
