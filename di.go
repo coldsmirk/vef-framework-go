@@ -529,7 +529,7 @@ func ProvideDataSourceProvider(constructor any, paramTags ...string) fx.Option {
 //     join the opt-in catalog, seen only when a runtime is created with
 //     js.EnableLibs(...).
 //
-//     vef.ProvideJSLib(func(db orm.DB) js.Lib { return jssql.New(db, config.Postgres, jssql.WithExec()) })
+//     vef.ProvideJSLib(func(db orm.DB) js.Lib { return jssql.New(db, config.Postgres, jssql.WithExecute()) })
 //     vef.ProvideJSLib(func() js.Lib { return jshttp.New(jshttp.WithPublicNetworkOnly()) })
 //
 // constructor is an fx-style factory that returns a js.Lib.

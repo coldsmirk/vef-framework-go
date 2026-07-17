@@ -21,13 +21,13 @@ const Name = "sql"
 //	sql.execute('UPDATE ...', args)                            // → { rowsAffected }
 //
 // Only placeholder binding is offered — there is deliberately no string
-// interpolation helper. The library is read-only unless built with WithExec;
+// interpolation helper. The library is read-only unless built with WithExecute;
 // failures are thrown as catchable exceptions.
 type lib struct {
-	db        orm.DB
-	kind      config.DBKind
-	maxRows   int
-	allowExec bool
+	db           orm.DB
+	kind         config.DBKind
+	maxRows      int
+	allowExecute bool
 }
 
 // New builds the sql library over db. The caller picks the data source —
@@ -42,7 +42,7 @@ func New(db orm.DB, kind config.DBKind, opts ...Option) js.Lib {
 		opt(&cfg)
 	}
 
-	return &lib{db: db, kind: kind, maxRows: cfg.maxRows, allowExec: cfg.allowExec}
+	return &lib{db: db, kind: kind, maxRows: cfg.maxRows, allowExecute: cfg.allowExecute}
 }
 
 func (*lib) Name() string {
@@ -67,7 +67,7 @@ func (l *lib) Install(rt *js.Runtime) error {
 			return rows[0], nil
 		},
 		"execute": func(query string, args ...any) (map[string]any, error) {
-			return l.exec(rt, query, args)
+			return l.execute(rt, query, args)
 		},
 	})
 }
@@ -102,10 +102,10 @@ func (l *lib) query(rt *js.Runtime, query string, args []any) ([]map[string]any,
 	return rows, nil
 }
 
-// exec runs a mutating statement, guarded by the WithExec grant.
-func (l *lib) exec(rt *js.Runtime, query string, args []any) (map[string]any, error) {
-	if !l.allowExec {
-		return nil, ErrExecDisabled
+// execute runs a mutating statement, guarded by the WithExecute grant.
+func (l *lib) execute(rt *js.Runtime, query string, args []any) (map[string]any, error) {
+	if !l.allowExecute {
+		return nil, ErrExecuteDisabled
 	}
 
 	result, err := l.db.NewRaw(query, args...).Exec(rt.Context())

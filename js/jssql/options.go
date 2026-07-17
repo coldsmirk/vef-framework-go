@@ -5,18 +5,18 @@ const DefaultMaxRows = 1000
 
 // libConfig collects the settings resolved from Options.
 type libConfig struct {
-	maxRows   int
-	allowExec bool
+	maxRows      int
+	allowExecute bool
 }
 
 // Option customizes the sql library.
 type Option func(*libConfig)
 
-// WithExec enables sql.execute for mutating statements. Without it the library
-// is read-only and execute throws ErrExecDisabled.
-func WithExec() Option {
+// WithExecute enables sql.execute for mutating statements. Without it the library
+// is read-only and execute throws ErrExecuteDisabled.
+func WithExecute() Option {
 	return func(c *libConfig) {
-		c.allowExec = true
+		c.allowExecute = true
 	}
 }
 

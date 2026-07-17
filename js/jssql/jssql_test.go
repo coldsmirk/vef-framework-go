@@ -164,8 +164,8 @@ func TestExec(t *testing.T) {
 		assert.Equal(t, 3, count, "Data should be untouched")
 	})
 
-	t.Run("InsertWithExec", func(t *testing.T) {
-		rt, db := newSQLRuntime(t, jssql.WithExec())
+	t.Run("InsertWithExecute", func(t *testing.T) {
+		rt, db := newSQLRuntime(t, jssql.WithExecute())
 
 		result, err := rt.RunString(t.Context(), `
 			sql.execute('INSERT INTO users (name, age) VALUES (?, ?)', 'dave', 40).rowsAffected
@@ -180,7 +180,7 @@ func TestExec(t *testing.T) {
 	})
 
 	t.Run("UpdateReportsAffectedRows", func(t *testing.T) {
-		rt, _ := newSQLRuntime(t, jssql.WithExec())
+		rt, _ := newSQLRuntime(t, jssql.WithExecute())
 
 		result, err := rt.RunString(t.Context(), `
 			sql.execute('UPDATE users SET age = age + 1 WHERE age >= ?', 25).rowsAffected

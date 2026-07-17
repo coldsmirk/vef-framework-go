@@ -296,7 +296,7 @@ func (inv *Invoker) newRuntime(ctx context.Context, e *execution) (*js.Runtime, 
 
 		var sqlOpts []jssql.Option
 		if e.system.DataSource.Mode.AllowsWrite() {
-			sqlOpts = append(sqlOpts, jssql.WithExec())
+			sqlOpts = append(sqlOpts, jssql.WithExecute())
 		}
 
 		libs = append(libs, jssql.New(systemDB, kind, sqlOpts...))
