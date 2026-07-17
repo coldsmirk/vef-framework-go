@@ -5,6 +5,7 @@ package definition_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -61,6 +62,40 @@ func TestValidateContract(t *testing.T) {
 
 			require.Error(t, err, "Contract should be rejected")
 			assert.ErrorIs(t, err, integration.ErrInvalidSchema(""), "Error should carry the invalid-schema code")
+		})
+	}
+}
+
+func TestValidateContractLabels(t *testing.T) {
+	longKey := strings.Repeat("k", 64)
+	longValue := strings.Repeat("值", 257)
+
+	tests := []struct {
+		name    string
+		labels  map[string]string
+		wantErr bool
+	}{
+		{name: "ValidLabelsPass", labels: map[string]string{"scene": "inspection", "app-1": "smp_web"}},
+		{name: "EmptyValuePasses", labels: map[string]string{"mobile": ""}},
+		{name: "DottedKeyFails", labels: map[string]string{"a.b": "x"}, wantErr: true},
+		{name: "NonASCIIKeyFails", labels: map[string]string{"场景": "x"}, wantErr: true},
+		{name: "EdgeDashKeyFails", labels: map[string]string{"-lead": "x"}, wantErr: true},
+		{name: "OverlongKeyFails", labels: map[string]string{longKey: "x"}, wantErr: true},
+		{name: "OverlongValueFails", labels: map[string]string{"scene": longValue}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := definition.ValidateContract(&integration.Contract{Labels: tt.labels})
+
+			if !tt.wantErr {
+				assert.NoError(t, err, "Labels should validate")
+
+				return
+			}
+
+			require.Error(t, err, "Labels should be rejected")
+			assert.ErrorIs(t, err, integration.ErrInvalidLabel, "Error should carry the invalid-label code")
 		})
 	}
 }

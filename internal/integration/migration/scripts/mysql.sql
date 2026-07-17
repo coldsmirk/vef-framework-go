@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS itg_contract (
     code VARCHAR(128) NOT NULL COMMENT 'Code',
     name VARCHAR(128) NOT NULL COMMENT 'Name',
     description VARCHAR(512) COMMENT 'Description',
+    labels JSON COMMENT 'Labels',
     input_schema JSON COMMENT 'Input JSON Schema',
     output_schema JSON COMMENT 'Output JSON Schema',
     is_enabled BOOLEAN NOT NULL DEFAULT true COMMENT 'Enabled',

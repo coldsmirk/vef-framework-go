@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS itg_contract (
     code VARCHAR(128) NOT NULL,
     name VARCHAR(128) NOT NULL,
     description VARCHAR(512),
+    labels JSONB,
     input_schema JSONB,
     output_schema JSONB,
     is_enabled BOOLEAN NOT NULL DEFAULT true,
@@ -27,6 +28,7 @@ COMMENT ON COLUMN itg_contract.updated_by IS 'Updater';
 COMMENT ON COLUMN itg_contract.code IS 'Code';
 COMMENT ON COLUMN itg_contract.name IS 'Name';
 COMMENT ON COLUMN itg_contract.description IS 'Description';
+COMMENT ON COLUMN itg_contract.labels IS 'Labels';
 COMMENT ON COLUMN itg_contract.input_schema IS 'Input JSON Schema';
 COMMENT ON COLUMN itg_contract.output_schema IS 'Output JSON Schema';
 COMMENT ON COLUMN itg_contract.is_enabled IS 'Enabled';

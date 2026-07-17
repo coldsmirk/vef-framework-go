@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS itg_contract (
     code VARCHAR(128) NOT NULL,
     name VARCHAR(128) NOT NULL,
     description VARCHAR(512),
+    labels TEXT,
     input_schema JSONB,
     output_schema JSONB,
     is_enabled BOOLEAN NOT NULL DEFAULT 1,

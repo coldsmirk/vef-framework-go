@@ -35,6 +35,7 @@ const (
 	ErrCodeInboundHandlerMissing = 2623
 	ErrCodeInvocationCanceled    = 2624
 	ErrCodeInvalidEnvelope       = 2625
+	ErrCodeInvalidLabel          = 2626
 )
 
 // Predefined integration API errors. These are business errors and keep the
@@ -199,6 +200,14 @@ func ErrInvalidDataSource(detail string) result.Error {
 var ErrInvalidDirection = result.Err(
 	i18n.T("integration_invalid_direction"),
 	result.WithCode(ErrCodeInvalidDirection),
+)
+
+// ErrInvalidLabel rejects a contract label whose key would silently escape
+// the label equality filter (dots read as JSON path nesting) or whose key or
+// value exceeds the size bounds.
+var ErrInvalidLabel = result.Err(
+	i18n.T("integration_invalid_label"),
+	result.WithCode(ErrCodeInvalidLabel),
 )
 
 // ErrInboundAuthFailed denies an inbound delivery that failed verification.

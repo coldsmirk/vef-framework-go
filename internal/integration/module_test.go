@@ -736,6 +736,51 @@ return {}
 	})
 }
 
+// TestContractLabelsFilter covers the shared label equality filter against
+// the real contract table: pairs AND-combine and unlabeled rows never match.
+func (s *ModuleTestSuite) TestContractLabelsFilter() {
+	insert := func(code string, labels map[string]string) {
+		contract := &integration.Contract{Code: code, Name: code, Labels: labels, IsEnabled: true}
+		_, err := s.db.NewInsert().Model(contract).Exec(s.T().Context())
+		s.Require().NoError(err, "Labeled contract seed should insert")
+	}
+
+	insert("lbl-inspection", map[string]string{"scene": "inspection", "app": "smp"})
+	insert("lbl-billing", map[string]string{"scene": "billing"})
+	insert("lbl-none", nil)
+
+	find := func(labels map[string]string) []string {
+		var contracts []integration.Contract
+
+		err := s.db.NewSelect().Model(&contracts).
+			Where(func(cb orm.ConditionBuilder) { cb.Contains("code", "lbl-") }).
+			Where(orm.LabelsEqual("labels", labels)).
+			OrderBy("code").
+			Scan(s.T().Context())
+		s.Require().NoError(err, "Label-filtered query should run")
+
+		codes := make([]string, 0, len(contracts))
+		for _, contract := range contracts {
+			codes = append(codes, contract.Code)
+		}
+
+		return codes
+	}
+
+	s.Run("SinglePairMatches", func() {
+		s.Equal([]string{"lbl-inspection"}, find(map[string]string{"scene": "inspection"}), "One pair should select the matching contract only")
+	})
+
+	s.Run("PairsAndCombine", func() {
+		s.Equal([]string{"lbl-inspection"}, find(map[string]string{"scene": "inspection", "app": "smp"}), "All pairs must match")
+		s.Empty(find(map[string]string{"scene": "inspection", "app": "other"}), "A mismatching pair should exclude the row")
+	})
+
+	s.Run("UnlabeledRowsNeverMatch", func() {
+		s.Equal([]string{"lbl-billing"}, find(map[string]string{"scene": "billing"}), "Rows without labels stay out of every label query")
+	})
+}
+
 func (s *ModuleTestSuite) TestRouting() {
 	echoScript := `return { sys: system.code }`
 

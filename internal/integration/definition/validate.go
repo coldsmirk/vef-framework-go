@@ -4,9 +4,28 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"regexp"
+	"unicode/utf8"
 
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/orm"
+)
+
+// contractLabelKeyPattern is the JSON-path-safe charset for label keys. The
+// label equality filter feeds keys into the cross-dialect JSON path builder,
+// where a dot is a nesting separator — a dotted key would be stored fine but
+// never match the filter. Restricting keys at save time keeps every stored
+// label filterable. 63 chars mirrors the Kubernetes label bound.
+var contractLabelKeyPattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9_-]*[A-Za-z0-9])?$`)
+
+// maxContractLabelKeyLength and maxContractLabelValueLength bound a single
+// label entry. Values carry no charset restriction because they are only ever
+// compared as bind parameters, so their bound counts runes — a Chinese value
+// gets the same budget as an ASCII one (keys are ASCII by pattern, where
+// bytes and runes coincide).
+const (
+	maxContractLabelKeyLength   = 63
+	maxContractLabelValueLength = 256
 )
 
 // OutboundAuthSchemeResolver is the validator's view of the outbound scheme registry;
@@ -29,6 +48,18 @@ func ValidateContract(contract *integration.Contract) error {
 	if len(contract.OutputSchema) > 0 {
 		if _, err := CompileSchema(contract.OutputSchema); err != nil {
 			return integration.ErrInvalidSchema(err.Error())
+		}
+	}
+
+	// Empty label values are valid — presence-style flags ("mobile": "") are
+	// a legitimate labeling scheme.
+	for key, value := range contract.Labels {
+		if len(key) > maxContractLabelKeyLength || !contractLabelKeyPattern.MatchString(key) {
+			return integration.ErrInvalidLabel
+		}
+
+		if utf8.RuneCountInString(value) > maxContractLabelValueLength {
+			return integration.ErrInvalidLabel
 		}
 	}
 

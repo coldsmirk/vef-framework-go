@@ -17,6 +17,11 @@ type Contract struct {
 	Code        string  `json:"code" bun:"code"`
 	Name        string  `json:"name" bun:"name"`
 	Description *string `json:"description" bun:"description,nullzero"`
+	// Labels are host-owned selection metadata (e.g. which business scenes may
+	// offer this contract for dynamic binding); the engine stores and filters
+	// them but never interprets them. Key charset and sizes are enforced by
+	// ValidateContract at save time.
+	Labels map[string]string `json:"labels,omitempty" bun:"labels,type:jsonb,nullzero"`
 	// InputSchema is the self-contained JSON Schema (draft 2020-12) the
 	// invocation input is validated against; empty skips input validation.
 	InputSchema json.RawMessage `json:"inputSchema" bun:"input_schema,type:jsonb,nullzero"`
