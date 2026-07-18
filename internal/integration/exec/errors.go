@@ -31,6 +31,22 @@ func (e *upstreamError) Error() string {
 	return e.message
 }
 
+// ErrInvalidCodesOption rejects a codes.* options argument: more than one
+// object, an empty object, several keys, a non-true flag, or an unknown key.
+var ErrInvalidCodesOption = errors.New("codes: invalid options")
+
+// codeMapError marks a code map fault raised by the codes library — a missing
+// or disabled map, an unmapped value under the reject policy, or a stored map
+// that no longer builds. It classifies as a configuration failure: the fix is
+// a code map edit, not a script change.
+type codeMapError struct {
+	apiErr error
+}
+
+func (e *codeMapError) Error() string {
+	return e.apiErr.Error()
+}
+
 // transportError marks a wire call that never completed. The scoped http
 // library wraps client transport failures in it so the invoker can classify
 // them apart from script bugs.

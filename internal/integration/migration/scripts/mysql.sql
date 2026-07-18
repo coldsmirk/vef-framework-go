@@ -87,6 +87,27 @@ CREATE TABLE IF NOT EXISTS itg_route (
         REFERENCES itg_system(id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) COMMENT 'Integration Route';
 
+-- Code map (per-system code set value translation)
+CREATE TABLE IF NOT EXISTS itg_code_map (
+    id VARCHAR(32) NOT NULL COMMENT 'ID',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated',
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT 'Creator',
+    updated_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT 'Updater',
+    system_id VARCHAR(32) NOT NULL COMMENT 'System',
+    code_set VARCHAR(128) NOT NULL COMMENT 'Code Set',
+    name VARCHAR(128) NOT NULL COMMENT 'Name',
+    entries JSON COMMENT 'Mapping Entries',
+    on_unmapped VARCHAR(16) NOT NULL DEFAULT 'reject' COMMENT 'Unmapped Policy (reject / passthrough / fallback)',
+    fallback_canonical JSON COMMENT 'Fallback Canonical Value',
+    fallback_external JSON COMMENT 'Fallback External Value',
+    is_enabled BOOLEAN NOT NULL DEFAULT true COMMENT 'Enabled',
+    CONSTRAINT pk_itg_code_map PRIMARY KEY (id),
+    CONSTRAINT uk_itg_code_map__system_id_code_set UNIQUE (system_id, code_set),
+    CONSTRAINT fk_itg_code_map__system_id FOREIGN KEY (system_id)
+        REFERENCES itg_system(id) ON DELETE RESTRICT ON UPDATE CASCADE
+) COMMENT 'Integration Code Map';
+
 -- Invocation log
 CREATE TABLE IF NOT EXISTS itg_invocation_log (
     id VARCHAR(32) NOT NULL COMMENT 'ID',

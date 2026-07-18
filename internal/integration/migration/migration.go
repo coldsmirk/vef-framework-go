@@ -18,6 +18,7 @@ var expectedTables = []string{
 	"itg_system",
 	"itg_adapter",
 	"itg_route",
+	"itg_code_map",
 	"itg_invocation_log",
 }
 

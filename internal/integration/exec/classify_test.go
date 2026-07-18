@@ -36,6 +36,12 @@ func TestClassify(t *testing.T) {
 		assert.Equal(t, integration.FailureCanceled, kind, "A canceled context takes precedence over a deadline error")
 	})
 
+	t.Run("CodeMapFaultClassifiesConfig", func(t *testing.T) {
+		kind, apiErr := classify(context.Background(), &codeMapError{apiErr: integration.ErrMissingCodeMap("gender")})
+		assert.Equal(t, integration.FailureConfig, kind, "A code map fault is a configuration failure, not a script bug")
+		assert.ErrorIs(t, apiErr, integration.ErrMissingCodeMap("gender"), "The API error surfaces the code map sentinel")
+	})
+
 	t.Run("UncategorizedErrorClassifiesScript", func(t *testing.T) {
 		kind, _ := classify(context.Background(), errors.New("boom"))
 		assert.Equal(t, integration.FailureScript, kind, "An uncategorized error is a script failure")

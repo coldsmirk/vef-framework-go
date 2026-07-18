@@ -32,6 +32,7 @@ type Invoker struct {
 	programs  *definition.ProgramCache
 	envelopes *envelopePrograms
 	schemas   *schemaCache
+	codeMaps  *definition.CodeMapIndexCache
 	clients   *clientFactory
 	databases *systemDatabases
 	responses *responseCache
@@ -58,6 +59,7 @@ func NewInvoker(
 		programs:  definition.NewProgramCache(definition.CompileScript),
 		envelopes: newEnvelopePrograms(),
 		schemas:   newSchemaCache(),
+		codeMaps:  definition.NewCodeMapIndexCache(),
 		clients:   newClientFactory(registry, codec, cfg.EffectiveMaxResponseBody()),
 		databases: newSystemDatabases(sources, codec),
 		responses: newResponseCache(),
@@ -272,7 +274,10 @@ func (inv *Invoker) newRuntime(ctx context.Context, e *execution) (*js.Runtime, 
 		return nil, err
 	}
 
-	libs := []js.Lib{newErrorsLib()}
+	// The codes library is always on: code translation needs no transport of
+	// its own, and both flanks of an outbound run (building the request,
+	// interpreting the response) may translate values.
+	libs := []js.Lib{newErrorsLib(), newCodesLib(inv.db, e.system, inv.codeMaps)}
 
 	if e.system.BaseURL != "" {
 		client, err := inv.clients.ClientFor(e.system)
@@ -381,6 +386,10 @@ func classify(ctx context.Context, err error) (integration.FailureKind, error) {
 	// definition, not the upstream's transport.
 	if authErr, ok := errors.AsType[*auth.OutboundAuthError](err); ok {
 		return integration.FailureConfig, integration.ErrInvalidAuthParams(authErr.Error())
+	}
+
+	if codeMap, ok := errors.AsType[*codeMapError](err); ok {
+		return integration.FailureConfig, codeMap.apiErr
 	}
 
 	if _, ok := errors.AsType[*transportError](err); ok {

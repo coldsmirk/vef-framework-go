@@ -17,6 +17,8 @@ var Module = fx.Module(
 		fx.Annotate(NewSystemResource, fx.ResultTags(`group:"vef:api:resources"`)),
 		fx.Annotate(NewAdapterResource, fx.ResultTags(`group:"vef:api:resources"`)),
 		fx.Annotate(NewRouteResource, fx.ResultTags(`group:"vef:api:resources"`)),
+		fx.Annotate(NewCodeMapResource, fx.ResultTags(`group:"vef:api:resources"`)),
+		fx.Annotate(NewCodeSetResource, fx.ParamTags(`optional:"true"`, `optional:"true"`), fx.ResultTags(`group:"vef:api:resources"`)),
 		fx.Annotate(NewLogResource, fx.ResultTags(`group:"vef:api:resources"`)),
 		fx.Annotate(NewOpsResource, fx.ResultTags(`group:"vef:api:resources"`)),
 	),

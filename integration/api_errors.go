@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"fmt"
+
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/i18n"
@@ -36,6 +38,9 @@ const (
 	ErrCodeInvocationCanceled    = 2624
 	ErrCodeInvalidEnvelope       = 2625
 	ErrCodeInvalidLabel          = 2626
+	ErrCodeMissingCodeMap        = 2627
+	ErrCodeUnmappedValue         = 2628
+	ErrCodeInvalidCodeMap        = 2629
 )
 
 // Predefined integration API errors. These are business errors and keep the
@@ -209,6 +214,34 @@ var ErrInvalidLabel = result.Err(
 	i18n.T("integration_invalid_label"),
 	result.WithCode(ErrCodeInvalidLabel),
 )
+
+// ErrMissingCodeMap reports a codes lookup against a code set the target
+// system has no enabled code map for.
+func ErrMissingCodeMap(codeSet string) result.Error {
+	return result.Err(
+		i18n.T("integration_code_map_missing", map[string]any{"codeSet": codeSet}),
+		result.WithCode(ErrCodeMissingCodeMap),
+	)
+}
+
+// ErrUnmappedValue reports a value no code map entry matches under the reject
+// policy.
+func ErrUnmappedValue(codeSet string, value any) result.Error {
+	return result.Err(
+		i18n.T("integration_value_unmapped", map[string]any{"codeSet": codeSet, "value": fmt.Sprint(value)}),
+		result.WithCode(ErrCodeUnmappedValue),
+	)
+}
+
+// ErrInvalidCodeMap rejects a code map definition: a malformed identifier or
+// value, duplicate lookup values on one side, or an incoherent unmapped
+// policy.
+func ErrInvalidCodeMap(detail string) result.Error {
+	return result.Err(
+		i18n.T("integration_invalid_code_map", map[string]any{"detail": detail}),
+		result.WithCode(ErrCodeInvalidCodeMap),
+	)
+}
 
 // ErrInboundAuthFailed denies an inbound delivery that failed verification.
 // It is deliberately uniform — missing configuration, missing credentials,

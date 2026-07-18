@@ -139,6 +139,41 @@ COMMENT ON COLUMN itg_route.is_enabled IS 'Enabled';
 
 CREATE INDEX IF NOT EXISTS idx_itg_route__system_id ON itg_route(system_id);
 
+-- Code map (per-system code set value translation)
+CREATE TABLE IF NOT EXISTS itg_code_map (
+    id VARCHAR(32) CONSTRAINT pk_itg_code_map PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT LOCALTIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT LOCALTIMESTAMP,
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    updated_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    system_id VARCHAR(32) NOT NULL,
+    code_set VARCHAR(128) NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    entries JSONB,
+    on_unmapped VARCHAR(16) NOT NULL DEFAULT 'reject',
+    fallback_canonical JSONB,
+    fallback_external JSONB,
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    CONSTRAINT uk_itg_code_map__system_id_code_set UNIQUE (system_id, code_set),
+    CONSTRAINT fk_itg_code_map__system_id FOREIGN KEY (system_id)
+        REFERENCES itg_system(id) ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+COMMENT ON TABLE itg_code_map IS 'Integration Code Map';
+COMMENT ON COLUMN itg_code_map.id IS 'ID';
+COMMENT ON COLUMN itg_code_map.created_at IS 'Created';
+COMMENT ON COLUMN itg_code_map.updated_at IS 'Updated';
+COMMENT ON COLUMN itg_code_map.created_by IS 'Creator';
+COMMENT ON COLUMN itg_code_map.updated_by IS 'Updater';
+COMMENT ON COLUMN itg_code_map.system_id IS 'System';
+COMMENT ON COLUMN itg_code_map.code_set IS 'Code Set';
+COMMENT ON COLUMN itg_code_map.name IS 'Name';
+COMMENT ON COLUMN itg_code_map.entries IS 'Mapping Entries';
+COMMENT ON COLUMN itg_code_map.on_unmapped IS 'Unmapped Policy (reject / passthrough / fallback)';
+COMMENT ON COLUMN itg_code_map.fallback_canonical IS 'Fallback Canonical Value';
+COMMENT ON COLUMN itg_code_map.fallback_external IS 'Fallback External Value';
+COMMENT ON COLUMN itg_code_map.is_enabled IS 'Enabled';
+
 -- Invocation log
 CREATE TABLE IF NOT EXISTS itg_invocation_log (
     id VARCHAR(32) CONSTRAINT pk_itg_invocation_log PRIMARY KEY,

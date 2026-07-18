@@ -232,6 +232,13 @@ func (r *Receiver) runScript(ctx context.Context, d *delivery, handler integrati
 		return nil, integration.FailureScript, err
 	}
 
+	// The codes library joins inbound runtimes too: translating the external
+	// system's codes into canonical values (and back for the reply) is the
+	// inbound script's core job.
+	if err := newCodesLib(inv.db, d.system, inv.codeMaps).Install(runtime); err != nil {
+		return nil, integration.FailureScript, err
+	}
+
 	if err := r.bind(ctx, runtime, d, handler); err != nil {
 		return nil, integration.FailureScript, err
 	}

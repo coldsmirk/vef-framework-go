@@ -157,6 +157,10 @@ func (s *ModuleTestSuite) SetupSuite() {
 			func() integration.InboundHandler { return labHandler("gw.result_received") },
 			fx.ResultTags(`group:"vef:integration:inbound_handlers"`),
 		)),
+		fx.Provide(fx.Annotate(
+			func() integration.InboundHandler { return labHandler("codes.result_received") },
+			fx.ResultTags(`group:"vef:integration:inbound_handlers"`),
+		)),
 		Module,
 		fx.Populate(&s.db, &s.invoker, &s.concrete, &s.receiver, &s.codec, &s.registry, &s.inboundReg),
 	)
@@ -276,6 +280,17 @@ func (s *ModuleTestSuite) createRoute(key, contractID, systemID string) {
 
 	_, err := s.db.NewInsert().Model(route).Exec(s.T().Context())
 	s.Require().NoError(err, "Route seed should insert")
+}
+
+func (s *ModuleTestSuite) createCodeMap(m *integration.CodeMap) *integration.CodeMap {
+	if m.Name == "" {
+		m.Name = m.CodeSet
+	}
+
+	_, err := s.db.NewInsert().Model(m).Exec(s.T().Context())
+	s.Require().NoError(err, "Code map seed should insert")
+
+	return m
 }
 
 func (s *ModuleTestSuite) findLogs(contractCode string) []integration.InvocationLog {
@@ -832,6 +847,181 @@ func (s *ModuleTestSuite) TestRouting() {
 			integration.WithSystem("route-sys-a"), integration.WithRoute("east"))
 		s.Require().Error(err, "Both target options should fail")
 		s.ErrorIs(err, integration.ErrTargetAmbiguous, "Error should be target-ambiguous")
+	})
+}
+
+func (s *ModuleTestSuite) TestCodeMapTranslation() {
+	system := s.createSystem("codes-sys", nil)
+
+	s.createCodeMap(&integration.CodeMap{
+		SystemID: system.ID,
+		CodeSet:  "gender",
+		Name:     "性别",
+		Entries: []integration.CodeMapEntry{
+			{Canonical: "1", External: "M", ExternalAliases: []any{"Male", "m"}},
+			{Canonical: "2", External: "F"},
+			{Canonical: "0", External: "U", CanonicalAliases: []any{"9"}},
+		},
+		IsEnabled: true,
+	})
+	s.createCodeMap(&integration.CodeMap{
+		SystemID:   system.ID,
+		CodeSet:    "nation",
+		Entries:    []integration.CodeMapEntry{{Canonical: "01", External: "CN"}},
+		OnUnmapped: integration.UnmappedPolicyPassthrough,
+		IsEnabled:  true,
+	})
+	s.createCodeMap(&integration.CodeMap{
+		SystemID:          system.ID,
+		CodeSet:           "marital",
+		Entries:           []integration.CodeMapEntry{{Canonical: "10", External: "MARRIED"}},
+		OnUnmapped:        integration.UnmappedPolicyFallback,
+		FallbackCanonical: "0",
+		FallbackExternal:  "UNK",
+		IsEnabled:         true,
+	})
+	// Deliberately disabled: a disabled map must behave exactly like a missing one.
+	s.createCodeMap(&integration.CodeMap{
+		SystemID: system.ID,
+		CodeSet:  "off",
+		Entries:  []integration.CodeMapEntry{{Canonical: "1", External: "A"}},
+	})
+
+	run := func(contractCode, script string) (*integration.Result, error) {
+		contract := s.createContract(contractCode, nil, nil)
+		s.createAdapter(system, contract, script)
+
+		return s.invoker.Invoke(s.T().Context(), contractCode, nil, integration.WithSystem(system.Code))
+	}
+
+	output := func(res *integration.Result) map[string]any {
+		out, ok := res.Output().(map[string]any)
+		s.Require().True(ok, "Output should be an object")
+
+		return out
+	}
+
+	s.Run("AliasesMatchPrimariesEmit", func() {
+		res, err := run("codes.translate", `
+return {
+  m: codes.toCanonical('gender', 'Male'),
+  f: codes.toExternal('gender', '2'),
+  nine: codes.toExternal('gender', 9),
+  u: codes.toCanonical('gender', 'U'),
+}`)
+		s.Require().NoError(err, "Translation should succeed")
+
+		out := output(res)
+		s.Equal("1", out["m"], "An external alias should land on the canonical primary")
+		s.Equal("F", out["f"], "The canonical primary should emit the external primary")
+		s.Equal("U", out["nine"], "A canonical alias should match across value types and emit the primary")
+		s.Equal("0", out["u"], "The external primary should land on the canonical primary")
+	})
+
+	s.Run("NumericValuesKeepTheirType", func() {
+		s.createCodeMap(&integration.CodeMap{
+			SystemID:  system.ID,
+			CodeSet:   "priority",
+			Entries:   []integration.CodeMapEntry{{Canonical: "high", External: float64(1)}},
+			IsEnabled: true,
+		})
+
+		res, err := run("codes.numeric", `
+return { wire: codes.toExternal('priority', 'high'), name: codes.toCanonical('priority', 1) }`)
+		s.Require().NoError(err, "Numeric translation should succeed")
+
+		out := output(res)
+		s.Equal(float64(1), out["wire"], "The emitted value should stay a JSON number")
+		s.Equal("high", out["name"], "A number input should address the entry by normalized form")
+	})
+
+	s.Run("UnmappedRejectClassifiesConfig", func() {
+		_, err := run("codes.reject", `return codes.toExternal('gender', 'X')`)
+		s.Require().ErrorIs(err, integration.ErrUnmappedValue("gender", "X"), "The reject policy should surface the unmapped-value error")
+
+		logs := s.findLogs("codes.reject")
+		s.Require().Len(logs, 1, "The failed invocation should be logged")
+		s.Equal(integration.FailureConfig, logs[0].FailureKind, "An unmapped value is a configuration failure")
+	})
+
+	s.Run("PassthroughAndFallbackPolicies", func() {
+		res, err := run("codes.lenient", `
+return { pt: codes.toExternal('nation', 'ZZ'), fbOut: codes.toExternal('marital', '99'), fbIn: codes.toCanonical('marital', 'X') }`)
+		s.Require().NoError(err, "Lenient policies should succeed")
+
+		out := output(res)
+		s.Equal("ZZ", out["pt"], "Passthrough should return the input unchanged")
+		s.Equal("UNK", out["fbOut"], "toExternal should fall back to the external-side value")
+		s.Equal("0", out["fbIn"], "toCanonical should fall back to the canonical-side value")
+	})
+
+	s.Run("PerCallOverrides", func() {
+		res, err := run("codes.override", `
+return { fb: codes.toExternal('gender', 'X', { fallback: 'U' }), pt: codes.toExternal('gender', 'X', { passthrough: true }) }`)
+		s.Require().NoError(err, "Overrides on a reject map should succeed")
+
+		out := output(res)
+		s.Equal("U", out["fb"], "The per-call fallback should win over the stored reject policy")
+		s.Equal("X", out["pt"], "The per-call passthrough should win over the stored reject policy")
+
+		_, err = run("codes.override_reject", `return codes.toExternal('nation', 'ZZ', { reject: true })`)
+		s.Require().ErrorIs(err, integration.ErrUnmappedValue("nation", "ZZ"), "A reject override should beat the stored passthrough policy")
+	})
+
+	s.Run("NullPassesThrough", func() {
+		res, err := run("codes.null", `return { v: codes.toExternal('gender', null), tag: 'ok' }`)
+		s.Require().NoError(err, "Null translation should succeed")
+
+		out := output(res)
+		s.Nil(out["v"], "null should pass through untranslated")
+	})
+
+	s.Run("MissingAndDisabledMapsReject", func() {
+		_, err := run("codes.missing", `return codes.toExternal('ghost', '1')`)
+		s.Require().ErrorIs(err, integration.ErrMissingCodeMap("ghost"), "An unconfigured code set should fail as missing")
+
+		_, err = run("codes.disabled", `return codes.toExternal('off', '1')`)
+		s.Require().ErrorIs(err, integration.ErrMissingCodeMap("off"), "A disabled map should fail exactly like a missing one")
+	})
+
+	s.Run("EntriesAccessor", func() {
+		res, err := run("codes.entries", `
+const e = codes.entries('gender')
+return { n: e.length, first: e[0].external }`)
+		s.Require().NoError(err, "The entries accessor should succeed")
+
+		out := output(res)
+		s.Equal(float64(3), out["n"], "All entries should be visible")
+		s.Equal("M", out["first"], "Entries should surface the raw pair values")
+	})
+
+	s.Run("InvalidOptionRejectedEagerly", func() {
+		_, err := run("codes.badopt", `return codes.toExternal('gender', '1', { bogus: true })`)
+		s.Require().ErrorIs(err, integration.ErrScriptFailed(""), "An unknown option must fail even when the value maps")
+	})
+
+	s.Run("InboundTranslation", func() {
+		inbound := s.createInboundSystem("codes-in", &integration.InboundAuthConfig{Scheme: auth.InboundSchemeNone})
+		contract := s.createContract("codes.result_received", nil, nil)
+		s.createDirectedAdapter(inbound, contract, integration.DirectionInbound, `
+const payload = JSON.parse(request.body)
+const ack = dispatch({ reportId: codes.toCanonical('report_type', payload.type) })
+return { accepted: ack.accepted, type: codes.toExternal('report_type', 'blood') }`)
+		s.createCodeMap(&integration.CodeMap{
+			SystemID:  inbound.ID,
+			CodeSet:   "report_type",
+			Entries:   []integration.CodeMapEntry{{Canonical: "blood", External: "BL"}},
+			IsEnabled: true,
+		})
+
+		reply, err := s.receiver.Receive(s.T().Context(), inboundRequest("codes-in", "codes.result_received", `{"type":"BL"}`, nil))
+		s.Require().NoError(err, "Inbound delivery should succeed")
+
+		replyMap, ok := reply.(map[string]any)
+		s.Require().True(ok, "The reply should export as a map")
+		s.Equal(true, replyMap["accepted"], "The handler ack should reach the reply")
+		s.Equal("BL", replyMap["type"], "The reply should translate back to the external code")
+		s.Equal("blood", s.seenReport, "The handler should receive the canonical code")
 	})
 }
 

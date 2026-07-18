@@ -90,6 +90,26 @@ CREATE TABLE IF NOT EXISTS itg_route (
 
 CREATE INDEX IF NOT EXISTS idx_itg_route__system_id ON itg_route(system_id);
 
+-- Code map (per-system code set value translation)
+CREATE TABLE IF NOT EXISTS itg_code_map (
+    id VARCHAR(32) CONSTRAINT pk_itg_code_map PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime')),
+    updated_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime')),
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    updated_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    system_id VARCHAR(32) NOT NULL,
+    code_set VARCHAR(128) NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    entries JSONB,
+    on_unmapped VARCHAR(16) NOT NULL DEFAULT 'reject',
+    fallback_canonical JSONB,
+    fallback_external JSONB,
+    is_enabled BOOLEAN NOT NULL DEFAULT 1,
+    CONSTRAINT uk_itg_code_map__system_id_code_set UNIQUE (system_id, code_set),
+    CONSTRAINT fk_itg_code_map__system_id FOREIGN KEY (system_id)
+        REFERENCES itg_system(id) ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
 -- Invocation log
 CREATE TABLE IF NOT EXISTS itg_invocation_log (
     id VARCHAR(32) CONSTRAINT pk_itg_invocation_log PRIMARY KEY,
