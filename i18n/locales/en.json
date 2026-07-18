@@ -230,5 +230,12 @@
   "integration_invalid_direction": "Invalid adapter direction",
   "integration_invalid_label": "Invalid contract label; keys must match ^[A-Za-z0-9]([A-Za-z0-9_-]*[A-Za-z0-9])?$ with at most 63 characters, values at most 256 characters",
   "integration_inbound_auth_failed": "Inbound request verification failed",
-  "integration_inbound_handler_missing": "No handler is registered for the inbound contract"
+  "integration_inbound_handler_missing": "No handler is registered for the inbound contract",
+  "cron_schedule_not_found": "Schedule not found",
+  "cron_schedule_exists": "Schedule name already exists",
+  "cron_schedule_disabled": "Schedule is paused",
+  "cron_trigger_invalid": "Invalid trigger: {{.reason}}",
+  "cron_schedule_invalid": "Invalid schedule: {{.reason}}",
+  "cron_job_not_registered": "Job handler not registered",
+  "cron_store_disabled": "Durable schedule store is disabled"
 }

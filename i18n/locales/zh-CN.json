@@ -230,5 +230,12 @@
   "integration_invalid_direction": "适配器方向不合法",
   "integration_invalid_label": "契约标签不合法：键必须匹配 ^[A-Za-z0-9]([A-Za-z0-9_-]*[A-Za-z0-9])?$ 且不超过 63 个字符，值不超过 256 个字符",
   "integration_inbound_auth_failed": "入站请求验证失败",
-  "integration_inbound_handler_missing": "入站契约没有已注册的处理器"
+  "integration_inbound_handler_missing": "入站契约没有已注册的处理器",
+  "cron_schedule_not_found": "调度不存在",
+  "cron_schedule_exists": "调度名称已存在",
+  "cron_schedule_disabled": "调度已暂停",
+  "cron_trigger_invalid": "触发规则无效：{{.reason}}",
+  "cron_schedule_invalid": "调度配置无效：{{.reason}}",
+  "cron_job_not_registered": "任务处理器未注册",
+  "cron_store_disabled": "定时任务持久化存储未启用"
 }

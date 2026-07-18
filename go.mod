@@ -36,6 +36,7 @@ require (
 	github.com/pquerna/otp v1.5.0
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
 	github.com/redis/go-redis/v9 v9.20.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/xid v1.6.0
 	github.com/samber/lo v1.53.0
 	github.com/shirou/gopsutil/v4 v4.26.4
@@ -140,7 +141,6 @@ require (
 	github.com/richardlehane/mscfb v1.0.6 // indirect
 	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
