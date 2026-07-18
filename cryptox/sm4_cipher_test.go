@@ -18,7 +18,7 @@ func TestSm4CipherCbc(t *testing.T) {
 	_, err := rand.Read(key)
 	require.NoError(t, err, "Should generate random key")
 
-	cipher, err := NewSM4(key)
+	cipher, err := NewSM4(key, WithSM4Mode(Sm4ModeCbc))
 	require.NoError(t, err, "Should create SM4 cipher in CBC mode")
 
 	tests := []struct {
@@ -53,8 +53,8 @@ func TestSm4CipherCbcRandomIv(t *testing.T) {
 	_, err := rand.Read(key)
 	require.NoError(t, err, "Should generate random key")
 
-	cipher, err := NewSM4(key)
-	require.NoError(t, err, "Should create SM4 cipher")
+	cipher, err := NewSM4(key, WithSM4Mode(Sm4ModeCbc))
+	require.NoError(t, err, "Should create SM4 cipher in CBC mode")
 
 	plaintext := "Test message"
 
@@ -90,7 +90,7 @@ func TestSm4CipherDecryptWithFixedIv(t *testing.T) {
 	plaintext := "client-encrypted password"
 	external := sm4FixedIvCiphertext(t, key, iv, plaintext)
 
-	c, err := NewSM4(key, WithSM4Iv(iv))
+	c, err := NewSM4(key, WithSM4Mode(Sm4ModeCbc), WithSM4Iv(iv))
 	require.NoError(t, err, "Should create SM4 cipher with fixed interop IV")
 
 	decrypter, ok := c.(FixedIVDecrypter)
@@ -108,7 +108,7 @@ func TestSm4CipherDecryptWithFixedIvRequiresIv(t *testing.T) {
 	_, err := rand.Read(key)
 	require.NoError(t, err, "Should generate random key")
 
-	c, err := NewSM4(key)
+	c, err := NewSM4(key, WithSM4Mode(Sm4ModeCbc))
 	require.NoError(t, err, "Should create SM4 cipher")
 
 	decrypter, ok := c.(FixedIVDecrypter)
@@ -116,6 +116,58 @@ func TestSm4CipherDecryptWithFixedIvRequiresIv(t *testing.T) {
 
 	_, err = decrypter.DecryptWithFixedIV(base64.StdEncoding.EncodeToString(make([]byte, sm4.BlockSize)))
 	require.ErrorIs(t, err, ErrInvalidIVSizeCBC, "Should reject interop decrypt without a configured IV")
+}
+
+// TestSm4CipherGcm tests SM4 encryption and decryption in GCM mode.
+func TestSm4CipherGcm(t *testing.T) {
+	key := make([]byte, sm4.BlockSize)
+	_, err := rand.Read(key)
+	require.NoError(t, err, "Should generate random key")
+
+	cipher, err := NewSM4(key, WithSM4Mode(Sm4ModeGcm))
+	require.NoError(t, err, "Should create SM4 cipher in GCM mode")
+
+	tests := []struct {
+		name      string
+		plaintext string
+	}{
+		{"EnglishText", "Hello, World!"},
+		{"WithDescription", "SM4-GCM encryption test"},
+		{"ChineseCharacters", "中文测试"},
+		{"SpecialCharacters", "Special chars: !@#$%^&*()"},
+		{"ChineseAlgorithm", "国密SM4加密算法"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ciphertext, err := cipher.Encrypt(tt.plaintext)
+			require.NoError(t, err, "Should encrypt plaintext successfully")
+
+			decrypted, err := cipher.Decrypt(ciphertext)
+			require.NoError(t, err, "Should decrypt ciphertext successfully")
+
+			assert.Equal(t, tt.plaintext, decrypted, "Decrypted text should match original plaintext")
+		})
+	}
+}
+
+// TestSm4CipherGcmAuthentication verifies GCM rejects tampered ciphertext.
+func TestSm4CipherGcmAuthentication(t *testing.T) {
+	key := make([]byte, sm4.BlockSize)
+	_, err := rand.Read(key)
+	require.NoError(t, err, "Should generate random key")
+
+	cipher, err := NewSM4(key, WithSM4Mode(Sm4ModeGcm))
+	require.NoError(t, err, "Should create SM4 cipher in GCM mode")
+
+	plaintext := "Test message"
+	ciphertext, err := cipher.Encrypt(plaintext)
+	require.NoError(t, err, "Should encrypt plaintext successfully")
+
+	tamperedCiphertext := ciphertext[:len(ciphertext)-2] + "X" + ciphertext[len(ciphertext)-1:]
+
+	_, err = cipher.Decrypt(tamperedCiphertext)
+	assert.Error(t, err, "Should reject tampered ciphertext")
 }
 
 // TestSm4CipherFromHex tests creating SM4 cipher from hex-encoded key.
@@ -173,15 +225,15 @@ func TestSm4CipherInvalidIvSize(t *testing.T) {
 	assert.Error(t, err, "Should reject invalid fixed IV size")
 }
 
-// TestSm4CipherDecryptShortCiphertext verifies short/invalid ciphertext is
-// rejected cleanly rather than panicking.
-func TestSm4CipherDecryptShortCiphertext(t *testing.T) {
+// TestSm4CipherCbcDecryptShortCiphertext verifies short/invalid CBC ciphertext
+// is rejected cleanly rather than panicking.
+func TestSm4CipherCbcDecryptShortCiphertext(t *testing.T) {
 	key := make([]byte, sm4.BlockSize)
 	_, err := rand.Read(key)
 	require.NoError(t, err, "Should generate random key")
 
-	cipher, err := NewSM4(key)
-	require.NoError(t, err, "Should create SM4 cipher")
+	cipher, err := NewSM4(key, WithSM4Mode(Sm4ModeCbc))
+	require.NoError(t, err, "Should create SM4 cipher in CBC mode")
 
 	tests := []struct {
 		name       string
@@ -240,8 +292,8 @@ func TestSm4CipherEmptyString(t *testing.T) {
 	assert.Equal(t, plaintext, decrypted, "Decrypted text should match empty plaintext")
 }
 
-// TestSm4CipherDefaultMode tests that the default (and only) mode is CBC with a
-// prepended random IV.
+// TestSm4CipherDefaultMode pins the default mode to GCM: ciphertext produced
+// without an explicit mode must open under an explicit GCM cipher.
 func TestSm4CipherDefaultMode(t *testing.T) {
 	key := make([]byte, sm4.BlockSize)
 	_, err := rand.Read(key)
@@ -254,8 +306,11 @@ func TestSm4CipherDefaultMode(t *testing.T) {
 	ciphertext, err := cipher.Encrypt(plaintext)
 	require.NoError(t, err, "Should encrypt plaintext successfully")
 
-	decrypted, err := cipher.Decrypt(ciphertext)
-	require.NoError(t, err, "Should decrypt ciphertext successfully")
+	gcmCipher, err := NewSM4(key, WithSM4Mode(Sm4ModeGcm))
+	require.NoError(t, err, "Should create SM4 cipher in explicit GCM mode")
+
+	decrypted, err := gcmCipher.Decrypt(ciphertext)
+	require.NoError(t, err, "Explicit GCM cipher should decrypt default-mode ciphertext")
 
 	assert.Equal(t, plaintext, decrypted, "Decrypted text should match original plaintext")
 }
