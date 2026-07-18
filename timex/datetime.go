@@ -16,6 +16,18 @@ func (dt DateTime) Unwrap() time.Time {
 	return time.Time(dt)
 }
 
+// AsLocal reinterprets the wall-clock fields in the process-local zone.
+// DateTime is timezone-naive by convention — persisted and parsed as a bare
+// "2006-01-02 15:04:05" string — so a value scanned back from a database
+// driver may carry an arbitrary zone label (UTC on some drivers) while its
+// fields hold local wall-clock time. Use AsLocal before instant arithmetic
+// against Now; values compared inside SQL never need it.
+func (dt DateTime) AsLocal() time.Time {
+	t := time.Time(dt)
+
+	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.Local)
+}
+
 // Format returns the string representation using the provided layout.
 func (dt DateTime) Format(layout string) string {
 	return time.Time(dt).Format(layout)

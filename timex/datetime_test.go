@@ -122,6 +122,18 @@ func TestDateTimeString(t *testing.T) {
 	assert.Equal(t, expected, dt.String(), "String representation should match format")
 }
 
+func TestDateTimeAsLocal(t *testing.T) {
+	local := time.Date(2023, 12, 25, 14, 30, 45, 0, time.Local)
+
+	relabeled := DateTime(time.Date(2023, 12, 25, 14, 30, 45, 0, time.UTC))
+	assert.True(t, local.Equal(relabeled.AsLocal()),
+		"AsLocal should reinterpret driver-relabeled wall-clock fields in the local zone")
+
+	native := DateTime(local)
+	assert.True(t, local.Equal(native.AsLocal()),
+		"AsLocal should be a no-op for values already in the local zone")
+}
+
 func TestDateTimeEqual(t *testing.T) {
 	dt1 := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
 	dt2 := DateTime(MakeTime(2023, 12, 25, 14, 30, 45))
