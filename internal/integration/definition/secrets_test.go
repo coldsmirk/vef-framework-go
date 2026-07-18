@@ -36,6 +36,19 @@ func newTestCodec(t *testing.T) *SecretCodec {
 	return codec
 }
 
+// newAlgorithmCodec builds a codec sealing with the given algorithm and key.
+func newAlgorithmCodec(t *testing.T, algorithm config.IntegrationSecretAlgorithm, key []byte) *SecretCodec {
+	t.Helper()
+
+	codec, err := NewSecretCodec(&config.IntegrationConfig{
+		SecretKey:       base64.StdEncoding.EncodeToString(key),
+		SecretAlgorithm: algorithm,
+	})
+	require.NoError(t, err, "Codec construction should succeed")
+
+	return codec
+}
+
 // bearerScheme mimics the built-in bearer scheme's sensitivity declaration
 // (sensitive param: token).
 func bearerScheme(*testing.T) *stubScheme {
@@ -90,6 +103,51 @@ func TestSecretCodec(t *testing.T) {
 
 		require.NoError(t, codec.EncryptOutboundAuth(scheme, cfg, nil), "Encryption should succeed")
 		assert.Equal(t, "east", cfg.Params["region"], "Non-sensitive params should stay plaintext")
+	})
+}
+
+func TestSecretCodecAlgorithms(t *testing.T) {
+	scheme := bearerScheme(t)
+
+	// One shared 16-byte key is valid for both AES-128 and SM4, so the
+	// mismatch failure below comes from the algorithm, never from key sizing.
+	key := make([]byte, 16)
+	_, err := rand.Read(key)
+	require.NoError(t, err, "Key generation should succeed")
+
+	aesCodec := newAlgorithmCodec(t, config.IntegrationSecretAlgorithmAES, key)
+	sm4Codec := newAlgorithmCodec(t, config.IntegrationSecretAlgorithmSM4, key)
+
+	t.Run("SM4RoundTrip", func(t *testing.T) {
+		cfg := &integration.OutboundAuthConfig{Scheme: "bearer", Params: map[string]string{"token": "top-secret"}}
+
+		require.NoError(t, sm4Codec.EncryptOutboundAuth(scheme, cfg, nil), "SM4 encryption should succeed")
+		assert.True(t, strings.HasPrefix(cfg.Params["token"], "enc:"), "Stored value should carry the encryption marker")
+		assert.NotContains(t, cfg.Params["token"], "top-secret", "Stored value should not contain the plaintext")
+
+		decrypted, err := sm4Codec.DecryptOutboundAuth(scheme, cfg)
+		require.NoError(t, err, "SM4 decryption should succeed")
+		assert.Equal(t, "top-secret", decrypted.Params["token"], "Decrypted value should match the original")
+	})
+
+	t.Run("MismatchedAlgorithmFailsClosed", func(t *testing.T) {
+		cfg := &integration.OutboundAuthConfig{Scheme: "bearer", Params: map[string]string{"token": "top-secret"}}
+		require.NoError(t, aesCodec.EncryptOutboundAuth(scheme, cfg, nil), "AES encryption should succeed")
+
+		_, err := sm4Codec.DecryptOutboundAuth(scheme, cfg)
+		require.Error(t, err, "AES-sealed value should fail GCM authentication under SM4 instead of decrypting to garbage")
+	})
+
+	t.Run("SM4RejectsNon16ByteKey", func(t *testing.T) {
+		longKey := make([]byte, 32)
+		_, err := rand.Read(longKey)
+		require.NoError(t, err, "Key generation should succeed")
+
+		_, err = NewSecretCodec(&config.IntegrationConfig{
+			SecretKey:       base64.StdEncoding.EncodeToString(longKey),
+			SecretAlgorithm: config.IntegrationSecretAlgorithmSM4,
+		})
+		require.Error(t, err, "SM4 should reject a key that is not 16 bytes")
 	})
 }
 

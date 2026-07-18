@@ -19,16 +19,18 @@ var logger = logx.Named("integration")
 // is detectable.
 const encryptedPrefix = "enc:"
 
-// SecretCodec encrypts sensitive auth parameter values at rest with the
-// AES-GCM key from vef.integration.secret_key. Without a configured key it
-// degrades to plaintext storage — NewSecretCodec logs the warning once at
-// boot — but still refuses to load values a previous configuration encrypted.
+// SecretCodec encrypts sensitive auth parameter values at rest with the key
+// from vef.integration.secret_key, using the cipher selected by
+// vef.integration.secret_algorithm (AES-GCM by default, SM4-GCM for 国密
+// deployments). Without a configured key it degrades to plaintext storage —
+// NewSecretCodec logs the warning once at boot — but still refuses to load
+// values a previous configuration encrypted.
 type SecretCodec struct {
 	cipher cryptox.Cipher
 }
 
-// NewSecretCodec builds the codec from the configured secret key, failing
-// fast on a malformed key.
+// NewSecretCodec builds the codec from the configured secret key and
+// algorithm, failing fast on a malformed key.
 func NewSecretCodec(cfg *config.IntegrationConfig) (*SecretCodec, error) {
 	if cfg.SecretKey == "" {
 		logger.Warn("vef.integration.secret_key is not configured; sensitive auth parameters are stored in plaintext")
@@ -36,12 +38,22 @@ func NewSecretCodec(cfg *config.IntegrationConfig) (*SecretCodec, error) {
 		return new(SecretCodec), nil
 	}
 
-	cipher, err := cryptox.NewAESFromBase64(cfg.SecretKey)
+	cipher, err := newSecretCipher(cfg.EffectiveSecretAlgorithm(), cfg.SecretKey)
 	if err != nil {
 		return nil, fmt.Errorf("integration: invalid vef.integration.secret_key: %w", err)
 	}
 
 	return &SecretCodec{cipher: cipher}, nil
+}
+
+// newSecretCipher builds the sealing cipher for the configured algorithm;
+// both run in GCM mode so tampered stored values fail closed on load.
+func newSecretCipher(algorithm config.IntegrationSecretAlgorithm, key string) (cryptox.Cipher, error) {
+	if algorithm == config.IntegrationSecretAlgorithmSM4 {
+		return cryptox.NewSM4FromBase64(key)
+	}
+
+	return cryptox.NewAESFromBase64(key)
 }
 
 // secretScheme is the codec's view of an auth scheme — outbound or inbound —
@@ -329,7 +341,9 @@ func (c *SecretCodec) encryptValue(value string) (string, error) {
 }
 
 // decryptValue opens one stored value; values without the encryption marker
-// (plaintext from key-less deployments) pass through.
+// (plaintext from key-less deployments) pass through. Both ciphers seal in
+// GCM mode, so a value stored under a different algorithm or key fails
+// authentication instead of decrypting to garbage.
 func (c *SecretCodec) decryptValue(value string) (string, error) {
 	payload, ok := strings.CutPrefix(value, encryptedPrefix)
 	if !ok {

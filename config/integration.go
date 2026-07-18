@@ -52,15 +52,40 @@ func (c *IntegrationLogConfig) EffectiveCaptureLimit() int {
 	return coalescePositive(c.CaptureLimit, 4096)
 }
 
+// IntegrationSecretAlgorithm selects the symmetric cipher that seals
+// sensitive integration values (auth parameters, data source passwords) at
+// rest.
+type IntegrationSecretAlgorithm string
+
+const (
+	// IntegrationSecretAlgorithmAES seals secrets with AES-GCM (16-, 24-, or
+	// 32-byte key).
+	IntegrationSecretAlgorithmAES IntegrationSecretAlgorithm = "aes"
+	// IntegrationSecretAlgorithmSM4 seals secrets with SM4-GCM (the Chinese
+	// national standard cipher, 16-byte key).
+	IntegrationSecretAlgorithmSM4 IntegrationSecretAlgorithm = "sm4"
+)
+
+// ErrInvalidIntegrationSecretAlgorithm indicates an unsupported secret
+// algorithm.
+var ErrInvalidIntegrationSecretAlgorithm = errors.New("invalid integration secret algorithm")
+
 // IntegrationConfig defines integration engine settings.
 type IntegrationConfig struct {
 	// AutoMigrate runs the integration DDL migration on application start.
 	AutoMigrate bool `config:"auto_migrate"`
 
-	// SecretKey is the base64-encoded AES key (16, 24, or 32 bytes) that
-	// encrypts sensitive auth parameters at rest. Unset stores them in
-	// plaintext and logs a start-up warning.
+	// SecretKey is the base64-encoded key that encrypts sensitive auth
+	// parameters at rest, sized for SecretAlgorithm (AES: 16, 24, or 32
+	// bytes; SM4: 16 bytes). Unset stores them in plaintext and logs a
+	// start-up warning.
 	SecretKey string `config:"secret_key"`
+
+	// SecretAlgorithm selects the cipher for SecretKey: "aes" (AES-GCM, the
+	// default) or "sm4" (SM4-GCM). Values sealed with one algorithm are not
+	// readable under the other — switching requires re-entering stored
+	// secrets.
+	SecretAlgorithm IntegrationSecretAlgorithm `config:"secret_algorithm"`
 
 	// RunTimeout caps each adapter script execution, wire calls included.
 	// Default: 30 seconds.
@@ -115,6 +140,15 @@ func (c *IntegrationInboundRateLimitConfig) EffectivePeriod() time.Duration {
 	return coalescePositive(c.Period, DefaultIntegrationInboundRateLimitPeriod)
 }
 
+// EffectiveSecretAlgorithm returns SecretAlgorithm or the AES default.
+func (c *IntegrationConfig) EffectiveSecretAlgorithm() IntegrationSecretAlgorithm {
+	if c.SecretAlgorithm == "" {
+		return IntegrationSecretAlgorithmAES
+	}
+
+	return c.SecretAlgorithm
+}
+
 // EffectiveRunTimeout returns RunTimeout or its default.
 func (c *IntegrationConfig) EffectiveRunTimeout() time.Duration {
 	return coalescePositive(c.RunTimeout, 30*time.Second)
@@ -128,15 +162,22 @@ func (c *IntegrationConfig) EffectiveMaxResponseBody() int64 {
 // ErrInvalidIntegrationLogRetention indicates a negative retention window.
 var ErrInvalidIntegrationLogRetention = errors.New("invalid integration log retention")
 
-// Validate rejects unsupported log modes and negative retention windows so
-// configuration typos fail at startup instead of silently recording nothing
-// or deleting everything.
+// Validate rejects unsupported log modes, unsupported secret algorithms, and
+// negative retention windows so configuration typos fail at startup instead
+// of silently recording nothing or deleting everything.
 func (c *IntegrationConfig) Validate() error {
 	switch c.Log.EffectiveMode() {
 	case IntegrationLogOff, IntegrationLogErrors, IntegrationLogAll:
 	default:
 		return fmt.Errorf("%w %q (want %q, %q, or %q)", ErrInvalidIntegrationLogMode,
 			c.Log.Mode, IntegrationLogOff, IntegrationLogErrors, IntegrationLogAll)
+	}
+
+	switch c.EffectiveSecretAlgorithm() {
+	case IntegrationSecretAlgorithmAES, IntegrationSecretAlgorithmSM4:
+	default:
+		return fmt.Errorf("%w %q (want %q or %q)", ErrInvalidIntegrationSecretAlgorithm,
+			c.SecretAlgorithm, IntegrationSecretAlgorithmAES, IntegrationSecretAlgorithmSM4)
 	}
 
 	if c.Log.Retention < 0 {
