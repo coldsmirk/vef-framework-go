@@ -20,5 +20,6 @@ var Module = fx.Module(
 		newApprovalConfig,
 		newEventConfig,
 		newIntegrationConfig,
+		newCronConfig,
 	),
 )

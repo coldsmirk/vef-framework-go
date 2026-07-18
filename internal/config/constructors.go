@@ -78,3 +78,16 @@ func newIntegrationConfig(cfg config.Config) (*config.IntegrationConfig, error) 
 
 	return integrationConfig, nil
 }
+
+func newCronConfig(cfg config.Config) (*config.CronConfig, error) {
+	cronConfig, err := unmarshalConfig(cfg, "vef.cron", new(config.CronConfig))
+	if err != nil {
+		return nil, err
+	}
+
+	if err := cronConfig.Validate(); err != nil {
+		return nil, err
+	}
+
+	return cronConfig, nil
+}
