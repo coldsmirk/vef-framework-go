@@ -599,3 +599,24 @@ func ProvideIntegrationInboundHandler(constructor any, paramTags ...string) fx.O
 		),
 	)
 }
+
+// ProvideCronJobHandler registers a durable cron job handler with the
+// schedule store (vef.cron.store). Exactly one handler per job name;
+// duplicates fail at start-up. Persisted schedules reference the handler by
+// name, and a handler may ship a default schedule that is seeded when absent.
+//
+//	vef.ProvideCronJobHandler(func(svc *ReportService) cron.JobHandler {
+//	    return cron.NewJobHandler("report.daily", svc.GenerateDaily,
+//	        cron.WithDefaultSchedule(cron.ScheduleSpec{Trigger: cron.Expr("0 2 * * *", "Asia/Shanghai")}))
+//	})
+//
+// constructor is an fx-style factory that returns cron.JobHandler.
+func ProvideCronJobHandler(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:cron:job_handlers"`),
+		),
+	)
+}
