@@ -12,13 +12,13 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 )
 
-// MockDictionaryLoader records dictionary load calls for resolver tests.
-type MockDictionaryLoader struct {
+// MockCodeSetLoader records code set load calls for resolver tests.
+type MockCodeSetLoader struct {
 	mock.Mock
 }
 
-func (m *MockDictionaryLoader) Load(ctx context.Context, key string) (map[string]string, error) {
-	args := m.Called(ctx, key)
+func (m *MockCodeSetLoader) Load(ctx context.Context, codeSet string) (map[string]string, error) {
+	args := m.Called(ctx, codeSet)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -26,27 +26,27 @@ func (m *MockDictionaryLoader) Load(ctx context.Context, key string) (map[string
 	return args.Get(0).(map[string]string), args.Error(1)
 }
 
-// CachedDictionaryResolverTestSuite tests the CachedDictionaryResolver component.
+// CachedCodeSetResolverTestSuite tests the CachedCodeSetResolver component.
 // Covers: caching behavior, invalidation (specific and global), error handling,
 // edge cases (empty keys, not found), panic scenarios, and concurrent access.
-type CachedDictionaryResolverTestSuite struct {
+type CachedCodeSetResolverTestSuite struct {
 	suite.Suite
 
 	ctx context.Context
 	bus event.Bus
 }
 
-func (s *CachedDictionaryResolverTestSuite) SetupSuite() {
+func (s *CachedCodeSetResolverTestSuite) SetupSuite() {
 	s.ctx = context.Background()
 	s.bus = eventtest.NewFakeBus()
 }
 
-func (s *CachedDictionaryResolverTestSuite) newResolver(loader DictionaryLoader) DictionaryResolver {
-	return NewCachedDictionaryResolver(loader, s.bus)
+func (s *CachedCodeSetResolverTestSuite) newResolver(loader CodeSetLoader) CodeSetResolver {
+	return NewCachedCodeSetResolver(loader, s.bus)
 }
 
-func (s *CachedDictionaryResolverTestSuite) TestCachesEntries() {
-	loader := new(MockDictionaryLoader)
+func (s *CachedCodeSetResolverTestSuite) TestCachesEntries() {
+	loader := new(MockCodeSetLoader)
 	loader.On("Load", mock.Anything, "status").Return(map[string]string{
 		"draft":     "草稿",
 		"published": "已发布",
@@ -67,8 +67,8 @@ func (s *CachedDictionaryResolverTestSuite) TestCachesEntries() {
 	loader.AssertExpectations(s.T())
 }
 
-func (s *CachedDictionaryResolverTestSuite) TestInvalidatesSpecificKeys() {
-	loader := new(MockDictionaryLoader)
+func (s *CachedCodeSetResolverTestSuite) TestInvalidatesSpecificKeys() {
+	loader := new(MockCodeSetLoader)
 	loader.On("Load", mock.Anything, "status").Return(map[string]string{
 		"draft": "草稿",
 	}, nil).Once()
@@ -84,9 +84,9 @@ func (s *CachedDictionaryResolverTestSuite) TestInvalidatesSpecificKeys() {
 	s.Equal("草稿", first, "Draft status should resolve to its original display label")
 	s.T().Logf("Before invalidation: status 'draft' -> '%s'", first)
 
-	s.Require().NoError(PublishDictionaryChangedEvent(s.ctx, s.bus, "status"),
-		"Specific dictionary invalidation event should publish")
-	s.T().Logf("Published invalidation event for 'status' key")
+	s.Require().NoError(PublishCodeSetChangedEvent(s.ctx, s.bus, "status"),
+		"Specific code set invalidation event should publish")
+	s.T().Logf("Published invalidation event for 'status' code set")
 
 	second, err := resolver.Resolve(s.ctx, "status", "archived")
 	s.NoError(err, "Archived status should resolve after invalidation")
@@ -96,8 +96,8 @@ func (s *CachedDictionaryResolverTestSuite) TestInvalidatesSpecificKeys() {
 	loader.AssertExpectations(s.T())
 }
 
-func (s *CachedDictionaryResolverTestSuite) TestInvalidatesAllKeys() {
-	loader := new(MockDictionaryLoader)
+func (s *CachedCodeSetResolverTestSuite) TestInvalidatesAllKeys() {
+	loader := new(MockCodeSetLoader)
 	loader.On("Load", mock.Anything, "status").Return(map[string]string{
 		"draft": "草稿",
 	}, nil).Once()
@@ -112,29 +112,29 @@ func (s *CachedDictionaryResolverTestSuite) TestInvalidatesAllKeys() {
 	resolver := s.newResolver(loader)
 
 	firstStatus, err := resolver.Resolve(s.ctx, "status", "draft")
-	s.NoError(err, "Status dictionary should resolve before invalidation")
-	s.Equal("草稿", firstStatus, "Status dictionary should return the draft display label")
+	s.NoError(err, "Status code set should resolve before invalidation")
+	s.Equal("草稿", firstStatus, "Status code set should return the draft display label")
 	s.T().Logf("Before invalidation: status 'draft' -> '%s'", firstStatus)
 
 	firstCategory, err := resolver.Resolve(s.ctx, "category", "news")
-	s.NoError(err, "Category dictionary should resolve before invalidation")
-	s.Equal("新闻", firstCategory, "Category dictionary should return the news display label")
+	s.NoError(err, "Category code set should resolve before invalidation")
+	s.Equal("新闻", firstCategory, "Category code set should return the news display label")
 	s.T().Logf("Before invalidation: category 'news' -> '%s'", firstCategory)
 
-	s.Require().NoError(PublishDictionaryChangedEvent(s.ctx, s.bus),
-		"Global dictionary invalidation event should publish")
+	s.Require().NoError(PublishCodeSetChangedEvent(s.ctx, s.bus),
+		"Global code set invalidation event should publish")
 	s.T().Logf("Published global invalidation event (all keys)")
 
 	updatedStatus, err := resolver.Resolve(s.ctx, "status", "published")
-	s.NoError(err, "Status dictionary should resolve after global invalidation")
-	s.Equal("已发布", updatedStatus, "Updated status dictionary should return the published display label")
+	s.NoError(err, "Status code set should resolve after global invalidation")
+	s.Equal("已发布", updatedStatus, "Updated status code set should return the published display label")
 	s.T().Logf("After invalidation: status 'published' -> '%s'", updatedStatus)
 
 	loader.AssertExpectations(s.T())
 }
 
-func (s *CachedDictionaryResolverTestSuite) TestLoaderError() {
-	loader := new(MockDictionaryLoader)
+func (s *CachedCodeSetResolverTestSuite) TestLoaderError() {
+	loader := new(MockCodeSetLoader)
 	expectedErr := context.DeadlineExceeded
 	loader.On("Load", mock.Anything, "status").Return(map[string]string(nil), expectedErr).Once()
 
@@ -143,24 +143,24 @@ func (s *CachedDictionaryResolverTestSuite) TestLoaderError() {
 	result, err := resolver.Resolve(s.ctx, "status", "draft")
 	s.Error(err, "Loader failure should return an error")
 	s.ErrorIs(err, expectedErr, "Error should wrap the original error")
-	s.Contains(err.Error(), "failed to load dictionary \"status\"", "Error message should describe the failure")
+	s.Contains(err.Error(), "failed to load code set \"status\"", "Error message should describe the failure")
 	s.Equal("", result, "Loader failure should return an empty result")
 	s.T().Logf("Loader error correctly propagated: %v", err)
 
 	loader.AssertExpectations(s.T())
 }
 
-func (s *CachedDictionaryResolverTestSuite) TestEmptyKeyOrCode() {
-	loader := new(MockDictionaryLoader)
+func (s *CachedCodeSetResolverTestSuite) TestEmptyKeyOrCode() {
+	loader := new(MockCodeSetLoader)
 
 	resolver := s.newResolver(loader)
 
 	result1, err1 := resolver.Resolve(s.ctx, "", "code")
-	s.NoError(err1, "Empty key should not error")
-	s.Equal("", result1, "Empty key should return an empty result")
-	s.T().Logf("Empty key case: returned '%s'", result1)
+	s.NoError(err1, "Empty code set should not error")
+	s.Equal("", result1, "Empty code set should return an empty result")
+	s.T().Logf("Empty code set case: returned '%s'", result1)
 
-	result2, err2 := resolver.Resolve(s.ctx, "key", "")
+	result2, err2 := resolver.Resolve(s.ctx, "code_set", "")
 	s.NoError(err2, "Empty code should not error")
 	s.Equal("", result2, "Empty code should return an empty result")
 	s.T().Logf("Empty code case: returned '%s'", result2)
@@ -168,8 +168,8 @@ func (s *CachedDictionaryResolverTestSuite) TestEmptyKeyOrCode() {
 	loader.AssertExpectations(s.T())
 }
 
-func (s *CachedDictionaryResolverTestSuite) TestCodeNotFound() {
-	loader := new(MockDictionaryLoader)
+func (s *CachedCodeSetResolverTestSuite) TestCodeNotFound() {
+	loader := new(MockCodeSetLoader)
 	loader.On("Load", mock.Anything, "status").Return(map[string]string{
 		"draft":     "草稿",
 		"published": "已发布",
@@ -178,37 +178,37 @@ func (s *CachedDictionaryResolverTestSuite) TestCodeNotFound() {
 	resolver := s.newResolver(loader)
 
 	result, err := resolver.Resolve(s.ctx, "status", "archived")
-	s.NoError(err, "Missing dictionary code should not error")
-	s.Equal("", result, "Missing dictionary code should return an empty result")
-	s.T().Logf("Code 'archived' not found in dictionary, returned empty result")
+	s.NoError(err, "Missing code should not error")
+	s.Equal("", result, "Missing code should return an empty result")
+	s.T().Logf("Code 'archived' not found in code set, returned empty result")
 
 	loader.AssertExpectations(s.T())
 }
 
-func (s *CachedDictionaryResolverTestSuite) TestPanicsWhenLoaderIsNil() {
+func (s *CachedCodeSetResolverTestSuite) TestPanicsWhenLoaderIsNil() {
 	s.Panics(func() {
-		NewCachedDictionaryResolver(nil, s.bus)
+		NewCachedCodeSetResolver(nil, s.bus)
 	}, "Nil loader should panic")
 
 	s.T().Logf("Correctly panicked with nil loader")
 }
 
-func (s *CachedDictionaryResolverTestSuite) TestPanicsWhenBusIsNil() {
-	loader := new(MockDictionaryLoader)
+func (s *CachedCodeSetResolverTestSuite) TestPanicsWhenBusIsNil() {
+	loader := new(MockCodeSetLoader)
 	s.Panics(func() {
-		NewCachedDictionaryResolver(loader, nil)
+		NewCachedCodeSetResolver(loader, nil)
 	}, "Nil bus should panic")
 
 	s.T().Logf("Correctly panicked with nil bus")
 }
 
-func (s *CachedDictionaryResolverTestSuite) TestNilCacheCreatesDefault() {
-	loader := new(MockDictionaryLoader)
+func (s *CachedCodeSetResolverTestSuite) TestNilCacheCreatesDefault() {
+	loader := new(MockCodeSetLoader)
 	loader.On("Load", mock.Anything, "status").Return(map[string]string{
 		"draft": "草稿",
 	}, nil).Once()
 
-	resolver := NewCachedDictionaryResolver(loader, s.bus)
+	resolver := NewCachedCodeSetResolver(loader, s.bus)
 
 	result, err := resolver.Resolve(s.ctx, "status", "draft")
 	s.NoError(err, "Default cache should resolve successfully")
@@ -218,13 +218,13 @@ func (s *CachedDictionaryResolverTestSuite) TestNilCacheCreatesDefault() {
 	loader.AssertExpectations(s.T())
 }
 
-// TestSingleflightMergesConcurrentRequests verifies that concurrent requests for the same dictionary key
+// TestSingleflightMergesConcurrentRequests verifies that concurrent requests for the same code set
 // are merged by singleflight and only trigger one underlying load operation.
-func (s *CachedDictionaryResolverTestSuite) TestSingleflightMergesConcurrentRequests() {
-	loader := new(MockDictionaryLoader)
+func (s *CachedCodeSetResolverTestSuite) TestSingleflightMergesConcurrentRequests() {
+	loader := new(MockCodeSetLoader)
 
-	// Setup mock to return dictionary data for the key
-	dictData := map[string]string{
+	// Setup mock to return code set data for the code set
+	codeSetData := map[string]string{
 		"draft":     "草稿",
 		"published": "已发布",
 		"archived":  "已归档",
@@ -232,12 +232,12 @@ func (s *CachedDictionaryResolverTestSuite) TestSingleflightMergesConcurrentRequ
 
 	// The mock should be called only once, even though we make multiple concurrent requests
 	loader.On("Load", mock.Anything, "status").
-		Return(dictData, nil).
+		Return(codeSetData, nil).
 		Once()
 
 	resolver := s.newResolver(loader)
 
-	// Make multiple concurrent requests for the same dictionary key
+	// Make multiple concurrent requests for the same code set
 	const numRequests = 10
 
 	var wg sync.WaitGroup
@@ -245,11 +245,11 @@ func (s *CachedDictionaryResolverTestSuite) TestSingleflightMergesConcurrentRequ
 	results := make([]string, numRequests)
 	errors := make([]error, numRequests)
 
-	s.T().Logf("Launching %d concurrent requests for 'status' dictionary", numRequests)
+	s.T().Logf("Launching %d concurrent requests for 'status' code set", numRequests)
 
 	for i := range numRequests {
 		wg.Go(func() {
-			// Different codes but same dictionary key
+			// Different codes but same code set
 			codes := []string{"draft", "published", "archived"}
 			code := codes[i%len(codes)]
 			results[i], errors[i] = resolver.Resolve(s.ctx, "status", code)
@@ -267,7 +267,7 @@ func (s *CachedDictionaryResolverTestSuite) TestSingleflightMergesConcurrentRequ
 		// Verify the result matches expected value
 		codes := []string{"draft", "published", "archived"}
 		expectedCode := codes[i%len(codes)]
-		expectedValue := dictData[expectedCode]
+		expectedValue := codeSetData[expectedCode]
 		s.Equal(expectedValue, results[i], "Request %d should return correct value", i)
 
 		successCount++
@@ -280,7 +280,7 @@ func (s *CachedDictionaryResolverTestSuite) TestSingleflightMergesConcurrentRequ
 	loader.AssertExpectations(s.T())
 }
 
-// TestCachedDictionaryResolverTestSuite tests cached data dict resolver test suite functionality.
-func TestCachedDictionaryResolver(t *testing.T) {
-	suite.Run(t, new(CachedDictionaryResolverTestSuite))
+// TestCachedCodeSetResolver tests cached code set resolver test suite functionality.
+func TestCachedCodeSetResolver(t *testing.T) {
+	suite.Run(t, new(CachedCodeSetResolverTestSuite))
 }

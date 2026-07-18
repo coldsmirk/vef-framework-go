@@ -23,12 +23,12 @@ type TranslateTransformerTestSuite struct {
 	transformer mold.Transformer
 }
 
-// MockDictionaryLoader mocks mold.DictionaryLoader for testing.
-type MockDictionaryLoader struct {
+// MockCodeSetLoader mocks mold.CodeSetLoader for testing.
+type MockCodeSetLoader struct {
 	shouldError bool
 }
 
-func (m *MockDictionaryLoader) Load(_ context.Context, key string) (map[string]string, error) {
+func (m *MockCodeSetLoader) Load(_ context.Context, key string) (map[string]string, error) {
 	if m.shouldError {
 		return nil, fmt.Errorf("mock loader error for key=%s", key)
 	}
@@ -62,8 +62,8 @@ func (suite *TranslateTransformerTestSuite) SetupSuite() {
 
 	suite.app, suite.stop = apptest.NewTestApp(
 		suite.T(),
-		fx.Provide(func() mold.DictionaryLoader {
-			return &MockDictionaryLoader{shouldError: false}
+		fx.Provide(func() mold.CodeSetLoader {
+			return &MockCodeSetLoader{shouldError: false}
 		}),
 		fx.Populate(&suite.transformer),
 	)
@@ -90,7 +90,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringField() {
 
 	suite.Run("TranslateActiveStatus", func() {
 		type TestStruct struct {
-			Status     string `mold:"translate=dict:status"`
+			Status     string `mold:"translate=codes:status"`
 			StatusName string
 		}
 
@@ -107,7 +107,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringField() {
 
 	suite.Run("TranslateInactiveStatus", func() {
 		type TestStruct struct {
-			Status     string `mold:"translate=dict:status"`
+			Status     string `mold:"translate=codes:status"`
 			StatusName string
 		}
 
@@ -124,7 +124,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringField() {
 
 	suite.Run("TranslatePendingStatus", func() {
 		type TestStruct struct {
-			Status     string `mold:"translate=dict:status"`
+			Status     string `mold:"translate=codes:status"`
 			StatusName string
 		}
 
@@ -146,7 +146,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslatePointerField() {
 
 	suite.Run("TranslateNonNilPointer", func() {
 		type TestStruct struct {
-			Priority     *string `mold:"translate=dict:priority"`
+			Priority     *string `mold:"translate=codes:priority"`
 			PriorityName *string
 		}
 
@@ -166,7 +166,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslatePointerField() {
 
 	suite.Run("TranslateNilPointer", func() {
 		type TestStruct struct {
-			Priority     *string `mold:"translate=dict:priority"`
+			Priority     *string `mold:"translate=codes:priority"`
 			PriorityName *string
 		}
 
@@ -183,7 +183,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslatePointerField() {
 
 	suite.Run("TranslatePointerWithPreInitializedTarget", func() {
 		type TestStruct struct {
-			Priority     *string `mold:"translate=dict:priority"`
+			Priority     *string `mold:"translate=codes:priority"`
 			PriorityName *string
 		}
 
@@ -209,7 +209,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateEmptyValue() {
 
 	suite.Run("EmptyStringValue", func() {
 		type TestStruct struct {
-			Status     string `mold:"translate=dict:status"`
+			Status     string `mold:"translate=codes:status"`
 			StatusName string
 		}
 
@@ -231,9 +231,9 @@ func (suite *TranslateTransformerTestSuite) TestTranslateMultipleFields() {
 
 	suite.Run("MultipleFieldTranslation", func() {
 		type TestStruct struct {
-			Status       string `mold:"translate=dict:status"`
+			Status       string `mold:"translate=codes:status"`
 			StatusName   string
-			Priority     string `mold:"translate=dict:priority"`
+			Priority     string `mold:"translate=codes:priority"`
 			PriorityName string
 		}
 
@@ -258,7 +258,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateMissingTargetField() {
 
 	suite.Run("MissingTargetField", func() {
 		type TestStruct struct {
-			Status string `mold:"translate=dict:status"`
+			Status string `mold:"translate=codes:status"`
 			// StatusName field is missing
 		}
 
@@ -280,7 +280,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateIntFieldKind() {
 
 	suite.Run("IntFieldTypeSupported", func() {
 		type TestStruct struct {
-			Status     int `mold:"translate=dict:status"`
+			Status     int `mold:"translate=codes:status"`
 			StatusName string
 		}
 
@@ -289,7 +289,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateIntFieldKind() {
 		}
 
 		// Int field type is now supported - translation should succeed
-		// but since "1" is not in the mock dictionary, StatusName will remain empty
+		// but since "1" is not in the mock code set, StatusName will remain empty
 		err := suite.transformer.Struct(suite.ctx, test)
 		suite.NoError(err, "Translation should succeed for int field type")
 
@@ -303,7 +303,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateUnsupportedFieldKind() 
 
 	suite.Run("UnsupportedSourceFieldType", func() {
 		type TestStruct struct {
-			Status     float64 `mold:"translate=dict:status"`
+			Status     float64 `mold:"translate=codes:status"`
 			StatusName string
 		}
 
@@ -320,7 +320,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateUnsupportedFieldKind() 
 
 	suite.Run("UnsupportedTargetFieldType", func() {
 		type TestStruct struct {
-			Status     string `mold:"translate=dict:status"`
+			Status     string `mold:"translate=codes:status"`
 			StatusName int
 		}
 
@@ -347,8 +347,8 @@ func (suite *TranslateTransformerTestSuite) TestTranslateWithResolverError() {
 
 		_, stop := apptest.NewTestApp(
 			suite.T(),
-			fx.Provide(func() mold.DictionaryLoader {
-				return &MockDictionaryLoader{shouldError: true}
+			fx.Provide(func() mold.CodeSetLoader {
+				return &MockCodeSetLoader{shouldError: true}
 			}),
 			fx.Populate(&transformer),
 		)
@@ -357,7 +357,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateWithResolverError() {
 		suite.Require().NotNil(transformer, "Transformer should be initialized")
 
 		type TestStruct struct {
-			Status     string `mold:"translate=dict:status"`
+			Status     string `mold:"translate=codes:status"`
 			StatusName string
 		}
 
@@ -391,7 +391,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateWithMissingResolver() {
 		suite.Require().NotNil(transformer, "Transformer should be initialized")
 
 		type TestStruct struct {
-			Status     string `mold:"translate=dict:status"`
+			Status     string `mold:"translate=codes:status"`
 			StatusName string
 		}
 
@@ -401,7 +401,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateWithMissingResolver() {
 
 		err := transformer.Struct(ctx, test)
 		suite.Error(err, "Translation should fail when resolver is not configured")
-		suite.Contains(err.Error(), "dictionary resolver is not configured", "Error should indicate missing resolver")
+		suite.Contains(err.Error(), "code set resolver is not configured", "Error should indicate missing resolver")
 
 		suite.T().Logf("Error (expected): %v", err)
 	})
@@ -457,9 +457,9 @@ func (suite *TranslateTransformerTestSuite) TestTranslateIntegration() {
 
 	suite.Run("ComplexStructWithMixedTypes", func() {
 		type ComplexStruct struct {
-			Status       string `mold:"translate=dict:status"`
+			Status       string `mold:"translate=codes:status"`
 			StatusName   string
-			Priority     *string `mold:"translate=dict:priority"`
+			Priority     *string `mold:"translate=codes:priority"`
 			PriorityName *string
 		}
 
@@ -483,11 +483,11 @@ func (suite *TranslateTransformerTestSuite) TestTranslateIntegration() {
 
 	suite.Run("ScalarAndSliceMixedFields", func() {
 		type MixedStruct struct {
-			Status       string `mold:"translate=dict:status"`
+			Status       string `mold:"translate=codes:status"`
 			StatusName   string
-			Tags         []string `mold:"translate=dict:status"`
+			Tags         []string `mold:"translate=codes:status"`
 			TagsName     []string
-			Priority     *string `mold:"translate=dict:priority"`
+			Priority     *string `mold:"translate=codes:priority"`
 			PriorityName *string
 		}
 
@@ -518,7 +518,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSlice() {
 
 	suite.Run("TranslateNonEmptyStringSlice", func() {
 		type TestStruct struct {
-			Statuses     []string `mold:"translate=dict:status"`
+			Statuses     []string `mold:"translate=codes:status"`
 			StatusesName []string
 		}
 
@@ -535,7 +535,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSlice() {
 
 	suite.Run("TranslateEmptyStringSlice", func() {
 		type TestStruct struct {
-			Statuses     []string `mold:"translate=dict:status"`
+			Statuses     []string `mold:"translate=codes:status"`
 			StatusesName []string
 		}
 
@@ -553,7 +553,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSlice() {
 
 	suite.Run("TranslateNilStringSlice", func() {
 		type TestStruct struct {
-			Statuses     []string `mold:"translate=dict:status"`
+			Statuses     []string `mold:"translate=codes:status"`
 			StatusesName []string
 		}
 
@@ -570,7 +570,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSlice() {
 
 	suite.Run("TranslateSliceWithEmptyElement", func() {
 		type TestStruct struct {
-			Statuses     []string `mold:"translate=dict:status"`
+			Statuses     []string `mold:"translate=codes:status"`
 			StatusesName []string
 		}
 
@@ -588,7 +588,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSlice() {
 
 	suite.Run("TranslateSliceOverwritesPreviousTarget", func() {
 		type TestStruct struct {
-			Statuses     []string `mold:"translate=dict:status"`
+			Statuses     []string `mold:"translate=codes:status"`
 			StatusesName []string
 		}
 
@@ -606,9 +606,9 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSlice() {
 
 	suite.Run("TranslateMultipleStringSliceFields", func() {
 		type TestStruct struct {
-			Statuses       []string `mold:"translate=dict:status"`
+			Statuses       []string `mold:"translate=codes:status"`
 			StatusesName   []string
-			Priorities     []string `mold:"translate=dict:priority"`
+			Priorities     []string `mold:"translate=codes:priority"`
 			PrioritiesName []string
 		}
 
@@ -629,7 +629,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSlice() {
 
 	suite.Run("TranslateNilPointerStringSliceTarget", func() {
 		type TestStruct struct {
-			Statuses     []string `mold:"translate=dict:status"`
+			Statuses     []string `mold:"translate=codes:status"`
 			StatusesName *[]string
 		}
 
@@ -648,7 +648,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSlice() {
 
 	suite.Run("TranslatePreInitializedPointerStringSliceTarget", func() {
 		type TestStruct struct {
-			Statuses     []string `mold:"translate=dict:status"`
+			Statuses     []string `mold:"translate=codes:status"`
 			StatusesName *[]string
 		}
 
@@ -668,7 +668,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSlice() {
 
 	suite.Run("TranslateNilSourceLeavesPointerSliceTargetNil", func() {
 		type TestStruct struct {
-			Statuses     []string `mold:"translate=dict:status"`
+			Statuses     []string `mold:"translate=codes:status"`
 			StatusesName *[]string
 		}
 
@@ -691,7 +691,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSliceErrors() {
 
 	suite.Run("MissingTargetField", func() {
 		type TestStruct struct {
-			Statuses []string `mold:"translate=dict:status"`
+			Statuses []string `mold:"translate=codes:status"`
 			// StatusesName intentionally missing.
 		}
 
@@ -706,7 +706,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSliceErrors() {
 
 	suite.Run("UnsupportedTargetType", func() {
 		type TestStruct struct {
-			Statuses     []string `mold:"translate=dict:status"`
+			Statuses     []string `mold:"translate=codes:status"`
 			StatusesName string
 		}
 
@@ -756,8 +756,8 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSliceErrors() {
 
 		_, stop := apptest.NewTestApp(
 			suite.T(),
-			fx.Provide(func() mold.DictionaryLoader {
-				return &MockDictionaryLoader{shouldError: true}
+			fx.Provide(func() mold.CodeSetLoader {
+				return &MockCodeSetLoader{shouldError: true}
 			}),
 			fx.Populate(&transformer),
 		)
@@ -766,7 +766,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSliceErrors() {
 		suite.Require().NotNil(transformer, "Transformer should be initialized")
 
 		type TestStruct struct {
-			Statuses     []string `mold:"translate=dict:status"`
+			Statuses     []string `mold:"translate=codes:status"`
 			StatusesName []string
 		}
 
@@ -812,7 +812,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSliceErrors() {
 		suite.Require().NotNil(transformer, "Transformer should be initialized")
 
 		type TestStruct struct {
-			Statuses     []string `mold:"translate=dict:status"`
+			Statuses     []string `mold:"translate=codes:status"`
 			StatusesName []string
 		}
 
@@ -820,7 +820,7 @@ func (suite *TranslateTransformerTestSuite) TestTranslateStringSliceErrors() {
 
 		err := transformer.Struct(ctx, test)
 		suite.Error(err, "Should fail when resolver is not configured")
-		suite.Contains(err.Error(), "dictionary resolver is not configured", "Error should indicate missing resolver")
+		suite.Contains(err.Error(), "code set resolver is not configured", "Error should indicate missing resolver")
 		suite.Contains(err.Error(), "element[0]", "Error should include failing element index")
 		suite.Contains(err.Error(), "Statuses", "Error should include source field name")
 

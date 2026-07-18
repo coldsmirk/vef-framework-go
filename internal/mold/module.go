@@ -15,12 +15,12 @@ var Module = fx.Module(
 	"vef:mold",
 	fx.Decorate(
 		fx.Annotate(
-			func(loader mold.DictionaryLoader, bus event.Bus) mold.DictionaryResolver {
+			func(loader mold.CodeSetLoader, bus event.Bus) mold.CodeSetResolver {
 				if loader == nil {
 					return nil
 				}
 
-				return mold.NewCachedDictionaryResolver(loader, bus)
+				return mold.NewCachedCodeSetResolver(loader, bus)
 			},
 			fx.ParamTags(`optional:"true"`),
 		),
@@ -38,9 +38,9 @@ var Module = fx.Module(
 			fx.ParamTags(`group:"vef:mold:translators"`),
 			fx.ResultTags(`group:"vef:mold:field_transformers"`),
 		),
-		// Built-in data dictionary translator
+		// Built-in code set translator
 		fx.Annotate(
-			NewDictionaryTranslator,
+			NewCodeSetTranslator,
 			fx.ParamTags(`optional:"true"`),
 			fx.ResultTags(`group:"vef:mold:translators"`),
 		),
