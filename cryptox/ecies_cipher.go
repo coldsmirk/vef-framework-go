@@ -243,5 +243,3 @@ func (e *eciesCipher) Decrypt(ciphertext string) (string, error) {
 
 	return string(plaintext), nil
 }
-
-var _ Cipher = (*eciesCipher)(nil)

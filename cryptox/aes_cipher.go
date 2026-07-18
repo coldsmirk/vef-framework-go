@@ -223,11 +223,6 @@ func (a *aesCipher) decryptGCM(ciphertext string) (string, error) {
 	return string(plaintext), nil
 }
 
-var (
-	_ Cipher           = (*aesCipher)(nil)
-	_ FixedIVDecrypter = (*aesCipher)(nil)
-)
-
 func pkcs7Padding(data []byte, blockSize int) []byte {
 	padding := blockSize - len(data)%blockSize
 	padByte := byte(padding)

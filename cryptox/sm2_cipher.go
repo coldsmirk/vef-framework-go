@@ -181,5 +181,3 @@ func (s *sm2Cipher) Verify(data, signature string) (bool, error) {
 
 	return valid, nil
 }
-
-var _ CipherSigner = (*sm2Cipher)(nil)

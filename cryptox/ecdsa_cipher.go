@@ -277,5 +277,3 @@ func parseECDSAPublicKeyFromPEM(pemData []byte) (*ecdsa.PublicKey, error) {
 
 	return nil, fmt.Errorf("%w: %s", ErrUnsupportedPEMType, block.Type)
 }
-
-var _ Signer = (*ecdsaCipher)(nil)
