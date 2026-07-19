@@ -56,14 +56,24 @@ type relayFrame struct {
 // origin and skipped). Local delivery never depends on Redis health — a
 // publish failure degrades to node-local delivery under the best-effort
 // contract.
+// kickQueueCapacity bounds the pending cross-node kick publishes. Kicks are
+// low-frequency, so a full queue means Redis has been failing for a while;
+// a dropped frame degrades to the remote nodes' periodic sweep.
+const kickQueueCapacity = 256
+
 type Relay struct {
 	hub     *Hub
 	client  *redis.Client
 	nodeID  string
 	channel string
 
-	pubsub  *redis.PubSub
-	stopped chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
+	kicks  chan []string
+
+	pubsub      *redis.PubSub
+	stopped     chan struct{}
+	kickStopped chan struct{}
 }
 
 // NewRelay builds the cross-node relay; nil when the endpoint is disabled or
@@ -74,12 +84,18 @@ func NewRelay(hub *Hub, cfg *config.PushConfig, appCfg *config.AppConfig, redisC
 		return nil
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return &Relay{
-		hub:     hub,
-		client:  client,
-		nodeID:  id.Generate(),
-		channel: relayChannelFor(redisCfg.Database, appCfg.Name),
-		stopped: make(chan struct{}),
+		hub:         hub,
+		client:      client,
+		nodeID:      id.Generate(),
+		channel:     relayChannelFor(redisCfg.Database, appCfg.Name),
+		ctx:         ctx,
+		cancel:      cancel,
+		kicks:       make(chan []string, kickQueueCapacity),
+		stopped:     make(chan struct{}),
+		kickStopped: make(chan struct{}),
 	}
 }
 
@@ -96,16 +112,20 @@ func (r *Relay) Push(ctx context.Context, message push.Message, targets ...push.
 	return nil
 }
 
-// KickSessions closes the sessions' connections on every node. The publish
-// runs off the caller's goroutine: kicks arrive through revocation paths
-// (logout, concurrent-login eviction) whose listener contract forbids
-// blocking on Redis health. Detached from the caller's cancellation, it stays
-// bounded by the client's own timeouts; a lost frame degrades to the remote
-// nodes' periodic sweep.
-func (r *Relay) KickSessions(ctx context.Context, sessionIDs []string) {
+// KickSessions closes the sessions' connections on every node. The publish is
+// handed to the relay's bounded worker: kicks arrive through revocation call
+// paths (logout, concurrent-login eviction) whose listener contract forbids
+// blocking on Redis health, and a goroutine per kick would grow without bound
+// under a Redis outage. A full queue drops the frame — the remote nodes'
+// periodic sweep remains the net.
+func (r *Relay) KickSessions(sessionIDs []string) {
 	r.hub.closeSessions(sessionIDs)
 
-	go r.publish(context.WithoutCancel(ctx), relayFrame{Kind: frameKickSessions, Origin: r.nodeID, SessionIDs: sessionIDs})
+	select {
+	case r.kicks <- sessionIDs:
+	default:
+		logger.Warnf("Push relay kick queue is full; remote nodes fall back to the session sweep")
+	}
 }
 
 func (r *Relay) publish(ctx context.Context, frame relayFrame) {
@@ -128,6 +148,22 @@ func (r *Relay) start() {
 	r.pubsub = r.client.Subscribe(context.Background(), r.channel)
 
 	go r.run()
+	go r.kickPump()
+}
+
+// kickPump is the single worker draining queued kicks into publishes; its
+// context is canceled at stop, so an in-flight publish never delays shutdown.
+func (r *Relay) kickPump() {
+	defer close(r.kickStopped)
+
+	for {
+		select {
+		case sessionIDs := <-r.kicks:
+			r.publish(r.ctx, relayFrame{Kind: frameKickSessions, Origin: r.nodeID, SessionIDs: sessionIDs})
+		case <-r.ctx.Done():
+			return
+		}
+	}
 }
 
 func (r *Relay) run() {
@@ -138,8 +174,13 @@ func (r *Relay) run() {
 	}
 }
 
-// stop closes the subscription and waits for the apply loop to exit.
+// stop cancels the kick worker, closes the subscription, and waits for both
+// loops to exit; kicks still queued are dropped (best-effort — remote nodes
+// still sweep).
 func (r *Relay) stop() {
+	r.cancel()
+	<-r.kickStopped
+
 	_ = r.pubsub.Close()
 	<-r.stopped
 }

@@ -24,14 +24,14 @@ func newRevocationListener(hub *Hub, relay *Relay, cfg *config.PushConfig) secur
 	return &revocationListener{hub: hub, relay: relay}
 }
 
-func (l *revocationListener) OnSessionsRevoked(ctx context.Context, revocations []security.SessionRevocation) {
+func (l *revocationListener) OnSessionsRevoked(_ context.Context, revocations []security.SessionRevocation) {
 	sessionIDs := make([]string, 0, len(revocations))
 	for _, revocation := range revocations {
 		sessionIDs = append(sessionIDs, revocation.SessionID)
 	}
 
 	if l.relay != nil {
-		l.relay.KickSessions(ctx, sessionIDs)
+		l.relay.KickSessions(sessionIDs)
 
 		return
 	}
