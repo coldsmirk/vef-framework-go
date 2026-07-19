@@ -17,16 +17,23 @@ type sessionSweeper struct {
 	hub      *Hub
 	store    security.SessionStore
 	interval time.Duration
-	stop     chan struct{}
+	ctx      context.Context
+	cancel   context.CancelFunc
 	stopped  chan struct{}
 }
 
 func newSessionSweeper(hub *Hub, store security.SessionStore, interval time.Duration) *sessionSweeper {
+	// The sweeper owns a cancelable context for its store calls: shutdown
+	// cancels it before waiting, so an in-flight lookup against a slow or
+	// blocking store can never stall the application stop.
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return &sessionSweeper{
 		hub:      hub,
 		store:    store,
 		interval: interval,
-		stop:     make(chan struct{}),
+		ctx:      ctx,
+		cancel:   cancel,
 		stopped:  make(chan struct{}),
 	}
 }
@@ -44,15 +51,15 @@ func (s *sessionSweeper) run() {
 	for {
 		select {
 		case <-ticker.C:
-			s.sweep(context.Background())
-		case <-s.stop:
+			s.sweep(s.ctx)
+		case <-s.ctx.Done():
 			return
 		}
 	}
 }
 
 func (s *sessionSweeper) shutdown() {
-	close(s.stop)
+	s.cancel()
 	<-s.stopped
 }
 
@@ -61,6 +68,10 @@ func (s *sessionSweeper) shutdown() {
 // availability dependency.
 func (s *sessionSweeper) sweep(ctx context.Context) {
 	for tokenHash, conns := range s.hub.opaqueConnections() {
+		if ctx.Err() != nil {
+			return
+		}
+
 		session, err := s.store.Lookup(ctx, tokenHash)
 		if err != nil {
 			logger.Warnf("Push session sweep lookup failed: %v", err)

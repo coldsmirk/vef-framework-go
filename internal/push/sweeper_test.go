@@ -3,6 +3,7 @@ package push
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,6 +43,22 @@ func (*ErroringSessionStore) RevokeUser(context.Context, string) error {
 	return nil
 }
 
+// BlockingSessionStore blocks every lookup until the caller's context is
+// canceled, standing in for a legitimate store waiting on a dead backend.
+type BlockingSessionStore struct {
+	ErroringSessionStore
+
+	entered chan struct{}
+	once    sync.Once
+}
+
+func (b *BlockingSessionStore) Lookup(ctx context.Context, _ string) (*security.Session, error) {
+	b.once.Do(func() { close(b.entered) })
+	<-ctx.Done()
+
+	return nil, ctx.Err()
+}
+
 func TestSessionSweep(t *testing.T) {
 	ctx := context.Background()
 
@@ -76,6 +93,33 @@ func TestSessionSweep(t *testing.T) {
 		newSessionSweeper(hub, new(ErroringSessionStore), time.Minute).sweep(ctx)
 
 		assert.False(t, ConnectionClosing(conn), "A store error must not kick connections (fail open)")
+	})
+
+	t.Run("ShutdownCancelsInFlightLookups", func(t *testing.T) {
+		hub := NewHub(new(config.PushConfig))
+		require.NoError(t, hub.register(NewTestConnection("alice", "hash-a")), "Fixture connection should register")
+
+		store := &BlockingSessionStore{entered: make(chan struct{})}
+		sweeper := newSessionSweeper(hub, store, 10*time.Millisecond)
+		sweeper.start()
+
+		select {
+		case <-store.entered:
+		case <-time.After(3 * time.Second):
+			require.FailNow(t, "The sweep should reach the store lookup")
+		}
+
+		done := make(chan struct{})
+		go func() {
+			sweeper.shutdown()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			assert.Fail(t, "shutdown must cancel the in-flight lookup instead of waiting out the store")
+		}
 	})
 
 	t.Run("StartStop", func(t *testing.T) {
