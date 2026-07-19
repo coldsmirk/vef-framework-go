@@ -142,14 +142,15 @@ type ScheduleResource struct {
 
 	crud.FindPage[cron.Schedule, ScheduleSearch]
 
-	manager cron.ScheduleManager
-	now     func() time.Time
+	manager  cron.ScheduleManager
+	registry *Registry
+	now      func() time.Time
 }
 
 // NewScheduleResource creates the schedule management resource. With the
 // store disabled the resource mounts no operations — a feature that is off
 // exposes no surface.
-func NewScheduleResource(cfg *config.CronConfig, manager cron.ScheduleManager) api.Resource {
+func NewScheduleResource(cfg *config.CronConfig, manager cron.ScheduleManager, registry *Registry) api.Resource {
 	const name = "sys/cron/schedule"
 
 	if !cfg.Store.Enabled {
@@ -161,6 +162,7 @@ func NewScheduleResource(cfg *config.CronConfig, manager cron.ScheduleManager) a
 			name,
 			api.WithOperations(
 				api.OperationSpec{Action: "get", RequiredPermission: "cron.schedule.query"},
+				api.OperationSpec{Action: "list_jobs", RequiredPermission: "cron.schedule.query"},
 				api.OperationSpec{Action: "preview_fires", RequiredPermission: "cron.schedule.query"},
 				api.OperationSpec{Action: "create", RequiredPermission: "cron.schedule.manage", EnableAudit: true},
 				api.OperationSpec{Action: "update", RequiredPermission: "cron.schedule.manage", EnableAudit: true},
@@ -172,9 +174,17 @@ func NewScheduleResource(cfg *config.CronConfig, manager cron.ScheduleManager) a
 		),
 		FindPage: crud.NewFindPage[cron.Schedule, ScheduleSearch]().
 			RequiredPermission("cron.schedule.query"),
-		manager: manager,
-		now:     func() time.Time { return timex.Now().Unwrap() },
+		manager:  manager,
+		registry: registry,
+		now:      func() time.Time { return timex.Now().Unwrap() },
 	}
+}
+
+// ListJobs returns the job names registered on this node — the vocabulary
+// the schedule editor's job picker offers. Heterogeneous deployments may
+// register different sets per node; the answering node's view is returned.
+func (r *ScheduleResource) ListJobs(ctx fiber.Ctx) error {
+	return result.Ok(r.registry.Names()).Response(ctx)
 }
 
 // Get returns one schedule with its upcoming-fire preview.
