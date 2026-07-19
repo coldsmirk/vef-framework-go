@@ -99,6 +99,22 @@ type ScheduleNameParams struct {
 	Name string `json:"name" validate:"required"`
 }
 
+// PreviewFiresParams carries an unsaved trigger whose upcoming fire times
+// the editor wants to preview before persisting.
+type PreviewFiresParams struct {
+	api.P
+
+	Trigger  TriggerParams   `json:"trigger"`
+	StartsAt *timex.DateTime `json:"startsAt"`
+	EndsAt   *timex.DateTime `json:"endsAt"`
+}
+
+// FiresPreview is the preview_fires response: the trigger's upcoming fire
+// times from now; empty when it yields no occurrence inside its window.
+type FiresPreview struct {
+	NextFires []timex.DateTime `json:"nextFires"`
+}
+
 // ScheduleSearch contains the search parameters for schedules.
 type ScheduleSearch struct {
 	crud.Sortable
@@ -145,6 +161,7 @@ func NewScheduleResource(cfg *config.CronConfig, manager cron.ScheduleManager) a
 			name,
 			api.WithOperations(
 				api.OperationSpec{Action: "get", RequiredPermission: "cron.schedule.query"},
+				api.OperationSpec{Action: "preview_fires", RequiredPermission: "cron.schedule.query"},
 				api.OperationSpec{Action: "create", RequiredPermission: "cron.schedule.manage", EnableAudit: true},
 				api.OperationSpec{Action: "update", RequiredPermission: "cron.schedule.manage", EnableAudit: true},
 				api.OperationSpec{Action: "delete", RequiredPermission: "cron.schedule.manage", EnableAudit: true},
@@ -171,6 +188,17 @@ func (r *ScheduleResource) Get(ctx fiber.Ctx, params ScheduleNameParams) error {
 		Schedule:  schedule,
 		NextFires: previewNextFires(schedule, r.now(), nextFiresPreview),
 	}).Response(ctx)
+}
+
+// PreviewFires projects the upcoming fire times of an unsaved trigger, so
+// the editor validates an expression against the real parser before saving.
+func (r *ScheduleResource) PreviewFires(ctx fiber.Ctx, params PreviewFiresParams) error {
+	preview, err := previewTriggerFires(params, r.now())
+	if err != nil {
+		return err
+	}
+
+	return result.Ok(preview).Response(ctx)
 }
 
 // Create persists a new schedule.
@@ -232,6 +260,41 @@ func (r *ScheduleResource) TriggerNow(ctx fiber.Ctx, params ScheduleNameParams) 
 	}
 
 	return result.Ok().Response(ctx)
+}
+
+// previewTriggerFires validates the unsaved trigger and projects its fire
+// times from now — the editor-time counterpart of the detail preview. The
+// trigger and window checks mirror the manager's save-time validation so the
+// preview rejects exactly what a save would.
+func previewTriggerFires(params PreviewFiresParams, now time.Time) (*FiresPreview, error) {
+	spec := params.Trigger.spec()
+	if err := spec.Validate(); err != nil {
+		return nil, cron.ErrTriggerInvalid(err.Error())
+	}
+
+	if params.StartsAt != nil && params.EndsAt != nil && !params.EndsAt.Unwrap().After(params.StartsAt.Unwrap()) {
+		return nil, cron.ErrScheduleInvalid(ErrScheduleWindowInverted.Error())
+	}
+
+	// CreatedAt doubles as the interval anchor — stamped now, exactly what an
+	// immediate save would persist.
+	transient := &cron.Schedule{
+		Kind:      spec.Kind,
+		Expr:      spec.Expr,
+		Timezone:  spec.Timezone,
+		EveryMs:   spec.EveryMs,
+		StartsAt:  params.StartsAt,
+		EndsAt:    params.EndsAt,
+		IsEnabled: true,
+	}
+	transient.CreatedAt = timex.DateTime(now)
+
+	if spec.At != nil {
+		at := timex.DateTime(*spec.At)
+		transient.FireAt = &at
+	}
+
+	return &FiresPreview{NextFires: previewNextFires(transient, now, nextFiresPreview)}, nil
 }
 
 // previewNextFires projects the schedule's next fire times from the given
