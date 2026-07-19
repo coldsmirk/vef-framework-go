@@ -144,6 +144,21 @@ func TestEnsureReadOnly(t *testing.T) {
 		{"MySQLBenchmark", config.MySQL, "SELECT benchmark(1000000, md5('x'))", true},
 		{"SQLServerXpCmdshell", config.SQLServer, "SELECT xp_cmdshell('dir')", true},
 		{"OracleUtlFile", config.Oracle, "SELECT utl_file.fopen('d', 'f', 'r') FROM dual", true},
+		// Parser coverage pins for the SQL Server / Oracle read surface (the
+		// integration lane's sql.queryList): the portable modern forms parse,
+		// while dialect-private syntax is refused by the fail-closed parser —
+		// scripts must use the standard alternatives (OFFSET/FETCH for TOP,
+		// ANSI joins for (+), quoted identifiers for brackets).
+		{"SQLServerOffsetFetch", config.SQLServer, "SELECT id FROM users ORDER BY id OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY", false},
+		{"SQLServerTopUnparsed", config.SQLServer, "SELECT TOP 10 id FROM users ORDER BY id", true},
+		{"SQLServerBracketsUnparsed", config.SQLServer, "SELECT [id] FROM [users]", true},
+		{"SQLServerNolockHintUnparsed", config.SQLServer, "SELECT id FROM users WITH (NOLOCK)", true},
+		{"OracleDual", config.Oracle, "SELECT sysdate FROM dual", false},
+		{"OracleRownum", config.Oracle, "SELECT id FROM users WHERE ROWNUM <= 10", false},
+		{"OracleFetchFirst", config.Oracle, "SELECT id FROM users ORDER BY id FETCH FIRST 10 ROWS ONLY", false},
+		{"OracleScalarFunctions", config.Oracle, "SELECT TO_CHAR(created_at, 'YYYY-MM-DD'), NVL(name, 'x') FROM orders", false},
+		{"OracleLegacyOuterJoinUnparsed", config.Oracle, "SELECT a.id FROM a, b WHERE a.id = b.id(+)", true},
+		{"OracleConnectByUnparsed", config.Oracle, "SELECT id FROM depts START WITH parent_id IS NULL CONNECT BY PRIOR id = parent_id", true},
 		// A dialect's own functions are blocked even though they are absent from
 		// other dialects' lists: an unknown kind falls back to the union.
 		{"MySQLSleepBlockedUnderUnknownKind", config.DBKind("unknown"), "SELECT sleep(10)", true},
