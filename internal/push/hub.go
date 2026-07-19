@@ -64,7 +64,13 @@ func encodeMessage(message *push.Message, targets []push.Target) ([]byte, error)
 
 	for _, target := range targets {
 		switch target.Kind {
-		case push.TargetUsers, push.TargetRoles, push.TargetBroadcast:
+		case push.TargetUsers, push.TargetRoles:
+			// An empty selector would silently deliver to nobody — the exact
+			// caller bug ErrNoTarget exists to surface.
+			if len(target.Values) == 0 {
+				return nil, fmt.Errorf("%w: empty %s selector", push.ErrNoTarget, target.Kind)
+			}
+		case push.TargetBroadcast:
 		default:
 			return nil, fmt.Errorf("%w: %q", push.ErrUnknownTargetKind, target.Kind)
 		}

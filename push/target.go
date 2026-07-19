@@ -19,13 +19,15 @@ type Target struct {
 	Values []string   `json:"values,omitempty"`
 }
 
-// ToUsers targets the live connections of the given user IDs.
+// ToUsers targets the live connections of the given user IDs. At least one ID
+// is required — Push rejects an empty selector with ErrNoTarget.
 func ToUsers(userIDs ...string) Target {
 	return Target{Kind: TargetUsers, Values: userIDs}
 }
 
 // ToRoles targets every connection whose principal holds at least one of the
-// given roles (snapshotted at handshake).
+// given roles (snapshotted at handshake). At least one role is required —
+// Push rejects an empty selector with ErrNoTarget.
 func ToRoles(roles ...string) Target {
 	return Target{Kind: TargetRoles, Values: roles}
 }

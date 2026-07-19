@@ -91,6 +91,10 @@ func TestHubPushValidation(t *testing.T) {
 		"A push without targets should be rejected")
 	require.ErrorIs(t, hub.Push(ctx, push.NewMessage("t", nil), push.Target{Kind: "bogus"}), push.ErrUnknownTargetKind,
 		"A hand-built target with an unknown kind should be rejected")
+	require.ErrorIs(t, hub.Push(ctx, push.NewMessage("t", nil), push.ToUsers()), push.ErrNoTarget,
+		"An empty user selector delivers to nobody and should be rejected")
+	require.ErrorIs(t, hub.Push(ctx, push.NewMessage("t", nil), push.Broadcast(), push.ToRoles()), push.ErrNoTarget,
+		"An empty role selector should be rejected even alongside a valid target")
 }
 
 func TestHubOpaqueConnections(t *testing.T) {
