@@ -1,6 +1,7 @@
 package push
 
 import (
+	"slices"
 	"sync"
 	"time"
 
@@ -37,7 +38,7 @@ func newConnection(ws *websocket.Conn, principal *security.Principal, tokenHash,
 	return &connection{
 		ws:        ws,
 		userID:    principal.ID,
-		roles:     principal.Roles,
+		roles:     slices.Clone(principal.Roles),
 		tokenHash: tokenHash,
 		sessionID: sessionID,
 		send:      make(chan []byte, sendBuffer),

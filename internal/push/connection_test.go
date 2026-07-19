@@ -5,6 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/coldsmirk/vef-framework-go/security"
 )
 
 // ConnectionClosing reports whether the connection has entered shutdown.
@@ -15,6 +17,16 @@ func ConnectionClosing(c *connection) bool {
 	default:
 		return false
 	}
+}
+
+func TestNewConnectionSnapshotsRoles(t *testing.T) {
+	principal := &security.Principal{ID: "alice", Roles: []string{"admin"}}
+	conn := newConnection(nil, principal, "hash", "s1", 2)
+
+	principal.Roles[0] = "mutated"
+
+	assert.Equal(t, []string{"admin"}, conn.roles,
+		"Roles must be snapshotted at the connection boundary, not aliased to the principal")
 }
 
 func TestConnectionEnqueue(t *testing.T) {
