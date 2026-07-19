@@ -14,7 +14,7 @@ import (
 // a dialect for is also openable by internal/database — the connector half and
 // the dialect half must stay in agreement.
 func TestDialectFor(t *testing.T) {
-	supported := []config.DBKind{config.Postgres, config.MySQL, config.SQLite}
+	supported := []config.DBKind{config.Postgres, config.MySQL, config.SQLite, config.SQLServer, config.Oracle}
 
 	for _, kind := range supported {
 		t.Run(string(kind), func(t *testing.T) {

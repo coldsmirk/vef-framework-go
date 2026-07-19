@@ -3,7 +3,9 @@ package orm
 import (
 	"fmt"
 
+	"github.com/uptrace/bun/dialect/mssqldialect"
 	"github.com/uptrace/bun/dialect/mysqldialect"
+	"github.com/uptrace/bun/dialect/oracledialect"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 	"github.com/uptrace/bun/schema"
@@ -24,6 +26,10 @@ func DialectFor(kind config.DBKind) (schema.Dialect, error) {
 		return mysqldialect.New(), nil
 	case config.SQLite:
 		return sqlitedialect.New(), nil
+	case config.SQLServer:
+		return mssqldialect.New(), nil
+	case config.Oracle:
+		return oracledialect.New(), nil
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedDialect, kind)
 	}
