@@ -43,7 +43,11 @@ func nextFire(schedule *cron.Schedule, after time.Time) (time.Time, bool) {
 		return time.Time{}, false
 	}
 
-	return next, true
+	// Relabel to the process-local zone before the instant meets the store's
+	// naive wall-clock convention: a zoned cron trigger computes in its own
+	// zone, and persisting that zone's wall clock into next_fire_at would
+	// shift the fire against the local-wall-clock claim comparison.
+	return next.In(time.Local), true
 }
 
 // fireDecision resolves one due schedule at claim time: what executes, what
@@ -104,7 +108,9 @@ func decide(schedule *cron.Schedule, now time.Time, misfireThreshold time.Durati
 	decision := fireDecision{fire: true, scheduledAt: due, missed: overdue, next: next}
 	if overdue > 0 {
 		if first, ok := trigger.Next(due, anchor); ok {
-			decision.missedFrom = first
+			// Same relabeling as nextFire: the missed row's scheduled_at is
+			// journaled through the naive wall-clock convention.
+			decision.missedFrom = first.In(time.Local)
 		}
 	}
 

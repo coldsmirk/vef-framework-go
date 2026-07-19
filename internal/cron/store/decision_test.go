@@ -72,6 +72,31 @@ func TestDecide(t *testing.T) {
 		assert.Equal(t, due.Add(6*time.Minute), *decision.next, "the next fire is strictly after now")
 	})
 
+	t.Run("ZonedCronAdvancesTheWallClock", func(t *testing.T) {
+		// The refire-storm regression: an hourly expression evaluated in a
+		// zone whose wall clock runs behind the node's must still advance the
+		// persisted (local) wall clock strictly past the due one — a
+		// non-advancing wall clock leaves the schedule claimable every tick.
+		gmt12, err := time.LoadLocation("Etc/GMT+12")
+		require.NoError(t, err, "the fixed-offset zone must load")
+
+		schedule := decisionSchedule(due, cron.MisfireFireNow)
+		schedule.Kind = cron.TriggerCron
+		schedule.Expr = "0 * * * *"
+		schedule.Timezone = "Etc/GMT+12"
+		schedule.EveryMs = 0
+
+		decision := decide(schedule, due.Add(2*time.Second), threshold)
+
+		require.True(t, decision.fire, "an on-time occurrence must fire")
+		require.NotNil(t, decision.next, "an hourly expression always yields a next fire")
+		assert.True(t, decision.next.After(due), "the next fire's instant must be strictly after the due one")
+		assert.LessOrEqual(t, decision.next.Sub(due), time.Hour, "an hourly cadence advances at most one hour")
+		assert.Zero(t, decision.next.In(gmt12).Minute(), "the instant must sit on the trigger zone's hour boundary")
+		assert.Greater(t, timex.DateTime(*decision.next).String(), timex.DateTime(due).String(),
+			"the persisted wall clock must advance past the due one")
+	})
+
 	t.Run("OneShotSpendsItself", func(t *testing.T) {
 		schedule := decisionSchedule(due, cron.MisfireFireNow)
 		schedule.Kind = cron.TriggerOnce
@@ -140,5 +165,24 @@ func TestNextFire(t *testing.T) {
 		anchor := schedule.CreatedAt.Unwrap()
 		phase := next.Sub(anchor) % time.Minute
 		assert.Zero(t, phase, "fires must stay on the anchor's phase grid")
+	})
+
+	t.Run("ZonedCronRelabelsToLocal", func(t *testing.T) {
+		shanghai, err := time.LoadLocation("Asia/Shanghai")
+		require.NoError(t, err, "the IANA zone must load")
+
+		schedule := scheduleFixture("zoned", "job", base)
+		schedule.Kind = cron.TriggerCron
+		schedule.Expr = "0 3 * * *"
+		schedule.Timezone = "Asia/Shanghai"
+		schedule.EveryMs = 0
+
+		next, ok := nextFire(schedule, base)
+		require.True(t, ok, "a daily expression always yields a fire")
+
+		assert.Same(t, time.Local, next.Location(),
+			"the fire must be relabeled to the process-local zone before the naive wall-clock capture")
+		assert.Equal(t, 3, next.In(shanghai).Hour(), "the instant must stay correct in the trigger's zone")
+		assert.True(t, next.After(base), "the fire must be strictly after the probe instant")
 	})
 }
