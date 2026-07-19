@@ -15,6 +15,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/middleware"
 	"github.com/coldsmirk/vef-framework-go/internal/mold"
 	"github.com/coldsmirk/vef-framework-go/internal/monitor"
+	"github.com/coldsmirk/vef-framework-go/internal/push"
 	"github.com/coldsmirk/vef-framework-go/internal/redis"
 	"github.com/coldsmirk/vef-framework-go/internal/schema"
 	"github.com/coldsmirk/vef-framework-go/internal/security"
@@ -51,6 +52,7 @@ func Core() []fx.Option {
 		schema.Module,
 		monitor.Module,
 		mcp.Module,
+		push.Module,
 		app.Module,
 	}
 }

@@ -47,6 +47,10 @@ func newMCPConfig(cfg config.Config) (*config.MCPConfig, error) {
 	return unmarshalConfig(cfg, "vef.mcp", new(config.MCPConfig))
 }
 
+func newPushConfig(cfg config.Config) (*config.PushConfig, error) {
+	return unmarshalConfig(cfg, "vef.push", new(config.PushConfig))
+}
+
 func newApprovalConfig(cfg config.Config) (*config.ApprovalConfig, error) {
 	approvalConfig, err := unmarshalConfig(cfg, "vef.approval", new(config.ApprovalConfig))
 	if err != nil {

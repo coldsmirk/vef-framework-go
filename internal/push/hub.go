@@ -1,0 +1,183 @@
+package push
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"maps"
+	"slices"
+	"sync"
+	"time"
+
+	"github.com/coldsmirk/go-collections"
+	"github.com/gofiber/contrib/v3/websocket"
+
+	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/id"
+	"github.com/coldsmirk/vef-framework-go/push"
+)
+
+// Hub is the per-node connection registry and the push.Notifier
+// implementation: it indexes live connections by user and fans each message
+// out to the selected recipients through their writer queues.
+type Hub struct {
+	maxPerUser int
+
+	mu     sync.RWMutex
+	conns  map[*connection]struct{}
+	byUser map[string]map[*connection]struct{}
+	closed bool
+}
+
+func NewHub(cfg *config.PushConfig) *Hub {
+	return &Hub{
+		maxPerUser: cfg.MaxConnectionsPerUser,
+		conns:      make(map[*connection]struct{}),
+		byUser:     make(map[string]map[*connection]struct{}),
+	}
+}
+
+// Push implements push.Notifier. The envelope is marshaled once and the same
+// bytes are enqueued to every recipient; a recipient whose queue is full is a
+// slow client and is dropped rather than allowed to block or backlog the
+// fan-out.
+func (h *Hub) Push(_ context.Context, message push.Message, targets ...push.Target) error {
+	if message.Type == "" {
+		return push.ErrTypeRequired
+	}
+
+	if len(targets) == 0 {
+		return push.ErrNoTarget
+	}
+
+	for _, target := range targets {
+		switch target.Kind {
+		case push.TargetUsers, push.TargetRoles, push.TargetBroadcast:
+		default:
+			return fmt.Errorf("%w: %q", push.ErrUnknownTargetKind, target.Kind)
+		}
+	}
+
+	if message.ID == "" {
+		message.ID = id.Generate()
+	}
+
+	if message.Time.IsZero() {
+		message.Time = time.Now()
+	}
+
+	payload, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("marshal push message: %w", err)
+	}
+
+	for _, conn := range h.selectRecipients(targets) {
+		if !conn.enqueue(payload) {
+			logger.Warnf("Dropping slow push connection of user %s", conn.userID)
+			conn.terminate()
+		}
+	}
+
+	return nil
+}
+
+// selectRecipients resolves the target union to a deduplicated connection
+// set: every connection receives one copy no matter how many targets match it.
+func (h *Hub) selectRecipients(targets []push.Target) []*connection {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	selected := make(map[*connection]struct{})
+
+	for _, target := range targets {
+		switch target.Kind {
+		case push.TargetBroadcast:
+			maps.Copy(selected, h.conns)
+		case push.TargetUsers:
+			for _, userID := range target.Values {
+				maps.Copy(selected, h.byUser[userID])
+			}
+		case push.TargetRoles:
+			roles := collections.NewHashSetFrom(target.Values...)
+			for conn := range h.conns {
+				if slices.ContainsFunc(conn.roles, roles.Contains) {
+					selected[conn] = struct{}{}
+				}
+			}
+		}
+	}
+
+	return slices.Collect(maps.Keys(selected))
+}
+
+// register admits a connection, enforcing the per-user cap on this node.
+func (h *Hub) register(conn *connection) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.closed {
+		return errHubClosed
+	}
+
+	if h.maxPerUser > 0 && len(h.byUser[conn.userID]) >= h.maxPerUser {
+		return errTooManyConnections
+	}
+
+	h.conns[conn] = struct{}{}
+
+	users := h.byUser[conn.userID]
+	if users == nil {
+		users = make(map[*connection]struct{})
+		h.byUser[conn.userID] = users
+	}
+
+	users[conn] = struct{}{}
+
+	return nil
+}
+
+func (h *Hub) unregister(conn *connection) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	delete(h.conns, conn)
+
+	if users := h.byUser[conn.userID]; users != nil {
+		delete(users, conn)
+
+		if len(users) == 0 {
+			delete(h.byUser, conn.userID)
+		}
+	}
+}
+
+// opaqueConnections groups the opaque-token connections by token hash for the
+// session sweep; one store lookup covers every tab sharing a login.
+func (h *Hub) opaqueConnections() map[string][]*connection {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	groups := make(map[string][]*connection)
+
+	for conn := range h.conns {
+		if conn.tokenHash != "" {
+			groups[conn.tokenHash] = append(groups[conn.tokenHash], conn)
+		}
+	}
+
+	return groups
+}
+
+// Shutdown refuses new registrations and closes every live connection with a
+// going-away frame. Connection goroutines unregister themselves as their
+// sockets wind down.
+func (h *Hub) Shutdown() {
+	h.mu.Lock()
+	h.closed = true
+	conns := slices.Collect(maps.Keys(h.conns))
+	h.mu.Unlock()
+
+	for _, conn := range conns {
+		conn.close(websocket.CloseGoingAway, "server shutting down")
+	}
+}
