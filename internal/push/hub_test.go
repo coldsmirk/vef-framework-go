@@ -81,6 +81,34 @@ func TestHubSelectRecipients(t *testing.T) {
 	}
 }
 
+func TestHubPendingQuarantine(t *testing.T) {
+	hub := NewHub(new(config.PushConfig))
+
+	conn := NewTestConnection("alice", "hash-a", "admin")
+	conn.sessionID = "s1"
+	conn.pending = true
+	require.NoError(t, hub.register(conn), "A pending connection should register")
+
+	for name, targets := range map[string][]push.Target{
+		"Broadcast": {push.Broadcast()},
+		"ByUser":    {push.ToUsers("alice")},
+		"ByRole":    {push.ToRoles("admin")},
+	} {
+		assert.Empty(t, hub.selectRecipients(targets), "A pending connection must not be selected via %s", name)
+	}
+
+	hub.closeSessions([]string{"s1"})
+	assert.True(t, ConnectionClosing(conn), "A kick must reach a pending connection")
+
+	activated := NewTestConnection("alice", "hash-b")
+	activated.pending = true
+	require.NoError(t, hub.register(activated), "The second connection should register")
+
+	hub.activate(activated)
+	assert.ElementsMatch(t, []*connection{activated}, hub.selectRecipients([]push.Target{push.ToUsers("alice")}),
+		"An activated connection becomes a recipient (the closed one refuses enqueue, not selection)")
+}
+
 func TestHubPushValidation(t *testing.T) {
 	hub := NewHub(new(config.PushConfig))
 	ctx := context.Background()

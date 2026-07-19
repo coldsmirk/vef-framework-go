@@ -24,6 +24,10 @@ const (
 	localSessionID = "vef:push:session_id"
 )
 
+// sessionRecheckTimeout bounds the post-register session lookup so a stalled
+// store cannot pin a connection in its pending quarantine.
+const sessionRecheckTimeout = 5 * time.Second
+
 // tokenExtractor mirrors the bearer strategy's chain: the browser WebSocket
 // API cannot set an Authorization header, so the standard access-token query
 // parameter is the practical channel.
@@ -145,6 +149,9 @@ func (m *Middleware) serve(ws *websocket.Conn) {
 	tokenHash, _ := ws.Locals(localTokenHash).(string)
 	sessionID, _ := ws.Locals(localSessionID).(string)
 	conn := newConnection(ws, principal, tokenHash, sessionID, m.cfg.EffectiveSendBuffer())
+	// Quarantined until the session recheck passes: a pending connection is
+	// kickable and holds a cap slot, but receives no pushes.
+	conn.pending = true
 
 	if err := m.hub.register(conn); err != nil {
 		refuse(ws, err, m.cfg.EffectiveWriteTimeout())
@@ -164,18 +171,30 @@ func (m *Middleware) serve(ws *websocket.Conn) {
 		m.hub.unregister(conn)
 	}()
 
-	// A revocation landing between the handshake lookup and register scans the
-	// hub before this connection is visible; recheck now that it is registered
-	// so that window is closed — any later revocation reaches the connection
-	// through the listener kick. Store errors fail open (the periodic sweep
-	// still covers the connection).
-	if sessionID != "" {
-		if session, err := m.store.Lookup(context.Background(), tokenHash); err == nil && session == nil {
-			conn.close(push.CloseSessionInvalid, "session revoked")
-		}
-	}
+	m.recheckSession(conn)
+	m.hub.activate(conn)
 
 	conn.readPump(pongWait(m.cfg.EffectivePingInterval()))
+}
+
+// recheckSession closes the revocation window the handshake leaves open: a
+// revocation landing between the auth lookup and register scans the hub
+// before this connection is visible, so the session is looked up once more
+// now that it is registered — any later revocation reaches the connection
+// through the listener kick. The lookup is bounded so a stalled store cannot
+// pin the connection in its quarantine; store errors and timeouts fail open
+// (the periodic sweep still covers the connection).
+func (m *Middleware) recheckSession(conn *connection) {
+	if conn.sessionID == "" {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), sessionRecheckTimeout)
+	defer cancel()
+
+	if session, err := m.store.Lookup(ctx, conn.tokenHash); err == nil && session == nil {
+		conn.close(push.CloseSessionInvalid, "session revoked")
+	}
 }
 
 // refuse closes a just-upgraded socket that the hub did not admit; the writer

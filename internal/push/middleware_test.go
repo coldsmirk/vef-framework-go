@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -49,6 +50,29 @@ func (v *VanishingSessionStore) Lookup(ctx context.Context, tokenHash string) (*
 	if v.lookups.Add(1) == 1 {
 		return v.SessionStore.Lookup(ctx, tokenHash)
 	}
+
+	return nil, nil
+}
+
+// GatedSessionStore serves the handshake lookup, then holds the recheck open
+// until released and reports the session gone — the window in which a pending
+// connection must stay invisible to recipient selection.
+type GatedSessionStore struct {
+	security.SessionStore
+
+	lookups atomic.Int32
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (g *GatedSessionStore) Lookup(ctx context.Context, tokenHash string) (*security.Session, error) {
+	if g.lookups.Add(1) == 1 {
+		return g.SessionStore.Lookup(ctx, tokenHash)
+	}
+
+	g.once.Do(func() { close(g.entered) })
+	<-g.release
 
 	return nil, nil
 }
@@ -388,6 +412,37 @@ func TestHandshakeRevocationWindow(t *testing.T) {
 	// recheck it is gone — the connection must be kicked, not left to the
 	// sweep.
 	conn := Dial(t, server, token)
+	ExpectClose(t, conn, push.CloseSessionInvalid)
+}
+
+func TestRecheckQuarantineBlocksDelivery(t *testing.T) {
+	token := "opaque-token"
+	backing := security.NewMemorySessionStore()
+	require.NoError(t, backing.Create(context.Background(), security.HashOpaqueToken(token),
+		security.Session{ID: "s1", UserID: "alice", ExpiresAt: time.Now().Add(time.Hour)}, time.Hour),
+		"Session should be created")
+
+	auth := &FakeAuthManager{Principals: map[string]*security.Principal{token: UserPrincipal("alice")}}
+	securityCfg := &config.SecurityConfig{TokenType: config.TokenTypeOpaque}
+	store := &GatedSessionStore{SessionStore: backing, entered: make(chan struct{}), release: make(chan struct{})}
+	server := StartTestServer(t, EnabledConfig(), securityCfg, auth, store)
+
+	conn := Dial(t, server, token)
+
+	select {
+	case <-store.entered:
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "The recheck should reach the store")
+	}
+
+	// The session was revoked mid-handshake and the recheck is still in
+	// flight: the registered-but-pending connection must not be a recipient.
+	require.NoError(t, server.Hub.Push(context.Background(), push.NewMessage("secret", "s3cr3t"), push.ToUsers("alice")),
+		"Push during the recheck should succeed")
+
+	close(store.release)
+
+	// The first frame the client sees must be the close — never the secret.
 	ExpectClose(t, conn, push.CloseSessionInvalid)
 }
 

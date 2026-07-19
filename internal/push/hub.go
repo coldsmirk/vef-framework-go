@@ -156,7 +156,24 @@ func (h *Hub) selectRecipients(targets []push.Target) []*connection {
 		}
 	}
 
+	// Pending connections are quarantined until their session recheck passes:
+	// kickable and counted toward the cap, but never a recipient.
+	for conn := range selected {
+		if conn.pending {
+			delete(selected, conn)
+		}
+	}
+
 	return slices.Collect(maps.Keys(selected))
+}
+
+// activate lifts a connection out of its pending quarantine; only after the
+// post-register session recheck has passed does it become a push recipient.
+func (h *Hub) activate(conn *connection) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	conn.pending = false
 }
 
 // register admits a connection, enforcing the per-user cap on this node.

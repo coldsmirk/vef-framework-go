@@ -24,6 +24,7 @@ type connection struct {
 	roles     []string
 	tokenHash string // empty under the stateless jwt mechanism
 	sessionID string // keys the instant revocation kick; empty under jwt
+	pending   bool   // quarantined between register and the session recheck; guarded by the hub mutex
 
 	send      chan []byte
 	done      chan struct{}
