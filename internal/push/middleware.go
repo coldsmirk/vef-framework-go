@@ -1,6 +1,7 @@
 package push
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -152,6 +153,17 @@ func (m *Middleware) serve(ws *websocket.Conn) {
 	}
 
 	go conn.writePump(m.cfg.EffectivePingInterval(), m.cfg.EffectiveWriteTimeout())
+
+	// A revocation landing between the handshake lookup and register scans the
+	// hub before this connection is visible; recheck now that it is registered
+	// so that window is closed — any later revocation reaches the connection
+	// through the listener kick. Store errors fail open (the periodic sweep
+	// still covers the connection).
+	if sessionID != "" {
+		if session, err := m.store.Lookup(context.Background(), tokenHash); err == nil && session == nil {
+			conn.close(push.CloseSessionInvalid, "session revoked")
+		}
+	}
 
 	conn.readPump(pongWait(m.cfg.EffectivePingInterval()))
 

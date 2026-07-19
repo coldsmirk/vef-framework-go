@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,6 +34,23 @@ func (f *FakeAuthManager) Authenticate(_ context.Context, authentication securit
 	}
 
 	return nil, security.ErrTokenInvalid
+}
+
+// VanishingSessionStore serves the handshake lookup and reports the session
+// gone on every later one, reproducing a revocation landing inside the
+// handshake window (after the auth lookup, before hub registration).
+type VanishingSessionStore struct {
+	security.SessionStore
+
+	lookups atomic.Int32
+}
+
+func (v *VanishingSessionStore) Lookup(ctx context.Context, tokenHash string) (*security.Session, error) {
+	if v.lookups.Add(1) == 1 {
+		return v.SessionStore.Lookup(ctx, tokenHash)
+	}
+
+	return nil, nil
 }
 
 // TestServer runs the push middleware on a real listener so tests exercise
@@ -335,6 +353,25 @@ func TestInstantKickEndToEnd(t *testing.T) {
 	listener.OnSessionsRevoked(context.Background(),
 		[]security.SessionRevocation{{SessionID: "s1", UserID: "alice"}})
 
+	ExpectClose(t, conn, push.CloseSessionInvalid)
+}
+
+func TestHandshakeRevocationWindow(t *testing.T) {
+	token := "opaque-token"
+	backing := security.NewMemorySessionStore()
+	require.NoError(t, backing.Create(context.Background(), security.HashOpaqueToken(token),
+		security.Session{ID: "s1", UserID: "alice", ExpiresAt: time.Now().Add(time.Hour)}, time.Hour),
+		"Session should be created")
+
+	auth := &FakeAuthManager{Principals: map[string]*security.Principal{token: UserPrincipal("alice")}}
+	securityCfg := &config.SecurityConfig{TokenType: config.TokenTypeOpaque}
+	store := &VanishingSessionStore{SessionStore: backing}
+	server := StartTestServer(t, EnabledConfig(), securityCfg, auth, store)
+
+	// The handshake lookup still sees the session; by the post-register
+	// recheck it is gone — the connection must be kicked, not left to the
+	// sweep.
+	conn := Dial(t, server, token)
 	ExpectClose(t, conn, push.CloseSessionInvalid)
 }
 
