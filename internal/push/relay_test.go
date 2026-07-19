@@ -38,16 +38,19 @@ func ReceiveEnvelope(t *testing.T, conn *connection) push.Message {
 func TestNewRelay(t *testing.T) {
 	hub := NewHub(new(config.PushConfig))
 
-	assert.Nil(t, NewRelay(hub, new(config.PushConfig), new(config.AppConfig), nil),
+	assert.Nil(t, NewRelay(hub, new(config.PushConfig), new(config.AppConfig), new(config.RedisConfig), nil),
 		"A disabled endpoint should build no relay")
-	assert.Nil(t, NewRelay(hub, EnabledConfig(), new(config.AppConfig), nil),
+	assert.Nil(t, NewRelay(hub, EnabledConfig(), new(config.AppConfig), new(config.RedisConfig), nil),
 		"Without a Redis client the hub pushes node-locally")
 }
 
 func TestRelayChannelFor(t *testing.T) {
-	assert.Equal(t, "vef:push:relay", relayChannelFor(""), "An unnamed application uses the bare channel")
-	assert.Equal(t, "vef:push:relay:crm", relayChannelFor("crm"),
-		"The application name namespaces the channel — Pub/Sub is not isolated by the Redis database number")
+	assert.Equal(t, "vef:push:relay:0", relayChannelFor(0, ""),
+		"An unnamed application still carries the database dimension")
+	assert.Equal(t, "vef:push:relay:1:crm", relayChannelFor(1, "crm"),
+		"The channel carries both the database number and the application name")
+	assert.NotEqual(t, relayChannelFor(0, "crm"), relayChannelFor(1, "crm"),
+		"Environments separated by database number must not share a channel — Pub/Sub ignores the database")
 }
 
 func TestRelayAcrossNodes(t *testing.T) {
@@ -61,9 +64,9 @@ func TestRelayAcrossNodes(t *testing.T) {
 	require.NoError(t, client.Ping(ctx).Err(), "Should connect to Redis")
 	t.Cleanup(func() { _ = client.Close() })
 
-	newNode := func(appName string) (*Hub, *Relay) {
+	newNode := func(appName string, database uint8) (*Hub, *Relay) {
 		hub := NewHub(EnabledConfig())
-		relay := NewRelay(hub, EnabledConfig(), &config.AppConfig{Name: appName}, client)
+		relay := NewRelay(hub, EnabledConfig(), &config.AppConfig{Name: appName}, &config.RedisConfig{Database: database}, client)
 		require.NotNil(t, relay, "Relay should build with an enabled endpoint and a client")
 
 		relay.start()
@@ -80,8 +83,9 @@ func TestRelayAcrossNodes(t *testing.T) {
 		}, 5*time.Second, 50*time.Millisecond, "Relays should be subscribed on %s", channel)
 	}
 
-	hubA, relayA := newNode("app")
-	hubB, _ := newNode("app")
+	hubA, relayA := newNode("app", 0)
+	hubB, _ := newNode("app", 0)
+
 	awaitSubscribers(relayA.channel, 2)
 
 	t.Run("FansOutMessagesToEveryNode", func(t *testing.T) {
@@ -124,7 +128,7 @@ func TestRelayAcrossNodes(t *testing.T) {
 	})
 
 	t.Run("IsolatesApplicationsOnASharedRedis", func(t *testing.T) {
-		hubOther, relayOther := newNode("other-app")
+		hubOther, relayOther := newNode("other-app", 0)
 		awaitSubscribers(relayOther.channel, 1)
 
 		foreign := NewTestConnection("alice", "")
@@ -146,6 +150,34 @@ func TestRelayAcrossNodes(t *testing.T) {
 
 		hubB.unregister(local)
 		hubOther.unregister(foreign)
+	})
+
+	t.Run("IsolatesEnvironmentsSeparatedByDatabase", func(t *testing.T) {
+		// Same application name, different configured database — the classic
+		// dev/staging split on one shared Redis. Pub/Sub itself ignores the
+		// database, so the channel must carry the separation.
+		hubEnv, relayEnv := newNode("app", 1)
+		awaitSubscribers(relayEnv.channel, 1)
+
+		foreign := NewTestConnection("alice", "")
+		require.NoError(t, hubEnv.register(foreign), "The other environment's connection should register")
+
+		local := NewTestConnection("alice", "")
+		require.NoError(t, hubB.register(local), "The same environment's connection should register")
+
+		require.NoError(t, relayA.Push(ctx, push.NewMessage("env.only", nil), push.Broadcast()),
+			"Relay push should succeed")
+
+		assert.Equal(t, "env.only", ReceiveEnvelope(t, local).Type, "The same environment's node should deliver")
+
+		select {
+		case <-foreign.send:
+			assert.Fail(t, "A broadcast must never cross into another environment's channel")
+		case <-time.After(300 * time.Millisecond):
+		}
+
+		hubB.unregister(local)
+		hubEnv.unregister(foreign)
 	})
 
 	t.Run("ValidatesLikeTheHub", func(t *testing.T) {

@@ -3,6 +3,7 @@ package push
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 
 	"github.com/redis/go-redis/v9"
 
@@ -18,16 +19,19 @@ import (
 // fan-out contract.
 const relayChannelPrefix = "vef:push:relay"
 
-// relayChannelFor derives the relay channel from the application name.
-// Pub/Sub channels are server-global — unlike keys, they are NOT isolated by
-// the Redis database number — so co-tenant applications sharing one Redis
-// instance need the explicit namespace to keep their push traffic apart.
-func relayChannelFor(appName string) string {
-	if appName == "" {
-		return relayChannelPrefix
+// relayChannelFor derives the relay channel from the configured Redis
+// database and the application name. Pub/Sub channels are server-global —
+// unlike keys, they are NOT isolated by the Redis database number — so the
+// channel carries both dimensions explicitly: the database number mirrors the
+// keyspace isolation operators already rely on to separate environments, and
+// the application name separates co-tenant applications within one database.
+func relayChannelFor(database uint8, appName string) string {
+	channel := relayChannelPrefix + ":" + strconv.Itoa(int(database))
+	if appName != "" {
+		channel += ":" + appName
 	}
 
-	return relayChannelPrefix + ":" + appName
+	return channel
 }
 
 // Relay frame kinds.
@@ -65,7 +69,7 @@ type Relay struct {
 // NewRelay builds the cross-node relay; nil when the endpoint is disabled or
 // no Redis client is available (single-node deployments push through the hub
 // directly).
-func NewRelay(hub *Hub, cfg *config.PushConfig, appCfg *config.AppConfig, client *redis.Client) *Relay {
+func NewRelay(hub *Hub, cfg *config.PushConfig, appCfg *config.AppConfig, redisCfg *config.RedisConfig, client *redis.Client) *Relay {
 	if !cfg.Enabled || client == nil {
 		return nil
 	}
@@ -74,7 +78,7 @@ func NewRelay(hub *Hub, cfg *config.PushConfig, appCfg *config.AppConfig, client
 		hub:     hub,
 		client:  client,
 		nodeID:  id.Generate(),
-		channel: relayChannelFor(appCfg.Name),
+		channel: relayChannelFor(redisCfg.Database, appCfg.Name),
 		stopped: make(chan struct{}),
 	}
 }
