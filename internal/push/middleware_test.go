@@ -53,6 +53,22 @@ func (v *VanishingSessionStore) Lookup(ctx context.Context, tokenHash string) (*
 	return nil, nil
 }
 
+// PanickingSessionStore serves the handshake lookup and panics on every later
+// one, standing in for a buggy application-provided store.
+type PanickingSessionStore struct {
+	security.SessionStore
+
+	lookups atomic.Int32
+}
+
+func (p *PanickingSessionStore) Lookup(ctx context.Context, tokenHash string) (*security.Session, error) {
+	if p.lookups.Add(1) == 1 {
+		return p.SessionStore.Lookup(ctx, tokenHash)
+	}
+
+	panic("session store exploded")
+}
+
 // TestServer runs the push middleware on a real listener so tests exercise
 // the genuine upgrade, pumps, and close-frame paths.
 type TestServer struct {
@@ -373,6 +389,25 @@ func TestHandshakeRevocationWindow(t *testing.T) {
 	// sweep.
 	conn := Dial(t, server, token)
 	ExpectClose(t, conn, push.CloseSessionInvalid)
+}
+
+func TestServeCleansUpOnPanic(t *testing.T) {
+	token := "opaque-token"
+	backing := security.NewMemorySessionStore()
+	require.NoError(t, backing.Create(context.Background(), security.HashOpaqueToken(token),
+		security.Session{ID: "s1", UserID: "alice", ExpiresAt: time.Now().Add(time.Hour)}, time.Hour),
+		"Session should be created")
+
+	auth := &FakeAuthManager{Principals: map[string]*security.Principal{token: UserPrincipal("alice")}}
+	securityCfg := &config.SecurityConfig{TokenType: config.TokenTypeOpaque}
+	server := StartTestServer(t, EnabledConfig(), securityCfg, auth, &PanickingSessionStore{SessionStore: backing})
+
+	// The post-register recheck panics inside serve. The deferred teardown
+	// must stop the writer and unregister the connection before the contrib
+	// wrapper is recycled — nothing may linger in the hub.
+	Dial(t, server, token)
+	assert.Eventually(t, func() bool { return HubSize(server.Hub) == 0 }, 3*time.Second, 20*time.Millisecond,
+		"A panic inside serve must not leak the hub registration")
 }
 
 func TestHubShutdownEndToEnd(t *testing.T) {

@@ -154,6 +154,16 @@ func (m *Middleware) serve(ws *websocket.Conn) {
 
 	go conn.writePump(m.cfg.EffectivePingInterval(), m.cfg.EffectiveWriteTimeout())
 
+	// The teardown is deferred so it also runs when anything below panics
+	// (e.g. an application-provided session store): serve's defers unwind
+	// before the contrib recover/release, so the writer is always fully
+	// stopped — and the hub entry gone — before the wrapper is recycled.
+	defer func() {
+		conn.terminate()
+		<-conn.writeDone
+		m.hub.unregister(conn)
+	}()
+
 	// A revocation landing between the handshake lookup and register scans the
 	// hub before this connection is visible; recheck now that it is registered
 	// so that window is closed — any later revocation reaches the connection
@@ -166,10 +176,6 @@ func (m *Middleware) serve(ws *websocket.Conn) {
 	}
 
 	conn.readPump(pongWait(m.cfg.EffectivePingInterval()))
-
-	conn.terminate()
-	<-conn.writeDone
-	m.hub.unregister(conn)
 }
 
 // refuse closes a just-upgraded socket that the hub did not admit; the writer
