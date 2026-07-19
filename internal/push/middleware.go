@@ -136,6 +136,8 @@ func (m *Middleware) authenticate(ctx fiber.Ctx) error {
 func (m *Middleware) serve(ws *websocket.Conn) {
 	principal, ok := ws.Locals(localPrincipal).(*security.Principal)
 	if !ok {
+		_ = ws.Close()
+
 		return
 	}
 
@@ -159,7 +161,9 @@ func (m *Middleware) serve(ws *websocket.Conn) {
 }
 
 // refuse closes a just-upgraded socket that the hub did not admit; the writer
-// never started, so the close frame is written directly.
+// never started, so the close frame is written directly. The socket must be
+// closed here too — the contrib wrapper runs with KeepHijackedConns, so a
+// handler return never closes the underlying connection on its own.
 func refuse(ws *websocket.Conn, err error, writeTimeout time.Duration) {
 	code := push.CloseTooManyConnections
 	if errors.Is(err, errHubClosed) {
@@ -168,6 +172,7 @@ func refuse(ws *websocket.Conn, err error, writeTimeout time.Duration) {
 
 	payload := websocket.FormatCloseMessage(code, err.Error())
 	_ = ws.WriteControl(websocket.CloseMessage, payload, time.Now().Add(writeTimeout))
+	_ = ws.Close()
 }
 
 // pongWait derives the read deadline from the heartbeat period: two missed

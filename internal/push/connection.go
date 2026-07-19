@@ -73,21 +73,26 @@ func (c *connection) close(code int, reason string) {
 	})
 }
 
-// terminate tears the socket down immediately without a close frame — the
-// path for dead or slow peers whose writer cannot be trusted to drain.
+// terminate requests an abrupt shutdown without a close frame — the path for
+// dead or slow peers. It only signals: the writer goroutine owns the socket
+// and tears it down on its own exit (a blocked write is bounded by the write
+// deadline), so a stale terminate can never race the writer's close frame or
+// touch a socket the contrib wrapper has already recycled.
 func (c *connection) terminate() {
 	c.closeOnce.Do(func() {
 		close(c.done)
 	})
-
-	_ = c.ws.Close()
 }
 
 // writePump is the connection's single writer: it drains the outbound queue,
 // emits heartbeat pings, and on shutdown delivers the close frame. It owns
-// every write on the socket.
+// every write on the socket AND the physical close — every exit path tears
+// the socket down here, so no other goroutine ever closes it.
 func (c *connection) writePump(pingInterval, writeTimeout time.Duration) {
-	defer close(c.writeDone)
+	defer func() {
+		_ = c.ws.Close()
+		close(c.writeDone)
+	}()
 
 	ticker := time.NewTicker(pingInterval)
 	defer ticker.Stop()
@@ -111,14 +116,11 @@ func (c *connection) writePump(pingInterval, writeTimeout time.Duration) {
 			}
 
 		case <-c.done:
-			// closeCode 0 marks a terminate(): the socket is already gone, a
-			// close frame would be wasted on it.
+			// closeCode 0 marks a terminate(): abort without a close frame.
 			if c.closeCode != 0 {
 				payload := websocket.FormatCloseMessage(c.closeCode, c.closeReason)
 				_ = c.ws.WriteControl(websocket.CloseMessage, payload, time.Now().Add(writeTimeout))
 			}
-
-			_ = c.ws.Close()
 
 			return
 		}

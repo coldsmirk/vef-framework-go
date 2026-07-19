@@ -269,6 +269,17 @@ func TestConnectionLimit(t *testing.T) {
 	second := Dial(t, server, "alice-token")
 	ExpectClose(t, second, push.CloseTooManyConnections)
 
+	// The server runs with KeepHijackedConns, so the refusal must close the
+	// TCP socket itself: a read timing out here means the socket leaked.
+	require.NoError(t, second.UnderlyingConn().SetReadDeadline(time.Now().Add(3*time.Second)),
+		"Read deadline should apply")
+
+	_, err := second.UnderlyingConn().Read(make([]byte, 1))
+	require.Error(t, err, "The refused connection's socket should be closed by the server")
+
+	netErr, isNetErr := errors.AsType[net.Error](err)
+	assert.False(t, isNetErr && netErr.Timeout(), "The server must close the refused socket, not leave it to the client")
+
 	require.NoError(t, server.Hub.Push(context.Background(), push.NewMessage("still.alive", nil), push.ToUsers("alice")),
 		"Push to the surviving connection should succeed")
 	assert.Equal(t, "still.alive", ReadEnvelope(t, first).Type, "The first connection should stay functional")

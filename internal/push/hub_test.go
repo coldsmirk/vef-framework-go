@@ -115,6 +115,9 @@ func TestPushDropsSlowClient(t *testing.T) {
 	auth := &FakeAuthManager{Principals: map[string]*security.Principal{"good": UserPrincipal("alice")}}
 	cfg := EnabledConfig()
 	cfg.SendBuffer = 1
+	// The writer owns the socket close, so a drop takes effect once its
+	// blocked write hits the deadline; keep that bound short for the test.
+	cfg.WriteTimeout = 500 * time.Millisecond
 	server := StartTestServer(t, cfg, new(config.SecurityConfig), auth, nil)
 
 	// The client never reads: large frames jam the socket, the one-slot queue
