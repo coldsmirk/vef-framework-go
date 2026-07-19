@@ -19,7 +19,7 @@ var Module = fx.Module(
 		NewHub,
 		fx.Annotate(
 			NewRelay,
-			fx.ParamTags(``, ``, `optional:"true"`),
+			fx.ParamTags(``, ``, ``, `optional:"true"`),
 		),
 		newNotifier,
 		fx.Annotate(

@@ -11,11 +11,24 @@ import (
 	"github.com/coldsmirk/vef-framework-go/push"
 )
 
-// relayChannel is the Redis Pub/Sub channel carrying push frames between
-// nodes. Pub/Sub (not Streams) is deliberate: a frame must reach every node,
-// needs no persistence or consumer groups, and a frame missed while a node is
-// disconnected is worthless later — exactly the ephemeral fan-out contract.
-const relayChannel = "vef:push:relay"
+// relayChannelPrefix roots the Redis Pub/Sub channel carrying push frames
+// between nodes. Pub/Sub (not Streams) is deliberate: a frame must reach
+// every node, needs no persistence or consumer groups, and a frame missed
+// while a node is disconnected is worthless later — exactly the ephemeral
+// fan-out contract.
+const relayChannelPrefix = "vef:push:relay"
+
+// relayChannelFor derives the relay channel from the application name.
+// Pub/Sub channels are server-global — unlike keys, they are NOT isolated by
+// the Redis database number — so co-tenant applications sharing one Redis
+// instance need the explicit namespace to keep their push traffic apart.
+func relayChannelFor(appName string) string {
+	if appName == "" {
+		return relayChannelPrefix
+	}
+
+	return relayChannelPrefix + ":" + appName
+}
 
 // Relay frame kinds.
 const (
@@ -40,9 +53,10 @@ type relayFrame struct {
 // publish failure degrades to node-local delivery under the best-effort
 // contract.
 type Relay struct {
-	hub    *Hub
-	client *redis.Client
-	nodeID string
+	hub     *Hub
+	client  *redis.Client
+	nodeID  string
+	channel string
 
 	pubsub  *redis.PubSub
 	stopped chan struct{}
@@ -51,7 +65,7 @@ type Relay struct {
 // NewRelay builds the cross-node relay; nil when the endpoint is disabled or
 // no Redis client is available (single-node deployments push through the hub
 // directly).
-func NewRelay(hub *Hub, cfg *config.PushConfig, client *redis.Client) *Relay {
+func NewRelay(hub *Hub, cfg *config.PushConfig, appCfg *config.AppConfig, client *redis.Client) *Relay {
 	if !cfg.Enabled || client == nil {
 		return nil
 	}
@@ -60,6 +74,7 @@ func NewRelay(hub *Hub, cfg *config.PushConfig, client *redis.Client) *Relay {
 		hub:     hub,
 		client:  client,
 		nodeID:  id.Generate(),
+		channel: relayChannelFor(appCfg.Name),
 		stopped: make(chan struct{}),
 	}
 }
@@ -91,7 +106,7 @@ func (r *Relay) publish(ctx context.Context, frame relayFrame) {
 		return
 	}
 
-	if err := r.client.Publish(ctx, relayChannel, payload).Err(); err != nil {
+	if err := r.client.Publish(ctx, r.channel, payload).Err(); err != nil {
 		logger.Warnf("Push relay publish failed; delivery stays node-local: %v", err)
 	}
 }
@@ -100,7 +115,7 @@ func (r *Relay) publish(ctx context.Context, frame relayFrame) {
 // automatically after connection loss; frames missed meanwhile are lost
 // (best-effort).
 func (r *Relay) start() {
-	r.pubsub = r.client.Subscribe(context.Background(), relayChannel)
+	r.pubsub = r.client.Subscribe(context.Background(), r.channel)
 
 	go r.run()
 }

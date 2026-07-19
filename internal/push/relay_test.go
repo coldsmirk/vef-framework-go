@@ -38,8 +38,16 @@ func ReceiveEnvelope(t *testing.T, conn *connection) push.Message {
 func TestNewRelay(t *testing.T) {
 	hub := NewHub(new(config.PushConfig))
 
-	assert.Nil(t, NewRelay(hub, new(config.PushConfig), nil), "A disabled endpoint should build no relay")
-	assert.Nil(t, NewRelay(hub, EnabledConfig(), nil), "Without a Redis client the hub pushes node-locally")
+	assert.Nil(t, NewRelay(hub, new(config.PushConfig), new(config.AppConfig), nil),
+		"A disabled endpoint should build no relay")
+	assert.Nil(t, NewRelay(hub, EnabledConfig(), new(config.AppConfig), nil),
+		"Without a Redis client the hub pushes node-locally")
+}
+
+func TestRelayChannelFor(t *testing.T) {
+	assert.Equal(t, "vef:push:relay", relayChannelFor(""), "An unnamed application uses the bare channel")
+	assert.Equal(t, "vef:push:relay:crm", relayChannelFor("crm"),
+		"The application name namespaces the channel — Pub/Sub is not isolated by the Redis database number")
 }
 
 func TestRelayAcrossNodes(t *testing.T) {
@@ -53,9 +61,9 @@ func TestRelayAcrossNodes(t *testing.T) {
 	require.NoError(t, client.Ping(ctx).Err(), "Should connect to Redis")
 	t.Cleanup(func() { _ = client.Close() })
 
-	newNode := func() (*Hub, *Relay) {
+	newNode := func(appName string) (*Hub, *Relay) {
 		hub := NewHub(EnabledConfig())
-		relay := NewRelay(hub, EnabledConfig(), client)
+		relay := NewRelay(hub, EnabledConfig(), &config.AppConfig{Name: appName}, client)
 		require.NotNil(t, relay, "Relay should build with an enabled endpoint and a client")
 
 		relay.start()
@@ -64,14 +72,17 @@ func TestRelayAcrossNodes(t *testing.T) {
 		return hub, relay
 	}
 
-	hubA, relayA := newNode()
-	hubB, _ := newNode()
+	awaitSubscribers := func(channel string, count int64) {
+		require.Eventually(t, func() bool {
+			counts, err := client.PubSubNumSub(ctx, channel).Result()
 
-	require.Eventually(t, func() bool {
-		counts, err := client.PubSubNumSub(ctx, relayChannel).Result()
+			return err == nil && counts[channel] >= count
+		}, 5*time.Second, 50*time.Millisecond, "Relays should be subscribed on %s", channel)
+	}
 
-		return err == nil && counts[relayChannel] >= 2
-	}, 5*time.Second, 50*time.Millisecond, "Both relays should be subscribed")
+	hubA, relayA := newNode("app")
+	hubB, _ := newNode("app")
+	awaitSubscribers(relayA.channel, 2)
 
 	t.Run("FansOutMessagesToEveryNode", func(t *testing.T) {
 		local := NewTestConnection("alice", "")
@@ -106,6 +117,31 @@ func TestRelayAcrossNodes(t *testing.T) {
 		require.Eventually(t, func() bool { return ConnectionClosing(remote) }, 3*time.Second, 20*time.Millisecond,
 			"The kick should reach the other node")
 		assert.Equal(t, push.CloseSessionInvalid, remote.closeCode, "The kick should use the session-invalid close code")
+	})
+
+	t.Run("IsolatesApplicationsOnASharedRedis", func(t *testing.T) {
+		hubOther, relayOther := newNode("other-app")
+		awaitSubscribers(relayOther.channel, 1)
+
+		foreign := NewTestConnection("alice", "")
+		require.NoError(t, hubOther.register(foreign), "The other application's connection should register")
+
+		local := NewTestConnection("alice", "")
+		require.NoError(t, hubB.register(local), "The same application's connection should register")
+
+		require.NoError(t, relayA.Push(ctx, push.NewMessage("tenant.only", nil), push.Broadcast()),
+			"Relay push should succeed")
+
+		assert.Equal(t, "tenant.only", ReceiveEnvelope(t, local).Type, "The same application's node should deliver")
+
+		select {
+		case <-foreign.send:
+			assert.Fail(t, "A broadcast must never cross into another application's channel")
+		case <-time.After(300 * time.Millisecond):
+		}
+
+		hubB.unregister(local)
+		hubOther.unregister(foreign)
 	})
 
 	t.Run("ValidatesLikeTheHub", func(t *testing.T) {
