@@ -1,9 +1,9 @@
 module github.com/coldsmirk/vef-framework-go
 
-go 1.26.1
+go 1.26.4
 
 require (
-	ariga.io/atlas v1.2.0
+	ariga.io/atlas v1.2.3
 	github.com/ajitpratap0/GoSQLX v1.14.0
 	github.com/coldsmirk/go-collections v0.4.0
 	github.com/coldsmirk/go-streams v0.5.0
@@ -12,7 +12,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/expr-lang/expr v1.17.8
 	github.com/fasthttp/websocket v1.5.12
-	github.com/go-co-op/gocron/v2 v2.21.2
+	github.com/go-co-op/gocron/v2 v2.22.0
 	github.com/go-playground/locales v0.14.1
 	github.com/go-playground/universal-translator v0.18.1
 	github.com/go-playground/validator/v10 v10.30.3
@@ -20,8 +20,8 @@ require (
 	github.com/go-testfixtures/testfixtures/v3 v3.19.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gofiber/contrib/v3/websocket v1.2.1
-	github.com/gofiber/fiber/v3 v3.3.0
-	github.com/gofiber/utils/v2 v2.1.0
+	github.com/gofiber/fiber/v3 v3.4.0
+	github.com/gofiber/utils/v2 v2.2.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
@@ -31,29 +31,29 @@ require (
 	github.com/jinzhu/inflection v1.0.0
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/microsoft/go-mssqldb v1.10.0
-	github.com/minio/minio-go/v7 v7.2.0
-	github.com/moby/moby/api v1.54.1
+	github.com/minio/minio-go/v7 v7.2.1
+	github.com/moby/moby/api v1.55.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/muesli/termenv v0.16.0
 	github.com/nicksnyder/go-i18n/v2 v2.6.1
 	github.com/pquerna/otp v1.5.0
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
-	github.com/redis/go-redis/v9 v9.20.0
+	github.com/redis/go-redis/v9 v9.21.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/xid v1.6.0
 	github.com/samber/lo v1.53.0
-	github.com/shirou/gopsutil/v4 v4.26.4
+	github.com/shirou/gopsutil/v4 v4.26.6
 	github.com/shopspring/decimal v1.4.0
 	github.com/sijms/go-ora/v2 v2.9.0
 	github.com/spf13/cast v1.10.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
-	github.com/testcontainers/testcontainers-go v0.42.0
-	github.com/testcontainers/testcontainers-go/modules/minio v0.42.0
-	github.com/testcontainers/testcontainers-go/modules/mysql v0.42.0
-	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
-	github.com/testcontainers/testcontainers-go/modules/redis v0.42.0
+	github.com/testcontainers/testcontainers-go v0.43.0
+	github.com/testcontainers/testcontainers-go/modules/minio v0.43.0
+	github.com/testcontainers/testcontainers-go/modules/mysql v0.43.0
+	github.com/testcontainers/testcontainers-go/modules/postgres v0.43.0
+	github.com/testcontainers/testcontainers-go/modules/redis v0.43.0
 	github.com/tjfoc/gmsm v1.4.1
 	github.com/uptrace/bun v1.2.18
 	github.com/uptrace/bun/dialect/mssqldialect v1.2.18
@@ -63,13 +63,13 @@ require (
 	github.com/uptrace/bun/dialect/sqlitedialect v1.2.18
 	github.com/uptrace/bun/driver/pgdriver v1.2.18
 	github.com/uptrace/bun/driver/sqliteshim v1.2.18
-	github.com/xuri/excelize/v2 v2.10.1
+	github.com/xuri/excelize/v2 v2.11.0
 	go.uber.org/fx v1.24.0
 	go.uber.org/zap v1.28.0
-	golang.org/x/crypto v0.53.0
-	golang.org/x/sync v0.21.0
-	golang.org/x/text v0.38.0
-	golang.org/x/tools v0.45.0
+	golang.org/x/crypto v0.54.0
+	golang.org/x/sync v0.22.0
+	golang.org/x/text v0.40.0
+	golang.org/x/tools v0.48.0
 )
 
 require (
@@ -78,7 +78,7 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
-	github.com/andybalholm/brotli v1.2.1 // indirect
+	github.com/andybalholm/brotli v1.2.2 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
@@ -105,7 +105,7 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-openapi/inflect v0.21.5 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
-	github.com/goccy/go-yaml v1.18.0 // indirect
+	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/gofiber/schema v1.8.0 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
@@ -114,7 +114,7 @@ require (
 	github.com/hashicorp/hcl/v2 v2.24.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect
-	github.com/klauspost/compress v1.18.6 // indirect
+	github.com/klauspost/compress v1.19.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
@@ -146,7 +146,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/richardlehane/mscfb v1.0.6 // indirect
+	github.com/richardlehane/mscfb v1.0.7 // indirect
 	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
@@ -165,7 +165,7 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.71.0 // indirect
+	github.com/valyala/fasthttp v1.72.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/xuri/efp v0.0.1 // indirect
@@ -189,10 +189,10 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
-	golang.org/x/mod v0.36.0 // indirect
-	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/mod v0.38.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	gopkg.in/ini.v1 v1.67.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	mellium.im/sasl v0.3.2 // indirect
