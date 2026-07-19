@@ -31,7 +31,8 @@ type AuthResourceParams struct {
 	UserInfoLoader      security.UserInfoLoader `optional:"true"`
 	LoginGuard          security.LoginGuard     `optional:"true"`
 	SessionStore        security.SessionStore
-	ChallengeProviders  []security.ChallengeProvider `group:"vef:security:challenge_providers"`
+	RevocationNotifier  *security.SessionRevocationNotifier `optional:"true"`
+	ChallengeProviders  []security.ChallengeProvider        `group:"vef:security:challenge_providers"`
 	Bus                 event.Bus
 	SecurityConfig      *config.SecurityConfig
 }
@@ -81,6 +82,7 @@ func NewAuthResource(params AuthResourceParams) api.Resource {
 		userInfoLoader:      params.UserInfoLoader,
 		loginGuard:          params.LoginGuard,
 		sessionStore:        params.SessionStore,
+		revocationNotifier:  params.RevocationNotifier,
 		challengeProviders:  params.ChallengeProviders,
 		bus:                 params.Bus,
 
@@ -101,6 +103,7 @@ type AuthResource struct {
 	userInfoLoader      security.UserInfoLoader
 	loginGuard          security.LoginGuard
 	sessionStore        security.SessionStore
+	revocationNotifier  *security.SessionRevocationNotifier
 	challengeProviders  []security.ChallengeProvider
 	bus                 event.Bus
 }
@@ -231,7 +234,12 @@ func (a *AuthResource) revokeCurrentSession(ctx fiber.Ctx) {
 
 	if err := a.sessionStore.Revoke(ctx.Context(), session.ID); err != nil {
 		logger.Warnf("Failed to revoke session on logout: %v", err)
+
+		return
 	}
+
+	a.revocationNotifier.NotifyRevoked(ctx.Context(),
+		security.SessionRevocation{SessionID: session.ID, UserID: session.UserID})
 }
 
 // ResolveChallengeParams represents the request for resolving a login challenge.

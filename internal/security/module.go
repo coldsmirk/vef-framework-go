@@ -61,6 +61,10 @@ var Module = fx.Module(
 		),
 		NewJWTTokenGenerator,
 		NewOpaqueTokenGenerator,
+		fx.Annotate(
+			security.NewSessionRevocationNotifier,
+			fx.ParamTags(`group:"vef:security:session_revocation_listeners"`),
+		),
 		newSessionStore,
 		newNonceStore,
 		newSessionPolicy,

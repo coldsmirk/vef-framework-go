@@ -11,6 +11,15 @@ import (
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
+// RecordingListener captures revocation notifications for assertions.
+type RecordingListener struct {
+	Revocations [][]security.SessionRevocation
+}
+
+func (l *RecordingListener) OnSessionsRevoked(_ context.Context, revocations []security.SessionRevocation) {
+	l.Revocations = append(l.Revocations, revocations)
+}
+
 type OpaqueTokenGeneratorTestSuite struct {
 	suite.Suite
 }
@@ -22,7 +31,7 @@ func (s *OpaqueTokenGeneratorTestSuite) TestGenerate() {
 
 	s.Run("OpensSessionAndReturnsOpaqueToken", func() {
 		store := security.NewMemorySessionStore()
-		gen := NewOpaqueTokenGenerator(store, security.SessionPolicy{IdleTTL: time.Hour})
+		gen := NewOpaqueTokenGenerator(store, security.SessionPolicy{IdleTTL: time.Hour}, nil)
 
 		tokens, err := gen.Generate(ctx, principal, meta)
 		s.Require().NoError(err, "generation should succeed")
@@ -42,7 +51,7 @@ func (s *OpaqueTokenGeneratorTestSuite) TestGenerate() {
 			MaxConcurrent: 1,
 			OnExceed:      security.SessionExceedReject,
 			IdleTTL:       time.Hour,
-		})
+		}, nil)
 
 		_, err := gen.Generate(ctx, principal, meta)
 		s.Require().NoError(err, "the first session should be admitted")
@@ -59,7 +68,7 @@ func (s *OpaqueTokenGeneratorTestSuite) TestGenerate() {
 			MaxConcurrent: 1,
 			OnExceed:      security.SessionExceedEvictOldest,
 			IdleTTL:       time.Hour,
-		})
+		}, nil)
 
 		first, err := gen.Generate(ctx, principal, meta)
 		s.Require().NoError(err, "the first session should be admitted")
@@ -86,7 +95,7 @@ func (s *OpaqueTokenGeneratorTestSuite) TestGenerate() {
 			MaxConcurrent: 2,
 			OnExceed:      security.SessionExceedEvictOldest,
 			IdleTTL:       time.Hour,
-		})
+		}, nil)
 
 		now := time.Now()
 		future := now.Add(time.Hour)
@@ -114,12 +123,37 @@ func (s *OpaqueTokenGeneratorTestSuite) TestGenerate() {
 		s.Len(active, 2, "the concurrency limit should hold at exactly two sessions")
 	})
 
+	s.Run("EvictOldestNotifiesRevocationListeners", func() {
+		store := security.NewMemorySessionStore()
+		listener := new(RecordingListener)
+		notifier := security.NewSessionRevocationNotifier([]security.SessionRevocationListener{listener})
+		gen := NewOpaqueTokenGenerator(store, security.SessionPolicy{
+			MaxConcurrent: 1,
+			OnExceed:      security.SessionExceedEvictOldest,
+			IdleTTL:       time.Hour,
+		}, notifier)
+
+		_, err := gen.Generate(ctx, principal, meta)
+		s.Require().NoError(err, "the first session should be admitted")
+
+		sessions, err := store.ListByUser(ctx, "u1")
+		s.Require().NoError(err, "list should not error")
+		s.Require().Len(sessions, 1, "one session should exist before eviction")
+
+		_, err = gen.Generate(ctx, principal, meta)
+		s.Require().NoError(err, "evict-oldest should admit the new session")
+
+		s.Require().Len(listener.Revocations, 1, "one revocation batch should be delivered")
+		s.Equal(sessions[0].ID, listener.Revocations[0][0].SessionID, "the evicted session should be reported")
+		s.Equal("u1", listener.Revocations[0][0].UserID, "the revocation should carry the owner")
+	})
+
 	s.Run("InitialExpiryCappedByMaxLifetime", func() {
 		store := security.NewMemorySessionStore()
 		gen := NewOpaqueTokenGenerator(store, security.SessionPolicy{
 			IdleTTL:     2 * time.Hour,
 			MaxLifetime: time.Hour,
-		})
+		}, nil)
 
 		before := time.Now()
 		tokens, err := gen.Generate(ctx, principal, meta)
@@ -134,7 +168,7 @@ func (s *OpaqueTokenGeneratorTestSuite) TestGenerate() {
 
 	s.Run("UnlimitedWhenMaxConcurrentZero", func() {
 		store := security.NewMemorySessionStore()
-		gen := NewOpaqueTokenGenerator(store, security.SessionPolicy{IdleTTL: time.Hour})
+		gen := NewOpaqueTokenGenerator(store, security.SessionPolicy{IdleTTL: time.Hour}, nil)
 
 		for range 3 {
 			_, err := gen.Generate(ctx, principal, meta)
