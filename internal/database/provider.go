@@ -6,8 +6,10 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/database/mysql"
+	"github.com/coldsmirk/vef-framework-go/internal/database/oracle"
 	"github.com/coldsmirk/vef-framework-go/internal/database/postgres"
 	"github.com/coldsmirk/vef-framework-go/internal/database/sqlite"
+	"github.com/coldsmirk/vef-framework-go/internal/database/sqlserver"
 )
 
 // Provider defines the contract for database-specific connection logic.
@@ -16,7 +18,8 @@ type Provider interface {
 	// error. On success (nil error) the returned *sql.DB MUST be non-nil — Open
 	// applies the connection pool to it without a nil check.
 	Connect(config *config.DataSourceConfig) (*sql.DB, error)
-	// Kind returns the database kind this provider handles (postgres, mysql, or sqlite).
+	// Kind returns the database kind this provider handles (one of the
+	// config.DBKind constants).
 	Kind() config.DBKind
 	// Version queries and returns the database server version string.
 	Version(ctx context.Context, db *sql.DB) (string, error)
@@ -34,6 +37,8 @@ func newProviderRegistry() *providerRegistry {
 	registry.register(sqlite.NewProvider())
 	registry.register(postgres.NewProvider())
 	registry.register(mysql.NewProvider())
+	registry.register(sqlserver.NewProvider())
+	registry.register(oracle.NewProvider())
 
 	return registry
 }

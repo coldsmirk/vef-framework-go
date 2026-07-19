@@ -28,6 +28,7 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/jinzhu/inflection v1.0.0
 	github.com/matoous/go-nanoid/v2 v2.1.0
+	github.com/microsoft/go-mssqldb v1.10.0
 	github.com/minio/minio-go/v7 v7.2.0
 	github.com/moby/moby/api v1.54.1
 	github.com/modelcontextprotocol/go-sdk v1.6.1
@@ -41,6 +42,7 @@ require (
 	github.com/samber/lo v1.53.0
 	github.com/shirou/gopsutil/v4 v4.26.4
 	github.com/shopspring/decimal v1.4.0
+	github.com/sijms/go-ora/v2 v2.9.0
 	github.com/spf13/cast v1.10.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
@@ -52,7 +54,9 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/redis v0.42.0
 	github.com/tjfoc/gmsm v1.4.1
 	github.com/uptrace/bun v1.2.18
+	github.com/uptrace/bun/dialect/mssqldialect v1.2.18
 	github.com/uptrace/bun/dialect/mysqldialect v1.2.18
+	github.com/uptrace/bun/dialect/oracledialect v1.2.18
 	github.com/uptrace/bun/dialect/pgdialect v1.2.18
 	github.com/uptrace/bun/dialect/sqlitedialect v1.2.18
 	github.com/uptrace/bun/driver/pgdriver v1.2.18
@@ -101,6 +105,8 @@ require (
 	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/gofiber/schema v1.7.1 // indirect
+	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
+	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/pprof v0.0.0-20251114195745-4902fdda35c8 // indirect
 	github.com/hashicorp/hcl/v2 v2.24.0 // indirect
