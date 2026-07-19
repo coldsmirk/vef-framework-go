@@ -37,24 +37,36 @@ func NewHub(cfg *config.PushConfig) *Hub {
 	}
 }
 
-// Push implements push.Notifier. The envelope is marshaled once and the same
-// bytes are enqueued to every recipient; a recipient whose queue is full is a
-// slow client and is dropped rather than allowed to block or backlog the
-// fan-out.
+// Push implements push.Notifier for single-node deployments (the relay wraps
+// deliver with cross-node publishing).
 func (h *Hub) Push(_ context.Context, message push.Message, targets ...push.Target) error {
+	payload, err := encodeMessage(&message, targets)
+	if err != nil {
+		return err
+	}
+
+	h.deliver(payload, targets)
+
+	return nil
+}
+
+// encodeMessage validates the push, fills the generated envelope fields, and
+// marshals the wire envelope once — every recipient (on every node) receives
+// the same bytes.
+func encodeMessage(message *push.Message, targets []push.Target) ([]byte, error) {
 	if message.Type == "" {
-		return push.ErrTypeRequired
+		return nil, push.ErrTypeRequired
 	}
 
 	if len(targets) == 0 {
-		return push.ErrNoTarget
+		return nil, push.ErrNoTarget
 	}
 
 	for _, target := range targets {
 		switch target.Kind {
 		case push.TargetUsers, push.TargetRoles, push.TargetBroadcast:
 		default:
-			return fmt.Errorf("%w: %q", push.ErrUnknownTargetKind, target.Kind)
+			return nil, fmt.Errorf("%w: %q", push.ErrUnknownTargetKind, target.Kind)
 		}
 	}
 
@@ -66,19 +78,50 @@ func (h *Hub) Push(_ context.Context, message push.Message, targets ...push.Targ
 		message.Time = time.Now()
 	}
 
-	payload, err := json.Marshal(message)
+	payload, err := json.Marshal(*message)
 	if err != nil {
-		return fmt.Errorf("marshal push message: %w", err)
+		return nil, fmt.Errorf("marshal push message: %w", err)
 	}
 
+	return payload, nil
+}
+
+// deliver fans the marshaled envelope out to the selected local recipients; a
+// recipient whose queue is full is a slow client and is dropped rather than
+// allowed to block or backlog the fan-out.
+func (h *Hub) deliver(payload []byte, targets []push.Target) {
 	for _, conn := range h.selectRecipients(targets) {
 		if !conn.enqueue(payload) {
 			logger.Warnf("Dropping slow push connection of user %s", conn.userID)
 			conn.terminate()
 		}
 	}
+}
 
-	return nil
+// closeSessions closes every local connection bound to one of the sessions —
+// the instant revocation kick.
+func (h *Hub) closeSessions(sessionIDs []string) {
+	if len(sessionIDs) == 0 {
+		return
+	}
+
+	ids := collections.NewHashSetFrom(sessionIDs...)
+
+	h.mu.RLock()
+
+	var kicked []*connection
+
+	for conn := range h.conns {
+		if conn.sessionID != "" && ids.Contains(conn.sessionID) {
+			kicked = append(kicked, conn)
+		}
+	}
+
+	h.mu.RUnlock()
+
+	for _, conn := range kicked {
+		conn.close(push.CloseSessionInvalid, "session revoked")
+	}
 }
 
 // selectRecipients resolves the target union to a deduplicated connection

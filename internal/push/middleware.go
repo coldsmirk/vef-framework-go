@@ -20,6 +20,7 @@ import (
 const (
 	localPrincipal = "vef:push:principal"
 	localTokenHash = "vef:push:token_hash"
+	localSessionID = "vef:push:session_id"
 )
 
 // tokenExtractor mirrors the bearer strategy's chain: the browser WebSocket
@@ -36,6 +37,7 @@ var tokenExtractor = extractors.Chain(
 type Middleware struct {
 	hub       *Hub
 	auth      security.AuthManager
+	store     security.SessionStore
 	cfg       *config.PushConfig
 	tokenType string
 }
@@ -46,6 +48,7 @@ type MiddlewareParams struct {
 
 	Hub      *Hub
 	Auth     security.AuthManager
+	Store    security.SessionStore
 	Config   *config.PushConfig
 	Security *config.SecurityConfig
 }
@@ -60,6 +63,7 @@ func NewMiddleware(params MiddlewareParams) app.Middleware {
 	return &Middleware{
 		hub:       params.Hub,
 		auth:      params.Auth,
+		store:     params.Store,
 		cfg:       params.Config,
 		tokenType: string(params.Security.EffectiveTokenType()),
 	}
@@ -107,7 +111,20 @@ func (m *Middleware) authenticate(ctx fiber.Ctx) error {
 	ctx.Locals(localPrincipal, principal)
 
 	if m.tokenType == string(config.TokenTypeOpaque) {
-		ctx.Locals(localTokenHash, security.HashOpaqueToken(token))
+		tokenHash := security.HashOpaqueToken(token)
+		ctx.Locals(localTokenHash, tokenHash)
+
+		// The session ID keys the instant revocation kick. A store error fails
+		// open (the periodic sweep still covers the connection); a vanished
+		// session means the token was revoked inside the handshake window.
+		session, err := m.store.Lookup(ctx.Context(), tokenHash)
+		if err == nil && session == nil {
+			return security.ErrTokenInvalid
+		}
+
+		if session != nil {
+			ctx.Locals(localSessionID, session.ID)
+		}
 	}
 
 	return ctx.Next()
@@ -123,7 +140,8 @@ func (m *Middleware) serve(ws *websocket.Conn) {
 	}
 
 	tokenHash, _ := ws.Locals(localTokenHash).(string)
-	conn := newConnection(ws, principal, tokenHash, m.cfg.EffectiveSendBuffer())
+	sessionID, _ := ws.Locals(localSessionID).(string)
+	conn := newConnection(ws, principal, tokenHash, sessionID, m.cfg.EffectiveSendBuffer())
 
 	if err := m.hub.register(conn); err != nil {
 		refuse(ws, err, m.cfg.EffectiveWriteTimeout())

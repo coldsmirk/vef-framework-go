@@ -22,6 +22,7 @@ type connection struct {
 	userID    string
 	roles     []string
 	tokenHash string // empty under the stateless jwt mechanism
+	sessionID string // keys the instant revocation kick; empty under jwt
 
 	send      chan []byte
 	done      chan struct{}
@@ -32,12 +33,13 @@ type connection struct {
 	closeReason string
 }
 
-func newConnection(ws *websocket.Conn, principal *security.Principal, tokenHash string, sendBuffer int) *connection {
+func newConnection(ws *websocket.Conn, principal *security.Principal, tokenHash, sessionID string, sendBuffer int) *connection {
 	return &connection{
 		ws:        ws,
 		userID:    principal.ID,
 		roles:     principal.Roles,
 		tokenHash: tokenHash,
+		sessionID: sessionID,
 		send:      make(chan []byte, sendBuffer),
 		done:      make(chan struct{}),
 		writeDone: make(chan struct{}),

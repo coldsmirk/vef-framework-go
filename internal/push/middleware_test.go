@@ -42,11 +42,11 @@ type TestServer struct {
 	Addr string
 }
 
-func StartTestServer(t *testing.T, cfg *config.PushConfig, securityCfg *config.SecurityConfig, auth security.AuthManager) *TestServer {
+func StartTestServer(t *testing.T, cfg *config.PushConfig, securityCfg *config.SecurityConfig, auth security.AuthManager, store security.SessionStore) *TestServer {
 	t.Helper()
 
 	hub := NewHub(cfg)
-	middleware := NewMiddleware(MiddlewareParams{Hub: hub, Auth: auth, Config: cfg, Security: securityCfg})
+	middleware := NewMiddleware(MiddlewareParams{Hub: hub, Auth: auth, Store: store, Config: cfg, Security: securityCfg})
 	require.NotNil(t, middleware, "Middleware should be built when the endpoint is enabled")
 
 	fiberApp := fiber.New(fiber.Config{
@@ -171,7 +171,7 @@ func TestNewMiddleware(t *testing.T) {
 
 func TestHandshake(t *testing.T) {
 	auth := &FakeAuthManager{Principals: map[string]*security.Principal{"good": UserPrincipal("alice")}}
-	server := StartTestServer(t, EnabledConfig(), new(config.SecurityConfig), auth)
+	server := StartTestServer(t, EnabledConfig(), new(config.SecurityConfig), auth, nil)
 
 	t.Run("RejectsMissingToken", func(t *testing.T) {
 		conn, resp, err := fastws.DefaultDialer.Dial(server.URL(""), nil)
@@ -213,7 +213,7 @@ func TestPushDelivery(t *testing.T) {
 		"alice-token": UserPrincipal("alice", "admin"),
 		"bob-token":   UserPrincipal("bob"),
 	}}
-	server := StartTestServer(t, EnabledConfig(), new(config.SecurityConfig), auth)
+	server := StartTestServer(t, EnabledConfig(), new(config.SecurityConfig), auth, nil)
 
 	alice1 := Dial(t, server, "alice-token")
 	alice2 := Dial(t, server, "alice-token")
@@ -260,7 +260,7 @@ func TestConnectionLimit(t *testing.T) {
 	auth := &FakeAuthManager{Principals: map[string]*security.Principal{"alice-token": UserPrincipal("alice")}}
 	cfg := EnabledConfig()
 	cfg.MaxConnectionsPerUser = 1
-	server := StartTestServer(t, cfg, new(config.SecurityConfig), auth)
+	server := StartTestServer(t, cfg, new(config.SecurityConfig), auth, nil)
 
 	first := Dial(t, server, "alice-token")
 	require.Eventually(t, func() bool { return HubSize(server.Hub) == 1 }, time.Second, 10*time.Millisecond,
@@ -283,7 +283,7 @@ func TestSessionSweepEndToEnd(t *testing.T) {
 
 	auth := &FakeAuthManager{Principals: map[string]*security.Principal{token: UserPrincipal("alice")}}
 	securityCfg := &config.SecurityConfig{TokenType: config.TokenTypeOpaque}
-	server := StartTestServer(t, EnabledConfig(), securityCfg, auth)
+	server := StartTestServer(t, EnabledConfig(), securityCfg, auth, store)
 	sweeper := newSessionSweeper(server.Hub, store, time.Minute)
 
 	conn := Dial(t, server, token)
@@ -303,9 +303,33 @@ func TestSessionSweepEndToEnd(t *testing.T) {
 		"The kicked connection should unregister")
 }
 
+func TestInstantKickEndToEnd(t *testing.T) {
+	token := "opaque-token"
+	store := security.NewMemorySessionStore()
+	require.NoError(t, store.Create(context.Background(), security.HashOpaqueToken(token),
+		security.Session{ID: "s1", UserID: "alice", ExpiresAt: time.Now().Add(time.Hour)}, time.Hour),
+		"Session should be created")
+
+	auth := &FakeAuthManager{Principals: map[string]*security.Principal{token: UserPrincipal("alice")}}
+	securityCfg := &config.SecurityConfig{TokenType: config.TokenTypeOpaque}
+	server := StartTestServer(t, EnabledConfig(), securityCfg, auth, store)
+
+	conn := Dial(t, server, token)
+	require.Eventually(t, func() bool { return HubSize(server.Hub) == 1 }, time.Second, 10*time.Millisecond,
+		"The connection should register")
+
+	// The handshake captured the session ID, so the revocation listener kicks
+	// the connection immediately — no sweep involved.
+	listener := newRevocationListener(server.Hub, nil, EnabledConfig())
+	listener.OnSessionsRevoked(context.Background(),
+		[]security.SessionRevocation{{SessionID: "s1", UserID: "alice"}})
+
+	ExpectClose(t, conn, push.CloseSessionInvalid)
+}
+
 func TestHubShutdownEndToEnd(t *testing.T) {
 	auth := &FakeAuthManager{Principals: map[string]*security.Principal{"good": UserPrincipal("alice")}}
-	server := StartTestServer(t, EnabledConfig(), new(config.SecurityConfig), auth)
+	server := StartTestServer(t, EnabledConfig(), new(config.SecurityConfig), auth, nil)
 
 	conn := Dial(t, server, "good")
 	require.Eventually(t, func() bool { return HubSize(server.Hub) == 1 }, time.Second, 10*time.Millisecond,
@@ -322,7 +346,7 @@ func TestHeartbeatDropsUnresponsiveClient(t *testing.T) {
 	auth := &FakeAuthManager{Principals: map[string]*security.Principal{"good": UserPrincipal("alice")}}
 	cfg := EnabledConfig()
 	cfg.PingInterval = 100 * time.Millisecond
-	server := StartTestServer(t, cfg, new(config.SecurityConfig), auth)
+	server := StartTestServer(t, cfg, new(config.SecurityConfig), auth, nil)
 
 	// The client never reads, so pings are never answered and the server's
 	// read deadline (two ping periods) expires.

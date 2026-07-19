@@ -17,7 +17,7 @@ import (
 // NewTestConnection builds a registry-only connection (no socket); safe for
 // every hub operation that stays off the wire.
 func NewTestConnection(userID, tokenHash string, roles ...string) *connection {
-	return newConnection(nil, &security.Principal{ID: userID, Roles: roles}, tokenHash, 4)
+	return newConnection(nil, &security.Principal{ID: userID, Roles: roles}, tokenHash, "", 4)
 }
 
 func TestHubRegister(t *testing.T) {
@@ -115,7 +115,7 @@ func TestPushDropsSlowClient(t *testing.T) {
 	auth := &FakeAuthManager{Principals: map[string]*security.Principal{"good": UserPrincipal("alice")}}
 	cfg := EnabledConfig()
 	cfg.SendBuffer = 1
-	server := StartTestServer(t, cfg, new(config.SecurityConfig), auth)
+	server := StartTestServer(t, cfg, new(config.SecurityConfig), auth, nil)
 
 	// The client never reads: large frames jam the socket, the one-slot queue
 	// fills, and the next push must drop the connection instead of blocking.

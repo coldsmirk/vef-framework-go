@@ -15,8 +15,8 @@ const (
 // Target selects push recipients as data, not predicates. Multiple targets on
 // one Push are unioned.
 type Target struct {
-	Kind   TargetKind
-	Values []string
+	Kind   TargetKind `json:"kind"`
+	Values []string   `json:"values,omitempty"`
 }
 
 // ToUsers targets the live connections of the given user IDs.
