@@ -24,14 +24,10 @@ const relayChannelPrefix = "vef:push:relay"
 // unlike keys, they are NOT isolated by the Redis database number — so the
 // channel carries both dimensions explicitly: the database number mirrors the
 // keyspace isolation operators already rely on to separate environments, and
-// the application name separates co-tenant applications within one database.
+// the application name (enforced non-empty by NewRelay) separates co-tenant
+// applications within one database.
 func relayChannelFor(database uint8, appName string) string {
-	channel := relayChannelPrefix + ":" + strconv.Itoa(int(database))
-	if appName != "" {
-		channel += ":" + appName
-	}
-
-	return channel
+	return relayChannelPrefix + ":" + strconv.Itoa(int(database)) + ":" + appName
 }
 
 // Relay frame kinds.
@@ -78,10 +74,16 @@ type Relay struct {
 
 // NewRelay builds the cross-node relay; nil when the endpoint is disabled or
 // no Redis client is available (single-node deployments push through the hub
-// directly).
-func NewRelay(hub *Hub, cfg *config.PushConfig, appCfg *config.AppConfig, redisCfg *config.RedisConfig, client *redis.Client) *Relay {
+// directly). An active relay fails fast without an application name: the
+// channel namespace is what keeps co-tenant applications apart, so an
+// unnamed application must not come up silently sharing a channel.
+func NewRelay(hub *Hub, cfg *config.PushConfig, appCfg *config.AppConfig, redisCfg *config.RedisConfig, client *redis.Client) (*Relay, error) {
 	if !cfg.Enabled || client == nil {
-		return nil
+		return nil, nil
+	}
+
+	if appCfg.Name == "" {
+		return nil, errRelayRequiresAppName
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -96,7 +98,7 @@ func NewRelay(hub *Hub, cfg *config.PushConfig, appCfg *config.AppConfig, redisC
 		kicks:       make(chan []string, kickQueueCapacity),
 		stopped:     make(chan struct{}),
 		kickStopped: make(chan struct{}),
-	}
+	}, nil
 }
 
 // Push implements push.Notifier.

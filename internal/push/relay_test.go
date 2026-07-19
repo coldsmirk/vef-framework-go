@@ -38,15 +38,30 @@ func ReceiveEnvelope(t *testing.T, conn *connection) push.Message {
 func TestNewRelay(t *testing.T) {
 	hub := NewHub(new(config.PushConfig))
 
-	assert.Nil(t, NewRelay(hub, new(config.PushConfig), new(config.AppConfig), new(config.RedisConfig), nil),
-		"A disabled endpoint should build no relay")
-	assert.Nil(t, NewRelay(hub, EnabledConfig(), new(config.AppConfig), new(config.RedisConfig), nil),
-		"Without a Redis client the hub pushes node-locally")
+	t.Run("DisabledBuildsNoRelay", func(t *testing.T) {
+		relay, err := NewRelay(hub, new(config.PushConfig), new(config.AppConfig), new(config.RedisConfig), nil)
+		require.NoError(t, err, "A disabled endpoint is not a configuration fault")
+		assert.Nil(t, relay, "A disabled endpoint should build no relay")
+	})
+
+	t.Run("WithoutClientBuildsNoRelay", func(t *testing.T) {
+		relay, err := NewRelay(hub, EnabledConfig(), new(config.AppConfig), new(config.RedisConfig), nil)
+		require.NoError(t, err, "A single-node deployment is not a configuration fault")
+		assert.Nil(t, relay, "Without a Redis client the hub pushes node-locally")
+	})
+
+	t.Run("FailsFastWithoutAppName", func(t *testing.T) {
+		client := redis.NewClient(new(redis.Options))
+		t.Cleanup(func() { _ = client.Close() })
+
+		relay, err := NewRelay(hub, EnabledConfig(), new(config.AppConfig), new(config.RedisConfig), client)
+		require.ErrorIs(t, err, errRelayRequiresAppName,
+			"An active relay must refuse to come up without the app-name channel namespace")
+		assert.Nil(t, relay, "No relay should be built on a configuration fault")
+	})
 }
 
 func TestRelayChannelFor(t *testing.T) {
-	assert.Equal(t, "vef:push:relay:0", relayChannelFor(0, ""),
-		"An unnamed application still carries the database dimension")
 	assert.Equal(t, "vef:push:relay:1:crm", relayChannelFor(1, "crm"),
 		"The channel carries both the database number and the application name")
 	assert.NotEqual(t, relayChannelFor(0, "crm"), relayChannelFor(1, "crm"),
@@ -66,7 +81,8 @@ func TestRelayAcrossNodes(t *testing.T) {
 
 	newNode := func(appName string, database uint8) (*Hub, *Relay) {
 		hub := NewHub(EnabledConfig())
-		relay := NewRelay(hub, EnabledConfig(), &config.AppConfig{Name: appName}, &config.RedisConfig{Database: database}, client)
+		relay, err := NewRelay(hub, EnabledConfig(), &config.AppConfig{Name: appName}, &config.RedisConfig{Database: database}, client)
+		require.NoError(t, err, "Relay construction should succeed with a named application")
 		require.NotNil(t, relay, "Relay should build with an enabled endpoint and a client")
 
 		relay.start()
