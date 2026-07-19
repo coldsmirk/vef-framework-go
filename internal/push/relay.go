@@ -92,10 +92,16 @@ func (r *Relay) Push(ctx context.Context, message push.Message, targets ...push.
 	return nil
 }
 
-// KickSessions closes the sessions' connections on every node.
+// KickSessions closes the sessions' connections on every node. The publish
+// runs off the caller's goroutine: kicks arrive through revocation paths
+// (logout, concurrent-login eviction) whose listener contract forbids
+// blocking on Redis health. Detached from the caller's cancellation, it stays
+// bounded by the client's own timeouts; a lost frame degrades to the remote
+// nodes' periodic sweep.
 func (r *Relay) KickSessions(ctx context.Context, sessionIDs []string) {
 	r.hub.closeSessions(sessionIDs)
-	r.publish(ctx, relayFrame{Kind: frameKickSessions, Origin: r.nodeID, SessionIDs: sessionIDs})
+
+	go r.publish(context.WithoutCancel(ctx), relayFrame{Kind: frameKickSessions, Origin: r.nodeID, SessionIDs: sessionIDs})
 }
 
 func (r *Relay) publish(ctx context.Context, frame relayFrame) {

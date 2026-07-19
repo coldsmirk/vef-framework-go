@@ -112,7 +112,11 @@ func TestRelayAcrossNodes(t *testing.T) {
 		remote.sessionID = "s9"
 		require.NoError(t, hubB.register(remote), "Remote connection should register")
 
-		relayA.KickSessions(ctx, []string{"s9"})
+		// The kick rides a revocation call path whose context ends with the
+		// request — the detached publish must still reach the other nodes.
+		canceled, cancel := context.WithCancel(ctx)
+		cancel()
+		relayA.KickSessions(canceled, []string{"s9"})
 
 		require.Eventually(t, func() bool { return ConnectionClosing(remote) }, 3*time.Second, 20*time.Millisecond,
 			"The kick should reach the other node")
