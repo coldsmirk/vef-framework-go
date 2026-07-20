@@ -147,9 +147,9 @@ func TestPreviewNextFires(t *testing.T) {
 		schedule.CreatedAt = timex.DateTime(base.Add(-2 * time.Hour))
 
 		fires := previewNextFires(schedule, base, nextFiresPreview)
-		require.Len(t, fires, 1, "a re-armed one-shot has exactly one upcoming fire")
+		require.Len(t, fires, 1, "A re-armed one-shot has exactly one upcoming fire")
 		assert.True(t, fires[0].AsLocal().Equal(base.Add(time.Minute)),
-			"the preview must show the pending fire the trigger itself can no longer produce")
+			"The preview must show the pending fire the trigger itself can no longer produce")
 	})
 
 	t.Run("ContinuesFromThePersistedCursor", func(t *testing.T) {
@@ -164,9 +164,9 @@ func TestPreviewNextFires(t *testing.T) {
 		schedule.CreatedAt = timex.DateTime(base)
 
 		fires := previewNextFires(schedule, base, 3)
-		require.Len(t, fires, 3, "the preview must fill the requested count")
-		assert.True(t, fires[0].AsLocal().Equal(base.Add(30*time.Second)), "the pending fire comes first")
-		assert.True(t, fires[1].AsLocal().After(fires[0].AsLocal()), "the projection continues past the cursor")
+		require.Len(t, fires, 3, "The preview must fill the requested count")
+		assert.True(t, fires[0].AsLocal().Equal(base.Add(30*time.Second)), "The pending fire comes first")
+		assert.True(t, fires[1].AsLocal().After(fires[0].AsLocal()), "The projection continues past the cursor")
 	})
 
 	t.Run("PausedScheduleShowsNothing", func(t *testing.T) {
@@ -181,7 +181,7 @@ func TestPreviewNextFires(t *testing.T) {
 		schedule.CreatedAt = timex.DateTime(base)
 
 		fires := previewNextFires(schedule, base, nextFiresPreview)
-		assert.Empty(t, fires, "a paused schedule previews nothing even though it keeps its cursor")
+		assert.Empty(t, fires, "A paused schedule previews nothing even though it keeps its cursor")
 	})
 
 	t.Run("SpentTriggerWithoutCursorShowsNothing", func(t *testing.T) {
@@ -191,6 +191,6 @@ func TestPreviewNextFires(t *testing.T) {
 		schedule.CreatedAt = timex.DateTime(base.Add(-2 * time.Hour))
 
 		fires := previewNextFires(schedule, base, nextFiresPreview)
-		assert.Empty(t, fires, "a spent one-shot with no pending fire previews nothing")
+		assert.Empty(t, fires, "A spent one-shot with no pending fire previews nothing")
 	})
 }

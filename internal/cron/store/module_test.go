@@ -49,17 +49,17 @@ func TestModuleBoot(t *testing.T) {
 		defer cleanup()
 
 		seeded, err := manager.Get(context.Background(), "boot.probe")
-		require.NoError(t, err, "the shipped default schedule must be seeded at boot")
-		assert.Equal(t, "boot.probe", seeded.JobName, "the seeded schedule must reference its handler")
+		require.NoError(t, err, "The shipped default schedule must be seeded at boot")
+		assert.Equal(t, "boot.probe", seeded.JobName, "The seeded schedule must reference its handler")
 
 		require.NoError(t, manager.TriggerNow(context.Background(), "boot.probe"),
-			"a manual fire should be accepted")
+			"A manual fire should be accepted")
 		require.Eventually(t, func() bool { return executions.Load() >= 1 },
-			5*time.Second, 20*time.Millisecond, "the DI-built engine must execute the fire")
+			5*time.Second, 20*time.Millisecond, "The DI-built engine must execute the fire")
 
 		runs, err := manager.ListRuns(context.Background(), cron.RunFilter{ScheduleName: "boot.probe"})
-		require.NoError(t, err, "listing runs should succeed")
-		require.NotEmpty(t, runs, "the fire must be journaled")
+		require.NoError(t, err, "Listing runs should succeed")
+		require.NotEmpty(t, runs, "The fire must be journaled")
 	})
 
 	t.Run("DisabledStoreDegradesGracefully", func(t *testing.T) {
@@ -79,6 +79,6 @@ func TestModuleBoot(t *testing.T) {
 
 		_, err := manager.Get(context.Background(), "anything")
 		require.ErrorIs(t, err, cron.ErrStoreDisabled,
-			"with the store off the manager must report the capability disabled")
+			"With the store off the manager must report the capability disabled")
 	})
 }

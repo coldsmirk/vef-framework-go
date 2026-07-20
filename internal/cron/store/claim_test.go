@@ -36,26 +36,26 @@ func TestClaimDue(t *testing.T) {
 
 		claimed, err := newTestClaimer(db, registry, "node-a", fixedNow(base.Add(time.Second))).
 			ClaimDue(context.Background(), 10)
-		require.NoError(t, err, "claiming should succeed")
-		require.Len(t, claimed, 1, "one due schedule must yield one fire")
+		require.NoError(t, err, "Claiming should succeed")
+		require.Len(t, claimed, 1, "One due schedule must yield one fire")
 
 		fire := claimed[0]
-		assert.Equal(t, "node-a", fire.run.NodeID, "the run must carry the claiming node")
-		assert.Equal(t, cron.RunRunning, fire.run.Status, "the claimed fire is running")
-		assert.True(t, fire.run.ScheduledAt.Unwrap().Equal(base), "the run carries the logical fire time")
-		assert.NotEmpty(t, fire.run.ID, "the journal row must have been inserted with an id")
+		assert.Equal(t, "node-a", fire.run.NodeID, "The run must carry the claiming node")
+		assert.Equal(t, cron.RunRunning, fire.run.Status, "The claimed fire is running")
+		assert.True(t, fire.run.ScheduledAt.Unwrap().Equal(base), "The run carries the logical fire time")
+		assert.NotEmpty(t, fire.run.ID, "The journal row must have been inserted with an id")
 
 		after := reloadSchedule(t, db, schedule.ID)
-		require.NotNil(t, after.NextFireAt, "the schedule must advance")
+		require.NotNil(t, after.NextFireAt, "The schedule must advance")
 		assert.True(t, after.NextFireAt.AsLocal().Equal(base.Add(time.Minute)),
-			"the next fire advances one interval")
-		require.NotNil(t, after.LastFireAt, "the executed fire is recorded")
+			"The next fire advances one interval")
+		require.NotNil(t, after.LastFireAt, "The executed fire is recorded")
 		assert.True(t, after.LastFireAt.AsLocal().Equal(base), "LastFireAt carries the logical fire time")
 
 		again, err := newTestClaimer(db, registry, "node-a", fixedNow(base.Add(2*time.Second))).
 			ClaimDue(context.Background(), 10)
-		require.NoError(t, err, "re-claiming should succeed")
-		assert.Empty(t, again, "an advanced schedule is no longer due")
+		require.NoError(t, err, "Re-claiming should succeed")
+		assert.Empty(t, again, "An advanced schedule is no longer due")
 	})
 
 	t.Run("MisfireSkipJournalsOneMissedRow", func(t *testing.T) {
@@ -67,19 +67,19 @@ func TestClaimDue(t *testing.T) {
 		now := base.Add(5*time.Minute + 30*time.Second)
 
 		claimed, err := newTestClaimer(db, registry, "node-a", fixedNow(now)).ClaimDue(context.Background(), 10)
-		require.NoError(t, err, "claiming should succeed")
-		assert.Empty(t, claimed, "skip policy must not fire")
+		require.NoError(t, err, "Claiming should succeed")
+		assert.Empty(t, claimed, "Skip policy must not fire")
 
 		runs := loadRuns(t, db, schedule.ID)
-		require.Len(t, runs, 1, "the whole gap collapses into one journal row")
-		assert.Equal(t, cron.RunMissed, runs[0].Status, "the row is a missed record")
-		assert.Equal(t, 6, runs[0].MissedCount, "it covers every overdue occurrence")
-		require.NotNil(t, runs[0].FinishedAt, "a missed row is terminal")
+		require.Len(t, runs, 1, "The whole gap collapses into one journal row")
+		assert.Equal(t, cron.RunMissed, runs[0].Status, "The row is a missed record")
+		assert.Equal(t, 6, runs[0].MissedCount, "It covers every overdue occurrence")
+		require.NotNil(t, runs[0].FinishedAt, "A missed row is terminal")
 
 		after := reloadSchedule(t, db, schedule.ID)
-		require.NotNil(t, after.NextFireAt, "the schedule must advance past the gap")
-		assert.True(t, after.NextFireAt.AsLocal().After(now), "the next fire is strictly future")
-		assert.Nil(t, after.LastFireAt, "nothing executed, so LastFireAt stays unset")
+		require.NotNil(t, after.NextFireAt, "The schedule must advance past the gap")
+		assert.True(t, after.NextFireAt.AsLocal().After(now), "The next fire is strictly future")
+		assert.Nil(t, after.LastFireAt, "Nothing executed, so LastFireAt stays unset")
 	})
 
 	t.Run("PausedGapIsJournaledAfterResume", func(t *testing.T) {
@@ -95,23 +95,23 @@ func TestClaimDue(t *testing.T) {
 			JobName: "orders.sync",
 			Trigger: cron.Every(time.Minute),
 		})
-		require.NoError(t, err, "creating the schedule should succeed")
-		require.NoError(t, manager.Pause(context.Background(), "paused"), "pausing should succeed")
+		require.NoError(t, err, "Creating the schedule should succeed")
+		require.NoError(t, manager.Pause(context.Background(), "paused"), "Pausing should succeed")
 
 		// Five minutes of paused occurrences, then the operator resumes.
 		clock = base.Add(6 * time.Minute)
 
-		require.NoError(t, manager.Resume(context.Background(), "paused"), "resuming should succeed")
+		require.NoError(t, manager.Resume(context.Background(), "paused"), "Resuming should succeed")
 
 		claimed, err := newTestClaimer(db, registry, "node-a", fixedNow(clock)).ClaimDue(context.Background(), 10)
-		require.NoError(t, err, "claiming should succeed")
-		require.Len(t, claimed, 1, "fire_now must catch the paused gap up with one run")
+		require.NoError(t, err, "Claiming should succeed")
+		require.Len(t, claimed, 1, "Fire_now must catch the paused gap up with one run")
 
 		runs := loadRuns(t, db, created.ID)
-		require.Len(t, runs, 2, "the claim journals the catch-up and the paused gap")
-		assert.Equal(t, cron.RunRunning, runs[0].Status, "the oldest paused occurrence runs")
-		assert.Equal(t, cron.RunMissed, runs[1].Status, "the rest of the paused gap is journaled as missed")
-		assert.Positive(t, runs[1].MissedCount, "the missed row must count the paused occurrences")
+		require.Len(t, runs, 2, "The claim journals the catch-up and the paused gap")
+		assert.Equal(t, cron.RunRunning, runs[0].Status, "The oldest paused occurrence runs")
+		assert.Equal(t, cron.RunMissed, runs[1].Status, "The rest of the paused gap is journaled as missed")
+		assert.Positive(t, runs[1].MissedCount, "The missed row must count the paused occurrences")
 	})
 
 	t.Run("TriggerNowRunsEvenUnderMisfireSkip", func(t *testing.T) {
@@ -125,15 +125,15 @@ func TestClaimDue(t *testing.T) {
 		fixture.MisfirePolicy = cron.MisfireSkip
 		schedule := insertSchedule(t, db, fixture)
 
-		require.NoError(t, manager.TriggerNow(context.Background(), "overdue"), "triggering should succeed")
+		require.NoError(t, manager.TriggerNow(context.Background(), "overdue"), "Triggering should succeed")
 
 		claimed, err := newTestClaimer(db, registry, "node-a", fixedNow(now)).ClaimDue(context.Background(), 10)
-		require.NoError(t, err, "claiming should succeed")
-		require.Len(t, claimed, 1, "a manual fire must execute, never be journaled as missed")
+		require.NoError(t, err, "Claiming should succeed")
+		require.Len(t, claimed, 1, "A manual fire must execute, never be journaled as missed")
 
 		runs := loadRuns(t, db, schedule.ID)
-		require.Len(t, runs, 1, "the manual fire is the only journal row")
-		assert.Equal(t, cron.RunRunning, runs[0].Status, "the manual fire runs")
+		require.Len(t, runs, 1, "The manual fire is the only journal row")
+		assert.Equal(t, cron.RunRunning, runs[0].Status, "The manual fire runs")
 	})
 
 	t.Run("MisfireFireNowJournalsCatchUpAndMissed", func(t *testing.T) {
@@ -143,14 +143,14 @@ func TestClaimDue(t *testing.T) {
 		now := base.Add(5*time.Minute + 30*time.Second)
 
 		claimed, err := newTestClaimer(db, registry, "node-a", fixedNow(now)).ClaimDue(context.Background(), 10)
-		require.NoError(t, err, "claiming should succeed")
-		require.Len(t, claimed, 1, "fire_now must run one catch-up")
+		require.NoError(t, err, "Claiming should succeed")
+		require.Len(t, claimed, 1, "Fire_now must run one catch-up")
 
 		runs := loadRuns(t, db, schedule.ID)
-		require.Len(t, runs, 2, "the claim journals the catch-up and the missed gap")
-		assert.Equal(t, cron.RunRunning, runs[0].Status, "the oldest due occurrence runs")
-		assert.Equal(t, cron.RunMissed, runs[1].Status, "the rest of the gap is missed")
-		assert.Equal(t, 5, runs[1].MissedCount, "five further occurrences were overdue")
+		require.Len(t, runs, 2, "The claim journals the catch-up and the missed gap")
+		assert.Equal(t, cron.RunRunning, runs[0].Status, "The oldest due occurrence runs")
+		assert.Equal(t, cron.RunMissed, runs[1].Status, "The rest of the gap is missed")
+		assert.Equal(t, 5, runs[1].MissedCount, "Five further occurrences were overdue")
 	})
 
 	t.Run("ConcurrencyForbidSkips", func(t *testing.T) {
@@ -161,20 +161,20 @@ func TestClaimDue(t *testing.T) {
 		c := newTestClaimer(db, registry, "node-a", clock)
 
 		first, err := c.ClaimDue(context.Background(), 10)
-		require.NoError(t, err, "first claim should succeed")
-		require.Len(t, first, 1, "the first occurrence fires")
+		require.NoError(t, err, "First claim should succeed")
+		require.Len(t, first, 1, "The first occurrence fires")
 
 		// The first run is still running when the next occurrence comes due.
 		c.now = fixedNow(base.Add(time.Minute + time.Second))
 
 		second, err := c.ClaimDue(context.Background(), 10)
-		require.NoError(t, err, "second claim should succeed")
-		assert.Empty(t, second, "forbid must suppress the overlapping fire")
+		require.NoError(t, err, "Second claim should succeed")
+		assert.Empty(t, second, "Forbid must suppress the overlapping fire")
 
 		runs := loadRuns(t, db, schedule.ID)
-		require.Len(t, runs, 2, "the suppression is journaled")
-		assert.Equal(t, cron.RunSkipped, runs[1].Status, "the overlapping occurrence is skipped")
-		assert.Empty(t, runs[1].NodeID, "a skipped row never executed anywhere")
+		require.Len(t, runs, 2, "The suppression is journaled")
+		assert.Equal(t, cron.RunSkipped, runs[1].Status, "The overlapping occurrence is skipped")
+		assert.Empty(t, runs[1].NodeID, "A skipped row never executed anywhere")
 	})
 
 	t.Run("ConcurrencyAllowOverlaps", func(t *testing.T) {
@@ -186,14 +186,14 @@ func TestClaimDue(t *testing.T) {
 		c := newTestClaimer(db, registry, "node-a", fixedNow(base.Add(time.Second)))
 
 		first, err := c.ClaimDue(context.Background(), 10)
-		require.NoError(t, err, "first claim should succeed")
-		require.Len(t, first, 1, "the first occurrence fires")
+		require.NoError(t, err, "First claim should succeed")
+		require.Len(t, first, 1, "The first occurrence fires")
 
 		c.now = fixedNow(base.Add(time.Minute + time.Second))
 
 		second, err := c.ClaimDue(context.Background(), 10)
-		require.NoError(t, err, "second claim should succeed")
-		assert.Len(t, second, 1, "allow lets the fires overlap")
+		require.NoError(t, err, "Second claim should succeed")
+		assert.Len(t, second, 1, "Allow lets the fires overlap")
 	})
 
 	t.Run("ForeignJobsAreLeftAlone", func(t *testing.T) {
@@ -202,12 +202,12 @@ func TestClaimDue(t *testing.T) {
 
 		claimed, err := newTestClaimer(db, registry, "node-a", fixedNow(base.Add(time.Second))).
 			ClaimDue(context.Background(), 10)
-		require.NoError(t, err, "claiming should succeed")
-		assert.Empty(t, claimed, "a node without the handler must not claim the schedule")
+		require.NoError(t, err, "Claiming should succeed")
+		assert.Empty(t, claimed, "A node without the handler must not claim the schedule")
 
 		after := reloadSchedule(t, db, schedule.ID)
-		require.NotNil(t, after.NextFireAt, "the schedule must stay due for capable nodes")
-		assert.True(t, after.NextFireAt.AsLocal().Equal(base), "the fire must not advance")
+		require.NotNil(t, after.NextFireAt, "The schedule must stay due for capable nodes")
+		assert.True(t, after.NextFireAt.AsLocal().Equal(base), "The fire must not advance")
 	})
 
 	t.Run("OneShotDisarmsAfterFiring", func(t *testing.T) {
@@ -221,12 +221,12 @@ func TestClaimDue(t *testing.T) {
 
 		claimed, err := newTestClaimer(db, registry, "node-a", fixedNow(base.Add(time.Second))).
 			ClaimDue(context.Background(), 10)
-		require.NoError(t, err, "claiming should succeed")
-		require.Len(t, claimed, 1, "the one-shot fires once")
+		require.NoError(t, err, "Claiming should succeed")
+		require.Len(t, claimed, 1, "The one-shot fires once")
 
 		after := reloadSchedule(t, db, schedule.ID)
-		assert.Nil(t, after.NextFireAt, "a spent one-shot has no next fire")
-		assert.True(t, after.IsEnabled, "enablement stays operator-owned")
+		assert.Nil(t, after.NextFireAt, "A spent one-shot has no next fire")
+		assert.True(t, after.IsEnabled, "Enablement stays operator-owned")
 	})
 }
 
@@ -236,7 +236,7 @@ func TestClaimDue(t *testing.T) {
 func TestClaimContention(t *testing.T) {
 	testx.ForEachDB(t, func(t *testing.T, env *testx.DBEnv) {
 		require.NoError(t, migration.Migrate(env.Ctx, env.DB, env.DS.Kind),
-			"cron store migration should provision the tables")
+			"Cron store migration should provision the tables")
 
 		base := time.Date(2026, 7, 17, 10, 0, 0, 0, time.Local)
 		registry := mustRegistry(t, noopHandler("orders.sync"))
@@ -262,7 +262,7 @@ func TestClaimContention(t *testing.T) {
 				wg.Go(func() {
 					fires, err := newTestClaimer(env.DB, registry, node, fixedNow(now)).
 						ClaimDue(env.Ctx, 10)
-					assert.NoError(t, err, "contended claiming must not error")
+					assert.NoError(t, err, "Contended claiming must not error")
 
 					mu.Lock()
 					defer mu.Unlock()
@@ -276,7 +276,7 @@ func TestClaimContention(t *testing.T) {
 			wg.Wait()
 		}
 
-		require.Len(t, claimed, rounds, "every occurrence must be claimed exactly once")
+		require.Len(t, claimed, rounds, "Every occurrence must be claimed exactly once")
 
 		seen := make(map[string]string, rounds)
 		for _, run := range claimed {
@@ -288,6 +288,6 @@ func TestClaimContention(t *testing.T) {
 		}
 
 		runs := loadRuns(t, env.DB, schedule.ID)
-		assert.Len(t, runs, rounds, "the journal must hold exactly one row per occurrence")
+		assert.Len(t, runs, rounds, "The journal must hold exactly one row per occurrence")
 	})
 }

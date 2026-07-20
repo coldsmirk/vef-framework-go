@@ -90,17 +90,17 @@ func TestEngineExecutesFires(t *testing.T) {
 			Trigger: cron.Once(time.Now().Add(50 * time.Millisecond)),
 			Params:  payload{Region: "east"},
 		})
-		require.NoError(t, err, "creating the schedule should succeed")
+		require.NoError(t, err, "Creating the schedule should succeed")
 
 		run := harness.awaitRun(t, schedule.ID, cron.RunSucceeded)
-		assert.Equal(t, int32(1), executions.Load(), "the handler must run exactly once")
-		assert.Equal(t, "east", seenRegion.Load(), "the schedule params must reach the handler")
-		assert.NotNil(t, run.FinishedAt, "the journal must close the run")
-		assert.Empty(t, harness.bus.Published(), "a successful run publishes nothing")
+		assert.Equal(t, int32(1), executions.Load(), "The handler must run exactly once")
+		assert.Equal(t, "east", seenRegion.Load(), "The schedule params must reach the handler")
+		assert.NotNil(t, run.FinishedAt, "The journal must close the run")
+		assert.Empty(t, harness.bus.Published(), "A successful run publishes nothing")
 
 		spent, err := harness.manager.Get(context.Background(), "sync-east")
-		require.NoError(t, err, "the schedule must load")
-		assert.Nil(t, spent.NextFireAt, "the one-shot must be spent")
+		require.NoError(t, err, "The schedule must load")
+		assert.Nil(t, spent.NextFireAt, "The one-shot must be spent")
 	})
 
 	t.Run("FailedRunPublishesEvent", func(t *testing.T) {
@@ -112,18 +112,18 @@ func TestEngineExecutesFires(t *testing.T) {
 			JobName: "orders.sync",
 			Trigger: cron.Once(time.Now().Add(50 * time.Millisecond)),
 		})
-		require.NoError(t, err, "creating the schedule should succeed")
+		require.NoError(t, err, "Creating the schedule should succeed")
 
 		run := harness.awaitRun(t, schedule.ID, cron.RunFailed)
-		assert.Contains(t, run.Error, "upstream exploded", "the journal must carry the failure")
+		assert.Contains(t, run.Error, "upstream exploded", "The journal must carry the failure")
 
 		require.Eventually(t, func() bool { return len(harness.bus.Published()) == 1 },
-			2*time.Second, 20*time.Millisecond, "the failure must publish an event")
+			2*time.Second, 20*time.Millisecond, "The failure must publish an event")
 
 		event, ok := harness.bus.Published()[0].(*cron.RunFailedEvent)
-		require.True(t, ok, "the published event must be a run-failed event")
-		assert.Equal(t, "sync-broken", event.ScheduleName, "the event must name the schedule")
-		assert.Contains(t, event.Error, "upstream exploded", "the event must carry the failure")
+		require.True(t, ok, "The published event must be a run-failed event")
+		assert.Equal(t, "sync-broken", event.ScheduleName, "The event must name the schedule")
+		assert.Contains(t, event.Error, "upstream exploded", "The event must carry the failure")
 	})
 
 	t.Run("PanicIsJournaledAsFailed", func(t *testing.T) {
@@ -135,11 +135,11 @@ func TestEngineExecutesFires(t *testing.T) {
 			JobName: "orders.sync",
 			Trigger: cron.Once(time.Now().Add(50 * time.Millisecond)),
 		})
-		require.NoError(t, err, "creating the schedule should succeed")
+		require.NoError(t, err, "Creating the schedule should succeed")
 
 		run := harness.awaitRun(t, schedule.ID, cron.RunFailed)
-		assert.Contains(t, run.Error, "panicked", "the journal must record the panic")
-		assert.Contains(t, run.Error, "boom", "the journal must carry the panic value")
+		assert.Contains(t, run.Error, "panicked", "The journal must record the panic")
+		assert.Contains(t, run.Error, "boom", "The journal must carry the panic value")
 	})
 
 	t.Run("TimeoutFailsTheRun", func(t *testing.T) {
@@ -156,10 +156,10 @@ func TestEngineExecutesFires(t *testing.T) {
 			Trigger: cron.Once(time.Now().Add(50 * time.Millisecond)),
 			Timeout: 100 * time.Millisecond,
 		})
-		require.NoError(t, err, "creating the schedule should succeed")
+		require.NoError(t, err, "Creating the schedule should succeed")
 
 		run := harness.awaitRun(t, schedule.ID, cron.RunFailed)
-		assert.Contains(t, run.Error, "timed out", "the journal must record the timeout")
+		assert.Contains(t, run.Error, "timed out", "The journal must record the timeout")
 	})
 
 	t.Run("TimeoutOutranksASwallowedDeadline", func(t *testing.T) {
@@ -178,11 +178,11 @@ func TestEngineExecutesFires(t *testing.T) {
 			Trigger: cron.Once(time.Now().Add(50 * time.Millisecond)),
 			Timeout: 100 * time.Millisecond,
 		})
-		require.NoError(t, err, "creating the schedule should succeed")
+		require.NoError(t, err, "Creating the schedule should succeed")
 
 		run := harness.awaitRun(t, schedule.ID, cron.RunFailed)
 		assert.Contains(t, run.Error, "timed out",
-			"a nil return after the deadline must still journal as a timeout, never as success")
+			"A nil return after the deadline must still journal as a timeout, never as success")
 	})
 
 	t.Run("TriggerNowFiresAgain", func(t *testing.T) {
@@ -200,16 +200,16 @@ func TestEngineExecutesFires(t *testing.T) {
 			JobName: "orders.sync",
 			Trigger: cron.Once(time.Now().Add(50 * time.Millisecond)),
 		})
-		require.NoError(t, err, "creating the schedule should succeed")
+		require.NoError(t, err, "Creating the schedule should succeed")
 
 		require.Eventually(t, func() bool { return executions.Load() == 1 },
-			5*time.Second, 20*time.Millisecond, "the scheduled fire must execute")
+			5*time.Second, 20*time.Millisecond, "The scheduled fire must execute")
 
 		require.NoError(t, harness.manager.TriggerNow(context.Background(), "sync-manual"),
-			"the manual fire should be accepted")
+			"The manual fire should be accepted")
 
 		require.Eventually(t, func() bool { return executions.Load() == 2 },
-			5*time.Second, 20*time.Millisecond, "the manual fire must execute")
+			5*time.Second, 20*time.Millisecond, "The manual fire must execute")
 	})
 }
 
@@ -235,20 +235,20 @@ func TestEngineStopCancelsStragglers(t *testing.T) {
 		JobName: "orders.sync",
 		Trigger: cron.Once(time.Now().Add(30 * time.Millisecond)),
 	})
-	require.NoError(t, err, "creating the schedule should succeed")
+	require.NoError(t, err, "Creating the schedule should succeed")
 
 	select {
 	case <-blocked:
 	case <-time.After(5 * time.Second):
-		t.Fatal("the handler must start before the engine stops")
+		t.Fatal("The handler must start before the engine stops")
 	}
 
 	engine.Stop()
 
 	runs := loadRuns(t, db, schedule.ID)
-	require.Len(t, runs, 1, "the interrupted fire must stay journaled")
-	assert.Equal(t, cron.RunCanceled, runs[0].Status, "shutdown interruption journals as canceled")
-	assert.Equal(t, "canceled by shutdown", runs[0].Error, "the journal must name the shutdown")
+	require.Len(t, runs, 1, "The interrupted fire must stay journaled")
+	assert.Equal(t, cron.RunCanceled, runs[0].Status, "Shutdown interruption journals as canceled")
+	assert.Equal(t, "canceled by shutdown", runs[0].Error, "The journal must name the shutdown")
 }
 
 func TestEngineStopDrainsRunningWork(t *testing.T) {
@@ -276,12 +276,12 @@ func TestEngineStopDrainsRunningWork(t *testing.T) {
 		JobName: "orders.sync",
 		Trigger: cron.Once(time.Now().Add(30 * time.Millisecond)),
 	})
-	require.NoError(t, err, "creating the schedule should succeed")
+	require.NoError(t, err, "Creating the schedule should succeed")
 
 	select {
 	case <-started:
 	case <-time.After(5 * time.Second):
-		t.Fatal("the handler must start before the engine stops")
+		t.Fatal("The handler must start before the engine stops")
 	}
 
 	engine.Stop()
@@ -289,7 +289,7 @@ func TestEngineStopDrainsRunningWork(t *testing.T) {
 	assert.True(t, finished.Load(), "Stop must not return while a claimed run is still executing")
 
 	runs := loadRuns(t, db, schedule.ID)
-	require.Len(t, runs, 1, "the drained fire must stay journaled")
+	require.Len(t, runs, 1, "The drained fire must stay journaled")
 	assert.Equal(t, cron.RunSucceeded, runs[0].Status,
-		"a run that finishes inside the drain window must be journaled as succeeded")
+		"A run that finishes inside the drain window must be journaled as succeeded")
 }

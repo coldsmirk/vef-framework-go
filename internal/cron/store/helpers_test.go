@@ -23,7 +23,7 @@ func newStoreDB(t *testing.T) orm.DB {
 
 	db := testx.NewTestDB(t)
 	require.NoError(t, migration.Migrate(context.Background(), db, config.SQLite),
-		"cron store migration should provision the tables")
+		"Cron store migration should provision the tables")
 
 	return db
 }
@@ -70,7 +70,7 @@ func mustRegistry(t *testing.T, handlers ...cron.JobHandler) *Registry {
 	t.Helper()
 
 	registry, err := NewRegistry(handlers)
-	require.NoError(t, err, "registry construction should succeed")
+	require.NoError(t, err, "Registry construction should succeed")
 
 	return registry
 }
@@ -129,7 +129,7 @@ func insertSchedule(t *testing.T, db orm.DB, schedule *cron.Schedule) *cron.Sche
 	t.Helper()
 
 	_, err := db.NewInsert().Model(schedule).Exec(context.Background())
-	require.NoError(t, err, "schedule fixture insert should succeed")
+	require.NoError(t, err, "Schedule fixture insert should succeed")
 
 	return schedule
 }
@@ -145,7 +145,7 @@ func loadRuns(t *testing.T, db orm.DB, scheduleID string) []cron.Run {
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("schedule_id", scheduleID) }).
 		OrderBy("scheduled_at", "id").
 		Scan(context.Background()),
-		"loading journal rows should succeed")
+		"Loading journal rows should succeed")
 
 	return runs
 }
@@ -158,7 +158,7 @@ func reloadSchedule(t *testing.T, db orm.DB, id string) *cron.Schedule {
 	schedule.ID = id
 
 	require.NoError(t, db.NewSelect().Model(schedule).WherePK().Scan(context.Background()),
-		"reloading the schedule should succeed")
+		"Reloading the schedule should succeed")
 
 	return schedule
 }

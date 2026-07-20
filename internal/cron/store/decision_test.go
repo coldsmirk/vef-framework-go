@@ -27,11 +27,11 @@ func TestDecide(t *testing.T) {
 
 		decision := decide(schedule, due.Add(2*time.Second), threshold)
 
-		assert.True(t, decision.fire, "an on-time occurrence must fire")
-		assert.Equal(t, due, decision.scheduledAt, "the fire must carry its logical time")
-		assert.Zero(t, decision.missed, "nothing is missed on time")
-		require.NotNil(t, decision.next, "an interval trigger always yields a next fire")
-		assert.Equal(t, due.Add(time.Minute), *decision.next, "the next fire advances one interval from the due time")
+		assert.True(t, decision.fire, "An on-time occurrence must fire")
+		assert.Equal(t, due, decision.scheduledAt, "The fire must carry its logical time")
+		assert.Zero(t, decision.missed, "Nothing is missed on time")
+		require.NotNil(t, decision.next, "An interval trigger always yields a next fire")
+		assert.Equal(t, due.Add(time.Minute), *decision.next, "The next fire advances one interval from the due time")
 	})
 
 	t.Run("LatenessAtThresholdStillFires", func(t *testing.T) {
@@ -39,8 +39,8 @@ func TestDecide(t *testing.T) {
 
 		decision := decide(schedule, due.Add(threshold), threshold)
 
-		assert.True(t, decision.fire, "lateness exactly at the threshold is not a misfire")
-		assert.Zero(t, decision.missed, "no occurrence is missed at the threshold")
+		assert.True(t, decision.fire, "Lateness exactly at the threshold is not a misfire")
+		assert.Zero(t, decision.missed, "No occurrence is missed at the threshold")
 	})
 
 	t.Run("MisfireFireNowCatchesUpOnce", func(t *testing.T) {
@@ -51,12 +51,12 @@ func TestDecide(t *testing.T) {
 		now := due.Add(5*time.Minute + 30*time.Second)
 		decision := decide(schedule, now, threshold)
 
-		assert.True(t, decision.fire, "fire_now must run one catch-up")
-		assert.Equal(t, due, decision.scheduledAt, "the catch-up runs the oldest due occurrence")
-		assert.Equal(t, 5, decision.missed, "the remaining overdue occurrences are missed")
-		assert.Equal(t, due.Add(time.Minute), decision.missedFrom, "the missed row starts at the first skipped occurrence")
-		require.NotNil(t, decision.next, "the schedule must advance")
-		assert.Equal(t, due.Add(6*time.Minute), *decision.next, "the next fire is strictly after now")
+		assert.True(t, decision.fire, "Fire_now must run one catch-up")
+		assert.Equal(t, due, decision.scheduledAt, "The catch-up runs the oldest due occurrence")
+		assert.Equal(t, 5, decision.missed, "The remaining overdue occurrences are missed")
+		assert.Equal(t, due.Add(time.Minute), decision.missedFrom, "The missed row starts at the first skipped occurrence")
+		require.NotNil(t, decision.next, "The schedule must advance")
+		assert.Equal(t, due.Add(6*time.Minute), *decision.next, "The next fire is strictly after now")
 	})
 
 	t.Run("MisfireSkipAccountsEverything", func(t *testing.T) {
@@ -65,11 +65,11 @@ func TestDecide(t *testing.T) {
 		now := due.Add(5*time.Minute + 30*time.Second)
 		decision := decide(schedule, now, threshold)
 
-		assert.False(t, decision.fire, "skip must not run a catch-up")
-		assert.Equal(t, 6, decision.missed, "the due occurrence and every overdue one are missed")
-		assert.Equal(t, due, decision.missedFrom, "the missed row starts at the due occurrence")
-		require.NotNil(t, decision.next, "the schedule must advance")
-		assert.Equal(t, due.Add(6*time.Minute), *decision.next, "the next fire is strictly after now")
+		assert.False(t, decision.fire, "Skip must not run a catch-up")
+		assert.Equal(t, 6, decision.missed, "The due occurrence and every overdue one are missed")
+		assert.Equal(t, due, decision.missedFrom, "The missed row starts at the due occurrence")
+		require.NotNil(t, decision.next, "The schedule must advance")
+		assert.Equal(t, due.Add(6*time.Minute), *decision.next, "The next fire is strictly after now")
 	})
 
 	t.Run("ZonedCronAdvancesTheWallClock", func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestDecide(t *testing.T) {
 		// persisted (local) wall clock strictly past the due one — a
 		// non-advancing wall clock leaves the schedule claimable every tick.
 		gmt12, err := time.LoadLocation("Etc/GMT+12")
-		require.NoError(t, err, "the fixed-offset zone must load")
+		require.NoError(t, err, "The fixed-offset zone must load")
 
 		schedule := decisionSchedule(due, cron.MisfireFireNow)
 		schedule.Kind = cron.TriggerCron
@@ -88,13 +88,13 @@ func TestDecide(t *testing.T) {
 
 		decision := decide(schedule, due.Add(2*time.Second), threshold)
 
-		require.True(t, decision.fire, "an on-time occurrence must fire")
-		require.NotNil(t, decision.next, "an hourly expression always yields a next fire")
-		assert.True(t, decision.next.After(due), "the next fire's instant must be strictly after the due one")
-		assert.LessOrEqual(t, decision.next.Sub(due), time.Hour, "an hourly cadence advances at most one hour")
-		assert.Zero(t, decision.next.In(gmt12).Minute(), "the instant must sit on the trigger zone's hour boundary")
+		require.True(t, decision.fire, "An on-time occurrence must fire")
+		require.NotNil(t, decision.next, "An hourly expression always yields a next fire")
+		assert.True(t, decision.next.After(due), "The next fire's instant must be strictly after the due one")
+		assert.LessOrEqual(t, decision.next.Sub(due), time.Hour, "An hourly cadence advances at most one hour")
+		assert.Zero(t, decision.next.In(gmt12).Minute(), "The instant must sit on the trigger zone's hour boundary")
 		assert.Greater(t, timex.DateTime(*decision.next).String(), timex.DateTime(due).String(),
-			"the persisted wall clock must advance past the due one")
+			"The persisted wall clock must advance past the due one")
 	})
 
 	t.Run("OneShotSpendsItself", func(t *testing.T) {
@@ -106,8 +106,8 @@ func TestDecide(t *testing.T) {
 
 		decision := decide(schedule, due.Add(time.Second), threshold)
 
-		assert.True(t, decision.fire, "the one-shot must fire")
-		assert.Nil(t, decision.next, "a fired one-shot yields no further occurrence")
+		assert.True(t, decision.fire, "The one-shot must fire")
+		assert.Nil(t, decision.next, "A fired one-shot yields no further occurrence")
 	})
 
 	t.Run("WindowEndStopsAdvancing", func(t *testing.T) {
@@ -117,8 +117,8 @@ func TestDecide(t *testing.T) {
 
 		decision := decide(schedule, due.Add(2*time.Second), threshold)
 
-		assert.True(t, decision.fire, "the in-window occurrence must fire")
-		assert.Nil(t, decision.next, "no next fire exists past the window end")
+		assert.True(t, decision.fire, "The in-window occurrence must fire")
+		assert.Nil(t, decision.next, "No next fire exists past the window end")
 	})
 
 	t.Run("MisfireBeyondWindowEndCountsOnlyInWindow", func(t *testing.T) {
@@ -128,9 +128,9 @@ func TestDecide(t *testing.T) {
 
 		decision := decide(schedule, due.Add(10*time.Minute), threshold)
 
-		assert.False(t, decision.fire, "skip must not fire")
-		assert.Equal(t, 3, decision.missed, "only the due occurrence and the two in-window ones are missed")
-		assert.Nil(t, decision.next, "the window is over")
+		assert.False(t, decision.fire, "Skip must not fire")
+		assert.Equal(t, 3, decision.missed, "Only the due occurrence and the two in-window ones are missed")
+		assert.Nil(t, decision.next, "The window is over")
 	})
 }
 
@@ -143,8 +143,8 @@ func TestNextFire(t *testing.T) {
 		schedule.StartsAt = &starts
 
 		next, ok := nextFire(schedule, base)
-		require.True(t, ok, "a future window must yield a fire")
-		assert.Equal(t, base.Add(time.Hour), next, "the interval anchors on the window start, firing exactly there")
+		require.True(t, ok, "A future window must yield a fire")
+		assert.Equal(t, base.Add(time.Hour), next, "The interval anchors on the window start, firing exactly there")
 	})
 
 	t.Run("EndsAtCutsOff", func(t *testing.T) {
@@ -153,23 +153,23 @@ func TestNextFire(t *testing.T) {
 		schedule.EndsAt = &ends
 
 		_, ok := nextFire(schedule, base)
-		assert.False(t, ok, "no occurrence fits inside a sub-interval window")
+		assert.False(t, ok, "No occurrence fits inside a sub-interval window")
 	})
 
 	t.Run("AnchorKeepsPhase", func(t *testing.T) {
 		schedule := scheduleFixture("anchored", "job", base)
 
 		next, ok := nextFire(schedule, base.Add(90*time.Second))
-		require.True(t, ok, "an interval trigger always yields a fire")
+		require.True(t, ok, "An interval trigger always yields a fire")
 
 		anchor := schedule.CreatedAt.Unwrap()
 		phase := next.Sub(anchor) % time.Minute
-		assert.Zero(t, phase, "fires must stay on the anchor's phase grid")
+		assert.Zero(t, phase, "Fires must stay on the anchor's phase grid")
 	})
 
 	t.Run("ZonedCronRelabelsToLocal", func(t *testing.T) {
 		shanghai, err := time.LoadLocation("Asia/Shanghai")
-		require.NoError(t, err, "the IANA zone must load")
+		require.NoError(t, err, "The IANA zone must load")
 
 		schedule := scheduleFixture("zoned", "job", base)
 		schedule.Kind = cron.TriggerCron
@@ -178,11 +178,11 @@ func TestNextFire(t *testing.T) {
 		schedule.EveryMs = 0
 
 		next, ok := nextFire(schedule, base)
-		require.True(t, ok, "a daily expression always yields a fire")
+		require.True(t, ok, "A daily expression always yields a fire")
 
 		assert.Same(t, time.Local, next.Location(),
-			"the fire must be relabeled to the process-local zone before the naive wall-clock capture")
-		assert.Equal(t, 3, next.In(shanghai).Hour(), "the instant must stay correct in the trigger's zone")
-		assert.True(t, next.After(base), "the fire must be strictly after the probe instant")
+			"The fire must be relabeled to the process-local zone before the naive wall-clock capture")
+		assert.Equal(t, 3, next.In(shanghai).Hour(), "The instant must stay correct in the trigger's zone")
+		assert.True(t, next.After(base), "The fire must be strictly after the probe instant")
 	})
 }

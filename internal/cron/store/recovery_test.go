@@ -32,7 +32,7 @@ func insertRunningRun(t *testing.T, db orm.DB, schedule *cron.Schedule, schedule
 	}
 
 	_, err := db.NewInsert().Model(run).Exec(context.Background())
-	require.NoError(t, err, "running run fixture insert should succeed")
+	require.NoError(t, err, "Running run fixture insert should succeed")
 
 	return run
 }
@@ -69,25 +69,25 @@ func TestSweepAbandoned(t *testing.T) {
 
 		for _, orphan := range []*cron.Run{orphanA, orphanB} {
 			runs := loadRuns(t, db, orphan.ScheduleID)
-			require.Len(t, runs, 1, "the orphan must stay journaled")
-			assert.Equal(t, cron.RunAbandoned, runs[0].Status, "a stale heartbeat turns the run abandoned")
-			assert.NotNil(t, runs[0].FinishedAt, "an abandoned run is terminal")
+			require.Len(t, runs, 1, "The orphan must stay journaled")
+			assert.Equal(t, cron.RunAbandoned, runs[0].Status, "A stale heartbeat turns the run abandoned")
+			assert.NotNil(t, runs[0].FinishedAt, "An abandoned run is terminal")
 		}
 
 		events := bus.Published()
-		require.Len(t, events, 2, "every abandoned run must publish a notification")
+		require.Len(t, events, 2, "Every abandoned run must publish a notification")
 
 		abandoned, ok := events[0].(*cron.RunAbandonedEvent)
-		require.True(t, ok, "the notification must be a run-abandoned event")
-		assert.Equal(t, "node-dead", abandoned.NodeID, "the event must name the silent node")
+		require.True(t, ok, "The notification must be a run-abandoned event")
+		assert.Equal(t, "node-dead", abandoned.NodeID, "The event must name the silent node")
 
 		refired := reloadSchedule(t, db, recoverable.ID)
-		require.NotNil(t, refired.NextFireAt, "the recoverable schedule must be re-armed")
-		assert.True(t, refired.NextFireAt.AsLocal().Equal(base), "recovery pulls the fire to now")
+		require.NotNil(t, refired.NextFireAt, "The recoverable schedule must be re-armed")
+		assert.True(t, refired.NextFireAt.AsLocal().Equal(base), "Recovery pulls the fire to now")
 
 		untouched := reloadSchedule(t, db, disposable.ID)
 		assert.True(t, untouched.NextFireAt.AsLocal().Equal(base.Add(time.Hour)),
-			"a schedule without Recover keeps its regular fire")
+			"A schedule without Recover keeps its regular fire")
 	})
 
 	t.Run("RefiresAnOverdueSkipSchedule", func(t *testing.T) {
@@ -108,9 +108,9 @@ func TestSweepAbandoned(t *testing.T) {
 		engine.sweepAbandoned(context.Background())
 
 		refired := reloadSchedule(t, db, schedule.ID)
-		require.NotNil(t, refired.NextFireAt, "the recoverable schedule must stay armed")
+		require.NotNil(t, refired.NextFireAt, "The recoverable schedule must stay armed")
 		assert.True(t, refired.NextFireAt.AsLocal().Equal(base),
-			"recovery must pull an overdue skip schedule to now, or the re-fire is journaled as missed")
+			"Recovery must pull an overdue skip schedule to now, or the re-fire is journaled as missed")
 	})
 
 	t.Run("LeavesAnOverdueCatchUpScheduleAlone", func(t *testing.T) {
@@ -129,9 +129,9 @@ func TestSweepAbandoned(t *testing.T) {
 		engine.sweepAbandoned(context.Background())
 
 		after := reloadSchedule(t, db, schedule.ID)
-		require.NotNil(t, after.NextFireAt, "the schedule must stay armed")
+		require.NotNil(t, after.NextFireAt, "The schedule must stay armed")
 		assert.True(t, after.NextFireAt.AsLocal().Equal(overdue),
-			"an overdue catch-up fire keeps its logical time; the imminent claim already recovers it")
+			"An overdue catch-up fire keeps its logical time; the imminent claim already recovers it")
 	})
 
 	t.Run("FreshHeartbeatsAreLeftAlone", func(t *testing.T) {
@@ -143,7 +143,7 @@ func TestSweepAbandoned(t *testing.T) {
 		engine.sweepAbandoned(context.Background())
 
 		runs := loadRuns(t, db, schedule.ID)
-		assert.Equal(t, cron.RunRunning, runs[0].Status, "a live run must survive the sweep")
+		assert.Equal(t, cron.RunRunning, runs[0].Status, "A live run must survive the sweep")
 	})
 }
 
@@ -162,7 +162,7 @@ func TestRenewHeartbeats(t *testing.T) {
 
 		runs := loadRuns(t, db, schedule.ID)
 		assert.True(t, runs[0].HeartbeatAt.AsLocal().After(base.Add(-time.Second)),
-			"the tracked run's heartbeat must be freshly stamped")
+			"The tracked run's heartbeat must be freshly stamped")
 	})
 
 	t.Run("NeverResurrectsRecoveredRows", func(t *testing.T) {
@@ -178,7 +178,7 @@ func TestRenewHeartbeats(t *testing.T) {
 		engine.renewHeartbeats()
 
 		runs := loadRuns(t, db, schedule.ID)
-		assert.Equal(t, cron.RunAbandoned, runs[0].Status, "a recovered run must stay abandoned")
+		assert.Equal(t, cron.RunAbandoned, runs[0].Status, "A recovered run must stay abandoned")
 	})
 }
 
@@ -200,7 +200,7 @@ func TestPruneJournal(t *testing.T) {
 			FinishedAt:   &finished,
 		}
 		_, err := db.NewInsert().Model(run).Exec(context.Background())
-		require.NoError(t, err, "journal fixture insert should succeed")
+		require.NoError(t, err, "Journal fixture insert should succeed")
 	}
 
 	// Beyond retention, inside retention, and an ancient-but-running row.
@@ -216,9 +216,9 @@ func TestPruneJournal(t *testing.T) {
 	engine.pruneJournal(context.Background())
 
 	runs := loadRuns(t, db, schedule.ID)
-	require.Len(t, runs, 2, "only the terminal row beyond retention must be pruned")
+	require.Len(t, runs, 2, "Only the terminal row beyond retention must be pruned")
 
 	statuses := []cron.RunStatus{runs[0].Status, runs[1].Status}
-	assert.Contains(t, statuses, cron.RunRunning, "running rows are never pruned regardless of age")
-	assert.Contains(t, statuses, cron.RunFailed, "terminal rows inside retention must survive")
+	assert.Contains(t, statuses, cron.RunRunning, "Running rows are never pruned regardless of age")
+	assert.Contains(t, statuses, cron.RunFailed, "Terminal rows inside retention must survive")
 }

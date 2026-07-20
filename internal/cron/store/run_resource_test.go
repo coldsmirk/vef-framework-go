@@ -26,7 +26,7 @@ func TestRunSearch(t *testing.T) {
 
 		wanted := insertRunningRun(t, db, schedule, base.Add(-2*time.Minute), base.Add(-2*time.Minute))
 		newest := insertRunningRun(t, db, schedule, base, base)
-		require.NotEqual(t, wanted.ID, newest.ID, "the fixtures must be distinct rows")
+		require.NotEqual(t, wanted.ID, newest.ID, "The fixtures must be distinct rows")
 
 		var got cron.Run
 
@@ -37,9 +37,9 @@ func TestRunSearch(t *testing.T) {
 			}).
 			Limit(1).
 			Scan(context.Background()),
-			"the addressed row must load")
+			"The addressed row must load")
 
-		assert.Equal(t, wanted.ID, got.ID, "the search must resolve the run the caller named, not the newest one")
+		assert.Equal(t, wanted.ID, got.ID, "The search must resolve the run the caller named, not the newest one")
 	})
 
 	t.Run("EmptyIDDoesNotFilter", func(t *testing.T) {
@@ -55,8 +55,8 @@ func TestRunSearch(t *testing.T) {
 				search.NewFor[RunSearch]().Apply(cb, RunSearch{})
 			}).
 			Scan(context.Background()),
-			"an empty search must still be a valid query")
+			"An empty search must still be a valid query")
 
-		assert.Len(t, runs, 1, "a zero-valued id must add no condition, matching the browse behavior")
+		assert.Len(t, runs, 1, "A zero-valued id must add no condition, matching the browse behavior")
 	})
 }
