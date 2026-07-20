@@ -243,20 +243,22 @@ func (r *Receiver) runScript(ctx context.Context, d *delivery, handler integrati
 		return nil, integration.FailureScript, integration.ErrScriptFailed(err.Error())
 	}
 
+	// Runtime assembly failures are host-side faults, not script bugs:
+	// classify them as config, matching the outbound flow's newRuntime.
 	runtime, err := inv.engine.NewRuntime(js.WithRunTimeout(timeout))
 	if err != nil {
-		return nil, integration.FailureScript, err
+		return nil, integration.FailureConfig, err
 	}
 
 	// The codes library joins inbound runtimes too: translating the external
 	// system's codes into canonical values (and back for the reply) is the
 	// inbound script's core job.
 	if err := newCodesLib(inv.db, d.system, inv.codeMaps).Install(runtime); err != nil {
-		return nil, integration.FailureScript, err
+		return nil, integration.FailureConfig, err
 	}
 
 	if err := r.bind(ctx, runtime, d, handler); err != nil {
-		return nil, integration.FailureScript, err
+		return nil, integration.FailureConfig, err
 	}
 
 	value, err := runtime.RunProgram(ctx, program)
