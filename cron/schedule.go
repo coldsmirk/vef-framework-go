@@ -78,7 +78,10 @@ type Schedule struct {
 	IsEnabled bool `json:"isEnabled" bun:"is_enabled"`
 
 	// NextFireAt is the next due fire the engine will claim; nil when the
-	// schedule is paused or yields no further occurrence.
+	// trigger yields no further occurrence. Pausing preserves the cursor
+	// rather than clearing it — claiming filters on IsEnabled anyway, and
+	// keeping it is what lets Resume hand the paused gap to the misfire
+	// policy instead of silently dropping it.
 	NextFireAt *timex.DateTime `json:"nextFireAt,omitempty" bun:"next_fire_at,nullzero"`
 	// LastFireAt records the most recent claimed fire's logical time.
 	LastFireAt *timex.DateTime `json:"lastFireAt,omitempty" bun:"last_fire_at,nullzero"`

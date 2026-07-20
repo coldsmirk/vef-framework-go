@@ -82,6 +82,38 @@ func TestClaimDue(t *testing.T) {
 		assert.Nil(t, after.LastFireAt, "nothing executed, so LastFireAt stays unset")
 	})
 
+	t.Run("PausedGapIsJournaledAfterResume", func(t *testing.T) {
+		// Pausing preserves the fire cursor, so the paused gap reaches the
+		// claim as an ordinary misfire: it is caught up and accounted for
+		// instead of vanishing between Pause and Resume.
+		db := newStoreDB(t)
+		clock := base
+		manager := newTestManager(db, registry, func() time.Time { return clock })
+
+		created, err := manager.Create(context.Background(), cron.ScheduleSpec{
+			Name:    "paused",
+			JobName: "orders.sync",
+			Trigger: cron.Every(time.Minute),
+		})
+		require.NoError(t, err, "creating the schedule should succeed")
+		require.NoError(t, manager.Pause(context.Background(), "paused"), "pausing should succeed")
+
+		// Five minutes of paused occurrences, then the operator resumes.
+		clock = base.Add(6 * time.Minute)
+
+		require.NoError(t, manager.Resume(context.Background(), "paused"), "resuming should succeed")
+
+		claimed, err := newTestClaimer(db, registry, "node-a", fixedNow(clock)).ClaimDue(context.Background(), 10)
+		require.NoError(t, err, "claiming should succeed")
+		require.Len(t, claimed, 1, "fire_now must catch the paused gap up with one run")
+
+		runs := loadRuns(t, db, created.ID)
+		require.Len(t, runs, 2, "the claim journals the catch-up and the paused gap")
+		assert.Equal(t, cron.RunRunning, runs[0].Status, "the oldest paused occurrence runs")
+		assert.Equal(t, cron.RunMissed, runs[1].Status, "the rest of the paused gap is journaled as missed")
+		assert.Positive(t, runs[1].MissedCount, "the missed row must count the paused occurrences")
+	})
+
 	t.Run("TriggerNowRunsEvenUnderMisfireSkip", func(t *testing.T) {
 		// The regression behind a manual fire that silently did nothing: an
 		// overdue skip schedule journalled the request as missed.

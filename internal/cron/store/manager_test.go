@@ -194,7 +194,10 @@ func (s *ManagerSuite) TestUpdate() {
 }
 
 func (s *ManagerSuite) TestPauseResume() {
-	s.Run("PauseDisarms", func() {
+	s.Run("PausePreservesTheCursor", func() {
+		// The interval trigger arms one period after creation.
+		armed := s.now.Add(time.Minute)
+
 		_, err := s.manager.Create(s.ctx(), s.validSpec("pausable"))
 		s.Require().NoError(err, "the fixture create should succeed")
 
@@ -203,40 +206,53 @@ func (s *ManagerSuite) TestPauseResume() {
 		paused, err := s.manager.Get(s.ctx(), "pausable")
 		s.Require().NoError(err, "the paused schedule must load")
 		s.False(paused.IsEnabled, "pause must disable")
-		s.Nil(paused.NextFireAt, "pause must disarm")
+		s.Require().NotNil(paused.NextFireAt, "pause must keep the cursor so the gap stays accountable")
+		s.True(paused.NextFireAt.AsLocal().Equal(armed), "pause must not move the cursor")
 	})
 
-	s.Run("ResumeWithMissedFireNowCatchesUp", func() {
+	s.Run("ResumeHandsThePausedGapToTheMisfirePolicy", func() {
+		armed := s.now.Add(time.Minute)
+
 		_, err := s.manager.Create(s.ctx(), s.validSpec("catchup"))
 		s.Require().NoError(err, "the fixture create should succeed")
 		s.Require().NoError(s.manager.Pause(s.ctx(), "catchup"), "pausing should succeed")
 
-		// Resume far past the next occurrence: fire_now runs one immediate catch-up.
+		// Resume far past the paused occurrence: the cursor stays put so the
+		// claim applies the misfire policy to the gap, exactly as it does for
+		// downtime — resume itself decides nothing.
 		s.now = s.now.Add(2 * time.Hour)
+		defer func() { s.now = s.now.Add(-2 * time.Hour) }()
+
 		s.Require().NoError(s.manager.Resume(s.ctx(), "catchup"), "resuming should succeed")
 
 		resumed, err := s.manager.Get(s.ctx(), "catchup")
 		s.Require().NoError(err, "the resumed schedule must load")
 		s.True(resumed.IsEnabled, "resume must re-enable")
-		s.Require().NotNil(resumed.NextFireAt, "resume must re-arm")
-		s.True(resumed.NextFireAt.AsLocal().Equal(s.now), "fire_now must schedule an immediate catch-up")
+		s.Require().NotNil(resumed.NextFireAt, "the schedule must stay armed")
+		s.True(resumed.NextFireAt.AsLocal().Equal(armed),
+			"resume must leave the paused cursor untouched for the misfire decision")
 	})
 
-	s.Run("ResumeWithMissedSkipWaits", func() {
-		spec := s.validSpec("patient")
-		spec.MisfirePolicy = cron.MisfireSkip
+	s.Run("ResumeRearmsAScheduleThatHasNoCursor", func() {
+		spec := s.validSpec("dormant")
+		spec.Enabled = new(bool)
 
 		_, err := s.manager.Create(s.ctx(), spec)
 		s.Require().NoError(err, "the fixture create should succeed")
-		s.Require().NoError(s.manager.Pause(s.ctx(), "patient"), "pausing should succeed")
+
+		created, err := s.manager.Get(s.ctx(), "dormant")
+		s.Require().NoError(err, "the disabled schedule must load")
+		s.Require().Nil(created.NextFireAt, "a schedule created disabled carries no cursor")
 
 		s.now = s.now.Add(2 * time.Hour)
-		s.Require().NoError(s.manager.Resume(s.ctx(), "patient"), "resuming should succeed")
+		defer func() { s.now = s.now.Add(-2 * time.Hour) }()
 
-		resumed, err := s.manager.Get(s.ctx(), "patient")
+		s.Require().NoError(s.manager.Resume(s.ctx(), "dormant"), "resuming should succeed")
+
+		resumed, err := s.manager.Get(s.ctx(), "dormant")
 		s.Require().NoError(err, "the resumed schedule must load")
-		s.Require().NotNil(resumed.NextFireAt, "resume must re-arm")
-		s.True(resumed.NextFireAt.AsLocal().After(s.now), "skip must wait for the next regular fire")
+		s.Require().NotNil(resumed.NextFireAt, "a cursorless schedule must be armed from now")
+		s.True(resumed.NextFireAt.AsLocal().After(s.now), "the fresh cursor lands in the future")
 	})
 
 	s.Run("ResumeEnabledIsIdempotent", func() {

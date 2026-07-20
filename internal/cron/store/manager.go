@@ -138,8 +138,11 @@ func (m *scheduleManager) Pause(ctx context.Context, name string) error {
 			return err
 		}
 
+		// The fire cursor is deliberately preserved: claiming already filters
+		// on is_enabled, so a paused schedule cannot fire, and keeping the
+		// cursor is what lets Resume hand the paused gap to the regular
+		// misfire decision instead of silently swallowing it.
 		schedule.IsEnabled = false
-		schedule.NextFireAt = nil
 		schedule.UpdatedAt = timex.DateTime(m.now())
 
 		return persistScheduleState(ctx, tx, schedule)
@@ -158,7 +161,16 @@ func (m *scheduleManager) Resume(ctx context.Context, name string) error {
 		}
 
 		schedule.IsEnabled = true
-		m.resumeNextFire(schedule, m.now())
+
+		// A preserved cursor is left exactly where Pause found it, so the
+		// next claim applies the schedule's misfire policy to the paused gap
+		// — catching up and journaling it the same way downtime is handled.
+		// Only a schedule that has no cursor at all (created disabled, or
+		// spent) is re-armed from now.
+		if schedule.NextFireAt == nil {
+			m.refreshNextFire(schedule, m.now())
+		}
+
 		schedule.UpdatedAt = timex.DateTime(m.now())
 
 		return persistScheduleState(ctx, tx, schedule)
@@ -382,34 +394,6 @@ func (*scheduleManager) refreshNextFire(schedule *cron.Schedule, after time.Time
 		due := timex.DateTime(next)
 		schedule.NextFireAt = &due
 	}
-}
-
-// resumeNextFire re-arms a resumed schedule. Occurrences missed while
-// paused follow the schedule's own misfire policy: MisfireFireNow catches
-// up with one immediate fire, MisfireSkip waits for the next regular one.
-func (m *scheduleManager) resumeNextFire(schedule *cron.Schedule, now time.Time) {
-	reference := schedule.CreatedAt.AsLocal()
-	if schedule.StartsAt != nil {
-		reference = schedule.StartsAt.AsLocal()
-	}
-
-	if schedule.LastFireAt != nil {
-		reference = schedule.LastFireAt.AsLocal()
-	}
-
-	missedWhilePaused := false
-	if first, ok := nextFire(schedule, reference); ok && !first.After(now) {
-		missedWhilePaused = true
-	}
-
-	if missedWhilePaused && schedule.MisfirePolicy != cron.MisfireSkip {
-		due := timex.DateTime(now)
-		schedule.NextFireAt = &due
-
-		return
-	}
-
-	m.refreshNextFire(schedule, now)
 }
 
 // lockScheduleByName loads a schedule under a row lock, mapping absence to
