@@ -69,7 +69,7 @@ func TestRBACPermissionCheckerHasPermission(t *testing.T) {
 		checker := NewRBACPermissionChecker(loader)
 		principal := security.NewUser("user1", "Alice", "viewer")
 
-		has, err := checker.HasPermission(ctx, principal, "user:write")
+		has, err := checker.HasPermission(ctx, principal, "user.write")
 		require.NoError(t, err, "Role missing requested permission should not return an error")
 		assert.False(t, has, "Role missing requested permission should be denied")
 		loader.AssertExpectations(t)
@@ -81,13 +81,13 @@ func TestRBACPermissionCheckerHasPermission(t *testing.T) {
 			map[string]security.DataScope{}, nil,
 		)
 		loader.On("LoadPermissions", mock.Anything, "admin").Return(
-			map[string]security.DataScope{"user:write": nil}, nil,
+			map[string]security.DataScope{"user.write": nil}, nil,
 		)
 
 		checker := NewRBACPermissionChecker(loader)
 		principal := security.NewUser("user1", "Alice", "viewer", "admin")
 
-		has, err := checker.HasPermission(ctx, principal, "user:write")
+		has, err := checker.HasPermission(ctx, principal, "user.write")
 		require.NoError(t, err, "Second role with requested permission should not return an error")
 		assert.True(t, has, "Second role with requested permission should be allowed")
 		loader.AssertExpectations(t)

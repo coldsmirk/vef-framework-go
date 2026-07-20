@@ -40,13 +40,13 @@ func TestRequiredPermissionFromOperation(t *testing.T) {
 		op := &api.Operation{
 			Auth: &api.AuthConfig{
 				Options: map[string]any{
-					shared.AuthOptionRequiredPermission: "sys:user:read",
+					shared.AuthOptionRequiredPermission: "sys.user.read",
 				},
 			},
 		}
 
 		token := requiredPermissionFromOperation(op)
-		assert.Equal(t, "sys:user:read", token, "Should extract required permission")
+		assert.Equal(t, "sys.user.read", token, "Should extract required permission")
 	})
 
 	t.Run("WithoutRequiredPermission", func(t *testing.T) {

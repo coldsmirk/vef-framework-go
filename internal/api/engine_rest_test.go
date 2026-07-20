@@ -51,12 +51,12 @@ func NewTestRESTResource() api.Resource {
 				api.OperationSpec{
 					Action:             "patch",
 					Handler:            "Patch",
-					RequiredPermission: "items:patch",
+					RequiredPermission: "items.patch",
 				},
 				api.OperationSpec{
 					Action:             "post admin",
 					Handler:            "Admin",
-					RequiredPermission: "items:admin",
+					RequiredPermission: "items.admin",
 				},
 				api.OperationSpec{
 					Action:  "get panic",
@@ -288,21 +288,21 @@ func (suite *RESTEngineTestSuite) setupTestApp() {
 		Return(suite.adminUser, nil).
 		Maybe()
 
-	suite.permissionChecker.On("HasPermission", mock.Anything, mock.Anything, "items:patch").
+	suite.permissionChecker.On("HasPermission", mock.Anything, mock.Anything, "items.patch").
 		Return(true, nil).
 		Maybe()
 
 	// Permission denied for items:admin for regular user
 	suite.permissionChecker.On("HasPermission", mock.Anything, mock.MatchedBy(func(p *security.Principal) bool {
 		return p.ID == suite.testUser.ID
-	}), "items:admin").
+	}), "items.admin").
 		Return(false, nil).
 		Maybe()
 
 	// Permission allowed for items:admin for admin user
 	suite.permissionChecker.On("HasPermission", mock.Anything, mock.MatchedBy(func(p *security.Principal) bool {
 		return p.ID == suite.adminUser.ID
-	}), "items:admin").
+	}), "items.admin").
 		Return(true, nil).
 		Maybe()
 
@@ -755,7 +755,7 @@ func (suite *RESTEngineTestSuite) TestPermissionCheckerCalledOnPatch() {
 
 	_ = suite.MakeRESTRequestWithToken(fiber.MethodPatch, "/api/items", `{"id":"123","status":"active"}`, token)
 
-	suite.permissionChecker.AssertCalled(suite.T(), "HasPermission", mock.Anything, mock.Anything, "items:patch")
+	suite.permissionChecker.AssertCalled(suite.T(), "HasPermission", mock.Anything, mock.Anything, "items.patch")
 }
 
 func (suite *RESTEngineTestSuite) TestPermissionCheckerCalledOnAdmin() {
@@ -767,7 +767,7 @@ func (suite *RESTEngineTestSuite) TestPermissionCheckerCalledOnAdmin() {
 
 	_ = suite.MakeRESTRequestWithToken(fiber.MethodPost, "/api/items/admin", `{}`, token)
 
-	suite.permissionChecker.AssertCalled(suite.T(), "HasPermission", mock.Anything, mock.Anything, "items:admin")
+	suite.permissionChecker.AssertCalled(suite.T(), "HasPermission", mock.Anything, mock.Anything, "items.admin")
 }
 
 // TestRESTEngineTestSuite tests REST engine test suite scenarios.

@@ -100,11 +100,11 @@ func NewTestRPCResource() api.Resource {
 				},
 				api.OperationSpec{
 					Action:             "admin",
-					RequiredPermission: "test:admin",
+					RequiredPermission: "test.admin",
 				},
 				api.OperationSpec{
 					Action:             "restricted",
-					RequiredPermission: "test:restricted",
+					RequiredPermission: "test.restricted",
 				},
 				api.OperationSpec{
 					Action: "panic",
@@ -258,12 +258,12 @@ func (suite *RPCEngineTestSuite) setupTestApp() {
 		Return(nil, "", nil).
 		Maybe()
 
-	suite.permissionChecker.On("HasPermission", mock.Anything, mock.Anything, "test:admin").
+	suite.permissionChecker.On("HasPermission", mock.Anything, mock.Anything, "test.admin").
 		Return(true, nil).
 		Maybe()
 
 	// Permission denied for test:restricted
-	suite.permissionChecker.On("HasPermission", mock.Anything, mock.Anything, "test:restricted").
+	suite.permissionChecker.On("HasPermission", mock.Anything, mock.Anything, "test.restricted").
 		Return(false, nil).
 		Maybe()
 
@@ -822,7 +822,7 @@ func (suite *RPCEngineTestSuite) TestPermissionCheckerCalledOnAdmin() {
 		},
 	}, token)
 
-	suite.permissionChecker.AssertCalled(suite.T(), "HasPermission", mock.Anything, mock.Anything, "test:admin")
+	suite.permissionChecker.AssertCalled(suite.T(), "HasPermission", mock.Anything, mock.Anything, "test.admin")
 }
 
 func (suite *RPCEngineTestSuite) TestPermissionCheckerCalledOnRestricted() {
@@ -840,7 +840,7 @@ func (suite *RPCEngineTestSuite) TestPermissionCheckerCalledOnRestricted() {
 		},
 	}, token)
 
-	suite.permissionChecker.AssertCalled(suite.T(), "HasPermission", mock.Anything, mock.Anything, "test:restricted")
+	suite.permissionChecker.AssertCalled(suite.T(), "HasPermission", mock.Anything, mock.Anything, "test.restricted")
 }
 
 // TestRPCEngineTestSuite tests RPC engine test suite scenarios.

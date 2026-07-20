@@ -811,7 +811,7 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoSuccess() {
 		Avatar: &avatarURL,
 		PermissionTokens: []string{
 			"user:read",
-			"user:write",
+			"user.write",
 			"order:read",
 		},
 		Menus: []security.UserMenu{
@@ -860,7 +860,7 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoSuccess() {
 	suite.True(ok, "Permission tokens should be an array")
 	suite.Len(permissionTokens, 3, "Should have 3 permission tokens")
 	suite.Contains(permissionTokens, "user:read", "Should contain user:read permission")
-	suite.Contains(permissionTokens, "user:write", "Should contain user:write permission")
+	suite.Contains(permissionTokens, "user.write", "Should contain user.write permission")
 	suite.Contains(permissionTokens, "order:read", "Should contain order:read permission")
 
 	menus, ok := data["menus"].([]any)
