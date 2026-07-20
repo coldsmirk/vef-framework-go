@@ -84,6 +84,16 @@ func TestCronConfigValidate(t *testing.T) {
 			}},
 			wantErr: ErrCronStoreAbandonedTooSoon,
 		},
+		{
+			name:    "NegativeBatchSize",
+			config:  CronConfig{Store: CronStoreConfig{BatchSize: -1}},
+			wantErr: ErrInvalidCronStoreCount,
+		},
+		{
+			name:    "NegativeMaxConcurrent",
+			config:  CronConfig{Store: CronStoreConfig{MaxConcurrent: -8}},
+			wantErr: ErrInvalidCronStoreCount,
+		},
 	}
 
 	for _, tt := range tests {

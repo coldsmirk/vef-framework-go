@@ -106,6 +106,9 @@ func (c *CronStoreConfig) EffectiveAbandonedAfter() time.Duration {
 var (
 	// ErrInvalidCronStoreDuration indicates a negative duration setting.
 	ErrInvalidCronStoreDuration = errors.New("invalid cron store duration")
+	// ErrInvalidCronStoreCount indicates a negative batch or concurrency
+	// setting.
+	ErrInvalidCronStoreCount = errors.New("invalid cron store count")
 	// ErrCronStoreAbandonedTooSoon indicates an abandoned window too tight
 	// for the heartbeat cadence — healthy executors would be declared dead.
 	ErrCronStoreAbandonedTooSoon = errors.New("cron store abandoned_after must be at least twice heartbeat_interval")
@@ -127,6 +130,16 @@ func (c *CronConfig) Validate() error {
 	for name, value := range durations {
 		if value < 0 {
 			return fmt.Errorf("%w: %s must not be negative", ErrInvalidCronStoreDuration, name)
+		}
+	}
+
+	counts := map[string]int{
+		"batch_size":     store.BatchSize,
+		"max_concurrent": store.MaxConcurrent,
+	}
+	for name, value := range counts {
+		if value < 0 {
+			return fmt.Errorf("%w: %s must not be negative", ErrInvalidCronStoreCount, name)
 		}
 	}
 
