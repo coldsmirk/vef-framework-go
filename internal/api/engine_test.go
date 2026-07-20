@@ -218,7 +218,8 @@ func TestEngineOptions(t *testing.T) {
 		assert.Equal(t, 42, e.defaultRateLimit.Max, "The configured default rate limit max should replace the built-in")
 		assert.Equal(t, time.Minute, e.defaultRateLimit.Period, "The configured default rate limit period should replace the built-in")
 
-		op := e.buildOperation(&MockResource{name: "test"}, api.OperationSpec{Action: "list"}, DummyHandler)
+		op, err := e.buildOperation(&MockResource{name: "test"}, api.OperationSpec{Action: "list"}, DummyHandler)
+		require.NoError(t, err, "A spec without a permission should build without error")
 		require.NotNil(t, op.RateLimit, "An operation without its own rate limit should get the default")
 		assert.Equal(t, 42, op.RateLimit.Max, "The stamped operation rate limit should be the configured default")
 	})
@@ -384,7 +385,7 @@ func TestEngineRegister(t *testing.T) {
 	})
 
 	t.Run("OperationWithRequiredPermission", func(t *testing.T) {
-		e, _ := newRegistrationEngine(t, []api.OperationSpec{{Action: "delete", RequiredPermission: "sys:user:delete"}})
+		e, _ := newRegistrationEngine(t, []api.OperationSpec{{Action: "delete", RequiredPermission: "sys.user.delete"}})
 		res := &MockResource{kind: api.KindRPC, name: "sys/user"}
 
 		err := e.Register(res)
@@ -393,7 +394,49 @@ func TestEngineRegister(t *testing.T) {
 		op := e.Lookup(api.Identifier{Resource: "sys/user", Action: "delete", Version: api.VersionV1})
 		require.NotNil(t, op, "Operation should be found")
 		require.NotNil(t, op.Auth.Options, "Auth options should not be nil")
-		assert.Equal(t, "sys:user:delete", op.Auth.Options[shared.AuthOptionRequiredPermission], "RequiredPermission should be stored correctly")
+		assert.Equal(t, "sys.user.delete", op.Auth.Options[shared.AuthOptionRequiredPermission], "RequiredPermission should be stored correctly")
+	})
+
+	// A permission on an unauthenticated endpoint can never be granted: the none
+	// strategy mints an anonymous principal with no roles. Registration refuses
+	// the contradiction so it cannot ship as an endpoint that reads public and
+	// answers 403 to everyone.
+	t.Run("PublicOperationWithRequiredPermission", func(t *testing.T) {
+		e, _ := newRegistrationEngine(t, []api.OperationSpec{
+			{Action: "delete", Public: true, RequiredPermission: "sys.user.delete"},
+		})
+		res := &MockResource{kind: api.KindRPC, name: "sys/user"}
+
+		err := e.Register(res)
+		require.Error(t, err, "A public operation requiring a permission must be refused")
+		assert.ErrorIs(t, err, shared.ErrPermissionOnPublicOp,
+			"The refusal should name the public/permission contradiction")
+	})
+
+	t.Run("PublicResourceWithRequiredPermission", func(t *testing.T) {
+		// The same contradiction reached through resource-level auth rather than
+		// the operation's own Public flag.
+		e, _ := newRegistrationEngine(t, []api.OperationSpec{
+			{Action: "delete", RequiredPermission: "sys.user.delete"},
+		})
+		res := &MockResource{kind: api.KindRPC, name: "sys/user", auth: api.Public()}
+
+		err := e.Register(res)
+		require.Error(t, err, "A permission under a public resource must be refused")
+		assert.ErrorIs(t, err, shared.ErrPermissionOnPublicOp,
+			"The refusal should name the public/permission contradiction")
+	})
+
+	t.Run("OperationWithMalformedPermissionToken", func(t *testing.T) {
+		e, _ := newRegistrationEngine(t, []api.OperationSpec{
+			{Action: "delete", RequiredPermission: "sys:user:delete"},
+		})
+		res := &MockResource{kind: api.KindRPC, name: "sys/user"}
+
+		err := e.Register(res)
+		require.Error(t, err, "A permission token using the wrong separator must be refused")
+		assert.ErrorIs(t, err, shared.ErrPermissionTokenInvalid,
+			"The refusal should name the token convention")
 	})
 
 	t.Run("OperationWithCustomTimeout", func(t *testing.T) {

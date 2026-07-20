@@ -13,6 +13,8 @@ var (
 	ErrResourceNameEmpty        = errors.New("resource name cannot be empty")
 	ErrOperationNotFound        = errors.New("operation not found")
 	ErrOperationActionEmpty     = errors.New("operation action cannot be empty")
+	ErrPermissionOnPublicOp     = errors.New("a public operation cannot require a permission")
+	ErrPermissionTokenInvalid   = errors.New("permission token must be dot-separated segments of letters, digits and underscores")
 	ErrNoRouterForKind          = errors.New("no router can handle operation type")
 	ErrNoRouterFound            = errors.New("no router found")
 	ErrNoHandlerResolverFound   = errors.New("no handler resolver found")

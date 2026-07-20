@@ -176,7 +176,10 @@ func (e *engine) registerOperation(res api.Resource, spec api.OperationSpec) err
 		return fmt.Errorf("failed to resolve handler for %s:%s: %w", res.Name(), spec.Action, err)
 	}
 
-	op := e.buildOperation(res, spec, h)
+	op, err := e.buildOperation(res, spec, h)
+	if err != nil {
+		return err
+	}
 
 	if existing, inserted := e.operations.PutIfAbsent(op.Identifier, op); !inserted {
 		return &shared.DuplicateError{
@@ -207,9 +210,24 @@ func (e *engine) registerOperation(res api.Resource, spec api.OperationSpec) err
 }
 
 // buildOperation constructs an api.Operation from a resource and spec.
-func (e *engine) buildOperation(res api.Resource, spec api.OperationSpec, handler any) *api.Operation {
+func (e *engine) buildOperation(res api.Resource, spec api.OperationSpec, handler any) (*api.Operation, error) {
 	ac := e.resolveAuthConfig(res, spec)
+
 	if spec.RequiredPermission != "" {
+		if !shared.IsValidPermissionToken(spec.RequiredPermission) {
+			return nil, fmt.Errorf("%w: %s:%s declares %q",
+				shared.ErrPermissionTokenInvalid, res.Name(), spec.Action, spec.RequiredPermission)
+		}
+
+		// A permission on an unauthenticated endpoint can never be satisfied: the
+		// none strategy mints an anonymous principal carrying no roles, so the check
+		// below denies everyone. Refuse the contradiction at registration rather
+		// than shipping an endpoint that reads public and answers 403.
+		if ac.Strategy == api.AuthStrategyNone {
+			return nil, fmt.Errorf("%w: %s:%s requires %q",
+				shared.ErrPermissionOnPublicOp, res.Name(), spec.Action, spec.RequiredPermission)
+		}
+
 		if ac.Options == nil {
 			ac.Options = make(map[string]any)
 		}
@@ -231,7 +249,7 @@ func (e *engine) buildOperation(res api.Resource, spec api.OperationSpec, handle
 			shared.MetaKeyResource: res,
 		},
 		Handler: handler,
-	}
+	}, nil
 }
 
 // mountOperation adapts and routes a single operation.
