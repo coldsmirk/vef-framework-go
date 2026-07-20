@@ -40,6 +40,11 @@ func (p Params) Decode(out any) error {
 	return decodeMap(p, out, ErrInvalidParamsType)
 }
 
+// DecodeStrict decodes params and rejects keys not represented by out.
+func (p Params) DecodeStrict(out any) error {
+	return decodeMapWithOptions(p, out, ErrInvalidParamsType, mapx.WithErrorUnused())
+}
+
 // Meta holds API request metadata.
 //
 // JSON payloads are parsed with number preservation, exactly like Params.
@@ -66,11 +71,15 @@ func unmarshalNumberPreserving(data []byte, out *map[string]any) error {
 
 // decodeMap decodes a map into a struct with type validation.
 func decodeMap(data map[string]any, out any, typeErr error) error {
+	return decodeMapWithOptions(data, out, typeErr)
+}
+
+func decodeMapWithOptions(data map[string]any, out any, typeErr error, options ...mapx.DecoderOption) error {
 	if !reflectx.IsPointerToStruct(reflect.TypeOf(out)) {
 		return fmt.Errorf("%w, got %T", typeErr, out)
 	}
 
-	decoder, err := mapx.NewDecoder(out)
+	decoder, err := mapx.NewDecoder(out, options...)
 	if err != nil {
 		return err
 	}

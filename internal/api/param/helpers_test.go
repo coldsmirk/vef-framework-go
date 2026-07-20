@@ -24,6 +24,12 @@ type EmbeddedMeta struct {
 	Page int
 }
 
+type StrictEmbeddedParams struct {
+	api.StrictP
+
+	Name string
+}
+
 type DeepEmbeddedParams struct {
 	EmbeddedParams
 
@@ -57,6 +63,11 @@ func TestEmbedsAPIParams(t *testing.T) {
 		assert.True(t, embedsAPIParams(reflect.TypeFor[DeepEmbeddedParams]()), "Should detect deeply embedded api.P")
 	})
 
+	t.Run("StrictEmbed", func(t *testing.T) {
+		assert.True(t, embedsAPIParams(reflect.TypeFor[StrictEmbeddedParams]()),
+			"A strict params sentinel should retain ordinary params resolution")
+	})
+
 	t.Run("NoEmbed", func(t *testing.T) {
 		assert.False(t, embedsAPIParams(reflect.TypeFor[NoEmbed]()), "Should return false for no api.P embed")
 	})
@@ -68,6 +79,13 @@ func TestEmbedsAPIParams(t *testing.T) {
 	t.Run("NonStruct", func(t *testing.T) {
 		assert.False(t, embedsAPIParams(reflect.TypeFor[string]()), "Should return false for non-struct")
 	})
+}
+
+func TestEmbedsStrictAPIParams(t *testing.T) {
+	assert.True(t, embedsStrictAPIParams(reflect.TypeFor[StrictEmbeddedParams]()),
+		"The strict params sentinel should select strict request decoding")
+	assert.False(t, embedsStrictAPIParams(reflect.TypeFor[EmbeddedParams]()),
+		"The ordinary params sentinel should keep permissive request decoding")
 }
 
 // TestEmbedsAPIMeta tests embedsAPIMeta detection.

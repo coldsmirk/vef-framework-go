@@ -63,7 +63,21 @@ type decodable interface {
 	Decode(out any) error
 }
 
+type strictParamsDecoder struct {
+	api.Params
+}
+
+func (d strictParamsDecoder) Decode(out any) error {
+	return d.DecodeStrict(out)
+}
+
 func buildParamsResolver(paramType reflect.Type) HandlerParamResolverFunc {
+	if embedsStrictAPIParams(paramType) {
+		return buildRequestFieldResolver(paramType, func(req *api.Request) decodable {
+			return strictParamsDecoder{Params: req.Params}
+		}, api.ErrInvalidRequestParams)
+	}
+
 	return buildRequestFieldResolver(paramType, func(req *api.Request) decodable { return req.Params }, api.ErrInvalidRequestParams)
 }
 

@@ -123,3 +123,13 @@ func TestMetaUnmarshalJSON(t *testing.T) {
 	require.NoError(t, meta.Decode(&out), "Decode should succeed")
 	assert.Equal(t, int64(9007199254740993), out.Page, "meta int64 field must keep exact digits")
 }
+
+func TestParamsDecodeStrictRejectsUnknownKeys(t *testing.T) {
+	params := api.Params{"known": "value", "retired": true}
+
+	var out struct {
+		Known string `json:"known"`
+	}
+
+	assert.Error(t, params.DecodeStrict(&out), "Strict params decoding must reject every unused request key")
+}

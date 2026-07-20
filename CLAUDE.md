@@ -49,7 +49,7 @@ go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest
 - **Resources**: `api.NewRPCResource(name, api.WithOperations(...))` or `api.NewRESTResource(name, opts...)` with optional CRUD generics (`crud.FindAll[M,S]`, `crud.Create[M,P]`, etc.).
 - **Registration**: `vef.ProvideAPIResource(constructor)`.
 - **Handlers**: PascalCase auto-resolution (`Action: "create_user"` → `CreateUser`), or explicit `Handler` in `api.OperationSpec`.
-- **Parameter binding**: sentinel types `api.P` (params) and `api.M` (meta), `search` tags for queries (`search:"eq"`, `search:"contains,column=name|description"`). Built-in resolvers: `fiber.Ctx`, `orm.DB`, `log.Logger`, `*security.Principal`, `mold.Transformer`. Custom: `group:"vef:api:handler_param_resolvers"`.
+- **Parameter binding**: sentinel types `api.P` (params) and `api.M` (meta), `search` tags for queries (`search:"eq"`, `search:"contains,column=name|description"`). `api.StrictP` embeds `P` and additionally rejects request keys the target struct does not declare — embed it for closed mutation contracts where a retired or misspelled field must fail instead of being silently ignored (the `sys/cron/schedule` mutations use it). Built-in resolvers: `fiber.Ctx`, `orm.DB`, `log.Logger`, `*security.Principal`, `mold.Transformer`. Custom: `group:"vef:api:handler_param_resolvers"`.
 - **Response**: `result.Ok(data)`, `result.Err("msg", result.WithCode(code))`.
 
 ## Request Lifecycle (`/api`)
