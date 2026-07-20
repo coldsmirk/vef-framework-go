@@ -364,21 +364,30 @@ func (m *scheduleManager) materialize(spec cron.ScheduleSpec, now time.Time) (*c
 	schedule.UpdatedAt = timex.DateTime(now)
 
 	if spec.Trigger.At != nil {
-		at := timex.DateTime(*spec.Trigger.At)
+		at := localDateTime(*spec.Trigger.At)
 		schedule.FireAt = &at
 	}
 
 	if spec.StartsAt != nil {
-		starts := timex.DateTime(*spec.StartsAt)
+		starts := localDateTime(*spec.StartsAt)
 		schedule.StartsAt = &starts
 	}
 
 	if spec.EndsAt != nil {
-		ends := timex.DateTime(*spec.EndsAt)
+		ends := localDateTime(*spec.EndsAt)
 		schedule.EndsAt = &ends
 	}
 
 	return schedule, nil
+}
+
+// localDateTime converts a caller-supplied instant into the store's naive
+// wall-clock form. Spec times arrive from Go code in whatever zone the caller
+// built them in (cron.Once(nyTime), a StartsAt parsed with an offset);
+// persisting that zone's wall clock would make the column denote a different
+// instant once it is read back and reinterpreted as local.
+func localDateTime(t time.Time) timex.DateTime {
+	return timex.DateTime(t.In(time.Local))
 }
 
 // refreshNextFire recomputes NextFireAt strictly after the given instant;

@@ -193,6 +193,35 @@ func (s *ManagerSuite) TestUpdate() {
 	})
 }
 
+func (s *ManagerSuite) TestMaterializeNormalizesForeignZones() {
+	newYork, err := time.LoadLocation("America/New_York")
+	s.Require().NoError(err, "the New York zone must load")
+
+	// A caller in Go code names an instant in its own zone. Persisting that
+	// zone's wall clock into the naive columns would make the stored value
+	// denote a different instant when it is read back as local.
+	at := s.now.Add(24 * time.Hour).In(newYork)
+	starts := s.now.Add(time.Hour).In(newYork)
+	ends := s.now.Add(48 * time.Hour).In(newYork)
+
+	schedule, err := s.manager.Create(s.ctx(), cron.ScheduleSpec{
+		Name:     "foreign",
+		JobName:  "orders.sync",
+		Trigger:  cron.Once(at),
+		StartsAt: &starts,
+		EndsAt:   &ends,
+	})
+	s.Require().NoError(err, "creating a schedule with foreign-zone times should succeed")
+
+	s.Require().NotNil(schedule.FireAt, "the one-shot time must be stored")
+	s.True(schedule.FireAt.AsLocal().Equal(at), "the stored fire time must denote the caller's instant")
+	s.True(schedule.StartsAt.AsLocal().Equal(starts), "the stored window start must denote the caller's instant")
+	s.True(schedule.EndsAt.AsLocal().Equal(ends), "the stored window end must denote the caller's instant")
+
+	s.Require().NotNil(schedule.NextFireAt, "the one-shot must be armed")
+	s.True(schedule.NextFireAt.AsLocal().Equal(at), "the armed fire must be the caller's instant, not its wall clock")
+}
+
 func (s *ManagerSuite) TestPauseResume() {
 	s.Run("PausePreservesTheCursor", func() {
 		// The interval trigger arms one period after creation.
