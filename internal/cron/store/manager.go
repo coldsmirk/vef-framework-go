@@ -83,11 +83,14 @@ func (m *scheduleManager) Update(ctx context.Context, name string, spec cron.Sch
 			return err
 		}
 
-		// The spec replaces everything but the row identity and creation
-		// audit; the skipupdate tags keep the latter safe on write anyway.
+		// The spec replaces everything but the row identity, the creation
+		// audit and the engine-owned fire history; the skipupdate tags keep
+		// the audit safe on write anyway. LastFireAt is carried over
+		// explicitly: reshaping a schedule must not erase what already ran.
 		updated.ID = current.ID
 		updated.CreatedAt = current.CreatedAt
 		updated.CreatedBy = current.CreatedBy
+		updated.LastFireAt = current.LastFireAt
 		updated.UpdatedAt = timex.DateTime(m.now())
 
 		// Reshaping recomputes the fire from now: anchored trigger math

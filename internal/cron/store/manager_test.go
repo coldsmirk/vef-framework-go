@@ -176,6 +176,28 @@ func (s *ManagerSuite) TestUpdate() {
 		_, err := s.manager.Update(s.ctx(), "ghost", s.validSpec("ghost"))
 		s.Require().ErrorIs(err, cron.ErrScheduleNotFound, "updating a missing schedule must fail")
 	})
+
+	s.Run("KeepsTheFireHistory", func() {
+		created, err := s.manager.Create(s.ctx(), s.validSpec("historic"))
+		s.Require().NoError(err, "the fixture create should succeed")
+
+		// The engine owns LastFireAt; simulate a fire it already claimed.
+		fired := timex.DateTime(s.now.Add(-time.Hour))
+		created.LastFireAt = &fired
+		_, err = s.db.NewUpdate().Model(created).Select("last_fire_at").WherePK().Exec(s.ctx())
+		s.Require().NoError(err, "stamping the fire history should succeed")
+
+		spec := s.validSpec("historic")
+		spec.Params = map[string]any{"tweaked": true}
+
+		_, err = s.manager.Update(s.ctx(), "historic", spec)
+		s.Require().NoError(err, "reshaping the schedule should succeed")
+
+		updated, err := s.manager.Get(s.ctx(), "historic")
+		s.Require().NoError(err, "the updated schedule must load")
+		s.Require().NotNil(updated.LastFireAt, "editing a schedule must not erase what already ran")
+		s.True(updated.LastFireAt.AsLocal().Equal(s.now.Add(-time.Hour)), "the recorded fire must survive verbatim")
+	})
 }
 
 func (s *ManagerSuite) TestPauseResume() {
