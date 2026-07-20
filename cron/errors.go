@@ -22,8 +22,13 @@ var (
 	ErrTriggerExprInvalid = errors.New("invalid cron expression")
 	// ErrTriggerTimezoneInvalid indicates an unloadable IANA timezone.
 	ErrTriggerTimezoneInvalid = errors.New("invalid trigger timezone")
+	// ErrTriggerFieldsConflict indicates fields that do not belong to the
+	// selected trigger kind.
+	ErrTriggerFieldsConflict = errors.New("trigger fields conflict with its kind")
 	// ErrTriggerIntervalTooShort indicates a fixed rate below MinInterval.
 	ErrTriggerIntervalTooShort = errors.New("trigger interval too short")
+	// ErrTriggerIntervalTooLong indicates milliseconds outside time.Duration.
+	ErrTriggerIntervalTooLong = errors.New("trigger interval exceeds the supported duration")
 	// ErrTriggerFireTimeRequired indicates a one-shot trigger without a fire time.
 	ErrTriggerFireTimeRequired = errors.New("one-shot trigger requires a fire time")
 )

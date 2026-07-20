@@ -2,6 +2,7 @@ package cron
 
 import (
 	"fmt"
+	"math/big"
 	"time"
 
 	// Schedules carry IANA timezones; the embedded tzdata keeps LoadLocation
@@ -26,8 +27,17 @@ const (
 	TriggerOnce TriggerKind = "once"
 )
 
-// MinInterval is the smallest fixed rate an interval trigger accepts.
-const MinInterval = time.Second
+const (
+	// MinInterval is the smallest fixed rate an interval trigger accepts.
+	MinInterval = time.Second
+	// DefaultTimezone is the deterministic zone used when a cron trigger does
+	// not name one explicitly. Durable schedules must never depend on a node's
+	// process-local timezone.
+	DefaultTimezone = "UTC"
+	// maxDurationMilliseconds is the largest whole-millisecond duration Go can
+	// represent without integer wraparound.
+	maxDurationMilliseconds = int64((1<<63 - 1) / time.Millisecond)
+)
 
 // exprParser accepts standard 5-field expressions, 6-field expressions with a
 // leading seconds field, and @-descriptors (@daily, @every 90m, ...).
@@ -44,7 +54,7 @@ type TriggerSpec struct {
 	// (leading seconds optional) and @-descriptors are accepted.
 	Expr string `json:"expr,omitempty"`
 	// Timezone is the IANA zone a TriggerCron expression is evaluated in;
-	// empty evaluates in the process-local zone.
+	// empty resolves to DefaultTimezone.
 	Timezone string `json:"timezone,omitempty"`
 	// EveryMs is the fixed rate of a TriggerInterval trigger, in milliseconds.
 	EveryMs int64 `json:"everyMs,omitempty"`
@@ -53,8 +63,12 @@ type TriggerSpec struct {
 }
 
 // Expr returns a cron-expression trigger evaluated in the given IANA
-// timezone; an empty timezone means the process-local zone.
+// timezone; an empty timezone resolves to DefaultTimezone.
 func Expr(expr, timezone string) TriggerSpec {
+	if timezone == "" {
+		timezone = DefaultTimezone
+	}
+
 	return TriggerSpec{Kind: TriggerCron, Expr: expr, Timezone: timezone}
 }
 
@@ -77,16 +91,37 @@ func (t TriggerSpec) every() time.Duration {
 // location resolves the trigger's evaluation zone.
 func (t TriggerSpec) location() (*time.Location, error) {
 	if t.Timezone == "" {
-		return time.Local, nil
+		return time.UTC, nil
+	}
+
+	if t.Timezone == "Local" {
+		return nil, ErrTriggerTimezoneInvalid
 	}
 
 	return time.LoadLocation(t.Timezone)
+}
+
+func (t TriggerSpec) hasFieldConflict() bool {
+	switch t.Kind {
+	case TriggerCron:
+		return t.EveryMs != 0 || t.At != nil
+	case TriggerInterval:
+		return t.Expr != "" || t.Timezone != "" || t.At != nil
+	case TriggerOnce:
+		return t.Expr != "" || t.Timezone != "" || t.EveryMs != 0
+	default:
+		return false
+	}
 }
 
 // Validate checks the spec for structural soundness: a known kind, a parsable
 // expression and loadable timezone for cron triggers, a rate of at least
 // MinInterval for interval triggers, and a fire time for one-shot triggers.
 func (t TriggerSpec) Validate() error {
+	if t.hasFieldConflict() {
+		return fmt.Errorf("%w: %s", ErrTriggerFieldsConflict, t.Kind)
+	}
+
 	switch t.Kind {
 	case TriggerCron:
 		if t.Expr == "" {
@@ -104,8 +139,17 @@ func (t TriggerSpec) Validate() error {
 		return nil
 
 	case TriggerInterval:
-		if t.every() < MinInterval {
-			return fmt.Errorf("%w: %s is below %s", ErrTriggerIntervalTooShort, t.every(), MinInterval)
+		if t.EveryMs <= 0 {
+			return fmt.Errorf("%w: %dms is below %s", ErrTriggerIntervalTooShort, t.EveryMs, MinInterval)
+		}
+
+		if t.EveryMs > maxDurationMilliseconds {
+			return fmt.Errorf("%w: %dms", ErrTriggerIntervalTooLong, t.EveryMs)
+		}
+
+		every := t.every()
+		if every < MinInterval {
+			return fmt.Errorf("%w: %s is below %s", ErrTriggerIntervalTooShort, every, MinInterval)
 		}
 
 		return nil
@@ -127,6 +171,10 @@ func (t TriggerSpec) Validate() error {
 // the fixed-rate phase of interval triggers and is ignored by other kinds.
 // The spec must have passed Validate; an invalid spec yields no occurrence.
 func (t TriggerSpec) Next(after, anchor time.Time) (time.Time, bool) {
+	if t.hasFieldConflict() {
+		return time.Time{}, false
+	}
+
 	switch t.Kind {
 	case TriggerCron:
 		schedule, err := exprParser.Parse(t.Expr)
@@ -147,6 +195,10 @@ func (t TriggerSpec) Next(after, anchor time.Time) (time.Time, bool) {
 		return next, true
 
 	case TriggerInterval:
+		if t.EveryMs <= 0 || t.EveryMs > maxDurationMilliseconds {
+			return time.Time{}, false
+		}
+
 		every := t.every()
 		if every < MinInterval {
 			return time.Time{}, false
@@ -160,9 +212,7 @@ func (t TriggerSpec) Next(after, anchor time.Time) (time.Time, bool) {
 			return anchor, true
 		}
 
-		periods := int64(after.Sub(anchor)/every) + 1
-
-		return anchor.Add(time.Duration(periods) * every), true
+		return after.Add(intervalDelay(after, anchor, every)), true
 
 	case TriggerOnce:
 		if t.At == nil || !t.At.After(after) {
@@ -174,6 +224,25 @@ func (t TriggerSpec) Next(after, anchor time.Time) (time.Time, bool) {
 	default:
 		return time.Time{}, false
 	}
+}
+
+func intervalDelay(after, anchor time.Time, every time.Duration) time.Duration {
+	elapsed := after.Sub(anchor)
+	if anchor.Add(elapsed).Equal(after) {
+		return every - elapsed%every
+	}
+
+	var afterSeconds, anchorSeconds, elapsedNanos big.Int
+	afterSeconds.SetInt64(after.Unix())
+	anchorSeconds.SetInt64(anchor.Unix())
+	elapsedNanos.Sub(&afterSeconds, &anchorSeconds)
+	elapsedNanos.Mul(&elapsedNanos, big.NewInt(int64(time.Second)))
+	elapsedNanos.Add(&elapsedNanos, big.NewInt(int64(after.Nanosecond()-anchor.Nanosecond())))
+
+	var remainder big.Int
+	remainder.Mod(&elapsedNanos, big.NewInt(int64(every)))
+
+	return every - time.Duration(remainder.Int64())
 }
 
 // Occurrences counts the fire times in the half-open interval (from, to],
