@@ -17,20 +17,26 @@ type OutboundRegistry struct {
 // application-provided overlays. The engine powers the script scheme's
 // signing runtimes.
 func NewOutboundRegistry(engine *js.Engine, cfg *config.IntegrationConfig, appSchemes []integration.OutboundAuthScheme) *OutboundRegistry {
-	builtins := builtinOutboundSchemes(engine, cfg.EffectiveRunTimeout())
-	schemes := make(map[string]integration.OutboundAuthScheme, len(builtins)+len(appSchemes))
+	return &OutboundRegistry{schemes: overlayByName(builtinOutboundSchemes(engine, cfg.EffectiveRunTimeout()), appSchemes)}
+}
+
+// overlayByName indexes the built-in schemes by name and overlays the
+// application-provided ones on top, so a matching name replaces the built-in.
+// Nil group entries (fx optional placeholders) are skipped.
+func overlayByName[S interface{ Name() string }](builtins, overlays []S) map[string]S {
+	schemes := make(map[string]S, len(builtins)+len(overlays))
 
 	for _, scheme := range builtins {
 		schemes[scheme.Name()] = scheme
 	}
 
-	for _, scheme := range appSchemes {
-		if scheme != nil {
+	for _, scheme := range overlays {
+		if any(scheme) != nil {
 			schemes[scheme.Name()] = scheme
 		}
 	}
 
-	return &OutboundRegistry{schemes: schemes}
+	return schemes
 }
 
 // Get returns the scheme registered under name.

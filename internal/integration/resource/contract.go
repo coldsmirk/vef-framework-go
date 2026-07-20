@@ -54,10 +54,6 @@ type ContractResource struct {
 // NewContractResource creates the contract management resource. Schemas are
 // compiled at save time so a broken contract never reaches an invocation.
 func NewContractResource() api.Resource {
-	validate := func(model *integration.Contract) error {
-		return definition.ValidateContract(model)
-	}
-
 	return &ContractResource{
 		Resource: api.NewRPCResource("integration/contract"),
 		FindPage: crud.NewFindPage[integration.Contract, ContractSearch]().
@@ -69,12 +65,12 @@ func NewContractResource() api.Resource {
 		Create: crud.NewCreate[integration.Contract, ContractParams]().
 			RequiredPermission("integration.contract.create").
 			WithPreCreate(func(model *integration.Contract, _ *ContractParams, _ orm.InsertQuery, _ fiber.Ctx, _ orm.DB) error {
-				return validate(model)
+				return definition.ValidateContract(model)
 			}),
 		Update: crud.NewUpdate[integration.Contract, ContractParams]().
 			RequiredPermission("integration.contract.update").
 			WithPreUpdate(func(_, model *integration.Contract, _ *ContractParams, _ orm.UpdateQuery, _ fiber.Ctx, _ orm.DB) error {
-				return validate(model)
+				return definition.ValidateContract(model)
 			}),
 		Delete: crud.NewDelete[integration.Contract]().
 			RequiredPermission("integration.contract.delete").

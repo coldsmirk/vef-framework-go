@@ -2,7 +2,6 @@ package exec
 
 import (
 	"encoding/json"
-	"sync"
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/hashx"
@@ -30,9 +29,7 @@ type clientFactory struct {
 	registry        *auth.OutboundRegistry
 	codec           *definition.SecretCodec
 	maxResponseBody int64
-
-	mu    sync.Mutex
-	cache *lru.Cache[*httpx.Client]
+	cache           *lru.Synced[*httpx.Client]
 }
 
 func newClientFactory(registry *auth.OutboundRegistry, codec *definition.SecretCodec, maxResponseBody int64) *clientFactory {
@@ -40,35 +37,21 @@ func newClientFactory(registry *auth.OutboundRegistry, codec *definition.SecretC
 		registry:        registry,
 		codec:           codec,
 		maxResponseBody: maxResponseBody,
-		cache:           lru.New[*httpx.Client](clientCacheCapacity),
+		cache:           lru.NewSynced[*httpx.Client](clientCacheCapacity),
 	}
 }
 
 // ClientFor returns the client for system, building it on first sight. The
 // errors it returns are integration API errors ready to surface.
 func (f *clientFactory) ClientFor(system *integration.System) (*httpx.Client, error) {
-	key := clientKey(system)
-
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	if client, ok := f.cache.Get(key); ok {
-		return client, nil
-	}
-
-	client, err := f.build(system)
-	if err != nil {
-		return nil, err
-	}
-
-	f.cache.Put(key, client)
-
-	return client, nil
+	return f.cache.GetOrBuild(clientKey(system), func() (*httpx.Client, error) {
+		return f.build(system)
+	})
 }
 
-// CallTimeout returns the per-request timeout of system's client, the bound
+// callTimeout returns the per-request timeout of system's client, the bound
 // script-supplied request timeouts may only shorten.
-func CallTimeout(system *integration.System) time.Duration {
+func callTimeout(system *integration.System) time.Duration {
 	if system.TimeoutMs > 0 {
 		return time.Duration(system.TimeoutMs) * time.Millisecond
 	}
@@ -86,7 +69,7 @@ func (f *clientFactory) build(system *integration.System) (*httpx.Client, error)
 
 	opts := []httpx.Option{
 		httpx.WithBaseURL(system.BaseURL),
-		httpx.WithTimeout(CallTimeout(system)),
+		httpx.WithTimeout(callTimeout(system)),
 	}
 
 	if f.maxResponseBody > 0 {
@@ -135,7 +118,7 @@ func (f *clientFactory) RedactValues(system *integration.System) []string {
 		return nil
 	}
 
-	return definition.SensitiveValues(scheme.SensitiveParams(), decrypted.Params)
+	return definition.SensitiveValues(scheme, decrypted.Params)
 }
 
 // clientKey derives the cache key from every field that shapes the client.

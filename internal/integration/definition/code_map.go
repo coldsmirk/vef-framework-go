@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"sync"
 
 	"github.com/coldsmirk/vef-framework-go/hashx"
 	"github.com/coldsmirk/vef-framework-go/integration"
@@ -198,13 +197,12 @@ func (idx *CodeMapIndex) FallbackExternal() any {
 // affects lookup semantics, so editing a code map invalidates its entry
 // implicitly and unchanged maps never rebuild.
 type CodeMapIndexCache struct {
-	mu    sync.Mutex
-	cache *lru.Cache[*CodeMapIndex]
+	cache *lru.Synced[*CodeMapIndex]
 }
 
 // NewCodeMapIndexCache creates an empty compiled-index cache.
 func NewCodeMapIndexCache() *CodeMapIndexCache {
-	return &CodeMapIndexCache{cache: lru.New[*CodeMapIndex](codeMapCacheCapacity)}
+	return &CodeMapIndexCache{cache: lru.NewSynced[*CodeMapIndex](codeMapCacheCapacity)}
 }
 
 // Get returns the compiled index for m, building and caching it on first
@@ -220,21 +218,7 @@ func (c *CodeMapIndexCache) Get(m *integration.CodeMap) (*CodeMapIndex, error) {
 		return nil, err
 	}
 
-	key := hashx.SHA256(string(content))
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if idx, ok := c.cache.Get(key); ok {
-		return idx, nil
-	}
-
-	idx, err := BuildCodeMapIndex(m)
-	if err != nil {
-		return nil, err
-	}
-
-	c.cache.Put(key, idx)
-
-	return idx, nil
+	return c.cache.GetOrBuild(hashx.SHA256Bytes(content), func() (*CodeMapIndex, error) {
+		return BuildCodeMapIndex(m)
+	})
 }

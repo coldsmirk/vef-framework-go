@@ -58,49 +58,7 @@ type SystemResource struct {
 // NewSystemResource creates the system management resource.
 func NewSystemResource(registry *auth.OutboundRegistry, inboundRegistry *auth.InboundRegistry, codec *definition.SecretCodec, invoker *exec.Invoker) api.Resource {
 	seal := func(model, prior *integration.System) error {
-		var scheme integration.OutboundAuthScheme
-
-		if model.OutboundAuth != nil {
-			var ok bool
-			if scheme, ok = registry.Resolve(model.OutboundAuth); !ok {
-				return integration.ErrUnknownAuthScheme(model.OutboundAuth.Scheme)
-			}
-		}
-
-		if err := auth.ValidateOutboundAuth(model.OutboundAuth); err != nil {
-			return err
-		}
-
-		if err := auth.ValidateInboundAuth(inboundRegistry, model.InboundAuth); err != nil {
-			return err
-		}
-
-		var priorAuth *integration.OutboundAuthConfig
-
-		var priorInbound *integration.InboundAuthConfig
-
-		var priorDS *integration.DataSourceConfig
-
-		if prior != nil {
-			priorAuth, priorInbound, priorDS = prior.OutboundAuth, prior.InboundAuth, prior.DataSource
-		}
-
-		if err := codec.EncryptOutboundAuth(scheme, model.OutboundAuth, priorAuth); err != nil {
-			return integration.ErrInvalidAuthParams(err.Error())
-		}
-
-		if model.InboundAuth != nil {
-			inboundScheme, _ := inboundRegistry.Resolve(model.InboundAuth)
-			if err := codec.EncryptInboundAuth(inboundScheme, model.InboundAuth, priorInbound); err != nil {
-				return integration.ErrInvalidAuthParams(err.Error())
-			}
-		}
-
-		if err := codec.EncryptDataSource(model.DataSource, priorDS); err != nil {
-			return integration.ErrInvalidDataSource(err.Error())
-		}
-
-		return definition.ValidateSystem(registry, codec, model)
+		return sealSystem(registry, inboundRegistry, codec, model, prior)
 	}
 
 	mask := func(models []integration.System, _ SystemSearch, _ fiber.Ctx) any {
@@ -159,4 +117,52 @@ func NewSystemResource(registry *auth.OutboundRegistry, inboundRegistry *auth.In
 				return nil
 			}),
 	}
+}
+
+// sealSystem validates a system and encrypts its secrets before persistence.
+// Each auth scheme is resolved exactly once and shared between structural
+// validation and encryption; encryption runs before ValidateSystem, which
+// expects params in their persisted form.
+func sealSystem(registry *auth.OutboundRegistry, inboundRegistry *auth.InboundRegistry, codec *definition.SecretCodec, model, prior *integration.System) error {
+	var scheme integration.OutboundAuthScheme
+
+	if model.OutboundAuth != nil {
+		var ok bool
+		if scheme, ok = registry.Resolve(model.OutboundAuth); !ok {
+			return integration.ErrUnknownAuthScheme(model.OutboundAuth.Scheme)
+		}
+	}
+
+	if err := auth.ValidateOutboundAuth(model.OutboundAuth); err != nil {
+		return err
+	}
+
+	inboundScheme, err := auth.ValidateInboundAuth(inboundRegistry, model.InboundAuth)
+	if err != nil {
+		return err
+	}
+
+	var priorAuth *integration.OutboundAuthConfig
+
+	var priorInbound *integration.InboundAuthConfig
+
+	var priorDS *integration.DataSourceConfig
+
+	if prior != nil {
+		priorAuth, priorInbound, priorDS = prior.OutboundAuth, prior.InboundAuth, prior.DataSource
+	}
+
+	if err := codec.EncryptOutboundAuth(scheme, model.OutboundAuth, priorAuth); err != nil {
+		return integration.ErrInvalidAuthParams(err.Error())
+	}
+
+	if err := codec.EncryptInboundAuth(inboundScheme, model.InboundAuth, priorInbound); err != nil {
+		return integration.ErrInvalidAuthParams(err.Error())
+	}
+
+	if err := codec.EncryptDataSource(model.DataSource, priorDS); err != nil {
+		return integration.ErrInvalidDataSource(err.Error())
+	}
+
+	return definition.ValidateSystem(scheme, codec, model)
 }

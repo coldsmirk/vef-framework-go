@@ -2,6 +2,7 @@ package exec
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -84,7 +85,8 @@ func (r *Receiver) Receive(ctx context.Context, req *integration.InboundRequest)
 		return nil, err
 	}
 
-	if err := r.verify(ctx, system, req); err != nil {
+	redact, err := r.verify(ctx, system, req)
+	if err != nil {
 		r.recordRejection(req, err)
 
 		return nil, integration.ErrInboundAuthFailed
@@ -111,6 +113,13 @@ func (r *Receiver) Receive(ctx context.Context, req *integration.InboundRequest)
 	reply, kind, deliverErr := r.run(ctx, delivery, adapter)
 	duration := time.Since(start)
 
+	// The trace exists only for the invocation log; skip its capture work
+	// when the log mode will drop the entry anyway.
+	var trace []integration.HTTPExchange
+	if inv.recorder.ShouldRecord(kind) {
+		trace = r.trace(req, reply, redact)
+	}
+
 	inv.finish(ctx, &outcome{
 		system:    system.Code,
 		contract:  contract.Code,
@@ -120,7 +129,7 @@ func (r *Receiver) Receive(ctx context.Context, req *integration.InboundRequest)
 		duration:  duration,
 		input:     delivery.dispatchedInput(),
 		output:    delivery.dispatchedOutput(),
-		trace:     r.trace(req, reply, r.inboundRedactValues(system)),
+		trace:     trace,
 	})
 
 	if deliverErr != nil {
@@ -132,18 +141,25 @@ func (r *Receiver) Receive(ctx context.Context, req *integration.InboundRequest)
 
 // verify authenticates the request against the system's inbound auth
 // configuration, fail closed: a system without one refuses inbound delivery.
-func (r *Receiver) verify(ctx context.Context, system *integration.System, req *integration.InboundRequest) error {
+// On success it returns the presented credential values so the trace scrubs
+// them out of the invocation log — the multi-pair and script schemes carry
+// credentials under names the static mask set cannot know.
+func (r *Receiver) verify(ctx context.Context, system *integration.System, req *integration.InboundRequest) ([]string, error) {
 	scheme, ok := r.schemes.Resolve(system.InboundAuth)
 	if !ok {
-		return fmt.Errorf("%w: inbound auth scheme", auth.ErrMissingParam)
+		return nil, fmt.Errorf("%w: inbound auth scheme", auth.ErrMissingParam)
 	}
 
 	decrypted, err := r.codec.DecryptInboundAuth(scheme, system.InboundAuth)
 	if err != nil {
-		return fmt.Errorf("%w: inbound auth params: %w", auth.ErrMissingParam, err)
+		return nil, fmt.Errorf("%w: inbound auth params: %w", auth.ErrMissingParam, err)
 	}
 
-	return scheme.Verify(ctx, req, decrypted)
+	if err := scheme.Verify(ctx, req, decrypted); err != nil {
+		return nil, err
+	}
+
+	return definition.SensitiveValues(scheme, decrypted.Params), nil
 }
 
 // recordRejection folds a verification failure into statistics only. Rejected
@@ -389,39 +405,26 @@ func (r *Receiver) runTimeout(adapter *integration.Adapter) time.Duration {
 }
 
 // trace renders the caller-side view of the delivery as one wire exchange,
-// masked and truncated by the shared capture policy. Status stays zero — the
-// pipeline is protocol-blind and never interprets the reply.
+// pushed through the shared collector so masking, truncation, and credential
+// scrubbing stay identical to the outbound capture path. Status stays zero —
+// the pipeline is protocol-blind and never interprets the reply.
 func (r *Receiver) trace(req *integration.InboundRequest, reply any, redact []string) []integration.HTTPExchange {
-	capturer := r.invoker.capturer
-
 	exchange := integration.HTTPExchange{
 		Method:         req.Method,
-		URL:            redactSecrets(capturer.maskURL(req.Path), redact),
-		RequestHeaders: redactHeaderSecrets(capturer.maskHeaderMap(req.Headers), redact),
-		RequestBody:    redactSecrets(capturer.captureBody(string(req.Body)), redact),
+		URL:            req.Path,
+		RequestHeaders: req.Headers,
+		RequestBody:    string(req.Body),
 	}
 
 	if reply != nil {
-		exchange.ResponseBody = redactSecrets(capturer.captureBody(string(capturer.captureValue(reply))), redact)
+		// The reply is post-canonicalize JSON-shaped, so encoding cannot fail.
+		if data, err := json.Marshal(reply); err == nil {
+			exchange.ResponseBody = string(data)
+		}
 	}
 
-	return []integration.HTTPExchange{exchange}
-}
+	collector := newTraceCollector(r.invoker.capturer, redact)
+	collector.record(exchange)
 
-// inboundRedactValues returns the system's inbound credential values so the
-// trace scrubs the credentials the caller presented on an accepted delivery
-// out of the invocation log. A resolution or decryption fault yields nothing —
-// a delivery reaching the trace already verified against these params.
-func (r *Receiver) inboundRedactValues(system *integration.System) []string {
-	scheme, ok := r.schemes.Resolve(system.InboundAuth)
-	if !ok {
-		return nil
-	}
-
-	decrypted, err := r.codec.DecryptInboundAuth(scheme, system.InboundAuth)
-	if err != nil {
-		return nil
-	}
-
-	return definition.SensitiveValues(scheme.SensitiveParams(), decrypted.Params)
+	return collector.Exchanges()
 }

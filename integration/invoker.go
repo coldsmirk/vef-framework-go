@@ -105,13 +105,19 @@ func (r *Result) Output() any {
 
 // Decode unmarshals the output into v through a JSON round-trip.
 func (r *Result) Decode(v any) error {
-	data, err := json.Marshal(r.output)
+	return remarshal(r.output, v, "result output")
+}
+
+// remarshal moves src into dst through a JSON round-trip; what names the
+// payload in error messages.
+func remarshal(src, dst any, what string) error {
+	data, err := json.Marshal(src)
 	if err != nil {
-		return fmt.Errorf("integration: encode result output: %w", err)
+		return fmt.Errorf("integration: encode %s: %w", what, err)
 	}
 
-	if err := json.Unmarshal(data, v); err != nil {
-		return fmt.Errorf("integration: decode result output: %w", err)
+	if err := json.Unmarshal(data, dst); err != nil {
+		return fmt.Errorf("integration: decode %s: %w", what, err)
 	}
 
 	return nil

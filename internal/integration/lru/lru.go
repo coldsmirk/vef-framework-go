@@ -1,6 +1,9 @@
 package lru
 
-import "container/list"
+import (
+	"container/list"
+	"sync"
+)
 
 // Cache is a minimal string-keyed LRU cache shared by the integration
 // module's content-hash caches. It is not safe for concurrent use; owners
@@ -59,4 +62,40 @@ func (c *Cache[V]) Put(key string, value V) {
 	}
 
 	c.entries[key] = c.order.PushFront(&entry[V]{key: key, value: value})
+}
+
+// Synced is a mutex-guarded Cache with a get-or-build fast path — the access
+// pattern every integration content-hash cache (compiled programs, resolved
+// schemas, code map indexes, per-system clients) shares.
+type Synced[V any] struct {
+	mu    sync.Mutex
+	cache *Cache[V]
+}
+
+// NewSynced creates a synchronized cache bounded to capacity entries.
+func NewSynced[V any](capacity int) *Synced[V] {
+	return &Synced[V]{cache: New[V](capacity)}
+}
+
+// GetOrBuild returns the value cached under key, building and caching it on
+// first sight. Build runs under the cache lock, so concurrent misses never
+// build the same entry twice.
+func (s *Synced[V]) GetOrBuild(key string, build func() (V, error)) (V, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if value, ok := s.cache.Get(key); ok {
+		return value, nil
+	}
+
+	value, err := build()
+	if err != nil {
+		var zero V
+
+		return zero, err
+	}
+
+	s.cache.Put(key, value)
+
+	return value, nil
 }

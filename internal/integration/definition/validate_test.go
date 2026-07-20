@@ -212,7 +212,14 @@ func TestValidateSystem(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := definition.ValidateSystem(registry, codec, &tt.system)
+			// Resolve like the save path does: an unknown scheme hands a nil
+			// scheme to ValidateSystem.
+			var scheme integration.OutboundAuthScheme
+			if tt.system.OutboundAuth != nil {
+				scheme, _ = registry.Resolve(tt.system.OutboundAuth)
+			}
+
+			err := definition.ValidateSystem(scheme, codec, &tt.system)
 
 			if tt.wantErr == nil {
 				assert.NoError(t, err, "System should validate")

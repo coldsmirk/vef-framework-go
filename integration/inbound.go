@@ -2,8 +2,6 @@ package integration
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 )
 
 // InboundRequest is the protocol-neutral envelope an inbound gateway builds
@@ -62,14 +60,9 @@ func (h *typedInboundHandler[I, O]) Contract() string {
 // Handle decodes the input into the typed model and delegates to the wrapped
 // function.
 func (h *typedInboundHandler[I, O]) Handle(ctx context.Context, input any) (any, error) {
-	payload, err := json.Marshal(input)
-	if err != nil {
-		return nil, fmt.Errorf("integration: encode inbound input: %w", err)
-	}
-
 	var typed I
-	if err := json.Unmarshal(payload, &typed); err != nil {
-		return nil, fmt.Errorf("integration: decode inbound input: %w", err)
+	if err := remarshal(input, &typed, "inbound input"); err != nil {
+		return nil, err
 	}
 
 	return h.handle(ctx, typed)

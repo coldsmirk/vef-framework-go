@@ -9,13 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// OutboundAuthSchemeResolver is the validator's view of the outbound scheme registry;
-// keeping it consumer-side avoids an import cycle with the auth package.
-type OutboundAuthSchemeResolver interface {
-	// Resolve returns the scheme for cfg, ok=false for an unknown name.
-	Resolve(cfg *integration.OutboundAuthConfig) (integration.OutboundAuthScheme, bool)
-}
-
 // ValidateContract rejects a contract whose input or output schema does not
 // compile, so a broken schema fails at save time instead of on the first
 // invocation.
@@ -40,10 +33,12 @@ func ValidateContract(contract *integration.Contract) error {
 }
 
 // ValidateSystem rejects a system whose base URL is not absolute or whose
-// auth config references an unknown scheme or fails the scheme's own
-// parameter validation. Auth params must already be in their persisted form
-// (EncryptOutboundAuth applied) so masked placeholders have been resolved.
-func ValidateSystem(registry OutboundAuthSchemeResolver, codec *SecretCodec, system *integration.System) error {
+// auth config fails the scheme's own parameter validation. Scheme is the
+// resolved outbound scheme of system.OutboundAuth (nil when unresolved — the
+// caller resolves once for validation and encryption alike). Auth params
+// must already be in their persisted form (EncryptOutboundAuth applied) so
+// masked placeholders have been resolved.
+func ValidateSystem(scheme integration.OutboundAuthScheme, codec *SecretCodec, system *integration.System) error {
 	if system.BaseURL != "" {
 		parsed, err := url.Parse(system.BaseURL)
 		if err != nil || !parsed.IsAbs() {
@@ -69,8 +64,7 @@ func ValidateSystem(registry OutboundAuthSchemeResolver, codec *SecretCodec, sys
 		return nil
 	}
 
-	scheme, ok := registry.Resolve(system.OutboundAuth)
-	if !ok {
+	if scheme == nil {
 		return integration.ErrUnknownAuthScheme(system.OutboundAuth.Scheme)
 	}
 

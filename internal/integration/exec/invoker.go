@@ -16,7 +16,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/js"
 	"github.com/coldsmirk/vef-framework-go/js/jssql"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // Invoker executes integration calls end to end: target resolution, input
@@ -290,7 +289,7 @@ func (inv *Invoker) newRuntime(ctx context.Context, e *execution) (*js.Runtime, 
 			return nil, err
 		}
 
-		libs = append(libs, newHTTPLib(client, CallTimeout(e.system), envelope))
+		libs = append(libs, newHTTPLib(client, callTimeout(e.system), envelope))
 	}
 
 	if e.system.DataSource != nil {
@@ -413,7 +412,8 @@ type outcome struct {
 }
 
 // finish folds one invocation outcome into statistics and the invocation
-// log.
+// log. The masked captures are only assembled when the log mode will keep
+// them.
 func (inv *Invoker) finish(ctx context.Context, o *outcome) {
 	message := ""
 	if o.err != nil {
@@ -421,6 +421,10 @@ func (inv *Invoker) finish(ctx context.Context, o *outcome) {
 	}
 
 	inv.stats.Record(o.system, o.contract, o.direction, o.kind, message, o.duration)
+
+	if !inv.recorder.ShouldRecord(o.kind) {
+		return
+	}
 
 	entry := &integration.InvocationLog{
 		SystemCode:   o.system,
@@ -479,19 +483,11 @@ func canonicalize(v any) (any, error) {
 
 // loadContract fetches an enabled contract by code.
 func (inv *Invoker) loadContract(ctx context.Context, code string) (*integration.Contract, error) {
-	contract := new(integration.Contract)
-
-	err := inv.db.NewSelect().
-		Model(contract).
-		Where(func(cb orm.ConditionBuilder) {
+	contract, err := definition.FindOne[integration.Contract](ctx, inv.db, integration.ErrContractNotFound,
+		func(cb orm.ConditionBuilder) {
 			cb.Equals("code", code)
-		}).
-		Scan(ctx)
+		})
 	if err != nil {
-		if errors.Is(err, result.ErrRecordNotFound) {
-			return nil, integration.ErrContractNotFound
-		}
-
 		return nil, err
 	}
 
@@ -504,19 +500,11 @@ func (inv *Invoker) loadContract(ctx context.Context, code string) (*integration
 
 // loadSystem fetches an enabled system by code.
 func (inv *Invoker) loadSystem(ctx context.Context, code string) (*integration.System, error) {
-	system := new(integration.System)
-
-	err := inv.db.NewSelect().
-		Model(system).
-		Where(func(cb orm.ConditionBuilder) {
+	system, err := definition.FindOne[integration.System](ctx, inv.db, integration.ErrSystemNotFound,
+		func(cb orm.ConditionBuilder) {
 			cb.Equals("code", code)
-		}).
-		Scan(ctx)
+		})
 	if err != nil {
-		if errors.Is(err, result.ErrRecordNotFound) {
-			return nil, integration.ErrSystemNotFound
-		}
-
 		return nil, err
 	}
 
@@ -530,21 +518,13 @@ func (inv *Invoker) loadSystem(ctx context.Context, code string) (*integration.S
 // loadAdapter fetches the enabled adapter binding system to contract in the
 // given flow direction.
 func (inv *Invoker) loadAdapter(ctx context.Context, systemID, contractID string, direction integration.Direction) (*integration.Adapter, error) {
-	adapter := new(integration.Adapter)
-
-	err := inv.db.NewSelect().
-		Model(adapter).
-		Where(func(cb orm.ConditionBuilder) {
+	adapter, err := definition.FindOne[integration.Adapter](ctx, inv.db, integration.ErrAdapterNotFound,
+		func(cb orm.ConditionBuilder) {
 			cb.Equals("system_id", systemID).
 				Equals("contract_id", contractID).
 				Equals("direction", direction)
-		}).
-		Scan(ctx)
+		})
 	if err != nil {
-		if errors.Is(err, result.ErrRecordNotFound) {
-			return nil, integration.ErrAdapterNotFound
-		}
-
 		return nil, err
 	}
 

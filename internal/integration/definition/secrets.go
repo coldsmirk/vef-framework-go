@@ -64,21 +64,15 @@ type secretScheme interface {
 	SensitiveParams() []string
 }
 
-// sensitiveNames resolves a scheme's sensitivity declaration against the
-// actual parameters: a nil scheme (no longer registered) and the SensitiveAll
-// wildcard both select every parameter — fail closed.
+// sensitiveNames resolves a scheme's sensitivity declaration into the
+// concrete parameter names: a nil scheme (no longer registered) and the
+// SensitiveAll wildcard both select every parameter — fail closed.
 func sensitiveNames(scheme secretScheme, params map[string]string) []string {
 	declared := []string{integration.SensitiveAll}
 	if scheme != nil {
 		declared = scheme.SensitiveParams()
 	}
 
-	return resolveSensitiveNames(declared, params)
-}
-
-// resolveSensitiveNames turns a sensitivity declaration into the concrete
-// parameter names present: the SensitiveAll wildcard selects every parameter.
-func resolveSensitiveNames(declared []string, params map[string]string) []string {
 	if slices.Contains(declared, integration.SensitiveAll) {
 		return slices.Collect(maps.Keys(params))
 	}
@@ -86,13 +80,13 @@ func resolveSensitiveNames(declared []string, params map[string]string) []string
 	return declared
 }
 
-// SensitiveValues returns the non-empty values of the parameters declared
-// sensitive (SensitiveAll selecting every parameter). Wire captures scrub
-// these values so a credential never lands in the invocation log or dry-run
-// trace under whatever header or query name a scheme carries it — the point
-// masking by a fixed name set cannot reach.
-func SensitiveValues(declared []string, params map[string]string) []string {
-	names := resolveSensitiveNames(declared, params)
+// SensitiveValues returns the non-empty values of the parameters the scheme
+// declares sensitive (a nil scheme selecting every parameter — fail closed).
+// Wire captures scrub these values so a credential never lands in the
+// invocation log or dry-run trace under whatever header or query name a
+// scheme carries it — the point masking by a fixed name set cannot reach.
+func SensitiveValues(scheme secretScheme, params map[string]string) []string {
+	names := sensitiveNames(scheme, params)
 	values := make([]string, 0, len(names))
 
 	for _, name := range names {
@@ -205,8 +199,8 @@ func (c *SecretCodec) encryptParams(scheme secretScheme, params, prior map[strin
 		}
 
 		if value == integration.MaskedSecret {
-			stored, ok := priorParam(prior, name)
-			if !ok {
+			stored := prior[name]
+			if stored == "" {
 				return fmt.Errorf("%w: %s", ErrMaskedSecretWithoutPrior, name)
 			}
 
@@ -355,14 +349,4 @@ func (c *SecretCodec) decryptValue(value string) (string, error) {
 	}
 
 	return c.cipher.Decrypt(payload)
-}
-
-// priorParam looks up a stored parameter value on the prior params.
-func priorParam(prior map[string]string, name string) (string, bool) {
-	value, ok := prior[name]
-	if !ok || value == "" {
-		return "", false
-	}
-
-	return value, true
 }

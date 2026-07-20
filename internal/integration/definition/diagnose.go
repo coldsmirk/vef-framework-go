@@ -3,6 +3,8 @@ package definition
 import (
 	"context"
 
+	"github.com/coldsmirk/go-collections"
+
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -18,7 +20,7 @@ type routingState struct {
 	routes    []integration.Route
 	contracts map[string]*integration.Contract
 	systems   map[string]*integration.System
-	adapters  map[adapterKey]struct{}
+	adapters  collections.Set[adapterKey]
 }
 
 // DiagnoseRoutes analyses the routing table against contracts, systems, and
@@ -50,7 +52,7 @@ func loadRoutingState(ctx context.Context, db orm.DB) (*routingState, error) {
 	state := &routingState{
 		contracts: make(map[string]*integration.Contract),
 		systems:   make(map[string]*integration.System),
-		adapters:  make(map[adapterKey]struct{}),
+		adapters:  collections.NewHashSet[adapterKey](),
 	}
 
 	err := db.NewSelect().
@@ -97,7 +99,7 @@ func loadRoutingState(ctx context.Context, db orm.DB) (*routingState, error) {
 	}
 
 	for _, adapter := range adapters {
-		state.adapters[adapterKey{systemID: adapter.SystemID, contractID: adapter.ContractID}] = struct{}{}
+		state.adapters.Add(adapterKey{systemID: adapter.SystemID, contractID: adapter.ContractID})
 	}
 
 	return state, nil
@@ -129,7 +131,7 @@ func diagnoseRoute(state *routingState, route *integration.Route, report *integr
 			report.Findings = append(report.Findings, finding(integration.RouteFindingDisabledContract, route, contract, system))
 		}
 
-		if _, ok := state.adapters[adapterKey{systemID: system.ID, contractID: contract.ID}]; !ok {
+		if !state.adapters.Contains(adapterKey{systemID: system.ID, contractID: contract.ID}) {
 			report.Findings = append(report.Findings, finding(integration.RouteFindingDanglingAdapter, route, contract, system))
 		}
 
@@ -141,7 +143,7 @@ func diagnoseRoute(state *routingState, route *integration.Route, report *integr
 			continue
 		}
 
-		if _, ok := state.adapters[adapterKey{systemID: system.ID, contractID: wildcardContract.ID}]; !ok {
+		if !state.adapters.Contains(adapterKey{systemID: system.ID, contractID: wildcardContract.ID}) {
 			report.Findings = append(report.Findings, finding(integration.RouteFindingWildcardGap, route, wildcardContract, system))
 		}
 	}
@@ -151,36 +153,32 @@ func diagnoseRoute(state *routingState, route *integration.Route, report *integr
 // enabled contracts that resolve to no rule: an exact rule for the contract
 // or a wildcard rule under the same key covers it.
 func diagnoseCoverage(state *routingState, report *integration.RouteDiagnostics) {
-	exact := make(map[string]map[string]struct{})
-	wildcard := make(map[string]struct{})
+	exact := make(map[string]collections.Set[string])
+	wildcard := collections.NewHashSet[string]()
 
 	for i := range state.routes {
 		route := &state.routes[i]
 
 		if route.ContractID == "" {
-			wildcard[route.RouteKey] = struct{}{}
+			wildcard.Add(route.RouteKey)
 
 			continue
 		}
 
 		if exact[route.RouteKey] == nil {
-			exact[route.RouteKey] = make(map[string]struct{})
+			exact[route.RouteKey] = collections.NewHashSet[string]()
 		}
 
-		exact[route.RouteKey][route.ContractID] = struct{}{}
+		exact[route.RouteKey].Add(route.ContractID)
 	}
 
 	for key, contracts := range exact {
-		if _, ok := wildcard[key]; ok {
+		if wildcard.Contains(key) {
 			continue
 		}
 
 		for _, contract := range state.contracts {
-			if !contract.IsEnabled {
-				continue
-			}
-
-			if _, ok := contracts[contract.ID]; ok {
+			if !contract.IsEnabled || contracts.Contains(contract.ID) {
 				continue
 			}
 
@@ -195,21 +193,20 @@ func diagnoseCoverage(state *routingState, report *integration.RouteDiagnostics)
 }
 
 // finding assembles one route-anchored finding with its entity snapshots.
+// System is always resolved by the callers; contract is nil for the
+// system-level finding of a wildcard route.
 func finding(kind integration.RouteFindingKind, route *integration.Route, contract *integration.Contract, system *integration.System) integration.RouteFinding {
 	f := integration.RouteFinding{
-		Kind:     kind,
-		RouteID:  route.ID,
-		RouteKey: route.RouteKey,
+		Kind:       kind,
+		RouteID:    route.ID,
+		RouteKey:   route.RouteKey,
+		SystemCode: system.Code,
+		SystemName: system.Name,
 	}
 
 	if contract != nil {
 		f.ContractCode = contract.Code
 		f.ContractName = contract.Name
-	}
-
-	if system != nil {
-		f.SystemCode = system.Code
-		f.SystemName = system.Name
 	}
 
 	return f

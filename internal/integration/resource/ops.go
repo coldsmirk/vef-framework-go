@@ -3,7 +3,6 @@ package resource
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -93,21 +92,9 @@ func NewOpsResource(invoker *exec.Invoker, receiver *exec.Receiver) api.Resource
 // output, the failure classification, and the full wire trace. The calls it
 // makes are real; nothing is recorded to statistics or the invocation log.
 func (r *OpsResource) DryRun(ctx fiber.Ctx, db orm.DB, params DryRunParams) error {
-	contract, err := findByCode[integration.Contract](ctx.Context(), db, params.ContractCode, integration.ErrContractNotFound)
+	contract, system, script, err := dryRunTarget(ctx.Context(), db, params.SystemCode, params.ContractCode, params.Script, integration.DirectionOutbound)
 	if err != nil {
 		return err
-	}
-
-	system, err := findByCode[integration.System](ctx.Context(), db, params.SystemCode, integration.ErrSystemNotFound)
-	if err != nil {
-		return err
-	}
-
-	script := params.Script
-	if script == "" {
-		if script, err = r.savedScript(ctx.Context(), db, system, contract, integration.DirectionOutbound); err != nil {
-			return err
-		}
 	}
 
 	var input any
@@ -125,21 +112,9 @@ func (r *OpsResource) DryRun(ctx fiber.Ctx, db orm.DB, params DryRunParams) erro
 // Nothing runs against business code and nothing is recorded; verification is
 // bypassed — the console tests translation, not credentials.
 func (r *OpsResource) DryRunInbound(ctx fiber.Ctx, db orm.DB, params DryRunInboundParams) error {
-	contract, err := findByCode[integration.Contract](ctx.Context(), db, params.ContractCode, integration.ErrContractNotFound)
+	contract, system, script, err := dryRunTarget(ctx.Context(), db, params.SystemCode, params.ContractCode, params.Script, integration.DirectionInbound)
 	if err != nil {
 		return err
-	}
-
-	system, err := findByCode[integration.System](ctx.Context(), db, params.SystemCode, integration.ErrSystemNotFound)
-	if err != nil {
-		return err
-	}
-
-	script := params.Script
-	if script == "" {
-		if script, err = r.savedScript(ctx.Context(), db, system, contract, integration.DirectionInbound); err != nil {
-			return err
-		}
 	}
 
 	var handlerOutput any
@@ -201,48 +176,42 @@ func (r *OpsResource) TestConnection(ctx fiber.Ctx, db orm.DB, params TestConnec
 	return result.Ok(check).Response(ctx)
 }
 
-// savedScript loads the script of the adapter binding system to contract in
-// the given flow direction.
-func (*OpsResource) savedScript(ctx context.Context, db orm.DB, system *integration.System, contract *integration.Contract, direction integration.Direction) (string, error) {
-	adapter := new(integration.Adapter)
-
-	err := db.NewSelect().
-		Model(adapter).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("system_id", system.ID).
-				Equals("contract_id", contract.ID).
-				Equals("direction", direction)
-		}).
-		Scan(ctx)
+// dryRunTarget loads the contract and system of a dry run by code, falling
+// back to the saved adapter script of the given direction when the caller
+// submitted none. Disabled definitions are intentionally accepted — testing
+// precedes enabling.
+func dryRunTarget(ctx context.Context, db orm.DB, systemCode, contractCode, script string, direction integration.Direction) (*integration.Contract, *integration.System, string, error) {
+	contract, err := findByCode[integration.Contract](ctx, db, contractCode, integration.ErrContractNotFound)
 	if err != nil {
-		if errors.Is(err, result.ErrRecordNotFound) {
-			return "", integration.ErrAdapterNotFound
-		}
-
-		return "", err
+		return nil, nil, "", err
 	}
 
-	return adapter.Script, nil
+	system, err := findByCode[integration.System](ctx, db, systemCode, integration.ErrSystemNotFound)
+	if err != nil {
+		return nil, nil, "", err
+	}
+
+	if script == "" {
+		adapter, err := definition.FindOne[integration.Adapter](ctx, db, integration.ErrAdapterNotFound,
+			func(cb orm.ConditionBuilder) {
+				cb.Equals("system_id", system.ID).
+					Equals("contract_id", contract.ID).
+					Equals("direction", direction)
+			})
+		if err != nil {
+			return nil, nil, "", err
+		}
+
+		script = adapter.Script
+	}
+
+	return contract, system, script, nil
 }
 
 // findByCode loads a definition by its unique code, mapping a missing row to
 // notFound. Disabled definitions are intentionally returned.
 func findByCode[T any](ctx context.Context, db orm.DB, code string, notFound error) (*T, error) {
-	model := new(T)
-
-	err := db.NewSelect().
-		Model(model).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("code", code)
-		}).
-		Scan(ctx)
-	if err != nil {
-		if errors.Is(err, result.ErrRecordNotFound) {
-			return nil, notFound
-		}
-
-		return nil, err
-	}
-
-	return model, nil
+	return definition.FindOne[T](ctx, db, notFound, func(cb orm.ConditionBuilder) {
+		cb.Equals("code", code)
+	})
 }

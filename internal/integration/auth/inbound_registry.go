@@ -19,27 +19,7 @@ type InboundRegistry struct {
 // application-provided overlays. The engine powers the built-in script
 // scheme's verification runtimes.
 func NewInboundRegistry(engine *js.Engine, cfg *config.IntegrationConfig, nonceStore security.NonceStore, appSchemes []integration.InboundAuthScheme) *InboundRegistry {
-	builtins := builtinInboundSchemes(engine, cfg.EffectiveRunTimeout(), nonceStore)
-	schemes := make(map[string]integration.InboundAuthScheme, len(builtins)+len(appSchemes))
-
-	for _, scheme := range builtins {
-		schemes[scheme.Name()] = scheme
-	}
-
-	for _, scheme := range appSchemes {
-		if scheme != nil {
-			schemes[scheme.Name()] = scheme
-		}
-	}
-
-	return &InboundRegistry{schemes: schemes}
-}
-
-// Get returns the scheme registered under name.
-func (r *InboundRegistry) Get(name string) (integration.InboundAuthScheme, bool) {
-	scheme, ok := r.schemes[name]
-
-	return scheme, ok
+	return &InboundRegistry{schemes: overlayByName(builtinInboundSchemes(engine, cfg.EffectiveRunTimeout(), nonceStore), appSchemes)}
 }
 
 // Resolve returns the scheme for cfg. Unlike the outbound registry there is
@@ -50,5 +30,7 @@ func (r *InboundRegistry) Resolve(cfg *integration.InboundAuthConfig) (integrati
 		return nil, false
 	}
 
-	return r.Get(cfg.Scheme)
+	scheme, ok := r.schemes[cfg.Scheme]
+
+	return scheme, ok
 }

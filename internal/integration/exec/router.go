@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/coldsmirk/vef-framework-go/integration"
+	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -54,14 +55,10 @@ func (r *tableRouteResolver) Resolve(ctx context.Context, contract, routeKey str
 // missing contract degrades to wildcard-only matching and surfaces as
 // contract-not-found later in the pipeline.
 func (r *tableRouteResolver) contractID(ctx context.Context, contract string) (string, error) {
-	found := new(integration.Contract)
-
-	err := r.db.NewSelect().
-		Model(found).
-		Where(func(cb orm.ConditionBuilder) {
+	found, err := definition.FindOne[integration.Contract](ctx, r.db, result.ErrRecordNotFound,
+		func(cb orm.ConditionBuilder) {
 			cb.Equals("code", contract)
-		}).
-		Scan(ctx)
+		})
 	if err != nil {
 		if errors.Is(err, result.ErrRecordNotFound) {
 			return "", nil
@@ -95,19 +92,11 @@ func pickRoute(routes []integration.Route, contractID string) *integration.Route
 // systemCode resolves the routed system's code, which the invoker loads by
 // code afterwards.
 func (r *tableRouteResolver) systemCode(ctx context.Context, systemID string) (string, error) {
-	system := new(integration.System)
-
-	err := r.db.NewSelect().
-		Model(system).
-		Where(func(cb orm.ConditionBuilder) {
+	system, err := definition.FindOne[integration.System](ctx, r.db, integration.ErrRouteNotFound,
+		func(cb orm.ConditionBuilder) {
 			cb.Equals("id", systemID)
-		}).
-		Scan(ctx)
+		})
 	if err != nil {
-		if errors.Is(err, result.ErrRecordNotFound) {
-			return "", integration.ErrRouteNotFound
-		}
-
 		return "", err
 	}
 

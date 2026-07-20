@@ -60,7 +60,10 @@ type requestOptions struct {
 	Envelope *bool `json:"envelope"`
 }
 
-// fetchInit mirrors the JS-side init object of http.fetch.
+// fetchInit mirrors the JS-side init object of http.fetch: the shared option
+// members plus fetch's own method and body. Kept flat rather than embedding
+// requestOptions — goja skips unexported anonymous fields when mapping JS
+// objects onto structs.
 type fetchInit struct {
 	Method   string            `json:"method"`
 	Headers  map[string]string `json:"headers"`
@@ -266,9 +269,9 @@ func exchangeOf(resp *httpx.Response) integration.HTTPExchange {
 // shape. Header names are lower-cased and multi-values joined with ", ",
 // matching fetch Headers semantics.
 func buildResponse(rt *js.Runtime, resp *httpx.Response) map[string]any {
-	headers := make(map[string]string, len(resp.Headers()))
-	for name, values := range resp.Headers() {
-		headers[strings.ToLower(name)] = strings.Join(values, ", ")
+	headers := flattenHeader(resp.Headers())
+	if headers == nil {
+		headers = map[string]string{}
 	}
 
 	body := resp.Body()

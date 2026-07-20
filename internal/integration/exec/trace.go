@@ -142,6 +142,9 @@ func (c *capturer) captureValue(value any) json.RawMessage {
 		return nil
 	}
 
+	// Values reaching a capture are post-canonicalize JSON shapes, so a
+	// marshal failure is not expected; dropping the capture (never the
+	// invocation) is the acceptable fallback for the best-effort log.
 	data, err := json.Marshal(c.maskValue(value))
 	if err != nil {
 		return nil
@@ -254,8 +257,9 @@ func (c *capturer) maskURL(rawURL string) string {
 	return parsed.String()
 }
 
-// flattenHeader collapses an http.Header into a single-valued map for
-// capture.
+// flattenHeader collapses an http.Header into the single-valued lowercase
+// map shared by captures and script bindings, multi-values joined with ", "
+// per fetch Headers semantics.
 func flattenHeader(header http.Header) map[string]string {
 	if len(header) == 0 {
 		return nil
@@ -263,7 +267,7 @@ func flattenHeader(header http.Header) map[string]string {
 
 	flat := make(map[string]string, len(header))
 	for name, values := range header {
-		flat[name] = strings.Join(values, ", ")
+		flat[strings.ToLower(name)] = strings.Join(values, ", ")
 	}
 
 	return flat

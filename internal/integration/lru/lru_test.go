@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLRU(t *testing.T) {
@@ -54,5 +55,39 @@ func TestLRU(t *testing.T) {
 
 		_, ok = cache.Get("c")
 		assert.True(t, ok, "Capacity should not be consumed by the double Put")
+	})
+}
+
+func TestSynced(t *testing.T) {
+	t.Run("BuildsOnceAndCaches", func(t *testing.T) {
+		cache := NewSynced[int](2)
+		builds := 0
+
+		for range 2 {
+			value, err := cache.GetOrBuild("a", func() (int, error) {
+				builds++
+
+				return 7, nil
+			})
+			require.NoError(t, err, "Build should succeed")
+			assert.Equal(t, 7, value, "Cached value should round-trip")
+		}
+
+		assert.Equal(t, 1, builds, "Second lookup should hit the cache")
+	})
+
+	t.Run("BuildErrorIsNotCached", func(t *testing.T) {
+		cache := NewSynced[int](2)
+
+		_, err := cache.GetOrBuild("a", func() (int, error) {
+			return 0, assert.AnError
+		})
+		require.ErrorIs(t, err, assert.AnError, "Build error should surface")
+
+		value, err := cache.GetOrBuild("a", func() (int, error) {
+			return 9, nil
+		})
+		require.NoError(t, err, "Retry should rebuild after a failed build")
+		assert.Equal(t, 9, value, "A failed build must not be cached")
 	})
 }
