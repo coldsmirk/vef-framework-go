@@ -1,12 +1,13 @@
 package store
 
 import (
+	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/cron"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 // heartbeatTracker holds the run IDs this node is currently executing, so
@@ -68,21 +69,49 @@ func (e *Engine) heartbeatLoop() {
 	}
 }
 
-// renewHeartbeats stamps every tracked running row in one update. The
-// status guard keeps a recovered (abandoned) row from being resurrected.
+// renewHeartbeats locks tracked rows by primary key before updating them. All
+// multi-run writers use this order, preventing a heartbeat/takeover deadlock.
+// The status guard keeps an abandoned row from being resurrected.
 func (e *Engine) renewHeartbeats() {
 	ids := e.heartbeats.Snapshot()
 	if len(ids) == 0 {
 		return
 	}
 
-	if _, err := e.db.NewUpdate().
+	err := e.db.RunInTx(e.heartbeatCtx, func(ctx context.Context, tx orm.DB) error {
+		locked, err := lockRunningRunIDs(ctx, tx, ids)
+		if err != nil || len(locked) == 0 {
+			return err
+		}
+
+		_, err = tx.NewUpdate().
+			Model((*cron.Run)(nil)).
+			Set("heartbeat_at_unix_ms", e.now().UnixMilli()).
+			Where(func(cb orm.ConditionBuilder) {
+				cb.PKIn(locked).Equals("status", cron.RunRunning)
+			}).
+			Exec(ctx)
+
+		return err
+	})
+	if err != nil && e.heartbeatCtx.Err() == nil {
+		logger.Errorf("Renew heartbeats for %d run(s): %v", len(ids), err)
+	}
+}
+
+func lockRunningRunIDs(ctx context.Context, tx orm.DB, ids []string) ([]string, error) {
+	var locked []string
+	if err := tx.NewSelect().
 		Model((*cron.Run)(nil)).
-		Set("heartbeat_at", timex.DateTime(e.now())).
+		Select("id").
 		Where(func(cb orm.ConditionBuilder) {
 			cb.PKIn(ids).Equals("status", cron.RunRunning)
 		}).
-		Exec(e.heartbeatCtx); err != nil && e.heartbeatCtx.Err() == nil {
-		logger.Errorf("Renew heartbeats for %d run(s): %v", len(ids), err)
+		OrderBy("id").
+		ForUpdate().
+		Scan(ctx, &locked); err != nil {
+		return nil, fmt.Errorf("lock running rows for heartbeat: %w", err)
 	}
+
+	return locked, nil
 }

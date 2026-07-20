@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 // MisfirePolicy decides what happens to fire times that were missed for
@@ -27,8 +26,9 @@ const (
 type ConcurrencyPolicy string
 
 const (
-	// ConcurrencyForbid suppresses the fire and journals it as skipped. The
-	// default.
+	// ConcurrencyForbid suppresses regular and manual fires and journals them
+	// as skipped. Recovery requests remain pending until the active run ends.
+	// The default.
 	ConcurrencyForbid ConcurrencyPolicy = "forbid"
 	// ConcurrencyAllow lets runs of the same schedule overlap.
 	ConcurrencyAllow ConcurrencyPolicy = "allow"
@@ -36,8 +36,8 @@ const (
 
 // Schedule is one persisted trigger: when to fire which job, with which
 // params, under which policies. The trigger columns mirror TriggerSpec;
-// NextFireAt is the scheduling state the store engine claims and advances.
-// A nil NextFireAt on an enabled schedule means the trigger yields no
+// NextFireAtUnixMs is the scheduling state the store engine claims and advances.
+// A nil NextFireAtUnixMs on an enabled schedule means the trigger yields no
 // further occurrence (a completed one-shot, an expired window).
 type Schedule struct {
 	orm.BaseModel `bun:"table:crn_schedule,alias:cs"`
@@ -48,16 +48,17 @@ type Schedule struct {
 	// JobName references the JobHandler that executes the fires.
 	JobName string `json:"jobName" bun:"job_name"`
 
-	Kind     TriggerKind     `json:"kind" bun:"kind"`
-	Expr     string          `json:"expr" bun:"expr"`
-	Timezone string          `json:"timezone" bun:"timezone"`
-	EveryMs  int64           `json:"everyMs" bun:"every_ms"`
-	FireAt   *timex.DateTime `json:"fireAt,omitempty" bun:"fire_at,nullzero"`
+	Kind         TriggerKind `json:"kind" bun:"kind"`
+	Expr         string      `json:"expr" bun:"expr"`
+	Timezone     string      `json:"timezone" bun:"timezone"`
+	EveryMs      int64       `json:"everyMs" bun:"every_ms"`
+	FireAtUnixMs *int64      `json:"fireAtUnixMs,omitempty" bun:"fire_at_unix_ms"`
 
-	// StartsAt and EndsAt bound the fire window; either may be nil. StartsAt
-	// also anchors the fixed-rate phase of interval triggers.
-	StartsAt *timex.DateTime `json:"startsAt,omitempty" bun:"starts_at,nullzero"`
-	EndsAt   *timex.DateTime `json:"endsAt,omitempty" bun:"ends_at,nullzero"`
+	// StartsAtUnixMs and EndsAtUnixMs bound the fire window; either may be nil.
+	// StartsAtUnixMs also anchors the fixed-rate phase of interval triggers.
+	StartsAtUnixMs *int64 `json:"startsAtUnixMs,omitempty" bun:"starts_at_unix_ms"`
+	EndsAtUnixMs   *int64 `json:"endsAtUnixMs,omitempty" bun:"ends_at_unix_ms"`
+	AnchorAtUnixMs int64  `json:"anchorAtUnixMs" bun:"anchor_at_unix_ms"`
 
 	// Params is delivered verbatim to the handler on every run.
 	Params json.RawMessage `json:"params,omitempty" bun:"params,type:jsonb,nullzero"`
@@ -77,20 +78,18 @@ type Schedule struct {
 	// engine only claims enabled schedules.
 	IsEnabled bool `json:"isEnabled" bun:"is_enabled"`
 
-	// NextFireAt is the next due fire the engine will claim; nil when the
+	// NextFireAtUnixMs is the next due fire the engine will claim; nil when the
 	// trigger yields no further occurrence. Pausing preserves the cursor
 	// rather than clearing it — claiming filters on IsEnabled anyway, and
 	// keeping it is what lets Resume hand the paused gap to the misfire
 	// policy instead of silently dropping it.
-	NextFireAt *timex.DateTime `json:"nextFireAt,omitempty" bun:"next_fire_at,nullzero"`
-	// LastFireAt records the most recent claimed fire's logical time.
-	LastFireAt *timex.DateTime `json:"lastFireAt,omitempty" bun:"last_fire_at,nullzero"`
+	NextFireAtUnixMs *int64 `json:"nextFireAtUnixMs,omitempty" bun:"next_fire_at_unix_ms"`
+	// LastFireAtUnixMs records the most recent claimed fire's logical time.
+	LastFireAtUnixMs *int64 `json:"lastFireAtUnixMs,omitempty" bun:"last_fire_at_unix_ms"`
 }
 
 // Trigger reconstructs the spec form of the schedule's trigger columns. The
-// one-shot fire time is reinterpreted as local wall clock (timestamps are
-// stored timezone-naive), so the spec computes correctly against Now
-// regardless of how a database driver labeled the scanned value.
+// epoch preserves the one-shot instant across timezone folds.
 func (s *Schedule) Trigger() TriggerSpec {
 	spec := TriggerSpec{
 		Kind:     s.Kind,
@@ -99,8 +98,8 @@ func (s *Schedule) Trigger() TriggerSpec {
 		EveryMs:  s.EveryMs,
 	}
 
-	if s.FireAt != nil {
-		at := s.FireAt.AsLocal()
+	if s.FireAtUnixMs != nil {
+		at := time.UnixMilli(*s.FireAtUnixMs).UTC()
 		spec.At = &at
 	}
 
@@ -135,7 +134,8 @@ type ScheduleSpec struct {
 
 	// Recover re-fires abandoned runs; see Schedule.Recover.
 	Recover bool `json:"recover,omitempty"`
-	// Timeout bounds one run; zero inherits vef.cron.store.run_timeout.
+	// Timeout bounds one run and must be an exact whole-millisecond duration;
+	// zero inherits vef.cron.store.run_timeout.
 	Timeout time.Duration `json:"timeout,omitempty"`
 	// Enabled sets the initial (or updated) enablement; nil means true.
 	Enabled *bool `json:"enabled,omitempty"`

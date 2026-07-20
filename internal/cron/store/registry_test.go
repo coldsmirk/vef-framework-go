@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,6 +36,21 @@ func TestNewRegistry(t *testing.T) {
 		assert.ErrorIs(t, err, ErrJobHandlerNameEmpty, "A blank job name must fail construction")
 	})
 
+	t.Run("PersistedNameWidthFailsAtBoot", func(t *testing.T) {
+		_, err := NewRegistry([]cron.JobHandler{noopHandler(strings.Repeat("j", maxJobNameLength+1))})
+		assert.ErrorIs(t, err, ErrJobHandlerNameTooLong,
+			"A job name wider than the persisted column must fail registry construction")
+	})
+
+	t.Run("PersistedNameWidthCountsCharacters", func(t *testing.T) {
+		_, err := NewRegistry([]cron.JobHandler{noopHandler(strings.Repeat("名", maxJobNameLength))})
+		require.NoError(t, err, "A multibyte job name at the character limit should register")
+
+		_, err = NewRegistry([]cron.JobHandler{noopHandler(strings.Repeat("名", maxJobNameLength+1))})
+		assert.ErrorIs(t, err, ErrJobHandlerNameTooLong,
+			"A multibyte job name beyond the character limit should fail registry construction")
+	})
+
 	t.Run("AllReturnsNameOrder", func(t *testing.T) {
 		registry := mustRegistry(t, noopHandler("z"), noopHandler("a"))
 
@@ -58,7 +74,7 @@ func TestSeedDefaultSchedules(t *testing.T) {
 		func(context.Context, cron.Execution) error { return nil },
 		cron.WithDefaultSchedule(cron.ScheduleSpec{Trigger: cron.Expr("0 2 * * *", "Asia/Shanghai")}))
 	registry := mustRegistry(t, seeded, noopHandler("plain.job"))
-	manager := NewScheduleManager(db, true, registry, NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(new(captureBus))))
+	manager := NewScheduleManager(db, true, registry, NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(new(CaptureBus))))
 
 	require.NoError(t, SeedDefaultSchedules(context.Background(), manager, registry),
 		"Seeding should succeed")
@@ -67,7 +83,7 @@ func TestSeedDefaultSchedules(t *testing.T) {
 	require.NoError(t, err, "The seeded schedule must exist")
 	assert.Equal(t, "report.daily", schedule.JobName, "The job name must default to the handler name")
 	assert.Equal(t, "0 2 * * *", schedule.Expr, "The shipped trigger must persist")
-	require.NotNil(t, schedule.NextFireAt, "The seeded schedule must be armed")
+	require.NotNil(t, schedule.NextFireAtUnixMs, "The seeded schedule must be armed")
 
 	schedules, err := manager.List(context.Background(), cron.ScheduleFilter{})
 	require.NoError(t, err, "Listing should succeed")

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -16,44 +17,61 @@ import (
 // nextFiresPreview is how many upcoming fire times the detail view projects.
 const nextFiresPreview = 5
 
+const maxDurationMilliseconds = int64((1<<63 - 1) / time.Millisecond)
+
 // TriggerParams is the trigger section of a schedule mutation.
 type TriggerParams struct {
 	Kind     cron.TriggerKind `json:"kind" validate:"required"`
-	Expr     string           `json:"expr"`
-	Timezone string           `json:"timezone"`
-	EveryMs  int64            `json:"everyMs"`
-	At       *timex.DateTime  `json:"at"`
+	Expr     *string          `json:"expr"`
+	Timezone *string          `json:"timezone"`
+	EveryMs  *int64           `json:"everyMs"`
+	AtUnixMs *int64           `json:"atUnixMs"`
 }
 
 // spec converts the wire form into the trigger spec.
-func (p TriggerParams) spec() cron.TriggerSpec {
-	spec := cron.TriggerSpec{
-		Kind:     p.Kind,
-		Expr:     p.Expr,
-		Timezone: p.Timezone,
-		EveryMs:  p.EveryMs,
+func (p TriggerParams) spec() (cron.TriggerSpec, error) {
+	conflict := false
+	switch p.Kind {
+	case cron.TriggerCron:
+		conflict = p.EveryMs != nil || p.AtUnixMs != nil
+	case cron.TriggerInterval:
+		conflict = p.Expr != nil || p.Timezone != nil || p.AtUnixMs != nil
+	case cron.TriggerOnce:
+		conflict = p.Expr != nil || p.Timezone != nil || p.EveryMs != nil
 	}
 
-	if p.At != nil {
-		at := p.At.Unwrap()
-		spec.At = &at
+	if conflict {
+		return cron.TriggerSpec{}, cron.ErrTriggerInvalid(cron.ErrTriggerFieldsConflict.Error())
 	}
 
-	return spec
+	spec := cron.TriggerSpec{Kind: p.Kind, At: unixTimePtr(p.AtUnixMs)}
+	if p.Expr != nil {
+		spec.Expr = *p.Expr
+	}
+
+	if p.Timezone != nil {
+		spec.Timezone = *p.Timezone
+	}
+
+	if p.EveryMs != nil {
+		spec.EveryMs = *p.EveryMs
+	}
+
+	return spec, nil
 }
 
 // ScheduleParams contains the create/update parameters of a schedule. On
 // update, Name addresses the schedule and NewName optionally renames it.
 type ScheduleParams struct {
-	api.P
+	api.StrictP
 
 	Name              string                 `json:"name" validate:"required"`
 	NewName           string                 `json:"newName"`
 	JobName           string                 `json:"jobName" validate:"required"`
 	Trigger           TriggerParams          `json:"trigger"`
-	Params            map[string]any         `json:"params"`
-	StartsAt          *timex.DateTime        `json:"startsAt"`
-	EndsAt            *timex.DateTime        `json:"endsAt"`
+	Params            json.RawMessage        `json:"params"`
+	StartsAtUnixMs    *int64                 `json:"startsAtUnixMs"`
+	EndsAtUnixMs      *int64                 `json:"endsAtUnixMs"`
 	MisfirePolicy     cron.MisfirePolicy     `json:"misfirePolicy"`
 	ConcurrencyPolicy cron.ConcurrencyPolicy `json:"concurrencyPolicy"`
 	Recover           bool                   `json:"recover"`
@@ -61,13 +79,26 @@ type ScheduleParams struct {
 	Enabled           *bool                  `json:"enabled"`
 }
 
-// spec converts the wire form into the schedule spec; rename indicates
-// whether NewName addresses a different name than the target.
-func (p ScheduleParams) spec() cron.ScheduleSpec {
+// spec validates duration representation and converts the wire form into the
+// schedule spec. Update applies NewName after this conversion.
+func (p ScheduleParams) spec() (cron.ScheduleSpec, error) {
+	if p.TimeoutMs < 0 {
+		return cron.ScheduleSpec{}, cron.ErrScheduleInvalid(ErrScheduleTimeoutNegative.Error())
+	}
+
+	if p.TimeoutMs > maxDurationMilliseconds {
+		return cron.ScheduleSpec{}, cron.ErrScheduleInvalid(ErrScheduleTimeoutTooLong.Error())
+	}
+
+	trigger, err := p.Trigger.spec()
+	if err != nil {
+		return cron.ScheduleSpec{}, err
+	}
+
 	spec := cron.ScheduleSpec{
 		Name:              p.Name,
 		JobName:           p.JobName,
-		Trigger:           p.Trigger.spec(),
+		Trigger:           trigger,
 		MisfirePolicy:     p.MisfirePolicy,
 		ConcurrencyPolicy: p.ConcurrencyPolicy,
 		Recover:           p.Recover,
@@ -79,22 +110,15 @@ func (p ScheduleParams) spec() cron.ScheduleSpec {
 		spec.Params = p.Params
 	}
 
-	if p.StartsAt != nil {
-		starts := p.StartsAt.Unwrap()
-		spec.StartsAt = &starts
-	}
+	spec.StartsAt = unixTimePtr(p.StartsAtUnixMs)
+	spec.EndsAt = unixTimePtr(p.EndsAtUnixMs)
 
-	if p.EndsAt != nil {
-		ends := p.EndsAt.Unwrap()
-		spec.EndsAt = &ends
-	}
-
-	return spec
+	return spec, nil
 }
 
 // ScheduleNameParams addresses one schedule by name.
 type ScheduleNameParams struct {
-	api.P
+	api.StrictP
 
 	Name string `json:"name" validate:"required"`
 }
@@ -102,17 +126,27 @@ type ScheduleNameParams struct {
 // PreviewFiresParams carries an unsaved trigger whose upcoming fire times
 // the editor wants to preview before persisting.
 type PreviewFiresParams struct {
-	api.P
+	api.StrictP
 
-	Trigger  TriggerParams   `json:"trigger"`
-	StartsAt *timex.DateTime `json:"startsAt"`
-	EndsAt   *timex.DateTime `json:"endsAt"`
+	Trigger        TriggerParams `json:"trigger"`
+	StartsAtUnixMs *int64        `json:"startsAtUnixMs"`
+	EndsAtUnixMs   *int64        `json:"endsAtUnixMs"`
+}
+
+func unixTimePtr(unixMs *int64) *time.Time {
+	if unixMs == nil {
+		return nil
+	}
+
+	value := unixTime(*unixMs)
+
+	return &value
 }
 
 // FiresPreview is the preview_fires response: the trigger's upcoming fire
 // times from now; empty when it yields no occurrence inside its window.
 type FiresPreview struct {
-	NextFires []timex.DateTime `json:"nextFires"`
+	NextFiresUnixMs []int64 `json:"nextFiresUnixMs"`
 }
 
 // ScheduleSearch contains the search parameters for schedules.
@@ -129,9 +163,10 @@ type ScheduleSearch struct {
 // upcoming fire times.
 type ScheduleDetail struct {
 	Schedule *cron.Schedule `json:"schedule"`
-	// NextFires previews the next few fire times from now; empty when the
-	// schedule is paused or spent.
-	NextFires []timex.DateTime `json:"nextFires"`
+	// NextFiresUnixMs previews the next few exact fire times from now. An
+	// overdue cursor is projected through the schedule's misfire policy; a
+	// paused or spent schedule returns an empty list.
+	NextFiresUnixMs []int64 `json:"nextFiresUnixMs"`
 }
 
 // ScheduleResource manages durable schedules: paged browsing plus the
@@ -145,6 +180,9 @@ type ScheduleResource struct {
 	manager  cron.ScheduleManager
 	registry *Registry
 	now      func() time.Time
+	// misfireThreshold keeps the detail preview on the same decision boundary
+	// as the claim path when its persisted cursor is already overdue.
+	misfireThreshold time.Duration
 }
 
 // NewScheduleResource creates the schedule management resource. With the
@@ -174,9 +212,10 @@ func NewScheduleResource(cfg *config.CronConfig, manager cron.ScheduleManager, r
 		),
 		FindPage: crud.NewFindPage[cron.Schedule, ScheduleSearch]().
 			RequiredPermission("cron.schedule.query"),
-		manager:  manager,
-		registry: registry,
-		now:      func() time.Time { return timex.Now().Unwrap() },
+		manager:          manager,
+		registry:         registry,
+		now:              func() time.Time { return timex.Now().Unwrap() },
+		misfireThreshold: cfg.Store.EffectiveMisfireThreshold(),
 	}
 }
 
@@ -194,9 +233,11 @@ func (r *ScheduleResource) Get(ctx fiber.Ctx, params ScheduleNameParams) error {
 		return err
 	}
 
+	preview := previewNextFires(schedule, r.now(), nextFiresPreview, r.misfireThreshold)
+
 	return result.Ok(&ScheduleDetail{
-		Schedule:  schedule,
-		NextFires: previewNextFires(schedule, r.now(), nextFiresPreview),
+		Schedule:        schedule,
+		NextFiresUnixMs: preview.NextFiresUnixMs,
 	}).Response(ctx)
 }
 
@@ -213,7 +254,12 @@ func (r *ScheduleResource) PreviewFires(ctx fiber.Ctx, params PreviewFiresParams
 
 // Create persists a new schedule.
 func (r *ScheduleResource) Create(ctx fiber.Ctx, params ScheduleParams) error {
-	schedule, err := r.manager.Create(ctx.Context(), params.spec())
+	spec, err := params.spec()
+	if err != nil {
+		return err
+	}
+
+	schedule, err := r.manager.Create(ctx.Context(), spec)
 	if err != nil {
 		return err
 	}
@@ -223,7 +269,11 @@ func (r *ScheduleResource) Create(ctx fiber.Ctx, params ScheduleParams) error {
 
 // Update reshapes the named schedule; NewName renames it.
 func (r *ScheduleResource) Update(ctx fiber.Ctx, params ScheduleParams) error {
-	spec := params.spec()
+	spec, err := params.spec()
+	if err != nil {
+		return err
+	}
+
 	if params.NewName != "" {
 		spec.Name = params.NewName
 	}
@@ -263,7 +313,7 @@ func (r *ScheduleResource) Resume(ctx fiber.Ctx, params ScheduleNameParams) erro
 	return result.Ok().Response(ctx)
 }
 
-// TriggerNow requests one immediate fire through the regular claim path.
+// TriggerNow persists one immediate fire without moving the regular cursor.
 func (r *ScheduleResource) TriggerNow(ctx fiber.Ctx, params ScheduleNameParams) error {
 	if err := r.manager.TriggerNow(ctx.Context(), params.Name); err != nil {
 		return err
@@ -277,65 +327,103 @@ func (r *ScheduleResource) TriggerNow(ctx fiber.Ctx, params ScheduleNameParams) 
 // trigger and window checks mirror the manager's save-time validation so the
 // preview rejects exactly what a save would.
 func previewTriggerFires(params PreviewFiresParams, now time.Time) (*FiresPreview, error) {
-	spec := params.Trigger.spec()
+	spec, err := params.Trigger.spec()
+	if err != nil {
+		return nil, err
+	}
+
 	if err := spec.Validate(); err != nil {
 		return nil, cron.ErrTriggerInvalid(err.Error())
 	}
 
-	if params.StartsAt != nil && params.EndsAt != nil && !params.EndsAt.Unwrap().After(params.StartsAt.Unwrap()) {
+	starts := unixTimePtr(params.StartsAtUnixMs)
+
+	ends := unixTimePtr(params.EndsAtUnixMs)
+	if starts != nil && ends != nil && !ends.After(*starts) {
 		return nil, cron.ErrScheduleInvalid(ErrScheduleWindowInverted.Error())
 	}
 
-	// CreatedAt doubles as the interval anchor — stamped now, exactly what an
-	// immediate save would persist.
+	// The transient anchor is stamped now, exactly what an immediate save
+	// would persist. A StartsAt below replaces it as the interval phase.
 	transient := &cron.Schedule{
-		Kind:      spec.Kind,
-		Expr:      spec.Expr,
-		Timezone:  spec.Timezone,
-		EveryMs:   spec.EveryMs,
-		StartsAt:  params.StartsAt,
-		EndsAt:    params.EndsAt,
-		IsEnabled: true,
+		Kind:           spec.Kind,
+		Expr:           spec.Expr,
+		Timezone:       spec.Timezone,
+		EveryMs:        spec.EveryMs,
+		IsEnabled:      true,
+		AnchorAtUnixMs: now.UnixMilli(),
 	}
-	transient.CreatedAt = timex.DateTime(now)
+
+	if starts != nil {
+		transient.StartsAtUnixMs = unixMillisPtr(*starts)
+		transient.AnchorAtUnixMs = starts.UnixMilli()
+	}
+
+	if ends != nil {
+		transient.EndsAtUnixMs = unixMillisPtr(*ends)
+	}
 
 	if spec.At != nil {
-		at := timex.DateTime(*spec.At)
-		transient.FireAt = &at
+		transient.FireAtUnixMs = unixMillisPtr(*spec.At)
 	}
 
-	return &FiresPreview{NextFires: previewNextFires(transient, now, nextFiresPreview)}, nil
+	return previewNextFires(transient, now, nextFiresPreview, 0), nil
 }
 
 // previewNextFires projects the schedule's next fire times from the given
-// instant. A persisted cursor leads the projection: NextFireAt is the fire
-// the engine will actually claim, and recomputing purely from the trigger
-// would contradict it — a re-armed one-shot, a recovery re-fire or an overdue
-// cursor would all preview as "nothing upcoming" while a fire is pending.
-func previewNextFires(schedule *cron.Schedule, from time.Time, count int) []timex.DateTime {
-	fires := make([]timex.DateTime, 0, count)
+// instant. A persisted cursor leads the projection: a future cursor is the
+// fire the engine will actually claim, while an overdue cursor goes through
+// the same misfire decision as the claim path. Recomputing purely from the
+// trigger would hide a pending one-shot or overdue regular occurrence.
+func previewNextFires(
+	schedule *cron.Schedule,
+	from time.Time,
+	count int,
+	misfireThreshold time.Duration,
+) *FiresPreview {
+	if count <= 0 {
+		return &FiresPreview{NextFiresUnixMs: []int64{}}
+	}
 
+	preview := &FiresPreview{NextFiresUnixMs: make([]int64, 0, count)}
 	if !schedule.IsEnabled {
-		return fires
+		return preview
 	}
 
 	cursor := from
 
-	if schedule.NextFireAt != nil {
-		pending := schedule.NextFireAt.AsLocal()
-		fires = append(fires, timex.DateTime(pending))
-		cursor = pending
+	if pending := unixTimePtr(schedule.NextFireAtUnixMs); pending != nil {
+		if pending.After(from) {
+			appendPreviewFire(preview, *pending)
+			cursor = *pending
+		} else {
+			decision := decide(schedule, from, misfireThreshold)
+			if decision.fire {
+				appendPreviewFire(preview, decision.scheduledAt)
+			}
+
+			if decision.next == nil || len(preview.NextFiresUnixMs) == count {
+				return preview
+			}
+
+			appendPreviewFire(preview, *decision.next)
+			cursor = *decision.next
+		}
 	}
 
-	for len(fires) < count {
+	for len(preview.NextFiresUnixMs) < count {
 		next, ok := nextFire(schedule, cursor)
 		if !ok {
 			break
 		}
 
-		fires = append(fires, timex.DateTime(next))
+		appendPreviewFire(preview, next)
 		cursor = next
 	}
 
-	return fires
+	return preview
+}
+
+func appendPreviewFire(preview *FiresPreview, fire time.Time) {
+	preview.NextFiresUnixMs = append(preview.NextFiresUnixMs, fire.UnixMilli())
 }

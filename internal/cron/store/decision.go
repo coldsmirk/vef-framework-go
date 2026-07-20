@@ -14,21 +14,21 @@ const missedCap = 10_000
 // anchorOf returns the fixed-rate phase anchor of interval triggers: the
 // window start when set, else the schedule's creation.
 func anchorOf(schedule *cron.Schedule) time.Time {
-	if schedule.StartsAt != nil {
-		return schedule.StartsAt.AsLocal()
+	if schedule.StartsAtUnixMs != nil {
+		return unixTime(*schedule.StartsAtUnixMs)
 	}
 
-	return schedule.CreatedAt.AsLocal()
+	return unixTime(schedule.AnchorAtUnixMs)
 }
 
 // nextFire computes the schedule's next fire strictly after the given
 // instant, honoring the StartsAt/EndsAt window; ok=false when the trigger
 // yields no further occurrence inside it.
 func nextFire(schedule *cron.Schedule, after time.Time) (time.Time, bool) {
-	if schedule.StartsAt != nil {
+	if schedule.StartsAtUnixMs != nil {
 		// The window start itself is a valid fire time; Next is
 		// strictly-after, so probe from just before it.
-		floor := schedule.StartsAt.AsLocal().Add(-time.Nanosecond)
+		floor := unixTime(*schedule.StartsAtUnixMs).Add(-time.Nanosecond)
 		if after.Before(floor) {
 			after = floor
 		}
@@ -39,19 +39,15 @@ func nextFire(schedule *cron.Schedule, after time.Time) (time.Time, bool) {
 		return time.Time{}, false
 	}
 
-	if schedule.EndsAt != nil && next.After(schedule.EndsAt.AsLocal()) {
+	if schedule.EndsAtUnixMs != nil && next.After(unixTime(*schedule.EndsAtUnixMs)) {
 		return time.Time{}, false
 	}
 
-	// Relabel to the process-local zone before the instant meets the store's
-	// naive wall-clock convention: a zoned cron trigger computes in its own
-	// zone, and persisting that zone's wall clock into next_fire_at would
-	// shift the fire against the local-wall-clock claim comparison.
-	return next.In(time.Local), true
+	return next, true
 }
 
 // fireDecision resolves one due schedule at claim time: what executes, what
-// is accounted as missed, and where the schedule's NextFireAt advances to.
+// is accounted as missed, and where NextFireAtUnixMs advances to.
 type fireDecision struct {
 	// fire is whether an executable occurrence was claimed; scheduledAt is
 	// its logical time.
@@ -61,7 +57,7 @@ type fireDecision struct {
 	// earliest of them. Zero missed means no misfire accounting.
 	missed     int
 	missedFrom time.Time
-	// next is the schedule's new NextFireAt; nil when the trigger is spent.
+	// next is the schedule's new exact fire cursor; nil when the trigger is spent.
 	next *time.Time
 }
 
@@ -69,10 +65,10 @@ type fireDecision struct {
 // misfire threshold) executes at its logical time and advances normally. A
 // misfired schedule follows its policy: MisfireFireNow executes one catch-up
 // at the oldest due occurrence and accounts the rest as missed;
-// MisfireSkip accounts them all. Either way NextFireAt advances strictly
+// MisfireSkip accounts them all. Either way NextFireAtUnixMs advances strictly
 // past now, so one decision consumes the whole gap.
 func decide(schedule *cron.Schedule, now time.Time, misfireThreshold time.Duration) fireDecision {
-	due := schedule.NextFireAt.AsLocal()
+	due := unixTime(*schedule.NextFireAtUnixMs)
 
 	if now.Sub(due) <= misfireThreshold {
 		decision := fireDecision{fire: true, scheduledAt: due}
@@ -86,8 +82,11 @@ func decide(schedule *cron.Schedule, now time.Time, misfireThreshold time.Durati
 	// Misfired: account every occurrence in (due, min(now, EndsAt)] on top
 	// of the due one, then advance past now.
 	horizon := now
-	if schedule.EndsAt != nil && schedule.EndsAt.AsLocal().Before(now) {
-		horizon = schedule.EndsAt.AsLocal()
+	if schedule.EndsAtUnixMs != nil {
+		ends := unixTime(*schedule.EndsAtUnixMs)
+		if ends.Before(now) {
+			horizon = ends
+		}
 	}
 
 	trigger := schedule.Trigger()
@@ -108,9 +107,7 @@ func decide(schedule *cron.Schedule, now time.Time, misfireThreshold time.Durati
 	decision := fireDecision{fire: true, scheduledAt: due, missed: overdue, next: next}
 	if overdue > 0 {
 		if first, ok := trigger.Next(due, anchor); ok {
-			// Same relabeling as nextFire: the missed row's scheduled_at is
-			// journaled through the naive wall-clock convention.
-			decision.missedFrom = first.In(time.Local)
+			decision.missedFrom = first
 		}
 	}
 

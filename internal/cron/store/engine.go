@@ -22,11 +22,6 @@ const (
 	// stopTimeout is the graceful drain window on shutdown: how long running
 	// handlers get to finish before they are canceled.
 	stopTimeout = 30 * time.Second
-	// cancelGrace bounds the wait after stragglers are canceled. It is short
-	// on purpose: the drain window plus this grace is the engine's whole
-	// share of the application stop budget, and a second full-length window
-	// would leave nothing for the hooks that shut down after it.
-	cancelGrace = 5 * time.Second
 	// minIdleDelay floors the adaptive sleep so a past-due fire that could
 	// not be claimed (full slots, lost race) never spins the loop hot.
 	minIdleDelay = 50 * time.Millisecond
@@ -38,6 +33,9 @@ const (
 	pruneInterval = time.Hour
 	// maxErrorBytes caps journaled failure messages.
 	maxErrorBytes = 2000
+	// maxClaimBatchesPerTick bounds journal-only progress so recovery and
+	// pruning still get a turn under a continuously replenished request queue.
+	maxClaimBatchesPerTick = 32
 )
 
 // Engine is the durable scheduler: it polls the store adaptively, claims due
@@ -107,6 +105,7 @@ func NewEngine(db orm.DB, cfg *config.CronStoreConfig, registry *Registry, publi
 
 // Start launches the claim loop and the heartbeat runner.
 func (e *Engine) Start() {
+	e.publisher.Start()
 	e.background.Add(2)
 
 	go e.loop()
@@ -117,29 +116,63 @@ func (e *Engine) Start() {
 
 // Stop drains gracefully: claiming stops immediately, running handlers get
 // the drain window to finish, stragglers are canceled and journaled as
-// canceled. Heartbeats outlive handlers so draining runs stay owned.
-func (e *Engine) Stop() {
+// canceled. Heartbeats outlive handlers so draining runs stay owned. The
+// caller's deadline bounds the whole sequence; when necessary, graceful drain
+// is shortened to reserve the journal completion window.
+func (e *Engine) Stop(ctx context.Context) (stopErr error) {
+	stopCtx, cancel := context.WithTimeout(ctx, e.drainTimeout+completionTimeout)
+	defer cancel()
+	defer func() {
+		stopErr = errors.Join(stopErr, e.publisher.Stop(stopCtx))
+	}()
+
 	// Wait for the loop to actually leave its tick before waiting on the
 	// executor group: a claim transaction that has already committed still
 	// dispatches its runs, and a group waited on while the counter is zero
 	// would return before those runs are even registered.
 	e.stopLoop()
-	<-e.loopDone
 
-	if !waitWithTimeout(&e.executors, e.drainTimeout) {
+	select {
+	case <-e.loopDone:
+	case <-stopCtx.Done():
+		e.stopRuns()
+		e.stopHeartbeats()
+
+		return stopCtx.Err()
+	}
+
+	drainTimeout := e.drainTimeout
+	if deadline, ok := stopCtx.Deadline(); ok {
+		drainTimeout = min(drainTimeout, max(time.Until(deadline)-completionTimeout, 0))
+	}
+
+	drainCtx, stopDrain := context.WithTimeout(stopCtx, drainTimeout)
+	drained := waitWithContext(drainCtx, &e.executors)
+
+	stopDrain()
+
+	if !drained {
 		logger.Warn("Drain window elapsed; canceling remaining runs")
 		e.stopRuns()
 
-		if !waitWithTimeout(&e.executors, cancelGrace) {
-			logger.Error("Runs ignored cancellation; abandoning wait — peers will recover them")
+		if !waitWithContext(stopCtx, &e.executors) {
+			logger.Error("Shutdown budget elapsed before canceled runs completed; peers will recover them")
+			e.stopHeartbeats()
+
+			return stopCtx.Err()
 		}
 	}
 
 	e.stopRuns()
 	e.stopHeartbeats()
-	e.background.Wait()
+
+	if !waitWithContext(stopCtx, &e.background) {
+		return stopCtx.Err()
+	}
 
 	logger.Info("Durable schedule engine stopped")
+
+	return nil
 }
 
 // Wake nudges the loop to re-read the store now — called after local
@@ -186,7 +219,7 @@ func (e *Engine) loop() {
 // tick claims and dispatches due fires until the store is drained or the
 // executor pool is full.
 func (e *Engine) tick() {
-	for {
+	for range maxClaimBatchesPerTick {
 		free := cap(e.slots) - len(e.slots)
 
 		limit := min(e.config.EffectiveBatchSize(), free)
@@ -194,7 +227,7 @@ func (e *Engine) tick() {
 			return
 		}
 
-		claimed, err := e.claimer.ClaimDue(e.loopCtx, limit)
+		batch, err := e.claimer.claimDueBatch(e.loopCtx, limit)
 		if err != nil {
 			if e.loopCtx.Err() == nil {
 				logger.Errorf("Claim due schedules: %v", err)
@@ -203,7 +236,7 @@ func (e *Engine) tick() {
 			return
 		}
 
-		for _, fire := range claimed {
+		for _, fire := range batch.fires {
 			// Never blocks: limit was bounded by the free slots and only
 			// this loop acquires them.
 			e.slots <- struct{}{}
@@ -213,10 +246,16 @@ func (e *Engine) tick() {
 			go e.execute(fire)
 		}
 
-		if len(claimed) < limit {
+		e.reportAbandoned(batch.abandoned)
+
+		if !batch.progressed {
 			return
 		}
 	}
+
+	// More durable work may remain. Yield to maintenance, then make the next
+	// loop iteration immediate instead of waiting for the poll interval.
+	e.Wake()
 }
 
 // maintain runs the recovery sweep every tick and the journal prune on its
@@ -238,19 +277,19 @@ func (e *Engine) idleDelay() time.Duration {
 		return poll
 	}
 
-	var next timex.DateTime
+	var nextUnixMs int64
 
 	err := e.db.NewSelect().
 		Model((*cron.Schedule)(nil)).
-		Select("next_fire_at").
+		Select("next_fire_at_unix_ms").
 		Where(func(cb orm.ConditionBuilder) {
 			cb.IsTrue("is_enabled").
-				IsNotNull("next_fire_at").
+				IsNotNull("next_fire_at_unix_ms").
 				In("job_name", e.registry.Names())
 		}).
-		OrderBy("next_fire_at").
+		OrderBy("next_fire_at_unix_ms").
 		Limit(1).
-		Scan(e.loopCtx, &next)
+		Scan(e.loopCtx, &nextUnixMs)
 	if err != nil {
 		if e.loopCtx.Err() == nil && !result.IsRecordNotFound(err) && !errors.Is(err, context.Canceled) {
 			logger.Errorf("Read nearest fire: %v", err)
@@ -259,7 +298,7 @@ func (e *Engine) idleDelay() time.Duration {
 		return poll
 	}
 
-	delay := next.AsLocal().Sub(e.now())
+	delay := unixTime(nextUnixMs).Sub(e.now())
 
 	return max(min(delay, poll), minIdleDelay)
 }
@@ -267,7 +306,10 @@ func (e *Engine) idleDelay() time.Duration {
 // execute runs one claimed fire on the executor pool.
 func (e *Engine) execute(fire claimedFire) {
 	defer e.executors.Done()
-	defer func() { <-e.slots }()
+	defer func() {
+		<-e.slots
+		e.Wake()
+	}()
 
 	e.heartbeats.Track(fire.run.ID)
 	defer e.heartbeats.Untrack(fire.run.ID)
@@ -304,7 +346,7 @@ func (*Engine) invoke(ctx context.Context, fire claimedFire) (err error) {
 		ScheduleID:   fire.schedule.ID,
 		ScheduleName: fire.schedule.Name,
 		JobName:      fire.schedule.JobName,
-		ScheduledAt:  fire.run.ScheduledAt.Unwrap(),
+		ScheduledAt:  unixTime(fire.run.ScheduledAtUnixMs),
 		Params:       fire.schedule.Params,
 	})
 }
@@ -324,11 +366,10 @@ func (e *Engine) complete(fire claimedFire, runErr, ctxErr error) {
 
 	run := fire.run
 	now := e.now()
-	finished := timex.DateTime(now)
-	run.FinishedAt = &finished
+	run.FinishedAtUnixMs = unixMillisPtr(now)
 
-	if run.StartedAt != nil {
-		run.DurationMs = now.Sub(run.StartedAt.Unwrap()).Milliseconds()
+	if run.StartedAtUnixMs != nil {
+		run.DurationMs = now.Sub(unixTime(*run.StartedAtUnixMs)).Milliseconds()
 	}
 
 	switch {
@@ -352,7 +393,7 @@ func (e *Engine) complete(fire claimedFire, runErr, ctxErr error) {
 
 	updated, err := e.db.NewUpdate().
 		Model(run).
-		Select("status", "finished_at", "duration_ms", "error").
+		Select("status", "finished_at_unix_ms", "duration_ms", "error").
 		Where(func(cb orm.ConditionBuilder) {
 			cb.PKEquals(run.ID).Equals("status", cron.RunRunning)
 		}).
@@ -371,7 +412,7 @@ func (e *Engine) complete(fire claimedFire, runErr, ctxErr error) {
 
 	if run.Status == cron.RunFailed {
 		logger.Errorf("Run %s of schedule %q failed: %s", run.ID, run.ScheduleName, run.Error)
-		e.publisher.RunFailed(ctx, run)
+		e.publisher.RunFailed(run)
 	}
 }
 
@@ -385,8 +426,8 @@ func trimError(err error) string {
 	return message
 }
 
-// waitWithTimeout waits for the group up to the given duration.
-func waitWithTimeout(group *sync.WaitGroup, timeout time.Duration) bool {
+// waitWithContext waits for the group until the caller's shutdown budget ends.
+func waitWithContext(ctx context.Context, group *sync.WaitGroup) bool {
 	done := make(chan struct{})
 
 	go func() {
@@ -397,7 +438,7 @@ func waitWithTimeout(group *sync.WaitGroup, timeout time.Duration) bool {
 	select {
 	case <-done:
 		return true
-	case <-time.After(timeout):
+	case <-ctx.Done():
 		return false
 	}
 }

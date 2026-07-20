@@ -1,9 +1,6 @@
 package cron
 
-import (
-	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/timex"
-)
+import "github.com/coldsmirk/vef-framework-go/orm"
 
 // RunStatus is the lifecycle state of one journaled run.
 type RunStatus string
@@ -44,11 +41,11 @@ type Run struct {
 	ScheduleName string `json:"scheduleName" bun:"schedule_name"`
 	JobName      string `json:"jobName" bun:"job_name"`
 
-	// ScheduledAt is the logical fire time; a catch-up fire starts later
-	// than it. Distinct trigger occurrences journal distinct times, but the
-	// column is deliberately not unique: manual fires and recovery re-fires
-	// may legitimately land in the same wall-clock second as an earlier row.
-	ScheduledAt timex.DateTime `json:"scheduledAt" bun:"scheduled_at"`
+	// ScheduledAtUnixMs is the logical fire time; a catch-up fire starts later
+	// than it. It is deliberately not unique: manual and recovery fires may
+	// legitimately share one instant.
+	ScheduledAtUnixMs int64 `json:"scheduledAtUnixMs" bun:"scheduled_at_unix_ms"`
+	ClaimedAtUnixMs   int64 `json:"claimedAtUnixMs" bun:"claimed_at_unix_ms"`
 
 	Status RunStatus `json:"status" bun:"status"`
 
@@ -56,13 +53,13 @@ type Run struct {
 	// executed (missed, skipped).
 	NodeID string `json:"nodeId" bun:"node_id"`
 
-	StartedAt  *timex.DateTime `json:"startedAt,omitempty" bun:"started_at,nullzero"`
-	FinishedAt *timex.DateTime `json:"finishedAt,omitempty" bun:"finished_at,nullzero"`
-	DurationMs int64           `json:"durationMs" bun:"duration_ms"`
+	StartedAtUnixMs  *int64 `json:"startedAtUnixMs,omitempty" bun:"started_at_unix_ms"`
+	FinishedAtUnixMs *int64 `json:"finishedAtUnixMs,omitempty" bun:"finished_at_unix_ms"`
+	DurationMs       int64  `json:"durationMs" bun:"duration_ms"`
 
-	// HeartbeatAt is the executor's liveness signal, renewed while the run
-	// executes; a stale heartbeat turns the run abandoned.
-	HeartbeatAt *timex.DateTime `json:"heartbeatAt,omitempty" bun:"heartbeat_at,nullzero"`
+	// HeartbeatAtUnixMs is the executor's liveness signal, renewed while the
+	// run executes; a stale heartbeat turns the run abandoned.
+	HeartbeatAtUnixMs *int64 `json:"heartbeatAtUnixMs,omitempty" bun:"heartbeat_at_unix_ms"`
 
 	// Error is the failure message, truncated; empty on success.
 	Error string `json:"error,omitempty" bun:"error"`

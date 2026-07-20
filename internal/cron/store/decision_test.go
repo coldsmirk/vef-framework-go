@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/cron"
-	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 func decisionSchedule(due time.Time, policy cron.MisfirePolicy) *cron.Schedule {
@@ -19,7 +18,7 @@ func decisionSchedule(due time.Time, policy cron.MisfirePolicy) *cron.Schedule {
 }
 
 func TestDecide(t *testing.T) {
-	due := time.Date(2026, 7, 17, 10, 0, 0, 0, time.Local)
+	due := time.Date(2026, 7, 17, 10, 0, 0, 0, time.UTC)
 	threshold := time.Minute
 
 	t.Run("OnTimeFire", func(t *testing.T) {
@@ -72,11 +71,9 @@ func TestDecide(t *testing.T) {
 		assert.Equal(t, due.Add(6*time.Minute), *decision.next, "The next fire is strictly after now")
 	})
 
-	t.Run("ZonedCronAdvancesTheWallClock", func(t *testing.T) {
-		// The refire-storm regression: an hourly expression evaluated in a
-		// zone whose wall clock runs behind the node's must still advance the
-		// persisted (local) wall clock strictly past the due one — a
-		// non-advancing wall clock leaves the schedule claimable every tick.
+	t.Run("ZonedCronAdvancesTheInstant", func(t *testing.T) {
+		// An hourly expression evaluated in a zone behind the node must still
+		// advance the persisted instant; otherwise every tick reclaims it.
 		gmt12, err := time.LoadLocation("Etc/GMT+12")
 		require.NoError(t, err, "The fixed-offset zone must load")
 
@@ -93,16 +90,15 @@ func TestDecide(t *testing.T) {
 		assert.True(t, decision.next.After(due), "The next fire's instant must be strictly after the due one")
 		assert.LessOrEqual(t, decision.next.Sub(due), time.Hour, "An hourly cadence advances at most one hour")
 		assert.Zero(t, decision.next.In(gmt12).Minute(), "The instant must sit on the trigger zone's hour boundary")
-		assert.Greater(t, timex.DateTime(*decision.next).String(), timex.DateTime(due).String(),
-			"The persisted wall clock must advance past the due one")
+		assert.Greater(t, decision.next.UnixMilli(), due.UnixMilli(),
+			"The authoritative epoch must advance past the due instant")
 	})
 
 	t.Run("OneShotSpendsItself", func(t *testing.T) {
 		schedule := decisionSchedule(due, cron.MisfireFireNow)
 		schedule.Kind = cron.TriggerOnce
 		schedule.EveryMs = 0
-		fireAt := timex.DateTime(due)
-		schedule.FireAt = &fireAt
+		schedule.FireAtUnixMs = unixMillisPtr(due)
 
 		decision := decide(schedule, due.Add(time.Second), threshold)
 
@@ -112,8 +108,7 @@ func TestDecide(t *testing.T) {
 
 	t.Run("WindowEndStopsAdvancing", func(t *testing.T) {
 		schedule := decisionSchedule(due, cron.MisfireFireNow)
-		ends := timex.DateTime(due.Add(30 * time.Second))
-		schedule.EndsAt = &ends
+		schedule.EndsAtUnixMs = unixMillisPtr(due.Add(30 * time.Second))
 
 		decision := decide(schedule, due.Add(2*time.Second), threshold)
 
@@ -123,8 +118,7 @@ func TestDecide(t *testing.T) {
 
 	t.Run("MisfireBeyondWindowEndCountsOnlyInWindow", func(t *testing.T) {
 		schedule := decisionSchedule(due, cron.MisfireSkip)
-		ends := timex.DateTime(due.Add(2 * time.Minute))
-		schedule.EndsAt = &ends
+		schedule.EndsAtUnixMs = unixMillisPtr(due.Add(2 * time.Minute))
 
 		decision := decide(schedule, due.Add(10*time.Minute), threshold)
 
@@ -135,12 +129,11 @@ func TestDecide(t *testing.T) {
 }
 
 func TestNextFire(t *testing.T) {
-	base := time.Date(2026, 7, 17, 10, 0, 0, 0, time.Local)
+	base := time.Date(2026, 7, 17, 10, 0, 0, 0, time.UTC)
 
 	t.Run("StartsAtIsAValidFirstFire", func(t *testing.T) {
 		schedule := scheduleFixture("windowed", "job", base)
-		starts := timex.DateTime(base.Add(time.Hour))
-		schedule.StartsAt = &starts
+		schedule.StartsAtUnixMs = unixMillisPtr(base.Add(time.Hour))
 
 		next, ok := nextFire(schedule, base)
 		require.True(t, ok, "A future window must yield a fire")
@@ -149,8 +142,7 @@ func TestNextFire(t *testing.T) {
 
 	t.Run("EndsAtCutsOff", func(t *testing.T) {
 		schedule := scheduleFixture("windowed", "job", base)
-		ends := timex.DateTime(base.Add(30 * time.Second))
-		schedule.EndsAt = &ends
+		schedule.EndsAtUnixMs = unixMillisPtr(base.Add(30 * time.Second))
 
 		_, ok := nextFire(schedule, base)
 		assert.False(t, ok, "No occurrence fits inside a sub-interval window")
@@ -162,27 +154,51 @@ func TestNextFire(t *testing.T) {
 		next, ok := nextFire(schedule, base.Add(90*time.Second))
 		require.True(t, ok, "An interval trigger always yields a fire")
 
-		anchor := schedule.CreatedAt.Unwrap()
+		anchor := unixTime(schedule.AnchorAtUnixMs)
 		phase := next.Sub(anchor) % time.Minute
 		assert.Zero(t, phase, "Fires must stay on the anchor's phase grid")
 	})
 
-	t.Run("ZonedCronRelabelsToLocal", func(t *testing.T) {
-		shanghai, err := time.LoadLocation("Asia/Shanghai")
-		require.NoError(t, err, "The IANA zone must load")
-
+	t.Run("ZonedCronKeepsTheTriggerInstant", func(t *testing.T) {
 		schedule := scheduleFixture("zoned", "job", base)
 		schedule.Kind = cron.TriggerCron
 		schedule.Expr = "0 3 * * *"
-		schedule.Timezone = "Asia/Shanghai"
+		schedule.Timezone = "UTC"
 		schedule.EveryMs = 0
 
-		next, ok := nextFire(schedule, base)
+		probe := base
+		next, ok := nextFire(schedule, probe)
 		require.True(t, ok, "A daily expression always yields a fire")
 
-		assert.Same(t, time.Local, next.Location(),
-			"The fire must be relabeled to the process-local zone before the naive wall-clock capture")
-		assert.Equal(t, 3, next.In(shanghai).Hour(), "The instant must stay correct in the trigger's zone")
-		assert.True(t, next.After(base), "The fire must be strictly after the probe instant")
+		assert.Same(t, time.UTC, next.Location(),
+			"The trigger's real instant must not be relabeled to the process-local zone for persistence")
+		assert.Equal(t, 3, next.Hour(), "The instant must stay correct in the trigger's zone")
+		assert.True(t, next.After(probe), "The fire must be strictly after the probe instant")
+	})
+
+	t.Run("DSTFallbackOccurrencesRemainDistinct", func(t *testing.T) {
+		newYork, err := time.LoadLocation("America/New_York")
+		require.NoError(t, err, "The fallback timezone should load")
+
+		beforeFold := time.Date(2012, 11, 4, 0, 30, 0, 0, newYork)
+		schedule := &cron.Schedule{
+			Kind:           cron.TriggerCron,
+			Expr:           "0 1 * * *",
+			Timezone:       "America/New_York",
+			IsEnabled:      true,
+			AnchorAtUnixMs: beforeFold.UnixMilli(),
+		}
+
+		first, ok := nextFire(schedule, beforeFold)
+		require.True(t, ok, "The cron expression should yield the EDT occurrence")
+		second, ok := nextFire(schedule, first)
+		require.True(t, ok, "The cron expression should yield the EST occurrence")
+
+		assert.Equal(t, first.In(newYork).Format(time.DateTime), second.In(newYork).Format(time.DateTime),
+			"Both fallback occurrences deliberately share one wall-clock label")
+		assert.Equal(t, time.Hour, second.Sub(first),
+			"Their authoritative instants must remain one hour apart")
+		assert.NotEqual(t, first.UnixMilli(), second.UnixMilli(),
+			"Fallback occurrences should keep distinct epoch values")
 	})
 }

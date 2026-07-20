@@ -27,9 +27,9 @@ type ScheduleManager interface {
 	// handled by the schedule's misfire policy: MisfireFireNow runs one
 	// catch-up immediately, MisfireSkip waits for the next regular fire.
 	Resume(ctx context.Context, name string) error
-	// TriggerNow requests one immediate fire through the regular claim path
-	// (single node, journaled, concurrency policy respected). A paused
-	// schedule fails with ErrScheduleDisabled.
+	// TriggerNow persists one independent immediate fire request (single node,
+	// journaled, concurrency policy respected) without moving the regular
+	// trigger cursor. A paused schedule fails with ErrScheduleDisabled.
 	TriggerNow(ctx context.Context, name string) error
 	// Get returns the named schedule, or ErrScheduleNotFound.
 	Get(ctx context.Context, name string) (*Schedule, error)

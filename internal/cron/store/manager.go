@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/coldsmirk/vef-framework-go/cron"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -15,8 +16,9 @@ import (
 )
 
 const (
-	// maxNameLength mirrors the crn_schedule.name column width.
-	maxNameLength = 128
+	// Persisted schedule and job identifiers share the DDL's character width.
+	maxScheduleNameLength = 128
+	maxJobNameLength      = 128
 	// defaultRunPageSize and maxRunPageSize bound ListRuns.
 	defaultRunPageSize = 100
 	maxRunPageSize     = 1000
@@ -49,12 +51,14 @@ func NewScheduleManager(db orm.DB, enabled bool, registry *Registry, engine *Eng
 }
 
 func (m *scheduleManager) Create(ctx context.Context, spec cron.ScheduleSpec) (*cron.Schedule, error) {
-	schedule, err := m.materialize(spec, m.now())
+	now := m.now()
+
+	schedule, err := m.materialize(spec, now)
 	if err != nil {
 		return nil, err
 	}
 
-	m.refreshNextFire(schedule, m.now())
+	m.refreshNextFire(schedule, now)
 
 	if _, err := m.db.NewInsert().Model(schedule).Exec(ctx); err != nil {
 		return nil, translateScheduleWriteError(err)
@@ -85,18 +89,26 @@ func (m *scheduleManager) Update(ctx context.Context, name string, spec cron.Sch
 
 		// The spec replaces everything but the row identity, the creation
 		// audit and the engine-owned fire history; the skipupdate tags keep
-		// the audit safe on write anyway. LastFireAt is carried over
+		// the audit safe on write anyway. LastFireAtUnixMs is carried over
 		// explicitly: reshaping a schedule must not erase what already ran.
+		timingChanged := !sameScheduleTiming(current, updated)
+		now := m.now()
+
 		updated.ID = current.ID
 		updated.CreatedAt = current.CreatedAt
 		updated.CreatedBy = current.CreatedBy
-		updated.LastFireAt = current.LastFireAt
-		updated.UpdatedAt = timex.DateTime(m.now())
+		updated.LastFireAtUnixMs = current.LastFireAtUnixMs
+		updated.AnchorAtUnixMs = current.AnchorAtUnixMs
+		updated.NextFireAtUnixMs = current.NextFireAtUnixMs
+		updated.UpdatedAt = timex.DateTime(now)
 
-		// Reshaping recomputes the fire from now: anchored trigger math
-		// keeps unchanged timing stable, changed timing takes effect
-		// immediately.
-		m.refreshNextFire(updated, m.now())
+		// Only a timing-shape change invalidates the persisted cursor. Other
+		// edits keep an already-due occurrence and enablement changes follow the
+		// same cursor contract as Pause/Resume. A disabled schedule that never
+		// had a cursor is armed only when it becomes enabled.
+		if timingChanged || (updated.IsEnabled && !current.IsEnabled && current.NextFireAtUnixMs == nil) {
+			m.refreshNextFire(updated, now)
+		}
 
 		if _, err := tx.NewUpdate().Model(updated).WherePK().Exec(ctx); err != nil {
 			return translateScheduleWriteError(err)
@@ -116,19 +128,25 @@ func (m *scheduleManager) Update(ctx context.Context, name string, spec cron.Sch
 }
 
 func (m *scheduleManager) Delete(ctx context.Context, name string) error {
-	deleted, err := m.db.NewDelete().
-		Model((*cron.Schedule)(nil)).
-		Where(func(cb orm.ConditionBuilder) { cb.Equals("name", name) }).
-		Exec(ctx)
-	if err != nil {
-		return fmt.Errorf("delete schedule %q: %w", name, err)
-	}
+	return m.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
+		schedule, err := lockScheduleByName(ctx, tx, name)
+		if err != nil {
+			return err
+		}
 
-	if affected, _ := deleted.RowsAffected(); affected == 0 {
-		return cron.ErrScheduleNotFound
-	}
+		if _, err := tx.NewDelete().
+			Model((*fireRequest)(nil)).
+			Where(func(cb orm.ConditionBuilder) { cb.Equals("schedule_id", schedule.ID) }).
+			Exec(ctx); err != nil {
+			return fmt.Errorf("delete fire requests for schedule %q: %w", name, err)
+		}
 
-	return nil
+		if _, err := tx.NewDelete().Model(schedule).WherePK().Exec(ctx); err != nil {
+			return fmt.Errorf("delete schedule %q: %w", name, err)
+		}
+
+		return nil
+	})
 }
 
 func (m *scheduleManager) Pause(ctx context.Context, name string) error {
@@ -167,7 +185,7 @@ func (m *scheduleManager) Resume(ctx context.Context, name string) error {
 		// — catching up and journaling it the same way downtime is handled.
 		// Only a schedule that has no cursor at all (created disabled, or
 		// spent) is re-armed from now.
-		if schedule.NextFireAt == nil {
+		if schedule.NextFireAtUnixMs == nil {
 			m.refreshNextFire(schedule, m.now())
 		}
 
@@ -196,16 +214,17 @@ func (m *scheduleManager) TriggerNow(ctx context.Context, name string) error {
 		}
 
 		now := m.now()
+		request := &fireRequest{
+			ScheduleID:        schedule.ID,
+			Kind:              fireRequestManual,
+			ScheduledAtUnixMs: now.UnixMilli(),
+		}
 
-		// The cursor is pulled to now unconditionally. Leaving an already-due
-		// one in place would hand the manual request to the misfire policy,
-		// and MisfireSkip journals an overdue fire as missed without running
-		// anything — a trigger-now that quietly does nothing.
-		due := timex.DateTime(now)
-		schedule.NextFireAt = &due
-		schedule.UpdatedAt = due
+		if _, err := tx.NewInsert().Model(request).Exec(ctx); err != nil {
+			return fmt.Errorf("queue manual fire for schedule %q: %w", name, err)
+		}
 
-		return persistScheduleState(ctx, tx, schedule)
+		return nil
 	})
 	if err != nil {
 		return err
@@ -283,14 +302,14 @@ func (m *scheduleManager) ListRuns(ctx context.Context, filter cron.RunFilter) (
 			}
 
 			if filter.Since != nil {
-				cb.GreaterThanOrEqual("scheduled_at", timex.DateTime(*filter.Since))
+				cb.GreaterThanOrEqual("scheduled_at_unix_ms", ceilUnixMilli(*filter.Since))
 			}
 
 			if filter.Until != nil {
-				cb.LessThan("scheduled_at", timex.DateTime(*filter.Until))
+				cb.LessThan("scheduled_at_unix_ms", ceilUnixMilli(*filter.Until))
 			}
 		}).
-		OrderByDesc("created_at").
+		OrderByDesc("claimed_at_unix_ms").
 		OrderByDesc("id").
 		Limit(limit).
 		Scan(ctx)
@@ -308,7 +327,7 @@ func (m *scheduleManager) materialize(spec cron.ScheduleSpec, now time.Time) (*c
 	switch {
 	case name == "":
 		return nil, cron.ErrScheduleInvalid(ErrScheduleNameRequired.Error())
-	case len(name) > maxNameLength:
+	case utf8.RuneCountInString(name) > maxScheduleNameLength:
 		return nil, cron.ErrScheduleInvalid(ErrScheduleNameTooLong.Error())
 	}
 
@@ -334,7 +353,20 @@ func (m *scheduleManager) materialize(spec cron.ScheduleSpec, now time.Time) (*c
 		return nil, cron.ErrScheduleInvalid(ErrScheduleTimeoutNegative.Error())
 	}
 
-	if spec.StartsAt != nil && spec.EndsAt != nil && !spec.EndsAt.After(*spec.StartsAt) {
+	if spec.Timeout%time.Millisecond != 0 {
+		return nil, cron.ErrScheduleInvalid(ErrScheduleTimeoutPrecision.Error())
+	}
+
+	var startsAtUnixMs, endsAtUnixMs *int64
+	if spec.StartsAt != nil {
+		startsAtUnixMs = unixMillisPtr(*spec.StartsAt)
+	}
+
+	if spec.EndsAt != nil {
+		endsAtUnixMs = unixMillisPtr(*spec.EndsAt)
+	}
+
+	if startsAtUnixMs != nil && endsAtUnixMs != nil && *endsAtUnixMs <= *startsAtUnixMs {
 		return nil, cron.ErrScheduleInvalid(ErrScheduleWindowInverted.Error())
 	}
 
@@ -343,12 +375,17 @@ func (m *scheduleManager) materialize(spec cron.ScheduleSpec, now time.Time) (*c
 		return nil, err
 	}
 
+	timezone := spec.Trigger.Timezone
+	if spec.Trigger.Kind == cron.TriggerCron && timezone == "" {
+		timezone = cron.DefaultTimezone
+	}
+
 	schedule := &cron.Schedule{
 		Name:              name,
 		JobName:           spec.JobName,
 		Kind:              spec.Trigger.Kind,
 		Expr:              spec.Trigger.Expr,
-		Timezone:          spec.Trigger.Timezone,
+		Timezone:          timezone,
 		EveryMs:           spec.Trigger.EveryMs,
 		Params:            params,
 		MisfirePolicy:     misfire,
@@ -356,53 +393,54 @@ func (m *scheduleManager) materialize(spec cron.ScheduleSpec, now time.Time) (*c
 		Recover:           spec.Recover,
 		TimeoutMs:         spec.Timeout.Milliseconds(),
 		IsEnabled:         spec.Enabled == nil || *spec.Enabled,
+		AnchorAtUnixMs:    now.UnixMilli(),
 	}
 
-	// Creation stamps double as the interval anchor, so set them here
-	// rather than leaving them to the insert hook.
+	// Stamp the audit fields and absolute interval anchor here rather than
+	// leaving creation time to the insert hook.
 	schedule.CreatedAt = timex.DateTime(now)
 	schedule.UpdatedAt = timex.DateTime(now)
 
 	if spec.Trigger.At != nil {
-		at := localDateTime(*spec.Trigger.At)
-		schedule.FireAt = &at
+		schedule.FireAtUnixMs = unixMillisPtr(*spec.Trigger.At)
 	}
 
-	if spec.StartsAt != nil {
-		starts := localDateTime(*spec.StartsAt)
-		schedule.StartsAt = &starts
-	}
-
-	if spec.EndsAt != nil {
-		ends := localDateTime(*spec.EndsAt)
-		schedule.EndsAt = &ends
-	}
+	schedule.StartsAtUnixMs = startsAtUnixMs
+	schedule.EndsAtUnixMs = endsAtUnixMs
 
 	return schedule, nil
 }
 
-// localDateTime converts a caller-supplied instant into the store's naive
-// wall-clock form. Spec times arrive from Go code in whatever zone the caller
-// built them in (cron.Once(nyTime), a StartsAt parsed with an offset);
-// persisting that zone's wall clock would make the column denote a different
-// instant once it is read back and reinterpreted as local.
-func localDateTime(t time.Time) timex.DateTime {
-	return timex.DateTime(t.In(time.Local))
-}
-
-// refreshNextFire recomputes NextFireAt strictly after the given instant;
+// refreshNextFire recomputes the exact fire cursor after the given instant;
 // disabled schedules carry none.
 func (*scheduleManager) refreshNextFire(schedule *cron.Schedule, after time.Time) {
-	schedule.NextFireAt = nil
+	schedule.NextFireAtUnixMs = nil
 
 	if !schedule.IsEnabled {
 		return
 	}
 
 	if next, ok := nextFire(schedule, after); ok {
-		due := timex.DateTime(next)
-		schedule.NextFireAt = &due
+		schedule.NextFireAtUnixMs = unixMillisPtr(next)
 	}
+}
+
+func sameScheduleTiming(left, right *cron.Schedule) bool {
+	return left.Kind == right.Kind &&
+		left.Expr == right.Expr &&
+		left.Timezone == right.Timezone &&
+		left.EveryMs == right.EveryMs &&
+		sameUnixMillis(left.FireAtUnixMs, right.FireAtUnixMs) &&
+		sameUnixMillis(left.StartsAtUnixMs, right.StartsAtUnixMs) &&
+		sameUnixMillis(left.EndsAtUnixMs, right.EndsAtUnixMs)
+}
+
+func sameUnixMillis(left, right *int64) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+
+	return *left == *right
 }
 
 // lockScheduleByName loads a schedule under a row lock, mapping absence to
@@ -431,7 +469,7 @@ func lockScheduleByName(ctx context.Context, tx orm.DB, name string) (*cron.Sche
 func persistScheduleState(ctx context.Context, tx orm.DB, schedule *cron.Schedule) error {
 	if _, err := tx.NewUpdate().
 		Model(schedule).
-		Select("is_enabled", "next_fire_at", "updated_at").
+		Select("is_enabled", "next_fire_at_unix_ms", "updated_at").
 		WherePK().
 		Exec(ctx); err != nil {
 		return fmt.Errorf("persist schedule %q state: %w", schedule.Name, err)

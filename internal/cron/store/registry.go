@@ -3,6 +3,7 @@ package store
 import (
 	"fmt"
 	"slices"
+	"unicode/utf8"
 
 	"github.com/coldsmirk/vef-framework-go/cron"
 )
@@ -24,6 +25,10 @@ func NewRegistry(handlers []cron.JobHandler) (*Registry, error) {
 		name := handler.Name()
 		if name == "" {
 			return nil, ErrJobHandlerNameEmpty
+		}
+
+		if utf8.RuneCountInString(name) > maxJobNameLength {
+			return nil, fmt.Errorf("%w: %q", ErrJobHandlerNameTooLong, name)
 		}
 
 		if _, exists := registry.handlers[name]; exists {

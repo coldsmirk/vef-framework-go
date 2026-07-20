@@ -9,67 +9,68 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/cron"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 // sweepBatchSize bounds one recovery pass; a backlog larger than this is
 // drained across consecutive ticks.
 const sweepBatchSize = 100
 
-// sweepAbandoned takes over runs whose heartbeat went stale — their node died
-// or lost the database. The whole takeover is one transaction: the stale rows
-// are locked so a heartbeat cannot land between the staleness check and the
-// write, they are finalized as abandoned, and the schedules that opted into
-// recovery are re-armed alongside them. Doing it in one transaction is what
-// makes the downstream effects honest — the abandoned notifications and the
-// recovery re-fire describe rows this sweep actually took over, and a failure
-// anywhere rolls the whole takeover back for the next tick to retry rather
-// than leaving runs abandoned with their recovery lost.
-//
-// Own runs are safe by construction: this node renews their heartbeats on a
-// cadence the staleness window must exceed at least twofold (config-validated).
+// takeoverResult is the concurrency state observed while holding every
+// running row of a set of already-locked schedules. Stale rows are finalized
+// and queued here, so only genuinely live rows remain active.
+type takeoverResult struct {
+	active         collections.Set[string]
+	abandoned      []cron.Run
+	queuedRecovery bool
+}
+
+// sweepAbandoned finds schedule gates with stale runs, then takes the same
+// schedule -> run -> fire-request lock order as claiming. A separate orphan
+// lane finalizes runs whose schedule has already been deleted.
 func (e *Engine) sweepAbandoned(ctx context.Context) {
 	now := e.now()
+	staleBefore := now.Add(-e.config.EffectiveAbandonedAfter()).UnixMilli()
 
 	var (
-		orphans []cron.Run
-		refired bool
+		orphans        []cron.Run
+		queuedRecovery bool
 	)
 
 	err := e.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
-		stale := timex.DateTime(now.Add(-e.config.EffectiveAbandonedAfter()))
-
-		var found []cron.Run
-
-		// SKIP LOCKED partitions the orphans across concurrent sweeps, and
-		// the row lock blocks the executing node's heartbeat update — so a
-		// run that proves liveness mid-sweep is never taken over.
-		if err := tx.NewSelect().
-			Model(&found).
-			Where(func(cb orm.ConditionBuilder) {
-				cb.Equals("status", cron.RunRunning).LessThan("heartbeat_at", stale)
-			}).
-			OrderBy("heartbeat_at").
-			Limit(sweepBatchSize).
-			ForUpdateSkipLocked().
-			Scan(ctx); err != nil {
-			return fmt.Errorf("select abandoned runs: %w", err)
-		}
-
-		if len(found) == 0 {
-			return nil
-		}
-
-		if err := markAbandoned(ctx, tx, found, now); err != nil {
-			return err
-		}
-
-		moved, err := refireRecoverable(ctx, tx, found, now)
+		schedules, err := lockSchedulesWithStaleRuns(ctx, tx, staleBefore)
 		if err != nil {
 			return err
 		}
 
-		orphans, refired = found, moved
+		takeover, err := takeOverRunning(
+			ctx,
+			tx,
+			schedules,
+			now,
+			e.config.EffectiveAbandonedAfter(),
+		)
+		if err != nil {
+			return err
+		}
+
+		orphans = append(orphans, takeover.abandoned...)
+		queuedRecovery = takeover.queuedRecovery
+
+		remaining := max(sweepBatchSize-len(orphans), 0)
+		if remaining == 0 {
+			return nil
+		}
+
+		scheduleless, err := lockSchedulelessStaleRuns(ctx, tx, staleBefore, remaining)
+		if err != nil {
+			return err
+		}
+
+		if err := markAbandoned(ctx, tx, scheduleless, now); err != nil {
+			return err
+		}
+
+		orphans = append(orphans, scheduleless...)
 
 		return nil
 	})
@@ -89,69 +90,207 @@ func (e *Engine) sweepAbandoned(ctx context.Context) {
 		return
 	}
 
-	for i := range orphans {
-		orphan := &orphans[i]
-		logger.Warnf("Run %s of schedule %q abandoned by node %s", orphan.ID, orphan.ScheduleName, orphan.NodeID)
-		e.publisher.RunAbandoned(ctx, orphan)
-	}
+	e.reportAbandoned(orphans)
 
-	if refired {
+	if queuedRecovery {
 		e.Wake()
 	}
 }
 
-// markAbandoned finalizes the locked orphan rows.
-func markAbandoned(ctx context.Context, tx orm.DB, orphans []cron.Run, now time.Time) error {
-	finished := timex.DateTime(now)
+func lockSchedulesWithStaleRuns(ctx context.Context, tx orm.DB, staleBefore int64) ([]cron.Schedule, error) {
+	var schedules []cron.Schedule
+	if err := tx.NewSelect().
+		Model(&schedules).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.InSubQuery("id", func(sq orm.SelectQuery) {
+				sq.Model((*cron.Run)(nil)).
+					Select("schedule_id").
+					Where(func(cb orm.ConditionBuilder) { staleRunningCondition(cb, staleBefore) }).
+					GroupBy("schedule_id")
+			})
+		}).
+		OrderBy("id").
+		Limit(sweepBatchSize).
+		ForUpdateSkipLocked().
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("lock schedules with abandoned runs: %w", err)
+	}
 
-	if _, err := tx.NewUpdate().
+	return schedules, nil
+}
+
+func lockSchedulelessStaleRuns(
+	ctx context.Context,
+	tx orm.DB,
+	staleBefore int64,
+	limit int,
+) ([]cron.Run, error) {
+	var runs []cron.Run
+	if err := tx.NewSelect().
+		Model(&runs).
+		Where(func(cb orm.ConditionBuilder) {
+			staleRunningCondition(cb, staleBefore)
+			cb.NotInSubQuery("schedule_id", func(sq orm.SelectQuery) {
+				sq.Model((*cron.Schedule)(nil)).Select("id")
+			})
+		}).
+		OrderBy("id").
+		Limit(limit).
+		ForUpdateSkipLocked().
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("lock scheduleless abandoned runs: %w", err)
+	}
+
+	return runs, nil
+}
+
+func staleRunningCondition(cb orm.ConditionBuilder, staleBefore int64) {
+	cb.Equals("status", cron.RunRunning).
+		Group(func(cb orm.ConditionBuilder) {
+			cb.IsNull("heartbeat_at_unix_ms").OrLessThan("heartbeat_at_unix_ms", staleBefore)
+		})
+}
+
+// takeOverRunning locks every running row of already-locked schedules, waits
+// for in-flight heartbeat/completion writes, and rechecks liveness on the
+// committed row version before applying concurrency policy.
+func takeOverRunning(
+	ctx context.Context,
+	tx orm.DB,
+	schedules []cron.Schedule,
+	now time.Time,
+	abandonedAfter time.Duration,
+) (takeoverResult, error) {
+	result := takeoverResult{active: collections.NewHashSetFrom[string]()}
+	if len(schedules) == 0 {
+		return result, nil
+	}
+
+	scheduleIDs := make([]string, len(schedules))
+
+	recoverable := collections.NewHashSetFrom[string]()
+	for i := range schedules {
+		scheduleIDs[i] = schedules[i].ID
+		if schedules[i].Recover {
+			recoverable.Add(schedules[i].ID)
+		}
+	}
+
+	var running []cron.Run
+	if err := tx.NewSelect().
+		Model(&running).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.In("schedule_id", scheduleIDs).Equals("status", cron.RunRunning)
+		}).
+		OrderBy("id").
+		ForUpdate().
+		Scan(ctx); err != nil {
+		return takeoverResult{}, fmt.Errorf("lock running schedules: %w", err)
+	}
+
+	staleBefore := now.Add(-abandonedAfter).UnixMilli()
+	for i := range running {
+		run := &running[i]
+		if run.HeartbeatAtUnixMs != nil && *run.HeartbeatAtUnixMs >= staleBefore {
+			result.active.Add(run.ScheduleID)
+
+			continue
+		}
+
+		result.abandoned = append(result.abandoned, *run)
+	}
+
+	if err := markAbandoned(ctx, tx, result.abandoned, now); err != nil {
+		return takeoverResult{}, err
+	}
+
+	queued, err := enqueueRecoverable(ctx, tx, result.abandoned, recoverable)
+	if err != nil {
+		return takeoverResult{}, err
+	}
+
+	result.queuedRecovery = queued
+
+	return result, nil
+}
+
+// markAbandoned finalizes locked orphan rows.
+func markAbandoned(ctx context.Context, tx orm.DB, orphans []cron.Run, now time.Time) error {
+	if len(orphans) == 0 {
+		return nil
+	}
+
+	updated, err := tx.NewUpdate().
 		Model((*cron.Run)(nil)).
 		Set("status", cron.RunAbandoned).
-		Set("finished_at", finished).
+		Set("finished_at_unix_ms", now.UnixMilli()).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.PKIn(runIDs(orphans)).Equals("status", cron.RunRunning)
 		}).
-		Exec(ctx); err != nil {
+		Exec(ctx)
+	if err != nil {
 		return fmt.Errorf("mark abandoned: %w", err)
+	}
+
+	affected, err := updated.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count abandoned runs: %w", err)
+	}
+
+	if affected != int64(len(orphans)) {
+		return fmt.Errorf("%w: updated %d of %d", ErrAbandonTakeoverIncomplete, affected, len(orphans))
+	}
+
+	for i := range orphans {
+		orphans[i].Status = cron.RunAbandoned
+		orphans[i].FinishedAtUnixMs = unixMillisPtr(now)
 	}
 
 	return nil
 }
 
-// refireRecoverable pulls NextFireAt to now for the orphans' schedules that
-// opted into recovery, reporting whether any fire moved. A pending fire that
-// is already due is normally left alone — the imminent claim covers the
-// recovery — except under MisfireSkip, which would journal that overdue fire
-// as missed and run nothing, swallowing the recovery with it.
-func refireRecoverable(ctx context.Context, tx orm.DB, orphans []cron.Run, now time.Time) (bool, error) {
-	ids := collections.NewHashSetFrom[string]()
+// enqueueRecoverable persists one explicit fire request per orphan whose
+// locked schedule opted into recovery. The orphan's run ID is a durable
+// idempotency fence, and its original logical time stays attached to the retry.
+func enqueueRecoverable(
+	ctx context.Context,
+	tx orm.DB,
+	orphans []cron.Run,
+	recoverable collections.Set[string],
+) (bool, error) {
+	requests := make([]*fireRequest, 0, len(orphans))
+
 	for i := range orphans {
-		ids.Add(orphans[i].ScheduleID)
+		orphan := &orphans[i]
+		if !recoverable.Contains(orphan.ScheduleID) {
+			continue
+		}
+
+		requests = append(requests, &fireRequest{
+			ScheduleID:        orphan.ScheduleID,
+			Kind:              fireRequestRecovery,
+			ScheduledAtUnixMs: orphan.ScheduledAtUnixMs,
+			SourceRunID:       orphan.ID,
+		})
 	}
 
-	due := timex.DateTime(now)
-
-	updated, err := tx.NewUpdate().
-		Model((*cron.Schedule)(nil)).
-		Set("next_fire_at", due).
-		Set("updated_at", due).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.PKIn(ids.ToSlice()).
-				IsTrue("recover").
-				Group(func(cb orm.ConditionBuilder) {
-					cb.IsNull("next_fire_at").
-						OrGreaterThan("next_fire_at", due).
-						OrEquals("misfire_policy", cron.MisfireSkip)
-				})
-		}).
-		Exec(ctx)
-	if err != nil {
-		return false, fmt.Errorf("re-fire schedules: %w", err)
+	if len(requests) == 0 {
+		return false, nil
 	}
 
-	affected, _ := updated.RowsAffected()
+	if _, err := tx.NewInsert().Model(&requests).Exec(ctx); err != nil {
+		return false, fmt.Errorf("queue recovery fires: %w", err)
+	}
 
-	return affected > 0, nil
+	return true, nil
+}
+
+func (e *Engine) reportAbandoned(orphans []cron.Run) {
+	for i := range orphans {
+		orphan := &orphans[i]
+		logger.Warnf("Run %s of schedule %q abandoned by node %s", orphan.ID, orphan.ScheduleName, orphan.NodeID)
+		e.publisher.RunAbandoned(orphan)
+	}
 }
 
 // runIDs projects the runs' primary keys.

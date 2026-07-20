@@ -1,7 +1,5 @@
 package cron
 
-import "github.com/coldsmirk/vef-framework-go/timex"
-
 // Cron store event topics. Both are best-effort operational notifications
 // published outside any transaction on the default event route — subscribe
 // for alerting; never drive correctness from them (the run journal is the
@@ -20,8 +18,8 @@ type RunFailedEvent struct {
 	RunID        string `json:"runId"`
 	ScheduleName string `json:"scheduleName"`
 	JobName      string `json:"jobName"`
-	// ScheduledAt is the run's logical fire time.
-	ScheduledAt timex.DateTime `json:"scheduledAt"`
+	// ScheduledAtUnixMs is the run's logical fire time.
+	ScheduledAtUnixMs int64 `json:"scheduledAtUnixMs"`
 	// NodeID identifies the node that executed the run.
 	NodeID string `json:"nodeId"`
 	// Error is the journaled failure message.
@@ -31,12 +29,12 @@ type RunFailedEvent struct {
 // NewRunFailedEvent creates a run-failed event from the journal record.
 func NewRunFailedEvent(run *Run) *RunFailedEvent {
 	return &RunFailedEvent{
-		RunID:        run.ID,
-		ScheduleName: run.ScheduleName,
-		JobName:      run.JobName,
-		ScheduledAt:  run.ScheduledAt,
-		NodeID:       run.NodeID,
-		Error:        run.Error,
+		RunID:             run.ID,
+		ScheduleName:      run.ScheduleName,
+		JobName:           run.JobName,
+		ScheduledAtUnixMs: run.ScheduledAtUnixMs,
+		NodeID:            run.NodeID,
+		Error:             run.Error,
 	}
 }
 
@@ -49,8 +47,8 @@ type RunAbandonedEvent struct {
 	RunID        string `json:"runId"`
 	ScheduleName string `json:"scheduleName"`
 	JobName      string `json:"jobName"`
-	// ScheduledAt is the run's logical fire time.
-	ScheduledAt timex.DateTime `json:"scheduledAt"`
+	// ScheduledAtUnixMs is the run's logical fire time.
+	ScheduledAtUnixMs int64 `json:"scheduledAtUnixMs"`
 	// NodeID identifies the node that stopped heartbeating.
 	NodeID string `json:"nodeId"`
 }
@@ -58,11 +56,11 @@ type RunAbandonedEvent struct {
 // NewRunAbandonedEvent creates a run-abandoned event from the journal record.
 func NewRunAbandonedEvent(run *Run) *RunAbandonedEvent {
 	return &RunAbandonedEvent{
-		RunID:        run.ID,
-		ScheduleName: run.ScheduleName,
-		JobName:      run.JobName,
-		ScheduledAt:  run.ScheduledAt,
-		NodeID:       run.NodeID,
+		RunID:             run.ID,
+		ScheduleName:      run.ScheduleName,
+		JobName:           run.JobName,
+		ScheduledAtUnixMs: run.ScheduledAtUnixMs,
+		NodeID:            run.NodeID,
 	}
 }
 

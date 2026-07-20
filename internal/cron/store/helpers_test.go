@@ -28,13 +28,13 @@ func newStoreDB(t *testing.T) orm.DB {
 	return db
 }
 
-// captureBus is an event.Bus recording published events.
-type captureBus struct {
+// CaptureBus is an event.Bus recording published events.
+type CaptureBus struct {
 	mu     sync.Mutex
 	events []event.Event
 }
 
-func (b *captureBus) Publish(_ context.Context, evt event.Event, _ ...event.PublishOption) error {
+func (b *CaptureBus) Publish(_ context.Context, evt event.Event, _ ...event.PublishOption) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -43,7 +43,7 @@ func (b *captureBus) Publish(_ context.Context, evt event.Event, _ ...event.Publ
 	return nil
 }
 
-func (b *captureBus) PublishBatch(ctx context.Context, evts []event.Event, opts ...event.PublishOption) error {
+func (b *CaptureBus) PublishBatch(ctx context.Context, evts []event.Event, opts ...event.PublishOption) error {
 	for _, evt := range evts {
 		if err := b.Publish(ctx, evt, opts...); err != nil {
 			return err
@@ -53,12 +53,12 @@ func (b *captureBus) PublishBatch(ctx context.Context, evts []event.Event, opts 
 	return nil
 }
 
-func (*captureBus) Subscribe(string, event.Handler, ...event.SubscribeOption) (event.Unsubscribe, error) {
+func (*CaptureBus) Subscribe(string, event.Handler, ...event.SubscribeOption) (event.Unsubscribe, error) {
 	return func() {}, nil
 }
 
 // Published returns a snapshot of the captured events.
-func (b *captureBus) Published() []event.Event {
+func (b *CaptureBus) Published() []event.Event {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -81,7 +81,7 @@ func newTestManager(db orm.DB, registry *Registry, now func() time.Time) *schedu
 	return &scheduleManager{
 		db:       db,
 		registry: registry,
-		engine:   NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(new(captureBus))),
+		engine:   NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(new(CaptureBus))),
 		now:      now,
 	}
 }
@@ -105,7 +105,6 @@ func fastStoreConfig() *config.CronStoreConfig {
 
 // scheduleFixture builds an enabled interval schedule due at the given time.
 func scheduleFixture(name, jobName string, due time.Time) *cron.Schedule {
-	next := timex.DateTime(due)
 	created := timex.DateTime(due.Add(-time.Hour))
 
 	schedule := &cron.Schedule{
@@ -116,7 +115,8 @@ func scheduleFixture(name, jobName string, due time.Time) *cron.Schedule {
 		MisfirePolicy:     cron.MisfireFireNow,
 		ConcurrencyPolicy: cron.ConcurrencyForbid,
 		IsEnabled:         true,
-		NextFireAt:        &next,
+		AnchorAtUnixMs:    due.Add(-time.Hour).UnixMilli(),
+		NextFireAtUnixMs:  unixMillisPtr(due),
 	}
 	schedule.CreatedAt = created
 	schedule.UpdatedAt = created
@@ -134,6 +134,29 @@ func insertSchedule(t *testing.T, db orm.DB, schedule *cron.Schedule) *cron.Sche
 	return schedule
 }
 
+// insertRunningRun persists a running journal fixture with the given logical
+// fire and heartbeat instants.
+func insertRunningRun(t *testing.T, db orm.DB, schedule *cron.Schedule, scheduledAt, heartbeatAt time.Time) *cron.Run {
+	t.Helper()
+
+	run := &cron.Run{
+		ScheduleID:        schedule.ID,
+		ScheduleName:      schedule.Name,
+		JobName:           schedule.JobName,
+		ScheduledAtUnixMs: scheduledAt.UnixMilli(),
+		ClaimedAtUnixMs:   scheduledAt.UnixMilli(),
+		StartedAtUnixMs:   unixMillisPtr(scheduledAt),
+		HeartbeatAtUnixMs: unixMillisPtr(heartbeatAt),
+		Status:            cron.RunRunning,
+		NodeID:            "node-dead",
+	}
+
+	_, err := db.NewInsert().Model(run).Exec(context.Background())
+	require.NoError(t, err, "Running run fixture insert should succeed")
+
+	return run
+}
+
 // loadRuns returns every journal row of the schedule, oldest first.
 func loadRuns(t *testing.T, db orm.DB, scheduleID string) []cron.Run {
 	t.Helper()
@@ -143,11 +166,36 @@ func loadRuns(t *testing.T, db orm.DB, scheduleID string) []cron.Run {
 	require.NoError(t, db.NewSelect().
 		Model(&runs).
 		Where(func(cb orm.ConditionBuilder) { cb.Equals("schedule_id", scheduleID) }).
-		OrderBy("scheduled_at", "id").
+		OrderBy("scheduled_at_unix_ms", "id").
 		Scan(context.Background()),
 		"Loading journal rows should succeed")
 
 	return runs
+}
+
+// loadFireRequests returns the schedule's pending explicit fires in logical order.
+func loadFireRequests(t *testing.T, db orm.DB, scheduleID string) []fireRequest {
+	t.Helper()
+
+	var requests []fireRequest
+
+	require.NoError(t, db.NewSelect().
+		Model(&requests).
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("schedule_id", scheduleID) }).
+		OrderBy("scheduled_at_unix_ms", "id").
+		Scan(context.Background()),
+		"Loading fire requests should succeed")
+
+	return requests
+}
+
+func insertFireRequest(t *testing.T, db orm.DB, request *fireRequest) *fireRequest {
+	t.Helper()
+
+	_, err := db.NewInsert().Model(request).Exec(context.Background())
+	require.NoError(t, err, "Fire request fixture insert should succeed")
+
+	return request
 }
 
 // reloadSchedule returns the schedule's current row state.

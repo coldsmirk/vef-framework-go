@@ -13,9 +13,9 @@ import (
 
 // Module provides the durable schedule store: the handler registry, the
 // claim/execute engine, the management surface, and the sys/cron resources.
-// Everything is inert until vef.cron.store.enabled turns the store on — the
-// manager then degrades to ErrStoreDisabled and the resources mount no
-// operations.
+// While vef.cron.store.enabled is false, the engine stays inert, the manager
+// returns ErrStoreDisabled, and the resources mount no operations. Enabling
+// the store activates migration, seeding, and execution through its lifecycle.
 var Module = fx.Module(
 	"vef:cron:store",
 
@@ -67,10 +67,13 @@ func registerLifecycle(
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
+			kind := dataSources.Primary().Kind
 			if cfg.Store.AutoMigrate {
-				if err := migration.Migrate(ctx, db, dataSources.Primary().Kind); err != nil {
+				if err := migration.Migrate(ctx, db, kind); err != nil {
 					return err
 				}
+			} else if err := migration.Verify(ctx, db, kind); err != nil {
+				return err
 			}
 
 			if err := SeedDefaultSchedules(ctx, manager, registry); err != nil {
@@ -81,10 +84,8 @@ func registerLifecycle(
 
 			return nil
 		},
-		OnStop: func(context.Context) error {
-			engine.Stop()
-
-			return nil
+		OnStop: func(ctx context.Context) error {
+			return engine.Stop(ctx)
 		},
 	})
 }
