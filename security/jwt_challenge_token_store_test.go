@@ -92,10 +92,8 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		s.Equal(resolved, state.Resolved, "Should preserve resolved list")
 	})
 
-	// A challenge token is minted from an already-authenticated principal, so one
-	// naming a framework-internal identity has no legitimate origin — parsing it
-	// back would hand the second-factor flow a principal that goes straight to
-	// token issuance.
+	// A challenge token naming a framework-reserved identity has no legitimate
+	// origin, so it must fail at Parse regardless of who minted it.
 	s.Run("RefusesReservedIdentities", func() {
 		for _, reserved := range []*Principal{
 			PrincipalSystem,

@@ -88,9 +88,8 @@ func TestAuthManagerAuthenticate(t *testing.T) {
 		assert.Equal(t, "db connection failed", err.Error(), "Authenticator generic error message should be preserved")
 	})
 
-	// Authenticators are an application extension point, so what they return is
-	// untrusted: the system identity bypasses every functional permission check,
-	// and Login would persist it into the session store.
+	// An authenticator's principal is untrusted input and must never carry a
+	// framework-reserved identity.
 	t.Run("RejectsAReservedPrincipal", func(t *testing.T) {
 		reserved := []struct {
 			name      string

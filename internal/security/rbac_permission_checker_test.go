@@ -20,7 +20,7 @@ func TestRBACPermissionCheckerHasPermission(t *testing.T) {
 		checker := NewRBACPermissionChecker(nil)
 		principal := security.NewUser("user1", "Alice", "admin")
 
-		has, err := checker.HasPermission(ctx, principal, "user:read")
+		has, err := checker.HasPermission(ctx, principal, "user.read")
 		require.NoError(t, err, "Nil loader should not return an error")
 		assert.False(t, has, "Nil loader should deny permission")
 	})
@@ -29,7 +29,7 @@ func TestRBACPermissionCheckerHasPermission(t *testing.T) {
 		loader := new(MockRolePermissionsLoader)
 		checker := NewRBACPermissionChecker(loader)
 
-		has, err := checker.HasPermission(ctx, nil, "user:read")
+		has, err := checker.HasPermission(ctx, nil, "user.read")
 		require.NoError(t, err, "Nil principal should not return an error")
 		assert.False(t, has, "Nil principal should be denied permission")
 	})
@@ -39,7 +39,7 @@ func TestRBACPermissionCheckerHasPermission(t *testing.T) {
 		checker := NewRBACPermissionChecker(loader)
 		principal := security.NewUser("user1", "Alice")
 
-		has, err := checker.HasPermission(ctx, principal, "user:read")
+		has, err := checker.HasPermission(ctx, principal, "user.read")
 		require.NoError(t, err, "User without roles should not return an error")
 		assert.False(t, has, "User without roles should be denied permission")
 	})
@@ -48,13 +48,13 @@ func TestRBACPermissionCheckerHasPermission(t *testing.T) {
 		scope := new(MockDataScope)
 		loader := new(MockRolePermissionsLoader)
 		loader.On("LoadPermissions", mock.Anything, "admin").Return(
-			map[string]security.DataScope{"user:read": scope}, nil,
+			map[string]security.DataScope{"user.read": scope}, nil,
 		)
 
 		checker := NewRBACPermissionChecker(loader)
 		principal := security.NewUser("user1", "Alice", "admin")
 
-		has, err := checker.HasPermission(ctx, principal, "user:read")
+		has, err := checker.HasPermission(ctx, principal, "user.read")
 		require.NoError(t, err, "Role with requested permission should not return an error")
 		assert.True(t, has, "Role with requested permission should be allowed")
 		loader.AssertExpectations(t)
@@ -63,7 +63,7 @@ func TestRBACPermissionCheckerHasPermission(t *testing.T) {
 	t.Run("RoleLacksPermission", func(t *testing.T) {
 		loader := new(MockRolePermissionsLoader)
 		loader.On("LoadPermissions", mock.Anything, "viewer").Return(
-			map[string]security.DataScope{"user:read": nil}, nil,
+			map[string]security.DataScope{"user.read": nil}, nil,
 		)
 
 		checker := NewRBACPermissionChecker(loader)
@@ -100,7 +100,7 @@ func TestRBACPermissionCheckerHasPermission(t *testing.T) {
 		checker := NewRBACPermissionChecker(loader)
 		principal := security.NewUser("user1", "Alice", "admin")
 
-		_, err := checker.HasPermission(ctx, principal, "user:read")
+		_, err := checker.HasPermission(ctx, principal, "user.read")
 		require.Error(t, err, "Loader failure should be returned")
 		assert.Equal(t, "cache failure", err.Error(), "Loader error message should be preserved")
 		loader.AssertExpectations(t)
@@ -113,7 +113,7 @@ func TestRBACPermissionCheckerHasPermission(t *testing.T) {
 		checker := NewRBACPermissionChecker(loader)
 		principal := security.NewUser("user1", "Alice", "admin")
 
-		has, err := checker.HasPermission(ctx, principal, "user:read")
+		has, err := checker.HasPermission(ctx, principal, "user.read")
 		require.NoError(t, err, "Nil permission map should not return an error")
 		assert.False(t, has, "Nil permission map should deny requested permission")
 		loader.AssertExpectations(t)
@@ -128,7 +128,7 @@ func TestRBACPermissionCheckerHasPermission(t *testing.T) {
 		checker := NewRBACPermissionChecker(loader)
 		principal := security.NewUser("user1", "Alice", "admin")
 
-		has, err := checker.HasPermission(ctx, principal, "user:read")
+		has, err := checker.HasPermission(ctx, principal, "user.read")
 		require.NoError(t, err, "Empty permission map should not return an error")
 		assert.False(t, has, "Empty permission map should deny requested permission")
 		loader.AssertExpectations(t)

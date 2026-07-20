@@ -262,7 +262,7 @@ func (suite *RPCEngineTestSuite) setupTestApp() {
 		Return(true, nil).
 		Maybe()
 
-	// Permission denied for test:restricted
+	// Permission denied for test.restricted
 	suite.permissionChecker.On("HasPermission", mock.Anything, mock.Anything, "test.restricted").
 		Return(false, nil).
 		Maybe()

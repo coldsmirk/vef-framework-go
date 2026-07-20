@@ -240,7 +240,7 @@ func (suite *RESTEngineTestSuite) SetupSuite() {
 		"email": "test@example.com",
 	}
 
-	// Admin user with items:admin permission
+	// Admin user with items.admin permission
 	suite.adminUser = security.NewUser("admin001", "Admin User", "superadmin")
 	suite.adminUser.Details = map[string]any{
 		"email": "admin@example.com",
@@ -292,14 +292,14 @@ func (suite *RESTEngineTestSuite) setupTestApp() {
 		Return(true, nil).
 		Maybe()
 
-	// Permission denied for items:admin for regular user
+	// Permission denied for items.admin for regular user
 	suite.permissionChecker.On("HasPermission", mock.Anything, mock.MatchedBy(func(p *security.Principal) bool {
 		return p.ID == suite.testUser.ID
 	}), "items.admin").
 		Return(false, nil).
 		Maybe()
 
-	// Permission allowed for items:admin for admin user
+	// Permission allowed for items.admin for admin user
 	suite.permissionChecker.On("HasPermission", mock.Anything, mock.MatchedBy(func(p *security.Principal) bool {
 		return p.ID == suite.adminUser.ID
 	}), "items.admin").

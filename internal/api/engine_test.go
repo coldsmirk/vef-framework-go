@@ -397,10 +397,8 @@ func TestEngineRegister(t *testing.T) {
 		assert.Equal(t, "sys.user.delete", op.Auth.Options[shared.AuthOptionRequiredPermission], "RequiredPermission should be stored correctly")
 	})
 
-	// A permission on an unauthenticated endpoint can never be granted: the none
-	// strategy mints an anonymous principal with no roles. Registration refuses
-	// the contradiction so it cannot ship as an endpoint that reads public and
-	// answers 403 to everyone.
+	// A public endpoint requiring a permission is a contradiction: anonymous
+	// carries no roles, so the endpoint would answer 403 to everyone.
 	t.Run("PublicOperationWithRequiredPermission", func(t *testing.T) {
 		e, _ := newRegistrationEngine(t, []api.OperationSpec{
 			{Action: "delete", Public: true, RequiredPermission: "sys.user.delete"},

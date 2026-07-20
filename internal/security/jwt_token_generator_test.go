@@ -38,8 +38,7 @@ func (s *JWTTokenGeneratorTestSuite) TestGenerate() {
 		s.NotEmpty(tokens.RefreshToken, "Should have non-empty refresh token")
 	})
 
-	// Issuing for a reserved identity would hand out a bearer credential that
-	// skips every functional permission check.
+	// Reserved identities are audit authors, never bearer-credential holders.
 	s.Run("RefusesReservedIdentities", func() {
 		for _, principal := range []*security.Principal{
 			security.PrincipalSystem,
