@@ -27,12 +27,36 @@ type systemDatabases struct {
 	registry datasource.Registry
 	codec    *definition.SecretCodec
 
-	mu     sync.Mutex
-	hashes map[string]string
+	mu      sync.Mutex
+	sources map[string]*systemSource
+}
+
+// systemSource serializes registration per system: dialing one system's
+// database (which can block for seconds when it is unreachable) must never
+// stall invocations against other systems. Hash is the content hash of the
+// registered definition, guarded by the same per-system lock.
+type systemSource struct {
+	mu   sync.Mutex
+	hash string
 }
 
 func newSystemDatabases(registry datasource.Registry, codec *definition.SecretCodec) *systemDatabases {
-	return &systemDatabases{registry: registry, codec: codec, hashes: make(map[string]string)}
+	return &systemDatabases{registry: registry, codec: codec, sources: make(map[string]*systemSource)}
+}
+
+// sourceFor returns the per-system lock entry, creating it on first sight.
+// Entries are never removed; the map is bounded by the set of system codes.
+func (v *systemDatabases) sourceFor(code string) *systemSource {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	source, ok := v.sources[code]
+	if !ok {
+		source = new(systemSource)
+		v.sources[code] = source
+	}
+
+	return source
 }
 
 // DBFor returns the connection and dialect for system's data source,
@@ -43,10 +67,13 @@ func (v *systemDatabases) DBFor(ctx context.Context, system *integration.System)
 	name := systemSourcePrefix + system.Code
 	hash := dataSourceHash(system.DataSource)
 
-	v.mu.Lock()
-	defer v.mu.Unlock()
+	source := v.sourceFor(system.Code)
+	source.mu.Lock()
+	defer source.mu.Unlock()
 
-	if v.hashes[system.Code] == hash && v.registry.Has(name) {
+	if source.hash == hash && v.registry.Has(name) {
+		// A Get miss here means the entry raced away (an unmanaged
+		// Unregister) between Has and Get; falling through re-registers it.
 		db, err := v.registry.Get(name)
 		if err == nil {
 			return db, system.DataSource.Kind, nil
@@ -71,20 +98,24 @@ func (v *systemDatabases) DBFor(ctx context.Context, system *integration.System)
 		return nil, "", &transportError{err: err}
 	}
 
-	v.hashes[system.Code] = hash
+	source.hash = hash
 
 	return db, cfg.Kind, nil
 }
 
 // Release drops the registry entry of a deleted system (or one whose data
 // source was removed); the connection closes asynchronously per the
-// registry's grace handling. Releasing an unknown system is a no-op.
+// registry's grace handling. Releasing an unknown system is a no-op. It
+// holds the system's lock, so a concurrent DBFor either completes before the
+// release or re-registers after it.
 func (v *systemDatabases) Release(ctx context.Context, systemCode string) error {
 	name := systemSourcePrefix + systemCode
 
-	v.mu.Lock()
-	delete(v.hashes, systemCode)
-	v.mu.Unlock()
+	source := v.sourceFor(systemCode)
+	source.mu.Lock()
+	defer source.mu.Unlock()
+
+	source.hash = ""
 
 	if !v.registry.Has(name) {
 		return nil
