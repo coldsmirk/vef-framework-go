@@ -810,9 +810,9 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoSuccess() {
 		Gender: security.GenderMale,
 		Avatar: &avatarURL,
 		PermissionTokens: []string{
-			"user:read",
+			"user.read",
 			"user.write",
-			"order:read",
+			"order.read",
 		},
 		Menus: []security.UserMenu{
 			{
@@ -859,9 +859,9 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoSuccess() {
 	permissionTokens, ok := data["permissionTokens"].([]any)
 	suite.True(ok, "Permission tokens should be an array")
 	suite.Len(permissionTokens, 3, "Should have 3 permission tokens")
-	suite.Contains(permissionTokens, "user:read", "Should contain user:read permission")
+	suite.Contains(permissionTokens, "user.read", "Should contain user.read permission")
 	suite.Contains(permissionTokens, "user.write", "Should contain user.write permission")
-	suite.Contains(permissionTokens, "order:read", "Should contain order:read permission")
+	suite.Contains(permissionTokens, "order.read", "Should contain order.read permission")
 
 	menus, ok := data["menus"].([]any)
 	suite.True(ok, "Menus should be an array")
@@ -1346,10 +1346,9 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeSuccess() {
 	s.challengeProvider.AssertExpectations(s.T())
 }
 
-// TestResolveChallengeRefusesReservedPrincipal verifies the second-factor path
-// cannot escalate into a framework-internal identity. A ChallengeProvider is an
-// application extension point whose result no authenticator ever sees, and it
-// flows straight into token issuance.
+// TestResolveChallengeRefusesReservedPrincipal pins the resolve path's own
+// reserved-identity gate: a ChallengeProvider's result is vetted by no
+// authenticator.
 func (s *ChallengeFlowTestSuite) TestResolveChallengeRefusesReservedPrincipal() {
 	s.challengeProvider.On("Type").Return("totp").Maybe()
 	s.challengeProvider.On("Evaluate", mock.Anything, mock.Anything).
@@ -1380,6 +1379,14 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeRefusesReservedPrincipal() 
 		"The refusal should carry the principal-invalid code")
 
 	s.Nil(body.Data, "A refused challenge must carry no payload, so no tokens can leak")
+
+	events := s.publisher.GetPublishedEvents()
+	s.Require().Len(events, 1, "A reserved-principal rejection should publish exactly one login event")
+	loginEvent, ok := events[0].(*security.LoginEvent)
+	s.Require().True(ok, "Published event should be a LoginEvent")
+	s.False(loginEvent.IsOk, "The audit event should record a failed login")
+	s.Equal(security.ErrCodePrincipalInvalid, loginEvent.ErrorCode,
+		"The audit event should carry the principal-invalid code")
 
 	s.challengeProvider.AssertExpectations(s.T())
 }

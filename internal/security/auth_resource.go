@@ -304,11 +304,15 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 		return err
 	}
 
-	// A ChallengeProvider is an application extension point and its result is
-	// never seen by an Authenticator, so this is the only place the second-factor
-	// path can be stopped from escalating into a framework-internal identity.
+	// A ChallengeProvider's result is vetted by no authenticator, so the resolve
+	// path needs its own reserved-identity gate (token issuance downstream stays
+	// as defense in depth). The rejection is audited but not counted toward
+	// lockout: the second factor was correct — the fault is the provider's, not
+	// the caller's.
 	if principal == nil || principal.IsReserved() {
 		logger.Errorf("Challenge rejected: provider %q resolved to a nil or framework-reserved principal", params.Type)
+
+		a.publishLoginFailure(ctx, params.Type, state.Username, security.ErrReservedPrincipal)
 
 		return security.ErrReservedPrincipal
 	}
