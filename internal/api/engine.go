@@ -220,9 +220,9 @@ func (e *engine) buildOperation(res api.Resource, spec api.OperationSpec, handle
 		}
 
 		// A permission on an unauthenticated endpoint can never be satisfied: the
-		// none strategy mints an anonymous principal carrying no roles, so the check
-		// below denies everyone. Refuse the contradiction at registration rather
-		// than shipping an endpoint that reads public and answers 403.
+		// none strategy mints an anonymous principal with no roles, so the auth
+		// middleware would deny everyone at request time. Refuse at registration
+		// rather than shipping an endpoint that reads public and answers 403.
 		if ac.Strategy == api.AuthStrategyNone {
 			return nil, fmt.Errorf("%w: %s:%s requires %q",
 				shared.ErrPermissionOnPublicOp, res.Name(), spec.Action, spec.RequiredPermission)

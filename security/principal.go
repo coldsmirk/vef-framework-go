@@ -172,11 +172,10 @@ func (p *Principal) AttemptUnmarshalDetails(details any) {
 }
 
 // IsReserved reports whether the principal claims a framework-internal identity.
-// These identities exist to attribute writes made outside any request, and the
-// system type additionally bypasses every functional permission check, so no
-// authentication path may mint one. The anonymous id is deliberately absent: it
-// denotes the absence of an identity, which the public auth strategy produces
-// legitimately.
+// Reserved identities attribute work the framework performs outside any request;
+// they are audit authors, never callers, so no authentication or token-issuance
+// path may produce one. The anonymous id is deliberately absent: it denotes the
+// absence of an identity, which the public auth strategy produces legitimately.
 func (p *Principal) IsReserved() bool {
 	return p.Type == PrincipalTypeSystem ||
 		p.ID == orm.OperatorSystem ||

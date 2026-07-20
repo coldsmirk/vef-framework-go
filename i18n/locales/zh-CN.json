@@ -34,7 +34,7 @@
   "security_password_required": "密码不能为空",
   "security_invalid_credentials": "账号或密码错误",
   "security_system_principal_login_forbidden": "禁止登录系统内部用户",
-  "security_reserved_principal_forbidden": "认证返回了系统内置身份",
+  "security_reserved_principal_forbidden": "禁止使用系统内置身份",
   "security_external_app_loader_not_implemented": "请提供一个 'security.ExternalAppLoader' 的实现",
   "security_credentials_format_invalid": "签名格式不正确",
   "security_credentials_fields_required": "签名、时间戳或摘要不能为空",

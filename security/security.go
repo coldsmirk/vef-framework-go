@@ -45,7 +45,10 @@ type Authenticator interface {
 // carries the client context at issuance: a stateless generator (JWT) ignores
 // it, while a stateful one (opaque) records it on the session it creates.
 type TokenGenerator interface {
-	// Generate creates the tokens for the given Principal.
+	// Generate creates the tokens for the given Principal. Issuance turns an
+	// identity into a bearer credential, so implementations must refuse a nil or
+	// reserved principal (see Principal.IsReserved): the generator is reachable
+	// from DI, and the challenge flow hands it principals no authenticator vetted.
 	Generate(ctx context.Context, principal *Principal, meta SessionMeta) (*AuthTokens, error)
 }
 

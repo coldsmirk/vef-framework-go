@@ -2,9 +2,8 @@ package shared
 
 import "regexp"
 
-// permissionTokenPattern accepts dot-separated segments of letters, digits and
-// underscores. Case is deliberately unconstrained — the convention this enforces
-// is the separator, since a token is an opaque key that must match the one a
+// permissionTokenPattern enforces the dot-separator convention; case is left
+// unconstrained. A token is an opaque key that must match the one a
 // RolePermissionsLoader returns, and mixing separators silently splits the same
 // permission into two.
 var permissionTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$`)

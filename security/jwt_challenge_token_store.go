@@ -82,6 +82,7 @@ func (s *JWTChallengeTokenStore) Parse(_ context.Context, token string) (*Challe
 		return nil, ErrTokenInvalid
 	}
 
+	// Catches reserved ids smuggled under a user or external-app type.
 	if principal.IsReserved() {
 		return nil, ErrTokenInvalid
 	}

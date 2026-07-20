@@ -24,11 +24,7 @@ func NewOpaqueTokenGenerator(store security.SessionStore, policy security.Sessio
 }
 
 func (g *OpaqueTokenGenerator) Generate(ctx context.Context, principal *security.Principal, meta security.SessionMeta) (*security.AuthTokens, error) {
-	// Token issuance is the point where an identity becomes a bearer credential,
-	// so it is where the reserved-identity invariant has to hold — the generator
-	// is reachable from DI, and the challenge flow reaches it with a principal no
-	// authenticator ever vetted. A session opened here would also outlive the
-	// request that created it.
+	// Refuse before any store write: a session must never open for a rejected principal.
 	if principal == nil || principal.IsReserved() {
 		return nil, security.ErrReservedPrincipal
 	}

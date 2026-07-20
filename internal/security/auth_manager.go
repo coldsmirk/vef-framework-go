@@ -39,11 +39,8 @@ func (am *AuthenticatorAuthManager) Authenticate(ctx context.Context, authentica
 		return nil, err
 	}
 
-	// Authenticators are an application extension point, so the principal crosses
-	// a trust boundary here. Reserved identities are framework-internal audit
-	// authors, never callers: minting one by authenticating would hand it the
-	// system type's permission-check bypass, and would let it reach the session
-	// store through Login.
+	// An authenticator is an application extension point: never let one mint a
+	// framework-reserved identity (see security.Principal.IsReserved).
 	if principal == nil || principal.IsReserved() {
 		logger.Errorf("Authentication rejected: authenticator %T returned a nil or framework-reserved principal",
 			authenticator)
