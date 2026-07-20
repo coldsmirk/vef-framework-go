@@ -76,7 +76,7 @@ func TestTriggerValidate(t *testing.T) {
 		},
 		{
 			name:    "IntervalBeyondDurationRange",
-			spec:    TriggerSpec{Kind: TriggerInterval, EveryMs: maxDurationMilliseconds + 1},
+			spec:    TriggerSpec{Kind: TriggerInterval, EveryMs: MaxDurationMilliseconds + 1},
 			wantErr: ErrTriggerIntervalTooLong,
 		},
 		{name: "OnceWithFireTime", spec: Once(future)},
@@ -255,7 +255,7 @@ func TestTriggerNext(t *testing.T) {
 			Next(time.Now(), time.Time{})
 		assert.False(t, ok, "A trigger with conflicting fields must yield no occurrence")
 
-		_, ok = TriggerSpec{Kind: TriggerInterval, EveryMs: maxDurationMilliseconds + 1}.
+		_, ok = TriggerSpec{Kind: TriggerInterval, EveryMs: MaxDurationMilliseconds + 1}.
 			Next(time.Now(), time.Time{})
 		assert.False(t, ok, "An overflowing interval must yield no occurrence")
 	})

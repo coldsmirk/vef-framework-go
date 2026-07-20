@@ -46,7 +46,17 @@ func WithDefaultSchedule(spec ScheduleSpec) JobHandlerOption {
 
 // NewJobHandler adapts a function to a JobHandler.
 func NewJobHandler(name string, execute func(ctx context.Context, execution Execution) error, opts ...JobHandlerOption) JobHandler {
-	return newConfiguredHandler(&funcJobHandler{name: name, execute: execute}, opts)
+	var config jobHandlerConfig
+	for _, opt := range opts {
+		opt(&config)
+	}
+
+	handler := JobHandler(&funcJobHandler{name: name, execute: execute})
+	if config.defaultSchedule != nil {
+		handler = &seededJobHandler{JobHandler: handler, spec: *config.defaultSchedule}
+	}
+
+	return handler
 }
 
 // NewTypedJobHandler adapts a typed function to a JobHandler: the schedule's
@@ -61,21 +71,6 @@ func NewTypedJobHandler[P any](name string, execute func(ctx context.Context, pa
 
 		return execute(ctx, params)
 	}, opts...)
-}
-
-// newConfiguredHandler applies options, wrapping the handler with its default
-// schedule when one is shipped.
-func newConfiguredHandler(handler JobHandler, opts []JobHandlerOption) JobHandler {
-	var config jobHandlerConfig
-	for _, opt := range opts {
-		opt(&config)
-	}
-
-	if config.defaultSchedule == nil {
-		return handler
-	}
-
-	return &seededJobHandler{JobHandler: handler, spec: *config.defaultSchedule}
 }
 
 // funcJobHandler adapts a plain function to the JobHandler interface.

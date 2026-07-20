@@ -56,7 +56,7 @@ func TestScheduleParamsRejectUnrepresentableTimeout(t *testing.T) {
 		timeoutMs int64
 	}{
 		{name: "Negative", timeoutMs: -1},
-		{name: "BeyondDurationRange", timeoutMs: maxDurationMilliseconds + 1},
+		{name: "BeyondDurationRange", timeoutMs: cron.MaxDurationMilliseconds + 1},
 	}
 
 	for _, tt := range tests {

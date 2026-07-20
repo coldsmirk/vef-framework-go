@@ -133,16 +133,6 @@ type PreviewFiresParams struct {
 	EndsAtUnixMs   *int64        `json:"endsAtUnixMs"`
 }
 
-func unixTimePtr(unixMs *int64) *time.Time {
-	if unixMs == nil {
-		return nil
-	}
-
-	value := unixTime(*unixMs)
-
-	return &value
-}
-
 // FiresPreview is the preview_fires response: the trigger's upcoming fire
 // times from now; empty when it yields no occurrence inside its window.
 type FiresPreview struct {
@@ -392,10 +382,11 @@ func previewNextFires(
 
 	cursor := from
 
-	if pending := unixTimePtr(schedule.NextFireAtUnixMs); pending != nil {
+	if schedule.NextFireAtUnixMs != nil {
+		pending := unixTime(*schedule.NextFireAtUnixMs)
 		if pending.After(from) {
-			appendPreviewFire(preview, *pending)
-			cursor = *pending
+			appendPreviewFire(preview, pending)
+			cursor = pending
 		} else {
 			decision := decide(schedule, from, misfireThreshold)
 			if decision.fire {

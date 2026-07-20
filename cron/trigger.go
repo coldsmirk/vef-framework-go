@@ -2,7 +2,6 @@ package cron
 
 import (
 	"fmt"
-	"math/big"
 	"time"
 
 	// Schedules carry IANA timezones; the embedded tzdata keeps LoadLocation
@@ -34,9 +33,10 @@ const (
 	// not name one explicitly. Durable schedules must never depend on a node's
 	// process-local timezone.
 	DefaultTimezone = "UTC"
-	// maxDurationMilliseconds is the largest whole-millisecond duration Go can
-	// represent without integer wraparound.
-	maxDurationMilliseconds = int64((1<<63 - 1) / time.Millisecond)
+	// MaxDurationMilliseconds is the largest whole-millisecond count a
+	// time.Duration can represent; interval and timeout inputs beyond it
+	// cannot round-trip through Go durations without wraparound.
+	MaxDurationMilliseconds = int64((1<<63 - 1) / time.Millisecond)
 )
 
 // exprParser accepts standard 5-field expressions, 6-field expressions with a
@@ -81,11 +81,6 @@ func Every(every time.Duration) TriggerSpec {
 // Once returns a single-fire trigger.
 func Once(at time.Time) TriggerSpec {
 	return TriggerSpec{Kind: TriggerOnce, At: &at}
-}
-
-// every returns the interval as a duration.
-func (t TriggerSpec) every() time.Duration {
-	return time.Duration(t.EveryMs) * time.Millisecond
 }
 
 // location resolves the trigger's evaluation zone.
@@ -139,17 +134,12 @@ func (t TriggerSpec) Validate() error {
 		return nil
 
 	case TriggerInterval:
-		if t.EveryMs <= 0 {
-			return fmt.Errorf("%w: %dms is below %s", ErrTriggerIntervalTooShort, t.EveryMs, MinInterval)
-		}
-
-		if t.EveryMs > maxDurationMilliseconds {
+		if t.EveryMs > MaxDurationMilliseconds {
 			return fmt.Errorf("%w: %dms", ErrTriggerIntervalTooLong, t.EveryMs)
 		}
 
-		every := t.every()
-		if every < MinInterval {
-			return fmt.Errorf("%w: %s is below %s", ErrTriggerIntervalTooShort, every, MinInterval)
+		if t.EveryMs < MinInterval.Milliseconds() {
+			return fmt.Errorf("%w: %dms is below %s", ErrTriggerIntervalTooShort, t.EveryMs, MinInterval)
 		}
 
 		return nil
@@ -171,78 +161,12 @@ func (t TriggerSpec) Validate() error {
 // the fixed-rate phase of interval triggers and is ignored by other kinds.
 // The spec must have passed Validate; an invalid spec yields no occurrence.
 func (t TriggerSpec) Next(after, anchor time.Time) (time.Time, bool) {
-	if t.hasFieldConflict() {
+	compiled, ok := t.compile()
+	if !ok {
 		return time.Time{}, false
 	}
 
-	switch t.Kind {
-	case TriggerCron:
-		schedule, err := exprParser.Parse(t.Expr)
-		if err != nil {
-			return time.Time{}, false
-		}
-
-		location, err := t.location()
-		if err != nil {
-			return time.Time{}, false
-		}
-
-		next := schedule.Next(after.In(location))
-		if next.IsZero() {
-			return time.Time{}, false
-		}
-
-		return next, true
-
-	case TriggerInterval:
-		if t.EveryMs <= 0 || t.EveryMs > maxDurationMilliseconds {
-			return time.Time{}, false
-		}
-
-		every := t.every()
-		if every < MinInterval {
-			return time.Time{}, false
-		}
-
-		if anchor.IsZero() {
-			anchor = after
-		}
-
-		if after.Before(anchor) {
-			return anchor, true
-		}
-
-		return after.Add(intervalDelay(after, anchor, every)), true
-
-	case TriggerOnce:
-		if t.At == nil || !t.At.After(after) {
-			return time.Time{}, false
-		}
-
-		return *t.At, true
-
-	default:
-		return time.Time{}, false
-	}
-}
-
-func intervalDelay(after, anchor time.Time, every time.Duration) time.Duration {
-	elapsed := after.Sub(anchor)
-	if anchor.Add(elapsed).Equal(after) {
-		return every - elapsed%every
-	}
-
-	var afterSeconds, anchorSeconds, elapsedNanos big.Int
-	afterSeconds.SetInt64(after.Unix())
-	anchorSeconds.SetInt64(anchor.Unix())
-	elapsedNanos.Sub(&afterSeconds, &anchorSeconds)
-	elapsedNanos.Mul(&elapsedNanos, big.NewInt(int64(time.Second)))
-	elapsedNanos.Add(&elapsedNanos, big.NewInt(int64(after.Nanosecond()-anchor.Nanosecond())))
-
-	var remainder big.Int
-	remainder.Mod(&elapsedNanos, big.NewInt(int64(every)))
-
-	return every - time.Duration(remainder.Int64())
+	return compiled.next(after, anchor)
 }
 
 // Occurrences counts the fire times in the half-open interval (from, to],
@@ -253,11 +177,16 @@ func (t TriggerSpec) Occurrences(from, to, anchor time.Time, limit int) int {
 		return 0
 	}
 
+	compiled, ok := t.compile()
+	if !ok {
+		return 0
+	}
+
 	count := 0
 	cursor := from
 
 	for count < limit {
-		next, ok := t.Next(cursor, anchor)
+		next, ok := compiled.next(cursor, anchor)
 		if !ok || next.After(to) {
 			break
 		}
@@ -267,4 +196,91 @@ func (t TriggerSpec) Occurrences(from, to, anchor time.Time, limit int) int {
 	}
 
 	return count
+}
+
+// compiledTrigger carries the parse-once artifacts of a structurally valid
+// spec, so occurrence loops (misfire accounting over a long gap) do not
+// re-parse the expression or reload the timezone on every step.
+type compiledTrigger struct {
+	spec     TriggerSpec
+	schedule cronv3.Schedule
+	location *time.Location
+}
+
+// compile checks the spec exactly as Next used to and captures the cron
+// parse artifacts; ok=false mirrors "an invalid spec yields no occurrence".
+func (t TriggerSpec) compile() (compiledTrigger, bool) {
+	if t.hasFieldConflict() {
+		return compiledTrigger{}, false
+	}
+
+	switch t.Kind {
+	case TriggerCron:
+		schedule, err := exprParser.Parse(t.Expr)
+		if err != nil {
+			return compiledTrigger{}, false
+		}
+
+		location, err := t.location()
+		if err != nil {
+			return compiledTrigger{}, false
+		}
+
+		return compiledTrigger{spec: t, schedule: schedule, location: location}, true
+
+	case TriggerInterval:
+		if t.EveryMs < MinInterval.Milliseconds() || t.EveryMs > MaxDurationMilliseconds {
+			return compiledTrigger{}, false
+		}
+
+		return compiledTrigger{spec: t}, true
+
+	case TriggerOnce:
+		if t.At == nil {
+			return compiledTrigger{}, false
+		}
+
+		return compiledTrigger{spec: t}, true
+
+	default:
+		return compiledTrigger{}, false
+	}
+}
+
+func (c compiledTrigger) next(after, anchor time.Time) (time.Time, bool) {
+	switch c.spec.Kind {
+	case TriggerCron:
+		next := c.schedule.Next(after.In(c.location))
+		if next.IsZero() {
+			return time.Time{}, false
+		}
+
+		return next, true
+
+	case TriggerInterval:
+		every := time.Duration(c.spec.EveryMs) * time.Millisecond
+
+		if anchor.IsZero() {
+			anchor = after
+		}
+
+		if after.Before(anchor) {
+			return anchor, true
+		}
+
+		// Sub saturates once the gap exceeds ~292 years, so the phase of such
+		// a degenerate anchor drifts, but the delay stays within (0, every]
+		// and the fire remains strictly after the query instant.
+		return after.Add(every - after.Sub(anchor)%every), true
+
+	case TriggerOnce:
+		if !c.spec.At.After(after) {
+			return time.Time{}, false
+		}
+
+		return *c.spec.At, true
+
+	default:
+		return time.Time{}, false
+	}
 }

@@ -16,13 +16,6 @@ const (
 	ErrCodeScheduleInvalid  = 2706
 )
 
-// i18n keys of the parameterized cron errors; exported for callers composing
-// the reason template parameter.
-const (
-	ErrMessageTriggerInvalid  = "cron_trigger_invalid"
-	ErrMessageScheduleInvalid = "cron_schedule_invalid"
-)
-
 // Predefined cron API errors. These are business errors and keep the default
 // HTTP 200 status; the failure is carried by the body code.
 var (
@@ -52,7 +45,7 @@ var (
 // reason. errors.Is matches the sentinel semantics through the shared code.
 func ErrTriggerInvalid(reason string) result.Error {
 	return result.Err(
-		i18n.T(ErrMessageTriggerInvalid, map[string]any{"reason": reason}),
+		i18n.T("cron_trigger_invalid", map[string]any{"reason": reason}),
 		result.WithCode(ErrCodeTriggerInvalid),
 	)
 }
@@ -62,7 +55,7 @@ func ErrTriggerInvalid(reason string) result.Error {
 // reason. errors.Is matches through the shared code.
 func ErrScheduleInvalid(reason string) result.Error {
 	return result.Err(
-		i18n.T(ErrMessageScheduleInvalid, map[string]any{"reason": reason}),
+		i18n.T("cron_schedule_invalid", map[string]any{"reason": reason}),
 		result.WithCode(ErrCodeScheduleInvalid),
 	)
 }
