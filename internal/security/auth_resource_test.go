@@ -1346,6 +1346,44 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeSuccess() {
 	s.challengeProvider.AssertExpectations(s.T())
 }
 
+// TestResolveChallengeRefusesReservedPrincipal verifies the second-factor path
+// cannot escalate into a framework-internal identity. A ChallengeProvider is an
+// application extension point whose result no authenticator ever sees, and it
+// flows straight into token issuance.
+func (s *ChallengeFlowTestSuite) TestResolveChallengeRefusesReservedPrincipal() {
+	s.challengeProvider.On("Type").Return("totp").Maybe()
+	s.challengeProvider.On("Evaluate", mock.Anything, mock.Anything).
+		Return(&security.LoginChallenge{Type: "totp", Required: true}, nil).Once()
+
+	data := s.loginAndGetResult()
+	challengeToken := data["challengeToken"].(string)
+
+	s.challengeProvider.On("Resolve", mock.Anything, mock.Anything, "123456").
+		Return(security.PrincipalSystem, nil).Once()
+
+	resp := s.MakeRPCRequest(api.Request{
+		Identifier: api.Identifier{
+			Resource: "security/auth",
+			Action:   "resolve_challenge",
+			Version:  "v1",
+		},
+		Params: map[string]any{
+			"challengeToken": challengeToken,
+			"type":           "totp",
+			"response":       "123456",
+		},
+	})
+
+	body := s.ReadResult(resp)
+	s.False(body.IsOk(), "A challenge resolving to a reserved identity must not succeed")
+	s.Equal(security.ErrCodePrincipalInvalid, body.Code,
+		"The refusal should carry the principal-invalid code")
+
+	s.Nil(body.Data, "A refused challenge must carry no payload, so no tokens can leak")
+
+	s.challengeProvider.AssertExpectations(s.T())
+}
+
 // TestResolveChallengeEmptyToken tests that resolve_challenge rejects empty tokens.
 func (s *ChallengeFlowTestSuite) TestResolveChallengeEmptyToken() {
 	s.challengeProvider.On("Type").Return("totp").Maybe()

@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/fiberx"
-	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/api/shared"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
@@ -76,7 +75,7 @@ func (m *Auth) Process(ctx fiber.Ctx) error {
 			op.Auth.Strategy,
 		)
 
-		return security.ErrPrincipalInvalid(i18n.T("security_reserved_principal_forbidden"))
+		return security.ErrReservedPrincipal
 	}
 
 	contextx.SetPrincipal(ctx, principal)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
@@ -28,6 +29,28 @@ func (s *OpaqueTokenGeneratorTestSuite) TestGenerate() {
 	ctx := context.Background()
 	principal := security.NewUser("u1", "Alice", "admin")
 	meta := security.SessionMeta{ClientIP: "10.0.0.1", UserAgent: "test-agent"}
+
+	// A session opened for a reserved identity would outlive the request that
+	// created it, so the refusal has to happen before the store is touched.
+	s.Run("RefusesReservedIdentities", func() {
+		for _, reserved := range []*security.Principal{
+			security.PrincipalSystem,
+			security.NewUser(orm.OperatorSystem, "impostor"),
+			security.NewUser(orm.OperatorCronJob, "impostor"),
+			nil,
+		} {
+			store := security.NewMemorySessionStore()
+			gen := NewOpaqueTokenGenerator(store, security.SessionPolicy{IdleTTL: time.Hour}, nil)
+
+			tokens, err := gen.Generate(ctx, reserved, meta)
+			s.Require().Error(err, "A reserved identity must not receive a session")
+			s.Nil(tokens, "A refused generation must return no tokens")
+
+			resErr, ok := result.AsErr(err)
+			s.Require().True(ok, "The refusal should be a result.Error")
+			s.Equal(security.ErrCodePrincipalInvalid, resErr.Code, "The refusal should carry the principal-invalid code")
+		}
+	})
 
 	s.Run("OpensSessionAndReturnsOpaqueToken", func() {
 		store := security.NewMemorySessionStore()

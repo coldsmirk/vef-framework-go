@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
 
@@ -89,6 +90,25 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		s.Equal([]string{"admin", "editor"}, state.Principal.Roles, "Should preserve roles")
 		s.Equal(pending, state.Pending, "Should preserve pending list")
 		s.Equal(resolved, state.Resolved, "Should preserve resolved list")
+	})
+
+	// A challenge token is minted from an already-authenticated principal, so one
+	// naming a framework-internal identity has no legitimate origin — parsing it
+	// back would hand the second-factor flow a principal that goes straight to
+	// token issuance.
+	s.Run("RefusesReservedIdentities", func() {
+		for _, reserved := range []*Principal{
+			PrincipalSystem,
+			NewUser(orm.OperatorSystem, "impostor"),
+			NewUser(orm.OperatorCronJob, "impostor"),
+		} {
+			token, err := s.store.Generate(context.Background(), reserved, "", []string{"totp"}, nil)
+			s.Require().NoError(err, "Generation is not the enforcement point here")
+
+			state, err := s.store.Parse(context.Background(), token)
+			s.Require().Error(err, "A challenge token naming a reserved identity must not parse")
+			s.Nil(state, "A refused parse must return no state")
+		}
 	})
 
 	s.Run("WithNilResolved", func() {

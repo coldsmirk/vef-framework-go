@@ -48,7 +48,7 @@ func (am *AuthenticatorAuthManager) Authenticate(ctx context.Context, authentica
 		logger.Errorf("Authentication rejected: authenticator %T returned a nil or framework-reserved principal",
 			authenticator)
 
-		return nil, security.ErrPrincipalInvalid(i18n.T("security_reserved_principal_forbidden"))
+		return nil, security.ErrReservedPrincipal
 	}
 
 	return principal, nil

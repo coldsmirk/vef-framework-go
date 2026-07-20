@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
@@ -34,6 +36,25 @@ func (s *JWTTokenGeneratorTestSuite) TestGenerate() {
 		s.Require().NotNil(tokens, "Should return non-nil tokens")
 		s.NotEmpty(tokens.AccessToken, "Should have non-empty access token")
 		s.NotEmpty(tokens.RefreshToken, "Should have non-empty refresh token")
+	})
+
+	// Issuing for a reserved identity would hand out a bearer credential that
+	// skips every functional permission check.
+	s.Run("RefusesReservedIdentities", func() {
+		for _, principal := range []*security.Principal{
+			security.PrincipalSystem,
+			security.NewUser(orm.OperatorSystem, "impostor"),
+			security.NewUser(orm.OperatorCronJob, "impostor"),
+			nil,
+		} {
+			tokens, err := s.generator.Generate(context.Background(), principal, security.SessionMeta{})
+			s.Require().Error(err, "A reserved identity must not receive tokens")
+			s.Nil(tokens, "A refused generation must return no tokens")
+
+			resErr, ok := result.AsErr(err)
+			s.Require().True(ok, "The refusal should be a result.Error")
+			s.Equal(security.ErrCodePrincipalInvalid, resErr.Code, "The refusal should carry the principal-invalid code")
+		}
 	})
 
 	s.Run("WithNoRoles", func() {

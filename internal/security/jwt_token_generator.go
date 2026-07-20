@@ -30,6 +30,14 @@ func NewJWTTokenGenerator(jwt *security.JWT, securityConfig *config.SecurityConf
 }
 
 func (g *JWTTokenGenerator) Generate(_ context.Context, principal *security.Principal, _ security.SessionMeta) (*security.AuthTokens, error) {
+	// Token issuance is the point where an identity becomes a bearer credential,
+	// so it is where the reserved-identity invariant has to hold — the generator
+	// is reachable from DI, and the challenge flow reaches it with a principal no
+	// authenticator ever vetted.
+	if principal == nil || principal.IsReserved() {
+		return nil, security.ErrReservedPrincipal
+	}
+
 	jwtID := id.GenerateUUID()
 
 	accessToken, err := g.generateAccessToken(jwtID, principal)
