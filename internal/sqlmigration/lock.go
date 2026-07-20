@@ -19,10 +19,12 @@ const (
 	postgresLockSQL = `SELECT pg_advisory_xact_lock(
     hashtextextended('vef:migration:' || ? || ':' || current_database() || ':' || current_schema(), 0)
 )`
-	// mysqlAcquireLockSQL blocks until the named user lock is granted; the
-	// MD5 keeps the name inside GET_LOCK's 64-character bound.
-	mysqlAcquireLockSQL = `SELECT GET_LOCK(MD5(CONCAT('vef:migration:', ?, ':', DATABASE())), -1)`
-	mysqlReleaseLockSQL = `SELECT RELEASE_LOCK(MD5(CONCAT('vef:migration:', ?, ':', DATABASE())))`
+	// mysqlAcquireLockSQL blocks until the named user lock is granted. The
+	// SHA2-256 hex digest is exactly 64 characters — GET_LOCK's name bound —
+	// and, unlike MD5/SHA1, survives MySQL 9.6+, which moved the legacy
+	// hash functions out of the server core.
+	mysqlAcquireLockSQL = `SELECT GET_LOCK(SHA2(CONCAT('vef:migration:', ?, ':', DATABASE()), 256), -1)`
+	mysqlReleaseLockSQL = `SELECT RELEASE_LOCK(SHA2(CONCAT('vef:migration:', ?, ':', DATABASE()), 256))`
 	// lockCleanupTimeout bounds the release/rollback statements that must
 	// run even after the caller's context died.
 	lockCleanupTimeout = 5 * time.Second
