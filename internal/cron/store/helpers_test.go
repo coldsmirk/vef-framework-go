@@ -75,6 +75,17 @@ func mustRegistry(t *testing.T, handlers ...cron.JobHandler) *Registry {
 	return registry
 }
 
+// newTestManager builds a schedule manager over the given store, wired to a
+// real engine so mutations take the same wake path production does.
+func newTestManager(db orm.DB, registry *Registry, now func() time.Time) *scheduleManager {
+	return &scheduleManager{
+		db:       db,
+		registry: registry,
+		engine:   NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(new(captureBus))),
+		now:      now,
+	}
+}
+
 // noopHandler is a handler that succeeds without doing anything.
 func noopHandler(name string) cron.JobHandler {
 	return cron.NewJobHandler(name, func(context.Context, cron.Execution) error { return nil })

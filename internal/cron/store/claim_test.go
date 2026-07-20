@@ -82,6 +82,28 @@ func TestClaimDue(t *testing.T) {
 		assert.Nil(t, after.LastFireAt, "nothing executed, so LastFireAt stays unset")
 	})
 
+	t.Run("TriggerNowRunsEvenUnderMisfireSkip", func(t *testing.T) {
+		// The regression behind a manual fire that silently did nothing: an
+		// overdue skip schedule journalled the request as missed.
+		db := newStoreDB(t)
+		now := base.Add(time.Hour)
+		manager := newTestManager(db, registry, fixedNow(now))
+
+		fixture := scheduleFixture("overdue", "orders.sync", base)
+		fixture.MisfirePolicy = cron.MisfireSkip
+		schedule := insertSchedule(t, db, fixture)
+
+		require.NoError(t, manager.TriggerNow(context.Background(), "overdue"), "triggering should succeed")
+
+		claimed, err := newTestClaimer(db, registry, "node-a", fixedNow(now)).ClaimDue(context.Background(), 10)
+		require.NoError(t, err, "claiming should succeed")
+		require.Len(t, claimed, 1, "a manual fire must execute, never be journaled as missed")
+
+		runs := loadRuns(t, db, schedule.ID)
+		require.Len(t, runs, 1, "the manual fire is the only journal row")
+		assert.Equal(t, cron.RunRunning, runs[0].Status, "the manual fire runs")
+	})
+
 	t.Run("MisfireFireNowJournalsCatchUpAndMissed", func(t *testing.T) {
 		db := newStoreDB(t)
 		schedule := insertSchedule(t, db, scheduleFixture("s3", "orders.sync", base))

@@ -32,14 +32,7 @@ func (s *ManagerSuite) SetupTest() {
 	s.now = time.Date(2026, 7, 17, 10, 0, 0, 0, time.Local)
 
 	registry := mustRegistry(s.T(), noopHandler("orders.sync"), noopHandler("report.daily"))
-	engine := NewEngine(s.db, fastStoreConfig(), registry, NewRunEventPublisher(new(captureBus)))
-
-	s.manager = &scheduleManager{
-		db:       s.db,
-		registry: registry,
-		engine:   engine,
-		now:      func() time.Time { return s.now },
-	}
+	s.manager = newTestManager(s.db, registry, func() time.Time { return s.now })
 }
 
 func (*ManagerSuite) ctx() context.Context {
@@ -282,14 +275,18 @@ func (s *ManagerSuite) TestTriggerNow() {
 		s.Require().ErrorIs(err, cron.ErrScheduleDisabled, "a paused schedule must refuse manual fires")
 	})
 
-	s.Run("AlreadyDueIsANoOp", func() {
-		schedule := insertSchedule(s.T(), s.db, scheduleFixture("due", "orders.sync", s.now.Add(-time.Minute)))
+	s.Run("AlreadyDuePullsToNowAnyway", func() {
+		// Leaving an overdue cursor alone would hand the manual request to
+		// the misfire policy, and MisfireSkip runs nothing at all.
+		fixture := scheduleFixture("due", "orders.sync", s.now.Add(-time.Hour))
+		fixture.MisfirePolicy = cron.MisfireSkip
+		schedule := insertSchedule(s.T(), s.db, fixture)
 
 		s.Require().NoError(s.manager.TriggerNow(s.ctx(), "due"), "triggering should succeed")
 
 		after := reloadSchedule(s.T(), s.db, schedule.ID)
-		s.True(after.NextFireAt.AsLocal().Equal(s.now.Add(-time.Minute)),
-			"an already-due fire must stay where it is")
+		s.True(after.NextFireAt.AsLocal().Equal(s.now),
+			"a manual fire must always land on now, so the claim executes it instead of skipping it")
 	})
 }
 

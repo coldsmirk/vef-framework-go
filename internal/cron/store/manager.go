@@ -185,11 +185,10 @@ func (m *scheduleManager) TriggerNow(ctx context.Context, name string) error {
 
 		now := m.now()
 
-		// Already due: the imminent claim covers the request.
-		if schedule.NextFireAt != nil && !schedule.NextFireAt.AsLocal().After(now) {
-			return nil
-		}
-
+		// The cursor is pulled to now unconditionally. Leaving an already-due
+		// one in place would hand the manual request to the misfire policy,
+		// and MisfireSkip journals an overdue fire as missed without running
+		// anything — a trigger-now that quietly does nothing.
 		due := timex.DateTime(now)
 		schedule.NextFireAt = &due
 		schedule.UpdatedAt = due
