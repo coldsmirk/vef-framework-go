@@ -10,12 +10,12 @@ import (
 func TestCronStoreConfigEffectiveDefaults(t *testing.T) {
 	var cfg CronStoreConfig
 
-	assert.Equal(t, DefaultCronStorePollInterval, cfg.EffectivePollInterval(), "zero poll interval must default")
-	assert.Equal(t, DefaultCronStoreBatchSize, cfg.EffectiveBatchSize(), "zero batch size must default")
-	assert.Equal(t, DefaultCronStoreMaxConcurrent, cfg.EffectiveMaxConcurrent(), "zero max concurrent must default")
-	assert.Equal(t, DefaultCronStoreMisfireThreshold, cfg.EffectiveMisfireThreshold(), "zero misfire threshold must default")
-	assert.Equal(t, DefaultCronStoreHeartbeatInterval, cfg.EffectiveHeartbeatInterval(), "zero heartbeat interval must default")
-	assert.Equal(t, DefaultCronStoreAbandonedAfter, cfg.EffectiveAbandonedAfter(), "zero abandoned window must default")
+	assert.Equal(t, DefaultCronStorePollInterval, cfg.EffectivePollInterval(), "Zero poll interval must default")
+	assert.Equal(t, DefaultCronStoreBatchSize, cfg.EffectiveBatchSize(), "Zero batch size must default")
+	assert.Equal(t, DefaultCronStoreMaxConcurrent, cfg.EffectiveMaxConcurrent(), "Zero max concurrent must default")
+	assert.Equal(t, DefaultCronStoreMisfireThreshold, cfg.EffectiveMisfireThreshold(), "Zero misfire threshold must default")
+	assert.Equal(t, DefaultCronStoreHeartbeatInterval, cfg.EffectiveHeartbeatInterval(), "Zero heartbeat interval must default")
+	assert.Equal(t, DefaultCronStoreAbandonedAfter, cfg.EffectiveAbandonedAfter(), "Zero abandoned window must default")
 }
 
 func TestCronStoreConfigEffectiveOverrides(t *testing.T) {
@@ -28,12 +28,12 @@ func TestCronStoreConfigEffectiveOverrides(t *testing.T) {
 		AbandonedAfter:    20 * time.Second,
 	}
 
-	assert.Equal(t, time.Second, cfg.EffectivePollInterval(), "explicit poll interval must win")
-	assert.Equal(t, 5, cfg.EffectiveBatchSize(), "explicit batch size must win")
-	assert.Equal(t, 2, cfg.EffectiveMaxConcurrent(), "explicit max concurrent must win")
-	assert.Equal(t, 30*time.Second, cfg.EffectiveMisfireThreshold(), "explicit misfire threshold must win")
-	assert.Equal(t, 3*time.Second, cfg.EffectiveHeartbeatInterval(), "explicit heartbeat interval must win")
-	assert.Equal(t, 20*time.Second, cfg.EffectiveAbandonedAfter(), "explicit abandoned window must win")
+	assert.Equal(t, time.Second, cfg.EffectivePollInterval(), "Explicit poll interval must win")
+	assert.Equal(t, 5, cfg.EffectiveBatchSize(), "Explicit batch size must win")
+	assert.Equal(t, 2, cfg.EffectiveMaxConcurrent(), "Explicit max concurrent must win")
+	assert.Equal(t, 30*time.Second, cfg.EffectiveMisfireThreshold(), "Explicit misfire threshold must win")
+	assert.Equal(t, 3*time.Second, cfg.EffectiveHeartbeatInterval(), "Explicit heartbeat interval must win")
+	assert.Equal(t, 20*time.Second, cfg.EffectiveAbandonedAfter(), "Explicit abandoned window must win")
 }
 
 func TestCronConfigValidate(t *testing.T) {
@@ -42,9 +42,9 @@ func TestCronConfigValidate(t *testing.T) {
 		config  CronConfig
 		wantErr error
 	}{
-		{name: "zero config", config: CronConfig{}},
+		{name: "ZeroConfig", config: CronConfig{}},
 		{
-			name: "coherent explicit settings",
+			name: "CoherentExplicitSettings",
 			config: CronConfig{Store: CronStoreConfig{
 				HeartbeatInterval: 5 * time.Second,
 				AbandonedAfter:    10 * time.Second,
@@ -52,17 +52,17 @@ func TestCronConfigValidate(t *testing.T) {
 			}},
 		},
 		{
-			name:    "negative duration",
+			name:    "NegativeDuration",
 			config:  CronConfig{Store: CronStoreConfig{RunRetention: -time.Hour}},
 			wantErr: ErrInvalidCronStoreDuration,
 		},
 		{
-			name:    "negative run timeout",
+			name:    "NegativeRunTimeout",
 			config:  CronConfig{Store: CronStoreConfig{RunTimeout: -time.Second}},
 			wantErr: ErrInvalidCronStoreDuration,
 		},
 		{
-			name: "abandoned window tighter than heartbeat cadence",
+			name: "AbandonedWindowTighterThanHeartbeatCadence",
 			config: CronConfig{Store: CronStoreConfig{
 				HeartbeatInterval: 30 * time.Second,
 				AbandonedAfter:    45 * time.Second,
@@ -70,9 +70,17 @@ func TestCronConfigValidate(t *testing.T) {
 			wantErr: ErrCronStoreAbandonedTooSoon,
 		},
 		{
-			name: "abandoned window against default heartbeat",
+			name: "AbandonedWindowAgainstDefaultHeartbeat",
 			config: CronConfig{Store: CronStoreConfig{
 				AbandonedAfter: 15 * time.Second,
+			}},
+			wantErr: ErrCronStoreAbandonedTooSoon,
+		},
+		{
+			name: "HeartbeatComparisonDoesNotOverflow",
+			config: CronConfig{Store: CronStoreConfig{
+				HeartbeatInterval: time.Duration(1<<63 - 1),
+				AbandonedAfter:    time.Duration(1<<63 - 1),
 			}},
 			wantErr: ErrCronStoreAbandonedTooSoon,
 		},
@@ -83,9 +91,9 @@ func TestCronConfigValidate(t *testing.T) {
 			err := tt.config.Validate()
 
 			if tt.wantErr == nil {
-				assert.NoError(t, err, "config must validate")
+				assert.NoError(t, err, "Config must validate")
 			} else {
-				assert.ErrorIs(t, err, tt.wantErr, "validation must fail with the expected sentinel")
+				assert.ErrorIs(t, err, tt.wantErr, "Validation must fail with the expected sentinel")
 			}
 		})
 	}

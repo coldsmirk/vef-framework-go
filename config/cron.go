@@ -130,7 +130,7 @@ func (c *CronConfig) Validate() error {
 		}
 	}
 
-	if store.EffectiveAbandonedAfter() < 2*store.EffectiveHeartbeatInterval() {
+	if store.EffectiveHeartbeatInterval() > store.EffectiveAbandonedAfter()/2 {
 		return fmt.Errorf("%w: %s < 2 × %s",
 			ErrCronStoreAbandonedTooSoon, store.EffectiveAbandonedAfter(), store.EffectiveHeartbeatInterval())
 	}
