@@ -292,33 +292,24 @@ func holdMySQLSharedLock(
 	lockReady chan struct{},
 	releaseLock chan struct{},
 ) (err error) {
-	conn, err := db.Connection(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		closeErr := conn.Close()
-		if err == nil {
-			err = closeErr
+	return db.RunOnConnection(ctx, func(ctx context.Context, db orm.DB) (err error) {
+		lockSQL := fmt.Sprintf("LOCK TABLES `%s` READ", tableName)
+		if _, err = db.NewRaw(lockSQL).Exec(ctx); err != nil {
+			return err
 		}
-	}()
 
-	lockSQL := fmt.Sprintf("LOCK TABLES `%s` READ", tableName)
-	if _, err = conn.ExecContext(ctx, lockSQL); err != nil {
-		return err
-	}
+		// Ensure lock is released even if caller exits unexpectedly.
+		defer func() {
+			if _, unlockErr := db.NewRaw("UNLOCK TABLES").Exec(ctx); err == nil {
+				err = unlockErr
+			}
+		}()
 
-	// Ensure lock is released even if caller exits unexpectedly.
-	defer func() {
-		if _, unlockErr := conn.ExecContext(ctx, "UNLOCK TABLES"); err == nil {
-			err = unlockErr
-		}
-	}()
+		close(lockReady)
+		<-releaseLock
 
-	close(lockReady)
-	<-releaseLock
-
-	return nil
+		return nil
+	})
 }
 
 func holdSQLiteWriteLock(
@@ -327,32 +318,23 @@ func holdSQLiteWriteLock(
 	lockReady chan struct{},
 	releaseLock chan struct{},
 ) (err error) {
-	conn, err := db.Connection(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		closeErr := conn.Close()
-		if err == nil {
-			err = closeErr
+	return db.RunOnConnection(ctx, func(ctx context.Context, db orm.DB) (err error) {
+		// BEGIN IMMEDIATE acquires write lock up-front and lets concurrent writers
+		// wait until the lock is released.
+		if _, err = db.NewRaw("BEGIN IMMEDIATE").Exec(ctx); err != nil {
+			return err
 		}
-	}()
+		defer func() {
+			if _, rollbackErr := db.NewRaw("ROLLBACK").Exec(ctx); err == nil {
+				err = rollbackErr
+			}
+		}()
 
-	// BEGIN IMMEDIATE acquires write lock up-front and lets concurrent writers
-	// wait until the lock is released.
-	if _, err = conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
-		return err
-	}
-	defer func() {
-		if _, rollbackErr := conn.ExecContext(ctx, "ROLLBACK"); err == nil {
-			err = rollbackErr
-		}
-	}()
+		close(lockReady)
+		<-releaseLock
 
-	close(lockReady)
-	<-releaseLock
-
-	return nil
+		return nil
+	})
 }
 
 //nolint:revive // t testing.TB is conventionally the first parameter in test helpers

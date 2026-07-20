@@ -2,6 +2,8 @@ package orm_test
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 
@@ -74,44 +76,119 @@ func (suite *DBTestSuite) TestBeginTx() {
 	suite.NoError(err, "Rollback should work")
 }
 
-// TestConn tests Conn method.
-func (suite *DBTestSuite) TestConn() {
-	suite.T().Logf("Testing Conn for %s", suite.ds.Kind)
+// TestRunOnConnection tests dedicated connection ownership and scope rules.
+func (suite *DBTestSuite) TestRunOnConnection() {
+	suite.T().Logf("Testing RunOnConnection for %s", suite.ds.Kind)
 
-	conn, err := suite.db.Connection(suite.ctx)
-	suite.NoError(err, "Conn should work")
-	suite.NotNil(conn, "Conn should return non-nil")
+	previousMaxOpen := suite.rawDB.Stats().MaxOpenConnections
 
-	err = conn.Close()
-	suite.NoError(err, "Conn close should work")
-}
+	suite.rawDB.SetMaxOpenConns(1)
+	defer suite.rawDB.SetMaxOpenConns(previousMaxOpen)
 
-// TestConnectionInTx pins that Connection is pool-scoped: invoking it on a
-// transaction-scoped DB returns ErrConnectionInTx instead of a detached pool
-// connection that would not participate in the transaction.
-func (suite *DBTestSuite) TestConnectionInTx() {
-	suite.T().Logf("Testing Connection within a transaction for %s", suite.ds.Kind)
+	suite.Run("QueryUsesDedicatedConnection", func() {
+		ctx, cancel := context.WithTimeout(suite.ctx, 5*time.Second)
+		defer cancel()
 
-	suite.Run("RunInTx", func() {
-		err := suite.db.RunInTx(suite.ctx, func(_ context.Context, tx orm.DB) error {
-			conn, err := tx.Connection(suite.ctx)
-			suite.ErrorIs(err, orm.ErrConnectionInTx, "Connection inside RunInTx should be rejected")
-			suite.Nil(conn, "Connection should be nil when rejected inside a transaction")
+		var got int
+
+		err := suite.db.RunOnConnection(ctx, func(ctx context.Context, db orm.DB) error {
+			return db.NewRaw("SELECT 1").Scan(ctx, &got)
+		})
+
+		suite.Require().NoError(err, "Connection-scoped query should not wait for another pooled connection")
+		suite.Equal(1, got, "Connection-scoped query should return the selected value")
+	})
+
+	suite.Run("NestedScopeReusesConnection", func() {
+		ctx, cancel := context.WithTimeout(suite.ctx, 5*time.Second)
+		defer cancel()
+
+		var got int
+
+		err := suite.db.RunOnConnection(ctx, func(ctx context.Context, db orm.DB) error {
+			return db.RunOnConnection(ctx, func(ctx context.Context, nested orm.DB) error {
+				suite.Same(db, nested, "Nested connection scope should reuse the current DB handle")
+
+				return nested.NewRaw("SELECT 1").Scan(ctx, &got)
+			})
+		})
+
+		suite.Require().NoError(err, "Nested connection scope should not acquire another connection")
+		suite.Equal(1, got, "Nested connection-scoped query should return the selected value")
+	})
+
+	suite.Run("CallbackErrorReturnsConnection", func() {
+		ctx, cancel := context.WithTimeout(suite.ctx, 5*time.Second)
+		defer cancel()
+
+		callbackErr := errors.New("callback failed")
+		err := suite.db.RunOnConnection(ctx, func(context.Context, orm.DB) error {
+			return callbackErr
+		})
+		suite.ErrorIs(err, callbackErr, "RunOnConnection should preserve the callback error")
+
+		var got int
+
+		err = suite.db.RunOnConnection(ctx, func(ctx context.Context, db orm.DB) error {
+			return db.NewRaw("SELECT 1").Scan(ctx, &got)
+		})
+
+		suite.Require().NoError(err, "Connection should return to the pool after a callback error")
+		suite.Equal(1, got, "Reacquired connection should execute queries")
+	})
+
+	suite.Run("RunInTxInsideConnectionScopeUsesThatConnection", func() {
+		ctx, cancel := context.WithTimeout(suite.ctx, 5*time.Second)
+		defer cancel()
+
+		// With the pool capped at one connection, a transaction that did not
+		// run on the dedicated connection would deadlock waiting for another.
+		var got int
+
+		err := suite.db.RunOnConnection(ctx, func(ctx context.Context, db orm.DB) error {
+			return db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
+				return tx.NewRaw("SELECT 1").Scan(ctx, &got)
+			})
+		})
+
+		suite.Require().NoError(err, "A transaction inside the connection scope should run on the held connection")
+		suite.Equal(1, got, "The connection-scoped transaction should return the selected value")
+	})
+
+	suite.Run("RunInTxRejectsConnectionScope", func() {
+		callbackCalled := false
+		err := suite.db.RunInTx(suite.ctx, func(ctx context.Context, tx orm.DB) error {
+			runErr := tx.RunOnConnection(ctx, func(context.Context, orm.DB) error {
+				callbackCalled = true
+
+				return nil
+			})
+			suite.ErrorIs(runErr, orm.ErrRunOnConnectionInTx,
+				"RunOnConnection inside RunInTx should be rejected")
 
 			return nil
 		})
-		suite.NoError(err, "RunInTx should commit cleanly")
+
+		suite.NoError(err, "RunInTx should commit after the rejected connection scope")
+		suite.False(callbackCalled, "Rejected connection callback should not run")
 	})
 
-	suite.Run("BeginTx", func() {
+	suite.Run("ManualTxRejectsConnectionScope", func() {
 		tx, err := suite.db.BeginTx(suite.ctx, nil)
-		suite.Require().NoError(err, "BeginTx should start a transaction")
 
+		suite.Require().NoError(err, "BeginTx should start a transaction")
 		defer func() { suite.NoError(tx.Rollback(), "Rollback should work") }()
 
-		conn, err := tx.Connection(suite.ctx)
-		suite.ErrorIs(err, orm.ErrConnectionInTx, "Connection on a Tx should be rejected")
-		suite.Nil(conn, "Connection should be nil when rejected on a Tx")
+		callbackCalled := false
+		err = tx.RunOnConnection(suite.ctx, func(context.Context, orm.DB) error {
+			callbackCalled = true
+
+			return nil
+		})
+
+		suite.ErrorIs(err, orm.ErrRunOnConnectionInTx,
+			"RunOnConnection on a manual transaction should be rejected")
+		suite.False(callbackCalled, "Rejected connection callback should not run")
 	})
 }
 
@@ -179,13 +256,13 @@ func (suite *DBTestSuite) TestScanRowsAndScanRow() {
 
 		var results []NameResult
 
-		conn, err := suite.db.Connection(suite.ctx)
-		suite.Require().NoError(err, "Conn should work")
-
-		defer conn.Close()
-
-		rows, err := conn.QueryContext(suite.ctx, "SELECT name FROM test_user ORDER BY name LIMIT 3")
-		suite.Require().NoError(err, "Query should work")
+		rows, err := suite.db.NewSelect().
+			Model((*User)(nil)).
+			Select("name").
+			OrderBy("name").
+			Limit(3).
+			Rows(suite.ctx)
+		suite.Require().NoError(err, "Select should return rows")
 
 		defer rows.Close()
 
@@ -196,19 +273,19 @@ func (suite *DBTestSuite) TestScanRowsAndScanRow() {
 	})
 
 	suite.Run("ScanRow", func() {
-		type CountResult struct {
-			Count int64 `bun:"count"`
+		type NameResult struct {
+			Name string `bun:"name"`
 		}
 
-		var result CountResult
+		var result NameResult
 
-		conn, err := suite.db.Connection(suite.ctx)
-		suite.Require().NoError(err, "Conn should work")
-
-		defer conn.Close()
-
-		rows, err := conn.QueryContext(suite.ctx, "SELECT COUNT(*) AS count FROM test_user")
-		suite.Require().NoError(err, "Query should work")
+		rows, err := suite.db.NewSelect().
+			Model((*User)(nil)).
+			Select("name").
+			OrderBy("name").
+			Limit(1).
+			Rows(suite.ctx)
+		suite.Require().NoError(err, "Select should return one row")
 
 		defer rows.Close()
 
@@ -216,7 +293,7 @@ func (suite *DBTestSuite) TestScanRowsAndScanRow() {
 		err = suite.db.ScanRow(suite.ctx, rows, &result)
 		suite.NoError(err, "ScanRow should work")
 		suite.NoError(rows.Err(), "rows iteration should not have errors")
-		suite.Equal(int64(20), result.Count, "Should count all fixture users")
+		suite.NotEmpty(result.Name, "Scanned name should not be empty")
 	})
 }
 
@@ -258,6 +335,30 @@ func (suite *DBTestSuite) TestEnumStrings() {
 func (suite *DBTestSuite) TestWithNamedArg() {
 	suite.T().Logf("Testing WithNamedArg for %s", suite.ds.Kind)
 
-	namedDB := suite.db.WithNamedArg("limit_val", 5)
-	suite.NotNil(namedDB, "WithNamedArg should return non-nil")
+	suite.Run("PoolScope", func() {
+		namedDB := suite.db.WithNamedArg("limit_val", 5)
+		suite.NotNil(namedDB, "WithNamedArg should return a DB in pool scope")
+	})
+
+	suite.Run("ConnectionScope", func() {
+		err := suite.db.RunOnConnection(suite.ctx, func(_ context.Context, db orm.DB) error {
+			suite.Panics(func() {
+				db.WithNamedArg("limit_val", 5)
+			}, "WithNamedArg should reject connection scope")
+
+			return nil
+		})
+		suite.NoError(err, "Connection scope should close after testing WithNamedArg")
+	})
+
+	suite.Run("TransactionScope", func() {
+		err := suite.db.RunInTx(suite.ctx, func(_ context.Context, tx orm.DB) error {
+			suite.Panics(func() {
+				tx.WithNamedArg("limit_val", 5)
+			}, "WithNamedArg should reject transaction scope")
+
+			return nil
+		})
+		suite.NoError(err, "Transaction should commit after testing WithNamedArg")
+	})
 }

@@ -3,6 +3,7 @@ package orm
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/schema"
@@ -55,11 +56,10 @@ type DB interface {
 	RunInReadOnlyTx(ctx context.Context, fn func(ctx context.Context, tx DB) error) error
 	// BeginTx starts a manual transaction with the given options. Caller must commit or rollback.
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error)
-	// Connection acquires a dedicated database connection from the pool. It is
-	// pool-scoped: calling it on a transaction-scoped DB (inside RunInTx /
-	// RunInReadOnlyTx, or on a Tx) returns ErrConnectionInTx, because the
-	// returned connection would not participate in the transaction.
-	Connection(ctx context.Context) (*sql.Conn, error)
+	// RunOnConnection executes fn on one dedicated connection. Nested calls reuse
+	// that connection. Calling it from a transaction-scoped DB returns
+	// ErrRunOnConnectionInTx because the transaction already owns its connection.
+	RunOnConnection(ctx context.Context, fn func(ctx context.Context, db DB) error) error
 	// RegisterModel registers models for Bun relation mapping (e.g., many-to-many join tables).
 	RegisterModel(models ...any)
 	// ResetModel drops and recreates tables for the given models. Intended for testing only.
@@ -88,26 +88,29 @@ var (
 	}
 )
 
+type dbScope uint8
+
+const (
+	dbScopePool dbScope = iota
+	dbScopeConnection
+	dbScopeTransaction
+)
+
 // BunDB is a wrapper around the bun.DB type.
 type BunDB struct {
-	// db is the active query executor: the pool *bun.DB outside a transaction,
-	// or a bun.Tx within one.
+	// db is the active query executor for the wrapper's explicit scope.
 	db bun.IDB
-	// bunDB is the originating pool *bun.DB. It is carried unchanged into tx
-	// wrappers so pool-only operations (model schema lookups, pooled
-	// connections) can reach it without recovering it from a synthetic query.
+	// bunDB is the originating pool handle used for pool-only metadata operations.
 	bunDB *bun.DB
+	scope dbScope
 }
 
-// newBunDB wraps a bun.IDB, recording the originating pool *bun.DB when the
-// executor is a pool rather than a transaction.
-func newBunDB(db bun.IDB) *BunDB {
-	inst := &BunDB{db: db}
-	if pool, ok := db.(*bun.DB); ok {
-		inst.bunDB = pool
-	}
+func newBunDB(db *bun.DB) *BunDB {
+	return newScopedBunDB(db, db, dbScopePool)
+}
 
-	return inst
+func newScopedBunDB(db bun.IDB, bunDB *bun.DB, scope dbScope) *BunDB {
+	return &BunDB{db: db, bunDB: bunDB, scope: scope}
 }
 
 func (d *BunDB) NewSelect() SelectQuery {
@@ -172,7 +175,7 @@ func (d *BunDB) RunInReadOnlyTx(ctx context.Context, fn func(context.Context, DB
 
 func (d *BunDB) runInTx(ctx context.Context, opts *sql.TxOptions, fn func(context.Context, DB) error) error {
 	return d.db.RunInTx(ctx, opts, func(ctx context.Context, tx bun.Tx) error {
-		return fn(ctx, &BunDB{db: tx, bunDB: d.bunDB})
+		return fn(ctx, newScopedBunDB(tx, d.bunDB, dbScopeTransaction))
 	})
 }
 
@@ -182,15 +185,30 @@ func (d *BunDB) BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error) {
 		return nil, err
 	}
 
-	return &BunTx{BunDB{db: tx, bunDB: d.bunDB}}, nil
+	return &BunTx{BunDB: *newScopedBunDB(tx, d.bunDB, dbScopeTransaction)}, nil
 }
 
-func (d *BunDB) Connection(ctx context.Context) (*sql.Conn, error) {
-	if d.InTx() {
-		return nil, ErrConnectionInTx
+func (d *BunDB) RunOnConnection(ctx context.Context, fn func(context.Context, DB) error) (err error) {
+	switch d.scope {
+	case dbScopeConnection:
+		return fn(ctx, d)
+	case dbScopeTransaction:
+		return ErrRunOnConnectionInTx
+	case dbScopePool:
+		// Acquire the connection below.
+	default:
+		panic("orm: invalid database scope")
 	}
 
-	return d.bunDB.DB.Conn(ctx)
+	conn, err := d.bunDB.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Join(err, conn.Close())
+	}()
+
+	return fn(ctx, newScopedBunDB(conn, d.bunDB, dbScopeConnection))
 }
 
 func (d *BunDB) RegisterModel(models ...any) {
@@ -210,11 +228,11 @@ func (d *BunDB) ScanRow(ctx context.Context, rows *sql.Rows, dest ...any) error 
 }
 
 func (d *BunDB) WithNamedArg(name string, value any) DB {
-	if db, ok := d.db.(*bun.DB); ok {
-		return newBunDB(db.WithNamedArg(name, value))
+	if d.scope == dbScopePool {
+		return newBunDB(d.bunDB.WithNamedArg(name, value))
 	}
 
-	logger.Panicf("%q is not supported within a transaction context", "WithNamedArg")
+	logger.Panicf("%q is only supported on a pool-scoped DB", "WithNamedArg")
 
 	return d
 }
@@ -250,18 +268,10 @@ func (d *BunDB) TableOf(model any) *schema.Table {
 	return getTableSchema(model, d.getBunDB())
 }
 
-// inTx reports whether this wrapper is scoped to a transaction rather than the
-// connection pool.
 func (d *BunDB) InTx() bool {
-	_, ok := d.db.(*bun.DB)
-
-	return !ok
+	return d.scope == dbScopeTransaction
 }
 
-// getBunDB returns the originating pool *bun.DB, used for operations that are
-// inherently pool-scoped (model schema lookups, model registration, pooled
-// connections). It is identical whether the wrapper is pool- or tx-scoped
-// because the pool handle is carried into tx wrappers.
 func (d *BunDB) getBunDB() *bun.DB {
 	return d.bunDB
 }
