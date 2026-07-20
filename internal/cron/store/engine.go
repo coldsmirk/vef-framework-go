@@ -29,6 +29,9 @@ const (
 	// deliberately independent of the run's own context — a canceled run
 	// still gets journaled.
 	completionTimeout = 10 * time.Second
+	// outcomeRetryInterval paces outcome-write retries after a lost lock
+	// race; completionTimeout bounds the total wait.
+	outcomeRetryInterval = 25 * time.Millisecond
 	// publisherStopGrace is the event queue's own flush budget on shutdown,
 	// reserved even when draining handlers consumed the caller's whole stop
 	// window.
@@ -437,42 +440,7 @@ func (e *Engine) complete(fire claimedFire, runErr, ctxErr error) {
 		run.Status = cron.RunSucceeded
 	}
 
-	err := e.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
-		updated, err := tx.NewUpdate().
-			Model(run).
-			Select("status", "finished_at_unix_ms", "duration_ms", "error").
-			Where(func(cb orm.ConditionBuilder) {
-				cb.PKEquals(run.ID).Equals("status", cron.RunRunning)
-			}).
-			Exec(ctx)
-		if err != nil {
-			return err
-		}
-
-		if affected, _ := updated.RowsAffected(); affected == 0 {
-			logger.Warnf("Run %s of schedule %q finished after being recovered; outcome discarded", run.ID, run.ScheduleName)
-
-			return nil
-		}
-
-		if run.Status == cron.RunCanceled && fire.schedule.Recover {
-			// The run ID fences the re-queue exactly like an abandoned
-			// takeover's, so the request stays unique however often this
-			// path could repeat.
-			request := &fireRequest{
-				ScheduleID:        run.ScheduleID,
-				Kind:              fireRequestRecovery,
-				ScheduledAtUnixMs: run.ScheduledAtUnixMs,
-				SourceRunID:       run.ID,
-			}
-			if _, err := tx.NewInsert().Model(request).Exec(ctx); err != nil {
-				return fmt.Errorf("queue recovery for canceled run: %w", err)
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
+	if err := e.writeOutcome(ctx, fire, run); err != nil {
 		logger.Errorf("Journal run %s of schedule %q: %v", run.ID, run.ScheduleName, err)
 
 		return
@@ -481,6 +449,62 @@ func (e *Engine) complete(fire claimedFire, runErr, ctxErr error) {
 	if run.Status == cron.RunFailed {
 		logger.Errorf("Run %s of schedule %q failed: %s", run.ID, run.ScheduleName, run.Error)
 		e.publisher.RunFailed(run)
+	}
+}
+
+// writeOutcome persists the run's terminal state, retrying lost lock races
+// until the completion window closes. The transaction is idempotent — the
+// status CAS guards the update and the recovery re-queue is fenced by the
+// run ID — and a run left running because its outcome write gave up would
+// wrongly resurface through abandoned-run recovery, so unlike claiming
+// (where the next tick retries naturally) this write must not surrender to
+// a transient writer collision on SQLite's single-writer path.
+func (e *Engine) writeOutcome(ctx context.Context, fire claimedFire, run *cron.Run) error {
+	for {
+		err := e.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
+			updated, err := tx.NewUpdate().
+				Model(run).
+				Select("status", "finished_at_unix_ms", "duration_ms", "error").
+				Where(func(cb orm.ConditionBuilder) {
+					cb.PKEquals(run.ID).Equals("status", cron.RunRunning)
+				}).
+				Exec(ctx)
+			if err != nil {
+				return err
+			}
+
+			if affected, _ := updated.RowsAffected(); affected == 0 {
+				logger.Warnf("Run %s of schedule %q finished after being recovered; outcome discarded", run.ID, run.ScheduleName)
+
+				return nil
+			}
+
+			if run.Status == cron.RunCanceled && fire.schedule.Recover {
+				// The run ID fences the re-queue exactly like an abandoned
+				// takeover's, so the request stays unique however often this
+				// path could repeat.
+				request := &fireRequest{
+					ScheduleID:        run.ScheduleID,
+					Kind:              fireRequestRecovery,
+					ScheduledAtUnixMs: run.ScheduledAtUnixMs,
+					SourceRunID:       run.ID,
+				}
+				if _, err := tx.NewInsert().Model(request).Exec(ctx); err != nil {
+					return fmt.Errorf("queue recovery for canceled run: %w", err)
+				}
+			}
+
+			return nil
+		})
+		if err == nil || !isLockContention(err) {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(outcomeRetryInterval):
+		}
 	}
 }
 
