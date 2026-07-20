@@ -308,7 +308,10 @@ func previewTriggerFires(params PreviewFiresParams, now time.Time) (*FiresPrevie
 }
 
 // previewNextFires projects the schedule's next fire times from the given
-// instant.
+// instant. A persisted cursor leads the projection: NextFireAt is the fire
+// the engine will actually claim, and recomputing purely from the trigger
+// would contradict it — a re-armed one-shot, a recovery re-fire or an overdue
+// cursor would all preview as "nothing upcoming" while a fire is pending.
 func previewNextFires(schedule *cron.Schedule, from time.Time, count int) []timex.DateTime {
 	fires := make([]timex.DateTime, 0, count)
 
@@ -317,7 +320,14 @@ func previewNextFires(schedule *cron.Schedule, from time.Time, count int) []time
 	}
 
 	cursor := from
-	for range count {
+
+	if schedule.NextFireAt != nil {
+		pending := schedule.NextFireAt.AsLocal()
+		fires = append(fires, timex.DateTime(pending))
+		cursor = pending
+	}
+
+	for len(fires) < count {
 		next, ok := nextFire(schedule, cursor)
 		if !ok {
 			break
