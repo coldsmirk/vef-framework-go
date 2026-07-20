@@ -54,15 +54,9 @@ type claimer struct {
 	now      func() time.Time
 }
 
-// ClaimDue claims at most limit due fires this node can execute. Schedules
-// whose job has no handler on this node are left untouched — heterogeneous
-// deployments claim only what they can run.
-func (c *claimer) ClaimDue(ctx context.Context, limit int) ([]claimedFire, error) {
-	batch, err := c.claimDueBatch(ctx, limit)
-
-	return batch.fires, err
-}
-
+// claimDueBatch claims at most limit due fires this node can execute.
+// Schedules whose job has no handler on this node are left untouched —
+// heterogeneous deployments claim only what they can run.
 func (c *claimer) claimDueBatch(ctx context.Context, limit int) (claimBatch, error) {
 	if limit <= 0 || c.registry.IsEmpty() {
 		return claimBatch{}, nil
@@ -101,7 +95,7 @@ func (c *claimer) claimDueBatch(ctx context.Context, limit int) (claimBatch, err
 
 		batch.abandoned = takeover.abandoned
 
-		requests, err := c.lockFireRequests(ctx, tx, scheduleIDs, limit)
+		requests, err := lockFireRequests(ctx, tx, scheduleIDs, limit)
 		if err != nil {
 			return err
 		}
@@ -133,50 +127,44 @@ func (c *claimer) claimDueBatch(ctx context.Context, limit int) (claimBatch, err
 				continue
 			}
 
+			var rows []*cron.Run
+
 			if item.request != nil {
 				row, consume := c.journalRequest(schedule, item.request, running.Contains(schedule.ID), now)
 				if !consume {
 					continue
 				}
 
-				journal = append(journal, row)
+				rows = []*cron.Run{row}
+
 				consumedRequestIDs = append(consumedRequestIDs, item.request.ID)
 
-				if row.Status == cron.RunRunning {
-					running.Add(schedule.ID)
-					batch.fires = append(batch.fires, claimedFire{
-						run:      row,
-						schedule: *schedule,
-						handler:  handler,
-						timeout:  c.runTimeout(schedule),
-					})
-				}
-
-				if err := c.recordRequestedFire(ctx, tx, schedule, item.scheduledAt, now); err != nil {
+				if err := recordRequestedFire(ctx, tx, schedule, item.scheduledAt, now); err != nil {
 					return err
 				}
+			} else {
+				decision := decide(schedule, now, c.config.EffectiveMisfireThreshold())
+				rows = c.journalRows(schedule, decision, running.Contains(schedule.ID), now)
 
-				continue
+				if err := advance(ctx, tx, schedule, decision, now); err != nil {
+					return err
+				}
 			}
 
-			decision := decide(schedule, now, c.config.EffectiveMisfireThreshold())
-			rows := c.journalRows(schedule, decision, running.Contains(schedule.ID), now)
 			journal = append(journal, rows...)
 
 			for _, row := range rows {
-				if row.Status == cron.RunRunning {
-					running.Add(schedule.ID)
-					batch.fires = append(batch.fires, claimedFire{
-						run:      row,
-						schedule: *schedule,
-						handler:  handler,
-						timeout:  c.runTimeout(schedule),
-					})
+				if row.Status != cron.RunRunning {
+					continue
 				}
-			}
 
-			if err := c.advance(ctx, tx, schedule, decision, now); err != nil {
-				return err
+				running.Add(schedule.ID)
+				batch.fires = append(batch.fires, claimedFire{
+					run:      row,
+					schedule: *schedule,
+					handler:  handler,
+					timeout:  c.runTimeout(schedule),
+				})
 			}
 		}
 
@@ -260,7 +248,7 @@ func (c *claimer) lockRequestedSchedules(
 
 // lockFireRequests locks runnable request rows only after their schedule and
 // running rows are locked, preserving the module-wide lock order.
-func (*claimer) lockFireRequests(
+func lockFireRequests(
 	ctx context.Context,
 	tx orm.DB,
 	scheduleIDs []string,
@@ -424,14 +412,43 @@ func mergeFireWork(
 
 // isLockContention reports a benign claim-race loss: another writer held the
 // store while the claim transaction tried to write. SQLite surfaces this as
-// SQLITE_BUSY even inside the busy timeout — a snapshot that went stale must
-// not wait for the writer. Row-locking dialects never produce it; FOR UPDATE
-// SKIP LOCKED partitions the due rows up front.
+// SQLITE_BUSY (or SQLITE_LOCKED under a shared cache) even inside the busy
+// timeout — a snapshot that went stale must not wait for the writer.
+// Row-locking dialects never produce it; FOR UPDATE SKIP LOCKED partitions
+// the due rows up front. migration.isSQLiteBusy classifies the same driver
+// errors for the migration lock; keep the two vocabularies aligned.
 func isLockContention(err error) bool {
 	message := err.Error()
 
-	return strings.Contains(message, "database is locked") ||
-		strings.Contains(message, "SQLITE_BUSY")
+	return strings.Contains(message, "is locked") ||
+		strings.Contains(message, "SQLITE_BUSY") ||
+		strings.Contains(message, "SQLITE_LOCKED")
+}
+
+// newRunRow materializes one claimed fire into its journal row: running when
+// the fire executes, skipped when suppressed is set (ConcurrencyForbid saw an
+// overlapping run). Both claim paths share it so the suppression shape cannot
+// drift between regular occurrences and explicit requests.
+func (c *claimer) newRunRow(schedule *cron.Schedule, scheduledAtUnixMs int64, suppressed bool, now time.Time) *cron.Run {
+	row := &cron.Run{
+		ScheduleID:        schedule.ID,
+		ScheduleName:      schedule.Name,
+		JobName:           schedule.JobName,
+		ScheduledAtUnixMs: scheduledAtUnixMs,
+		ClaimedAtUnixMs:   now.UnixMilli(),
+	}
+
+	if suppressed {
+		row.Status = cron.RunSkipped
+		row.FinishedAtUnixMs = unixMillisPtr(now)
+	} else {
+		row.Status = cron.RunRunning
+		row.NodeID = c.nodeID
+		row.StartedAtUnixMs = unixMillisPtr(now)
+		row.HeartbeatAtUnixMs = unixMillisPtr(now)
+	}
+
+	return row
 }
 
 // journalRequest materializes one explicit request. Manual requests follow
@@ -443,36 +460,18 @@ func (c *claimer) journalRequest(
 	overlapping bool,
 	now time.Time,
 ) (*cron.Run, bool) {
-	forbidden := overlapping && schedule.ConcurrencyPolicy != cron.ConcurrencyAllow
-	if forbidden && request.Kind == fireRequestRecovery {
+	suppressed := overlapping && schedule.ConcurrencyPolicy != cron.ConcurrencyAllow
+	if suppressed && request.Kind == fireRequestRecovery {
 		return nil, false
 	}
 
-	row := &cron.Run{
-		ScheduleID:        schedule.ID,
-		ScheduleName:      schedule.Name,
-		JobName:           schedule.JobName,
-		ScheduledAtUnixMs: request.ScheduledAtUnixMs,
-		ClaimedAtUnixMs:   now.UnixMilli(),
-	}
-
-	if forbidden {
-		row.Status = cron.RunSkipped
-		row.FinishedAtUnixMs = unixMillisPtr(now)
-	} else {
-		row.Status = cron.RunRunning
-		row.NodeID = c.nodeID
-		row.StartedAtUnixMs = unixMillisPtr(now)
-		row.HeartbeatAtUnixMs = unixMillisPtr(now)
-	}
-
-	return row, true
+	return c.newRunRow(schedule, request.ScheduledAtUnixMs, suppressed, now), true
 }
 
 // recordRequestedFire updates the public fire history without moving the
 // regular cursor. An old recovery occurrence must not move LastFireAtUnixMs
 // backwards past a newer logical fire.
-func (*claimer) recordRequestedFire(
+func recordRequestedFire(
 	ctx context.Context,
 	tx orm.DB,
 	schedule *cron.Schedule,
@@ -505,25 +504,8 @@ func (c *claimer) journalRows(schedule *cron.Schedule, decision fireDecision, ov
 	var rows []*cron.Run
 
 	if decision.fire {
-		row := &cron.Run{
-			ScheduleID:        schedule.ID,
-			ScheduleName:      schedule.Name,
-			JobName:           schedule.JobName,
-			ScheduledAtUnixMs: decision.scheduledAt.UnixMilli(),
-			ClaimedAtUnixMs:   now.UnixMilli(),
-		}
-
-		if overlapping && schedule.ConcurrencyPolicy != cron.ConcurrencyAllow {
-			row.Status = cron.RunSkipped
-			row.FinishedAtUnixMs = unixMillisPtr(now)
-		} else {
-			row.Status = cron.RunRunning
-			row.NodeID = c.nodeID
-			row.StartedAtUnixMs = unixMillisPtr(now)
-			row.HeartbeatAtUnixMs = unixMillisPtr(now)
-		}
-
-		rows = append(rows, row)
+		suppressed := overlapping && schedule.ConcurrencyPolicy != cron.ConcurrencyAllow
+		rows = append(rows, c.newRunRow(schedule, decision.scheduledAt.UnixMilli(), suppressed, now))
 	}
 
 	if decision.missed > 0 {
@@ -544,7 +526,7 @@ func (c *claimer) journalRows(schedule *cron.Schedule, decision fireDecision, ov
 }
 
 // advance moves the schedule's scheduling state past the claimed occurrence.
-func (*claimer) advance(ctx context.Context, tx orm.DB, schedule *cron.Schedule, decision fireDecision, now time.Time) error {
+func advance(ctx context.Context, tx orm.DB, schedule *cron.Schedule, decision fireDecision, now time.Time) error {
 	schedule.NextFireAtUnixMs = nil
 
 	if decision.next != nil {

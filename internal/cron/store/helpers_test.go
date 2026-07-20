@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -10,8 +9,8 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/cron"
-	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/cron/store/migration"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -28,41 +27,18 @@ func newStoreDB(t *testing.T) orm.DB {
 	return db
 }
 
-// CaptureBus is an event.Bus recording published events.
-type CaptureBus struct {
-	mu     sync.Mutex
-	events []event.Event
+// ClaimDue drives one claim batch and returns only the executable fires —
+// the shape most claim assertions consume.
+func (c *claimer) ClaimDue(ctx context.Context, limit int) ([]claimedFire, error) {
+	batch, err := c.claimDueBatch(ctx, limit)
+
+	return batch.fires, err
 }
 
-func (b *CaptureBus) Publish(_ context.Context, evt event.Event, _ ...event.PublishOption) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	b.events = append(b.events, evt)
-
-	return nil
-}
-
-func (b *CaptureBus) PublishBatch(ctx context.Context, evts []event.Event, opts ...event.PublishOption) error {
-	for _, evt := range evts {
-		if err := b.Publish(ctx, evt, opts...); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (*CaptureBus) Subscribe(string, event.Handler, ...event.SubscribeOption) (event.Unsubscribe, error) {
-	return func() {}, nil
-}
-
-// Published returns a snapshot of the captured events.
-func (b *CaptureBus) Published() []event.Event {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return append([]event.Event(nil), b.events...)
+// stubEngineClock pins the engine's clock and its claimer's shared copy.
+func stubEngineClock(engine *Engine, at time.Time) {
+	engine.now = fixedNow(at)
+	engine.claimer.now = engine.now
 }
 
 // mustRegistry builds a registry from handlers, failing the test on error.
@@ -81,7 +57,7 @@ func newTestManager(db orm.DB, registry *Registry, now func() time.Time) *schedu
 	return &scheduleManager{
 		db:       db,
 		registry: registry,
-		engine:   NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(new(CaptureBus))),
+		engine:   NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(eventtest.NewFakeBus())),
 		now:      now,
 	}
 }

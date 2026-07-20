@@ -29,6 +29,10 @@ const (
 	// deliberately independent of the run's own context — a canceled run
 	// still gets journaled.
 	completionTimeout = 10 * time.Second
+	// publisherStopGrace is the event queue's own flush budget on shutdown,
+	// reserved even when draining handlers consumed the caller's whole stop
+	// window.
+	publisherStopGrace = time.Second
 	// pruneInterval is the journal retention sweep cadence.
 	pruneInterval = time.Hour
 	// maxErrorBytes caps journaled failure messages.
@@ -74,6 +78,7 @@ type Engine struct {
 	executors        sync.WaitGroup
 	background       sync.WaitGroup
 	drainTimeout     time.Duration
+	lastSweep        time.Time
 	lastJournalPrune time.Time
 }
 
@@ -116,14 +121,20 @@ func (e *Engine) Start() {
 
 // Stop drains gracefully: claiming stops immediately, running handlers get
 // the drain window to finish, stragglers are canceled and journaled as
-// canceled. Heartbeats outlive handlers so draining runs stay owned. The
-// caller's deadline bounds the whole sequence; when necessary, graceful drain
-// is shortened to reserve the journal completion window.
+// canceled (recoverable schedules re-queue them; see complete). Heartbeats
+// outlive handlers so draining runs stay owned. The caller's deadline bounds
+// the whole sequence; when necessary, graceful drain is shortened to reserve
+// the journal completion window.
 func (e *Engine) Stop(ctx context.Context) (stopErr error) {
 	stopCtx, cancel := context.WithTimeout(ctx, e.drainTimeout+completionTimeout)
 	defer cancel()
 	defer func() {
-		stopErr = errors.Join(stopErr, e.publisher.Stop(stopCtx))
+		// The publisher gets a small budget of its own: a drain that consumed
+		// the whole stop window must not turn the queue flush into a no-op.
+		publisherCtx, cancel := context.WithTimeout(context.WithoutCancel(stopCtx), publisherStopGrace)
+		defer cancel()
+
+		stopErr = errors.Join(stopErr, e.publisher.Stop(publisherCtx))
 	}()
 
 	// Wait for the loop to actually leave its tick before waiting on the
@@ -212,8 +223,16 @@ func (e *Engine) loop() {
 
 		e.tick()
 		e.maintain()
-		timer.Reset(e.idleDelay())
+		timer.Reset(e.nextDelay())
 	}
+}
+
+// nextDelay bounds the adaptive fire sleep by the sweep cadence, so a distant
+// poll interval or a sweep skipped on an explicit wake cannot starve recovery.
+func (e *Engine) nextDelay() time.Duration {
+	sweepDue := e.sweepInterval() - e.now().Sub(e.lastSweep)
+
+	return max(min(e.idleDelay(), sweepDue), minIdleDelay)
 }
 
 // tick claims and dispatches due fires until the store is drained or the
@@ -258,10 +277,14 @@ func (e *Engine) tick() {
 	e.Wake()
 }
 
-// maintain runs the recovery sweep every tick and the journal prune on its
-// hourly cadence.
+// maintain runs the recovery sweep and the journal prune, each on its own
+// cadence — a wake storm (short tasks completing, request backlogs) must not
+// multiply maintenance queries.
 func (e *Engine) maintain() {
-	e.sweepAbandoned(e.loopCtx)
+	if now := e.now(); now.Sub(e.lastSweep) >= e.sweepInterval() {
+		e.lastSweep = now
+		e.sweepAbandoned(e.loopCtx)
+	}
 
 	if e.config.RunRetention > 0 && e.now().Sub(e.lastJournalPrune) >= pruneInterval {
 		e.lastJournalPrune = e.now()
@@ -269,11 +292,25 @@ func (e *Engine) maintain() {
 	}
 }
 
+// sweepInterval is the recovery sweep cadence: half the abandoned window
+// keeps takeover latency well inside the staleness contract, and the poll
+// interval bounds it so a long window still sweeps on the loop's own rhythm.
+func (e *Engine) sweepInterval() time.Duration {
+	return min(e.config.EffectiveAbandonedAfter()/2, e.config.EffectivePollInterval())
+}
+
 // idleDelay computes the adaptive sleep: until the nearest known fire,
 // floored against hot-looping and capped by the poll interval.
 func (e *Engine) idleDelay() time.Duration {
 	poll := e.config.EffectivePollInterval()
 	if e.registry.IsEmpty() {
+		return poll
+	}
+
+	// With every executor slot taken there is nothing to claim: sleep the
+	// full poll interval instead of spinning on the minimum floor — a slot
+	// release wakes the loop explicitly (see execute).
+	if len(e.slots) == cap(e.slots) {
 		return poll
 	}
 
@@ -291,7 +328,7 @@ func (e *Engine) idleDelay() time.Duration {
 		Limit(1).
 		Scan(e.loopCtx, &nextUnixMs)
 	if err != nil {
-		if e.loopCtx.Err() == nil && !result.IsRecordNotFound(err) && !errors.Is(err, context.Canceled) {
+		if e.loopCtx.Err() == nil && !result.IsRecordNotFound(err) {
 			logger.Errorf("Read nearest fire: %v", err)
 		}
 
@@ -354,7 +391,10 @@ func (*Engine) invoke(ctx context.Context, fire claimedFire) (err error) {
 // complete journals the run's outcome. The write context is independent of
 // the run's — a canceled run still gets journaled — and guarded on the row
 // still being running, so a recovery sweep that already took the run over
-// wins and the late completion is only logged.
+// wins and the late completion is only logged. A canceled run of a
+// recoverable schedule re-queues in the same transaction: graceful shutdown
+// must not deliver weaker semantics than a crash, whose abandoned rows the
+// sweep re-fires.
 //
 // ctxErr is the run context's state at the moment the handler returned. It
 // outranks the handler's own return value: a handler that returns nil after
@@ -391,21 +431,43 @@ func (e *Engine) complete(fire claimedFire, runErr, ctxErr error) {
 		run.Status = cron.RunSucceeded
 	}
 
-	updated, err := e.db.NewUpdate().
-		Model(run).
-		Select("status", "finished_at_unix_ms", "duration_ms", "error").
-		Where(func(cb orm.ConditionBuilder) {
-			cb.PKEquals(run.ID).Equals("status", cron.RunRunning)
-		}).
-		Exec(ctx)
+	err := e.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
+		updated, err := tx.NewUpdate().
+			Model(run).
+			Select("status", "finished_at_unix_ms", "duration_ms", "error").
+			Where(func(cb orm.ConditionBuilder) {
+				cb.PKEquals(run.ID).Equals("status", cron.RunRunning)
+			}).
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+
+		if affected, _ := updated.RowsAffected(); affected == 0 {
+			logger.Warnf("Run %s of schedule %q finished after being recovered; outcome discarded", run.ID, run.ScheduleName)
+
+			return nil
+		}
+
+		if run.Status == cron.RunCanceled && fire.schedule.Recover {
+			// The run ID fences the re-queue exactly like an abandoned
+			// takeover's, so the request stays unique however often this
+			// path could repeat.
+			request := &fireRequest{
+				ScheduleID:        run.ScheduleID,
+				Kind:              fireRequestRecovery,
+				ScheduledAtUnixMs: run.ScheduledAtUnixMs,
+				SourceRunID:       run.ID,
+			}
+			if _, err := tx.NewInsert().Model(request).Exec(ctx); err != nil {
+				return fmt.Errorf("queue recovery for canceled run: %w", err)
+			}
+		}
+
+		return nil
+	})
 	if err != nil {
 		logger.Errorf("Journal run %s of schedule %q: %v", run.ID, run.ScheduleName, err)
-
-		return
-	}
-
-	if affected, _ := updated.RowsAffected(); affected == 0 {
-		logger.Warnf("Run %s of schedule %q finished after being recovered; outcome discarded", run.ID, run.ScheduleName)
 
 		return
 	}

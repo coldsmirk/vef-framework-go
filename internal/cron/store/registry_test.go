@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/cron"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 )
 
 func TestNewRegistry(t *testing.T) {
@@ -74,7 +75,7 @@ func TestSeedDefaultSchedules(t *testing.T) {
 		func(context.Context, cron.Execution) error { return nil },
 		cron.WithDefaultSchedule(cron.ScheduleSpec{Trigger: cron.Expr("0 2 * * *", "Asia/Shanghai")}))
 	registry := mustRegistry(t, seeded, noopHandler("plain.job"))
-	manager := NewScheduleManager(db, true, registry, NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(new(CaptureBus))))
+	manager := NewScheduleManager(db, true, registry, NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(eventtest.NewFakeBus())))
 
 	require.NoError(t, SeedDefaultSchedules(context.Background(), manager, registry),
 		"Seeding should succeed")

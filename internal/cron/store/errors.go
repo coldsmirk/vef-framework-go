@@ -22,6 +22,9 @@ var (
 	ErrScheduleTimeoutPrecision = errors.New("cron store: schedule timeout must use whole milliseconds")
 	// ErrScheduleWindowInverted indicates EndsAt at or before StartsAt.
 	ErrScheduleWindowInverted = errors.New("cron store: schedule window must end after it starts")
+	// ErrScheduleNeverFires indicates an enabled schedule whose trigger
+	// yields no occurrence from now (a past one-shot, an expired window).
+	ErrScheduleNeverFires = errors.New("cron store: schedule trigger yields no future occurrence")
 	// ErrAbandonTakeoverIncomplete indicates a takeover that could not
 	// finalize every locked stale run — a broken invariant, since the rows
 	// were selected and locked in the same transaction.

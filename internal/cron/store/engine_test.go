@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/cron"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
@@ -21,7 +22,7 @@ type EngineHarness struct {
 	db      orm.DB
 	engine  *Engine
 	manager cron.ScheduleManager
-	bus     *CaptureBus
+	bus     *eventtest.FakeBus
 }
 
 func startEngine(t *testing.T, handlers ...cron.JobHandler) *EngineHarness {
@@ -29,7 +30,7 @@ func startEngine(t *testing.T, handlers ...cron.JobHandler) *EngineHarness {
 
 	db := newStoreDB(t)
 	registry := mustRegistry(t, handlers...)
-	bus := new(CaptureBus)
+	bus := eventtest.NewFakeBus()
 	engine := NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(bus))
 	engine.drainTimeout = 200 * time.Millisecond
 
@@ -48,12 +49,12 @@ func startEngine(t *testing.T, handlers ...cron.JobHandler) *EngineHarness {
 
 // awaitRun polls the journal until a run of the schedule reaches the wanted
 // status.
-func (h *EngineHarness) awaitRun(t *testing.T, scheduleID string, status cron.RunStatus) cron.Run {
+func awaitRun(t *testing.T, db orm.DB, scheduleID string, status cron.RunStatus) cron.Run {
 	t.Helper()
 
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		for _, run := range loadRuns(t, h.db, scheduleID) {
+		for _, run := range loadRuns(t, db, scheduleID) {
 			if run.Status == status {
 				return run
 			}
@@ -65,6 +66,12 @@ func (h *EngineHarness) awaitRun(t *testing.T, scheduleID string, status cron.Ru
 
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+func (h *EngineHarness) awaitRun(t *testing.T, scheduleID string, status cron.RunStatus) cron.Run {
+	t.Helper()
+
+	return awaitRun(t, h.db, scheduleID, status)
 }
 
 func TestEngineExecutesFires(t *testing.T) {
@@ -98,7 +105,7 @@ func TestEngineExecutesFires(t *testing.T) {
 		assert.Equal(t, int32(1), executions.Load(), "The handler must run exactly once")
 		assert.Equal(t, "east", seenRegion.Load(), "The schedule params must reach the handler")
 		assert.NotNil(t, run.FinishedAtUnixMs, "The journal must close the run")
-		assert.Empty(t, harness.bus.Published(), "A successful run publishes nothing")
+		assert.Empty(t, harness.bus.Captured(), "A successful run publishes nothing")
 
 		spent, err := harness.manager.Get(context.Background(), "sync-east")
 		require.NoError(t, err, "The schedule must load")
@@ -119,10 +126,10 @@ func TestEngineExecutesFires(t *testing.T) {
 		run := harness.awaitRun(t, schedule.ID, cron.RunFailed)
 		assert.Contains(t, run.Error, "upstream exploded", "The journal must carry the failure")
 
-		require.Eventually(t, func() bool { return len(harness.bus.Published()) == 1 },
+		require.Eventually(t, func() bool { return len(harness.bus.Captured()) == 1 },
 			2*time.Second, 20*time.Millisecond, "The failure must publish an event")
 
-		event, ok := harness.bus.Published()[0].(*cron.RunFailedEvent)
+		event, ok := harness.bus.Captured()[0].(*cron.RunFailedEvent)
 		require.True(t, ok, "The published event must be a run-failed event")
 		assert.Equal(t, "sync-broken", event.ScheduleName, "The event must name the schedule")
 		assert.Contains(t, event.Error, "upstream exploded", "The event must carry the failure")
@@ -267,7 +274,7 @@ func TestEngineWakesWhenAnExecutorSlotIsReleased(t *testing.T) {
 	config.PollInterval = time.Hour
 	config.BatchSize = 1
 	config.MaxConcurrent = 1
-	engine := NewEngine(db, config, registry, NewRunEventPublisher(new(CaptureBus)))
+	engine := NewEngine(db, config, registry, NewRunEventPublisher(eventtest.NewFakeBus()))
 	engine.drainTimeout = 200 * time.Millisecond
 	manager := NewScheduleManager(db, true, registry, engine)
 	engine.Start()
@@ -296,13 +303,13 @@ func TestEngineWakesWhenAnExecutorSlotIsReleased(t *testing.T) {
 	firstMarker := insertSchedule(t, db, scheduleFixture("first-tick-marker", "orders.sync", time.Now().Add(time.Hour)))
 	insertRunningRun(t, db, firstMarker, time.Now().Add(-time.Minute), time.Now().Add(-time.Minute))
 	engine.Wake()
-	(&EngineHarness{db: db}).awaitRun(t, firstMarker.ID, cron.RunAbandoned)
+	awaitRun(t, db, firstMarker.ID, cron.RunAbandoned)
 
 	secondMarker := insertSchedule(t, db, scheduleFixture("full-slot-marker", "orders.sync", time.Now().Add(time.Hour)))
 	insertRunningRun(t, db, secondMarker, time.Now().Add(-time.Minute), time.Now().Add(-time.Minute))
 	require.NoError(t, manager.TriggerNow(context.Background(), schedule.Name),
 		"Queuing a manual fire while the slot is full should succeed")
-	(&EngineHarness{db: db}).awaitRun(t, secondMarker.ID, cron.RunAbandoned)
+	awaitRun(t, db, secondMarker.ID, cron.RunAbandoned)
 
 	releaseHandler()
 
@@ -320,9 +327,8 @@ func TestEngineTickDrainsJournalOnlyProgress(t *testing.T) {
 	config := fastStoreConfig()
 	config.BatchSize = 1
 	config.MaxConcurrent = 1
-	engine := NewEngine(db, config, registry, NewRunEventPublisher(new(CaptureBus)))
-	engine.now = fixedNow(base)
-	engine.claimer.now = engine.now
+	engine := NewEngine(db, config, registry, NewRunEventPublisher(eventtest.NewFakeBus()))
+	stubEngineClock(engine, base)
 
 	schedule := insertSchedule(t, db, scheduleFixture("skip-backlog", "orders.sync", base.Add(time.Hour)))
 	insertRunningRun(t, db, schedule, base.Add(-time.Minute), base)
@@ -354,9 +360,8 @@ func TestEngineTickYieldsAfterBoundedJournalProgress(t *testing.T) {
 	config := fastStoreConfig()
 	config.BatchSize = 1
 	config.MaxConcurrent = 1
-	engine := NewEngine(db, config, registry, NewRunEventPublisher(new(CaptureBus)))
-	engine.now = fixedNow(base)
-	engine.claimer.now = engine.now
+	engine := NewEngine(db, config, registry, NewRunEventPublisher(eventtest.NewFakeBus()))
+	stubEngineClock(engine, base)
 
 	schedule := insertSchedule(t, db, scheduleFixture("bounded-backlog", "orders.sync", base.Add(time.Hour)))
 	insertRunningRun(t, db, schedule, base.Add(-time.Minute), base)
@@ -414,7 +419,7 @@ func TestBlockedFailurePublishDoesNotHoldExecutorSlot(t *testing.T) {
 	})
 	require.NoError(t, err, "Creating the failure fixture should succeed")
 
-	(&EngineHarness{db: db}).awaitRun(t, schedule.ID, cron.RunFailed)
+	awaitRun(t, db, schedule.ID, cron.RunFailed)
 
 	select {
 	case <-bus.entered:
@@ -453,8 +458,7 @@ func TestBlockedAbandonedPublishDoesNotStopClaiming(t *testing.T) {
 	config.BatchSize = 1
 	config.MaxConcurrent = 2
 	engine := NewEngine(db, config, registry, NewRunEventPublisher(bus))
-	engine.now = fixedNow(base)
-	engine.claimer.now = engine.now
+	stubEngineClock(engine, base)
 	engine.Start()
 
 	t.Cleanup(func() {
@@ -493,7 +497,7 @@ func TestEngineStopCancelsStragglers(t *testing.T) {
 
 			return ctx.Err()
 		}))
-	engine := NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(new(CaptureBus)))
+	engine := NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(eventtest.NewFakeBus()))
 	engine.drainTimeout = 100 * time.Millisecond
 	manager := NewScheduleManager(db, true, registry, engine)
 
@@ -521,6 +525,57 @@ func TestEngineStopCancelsStragglers(t *testing.T) {
 	require.Len(t, runs, 1, "The interrupted fire must stay journaled")
 	assert.Equal(t, cron.RunCanceled, runs[0].Status, "Shutdown interruption journals as canceled")
 	assert.Equal(t, "canceled by shutdown", runs[0].Error, "The journal must name the shutdown")
+	assert.Empty(t, loadFireRequests(t, db, schedule.ID),
+		"A canceled run of a non-recoverable schedule must not queue a re-fire")
+}
+
+func TestEngineStopQueuesRecoveryForCanceledRecoverableRun(t *testing.T) {
+	blocked := make(chan struct{})
+
+	db := newStoreDB(t)
+	registry := mustRegistry(t, cron.NewJobHandler("orders.sync",
+		func(ctx context.Context, _ cron.Execution) error {
+			close(blocked)
+			<-ctx.Done()
+
+			return ctx.Err()
+		}))
+	engine := NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(eventtest.NewFakeBus()))
+	engine.drainTimeout = 100 * time.Millisecond
+	manager := NewScheduleManager(db, true, registry, engine)
+
+	engine.Start()
+	t.Cleanup(func() {
+		require.NoError(t, engine.Stop(context.Background()), "The engine should stop during cleanup")
+	})
+
+	schedule, err := manager.Create(context.Background(), cron.ScheduleSpec{
+		Name:    "sync-recoverable",
+		JobName: "orders.sync",
+		Trigger: cron.Once(time.Now().Add(30 * time.Millisecond)),
+		Recover: true,
+	})
+	require.NoError(t, err, "Creating the schedule should succeed")
+
+	select {
+	case <-blocked:
+	case <-time.After(5 * time.Second):
+		t.Fatal("The handler must start before the engine stops")
+	}
+
+	require.NoError(t, engine.Stop(context.Background()), "The engine should cancel and journal the blocked run")
+
+	runs := loadRuns(t, db, schedule.ID)
+	require.Len(t, runs, 1, "The interrupted fire must stay journaled")
+	assert.Equal(t, cron.RunCanceled, runs[0].Status, "Shutdown interruption journals as canceled")
+
+	requests := loadFireRequests(t, db, schedule.ID)
+	require.Len(t, requests, 1,
+		"Graceful shutdown must queue the same durable re-fire a crash would produce")
+	assert.Equal(t, fireRequestRecovery, requests[0].Kind, "The re-fire must be a recovery request")
+	assert.Equal(t, runs[0].ID, requests[0].SourceRunID, "The canceled run must fence its re-queue")
+	assert.Equal(t, runs[0].ScheduledAtUnixMs, requests[0].ScheduledAtUnixMs,
+		"The recovery must retain the canceled occurrence time")
 }
 
 func TestEngineStopDrainsRunningWork(t *testing.T) {
@@ -538,7 +593,7 @@ func TestEngineStopDrainsRunningWork(t *testing.T) {
 
 			return nil
 		}))
-	engine := NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(new(CaptureBus)))
+	engine := NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(eventtest.NewFakeBus()))
 	manager := NewScheduleManager(db, true, registry, engine)
 
 	engine.Start()
@@ -584,7 +639,7 @@ func TestEngineStopObeysCallerDeadline(t *testing.T) {
 
 			return ctx.Err()
 		}))
-	engine := NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(new(CaptureBus)))
+	engine := NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(eventtest.NewFakeBus()))
 	engine.drainTimeout = time.Second
 	manager := NewScheduleManager(db, true, registry, engine)
 

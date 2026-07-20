@@ -9,10 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/cron"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-func newSweepEngine(t *testing.T, db orm.DB, registry *Registry, bus *CaptureBus, now time.Time) *Engine {
+func newSweepEngine(t *testing.T, db orm.DB, registry *Registry, bus *eventtest.FakeBus, now time.Time) *Engine {
 	t.Helper()
 
 	publisher := NewRunEventPublisher(bus)
@@ -33,7 +34,7 @@ func TestSweepAbandoned(t *testing.T) {
 
 	t.Run("MarksStaleRunsAndQueuesRecoverable", func(t *testing.T) {
 		db := newStoreDB(t)
-		bus := new(CaptureBus)
+		bus := eventtest.NewFakeBus()
 
 		recoverable := scheduleFixture("recoverable", "orders.sync", base.Add(time.Hour))
 		recoverable.Recover = true
@@ -57,13 +58,10 @@ func TestSweepAbandoned(t *testing.T) {
 			assert.NotNil(t, runs[0].FinishedAtUnixMs, "An abandoned run is terminal")
 		}
 
-		require.Eventually(t, func() bool { return len(bus.Published()) == 2 },
+		require.Eventually(t, func() bool { return len(bus.Captured()) == 2 },
 			time.Second, 10*time.Millisecond, "Every abandoned run must publish a notification")
 
-		events := bus.Published()
-		require.Len(t, events, 2, "Every abandoned run must publish a notification")
-
-		abandoned, ok := events[0].(*cron.RunAbandonedEvent)
+		abandoned, ok := bus.Captured()[0].(*cron.RunAbandonedEvent)
 		require.True(t, ok, "The notification must be a run-abandoned event")
 		assert.Equal(t, "node-dead", abandoned.NodeID, "The event must name the silent node")
 
@@ -97,7 +95,7 @@ func TestSweepAbandoned(t *testing.T) {
 
 		orphan := insertRunningRun(t, db, schedule, base.Add(-2*time.Minute), base.Add(-time.Minute))
 
-		engine := newSweepEngine(t, db, registry, new(CaptureBus), base)
+		engine := newSweepEngine(t, db, registry, eventtest.NewFakeBus(), base)
 		engine.sweepAbandoned(context.Background())
 
 		afterSweep := reloadSchedule(t, db, schedule.ID)
@@ -134,7 +132,7 @@ func TestSweepAbandoned(t *testing.T) {
 
 		insertRunningRun(t, db, schedule, base.Add(-2*time.Minute), base.Add(-time.Minute))
 
-		engine := newSweepEngine(t, db, registry, new(CaptureBus), base)
+		engine := newSweepEngine(t, db, registry, eventtest.NewFakeBus(), base)
 		engine.sweepAbandoned(context.Background())
 
 		after := reloadSchedule(t, db, schedule.ID)
@@ -156,7 +154,7 @@ func TestSweepAbandoned(t *testing.T) {
 		first := insertRunningRun(t, db, schedule, base.Add(-3*time.Minute), base.Add(-time.Minute))
 		second := insertRunningRun(t, db, schedule, base.Add(-2*time.Minute), base.Add(-time.Minute))
 
-		engine := newSweepEngine(t, db, registry, new(CaptureBus), base)
+		engine := newSweepEngine(t, db, registry, eventtest.NewFakeBus(), base)
 		engine.sweepAbandoned(context.Background())
 
 		requests := loadFireRequests(t, db, schedule.ID)
@@ -187,7 +185,7 @@ func TestSweepAbandoned(t *testing.T) {
 		manager := newTestManager(db, registry, fixedNow(base))
 		require.NoError(t, manager.Pause(context.Background(), schedule.Name), "Pausing should succeed")
 
-		engine := newSweepEngine(t, db, registry, new(CaptureBus), base)
+		engine := newSweepEngine(t, db, registry, eventtest.NewFakeBus(), base)
 		engine.sweepAbandoned(context.Background())
 
 		claimed, err := newTestClaimer(db, registry, "node-live", fixedNow(base)).
@@ -215,7 +213,7 @@ func TestSweepAbandoned(t *testing.T) {
 		schedule := insertSchedule(t, db, scheduleFixture("alive", "orders.sync", base.Add(time.Hour)))
 		insertRunningRun(t, db, schedule, base.Add(-time.Minute), base.Add(-10*time.Millisecond))
 
-		engine := newSweepEngine(t, db, registry, new(CaptureBus), base)
+		engine := newSweepEngine(t, db, registry, eventtest.NewFakeBus(), base)
 		engine.sweepAbandoned(context.Background())
 
 		runs := loadRuns(t, db, schedule.ID)
@@ -226,7 +224,7 @@ func TestSweepAbandoned(t *testing.T) {
 	t.Run("FinalizesAStaleRunAfterItsScheduleWasDeleted", func(t *testing.T) {
 		db := newStoreDB(t)
 		registry := mustRegistry(t, noopHandler("orders.sync"))
-		bus := new(CaptureBus)
+		bus := eventtest.NewFakeBus()
 		schedule := scheduleFixture("deleted-owner", "orders.sync", base.Add(time.Hour))
 		schedule.Recover = true
 		insertSchedule(t, db, schedule)
@@ -257,7 +255,7 @@ func TestRenewHeartbeats(t *testing.T) {
 		schedule := insertSchedule(t, db, scheduleFixture("beating", "orders.sync", base.Add(time.Hour)))
 		run := insertRunningRun(t, db, schedule, base.Add(-time.Minute), base.Add(-time.Minute))
 
-		engine := newSweepEngine(t, db, registry, new(CaptureBus), base)
+		engine := newSweepEngine(t, db, registry, eventtest.NewFakeBus(), base)
 		engine.heartbeats.Track(run.ID)
 		engine.renewHeartbeats()
 
@@ -273,7 +271,7 @@ func TestRenewHeartbeats(t *testing.T) {
 		schedule := insertSchedule(t, db, scheduleFixture("taken", "orders.sync", base.Add(time.Hour)))
 		run := insertRunningRun(t, db, schedule, base.Add(-time.Minute), base.Add(-time.Minute))
 
-		engine := newSweepEngine(t, db, registry, new(CaptureBus), base)
+		engine := newSweepEngine(t, db, registry, eventtest.NewFakeBus(), base)
 		engine.heartbeats.Track(run.ID)
 
 		// A peer's sweep took the run over between two beats.
@@ -315,7 +313,7 @@ func TestPruneJournal(t *testing.T) {
 	config := fastStoreConfig()
 	config.RunRetention = 24 * time.Hour
 
-	engine := NewEngine(db, config, registry, NewRunEventPublisher(new(CaptureBus)))
+	engine := NewEngine(db, config, registry, NewRunEventPublisher(eventtest.NewFakeBus()))
 	engine.now = fixedNow(base)
 	engine.pruneJournal(context.Background())
 

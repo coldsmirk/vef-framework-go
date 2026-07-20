@@ -145,6 +145,32 @@ func (s *ManagerTestSuite) TestCreate() {
 		s.Nil(schedule.NextFireAtUnixMs, "A paused schedule carries no next fire")
 	})
 
+	s.Run("RejectsEnabledScheduleThatNeverFires", func() {
+		spent := s.validSpec("spent-once")
+		spent.Trigger = cron.Once(s.now.Add(-time.Hour))
+
+		_, err := s.manager.Create(s.ctx(), spent)
+		s.Require().ErrorIs(err, cron.ErrScheduleInvalid(""),
+			"A past one-shot would be created dead and must be refused")
+
+		expired := s.validSpec("expired-window")
+		ends := s.now.Add(-time.Minute)
+		expired.EndsAt = &ends
+
+		_, err = s.manager.Create(s.ctx(), expired)
+		s.Require().ErrorIs(err, cron.ErrScheduleInvalid(""),
+			"An already-expired window would be created dead and must be refused")
+
+		disabled := false
+		dormant := s.validSpec("dormant-once")
+		dormant.Trigger = cron.Once(s.now.Add(-time.Hour))
+		dormant.Enabled = &disabled
+
+		_, err = s.manager.Create(s.ctx(), dormant)
+		s.Require().NoError(err,
+			"A disabled schedule carries no cursor by design and stays creatable")
+	})
+
 	s.Run("NameWidthCountsCharacters", func() {
 		spec := s.validSpec(strings.Repeat("名", maxScheduleNameLength))
 

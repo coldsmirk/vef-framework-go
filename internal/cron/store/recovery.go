@@ -241,11 +241,6 @@ func markAbandoned(ctx context.Context, tx orm.DB, orphans []cron.Run, now time.
 		return fmt.Errorf("%w: updated %d of %d", ErrAbandonTakeoverIncomplete, affected, len(orphans))
 	}
 
-	for i := range orphans {
-		orphans[i].Status = cron.RunAbandoned
-		orphans[i].FinishedAtUnixMs = unixMillisPtr(now)
-	}
-
 	return nil
 }
 

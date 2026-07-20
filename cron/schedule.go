@@ -66,9 +66,9 @@ type Schedule struct {
 	MisfirePolicy     MisfirePolicy     `json:"misfirePolicy" bun:"misfire_policy"`
 	ConcurrencyPolicy ConcurrencyPolicy `json:"concurrencyPolicy" bun:"concurrency_policy"`
 
-	// Recover re-fires a run that was abandoned mid-execution (its node
-	// stopped heartbeating) as soon as possible. Recovery makes delivery
-	// at-least-once; the handler must be idempotent.
+	// Recover re-fires a run that did not complete: abandoned mid-execution
+	// (its node stopped heartbeating) or canceled by graceful shutdown.
+	// Recovery makes delivery at-least-once; the handler must be idempotent.
 	Recover bool `json:"recover" bun:"recover"`
 
 	// TimeoutMs bounds one run; zero inherits vef.cron.store.run_timeout.

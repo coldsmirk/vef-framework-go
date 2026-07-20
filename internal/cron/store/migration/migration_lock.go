@@ -201,12 +201,16 @@ func suspendSQLiteBusyTimeout(ctx context.Context, conn orm.DB) (func(*error), e
 
 // isSQLiteBusy reports the driver's lock contention error anywhere in the
 // attempt: acquiring the pooled connection (a fresh connection's DSN pragmas
-// can contend with the lock holder), BEGIN IMMEDIATE, or the commit.
+// can contend with the lock holder), BEGIN IMMEDIATE, or the commit. A
+// shared-cache database reports SQLITE_LOCKED instead of SQLITE_BUSY. The
+// store's isLockContention classifies the same driver errors for claiming;
+// keep the two vocabularies aligned.
 func isSQLiteBusy(err error) bool {
 	message := err.Error()
 
-	return strings.Contains(message, "database is locked") ||
-		strings.Contains(message, "SQLITE_BUSY")
+	return strings.Contains(message, "is locked") ||
+		strings.Contains(message, "SQLITE_BUSY") ||
+		strings.Contains(message, "SQLITE_LOCKED")
 }
 
 func mysqlLockResult(ctx context.Context, db orm.DB, query string) (sql.NullInt64, error) {

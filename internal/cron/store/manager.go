@@ -60,6 +60,14 @@ func (m *scheduleManager) Create(ctx context.Context, spec cron.ScheduleSpec) (*
 
 	m.refreshNextFire(schedule, now)
 
+	// An enabled schedule whose trigger yields nothing from now (a past
+	// one-shot, an already-expired window) would be created dead: no journal
+	// row, no error, nothing ever fires. Refuse it here; a spent schedule
+	// remains updatable so operators can still edit or rename it.
+	if schedule.IsEnabled && schedule.NextFireAtUnixMs == nil {
+		return nil, cron.ErrScheduleInvalid(ErrScheduleNeverFires.Error())
+	}
+
 	if _, err := m.db.NewInsert().Model(schedule).Exec(ctx); err != nil {
 		return nil, translateScheduleWriteError(err)
 	}
@@ -465,7 +473,7 @@ func lockScheduleByName(ctx context.Context, tx orm.DB, name string) (*cron.Sche
 }
 
 // persistScheduleState writes the scheduling-state columns of a control
-// operation (pause, resume, trigger-now).
+// operation (pause, resume).
 func persistScheduleState(ctx context.Context, tx orm.DB, schedule *cron.Schedule) error {
 	if _, err := tx.NewUpdate().
 		Model(schedule).
