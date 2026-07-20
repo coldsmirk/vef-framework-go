@@ -16,9 +16,9 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// columnExists probes one column through the dialect metadata loader.
+// columnExists probes one column through the shared metadata loader.
 func columnExists(ctx context.Context, db orm.DB, kind config.DBKind, table, column string) (bool, error) {
-	columns, err := loadTableColumns(ctx, db, kind, table)
+	columns, err := sqlmigration.LoadTableColumns(ctx, db, kind, table)
 	if err != nil {
 		return false, err
 	}
@@ -28,15 +28,15 @@ func columnExists(ctx context.Context, db orm.DB, kind config.DBKind, table, col
 	return exists, nil
 }
 
-// indexCapabilityExists probes one index capability through the dialect
+// indexCapabilityExists probes one index capability through the shared
 // metadata loader.
-func indexCapabilityExists(ctx context.Context, db orm.DB, kind config.DBKind, expected schemaIndex) (bool, error) {
-	indexes, err := loadTableIndexes(ctx, db, kind, expected.table)
+func indexCapabilityExists(ctx context.Context, db orm.DB, kind config.DBKind, required indexRequirement) (bool, error) {
+	indexes, err := sqlmigration.LoadTableIndexes(ctx, db, kind, required.table)
 	if err != nil {
 		return false, err
 	}
 
-	return hasIndexCapability(indexes, expected), nil
+	return hasIndexCapability(indexes, required), nil
 }
 
 func TestMigrateFreshSchemaIsIdempotent(t *testing.T) {
@@ -128,7 +128,7 @@ func TestMigrateWaitsForMigrationLockBeforeProvisioning(t *testing.T) {
 
 		holderResult := make(chan error, 1)
 		go func() {
-			holderResult <- withMigrationLock(holderCtx, env.DB, env.DS.Kind,
+			holderResult <- sqlmigration.WithLock(holderCtx, env.DB, env.DS.Kind, migrationLockName,
 				func(ctx context.Context, _ orm.DB) error {
 					close(acquired)
 
@@ -233,7 +233,7 @@ func TestMigrateRejectsIncompatibleSchemaWithoutRepair(t *testing.T) {
 		assert.ErrorContains(t, err, "idx_crn_run__claimed_at_unix_ms",
 			"Migration error should identify the missing index capability")
 
-		exists, probeErr := indexCapabilityExists(ctx, db, config.SQLite, schemaIndex{
+		exists, probeErr := indexCapabilityExists(ctx, db, config.SQLite, indexRequirement{
 			table:   "crn_run",
 			columns: []string{"claimed_at_unix_ms", "id"},
 		})

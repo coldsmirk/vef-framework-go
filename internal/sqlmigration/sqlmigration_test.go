@@ -2,80 +2,99 @@ package sqlmigration
 
 import (
 	"context"
+	"embed"
+	"io/fs"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-func TestTableExists(t *testing.T) {
-	testx.ForEachDB(t, func(t *testing.T, env *testx.DBEnv) {
-		exists, err := TableExists(env.Ctx, env.DB, env.DS.Kind, "smig_probe")
-		require.NoError(t, err, "Probing an absent table should succeed for %s", env.DS.Kind)
-		assert.False(t, exists, "An absent table must probe false for %s", env.DS.Kind)
+//go:embed testdata/scripts/*.sql
+var fixtureFS embed.FS
 
-		_, err = env.DB.NewRaw("CREATE TABLE smig_probe (id VARCHAR(32) NOT NULL PRIMARY KEY)").Exec(env.Ctx)
-		require.NoError(t, err, "The probe fixture table should be created for %s", env.DS.Kind)
+// fixtureScripts exposes the test DDL under the "scripts/<kind>.sql" layout
+// Plan.Scripts expects.
+func fixtureScripts(t *testing.T) fs.FS {
+	t.Helper()
 
-		exists, err = TableExists(env.Ctx, env.DB, env.DS.Kind, "smig_probe")
-		require.NoError(t, err, "Probing an existing table should succeed for %s", env.DS.Kind)
-		assert.True(t, exists, "An existing table must probe true for %s", env.DS.Kind)
-	})
+	scripts, err := fs.Sub(fixtureFS, "testdata")
+	require.NoError(t, err, "The fixture script bundle should resolve")
+
+	return scripts
 }
 
-func TestCountTables(t *testing.T) {
+func TestRunProvisionsExactlyOnceUnderConcurrency(t *testing.T) {
 	testx.ForEachDB(t, func(t *testing.T, env *testx.DBEnv) {
-		_, err := env.DB.NewRaw("CREATE TABLE smig_present (id VARCHAR(32) NOT NULL PRIMARY KEY)").Exec(env.Ctx)
-		require.NoError(t, err, "The count fixture table should be created for %s", env.DS.Kind)
+		const workerCount = 8
 
-		count, err := CountTables(env.Ctx, env.DB, env.DS.Kind, []string{"smig_present", "smig_absent"})
-		require.NoError(t, err, "Counting a mixed table set should succeed for %s", env.DS.Kind)
-		assert.Equal(t, 1, count, "Only the existing table must be counted for %s", env.DS.Kind)
-	})
-}
-
-func TestCountTablesRejectsUnknownKind(t *testing.T) {
-	db := testx.NewTestDB(t)
-
-	_, err := CountTables(t.Context(), db, "oracle-ish", []string{"any"})
-	assert.ErrorIs(t, err, ErrUnsupportedDBKind, "An unknown dialect must fail with the sentinel")
-}
-
-func TestTableExistsFollowsTheActiveSchema(t *testing.T) {
-	testx.ForEachDB(t, func(t *testing.T, env *testx.DBEnv) {
-		if env.DS.Kind != config.Postgres {
-			t.Skipf("Only Postgres separates the active schema from a fixed default; %s has no equivalent", env.DS.Kind)
+		plan := Plan{
+			Label:          "sqlmigration fixture",
+			Kind:           env.DS.Kind,
+			Scripts:        fixtureScripts(t),
+			ExpectedTables: []string{"smig_run_fixture"},
 		}
 
-		// Unqualified DDL lands in the connection's active schema, so the
-		// probe must follow current_schema() instead of assuming 'public'.
-		err := env.DB.RunOnConnection(env.Ctx, func(ctx context.Context, conn orm.DB) error {
-			if _, err := conn.NewRaw("CREATE SCHEMA smig_tenant").Exec(ctx); err != nil {
-				return err
-			}
+		// The fixture DDL carries no IF NOT EXISTS: a second execution fails,
+		// so only the migration lock keeps concurrent boots correct.
+		start := make(chan struct{})
 
-			if _, err := conn.NewRaw("SET search_path TO smig_tenant").Exec(ctx); err != nil {
-				return err
-			}
+		results := make(chan error, workerCount)
+		for range workerCount {
+			go func() {
+				<-start
 
-			if _, err := conn.NewRaw("CREATE TABLE smig_scoped (id VARCHAR(32) NOT NULL PRIMARY KEY)").Exec(ctx); err != nil {
-				return err
-			}
+				results <- Run(env.Ctx, env.DB, plan)
+			}()
+		}
 
-			exists, err := TableExists(ctx, conn, config.Postgres, "smig_scoped")
-			if err != nil {
-				return err
-			}
+		close(start)
 
-			assert.True(t, exists,
-				"A table created in the active non-public schema must be visible to the probe")
+		for range workerCount {
+			require.NoError(t, <-results,
+				"Every concurrent Run must succeed: one provisions, the rest observe for %s", env.DS.Kind)
+		}
 
-			return nil
-		})
-		require.NoError(t, err, "The scoped-schema probe should run cleanly")
+		require.NoError(t, Run(env.Ctx, env.DB, plan),
+			"Replaying the migration should be a no-op for %s", env.DS.Kind)
+
+		exists, err := TableExists(env.Ctx, env.DB, env.DS.Kind, "smig_run_fixture")
+		require.NoError(t, err, "The provisioned table should be probeable for %s", env.DS.Kind)
+		assert.True(t, exists, "The migration must leave the expected table behind for %s", env.DS.Kind)
 	})
+}
+
+func TestRunExecutesPreHooksUnderTheLock(t *testing.T) {
+	db := testx.NewTestDB(t)
+	ctx := context.Background()
+
+	_, err := db.NewRaw("CREATE TABLE smig_retired (id VARCHAR(32) NOT NULL PRIMARY KEY)").Exec(ctx)
+	require.NoError(t, err, "The retired fixture table should be created")
+
+	plan := Plan{
+		Label:          "sqlmigration fixture",
+		Kind:           "sqlite",
+		Scripts:        fixtureScripts(t),
+		ExpectedTables: []string{"smig_run_fixture"},
+		Pre: []func(ctx context.Context, db orm.DB) error{
+			func(ctx context.Context, db orm.DB) error {
+				_, err := db.NewRaw("DROP TABLE IF EXISTS smig_retired").Exec(ctx)
+
+				return err
+			},
+		},
+	}
+
+	require.NoError(t, Run(ctx, db, plan), "Run should execute the pre hook and provision")
+
+	retired, err := TableExists(ctx, db, plan.Kind, "smig_retired")
+	require.NoError(t, err, "The retired table should be probeable")
+	assert.False(t, retired, "The pre hook must have dropped the retired table")
+
+	provisioned, err := TableExists(ctx, db, plan.Kind, "smig_run_fixture")
+	require.NoError(t, err, "The provisioned table should be probeable")
+	assert.True(t, provisioned, "The migration must leave the expected table behind")
 }

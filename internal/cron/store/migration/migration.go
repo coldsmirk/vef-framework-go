@@ -20,10 +20,13 @@ var expectedTables = []string{
 	"crn_run",
 }
 
+// migrationLockName scopes the shared migration lock to this module.
+const migrationLockName = "cron"
+
 // Migrate provisions a fresh cron store schema and verifies its capabilities.
 // Existing incompatible tables are never altered or repaired.
 func Migrate(ctx context.Context, db orm.DB, kind config.DBKind) error {
-	if err := withMigrationLock(ctx, db, kind, func(ctx context.Context, lockedDB orm.DB) error {
+	if err := sqlmigration.WithLock(ctx, db, kind, migrationLockName, func(ctx context.Context, lockedDB orm.DB) error {
 		return provisionFresh(ctx, lockedDB, kind)
 	}); err != nil {
 		return err
