@@ -12,6 +12,9 @@ import (
 type RunSearch struct {
 	crud.Sortable
 
+	// ID addresses one journal row; find_one has no other way to name the
+	// record the caller means.
+	ID              string          `json:"id" search:"eq,column=id"`
 	ScheduleName    string          `json:"scheduleName" search:"eq,column=schedule_name"`
 	JobName         string          `json:"jobName" search:"eq,column=job_name"`
 	Status          string          `json:"status" search:"eq"`
