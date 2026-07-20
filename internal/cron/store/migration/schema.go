@@ -168,9 +168,12 @@ var requiredIndexes = []schemaIndex{
 		columns: []string{"finished_at_unix_ms"},
 	},
 	{
+		// The id tie-breaker matches the run list's canonical
+		// (claimed_at_unix_ms DESC, id DESC) ordering, so paging stays an
+		// index walk instead of a top-N sort.
 		table:   "crn_run",
 		name:    "idx_crn_run__claimed_at_unix_ms",
-		columns: []string{"claimed_at_unix_ms"},
+		columns: []string{"claimed_at_unix_ms", "id"},
 	},
 }
 
@@ -182,6 +185,8 @@ func Verify(ctx context.Context, db orm.DB, kind config.DBKind) error {
 	}
 
 	columnsByTable := make(map[string]map[string]schemaColumnMetadata, len(expectedTables))
+	indexesByTable := make(map[string][]schemaIndexMetadata, len(expectedTables))
+
 	for _, table := range expectedTables {
 		exists, err := tableExists(ctx, db, kind, table)
 		if err != nil {
@@ -198,6 +203,13 @@ func Verify(ctx context.Context, db orm.DB, kind config.DBKind) error {
 		}
 
 		columnsByTable[table] = columns
+
+		indexes, err := loadTableIndexes(ctx, db, kind, table)
+		if err != nil {
+			return fmt.Errorf("load indexes for %s: %w", table, err)
+		}
+
+		indexesByTable[table] = indexes
 	}
 
 	if err := verifyColumnCapabilities(columnsByTable); err != nil {
@@ -205,12 +217,7 @@ func Verify(ctx context.Context, db orm.DB, kind config.DBKind) error {
 	}
 
 	for _, index := range requiredIndexes {
-		exists, err := indexCapabilityExists(ctx, db, kind, index)
-		if err != nil {
-			return fmt.Errorf("verify index %s: %w", index.name, err)
-		}
-
-		if !exists {
+		if !hasIndexCapability(indexesByTable[index.table], index) {
 			qualifier := ""
 			if index.unique {
 				qualifier = "unique "
@@ -262,9 +269,11 @@ func verifyColumnCapabilities(columnsByTable map[string]map[string]schemaColumnM
 			)
 		}
 
-		if expected.maxLength > 0 && actual.maxLength != expected.maxLength {
+		// Narrower columns truncate persisted identifiers; wider ones lose no
+		// capability, so a DBA-widened column stays acceptable.
+		if expected.maxLength > 0 && actual.maxLength < expected.maxLength {
 			return outdated(
-				"column %s.%s has length %d, want %d",
+				"column %s.%s has length %d, want at least %d",
 				expected.table,
 				expected.name,
 				actual.maxLength,
@@ -296,32 +305,6 @@ func tableExists(ctx context.Context, db orm.DB, kind config.DBKind, table strin
 	}
 
 	return metadataExists(ctx, db, query, table)
-}
-
-func columnExists(
-	ctx context.Context,
-	db orm.DB,
-	kind config.DBKind,
-	table string,
-	column string,
-) (bool, error) {
-	query := ""
-	args := []any{table, column}
-
-	switch kind {
-	case config.Postgres:
-		query = `SELECT COUNT(*) FROM information_schema.columns
-WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`
-	case config.MySQL:
-		query = `SELECT COUNT(*) FROM information_schema.columns
-WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`
-	case config.SQLite:
-		query = "SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?"
-	default:
-		return false, fmt.Errorf("%w %q", sqlmigration.ErrUnsupportedDBKind, kind)
-	}
-
-	return metadataExists(ctx, db, query, args...)
 }
 
 type schemaColumnRow struct {
@@ -509,24 +492,12 @@ type schemaIndexMetadata struct {
 	unique  bool
 }
 
-func indexCapabilityExists(
-	ctx context.Context,
-	db orm.DB,
-	kind config.DBKind,
-	expected schemaIndex,
-) (bool, error) {
-	indexes, err := loadTableIndexes(ctx, db, kind, expected.table)
-	if err != nil {
-		return false, err
-	}
-
-	for _, index := range indexes {
-		if index.unique == expected.unique && slices.Equal(index.columns, expected.columns) {
-			return true, nil
-		}
-	}
-
-	return false, nil
+// hasIndexCapability matches by uniqueness and exact column sequence; index
+// names are irrelevant to capability.
+func hasIndexCapability(indexes []schemaIndexMetadata, expected schemaIndex) bool {
+	return slices.ContainsFunc(indexes, func(index schemaIndexMetadata) bool {
+		return index.unique == expected.unique && slices.Equal(index.columns, expected.columns)
+	})
 }
 
 func loadTableIndexes(

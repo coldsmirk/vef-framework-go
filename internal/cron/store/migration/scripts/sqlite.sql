@@ -72,4 +72,4 @@ CREATE INDEX idx_crn_run__status_heartbeat_at_unix_ms
     ON crn_run(status, heartbeat_at_unix_ms);
 CREATE INDEX idx_crn_run__schedule_id_status ON crn_run(schedule_id, status);
 CREATE INDEX idx_crn_run__finished_at_unix_ms ON crn_run(finished_at_unix_ms);
-CREATE INDEX idx_crn_run__claimed_at_unix_ms ON crn_run(claimed_at_unix_ms);
+CREATE INDEX idx_crn_run__claimed_at_unix_ms ON crn_run(claimed_at_unix_ms, id);

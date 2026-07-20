@@ -15,6 +15,29 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
+// columnExists probes one column through the dialect metadata loader.
+func columnExists(ctx context.Context, db orm.DB, kind config.DBKind, table, column string) (bool, error) {
+	columns, err := loadTableColumns(ctx, db, kind, table)
+	if err != nil {
+		return false, err
+	}
+
+	_, exists := columns[column]
+
+	return exists, nil
+}
+
+// indexCapabilityExists probes one index capability through the dialect
+// metadata loader.
+func indexCapabilityExists(ctx context.Context, db orm.DB, kind config.DBKind, expected schemaIndex) (bool, error) {
+	indexes, err := loadTableIndexes(ctx, db, kind, expected.table)
+	if err != nil {
+		return false, err
+	}
+
+	return hasIndexCapability(indexes, expected), nil
+}
+
 func TestMigrateFreshSchemaIsIdempotent(t *testing.T) {
 	testx.ForEachDB(t, func(t *testing.T, env *testx.DBEnv) {
 		const workerCount = 8
@@ -211,7 +234,7 @@ func TestMigrateRejectsIncompatibleSchemaWithoutRepair(t *testing.T) {
 
 		exists, probeErr := indexCapabilityExists(ctx, db, config.SQLite, schemaIndex{
 			table:   "crn_run",
-			columns: []string{"claimed_at_unix_ms"},
+			columns: []string{"claimed_at_unix_ms", "id"},
 		})
 		require.NoError(t, probeErr, "Index metadata should remain readable")
 		assert.False(t, exists, "Migration should not restore a missing index")
@@ -331,9 +354,32 @@ CREATE INDEX idx_crn_fire_request__schedule_id_scheduled_at_unix_ms
 
 		err = Migrate(ctx, db, config.SQLite)
 		require.ErrorIs(t, err, ErrSchemaOutdated,
-			"Migration should reject a VARCHAR width that differs from the persisted contract")
-		assert.ErrorContains(t, err, "crn_fire_request.schedule_id has length 31, want 32",
+			"Migration should reject a VARCHAR narrower than the persisted contract")
+		assert.ErrorContains(t, err, "crn_fire_request.schedule_id has length 31, want at least 32",
 			"Migration error should identify the incompatible column width")
+	})
+
+	t.Run("WiderColumnIsAccepted", func(t *testing.T) {
+		db := testx.NewTestDB(t)
+		ctx := context.Background()
+
+		require.NoError(t, Migrate(ctx, db, config.SQLite), "Fixture cron schema should migrate")
+		_, err := db.NewRaw("DROP TABLE crn_fire_request").Exec(ctx)
+		require.NoError(t, err, "Valid fire request table should be removed")
+		_, err = db.NewRaw(`CREATE TABLE crn_fire_request (
+    id VARCHAR(32) NOT NULL CONSTRAINT pk_crn_fire_request PRIMARY KEY,
+    schedule_id VARCHAR(64) NOT NULL,
+    kind VARCHAR(16) NOT NULL,
+    scheduled_at_unix_ms BIGINT NOT NULL,
+    source_run_id VARCHAR(32),
+    CONSTRAINT uk_crn_fire_request__source_run_id UNIQUE (source_run_id)
+);
+CREATE INDEX idx_crn_fire_request__schedule_id_scheduled_at_unix_ms
+    ON crn_fire_request(schedule_id, scheduled_at_unix_ms, id)`).Exec(ctx)
+		require.NoError(t, err, "Fire request table with a widened schedule ID should be created")
+
+		assert.NoError(t, Migrate(ctx, db, config.SQLite),
+			"A DBA-widened column keeps every capability and must verify")
 	})
 
 	t.Run("SQLitePrimaryKeysRejectNull", func(t *testing.T) {

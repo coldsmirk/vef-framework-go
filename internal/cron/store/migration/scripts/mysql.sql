@@ -67,5 +67,5 @@ CREATE TABLE crn_run (
     INDEX idx_crn_run__status_heartbeat_at_unix_ms (status, heartbeat_at_unix_ms),
     INDEX idx_crn_run__schedule_id_status (schedule_id, status),
     INDEX idx_crn_run__finished_at_unix_ms (finished_at_unix_ms),
-    INDEX idx_crn_run__claimed_at_unix_ms (claimed_at_unix_ms)
+    INDEX idx_crn_run__claimed_at_unix_ms (claimed_at_unix_ms, id)
 ) COMMENT 'Cron Run Journal';
