@@ -34,6 +34,7 @@
   "security_password_required": "Password cannot be empty",
   "security_invalid_credentials": "Invalid username or password",
   "security_system_principal_login_forbidden": "System internal user login is forbidden",
+  "security_reserved_principal_forbidden": "Authentication returned a framework-reserved identity",
   "security_external_app_loader_not_implemented": "Please provide a 'security.ExternalAppLoader' implementation",
   "security_credentials_format_invalid": "Invalid signature format",
   "security_credentials_fields_required": "Signature, timestamp, or digest cannot be empty",

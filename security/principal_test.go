@@ -77,6 +77,31 @@ func TestPrincipalWithRoles(t *testing.T) {
 	})
 }
 
+// TestPrincipalIsReserved pins which identities authentication may never mint.
+func TestPrincipalIsReserved(t *testing.T) {
+	tests := []struct {
+		name      string
+		principal *Principal
+		reserved  bool
+	}{
+		{"SystemType", PrincipalSystem, true},
+		{"SystemIDCarriedByAUserType", NewUser(orm.OperatorSystem, "impostor"), true},
+		{"CronJobID", NewUser(orm.OperatorCronJob, "impostor"), true},
+		// Anonymous means "no identity", which the public auth strategy produces
+		// on every request; classifying it as reserved would deny all of them.
+		{"AnonymousIsNotReserved", PrincipalAnonymous, false},
+		{"OrdinaryUser", NewUser("u1", "Alice"), false},
+		{"ExternalApp", NewExternalApp("app1", "Gateway"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.reserved, tt.principal.IsReserved(),
+				"Reserved-identity classification should match the expectation")
+		})
+	}
+}
+
 // TestPrincipalSystem tests principal system functionality.
 func TestPrincipalSystem(t *testing.T) {
 	t.Run("SystemPrincipalHasCorrectValues", func(t *testing.T) {

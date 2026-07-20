@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
@@ -85,6 +86,43 @@ func TestAuthManagerAuthenticate(t *testing.T) {
 		})
 		require.Error(t, err, "Authenticator generic error should be returned")
 		assert.Equal(t, "db connection failed", err.Error(), "Authenticator generic error message should be preserved")
+	})
+
+	// Authenticators are an application extension point, so what they return is
+	// untrusted: the system identity bypasses every functional permission check,
+	// and Login would persist it into the session store.
+	t.Run("RejectsAReservedPrincipal", func(t *testing.T) {
+		reserved := []struct {
+			name      string
+			principal *security.Principal
+		}{
+			{"SystemType", security.PrincipalSystem},
+			{"SystemID", security.NewUser(orm.OperatorSystem, "impostor")},
+			{"CronJobID", security.NewUser(orm.OperatorCronJob, "impostor")},
+			{"NilPrincipal", nil},
+		}
+
+		for _, tt := range reserved {
+			t.Run(tt.name, func(t *testing.T) {
+				auth := new(MockAuthenticator)
+				auth.On("Supports", "password").Return(true)
+				auth.On("Authenticate", mock.Anything, mock.Anything).Return(tt.principal, nil)
+
+				manager := NewAuthManager([]security.Authenticator{auth})
+
+				got, err := manager.Authenticate(ctx, security.Authentication{
+					Type:      "password",
+					Principal: "alice",
+				})
+				require.Error(t, err, "A reserved identity must not survive authentication")
+				assert.Nil(t, got, "A rejected authentication must return no principal")
+
+				resErr, ok := result.AsErr(err)
+				require.True(t, ok, "The rejection should be a result.Error")
+				assert.Equal(t, security.ErrCodePrincipalInvalid, resErr.Code,
+					"The rejection should carry the principal-invalid code")
+			})
+		}
 	})
 
 	t.Run("MultipleAuthenticatorsSelectsCorrect", func(t *testing.T) {

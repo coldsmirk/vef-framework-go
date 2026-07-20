@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/fiberx"
+	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/api/shared"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
@@ -66,6 +67,18 @@ func (m *Auth) Process(ctx fiber.Ctx) error {
 		return err
 	}
 
+	// An auth strategy is an application extension point, so its result crosses a
+	// trust boundary. A framework-reserved identity must never arrive this way:
+	// the system type skips the permission check below outright.
+	if principal == nil || principal.IsReserved() {
+		contextx.Logger(ctx).Errorf(
+			"Authentication rejected: strategy %q returned a nil or framework-reserved principal",
+			op.Auth.Strategy,
+		)
+
+		return security.ErrPrincipalInvalid(i18n.T("security_reserved_principal_forbidden"))
+	}
+
 	contextx.SetPrincipal(ctx, principal)
 	ctx.SetContext(contextx.SetPrincipal(ctx.Context(), principal))
 
@@ -73,6 +86,10 @@ func (m *Auth) Process(ctx fiber.Ctx) error {
 }
 
 func (m *Auth) checkPermission(ctx fiber.Ctx, op *api.Operation, principal *security.Principal) error {
+	// The system identity is the framework's own author for work it performs
+	// outside any request, so it is exempt. This is safe only because
+	// authentication refuses to produce it — see the reserved-identity guard in
+	// Process; without that guard this branch is an unauthenticated backdoor.
 	if principal.Type == security.PrincipalTypeSystem {
 		return ctx.Next()
 	}
