@@ -101,9 +101,15 @@ func NewEngine(db orm.DB, cfg *config.CronStoreConfig, registry *Registry, publi
 		drainTimeout: stopTimeout,
 	}
 	engine.claimer = &claimer{db: db, config: cfg, registry: registry, nodeID: nodeID, now: now}
-	engine.loopCtx, engine.stopLoop = context.WithCancel(context.Background())
+
+	// The engine's own bookkeeping queries (claiming, sweeping, heartbeats,
+	// pruning) repeat every poll interval; they log at Debug so steady-state
+	// operation stays quiet. Handlers run under runCtx, which is deliberately
+	// unmarked — business queries keep their normal log level.
+	quiet := orm.WithQuietSQLLog(context.Background())
+	engine.loopCtx, engine.stopLoop = context.WithCancel(quiet)
 	engine.runCtx, engine.stopRuns = context.WithCancel(context.Background())
-	engine.heartbeatCtx, engine.stopHeartbeats = context.WithCancel(context.Background())
+	engine.heartbeatCtx, engine.stopHeartbeats = context.WithCancel(quiet)
 
 	return engine
 }
@@ -401,7 +407,7 @@ func (*Engine) invoke(ctx context.Context, fire claimedFire) (err error) {
 // its deadline passed did not finish the work it was given, and journaling
 // that as success would hide every timeout the operator configured.
 func (e *Engine) complete(fire claimedFire, runErr, ctxErr error) {
-	ctx, cancel := context.WithTimeout(context.Background(), completionTimeout)
+	ctx, cancel := context.WithTimeout(orm.WithQuietSQLLog(context.Background()), completionTimeout)
 	defer cancel()
 
 	run := fire.run

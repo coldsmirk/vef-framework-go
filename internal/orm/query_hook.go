@@ -53,7 +53,7 @@ func (qh *queryHook) BeforeQuery(ctx context.Context, event *bun.QueryEvent) con
 	return ctx
 }
 
-func (qh *queryHook) AfterQuery(_ context.Context, event *bun.QueryEvent) {
+func (qh *queryHook) AfterQuery(ctx context.Context, event *bun.QueryEvent) {
 	guardErr := qh.extractGuardError(event)
 	elapsed := time.Since(event.StartTime).Milliseconds()
 
@@ -73,6 +73,12 @@ func (qh *queryHook) AfterQuery(_ context.Context, event *bun.QueryEvent) {
 	// level is disabled — AfterQuery is the per-query hot path and the formatted
 	// message would otherwise be built only to be discarded.
 	level := logx.LevelInfo
+	if IsQuietSQLLog(ctx) {
+		level = logx.LevelDebug
+	}
+
+	// A slow query outranks the quiet mark: latency is a signal even when it
+	// comes from a maintenance loop.
 	if elapsed >= slowQueryThresholdMillis {
 		level = logx.LevelWarn
 	}
@@ -82,9 +88,13 @@ func (qh *queryHook) AfterQuery(_ context.Context, event *bun.QueryEvent) {
 	}
 
 	message := qh.formatPrefix(elapsed, event.Operation(), event.Query)
-	if level == logx.LevelWarn {
+
+	switch level {
+	case logx.LevelWarn:
 		qh.logger.Warn(message)
-	} else {
+	case logx.LevelDebug:
+		qh.logger.Debug(message)
+	default:
 		qh.logger.Info(message)
 	}
 }

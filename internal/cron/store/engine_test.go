@@ -74,6 +74,19 @@ func (h *EngineHarness) awaitRun(t *testing.T, scheduleID string, status cron.Ru
 	return awaitRun(t, h.db, scheduleID, status)
 }
 
+func TestEngineMarksMaintenanceContextsQuiet(t *testing.T) {
+	db := newStoreDB(t)
+	registry := mustRegistry(t, noopHandler("orders.sync"))
+	engine := NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(eventtest.NewFakeBus()))
+
+	assert.True(t, orm.IsQuietSQLLog(engine.loopCtx),
+		"Claim and maintenance queries must log quietly")
+	assert.True(t, orm.IsQuietSQLLog(engine.heartbeatCtx),
+		"Heartbeat renewals must log quietly")
+	assert.False(t, orm.IsQuietSQLLog(engine.runCtx),
+		"Handler business queries must keep their normal log level")
+}
+
 func TestEngineExecutesFires(t *testing.T) {
 	t.Run("SucceededRunWithParams", func(t *testing.T) {
 		type Payload struct {

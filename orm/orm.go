@@ -221,6 +221,13 @@ var (
 
 	// DataType is the factory for creating type-safe SQL data type definitions.
 	DataType = orm.DataType
+
+	// WithQuietSQLLog marks a context so the SQL log demotes successful
+	// statements to Debug — for polling loops whose steady-state queries
+	// would otherwise flood the log. Slow-query warnings and failures keep
+	// their level. IsQuietSQLLog reports the mark.
+	WithQuietSQLLog = orm.WithQuietSQLLog
+	IsQuietSQLLog   = orm.IsQuietSQLLog
 )
 
 // DDL constraint constructors.
