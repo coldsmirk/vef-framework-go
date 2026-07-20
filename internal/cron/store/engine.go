@@ -19,9 +19,14 @@ import (
 var logger = logx.Named("cron:store")
 
 const (
-	// stopTimeout is the graceful drain window on shutdown: first for
-	// running handlers to finish, then — after cancellation — to observe it.
+	// stopTimeout is the graceful drain window on shutdown: how long running
+	// handlers get to finish before they are canceled.
 	stopTimeout = 30 * time.Second
+	// cancelGrace bounds the wait after stragglers are canceled. It is short
+	// on purpose: the drain window plus this grace is the engine's whole
+	// share of the application stop budget, and a second full-length window
+	// would leave nothing for the hooks that shut down after it.
+	cancelGrace = 5 * time.Second
 	// minIdleDelay floors the adaptive sleep so a past-due fire that could
 	// not be claimed (full slots, lost race) never spins the loop hot.
 	minIdleDelay = 50 * time.Millisecond
@@ -51,6 +56,9 @@ type Engine struct {
 	// wake nudges the loop out of its adaptive sleep after a local schedule
 	// mutation; buffered so signaling never blocks.
 	wake chan struct{}
+	// loopDone closes when the claim loop has left its last tick, so Stop
+	// knows no further run can be dispatched.
+	loopDone chan struct{}
 	// slots is the executor pool: one token per in-flight run.
 	slots chan struct{}
 
@@ -84,6 +92,7 @@ func NewEngine(db orm.DB, cfg *config.CronStoreConfig, registry *Registry, publi
 		nodeID:       nodeID,
 		now:          now,
 		wake:         make(chan struct{}, 1),
+		loopDone:     make(chan struct{}),
 		slots:        make(chan struct{}, cfg.EffectiveMaxConcurrent()),
 		heartbeats:   newHeartbeatTracker(),
 		drainTimeout: stopTimeout,
@@ -110,13 +119,18 @@ func (e *Engine) Start() {
 // the drain window to finish, stragglers are canceled and journaled as
 // canceled. Heartbeats outlive handlers so draining runs stay owned.
 func (e *Engine) Stop() {
+	// Wait for the loop to actually leave its tick before waiting on the
+	// executor group: a claim transaction that has already committed still
+	// dispatches its runs, and a group waited on while the counter is zero
+	// would return before those runs are even registered.
 	e.stopLoop()
+	<-e.loopDone
 
 	if !waitWithTimeout(&e.executors, e.drainTimeout) {
 		logger.Warn("Drain window elapsed; canceling remaining runs")
 		e.stopRuns()
 
-		if !waitWithTimeout(&e.executors, e.drainTimeout) {
+		if !waitWithTimeout(&e.executors, cancelGrace) {
 			logger.Error("Runs ignored cancellation; abandoning wait — peers will recover them")
 		}
 	}
@@ -142,6 +156,7 @@ func (e *Engine) Wake() {
 // the visibility bound for schedules created on other nodes).
 func (e *Engine) loop() {
 	defer e.background.Done()
+	defer close(e.loopDone)
 
 	timer := time.NewTimer(0)
 	defer timer.Stop()

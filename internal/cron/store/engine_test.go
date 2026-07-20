@@ -250,3 +250,46 @@ func TestEngineStopCancelsStragglers(t *testing.T) {
 	assert.Equal(t, cron.RunCanceled, runs[0].Status, "shutdown interruption journals as canceled")
 	assert.Equal(t, "canceled by shutdown", runs[0].Error, "the journal must name the shutdown")
 }
+
+func TestEngineStopDrainsRunningWork(t *testing.T) {
+	var (
+		started  = make(chan struct{})
+		finished atomic.Bool
+	)
+
+	db := newStoreDB(t)
+	registry := mustRegistry(t, cron.NewJobHandler("orders.sync",
+		func(context.Context, cron.Execution) error {
+			close(started)
+			time.Sleep(150 * time.Millisecond)
+			finished.Store(true)
+
+			return nil
+		}))
+	engine := NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(new(captureBus)))
+	manager := NewScheduleManager(db, true, registry, engine)
+
+	engine.Start()
+
+	schedule, err := manager.Create(context.Background(), cron.ScheduleSpec{
+		Name:    "sync-draining",
+		JobName: "orders.sync",
+		Trigger: cron.Once(time.Now().Add(30 * time.Millisecond)),
+	})
+	require.NoError(t, err, "creating the schedule should succeed")
+
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the handler must start before the engine stops")
+	}
+
+	engine.Stop()
+
+	assert.True(t, finished.Load(), "Stop must not return while a claimed run is still executing")
+
+	runs := loadRuns(t, db, schedule.ID)
+	require.Len(t, runs, 1, "the drained fire must stay journaled")
+	assert.Equal(t, cron.RunSucceeded, runs[0].Status,
+		"a run that finishes inside the drain window must be journaled as succeeded")
+}
