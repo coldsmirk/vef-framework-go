@@ -83,9 +83,8 @@ func runAuthProcess(t *testing.T, principal *security.Principal) (bool, error) {
 }
 
 func TestAuthProcess(t *testing.T) {
-	// An auth strategy is an application extension point, so a principal it
-	// returns is untrusted input. The system identity skips the permission check
-	// entirely, which makes minting one by authenticating a full bypass.
+	// Pins the trust boundary: a strategy's principal is untrusted input and
+	// must never carry a framework-reserved identity.
 	t.Run("RejectsTheSystemIdentity", func(t *testing.T) {
 		reached, err := runAuthProcess(t, security.PrincipalSystem)
 

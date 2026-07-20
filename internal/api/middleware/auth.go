@@ -66,9 +66,8 @@ func (m *Auth) Process(ctx fiber.Ctx) error {
 		return err
 	}
 
-	// An auth strategy is an application extension point, so its result crosses a
-	// trust boundary. A framework-reserved identity must never arrive this way:
-	// the system type skips the permission check below outright.
+	// An auth strategy is an application extension point: never let one mint a
+	// framework-reserved identity (see security.Principal.IsReserved).
 	if principal == nil || principal.IsReserved() {
 		contextx.Logger(ctx).Errorf(
 			"Authentication rejected: strategy %q returned a nil or framework-reserved principal",
@@ -81,20 +80,8 @@ func (m *Auth) Process(ctx fiber.Ctx) error {
 	contextx.SetPrincipal(ctx, principal)
 	ctx.SetContext(contextx.SetPrincipal(ctx.Context(), principal))
 
-	return m.checkPermission(ctx, op, principal)
-}
-
-func (m *Auth) checkPermission(ctx fiber.Ctx, op *api.Operation, principal *security.Principal) error {
-	// The system identity is the framework's own author for work it performs
-	// outside any request, so it is exempt. This is safe only because
-	// authentication refuses to produce it — see the reserved-identity guard in
-	// Process; without that guard this branch is an unauthenticated backdoor.
-	if principal.Type == security.PrincipalTypeSystem {
-		return ctx.Next()
-	}
-
 	if permission := requiredPermissionFromOperation(op); permission != "" {
-		if err := m.doCheck(ctx.Context(), principal, permission); err != nil {
+		if err := m.checkPermission(ctx.Context(), principal, permission); err != nil {
 			return err
 		}
 	}
@@ -102,7 +89,7 @@ func (m *Auth) checkPermission(ctx fiber.Ctx, op *api.Operation, principal *secu
 	return ctx.Next()
 }
 
-func (m *Auth) doCheck(ctx context.Context, principal *security.Principal, permission string) error {
+func (m *Auth) checkPermission(ctx context.Context, principal *security.Principal, permission string) error {
 	if m.checker == nil {
 		return fmt.Errorf(
 			"%w: %w, permission=%q",

@@ -50,11 +50,9 @@ func (m *DataPermission) Process(ctx fiber.Ctx) error {
 		principal = security.PrincipalAnonymous
 	}
 
-	if principal.Type != security.PrincipalTypeSystem {
-		if permission := requiredPermissionFromOperation(op); permission != "" {
-			if err := m.resolveDataScope(ctx, principal, permission); err != nil {
-				return err
-			}
+	if permission := requiredPermissionFromOperation(op); permission != "" {
+		if err := m.resolveDataScope(ctx, principal, permission); err != nil {
+			return err
 		}
 	}
 
