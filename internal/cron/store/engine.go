@@ -267,7 +267,12 @@ func (e *Engine) execute(fire claimedFire) {
 		defer cancel()
 	}
 
-	e.complete(fire, e.invoke(ctx, fire))
+	runErr := e.invoke(ctx, fire)
+
+	// The context error is sampled here, before the deferred cancel fires:
+	// the question the journal needs answered is whether the run's own
+	// context was already dead when the handler returned.
+	e.complete(fire, runErr, ctx.Err())
 }
 
 // invoke calls the handler, converting a panic into an error so one bad job
@@ -293,7 +298,12 @@ func (*Engine) invoke(ctx context.Context, fire claimedFire) (err error) {
 // the run's — a canceled run still gets journaled — and guarded on the row
 // still being running, so a recovery sweep that already took the run over
 // wins and the late completion is only logged.
-func (e *Engine) complete(fire claimedFire, runErr error) {
+//
+// ctxErr is the run context's state at the moment the handler returned. It
+// outranks the handler's own return value: a handler that returns nil after
+// its deadline passed did not finish the work it was given, and journaling
+// that as success would hide every timeout the operator configured.
+func (e *Engine) complete(fire claimedFire, runErr, ctxErr error) {
 	ctx, cancel := context.WithTimeout(context.Background(), completionTimeout)
 	defer cancel()
 
@@ -307,16 +317,22 @@ func (e *Engine) complete(fire claimedFire, runErr error) {
 	}
 
 	switch {
-	case runErr == nil:
-		run.Status = cron.RunSucceeded
+	case errors.Is(ctxErr, context.DeadlineExceeded):
+		run.Status = cron.RunFailed
+		run.Error = trimError(fmt.Errorf("%w after %s", ErrRunTimedOut, fire.timeout))
 
-	case e.runCtx.Err() != nil && errors.Is(runErr, context.Canceled):
+	// The run context derives only from the shutdown context and the optional
+	// deadline, so any remaining error is a shutdown cancellation.
+	case ctxErr != nil:
 		run.Status = cron.RunCanceled
 		run.Error = "canceled by shutdown"
 
-	default:
+	case runErr != nil:
 		run.Status = cron.RunFailed
 		run.Error = trimError(runErr)
+
+	default:
+		run.Status = cron.RunSucceeded
 	}
 
 	updated, err := e.db.NewUpdate().

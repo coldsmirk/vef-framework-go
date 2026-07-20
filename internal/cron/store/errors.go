@@ -17,4 +17,7 @@ var (
 	ErrScheduleWindowInverted = errors.New("cron store: schedule window ends before it starts")
 	// ErrJobPanicked wraps a recovered handler panic into the run's failure.
 	ErrJobPanicked = errors.New("cron store: job panicked")
+	// ErrRunTimedOut marks a run that outlived its timeout, whatever its
+	// handler returned.
+	ErrRunTimedOut = errors.New("cron store: run timed out")
 )

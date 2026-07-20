@@ -159,7 +159,30 @@ func TestEngineExecutesFires(t *testing.T) {
 		require.NoError(t, err, "creating the schedule should succeed")
 
 		run := harness.awaitRun(t, schedule.ID, cron.RunFailed)
-		assert.Contains(t, run.Error, "deadline", "the journal must record the timeout")
+		assert.Contains(t, run.Error, "timed out", "the journal must record the timeout")
+	})
+
+	t.Run("TimeoutOutranksASwallowedDeadline", func(t *testing.T) {
+		// A handler that returns nil once its context dies is claiming
+		// success it did not achieve; the run's own deadline is the truth.
+		harness := startEngine(t, cron.NewJobHandler("orders.sync",
+			func(ctx context.Context, _ cron.Execution) error {
+				<-ctx.Done()
+
+				return nil
+			}))
+
+		schedule, err := harness.manager.Create(context.Background(), cron.ScheduleSpec{
+			Name:    "sync-swallows",
+			JobName: "orders.sync",
+			Trigger: cron.Once(time.Now().Add(50 * time.Millisecond)),
+			Timeout: 100 * time.Millisecond,
+		})
+		require.NoError(t, err, "creating the schedule should succeed")
+
+		run := harness.awaitRun(t, schedule.ID, cron.RunFailed)
+		assert.Contains(t, run.Error, "timed out",
+			"a nil return after the deadline must still journal as a timeout, never as success")
 	})
 
 	t.Run("TriggerNowFiresAgain", func(t *testing.T) {
