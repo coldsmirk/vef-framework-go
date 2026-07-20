@@ -59,6 +59,9 @@ const scanBatchSize = 500
 // drained) or when an entire batch fails — failed rows keep is_timeout
 // false and would be re-selected forever otherwise.
 func (s *Scanner) ScanTimeouts(ctx context.Context) {
+	// Polling bookkeeping logs at Debug; failures keep their level.
+	ctx = orm.WithQuietSQLLog(ctx)
+
 	for {
 		var tasks []approval.Task
 
@@ -431,6 +434,9 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 // notifications in batches (same paging strategy as ScanTimeouts: processed
 // rows flip is_pre_warning_sent, an all-failed batch stops the loop).
 func (s *Scanner) ScanPreWarnings(ctx context.Context) {
+	// Polling bookkeeping logs at Debug; failures keep their level.
+	ctx = orm.WithQuietSQLLog(ctx)
+
 	for {
 		var tasks []approval.Task
 
@@ -545,6 +551,9 @@ func (s *Scanner) sendPreWarning(ctx context.Context, task *approval.Task, hours
 //
 // Action logs are kept indefinitely as the canonical audit trail.
 func (s *Scanner) CleanupExpiredRecords(ctx context.Context) {
+	// Polling bookkeeping logs at Debug; failures keep their level.
+	ctx = orm.WithQuietSQLLog(ctx)
+
 	now := timex.Now()
 
 	formCutoff := now.Add(-s.cfg.FormSnapshotRetention)

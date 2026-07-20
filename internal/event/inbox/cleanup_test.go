@@ -10,6 +10,7 @@ import (
 
 	pubinbox "github.com/coldsmirk/vef-framework-go/event/inbox"
 	iinbox "github.com/coldsmirk/vef-framework-go/internal/event/inbox"
+	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
@@ -18,6 +19,9 @@ import (
 type fakeRepo struct {
 	// deleted receives the cutoff passed to DeleteOlderThan.
 	cutoffs []timex.DateTime
+	// quietMarks records whether each call's context carried the
+	// quiet-SQL-log mark.
+	quietMarks []bool
 	// returns is the sequence of (count, error) responses to return.
 	returns []deleteReturn
 }
@@ -27,8 +31,9 @@ type deleteReturn struct {
 	err   error
 }
 
-func (f *fakeRepo) DeleteOlderThan(_ context.Context, cutoff timex.DateTime) (int64, error) {
+func (f *fakeRepo) DeleteOlderThan(ctx context.Context, cutoff timex.DateTime) (int64, error) {
 	f.cutoffs = append(f.cutoffs, cutoff)
+	f.quietMarks = append(f.quietMarks, orm.IsQuietSQLLog(ctx))
 
 	idx := len(f.cutoffs) - 1
 	if idx >= len(f.returns) {
@@ -64,6 +69,8 @@ func TestCleanerCleanup(t *testing.T) {
 		after := timex.Now()
 
 		require.Len(t, repo.cutoffs, 1, "Cleanup should call DeleteOlderThan exactly once")
+		require.True(t, repo.quietMarks[0],
+			"The periodic cleanup must mark its context so successful SQL logs stay at Debug")
 
 		cutoff := repo.cutoffs[0]
 		require.True(

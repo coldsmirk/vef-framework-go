@@ -8,13 +8,17 @@ import (
 	"github.com/google/uuid"
 )
 
-// jobMonitor implements gocron.Monitor interface to track job execution metrics. It provides detailed logging for job lifecycle events including timing and status.
+// jobMonitor implements the gocron.Monitor interface to track job execution
+// metrics. Routine lifecycle events (scheduled, completed successfully) log
+// at Debug — framework maintenance jobs tick every few seconds and would
+// otherwise flood steady-state logs; the durable store's run journal, not
+// this chatter, is the execution record. Failures keep their level.
 type jobMonitor struct{}
 
 func (*jobMonitor) RecordJobTimingWithStatus(startTime, endTime time.Time, id uuid.UUID, name string, tags []string, status gocron.JobStatus, err error) {
 	switch status {
 	case gocron.Success:
-		logger.Infof(
+		logger.Debugf(
 			"Job %q completed | id: %s | tags: %s | elapsed: %s | status: %s",
 			name,
 			id.String(),
@@ -47,7 +51,7 @@ func (*jobMonitor) RecordJobTimingWithStatus(startTime, endTime time.Time, id uu
 }
 
 func (*jobMonitor) IncrementJob(id uuid.UUID, name string, tags []string, status gocron.JobStatus) {
-	logger.Infof(
+	logger.Debugf(
 		"Job %q scheduled | id: %s | tags: %s | status: %s",
 		name,
 		id.String(),
@@ -57,7 +61,7 @@ func (*jobMonitor) IncrementJob(id uuid.UUID, name string, tags []string, status
 }
 
 func (*jobMonitor) RecordJobTiming(startTime, endTime time.Time, id uuid.UUID, name string, tags []string) {
-	logger.Infof(
+	logger.Debugf(
 		"Job %q completed | id: %s | tags: %s | elapsed: %s",
 		name,
 		id.String(),

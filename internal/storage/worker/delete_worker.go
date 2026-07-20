@@ -75,6 +75,9 @@ func NewDeleteWorker(
 
 // Run executes one drain cycle. Safe to invoke from a cron task.
 func (w *DeleteWorker) Run(ctx context.Context) {
+	// Polling bookkeeping logs at Debug; failures keep their level.
+	ctx = orm.WithQuietSQLLog(ctx)
+
 	batchSize := w.cfg.EffectiveDeleteBatchSize()
 	leaseWindow := w.cfg.EffectiveDeleteLeaseWindow()
 

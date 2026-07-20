@@ -6,6 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/event/transport/outbox"
 	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
+	"github.com/coldsmirk/vef-framework-go/internal/orm"
 	"github.com/coldsmirk/vef-framework-go/logx"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -31,6 +32,9 @@ func NewCleaner(repo outbox.Repository, ttl time.Duration, log logx.Logger) *Cle
 
 // Cleanup runs one delete cycle.
 func (c *Cleaner) Cleanup(ctx context.Context) {
+	// Polling bookkeeping logs at Debug; failures keep their level.
+	ctx = orm.WithQuietSQLLog(ctx)
+
 	cutoff := timex.Now().Add(-c.ttl)
 
 	deleted, err := c.repo.DeleteCompletedOlderThan(ctx, cutoff)

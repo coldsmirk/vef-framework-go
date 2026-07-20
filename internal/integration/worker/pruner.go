@@ -26,6 +26,9 @@ func NewLogPruner(db orm.DB, cfg *config.IntegrationConfig) *LogPruner {
 // Run performs one sweep; failures are logged, never propagated to the
 // scheduler.
 func (p *LogPruner) Run(ctx context.Context) {
+	// Polling bookkeeping logs at Debug; failures keep their level.
+	ctx = orm.WithQuietSQLLog(ctx)
+
 	cutoff := timex.Now().Add(-p.retention)
 
 	result, err := p.db.NewDelete().

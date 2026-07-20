@@ -10,6 +10,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/event/transport"
 	"github.com/coldsmirk/vef-framework-go/event/transport/outbox"
 	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
+	"github.com/coldsmirk/vef-framework-go/internal/orm"
 	"github.com/coldsmirk/vef-framework-go/logx"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -85,6 +86,9 @@ func NewRelay(
 // from a cron task; the per-record lease guarantees that overlapping
 // invocations cannot dispatch the same record twice.
 func (r *Relay) RelayPending(ctx context.Context) {
+	// Polling bookkeeping logs at Debug; failures keep their level.
+	ctx = orm.WithQuietSQLLog(ctx)
+
 	sink := r.sinkFn()
 	if sink == nil {
 		r.logger.Warnf("outbox relay: sink not configured, skipping cycle")

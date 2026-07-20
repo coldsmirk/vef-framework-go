@@ -56,6 +56,9 @@ type sweepPlan struct {
 // transactional cleanup) are logged; the next tick re-reads the
 // expired set, so transient failures self-heal.
 func (s *ClaimSweeper) Run(ctx context.Context) {
+	// Polling bookkeeping logs at Debug; failures keep their level.
+	ctx = orm.WithQuietSQLLog(ctx)
+
 	limit := s.cfg.EffectiveSweepBatchSize()
 	cutoff := timex.Now().Add(-s.cfg.EffectiveSweepInterval())
 

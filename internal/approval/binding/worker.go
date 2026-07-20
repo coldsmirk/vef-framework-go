@@ -40,6 +40,9 @@ func NewWorker(db orm.DB, bus event.Bus, writer *Writer, cfg *config.ApprovalCon
 // Run processes one configured batch. Failures are persisted and scheduled for
 // retry; they never escape into an approval transaction.
 func (w *Worker) Run(ctx context.Context) {
+	// Polling bookkeeping logs at Debug; failures keep their level.
+	ctx = orm.WithQuietSQLLog(ctx)
+
 	processed, err := w.ProcessPending(ctx)
 	if err != nil {
 		logger.Errorf("process pending business projections: %v", err)

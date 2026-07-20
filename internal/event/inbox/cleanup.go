@@ -6,6 +6,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/event/inbox"
 	ilogx "github.com/coldsmirk/vef-framework-go/internal/logx"
+	"github.com/coldsmirk/vef-framework-go/internal/orm"
 	"github.com/coldsmirk/vef-framework-go/logx"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -31,6 +32,9 @@ func NewCleaner(repo inbox.Repository, retention time.Duration, log logx.Logger)
 // Cleanup runs one delete cycle, removing records older than the
 // retention window. Safe to invoke periodically from a cron task.
 func (c *Cleaner) Cleanup(ctx context.Context) {
+	// Polling bookkeeping logs at Debug; failures keep their level.
+	ctx = orm.WithQuietSQLLog(ctx)
+
 	cutoff := timex.Now().Add(-c.retention)
 
 	deleted, err := c.repo.DeleteOlderThan(ctx, cutoff)
