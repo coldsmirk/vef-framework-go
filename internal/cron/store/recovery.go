@@ -16,40 +16,75 @@ import (
 // drained across consecutive ticks.
 const sweepBatchSize = 100
 
-// sweepAbandoned finds running rows whose heartbeat went stale — their node
-// died or lost the database — marks them abandoned, and re-fires the ones
-// whose schedule opted into recovery. Own runs are safe by construction:
-// this node renews their heartbeats on a cadence the staleness window must
-// exceed at least twofold (config-validated).
+// sweepAbandoned takes over runs whose heartbeat went stale — their node died
+// or lost the database. The whole takeover is one transaction: the stale rows
+// are locked so a heartbeat cannot land between the staleness check and the
+// write, they are finalized as abandoned, and the schedules that opted into
+// recovery are re-armed alongside them. Doing it in one transaction is what
+// makes the downstream effects honest — the abandoned notifications and the
+// recovery re-fire describe rows this sweep actually took over, and a failure
+// anywhere rolls the whole takeover back for the next tick to retry rather
+// than leaving runs abandoned with their recovery lost.
+//
+// Own runs are safe by construction: this node renews their heartbeats on a
+// cadence the staleness window must exceed at least twofold (config-validated).
 func (e *Engine) sweepAbandoned(ctx context.Context) {
 	now := e.now()
-	stale := timex.DateTime(now.Add(-e.config.EffectiveAbandonedAfter()))
 
-	var orphans []cron.Run
+	var (
+		orphans []cron.Run
+		refired bool
+	)
 
-	if err := e.db.NewSelect().
-		Model(&orphans).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("status", cron.RunRunning).LessThan("heartbeat_at", stale)
-		}).
-		OrderBy("heartbeat_at").
-		Limit(sweepBatchSize).
-		Scan(ctx); err != nil {
-		if ctx.Err() == nil {
-			logger.Errorf("Select abandoned runs: %v", err)
+	err := e.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
+		stale := timex.DateTime(now.Add(-e.config.EffectiveAbandonedAfter()))
+
+		var found []cron.Run
+
+		// SKIP LOCKED partitions the orphans across concurrent sweeps, and
+		// the row lock blocks the executing node's heartbeat update — so a
+		// run that proves liveness mid-sweep is never taken over.
+		if err := tx.NewSelect().
+			Model(&found).
+			Where(func(cb orm.ConditionBuilder) {
+				cb.Equals("status", cron.RunRunning).LessThan("heartbeat_at", stale)
+			}).
+			OrderBy("heartbeat_at").
+			Limit(sweepBatchSize).
+			ForUpdateSkipLocked().
+			Scan(ctx); err != nil {
+			return fmt.Errorf("select abandoned runs: %w", err)
 		}
 
-		return
-	}
-
-	if len(orphans) == 0 {
-		return
-	}
-
-	if err := e.markAbandoned(ctx, orphans, now); err != nil {
-		if ctx.Err() == nil {
-			logger.Errorf("Mark abandoned runs: %v", err)
+		if len(found) == 0 {
+			return nil
 		}
+
+		if err := markAbandoned(ctx, tx, found, now); err != nil {
+			return err
+		}
+
+		moved, err := refireRecoverable(ctx, tx, found, now)
+		if err != nil {
+			return err
+		}
+
+		orphans, refired = found, moved
+
+		return nil
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+
+		if isLockContention(err) {
+			logger.Warnf("Recovery sweep lost a write race, retrying next tick: %v", err)
+
+			return
+		}
+
+		logger.Errorf("Sweep abandoned runs: %v", err)
 
 		return
 	}
@@ -60,21 +95,16 @@ func (e *Engine) sweepAbandoned(ctx context.Context) {
 		e.publisher.RunAbandoned(ctx, orphan)
 	}
 
-	if refired, err := e.refireRecoverable(ctx, orphans, now); err != nil {
-		if ctx.Err() == nil {
-			logger.Errorf("Re-fire recoverable schedules: %v", err)
-		}
-	} else if refired {
+	if refired {
 		e.Wake()
 	}
 }
 
-// markAbandoned finalizes the orphaned rows; the status guard tolerates a
-// concurrent sweep or a photo-finish completion.
-func (e *Engine) markAbandoned(ctx context.Context, orphans []cron.Run, now time.Time) error {
+// markAbandoned finalizes the locked orphan rows.
+func markAbandoned(ctx context.Context, tx orm.DB, orphans []cron.Run, now time.Time) error {
 	finished := timex.DateTime(now)
 
-	if _, err := e.db.NewUpdate().
+	if _, err := tx.NewUpdate().
 		Model((*cron.Run)(nil)).
 		Set("status", cron.RunAbandoned).
 		Set("finished_at", finished).
@@ -89,8 +119,11 @@ func (e *Engine) markAbandoned(ctx context.Context, orphans []cron.Run, now time
 }
 
 // refireRecoverable pulls NextFireAt to now for the orphans' schedules that
-// opted into recovery, reporting whether any fire moved.
-func (e *Engine) refireRecoverable(ctx context.Context, orphans []cron.Run, now time.Time) (bool, error) {
+// opted into recovery, reporting whether any fire moved. A pending fire that
+// is already due is normally left alone — the imminent claim covers the
+// recovery — except under MisfireSkip, which would journal that overdue fire
+// as missed and run nothing, swallowing the recovery with it.
+func refireRecoverable(ctx context.Context, tx orm.DB, orphans []cron.Run, now time.Time) (bool, error) {
 	ids := collections.NewHashSetFrom[string]()
 	for i := range orphans {
 		ids.Add(orphans[i].ScheduleID)
@@ -98,7 +131,7 @@ func (e *Engine) refireRecoverable(ctx context.Context, orphans []cron.Run, now 
 
 	due := timex.DateTime(now)
 
-	updated, err := e.db.NewUpdate().
+	updated, err := tx.NewUpdate().
 		Model((*cron.Schedule)(nil)).
 		Set("next_fire_at", due).
 		Set("updated_at", due).
@@ -106,7 +139,9 @@ func (e *Engine) refireRecoverable(ctx context.Context, orphans []cron.Run, now 
 			cb.PKIn(ids.ToSlice()).
 				IsTrue("recover").
 				Group(func(cb orm.ConditionBuilder) {
-					cb.IsNull("next_fire_at").OrGreaterThan("next_fire_at", due)
+					cb.IsNull("next_fire_at").
+						OrGreaterThan("next_fire_at", due).
+						OrEquals("misfire_policy", cron.MisfireSkip)
 				})
 		}).
 		Exec(ctx)

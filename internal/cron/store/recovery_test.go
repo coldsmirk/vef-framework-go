@@ -90,6 +90,50 @@ func TestSweepAbandoned(t *testing.T) {
 			"a schedule without Recover keeps its regular fire")
 	})
 
+	t.Run("RefiresAnOverdueSkipSchedule", func(t *testing.T) {
+		// An already-due fire is normally left alone because the imminent
+		// claim covers the recovery — but under MisfireSkip that claim
+		// journals the fire as missed and runs nothing, taking the recovery
+		// down with it.
+		db := newStoreDB(t)
+
+		schedule := scheduleFixture("skipper", "orders.sync", base.Add(-time.Hour))
+		schedule.MisfirePolicy = cron.MisfireSkip
+		schedule.Recover = true
+		insertSchedule(t, db, schedule)
+
+		insertRunningRun(t, db, schedule, base.Add(-2*time.Minute), base.Add(-time.Minute))
+
+		engine := newSweepEngine(db, registry, new(captureBus), base)
+		engine.sweepAbandoned(context.Background())
+
+		refired := reloadSchedule(t, db, schedule.ID)
+		require.NotNil(t, refired.NextFireAt, "the recoverable schedule must stay armed")
+		assert.True(t, refired.NextFireAt.AsLocal().Equal(base),
+			"recovery must pull an overdue skip schedule to now, or the re-fire is journaled as missed")
+	})
+
+	t.Run("LeavesAnOverdueCatchUpScheduleAlone", func(t *testing.T) {
+		// Under fire_now the pending overdue fire already produces a catch-up
+		// run, so recovery must not overwrite its logical time.
+		db := newStoreDB(t)
+
+		overdue := base.Add(-time.Hour)
+		schedule := scheduleFixture("catcher", "orders.sync", overdue)
+		schedule.Recover = true
+		insertSchedule(t, db, schedule)
+
+		insertRunningRun(t, db, schedule, base.Add(-2*time.Minute), base.Add(-time.Minute))
+
+		engine := newSweepEngine(db, registry, new(captureBus), base)
+		engine.sweepAbandoned(context.Background())
+
+		after := reloadSchedule(t, db, schedule.ID)
+		require.NotNil(t, after.NextFireAt, "the schedule must stay armed")
+		assert.True(t, after.NextFireAt.AsLocal().Equal(overdue),
+			"an overdue catch-up fire keeps its logical time; the imminent claim already recovers it")
+	})
+
 	t.Run("FreshHeartbeatsAreLeftAlone", func(t *testing.T) {
 		db := newStoreDB(t)
 		schedule := insertSchedule(t, db, scheduleFixture("alive", "orders.sync", base.Add(time.Hour)))
