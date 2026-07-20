@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/internal/sqlmigration"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -107,7 +108,7 @@ func TestMigrateRejectsPartialSchemaWithoutMutation(t *testing.T) {
 			"A partial cron schema should fail instead of being repaired for %s", env.DS.Kind)
 
 		for _, table := range []string{"crn_fire_request", "crn_run"} {
-			exists, probeErr := tableExists(env.Ctx, env.DB, env.DS.Kind, table)
+			exists, probeErr := sqlmigration.TableExists(env.Ctx, env.DB, env.DS.Kind, table)
 			require.NoError(t, probeErr, "Table metadata should remain readable for %s on %s", table, env.DS.Kind)
 			assert.False(t, exists,
 				"Migration should not create missing table %s in a partial %s schema", table, env.DS.Kind)
@@ -185,7 +186,7 @@ func TestMigrateWaitsForMigrationLockBeforeProvisioning(t *testing.T) {
 			"Migration lock wait should respect the short deadline for %s", env.DS.Kind)
 
 		for _, table := range expectedTables {
-			exists, probeErr := tableExists(env.Ctx, env.DB, env.DS.Kind, table)
+			exists, probeErr := sqlmigration.TableExists(env.Ctx, env.DB, env.DS.Kind, table)
 			require.NoError(t, probeErr, "Table metadata should remain readable for %s on %s", table, env.DS.Kind)
 			assert.False(t, exists,
 				"Blocked migration should not create table %s before acquiring the %s lock", table, env.DS.Kind)

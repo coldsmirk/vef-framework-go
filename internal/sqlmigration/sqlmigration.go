@@ -81,31 +81,45 @@ func LoadScript(scripts embed.FS, kind config.DBKind) (string, error) {
 }
 
 func needsMigration(ctx context.Context, db orm.DB, plan Plan) (bool, error) {
-	query := tableCountQuery(plan.Kind)
-	if query == "" {
-		return false, fmt.Errorf("%w %q", ErrUnsupportedDBKind, plan.Kind)
-	}
-
-	var count int
-	if err := db.NewRaw(query, bun.Tuple(plan.ExpectedTables)).Scan(ctx, &count); err != nil {
+	count, err := CountTables(ctx, db, plan.Kind, plan.ExpectedTables)
+	if err != nil {
 		return false, err
 	}
 
 	return count < len(plan.ExpectedTables), nil
 }
 
-// tableCountQuery returns the dialect-specific COUNT query used to
-// determine whether the migration is needed. Table names are bound via
-// bun.Tuple so there is no injection risk.
-func tableCountQuery(kind config.DBKind) string {
+// TableExists reports whether the named table exists in the connection's
+// active schema.
+func TableExists(ctx context.Context, db orm.DB, kind config.DBKind, table string) (bool, error) {
+	count, err := CountTables(ctx, db, kind, []string{table})
+
+	return count > 0, err
+}
+
+// CountTables counts how many of the named tables exist in the connection's
+// active schema — current_schema() on Postgres, the connected database on
+// MySQL, the main database on SQLite. Every migration probe shares this one
+// dialect vocabulary so presence semantics cannot drift between modules.
+func CountTables(ctx context.Context, db orm.DB, kind config.DBKind, tables []string) (int, error) {
+	query := ""
+
 	switch kind {
 	case config.Postgres:
-		return "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ?"
+		query = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name IN ?"
 	case config.MySQL:
-		return "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ?"
+		query = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ?"
 	case config.SQLite:
-		return "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ?"
+		query = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ?"
 	default:
-		return ""
+		return 0, fmt.Errorf("%w %q", ErrUnsupportedDBKind, kind)
 	}
+
+	// Table names are bound via bun.Tuple so there is no injection risk.
+	var count int
+	if err := db.NewRaw(query, bun.Tuple(tables)).Scan(ctx, &count); err != nil {
+		return 0, err
+	}
+
+	return count, nil
 }

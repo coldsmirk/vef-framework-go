@@ -35,7 +35,7 @@ func Migrate(ctx context.Context, db orm.DB, kind config.DBKind) error {
 func provisionFresh(ctx context.Context, db orm.DB, kind config.DBKind) error {
 	existing := 0
 	for _, table := range expectedTables {
-		exists, err := tableExists(ctx, db, kind, table)
+		exists, err := sqlmigration.TableExists(ctx, db, kind, table)
 		if err != nil {
 			return fmt.Errorf("cron store: check table %s: %w", table, err)
 		}

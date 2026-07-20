@@ -188,7 +188,7 @@ func Verify(ctx context.Context, db orm.DB, kind config.DBKind) error {
 	indexesByTable := make(map[string][]schemaIndexMetadata, len(expectedTables))
 
 	for _, table := range expectedTables {
-		exists, err := tableExists(ctx, db, kind, table)
+		exists, err := sqlmigration.TableExists(ctx, db, kind, table)
 		if err != nil {
 			return fmt.Errorf("verify table %s: %w", table, err)
 		}
@@ -289,22 +289,6 @@ func verifyColumnCapabilities(columnsByTable map[string]map[string]schemaColumnM
 	}
 
 	return nil
-}
-
-func tableExists(ctx context.Context, db orm.DB, kind config.DBKind, table string) (bool, error) {
-	query := ""
-	switch kind {
-	case config.Postgres:
-		query = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?"
-	case config.MySQL:
-		query = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?"
-	case config.SQLite:
-		query = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?"
-	default:
-		return false, fmt.Errorf("%w %q", sqlmigration.ErrUnsupportedDBKind, kind)
-	}
-
-	return metadataExists(ctx, db, query, table)
 }
 
 type schemaColumnRow struct {
@@ -580,15 +564,6 @@ ORDER BY il.name, ii.seqno`
 	}
 
 	return indexes, nil
-}
-
-func metadataExists(ctx context.Context, db orm.DB, query string, args ...any) (bool, error) {
-	var count int
-	if err := db.NewRaw(query, args...).Scan(ctx, &count); err != nil {
-		return false, err
-	}
-
-	return count > 0, nil
 }
 
 func supportsMetadata(kind config.DBKind) bool {
