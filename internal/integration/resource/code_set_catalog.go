@@ -46,10 +46,7 @@ type CodeSetResource struct {
 // enumeration — then from the resolver (hosts that replace it wholesale).
 // Neither enumerating reports unsupported.
 func NewCodeSetResource(loader mold.CodeSetLoader, resolver mold.CodeSetResolver) api.Resource {
-	inspector, ok := loader.(mold.CodeSetInspector)
-	if !ok {
-		inspector, _ = resolver.(mold.CodeSetInspector)
-	}
+	inspector := resolveCodeSetInspector(loader, resolver)
 
 	return &CodeSetResource{
 		Resource: api.NewRPCResource(
@@ -61,6 +58,15 @@ func NewCodeSetResource(loader mold.CodeSetLoader, resolver mold.CodeSetResolver
 		),
 		inspector: inspector,
 	}
+}
+
+func resolveCodeSetInspector(loader mold.CodeSetLoader, resolver mold.CodeSetResolver) mold.CodeSetInspector {
+	inspector, ok := loader.(mold.CodeSetInspector)
+	if !ok {
+		inspector, _ = resolver.(mold.CodeSetInspector)
+	}
+
+	return inspector
 }
 
 // ListCodeSets enumerates the code sets the host catalog exposes.

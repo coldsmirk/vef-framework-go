@@ -1,12 +1,17 @@
 package resource
 
 import (
+	"context"
+	"fmt"
+	"slices"
+
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/crud"
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/definition"
+	"github.com/coldsmirk/vef-framework-go/mold"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
@@ -49,7 +54,9 @@ type CodeMapResource struct {
 }
 
 // NewCodeMapResource creates the code map management resource.
-func NewCodeMapResource() api.Resource {
+func NewCodeMapResource(loader mold.CodeSetLoader, resolver mold.CodeSetResolver) api.Resource {
+	inspector := resolveCodeSetInspector(loader, resolver)
+
 	return &CodeMapResource{
 		Resource: api.NewRPCResource("integration/code_map"),
 		FindPage: crud.NewFindPage[integration.CodeMap, CodeMapSearch]().
@@ -58,13 +65,13 @@ func NewCodeMapResource() api.Resource {
 			RequiredPermission("integration.code_map.query"),
 		Create: crud.NewCreate[integration.CodeMap, CodeMapParams]().
 			RequiredPermission("integration.code_map.create").
-			WithPreCreate(func(model *integration.CodeMap, _ *CodeMapParams, _ orm.InsertQuery, _ fiber.Ctx, _ orm.DB) error {
-				return sealCodeMap(model)
+			WithPreCreate(func(model *integration.CodeMap, _ *CodeMapParams, _ orm.InsertQuery, ctx fiber.Ctx, _ orm.DB) error {
+				return sealCodeMap(ctx.Context(), inspector, model)
 			}),
 		Update: crud.NewUpdate[integration.CodeMap, CodeMapParams]().
 			RequiredPermission("integration.code_map.update").
-			WithPreUpdate(func(_, model *integration.CodeMap, _ *CodeMapParams, _ orm.UpdateQuery, _ fiber.Ctx, _ orm.DB) error {
-				return sealCodeMap(model)
+			WithPreUpdate(func(_, model *integration.CodeMap, _ *CodeMapParams, _ orm.UpdateQuery, ctx fiber.Ctx, _ orm.DB) error {
+				return sealCodeMap(ctx.Context(), inspector, model)
 			}),
 		Delete: crud.NewDelete[integration.CodeMap]().
 			RequiredPermission("integration.code_map.delete"),
@@ -73,11 +80,31 @@ func NewCodeMapResource() api.Resource {
 
 // sealCodeMap normalizes and validates a code map before persistence: an
 // omitted unmapped policy defaults to reject (fail closed), and the entries
-// must build a collision-free lookup index.
-func sealCodeMap(model *integration.CodeMap) error {
+// must build a collision-free lookup index. An enumerable host catalog also
+// constrains the identifier to one of its registered code sets.
+func sealCodeMap(ctx context.Context, inspector mold.CodeSetInspector, model *integration.CodeMap) error {
 	if model.OnUnmapped == "" {
 		model.OnUnmapped = integration.UnmappedPolicyReject
 	}
 
-	return definition.ValidateCodeMap(model)
+	if err := definition.ValidateCodeMap(model); err != nil {
+		return err
+	}
+
+	if inspector == nil {
+		return nil
+	}
+
+	codeSets, err := inspector.ListCodeSets(ctx)
+	if err != nil {
+		return err
+	}
+
+	if !slices.ContainsFunc(codeSets, func(info mold.CodeSetInfo) bool {
+		return info.CodeSet == model.CodeSet
+	}) {
+		return integration.ErrInvalidCodeMap(fmt.Sprintf("code set %q is not registered by the host catalog", model.CodeSet))
+	}
+
+	return nil
 }
