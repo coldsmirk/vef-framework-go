@@ -1350,9 +1350,19 @@ func (s *ModuleTestSuite) TestDatabaseSystem() {
 	})
 
 	s.Run("WritesAreRejected", func() {
-		s.createAdapter(s.createSystemForScript("db-sys-w"), contract, `sql.execute('CREATE TABLE x (y INTEGER)'); return {}`)
+		roSystem := &integration.System{
+			Code:       "db-sys-w",
+			Name:       "db-sys-w",
+			DataSource: &integration.DataSourceConfig{Kind: config.SQLite},
+			IsEnabled:  true,
+		}
 
-		_, err := s.invoker.Invoke(s.T().Context(), "db.op", nil, integration.WithSystem("db-sys-w"))
+		_, err := s.db.NewInsert().Model(roSystem).Exec(s.T().Context())
+		s.Require().NoError(err, "Read-only system seed should insert")
+
+		s.createAdapter(roSystem, contract, `sql.execute('CREATE TABLE x (y INTEGER)'); return {}`)
+
+		_, err = s.invoker.Invoke(s.T().Context(), "db.op", nil, integration.WithSystem("db-sys-w"))
 		s.Require().Error(err, "Write through the scoped sql lib should fail")
 		s.ErrorIs(err, integration.ErrScriptFailed(""), "Read-only violation should classify as a script failure")
 	})
@@ -1398,21 +1408,6 @@ func (s *ModuleTestSuite) TestDatabaseSystem() {
 		s.Require().NoError(err, "Invocation after release should lazily re-register the source")
 		s.NotNil(result.Output(), "Re-registered source should serve queries")
 	})
-}
-
-// createSystemForScript seeds a database-only system for a single subtest.
-func (s *ModuleTestSuite) createSystemForScript(code string) *integration.System {
-	system := &integration.System{
-		Code:       code,
-		Name:       code,
-		DataSource: &integration.DataSourceConfig{Kind: config.SQLite},
-		IsEnabled:  true,
-	}
-
-	_, err := s.db.NewInsert().Model(system).Exec(s.T().Context())
-	s.Require().NoError(err, "Database system seed should insert")
-
-	return system
 }
 
 func (s *ModuleTestSuite) TestDiagnoseRoutes() {

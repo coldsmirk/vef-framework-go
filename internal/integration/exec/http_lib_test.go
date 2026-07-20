@@ -109,9 +109,10 @@ func TestHTTPLib(t *testing.T) {
 	})
 
 	t.Run("FetchWithMethod", func(t *testing.T) {
-		_, err := rt.RunString(ctx, `http.fetch('/x', { method: 'patch', body: 'b' })`)
+		_, err := rt.RunString(ctx, `http.fetch('/x', { method: 'patch', body: 'b', query: { q: 'init' } })`)
 		require.NoError(t, err, "Script should execute successfully")
 		assert.Equal(t, http.MethodPatch, gotMethod, "fetch method should be honored")
+		assert.Equal(t, "init", gotQuery, "fetch init should map onto the shared request options")
 	})
 
 	t.Run("AbsoluteURLRejected", func(t *testing.T) {

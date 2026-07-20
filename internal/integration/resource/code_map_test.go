@@ -14,15 +14,15 @@ import (
 
 var errListCodeSets = errors.New("list code sets failed")
 
-type failingInspectorLoader struct {
+type FailingInspectorLoader struct {
 	StubLoader
 }
 
-func (*failingInspectorLoader) ListCodeSets(context.Context) ([]mold.CodeSetInfo, error) {
+func (*FailingInspectorLoader) ListCodeSets(context.Context) ([]mold.CodeSetInfo, error) {
 	return nil, errListCodeSets
 }
 
-func (*failingInspectorLoader) ListCodes(context.Context, string) ([]mold.CodeInfo, error) {
+func (*FailingInspectorLoader) ListCodes(context.Context, string) ([]mold.CodeInfo, error) {
 	return nil, nil
 }
 
@@ -65,7 +65,7 @@ func TestSealCodeMap(t *testing.T) {
 	})
 
 	t.Run("ListError", func(t *testing.T) {
-		inspector := resolveCodeSetInspector(new(failingInspectorLoader), new(StubInspectorResolver))
+		inspector := resolveCodeSetInspector(new(FailingInspectorLoader), new(StubInspectorResolver))
 
 		err := sealCodeMap(t.Context(), inspector, newCodeMap("from-resolver"))
 

@@ -13,12 +13,12 @@ import (
 	"github.com/coldsmirk/vef-framework-go/integration"
 )
 
-// stubScheme is the codec's view of a scheme, declaring one sensitive param.
-type stubScheme struct {
+// StubScheme is the codec's view of a scheme, declaring one sensitive param.
+type StubScheme struct {
 	sensitive []string
 }
 
-func (s *stubScheme) SensitiveParams() []string {
+func (s *StubScheme) SensitiveParams() []string {
 	return s.sensitive
 }
 
@@ -51,13 +51,13 @@ func newAlgorithmCodec(t *testing.T, algorithm config.IntegrationSecretAlgorithm
 
 // bearerScheme mimics the built-in bearer scheme's sensitivity declaration
 // (sensitive param: token).
-func bearerScheme(*testing.T) *stubScheme {
-	return &stubScheme{sensitive: []string{"token"}}
+func bearerScheme() *StubScheme {
+	return &StubScheme{sensitive: []string{"token"}}
 }
 
 func TestSecretCodec(t *testing.T) {
 	codec := newTestCodec(t)
-	scheme := bearerScheme(t)
+	scheme := bearerScheme()
 
 	t.Run("EncryptDecryptRoundTrip", func(t *testing.T) {
 		cfg := &integration.OutboundAuthConfig{Scheme: "bearer", Params: map[string]string{"token": "top-secret"}}
@@ -107,7 +107,7 @@ func TestSecretCodec(t *testing.T) {
 }
 
 func TestSecretCodecAlgorithms(t *testing.T) {
-	scheme := bearerScheme(t)
+	scheme := bearerScheme()
 
 	// One shared 16-byte key is valid for both AES-128 and SM4, so the
 	// mismatch failure below comes from the algorithm, never from key sizing.
@@ -155,7 +155,7 @@ func TestSecretCodecWithoutKey(t *testing.T) {
 	codec, err := NewSecretCodec(new(config.IntegrationConfig))
 	require.NoError(t, err, "Key-less codec construction should succeed")
 
-	scheme := bearerScheme(t)
+	scheme := bearerScheme()
 
 	t.Run("StoresPlaintext", func(t *testing.T) {
 		cfg := &integration.OutboundAuthConfig{Scheme: "bearer", Params: map[string]string{"token": "plain"}}
@@ -243,7 +243,7 @@ func TestMaskDataSource(t *testing.T) {
 }
 
 func TestMaskAuth(t *testing.T) {
-	scheme := bearerScheme(t)
+	scheme := bearerScheme()
 
 	t.Run("MasksSensitiveOnly", func(t *testing.T) {
 		masked := MaskOutboundAuth(scheme, &integration.OutboundAuthConfig{
