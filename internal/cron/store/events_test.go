@@ -11,6 +11,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/cron"
 	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 )
 
 // BlockingBus holds Publish until released and can optionally honor context
@@ -115,6 +116,39 @@ func TestRunEventPublisherStopObeysDeadline(t *testing.T) {
 	bus.releasePublish()
 	require.NoError(t, publisher.Stop(context.Background()),
 		"Stopping should finish after the non-compliant bus is released")
+}
+
+func TestRunEventPublisherStopFlushesTheQueue(t *testing.T) {
+	t.Run("PublishesQueuedEvents", func(t *testing.T) {
+		bus := eventtest.NewFakeBus()
+		publisher := NewRunEventPublisher(bus)
+
+		publisher.RunFailed(new(cron.Run))
+		publisher.RunAbandoned(new(cron.Run))
+
+		require.NoError(t, publisher.Stop(context.Background()),
+			"Stopping should flush the queue within its grace")
+		assert.Len(t, bus.Captured(), 2,
+			"Shutdown must publish the notifications the queue still holds, not discard them")
+	})
+
+	t.Run("BoundsTheFlushByItsGrace", func(t *testing.T) {
+		bus := newBlockingBus(true)
+		publisher := NewRunEventPublisher(bus)
+		t.Cleanup(bus.releasePublish)
+
+		publisher.RunFailed(new(cron.Run))
+		publisher.RunFailed(new(cron.Run))
+
+		startedAt := time.Now()
+
+		require.NoError(t, publisher.Stop(context.Background()),
+			"A bus that never answers must not hold the publisher open beyond its grace")
+
+		elapsed := time.Since(startedAt)
+		assert.GreaterOrEqual(t, elapsed, publisherStopGrace, "The flush should use the whole grace before giving up")
+		assert.Less(t, elapsed, 3*publisherStopGrace, "The flush must stop at its grace instead of retrying the queue")
+	})
 }
 
 func TestRunEventPublisherDropsWhenQueueIsFull(t *testing.T) {
