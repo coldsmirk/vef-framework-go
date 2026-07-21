@@ -232,6 +232,10 @@ var (
 	IsQuietSQLLog      = orm.IsQuietSQLLog
 )
 
+// ErrRunOnConnectionInTx is returned when DB.RunOnConnection is invoked on a
+// transaction-scoped DB, whose transaction already owns its connection.
+var ErrRunOnConnectionInTx = orm.ErrRunOnConnectionInTx
+
 // DDL constraint constructors.
 var (
 	NotNull       = orm.NotNull
