@@ -76,6 +76,63 @@ func containsIndex(indexes []Index, columns []string, unique bool) bool {
 	})
 }
 
+// indexShapeDDL returns the dialect's partial, prefix and expression index
+// statements plus one ordinary index as the control. Each dialect supports a
+// different subset: MySQL has no partial indexes, and only MySQL indexes a
+// column prefix.
+func indexShapeDDL(kind config.DBKind) []string {
+	plain := "CREATE INDEX ix_smig_shape__plain ON smig_shape (attempt_count)"
+
+	switch kind {
+	case config.MySQL:
+		return []string{
+			"CREATE INDEX ix_smig_shape__prefix ON smig_shape (payload(10))",
+			"CREATE INDEX ix_smig_shape__expr ON smig_shape ((LOWER(payload)))",
+			plain,
+		}
+
+	default:
+		return []string{
+			"CREATE INDEX ix_smig_shape__partial ON smig_shape (payload) WHERE attempt_count > 0",
+			"CREATE INDEX ix_smig_shape__expr ON smig_shape (LOWER(payload))",
+			plain,
+		}
+	}
+}
+
+func TestLoadTableIndexesRejectsIncompleteIndexes(t *testing.T) {
+	testx.ForEachDB(t, func(t *testing.T, env *testx.DBEnv) {
+		// MySQL cannot index an unbounded TEXT column without a prefix length.
+		payloadType := "TEXT"
+		if env.DS.Kind == config.MySQL {
+			payloadType = "VARCHAR(64)"
+		}
+
+		_, err := env.DB.NewRaw(`CREATE TABLE smig_shape (
+    id VARCHAR(32) NOT NULL PRIMARY KEY,
+    payload ` + payloadType + ` NOT NULL,
+    attempt_count INTEGER NOT NULL
+)`).Exec(env.Ctx)
+		require.NoError(t, err, "The index-shape fixture table should be created for %s", env.DS.Kind)
+
+		for _, ddl := range indexShapeDDL(env.DS.Kind) {
+			_, err := env.DB.NewRaw(ddl).Exec(env.Ctx)
+			require.NoError(t, err, "The fixture index %q should be created for %s", ddl, env.DS.Kind)
+		}
+
+		indexes, err := LoadTableIndexes(env.Ctx, env.DB, env.DS.Kind, "smig_shape")
+		require.NoError(t, err, "Loading indexes should succeed for %s", env.DS.Kind)
+
+		assert.False(t, containsIndex(indexes, []string{"payload"}, false),
+			"A prefix, partial or expression index covers only part of the column and must satisfy no capability for %s",
+			env.DS.Kind)
+		assert.True(t, containsIndex(indexes, []string{"attempt_count"}, false),
+			"An ordinary index on the same table must still be observed for %s", env.DS.Kind)
+		assert.True(t, containsIndex(indexes, []string{"id"}, true),
+			"The primary key must still be observed for %s", env.DS.Kind)
+	})
+}
+
 func TestNormalizeColumnTypeRejectsUnsignedMySQLIntegers(t *testing.T) {
 	tests := []struct {
 		name       string
