@@ -87,6 +87,18 @@ func TestEngineMarksMaintenanceContextsQuiet(t *testing.T) {
 		"Handler business queries must keep their normal log level")
 }
 
+func TestEngineSweepIntervalTracksTheStalenessWindow(t *testing.T) {
+	db := newStoreDB(t)
+	registry := mustRegistry(t, noopHandler("orders.sync"))
+	cfg := fastStoreConfig()
+	cfg.AbandonedAfter = time.Hour
+	cfg.PollInterval = 5 * time.Second
+	engine := NewEngine(db, cfg, registry, NewRunEventPublisher(eventtest.NewFakeBus()))
+
+	assert.Equal(t, 30*time.Minute, engine.sweepInterval(),
+		"A long abandoned window must not be swept on the far shorter poll rhythm: nothing can go stale sooner")
+}
+
 func TestEngineExecutesFires(t *testing.T) {
 	t.Run("SucceededRunWithParams", func(t *testing.T) {
 		type Payload struct {

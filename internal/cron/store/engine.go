@@ -302,11 +302,14 @@ func (e *Engine) maintain() {
 	}
 }
 
-// sweepInterval is the recovery sweep cadence: half the abandoned window
-// keeps takeover latency well inside the staleness contract, and the poll
-// interval bounds it so a long window still sweeps on the loop's own rhythm.
+// sweepInterval is the recovery sweep cadence: half the abandoned window,
+// which keeps takeover latency well inside the staleness contract. Sweeping
+// faster finds nothing — a run cannot be stale before the whole window
+// elapsed — so the poll interval deliberately does not shorten it; nextDelay
+// consumes this cadence to keep a distant poll interval from starving
+// recovery, never to accelerate it.
 func (e *Engine) sweepInterval() time.Duration {
-	return min(e.config.EffectiveAbandonedAfter()/2, e.config.EffectivePollInterval())
+	return e.config.EffectiveAbandonedAfter() / 2
 }
 
 // idleDelay computes the adaptive sleep: until the nearest known fire,
