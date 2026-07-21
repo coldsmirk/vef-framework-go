@@ -2,14 +2,43 @@ package orm
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
+	"github.com/muesli/termenv"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/database"
 	"github.com/coldsmirk/vef-framework-go/internal/orm/sqlguard"
+	"github.com/coldsmirk/vef-framework-go/logx"
 )
+
+// LevelRecordingLogger captures the level of every log call so tests can assert
+// routing and emission counts without a real logging backend.
+type LevelRecordingLogger struct {
+	levels []logx.Level
+}
+
+func (l *LevelRecordingLogger) record(level logx.Level) { l.levels = append(l.levels, level) }
+
+func (l *LevelRecordingLogger) Named(string) logx.Logger       { return l }
+func (l *LevelRecordingLogger) WithCallerSkip(int) logx.Logger { return l }
+func (*LevelRecordingLogger) Enabled(logx.Level) bool          { return true }
+func (*LevelRecordingLogger) Sync()                            {}
+func (l *LevelRecordingLogger) Debug(string)                   { l.record(logx.LevelDebug) }
+func (l *LevelRecordingLogger) Debugf(string, ...any)          { l.record(logx.LevelDebug) }
+func (l *LevelRecordingLogger) Info(string)                    { l.record(logx.LevelInfo) }
+func (l *LevelRecordingLogger) Infof(string, ...any)           { l.record(logx.LevelInfo) }
+func (l *LevelRecordingLogger) Warn(string)                    { l.record(logx.LevelWarn) }
+func (l *LevelRecordingLogger) Warnf(string, ...any)           { l.record(logx.LevelWarn) }
+func (l *LevelRecordingLogger) Error(string)                   { l.record(logx.LevelError) }
+func (l *LevelRecordingLogger) Errorf(string, ...any)          { l.record(logx.LevelError) }
+func (l *LevelRecordingLogger) Panic(string)                   { l.record(logx.LevelPanic) }
+func (l *LevelRecordingLogger) Panicf(string, ...any)          { l.record(logx.LevelPanic) }
 
 // TestSQLGuard tests SQL guard integration through the orm query hook. The
 // GoSQLX parser handles bun's default double-quoted identifiers, so the guard
@@ -154,4 +183,64 @@ func TestSQLGuard(t *testing.T) {
 		_, err := db.NewRaw("DROP TABLE test_guard").Exec(ctx)
 		require.NoError(t, err, "DROP should work when SQL guard is disabled")
 	})
+}
+
+func TestQueryHookLogLevelRouting(t *testing.T) {
+	newEvent := func(elapsed time.Duration, err error) *bun.QueryEvent {
+		return &bun.QueryEvent{
+			Query:     "SELECT 1",
+			StartTime: time.Now().Add(-elapsed),
+			Err:       err,
+		}
+	}
+
+	tests := []struct {
+		name      string
+		ctx       context.Context //nolint:containedctx // table-driven test input
+		event     *bun.QueryEvent
+		wantLevel logx.Level
+	}{
+		{
+			name:      "RegularQueryLogsAtInfo",
+			ctx:       context.Background(),
+			event:     newEvent(0, nil),
+			wantLevel: logx.LevelInfo,
+		},
+		{
+			name:      "QuietContextDemotesToDebug",
+			ctx:       WithQuietSQLLog(context.Background()),
+			event:     newEvent(0, nil),
+			wantLevel: logx.LevelDebug,
+		},
+		{
+			name:      "LiftedQuietContextLogsAtInfoAgain",
+			ctx:       WithoutQuietSQLLog(WithQuietSQLLog(context.Background())),
+			event:     newEvent(0, nil),
+			wantLevel: logx.LevelInfo,
+		},
+		{
+			name:      "SlowQueryOutranksTheQuietMark",
+			ctx:       WithQuietSQLLog(context.Background()),
+			event:     newEvent(time.Second, nil),
+			wantLevel: logx.LevelWarn,
+		},
+		{
+			name:      "FailureOutranksTheQuietMark",
+			ctx:       WithQuietSQLLog(context.Background()),
+			event:     newEvent(0, errors.New("connection refused")),
+			wantLevel: logx.LevelError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := new(LevelRecordingLogger)
+			hook := &queryHook{logger: logger, output: termenv.DefaultOutput()}
+
+			hook.AfterQuery(tt.ctx, tt.event)
+
+			assert.Equal(t, []logx.Level{tt.wantLevel}, logger.levels,
+				"The statement must log exactly once at the routed level")
+		})
+	}
 }

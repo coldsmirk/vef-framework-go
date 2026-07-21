@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sync"
 
 	"github.com/coldsmirk/go-collections"
 	"github.com/uptrace/bun"
@@ -527,21 +528,46 @@ func (q *BunSelectQuery) ForNoKeyUpdateSkipLocked(tables ...any) SelectQuery {
 // postgresOnlyLockModes contains lock modes that are only supported by PostgreSQL.
 var postgresOnlyLockModes = collections.NewHashSetFrom("NO KEY UPDATE", "KEY SHARE")
 
+// lockClauseWarnKey identifies one dialect plus lock-mode combination.
+type lockClauseWarnKey struct {
+	dialect dialect.Name
+	mode    string
+}
+
+// warnedLockClauses records the combinations already warned about.
+var warnedLockClauses sync.Map
+
+// firstUnsupportedLockWarning reports whether the dropped-lock-clause warning
+// for this dialect and lock mode still has to be emitted, marking it emitted.
+// Which lock modes a dialect supports is a static property of the deployment,
+// so repeating the warning per call adds nothing after the first line while
+// flooding the log of every loop that locks rows.
+func firstUnsupportedLockWarning(dialectName dialect.Name, mode string) bool {
+	_, warned := warnedLockClauses.LoadOrStore(lockClauseWarnKey{dialect: dialectName, mode: mode}, struct{}{})
+
+	return !warned
+}
+
 // forLock builds a FOR lock clause with the given lock mode, optional suffix, and optional table references.
 // Each table can be a string (alias/name) or a model pointer (resolved to its table alias via TableOf).
 // SQLite does not support row-level locking; calls are silently ignored with a warning log.
 // FOR NO KEY UPDATE and FOR KEY SHARE are PostgreSQL-only; on MySQL they are silently ignored with a warning log.
+// Each dialect/mode combination warns once per process — see firstUnsupportedLockWarning.
 func (q *BunSelectQuery) forLock(mode, suffix string, tables ...any) SelectQuery {
 	dialectName := q.Dialect().Name()
 
 	if dialectName == dialect.SQLite {
-		logger.Warnf("Row-level locking is not supported by SQLite, FOR %q clause will be ignored", mode)
+		if firstUnsupportedLockWarning(dialectName, mode) {
+			logger.Warnf("Row-level locking is not supported by SQLite, FOR %q clause will be ignored", mode)
+		}
 
 		return q
 	}
 
 	if dialectName == dialect.MySQL && postgresOnlyLockModes.Contains(mode) {
-		logger.Warnf("FOR %q is only supported by PostgreSQL, locking clause will be ignored", mode)
+		if firstUnsupportedLockWarning(dialectName, mode) {
+			logger.Warnf("FOR %q is only supported by PostgreSQL, locking clause will be ignored", mode)
+		}
 
 		return q
 	}
