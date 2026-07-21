@@ -28,6 +28,7 @@ type GetAdminInstanceDetailTestSuite struct {
 	handler *query.GetAdminInstanceDetailHandler
 
 	instanceID string
+	flowID     string
 	formSchema json.RawMessage
 }
 
@@ -35,6 +36,7 @@ func (s *GetAdminInstanceDetailTestSuite) SetupSuite() {
 	s.handler = query.NewGetAdminInstanceDetailHandler(s.db)
 
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "adid", 0)
+	s.flowID = fix.FlowID
 
 	// Stamp host-owned labels on the flow; the admin detail must surface them
 	// beside the other flow-identity fields.
@@ -84,6 +86,7 @@ func (s *GetAdminInstanceDetailTestSuite) SetupSuite() {
 	instance := &approval.Instance{
 		TenantID:                "default",
 		FlowID:                  fix.FlowID,
+		FlowCode:                "adid",
 		FlowVersionID:           fix.VersionID,
 		Title:                   "Admin Detail Test",
 		InstanceNo:              "ADID-001",
@@ -143,6 +146,8 @@ func (s *GetAdminInstanceDetailTestSuite) TestGetDetailSuccess() {
 	s.Assert().Equal(s.instanceID, detail.Instance.InstanceID, "Should return correct instance")
 	s.Assert().Equal("Admin Detail Test", detail.Instance.Title, "Should return correct title")
 	s.Assert().Equal("default", detail.Instance.TenantID, "Should include tenant ID")
+	s.Assert().Equal(s.flowID, detail.Instance.FlowID, "Detail should carry the instance's flow id")
+	s.Assert().Equal("adid", detail.Instance.FlowCode, "Detail should carry the flow code snapshot")
 	s.Assert().Equal(map[string]string{"app": "erp"}, detail.Instance.Labels, "Detail should surface the flow's labels")
 
 	// The flow graph is a React Flow–ready projection: 3 nodes + 2 edges with

@@ -28,6 +28,7 @@ type InstanceDetailInfo struct {
 	Title         string `json:"title"`
 	TenantID      string `json:"tenantId"`
 	FlowID        string `json:"flowId"`
+	FlowCode      string `json:"flowCode"`
 	FlowName      string `json:"flowName"`
 	FlowVersionID string `json:"flowVersionId"`
 	// Labels are the flow's host-owned selection metadata, read from the

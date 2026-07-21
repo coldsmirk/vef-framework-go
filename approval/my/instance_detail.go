@@ -76,6 +76,8 @@ type InstanceInfo struct {
 	InstanceID      string            `json:"instanceId"`
 	InstanceNo      string            `json:"instanceNo"`
 	Title           string            `json:"title"`
+	FlowID          string            `json:"flowId"`
+	FlowCode        string            `json:"flowCode"`
 	FlowName        string            `json:"flowName"`
 	FlowIcon        *string           `json:"flowIcon,omitempty"`
 	Labels          map[string]string `json:"labels,omitempty"`

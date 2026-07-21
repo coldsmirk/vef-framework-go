@@ -65,6 +65,8 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 			InstanceID:    instance.ID,
 			InstanceNo:    instance.InstanceNo,
 			Title:         instance.Title,
+			FlowID:        instance.FlowID,
+			FlowCode:      instance.FlowCode,
 			FlowName:      flow.Name,
 			FlowIcon:      flow.Icon,
 			Labels:        flow.Labels,

@@ -31,6 +31,7 @@ type GetMyInstanceDetailTestSuite struct {
 
 	instanceID string
 	nodeID     string
+	flowID     string
 	formSchema json.RawMessage
 }
 
@@ -39,6 +40,7 @@ func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
 
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "mid-flow", 1)
 	s.nodeID = fix.NodeIDs[0]
+	s.flowID = fix.FlowID
 
 	// Stamp host-owned labels on the flow; the detail must surface them
 	// beside the other flow-identity fields.
@@ -61,7 +63,7 @@ func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
 
 	department := "Engineering"
 	inst := &approval.Instance{
-		TenantID: "t1", FlowID: fix.FlowID, FlowVersionID: fix.VersionID,
+		TenantID: "t1", FlowID: fix.FlowID, FlowCode: "mid-flow", FlowVersionID: fix.VersionID,
 		Title: "Detail Instance", InstanceNo: "MID-001", ApplicantID: "user-a",
 		ApplicantDepartmentName: &department,
 		Status:                  approval.InstanceRunning, CurrentNodeID: &fix.NodeIDs[0],
@@ -148,6 +150,8 @@ func (s *GetMyInstanceDetailTestSuite) TestApplicantAccess() {
 	s.Require().NoError(err, "Should get detail without error")
 	s.Assert().Equal(s.instanceID, detail.Instance.InstanceID, "Should return correct instance")
 	s.Assert().Equal("Detail Instance", detail.Instance.Title, "Should return correct title")
+	s.Assert().Equal(s.flowID, detail.Instance.FlowID, "Detail should carry the instance's flow id")
+	s.Assert().Equal("mid-flow", detail.Instance.FlowCode, "Detail should carry the flow code snapshot")
 	s.Assert().Equal(map[string]string{"app": "crm"}, detail.Instance.Labels, "Detail should surface the flow's labels")
 	s.Assert().Contains(detail.AvailableActions, "withdraw", "Applicant should be able to withdraw")
 	s.Assert().Contains(detail.AvailableActions, "urge", "Applicant should be able to urge when the instance has pending tasks")
