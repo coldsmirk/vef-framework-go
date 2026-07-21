@@ -123,6 +123,13 @@ func (s *Schedule) Timeout() time.Duration {
 // ScheduleSpec declares a schedule to create, or the desired state of an
 // update. Zero-valued policies resolve to their defaults (MisfireFireNow,
 // ConcurrencyForbid); a nil Enabled resolves to true.
+//
+// This is the Go-facing contract and carries idiomatic time.Time and
+// time.Duration values; it is not the wire shape. The management API speaks
+// Unix milliseconds through its own parameters (startsAtUnixMs, timeoutMs and
+// friends), so the tags below describe this struct alone — marshaling it
+// yields different field names than the API, and Timeout marshals as
+// nanoseconds rather than the milliseconds the wire carries.
 type ScheduleSpec struct {
 	// Name uniquely identifies the schedule; on a seeded default schedule it
 	// falls back to the job name.
