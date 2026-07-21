@@ -41,6 +41,7 @@ const (
 	ErrCodeMissingCodeMap        = 2627
 	ErrCodeUnmappedValue         = 2628
 	ErrCodeInvalidCodeMap        = 2629
+	ErrCodeCodeSetCatalogFailed  = 2630
 )
 
 // Predefined integration API errors. These are business errors and keep the
@@ -240,6 +241,17 @@ func ErrInvalidCodeMap(detail string) result.Error {
 	return result.Err(
 		i18n.T("integration_invalid_code_map", map[string]any{"detail": detail}),
 		result.WithCode(ErrCodeInvalidCodeMap),
+	)
+}
+
+// ErrCodeSetCatalogFailed reports that the host code set catalog could not
+// answer — the mapping editor's pickers cannot be filled, and a code map save
+// cannot confirm its identifier against it. It is a host-side fault, distinct
+// from a definition the catalog answers about and rejects.
+func ErrCodeSetCatalogFailed(detail string) result.Error {
+	return result.Err(
+		i18n.T("integration_code_set_catalog_failed", map[string]any{"detail": detail}),
+		result.WithCode(ErrCodeCodeSetCatalogFailed),
 	)
 }
 

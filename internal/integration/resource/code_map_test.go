@@ -1,30 +1,13 @@
 package resource
 
 import (
-	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/integration"
-	"github.com/coldsmirk/vef-framework-go/mold"
 )
-
-var errListCodeSets = errors.New("list code sets failed")
-
-type FailingInspectorLoader struct {
-	StubLoader
-}
-
-func (*FailingInspectorLoader) ListCodeSets(context.Context) ([]mold.CodeSetInfo, error) {
-	return nil, errListCodeSets
-}
-
-func (*FailingInspectorLoader) ListCodes(context.Context, string) ([]mold.CodeInfo, error) {
-	return nil, nil
-}
 
 func TestSealCodeMap(t *testing.T) {
 	newCodeMap := func(codeSet string) *integration.CodeMap {
@@ -69,6 +52,9 @@ func TestSealCodeMap(t *testing.T) {
 
 		err := sealCodeMap(t.Context(), inspector, newCodeMap("from-resolver"))
 
-		require.ErrorIs(t, err, errListCodeSets, "A catalog enumeration failure should reject the save")
+		require.Error(t, err, "A catalog enumeration failure should reject the save")
+		assert.ErrorIs(t, err, integration.ErrCodeSetCatalogFailed(""),
+			"A catalog enumeration failure should classify as a catalog fault, not a raw host error or a verdict on the definition")
+		assert.Contains(t, err.Error(), errCatalogUnavailable.Error(), "The underlying catalog fault should stay visible in the detail")
 	})
 }

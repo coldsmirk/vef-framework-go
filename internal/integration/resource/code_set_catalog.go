@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
+	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/mold"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -77,7 +78,7 @@ func (r *CodeSetResource) ListCodeSets(ctx fiber.Ctx) error {
 
 	codeSets, err := r.inspector.ListCodeSets(ctx.Context())
 	if err != nil {
-		return err
+		return integration.ErrCodeSetCatalogFailed(err.Error())
 	}
 
 	return result.Ok(&CodeSetCatalog{Supported: true, CodeSets: codeSets}).Response(ctx)
@@ -91,7 +92,7 @@ func (r *CodeSetResource) ListCodes(ctx fiber.Ctx, params ListCodesParams) error
 
 	codes, err := r.inspector.ListCodes(ctx.Context(), params.CodeSet)
 	if err != nil {
-		return err
+		return integration.ErrCodeSetCatalogFailed(err.Error())
 	}
 
 	return result.Ok(&CodeCatalog{Supported: true, Codes: codes}).Response(ctx)

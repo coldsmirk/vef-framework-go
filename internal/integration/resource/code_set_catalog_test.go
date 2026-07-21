@@ -2,13 +2,42 @@ package resource
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/mold"
 )
+
+// errCatalogUnavailable is the host-side fault FailingInspectorLoader raises
+// from both enumerations.
+var errCatalogUnavailable = errors.New("list code sets failed")
+
+// callCatalog runs one catalog operation inside a fiber handler and returns the
+// error it produced.
+func callCatalog(t *testing.T, handler func(fiber.Ctx) error) error {
+	t.Helper()
+
+	var handlerErr error
+
+	app := fiber.New()
+	app.Get("/catalog", func(ctx fiber.Ctx) error {
+		handlerErr = handler(ctx)
+
+		return nil
+	})
+
+	_, err := app.Test(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/catalog", nil))
+	require.NoError(t, err, "Test request should execute")
+
+	return handlerErr
+}
 
 type StubLoader struct{}
 
@@ -46,6 +75,20 @@ func (*StubInspectorResolver) ListCodes(context.Context, string) ([]mold.CodeInf
 	return nil, nil
 }
 
+// FailingInspectorLoader stands for a host catalog that is registered but
+// cannot answer.
+type FailingInspectorLoader struct {
+	StubLoader
+}
+
+func (*FailingInspectorLoader) ListCodeSets(context.Context) ([]mold.CodeSetInfo, error) {
+	return nil, errCatalogUnavailable
+}
+
+func (*FailingInspectorLoader) ListCodes(context.Context, string) ([]mold.CodeInfo, error) {
+	return nil, errCatalogUnavailable
+}
+
 // TestNewCodeSetResource pins the inspector selection: the loader is asserted
 // first because the mold module wraps loaders in its cached resolver, which
 // would hide the enumeration capability behind the resolver seam.
@@ -81,5 +124,33 @@ func TestNewCodeSetResource(t *testing.T) {
 		codeSets, err := inspector.ListCodeSets(t.Context())
 		require.NoError(t, err, "the stub should enumerate")
 		assert.Equal(t, "from-resolver", codeSets[0].CodeSet, "the resolver's inspector is the fallback")
+	})
+}
+
+// TestCodeSetResourceCatalogFailure pins the read operations to the module's
+// error vocabulary: a host catalog that cannot answer must not surface as a
+// raw internal error.
+func TestCodeSetResourceCatalogFailure(t *testing.T) {
+	resource, ok := NewCodeSetResource(new(FailingInspectorLoader), new(StubInspectorResolver)).(*CodeSetResource)
+	require.True(t, ok, "the constructor should return the concrete resource")
+
+	assertCatalogFailure := func(t *testing.T, err error) {
+		t.Helper()
+
+		require.Error(t, err, "a catalog that cannot answer should fail the operation")
+		assert.ErrorIs(t, err, integration.ErrCodeSetCatalogFailed(""),
+			"the failure should carry the module's catalog error code")
+		assert.Contains(t, err.Error(), errCatalogUnavailable.Error(),
+			"the underlying catalog fault should stay visible in the detail")
+	}
+
+	t.Run("ListCodeSets", func(t *testing.T) {
+		assertCatalogFailure(t, callCatalog(t, resource.ListCodeSets))
+	})
+
+	t.Run("ListCodes", func(t *testing.T) {
+		assertCatalogFailure(t, callCatalog(t, func(ctx fiber.Ctx) error {
+			return resource.ListCodes(ctx, ListCodesParams{CodeSet: "from-loader"})
+		}))
 	})
 }

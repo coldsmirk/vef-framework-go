@@ -233,6 +233,7 @@
   "integration_code_map_missing": "Code map {{.codeSet}} is not configured for this system",
   "integration_value_unmapped": "Code map {{.codeSet}} has no entry for value {{.value}}",
   "integration_invalid_code_map": "Invalid code map: {{.detail}}",
+  "integration_code_set_catalog_failed": "The host code set catalog is unavailable: {{.detail}}",
   "integration_inbound_auth_failed": "Inbound request verification failed",
   "integration_inbound_handler_missing": "No handler is registered for the inbound contract",
   "cron_schedule_not_found": "Schedule not found",

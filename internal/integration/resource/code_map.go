@@ -97,7 +97,10 @@ func sealCodeMap(ctx context.Context, inspector mold.CodeSetInspector, model *in
 
 	codeSets, err := inspector.ListCodeSets(ctx)
 	if err != nil {
-		return err
+		// The identifier cannot be confirmed, so the save is rejected — as the
+		// catalog fault it is, never a raw host error escaping the integration
+		// error vocabulary and never as a verdict on the definition.
+		return integration.ErrCodeSetCatalogFailed(err.Error())
 	}
 
 	if !slices.ContainsFunc(codeSets, func(info mold.CodeSetInfo) bool {
