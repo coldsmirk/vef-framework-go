@@ -45,7 +45,6 @@ func newSystemDatabases(registry datasource.Registry, codec *definition.SecretCo
 }
 
 // sourceFor returns the per-system lock entry, creating it on first sight.
-// Entries are never removed; the map is bounded by the set of system codes.
 func (v *systemDatabases) sourceFor(code string) *systemSource {
 	v.mu.Lock()
 	defer v.mu.Unlock()
@@ -59,6 +58,27 @@ func (v *systemDatabases) sourceFor(code string) *systemSource {
 	return source
 }
 
+// lockSource returns the system's lock entry with its mutex held. Because
+// Release reclaims entries, a caller that waited on a lock can wake up holding
+// one the map has already dropped; only the entry the map currently holds
+// serializes callers, so the entry is re-read after the lock is taken and a
+// stale one is released and retried. Without that re-check, a release racing a
+// registration would leave two callers serializing on different locks for the
+// same system.
+func (v *systemDatabases) lockSource(code string) *systemSource {
+	for {
+		source := v.sourceFor(code)
+
+		source.mu.Lock()
+
+		if v.sourceFor(code) == source {
+			return source
+		}
+
+		source.mu.Unlock()
+	}
+}
+
 // DBFor returns the connection and dialect for system's data source,
 // registering or updating the registry entry when the stored definition
 // changed. Credential faults surface as API errors; connection faults are
@@ -67,8 +87,7 @@ func (v *systemDatabases) DBFor(ctx context.Context, system *integration.System)
 	name := systemSourcePrefix + system.Code
 	hash := dataSourceHash(system.DataSource)
 
-	source := v.sourceFor(system.Code)
-	source.mu.Lock()
+	source := v.lockSource(system.Code)
 	defer source.mu.Unlock()
 
 	if source.hash == hash && v.registry.Has(name) {
@@ -107,15 +126,20 @@ func (v *systemDatabases) DBFor(ctx context.Context, system *integration.System)
 // source was removed); the connection closes asynchronously per the
 // registry's grace handling. Releasing an unknown system is a no-op. It
 // holds the system's lock, so a concurrent DBFor either completes before the
-// release or re-registers after it.
+// release or re-registers after it, and it reclaims the lock entry itself so
+// the map tracks only systems still in play.
 func (v *systemDatabases) Release(ctx context.Context, systemCode string) error {
 	name := systemSourcePrefix + systemCode
 
-	source := v.sourceFor(systemCode)
-	source.mu.Lock()
+	source := v.lockSource(systemCode)
 	defer source.mu.Unlock()
 
-	source.hash = ""
+	// Dropping the entry under its own lock is what makes lockSource's
+	// re-check both necessary and sufficient: a caller already waiting on this
+	// lock observes the removal and retries against the fresh entry.
+	v.mu.Lock()
+	delete(v.sources, systemCode)
+	v.mu.Unlock()
 
 	if !v.registry.Has(name) {
 		return nil
