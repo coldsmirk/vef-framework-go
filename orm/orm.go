@@ -225,9 +225,11 @@ var (
 	// WithQuietSQLLog marks a context so the SQL log demotes successful
 	// statements to Debug — for polling loops whose steady-state queries
 	// would otherwise flood the log. Slow-query warnings and failures keep
-	// their level. IsQuietSQLLog reports the mark.
-	WithQuietSQLLog = orm.WithQuietSQLLog
-	IsQuietSQLLog   = orm.IsQuietSQLLog
+	// their level. WithoutQuietSQLLog lifts the mark again, for the work a
+	// marked loop hands to business code. IsQuietSQLLog reports the mark.
+	WithQuietSQLLog    = orm.WithQuietSQLLog
+	WithoutQuietSQLLog = orm.WithoutQuietSQLLog
+	IsQuietSQLLog      = orm.IsQuietSQLLog
 )
 
 // DDL constraint constructors.

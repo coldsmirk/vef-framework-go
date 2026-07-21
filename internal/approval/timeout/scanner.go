@@ -59,7 +59,11 @@ const scanBatchSize = 500
 // drained) or when an entire batch fails — failed rows keep is_timeout
 // false and would be re-selected forever otherwise.
 func (s *Scanner) ScanTimeouts(ctx context.Context) {
-	// Polling bookkeeping logs at Debug; failures keep their level.
+	// Polling bookkeeping logs at Debug; failures keep their level. Processing
+	// a timed-out task is not bookkeeping: it drives host lifecycle hooks, the
+	// host assignee/user resolvers, and real business writes, so it runs under
+	// the mark-free context.
+	workCtx := orm.WithoutQuietSQLLog(ctx)
 	ctx = orm.WithQuietSQLLog(ctx)
 
 	for {
@@ -90,7 +94,7 @@ func (s *Scanner) ScanTimeouts(ctx context.Context) {
 		succeeded := 0
 
 		for i := range tasks {
-			if err := s.processTimeout(ctx, &tasks[i]); err != nil {
+			if err := s.processTimeout(workCtx, &tasks[i]); err != nil {
 				logger.Errorf("Failed to process timeout for task %s: %v", tasks[i].ID, err)
 			} else {
 				succeeded++

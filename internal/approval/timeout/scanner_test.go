@@ -37,7 +37,27 @@ type ScannerTestSuite struct {
 	db      orm.DB
 	bus     *eventtest.FakeBus
 	scanner *timeout.Scanner
+	taskSvc *service.TaskService
+	nodeSvc *service.NodeService
+	cfg     *config.ApprovalConfig
 	seq     int
+}
+
+// QuietMarkRecordingUserResolver is a host UserInfoResolver that records the
+// ORM quiet-SQL-log mark carried by the context the framework handed it.
+type QuietMarkRecordingUserResolver struct {
+	quietMarks []bool
+}
+
+func (r *QuietMarkRecordingUserResolver) ResolveUsers(ctx context.Context, userIDs []string) (map[string]approval.UserInfo, error) {
+	r.quietMarks = append(r.quietMarks, orm.IsQuietSQLLog(ctx))
+
+	infos := make(map[string]approval.UserInfo, len(userIDs))
+	for _, id := range userIDs {
+		infos[id] = approval.UserInfo{ID: id, Name: id}
+	}
+
+	return infos, nil
 }
 
 func (s *ScannerTestSuite) SetupSuite() {
@@ -65,6 +85,10 @@ func (s *ScannerTestSuite) SetupSuite() {
 
 	cfg := new(config.ApprovalConfig)
 	cfg.ApplyDefaults()
+
+	s.taskSvc = taskSvc
+	s.nodeSvc = nodeSvc
+	s.cfg = cfg
 	s.scanner = timeout.NewScanner(s.db, s.bus, taskSvc, nodeSvc, nil, cfg)
 }
 
@@ -845,4 +869,25 @@ func (s *ScannerTestSuite) TestTransferAdminTimeoutRepointsAfterChildToFirstOfMu
 	s.Require().NoError(s.db.NewSelect().Model(&reloadedChild).WherePK().Scan(s.ctx), "Should reload after-child")
 	s.Require().NotNil(reloadedChild.ParentTaskID, "After-child must not be orphaned")
 	s.Assert().Equal(firstAdmin.ID, *reloadedChild.ParentTaskID, "After-child must re-point onto the first admin stand-in")
+}
+
+// TestTimeoutProcessingShouldClearTheQuietSQLLogMarkForHostCallbacks pins that
+// the scanner's noise-reduction mark covers only its own polling query.
+// Processing a timed-out task reaches host extension points — here the
+// UserInfoResolver, further down the same call chain the assignee service and
+// the instance lifecycle hooks — whose queries the application expects to see
+// at their normal log level.
+func (s *ScannerTestSuite) TestTimeoutProcessingShouldClearTheQuietSQLLogMarkForHostCallbacks() {
+	_, task := s.createTimeoutScenarioWithTaskStatus(approval.TimeoutActionTransferAdmin, approval.TaskPending)
+	s.setNodeAdmins(task.NodeID, "admin-1")
+
+	resolver := new(QuietMarkRecordingUserResolver)
+	scanner := timeout.NewScanner(s.db, s.bus, s.taskSvc, s.nodeSvc, resolver, s.cfg)
+
+	// A marked caller must not be able to smuggle the mark into host code
+	// either, so the scan starts from an already-quiet context.
+	scanner.ScanTimeouts(orm.WithQuietSQLLog(s.ctx))
+
+	s.Require().Equal([]bool{false}, resolver.quietMarks,
+		"The host user resolver must run without the quiet SQL-log mark")
 }

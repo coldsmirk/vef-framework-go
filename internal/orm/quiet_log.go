@@ -14,6 +14,20 @@ func WithQuietSQLLog(ctx context.Context) context.Context {
 	return context.WithValue(ctx, quietSQLLogKey{}, true)
 }
 
+// WithoutQuietSQLLog lifts the quiet-SQL-log mark, so statements run under the
+// returned context log at their normal level again. A framework polling loop
+// marks its own bookkeeping quiet, but the mark must not survive the handoff
+// to host code — lifecycle hooks, host resolvers, and writes to host-owned
+// tables are business work whose statements the application expects to see.
+// Lifting an unmarked context is a no-op.
+func WithoutQuietSQLLog(ctx context.Context) context.Context {
+	if !IsQuietSQLLog(ctx) {
+		return ctx
+	}
+
+	return context.WithValue(ctx, quietSQLLogKey{}, false)
+}
+
 // IsQuietSQLLog reports whether the context carries the quiet-SQL-log mark.
 func IsQuietSQLLog(ctx context.Context) bool {
 	quiet, _ := ctx.Value(quietSQLLogKey{}).(bool)

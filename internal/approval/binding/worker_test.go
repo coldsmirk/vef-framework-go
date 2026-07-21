@@ -2,16 +2,19 @@ package binding
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/migration"
+	internalorm "github.com/coldsmirk/vef-framework-go/internal/orm"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -48,6 +51,40 @@ func (b *SpyBus) Publish(_ context.Context, _ event.Event, opts ...event.Publish
 
 func (*SpyBus) PublishBatch(context.Context, []event.Event, ...event.PublishOption) error {
 	return nil
+}
+
+// StatementQuietMark records whether one executed statement carried the ORM
+// quiet-SQL-log mark.
+type StatementQuietMark struct {
+	Query string
+	Quiet bool
+}
+
+// QuietMarkRecordingHook captures the quiet-SQL-log mark of every statement so
+// tests can assert which context the worker used for which table.
+type QuietMarkRecordingHook struct {
+	statements []StatementQuietMark
+}
+
+func (*QuietMarkRecordingHook) BeforeQuery(ctx context.Context, _ *bun.QueryEvent) context.Context {
+	return ctx
+}
+
+func (h *QuietMarkRecordingHook) AfterQuery(ctx context.Context, event *bun.QueryEvent) {
+	h.statements = append(h.statements, StatementQuietMark{Query: event.Query, Quiet: orm.IsQuietSQLLog(ctx)})
+}
+
+// marksFor returns the recorded marks of every statement naming the table.
+func (h *QuietMarkRecordingHook) marksFor(table string) []bool {
+	var marks []bool
+
+	for _, statement := range h.statements {
+		if strings.Contains(statement.Query, table) {
+			marks = append(marks, statement.Quiet)
+		}
+	}
+
+	return marks
 }
 
 func bindingFailureInstance() *approval.Instance {
@@ -338,5 +375,77 @@ func TestWorkerClaimBatchUsesDialectIndependentAttemptOrder(t *testing.T) {
 			"Claimed projection should remain queryable")
 		assert.True(t, reloaded.UpdatedAt.Unwrap().After(preClaim.UpdatedAt.Unwrap()),
 			"Claiming a projection should refresh its operator-facing update time")
+	})
+}
+
+// TestWorkerRunKeepsHostTableWritesOutOfTheQuietSQLLog pins the mark boundary of
+// the polling loop: its own projection bookkeeping repeats every tick and stays
+// demoted, while the write it applies to the host's business row keeps the log
+// level the synchronous lane gives that same statement from a request handler.
+func TestWorkerRunKeepsHostTableWritesOutOfTheQuietSQLLog(t *testing.T) {
+	testx.ForEachDB(t, func(t *testing.T, env *testx.DBEnv) {
+		require.NoError(t, migration.Migrate(env.Ctx, env.DB, env.DS.Kind),
+			"Approval migration should prepare projection storage")
+
+		_, err := env.DB.NewRaw(`CREATE TABLE binding_worker_quiet_mark (
+			id VARCHAR(64) PRIMARY KEY,
+			approval_status VARCHAR(32),
+			apv_instance_id VARCHAR(32)
+		)`).Exec(env.Ctx)
+		require.NoError(t, err, "Test setup should create the business table")
+
+		_, err = env.DB.NewRaw(`INSERT INTO binding_worker_quiet_mark (id) VALUES ('order-1')`).Exec(env.Ctx)
+		require.NoError(t, err, "Test setup should seed the business target")
+
+		instanceIDColumn := "apv_instance_id"
+		projection := &approval.BusinessProjection{
+			TenantID:        "tenant-1",
+			FlowID:          "flow-1",
+			FlowVersionID:   "version-1",
+			OwnerInstanceID: "instance-1",
+			TargetHash:      "binding-worker-quiet-mark",
+			Consistency:     config.ApprovalBindingEventual,
+			Binding: &approval.BusinessBindingConfig{
+				TableName:        "binding_worker_quiet_mark",
+				KeyColumns:       []string{"id"},
+				StatusColumn:     "approval_status",
+				InstanceIDColumn: &instanceIDColumn,
+			},
+			RecordKey:        []byte(`[{"column":"id","kind":"string","value":"order-1"}]`),
+			DesiredStatus:    approval.InstanceRunning,
+			DesiredStartedAt: timex.Now(),
+			DesiredRevision:  1,
+			Status:           approval.BindingProjectionPending,
+		}
+		_, err = env.DB.NewInsert().Model(projection).Exec(env.Ctx)
+		require.NoError(t, err, "Test setup should insert the pending projection")
+
+		// The hook has to be installed before orm.New derives its named-arg
+		// clone, so the worker runs against a second handle on the same pool.
+		hook := new(QuietMarkRecordingHook)
+		dialect, err := internalorm.DialectFor(env.DS.Kind)
+		require.NoError(t, err, "Test setup should resolve the bun dialect")
+
+		bunDB := bun.NewDB(env.RawDB, dialect, bun.WithDiscardUnknownColumns())
+		bunDB.AddQueryHook(hook)
+
+		NewWorker(internalorm.New(bunDB), new(SpyBus), NewWriter(), nil).Run(env.Ctx)
+
+		reloaded := new(approval.BusinessProjection)
+		reloaded.ID = projection.ID
+		require.NoError(t, env.DB.NewSelect().Model(reloaded).WherePK().Scan(env.Ctx),
+			"Projection should remain queryable after the run")
+		require.Equal(t, approval.BindingProjectionApplied, reloaded.Status,
+			"The run must apply the projection so the host write really happened")
+
+		businessMarks := hook.marksFor("binding_worker_quiet_mark")
+		require.NotEmpty(t, businessMarks, "The worker should have touched the host business table")
+		assert.NotContains(t, businessMarks, true,
+			"Host business statements must not inherit the polling loop's quiet mark")
+
+		projectionMarks := hook.marksFor("apv_business_projection")
+		require.NotEmpty(t, projectionMarks, "The worker should have touched its own projection table")
+		assert.Contains(t, projectionMarks, true,
+			"The worker's own bookkeeping must stay quiet")
 	})
 }
