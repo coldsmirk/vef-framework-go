@@ -94,6 +94,9 @@ func TestTraceRedaction(t *testing.T) {
 		URL:            "https://vendor/api?appkey=s3cr3t-value&page=1",
 		RequestHeaders: map[string]string{"X-App-Secret": "s3cr3t-value", "X-Trace": "keep-me"},
 		RequestBody:    `{"credential":"s3cr3t-value"}`,
+		// net/http reports a transport failure as a *url.Error whose message
+		// embeds the whole URL, query string included.
+		Error: `Post "https://vendor/api?appkey=s3cr3t-value&page=1": dial tcp 10.0.0.1:443: connect: connection refused`,
 	})
 
 	exchange := collector.Exchanges()[0]
@@ -101,4 +104,72 @@ func TestTraceRedaction(t *testing.T) {
 	assert.Equal(t, integration.MaskedSecret, exchange.RequestHeaders["x-app-secret"], "A credential header the name mask cannot know is scrubbed by value")
 	assert.Equal(t, "keep-me", exchange.RequestHeaders["x-trace"], "A non-credential header value is left intact")
 	assert.NotContains(t, exchange.RequestBody, "s3cr3t-value", "The credential value must be scrubbed from the body")
+	assert.NotContains(t, exchange.Error, "s3cr3t-value", "The credential value must be scrubbed from the transport error message")
+	assert.Contains(t, exchange.Error, "connection refused", "The diagnostic part of the transport error must survive scrubbing")
+}
+
+// TestTraceRedactionPrecedesCapture pins the ordering inside record: the
+// credential scrub runs on the raw capture, ahead of every transform that
+// rewrites or drops part of it.
+func TestTraceRedactionPrecedesCapture(t *testing.T) {
+	t.Run("SurvivesTheTruncationBoundary", func(t *testing.T) {
+		const (
+			secret = "s3cr3t-value"
+			limit  = 24
+			filler = 20
+		)
+
+		collector := newTraceCollector(newCapturer(&config.IntegrationLogConfig{CaptureLimit: limit}), []string{secret})
+
+		// The credential straddles the capture limit, so truncating first
+		// would leave its head behind with nothing for the value scrub to
+		// match.
+		straddling := strings.Repeat("x", filler) + secret + strings.Repeat("y", filler)
+		collector.record(integration.HTTPExchange{RequestBody: straddling, Error: straddling})
+
+		head := secret[:limit-filler]
+
+		exchange := collector.Exchanges()[0]
+		assert.NotContains(t, exchange.RequestBody, head, "No head of the credential may survive truncation in the body")
+		assert.NotContains(t, exchange.Error, head, "No head of the credential may survive truncation in the error")
+	})
+
+	t.Run("SurvivesTheBodyJSONRoundTrip", func(t *testing.T) {
+		// Go's JSON encoder escapes & < > as \uXXXX, so a credential carrying
+		// one no longer matches its own literal once the body capture has
+		// re-marshaled it.
+		const secret = "a&b<c"
+
+		collector := newTraceCollector(newCapturer(new(config.IntegrationLogConfig)), []string{secret})
+		collector.record(integration.HTTPExchange{RequestBody: `{"credential":"` + secret + `"}`})
+
+		captured := collector.Exchanges()[0].RequestBody
+		assert.NotContains(t, captured, secret, "The credential must not survive the body capture")
+		assert.NotContains(t, captured, `a\u0026b\u003cc`,
+			"The credential must not survive as the escaped form the round-trip produces")
+		assert.Contains(t, captured, integration.MaskedSecret, "The credential's position should carry the mask")
+	})
+}
+
+func TestTraceErrorCapture(t *testing.T) {
+	capture := func(message string) string {
+		collector := newTraceCollector(newCapturer(&config.IntegrationLogConfig{CaptureLimit: 32}), nil)
+		collector.record(integration.HTTPExchange{Error: message})
+
+		return collector.Exchanges()[0].Error
+	}
+
+	t.Run("BoundsOversizedError", func(t *testing.T) {
+		captured := capture(strings.Repeat("e", 200))
+
+		assert.Less(t, len(captured), 200, "An oversized error message should be bounded by the capture limit")
+		assert.Contains(t, captured, "truncated", "Truncation should be visible")
+	})
+
+	t.Run("KeepsErrorTextVerbatim", func(t *testing.T) {
+		// A message that happens to parse as JSON must not be run through the
+		// body capture, which would re-marshal it as a payload.
+		assert.Equal(t, `{"b": 1, "a": 2}`, capture(`{"b": 1, "a": 2}`),
+			"An error message is diagnostic prose and must be captured verbatim")
+	})
 }
