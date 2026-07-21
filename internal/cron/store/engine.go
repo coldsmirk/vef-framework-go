@@ -466,6 +466,20 @@ func (e *Engine) complete(fire claimedFire, runErr, ctxErr error) {
 func (e *Engine) writeOutcome(ctx context.Context, fire claimedFire, run *cron.Run) error {
 	for {
 		err := e.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
+			requeue := run.Status == cron.RunCanceled && fire.schedule.Recover
+			if requeue {
+				// The schedule may have been deleted while this run executed.
+				// Nothing resolves a request whose schedule is gone — every
+				// claim path starts from the schedule row — so re-queueing one
+				// would leak a row no reader and no cleanup ever sees again.
+				alive, err := lockScheduleAlive(ctx, tx, run.ScheduleID)
+				if err != nil {
+					return err
+				}
+
+				requeue = alive
+			}
+
 			updated, err := tx.NewUpdate().
 				Model(run).
 				Select("status", "finished_at_unix_ms", "duration_ms", "error").
@@ -483,7 +497,7 @@ func (e *Engine) writeOutcome(ctx context.Context, fire claimedFire, run *cron.R
 				return nil
 			}
 
-			if run.Status == cron.RunCanceled && fire.schedule.Recover {
+			if requeue {
 				// The run ID fences the re-queue exactly like an abandoned
 				// takeover's, so the request stays unique however often this
 				// path could repeat.
@@ -510,6 +524,31 @@ func (e *Engine) writeOutcome(ctx context.Context, fire claimedFire, run *cron.R
 		case <-time.After(outcomeRetryInterval):
 		}
 	}
+}
+
+// lockScheduleAlive locks the run's schedule row and reports whether it still
+// exists. Taking the lock before the journal write keeps the store's
+// schedule -> run -> request lock order, so a concurrent Delete either
+// commits first (and the re-queue is skipped) or waits behind this
+// transaction and then removes the request it queued.
+func lockScheduleAlive(ctx context.Context, tx orm.DB, scheduleID string) (bool, error) {
+	var id string
+
+	err := tx.NewSelect().
+		Model((*cron.Schedule)(nil)).
+		Select("id").
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(scheduleID) }).
+		ForUpdate().
+		Scan(ctx, &id)
+	if err == nil {
+		return true, nil
+	}
+
+	if result.IsRecordNotFound(err) {
+		return false, nil
+	}
+
+	return false, fmt.Errorf("lock schedule %s of canceled run: %w", scheduleID, err)
 }
 
 // trimError normalizes a failure into a bounded, valid-UTF-8 journal message.

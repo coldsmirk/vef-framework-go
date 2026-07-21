@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"math"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -72,6 +73,57 @@ func (h *EngineHarness) awaitRun(t *testing.T, scheduleID string, status cron.Ru
 	t.Helper()
 
 	return awaitRun(t, h.db, scheduleID, status)
+}
+
+// BusyError mimics the SQLite driver's write-lock contention error: the
+// message plus the result code the shared classifier trusts.
+type BusyError struct{}
+
+func (*BusyError) Error() string { return "database is locked (5) (SQLITE_BUSY)" }
+
+func (*BusyError) Code() int { return 5 }
+
+// FlakyDB makes the first failures RunInTx calls report write-lock
+// contention. commitFirst decides whether those calls still run the
+// transaction to completion — the case where the write landed and only the
+// caller's report of it failed.
+type FlakyDB struct {
+	orm.DB
+
+	failures    int32
+	commitFirst bool
+	attempts    atomic.Int32
+}
+
+func (d *FlakyDB) RunInTx(ctx context.Context, fn func(context.Context, orm.DB) error) error {
+	if d.attempts.Add(1) > d.failures {
+		return d.DB.RunInTx(ctx, fn)
+	}
+
+	if d.commitFirst {
+		if err := d.DB.RunInTx(ctx, fn); err != nil {
+			return err
+		}
+	}
+
+	return new(BusyError)
+}
+
+// canceledFire builds the claimed fire and journal row a graceful shutdown
+// hands to writeOutcome: a recoverable schedule whose run was canceled.
+func canceledFire(t *testing.T, db orm.DB) (claimedFire, *cron.Run) {
+	t.Helper()
+
+	at := time.Now().Add(-time.Minute)
+	fixture := scheduleFixture("outcome-retry", "orders.sync", at)
+	fixture.Recover = true
+	schedule := insertSchedule(t, db, fixture)
+	run := insertRunningRun(t, db, schedule, at, at)
+	run.Status = cron.RunCanceled
+	run.Error = "canceled by shutdown"
+	run.FinishedAtUnixMs = unixMillisPtr(time.Now())
+
+	return claimedFire{run: run, schedule: *schedule}, run
 }
 
 func TestEngineMarksMaintenanceContextsQuiet(t *testing.T) {
@@ -601,6 +653,127 @@ func TestEngineStopQueuesRecoveryForCanceledRecoverableRun(t *testing.T) {
 	assert.Equal(t, runs[0].ID, requests[0].SourceRunID, "The canceled run must fence its re-queue")
 	assert.Equal(t, runs[0].ScheduledAtUnixMs, requests[0].ScheduledAtUnixMs,
 		"The recovery must retain the canceled occurrence time")
+}
+
+func TestEngineWriteOutcomeRetriesLostLockRaces(t *testing.T) {
+	newEngineOver := func(db orm.DB) *Engine {
+		return NewEngine(db, fastStoreConfig(), mustRegistry(t, noopHandler("orders.sync")),
+			NewRunEventPublisher(eventtest.NewFakeBus()))
+	}
+
+	t.Run("RetriesUntilTheOutcomeLands", func(t *testing.T) {
+		db := newStoreDB(t)
+		fire, run := canceledFire(t, db)
+		flaky := &FlakyDB{DB: db, failures: 2}
+
+		require.NoError(t, newEngineOver(flaky).writeOutcome(context.Background(), fire, run),
+			"A lost lock race must be retried until the outcome lands")
+		assert.Equal(t, int32(3), flaky.attempts.Load(), "The two refused attempts must both be retried")
+
+		runs := loadRuns(t, db, run.ScheduleID)
+		require.Len(t, runs, 1, "The retry must journal exactly one outcome row")
+		assert.Equal(t, cron.RunCanceled, runs[0].Status, "The retried write must reach the terminal status")
+
+		requests := loadFireRequests(t, db, run.ScheduleID)
+		require.Len(t, requests, 1, "The retried transaction must queue exactly one recovery request")
+		assert.Equal(t, run.ID, requests[0].SourceRunID, "The canceled run must fence its re-queue")
+	})
+
+	t.Run("DiscardsTheRetryOfACommittedAttempt", func(t *testing.T) {
+		db := newStoreDB(t)
+		fire, run := canceledFire(t, db)
+		flaky := &FlakyDB{DB: db, failures: 1, commitFirst: true}
+
+		require.NoError(t, newEngineOver(flaky).writeOutcome(context.Background(), fire, run),
+			"An attempt that committed before reporting contention must still resolve")
+		assert.Equal(t, int32(2), flaky.attempts.Load(), "The reported failure must be retried once")
+
+		runs := loadRuns(t, db, run.ScheduleID)
+		require.Len(t, runs, 1, "The journal must hold exactly one outcome row")
+		assert.Equal(t, cron.RunCanceled, runs[0].Status, "The committed outcome must stand")
+
+		requests := loadFireRequests(t, db, run.ScheduleID)
+		require.Len(t, requests, 1,
+			"The retry must find the row no longer running and skip a second recovery request")
+		assert.Equal(t, run.ID, requests[0].SourceRunID, "The surviving request must carry the run fence")
+	})
+
+	t.Run("GivesUpWhenTheCompletionWindowCloses", func(t *testing.T) {
+		db := newStoreDB(t)
+		fire, run := canceledFire(t, db)
+		flaky := &FlakyDB{DB: db, failures: math.MaxInt32}
+		engine := newEngineOver(flaky)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+		defer cancel()
+
+		outcome := make(chan error, 1)
+		go func() { outcome <- engine.writeOutcome(ctx, fire, run) }()
+
+		select {
+		case err := <-outcome:
+			require.Error(t, err, "Unending contention must surface as the journal write's failure")
+		case <-time.After(5 * time.Second):
+			t.Fatal("The outcome write must give up with its context instead of retrying forever")
+		}
+
+		runs := loadRuns(t, db, run.ScheduleID)
+		require.Len(t, runs, 1, "The unwritten outcome must leave the claimed row alone")
+		assert.Equal(t, cron.RunRunning, runs[0].Status,
+			"A surrendered outcome write leaves the run running for abandoned-run recovery")
+		assert.Empty(t, loadFireRequests(t, db, run.ScheduleID),
+			"A transaction that never committed must queue no recovery request")
+	})
+}
+
+func TestEngineStopSkipsRecoveryForADeletedSchedule(t *testing.T) {
+	blocked := make(chan struct{})
+
+	db := newStoreDB(t)
+	registry := mustRegistry(t, cron.NewJobHandler("orders.sync",
+		func(ctx context.Context, _ cron.Execution) error {
+			close(blocked)
+			<-ctx.Done()
+
+			return ctx.Err()
+		}))
+	engine := NewEngine(db, fastStoreConfig(), registry, NewRunEventPublisher(eventtest.NewFakeBus()))
+	engine.drainTimeout = 100 * time.Millisecond
+	manager := NewScheduleManager(db, true, registry, engine)
+
+	engine.Start()
+	t.Cleanup(func() {
+		require.NoError(t, engine.Stop(context.Background()), "The engine should stop during cleanup")
+	})
+
+	schedule, err := manager.Create(context.Background(), cron.ScheduleSpec{
+		Name:    "sync-deleted",
+		JobName: "orders.sync",
+		Trigger: cron.Once(time.Now().Add(30 * time.Millisecond)),
+		Recover: true,
+	})
+	require.NoError(t, err, "Creating the schedule should succeed")
+
+	select {
+	case <-blocked:
+	case <-time.After(5 * time.Second):
+		t.Fatal("The handler must start before the schedule is deleted")
+	}
+
+	require.NoError(t, manager.Delete(context.Background(), "sync-deleted"),
+		"Deleting the schedule of a running fire should succeed")
+	require.NoError(t, engine.Stop(context.Background()), "The engine should cancel and journal the blocked run")
+
+	runs := loadRuns(t, db, schedule.ID)
+	require.Len(t, runs, 1, "The interrupted fire must stay journaled")
+	assert.Equal(t, cron.RunCanceled, runs[0].Status, "Shutdown interruption journals as canceled")
+
+	assert.Empty(t, loadFireRequests(t, db, schedule.ID),
+		"A recovery request for a deleted schedule is invisible to every reader and must never be written")
+
+	orphans, err := db.NewSelect().Model((*fireRequest)(nil)).Count(context.Background())
+	require.NoError(t, err, "Counting fire requests should succeed")
+	assert.Zero(t, orphans, "The store must hold no fire request at all once its schedule is gone")
 }
 
 func TestEngineStopDrainsRunningWork(t *testing.T) {
