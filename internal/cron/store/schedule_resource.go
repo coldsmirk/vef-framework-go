@@ -66,7 +66,7 @@ func (p TriggerParams) spec() (cron.TriggerSpec, error) {
 // ScheduleParams contains the create/update parameters of a schedule. On
 // update, Name addresses the schedule and NewName optionally renames it.
 type ScheduleParams struct {
-	api.StrictP
+	api.P
 
 	Name              string                 `json:"name" validate:"required"`
 	NewName           string                 `json:"newName"`
@@ -121,7 +121,7 @@ func (p ScheduleParams) spec() (cron.ScheduleSpec, error) {
 
 // ScheduleNameParams addresses one schedule by name.
 type ScheduleNameParams struct {
-	api.StrictP
+	api.P
 
 	Name string `json:"name" validate:"required"`
 }
@@ -129,7 +129,7 @@ type ScheduleNameParams struct {
 // PreviewFiresParams carries an unsaved trigger whose upcoming fire times
 // the editor wants to preview before persisting.
 type PreviewFiresParams struct {
-	api.StrictP
+	api.P
 
 	Trigger        TriggerParams `json:"trigger"`
 	StartsAtUnixMs *int64        `json:"startsAtUnixMs"`

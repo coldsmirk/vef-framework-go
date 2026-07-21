@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 
 	"github.com/coldsmirk/vef-framework-go/mapx"
 	"github.com/coldsmirk/vef-framework-go/reflectx"
@@ -35,14 +36,31 @@ func (p *Params) UnmarshalJSON(data []byte) error {
 	return unmarshalNumberPreserving(data, (*map[string]any)(p))
 }
 
-// Decode decodes params into a struct.
+// Decode decodes params into a struct. Request keys the target does not
+// declare are ignored, so a client still sending a retired field keeps
+// working; DecodeReportingUnmapped surfaces them instead of dropping them in
+// silence.
 func (p Params) Decode(out any) error {
-	return decodeMap(p, out, ErrInvalidParamsType)
+	_, err := p.DecodeReportingUnmapped(out)
+
+	return err
 }
 
-// DecodeStrict decodes params and rejects keys not represented by out.
-func (p Params) DecodeStrict(out any) error {
-	return decodeMapWithOptions(p, out, ErrInvalidParamsType, mapx.WithErrorUnused())
+// DecodeReportingUnmapped decodes exactly like Decode and additionally reports
+// the request keys the target struct does not declare, sorted. The framework's
+// request pipeline logs them once per operation, which keeps a misspelled or
+// retired field visible without failing a request older clients still send.
+func (p Params) DecodeReportingUnmapped(out any) ([]string, error) {
+	var metadata mapx.Metadata
+
+	if err := decodeMapWithOptions(p, out, ErrInvalidParamsType, mapx.WithMetadata(&metadata)); err != nil {
+		return nil, err
+	}
+
+	// Map iteration leaves Unused unordered; sort so callers can key on it.
+	slices.Sort(metadata.Unused)
+
+	return metadata.Unused, nil
 }
 
 // Meta holds API request metadata.

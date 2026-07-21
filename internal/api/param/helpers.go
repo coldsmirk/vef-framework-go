@@ -10,9 +10,8 @@ import (
 )
 
 var (
-	apiParamsType       = reflect.TypeFor[api.P]()
-	apiStrictParamsType = reflect.TypeFor[api.StrictP]()
-	apiMetaType         = reflect.TypeFor[api.M]()
+	apiParamsType = reflect.TypeFor[api.P]()
+	apiMetaType   = reflect.TypeFor[api.M]()
 
 	builtinMetaTypes = []reflect.Type{
 		reflect.TypeFor[page.Pageable](),
@@ -106,10 +105,6 @@ func searchEmbeddedFields(target reflect.Value, paramType reflect.Type) reflect.
 
 func embedsAPIParams(targetType reflect.Type) bool {
 	return embedsSentinelType(targetType, apiParamsType)
-}
-
-func embedsStrictAPIParams(targetType reflect.Type) bool {
-	return embedsSentinelType(targetType, apiStrictParamsType)
 }
 
 func embedsAPIMeta(targetType reflect.Type) bool {

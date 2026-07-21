@@ -68,7 +68,7 @@ func TestScheduleParamsRejectUnrepresentableTimeout(t *testing.T) {
 	}
 }
 
-func TestScheduleParamsDecodeIsStrictAndExact(t *testing.T) {
+func TestScheduleParamsDecode(t *testing.T) {
 	t.Run("PreservesLargeParamsInteger", func(t *testing.T) {
 		var raw api.Params
 		require.NoError(t, json.Unmarshal([]byte(`{
@@ -79,7 +79,7 @@ func TestScheduleParamsDecodeIsStrictAndExact(t *testing.T) {
 }`), &raw), "The exact schedule payload should decode")
 
 		var params ScheduleParams
-		require.NoError(t, raw.DecodeStrict(&params), "The strict schedule params should decode")
+		require.NoError(t, raw.Decode(&params), "The exact schedule params should decode")
 		spec, err := params.spec()
 		require.NoError(t, err, "The exact schedule params should convert")
 
@@ -89,19 +89,25 @@ func TestScheduleParamsDecodeIsStrictAndExact(t *testing.T) {
 			"A business integer must retain every digit before persistence")
 	})
 
+	// The Unix-millisecond rework retired the wall-clock field names, so a
+	// client that predates it still sends them. Decoding keeps working, and the
+	// retired key is reported rather than dropped in silence.
 	unknownCases := []struct {
-		name    string
-		payload string
+		name     string
+		payload  string
+		unmapped string
 	}{
 		{
 			name: "RetiredWindowField",
 			payload: `{"name":"legacy","jobName":"orders.sync",` +
 				`"trigger":{"kind":"interval","everyMs":1000},"startsAt":"2026-07-20 10:00:00"}`,
+			unmapped: "startsAt",
 		},
 		{
 			name: "RetiredTriggerField",
 			payload: `{"name":"legacy","jobName":"orders.sync",` +
 				`"trigger":{"kind":"once","at":1784532000000,"atUnixMs":1784532000000}}`,
+			unmapped: "trigger.at",
 		},
 	}
 
@@ -111,8 +117,11 @@ func TestScheduleParamsDecodeIsStrictAndExact(t *testing.T) {
 			require.NoError(t, json.Unmarshal([]byte(tt.payload), &raw), "The legacy payload should parse")
 
 			var params ScheduleParams
-			assert.Error(t, raw.DecodeStrict(&params),
-				"A strict schedule mutation must reject every unknown or retired field")
+
+			unmapped, err := raw.DecodeReportingUnmapped(&params)
+			require.NoError(t, err, "A retired field must not fail a request an older client still sends")
+			assert.Contains(t, unmapped, tt.unmapped,
+				"A retired field must be reported so the drift stays visible")
 		})
 	}
 
@@ -138,7 +147,7 @@ func TestScheduleParamsDecodeIsStrictAndExact(t *testing.T) {
 			require.NoError(t, json.Unmarshal([]byte(tt.payload), &raw), "The conflicting payload should parse")
 
 			var params ScheduleParams
-			require.NoError(t, raw.DecodeStrict(&params), "The typed fields should decode before union validation")
+			require.NoError(t, raw.Decode(&params), "The typed fields should decode before union validation")
 			_, err := params.spec()
 			require.ErrorIs(t, err, cron.ErrTriggerInvalid(""),
 				"A kind-specific zero-value field must still violate the tagged union")

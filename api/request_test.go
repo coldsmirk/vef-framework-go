@@ -124,12 +124,67 @@ func TestMetaUnmarshalJSON(t *testing.T) {
 	assert.Equal(t, int64(9007199254740993), out.Page, "meta int64 field must keep exact digits")
 }
 
-func TestParamsDecodeStrictRejectsUnknownKeys(t *testing.T) {
-	params := api.Params{"known": "value", "retired": true}
+func TestParamsDecodeReportingUnmapped(t *testing.T) {
+	t.Run("ReportsKeysTheTargetDeclaresNoFieldFor", func(t *testing.T) {
+		params := api.Params{"known": "value", "retired": true}
 
-	var out struct {
-		Known string `json:"known"`
-	}
+		var out struct {
+			Known string `json:"known"`
+		}
 
-	assert.Error(t, params.DecodeStrict(&out), "Strict params decoding must reject every unused request key")
+		unmapped, err := params.DecodeReportingUnmapped(&out)
+		require.NoError(t, err, "An undeclared key must not fail decoding")
+		assert.Equal(t, []string{"retired"}, unmapped, "The undeclared key must be reported")
+		assert.Equal(t, "value", out.Known, "The declared key must still decode")
+	})
+
+	t.Run("ReportsNestedKeysByPath", func(t *testing.T) {
+		params := api.Params{"outer": map[string]any{"known": "value", "retired": 1}}
+
+		var out struct {
+			Outer struct {
+				Known string `json:"known"`
+			} `json:"outer"`
+		}
+
+		unmapped, err := params.DecodeReportingUnmapped(&out)
+		require.NoError(t, err, "A nested undeclared key must not fail decoding")
+		assert.Equal(t, []string{"outer.retired"}, unmapped,
+			"A nested undeclared key must be reported by its path so the drift is locatable")
+	})
+
+	t.Run("SortsReportedKeys", func(t *testing.T) {
+		params := api.Params{"zeta": 1, "alpha": 2, "mid": 3}
+
+		var out struct{}
+
+		unmapped, err := params.DecodeReportingUnmapped(&out)
+		require.NoError(t, err, "Decoding into a target with no fields must not fail")
+		assert.Equal(t, []string{"alpha", "mid", "zeta"}, unmapped,
+			"Reported keys must be sorted so a caller can dedupe on a stable key")
+	})
+
+	t.Run("ReportsNothingWhenEveryKeyMaps", func(t *testing.T) {
+		params := api.Params{"known": "value"}
+
+		var out struct {
+			Known string `json:"known"`
+		}
+
+		unmapped, err := params.DecodeReportingUnmapped(&out)
+		require.NoError(t, err, "Decoding must succeed")
+		assert.Empty(t, unmapped, "A fully mapped payload must report nothing")
+	})
+
+	t.Run("DecodeIgnoresUndeclaredKeys", func(t *testing.T) {
+		params := api.Params{"known": "value", "retired": true}
+
+		var out struct {
+			Known string `json:"known"`
+		}
+
+		require.NoError(t, params.Decode(&out),
+			"Decode must ignore undeclared keys so a client sending a retired field keeps working")
+		assert.Equal(t, "value", out.Known, "The declared key must still decode")
+	})
 }
