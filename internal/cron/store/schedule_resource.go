@@ -17,8 +17,6 @@ import (
 // nextFiresPreview is how many upcoming fire times the detail view projects.
 const nextFiresPreview = 5
 
-const maxDurationMilliseconds = int64((1<<63 - 1) / time.Millisecond)
-
 // TriggerParams is the trigger section of a schedule mutation.
 type TriggerParams struct {
 	Kind     cron.TriggerKind `json:"kind" validate:"required"`
@@ -28,7 +26,12 @@ type TriggerParams struct {
 	AtUnixMs *int64           `json:"atUnixMs"`
 }
 
-// spec converts the wire form into the trigger spec.
+// spec converts the wire form into the trigger spec. The kind-field conflict
+// rule is deliberately stricter than cron.TriggerSpec.hasFieldConflict, which
+// owns the same rule for Go callers: a wire request that names a field of
+// another kind is a client mistake even when it carries that kind's zero
+// value, so presence is the test here where the spec tests the value. Keep
+// the two in lockstep whenever the trigger kinds change.
 func (p TriggerParams) spec() (cron.TriggerSpec, error) {
 	conflict := false
 	switch p.Kind {
@@ -86,7 +89,7 @@ func (p ScheduleParams) spec() (cron.ScheduleSpec, error) {
 		return cron.ScheduleSpec{}, cron.ErrScheduleInvalid(ErrScheduleTimeoutNegative.Error())
 	}
 
-	if p.TimeoutMs > maxDurationMilliseconds {
+	if p.TimeoutMs > cron.MaxDurationMilliseconds {
 		return cron.ScheduleSpec{}, cron.ErrScheduleInvalid(ErrScheduleTimeoutTooLong.Error())
 	}
 
