@@ -120,8 +120,39 @@ func TestAuthManagerAuthenticate(t *testing.T) {
 				require.True(t, ok, "The rejection should be a result.Error")
 				assert.Equal(t, security.ErrCodePrincipalInvalid, resErr.Code,
 					"The rejection should carry the principal-invalid code")
+				assert.Equal(t, security.ErrReservedPrincipal.Message, resErr.Message,
+					"The outward message must stay the reserved-principal one")
+				assert.Equal(t, security.ErrReservedPrincipal.Status, resErr.Status,
+					"The outward status must stay the reserved-principal one")
+
+				// The internal marker is what lets the login path tell this
+				// server-side fault from a caller's bad credential: both share
+				// ErrCodePrincipalInvalid, and result.Error.Is compares codes alone.
+				assert.ErrorIs(t, err, errReservedPrincipalRejected,
+					"The rejection should carry the internal reserved-principal marker")
+				assert.ErrorIs(t, err, security.ErrReservedPrincipal,
+					"The rejection should stay matchable as the outward sentinel")
 			})
 		}
+
+		t.Run("CountableRejectionsStayUnmarked", func(t *testing.T) {
+			// ErrPrincipalInvalid shares the reserved sentinel's business code, so
+			// the marker — not the code — must be the discriminator.
+			auth := new(MockAuthenticator)
+			auth.On("Supports", "password").Return(true)
+			auth.On("Authenticate", mock.Anything, mock.Anything).
+				Return(nil, security.ErrPrincipalInvalid("username must not be empty"))
+
+			manager := NewAuthManager([]security.Authenticator{auth})
+
+			_, err := manager.Authenticate(ctx, security.Authentication{
+				Type:      "password",
+				Principal: "",
+			})
+			require.Error(t, err, "An invalid principal should be rejected")
+			assert.NotErrorIs(t, err, errReservedPrincipalRejected,
+				"A caller-caused principal rejection must not be marked as a framework fault")
+		})
 	})
 
 	t.Run("MultipleAuthenticatorsSelectsCorrect", func(t *testing.T) {

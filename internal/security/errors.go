@@ -2,6 +2,14 @@ package security
 
 import "errors"
 
+// errReservedPrincipalRejected marks a reserved-identity rejection raised by the
+// framework's own gate rather than by a caller's credential. The outward error
+// stays security.ErrReservedPrincipal, whose business code is shared with the
+// legitimately countable ErrPrincipalInvalid failures — and result.Error.Is
+// compares codes alone — so the login path unwraps this sentinel to keep a
+// buggy authenticator from consuming the caller's brute-force budget.
+var errReservedPrincipalRejected = errors.New("authenticator resolved a framework-reserved principal")
+
 // Configuration faults raised while building the config-backed IP whitelist
 // loader; they surface as fx start-up errors, never through the API.
 var (

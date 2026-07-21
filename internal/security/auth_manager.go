@@ -2,6 +2,7 @@ package security
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -40,12 +41,15 @@ func (am *AuthenticatorAuthManager) Authenticate(ctx context.Context, authentica
 	}
 
 	// An authenticator is an application extension point: never let one mint a
-	// framework-reserved identity (see security.Principal.IsReserved).
+	// framework-reserved identity (see security.Principal.IsReserved). The
+	// internal sentinel rides alongside the outward error so callers can tell a
+	// server-side fault from a caller's bad credential; result.AsErr still
+	// extracts security.ErrReservedPrincipal, leaving the response unchanged.
 	if principal == nil || principal.IsReserved() {
 		logger.Errorf("Authentication rejected: authenticator %T returned a nil or framework-reserved principal",
 			authenticator)
 
-		return nil, security.ErrReservedPrincipal
+		return nil, fmt.Errorf("%w: %w", errReservedPrincipalRejected, security.ErrReservedPrincipal)
 	}
 
 	return principal, nil

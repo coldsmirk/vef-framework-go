@@ -3,6 +3,7 @@ package security
 import (
 	"cmp"
 	"context"
+	"errors"
 	"slices"
 
 	"github.com/coldsmirk/go-collections"
@@ -143,7 +144,15 @@ func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
 		Credentials: params.Credentials,
 	})
 	if err != nil {
-		a.guardRecordFailure(ctx, attempt)
+		// A reserved-identity rejection means an authenticator resolved a
+		// framework-internal identity: the credential may well have been correct,
+		// so the fault is the authenticator's, not the caller's, and counting it
+		// would let a buggy extension lock the user out. Audited but not counted,
+		// exactly like the analogous gate in ResolveChallenge.
+		if !errors.Is(err, errReservedPrincipalRejected) {
+			a.guardRecordFailure(ctx, attempt)
+		}
+
 		a.publishLoginFailure(ctx, params.Type, params.Principal, err)
 
 		return err

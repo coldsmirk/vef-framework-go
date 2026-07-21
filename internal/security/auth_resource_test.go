@@ -2274,3 +2274,165 @@ func (s *LockoutFlowTestSuite) TestChallengeGuessesTripLockout() {
 func TestLockoutFlow(t *testing.T) {
 	suite.Run(t, new(LockoutFlowTestSuite))
 }
+
+// --- Reserved-principal lockout accounting ---
+
+// ReservedPrincipalAuthenticator stands in for a host authenticator with a bug:
+// it accepts the caller's (correct) credential but resolves a framework-reserved
+// identity, which the AuthManager must refuse.
+type ReservedPrincipalAuthenticator struct{}
+
+func (*ReservedPrincipalAuthenticator) Supports(authType string) bool {
+	return authType == reservedProbeAuthType
+}
+
+func (*ReservedPrincipalAuthenticator) Authenticate(context.Context, security.Authentication) (*security.Principal, error) {
+	return security.PrincipalSystem, nil
+}
+
+// RejectingAuthenticator is the control: an ordinary bad-credential rejection.
+type RejectingAuthenticator struct{}
+
+func (*RejectingAuthenticator) Supports(authType string) bool {
+	return authType == rejectingProbeAuthType
+}
+
+func (*RejectingAuthenticator) Authenticate(context.Context, security.Authentication) (*security.Principal, error) {
+	return nil, security.ErrCredentialsInvalid(i18n.T("security_invalid_credentials"))
+}
+
+const (
+	reservedProbeAuthType  = "reserved_probe"
+	rejectingProbeAuthType = "rejecting_probe"
+)
+
+// ReservedPrincipalLockoutTestSuite drives the real AuthManager (not a mock) so
+// the reserved-identity gate that produces the rejection is the one under test.
+type ReservedPrincipalLockoutTestSuite struct {
+	apptest.Suite
+
+	publisher *MockPublisher
+}
+
+func (s *ReservedPrincipalLockoutTestSuite) SetupSuite() {
+	s.publisher = new(MockPublisher)
+	s.publisher.On("Publish", mock.Anything).Maybe()
+
+	s.SetupApp(
+		fx.Supply(
+			fx.Annotate(
+				new(ReservedPrincipalAuthenticator),
+				fx.As(new(security.Authenticator)),
+				fx.ResultTags(`group:"vef:security:authenticators"`),
+			),
+		),
+		fx.Supply(
+			fx.Annotate(
+				new(RejectingAuthenticator),
+				fx.As(new(security.Authenticator)),
+				fx.ResultTags(`group:"vef:security:authenticators"`),
+			),
+		),
+		// PasswordAuthenticator needs a UserLoader in the graph even though these
+		// probes never reach it.
+		fx.Supply(
+			fx.Annotate(
+				new(MockUserLoader),
+				fx.As(new(security.UserLoader)),
+			),
+		),
+		fx.Replace(
+			fx.Annotate(
+				s.publisher,
+				fx.As(new(event.Bus)),
+			),
+		),
+		fx.Replace(
+			&config.SecurityConfig{
+				Secret:           testJWTSecret,
+				TokenExpires:     24 * time.Hour,
+				RefreshNotBefore: 1 * time.Millisecond,
+				LoginRateLimit:   1000,
+				RefreshRateLimit: 1000,
+				Lockout:          config.LockoutConfig{MaxFailures: 2},
+			},
+		),
+	)
+}
+
+func (s *ReservedPrincipalLockoutTestSuite) TearDownSuite() {
+	s.TearDownApp()
+}
+
+func (*ReservedPrincipalLockoutTestSuite) loginRequest(authType, principal string) api.Request {
+	return api.Request{
+		Identifier: api.Identifier{
+			Resource: "security/auth",
+			Action:   "login",
+			Version:  "v1",
+		},
+		Params: map[string]any{
+			"type":        authType,
+			"principal":   principal,
+			"credentials": "password123",
+		},
+	}
+}
+
+// TestReservedPrincipalLockoutAccounting pins which rejections consume the
+// caller's brute-force budget. A reserved-identity rejection is a fault in the
+// host's authenticator — the caller may have typed the correct password — so
+// amplifying it into a lockout would let a server-side bug lock users out.
+// Genuine credential failures must keep counting, which is what the control
+// subtest guards; both rejections carry ErrCodePrincipalInvalid-class codes that
+// result.Error.Is cannot tell apart, so the distinction lives inside the error.
+func (s *ReservedPrincipalLockoutTestSuite) TestReservedPrincipalLockoutAccounting() {
+	s.Run("DoesNotCountAReservedPrincipalRejection", func() {
+		s.publisher.ClearPublishedEvents()
+
+		// One more attempt than the configured threshold: with the rejection
+		// counted, the last one would come back 429.
+		for attempt := range 3 {
+			resp := s.MakeRPCRequest(s.loginRequest(reservedProbeAuthType, "buggy-authenticator-user"))
+			s.Equal(401, resp.StatusCode,
+				"Attempt %d: a reserved-identity rejection must stay a 401, never escalate to a lockout", attempt+1)
+
+			body := s.ReadResult(resp)
+			s.Equal(security.ErrCodePrincipalInvalid, body.Code,
+				"Attempt %d: the outward code must stay the principal-invalid one", attempt+1)
+			s.Nil(body.Data, "Attempt %d: a refused login must carry no payload", attempt+1)
+		}
+
+		events := s.publisher.GetPublishedEvents()
+		s.Len(events, 3, "Every rejection must still be audited, even though none is counted")
+
+		for _, evt := range events {
+			loginEvent, ok := evt.(*security.LoginEvent)
+			s.Require().True(ok, "Published event should be a LoginEvent")
+			s.False(loginEvent.IsOk, "The audit event should record a failed login")
+			s.Equal(security.ErrCodePrincipalInvalid, loginEvent.ErrorCode,
+				"The audit event should carry the principal-invalid code")
+		}
+	})
+
+	s.Run("StillCountsWrongCredentials", func() {
+		for attempt := range 2 {
+			resp := s.MakeRPCRequest(s.loginRequest(rejectingProbeAuthType, "guessing-user"))
+			s.Equal(401, resp.StatusCode, "Attempt %d: a wrong credential below the threshold returns 401", attempt+1)
+
+			body := s.ReadResult(resp)
+			s.Equal(security.ErrCodeCredentialsInvalid, body.Code,
+				"Attempt %d: the credential error should surface below the threshold", attempt+1)
+		}
+
+		resp := s.MakeRPCRequest(s.loginRequest(rejectingProbeAuthType, "guessing-user"))
+		s.Equal(429, resp.StatusCode, "Genuine credential failures must still trip the lockout")
+
+		body := s.ReadResult(resp)
+		s.Equal(security.ErrCodeAccountLocked, body.Code, "A tripped lockout should return the account-locked code")
+	})
+}
+
+func TestReservedPrincipalLockout(t *testing.T) {
+	suite.Run(t, new(ReservedPrincipalLockoutTestSuite))
+}
