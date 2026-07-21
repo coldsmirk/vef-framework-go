@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/cron"
+	"github.com/coldsmirk/vef-framework-go/internal/sqlmigration"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
@@ -79,7 +80,7 @@ func (e *Engine) sweepAbandoned(ctx context.Context) {
 			return
 		}
 
-		if isLockContention(err) {
+		if sqlmigration.IsBusyContention(err) {
 			logger.Warnf("Recovery sweep lost a write race, retrying next tick: %v", err)
 
 			return

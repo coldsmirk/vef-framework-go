@@ -5,11 +5,11 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/cron"
+	"github.com/coldsmirk/vef-framework-go/internal/sqlmigration"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -189,8 +189,10 @@ func (c *claimer) claimDueBatch(ctx context.Context, limit int) (claimBatch, err
 	})
 	if err != nil {
 		// The transaction rolled back whole: nothing fired, nothing
-		// advanced; the next tick retries.
-		if isLockContention(err) {
+		// advanced; the next tick retries. SQLite is the only dialect that
+		// produces contention here — row-locking dialects partition the due
+		// rows up front with FOR UPDATE SKIP LOCKED.
+		if sqlmigration.IsBusyContention(err) {
 			logger.Warnf("Claim lost a write race, retrying next tick: %v", err)
 
 			return claimBatch{}, nil
@@ -408,21 +410,6 @@ func mergeFireWork(
 	})
 
 	return work
-}
-
-// isLockContention reports a benign claim-race loss: another writer held the
-// store while the claim transaction tried to write. SQLite surfaces this as
-// SQLITE_BUSY (or SQLITE_LOCKED under a shared cache) even inside the busy
-// timeout — a snapshot that went stale must not wait for the writer.
-// Row-locking dialects never produce it; FOR UPDATE SKIP LOCKED partitions
-// the due rows up front. migration.isSQLiteBusy classifies the same driver
-// errors for the migration lock; keep the two vocabularies aligned.
-func isLockContention(err error) bool {
-	message := err.Error()
-
-	return strings.Contains(message, "is locked") ||
-		strings.Contains(message, "SQLITE_BUSY") ||
-		strings.Contains(message, "SQLITE_LOCKED")
 }
 
 // newRunRow materializes one claimed fire into its journal row: running when

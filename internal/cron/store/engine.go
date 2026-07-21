@@ -11,6 +11,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/cron"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
+	"github.com/coldsmirk/vef-framework-go/internal/sqlmigration"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -496,7 +497,7 @@ func (e *Engine) writeOutcome(ctx context.Context, fire claimedFire, run *cron.R
 
 			return nil
 		})
-		if err == nil || !isLockContention(err) {
+		if err == nil || !sqlmigration.IsBusyContention(err) {
 			return err
 		}
 

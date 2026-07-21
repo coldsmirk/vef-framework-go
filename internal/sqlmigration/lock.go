@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/config"
@@ -134,7 +133,7 @@ func withSQLiteLock(
 ) error {
 	for {
 		err := attemptSQLiteLocked(ctx, db, name, fn)
-		if err == nil || !isSQLiteBusy(err) {
+		if err == nil || !IsBusyContention(err) {
 			return err
 		}
 
@@ -214,18 +213,6 @@ func suspendSQLiteBusyTimeout(ctx context.Context, conn orm.DB) (func(*error), e
 			appendCleanupError(resultErr, fmt.Errorf("restore busy timeout: %w", err))
 		}
 	}, nil
-}
-
-// isSQLiteBusy reports the driver's lock contention error anywhere in the
-// attempt: acquiring the pooled connection (a fresh connection's DSN pragmas
-// can contend with the lock holder), BEGIN IMMEDIATE, or the commit. A
-// shared-cache database reports SQLITE_LOCKED instead of SQLITE_BUSY.
-func isSQLiteBusy(err error) bool {
-	message := err.Error()
-
-	return strings.Contains(message, "is locked") ||
-		strings.Contains(message, "SQLITE_BUSY") ||
-		strings.Contains(message, "SQLITE_LOCKED")
 }
 
 func mysqlLockResult(ctx context.Context, db orm.DB, query, name string) (sql.NullInt64, error) {
