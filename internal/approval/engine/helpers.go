@@ -479,7 +479,7 @@ func resolveDelegationChain(ctx context.Context, db orm.DB, userID, flowID, flow
 
 		if err := db.NewSelect().
 			Model(&delegations).
-			Select("delegatee_id", "start_time", "end_time", "flow_category_id", "flow_id").
+			Select("delegatee_id", "starts_at", "ends_at", "flow_category_id", "flow_id").
 			Where(func(cb orm.ConditionBuilder) {
 				cb.Equals("delegator_id", currentID).
 					IsTrue("is_active")
@@ -523,11 +523,11 @@ func matchDelegation(delegations []approval.Delegation, now timex.DateTime, flow
 	for i := range delegations {
 		d := &delegations[i]
 
-		if !d.StartTime.IsZero() && now.Before(d.StartTime) {
+		if !d.StartsAt.IsZero() && now.Before(d.StartsAt) {
 			continue
 		}
 
-		if !d.EndTime.IsZero() && now.After(d.EndTime) {
+		if !d.EndsAt.IsZero() && now.After(d.EndsAt) {
 			continue
 		}
 

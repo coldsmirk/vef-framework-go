@@ -86,8 +86,8 @@ func (s *DelegationOwnershipTestSuite) TestDelegationOwnership() {
 				"id":          "d-reassign",
 				"delegatorId": "victim", // attacker attempts to reassign ownership
 				"delegateeId": "carol",  // a legitimate field change in the same request
-				"startTime":   delegationStart,
-				"endTime":     delegationEnd,
+				"startsAt":    delegationStart,
+				"endsAt":      delegationEnd,
 			},
 		}, ownerToken)
 
@@ -108,8 +108,8 @@ func (s *DelegationOwnershipTestSuite) TestDelegationOwnership() {
 				"id":          "d-update",
 				"delegatorId": "alice",
 				"delegateeId": "mallory-pick",
-				"startTime":   delegationStart,
-				"endTime":     delegationEnd,
+				"startsAt":    delegationStart,
+				"endsAt":      delegationEnd,
 			},
 		}, otherToken)
 
@@ -140,8 +140,8 @@ func (s *DelegationOwnershipTestSuite) TestDelegationOwnership() {
 				"id":          "d-legit",
 				"delegatorId": "alice",
 				"delegateeId": "dave",
-				"startTime":   delegationStart,
-				"endTime":     delegationEnd,
+				"startsAt":    delegationStart,
+				"endsAt":      delegationEnd,
 			},
 		}, ownerToken)
 
@@ -162,8 +162,8 @@ func (s *DelegationOwnershipTestSuite) TestDelegationOwnership() {
 				"id":          "d-admin",
 				"delegatorId": "frank",
 				"delegateeId": "grace",
-				"startTime":   delegationStart,
-				"endTime":     delegationEnd,
+				"startsAt":    delegationStart,
+				"endsAt":      delegationEnd,
 			},
 		}, adminToken)
 
@@ -179,8 +179,8 @@ func (s *DelegationOwnershipTestSuite) seedDelegation(id, delegator, delegatee s
 	deleg := &approval.Delegation{
 		DelegatorID: delegator,
 		DelegateeID: delegatee,
-		StartTime:   timex.Now(),
-		EndTime:     timex.Now().AddHours(24),
+		StartsAt:    timex.Now(),
+		EndsAt:      timex.Now().AddHours(24),
 		IsActive:    true,
 	}
 	deleg.ID = id
@@ -217,10 +217,10 @@ func (s *DelegationOwnershipTestSuite) TestDelegationCreateRequiresTimeWindow() 
 		Params: map[string]any{
 			"delegatorId": "tim",
 			"delegateeId": "tom",
-			"endTime":     delegationEnd,
+			"endsAt":      delegationEnd,
 		},
 	}, token)
 
 	s.Require().Equal(http.StatusBadRequest, resp.StatusCode,
-		"create without startTime must fail validation instead of persisting a zero-dated window")
+		"create without startsAt must fail validation instead of persisting a zero-dated window")
 }

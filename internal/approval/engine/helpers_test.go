@@ -135,14 +135,14 @@ func TestMatchDelegation(t *testing.T) {
 		{
 			name: "ExpiredDelegation",
 			delegations: []approval.Delegation{
-				{DelegateeID: "d1", EndTime: past},
+				{DelegateeID: "d1", EndsAt: past},
 			},
 			expectedID: "",
 		},
 		{
 			name: "NotStartedDelegation",
 			delegations: []approval.Delegation{
-				{DelegateeID: "d1", StartTime: future},
+				{DelegateeID: "d1", StartsAt: future},
 			},
 			expectedID: "",
 		},

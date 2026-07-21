@@ -494,8 +494,8 @@ type Delegation struct {
 	DelegateeID    string         `json:"delegateeId" bun:"delegatee_id"`
 	FlowCategoryID *string        `json:"flowCategoryId" bun:"flow_category_id,nullzero"`
 	FlowID         *string        `json:"flowId" bun:"flow_id,nullzero"`
-	StartTime      timex.DateTime `json:"startTime" bun:"start_time"`
-	EndTime        timex.DateTime `json:"endTime" bun:"end_time"`
+	StartsAt       timex.DateTime `json:"startsAt" bun:"starts_at"`
+	EndsAt         timex.DateTime `json:"endsAt" bun:"ends_at"`
 	IsActive       bool           `json:"isActive" bun:"is_active"`
 	Reason         *string        `json:"reason" bun:"reason,nullzero"`
 }

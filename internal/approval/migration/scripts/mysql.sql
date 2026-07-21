@@ -439,8 +439,8 @@ CREATE TABLE IF NOT EXISTS apv_delegation (
     delegatee_id VARCHAR(32) NOT NULL COMMENT 'Delegatee',
     flow_category_id VARCHAR(32) COMMENT 'Category',
     flow_id VARCHAR(32) COMMENT 'Flow',
-    start_time DATETIME NOT NULL COMMENT 'Start',
-    end_time DATETIME NOT NULL COMMENT 'End',
+    starts_at DATETIME NOT NULL COMMENT 'Start',
+    ends_at DATETIME NOT NULL COMMENT 'End',
     is_active BOOLEAN NOT NULL DEFAULT true COMMENT 'Active',
     reason VARCHAR(256) COMMENT 'Reason',
     CONSTRAINT pk_apv_delegation PRIMARY KEY (id),
@@ -448,11 +448,11 @@ CREATE TABLE IF NOT EXISTS apv_delegation (
         REFERENCES apv_flow_category(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_apv_delegation__flow_id FOREIGN KEY (flow_id)
         REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT ck_apv_delegation__time_range CHECK (start_time < end_time),
+    CONSTRAINT ck_apv_delegation__time_range CHECK (starts_at < ends_at),
     CONSTRAINT ck_apv_delegation__no_self CHECK (delegator_id != delegatee_id),
     -- delegatee index: "my received delegations" (reserved); delegator index:
     -- delegation chain resolution in engine (active use)
-    INDEX idx_apv_delegation__delegatee_id_is_active_end_time (delegatee_id, is_active, end_time),
+    INDEX idx_apv_delegation__delegatee_id_is_active_ends_at (delegatee_id, is_active, ends_at),
     INDEX idx_apv_delegation__delegator_id_is_active (delegator_id, is_active)
 ) COMMENT 'Delegation';
 
