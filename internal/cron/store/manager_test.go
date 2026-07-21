@@ -280,6 +280,74 @@ func (s *ManagerTestSuite) TestUpdate() {
 		s.Equal(overdue, *updated.NextFireAtUnixMs, "A non-timing edit must not move an overdue cursor")
 	})
 
+	s.Run("RejectsATimingEditThatWouldKillTheSchedule", func() {
+		created, err := s.manager.Create(s.ctx(), s.validSpec("kept-alive"))
+		s.Require().NoError(err, "The fixture create should succeed")
+		s.Require().NotNil(created.NextFireAtUnixMs, "The fixture should be armed")
+		cursor := *created.NextFireAtUnixMs
+
+		spent := s.validSpec("kept-alive")
+		spent.Trigger = cron.Once(s.now.Add(-time.Hour))
+
+		_, err = s.manager.Update(s.ctx(), "kept-alive", spent)
+		s.Require().ErrorIs(err, cron.ErrScheduleInvalid(""),
+			"An edit whose trigger yields no future occurrence would leave the schedule enabled but dead")
+
+		expired := s.validSpec("kept-alive")
+		ends := s.now.Add(-time.Minute)
+		expired.EndsAt = &ends
+
+		_, err = s.manager.Update(s.ctx(), "kept-alive", expired)
+		s.Require().ErrorIs(err, cron.ErrScheduleInvalid(""),
+			"An edit that closes the window in the past must be refused too")
+
+		unchanged, err := s.manager.Get(s.ctx(), "kept-alive")
+		s.Require().NoError(err, "The schedule must still load")
+		s.Require().NotNil(unchanged.NextFireAtUnixMs, "The refused edits must roll back whole")
+		s.Equal(cursor, *unchanged.NextFireAtUnixMs, "The live cursor must survive a refused edit")
+	})
+
+	s.Run("RejectsEnablingAScheduleThatWouldNeverFire", func() {
+		disabled := false
+		spec := s.validSpec("dormant-spent")
+		spec.Trigger = cron.Once(s.now.Add(-time.Hour))
+		spec.Enabled = &disabled
+
+		_, err := s.manager.Create(s.ctx(), spec)
+		s.Require().NoError(err, "A disabled schedule carries no cursor and stays creatable")
+
+		spec.Enabled = nil
+
+		_, err = s.manager.Update(s.ctx(), "dormant-spent", spec)
+		s.Require().ErrorIs(err, cron.ErrScheduleInvalid(""),
+			"Arming a schedule whose trigger is already spent must be refused")
+	})
+
+	s.Run("NonTimingEditReachesASpentSchedule", func() {
+		fireAt := s.now.Add(time.Hour)
+		spec := s.validSpec("spent-once")
+		spec.Trigger = cron.Once(fireAt)
+
+		created, err := s.manager.Create(s.ctx(), spec)
+		s.Require().NoError(err, "The fixture create should succeed")
+
+		// The engine spends a one-shot by clearing the cursor after it fires.
+		created.NextFireAtUnixMs = nil
+		_, err = s.db.NewUpdate().Model(created).
+			Select("next_fire_at_unix_ms").
+			WherePK().
+			Exec(s.ctx())
+		s.Require().NoError(err, "Spending the one-shot should succeed")
+
+		renamed := s.validSpec("spent-once-renamed")
+		renamed.Trigger = cron.Once(fireAt)
+		renamed.Params = map[string]any{"region": "west"}
+
+		updated, err := s.manager.Update(s.ctx(), "spent-once", renamed)
+		s.Require().NoError(err, "A spent schedule must stay editable so operators can rename or re-point it")
+		s.Nil(updated.NextFireAtUnixMs, "An edit that leaves the timing alone must not arm a spent schedule")
+	})
+
 	s.Run("DisableThroughUpdatePreservesThePauseGap", func() {
 		created, err := s.manager.Create(s.ctx(), s.validSpec("update-pause"))
 		s.Require().NoError(err, "The fixture create should succeed")

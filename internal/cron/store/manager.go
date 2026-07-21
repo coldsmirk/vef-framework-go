@@ -116,6 +116,15 @@ func (m *scheduleManager) Update(ctx context.Context, name string, spec cron.Sch
 		// had a cursor is armed only when it becomes enabled.
 		if timingChanged || (updated.IsEnabled && !current.IsEnabled && current.NextFireAtUnixMs == nil) {
 			m.refreshNextFire(updated, now)
+
+			// This edit recomputed the cursor and the trigger yielded nothing:
+			// persisting it would leave the schedule enabled but dead, exactly
+			// what Create refuses. The check is scoped to the recomputation so
+			// an edit that never touched the timing still reaches a spent
+			// schedule — renaming or re-pointing one stays possible.
+			if updated.IsEnabled && updated.NextFireAtUnixMs == nil {
+				return cron.ErrScheduleInvalid(ErrScheduleNeverFires.Error())
+			}
 		}
 
 		if _, err := tx.NewUpdate().Model(updated).WherePK().Exec(ctx); err != nil {
