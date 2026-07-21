@@ -459,7 +459,9 @@ func TestClaimDue(t *testing.T) {
 
 // TestClaimContention proves the exactly-once claim across every supported
 // dialect: two nodes race for the same occurrences round after round, and
-// each occurrence must be claimed by exactly one of them.
+// each occurrence must be claimed by exactly one of them. Every round races
+// both lanes — the regular cursor and a durable manual request — so the
+// request lane's consume-once guarantee is covered under real contention too.
 func TestClaimContention(t *testing.T) {
 	testx.ForEachDB(t, func(t *testing.T, env *testx.DBEnv) {
 		require.NoError(t, migration.Migrate(env.Ctx, env.DB, env.DS.Kind),
@@ -482,6 +484,16 @@ func TestClaimContention(t *testing.T) {
 
 		for round := range rounds {
 			now := base.Add(time.Duration(round)*time.Second + 100*time.Millisecond)
+
+			// The manual fire carries a logical time of its own, distinct from
+			// every regular occurrence, so a double claim cannot hide behind a
+			// shared key.
+			insertFireRequest(t, env.DB, &fireRequest{
+				ScheduleID:        schedule.ID,
+				Kind:              fireRequestManual,
+				ScheduledAtUnixMs: now.Add(300 * time.Millisecond).UnixMilli(),
+			})
+
 			claimCtx, cancel := context.WithTimeout(env.Ctx, 5*time.Second)
 
 			var wg sync.WaitGroup
@@ -516,9 +528,10 @@ func TestClaimContention(t *testing.T) {
 			}
 		}
 
-		require.Len(t, claimed, rounds, "Every occurrence must be claimed exactly once")
+		require.Len(t, claimed, 2*rounds,
+			"Every regular occurrence and every manual request must be claimed exactly once")
 
-		seen := make(map[int64]string, rounds)
+		seen := make(map[int64]string, 2*rounds)
 		for _, run := range claimed {
 			key := run.ScheduledAtUnixMs
 			previous, duplicated := seen[key]
@@ -528,7 +541,9 @@ func TestClaimContention(t *testing.T) {
 		}
 
 		runs := loadRuns(t, env.DB, schedule.ID)
-		assert.Len(t, runs, rounds, "The journal must hold exactly one row per occurrence")
+		assert.Len(t, runs, 2*rounds, "The journal must hold exactly one row per occurrence")
+		assert.Empty(t, loadFireRequests(t, env.DB, schedule.ID),
+			"Every contended manual request must be consumed exactly once")
 	})
 }
 
