@@ -474,6 +474,30 @@ func (s *ModuleTestSuite) TestInboundDelivery() {
 			"The credential header value must be encrypted at rest via the sensitive-all wildcard")
 	})
 
+	s.Run("PresentedCredentialScrubbedFromTrace", func() {
+		logs := s.findLogs("lab.result_received")
+		s.Require().NotEmpty(logs, "The delivery should be logged in mode=all")
+
+		captured := false
+
+		for _, entry := range logs {
+			trace, err := json.Marshal(entry.HTTPTrace)
+			s.Require().NoError(err, "The recorded trace should marshal")
+			s.NotContains(string(trace), "cb-key-1",
+				"A presented inbound credential must never reach the invocation log")
+
+			for _, exchange := range entry.HTTPTrace {
+				if value, ok := exchange.RequestHeaders["x-api-key"]; ok {
+					captured = true
+
+					s.Equal(integration.MaskedSecret, value, "The credential header must be captured masked")
+				}
+			}
+		}
+
+		s.True(captured, "The credential header must actually reach the capture, otherwise the scrubbing assertion is vacuous")
+	})
+
 	s.Run("WrongKeyRejectedUniformly", func() {
 		_, err := s.receiver.Receive(s.T().Context(), inboundRequest("lis-in", "lab.result_received",
 			`{"rid":"R-x"}`, map[string]string{"x-api-key": "wrong"}))
