@@ -106,6 +106,10 @@ func decide(schedule *cron.Schedule, now time.Time, misfireThreshold time.Durati
 	// run at the oldest due occurrence; the rest of the gap is missed.
 	decision := fireDecision{fire: true, scheduledAt: due, missed: overdue, next: next}
 	if overdue > 0 {
+		// The count came from the same trigger, so Next resolves the first
+		// missed occurrence. The due one is the honest fallback if it ever
+		// does not: journaling the zero instant would persist year 1.
+		decision.missedFrom = due
 		if first, ok := trigger.Next(due, anchor); ok {
 			decision.missedFrom = first
 		}
