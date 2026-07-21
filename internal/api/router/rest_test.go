@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/api"
+	"github.com/coldsmirk/vef-framework-go/security"
 )
 
 // TestParseAction covers the action-string → (method, subPath) splitting logic.
@@ -220,6 +221,55 @@ func TestExtractMeta(t *testing.T) {
 
 			// No extra keys should be present beyond what's expected.
 			assert.Len(t, capturedMeta, len(tt.expectedMeta), "meta map should contain exactly the expected keys")
+		})
+	}
+}
+
+func TestExtractQueryParams(t *testing.T) {
+	tests := []struct {
+		name           string
+		query          string
+		expectedParams map[string]any
+	}{
+		{
+			name:           "BusinessQueryReachesParams",
+			query:          "keyword=test&page=1",
+			expectedParams: map[string]any{"keyword": "test", "page": "1"},
+		},
+		{
+			name:           "ReservedKeyIsSkipped",
+			query:          security.QueryKeyAccessToken + "=secret-token",
+			expectedParams: map[string]any{},
+		},
+		{
+			name:           "ReservedKeyIsSkippedBesideBusinessKeys",
+			query:          "keyword=test&" + security.QueryKeyAccessToken + "=secret-token",
+			expectedParams: map[string]any{"keyword": "test"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedParams api.Params
+
+			app := fiber.New()
+			app.Get("/test", func(ctx fiber.Ctx) error {
+				r := &REST{}
+				req := &api.Request{Params: make(api.Params)}
+				r.extractQueryParams(ctx, req)
+				capturedParams = req.Params
+
+				return ctx.SendStatus(fiber.StatusOK)
+			})
+
+			httpReq := httptest.NewRequestWithContext(context.Background(), fiber.MethodGet, "/test?"+tt.query, nil)
+
+			resp, err := app.Test(httpReq)
+			require.NoError(t, err, "fiber app.Test should not error")
+			require.NotNil(t, resp, "response should not be nil")
+
+			assert.Equal(t, tt.expectedParams, map[string]any(capturedParams),
+				"a framework-reserved query key must never reach the business parameter space")
 		})
 	}
 }

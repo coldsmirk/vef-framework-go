@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/coldsmirk/go-collections"
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/coldsmirk/vef-framework-go/api"
@@ -13,6 +14,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/fiberx"
 	"github.com/coldsmirk/vef-framework-go/internal/api/middleware"
 	"github.com/coldsmirk/vef-framework-go/internal/api/shared"
+	"github.com/coldsmirk/vef-framework-go/security"
 )
 
 const (
@@ -137,9 +139,21 @@ func (*REST) extractPathParams(ctx fiber.Ctx, req *api.Request) {
 	}
 }
 
-// extractQueryParams extracts query parameters from the URL.
+// reservedQueryKeys are framework-level query parameters the request pipeline
+// consumes itself: authentication reads them straight off the fiber context,
+// never from the decoded parameters. Copying them into the business parameter
+// space would make every params struct carry a field it has no use for, and
+// would leave the unmapped-key report unable to tell drift from plumbing.
+var reservedQueryKeys = collections.NewHashSetFrom(security.QueryKeyAccessToken)
+
+// extractQueryParams extracts query parameters from the URL, skipping the keys
+// the framework reserves for itself.
 func (*REST) extractQueryParams(ctx fiber.Ctx, req *api.Request) {
 	for key, value := range ctx.Queries() {
+		if reservedQueryKeys.Contains(key) {
+			continue
+		}
+
 		req.Params[key] = value
 	}
 }
