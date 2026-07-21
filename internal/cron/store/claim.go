@@ -42,10 +42,18 @@ type fireWork struct {
 }
 
 // claimer claims regular schedule occurrences and explicit fire requests.
-// The transaction locks schedule rows first, then request rows, advances any
-// regular cursors, consumes only requests whose outcome is journaled, and
-// inserts every journal row atomically. Recovery requests blocked by
-// ConcurrencyForbid stay pending instead of being skipped and lost.
+// The transaction takes its explicit locks in one order — schedule rows,
+// then running rows, then request rows — advances any regular cursors,
+// consumes only requests whose outcome is journaled, and inserts every
+// journal row atomically. Recovery requests blocked by ConcurrencyForbid stay
+// pending instead of being skipped and lost.
+//
+// That order is exact on PostgreSQL only. InnoDB also locks the rows a
+// locking read's subqueries touch, so lockRequestedSchedules already holds
+// request and run rows before the statements that select them explicitly. The
+// invariant does not rest on the order: SKIP LOCKED partitions the candidate
+// schedules up front, so two nodes never reach the same schedule's dependent
+// rows at all.
 type claimer struct {
 	db       orm.DB
 	config   *config.CronStoreConfig
@@ -249,7 +257,8 @@ func (c *claimer) lockRequestedSchedules(
 }
 
 // lockFireRequests locks runnable request rows only after their schedule and
-// running rows are locked, preserving the module-wide lock order.
+// running rows are locked, keeping the claimer's stated lock order (see the
+// dialect note on claimer).
 func lockFireRequests(
 	ctx context.Context,
 	tx orm.DB,

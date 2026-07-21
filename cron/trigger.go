@@ -74,6 +74,9 @@ func Expr(expr, timezone string) TriggerSpec {
 
 // Every returns a fixed-rate trigger. The rate is anchored to the schedule's
 // start (StartsAt, else its creation time), keeping the fire phase stable.
+// Schedules persist the rate in whole milliseconds, so a finer-grained
+// duration truncates toward zero here; rates below MinInterval are refused by
+// Validate either way.
 func Every(every time.Duration) TriggerSpec {
 	return TriggerSpec{Kind: TriggerInterval, EveryMs: every.Milliseconds()}
 }

@@ -69,6 +69,11 @@ type Schedule struct {
 	// Recover re-fires a run that did not complete: abandoned mid-execution
 	// (its node stopped heartbeating) or canceled by graceful shutdown.
 	// Recovery makes delivery at-least-once; the handler must be idempotent.
+	//
+	// The re-fire is immediate and unlimited: there is no backoff and no
+	// attempt ceiling, so a job that reliably kills the node executing it
+	// produces a cluster-wide retry loop. Enable it for work whose failure
+	// mode is the node, not the job.
 	Recover bool `json:"recover" bun:"recover"`
 
 	// TimeoutMs bounds one run; zero inherits vef.cron.store.run_timeout.
@@ -84,7 +89,11 @@ type Schedule struct {
 	// keeping it is what lets Resume hand the paused gap to the misfire
 	// policy instead of silently dropping it.
 	NextFireAtUnixMs *int64 `json:"nextFireAtUnixMs,omitempty" bun:"next_fire_at_unix_ms"`
-	// LastFireAtUnixMs records the most recent claimed fire's logical time.
+	// LastFireAtUnixMs records the most recent claimed fire's logical time —
+	// an occurrence that produced a run, including one journaled as skipped
+	// because a previous run was still executing. Occurrences accounted as
+	// missed (the misfire gap) never advance it, so a schedule idle through
+	// downtime keeps the last time it actually reached the journal as a fire.
 	LastFireAtUnixMs *int64 `json:"lastFireAtUnixMs,omitempty" bun:"last_fire_at_unix_ms"`
 }
 
