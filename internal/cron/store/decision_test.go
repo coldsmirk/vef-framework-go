@@ -98,7 +98,7 @@ func TestDecide(t *testing.T) {
 		schedule := decisionSchedule(due, cron.MisfireFireNow)
 		schedule.Kind = cron.TriggerOnce
 		schedule.EveryMs = 0
-		schedule.FireAtUnixMs = unixMillisPtr(due)
+		schedule.FireAtUnixMs = unixMsPtr(due)
 
 		decision := decide(schedule, due.Add(time.Second), threshold)
 
@@ -108,7 +108,7 @@ func TestDecide(t *testing.T) {
 
 	t.Run("WindowEndStopsAdvancing", func(t *testing.T) {
 		schedule := decisionSchedule(due, cron.MisfireFireNow)
-		schedule.EndsAtUnixMs = unixMillisPtr(due.Add(30 * time.Second))
+		schedule.EndsAtUnixMs = unixMsPtr(due.Add(30 * time.Second))
 
 		decision := decide(schedule, due.Add(2*time.Second), threshold)
 
@@ -118,7 +118,7 @@ func TestDecide(t *testing.T) {
 
 	t.Run("MisfireBeyondWindowEndCountsOnlyInWindow", func(t *testing.T) {
 		schedule := decisionSchedule(due, cron.MisfireSkip)
-		schedule.EndsAtUnixMs = unixMillisPtr(due.Add(2 * time.Minute))
+		schedule.EndsAtUnixMs = unixMsPtr(due.Add(2 * time.Minute))
 
 		decision := decide(schedule, due.Add(10*time.Minute), threshold)
 
@@ -133,7 +133,7 @@ func TestNextFire(t *testing.T) {
 
 	t.Run("StartsAtIsAValidFirstFire", func(t *testing.T) {
 		schedule := scheduleFixture("windowed", "job", base)
-		schedule.StartsAtUnixMs = unixMillisPtr(base.Add(time.Hour))
+		schedule.StartsAtUnixMs = unixMsPtr(base.Add(time.Hour))
 
 		next, ok := nextFire(schedule, base)
 		require.True(t, ok, "A future window must yield a fire")
@@ -142,7 +142,7 @@ func TestNextFire(t *testing.T) {
 
 	t.Run("EndsAtCutsOff", func(t *testing.T) {
 		schedule := scheduleFixture("windowed", "job", base)
-		schedule.EndsAtUnixMs = unixMillisPtr(base.Add(30 * time.Second))
+		schedule.EndsAtUnixMs = unixMsPtr(base.Add(30 * time.Second))
 
 		_, ok := nextFire(schedule, base)
 		assert.False(t, ok, "No occurrence fits inside a sub-interval window")

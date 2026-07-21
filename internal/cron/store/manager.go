@@ -319,11 +319,11 @@ func (m *scheduleManager) ListRuns(ctx context.Context, filter cron.RunFilter) (
 			}
 
 			if filter.Since != nil {
-				cb.GreaterThanOrEqual("scheduled_at_unix_ms", ceilUnixMilli(*filter.Since))
+				cb.GreaterThanOrEqual("scheduled_at_unix_ms", ceilUnixMs(*filter.Since))
 			}
 
 			if filter.Until != nil {
-				cb.LessThan("scheduled_at_unix_ms", ceilUnixMilli(*filter.Until))
+				cb.LessThan("scheduled_at_unix_ms", ceilUnixMs(*filter.Until))
 			}
 		}).
 		OrderByDesc("claimed_at_unix_ms").
@@ -376,11 +376,11 @@ func (m *scheduleManager) materialize(spec cron.ScheduleSpec, now time.Time) (*c
 
 	var startsAtUnixMs, endsAtUnixMs *int64
 	if spec.StartsAt != nil {
-		startsAtUnixMs = unixMillisPtr(*spec.StartsAt)
+		startsAtUnixMs = unixMsPtr(*spec.StartsAt)
 	}
 
 	if spec.EndsAt != nil {
-		endsAtUnixMs = unixMillisPtr(*spec.EndsAt)
+		endsAtUnixMs = unixMsPtr(*spec.EndsAt)
 	}
 
 	if startsAtUnixMs != nil && endsAtUnixMs != nil && *endsAtUnixMs <= *startsAtUnixMs {
@@ -419,7 +419,7 @@ func (m *scheduleManager) materialize(spec cron.ScheduleSpec, now time.Time) (*c
 	schedule.UpdatedAt = timex.DateTime(now)
 
 	if spec.Trigger.At != nil {
-		schedule.FireAtUnixMs = unixMillisPtr(*spec.Trigger.At)
+		schedule.FireAtUnixMs = unixMsPtr(*spec.Trigger.At)
 	}
 
 	schedule.StartsAtUnixMs = startsAtUnixMs
@@ -438,7 +438,7 @@ func (*scheduleManager) refreshNextFire(schedule *cron.Schedule, after time.Time
 	}
 
 	if next, ok := nextFire(schedule, after); ok {
-		schedule.NextFireAtUnixMs = unixMillisPtr(next)
+		schedule.NextFireAtUnixMs = unixMsPtr(next)
 	}
 }
 
@@ -447,12 +447,12 @@ func sameScheduleTiming(left, right *cron.Schedule) bool {
 		left.Expr == right.Expr &&
 		left.Timezone == right.Timezone &&
 		left.EveryMs == right.EveryMs &&
-		sameUnixMillis(left.FireAtUnixMs, right.FireAtUnixMs) &&
-		sameUnixMillis(left.StartsAtUnixMs, right.StartsAtUnixMs) &&
-		sameUnixMillis(left.EndsAtUnixMs, right.EndsAtUnixMs)
+		sameUnixMs(left.FireAtUnixMs, right.FireAtUnixMs) &&
+		sameUnixMs(left.StartsAtUnixMs, right.StartsAtUnixMs) &&
+		sameUnixMs(left.EndsAtUnixMs, right.EndsAtUnixMs)
 }
 
-func sameUnixMillis(left, right *int64) bool {
+func sameUnixMs(left, right *int64) bool {
 	if left == nil || right == nil {
 		return left == nil && right == nil
 	}

@@ -298,7 +298,7 @@ func TestPruneJournal(t *testing.T) {
 			JobName:           schedule.JobName,
 			ScheduledAtUnixMs: scheduledAt.UnixMilli(),
 			ClaimedAtUnixMs:   scheduledAt.UnixMilli(),
-			FinishedAtUnixMs:  unixMillisPtr(finishedAt),
+			FinishedAtUnixMs:  unixMsPtr(finishedAt),
 			Status:            status,
 		}
 		_, err := db.NewInsert().Model(run).Exec(context.Background())

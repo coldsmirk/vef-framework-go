@@ -92,7 +92,7 @@ func scheduleFixture(name, jobName string, due time.Time) *cron.Schedule {
 		ConcurrencyPolicy: cron.ConcurrencyForbid,
 		IsEnabled:         true,
 		AnchorAtUnixMs:    due.Add(-time.Hour).UnixMilli(),
-		NextFireAtUnixMs:  unixMillisPtr(due),
+		NextFireAtUnixMs:  unixMsPtr(due),
 	}
 	schedule.CreatedAt = created
 	schedule.UpdatedAt = created
@@ -121,8 +121,8 @@ func insertRunningRun(t *testing.T, db orm.DB, schedule *cron.Schedule, schedule
 		JobName:           schedule.JobName,
 		ScheduledAtUnixMs: scheduledAt.UnixMilli(),
 		ClaimedAtUnixMs:   scheduledAt.UnixMilli(),
-		StartedAtUnixMs:   unixMillisPtr(scheduledAt),
-		HeartbeatAtUnixMs: unixMillisPtr(heartbeatAt),
+		StartedAtUnixMs:   unixMsPtr(scheduledAt),
+		HeartbeatAtUnixMs: unixMsPtr(heartbeatAt),
 		Status:            cron.RunRunning,
 		NodeID:            "node-dead",
 	}

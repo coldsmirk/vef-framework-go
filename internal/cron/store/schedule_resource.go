@@ -348,16 +348,16 @@ func previewTriggerFires(params PreviewFiresParams, now time.Time) (*FiresPrevie
 	}
 
 	if starts != nil {
-		transient.StartsAtUnixMs = unixMillisPtr(*starts)
+		transient.StartsAtUnixMs = unixMsPtr(*starts)
 		transient.AnchorAtUnixMs = starts.UnixMilli()
 	}
 
 	if ends != nil {
-		transient.EndsAtUnixMs = unixMillisPtr(*ends)
+		transient.EndsAtUnixMs = unixMsPtr(*ends)
 	}
 
 	if spec.At != nil {
-		transient.FireAtUnixMs = unixMillisPtr(*spec.At)
+		transient.FireAtUnixMs = unixMsPtr(*spec.At)
 	}
 
 	return previewNextFires(transient, now, nextFiresPreview, 0), nil

@@ -240,7 +240,7 @@ func (s *ManagerTestSuite) TestUpdate() {
 		s.Require().NoError(err, "The fixture create should succeed")
 
 		// The engine owns LastFireAtUnixMs; simulate a fire it already claimed.
-		created.LastFireAtUnixMs = unixMillisPtr(s.now.Add(-time.Hour))
+		created.LastFireAtUnixMs = unixMsPtr(s.now.Add(-time.Hour))
 		_, err = s.db.NewUpdate().Model(created).
 			Select("last_fire_at_unix_ms").
 			WherePK().

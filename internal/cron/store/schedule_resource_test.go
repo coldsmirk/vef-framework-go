@@ -170,7 +170,7 @@ func TestPreviewTriggerFires(t *testing.T) {
 		}
 
 		if spec.At != nil {
-			params.AtUnixMs = unixMillisPtr(*spec.At)
+			params.AtUnixMs = unixMsPtr(*spec.At)
 		}
 
 		return params
@@ -260,10 +260,10 @@ func TestPreviewNextFires(t *testing.T) {
 	t.Run("LeadsWithThePersistedCursor", func(t *testing.T) {
 		schedule := &cron.Schedule{
 			Kind:             cron.TriggerOnce,
-			FireAtUnixMs:     unixMillisPtr(base.Add(-time.Hour)),
+			FireAtUnixMs:     unixMsPtr(base.Add(-time.Hour)),
 			IsEnabled:        true,
 			AnchorAtUnixMs:   base.Add(-2 * time.Hour).UnixMilli(),
-			NextFireAtUnixMs: unixMillisPtr(base.Add(time.Minute)),
+			NextFireAtUnixMs: unixMsPtr(base.Add(time.Minute)),
 		}
 
 		preview := previewNextFires(schedule, base, nextFiresPreview, time.Minute)
@@ -277,7 +277,7 @@ func TestPreviewNextFires(t *testing.T) {
 			EveryMs:          time.Minute.Milliseconds(),
 			IsEnabled:        true,
 			AnchorAtUnixMs:   base.UnixMilli(),
-			NextFireAtUnixMs: unixMillisPtr(base.Add(30 * time.Second)),
+			NextFireAtUnixMs: unixMsPtr(base.Add(30 * time.Second)),
 		}
 
 		preview := previewNextFires(schedule, base, 3, time.Minute)
@@ -293,14 +293,14 @@ func TestPreviewNextFires(t *testing.T) {
 			Kind:             cron.TriggerInterval,
 			EveryMs:          time.Minute.Milliseconds(),
 			AnchorAtUnixMs:   base.UnixMilli(),
-			NextFireAtUnixMs: unixMillisPtr(base.Add(time.Minute)),
+			NextFireAtUnixMs: unixMsPtr(base.Add(time.Minute)),
 		}
 		assert.Empty(t, previewNextFires(paused, base, 5, time.Minute).NextFiresUnixMs,
 			"A paused schedule should preview nothing")
 
 		spent := &cron.Schedule{
 			Kind:           cron.TriggerOnce,
-			FireAtUnixMs:   unixMillisPtr(base.Add(-time.Hour)),
+			FireAtUnixMs:   unixMsPtr(base.Add(-time.Hour)),
 			IsEnabled:      true,
 			AnchorAtUnixMs: base.Add(-2 * time.Hour).UnixMilli(),
 		}
@@ -335,7 +335,7 @@ func TestPreviewNextFires(t *testing.T) {
 			MisfirePolicy:    cron.MisfireFireNow,
 			IsEnabled:        true,
 			AnchorAtUnixMs:   base.UnixMilli(),
-			NextFireAtUnixMs: unixMillisPtr(due),
+			NextFireAtUnixMs: unixMsPtr(due),
 		}
 
 		preview := previewNextFires(schedule, base, 3, time.Second)
@@ -353,7 +353,7 @@ func TestPreviewNextFires(t *testing.T) {
 			MisfirePolicy:    cron.MisfireSkip,
 			IsEnabled:        true,
 			AnchorAtUnixMs:   base.UnixMilli(),
-			NextFireAtUnixMs: unixMillisPtr(base.Add(-5 * time.Minute)),
+			NextFireAtUnixMs: unixMsPtr(base.Add(-5 * time.Minute)),
 		}
 
 		preview := previewNextFires(schedule, base, 3, time.Second)

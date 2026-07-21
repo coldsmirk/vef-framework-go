@@ -121,7 +121,7 @@ func canceledFire(t *testing.T, db orm.DB) (claimedFire, *cron.Run) {
 	run := insertRunningRun(t, db, schedule, at, at)
 	run.Status = cron.RunCanceled
 	run.Error = "canceled by shutdown"
-	run.FinishedAtUnixMs = unixMillisPtr(time.Now())
+	run.FinishedAtUnixMs = unixMsPtr(time.Now())
 
 	return claimedFire{run: run, schedule: *schedule}, run
 }

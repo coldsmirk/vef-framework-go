@@ -396,7 +396,7 @@ func TestClaimDue(t *testing.T) {
 		schedule := scheduleFixture("s7", "orders.sync", base)
 		schedule.Kind = cron.TriggerOnce
 		schedule.EveryMs = 0
-		schedule.FireAtUnixMs = unixMillisPtr(base)
+		schedule.FireAtUnixMs = unixMsPtr(base)
 		insertSchedule(t, db, schedule)
 
 		claimed, err := newTestClaimer(db, registry, "node-a", fixedNow(base.Add(time.Second))).
@@ -424,7 +424,7 @@ func TestClaimDue(t *testing.T) {
 			ConcurrencyPolicy: cron.ConcurrencyAllow,
 			IsEnabled:         true,
 			AnchorAtUnixMs:    first.Add(-24 * time.Hour).UnixMilli(),
-			NextFireAtUnixMs:  unixMillisPtr(first),
+			NextFireAtUnixMs:  unixMsPtr(first),
 		}
 		schedule.CreatedAt = created
 		schedule.UpdatedAt = created

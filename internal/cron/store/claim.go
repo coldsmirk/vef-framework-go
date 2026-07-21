@@ -436,12 +436,12 @@ func (c *claimer) newRunRow(schedule *cron.Schedule, scheduledAtUnixMs int64, su
 
 	if suppressed {
 		row.Status = cron.RunSkipped
-		row.FinishedAtUnixMs = unixMillisPtr(now)
+		row.FinishedAtUnixMs = unixMsPtr(now)
 	} else {
 		row.Status = cron.RunRunning
 		row.NodeID = c.nodeID
-		row.StartedAtUnixMs = unixMillisPtr(now)
-		row.HeartbeatAtUnixMs = unixMillisPtr(now)
+		row.StartedAtUnixMs = unixMsPtr(now)
+		row.HeartbeatAtUnixMs = unixMsPtr(now)
 	}
 
 	return row
@@ -514,7 +514,7 @@ func (c *claimer) journalRows(schedule *cron.Schedule, decision fireDecision, ov
 			MissedCount:       decision.missed,
 			ClaimedAtUnixMs:   now.UnixMilli(),
 		}
-		row.FinishedAtUnixMs = unixMillisPtr(now)
+		row.FinishedAtUnixMs = unixMsPtr(now)
 		rows = append(rows, row)
 	}
 
@@ -526,14 +526,14 @@ func advance(ctx context.Context, tx orm.DB, schedule *cron.Schedule, decision f
 	schedule.NextFireAtUnixMs = nil
 
 	if decision.next != nil {
-		schedule.NextFireAtUnixMs = unixMillisPtr(*decision.next)
+		schedule.NextFireAtUnixMs = unixMsPtr(*decision.next)
 	}
 
 	columns := []string{"next_fire_at_unix_ms", "updated_at"}
 	schedule.UpdatedAt = timex.DateTime(now)
 
 	if decision.fire {
-		schedule.LastFireAtUnixMs = unixMillisPtr(decision.scheduledAt)
+		schedule.LastFireAtUnixMs = unixMsPtr(decision.scheduledAt)
 
 		columns = append(columns, "last_fire_at_unix_ms")
 	}

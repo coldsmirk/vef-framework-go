@@ -419,7 +419,7 @@ func (e *Engine) complete(fire claimedFire, runErr, ctxErr error) {
 
 	run := fire.run
 	now := e.now()
-	run.FinishedAtUnixMs = unixMillisPtr(now)
+	run.FinishedAtUnixMs = unixMsPtr(now)
 
 	if run.StartedAtUnixMs != nil {
 		run.DurationMs = now.Sub(unixTime(*run.StartedAtUnixMs)).Milliseconds()
