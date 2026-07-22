@@ -225,7 +225,8 @@ func TestConfigValidatorValidateSchema(t *testing.T) {
 
 		validator := NewConfigValidator(&stubSchemaService{table: table})
 		err := validator.ValidateSchema(t.Context(), testBindingConfig())
-		assert.ErrorIs(t, err, shared.ErrBindingSchemaInvalid, "Every write-back column must exist")
+		assert.ErrorIs(t, err, shared.ErrBindingColumnMissing(""), "Every write-back column must exist")
+		assert.ErrorContains(t, err, "approval_instance_id", "The error must name the missing column")
 	})
 
 	t.Run("MissingTable", func(t *testing.T) {
@@ -233,6 +234,7 @@ func TestConfigValidatorValidateSchema(t *testing.T) {
 
 		validator := NewConfigValidator(&stubSchemaService{err: schema.ErrTableMissing})
 		err := validator.ValidateSchema(t.Context(), testBindingConfig())
-		assert.ErrorIs(t, err, shared.ErrBindingSchemaInvalid, "Missing business table should be rejected at flow save time")
+		assert.ErrorIs(t, err, shared.ErrBindingTableMissing(""), "Missing business table should be rejected at flow save time")
+		assert.ErrorContains(t, err, "biz_order", "The error must name the missing table")
 	})
 }

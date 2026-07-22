@@ -62,9 +62,6 @@ var (
 	// ErrBindingUnexpected rejects business binding configuration on a
 	// standalone flow.
 	ErrBindingUnexpected = result.Err(i18n.T("approval_binding_unexpected"), result.WithCode(ErrCodeBindingUnexpected))
-	// ErrBindingSchemaInvalid rejects a binding whose configured table or
-	// columns do not exist in the primary database.
-	ErrBindingSchemaInvalid = result.Err(i18n.T("approval_binding_schema_invalid"), result.WithCode(ErrCodeBindingSchemaInvalid))
 	// ErrBindingKeyNotUnique rejects key columns that are not backed by one
 	// complete, non-null primary or unique key.
 	ErrBindingKeyNotUnique = result.Err(i18n.T("approval_binding_key_not_unique"), result.WithCode(ErrCodeBindingKeyNotUnique))
@@ -125,3 +122,24 @@ var (
 	// a final status).
 	ErrTerminateNotAllowed = result.Err(i18n.T("approval_terminate_not_allowed"), result.WithCode(ErrCodeTerminateNotAllowed))
 )
+
+// ErrBindingTableMissing rejects a binding whose configured table does not
+// exist in the primary database, naming the missing table. It carries
+// ErrCodeBindingSchemaInvalid so errors.Is and the React code map still treat
+// it as one class with the column variant.
+func ErrBindingTableMissing(table string) result.Error {
+	return result.Err(
+		i18n.T("approval_binding_table_missing", map[string]any{"table": table}),
+		result.WithCode(ErrCodeBindingSchemaInvalid),
+	)
+}
+
+// ErrBindingColumnMissing rejects a binding whose configured column does not
+// exist in the primary database, naming the missing column. It shares
+// ErrCodeBindingSchemaInvalid with the table variant.
+func ErrBindingColumnMissing(column string) result.Error {
+	return result.Err(
+		i18n.T("approval_binding_column_missing", map[string]any{"column": column}),
+		result.WithCode(ErrCodeBindingSchemaInvalid),
+	)
+}

@@ -121,7 +121,7 @@ func (v *ConfigValidator) ValidateSchema(ctx context.Context, config *approval.B
 	table, err := v.schemas.GetTableSchema(ctx, config.TableName)
 	if err != nil {
 		if errors.Is(err, schema.ErrTableMissing) {
-			return shared.ErrBindingSchemaInvalid
+			return shared.ErrBindingTableMissing(config.TableName)
 		}
 
 		return fmt.Errorf("inspect business binding table %q: %w", config.TableName, err)
@@ -134,7 +134,7 @@ func (v *ConfigValidator) ValidateSchema(ctx context.Context, config *approval.B
 
 	for _, configured := range append(slices.Clone(config.KeyColumns), bindingWriteColumns(config)...) {
 		if _, ok := columns[configured]; !ok {
-			return shared.ErrBindingSchemaInvalid
+			return shared.ErrBindingColumnMissing(configured)
 		}
 	}
 
