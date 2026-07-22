@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/coldsmirk/vef-framework-go/cron"
+	"github.com/coldsmirk/vef-framework-go/internal/sqlmigration"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -47,6 +48,26 @@ func NewScheduleManager(db orm.DB, enabled bool, registry *Registry, engine *Eng
 		registry: registry,
 		engine:   engine,
 		now:      func() time.Time { return timex.Now().Unwrap() },
+	}
+}
+
+// runInTxWithBusyRetry runs fn in a transaction, retrying the whole transaction
+// while SQLite reports writer contention (busy/locked) until ctx is done.
+// Operator mutations share SQLite's single database-wide writer with the running
+// engine's claim/heartbeat/outcome writes, so a transient collision must retry
+// rather than surface as a failure — mirroring the engine's own write paths.
+func runInTxWithBusyRetry(ctx context.Context, db orm.DB, fn func(context.Context, orm.DB) error) error {
+	for {
+		err := db.RunInTx(ctx, fn)
+		if err == nil || !sqlmigration.IsBusyContention(err) {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(outcomeRetryInterval):
+		}
 	}
 }
 
@@ -89,7 +110,7 @@ func (m *scheduleManager) Update(ctx context.Context, name string, spec cron.Sch
 
 	var schedule *cron.Schedule
 
-	err = m.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
+	err = runInTxWithBusyRetry(ctx, m.db, func(ctx context.Context, tx orm.DB) error {
 		current, err := lockScheduleByName(ctx, tx, name)
 		if err != nil {
 			return err
@@ -145,7 +166,7 @@ func (m *scheduleManager) Update(ctx context.Context, name string, spec cron.Sch
 }
 
 func (m *scheduleManager) Delete(ctx context.Context, name string) error {
-	return m.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
+	return runInTxWithBusyRetry(ctx, m.db, func(ctx context.Context, tx orm.DB) error {
 		schedule, err := lockScheduleByName(ctx, tx, name)
 		if err != nil {
 			return err
@@ -167,7 +188,7 @@ func (m *scheduleManager) Delete(ctx context.Context, name string) error {
 }
 
 func (m *scheduleManager) Pause(ctx context.Context, name string) error {
-	return m.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
+	return runInTxWithBusyRetry(ctx, m.db, func(ctx context.Context, tx orm.DB) error {
 		schedule, err := lockScheduleByName(ctx, tx, name)
 		if err != nil {
 			return err
@@ -185,7 +206,7 @@ func (m *scheduleManager) Pause(ctx context.Context, name string) error {
 }
 
 func (m *scheduleManager) Resume(ctx context.Context, name string) error {
-	err := m.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
+	err := runInTxWithBusyRetry(ctx, m.db, func(ctx context.Context, tx orm.DB) error {
 		schedule, err := lockScheduleByName(ctx, tx, name)
 		if err != nil {
 			return err
@@ -220,7 +241,7 @@ func (m *scheduleManager) Resume(ctx context.Context, name string) error {
 }
 
 func (m *scheduleManager) TriggerNow(ctx context.Context, name string) error {
-	err := m.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
+	err := runInTxWithBusyRetry(ctx, m.db, func(ctx context.Context, tx orm.DB) error {
 		schedule, err := lockScheduleByName(ctx, tx, name)
 		if err != nil {
 			return err
