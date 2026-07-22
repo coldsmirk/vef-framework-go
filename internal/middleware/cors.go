@@ -24,6 +24,7 @@ func NewCORSMiddleware(config *config.CORSConfig) app.Middleware {
 		},
 		AllowHeaders: []string{
 			fiber.HeaderContentType,
+			fiber.HeaderContentEncoding,
 			fiber.HeaderAuthorization,
 			fiber.HeaderXRequestedWith,
 			fiber.HeaderXRequestID,
@@ -31,6 +32,7 @@ func NewCORSMiddleware(config *config.CORSConfig) app.Middleware {
 			api.HeaderXTimestamp,
 			api.HeaderXNonce,
 			api.HeaderXSignature,
+			api.HeaderXBodyEncoding,
 		},
 		AllowCredentials: false,
 		ExposeHeaders:    []string{},

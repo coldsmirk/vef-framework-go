@@ -31,6 +31,10 @@ var Module = fx.Module(
 			fx.ResultTags(`group:"vef:app:middlewares"`),
 		),
 		fx.Annotate(
+			NewBodyEncodingMiddleware,
+			fx.ResultTags(`group:"vef:app:middlewares"`),
+		),
+		fx.Annotate(
 			NewCompressionMiddleware,
 			fx.ResultTags(`group:"vef:app:middlewares"`),
 		),

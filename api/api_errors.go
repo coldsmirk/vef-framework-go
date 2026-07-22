@@ -23,4 +23,26 @@ var (
 		result.WithCode(result.ErrCodeBadRequest),
 		result.WithStatus(fiber.StatusBadRequest),
 	)
+	// ErrUnsupportedBodyEncoding rejects an X-Body-Encoding value the framework
+	// does not implement.
+	ErrUnsupportedBodyEncoding = result.Err(
+		i18n.T("api_body_encoding_unsupported"),
+		result.WithCode(result.ErrCodeBadRequest),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
+	// ErrBodyDecodeFailed reports an X-Body-Encoding body that failed to decode
+	// (malformed base64 or a corrupt gzip stream).
+	ErrBodyDecodeFailed = result.Err(
+		i18n.T("api_body_decode_failed"),
+		result.WithCode(result.ErrCodeBadRequest),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
+	// ErrBodyTooLarge reports a decoded body that exceeds the configured body
+	// limit, mirroring Fiber's native Content-Encoding decompression guard so a
+	// decompression bomb cannot outgrow vef.app.body_limit.
+	ErrBodyTooLarge = result.Err(
+		i18n.T("api_body_too_large"),
+		result.WithCode(result.ErrCodeBadRequest),
+		result.WithStatus(fiber.StatusRequestEntityTooLarge),
+	)
 )

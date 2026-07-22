@@ -1,8 +1,12 @@
 package app_test
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/base64"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -133,6 +137,68 @@ func (suite *AppTestSuite) TestCustomResource() {
 		body, err := io.ReadAll(resp.Body)
 		suite.Require().NoError(err, "Ping endpoint response body should be readable")
 		suite.Equal(`{"code":0,"message":"成功","data":"pong"}`, string(body), "Response body should match expected")
+	})
+}
+
+// TestBodyEncoding proves the transport body-encoding paths compose with the
+// real middleware stack (CORS, the content-type guard, the dispatcher) and
+// reach the handler with the decoded request. It guards the middleware ordering
+// against future reordering.
+func (suite *AppTestSuite) TestBodyEncoding() {
+	const (
+		pingReq  = `{"resource": "test", "action": "ping", "version": "v1"}`
+		wantBody = `{"code":0,"message":"成功","data":"pong"}`
+	)
+
+	gzipJSON := func(payload string) []byte {
+		var buf bytes.Buffer
+
+		writer := gzip.NewWriter(&buf)
+		_, err := writer.Write([]byte(payload))
+		suite.Require().NoError(err, "gzip write should not fail")
+		suite.Require().NoError(writer.Close(), "gzip close should not fail")
+
+		return buf.Bytes()
+	}
+
+	send := func(header, value string, body []byte) *http.Response {
+		req := httptest.NewRequestWithContext(context.Background(), fiber.MethodPost, "/api", bytes.NewReader(body))
+		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+
+		if header != "" {
+			req.Header.Set(header, value)
+		}
+
+		resp, err := suite.app.Test(req, 2*time.Second)
+		suite.Require().NoError(err, "API request should not fail")
+
+		return resp
+	}
+
+	assertPong := func(resp *http.Response) {
+		suite.Require().Equal(200, resp.StatusCode, "the decoded request must dispatch")
+
+		body, err := io.ReadAll(resp.Body)
+		suite.Require().NoError(err, "response body should be readable")
+		suite.Equal(wantBody, string(body), "the handler must run on the decoded body")
+	}
+
+	suite.Run("NativeContentEncodingGzip", func() {
+		// Tier 0: Fiber decompresses Content-Encoding itself, no custom middleware.
+		assertPong(send(fiber.HeaderContentEncoding, "gzip", gzipJSON(pingReq)))
+	})
+
+	suite.Run("Base64", func() {
+		assertPong(send(api.HeaderXBodyEncoding, "base64", []byte(base64.StdEncoding.EncodeToString([]byte(pingReq)))))
+	})
+
+	suite.Run("GzipBase64", func() {
+		assertPong(send(api.HeaderXBodyEncoding, "gzip+base64", []byte(base64.StdEncoding.EncodeToString(gzipJSON(pingReq)))))
+	})
+
+	suite.Run("UnsupportedEncoding", func() {
+		resp := send(api.HeaderXBodyEncoding, "rot13", []byte(pingReq))
+		suite.Equal(400, resp.StatusCode, "an unknown encoding is rejected before dispatch")
 	})
 }
 
