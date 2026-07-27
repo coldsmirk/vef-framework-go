@@ -174,9 +174,49 @@ func (d *BunDB) RunInReadOnlyTx(ctx context.Context, fn func(context.Context, DB
 }
 
 func (d *BunDB) runInTx(ctx context.Context, opts *sql.TxOptions, fn func(context.Context, DB) error) error {
-	return d.db.RunInTx(ctx, opts, func(ctx context.Context, tx bun.Tx) error {
+	run := func(ctx context.Context, tx bun.Tx) error {
 		return fn(ctx, newScopedBunDB(tx, d.bunDB, dbScopeTransaction))
-	})
+	}
+
+	// A transaction-scoped handle nests: bun turns this into a savepoint,
+	// whose release is not a commit. Commit hooks therefore belong to the
+	// enclosing real transaction — reuse its collector and unwind the
+	// registrations made here if the savepoint rolls back. The collector is
+	// absent when the enclosing transaction came from BeginTx, in which case
+	// OnCommit reports ErrNoCommitScope instead of firing early.
+	if d.scope == dbScopeTransaction {
+		hooks := commitHooksFrom(ctx)
+		mark := hooks.mark()
+		released := false
+
+		// Unwinding is deferred rather than conditional on the returned error
+		// so that a savepoint abandoned by a panic drops its hooks too: the
+		// panic may be recovered above us and the enclosing transaction
+		// committed anyway, which would otherwise fire callbacks for work
+		// that rolled back.
+		defer func() {
+			if !released {
+				hooks.truncate(mark)
+			}
+		}()
+
+		err := d.db.RunInTx(ctx, opts, run)
+		released = err == nil
+
+		return err
+	}
+
+	hooks := new(commitHooks)
+
+	if err := d.db.RunInTx(ctx, opts, func(ctx context.Context, tx bun.Tx) error {
+		return run(withCommitHooks(ctx, hooks), tx)
+	}); err != nil {
+		return err
+	}
+
+	hooks.run(ctx)
+
+	return nil
 }
 
 func (d *BunDB) BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error) {

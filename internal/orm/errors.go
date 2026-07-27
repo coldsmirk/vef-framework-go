@@ -24,6 +24,15 @@ var (
 	// ErrRunOnConnectionInTx is returned when RunOnConnection is invoked on a
 	// transaction-scoped DB, whose transaction already owns its connection.
 	ErrRunOnConnectionInTx = errors.New("orm: RunOnConnection cannot be used within a transaction")
+
+	// ErrNoCommitScope is returned by OnCommit when the context carries no
+	// open RunInTx / RunInReadOnlyTx scope to hang the callback on — either
+	// none was ever opened (including manual BeginTx transactions, which
+	// hand back a Tx but no context to carry the collector) or the one that
+	// was has already committed. Reporting is deliberate: running the
+	// callback immediately would downgrade "after this work is durable" to
+	// "right now", the opposite of what every caller asks for.
+	ErrNoCommitScope = errors.New("orm: OnCommit called outside an open RunInTx scope")
 )
 
 // translateWriteError converts database-specific errors to framework errors.

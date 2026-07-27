@@ -230,7 +230,18 @@ var (
 	WithQuietSQLLog    = orm.WithQuietSQLLog
 	WithoutQuietSQLLog = orm.WithoutQuietSQLLog
 	IsQuietSQLLog      = orm.IsQuietSQLLog
+
+	// OnCommit registers a callback to run once the RunInTx scope owning
+	// the context has committed — the seam for work that must happen if
+	// and only if the surrounding unit of work became durable. The
+	// callback runs on a cancellation-detached context and cannot fail
+	// the transaction.
+	OnCommit = orm.OnCommit
 )
+
+// ErrNoCommitScope is returned by OnCommit outside a RunInTx /
+// RunInReadOnlyTx scope, where there is no commit to hang the callback on.
+var ErrNoCommitScope = orm.ErrNoCommitScope
 
 // ErrRunOnConnectionInTx is returned when DB.RunOnConnection is invoked on a
 // transaction-scoped DB, whose transaction already owns its connection.
