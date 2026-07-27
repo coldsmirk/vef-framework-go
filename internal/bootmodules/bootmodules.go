@@ -46,6 +46,7 @@ func Core() []fx.Option {
 		mold.Module,
 		storage.Module,
 		sequence.Module,
+		event.TxMemoryTransportModule,
 		event.OutboxModule,
 		event.RedisStreamTransportModule,
 		event.InboxModule,
