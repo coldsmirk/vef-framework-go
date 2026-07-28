@@ -336,3 +336,64 @@ ORDER BY il.name, ii.seqno`
 
 	return indexes, nil
 }
+
+// primaryKeyColumnRow is the raw scan shape of a primary-key column; each
+// dialect aliases its catalog columns onto it and orders by key position.
+type primaryKeyColumnRow struct {
+	Column string `bun:"column_name"`
+}
+
+// LoadTablePrimaryKey returns the table's primary key column sequence in key
+// order, or an empty slice when the table declares no primary key.
+//
+// A primary key is deliberately not read off LoadTableIndexes: dialects expose
+// it inconsistently there (PostgreSQL as a unique index, MySQL under the name
+// PRIMARY, SQLite as an implicit sqlite_autoindex that an INTEGER PRIMARY KEY
+// does not even create), so only the constraint catalogs answer reliably.
+func LoadTablePrimaryKey(
+	ctx context.Context,
+	db orm.DB,
+	kind config.DBKind,
+	table string,
+) ([]string, error) {
+	query := ""
+
+	switch kind {
+	case config.Postgres:
+		query = `SELECT att.attname AS column_name
+FROM pg_class AS tbl
+JOIN pg_namespace AS ns ON ns.oid = tbl.relnamespace
+JOIN pg_constraint AS con ON con.conrelid = tbl.oid AND con.contype = 'p'
+CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS ord(attnum, ordinality)
+JOIN pg_attribute AS att ON att.attrelid = tbl.oid AND att.attnum = ord.attnum
+WHERE ns.nspname = current_schema() AND tbl.relname = ?
+ORDER BY ord.ordinality`
+
+	case config.MySQL:
+		query = "SELECT COLUMN_NAME AS `column_name`\n" +
+			`FROM information_schema.statistics
+WHERE table_schema = DATABASE() AND table_name = ? AND index_name = 'PRIMARY'
+ORDER BY seq_in_index`
+
+	case config.SQLite:
+		query = `SELECT name AS column_name
+FROM pragma_table_info(?)
+WHERE pk > 0
+ORDER BY pk`
+
+	default:
+		return nil, fmt.Errorf("%w %q", ErrUnsupportedDBKind, kind)
+	}
+
+	var rows []primaryKeyColumnRow
+	if err := db.NewRaw(query, table).Scan(ctx, &rows); err != nil {
+		return nil, err
+	}
+
+	columns := make([]string, 0, len(rows))
+	for _, row := range rows {
+		columns = append(columns, row.Column)
+	}
+
+	return columns, nil
+}

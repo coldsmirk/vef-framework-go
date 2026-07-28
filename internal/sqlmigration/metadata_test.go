@@ -155,3 +155,41 @@ func TestNormalizeColumnTypeRejectsUnsignedMySQLIntegers(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadTablePrimaryKey(t *testing.T) {
+	testx.ForEachDB(t, func(t *testing.T, env *testx.DBEnv) {
+		ddl := `CREATE TABLE smig_pk_single (
+    id VARCHAR(32) NOT NULL PRIMARY KEY,
+    name VARCHAR(64)
+);
+CREATE TABLE smig_pk_composite (
+    tenant_id VARCHAR(32) NOT NULL,
+    code VARCHAR(32) NOT NULL,
+    name VARCHAR(64),
+    PRIMARY KEY (tenant_id, code)
+);
+CREATE TABLE smig_pk_none (
+    id VARCHAR(32) NOT NULL,
+    name VARCHAR(64)
+)`
+
+		_, err := env.DB.NewRaw(ddl).Exec(env.Ctx)
+		require.NoError(t, err, "The primary-key fixture tables should be created for %s", env.DS.Kind)
+
+		single, err := LoadTablePrimaryKey(env.Ctx, env.DB, env.DS.Kind, "smig_pk_single")
+		require.NoError(t, err, "Loading a single-column primary key should succeed for %s", env.DS.Kind)
+		assert.Equal(t, []string{"id"}, single,
+			"A single-column primary key must be observed for %s", env.DS.Kind)
+
+		composite, err := LoadTablePrimaryKey(env.Ctx, env.DB, env.DS.Kind, "smig_pk_composite")
+		require.NoError(t, err, "Loading a composite primary key should succeed for %s", env.DS.Kind)
+		assert.Equal(t, []string{"tenant_id", "code"}, composite,
+			"A composite primary key must preserve declaration order for %s", env.DS.Kind)
+
+		// The case the approval schema check exists for: a table restored
+		// without its constraints reports no key at all rather than erroring.
+		none, err := LoadTablePrimaryKey(env.Ctx, env.DB, env.DS.Kind, "smig_pk_none")
+		require.NoError(t, err, "A table without a primary key should not error for %s", env.DS.Kind)
+		assert.Empty(t, none, "A table without a primary key must report none for %s", env.DS.Kind)
+	})
+}
