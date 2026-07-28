@@ -270,12 +270,14 @@ func (s *Scanner) autoFinishTask(
 	// sequential queue, or a suspended "before" parent / queued "after" child
 	// on a parallel node — before evaluating node completion. If the node
 	// completes, HandleNodeCompletion cancels all remaining tasks anyway.
-	if err := s.taskSvc.ActivateDependentTasks(ctx, tx, instance, node, task); err != nil {
+	activationEvents, err := s.taskSvc.ActivateDependentTasks(ctx, tx, instance, node, task)
+	if err != nil {
 		return nil, fmt.Errorf("activate dependent tasks: %w", err)
 	}
 
-	events := make([]approval.DomainEvent, 0, 2)
+	events := make([]approval.DomainEvent, 0, len(activationEvents)+2)
 	events = append(events, resolution.newEvent(instance, task, node, resolution.opinion))
+	events = append(events, activationEvents...)
 
 	completionEvents, err := s.nodeSvc.HandleNodeCompletion(ctx, tx, instance, node)
 	if err != nil {
@@ -407,7 +409,10 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 			"任务处理超时，系统自动转交管理员",
 		))
 
-		events = append(events, approval.NewTaskCreatedEvent(instance, newTask, node))
+		events = append(events,
+			approval.NewTaskCreatedEvent(instance, newTask, node),
+			approval.NewTaskActivatedEvent(instance, newTask, node, approval.TaskActivationTransferred),
+		)
 
 		actionLog := shared.SystemOperator.NewActionLog(task.InstanceID, approval.ActionTransfer)
 		actionLog.NodeID = new(task.NodeID)

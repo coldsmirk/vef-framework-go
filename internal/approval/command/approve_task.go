@@ -95,9 +95,12 @@ func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cq
 
 	events := []approval.DomainEvent{taskEvent}
 
-	if err := h.taskSvc.ActivateDependentTasks(ctx, db, instance, node, task); err != nil {
+	activationEvents, err := h.taskSvc.ActivateDependentTasks(ctx, db, instance, node, task)
+	if err != nil {
 		return cqrs.Unit{}, err
 	}
+
+	events = append(events, activationEvents...)
 
 	completionEvents, err := h.nodeSvc.HandleNodeCompletion(ctx, db, instance, node)
 	if err != nil {

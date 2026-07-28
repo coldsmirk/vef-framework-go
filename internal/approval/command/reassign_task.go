@@ -103,8 +103,18 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
+	// The task stays Pending throughout — only its owner changed — so reflect
+	// the new owner before announcing the activation that tells them it is
+	// theirs. TaskReassignedEvent takes both parties explicitly and is
+	// unaffected.
+	task.AssigneeID = newAssignee.ID
+	task.AssigneeName = newAssignee.Name
+	task.AssigneeDepartmentID = newAssignee.DepartmentID
+	task.AssigneeDepartmentName = newAssignee.DepartmentName
+
 	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewTaskReassignedEvent(instance, task, node, oldAssignee, newAssignee, cmd.Reason),
+		approval.NewTaskActivatedEvent(instance, task, node, approval.TaskActivationReassigned),
 	)
 
 	return cqrs.Unit{}, nil

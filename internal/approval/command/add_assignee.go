@@ -218,6 +218,14 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 		}
 
 		eventCollector.Add(approval.NewTaskCreatedEvent(instance, newTask, node))
+
+		// Queued additions are announced when the queue reaches them, by
+		// ActivateDependentTasks.
+		if newTask.Status == approval.TaskPending {
+			eventCollector.Add(approval.NewTaskActivatedEvent(
+				instance, newTask, node, approval.TaskActivationAssigned,
+			))
+		}
 	}
 
 	actionLog := cmd.Operator.NewActionLog(instance.ID, approval.ActionAddAssignee)

@@ -67,12 +67,12 @@ func (p *ApprovalProcessor) Process(ctx context.Context, pc *ProcessContext) (*P
 }
 
 // createApprovalTasks creates tasks with sequential ordering support and
-// returns one TaskCreatedEvent per inserted task in insertion order.
-// Sequential tasks after the first are created as TaskWaiting with a nil
-// deadline; subscribers can use those fields to distinguish queued tasks
-// from immediately actionable ones.
+// returns their lifecycle events in insertion order. Sequential tasks after
+// the first are created as TaskWaiting with a nil deadline, so only the first
+// is announced as activated here; the rest are activated as the queue reaches
+// them.
 func (*ApprovalProcessor) createApprovalTasks(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) ([]approval.DomainEvent, error) {
-	events := make([]approval.DomainEvent, 0, len(assignees))
+	events := make([]approval.DomainEvent, 0, len(assignees)*2)
 
 	for i, assignee := range assignees {
 		deadline := computeDeadline(pc.Node)
@@ -91,7 +91,7 @@ func (*ApprovalProcessor) createApprovalTasks(ctx context.Context, pc *ProcessCo
 			return nil, fmt.Errorf("create approval task: %w", err)
 		}
 
-		events = append(events, newTaskCreatedEvent(pc, task))
+		events = append(events, taskInsertedEvents(pc, task)...)
 	}
 
 	return events, nil
@@ -235,6 +235,13 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 						// reverted task keeps the waiting invariant (nil deadline).
 						tasks[j].Status = approval.TaskWaiting
 						tasks[j].Deadline = nil
+					} else {
+						// The cascade may auto-pass this task on the next loop pass,
+						// which then emits its own approved event — announcing the
+						// activation first keeps the observable order truthful.
+						events = append(events, approval.NewTaskActivatedEvent(
+							pc.Instance, &tasks[j], pc.Node, approval.TaskActivationQueueAdvanced,
+						))
 					}
 
 					break

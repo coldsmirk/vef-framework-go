@@ -169,8 +169,15 @@ func (s *TaskServiceTestSuite) TestActivateNextSequentialTask() {
 		node := &approval.FlowNode{}
 		node.ID = nodeID
 
-		err := s.svc.ActivateNextSequentialTask(s.ctx, s.db, instance, node)
+		events, err := s.svc.ActivateNextSequentialTask(s.ctx, s.db, instance, node)
 		s.Require().NoError(err, "Should activate next sequential task without error")
+
+		s.Require().Len(events, 1, "Advancing the queue should announce exactly one activation")
+
+		activated, ok := events[0].(*approval.TaskActivatedEvent)
+		s.Require().True(ok, "Activation event should be *TaskActivatedEvent")
+		s.Assert().Equal(approval.TaskActivationQueueAdvanced, activated.Reason,
+			"A promoted queue task is activated because the queue advanced")
 
 		var tasks []approval.Task
 		s.Require().NoError(s.db.NewSelect().
@@ -193,8 +200,9 @@ func (s *TaskServiceTestSuite) TestActivateNextSequentialTask() {
 		node := &approval.FlowNode{}
 		node.ID = s.fixture.NodeIDs[1]
 
-		err := s.svc.ActivateNextSequentialTask(s.ctx, s.db, instance, node)
+		events, err := s.svc.ActivateNextSequentialTask(s.ctx, s.db, instance, node)
 		s.Assert().NoError(err, "Should not error when no waiting tasks exist")
+		s.Assert().Empty(events, "Nothing was activated, so nothing should be announced")
 	})
 
 	s.Run("ActivatedTaskShouldStartTimeoutFromPending", func() {
@@ -216,7 +224,7 @@ func (s *TaskServiceTestSuite) TestActivateNextSequentialTask() {
 		node := &approval.FlowNode{TimeoutHours: 2}
 		node.ID = nodeID
 
-		err = s.svc.ActivateNextSequentialTask(s.ctx, s.db, instance, node)
+		_, err = s.svc.ActivateNextSequentialTask(s.ctx, s.db, instance, node)
 		s.Require().NoError(err, "Should activate next sequential task with timeout")
 
 		var reloaded approval.Task

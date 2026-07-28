@@ -2,20 +2,19 @@ package approval
 
 import "github.com/coldsmirk/vef-framework-go/timex"
 
-// TaskCreatedEvent fires the moment a task row is inserted, not the moment
-// it becomes actionable. Under sequential approval, tasks after the first
-// start with Status=Waiting and a nil Deadline; subscribers should treat a
-// nil Deadline as the cue that the task is queued behind a predecessor and
-// must not yet surface a "new pending task" notification. When the
-// predecessor finishes and the task transitions to Pending, no new event
-// is published — subscribers reading the live task table see the change.
-// If this contract proves insufficient, the right extension is to add a
-// dedicated TaskActivatedEvent rather than overloading TaskCreatedEvent.
+// TaskCreatedEvent fires the moment a task row is inserted, not the moment it
+// becomes actionable. Under sequential approval every assignee's row is
+// inserted up front, so this event says "the task exists", not "someone should
+// act on it" — a subscriber that notifies on it would page approvers whose turn
+// has not come. Use it for mirroring the task table, audit, and metrics.
+//
+// To notify the person who should act now, subscribe to TaskActivatedEvent.
 type TaskCreatedEvent struct {
 	TaskEventBase
 
 	Assignee UserInfo        `json:"assignee"`
 	Deadline *timex.DateTime `json:"deadline,omitempty"`
+	Status   TaskStatus      `json:"status"`
 }
 
 func NewTaskCreatedEvent(instance *Instance, task *Task, node *FlowNode) *TaskCreatedEvent {
@@ -23,10 +22,64 @@ func NewTaskCreatedEvent(instance *Instance, task *Task, node *FlowNode) *TaskCr
 		TaskEventBase: NewTaskEventBase(instance, task, node),
 		Assignee:      task.Assignee(),
 		Deadline:      task.Deadline,
+		Status:        task.Status,
 	}
 }
 
 func (*TaskCreatedEvent) EventType() string { return EventTypeTaskCreated }
+
+// TaskActivatedEvent fires when a task becomes actionable by a specific person:
+// it is the single answer to "whose turn is it now", and the event a to-do
+// notification should subscribe to.
+//
+// It covers every way a task starts waiting on someone — created already
+// Pending (a parallel node's assignees, a sequential node's first approver),
+// promoted from Waiting when its predecessor finishes, handed to a new person
+// by transfer or timeout auto-transfer, or reassigned to a different assignee.
+// Subscribing to it alone is sufficient; there is no need to enumerate the
+// actions that can produce a pending task.
+//
+// Deliberately not derivable from TaskCreatedEvent: a task's Deadline is nil
+// whenever its node configures no timeout, so a nil Deadline cannot tell a
+// queued task from an immediately actionable one.
+type TaskActivatedEvent struct {
+	TaskEventBase
+
+	Assignee UserInfo        `json:"assignee"`
+	Deadline *timex.DateTime `json:"deadline,omitempty"`
+	// Reason names what made the task actionable, so a subscriber can vary the
+	// wording (a first assignment reads differently from a transfer).
+	Reason TaskActivationReason `json:"reason"`
+}
+
+// TaskActivationReason classifies why a task became actionable.
+type TaskActivationReason string
+
+const (
+	// TaskActivationAssigned is a task that was actionable the moment it was
+	// created — a parallel node's assignees, or a sequential node's first.
+	TaskActivationAssigned TaskActivationReason = "assigned"
+	// TaskActivationQueueAdvanced is a task promoted from Waiting because the
+	// task it was queued behind finished.
+	TaskActivationQueueAdvanced TaskActivationReason = "queue_advanced"
+	// TaskActivationTransferred is a task handed to a new assignee by a manual
+	// transfer or by the timeout scanner's auto-transfer.
+	TaskActivationTransferred TaskActivationReason = "transferred"
+	// TaskActivationReassigned is an existing pending task pointed at a
+	// different assignee by an administrator.
+	TaskActivationReassigned TaskActivationReason = "reassigned"
+)
+
+func NewTaskActivatedEvent(instance *Instance, task *Task, node *FlowNode, reason TaskActivationReason) *TaskActivatedEvent {
+	return &TaskActivatedEvent{
+		TaskEventBase: NewTaskEventBase(instance, task, node),
+		Assignee:      task.Assignee(),
+		Deadline:      task.Deadline,
+		Reason:        reason,
+	}
+}
+
+func (*TaskActivatedEvent) EventType() string { return EventTypeTaskActivated }
 
 // TaskApprovedEvent fired when a task is approved.
 type TaskApprovedEvent struct {

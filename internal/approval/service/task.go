@@ -118,7 +118,7 @@ func (*TaskService) PersistInstanceFormData(ctx context.Context, db orm.DB, inst
 // Pending, which makes it idempotent and safe to call after any task finishes
 // — or after a queued (Waiting) task is removed — without ever leaving two
 // tasks active at once.
-func (*TaskService) ActivateNextSequentialTask(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode) error {
+func (*TaskService) ActivateNextSequentialTask(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode) ([]approval.DomainEvent, error) {
 	pendingExists, err := db.NewSelect().
 		Model((*approval.Task)(nil)).
 		Where(func(cb orm.ConditionBuilder) {
@@ -128,11 +128,11 @@ func (*TaskService) ActivateNextSequentialTask(ctx context.Context, db orm.DB, i
 		}).
 		Exists(ctx)
 	if err != nil {
-		return fmt.Errorf("check pending task before sequential activation: %w", err)
+		return nil, fmt.Errorf("check pending task before sequential activation: %w", err)
 	}
 
 	if pendingExists {
-		return nil
+		return nil, nil
 	}
 
 	var nextTask approval.Task
@@ -149,14 +149,14 @@ func (*TaskService) ActivateNextSequentialTask(ctx context.Context, db orm.DB, i
 		Scan(ctx)
 	if err != nil {
 		if result.IsRecordNotFound(err) {
-			return nil
+			return nil, nil
 		}
 
-		return fmt.Errorf("find next sequential task: %w", err)
+		return nil, fmt.Errorf("find next sequential task: %w", err)
 	}
 
 	if !engine.TaskStateMachine.CanTransition(nextTask.Status, approval.TaskPending) {
-		return nil
+		return nil, nil
 	}
 
 	nextTask.Deadline = computeTaskDeadline(node)
@@ -171,19 +171,25 @@ func (*TaskService) ActivateNextSequentialTask(ctx context.Context, db orm.DB, i
 		}).
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("activate next sequential task: %w", err)
+		return nil, fmt.Errorf("activate next sequential task: %w", err)
 	}
 
 	affected, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get affected rows for sequential activation: %w", err)
+		return nil, fmt.Errorf("get affected rows for sequential activation: %w", err)
 	}
 
-	if affected > 0 {
-		nextTask.Status = approval.TaskPending
+	// A concurrent writer may have advanced the row first; only the winner
+	// announces the activation, so the assignee is notified exactly once.
+	if affected == 0 {
+		return nil, nil
 	}
 
-	return nil
+	nextTask.Status = approval.TaskPending
+
+	return []approval.DomainEvent{
+		approval.NewTaskActivatedEvent(instance, &nextTask, node, approval.TaskActivationQueueAdvanced),
+	}, nil
 }
 
 // ActivateDependentTasks activates whatever the completion of finishedTask
@@ -205,36 +211,46 @@ func (*TaskService) ActivateNextSequentialTask(ctx context.Context, db orm.DB, i
 //
 // Transfer and rollback intentionally do not call this: a transfer replaces a
 // task in place (the work is not done), and a rollback abandons the node.
-func (s *TaskService) ActivateDependentTasks(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, finishedTask *approval.Task) error {
+func (s *TaskService) ActivateDependentTasks(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, finishedTask *approval.Task) ([]approval.DomainEvent, error) {
 	if node.ApprovalMethod == approval.ApprovalSequential {
 		return s.ActivateNextSequentialTask(ctx, db, instance, node)
 	}
 
-	return s.activateParallelDependents(ctx, db, node, finishedTask)
+	return s.activateParallelDependents(ctx, db, instance, node, finishedTask)
 }
 
 // activateParallelDependents resolves add-assignee task dependencies on a
 // parallel node via the parent/child link, since there is no sort-ordered
 // queue to do it implicitly.
-func (s *TaskService) activateParallelDependents(ctx context.Context, db orm.DB, node *approval.FlowNode, finishedTask *approval.Task) error {
+func (s *TaskService) activateParallelDependents(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, finishedTask *approval.Task) ([]approval.DomainEvent, error) {
+	var events []approval.DomainEvent
+
 	// A finished "before" child may unblock its suspended parent.
 	if finishedTask.ParentTaskID != nil &&
 		finishedTask.AddAssigneeType != nil &&
 		*finishedTask.AddAssigneeType == approval.AddAssigneeBefore {
-		if err := s.reactivateBeforeParent(ctx, db, node, *finishedTask.ParentTaskID); err != nil {
-			return err
+		parentEvents, err := s.reactivateBeforeParent(ctx, db, instance, node, *finishedTask.ParentTaskID)
+		if err != nil {
+			return nil, err
 		}
+
+		events = append(events, parentEvents...)
 	}
 
 	// The finished task may itself be the parent that "after" children wait on.
-	return s.activateAfterChildren(ctx, db, node, finishedTask.ID)
+	childEvents, err := s.activateAfterChildren(ctx, db, instance, node, finishedTask.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(events, childEvents...), nil
 }
 
 // reactivateBeforeParent returns a "before"-suspended parent task to Pending
 // once all of its before-children have finished. The optimistic
 // WHERE status = waiting makes it a no-op if the parent was already
 // reactivated, was canceled, or is not actually suspended.
-func (*TaskService) reactivateBeforeParent(ctx context.Context, db orm.DB, node *approval.FlowNode, parentTaskID string) error {
+func (*TaskService) reactivateBeforeParent(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, parentTaskID string) ([]approval.DomainEvent, error) {
 	activeBeforeChildren, err := db.NewSelect().
 		Model((*approval.Task)(nil)).
 		Where(func(cb orm.ConditionBuilder) {
@@ -244,14 +260,14 @@ func (*TaskService) reactivateBeforeParent(ctx context.Context, db orm.DB, node 
 		}).
 		Count(ctx)
 	if err != nil {
-		return fmt.Errorf("count active before-children: %w", err)
+		return nil, fmt.Errorf("count active before-children: %w", err)
 	}
 
 	if activeBeforeChildren > 0 {
-		return nil
+		return nil, nil
 	}
 
-	if _, err := db.NewUpdate().
+	res, err := db.NewUpdate().
 		Model((*approval.Task)(nil)).
 		Set("status", approval.TaskPending).
 		Set("deadline", computeTaskDeadline(node)).
@@ -259,30 +275,98 @@ func (*TaskService) reactivateBeforeParent(ctx context.Context, db orm.DB, node 
 			cb.PKEquals(parentTaskID).
 				Equals("status", string(approval.TaskWaiting))
 		}).
-		Exec(ctx); err != nil {
-		return fmt.Errorf("reactivate before-parent task: %w", err)
+		Exec(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reactivate before-parent task: %w", err)
 	}
 
-	return nil
+	// The optimistic WHERE makes this a no-op when the parent was already
+	// reactivated, canceled, or never suspended — no activation to announce.
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("get affected rows for before-parent reactivation: %w", err)
+	}
+
+	if affected == 0 {
+		return nil, nil
+	}
+
+	// Reload rather than reuse the caller's copy: the event has to carry the
+	// assignee this task is now waiting on.
+	var parent approval.Task
+
+	parent.ID = parentTaskID
+
+	if err := db.NewSelect().Model(&parent).WherePK().Scan(ctx); err != nil {
+		return nil, fmt.Errorf("load reactivated before-parent task: %w", err)
+	}
+
+	return []approval.DomainEvent{
+		approval.NewTaskActivatedEvent(instance, &parent, node, approval.TaskActivationQueueAdvanced),
+	}, nil
 }
 
 // activateAfterChildren promotes the Waiting "after" children of a just-
 // finished parent task to Pending so they take their turn.
-func (*TaskService) activateAfterChildren(ctx context.Context, db orm.DB, node *approval.FlowNode, parentTaskID string) error {
-	if _, err := db.NewUpdate().
-		Model((*approval.Task)(nil)).
-		Set("status", approval.TaskPending).
-		Set("deadline", computeTaskDeadline(node)).
+// Each child is promoted individually rather than in one sweeping UPDATE: the
+// activation event has to name the assignee it woke, and only a per-row
+// compare-and-set can tell which rows this call actually promoted versus which
+// a concurrent writer had already taken.
+func (*TaskService) activateAfterChildren(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, parentTaskID string) ([]approval.DomainEvent, error) {
+	var children []approval.Task
+
+	if err := db.NewSelect().
+		Model(&children).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("parent_task_id", parentTaskID).
 				Equals("add_assignee_type", string(approval.AddAssigneeAfter)).
 				Equals("status", string(approval.TaskWaiting))
 		}).
-		Exec(ctx); err != nil {
-		return fmt.Errorf("activate after-children: %w", err)
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("find after-children to activate: %w", err)
 	}
 
-	return nil
+	if len(children) == 0 {
+		return nil, nil
+	}
+
+	deadline := computeTaskDeadline(node)
+	events := make([]approval.DomainEvent, 0, len(children))
+
+	for i := range children {
+		child := &children[i]
+
+		res, err := db.NewUpdate().
+			Model((*approval.Task)(nil)).
+			Set("status", approval.TaskPending).
+			Set("deadline", deadline).
+			Where(func(cb orm.ConditionBuilder) {
+				cb.PKEquals(child.ID).
+					Equals("status", string(approval.TaskWaiting))
+			}).
+			Exec(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("activate after-child: %w", err)
+		}
+
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return nil, fmt.Errorf("get affected rows for after-child activation: %w", err)
+		}
+
+		if affected == 0 {
+			continue
+		}
+
+		child.Status = approval.TaskPending
+		child.Deadline = deadline
+
+		events = append(events, approval.NewTaskActivatedEvent(
+			instance, child, node, approval.TaskActivationQueueAdvanced,
+		))
+	}
+
+	return events, nil
 }
 
 // RepointAddAssigneeChildren re-parents the still-active add-assignee children

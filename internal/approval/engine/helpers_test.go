@@ -357,10 +357,10 @@ func newProcessContextForEvent(instanceID, nodeID string) *ProcessContext {
 	return &ProcessContext{Instance: inst, Node: node}
 }
 
-// TestNewTaskCreatedEvent verifies the factory copies the full task payload
-// onto the event, including the conditional deadline used by subscribers to
-// distinguish actionable tasks from sequential-queue tasks.
-func TestNewTaskCreatedEvent(t *testing.T) {
+// TestTaskInsertedEvents verifies a just-inserted task announces its physical
+// creation always, and its activation only when it is actionable straight
+// away — the distinction a queued sequential approver depends on.
+func TestTaskInsertedEvents(t *testing.T) {
 	t.Run("MapsAllPayloadFields", func(t *testing.T) {
 		pc := newProcessContextForEvent("inst-1", "node-1")
 		deadline := timex.DateTime(time.Date(2026, 5, 22, 9, 0, 0, 0, time.UTC))
@@ -369,15 +369,16 @@ func TestNewTaskCreatedEvent(t *testing.T) {
 			TenantID:     "tenant-1",
 			AssigneeID:   "user-7",
 			AssigneeName: "测试用户",
+			Status:       approval.TaskPending,
 			Deadline:     &deadline,
 		}
 		task.ID = "task-99"
 
-		domainEvt := newTaskCreatedEvent(pc, task)
-		require.NotNil(t, domainEvt, "Factory should return a non-nil event")
+		events := taskInsertedEvents(pc, task)
+		require.Len(t, events, 2, "A pending task announces creation and activation")
 
-		evt, ok := domainEvt.(*approval.TaskCreatedEvent)
-		require.True(t, ok, "Event should be *TaskCreatedEvent")
+		evt, ok := events[0].(*approval.TaskCreatedEvent)
+		require.True(t, ok, "First event should be *TaskCreatedEvent")
 
 		assert.Equal(t, approval.EventTypeTaskCreated, evt.EventType(),
 			"Event type should be approval.task.created")
@@ -387,19 +388,41 @@ func TestNewTaskCreatedEvent(t *testing.T) {
 		assert.Equal(t, "node-1", evt.NodeID, "Event should map ProcessContext.Node.ID")
 		assert.Equal(t, "user-7", evt.Assignee.ID, "Event should map the assignee snapshot ID")
 		assert.Equal(t, "测试用户", evt.Assignee.Name, "Event should map the assignee snapshot name")
+		assert.Equal(t, approval.TaskPending, evt.Status, "Event should map the task status")
 		require.NotNil(t, evt.Deadline, "Pending task should include deadline")
 		assert.True(t, evt.Deadline.Equal(deadline), "Deadline should preserve the original value")
 		assert.False(t, evt.OccurredTime.IsZero(), "OccurredTime should be populated")
 	})
 
-	t.Run("LeavesDeadlineNilWhenTaskHasNone", func(t *testing.T) {
+	t.Run("AnnouncesActivationForAnImmediatelyActionableTask", func(t *testing.T) {
 		pc := newProcessContextForEvent("inst-1", "node-1")
-		task := &approval.Task{AssigneeID: "u", AssigneeName: "n", Deadline: nil}
+		task := &approval.Task{AssigneeID: "user-7", AssigneeName: "n", Status: approval.TaskPending}
+		task.ID = "task-pending"
+
+		events := taskInsertedEvents(pc, task)
+		require.Len(t, events, 2, "A pending task announces creation and activation")
+
+		activated, ok := events[1].(*approval.TaskActivatedEvent)
+		require.True(t, ok, "Second event should be *TaskActivatedEvent")
+
+		assert.Equal(t, approval.EventTypeTaskActivated, activated.EventType(),
+			"Event type should be approval.task.activated")
+		assert.Equal(t, "task-pending", activated.TaskID, "Activation should name the task")
+		assert.Equal(t, "user-7", activated.Assignee.ID, "Activation should name who must act")
+		assert.Equal(t, approval.TaskActivationAssigned, activated.Reason,
+			"A task actionable on creation is activated by assignment")
+	})
+
+	t.Run("WithholdsActivationForAQueuedTask", func(t *testing.T) {
+		pc := newProcessContextForEvent("inst-1", "node-1")
+		task := &approval.Task{AssigneeID: "u", AssigneeName: "n", Status: approval.TaskWaiting}
 		task.ID = "task-waiting"
 
-		evt := newTaskCreatedEvent(pc, task).(*approval.TaskCreatedEvent)
-		assert.Nil(t, evt.Deadline,
-			"Waiting task should keep deadline nil to distinguish inactive work")
+		events := taskInsertedEvents(pc, task)
+		require.Len(t, events, 1, "A queued task announces only its creation")
+
+		_, ok := events[0].(*approval.TaskCreatedEvent)
+		assert.True(t, ok, "The only event should be *TaskCreatedEvent")
 	})
 }
 
@@ -414,17 +437,22 @@ func TestTaskCreatedEventsFor(t *testing.T) {
 		tasks := make([]*approval.Task, len(ids))
 
 		for i, id := range ids {
-			tk := &approval.Task{AssigneeID: "u", AssigneeName: "n"}
+			tk := &approval.Task{AssigneeID: "u", AssigneeName: "n", Status: approval.TaskPending}
 			tk.ID = id
 			tasks[i] = tk
 		}
 
 		events := taskCreatedEventsFor(pc, tasks)
-		require.Len(t, events, len(ids), "Batch helper should create one event per task")
+		require.Len(t, events, len(ids)*2, "Each pending task contributes a creation and an activation")
 
 		for i, want := range ids {
-			got := events[i].(*approval.TaskCreatedEvent).TaskID
-			assert.Equal(t, want, got, "Event #%d should match input task #%d", i, i)
+			created, ok := events[i*2].(*approval.TaskCreatedEvent)
+			require.True(t, ok, "Event #%d should be *TaskCreatedEvent", i*2)
+			assert.Equal(t, want, created.TaskID, "Event #%d should match input task #%d", i*2, i)
+
+			activated, ok := events[i*2+1].(*approval.TaskActivatedEvent)
+			require.True(t, ok, "Event #%d should be *TaskActivatedEvent", i*2+1)
+			assert.Equal(t, want, activated.TaskID, "Activation #%d should match input task #%d", i, i)
 		}
 	})
 

@@ -321,22 +321,29 @@ func buildTask(pc *ProcessContext, assignee approval.ResolvedAssignee, deadline 
 	return task
 }
 
-// newTaskCreatedEvent returns the TaskCreatedEvent describing a just-
-// inserted task row. The event reports the physical creation of the task,
-// not the moment it becomes actionable: under sequential approval, tasks
-// after the first start as TaskWaiting and a nil Deadline, which is how
-// downstream consumers can distinguish "queued behind a predecessor" from
-// "immediately actionable" without an extra event type.
-func newTaskCreatedEvent(pc *ProcessContext, task *approval.Task) approval.DomainEvent {
-	return approval.NewTaskCreatedEvent(pc.Instance, task, pc.Node)
+// taskInsertedEvents returns the events describing a just-inserted task row:
+// always the TaskCreatedEvent reporting the row's physical creation, followed
+// by a TaskActivatedEvent when the task is actionable straight away. A
+// sequential node's queued tasks are inserted as TaskWaiting and get their
+// activation event later, when the queue reaches them.
+func taskInsertedEvents(pc *ProcessContext, task *approval.Task) []approval.DomainEvent {
+	events := []approval.DomainEvent{approval.NewTaskCreatedEvent(pc.Instance, task, pc.Node)}
+
+	if task.Status == approval.TaskPending {
+		events = append(events, approval.NewTaskActivatedEvent(
+			pc.Instance, task, pc.Node, approval.TaskActivationAssigned,
+		))
+	}
+
+	return events
 }
 
-// taskCreatedEventsFor returns the slice of TaskCreatedEvents corresponding
-// to a batch of just-inserted tasks, preserving input order.
+// taskCreatedEventsFor returns the events for a batch of just-inserted tasks,
+// preserving input order.
 func taskCreatedEventsFor(pc *ProcessContext, tasks []*approval.Task) []approval.DomainEvent {
-	events := make([]approval.DomainEvent, len(tasks))
-	for i, t := range tasks {
-		events[i] = newTaskCreatedEvent(pc, t)
+	events := make([]approval.DomainEvent, 0, len(tasks)*2)
+	for _, t := range tasks {
+		events = append(events, taskInsertedEvents(pc, t)...)
 	}
 
 	return events

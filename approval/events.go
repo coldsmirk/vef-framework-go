@@ -70,6 +70,7 @@ const (
 	EventTypeNodeAutoPassed = "approval.node.auto_passed"
 
 	EventTypeTaskCreated         = "approval.task.created"
+	EventTypeTaskActivated       = "approval.task.activated"
 	EventTypeTaskApproved        = "approval.task.approved"
 	EventTypeTaskHandled         = "approval.task.handled"
 	EventTypeTaskRejected        = "approval.task.rejected"
@@ -109,6 +110,7 @@ func AllEventTypes() []string {
 		EventTypeInstanceBindingFailed,
 		EventTypeNodeAutoPassed,
 		EventTypeTaskCreated,
+		EventTypeTaskActivated,
 		EventTypeTaskApproved,
 		EventTypeTaskHandled,
 		EventTypeTaskRejected,

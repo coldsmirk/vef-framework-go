@@ -79,9 +79,12 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 	// so unblock whatever its completion enables before evaluating the node —
 	// otherwise a suspended "before" parent or queued "after" child could
 	// strand the node short of a decision.
-	if err := h.taskSvc.ActivateDependentTasks(ctx, db, instance, node, task); err != nil {
+	activationEvents, err := h.taskSvc.ActivateDependentTasks(ctx, db, instance, node, task)
+	if err != nil {
 		return cqrs.Unit{}, err
 	}
+
+	events = append(events, activationEvents...)
 
 	completionEvents, err := h.nodeSvc.HandleNodeCompletion(ctx, db, instance, node)
 	if err != nil {

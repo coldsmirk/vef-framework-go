@@ -83,7 +83,8 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 		return cqrs.Unit{}, err
 	}
 
-	if err := h.taskSvc.ActivateDependentTasks(ctx, db, instance, node, task); err != nil {
+	activationEvents, err := h.taskSvc.ActivateDependentTasks(ctx, db, instance, node, task)
+	if err != nil {
 		return cqrs.Unit{}, err
 	}
 
@@ -101,6 +102,8 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 	events := []approval.DomainEvent{
 		approval.NewAssigneesRemovedEvent(instance, task, node, []approval.UserInfo{task.Assignee()}),
 	}
+
+	events = append(events, activationEvents...)
 
 	completionEvents, err := h.nodeSvc.HandleNodeCompletion(ctx, db, instance, node)
 	if err != nil {

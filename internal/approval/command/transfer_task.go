@@ -125,9 +125,13 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 		return cqrs.Unit{}, err
 	}
 
+	// TaskTransferredEvent reports the act (and names the outgoing assignee, so
+	// a subscriber can tell them their task moved on); TaskActivatedEvent is
+	// what tells the recipient it is now their turn.
 	events := []approval.DomainEvent{
 		approval.NewTaskTransferredEvent(instance, task, node, cmd.Operator, transferTo, cmd.Opinion),
 		approval.NewTaskCreatedEvent(instance, newTask, node),
+		approval.NewTaskActivatedEvent(instance, newTask, node, approval.TaskActivationTransferred),
 	}
 
 	actionLog := h.taskSvc.BuildActionLog(
