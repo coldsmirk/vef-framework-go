@@ -338,6 +338,41 @@ func taskInsertedEvents(pc *ProcessContext, task *approval.Task) []approval.Doma
 	return events
 }
 
+// suppressActivationsForClearedTasks drops activation events for tasks that no
+// longer await their assignee, judged by the tasks' final in-memory state. It
+// exists for the consecutive-approver cascade, where promoting the next queued
+// task and clearing it can both happen while the loop runs: the promotion is
+// real, but nobody was ever asked to act on it.
+func suppressActivationsForClearedTasks(events []approval.DomainEvent, tasks []approval.Task) []approval.DomainEvent {
+	if len(events) == 0 {
+		return events
+	}
+
+	cleared := collections.NewHashSet[string]()
+
+	for i := range tasks {
+		if tasks[i].Status != approval.TaskPending {
+			cleared.Add(tasks[i].ID)
+		}
+	}
+
+	if cleared.IsEmpty() {
+		return events
+	}
+
+	kept := make([]approval.DomainEvent, 0, len(events))
+
+	for _, evt := range events {
+		if a, ok := evt.(*approval.TaskActivatedEvent); ok && cleared.Contains(a.TaskID) {
+			continue
+		}
+
+		kept = append(kept, evt)
+	}
+
+	return kept
+}
+
 // taskCreatedEventsFor returns the events for a batch of just-inserted tasks,
 // preserving input order.
 func taskCreatedEventsFor(pc *ProcessContext, tasks []*approval.Task) []approval.DomainEvent {

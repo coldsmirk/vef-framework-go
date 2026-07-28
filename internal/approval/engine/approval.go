@@ -51,16 +51,10 @@ func (p *ApprovalProcessor) Process(ctx context.Context, pc *ProcessContext) (*P
 	}
 
 	if pc.Node.ConsecutiveApproverAction == approval.ConsecutiveApproverAutoPass {
-		result, err := p.autoPassConsecutiveApprovers(ctx, pc)
-		if err != nil {
-			return nil, err
-		}
-
-		// Creation events precede auto-pass events so downstream
-		// subscribers observe the natural lifecycle order.
-		result.Events = append(events, result.Events...)
-
-		return result, nil
+		// The creation events go in so the auto-pass pass can retract the
+		// activation of a task it clears — one created Pending and immediately
+		// auto-passed never needed its assignee to act either.
+		return p.autoPassConsecutiveApprovers(ctx, pc, events)
 	}
 
 	return &ProcessResult{Action: NodeActionWait, Events: events}, nil
@@ -125,15 +119,18 @@ func (p *ApprovalProcessor) handleSameApplicant(ctx context.Context, pc *Process
 }
 
 // autoPassConsecutiveApprovers marks tasks as approved for assignees who already
-// approved in the immediately preceding approval node.
-func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *ProcessContext) (*ProcessResult, error) {
+// approved in the immediately preceding approval node. creationEvents are the
+// events of the tasks this node just inserted; they lead the returned slice so
+// subscribers observe the natural lifecycle order, and they take part in the
+// activation retraction below.
+func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *ProcessContext, creationEvents []approval.DomainEvent) (*ProcessResult, error) {
 	prevApprovers, err := findPreviousApprovalApprovers(ctx, pc.DB, pc.Instance, pc.Node.ID)
 	if err != nil {
 		return nil, err
 	}
 
 	if prevApprovers.Size() == 0 {
-		return &ProcessResult{Action: NodeActionWait}, nil
+		return &ProcessResult{Action: NodeActionWait, Events: creationEvents}, nil
 	}
 
 	var tasks []approval.Task
@@ -250,9 +247,16 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 		}
 	}
 
+	events = append(slices.Clone(creationEvents), events...)
+
 	if !autoPassedAny {
-		return &ProcessResult{Action: NodeActionWait}, nil
+		return &ProcessResult{Action: NodeActionWait, Events: events}, nil
 	}
+
+	// A task can be created Pending, or promoted by the cascade, and then be
+	// cleared by the same pass; its assignee never had to act, so the
+	// activation must not reach them as a notification.
+	events = suppressActivationsForClearedTasks(events, tasks)
 
 	// If all tasks are now complete, advance to the next node.
 	//

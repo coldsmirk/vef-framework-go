@@ -84,13 +84,14 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 		return cqrs.Unit{}, err
 	}
 
-	events = append(events, activationEvents...)
-
 	completionEvents, err := h.nodeSvc.HandleNodeCompletion(ctx, db, instance, node)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
 
+	// Activations precede completion in the lifecycle, but only those the
+	// completion did not cancel actually happened.
+	events = append(events, service.SuppressSupersededActivations(activationEvents, completionEvents)...)
 	events = append(events, completionEvents...)
 
 	actionLog := h.taskSvc.BuildActionLog(instance.ID, task, cmd.Operator, approval.ActionReject, service.ActionLogParams{Opinion: cmd.Opinion, Attachments: cmd.Attachments})

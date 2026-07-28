@@ -275,15 +275,16 @@ func (s *Scanner) autoFinishTask(
 		return nil, fmt.Errorf("activate dependent tasks: %w", err)
 	}
 
-	events := make([]approval.DomainEvent, 0, len(activationEvents)+2)
-	events = append(events, resolution.newEvent(instance, task, node, resolution.opinion))
-	events = append(events, activationEvents...)
-
 	completionEvents, err := s.nodeSvc.HandleNodeCompletion(ctx, tx, instance, node)
 	if err != nil {
 		return nil, fmt.Errorf("handle node completion: %w", err)
 	}
 
+	events := make([]approval.DomainEvent, 0, len(activationEvents)+len(completionEvents)+1)
+	events = append(events, resolution.newEvent(instance, task, node, resolution.opinion))
+	// Activations precede completion in the lifecycle, but only those the
+	// completion did not cancel actually happened.
+	events = append(events, service.SuppressSupersededActivations(activationEvents, completionEvents)...)
 	events = append(events, completionEvents...)
 
 	// HandleNodeCompletion already persisted any status / current_node_id /

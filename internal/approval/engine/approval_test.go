@@ -613,6 +613,21 @@ func (s *ApprovalProcessorTestSuite) TestConsecutiveApproverAutoPass() {
 		// user-3 (sort_order=3): activated to pending
 		s.Assert().Equal(approval.TaskPending, currentNodeTasks[2].Status, "Third task should be activated to pending")
 		s.Require().NotNil(currentNodeTasks[2].Deadline, "Activated pending task should start timeout from activation")
+
+		// user-2 was promoted by the cascade and cleared by the same pass, so it
+		// never needed its assignee to act; only user-3 is left holding work and
+		// may be announced as actionable.
+		var activated []*approval.TaskActivatedEvent
+
+		for _, evt := range result.Events {
+			if a, ok := evt.(*approval.TaskActivatedEvent); ok {
+				activated = append(activated, a)
+			}
+		}
+
+		s.Require().Len(activated, 1, "Only the approver left with work should be announced")
+		s.Assert().Equal("user-3", activated[0].Assignee.ID,
+			"The remaining pending approver is the one announced")
 	})
 
 	s.Run("SequentialAllAutoPassedContinues", func() {

@@ -27,14 +27,17 @@ func init() {
 type TaskActivationTestSuite struct {
 	suite.Suite
 
-	ctx      context.Context
-	db       orm.DB
-	bus      *eventtest.FakeBus
-	approve  cqrs.Handler[command.ApproveTaskCmd, cqrs.Unit]
-	transfer cqrs.Handler[command.TransferTaskCmd, cqrs.Unit]
-	reassign cqrs.Handler[command.ReassignTaskCmd, cqrs.Unit]
-	fixture  *MinimalFixture
-	nodeID   string
+	ctx            context.Context
+	db             orm.DB
+	bus            *eventtest.FakeBus
+	approve        cqrs.Handler[command.ApproveTaskCmd, cqrs.Unit]
+	transfer       cqrs.Handler[command.TransferTaskCmd, cqrs.Unit]
+	reassign       cqrs.Handler[command.ReassignTaskCmd, cqrs.Unit]
+	addAssignee    cqrs.Handler[command.AddAssigneeCmd, cqrs.Unit]
+	fixture        *MinimalFixture
+	nodeID         string
+	anyNodeID      string
+	parallelNodeID string
 
 	seq int
 }
@@ -47,6 +50,7 @@ func (s *TaskActivationTestSuite) SetupSuite() {
 	s.approve = wrapWithBusAndDB(s.db, s.bus, command.NewApproveTaskHandler(s.db, taskSvc, nodeSvc, validSvc, nil))
 	s.transfer = wrapWithBusAndDB(s.db, s.bus, command.NewTransferTaskHandler(s.db, taskSvc, validSvc, nil, nil))
 	s.reassign = wrapWithBusAndDB(s.db, s.bus, command.NewReassignTaskHandler(s.db, taskSvc, nil))
+	s.addAssignee = wrapWithBusAndDB(s.db, s.bus, command.NewAddAssigneeHandler(s.db, taskSvc, nil))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "task-activation")
 
 	node := &approval.FlowNode{
@@ -63,6 +67,38 @@ func (s *TaskActivationTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Should create sequential node")
 	s.nodeID = node.ID
 
+	// A sequential queue whose pass rule can be satisfied by one approver: the
+	// node completes while later approvers are still queued, so their tasks are
+	// canceled rather than reached.
+	anyNode := &approval.FlowNode{
+		FlowVersionID:             s.fixture.VersionID,
+		Key:                       "activation-sequential-any",
+		Kind:                      approval.NodeApproval,
+		Name:                      "Sequential Any Node",
+		ApprovalMethod:            approval.ApprovalSequential,
+		PassRule:                  approval.PassAny,
+		IsTransferAllowed:         true,
+		ConsecutiveApproverAction: approval.ConsecutiveApproverNone,
+	}
+	_, err = s.db.NewInsert().Model(anyNode).Exec(s.ctx)
+	s.Require().NoError(err, "Should create sequential-any node")
+	s.anyNodeID = anyNode.ID
+
+	// A parallel node has no implicit queue, so add-assignee "after" children
+	// are what exercise activateAfterChildren's per-row promotion.
+	parallelNode := &approval.FlowNode{
+		FlowVersionID:        s.fixture.VersionID,
+		Key:                  "activation-parallel",
+		Kind:                 approval.NodeApproval,
+		Name:                 "Parallel Node",
+		ApprovalMethod:       approval.ApprovalParallel,
+		PassRule:             approval.PassAll,
+		IsAddAssigneeAllowed: true,
+	}
+	_, err = s.db.NewInsert().Model(parallelNode).Exec(s.ctx)
+	s.Require().NoError(err, "Should create parallel node")
+	s.parallelNodeID = parallelNode.ID
+
 	endNode := &approval.FlowNode{
 		FlowVersionID: s.fixture.VersionID,
 		Key:           "activation-end",
@@ -72,16 +108,18 @@ func (s *TaskActivationTestSuite) SetupSuite() {
 	_, err = s.db.NewInsert().Model(endNode).Exec(s.ctx)
 	s.Require().NoError(err, "Should create end node")
 
-	edge := &approval.FlowEdge{
-		FlowVersionID: s.fixture.VersionID,
-		Key:           "activation-edge",
-		SourceNodeID:  node.ID,
-		SourceNodeKey: node.Key,
-		TargetNodeID:  endNode.ID,
-		TargetNodeKey: endNode.Key,
+	for _, src := range []*approval.FlowNode{node, anyNode, parallelNode} {
+		edge := &approval.FlowEdge{
+			FlowVersionID: s.fixture.VersionID,
+			Key:           src.Key + "-edge",
+			SourceNodeID:  src.ID,
+			SourceNodeKey: src.Key,
+			TargetNodeID:  endNode.ID,
+			TargetNodeKey: endNode.Key,
+		}
+		_, err = s.db.NewInsert().Model(edge).Exec(s.ctx)
+		s.Require().NoError(err, "Should create edge to end node from "+src.Key)
 	}
-	_, err = s.db.NewInsert().Model(edge).Exec(s.ctx)
-	s.Require().NoError(err, "Should create edge to end node")
 }
 
 func (s *TaskActivationTestSuite) SetupTest() {
@@ -100,6 +138,10 @@ func (s *TaskActivationTestSuite) TearDownSuite() {
 // task per assignee: the first Pending, the rest queued as Waiting — the state
 // the engine leaves behind after inserting a sequential node's tasks.
 func (s *TaskActivationTestSuite) seedSequential(assignees ...string) *approval.Instance {
+	return s.seedSequentialOnNode(s.nodeID, assignees...)
+}
+
+func (s *TaskActivationTestSuite) seedSequentialOnNode(nodeID string, assignees ...string) *approval.Instance {
 	s.seq++
 	inst := &approval.Instance{
 		TenantID:      "default",
@@ -109,12 +151,12 @@ func (s *TaskActivationTestSuite) seedSequential(assignees ...string) *approval.
 		InstanceNo:    fmt.Sprintf("TA-%04d", s.seq),
 		ApplicantID:   "applicant-1",
 		Status:        approval.InstanceRunning,
-		CurrentNodeID: &s.nodeID,
+		CurrentNodeID: &nodeID,
 	}
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
 	s.Require().NoError(err, "Should create running instance")
 
-	visitID := ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.nodeID).ID
+	visitID := ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, nodeID).ID
 
 	for i, a := range assignees {
 		status := approval.TaskPending
@@ -125,11 +167,46 @@ func (s *TaskActivationTestSuite) seedSequential(assignees ...string) *approval.
 		task := &approval.Task{
 			TenantID:   "default",
 			InstanceID: inst.ID,
-			NodeID:     s.nodeID,
+			NodeID:     nodeID,
 			VisitID:    visitID,
 			AssigneeID: a,
 			SortOrder:  i + 1,
 			Status:     status,
+		}
+		_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
+		s.Require().NoError(err, "Should create task for "+a)
+	}
+
+	return inst
+}
+
+// seedParallel creates a running instance on the parallel node with every
+// assignee immediately actionable — the parallel start state.
+func (s *TaskActivationTestSuite) seedParallel(assignees ...string) *approval.Instance {
+	s.seq++
+	inst := &approval.Instance{
+		TenantID:      "default",
+		FlowID:        s.fixture.FlowID,
+		FlowVersionID: s.fixture.VersionID,
+		Title:         "Task Activation Test",
+		InstanceNo:    fmt.Sprintf("TA-P-%04d", s.seq),
+		ApplicantID:   "applicant-1",
+		Status:        approval.InstanceRunning,
+		CurrentNodeID: &s.parallelNodeID,
+	}
+	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
+	s.Require().NoError(err, "Should create running instance")
+
+	visitID := ensureActiveVisit(s.T(), s.ctx, s.db, "default", inst.ID, s.parallelNodeID).ID
+
+	for _, a := range assignees {
+		task := &approval.Task{
+			TenantID:   "default",
+			InstanceID: inst.ID,
+			NodeID:     s.parallelNodeID,
+			VisitID:    visitID,
+			AssigneeID: a,
+			Status:     approval.TaskPending,
 		}
 		_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
 		s.Require().NoError(err, "Should create task for "+a)
@@ -187,6 +264,57 @@ func (s *TaskActivationTestSuite) TestSequentialApprovalActivatesOneApproverAtAT
 		"The third approver stays queued and is not announced")
 }
 
+// A queue advance is provisional: the same approval may satisfy the node's pass
+// rule, and node completion then cancels every remaining task — including the
+// one just promoted. Announcing that promotion would notify someone whose task
+// is canceled in the same transaction.
+func (s *TaskActivationTestSuite) TestNodeCompletionSuppressesTheSupersededActivation() {
+	inst := s.seedSequentialOnNode(s.anyNodeID, "any-user-1", "any-user-2")
+
+	s.approveAs(s.taskFor(inst.ID, "any-user-1").ID, "any-user-1")
+
+	s.Assert().Equal(approval.TaskCanceled, s.taskFor(inst.ID, "any-user-2").Status,
+		"The pass rule was satisfied, so the queued approver's task is canceled")
+	s.Assert().Empty(s.activations(),
+		"A task canceled by node completion must not be announced as actionable")
+}
+
+// activateAfterChildren promotes each queued "after" child in its own
+// compare-and-set precisely so every woken assignee can be named; a parent with
+// more than one after-child is what proves the loop announces all of them.
+func (s *TaskActivationTestSuite) TestEveryAfterChildIsAnnouncedOnItsOwn() {
+	inst := s.seedParallel("par-user-1", "par-user-2")
+	parent := s.taskFor(inst.ID, "par-user-1")
+
+	_, err := s.addAssignee.Handle(s.ctx, command.AddAssigneeCmd{
+		TaskID:   parent.ID,
+		UserIDs:  []string{"after-c", "after-d"},
+		AddType:  approval.AddAssigneeAfter,
+		Operator: approval.UserInfo{ID: "par-user-1", Name: "par-user-1"},
+		Caller:   approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Add-after should succeed")
+
+	s.Require().Empty(s.activations(), "Queued after-children are not actionable yet")
+
+	s.approveAs(parent.ID, "par-user-1")
+
+	activated := s.activations()
+	s.Require().Len(activated, 2, "Both after-children should be announced when the parent finishes")
+
+	assignees := make([]string, 0, len(activated))
+
+	for _, evt := range activated {
+		assignees = append(assignees, evt.Assignee.ID)
+		s.Assert().Equal(approval.TaskActivationQueueAdvanced, evt.Reason,
+			"An after-child is activated because its parent finished")
+		s.Assert().NotEmpty(evt.TaskID, "Activation should name the task it woke")
+	}
+
+	s.Assert().ElementsMatch([]string{"after-c", "after-d"}, assignees,
+		"Each after-child is announced exactly once, naming its own assignee")
+}
+
 // The recipient of a transfer learns it is their turn through
 // TaskActivatedEvent; TaskTransferredEvent reports the act itself and names the
 // outgoing assignee.
@@ -225,6 +353,16 @@ func (s *TaskActivationTestSuite) TestReassignActivatesTheNewAssignee() {
 		"The new assignee is the one activated")
 	s.Assert().Equal(approval.TaskActivationReassigned, activated[0].Reason,
 		"A reassigned task is activated by the reassignment")
+
+	// The activation names the incoming assignee, so the sibling event must
+	// still name both parties — the in-memory task is mutated between them.
+	reassigned := s.bus.CapturedByType(approval.EventTypeTaskReassigned)
+	s.Require().Len(reassigned, 1, "A reassignment reports the act exactly once")
+
+	evt, ok := reassigned[0].(*approval.TaskReassignedEvent)
+	s.Require().True(ok, "Captured event should be *TaskReassignedEvent")
+	s.Assert().Equal("seq-user-1", evt.From.ID, "The outgoing assignee must survive the mutation")
+	s.Assert().Equal("reassign-target", evt.To.ID, "The incoming assignee is the reassignment target")
 }
 
 func (s *TaskActivationTestSuite) approveAs(taskID, userID string) {

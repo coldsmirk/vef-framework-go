@@ -192,6 +192,49 @@ func (*TaskService) ActivateNextSequentialTask(ctx context.Context, db orm.DB, i
 	}, nil
 }
 
+// SuppressSupersededActivations drops activation events whose task was canceled
+// by node completion in the same transaction, returning the activations that
+// still stand.
+//
+// Dependent tasks must be unblocked BEFORE the node is evaluated — otherwise a
+// suspended parent or queued child leaves the node short of a decision — so an
+// activation is provisional until the evaluation lands. When the same action
+// also satisfies the pass rule (a sequential queue under an any/ratio rule is
+// the common case), completion cancels the task that was just promoted, and
+// announcing it would tell someone to act on work that no longer exists.
+//
+// Both event sets come from the same transaction, so the cancellations already
+// name every superseded task; no reload is needed.
+func SuppressSupersededActivations(activations, completions []approval.DomainEvent) []approval.DomainEvent {
+	if len(activations) == 0 || len(completions) == 0 {
+		return activations
+	}
+
+	canceled := collections.NewHashSet[string]()
+
+	for _, evt := range completions {
+		if c, ok := evt.(*approval.TaskCanceledEvent); ok {
+			canceled.Add(c.TaskID)
+		}
+	}
+
+	if canceled.IsEmpty() {
+		return activations
+	}
+
+	kept := make([]approval.DomainEvent, 0, len(activations))
+
+	for _, evt := range activations {
+		if a, ok := evt.(*approval.TaskActivatedEvent); ok && canceled.Contains(a.TaskID) {
+			continue
+		}
+
+		kept = append(kept, evt)
+	}
+
+	return kept
+}
+
 // ActivateDependentTasks activates whatever the completion of finishedTask
 // unblocks on its node, so the node keeps making progress.
 //
