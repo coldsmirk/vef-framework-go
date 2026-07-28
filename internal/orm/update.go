@@ -24,6 +24,7 @@ func NewUpdateQuery(db *BunDB) *BunUpdateQuery {
 		query: uq,
 
 		selectedColumns:  collections.NewHashSet[string](),
+		setColumns:       collections.NewHashSet[string](),
 		returningColumns: newReturningColumns(),
 	}
 	eb.qb = query
@@ -39,8 +40,63 @@ type BunUpdateQuery struct {
 	query            *bun.UpdateQuery
 	hasSet           bool
 	isBulk           bool
+	modelIsSlice     bool
 	selectedColumns  collections.Set[string]
+	setColumns       collections.Set[string]
 	returningColumns *returningColumns
+}
+
+// autoColumnTarget says where an auto column (updated_at, updated_by) must be
+// written for a given update shape.
+type autoColumnTarget int
+
+const (
+	// autoColumnSkip leaves the column alone because the caller set it explicitly.
+	autoColumnSkip autoColumnTarget = iota
+	// autoColumnOnModel writes onto the model struct and lets bun collect it.
+	autoColumnOnModel
+	// autoColumnOnQuery appends an explicit SET clause.
+	autoColumnOnQuery
+)
+
+// resolveAutoColumnTarget decides how an auto column reaches the SET clause,
+// mirroring (*bun.UpdateQuery).mustAppendSet: bun builds SET from the model
+// struct only when the model is a valid struct, a Set clause has not replaced
+// it, and the column whitelist — when present — admits the column. Every other
+// shape silently drops a value left on the struct, so the column has to be
+// written with an explicit SET, which bun always appends regardless of the
+// whitelist.
+func (q *BunUpdateQuery) resolveAutoColumnTarget(name string, modelValue reflect.Value) autoColumnTarget {
+	// An explicit Set wins: the caller stating a value for an audit column is
+	// stating intent, not asking for it to be overwritten.
+	if q.setColumns.Contains(name) {
+		return autoColumnSkip
+	}
+
+	if !modelValue.IsValid() {
+		return autoColumnOnQuery
+	}
+
+	// A slice model supplies one row per element: a single SET clause cannot
+	// carry per-row values, and the per-element walk would append it once per
+	// element. Those queries stay on the model path.
+	if q.isBulk || q.modelIsSlice {
+		return autoColumnOnModel
+	}
+
+	if q.selectedColumns.IsEmpty() {
+		if q.hasSet {
+			return autoColumnOnQuery
+		}
+
+		return autoColumnOnModel
+	}
+
+	if q.selectedColumns.Contains(name) {
+		return autoColumnOnModel
+	}
+
+	return autoColumnOnQuery
 }
 
 func (q *BunUpdateQuery) With(name string, builder func(SelectQuery)) UpdateQuery {
@@ -179,16 +235,21 @@ func (q *BunUpdateQuery) SetExpr(name string, builder func(ExprBuilder) any) Upd
 
 // setColumn applies a SET clause using qualified or simple column names based on dialect support.
 func (q *BunUpdateQuery) setColumn(name string, value any) {
+	// Record the bare column name regardless of dialect so auto-column handlers
+	// can tell that the caller already assigned this column.
+	bareName := name
+	if _, after, ok := strings.Cut(name, "."); ok {
+		bareName = after
+	}
+
+	q.setColumns.Add(bareName)
+
 	if q.query.DB().HasFeature(feature.UpdateMultiTable) {
 		q.query.Set("? = ?", q.ExprBuilder().Column(name), value)
 	} else {
 		// Strip table alias prefix (e.g., "t.field_name" → "field_name")
 		// since databases without UpdateMultiTable do not support aliased SET targets.
-		if _, after, ok := strings.Cut(name, "."); ok {
-			name = after
-		}
-
-		q.query.Set("? = ?", bun.Name(name), value)
+		q.query.Set("? = ?", bun.Name(bareName), value)
 	}
 
 	q.hasSet = true
@@ -277,6 +338,7 @@ func (q *BunUpdateQuery) beforeUpdate() {
 
 		modelValue := q.query.GetModel().Value()
 		mv := reflect.Indirect(reflect.ValueOf(modelValue))
+		q.modelIsSlice = mv.Kind() == reflect.Slice
 
 		processAutoColumns(q, table, modelValue, mv)
 	}

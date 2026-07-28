@@ -51,15 +51,21 @@ type UpdateColumnHandler interface {
 
 // processAutoColumns applies auto column handlers to a model before insert/update operations.
 // Callers pass mv = reflect.Indirect(reflect.ValueOf(modelValue)), so a nil pointer model has
-// already collapsed to an invalid Value and the single validity check covers it.
+// already collapsed to an invalid Value.
+//
+// An insert always writes through the model, so an invalid one has nothing to
+// stamp. An update does not: Model((*T)(nil)).Set(...) carries its values in the
+// query rather than the struct, and its audit columns must still be stamped —
+// the update handlers take the query and decide where the value belongs.
 func processAutoColumns(query any, table *schema.Table, modelValue any, mv reflect.Value) {
-	if !mv.IsValid() {
-		return
-	}
-
 	switch q := query.(type) {
 	case *BunInsertQuery:
+		if !mv.IsValid() {
+			return
+		}
+
 		applyAutoColumns(q, table, modelValue, mv, getInsertAutoColumnPlan(table))
+
 	case *BunUpdateQuery:
 		applyAutoColumns(q, table, modelValue, mv, getUpdateAutoColumnPlan(table))
 	}
@@ -142,6 +148,13 @@ func applyAutoColumns[Q any](
 	}
 
 	for _, item := range plan {
-		item.apply(query, table, item.field, modelValue, item.field.Value(mv))
+		// An invalid model has no field to address; handlers that can still act
+		// on the query receive the zero Value and route around it.
+		var fieldValue reflect.Value
+		if mv.IsValid() {
+			fieldValue = item.field.Value(mv)
+		}
+
+		item.apply(query, table, item.field, modelValue, fieldValue)
 	}
 }

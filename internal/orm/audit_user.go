@@ -27,11 +27,15 @@ func (*CreatedByHandler) Name() string {
 // UpdatedByHandler sets updated_by using the current operator on insert and update.
 type UpdatedByHandler struct{}
 
-func (ub *UpdatedByHandler) OnUpdate(query *BunUpdateQuery, _ *schema.Table, _ *schema.Field, _ any, _ reflect.Value) {
-	if query.hasSet {
-		query.SetExpr(ub.Name(), operatorExprBuilder)
-	} else {
+func (ub *UpdatedByHandler) OnUpdate(query *BunUpdateQuery, _ *schema.Table, _ *schema.Field, _ any, value reflect.Value) {
+	// ColumnExpr routes through bun's model values, so it is subject to the same
+	// whitelist filtering as a struct field; SetExpr appends a SET clause that is not.
+	switch query.resolveAutoColumnTarget(ub.Name(), value) {
+	case autoColumnOnModel:
 		query.ColumnExpr(ub.Name(), operatorExprBuilder)
+	case autoColumnOnQuery:
+		query.SetExpr(ub.Name(), operatorExprBuilder)
+	case autoColumnSkip:
 	}
 }
 

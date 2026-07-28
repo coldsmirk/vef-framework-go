@@ -25,10 +25,12 @@ func (*CreatedAtHandler) Name() string {
 type UpdatedAtHandler struct{}
 
 func (ua *UpdatedAtHandler) OnUpdate(query *BunUpdateQuery, _ *schema.Table, _ *schema.Field, _ any, value reflect.Value) {
-	if query.hasSet {
-		query.Set(ua.Name(), timex.Now())
-	} else {
+	switch query.resolveAutoColumnTarget(ua.Name(), value) {
+	case autoColumnOnModel:
 		value.Set(reflect.ValueOf(timex.Now()))
+	case autoColumnOnQuery:
+		query.Set(ua.Name(), timex.Now())
+	case autoColumnSkip:
 	}
 }
 
