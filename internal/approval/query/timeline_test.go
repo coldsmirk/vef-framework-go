@@ -87,7 +87,7 @@ func TestBuildInstanceTimeline(t *testing.T) {
 		assert.Nil(t, entry.Participants[1].Opinion, "Pending participant has no outcome yet")
 	})
 
-	t.Run("SkipsConditionAndEndVisits", func(t *testing.T) {
+	t.Run("SkipsConditionVisitsButKeepsEnd", func(t *testing.T) {
 		b := &instanceDetailBundle{
 			FlowNodes: []approval.FlowNode{
 				flowNode("ns", "kstart", approval.NodeStart),
@@ -104,8 +104,60 @@ func TestBuildInstanceTimeline(t *testing.T) {
 
 		entries := buildInstanceTimeline(b)
 
-		require.Len(t, entries, 1, "Condition and end visits are structural and skipped")
-		assert.Equal(t, approval.TimelineEntryStart, entries[0].Kind, "Only the start entry remains")
+		require.Len(t, entries, 2, "A condition visit is pure routing and is skipped; the end visit is kept")
+		assert.Equal(t, approval.TimelineEntryStart, entries[0].Kind, "First entry is the start node")
+
+		end := entries[1]
+		assert.Equal(t, approval.TimelineEntryEnd, end.Kind, "The end visit closes the timeline")
+		assert.Equal(t, approval.NodeVisitPassed, end.Status, "End entry reports its visit outcome")
+		require.NotNil(t, end.NodeID, "End entry identifies its node")
+		assert.Equal(t, "ne", *end.NodeID, "End entry points at the end node")
+		require.NotNil(t, end.FinishedAt, "A reached end node is finished")
+		assert.Empty(t, end.Participants, "An end node has no participants")
+		assert.Empty(t, end.ExecutionType, "Approval-only display config stays unset on an end entry")
+	})
+
+	// An approved instance is the only final state with no milestone log and no
+	// rejected visit, so the end entry is what makes it distinguishable from an
+	// instance still moving between nodes.
+	t.Run("ApprovedInstanceClosesWithEndEntry", func(t *testing.T) {
+		b := timelineBundle()
+		b.Instance.Status = approval.InstanceApproved
+		b.Visits = []approval.NodeVisit{
+			visitEntered("v1", "ns", 1, approval.NodeVisitPassed, at(0), new(at(0))),
+			visitEntered("v2", "na", 2, approval.NodeVisitPassed, at(0), new(at(5))),
+			visitEntered("v3", "ne", 3, approval.NodeVisitPassed, at(5), new(at(5))),
+		}
+
+		done := task("t1", "na", "u1", approval.TaskApproved)
+		done.VisitID = "v2"
+		b.Tasks = []approval.Task{done}
+
+		entries := buildInstanceTimeline(b)
+
+		require.Len(t, entries, 3, "Start, approval and end all render")
+		assert.Equal(t, approval.TimelineEntryEnd, entries[2].Kind, "The timeline ends on the end entry")
+	})
+
+	// A rejection stops on the approval node and never traverses to the end
+	// node, so its closing signal is the rejected visit — not an end entry.
+	t.Run("RejectedInstanceHasNoEndEntry", func(t *testing.T) {
+		b := timelineBundle()
+		b.Instance.Status = approval.InstanceRejected
+		b.Visits = []approval.NodeVisit{
+			visitEntered("v1", "ns", 1, approval.NodeVisitPassed, at(0), new(at(0))),
+			visitEntered("v2", "na", 2, approval.NodeVisitRejected, at(0), new(at(5))),
+		}
+
+		done := task("t1", "na", "u1", approval.TaskRejected)
+		done.VisitID = "v2"
+		b.Tasks = []approval.Task{done}
+
+		entries := buildInstanceTimeline(b)
+
+		require.Len(t, entries, 2, "A rejection never reaches the end node")
+		assert.Equal(t, approval.TimelineEntryApproval, entries[1].Kind, "The timeline ends on the approval node")
+		assert.Equal(t, approval.NodeVisitRejected, entries[1].Status, "The rejected visit is the closing signal")
 	})
 
 	t.Run("WithdrawMilestoneInterleavesAndResubmitReopens", func(t *testing.T) {

@@ -10,7 +10,9 @@ import "github.com/coldsmirk/vef-framework-go/approval"
 // view renders is assembled by the shared visit index — participants fused
 // from tasks and their finishing logs, CC recipients with read receipts, and
 // side-action activities — so the client displays the list verbatim. Condition
-// and end visits are structural and skipped.
+// visits are pure routing and are skipped; the end visit is kept as the
+// timeline's closing marker, because it is the only record that distinguishes
+// an instance that finished by passing from one still moving between nodes.
 func buildInstanceTimeline(bundle *instanceDetailBundle) []approval.TimelineEntry {
 	idx := newVisitIndex(bundle)
 
@@ -20,7 +22,7 @@ func buildInstanceTimeline(bundle *instanceDetailBundle) []approval.TimelineEntr
 		visit := &bundle.Visits[i]
 
 		node := idx.nodeByID[visit.NodeID]
-		if node == nil || node.Kind == approval.NodeCondition || node.Kind == approval.NodeEnd {
+		if node == nil || node.Kind == approval.NodeCondition {
 			continue
 		}
 

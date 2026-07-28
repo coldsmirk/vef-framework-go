@@ -6,10 +6,16 @@ import (
 )
 
 // TimelineEntryKind classifies one entry of an instance timeline. Node-visit
-// entries reuse the node-kind vocabulary (start / approval / handle / cc);
+// entries reuse the node-kind vocabulary (start / approval / handle / cc / end);
 // instance-level milestones (withdraw / terminate) carry their action name.
-// Structural kinds (condition / end) never appear — they route or close the
-// flow without anything to narrate.
+// Condition never appears — a branch routes without anything to narrate.
+//
+// The end entry is the timeline's closing marker: reaching the end node is the
+// only record that an instance finished by passing, since approval carries no
+// milestone log the way withdraw and terminate do, and a rejection stops on the
+// approval node with a rejected visit instead of traversing to the end. Without
+// it, an approved instance's last entry is indistinguishable from a node that
+// merely passed on the way to the next one.
 type TimelineEntryKind string
 
 const (
@@ -17,6 +23,7 @@ const (
 	TimelineEntryApproval  TimelineEntryKind = "approval"
 	TimelineEntryHandle    TimelineEntryKind = "handle"
 	TimelineEntryCC        TimelineEntryKind = "cc"
+	TimelineEntryEnd       TimelineEntryKind = "end"
 	TimelineEntryWithdraw  TimelineEntryKind = "withdraw"
 	TimelineEntryTerminate TimelineEntryKind = "terminate"
 )
