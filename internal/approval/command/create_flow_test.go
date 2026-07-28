@@ -387,6 +387,23 @@ func (s *CreateFlowTestSuite) TestInitiatorPolicyIsExclusive() {
 			"The rejection must name the missing rules")
 	})
 
+	// Rule count is not the invariant: a rule selecting nobody is matched
+	// against no applicant, so it leaves the flow unstartable while making the
+	// stored list look restricted. The wizard filters these out, so only a
+	// direct API call can submit one.
+	s.Run("RejectsARestrictedFlowWhoseRuleSelectsNobody", func() {
+		cmd := baseCmd("policy-restricted-blank-rule")
+		cmd.IsAllInitiationAllowed = false
+		cmd.Initiators = []shared.CreateFlowInitiatorCmd{
+			{Kind: approval.InitiatorUser, IDs: []string{}},
+		}
+
+		_, err := s.handler.Handle(s.ctx, cmd)
+		s.Require().Error(err, "A rule selecting nobody must be rejected")
+		s.Assert().ErrorIs(err, shared.ErrInitiatorsRequired,
+			"An empty rule names nobody, so it fails the same requirement as no rules")
+	})
+
 	s.Run("AcceptsAFlowOpenToEveryoneWithoutInitiators", func() {
 		cmd := baseCmd("policy-open-clean")
 		cmd.IsAllInitiationAllowed = true

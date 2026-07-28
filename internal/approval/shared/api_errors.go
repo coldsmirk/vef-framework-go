@@ -58,10 +58,11 @@ var (
 	// storing them would show a restriction in the admin UI that does not hold.
 	ErrInitiatorsNotAllowed = result.Err(i18n.T("approval_initiators_not_allowed"), result.WithCode(ErrCodeInitiatorsNotAllowed))
 
-	// ErrInitiatorsRequired rejects a restricted flow with no initiator rules.
-	// Such a flow can be started by nobody, and it makes an empty initiator
-	// list ambiguous — with this rule an empty list means exactly "open to
-	// everyone", so one query answers who may start a flow.
+	// ErrInitiatorsRequired rejects a restricted flow that names nobody who may
+	// start it — no rules at all, or a rule selecting nothing, which matches no
+	// applicant and leaves the flow just as unstartable. It also keeps an empty
+	// initiator list unambiguous: it means exactly "open to everyone", so one
+	// query answers who may start a flow.
 	ErrInitiatorsRequired = result.Err(i18n.T("approval_initiators_required"), result.WithCode(ErrCodeInitiatorsRequired))
 	// ErrInvalidStorageMode rejects a deploy whose storage mode is neither
 	// "json" nor "table". The mode is fixed for the version's lifetime and

@@ -143,7 +143,7 @@
   "approval_invalid_binding_mode": "Invalid flow binding mode",
   "approval_invalid_initiator_kind": "Invalid flow initiator kind",
   "approval_initiators_not_allowed": "A flow open to everyone cannot define initiators",
-  "approval_initiators_required": "A restricted flow must define at least one initiator rule",
+  "approval_initiators_required": "A restricted flow must name who may start it; every initiator rule must select at least one entry",
   "approval_invalid_storage_mode": "Invalid storage mode; must be \"json\" or \"table\"",
   "approval_binding_columns_conflict": "Business binding key and write-back columns must be distinct",
   "approval_binding_unexpected": "A standalone flow must not configure business binding",

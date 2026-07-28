@@ -50,6 +50,16 @@ func validateInitiatorPolicy(isAllInitiationAllowed bool, initiators []shared.Cr
 		return shared.ErrInitiatorsRequired
 	}
 
+	// A rule that selects nobody matches nobody: CheckInitiationPermission
+	// scans each rule's IDs for the applicant, so an empty one leaves the flow
+	// just as unstartable as no rule at all — while making the stored list look
+	// restricted and functional. Rule count alone is not the invariant.
+	for _, init := range initiators {
+		if len(init.IDs) == 0 {
+			return shared.ErrInitiatorsRequired
+		}
+	}
+
 	return nil
 }
 
