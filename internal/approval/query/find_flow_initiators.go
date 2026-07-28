@@ -44,7 +44,11 @@ func (h *FindFlowInitiatorsHandler) Handle(ctx context.Context, query FindFlowIn
 		return []approval.FlowInitiator{}, nil
 	}
 
-	var initiators []approval.FlowInitiator
+	// Start from an empty slice, never nil: an absent rule set is a meaningful
+	// answer here — it says the flow is open to everyone, which save-time
+	// validation guarantees is the only way to store none — and it must
+	// serialize as [] rather than null so callers can read it as one.
+	initiators := make([]approval.FlowInitiator, 0)
 	if err := db.NewSelect().
 		Model(&initiators).
 		Where(func(cb orm.ConditionBuilder) {

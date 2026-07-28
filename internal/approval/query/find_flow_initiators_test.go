@@ -27,6 +27,7 @@ type FindFlowInitiatorsTestSuite struct {
 
 	flowID1 string
 	flowID2 string
+	flowID3 string
 }
 
 func (s *FindFlowInitiatorsTestSuite) SetupSuite() {
@@ -38,12 +39,21 @@ func (s *FindFlowInitiatorsTestSuite) SetupSuite() {
 
 	flow1 := approval.Flow{TenantID: "t1", CategoryID: category.ID, Code: "flow-init-1", Name: "Flow 1", IsActive: true}
 	flow2 := approval.Flow{TenantID: "t1", CategoryID: category.ID, Code: "flow-init-2", Name: "Flow 2", IsActive: true}
+	// A flow open to everyone: save-time validation guarantees it carries no
+	// initiator rules, so it is the shape that exercises the empty result.
+	flow3 := approval.Flow{
+		TenantID: "t1", CategoryID: category.ID, Code: "flow-init-3", Name: "Flow 3",
+		IsActive: true, IsAllInitiationAllowed: true,
+	}
 	_, err = s.db.NewInsert().Model(&flow1).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert flow 1")
 	_, err = s.db.NewInsert().Model(&flow2).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert flow 2")
+	_, err = s.db.NewInsert().Model(&flow3).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert flow 3")
 	s.flowID1 = flow1.ID
 	s.flowID2 = flow2.ID
+	s.flowID3 = flow3.ID
 
 	initiators := []approval.FlowInitiator{
 		{FlowID: s.flowID1, Kind: approval.InitiatorUser, IDs: []string{"u1", "u2"}},
@@ -83,7 +93,21 @@ func (s *FindFlowInitiatorsTestSuite) TestEmpty() {
 		Caller: approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
+	s.Require().NotNil(result, "Result must be a non-nil empty slice for response-shape uniformity")
 	s.Assert().Empty(result, "Should return empty slice for non-existent flow")
+}
+
+// A flow open to everyone stores no initiator rules, so this is the everyday
+// empty result — and it must serialize as [] rather than null, because an empty
+// list is the answer "anyone may start this flow", not a missing value.
+func (s *FindFlowInitiatorsTestSuite) TestFlowOpenToEveryoneReturnsEmptyNonNil() {
+	result, err := s.handler.Handle(s.ctx, query.FindFlowInitiatorsQuery{
+		FlowID: s.flowID3,
+		Caller: approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Querying a rule-less flow must succeed")
+	s.Require().NotNil(result, "An absent rule set must be an empty slice, never nil")
+	s.Assert().Empty(result, "A flow open to everyone has no initiator rules")
 }
 
 func (s *FindFlowInitiatorsTestSuite) TestForeignTenantReturnsEmptyNonNil() {

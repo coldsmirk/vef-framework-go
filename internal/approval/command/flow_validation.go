@@ -26,6 +26,33 @@ func validateFlowEnums(mode approval.BindingMode, initiators []shared.CreateFlow
 	return nil
 }
 
+// validateInitiatorPolicy enforces that a flow's initiation setting and its
+// initiator rules agree: open-to-everyone carries no rules, restricted carries
+// at least one. The two are mutually exclusive because permission checking
+// short-circuits on isAllInitiationAllowed and never reads the rules — storing
+// rules alongside it would display a restriction that does not hold.
+//
+// Requiring rules on a restricted flow serves two ends. Such a flow could
+// otherwise be started by nobody, since the permission check fails closed on an
+// empty rule set. And it makes the stored state a bijection, so an empty
+// initiator list means exactly "open to everyone" and a single query answers
+// who may start a flow.
+func validateInitiatorPolicy(isAllInitiationAllowed bool, initiators []shared.CreateFlowInitiatorCmd) error {
+	if isAllInitiationAllowed {
+		if len(initiators) > 0 {
+			return shared.ErrInitiatorsNotAllowed
+		}
+
+		return nil
+	}
+
+	if len(initiators) == 0 {
+		return shared.ErrInitiatorsRequired
+	}
+
+	return nil
+}
+
 // validateFlowLabels rejects label entries the shared orm.ValidateLabels
 // rules refuse (keys that would silently escape the label filter, oversize
 // keys or values).

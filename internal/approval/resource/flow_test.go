@@ -160,11 +160,12 @@ func (s *FlowResourceTestSuite) TestCreateBusinessBoundFlow() {
 	resp := s.MakeRPCRequestWithToken(api.Request{
 		Identifier: api.Identifier{Resource: "approval/flow", Action: "create", Version: "v1"},
 		Params: map[string]any{
-			"tenantId":    "default",
-			"code":        "test-flow-business-binding",
-			"name":        "Business Binding Flow",
-			"categoryId":  s.categoryID,
-			"bindingMode": "business",
+			"tenantId":               "default",
+			"code":                   "test-flow-business-binding",
+			"name":                   "Business Binding Flow",
+			"categoryId":             s.categoryID,
+			"bindingMode":            "business",
+			"isAllInitiationAllowed": true,
 			"businessBinding": map[string]any{
 				"tableName":        "resource_binding_order",
 				"keyColumns":       []string{"tenant_id", "order_no"},

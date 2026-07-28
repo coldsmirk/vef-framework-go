@@ -24,6 +24,8 @@ const (
 	ErrCodeBindingKeyNotUnique         = 40019
 	ErrCodeBindingStatusMappingInvalid = 40020
 	ErrCodeInvalidFlowLabel            = 40021
+	ErrCodeInitiatorsNotAllowed        = 40022
+	ErrCodeInitiatorsRequired          = 40023
 
 	ErrCodeInstanceNotFound          = 40101
 	ErrCodeInstanceCompleted         = 40102

@@ -109,7 +109,7 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowSuccess() {
 		Icon:                   &icon,
 		Description:            &desc,
 		AdminUserIDs:           []string{"admin-1", "admin-2"},
-		IsAllInitiationAllowed: true,
+		IsAllInitiationAllowed: false,
 		InstanceTitleTemplate:  "Updated Template",
 		Initiators: []shared.CreateFlowInitiatorCmd{
 			{Kind: approval.InitiatorRole, IDs: []string{"role-new"}},
@@ -125,7 +125,8 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowSuccess() {
 	s.Assert().Equal(&icon, result.Icon, "Should update Icon")
 	s.Assert().Equal(&desc, result.Description, "Should update Description")
 	s.Assert().Equal([]string{"admin-1", "admin-2"}, result.AdminUserIDs, "Should update AdminUserIDs")
-	s.Assert().True(result.IsAllInitiationAllowed, "Should update IsAllInitiationAllowed")
+	s.Assert().False(result.IsAllInitiationAllowed,
+		"A flow carrying initiator rules must stay restricted — the two are mutually exclusive")
 	s.Assert().Equal("Updated Template", result.InstanceTitleTemplate, "Should update InstanceTitleTemplate")
 
 	var initiators []approval.FlowInitiator
@@ -155,11 +156,12 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowLabels() {
 
 	baseCmd := func() command.UpdateFlowCmd {
 		return command.UpdateFlowCmd{
-			FlowID:                s.flowID,
-			Name:                  "Original Flow",
-			BindingMode:           approval.BindingStandalone,
-			InstanceTitleTemplate: "Original Template",
-			Caller:                approval.SystemCaller,
+			IsAllInitiationAllowed: true,
+			FlowID:                 s.flowID,
+			Name:                   "Original Flow",
+			BindingMode:            approval.BindingStandalone,
+			InstanceTitleTemplate:  "Original Template",
+			Caller:                 approval.SystemCaller,
 		}
 	}
 
@@ -237,9 +239,10 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowBindingDoesNotMutateRunningVersion()
 	table, pk, status := "biz_orders", "id", "approval_status"
 	instanceCol := "apv_instance_id"
 	updated, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
-		FlowID:      s.flowID,
-		Name:        "Renamed While Running",
-		BindingMode: approval.BindingBusiness,
+		IsAllInitiationAllowed: true,
+		FlowID:                 s.flowID,
+		Name:                   "Renamed While Running",
+		BindingMode:            approval.BindingBusiness,
 		BusinessBinding: &approval.BusinessBindingConfig{
 			TableName:        table,
 			KeyColumns:       []string{pk},
@@ -270,7 +273,7 @@ func (s *UpdateFlowTestSuite) TestUpdateAllFields() {
 		Icon:                   &icon,
 		Description:            &desc,
 		AdminUserIDs:           []string{"admin-all"},
-		IsAllInitiationAllowed: true,
+		IsAllInitiationAllowed: false,
 		InstanceTitleTemplate:  "All Fields Template",
 		Initiators: []shared.CreateFlowInitiatorCmd{
 			{Kind: approval.InitiatorUser, IDs: []string{"user-all-1"}},
@@ -286,7 +289,8 @@ func (s *UpdateFlowTestSuite) TestUpdateAllFields() {
 	s.Assert().Equal(&icon, result.Icon, "Icon should be updated")
 	s.Assert().Equal(&desc, result.Description, "Description should be updated")
 	s.Assert().Equal([]string{"admin-all"}, result.AdminUserIDs, "AdminUserIDs should be updated")
-	s.Assert().True(result.IsAllInitiationAllowed, "IsAllInitiationAllowed should be true")
+	s.Assert().False(result.IsAllInitiationAllowed,
+		"A flow carrying initiator rules must stay restricted — the two are mutually exclusive")
 	s.Assert().Equal("All Fields Template", result.InstanceTitleTemplate, "InstanceTitleTemplate should be updated")
 
 	var initiators []approval.FlowInitiator

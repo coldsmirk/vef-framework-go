@@ -142,6 +142,8 @@
   "approval_binding_incomplete": "业务绑定流程必须配置业务表、键列、状态列和审批实例 ID 列",
   "approval_invalid_binding_mode": "无效的流程绑定模式",
   "approval_invalid_initiator_kind": "无效的发起人类型",
+  "approval_initiators_not_allowed": "流程允许所有人发起时不能配置发起人",
+  "approval_initiators_required": "流程限定发起人时必须配置至少一条发起人规则",
   "approval_invalid_storage_mode": "存储模式不合法，必须为 json 或 table",
   "approval_binding_columns_conflict": "业务绑定的键列和写回列必须互不重复",
   "approval_binding_unexpected": "独立流程不能配置业务绑定",

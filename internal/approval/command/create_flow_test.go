@@ -100,14 +100,15 @@ func (s *CreateFlowTestSuite) TestCreateFlowSuccess() {
 func (s *CreateFlowTestSuite) TestCreateFlowLabels() {
 	s.Run("PersistsLabels", func() {
 		cmd := command.CreateFlowCmd{
-			TenantID:              "tenant-1",
-			Code:                  "labeled",
-			Name:                  "Labeled Flow",
-			CategoryID:            s.categoryID,
-			BindingMode:           approval.BindingStandalone,
-			InstanceTitleTemplate: "Test",
-			Labels:                map[string]string{"app": "crm", "mobile": "true"},
-			Caller:                approval.SystemCaller,
+			IsAllInitiationAllowed: true,
+			TenantID:               "tenant-1",
+			Code:                   "labeled",
+			Name:                   "Labeled Flow",
+			CategoryID:             s.categoryID,
+			BindingMode:            approval.BindingStandalone,
+			InstanceTitleTemplate:  "Test",
+			Labels:                 map[string]string{"app": "crm", "mobile": "true"},
+			Caller:                 approval.SystemCaller,
 		}
 
 		created, err := s.handler.Handle(s.ctx, cmd)
@@ -126,14 +127,15 @@ func (s *CreateFlowTestSuite) TestCreateFlowLabels() {
 
 	s.Run("RejectsInvalidLabelKey", func() {
 		cmd := command.CreateFlowCmd{
-			TenantID:              "tenant-1",
-			Code:                  "bad-label",
-			Name:                  "Bad Label Flow",
-			CategoryID:            s.categoryID,
-			BindingMode:           approval.BindingStandalone,
-			InstanceTitleTemplate: "Test",
-			Labels:                map[string]string{"app.id": "crm"},
-			Caller:                approval.SystemCaller,
+			IsAllInitiationAllowed: true,
+			TenantID:               "tenant-1",
+			Code:                   "bad-label",
+			Name:                   "Bad Label Flow",
+			CategoryID:             s.categoryID,
+			BindingMode:            approval.BindingStandalone,
+			InstanceTitleTemplate:  "Test",
+			Labels:                 map[string]string{"app.id": "crm"},
+			Caller:                 approval.SystemCaller,
 		}
 
 		_, err := s.handler.Handle(s.ctx, cmd)
@@ -144,13 +146,14 @@ func (s *CreateFlowTestSuite) TestCreateFlowLabels() {
 
 func (s *CreateFlowTestSuite) TestCreateFlowDefaultTenant() {
 	cmd := command.CreateFlowCmd{
-		TenantID:              "", // empty → defaults to "default"
-		Code:                  "reimbursement",
-		Name:                  "Reimbursement Approval",
-		CategoryID:            s.categoryID,
-		BindingMode:           approval.BindingStandalone,
-		InstanceTitleTemplate: "Reimbursement request",
-		Caller:                approval.SystemCaller,
+		IsAllInitiationAllowed: true,
+		TenantID:               "", // empty → defaults to "default"
+		Code:                   "reimbursement",
+		Name:                   "Reimbursement Approval",
+		CategoryID:             s.categoryID,
+		BindingMode:            approval.BindingStandalone,
+		InstanceTitleTemplate:  "Reimbursement request",
+		Caller:                 approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -160,13 +163,14 @@ func (s *CreateFlowTestSuite) TestCreateFlowDefaultTenant() {
 
 func (s *CreateFlowTestSuite) TestCreateFlowDuplicateCode() {
 	cmd := command.CreateFlowCmd{
-		TenantID:              "tenant-dup",
-		Code:                  "unique-code",
-		Name:                  "First Flow",
-		CategoryID:            s.categoryID,
-		BindingMode:           approval.BindingStandalone,
-		InstanceTitleTemplate: "Title Template",
-		Caller:                approval.SystemCaller,
+		IsAllInitiationAllowed: true,
+		TenantID:               "tenant-dup",
+		Code:                   "unique-code",
+		Name:                   "First Flow",
+		CategoryID:             s.categoryID,
+		BindingMode:            approval.BindingStandalone,
+		InstanceTitleTemplate:  "Title Template",
+		Caller:                 approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)
@@ -223,11 +227,12 @@ func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingComplete() {
 	instanceCol := "apv_instance_id"
 
 	result, err := s.handler.Handle(s.ctx, command.CreateFlowCmd{
-		TenantID:    "tenant-binding",
-		Code:        "business-complete",
-		Name:        "Business Bound",
-		CategoryID:  s.categoryID,
-		BindingMode: approval.BindingBusiness,
+		IsAllInitiationAllowed: true,
+		TenantID:               "tenant-binding",
+		Code:                   "business-complete",
+		Name:                   "Business Bound",
+		CategoryID:             s.categoryID,
+		BindingMode:            approval.BindingBusiness,
 		BusinessBinding: &approval.BusinessBindingConfig{
 			TableName:        table,
 			KeyColumns:       []string{pk},
@@ -250,11 +255,12 @@ func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingIncomplete() {
 	// Business mode with a missing table must be rejected, not silently saved
 	// (it would no-op the status write-back on the first completed instance).
 	_, err := s.handler.Handle(s.ctx, command.CreateFlowCmd{
-		TenantID:    "tenant-binding-bad",
-		Code:        "business-incomplete",
-		Name:        "Half Bound",
-		CategoryID:  s.categoryID,
-		BindingMode: approval.BindingBusiness,
+		IsAllInitiationAllowed: true,
+		TenantID:               "tenant-binding-bad",
+		Code:                   "business-incomplete",
+		Name:                   "Half Bound",
+		CategoryID:             s.categoryID,
+		BindingMode:            approval.BindingBusiness,
 		BusinessBinding: &approval.BusinessBindingConfig{
 			KeyColumns:   []string{pk},
 			StatusColumn: status,
@@ -274,11 +280,12 @@ func (s *CreateFlowTestSuite) TestCreateFlowLinkageColumns() {
 
 	linkageCmd := func(code string) command.CreateFlowCmd {
 		return command.CreateFlowCmd{
-			TenantID:    "tenant-linkage",
-			Code:        code,
-			Name:        "Linkage Bound",
-			CategoryID:  s.categoryID,
-			BindingMode: approval.BindingBusiness,
+			IsAllInitiationAllowed: true,
+			TenantID:               "tenant-linkage",
+			Code:                   code,
+			Name:                   "Linkage Bound",
+			CategoryID:             s.categoryID,
+			BindingMode:            approval.BindingBusiness,
 			BusinessBinding: &approval.BusinessBindingConfig{
 				TableName:        table,
 				KeyColumns:       []string{pk},
@@ -334,5 +341,68 @@ func (s *CreateFlowTestSuite) TestCreateFlowLinkageColumns() {
 		_, err := s.handler.Handle(s.ctx, cmd)
 		s.Require().Error(err, "Two binding fields naming the same column must be rejected")
 		s.Assert().ErrorIs(err, shared.ErrBindingColumnsConflict, "Duplicate write columns would render SET col = ?, col = ?")
+	})
+}
+
+// TestInitiatorPolicyIsExclusive pins the two initiation settings as mutually
+// exclusive in both directions. Permission checking short-circuits on
+// isAllInitiationAllowed and never reads the rules, so the pairing that used to
+// be accepted — open to everyone WITH rules — displayed a restriction that did
+// not hold; and a restricted flow with no rules could be started by nobody. The
+// invariant also makes an empty initiator list mean exactly "open to everyone",
+// which is what lets one query answer who may start a flow.
+func (s *CreateFlowTestSuite) TestInitiatorPolicyIsExclusive() {
+	baseCmd := func(code string) command.CreateFlowCmd {
+		return command.CreateFlowCmd{
+			TenantID:              "tenant-policy",
+			Code:                  code,
+			Name:                  "Initiator Policy Flow",
+			CategoryID:            s.categoryID,
+			BindingMode:           approval.BindingStandalone,
+			InstanceTitleTemplate: "Template",
+			Caller:                approval.SystemCaller,
+		}
+	}
+
+	s.Run("RejectsInitiatorsOnAFlowOpenToEveryone", func() {
+		cmd := baseCmd("policy-open-with-rules")
+		cmd.IsAllInitiationAllowed = true
+		cmd.Initiators = []shared.CreateFlowInitiatorCmd{
+			{Kind: approval.InitiatorUser, IDs: []string{"user-1"}},
+		}
+
+		_, err := s.handler.Handle(s.ctx, cmd)
+		s.Require().Error(err, "Rules on an open flow must be rejected")
+		s.Assert().ErrorIs(err, shared.ErrInitiatorsNotAllowed,
+			"The rejection must name the exclusivity rule")
+	})
+
+	s.Run("RejectsARestrictedFlowWithNoInitiators", func() {
+		cmd := baseCmd("policy-restricted-empty")
+		cmd.IsAllInitiationAllowed = false
+
+		_, err := s.handler.Handle(s.ctx, cmd)
+		s.Require().Error(err, "A restricted flow with no rules must be rejected")
+		s.Assert().ErrorIs(err, shared.ErrInitiatorsRequired,
+			"The rejection must name the missing rules")
+	})
+
+	s.Run("AcceptsAFlowOpenToEveryoneWithoutInitiators", func() {
+		cmd := baseCmd("policy-open-clean")
+		cmd.IsAllInitiationAllowed = true
+
+		_, err := s.handler.Handle(s.ctx, cmd)
+		s.Require().NoError(err, "Open to everyone with no rules is the valid open shape")
+	})
+
+	s.Run("AcceptsARestrictedFlowWithInitiators", func() {
+		cmd := baseCmd("policy-restricted-rules")
+		cmd.IsAllInitiationAllowed = false
+		cmd.Initiators = []shared.CreateFlowInitiatorCmd{
+			{Kind: approval.InitiatorUser, IDs: []string{"user-1"}},
+		}
+
+		_, err := s.handler.Handle(s.ctx, cmd)
+		s.Require().NoError(err, "Restricted with rules is the valid restricted shape")
 	})
 }

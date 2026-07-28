@@ -58,6 +58,10 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 		return nil, err
 	}
 
+	if err := validateInitiatorPolicy(cmd.IsAllInitiationAllowed, cmd.Initiators); err != nil {
+		return nil, err
+	}
+
 	if err := validateFlowLabels(cmd.Labels); err != nil {
 		return nil, err
 	}
