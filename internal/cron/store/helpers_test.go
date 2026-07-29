@@ -68,6 +68,15 @@ func noopHandler(name string) cron.JobHandler {
 }
 
 // fastStoreConfig returns an enabled store config with test-friendly pacing.
+//
+// AbandonedAfter stays far above the heartbeat cadence on purpose. It is a
+// liveness budget measured in wall-clock time, so pacing it at the validator's
+// 2× floor would let a single delayed renewal — routine under -race, a loaded
+// CI runner, or SQLite's single writer — declare a run that is demonstrably
+// alive abandoned, discarding its outcome. Production ships the same slack
+// (10s heartbeat against a 1m window); tests need it in absolute terms too.
+// Abandonment is still cheap to exercise: every test that wants it inserts a
+// fixture whose heartbeat is minutes old rather than waiting out the window.
 func fastStoreConfig() *config.CronStoreConfig {
 	return &config.CronStoreConfig{
 		Enabled:           true,
@@ -75,7 +84,7 @@ func fastStoreConfig() *config.CronStoreConfig {
 		BatchSize:         8,
 		MaxConcurrent:     4,
 		HeartbeatInterval: 25 * time.Millisecond,
-		AbandonedAfter:    50 * time.Millisecond,
+		AbandonedAfter:    2 * time.Second,
 	}
 }
 

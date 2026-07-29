@@ -79,7 +79,7 @@ func TestModuleBoot(t *testing.T) {
 				AutoMigrate:       true,
 				PollInterval:      20 * time.Millisecond,
 				HeartbeatInterval: 25 * time.Millisecond,
-				AbandonedAfter:    50 * time.Millisecond,
+				AbandonedAfter:    2 * time.Second,
 			}}),
 			fx.Provide(fx.Annotate(
 				func() cron.JobHandler {

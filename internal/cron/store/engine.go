@@ -444,9 +444,18 @@ func (e *Engine) complete(fire claimedFire, runErr, ctxErr error) {
 		run.Status = cron.RunSucceeded
 	}
 
-	if err := e.writeOutcome(ctx, fire, run); err != nil {
+	journaled, err := e.writeOutcome(ctx, fire, run)
+	if err != nil {
 		logger.Errorf("Journal run %s of schedule %q: %v", run.ID, run.ScheduleName, err)
 
+		return
+	}
+
+	// A recovery sweep already took this run over and journaled it abandoned,
+	// publishing its own terminal event. Reporting the outcome computed here
+	// would contradict the journal — the truth these events only notify about —
+	// and hand subscribers two terminal events for one run.
+	if !journaled {
 		return
 	}
 
@@ -463,8 +472,16 @@ func (e *Engine) complete(fire claimedFire, runErr, ctxErr error) {
 // wrongly resurface through abandoned-run recovery, so unlike claiming
 // (where the next tick retries naturally) this write must not surrender to
 // a transient writer collision on SQLite's single-writer path.
-func (e *Engine) writeOutcome(ctx context.Context, fire claimedFire, run *cron.Run) error {
+//
+// It reports whether the outcome reached the journal — by this attempt or by
+// an earlier one whose commit report was lost to contention. A CAS matching no
+// row because a recovery sweep took the run over is not a failure, but nothing
+// was recorded, and the caller must know that before reporting the outcome as
+// this run's fate.
+func (e *Engine) writeOutcome(ctx context.Context, fire claimedFire, run *cron.Run) (bool, error) {
 	for {
+		var journaled bool
+
 		err := e.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
 			requeue := run.Status == cron.RunCanceled && fire.schedule.Recover
 			if requeue {
@@ -492,6 +509,23 @@ func (e *Engine) writeOutcome(ctx context.Context, fire claimedFire, run *cron.R
 			}
 
 			if affected, _ := updated.RowsAffected(); affected == 0 {
+				// The row is no longer running for one of two reasons: a
+				// recovery sweep took the run over, or an earlier attempt of
+				// this very write committed and only its report was lost to a
+				// contention error. Only the journal tells them apart, and
+				// only the second is this run's own outcome — a takeover
+				// writes RunAbandoned, which complete never produces.
+				landed, err := outcomeAlreadyLanded(ctx, tx, run)
+				if err != nil {
+					return err
+				}
+
+				if landed {
+					journaled = true
+
+					return nil
+				}
+
 				logger.Warnf("Run %s of schedule %q finished after being recovered; outcome discarded", run.ID, run.ScheduleName)
 
 				return nil
@@ -512,18 +546,43 @@ func (e *Engine) writeOutcome(ctx context.Context, fire claimedFire, run *cron.R
 				}
 			}
 
+			journaled = true
+
 			return nil
 		})
 		if err == nil || !sqlmigration.IsBusyContention(err) {
-			return err
+			return journaled, err
 		}
 
 		select {
 		case <-ctx.Done():
-			return err
+			return journaled, err
 		case <-time.After(outcomeRetryInterval):
 		}
 	}
+}
+
+// outcomeAlreadyLanded reports whether the journal already holds the terminal
+// state this write is carrying — the signature of an attempt that committed
+// before its contention error was reported. A row taken over by recovery
+// carries RunAbandoned instead, and a pruned one carries nothing.
+func outcomeAlreadyLanded(ctx context.Context, tx orm.DB, run *cron.Run) (bool, error) {
+	var status string
+
+	err := tx.NewSelect().
+		Model((*cron.Run)(nil)).
+		Select("status").
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(run.ID) }).
+		Scan(ctx, &status)
+	if err != nil {
+		if result.IsRecordNotFound(err) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("read journaled status of run %s: %w", run.ID, err)
+	}
+
+	return status == string(run.Status), nil
 }
 
 // lockScheduleAlive locks the run's schedule row and reports whether it still

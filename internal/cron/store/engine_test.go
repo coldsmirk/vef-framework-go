@@ -351,6 +351,12 @@ func TestEngineWakesWhenAnExecutorSlotIsReleased(t *testing.T) {
 	config.PollInterval = time.Hour
 	config.BatchSize = 1
 	config.MaxConcurrent = 1
+	// This test waits on the recovery sweep, whose cadence is half the
+	// abandoned window, so it shortens the window the harness deliberately
+	// keeps long. Judging the blocked handler's own run abandoned is harmless
+	// here: the executor releases its slot when the handler returns either way,
+	// which is the behavior under test.
+	config.AbandonedAfter = 50 * time.Millisecond
 	engine := NewEngine(db, config, registry, NewRunEventPublisher(eventtest.NewFakeBus()))
 	engine.drainTimeout = 200 * time.Millisecond
 	manager := NewScheduleManager(db, true, registry, engine)
@@ -666,8 +672,9 @@ func TestEngineWriteOutcomeRetriesLostLockRaces(t *testing.T) {
 		fire, run := canceledFire(t, db)
 		flaky := &FlakyDB{DB: db, failures: 2}
 
-		require.NoError(t, newEngineOver(flaky).writeOutcome(context.Background(), fire, run),
-			"A lost lock race must be retried until the outcome lands")
+		journaled, err := newEngineOver(flaky).writeOutcome(context.Background(), fire, run)
+		require.NoError(t, err, "A lost lock race must be retried until the outcome lands")
+		assert.True(t, journaled, "The retried write reached the journal, so the caller may report it")
 		assert.Equal(t, int32(3), flaky.attempts.Load(), "The two refused attempts must both be retried")
 
 		runs := loadRuns(t, db, run.ScheduleID)
@@ -684,8 +691,10 @@ func TestEngineWriteOutcomeRetriesLostLockRaces(t *testing.T) {
 		fire, run := canceledFire(t, db)
 		flaky := &FlakyDB{DB: db, failures: 1, commitFirst: true}
 
-		require.NoError(t, newEngineOver(flaky).writeOutcome(context.Background(), fire, run),
-			"An attempt that committed before reporting contention must still resolve")
+		journaled, err := newEngineOver(flaky).writeOutcome(context.Background(), fire, run)
+		require.NoError(t, err, "An attempt that committed before reporting contention must still resolve")
+		assert.True(t, journaled,
+			"The lost report must not cost the run its outcome notification: the write did land")
 		assert.Equal(t, int32(2), flaky.attempts.Load(), "The reported failure must be retried once")
 
 		runs := loadRuns(t, db, run.ScheduleID)
@@ -708,7 +717,10 @@ func TestEngineWriteOutcomeRetriesLostLockRaces(t *testing.T) {
 		defer cancel()
 
 		outcome := make(chan error, 1)
-		go func() { outcome <- engine.writeOutcome(ctx, fire, run) }()
+		go func() {
+			_, err := engine.writeOutcome(ctx, fire, run)
+			outcome <- err
+		}()
 
 		select {
 		case err := <-outcome:
@@ -724,6 +736,41 @@ func TestEngineWriteOutcomeRetriesLostLockRaces(t *testing.T) {
 		assert.Empty(t, loadFireRequests(t, db, run.ScheduleID),
 			"A transaction that never committed must queue no recovery request")
 	})
+}
+
+// TestEngineCompleteStaysSilentWhenRecoveryTookTheRunOver pins the split
+// between journaling an outcome and reporting one. A handler that finishes
+// after the recovery sweep already declared its run abandoned has nothing left
+// to say: the journal is the truth these events only notify about, and the
+// sweep published the terminal event for this run already.
+func TestEngineCompleteStaysSilentWhenRecoveryTookTheRunOver(t *testing.T) {
+	db := newStoreDB(t)
+	bus := eventtest.NewFakeBus()
+	publisher := NewRunEventPublisher(bus)
+	engine := NewEngine(db, fastStoreConfig(), mustRegistry(t, noopHandler("orders.sync")), publisher)
+
+	at := time.Now().Add(-time.Minute)
+	schedule := insertSchedule(t, db, scheduleFixture("taken-over", "orders.sync", at))
+	run := insertRunningRun(t, db, schedule, at, at)
+
+	_, err := db.NewUpdate().
+		Model((*cron.Run)(nil)).
+		Set("status", cron.RunAbandoned).
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(run.ID) }).
+		Exec(context.Background())
+	require.NoError(t, err, "Simulating the recovery takeover should succeed")
+
+	engine.complete(claimedFire{run: run, schedule: *schedule}, errors.New("upstream exploded"), nil)
+
+	runs := loadRuns(t, db, schedule.ID)
+	require.Len(t, runs, 1, "The takeover row must remain the only journal entry")
+	assert.Equal(t, cron.RunAbandoned, runs[0].Status,
+		"A late completion must never overwrite the status recovery already journaled")
+
+	require.NoError(t, publisher.Stop(context.Background()), "Flushing the publisher should succeed")
+	assert.Empty(t, bus.Captured(),
+		"A discarded outcome must publish nothing: reporting it would contradict the journal and "+
+			"hand subscribers two terminal events for one run")
 }
 
 func TestEngineStopSkipsRecoveryForADeletedSchedule(t *testing.T) {
