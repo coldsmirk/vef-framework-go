@@ -36,6 +36,16 @@ func permCC(user string, nodeID *string) approval.CCRecord {
 	return approval.CCRecord{CCUserID: user, NodeID: nodeID}
 }
 
+// permDelegatedTask builds a task the delegator handed to the delegate, the
+// shape a delegation produces: the delegate holds it, the delegator is only
+// recorded on it.
+func permDelegatedTask(delegate, delegator, nodeID string, status approval.TaskStatus) approval.Task {
+	task := permTask(delegate, nodeID, status)
+	task.DelegatorID = new(delegator)
+
+	return task
+}
+
 func TestResolveViewerFieldPermissions(t *testing.T) {
 	// vocab exercises the full permission vocabulary on one node: "plain" is
 	// deliberately absent (defaults to visible).
@@ -90,6 +100,38 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 			userID: "u",
 			want: map[string]approval.Permission{
 				"edit": approval.PermissionVisible, "req": approval.PermissionVisible,
+				"hide": approval.PermissionHidden, "plain": approval.PermissionVisible,
+			},
+		},
+		{
+			// The delegator keeps a read-only window on the slot they delegated:
+			// the delegate holds the pending task, so write strength would offer
+			// an edit no command accepts.
+			name: "DelegatedAwayTaskReadDowngradesForTheDelegator",
+			bundle: &instanceDetailBundle{
+				FormFields: permFields("edit", "req", "hide", "plain"),
+				FlowNodes:  []approval.FlowNode{permNode("N1", vocab)},
+				Tasks:      []approval.Task{permDelegatedTask("delegate", "u", "N1", approval.TaskPending)},
+				Instance:   approval.Instance{ApplicantID: "other", Status: approval.InstanceRunning},
+			},
+			userID: "u",
+			want: map[string]approval.Permission{
+				"edit": approval.PermissionVisible, "req": approval.PermissionVisible,
+				"hide": approval.PermissionHidden, "plain": approval.PermissionVisible,
+			},
+		},
+		{
+			// The same row seen by the delegate: they hold it, so full strength.
+			name: "DelegatedAwayTaskKeepsFullStrengthForTheDelegate",
+			bundle: &instanceDetailBundle{
+				FormFields: permFields("edit", "req", "hide", "plain"),
+				FlowNodes:  []approval.FlowNode{permNode("N1", vocab)},
+				Tasks:      []approval.Task{permDelegatedTask("u", "delegator", "N1", approval.TaskPending)},
+				Instance:   approval.Instance{ApplicantID: "other", Status: approval.InstanceRunning},
+			},
+			userID: "u",
+			want: map[string]approval.Permission{
+				"edit": approval.PermissionEditable, "req": approval.PermissionRequired,
 				"hide": approval.PermissionHidden, "plain": approval.PermissionVisible,
 			},
 		},

@@ -40,12 +40,12 @@ func strongerPermission(a, b approval.Permission) approval.Permission {
 // an entry for each key in bundle.FormFields (table fields count as one key) so
 // the client applies it verbatim; it is nil when the flow has no form fields.
 //
-// Fail-closed: a viewer with zero recognized contexts (own task, CC delivery,
-// applicant) contributes nothing, so the hidden seed stands and they see no
-// field. Reachability is guarded by IsInstanceParticipant in the handler, whose
-// participant set (applicant / assignee / CC) MUST stay a subset of the contexts
-// recognized here — if the two ever diverge, the failure mode is now "sees
-// nothing" instead of the former "sees everything".
+// Fail-closed: a viewer with zero recognized contexts (own task, task delegated
+// away, CC delivery, applicant) contributes nothing, so the hidden seed stands
+// and they see no field. Reachability is guarded by IsInstanceParticipant in the
+// handler, whose participant set (applicant / assignee / delegator / CC) MUST
+// stay a subset of the contexts recognized here — if the two ever diverge, the
+// failure mode is now "sees nothing" instead of the former "sees everything".
 func resolveViewerFieldPermissions(bundle *instanceDetailBundle, userID string) map[string]approval.Permission {
 	if len(bundle.FormFields) == 0 {
 		return nil
@@ -99,12 +99,17 @@ func resolveViewerFieldPermissions(bundle *instanceDetailBundle, userID string) 
 	// Task contexts: the viewer's own tasks. A pending task grants the node's
 	// permissions at full strength — the only task context whose edits the write
 	// path accepts; any other status (including queued Waiting) is read-only.
+	// A task the viewer delegated away is read-only too: the delegate holds it,
+	// so no command would take the delegator's edit.
 	for i := range bundle.Tasks {
-		if bundle.Tasks[i].AssigneeID != userID {
-			continue
-		}
+		task := &bundle.Tasks[i]
 
-		contributeNodeMap(bundle.Tasks[i].NodeID, bundle.Tasks[i].Status != approval.TaskPending)
+		switch {
+		case task.AssigneeID == userID:
+			contributeNodeMap(task.NodeID, task.Status != approval.TaskPending)
+		case task.DelegatorID != nil && *task.DelegatorID == userID:
+			contributeNodeMap(task.NodeID, true)
+		}
 	}
 
 	// CC contexts: instance-level manual CC (nil node) sees the whole form; a

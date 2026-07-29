@@ -671,11 +671,41 @@ func (*TaskService) IsUrgeAuthorized(ctx context.Context, db orm.DB, instanceID,
 }
 
 // IsInstanceParticipant checks whether the user is related to the instance as
-// applicant, task assignee, or CC recipient.
+// applicant, task assignee, delegator, or CC recipient.
+//
+// The delegator leg is what separates this from IsUrgeAuthorized. A delegation
+// opens the task on the delegate (assignee_id) and records the original
+// approver on delegator_id, so without it the person whose approval slot the
+// node actually configured is the one viewer who cannot open the instance —
+// while the framework records them as a person snapshot on the task and renders
+// them in the timeline. Read-only either way: the delegate holds the pending
+// task, so no action is offered to the delegator (computeActions keys off
+// assignee_id) and the field-permission projection clamps this context to
+// visible.
+//
+// Whatever is added here MUST also be recognized by
+// query.resolveViewerFieldPermissions, whose contexts have to stay a superset
+// of this participant set — otherwise the new viewer reaches the detail and
+// finds every form field stripped.
 func (*TaskService) IsInstanceParticipant(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
 	ok, err := isApplicantOrAssignee(ctx, db, instanceID, userID)
 	if err != nil || ok {
 		return ok, err
+	}
+
+	hasDelegated, err := db.NewSelect().
+		Model((*approval.Task)(nil)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("instance_id", instanceID).
+				Equals("delegator_id", userID)
+		}).
+		Exists(ctx)
+	if err != nil {
+		return false, fmt.Errorf("check delegated participation: %w", err)
+	}
+
+	if hasDelegated {
+		return true, nil
 	}
 
 	hasCC, err := db.NewSelect().

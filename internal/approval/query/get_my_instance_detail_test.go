@@ -446,6 +446,178 @@ func (s *GetMyInstanceDetailTestSuite) TestFieldPermissionsProjection() {
 	s.Assert().Contains(stored.FormData, "secret", "Hidden field must remain in the database")
 }
 
+// TestParticipantAccess enumerates every way a person becomes involved in an
+// instance and pins that each one opens the detail rather than being denied.
+// The set is the access contract, so it is asserted exhaustively in one place:
+// the applicant, the pending approver, the handler of a handle node, both sides
+// of a transfer, both sides of a delegation, an assignee who was removed, and a
+// CC recipient — closed off by an outsider who must still be refused.
+//
+// Each leg's read strength is asserted alongside its access, because the two
+// have to move together: IsInstanceParticipant admitting a viewer that
+// resolveViewerFieldPermissions does not recognize opens the detail onto a form
+// with every field stripped.
+func (s *GetMyInstanceDetailTestSuite) TestParticipantAccess() {
+	category := &approval.FlowCategory{TenantID: "default", Code: "party-cat", Name: "Participant Category"}
+	_, err := s.db.NewInsert().Model(category).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert category")
+
+	flow := &approval.Flow{
+		TenantID: "default", CategoryID: category.ID, Code: "party-flow", Name: "Participant Flow",
+		BindingMode: approval.BindingStandalone, IsAllInitiationAllowed: true,
+		InstanceTitleTemplate: "Test", IsActive: true,
+	}
+	_, err = s.db.NewInsert().Model(flow).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert flow")
+
+	version := &approval.FlowVersion{
+		FlowID: flow.ID, Version: 1, Status: approval.VersionPublished,
+		FormFields: []approval.FormFieldDefinition{{Key: "reason"}, {Key: "secret"}},
+	}
+	_, err = s.db.NewInsert().Model(version).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert version with form fields")
+
+	// "reason" editable / "secret" hidden on both nodes, so every leg's clamp is
+	// observable from the same two keys.
+	perms := map[string]approval.Permission{
+		"reason": approval.PermissionEditable,
+		"secret": approval.PermissionHidden,
+	}
+
+	approvalNode := &approval.FlowNode{
+		FlowVersionID: version.ID, Key: "party-approve", Kind: approval.NodeApproval,
+		Name: "Approval Node", FieldPermissions: perms,
+	}
+	_, err = s.db.NewInsert().Model(approvalNode).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert approval node")
+
+	handleNode := &approval.FlowNode{
+		FlowVersionID: version.ID, Key: "party-handle", Kind: approval.NodeHandle,
+		Name: "Handle Node", FieldPermissions: perms,
+	}
+	_, err = s.db.NewInsert().Model(handleNode).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert handle node")
+
+	inst := &approval.Instance{
+		TenantID: "default", FlowID: flow.ID, FlowVersionID: version.ID,
+		Title: "Participant Instance", InstanceNo: "PARTY-001", ApplicantID: "party-applicant",
+		Status: approval.InstanceRunning, CurrentNodeID: &approvalNode.ID,
+		FormData: map[string]any{"reason": "please approve", "secret": "confidential"},
+	}
+	_, err = s.db.NewInsert().Model(inst).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert instance")
+
+	approvalVisit := ensureActiveVisit(s.T(), s.ctx, s.db, inst.TenantID, inst.ID, approvalNode.ID)
+	handleVisit := ensureActiveVisit(s.T(), s.ctx, s.db, inst.TenantID, inst.ID, handleNode.ID)
+
+	delegatorID, delegatorName := "party-delegator", "Original Approver"
+
+	// One row per involvement shape. Transfer keeps the original row at
+	// "transferred" and inserts the replacement; remove-assignee keeps the row at
+	// "removed" — both are how the commands actually leave the table, so the
+	// access contract is asserted against real shapes, not invented ones.
+	tasks := []approval.Task{
+		{
+			TenantID: inst.TenantID, InstanceID: inst.ID, NodeID: approvalNode.ID, VisitID: approvalVisit.ID,
+			AssigneeID: "party-approver", SortOrder: 1, Status: approval.TaskPending,
+		},
+		{
+			TenantID: inst.TenantID, InstanceID: inst.ID, NodeID: approvalNode.ID, VisitID: approvalVisit.ID,
+			AssigneeID: "party-transferor", SortOrder: 2, Status: approval.TaskTransferred,
+		},
+		{
+			TenantID: inst.TenantID, InstanceID: inst.ID, NodeID: approvalNode.ID, VisitID: approvalVisit.ID,
+			AssigneeID: "party-transferee", SortOrder: 2, Status: approval.TaskPending,
+		},
+		{
+			TenantID: inst.TenantID, InstanceID: inst.ID, NodeID: approvalNode.ID, VisitID: approvalVisit.ID,
+			AssigneeID: "party-delegate", SortOrder: 3, Status: approval.TaskPending,
+			DelegatorID: &delegatorID, DelegatorName: &delegatorName,
+		},
+		{
+			TenantID: inst.TenantID, InstanceID: inst.ID, NodeID: approvalNode.ID, VisitID: approvalVisit.ID,
+			AssigneeID: "party-removed", SortOrder: 4, Status: approval.TaskRemoved,
+		},
+		{
+			TenantID: inst.TenantID, InstanceID: inst.ID, NodeID: handleNode.ID, VisitID: handleVisit.ID,
+			AssigneeID: "party-handler", SortOrder: 5, Status: approval.TaskPending,
+		},
+	}
+	for i := range tasks {
+		_, err = s.db.NewInsert().Model(&tasks[i]).Exec(s.ctx)
+		s.Require().NoError(err, "Should insert task for %s", tasks[i].AssigneeID)
+	}
+
+	_, err = s.db.NewInsert().Model(&approval.CCRecord{
+		InstanceID: inst.ID, NodeID: &approvalNode.ID, VisitID: &approvalVisit.ID,
+		CCUserID: "party-cc", CCUserName: "CC User",
+	}).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert CC record")
+
+	// wantReason is each leg's read strength on the node's editable field: full
+	// strength only for whoever the write path would accept, which is the holder
+	// of a pending task (the applicant would qualify too, but only while the
+	// instance is resubmittable — it is running here).
+	//
+	// wantSecret carries the one asymmetry worth pinning: the node's hidden field
+	// is hidden from every node-scoped context, but not from the applicant, whose
+	// context comes from the start node and covers the form they submitted
+	// themselves — hiding their own answers back from them would be absurd.
+	granted := []struct {
+		name       string
+		userID     string
+		wantReason approval.Permission
+		wantSecret approval.Permission
+		why        string
+	}{
+		{"Applicant", "party-applicant", approval.PermissionVisible, approval.PermissionVisible, "started the instance and owns the whole form"},
+		{"PendingApprover", "party-approver", approval.PermissionEditable, approval.PermissionHidden, "holds the pending task"},
+		{"Handler", "party-handler", approval.PermissionEditable, approval.PermissionHidden, "holds the pending task on the handle node"},
+		{"Transferor", "party-transferor", approval.PermissionVisible, approval.PermissionHidden, "handed their task on, keeping the concluded row"},
+		{"Transferee", "party-transferee", approval.PermissionEditable, approval.PermissionHidden, "received the replacement task"},
+		{"Delegator", "party-delegator", approval.PermissionVisible, approval.PermissionHidden, "delegated their slot; the delegate acts"},
+		{"Delegate", "party-delegate", approval.PermissionEditable, approval.PermissionHidden, "acts on the delegated task"},
+		{"RemovedAssignee", "party-removed", approval.PermissionVisible, approval.PermissionHidden, "was removed but took part"},
+		{"CCRecipient", "party-cc", approval.PermissionVisible, approval.PermissionHidden, "received the instance as CC"},
+	}
+
+	for _, tc := range granted {
+		s.Run(tc.name, func() {
+			detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
+				InstanceID: inst.ID,
+				UserID:     tc.userID,
+			})
+			s.Require().NoError(err, "%s must reach the detail — %s", tc.name, tc.why)
+			s.Assert().Equal(inst.ID, detail.Instance.InstanceID, "%s should get the requested instance", tc.name)
+
+			s.Assert().Equal(tc.wantReason, detail.FieldPermissions["reason"],
+				"%s should resolve the expected read strength — %s", tc.name, tc.why)
+			s.Assert().Equal(tc.wantSecret, detail.FieldPermissions["secret"],
+				"%s should resolve the expected strength on the node's hidden field", tc.name)
+
+			s.Assert().Contains(detail.Instance.FormData, "reason",
+				"%s must not be admitted onto a stripped form", tc.name)
+
+			if tc.wantSecret == approval.PermissionHidden {
+				s.Assert().NotContains(detail.Instance.FormData, "secret",
+					"A hidden field must be stripped for %s", tc.name)
+			} else {
+				s.Assert().Contains(detail.Instance.FormData, "secret",
+					"%s resolves the field visible, so its value must survive stripping", tc.name)
+			}
+		})
+	}
+
+	s.Run("OutsiderStillDenied", func() {
+		_, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
+			InstanceID: inst.ID,
+			UserID:     "party-outsider",
+		})
+		s.Require().ErrorIs(err, shared.ErrAccessDenied,
+			"Widening the participant set must not open the instance to non-participants")
+	})
+}
+
 // TestTableFieldHiddenStripped pins that a table-kind form field resolved hidden
 // for the viewer has its whole row-array value stripped from the returned form
 // data — a table counts as one permission key, so hiding it drops the array
