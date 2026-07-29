@@ -621,11 +621,21 @@ func (*TaskService) IsAuthorizedForNodeOperation(ctx context.Context, db orm.DB,
 	return slices.Contains(flow.AdminUserIDs, operatorID), nil
 }
 
-// isApplicantOrAssignee loads the instance's applicant_id, returns true if
-// userID matches the applicant, or if the user has any assignee task on the
-// instance. DB errors are propagated; a not-found instance maps to
+// isDecisionParticipant reports whether userID carries responsibility for the
+// instance's decision: the applicant, or anyone a task on the instance was ever
+// opened on — held directly (assignee_id) or handed to a delegate while the
+// slot stayed theirs (delegator_id). Observers are excluded; CC recipients are
+// deliberately not part of this set.
+//
+// Both handoff shapes must land here. A transfer opens a new task on the
+// transferee and leaves the original row's assignee_id intact, so the person
+// who handed the work on still matches; a delegation instead moves them to
+// delegator_id, so matching assignee_id alone would deny the same
+// organizational situation purely because of how it is stored.
+//
+// DB errors are propagated; a not-found instance maps to
 // shared.ErrInstanceNotFound.
-func isApplicantOrAssignee(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
+func isDecisionParticipant(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
 	var instance approval.Instance
 
 	instance.ID = instanceID
@@ -650,7 +660,10 @@ func isApplicantOrAssignee(ctx context.Context, db orm.DB, instanceID, userID st
 		Model((*approval.Task)(nil)).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("instance_id", instanceID).
-				Equals("assignee_id", userID)
+				Group(func(cb orm.ConditionBuilder) {
+					cb.Equals("assignee_id", userID).
+						OrEquals("delegator_id", userID)
+				})
 		}).
 		Exists(ctx)
 	if err != nil {
@@ -661,25 +674,27 @@ func isApplicantOrAssignee(ctx context.Context, db orm.DB, instanceID, userID st
 }
 
 // IsUrgeAuthorized reports whether userID may dispatch an urge for tasks
-// belonging to instanceID. Narrower than IsInstanceParticipant: only the
-// applicant and users who have (or had) an assignee task on the instance
-// count; CC recipients are excluded because they are not on the hook for
-// the decision and the right to urge has been abused by random observers
-// in prior incidents.
+// belonging to instanceID. Narrower than IsInstanceParticipant by exactly one
+// leg: CC recipients are excluded, because they are not on the hook for the
+// decision and the right to urge has been abused by random observers in prior
+// incidents.
+//
+// The right is instance-scoped, not task-scoped: a participant may urge any
+// pending task on the instance, not only the one they hold. An approver two
+// nodes back is as entitled to ask why the instance is stuck as the applicant
+// is, and the per-(task, urger) cooldown is what bounds the volume.
 func (*TaskService) IsUrgeAuthorized(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
-	return isApplicantOrAssignee(ctx, db, instanceID, userID)
+	return isDecisionParticipant(ctx, db, instanceID, userID)
 }
 
 // IsInstanceParticipant checks whether the user is related to the instance as
 // applicant, task assignee, delegator, or CC recipient.
 //
-// The delegator leg is what separates this from IsUrgeAuthorized. A delegation
-// opens the task on the delegate (assignee_id) and records the original
-// approver on delegator_id, so without it the person whose approval slot the
-// node actually configured is the one viewer who cannot open the instance —
-// while the framework records them as a person snapshot on the task and renders
-// them in the timeline. Read-only either way: the delegate holds the pending
-// task, so no action is offered to the delegator (computeActions keys off
+// The CC leg is what separates this from IsUrgeAuthorized: an observer may read
+// the instance but not nag the people deciding it.
+//
+// A delegator reaches the detail read-only. The delegate holds the pending
+// task, so no action is offered (computeActions keys the actionable set off
 // assignee_id) and the field-permission projection clamps this context to
 // visible.
 //
@@ -688,24 +703,9 @@ func (*TaskService) IsUrgeAuthorized(ctx context.Context, db orm.DB, instanceID,
 // of this participant set — otherwise the new viewer reaches the detail and
 // finds every form field stripped.
 func (*TaskService) IsInstanceParticipant(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
-	ok, err := isApplicantOrAssignee(ctx, db, instanceID, userID)
+	ok, err := isDecisionParticipant(ctx, db, instanceID, userID)
 	if err != nil || ok {
 		return ok, err
-	}
-
-	hasDelegated, err := db.NewSelect().
-		Model((*approval.Task)(nil)).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", instanceID).
-				Equals("delegator_id", userID)
-		}).
-		Exists(ctx)
-	if err != nil {
-		return false, fmt.Errorf("check delegated participation: %w", err)
-	}
-
-	if hasDelegated {
-		return true, nil
 	}
 
 	hasCC, err := db.NewSelect().

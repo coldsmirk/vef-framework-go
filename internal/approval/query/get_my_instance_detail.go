@@ -124,11 +124,11 @@ func (*GetMyInstanceDetailHandler) computeActions(
 	}
 
 	hasPendingTask := false
-	hasOwnTask := false
+	hasOwnOrDelegatedTask := false
 
 	for _, t := range tasks {
-		if t.AssigneeID == userID {
-			hasOwnTask = true
+		if t.AssigneeID == userID || (t.DelegatorID != nil && *t.DelegatorID == userID) {
+			hasOwnOrDelegatedTask = true
 		}
 
 		if t.Status != approval.TaskPending {
@@ -175,11 +175,11 @@ func (*GetMyInstanceDetailHandler) computeActions(
 		}
 	}
 
-	// Urge mirrors TaskService.IsUrgeAuthorized: only the applicant or a
-	// user who has (or had) an assignee task may urge — CC-only viewers are
-	// excluded, so the offered set cannot drift from what UrgeTaskHandler
-	// accepts.
-	if hasPendingTask && (isApplicant || hasOwnTask) {
+	// Urge mirrors TaskService.IsUrgeAuthorized: the applicant, or anyone a
+	// task was ever opened on — held directly or delegated away, the slot stays
+	// theirs. CC-only viewers are excluded, so the offered set cannot drift
+	// from what UrgeTaskHandler accepts.
+	if hasPendingTask && (isApplicant || hasOwnOrDelegatedTask) {
 		actions.Add("urge")
 	}
 

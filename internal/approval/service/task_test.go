@@ -530,6 +530,82 @@ func (s *TaskServiceTestSuite) TestIsAuthorizedForNodeOperation() {
 	})
 }
 
+// --- IsUrgeAuthorized ---
+
+// TestIsUrgeAuthorized pins the whole vocabulary of who may nudge the people
+// deciding an instance. The rule is "on the hook for the decision": the
+// applicant and everyone a task was ever opened on, however the work was
+// handed around, and nobody who is merely watching.
+func (s *TaskServiceTestSuite) TestIsUrgeAuthorized() {
+	s.Run("Applicant", func() {
+		inst := s.fixture.createInstance(s.T(), s.ctx, s.db, approval.InstanceRunning)
+
+		authorized, err := s.svc.IsUrgeAuthorized(s.ctx, s.db, inst.ID, "applicant")
+		s.Require().NoError(err, "Authorization check should not error")
+		s.Assert().True(authorized, "The applicant is waiting on the decision and may urge")
+	})
+
+	s.Run("CurrentAssignee", func() {
+		inst := s.fixture.createInstance(s.T(), s.ctx, s.db, approval.InstanceRunning)
+		insertTaskWithAssignee(s.T(), s.ctx, s.db, inst.ID, s.fixture.NodeIDs[0], approval.TaskPending, 1, "holder")
+
+		authorized, err := s.svc.IsUrgeAuthorized(s.ctx, s.db, inst.ID, "holder")
+		s.Require().NoError(err, "Authorization check should not error")
+		s.Assert().True(authorized, "A pending assignee may urge peers on the same instance")
+	})
+
+	s.Run("PastAssignee", func() {
+		inst := s.fixture.createInstance(s.T(), s.ctx, s.db, approval.InstanceRunning)
+		insertTaskWithAssignee(s.T(), s.ctx, s.db, inst.ID, s.fixture.NodeIDs[0], approval.TaskApproved, 1, "earlier")
+
+		authorized, err := s.svc.IsUrgeAuthorized(s.ctx, s.db, inst.ID, "earlier")
+		s.Require().NoError(err, "Authorization check should not error")
+		s.Assert().True(authorized,
+			"Someone who already approved still waits on the instance and may ask why it is stuck")
+	})
+
+	s.Run("Delegator", func() {
+		inst := s.fixture.createInstance(s.T(), s.ctx, s.db, approval.InstanceRunning)
+		task := insertTaskWithAssignee(s.T(), s.ctx, s.db, inst.ID, s.fixture.NodeIDs[0],
+			approval.TaskPending, 1, "delegate")
+
+		_, err := s.db.NewUpdate().
+			Model((*approval.Task)(nil)).
+			Set("delegator_id", "original-approver").
+			Where(func(cb orm.ConditionBuilder) { cb.Equals("id", task.ID) }).
+			Exec(s.ctx)
+		s.Require().NoError(err, "Delegating the task away should succeed")
+
+		authorized, err := s.svc.IsUrgeAuthorized(s.ctx, s.db, inst.ID, "original-approver")
+		s.Require().NoError(err, "Authorization check should not error")
+		s.Assert().True(authorized,
+			"The slot is still the delegator's; handing execution to a delegate must not cost them the right to urge")
+	})
+
+	s.Run("CCRecipientDenied", func() {
+		inst := s.fixture.createInstance(s.T(), s.ctx, s.db, approval.InstanceRunning)
+		insertTaskWithAssignee(s.T(), s.ctx, s.db, inst.ID, s.fixture.NodeIDs[0], approval.TaskPending, 1, "holder")
+
+		_, err := s.db.NewInsert().
+			Model(&approval.CCRecord{InstanceID: inst.ID, CCUserID: "observer"}).
+			Exec(s.ctx)
+		s.Require().NoError(err, "Inserting the CC record should succeed")
+
+		authorized, err := s.svc.IsUrgeAuthorized(s.ctx, s.db, inst.ID, "observer")
+		s.Require().NoError(err, "Authorization check should not error")
+		s.Assert().False(authorized,
+			"A CC recipient only watches: this is the one leg that separates urging from reading the instance")
+	})
+
+	s.Run("StrangerDenied", func() {
+		inst := s.fixture.createInstance(s.T(), s.ctx, s.db, approval.InstanceRunning)
+
+		authorized, err := s.svc.IsUrgeAuthorized(s.ctx, s.db, inst.ID, "nobody")
+		s.Require().NoError(err, "Authorization check should not error")
+		s.Assert().False(authorized, "An unrelated user may not urge")
+	})
+}
+
 // --- CanRemoveAssigneeTask ---
 
 func (s *TaskServiceTestSuite) TestCanRemoveAssigneeTask() {

@@ -253,6 +253,23 @@ func (s *GetMyInstanceDetailTestSuite) TestAssigneeAccess() {
 	s.Assert().Contains(detail.AvailableActions, "urge", "Assignee should be able to urge when the instance has pending tasks")
 }
 
+// TestDelegatorAccess covers the viewer whose approval slot a delegation
+// handed to someone else. They may watch and nudge — the slot is still theirs —
+// but the delegate holds the task, so no decision action is offered.
+func (s *GetMyInstanceDetailTestSuite) TestDelegatorAccess() {
+	detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
+		InstanceID: s.instanceID,
+		UserID:     "user-deleg",
+	})
+	s.Require().NoError(err, "Delegator should have access")
+	s.Assert().Contains(detail.AvailableActions, "urge",
+		"A delegator may urge the delegate holding their slot — mirrors IsUrgeAuthorized")
+	s.Assert().NotContains(detail.AvailableActions, "approve",
+		"The delegate holds the task, so the delegator is offered no decision action")
+	s.Assert().NotContains(detail.AvailableActions, "reject",
+		"The delegate holds the task, so the delegator is offered no decision action")
+}
+
 func (s *GetMyInstanceDetailTestSuite) TestCCAccess() {
 	detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: s.instanceID,
