@@ -17,10 +17,9 @@ var Module = fx.Module(
 )
 
 // autoMigrate registers a startup hook that applies the storage module's
-// DDL when StorageConfig.AutoMigrate is true. Registering via fx.Lifecycle
-// is required because the fx graph does not provide a long-lived
-// context.Context directly; the hook receives the lifecycle context that
-// fx manages for startup.
+// DDL when StorageConfig.AutoMigrate is true. It runs from a lifecycle hook
+// because the fx graph has no context.Context to hand a constructor at all
+// (see the CLAUDE.md gotcha); the hook receives the one fx manages for start-up.
 func autoMigrate(lc fx.Lifecycle, cfg *config.StorageConfig, db orm.DB, dataSources *config.DataSourcesConfig) {
 	if !cfg.AutoMigrate {
 		return

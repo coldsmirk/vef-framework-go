@@ -102,7 +102,6 @@ func setupResourceApp(s *apptest.Suite, extra ...fx.Option) (orm.DB, string) {
 			},
 			newApprovalConfig(),
 		),
-		fx.Provide(func() context.Context { return ctx }),
 		iapproval.Module,
 		fx.Provide(
 			fx.Annotate(func() approval.AssigneeService { return &MockAssigneeService{} }, fx.As(new(approval.AssigneeService))),

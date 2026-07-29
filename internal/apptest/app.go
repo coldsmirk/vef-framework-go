@@ -74,8 +74,16 @@ func newTestApp(t testing.TB, opts []fx.Option) (*app.App, func()) {
 	return testApp, fxApp.RequireStop
 }
 
-func coreOptions(dataSourceOption fx.Option) []fx.Option {
-	opts := []fx.Option{
+// prefixOptions builds the environment the test graph boots against — a config
+// that reads no file, a test database, and no fx logging. bootmodules.Assemble
+// puts the business modules and the caller's options after it, exactly as
+// vef.Run does, so this harness cannot drift from the real graph.
+//
+// The default test RedisConfig has Enabled=false, so the redis_stream transport
+// falls back to "no transport contributed"; tests that exercise it supply an
+// enabled config (see testx.NewRedisContainer).
+func prefixOptions(dataSourceOption fx.Option) []fx.Option {
+	return []fx.Option{
 		fx.NopLogger,
 		fx.Replace(
 			fx.Annotate(new(NopConfig), fx.As(new(config.Config))),
@@ -112,13 +120,6 @@ func coreOptions(dataSourceOption fx.Option) []fx.Option {
 		iconfig.Module,
 		dataSourceOption,
 	}
-
-	// Business modules come from bootmodules.Core() — the same canonical list
-	// the production boot sequence (vef.Run) uses — so this harness cannot
-	// drift from the real graph. The default test RedisConfig has Enabled=false,
-	// so the redis_stream transport falls back to "no transport contributed";
-	// tests that exercise it supply an enabled config (see testx.NewRedisContainer).
-	return append(opts, bootmodules.Core()...)
 }
 
 func buildOptions(options ...fx.Option) []fx.Option {
@@ -152,7 +153,5 @@ func buildOptionsWithDBConfig(existingDB *bun.DB, cfg config.DataSourceConfig, o
 }
 
 func buildOptionsWith(dataSourceOption fx.Option, extra ...fx.Option) []fx.Option {
-	opts := coreOptions(dataSourceOption)
-
-	return append(opts, extra...)
+	return bootmodules.Assemble(prefixOptions(dataSourceOption), extra)
 }

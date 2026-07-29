@@ -148,7 +148,6 @@ func (s *ModuleTestSuite) SetupSuite() {
 				RateLimit: config.IntegrationInboundRateLimitConfig{Max: 3, Period: time.Minute},
 			},
 		}),
-		fx.Provide(func() context.Context { return context.Background() }),
 		fx.Provide(fx.Annotate(
 			func() integration.InboundHandler { return labHandler("lab.result_received") },
 			fx.ResultTags(`group:"vef:integration:inbound_handlers"`),

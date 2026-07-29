@@ -49,7 +49,6 @@ func (s *PermissionEnforcementResourceTestSuite) SetupSuite() {
 			},
 			newApprovalConfig(),
 		),
-		fx.Provide(func() context.Context { return s.ctx }),
 		iapproval.Module,
 		fx.Provide(
 			fx.Annotate(func() approval.AssigneeService { return &MockAssigneeService{} }, fx.As(new(approval.AssigneeService))),

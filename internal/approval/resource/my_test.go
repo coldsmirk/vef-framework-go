@@ -38,7 +38,6 @@ func (s *MyPendingCountsTestSuite) SetupSuite() {
 			&security.JWTConfig{Secret: security.DefaultJWTSecret, Audience: "test_app"},
 			newApprovalConfig(),
 		),
-		fx.Provide(func() context.Context { return s.ctx }),
 		iapproval.Module,
 		fx.Provide(
 			fx.Annotate(func() approval.AssigneeService { return &MockAssigneeService{} }, fx.As(new(approval.AssigneeService))),

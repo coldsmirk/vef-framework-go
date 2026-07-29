@@ -21,7 +21,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
-// testAppName is the fixed application name used by coreOptions in app.go.
+// testAppName is the fixed application name used by prefixOptions in app.go.
 // It MUST match the Name field in the &config.AppConfig{} supplied there.
 // Changing one without the other will cause JWT audience mismatches in tests.
 const testAppName = "test-app"
@@ -32,7 +32,7 @@ const testAppName = "test-app"
 const testJWTAudience = "test_app"
 
 // testJWTSecret is the JWT signing secret apptest configures for the test app
-// (see coreOptions) and reuses in GenerateToken so generated tokens verify.
+// (see prefixOptions) and reuses in GenerateToken so generated tokens verify.
 const testJWTSecret = security.DefaultJWTSecret
 
 // Suite provides common integration test infrastructure for suites
@@ -160,7 +160,7 @@ func (s *Suite) ReadDataAsSlice(data any) []any {
 
 // GenerateToken creates a valid JWT access token for the given principal.
 // It signs with the same secret and audience (testJWTAudience, derived from
-// testAppName) that apptest's coreOptions configures for the test app, so the
+// testAppName) that apptest's prefixOptions configures for the test app, so the
 // token verifies out of the box. The token is valid for 1 hour with no notBefore
 // delay. If a suite overrides the app name via fx.Replace, this method will
 // produce tokens with the wrong audience — use a custom JWTConfig in that case.

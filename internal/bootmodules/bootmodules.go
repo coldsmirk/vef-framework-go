@@ -1,6 +1,8 @@
 package bootmodules
 
 import (
+	"slices"
+
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/internal/api"
@@ -23,7 +25,26 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/storage"
 )
 
-// Core returns the canonical list of business modules shared by the
+// Assemble composes the framework's boot options in the one order it supports:
+// the caller's environment prefix (config, data sources, fx logger), then the
+// canonical business modules, then the host's own options, then the trailing
+// invoke that must observe every start hook appended above it.
+//
+// Both boot paths go through it — vef.Run and the internal/apptest harness — so
+// neither can place the trailing slot wrong and the ordering has a single
+// authority instead of two copies held together by comments.
+//
+// The trailing slot currently holds cron.StartScheduler, which must run after
+// every module's start hook; see that function for why.
+func Assemble(prefix, host []fx.Option) []fx.Option {
+	opts := slices.Clone(prefix)
+	opts = append(opts, core()...)
+	opts = append(opts, host...)
+
+	return append(opts, fx.Invoke(cron.StartScheduler))
+}
+
+// core returns the canonical list of business modules shared by the
 // production boot sequence (vef.Run) and the test harness
 // (internal/apptest), so the two FX graphs cannot drift. The config,
 // datasource, and FX-logger modules are intentionally excluded: production
@@ -31,7 +52,7 @@ import (
 // an injected test database), while the business modules below must be
 // identical in both. FX resolves construction order by dependency, so the
 // slice order here is for readability only.
-func Core() []fx.Option {
+func core() []fx.Option {
 	return []fx.Option{
 		middleware.Module,
 		api.Module,
