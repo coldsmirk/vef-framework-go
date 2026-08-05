@@ -14,6 +14,7 @@ type CompletedTask struct {
 	InstanceStatus approval.InstanceStatus `json:"instanceStatus"`
 	FlowName       string                  `json:"flowName"`
 	FlowIcon       *string                 `json:"flowIcon,omitempty"`
+	Labels         map[string]string       `json:"labels,omitempty"`
 	Applicant      approval.UserInfo       `json:"applicant"`
 	NodeName       string                  `json:"nodeName"`
 	Status         string                  `json:"status"`

@@ -40,6 +40,14 @@ func (s *FindMyCompletedTasksTestSuite) SetupSuite() {
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert instance")
 
+	_, err = s.db.NewUpdate().Model(new(approval.Flow)).
+		Set("labels", map[string]string{"app": "smp"}).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("id", fix.FlowID)
+		}).
+		Exec(s.ctx)
+	s.Require().NoError(err, "Should set flow labels")
+
 	now := timex.Now()
 
 	tasks := []approval.Task{
@@ -93,6 +101,20 @@ func (s *FindMyCompletedTasksTestSuite) TestProjectsInstanceStatus() {
 	for _, item := range result.Items {
 		s.Assert().Equal(approval.InstanceApproved, item.InstanceStatus,
 			"Each row should carry the instance's current status")
+	}
+}
+
+func (s *FindMyCompletedTasksTestSuite) TestProjectsFlowLabels() {
+	result, err := s.handler.Handle(s.ctx, query.FindMyCompletedTasksQuery{
+		UserID:   "user-a",
+		Pageable: page.Pageable{Page: 1, Size: 10},
+	})
+	s.Require().NoError(err, "Should query without error")
+	s.Require().NotEmpty(result.Items, "Completed tasks should be projected")
+
+	for _, item := range result.Items {
+		s.Assert().Equal(map[string]string{"app": "smp"}, item.Labels,
+			"Each row should carry the flow's labels")
 	}
 }
 
