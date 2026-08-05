@@ -237,13 +237,14 @@ func (r *FlowResource) GetGraph(ctx fiber.Ctx, principal *security.Principal, pa
 type FindFlowsParams struct {
 	api.P
 
-	TenantID   *string           `json:"tenantId"`
-	CategoryID *string           `json:"categoryId"`
-	Keyword    *string           `json:"keyword"`
-	IsActive   *bool             `json:"isActive"`
-	Labels     map[string]string `json:"labels"`
-	Page       int               `json:"page"`
-	PageSize   int               `json:"pageSize"`
+	TenantID    *string               `json:"tenantId"`
+	CategoryID  *string               `json:"categoryId"`
+	Keyword     *string               `json:"keyword"`
+	IsActive    *bool                 `json:"isActive"`
+	Labels      map[string]string     `json:"labels"`
+	BindingMode *approval.BindingMode `json:"bindingMode"`
+	Page        int                   `json:"page"`
+	PageSize    int                   `json:"pageSize"`
 }
 
 // FindFlows queries flows for admin management.
@@ -257,13 +258,14 @@ func (r *FlowResource) FindFlows(ctx fiber.Ctx, principal *security.Principal, p
 		ctx.Context(),
 		r.bus,
 		query.FindFlowsQuery{
-			TenantID:   params.TenantID,
-			CategoryID: params.CategoryID,
-			Keyword:    params.Keyword,
-			IsActive:   params.IsActive,
-			Labels:     params.Labels,
-			Pageable:   page.Pageable{Page: params.Page, Size: params.PageSize},
-			Caller:     caller,
+			TenantID:    params.TenantID,
+			CategoryID:  params.CategoryID,
+			Keyword:     params.Keyword,
+			IsActive:    params.IsActive,
+			Labels:      params.Labels,
+			BindingMode: params.BindingMode,
+			Pageable:    page.Pageable{Page: params.Page, Size: params.PageSize},
+			Caller:      caller,
 		},
 	)
 	if err != nil {

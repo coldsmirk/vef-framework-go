@@ -45,10 +45,18 @@ func (s *FindFlowsTestSuite) SetupSuite() {
 
 	// Create flows
 	flows := []approval.Flow{
-		{TenantID: "t1", CategoryID: s.categoryID1, Code: "flow1", Name: "Leave Flow", IsActive: true, Labels: map[string]string{"app": "crm", "mobile": "true"}},
-		{TenantID: "t1", CategoryID: s.categoryID1, Code: "flow2", Name: "Expense Flow", IsActive: false, Labels: map[string]string{"beta": ""}},
-		{TenantID: "t1", CategoryID: s.categoryID2, Code: "flow3", Name: "Travel Flow", IsActive: true, Labels: map[string]string{"app": "erp"}},
-		{TenantID: "t2", CategoryID: s.categoryID2, Code: "flow4", Name: "Purchase Flow", IsActive: true, Labels: map[string]string{"app": "crm"}},
+		{
+			TenantID:    "t1",
+			CategoryID:  s.categoryID1,
+			Code:        "flow1",
+			Name:        "Leave Flow",
+			IsActive:    true,
+			BindingMode: approval.BindingStandalone,
+			Labels:      map[string]string{"app": "crm", "mobile": "true"},
+		},
+		{TenantID: "t1", CategoryID: s.categoryID1, Code: "flow2", Name: "Expense Flow", IsActive: false, BindingMode: approval.BindingStandalone, Labels: map[string]string{"beta": ""}},
+		{TenantID: "t1", CategoryID: s.categoryID2, Code: "flow3", Name: "Travel Flow", IsActive: true, BindingMode: approval.BindingBusiness, Labels: map[string]string{"app": "erp"}},
+		{TenantID: "t2", CategoryID: s.categoryID2, Code: "flow4", Name: "Purchase Flow", IsActive: true, BindingMode: approval.BindingBusiness, Labels: map[string]string{"app": "crm"}},
 	}
 	for i := range flows {
 		_, err := s.db.NewInsert().Model(&flows[i]).Exec(s.ctx)
@@ -99,6 +107,52 @@ func (s *FindFlowsTestSuite) TestFilterByIsActive() {
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(3), result.Total, "Should find 3 active flows")
+}
+
+func (s *FindFlowsTestSuite) TestFilterByBindingMode() {
+	s.Run("Standalone", func() {
+		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
+			BindingMode: new(approval.BindingStandalone),
+			Pageable:    page.Pageable{Page: 1, Size: 10},
+			Caller:      approval.SystemCaller,
+		})
+		s.Require().NoError(err, "Should query without error")
+		s.Assert().Equal(int64(2), result.Total, "Should find the 2 standalone flows")
+	})
+
+	s.Run("Business", func() {
+		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
+			BindingMode: new(approval.BindingBusiness),
+			Pageable:    page.Pageable{Page: 1, Size: 10},
+			Caller:      approval.SystemCaller,
+		})
+		s.Require().NoError(err, "Should query without error")
+		s.Require().Equal(int64(2), result.Total, "Should find the 2 business-bound flows")
+		codes := []string{result.Items[0].Code, result.Items[1].Code}
+		s.Assert().ElementsMatch([]string{"flow3", "flow4"}, codes, "Only the business-bound flows should match")
+	})
+
+	s.Run("CombinesWithOtherFilters", func() {
+		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
+			TenantID:    new("t1"),
+			BindingMode: new(approval.BindingBusiness),
+			Pageable:    page.Pageable{Page: 1, Size: 10},
+			Caller:      approval.SystemCaller,
+		})
+		s.Require().NoError(err, "Should query without error")
+		s.Require().Equal(int64(1), result.Total, "Tenant scope should exclude flow4 from the business match")
+		s.Assert().Equal("flow3", result.Items[0].Code, "Only flow3 is business-bound within tenant t1")
+	})
+
+	s.Run("NoMatch", func() {
+		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
+			BindingMode: new(approval.BindingMode("unknown")),
+			Pageable:    page.Pageable{Page: 1, Size: 10},
+			Caller:      approval.SystemCaller,
+		})
+		s.Require().NoError(err, "Should query without error")
+		s.Assert().Equal(int64(0), result.Total, "An out-of-enum mode should match no flow")
+	})
 }
 
 func (s *FindFlowsTestSuite) TestKeywordSearch() {
