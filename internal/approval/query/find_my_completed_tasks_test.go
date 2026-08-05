@@ -82,6 +82,20 @@ func (s *FindMyCompletedTasksTestSuite) TestExcludesPendingTasks() {
 	}
 }
 
+func (s *FindMyCompletedTasksTestSuite) TestProjectsInstanceStatus() {
+	result, err := s.handler.Handle(s.ctx, query.FindMyCompletedTasksQuery{
+		UserID:   "user-a",
+		Pageable: page.Pageable{Page: 1, Size: 10},
+	})
+	s.Require().NoError(err, "Should query without error")
+	s.Require().Len(result.Items, 4, "All four completed tasks should be projected")
+
+	for _, item := range result.Items {
+		s.Assert().Equal(approval.InstanceApproved, item.InstanceStatus,
+			"Each row should carry the instance's current status")
+	}
+}
+
 func (s *FindMyCompletedTasksTestSuite) TestNoResults() {
 	result, err := s.handler.Handle(s.ctx, query.FindMyCompletedTasksQuery{
 		UserID:   "non-existent-user",

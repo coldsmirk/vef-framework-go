@@ -96,6 +96,7 @@ func (h *FindMyCompletedTasksHandler) Handle(ctx context.Context, query FindMyCo
 			item.InstanceID = inst.ID
 			item.InstanceTitle = inst.Title
 			item.InstanceNo = inst.InstanceNo
+			item.InstanceStatus = inst.Status
 
 			item.Applicant = inst.Applicant()
 			if flow := flowMap[inst.FlowID]; flow != nil {
