@@ -3,8 +3,11 @@ package store
 import (
 	"go.uber.org/fx"
 
+	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/storage"
 )
+
+var logger = logx.Named("storage:store")
 
 // Module wires the default bun-backed ClaimStore and DeleteQueue
 // implementations into the fx graph, and exposes the high-level
@@ -24,6 +27,11 @@ var Module = fx.Module(
 			NewClaimStore,
 			fx.As(fx.Self()),
 			fx.As(new(storage.ClaimConsumer)),
+		),
+		fx.Annotate(
+			NewFileStore,
+			fx.As(fx.Self()),
+			fx.As(new(storage.FileRegistry)),
 		),
 		fx.Annotate(
 			NewDeleteQueue,

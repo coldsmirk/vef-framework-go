@@ -39,6 +39,7 @@ type TestEnv struct {
 	CS  store.ClaimStore
 	PS  store.UploadPartStore
 	DQ  store.DeleteQueue
+	FS  store.FileStore
 	Pub *CaptureBus
 	Cfg *config.StorageConfig
 }
@@ -114,13 +115,16 @@ func setupWorker(t *testing.T) *TestEnv {
 	db := testx.NewTestDB(t)
 	require.NoError(t, migration.Migrate(ctx, db, config.SQLite), "Storage migration should succeed")
 
+	files := store.NewFileStore(db)
+
 	return &TestEnv{
 		Ctx: ctx,
 		DB:  db,
 		Svc: memory.New(),
-		CS:  store.NewClaimStore(db),
+		CS:  store.NewClaimStore(db, files),
 		PS:  store.NewUploadPartStore(db),
 		DQ:  store.NewDeleteQueue(db),
+		FS:  files,
 		Pub: &CaptureBus{},
 		Cfg: newTestStorageConfig(),
 	}
@@ -195,14 +199,15 @@ func TestClaimSweeper(t *testing.T) {
 		env := setupWorker(t)
 
 		claim := &store.UploadClaim{
-			ID:        id.GenerateUUID(),
-			Key:       "priv/recovered.bin",
-			UploadID:  "session-recovered",
-			Size:      7,
-			CreatedBy: "tester",
-			Status:    store.ClaimStatusPending,
-			ExpiresAt: timex.Now().Add(-2 * config.DefaultSweepInterval),
-			CreatedAt: timex.Now(),
+			ID:               id.GenerateUUID(),
+			Key:              "priv/recovered.bin",
+			UploadID:         "session-recovered",
+			Size:             7,
+			OriginalFilename: "恢复的报告.bin",
+			CreatedBy:        "tester",
+			Status:           store.ClaimStatusPending,
+			ExpiresAt:        timex.Now().Add(-2 * config.DefaultSweepInterval),
+			CreatedAt:        timex.Now(),
 		}
 		require.NoError(t, env.CS.Create(env.Ctx, claim), "Expired multipart claim creation should succeed")
 		putMemoryObject(t, env.Svc, claim.Key)
@@ -231,6 +236,17 @@ func TestClaimSweeper(t *testing.T) {
 		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
 		require.NoError(t, err, "Lease should succeed")
 		assert.Empty(t, leased, "Recovered claim must not be enqueued for deletion")
+
+		// Recovery is the second of the two paths that finalize an
+		// upload, so it owes the registry the same record complete_upload
+		// writes — otherwise a file recovered here would have no filename.
+		recorded, err := env.FS.Lookup(env.Ctx, []string{claim.Key})
+		require.NoError(t, err, "Registry lookup should succeed")
+		require.Len(t, recorded, 1, "Sweeper recovery must record the file it adopts")
+		assert.Equal(t, claim.OriginalFilename, recorded[claim.Key].OriginalFilename,
+			"The recovered record should carry the claim's original filename")
+		assert.Equal(t, claim.CreatedBy, recorded[claim.Key].CreatedBy,
+			"Recovery runs without a principal, so the uploader must come from the claim, not the audit handler")
 	})
 
 	t.Run("LeavesRecentlyExpiredClaim", func(t *testing.T) {
@@ -285,7 +301,7 @@ func TestClaimSweeper(t *testing.T) {
 
 				putMemoryObject(t, env.Svc, claim.Key)
 				require.NoError(t, env.DB.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-					return env.CS.MarkUploaded(txCtx, tx, claim.ID)
+					return env.CS.MarkUploaded(txCtx, tx, *claim)
 				}), "Concurrent complete_upload bookkeeping should succeed")
 			},
 		}
@@ -299,6 +315,13 @@ func TestClaimSweeper(t *testing.T) {
 		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
 		require.NoError(t, err, "Lease should succeed")
 		assert.Empty(t, leased, "Stale delete plan must not enqueue a delete for a claim completed after StatObject")
+
+		// The two finalize paths raced over one claim. Both write the
+		// registry record, and both are gated on the same compare-and-set,
+		// so exactly one of them may have won.
+		recorded, err := env.FS.Lookup(env.Ctx, []string{claim.Key})
+		require.NoError(t, err, "Registry lookup should succeed")
+		assert.Len(t, recorded, 1, "The racing finalize paths must produce exactly one record")
 	})
 
 	t.Run("LeavesLiveClaim", func(t *testing.T) {
@@ -334,5 +357,125 @@ func TestClaimSweeper(t *testing.T) {
 		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
 		require.NoError(t, err, "Lease should succeed")
 		assert.Empty(t, leased, "Empty sweep should not enqueue anything")
+	})
+}
+
+// newUnadoptedClaim seeds a finalized upload nobody adopted, whose claim
+// TTL elapsed expiredFor ago.
+func newUnadoptedClaim(t *testing.T, env *TestEnv, key string, expiredFor time.Duration) *store.UploadClaim {
+	t.Helper()
+
+	claim := &store.UploadClaim{
+		ID:               id.GenerateUUID(),
+		Key:              key,
+		Size:             7,
+		OriginalFilename: "abandoned.bin",
+		CreatedBy:        "tester",
+		Status:           store.ClaimStatusPending,
+		ExpiresAt:        timex.Now().Add(-expiredFor),
+		CreatedAt:        timex.Now().Add(-expiredFor),
+	}
+
+	require.NoError(t, env.CS.Create(env.Ctx, claim), "Unadopted claim creation should succeed")
+	require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
+		return env.CS.MarkUploaded(txCtx, tx, *claim)
+	}), "MarkUploaded should finalize the abandoned upload")
+
+	putMemoryObject(t, env.Svc, key)
+
+	return claim
+}
+
+// TestClaimSweeperOrphanReclaim covers the second sweep pass: uploads
+// that finalized and were never adopted. Nothing else reclaims them, so
+// without this pass they accumulate forever — but reclaiming too eagerly
+// would delete a file whose business save merely ran late, hence the
+// opt-in retention window.
+func TestClaimSweeperOrphanReclaim(t *testing.T) {
+	t.Run("DisabledByDefault", func(t *testing.T) {
+		env := setupWorker(t)
+		claim := newUnadoptedClaim(t, env, "priv/orphan-default.bin", 30*24*time.Hour)
+
+		worker.NewClaimSweeper(env.DB, env.Svc, env.CS, env.PS, env.DQ, env.Cfg).Run(env.Ctx)
+
+		_, err := env.CS.Get(env.Ctx, claim.ID)
+		require.NoError(t, err, "An unconfigured retention must never delete user data")
+
+		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
+		require.NoError(t, err, "Lease should succeed")
+		assert.Empty(t, leased, "Reclamation is opt-in; nothing should be scheduled for deletion")
+	})
+
+	t.Run("ReclaimsAbandonedUpload", func(t *testing.T) {
+		env := setupWorker(t)
+		env.Cfg.OrphanRetention = 7 * 24 * time.Hour
+
+		claim := newUnadoptedClaim(t, env, "priv/orphan-old.bin", 30*24*time.Hour)
+
+		worker.NewClaimSweeper(env.DB, env.Svc, env.CS, env.PS, env.DQ, env.Cfg).Run(env.Ctx)
+
+		_, err := env.CS.Get(env.Ctx, claim.ID)
+		assert.ErrorIs(t, err, storage.ErrClaimNotFound,
+			"The claim must go, or the file would stay adoptable after its object is deleted")
+
+		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
+		require.NoError(t, err, "Lease should succeed")
+		require.Len(t, leased, 1, "The abandoned object should be scheduled for deletion")
+		assert.Equal(t, claim.Key, leased[0].Key, "The queue row should target the abandoned object")
+		assert.Equal(t, storage.DeleteReasonOrphaned, leased[0].Reason, "The queue row should carry the orphaned reason")
+	})
+
+	t.Run("LeavesUploadsInsideTheRetentionWindow", func(t *testing.T) {
+		env := setupWorker(t)
+		env.Cfg.OrphanRetention = 7 * 24 * time.Hour
+
+		// Expired as a claim, but well inside the reclamation window — a
+		// business save running late must keep its file.
+		claim := newUnadoptedClaim(t, env, "priv/orphan-young.bin", time.Hour)
+
+		worker.NewClaimSweeper(env.DB, env.Svc, env.CS, env.PS, env.DQ, env.Cfg).Run(env.Ctx)
+
+		got, err := env.CS.Get(env.Ctx, claim.ID)
+		require.NoError(t, err, "A recently expired unadopted claim should survive")
+		assert.Equal(t, store.ClaimStatusUploaded, got.Status, "It should still be adoptable")
+
+		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
+		require.NoError(t, err, "Lease should succeed")
+		assert.Empty(t, leased, "Nothing inside the retention window may be scheduled for deletion")
+	})
+
+	// The two passes must stay disjoint: an unfinished upload belongs to
+	// the expiry sweep, which probes the backend before destroying
+	// anything, and must never be reclaimed by the orphan pass — which
+	// probes nothing because a finalized object needs no probing.
+	//
+	// The fixture sits in the one window where only the orphan pass could
+	// act: past the reclamation cutoff, but still inside the expiry
+	// sweep's grace period, so a single leased row would prove the orphan
+	// pass reached a claim it must not see.
+	t.Run("IgnoresPendingClaims", func(t *testing.T) {
+		env := setupWorker(t)
+		env.Cfg.OrphanRetention = time.Minute
+
+		claim := &store.UploadClaim{
+			ID:        id.GenerateUUID(),
+			Key:       "priv/still-pending.bin",
+			Size:      7,
+			CreatedBy: "tester",
+			Status:    store.ClaimStatusPending,
+			ExpiresAt: timex.Now().Add(-2 * time.Minute),
+			CreatedAt: timex.Now().Add(-2 * time.Minute),
+		}
+		require.NoError(t, env.CS.Create(env.Ctx, claim), "Pending claim creation should succeed")
+
+		worker.NewClaimSweeper(env.DB, env.Svc, env.CS, env.PS, env.DQ, env.Cfg).Run(env.Ctx)
+
+		got, err := env.CS.Get(env.Ctx, claim.ID)
+		require.NoError(t, err, "An unfinished upload must survive the orphan pass")
+		assert.Equal(t, store.ClaimStatusPending, got.Status, "Its status should be untouched")
+
+		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
+		require.NoError(t, err, "Lease should succeed")
+		assert.Empty(t, leased, "Only finalized uploads are reclaimable as orphans")
 	})
 }

@@ -44,6 +44,7 @@ type DeleteWorker struct {
 	service     storage.Service
 	multipart   storage.Multipart // nil when the backend does not implement chunked uploads
 	deleteQueue store.DeleteQueue
+	files       store.FileStore
 	bus         event.Bus
 	db          orm.DB
 	cfg         *config.StorageConfig
@@ -56,6 +57,7 @@ type DeleteWorker struct {
 func NewDeleteWorker(
 	service storage.Service,
 	deleteQueue store.DeleteQueue,
+	files store.FileStore,
 	bus event.Bus,
 	db orm.DB,
 	cfg *config.StorageConfig,
@@ -63,6 +65,7 @@ func NewDeleteWorker(
 	w := &DeleteWorker{
 		service:     service,
 		deleteQueue: deleteQueue,
+		files:       files,
 		bus:         bus,
 		db:          db,
 		cfg:         cfg,
@@ -149,6 +152,13 @@ func (w *DeleteWorker) processOne(ctx context.Context, item *store.PendingDelete
 	// converges without leaking objects.
 	txErr := w.db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
 		if err := w.deleteQueue.Done(txCtx, tx, []string{item.ID}); err != nil {
+			return err
+		}
+
+		// The registry must stop claiming the object exists. An absorbed
+		// ErrObjectNotFound above is the same outcome from the record's
+		// point of view: the backend no longer has it.
+		if err := w.files.MarkDeleted(txCtx, tx, item.Key, item.Reason); err != nil {
 			return err
 		}
 

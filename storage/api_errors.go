@@ -27,7 +27,7 @@ const (
 	ErrCodeUploadPartsIncomplete      = 2216
 	ErrCodeUploadObjectNotFound       = 2217
 	ErrCodeUploadSizeMismatch         = 2218
-	ErrCodeAbortFailed                = 2219
+	ErrCodeInvalidFilename            = 2220
 )
 
 // Predefined storage API errors. These are business errors and keep the default
@@ -110,8 +110,8 @@ var (
 		i18n.T("storage_upload_size_mismatch"),
 		result.WithCode(ErrCodeUploadSizeMismatch),
 	)
-	ErrAbortFailed = result.Err(
-		i18n.T("storage_abort_failed"),
-		result.WithCode(ErrCodeAbortFailed),
+	ErrInvalidFilename = result.Err(
+		i18n.T("storage_invalid_filename"),
+		result.WithCode(ErrCodeInvalidFilename),
 	)
 )

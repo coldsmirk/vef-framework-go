@@ -37,10 +37,10 @@ COMMENT ON COLUMN sys_storage_upload_claim.expires_at IS 'Expires';
 
 -- Composite (expires_at, status) serves the claim sweeper's ListExpired:
 -- WHERE expires_at < now AND status = 'pending' ORDER BY expires_at LIMIT n.
-CREATE INDEX idx_sys_storage_upload_claim__expires_at ON sys_storage_upload_claim(expires_at, status);
+CREATE INDEX IF NOT EXISTS idx_sys_storage_upload_claim__expires_at ON sys_storage_upload_claim(expires_at, status);
 -- Supports init_upload's per-owner in-flight session cap:
 -- COUNT WHERE created_by = ? AND status = 'pending'.
-CREATE INDEX idx_sys_storage_upload_claim__owner_status ON sys_storage_upload_claim(created_by, status);
+CREATE INDEX IF NOT EXISTS idx_sys_storage_upload_claim__owner_status ON sys_storage_upload_claim(created_by, status);
 
 CREATE TABLE IF NOT EXISTS sys_storage_upload_part (
     id          VARCHAR(128) NOT NULL,
@@ -98,4 +98,65 @@ COMMENT ON COLUMN sys_storage_pending_delete.created_at IS 'Created';
 -- attempts is intentionally NOT part of the index: Lease only filters and
 -- orders by next_attempt_at; attempts is only ever mutated by Defer
 -- (SET attempts = attempts + 1) and never appears in WHERE/ORDER BY.
-CREATE INDEX idx_sys_storage_pending_delete__lease ON sys_storage_pending_delete(next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_sys_storage_pending_delete__lease ON sys_storage_pending_delete(next_attempt_at);
+
+CREATE TABLE IF NOT EXISTS sys_storage_file (
+    id                VARCHAR(128) NOT NULL,
+    created_at        TIMESTAMP    NOT NULL DEFAULT LOCALTIMESTAMP,
+    created_by        VARCHAR(128) NOT NULL DEFAULT 'system',
+    object_key        VARCHAR(512) NOT NULL,
+    original_filename VARCHAR(255) NOT NULL DEFAULT '',
+    content_type      VARCHAR(128) NOT NULL DEFAULT '',
+    size              BIGINT       NOT NULL DEFAULT 0,
+    public            BOOLEAN      NOT NULL DEFAULT FALSE,
+    status            VARCHAR(16)  NOT NULL DEFAULT 'uploaded',
+    started_at        TIMESTAMP    NOT NULL,
+    claimed_at        TIMESTAMP,
+    deleted_at        TIMESTAMP,
+    delete_reason     VARCHAR(128) NOT NULL DEFAULT '',
+    CONSTRAINT pk_sys_storage_file PRIMARY KEY (id),
+    CONSTRAINT uk_sys_storage_file__object_key UNIQUE (object_key)
+);
+
+COMMENT ON TABLE sys_storage_file IS 'Files';
+COMMENT ON COLUMN sys_storage_file.id IS 'ID';
+COMMENT ON COLUMN sys_storage_file.created_at IS 'Recorded';
+COMMENT ON COLUMN sys_storage_file.created_by IS 'Uploader';
+COMMENT ON COLUMN sys_storage_file.object_key IS 'Object key';
+COMMENT ON COLUMN sys_storage_file.original_filename IS 'Filename';
+COMMENT ON COLUMN sys_storage_file.content_type IS 'MIME type';
+COMMENT ON COLUMN sys_storage_file.size IS 'Size';
+COMMENT ON COLUMN sys_storage_file.public IS 'Public';
+COMMENT ON COLUMN sys_storage_file.status IS 'Status';
+COMMENT ON COLUMN sys_storage_file.started_at IS 'Uploaded';
+COMMENT ON COLUMN sys_storage_file.claimed_at IS 'Claimed';
+COMMENT ON COLUMN sys_storage_file.deleted_at IS 'Deleted';
+COMMENT ON COLUMN sys_storage_file.delete_reason IS 'Delete reason';
+
+-- Both indexes are forward-provisioned: every statement the framework
+-- issues against this table is keyed by object_key, which the unique
+-- constraint already covers. They are created with the table because
+-- MySQL declares indexes inline in the CREATE TABLE body, so an index
+-- this table does not get at creation can never be added by this script.
+--
+-- (status, created_at) serves status-scoped listings — which files are
+-- still unclaimed long after upload, which ones are gone.
+CREATE INDEX IF NOT EXISTS idx_sys_storage_file__status_created_at ON sys_storage_file(status, created_at);
+-- (created_by, created_at) serves "what did this principal upload", newest first.
+CREATE INDEX IF NOT EXISTS idx_sys_storage_file__owner_created_at ON sys_storage_file(created_by, created_at);
+
+-- One-time backfill: claims that finalized before this table existed but
+-- have not been adopted yet still carry their full metadata, and they are
+-- never swept (ListExpired skips 'uploaded'), so they are recoverable.
+-- Files already adopted are not: Consume deleted those claim rows, and
+-- that gap is permanent. ON CONFLICT DO NOTHING keeps a later re-run of
+-- this script (triggered by adding another table) harmless.
+INSERT INTO sys_storage_file (
+    id, created_at, created_by, object_key, original_filename,
+    content_type, size, public, status, started_at
+)
+SELECT id, created_at, created_by, object_key, original_filename,
+       content_type, size, public, 'uploaded', created_at
+FROM sys_storage_upload_claim
+WHERE status = 'uploaded'
+ON CONFLICT DO NOTHING;

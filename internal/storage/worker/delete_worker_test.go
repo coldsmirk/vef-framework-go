@@ -79,9 +79,93 @@ type noMultipartService struct {
 	storage.Service
 }
 
+// recordUploadedFile seeds a finalized upload through the claim store so
+// the durable registry row exists exactly as production writes it, and
+// returns the object key.
+func recordUploadedFile(t *testing.T, env *TestEnv, key string) string {
+	t.Helper()
+
+	claim := &store.UploadClaim{
+		ID:               id.GenerateUUID(),
+		Key:              key,
+		Size:             7,
+		OriginalFilename: "recorded.bin",
+		CreatedBy:        "tester",
+		Status:           store.ClaimStatusPending,
+		ExpiresAt:        timex.Now().AddHours(1),
+		CreatedAt:        timex.Now(),
+	}
+
+	require.NoError(t, env.CS.Create(env.Ctx, claim), "Claim creation should succeed")
+	require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
+		return env.CS.MarkUploaded(txCtx, tx, *claim)
+	}), "MarkUploaded should record the file")
+
+	return key
+}
+
 // ── TestDeleteWorker ────────────────────────────────────────────────────
 
 func TestDeleteWorker(t *testing.T) {
+	// Draining a delete is the only moment the framework learns an object
+	// is gone, so it is the only place the registry may say so.
+	t.Run("MarksTheRegistryRecordDeleted", func(t *testing.T) {
+		env := setupWorker(t)
+
+		key := recordUploadedFile(t, env, "priv/registry-deleted.bin")
+		putMemoryObject(t, env.Svc, key)
+
+		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
+			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{{
+				ID:            id.GenerateUUID(),
+				Key:           key,
+				Reason:        storage.DeleteReasonReplaced,
+				NextAttemptAt: timex.Now(),
+				CreatedAt:     timex.Now(),
+			}})
+		}), "Pending delete should be inserted inside the transaction")
+
+		worker.NewDeleteWorker(env.Svc, env.DQ, env.FS, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
+
+		found, err := env.FS.Lookup(env.Ctx, []string{key})
+		require.NoError(t, err, "Registry lookup should succeed")
+		require.Len(t, found, 1, "A deleted file keeps its record")
+		assert.Equal(t, storage.FileStatusDeleted, found[key].Status, "The record must stop claiming the object exists")
+		assert.Equal(t, storage.DeleteReasonReplaced, found[key].DeleteReason, "The record should carry the delete reason")
+		assert.NotNil(t, found[key].DeletedAt, "The record should carry the deletion timestamp")
+	})
+
+	// A dead-lettered row means the object very likely still exists —
+	// marking it deleted would turn an operator alarm into a lie.
+	t.Run("DeadLetterLeavesTheRegistryRecordAlone", func(t *testing.T) {
+		env := setupWorker(t)
+
+		key := recordUploadedFile(t, env, "priv/registry-deadletter.bin")
+		putMemoryObject(t, env.Svc, key)
+
+		failingSvc := &AlwaysFailService{Service: env.Svc, err: errors.New("permanent failure")}
+
+		require.NoError(t, env.DB.RunInTx(env.Ctx, func(txCtx context.Context, tx orm.DB) error {
+			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{{
+				ID:            id.GenerateUUID(),
+				Key:           key,
+				Reason:        storage.DeleteReasonDeleted,
+				Attempts:      config.DefaultDeleteMaxAttempts - 1,
+				NextAttemptAt: timex.Now(),
+				CreatedAt:     timex.Now(),
+			}})
+		}), "Pending delete should be inserted inside the transaction")
+
+		worker.NewDeleteWorker(failingSvc, env.DQ, env.FS, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
+
+		found, err := env.FS.Lookup(env.Ctx, []string{key})
+		require.NoError(t, err, "Registry lookup should succeed")
+		require.Len(t, found, 1, "The record should still be there")
+		assert.Equal(t, storage.FileStatusUploaded, found[key].Status,
+			"A dead-lettered delete must not report the object as deleted — it probably still exists")
+		assert.Nil(t, found[key].DeletedAt, "A dead-lettered delete must not stamp a deletion timestamp")
+	})
+
 	t.Run("DeletesRowAndEmitsFileDeletedEvent", func(t *testing.T) {
 		env := setupWorker(t)
 
@@ -99,7 +183,7 @@ func TestDeleteWorker(t *testing.T) {
 			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{item})
 		}), "Pending delete should be inserted inside the transaction")
 
-		worker.NewDeleteWorker(env.Svc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
+		worker.NewDeleteWorker(env.Svc, env.DQ, env.FS, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
 		_, _, err := env.Svc.GetObject(env.Ctx, storage.GetObjectOptions{Key: item.Key})
 		assert.ErrorIs(t, err, storage.ErrObjectNotFound, "Deleted object should no longer exist")
@@ -138,7 +222,7 @@ func TestDeleteWorker(t *testing.T) {
 			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{item})
 		}), "Multipart pending delete should be scheduled")
 
-		worker.NewDeleteWorker(tracker, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
+		worker.NewDeleteWorker(tracker, env.DQ, env.FS, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
 		assert.Equal(t, 1, tracker.abortCount, "Worker should abort the multipart session before deleting")
 
@@ -164,7 +248,7 @@ func TestDeleteWorker(t *testing.T) {
 			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{item})
 		}), "Pending delete should be inserted inside the transaction")
 
-		worker.NewDeleteWorker(env.Svc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
+		worker.NewDeleteWorker(env.Svc, env.DQ, env.FS, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
 		leased, err := env.DQ.Lease(env.Ctx, timex.Now().AddHours(1), 10, time.Minute)
 		require.NoError(t, err, "Pending delete lease should succeed")
@@ -188,7 +272,7 @@ func TestDeleteWorker(t *testing.T) {
 			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{item})
 		}), "Pending delete should be inserted inside the transaction")
 
-		worker.NewDeleteWorker(failingSvc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
+		worker.NewDeleteWorker(failingSvc, env.DQ, env.FS, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
 		// Row still exists but NextAttemptAt should be pushed into the future.
 		// Leasing with a far-future "now" should return it with attempts=1.
@@ -222,7 +306,7 @@ func TestDeleteWorker(t *testing.T) {
 			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{item})
 		}), "Multipart pending delete should be scheduled")
 
-		worker.NewDeleteWorker(tracker, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
+		worker.NewDeleteWorker(tracker, env.DQ, env.FS, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
 		assert.Equal(t, 1, tracker.abortCount, "AbortMultipart must be called once before failure")
 
@@ -263,7 +347,7 @@ func TestDeleteWorker(t *testing.T) {
 			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{item})
 		}), "Multipart pending delete against non-multipart backend should be scheduled")
 
-		worker.NewDeleteWorker(nonMPSvc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
+		worker.NewDeleteWorker(nonMPSvc, env.DQ, env.FS, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
 		// Object should be deleted despite the row carrying an UploadID.
 		_, _, err := env.Svc.GetObject(env.Ctx, storage.GetObjectOptions{Key: item.Key})
@@ -305,7 +389,7 @@ func TestDeleteWorker(t *testing.T) {
 			return env.DQ.Insert(txCtx, tx, rows)
 		}), "All pending delete rows should be inserted")
 
-		worker.NewDeleteWorker(env.Svc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
+		worker.NewDeleteWorker(env.Svc, env.DQ, env.FS, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
 		// All objects must be deleted.
 		for _, key := range keys {
@@ -343,7 +427,7 @@ func TestDeleteWorker(t *testing.T) {
 			return env.DQ.Insert(txCtx, tx, []store.PendingDelete{item})
 		}), "Pending delete should be inserted inside the transaction")
 
-		worker.NewDeleteWorker(failingSvc, env.DQ, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
+		worker.NewDeleteWorker(failingSvc, env.DQ, env.FS, env.Pub, env.DB, env.Cfg).Run(env.Ctx)
 
 		// The row must be terminally removed from the queue, not parked: a
 		// far-horizon lease that would clear any conceivable park window

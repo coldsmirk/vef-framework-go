@@ -66,6 +66,42 @@ func sanitizeContentType(clientCT, filename string) string {
 	return "application/octet-stream"
 }
 
+// sanitizeFilename normalizes a client-supplied filename into something
+// safe to persist and to echo back in a Content-Disposition header.
+//
+// The value travels further than the upload: it is stored in the
+// registry, rendered by business UIs, and served as a response header.
+// Validating once here beats sanitizing at every consumer, and a
+// rejection tells the uploader something is wrong instead of silently
+// mangling their filename.
+//
+// Only the last path segment is kept — some clients still send a full
+// local path — and control characters (which include the CR/LF a header
+// injection would need) are rejected outright.
+func sanitizeFilename(name string) (string, error) {
+	name = strings.TrimSpace(name)
+
+	// Both separators, regardless of the server's own OS: the value comes
+	// from a client whose platform is unknown.
+	if idx := strings.LastIndexAny(name, `/\`); idx >= 0 {
+		name = name[idx+1:]
+	}
+
+	name = strings.TrimSpace(name)
+
+	if name == "" || name == "." || name == ".." {
+		return "", storage.ErrInvalidFilename
+	}
+
+	for _, r := range name {
+		if r < 0x20 || r == 0x7F {
+			return "", storage.ErrInvalidFilename
+		}
+	}
+
+	return name, nil
+}
+
 func isSafeContentType(ct string) bool {
 	if ct == "" {
 		return false
@@ -165,14 +201,16 @@ func NewResource(
 	service storage.Service,
 	claimStore store.ClaimStore,
 	partStore store.UploadPartStore,
+	deleteQueue store.DeleteQueue,
 	cfg *config.StorageConfig,
 ) api.Resource {
 	r := &Resource{
-		db:         db,
-		service:    service,
-		claimStore: claimStore,
-		partStore:  partStore,
-		cfg:        cfg,
+		db:          db,
+		service:     service,
+		claimStore:  claimStore,
+		partStore:   partStore,
+		deleteQueue: deleteQueue,
+		cfg:         cfg,
 		Resource: api.NewRPCResource(
 			"sys/storage",
 			api.WithOperations(
@@ -198,12 +236,13 @@ func NewResource(
 type Resource struct {
 	api.Resource
 
-	db         orm.DB
-	service    storage.Service
-	multipart  storage.Multipart // nil when the backend does not implement chunked uploads
-	claimStore store.ClaimStore
-	partStore  store.UploadPartStore
-	cfg        *config.StorageConfig
+	db          orm.DB
+	service     storage.Service
+	multipart   storage.Multipart // nil when the backend does not implement chunked uploads
+	claimStore  store.ClaimStore
+	partStore   store.UploadPartStore
+	deleteQueue store.DeleteQueue
+	cfg         *config.StorageConfig
 }
 
 // generateObjectKey returns a date-partitioned key under the visibility
@@ -300,7 +339,12 @@ func (r *Resource) InitUpload(ctx fiber.Ctx, principal *security.Principal, para
 		return storage.ErrUploadTooManyParts
 	}
 
-	contentType := sanitizeContentType(params.ContentType, params.Filename)
+	filename, err := sanitizeFilename(params.Filename)
+	if err != nil {
+		return err
+	}
+
+	contentType := sanitizeContentType(params.ContentType, filename)
 
 	// All storage RPC actions require authentication. InitUpload has no
 	// claim to authorize against yet, so guard the principal here for parity
@@ -325,14 +369,14 @@ func (r *Resource) InitUpload(ctx fiber.Ctx, principal *security.Principal, para
 		return storage.ErrTooManyPendingUploads
 	}
 
-	key := r.generateObjectKey(params.Filename, params.Public)
+	key := r.generateObjectKey(filename, params.Public)
 
 	claim := &store.UploadClaim{
 		ID:               id.GenerateUUID(),
 		Key:              key,
 		Size:             params.Size,
 		ContentType:      contentType,
-		OriginalFilename: params.Filename,
+		OriginalFilename: filename,
 		Public:           params.Public,
 		Status:           store.ClaimStatusPending,
 		PartSize:         partSize,
@@ -354,7 +398,9 @@ func (r *Resource) InitUpload(ctx fiber.Ctx, principal *security.Principal, para
 		// if this delete also fails the sweeper will still handle it on
 		// TTL expiry.
 		delErr := r.db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
-			return r.claimStore.Delete(txCtx, tx, claim.ID)
+			_, err := r.claimStore.DeleteIfPending(txCtx, tx, claim.ID)
+
+			return err
 		})
 		if delErr != nil {
 			logger.Warnf("Delete claim %s after multipart init failure: %v", claim.ID, delErr)
@@ -727,7 +773,10 @@ func (r *Resource) CompleteUpload(ctx fiber.Ctx, principal *security.Principal, 
 	}
 
 	if err := r.db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
-		if err := r.claimStore.MarkUploaded(txCtx, tx, claim.ID); err != nil {
+		// MarkUploaded also writes the durable registry record, so the
+		// object's metadata survives the claim row that Consume deletes
+		// the moment a business transaction adopts the file.
+		if err := r.claimStore.MarkUploaded(txCtx, tx, *claim); err != nil {
 			return err
 		}
 
@@ -750,12 +799,21 @@ type AbortUploadParams struct {
 	ClaimID string `json:"claimId" validate:"required"`
 }
 
-// AbortUpload cancels an in-flight upload. The handler aborts the
-// backend multipart session, deletes any object bytes the backend may
-// have published, then in a single transaction drops the part rows
-// and the claim row. AbortMultipart and DeleteObject are both treated
-// idempotently — retrying abort_upload on a partially-cleaned state
-// still ends with the claim row removed.
+// AbortUpload cancels an in-flight upload. The claim row is the
+// arbitration token: the handler deletes it under a status='pending'
+// predicate, and only the transaction that wins that compare-and-set
+// schedules the backend cleanup. A client canceling while its own
+// complete_upload retry is in flight therefore either aborts the
+// session or loses cleanly to the completion — it can never reap an
+// object the completion has already finalized and recorded.
+//
+// Backend cleanup (multipart abort + object delete) is delegated to the
+// durable delete queue rather than performed inline. That is what makes
+// the abort crash-safe: the queue row commits with the claim delete, so
+// a process death between the two can no longer strand object bytes
+// that nothing remembers. It also means abort_upload cannot fail on a
+// momentarily unreachable backend — the delete worker owns the retry,
+// backoff, and dead-lettering for that.
 func (r *Resource) AbortUpload(ctx fiber.Ctx, principal *security.Principal, params AbortUploadParams) error {
 	claim, err := r.claimStore.Get(ctx.Context(), params.ClaimID)
 	if err != nil {
@@ -780,33 +838,34 @@ func (r *Resource) AbortUpload(ctx fiber.Ctx, principal *security.Principal, par
 		return result.Ok().Response(ctx)
 	}
 
-	if claim.IsMultipart() && r.multipart != nil {
-		// AbortMultipart is idempotent — calling it on an unknown or
-		// already-closed session is a no-op. When the backend has been
-		// swapped (r.multipart == nil) the multipart session is
-		// unreachable through this service anyway; fall through to the
-		// object delete + claim cleanup and rely on the operator-
-		// configured S3 lifecycle policy to reap any orphan sessions.
-		if abortErr := r.multipart.AbortMultipart(ctx.Context(), storage.AbortMultipartOptions{
-			Key:      claim.Key,
-			UploadID: claim.UploadID,
-		}); abortErr != nil {
-			logger.Errorf("AbortMultipart failed for claim %s: %v", claim.ID, abortErr)
-
-			return storage.ErrAbortFailed
-		}
-	}
-
-	if delErr := r.service.DeleteObject(ctx.Context(), storage.DeleteObjectOptions{Key: claim.Key}); delErr != nil && !errors.Is(delErr, storage.ErrObjectNotFound) {
-		return delErr
-	}
-
 	if err := r.db.RunInTx(ctx.Context(), func(txCtx context.Context, tx orm.DB) error {
+		aborted, err := r.claimStore.DeleteIfPending(txCtx, tx, claim.ID)
+		if err != nil {
+			return err
+		}
+
+		// Lost the race to complete_upload (or to a concurrent abort).
+		// Leaving the object alone is the whole point of the predicate.
+		if !aborted {
+			return nil
+		}
+
 		if err := r.partStore.DeleteByClaim(txCtx, tx, claim.ID); err != nil {
 			return err
 		}
 
-		return r.claimStore.Delete(txCtx, tx, claim.ID)
+		now := timex.Now()
+
+		// UploadID rides along so the worker aborts the dangling
+		// multipart session before deleting the object bytes.
+		return r.deleteQueue.Insert(txCtx, tx, []store.PendingDelete{{
+			ID:            id.GenerateUUID(),
+			Key:           claim.Key,
+			UploadID:      claim.UploadID,
+			Reason:        storage.DeleteReasonAborted,
+			NextAttemptAt: now,
+			CreatedAt:     now,
+		}})
 	}); err != nil {
 		return err
 	}

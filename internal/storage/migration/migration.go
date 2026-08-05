@@ -17,6 +17,7 @@ var expectedTables = []string{
 	"sys_storage_upload_claim",
 	"sys_storage_upload_part",
 	"sys_storage_pending_delete",
+	"sys_storage_file",
 }
 
 // Migrate runs the storage module's DDL migration for the given

@@ -24,6 +24,15 @@ const (
 	// for the framework-internal claim sweeper; business code should
 	// not pass this reason to Enqueue.
 	DeleteReasonClaimExpired DeleteReason = "claim_expired"
+	// DeleteReasonAborted indicates the uploader canceled an in-flight
+	// upload. Reserved for the framework-internal abort_upload flow;
+	// business code should not pass this reason to Enqueue.
+	DeleteReasonAborted DeleteReason = "aborted"
+	// DeleteReasonOrphaned indicates an upload that finalized but was
+	// never adopted by a business transaction within the configured
+	// retention window. Reserved for the framework-internal claim
+	// sweeper; business code should not pass this reason to Enqueue.
+	DeleteReasonOrphaned DeleteReason = "orphaned"
 )
 
 // DeleteEnqueuer is the minimal queue-side surface business code needs

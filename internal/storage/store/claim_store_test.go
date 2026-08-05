@@ -37,7 +37,7 @@ func setupStores(t *testing.T) (context.Context, orm.DB, store.ClaimStore, store
 
 	require.NoError(t, migration.Migrate(ctx, db, config.SQLite), "Storage migration should succeed")
 
-	return ctx, db, store.NewClaimStore(db), store.NewDeleteQueue(db)
+	return ctx, db, store.NewClaimStore(db, store.NewFileStore(db)), store.NewDeleteQueue(db)
 }
 
 func newClaim(key string, expiresAt timex.DateTime) *store.UploadClaim {
@@ -91,6 +91,51 @@ func TestClaimStore(t *testing.T) {
 		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Claim should be gone after Consume")
 	})
 
+	// Adoption is what deletes the claim row and takes the original
+	// filename with it, so the registry record must pick the fact up in
+	// the same transaction.
+	t.Run("ConsumeMarksTheRecordClaimed", func(t *testing.T) {
+		ctx, db, cs, _ := setupStores(t)
+		fs := store.NewFileStore(db)
+
+		claim := newClaim("priv/consume-marks.bin", timex.Now().AddHours(1))
+		recordClaim(t, ctx, db, cs, claim)
+
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
+			return cs.Consume(txCtx, tx, owner, []string{claim.Key})
+		}), "Claim consumption transaction should succeed")
+
+		found, err := fs.Lookup(ctx, []string{claim.Key})
+		require.NoError(t, err, "Registry lookup should succeed")
+		require.Len(t, found, 1, "The record must outlive the claim row Consume deletes")
+		assert.Equal(t, storage.FileStatusClaimed, found[claim.Key].Status, "Adoption should flip the record to claimed")
+		assert.Equal(t, claim.OriginalFilename, found[claim.Key].OriginalFilename,
+			"The original filename must survive the adoption that deletes the claim")
+	})
+
+	// Files uploaded before the registry existed have a claim but no
+	// record. Adopting one must still succeed — the claim table, not the
+	// registry, is the authority on what a caller may consume.
+	t.Run("ConsumeSucceedsWithoutARecord", func(t *testing.T) {
+		ctx, db, cs, _ := setupStores(t)
+		fs := store.NewFileStore(db)
+
+		claim := newClaim("priv/legacy.bin", timex.Now().AddHours(1))
+		claim.Status = store.ClaimStatusUploaded
+		require.NoError(t, cs.Create(ctx, claim), "Legacy claim creation should succeed")
+
+		found, err := fs.Lookup(ctx, []string{claim.Key})
+		require.NoError(t, err, "Registry lookup should succeed")
+		require.Empty(t, found, "The legacy fixture must have no record for this test to mean anything")
+
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
+			return cs.Consume(txCtx, tx, owner, []string{claim.Key})
+		}), "Adopting a file with no registry record must not fail the business write")
+
+		_, err = cs.Get(ctx, claim.ID)
+		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "The claim should still have been consumed")
+	})
+
 	t.Run("ConsumeMissingFailsAndRollsBack", func(t *testing.T) {
 		ctx, db, cs, _ := setupStores(t)
 
@@ -101,7 +146,7 @@ func TestClaimStore(t *testing.T) {
 		// silently drop this row — without this the test would pass even
 		// if Consume never tried to delete anything.
 		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return cs.MarkUploaded(txCtx, tx, claim.ID)
+			return cs.MarkUploaded(txCtx, tx, *claim)
 		}), "MarkUploaded should succeed so the claim is consumable")
 
 		// Try to consume both an existing and a non-existing key in one tx.
@@ -134,7 +179,7 @@ func TestClaimStore(t *testing.T) {
 		require.NoError(t, cs.Create(ctx, claim), "Claim creation should succeed")
 
 		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return cs.MarkUploaded(txCtx, tx, claim.ID)
+			return cs.MarkUploaded(txCtx, tx, *claim)
 		}), "MarkUploaded should succeed so the claim is consumable")
 
 		intruder := &security.Principal{ID: "someone-else"}
@@ -190,7 +235,10 @@ func TestClaimStore(t *testing.T) {
 		assert.Equal(t, expired.ID, got[0].ID, "Expired listing should return the expired claim")
 
 		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return cs.Delete(txCtx, tx, expired.ID)
+			deleted, delErr := cs.DeleteIfPending(txCtx, tx, expired.ID)
+			require.True(t, deleted, "Pending claim deletion should win the compare-and-set")
+
+			return delErr
 		}), "Expired claim deletion should succeed")
 
 		got, err = cs.ListExpired(ctx, now, 10)
@@ -206,7 +254,7 @@ func TestClaimStore(t *testing.T) {
 		require.NoError(t, cs.Create(ctx, uploaded), "Uploaded claim creation should succeed")
 
 		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
-			return cs.MarkUploaded(txCtx, tx, uploaded.ID)
+			return cs.MarkUploaded(txCtx, tx, *uploaded)
 		}), "MarkUploaded should succeed")
 
 		got, err := cs.ListExpired(ctx, now, 10)
@@ -272,5 +320,41 @@ func TestClaimStore(t *testing.T) {
 
 		_, err := cs.Get(ctx, claim.ID)
 		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "Deleted claim should no longer be queryable")
+	})
+
+	// DeleteIfPending is the arbitration between abort_upload and a
+	// concurrent complete_upload: losing the compare-and-set must leave
+	// the finalized claim — and therefore its object — untouched.
+	t.Run("DeleteIfPending", func(t *testing.T) {
+		ctx, db, cs, _ := setupStores(t)
+
+		now := timex.Now()
+		pending := newClaim("priv/pending-abort", now.AddHours(1))
+		uploaded := newClaim("priv/uploaded-abort", now.AddHours(1))
+
+		require.NoError(t, cs.Create(ctx, pending), "Pending claim creation should succeed")
+		require.NoError(t, cs.Create(ctx, uploaded), "Uploaded claim creation should succeed")
+
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
+			return cs.MarkUploaded(txCtx, tx, *uploaded)
+		}), "MarkUploaded should succeed")
+
+		require.NoError(t, db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
+			deleted, err := cs.DeleteIfPending(txCtx, tx, uploaded.ID)
+			require.NoError(t, err, "Conditional delete should not fail on an uploaded claim")
+			assert.False(t, deleted, "An uploaded claim must never lose its row to an abort")
+
+			deleted, err = cs.DeleteIfPending(txCtx, tx, pending.ID)
+			require.NoError(t, err, "Conditional delete should not fail on a pending claim")
+			assert.True(t, deleted, "A pending claim should be deleted by abort")
+
+			return nil
+		}), "Conditional delete transaction should succeed")
+
+		_, err := cs.Get(ctx, uploaded.ID)
+		require.NoError(t, err, "The uploaded claim must survive the losing abort")
+
+		_, err = cs.Get(ctx, pending.ID)
+		assert.ErrorIs(t, err, storage.ErrClaimNotFound, "The aborted pending claim should be gone")
 	})
 }

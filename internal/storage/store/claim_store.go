@@ -16,12 +16,18 @@ import (
 // NewClaimStore returns the default ClaimStore implementation backed by
 // the orm.DB abstraction. The concrete SQL dialect is determined by the
 // underlying orm provider; this package depends only on orm.DB.
-func NewClaimStore(db orm.DB) ClaimStore {
-	return &claimStore{db: db}
+//
+// The FileStore dependency is what keeps the durable registry from
+// drifting: "a claim became uploaded" and "a file record exists" are
+// one fact, written by one statement pair in one place, so no future
+// caller of the transition methods can forget the second half.
+func NewClaimStore(db orm.DB, files FileStore) ClaimStore {
+	return &claimStore{db: db, files: files}
 }
 
 type claimStore struct {
-	db orm.DB
+	db    orm.DB
+	files FileStore
 }
 
 func (s *claimStore) Create(ctx context.Context, claim *UploadClaim) error {
@@ -53,11 +59,11 @@ func (s *claimStore) SetUploadID(ctx context.Context, id, uploadID string) error
 	return nil
 }
 
-func (*claimStore) MarkUploaded(ctx context.Context, tx orm.DB, id string) error {
+func (s *claimStore) MarkUploaded(ctx context.Context, tx orm.DB, claim UploadClaim) error {
 	res, err := tx.NewUpdate().Model((*UploadClaim)(nil)).
 		Set("status", ClaimStatusUploaded).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("id", id)
+			cb.Equals("id", claim.ID)
 			cb.Equals("status", ClaimStatusPending)
 		}).
 		Exec(ctx)
@@ -71,13 +77,13 @@ func (*claimStore) MarkUploaded(ctx context.Context, tx orm.DB, id string) error
 	}
 
 	if n == 0 {
-		return fmt.Errorf("%w: %s", storage.ErrClaimNotFound, id)
+		return fmt.Errorf("%w: %s", storage.ErrClaimNotFound, claim.ID)
 	}
 
-	return nil
+	return s.files.Record(ctx, tx, claim)
 }
 
-func (*claimStore) MarkUploadedIfPendingExpired(
+func (s *claimStore) MarkUploadedIfPendingExpired(
 	ctx context.Context,
 	tx orm.DB,
 	claim UploadClaim,
@@ -102,7 +108,15 @@ func (*claimStore) MarkUploadedIfPendingExpired(
 		return false, err
 	}
 
-	return n > 0, nil
+	if n == 0 {
+		return false, nil
+	}
+
+	if err := s.files.Record(ctx, tx, claim); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (s *claimStore) Get(ctx context.Context, id string) (*UploadClaim, error) {
@@ -138,7 +152,7 @@ func (s *claimStore) CountPendingByOwner(ctx context.Context, owner string) (int
 // is invisible to this caller, identical to a row that does not exist.
 // The single sentinel (ErrClaimNotFound) intentionally does not
 // distinguish the two — that would leak existence across tenants.
-func (*claimStore) Consume(ctx context.Context, tx orm.DB, principal *security.Principal, keys []string) error {
+func (s *claimStore) Consume(ctx context.Context, tx orm.DB, principal *security.Principal, keys []string) error {
 	if len(keys) == 0 {
 		return nil
 	}
@@ -176,7 +190,10 @@ func (*claimStore) Consume(ctx context.Context, tx orm.DB, principal *security.P
 		return fmt.Errorf("%w: matched %d of %d keys", storage.ErrClaimNotFound, n, len(uniq))
 	}
 
-	return nil
+	// Only after the ownership proof above: the registry carries no
+	// per-row owner predicate to re-check, so a transaction that is
+	// going to be rejected must never touch its rows.
+	return s.files.MarkClaimed(ctx, tx, uniq)
 }
 
 func (s *claimStore) ListExpired(ctx context.Context, now timex.DateTime, limit int) ([]UploadClaim, error) {
@@ -197,12 +214,59 @@ func (s *claimStore) ListExpired(ctx context.Context, now timex.DateTime, limit 
 	return claims, nil
 }
 
-func (*claimStore) Delete(ctx context.Context, tx orm.DB, id string) error {
-	_, err := tx.NewDelete().Model((*UploadClaim)(nil)).Where(func(cb orm.ConditionBuilder) {
-		cb.Equals("id", id)
-	}).Exec(ctx)
+func (s *claimStore) ListUnadopted(ctx context.Context, cutoff timex.DateTime, limit int) ([]UploadClaim, error) {
+	var claims []UploadClaim
 
-	return err
+	err := s.db.NewSelect().Model(&claims).Where(func(cb orm.ConditionBuilder) {
+		cb.LessThan("expires_at", cutoff)
+		cb.Equals("status", ClaimStatusUploaded)
+	}).OrderBy("expires_at").Limit(limit).Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return claims, nil
+}
+
+func (*claimStore) DeleteIfUploadedBefore(
+	ctx context.Context,
+	tx orm.DB,
+	claim UploadClaim,
+	cutoff timex.DateTime,
+) (bool, error) {
+	res, err := tx.NewDelete().Model((*UploadClaim)(nil)).Where(func(cb orm.ConditionBuilder) {
+		cb.Equals("id", claim.ID)
+		cb.Equals("object_key", claim.Key)
+		cb.Equals("status", ClaimStatusUploaded)
+		cb.LessThan("expires_at", cutoff)
+	}).Exec(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return n > 0, nil
+}
+
+func (*claimStore) DeleteIfPending(ctx context.Context, tx orm.DB, id string) (bool, error) {
+	res, err := tx.NewDelete().Model((*UploadClaim)(nil)).Where(func(cb orm.ConditionBuilder) {
+		cb.Equals("id", id)
+		cb.Equals("status", ClaimStatusPending)
+	}).Exec(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return n > 0, nil
 }
 
 func (*claimStore) DeleteIfPendingExpired(

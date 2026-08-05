@@ -59,6 +59,21 @@ type StorageConfig struct {
 	// Default: 200.
 	SweepBatchSize int `config:"sweep_batch_size"`
 
+	// OrphanRetention is how long a finalized-but-never-adopted upload is
+	// kept after its claim TTL elapses, before the sweeper deletes the
+	// object and drops the claim. It covers the file a user uploaded and
+	// then abandoned by closing the form: complete_upload materialized the
+	// object, no business transaction ever adopted it, and nothing else
+	// reclaims it — the expiry sweep deliberately skips finalized claims so
+	// a slow business save is never robbed of its file.
+	//
+	// Deliberately NOT defaulted: zero (the default) disables reclamation
+	// entirely, because deleting user data is not something an upgrade may
+	// start doing on its own. Set it only once you know your longest
+	// legitimate gap between complete_upload and the business save, and
+	// leave generous headroom — a week is a reasonable starting point.
+	OrphanRetention time.Duration `config:"orphan_retention"`
+
 	// DeleteWorkerInterval is how often the delete worker polls for due
 	// pending-delete rows. Default: 5m.
 	DeleteWorkerInterval time.Duration `config:"delete_worker_interval"`

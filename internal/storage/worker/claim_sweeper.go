@@ -55,10 +55,84 @@ type sweepPlan struct {
 // Errors at each stage (listing expired rows, per-claim backend probe,
 // transactional cleanup) are logged; the next tick re-reads the
 // expired set, so transient failures self-heal.
+//
+// Two independent passes over two disjoint claim populations: expired
+// PENDING claims (uploads that never finished) and, when reclamation is
+// configured, finalized claims nobody ever adopted.
 func (s *ClaimSweeper) Run(ctx context.Context) {
 	// Polling bookkeeping logs at Debug; failures keep their level.
 	ctx = orm.WithQuietSQLLog(ctx)
 
+	s.sweepExpired(ctx)
+	s.reclaimOrphans(ctx)
+}
+
+// reclaimOrphans deletes uploads that materialized an object and were
+// never adopted by a business transaction — the file a user uploaded and
+// abandoned by closing the form. Nothing else reclaims them: the expiry
+// pass deliberately skips finalized claims so a slow business save keeps
+// its file, which leaves this population growing forever.
+//
+// Off unless StorageConfig.OrphanRetention is configured; see the field
+// documentation for why deleting user data is opt-in.
+//
+// Every delete is gated on a compare-and-set against the same claim row
+// Consume deletes, so a business save landing in this exact moment wins
+// or loses cleanly — it can never end up referencing a reaped object.
+func (s *ClaimSweeper) reclaimOrphans(ctx context.Context) {
+	retention := s.cfg.OrphanRetention
+	if retention <= 0 {
+		return
+	}
+
+	cutoff := timex.Now().Add(-retention)
+
+	claims, err := s.claimStore.ListUnadopted(ctx, cutoff, s.cfg.EffectiveSweepBatchSize())
+	if err != nil {
+		logger.Errorf("Failed to scan unadopted claims: %v", err)
+
+		return
+	}
+
+	if len(claims) == 0 {
+		return
+	}
+
+	logger.Infof("Reclaiming %d unadopted upload(s)", len(claims))
+
+	err = s.db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
+		now := timex.Now()
+		items := make([]store.PendingDelete, 0, len(claims))
+
+		for i := range claims {
+			claim := claims[i]
+
+			reclaimed, err := s.claimStore.DeleteIfUploadedBefore(txCtx, tx, claim, cutoff)
+			if err != nil {
+				return err
+			}
+
+			if !reclaimed {
+				continue
+			}
+
+			items = append(items, store.PendingDelete{
+				ID:            id.GenerateUUID(),
+				Key:           claim.Key,
+				Reason:        storage.DeleteReasonOrphaned,
+				NextAttemptAt: now,
+				CreatedAt:     now,
+			})
+		}
+
+		return s.deleteQueue.Insert(txCtx, tx, items)
+	})
+	if err != nil {
+		logger.Errorf("Failed to reclaim unadopted uploads: %v", err)
+	}
+}
+
+func (s *ClaimSweeper) sweepExpired(ctx context.Context) {
 	limit := s.cfg.EffectiveSweepBatchSize()
 	cutoff := timex.Now().Add(-s.cfg.EffectiveSweepInterval())
 

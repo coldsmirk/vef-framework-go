@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"mime"
 	"net/url"
@@ -18,8 +19,9 @@ import (
 )
 
 type ProxyMiddleware struct {
-	service storage.Service
-	acl     storage.FileACL
+	service  storage.Service
+	acl      storage.FileACL
+	registry storage.FileRegistry
 }
 
 func (*ProxyMiddleware) Name() string {
@@ -65,6 +67,11 @@ func (p *ProxyMiddleware) handleFileProxy(ctx fiber.Ctx) error {
 		}
 	}
 
+	// Resolved BEFORE GetObject: the reader-ownership rule below forbids
+	// a failing early return once the body is open, and this lookup can
+	// fail. Its result is only needed for a response header.
+	filename := p.originalFilename(ctx.Context(), key)
+
 	// reader ownership: from this point on, the io.ReadCloser is handed
 	// off to ctx.SendStream below, which is responsible for closing it
 	// after the response body is flushed. Do NOT add an early return
@@ -92,6 +99,13 @@ func (p *ProxyMiddleware) handleFileProxy(ctx fiber.Ctx) error {
 	ctx.Set(fiber.HeaderContentType, contentType)
 	ctx.Set("X-Content-Type-Options", "nosniff")
 
+	// Safe to cache alongside the immutable directive below: a registry
+	// record's original_filename is written once, when the upload is
+	// finalized, and no code path ever updates it.
+	if disposition := contentDisposition(contentType, filename); disposition != "" {
+		ctx.Set(fiber.HeaderContentDisposition, disposition)
+	}
+
 	if stat != nil {
 		ctx.Set(fiber.HeaderContentLength, strconv.FormatInt(stat.Size, 10))
 	}
@@ -114,11 +128,70 @@ func (p *ProxyMiddleware) handleFileProxy(ctx fiber.Ctx) error {
 	return ctx.SendStream(reader)
 }
 
-func NewProxyMiddleware(service storage.Service, acl storage.FileACL) app.Middleware {
+func NewProxyMiddleware(service storage.Service, acl storage.FileACL, registry storage.FileRegistry) app.Middleware {
 	return &ProxyMiddleware{
-		service: service,
-		acl:     acl,
+		service:  service,
+		acl:      acl,
+		registry: registry,
 	}
+}
+
+// originalFilename resolves the name the file was uploaded under, or ""
+// when the registry has no record for the key (an object written before
+// the registry existed, or one put there outside the upload protocol).
+//
+// Best-effort by design, mirroring the nil-stat rule below: a download
+// must never fail because its filename could not be resolved.
+func (p *ProxyMiddleware) originalFilename(ctx context.Context, key string) string {
+	found, err := p.registry.Lookup(ctx, []string{key})
+	if err != nil {
+		logger.Warnf("Resolve original filename for %s failed: %v", key, err)
+
+		return ""
+	}
+
+	return found[key].OriginalFilename
+}
+
+// contentDisposition renders the RFC 6266 header that gives a browser
+// the real filename on "save as". mime.FormatMediaType handles the
+// RFC 2231/5987 encoding non-ASCII names need, and percent-encodes
+// anything that is not an attribute character — so a filename can never
+// inject a header, whatever sanitizeFilename let through.
+//
+// Types a browser renders in place stay inline so in-app previews keep
+// working; everything else — archives, and anything sanitizeContentType
+// already collapsed to application/octet-stream — is marked as an
+// attachment, which costs nothing and puts a second barrier in front of
+// content a browser might otherwise try to interpret.
+//
+// Returns "" when there is no name to advertise or the value cannot be
+// encoded, so the caller simply omits the header.
+func contentDisposition(contentType, filename string) string {
+	if filename == "" {
+		return ""
+	}
+
+	disposition := "attachment"
+	if isInlineRenderable(contentType) {
+		disposition = "inline"
+	}
+
+	return mime.FormatMediaType(disposition, map[string]string{"filename": filename})
+}
+
+// isInlineRenderable reports whether a browser renders contentType in
+// place. Deliberately narrower than isSafeContentType, which answers a
+// different question — whether the type is safe to serve at all: an
+// archive is safe to serve and pointless to render.
+func isInlineRenderable(contentType string) bool {
+	for _, prefix := range safeContentTypePrefixes {
+		if strings.HasPrefix(contentType, prefix) {
+			return true
+		}
+	}
+
+	return contentType == "application/pdf"
 }
 
 // isValidObjectKey rejects keys that could cause path traversal or

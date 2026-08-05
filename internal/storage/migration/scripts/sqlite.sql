@@ -74,3 +74,48 @@ CREATE TABLE IF NOT EXISTS sys_storage_pending_delete (
 -- orders by next_attempt_at; attempts is only ever mutated by Defer
 -- (SET attempts = attempts + 1) and never appears in WHERE/ORDER BY.
 CREATE INDEX IF NOT EXISTS idx_sys_storage_pending_delete__lease ON sys_storage_pending_delete(next_attempt_at);
+
+-- Files
+CREATE TABLE IF NOT EXISTS sys_storage_file (
+    id                VARCHAR(128) CONSTRAINT pk_sys_storage_file PRIMARY KEY,
+    created_at        TIMESTAMP    NOT NULL DEFAULT (datetime('now', 'localtime')),
+    created_by        VARCHAR(128) NOT NULL DEFAULT 'system',
+    object_key        VARCHAR(512) NOT NULL,
+    original_filename VARCHAR(255) NOT NULL DEFAULT '',
+    content_type      VARCHAR(128) NOT NULL DEFAULT '',
+    size              BIGINT       NOT NULL DEFAULT 0,
+    public            BOOLEAN      NOT NULL DEFAULT 0,
+    status            VARCHAR(16)  NOT NULL DEFAULT 'uploaded',
+    started_at        TIMESTAMP    NOT NULL,
+    claimed_at        TIMESTAMP,
+    deleted_at        TIMESTAMP,
+    delete_reason     VARCHAR(128) NOT NULL DEFAULT '',
+    CONSTRAINT uk_sys_storage_file__object_key UNIQUE (object_key)
+);
+
+-- Both indexes are forward-provisioned: every statement the framework
+-- issues against this table is keyed by object_key, which the unique
+-- constraint already covers. They are created with the table because
+-- MySQL declares indexes inline in the CREATE TABLE body, so an index
+-- this table does not get at creation can never be added by this script.
+--
+-- (status, created_at) serves status-scoped listings — which files are
+-- still unclaimed long after upload, which ones are gone.
+CREATE INDEX IF NOT EXISTS idx_sys_storage_file__status_created_at ON sys_storage_file(status, created_at);
+-- (created_by, created_at) serves "what did this principal upload", newest first.
+CREATE INDEX IF NOT EXISTS idx_sys_storage_file__owner_created_at ON sys_storage_file(created_by, created_at);
+
+-- One-time backfill: claims that finalized before this table existed but
+-- have not been adopted yet still carry their full metadata, and they are
+-- never swept (ListExpired skips 'uploaded'), so they are recoverable.
+-- Files already adopted are not: Consume deleted those claim rows, and
+-- that gap is permanent. INSERT OR IGNORE keeps a later re-run of this
+-- script (triggered by adding another table) harmless.
+INSERT OR IGNORE INTO sys_storage_file (
+    id, created_at, created_by, object_key, original_filename,
+    content_type, size, public, status, started_at
+)
+SELECT id, created_at, created_by, object_key, original_filename,
+       content_type, size, public, 'uploaded', created_at
+FROM sys_storage_upload_claim
+WHERE status = 'uploaded';

@@ -35,8 +35,14 @@ func NewCORSMiddleware(config *config.CORSConfig) app.Middleware {
 			api.HeaderXBodyEncoding,
 		},
 		AllowCredentials: false,
-		ExposeHeaders:    []string{},
-		MaxAge:           7200,
+		// A cross-origin fetch() can only read headers listed here. The
+		// storage proxy advertises the uploaded file's original name in
+		// Content-Disposition, so a browser download built on fetch (rather
+		// than plain navigation) needs it exposed.
+		ExposeHeaders: []string{
+			fiber.HeaderContentDisposition,
+		},
+		MaxAge: 7200,
 	})
 
 	return &SimpleMiddleware{
