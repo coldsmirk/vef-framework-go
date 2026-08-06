@@ -14,27 +14,54 @@ import (
 	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
 
-// FormDataMaxBytes caps the JSON-encoded form payload an applicant or
-// approver can submit. 64 KiB is generous for legitimate forms (typical
-// approval payloads are < 4 KiB) while still rejecting blobs that would
-// bloat the JSONB column or drive the runtime into OOM. Override at
-// build time only if you intentionally accept larger payloads.
-const FormDataMaxBytes = 64 * 1024
+// Option configures the framework policy a service enforces. Policy resolved
+// from configuration is applied at module wiring; every option has a default,
+// so a service constructed without any (test fixtures, direct use) behaves as
+// it would under an empty configuration.
+type Option func(*options)
+
+type options struct {
+	formDataMaxBytes int
+}
+
+// WithFormDataMaxBytes sets the cap on the JSON-encoded form payload. Values
+// at or below zero keep config.DefaultFormDataMaxBytes.
+func WithFormDataMaxBytes(limit int) Option {
+	return func(o *options) { o.formDataMaxBytes = limit }
+}
+
+func resolveOptions(opts []Option) options {
+	resolved := options{formDataMaxBytes: config.DefaultFormDataMaxBytes}
+	for _, opt := range opts {
+		opt(&resolved)
+	}
+
+	if resolved.formDataMaxBytes <= 0 {
+		resolved.formDataMaxBytes = config.DefaultFormDataMaxBytes
+	}
+
+	return resolved
+}
 
 // ValidationService provides validation operations.
 type ValidationService struct {
-	assigneeService approval.AssigneeService
+	assigneeService  approval.AssigneeService
+	formDataMaxBytes int
 }
 
 // NewValidationService creates a new ValidationService.
-func NewValidationService(assigneeSvc approval.AssigneeService) *ValidationService {
-	return &ValidationService{assigneeService: assigneeSvc}
+func NewValidationService(assigneeSvc approval.AssigneeService, opts ...Option) *ValidationService {
+	return &ValidationService{
+		assigneeService:  assigneeSvc,
+		formDataMaxBytes: resolveOptions(opts).formDataMaxBytes,
+	}
 }
 
 // ValidateOpinion checks if an opinion is required but missing.
@@ -48,10 +75,10 @@ func (*ValidationService) ValidateOpinion(node *approval.FlowNode, opinion strin
 
 // ValidateFormData validates submitted form data against the version's parsed
 // form fields (nil = a flow without a form).
-func (*ValidationService) ValidateFormData(fields []approval.FormFieldDefinition, formData map[string]any) error {
+func (s *ValidationService) ValidateFormData(fields []approval.FormFieldDefinition, formData map[string]any) error {
 	// Size guard runs first — applies even to flows without a form so
 	// callers cannot bypass the cap by omitting the field list.
-	if err := validateFormDataSize(formData); err != nil {
+	if err := validateFormDataSize(formData, s.formDataMaxBytes); err != nil {
 		return err
 	}
 
@@ -577,18 +604,18 @@ func encodedFormDataSize(formData map[string]any) (int, error) {
 	return len(raw), nil
 }
 
-// validateFormDataSize enforces FormDataMaxBytes on the JSON-encoded form
+// validateFormDataSize enforces the resolved form-data cap on the JSON-encoded
 // payload. It guards ValidateFormData (start / resubmit), where the applicant
 // owns the whole payload, so the absolute cap applies. Task actions instead
 // enforce the cap on the growth they introduce (see PrepareOperation) so a
 // pre-existing oversize instance is not wedged.
-func validateFormDataSize(formData map[string]any) error {
+func validateFormDataSize(formData map[string]any, maxBytes int) error {
 	size, err := encodedFormDataSize(formData)
 	if err != nil {
 		return err
 	}
 
-	if size > FormDataMaxBytes {
+	if size > maxBytes {
 		return shared.ErrFormDataTooLarge
 	}
 

@@ -273,7 +273,8 @@ func (s *ApproveTaskTestSuite) TestApproveRejectsOversizedFormData() {
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
 	s.Require().NoError(err, "Should create pending task")
 
-	// 70 KiB of editable-field content exceeds the 64 KiB FormDataMaxBytes cap.
+	// 70 KiB of editable-field content exceeds the 64 KiB default cap
+	// (config.DefaultFormDataMaxBytes) these fixtures build the services with.
 	oversized := strings.Repeat("x", 70*1024)
 
 	operator := approval.UserInfo{ID: "approver-oversize", Name: "Approver"}

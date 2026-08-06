@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -226,13 +227,51 @@ func TestValidateFormData(t *testing.T) {
 	})
 
 	t.Run("RejectsPayloadOverTheAbsoluteCap", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, map[string]any{"reason": "Travel", "amount": 20, "blob": strings.Repeat("x", FormDataMaxBytes+1)})
+		err := svc.ValidateFormData(fields, map[string]any{"reason": "Travel", "amount": 20, "blob": strings.Repeat("x", config.DefaultFormDataMaxBytes+1)})
 		require.ErrorIs(t, err, shared.ErrFormDataTooLarge, "Start / resubmit must reject a payload over the absolute size cap")
 	})
 
 	t.Run("SizeGuardAppliesWithoutSchema", func(t *testing.T) {
-		err := svc.ValidateFormData(nil, map[string]any{"blob": strings.Repeat("x", FormDataMaxBytes+1)})
+		err := svc.ValidateFormData(nil, map[string]any{"blob": strings.Repeat("x", config.DefaultFormDataMaxBytes+1)})
 		require.ErrorIs(t, err, shared.ErrFormDataTooLarge, "Size guard must apply even when the flow has no form schema")
+	})
+}
+
+// TestFormDataMaxBytesIsConfigurable pins the cap as host policy rather than a
+// framework constant. A flow whose detail table carries thousands of rows — a
+// scheduling roster, an itemized settlement — legitimately exceeds the 64 KiB
+// default, and raising it must not require rebuilding the framework.
+func TestFormDataMaxBytesIsConfigurable(t *testing.T) {
+	// Comfortably past the default, so a service still on it would reject.
+	const raised = config.DefaultFormDataMaxBytes * 4
+
+	payload := map[string]any{"blob": strings.Repeat("x", config.DefaultFormDataMaxBytes+1)}
+
+	t.Run("DefaultRejectsWhatTheRaisedLimitAccepts", func(t *testing.T) {
+		require.ErrorIs(t, NewValidationService(nil).ValidateFormData(nil, payload),
+			shared.ErrFormDataTooLarge,
+			"The default cap must still reject the payload, or this test proves nothing")
+
+		require.NoError(t, NewValidationService(nil, WithFormDataMaxBytes(raised)).ValidateFormData(nil, payload),
+			"A raised cap must accept a payload the default rejects")
+	})
+
+	t.Run("RaisedLimitStillRejectsBeyondIt", func(t *testing.T) {
+		svc := NewValidationService(nil, WithFormDataMaxBytes(raised))
+		err := svc.ValidateFormData(nil, map[string]any{"blob": strings.Repeat("x", raised+1)})
+		require.ErrorIs(t, err, shared.ErrFormDataTooLarge, "Raising the cap must move the bound, not remove it")
+	})
+
+	t.Run("NonPositiveLimitKeepsTheDefault", func(t *testing.T) {
+		// EffectiveFormDataMaxBytes maps unset config to the default, but the
+		// option is public API too — a caller passing 0 must not disable the cap.
+		for name, limit := range map[string]int{"Zero": 0, "Negative": -1} {
+			t.Run(name, func(t *testing.T) {
+				svc := NewValidationService(nil, WithFormDataMaxBytes(limit))
+				require.ErrorIs(t, svc.ValidateFormData(nil, payload), shared.ErrFormDataTooLarge,
+					"A non-positive limit must fall back to the default, never to unbounded")
+			})
+		}
 	})
 }
 

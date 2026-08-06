@@ -56,3 +56,33 @@ func TestApprovalBusinessBindingConfigValidation(t *testing.T) {
 			"Negative batch size should fail startup validation")
 	})
 }
+
+func TestApprovalFormDataMaxBytes(t *testing.T) {
+	t.Run("UnsetDefaultsTo64KiB", func(t *testing.T) {
+		cfg := config.ApprovalConfig{}
+
+		require.Equal(t, 64*1024, cfg.EffectiveFormDataMaxBytes(),
+			"Unset form_data_max_bytes should default to 64 KiB")
+		require.Equal(t, config.DefaultFormDataMaxBytes, cfg.EffectiveFormDataMaxBytes(),
+			"The accessor default and the exported constant must agree")
+	})
+
+	t.Run("OverrideWins", func(t *testing.T) {
+		cfg := config.ApprovalConfig{FormDataMaxBytes: 4 * 1024 * 1024}
+
+		require.Equal(t, 4*1024*1024, cfg.EffectiveFormDataMaxBytes(),
+			"A configured cap should be returned verbatim")
+		require.NoError(t, cfg.Validate(), "A positive cap should be valid")
+	})
+
+	t.Run("NegativeIsRejected", func(t *testing.T) {
+		// Zero means "use the default"; a negative value is a typo that would
+		// otherwise reject every submission, so it must fail at boot.
+		cfg := config.ApprovalConfig{FormDataMaxBytes: -1}
+
+		err := cfg.Validate()
+		require.Error(t, err, "A negative cap should fail configuration validation")
+		require.ErrorIs(t, err, config.ErrInvalidApprovalFormDataMaxBytes,
+			"Error should wrap ErrInvalidApprovalFormDataMaxBytes so operators can match it")
+	})
+}

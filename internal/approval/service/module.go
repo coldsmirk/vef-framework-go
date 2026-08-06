@@ -4,6 +4,7 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/config"
 )
 
 // Module provides all approval services.
@@ -25,9 +26,17 @@ var Module = fx.Module(
 			},
 			fx.ParamTags(`group:"vef:approval:aggregators"`),
 		),
-		NewTaskService,
+		// The form-data cap is host policy, so it is resolved from
+		// configuration here rather than baked into the constructors — a flow
+		// whose detail tables carry thousands of rows raises it without a
+		// framework rebuild.
+		func(cfg *config.ApprovalConfig) *TaskService {
+			return NewTaskService(WithFormDataMaxBytes(cfg.EffectiveFormDataMaxBytes()))
+		},
+		func(assigneeSvc approval.AssigneeService, cfg *config.ApprovalConfig) *ValidationService {
+			return NewValidationService(assigneeSvc, WithFormDataMaxBytes(cfg.EffectiveFormDataMaxBytes()))
+		},
 		NewNodeService,
-		NewValidationService,
 		NewInstanceService,
 	),
 )

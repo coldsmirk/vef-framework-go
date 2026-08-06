@@ -117,8 +117,37 @@ type ApprovalConfig struct {
 	// (only records that have been read are pruned). Default: 90 days.
 	CCRecordRetention time.Duration `config:"cc_record_retention"`
 
+	// FormDataMaxBytes caps the JSON-encoded form payload an applicant or
+	// approver may submit, in bytes. Default: 65536 (64 KiB), generous for a
+	// field-based form while still rejecting blobs that would bloat the JSONB
+	// column or drive the runtime into OOM.
+	//
+	// Raise it for flows whose detail tables carry thousands of rows — a
+	// scheduling roster, an itemized settlement — where the payload is
+	// legitimately large rather than abusive. The bound protects the database
+	// and the process, so size it against those: every submission is held in
+	// memory as a decoded map, stored on apv_instance.form_data, and copied to
+	// apv_form_snapshot on each node traversal, so an instance costs roughly
+	// this much times the number of nodes it passes through. `vef.app.body_limit`
+	// (default 32 MiB) is the outer ceiling — a value above it can never be hit.
+	FormDataMaxBytes int `config:"form_data_max_bytes"`
+
 	// BusinessBinding controls approval-to-business-table state projection.
 	BusinessBinding ApprovalBusinessBindingConfig `config:"business_binding"`
+}
+
+// DefaultFormDataMaxBytes is the fallback cap on the JSON-encoded approval form
+// payload when vef.approval.form_data_max_bytes is unset.
+const DefaultFormDataMaxBytes = 64 * 1024
+
+// ErrInvalidApprovalFormDataMaxBytes indicates a negative form-data cap. Zero
+// selects the default; a negative value is a typo that would otherwise reject
+// every submission.
+var ErrInvalidApprovalFormDataMaxBytes = errors.New("invalid approval form data max bytes")
+
+// EffectiveFormDataMaxBytes returns FormDataMaxBytes or its default.
+func (c *ApprovalConfig) EffectiveFormDataMaxBytes() int {
+	return coalescePositive(c.FormDataMaxBytes, DefaultFormDataMaxBytes)
 }
 
 // ApplyDefaults fills zero-valued fields with sensible defaults so callers
@@ -155,5 +184,9 @@ func (c *ApprovalConfig) ApplyDefaults() {
 
 // Validate checks approval configuration invariants.
 func (c *ApprovalConfig) Validate() error {
+	if c.FormDataMaxBytes < 0 {
+		return fmt.Errorf("%w: form_data_max_bytes must be positive when set", ErrInvalidApprovalFormDataMaxBytes)
+	}
+
 	return c.BusinessBinding.Validate()
 }

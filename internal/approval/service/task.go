@@ -48,11 +48,13 @@ type TaskContextLoadOptions struct {
 var cancelableTaskStatuses = []string{string(approval.TaskPending), string(approval.TaskWaiting)}
 
 // TaskService provides task-level domain operations.
-type TaskService struct{}
+type TaskService struct {
+	formDataMaxBytes int
+}
 
 // NewTaskService creates a new TaskService.
-func NewTaskService() *TaskService {
-	return new(TaskService)
+func NewTaskService(opts ...Option) *TaskService {
+	return &TaskService{formDataMaxBytes: resolveOptions(opts).formDataMaxBytes}
 }
 
 // FinishTask transitions a task to the given status and sets its FinishedAt timestamp.
@@ -808,7 +810,7 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID st
 	// Capture the pre-merge size so the cap is enforced on the growth this
 	// action introduces, not on the standing payload. An instance whose stored
 	// form data already exceeds the cap (created before the cap existed, or
-	// after lowering FormDataMaxBytes at build time) must stay actionable —
+	// after lowering vef.approval.form_data_max_bytes) must stay actionable —
 	// approvers can still push it forward and a rollback-clear can shrink it.
 	beforeSize, err := encodedFormDataSize(tc.Instance.FormData)
 	if err != nil {
@@ -826,7 +828,7 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID st
 	// drip-feed-growth vector, since FilterEditableFormData bounds the keys but
 	// not the encoded size. ValidateFormData still enforces the absolute cap at
 	// start / resubmit, where the applicant owns the whole payload.
-	if afterSize > FormDataMaxBytes && afterSize > beforeSize {
+	if afterSize > s.formDataMaxBytes && afterSize > beforeSize {
 		return nil, shared.ErrFormDataTooLarge
 	}
 
