@@ -8,22 +8,45 @@ import (
 const ChallengeTypeDepartmentSelection = "department_selection"
 
 // DepartmentOption represents a selectable department.
+//
+// ID is the only field the framework is party to: Resolve hands it back to
+// DepartmentSelector untouched. Name and Meta exist purely so the login UI can
+// render the choice.
 type DepartmentOption struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// Meta carries whatever the host's login screen needs beyond a label — the
+	// owning organization, a parent id for tree rendering, an ancestry path, a
+	// sort weight. The framework transports it and nothing more: it is never
+	// read, validated, or persisted. Both ends of this channel are host code
+	// (the DepartmentLoader that fills it, the challenge renderer that reads
+	// it), so the key vocabulary is the host's to define — the framework takes
+	// no position on how organizations relate to departments.
+	Meta map[string]any `json:"meta,omitempty"`
 }
 
 // DepartmentSelectionChallengeData describes the metadata for a department selection challenge.
 type DepartmentSelectionChallengeData struct {
 	Departments []DepartmentOption `json:"departments"`
-	Meta        map[string]any     `json:"meta,omitempty"`
+	// Meta carries challenge-scoped display data belonging to no single option:
+	// the organization tree the options hang off, a default selection, grouping
+	// definitions.
+	//
+	// Prefer it over mixing non-selectable organization nodes into Departments.
+	// Every entry there must be a genuinely selectable department — Evaluate
+	// treats a non-empty list as "ask the user", and Resolve forwards whichever
+	// ID comes back to DepartmentSelector, so a grouping node listed as an
+	// option becomes a selectable one that the host then has to reject by hand.
+	Meta map[string]any `json:"meta,omitempty"`
 }
 
-// DepartmentLoader loads the list of departments available to a user.
+// DepartmentLoader loads the department choice presented to a user.
 type DepartmentLoader interface {
-	// LoadDepartments returns the departments available to the user.
-	// Return nil or an empty slice to skip the challenge.
-	LoadDepartments(ctx context.Context, principal *Principal) ([]DepartmentOption, error)
+	// LoadDepartments returns the challenge data offered to the user, so the
+	// host controls both the selectable options and the challenge-scoped Meta
+	// around them. Return nil — or data carrying no departments — to skip the
+	// challenge.
+	LoadDepartments(ctx context.Context, principal *Principal) (*DepartmentSelectionChallengeData, error)
 }
 
 // DepartmentSelector validates the user's department selection and enriches the principal.
@@ -58,20 +81,22 @@ func (*DepartmentSelectionChallengeProvider) Type() string { return ChallengeTyp
 func (*DepartmentSelectionChallengeProvider) Order() int   { return 500 }
 
 func (p *DepartmentSelectionChallengeProvider) Evaluate(ctx context.Context, principal *Principal) (*LoginChallenge, error) {
-	departments, err := p.loader.LoadDepartments(ctx, principal)
+	data, err := p.loader.LoadDepartments(ctx, principal)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(departments) == 0 {
+	// No options means nothing to ask, whether the loader signaled that with a
+	// nil payload or an empty list.
+	if data == nil || len(data.Departments) == 0 {
 		return nil, nil
 	}
 
+	// The loader's payload is forwarded as-is so both Meta levels reach the
+	// client; rebuilding it here is what used to strand them.
 	return &LoginChallenge{
-		Type: ChallengeTypeDepartmentSelection,
-		Data: &DepartmentSelectionChallengeData{
-			Departments: departments,
-		},
+		Type:     ChallengeTypeDepartmentSelection,
+		Data:     data,
 		Required: true,
 	}, nil
 }

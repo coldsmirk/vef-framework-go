@@ -14,10 +14,10 @@ import (
 // ─── Mock implementations ───
 
 type MockDepartmentLoader struct {
-	LoadDepartmentsFn func(ctx context.Context, principal *Principal) ([]DepartmentOption, error)
+	LoadDepartmentsFn func(ctx context.Context, principal *Principal) (*DepartmentSelectionChallengeData, error)
 }
 
-func (m *MockDepartmentLoader) LoadDepartments(ctx context.Context, principal *Principal) ([]DepartmentOption, error) {
+func (m *MockDepartmentLoader) LoadDepartments(ctx context.Context, principal *Principal) (*DepartmentSelectionChallengeData, error) {
 	return m.LoadDepartmentsFn(ctx, principal)
 }
 
@@ -32,7 +32,7 @@ func (m *MockDepartmentSelector) SelectDepartment(ctx context.Context, principal
 // ─── Constructor validation ───
 
 func TestNewDepartmentSelectionChallengeProvider(t *testing.T) {
-	validLoader := &MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) ([]DepartmentOption, error) { return nil, nil }}
+	validLoader := &MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) { return nil, nil }}
 	validSelector := &MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }}
 
 	t.Run("MissingLoader", func(t *testing.T) {
@@ -58,7 +58,7 @@ func TestNewDepartmentSelectionChallengeProvider(t *testing.T) {
 
 func TestDepartmentSelectionChallengeProviderTypeAndOrder(t *testing.T) {
 	provider := NewDepartmentSelectionChallengeProvider(
-		&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) ([]DepartmentOption, error) { return nil, nil }},
+		&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) { return nil, nil }},
 		&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 	)
 
@@ -79,8 +79,8 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 
 	t.Run("NoDepartments", func(t *testing.T) {
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) ([]DepartmentOption, error) {
-				return []DepartmentOption{}, nil
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) {
+				return &DepartmentSelectionChallengeData{Departments: []DepartmentOption{}}, nil
 			}},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
@@ -93,7 +93,7 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 
 	t.Run("NilDepartments", func(t *testing.T) {
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) ([]DepartmentOption, error) { return nil, nil }},
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) { return nil, nil }},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
 
@@ -109,8 +109,8 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 			{ID: "d2", Name: "Marketing"},
 		}
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) ([]DepartmentOption, error) {
-				return departments, nil
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) {
+				return &DepartmentSelectionChallengeData{Departments: departments}, nil
 			}},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
@@ -129,8 +129,8 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 	t.Run("SingleDepartment", func(t *testing.T) {
 		departments := []DepartmentOption{{ID: "d1", Name: "Engineering"}}
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) ([]DepartmentOption, error) {
-				return departments, nil
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) {
+				return &DepartmentSelectionChallengeData{Departments: departments}, nil
 			}},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
@@ -144,10 +144,64 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 		assert.Len(t, challengeData.Departments, 1, "Should contain one department")
 	})
 
+	t.Run("NilChallengeData", func(t *testing.T) {
+		// A loader that has nothing to ask may say so with a nil payload
+		// rather than allocating an empty one.
+		provider := NewDepartmentSelectionChallengeProvider(
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) {
+				return nil, nil
+			}},
+			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
+		)
+
+		challenge, err := provider.Evaluate(ctx, principal)
+
+		require.NoError(t, err, "Should not return error for nil challenge data")
+		assert.Nil(t, challenge, "Should return nil challenge for nil challenge data")
+	})
+
+	t.Run("MetaReachesTheClient", func(t *testing.T) {
+		// Both Meta levels are the whole point of the loader returning the
+		// payload: per-option data answers "which organization owns this
+		// department", challenge-level data carries the tree the options hang
+		// off. Rebuilding the payload inside Evaluate used to strand both.
+		data := &DepartmentSelectionChallengeData{
+			Departments: []DepartmentOption{
+				{ID: "d1", Name: "Engineering", Meta: map[string]any{"orgId": "o1", "parentId": "o1"}},
+				{ID: "d2", Name: "Marketing", Meta: map[string]any{"orgId": "o2", "parentId": "o2"}},
+			},
+			Meta: map[string]any{
+				"organizations": []map[string]any{
+					{"id": "o1", "name": "华东分公司"},
+					{"id": "o2", "name": "华北分公司"},
+				},
+			},
+		}
+		provider := NewDepartmentSelectionChallengeProvider(
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) {
+				return data, nil
+			}},
+			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
+		)
+
+		challenge, err := provider.Evaluate(ctx, principal)
+
+		require.NoError(t, err, "Should not return error when the loader supplies meta")
+		require.NotNil(t, challenge, "Should return a challenge")
+
+		challengeData, ok := challenge.Data.(*DepartmentSelectionChallengeData)
+		require.True(t, ok, "Challenge data should be *DepartmentSelectionChallengeData")
+		assert.Same(t, data, challengeData, "Loader payload should be forwarded as-is, not rebuilt")
+		assert.Equal(t, map[string]any{"orgId": "o1", "parentId": "o1"}, challengeData.Departments[0].Meta,
+			"Per-option meta should reach the client")
+		assert.Equal(t, data.Meta, challengeData.Meta,
+			"Challenge-level meta should reach the client")
+	})
+
 	t.Run("LoaderError", func(t *testing.T) {
 		loadErr := errors.New("load failed")
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) ([]DepartmentOption, error) { return nil, loadErr }},
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) { return nil, loadErr }},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
 
@@ -161,8 +215,8 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 		loadErr := errors.New("partial failure")
 		departments := []DepartmentOption{{ID: "d1", Name: "Engineering"}}
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) ([]DepartmentOption, error) {
-				return departments, loadErr
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) {
+				return &DepartmentSelectionChallengeData{Departments: departments}, loadErr
 			}},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
@@ -179,7 +233,7 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 	ctx := context.Background()
 	principal := NewUser("u1", "Alice")
-	noopLoader := &MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) ([]DepartmentOption, error) { return nil, nil }}
+	noopLoader := &MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) { return nil, nil }}
 
 	t.Run("ValidSelection", func(t *testing.T) {
 		var receivedDeptID string
@@ -274,10 +328,12 @@ func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 		var loaderPrincipal, selectorPrincipal *Principal
 
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(_ context.Context, p *Principal) ([]DepartmentOption, error) {
+			&MockDepartmentLoader{LoadDepartmentsFn: func(_ context.Context, p *Principal) (*DepartmentSelectionChallengeData, error) {
 				loaderPrincipal = p
 
-				return []DepartmentOption{{ID: "d1", Name: "Engineering"}}, nil
+				return &DepartmentSelectionChallengeData{
+					Departments: []DepartmentOption{{ID: "d1", Name: "Engineering"}},
+				}, nil
 			}},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) {
 				selectorPrincipal = p
