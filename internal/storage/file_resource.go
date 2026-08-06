@@ -92,6 +92,8 @@ func (r *FileResource) Resolve(ctx fiber.Ctx, principal *security.Principal, par
 	// for the same input.
 	seen := make(map[string]struct{}, len(records))
 
+	var denied int
+
 	for _, key := range params.Keys {
 		record, ok := records[key]
 		if !ok {
@@ -108,6 +110,8 @@ func (r *FileResource) Resolve(ctx fiber.Ctx, principal *security.Principal, par
 		}
 
 		if !allowed {
+			denied++
+
 			continue
 		}
 
@@ -122,6 +126,20 @@ func (r *FileResource) Resolve(ctx fiber.Ctx, principal *security.Principal, par
 			UploadedAt:       record.StartedAt,
 			UploadedBy:       record.CreatedBy,
 		})
+	}
+
+	// Omitting denied keys silently is the right wire behavior — reporting
+	// "not yours" instead of "no record" would leak the existence of other
+	// tenants' files — but it also makes an ACL that denies more than its
+	// author meant invisible: the client just renders bare object keys,
+	// which reads as "the framework lost my filename". Since a pub/ key
+	// never reaches the ACL, that failure shows up as "public files keep
+	// their name, private ones don't". This line is what tells an operator
+	// the ACL said no, rather than the registry having no record.
+	if denied > 0 {
+		logger.Debugf(
+			"FileACL denied %d of %d requested key(s) for principal %q; those files resolve to no original filename",
+			denied, len(params.Keys), principal.ID)
 	}
 
 	return result.Ok(ResolveResult{Files: files}).Response(ctx)
