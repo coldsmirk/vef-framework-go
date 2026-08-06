@@ -99,10 +99,16 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 	}}
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
-	events := []approval.DomainEvent{
-		approval.NewAssigneesRemovedEvent(instance, task, node, []approval.UserInfo{task.Assignee()}),
-	}
+	events := behavior.EventCollectorFromContext(ctx)
 
+	// The removal is announced before the node evaluation it triggers: that
+	// evaluation emits its own events as it runs — removing the last blocking
+	// assignee can complete the instance — so deferring this one would let the
+	// consequence reach subscribers ahead of its cause.
+	events.Add(approval.NewAssigneesRemovedEvent(instance, task, node, []approval.UserInfo{task.Assignee()}))
+
+	// HandleNodeCompletion has already emitted what it produced; the return
+	// value is only the reconciliation input for the activations above.
 	completionEvents, err := h.nodeSvc.HandleNodeCompletion(ctx, db, instance, node)
 	if err != nil {
 		return cqrs.Unit{}, err
@@ -110,14 +116,11 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 
 	// Activations precede completion in the lifecycle, but only those the
 	// completion did not cancel actually happened.
-	events = append(events, service.SuppressSupersededActivations(activationEvents, completionEvents)...)
-	events = append(events, completionEvents...)
+	events.Add(service.SuppressSupersededActivations(activationEvents, completionEvents)...)
 
 	// remove_assignee does not mutate form_data and HandleNodeCompletion has
 	// already persisted any status / current_node_id / finished_at change
 	// through the state machine. No extra UPDATE is required.
-
-	behavior.EventCollectorFromContext(ctx).Add(events...)
 
 	return cqrs.Unit{}, nil
 }

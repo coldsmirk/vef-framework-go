@@ -46,6 +46,34 @@ func PublishEventsTx(ctx context.Context, bus event.Bus, db orm.DB, events ...ap
 	return nil
 }
 
+// EmitEvents is the single emission entry point for approval domain events.
+// Inside the CQRS pipeline it appends to the request-scoped EventCollector, so
+// the events publish as one ordered batch once the handler succeeds; outside it
+// (the timeout scanner driving the engine) it falls back to a direct
+// transactional publish. Returns nil when there are no events.
+//
+// Producers must call it at the moment the event occurs rather than
+// accumulating a local slice to hand over at the end of the handler. The
+// collector is one ordered buffer shared by the command handler, the node
+// service, and the engine's recursive traversal, so a producer that defers its
+// own events lets later-occurring ones overtake them: that is how
+// approval.instance.completed used to reach subscribers ahead of the
+// approval.task.approved that caused it, and ahead of the
+// approval.instance.created of the instance it completed.
+func EmitEvents(ctx context.Context, bus event.Bus, db orm.DB, events ...approval.DomainEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+
+	if collector, ok := TryEventCollectorFromContext(ctx); ok {
+		collector.Add(events...)
+
+		return nil
+	}
+
+	return PublishEventsTx(ctx, bus, db, events...)
+}
+
 // NewEventPublishBehavior buffers domain events produced by a command
 // handler and publishes them, in the order the handler added them, after the
 // handler succeeds. Publishing runs inside the surrounding transaction so the

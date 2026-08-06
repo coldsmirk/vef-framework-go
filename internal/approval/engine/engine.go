@@ -68,29 +68,12 @@ func NewFlowEngine(
 // the right transactional moment.
 func (e *FlowEngine) LifecycleHooks() *LifecycleHookRunner { return e.hooks }
 
-// publishEvents forwards domain events to either the request-scoped
-// EventCollector (so EventPublishBehavior can flush them after the handler
-// succeeds) or — when invoked outside a CQRS pipeline — directly to the
-// bus inside the caller's transaction. Visibility hinges on the caller
-// committing. Returns nil when there are no events or no bus configured
-// (test fixtures).
+// publishEvents emits domain events as the traversal produces them, through
+// the shared collector-or-transactional-publish entry point. Visibility hinges
+// on the caller committing. Returns nil when there are no events or no bus
+// configured (test fixtures).
 func (e *FlowEngine) publishEvents(ctx context.Context, db orm.DB, events ...approval.DomainEvent) error {
-	if len(events) == 0 {
-		return nil
-	}
-
-	// Prefer the collector so command handlers see a single batched
-	// publish at the end of the pipeline with consistent OccurredAt /
-	// trace handling. The collector is absent when this engine runs
-	// outside a CQRS pipeline (for example, the timeout scanner); in
-	// that case fall back to direct bus.Publish.
-	if collector, ok := behavior.TryEventCollectorFromContext(ctx); ok {
-		collector.Add(events...)
-
-		return nil
-	}
-
-	return PublishEventsTx(ctx, e.bus, db, events...)
+	return behavior.EmitEvents(ctx, e.bus, db, events...)
 }
 
 // StartProcess starts a flow process by finding the start node and processing it.

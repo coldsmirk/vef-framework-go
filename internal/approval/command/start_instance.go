@@ -241,13 +241,20 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		}
 	}
 
-	if err := h.engine.StartProcess(ctx, db, instance); err != nil {
-		return nil, fmt.Errorf("start process: %w", err)
-	}
-
+	// Announced before the engine runs: StartProcess emits every event the
+	// traversal produces, and a flow whose start node reaches an end node
+	// without stopping completes inside this call — deferring the creation
+	// event would put approval.instance.completed ahead of the
+	// approval.instance.created of the very instance it completed. The payload
+	// is a snapshot of fields the traversal does not touch, so the earlier
+	// position changes only the order.
 	behavior.EventCollectorFromContext(ctx).Add(
 		approval.NewInstanceCreatedEvent(instance),
 	)
+
+	if err := h.engine.StartProcess(ctx, db, instance); err != nil {
+		return nil, fmt.Errorf("start process: %w", err)
+	}
 
 	return instance, nil
 }

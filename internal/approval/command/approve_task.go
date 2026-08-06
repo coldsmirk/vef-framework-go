@@ -93,13 +93,21 @@ func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cq
 		taskEvent = approval.NewTaskApprovedEvent(instance, task, node, cmd.Operator, cmd.Opinion)
 	}
 
-	events := []approval.DomainEvent{taskEvent}
+	events := behavior.EventCollectorFromContext(ctx)
+
+	// The decision is announced before the node evaluation it triggers: that
+	// evaluation emits its own events as it runs — up to the engine completing
+	// the instance — so deferring this one would let the consequence reach
+	// subscribers ahead of its cause.
+	events.Add(taskEvent)
 
 	activationEvents, err := h.taskSvc.ActivateDependentTasks(ctx, db, instance, node, task)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
 
+	// HandleNodeCompletion has already emitted what it produced; the return
+	// value is only the reconciliation input for the activations above.
 	completionEvents, err := h.nodeSvc.HandleNodeCompletion(ctx, db, instance, node)
 	if err != nil {
 		return cqrs.Unit{}, err
@@ -107,8 +115,7 @@ func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cq
 
 	// Activations precede completion in the lifecycle, but only those the
 	// completion did not cancel actually happened.
-	events = append(events, service.SuppressSupersededActivations(activationEvents, completionEvents)...)
-	events = append(events, completionEvents...)
+	events.Add(service.SuppressSupersededActivations(activationEvents, completionEvents)...)
 
 	actionType := approval.ActionApprove
 	if isHandle {
@@ -134,8 +141,6 @@ func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cq
 			return cqrs.Unit{}, fmt.Errorf("sync form projection: %w", err)
 		}
 	}
-
-	behavior.EventCollectorFromContext(ctx).Add(events...)
 
 	return cqrs.Unit{}, nil
 }

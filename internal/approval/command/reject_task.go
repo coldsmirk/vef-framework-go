@@ -71,9 +71,13 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 		return cqrs.Unit{}, err
 	}
 
-	events := []approval.DomainEvent{
-		approval.NewTaskRejectedEvent(instance, task, node, cmd.Operator, cmd.Opinion),
-	}
+	events := behavior.EventCollectorFromContext(ctx)
+
+	// The decision is announced before the node evaluation it triggers: that
+	// evaluation emits its own events as it runs — up to completing the
+	// instance as rejected — so deferring this one would let the consequence
+	// reach subscribers ahead of its cause.
+	events.Add(approval.NewTaskRejectedEvent(instance, task, node, cmd.Operator, cmd.Opinion))
 
 	// A rejected task may still leave the node running (e.g. "any" pass rule),
 	// so unblock whatever its completion enables before evaluating the node —
@@ -84,6 +88,8 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 		return cqrs.Unit{}, err
 	}
 
+	// HandleNodeCompletion has already emitted what it produced; the return
+	// value is only the reconciliation input for the activations above.
 	completionEvents, err := h.nodeSvc.HandleNodeCompletion(ctx, db, instance, node)
 	if err != nil {
 		return cqrs.Unit{}, err
@@ -91,8 +97,7 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 
 	// Activations precede completion in the lifecycle, but only those the
 	// completion did not cancel actually happened.
-	events = append(events, service.SuppressSupersededActivations(activationEvents, completionEvents)...)
-	events = append(events, completionEvents...)
+	events.Add(service.SuppressSupersededActivations(activationEvents, completionEvents)...)
 
 	actionLog := h.taskSvc.BuildActionLog(instance.ID, task, cmd.Operator, approval.ActionReject, service.ActionLogParams{Opinion: cmd.Opinion, Attachments: cmd.Attachments})
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
@@ -112,8 +117,6 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 			return cqrs.Unit{}, fmt.Errorf("sync form projection: %w", err)
 		}
 	}
-
-	behavior.EventCollectorFromContext(ctx).Add(events...)
 
 	return cqrs.Unit{}, nil
 }

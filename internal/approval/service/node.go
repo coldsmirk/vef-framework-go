@@ -43,8 +43,15 @@ func NewNodeService(
 // Both outcomes trigger completion-timing CC, cancel the remaining tasks, and
 // conclude the open node visit; PassRulePassed then advances to the next node
 // while PassRuleRejected finishes the instance as rejected. A pending result is
-// a no-op. The returned events (task cancellations, plus the completion event
-// on rejection) are handed to the caller's own event flow.
+// a no-op.
+//
+// Every event this produces is emitted here, in occurrence order, before the
+// step that follows it — the cancellations land before AdvanceToNextNode lets
+// the engine announce a completed instance, and before the rejection's own
+// completion event. The returned slice is what was emitted, handed back only so
+// the caller can reconcile the activations it computed beforehand (see
+// SuppressSupersededActivations); re-adding it to the collector would publish
+// each event twice.
 //
 // This method persists status transitions and engine-driven node changes in the
 // caller's transaction while keeping the supplied instance in sync.
@@ -70,6 +77,12 @@ func (s *NodeService) HandleNodeCompletion(
 			return nil, err
 		}
 
+		// Emitted before the advance: whatever the next node decides — up to
+		// completing the instance — happens after these tasks were canceled.
+		if err := behavior.EmitEvents(ctx, s.bus, db, canceledEvents...); err != nil {
+			return nil, err
+		}
+
 		if err := engine.ConcludeActiveNodeVisit(ctx, db, instance.ID, node.ID, approval.NodeVisitPassed); err != nil {
 			return nil, err
 		}
@@ -90,6 +103,10 @@ func (s *NodeService) HandleNodeCompletion(
 			return nil, err
 		}
 
+		if err := behavior.EmitEvents(ctx, s.bus, db, canceledEvents...); err != nil {
+			return nil, err
+		}
+
 		if err := engine.ConcludeActiveNodeVisit(ctx, db, instance.ID, node.ID, approval.NodeVisitRejected); err != nil {
 			return nil, err
 		}
@@ -104,9 +121,12 @@ func (s *NodeService) HandleNodeCompletion(
 			return nil, fmt.Errorf("apply rejection transition: %w", err)
 		}
 
-		return append(canceledEvents,
-			approval.NewInstanceCompletedEvent(instance, approval.InstanceRejected),
-		), nil
+		completed := approval.NewInstanceCompletedEvent(instance, approval.InstanceRejected)
+		if err := behavior.EmitEvents(ctx, s.bus, db, completed); err != nil {
+			return nil, err
+		}
+
+		return append(canceledEvents, completed), nil
 
 	default:
 		return nil, nil
@@ -178,13 +198,7 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 
 	evt := approval.NewCCNotifiedEvent(instance, node, shared.UserInfos(insertedUserIDs, ccUserInfos), false)
 
-	if collector, ok := behavior.TryEventCollectorFromContext(ctx); ok {
-		collector.Add(evt)
-
-		return nil
-	}
-
-	return engine.PublishEventsTx(ctx, s.bus, db, evt)
+	return behavior.EmitEvents(ctx, s.bus, db, evt)
 }
 
 // AdvanceCCNodeIfAllRead checks if all CC records for CC nodes are read and advances the flow.

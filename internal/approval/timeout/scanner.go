@@ -10,6 +10,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/event"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -266,6 +267,17 @@ func (s *Scanner) autoFinishTask(
 		return nil, fmt.Errorf("finish task: %w", err)
 	}
 
+	// The timeout decision is announced before the node evaluation it triggers.
+	// There is no CQRS pipeline here, so this publishes straight into tx —
+	// which is exactly why it cannot wait for the caller's batch: the node
+	// evaluation below publishes the same way, and a completed instance would
+	// otherwise reach subscribers ahead of the timeout that completed it.
+	if err := behavior.EmitEvents(ctx, s.bus, tx,
+		resolution.newEvent(instance, task, node, resolution.opinion),
+	); err != nil {
+		return nil, fmt.Errorf("emit timeout resolution event: %w", err)
+	}
+
 	// Unblock whatever this task's completion enables — the next task in a
 	// sequential queue, or a suspended "before" parent / queued "after" child
 	// on a parallel node — before evaluating node completion. If the node
@@ -275,17 +287,16 @@ func (s *Scanner) autoFinishTask(
 		return nil, fmt.Errorf("activate dependent tasks: %w", err)
 	}
 
+	// HandleNodeCompletion has already emitted what it produced; the return
+	// value is only the reconciliation input for the activations above.
 	completionEvents, err := s.nodeSvc.HandleNodeCompletion(ctx, tx, instance, node)
 	if err != nil {
 		return nil, fmt.Errorf("handle node completion: %w", err)
 	}
 
-	events := make([]approval.DomainEvent, 0, len(activationEvents)+len(completionEvents)+1)
-	events = append(events, resolution.newEvent(instance, task, node, resolution.opinion))
 	// Activations precede completion in the lifecycle, but only those the
 	// completion did not cancel actually happened.
-	events = append(events, service.SuppressSupersededActivations(activationEvents, completionEvents)...)
-	events = append(events, completionEvents...)
+	events := service.SuppressSupersededActivations(activationEvents, completionEvents)
 
 	// HandleNodeCompletion already persisted any status / current_node_id /
 	// finished_at change through the state machine — no extra UPDATE is
