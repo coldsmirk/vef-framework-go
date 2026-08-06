@@ -207,6 +207,33 @@ func (s *FileResolveTestSuite) TestOmitsPrivateKeysUnderTheDefaultACL() {
 	s.Empty(s.resolve(key), "Without an application ACL a private key must not be named")
 }
 
+// The shape this endpoint's authorization takes when a client resolves a
+// mixed list, and the only reason a UI ever shows original filenames for
+// public files while private ones fall back to the bare object key: a pub/
+// key never reaches the ACL, so it always resolves, while a priv/ key
+// resolves only if the application's FileACL grants it. Denied keys are
+// omitted rather than reported, so the client cannot tell this apart from
+// "never uploaded" — the server log is the only signal.
+func (s *FileResolveTestSuite) TestPublicKeysResolveWhileDeniedPrivateOnesAreOmitted() {
+	publicKey := s.uploadFile("公开通知.pdf", true)
+	privateKey := s.uploadFile("内部纪要.pdf", false)
+
+	rows := s.resolve(publicKey, privateKey)
+
+	if s.permissive {
+		s.Require().Len(rows, 2, "A configured ACL should resolve both visibilities")
+		s.Equal("公开通知.pdf", rows[0]["originalFilename"], "The public file keeps its name")
+		s.Equal("内部纪要.pdf", rows[1]["originalFilename"], "The private file keeps its name too")
+
+		return
+	}
+
+	s.Require().Len(rows, 1, "Only the public key survives an ACL that denies private reads")
+	s.Equal(publicKey, rows[0]["key"], "The surviving row should be the public one")
+	s.Equal("公开通知.pdf", rows[0]["originalFilename"],
+		"A public key resolves without ever consulting the ACL")
+}
+
 func TestFileResolve(t *testing.T) {
 	suite.Run(t, new(FileResolveTestSuite))
 }
