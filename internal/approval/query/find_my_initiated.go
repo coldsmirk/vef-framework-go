@@ -90,6 +90,7 @@ func (h *FindMyInitiatedHandler) Handle(ctx context.Context, query FindMyInitiat
 		if flow != nil {
 			item.FlowName = flow.Name
 			item.FlowIcon = flow.Icon
+			item.Labels = flow.Labels
 		}
 
 		if inst.CurrentNodeID != nil {
