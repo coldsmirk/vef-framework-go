@@ -85,7 +85,8 @@ func verifyEventRouting(lc fx.Lifecycle, inspector event.RouteInspector) {
 				if !inspector.HasTransactionalRoute(et) {
 					return fmt.Errorf(
 						"%w: %q (enable vef.event.transports.outbox.enabled=true and add a "+
-							"routing rule for pattern \"vef.storage.*\" → [\"outbox\"], "+
+							"routing rule for pattern \"vef.storage.*\" → [\"outbox\", \"memory\"] — the second "+
+							"entry is vef.event.transports.outbox.sink, required for host subscribers to attach — "+
 							"or set vef.event.default_transport=\"outbox\")",
 						ErrEventRouteNotTransactional, et)
 				}

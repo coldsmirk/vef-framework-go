@@ -58,8 +58,15 @@ func TestVerifyEventRouting(t *testing.T) {
 		assert.ErrorIs(t, err, ErrEventRouteNotTransactional, "Error should wrap ErrEventRouteNotTransactional")
 		assert.Contains(t, err.Error(), approval.EventTypeTaskCreated, "Error should name the missing event type")
 		assert.Contains(t, err.Error(), "outbox", "Error should guide operators toward outbox configuration")
-		assert.Contains(t, err.Error(), "[\"outbox\"]",
-			"Error should show the minimal transactional route")
+		// The suggested route names the sink alongside the outbox. Suggesting
+		// ["outbox"] alone would fix the boot failure and leave the host unable
+		// to subscribe: the outbox is publish-only, so Bus.Subscribe strips it
+		// and every SubscribeInstance / BindCommand fails with
+		// ErrNoRouteMatched — silently, for a host that drops that error.
+		assert.Contains(t, err.Error(), "[\"outbox\", \"memory\"]",
+			"Error should show a route host subscribers can actually attach to")
+		assert.Contains(t, err.Error(), "outbox.sink",
+			"Error should name the setting the second entry comes from")
 	})
 
 	t.Run("FailsOnFirstMissingEventInDeclaredOrder", func(t *testing.T) {

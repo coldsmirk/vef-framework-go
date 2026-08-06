@@ -91,6 +91,13 @@ func buildTransactionalEventTypes() []string {
 // events, so approval does not impose a subscribable-sink requirement on host
 // event routing.
 //
+// The suggested rule lists the outbox sink alongside the outbox itself: the
+// outbox is publish-only, so a route naming it alone accepts every publish yet
+// rejects every SubscribeInstance / BindCommand with ErrNoRouteMatched — the
+// relay dispatches into the sink while subscribers have no transport to attach
+// to. Hosts that only publish can drop the sink; hosts that consume their own
+// approval events cannot.
+//
 // The check itself is deferred to OnStart so the bus has built its
 // router by the time we query it (bus.Start runs first in the lifecycle
 // order — see bootstrap module ordering).
@@ -103,7 +110,9 @@ func verifyEventRouting(lc fx.Lifecycle, inspector event.RouteInspector) {
 				if !inspector.HasTransactionalRoute(et) {
 					return fmt.Errorf(
 						"%w: %q (enable vef.event.transports.outbox.enabled=true and add a "+
-							"routing rule for pattern \"approval.*\" -> [\"outbox\"] or another transactional transport)",
+							"routing rule for pattern \"approval.*\" -> [\"outbox\", \"memory\"] — the second entry is "+
+							"vef.event.transports.outbox.sink, required for host subscribers to attach — "+
+							"or another transactional transport)",
 						ErrEventRouteNotTransactional, et)
 				}
 			}

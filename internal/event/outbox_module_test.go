@@ -59,7 +59,10 @@ func TestValidateOutboxSinkRoute(t *testing.T) {
 	t.Run("PassesWhenRouteHasNoSubscribableTransport", func(t *testing.T) {
 		// ["outbox"]-only routes are legal for publish-only flows (e.g.
 		// storage events with no internal subscribers); there is no
-		// subscribable transport to misalign with the sink.
+		// subscribable transport to misalign with the sink. They are reported
+		// through unsubscribableOutboxOrigins instead — see
+		// TestUnsubscribableOutboxOrigins — because subscribing against them
+		// is impossible.
 		cfg := &config.EventConfig{
 			Routing: []config.EventRoutingRule{
 				{Pattern: "vef.storage.*", Transports: []string{"outbox"}},
@@ -99,5 +102,85 @@ func TestValidateOutboxSinkRoute(t *testing.T) {
 		}
 		require.NoError(t, validateOutboxSinkRoute(cfg, "redis_stream", all),
 			"Routes without outbox must not be subject to the sink-route check")
+	})
+}
+
+// TestUnsubscribableOutboxOrigins pins the detection of the routing shape the
+// framework's own fail-fast hints used to prescribe: outbox alone. It publishes
+// and relays fine, so nothing fails, yet Bus.Subscribe strips the publish-only
+// outbox and has no transport left — every SubscribeInstance / BindCommand
+// against it returns ErrNoRouteMatched, which a host that drops the error
+// experiences as "the event never fires".
+func TestUnsubscribableOutboxOrigins(t *testing.T) {
+	memory := &FakeNamedTransport{name: "memory"}
+	outboxT := &FakeNamedTransport{name: "outbox", caps: transport.Capabilities{PublishOnly: true, Transactional: true}}
+	all := []transport.Transport{memory, outboxT}
+
+	t.Run("ReportsOutboxOnlyRule", func(t *testing.T) {
+		cfg := &config.EventConfig{
+			DefaultTransport: "memory",
+			Routing: []config.EventRoutingRule{
+				{Pattern: "approval.*", Transports: []string{"outbox"}},
+			},
+		}
+		require.Equal(t, []string{`routing pattern "approval.*"`}, unsubscribableOutboxOrigins(cfg, all),
+			"An outbox-only rule must be reported, quoted the way it appears in application.toml")
+	})
+
+	t.Run("StaysSilentWhenTheSinkIsListedAlongside", func(t *testing.T) {
+		cfg := &config.EventConfig{
+			DefaultTransport: "memory",
+			Routing: []config.EventRoutingRule{
+				{Pattern: "approval.*", Transports: []string{"outbox", "memory"}},
+			},
+		}
+		require.Empty(t, unsubscribableOutboxOrigins(cfg, all),
+			"Listing the sink alongside the outbox is the fix, so it must not be reported")
+	})
+
+	t.Run("ReportsOutboxAsDefaultTransport", func(t *testing.T) {
+		// The fallback route catches every event type no rule matches, so it
+		// strands subscribers exactly like a rule does.
+		cfg := &config.EventConfig{DefaultTransport: "outbox"}
+		require.Equal(t, []string{"vef.event.default_transport"}, unsubscribableOutboxOrigins(cfg, all),
+			"default_transport=outbox must be reported as its own origin")
+	})
+
+	t.Run("ReportsBothOriginsIndependently", func(t *testing.T) {
+		cfg := &config.EventConfig{
+			DefaultTransport: "outbox",
+			Routing: []config.EventRoutingRule{
+				{Pattern: "approval.*", Transports: []string{"outbox", "memory"}},
+				{Pattern: "vef.storage.*", Transports: []string{"outbox"}},
+			},
+		}
+		require.Equal(t,
+			[]string{"vef.event.default_transport", `routing pattern "vef.storage.*"`},
+			unsubscribableOutboxOrigins(cfg, all),
+			"Each stranded origin must be reported on its own so operators can fix them one by one")
+	})
+
+	t.Run("StaysSilentForRoutesWithoutOutbox", func(t *testing.T) {
+		cfg := &config.EventConfig{
+			DefaultTransport: "memory",
+			Routing: []config.EventRoutingRule{
+				{Pattern: "metrics.*", Transports: []string{"memory"}},
+			},
+		}
+		require.Empty(t, unsubscribableOutboxOrigins(cfg, all),
+			"A route that never touches the outbox cannot be stranded by it")
+	})
+
+	t.Run("TreatsUnregisteredTransportsAsNoTarget", func(t *testing.T) {
+		// buildRouter rejects the unknown name at Bus.Start; until then it
+		// offers nothing to attach to, so the route is still a dead end.
+		cfg := &config.EventConfig{
+			DefaultTransport: "memory",
+			Routing: []config.EventRoutingRule{
+				{Pattern: "approval.*", Transports: []string{"outbox", "typo_stream"}},
+			},
+		}
+		require.Equal(t, []string{`routing pattern "approval.*"`}, unsubscribableOutboxOrigins(cfg, all),
+			"An unregistered companion transport must not be mistaken for a subscribable target")
 	})
 }

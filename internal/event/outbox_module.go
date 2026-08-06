@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 
 	"go.uber.org/fx"
 
@@ -197,10 +198,13 @@ func bindOutboxSinkAndRelay(
 // would never see events: the relay dispatches into memory while the
 // bus routes subscribers onto redis_stream.
 //
-// Routes that resolve only to publish-only transports (the rare
-// ["outbox"]-only case used by publishers without internal
-// subscribers) are skipped: there is no subscribable target to mis-
-// align with, so no silent disconnect is possible.
+// Routes that resolve only to publish-only transports (the ["outbox"]-only
+// case) cannot mis-align with a sink — there is no subscribable member to
+// disagree with — but they are not harmless either: publishing succeeds while
+// every Subscribe against the route fails with ErrNoRouteMatched, so a host
+// that does not propagate that error sees its subscribers silently never fire.
+// Publishing without in-process subscribers is a legitimate deployment, so
+// this warns rather than fails.
 //
 // Transports unknown to the registry are skipped here; buildRouter
 // surfaces them with a dedicated error during Bus.Start.
@@ -209,13 +213,14 @@ func validateOutboxSinkRoute(
 	sinkName string,
 	transports []transport.Transport,
 ) error {
-	byName := make(map[string]transport.Transport, len(transports))
-	for _, t := range transports {
-		if t == nil {
-			continue
-		}
+	byName := indexTransports(transports)
 
-		byName[t.Name()] = t
+	for _, origin := range unsubscribableOutboxOrigins(eventCfg, transports) {
+		outboxLogger.Warnf(
+			"%s resolves only to the publish-only outbox: events publish and relay to %q, but every "+
+				"Subscribe against this route fails with ErrNoRouteMatched. Add %q alongside \"outbox\" "+
+				"to let subscribers attach; ignore this if the route is publish-only by design",
+			origin, sinkName, sinkName)
 	}
 
 	for _, rule := range eventCfg.Routing {
@@ -223,28 +228,8 @@ func validateOutboxSinkRoute(
 			continue
 		}
 
-		var (
-			subscribable       []string
-			sinkInSubscribable bool
-		)
-		for _, name := range rule.Transports {
-			t, ok := byName[name]
-			if !ok {
-				continue
-			}
-
-			if t.Capabilities().PublishOnly {
-				continue
-			}
-
-			subscribable = append(subscribable, name)
-
-			if name == sinkName {
-				sinkInSubscribable = true
-			}
-		}
-
-		if len(subscribable) == 0 || sinkInSubscribable {
+		subscribable := subscribableMembers(rule.Transports, byName)
+		if len(subscribable) == 0 || slices.Contains(subscribable, sinkName) {
 			continue
 		}
 
@@ -258,6 +243,71 @@ func validateOutboxSinkRoute(
 	}
 
 	return nil
+}
+
+// unsubscribableOutboxOrigins names every configured route that carries the
+// publish-only outbox and nothing a subscriber can attach to, identified the
+// way an operator would find it in application.toml.
+//
+// Such a route is not a mismatch — there is no subscribable member to disagree
+// with the sink — but it is a one-way street: publishing succeeds and the relay
+// still dispatches into the sink, while Bus.Subscribe strips publish-only
+// transports and is then left with no target, so every SubscribeInstance /
+// BindCommand against it fails with ErrNoRouteMatched. A host that does not
+// propagate that error observes its subscribers silently never firing.
+func unsubscribableOutboxOrigins(eventCfg *config.EventConfig, transports []transport.Transport) []string {
+	byName := indexTransports(transports)
+
+	var origins []string
+
+	// The fallback route is reached by every event type no rule matches, so it
+	// strands subscribers exactly the same way a rule does.
+	if eventCfg.EffectiveDefaultTransport() == outbox.Name {
+		origins = append(origins, "vef.event.default_transport")
+	}
+
+	for _, rule := range eventCfg.Routing {
+		if !slices.Contains(rule.Transports, outbox.Name) {
+			continue
+		}
+
+		if len(subscribableMembers(rule.Transports, byName)) == 0 {
+			origins = append(origins, "routing pattern "+strconv.Quote(rule.Pattern))
+		}
+	}
+
+	return origins
+}
+
+// subscribableMembers returns the named transports a subscriber can attach to:
+// registry members that are not publish-only. Names absent from the registry
+// are skipped; buildRouter surfaces those with a dedicated error at Bus.Start.
+func subscribableMembers(names []string, byName map[string]transport.Transport) []string {
+	var out []string
+
+	for _, name := range names {
+		t, ok := byName[name]
+		if !ok || t.Capabilities().PublishOnly {
+			continue
+		}
+
+		out = append(out, name)
+	}
+
+	return out
+}
+
+func indexTransports(transports []transport.Transport) map[string]transport.Transport {
+	byName := make(map[string]transport.Transport, len(transports))
+	for _, t := range transports {
+		if t == nil {
+			continue
+		}
+
+		byName[t.Name()] = t
+	}
+
+	return byName
 }
 
 func registerOutboxCleanup(
