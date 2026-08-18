@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -120,7 +121,16 @@ func (*TaskService) PersistInstanceFormData(ctx context.Context, db orm.DB, inst
 // Pending, which makes it idempotent and safe to call after any task finishes
 // — or after a queued (Waiting) task is removed — without ever leaving two
 // tasks active at once.
-func (*TaskService) ActivateNextSequentialTask(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode) ([]approval.DomainEvent, error) {
+//
+// When the queue reaches a seat the node's same-applicant auto-pass policy
+// clears — the applicant's own, resolved from the node definition — the task
+// is approved on the spot without announcing an activation (its assignee never
+// has to act), and the queue advances past it. The returned slice then carries
+// the system decision events ahead of the final activation; callers that
+// evaluate node completion afterwards split them off first (see
+// SplitQueueAdvanceDecisions) so decisions reach subscribers before the
+// completion they may cause.
+func (s *TaskService) ActivateNextSequentialTask(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode) ([]approval.DomainEvent, error) {
 	pendingExists, err := db.NewSelect().
 		Model((*approval.Task)(nil)).
 		Where(func(cb orm.ConditionBuilder) {
@@ -137,61 +147,131 @@ func (*TaskService) ActivateNextSequentialTask(ctx context.Context, db orm.DB, i
 		return nil, nil
 	}
 
-	var nextTask approval.Task
+	var events []approval.DomainEvent
 
-	err = db.NewSelect().
-		Model(&nextTask).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", instance.ID).
-				Equals("node_id", node.ID).
-				Equals("status", approval.TaskWaiting)
-		}).
-		OrderBy("sort_order").
-		Limit(1).
-		Scan(ctx)
-	if err != nil {
-		if result.IsRecordNotFound(err) {
-			return nil, nil
+	for {
+		var nextTask approval.Task
+
+		err = db.NewSelect().
+			Model(&nextTask).
+			Where(func(cb orm.ConditionBuilder) {
+				cb.Equals("instance_id", instance.ID).
+					Equals("node_id", node.ID).
+					Equals("status", approval.TaskWaiting)
+			}).
+			OrderBy("sort_order").
+			Limit(1).
+			Scan(ctx)
+		if err != nil {
+			if result.IsRecordNotFound(err) {
+				return events, nil
+			}
+
+			return nil, fmt.Errorf("find next sequential task: %w", err)
 		}
 
-		return nil, fmt.Errorf("find next sequential task: %w", err)
+		if !engine.TaskStateMachine.CanTransition(nextTask.Status, approval.TaskPending) {
+			return events, nil
+		}
+
+		nextTask.Deadline = computeTaskDeadline(node)
+
+		res, err := db.NewUpdate().
+			Model((*approval.Task)(nil)).
+			Set("status", approval.TaskPending).
+			Set("deadline", nextTask.Deadline).
+			Where(func(cb orm.ConditionBuilder) {
+				cb.PKEquals(nextTask.ID).
+					Equals("status", approval.TaskWaiting)
+			}).
+			Exec(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("activate next sequential task: %w", err)
+		}
+
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return nil, fmt.Errorf("get affected rows for sequential activation: %w", err)
+		}
+
+		// A concurrent writer may have advanced the row first; only the winner
+		// announces the activation, so the assignee is notified exactly once —
+		// and only the winner may continue the cascade.
+		if affected == 0 {
+			return events, nil
+		}
+
+		nextTask.Status = approval.TaskPending
+
+		if shouldAutoPassSameApplicant(instance, node, &nextTask) {
+			if err := s.FinishTask(ctx, db, &nextTask, approval.TaskApproved); err != nil {
+				return nil, fmt.Errorf("auto-pass same-applicant task: %w", err)
+			}
+
+			// The pass happened without the approver acting: same audit trail
+			// as a manual approval — a system-operated task-approved event,
+			// plus an action log entry when the request-scoped collector is
+			// present (outside the CQRS pipeline the event remains the record).
+			events = append(events, approval.NewTaskApprovedEvent(
+				instance, &nextTask, node,
+				shared.SystemOperator, engine.AutoPassReasonSameApplicant,
+			))
+			appendSystemTaskActionLog(ctx, &nextTask, engine.AutoPassReasonSameApplicant)
+
+			continue
+		}
+
+		events = append(events, approval.NewTaskActivatedEvent(instance, &nextTask, node, approval.TaskActivationQueueAdvanced))
+
+		return events, nil
+	}
+}
+
+// shouldAutoPassSameApplicant reports whether a just-promoted sequential task
+// is the applicant's own seat under an auto-pass same-applicant policy. Tasks
+// a human explicitly created (add-assignee splices carry AddAssigneeType;
+// transfer and reassign replace tasks outside this path) stay manual — an
+// explicit decision to involve the applicant overrides the node policy.
+func shouldAutoPassSameApplicant(instance *approval.Instance, node *approval.FlowNode, task *approval.Task) bool {
+	return node.Kind == approval.NodeApproval &&
+		node.SameApplicantAction == approval.SameApplicantAutoPass &&
+		task.AssigneeID == instance.ApplicantID &&
+		task.AddAssigneeType == nil
+}
+
+// appendSystemTaskActionLog records a system-operated action log for a
+// task-scoped engine decision when the request-scoped collector is available,
+// mirroring the engine's recordSystemActionLog.
+func appendSystemTaskActionLog(ctx context.Context, task *approval.Task, reason string) {
+	collector, ok := behavior.TryActionLogCollectorFromContext(ctx)
+	if !ok {
+		return
 	}
 
-	if !engine.TaskStateMachine.CanTransition(nextTask.Status, approval.TaskPending) {
-		return nil, nil
+	entry := shared.SystemOperator.NewActionLog(task.InstanceID, approval.ActionExecute)
+	entry.NodeID = new(task.NodeID)
+	entry.TaskID = new(task.ID)
+	entry.Opinion = new(reason)
+
+	collector.Add(entry)
+}
+
+// SplitQueueAdvanceDecisions separates the system decision events a queue
+// advance produced (same-applicant auto-passes) from the provisional
+// activation events. Decisions occurred before any node evaluation that
+// follows, so callers add them to their event flow ahead of
+// HandleNodeCompletion; activations stay provisional until reconciled against
+// the completion's cancellations (SuppressSupersededActivations).
+func SplitQueueAdvanceDecisions(events []approval.DomainEvent) (decisions, activations []approval.DomainEvent) {
+	for _, evt := range events {
+		if _, ok := evt.(*approval.TaskActivatedEvent); ok {
+			activations = append(activations, evt)
+		} else {
+			decisions = append(decisions, evt)
+		}
 	}
 
-	nextTask.Deadline = computeTaskDeadline(node)
-
-	res, err := db.NewUpdate().
-		Model((*approval.Task)(nil)).
-		Set("status", approval.TaskPending).
-		Set("deadline", nextTask.Deadline).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.PKEquals(nextTask.ID).
-				Equals("status", approval.TaskWaiting)
-		}).
-		Exec(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("activate next sequential task: %w", err)
-	}
-
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return nil, fmt.Errorf("get affected rows for sequential activation: %w", err)
-	}
-
-	// A concurrent writer may have advanced the row first; only the winner
-	// announces the activation, so the assignee is notified exactly once.
-	if affected == 0 {
-		return nil, nil
-	}
-
-	nextTask.Status = approval.TaskPending
-
-	return []approval.DomainEvent{
-		approval.NewTaskActivatedEvent(instance, &nextTask, node, approval.TaskActivationQueueAdvanced),
-	}, nil
+	return decisions, activations
 }
 
 // SuppressSupersededActivations drops activation events whose task was canceled

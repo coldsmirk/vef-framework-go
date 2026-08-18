@@ -151,18 +151,43 @@ func (a EmptyAssigneeAction) IsValid() bool {
 	}
 }
 
-// SameApplicantAction represents the action when the assignee is the same as the applicant.
+// SameApplicantAction decides how the applicant's own seat in a node's
+// resolved assignee set is handled. The policy is applied per seat whenever
+// the applicant appears among the resolved assignees — alone or alongside
+// other approvers — and keys on the resolved actor, so a seat delegated away
+// by the applicant is not theirs, while a seat delegated to them is. Tasks a
+// human explicitly creates afterwards (add-assignee, transfer, reassign,
+// timeout auto-transfer) are deliberately exempt: an explicit decision to
+// involve the applicant overrides the node policy.
 type SameApplicantAction string
 
 const (
-	SameApplicantAutoPass         SameApplicantAction = "auto_pass"
-	SameApplicantSelfApprove      SameApplicantAction = "self_approve"      // Default
-	SameApplicantTransferSuperior SameApplicantAction = "transfer_superior" // Transfer to superior
+	// SameApplicantAutoPass approves the applicant's seat without action: as
+	// sole assignee the whole node auto-passes; in a mixed set their task is
+	// auto-approved and counts toward the pass rule (queued sequential seats
+	// auto-approve when the queue reaches them).
+	SameApplicantAutoPass SameApplicantAction = "auto_pass"
+	// SameApplicantSelfApprove lets the applicant approve like any other
+	// assignee. Default.
+	SameApplicantSelfApprove SameApplicantAction = "self_approve"
+	// SameApplicantTransferSuperior hands the applicant's seat to their
+	// superior; other seats are untouched.
+	SameApplicantTransferSuperior SameApplicantAction = "transfer_superior"
+	// SameApplicantExclude recuses the applicant: their seat is removed and
+	// only the remaining assignees decide, with pass rules counted over the
+	// remaining set. When exclusion empties the set, the node falls back to
+	// EmptyAssigneeAction verbatim.
+	SameApplicantExclude SameApplicantAction = "exclude"
 )
 
 // IsValid reports whether the same-applicant action is one of the defined values.
 func (a SameApplicantAction) IsValid() bool {
-	return a == SameApplicantAutoPass || a == SameApplicantSelfApprove || a == SameApplicantTransferSuperior
+	switch a {
+	case SameApplicantAutoPass, SameApplicantSelfApprove, SameApplicantTransferSuperior, SameApplicantExclude:
+		return true
+	default:
+		return false
+	}
 }
 
 // RollbackType represents the type of rollback allowed.

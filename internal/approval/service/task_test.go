@@ -247,6 +247,86 @@ func (s *TaskServiceTestSuite) TestActivateNextSequentialTask() {
 			"Activated task deadline should be recalculated from activation time",
 		)
 	})
+
+	s.Run("AutoPassesApplicantSeatAndAdvances", func() {
+		inst := s.fixture.createInstance(s.T(), s.ctx, s.db, approval.InstanceRunning)
+		nodeID := s.fixture.NodeIDs[0]
+		applicantTask := insertTaskWithAssignee(s.T(), s.ctx, s.db, inst.ID, nodeID, approval.TaskWaiting, 1, "applicant")
+		insertTaskWithAssignee(s.T(), s.ctx, s.db, inst.ID, nodeID, approval.TaskWaiting, 2, "user-b")
+
+		instance := &approval.Instance{}
+		instance.ID = inst.ID
+		instance.ApplicantID = inst.ApplicantID
+		node := &approval.FlowNode{
+			Kind:                approval.NodeApproval,
+			SameApplicantAction: approval.SameApplicantAutoPass,
+		}
+		node.ID = nodeID
+
+		events, err := s.svc.ActivateNextSequentialTask(s.ctx, s.db, instance, node)
+		s.Require().NoError(err, "Should advance the queue without error")
+
+		s.Require().Len(events, 2, "Should announce the system approval and the next activation")
+
+		approved, ok := events[0].(*approval.TaskApprovedEvent)
+		s.Require().True(ok, "First event should be the applicant seat's system approval")
+		s.Assert().Equal(applicantTask.ID, approved.TaskID, "System approval should target the applicant's seat")
+
+		activated, ok := events[1].(*approval.TaskActivatedEvent)
+		s.Require().True(ok, "Second event should be the next seat's activation")
+		s.Assert().Equal("user-b", activated.Assignee.ID, "Queue should advance past the applicant to the next approver")
+
+		s.Assert().Equal(approval.TaskApproved, s.loadTaskStatus(inst.ID, "applicant"), "Applicant's seat should be approved without action")
+		s.Assert().Equal(approval.TaskPending, s.loadTaskStatus(inst.ID, "user-b"), "Next seat should become pending")
+	})
+
+	s.Run("AutoPassSkipsExplicitlyAddedApplicantSeat", func() {
+		inst := s.fixture.createInstance(s.T(), s.ctx, s.db, approval.InstanceRunning)
+		nodeID := s.fixture.NodeIDs[0]
+		added := insertTaskWithAssignee(s.T(), s.ctx, s.db, inst.ID, nodeID, approval.TaskWaiting, 1, "applicant")
+
+		addType := approval.AddAssigneeAfter
+		_, err := s.db.NewUpdate().
+			Model((*approval.Task)(nil)).
+			Set("add_assignee_type", addType).
+			Where(func(cb orm.ConditionBuilder) { cb.PKEquals(added.ID) }).
+			Exec(s.ctx)
+		s.Require().NoError(err, "Should mark the seat as an add-assignee addition")
+
+		instance := &approval.Instance{}
+		instance.ID = inst.ID
+		instance.ApplicantID = inst.ApplicantID
+		node := &approval.FlowNode{
+			Kind:                approval.NodeApproval,
+			SameApplicantAction: approval.SameApplicantAutoPass,
+		}
+		node.ID = nodeID
+
+		events, err := s.svc.ActivateNextSequentialTask(s.ctx, s.db, instance, node)
+		s.Require().NoError(err, "Should advance the queue without error")
+
+		s.Require().Len(events, 1, "An explicitly added applicant seat should activate normally")
+		_, ok := events[0].(*approval.TaskActivatedEvent)
+		s.Assert().True(ok, "The only event should be the activation")
+		s.Assert().Equal(approval.TaskPending, s.loadTaskStatus(inst.ID, "applicant"), "Explicitly added seat should stay manual")
+	})
+}
+
+// loadTaskStatus reloads a task's status by instance and assignee.
+func (s *TaskServiceTestSuite) loadTaskStatus(instanceID, assigneeID string) approval.TaskStatus {
+	var task approval.Task
+
+	s.Require().NoError(
+		s.db.NewSelect().Model(&task).
+			Where(func(cb orm.ConditionBuilder) {
+				cb.Equals("instance_id", instanceID).Equals("assignee_id", assigneeID)
+			}).
+			Limit(1).
+			Scan(s.ctx),
+		"Should load task for assignee "+assigneeID,
+	)
+
+	return task.Status
 }
 
 // --- PrepareOperation ---

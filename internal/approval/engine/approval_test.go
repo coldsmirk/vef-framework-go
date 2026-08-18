@@ -3,6 +3,7 @@ package engine_test
 import (
 	"context"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -337,6 +338,163 @@ func (s *ApprovalProcessorTestSuite) TestProcessSameApplicant() {
 		s.Require().Len(tasks, 1, "Should create task for applicant in default branch")
 		s.Assert().Equal("user-1", tasks[0].AssigneeID, "Task should be assigned to applicant")
 	})
+}
+
+// TestProcessSameApplicantMixed covers the per-seat policy over assignee sets
+// where the applicant is one approver among others.
+func (s *ApprovalProcessorTestSuite) TestProcessSameApplicantMixed() {
+	s.Run("AutoPassAnyRuleCompletesNode", func() {
+		defer s.CleanTransientData(s.T())
+
+		instance := s.NewInstance(s.T(), "user-1")
+		s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2"})
+
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
+			n.SameApplicantAction = approval.SameApplicantAutoPass
+			n.PassRule = approval.PassAny
+		}))
+
+		result, err := s.processor.Process(s.Ctx, pc)
+		s.Require().NoError(err, "Should process without error")
+		s.Assert().Equal(engine.NodeActionContinue, result.Action, "Applicant's auto-pass should satisfy the any rule and conclude the node")
+
+		tasks := s.QueryTasks(s.T(), instance.ID)
+		s.Require().Len(tasks, 2, "Should create a task per seat")
+
+		byAssignee := tasksByAssignee(tasks)
+		s.Assert().Equal(approval.TaskApproved, byAssignee["user-1"].Status, "Applicant's task should be auto-approved")
+		s.Assert().Equal(approval.TaskCanceled, byAssignee["user-2"].Status, "Other seat should be canceled once the rule is satisfied")
+
+		var approvedEvents, canceledEvents, activationEvents int
+
+		for _, evt := range result.Events {
+			switch e := evt.(type) {
+			case *approval.TaskApprovedEvent:
+				approvedEvents++
+
+				s.Assert().Equal(shared.SystemOperator.ID, e.Operator.ID, "Auto-pass should be recorded as a system decision")
+			case *approval.TaskCanceledEvent:
+				canceledEvents++
+			case *approval.TaskActivatedEvent:
+				activationEvents++
+			}
+		}
+
+		s.Assert().Equal(1, approvedEvents, "Should emit one system approval for the applicant's seat")
+		s.Assert().Equal(1, canceledEvents, "Should emit one cancellation for the superseded seat")
+		s.Assert().Zero(activationEvents, "No assignee ever had to act, so no activation may survive")
+	})
+
+	s.Run("AutoPassAllRuleWaitsForOthers", func() {
+		defer s.CleanTransientData(s.T())
+
+		instance := s.NewInstance(s.T(), "user-1")
+		s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2"})
+
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
+			n.SameApplicantAction = approval.SameApplicantAutoPass
+		}))
+
+		result, err := s.processor.Process(s.Ctx, pc)
+		s.Require().NoError(err, "Should process without error")
+		s.Assert().Equal(engine.NodeActionWait, result.Action, "All rule should still wait for the remaining approver")
+
+		byAssignee := tasksByAssignee(s.QueryTasks(s.T(), instance.ID))
+		s.Assert().Equal(approval.TaskApproved, byAssignee["user-1"].Status, "Applicant's task should be auto-approved")
+		s.Assert().Equal(approval.TaskPending, byAssignee["user-2"].Status, "Other seat should stay pending")
+	})
+
+	s.Run("AutoPassSequentialQueueHead", func() {
+		defer s.CleanTransientData(s.T())
+
+		instance := s.NewInstance(s.T(), "user-1")
+		s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2"})
+
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
+			n.SameApplicantAction = approval.SameApplicantAutoPass
+			n.ApprovalMethod = approval.ApprovalSequential
+		}))
+
+		result, err := s.processor.Process(s.Ctx, pc)
+		s.Require().NoError(err, "Should process without error")
+		s.Assert().Equal(engine.NodeActionWait, result.Action, "Queue should advance to the next approver and wait")
+
+		byAssignee := tasksByAssignee(s.QueryTasks(s.T(), instance.ID))
+		s.Assert().Equal(approval.TaskApproved, byAssignee["user-1"].Status, "Applicant's queue head should be auto-approved")
+		s.Assert().Equal(approval.TaskPending, byAssignee["user-2"].Status, "Next seat should be promoted to pending")
+	})
+
+	s.Run("ExcludeRemovesApplicantSeat", func() {
+		defer s.CleanTransientData(s.T())
+
+		instance := s.NewInstance(s.T(), "user-1")
+		s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2"})
+
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
+			n.SameApplicantAction = approval.SameApplicantExclude
+		}))
+
+		result, err := s.processor.Process(s.Ctx, pc)
+		s.Require().NoError(err, "Should process without error")
+		s.Assert().Equal(engine.NodeActionWait, result.Action, "Remaining approver should decide the node")
+
+		tasks := s.QueryTasks(s.T(), instance.ID)
+		s.Require().Len(tasks, 1, "Recusal should leave only the other seat")
+		s.Assert().Equal("user-2", tasks[0].AssigneeID, "Task should belong to the non-applicant approver")
+	})
+
+	s.Run("ExcludeSoleSeatFallsBackToEmptyAssignee", func() {
+		defer s.CleanTransientData(s.T())
+
+		instance := s.NewInstance(s.T(), "user-1")
+		s.InsertAssigneeConfig(s.T(), []string{"user-1"})
+
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
+			n.SameApplicantAction = approval.SameApplicantExclude
+			n.EmptyAssigneeAction = approval.EmptyAssigneeAutoPass
+		}))
+
+		result, err := s.processor.Process(s.Ctx, pc)
+		s.Require().NoError(err, "Should process without error")
+		s.Assert().Equal(engine.NodeActionContinue, result.Action, "Emptied seat set should consult EmptyAssigneeAction")
+
+		s.Assert().Empty(s.QueryTasks(s.T(), instance.ID), "Recusal into auto-pass should create no tasks")
+	})
+
+	s.Run("TransferSuperiorReplacesApplicantSeat", func() {
+		defer s.CleanTransientData(s.T())
+
+		mockSvc := new(engine.MockAssigneeService)
+		mockSvc.On("GetSuperior", mock.Anything, "user-1").Return(&approval.UserInfo{ID: "superior-1", Name: "Superior"}, nil)
+		processor := engine.NewApprovalProcessor(mockSvc)
+
+		instance := s.NewInstance(s.T(), "user-1")
+		s.InsertAssigneeConfig(s.T(), []string{"user-1", "user-2"})
+
+		pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
+			n.SameApplicantAction = approval.SameApplicantTransferSuperior
+		}))
+
+		result, err := processor.Process(s.Ctx, pc)
+		s.Require().NoError(err, "Should process without error")
+		s.Assert().Equal(engine.NodeActionWait, result.Action, "Replaced seats should wait like any approver set")
+
+		byAssignee := tasksByAssignee(s.QueryTasks(s.T(), instance.ID))
+		s.Require().Len(byAssignee, 2, "Should keep two seats after replacement")
+		s.Assert().Contains(byAssignee, "superior-1", "Applicant's seat should be handed to the superior")
+		s.Assert().Contains(byAssignee, "user-2", "Other seat should be untouched")
+		s.Assert().NotContains(byAssignee, "user-1", "Applicant should hold no seat after the transfer")
+	})
+}
+
+// tasksByAssignee indexes tasks by assignee ID for status assertions.
+func tasksByAssignee(tasks []approval.Task) map[string]approval.Task {
+	byAssignee := make(map[string]approval.Task, len(tasks))
+	for _, task := range tasks {
+		byAssignee[task.AssigneeID] = task
+	}
+
+	return byAssignee
 }
 
 func (s *ApprovalProcessorTestSuite) TestProcessFormSnapshot() {

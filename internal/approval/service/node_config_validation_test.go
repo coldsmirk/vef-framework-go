@@ -54,6 +54,22 @@ func TestValidateNodeConfig(t *testing.T) {
 		})
 	})
 
+	t.Run("SameApplicantAction", func(t *testing.T) {
+		for _, action := range []approval.SameApplicantAction{
+			approval.SameApplicantAutoPass,
+			approval.SameApplicantSelfApprove,
+			approval.SameApplicantTransferSuperior,
+			approval.SameApplicantExclude,
+		} {
+			data := &approval.ApprovalNodeData{PassRule: approval.PassAll, SameApplicantAction: action}
+			assert.NoError(t, validateNodeConfig("n1", data), "Action %q should be a valid same-applicant action", action)
+		}
+
+		data := &approval.ApprovalNodeData{PassRule: approval.PassAll, SameApplicantAction: "recuse"}
+		assert.ErrorIs(t, validateNodeConfig("n1", data), errInvalidSameApplicantAction,
+			"An out-of-enum same-applicant action should be rejected")
+	})
+
 	t.Run("BranchPriorities", func(t *testing.T) {
 		t.Run("RejectsDuplicateAmongNonDefault", func(t *testing.T) {
 			data := &approval.ConditionNodeData{

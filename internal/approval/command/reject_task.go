@@ -88,6 +88,12 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 		return cqrs.Unit{}, err
 	}
 
+	// Queue-advance decisions (same-applicant auto-passes) happened before the
+	// node evaluation below and may be its cause, so they must reach
+	// subscribers first; the activations stay provisional until reconciled.
+	decisionEvents, activationEvents := service.SplitQueueAdvanceDecisions(activationEvents)
+	events.Add(decisionEvents...)
+
 	// HandleNodeCompletion has already emitted what it produced; the return
 	// value is only the reconciliation input for the activations above.
 	completionEvents, err := h.nodeSvc.HandleNodeCompletion(ctx, db, instance, node)

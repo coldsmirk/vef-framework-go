@@ -28,17 +28,18 @@ func init() {
 type DependentActivationTestSuite struct {
 	suite.Suite
 
-	ctx        context.Context
-	db         orm.DB
-	addHandler cqrs.Handler[command.AddAssigneeCmd, cqrs.Unit]
-	approve    cqrs.Handler[command.ApproveTaskCmd, cqrs.Unit]
-	reject     cqrs.Handler[command.RejectTaskCmd, cqrs.Unit]
-	transfer   cqrs.Handler[command.TransferTaskCmd, cqrs.Unit]
-	remove     cqrs.Handler[command.RemoveAssigneeCmd, cqrs.Unit]
-	fixture    *MinimalFixture
-	nodeID     string
-	seqNodeID  string
-	anyNodeID  string
+	ctx         context.Context
+	db          orm.DB
+	addHandler  cqrs.Handler[command.AddAssigneeCmd, cqrs.Unit]
+	approve     cqrs.Handler[command.ApproveTaskCmd, cqrs.Unit]
+	reject      cqrs.Handler[command.RejectTaskCmd, cqrs.Unit]
+	transfer    cqrs.Handler[command.TransferTaskCmd, cqrs.Unit]
+	remove      cqrs.Handler[command.RemoveAssigneeCmd, cqrs.Unit]
+	fixture     *MinimalFixture
+	nodeID      string
+	seqNodeID   string
+	anyNodeID   string
+	samapNodeID string
 
 	seq int
 }
@@ -106,6 +107,23 @@ func (s *DependentActivationTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Should create parallel-any node")
 	s.anyNodeID = anyNode.ID
 
+	// Sequential node with same-applicant auto-pass, to prove the queue clears
+	// the applicant's own seat mid-flight without their action. Created here
+	// because the compiled-flow cache snapshots the version's nodes and edges
+	// the first time any test traverses it.
+	samapNode := &approval.FlowNode{
+		FlowVersionID:       s.fixture.VersionID,
+		Key:                 "sequential-same-applicant-node",
+		Kind:                approval.NodeApproval,
+		Name:                "Sequential Same-Applicant Node",
+		ApprovalMethod:      approval.ApprovalSequential,
+		PassRule:            approval.PassAll,
+		SameApplicantAction: approval.SameApplicantAutoPass,
+	}
+	_, err = s.db.NewInsert().Model(samapNode).Exec(s.ctx)
+	s.Require().NoError(err, "Should create sequential same-applicant node")
+	s.samapNodeID = samapNode.ID
+
 	// End node + edges so node completion can advance to a terminal status,
 	// proving the absence of a deadlock end-to-end.
 	endNode := &approval.FlowNode{
@@ -117,7 +135,7 @@ func (s *DependentActivationTestSuite) SetupSuite() {
 	_, err = s.db.NewInsert().Model(endNode).Exec(s.ctx)
 	s.Require().NoError(err, "Should create end node")
 
-	for _, src := range []*approval.FlowNode{node, seqNode, anyNode} {
+	for _, src := range []*approval.FlowNode{node, seqNode, anyNode, samapNode} {
 		edge := &approval.FlowEdge{
 			FlowVersionID: s.fixture.VersionID,
 			Key:           src.Key + "-edge",
@@ -465,4 +483,19 @@ func (s *DependentActivationTestSuite) TestSequentialActivationGuardKeepsSingleT
 	s.Assert().Equal(approval.TaskPending, s.taskStatus(inst.ID, "seq-A"), "The active task stays Pending")
 	s.Assert().Equal(approval.TaskWaiting, s.taskStatus(inst.ID, "seq-C"),
 		"The guard must keep the next queued task Waiting while one is already Pending")
+}
+
+// TestSequentialQueueAutoPassesApplicantSeat proves the same-applicant
+// auto-pass end to end when the queue reaches the applicant mid-flight: the
+// approver ahead of them approves, the applicant's own seat clears without
+// action, and the all-rule node concludes the instance.
+func (s *DependentActivationTestSuite) TestSequentialQueueAutoPassesApplicantSeat() {
+	inst := s.seedInstanceOnNode(s.samapNodeID, true, "seq-lead", "applicant-1")
+
+	s.approveAs(s.taskFor(inst.ID, "seq-lead").ID, "seq-lead")
+
+	s.Assert().Equal(approval.TaskApproved, s.taskStatus(inst.ID, "applicant-1"),
+		"Applicant's queued seat must clear without their action once the queue reaches it")
+	s.Assert().Equal(approval.InstanceApproved, s.instanceStatus(inst.ID),
+		"All seats approved, so the all-rule node must conclude the instance")
 }

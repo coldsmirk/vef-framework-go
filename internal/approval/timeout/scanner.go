@@ -287,6 +287,15 @@ func (s *Scanner) autoFinishTask(
 		return nil, fmt.Errorf("activate dependent tasks: %w", err)
 	}
 
+	// Queue-advance decisions (same-applicant auto-passes) happened before the
+	// node evaluation below and may be its cause, so they publish straight into
+	// tx like the timeout resolution above; only the provisional activations
+	// wait for reconciliation.
+	decisionEvents, activationEvents := service.SplitQueueAdvanceDecisions(activationEvents)
+	if err := behavior.EmitEvents(ctx, s.bus, tx, decisionEvents...); err != nil {
+		return nil, fmt.Errorf("emit queue-advance decision events: %w", err)
+	}
+
 	// HandleNodeCompletion has already emitted what it produced; the return
 	// value is only the reconciliation input for the activations above.
 	completionEvents, err := s.nodeSvc.HandleNodeCompletion(ctx, tx, instance, node)

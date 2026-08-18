@@ -26,10 +26,16 @@ type ProcessorTestBase struct {
 	NodeID        string
 }
 
-// InitRegistry creates a standard StrategyRegistry with a user assignee resolver.
+// InitRegistry creates a standard StrategyRegistry with a user assignee
+// resolver and the built-in pass-rule strategies — the entry-time auto-pass
+// sweep evaluates the node's pass rule, so the processors need them.
 func (b *ProcessorTestBase) InitRegistry() {
 	b.Registry = strategy.NewStrategyRegistry(
-		nil,
+		[]approval.PassRuleStrategy{
+			strategy.NewAllPassStrategy(),
+			strategy.NewAnyPassStrategy(),
+			strategy.NewRatioPassStrategy(),
+		},
 		[]strategy.AssigneeResolver{strategy.NewUserAssigneeResolver()},
 		nil,
 	)
@@ -107,9 +113,12 @@ func (b *ProcessorTestBase) NewInstance(t require.TestingT, applicantID string) 
 	return instance
 }
 
-// NewNode builds a FlowNode value with the base's nodeID and optional overrides.
+// NewNode builds a FlowNode value with the base's nodeID and optional
+// overrides. PassRule mirrors the column default every deployed node carries —
+// the entry-time auto-pass sweep evaluates it, so a fixture without one would
+// exercise a node shape production never produces.
 func (b *ProcessorTestBase) NewNode(opts ...func(*approval.FlowNode)) *approval.FlowNode {
-	node := &approval.FlowNode{}
+	node := &approval.FlowNode{PassRule: approval.PassAll}
 	node.ID = b.NodeID
 
 	for _, opt := range opts {

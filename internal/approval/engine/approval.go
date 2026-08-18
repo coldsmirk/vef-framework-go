@@ -41,8 +41,13 @@ func (p *ApprovalProcessor) Process(ctx context.Context, pc *ProcessContext) (*P
 		return handleEmptyAssignee(ctx, pc, p.assigneeService)
 	}
 
-	if p.isSameApplicant(assignees, pc.ApplicantID) {
-		return p.handleSameApplicant(ctx, pc, assignees)
+	assignees, decided, err := p.applySameApplicantPolicy(ctx, pc, assignees)
+	if err != nil {
+		return nil, err
+	}
+
+	if decided != nil {
+		return decided, nil
 	}
 
 	events, err := p.createApprovalTasks(ctx, pc, assignees)
@@ -50,14 +55,19 @@ func (p *ApprovalProcessor) Process(ctx context.Context, pc *ProcessContext) (*P
 		return nil, err
 	}
 
-	if pc.Node.ConsecutiveApproverAction == approval.ConsecutiveApproverAutoPass {
-		// The creation events go in so the auto-pass pass can retract the
-		// activation of a task it clears — one created Pending and immediately
-		// auto-passed never needed its assignee to act either.
-		return p.autoPassConsecutiveApprovers(ctx, pc, events)
+	rule, err := p.entryAutoPassRule(ctx, pc, assignees)
+	if err != nil {
+		return nil, err
 	}
 
-	return &ProcessResult{Action: NodeActionWait, Events: events}, nil
+	if rule == nil {
+		return &ProcessResult{Action: NodeActionWait, Events: events}, nil
+	}
+
+	// The creation events go in so the auto-pass pass can retract the
+	// activation of a task it clears — one created Pending and immediately
+	// auto-passed never needed its assignee to act either.
+	return p.autoPassEligibleTasks(ctx, pc, events, rule)
 }
 
 // createApprovalTasks creates tasks with sequential ordering support and
@@ -91,48 +101,140 @@ func (*ApprovalProcessor) createApprovalTasks(ctx context.Context, pc *ProcessCo
 	return events, nil
 }
 
-func (p *ApprovalProcessor) handleSameApplicant(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) (*ProcessResult, error) {
+// applySameApplicantPolicy applies the node's same-applicant policy to the
+// applicant's seat in the resolved assignee set. The policy keys on the
+// resolved actor — a seat counts as the applicant's when the person who would
+// act on it, after delegation, is the applicant. It either transforms the seat
+// list (exclude removes the seat, transfer_superior replaces it) or decides
+// the node outright (non-nil result: sole-assignee auto-pass, or an exclusion
+// that emptied the set and fell back to EmptyAssigneeAction). Auto-pass over a
+// mixed set is settled per task after creation — see entryAutoPassRule.
+func (p *ApprovalProcessor) applySameApplicantPolicy(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) ([]approval.ResolvedAssignee, *ProcessResult, error) {
+	if !containsApplicant(assignees, pc.ApplicantID) {
+		return assignees, nil, nil
+	}
+
 	switch pc.Node.SameApplicantAction {
 	case approval.SameApplicantAutoPass:
-		return nodeAutoPassResult(ctx, pc, autoPassReasonSameApplicant), nil
+		// Assignees are deduplicated, so a single seat containing the
+		// applicant means they are the only approver: nothing is left to
+		// decide and the node passes without tasks.
+		if len(assignees) == 1 {
+			return nil, nodeAutoPassResult(ctx, pc, AutoPassReasonSameApplicant), nil
+		}
+
+		return assignees, nil, nil
+
+	case approval.SameApplicantExclude:
+		recordSystemActionLog(ctx, pc, nil, excludeReasonSameApplicant)
+
+		remaining := slices.DeleteFunc(slices.Clone(assignees), func(a approval.ResolvedAssignee) bool {
+			return a.User.ID == pc.ApplicantID
+		})
+
+		if len(remaining) == 0 {
+			result, err := handleEmptyAssignee(ctx, pc, p.assigneeService)
+
+			return nil, result, err
+		}
+
+		return remaining, nil, nil
 
 	case approval.SameApplicantTransferSuperior:
-		superiorInfo, err := getSuperior(ctx, p.assigneeService, pc.ApplicantID)
+		superior, err := p.resolveSuperiorSeat(ctx, pc)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
-		if superiorInfo == nil || superiorInfo.ID == "" {
-			return nil, shared.ErrNoAssignee
+		replaced := slices.Clone(assignees)
+		for i := range replaced {
+			if replaced[i].User.ID == pc.ApplicantID {
+				replaced[i] = superior
+			}
 		}
 
-		return createTasksForUsers(ctx, pc, []string{superiorInfo.ID})
+		return deduplicateAssignees(replaced), nil, nil
 
-	default: // includes SameApplicantSelfApprove and other unrecognized actions
-		events, err := createTasksWithDelegation(ctx, pc, assignees)
-		if err != nil {
-			return nil, err
-		}
-
-		return &ProcessResult{Action: NodeActionWait, Events: events}, nil
+	default: // SameApplicantSelfApprove and unrecognized values: the applicant approves like any other assignee.
+		return assignees, nil, nil
 	}
 }
 
-// autoPassConsecutiveApprovers marks tasks as approved for assignees who already
-// approved in the immediately preceding approval node. creationEvents are the
-// events of the tasks this node just inserted; they lead the returned slice so
-// subscribers observe the natural lifecycle order, and they take part in the
-// activation retraction below.
-func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *ProcessContext, creationEvents []approval.DomainEvent) (*ProcessResult, error) {
-	prevApprovers, err := findPreviousApprovalApprovers(ctx, pc.DB, pc.Instance, pc.Node.ID)
+// resolveSuperiorSeat resolves the applicant's superior into a seat, with the
+// person snapshot taken through the canonical UserInfoResolver.
+func (p *ApprovalProcessor) resolveSuperiorSeat(ctx context.Context, pc *ProcessContext) (approval.ResolvedAssignee, error) {
+	superiorInfo, err := getSuperior(ctx, p.assigneeService, pc.ApplicantID)
 	if err != nil {
-		return nil, err
+		return approval.ResolvedAssignee{}, err
 	}
 
-	if prevApprovers.Size() == 0 {
-		return &ProcessResult{Action: NodeActionWait, Events: creationEvents}, nil
+	if superiorInfo == nil || superiorInfo.ID == "" {
+		return approval.ResolvedAssignee{}, shared.ErrNoAssignee
 	}
 
+	infos, err := shared.ResolveUserInfoMap(ctx, pc.UserResolver, []string{superiorInfo.ID})
+	if err != nil {
+		return approval.ResolvedAssignee{}, fmt.Errorf("resolve superior info: %w", err)
+	}
+
+	info := infos[superiorInfo.ID]
+	info.ID = superiorInfo.ID
+
+	return approval.ResolvedAssignee{User: info}, nil
+}
+
+// autoPassRule decides whether a just-created task may be cleared without its
+// assignee acting, naming the audit reason for the decision.
+type autoPassRule func(assigneeID string) (reason string, ok bool)
+
+// entryAutoPassRule combines the node's entry-time auto-pass sources — the
+// same-applicant policy and the consecutive-approver policy — into one rule.
+// For a task both sources would clear, the same-applicant reason wins as the
+// more specific fact. Returns nil when no source applies, so the caller can
+// skip the task sweep entirely.
+func (*ApprovalProcessor) entryAutoPassRule(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) (autoPassRule, error) {
+	var rules []autoPassRule
+
+	if pc.Node.SameApplicantAction == approval.SameApplicantAutoPass && containsApplicant(assignees, pc.ApplicantID) {
+		rules = append(rules, func(assigneeID string) (string, bool) {
+			return AutoPassReasonSameApplicant, assigneeID == pc.ApplicantID
+		})
+	}
+
+	if pc.Node.ConsecutiveApproverAction == approval.ConsecutiveApproverAutoPass {
+		prevApprovers, err := findPreviousApprovalApprovers(ctx, pc.DB, pc.Instance, pc.Node.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		if prevApprovers.Size() > 0 {
+			rules = append(rules, func(assigneeID string) (string, bool) {
+				return autoPassReasonConsecutiveApprover, prevApprovers.Contains(assigneeID)
+			})
+		}
+	}
+
+	if len(rules) == 0 {
+		return nil, nil
+	}
+
+	return func(assigneeID string) (string, bool) {
+		for _, rule := range rules {
+			if reason, ok := rule(assigneeID); ok {
+				return reason, true
+			}
+		}
+
+		return "", false
+	}, nil
+}
+
+// autoPassEligibleTasks marks the just-created tasks the rule clears as
+// approved without their assignee acting. creationEvents are the events of the
+// tasks this node just inserted; they lead the returned slice so subscribers
+// observe the natural lifecycle order, and they take part in the activation
+// retraction below.
+func (*ApprovalProcessor) autoPassEligibleTasks(ctx context.Context, pc *ProcessContext, creationEvents []approval.DomainEvent, rule autoPassRule) (*ProcessResult, error) {
 	var tasks []approval.Task
 
 	// FOR UPDATE serializes concurrent writers on the same node so the
@@ -149,7 +251,7 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 		OrderBy("sort_order").
 		ForUpdate().
 		Scan(ctx); err != nil {
-		return nil, fmt.Errorf("query tasks for consecutive approver check: %w", err)
+		return nil, fmt.Errorf("query tasks for entry auto-pass sweep: %w", err)
 	}
 
 	now := timex.Now()
@@ -160,7 +262,8 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 	for i := range tasks {
 		task := &tasks[i]
 
-		if !prevApprovers.Contains(task.AssigneeID) {
+		reason, ok := rule(task.AssigneeID)
+		if !ok {
 			continue
 		}
 
@@ -186,7 +289,7 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 					Equals("status", string(approval.TaskPending))
 			}).
 			Exec(ctx); err != nil {
-			return nil, fmt.Errorf("auto-pass consecutive approver task: %w", err)
+			return nil, fmt.Errorf("auto-pass task: %w", err)
 		}
 
 		autoPassedAny = true
@@ -196,9 +299,9 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 		// (system-operated) and an action log entry.
 		events = append(events, approval.NewTaskApprovedEvent(
 			pc.Instance, task, pc.Node,
-			shared.SystemOperator, autoPassReasonConsecutiveApprover,
+			shared.SystemOperator, reason,
 		))
-		recordSystemActionLog(ctx, pc, task, autoPassReasonConsecutiveApprover)
+		recordSystemActionLog(ctx, pc, task, reason)
 
 		// For sequential approval, activate the next waiting task.
 		// The outer loop will then check if this newly activated task
@@ -253,39 +356,98 @@ func (*ApprovalProcessor) autoPassConsecutiveApprovers(ctx context.Context, pc *
 		return &ProcessResult{Action: NodeActionWait, Events: events}, nil
 	}
 
-	// A task can be created Pending, or promoted by the cascade, and then be
-	// cleared by the same pass; its assignee never had to act, so the
-	// activation must not reach them as a notification.
-	events = suppressActivationsForClearedTasks(events, tasks)
-
-	// If all tasks are now complete, advance to the next node.
+	// The clears may already satisfy the node's pass rule (an any rule needs
+	// one approval; a full clear satisfies every rule), so evaluate it the
+	// same way a manual action would and conclude the node at entry when it
+	// does — leaving the node open would demand decisions the rule no longer
+	// needs.
 	//
-	// Entry-time auto-pass paths (consecutive-approver here, plus
-	// same-applicant / empty-assignee / execution) intentionally do NOT fire
-	// timing-based node CC (CCTimingOnApprove): they return NodeActionContinue
-	// so the engine advances directly, bypassing service.HandleNodeCompletion
-	// where TriggerNodeCC(PassRulePassed) lives. The engine cannot call into
-	// the service layer (service imports engine, not vice versa), and a node
+	// Entry-time auto-pass paths (this sweep, plus same-applicant sole-seat /
+	// empty-assignee / execution) intentionally do NOT fire timing-based node
+	// CC (CCTimingOnApprove): they return NodeActionContinue so the engine
+	// advances directly, bypassing service.HandleNodeCompletion where
+	// TriggerNodeCC(PassRulePassed) lives. The engine cannot call into the
+	// service layer (service imports engine, not vice versa), and a node
 	// cleared without any human approval has no approver action to notify CC
 	// about. This suppression is uniform across all entry-time auto-pass paths
 	// and is pinned by TestConsecutiveApproverAutoPass.
-	allComplete := !slices.ContainsFunc(tasks, func(t approval.Task) bool {
-		return t.Status == approval.TaskPending || t.Status == approval.TaskWaiting
-	})
+	completion, err := evaluatePassRule(pc.Registry, pc.Node, tasks)
+	if err != nil {
+		return nil, err
+	}
 
-	if allComplete {
+	if completion == approval.PassRulePassed {
+		cancelEvents, err := cancelRemainingEntryTasks(ctx, pc, tasks, now)
+		if err != nil {
+			return nil, err
+		}
+
+		events = append(events, cancelEvents...)
+	}
+
+	// A task can be created Pending, or promoted by the cascade, and then be
+	// cleared by the same pass — or canceled because the pass already decided
+	// the node; its assignee never had to act, so the activation must not
+	// reach them as a notification.
+	events = suppressActivationsForClearedTasks(events, tasks)
+
+	if completion == approval.PassRulePassed {
 		return &ProcessResult{Action: NodeActionContinue, Events: events}, nil
 	}
 
 	return &ProcessResult{Action: NodeActionWait, Events: events}, nil
 }
 
-func (*ApprovalProcessor) isSameApplicant(assignees []approval.ResolvedAssignee, applicantID string) bool {
-	if len(assignees) == 0 {
-		return false
+// cancelRemainingEntryTasks cancels the still-actionable tasks left after an
+// entry-time auto-pass already satisfied the node's pass rule, mirroring the
+// completion path in service.HandleNodeCompletion. The rows are already locked
+// by the caller's FOR UPDATE read, so a plain update suffices; the in-memory
+// tasks are mutated alongside so the caller's activation retraction sees the
+// final states.
+func cancelRemainingEntryTasks(ctx context.Context, pc *ProcessContext, tasks []approval.Task, now timex.DateTime) ([]approval.DomainEvent, error) {
+	remaining := make([]*approval.Task, 0, len(tasks))
+
+	for i := range tasks {
+		if tasks[i].Status == approval.TaskPending || tasks[i].Status == approval.TaskWaiting {
+			remaining = append(remaining, &tasks[i])
+		}
 	}
 
-	return !slices.ContainsFunc(assignees, func(a approval.ResolvedAssignee) bool {
-		return a.User.ID != applicantID
+	if len(remaining) == 0 {
+		return nil, nil
+	}
+
+	ids := make([]string, len(remaining))
+	for i, task := range remaining {
+		ids[i] = task.ID
+	}
+
+	if _, err := pc.DB.NewUpdate().
+		Model((*approval.Task)(nil)).
+		Set("status", approval.TaskCanceled).
+		Set("finished_at", now).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.In("id", ids)
+		}).
+		Exec(ctx); err != nil {
+		return nil, fmt.Errorf("cancel remaining entry tasks: %w", err)
+	}
+
+	events := make([]approval.DomainEvent, len(remaining))
+
+	for i, task := range remaining {
+		task.Status = approval.TaskCanceled
+		task.FinishedAt = new(now)
+		events[i] = approval.NewTaskCanceledEvent(pc.Instance, task, pc.Node, cancelReasonEntryNodePassed)
+	}
+
+	return events, nil
+}
+
+// containsApplicant reports whether the applicant holds a seat in the resolved
+// assignee set, judged by the resolved actor.
+func containsApplicant(assignees []approval.ResolvedAssignee, applicantID string) bool {
+	return slices.ContainsFunc(assignees, func(a approval.ResolvedAssignee) bool {
+		return a.User.ID == applicantID
 	})
 }

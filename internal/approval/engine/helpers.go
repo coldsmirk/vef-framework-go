@@ -22,9 +22,15 @@ const (
 	autoPassReasonExecutionType       = "节点执行类型为自动通过"
 	autoRejectReasonExecutionType     = "节点执行类型为自动拒绝"
 	autoPassReasonEmptyAssignee       = "无审批人，按节点配置自动通过"
-	autoPassReasonSameApplicant       = "审批人与发起人相同，按节点配置自动通过"
 	autoPassReasonConsecutiveApprover = "审批人在上一节点已通过，自动通过"
+	excludeReasonSameApplicant        = "审批人与发起人相同，按节点配置回避"
+	cancelReasonEntryNodePassed       = "节点已通过，剩余任务无需处理"
 )
+
+// AutoPassReasonSameApplicant is exported (unlike its siblings above) because
+// the sequential queue-advance path in the service layer stamps the same
+// reason when it auto-passes the applicant's seat as the queue reaches it.
+const AutoPassReasonSameApplicant = "审批人与发起人相同，按节点配置自动通过"
 
 // resolveAutoExecution short-circuits task nodes whose ExecutionType decides
 // the outcome without human input. AutoPass advances past the node and emits
