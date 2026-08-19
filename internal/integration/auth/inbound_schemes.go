@@ -327,8 +327,12 @@ func (s *signatureInboundScheme) Verify(ctx context.Context, req *integration.In
 	}
 
 	err = s.verifier.VerifyWithSecret(ctx, secret,
-		req.SystemCode, req.Method, req.Path,
-		timestamp, req.Headers["x-nonce"], req.Headers["x-signature"])
+		security.SignatureRequest{AppID: req.SystemCode, Method: req.Method, Path: req.Path},
+		security.SignatureCredentials{
+			Timestamp: timestamp,
+			Nonce:     req.Headers["x-nonce"],
+			Signature: req.Headers["x-signature"],
+		})
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrVerificationFailed, err)
 	}

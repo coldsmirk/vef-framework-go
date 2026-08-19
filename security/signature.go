@@ -5,12 +5,34 @@ import (
 	"crypto/hmac"
 	"encoding/hex"
 	"fmt"
+	"maps"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/hashx"
 	"github.com/coldsmirk/vef-framework-go/id"
 )
+
+// SignatureRequest identifies what a signature covers. Every field is folded
+// into the signed payload, so signer and verifier must describe the request
+// identically (see buildPayload for the canonical rendering).
+type SignatureRequest struct {
+	// AppID names the external application whose secret signs the request.
+	AppID string
+	// Method and Path are the request's HTTP method and path, bound so a
+	// captured signature cannot be replayed against a different endpoint.
+	Method string
+	Path   string
+	// BoundParams are the caller's own parameters to cover — the user
+	// identifier and redirect target of a trust-login handoff, for instance.
+	// Values are the decoded ones, never their URL-encoded wire form, and no
+	// key may collide with the fixed payload fields (ErrSignatureBoundKeyReserved).
+	BoundParams map[string]string
+}
 
 // SignatureCredentials represents the credentials extracted from HTTP headers
 // for signature-based authentication.
@@ -66,8 +88,15 @@ func WithNonceStore(store NonceStore) SignatureOption {
 	}
 }
 
+// signatureFixedKeys are the payload keys a Signature always contributes. A
+// caller-supplied bound parameter may not reuse one: the payload renders each
+// key exactly once, so a duplicate would silently shadow the framework's own
+// value — a bound "path" could unbind the endpoint the signature covers.
+var signatureFixedKeys = collections.NewHashSetFrom("app_id", "method", "nonce", "path", "timestamp")
+
 // Signature provides HMAC-based signature generation and verification.
-// It handles timestamp validation and supports optional data hash for integrity.
+// It handles timestamp validation and binds caller-supplied parameters into the
+// signed payload (see buildPayload).
 type Signature struct {
 	secret             []byte
 	algorithm          SignatureAlgorithm
@@ -116,76 +145,84 @@ func NewSignature(secret string, opts ...SignatureOption) (*Signature, error) {
 	return s, nil
 }
 
-// Sign generates a signature for the given appID bound to the request's HTTP
-// method and path. Callers pass the same method/path the server will see
-// (e.g. "POST", "/api"). Returns a SignatureResult containing all components.
-func (s *Signature) Sign(appID, method, path string) (*SignatureResult, error) {
-	if appID == "" {
+// Sign generates a signature covering request. Callers describe the request
+// exactly as the server will see it — the same method and path, and bound
+// parameters holding the same decoded values. Returns a SignatureResult
+// carrying the freshly minted timestamp, nonce, and signature.
+func (s *Signature) Sign(request SignatureRequest) (*SignatureResult, error) {
+	if request.AppID == "" {
 		return nil, ErrAppIDRequired
+	}
+
+	if err := validateBoundKeys(request.BoundParams); err != nil {
+		return nil, err
 	}
 
 	nonce := s.nonceGenerator.Generate()
 	timestampSec := s.clock().Unix()
-	payload := s.buildPayload(appID, method, path, timestampSec, nonce)
-	signature := s.computeHMAC(payload)
+	signature := s.computeHMAC(s.buildPayload(request, timestampSec, nonce))
 
 	return &SignatureResult{
-		AppID:     appID,
+		AppID:     request.AppID,
 		Timestamp: timestampSec,
 		Nonce:     nonce,
 		Signature: signature,
 	}, nil
 }
 
-// Verify validates the signature against the provided parameters, including
-// the request's HTTP method and path (which must match what was signed).
-// Returns nil if valid, or an error describing the validation failure.
-func (s *Signature) Verify(ctx context.Context, appID, method, path string, timestamp int64, nonce, signature string) error {
-	return s.verifyWithSecret(ctx, s.secret, appID, method, path, timestamp, nonce, signature)
+// Verify validates credentials against request, all of which must describe what
+// was signed. Returns nil if valid, or an error describing the validation
+// failure.
+func (s *Signature) Verify(ctx context.Context, request SignatureRequest, credentials SignatureCredentials) error {
+	return s.verifyWithSecret(ctx, s.secret, request, credentials)
 }
 
 // VerifyWithSecret validates the signature using an externally provided secret.
 // This is useful when the secret is loaded dynamically per-request (e.g., from ExternalAppLoader).
 // The secret parameter expects a hex-encoded string.
-func (s *Signature) VerifyWithSecret(ctx context.Context, secret, appID, method, path string, timestamp int64, nonce, signature string) error {
+func (s *Signature) VerifyWithSecret(ctx context.Context, secret string, request SignatureRequest, credentials SignatureCredentials) error {
 	secretBytes, err := hex.DecodeString(secret)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrDecodeSignatureSecretFailed, err)
 	}
 
-	return s.verifyWithSecret(ctx, secretBytes, appID, method, path, timestamp, nonce, signature)
+	return s.verifyWithSecret(ctx, secretBytes, request, credentials)
 }
 
 // verifyWithSecret is the internal implementation for signature verification.
-func (s *Signature) verifyWithSecret(ctx context.Context, secret []byte, appID, method, path string, timestamp int64, nonce, signature string) error {
-	if appID == "" {
+func (s *Signature) verifyWithSecret(ctx context.Context, secret []byte, request SignatureRequest, credentials SignatureCredentials) error {
+	if request.AppID == "" {
 		return ErrAppIDRequired
 	}
 
-	if nonce == "" {
+	if credentials.Nonce == "" {
 		return ErrNonceRequired
 	}
 
-	if signature == "" {
+	if credentials.Signature == "" {
 		return ErrSignatureRequired
 	}
 
-	if err := s.validateTimestamp(timestamp); err != nil {
+	if err := validateBoundKeys(request.BoundParams); err != nil {
 		return err
 	}
 
-	payload := s.buildPayload(appID, method, path, timestamp, nonce)
+	if err := s.validateTimestamp(credentials.Timestamp); err != nil {
+		return err
+	}
+
+	payload := s.buildPayload(request, credentials.Timestamp, credentials.Nonce)
 	expectedSignature := s.computeHMACWithSecret(secret, payload)
 
 	// computeHMACWithSecret returns lower-case hex.EncodeToString output. Lower-
 	// case the client-provided signature so upper-case hex (some third-party SDKs
 	// emit it) still verifies, then compare in constant time. strings.ToLower is
 	// input-independent, so it introduces no timing oracle on the secret.
-	if !hmac.Equal([]byte(expectedSignature), []byte(strings.ToLower(signature))) {
+	if !hmac.Equal([]byte(expectedSignature), []byte(strings.ToLower(credentials.Signature))) {
 		return ErrSignatureInvalid
 	}
 
-	return s.checkAndStoreNonce(ctx, appID, nonce)
+	return s.checkAndStoreNonce(ctx, request.AppID, credentials.Nonce)
 }
 
 // checkAndStoreNonce atomically stores a nonce and rejects replays if NonceStore is configured.
@@ -206,15 +243,50 @@ func (s *Signature) checkAndStoreNonce(ctx context.Context, appID, nonce string)
 	return nil
 }
 
-// buildPayload assembles the canonical (alphabetically-keyed) string that is
-// HMAC-signed. The HTTP method and path are bound so a captured signature
-// cannot be replayed against a different endpoint. The request body is
-// intentionally NOT bound: it is large and any benign re-serialization (key
-// ordering, whitespace) would break otherwise-valid requests; replay of the
-// same endpoint is already prevented by the nonce + timestamp.
-func (*Signature) buildPayload(appID, method, path string, timestamp int64, nonce string) []byte {
-	return fmt.Appendf(nil, "app_id=%s&method=%s&nonce=%s&path=%s&timestamp=%d",
-		appID, method, nonce, path, timestamp)
+// buildPayload assembles the canonical string that is HMAC-signed: every
+// parameter rendered as key=value and joined by "&" in ascending key order.
+//
+// The request body is intentionally NOT covered: it is large and any benign
+// re-serialization (key ordering, whitespace) would break otherwise-valid
+// requests; replay of the same endpoint is already prevented by the nonce +
+// timestamp.
+//
+// The fixed keys are already ascending among themselves, so a request with no
+// bound parameters reproduces the payload of a scheme that covers nothing else.
+func (*Signature) buildPayload(request SignatureRequest, timestamp int64, nonce string) []byte {
+	params := map[string]string{
+		"app_id":    request.AppID,
+		"method":    request.Method,
+		"nonce":     nonce,
+		"path":      request.Path,
+		"timestamp": strconv.FormatInt(timestamp, 10),
+	}
+	// Safe to overlay: validateBoundKeys has already rejected any collision.
+	maps.Copy(params, request.BoundParams)
+
+	var payload []byte
+
+	for i, key := range slices.Sorted(maps.Keys(params)) {
+		if i > 0 {
+			payload = append(payload, '&')
+		}
+
+		payload = fmt.Appendf(payload, "%s=%s", key, params[key])
+	}
+
+	return payload
+}
+
+// validateBoundKeys rejects bound parameters that would collide with the
+// payload's fixed keys.
+func validateBoundKeys(bound map[string]string) error {
+	for _, key := range slices.Sorted(maps.Keys(bound)) {
+		if signatureFixedKeys.Contains(key) {
+			return fmt.Errorf("%w: %q", ErrSignatureBoundKeyReserved, key)
+		}
+	}
+
+	return nil
 }
 
 // computeHMAC calculates the HMAC signature using the configured algorithm.

@@ -8,6 +8,7 @@ var (
 
 	ErrDecodeSignatureSecretFailed = errors.New("failed to decode signature secret")
 	ErrSignatureSecretRequired     = errors.New("signature secret is required")
+	ErrSignatureBoundKeyReserved   = errors.New("bound parameter reuses a reserved signature payload key")
 
 	ErrUserDetailsNotStruct        = errors.New("user details type must be a struct or struct pointer")
 	ErrExternalAppDetailsNotStruct = errors.New("external app details type must be a struct or struct pointer")

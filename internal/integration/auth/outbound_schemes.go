@@ -223,7 +223,11 @@ func (*signatureOutboundScheme) Apply(cfg *integration.OutboundAuthConfig) ([]ht
 			return &OutboundAuthError{err: err}
 		}
 
-		result, err := signer.Sign(appID, req.Method(), parsed.Path)
+		result, err := signer.Sign(security.SignatureRequest{
+			AppID:  appID,
+			Method: req.Method(),
+			Path:   parsed.Path,
+		})
 		if err != nil {
 			return &OutboundAuthError{err: err}
 		}

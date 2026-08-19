@@ -30,7 +30,7 @@ func (s *SignatureAuthenticatorTestSuite) generateValidCredentials(appID, secret
 	// The test context carries no method/path, so contextx.RequestMethod /
 	// RequestPath resolve to "" in the authenticator; sign with the same
 	// empty values so the bound signature validates.
-	result, err := sig.Sign(appID, "", "")
+	result, err := sig.Sign(security.SignatureRequest{AppID: appID})
 	s.Require().NoError(err, "Should sign successfully")
 
 	return &security.SignatureCredentials{

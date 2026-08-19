@@ -96,7 +96,7 @@ func TestSignatureSign(t *testing.T) {
 	require.NoError(t, err, "Should create signature without error")
 
 	t.Run("BasicSign", func(t *testing.T) {
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 
 		require.NoError(t, err, "Should sign without error")
 		assert.NotNil(t, result, "Result should not be nil")
@@ -108,17 +108,17 @@ func TestSignatureSign(t *testing.T) {
 	})
 
 	t.Run("EmptyAppID", func(t *testing.T) {
-		result, err := sig.Sign("", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "", Method: testSigMethod, Path: testSigPath})
 
 		assert.ErrorIs(t, err, ErrAppIDRequired, "Should return app ID required error")
 		assert.Nil(t, result, "Result should be nil on error")
 	})
 
 	t.Run("UniqueNoncePerSign", func(t *testing.T) {
-		result1, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result1, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign first request without error")
 
-		result2, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result2, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign second request without error")
 
 		assert.NotEqual(t, result1.Nonce, result2.Nonce, "Nonces should be unique")
@@ -127,7 +127,7 @@ func TestSignatureSign(t *testing.T) {
 
 	t.Run("TimestampIsRecent", func(t *testing.T) {
 		beforeSec := time.Now().Unix()
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
 		afterSec := time.Now().Unix()
@@ -137,10 +137,10 @@ func TestSignatureSign(t *testing.T) {
 	})
 
 	t.Run("DifferentAppsProduceDifferentSignatures", func(t *testing.T) {
-		result1, err := sig.Sign("test-app-1", testSigMethod, testSigPath)
+		result1, err := sig.Sign(SignatureRequest{AppID: "test-app-1", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign first app without error")
 
-		result2, err := sig.Sign("test-app-2", testSigMethod, testSigPath)
+		result2, err := sig.Sign(SignatureRequest{AppID: "test-app-2", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign second app without error")
 
 		assert.NotEqual(t, result1.Signature, result2.Signature, "Different apps should produce different signatures")
@@ -155,10 +155,14 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.Verify(ctx, result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.NoError(t, err, "Should verify valid signature without error")
 	})
 
@@ -166,10 +170,14 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.Verify(ctx, result.AppID, "GET", testSigPath, result.Timestamp, result.Nonce, result.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result.AppID, Method: "GET", Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.ErrorIs(t, err, ErrSignatureInvalid, "A signature bound to POST must not verify under a different method")
 	})
 
@@ -177,10 +185,14 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.Verify(ctx, result.AppID, testSigMethod, "/api/other", result.Timestamp, result.Nonce, result.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: "/api/other"},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.ErrorIs(t, err, ErrSignatureInvalid, "A signature bound to /api must not verify under a different path")
 	})
 
@@ -188,10 +200,14 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.Verify(ctx, result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, "0000000000000000000000000000000000000000000000000000000000000000")
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: "0000000000000000000000000000000000000000000000000000000000000000"},
+		)
 		assert.ErrorIs(t, err, ErrSignatureInvalid, "Should return invalid signature error")
 	})
 
@@ -199,10 +215,14 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.Verify(ctx, result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, "not-valid-hex")
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: "not-valid-hex"},
+		)
 		assert.ErrorIs(t, err, ErrSignatureInvalid, "Should return invalid signature error for malformed hex")
 	})
 
@@ -210,10 +230,14 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.Verify(ctx, "wrong-app", testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: "wrong-app", Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.ErrorIs(t, err, ErrSignatureInvalid, "Should return invalid signature error for wrong app ID")
 	})
 
@@ -221,10 +245,14 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.Verify(ctx, result.AppID, testSigMethod, testSigPath, result.Timestamp, "wrong-nonce", result.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: "wrong-nonce", Signature: result.Signature},
+		)
 		assert.ErrorIs(t, err, ErrSignatureInvalid, "Should return invalid signature error for wrong nonce")
 	})
 
@@ -232,10 +260,14 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.Verify(ctx, result.AppID, testSigMethod, testSigPath, result.Timestamp+1, result.Nonce, result.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp + 1, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.ErrorIs(t, err, ErrSignatureInvalid, "Should return invalid signature error for wrong timestamp")
 	})
 
@@ -243,11 +275,15 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret, WithTimestampTolerance(1*time.Second))
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
 		oldTimestampSec := time.Now().Add(-10 * time.Second).Unix()
-		err = sig.Verify(ctx, result.AppID, testSigMethod, testSigPath, oldTimestampSec, result.Nonce, result.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: oldTimestampSec, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.ErrorIs(t, err, ErrSignatureExpired, "Should return expired error for old timestamp")
 	})
 
@@ -255,11 +291,15 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret, WithTimestampTolerance(1*time.Second))
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
 		futureTimestampSec := time.Now().Add(10 * time.Second).Unix()
-		err = sig.Verify(ctx, result.AppID, testSigMethod, testSigPath, futureTimestampSec, result.Nonce, result.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: futureTimestampSec, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.ErrorIs(t, err, ErrSignatureExpired, "Should return expired error for future timestamp")
 	})
 
@@ -267,10 +307,14 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret, WithTimestampTolerance(5*time.Second))
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.Verify(ctx, result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.NoError(t, err, "Should verify signature at boundary without error")
 	})
 
@@ -278,7 +322,8 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		err = sig.Verify(ctx, "", testSigMethod, testSigPath, time.Now().Unix(), "test-nonce", "signature")
+		err = sig.Verify(ctx, SignatureRequest{AppID: "", Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: time.Now().Unix(), Nonce: "test-nonce", Signature: "signature"})
 		assert.ErrorIs(t, err, ErrAppIDRequired, "Should return app ID required error")
 	})
 
@@ -286,7 +331,8 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		err = sig.Verify(ctx, "test-app", testSigMethod, testSigPath, time.Now().Unix(), "", "signature")
+		err = sig.Verify(ctx, SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: time.Now().Unix(), Nonce: "", Signature: "signature"})
 		assert.ErrorIs(t, err, ErrNonceRequired, "Should return nonce required error")
 	})
 
@@ -294,7 +340,8 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		err = sig.Verify(ctx, "test-app", testSigMethod, testSigPath, time.Now().Unix(), "test-nonce", "")
+		err = sig.Verify(ctx, SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: time.Now().Unix(), Nonce: "test-nonce", Signature: ""})
 		assert.ErrorIs(t, err, ErrSignatureRequired, "Should return signature required error")
 	})
 
@@ -302,13 +349,21 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.Verify(ctx, result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.NoError(t, err, "Should verify first request without error")
 
-		err = sig.Verify(ctx, result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.ErrorIs(t, err, ErrNonceAlreadyUsed, "Should return nonce used error for replay attack")
 	})
 
@@ -316,7 +371,7 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
 		start := make(chan struct{})
@@ -328,7 +383,11 @@ func TestSignatureVerify(t *testing.T) {
 			wg.Go(func() {
 				<-start
 
-				errs[i] = sig.Verify(ctx, result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+				errs[i] = sig.Verify(
+					ctx,
+					SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+					SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+				)
 			})
 		}
 
@@ -353,13 +412,21 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret, WithNonceStore(nil))
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.Verify(ctx, result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.NoError(t, err, "Should verify first request without error")
 
-		err = sig.Verify(ctx, result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.NoError(t, err, "Should allow replay when nonce store is nil")
 	})
 
@@ -367,16 +434,24 @@ func TestSignatureVerify(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		result1, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result1, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign first request without error")
 
-		result2, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result2, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign second request without error")
 
-		err = sig.Verify(ctx, result1.AppID, testSigMethod, testSigPath, result1.Timestamp, result1.Nonce, result1.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result1.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result1.Timestamp, Nonce: result1.Nonce, Signature: result1.Signature},
+		)
 		assert.NoError(t, err, "Should verify first signature without error")
 
-		err = sig.Verify(ctx, result2.AppID, testSigMethod, testSigPath, result2.Timestamp, result2.Nonce, result2.Signature)
+		err = sig.Verify(
+			ctx,
+			SignatureRequest{AppID: result2.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result2.Timestamp, Nonce: result2.Nonce, Signature: result2.Signature},
+		)
 		assert.NoError(t, err, "Should verify second signature without error")
 	})
 }
@@ -395,6 +470,146 @@ func (r *recordingTTLNonceStore) StoreIfAbsent(_ context.Context, _, _ string, t
 	return true, nil
 }
 
+// TestSignatureBoundParameters covers the caller-supplied parameters folded
+// into the signed payload: their canonical rendering, the coverage they buy
+// (tampering with a bound value must break verification), and the reserved-key
+// guard that keeps them from shadowing the framework's own fields.
+func TestSignatureBoundParameters(t *testing.T) {
+	ctx := context.Background()
+
+	const (
+		boundTimestamp = int64(1_700_000_000)
+		boundNonce     = "fixed-nonce"
+	)
+
+	t.Run("CanonicalPayload", func(t *testing.T) {
+		sig, err := NewSignature(testSignatureSecret)
+		require.NoError(t, err, "Should create signature without error")
+
+		// Byte-for-byte regression lock. Third-party systems reproduce this
+		// string in their own language to sign a request, so its exact shape —
+		// every parameter as key=value, joined by "&" in ascending key order —
+		// is a wire contract, not an implementation detail.
+		t.Run("WithoutBoundParameters", func(t *testing.T) {
+			payload := sig.buildPayload(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath}, boundTimestamp, boundNonce)
+
+			assert.Equal(t,
+				"app_id=test-app&method=POST&nonce=fixed-nonce&path=/api&timestamp=1700000000",
+				string(payload),
+				"The fixed fields alone must render in ascending key order")
+		})
+
+		t.Run("WithBoundParameters", func(t *testing.T) {
+			payload := sig.buildPayload(SignatureRequest{
+				AppID: "test-app", Method: testSigMethod, Path: testSigPath,
+				BoundParams: map[string]string{"user_id": "5756", "redirect": "http://app.local/home"},
+			}, boundTimestamp, boundNonce)
+
+			assert.Equal(t,
+				"app_id=test-app&method=POST&nonce=fixed-nonce&path=/api&redirect=http://app.local/home&timestamp=1700000000&user_id=5756",
+				string(payload),
+				"Bound parameters must interleave into the same ascending key order as the fixed fields")
+		})
+
+		t.Run("EmptyBoundMatchesNil", func(t *testing.T) {
+			withNil := sig.buildPayload(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath}, boundTimestamp, boundNonce)
+			withEmpty := sig.buildPayload(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath, BoundParams: map[string]string{}}, boundTimestamp, boundNonce)
+
+			assert.Equal(t, string(withNil), string(withEmpty),
+				"An empty bound map must sign identically to no bound map")
+		})
+	})
+
+	t.Run("Verify", func(t *testing.T) {
+		bound := map[string]string{"user_id": "5756", "redirect": "http://app.local/home"}
+
+		signBound := func(t *testing.T) (*Signature, *SignatureResult) {
+			t.Helper()
+
+			sig, err := NewSignature(testSignatureSecret, WithNonceStore(nil))
+			require.NoError(t, err, "Should create signature without error")
+
+			result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath, BoundParams: bound})
+			require.NoError(t, err, "Should sign without error")
+
+			return sig, result
+		}
+
+		t.Run("MatchingBoundParameters", func(t *testing.T) {
+			sig, result := signBound(t)
+
+			err := sig.Verify(
+				ctx,
+				SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath, BoundParams: bound},
+				SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+			)
+			assert.NoError(t, err, "The same bound parameters must verify")
+		})
+
+		t.Run("TamperedBoundValue", func(t *testing.T) {
+			sig, result := signBound(t)
+
+			tampered := map[string]string{"user_id": "9999", "redirect": "http://app.local/home"}
+
+			err := sig.Verify(
+				ctx,
+				SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath, BoundParams: tampered},
+				SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+			)
+			assert.ErrorIs(t, err, ErrSignatureInvalid,
+				"Swapping a bound value must break the signature — this is what stops a captured link from being replayed for another user")
+		})
+
+		t.Run("DroppedBoundParameter", func(t *testing.T) {
+			sig, result := signBound(t)
+
+			err := sig.Verify(ctx,
+				SignatureRequest{
+					AppID: result.AppID, Method: testSigMethod, Path: testSigPath,
+					BoundParams: map[string]string{"redirect": "http://app.local/home"},
+				},
+				SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature})
+			assert.ErrorIs(t, err, ErrSignatureInvalid, "Omitting a signed parameter must break the signature")
+		})
+
+		t.Run("AddedBoundParameter", func(t *testing.T) {
+			sig, result := signBound(t)
+
+			extended := map[string]string{"user_id": "5756", "redirect": "http://app.local/home", "tenant": "t1"}
+
+			err := sig.Verify(
+				ctx,
+				SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath, BoundParams: extended},
+				SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+			)
+			assert.ErrorIs(t, err, ErrSignatureInvalid, "Appending an unsigned parameter must break the signature")
+		})
+	})
+
+	t.Run("ReservedKeyRejected", func(t *testing.T) {
+		sig, err := NewSignature(testSignatureSecret, WithNonceStore(nil))
+		require.NoError(t, err, "Should create signature without error")
+
+		for _, key := range []string{"app_id", "method", "nonce", "path", "timestamp"} {
+			t.Run(key, func(t *testing.T) {
+				bound := map[string]string{key: "shadowed"}
+
+				_, signErr := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath, BoundParams: bound})
+				assert.ErrorIs(t, signErr, ErrSignatureBoundKeyReserved,
+					"Sign must reject a bound parameter that shadows a fixed payload key")
+
+				verifyErr := sig.Verify(
+					ctx,
+					SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath, BoundParams: bound},
+					SignatureCredentials{Timestamp: boundTimestamp, Nonce: boundNonce, Signature: "deadbeef"},
+				)
+				assert.ErrorIs(t, verifyErr, ErrSignatureBoundKeyReserved,
+					"Verify must reject the same shadowing rather than compare against a rewritten payload")
+			})
+		}
+	})
+}
+
 // TestSignatureNonceTTLCoversReplayWindow pins the fix for the replay window
 // where a future-dated timestamp outlived its nonce. validateTimestamp accepts
 // ±timestampTolerance, so a single request stays valid for 2*timestampTolerance;
@@ -407,10 +622,12 @@ func TestSignatureNonceTTLCoversReplayWindow(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret, WithTimestampTolerance(tolerance), WithNonceStore(store))
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.Verify(context.Background(), result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+		err = sig.Verify(context.Background(),
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature})
 		require.NoError(t, err, "Should verify without error")
 
 		require.Equal(t, 1, store.calls, "Verify should store the nonce exactly once")
@@ -474,9 +691,9 @@ func TestSignatureNonceOutlivesReplayWindowEndToEnd(t *testing.T) {
 	// so it stays valid across [ts-tolerance, ts+tolerance].
 	ts := current.Add(tolerance).Unix()
 	nonce := "replay-nonce"
-	signature := sig.computeHMAC(sig.buildPayload("app", testSigMethod, testSigPath, ts, nonce))
+	signature := sig.computeHMAC(sig.buildPayload(SignatureRequest{AppID: "app", Method: testSigMethod, Path: testSigPath}, ts, nonce))
 
-	err = sig.Verify(ctx, "app", testSigMethod, testSigPath, ts, nonce, signature)
+	err = sig.Verify(ctx, SignatureRequest{AppID: "app", Method: testSigMethod, Path: testSigPath}, SignatureCredentials{Timestamp: ts, Nonce: nonce, Signature: signature})
 	require.NoError(t, err, "First request must verify and register the nonce")
 
 	// Jump to the last instant the timestamp is still fresh (ts + tolerance, less
@@ -484,7 +701,7 @@ func TestSignatureNonceOutlivesReplayWindowEndToEnd(t *testing.T) {
 	current = time.Unix(ts, 0).Add(tolerance - time.Second)
 	require.NoError(t, sig.validateTimestamp(ts), "Timestamp must still be valid at the edge of its window")
 
-	err = sig.Verify(ctx, "app", testSigMethod, testSigPath, ts, nonce, signature)
+	err = sig.Verify(ctx, SignatureRequest{AppID: "app", Method: testSigMethod, Path: testSigPath}, SignatureCredentials{Timestamp: ts, Nonce: nonce, Signature: signature})
 	require.ErrorIs(t, err, ErrNonceAlreadyUsed,
 		"Replay at the edge of the timestamp window must be rejected — the nonce must outlive the request's validity")
 }
@@ -498,10 +715,15 @@ func TestSignatureVerifyWithSecret(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret, WithNonceStore(nil))
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.VerifyWithSecret(ctx, testSignatureSecret, result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+		err = sig.VerifyWithSecret(
+			ctx,
+			testSignatureSecret,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.NoError(t, err, "Should verify with matching secret without error")
 	})
 
@@ -509,10 +731,15 @@ func TestSignatureVerifyWithSecret(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret, WithNonceStore(nil))
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.VerifyWithSecret(ctx, differentSecret, result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+		err = sig.VerifyWithSecret(
+			ctx,
+			differentSecret,
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.ErrorIs(t, err, ErrSignatureInvalid, "Should return invalid error for different secret")
 	})
 
@@ -520,10 +747,15 @@ func TestSignatureVerifyWithSecret(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret, WithNonceStore(nil))
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.VerifyWithSecret(ctx, "not-valid-hex", result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+		err = sig.VerifyWithSecret(
+			ctx,
+			"not-valid-hex",
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.ErrorIs(t, err, ErrDecodeSignatureSecretFailed, "Should return decode failed error for invalid hex")
 	})
 
@@ -531,10 +763,15 @@ func TestSignatureVerifyWithSecret(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret, WithNonceStore(nil))
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
-		err = sig.VerifyWithSecret(ctx, "", result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+		err = sig.VerifyWithSecret(
+			ctx,
+			"",
+			SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+		)
 		assert.ErrorIs(t, err, ErrSignatureInvalid, "Should return invalid error for empty secret")
 	})
 }
@@ -558,11 +795,15 @@ func TestSignatureAlgorithms(t *testing.T) {
 			sig, err := NewSignature(testSignatureSecret, WithAlgorithm(tt.algorithm))
 			require.NoError(t, err, "Should create signature without error")
 
-			result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+			result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 			require.NoError(t, err, "Should sign without error")
 			assert.Len(t, result.Signature, tt.sigLen, "Signature length should match algorithm")
 
-			err = sig.Verify(ctx, result.AppID, testSigMethod, testSigPath, result.Timestamp, result.Nonce, result.Signature)
+			err = sig.Verify(
+				ctx,
+				SignatureRequest{AppID: result.AppID, Method: testSigMethod, Path: testSigPath},
+				SignatureCredentials{Timestamp: result.Timestamp, Nonce: result.Nonce, Signature: result.Signature},
+			)
 			assert.NoError(t, err, "Should verify signature without error")
 		})
 	}
@@ -574,10 +815,10 @@ func TestSignatureAlgorithms(t *testing.T) {
 		sig512, err := NewSignature(testSignatureSecret, WithAlgorithm(SignatureAlgHmacSHA512), WithNonceStore(nil))
 		require.NoError(t, err, "Should create SHA512 signature without error")
 
-		result256, err := sig256.Sign("test-app", testSigMethod, testSigPath)
+		result256, err := sig256.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign with SHA256 without error")
 
-		result512, err := sig512.Sign("test-app", testSigMethod, testSigPath)
+		result512, err := sig512.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign with SHA512 without error")
 
 		assert.NotEqual(t, result256.Signature, result512.Signature, "Different algorithms should produce different signatures")
@@ -590,10 +831,14 @@ func TestSignatureAlgorithms(t *testing.T) {
 		sig512, err := NewSignature(testSignatureSecret, WithAlgorithm(SignatureAlgHmacSHA512), WithNonceStore(nil))
 		require.NoError(t, err, "Should create SHA512 signature without error")
 
-		result256, err := sig256.Sign("test-app", testSigMethod, testSigPath)
+		result256, err := sig256.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign with SHA256 without error")
 
-		err = sig512.Verify(ctx, result256.AppID, testSigMethod, testSigPath, result256.Timestamp, result256.Nonce, result256.Signature)
+		err = sig512.Verify(
+			ctx,
+			SignatureRequest{AppID: result256.AppID, Method: testSigMethod, Path: testSigPath},
+			SignatureCredentials{Timestamp: result256.Timestamp, Nonce: result256.Nonce, Signature: result256.Signature},
+		)
 		assert.ErrorIs(t, err, ErrSignatureInvalid, "Should fail cross-algorithm verification")
 	})
 }
@@ -604,7 +849,7 @@ func TestSignatureResult(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
 		assert.Equal(t, "test-app", result.AppID, "AppID should match input")
@@ -617,7 +862,7 @@ func TestSignatureResult(t *testing.T) {
 		sig, err := NewSignature(testSignatureSecret)
 		require.NoError(t, err, "Should create signature without error")
 
-		result, err := sig.Sign("test-app", testSigMethod, testSigPath)
+		result, err := sig.Sign(SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath})
 		require.NoError(t, err, "Should sign without error")
 
 		assert.GreaterOrEqual(t, len(result.Nonce), 16, "Nonce should be at least 16 characters")

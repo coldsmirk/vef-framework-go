@@ -141,8 +141,13 @@ func TestBuiltinSchemes(t *testing.T) {
 		verifier, err := security.NewSignature("00")
 		require.NoError(t, err, "Verifier construction should succeed")
 
-		err = verifier.VerifyWithSecret(t.Context(), secret, "his-01", http.MethodGet, "/probe",
-			timestamp, req.Header.Get("X-Nonce"), req.Header.Get("X-Signature"))
+		err = verifier.VerifyWithSecret(t.Context(), secret,
+			security.SignatureRequest{AppID: "his-01", Method: http.MethodGet, Path: "/probe"},
+			security.SignatureCredentials{
+				Timestamp: timestamp,
+				Nonce:     req.Header.Get("X-Nonce"),
+				Signature: req.Header.Get("X-Signature"),
+			})
 		assert.NoError(t, err, "The inbound-side verifier should accept the outbound-signed request")
 		assert.Equal(t, []string{"secret"}, scheme.SensitiveParams(), "The secret should be sensitive")
 	})

@@ -115,7 +115,8 @@ func (a *SignatureAuthenticator) verifySignature(
 	method := contextx.RequestMethod(ctx)
 	path := contextx.RequestPath(ctx)
 
-	if err := a.verifier.VerifyWithSecret(ctx, secret, appID, method, path, credentials.Timestamp, credentials.Nonce, credentials.Signature); err != nil {
+	request := security.SignatureRequest{AppID: appID, Method: method, Path: path}
+	if err := a.verifier.VerifyWithSecret(ctx, secret, request, *credentials); err != nil {
 		logger.Warnf("Signature verify failed for app %q: %v", appID, err)
 
 		return mapSignatureError(err)
