@@ -1,6 +1,7 @@
 package security
 
 import (
+	"github.com/redis/go-redis/v9"
 	"github.com/samber/lo"
 	"go.uber.org/fx"
 
@@ -67,9 +68,21 @@ var Module = fx.Module(
 		),
 		newSessionStore,
 		newNonceStore,
+		fx.Annotate(
+			newTrustCodeStore,
+			fx.ParamTags(`optional:"true"`),
+		),
 		newSessionPolicy,
 		newTokenGenerator,
 		security.NewJWTChallengeTokenStore,
+		fx.Annotate(
+			newTrustLoginAuthenticators,
+			fx.ResultTags(`group:"vef:security:authenticators,flatten"`),
+		),
+		fx.Annotate(
+			NewTrustLoginMiddleware,
+			fx.ResultTags(`group:"vef:app:middlewares"`),
+		),
 		fx.Annotate(
 			NewSignatureAuthenticator,
 			fx.ParamTags(`optional:"true"`, `optional:"true"`),
@@ -196,6 +209,39 @@ func newSessionStore() security.SessionStore {
 // second node inside the timestamp tolerance.
 func newNonceStore() security.NonceStore {
 	return security.NewMemoryNonceStore()
+}
+
+// newTrustCodeStore selects the trust-login code store by deployment topology
+// rather than defaulting to memory and waiting to be decorated. The in-memory
+// store cannot serve a second replica at all — a code issued on one node is
+// unknown to every other, so the exchange fails outright — which makes a silent
+// memory default a broken login rather than a weakened one. This is the same
+// reasoning that governs lock.Locker.
+func newTrustCodeStore(client *redis.Client, cfg *config.SecurityConfig) security.TrustCodeStore {
+	if client != nil {
+		return security.NewRedisTrustCodeStore(client)
+	}
+
+	if cfg.TrustLogin.Enabled {
+		logger.Warnf(
+			"vef.redis is disabled; trust login is using the in-process memory code store, so a code issued on one replica cannot be redeemed on another — enable vef.redis before scaling beyond one replica.",
+		)
+	}
+
+	return security.NewMemoryTrustCodeStore()
+}
+
+// newTrustLoginAuthenticators registers the code-exchange authenticator only
+// while the gateway is enabled, mirroring newTokenAuthenticators: with the
+// feature off no code can exist, so presenting the mechanism as available and
+// answering "invalid code" forever would only obscure the misconfiguration.
+// Unregistered, a trust_code login is refused as an unsupported type.
+func newTrustLoginAuthenticators(store security.TrustCodeStore, cfg *config.SecurityConfig) []security.Authenticator {
+	if !cfg.TrustLogin.Enabled {
+		return nil
+	}
+
+	return []security.Authenticator{NewTrustCodeAuthenticator(store, cfg.TrustLogin)}
 }
 
 // newSessionPolicy resolves the opaque-token session behavior from config.

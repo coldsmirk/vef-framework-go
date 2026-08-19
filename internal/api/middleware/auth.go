@@ -46,12 +46,15 @@ func (m *Auth) Process(ctx fiber.Ctx) error {
 		return fiber.ErrUnauthorized
 	}
 
-	// Make the resolved client IP and the request method/path available to
-	// authenticators via the request context: the signature authenticator
-	// uses the IP for its whitelist and binds the method+path into the HMAC.
+	// Make the resolved client IP, the request method/path and the User-Agent
+	// available to authenticators via the request context: the signature
+	// authenticator uses the IP for its whitelist and binds the method+path
+	// into the HMAC, and trust-code auth checks the IP and User-Agent against
+	// the browser its code was issued to.
 	reqCtx := contextx.SetRequestIP(ctx.Context(), fiberx.GetIP(ctx))
 	reqCtx = contextx.SetRequestMethod(reqCtx, ctx.Method())
 	reqCtx = contextx.SetRequestPath(reqCtx, ctx.Path())
+	reqCtx = contextx.SetRequestUserAgent(reqCtx, ctx.Get(fiber.HeaderUserAgent))
 	ctx.SetContext(reqCtx)
 
 	strategy, found := m.registry.Get(op.Auth.Strategy)

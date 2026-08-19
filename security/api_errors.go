@@ -29,7 +29,8 @@ const (
 )
 
 // Response codes for security-domain API errors.
-// 1000-1029: authentication; 1030-1039: challenge; 1050: password policy.
+// 1000-1029: authentication; 1030-1039: challenge; 1050: password policy;
+// 1060-1063: trust login.
 const (
 	ErrCodeUnauthenticated               = 1000
 	ErrCodeUnsupportedAuthenticationType = 1001
@@ -71,6 +72,12 @@ const (
 	// Password policy errors (1050). Every policy violation shares one code; the
 	// i18n message identifies which rule was broken.
 	ErrCodePasswordPolicyViolation = 1050
+
+	// Trust login errors (1060-1063).
+	ErrCodeTrustAuthFailed         = 1060
+	ErrCodeTrustRedirectNotAllowed = 1061
+	ErrCodeTrustUserNotResolved    = 1062
+	ErrCodeTrustCodeInvalid        = 1063
 )
 
 // Predefined authentication errors (HTTP 401).
@@ -281,6 +288,47 @@ var (
 		i18n.T("security_password_reused"),
 		result.WithCode(ErrCodePasswordPolicyViolation),
 		result.WithStatus(fiber.StatusBadRequest),
+	)
+)
+
+// Trust login errors. Every one of them means the handoff must be started
+// again from the external system.
+var (
+	// ErrTrustAuthFailed is the single verdict the trust-login gateway returns
+	// for every way a handoff can fail verification: a bad signature, an expired
+	// or replayed one, an unknown external app, a disabled one, or a source
+	// address outside its whitelist. Distinguishing them would let a caller
+	// enumerate which app IDs exist, and the caller has the same fix in every
+	// case — re-sign the handoff correctly (HTTP 401).
+	ErrTrustAuthFailed = result.Err(
+		i18n.T("security_trust_auth_failed"),
+		result.WithCode(ErrCodeTrustAuthFailed),
+		result.WithStatus(fiber.StatusUnauthorized),
+	)
+	// ErrTrustRedirectNotAllowed rejects a trust-login redirect target that no
+	// entry of the initiating app's allowlist covers. It is deliberately
+	// distinct from ErrTrustAuthFailed: the handoff authenticated, and the fix
+	// is a configuration change rather than a re-signed request (HTTP 400).
+	ErrTrustRedirectNotAllowed = result.Err(
+		i18n.T("security_trust_redirect_not_allowed"),
+		result.WithCode(ErrCodeTrustRedirectNotAllowed),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
+	// ErrTrustUserNotResolved reports that no local user corresponds to the
+	// external identifier the handoff carried (HTTP 401).
+	ErrTrustUserNotResolved = result.Err(
+		i18n.T("security_trust_user_not_resolved"),
+		result.WithCode(ErrCodeTrustUserNotResolved),
+		result.WithStatus(fiber.StatusUnauthorized),
+	)
+	// ErrTrustCodeInvalid rejects a trust-login code that is unknown, already
+	// redeemed, expired, or presented by a browser other than the one the
+	// gateway redirected. The cases are deliberately indistinguishable: every
+	// one of them means "start the handoff again" (HTTP 401).
+	ErrTrustCodeInvalid = result.Err(
+		i18n.T("security_trust_code_invalid"),
+		result.WithCode(ErrCodeTrustCodeInvalid),
+		result.WithStatus(fiber.StatusUnauthorized),
 	)
 )
 

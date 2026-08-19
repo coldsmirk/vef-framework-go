@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -12,6 +14,11 @@ var (
 	ErrInvalidLockoutKey      = errors.New("invalid lockout key")
 	ErrInvalidTokenType       = errors.New("invalid token type")
 	ErrInvalidSessionOnExceed = errors.New("invalid session on_exceed policy")
+
+	ErrTrustLoginPathInvalid     = errors.New("trust login path must start with '/'")
+	ErrTrustLoginAppsRequired    = errors.New("trust login is enabled but no external app is allowed to initiate a handoff")
+	ErrTrustLoginRedirectsEmpty  = errors.New("trust login app declares no redirect URLs")
+	ErrTrustLoginRedirectInvalid = errors.New("trust login redirect URL must be absolute and carry no query or fragment")
 )
 
 // SecurityConfig defines security settings.
@@ -53,6 +60,8 @@ type SecurityConfig struct {
 	// Session configures opaque-token session behavior; it has no effect under
 	// the jwt_token mechanism.
 	Session SessionConfig `config:"session"`
+	// TrustLogin configures the trust-login single sign-on gateway.
+	TrustLogin TrustLoginConfig `config:"trust_login"`
 }
 
 // APIKeyConfig defines one static API key under vef.security.api_keys.
@@ -171,7 +180,7 @@ func (c *SecurityConfig) Validate() error {
 		return fmt.Errorf("%w %q (want %q or %q)", ErrInvalidSessionOnExceed, c.Session.OnExceed, SessionExceedReject, SessionExceedEvictOldest)
 	}
 
-	return nil
+	return c.TrustLogin.Validate()
 }
 
 // PasswordPolicyConfig configures password strength rules. Every field is
@@ -337,6 +346,123 @@ func (c *LockoutConfig) Validate() error {
 	case LockoutKeyUser, LockoutKeyIP, LockoutKeyUserIP:
 	default:
 		return fmt.Errorf("%w %q (want %q, %q or %q)", ErrInvalidLockoutKey, c.Key, LockoutKeyUser, LockoutKeyIP, LockoutKeyUserIP)
+	}
+
+	return nil
+}
+
+// Default values for TrustLoginConfig, applied by the Effective* accessors.
+const (
+	DefaultTrustLoginPath    = "/sso/trust"
+	DefaultTrustLoginCodeTTL = 60 * time.Second
+)
+
+// TrustLoginConfig configures the trust-login single sign-on gateway: a
+// browser-facing endpoint an external system links to, carrying a signed user
+// identifier, which trades the handoff for an ordinary login session.
+//
+// Participation is per external app. An app must appear in Apps to initiate a
+// handoff, which keeps browser single sign-on a grant distinct from the API
+// access the same app ID may already hold through security.ExternalAppLoader —
+// being able to call the API never implies being able to log a user in.
+type TrustLoginConfig struct {
+	// Enabled mounts the gateway route and registers the code-exchange
+	// authenticator. Off by default; while off, the route does not exist and
+	// the trust_code login mechanism is refused as unsupported.
+	Enabled bool `config:"enabled"`
+	// Path is the gateway route. Default: /sso/trust. It is part of the signed
+	// payload, so changing it invalidates every link the external system has
+	// already generated.
+	Path string `config:"path"`
+	// CodeTTL bounds how long the one-time code stays redeemable. Default: 60s.
+	// Keep it short: the code rides a redirect URL, so it lands in browser
+	// history and in any intermediary's access logs.
+	CodeTTL time.Duration `config:"code_ttl"`
+	// BindUserAgent requires the browser redeeming a code to present the same
+	// User-Agent the gateway redirected. A nil pointer resolves to enabled: the
+	// header cannot change within one redirect, so the binding costs nothing
+	// and blocks a code lifted out of a URL and replayed from elsewhere.
+	BindUserAgent *bool `config:"bind_user_agent"`
+	// BindClientIP additionally requires the same source address. Off by
+	// default: a mobile client can change networks mid-redirect, where the
+	// resulting failure reads as a broken integration rather than a defense.
+	BindClientIP bool `config:"bind_client_ip"`
+	// Apps names the external systems allowed to initiate a handoff, keyed by
+	// app ID. Note: the config layer lowercases TOML keys, so app IDs are
+	// effectively lowercase.
+	Apps map[string]TrustLoginAppConfig `config:"apps"`
+}
+
+// TrustLoginAppConfig is one external system's trust-login policy.
+//
+// The app's signing secret is deliberately absent: it is loaded through
+// security.ExternalAppLoader, the same source the API signature authenticator
+// reads, so a secret never has to live in a configuration file.
+type TrustLoginAppConfig struct {
+	// RedirectURLs allowlists where a handoff may land. Each entry is an
+	// absolute URL; a requested target must match an entry's scheme and host
+	// exactly and sit under its path. At least one entry is required — an app
+	// with none could never complete a handoff.
+	RedirectURLs []string `config:"redirect_urls"`
+}
+
+// EffectivePath returns Path or its default.
+func (c *TrustLoginConfig) EffectivePath() string {
+	if c.Path == "" {
+		return DefaultTrustLoginPath
+	}
+
+	return c.Path
+}
+
+// EffectiveCodeTTL returns CodeTTL or its default.
+func (c *TrustLoginConfig) EffectiveCodeTTL() time.Duration {
+	return coalescePositive(c.CodeTTL, DefaultTrustLoginCodeTTL)
+}
+
+// IsUserAgentBound reports whether a code is bound to the redirected browser's
+// User-Agent. Omitted means on.
+func (c *TrustLoginConfig) IsUserAgentBound() bool {
+	return c.BindUserAgent == nil || *c.BindUserAgent
+}
+
+// Validate rejects a trust-login configuration that could never authenticate a
+// handoff. Shape checks run even while the feature is disabled so a typo
+// surfaces at boot rather than when it is switched on; the "at least one app"
+// requirement is the one check that only applies once enabled.
+func (c *TrustLoginConfig) Validate() error {
+	if path := c.EffectivePath(); !strings.HasPrefix(path, "/") {
+		return fmt.Errorf("%w: %q", ErrTrustLoginPathInvalid, path)
+	}
+
+	if c.Enabled && len(c.Apps) == 0 {
+		return ErrTrustLoginAppsRequired
+	}
+
+	for appID, app := range c.Apps {
+		if err := app.validate(appID); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validate checks one app's redirect allowlist.
+func (c *TrustLoginAppConfig) validate(appID string) error {
+	if len(c.RedirectURLs) == 0 {
+		return fmt.Errorf("%w: app %q", ErrTrustLoginRedirectsEmpty, appID)
+	}
+
+	for _, entry := range c.RedirectURLs {
+		parsed, err := url.Parse(entry)
+		if err != nil {
+			return fmt.Errorf("%w: app %q entry %q: %w", ErrTrustLoginRedirectInvalid, appID, entry, err)
+		}
+
+		if parsed.Scheme == "" || parsed.Host == "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return fmt.Errorf("%w: app %q entry %q", ErrTrustLoginRedirectInvalid, appID, entry)
+		}
 	}
 
 	return nil

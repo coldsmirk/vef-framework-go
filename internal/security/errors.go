@@ -39,3 +39,18 @@ var (
 	// password, which could never authenticate a request.
 	ErrBasicAccountPasswordBlank = errors.New("basic account password must not be blank")
 )
+
+// Configuration faults raised while building the trust-login gateway; they
+// surface as fx start-up errors, never through the API.
+var (
+	// ErrTrustLoginExternalAppLoaderMissing rejects an enabled gateway with no
+	// security.ExternalAppLoader, which supplies the per-app signing secret
+	// every handoff is verified against.
+	ErrTrustLoginExternalAppLoaderMissing = errors.New("vef.security.trust_login is enabled but no security.ExternalAppLoader is registered to supply app signing secrets")
+	// ErrTrustLoginUserResolutionMissing rejects an enabled gateway that can
+	// map no external identifier onto a local user: it needs either a
+	// security.TrustUserResolver or a security.UserLoader.
+	ErrTrustLoginUserResolutionMissing = errors.New(
+		"vef.security.trust_login is enabled but neither a security.TrustUserResolver nor a security.UserLoader is registered to resolve external users",
+	)
+)

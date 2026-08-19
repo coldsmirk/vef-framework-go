@@ -23,6 +23,7 @@ const (
 	KeyDataPermApplier
 	KeyRequestMethod
 	KeyRequestPath
+	KeyRequestUserAgent
 )
 
 // setValue stores a value in the context, handling both fiber.Ctx and standard context.Context.
@@ -134,4 +135,17 @@ func RequestPath(ctx context.Context) string {
 
 func SetRequestPath(ctx context.Context, path string) context.Context {
 	return setValue(ctx, KeyRequestPath, path)
+}
+
+// RequestUserAgent returns the User-Agent of the current request, if the auth
+// middleware recorded it. Used by trust-code auth to check that the browser
+// redeeming a code is the one the trust-login gateway redirected.
+func RequestUserAgent(ctx context.Context) string {
+	userAgent, _ := ctx.Value(KeyRequestUserAgent).(string)
+
+	return userAgent
+}
+
+func SetRequestUserAgent(ctx context.Context, userAgent string) context.Context {
+	return setValue(ctx, KeyRequestUserAgent, userAgent)
 }

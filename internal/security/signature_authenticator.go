@@ -90,7 +90,7 @@ func (a *SignatureAuthenticator) Authenticate(ctx context.Context, authenticatio
 		return nil, security.ErrExternalAppNotFound
 	}
 
-	if err := a.validateIPWhitelist(ctx, principal); err != nil {
+	if err := validateExternalAppPolicy(ctx, principal); err != nil {
 		return nil, err
 	}
 
@@ -120,35 +120,6 @@ func (a *SignatureAuthenticator) verifySignature(
 		logger.Warnf("Signature verify failed for app %q: %v", appID, err)
 
 		return mapSignatureError(err)
-	}
-
-	return nil
-}
-
-func (*SignatureAuthenticator) validateIPWhitelist(ctx context.Context, principal *security.Principal) error {
-	details, ok := principal.Details.(*security.ExternalAppConfig)
-	if !ok || details == nil {
-		return nil
-	}
-
-	if !details.Enabled {
-		return security.ErrExternalAppDisabled
-	}
-
-	if details.IPWhitelist == "" {
-		return nil
-	}
-
-	requestIP := contextx.RequestIP(ctx)
-	if requestIP == "" {
-		// Fail closed: an IP whitelist is configured but the request IP cannot be
-		// determined. Allowing the request would silently bypass the control, so
-		// deny instead.
-		return security.ErrIPNotAllowed
-	}
-
-	if validator := security.NewIPWhitelistValidator(details.IPWhitelist); !validator.IsAllowed(requestIP) {
-		return security.ErrIPNotAllowed
 	}
 
 	return nil
