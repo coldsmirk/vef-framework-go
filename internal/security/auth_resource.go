@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/coldsmirk/go-collections"
 	"github.com/coldsmirk/go-streams"
@@ -378,16 +379,12 @@ func (a *AuthResource) GetUserInfo(ctx fiber.Ctx, principal *security.Principal,
 // so success events carry the same identifier regardless of whether a challenge
 // was involved.
 func (a *AuthResource) publishLoginSuccess(ctx fiber.Ctx, authType, username string, principal *security.Principal) {
-	loginEvent := security.NewLoginEvent(security.LoginEventParams{
-		AuthType:  authType,
-		UserID:    &principal.ID,
-		Username:  username,
-		LoginIP:   fiberx.GetIP(ctx),
-		UserAgent: ctx.Get(fiber.HeaderUserAgent),
-		TraceID:   contextx.RequestID(ctx),
-		IsOk:      true,
+	a.publishLoginEvent(ctx, security.LoginEventParams{
+		AuthType: authType,
+		UserID:   &principal.ID,
+		Username: username,
+		IsOk:     true,
 	})
-	_ = a.bus.Publish(ctx.Context(), loginEvent, event.WithAsync())
 }
 
 // publishLoginFailure publishes a failed-login audit event, deriving the failure
@@ -403,17 +400,26 @@ func (a *AuthResource) publishLoginFailure(ctx fiber.Ctx, authType, username str
 		errorCode = resErr.Code
 	}
 
-	loginEvent := security.NewLoginEvent(security.LoginEventParams{
+	a.publishLoginEvent(ctx, security.LoginEventParams{
 		AuthType:   authType,
 		Username:   username,
-		LoginIP:    fiberx.GetIP(ctx),
-		UserAgent:  ctx.Get(fiber.HeaderUserAgent),
-		TraceID:    contextx.RequestID(ctx),
 		IsOk:       false,
 		FailReason: failReason,
 		ErrorCode:  errorCode,
 	})
-	_ = a.bus.Publish(ctx.Context(), loginEvent, event.WithAsync())
+}
+
+// publishLoginEvent stamps where the attempt came from and publishes it. The
+// origin values are copied out of the request: Fiber runs with Immutable off, so
+// the client address, the User-Agent and a client-supplied request id are views
+// into the pooled request buffer, and this event is published asynchronously —
+// a subscriber reads it once the request that raised it is long gone.
+func (a *AuthResource) publishLoginEvent(ctx fiber.Ctx, params security.LoginEventParams) {
+	params.LoginIP = strings.Clone(fiberx.GetIP(ctx))
+	params.UserAgent = strings.Clone(ctx.Get(fiber.HeaderUserAgent))
+	params.TraceID = strings.Clone(contextx.RequestID(ctx))
+
+	_ = a.bus.Publish(ctx.Context(), security.NewLoginEvent(params), event.WithAsync())
 }
 
 // guardCheck consults the brute-force guard before authentication. It returns a
@@ -470,10 +476,14 @@ func (a *AuthResource) guardRecordSuccess(ctx fiber.Ctx, attempt security.LoginA
 }
 
 // sessionMeta captures the client context recorded on a session at token issue.
+// Both values are copied out of the request: Fiber runs with Immutable off, so
+// the User-Agent — and the client address once a trusted proxy header supplies
+// it — are views into the pooled request buffer, while the session they describe
+// outlives the request that opened it by up to its whole maximum lifetime.
 func sessionMeta(ctx fiber.Ctx) security.SessionMeta {
 	return security.SessionMeta{
-		ClientIP:  fiberx.GetIP(ctx),
-		UserAgent: ctx.Get(fiber.HeaderUserAgent),
+		ClientIP:  strings.Clone(fiberx.GetIP(ctx)),
+		UserAgent: strings.Clone(ctx.Get(fiber.HeaderUserAgent)),
 	}
 }
 
