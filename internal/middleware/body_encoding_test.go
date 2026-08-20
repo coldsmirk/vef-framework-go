@@ -206,6 +206,21 @@ func TestBodyEncodingMiddleware(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "an unknown encoding is a client error")
 	})
 
+	// The wire contract is the encoded text as the raw body, nothing around it.
+	// A quote-wrapped payload is what a client produces when it hands the
+	// encoded string to an HTTP library that still owns the JSON serialization,
+	// and accepting it would quietly admit a second, undocumented wire format
+	// that a genuine JSON-string body could not be told apart from.
+	t.Run("QuoteWrappedBase64", func(t *testing.T) {
+		app := newBodyEncodingApp(t, "32mib")
+
+		wrapped := append([]byte(`"`), append(base64Bytes(raw), '"')...)
+		resp := sendBodyEncoded(t, app, "/api", bodyEncodingBase64, wrapped)
+
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode,
+			"a JSON-encoded transport-encoded body must be refused, not unwrapped")
+	})
+
 	t.Run("MalformedBase64", func(t *testing.T) {
 		app := newBodyEncodingApp(t, "32mib")
 

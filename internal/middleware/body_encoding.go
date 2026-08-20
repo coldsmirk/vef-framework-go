@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"errors"
 	"io"
 	"strings"
 
@@ -14,7 +15,15 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
+	"github.com/coldsmirk/vef-framework-go/internal/logx"
 )
+
+// bodyEncodingLogger is this middleware's own logger rather than the
+// conventional package-level `logger`, which the package cannot spell: fiber's
+// own logger middleware is imported under that name in request_record.go. The
+// request-scoped logger is not an option either — this middleware runs at -750,
+// ahead of the one that installs it at -600.
+var bodyEncodingLogger = logx.Named("body_encoding")
 
 const (
 	// bodyEncodingBase64 marks a body that is base64 of the raw JSON.
@@ -56,6 +65,8 @@ func NewBodyEncodingMiddleware(cfg *config.AppConfig) app.Middleware {
 
 			decoded, err := decodeBody(ctx.Request().Body(), encoding, limit)
 			if err != nil {
+				logRejectedBody(ctx.Request().Body(), encoding, err)
+
 				return err
 			}
 
@@ -102,6 +113,29 @@ func decodeBase64(raw []byte) ([]byte, error) {
 	}
 
 	return decoded[:n], nil
+}
+
+// logRejectedBody explains a rejected body server-side without echoing it. The
+// response says only that decoding failed, which points at nothing, and this
+// contract is one third parties implement themselves.
+//
+// One shape is worth naming outright: a payload wrapped in double quotes. That
+// is what a client produces when it hands an already transport-encoded string
+// to an HTTP library that still owns the JSON serialization of the body — the
+// library sees a string under a JSON content type and re-encodes it. Nothing in
+// a 400 would ever point there.
+func logRejectedBody(raw []byte, encoding string, err error) {
+	if body := bytes.TrimSpace(raw); errors.Is(err, api.ErrBodyDecodeFailed) &&
+		len(body) >= 2 && body[0] == '"' && body[len(body)-1] == '"' {
+		bodyEncodingLogger.Warnf(
+			"Rejected an %s: %s body wrapped in double quotes: it was JSON-encoded after being transport-encoded. Send the encoded text as the raw request body.",
+			api.HeaderXBodyEncoding, encoding,
+		)
+
+		return
+	}
+
+	bodyEncodingLogger.Warnf("Rejected an %s: %s body: %v", api.HeaderXBodyEncoding, encoding, err)
 }
 
 // gunzipWithLimit inflates a gzip stream, reading at most limit+1 bytes so an
