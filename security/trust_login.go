@@ -55,6 +55,13 @@ type TrustCodeStore interface {
 // by the same identifier (a shared HR master, for instance). Implement it when
 // the identifiers differ, or when the mapping depends on which external system
 // initiated the handoff.
+//
+// Either way, resolution is an authentication decision: the external system
+// vouched for who the user is, not for whether this application still admits
+// them. Whichever of the two runs must therefore refuse a disabled, locked or
+// expired account — returning a nil principal — exactly as the password path
+// does. Applications commonly keep that check in UserLoader.LoadByUsername
+// alone, where trust login never reaches it.
 type TrustUserResolver interface {
 	// ResolveUser returns the local principal that externalUserID denotes for
 	// appID, or a nil principal when no local user corresponds to it. Returning

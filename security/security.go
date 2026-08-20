@@ -68,6 +68,14 @@ type UserLoader interface {
 	LoadByUsername(ctx context.Context, username string) (*Principal, string, error)
 	// LoadByID retrieves a user by their unique identifier.
 	// Used for token refresh and session validation.
+	//
+	// It must apply the same account-state policy as LoadByUsername — a
+	// disabled, locked or expired account is not loadable. Refresh and session
+	// validation reach it behind a credential the account already presented, so
+	// a plain row fetch reads as sufficient; but with trust login enabled and
+	// no TrustUserResolver registered, whatever this returns is logged in. An
+	// account-state check that lives only in the password path is a hole the
+	// moment single sign-on is switched on.
 	LoadByID(ctx context.Context, id string) (*Principal, error)
 }
 
