@@ -87,8 +87,32 @@ func ProvideAPIResource(constructor any, paramTags ...string) fx.Option {
 }
 
 // ProvideMiddleware provides a middleware to the dependency injection container.
-// The middleware will be registered in the "vef:app:middlewares" group.
-// The constructor must return app.Middleware (not a concrete type).
+// The middleware will be registered in the "vef:app:middlewares" group and
+// mounted on the router in Order() sequence. It is how an application adds a
+// real route outside the /api surface.
+//
+// The constructor must return app.Middleware (not a concrete type). fx matches
+// a group by exact type, so a concrete return value is not rejected — it is
+// collected under its own type and never reaches the router.
+//
+// Example:
+//
+//	type ssoGateway struct{ /* ... */ }
+//
+//	func (*ssoGateway) Name() string { return "sso-gateway" }
+//
+//	func (*ssoGateway) Order() int { return 460 }
+//
+//	func (g *ssoGateway) Apply(router fiber.Router) {
+//	    router.Get("/sso/callback", g.handle)
+//	}
+//
+//	func newSSOGateway(db orm.DB) app.Middleware { return &ssoGateway{ /* ... */ } }
+//
+//	fx.New(
+//	    vef.Module,
+//	    vef.ProvideMiddleware(newSSOGateway),
+//	)
 func ProvideMiddleware(constructor any, paramTags ...string) fx.Option {
 	return fx.Provide(
 		fx.Annotate(

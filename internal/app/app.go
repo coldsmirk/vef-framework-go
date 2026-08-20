@@ -10,22 +10,18 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/api"
+	"github.com/coldsmirk/vef-framework-go/app"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/version"
 )
 
-// Middleware is a middleware for the app.
-type Middleware interface {
-	// Name returns the name of the middleware.
-	Name() string
-	// Order returns the order of the middleware. Negative orders register
-	// before the route handlers and positive orders after, each sorted
-	// ascending; the zero default registers in the before group.
-	Order() int
-	// Apply applies the middleware to the router.
-	Apply(router fiber.Router)
-}
+// Middleware aliases the public contract. Applications live in another module
+// and cannot import this package, so the interface itself belongs in app; the
+// alias keeps the framework's own references unqualified and — because an alias
+// is the same type, not a copy — keeps the fx group a host provides into and
+// the one assembled here identical.
+type Middleware = app.Middleware
 
 var logger = logx.Named("app")
 
