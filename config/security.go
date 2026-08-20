@@ -355,6 +355,9 @@ func (c *LockoutConfig) Validate() error {
 const (
 	DefaultTrustLoginPath    = "/sso/trust"
 	DefaultTrustLoginCodeTTL = 60 * time.Second
+
+	DefaultTrustLoginRateLimitMax    = 120
+	DefaultTrustLoginRateLimitPeriod = time.Minute
 )
 
 // TrustLoginConfig configures the trust-login single sign-on gateway: a
@@ -373,6 +376,12 @@ type TrustLoginConfig struct {
 	// Path is the gateway route. Default: /sso/trust. It is part of the signed
 	// payload, so changing it invalidates every link the external system has
 	// already generated.
+	//
+	// The external system must sign — and request — this path exactly. Fiber
+	// runs with StrictRouting off, so "/sso/trust/" still reaches the gateway
+	// but hashes as a different path: a trailing slash produces a permanent,
+	// opaque 401 rather than a routing error. It fails closed, but it is worth
+	// stating to whoever implements the signing side.
 	Path string `config:"path"`
 	// CodeTTL bounds how long the one-time code stays redeemable. Default: 60s.
 	// Keep it short: the code rides a redirect URL, so it lands in browser
@@ -391,6 +400,37 @@ type TrustLoginConfig struct {
 	// app ID. Note: the config layer lowercases TOML keys, so app IDs are
 	// effectively lowercase.
 	Apps map[string]TrustLoginAppConfig `config:"apps"`
+	// RateLimit bounds handoff attempts. The gateway is public and does an
+	// ExternalAppLoader lookup — typically a database round trip — before it
+	// can check anything, so it needs the same floodgate the integration
+	// inbound gateway has.
+	RateLimit TrustLoginRateLimitConfig `config:"rate_limit"`
+}
+
+// TrustLoginRateLimitConfig bounds trust-login handoff throughput. The limiter
+// counts per (app ID, client IP) per node, so one flooding source cannot
+// starve the other apps.
+//
+// The default is deliberately generous: the key includes the client IP, and a
+// whole organization behind one NAT legitimately signs in through the same
+// address at the start of a shift. It bounds a flood, it does not police
+// logins — a stolen handoff URL is stopped by the nonce store and the code TTL,
+// not by this.
+type TrustLoginRateLimitConfig struct {
+	// Max is the number of handoffs allowed per Period. Default: 120.
+	Max int `config:"max"`
+	// Period is the sliding window. Default: 1 minute.
+	Period time.Duration `config:"period"`
+}
+
+// EffectiveMax returns Max or its default.
+func (c *TrustLoginRateLimitConfig) EffectiveMax() int {
+	return coalescePositive(c.Max, DefaultTrustLoginRateLimitMax)
+}
+
+// EffectivePeriod returns Period or its default.
+func (c *TrustLoginRateLimitConfig) EffectivePeriod() time.Duration {
+	return coalescePositive(c.Period, DefaultTrustLoginRateLimitPeriod)
 }
 
 // TrustLoginAppConfig is one external system's trust-login policy.

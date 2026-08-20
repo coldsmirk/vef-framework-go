@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/config"
@@ -58,6 +59,7 @@ type TrustLoginMiddleware struct {
 	users    security.UserLoader
 	codes    security.TrustCodeStore
 	verifier *security.Signature
+	limit    fiber.Handler
 	cfg      config.TrustLoginConfig
 }
 
@@ -105,14 +107,32 @@ func NewTrustLoginMiddleware(params TrustLoginMiddlewareParams) (app.Middleware,
 		return nil, err
 	}
 
-	return &TrustLoginMiddleware{
+	middleware := &TrustLoginMiddleware{
 		apps:     params.Apps,
 		resolver: params.Resolver,
 		users:    params.Users,
 		codes:    params.Codes,
 		verifier: verifier,
 		cfg:      cfg,
-	}, nil
+	}
+	// The gateway is public and unauthenticated, and it resolves the app
+	// through ExternalAppLoader — typically a database round trip — before it
+	// can reject anything. Counting per (app ID, client IP) keeps one flooding
+	// source from starving the other apps, mirroring the integration inbound
+	// gateway, the framework's other public non-/api route.
+	middleware.limit = limiter.New(limiter.Config{
+		LimiterMiddleware: limiter.SlidingWindow{},
+		Max:               cfg.RateLimit.EffectiveMax(),
+		Expiration:        cfg.RateLimit.EffectivePeriod(),
+		KeyGenerator: func(ctx fiber.Ctx) string {
+			return ctx.Query(queryTrustAppID) + ":" + fiberx.GetIP(ctx)
+		},
+		LimitReached: func(ctx fiber.Ctx) error {
+			return middleware.reject(ctx, result.ErrTooManyRequests)
+		},
+	})
+
+	return middleware, nil
 }
 
 func (*TrustLoginMiddleware) Name() string {
@@ -126,7 +146,7 @@ func (*TrustLoginMiddleware) Order() int {
 }
 
 func (m *TrustLoginMiddleware) Apply(router fiber.Router) {
-	router.Get(m.cfg.EffectivePath(), m.handle)
+	router.Get(m.cfg.EffectivePath(), m.limit, m.handle)
 	logger.Infof("Trust login gateway registered at %s for %d external app(s)", m.cfg.EffectivePath(), len(m.cfg.Apps))
 }
 
@@ -147,7 +167,7 @@ func (m *TrustLoginMiddleware) handle(ctx fiber.Ctx) error {
 		Principal: handoff.principal,
 		AppID:     handoff.appID,
 		UserAgent: strings.Clone(ctx.Get(fiber.HeaderUserAgent)),
-		ClientIP:  strings.Clone(fiberx.GetIP(ctx)),
+		ClientIP:  fiberx.GetIP(ctx),
 	}, m.cfg.EffectiveCodeTTL())
 	if err != nil {
 		logger.Errorf("Trust login failed to issue a code for app %q: %v", handoff.appID, err)
@@ -156,6 +176,14 @@ func (m *TrustLoginMiddleware) handle(ctx fiber.Ctx) error {
 	}
 
 	logger.Infof("Trust login issued a code for app %q, user %q", handoff.appID, handoff.principal.ID)
+
+	// The Location header carries a bearer code, and the request URL it answers
+	// carries the signature. no-store keeps the redirect out of any cache that
+	// would hold the code past its TTL; no-referrer applies to the rest of the
+	// redirect chain, so the signed handoff URL is not handed to the
+	// destination as a Referer.
+	ctx.Set(fiber.HeaderCacheControl, "no-store")
+	ctx.Set(fiber.HeaderReferrerPolicy, "no-referrer")
 
 	return ctx.Redirect().Status(fiber.StatusFound).To(withTrustCode(handoff.redirect, handoff.appID, code))
 }

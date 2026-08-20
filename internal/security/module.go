@@ -67,7 +67,10 @@ var Module = fx.Module(
 			fx.ParamTags(`group:"vef:security:session_revocation_listeners"`),
 		),
 		newSessionStore,
-		newNonceStore,
+		fx.Annotate(
+			newNonceStore,
+			fx.ParamTags(`optional:"true"`),
+		),
 		fx.Annotate(
 			newTrustCodeStore,
 			fx.ParamTags(`optional:"true"`),
@@ -201,13 +204,29 @@ func newSessionStore() security.SessionStore {
 	return security.NewMemorySessionStore()
 }
 
-// newNonceStore provides the default in-memory replay-protection nonce store,
-// shared by every framework signature verifier (the API signature
-// authenticator and the integration inbound signature scheme). Multi-node
-// deployments override it with security.NewRedisNonceStore via fx.Decorate so
-// nonces are shared across nodes and a request cannot be replayed against a
-// second node inside the timestamp tolerance.
-func newNonceStore() security.NonceStore {
+// newNonceStore selects the replay-protection nonce store by deployment
+// topology, the same way newTrustCodeStore and lock.Locker do, rather than
+// defaulting to memory and waiting to be decorated. The store is shared by
+// every framework signature verifier — the API signature authenticator, the
+// integration inbound signature scheme, and the trust-login gateway.
+//
+// A per-process store means a signed request is replayable once per replica
+// inside the timestamp tolerance. That is a weakened guarantee for a server-to-
+// server API call, but trust login changes what is at stake: its signed URL is
+// a browser-visible credential that lands in history, Referer chains and
+// reverse-proxy logs, and each replay mints a fresh code bound to whichever
+// browser redeemed it. Hence the warning is raised while the gateway is on.
+func newNonceStore(client *redis.Client, cfg *config.SecurityConfig) security.NonceStore {
+	if client != nil {
+		return security.NewRedisNonceStore(client)
+	}
+
+	if cfg.TrustLogin.Enabled {
+		logger.Warnf(
+			"vef.redis is disabled; signature replay protection is using the in-process memory nonce store, so one signed trust login URL can be navigated once per replica — enable vef.redis before scaling beyond one replica.",
+		)
+	}
+
 	return security.NewMemoryNonceStore()
 }
 
