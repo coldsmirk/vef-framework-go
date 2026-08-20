@@ -409,15 +409,17 @@ func (a *AuthResource) publishLoginFailure(ctx fiber.Ctx, authType, username str
 	})
 }
 
-// publishLoginEvent stamps where the attempt came from and publishes it. The
-// origin values are copied out of the request: Fiber runs with Immutable off, so
-// the client address, the User-Agent and a client-supplied request id are views
-// into the pooled request buffer, and this event is published asynchronously —
-// a subscriber reads it once the request that raised it is long gone.
+// publishLoginEvent stamps where the attempt came from and publishes it. This
+// event is published asynchronously, so a subscriber reads it once the request
+// that raised it is long gone — every origin value must therefore be a copy
+// rather than a view into the pooled request buffer. The client address and the
+// request id already are: fiberx.GetIP and the logger middleware's request-id
+// boundary copy on the way out. The User-Agent is read straight off the request
+// here, so it is copied here.
 func (a *AuthResource) publishLoginEvent(ctx fiber.Ctx, params security.LoginEventParams) {
-	params.LoginIP = strings.Clone(fiberx.GetIP(ctx))
+	params.LoginIP = fiberx.GetIP(ctx)
 	params.UserAgent = strings.Clone(ctx.Get(fiber.HeaderUserAgent))
-	params.TraceID = strings.Clone(contextx.RequestID(ctx))
+	params.TraceID = contextx.RequestID(ctx)
 
 	_ = a.bus.Publish(ctx.Context(), security.NewLoginEvent(params), event.WithAsync())
 }
@@ -476,13 +478,13 @@ func (a *AuthResource) guardRecordSuccess(ctx fiber.Ctx, attempt security.LoginA
 }
 
 // sessionMeta captures the client context recorded on a session at token issue.
-// Both values are copied out of the request: Fiber runs with Immutable off, so
-// the User-Agent — and the client address once a trusted proxy header supplies
-// it — are views into the pooled request buffer, while the session they describe
-// outlives the request that opened it by up to its whole maximum lifetime.
+// The session outlives the request that opened it by up to its whole maximum
+// lifetime, so neither value may be a view into the pooled request buffer. The
+// client address is already copied by fiberx.GetIP; the User-Agent is read
+// straight off the request, so it is copied here.
 func sessionMeta(ctx fiber.Ctx) security.SessionMeta {
 	return security.SessionMeta{
-		ClientIP:  strings.Clone(fiberx.GetIP(ctx)),
+		ClientIP:  fiberx.GetIP(ctx),
 		UserAgent: strings.Clone(ctx.Get(fiber.HeaderUserAgent)),
 	}
 }

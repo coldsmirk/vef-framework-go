@@ -59,6 +59,13 @@ func (p *ProxyMiddleware) handleFileProxy(ctx fiber.Ctx) error {
 		return storage.ErrInvalidFileKey
 	}
 
+	// url.PathUnescape returns its input unchanged when there is nothing to
+	// unescape, so a key without escapes is still a view into the pooled
+	// request buffer. It is handed to storage.FileACL — a host extension point
+	// free to retain it — so copy it once here rather than trusting every
+	// implementation to.
+	key = strings.Clone(key)
+
 	// Reject path traversal, absolute paths, and control characters.
 	if !isValidObjectKey(key) {
 		return storage.ErrInvalidFileKey
