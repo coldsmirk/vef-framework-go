@@ -45,15 +45,15 @@ func (f *fakeRepo) DeleteOlderThan(ctx context.Context, cutoff timex.DateTime) (
 	return r.count, r.err
 }
 
-func (*fakeRepo) Acquire(_ context.Context, _, _ string, _ timex.DateTime) (pubinbox.AcquireResult, string, error) {
+func (*fakeRepo) Acquire(context.Context, string, string, timex.DateTime) (pubinbox.AcquireResult, string, error) {
 	panic("not expected")
 }
 
-func (*fakeRepo) MarkCompleted(_ context.Context, _, _, _ string) error {
+func (*fakeRepo) MarkCompleted(context.Context, string, string, string) error {
 	panic("not expected")
 }
 
-func (*fakeRepo) Release(_ context.Context, _, _, _ string) error {
+func (*fakeRepo) Release(context.Context, string, string, string) error {
 	panic("not expected")
 }
 
