@@ -11,12 +11,13 @@ go test ./...                  # Run all tests (required before submitting)
 go test -race ./...            # Race detection
 golangci-lint run              # Lint (auto-fix: golangci-lint run --fix)
 go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./...  # Modernize checks
+go run ./cmd/vef-lint ./...    # Repo-specific analyzers (auto-fix: -fix)
 ```
 
 ## Local Setup & Git Hooks
 
 - After cloning, run `task setup` (install [go-task](https://taskfile.dev) first). It installs `lefthook` and, when missing, `golangci-lint` — preferring Homebrew, else falling back to `go install` (lefthook) or the official pinned script / winget (golangci-lint) — then wires the git hooks. Each install task is `status:`-guarded, so a tool is installed only when absent. **Without Homebrew, `lefthook` is installed via `go install` into `$(go env GOPATH)/bin`, which must be on your `PATH` or the hooks won't be found.**
-- Hooks are managed by **lefthook** (`lefthook.yml`): the `commit-msg` hook runs commitlint (`.commitlintrc.json`, Conventional Commits + single-line); the `pre-push` hook runs `golangci-lint` then the modernize analyzer.
+- Hooks are managed by **lefthook** (`lefthook.yml`): the `commit-msg` hook runs commitlint (`.commitlintrc.json`, Conventional Commits + single-line); the `pre-push` hook runs `golangci-lint`, then the modernize analyzer, then `vef-lint`.
 - `Taskfile.yml` also exposes `task lint` and `task modernize` as shortcuts for those checks.
 
 ## Task Workflow
@@ -26,7 +27,7 @@ go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest
 3. **Code review**: after implementation, review code to ensure it hasn't drifted from the task goal.
 4. **Tests**: all general tasks must include corresponding test code. `TESTING.md` has fuller examples, but the critical rules are summarized in this file.
 5. **Simplification**: after each task, do a simplification pass yourself. Prefer smaller, clearer code over extra abstractions.
-6. **Verification**: run the narrowest relevant checks during development, and finish with `go test ./...`, `golangci-lint run`, and `go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./...` when the task scope allows it. All required checks green = feature complete.
+6. **Verification**: run the narrowest relevant checks during development, and finish with `go test ./...`, `golangci-lint run`, `go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./...`, and `go run ./cmd/vef-lint ./...` when the task scope allows it. All required checks green = feature complete.
 
 ## Definition of Done
 
@@ -122,7 +123,7 @@ Compression (`-1000`) → Headers (`-900`) → CORS (`-800`) → Body-Encoding (
 - **Code style**: lean handlers (delegate to services), composable FX modules, `fx.Annotate` with precise tags.
 - **Identifier naming**: when a name contains consecutive acronyms, keep the semantically more important acronym in standard form and Pascal-case the other for readability. Prefer `HTTPSUrl`, `HttpsURL`, `JSONApi`, or `JsonAPI`; avoid fully stacked forms like `HTTPSURL` or `JSONAPI`.
 - **Time field naming**: a time value's representation must be readable off its name. Structured instants (`timex.DateTime` / `time.Time`) take a bare `<verb>At` — `createdAt`, `finishedAt`, `expiresAt` — because the type already carries epoch and precision. Numeric instants spell out both (`<name>AtUnixMs`); numeric durations spell out the unit (`<name>Ms`, `<name>Seconds`, `<name>Hours`), milliseconds abbreviating to `Ms` and coarser units spelled out. Window bounds are verb-form `startsAt` / `endsAt`, never `startTime` / `endTime`. The suffix is load-bearing rather than decoration: `cron.TriggerSpec` carries `EveryMs int64` beside `At *time.Time`, and `ScheduleSpec.Timeout` (`time.Duration`, nanoseconds) sits one conversion away from `Schedule.TimeoutMs` (`int64`, milliseconds) — drop the suffix and those become same-named fields whose values differ by 10⁶, with the conversion no longer visible at the assignment. Keep one unit word per module: cron says `Ms` everywhere (`unixMsPtr`, `ceilUnixMs`), never `Milli`/`Millis`.
-- **Unused parameters & receivers**: omit the name entirely for unused receivers (`func (*Type) Method(...)`) and for parameter lists where every entry is unused (`func F(context.Context, string) error`). Do **not** write `_` in those cases. Only fall back to `_` when at least one parameter in the list is used — Go syntax requires every entry in a list to be either all-named or all-unnamed, so a partially-unused list must keep `_` for the unused entries (e.g. `func (s *Svc) Get(_ context.Context, key string) (...)`).
+- **Unused parameters & receivers**: omit the name entirely for unused receivers (`func (*Type) Method(...)`) and for parameter lists where every entry is unused (`func F(context.Context, string) error`). Do **not** write `_` in those cases. Only fall back to `_` when at least one parameter in the list is used — Go syntax requires every entry in a list to be either all-named or all-unnamed, so a partially-unused list must keep `_` for the unused entries (e.g. `func (s *Svc) Get(_ context.Context, key string) (...)`). **This convention is machine-enforced** by `vef-lint`'s `unusedrecv` and `unusedparam` analyzers, both of which carry an automatic fix (`go run ./cmd/vef-lint -fix ./...`); no golangci-lint linter can express it, because revive's `unused-receiver` / `unused-parameter` accept `_` as the answer and have no notion of "the whole list is unused".
 - **Empty struct methods**: use pointer receivers (`func (*T) Method(...)`) even for zero-size structs, for consistency with the rest of the codebase.
 - **Empty struct pointer initialization**: use `new(T)` instead of `&T{}` when constructing a pointer to a zero-value struct.
 - **No compile-time interface assertion vars**: do not write `var _ Iface = (*impl)(nil)` witness declarations. Interface conformance is proven by constructor return types and by tests that exercise the type through the interface.
@@ -236,11 +237,18 @@ A single convention governs every module that surfaces API errors. New modules M
 - Keep Cobra wiring in `command.go`; move reusable generation logic into `generator.go` or `templates.go` only when it improves clarity.
 - Command packages use idiomatic single-word lowercase names (for example `buildinfo`, `modelschema`), and the exported constructor is `Command() *cobra.Command`.
 
+`cmd/vef-lint`: the repository's own `go/analysis` analyzers, for conventions no off-the-shelf linter can express. It is a `multichecker`, so each rule gets an enable flag of its own (`-unusedrecv`, `-unusedparam`) while the shared `-fix` applies every suggested fix in place and `-diff` previews them instead. Test files are analyzed by default (`-test`).
+
+- Rules live one per file in `internal/lint` (`unusedrecv.go`, `unusedparam.go`) and join `Analyzers()` in `lint.go` — that registration is the only wiring a new rule needs.
+- Shared inspection helpers are in `funcdecl.go`: `funcDecls` (skips generated files, bodiless declarations, and function literals) and `isReferenced` (resolves through `TypesInfo`, so a shadowed name is not mistaken for a used one).
+- Every rule is tested with `analysistest.RunWithSuggestedFixes` against `testdata/src/<analyzer>/a.go` plus its `.golden`, which pins the diagnostics **and** the fixes. A fix that rewrites a signature must be tested against grouped parameter names: `_, _ string` is two parameters, so deleting names without repeating the type silently changes the function's arity — and the result usually still compiles.
+
 ## Quick Reference
 
 | Area | Location |
 |------|----------|
 | Entry point | `bootstrap.go`, `start.go`, `di.go` |
+| Custom analyzers | `cmd/vef-lint`, `internal/lint/*` |
 | App middleware contract | `app/` (contract), `internal/app/*` (impl) |
 | API internals | `internal/api/*` |
 | ORM | `internal/orm/*` |

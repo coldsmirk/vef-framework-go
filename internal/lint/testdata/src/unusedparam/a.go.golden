@@ -1,0 +1,49 @@
+package unusedparam
+
+func AllNamed(int, string) error { return nil } // want `every parameter is unused`
+
+func AllBlank(int, string) error { return nil } // want `every parameter is unused`
+
+// GroupedBlank declares three parameters, not two: dropping the names without
+// repeating the grouped type would change its arity.
+func GroupedBlank(string, string, int) error { return nil } // want `every parameter is unused`
+
+func GroupedNamed(int, int, string) error { return nil } // want `every parameter is unused`
+
+func Variadic(...int) error { return nil } // want `every parameter is unused`
+
+func Functional(func(int) error, int) error { return nil } // want `every parameter is unused`
+
+func AlreadyOmitted(int, string) error { return nil }
+
+func NoParams() error { return nil }
+
+func PartlyUnused(a int, _ string) error { // want `parameter "b" is unused`
+	_ = a
+
+	return nil
+}
+
+func PartlyGrouped(a, _ int) error { // want `parameter "b" is unused`
+	_ = a
+
+	return nil
+}
+
+func PartlyBlank(a int, _ string) error {
+	_ = a
+
+	return nil
+}
+
+func AllUsed(a int, b string) error {
+	_, _ = a, b
+
+	return nil
+}
+
+// Literal keeps its parameter because the closure reads it, and the closure's
+// own unused parameter is out of scope for this rule.
+func Literal(a int) func(int) int {
+	return func(unused int) int { return a }
+}
