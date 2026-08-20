@@ -2,10 +2,12 @@ package security_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -158,9 +160,17 @@ func (s *TrustLoginMiddlewareTestSuite) handoff(userID, redirect string) url.Val
 
 // get issues the handoff request and returns the raw response.
 func (s *TrustLoginMiddlewareTestSuite) get(query url.Values) *http.Response {
+	return s.getAs(query, "")
+}
+
+// getAs issues the handoff request presenting the given User-Agent.
+func (s *TrustLoginMiddlewareTestSuite) getAs(query url.Values, userAgent string) *http.Response {
 	s.T().Helper()
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, trustGatewayPath+"?"+query.Encode(), nil)
+	if userAgent != "" {
+		req.Header.Set(fiber.HeaderUserAgent, userAgent)
+	}
 
 	resp, err := s.App.Test(req, 30*time.Second)
 	s.Require().NoError(err, "The gateway request should complete")
@@ -178,6 +188,33 @@ func (s *TrustLoginMiddlewareTestSuite) redeem(appID, code string) *http.Respons
 			"credentials": code,
 		},
 	})
+}
+
+// redeemAs exchanges a code through the ordinary login endpoint, presenting the
+// given User-Agent. It builds the request rather than going through the suite
+// helper because the header is the thing under test: the suite's requests carry
+// no User-Agent, so a binding check against them only ever compares "" to "".
+func (s *TrustLoginMiddlewareTestSuite) redeemAs(appID, code, userAgent string) *http.Response {
+	s.T().Helper()
+
+	body, err := json.Marshal(api.Request{
+		Identifier: api.Identifier{Resource: "security/auth", Action: "login", Version: "v1"},
+		Params: map[string]any{
+			"type":        "trust_code",
+			"principal":   appID,
+			"credentials": code,
+		},
+	})
+	s.Require().NoError(err, "Marshaling the redemption request should succeed")
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api", strings.NewReader(string(body)))
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
+	req.Header.Set(fiber.HeaderUserAgent, userAgent)
+
+	resp, err := s.App.Test(req, 30*time.Second)
+	s.Require().NoError(err, "The redemption request should complete")
+
+	return resp
 }
 
 // codeFrom asserts a successful redirect and returns the issued code.
@@ -232,6 +269,36 @@ func (s *TrustLoginMiddlewareTestSuite) TestEndToEnd() {
 		Identifier: api.Identifier{Resource: "security/auth", Action: "logout", Version: "v1"},
 	}, accessToken)
 	s.Equal(http.StatusOK, logout.StatusCode, "The issued token should authenticate a protected call")
+}
+
+// TestBrowserBindingIsWired drives both legs with a real User-Agent, which is
+// what makes the binding a live check rather than a comparison of "" to "".
+// It spans the gateway (which records the redirected browser) and the API auth
+// middleware (which must publish the redeeming request's User-Agent into the
+// request context for the authenticator to read) — deleting either half leaves
+// the unit tests of both green, so only an end-to-end pass pins the wiring.
+func (s *TrustLoginMiddlewareTestSuite) TestBrowserBindingIsWired() {
+	const (
+		issuingBrowser = "Mozilla/5.0 (TrustLoginIssuingBrowser)"
+		anotherBrowser = "Mozilla/5.0 (TrustLoginAnotherBrowser)"
+	)
+
+	s.Run("SameBrowserRedeems", func() {
+		code := s.codeFrom(s.getAs(s.handoff(trustExternalID, trustRedirect), issuingBrowser))
+
+		s.True(s.ReadResult(s.redeemAs(trustAppID, code, issuingBrowser)).IsOk(),
+			"The browser the gateway redirected must be able to redeem its own code")
+	})
+
+	s.Run("DifferentBrowserRejected", func() {
+		code := s.codeFrom(s.getAs(s.handoff(trustExternalID, trustRedirect), issuingBrowser))
+
+		redeemed := s.ReadResult(s.redeemAs(trustAppID, code, anotherBrowser))
+		s.False(redeemed.IsOk(),
+			"A code lifted out of the URL and replayed from another browser must be refused")
+		s.Equal(security.ErrCodeTrustCodeInvalid, redeemed.Code,
+			"A browser mismatch must report the same verdict as an unknown code")
+	})
 }
 
 // TestCodeIsSingleUse proves the redirect URL left in browser history is inert
