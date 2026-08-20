@@ -246,7 +246,8 @@ formatters:
           replacement: "a[b:]"
     gofumpt:
       module-path: github.com/coldsmirk/vef-framework-go
-      extra-rules: true
+      extra:
+        group-params: true
     goimports:
       local-prefixes:
         - github.com/coldsmirk/vef-framework-go
