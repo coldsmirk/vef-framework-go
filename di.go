@@ -209,6 +209,44 @@ func ProvideCQRSBehavior(constructor any, paramTags ...string) fx.Option {
 	)
 }
 
+// ProvideAuthenticator registers a custom login authenticator. It joins the
+// "vef:security:authenticators" group, and security/auth.login dispatches to it
+// by the credential type it accepts from Supports.
+//
+// Routing a custom mechanism through the login endpoint is what earns it the
+// rest of the pipeline: the brute-force guard, the full challenge chain, token
+// issuance under the configured mechanism, session concurrency, and the login
+// audit event. An authenticator that resolves identities from an external
+// identity provider is the usual reason to add one.
+//
+// The constructor must return security.Authenticator (not a concrete type).
+//
+// Example:
+//
+//	type ssoAuthenticator struct{ /* ... */ }
+//
+//	func (*ssoAuthenticator) Supports(authType string) bool { return authType == "sso" }
+//
+//	func (a *ssoAuthenticator) Authenticate(ctx context.Context, authentication security.Authentication) (*security.Principal, error) {
+//	    /* redeem the credential with the identity provider and map it to a local principal */
+//	}
+//
+//	func newSSOAuthenticator(db orm.DB) security.Authenticator { return &ssoAuthenticator{ /* ... */ } }
+//
+//	fx.New(
+//	    vef.Module,
+//	    vef.ProvideAuthenticator(newSSOAuthenticator),
+//	)
+func ProvideAuthenticator(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:security:authenticators"`),
+		),
+	)
+}
+
 // ProvideChallengeProvider provides a login challenge provider to the dependency injection container.
 // The provider will be registered in the "vef:security:challenge_providers" group.
 // The constructor must return security.ChallengeProvider (not a concrete type).
