@@ -1,6 +1,7 @@
 package middleware_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -47,7 +48,7 @@ func newRequestIDApp(captured *[]string) *fiber.App {
 func get(t *testing.T, app *fiber.App, requestID string) {
 	t.Helper()
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 	req.Header.Set(fiber.HeaderXRequestID, requestID)
 
 	resp, err := app.Test(req)
@@ -85,7 +86,7 @@ func TestGeneratedRequestIDIsPreserved(t *testing.T) {
 
 	app := newRequestIDApp(&captured)
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "The request should complete")
 	require.Equal(t, http.StatusOK, resp.StatusCode, "The request should succeed")

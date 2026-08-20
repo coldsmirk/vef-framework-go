@@ -105,8 +105,12 @@ func TestGetIP(t *testing.T) {
 		}
 
 		require.Len(t, captured, 2, "both requests should have captured an address")
-		assert.Equal(t, openingIP, captured[0],
-			"behind a trusted proxy the resolved address is a view into the pooled request buffer, so GetIP must copy it: the first address must still read as its own after a later request reused the buffer")
+		assert.Equal(
+			t,
+			openingIP,
+			captured[0],
+			"behind a trusted proxy the resolved address is a view into the pooled request buffer, so GetIP must copy it: the first address must still read as its own after a later request reused the buffer",
+		)
 		assert.Equal(t, laterIP, captured[1], "the second address must read as its own")
 	})
 }
