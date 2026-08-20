@@ -511,6 +511,43 @@ func ProvideApprovalFormSchemaParser(constructor any, paramTags ...string) fx.Op
 	)
 }
 
+// ProvideApprovalGlobalsResolver overrides the framework's default
+// approval.InstanceGlobalsResolver — which resolves nothing — with a host
+// implementation, so flows can route on variables beyond the form data and the
+// built-in applicant subjects: tenant attributes, applicant roles, business
+// limits, and so on. The constructor must return
+// approval.InstanceGlobalsResolver.
+//
+// Resolution runs server-side at instance start, from the authenticated
+// principal, and the result is snapshotted onto Instance.Globals. It is
+// deliberately not a request parameter: globals steer condition branches, so an
+// applicant who could supply them could steer their own approval. Being a
+// snapshot also means a flow re-evaluates the same way on every traversal —
+// like the applicant's department, the values describe the world at initiation,
+// not live state.
+//
+// Condition evaluation then resolves a field condition's subject against the
+// snapshot before the form data (so a global shadows a same-named form field,
+// exactly as the applicant subjects do), and binds every entry as a top-level
+// name for expression conditions (where the built-in formData / applicantId /
+// applicantDepartmentId bindings win a collision).
+//
+// Example:
+//
+//	fx.New(
+//	    vef.Module,
+//	    vef.ApprovalModule,
+//	    vef.ProvideApprovalGlobalsResolver(newMyGlobalsResolver),
+//	)
+func ProvideApprovalGlobalsResolver(constructor any, paramTags ...string) fx.Option {
+	return fx.Decorate(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+		),
+	)
+}
+
 // SupplyURLKeyMapper replaces the framework-provided default
 // storage.URLKeyMapper (storage.ProxyURLKeyMapper) with a
 // business-specific implementation. The default mapper strips and
