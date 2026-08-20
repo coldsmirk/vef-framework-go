@@ -506,9 +506,47 @@ func TestSignatureBoundParameters(t *testing.T) {
 			}, boundTimestamp, boundNonce)
 
 			assert.Equal(t,
-				"app_id=test-app&method=POST&nonce=fixed-nonce&path=/api&redirect=http://app.local/home&timestamp=1700000000&user_id=5756",
+				"app_id=test-app&method=POST&nonce=fixed-nonce&path=/api&redirect=http%3A%2F%2Fapp.local%2Fhome&timestamp=1700000000&user_id=5756",
 				string(payload),
-				"Bound parameters must interleave into the same ascending key order as the fixed fields")
+				"Bound parameters must interleave into the same ascending key order as the fixed fields, with their keys and values percent-encoded per RFC 3986")
+		})
+
+		// Bound parameters are caller-supplied, so the delimiters have to be
+		// unambiguous. Rendered raw, these two distinct parameter sets flatten
+		// to the identical string x=1&y=2&y=3 — a signature minted for one
+		// would verify the other, which for a signed link means the covered
+		// parameters can be reshuffled at will.
+		t.Run("DelimitersAreUnambiguous", func(t *testing.T) {
+			request := func(bound map[string]string) SignatureRequest {
+				return SignatureRequest{AppID: "test-app", Method: testSigMethod, Path: testSigPath, BoundParams: bound}
+			}
+
+			valueCarriesDelimiter := sig.buildPayload(request(map[string]string{"x": "1&y=2", "y": "3"}), boundTimestamp, boundNonce)
+			delimiterInOtherValue := sig.buildPayload(request(map[string]string{"x": "1", "y": "2&y=3"}), boundTimestamp, boundNonce)
+
+			assert.NotEqual(t, string(valueCarriesDelimiter), string(delimiterInOtherValue),
+				"Two distinct bound parameter sets must never render the same canonical payload")
+
+			keyCarriesDelimiter := sig.buildPayload(request(map[string]string{"a=b": "c"}), boundTimestamp, boundNonce)
+			delimiterInValue := sig.buildPayload(request(map[string]string{"a": "b=c"}), boundTimestamp, boundNonce)
+
+			assert.NotEqual(t, string(keyCarriesDelimiter), string(delimiterInValue),
+				"A delimiter inside a bound key must not collide with one inside a value")
+		})
+
+		// A signed handoff carries the redirect it authorizes, and a real
+		// redirect carries its own query string. Encoding is what keeps that
+		// "&" from being read as the payload's own separator.
+		t.Run("RedirectWithQueryString", func(t *testing.T) {
+			payload := sig.buildPayload(SignatureRequest{
+				AppID: "test-app", Method: testSigMethod, Path: testSigPath,
+				BoundParams: map[string]string{"redirect": "http://app.local/home?a=1&b=2"},
+			}, boundTimestamp, boundNonce)
+
+			assert.Equal(t,
+				"app_id=test-app&method=POST&nonce=fixed-nonce&path=/api&redirect=http%3A%2F%2Fapp.local%2Fhome%3Fa%3D1%26b%3D2&timestamp=1700000000",
+				string(payload),
+				"A redirect's own query separators must be encoded, not folded into the payload's")
 		})
 
 		t.Run("EmptyBoundMatchesNil", func(t *testing.T) {

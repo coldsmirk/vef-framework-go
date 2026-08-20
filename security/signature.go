@@ -253,6 +253,15 @@ func (s *Signature) checkAndStoreNonce(ctx context.Context, appID, nonce string)
 //
 // The fixed keys are already ascending among themselves, so a request with no
 // bound parameters reproduces the payload of a scheme that covers nothing else.
+//
+// Bound keys and values are percent-encoded, the fixed ones are not. The
+// asymmetry is the point on both sides. Bound parameters are caller-supplied and
+// arbitrary — a signed redirect URL routinely carries "&" and "=" — and rendered
+// raw they make the payload ambiguous: {"x": "1&y=2", "y": "3"} and
+// {"x": "1", "y": "2&y=3"} both flatten to x=1&y=2&y=3, so a signature minted
+// for one verifies the other. Encoding the fixed values instead would change the
+// string every third party already generates for plain API signature auth, which
+// the byte-for-byte lock in TestSignatureBoundParameters exists to prevent.
 func (*Signature) buildPayload(request SignatureRequest, timestamp int64, nonce string) []byte {
 	params := map[string]string{
 		"app_id":    request.AppID,
@@ -261,8 +270,13 @@ func (*Signature) buildPayload(request SignatureRequest, timestamp int64, nonce 
 		"path":      request.Path,
 		"timestamp": strconv.FormatInt(timestamp, 10),
 	}
-	// Safe to overlay: validateBoundKeys has already rejected any collision.
-	maps.Copy(params, request.BoundParams)
+
+	// Safe to overlay: validateBoundKeys has already rejected any collision,
+	// and percent-encoding is injective over unreserved keys, so an encoded
+	// bound key can only equal a fixed key if the raw one already did.
+	for key, value := range request.BoundParams {
+		params[encodeSignatureComponent(key)] = encodeSignatureComponent(value)
+	}
 
 	var payload []byte
 
@@ -275,6 +289,49 @@ func (*Signature) buildPayload(request SignatureRequest, timestamp int64, nonce 
 	}
 
 	return payload
+}
+
+// encodeSignatureComponent percent-encodes one bound key or value for the
+// canonical payload.
+//
+// The rule is RFC 3986 verbatim so third parties can reproduce it in any
+// language: every byte outside the unreserved set (A-Z a-z 0-9 - . _ ~) becomes
+// %XX with uppercase hex digits, a space included. It is deliberately not
+// url.QueryEscape — that renders a space as "+" and is a URL-form convention
+// rather than a signing one — and deliberately not encodeURIComponent, which
+// leaves !'()* unescaped. AWS SigV4 canonicalizes the same way.
+func encodeSignatureComponent(s string) string {
+	const upperhex = "0123456789ABCDEF"
+
+	var builder strings.Builder
+
+	for i := range len(s) {
+		c := s[i]
+		if isUnreservedByte(c) {
+			builder.WriteByte(c)
+
+			continue
+		}
+
+		builder.WriteByte('%')
+		builder.WriteByte(upperhex[c>>4])
+		builder.WriteByte(upperhex[c&0x0f])
+	}
+
+	return builder.String()
+}
+
+// isUnreservedByte reports whether c is an RFC 3986 unreserved character, the
+// only bytes encodeSignatureComponent passes through untouched.
+func isUnreservedByte(c byte) bool {
+	switch {
+	case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9':
+		return true
+	case c == '-', c == '.', c == '_', c == '~':
+		return true
+	default:
+		return false
+	}
 }
 
 // validateBoundKeys rejects bound parameters that would collide with the
