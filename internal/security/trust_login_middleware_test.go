@@ -313,6 +313,27 @@ func (s *TrustLoginMiddlewareTestSuite) TestCodeIsSingleUse() {
 	s.Equal(security.ErrCodeTrustCodeInvalid, replayed.Code, "A replayed code should report the trust-code verdict")
 }
 
+// TestBogusCodesDoNotLockOutTheApp pins that the exchange stays outside the
+// brute-force guard. The identity a trust_code login presents is the app ID, so
+// counting its failures would put every user of that system in one lockout
+// bucket — and the default max_failures is reached here in a dozen requests
+// anybody can send. The code itself is unguessable, single-use and seconds-
+// lived, so the guard has nothing to protect on this path anyway.
+func (s *TrustLoginMiddlewareTestSuite) TestBogusCodesDoNotLockOutTheApp() {
+	// Comfortably past config.LockoutConfig's default MaxFailures of 10.
+	for range 15 {
+		rejected := s.ReadResult(s.redeem(trustAppID, "not-a-real-code"))
+		s.Require().False(rejected.IsOk(), "A bogus code must be refused")
+		s.Require().Equal(security.ErrCodeTrustCodeInvalid, rejected.Code,
+			"A bogus code must report the trust-code verdict, never a lockout")
+	}
+
+	code := s.codeFrom(s.get(s.handoff(trustExternalID, trustRedirect)))
+
+	s.True(s.ReadResult(s.redeem(trustAppID, code)).IsOk(),
+		"A real handoff must still be redeemable after a flood of bogus codes")
+}
+
 // TestTamperedHandoff is the regression lock for the vulnerability this design
 // exists to close: every parameter a link carries is covered by the signature,
 // so holding one valid link buys nothing beyond replaying it verbatim.
