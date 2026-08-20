@@ -47,3 +47,14 @@ func AllUsed(a int, b string) error {
 func Literal(a int) func(int) int {
 	return func(unused int) int { return a }
 }
+
+// AnnotatedGroup annotates one name of a grouped parameter. The names and the
+// type they share are rewritten as a single span, so the comment between them
+// would be deleted with them — the diagnostic therefore stands without a fix,
+// and the golden file keeps this signature unchanged.
+func AnnotatedGroup( // want `every parameter is unused; omit the names and keep only the types \(no fix offered: a comment sits inside the parameter list\)`
+	a, // the count
+	b int,
+) error {
+	return nil
+}

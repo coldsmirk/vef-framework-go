@@ -2,12 +2,14 @@ package lint
 
 import (
 	"go/ast"
+	"go/token"
 	"iter"
 
 	"golang.org/x/tools/go/analysis"
 )
 
-// funcDecls yields every function and method declaration that has a body.
+// funcDecls yields every function and method declaration that has a body,
+// paired with the file it was declared in.
 //
 // A declaration without one is an assembly or linkname stub whose parameters no
 // Go code can reference, so "unused" says nothing about it. Generated files are
@@ -15,8 +17,11 @@ import (
 // next run. Function literals are deliberately out of scope: a callback's
 // signature is dictated by whoever calls it, and naming a parameter it does not
 // read is often how the closure documents which slot it is filling.
-func funcDecls(pass *analysis.Pass) iter.Seq[*ast.FuncDecl] {
-	return func(yield func(*ast.FuncDecl) bool) {
+//
+// The file comes along because every fix these rules propose deletes a span of
+// source, and a span may hold a comment (see holdsComment).
+func funcDecls(pass *analysis.Pass) iter.Seq2[*ast.File, *ast.FuncDecl] {
+	return func(yield func(*ast.File, *ast.FuncDecl) bool) {
 		for _, file := range pass.Files {
 			if ast.IsGenerated(file) {
 				continue
@@ -28,12 +33,31 @@ func funcDecls(pass *analysis.Pass) iter.Seq[*ast.FuncDecl] {
 					continue
 				}
 
-				if !yield(fn) {
+				if !yield(file, fn) {
 					return
 				}
 			}
 		}
 	}
+}
+
+// holdsComment reports whether any comment in file falls inside [pos, end).
+//
+// Both rules fix by replacing a span that runs from an identifier to its type,
+// and a comment written between the two lives inside that span. Rewriting it
+// away would delete something a person wrote to explain the very declaration
+// being changed, and the comment has nowhere to survive: once the name is gone
+// there is nothing left for it to annotate. So the span is checked first and
+// the fix withheld — the diagnostic still stands, the edit is simply left to a
+// human who can decide where the prose belongs.
+func holdsComment(file *ast.File, pos, end token.Pos) bool {
+	for _, group := range file.Comments {
+		if group.End() > pos && group.Pos() < end {
+			return true
+		}
+	}
+
+	return false
 }
 
 // isReferenced reports whether the object declared by name is read or written

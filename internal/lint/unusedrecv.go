@@ -21,14 +21,14 @@ var UnusedRecv = &analysis.Analyzer{
 }
 
 func runUnusedRecv(pass *analysis.Pass) (any, error) {
-	for decl := range funcDecls(pass) {
-		reportUnusedRecv(pass, decl)
+	for file, decl := range funcDecls(pass) {
+		reportUnusedRecv(pass, file, decl)
 	}
 
 	return nil, nil
 }
 
-func reportUnusedRecv(pass *analysis.Pass, decl *ast.FuncDecl) {
+func reportUnusedRecv(pass *analysis.Pass, file *ast.File, decl *ast.FuncDecl) {
 	if decl.Recv == nil || len(decl.Recv.List) == 0 {
 		return
 	}
@@ -45,13 +45,22 @@ func reportUnusedRecv(pass *analysis.Pass, decl *ast.FuncDecl) {
 		return
 	}
 
-	pass.Report(analysis.Diagnostic{
+	diagnostic := analysis.Diagnostic{
 		Pos:     name.Pos(),
 		End:     name.End(),
 		Message: fmt.Sprintf("receiver %q is unused; omit the name and keep only the type", name.Name),
-		SuggestedFixes: []analysis.SuggestedFix{{
+	}
+
+	// A comment written between the receiver name and its type sits inside the
+	// span the fix deletes, so the fix is withheld rather than made to eat it.
+	if holdsComment(file, name.Pos(), field.Type.Pos()) {
+		diagnostic.Message += " (no fix offered: a comment sits inside the receiver)"
+	} else {
+		diagnostic.SuggestedFixes = []analysis.SuggestedFix{{
 			Message:   "omit the receiver name",
 			TextEdits: []analysis.TextEdit{{Pos: name.Pos(), End: field.Type.Pos()}},
-		}},
-	})
+		}}
+	}
+
+	pass.Report(diagnostic)
 }

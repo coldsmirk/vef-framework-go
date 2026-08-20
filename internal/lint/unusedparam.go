@@ -27,8 +27,8 @@ var UnusedParam = &analysis.Analyzer{
 }
 
 func runUnusedParam(pass *analysis.Pass) (any, error) {
-	for decl := range funcDecls(pass) {
-		if err := reportUnusedParams(pass, decl); err != nil {
+	for file, decl := range funcDecls(pass) {
+		if err := reportUnusedParams(pass, file, decl); err != nil {
 			return nil, err
 		}
 	}
@@ -36,7 +36,7 @@ func runUnusedParam(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-func reportUnusedParams(pass *analysis.Pass, decl *ast.FuncDecl) error {
+func reportUnusedParams(pass *analysis.Pass, file *ast.File, decl *ast.FuncDecl) error {
 	params := decl.Type.Params
 	if params == nil {
 		return nil
@@ -58,7 +58,7 @@ func reportUnusedParams(pass *analysis.Pass, decl *ast.FuncDecl) error {
 	case len(named) == 0, len(unused) == 0:
 		return nil
 	case len(unused) == len(named):
-		return reportWholeListUnused(pass, params)
+		return reportWholeListUnused(pass, file, params)
 	default:
 		reportBlankableParams(pass, unused)
 
@@ -67,13 +67,21 @@ func reportUnusedParams(pass *analysis.Pass, decl *ast.FuncDecl) error {
 }
 
 // reportWholeListUnused proposes dropping every name from a parameter list no
-// part of which is read.
-func reportWholeListUnused(pass *analysis.Pass, params *ast.FieldList) error {
+// part of which is read. The proposal is withheld when a comment sits between a
+// name and its type, since the rewrite would delete it.
+func reportWholeListUnused(pass *analysis.Pass, file *ast.File, params *ast.FieldList) error {
 	edits := make([]analysis.TextEdit, 0, len(params.List))
+	annotated := false
 
 	for _, field := range params.List {
 		if len(field.Names) == 0 {
 			continue
+		}
+
+		if holdsComment(file, field.Names[0].Pos(), field.Type.End()) {
+			annotated = true
+
+			break
 		}
 
 		// A field groups several names onto one type, so "_, _ string"
@@ -93,15 +101,22 @@ func reportWholeListUnused(pass *analysis.Pass, params *ast.FieldList) error {
 		})
 	}
 
-	pass.Report(analysis.Diagnostic{
+	diagnostic := analysis.Diagnostic{
 		Pos:     params.Pos(),
 		End:     params.End(),
 		Message: "every parameter is unused; omit the names and keep only the types",
-		SuggestedFixes: []analysis.SuggestedFix{{
+	}
+
+	if annotated {
+		diagnostic.Message += " (no fix offered: a comment sits inside the parameter list)"
+	} else {
+		diagnostic.SuggestedFixes = []analysis.SuggestedFix{{
 			Message:   "omit every parameter name",
 			TextEdits: edits,
-		}},
-	})
+		}}
+	}
+
+	pass.Report(diagnostic)
 
 	return nil
 }

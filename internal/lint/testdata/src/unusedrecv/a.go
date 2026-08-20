@@ -23,3 +23,9 @@ func (t *T) Shadowed() string { // want `receiver "t" is unused`
 }
 
 func Plain() string { return "plain" }
+
+// Annotated names its receiver and explains the name in place; the fix would
+// delete that comment, so none is offered.
+func (t /* the widget */ *T) Annotated() string { // want `receiver "t" is unused`
+	return "annotated"
+}
