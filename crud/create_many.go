@@ -49,7 +49,7 @@ func (c *createManyOperation[TModel, TParams]) WithPostCreateMany(processor Post
 	return c
 }
 
-func (c *createManyOperation[TModel, TParams]) createMany(files storage.Files) (func(ctx fiber.Ctx, db orm.DB, params CreateManyParams[TParams]) error, error) {
+func (c *createManyOperation[TModel, TParams]) createMany(files storage.Files) func(ctx fiber.Ctx, db orm.DB, params CreateManyParams[TParams]) error {
 	typedFiles := storage.NewFilesFor[TModel](files)
 
 	return func(ctx fiber.Ctx, db orm.DB, params CreateManyParams[TParams]) error {
@@ -102,5 +102,5 @@ func (c *createManyOperation[TModel, TParams]) createMany(files storage.Files) (
 
 			return result.Ok(pks, result.WithMessage(i18n.T(MessageCreated))).Response(ctx)
 		})
-	}, nil
+	}
 }

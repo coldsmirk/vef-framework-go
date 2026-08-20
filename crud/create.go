@@ -49,7 +49,7 @@ func (c *createOperation[TModel, TParams]) WithPostCreate(processor PostCreatePr
 	return c
 }
 
-func (c *createOperation[TModel, TParams]) create(files storage.Files) (func(ctx fiber.Ctx, db orm.DB, params TParams) error, error) {
+func (c *createOperation[TModel, TParams]) create(files storage.Files) func(ctx fiber.Ctx, db orm.DB, params TParams) error {
 	typedFiles := storage.NewFilesFor[TModel](files)
 
 	return func(ctx fiber.Ctx, db orm.DB, params TParams) error {
@@ -87,5 +87,5 @@ func (c *createOperation[TModel, TParams]) create(files storage.Files) (func(ctx
 
 			return result.Ok(pks, result.WithMessage(i18n.T(MessageCreated))).Response(ctx)
 		})
-	}, nil
+	}
 }
