@@ -108,7 +108,8 @@ func (m *Inbox) WrapConsume(next middleware.ConsumeHandler) middleware.ConsumeHa
 				// effects must be idempotent across such overlap.
 				inboxLogger.Warnf(
 					"event inbox lock lost after handler success: group=%s event_id=%s lock_id=%s",
-					group, env.ID, lockID)
+					group, env.ID, lockID,
+				)
 
 				return nil
 			}

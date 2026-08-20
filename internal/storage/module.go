@@ -88,7 +88,8 @@ func verifyEventRouting(lc fx.Lifecycle, inspector event.RouteInspector) {
 							"routing rule for pattern \"vef.storage.*\" → [\"outbox\", \"memory\"] — the second "+
 							"entry is vef.event.transports.outbox.sink, required for host subscribers to attach — "+
 							"or set vef.event.default_transport=\"outbox\")",
-						ErrEventRouteNotTransactional, et)
+						ErrEventRouteNotTransactional, et,
+					)
 				}
 			}
 

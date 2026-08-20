@@ -189,7 +189,8 @@ func (c *EventInboxConfig) EffectiveCleanupInterval() time.Duration {
 // delivery from the outbox could arrive after its inbox dedupe entry
 // has already been pruned, producing double-execution.
 var ErrInboxRetentionTooShort = errors.New(
-	"event: inbox.retention is shorter than the outbox exponential-backoff horizon")
+	"event: inbox.retention is shorter than the outbox exponential-backoff horizon",
+)
 
 // Validate checks invariants that cross multiple subtrees of the
 // EventConfig. Called once at fx Start. Currently enforced:

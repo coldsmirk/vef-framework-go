@@ -626,7 +626,8 @@ func (suite *EBBasicExpressionsTestSuite) TestCase() {
 					cb.When(
 						func(cond orm.ConditionBuilder) {
 							cond.GreaterThan("view_count", 80)
-						}).
+						},
+					).
 						Then("Popular").
 						When(func(cond orm.ConditionBuilder) {
 							cond.GreaterThan("view_count", 30)
@@ -695,7 +696,8 @@ func (suite *EBBasicExpressionsTestSuite) TestCase() {
 							cb.When(
 								func(cond orm.ConditionBuilder) {
 									cond.GreaterThan("view_count", 100)
-								}).
+								},
+							).
 								Then("High").
 								When(func(cond orm.ConditionBuilder) {
 									cond.GreaterThan("view_count", 50)
@@ -1762,7 +1764,8 @@ func (suite *EBBasicExpressionsTestSuite) TestExprByDialect() {
 							cb.When(
 								func(cond orm.ConditionBuilder) {
 									cond.GreaterThan("view_count", 80)
-								}).
+								},
+							).
 								Then("High").
 								When(func(cond orm.ConditionBuilder) {
 									cond.GreaterThan("view_count", 30)

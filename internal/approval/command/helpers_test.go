@@ -30,7 +30,9 @@ import (
 type testBindingSchemaService struct{}
 
 func (*testBindingSchemaService) ListTables(context.Context) ([]schema.Table, error) { return nil, nil }
-func (*testBindingSchemaService) ListViews(context.Context) ([]schema.View, error)   { return nil, nil }
+
+func (*testBindingSchemaService) ListViews(context.Context) ([]schema.View, error) { return nil, nil }
+
 func (*testBindingSchemaService) GetTableSchema(_ context.Context, name string) (*schema.TableSchema, error) {
 	return &schema.TableSchema{
 		Name: name,

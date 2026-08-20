@@ -40,7 +40,8 @@ func newTxMemoryTransport(cfg *config.EventConfig) transport.Transport {
 		"Transport %q is enabled: events publish in-process and are NOT durable — "+
 			"anything published between commit and delivery is lost if this process dies. "+
 			"Intended for development against a shared database; use the outbox in production.",
-		txmemory.Name)
+		txmemory.Name,
+	)
 
 	return itxmemory.New(txMemoryConfig(cfg), txMemoryLogger)
 }

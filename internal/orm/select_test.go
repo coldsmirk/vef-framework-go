@@ -1330,7 +1330,8 @@ func (suite *SelectTestSuite) TestJoins() {
 				func(cb orm.ConditionBuilder) {
 					cb.EqualsColumn("active_users.id", "user_id")
 				},
-				"active_users").
+				"active_users",
+			).
 			Where(func(cb orm.ConditionBuilder) {
 				cb.Equals("status", "published")
 			}).
@@ -1664,7 +1665,8 @@ func (suite *SelectTestSuite) TestGroupByAndHaving() {
 					cb.When(
 						func(cond orm.ConditionBuilder) {
 							cond.GreaterThan("age", 30)
-						}).
+						},
+					).
 						Then("Senior").
 						Else("Junior")
 				})
@@ -1677,7 +1679,8 @@ func (suite *SelectTestSuite) TestGroupByAndHaving() {
 					cb.When(
 						func(cond orm.ConditionBuilder) {
 							cond.GreaterThan("age", 30)
-						}).
+						},
+					).
 						Then("Senior").
 						Else("Junior")
 				})
@@ -1775,7 +1778,8 @@ func (suite *SelectTestSuite) TestOrderBy() {
 					cb.When(
 						func(cond orm.ConditionBuilder) {
 							cond.IsTrue("is_active")
-						}).
+						},
+					).
 						Then(eb.Add(eb.Column("age"), 100)).
 						Else(eb.Column("age"))
 				})
@@ -1785,7 +1789,8 @@ func (suite *SelectTestSuite) TestOrderBy() {
 					cb.When(
 						func(cond orm.ConditionBuilder) {
 							cond.IsTrue("is_active")
-						}).
+						},
+					).
 						Then(eb.Add(eb.Column("age"), 100)).
 						Else(eb.Column("age"))
 				})

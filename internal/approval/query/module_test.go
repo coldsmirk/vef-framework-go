@@ -152,7 +152,8 @@ func TestRegisterHandlers(t *testing.T) {
 			defer recoverDispatch(&err)
 
 			_, err = cqrs.Send[FindAdminBusinessProjectionsQuery, *page.Page[admin.BusinessProjection]](
-				context.Background(), bus, FindAdminBusinessProjectionsQuery{})
+				context.Background(), bus, FindAdminBusinessProjectionsQuery{},
+			)
 
 			return err
 		}},

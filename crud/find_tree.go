@@ -146,7 +146,8 @@ func (a *findTreeOperation[TModel, TSearch]) findTree(db orm.DB) (func(ctx fiber
 						},
 					)
 				})
-			}).
+			},
+		).
 			Distinct().
 			Table("_tree")
 

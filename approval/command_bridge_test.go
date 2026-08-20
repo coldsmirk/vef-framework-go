@@ -45,7 +45,8 @@ func registerRecorder(handlerErr error) (cqrs.Bus, *[]*ShipOrderCmd) {
 			received = append(received, cmd)
 
 			return cqrs.Unit{}, handlerErr
-		}))
+		},
+	))
 
 	return bus, &received
 }
@@ -105,7 +106,8 @@ func TestBindCommand(t *testing.T) {
 		commands := cqrs.NewBus(nil)
 
 		cqrs.Register(commands, cqrs.HandlerFunc[*ShipOrderCmd, string](
-			func(context.Context, *ShipOrderCmd) (string, error) { return "tracking-no", nil }))
+			func(context.Context, *ShipOrderCmd) (string, error) { return "tracking-no", nil },
+		))
 
 		unsubscribe, err := BindCommand(spy, commands, shipMapper)
 		require.NoError(t, err, "Binding should succeed")

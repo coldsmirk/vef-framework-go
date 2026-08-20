@@ -139,7 +139,8 @@ func (r *FileResource) Resolve(ctx fiber.Ctx, principal *security.Principal, par
 	if denied > 0 {
 		logger.Debugf(
 			"FileACL denied %d of %d requested key(s) for principal %q; those files resolve to no original filename",
-			denied, len(params.Keys), principal.ID)
+			denied, len(params.Keys), principal.ID,
+		)
 	}
 
 	return result.Ok(ResolveResult{Files: files}).Response(ctx)

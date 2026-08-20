@@ -25,14 +25,16 @@ var subscribeLogger = logx.Named("approval:subscribe")
 // positional counter (func1, func2, …) that silently changes when code
 // moves, so it can never be a stable identity.
 var ErrAnonymousSubscriberGroup = errors.New(
-	"approval: anonymous handler cannot derive a stable consumer group; pass approval.WithGroup")
+	"approval: anonymous handler cannot derive a stable consumer group; pass approval.WithGroup",
+)
 
 // ErrDerivedGroupConflict is returned when two subscriptions in the same
 // process derive the same consumer group — almost always the same method
 // subscribed twice. Explicit groups are exempt: sharing a named group is a
 // legitimate load-balancing choice.
 var ErrDerivedGroupConflict = errors.New(
-	"approval: derived consumer group already registered in this process; pass approval.WithGroup to disambiguate")
+	"approval: derived consumer group already registered in this process; pass approval.WithGroup to disambiguate",
+)
 
 // InstanceEvent is the closed set of instance-scoped domain events — every
 // event type embedding InstanceEventBase satisfies it automatically. It is

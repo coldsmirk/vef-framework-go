@@ -151,7 +151,8 @@ func (a *findTreeOptionsOperation[TModel, TSearch]) findTreeOptions(db orm.DB) (
 						},
 					)
 				})
-			}).
+			},
+		).
 			With("_ids", func(query orm.SelectQuery) {
 				query.Table("_tree").
 					Select(IDColumn).

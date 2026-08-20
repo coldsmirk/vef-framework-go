@@ -52,7 +52,8 @@ func (a *RequestScopedDataPermApplier) Apply(query orm.SelectQuery) error {
 	if !a.dataScope.Supports(a.principal, table) {
 		a.logger.Debugf(
 			"Data scope %q is not applicable to table %q, skipping data permission",
-			a.dataScope.Key(), table.TypeName)
+			a.dataScope.Key(), table.TypeName,
+		)
 
 		return nil
 	}

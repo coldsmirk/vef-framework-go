@@ -113,7 +113,8 @@ func verifyEventRouting(lc fx.Lifecycle, inspector event.RouteInspector) {
 							"routing rule for pattern \"approval.*\" -> [\"outbox\", \"memory\"] — the second entry is "+
 							"vef.event.transports.outbox.sink, required for host subscribers to attach — "+
 							"or another transactional transport)",
-						ErrEventRouteNotTransactional, et)
+						ErrEventRouteNotTransactional, et,
+					)
 				}
 			}
 

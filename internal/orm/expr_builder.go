@@ -1941,7 +1941,8 @@ func (b *QueryExprBuilder) JSONKeys(json any, path ...any) schema.QueryAppender 
 					sq.TableExpr(
 						func(eb ExprBuilder) any {
 							return eb.Expr("JSON_EACH(?)", source)
-						}).
+						},
+					).
 						SelectExpr(func(eb ExprBuilder) any {
 							return eb.Expr("JSON_GROUP_ARRAY(key)")
 						})

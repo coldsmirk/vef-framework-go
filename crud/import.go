@@ -175,7 +175,8 @@ func (i *importOperation[TModel]) importData() func(ctx fiber.Ctx, db orm.DB, lo
 				fiber.Map{
 					"total": len(models),
 				},
-				result.WithMessage(i18n.T(MessageImported))).
+				result.WithMessage(i18n.T(MessageImported)),
+			).
 				Response(ctx)
 		})
 	}

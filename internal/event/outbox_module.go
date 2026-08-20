@@ -220,7 +220,8 @@ func validateOutboxSinkRoute(
 			"%s resolves only to the publish-only outbox: events publish and relay to %q, but every "+
 				"Subscribe against this route fails with ErrNoRouteMatched. Add %q alongside \"outbox\" "+
 				"to let subscribers attach; ignore this if the route is publish-only by design",
-			origin, sinkName, sinkName)
+			origin, sinkName, sinkName,
+		)
 	}
 
 	for _, rule := range eventCfg.Routing {
@@ -239,7 +240,8 @@ func validateOutboxSinkRoute(
 				"vef.event.transports.outbox.sink to one of %v",
 			ErrOutboxSinkRouteMismatch,
 			rule.Pattern, rule.Transports, sinkName, subscribable,
-			sinkName, subscribable, subscribable)
+			sinkName, subscribable, subscribable,
+		)
 	}
 
 	return nil

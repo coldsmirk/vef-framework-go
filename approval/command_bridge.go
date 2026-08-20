@@ -16,7 +16,8 @@ import (
 // query has no side effect to trigger, so binding one is always a
 // programming error.
 var ErrNonCommandAction = errors.New(
-	"approval: BindCommand requires a command action type; queries cannot be bound to instance events")
+	"approval: BindCommand requires a command action type; queries cannot be bound to instance events",
+)
 
 // ErrUnnamedCommandType is returned when the bound command type is not a
 // named concrete type (an anonymous struct or an interface). Commands are the
@@ -24,7 +25,8 @@ var ErrNonCommandAction = errors.New(
 // lines, and the dispatch key from the type's identity, which such types do
 // not have.
 var ErrUnnamedCommandType = errors.New(
-	"approval: bound command must be a named concrete type")
+	"approval: bound command must be a named concrete type",
+)
 
 // derivedCommandGroupPrefix parallels derivedGroupPrefix: handler-identity
 // groups use "vef:sub:", command-identity groups use "vef:cmd:".

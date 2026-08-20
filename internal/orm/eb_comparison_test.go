@@ -640,7 +640,8 @@ func (suite *EBComparisonExpressionsTestSuite) TestIn() {
 		for _, result := range results {
 			suite.True(
 				result.ViewCount == 23 || result.ViewCount == 42 || result.ViewCount == 85 || result.ViewCount == 96,
-				"ViewCount should be in allowed list")
+				"ViewCount should be in allowed list",
+			)
 		}
 	})
 
@@ -756,7 +757,8 @@ func (suite *EBComparisonExpressionsTestSuite) TestNotIn() {
 		for _, result := range results {
 			suite.True(
 				result.ViewCount != 0 && result.ViewCount != 10 && result.ViewCount != 20,
-				"ViewCount should not be in excluded list")
+				"ViewCount should not be in excluded list",
+			)
 		}
 	})
 
