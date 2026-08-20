@@ -82,7 +82,9 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: latest
-          args: --timeout=5m
+          # The 5m default was exceeded on a cold cache (318s) as the repo grew,
+          # which fails the run regardless of findings.
+          args: --timeout=15m
 
   modernize:
     name: Modernize
