@@ -69,6 +69,32 @@ func (page Page[T]) HasPrevious() bool {
 	return page.Page > 1
 }
 
+// Map converts a page's items to another type, carrying the pagination
+// metadata across unchanged.
+//
+// Turning a Page[Model] into a Page[VO] is the last step of nearly every list
+// endpoint, and hand-rolling it means restating Page, Size and Total at each
+// call site — the three fields a conversion has no business touching. The
+// method form is what keeps that from happening: before Go 1.27 a method could
+// not introduce a type parameter, so this had to be a free function taking the
+// page as an argument, which reads no better than the loop it replaces.
+//
+// Like New it never produces a nil slice, so an empty page still serializes as
+// [] rather than null.
+func (page Page[T]) Map[R any](convert func(T) R) Page[R] {
+	items := make([]R, 0, len(page.Items))
+	for _, item := range page.Items {
+		items = append(items, convert(item))
+	}
+
+	return Page[R]{
+		Page:  page.Page,
+		Size:  page.Size,
+		Total: page.Total,
+		Items: items,
+	}
+}
+
 // New creates a new page from pageable parameters, total count, and items.
 // It ensures items is never nil and returns an empty slice if needed.
 func New[T any](pageable Pageable, total int64, items []T) Page[T] {

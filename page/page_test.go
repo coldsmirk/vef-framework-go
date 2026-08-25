@@ -382,3 +382,91 @@ func TestPaginationScenarios(t *testing.T) {
 		})
 	})
 }
+
+// TestPageMap covers converting a page's items to another type.
+func TestPageMap(t *testing.T) {
+	type user struct {
+		ID   string
+		Name string
+	}
+
+	source := Page[user]{
+		Page:  2,
+		Size:  10,
+		Total: 42,
+		Items: []user{{ID: "u1", Name: "amy"}, {ID: "u2", Name: "bo"}},
+	}
+
+	t.Run("ConvertsItemsAndCarriesMetadata", func(t *testing.T) {
+		mapped := source.Map(func(u user) string { return u.Name })
+
+		assert.Equal(t, []string{"amy", "bo"}, mapped.Items, "every item must be converted in order")
+		assert.Equal(t, source.Page, mapped.Page, "the page number must be carried across unchanged")
+		assert.Equal(t, source.Size, mapped.Size, "the page size must be carried across unchanged")
+		assert.Equal(t, source.Total, mapped.Total, "the total count must be carried across unchanged")
+	})
+
+	t.Run("LeavesTheSourceUntouched", func(t *testing.T) {
+		_ = source.Map(func(u user) string { return u.Name })
+
+		assert.Equal(t, []user{{ID: "u1", Name: "amy"}, {ID: "u2", Name: "bo"}}, source.Items,
+			"a value receiver must not let the conversion write back into the original page")
+	})
+
+	t.Run("DerivedMetadataStillHolds", func(t *testing.T) {
+		mapped := source.Map(func(u user) string { return u.Name })
+
+		assert.Equal(t, source.TotalPages(), mapped.TotalPages(), "carrying Size and Total across must preserve the page count")
+		assert.Equal(t, source.HasNext(), mapped.HasNext(), "navigation must answer the same on the converted page")
+		assert.Equal(t, source.HasPrevious(), mapped.HasPrevious(), "navigation must answer the same on the converted page")
+	})
+
+	t.Run("CallsTheConverterOncePerItemInOrder", func(t *testing.T) {
+		var seen []string
+
+		source.Map(func(u user) string {
+			seen = append(seen, u.ID)
+
+			return u.ID
+		})
+
+		assert.Equal(t, []string{"u1", "u2"}, seen, "each item must reach the converter exactly once, in order")
+	})
+
+	t.Run("EmptyItemsStaySerializableAsAnArray", func(t *testing.T) {
+		mapped := Page[user]{Page: 1, Size: 10}.Map(func(u user) string { return u.Name })
+
+		require.NotNil(t, mapped.Items, "an empty page must not produce a nil slice")
+		assert.Empty(t, mapped.Items, "no items in means no items out")
+
+		encoded, err := json.Marshal(mapped)
+		require.NoError(t, err, "the converted page must marshal")
+		assert.Contains(t, string(encoded), `"items":[]`, "an empty page must serialize as [] rather than null")
+	})
+
+	t.Run("NilItemsBecomeAnEmptySlice", func(t *testing.T) {
+		mapped := Page[user]{Page: 1, Size: 10, Total: 0, Items: nil}.Map(func(u user) string { return u.Name })
+
+		require.NotNil(t, mapped.Items, "New guarantees non-nil items and Map must not reintroduce nil")
+	})
+
+	t.Run("ChainsAcrossSeveralTypes", func(t *testing.T) {
+		type label struct{ Text string }
+
+		mapped := source.
+			Map(func(u user) label { return label{Text: u.Name} }).
+			Map(func(l label) int { return len(l.Text) })
+
+		assert.Equal(t, []int{3, 2}, mapped.Items, "a conversion must be able to feed the next one without leaving the chain")
+		assert.Equal(t, int64(42), mapped.Total, "metadata must survive every hop")
+	})
+
+	t.Run("BuildsOnAPageFromNew", func(t *testing.T) {
+		built := New(Pageable{Page: 1, Size: 2}, 5, []user{{ID: "u1", Name: "amy"}})
+
+		mapped := built.Map(func(u user) string { return u.ID })
+
+		assert.Equal(t, []string{"u1"}, mapped.Items, "the constructor's page must convert like any other")
+		assert.Equal(t, 3, mapped.TotalPages(), "5 records at 2 per page is 3 pages, before and after conversion")
+	})
+}
