@@ -46,7 +46,7 @@ VEF Framework Go combines dependency injection, HTTP routing, and data access in
 ## Quick Start
 
 Requirements:
-- Go 1.26.0 or newer
+- Go 1.27.0 or newer
 - No C toolchain required — the framework builds with `CGO_ENABLED=0`; the built-in expression engine uses the pure-Go `expr-lang` library
 - A supported database such as PostgreSQL, MySQL, or SQLite
 
