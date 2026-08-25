@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 
 	"ariga.io/atlas/sql/mysql"
 	"ariga.io/atlas/sql/postgres"
@@ -17,6 +18,11 @@ import (
 
 // DefaultService is the default implementation of schema.Service.
 type DefaultService struct {
+	db     *sql.DB
+	kind   config.DBKind
+	schema string
+
+	mu        sync.Mutex
 	inspector *AtlasInspector
 }
 
@@ -25,22 +31,66 @@ type DefaultService struct {
 // callers that need to introspect a non-primary source should inject
 // datasource.Registry, fetch the connection, and drive atlas inspection
 // themselves.
+//
+// The dialect is validated here but the Atlas inspector is opened on first
+// use, because opening it queries the server. A constructor that dials makes
+// the whole graph unbuildable without a reachable database — which is the same
+// reason the data source module opens without blocking and pings from a start
+// hook, and what lets the API surface be described offline.
 func NewService(db *sql.DB, dataSources *config.DataSourcesConfig) (schema.Service, error) {
 	primary := dataSources.Primary()
+	if !isSupportedDBKind(primary.Kind) {
+		return nil, fmt.Errorf("%w: %s", errUnsupportedDBKind, primary.Kind)
+	}
 
-	inspector, err := NewInspector(db, primary.Kind, primary.Schema)
+	return &DefaultService{db: db, kind: primary.Kind, schema: primary.Schema}, nil
+}
+
+// isSupportedDBKind reports whether schema inspection can run against a kind.
+func isSupportedDBKind(kind config.DBKind) bool {
+	switch kind {
+	case config.Postgres, config.MySQL, config.SQLite:
+		return true
+	default:
+		return false
+	}
+}
+
+// resolve opens the Atlas inspector on the first inspection and reuses it
+// afterwards.
+//
+// Only success is remembered. Opening queries the server for its version, so it
+// can fail for reasons that pass — a restart during a rolling deploy, a moment
+// of pool exhaustion — and caching that failure would leave schema inspection
+// permanently broken for the life of the process, recoverable only by a
+// restart. That is strictly worse than the eager construction this replaced,
+// where a failure at least took the boot down and let the supervisor retry.
+func (s *DefaultService) resolve() (*AtlasInspector, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.inspector != nil {
+		return s.inspector, nil
+	}
+
+	inspector, err := NewInspector(s.db, s.kind, s.schema)
 	if err != nil {
 		return nil, err
 	}
 
-	return &DefaultService{
-		inspector: inspector,
-	}, nil
+	s.inspector = inspector
+
+	return inspector, nil
 }
 
 // ListTables returns all tables in the current database/schema.
 func (s *DefaultService) ListTables(ctx context.Context) ([]schema.Table, error) {
-	inspected, err := s.inspector.InspectSchema(ctx)
+	inspector, err := s.resolve()
+	if err != nil {
+		return nil, err
+	}
+
+	inspected, err := inspector.InspectSchema(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect schema: %w", err)
 	}
@@ -63,7 +113,12 @@ func (s *DefaultService) ListTables(ctx context.Context) ([]schema.Table, error)
 
 // GetTableSchema returns detailed structure information about a specific table.
 func (s *DefaultService) GetTableSchema(ctx context.Context, name string) (*schema.TableSchema, error) {
-	table, err := s.inspector.InspectTable(ctx, name)
+	inspector, err := s.resolve()
+	if err != nil {
+		return nil, err
+	}
+
+	table, err := inspector.InspectTable(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect table: %w", err)
 	}
@@ -124,6 +179,7 @@ func convertColumns(t *as.Table, info *schema.TableSchema, pkColumns map[string]
 			Name:            col.Name,
 			Type:            col.Type.Raw,
 			Nullable:        col.Type.Null,
+			MaxLength:       characterMaxLength(col.Type.Type),
 			IsPrimaryKey:    pkColumns[col.Name],
 			IsAutoIncrement: hasAutoIncrement(col),
 			Comment:         extractComment(col.Attrs),
@@ -137,6 +193,17 @@ func convertColumns(t *as.Table, info *schema.TableSchema, pkColumns map[string]
 
 		info.Columns[i] = colInfo
 	}
+}
+
+// characterMaxLength reports a character column's declared bound, or zero for
+// any other type. Atlas normalizes the length out of the raw type name on some
+// dialects, so the typed column is the only place it is reliably available.
+func characterMaxLength(columnType as.Type) int {
+	if text, ok := columnType.(*as.StringType); ok {
+		return text.Size
+	}
+
+	return 0
 }
 
 // convertIndexes converts Atlas indexes to schema indexes and unique keys.
@@ -283,7 +350,12 @@ func hasAutoIncrement(col *as.Column) bool {
 
 // ListViews returns all views in the current database/schema.
 func (s *DefaultService) ListViews(ctx context.Context) ([]schema.View, error) {
-	views, err := s.inspector.InspectViews(ctx)
+	inspector, err := s.resolve()
+	if err != nil {
+		return nil, err
+	}
+
+	views, err := inspector.InspectViews(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect views: %w", err)
 	}

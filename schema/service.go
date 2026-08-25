@@ -24,9 +24,15 @@ type TableSchema struct {
 
 // Column represents database column metadata.
 type Column struct {
-	Name            string `json:"name"`
-	Type            string `json:"type"`
-	Nullable        bool   `json:"nullable"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Nullable bool   `json:"nullable"`
+	// MaxLength is a character column's declared bound, zero when the column
+	// is unbounded or not a character type. It is reported separately because
+	// Type is the dialect's own spelling and does not consistently carry the
+	// bound: PostgreSQL names the type "character varying" with the length
+	// held elsewhere, while MySQL spells it "varchar(128)".
+	MaxLength       int    `json:"maxLength,omitempty"`
 	Default         string `json:"default,omitempty"`
 	Comment         string `json:"comment,omitempty"`
 	IsPrimaryKey    bool   `json:"isPrimaryKey,omitempty"`
