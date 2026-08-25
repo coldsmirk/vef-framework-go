@@ -2,6 +2,7 @@ package buildinfo
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
@@ -37,9 +38,9 @@ Example usage in go:generate:
 
 			output := termenv.DefaultOutput()
 
-			cliout.PrintLabeledLine(output, "Generating build info...", "", termenv.ANSICyan)
-			cliout.PrintLabeledLine(output, "  Output file: ", outputFile, termenv.ANSIBrightBlack)
-			cliout.PrintLabeledLine(output, "  Package: ", pkg, termenv.ANSIBrightBlack)
+			cliout.PrintLabeledLine(os.Stdout, output, "Generating build info...", "", termenv.ANSICyan)
+			cliout.PrintLabeledLine(os.Stdout, output, "  Output file: ", outputFile, termenv.ANSIBrightBlack)
+			cliout.PrintLabeledLine(os.Stdout, output, "  Package: ", pkg, termenv.ANSIBrightBlack)
 
 			if err := Generate(outputFile, pkg); err != nil {
 				return fmt.Errorf("failed to generate build info: %w", err)

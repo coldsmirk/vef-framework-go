@@ -86,10 +86,10 @@ func runGenerateModelSchema(cmd *cobra.Command, _ []string) error {
 		return errInputOutputMismatch
 	}
 
-	cliout.PrintLabeledLine(output, "Generating model schemas...", "", termenv.ANSICyan)
-	cliout.PrintLabeledLine(output, "  Input: ", input, termenv.ANSIBrightBlack)
-	cliout.PrintLabeledLine(output, "  Output: ", outputPath, termenv.ANSIBrightBlack)
-	cliout.PrintLabeledLine(output, "  Package: ", pkg, termenv.ANSIBrightBlack)
+	cliout.PrintLabeledLine(os.Stdout, output, "Generating model schemas...", "", termenv.ANSICyan)
+	cliout.PrintLabeledLine(os.Stdout, output, "  Input: ", input, termenv.ANSIBrightBlack)
+	cliout.PrintLabeledLine(os.Stdout, output, "  Output: ", outputPath, termenv.ANSIBrightBlack)
+	cliout.PrintLabeledLine(os.Stdout, output, "  Package: ", pkg, termenv.ANSIBrightBlack)
 
 	if inputIsDir {
 		if err := GenerateDirectory(input, outputPath, pkg); err != nil {
