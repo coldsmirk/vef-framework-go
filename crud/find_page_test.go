@@ -20,12 +20,10 @@ import (
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
 		return &FindPageTestSuite{
-			BaseTestSuite: BaseTestSuite{
-				ctx:   env.Ctx,
-				db:    env.DB,
-				bunDB: env.BunDB,
-				ds:    env.DS,
-			},
+			ctx:   env.Ctx,
+			db:    env.DB,
+			bunDB: env.BunDB,
+			ds:    env.DS,
 		}
 	})
 }
@@ -166,11 +164,9 @@ func (suite *FindPageTestSuite) TestFindPageBasic() {
 	suite.T().Logf("Testing FindPage API basic functionality for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_page",
-			Action:   "find_page",
-			Version:  "v1",
-		},
+		Resource: "test/employee_page",
+		Action:   "find_page",
+		Version:  "v1",
 		Meta: map[string]any{
 			"page": 1,
 			"size": 5,
@@ -200,11 +196,9 @@ func (suite *FindPageTestSuite) TestFindPagePagination() {
 
 	suite.Run("FirstPage", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_page",
-				Action:   "find_page",
-				Version:  "v1",
-			},
+			Resource: "test/employee_page",
+			Action:   "find_page",
+			Version:  "v1",
 			Meta: map[string]any{
 				"page": 1,
 				"size": 3,
@@ -228,11 +222,9 @@ func (suite *FindPageTestSuite) TestFindPagePagination() {
 
 	suite.Run("SecondPage", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_page",
-				Action:   "find_page",
-				Version:  "v1",
-			},
+			Resource: "test/employee_page",
+			Action:   "find_page",
+			Version:  "v1",
 			Meta: map[string]any{
 				"page": 2,
 				"size": 3,
@@ -256,11 +248,9 @@ func (suite *FindPageTestSuite) TestFindPagePagination() {
 
 	suite.Run("LastPage", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_page",
-				Action:   "find_page",
-				Version:  "v1",
-			},
+			Resource: "test/employee_page",
+			Action:   "find_page",
+			Version:  "v1",
 			Meta: map[string]any{
 				"page": 9,
 				"size": 3,
@@ -283,11 +273,9 @@ func (suite *FindPageTestSuite) TestFindPagePagination() {
 
 	suite.Run("EmptyPage", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_page",
-				Action:   "find_page",
-				Version:  "v1",
-			},
+			Resource: "test/employee_page",
+			Action:   "find_page",
+			Version:  "v1",
 			Meta: map[string]any{
 				"page": 100,
 				"size": 10,
@@ -313,11 +301,9 @@ func (suite *FindPageTestSuite) TestFindPageWithSearch() {
 	suite.T().Logf("Testing FindPage API with search filters for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_page",
-			Action:   "find_page",
-			Version:  "v1",
-		},
+		Resource: "test/employee_page",
+		Action:   "find_page",
+		Version:  "v1",
 		Meta: map[string]any{
 			"page": 1,
 			"size": 10,
@@ -345,11 +331,9 @@ func (suite *FindPageTestSuite) TestFindPageWithProcessor() {
 	suite.T().Logf("Testing FindPage API with processor for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_page_processed",
-			Action:   "find_page",
-			Version:  "v1",
-		},
+		Resource: "test/employee_page_processed",
+		Action:   "find_page",
+		Version:  "v1",
 		Meta: map[string]any{
 			"page": 1,
 			"size": 5,
@@ -377,11 +361,9 @@ func (suite *FindPageTestSuite) TestFindPageWithFilterApplier() {
 	suite.T().Logf("Testing FindPage API with filter applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_page_filtered",
-			Action:   "find_page",
-			Version:  "v1",
-		},
+		Resource: "test/employee_page_filtered",
+		Action:   "find_page",
+		Version:  "v1",
 		Meta: map[string]any{
 			"page": 1,
 			"size": 10,
@@ -407,11 +389,9 @@ func (suite *FindPageTestSuite) TestFindPageNegativeCases() {
 
 	suite.Run("InvalidPageNumber", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_page",
-				Action:   "find_page",
-				Version:  "v1",
-			},
+			Resource: "test/employee_page",
+			Action:   "find_page",
+			Version:  "v1",
 			Meta: map[string]any{
 				"page": 0,
 				"size": 10,
@@ -430,11 +410,9 @@ func (suite *FindPageTestSuite) TestFindPageNegativeCases() {
 
 	suite.Run("InvalidPageSize", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_page",
-				Action:   "find_page",
-				Version:  "v1",
-			},
+			Resource: "test/employee_page",
+			Action:   "find_page",
+			Version:  "v1",
 			Meta: map[string]any{
 				"page": 1,
 				"size": 0,
@@ -455,11 +433,9 @@ func (suite *FindPageTestSuite) TestFindPageNegativeCases() {
 
 	suite.Run("NoMatchingRecords", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_page",
-				Action:   "find_page",
-				Version:  "v1",
-			},
+			Resource: "test/employee_page",
+			Action:   "find_page",
+			Version:  "v1",
 			Meta: map[string]any{
 				"page": 1,
 				"size": 10,
@@ -488,11 +464,9 @@ func (suite *FindPageTestSuite) TestFindPageWithAuditUserNames() {
 	suite.T().Logf("Testing FindPage API with audit user names for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_page_audit",
-			Action:   "find_page",
-			Version:  "v1",
-		},
+		Resource: "test/employee_page_audit",
+		Action:   "find_page",
+		Version:  "v1",
 		Meta: map[string]any{
 			"page": 1,
 			"size": 5,
@@ -537,11 +511,9 @@ func (suite *FindPageTestSuite) TestFindPageWithDefaultPageSize() {
 	suite.T().Logf("Testing FindPage API with WithDefaultPageSize for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_page_default_size",
-			Action:   "find_page",
-			Version:  "v1",
-		},
+		Resource: "test/employee_page_default_size",
+		Action:   "find_page",
+		Version:  "v1",
 		Meta: map[string]any{
 			"page": 1,
 			"size": 0,
@@ -567,11 +539,9 @@ func (suite *FindPageTestSuite) TestFindPageErrorQueryApplier() {
 	suite.T().Logf("Testing FindPage API error query applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_page_err_applier",
-			Action:   "find_page",
-			Version:  "v1",
-		},
+		Resource: "test/employee_page_err_applier",
+		Action:   "find_page",
+		Version:  "v1",
 		Meta: map[string]any{
 			"page": 1,
 			"size": 10,

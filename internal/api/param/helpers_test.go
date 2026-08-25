@@ -181,7 +181,7 @@ func TestSearchEmbeddedFields(t *testing.T) {
 	}
 
 	t.Run("EmbeddedTypeMatch", func(t *testing.T) {
-		target := reflect.ValueOf(WithEmbed{Base: Base{ID: "123"}, Name: "test"})
+		target := reflect.ValueOf(WithEmbed{ID: "123", Name: "test"})
 		found := searchEmbeddedFields(target, reflect.TypeFor[Base]())
 
 		assert.True(t, found.IsValid(), "Should find embedded type")

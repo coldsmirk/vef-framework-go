@@ -212,9 +212,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 	t.Run("RejectsInvalidCCKind", func(t *testing.T) {
 		def := linearFlow()
 		data, err := json.Marshal(&approval.ApprovalNodeData{
-			TaskNodeData: approval.TaskNodeData{
-				CCs: []approval.CCDefinition{{Kind: approval.CCKind("bogus"), IDs: []string{"x"}}},
-			},
+			CCs: []approval.CCDefinition{{Kind: approval.CCKind("bogus"), IDs: []string{"x"}}},
 		})
 		require.NoError(t, err, "Should marshal approval node data")
 
@@ -228,9 +226,7 @@ func TestValidateFlowDefinition(t *testing.T) {
 	t.Run("AcceptsValidCCKind", func(t *testing.T) {
 		def := linearFlow()
 		data, err := json.Marshal(&approval.ApprovalNodeData{
-			TaskNodeData: approval.TaskNodeData{
-				CCs: []approval.CCDefinition{{Kind: approval.CCUser, IDs: []string{"u1"}}},
-			},
+			CCs: []approval.CCDefinition{{Kind: approval.CCUser, IDs: []string{"u1"}}},
 		})
 		require.NoError(t, err, "Should marshal approval node data")
 

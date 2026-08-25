@@ -215,8 +215,8 @@ func toMap(v any) map[string]any {
 func simpleFlowDef() approval.FlowDefinition {
 	return approval.FlowDefinition{
 		Nodes: []approval.NodeDefinition{
-			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{BaseNodeData: approval.BaseNodeData{Name: "开始"}})},
-			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{BaseNodeData: approval.BaseNodeData{Name: "结束"}})},
+			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "开始"})},
+			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "结束"})},
 		},
 		Edges: []approval.EdgeDefinition{
 			{ID: "edge-1", Source: "start-1", Target: "end-1"},
@@ -229,31 +229,33 @@ func simpleFlowDef() approval.FlowDefinition {
 func approvalFlowDef() approval.FlowDefinition {
 	return approval.FlowDefinition{
 		Nodes: []approval.NodeDefinition{
-			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{BaseNodeData: approval.BaseNodeData{Name: "开始"}})},
-			{ID: "approval-1", Kind: approval.NodeApproval, Data: mustMarshal(approval.ApprovalNodeData{
-				BaseNodeData: approval.BaseNodeData{Name: "审批"},
-				TaskNodeData: approval.TaskNodeData{
+			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "开始"})},
+			{
+				ID:   "approval-1",
+				Kind: approval.NodeApproval,
+				Data: mustMarshal(approval.ApprovalNodeData{
+					Name: "审批",
 					Assignees: []approval.AssigneeDefinition{
 						{Kind: approval.AssigneeUser, IDs: []string{"test-admin"}, SortOrder: 1},
 					},
 					CCs: []approval.CCDefinition{
 						{Kind: approval.CCUser, IDs: []string{"cc-user-1"}, Timing: approval.CCTimingAlways},
 					},
-					ExecutionType:       approval.ExecutionManual,
-					EmptyAssigneeAction: approval.EmptyAssigneeAutoPass,
-					IsTransferAllowed:   new(true),
-					IsOpinionRequired:   true,
-				},
-				IsManualCCAllowed:       new(true),
-				ApprovalMethod:          approval.ApprovalSequential,
-				PassRule:                approval.PassAll,
-				IsRollbackAllowed:       new(true),
-				RollbackType:            approval.RollbackPrevious,
-				IsAddAssigneeAllowed:    new(true),
-				AddAssigneeTypes:        []approval.AddAssigneeType{approval.AddAssigneeBefore, approval.AddAssigneeAfter},
-				IsRemoveAssigneeAllowed: new(true),
-			})},
-			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{BaseNodeData: approval.BaseNodeData{Name: "结束"}})},
+					ExecutionType:           approval.ExecutionManual,
+					EmptyAssigneeAction:     approval.EmptyAssigneeAutoPass,
+					IsTransferAllowed:       new(true),
+					IsOpinionRequired:       true,
+					IsManualCCAllowed:       new(true),
+					ApprovalMethod:          approval.ApprovalSequential,
+					PassRule:                approval.PassAll,
+					IsRollbackAllowed:       new(true),
+					RollbackType:            approval.RollbackPrevious,
+					IsAddAssigneeAllowed:    new(true),
+					AddAssigneeTypes:        []approval.AddAssigneeType{approval.AddAssigneeBefore, approval.AddAssigneeAfter},
+					IsRemoveAssigneeAllowed: new(true),
+				}),
+			},
+			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "结束"})},
 		},
 		Edges: []approval.EdgeDefinition{
 			{ID: "edge-1", Source: "start-1", Target: "approval-1"},
@@ -270,52 +272,60 @@ func complexFlowDef() approval.FlowDefinition {
 
 	return approval.FlowDefinition{
 		Nodes: []approval.NodeDefinition{
-			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{BaseNodeData: approval.BaseNodeData{Name: "开始"}})},
-			{ID: "condition-1", Kind: approval.NodeCondition, Data: mustMarshal(approval.ConditionNodeData{
-				BaseNodeData: approval.BaseNodeData{Name: "条件分支"},
-				Branches: []approval.ConditionBranch{
-					{
-						ID:    branchHighID,
-						Label: "大额审批",
-						ConditionGroups: []approval.ConditionGroup{
-							{Conditions: []approval.Condition{
-								{Kind: approval.ConditionField, Subject: "amount", Operator: "gt", Value: 1000},
-							}},
+			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "开始"})},
+			{
+				ID:   "condition-1",
+				Kind: approval.NodeCondition,
+				Data: mustMarshal(approval.ConditionNodeData{
+					Name: "条件分支",
+					Branches: []approval.ConditionBranch{
+						{
+							ID:    branchHighID,
+							Label: "大额审批",
+							ConditionGroups: []approval.ConditionGroup{
+								{Conditions: []approval.Condition{
+									{Kind: approval.ConditionField, Subject: "amount", Operator: "gt", Value: 1000},
+								}},
+							},
+							Priority: 1,
 						},
-						Priority: 1,
+						{
+							ID:        branchDefaultID,
+							Label:     "默认处理",
+							IsDefault: true,
+							Priority:  2,
+						},
 					},
-					{
-						ID:        branchDefaultID,
-						Label:     "默认处理",
-						IsDefault: true,
-						Priority:  2,
-					},
-				},
-			})},
-			{ID: "approval-high", Kind: approval.NodeApproval, Data: mustMarshal(approval.ApprovalNodeData{
-				BaseNodeData: approval.BaseNodeData{Name: "大额审批"},
-				TaskNodeData: approval.TaskNodeData{
+				}),
+			},
+			{
+				ID:   "approval-high",
+				Kind: approval.NodeApproval,
+				Data: mustMarshal(approval.ApprovalNodeData{
+					Name: "大额审批",
 					Assignees: []approval.AssigneeDefinition{
 						{Kind: approval.AssigneeUser, IDs: []string{"manager-1"}, SortOrder: 1},
 					},
 					ExecutionType:       approval.ExecutionManual,
 					EmptyAssigneeAction: approval.EmptyAssigneeAutoPass,
 					IsTransferAllowed:   new(true),
-				},
-				ApprovalMethod: approval.ApprovalSequential,
-				PassRule:       approval.PassAll,
-			})},
-			{ID: "handle-default", Kind: approval.NodeHandle, Data: mustMarshal(approval.HandleNodeData{
-				BaseNodeData: approval.BaseNodeData{Name: "默认办理"},
-				TaskNodeData: approval.TaskNodeData{
+					ApprovalMethod:      approval.ApprovalSequential,
+					PassRule:            approval.PassAll,
+				}),
+			},
+			{
+				ID:   "handle-default",
+				Kind: approval.NodeHandle,
+				Data: mustMarshal(approval.HandleNodeData{
+					Name: "默认办理",
 					Assignees: []approval.AssigneeDefinition{
 						{Kind: approval.AssigneeUser, IDs: []string{"handler-1"}, SortOrder: 1},
 					},
 					ExecutionType:       approval.ExecutionManual,
 					EmptyAssigneeAction: approval.EmptyAssigneeAutoPass,
-				},
-			})},
-			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{BaseNodeData: approval.BaseNodeData{Name: "结束"}})},
+				}),
+			},
+			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "结束"})},
 		},
 		Edges: []approval.EdgeDefinition{
 			{ID: "edge-1", Source: "start-1", Target: "condition-1"},
@@ -332,21 +342,23 @@ func complexFlowDef() approval.FlowDefinition {
 func parallelApprovalFlowDef() approval.FlowDefinition {
 	return approval.FlowDefinition{
 		Nodes: []approval.NodeDefinition{
-			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{BaseNodeData: approval.BaseNodeData{Name: "开始"}})},
-			{ID: "approval-1", Kind: approval.NodeApproval, Data: mustMarshal(approval.ApprovalNodeData{
-				BaseNodeData: approval.BaseNodeData{Name: "会签审批"},
-				TaskNodeData: approval.TaskNodeData{
+			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "开始"})},
+			{
+				ID:   "approval-1",
+				Kind: approval.NodeApproval,
+				Data: mustMarshal(approval.ApprovalNodeData{
+					Name: "会签审批",
 					Assignees: []approval.AssigneeDefinition{
 						{Kind: approval.AssigneeUser, IDs: []string{"test-admin"}, SortOrder: 1},
 						{Kind: approval.AssigneeUser, IDs: []string{"approver-2"}, SortOrder: 2},
 					},
 					ExecutionType:       approval.ExecutionManual,
 					EmptyAssigneeAction: approval.EmptyAssigneeAutoPass,
-				},
-				ApprovalMethod: approval.ApprovalParallel,
-				PassRule:       approval.PassAll,
-			})},
-			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{BaseNodeData: approval.BaseNodeData{Name: "结束"}})},
+					ApprovalMethod:      approval.ApprovalParallel,
+					PassRule:            approval.PassAll,
+				}),
+			},
+			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "结束"})},
 		},
 		Edges: []approval.EdgeDefinition{
 			{ID: "edge-1", Source: "start-1", Target: "approval-1"},
@@ -360,21 +372,23 @@ func parallelApprovalFlowDef() approval.FlowDefinition {
 func noManualCCFlowDef() approval.FlowDefinition {
 	return approval.FlowDefinition{
 		Nodes: []approval.NodeDefinition{
-			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{BaseNodeData: approval.BaseNodeData{Name: "开始"}})},
-			{ID: "approval-1", Kind: approval.NodeApproval, Data: mustMarshal(approval.ApprovalNodeData{
-				BaseNodeData: approval.BaseNodeData{Name: "审批"},
-				TaskNodeData: approval.TaskNodeData{
+			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "开始"})},
+			{
+				ID:   "approval-1",
+				Kind: approval.NodeApproval,
+				Data: mustMarshal(approval.ApprovalNodeData{
+					Name: "审批",
 					Assignees: []approval.AssigneeDefinition{
 						{Kind: approval.AssigneeUser, IDs: []string{"test-admin"}, SortOrder: 1},
 					},
 					ExecutionType:       approval.ExecutionManual,
 					EmptyAssigneeAction: approval.EmptyAssigneeAutoPass,
-				},
-				IsManualCCAllowed: new(false),
-				ApprovalMethod:    approval.ApprovalSequential,
-				PassRule:          approval.PassAll,
-			})},
-			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{BaseNodeData: approval.BaseNodeData{Name: "结束"}})},
+					IsManualCCAllowed:   new(false),
+					ApprovalMethod:      approval.ApprovalSequential,
+					PassRule:            approval.PassAll,
+				}),
+			},
+			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "结束"})},
 		},
 		Edges: []approval.EdgeDefinition{
 			{ID: "edge-1", Source: "start-1", Target: "approval-1"},

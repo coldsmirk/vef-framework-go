@@ -10,7 +10,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/page"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
@@ -36,37 +35,65 @@ func (s *FindAdminBusinessProjectionsTestSuite) SetupSuite() {
 
 	projections := []approval.BusinessProjection{
 		{
-			TenantID: "t1", FlowID: "flow-1", FlowVersionID: "version-1", OwnerInstanceID: "instance-1",
-			TargetHash: "admin-projection-1", Consistency: config.ApprovalBindingEventual,
+			TenantID:        "t1",
+			FlowID:          "flow-1",
+			FlowVersionID:   "version-1",
+			OwnerInstanceID: "instance-1",
+			TargetHash:      "admin-projection-1",
+			Consistency:     config.ApprovalBindingEventual,
 			Binding: &approval.BusinessBindingConfig{
-				TableName: "biz_order", KeyColumns: []string{"id"},
-				StatusColumn: "approval_status", InstanceIDColumn: &instanceIDColumn,
+				TableName:        "biz_order",
+				KeyColumns:       []string{"id"},
+				StatusColumn:     "approval_status",
+				InstanceIDColumn: &instanceIDColumn,
 			},
-			RecordKey:     []byte(`[{"column":"id","kind":"string","value":"order-1"}]`),
-			DesiredStatus: approval.InstanceRunning, DesiredStartedAt: now,
-			DesiredRevision: 1, Status: approval.BindingProjectionPending,
+			RecordKey:        []byte(`[{"column":"id","kind":"string","value":"order-1"}]`),
+			DesiredStatus:    approval.InstanceRunning,
+			DesiredStartedAt: now,
+			DesiredRevision:  1,
+			Status:           approval.BindingProjectionPending,
 		},
 		{
-			TenantID: "t1", FlowID: "flow-1", FlowVersionID: "version-1", OwnerInstanceID: "instance-2",
-			TargetHash: "admin-projection-2", Consistency: config.ApprovalBindingEventual,
+			TenantID:        "t1",
+			FlowID:          "flow-1",
+			FlowVersionID:   "version-1",
+			OwnerInstanceID: "instance-2",
+			TargetHash:      "admin-projection-2",
+			Consistency:     config.ApprovalBindingEventual,
 			Binding: &approval.BusinessBindingConfig{
-				TableName: "biz_order", KeyColumns: []string{"id"},
-				StatusColumn: "approval_status", InstanceIDColumn: &instanceIDColumn,
+				TableName:        "biz_order",
+				KeyColumns:       []string{"id"},
+				StatusColumn:     "approval_status",
+				InstanceIDColumn: &instanceIDColumn,
 			},
-			RecordKey:     []byte(`[{"column":"id","kind":"string","value":"order-2"}]`),
-			DesiredStatus: approval.InstanceApproved, DesiredStartedAt: now, DesiredFinishedAt: &now,
-			DesiredRevision: 2, AppliedRevision: 1, Status: approval.BindingProjectionFailed,
+			RecordKey:         []byte(`[{"column":"id","kind":"string","value":"order-2"}]`),
+			DesiredStatus:     approval.InstanceApproved,
+			DesiredStartedAt:  now,
+			DesiredFinishedAt: &now,
+			DesiredRevision:   2,
+			AppliedRevision:   1,
+			Status:            approval.BindingProjectionFailed,
 		},
 		{
-			TenantID: "t2", FlowID: "flow-2", FlowVersionID: "version-2", OwnerInstanceID: "instance-3",
-			TargetHash: "admin-projection-3", Consistency: config.ApprovalBindingSynchronous,
+			TenantID:        "t2",
+			FlowID:          "flow-2",
+			FlowVersionID:   "version-2",
+			OwnerInstanceID: "instance-3",
+			TargetHash:      "admin-projection-3",
+			Consistency:     config.ApprovalBindingSynchronous,
 			Binding: &approval.BusinessBindingConfig{
-				TableName: "biz_invoice", KeyColumns: []string{"id"},
-				StatusColumn: "approval_status", InstanceIDColumn: &instanceIDColumn,
+				TableName:        "biz_invoice",
+				KeyColumns:       []string{"id"},
+				StatusColumn:     "approval_status",
+				InstanceIDColumn: &instanceIDColumn,
 			},
-			RecordKey:     []byte(`[{"column":"id","kind":"string","value":"invoice-1"}]`),
-			DesiredStatus: approval.InstanceApproved, DesiredStartedAt: now, DesiredFinishedAt: &now,
-			DesiredRevision: 1, AppliedRevision: 1, Status: approval.BindingProjectionApplied,
+			RecordKey:         []byte(`[{"column":"id","kind":"string","value":"invoice-1"}]`),
+			DesiredStatus:     approval.InstanceApproved,
+			DesiredStartedAt:  now,
+			DesiredFinishedAt: &now,
+			DesiredRevision:   1,
+			AppliedRevision:   1,
+			Status:            approval.BindingProjectionApplied,
 		},
 	}
 	for i := range projections {
@@ -81,7 +108,8 @@ func (s *FindAdminBusinessProjectionsTestSuite) TearDownSuite() {
 
 func (s *FindAdminBusinessProjectionsTestSuite) TestFindAll() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminBusinessProjectionsQuery{
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		Page: 1,
+		Size: 10,
 	})
 	s.Require().NoError(err, "Should query business projections")
 	s.Assert().Equal(int64(3), result.Total, "Cross-tenant admin query should return every projection")
@@ -98,7 +126,8 @@ func (s *FindAdminBusinessProjectionsTestSuite) TestFilterByTenantAndStatus() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminBusinessProjectionsQuery{
 		TenantID: new("t1"),
 		Status:   &status,
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		Page:     1,
+		Size:     10,
 	})
 	s.Require().NoError(err, "Should filter business projections by tenant and status")
 	s.Require().Len(result.Items, 1, "Only one t1 projection should be failed")
@@ -115,7 +144,8 @@ func (s *FindAdminBusinessProjectionsTestSuite) TestFilterByTenantAndStatus() {
 
 func (s *FindAdminBusinessProjectionsTestSuite) TestPagination() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminBusinessProjectionsQuery{
-		Pageable: page.Pageable{Page: 1, Size: 2},
+		Page: 1,
+		Size: 2,
 	})
 	s.Require().NoError(err, "Should paginate business projections")
 	s.Assert().Equal(int64(3), result.Total, "Pagination should retain the full projection total")

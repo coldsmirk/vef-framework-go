@@ -75,7 +75,9 @@ func (s *FormSchemaParserOverrideTestSuite) TearDownSuite() {
 
 func (s *FormSchemaParserOverrideTestSuite) createFlow(code, name string) string {
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "approval/flow", Action: "create", Version: "v1"},
+		Resource: "approval/flow",
+		Action:   "create",
+		Version:  "v1",
 		Params: map[string]any{
 			"tenantId":               "default",
 			"code":                   code,
@@ -107,7 +109,9 @@ func (s *FormSchemaParserOverrideTestSuite) TestDeployConsumesOverriddenParser()
 		`{"id":"F1","type":"textfield","key":"reason","label":"Reason"}]}}}`)
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "approval/flow", Action: "deploy", Version: "v1"},
+		Resource: "approval/flow",
+		Action:   "deploy",
+		Version:  "v1",
 		Params: map[string]any{
 			"flowId":         flowID,
 			"flowDefinition": toMap(simpleFlowDef()),

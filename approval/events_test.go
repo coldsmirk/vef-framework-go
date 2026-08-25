@@ -169,12 +169,10 @@ func TestPayloadOccurredAt(t *testing.T) {
 		t.Parallel()
 
 		evt := &approval.InstanceCompletedEvent{
-			InstanceEventBase: approval.InstanceEventBase{
-				InstanceID:   "i1",
-				TenantID:     "t1",
-				OccurredTime: timex.DateTime{},
-			},
-			FinalStatus: approval.InstanceRejected,
+			InstanceID:   "i1",
+			TenantID:     "t1",
+			OccurredTime: timex.DateTime{},
+			FinalStatus:  approval.InstanceRejected,
 		}
 		got := approval.PayloadOccurredAt(evt)
 		assert.True(t, got.IsZero(), "Explicit zero OccurredTime should report zero")

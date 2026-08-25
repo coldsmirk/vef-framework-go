@@ -15,10 +15,8 @@ import (
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
 		return &ApprovalProcessorTestSuite{
-			ProcessorTestBase: ProcessorTestBase{
-				Ctx: env.Ctx,
-				DB:  env.DB,
-			},
+			Ctx: env.Ctx,
+			DB:  env.DB,
 		}
 	})
 }

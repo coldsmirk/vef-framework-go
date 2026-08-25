@@ -80,7 +80,8 @@ func (r *AdminResource) FindInstances(ctx fiber.Ctx, principal *security.Princip
 		Status:      params.Status,
 		FlowID:      params.FlowID,
 		Keyword:     params.Keyword,
-		Pageable:    page.Pageable{Page: params.Page, Size: params.PageSize},
+		Page:        params.Page,
+		Size:        params.PageSize,
 	})
 	if err != nil {
 		return err
@@ -132,7 +133,8 @@ func (r *AdminResource) FindTasks(ctx fiber.Ctx, principal *security.Principal, 
 		AssigneeID: params.AssigneeID,
 		InstanceID: params.InstanceID,
 		Status:     params.Status,
-		Pageable:   page.Pageable{Page: params.Page, Size: params.PageSize},
+		Page:       params.Page,
+		Size:       params.PageSize,
 	})
 	if err != nil {
 		return err
@@ -186,7 +188,8 @@ func (r *AdminResource) FindActionLogs(ctx fiber.Ctx, principal *security.Princi
 	res, err := cqrs.Send[query.FindAdminActionLogsQuery, *page.Page[admin.ActionLog]](ctx.Context(), r.bus, query.FindAdminActionLogsQuery{
 		InstanceID: params.InstanceID,
 		TenantID:   tenantFilter,
-		Pageable:   page.Pageable{Page: params.Page, Size: params.PageSize},
+		Page:       params.Page,
+		Size:       params.PageSize,
 	})
 	if err != nil {
 		return err
@@ -307,7 +310,8 @@ func (r *AdminResource) FindBusinessProjections(
 		query.FindAdminBusinessProjectionsQuery{
 			TenantID: tenantFilter,
 			Status:   params.Status,
-			Pageable: page.Pageable{Page: params.Page, Size: params.PageSize},
+			Page:     params.Page,
+			Size:     params.PageSize,
 		},
 	)
 	if err != nil {

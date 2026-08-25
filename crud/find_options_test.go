@@ -18,12 +18,10 @@ import (
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
 		return &FindOptionsTestSuite{
-			BaseTestSuite: BaseTestSuite{
-				ctx:   env.Ctx,
-				db:    env.DB,
-				bunDB: env.BunDB,
-				ds:    env.DS,
-			},
+			ctx:   env.Ctx,
+			db:    env.DB,
+			bunDB: env.BunDB,
+			ds:    env.DS,
 		}
 	})
 }
@@ -205,11 +203,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsBasic() {
 	suite.T().Logf("Testing FindOptions API basic functionality for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_options",
-			Action:   "find_options",
-			Version:  "v1",
-		},
+		Resource: "test/employee_options",
+		Action:   "find_options",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -235,11 +231,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsWithConfig() {
 
 	suite.Run("DefaultConfig", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_options",
-				Action:   "find_options",
-				Version:  "v1",
-			},
+			Resource: "test/employee_options",
+			Action:   "find_options",
+			Version:  "v1",
 		})
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -254,11 +248,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsWithConfig() {
 
 	suite.Run("CustomConfig", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_options",
-				Action:   "find_options",
-				Version:  "v1",
-			},
+			Resource: "test/employee_options",
+			Action:   "find_options",
+			Version:  "v1",
 			Meta: map[string]any{
 				"labelColumn": "email",
 				"valueColumn": "id",
@@ -283,11 +275,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsWithConfig() {
 
 	suite.Run("WithDescription", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_options_custom",
-				Action:   "find_options",
-				Version:  "v1",
-			},
+			Resource: "test/employee_options_custom",
+			Action:   "find_options",
+			Version:  "v1",
 		})
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -320,11 +310,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsWithSearch() {
 
 	suite.Run("SearchByStatus", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_options",
-				Action:   "find_options",
-				Version:  "v1",
-			},
+			Resource: "test/employee_options",
+			Action:   "find_options",
+			Version:  "v1",
 			Params: map[string]any{
 				"status": "active",
 			},
@@ -342,11 +330,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsWithSearch() {
 
 	suite.Run("SearchByKeyword", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_options",
-				Action:   "find_options",
-				Version:  "v1",
-			},
+			Resource: "test/employee_options",
+			Action:   "find_options",
+			Version:  "v1",
 			Params: map[string]any{
 				"keyword": "Rodriguez",
 			},
@@ -369,11 +355,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsWithFilterApplier() {
 	suite.T().Logf("Testing FindOptions API with filter applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_options_filtered",
-			Action:   "find_options",
-			Version:  "v1",
-		},
+		Resource: "test/employee_options_filtered",
+		Action:   "find_options",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -392,11 +376,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsNegativeCases() {
 
 	suite.Run("NoMatchingRecords", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_options",
-				Action:   "find_options",
-				Version:  "v1",
-			},
+			Resource: "test/employee_options",
+			Action:   "find_options",
+			Version:  "v1",
 			Params: map[string]any{
 				"keyword": "NonexistentKeyword",
 			},
@@ -414,11 +396,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsNegativeCases() {
 
 	suite.Run("InvalidFieldName", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_options",
-				Action:   "find_options",
-				Version:  "v1",
-			},
+			Resource: "test/employee_options",
+			Action:   "find_options",
+			Version:  "v1",
 			Meta: map[string]any{
 				"labelColumn": "nonexistent_field",
 				"valueColumn": "id",
@@ -439,11 +419,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsWithMeta() {
 
 	suite.Run("DefaultMetaColumns", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_options_meta",
-				Action:   "find_options",
-				Version:  "v1",
-			},
+			Resource: "test/employee_options_meta",
+			Action:   "find_options",
+			Version:  "v1",
 		})
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -466,11 +444,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsWithMeta() {
 
 	suite.Run("CustomMetaColumns", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_options",
-				Action:   "find_options",
-				Version:  "v1",
-			},
+			Resource: "test/employee_options",
+			Action:   "find_options",
+			Version:  "v1",
 			Meta: map[string]any{
 				"metaColumns": []string{"status", "description"},
 			},
@@ -496,11 +472,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsWithMeta() {
 
 	suite.Run("MetaColumnsWithAlias", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_options",
-				Action:   "find_options",
-				Version:  "v1",
-			},
+			Resource: "test/employee_options",
+			Action:   "find_options",
+			Version:  "v1",
 			Meta: map[string]any{
 				"metaColumns": []string{"status", "email AS contact"},
 			},
@@ -527,11 +501,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsWithMeta() {
 
 	suite.Run("InvalidMetaColumn", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_options",
-				Action:   "find_options",
-				Version:  "v1",
-			},
+			Resource: "test/employee_options",
+			Action:   "find_options",
+			Version:  "v1",
 			Meta: map[string]any{
 				"metaColumns": []string{"nonexistent_field"},
 			},
@@ -550,11 +522,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsErrorQueryApplier() {
 	suite.T().Logf("Testing FindOptions API error query applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_options_err_applier",
-			Action:   "find_options",
-			Version:  "v1",
-		},
+		Resource: "test/employee_options_err_applier",
+		Action:   "find_options",
+		Version:  "v1",
 	})
 
 	suite.Contains([]int{200, 500}, resp.StatusCode, "Should return error status code")
@@ -567,11 +537,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsMatchingColumnNames() {
 	suite.T().Logf("Testing FindOptions API matching column names for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/option_item_options",
-			Action:   "find_options",
-			Version:  "v1",
-		},
+		Resource: "test/option_item_options",
+		Action:   "find_options",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -586,11 +554,9 @@ func (suite *FindOptionsTestSuite) TestFindOptionsNonMatchingDescriptionColumn()
 	suite.T().Logf("Testing FindOptions API non-matching description column for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_options_desc_alias",
-			Action:   "find_options",
-			Version:  "v1",
-		},
+		Resource: "test/employee_options_desc_alias",
+		Action:   "find_options",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")

@@ -498,9 +498,9 @@ func (s *ScannerTestSuite) TestScanTimeoutsShouldLockInstanceBeforeTask() {
 
 	go func() {
 		lockDone <- s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error {
-			lockedTask := approval.Task{}
-
-			lockedTask.ID = task.ID
+			lockedTask := approval.Task{
+				ID: task.ID,
+			}
 			if err := tx.NewSelect().
 				Model(&lockedTask).
 				WherePK().
@@ -528,8 +528,9 @@ func (s *ScannerTestSuite) TestScanTimeoutsShouldLockInstanceBeforeTask() {
 	for range 20 {
 		lockCtx, cancel := context.WithTimeout(s.ctx, 120*time.Millisecond)
 		err := s.db.RunInTx(lockCtx, func(ctx context.Context, tx orm.DB) error {
-			lockedInstance := approval.Instance{}
-			lockedInstance.ID = instance.ID
+			lockedInstance := approval.Instance{
+				ID: instance.ID,
+			}
 
 			return tx.NewSelect().
 				Model(&lockedInstance).

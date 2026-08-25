@@ -20,12 +20,10 @@ import (
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
 		return &ExportTestSuite{
-			BaseTestSuite: BaseTestSuite{
-				ctx:   env.Ctx,
-				db:    env.DB,
-				bunDB: env.BunDB,
-				ds:    env.DS,
-			},
+			ctx:   env.Ctx,
+			db:    env.DB,
+			bunDB: env.BunDB,
+			ds:    env.DS,
 		}
 	})
 }
@@ -251,11 +249,9 @@ func (suite *ExportTestSuite) TestExportBasic() {
 	suite.T().Logf("Testing basic Excel export for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export",
+		Action:   "export",
+		Version:  "v1",
 	})
 
 	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
@@ -283,11 +279,9 @@ func (suite *ExportTestSuite) TestExportWithSearchFilter() {
 	suite.Run("FilterByStatus", func() {
 		status := "active"
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_export",
-				Action:   "export",
-				Version:  "v1",
-			},
+			Resource: "test/employee_export",
+			Action:   "export",
+			Version:  "v1",
 			Params: map[string]any{
 				"status": status,
 			},
@@ -306,11 +300,9 @@ func (suite *ExportTestSuite) TestExportWithSearchFilter() {
 	suite.Run("FilterByKeyword", func() {
 		keyword := "Engineer"
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_export",
-				Action:   "export",
-				Version:  "v1",
-			},
+			Resource: "test/employee_export",
+			Action:   "export",
+			Version:  "v1",
 			Params: map[string]any{
 				"keyword": keyword,
 			},
@@ -331,11 +323,9 @@ func (suite *ExportTestSuite) TestExportWithCustomFilename() {
 	suite.T().Logf("Testing export with custom filename for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export_filename",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export_filename",
+		Action:   "export",
+		Version:  "v1",
 	})
 
 	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
@@ -351,11 +341,9 @@ func (suite *ExportTestSuite) TestExportWithPreProcessor() {
 	suite.T().Logf("Testing export with pre-processor for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export_preproc",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export_preproc",
+		Action:   "export",
+		Version:  "v1",
 	})
 
 	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
@@ -371,11 +359,9 @@ func (suite *ExportTestSuite) TestExportWithFilterApplier() {
 	suite.T().Logf("Testing export with filter applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export_filter",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export_filter",
+		Action:   "export",
+		Version:  "v1",
 	})
 
 	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
@@ -407,11 +393,9 @@ func (suite *ExportTestSuite) TestExportEmptyResult() {
 	suite.T().Logf("Testing export with empty result for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export",
+		Action:   "export",
+		Version:  "v1",
 		Params: map[string]any{
 			"keyword": "NonexistentKeyword12345XYZ",
 		},
@@ -436,11 +420,9 @@ func (suite *ExportTestSuite) TestExportWithOptions() {
 	suite.T().Logf("Testing export with options for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export_opts",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export_opts",
+		Action:   "export",
+		Version:  "v1",
 	})
 
 	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
@@ -468,11 +450,9 @@ func (suite *ExportTestSuite) TestExportNegativeCases() {
 	suite.Run("InvalidSearchParameter", func() {
 		// Export should handle invalid search parameters gracefully
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_export",
-				Action:   "export",
-				Version:  "v1",
-			},
+			Resource: "test/employee_export",
+			Action:   "export",
+			Version:  "v1",
 			Params: map[string]any{
 				"nonexistent_field": "value",
 			},
@@ -493,11 +473,9 @@ func (suite *ExportTestSuite) TestExportContentType() {
 	suite.T().Logf("Testing export content type for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export",
+		Action:   "export",
+		Version:  "v1",
 	})
 
 	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
@@ -517,11 +495,9 @@ func (suite *ExportTestSuite) TestExportResponseHeaders() {
 	suite.T().Logf("Testing export response headers for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export",
+		Action:   "export",
+		Version:  "v1",
 	})
 
 	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
@@ -544,11 +520,9 @@ func (suite *ExportTestSuite) TestExportCSVBasic() {
 	suite.T().Logf("Testing basic CSV export for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export_csv",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export_csv",
+		Action:   "export",
+		Version:  "v1",
 	})
 
 	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
@@ -575,11 +549,9 @@ func (suite *ExportTestSuite) TestExportCSVWithSearchFilter() {
 	suite.Run("FilterByStatus", func() {
 		status := "active"
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_export_csv",
-				Action:   "export",
-				Version:  "v1",
-			},
+			Resource: "test/employee_export_csv",
+			Action:   "export",
+			Version:  "v1",
 			Params: map[string]any{
 				"status": status,
 			},
@@ -598,11 +570,9 @@ func (suite *ExportTestSuite) TestExportCSVWithSearchFilter() {
 	suite.Run("FilterByKeyword", func() {
 		keyword := "Engineer"
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_export_csv",
-				Action:   "export",
-				Version:  "v1",
-			},
+			Resource: "test/employee_export_csv",
+			Action:   "export",
+			Version:  "v1",
 			Params: map[string]any{
 				"keyword": keyword,
 			},
@@ -623,11 +593,9 @@ func (suite *ExportTestSuite) TestExportCSVWithCustomFilename() {
 	suite.T().Logf("Testing CSV export with custom filename for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export_csv_filename",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export_csv_filename",
+		Action:   "export",
+		Version:  "v1",
 	})
 
 	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
@@ -643,11 +611,9 @@ func (suite *ExportTestSuite) TestExportCSVWithOptions() {
 	suite.T().Logf("Testing CSV export with options for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export_csv_opts",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export_csv_opts",
+		Action:   "export",
+		Version:  "v1",
 	})
 
 	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
@@ -673,11 +639,9 @@ func (suite *ExportTestSuite) TestExportCSVEmptyResult() {
 	suite.T().Logf("Testing CSV export with empty result for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export_csv",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export_csv",
+		Action:   "export",
+		Version:  "v1",
 		Params: map[string]any{
 			"keyword": "NonexistentKeyword12345XYZ",
 		},
@@ -703,11 +667,9 @@ func (suite *ExportTestSuite) TestExportFormatOverride() {
 
 	// Test format parameter override - use Excel endpoint but override to CSV
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export",
+		Action:   "export",
+		Version:  "v1",
 		Meta: map[string]any{
 			"format": "csv",
 		},
@@ -730,11 +692,9 @@ func (suite *ExportTestSuite) TestExportCSVContentType() {
 	suite.T().Logf("Testing CSV export content type for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export_csv",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export_csv",
+		Action:   "export",
+		Version:  "v1",
 	})
 
 	suite.Require().Equal(200, resp.StatusCode, "Should return HTTP 200 status")
@@ -755,11 +715,9 @@ func (suite *ExportTestSuite) TestExportUnsupportedFormat() {
 	suite.T().Logf("Testing Export API unsupported format for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export",
+		Action:   "export",
+		Version:  "v1",
 		Meta: map[string]any{
 			"format": "pdf",
 		},
@@ -777,11 +735,9 @@ func (suite *ExportTestSuite) TestExportErrorQueryApplier() {
 	suite.T().Logf("Testing Export API error query applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export_err_applier",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export_err_applier",
+		Action:   "export",
+		Version:  "v1",
 	})
 
 	suite.Contains([]int{200, 500}, resp.StatusCode, "Should return error status code")
@@ -794,11 +750,9 @@ func (suite *ExportTestSuite) TestExportPreProcessorError() {
 	suite.T().Logf("Testing Export API pre-processor error for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_export_preproc_err",
-			Action:   "export",
-			Version:  "v1",
-		},
+		Resource: "test/employee_export_preproc_err",
+		Action:   "export",
+		Version:  "v1",
 	})
 
 	suite.Contains([]int{200, 500}, resp.StatusCode, "Should return error status code")

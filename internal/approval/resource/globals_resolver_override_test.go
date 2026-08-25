@@ -102,8 +102,10 @@ func (s *GlobalsResolverOverrideTestSuite) rpc(resource, action string, params m
 	s.T().Helper()
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: resource, Action: action, Version: "v1"},
-		Params:     params,
+		Resource: resource,
+		Action:   action,
+		Version:  "v1",
+		Params:   params,
 	}, s.token)
 	s.Require().Equal(http.StatusOK, resp.StatusCode, action+" RPC should return HTTP 200")
 

@@ -18,12 +18,10 @@ import (
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
 		return &CreateManyTestSuite{
-			BaseTestSuite: BaseTestSuite{
-				ctx:   env.Ctx,
-				db:    env.DB,
-				bunDB: env.BunDB,
-				ds:    env.DS,
-			},
+			ctx:   env.Ctx,
+			db:    env.DB,
+			bunDB: env.BunDB,
+			ds:    env.DS,
 		}
 	})
 }
@@ -149,11 +147,9 @@ func (suite *CreateManyTestSuite) TestCreateManyBasic() {
 	suite.T().Logf("Testing CreateMany API basic functionality for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_create_many",
-			Action:   "create_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_create_many",
+		Action:   "create_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"list": []any{
 				map[string]any{
@@ -208,11 +204,9 @@ func (suite *CreateManyTestSuite) TestCreateManyWithPreHook() {
 	suite.T().Logf("Testing CreateMany API with PreCreateMany hook for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_create_many_prehook",
-			Action:   "create_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_create_many_prehook",
+		Action:   "create_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"list": []any{
 				map[string]any{
@@ -254,11 +248,9 @@ func (suite *CreateManyTestSuite) TestCreateManyWithPostHook() {
 	suite.T().Logf("Testing CreateMany API with PostCreateMany hook for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_create_many_posthook",
-			Action:   "create_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_create_many_posthook",
+		Action:   "create_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"list": []any{
 				map[string]any{
@@ -305,11 +297,9 @@ func (suite *CreateManyTestSuite) TestCreateManyNegativeCases() {
 
 	suite.Run("EmptyArray", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_create_many",
-				Action:   "create_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_create_many",
+			Action:   "create_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{},
 			},
@@ -324,11 +314,9 @@ func (suite *CreateManyTestSuite) TestCreateManyNegativeCases() {
 
 	suite.Run("MissingRequiredField", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_create_many",
-				Action:   "create_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_create_many",
+			Action:   "create_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{
 					map[string]any{
@@ -356,11 +344,9 @@ func (suite *CreateManyTestSuite) TestCreateManyNegativeCases() {
 
 	suite.Run("InvalidEmailInBatch", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_create_many",
-				Action:   "create_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_create_many",
+			Action:   "create_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{
 					map[string]any{
@@ -388,11 +374,9 @@ func (suite *CreateManyTestSuite) TestCreateManyNegativeCases() {
 
 	suite.Run("InvalidAgeInBatch", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_create_many",
-				Action:   "create_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_create_many",
+			Action:   "create_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{
 					map[string]any{
@@ -420,11 +404,9 @@ func (suite *CreateManyTestSuite) TestCreateManyNegativeCases() {
 
 	suite.Run("DuplicateEmailInSameBatch", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_create_many",
-				Action:   "create_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_create_many",
+			Action:   "create_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{
 					map[string]any{
@@ -453,11 +435,9 @@ func (suite *CreateManyTestSuite) TestCreateManyNegativeCases() {
 	suite.Run("DuplicateWithExistingRecord", func() {
 		// First create a user
 		suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_create_many",
-				Action:   "create_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_create_many",
+			Action:   "create_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{
 					map[string]any{
@@ -472,11 +452,9 @@ func (suite *CreateManyTestSuite) TestCreateManyNegativeCases() {
 
 		// Try to create batch with duplicate email
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_create_many",
-				Action:   "create_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_create_many",
+			Action:   "create_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{
 					map[string]any{
@@ -510,11 +488,9 @@ func (suite *CreateManyTestSuite) TestCreateManyTransactionRollback() {
 	suite.Run("AllOrNothingSemantics", func() {
 		// Try to create a batch where the second item will fail
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_create_many",
-				Action:   "create_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_create_many",
+			Action:   "create_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{
 					map[string]any{
@@ -556,11 +532,9 @@ func (suite *CreateManyTestSuite) TestCreateManyEmptyList() {
 	suite.T().Logf("Testing CreateMany API empty list for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_create_many",
-			Action:   "create_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_create_many",
+		Action:   "create_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"list": []any{},
 		},
@@ -579,11 +553,9 @@ func (suite *CreateManyTestSuite) TestCreateManyPreHookError() {
 	suite.T().Logf("Testing CreateMany API pre-hook error for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_create_many_prehook_err",
-			Action:   "create_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_create_many_prehook_err",
+		Action:   "create_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"list": []any{
 				map[string]any{
@@ -608,11 +580,9 @@ func (suite *CreateManyTestSuite) TestCreateManyPostHookError() {
 	suite.T().Logf("Testing CreateMany API post-hook error for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_create_many_posthook_err",
-			Action:   "create_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_create_many_posthook_err",
+		Action:   "create_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"list": []any{
 				map[string]any{

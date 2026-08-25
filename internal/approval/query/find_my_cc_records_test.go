@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/page"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
@@ -34,8 +33,13 @@ func (s *FindMyCCRecordsTestSuite) SetupSuite() {
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "mcc-flow", 2)
 
 	inst := &approval.Instance{
-		TenantID: "t1", FlowID: fix.FlowID, FlowVersionID: fix.VersionID,
-		Title: "CC Instance", InstanceNo: "MCC-001", ApplicantID: "user-x", Status: approval.InstanceRunning,
+		TenantID:      "t1",
+		FlowID:        fix.FlowID,
+		FlowVersionID: fix.VersionID,
+		Title:         "CC Instance",
+		InstanceNo:    "MCC-001",
+		ApplicantID:   "user-x",
+		Status:        approval.InstanceRunning,
 	}
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert instance")
@@ -61,8 +65,9 @@ func (s *FindMyCCRecordsTestSuite) TearDownSuite() {
 
 func (s *FindMyCCRecordsTestSuite) TestFindAllForUser() {
 	result, err := s.handler.Handle(s.ctx, query.FindMyCCRecordsQuery{
-		UserID:   "user-a",
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		UserID: "user-a",
+		Page:   1,
+		Size:   10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(2), result.Total, "Should find 2 CC records for user-a")
@@ -71,9 +76,10 @@ func (s *FindMyCCRecordsTestSuite) TestFindAllForUser() {
 func (s *FindMyCCRecordsTestSuite) TestFilterUnread() {
 	isRead := false
 	result, err := s.handler.Handle(s.ctx, query.FindMyCCRecordsQuery{
-		UserID:   "user-a",
-		IsRead:   &isRead,
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		UserID: "user-a",
+		IsRead: &isRead,
+		Page:   1,
+		Size:   10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(1), result.Total, "Should find 1 unread CC record")
@@ -83,9 +89,10 @@ func (s *FindMyCCRecordsTestSuite) TestFilterUnread() {
 func (s *FindMyCCRecordsTestSuite) TestFilterRead() {
 	isRead := true
 	result, err := s.handler.Handle(s.ctx, query.FindMyCCRecordsQuery{
-		UserID:   "user-a",
-		IsRead:   &isRead,
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		UserID: "user-a",
+		IsRead: &isRead,
+		Page:   1,
+		Size:   10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(1), result.Total, "Should find 1 read CC record")
@@ -94,8 +101,9 @@ func (s *FindMyCCRecordsTestSuite) TestFilterRead() {
 
 func (s *FindMyCCRecordsTestSuite) TestNoResults() {
 	result, err := s.handler.Handle(s.ctx, query.FindMyCCRecordsQuery{
-		UserID:   "non-existent-user",
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		UserID: "non-existent-user",
+		Page:   1,
+		Size:   10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(0), result.Total, "Should find 0 CC records")

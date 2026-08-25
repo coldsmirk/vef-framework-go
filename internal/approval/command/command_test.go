@@ -29,8 +29,8 @@ func mustMarshal(v any) json.RawMessage {
 func simpleFlowDef() approval.FlowDefinition {
 	return approval.FlowDefinition{
 		Nodes: []approval.NodeDefinition{
-			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{BaseNodeData: approval.BaseNodeData{Name: "开始"}})},
-			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{BaseNodeData: approval.BaseNodeData{Name: "结束"}})},
+			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "开始"})},
+			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "结束"})},
 		},
 		Edges: []approval.EdgeDefinition{
 			{ID: "edge-1", Source: "start-1", Target: "end-1"},
@@ -42,10 +42,12 @@ func simpleFlowDef() approval.FlowDefinition {
 func approvalFlowDef() approval.FlowDefinition {
 	return approval.FlowDefinition{
 		Nodes: []approval.NodeDefinition{
-			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{BaseNodeData: approval.BaseNodeData{Name: "开始"}})},
-			{ID: "approval-1", Kind: approval.NodeApproval, Data: mustMarshal(approval.ApprovalNodeData{
-				BaseNodeData: approval.BaseNodeData{Name: "审批"},
-				TaskNodeData: approval.TaskNodeData{
+			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "开始"})},
+			{
+				ID:   "approval-1",
+				Kind: approval.NodeApproval,
+				Data: mustMarshal(approval.ApprovalNodeData{
+					Name: "审批",
 					Assignees: []approval.AssigneeDefinition{
 						{Kind: approval.AssigneeUser, IDs: []string{"user-1", "user-2"}, SortOrder: 1},
 					},
@@ -54,11 +56,11 @@ func approvalFlowDef() approval.FlowDefinition {
 					},
 					ExecutionType:       approval.ExecutionManual,
 					EmptyAssigneeAction: approval.EmptyAssigneeAutoPass,
-				},
-				ApprovalMethod: approval.ApprovalSequential,
-				PassRule:       approval.PassAll,
-			})},
-			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{BaseNodeData: approval.BaseNodeData{Name: "结束"}})},
+					ApprovalMethod:      approval.ApprovalSequential,
+					PassRule:            approval.PassAll,
+				}),
+			},
+			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "结束"})},
 		},
 		Edges: []approval.EdgeDefinition{
 			{ID: "edge-1", Source: "start-1", Target: "approval-1"},

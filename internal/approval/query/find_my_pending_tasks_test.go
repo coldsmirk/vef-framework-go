@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/page"
 )
 
 func init() {
@@ -33,8 +32,13 @@ func (s *FindMyPendingTasksTestSuite) SetupSuite() {
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "mpt-flow", 1)
 
 	inst := &approval.Instance{
-		TenantID: "t1", FlowID: fix.FlowID, FlowVersionID: fix.VersionID,
-		Title: "Task Instance", InstanceNo: "MPT-001", ApplicantID: "user-x", Status: approval.InstanceRunning,
+		TenantID:      "t1",
+		FlowID:        fix.FlowID,
+		FlowVersionID: fix.VersionID,
+		Title:         "Task Instance",
+		InstanceNo:    "MPT-001",
+		ApplicantID:   "user-x",
+		Status:        approval.InstanceRunning,
 	}
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert instance")
@@ -57,8 +61,9 @@ func (s *FindMyPendingTasksTestSuite) TearDownSuite() {
 
 func (s *FindMyPendingTasksTestSuite) TestFindPendingForUser() {
 	result, err := s.handler.Handle(s.ctx, query.FindMyPendingTasksQuery{
-		UserID:   "user-a",
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		UserID: "user-a",
+		Page:   1,
+		Size:   10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(1), result.Total, "Should find 1 pending task for user-a")
@@ -69,7 +74,8 @@ func (s *FindMyPendingTasksTestSuite) TestFilterByTenant() {
 	result, err := s.handler.Handle(s.ctx, query.FindMyPendingTasksQuery{
 		UserID:   "user-a",
 		TenantID: new("t1"),
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		Page:     1,
+		Size:     10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(1), result.Total, "Should find 1 pending task in tenant t1")
@@ -77,8 +83,9 @@ func (s *FindMyPendingTasksTestSuite) TestFilterByTenant() {
 
 func (s *FindMyPendingTasksTestSuite) TestNoResults() {
 	result, err := s.handler.Handle(s.ctx, query.FindMyPendingTasksQuery{
-		UserID:   "non-existent-user",
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		UserID: "non-existent-user",
+		Page:   1,
+		Size:   10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(0), result.Total, "Should find 0 pending tasks")
@@ -87,8 +94,9 @@ func (s *FindMyPendingTasksTestSuite) TestNoResults() {
 
 func (s *FindMyPendingTasksTestSuite) TestExcludesNonPendingTasks() {
 	result, err := s.handler.Handle(s.ctx, query.FindMyPendingTasksQuery{
-		UserID:   "user-a",
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		UserID: "user-a",
+		Page:   1,
+		Size:   10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(1), result.Total, "Should only count pending tasks, not approved ones")

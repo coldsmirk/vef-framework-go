@@ -21,7 +21,7 @@ func TestValidateFieldPermissions(t *testing.T) {
 	approvalNode := func(perms map[string]approval.Permission) map[string]approval.NodeData {
 		return map[string]approval.NodeData{
 			"n1": &approval.ApprovalNodeData{
-				TaskNodeData: approval.TaskNodeData{FieldPermissions: perms},
+				FieldPermissions: perms,
 			},
 		}
 	}
@@ -96,7 +96,8 @@ func TestValidateFieldPermissions(t *testing.T) {
 	approvalWithTimeout := func(perms map[string]approval.Permission, action approval.TimeoutAction) map[string]approval.NodeData {
 		return map[string]approval.NodeData{
 			"n1": &approval.ApprovalNodeData{
-				TaskNodeData: approval.TaskNodeData{FieldPermissions: perms, TimeoutAction: action},
+				FieldPermissions: perms,
+				TimeoutAction:    action,
 			},
 		}
 	}
@@ -104,7 +105,8 @@ func TestValidateFieldPermissions(t *testing.T) {
 	handleWithTimeout := func(perms map[string]approval.Permission, action approval.TimeoutAction) map[string]approval.NodeData {
 		return map[string]approval.NodeData{
 			"n1": &approval.HandleNodeData{
-				TaskNodeData: approval.TaskNodeData{FieldPermissions: perms, TimeoutAction: action},
+				FieldPermissions: perms,
+				TimeoutAction:    action,
 			},
 		}
 	}

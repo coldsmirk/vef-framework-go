@@ -368,10 +368,10 @@ func TestBehaviorPipeline(t *testing.T) {
 		var calls []string
 
 		bus := NewBus([]Behavior{
-			OrderedRecordingBehavior{RecordingBehavior: RecordingBehavior{name: "high", calls: &calls}, order: 100},
+			OrderedRecordingBehavior{name: "high", calls: &calls, order: 100},
 			RecordingBehavior{name: "default-a", calls: &calls},
-			OrderedRecordingBehavior{RecordingBehavior: RecordingBehavior{name: "default-b", calls: &calls}, order: 0},
-			OrderedRecordingBehavior{RecordingBehavior: RecordingBehavior{name: "low", calls: &calls}, order: -10},
+			OrderedRecordingBehavior{name: "default-b", calls: &calls, order: 0},
+			OrderedRecordingBehavior{name: "low", calls: &calls, order: -10},
 			RecordingBehavior{name: "default-c", calls: &calls},
 		})
 		Register(bus, HandlerFunc[CreateUserCmd, Unit](func(context.Context, CreateUserCmd) (Unit, error) {

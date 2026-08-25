@@ -79,8 +79,9 @@ func loadDeployFlow(
 	flowID string,
 	caller approval.CallerContext,
 ) (approval.Flow, *approval.BusinessBindingConfig, error) {
-	flow := approval.Flow{}
-	flow.ID = flowID
+	flow := approval.Flow{
+		ID: flowID,
+	}
 
 	if err := db.NewSelect().
 		Model(&flow).

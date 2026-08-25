@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/page"
 )
 
 func init() {
@@ -70,8 +69,9 @@ func (s *FindFlowsTestSuite) TearDownSuite() {
 
 func (s *FindFlowsTestSuite) TestFindAll() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
-		Pageable: page.Pageable{Page: 1, Size: 10},
-		Caller:   approval.SystemCaller,
+		Page:   1,
+		Size:   10,
+		Caller: approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(4), result.Total, "Should find 4 flows")
@@ -81,7 +81,8 @@ func (s *FindFlowsTestSuite) TestFindAll() {
 func (s *FindFlowsTestSuite) TestFilterByTenant() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 		TenantID: new("t1"),
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		Page:     1,
+		Size:     10,
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
@@ -91,7 +92,8 @@ func (s *FindFlowsTestSuite) TestFilterByTenant() {
 func (s *FindFlowsTestSuite) TestFilterByCategory() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 		CategoryID: new(s.categoryID1),
-		Pageable:   page.Pageable{Page: 1, Size: 10},
+		Page:       1,
+		Size:       10,
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
@@ -102,7 +104,8 @@ func (s *FindFlowsTestSuite) TestFilterByIsActive() {
 	isActive := true
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 		IsActive: &isActive,
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		Page:     1,
+		Size:     10,
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
@@ -113,7 +116,8 @@ func (s *FindFlowsTestSuite) TestFilterByBindingMode() {
 	s.Run("Standalone", func() {
 		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 			BindingMode: new(approval.BindingStandalone),
-			Pageable:    page.Pageable{Page: 1, Size: 10},
+			Page:        1,
+			Size:        10,
 			Caller:      approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
@@ -123,7 +127,8 @@ func (s *FindFlowsTestSuite) TestFilterByBindingMode() {
 	s.Run("Business", func() {
 		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 			BindingMode: new(approval.BindingBusiness),
-			Pageable:    page.Pageable{Page: 1, Size: 10},
+			Page:        1,
+			Size:        10,
 			Caller:      approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
@@ -136,7 +141,8 @@ func (s *FindFlowsTestSuite) TestFilterByBindingMode() {
 		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 			TenantID:    new("t1"),
 			BindingMode: new(approval.BindingBusiness),
-			Pageable:    page.Pageable{Page: 1, Size: 10},
+			Page:        1,
+			Size:        10,
 			Caller:      approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
@@ -147,7 +153,8 @@ func (s *FindFlowsTestSuite) TestFilterByBindingMode() {
 	s.Run("NoMatch", func() {
 		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 			BindingMode: new(approval.BindingMode("unknown")),
-			Pageable:    page.Pageable{Page: 1, Size: 10},
+			Page:        1,
+			Size:        10,
 			Caller:      approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
@@ -157,9 +164,10 @@ func (s *FindFlowsTestSuite) TestFilterByBindingMode() {
 
 func (s *FindFlowsTestSuite) TestKeywordSearch() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
-		Keyword:  new("Flow"),
-		Pageable: page.Pageable{Page: 1, Size: 10},
-		Caller:   approval.SystemCaller,
+		Keyword: new("Flow"),
+		Page:    1,
+		Size:    10,
+		Caller:  approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(4), result.Total, "Should find 4 flows with 'Flow' in name")
@@ -168,9 +176,10 @@ func (s *FindFlowsTestSuite) TestKeywordSearch() {
 func (s *FindFlowsTestSuite) TestFilterByLabels() {
 	s.Run("SingleLabel", func() {
 		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
-			Labels:   map[string]string{"app": "crm"},
-			Pageable: page.Pageable{Page: 1, Size: 10},
-			Caller:   approval.SystemCaller,
+			Labels: map[string]string{"app": "crm"},
+			Page:   1,
+			Size:   10,
+			Caller: approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Assert().Equal(int64(2), result.Total, "app=crm should match flow1 and flow4")
@@ -178,9 +187,10 @@ func (s *FindFlowsTestSuite) TestFilterByLabels() {
 
 	s.Run("MultipleLabelsAnd", func() {
 		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
-			Labels:   map[string]string{"app": "crm", "mobile": "true"},
-			Pageable: page.Pageable{Page: 1, Size: 10},
-			Caller:   approval.SystemCaller,
+			Labels: map[string]string{"app": "crm", "mobile": "true"},
+			Page:   1,
+			Size:   10,
+			Caller: approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Require().Equal(int64(1), result.Total, "Label pairs must AND-combine, leaving only flow1")
@@ -191,7 +201,8 @@ func (s *FindFlowsTestSuite) TestFilterByLabels() {
 		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 			TenantID: new("t1"),
 			Labels:   map[string]string{"app": "crm"},
-			Pageable: page.Pageable{Page: 1, Size: 10},
+			Page:     1,
+			Size:     10,
 			Caller:   approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
@@ -201,9 +212,10 @@ func (s *FindFlowsTestSuite) TestFilterByLabels() {
 
 	s.Run("EmptyValueMatches", func() {
 		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
-			Labels:   map[string]string{"beta": ""},
-			Pageable: page.Pageable{Page: 1, Size: 10},
-			Caller:   approval.SystemCaller,
+			Labels: map[string]string{"beta": ""},
+			Page:   1,
+			Size:   10,
+			Caller: approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Require().Equal(int64(1), result.Total, "Presence-style empty-value label should match flow2")
@@ -212,9 +224,10 @@ func (s *FindFlowsTestSuite) TestFilterByLabels() {
 
 	s.Run("NoMatch", func() {
 		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
-			Labels:   map[string]string{"app": "nonexistent"},
-			Pageable: page.Pageable{Page: 1, Size: 10},
-			Caller:   approval.SystemCaller,
+			Labels: map[string]string{"app": "nonexistent"},
+			Page:   1,
+			Size:   10,
+			Caller: approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Assert().Equal(int64(0), result.Total, "Unmatched label value should exclude every flow, labeled or not")
@@ -222,9 +235,10 @@ func (s *FindFlowsTestSuite) TestFilterByLabels() {
 
 	s.Run("LabelsReturnedInItems", func() {
 		result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
-			Labels:   map[string]string{"mobile": "true"},
-			Pageable: page.Pageable{Page: 1, Size: 10},
-			Caller:   approval.SystemCaller,
+			Labels: map[string]string{"mobile": "true"},
+			Page:   1,
+			Size:   10,
+			Caller: approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Require().Equal(int64(1), result.Total, "mobile=true should match only flow1")
@@ -235,8 +249,9 @@ func (s *FindFlowsTestSuite) TestFilterByLabels() {
 
 func (s *FindFlowsTestSuite) TestPagination() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
-		Pageable: page.Pageable{Page: 1, Size: 2},
-		Caller:   approval.SystemCaller,
+		Page:   1,
+		Size:   2,
+		Caller: approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(4), result.Total, "Total should be 4")
@@ -246,7 +261,8 @@ func (s *FindFlowsTestSuite) TestPagination() {
 func (s *FindFlowsTestSuite) TestEmpty() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 		TenantID: new("non-existent-tenant"),
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		Page:     1,
+		Size:     10,
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
@@ -260,7 +276,8 @@ func (s *FindFlowsTestSuite) TestNonSuperAdminIgnoresForeignTenantOverride() {
 	// (3 flows) and never the t2 flow — the override carries no authority.
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 		TenantID: new("t2"),
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		Page:     1,
+		Size:     10,
 		Caller:   approval.CallerContext{TenantID: "t1"},
 	})
 	s.Require().NoError(err, "Should query without error")

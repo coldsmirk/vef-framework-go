@@ -220,8 +220,9 @@ func TestBasicTransform(t *testing.T) {
 			String string       `mold:"repl"`
 		}
 
-		tt6 := FieldTransformStruct{}
-		tt6.String = "BAD"
+		tt6 := FieldTransformStruct{
+			String: "BAD",
+		}
 
 		var tString string
 

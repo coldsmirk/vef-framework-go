@@ -76,13 +76,11 @@ type VisitorSameTypedSiblings struct {
 func TestVisitDepthFirst(t *testing.T) {
 	// Create test structure
 	testStruct := VisitorTestNested{
-		VisitorTestEmbedded: VisitorTestEmbedded{
-			BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
-			EmbeddedValue:   42,
-			Services: &VisitorTestServices{
-				Logger: VisitorTestLogger{Level: "info"},
-				Cache:  &VisitorTestCache{Size: 100},
-			},
+		BaseValue:     "test",
+		EmbeddedValue: 42,
+		Services: &VisitorTestServices{
+			Logger: VisitorTestLogger{Level: "info"},
+			Cache:  &VisitorTestCache{Size: 100},
 		},
 		NestedValue: true,
 	}
@@ -255,11 +253,9 @@ func TestVisitDiamondBranches(t *testing.T) {
 // TestVisitMaxDepth tests Visit max depth scenarios.
 func TestVisitMaxDepth(t *testing.T) {
 	testStruct := VisitorTestNested{
-		VisitorTestEmbedded: VisitorTestEmbedded{
-			BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
-			Services: &VisitorTestServices{
-				Logger: VisitorTestLogger{Level: "info"},
-			},
+		BaseValue: "test",
+		Services: &VisitorTestServices{
+			Logger: VisitorTestLogger{Level: "info"},
 		},
 	}
 
@@ -281,8 +277,8 @@ func TestVisitMaxDepth(t *testing.T) {
 // TestVisitStopAction tests Visit stop action scenarios.
 func TestVisitStopAction(t *testing.T) {
 	testStruct := VisitorTestEmbedded{
-		BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
-		EmbeddedValue:   42,
+		BaseValue:     "test",
+		EmbeddedValue: 42,
 	}
 
 	var visitedFields []string
@@ -325,7 +321,7 @@ func TestVisitStopAction(t *testing.T) {
 // TestVisitSkipChildrenAction tests Visit skip children action scenarios.
 func TestVisitSkipChildrenAction(t *testing.T) {
 	testStruct := VisitorTestEmbedded{
-		BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
+		BaseValue: "test",
 		Services: &VisitorTestServices{
 			Logger: VisitorTestLogger{Level: "info"},
 		},
@@ -385,9 +381,7 @@ func TestVisitTaggedFields(t *testing.T) {
 // TestVisitNoRecursion tests Visit no recursion scenarios.
 func TestVisitNoRecursion(t *testing.T) {
 	testStruct := VisitorTestNested{
-		VisitorTestEmbedded: VisitorTestEmbedded{
-			BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
-		},
+		BaseValue: "test",
 	}
 
 	var visitedStructs []string
@@ -598,7 +592,7 @@ func TestVisitTypePointerToStruct(t *testing.T) {
 // TestMethodVisitorCallableMethodValue tests MethodVisitor callable method value scenarios.
 func TestMethodVisitorCallableMethodValue(t *testing.T) {
 	testStruct := VisitorTestEmbedded{
-		BaseVisitorTest: BaseVisitorTest{BaseValue: "test_value"},
+		BaseValue: "test_value",
 	}
 
 	var methodResults []string
@@ -635,7 +629,7 @@ func TestMethodVisitorCallableMethodValue(t *testing.T) {
 // TestVisitorNilCheckBehavior tests Visitor nil check behavior scenarios.
 func TestVisitorNilCheckBehavior(t *testing.T) {
 	testStruct := VisitorTestEmbedded{
-		BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
+		BaseValue: "test",
 	}
 
 	var (
@@ -717,8 +711,8 @@ func TestVisitForGeneric(t *testing.T) {
 // TestVisitOfConvenience tests VisitOf convenience scenarios.
 func TestVisitOfConvenience(t *testing.T) {
 	testStruct := VisitorTestEmbedded{
-		BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
-		EmbeddedValue:   42,
+		BaseValue:     "test",
+		EmbeddedValue: 42,
 	}
 
 	var (
@@ -914,11 +908,9 @@ func TestVisitMethodsOnNonAddressableValue(t *testing.T) {
 // TestVisitMaxDepthZero tests Visit max depth zero scenarios.
 func TestVisitMaxDepthZero(t *testing.T) {
 	testStruct := VisitorTestNested{
-		VisitorTestEmbedded: VisitorTestEmbedded{
-			BaseVisitorTest: BaseVisitorTest{BaseValue: "base"},
-			EmbeddedValue:   42,
-		},
-		NestedValue: true,
+		BaseValue:     "base",
+		EmbeddedValue: 42,
+		NestedValue:   true,
 	}
 
 	var visitedStructs []string
@@ -967,11 +959,9 @@ func TestVisitTypeWithNilVisitors(t *testing.T) {
 func TestVisitFieldIndexPathAnonymousEmbedded(t *testing.T) {
 	// Test that anonymous embedded fields have correct index paths
 	testStruct := VisitorTestNested{
-		VisitorTestEmbedded: VisitorTestEmbedded{
-			BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
-			EmbeddedValue:   42,
-		},
-		NestedValue: true,
+		BaseValue:     "test",
+		EmbeddedValue: 42,
+		NestedValue:   true,
 	}
 
 	fieldIndexMap := make(map[string][]int)
@@ -1040,8 +1030,8 @@ func TestVisitTypeFieldIndexPathTaggedDive(t *testing.T) {
 func TestVisitFieldIndexPathCanAccessValues(t *testing.T) {
 	// Test that index paths can be used to access actual field values
 	testStruct := VisitorTestEmbedded{
-		BaseVisitorTest: BaseVisitorTest{BaseValue: "base_value"},
-		EmbeddedValue:   42,
+		BaseValue:     "base_value",
+		EmbeddedValue: 42,
 		Services: &VisitorTestServices{
 			Logger: VisitorTestLogger{Level: "debug"},
 			Cache:  &VisitorTestCache{Size: 1024},
@@ -1120,8 +1110,8 @@ func TestVisitTypeFieldIndexPath(t *testing.T) {
 
 			if tc.useValue {
 				testValue := VisitorTestEmbedded{
-					BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
-					EmbeddedValue:   42,
+					BaseValue:     "test",
+					EmbeddedValue: 42,
 					Services: &VisitorTestServices{
 						Logger: VisitorTestLogger{Level: "info"},
 					},
@@ -1306,13 +1296,11 @@ func TestVisitFieldIndexPathPointerFields(t *testing.T) {
 func TestVisitTypeFieldIndexPathConsistency(t *testing.T) {
 	// Test that Type traversal and Value traversal produce the same index paths for non-nil fields
 	testValue := VisitorTestNested{
-		VisitorTestEmbedded: VisitorTestEmbedded{
-			BaseVisitorTest: BaseVisitorTest{BaseValue: "test"},
-			EmbeddedValue:   42,
-			Services: &VisitorTestServices{
-				Logger: VisitorTestLogger{Level: "info"},
-				Cache:  &VisitorTestCache{Size: 100},
-			},
+		BaseValue:     "test",
+		EmbeddedValue: 42,
+		Services: &VisitorTestServices{
+			Logger: VisitorTestLogger{Level: "info"},
+			Cache:  &VisitorTestCache{Size: 100},
 		},
 		NestedValue: true,
 	}

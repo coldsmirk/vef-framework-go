@@ -16,12 +16,10 @@ import (
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
 		return &CreateTestSuite{
-			BaseTestSuite: BaseTestSuite{
-				ctx:   env.Ctx,
-				db:    env.DB,
-				bunDB: env.BunDB,
-				ds:    env.DS,
-			},
+			ctx:   env.Ctx,
+			db:    env.DB,
+			bunDB: env.BunDB,
+			ds:    env.DS,
 		}
 	})
 }
@@ -158,11 +156,9 @@ func (suite *CreateTestSuite) TestCreateBasic() {
 	suite.T().Logf("Testing Create API basic functionality for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_create",
-			Action:   "create",
-			Version:  "v1",
-		},
+		Resource: "test/employee_create",
+		Action:   "create",
+		Version:  "v1",
 		Params: map[string]any{
 			"name":         "New User",
 			"email":        "newuser@example.com",
@@ -191,11 +187,9 @@ func (suite *CreateTestSuite) TestCreateWithPreHook() {
 	suite.T().Logf("Testing Create API with PreCreate hook for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_create_prehook",
-			Action:   "create",
-			Version:  "v1",
-		},
+		Resource: "test/employee_create_prehook",
+		Action:   "create",
+		Version:  "v1",
 		Params: map[string]any{
 			"name":         "John",
 			"email":        "john@example.com",
@@ -221,11 +215,9 @@ func (suite *CreateTestSuite) TestCreateWithPostHook() {
 	suite.T().Logf("Testing Create API with PostCreate hook for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_create_posthook",
-			Action:   "create",
-			Version:  "v1",
-		},
+		Resource: "test/employee_create_posthook",
+		Action:   "create",
+		Version:  "v1",
 		Params: map[string]any{
 			"name":         "Jane",
 			"email":        "jane@example.com",
@@ -254,11 +246,9 @@ func (suite *CreateTestSuite) TestCreateNegativeCases() {
 
 	suite.Run("MissingRequiredField", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_create",
-				Action:   "create",
-				Version:  "v1",
-			},
+			Resource: "test/employee_create",
+			Action:   "create",
+			Version:  "v1",
 			Params: map[string]any{
 				"email":  "test@example.com",
 				"age":    25,
@@ -275,11 +265,9 @@ func (suite *CreateTestSuite) TestCreateNegativeCases() {
 
 	suite.Run("InvalidEmail", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_create",
-				Action:   "create",
-				Version:  "v1",
-			},
+			Resource: "test/employee_create",
+			Action:   "create",
+			Version:  "v1",
 			Params: map[string]any{
 				"name":   "Test",
 				"email":  "invalid-email",
@@ -297,11 +285,9 @@ func (suite *CreateTestSuite) TestCreateNegativeCases() {
 
 	suite.Run("InvalidAge", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_create",
-				Action:   "create",
-				Version:  "v1",
-			},
+			Resource: "test/employee_create",
+			Action:   "create",
+			Version:  "v1",
 			Params: map[string]any{
 				"name":   "Test",
 				"email":  "test@example.com",
@@ -319,11 +305,9 @@ func (suite *CreateTestSuite) TestCreateNegativeCases() {
 
 	suite.Run("InvalidStatus", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_create",
-				Action:   "create",
-				Version:  "v1",
-			},
+			Resource: "test/employee_create",
+			Action:   "create",
+			Version:  "v1",
 			Params: map[string]any{
 				"name":   "Test",
 				"email":  "test@example.com",
@@ -341,11 +325,9 @@ func (suite *CreateTestSuite) TestCreateNegativeCases() {
 
 	suite.Run("DuplicateEmail", func() {
 		suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_create",
-				Action:   "create",
-				Version:  "v1",
-			},
+			Resource: "test/employee_create",
+			Action:   "create",
+			Version:  "v1",
 			Params: map[string]any{
 				"name":         "First User",
 				"email":        "duplicate@example.com",
@@ -357,11 +339,9 @@ func (suite *CreateTestSuite) TestCreateNegativeCases() {
 		})
 
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_create",
-				Action:   "create",
-				Version:  "v1",
-			},
+			Resource: "test/employee_create",
+			Action:   "create",
+			Version:  "v1",
 			Params: map[string]any{
 				"name":         "Second User",
 				"email":        "duplicate@example.com",
@@ -385,11 +365,9 @@ func (suite *CreateTestSuite) TestCreatePreHookError() {
 	suite.T().Logf("Testing Create API with pre-hook error for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_create_prehook_err",
-			Action:   "create",
-			Version:  "v1",
-		},
+		Resource: "test/employee_create_prehook_err",
+		Action:   "create",
+		Version:  "v1",
 		Params: map[string]any{
 			"name":         "Hook Error User",
 			"email":        "hookerr@example.com",
@@ -410,11 +388,9 @@ func (suite *CreateTestSuite) TestCreatePostHookError() {
 	suite.T().Logf("Testing Create API with post-hook error for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_create_posthook_err",
-			Action:   "create",
-			Version:  "v1",
-		},
+		Resource: "test/employee_create_posthook_err",
+		Action:   "create",
+		Version:  "v1",
 		Params: map[string]any{
 			"name":         "PostHook Error User",
 			"email":        "posthookerr@example.com",

@@ -74,10 +74,8 @@ func (r *RPC) resolve(ctx fiber.Ctx) error {
 	entry, ok := r.operations.Get(req.Identifier)
 	if !ok {
 		nfe := &shared.NotFoundError{
-			BaseError: shared.BaseError{
-				Identifier: &req.Identifier,
-				Err:        fiber.ErrNotFound,
-			},
+			Identifier: &req.Identifier,
+			Err:        fiber.ErrNotFound,
 			Suggestion: r.findClosestAPI(req.Identifier),
 		}
 		// Log the full message (including "did you mean" suggestion) since the

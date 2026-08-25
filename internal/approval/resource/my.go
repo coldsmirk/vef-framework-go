@@ -66,7 +66,8 @@ func (r *MyResource) FindAvailableFlows(ctx fiber.Ctx, principal *security.Princ
 		ApplicantDepartmentID: departmentID,
 		Keyword:               params.Keyword,
 		Labels:                params.Labels,
-		Pageable:              page.Pageable{Page: params.Page, Size: params.PageSize},
+		Page:                  params.Page,
+		Size:                  params.PageSize,
 	})
 	if err != nil {
 		return err
@@ -122,7 +123,8 @@ func (r *MyResource) FindInitiated(ctx fiber.Ctx, principal *security.Principal,
 		TenantID: params.TenantID,
 		Status:   params.Status,
 		Keyword:  params.Keyword,
-		Pageable: page.Pageable{Page: params.Page, Size: params.PageSize},
+		Page:     params.Page,
+		Size:     params.PageSize,
 	})
 	if err != nil {
 		return err
@@ -145,7 +147,8 @@ func (r *MyResource) FindPendingTasks(ctx fiber.Ctx, principal *security.Princip
 	res, err := cqrs.Send[query.FindMyPendingTasksQuery, *page.Page[my.PendingTask]](ctx.Context(), r.bus, query.FindMyPendingTasksQuery{
 		UserID:   principal.ID,
 		TenantID: params.TenantID,
-		Pageable: page.Pageable{Page: params.Page, Size: params.PageSize},
+		Page:     params.Page,
+		Size:     params.PageSize,
 	})
 	if err != nil {
 		return err
@@ -168,7 +171,8 @@ func (r *MyResource) FindCompletedTasks(ctx fiber.Ctx, principal *security.Princ
 	res, err := cqrs.Send[query.FindMyCompletedTasksQuery, *page.Page[my.CompletedTask]](ctx.Context(), r.bus, query.FindMyCompletedTasksQuery{
 		UserID:   principal.ID,
 		TenantID: params.TenantID,
-		Pageable: page.Pageable{Page: params.Page, Size: params.PageSize},
+		Page:     params.Page,
+		Size:     params.PageSize,
 	})
 	if err != nil {
 		return err
@@ -193,7 +197,8 @@ func (r *MyResource) FindCCRecords(ctx fiber.Ctx, principal *security.Principal,
 		UserID:   principal.ID,
 		TenantID: params.TenantID,
 		IsRead:   params.IsRead,
-		Pageable: page.Pageable{Page: params.Page, Size: params.PageSize},
+		Page:     params.Page,
+		Size:     params.PageSize,
 	})
 	if err != nil {
 		return err

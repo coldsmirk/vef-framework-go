@@ -195,16 +195,18 @@ func (s *RemoveAssigneeTestSuite) TestRemoveWaitingTaskShouldSucceed() {
 	})
 	s.Require().NoError(err, "Removing waiting task should be supported")
 
-	reloadedWaiting := approval.Task{}
-	reloadedWaiting.ID = waitingTask.ID
+	reloadedWaiting := approval.Task{
+		ID: waitingTask.ID,
+	}
 	s.Require().NoError(
 		s.db.NewSelect().Model(&reloadedWaiting).WherePK().Scan(s.ctx),
 		"Should reload removed waiting task",
 	)
 	s.Assert().Equal(approval.TaskRemoved, reloadedWaiting.Status, "Waiting task should transition to removed")
 
-	reloadedPending := approval.Task{}
-	reloadedPending.ID = pendingTask.ID
+	reloadedPending := approval.Task{
+		ID: pendingTask.ID,
+	}
 	s.Require().NoError(
 		s.db.NewSelect().Model(&reloadedPending).WherePK().Scan(s.ctx),
 		"Should reload peer pending task",

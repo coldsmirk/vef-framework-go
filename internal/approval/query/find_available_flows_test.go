@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/page"
 )
 
 type FindAvailableFlowsMockAssigneeService struct {
@@ -205,8 +204,9 @@ func (s *FindAvailableFlowsTestSuite) TearDownSuite() {
 
 func (s *FindAvailableFlowsTestSuite) TestAllAllowedFlows() {
 	result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
-		UserID:   "user-z",
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		UserID: "user-z",
+		Page:   1,
+		Size:   10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	// user-z should only see flow1 (all allowed) since flow2 is restricted and flow3 is inactive.
@@ -228,9 +228,10 @@ func (s *FindAvailableFlowsTestSuite) TestAllAllowedFlows() {
 func (s *FindAvailableFlowsTestSuite) TestFilterByLabels() {
 	s.Run("MatchesLabeledFlow", func() {
 		result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
-			UserID:   "user-z",
-			Labels:   map[string]string{"mobile": "true"},
-			Pageable: page.Pageable{Page: 1, Size: 10},
+			UserID: "user-z",
+			Labels: map[string]string{"mobile": "true"},
+			Page:   1,
+			Size:   10,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Require().Equal(int64(1), result.Total, "mobile=true should keep only the labeled all-allowed flow")
@@ -241,9 +242,10 @@ func (s *FindAvailableFlowsTestSuite) TestFilterByLabels() {
 
 	s.Run("ExcludesUnlabeledFlows", func() {
 		result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
-			UserID:   "user-z",
-			Labels:   map[string]string{"app": "crm"},
-			Pageable: page.Pageable{Page: 1, Size: 10},
+			UserID: "user-z",
+			Labels: map[string]string{"app": "crm"},
+			Page:   1,
+			Size:   10,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Assert().Equal(int64(0), result.Total,
@@ -255,9 +257,10 @@ func (s *FindAvailableFlowsTestSuite) TestFilterByLabels() {
 		// rule); the label filter must also apply to the initiator-matched
 		// path, not just the all-allowed branch.
 		result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
-			UserID:   "user-a",
-			Labels:   map[string]string{"app": "crm"},
-			Pageable: page.Pageable{Page: 1, Size: 10},
+			UserID: "user-a",
+			Labels: map[string]string{"app": "crm"},
+			Page:   1,
+			Size:   10,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Require().Equal(int64(1), result.Total, "app=crm should keep only the restricted flow")
@@ -267,8 +270,9 @@ func (s *FindAvailableFlowsTestSuite) TestFilterByLabels() {
 
 func (s *FindAvailableFlowsTestSuite) TestUserWithInitiatorAccess() {
 	result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
-		UserID:   "user-a",
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		UserID: "user-a",
+		Page:   1,
+		Size:   10,
 	})
 	s.Require().NoError(err, "Should query without error")
 
@@ -286,7 +290,8 @@ func (s *FindAvailableFlowsTestSuite) TestUserWithDepartmentInitiatorAccess() {
 	result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
 		UserID:                "user-dept",
 		ApplicantDepartmentID: new("dept-a"),
-		Pageable:              page.Pageable{Page: 1, Size: 10},
+		Page:                  1,
+		Size:                  10,
 	})
 	s.Require().NoError(err, "Should query without error")
 
@@ -302,8 +307,9 @@ func (s *FindAvailableFlowsTestSuite) TestUserWithDepartmentInitiatorAccess() {
 
 func (s *FindAvailableFlowsTestSuite) TestUserWithRoleInitiatorAccess() {
 	result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
-		UserID:   "user-role",
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		UserID: "user-role",
+		Page:   1,
+		Size:   10,
 	})
 	s.Require().NoError(err, "Should query without error")
 
@@ -319,8 +325,9 @@ func (s *FindAvailableFlowsTestSuite) TestUserWithRoleInitiatorAccess() {
 
 func (s *FindAvailableFlowsTestSuite) TestExcludesInactiveFlows() {
 	result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
-		UserID:   "user-z",
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		UserID: "user-z",
+		Page:   1,
+		Size:   10,
 	})
 	s.Require().NoError(err, "Should query without error")
 
@@ -331,8 +338,9 @@ func (s *FindAvailableFlowsTestSuite) TestExcludesInactiveFlows() {
 
 func (s *FindAvailableFlowsTestSuite) TestExcludesFlowsWithoutPublishedVersion() {
 	result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
-		UserID:   "user-z",
-		Pageable: page.Pageable{Page: 1, Size: 20},
+		UserID: "user-z",
+		Page:   1,
+		Size:   20,
 	})
 	s.Require().NoError(err, "Should query without error")
 
@@ -343,9 +351,10 @@ func (s *FindAvailableFlowsTestSuite) TestExcludesFlowsWithoutPublishedVersion()
 
 func (s *FindAvailableFlowsTestSuite) TestFilterByKeyword() {
 	result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
-		UserID:   "user-z",
-		Keyword:  new("All Allowed"),
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		UserID:  "user-z",
+		Keyword: new("All Allowed"),
+		Page:    1,
+		Size:    10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().GreaterOrEqual(result.Total, int64(1), "Should find at least 1 flow matching keyword")
@@ -353,9 +362,10 @@ func (s *FindAvailableFlowsTestSuite) TestFilterByKeyword() {
 
 func (s *FindAvailableFlowsTestSuite) TestNoResults() {
 	result, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
-		UserID:   "user-z",
-		Keyword:  new("NonExistentFlow"),
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		UserID:  "user-z",
+		Keyword: new("NonExistentFlow"),
+		Page:    1,
+		Size:    10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(0), result.Total, "Should find 0 flows")

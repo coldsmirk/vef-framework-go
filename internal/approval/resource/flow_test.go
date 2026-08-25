@@ -76,11 +76,9 @@ func (s *FlowResourceTestSuite) TearDownTest() {
 // createFlow creates a flow via RPC and returns its ID.
 func (s *FlowResourceTestSuite) createFlow(code, name string) string {
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "approval/flow",
-			Action:   "create",
-			Version:  "v1",
-		},
+		Resource: "approval/flow",
+		Action:   "create",
+		Version:  "v1",
 		Params: map[string]any{
 			"tenantId":               "default",
 			"code":                   code,
@@ -106,11 +104,9 @@ func (s *FlowResourceTestSuite) createFlow(code, name string) string {
 // deployFlow deploys a flow definition via RPC and returns the version ID.
 func (s *FlowResourceTestSuite) deployFlow(flowID string, def approval.FlowDefinition) string {
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "approval/flow",
-			Action:   "deploy",
-			Version:  "v1",
-		},
+		Resource: "approval/flow",
+		Action:   "deploy",
+		Version:  "v1",
 		Params: map[string]any{
 			"flowId":         flowID,
 			"flowDefinition": toMap(def),
@@ -130,11 +126,9 @@ func (s *FlowResourceTestSuite) deployFlow(flowID string, def approval.FlowDefin
 
 func (s *FlowResourceTestSuite) TestCreateFlow() {
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "approval/flow",
-			Action:   "create",
-			Version:  "v1",
-		},
+		Resource: "approval/flow",
+		Action:   "create",
+		Version:  "v1",
 		Params: map[string]any{
 			"tenantId":               "default",
 			"code":                   "test-flow-create",
@@ -158,7 +152,9 @@ func (s *FlowResourceTestSuite) TestCreateFlow() {
 
 func (s *FlowResourceTestSuite) TestCreateBusinessBoundFlow() {
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "approval/flow", Action: "create", Version: "v1"},
+		Resource: "approval/flow",
+		Action:   "create",
+		Version:  "v1",
 		Params: map[string]any{
 			"tenantId":               "default",
 			"code":                   "test-flow-business-binding",
@@ -206,11 +202,9 @@ func (s *FlowResourceTestSuite) TestPublishVersion() {
 	versionID := s.deployFlow(flowID, approvalFlowDef())
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "approval/flow",
-			Action:   "publish_version",
-			Version:  "v1",
-		},
+		Resource: "approval/flow",
+		Action:   "publish_version",
+		Version:  "v1",
 		Params: map[string]any{
 			"versionId": versionID,
 		},
@@ -241,11 +235,9 @@ func (s *FlowResourceTestSuite) TestGetGraph() {
 
 	// Publish first
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "approval/flow",
-			Action:   "publish_version",
-			Version:  "v1",
-		},
+		Resource: "approval/flow",
+		Action:   "publish_version",
+		Version:  "v1",
 		Params: map[string]any{
 			"versionId": versionID,
 		},
@@ -254,11 +246,9 @@ func (s *FlowResourceTestSuite) TestGetGraph() {
 
 	// Get graph
 	resp = s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "approval/flow",
-			Action:   "get_graph",
-			Version:  "v1",
-		},
+		Resource: "approval/flow",
+		Action:   "get_graph",
+		Version:  "v1",
 		Params: map[string]any{
 			"flowId": flowID,
 		},
@@ -294,7 +284,9 @@ func (s *FlowResourceTestSuite) TestDeployPreservesLargeIntegerInFormSchema() {
 		`"dataSource":{"kind":"static","options":[{"label":"Big","value":` + bigInt + `}]}}]}}}`)
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "approval/flow", Action: "deploy", Version: "v1"},
+		Resource: "approval/flow",
+		Action:   "deploy",
+		Version:  "v1",
 		Params: map[string]any{
 			"flowId":         flowID,
 			"flowDefinition": toMap(simpleFlowDef()),
@@ -325,11 +317,9 @@ func (s *FlowResourceTestSuite) TestDeployInvalidDefinition() {
 
 	// Deploy with empty definition (no nodes)
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "approval/flow",
-			Action:   "deploy",
-			Version:  "v1",
-		},
+		Resource: "approval/flow",
+		Action:   "deploy",
+		Version:  "v1",
 		Params: map[string]any{
 			"flowId": flowID,
 			"flowDefinition": map[string]any{

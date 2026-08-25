@@ -78,7 +78,9 @@ func (s *PermissionEnforcementResourceTestSuite) TearDownSuite() {
 
 func (s *PermissionEnforcementResourceTestSuite) TestFlowCreateShouldReturn403() {
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "approval/flow", Action: "create", Version: "v1"},
+		Resource: "approval/flow",
+		Action:   "create",
+		Version:  "v1",
 		Params: map[string]any{
 			"tenantId":               "default",
 			"code":                   "perm-flow",
@@ -98,7 +100,9 @@ func (s *PermissionEnforcementResourceTestSuite) TestFlowCreateShouldReturn403()
 
 func (s *PermissionEnforcementResourceTestSuite) TestCategoryCreateShouldReturn403() {
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "approval/category", Action: "create", Version: "v1"},
+		Resource: "approval/category",
+		Action:   "create",
+		Version:  "v1",
 		Params: map[string]any{
 			"tenantId": "default",
 			"code":     "perm-category",
@@ -114,8 +118,10 @@ func (s *PermissionEnforcementResourceTestSuite) TestCategoryCreateShouldReturn4
 
 func (s *PermissionEnforcementResourceTestSuite) TestDelegationFindPageShouldReturn403() {
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "approval/delegation", Action: "find_page", Version: "v1"},
-		Params:     map[string]any{"page": 1, "pageSize": 10},
+		Resource: "approval/delegation",
+		Action:   "find_page",
+		Version:  "v1",
+		Params:   map[string]any{"page": 1, "pageSize": 10},
 	}, s.token)
 
 	s.Require().Equal(http.StatusForbidden, resp.StatusCode, "Delegation query should be denied by permission middleware")
@@ -126,7 +132,9 @@ func (s *PermissionEnforcementResourceTestSuite) TestDelegationFindPageShouldRet
 
 func (s *PermissionEnforcementResourceTestSuite) TestMyPendingCountsShouldStillAllowAuthenticatedAccess() {
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "approval/my", Action: "get_pending_counts", Version: "v1"},
+		Resource: "approval/my",
+		Action:   "get_pending_counts",
+		Version:  "v1",
 	}, s.token)
 
 	s.Require().Equal(http.StatusOK, resp.StatusCode, "Self-service query without RequiredPermission should still pass")

@@ -181,7 +181,9 @@ func (s *TrustLoginMiddlewareTestSuite) getAs(query url.Values, userAgent string
 // redeem exchanges a code through the ordinary login endpoint.
 func (s *TrustLoginMiddlewareTestSuite) redeem(appID, code string) *http.Response {
 	return s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{Resource: "security/auth", Action: "login", Version: "v1"},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        "trust_code",
 			"principal":   appID,
@@ -198,7 +200,9 @@ func (s *TrustLoginMiddlewareTestSuite) redeemAs(appID, code, userAgent string) 
 	s.T().Helper()
 
 	body, err := json.Marshal(api.Request{
-		Identifier: api.Identifier{Resource: "security/auth", Action: "login", Version: "v1"},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        "trust_code",
 			"principal":   appID,
@@ -266,7 +270,9 @@ func (s *TrustLoginMiddlewareTestSuite) TestEndToEnd() {
 	s.Require().True(ok, "The redemption should issue an access token")
 
 	logout := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "security/auth", Action: "logout", Version: "v1"},
+		Resource: "security/auth",
+		Action:   "logout",
+		Version:  "v1",
 	}, accessToken)
 	s.Equal(http.StatusOK, logout.StatusCode, "The issued token should authenticate a protected call")
 }
@@ -626,7 +632,9 @@ func (s *TrustLoginDisabledTestSuite) TestGatewayNotMounted() {
 
 func (s *TrustLoginDisabledTestSuite) TestMechanismNotRegistered() {
 	resp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{Resource: "security/auth", Action: "login", Version: "v1"},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        "trust_code",
 			"principal":   trustAppID,

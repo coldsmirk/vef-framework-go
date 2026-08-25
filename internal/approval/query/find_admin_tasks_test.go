@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/page"
 )
 
 func init() {
@@ -33,8 +32,13 @@ func (s *FindAdminTasksTestSuite) SetupSuite() {
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "adt-flow", 1)
 
 	inst := &approval.Instance{
-		TenantID: "t1", FlowID: fix.FlowID, FlowVersionID: fix.VersionID,
-		Title: "Admin Task Instance", InstanceNo: "ADT-001", ApplicantID: "user-x", Status: approval.InstanceRunning,
+		TenantID:      "t1",
+		FlowID:        fix.FlowID,
+		FlowVersionID: fix.VersionID,
+		Title:         "Admin Task Instance",
+		InstanceNo:    "ADT-001",
+		ApplicantID:   "user-x",
+		Status:        approval.InstanceRunning,
 	}
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert instance")
@@ -57,7 +61,8 @@ func (s *FindAdminTasksTestSuite) TearDownSuite() {
 
 func (s *FindAdminTasksTestSuite) TestFindAll() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminTasksQuery{
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		Page: 1,
+		Size: 10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(3), result.Total, "Should find 3 tasks")
@@ -67,7 +72,8 @@ func (s *FindAdminTasksTestSuite) TestFindAll() {
 func (s *FindAdminTasksTestSuite) TestFilterByAssignee() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminTasksQuery{
 		AssigneeID: new("user-a"),
-		Pageable:   page.Pageable{Page: 1, Size: 10},
+		Page:       1,
+		Size:       10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(2), result.Total, "Should find 2 tasks for user-a")
@@ -75,8 +81,9 @@ func (s *FindAdminTasksTestSuite) TestFilterByAssignee() {
 
 func (s *FindAdminTasksTestSuite) TestFilterByStatus() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminTasksQuery{
-		Status:   new(approval.TaskPending),
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		Status: new(approval.TaskPending),
+		Page:   1,
+		Size:   10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(2), result.Total, "Should find 2 pending tasks")
@@ -85,7 +92,8 @@ func (s *FindAdminTasksTestSuite) TestFilterByStatus() {
 func (s *FindAdminTasksTestSuite) TestNoResults() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminTasksQuery{
 		AssigneeID: new("non-existent-user"),
-		Pageable:   page.Pageable{Page: 1, Size: 10},
+		Page:       1,
+		Size:       10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(0), result.Total, "Should find 0 tasks")

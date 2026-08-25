@@ -90,7 +90,9 @@ func (s *SessionMetaTestSuite) login(userAgent string) *http.Response {
 	s.T().Helper()
 
 	body, err := json.Marshal(api.Request{
-		Identifier: api.Identifier{Resource: "security/auth", Action: "login", Version: "v1"},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        "password",
 			"principal":   "testuser",

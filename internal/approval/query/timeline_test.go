@@ -27,9 +27,13 @@ func visitEntered(id, nodeID string, sequence int, status approval.NodeVisitStat
 
 // logAt builds an ActionLog stamped at the given time.
 func logAt(id string, action approval.ActionType, operatorID string, created timex.DateTime) approval.ActionLog {
-	l := approval.ActionLog{Action: action, OperatorID: operatorID, OperatorName: operatorID}
-	l.ID = id
-	l.CreatedAt = created
+	l := approval.ActionLog{
+		Action:       action,
+		OperatorID:   operatorID,
+		OperatorName: operatorID,
+		ID:           id,
+		CreatedAt:    created,
+	}
 
 	return l
 }
@@ -254,16 +258,30 @@ func TestBuildInstanceTimeline(t *testing.T) {
 		b.ActionLogs = []approval.ActionLog{addCC}
 
 		dept := "Legal"
-		cc := approval.CCRecord{NodeID: new("na"), VisitID: new("v2"), CCUserID: "cc-1", CCUserName: "CC One", CCUserDepartmentName: &dept}
-		cc.ID = "ccr-1"
-		cc.CreatedAt = at(3)
+		cc := approval.CCRecord{
+			NodeID:               new("na"),
+			VisitID:              new("v2"),
+			CCUserID:             "cc-1",
+			CCUserName:           "CC One",
+			CCUserDepartmentName: &dept,
+			ID:                   "ccr-1",
+			CreatedAt:            at(3),
+		}
 		readAt := at(4)
 		cc.ReadAt = &readAt
 		b.CCRecords = []approval.CCRecord{cc}
 
-		urge := approval.UrgeRecord{NodeID: "na", TaskID: new("t1"), UrgerID: "boss", UrgerName: "Boss", TargetUserID: "u1", TargetUserName: "u1", Message: "hurry"}
-		urge.ID = "ur-1"
-		urge.CreatedAt = at(6)
+		urge := approval.UrgeRecord{
+			NodeID:         "na",
+			TaskID:         new("t1"),
+			UrgerID:        "boss",
+			UrgerName:      "Boss",
+			TargetUserID:   "u1",
+			TargetUserName: "u1",
+			Message:        "hurry",
+			ID:             "ur-1",
+			CreatedAt:      at(6),
+		}
 		b.UrgeRecords = []approval.UrgeRecord{urge}
 
 		entries := buildInstanceTimeline(b)

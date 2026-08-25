@@ -19,12 +19,10 @@ import (
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
 		return &FindTreeOptionsTestSuite{
-			BaseTestSuite: BaseTestSuite{
-				ctx:   env.Ctx,
-				db:    env.DB,
-				bunDB: env.BunDB,
-				ds:    env.DS,
-			},
+			ctx:   env.Ctx,
+			db:    env.DB,
+			bunDB: env.BunDB,
+			ds:    env.DS,
 		}
 	})
 }
@@ -255,11 +253,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsBasic() {
 	suite.T().Logf("Testing FindTreeOptions API basic functionality for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/department_tree_options",
-			Action:   "find_tree_options",
-			Version:  "v1",
-		},
+		Resource: "test/department_tree_options",
+		Action:   "find_tree_options",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -303,11 +299,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsWithConfig() {
 
 	suite.Run("DefaultConfig", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree_options",
-				Action:   "find_tree_options",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree_options",
+			Action:   "find_tree_options",
+			Version:  "v1",
 		})
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -322,11 +316,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsWithConfig() {
 
 	suite.Run("CustomConfig", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree_options",
-				Action:   "find_tree_options",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree_options",
+			Action:   "find_tree_options",
+			Version:  "v1",
 			Meta: map[string]any{
 				"labelColumn": "code",
 				"valueColumn": "id",
@@ -358,11 +350,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsWithConfig() {
 
 	suite.Run("WithDescription", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree_options_custom",
-				Action:   "find_tree_options",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree_options_custom",
+			Action:   "find_tree_options",
+			Version:  "v1",
 		})
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -386,11 +376,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsWithSearch() {
 
 	suite.Run("SearchByCode", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree_options",
-				Action:   "find_tree_options",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree_options",
+			Action:   "find_tree_options",
+			Version:  "v1",
 			Params: map[string]any{
 				"code": "MKT",
 			},
@@ -411,11 +399,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsWithSearch() {
 
 	suite.Run("SearchByKeyword", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree_options",
-				Action:   "find_tree_options",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree_options",
+			Action:   "find_tree_options",
+			Version:  "v1",
 			Params: map[string]any{
 				"keyword": "Backend",
 			},
@@ -437,11 +423,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsWithFilterApplier() {
 	suite.T().Logf("Testing FindTreeOptions API with filter applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/department_tree_options_filtered",
-			Action:   "find_tree_options",
-			Version:  "v1",
-		},
+		Resource: "test/department_tree_options_filtered",
+		Action:   "find_tree_options",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -466,11 +450,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsNegativeCases() {
 
 	suite.Run("NoMatchingRecords", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree_options",
-				Action:   "find_tree_options",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree_options",
+			Action:   "find_tree_options",
+			Version:  "v1",
 			Params: map[string]any{
 				"keyword": "NonexistentCategory",
 			},
@@ -488,11 +470,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsNegativeCases() {
 
 	suite.Run("InvalidFieldName", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree_options",
-				Action:   "find_tree_options",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree_options",
+			Action:   "find_tree_options",
+			Version:  "v1",
 			Meta: map[string]any{
 				"labelColumn": "nonexistent_field",
 				"valueColumn": "id",
@@ -513,11 +493,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsWithMeta() {
 
 	suite.Run("DefaultMetaColumns", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree_options_meta",
-				Action:   "find_tree_options",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree_options_meta",
+			Action:   "find_tree_options",
+			Version:  "v1",
 		})
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -540,11 +518,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsWithMeta() {
 
 	suite.Run("CustomMetaColumns", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree_options",
-				Action:   "find_tree_options",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree_options",
+			Action:   "find_tree_options",
+			Version:  "v1",
 			Meta: map[string]any{
 				"metaColumns": []string{"code"},
 			},
@@ -569,11 +545,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsWithMeta() {
 
 	suite.Run("MetaColumnsWithAlias", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree_options",
-				Action:   "find_tree_options",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree_options",
+			Action:   "find_tree_options",
+			Version:  "v1",
 			Meta: map[string]any{
 				"metaColumns": []string{"code AS category_code", "description as desc"},
 			},
@@ -601,11 +575,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsWithMeta() {
 
 	suite.Run("VerifyMetaInChildren", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree_options_meta",
-				Action:   "find_tree_options",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree_options_meta",
+			Action:   "find_tree_options",
+			Version:  "v1",
 		})
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -633,11 +605,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsWithMeta() {
 
 	suite.Run("InvalidMetaColumn", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree_options",
-				Action:   "find_tree_options",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree_options",
+			Action:   "find_tree_options",
+			Version:  "v1",
 			Meta: map[string]any{
 				"metaColumns": []string{"nonexistent_field"},
 			},
@@ -656,11 +626,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsWithQueryApplier() {
 	suite.T().Logf("Testing FindTreeOptions API with WithQueryApplier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/department_tree_options_qa",
-			Action:   "find_tree_options",
-			Version:  "v1",
-		},
+		Resource: "test/department_tree_options_qa",
+		Action:   "find_tree_options",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -678,11 +646,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsErrorQueryApplier() {
 	suite.T().Logf("Testing FindTreeOptions API error query applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/department_tree_options_err_qa",
-			Action:   "find_tree_options",
-			Version:  "v1",
-		},
+		Resource: "test/department_tree_options_err_qa",
+		Action:   "find_tree_options",
+		Version:  "v1",
 	})
 
 	suite.Contains([]int{200, 500}, resp.StatusCode, "Should return error status code")
@@ -695,11 +661,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsMatchingColumnNames() 
 	suite.T().Logf("Testing FindTreeOptions API matching column names for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/tree_option_item_options",
-			Action:   "find_tree_options",
-			Version:  "v1",
-		},
+		Resource: "test/tree_option_item_options",
+		Action:   "find_tree_options",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -714,11 +678,9 @@ func (suite *FindTreeOptionsTestSuite) TestFindTreeOptionsNonMatchingColumns() {
 	suite.T().Logf("Testing FindTreeOptions API non-matching columns for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/tree_option_item_nonmatch",
-			Action:   "find_tree_options",
-			Version:  "v1",
-		},
+		Resource: "test/tree_option_item_nonmatch",
+		Action:   "find_tree_options",
+		Version:  "v1",
 	})
 
 	// Query may fail due to semantically wrong column mappings, but the column matching code still executes

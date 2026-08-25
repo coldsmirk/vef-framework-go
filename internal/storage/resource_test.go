@@ -151,7 +151,9 @@ func (s *StorageResourceTestSuite) uploadPart(token, claimID string, partNumber 
 // data; tests asserting the failure case ignore data.
 func (s *StorageResourceTestSuite) initUpload(filename string, size int64) (map[string]any, result.Result) {
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "init_upload", Version: "v1"},
+		Resource: "sys/storage",
+		Action:   "init_upload",
+		Version:  "v1",
 		Params: map[string]any{
 			"filename": filename,
 			"size":     size,
@@ -196,8 +198,10 @@ func (s *StorageResourceTestSuite) completeChunkedUpload(filename string) (claim
 		"Upload part 2 should succeed")
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "complete_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, s.ownerToken)
 	s.Require().True(s.ReadResult(resp).IsOk(), "Complete upload should succeed")
 
@@ -342,8 +346,10 @@ func (s *StorageResourceTestSuite) TestCompleteUploadHappyPath() {
 	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 2, part2)).IsOk(), "Upload part should accept part 2")
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "complete_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, s.ownerToken)
 
 	body = s.ReadResult(resp)
@@ -369,8 +375,10 @@ func (s *StorageResourceTestSuite) TestCompleteUploadHappyPathSinglePart() {
 	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, payload)).IsOk(), "Upload part should accept the only part")
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "complete_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, s.ownerToken)
 
 	body = s.ReadResult(resp)
@@ -399,8 +407,10 @@ func (s *StorageResourceTestSuite) TestCompleteUploadDeletesObjectOnSizeMismatch
 	s.Require().True(s.ReadResult(s.uploadPart(s.ownerToken, claimID, 1, actualPayload)).IsOk(), "Upload part should accept the undersized payload")
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "complete_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, s.ownerToken)
 
 	body = s.ReadResult(resp)
@@ -423,8 +433,10 @@ func (s *StorageResourceTestSuite) TestCompleteUploadRejectsIncompleteParts() {
 		"Upload part should accept the first chunk before incomplete complete_upload")
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "complete_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, s.ownerToken)
 
 	body = s.ReadResult(resp)
@@ -440,8 +452,10 @@ func (s *StorageResourceTestSuite) TestAbortUploadHappyPath() {
 	claimID := s.requireString(data, "claimId")
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "abort_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "abort_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, s.ownerToken)
 
 	body = s.ReadResult(resp)
@@ -462,8 +476,10 @@ func (s *StorageResourceTestSuite) TestAbortUploadSchedulesBackendCleanup() {
 	key := s.requireString(data, "key")
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "abort_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "abort_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, s.ownerToken)
 	s.Require().True(s.ReadResult(resp).IsOk(), "Abort upload should succeed before the queue check")
 
@@ -481,8 +497,10 @@ func (s *StorageResourceTestSuite) TestAbortUploadOnCompletedClaimLeavesObjectAl
 	claimID, key := s.completeChunkedUpload("report.pdf")
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "abort_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "abort_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, s.ownerToken)
 	s.Require().True(s.ReadResult(resp).IsOk(), "Abort on a completed claim must be a silent no-op")
 
@@ -519,8 +537,10 @@ func (s *StorageResourceTestSuite) TestCompleteUploadIdempotentRetryRecordsOnce(
 	claimID, key := s.completeChunkedUpload("retried.mp4")
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "complete_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, s.ownerToken)
 	s.Require().True(s.ReadResult(resp).IsOk(), "The idempotent retry should succeed")
 
@@ -567,8 +587,10 @@ func (s *StorageResourceTestSuite) pendingDeletes(key string) []store.PendingDel
 
 func (s *StorageResourceTestSuite) TestAbortUploadIdempotentOnMissingClaim() {
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "abort_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": "non-existent-claim"},
+		Resource: "sys/storage",
+		Action:   "abort_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": "non-existent-claim"},
 	}, s.ownerToken)
 
 	body := s.ReadResult(resp)
@@ -583,8 +605,10 @@ func (s *StorageResourceTestSuite) TestAbortUploadIdempotentOnMissingClaim() {
 // dispatch path as the production client (MakeRPCRequestWithToken).
 func (s *StorageResourceTestSuite) listParts(token, claimID string) result.Result {
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "list_parts", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "list_parts",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, token)
 
 	return s.ReadResult(resp)
@@ -648,8 +672,10 @@ func (s *StorageResourceTestSuite) TestListPartsRejectsCompletedClaim() {
 		"Upload part should accept part 2 before completing the claim")
 
 	completeResp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "complete_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, s.ownerToken)
 	s.Require().True(s.ReadResult(completeResp).IsOk(), "Complete upload should succeed before the rejection check")
 
@@ -664,8 +690,10 @@ func (s *StorageResourceTestSuite) TestListPartsAfterAbortReturnsClaimNotFound()
 	claimID := s.requireString(data, "claimId")
 
 	abortResp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "abort_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "abort_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, s.ownerToken)
 	s.Require().True(s.ReadResult(abortResp).IsOk(), "Abort upload should succeed before the lookup check")
 
@@ -700,7 +728,9 @@ func (s *StorageResourceTestSuite) TestInitUploadRejectsFilenameTooLong() {
 // init_upload params. Used only to exercise the AllowPublicUploads gate.
 func (s *StorageResourceTestSuite) initUploadPublic(filename string, size int64) (map[string]any, result.Result) {
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "init_upload", Version: "v1"},
+		Resource: "sys/storage",
+		Action:   "init_upload",
+		Version:  "v1",
 		Params: map[string]any{
 			"filename": filename,
 			"size":     size,
@@ -747,8 +777,10 @@ func (s *StorageResourceTestSuite) TestCompleteUploadIdempotentOnAlreadyComplete
 
 	// First complete: normal path.
 	firstResp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "complete_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, s.ownerToken)
 
 	firstBody := s.ReadResult(firstResp)
@@ -756,8 +788,10 @@ func (s *StorageResourceTestSuite) TestCompleteUploadIdempotentOnAlreadyComplete
 
 	// Second complete: idempotent fast-path via ClaimStatusUploaded branch.
 	secondResp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "complete_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, s.ownerToken)
 
 	secondBody := s.ReadResult(secondResp)

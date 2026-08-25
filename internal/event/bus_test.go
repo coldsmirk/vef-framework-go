@@ -103,10 +103,8 @@ type PublishOnlyTransport struct{ RecordingTransport }
 
 func newPublishOnlyTransport(name string) *PublishOnlyTransport {
 	return &PublishOnlyTransport{
-		RecordingTransport: RecordingTransport{
-			name: name,
-			caps: transport.Capabilities{PublishOnly: true, AtLeastOnce: true, Transactional: true},
-		},
+		name: name,
+		caps: transport.Capabilities{PublishOnly: true, AtLeastOnce: true, Transactional: true},
 	}
 }
 
@@ -120,10 +118,8 @@ type FailingStopTransport struct{ RecordingTransport }
 
 func newFailingStopTransport(name string) *FailingStopTransport {
 	return &FailingStopTransport{
-		RecordingTransport: RecordingTransport{
-			name: name,
-			caps: transport.Capabilities{},
-		},
+		name: name,
+		caps: transport.Capabilities{},
 	}
 }
 
@@ -143,9 +139,10 @@ type BlockingPublishTransport struct {
 
 func newBlockingPublishTransport(name string) *BlockingPublishTransport {
 	return &BlockingPublishTransport{
-		RecordingTransport: RecordingTransport{name: name, caps: transport.Capabilities{}},
-		entered:            make(chan struct{}, 1),
-		release:            make(chan struct{}),
+		name:    name,
+		caps:    transport.Capabilities{},
+		entered: make(chan struct{}, 1),
+		release: make(chan struct{}),
 	}
 }
 

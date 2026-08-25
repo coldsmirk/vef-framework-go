@@ -20,8 +20,10 @@ func permFields(keys ...string) []approval.FormFieldDefinition {
 
 // permNode builds a flow node with the given id and field-permission map.
 func permNode(id string, perms map[string]approval.Permission) approval.FlowNode {
-	n := approval.FlowNode{FieldPermissions: perms}
-	n.ID = id
+	n := approval.FlowNode{
+		FieldPermissions: perms,
+		ID:               id,
+	}
 
 	return n
 }
@@ -71,8 +73,10 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 			},
 			userID: "u",
 			want: map[string]approval.Permission{
-				"edit": approval.PermissionEditable, "req": approval.PermissionRequired,
-				"hide": approval.PermissionHidden, "plain": approval.PermissionVisible,
+				"edit":  approval.PermissionEditable,
+				"req":   approval.PermissionRequired,
+				"hide":  approval.PermissionHidden,
+				"plain": approval.PermissionVisible,
 			},
 		},
 		{
@@ -85,8 +89,10 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 			},
 			userID: "u",
 			want: map[string]approval.Permission{
-				"edit": approval.PermissionVisible, "req": approval.PermissionVisible,
-				"hide": approval.PermissionHidden, "plain": approval.PermissionVisible,
+				"edit":  approval.PermissionVisible,
+				"req":   approval.PermissionVisible,
+				"hide":  approval.PermissionHidden,
+				"plain": approval.PermissionVisible,
 			},
 		},
 		{
@@ -99,8 +105,10 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 			},
 			userID: "u",
 			want: map[string]approval.Permission{
-				"edit": approval.PermissionVisible, "req": approval.PermissionVisible,
-				"hide": approval.PermissionHidden, "plain": approval.PermissionVisible,
+				"edit":  approval.PermissionVisible,
+				"req":   approval.PermissionVisible,
+				"hide":  approval.PermissionHidden,
+				"plain": approval.PermissionVisible,
 			},
 		},
 		{
@@ -116,8 +124,10 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 			},
 			userID: "u",
 			want: map[string]approval.Permission{
-				"edit": approval.PermissionVisible, "req": approval.PermissionVisible,
-				"hide": approval.PermissionHidden, "plain": approval.PermissionVisible,
+				"edit":  approval.PermissionVisible,
+				"req":   approval.PermissionVisible,
+				"hide":  approval.PermissionHidden,
+				"plain": approval.PermissionVisible,
 			},
 		},
 		{
@@ -131,8 +141,10 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 			},
 			userID: "u",
 			want: map[string]approval.Permission{
-				"edit": approval.PermissionEditable, "req": approval.PermissionRequired,
-				"hide": approval.PermissionHidden, "plain": approval.PermissionVisible,
+				"edit":  approval.PermissionEditable,
+				"req":   approval.PermissionRequired,
+				"hide":  approval.PermissionHidden,
+				"plain": approval.PermissionVisible,
 			},
 		},
 		{
@@ -145,8 +157,10 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 			},
 			userID: "u",
 			want: map[string]approval.Permission{
-				"edit": approval.PermissionVisible, "req": approval.PermissionVisible,
-				"hide": approval.PermissionHidden, "plain": approval.PermissionVisible,
+				"edit":  approval.PermissionVisible,
+				"req":   approval.PermissionVisible,
+				"hide":  approval.PermissionHidden,
+				"plain": approval.PermissionVisible,
 			},
 		},
 		{
@@ -159,8 +173,10 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 			},
 			userID: "u",
 			want: map[string]approval.Permission{
-				"edit": approval.PermissionVisible, "req": approval.PermissionVisible,
-				"hide": approval.PermissionVisible, "plain": approval.PermissionVisible,
+				"edit":  approval.PermissionVisible,
+				"req":   approval.PermissionVisible,
+				"hide":  approval.PermissionVisible,
+				"plain": approval.PermissionVisible,
 			},
 		},
 		{
@@ -172,8 +188,10 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 			},
 			userID: "u",
 			want: map[string]approval.Permission{
-				"edit": approval.PermissionVisible, "req": approval.PermissionVisible,
-				"hide": approval.PermissionVisible, "plain": approval.PermissionVisible,
+				"edit":  approval.PermissionVisible,
+				"req":   approval.PermissionVisible,
+				"hide":  approval.PermissionVisible,
+				"plain": approval.PermissionVisible,
 			},
 		},
 		{
@@ -185,8 +203,10 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 			},
 			userID: "u",
 			want: map[string]approval.Permission{
-				"edit": approval.PermissionEditable, "req": approval.PermissionEditable,
-				"hide": approval.PermissionEditable, "plain": approval.PermissionEditable,
+				"edit":  approval.PermissionEditable,
+				"req":   approval.PermissionEditable,
+				"hide":  approval.PermissionEditable,
+				"plain": approval.PermissionEditable,
 			},
 		},
 		{
@@ -229,7 +249,8 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 			},
 			userID: "u",
 			want: map[string]approval.Permission{
-				"a": approval.PermissionEditable, "b": approval.PermissionVisible,
+				"a": approval.PermissionEditable,
+				"b": approval.PermissionVisible,
 			},
 		},
 		{
@@ -238,7 +259,8 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 				FormFields: permFields("a"),
 				FlowNodes: []approval.FlowNode{
 					permNode("N1", map[string]approval.Permission{
-						"a": approval.PermissionEditable, "ghost": approval.PermissionHidden,
+						"a":     approval.PermissionEditable,
+						"ghost": approval.PermissionHidden,
 					}),
 				},
 				Tasks:    []approval.Task{permTask("u", "N1", approval.TaskPending)},
@@ -271,7 +293,8 @@ func TestResolveViewerFieldPermissions(t *testing.T) {
 			},
 			userID: "stranger",
 			want: map[string]approval.Permission{
-				"a": approval.PermissionHidden, "b": approval.PermissionHidden,
+				"a": approval.PermissionHidden,
+				"b": approval.PermissionHidden,
 			},
 		},
 	}

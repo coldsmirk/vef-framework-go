@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/page"
 )
 
 func init() {
@@ -34,8 +33,13 @@ func (s *FindAdminActionLogsTestSuite) SetupSuite() {
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "adal", 0)
 
 	inst := &approval.Instance{
-		TenantID: "default", FlowID: fix.FlowID, FlowVersionID: fix.VersionID,
-		Title: "Action Log Test", InstanceNo: "ADAL-001", ApplicantID: "user-1", Status: approval.InstanceRunning,
+		TenantID:      "default",
+		FlowID:        fix.FlowID,
+		FlowVersionID: fix.VersionID,
+		Title:         "Action Log Test",
+		InstanceNo:    "ADAL-001",
+		ApplicantID:   "user-1",
+		Status:        approval.InstanceRunning,
 	}
 	_, err := s.db.NewInsert().Model(inst).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert instance")
@@ -59,7 +63,8 @@ func (s *FindAdminActionLogsTestSuite) TearDownSuite() {
 func (s *FindAdminActionLogsTestSuite) TestSuccessWithPagination() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminActionLogsQuery{
 		InstanceID: s.instanceID,
-		Pageable:   page.Pageable{Page: 1, Size: 2},
+		Page:       1,
+		Size:       2,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(3), result.Total, "Total should be 3")
@@ -70,7 +75,8 @@ func (s *FindAdminActionLogsTestSuite) TestSuccessWithPagination() {
 func (s *FindAdminActionLogsTestSuite) TestEmpty() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminActionLogsQuery{
 		InstanceID: "non-existent-instance",
-		Pageable:   page.Pageable{Page: 1, Size: 10},
+		Page:       1,
+		Size:       10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(0), result.Total, "Should find 0 logs")

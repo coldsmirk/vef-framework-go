@@ -240,9 +240,13 @@ func (s *DeployFlowTestSuite) TestDeployInvalidFlowDesign() {
 		FlowID: s.flowID,
 		FlowDefinition: approval.FlowDefinition{
 			Nodes: []approval.NodeDefinition{
-				{ID: "orphan-1", Kind: approval.NodeApproval, Data: mustMarshal(approval.ApprovalNodeData{
-					BaseNodeData: approval.BaseNodeData{Name: "审批"},
-				})},
+				{
+					ID:   "orphan-1",
+					Kind: approval.NodeApproval,
+					Data: mustMarshal(approval.ApprovalNodeData{
+						Name: "审批",
+					}),
+				},
 			},
 		},
 		Caller: approval.SystemCaller,
@@ -258,9 +262,9 @@ func (s *DeployFlowTestSuite) TestDeployInvalidAddAssigneeTypeInNodeData() {
 		FlowID: s.flowID,
 		FlowDefinition: approval.FlowDefinition{
 			Nodes: []approval.NodeDefinition{
-				{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{BaseNodeData: approval.BaseNodeData{Name: "开始"}})},
+				{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "开始"})},
 				{ID: "approval-1", Kind: approval.NodeApproval, Data: []byte(`{"name":"审批","isAddAssigneeAllowed":true,"addAssigneeTypes":["before","invalid"]}`)},
-				{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{BaseNodeData: approval.BaseNodeData{Name: "结束"}})},
+				{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "结束"})},
 			},
 			Edges: []approval.EdgeDefinition{
 				{ID: "edge-1", Source: "start-1", Target: "approval-1"},
@@ -286,21 +290,23 @@ func (s *DeployFlowTestSuite) TestDeployRejectsDanglingFieldPermission() {
 		FlowID: s.flowID,
 		FlowDefinition: approval.FlowDefinition{
 			Nodes: []approval.NodeDefinition{
-				{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{BaseNodeData: approval.BaseNodeData{Name: "开始"}})},
-				{ID: "approval-1", Kind: approval.NodeApproval, Data: mustMarshal(approval.ApprovalNodeData{
-					BaseNodeData: approval.BaseNodeData{Name: "审批"},
-					TaskNodeData: approval.TaskNodeData{
+				{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "开始"})},
+				{
+					ID:   "approval-1",
+					Kind: approval.NodeApproval,
+					Data: mustMarshal(approval.ApprovalNodeData{
+						Name:                "审批",
 						Assignees:           []approval.AssigneeDefinition{{Kind: approval.AssigneeUser, IDs: []string{"user-1"}, SortOrder: 1}},
 						ExecutionType:       approval.ExecutionManual,
 						EmptyAssigneeAction: approval.EmptyAssigneeAutoPass,
 						// "ghost" is not a key of the derived form (only "reason" is),
 						// so this permission is a dangling reference.
 						FieldPermissions: map[string]approval.Permission{"ghost": approval.PermissionEditable},
-					},
-					ApprovalMethod: approval.ApprovalSequential,
-					PassRule:       approval.PassAll,
-				})},
-				{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{BaseNodeData: approval.BaseNodeData{Name: "结束"}})},
+						ApprovalMethod:   approval.ApprovalSequential,
+						PassRule:         approval.PassAll,
+					}),
+				},
+				{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "结束"})},
 			},
 			Edges: []approval.EdgeDefinition{
 				{ID: "edge-1", Source: "start-1", Target: "approval-1"},

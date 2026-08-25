@@ -230,11 +230,9 @@ func (suite *AuthResourceTestSuite) extractTokensFromLoginResult(data map[string
 
 func (suite *AuthResourceTestSuite) TestLoginSuccess() {
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        isecurity.AuthTypePassword,
 			"principal":   "testuser",
@@ -263,11 +261,9 @@ func (suite *AuthResourceTestSuite) TestLoginSuccess() {
 func (suite *AuthResourceTestSuite) TestLoginInvalidCredentials() {
 	suite.Run("WrongPassword", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "security/auth",
-				Action:   "login",
-				Version:  "v1",
-			},
+			Resource: "security/auth",
+			Action:   "login",
+			Version:  "v1",
 			Params: map[string]any{
 				"type":        isecurity.AuthTypePassword,
 				"principal":   "testuser",
@@ -284,11 +280,9 @@ func (suite *AuthResourceTestSuite) TestLoginInvalidCredentials() {
 
 	suite.Run("UserNotFound", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "security/auth",
-				Action:   "login",
-				Version:  "v1",
-			},
+			Resource: "security/auth",
+			Action:   "login",
+			Version:  "v1",
 			Params: map[string]any{
 				"type":        isecurity.AuthTypePassword,
 				"principal":   "nonexistent",
@@ -315,11 +309,9 @@ func (suite *AuthResourceTestSuite) TestLoginRefusesInternalTokenTypes() {
 	} {
 		suite.Run(authType, func() {
 			resp := suite.MakeRPCRequest(api.Request{
-				Identifier: api.Identifier{
-					Resource: "security/auth",
-					Action:   "login",
-					Version:  "v1",
-				},
+				Resource: "security/auth",
+				Action:   "login",
+				Version:  "v1",
 				Params: map[string]any{
 					"type":        authType,
 					"principal":   "some-token-value",
@@ -340,11 +332,9 @@ func (suite *AuthResourceTestSuite) TestLoginRefusesInternalTokenTypes() {
 func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 	suite.Run("MissingUsername", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "security/auth",
-				Action:   "login",
-				Version:  "v1",
-			},
+			Resource: "security/auth",
+			Action:   "login",
+			Version:  "v1",
 			Params: map[string]any{
 				"type":        isecurity.AuthTypePassword,
 				"credentials": "password123",
@@ -360,11 +350,9 @@ func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 
 	suite.Run("MissingPassword", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "security/auth",
-				Action:   "login",
-				Version:  "v1",
-			},
+			Resource: "security/auth",
+			Action:   "login",
+			Version:  "v1",
 			Params: map[string]any{
 				"type":      isecurity.AuthTypePassword,
 				"principal": "testuser",
@@ -380,11 +368,9 @@ func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 
 	suite.Run("EmptyPassword", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "security/auth",
-				Action:   "login",
-				Version:  "v1",
-			},
+			Resource: "security/auth",
+			Action:   "login",
+			Version:  "v1",
 			Params: map[string]any{
 				"type":        isecurity.AuthTypePassword,
 				"principal":   "testuser",
@@ -406,11 +392,9 @@ func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 			Once()
 
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "security/auth",
-				Action:   "login",
-				Version:  "v1",
-			},
+			Resource: "security/auth",
+			Action:   "login",
+			Version:  "v1",
 			Params: map[string]any{
 				"type":        isecurity.AuthTypePassword,
 				"principal":   username,
@@ -433,11 +417,9 @@ func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 			Once()
 
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "security/auth",
-				Action:   "login",
-				Version:  "v1",
-			},
+			Resource: "security/auth",
+			Action:   "login",
+			Version:  "v1",
 			Params: map[string]any{
 				"type":        isecurity.AuthTypePassword,
 				"principal":   username,
@@ -456,11 +438,9 @@ func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 
 func (suite *AuthResourceTestSuite) TestRefreshSuccess() {
 	loginResp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        isecurity.AuthTypePassword,
 			"principal":   "testuser",
@@ -476,11 +456,9 @@ func (suite *AuthResourceTestSuite) TestRefreshSuccess() {
 	refreshToken := tokens["refreshToken"].(string)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "refresh",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "refresh",
+		Version:  "v1",
 		Params: map[string]any{
 			"refreshToken": refreshToken,
 		},
@@ -507,11 +485,9 @@ func (suite *AuthResourceTestSuite) TestRefreshSuccess() {
 func (suite *AuthResourceTestSuite) TestRefreshInvalidToken() {
 	suite.Run("InvalidToken", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "security/auth",
-				Action:   "refresh",
-				Version:  "v1",
-			},
+			Resource: "security/auth",
+			Action:   "refresh",
+			Version:  "v1",
 			Params: map[string]any{
 				"refreshToken": "invalid.token.here",
 			},
@@ -527,11 +503,9 @@ func (suite *AuthResourceTestSuite) TestRefreshInvalidToken() {
 
 	suite.Run("EmptyToken", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "security/auth",
-				Action:   "refresh",
-				Version:  "v1",
-			},
+			Resource: "security/auth",
+			Action:   "refresh",
+			Version:  "v1",
 			Params: map[string]any{
 				"refreshToken": "",
 			},
@@ -546,12 +520,10 @@ func (suite *AuthResourceTestSuite) TestRefreshInvalidToken() {
 
 	suite.Run("MissingToken", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "security/auth",
-				Action:   "refresh",
-				Version:  "v1",
-			},
-			Params: map[string]any{},
+			Resource: "security/auth",
+			Action:   "refresh",
+			Version:  "v1",
+			Params:   map[string]any{},
 		})
 
 		suite.Equal(400, resp.StatusCode, "Should return 400 Bad Request")
@@ -565,11 +537,9 @@ func (suite *AuthResourceTestSuite) TestRefreshInvalidToken() {
 // TestRefreshWithAccessToken tests that refresh fails when using an access token instead of refresh token.
 func (suite *AuthResourceTestSuite) TestRefreshWithAccessToken() {
 	loginResp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        isecurity.AuthTypePassword,
 			"principal":   "testuser",
@@ -585,11 +555,9 @@ func (suite *AuthResourceTestSuite) TestRefreshWithAccessToken() {
 	accessToken := tokens["accessToken"].(string)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "refresh",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "refresh",
+		Version:  "v1",
 		Params: map[string]any{
 			"refreshToken": accessToken,
 		},
@@ -607,11 +575,9 @@ func (suite *AuthResourceTestSuite) TestRefreshWithAccessToken() {
 // principal ID ("nonexistent") is rejected by LoadByID.
 func (suite *AuthResourceTestSuite) TestRefreshUserNotFound() {
 	loginResp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        isecurity.AuthTypePassword,
 			"principal":   "ghost",
@@ -627,11 +593,9 @@ func (suite *AuthResourceTestSuite) TestRefreshUserNotFound() {
 	refreshToken := tokens["refreshToken"].(string)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "refresh",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "refresh",
+		Version:  "v1",
 		Params: map[string]any{
 			"refreshToken": refreshToken,
 		},
@@ -646,11 +610,9 @@ func (suite *AuthResourceTestSuite) TestRefreshUserNotFound() {
 
 func (suite *AuthResourceTestSuite) TestLogoutSuccess() {
 	loginResp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        isecurity.AuthTypePassword,
 			"principal":   "testuser",
@@ -666,11 +628,9 @@ func (suite *AuthResourceTestSuite) TestLogoutSuccess() {
 	accessToken := tokens["accessToken"].(string)
 
 	resp := suite.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "logout",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "logout",
+		Version:  "v1",
 	}, accessToken)
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -683,11 +643,9 @@ func (suite *AuthResourceTestSuite) TestLogoutSuccess() {
 // TestLoginAndRefreshFlow tests the complete login and refresh flow.
 func (suite *AuthResourceTestSuite) TestLoginAndRefreshFlow() {
 	loginResp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        isecurity.AuthTypePassword,
 			"principal":   "testuser",
@@ -702,11 +660,9 @@ func (suite *AuthResourceTestSuite) TestLoginAndRefreshFlow() {
 	tokens1 := suite.extractTokensFromLoginResult(loginData)
 
 	refreshResp1 := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "refresh",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "refresh",
+		Version:  "v1",
 		Params: map[string]any{
 			"refreshToken": tokens1["refreshToken"],
 		},
@@ -721,11 +677,9 @@ func (suite *AuthResourceTestSuite) TestLoginAndRefreshFlow() {
 	suite.NotEqual(tokens1["refreshToken"], tokens2["refreshToken"], "New refresh token should be different")
 
 	refreshResp2 := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "refresh",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "refresh",
+		Version:  "v1",
 		Params: map[string]any{
 			"refreshToken": tokens2["refreshToken"],
 		},
@@ -740,11 +694,9 @@ func (suite *AuthResourceTestSuite) TestLoginAndRefreshFlow() {
 	suite.NotEqual(tokens2["refreshToken"], tokens3["refreshToken"], "Tokens should keep changing")
 
 	logoutResp := suite.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "logout",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "logout",
+		Version:  "v1",
 	}, tokens3["accessToken"].(string))
 
 	logoutBody := suite.ReadResult(logoutResp)
@@ -753,11 +705,9 @@ func (suite *AuthResourceTestSuite) TestLoginAndRefreshFlow() {
 
 func (suite *AuthResourceTestSuite) TestTokenDetails() {
 	loginResp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        isecurity.AuthTypePassword,
 			"principal":   "testuser",
@@ -784,11 +734,9 @@ func (suite *AuthResourceTestSuite) TestTokenDetails() {
 
 func (suite *AuthResourceTestSuite) TestGetUserInfoSuccess() {
 	loginResp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        isecurity.AuthTypePassword,
 			"principal":   "testuser",
@@ -837,11 +785,9 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoSuccess() {
 	}), mock.Anything).Return(expectedUserInfo, nil).Once()
 
 	resp := suite.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "get_user_info",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "get_user_info",
+		Version:  "v1",
 	}, accessToken)
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -882,11 +828,9 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoSuccess() {
 
 func (suite *AuthResourceTestSuite) TestGetUserInfoUnauthenticated() {
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "get_user_info",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "get_user_info",
+		Version:  "v1",
 	})
 
 	suite.Equal(401, resp.StatusCode, "Should return 401 Unauthorized")
@@ -894,11 +838,9 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoUnauthenticated() {
 
 func (suite *AuthResourceTestSuite) TestGetUserInfoLoaderError() {
 	loginResp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        isecurity.AuthTypePassword,
 			"principal":   "testuser",
@@ -918,11 +860,9 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoLoaderError() {
 	}), mock.Anything).Return((*security.UserInfo)(nil), errors.New("database connection failed")).Once()
 
 	resp := suite.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "get_user_info",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "get_user_info",
+		Version:  "v1",
 	}, accessToken)
 
 	suite.Equal(500, resp.StatusCode, "Should return 500 Internal Server Error")
@@ -935,11 +875,9 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoLoaderError() {
 
 func (suite *AuthResourceTestSuite) TestGetUserInfoWithEmptyMenus() {
 	loginResp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        isecurity.AuthTypePassword,
 			"principal":   "testuser",
@@ -967,11 +905,9 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoWithEmptyMenus() {
 	}), mock.Anything).Return(expectedUserInfo, nil).Once()
 
 	resp := suite.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "get_user_info",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "get_user_info",
+		Version:  "v1",
 	}, accessToken)
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -1001,11 +937,9 @@ func (suite *AuthResourceTestSuite) TestLoginEventPublished() {
 		suite.publisher.ClearPublishedEvents()
 
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "security/auth",
-				Action:   "login",
-				Version:  "v1",
-			},
+			Resource: "security/auth",
+			Action:   "login",
+			Version:  "v1",
 			Params: map[string]any{
 				"type":        isecurity.AuthTypePassword,
 				"principal":   "testuser",
@@ -1040,11 +974,9 @@ func (suite *AuthResourceTestSuite) TestLoginEventPublished() {
 		suite.publisher.ClearPublishedEvents()
 
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "security/auth",
-				Action:   "login",
-				Version:  "v1",
-			},
+			Resource: "security/auth",
+			Action:   "login",
+			Version:  "v1",
 			Params: map[string]any{
 				"type":        isecurity.AuthTypePassword,
 				"principal":   "testuser",
@@ -1078,11 +1010,9 @@ func (suite *AuthResourceTestSuite) TestLoginEventPublished() {
 		suite.publisher.ClearPublishedEvents()
 
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "security/auth",
-				Action:   "login",
-				Version:  "v1",
-			},
+			Resource: "security/auth",
+			Action:   "login",
+			Version:  "v1",
 			Params: map[string]any{
 				"type":        isecurity.AuthTypePassword,
 				"principal":   "nonexistent",
@@ -1234,11 +1164,9 @@ func (s *ChallengeFlowTestSuite) loginAndGetResult() map[string]any {
 	s.T().Helper()
 
 	resp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        isecurity.AuthTypePassword,
 			"principal":   "testuser",
@@ -1315,11 +1243,9 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeSuccess() {
 		Return(s.testUser, nil).Once()
 
 	resp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "resolve_challenge",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
 		Params: map[string]any{
 			"challengeToken": challengeToken,
 			"type":           "totp",
@@ -1361,11 +1287,9 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeRefusesReservedPrincipal() 
 		Return(security.PrincipalSystem, nil).Once()
 
 	resp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "resolve_challenge",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
 		Params: map[string]any{
 			"challengeToken": challengeToken,
 			"type":           "totp",
@@ -1396,11 +1320,9 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeEmptyToken() {
 	s.challengeProvider.On("Type").Return("totp").Maybe()
 
 	resp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "resolve_challenge",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
 		Params: map[string]any{
 			"challengeToken": "",
 			"type":           "totp",
@@ -1420,11 +1342,9 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeInvalidToken() {
 	s.challengeProvider.On("Type").Return("totp").Maybe()
 
 	resp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "resolve_challenge",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
 		Params: map[string]any{
 			"challengeToken": "invalid.token.here",
 			"type":           "totp",
@@ -1452,11 +1372,9 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeWrongType() {
 	challengeToken := data["challengeToken"].(string)
 
 	resp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "resolve_challenge",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
 		Params: map[string]any{
 			"challengeToken": challengeToken,
 			"type":           "unknown_type",
@@ -1492,11 +1410,9 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeProviderRejectsResponse() {
 		)).Once()
 
 	resp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "resolve_challenge",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
 		Params: map[string]any{
 			"challengeToken": challengeToken,
 			"type":           "totp",
@@ -1542,11 +1458,9 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengePlainErrorNormalized() {
 		Return((*security.Principal)(nil), errors.New("totp backend unavailable")).Once()
 
 	resp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "resolve_challenge",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
 		Params: map[string]any{
 			"challengeToken": challengeToken,
 			"type":           "totp",
@@ -1589,11 +1503,9 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeSuccessEventUsername() {
 		Return(s.testUser, nil).Once()
 
 	resp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "resolve_challenge",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
 		Params: map[string]any{
 			"challengeToken": challengeToken,
 			"type":           "totp",
@@ -1620,11 +1532,9 @@ func (s *ChallengeFlowTestSuite) TestLoginEvaluateChallengeError() {
 		Return((*security.LoginChallenge)(nil), errors.New("totp service unavailable")).Once()
 
 	resp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        isecurity.AuthTypePassword,
 			"principal":   "testuser",
@@ -1653,11 +1563,9 @@ func (s *ChallengeFlowTestSuite) TestGetUserInfoNilLoader() {
 	accessToken := tokensRaw["accessToken"].(string)
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "get_user_info",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "get_user_info",
+		Version:  "v1",
 	}, accessToken)
 
 	body := s.ReadResult(resp)
@@ -1818,11 +1726,9 @@ func (s *AuthResourceErrorPathTestSuite) SetupTest() {
 
 func (*AuthResourceErrorPathTestSuite) loginRequest() api.Request {
 	return api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        "password",
 			"principal":   "testuser",
@@ -1833,11 +1739,9 @@ func (*AuthResourceErrorPathTestSuite) loginRequest() api.Request {
 
 func (*AuthResourceErrorPathTestSuite) resolveChallengeRequest() api.Request {
 	return api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "resolve_challenge",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
 		Params: map[string]any{
 			"challengeToken": "valid-challenge-token",
 			"type":           "totp",
@@ -1920,11 +1824,9 @@ func (s *AuthResourceErrorPathTestSuite) TestRefreshTokenGenerateError() {
 		Return((*security.AuthTokens)(nil), errors.New("token generation failed")).Once()
 
 	resp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "refresh",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "refresh",
+		Version:  "v1",
 		Params: map[string]any{
 			"refreshToken": "valid-refresh-token",
 		},
@@ -1946,11 +1848,9 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeProviderNotFound() 
 		}, nil).Once()
 
 	resp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "resolve_challenge",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
 		Params: map[string]any{
 			"challengeToken": "valid-challenge-token",
 			"type":           "email",
@@ -2170,11 +2070,9 @@ func (s *LockoutFlowTestSuite) SetupTest() {
 
 func (*LockoutFlowTestSuite) loginRequest() api.Request {
 	return api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        "password",
 			"principal":   "locked-user",
@@ -2225,11 +2123,9 @@ func (s *LockoutFlowTestSuite) TestChallengeGuessesTripLockout() {
 		Return((*security.Principal)(nil), security.ErrOTPCodeInvalid).Twice()
 
 	resolveRequest := api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "resolve_challenge",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
 		Params: map[string]any{
 			"challengeToken": "challenge-token",
 			"type":           "totp",
@@ -2256,11 +2152,9 @@ func (s *LockoutFlowTestSuite) TestChallengeGuessesTripLockout() {
 
 	// The lockout keys on the same identity, so a login attempt is blocked too.
 	loginResp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        "password",
 			"principal":   "challenge-user",
@@ -2366,11 +2260,9 @@ func (s *ReservedPrincipalLockoutTestSuite) TearDownSuite() {
 
 func (*ReservedPrincipalLockoutTestSuite) loginRequest(authType, principal string) api.Request {
 	return api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        authType,
 			"principal":   principal,

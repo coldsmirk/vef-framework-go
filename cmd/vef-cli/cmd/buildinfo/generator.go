@@ -41,12 +41,10 @@ func Generate(outputPath, packageName string) error {
 	defer cancel()
 
 	info := buildInfoData{
-		BuildInfo: monitor.BuildInfo{
-			AppVersion: getVersion(ctx),
-			BuildTime:  timex.Now().String(),
-			GitCommit:  getCommit(ctx),
-		},
-		Package: packageName,
+		AppVersion: getVersion(ctx),
+		BuildTime:  timex.Now().String(),
+		GitCommit:  getCommit(ctx),
+		Package:    packageName,
 	}
 
 	tpl, err := template.New("buildinfo").Parse(buildInfoTemplate)

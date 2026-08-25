@@ -80,20 +80,22 @@ func (s *EventOrderTestSuite) TearDownSuite() {
 func eventOrderAnyPassFlowDef() approval.FlowDefinition {
 	return approval.FlowDefinition{
 		Nodes: []approval.NodeDefinition{
-			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{BaseNodeData: approval.BaseNodeData{Name: "开始"}})},
-			{ID: "approval-1", Kind: approval.NodeApproval, Data: mustMarshal(approval.ApprovalNodeData{
-				BaseNodeData: approval.BaseNodeData{Name: "或签"},
-				TaskNodeData: approval.TaskNodeData{
+			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "开始"})},
+			{
+				ID:   "approval-1",
+				Kind: approval.NodeApproval,
+				Data: mustMarshal(approval.ApprovalNodeData{
+					Name: "或签",
 					Assignees: []approval.AssigneeDefinition{
 						{Kind: approval.AssigneeUser, IDs: []string{"any-1", "any-2"}, SortOrder: 1},
 					},
 					ExecutionType:       approval.ExecutionManual,
 					EmptyAssigneeAction: approval.EmptyAssigneeAutoPass,
-				},
-				ApprovalMethod: approval.ApprovalParallel,
-				PassRule:       approval.PassAny,
-			})},
-			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{BaseNodeData: approval.BaseNodeData{Name: "结束"}})},
+					ApprovalMethod:      approval.ApprovalParallel,
+					PassRule:            approval.PassAny,
+				}),
+			},
+			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "结束"})},
 		},
 		Edges: []approval.EdgeDefinition{
 			{ID: "e1", Source: "start-1", Target: "approval-1"},

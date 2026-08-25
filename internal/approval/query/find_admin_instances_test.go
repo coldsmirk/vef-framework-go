@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/page"
 )
 
 func init() {
@@ -64,7 +63,8 @@ func (s *FindAdminInstancesTestSuite) TearDownSuite() {
 
 func (s *FindAdminInstancesTestSuite) TestFindAll() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminInstancesQuery{
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		Page: 1,
+		Size: 10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(3), result.Total, "Should find 3 instances")
@@ -74,7 +74,8 @@ func (s *FindAdminInstancesTestSuite) TestFindAll() {
 func (s *FindAdminInstancesTestSuite) TestFilterByTenant() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminInstancesQuery{
 		TenantID: new("t1"),
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		Page:     1,
+		Size:     10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(2), result.Total, "Should find 2 instances in tenant t1")
@@ -82,8 +83,9 @@ func (s *FindAdminInstancesTestSuite) TestFilterByTenant() {
 
 func (s *FindAdminInstancesTestSuite) TestFilterByStatus() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminInstancesQuery{
-		Status:   new(approval.InstanceRunning),
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		Status: new(approval.InstanceRunning),
+		Page:   1,
+		Size:   10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(1), result.Total, "Should find 1 running instance")
@@ -91,7 +93,8 @@ func (s *FindAdminInstancesTestSuite) TestFilterByStatus() {
 
 func (s *FindAdminInstancesTestSuite) TestPagination() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminInstancesQuery{
-		Pageable: page.Pageable{Page: 1, Size: 2},
+		Page: 1,
+		Size: 2,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(3), result.Total, "Total should be 3")
@@ -101,7 +104,8 @@ func (s *FindAdminInstancesTestSuite) TestPagination() {
 func (s *FindAdminInstancesTestSuite) TestNoResults() {
 	result, err := s.handler.Handle(s.ctx, query.FindAdminInstancesQuery{
 		TenantID: new("non-existent-tenant"),
-		Pageable: page.Pageable{Page: 1, Size: 10},
+		Page:     1,
+		Size:     10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(0), result.Total, "Should find 0 instances")

@@ -810,8 +810,9 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeAndPrepareOperationShouldAvoidDead
 
 	go func() {
 		lockDone <- s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error {
-			lockedTask := approval.Task{}
-			lockedTask.ID = task.ID
+			lockedTask := approval.Task{
+				ID: task.ID,
+			}
 
 			if err := tx.NewSelect().
 				Model(&lockedTask).

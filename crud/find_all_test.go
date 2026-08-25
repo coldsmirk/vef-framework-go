@@ -19,12 +19,10 @@ import (
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
 		return &FindAllTestSuite{
-			BaseTestSuite: BaseTestSuite{
-				ctx:   env.Ctx,
-				db:    env.DB,
-				bunDB: env.BunDB,
-				ds:    env.DS,
-			},
+			ctx:   env.Ctx,
+			db:    env.DB,
+			bunDB: env.BunDB,
+			ds:    env.DS,
 		}
 	})
 }
@@ -344,11 +342,9 @@ func (suite *FindAllTestSuite) TestFindAllBasic() {
 	suite.T().Logf("Testing FindAll API basic functionality for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_all",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/employee_all",
+		Action:   "find_all",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -369,11 +365,9 @@ func (suite *FindAllTestSuite) TestFindAllWithSearchApplier() {
 
 	suite.Run("SearchByStatus", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_all",
-				Action:   "find_all",
-				Version:  "v1",
-			},
+			Resource: "test/employee_all",
+			Action:   "find_all",
+			Version:  "v1",
 			Params: map[string]any{
 				"status": "active",
 			},
@@ -392,11 +386,9 @@ func (suite *FindAllTestSuite) TestFindAllWithSearchApplier() {
 
 	suite.Run("SearchByKeyword", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_all",
-				Action:   "find_all",
-				Version:  "v1",
-			},
+			Resource: "test/employee_all",
+			Action:   "find_all",
+			Version:  "v1",
 			Params: map[string]any{
 				"keyword": "engineer",
 			},
@@ -421,11 +413,9 @@ func (suite *FindAllTestSuite) TestFindAllWithSearchApplier() {
 
 	suite.Run("SearchByAgeRange", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_all",
-				Action:   "find_all",
-				Version:  "v1",
-			},
+			Resource: "test/employee_all",
+			Action:   "find_all",
+			Version:  "v1",
 			Params: map[string]any{
 				"age": []int{25, 28},
 			},
@@ -448,11 +438,9 @@ func (suite *FindAllTestSuite) TestFindAllWithProcessor() {
 	suite.T().Logf("Testing FindAll API with processor for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_all_processed",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/employee_all_processed",
+		Action:   "find_all",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -475,11 +463,9 @@ func (suite *FindAllTestSuite) TestFindAllWithFilterApplier() {
 	suite.T().Logf("Testing FindAll API with filter applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_all_filtered",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/employee_all_filtered",
+		Action:   "find_all",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -498,11 +484,9 @@ func (suite *FindAllTestSuite) TestFindAllWithSortApplier() {
 	suite.T().Logf("Testing FindAll API with sort applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_all_ordered",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/employee_all_ordered",
+		Action:   "find_all",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -525,12 +509,10 @@ func (suite *FindAllTestSuite) TestFindAllNegativeCases() {
 
 	suite.Run("EmptySearchCriteria", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_all",
-				Action:   "find_all",
-				Version:  "v1",
-			},
-			Params: map[string]any{},
+			Resource: "test/employee_all",
+			Action:   "find_all",
+			Version:  "v1",
+			Params:   map[string]any{},
 		})
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -546,11 +528,9 @@ func (suite *FindAllTestSuite) TestFindAllNegativeCases() {
 
 	suite.Run("NoMatchingRecords", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_all",
-				Action:   "find_all",
-				Version:  "v1",
-			},
+			Resource: "test/employee_all",
+			Action:   "find_all",
+			Version:  "v1",
 			Params: map[string]any{
 				"keyword": "NonexistentKeyword",
 			},
@@ -573,11 +553,9 @@ func (suite *FindAllTestSuite) TestFindAllWithAuditUserNames() {
 	suite.T().Logf("Testing FindAll API with audit user names for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_all_audit",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/employee_all_audit",
+		Action:   "find_all",
+		Version:  "v1",
 		Params: map[string]any{
 			"status": "active",
 		},
@@ -614,11 +592,9 @@ func (suite *FindAllTestSuite) TestFindAllDefaultSorting() {
 
 	suite.Run("DefaultSortByPrimaryKey", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_all",
-				Action:   "find_all",
-				Version:  "v1",
-			},
+			Resource: "test/employee_all",
+			Action:   "find_all",
+			Version:  "v1",
 		})
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -639,11 +615,9 @@ func (suite *FindAllTestSuite) TestFindAllDefaultSorting() {
 
 	suite.Run("CustomDefaultSort", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_all_ordered",
-				Action:   "find_all",
-				Version:  "v1",
-			},
+			Resource: "test/employee_all_ordered",
+			Action:   "find_all",
+			Version:  "v1",
 		})
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -666,11 +640,9 @@ func (suite *FindAllTestSuite) TestFindAllDefaultSorting() {
 
 	suite.Run("DisableDefaultSort", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_all_no_default_sort",
-				Action:   "find_all",
-				Version:  "v1",
-			},
+			Resource: "test/employee_all_no_default_sort",
+			Action:   "find_all",
+			Version:  "v1",
 		})
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -685,11 +657,9 @@ func (suite *FindAllTestSuite) TestFindAllDefaultSorting() {
 
 	suite.Run("MultipleDefaultSortColumns", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_all_multi_sort",
-				Action:   "find_all",
-				Version:  "v1",
-			},
+			Resource: "test/employee_all_multi_sort",
+			Action:   "find_all",
+			Version:  "v1",
 		})
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -725,11 +695,9 @@ func (suite *FindAllTestSuite) TestFindAllRequestSortOverride() {
 
 	suite.Run("OverrideDefaultSortWithRequestSort", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_all_ordered",
-				Action:   "find_all",
-				Version:  "v1",
-			},
+			Resource: "test/employee_all_ordered",
+			Action:   "find_all",
+			Version:  "v1",
 			Meta: map[string]any{
 				"sort": []map[string]any{
 					{
@@ -762,11 +730,9 @@ func (suite *FindAllTestSuite) TestFindAllRequestSortOverride() {
 
 	suite.Run("OverrideWithMultipleSortColumns", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_all_ordered",
-				Action:   "find_all",
-				Version:  "v1",
-			},
+			Resource: "test/employee_all_ordered",
+			Action:   "find_all",
+			Version:  "v1",
 			Meta: map[string]any{
 				"sort": []map[string]any{
 					{
@@ -808,11 +774,9 @@ func (suite *FindAllTestSuite) TestFindAllRequestSortOverride() {
 		// When WithDefaultSort() is called with no args, both default and request sorting
 		// are disabled. Verify that all records are still returned.
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_all_no_default_sort",
-				Action:   "find_all",
-				Version:  "v1",
-			},
+			Resource: "test/employee_all_no_default_sort",
+			Action:   "find_all",
+			Version:  "v1",
 			Meta: map[string]any{
 				"sort": []map[string]any{
 					{
@@ -839,11 +803,9 @@ func (suite *FindAllTestSuite) TestFindAllWithSelect() {
 	suite.T().Logf("Testing FindAll API with WithSelect for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_all_select",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/employee_all_select",
+		Action:   "find_all",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -864,11 +826,9 @@ func (suite *FindAllTestSuite) TestFindAllWithSelectAs() {
 	suite.T().Logf("Testing FindAll API with WithSelectAs for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_all_select_as",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/employee_all_select_as",
+		Action:   "find_all",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -886,11 +846,9 @@ func (suite *FindAllTestSuite) TestFindAllWithQueryApplier() {
 	suite.T().Logf("Testing FindAll API with WithQueryApplier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_all_query_applier",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/employee_all_query_applier",
+		Action:   "find_all",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -913,11 +871,9 @@ func (suite *FindAllTestSuite) TestFindAllWithDisableDataPerm() {
 	suite.T().Logf("Testing FindAll API with DisableDataPerm for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_all_no_perm",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/employee_all_no_perm",
+		Action:   "find_all",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -935,11 +891,9 @@ func (suite *FindAllTestSuite) TestFindAllWithRelation() {
 	suite.T().Logf("Testing FindAll API with WithRelation for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_all_relation",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/employee_all_relation",
+		Action:   "find_all",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -957,11 +911,9 @@ func (suite *FindAllTestSuite) TestFindAllCompositePK() {
 	suite.T().Logf("Testing FindAll API with composite PK model for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/assignment_all",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/assignment_all",
+		Action:   "find_all",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -979,11 +931,9 @@ func (suite *FindAllTestSuite) TestFindAllErrorQueryApplier() {
 	suite.T().Logf("Testing FindAll API error query applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_all_err_applier",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/employee_all_err_applier",
+		Action:   "find_all",
+		Version:  "v1",
 	})
 
 	suite.Contains([]int{200, 500}, resp.StatusCode, "Should return error status code")
@@ -996,11 +946,9 @@ func (suite *FindAllTestSuite) TestFindAllAscSort() {
 	suite.T().Logf("Testing FindAll API ASC sort for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_all_asc_sort",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/employee_all_asc_sort",
+		Action:   "find_all",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -1022,11 +970,9 @@ func (suite *FindAllTestSuite) TestFindAllDynamicSortNullsFirst() {
 	}
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_all",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/employee_all",
+		Action:   "find_all",
+		Version:  "v1",
 		Meta: map[string]any{
 			"sort": []map[string]any{
 				{"column": "name", "direction": "asc", "nullsOrder": 1},
@@ -1050,11 +996,9 @@ func (suite *FindAllTestSuite) TestFindAllDynamicSortNullsLast() {
 	}
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_all",
-			Action:   "find_all",
-			Version:  "v1",
-		},
+		Resource: "test/employee_all",
+		Action:   "find_all",
+		Version:  "v1",
 		Meta: map[string]any{
 			"sort": []map[string]any{
 				{"column": "name", "direction": "desc", "nullsOrder": 2},

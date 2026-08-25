@@ -79,7 +79,9 @@ func (s *FileResolveTestSuite) uploadFile(filename string, public bool) string {
 	s.T().Helper()
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "init_upload", Version: "v1"},
+		Resource: "sys/storage",
+		Action:   "init_upload",
+		Version:  "v1",
 		Params: map[string]any{
 			"filename": filename,
 			"size":     singleShotSize,
@@ -125,8 +127,10 @@ func (s *FileResolveTestSuite) uploadFile(filename string, public bool) string {
 	s.Require().True(s.ReadResult(partResp).IsOk(), "Upload part should succeed")
 
 	completeResp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage", Action: "complete_upload", Version: "v1"},
-		Params:     map[string]any{"claimId": claimID},
+		Resource: "sys/storage",
+		Action:   "complete_upload",
+		Version:  "v1",
+		Params:   map[string]any{"claimId": claimID},
 	}, s.ownerToken)
 	s.Require().True(s.ReadResult(completeResp).IsOk(), "Complete upload should succeed")
 
@@ -138,8 +142,10 @@ func (s *FileResolveTestSuite) resolve(keys ...string) []map[string]any {
 	s.T().Helper()
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "sys/storage/file", Action: "resolve", Version: "v1"},
-		Params:     map[string]any{"keys": keys},
+		Resource: "sys/storage/file",
+		Action:   "resolve",
+		Version:  "v1",
+		Params:   map[string]any{"keys": keys},
 	}, s.ownerToken)
 
 	body := s.ReadResult(resp)

@@ -22,12 +22,10 @@ import (
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
 		return &FindTreeTestSuite{
-			BaseTestSuite: BaseTestSuite{
-				ctx:   env.Ctx,
-				db:    env.DB,
-				bunDB: env.BunDB,
-				ds:    env.DS,
-			},
+			ctx:   env.Ctx,
+			db:    env.DB,
+			bunDB: env.BunDB,
+			ds:    env.DS,
 		}
 	})
 }
@@ -205,11 +203,9 @@ func (suite *FindTreeTestSuite) TestFindTreeBasic() {
 	suite.T().Logf("Testing FindTree API basic functionality for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/department_tree",
-			Action:   "find_tree",
-			Version:  "v1",
-		},
+		Resource: "test/department_tree",
+		Action:   "find_tree",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -247,11 +243,9 @@ func (suite *FindTreeTestSuite) TestFindTreeWithSearch() {
 
 	suite.Run("SearchByCode", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree",
-				Action:   "find_tree",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree",
+			Action:   "find_tree",
+			Version:  "v1",
 			Params: map[string]any{
 				"code": "ENG",
 			},
@@ -272,11 +266,9 @@ func (suite *FindTreeTestSuite) TestFindTreeWithSearch() {
 
 	suite.Run("SearchByParentID", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree",
-				Action:   "find_tree",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree",
+			Action:   "find_tree",
+			Version:  "v1",
 			Params: map[string]any{
 				"parentId": "dept001", // Engineering's children
 			},
@@ -301,11 +293,9 @@ func (suite *FindTreeTestSuite) TestFindTreeWithSearch() {
 
 	suite.Run("SearchByKeyword", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree",
-				Action:   "find_tree",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree",
+			Action:   "find_tree",
+			Version:  "v1",
 			Params: map[string]any{
 				"keyword": "Backend",
 			},
@@ -327,11 +317,9 @@ func (suite *FindTreeTestSuite) TestFindTreeWithFilterApplier() {
 	suite.T().Logf("Testing FindTree API with filter applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/department_tree_filtered",
-			Action:   "find_tree",
-			Version:  "v1",
-		},
+		Resource: "test/department_tree_filtered",
+		Action:   "find_tree",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -355,11 +343,9 @@ func (suite *FindTreeTestSuite) TestFindTreeWithSortApplier() {
 	suite.T().Logf("Testing FindTree API with sort applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/department_tree_ordered",
-			Action:   "find_tree",
-			Version:  "v1",
-		},
+		Resource: "test/department_tree_ordered",
+		Action:   "find_tree",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -391,11 +377,9 @@ func (suite *FindTreeTestSuite) TestFindTreeNegativeCases() {
 
 	suite.Run("NoMatchingRecords", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree",
-				Action:   "find_tree",
-				Version:  "v1",
-			},
+			Resource: "test/department_tree",
+			Action:   "find_tree",
+			Version:  "v1",
 			Params: map[string]any{
 				"keyword": "NonexistentCategory",
 			},
@@ -413,12 +397,10 @@ func (suite *FindTreeTestSuite) TestFindTreeNegativeCases() {
 
 	suite.Run("EmptySearchCriteria", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/department_tree",
-				Action:   "find_tree",
-				Version:  "v1",
-			},
-			Params: map[string]any{},
+			Resource: "test/department_tree",
+			Action:   "find_tree",
+			Version:  "v1",
+			Params:   map[string]any{},
 		})
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -437,11 +419,9 @@ func (suite *FindTreeTestSuite) TestFindTreeWithAuditUserNames() {
 	suite.T().Logf("Testing FindTree API with audit user names for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/department_tree_audit",
-			Action:   "find_tree",
-			Version:  "v1",
-		},
+		Resource: "test/department_tree_audit",
+		Action:   "find_tree",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -483,11 +463,9 @@ func (suite *FindTreeTestSuite) TestFindTreeWithQueryApplier() {
 	suite.T().Logf("Testing FindTree API with WithQueryApplier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/department_tree_query_applier",
-			Action:   "find_tree",
-			Version:  "v1",
-		},
+		Resource: "test/department_tree_query_applier",
+		Action:   "find_tree",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -505,11 +483,9 @@ func (suite *FindTreeTestSuite) TestFindTreeErrorQueryApplier() {
 	suite.T().Logf("Testing FindTree API error query applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/department_tree_err_applier",
-			Action:   "find_tree",
-			Version:  "v1",
-		},
+		Resource: "test/department_tree_err_applier",
+		Action:   "find_tree",
+		Version:  "v1",
 	})
 
 	suite.Contains([]int{200, 500}, resp.StatusCode, "Should return error status code")

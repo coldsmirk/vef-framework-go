@@ -318,7 +318,8 @@ func TestWorkerClaimBatchUsesDialectIndependentAttemptOrder(t *testing.T) {
 		}
 
 		failed := &approval.BusinessProjection{
-			FullAuditedModel: orm.FullAuditedModel{CreatedAt: failedCreated, UpdatedAt: failedCreated},
+			CreatedAt:        failedCreated,
+			UpdatedAt:        failedCreated,
 			TenantID:         "tenant-1",
 			FlowID:           "flow-1",
 			FlowVersionID:    "version-1",
@@ -337,7 +338,8 @@ func TestWorkerClaimBatchUsesDialectIndependentAttemptOrder(t *testing.T) {
 		require.NoError(t, err, "Test setup should insert the due failed projection")
 
 		pending := &approval.BusinessProjection{
-			FullAuditedModel: orm.FullAuditedModel{CreatedAt: pendingCreated, UpdatedAt: pendingCreated},
+			CreatedAt:        pendingCreated,
+			UpdatedAt:        pendingCreated,
 			TenantID:         "tenant-1",
 			FlowID:           "flow-1",
 			FlowVersionID:    "version-1",

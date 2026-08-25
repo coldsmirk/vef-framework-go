@@ -74,7 +74,9 @@ func (s *OpaqueSessionFlowTestSuite) TearDownSuite() {
 
 func (*OpaqueSessionFlowTestSuite) loginRequest() api.Request {
 	return api.Request{
-		Identifier: api.Identifier{Resource: "security/auth", Action: "login", Version: "v1"},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        "password",
 			"principal":   "testuser",
@@ -85,7 +87,9 @@ func (*OpaqueSessionFlowTestSuite) loginRequest() api.Request {
 
 func (*OpaqueSessionFlowTestSuite) logoutRequest() api.Request {
 	return api.Request{
-		Identifier: api.Identifier{Resource: "security/auth", Action: "logout", Version: "v1"},
+		Resource: "security/auth",
+		Action:   "logout",
+		Version:  "v1",
 	}
 }
 
@@ -119,8 +123,10 @@ func (s *OpaqueSessionFlowTestSuite) TestLoginAuthenticateLogout() {
 // JWT from a previous jwt_token deployment must not mint opaque sessions.
 func (s *OpaqueSessionFlowTestSuite) TestRefreshUnavailable() {
 	resp := s.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{Resource: "security/auth", Action: "refresh", Version: "v1"},
-		Params:     map[string]any{"refreshToken": "any-value"},
+		Resource: "security/auth",
+		Action:   "refresh",
+		Version:  "v1",
+		Params:   map[string]any{"refreshToken": "any-value"},
 	})
 	s.Equal(404, resp.StatusCode, "the refresh operation must not exist under the opaque mechanism")
 }

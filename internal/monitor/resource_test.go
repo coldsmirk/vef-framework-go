@@ -65,11 +65,9 @@ func (suite *MonitorResourceTestSuite) TestGetOverview() {
 
 	suite.Run("Success", func() {
 		resp := suite.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/monitor",
-				Action:   "get_overview",
-				Version:  "v1",
-			},
+			Resource: "sys/monitor",
+			Action:   "get_overview",
+			Version:  "v1",
 		}, suite.token)
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -107,11 +105,9 @@ func (suite *MonitorResourceTestSuite) TestGetCPU() {
 
 	suite.Run("Success", func() {
 		resp := suite.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/monitor",
-				Action:   "get_cpu",
-				Version:  "v1",
-			},
+			Resource: "sys/monitor",
+			Action:   "get_cpu",
+			Version:  "v1",
 		}, suite.token)
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -147,11 +143,9 @@ func (suite *MonitorResourceTestSuite) TestGetMemory() {
 
 	suite.Run("Success", func() {
 		resp := suite.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/monitor",
-				Action:   "get_memory",
-				Version:  "v1",
-			},
+			Resource: "sys/monitor",
+			Action:   "get_memory",
+			Version:  "v1",
 		}, suite.token)
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -179,11 +173,9 @@ func (suite *MonitorResourceTestSuite) TestGetDisk() {
 
 	suite.Run("Success", func() {
 		resp := suite.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/monitor",
-				Action:   "get_disk",
-				Version:  "v1",
-			},
+			Resource: "sys/monitor",
+			Action:   "get_disk",
+			Version:  "v1",
 		}, suite.token)
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -210,11 +202,9 @@ func (suite *MonitorResourceTestSuite) TestGetNetwork() {
 
 	suite.Run("Success", func() {
 		resp := suite.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/monitor",
-				Action:   "get_network",
-				Version:  "v1",
-			},
+			Resource: "sys/monitor",
+			Action:   "get_network",
+			Version:  "v1",
 		}, suite.token)
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -241,11 +231,9 @@ func (suite *MonitorResourceTestSuite) TestGetHost() {
 
 	suite.Run("Success", func() {
 		resp := suite.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/monitor",
-				Action:   "get_host",
-				Version:  "v1",
-			},
+			Resource: "sys/monitor",
+			Action:   "get_host",
+			Version:  "v1",
 		}, suite.token)
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -265,22 +253,18 @@ func (suite *MonitorResourceTestSuite) TestGetHost() {
 
 	suite.Run("ConsistentResults", func() {
 		resp1 := suite.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/monitor",
-				Action:   "get_host",
-				Version:  "v1",
-			},
+			Resource: "sys/monitor",
+			Action:   "get_host",
+			Version:  "v1",
 		}, suite.token)
 
 		body1 := suite.ReadResult(resp1)
 		data1 := suite.ReadDataAsMap(body1.Data)
 
 		resp2 := suite.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/monitor",
-				Action:   "get_host",
-				Version:  "v1",
-			},
+			Resource: "sys/monitor",
+			Action:   "get_host",
+			Version:  "v1",
 		}, suite.token)
 
 		body2 := suite.ReadResult(resp2)
@@ -296,11 +280,9 @@ func (suite *MonitorResourceTestSuite) TestGetProcess() {
 
 	suite.Run("Success", func() {
 		resp := suite.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/monitor",
-				Action:   "get_process",
-				Version:  "v1",
-			},
+			Resource: "sys/monitor",
+			Action:   "get_process",
+			Version:  "v1",
 		}, suite.token)
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -329,11 +311,9 @@ func (suite *MonitorResourceTestSuite) TestGetLoad() {
 
 	suite.Run("Success", func() {
 		resp := suite.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/monitor",
-				Action:   "get_load",
-				Version:  "v1",
-			},
+			Resource: "sys/monitor",
+			Action:   "get_load",
+			Version:  "v1",
 		}, suite.token)
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -358,11 +338,9 @@ func (suite *MonitorResourceTestSuite) TestGetBuildInfo() {
 
 	suite.Run("Success", func() {
 		resp := suite.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/monitor",
-				Action:   "get_build_info",
-				Version:  "v1",
-			},
+			Resource: "sys/monitor",
+			Action:   "get_build_info",
+			Version:  "v1",
 		}, suite.token)
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -384,11 +362,9 @@ func (suite *MonitorResourceTestSuite) TestGetEventStreams() {
 
 	suite.Run("DisabledWithoutRedisStreamTransport", func() {
 		resp := suite.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/monitor",
-				Action:   "get_event_streams",
-				Version:  "v1",
-			},
+			Resource: "sys/monitor",
+			Action:   "get_event_streams",
+			Version:  "v1",
 		}, suite.token)
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -489,11 +465,9 @@ func (suite *MonitorResourceErrorMappingSuite) TearDownSuite() {
 
 func (suite *MonitorResourceErrorMappingSuite) requestCode(action string) int {
 	resp := suite.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "sys/monitor",
-			Action:   action,
-			Version:  "v1",
-		},
+		Resource: "sys/monitor",
+		Action:   action,
+		Version:  "v1",
 	}, suite.token)
 
 	suite.Equal(200, resp.StatusCode, "transport status should be 200 for action %q", action)

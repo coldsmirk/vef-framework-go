@@ -334,11 +334,9 @@ func (suite *RESTEngineTestSuite) setupTestApp() {
 
 func (suite *RESTEngineTestSuite) login() string {
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        "password",
 			"principal":   "testuser",

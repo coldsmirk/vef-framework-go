@@ -233,7 +233,7 @@ func TestValidateNodeConfig(t *testing.T) {
 	t.Run("HandleRestrictions", func(t *testing.T) {
 		t.Run("RejectsAutoRejectExecution", func(t *testing.T) {
 			data := &approval.HandleNodeData{
-				TaskNodeData: approval.TaskNodeData{ExecutionType: approval.ExecutionAutoReject},
+				ExecutionType: approval.ExecutionAutoReject,
 			}
 
 			assert.ErrorIs(t, validateNodeConfig("n1", data), errHandleExecutionAutoReject,
@@ -242,7 +242,7 @@ func TestValidateNodeConfig(t *testing.T) {
 
 		t.Run("RejectsAutoRejectTimeout", func(t *testing.T) {
 			data := &approval.HandleNodeData{
-				TaskNodeData: approval.TaskNodeData{TimeoutAction: approval.TimeoutActionAutoReject},
+				TimeoutAction: approval.TimeoutActionAutoReject,
 			}
 
 			assert.ErrorIs(t, validateNodeConfig("n1", data), errHandleTimeoutAutoReject,
@@ -251,10 +251,8 @@ func TestValidateNodeConfig(t *testing.T) {
 
 		t.Run("AcceptsAutoPass", func(t *testing.T) {
 			data := &approval.HandleNodeData{
-				TaskNodeData: approval.TaskNodeData{
-					ExecutionType: approval.ExecutionAutoPass,
-					TimeoutAction: approval.TimeoutActionAutoPass,
-				},
+				ExecutionType: approval.ExecutionAutoPass,
+				TimeoutAction: approval.TimeoutActionAutoPass,
 			}
 
 			assert.NoError(t, validateNodeConfig("n1", data),
@@ -263,10 +261,8 @@ func TestValidateNodeConfig(t *testing.T) {
 
 		t.Run("ApprovalNodeKeepsAutoReject", func(t *testing.T) {
 			data := &approval.ApprovalNodeData{
-				TaskNodeData: approval.TaskNodeData{
-					ExecutionType: approval.ExecutionAutoReject,
-					TimeoutAction: approval.TimeoutActionAutoReject,
-				},
+				ExecutionType: approval.ExecutionAutoReject,
+				TimeoutAction: approval.TimeoutActionAutoReject,
 			}
 
 			assert.NoError(t, validateNodeConfig("n1", data),

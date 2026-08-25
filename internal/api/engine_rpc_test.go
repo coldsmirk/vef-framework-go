@@ -295,11 +295,9 @@ func (suite *RPCEngineTestSuite) setupTestApp() {
 
 func (suite *RPCEngineTestSuite) login() string {
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        "password",
 			"principal":   "testuser",
@@ -320,11 +318,9 @@ func (suite *RPCEngineTestSuite) TestPublicAPIPing() {
 	suite.T().Log("Testing public API ping endpoint")
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "ping",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "ping",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -338,11 +334,9 @@ func (suite *RPCEngineTestSuite) TestPublicAPIEcho() {
 	suite.T().Log("Testing public API echo endpoint with params")
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "echo",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "echo",
+		Version:  "v1",
 		Params: map[string]any{
 			"message": "hello world",
 			"count":   42,
@@ -363,11 +357,9 @@ func (suite *RPCEngineTestSuite) TestProtectedAPIWithoutToken() {
 	suite.T().Log("Testing protected API without token")
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "protected",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "protected",
+		Version:  "v1",
 	})
 
 	suite.Equal(401, resp.StatusCode, "Should return 401 Unauthorized")
@@ -379,11 +371,9 @@ func (suite *RPCEngineTestSuite) TestProtectedAPIWithValidToken() {
 	token := suite.GenerateToken(suite.testUser)
 
 	resp := suite.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "protected",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "protected",
+		Version:  "v1",
 	}, token)
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -400,11 +390,9 @@ func (suite *RPCEngineTestSuite) TestProtectedAPIWithInvalidToken() {
 	suite.T().Log("Testing protected API with invalid token")
 
 	resp := suite.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "protected",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "protected",
+		Version:  "v1",
 	}, "invalid.token.here")
 
 	suite.Equal(401, resp.StatusCode, "Should return 401 Unauthorized")
@@ -418,11 +406,9 @@ func (suite *RPCEngineTestSuite) TestOperationNotFound() {
 	suite.T().Log("Testing operation not found")
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "nonexistent",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "nonexistent",
+		Version:  "v1",
 	})
 
 	suite.Equal(404, resp.StatusCode, "Should return 404 Not Found")
@@ -435,11 +421,9 @@ func (suite *RPCEngineTestSuite) TestResourceNotFound() {
 	suite.T().Log("Testing resource not found")
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "nonexistent",
-			Action:   "ping",
-			Version:  "v1",
-		},
+		Resource: "nonexistent",
+		Action:   "ping",
+		Version:  "v1",
 	})
 
 	suite.Equal(404, resp.StatusCode, "Should return 404 Not Found")
@@ -452,11 +436,9 @@ func (suite *RPCEngineTestSuite) TestVersionMismatch() {
 	suite.T().Log("Testing version mismatch")
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "ping",
-			Version:  "v99",
-		},
+		Resource: "test",
+		Action:   "ping",
+		Version:  "v99",
 	})
 
 	suite.Equal(404, resp.StatusCode, "Should return 404 Not Found")
@@ -500,11 +482,9 @@ func (suite *RPCEngineTestSuite) TestMissingRequiredFields() {
 
 	suite.Run("MissingResource", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "",
-				Action:   "ping",
-				Version:  "v1",
-			},
+			Resource: "",
+			Action:   "ping",
+			Version:  "v1",
 		})
 
 		body := suite.ReadResult(resp)
@@ -513,11 +493,9 @@ func (suite *RPCEngineTestSuite) TestMissingRequiredFields() {
 
 	suite.Run("MissingAction", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test",
-				Action:   "",
-				Version:  "v1",
-			},
+			Resource: "test",
+			Action:   "",
+			Version:  "v1",
 		})
 
 		body := suite.ReadResult(resp)
@@ -526,11 +504,9 @@ func (suite *RPCEngineTestSuite) TestMissingRequiredFields() {
 
 	suite.Run("MissingVersion", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test",
-				Action:   "ping",
-				Version:  "",
-			},
+			Resource: "test",
+			Action:   "ping",
+			Version:  "",
 		})
 
 		body := suite.ReadResult(resp)
@@ -542,11 +518,9 @@ func (suite *RPCEngineTestSuite) TestAuditedEndpoint() {
 	suite.T().Log("Testing audited endpoint")
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "audited",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "audited",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -560,11 +534,9 @@ func (suite *RPCEngineTestSuite) TestErrorResponse() {
 	suite.T().Log("Testing error response")
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "error",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "error",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -579,11 +551,9 @@ func (suite *RPCEngineTestSuite) TestRequestWithMeta() {
 	suite.T().Log("Testing request with meta")
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "echo_data",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "echo_data",
+		Version:  "v1",
 		Params: map[string]any{
 			"data": "test",
 		},
@@ -603,11 +573,9 @@ func (suite *RPCEngineTestSuite) TestI18nErrorMessages() {
 	suite.T().Log("Testing i18n error messages")
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "protected",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "protected",
+		Version:  "v1",
 	})
 
 	suite.Equal(401, resp.StatusCode, "Should return 401 Unauthorized")
@@ -621,11 +589,9 @@ func (suite *RPCEngineTestSuite) TestContentTypeValidation() {
 	suite.T().Log("Testing content type validation")
 
 	jsonBytes, err := json.Marshal(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "ping",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "ping",
+		Version:  "v1",
 	})
 	suite.Require().NoError(err, "TestContentTypeValidation should complete without error")
 
@@ -642,11 +608,9 @@ func (suite *RPCEngineTestSuite) TestComplexParams() {
 	suite.T().Log("Testing complex params")
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "echo_complex",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "echo_complex",
+		Version:  "v1",
 		Params: map[string]any{
 			"string":  "hello",
 			"number":  123,
@@ -681,11 +645,9 @@ func (suite *RPCEngineTestSuite) TestTokenInQueryParam() {
 	token := suite.GenerateToken(suite.testUser)
 
 	jsonBytes, err := json.Marshal(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "protected",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "protected",
+		Version:  "v1",
 	})
 	suite.Require().NoError(err, "TestTokenInQueryParam should complete without error")
 
@@ -707,11 +669,9 @@ func (suite *RPCEngineTestSuite) TestPermissionDenied() {
 	token := suite.GenerateToken(suite.testUser)
 
 	resp := suite.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "restricted",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "restricted",
+		Version:  "v1",
 	}, token)
 
 	suite.Equal(403, resp.StatusCode, "Should return 403 Forbidden")
@@ -725,11 +685,9 @@ func (suite *RPCEngineTestSuite) TestSlowOperationTimeout() {
 	suite.T().Log("Testing slow operation timeout")
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "slow",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "slow",
+		Version:  "v1",
 	})
 
 	// The slow handler sleeps for 100ms but timeout is 50ms
@@ -744,11 +702,9 @@ func (suite *RPCEngineTestSuite) TestNonexistentUserLogin() {
 	suite.T().Log("Testing login with nonexistent user")
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "security/auth",
-			Action:   "login",
-			Version:  "v1",
-		},
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
 		Params: map[string]any{
 			"type":        "password",
 			"principal":   "nonexistent",
@@ -768,11 +724,9 @@ func (suite *RPCEngineTestSuite) TestAdminWithPermission() {
 	token := suite.GenerateToken(suite.testUser)
 
 	resp := suite.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "admin",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "admin",
+		Version:  "v1",
 	}, token)
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 OK")
@@ -789,11 +743,9 @@ func (suite *RPCEngineTestSuite) TestHandlerPanic() {
 	suite.T().Log("Testing handler panic returns 500")
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "panic",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "panic",
+		Version:  "v1",
 	})
 
 	suite.Equal(500, resp.StatusCode, "Should return 500 Internal Server Error")
@@ -815,11 +767,9 @@ func (suite *RPCEngineTestSuite) TestPermissionCheckerCalledOnAdmin() {
 	suite.permissionChecker.Calls = nil
 
 	_ = suite.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "admin",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "admin",
+		Version:  "v1",
 	}, token)
 
 	suite.permissionChecker.AssertCalled(suite.T(), "HasPermission", mock.Anything, mock.Anything, "test.admin")
@@ -833,11 +783,9 @@ func (suite *RPCEngineTestSuite) TestPermissionCheckerCalledOnRestricted() {
 	suite.permissionChecker.Calls = nil
 
 	_ = suite.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test",
-			Action:   "restricted",
-			Version:  "v1",
-		},
+		Resource: "test",
+		Action:   "restricted",
+		Version:  "v1",
 	}, token)
 
 	suite.permissionChecker.AssertCalled(suite.T(), "HasPermission", mock.Anything, mock.Anything, "test.restricted")

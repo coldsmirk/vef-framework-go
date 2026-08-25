@@ -79,21 +79,23 @@ func (s *PassRuleVisitScopeTestSuite) TearDownSuite() {
 func ratioFlowDef() approval.FlowDefinition {
 	return approval.FlowDefinition{
 		Nodes: []approval.NodeDefinition{
-			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{BaseNodeData: approval.BaseNodeData{Name: "开始"}})},
-			{ID: "approval-1", Kind: approval.NodeApproval, Data: mustMarshal(approval.ApprovalNodeData{
-				BaseNodeData: approval.BaseNodeData{Name: "会签"},
-				TaskNodeData: approval.TaskNodeData{
+			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "开始"})},
+			{
+				ID:   "approval-1",
+				Kind: approval.NodeApproval,
+				Data: mustMarshal(approval.ApprovalNodeData{
+					Name: "会签",
 					Assignees: []approval.AssigneeDefinition{
 						{Kind: approval.AssigneeUser, IDs: []string{"u-1", "u-2", "u-3"}, SortOrder: 1},
 					},
 					ExecutionType:       approval.ExecutionManual,
 					EmptyAssigneeAction: approval.EmptyAssigneeAutoPass,
-				},
-				ApprovalMethod: approval.ApprovalParallel,
-				PassRule:       approval.PassRatio,
-				PassRatio:      decimal.NewFromInt(67),
-			})},
-			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{BaseNodeData: approval.BaseNodeData{Name: "结束"}})},
+					ApprovalMethod:      approval.ApprovalParallel,
+					PassRule:            approval.PassRatio,
+					PassRatio:           decimal.NewFromInt(67),
+				}),
+			},
+			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "结束"})},
 		},
 		Edges: []approval.EdgeDefinition{
 			{ID: "edge-1", Source: "start-1", Target: "approval-1"},
@@ -186,8 +188,9 @@ func (s *PassRuleVisitScopeTestSuite) TestRedoCountsOnlyItsOwnRound() {
 
 	// The stale round-1 task is preserved as history, merely excluded from
 	// counting.
-	stale := approval.Task{}
-	stale.ID = rollbackTask.ID
+	stale := approval.Task{
+		ID: rollbackTask.ID,
+	}
 	s.Require().NoError(s.db.NewSelect().Model(&stale).WherePK().Scan(s.ctx), "Should reload the rolled-back task")
 	s.Assert().Equal(approval.TaskRolledBack, stale.Status, "Round-1 rollback task keeps its status")
 

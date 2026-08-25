@@ -23,8 +23,10 @@ func (s *InstanceResourceTestSuite) adminRPCCall(action string, params map[strin
 	}
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "approval/admin", Action: action, Version: "v1"},
-		Params:     params,
+		Resource: "approval/admin",
+		Action:   action,
+		Version:  "v1",
+		Params:   params,
 	}, t)
 	s.Require().Equal(http.StatusOK, resp.StatusCode, "Admin RPC call should return HTTP 200")
 
@@ -108,7 +110,9 @@ func (s *InstanceResourceTestSuite) TearDownTest() {
 func (s *InstanceResourceTestSuite) createAndPublishFlow(code, name string, def approval.FlowDefinition) FlowSetup {
 	// Create flow
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "approval/flow", Action: "create", Version: "v1"},
+		Resource: "approval/flow",
+		Action:   "create",
+		Version:  "v1",
 		Params: map[string]any{
 			"tenantId":               "default",
 			"code":                   code,
@@ -127,7 +131,9 @@ func (s *InstanceResourceTestSuite) createAndPublishFlow(code, name string, def 
 
 	// Deploy
 	resp = s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "approval/flow", Action: "deploy", Version: "v1"},
+		Resource: "approval/flow",
+		Action:   "deploy",
+		Version:  "v1",
 		Params: map[string]any{
 			"flowId":         flowID,
 			"flowDefinition": toMap(def),
@@ -141,8 +147,10 @@ func (s *InstanceResourceTestSuite) createAndPublishFlow(code, name string, def 
 
 	// Publish
 	resp = s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "approval/flow", Action: "publish_version", Version: "v1"},
-		Params:     map[string]any{"versionId": versionID},
+		Resource: "approval/flow",
+		Action:   "publish_version",
+		Version:  "v1",
+		Params:   map[string]any{"versionId": versionID},
 	}, s.token)
 	s.Require().Equal(http.StatusOK, resp.StatusCode, "Publish flow RPC should return HTTP 200")
 	res = s.ReadResult(resp)
@@ -160,8 +168,10 @@ func (s *InstanceResourceTestSuite) rpcCall(action string, params map[string]any
 	}
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "approval/instance", Action: action, Version: "v1"},
-		Params:     params,
+		Resource: "approval/instance",
+		Action:   action,
+		Version:  "v1",
+		Params:   params,
 	}, t)
 	s.Require().Equal(http.StatusOK, resp.StatusCode, "Instance RPC call should return HTTP 200")
 

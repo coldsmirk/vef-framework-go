@@ -11,24 +11,37 @@ import (
 
 // flowNode builds an in-memory FlowNode with the given DB id, React Flow key, and kind.
 func flowNode(id, key string, kind approval.NodeKind) approval.FlowNode {
-	n := approval.FlowNode{Key: key, Kind: kind, Name: key}
-	n.ID = id
+	n := approval.FlowNode{
+		Key:  key,
+		Kind: kind,
+		Name: key,
+		ID:   id,
+	}
 
 	return n
 }
 
 // task builds an in-memory Task with the given id/node/assignee/status.
 func task(id, nodeID, assigneeID string, status approval.TaskStatus) approval.Task {
-	t := approval.Task{NodeID: nodeID, AssigneeID: assigneeID, AssigneeName: assigneeID, Status: status}
-	t.ID = id
+	t := approval.Task{
+		NodeID:       nodeID,
+		AssigneeID:   assigneeID,
+		AssigneeName: assigneeID,
+		Status:       status,
+		ID:           id,
+	}
 
 	return t
 }
 
 // visit builds an in-memory NodeVisit with the given id/node/sequence/status.
 func visit(id, nodeID string, sequence int, status approval.NodeVisitStatus) approval.NodeVisit {
-	v := approval.NodeVisit{NodeID: nodeID, Sequence: sequence, Status: status}
-	v.ID = id
+	v := approval.NodeVisit{
+		NodeID:   nodeID,
+		Sequence: sequence,
+		Status:   status,
+		ID:       id,
+	}
 
 	return v
 }
@@ -108,8 +121,14 @@ func TestBuildInstanceFlowGraph(t *testing.T) {
 		approved := task("t1", "na", "u1", approval.TaskApproved)
 		approved.VisitID = "v2"
 		b.Tasks = []approval.Task{approved}
-		log := approval.ActionLog{Action: approval.ActionApprove, OperatorID: "u1", NodeID: new("na"), TaskID: new("t1"), Opinion: new("approved-opinion")}
-		log.ID = "l1"
+		log := approval.ActionLog{
+			Action:     approval.ActionApprove,
+			OperatorID: "u1",
+			NodeID:     new("na"),
+			TaskID:     new("t1"),
+			Opinion:    new("approved-opinion"),
+			ID:         "l1",
+		}
 		b.ActionLogs = []approval.ActionLog{log}
 
 		byKey := nodesByKey(buildInstanceFlowGraph(b))
@@ -173,12 +192,21 @@ func TestBuildInstanceFlowGraph(t *testing.T) {
 			visit("v2", "na", 2, approval.NodeVisitActive),
 		}
 
-		submit := approval.ActionLog{Action: approval.ActionSubmit, OperatorID: "applicant", OperatorName: "Applicant"}
-		submit.ID = "l0"
+		submit := approval.ActionLog{
+			Action:       approval.ActionSubmit,
+			OperatorID:   "applicant",
+			OperatorName: "Applicant",
+			ID:           "l0",
+		}
 		b.ActionLogs = []approval.ActionLog{submit}
 
-		cc := approval.CCRecord{NodeID: new("na"), VisitID: new("v2"), CCUserID: "cc-1", CCUserName: "CC One"}
-		cc.ID = "ccr-1"
+		cc := approval.CCRecord{
+			NodeID:     new("na"),
+			VisitID:    new("v2"),
+			CCUserID:   "cc-1",
+			CCUserName: "CC One",
+			ID:         "ccr-1",
+		}
 		b.CCRecords = []approval.CCRecord{cc}
 
 		byKey := nodesByKey(buildInstanceFlowGraph(b))
@@ -296,10 +324,22 @@ func TestBuildInstanceFlowGraph(t *testing.T) {
 		second := task("t2", "na", "u1", approval.TaskApproved)
 		second.VisitID = "v3"
 		b.Tasks = []approval.Task{first, second}
-		log1 := approval.ActionLog{Action: approval.ActionRollback, OperatorID: "u1", NodeID: new("na"), TaskID: new("t1"), Opinion: new("first-pass")}
-		log1.ID = "l1"
-		log2 := approval.ActionLog{Action: approval.ActionApprove, OperatorID: "u1", NodeID: new("na"), TaskID: new("t2"), Opinion: new("second-pass")}
-		log2.ID = "l2"
+		log1 := approval.ActionLog{
+			Action:     approval.ActionRollback,
+			OperatorID: "u1",
+			NodeID:     new("na"),
+			TaskID:     new("t1"),
+			Opinion:    new("first-pass"),
+			ID:         "l1",
+		}
+		log2 := approval.ActionLog{
+			Action:     approval.ActionApprove,
+			OperatorID: "u1",
+			NodeID:     new("na"),
+			TaskID:     new("t2"),
+			Opinion:    new("second-pass"),
+			ID:         "l2",
+		}
 		b.ActionLogs = []approval.ActionLog{log1, log2}
 
 		node := nodesByKey(buildInstanceFlowGraph(b))["kappr"]

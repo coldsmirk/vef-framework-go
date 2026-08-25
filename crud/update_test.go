@@ -18,12 +18,10 @@ import (
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
 		return &UpdateTestSuite{
-			BaseTestSuite: BaseTestSuite{
-				ctx:   env.Ctx,
-				db:    env.DB,
-				bunDB: env.BunDB,
-				ds:    env.DS,
-			},
+			ctx:   env.Ctx,
+			db:    env.DB,
+			bunDB: env.BunDB,
+			ds:    env.DS,
 		}
 	})
 }
@@ -187,11 +185,9 @@ func (suite *UpdateTestSuite) TestUpdateBasic() {
 	suite.T().Logf("Testing Update API basic functionality for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_update",
-			Action:   "update",
-			Version:  "v1",
-		},
+		Resource: "test/employee_update",
+		Action:   "update",
+		Version:  "v1",
 		Params: map[string]any{
 			"id":          "ut_emp001",
 			"name":        "UT Alice Updated",
@@ -215,11 +211,9 @@ func (suite *UpdateTestSuite) TestUpdateWithPreHook() {
 	suite.T().Logf("Testing Update API with PreUpdate hook for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_update_prehook",
-			Action:   "update",
-			Version:  "v1",
-		},
+		Resource: "test/employee_update_prehook",
+		Action:   "update",
+		Version:  "v1",
 		Params: map[string]any{
 			"id":          "ut_emp002",
 			"name":        "UT Bob Updated",
@@ -243,11 +237,9 @@ func (suite *UpdateTestSuite) TestUpdateWithPostHook() {
 	suite.T().Logf("Testing Update API with PostUpdate hook for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_update_posthook",
-			Action:   "update",
-			Version:  "v1",
-		},
+		Resource: "test/employee_update_posthook",
+		Action:   "update",
+		Version:  "v1",
 		Params: map[string]any{
 			"id":     "ut_emp003",
 			"name":   "UT Charlie Updated",
@@ -273,11 +265,9 @@ func (suite *UpdateTestSuite) TestUpdateNegativeCases() {
 
 	suite.Run("NonExistentUser", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_update",
-				Action:   "update",
-				Version:  "v1",
-			},
+			Resource: "test/employee_update",
+			Action:   "update",
+			Version:  "v1",
 			Params: map[string]any{
 				"id":     "nonexistent",
 				"name":   "Test",
@@ -297,11 +287,9 @@ func (suite *UpdateTestSuite) TestUpdateNegativeCases() {
 
 	suite.Run("MissingID", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_update",
-				Action:   "update",
-				Version:  "v1",
-			},
+			Resource: "test/employee_update",
+			Action:   "update",
+			Version:  "v1",
 			Params: map[string]any{
 				"name":   "Test",
 				"email":  "test@example.com",
@@ -320,11 +308,9 @@ func (suite *UpdateTestSuite) TestUpdateNegativeCases() {
 
 	suite.Run("InvalidEmail", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_update",
-				Action:   "update",
-				Version:  "v1",
-			},
+			Resource: "test/employee_update",
+			Action:   "update",
+			Version:  "v1",
 			Params: map[string]any{
 				"id":     "ut_emp004",
 				"name":   "Test",
@@ -343,11 +329,9 @@ func (suite *UpdateTestSuite) TestUpdateNegativeCases() {
 
 	suite.Run("InvalidAge", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_update",
-				Action:   "update",
-				Version:  "v1",
-			},
+			Resource: "test/employee_update",
+			Action:   "update",
+			Version:  "v1",
 			Params: map[string]any{
 				"id":     "ut_emp005",
 				"name":   "Test",
@@ -366,11 +350,9 @@ func (suite *UpdateTestSuite) TestUpdateNegativeCases() {
 
 	suite.Run("DuplicateEmail", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_update",
-				Action:   "update",
-				Version:  "v1",
-			},
+			Resource: "test/employee_update",
+			Action:   "update",
+			Version:  "v1",
 			Params: map[string]any{
 				"id":          "ut_emp006",
 				"name":        "UT Frank Updated",
@@ -395,11 +377,9 @@ func (suite *UpdateTestSuite) TestPartialUpdate() {
 	suite.T().Logf("Testing Update API partial update for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_update",
-			Action:   "update",
-			Version:  "v1",
-		},
+		Resource: "test/employee_update",
+		Action:   "update",
+		Version:  "v1",
 		Params: map[string]any{
 			"id":     "ut_emp007",
 			"name":   "UT Grace Updated",
@@ -422,11 +402,9 @@ func (suite *UpdateTestSuite) TestUpdateWithDisableDataPerm() {
 	suite.T().Logf("Testing Update API with DisableDataPerm for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_update_noperm",
-			Action:   "update",
-			Version:  "v1",
-		},
+		Resource: "test/employee_update_noperm",
+		Action:   "update",
+		Version:  "v1",
 		Params: map[string]any{
 			"id":     "ut_emp001",
 			"name":   "UT Alice NoPerm",
@@ -449,11 +427,9 @@ func (suite *UpdateTestSuite) TestUpdatePreHookError() {
 	suite.T().Logf("Testing Update API with pre-hook error for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_update_prehook_err",
-			Action:   "update",
-			Version:  "v1",
-		},
+		Resource: "test/employee_update_prehook_err",
+		Action:   "update",
+		Version:  "v1",
 		Params: map[string]any{
 			"id":     suite.testEmployees[0].ID,
 			"name":   "Should Not Update",
@@ -474,11 +450,9 @@ func (suite *UpdateTestSuite) TestUpdatePostHookError() {
 	suite.T().Logf("Testing Update API with post-hook error for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_update_posthook_err",
-			Action:   "update",
-			Version:  "v1",
-		},
+		Resource: "test/employee_update_posthook_err",
+		Action:   "update",
+		Version:  "v1",
 		Params: map[string]any{
 			"id":     suite.testEmployees[1].ID,
 			"name":   "Should Rollback",

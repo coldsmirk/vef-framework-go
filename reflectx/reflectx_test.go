@@ -198,8 +198,8 @@ func TestFindMethod(t *testing.T) {
 
 	t.Run("PromotedMethodFromEmbeddedStruct", func(t *testing.T) {
 		embedded := EmbeddedStruct{
-			BaseStruct: BaseStruct{Value: "test"},
-			Name:       "embedded",
+			Value: "test",
+			Name:  "embedded",
 		}
 		rv := reflect.ValueOf(embedded)
 
@@ -212,8 +212,8 @@ func TestFindMethod(t *testing.T) {
 
 	t.Run("PromotedPointerMethodFromEmbeddedStruct", func(t *testing.T) {
 		embedded := EmbeddedStruct{
-			BaseStruct: BaseStruct{Value: "test"},
-			Name:       "embedded",
+			Value: "test",
+			Name:  "embedded",
 		}
 		rv := reflect.ValueOf(embedded)
 
@@ -226,8 +226,8 @@ func TestFindMethod(t *testing.T) {
 
 	t.Run("MethodOnEmbeddedStruct", func(t *testing.T) {
 		embedded := EmbeddedStruct{
-			BaseStruct: BaseStruct{Value: "test"},
-			Name:       "embedded",
+			Value: "test",
+			Name:  "embedded",
 		}
 		rv := reflect.ValueOf(embedded)
 
@@ -240,11 +240,9 @@ func TestFindMethod(t *testing.T) {
 
 	t.Run("NestedEmbeddedStructMethods", func(t *testing.T) {
 		nested := NestedStruct{
-			EmbeddedStruct: EmbeddedStruct{
-				BaseStruct: BaseStruct{Value: "test"},
-				Name:       "nested",
-			},
-			Age: 25,
+			Value: "test",
+			Name:  "nested",
+			Age:   25,
 		}
 		rv := reflect.ValueOf(nested)
 
@@ -257,11 +255,9 @@ func TestFindMethod(t *testing.T) {
 
 	t.Run("PointerReceiverMethodOnNestedStruct", func(t *testing.T) {
 		nested := NestedStruct{
-			EmbeddedStruct: EmbeddedStruct{
-				BaseStruct: BaseStruct{Value: "test"},
-				Name:       "nested",
-			},
-			Age: 25,
+			Value: "test",
+			Name:  "nested",
+			Age:   25,
 		}
 		rv := reflect.ValueOf(nested)
 
@@ -326,11 +322,9 @@ func TestFindMethod(t *testing.T) {
 
 func BenchmarkFindMethod(b *testing.B) {
 	nested := NestedStruct{
-		EmbeddedStruct: EmbeddedStruct{
-			BaseStruct: BaseStruct{Value: "test"},
-			Name:       "nested",
-		},
-		Age: 25,
+		Value: "test",
+		Name:  "nested",
+		Age:   25,
 	}
 	rv := reflect.ValueOf(nested)
 
@@ -345,11 +339,9 @@ func BenchmarkFindMethod(b *testing.B) {
 func TestCollectMethods(t *testing.T) {
 	t.Run("CollectsAllMethods", func(t *testing.T) {
 		nested := NestedStruct{
-			EmbeddedStruct: EmbeddedStruct{
-				BaseStruct: BaseStruct{Value: "test"},
-				Name:       "nested",
-			},
-			Age: 25,
+			Value: "test",
+			Name:  "nested",
+			Age:   25,
 		}
 		rv := reflect.ValueOf(nested)
 
@@ -433,11 +425,9 @@ func TestCollectMethods(t *testing.T) {
 
 func BenchmarkCollectMethods(b *testing.B) {
 	nested := NestedStruct{
-		EmbeddedStruct: EmbeddedStruct{
-			BaseStruct: BaseStruct{Value: "test"},
-			Name:       "nested",
-		},
-		Age: 25,
+		Value: "test",
+		Name:  "nested",
+		Age:   25,
 	}
 	rv := reflect.ValueOf(nested)
 

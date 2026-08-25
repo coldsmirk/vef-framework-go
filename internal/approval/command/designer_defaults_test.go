@@ -41,16 +41,18 @@ type DesignerDefaultsTestSuite struct {
 func bareApprovalFlowDef(approverID string) approval.FlowDefinition {
 	return approval.FlowDefinition{
 		Nodes: []approval.NodeDefinition{
-			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{BaseNodeData: approval.BaseNodeData{Name: "开始"}})},
-			{ID: "approval-1", Kind: approval.NodeApproval, Data: mustMarshal(approval.ApprovalNodeData{
-				BaseNodeData: approval.BaseNodeData{Name: "审批节点"},
-				TaskNodeData: approval.TaskNodeData{
+			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "开始"})},
+			{
+				ID:   "approval-1",
+				Kind: approval.NodeApproval,
+				Data: mustMarshal(approval.ApprovalNodeData{
+					Name: "审批节点",
 					Assignees: []approval.AssigneeDefinition{
 						{Kind: approval.AssigneeUser, IDs: []string{approverID}, SortOrder: 1},
 					},
-				},
-			})},
-			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{BaseNodeData: approval.BaseNodeData{Name: "结束"}})},
+				}),
+			},
+			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "结束"})},
 		},
 		Edges: []approval.EdgeDefinition{
 			{ID: "edge-1", Source: "start-1", Target: "approval-1"},
@@ -146,8 +148,8 @@ func (s *DesignerDefaultsTestSuite) TestAutoExecutionTypes() {
 	s.Run("AutoPassSkipsNode", func() {
 		def := bareApprovalFlowDef("ignored")
 		def.Nodes[1].Data = mustMarshal(approval.ApprovalNodeData{
-			BaseNodeData: approval.BaseNodeData{Name: "自动通过"},
-			TaskNodeData: approval.TaskNodeData{ExecutionType: approval.ExecutionAutoPass},
+			Name:          "自动通过",
+			ExecutionType: approval.ExecutionAutoPass,
 		})
 
 		fixture := deployAndPublishFlow(s.T(), s.ctx, s.db, "auto-pass", def)
@@ -169,8 +171,8 @@ func (s *DesignerDefaultsTestSuite) TestAutoExecutionTypes() {
 	s.Run("AutoRejectCompletesInstanceRejected", func() {
 		def := bareApprovalFlowDef("ignored")
 		def.Nodes[1].Data = mustMarshal(approval.ApprovalNodeData{
-			BaseNodeData: approval.BaseNodeData{Name: "自动拒绝"},
-			TaskNodeData: approval.TaskNodeData{ExecutionType: approval.ExecutionAutoReject},
+			Name:          "自动拒绝",
+			ExecutionType: approval.ExecutionAutoReject,
 		})
 
 		fixture := deployAndPublishFlow(s.T(), s.ctx, s.db, "auto-reject", def)

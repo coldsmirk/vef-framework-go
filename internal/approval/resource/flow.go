@@ -264,7 +264,8 @@ func (r *FlowResource) FindFlows(ctx fiber.Ctx, principal *security.Principal, p
 			IsActive:    params.IsActive,
 			Labels:      params.Labels,
 			BindingMode: params.BindingMode,
-			Pageable:    page.Pageable{Page: params.Page, Size: params.PageSize},
+			Page:        params.Page,
+			Size:        params.PageSize,
 			Caller:      caller,
 		},
 	)

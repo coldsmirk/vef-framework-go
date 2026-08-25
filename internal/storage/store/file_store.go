@@ -23,11 +23,9 @@ func (*fileStore) Record(ctx context.Context, tx orm.DB, claim UploadClaim) erro
 	// handler: the sweeper recovery path runs without a principal, and
 	// the handler would stamp the system operator over the real uploader.
 	record := &storage.FileRecord{
-		CreationAuditedModel: orm.CreationAuditedModel{
-			ID:        claim.ID,
-			CreatedAt: timex.Now(),
-			CreatedBy: claim.CreatedBy,
-		},
+		ID:               claim.ID,
+		CreatedAt:        timex.Now(),
+		CreatedBy:        claim.CreatedBy,
 		Key:              claim.Key,
 		OriginalFilename: claim.OriginalFilename,
 		ContentType:      claim.ContentType,

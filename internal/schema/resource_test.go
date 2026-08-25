@@ -80,11 +80,9 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 
 	s.Run("ListTables", func() {
 		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/schema",
-				Action:   "list_tables",
-				Version:  "v1",
-			},
+			Resource: "sys/schema",
+			Action:   "list_tables",
+			Version:  "v1",
 		}, token)
 
 		s.Equal(http.StatusOK, resp.StatusCode, "Should return 200 OK")
@@ -111,11 +109,9 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 
 	s.Run("GetTableSchemaSuccess", func() {
 		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/schema",
-				Action:   "get_table_schema",
-				Version:  "v1",
-			},
+			Resource: "sys/schema",
+			Action:   "get_table_schema",
+			Version:  "v1",
 			Params: map[string]any{
 				"name": "resource_test_orders",
 			},
@@ -152,11 +148,9 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 
 	s.Run("GetTableSchemaWithPrimaryKey", func() {
 		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/schema",
-				Action:   "get_table_schema",
-				Version:  "v1",
-			},
+			Resource: "sys/schema",
+			Action:   "get_table_schema",
+			Version:  "v1",
 			Params: map[string]any{
 				"name": "resource_test_orders",
 			},
@@ -181,11 +175,9 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 
 	s.Run("GetTableSchemaNotFound", func() {
 		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/schema",
-				Action:   "get_table_schema",
-				Version:  "v1",
-			},
+			Resource: "sys/schema",
+			Action:   "get_table_schema",
+			Version:  "v1",
 			Params: map[string]any{
 				"name": "nonexistent_table_xyz",
 			},
@@ -202,12 +194,10 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 
 	s.Run("GetTableSchemaValidationError", func() {
 		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/schema",
-				Action:   "get_table_schema",
-				Version:  "v1",
-			},
-			Params: map[string]any{
+			Resource: "sys/schema",
+			Action:   "get_table_schema",
+			Version:  "v1",
+			Params:   map[string]any{
 				// Missing required "name" parameter
 			},
 		}, token)
@@ -220,11 +210,9 @@ func (s *SchemaResourceTestSuite) runResourceTests(dsConfig *config.DataSourceCo
 
 	s.Run("ListViews", func() {
 		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{
-				Resource: "sys/schema",
-				Action:   "list_views",
-				Version:  "v1",
-			},
+			Resource: "sys/schema",
+			Action:   "list_views",
+			Version:  "v1",
 		}, token)
 
 		s.Equal(http.StatusOK, resp.StatusCode, "Should return 200 OK")

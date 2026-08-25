@@ -18,10 +18,8 @@ func newFreshNode(kind approval.NodeKind) *approval.FlowNode {
 func TestStartNodeDataApplyTo(t *testing.T) {
 	desc := "entry point"
 	data := &approval.StartNodeData{
-		BaseNodeData: approval.BaseNodeData{
-			Name:        "Start",
-			Description: &desc,
-		},
+		Name:        "Start",
+		Description: &desc,
 	}
 
 	node := newFreshNode(approval.NodeStart)
@@ -35,7 +33,7 @@ func TestStartNodeDataApplyTo(t *testing.T) {
 
 func TestEndNodeDataApplyTo(t *testing.T) {
 	data := &approval.EndNodeData{
-		BaseNodeData: approval.BaseNodeData{Name: "End"},
+		Name: "End",
 	}
 	node := newFreshNode(approval.NodeEnd)
 	data.ApplyTo(node)
@@ -46,13 +44,11 @@ func TestEndNodeDataApplyTo(t *testing.T) {
 
 func TestApprovalNodeDataApplyTo(t *testing.T) {
 	data := &approval.ApprovalNodeData{
-		BaseNodeData: approval.BaseNodeData{Name: "Review"},
-		TaskNodeData: approval.TaskNodeData{
-			ExecutionType:     approval.ExecutionManual,
-			FallbackUserIDs:   []string{"u1"},
-			IsTransferAllowed: new(true),
-			TimeoutHours:      48,
-		},
+		Name:                 "Review",
+		ExecutionType:        approval.ExecutionManual,
+		FallbackUserIDs:      []string{"u1"},
+		IsTransferAllowed:    new(true),
+		TimeoutHours:         48,
 		ApprovalMethod:       approval.ApprovalSequential,
 		PassRule:             approval.PassAny,
 		IsRollbackAllowed:    new(true),
@@ -82,7 +78,7 @@ func TestApprovalNodeDataApplyToDefaults(t *testing.T) {
 		// must deploy to a fully-configured node carrying the same defaults
 		// the designer displays.
 		data := &approval.ApprovalNodeData{
-			BaseNodeData: approval.BaseNodeData{Name: "Blank"},
+			Name: "Blank",
 		}
 		node := newFreshNode(approval.NodeApproval)
 		data.ApplyTo(node)
@@ -107,7 +103,7 @@ func TestApprovalNodeDataApplyToDefaults(t *testing.T) {
 		// Pointer booleans exist precisely so explicit false is
 		// distinguishable from omitted; defaulting must not flip it back.
 		data := &approval.ApprovalNodeData{
-			TaskNodeData:            approval.TaskNodeData{IsTransferAllowed: new(false)},
+			IsTransferAllowed:       new(false),
 			IsRollbackAllowed:       new(false),
 			IsAddAssigneeAllowed:    new(false),
 			IsRemoveAssigneeAllowed: new(false),
@@ -126,11 +122,9 @@ func TestApprovalNodeDataApplyToDefaults(t *testing.T) {
 
 func TestHandleNodeDataApplyTo(t *testing.T) {
 	data := &approval.HandleNodeData{
-		BaseNodeData: approval.BaseNodeData{Name: "Handle"},
-		TaskNodeData: approval.TaskNodeData{
-			ExecutionType:     approval.ExecutionManual,
-			IsOpinionRequired: true,
-		},
+		Name:              "Handle",
+		ExecutionType:     approval.ExecutionManual,
+		IsOpinionRequired: true,
 	}
 
 	node := newFreshNode(approval.NodeHandle)
@@ -147,7 +141,7 @@ func TestHandleNodeDataDefaultsApprovalMethodAndPassRule(t *testing.T) {
 	// on a fresh node (neither field set in the incoming data).
 	t.Run("DefaultsAppliedWhenNodeIsEmpty", func(t *testing.T) {
 		data := &approval.HandleNodeData{
-			BaseNodeData: approval.BaseNodeData{Name: "H"},
+			Name: "H",
 		}
 		node := newFreshNode(approval.NodeHandle)
 		data.ApplyTo(node)
@@ -163,8 +157,8 @@ func TestHandleNodeDataDefaultsApprovalMethodAndPassRule(t *testing.T) {
 		// applyTaskNodeData) but does NOT carry ApprovalMethod, the handle node
 		// defaults still apply (only ApprovalMethod and PassRule are defaulted).
 		data := &approval.HandleNodeData{
-			BaseNodeData: approval.BaseNodeData{Name: "H"},
-			TaskNodeData: approval.TaskNodeData{ExecutionType: approval.ExecutionAutoPass},
+			Name:          "H",
+			ExecutionType: approval.ExecutionAutoPass,
 		}
 		node := newFreshNode(approval.NodeHandle)
 		data.ApplyTo(node)
@@ -181,7 +175,7 @@ func TestHandleNodeDataDefaultsApprovalMethodAndPassRule(t *testing.T) {
 func TestCCNodeDataApplyTo(t *testing.T) {
 	perms := map[string]approval.Permission{"fieldA": approval.PermissionVisible}
 	data := &approval.CCNodeData{
-		BaseNodeData:          approval.BaseNodeData{Name: "CC"},
+		Name:                  "CC",
 		IsReadConfirmRequired: true,
 		FieldPermissions:      perms,
 	}
@@ -201,8 +195,8 @@ func TestConditionNodeDataApplyTo(t *testing.T) {
 		{ID: "b2", Label: "Default", IsDefault: true},
 	}
 	data := &approval.ConditionNodeData{
-		BaseNodeData: approval.BaseNodeData{Name: "Condition"},
-		Branches:     branches,
+		Name:     "Condition",
+		Branches: branches,
 	}
 
 	node := newFreshNode(approval.NodeCondition)

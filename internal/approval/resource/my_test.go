@@ -68,8 +68,10 @@ func (s *MyPendingCountsTestSuite) TestTenantIdScopesPendingCounts() {
 
 	pendingCount := func(params map[string]any) float64 {
 		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{Resource: "approval/my", Action: "get_pending_counts", Version: "v1"},
-			Params:     params,
+			Resource: "approval/my",
+			Action:   "get_pending_counts",
+			Version:  "v1",
+			Params:   params,
 		}, token)
 		s.Require().Equal(http.StatusOK, resp.StatusCode, "get_pending_counts should succeed")
 
@@ -113,22 +115,35 @@ func (s *MyPendingCountsTestSuite) seedPendingTask(tenant, assignee string) {
 	s.Require().NoError(err, "seed flow node")
 
 	instance := &approval.Instance{
-		TenantID: tenant, FlowID: flow.ID, FlowVersionID: version.ID,
-		Title: "MPC Instance", InstanceNo: "MPC-001", ApplicantID: "applicant", Status: approval.InstanceRunning,
+		TenantID:      tenant,
+		FlowID:        flow.ID,
+		FlowVersionID: version.ID,
+		Title:         "MPC Instance",
+		InstanceNo:    "MPC-001",
+		ApplicantID:   "applicant",
+		Status:        approval.InstanceRunning,
 	}
 	_, err = s.db.NewInsert().Model(instance).Exec(s.ctx)
 	s.Require().NoError(err, "seed instance")
 
 	visit := &approval.NodeVisit{
-		TenantID: tenant, InstanceID: instance.ID, NodeID: node.ID,
-		Sequence: 1, Status: approval.NodeVisitActive,
+		TenantID:   tenant,
+		InstanceID: instance.ID,
+		NodeID:     node.ID,
+		Sequence:   1,
+		Status:     approval.NodeVisitActive,
 	}
 	_, err = s.db.NewInsert().Model(visit).Exec(s.ctx)
 	s.Require().NoError(err, "seed node visit")
 
 	task := &approval.Task{
-		TenantID: tenant, InstanceID: instance.ID, NodeID: node.ID, VisitID: visit.ID,
-		AssigneeID: assignee, SortOrder: 1, Status: approval.TaskPending,
+		TenantID:   tenant,
+		InstanceID: instance.ID,
+		NodeID:     node.ID,
+		VisitID:    visit.ID,
+		AssigneeID: assignee,
+		SortOrder:  1,
+		Status:     approval.TaskPending,
 	}
 	_, err = s.db.NewInsert().Model(task).Exec(s.ctx)
 	s.Require().NoError(err, "seed pending task")

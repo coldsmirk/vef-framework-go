@@ -21,12 +21,10 @@ import (
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
 		return &FindOneTestSuite{
-			BaseTestSuite: BaseTestSuite{
-				ctx:   env.Ctx,
-				db:    env.DB,
-				bunDB: env.BunDB,
-				ds:    env.DS,
-			},
+			ctx:   env.Ctx,
+			db:    env.DB,
+			bunDB: env.BunDB,
+			ds:    env.DS,
 		}
 	})
 }
@@ -170,11 +168,9 @@ func (suite *FindOneTestSuite) TestFindOneBasic() {
 	suite.T().Logf("Testing FindOne API basic functionality for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee",
-			Action:   "find_one",
-			Version:  "v1",
-		},
+		Resource: "test/employee",
+		Action:   "find_one",
+		Version:  "v1",
 		Params: map[string]any{
 			"id": "emp003",
 		},
@@ -201,11 +197,9 @@ func (suite *FindOneTestSuite) TestFindOneNotFound() {
 	suite.T().Logf("Testing FindOne API record not found for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee",
-			Action:   "find_one",
-			Version:  "v1",
-		},
+		Resource: "test/employee",
+		Action:   "find_one",
+		Version:  "v1",
 		Params: map[string]any{
 			"id": "nonexistent-id",
 		},
@@ -226,11 +220,9 @@ func (suite *FindOneTestSuite) TestFindOneWithSearchApplier() {
 
 	suite.Run("SearchByKeyword", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee",
-				Action:   "find_one",
-				Version:  "v1",
-			},
+			Resource: "test/employee",
+			Action:   "find_one",
+			Version:  "v1",
 			Params: map[string]any{
 				"keyword": "Zhang",
 			},
@@ -252,11 +244,9 @@ func (suite *FindOneTestSuite) TestFindOneWithSearchApplier() {
 
 	suite.Run("SearchByEmail", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee",
-				Action:   "find_one",
-				Version:  "v1",
-			},
+			Resource: "test/employee",
+			Action:   "find_one",
+			Version:  "v1",
 			Params: map[string]any{
 				"email": "ahmed.hassan@company.com",
 			},
@@ -278,11 +268,9 @@ func (suite *FindOneTestSuite) TestFindOneWithSearchApplier() {
 
 	suite.Run("SearchByAgeRange", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee",
-				Action:   "find_one",
-				Version:  "v1",
-			},
+			Resource: "test/employee",
+			Action:   "find_one",
+			Version:  "v1",
 			Params: map[string]any{
 				"age": []int{33, 34},
 			},
@@ -303,11 +291,9 @@ func (suite *FindOneTestSuite) TestFindOneWithSearchApplier() {
 
 	suite.Run("SearchByMultipleConditions", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee",
-				Action:   "find_one",
-				Version:  "v1",
-			},
+			Resource: "test/employee",
+			Action:   "find_one",
+			Version:  "v1",
 			Params: map[string]any{
 				"email":  "kevin.park@company.com",
 				"status": "inactive",
@@ -335,11 +321,9 @@ func (suite *FindOneTestSuite) TestFindOneWithProcessor() {
 	suite.T().Logf("Testing FindOne API with processor for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_processed",
-			Action:   "find_one",
-			Version:  "v1",
-		},
+		Resource: "test/employee_processed",
+		Action:   "find_one",
+		Version:  "v1",
 		Params: map[string]any{
 			"id": "emp001",
 		},
@@ -365,11 +349,9 @@ func (suite *FindOneTestSuite) TestFindOneWithFilterApplier() {
 	suite.T().Logf("Testing FindOne API with filter applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_filtered",
-			Action:   "find_one",
-			Version:  "v1",
-		},
+		Resource: "test/employee_filtered",
+		Action:   "find_one",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -391,11 +373,9 @@ func (suite *FindOneTestSuite) TestFindOneWithSortApplier() {
 	suite.T().Logf("Testing FindOne API with sort applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_ordered",
-			Action:   "find_one",
-			Version:  "v1",
-		},
+		Resource: "test/employee_ordered",
+		Action:   "find_one",
+		Version:  "v1",
 	})
 
 	suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -417,11 +397,9 @@ func (suite *FindOneTestSuite) TestFindOneNegativeCases() {
 
 	suite.Run("InvalidResource", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/nonexistent",
-				Action:   "find_one",
-				Version:  "v1",
-			},
+			Resource: "test/nonexistent",
+			Action:   "find_one",
+			Version:  "v1",
 		})
 
 		suite.Equal(404, resp.StatusCode, "Should return 404 for invalid resource")
@@ -431,11 +409,9 @@ func (suite *FindOneTestSuite) TestFindOneNegativeCases() {
 
 	suite.Run("InvalidAction", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee",
-				Action:   "nonexistentAction",
-				Version:  "v1",
-			},
+			Resource: "test/employee",
+			Action:   "nonexistentAction",
+			Version:  "v1",
 		})
 
 		suite.Equal(404, resp.StatusCode, "Should return 404 for invalid action")
@@ -445,11 +421,9 @@ func (suite *FindOneTestSuite) TestFindOneNegativeCases() {
 
 	suite.Run("InvalidVersion", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee",
-				Action:   "find_one",
-				Version:  "v999",
-			},
+			Resource: "test/employee",
+			Action:   "find_one",
+			Version:  "v999",
 		})
 
 		suite.Equal(404, resp.StatusCode, "Should return 404 for invalid version")
@@ -459,12 +433,10 @@ func (suite *FindOneTestSuite) TestFindOneNegativeCases() {
 
 	suite.Run("EmptySearchCriteria", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee",
-				Action:   "find_one",
-				Version:  "v1",
-			},
-			Params: map[string]any{},
+			Resource: "test/employee",
+			Action:   "find_one",
+			Version:  "v1",
+			Params:   map[string]any{},
 		})
 
 		suite.Equal(200, resp.StatusCode, "Should return 200 status code")
@@ -477,11 +449,9 @@ func (suite *FindOneTestSuite) TestFindOneNegativeCases() {
 
 	suite.Run("InvalidRangeValue", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee",
-				Action:   "find_one",
-				Version:  "v1",
-			},
+			Resource: "test/employee",
+			Action:   "find_one",
+			Version:  "v1",
 			Params: map[string]any{
 				"age": []int{30},
 			},
@@ -496,11 +466,9 @@ func (suite *FindOneTestSuite) TestFindOneNegativeCases() {
 
 	suite.Run("MultipleConditionsNoMatch", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee",
-				Action:   "find_one",
-				Version:  "v1",
-			},
+			Resource: "test/employee",
+			Action:   "find_one",
+			Version:  "v1",
 			Params: map[string]any{
 				"email":  "wei.zhang@company.com",
 				"status": "inactive",
@@ -521,11 +489,9 @@ func (suite *FindOneTestSuite) TestFindOneWithAuditUserNames() {
 	suite.T().Logf("Testing FindOne API with audit user names for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_audit",
-			Action:   "find_one",
-			Version:  "v1",
-		},
+		Resource: "test/employee_audit",
+		Action:   "find_one",
+		Version:  "v1",
 		Params: map[string]any{
 			"id": "emp001",
 		},
@@ -554,11 +520,9 @@ func (suite *FindOneTestSuite) TestFindOneErrorQueryApplier() {
 	suite.T().Logf("Testing FindOne API error query applier for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_err_applier",
-			Action:   "find_one",
-			Version:  "v1",
-		},
+		Resource: "test/employee_err_applier",
+		Action:   "find_one",
+		Version:  "v1",
 		Params: map[string]any{
 			"id": "emp001",
 		},

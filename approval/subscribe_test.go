@@ -75,8 +75,9 @@ func namedInstanceHandler(context.Context, *InstanceCompletedEvent, event.Envelo
 
 func completedEvent(flowCode, tenantID string) *InstanceCompletedEvent {
 	return &InstanceCompletedEvent{
-		InstanceEventBase: InstanceEventBase{FlowCode: flowCode, TenantID: tenantID},
-		FinalStatus:       InstanceApproved,
+		FlowCode:    flowCode,
+		TenantID:    tenantID,
+		FinalStatus: InstanceApproved,
 	}
 }
 

@@ -20,12 +20,10 @@ import (
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
 		return &DeleteManyTestSuite{
-			BaseTestSuite: BaseTestSuite{
-				ctx:   env.Ctx,
-				db:    env.DB,
-				bunDB: env.BunDB,
-				ds:    env.DS,
-			},
+			ctx:   env.Ctx,
+			db:    env.DB,
+			bunDB: env.BunDB,
+			ds:    env.DS,
 		}
 	})
 }
@@ -223,11 +221,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyBasic() {
 	suite.T().Logf("Testing DeleteMany API basic functionality for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_delete_many",
-			Action:   "delete_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_delete_many",
+		Action:   "delete_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"pks": []string{"deluser001", "deluser002", "deluser003"},
 		},
@@ -246,11 +242,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyWithPreHook() {
 	suite.T().Logf("Testing DeleteMany API with PreDeleteMany hook for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_delete_many_prehook",
-			Action:   "delete_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_delete_many_prehook",
+		Action:   "delete_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"pks": []string{"deluser004", "deluser005"}, // deluser004 and deluser005 are active
 		},
@@ -272,11 +266,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyWithPostHook() {
 	suite.T().Logf("Testing DeleteMany API with PostDeleteMany hook for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_delete_many_posthook",
-			Action:   "delete_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_delete_many_posthook",
+		Action:   "delete_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"pks": []string{"deluser006"},
 		},
@@ -299,11 +291,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyNegativeCases() {
 
 	suite.Run("EmptyArray", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"pks": []string{},
 			},
@@ -318,11 +308,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyNegativeCases() {
 
 	suite.Run("NonExistentUser", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"pks": []string{"emp008", "nonexistent"},
 			},
@@ -338,12 +326,10 @@ func (suite *DeleteManyTestSuite) TestDeleteManyNegativeCases() {
 
 	suite.Run("MissingPrimaryKeys", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
-			Params: map[string]any{
+			Resource: "test/employee_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
+			Params:   map[string]any{
 				// Missing "pks"
 			},
 		})
@@ -358,11 +344,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyNegativeCases() {
 
 	suite.Run("InvalidPrimaryKeysType", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"pks": "not-an-array", // Should be array
 			},
@@ -378,11 +362,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyNegativeCases() {
 
 	suite.Run("AllNonExistent", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"pks": []string{"nonexistent1", "nonexistent2"},
 			},
@@ -399,11 +381,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyNegativeCases() {
 	suite.Run("DeleteTwice", func() {
 		// First delete
 		resp1 := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"pks": []string{"deluser009", "deluser010"},
 			},
@@ -417,11 +397,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyNegativeCases() {
 
 		// Try to delete same users again
 		resp2 := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"pks": []string{"deluser009", "deluser010"},
 			},
@@ -438,11 +416,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyNegativeCases() {
 	suite.Run("PartiallyDeleted", func() {
 		// First delete deluser001 so it no longer exists
 		resp1 := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"pks": []string{"deluser001"},
 			},
@@ -451,11 +427,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyNegativeCases() {
 
 		// Now try to delete both deluser001 (deleted) and deluser007 (exists)
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"pks": []string{"deluser001", "deluser007"}, // deluser001 already deleted, deluser007 still exists
 			},
@@ -477,11 +451,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyTransactionRollback() {
 	suite.Run("AllOrNothingSemantics", func() {
 		// Try to delete a batch where the second item doesn't exist
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"pks": []string{"deluser007", "nonexistent_rollback"},
 			},
@@ -509,11 +481,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyPrimaryKeyFormats() {
 	suite.Run("SinglePKDirectValues", func() {
 		// Single PK with direct value array: ["id1", "id2"]
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"pks": []string{"deluser008"},
 			},
@@ -529,11 +499,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyPrimaryKeyFormats() {
 	suite.Run("SinglePKMapFormat", func() {
 		// Single PK with map format: [{"id": "value1"}, {"id": "value2"}]
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"pks": []any{
 					map[string]any{"id": "deluser009"},
@@ -552,11 +520,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyPrimaryKeyFormats() {
 	suite.Run("SinglePKMixedFormat", func() {
 		// Mixed format - both direct values and maps
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"pks": []any{
 					"deluser001",                       // direct value
@@ -576,11 +542,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyPrimaryKeyFormats() {
 	suite.Run("CompositePKMapFormatRequired", func() {
 		// Test with map format (correct for composite PKs)
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/project_assignment_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
+			Resource: "test/project_assignment_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"pks": []any{
 					map[string]any{"projectCode": "proj-test", "employeeId": "emp001"},
@@ -609,11 +573,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyPrimaryKeyFormats() {
 	suite.Run("CompositePKPartialKeys", func() {
 		// Test with missing one of the composite keys
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/project_assignment_delete_many",
-				Action:   "delete_many",
-				Version:  "v1",
-			},
+			Resource: "test/project_assignment_delete_many",
+			Action:   "delete_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"pks": []any{
 					map[string]any{"projectCode": "proj-test"}, // Missing employeeId
@@ -635,11 +597,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyWithDisableDataPerm() {
 	suite.T().Logf("Testing DeleteMany API with DisableDataPerm for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_delete_many_noperm",
-			Action:   "delete_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_delete_many_noperm",
+		Action:   "delete_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"pks": []any{
 				map[string]any{"id": "deluser009"},
@@ -661,11 +621,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyPreHookError() {
 	suite.T().Logf("Testing DeleteMany API pre-hook error for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_delete_many_prehook_err",
-			Action:   "delete_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_delete_many_prehook_err",
+		Action:   "delete_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"ids": []any{
 				map[string]any{"id": "deluser001"},
@@ -683,11 +641,9 @@ func (suite *DeleteManyTestSuite) TestDeleteManyPostHookError() {
 	suite.T().Logf("Testing DeleteMany API post-hook error for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_delete_many_posthook_err",
-			Action:   "delete_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_delete_many_posthook_err",
+		Action:   "delete_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"ids": []any{
 				map[string]any{"id": "deluser002"},

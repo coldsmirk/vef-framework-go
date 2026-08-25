@@ -80,7 +80,9 @@ func (s *DelegationOwnershipTestSuite) TestDelegationOwnership() {
 		s.seedDelegation("d-reassign", "alice", "bob")
 
 		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{Resource: "approval/delegation", Action: "update", Version: "v1"},
+			Resource: "approval/delegation",
+			Action:   "update",
+			Version:  "v1",
 			Params: map[string]any{
 				"id":          "d-reassign",
 				"delegatorId": "victim", // attacker attempts to reassign ownership
@@ -102,7 +104,9 @@ func (s *DelegationOwnershipTestSuite) TestDelegationOwnership() {
 		s.seedDelegation("d-update", "alice", "bob")
 
 		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{Resource: "approval/delegation", Action: "update", Version: "v1"},
+			Resource: "approval/delegation",
+			Action:   "update",
+			Version:  "v1",
 			Params: map[string]any{
 				"id":          "d-update",
 				"delegatorId": "alice",
@@ -122,8 +126,10 @@ func (s *DelegationOwnershipTestSuite) TestDelegationOwnership() {
 		s.seedDelegation("d-delete", "alice", "bob")
 
 		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{Resource: "approval/delegation", Action: "delete", Version: "v1"},
-			Params:     map[string]any{"id": "d-delete"},
+			Resource: "approval/delegation",
+			Action:   "delete",
+			Version:  "v1",
+			Params:   map[string]any{"id": "d-delete"},
 		}, otherToken)
 
 		s.NotEqual(http.StatusOK, resp.StatusCode, "a non-owner delete must be rejected")
@@ -134,7 +140,9 @@ func (s *DelegationOwnershipTestSuite) TestDelegationOwnership() {
 		s.seedDelegation("d-legit", "alice", "bob")
 
 		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{Resource: "approval/delegation", Action: "update", Version: "v1"},
+			Resource: "approval/delegation",
+			Action:   "update",
+			Version:  "v1",
 			Params: map[string]any{
 				"id":          "d-legit",
 				"delegatorId": "alice",
@@ -156,7 +164,9 @@ func (s *DelegationOwnershipTestSuite) TestDelegationOwnership() {
 		s.seedDelegation("d-admin", "alice", "bob")
 
 		resp := s.MakeRPCRequestWithToken(api.Request{
-			Identifier: api.Identifier{Resource: "approval/delegation", Action: "update", Version: "v1"},
+			Resource: "approval/delegation",
+			Action:   "update",
+			Version:  "v1",
 			Params: map[string]any{
 				"id":          "d-admin",
 				"delegatorId": "frank",
@@ -212,7 +222,9 @@ func (s *DelegationOwnershipTestSuite) TestDelegationCreateRequiresTimeWindow() 
 	token := s.GenerateToken(newTenantUser("tim", "Tim", "user"))
 
 	resp := s.MakeRPCRequestWithToken(api.Request{
-		Identifier: api.Identifier{Resource: "approval/delegation", Action: "create", Version: "v1"},
+		Resource: "approval/delegation",
+		Action:   "create",
+		Version:  "v1",
 		Params: map[string]any{
 			"delegatorId": "tim",
 			"delegateeId": "tom",

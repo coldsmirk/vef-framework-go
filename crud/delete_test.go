@@ -18,12 +18,10 @@ import (
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
 		return &DeleteTestSuite{
-			BaseTestSuite: BaseTestSuite{
-				ctx:   env.Ctx,
-				db:    env.DB,
-				bunDB: env.BunDB,
-				ds:    env.DS,
-			},
+			ctx:   env.Ctx,
+			db:    env.DB,
+			bunDB: env.BunDB,
+			ds:    env.DS,
 		}
 	})
 }
@@ -182,11 +180,9 @@ func (suite *DeleteTestSuite) TestDeleteBasic() {
 	suite.T().Logf("Testing Delete API basic functionality for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_delete",
-			Action:   "delete",
-			Version:  "v1",
-		},
+		Resource: "test/employee_delete",
+		Action:   "delete",
+		Version:  "v1",
 		Params: map[string]any{
 			"id": "dt_emp001",
 		},
@@ -205,11 +201,9 @@ func (suite *DeleteTestSuite) TestDeleteWithPreHook() {
 	suite.T().Logf("Testing Delete API with PreDelete hook for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_delete_prehook",
-			Action:   "delete",
-			Version:  "v1",
-		},
+		Resource: "test/employee_delete_prehook",
+		Action:   "delete",
+		Version:  "v1",
 		Params: map[string]any{
 			"id": "dt_emp002", // This is an active user
 		},
@@ -230,11 +224,9 @@ func (suite *DeleteTestSuite) TestDeleteWithPostHook() {
 	suite.T().Logf("Testing Delete API with PostDelete hook for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_delete_posthook",
-			Action:   "delete",
-			Version:  "v1",
-		},
+		Resource: "test/employee_delete_posthook",
+		Action:   "delete",
+		Version:  "v1",
 		Params: map[string]any{
 			"id": "dt_emp003",
 		},
@@ -256,11 +248,9 @@ func (suite *DeleteTestSuite) TestDeleteNegativeCases() {
 
 	suite.Run("NonExistentUser", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete",
-				Action:   "delete",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete",
+			Action:   "delete",
+			Version:  "v1",
 			Params: map[string]any{
 				"id": "nonexistent",
 			},
@@ -276,12 +266,10 @@ func (suite *DeleteTestSuite) TestDeleteNegativeCases() {
 
 	suite.Run("MissingID", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete",
-				Action:   "delete",
-				Version:  "v1",
-			},
-			Params: map[string]any{
+			Resource: "test/employee_delete",
+			Action:   "delete",
+			Version:  "v1",
+			Params:   map[string]any{
 				// Missing "id"
 			},
 		})
@@ -297,11 +285,9 @@ func (suite *DeleteTestSuite) TestDeleteNegativeCases() {
 	suite.Run("DeleteTwice", func() {
 		// First delete
 		resp1 := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete",
-				Action:   "delete",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete",
+			Action:   "delete",
+			Version:  "v1",
 			Params: map[string]any{
 				"id": "dt_emp004",
 			},
@@ -315,11 +301,9 @@ func (suite *DeleteTestSuite) TestDeleteNegativeCases() {
 
 		// Try to delete again
 		resp2 := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete",
-				Action:   "delete",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete",
+			Action:   "delete",
+			Version:  "v1",
 			Params: map[string]any{
 				"id": "dt_emp004",
 			},
@@ -341,11 +325,9 @@ func (suite *DeleteTestSuite) TestDeleteRequiresPrimaryKey() {
 	suite.Run("DeleteByEmailShouldFail", func() {
 		// Delete operation only supports deletion by primary key, not by other fields
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete",
-				Action:   "delete",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete",
+			Action:   "delete",
+			Version:  "v1",
 			Params: map[string]any{
 				"email": "frank@example.com",
 			},
@@ -362,11 +344,9 @@ func (suite *DeleteTestSuite) TestDeleteRequiresPrimaryKey() {
 	suite.Run("DeleteByStatusShouldFail", func() {
 		// Delete operation only supports deletion by primary key, not by other fields
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_delete",
-				Action:   "delete",
-				Version:  "v1",
-			},
+			Resource: "test/employee_delete",
+			Action:   "delete",
+			Version:  "v1",
 			Params: map[string]any{
 				"status": "inactive",
 			},
@@ -386,11 +366,9 @@ func (suite *DeleteTestSuite) TestDeleteWithDisableDataPerm() {
 	suite.T().Logf("Testing Delete API with DisableDataPerm for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_delete_noperm",
-			Action:   "delete",
-			Version:  "v1",
-		},
+		Resource: "test/employee_delete_noperm",
+		Action:   "delete",
+		Version:  "v1",
 		Params: map[string]any{
 			"id": "dt_emp005",
 		},
@@ -409,11 +387,9 @@ func (suite *DeleteTestSuite) TestDeletePreHookError() {
 	suite.T().Logf("Testing Delete API with pre-hook error for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_delete_prehook_err",
-			Action:   "delete",
-			Version:  "v1",
-		},
+		Resource: "test/employee_delete_prehook_err",
+		Action:   "delete",
+		Version:  "v1",
 		Params: map[string]any{
 			"id": suite.testEmployees[0].ID,
 		},
@@ -430,11 +406,9 @@ func (suite *DeleteTestSuite) TestDeletePostHookError() {
 	suite.T().Logf("Testing Delete API with post-hook error for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_delete_posthook_err",
-			Action:   "delete",
-			Version:  "v1",
-		},
+		Resource: "test/employee_delete_posthook_err",
+		Action:   "delete",
+		Version:  "v1",
 		Params: map[string]any{
 			"id": suite.testEmployees[1].ID,
 		},

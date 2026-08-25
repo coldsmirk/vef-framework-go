@@ -19,12 +19,10 @@ import (
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
 		return &UpdateManyTestSuite{
-			BaseTestSuite: BaseTestSuite{
-				ctx:   env.Ctx,
-				db:    env.DB,
-				bunDB: env.BunDB,
-				ds:    env.DS,
-			},
+			ctx:   env.Ctx,
+			db:    env.DB,
+			bunDB: env.BunDB,
+			ds:    env.DS,
 		}
 	})
 }
@@ -192,11 +190,9 @@ func (suite *UpdateManyTestSuite) TestUpdateManyBasic() {
 	suite.T().Logf("Testing UpdateMany API basic functionality for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_update_many",
-			Action:   "update_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_update_many",
+		Action:   "update_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"list": []any{
 				map[string]any{
@@ -231,11 +227,9 @@ func (suite *UpdateManyTestSuite) TestUpdateManyWithPreHook() {
 	suite.T().Logf("Testing UpdateMany API with PreUpdateMany hook for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_update_many_prehook",
-			Action:   "update_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_update_many_prehook",
+		Action:   "update_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"list": []any{
 				map[string]any{
@@ -271,11 +265,9 @@ func (suite *UpdateManyTestSuite) TestUpdateManyWithPostHook() {
 	suite.T().Logf("Testing UpdateMany API with PostUpdateMany hook for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_update_many_posthook",
-			Action:   "update_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_update_many_posthook",
+		Action:   "update_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"list": []any{
 				map[string]any{
@@ -313,12 +305,10 @@ func (suite *UpdateManyTestSuite) TestUpdateManyNegativeCases() {
 
 	suite.Run("EmptyArray", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_update_many",
-				Action:   "update_many",
-				Version:  "v1",
-			},
-			Params: map[string]any{"list": []any{}},
+			Resource: "test/employee_update_many",
+			Action:   "update_many",
+			Version:  "v1",
+			Params:   map[string]any{"list": []any{}},
 		})
 
 		suite.Equal(400, resp.StatusCode, "Should return 400 status code for validation error")
@@ -330,11 +320,9 @@ func (suite *UpdateManyTestSuite) TestUpdateManyNegativeCases() {
 
 	suite.Run("NonExistentUser", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_update_many",
-				Action:   "update_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_update_many",
+			Action:   "update_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{
 					map[string]any{
@@ -365,11 +353,9 @@ func (suite *UpdateManyTestSuite) TestUpdateManyNegativeCases() {
 
 	suite.Run("MissingID", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_update_many",
-				Action:   "update_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_update_many",
+			Action:   "update_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{
 					map[string]any{
@@ -400,11 +386,9 @@ func (suite *UpdateManyTestSuite) TestUpdateManyNegativeCases() {
 
 	suite.Run("InvalidEmail", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_update_many",
-				Action:   "update_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_update_many",
+			Action:   "update_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{
 					map[string]any{
@@ -434,11 +418,9 @@ func (suite *UpdateManyTestSuite) TestUpdateManyNegativeCases() {
 
 	suite.Run("InvalidAge", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_update_many",
-				Action:   "update_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_update_many",
+			Action:   "update_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{
 					map[string]any{
@@ -468,11 +450,9 @@ func (suite *UpdateManyTestSuite) TestUpdateManyNegativeCases() {
 
 	suite.Run("DuplicateEmailInBatch", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_update_many",
-				Action:   "update_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_update_many",
+			Action:   "update_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{
 					map[string]any{
@@ -503,11 +483,9 @@ func (suite *UpdateManyTestSuite) TestUpdateManyNegativeCases() {
 
 	suite.Run("DuplicateEmailWithExisting", func() {
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_update_many",
-				Action:   "update_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_update_many",
+			Action:   "update_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{
 					map[string]any{
@@ -537,11 +515,9 @@ func (suite *UpdateManyTestSuite) TestUpdateManyTransactionRollback() {
 	suite.Run("AllOrNothingSemantics", func() {
 		// Try to update a batch where the second item will fail
 		resp := suite.MakeRPCRequest(api.Request{
-			Identifier: api.Identifier{
-				Resource: "test/employee_update_many",
-				Action:   "update_many",
-				Version:  "v1",
-			},
+			Resource: "test/employee_update_many",
+			Action:   "update_many",
+			Version:  "v1",
 			Params: map[string]any{
 				"list": []any{
 					map[string]any{
@@ -584,11 +560,9 @@ func (suite *UpdateManyTestSuite) TestUpdateManyPartialUpdate() {
 	suite.T().Logf("Testing UpdateMany API partial update for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_update_many",
-			Action:   "update_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_update_many",
+		Action:   "update_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"list": []any{
 				map[string]any{
@@ -624,11 +598,9 @@ func (suite *UpdateManyTestSuite) TestUpdateManyWithDisableDataPerm() {
 	suite.T().Logf("Testing UpdateMany API with DisableDataPerm for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_update_many_noperm",
-			Action:   "update_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_update_many_noperm",
+		Action:   "update_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"list": []any{
 				map[string]any{
@@ -662,11 +634,9 @@ func (suite *UpdateManyTestSuite) TestUpdateManyPreHookError() {
 	suite.T().Logf("Testing UpdateMany API pre-hook error for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_update_many_prehook_err",
-			Action:   "update_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_update_many_prehook_err",
+		Action:   "update_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"list": []any{
 				map[string]any{
@@ -690,11 +660,9 @@ func (suite *UpdateManyTestSuite) TestUpdateManyPostHookError() {
 	suite.T().Logf("Testing UpdateMany API post-hook error for %s", suite.ds.Kind)
 
 	resp := suite.MakeRPCRequest(api.Request{
-		Identifier: api.Identifier{
-			Resource: "test/employee_update_many_posthook_err",
-			Action:   "update_many",
-			Version:  "v1",
-		},
+		Resource: "test/employee_update_many_posthook_err",
+		Action:   "update_many",
+		Version:  "v1",
 		Params: map[string]any{
 			"list": []any{
 				map[string]any{
