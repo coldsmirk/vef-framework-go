@@ -153,9 +153,23 @@ linters:
       asserts: true
       comparison: true
 
+    # Both options must stay false: they demand a blank line that gofumpt
+    # deletes. gofumpt is a formatter here, so its output defines what correct
+    # formatting is — an option requiring the opposite is not stricter, it is
+    # unsatisfiable. `func F(\n\ta,\n\tb string,\n) error {\n\n` formats straight
+    # back to no blank line, and revive's empty-lines rejects it independently,
+    # so enabling multi-func traded one warning for two on 154 sites.
+    #
+    # Worse in combination with issues.fix below: `golangci-lint run` auto-
+    # inserted those 154 blank lines into the working tree on every run, and the
+    # next format removed them again.
+    #
+    # What remains of this linter (leading and trailing blank lines inside a
+    # block) is also gofumpt's job, so it is kept only as a second pair of eyes
+    # and must never be configured to disagree with the formatter.
     whitespace:
       multi-if: false
-      multi-func: true
+      multi-func: false
 
     wsl_v5:
       allow-first-in-block: true
@@ -261,7 +275,17 @@ formatters:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  fix: true
+  # Reporting only. `fix: true` makes every plain `golangci-lint run` an implicit
+  # `--fix`, so a command that reads as a check silently rewrites the working
+  # tree — and reports "0 issues" precisely because it did. The pre-push hook
+  # runs that command, so a push would edit the tree it is about to leave behind.
+  #
+  # An autofix is also not always right: misspell rewrites what it believes is a
+  # typo, and a proper noun, an external API field or an identifier quoted in a
+  # comment still compiles afterwards, so nothing downstream catches it.
+  #
+  # Pass --fix explicitly when you want the edits.
+  fix: false
   whole-files: true
 
 output:
