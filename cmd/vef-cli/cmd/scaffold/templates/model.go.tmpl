@@ -1,0 +1,11 @@
+package model
+
+// {{ .Entity.Name }} {{ with .Entity.Comment }}{{ . }}{{ else }}{{ $.Entity.Name }}{{ end }}.
+type {{ .Entity.Name }} struct {
+	orm.BaseModel `bun:"table:{{ .Entity.Table }},alias:{{ .Entity.Alias }}"`
+{{- with .Entity.AuditEmbed }}
+	{{ . }}
+{{- end }}
+
+{{ range .Entity.Fields }}	{{ .Name }} {{ .Type }} {{ .ModelTag }}
+{{ end }}}

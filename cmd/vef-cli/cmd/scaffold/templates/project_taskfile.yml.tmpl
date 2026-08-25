@@ -1,0 +1,33 @@
+version: "3"
+
+tasks:
+  generate:
+    desc: Regenerate model schemas and build metadata
+    cmds:
+      - go generate ./...
+
+  build:
+    desc: Build the server binary
+    deps: [generate]
+    cmds:
+      - go build -o bin/{{ .Name }} ./cmd/server
+
+  run:
+    desc: Run the server
+    cmds:
+      - go run ./cmd/server
+
+  test:
+    desc: Run the test suite
+    cmds:
+      - go test ./...
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run
+
+  export-api:
+    desc: Write the API manifest consumed by client generators
+    cmds:
+      - vef-cli export-api --app ./cmd/server -o api-manifest.json

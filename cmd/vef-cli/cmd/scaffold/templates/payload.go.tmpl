@@ -1,0 +1,16 @@
+package payload
+
+// {{ .Entity.Name }}Search {{ with .Entity.Comment }}{{ . }}{{ else }}{{ $.Entity.Name }}{{ end }}查询条件.
+type {{ .Entity.Name }}Search struct {
+	api.P
+
+{{ range .Entity.SearchFields }}	{{ .Name }} {{ .SearchType }} {{ .SearchTag }}
+{{ end }}}
+
+// {{ .Entity.Name }}Params {{ with .Entity.Comment }}{{ . }}{{ else }}{{ $.Entity.Name }}{{ end }}创建和更新参数.
+type {{ .Entity.Name }}Params struct {
+	api.P
+
+{{ if .Entity.HasIDField }}	ID string `json:"id"`
+{{ end }}{{ range .Entity.Fields }}	{{ .Name }} {{ .Type }} {{ .ParamsTag }}
+{{ end }}}

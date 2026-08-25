@@ -1,0 +1,27 @@
+[vef.app]
+name = "{{ .Name }}"
+port = 8080
+
+# The primary data source is mandatory. vef-cli new resource inspects it to
+# derive models, so point it at a real database before generating.
+[vef.data_sources.primary]
+type = "postgres"
+host = "127.0.0.1"
+port = 5432
+user = "postgres"
+password = ""
+database = "{{ .Name }}"
+schema = "public"
+
+[vef.security]
+token_expires = "2h"
+
+[vef.cors]
+enabled = true
+allow_origins = ["*"]
+
+# Redis is opt-in. Leaving it disabled keeps the module in the boot sequence at
+# zero cost; enable it before using distributed locks, cross-node push relay or
+# the redis_stream event transport.
+[vef.redis]
+enabled = false

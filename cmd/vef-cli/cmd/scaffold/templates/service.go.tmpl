@@ -1,0 +1,21 @@
+package service
+
+// {{ .Type }} ... .
+//
+// Methods take the caller's context and orm.DB rather than holding a
+// connection, so one instance serves every request and a method can run inside
+// a transaction the caller opened.
+type {{ .Type }} struct {
+{{- range .Deps }}
+	{{ .Field }} {{ .Type }}
+{{- end }}
+}
+
+// New{{ .Type }} constructs {{ .Type }}.
+func New{{ .Type }}({{ .Params }}) *{{ .Type }} {
+{{- if .Deps }}
+	return &{{ .Type }}{ {{ .Literal }} }
+{{- else }}
+	return new({{ .Type }})
+{{- end }}
+}

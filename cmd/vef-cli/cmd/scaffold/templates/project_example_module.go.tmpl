@@ -1,0 +1,8 @@
+//go:generate vef-cli generate-model-schema -i ./model -o ./schema -p schema
+package {{ .ExampleModule }}
+
+// Module registers the {{ .ExampleModule }} domain. `vef-cli new resource`
+// appends every generated resource to this list.
+var Module = vef.Module(
+	"app:{{ .ExampleModule }}",
+)

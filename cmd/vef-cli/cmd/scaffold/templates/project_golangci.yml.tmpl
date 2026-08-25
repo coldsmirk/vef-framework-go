@@ -1,0 +1,33 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - copyloopvar
+    - errorlint
+    - godot
+    - nilerr
+    - revive
+    - unconvert
+    - whitespace
+
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/coldsmirk/vef-framework-go)
+        - localmodule
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  # Deliberately false: `golangci-lint run` must report, never rewrite the
+  # working tree. Use `golangci-lint run --fix` when a rewrite is what you want.
+  fix: false

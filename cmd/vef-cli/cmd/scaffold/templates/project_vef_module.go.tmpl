@@ -1,0 +1,9 @@
+//go:generate vef-cli generate-build-info -o ./build_info.go -p vef
+package vef
+
+// Module carries application-wide wiring that belongs to no business domain.
+// It starts with the build metadata the monitor endpoints report.
+var Module = vef.Module(
+	"app:vef",
+	vef.Supply(BuildInfo),
+)

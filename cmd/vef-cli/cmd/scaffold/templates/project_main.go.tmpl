@@ -1,0 +1,10 @@
+package main
+
+func main() {
+	vef.Run(
+		ivef.Module,
+{{- if .WithExample }}
+		{{ .ExampleModule }}.Module,
+{{- end }}
+	)
+}

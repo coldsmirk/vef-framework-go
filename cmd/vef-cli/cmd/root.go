@@ -7,8 +7,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/coldsmirk/vef-framework-go/cmd/vef-cli/cmd/buildinfo"
-	"github.com/coldsmirk/vef-framework-go/cmd/vef-cli/cmd/create"
+	"github.com/coldsmirk/vef-framework-go/cmd/vef-cli/cmd/exportapi"
 	"github.com/coldsmirk/vef-framework-go/cmd/vef-cli/cmd/modelschema"
+	"github.com/coldsmirk/vef-framework-go/cmd/vef-cli/cmd/scaffold"
 )
 
 var version VersionInfo
@@ -17,6 +18,8 @@ var rootCmd = &cobra.Command{
 	Use:   "vef-cli",
 	Short: "VEF Framework CLI tool",
 	Long:  `A command-line tool for VEF Framework to help with code generation and project setup.`,
+	// Execute prints the error itself, so cobra must not print it a second time.
+	SilenceErrors: true,
 }
 
 // Init initializes version information from ldflags or runtime/debug.
@@ -40,9 +43,10 @@ func Execute() error {
 
 func init() {
 	subCommands := []*cobra.Command{
-		create.Command(),
+		scaffold.Command(),
 		buildinfo.Command(),
 		modelschema.Command(),
+		exportapi.Command(),
 	}
 
 	setupHelpColors(rootCmd)

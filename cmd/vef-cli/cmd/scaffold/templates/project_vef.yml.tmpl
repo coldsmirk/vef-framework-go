@@ -1,0 +1,35 @@
+# vef-cli code-generation conventions for this project.
+#
+# Every key has a default; delete one to fall back to it. These are project
+# conventions rather than tool settings, which is why they live here and not
+# behind command-line flags: `new resource` has to produce code that reads like
+# the code already in the repository.
+
+# Directory business modules live under, relative to this file.
+module_root: internal
+
+resource:
+  # api.NewRPCResource name. Placeholders: {module} (the full, possibly nested
+  # module path), {domain} (its first segment), {entity}.
+  name: "{module}/{entity}"
+
+  # RequiredPermission token. Adds {action} to the placeholders above. Leave
+  # empty to generate resources with no permission at all.
+  permission: "{domain}.{entity}.{action}"
+
+  # Operations a generated resource embeds.
+  ops:
+    - find_page
+    - find_all
+    - find_options
+    - create
+    - update
+    - delete
+
+  # Add EnableAudit() to generated mutations.
+  audit: true
+
+  # Model variable passed to WithAuditUserNames on generated read operations,
+  # written as <import path>.<identifier>. It resolves the audit columns' user
+  # ids into names. Leave empty to generate no such call.
+  # audit_user_model: "{{ .Module }}/internal/sys/model.UserModel"

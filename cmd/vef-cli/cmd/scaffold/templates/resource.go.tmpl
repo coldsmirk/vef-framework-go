@@ -1,0 +1,19 @@
+package resource
+
+// {{ .Entity.Name }}Resource {{ with .Entity.Comment }}{{ . }}{{ else }}{{ $.Entity.Name }}{{ end }}资源.
+type {{ .Entity.Name }}Resource struct {
+	api.Resource
+{{- range .Entity.Ops }}
+	{{ .Embed }}
+{{- end }}
+}
+
+// New{{ .Entity.Name }}Resource constructs the {{ .Entity.Name }} API resource.
+func New{{ .Entity.Name }}Resource() api.Resource {
+	return &{{ .Entity.Name }}Resource{
+		Resource: api.NewRPCResource({{ printf "%q" .Entity.ResourceName }}),
+{{- range .Entity.Ops }}
+		{{ .Field }}: {{ .Init }},
+{{- end }}
+	}
+}
