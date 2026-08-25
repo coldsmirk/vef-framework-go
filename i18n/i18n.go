@@ -46,7 +46,11 @@ func init() {
 		panic(err)
 	}
 
-	logger.Infof("Using language: %s", st.language)
+	// Debug, not Info: this runs from package init, before any application or
+	// tool can configure the logger, so an Info line here is unsuppressable
+	// noise for every binary that links the framework — a CLI prints it before
+	// its own first word. SetLanguage reports a deliberate change at Info.
+	logger.Debugf("Using language: %s", st.language)
 	current.Store(st)
 }
 

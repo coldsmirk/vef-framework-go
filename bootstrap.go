@@ -24,8 +24,35 @@ func newFxLogger() fxevent.Logger {
 
 // Run starts the VEF framework with the provided options.
 // It initializes all core modules and runs the application.
+//
+// When VEF_EXPORT_API names a destination the application describes its API
+// surface there and exits instead of serving, so a build pipeline can read the
+// contract out of the very binary that implements it without the host writing
+// a second entry point.
 func Run(options ...fx.Option) {
+	if exportAPIIfRequested(options...) {
+		return
+	}
+
 	fx.New(bootOptions(options...)...).Run()
+}
+
+// baseOptions assembles every module of the framework graph without the invoke
+// that starts serving. It is the shared half of Run and ExportAPI: the module
+// list and its order come from one place, so what a manifest describes cannot
+// drift from what the application answers.
+//
+// config, datasource, and the fx logger are the environment prefix; everything
+// after them is ordered by bootmodules.Assemble, the single authority also
+// shared with the test harness (internal/apptest).
+func baseOptions(options ...fx.Option) []fx.Option {
+	prefix := []fx.Option{
+		fx.WithLogger(newFxLogger),
+		config.Module,
+		datasource.Module,
+	}
+
+	return bootmodules.Assemble(prefix, options)
 }
 
 // bootOptions assembles the complete option set Run hands to fx. It is split
@@ -33,20 +60,11 @@ func Run(options ...fx.Option) {
 // fx resolves dependencies lazily, so a constructor asking for a type nobody
 // provides stays invisible until something boots that module.
 //
-// config, datasource, and the fx logger are the environment prefix; everything
-// after them is ordered by bootmodules.Assemble, the single authority shared
-// with the test harness (internal/apptest) so the two graphs cannot drift.
 // startApp is appended last so the HTTP server starts after the scheduler and,
 // on the way down, drains before it.
 func bootOptions(options ...fx.Option) []fx.Option {
-	prefix := []fx.Option{
-		fx.WithLogger(newFxLogger),
-		config.Module,
-		datasource.Module,
-	}
-
 	return append(
-		bootmodules.Assemble(prefix, options),
+		baseOptions(options...),
 		fx.Invoke(startApp),
 		fx.StartTimeout(defaultTimeout),
 		fx.StopTimeout(defaultTimeout*2),
