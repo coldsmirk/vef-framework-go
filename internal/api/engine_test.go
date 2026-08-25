@@ -651,6 +651,20 @@ func TestResolveRateLimit(t *testing.T) {
 	}{
 		{"NilUsesDefault", nil, defaultLimit},
 		{"CustomRateLimitUsed", customLimit, customLimit},
+		// A spec that tightens only the budget — which is how the login
+		// endpoint declares its own — must still come out with a window.
+		// Reporting Period 0 would read as "unbounded" to anything inspecting
+		// the operation, while the request path silently applied the default.
+		{
+			"PartialLimitInheritsTheMissingField",
+			&api.RateLimitConfig{Max: 6},
+			&api.RateLimitConfig{Max: 6, Period: 5 * time.Minute},
+		},
+		{
+			"PartialPeriodInheritsTheDefaultMax",
+			&api.RateLimitConfig{Period: time.Minute},
+			&api.RateLimitConfig{Max: 100, Period: time.Minute},
+		},
 	}
 
 	for _, tt := range tests {
@@ -658,6 +672,25 @@ func TestResolveRateLimit(t *testing.T) {
 			assert.Equal(t, tt.expected, e.resolveRateLimit(tt.input), "Should return expected rate limit")
 		})
 	}
+}
+
+// TestEngineOperations covers the api.EngineInspector implementation the API
+// manifest exporter reads the surface through.
+func TestEngineOperations(t *testing.T) {
+	e, _ := newRegistrationEngine(t, []api.OperationSpec{{Action: "update"}, {Action: "create"}})
+
+	require.NoError(t, e.Register(&MockResource{kind: api.KindRPC, name: "md/holiday", version: api.VersionV1}),
+		"registering the resource must succeed")
+
+	inspector, ok := any(e).(api.EngineInspector)
+	require.True(t, ok, "the engine must satisfy api.EngineInspector so the surface can be exported")
+
+	operations := inspector.Operations()
+	require.Len(t, operations, 2, "every registered operation must be reported")
+
+	assert.Equal(t, "create", operations[0].Action,
+		"operations must come out ordered by identifier, not by registration, so an exported manifest is diffable")
+	assert.Equal(t, "update", operations[1].Action, "operations must come out ordered by identifier")
 }
 
 // customNamedRouter is a RouterStrategy whose Name() differs from Kind.String()
@@ -701,8 +734,8 @@ func TestFindRouterStrategy(t *testing.T) {
 		// The router's Name() is deliberately different from KindRPC.String().
 		// The engine must still find it by calling CanHandle, not Name()==kind.String().
 		router := &customNamedRouter{
-			MockRouterStrategy: MockRouterStrategy{name: "my-custom-rpc-router"},
-			handlesKind:        api.KindRPC,
+			name:        "my-custom-rpc-router",
+			handlesKind: api.KindRPC,
 		}
 		eng := newTestEngine(t, WithRouters(router))
 

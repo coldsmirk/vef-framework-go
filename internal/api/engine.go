@@ -2,6 +2,8 @@ package api
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/coldsmirk/go-collections"
@@ -140,6 +142,25 @@ func (e *engine) Lookup(identifier api.Identifier) *api.Operation {
 	return op
 }
 
+// Operations implements api.EngineInspector.
+//
+// The order is by identifier rather than by registration, because the caller
+// is an exporter whose output is committed and diffed: a manifest that
+// reshuffles when two resources swap registration order would report a change
+// where the API has none.
+func (e *engine) Operations() []*api.Operation {
+	operations := make([]*api.Operation, 0, e.operations.Size())
+	for _, op := range e.operations.Seq() {
+		operations = append(operations, op)
+	}
+
+	slices.SortFunc(operations, func(a, b *api.Operation) int {
+		return strings.Compare(a.String(), b.String())
+	})
+
+	return operations
+}
+
 // registerResource registers a single resource.
 func (e *engine) registerResource(res api.Resource) error {
 	if res == nil {
@@ -183,8 +204,8 @@ func (e *engine) registerOperation(res api.Resource, spec api.OperationSpec) err
 
 	if existing, inserted := e.operations.PutIfAbsent(op.Identifier, op); !inserted {
 		return &shared.DuplicateError{
-			BaseError: shared.BaseError{Identifier: &op.Identifier},
-			Existing:  existing,
+			Identifier: &op.Identifier,
+			Existing:   existing,
 		}
 	}
 
@@ -236,11 +257,9 @@ func (e *engine) buildOperation(res api.Resource, spec api.OperationSpec, handle
 	}
 
 	return &api.Operation{
-		Identifier: api.Identifier{
-			Resource: res.Name(),
-			Action:   spec.Action,
-			Version:  lo.CoalesceOrEmpty(res.Version(), e.defaultVersion, api.VersionV1),
-		},
+		Resource:    res.Name(),
+		Action:      spec.Action,
+		Version:     lo.CoalesceOrEmpty(res.Version(), e.defaultVersion, api.VersionV1),
 		Auth:        ac,
 		Timeout:     e.resolveTimeout(spec.Timeout),
 		RateLimit:   e.resolveRateLimit(spec.RateLimit),
@@ -318,12 +337,33 @@ func (e *engine) resolveTimeout(t time.Duration) time.Duration {
 }
 
 // resolveRateLimit returns operation rate limit or default.
+// resolveRateLimit merges an operation's declared limit over the engine
+// default, field by field.
+//
+// Merging rather than choosing is what makes Operation.RateLimit the final
+// value it claims to be: an OperationSpec that sets only Max — which is how
+// the login endpoint declares its stricter budget — leaves Period at zero, and
+// zero is not "no window", it is "the default window". Reporting the partial
+// value would tell an inspector the endpoint is unbounded.
 func (e *engine) resolveRateLimit(limit *api.RateLimitConfig) *api.RateLimitConfig {
-	if limit != nil {
+	if limit == nil {
+		return e.defaultRateLimit
+	}
+
+	if e.defaultRateLimit == nil {
 		return limit
 	}
 
-	return e.defaultRateLimit
+	resolved := *limit
+	if resolved.Max <= 0 {
+		resolved.Max = e.defaultRateLimit.Max
+	}
+
+	if resolved.Period <= 0 {
+		resolved.Period = e.defaultRateLimit.Period
+	}
+
+	return &resolved
 }
 
 // adaptHandler uses the adapter chain to convert the handler.
