@@ -2,6 +2,7 @@ package migration
 
 import (
 	"regexp"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -61,6 +62,78 @@ func TestFlowVersionFormFieldsColumn(t *testing.T) {
 				"%s apv_flow_version CREATE TABLE must define a form_fields column", kind)
 		})
 	}
+}
+
+// varcharWidth extracts a column's declared VARCHAR width from inside one
+// CREATE TABLE body. The optional backticks make it work on the MySQL script
+// too, and anchoring on the table header keeps a same-named column in another
+// table (every table has an id, several have a key) out of the match.
+func varcharWidth(t *testing.T, sql, table, column string) int {
+	t.Helper()
+
+	pattern := regexp.MustCompile(`(?s)CREATE TABLE IF NOT EXISTS\s+` + regexp.QuoteMeta(table) +
+		`\s*\([^;]*?` + "`?" + regexp.QuoteMeta(column) + "`?" + `\s+VARCHAR\((\d+)\)`)
+
+	match := pattern.FindStringSubmatch(sql)
+	require.Lenf(t, match, 2, "Should find a VARCHAR width for %s.%s", table, column)
+
+	width, err := strconv.Atoi(match[1])
+	require.NoErrorf(t, err, "Should parse the width of %s.%s", table, column)
+
+	return width
+}
+
+// branchHandleAllowance bounds the sourceHandle segment of an edge key. A
+// condition branch id is `branch_<id>`, and branches live in
+// apv_flow_node.branches (JSONB), so unlike the node keys NO column bounds it —
+// this constant is the schema's own allowance for it.
+const branchHandleAllowance = 32
+
+// TestFlowEdgeKeyHoldsComposedNodeKeys guards the one column in this schema that
+// stores a COMPOSITION rather than a value: apv_flow_edge.key is React Flow's
+// edge id, `xy-edge__<source><sourceHandle>-<target>`, so it has to hold two
+// node keys plus a branch handle plus the literal framing — while
+// source_node_key / target_node_key each hold one node key and are correctly
+// declared at apv_flow_node.key's own width.
+//
+// It was originally declared at that same component width, which fit only edges
+// with no source handle (9 + 26 + 1 + 26 = 62 for today's generated keys); the
+// first condition-branch edge overflowed it and failed the whole deploy.
+//
+// The requirement is derived from what the schema ALLOWS, not from what the
+// current key generator emits: a node key may legitimately fill
+// source_node_key, so anything narrower than the sum is a latent 22001.
+func TestFlowEdgeKeyHoldsComposedNodeKeys(t *testing.T) {
+	for _, kind := range []config.DBKind{config.Postgres, config.MySQL, config.SQLite} {
+		t.Run(string(kind), func(t *testing.T) {
+			sql, err := sqlmigration.LoadScript(scripts, kind)
+			require.NoErrorf(t, err, "Should load %s migration SQL", kind)
+
+			source := varcharWidth(t, sql, "apv_flow_edge", "source_node_key")
+			target := varcharWidth(t, sql, "apv_flow_edge", "target_node_key")
+			key := varcharWidth(t, sql, "apv_flow_edge", "key")
+
+			required := len("xy-edge__") + source + branchHandleAllowance + len("-") + target
+
+			assert.GreaterOrEqualf(t, key, required,
+				"%s apv_flow_edge.key (%d) must hold xy-edge__ + source_node_key (%d) + a branch handle + - + target_node_key (%d) = %d",
+				kind, key, source, target, required)
+		})
+	}
+
+	t.Run("NodeKeyColumnsMatchTheirAuthority", func(t *testing.T) {
+		for _, kind := range []config.DBKind{config.Postgres, config.MySQL, config.SQLite} {
+			sql, err := sqlmigration.LoadScript(scripts, kind)
+			require.NoErrorf(t, err, "Should load %s migration SQL", kind)
+
+			authority := varcharWidth(t, sql, "apv_flow_node", "key")
+
+			for _, column := range []string{"source_node_key", "target_node_key"} {
+				assert.GreaterOrEqualf(t, varcharWidth(t, sql, "apv_flow_edge", column), authority,
+					"%s apv_flow_edge.%s must hold anything apv_flow_node.key (%d) accepts", kind, column, authority)
+			}
+		}
+	})
 }
 
 func TestBusinessProjectionSchemaContract(t *testing.T) {

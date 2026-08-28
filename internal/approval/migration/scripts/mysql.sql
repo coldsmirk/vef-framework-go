@@ -188,7 +188,8 @@ CREATE TABLE IF NOT EXISTS apv_flow_node_cc (
 CREATE TABLE IF NOT EXISTS apv_flow_edge (
     id VARCHAR(32) NOT NULL COMMENT 'ID',
     flow_version_id VARCHAR(32) NOT NULL COMMENT 'Version',
-    `key` VARCHAR(64) COMMENT 'Key',
+    -- Composed edge id (xy-edge__<source><handle>-<target>): holds two node keys, not one.
+    `key` VARCHAR(256) COMMENT 'Key',
     source_node_id VARCHAR(32) NOT NULL COMMENT 'Source',
     source_node_key VARCHAR(64) NOT NULL COMMENT 'Source Key',
     target_node_id VARCHAR(32) NOT NULL COMMENT 'Target',

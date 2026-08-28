@@ -293,7 +293,8 @@ CREATE INDEX IF NOT EXISTS idx_apv_flow_node_cc__node_id ON apv_flow_node_cc(nod
 CREATE TABLE IF NOT EXISTS apv_flow_edge (
     id VARCHAR(32) CONSTRAINT pk_apv_flow_edge PRIMARY KEY,
     flow_version_id VARCHAR(32) NOT NULL,
-    key VARCHAR(64),
+    -- Composed edge id (xy-edge__<source><handle>-<target>): holds two node keys, not one.
+    key VARCHAR(256),
     source_node_id VARCHAR(32) NOT NULL,
     source_node_key VARCHAR(64) NOT NULL,
     target_node_id VARCHAR(32) NOT NULL,
