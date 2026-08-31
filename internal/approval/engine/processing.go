@@ -27,15 +27,25 @@ type ProcessResult struct {
 
 // ProcessContext provides context for node processing.
 type ProcessContext struct {
-	DB            orm.DB
-	Instance      *approval.Instance
-	Node          *approval.FlowNode
-	Visit         *approval.NodeVisit
-	FormData      approval.FormData
-	ApplicantID   string
-	ApplicantName string
-	UserResolver  approval.UserInfoResolver
-	Registry      *strategy.StrategyRegistry
+	DB           orm.DB
+	Instance     *approval.Instance
+	Node         *approval.FlowNode
+	Visit        *approval.NodeVisit
+	FormData     approval.FormData
+	UserResolver approval.UserInfoResolver
+	Registry     *strategy.StrategyRegistry
+}
+
+// NodeResolveContext projects the processing context onto what assignee and CC
+// resolvers see. Both vocabularies resolve against the same snapshot, so the
+// projection lives here rather than being rebuilt at each call site.
+func (pc *ProcessContext) NodeResolveContext() *approval.NodeResolveContext {
+	return &approval.NodeResolveContext{
+		Instance:     pc.Instance,
+		Node:         pc.Node,
+		FormData:     pc.FormData,
+		UserResolver: pc.UserResolver,
+	}
 }
 
 // NodeProcessor processes a specific node kind.

@@ -65,7 +65,7 @@ func TestValidateConditionAggregates(t *testing.T) {
 	t.Run("AcceptsHostRegisteredKind", func(t *testing.T) {
 		// The open-closed contract: registering a new kind makes it
 		// deployable with zero framework changes.
-		extended := NewFlowDefinitionService(approval.AggregateSum, approval.AggregateCount, approval.AggregateAvg, "median")
+		extended := NewFlowDefinitionService(WithAggregateKinds(approval.AggregateSum, approval.AggregateCount, approval.AggregateAvg, "median"))
 		cond := approval.Condition{Kind: approval.ConditionField, Subject: "items", Aggregate: "median", Column: "qty", Operator: approval.OperatorGreater, Value: 1}
 		assert.NoError(t, extended.ValidateConditionAggregates(nodes(cond), form),
 			"a boot-registered custom aggregate deploys like a built-in")

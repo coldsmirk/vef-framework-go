@@ -10,13 +10,26 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
+
+// mustInitiatorCompositeInternal builds the framework's own initiator
+// vocabulary. Registration is static, so a failure here is a programming error
+// rather than a test condition.
+func mustInitiatorCompositeInternal(svc approval.AssigneeService) *strategy.CompositeInitiatorResolver {
+	composite, err := strategy.NewCompositeInitiatorResolver(strategy.BuiltinInitiatorResolvers(svc), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return composite
+}
 
 // --- ValidateOpinion ---
 
 func TestValidateOpinion(t *testing.T) {
-	svc := NewValidationService(nil)
+	svc := NewValidationService(mustInitiatorCompositeInternal(nil))
 
 	t.Run("RequiredAndProvided", func(t *testing.T) {
 		node := &approval.FlowNode{IsOpinionRequired: true}
@@ -182,7 +195,7 @@ func TestMergeFormData(t *testing.T) {
 }
 
 func TestValidateFormData(t *testing.T) {
-	svc := NewValidationService(nil)
+	svc := NewValidationService(mustInitiatorCompositeInternal(nil))
 
 	fields := []approval.FormFieldDefinition{
 		{Key: "reason", Kind: approval.FieldInput, Label: "Reason", IsRequired: true, Validation: &approval.ValidationRule{MinLength: new(3)}},
@@ -248,16 +261,16 @@ func TestFormDataMaxBytesIsConfigurable(t *testing.T) {
 	payload := map[string]any{"blob": strings.Repeat("x", config.DefaultFormDataMaxBytes+1)}
 
 	t.Run("DefaultRejectsWhatTheRaisedLimitAccepts", func(t *testing.T) {
-		require.ErrorIs(t, NewValidationService(nil).ValidateFormData(nil, payload),
+		require.ErrorIs(t, NewValidationService(mustInitiatorCompositeInternal(nil)).ValidateFormData(nil, payload),
 			shared.ErrFormDataTooLarge,
 			"The default cap must still reject the payload, or this test proves nothing")
 
-		require.NoError(t, NewValidationService(nil, WithFormDataMaxBytes(raised)).ValidateFormData(nil, payload),
+		require.NoError(t, NewValidationService(mustInitiatorCompositeInternal(nil), WithFormDataMaxBytes(raised)).ValidateFormData(nil, payload),
 			"A raised cap must accept a payload the default rejects")
 	})
 
 	t.Run("RaisedLimitStillRejectsBeyondIt", func(t *testing.T) {
-		svc := NewValidationService(nil, WithFormDataMaxBytes(raised))
+		svc := NewValidationService(mustInitiatorCompositeInternal(nil), WithFormDataMaxBytes(raised))
 		err := svc.ValidateFormData(nil, map[string]any{"blob": strings.Repeat("x", raised+1)})
 		require.ErrorIs(t, err, shared.ErrFormDataTooLarge, "Raising the cap must move the bound, not remove it")
 	})
@@ -267,7 +280,7 @@ func TestFormDataMaxBytesIsConfigurable(t *testing.T) {
 		// option is public API too — a caller passing 0 must not disable the cap.
 		for name, limit := range map[string]int{"Zero": 0, "Negative": -1} {
 			t.Run(name, func(t *testing.T) {
-				svc := NewValidationService(nil, WithFormDataMaxBytes(limit))
+				svc := NewValidationService(mustInitiatorCompositeInternal(nil), WithFormDataMaxBytes(limit))
 				require.ErrorIs(t, svc.ValidateFormData(nil, payload), shared.ErrFormDataTooLarge,
 					"A non-positive limit must fall back to the default, never to unbounded")
 			})
@@ -279,7 +292,7 @@ func TestFormDataMaxBytesIsConfigurable(t *testing.T) {
 // internal/approval/shared/user_resolve_test.go.
 
 func TestValidateFormDataTableField(t *testing.T) {
-	svc := NewValidationService(nil)
+	svc := NewValidationService(mustInitiatorCompositeInternal(nil))
 
 	minRows, maxRows := 1, 2
 	fields := []approval.FormFieldDefinition{
@@ -339,7 +352,7 @@ func TestValidateFormDataTableField(t *testing.T) {
 }
 
 func TestValidateRequiredPermissionFields(t *testing.T) {
-	svc := NewValidationService(nil)
+	svc := NewValidationService(mustInitiatorCompositeInternal(nil))
 
 	fields := []approval.FormFieldDefinition{
 		{Key: "reason", Kind: approval.FieldInput, Label: "Reason"},

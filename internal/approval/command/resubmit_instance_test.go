@@ -42,7 +42,7 @@ func (s *ResubmitInstanceTestSuite) SetupSuite() {
 	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewResubmitInstanceHandler(
 		s.db,
 		buildTestEngine(s.db),
-		service.NewValidationService(nil),
+		service.NewValidationService(mustInitiatorComposite(nil)),
 		service.NewInstanceService(nil),
 		nil,
 	))

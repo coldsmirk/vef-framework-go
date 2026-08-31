@@ -10,6 +10,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -37,11 +38,20 @@ type UpdateFlowCmd struct {
 type UpdateFlowHandler struct {
 	db               orm.DB
 	bindingValidator *binding.ConfigValidator
+	// initiatorKinds is the boot-registered initiator vocabulary with the
+	// input each kind requires. Save-time validation accepts exactly this set,
+	// so a host kind registered through vef.ProvideApprovalInitiatorResolver
+	// becomes configurable with no framework change.
+	initiatorKinds map[approval.InitiatorKind]approval.SelectionMode
 }
 
 // NewUpdateFlowHandler creates a new UpdateFlowHandler.
-func NewUpdateFlowHandler(db orm.DB, bindingValidator *binding.ConfigValidator) *UpdateFlowHandler {
-	return &UpdateFlowHandler{db: db, bindingValidator: bindingValidator}
+func NewUpdateFlowHandler(db orm.DB, bindingValidator *binding.ConfigValidator, initiators *strategy.CompositeInitiatorResolver) *UpdateFlowHandler {
+	return &UpdateFlowHandler{
+		db:               db,
+		bindingValidator: bindingValidator,
+		initiatorKinds:   shared.SelectionIndex(initiators.Descriptors()),
+	}
 }
 
 func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*approval.Flow, error) {
@@ -70,11 +80,11 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		return nil, err
 	}
 
-	if err := validateFlowEnums(cmd.BindingMode, cmd.Initiators); err != nil {
+	if err := validateBindingMode(cmd.BindingMode); err != nil {
 		return nil, err
 	}
 
-	if err := validateInitiatorPolicy(cmd.IsAllInitiationAllowed, cmd.Initiators); err != nil {
+	if err := validateInitiatorRules(cmd.IsAllInitiationAllowed, cmd.Initiators, h.initiatorKinds); err != nil {
 		return nil, err
 	}
 

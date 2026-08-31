@@ -26,17 +26,29 @@ type ProcessorTestBase struct {
 	NodeID        string
 }
 
-// InitRegistry creates a standard StrategyRegistry with a user assignee
-// resolver and the built-in pass-rule strategies — the entry-time auto-pass
+// InitRegistry creates a standard StrategyRegistry with the framework's own
+// principal resolvers and pass-rule strategies — the entry-time auto-pass
 // sweep evaluates the node's pass rule, so the processors need them.
 func (b *ProcessorTestBase) InitRegistry() {
+	assignees, err := strategy.NewCompositeAssigneeResolver(strategy.BuiltinAssigneeResolvers(nil), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	ccs, err := strategy.NewCompositeCCResolver(strategy.BuiltinCCResolvers(nil), nil)
+	if err != nil {
+		panic(err)
+	}
+
 	b.Registry = strategy.NewStrategyRegistry(
 		[]approval.PassRuleStrategy{
 			strategy.NewAllPassStrategy(),
 			strategy.NewAnyPassStrategy(),
 			strategy.NewRatioPassStrategy(),
 		},
-		[]strategy.AssigneeResolver{strategy.NewUserAssigneeResolver()},
+		nil,
+		assignees,
+		ccs,
 		nil,
 	)
 }
@@ -265,12 +277,11 @@ func (b *ProcessorTestBase) InsertRejectedTasks(t require.TestingT, instanceID, 
 // a processor.
 func (b *ProcessorTestBase) NewProcessContext(t require.TestingT, instance *approval.Instance, node *approval.FlowNode) *engine.ProcessContext {
 	return &engine.ProcessContext{
-		DB:          b.DB,
-		Instance:    instance,
-		Node:        node,
-		Visit:       b.EnsureVisit(t, instance.ID, node.ID, approval.NodeVisitActive),
-		FormData:    approval.NewFormData(instance.FormData),
-		ApplicantID: instance.ApplicantID,
-		Registry:    b.Registry,
+		DB:       b.DB,
+		Instance: instance,
+		Node:     node,
+		Visit:    b.EnsureVisit(t, instance.ID, node.ID, approval.NodeVisitActive),
+		FormData: approval.NewFormData(instance.FormData),
+		Registry: b.Registry,
 	}
 }

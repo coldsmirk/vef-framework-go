@@ -9,28 +9,98 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
+// newBuiltinRegistry builds the registry production boots with, minus host
+// registrations.
+func newBuiltinRegistry(t *testing.T) *StrategyRegistry {
+	t.Helper()
+
+	assignees, err := NewCompositeAssigneeResolver(BuiltinAssigneeResolvers(nil), nil)
+	require.NoError(t, err, "Should build built-in assignee resolvers")
+
+	ccs, err := NewCompositeCCResolver(BuiltinCCResolvers(nil), nil)
+	require.NoError(t, err, "Should build built-in CC resolvers")
+
+	initiators, err := NewCompositeInitiatorResolver(BuiltinInitiatorResolvers(nil), nil)
+	require.NoError(t, err, "Should build built-in initiator resolvers")
+
+	return NewStrategyRegistry(
+		[]approval.PassRuleStrategy{NewAllPassStrategy(), NewAnyPassStrategy(), NewRatioPassStrategy()},
+		[]approval.ConditionEvaluator{NewFieldConditionEvaluator(), NewExpressionConditionEvaluator(nil)},
+		assignees,
+		ccs,
+		initiators,
+	)
+}
+
 // TestNewStrategyRegistry tests new strategy registry scenarios.
 func TestNewStrategyRegistry(t *testing.T) {
 	t.Run("RegistersAll", func(t *testing.T) {
-		r := NewStrategyRegistry(
-			[]approval.PassRuleStrategy{NewAllPassStrategy(), NewAnyPassStrategy()},
-			[]AssigneeResolver{NewUserAssigneeResolver(), NewSelfAssigneeResolver()},
-			[]approval.ConditionEvaluator{NewFieldConditionEvaluator()},
-		)
+		r := newBuiltinRegistry(t)
 
-		assert.Len(t, r.passRules, 2, "Should register 2 pass rule strategies")
-		assert.Len(t, r.assignees, 2, "Should register 2 assignee resolvers")
-		assert.Len(t, r.conditions, 1, "Should register 1 condition evaluator")
-		assert.NotNil(t, r.composite, "Composite resolver should be initialized")
+		assert.Len(t, r.passRules, 3, "Should register 3 pass rule strategies")
+		assert.Len(t, r.conditions, 2, "Should register 2 condition evaluators")
+		assert.Len(t, r.Assignees().Descriptors(), len(expectedAssigneeKinds), "Should register every built-in assignee kind")
+		assert.Len(t, r.CCs().Descriptors(), len(expectedCCKinds), "Should register every built-in CC kind")
+		assert.Len(t, r.Initiators().Descriptors(), len(expectedInitiatorKinds), "Should register every built-in initiator kind")
 	})
 
 	t.Run("NilSlices", func(t *testing.T) {
-		r := NewStrategyRegistry(nil, nil, nil)
+		r := NewStrategyRegistry(nil, nil, nil, nil, nil)
 
 		assert.Empty(t, r.passRules, "Should have no pass rules for nil input")
-		assert.Empty(t, r.assignees, "Should have no assignees for nil input")
 		assert.Empty(t, r.conditions, "Should have no conditions for nil input")
-		assert.NotNil(t, r.composite, "Composite resolver should be initialized even with nil")
+	})
+}
+
+// TestValidateBuiltins tests that boot validation covers every vocabulary.
+func TestValidateBuiltins(t *testing.T) {
+	t.Run("CompleteRegistry", func(t *testing.T) {
+		require.NoError(t, newBuiltinRegistry(t).ValidateBuiltins(), "A complete registry should validate")
+	})
+
+	t.Run("MissingPassRule", func(t *testing.T) {
+		r := newBuiltinRegistry(t)
+		delete(r.passRules, approval.PassRatio)
+
+		require.ErrorIs(t, r.ValidateBuiltins(), errBuiltinPassRuleMissing, "Should report the missing pass rule")
+	})
+
+	t.Run("MissingConditionEvaluator", func(t *testing.T) {
+		r := newBuiltinRegistry(t)
+		delete(r.conditions, approval.ConditionExpression)
+
+		require.ErrorIs(t, r.ValidateBuiltins(), errBuiltinEvaluatorMissing, "Should report the missing evaluator")
+	})
+
+	t.Run("MissingAssigneeKind", func(t *testing.T) {
+		r := newBuiltinRegistry(t)
+		delete(r.assignees.resolvers, approval.AssigneeSuperior)
+
+		require.ErrorIs(t, r.ValidateBuiltins(), errBuiltinAssigneeMissing, "Should report the missing assignee kind")
+	})
+
+	t.Run("MissingCCKind", func(t *testing.T) {
+		r := newBuiltinRegistry(t)
+		delete(r.ccs.resolvers, approval.CCRole)
+
+		require.ErrorIs(t, r.ValidateBuiltins(), errBuiltinCCMissing, "Should report the missing CC kind")
+	})
+
+	t.Run("MissingInitiatorKind", func(t *testing.T) {
+		r := newBuiltinRegistry(t)
+		delete(r.initiators.resolvers, approval.InitiatorDepartment)
+
+		require.ErrorIs(t, r.ValidateBuiltins(), errBuiltinInitiatorMissing, "Should report the missing initiator kind")
+	})
+
+	t.Run("NilComposites", func(t *testing.T) {
+		r := NewStrategyRegistry(
+			[]approval.PassRuleStrategy{NewAllPassStrategy(), NewAnyPassStrategy(), NewRatioPassStrategy()},
+			[]approval.ConditionEvaluator{NewFieldConditionEvaluator(), NewExpressionConditionEvaluator(nil)},
+			nil, nil, nil,
+		)
+
+		require.ErrorIs(t, r.ValidateBuiltins(), errNilResolver, "A registry without resolvers should not validate")
 	})
 }
 
@@ -38,7 +108,7 @@ func TestNewStrategyRegistry(t *testing.T) {
 func TestGetPassRuleStrategy(t *testing.T) {
 	r := NewStrategyRegistry(
 		[]approval.PassRuleStrategy{NewAllPassStrategy()},
-		nil, nil,
+		nil, nil, nil, nil,
 	)
 
 	t.Run("Found", func(t *testing.T) {
@@ -56,8 +126,9 @@ func TestGetPassRuleStrategy(t *testing.T) {
 // TestGetConditionEvaluator tests get condition evaluator scenarios.
 func TestGetConditionEvaluator(t *testing.T) {
 	r := NewStrategyRegistry(
-		nil, nil,
+		nil,
 		[]approval.ConditionEvaluator{NewFieldConditionEvaluator()},
+		nil, nil, nil,
 	)
 
 	t.Run("Found", func(t *testing.T) {
@@ -72,15 +143,11 @@ func TestGetConditionEvaluator(t *testing.T) {
 	})
 }
 
-// TestRegistryCompositeAssigneeResolver tests registry composite resolver accessor.
-func TestRegistryCompositeAssigneeResolver(t *testing.T) {
-	r := NewStrategyRegistry(
-		nil,
-		[]AssigneeResolver{NewUserAssigneeResolver(), NewSelfAssigneeResolver()},
-		nil,
-	)
+// TestRegistryResolverAccessors tests the composite accessors.
+func TestRegistryResolverAccessors(t *testing.T) {
+	r := newBuiltinRegistry(t)
 
-	composite := r.CompositeAssigneeResolver()
-	assert.NotNil(t, composite, "Should return non-nil composite resolver")
-	assert.Len(t, composite.resolvers, 2, "Composite should contain 2 resolvers")
+	assert.NotNil(t, r.Assignees(), "Should return the assignee composite")
+	assert.NotNil(t, r.CCs(), "Should return the CC composite")
+	assert.NotNil(t, r.Initiators(), "Should return the initiator composite")
 }

@@ -49,7 +49,7 @@ func subjectMatch(kind approval.ConditionKind, matchSubject string) *MockConditi
 }
 
 func newRegistry(evaluators ...approval.ConditionEvaluator) *strategy.StrategyRegistry {
-	return strategy.NewStrategyRegistry(nil, nil, evaluators)
+	return strategy.NewStrategyRegistry(nil, evaluators, nil, nil, nil)
 }
 
 func newProcessContext(branches []approval.ConditionBranch, registry *strategy.StrategyRegistry) *ProcessContext {
@@ -405,11 +405,11 @@ func TestEvaluateGroupConditions(t *testing.T) {
 	// Integration subtests with real field and expression evaluators
 	realRegistry := strategy.NewStrategyRegistry(
 		nil,
-		nil,
 		[]approval.ConditionEvaluator{
 			strategy.NewFieldConditionEvaluator(),
 			strategy.NewExpressionConditionEvaluator(exprlang.New()),
 		},
+		nil, nil, nil,
 	)
 
 	t.Run("FieldCondition", func(t *testing.T) {

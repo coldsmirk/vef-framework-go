@@ -66,7 +66,10 @@ func (h *GetStartFormHandler) Handle(ctx context.Context, query GetStartFormQuer
 	}
 
 	if !flow.IsAllInitiationAllowed {
-		allowed, err := h.validationSvc.CheckInitiationPermission(ctx, db, flow.ID, query.UserID, query.ApplicantDepartmentID)
+		allowed, err := h.validationSvc.CheckInitiationPermission(ctx, db, &flow, approval.UserInfo{
+			ID:           query.UserID,
+			DepartmentID: query.ApplicantDepartmentID,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("check initiation permission: %w", err)
 		}

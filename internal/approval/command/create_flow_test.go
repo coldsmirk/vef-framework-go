@@ -41,7 +41,7 @@ func (s *CreateFlowTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Should insert test category")
 
 	s.categoryID = category.ID
-	s.handler = command.NewCreateFlowHandler(s.db, newTestBindingValidator())
+	s.handler = command.NewCreateFlowHandler(s.db, newTestBindingValidator(), mustInitiatorComposite(nil))
 }
 
 func (s *CreateFlowTestSuite) TearDownSuite() {

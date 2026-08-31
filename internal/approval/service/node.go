@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -19,7 +20,7 @@ type NodeService struct {
 	bus          event.Bus
 	taskSvc      *TaskService
 	userResolver approval.UserInfoResolver
-	ccResolver   *shared.CCRecipientResolver
+	ccResolver   *strategy.CompositeCCResolver
 }
 
 // NewNodeService creates a new NodeService.
@@ -28,7 +29,7 @@ func NewNodeService(
 	bus event.Bus,
 	taskSvc *TaskService,
 	userResolver approval.UserInfoResolver,
-	ccResolver *shared.CCRecipientResolver,
+	ccResolver *strategy.CompositeCCResolver,
 ) *NodeService {
 	return &NodeService{
 		engine:       engine,
@@ -151,15 +152,17 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 		return nil
 	}
 
-	formData := approval.NewFormData(instance.FormData)
-
 	// CC resolution is best-effort (unresolvable configs are logged and skipped);
 	// it never fails the approval whose completion triggered the CC.
-	resolved := shared.CollectUniqueCCUserIDs(
+	resolved := s.ccResolver.CollectUserIDs(
 		ctx,
 		ccConfigs,
-		formData,
-		s.ccResolver.Resolve,
+		&approval.NodeResolveContext{
+			Instance:     instance,
+			Node:         node,
+			FormData:     approval.NewFormData(instance.FormData),
+			UserResolver: s.userResolver,
+		},
 		func(cfg approval.FlowNodeCC) bool {
 			switch cfg.Timing {
 			case approval.CCTimingAlways:

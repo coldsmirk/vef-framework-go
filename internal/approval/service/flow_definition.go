@@ -6,6 +6,8 @@ import (
 	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 )
 
 // validNodeKinds defines the set of valid node kinds for flow validation.
@@ -25,23 +27,58 @@ type FlowDefinitionService struct {
 	// host-registered aggregate (vef.ProvideApprovalAggregator) becomes
 	// deployable with no framework changes — the open-closed contract the
 	// Aggregator interface promises.
-	aggregateKinds map[approval.AggregateKind]struct{}
+	aggregateKinds collections.Set[approval.AggregateKind]
+	// assigneeKinds and ccKinds map each registered kind to the designer input
+	// it requires. They are the same open-closed contract applied to the two
+	// node-level principal vocabularies: deploy accepts exactly the kinds with
+	// a registered resolver, and enforces that kind's declared input, so a host
+	// kind is validated like a built-in without a line of framework code.
+	assigneeKinds map[approval.AssigneeKind]approval.SelectionMode
+	ccKinds       map[approval.CCKind]approval.SelectionMode
 }
 
-// NewFlowDefinitionService creates a new FlowDefinitionService. The
-// registered aggregate kinds default to the built-ins when omitted (the
-// production module passes the full boot-registered set).
-func NewFlowDefinitionService(aggregateKinds ...approval.AggregateKind) *FlowDefinitionService {
-	if len(aggregateKinds) == 0 {
-		aggregateKinds = []approval.AggregateKind{approval.AggregateSum, approval.AggregateCount, approval.AggregateAvg}
+// FlowDefinitionOption configures a FlowDefinitionService.
+type FlowDefinitionOption func(*FlowDefinitionService)
+
+// WithAggregateKinds sets the aggregate kinds deploy validation accepts.
+func WithAggregateKinds(kinds ...approval.AggregateKind) FlowDefinitionOption {
+	return func(s *FlowDefinitionService) {
+		s.aggregateKinds = collections.NewHashSetFrom(kinds...)
+	}
+}
+
+// WithAssigneeKinds sets the assignee kinds deploy validation accepts,
+// together with the input each requires.
+func WithAssigneeKinds(descriptors ...approval.KindDescriptor[approval.AssigneeKind]) FlowDefinitionOption {
+	return func(s *FlowDefinitionService) {
+		s.assigneeKinds = shared.SelectionIndex(descriptors)
+	}
+}
+
+// WithCCKinds sets the CC kinds deploy validation accepts, together with the
+// input each requires.
+func WithCCKinds(descriptors ...approval.KindDescriptor[approval.CCKind]) FlowDefinitionOption {
+	return func(s *FlowDefinitionService) {
+		s.ccKinds = shared.SelectionIndex(descriptors)
+	}
+}
+
+// NewFlowDefinitionService creates a new FlowDefinitionService. Every kind
+// vocabulary defaults to the framework built-ins, so a test constructs the
+// service with no arguments; the production module passes the full
+// boot-registered sets.
+func NewFlowDefinitionService(opts ...FlowDefinitionOption) *FlowDefinitionService {
+	svc := &FlowDefinitionService{
+		aggregateKinds: collections.NewHashSetFrom(approval.AggregateSum, approval.AggregateCount, approval.AggregateAvg),
+		assigneeKinds:  shared.SelectionIndex(strategy.BuiltinAssigneeKinds()),
+		ccKinds:        shared.SelectionIndex(strategy.BuiltinCCKinds()),
 	}
 
-	kinds := make(map[approval.AggregateKind]struct{}, len(aggregateKinds))
-	for _, kind := range aggregateKinds {
-		kinds[kind] = struct{}{}
+	for _, opt := range opts {
+		opt(svc)
 	}
 
-	return &FlowDefinitionService{aggregateKinds: kinds}
+	return svc
 }
 
 // nodeScan holds the Phase 1 node-validation outputs that the later edge,
@@ -71,12 +108,12 @@ type edgeScan struct {
 // phases in sequence — node validation, edge/adjacency, degree constraints,
 // topology — each extracted into a focused helper; later phases consume the
 // scan state earlier ones produce.
-func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinition) (map[string]approval.NodeData, error) {
+func (s *FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinition) (map[string]approval.NodeData, error) {
 	if len(def.Nodes) == 0 {
 		return nil, errNoNodes
 	}
 
-	nodes, err := validateNodes(def)
+	nodes, err := s.validateNodes(def)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +136,7 @@ func (*FlowDefinitionService) ValidateFlowDefinition(def *approval.FlowDefinitio
 
 // validateNodes performs Phase 1: per-node ID/kind/data validation, start/end
 // counts, and the cross-node rollback-target reference check.
-func validateNodes(def *approval.FlowDefinition) (*nodeScan, error) {
+func (s *FlowDefinitionService) validateNodes(def *approval.FlowDefinition) (*nodeScan, error) {
 	scan := &nodeScan{
 		nodeIDs:      collections.NewHashSet[string](),
 		taskNodeIDs:  collections.NewHashSet[string](),
@@ -131,7 +168,7 @@ func validateNodes(def *approval.FlowDefinition) (*nodeScan, error) {
 			return nil, fmt.Errorf("parse node %q data: %w", node.ID, err)
 		}
 
-		if err := validateNodeConfig(node.ID, data); err != nil {
+		if err := s.validateNodeConfig(node.ID, data); err != nil {
 			return nil, err
 		}
 

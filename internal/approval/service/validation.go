@@ -17,6 +17,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -52,14 +53,14 @@ func resolveOptions(opts []Option) options {
 
 // ValidationService provides validation operations.
 type ValidationService struct {
-	assigneeService  approval.AssigneeService
+	initiators       *strategy.CompositeInitiatorResolver
 	formDataMaxBytes int
 }
 
 // NewValidationService creates a new ValidationService.
-func NewValidationService(assigneeSvc approval.AssigneeService, opts ...Option) *ValidationService {
+func NewValidationService(initiators *strategy.CompositeInitiatorResolver, opts ...Option) *ValidationService {
 	return &ValidationService{
-		assigneeService:  assigneeSvc,
+		initiators:       initiators,
 		formDataMaxBytes: resolveOptions(opts).formDataMaxBytes,
 	}
 }
@@ -699,15 +700,27 @@ func FilterEditableFormData(formData map[string]any, permissions map[string]appr
 	return filtered
 }
 
-// CheckInitiationPermission checks if the applicant is allowed to initiate the flow.
-func (s *ValidationService) CheckInitiationPermission(ctx context.Context, db orm.DB, flowID, applicantID string, applicantDepartmentID *string) (bool, error) {
+// CheckInitiationPermission reports whether the applicant may start the flow.
+// Rules are evaluated in stored order and the first match admits; an empty
+// rule set admits nobody, which is the fail-closed half of the invariant that
+// makes "no rules" mean "open to everyone" only via Flow.IsAllInitiationAllowed
+// (validateInitiatorRules enforces the other half at save time).
+//
+// Each rule is dispatched to the resolver registered for its kind, so a host
+// initiator kind is checked here exactly like a built-in one.
+func (s *ValidationService) CheckInitiationPermission(
+	ctx context.Context,
+	db orm.DB,
+	flow *approval.Flow,
+	applicant approval.UserInfo,
+) (bool, error) {
 	var initiators []approval.FlowInitiator
 
 	if err := db.NewSelect().
 		Model(&initiators).
 		Select("kind", "ids").
 		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("flow_id", flowID)
+			cb.Equals("flow_id", flow.ID)
 		}).
 		Scan(ctx); err != nil {
 		return false, fmt.Errorf("query flow initiators: %w", err)
@@ -717,39 +730,9 @@ func (s *ValidationService) CheckInitiationPermission(ctx context.Context, db or
 		return false, nil
 	}
 
-	for _, initiator := range initiators {
-		switch initiator.Kind {
-		case approval.InitiatorUser:
-			if slices.Contains(initiator.IDs, applicantID) {
-				return true, nil
-			}
-
-		case approval.InitiatorDepartment:
-			if applicantDepartmentID == nil {
-				continue
-			}
-
-			if slices.Contains(initiator.IDs, *applicantDepartmentID) {
-				return true, nil
-			}
-
-		case approval.InitiatorRole:
-			if s.assigneeService == nil {
-				continue
-			}
-
-			for _, roleID := range initiator.IDs {
-				member, err := shared.UserHasRole(ctx, s.assigneeService, applicantID, roleID)
-				if err != nil {
-					return false, err
-				}
-
-				if member {
-					return true, nil
-				}
-			}
-		}
-	}
-
-	return false, nil
+	return s.initiators.PermitsAny(ctx, initiators, &approval.InitiatorResolveContext{
+		FlowID:    flow.ID,
+		TenantID:  flow.TenantID,
+		Applicant: applicant,
+	})
 }

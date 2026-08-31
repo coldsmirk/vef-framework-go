@@ -11,9 +11,10 @@ import (
 // StrategyRegistry holds all strategy implementations indexed by their type.
 type StrategyRegistry struct {
 	passRules  map[approval.PassRule]approval.PassRuleStrategy
-	assignees  map[approval.AssigneeKind]AssigneeResolver
 	conditions map[approval.ConditionKind]approval.ConditionEvaluator
-	composite  *CompositeAssigneeResolver
+	assignees  *CompositeAssigneeResolver
+	ccs        *CompositeCCResolver
+	initiators *CompositeInitiatorResolver
 }
 
 // expectedPassRules lists the built-in PassRule values the framework guarantees
@@ -36,6 +37,23 @@ var expectedAssigneeKinds = []approval.AssigneeKind{
 	approval.AssigneeFormField,
 }
 
+// expectedCCKinds lists the built-in CCKind values the framework guarantees
+// have a registered resolver.
+var expectedCCKinds = []approval.CCKind{
+	approval.CCUser,
+	approval.CCRole,
+	approval.CCDepartment,
+	approval.CCFormField,
+}
+
+// expectedInitiatorKinds lists the built-in InitiatorKind values the framework
+// guarantees have a registered resolver.
+var expectedInitiatorKinds = []approval.InitiatorKind{
+	approval.InitiatorUser,
+	approval.InitiatorRole,
+	approval.InitiatorDepartment,
+}
+
 // expectedConditionKinds lists the built-in ConditionKind values the framework
 // guarantees have a registered evaluator. Missing registrations surface at boot.
 var expectedConditionKinds = []approval.ConditionKind{
@@ -43,26 +61,28 @@ var expectedConditionKinds = []approval.ConditionKind{
 	approval.ConditionExpression,
 }
 
-// NewStrategyRegistry creates a registry from slices (designed for FX group
-// injection). It does not validate completeness on construction so test
-// suites can build registries with partial strategy sets. Production
-// modules call ValidateBuiltins via fx.Invoke after construction.
+// NewStrategyRegistry creates a registry from the pass-rule and condition
+// strategy groups plus the three composite principal resolvers. It does not
+// validate completeness on construction so test suites can build registries
+// with partial strategy sets. Production modules call ValidateBuiltins via
+// fx.Invoke after construction.
 func NewStrategyRegistry(
 	passRules []approval.PassRuleStrategy,
-	assignees []AssigneeResolver,
 	conditions []approval.ConditionEvaluator,
+	assignees *CompositeAssigneeResolver,
+	ccs *CompositeCCResolver,
+	initiators *CompositeInitiatorResolver,
 ) *StrategyRegistry {
 	return &StrategyRegistry{
 		passRules: streams.AssociateBy(streams.FromSlice(passRules), func(r approval.PassRuleStrategy) approval.PassRule {
 			return r.Rule()
 		}),
-		assignees: streams.AssociateBy(streams.FromSlice(assignees), func(a AssigneeResolver) approval.AssigneeKind {
-			return a.Kind()
-		}),
 		conditions: streams.AssociateBy(streams.FromSlice(conditions), func(c approval.ConditionEvaluator) approval.ConditionKind {
 			return c.Kind()
 		}),
-		composite: NewCompositeAssigneeResolver(assignees...),
+		assignees:  assignees,
+		ccs:        ccs,
+		initiators: initiators,
 	}
 }
 
@@ -70,16 +90,16 @@ func NewStrategyRegistry(
 // guarantees has a registered strategy. The production strategy.Module
 // invokes this during boot so misconfigurations surface immediately rather
 // than as a runtime "strategy not found" error deep inside a flow.
+//
+// It covers the three principal vocabularies too. They are open registries —
+// a host may add kinds and override built-ins — but a built-in kind that no
+// longer resolves means the framework's own registration list and its
+// constants drifted apart, and every flow already using that kind would fail
+// at the node that references it.
 func (r *StrategyRegistry) ValidateBuiltins() error {
 	for _, rule := range expectedPassRules {
 		if _, ok := r.passRules[rule]; !ok {
 			return fmt.Errorf("%w: %s", errBuiltinPassRuleMissing, rule)
-		}
-	}
-
-	for _, kind := range expectedAssigneeKinds {
-		if _, ok := r.assignees[kind]; !ok {
-			return fmt.Errorf("%w: %s", errBuiltinAssigneeMissing, kind)
 		}
 	}
 
@@ -89,7 +109,19 @@ func (r *StrategyRegistry) ValidateBuiltins() error {
 		}
 	}
 
-	return nil
+	if r.assignees == nil || r.ccs == nil || r.initiators == nil {
+		return errNilResolver
+	}
+
+	if err := requireKinds(r.assignees.resolvers, expectedAssigneeKinds, errBuiltinAssigneeMissing); err != nil {
+		return err
+	}
+
+	if err := requireKinds(r.ccs.resolvers, expectedCCKinds, errBuiltinCCMissing); err != nil {
+		return err
+	}
+
+	return requireKinds(r.initiators.resolvers, expectedInitiatorKinds, errBuiltinInitiatorMissing)
 }
 
 // GetPassRuleStrategy returns the pass rule strategy for the given rule.
@@ -112,7 +144,11 @@ func (r *StrategyRegistry) GetConditionEvaluator(t approval.ConditionKind) (appr
 	return s, nil
 }
 
-// CompositeAssigneeResolver returns the cached CompositeAssigneeResolver.
-func (r *StrategyRegistry) CompositeAssigneeResolver() *CompositeAssigneeResolver {
-	return r.composite
-}
+// Assignees returns the composite assignee resolver.
+func (r *StrategyRegistry) Assignees() *CompositeAssigneeResolver { return r.assignees }
+
+// CCs returns the composite CC resolver.
+func (r *StrategyRegistry) CCs() *CompositeCCResolver { return r.ccs }
+
+// Initiators returns the composite initiator resolver.
+func (r *StrategyRegistry) Initiators() *CompositeInitiatorResolver { return r.initiators }

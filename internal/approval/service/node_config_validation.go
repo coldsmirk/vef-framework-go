@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 )
 
 // validateNodeConfig validates the parsed node data of a single node. It is
@@ -16,14 +17,14 @@ import (
 // companion field must have that field populated. Anything the engine could
 // not execute is rejected here, at deploy time, instead of stalling a running
 // instance.
-func validateNodeConfig(nodeID string, data approval.NodeData) error {
+func (s *FlowDefinitionService) validateNodeConfig(nodeID string, data approval.NodeData) error {
 	switch typed := data.(type) {
 	case *approval.ApprovalNodeData:
-		return validateApprovalNodeData(nodeID, typed)
+		return s.validateApprovalNodeData(nodeID, typed)
 	case *approval.HandleNodeData:
-		return validateHandleNodeData(nodeID, typed)
+		return s.validateHandleNodeData(nodeID, typed)
 	case *approval.CCNodeData:
-		return validateCCDefinitions(nodeID, typed.CCs)
+		return s.validateCCDefinitions(nodeID, typed.CCs)
 	case *approval.ConditionNodeData:
 		return validateConditionBranches(nodeID, typed.Branches)
 	default:
@@ -35,8 +36,8 @@ func validateNodeConfig(nodeID string, data approval.NodeData) error {
 // handle-specific restriction: a handle node performs work, it is not a
 // decision point, so neither its execution type nor its timeout action may
 // reject the whole instance. The designer offers the same narrowed sets.
-func validateHandleNodeData(nodeID string, data *approval.HandleNodeData) error {
-	if err := validateTaskNodeData(nodeID, &data.TaskNodeData); err != nil {
+func (s *FlowDefinitionService) validateHandleNodeData(nodeID string, data *approval.HandleNodeData) error {
+	if err := s.validateTaskNodeData(nodeID, &data.TaskNodeData); err != nil {
 		return err
 	}
 
@@ -51,8 +52,8 @@ func validateHandleNodeData(nodeID string, data *approval.HandleNodeData) error 
 	return nil
 }
 
-func validateApprovalNodeData(nodeID string, data *approval.ApprovalNodeData) error {
-	if err := validateTaskNodeData(nodeID, &data.TaskNodeData); err != nil {
+func (s *FlowDefinitionService) validateApprovalNodeData(nodeID string, data *approval.ApprovalNodeData) error {
+	if err := s.validateTaskNodeData(nodeID, &data.TaskNodeData); err != nil {
 		return err
 	}
 
@@ -124,7 +125,7 @@ func validatePassRatio(nodeID string, data *approval.ApprovalNodeData) error {
 	return nil
 }
 
-func validateTaskNodeData(nodeID string, data *approval.TaskNodeData) error {
+func (s *FlowDefinitionService) validateTaskNodeData(nodeID string, data *approval.TaskNodeData) error {
 	if data.ExecutionType != "" && !data.ExecutionType.IsValid() {
 		return fmt.Errorf("%w: %q in node %q", errInvalidExecutionType, data.ExecutionType, nodeID)
 	}
@@ -145,35 +146,47 @@ func validateTaskNodeData(nodeID string, data *approval.TaskNodeData) error {
 		return fmt.Errorf("%w: %q in node %q", errInvalidTimeoutAction, data.TimeoutAction, nodeID)
 	}
 
-	if err := validateAssigneeDefinitions(nodeID, data.Assignees); err != nil {
+	if err := s.validateAssigneeDefinitions(nodeID, data.Assignees); err != nil {
 		return err
 	}
 
-	return validateCCDefinitions(nodeID, data.CCs)
+	return s.validateCCDefinitions(nodeID, data.CCs)
 }
 
-func validateAssigneeDefinitions(nodeID string, assignees []approval.AssigneeDefinition) error {
+// validateAssigneeDefinitions accepts exactly the assignee kinds with a
+// registered resolver and enforces the input each kind declares. Both rules
+// come from the resolver's descriptor rather than from a switch here, which is
+// what lets a host register "the applicant's head nurse" (needing no input) or
+// an expert panel (needing IDs) and have its flows validated correctly.
+func (s *FlowDefinitionService) validateAssigneeDefinitions(nodeID string, assignees []approval.AssigneeDefinition) error {
 	for _, assignee := range assignees {
-		if !assignee.Kind.IsValid() {
+		switch shared.CheckKindRule(assignee.Kind, assignee.IDs, assignee.FormField, s.assigneeKinds) {
+		case shared.KindRuleUnknownKind:
 			return fmt.Errorf("%w: %q in node %q", errInvalidAssigneeKind, assignee.Kind, nodeID)
-		}
-
-		if assignee.Kind == approval.AssigneeFormField && !hasText(assignee.FormField) {
+		case shared.KindRuleIDsRequired:
+			return fmt.Errorf("%w: %q in node %q", errAssigneeIDsRequired, assignee.Kind, nodeID)
+		case shared.KindRuleFormFieldRequired:
 			return fmt.Errorf("%w: node %q", errAssigneeFormFieldRequired, nodeID)
+		case shared.KindRuleOK:
 		}
 	}
 
 	return nil
 }
 
-func validateCCDefinitions(nodeID string, ccs []approval.CCDefinition) error {
+// validateCCDefinitions mirrors validateAssigneeDefinitions over the CC
+// vocabulary. Timing stays a closed enum: it is the engine's own schedule for
+// firing a rule, not something a resolver participates in.
+func (s *FlowDefinitionService) validateCCDefinitions(nodeID string, ccs []approval.CCDefinition) error {
 	for _, cc := range ccs {
-		if !cc.Kind.IsValid() {
+		switch shared.CheckKindRule(cc.Kind, cc.IDs, cc.FormField, s.ccKinds) {
+		case shared.KindRuleUnknownKind:
 			return fmt.Errorf("%w: %q in node %q", errInvalidCCKind, cc.Kind, nodeID)
-		}
-
-		if cc.Kind == approval.CCFormField && !hasText(cc.FormField) {
+		case shared.KindRuleIDsRequired:
+			return fmt.Errorf("%w: %q in node %q", errCCIDsRequired, cc.Kind, nodeID)
+		case shared.KindRuleFormFieldRequired:
 			return fmt.Errorf("%w: node %q", errCCFormFieldRequired, nodeID)
+		case shared.KindRuleOK:
 		}
 
 		if cc.Timing != "" && !cc.Timing.IsValid() {
@@ -297,9 +310,4 @@ func validateConditionAggregateShape(nodeID, branchID string, cond approval.Cond
 	}
 
 	return nil
-}
-
-// hasText reports whether the optional string pointer holds non-blank text.
-func hasText(s *string) bool {
-	return s != nil && strings.TrimSpace(*s) != ""
 }

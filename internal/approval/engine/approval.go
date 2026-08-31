@@ -110,7 +110,7 @@ func (*ApprovalProcessor) createApprovalTasks(ctx context.Context, pc *ProcessCo
 // that emptied the set and fell back to EmptyAssigneeAction). Auto-pass over a
 // mixed set is settled per task after creation — see entryAutoPassRule.
 func (p *ApprovalProcessor) applySameApplicantPolicy(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) ([]approval.ResolvedAssignee, *ProcessResult, error) {
-	if !containsApplicant(assignees, pc.ApplicantID) {
+	if !containsApplicant(assignees, pc.Instance.ApplicantID) {
 		return assignees, nil, nil
 	}
 
@@ -129,7 +129,7 @@ func (p *ApprovalProcessor) applySameApplicantPolicy(ctx context.Context, pc *Pr
 		recordSystemActionLog(ctx, pc, nil, excludeReasonSameApplicant)
 
 		remaining := slices.DeleteFunc(slices.Clone(assignees), func(a approval.ResolvedAssignee) bool {
-			return a.User.ID == pc.ApplicantID
+			return a.User.ID == pc.Instance.ApplicantID
 		})
 
 		if len(remaining) == 0 {
@@ -148,7 +148,7 @@ func (p *ApprovalProcessor) applySameApplicantPolicy(ctx context.Context, pc *Pr
 
 		replaced := slices.Clone(assignees)
 		for i := range replaced {
-			if replaced[i].User.ID == pc.ApplicantID {
+			if replaced[i].User.ID == pc.Instance.ApplicantID {
 				replaced[i] = superior
 			}
 		}
@@ -163,7 +163,7 @@ func (p *ApprovalProcessor) applySameApplicantPolicy(ctx context.Context, pc *Pr
 // resolveSuperiorSeat resolves the applicant's superior into a seat, with the
 // person snapshot taken through the canonical UserInfoResolver.
 func (p *ApprovalProcessor) resolveSuperiorSeat(ctx context.Context, pc *ProcessContext) (approval.ResolvedAssignee, error) {
-	superiorInfo, err := getSuperior(ctx, p.assigneeService, pc.ApplicantID)
+	superiorInfo, err := getSuperior(ctx, p.assigneeService, pc.Instance.ApplicantID)
 	if err != nil {
 		return approval.ResolvedAssignee{}, err
 	}
@@ -195,9 +195,9 @@ type autoPassRule func(assigneeID string) (reason string, ok bool)
 func (*ApprovalProcessor) entryAutoPassRule(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) (autoPassRule, error) {
 	var rules []autoPassRule
 
-	if pc.Node.SameApplicantAction == approval.SameApplicantAutoPass && containsApplicant(assignees, pc.ApplicantID) {
+	if pc.Node.SameApplicantAction == approval.SameApplicantAutoPass && containsApplicant(assignees, pc.Instance.ApplicantID) {
 		rules = append(rules, func(assigneeID string) (string, bool) {
-			return AutoPassReasonSameApplicant, assigneeID == pc.ApplicantID
+			return AutoPassReasonSameApplicant, assigneeID == pc.Instance.ApplicantID
 		})
 	}
 

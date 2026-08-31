@@ -6,16 +6,17 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
 // CCProcessor handles CC (carbon copy) notification nodes.
 type CCProcessor struct {
-	ccResolver *shared.CCRecipientResolver
+	ccResolver *strategy.CompositeCCResolver
 }
 
 // NewCCProcessor creates a CCProcessor.
-func NewCCProcessor(ccResolver *shared.CCRecipientResolver) *CCProcessor {
+func NewCCProcessor(ccResolver *strategy.CompositeCCResolver) *CCProcessor {
 	return &CCProcessor{ccResolver: ccResolver}
 }
 
@@ -74,7 +75,7 @@ func (p *CCProcessor) createCCRecords(ctx context.Context, pc *ProcessContext) (
 
 	// CC resolution is best-effort (unresolvable configs are logged and skipped);
 	// it never fails the approval that triggered the CC node.
-	resolved := shared.CollectUniqueCCUserIDs(ctx, ccConfigs, pc.FormData, p.ccResolver.Resolve, nil)
+	resolved := p.ccResolver.CollectUserIDs(ctx, ccConfigs, pc.NodeResolveContext(), nil)
 
 	if len(resolved) == 0 {
 		return nil, nil

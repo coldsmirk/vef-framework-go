@@ -13,6 +13,23 @@ import (
 
 // --- Test Helpers ---
 
+// applicantInstance builds the minimal instance snapshot a resolver reads the
+// applicant from.
+func applicantInstance(applicantID string, departmentID *string) *approval.Instance {
+	return &approval.Instance{ApplicantID: applicantID, ApplicantDepartmentID: departmentID}
+}
+
+// newComposite builds a composite over exactly the given resolvers, with no
+// framework built-ins underneath, so a test controls the whole vocabulary.
+func newComposite(t *testing.T, resolvers ...approval.AssigneeResolver) *CompositeAssigneeResolver {
+	t.Helper()
+
+	composite, err := NewCompositeAssigneeResolver(resolvers, nil)
+	require.NoError(t, err, "Should build composite assignee resolver")
+
+	return composite
+}
+
 // MockAssigneeService is a configurable mock for approval.AssigneeService.
 type MockAssigneeService struct {
 	superiors         map[string]approval.UserInfo
@@ -86,7 +103,7 @@ func assertResolvedAssignees(t *testing.T, result []approval.ResolvedAssignee, e
 
 func TestUserAssigneeResolver(t *testing.T) {
 	r := NewUserAssigneeResolver()
-	assert.Equal(t, approval.AssigneeUser, r.Kind(), "Kind should be AssigneeUser")
+	assert.Equal(t, approval.AssigneeUser, r.Describe().Kind, "Kind should be AssigneeUser")
 
 	tests := []struct {
 		name     string
@@ -102,7 +119,7 @@ func TestUserAssigneeResolver(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := r.Resolve(context.Background(), &ResolveContext{IDs: tt.ids})
+			result, err := r.Resolve(context.Background(), &approval.AssigneeResolveContext{IDs: tt.ids})
 			require.NoError(t, err, "Should resolve without error")
 			assertUserIDs(t, result, tt.expected...)
 		})
@@ -113,16 +130,16 @@ func TestUserAssigneeResolver(t *testing.T) {
 
 func TestSelfAssigneeResolver(t *testing.T) {
 	r := NewSelfAssigneeResolver()
-	assert.Equal(t, approval.AssigneeSelf, r.Kind(), "Kind should be AssigneeSelf")
+	assert.Equal(t, approval.AssigneeSelf, r.Describe().Kind, "Kind should be AssigneeSelf")
 
 	t.Run("WithApplicant", func(t *testing.T) {
-		result, err := r.Resolve(context.Background(), &ResolveContext{ApplicantID: "applicant1"})
+		result, err := r.Resolve(context.Background(), &approval.AssigneeResolveContext{Instance: applicantInstance("applicant1", nil)})
 		require.NoError(t, err, "Should resolve without error")
 		assertUserIDs(t, result, "applicant1")
 	})
 
 	t.Run("EmptyApplicant", func(t *testing.T) {
-		_, err := r.Resolve(context.Background(), &ResolveContext{})
+		_, err := r.Resolve(context.Background(), &approval.AssigneeResolveContext{Instance: applicantInstance("", nil)})
 		require.ErrorIs(t, err, ErrApplicantIDEmpty, "Should return ErrApplicantIDEmpty")
 	})
 }
@@ -137,7 +154,7 @@ func TestRoleAssigneeResolver(t *testing.T) {
 		},
 	}
 	r := NewRoleAssigneeResolver(svc)
-	assert.Equal(t, approval.AssigneeRole, r.Kind(), "Kind should be AssigneeRole")
+	assert.Equal(t, approval.AssigneeRole, r.Describe().Kind, "Kind should be AssigneeRole")
 
 	tests := []struct {
 		name     string
@@ -152,19 +169,19 @@ func TestRoleAssigneeResolver(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := r.Resolve(context.Background(), &ResolveContext{IDs: tt.ids})
+			result, err := r.Resolve(context.Background(), &approval.AssigneeResolveContext{IDs: tt.ids})
 			require.NoError(t, err, "Should resolve without error")
 			assertResolvedAssignees(t, result, tt.expected)
 		})
 	}
 
 	t.Run("NilService", func(t *testing.T) {
-		_, err := NewRoleAssigneeResolver(nil).Resolve(context.Background(), &ResolveContext{IDs: []string{"r1"}})
+		_, err := NewRoleAssigneeResolver(nil).Resolve(context.Background(), &approval.AssigneeResolveContext{IDs: []string{"r1"}})
 		require.ErrorIs(t, err, ErrAssigneeServiceNil, "Should return ErrAssigneeServiceNil")
 	})
 
 	t.Run("ServiceError", func(t *testing.T) {
-		_, err := NewRoleAssigneeResolver(&ErrAssigneeService{}).Resolve(context.Background(), &ResolveContext{IDs: []string{"r1"}})
+		_, err := NewRoleAssigneeResolver(&ErrAssigneeService{}).Resolve(context.Background(), &approval.AssigneeResolveContext{IDs: []string{"r1"}})
 		require.ErrorIs(t, err, errAssigneeSvc, "Should wrap underlying service error")
 	})
 }
@@ -176,28 +193,28 @@ func TestSuperiorAssigneeResolver(t *testing.T) {
 		superiors: map[string]approval.UserInfo{"emp1": {ID: "mgr1", Name: "Manager 1"}},
 	}
 	r := NewSuperiorAssigneeResolver(svc)
-	assert.Equal(t, approval.AssigneeSuperior, r.Kind(), "Kind should be AssigneeSuperior")
+	assert.Equal(t, approval.AssigneeSuperior, r.Describe().Kind, "Kind should be AssigneeSuperior")
 
 	t.Run("WithSuperior", func(t *testing.T) {
-		result, err := r.Resolve(context.Background(), &ResolveContext{ApplicantID: "emp1"})
+		result, err := r.Resolve(context.Background(), &approval.AssigneeResolveContext{Instance: applicantInstance("emp1", nil)})
 		require.NoError(t, err, "Should resolve without error")
 		assertResolvedAssignees(t, result, []approval.UserInfo{{ID: "mgr1", Name: "Manager 1"}})
 	})
 
 	t.Run("NoSuperior", func(t *testing.T) {
 		r := NewSuperiorAssigneeResolver(&MockAssigneeService{})
-		result, err := r.Resolve(context.Background(), &ResolveContext{ApplicantID: "emp1"})
+		result, err := r.Resolve(context.Background(), &approval.AssigneeResolveContext{Instance: applicantInstance("emp1", nil)})
 		require.NoError(t, err, "Should resolve without error when no superior found")
 		assert.Empty(t, result, "Should return empty result")
 	})
 
 	t.Run("NilService", func(t *testing.T) {
-		_, err := NewSuperiorAssigneeResolver(nil).Resolve(context.Background(), &ResolveContext{ApplicantID: "emp1"})
+		_, err := NewSuperiorAssigneeResolver(nil).Resolve(context.Background(), &approval.AssigneeResolveContext{Instance: applicantInstance("emp1", nil)})
 		require.ErrorIs(t, err, ErrAssigneeServiceNil, "Should return ErrAssigneeServiceNil")
 	})
 
 	t.Run("ServiceError", func(t *testing.T) {
-		_, err := NewSuperiorAssigneeResolver(&ErrAssigneeService{}).Resolve(context.Background(), &ResolveContext{ApplicantID: "emp1"})
+		_, err := NewSuperiorAssigneeResolver(&ErrAssigneeService{}).Resolve(context.Background(), &approval.AssigneeResolveContext{Instance: applicantInstance("emp1", nil)})
 		require.ErrorIs(t, err, errAssigneeSvc, "Should wrap underlying service error")
 	})
 }
@@ -211,39 +228,39 @@ func TestDepartmentLeaderAssigneeResolver(t *testing.T) {
 		},
 	}
 	r := NewDepartmentLeaderAssigneeResolver(svc)
-	assert.Equal(t, approval.AssigneeDepartmentLeader, r.Kind(), "Kind should be AssigneeDepartmentLeader")
+	assert.Equal(t, approval.AssigneeDepartmentLeader, r.Describe().Kind, "Kind should be AssigneeDepartmentLeader")
 
 	t.Run("WithLeaders", func(t *testing.T) {
-		result, err := r.Resolve(context.Background(), &ResolveContext{ApplicantDepartmentID: new("dept1")})
+		result, err := r.Resolve(context.Background(), &approval.AssigneeResolveContext{Instance: applicantInstance("", new("dept1"))})
 		require.NoError(t, err, "Should resolve without error")
 		assertResolvedAssignees(t, result, []approval.UserInfo{{ID: "leader1", Name: "Leader 1"}, {ID: "leader2", Name: "Leader 2"}})
 	})
 
 	t.Run("NilDepartmentID", func(t *testing.T) {
-		result, err := r.Resolve(context.Background(), &ResolveContext{})
+		result, err := r.Resolve(context.Background(), &approval.AssigneeResolveContext{Instance: applicantInstance("", nil)})
 		require.NoError(t, err, "Should resolve without error when department ID is nil")
 		assert.Empty(t, result, "Should return empty result")
 	})
 
 	t.Run("EmptyDepartmentID", func(t *testing.T) {
-		result, err := r.Resolve(context.Background(), &ResolveContext{ApplicantDepartmentID: new("")})
+		result, err := r.Resolve(context.Background(), &approval.AssigneeResolveContext{Instance: applicantInstance("", new(""))})
 		require.NoError(t, err, "Should resolve without error when department ID is empty")
 		assert.Empty(t, result, "Should return empty result")
 	})
 
 	t.Run("UnknownDepartment", func(t *testing.T) {
-		result, err := r.Resolve(context.Background(), &ResolveContext{ApplicantDepartmentID: new("unknown")})
+		result, err := r.Resolve(context.Background(), &approval.AssigneeResolveContext{Instance: applicantInstance("", new("unknown"))})
 		require.NoError(t, err, "Should resolve without error")
 		assertUserIDs(t, result)
 	})
 
 	t.Run("NilService", func(t *testing.T) {
-		_, err := NewDepartmentLeaderAssigneeResolver(nil).Resolve(context.Background(), &ResolveContext{ApplicantDepartmentID: new("dept1")})
+		_, err := NewDepartmentLeaderAssigneeResolver(nil).Resolve(context.Background(), &approval.AssigneeResolveContext{Instance: applicantInstance("", new("dept1"))})
 		require.ErrorIs(t, err, ErrAssigneeServiceNil, "Should return ErrAssigneeServiceNil")
 	})
 
 	t.Run("ServiceError", func(t *testing.T) {
-		_, err := NewDepartmentLeaderAssigneeResolver(&ErrAssigneeService{}).Resolve(context.Background(), &ResolveContext{ApplicantDepartmentID: new("dept1")})
+		_, err := NewDepartmentLeaderAssigneeResolver(&ErrAssigneeService{}).Resolve(context.Background(), &approval.AssigneeResolveContext{Instance: applicantInstance("", new("dept1"))})
 		require.ErrorIs(t, err, errAssigneeSvc, "Should wrap underlying service error")
 	})
 }
@@ -258,7 +275,7 @@ func TestDepartmentAssigneeResolver(t *testing.T) {
 		},
 	}
 	r := NewDepartmentAssigneeResolver(svc)
-	assert.Equal(t, approval.AssigneeDepartment, r.Kind(), "Kind should be AssigneeDepartment")
+	assert.Equal(t, approval.AssigneeDepartment, r.Describe().Kind, "Kind should be AssigneeDepartment")
 
 	tests := []struct {
 		name     string
@@ -273,19 +290,19 @@ func TestDepartmentAssigneeResolver(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := r.Resolve(context.Background(), &ResolveContext{IDs: tt.ids})
+			result, err := r.Resolve(context.Background(), &approval.AssigneeResolveContext{IDs: tt.ids})
 			require.NoError(t, err, "Should resolve without error")
 			assertResolvedAssignees(t, result, tt.expected)
 		})
 	}
 
 	t.Run("NilService", func(t *testing.T) {
-		_, err := NewDepartmentAssigneeResolver(nil).Resolve(context.Background(), &ResolveContext{IDs: []string{"dept1"}})
+		_, err := NewDepartmentAssigneeResolver(nil).Resolve(context.Background(), &approval.AssigneeResolveContext{IDs: []string{"dept1"}})
 		require.ErrorIs(t, err, ErrAssigneeServiceNil, "Should return ErrAssigneeServiceNil")
 	})
 
 	t.Run("ServiceError", func(t *testing.T) {
-		_, err := NewDepartmentAssigneeResolver(&ErrAssigneeService{}).Resolve(context.Background(), &ResolveContext{IDs: []string{"dept1"}})
+		_, err := NewDepartmentAssigneeResolver(&ErrAssigneeService{}).Resolve(context.Background(), &approval.AssigneeResolveContext{IDs: []string{"dept1"}})
 		require.ErrorIs(t, err, errAssigneeSvc, "Should wrap underlying service error")
 	})
 }
@@ -294,7 +311,7 @@ func TestDepartmentAssigneeResolver(t *testing.T) {
 
 func TestFormFieldAssigneeResolver(t *testing.T) {
 	r := NewFormFieldAssigneeResolver()
-	assert.Equal(t, approval.AssigneeFormField, r.Kind(), "Kind should be AssigneeFormField")
+	assert.Equal(t, approval.AssigneeFormField, r.Describe().Kind, "Kind should be AssigneeFormField")
 
 	// Success cases: supported value types that resolve correctly.
 	successTests := []struct {
@@ -318,7 +335,7 @@ func TestFormFieldAssigneeResolver(t *testing.T) {
 
 	for _, tt := range successTests {
 		t.Run(tt.name, func(t *testing.T) {
-			rc := &ResolveContext{FormField: new(tt.field), FormData: tt.formData}
+			rc := &approval.AssigneeResolveContext{FormField: new(tt.field), FormData: tt.formData}
 			result, err := r.Resolve(context.Background(), rc)
 			require.NoError(t, err, "Should resolve without error")
 			assertUserIDs(t, result, tt.expected...)
@@ -328,32 +345,32 @@ func TestFormFieldAssigneeResolver(t *testing.T) {
 	// Error cases: invalid field name, empty values, unsupported types.
 	errorTests := []struct {
 		name      string
-		rc        *ResolveContext
+		rc        *approval.AssigneeResolveContext
 		wantError error
 	}{
 		{
 			"NilFormFieldName",
-			&ResolveContext{FormData: approval.FormData{"approver": "user1"}},
+			&approval.AssigneeResolveContext{FormData: approval.FormData{"approver": "user1"}},
 			ErrFormFieldNameEmpty,
 		},
 		{
 			"EmptyFormFieldName",
-			&ResolveContext{FormField: new(""), FormData: approval.FormData{"approver": "user1"}},
+			&approval.AssigneeResolveContext{FormField: new(""), FormData: approval.FormData{"approver": "user1"}},
 			ErrFormFieldNameEmpty,
 		},
 		{
 			"WhitespaceFormFieldName",
-			&ResolveContext{FormField: new("   "), FormData: approval.FormData{"approver": "user1"}},
+			&approval.AssigneeResolveContext{FormField: new("   "), FormData: approval.FormData{"approver": "user1"}},
 			ErrFormFieldNameEmpty,
 		},
 		{
 			"UnsupportedValueType",
-			&ResolveContext{FormField: new("count"), FormData: approval.FormData{"count": 42}},
+			&approval.AssigneeResolveContext{FormField: new("count"), FormData: approval.FormData{"count": 42}},
 			ErrUnsupportedFieldValueType,
 		},
 		{
 			"UnsupportedMapType",
-			&ResolveContext{FormField: new("meta"), FormData: approval.FormData{"meta": map[string]string{"k": "v"}}},
+			&approval.AssigneeResolveContext{FormField: new("meta"), FormData: approval.FormData{"meta": map[string]string{"k": "v"}}},
 			ErrUnsupportedFieldValueType,
 		},
 	}
@@ -376,19 +393,19 @@ func TestCompositeAssigneeResolver(t *testing.T) {
 	}
 
 	t.Run("MultipleKinds", func(t *testing.T) {
-		composite := NewCompositeAssigneeResolver(NewUserAssigneeResolver(), NewSelfAssigneeResolver())
+		composite := newComposite(t, NewUserAssigneeResolver(), NewSelfAssigneeResolver())
 		configs := []approval.FlowNodeAssignee{
 			{Kind: approval.AssigneeUser, IDs: []string{"u1", "u2"}},
 			{Kind: approval.AssigneeSelf},
 		}
 
-		result, err := composite.ResolveAll(context.Background(), configs, &ResolveContext{ApplicantID: "applicant1"})
+		result, err := composite.ResolveAll(context.Background(), configs, &approval.NodeResolveContext{Instance: applicantInstance("applicant1", nil)})
 		require.NoError(t, err, "Should resolve all without error")
 		assertUserIDs(t, result, "u1", "u2", "applicant1")
 	})
 
 	t.Run("AllResolverKinds", func(t *testing.T) {
-		composite := NewCompositeAssigneeResolver(
+		composite := newComposite(t,
 			NewUserAssigneeResolver(),
 			NewSelfAssigneeResolver(),
 			NewRoleAssigneeResolver(svc),
@@ -399,36 +416,36 @@ func TestCompositeAssigneeResolver(t *testing.T) {
 			{Kind: approval.AssigneeRole, IDs: []string{"admin"}},
 		}
 
-		result, err := composite.ResolveAll(context.Background(), configs, &ResolveContext{ApplicantID: "applicant1"})
+		result, err := composite.ResolveAll(context.Background(), configs, &approval.NodeResolveContext{Instance: applicantInstance("applicant1", nil)})
 		require.NoError(t, err, "Should resolve all kinds")
 		assertUserIDs(t, result, "u1", "applicant1", "u1")
 	})
 
 	t.Run("EmptyConfigs", func(t *testing.T) {
-		composite := NewCompositeAssigneeResolver(NewUserAssigneeResolver())
+		composite := newComposite(t, NewUserAssigneeResolver())
 
-		result, err := composite.ResolveAll(context.Background(), nil, &ResolveContext{})
+		result, err := composite.ResolveAll(context.Background(), nil, &approval.NodeResolveContext{Instance: applicantInstance("", nil)})
 		require.NoError(t, err, "Should resolve empty configs without error")
 		assert.Empty(t, result, "Should return empty result")
 	})
 
 	t.Run("UnknownKind", func(t *testing.T) {
-		composite := NewCompositeAssigneeResolver(NewUserAssigneeResolver())
+		composite := newComposite(t, NewUserAssigneeResolver())
 		configs := []approval.FlowNodeAssignee{
 			{Kind: approval.AssigneeRole, IDs: []string{"r1"}},
 		}
 
-		_, err := composite.ResolveAll(context.Background(), configs, &ResolveContext{})
+		_, err := composite.ResolveAll(context.Background(), configs, &approval.NodeResolveContext{Instance: applicantInstance("", nil)})
 		require.ErrorIs(t, err, ErrAssigneeResolverNotFound, "Should return ErrAssigneeResolverNotFound")
 	})
 
 	t.Run("ErrorPropagation", func(t *testing.T) {
-		composite := NewCompositeAssigneeResolver(NewSuperiorAssigneeResolver(&ErrAssigneeService{}))
+		composite := newComposite(t, NewSuperiorAssigneeResolver(&ErrAssigneeService{}))
 		configs := []approval.FlowNodeAssignee{
 			{Kind: approval.AssigneeSuperior},
 		}
 
-		_, err := composite.ResolveAll(context.Background(), configs, &ResolveContext{ApplicantID: "emp1"})
+		_, err := composite.ResolveAll(context.Background(), configs, &approval.NodeResolveContext{Instance: applicantInstance("emp1", nil)})
 		require.ErrorIs(t, err, errAssigneeSvc, "Should propagate wrapped service error")
 	})
 }

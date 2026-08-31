@@ -488,6 +488,75 @@ func ProvideApprovalAggregator(constructor any, paramTags ...string) fx.Option {
 	)
 }
 
+// ProvideApprovalAssigneeResolver registers an assignee kind the flow designer
+// can then assign work to. The constructor must return an
+// approval.AssigneeResolver; the kind it describes becomes deployable, and the
+// designer offers it, with no other change — validation and the designer
+// catalog both read the registered resolver set.
+//
+// A resolver whose kind matches a built-in replaces it in place, keeping the
+// designer's option order; any other kind is appended, in ascending kind
+// order. That is the seam for both extension and reinterpretation: register
+// "expert_panel" to add one, register "department_leader" to make it walk more
+// than one level.
+//
+// Registration order is not the designer order, because an fx value group is
+// delivered randomized — hence the sort, and hence two resolvers claiming the
+// same kind failing at boot rather than resolving to whichever arrived last.
+//
+// A kind that needs no designer input at all — "the applicant's head nurse",
+// resolved from their department at run time — describes itself with
+// approval.SelectionNone and reads what it needs off the resolve context.
+//
+//	vef.ProvideApprovalAssigneeResolver(newHeadNurseResolver)
+func ProvideApprovalAssigneeResolver(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:approval:assignee_resolvers"`),
+		),
+	)
+}
+
+// ProvideApprovalCCResolver registers a CC kind, with the same override- and
+// descriptor-driven semantics as ProvideApprovalAssigneeResolver. The
+// constructor must return an approval.CCResolver.
+//
+// CC resolution is best-effort: a resolver that fails is logged and skipped so
+// a notification never rolls back the approval that triggered it.
+//
+//	vef.ProvideApprovalCCResolver(newExpertPanelCCResolver)
+func ProvideApprovalCCResolver(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:approval:cc_resolvers"`),
+		),
+	)
+}
+
+// ProvideApprovalInitiatorResolver registers an initiator kind — who may start
+// a flow — with the same override- and descriptor-driven semantics as
+// ProvideApprovalAssigneeResolver. The constructor must return an
+// approval.InitiatorResolver.
+//
+// Initiation is checked before an instance exists, so an initiator kind sees
+// the flow and the applicant but no form data; describing one with
+// approval.SelectionFormField fails at boot.
+//
+//	vef.ProvideApprovalInitiatorResolver(newWardSupervisorResolver)
+func ProvideApprovalInitiatorResolver(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(
+		fx.Annotate(
+			constructor,
+			fx.ParamTags(paramTags...),
+			fx.ResultTags(`group:"vef:approval:initiator_resolvers"`),
+		),
+	)
+}
+
 // ProvideApprovalFormSchemaParser overrides the framework's default
 // approval.FormSchemaParser — the built-in vef-framework-react form-editor
 // parser — with a host implementation. The replacement is wholesale, not

@@ -56,8 +56,8 @@ func (s *ValidationServiceTestSuite) TearDownSuite() {
 	cleanAllServiceData(s.ctx, s.db)
 }
 
-// seedFlow inserts a category + flow and returns the flow ID.
-func (s *ValidationServiceTestSuite) seedFlow(code string) string {
+// seedFlow inserts a category + flow and returns the flow.
+func (s *ValidationServiceTestSuite) seedFlow(code string) *approval.Flow {
 	cat := &approval.FlowCategory{TenantID: "default", Code: code + "-cat", Name: "Cat"}
 	_, err := s.db.NewInsert().Model(cat).Exec(s.ctx)
 	s.Require().NoError(err, "should insert category")
@@ -69,7 +69,7 @@ func (s *ValidationServiceTestSuite) seedFlow(code string) string {
 	_, err = s.db.NewInsert().Model(flow).Exec(s.ctx)
 	s.Require().NoError(err, "should insert flow")
 
-	return flow.ID
+	return flow
 }
 
 func (s *ValidationServiceTestSuite) seedInitiator(flowID string, kind approval.InitiatorKind, ids ...string) {
@@ -82,10 +82,10 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 	s.Run("EmptyInitiatorsDeniesAll", func() {
 		defer cleanAllServiceData(s.ctx, s.db)
 
-		flowID := s.seedFlow("init-empty")
-		svc := service.NewValidationService(nil)
+		flow := s.seedFlow("init-empty")
+		svc := service.NewValidationService(mustInitiatorComposite(nil))
 
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flowID, "applicant", nil)
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{ID: "applicant"})
 		s.Require().NoError(err, "Empty initiators should be a denial, not an error")
 		s.Assert().False(allowed, "No initiator rows must deny everyone")
 	})
@@ -93,12 +93,12 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 	s.Run("UserMatch", func() {
 		defer cleanAllServiceData(s.ctx, s.db)
 
-		flowID := s.seedFlow("init-user")
-		s.seedInitiator(flowID, approval.InitiatorUser, "u1", "u2")
+		flow := s.seedFlow("init-user")
+		s.seedInitiator(flow.ID, approval.InitiatorUser, "u1", "u2")
 
-		svc := service.NewValidationService(nil)
+		svc := service.NewValidationService(mustInitiatorComposite(nil))
 
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flowID, "u2", nil)
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{ID: "u2"})
 		s.Require().NoError(err, "User match check should not error")
 		s.Assert().True(allowed, "Applicant listed in an InitiatorUser rule is allowed")
 	})
@@ -106,12 +106,12 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 	s.Run("UserNoMatch", func() {
 		defer cleanAllServiceData(s.ctx, s.db)
 
-		flowID := s.seedFlow("init-user-no")
-		s.seedInitiator(flowID, approval.InitiatorUser, "u1")
+		flow := s.seedFlow("init-user-no")
+		s.seedInitiator(flow.ID, approval.InitiatorUser, "u1")
 
-		svc := service.NewValidationService(nil)
+		svc := service.NewValidationService(mustInitiatorComposite(nil))
 
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flowID, "stranger", nil)
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{ID: "stranger"})
 		s.Require().NoError(err, "User no-match check should not error")
 		s.Assert().False(allowed, "Applicant absent from the user rule is denied")
 	})
@@ -119,13 +119,15 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 	s.Run("DepartmentMatch", func() {
 		defer cleanAllServiceData(s.ctx, s.db)
 
-		flowID := s.seedFlow("init-dept")
-		s.seedInitiator(flowID, approval.InitiatorDepartment, "dept-1")
+		flow := s.seedFlow("init-dept")
+		s.seedInitiator(flow.ID, approval.InitiatorDepartment, "dept-1")
 
-		svc := service.NewValidationService(nil)
+		svc := service.NewValidationService(mustInitiatorComposite(nil))
 
-		dept := "dept-1"
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flowID, "applicant", &dept)
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{
+			ID:           "applicant",
+			DepartmentID: new("dept-1"),
+		})
 		s.Require().NoError(err, "Department match check should not error")
 		s.Assert().True(allowed, "Applicant whose department is listed is allowed")
 	})
@@ -133,14 +135,14 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 	s.Run("DepartmentNilApplicantDepartmentSkips", func() {
 		defer cleanAllServiceData(s.ctx, s.db)
 
-		flowID := s.seedFlow("init-dept-nil")
-		s.seedInitiator(flowID, approval.InitiatorDepartment, "dept-1")
+		flow := s.seedFlow("init-dept-nil")
+		s.seedInitiator(flow.ID, approval.InitiatorDepartment, "dept-1")
 
-		svc := service.NewValidationService(nil)
+		svc := service.NewValidationService(mustInitiatorComposite(nil))
 
 		// A nil applicantDepartmentID must skip the department rule (no panic,
 		// no false match) and fall through to a denial.
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flowID, "applicant", nil)
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{ID: "applicant"})
 		s.Require().NoError(err, "Nil department must not error")
 		s.Assert().False(allowed, "A nil applicant department cannot satisfy a department rule")
 	})
@@ -148,14 +150,14 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 	s.Run("RoleMatchViaFallback", func() {
 		defer cleanAllServiceData(s.ctx, s.db)
 
-		flowID := s.seedFlow("init-role")
-		s.seedInitiator(flowID, approval.InitiatorRole, "role-1")
+		flow := s.seedFlow("init-role")
+		s.seedInitiator(flow.ID, approval.InitiatorRole, "role-1")
 
-		svc := service.NewValidationService(&roleStubAssigneeService{
+		svc := service.NewValidationService(mustInitiatorComposite(&roleStubAssigneeService{
 			usersByRole: map[string][]approval.UserInfo{"role-1": {{ID: "applicant"}}},
-		})
+		}))
 
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flowID, "applicant", nil)
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{ID: "applicant"})
 		s.Require().NoError(err, "Role match check should not error")
 		s.Assert().True(allowed, "Applicant holding a listed role (via GetRoleUsers) is allowed")
 	})
@@ -163,14 +165,14 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 	s.Run("RoleNoMatch", func() {
 		defer cleanAllServiceData(s.ctx, s.db)
 
-		flowID := s.seedFlow("init-role-no")
-		s.seedInitiator(flowID, approval.InitiatorRole, "role-1")
+		flow := s.seedFlow("init-role-no")
+		s.seedInitiator(flow.ID, approval.InitiatorRole, "role-1")
 
-		svc := service.NewValidationService(&roleStubAssigneeService{
+		svc := service.NewValidationService(mustInitiatorComposite(&roleStubAssigneeService{
 			usersByRole: map[string][]approval.UserInfo{"role-1": {{ID: "someone-else"}}},
-		})
+		}))
 
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flowID, "applicant", nil)
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{ID: "applicant"})
 		s.Require().NoError(err, "Role no-match check should not error")
 		s.Assert().False(allowed, "Applicant not holding any listed role is denied")
 	})
@@ -178,13 +180,13 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 	s.Run("RoleWithoutAssigneeServiceSkips", func() {
 		defer cleanAllServiceData(s.ctx, s.db)
 
-		flowID := s.seedFlow("init-role-nosvc")
-		s.seedInitiator(flowID, approval.InitiatorRole, "role-1")
+		flow := s.seedFlow("init-role-nosvc")
+		s.seedInitiator(flow.ID, approval.InitiatorRole, "role-1")
 		// No AssigneeService configured: the role branch must be skipped
 		// rather than dereferencing a nil service.
-		svc := service.NewValidationService(nil)
+		svc := service.NewValidationService(mustInitiatorComposite(nil))
 
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flowID, "applicant", nil)
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{ID: "applicant"})
 		s.Require().NoError(err, "Role rule without an assignee service must not error")
 		s.Assert().False(allowed, "Without an assignee service the role rule cannot grant access")
 	})
@@ -194,7 +196,7 @@ func (s *ValidationServiceTestSuite) TestValidateRollbackTarget() {
 	// seedVersionWithNodes builds a published version with start → A → B nodes
 	// and the start→A, A→B edges, returning the version ID and node IDs.
 	seedVersionWithNodes := func(code string) (versionID, startID, nodeAID, nodeBID string) {
-		flowID := s.seedFlow(code)
+		flowID := s.seedFlow(code).ID
 
 		version := &approval.FlowVersion{FlowID: flowID, Version: 1, Status: approval.VersionPublished}
 		_, err := s.db.NewInsert().Model(version).Exec(s.ctx)
@@ -255,7 +257,7 @@ func (s *ValidationServiceTestSuite) TestValidateRollbackTarget() {
 		return inst
 	}
 
-	svc := service.NewValidationService(nil)
+	svc := service.NewValidationService(mustInitiatorComposite(nil))
 
 	s.Run("TargetEqualsCurrentNodeRejected", func() {
 		defer cleanAllServiceData(s.ctx, s.db)

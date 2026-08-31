@@ -113,15 +113,13 @@ func (e *FlowEngine) ProcessNode(ctx context.Context, db orm.DB, instance *appro
 	}
 
 	pc := &ProcessContext{
-		DB:            db,
-		Instance:      instance,
-		Node:          node,
-		Visit:         visit,
-		FormData:      approval.NewFormData(instance.FormData),
-		ApplicantID:   instance.ApplicantID,
-		ApplicantName: instance.ApplicantName,
-		UserResolver:  e.userResolver,
-		Registry:      e.registry,
+		DB:           db,
+		Instance:     instance,
+		Node:         node,
+		Visit:        visit,
+		FormData:     approval.NewFormData(instance.FormData),
+		UserResolver: e.userResolver,
+		Registry:     e.registry,
 	}
 
 	result, err := processor.Process(ctx, pc)

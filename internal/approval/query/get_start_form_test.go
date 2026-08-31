@@ -10,9 +10,22 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
+
+// mustInitiatorComposite builds the framework's own initiator vocabulary.
+// Registration is static, so a failure here is a programming error rather than
+// a test condition.
+func mustInitiatorComposite(svc approval.AssigneeService) *strategy.CompositeInitiatorResolver {
+	composite, err := strategy.NewCompositeInitiatorResolver(strategy.BuiltinInitiatorResolvers(svc), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return composite
+}
 
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
@@ -30,7 +43,7 @@ type GetStartFormTestSuite struct {
 }
 
 func (s *GetStartFormTestSuite) SetupSuite() {
-	s.handler = query.NewGetStartFormHandler(s.db, service.NewValidationService(nil))
+	s.handler = query.NewGetStartFormHandler(s.db, service.NewValidationService(mustInitiatorComposite(nil)))
 
 	category := &approval.FlowCategory{
 		TenantID: "default",

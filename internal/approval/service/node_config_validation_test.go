@@ -39,7 +39,7 @@ func TestValidateNodeConfig(t *testing.T) {
 					PassRatio: decimal.NewFromFloat(tt.ratio),
 				}
 
-				err := validateNodeConfig("n1", data)
+				err := NewFlowDefinitionService().validateNodeConfig("n1", data)
 				if tt.wantErr != nil {
 					assert.ErrorIs(t, err, tt.wantErr, "Ratio %v should be rejected as out of the (0, 100] percentage range", tt.ratio)
 				} else {
@@ -50,7 +50,7 @@ func TestValidateNodeConfig(t *testing.T) {
 
 		t.Run("IgnoredForOtherRules", func(t *testing.T) {
 			data := &approval.ApprovalNodeData{PassRule: approval.PassAll}
-			assert.NoError(t, validateNodeConfig("n1", data), "Pass ratio should not be required outside the ratio rule")
+			assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", data), "Pass ratio should not be required outside the ratio rule")
 		})
 	})
 
@@ -62,11 +62,11 @@ func TestValidateNodeConfig(t *testing.T) {
 			approval.SameApplicantExclude,
 		} {
 			data := &approval.ApprovalNodeData{PassRule: approval.PassAll, SameApplicantAction: action}
-			assert.NoError(t, validateNodeConfig("n1", data), "Action %q should be a valid same-applicant action", action)
+			assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", data), "Action %q should be a valid same-applicant action", action)
 		}
 
 		data := &approval.ApprovalNodeData{PassRule: approval.PassAll, SameApplicantAction: "recuse"}
-		assert.ErrorIs(t, validateNodeConfig("n1", data), errInvalidSameApplicantAction,
+		assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errInvalidSameApplicantAction,
 			"An out-of-enum same-applicant action should be rejected")
 	})
 
@@ -80,7 +80,7 @@ func TestValidateNodeConfig(t *testing.T) {
 				},
 			}
 
-			assert.ErrorIs(t, validateNodeConfig("n1", data), errDuplicateBranchPriority,
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errDuplicateBranchPriority,
 				"Two non-default branches sharing a priority should be rejected")
 		})
 
@@ -93,7 +93,7 @@ func TestValidateNodeConfig(t *testing.T) {
 				},
 			}
 
-			assert.NoError(t, validateNodeConfig("n1", data), "Unique branch priorities should pass")
+			assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", data), "Unique branch priorities should pass")
 		})
 
 		t.Run("DefaultBranchDoesNotParticipate", func(t *testing.T) {
@@ -104,7 +104,7 @@ func TestValidateNodeConfig(t *testing.T) {
 				},
 			}
 
-			assert.NoError(t, validateNodeConfig("n1", data),
+			assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", data),
 				"A default branch sharing a priority with a non-default one should pass — defaults are not ordered")
 		})
 	})
@@ -118,7 +118,7 @@ func TestValidateNodeConfig(t *testing.T) {
 				},
 			}
 
-			assert.ErrorIs(t, validateNodeConfig("n1", data), errBranchConditionsRequired,
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errBranchConditionsRequired,
 				"A non-default branch with no condition groups would match unconditionally and must be rejected")
 		})
 
@@ -130,7 +130,7 @@ func TestValidateNodeConfig(t *testing.T) {
 				},
 			}
 
-			assert.ErrorIs(t, validateNodeConfig("n1", data), errConditionGroupEmpty,
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errConditionGroupEmpty,
 				"An empty condition group evaluates to true and must be rejected")
 		})
 
@@ -142,7 +142,7 @@ func TestValidateNodeConfig(t *testing.T) {
 				},
 			}
 
-			assert.NoError(t, validateNodeConfig("n1", data),
+			assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", data),
 				"The default branch is the fallback and legitimately carries no conditions")
 		})
 	})
@@ -153,7 +153,7 @@ func TestValidateNodeConfig(t *testing.T) {
 				AddAssigneeTypes: []approval.AddAssigneeType{"sideways"},
 			}
 
-			assert.ErrorIs(t, validateNodeConfig("n1", data), errInvalidAddAssigneeType,
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errInvalidAddAssigneeType,
 				"Out-of-enum add-assignee types should fail at deploy")
 		})
 
@@ -163,7 +163,7 @@ func TestValidateNodeConfig(t *testing.T) {
 				AddAssigneeTypes: []approval.AddAssigneeType{approval.AddAssigneeParallel},
 			}
 
-			assert.ErrorIs(t, validateNodeConfig("n1", data), errSequentialParallelAdd,
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errSequentialParallelAdd,
 				"A sequential queue has no parallel lane to join")
 		})
 
@@ -173,7 +173,7 @@ func TestValidateNodeConfig(t *testing.T) {
 				AddAssigneeTypes: []approval.AddAssigneeType{approval.AddAssigneeParallel},
 			}
 
-			assert.NoError(t, validateNodeConfig("n1", data),
+			assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", data),
 				"Parallel additions are the normal case on parallel nodes")
 		})
 
@@ -183,8 +183,95 @@ func TestValidateNodeConfig(t *testing.T) {
 				AddAssigneeTypes: []approval.AddAssigneeType{approval.AddAssigneeBefore, approval.AddAssigneeAfter},
 			}
 
-			assert.NoError(t, validateNodeConfig("n1", data),
+			assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", data),
 				"Before/after splice into the sequential queue and stay valid")
+		})
+	})
+
+	// The assignee and CC vocabularies are open registries: deploy accepts
+	// exactly the kinds with a registered resolver and enforces the input each
+	// kind's descriptor declares, so a host kind is validated like a built-in.
+	t.Run("AssigneeDefinitions", func(t *testing.T) {
+		t.Run("RejectsUnregisteredKind", func(t *testing.T) {
+			data := &approval.ApprovalNodeData{}
+			data.Assignees = []approval.AssigneeDefinition{{Kind: "expert_panel", IDs: []string{"p1"}}}
+
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errInvalidAssigneeKind,
+				"A kind no resolver is registered for could never be executed")
+		})
+
+		t.Run("RejectsSelectingKindWithoutIDs", func(t *testing.T) {
+			data := &approval.ApprovalNodeData{}
+			data.Assignees = []approval.AssigneeDefinition{{Kind: approval.AssigneeUser}}
+
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errAssigneeIDsRequired,
+				"A rule that selects nobody resolves to nobody and must be rejected at deploy")
+		})
+
+		t.Run("RejectsFormFieldWithoutFieldName", func(t *testing.T) {
+			data := &approval.ApprovalNodeData{}
+			data.Assignees = []approval.AssigneeDefinition{{Kind: approval.AssigneeFormField}}
+
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errAssigneeFormFieldRequired,
+				"A form-field rule must name the field it reads")
+		})
+
+		t.Run("AcceptsParameterlessKinds", func(t *testing.T) {
+			data := &approval.ApprovalNodeData{}
+			data.Assignees = []approval.AssigneeDefinition{
+				{Kind: approval.AssigneeSelf},
+				{Kind: approval.AssigneeSuperior},
+				{Kind: approval.AssigneeDepartmentLeader},
+			}
+
+			assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", data),
+				"A kind resolved from the applicant needs no designer input")
+		})
+
+		t.Run("AcceptsHostKind", func(t *testing.T) {
+			svc := NewFlowDefinitionService(WithAssigneeKinds(
+				approval.KindDescriptor[approval.AssigneeKind]{Kind: "head_nurse", Label: "Head nurse", Selection: approval.SelectionNone},
+			))
+			data := &approval.ApprovalNodeData{}
+			data.Assignees = []approval.AssigneeDefinition{{Kind: "head_nurse"}}
+
+			assert.NoError(t, svc.validateNodeConfig("n1", data),
+				"A registered host kind must deploy without a framework change")
+		})
+	})
+
+	t.Run("CCDefinitions", func(t *testing.T) {
+		t.Run("RejectsUnregisteredKind", func(t *testing.T) {
+			data := &approval.CCNodeData{CCs: []approval.CCDefinition{{Kind: "expert_panel", IDs: []string{"p1"}}}}
+
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errInvalidCCKind,
+				"A CC kind no resolver is registered for could never be executed")
+		})
+
+		t.Run("RejectsSelectingKindWithoutIDs", func(t *testing.T) {
+			data := &approval.CCNodeData{CCs: []approval.CCDefinition{{Kind: approval.CCRole}}}
+
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errCCIDsRequired,
+				"A CC rule that selects nobody notifies nobody")
+		})
+
+		t.Run("RejectsInvalidTiming", func(t *testing.T) {
+			data := &approval.CCNodeData{CCs: []approval.CCDefinition{
+				{Kind: approval.CCUser, IDs: []string{"u1"}, Timing: "whenever"},
+			}}
+
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errInvalidCCTiming,
+				"Timing stays a closed enum: it is the engine's schedule, not a resolver's concern")
+		})
+
+		t.Run("AcceptsHostKind", func(t *testing.T) {
+			svc := NewFlowDefinitionService(WithCCKinds(
+				approval.KindDescriptor[approval.CCKind]{Kind: "head_nurse", Label: "Head nurse", Selection: approval.SelectionNone},
+			))
+			data := &approval.CCNodeData{CCs: []approval.CCDefinition{{Kind: "head_nurse"}}}
+
+			assert.NoError(t, svc.validateNodeConfig("n1", data),
+				"A registered host CC kind must deploy without a framework change")
 		})
 	})
 
@@ -201,31 +288,31 @@ func TestValidateNodeConfig(t *testing.T) {
 			// ValidateConditionAggregates against the boot-registered set — a
 			// closed gate here would break host-supplied aggregates.
 			cond := approval.Condition{Kind: approval.ConditionField, Subject: "items", Aggregate: "median", Column: "qty", Operator: approval.OperatorGreater, Value: 1}
-			assert.NoError(t, validateNodeConfig("n1", aggBranches(cond)),
+			assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", aggBranches(cond)),
 				"structural validation must stay open to host-registered aggregate kinds")
 		})
 
 		t.Run("RejectsNonNumericOperator", func(t *testing.T) {
 			cond := approval.Condition{Kind: approval.ConditionField, Subject: "items", Aggregate: approval.AggregateSum, Column: "qty", Operator: approval.OperatorContains, Value: 1}
-			assert.ErrorIs(t, validateNodeConfig("n1", aggBranches(cond)), errAggregateOperator,
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", aggBranches(cond)), errAggregateOperator,
 				"set/text operators are meaningless over a numeric fold")
 		})
 
 		t.Run("RejectsCountWithColumn", func(t *testing.T) {
 			cond := approval.Condition{Kind: approval.ConditionField, Subject: "items", Aggregate: approval.AggregateCount, Column: "qty", Operator: approval.OperatorEquals, Value: 1}
-			assert.ErrorIs(t, validateNodeConfig("n1", aggBranches(cond)), errAggregateColumnForbidden,
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", aggBranches(cond)), errAggregateColumnForbidden,
 				"count folds rows; a column would be silently ignored")
 		})
 
 		t.Run("RejectsSumWithoutColumn", func(t *testing.T) {
 			cond := approval.Condition{Kind: approval.ConditionField, Subject: "items", Aggregate: approval.AggregateSum, Operator: approval.OperatorEquals, Value: 1}
-			assert.ErrorIs(t, validateNodeConfig("n1", aggBranches(cond)), errAggregateColumnRequired,
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", aggBranches(cond)), errAggregateColumnRequired,
 				"sum/avg fold a column and must name one")
 		})
 
 		t.Run("RejectsAggregateOnExpression", func(t *testing.T) {
 			cond := approval.Condition{Kind: approval.ConditionExpression, Expression: "true", Aggregate: approval.AggregateSum}
-			assert.ErrorIs(t, validateNodeConfig("n1", aggBranches(cond)), errAggregateOnExpression,
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", aggBranches(cond)), errAggregateOnExpression,
 				"expression conditions fold inside the expression, not via the aggregate field")
 		})
 	})
@@ -236,7 +323,7 @@ func TestValidateNodeConfig(t *testing.T) {
 				ExecutionType: approval.ExecutionAutoReject,
 			}
 
-			assert.ErrorIs(t, validateNodeConfig("n1", data), errHandleExecutionAutoReject,
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errHandleExecutionAutoReject,
 				"Handle nodes must not be able to reject the whole instance via execution type")
 		})
 
@@ -245,7 +332,7 @@ func TestValidateNodeConfig(t *testing.T) {
 				TimeoutAction: approval.TimeoutActionAutoReject,
 			}
 
-			assert.ErrorIs(t, validateNodeConfig("n1", data), errHandleTimeoutAutoReject,
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errHandleTimeoutAutoReject,
 				"Handle nodes must not be able to reject the whole instance via timeout action")
 		})
 
@@ -255,7 +342,7 @@ func TestValidateNodeConfig(t *testing.T) {
 				TimeoutAction: approval.TimeoutActionAutoPass,
 			}
 
-			assert.NoError(t, validateNodeConfig("n1", data),
+			assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", data),
 				"Auto-pass execution and timeout remain valid for handle nodes")
 		})
 
@@ -265,7 +352,7 @@ func TestValidateNodeConfig(t *testing.T) {
 				TimeoutAction: approval.TimeoutActionAutoReject,
 			}
 
-			assert.NoError(t, validateNodeConfig("n1", data),
+			assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", data),
 				"Approval nodes are decision points and keep the auto-reject options")
 		})
 	})

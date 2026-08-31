@@ -9,13 +9,45 @@ import (
 	"github.com/coldsmirk/vef-framework-go/cache"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
+
+// mustInitiatorComposite builds the framework's own initiator vocabulary.
+// Registration is static, so a failure here is a programming error rather than
+// a test condition.
+func mustInitiatorComposite(svc approval.AssigneeService) *strategy.CompositeInitiatorResolver {
+	composite, err := strategy.NewCompositeInitiatorResolver(strategy.BuiltinInitiatorResolvers(svc), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return composite
+}
+
+// mustAssigneeComposite and mustCCComposite build the framework's own resolver
+// vocabularies for a test engine. Registration is static, so a failure here is
+// a programming error rather than a test condition.
+func mustAssigneeComposite() *strategy.CompositeAssigneeResolver {
+	composite, err := strategy.NewCompositeAssigneeResolver(strategy.BuiltinAssigneeResolvers(nil), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return composite
+}
+
+func mustCCComposite() *strategy.CompositeCCResolver {
+	composite, err := strategy.NewCompositeCCResolver(strategy.BuiltinCCResolvers(nil), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return composite
+}
 
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
@@ -53,25 +85,20 @@ func (s *NodeServiceTestSuite) SetupTest() {
 		strategy.NewRatioPassStrategy(),
 	}
 
-	assigneeResolvers := []strategy.AssigneeResolver{
-		strategy.NewUserAssigneeResolver(),
-		strategy.NewSelfAssigneeResolver(),
-	}
-
-	registry := strategy.NewStrategyRegistry(passRules, assigneeResolvers, nil)
+	registry := strategy.NewStrategyRegistry(passRules, nil, mustAssigneeComposite(), mustCCComposite(), nil)
 	processors := []engine.NodeProcessor{
 		engine.NewStartProcessor(),
 		engine.NewEndProcessor(),
 		engine.NewConditionProcessor(),
 		engine.NewApprovalProcessor(nil),
 		engine.NewHandleProcessor(nil),
-		engine.NewCCProcessor(shared.NewCCRecipientResolver(nil)),
+		engine.NewCCProcessor(mustCCComposite()),
 	}
 
 	eng := engine.NewFlowEngine(registry, processors, s.bus, nil, nil,
 		engine.NewFlowCache(s.db, cache.NewMemory[*engine.CompiledFlow]()))
 	taskSvc := service.NewTaskService()
-	s.svc = service.NewNodeService(eng, s.bus, taskSvc, nil, shared.NewCCRecipientResolver(nil))
+	s.svc = service.NewNodeService(eng, s.bus, taskSvc, nil, mustCCComposite())
 }
 
 func (s *NodeServiceTestSuite) TearDownTest() {

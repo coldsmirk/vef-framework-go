@@ -93,8 +93,7 @@ func TestNewFlowEngine(t *testing.T) {
 func TestEvaluatePassRuleWithTasks(t *testing.T) {
 	reg := strategy.NewStrategyRegistry(
 		[]approval.PassRuleStrategy{strategy.NewAllPassStrategy()},
-		nil,
-		nil,
+		nil, nil, nil, nil,
 	)
 	eng := engine.NewFlowEngine(reg, nil, nil, nil, nil, nil)
 	node := &approval.FlowNode{PassRule: approval.PassAll, PassRatio: decimal.NewFromInt(0)}
@@ -176,9 +175,14 @@ type FlowEngineTestSuite struct {
 }
 
 func (s *FlowEngineTestSuite) SetupSuite() {
+	assignees, err := strategy.NewCompositeAssigneeResolver(strategy.BuiltinAssigneeResolvers(nil), nil)
+	s.Require().NoError(err, "Should build built-in assignee resolvers")
+
 	reg := strategy.NewStrategyRegistry(
 		[]approval.PassRuleStrategy{strategy.NewAllPassStrategy()},
-		[]strategy.AssigneeResolver{strategy.NewUserAssigneeResolver()},
+		nil,
+		assignees,
+		nil,
 		nil,
 	)
 
@@ -192,7 +196,7 @@ func (s *FlowEngineTestSuite) SetupSuite() {
 
 	// Build FK chain: FlowCategory → Flow → FlowVersion
 	category := &approval.FlowCategory{TenantID: "default", Code: "engine-test", Name: "Engine Test"}
-	_, err := s.db.NewInsert().Model(category).Exec(s.ctx)
+	_, err = s.db.NewInsert().Model(category).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert test category")
 
 	flow := &approval.Flow{

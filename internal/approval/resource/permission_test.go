@@ -22,15 +22,16 @@ func TestManagementResourceRequiredPermissions(t *testing.T) {
 		specs := collectSpecs(resource, collectors...)
 
 		expected := map[string]string{
-			"create":          "approval.flow.create",
-			"deploy":          "approval.flow.deploy",
-			"publish_version": "approval.flow.publish",
-			"get_graph":       "approval.flow.query",
-			"find_flows":      "approval.flow.query",
-			"update":          "approval.flow.update",
-			"toggle_active":   "approval.flow.update",
-			"find_versions":   "approval.flow.query",
-			"find_initiators": "approval.flow.query",
+			"create":            "approval.flow.create",
+			"deploy":            "approval.flow.deploy",
+			"publish_version":   "approval.flow.publish",
+			"get_graph":         "approval.flow.query",
+			"find_flows":        "approval.flow.query",
+			"update":            "approval.flow.update",
+			"toggle_active":     "approval.flow.update",
+			"find_versions":     "approval.flow.query",
+			"find_initiators":   "approval.flow.query",
+			"list_kind_options": "approval.flow.query",
 		}
 
 		assertRequiredPermissions(t, specs, expected)

@@ -8,27 +8,21 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// validateFlowEnums rejects out-of-enum binding modes and initiator kinds at
-// save time. Both gate load-bearing branches — a typo'd binding mode would
-// silently behave like "standalone" and disable the business write-back, and
-// an unknown initiator kind would silently never match any user.
-func validateFlowEnums(mode approval.BindingMode, initiators []shared.CreateFlowInitiatorCmd) error {
+// validateBindingMode rejects an out-of-enum binding mode at save time. A
+// typo'd mode would silently behave like "standalone" and disable the business
+// write-back.
+func validateBindingMode(mode approval.BindingMode) error {
 	if !mode.IsValid() {
 		return shared.ErrInvalidBindingMode
-	}
-
-	for _, init := range initiators {
-		if !init.Kind.IsValid() {
-			return shared.ErrInvalidInitiatorKind
-		}
 	}
 
 	return nil
 }
 
-// validateInitiatorPolicy enforces that a flow's initiation setting and its
-// initiator rules agree: open-to-everyone carries no rules, restricted carries
-// at least one. The two are mutually exclusive because permission checking
+// validateInitiatorRules enforces that a flow's initiation setting and its
+// initiator rules agree, and that every rule is executable.
+//
+// The setting and the rules are mutually exclusive because permission checking
 // short-circuits on isAllInitiationAllowed and never reads the rules — storing
 // rules alongside it would display a restriction that does not hold.
 //
@@ -37,7 +31,19 @@ func validateFlowEnums(mode approval.BindingMode, initiators []shared.CreateFlow
 // empty rule set. And it makes the stored state a bijection, so an empty
 // initiator list means exactly "open to everyone" and a single query answers
 // who may start a flow.
-func validateInitiatorPolicy(isAllInitiationAllowed bool, initiators []shared.CreateFlowInitiatorCmd) error {
+//
+// A rule itself must name a registered kind and carry the input that kind
+// declares. Both come from the boot-registered InitiatorResolver set rather
+// than from a closed enum here, so a host kind — "any ward supervisor", say —
+// is validated exactly like a built-in one. A kind that needs no selection at
+// all is legitimate and carries no IDs; only the kinds whose SelectionMode
+// picks from a catalog must select something, because a rule that selects
+// nobody matches nobody while looking restricted and functional.
+func validateInitiatorRules(
+	isAllInitiationAllowed bool,
+	initiators []shared.CreateFlowInitiatorCmd,
+	selections map[approval.InitiatorKind]approval.SelectionMode,
+) error {
 	if isAllInitiationAllowed {
 		if len(initiators) > 0 {
 			return shared.ErrInitiatorsNotAllowed
@@ -50,13 +56,17 @@ func validateInitiatorPolicy(isAllInitiationAllowed bool, initiators []shared.Cr
 		return shared.ErrInitiatorsRequired
 	}
 
-	// A rule that selects nobody matches nobody: CheckInitiationPermission
-	// scans each rule's IDs for the applicant, so an empty one leaves the flow
-	// just as unstartable as no rule at all — while making the stored list look
-	// restricted and functional. Rule count alone is not the invariant.
 	for _, init := range initiators {
-		if len(init.IDs) == 0 {
+		switch shared.CheckKindRule(init.Kind, init.IDs, nil, selections) {
+		// An initiator kind can never require a form field — there is no form
+		// when initiation is checked, which NewCompositeInitiatorResolver
+		// rejects at boot — so that fault can only mean the vocabulary itself
+		// is misconfigured, which is what the invalid-kind error says.
+		case shared.KindRuleUnknownKind, shared.KindRuleFormFieldRequired:
+			return shared.ErrInvalidInitiatorKind
+		case shared.KindRuleIDsRequired:
 			return shared.ErrInitiatorsRequired
+		case shared.KindRuleOK:
 		}
 	}
 

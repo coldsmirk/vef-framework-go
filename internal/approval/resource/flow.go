@@ -43,6 +43,7 @@ func NewFlowResource(bus cqrs.Bus, tenantResolver approval.PrincipalTenantResolv
 				api.OperationSpec{Action: "find_flows", RequiredPermission: "approval.flow.query"},
 				api.OperationSpec{Action: "find_versions", RequiredPermission: "approval.flow.query"},
 				api.OperationSpec{Action: "find_initiators", RequiredPermission: "approval.flow.query"},
+				api.OperationSpec{Action: "list_kind_options", RequiredPermission: "approval.flow.query"},
 			),
 		),
 	}
@@ -423,4 +424,25 @@ func (r *FlowResource) FindInitiators(ctx fiber.Ctx, principal *security.Princip
 	}
 
 	return result.Ok(initiators).Response(ctx)
+}
+
+// ListKindOptionsParams takes no input: the catalog is the application's, not
+// a flow's — every flow is designed against the same registered vocabularies.
+type ListKindOptionsParams struct {
+	api.P
+}
+
+// ListKindOptions returns the assignee / CC / initiator kinds this application
+// accepts, so the flow designer offers exactly what a deploy will validate.
+func (r *FlowResource) ListKindOptions(ctx fiber.Ctx, _ ListKindOptionsParams) error {
+	options, err := cqrs.Send[query.ListKindOptionsQuery, *approval.KindOptions](
+		ctx.Context(),
+		r.bus,
+		query.ListKindOptionsQuery{},
+	)
+	if err != nil {
+		return err
+	}
+
+	return result.Ok(options).Response(ctx)
 }

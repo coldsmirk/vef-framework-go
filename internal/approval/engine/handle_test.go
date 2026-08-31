@@ -252,12 +252,11 @@ func (s *HandleProcessorTestSuite) TestDBError() {
 	cancel()
 
 	pc := &engine.ProcessContext{
-		DB:          s.DB,
-		Instance:    instance,
-		Node:        s.NewNode(),
-		FormData:    approval.NewFormData(nil),
-		ApplicantID: instance.ApplicantID,
-		Registry:    s.Registry,
+		DB:       s.DB,
+		Instance: instance,
+		Node:     s.NewNode(),
+		FormData: approval.NewFormData(nil),
+		Registry: s.Registry,
 	}
 
 	_, err := s.processor.Process(canceledCtx, pc)

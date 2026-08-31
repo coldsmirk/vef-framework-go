@@ -7,11 +7,23 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
+
+// mustCCComposite builds the framework's own CC vocabulary. Registration is
+// static, so a failure here is a programming error rather than a test
+// condition.
+func mustCCComposite() *strategy.CompositeCCResolver {
+	composite, err := strategy.NewCompositeCCResolver(strategy.BuiltinCCResolvers(nil), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return composite
+}
 
 func init() {
 	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
@@ -36,7 +48,7 @@ type CCProcessorTestSuite struct {
 }
 
 func (s *CCProcessorTestSuite) SetupSuite() {
-	s.processor = engine.NewCCProcessor(shared.NewCCRecipientResolver(nil))
+	s.processor = engine.NewCCProcessor(mustCCComposite())
 
 	// Build FK chain: FlowCategory → Flow → FlowVersion → FlowNode
 	category := &approval.FlowCategory{TenantID: "default", Code: "cc-test", Name: "CC Test"}

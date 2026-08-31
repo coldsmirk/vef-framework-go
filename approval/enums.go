@@ -29,7 +29,10 @@ const (
 	VersionArchived  VersionStatus = "archived"
 )
 
-// InitiatorKind represents the kind of initiator.
+// InitiatorKind represents the kind of initiator. The vocabulary is open:
+// the deployable kinds are exactly those with a registered
+// approval.InitiatorResolver, so a host adds one by registering a resolver
+// rather than by extending this list.
 type InitiatorKind string
 
 const (
@@ -37,11 +40,6 @@ const (
 	InitiatorRole       InitiatorKind = "role"
 	InitiatorDepartment InitiatorKind = "department"
 )
-
-// IsValid checks if the InitiatorKind is a valid value.
-func (k InitiatorKind) IsValid() bool {
-	return k == InitiatorUser || k == InitiatorRole || k == InitiatorDepartment
-}
 
 // StorageMode represents the storage mode of form data at the FlowVersion level.
 // It determines the physical storage location and format of form data, chosen
@@ -272,7 +270,9 @@ func (a ConsecutiveApproverAction) IsValid() bool {
 	return a == ConsecutiveApproverNone || a == ConsecutiveApproverAutoPass
 }
 
-// AssigneeKind represents the kind of assignee.
+// AssigneeKind represents the kind of assignee. The vocabulary is open: the
+// deployable kinds are exactly those with a registered
+// approval.AssigneeResolver.
 type AssigneeKind string
 
 const (
@@ -284,17 +284,6 @@ const (
 	AssigneeDepartmentLeader AssigneeKind = "department_leader" // Leaders of the applicant's own department (single level)
 	AssigneeFormField        AssigneeKind = "form_field"        // Based on form field
 )
-
-// IsValid reports whether the assignee kind is one of the defined values.
-func (k AssigneeKind) IsValid() bool {
-	switch k {
-	case AssigneeUser, AssigneeRole, AssigneeDepartment, AssigneeSelf,
-		AssigneeSuperior, AssigneeDepartmentLeader, AssigneeFormField:
-		return true
-	default:
-		return false
-	}
-}
 
 // InstanceStatus represents the status of a flow instance.
 type InstanceStatus string
@@ -384,7 +373,8 @@ const (
 	ActionAddCC          ActionType = "add_cc"    // Participant added CC recipients
 )
 
-// CCKind represents the kind of CC recipient.
+// CCKind represents the kind of CC recipient. The vocabulary is open: the
+// deployable kinds are exactly those with a registered approval.CCResolver.
 type CCKind string
 
 const (
@@ -393,11 +383,6 @@ const (
 	CCDepartment CCKind = "department"
 	CCFormField  CCKind = "form_field"
 )
-
-// IsValid reports whether the CC kind is one of the defined kinds.
-func (k CCKind) IsValid() bool {
-	return k == CCUser || k == CCRole || k == CCDepartment || k == CCFormField
-}
 
 // CCTiming represents the timing of CC notification.
 type CCTiming string

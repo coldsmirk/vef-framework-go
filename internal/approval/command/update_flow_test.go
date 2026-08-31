@@ -64,7 +64,7 @@ func (s *UpdateFlowTestSuite) SetupSuite() {
 	_, err = s.db.NewInsert().Model(initiator).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert test initiator")
 
-	s.handler = command.NewUpdateFlowHandler(s.db, newTestBindingValidator())
+	s.handler = command.NewUpdateFlowHandler(s.db, newTestBindingValidator(), mustInitiatorComposite(nil))
 }
 
 func (s *UpdateFlowTestSuite) TearDownTest() {
@@ -416,19 +416,20 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowRejectsInvalidEnums() {
 			"An out-of-enum binding mode would silently disable the business write-back and must be rejected")
 	})
 
+	// A restricted flow is what reaches the per-rule checks: rules alongside
+	// open initiation are refused as incoherent before any kind is examined.
 	s.Run("InitiatorKind", func() {
 		_, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
-			FlowID:                 s.flowID,
-			BindingMode:            approval.BindingStandalone,
-			Name:                   "Enum Guard Flow",
-			IsAllInitiationAllowed: true,
-			InstanceTitleTemplate:  "t",
+			FlowID:                s.flowID,
+			BindingMode:           approval.BindingStandalone,
+			Name:                  "Enum Guard Flow",
+			InstanceTitleTemplate: "t",
 			Initiators: []shared.CreateFlowInitiatorCmd{
 				{Kind: "sideways", IDs: []string{"u1"}},
 			},
 			Caller: approval.SystemCaller,
 		})
 		s.Require().ErrorIs(err, shared.ErrInvalidInitiatorKind,
-			"An out-of-enum initiator kind would silently never match and must be rejected")
+			"An initiator kind no resolver is registered for would silently never match and must be rejected")
 	})
 }

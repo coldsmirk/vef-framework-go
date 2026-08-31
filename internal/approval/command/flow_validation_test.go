@@ -10,28 +10,89 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 )
 
-func TestValidateFlowEnums(t *testing.T) {
+// builtinInitiatorKinds is the selection index save-time validation runs
+// against in production: the three built-in kinds, all of which select IDs.
+var builtinInitiatorKinds = map[approval.InitiatorKind]approval.SelectionMode{
+	approval.InitiatorUser:       approval.SelectionUser,
+	approval.InitiatorRole:       approval.SelectionRole,
+	approval.InitiatorDepartment: approval.SelectionDepartment,
+}
+
+func TestValidateBindingMode(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Valid", func(t *testing.T) {
 		t.Parallel()
 
-		err := validateFlowEnums(approval.BindingStandalone, nil)
-		assert.NoError(t, err, "Known binding mode should pass")
+		assert.NoError(t, validateBindingMode(approval.BindingStandalone), "Known binding mode should pass")
 	})
 
-	t.Run("BindingMode", func(t *testing.T) {
+	t.Run("Invalid", func(t *testing.T) {
 		t.Parallel()
 
-		err := validateFlowEnums("bogus", nil)
-		assert.ErrorIs(t, err, shared.ErrInvalidBindingMode, "Unknown binding mode should be rejected")
+		assert.ErrorIs(t, validateBindingMode("bogus"), shared.ErrInvalidBindingMode, "Unknown binding mode should be rejected")
+	})
+}
+
+func TestValidateInitiatorRules(t *testing.T) {
+	t.Parallel()
+
+	t.Run("OpenToEveryoneCarriesNoRules", func(t *testing.T) {
+		t.Parallel()
+
+		assert.NoError(t, validateInitiatorRules(true, nil, builtinInitiatorKinds),
+			"An open flow with no rules is the only coherent open state")
 	})
 
-	t.Run("InitiatorKind", func(t *testing.T) {
+	t.Run("OpenToEveryoneRejectsRules", func(t *testing.T) {
 		t.Parallel()
 
-		err := validateFlowEnums(approval.BindingBusiness, []shared.CreateFlowInitiatorCmd{{Kind: "bogus"}})
-		assert.ErrorIs(t, err, shared.ErrInvalidInitiatorKind, "Unknown initiator kind should be rejected")
+		err := validateInitiatorRules(true, []shared.CreateFlowInitiatorCmd{
+			{Kind: approval.InitiatorUser, IDs: []string{"u1"}},
+		}, builtinInitiatorKinds)
+		assert.ErrorIs(t, err, shared.ErrInitiatorsNotAllowed, "Rules alongside open initiation would display a restriction that does not hold")
+	})
+
+	t.Run("RestrictedRequiresRules", func(t *testing.T) {
+		t.Parallel()
+
+		assert.ErrorIs(t, validateInitiatorRules(false, nil, builtinInitiatorKinds), shared.ErrInitiatorsRequired,
+			"A restricted flow with no rules could be started by nobody")
+	})
+
+	t.Run("UnknownKindIsRejected", func(t *testing.T) {
+		t.Parallel()
+
+		err := validateInitiatorRules(false, []shared.CreateFlowInitiatorCmd{{Kind: "bogus", IDs: []string{"x"}}}, builtinInitiatorKinds)
+		assert.ErrorIs(t, err, shared.ErrInvalidInitiatorKind, "A kind nothing resolves should be rejected")
+	})
+
+	t.Run("SelectingKindRequiresIDs", func(t *testing.T) {
+		t.Parallel()
+
+		err := validateInitiatorRules(false, []shared.CreateFlowInitiatorCmd{{Kind: approval.InitiatorUser}}, builtinInitiatorKinds)
+		assert.ErrorIs(t, err, shared.ErrInitiatorsRequired, "A rule that selects nobody matches nobody")
+	})
+
+	t.Run("BlankIDsDoNotCount", func(t *testing.T) {
+		t.Parallel()
+
+		err := validateInitiatorRules(false, []shared.CreateFlowInitiatorCmd{
+			{Kind: approval.InitiatorUser, IDs: []string{"  ", ""}},
+		}, builtinInitiatorKinds)
+		assert.ErrorIs(t, err, shared.ErrInitiatorsRequired, "Blank IDs select nobody just as an empty list does")
+	})
+
+	// A host kind that resolves from the applicant alone — "any ward
+	// supervisor" — carries no IDs by design, and must not be held to the
+	// selecting kinds' requirement.
+	t.Run("HostKindWithoutSelectionNeedsNoIDs", func(t *testing.T) {
+		t.Parallel()
+
+		kinds := map[approval.InitiatorKind]approval.SelectionMode{"ward_supervisor": approval.SelectionNone}
+
+		assert.NoError(t, validateInitiatorRules(false, []shared.CreateFlowInitiatorCmd{{Kind: "ward_supervisor"}}, kinds),
+			"A parameterless host kind is a complete rule on its own")
 	})
 }
 

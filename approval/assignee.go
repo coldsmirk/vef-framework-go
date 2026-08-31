@@ -76,10 +76,40 @@ type AssigneeDefinition struct {
 	SortOrder int          `json:"sortOrder"`
 }
 
-// CCDefinition represents a CC recipient in node data.
-type CCDefinition struct {
-	Kind      CCKind   `json:"kind"`
-	IDs       []string `json:"ids,omitempty"`
-	FormField *string  `json:"formField,omitempty"`
-	Timing    CCTiming `json:"timing,omitempty"`
+// AssigneeResolveContext is what an AssigneeResolver resolves against: the
+// node-level runtime snapshot plus the one assignee rule being resolved. The
+// rule's Kind is carried so a resolver registered for several kinds — or one
+// logging its own decisions — can tell which rule it was handed.
+type AssigneeResolveContext struct {
+	NodeResolveContext
+
+	// Kind is the assignee kind of the rule being resolved.
+	Kind AssigneeKind
+	// IDs are the designer-selected IDs of the rule. Their meaning belongs to
+	// the kind: user IDs, role IDs, department IDs, or whatever a custom
+	// kind's picker stores.
+	IDs []string
+	// FormField names the form field carrying the assignee IDs, set only for
+	// kinds whose SelectionMode is SelectionFormField.
+	FormField *string
+}
+
+// AssigneeResolver turns one assignee rule into the concrete people who
+// receive tasks. The framework registers a resolver per built-in kind and
+// hosts add their own with vef.ProvideApprovalAssigneeResolver; a host
+// resolver whose kind matches a built-in replaces it.
+//
+// Registration is what makes a kind deployable: flow validation accepts
+// exactly the registered kinds, and the flow designer offers exactly their
+// descriptors. There is no separate enum to extend.
+type AssigneeResolver interface {
+	// Describe returns the kind this resolver handles together with the
+	// designer metadata for it — the label to show and the input to collect.
+	Describe() KindDescriptor[AssigneeKind]
+	// Resolve returns the assignees for the rule in rc. Returning none is a
+	// valid answer: the node's EmptyAssigneeAction then decides what happens,
+	// which is how an optional approver step is expressed. Return an error
+	// only when the rule could not be evaluated — a failure fails the
+	// approval action rather than silently dropping approvers.
+	Resolve(ctx context.Context, rc *AssigneeResolveContext) ([]ResolvedAssignee, error)
 }

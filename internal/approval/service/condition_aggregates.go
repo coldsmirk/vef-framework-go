@@ -51,7 +51,7 @@ func (s *FlowDefinitionService) validateAggregateReference(
 	cond approval.Condition,
 	tables map[string]map[string]approval.FormFieldDefinition,
 ) error {
-	if _, registered := s.aggregateKinds[cond.Aggregate]; !registered {
+	if !s.aggregateKinds.Contains(cond.Aggregate) {
 		return fmt.Errorf("%w: %q in branch %q of node %q",
 			errUnregisteredAggregate, cond.Aggregate, branchID, nodeID)
 	}

@@ -29,27 +29,6 @@ func TestAddAssigneeTypeIsValid(t *testing.T) {
 	}
 }
 
-func TestCCKindIsValid(t *testing.T) {
-	tests := []struct {
-		name     string
-		value    approval.CCKind
-		expected bool
-	}{
-		{"User", approval.CCUser, true},
-		{"Role", approval.CCRole, true},
-		{"Department", approval.CCDepartment, true},
-		{"FormField", approval.CCFormField, true},
-		{"InvalidEmpty", approval.CCKind(""), false},
-		{"InvalidRandom", approval.CCKind("invalid"), false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.value.IsValid(), "%s: IsValid should report %v", tt.name, tt.expected)
-		})
-	}
-}
-
 func TestStorageModeIsValid(t *testing.T) {
 	tests := []struct {
 		name     string

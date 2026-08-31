@@ -37,7 +37,7 @@ type TransferTaskTestSuite struct {
 
 func (s *TransferTaskTestSuite) SetupSuite() {
 	taskSvc := service.NewTaskService()
-	validSvc := service.NewValidationService(nil)
+	validSvc := service.NewValidationService(mustInitiatorComposite(nil))
 	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewTransferTaskHandler(s.db, taskSvc, validSvc, nil, nil))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "transfer")
 

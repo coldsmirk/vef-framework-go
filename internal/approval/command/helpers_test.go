@@ -18,7 +18,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/formeditor"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
@@ -26,6 +25,39 @@ import (
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/schema"
 )
+
+// mustInitiatorComposite builds the framework's own initiator vocabulary.
+// Registration is static, so a failure here is a programming error rather than
+// a test condition.
+func mustInitiatorComposite(svc approval.AssigneeService) *strategy.CompositeInitiatorResolver {
+	composite, err := strategy.NewCompositeInitiatorResolver(strategy.BuiltinInitiatorResolvers(svc), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return composite
+}
+
+// mustAssigneeComposite and mustCCComposite build the framework's own resolver
+// vocabularies for a test engine. Registration is static, so a failure here is
+// a programming error rather than a test condition.
+func mustAssigneeComposite() *strategy.CompositeAssigneeResolver {
+	composite, err := strategy.NewCompositeAssigneeResolver(strategy.BuiltinAssigneeResolvers(nil), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return composite
+}
+
+func mustCCComposite() *strategy.CompositeCCResolver {
+	composite, err := strategy.NewCompositeCCResolver(strategy.BuiltinCCResolvers(nil), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return composite
+}
 
 type testBindingSchemaService struct{}
 
@@ -367,12 +399,7 @@ func buildTestEngineWithHooks(db orm.DB, hooks *engine.LifecycleHookRunner) *eng
 		strategy.NewRatioPassStrategy(),
 	}
 
-	assigneeResolvers := []strategy.AssigneeResolver{
-		strategy.NewUserAssigneeResolver(),
-		strategy.NewSelfAssigneeResolver(),
-	}
-
-	registry := strategy.NewStrategyRegistry(passRules, assigneeResolvers, nil)
+	registry := strategy.NewStrategyRegistry(passRules, nil, mustAssigneeComposite(), mustCCComposite(), nil)
 
 	processors := []engine.NodeProcessor{
 		engine.NewStartProcessor(),
@@ -380,7 +407,7 @@ func buildTestEngineWithHooks(db orm.DB, hooks *engine.LifecycleHookRunner) *eng
 		engine.NewConditionProcessor(),
 		engine.NewApprovalProcessor(nil),
 		engine.NewHandleProcessor(nil),
-		engine.NewCCProcessor(shared.NewCCRecipientResolver(nil)),
+		engine.NewCCProcessor(mustCCComposite()),
 	}
 
 	return engine.NewFlowEngine(registry, processors, eventtest.NewFakeBus(), nil, hooks,
@@ -390,8 +417,8 @@ func buildTestEngineWithHooks(db orm.DB, hooks *engine.LifecycleHookRunner) *eng
 // buildTestServices creates the standard service instances for command tests.
 func buildTestServices(eng *engine.FlowEngine) (*service.TaskService, *service.NodeService, *service.ValidationService) {
 	taskSvc := service.NewTaskService()
-	nodeSvc := service.NewNodeService(eng, eventtest.NewFakeBus(), taskSvc, nil, shared.NewCCRecipientResolver(nil))
-	validSvc := service.NewValidationService(nil)
+	nodeSvc := service.NewNodeService(eng, eventtest.NewFakeBus(), taskSvc, nil, mustCCComposite())
+	validSvc := service.NewValidationService(mustInitiatorComposite(nil))
 
 	return taskSvc, nodeSvc, validSvc
 }

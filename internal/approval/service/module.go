@@ -5,6 +5,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 )
 
 // Module provides all approval services.
@@ -12,17 +13,26 @@ var Module = fx.Module(
 	"vef:approval:service",
 
 	fx.Provide(
-		// Deploy validation accepts exactly the boot-registered aggregate
-		// kinds, so host aggregators registered through
-		// vef.ProvideApprovalAggregator become deployable automatically.
+		// Deploy validation accepts exactly the boot-registered vocabularies
+		// — aggregate kinds from vef.ProvideApprovalAggregator, assignee and
+		// CC kinds from the composite resolvers — so a host extension becomes
+		// deployable automatically, with no second list to update.
 		fx.Annotate(
-			func(aggregators []approval.Aggregator) *FlowDefinitionService {
+			func(
+				aggregators []approval.Aggregator,
+				assignees *strategy.CompositeAssigneeResolver,
+				ccs *strategy.CompositeCCResolver,
+			) *FlowDefinitionService {
 				kinds := make([]approval.AggregateKind, 0, len(aggregators))
 				for _, aggregator := range aggregators {
 					kinds = append(kinds, aggregator.Kind())
 				}
 
-				return NewFlowDefinitionService(kinds...)
+				return NewFlowDefinitionService(
+					WithAggregateKinds(kinds...),
+					WithAssigneeKinds(assignees.Descriptors()...),
+					WithCCKinds(ccs.Descriptors()...),
+				)
 			},
 			fx.ParamTags(`group:"vef:approval:aggregators"`),
 		),
@@ -33,8 +43,8 @@ var Module = fx.Module(
 		func(cfg *config.ApprovalConfig) *TaskService {
 			return NewTaskService(WithFormDataMaxBytes(cfg.EffectiveFormDataMaxBytes()))
 		},
-		func(assigneeSvc approval.AssigneeService, cfg *config.ApprovalConfig) *ValidationService {
-			return NewValidationService(assigneeSvc, WithFormDataMaxBytes(cfg.EffectiveFormDataMaxBytes()))
+		func(initiators *strategy.CompositeInitiatorResolver, cfg *config.ApprovalConfig) *ValidationService {
+			return NewValidationService(initiators, WithFormDataMaxBytes(cfg.EffectiveFormDataMaxBytes()))
 		},
 		NewNodeService,
 		NewInstanceService,

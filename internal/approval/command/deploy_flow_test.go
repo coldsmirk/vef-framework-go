@@ -386,6 +386,78 @@ func (s *DeployFlowTestSuite) TestDeployWithAssigneesAndCCs() {
 	s.Assert().Equal(approval.CCTimingAlways, ccs[0].Timing, "Should set CC timing")
 }
 
+// TestDeployStoresLongKindNames pins that a kind identifier round-trips
+// through the schema. The kind vocabularies are open registries — a host
+// registers "the applicant's head nurse" and the flow that names it must
+// persist — and even the framework's own `department_leader` is 17 characters,
+// so a narrow `kind` column silently made a built-in kind undeployable on the
+// dialects that enforce a width.
+func (s *DeployFlowTestSuite) TestDeployStoresLongKindNames() {
+	hostKind := approval.AssigneeKind("attending_physician_on_duty")
+
+	definition := approval.FlowDefinition{
+		Nodes: []approval.NodeDefinition{
+			{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "开始"})},
+			{
+				ID:   "approval-1",
+				Kind: approval.NodeApproval,
+				Data: mustMarshal(approval.ApprovalNodeData{
+					Name: "审批",
+					Assignees: []approval.AssigneeDefinition{
+						{Kind: approval.AssigneeDepartmentLeader, SortOrder: 1},
+					},
+					CCs: []approval.CCDefinition{
+						{Kind: approval.CCDepartment, IDs: []string{"dept-1"}, Timing: approval.CCTimingAlways},
+					},
+				}),
+			},
+			{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "结束"})},
+		},
+		Edges: []approval.EdgeDefinition{
+			{ID: "edge-1", Source: "start-1", Target: "approval-1"},
+			{ID: "edge-2", Source: "approval-1", Target: "end-1"},
+		},
+	}
+
+	result, err := s.handler.Handle(s.ctx, command.DeployFlowCmd{
+		FlowID:         s.flowID,
+		FlowDefinition: definition,
+		Caller:         approval.SystemCaller,
+	})
+	s.Require().NoError(err, "A built-in kind whose name exceeds a narrow column must still deploy")
+
+	var nodes []approval.FlowNode
+
+	err = s.db.NewSelect().
+		Model(&nodes).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("flow_version_id", result.ID).
+				Equals("kind", approval.NodeApproval)
+		}).
+		Scan(s.ctx)
+	s.Require().NoError(err, "Should query approval nodes")
+	s.Require().Len(nodes, 1, "Should have one approval node")
+
+	var assignees []approval.FlowNodeAssignee
+
+	err = s.db.NewSelect().
+		Model(&assignees).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("node_id", nodes[0].ID)
+		}).
+		Scan(s.ctx)
+	s.Require().NoError(err, "Should query assignees")
+	s.Require().Len(assignees, 1, "Should insert one assignee")
+	s.Assert().Equal(approval.AssigneeDepartmentLeader, assignees[0].Kind, "The stored kind must not be truncated")
+
+	// A host kind is longer still: the column must hold whatever identifier a
+	// registered resolver describes itself with.
+	_, err = s.db.NewInsert().
+		Model(&approval.FlowNodeAssignee{NodeID: assignees[0].NodeID, Kind: hostKind, IDs: []string{}, SortOrder: 2}).
+		Exec(s.ctx)
+	s.Require().NoError(err, "A host kind identifier must fit the column")
+}
+
 func (s *DeployFlowTestSuite) TestDeployEdgesWithNodeKeys() {
 	cmd := command.DeployFlowCmd{
 		FlowID:         s.flowID,

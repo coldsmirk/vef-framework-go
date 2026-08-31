@@ -11,6 +11,8 @@ var (
 	ErrAggregatorNotFound        = errors.New("aggregator not found")
 	errBuiltinAggregatorMissing  = errors.New("built-in aggregate kind has no registered aggregator")
 	ErrAssigneeResolverNotFound  = errors.New("assignee resolver not found")
+	ErrCCResolverNotFound        = errors.New("cc resolver not found")
+	ErrInitiatorResolverNotFound = errors.New("initiator resolver not found")
 
 	// Registry lookup errors.
 	ErrPassRuleNotFound           = errors.New("pass rule strategy not found")
@@ -21,9 +23,17 @@ var (
 	ErrUnsupportedOperator       = errors.New("unsupported condition operator")
 	ErrIncomparableValues        = errors.New("condition values are not comparable")
 
+	// Registration errors. Surface during boot when a registered resolver
+	// cannot be indexed at all.
+	errNilResolver           = errors.New("nil resolver registered")
+	errInvalidKindDescriptor = errors.New("invalid kind descriptor")
+	errDuplicateHostKind     = errors.New("two host resolvers registered for the same kind")
+
 	// Registry validation errors. Surface during boot when the framework
 	// strategy module is missing one of the built-in enum values.
 	errBuiltinPassRuleMissing  = errors.New("no PassRuleStrategy registered for built-in PassRule")
 	errBuiltinAssigneeMissing  = errors.New("no AssigneeResolver registered for built-in AssigneeKind")
+	errBuiltinCCMissing        = errors.New("no CCResolver registered for built-in CCKind")
+	errBuiltinInitiatorMissing = errors.New("no InitiatorResolver registered for built-in InitiatorKind")
 	errBuiltinEvaluatorMissing = errors.New("no ConditionEvaluator registered for built-in ConditionKind")
 )

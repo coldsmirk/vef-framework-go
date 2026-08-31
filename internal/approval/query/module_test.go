@@ -47,6 +47,7 @@ func TestRegisterHandlers(t *testing.T) {
 		new(FindFlowsHandler),
 		new(FindFlowVersionsHandler),
 		new(FindFlowInitiatorsHandler),
+		new(ListKindOptionsHandler),
 		new(GetMetricsHandler),
 	)
 
@@ -175,6 +176,13 @@ func TestRegisterHandlers(t *testing.T) {
 			defer recoverDispatch(&err)
 
 			_, err = cqrs.Send[FindFlowInitiatorsQuery, []approval.FlowInitiator](context.Background(), bus, FindFlowInitiatorsQuery{})
+
+			return err
+		}},
+		{"ListKindOptions", func() (err error) {
+			defer recoverDispatch(&err)
+
+			_, err = cqrs.Send[ListKindOptionsQuery, *approval.KindOptions](context.Background(), bus, ListKindOptionsQuery{})
 
 			return err
 		}},

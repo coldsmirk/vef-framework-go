@@ -29,6 +29,7 @@ var Module = fx.Module(
 		NewFindFlowsHandler,
 		NewFindFlowVersionsHandler,
 		NewFindFlowInitiatorsHandler,
+		NewListKindOptionsHandler,
 		NewGetMetricsHandler,
 	),
 
@@ -55,6 +56,7 @@ func registerHandlers(
 	findFlows *FindFlowsHandler,
 	findFlowVersions *FindFlowVersionsHandler,
 	findFlowInitiators *FindFlowInitiatorsHandler,
+	listKindOptions *ListKindOptionsHandler,
 	getMetrics *GetMetricsHandler,
 ) {
 	cqrs.Register(bus, getFlowGraph)
@@ -74,5 +76,6 @@ func registerHandlers(
 	cqrs.Register(bus, findFlows)
 	cqrs.Register(bus, findFlowVersions)
 	cqrs.Register(bus, findFlowInitiators)
+	cqrs.Register(bus, listKindOptions)
 	cqrs.Register(bus, getMetrics)
 }
