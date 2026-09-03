@@ -12,7 +12,9 @@ import (
 
 // ApprovalModule enables the optional approval (workflow) feature: pass it to
 // vef.Run(...) to register the approval API resources, CQRS handlers, engine,
-// binding listener, and timeout scanner. It is intentionally absent from the
+// binding listener, and timeout scanner, and to expose approval.Service — the
+// programmatic control surface host code injects to start, decide, and close
+// instances without an HTTP request. It is intentionally absent from the
 // default boot sequence (internal/bootmodules) so applications that do not need
 // workflows pay nothing. Approval events publish with event.WithTx and the
 // binding listener subscribes, so the host must route approval.* to a

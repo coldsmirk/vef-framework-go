@@ -66,7 +66,7 @@ func TestManagementResourceRequiredPermissions(t *testing.T) {
 	})
 
 	t.Run("AdminResource", func(t *testing.T) {
-		resource := iresource.NewAdminResource(nil, nil, nil)
+		resource := iresource.NewAdminResource(nil, nil, nil, nil)
 		specs := collectSpecs(resource, collectors...)
 
 		expected := map[string]string{

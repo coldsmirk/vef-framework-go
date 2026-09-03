@@ -9,8 +9,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
+	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
@@ -76,11 +75,15 @@ func resolveActor(
 	return resolvedActor{Operator: operator, Caller: caller}, nil
 }
 
-// InstanceResource handles instance lifecycle and queries.
+// InstanceResource handles the instance lifecycle and task actions. It is
+// the HTTP adapter over approval.Service: each handler resolves the actor
+// from the principal, then hands the request-scoped db (the handler param
+// carries the operator for audit columns) and the translated input to the
+// service, so a request and a host's programmatic call run one code path.
 type InstanceResource struct {
 	api.Resource
 
-	bus                cqrs.Bus
+	svc                approval.Service
 	departmentResolver approval.PrincipalDepartmentResolver
 	tenantResolver     approval.PrincipalTenantResolver
 	globalsResolver    approval.InstanceGlobalsResolver
@@ -88,13 +91,13 @@ type InstanceResource struct {
 
 // NewInstanceResource creates a new instance resource.
 func NewInstanceResource(
-	bus cqrs.Bus,
+	svc approval.Service,
 	departmentResolver approval.PrincipalDepartmentResolver,
 	tenantResolver approval.PrincipalTenantResolver,
 	globalsResolver approval.InstanceGlobalsResolver,
 ) api.Resource {
 	return &InstanceResource{
-		bus:                bus,
+		svc:                svc,
 		departmentResolver: departmentResolver,
 		tenantResolver:     tenantResolver,
 		globalsResolver:    globalsResolver,
@@ -143,7 +146,7 @@ type StartParams struct {
 }
 
 // Start creates a new flow instance.
-func (r *InstanceResource) Start(ctx fiber.Ctx, principal *security.Principal, params StartParams) error {
+func (r *InstanceResource) Start(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params StartParams) error {
 	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
@@ -157,7 +160,7 @@ func (r *InstanceResource) Start(ctx fiber.Ctx, principal *security.Principal, p
 		return fmt.Errorf("resolve instance globals: %w", err)
 	}
 
-	instance, err := cqrs.Send[command.StartInstanceCmd, *approval.Instance](ctx.Context(), r.bus, command.StartInstanceCmd{
+	instance, err := r.svc.StartInstance(ctx.Context(), db, approval.StartInstanceInput{
 		TenantID:    params.TenantID,
 		FlowCode:    params.FlowCode,
 		Applicant:   actor.Operator,
@@ -207,11 +210,11 @@ const (
 // map keyed by a typed constant makes the action set a single compile-time
 // source of truth: a missing action surfaces as an absent key (caught by the
 // coverage test) rather than a dead runtime default arm.
-var processTaskDispatch = map[processTaskAction]func(context.Context, cqrs.Bus, resolvedActor, ProcessTaskParams) error{
+var processTaskDispatch = map[processTaskAction]func(context.Context, approval.Service, orm.DB, resolvedActor, ProcessTaskParams) error{
 	actionApprove: sendApprove,
 	actionHandle:  sendApprove,
-	actionReject: func(ctx context.Context, bus cqrs.Bus, actor resolvedActor, params ProcessTaskParams) error {
-		_, err := cqrs.Send[command.RejectTaskCmd, cqrs.Unit](ctx, bus, command.RejectTaskCmd{
+	actionReject: func(ctx context.Context, svc approval.Service, db orm.DB, actor resolvedActor, params ProcessTaskParams) error {
+		return svc.RejectTask(ctx, db, approval.RejectTaskInput{
 			TaskID:      params.TaskID,
 			Operator:    actor.Operator,
 			Opinion:     params.Opinion,
@@ -219,11 +222,9 @@ var processTaskDispatch = map[processTaskAction]func(context.Context, cqrs.Bus, 
 			Attachments: params.Attachments,
 			Caller:      actor.Caller,
 		})
-
-		return err
 	},
-	actionTransfer: func(ctx context.Context, bus cqrs.Bus, actor resolvedActor, params ProcessTaskParams) error {
-		_, err := cqrs.Send[command.TransferTaskCmd, cqrs.Unit](ctx, bus, command.TransferTaskCmd{
+	actionTransfer: func(ctx context.Context, svc approval.Service, db orm.DB, actor resolvedActor, params ProcessTaskParams) error {
+		return svc.TransferTask(ctx, db, approval.TransferTaskInput{
 			TaskID:       params.TaskID,
 			Operator:     actor.Operator,
 			Opinion:      params.Opinion,
@@ -232,11 +233,9 @@ var processTaskDispatch = map[processTaskAction]func(context.Context, cqrs.Bus, 
 			Attachments:  params.Attachments,
 			Caller:       actor.Caller,
 		})
-
-		return err
 	},
-	actionRollback: func(ctx context.Context, bus cqrs.Bus, actor resolvedActor, params ProcessTaskParams) error {
-		_, err := cqrs.Send[command.RollbackTaskCmd, cqrs.Unit](ctx, bus, command.RollbackTaskCmd{
+	actionRollback: func(ctx context.Context, svc approval.Service, db orm.DB, actor resolvedActor, params ProcessTaskParams) error {
+		return svc.RollbackTask(ctx, db, approval.RollbackTaskInput{
 			TaskID:       params.TaskID,
 			Operator:     actor.Operator,
 			Opinion:      params.Opinion,
@@ -245,13 +244,11 @@ var processTaskDispatch = map[processTaskAction]func(context.Context, cqrs.Bus, 
 			Attachments:  params.Attachments,
 			Caller:       actor.Caller,
 		})
-
-		return err
 	},
 }
 
-func sendApprove(ctx context.Context, bus cqrs.Bus, actor resolvedActor, params ProcessTaskParams) error {
-	_, err := cqrs.Send[command.ApproveTaskCmd, cqrs.Unit](ctx, bus, command.ApproveTaskCmd{
+func sendApprove(ctx context.Context, svc approval.Service, db orm.DB, actor resolvedActor, params ProcessTaskParams) error {
+	return svc.ApproveTask(ctx, db, approval.ApproveTaskInput{
 		TaskID:      params.TaskID,
 		Operator:    actor.Operator,
 		Opinion:     params.Opinion,
@@ -259,12 +256,10 @@ func sendApprove(ctx context.Context, bus cqrs.Bus, actor resolvedActor, params 
 		Attachments: params.Attachments,
 		Caller:      actor.Caller,
 	})
-
-	return err
 }
 
 // ProcessTask handles task actions (approve/reject/transfer/rollback/handle).
-func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Principal, params ProcessTaskParams) error {
+func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params ProcessTaskParams) error {
 	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
@@ -280,7 +275,7 @@ func (r *InstanceResource) ProcessTask(ctx fiber.Ctx, principal *security.Princi
 		panic(fmt.Sprintf("approval: ProcessTask dispatched on unknown action %q (oneof validation bypassed)", params.Action))
 	}
 
-	if err := dispatch(ctx.Context(), r.bus, actor, params); err != nil {
+	if err := dispatch(ctx.Context(), r.svc, db, actor, params); err != nil {
 		return err
 	}
 
@@ -296,13 +291,13 @@ type WithdrawParams struct {
 }
 
 // Withdraw withdraws an instance.
-func (r *InstanceResource) Withdraw(ctx fiber.Ctx, principal *security.Principal, params WithdrawParams) error {
+func (r *InstanceResource) Withdraw(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params WithdrawParams) error {
 	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
 
-	if _, err := cqrs.Send[command.WithdrawInstanceCmd, cqrs.Unit](ctx.Context(), r.bus, command.WithdrawInstanceCmd{
+	if err := r.svc.WithdrawInstance(ctx.Context(), db, approval.WithdrawInstanceInput{
 		InstanceID: params.InstanceID,
 		Operator:   actor.Operator,
 		Reason:     params.Reason,
@@ -323,13 +318,13 @@ type ResubmitParams struct {
 }
 
 // Resubmit resubmits a returned instance.
-func (r *InstanceResource) Resubmit(ctx fiber.Ctx, principal *security.Principal, params ResubmitParams) error {
+func (r *InstanceResource) Resubmit(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params ResubmitParams) error {
 	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
 
-	if _, err := cqrs.Send[command.ResubmitInstanceCmd, cqrs.Unit](ctx.Context(), r.bus, command.ResubmitInstanceCmd{
+	if err := r.svc.ResubmitInstance(ctx.Context(), db, approval.ResubmitInstanceInput{
 		InstanceID: params.InstanceID,
 		Operator:   actor.Operator,
 		FormData:   params.FormData,
@@ -350,13 +345,13 @@ type AddCCParams struct {
 }
 
 // AddCC adds CC records for an instance.
-func (r *InstanceResource) AddCC(ctx fiber.Ctx, principal *security.Principal, params AddCCParams) error {
+func (r *InstanceResource) AddCC(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params AddCCParams) error {
 	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
 
-	if _, err := cqrs.Send[command.AddCCCmd, cqrs.Unit](ctx.Context(), r.bus, command.AddCCCmd{
+	if err := r.svc.AddCC(ctx.Context(), db, approval.AddCCInput{
 		InstanceID: params.InstanceID,
 		CCUserIDs:  params.CCUserIDs,
 		Operator:   actor.Operator,
@@ -376,13 +371,13 @@ type MarkCCReadParams struct {
 }
 
 // MarkCCRead marks CC records as read for the user.
-func (r *InstanceResource) MarkCCRead(ctx fiber.Ctx, principal *security.Principal, params MarkCCReadParams) error {
+func (r *InstanceResource) MarkCCRead(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params MarkCCReadParams) error {
 	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
 
-	if _, err := cqrs.Send[command.MarkCCReadCmd, cqrs.Unit](ctx.Context(), r.bus, command.MarkCCReadCmd{
+	if err := r.svc.MarkCCRead(ctx.Context(), db, approval.MarkCCReadInput{
 		InstanceID: params.InstanceID,
 		UserID:     principal.ID,
 		Caller:     caller,
@@ -403,13 +398,13 @@ type AddAssigneeParams struct {
 }
 
 // AddAssignee dynamically adds assignees to a task.
-func (r *InstanceResource) AddAssignee(ctx fiber.Ctx, principal *security.Principal, params AddAssigneeParams) error {
+func (r *InstanceResource) AddAssignee(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params AddAssigneeParams) error {
 	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
 
-	if _, err := cqrs.Send[command.AddAssigneeCmd, cqrs.Unit](ctx.Context(), r.bus, command.AddAssigneeCmd{
+	if err := r.svc.AddAssignee(ctx.Context(), db, approval.AddAssigneeInput{
 		TaskID:   params.TaskID,
 		UserIDs:  params.UserIDs,
 		AddType:  approval.AddAssigneeType(params.AddType),
@@ -430,13 +425,13 @@ type RemoveAssigneeParams struct {
 }
 
 // RemoveAssignee removes an assignee by canceling their task.
-func (r *InstanceResource) RemoveAssignee(ctx fiber.Ctx, principal *security.Principal, params RemoveAssigneeParams) error {
+func (r *InstanceResource) RemoveAssignee(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params RemoveAssigneeParams) error {
 	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
 
-	if _, err := cqrs.Send[command.RemoveAssigneeCmd, cqrs.Unit](ctx.Context(), r.bus, command.RemoveAssigneeCmd{
+	if err := r.svc.RemoveAssignee(ctx.Context(), db, approval.RemoveAssigneeInput{
 		TaskID:   params.TaskID,
 		Operator: actor.Operator,
 		Caller:   actor.Caller,
@@ -456,13 +451,13 @@ type UrgeTaskParams struct {
 }
 
 // UrgeTask sends an urge notification for a pending task.
-func (r *InstanceResource) UrgeTask(ctx fiber.Ctx, principal *security.Principal, params UrgeTaskParams) error {
+func (r *InstanceResource) UrgeTask(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params UrgeTaskParams) error {
 	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
 
-	if _, err := cqrs.Send[command.UrgeTaskCmd, cqrs.Unit](ctx.Context(), r.bus, command.UrgeTaskCmd{
+	if err := r.svc.UrgeTask(ctx.Context(), db, approval.UrgeTaskInput{
 		TaskID:  params.TaskID,
 		UrgerID: principal.ID,
 		Message: params.Message,

@@ -13,6 +13,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/facade"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/formeditor"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/migration"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
@@ -39,6 +40,7 @@ var Module = fx.Module(
 	service.Module,
 	storage.Module,
 	command.Module,
+	facade.Module,
 	query.Module,
 	resource.Module,
 	timeout.Module,
