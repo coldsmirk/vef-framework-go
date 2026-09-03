@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -176,7 +175,7 @@ func (s *RetryBusinessProjectionTestSuite) TestRetryNotFoundAndCrossTenantAreOpa
 		ProjectionID: "missing-projection",
 		Caller:       approval.CallerContext{TenantID: "tenant-1"},
 	})
-	s.Require().ErrorIs(err, shared.ErrBindingProjectionNotFound,
+	s.Require().ErrorIs(err, approval.ErrBindingProjectionNotFound,
 		"Missing projection should return the public not-found sentinel")
 
 	projection := s.insertProjection("tenant-2", "retry-cross-tenant", "order-2", config.ApprovalBindingEventual)
@@ -184,7 +183,7 @@ func (s *RetryBusinessProjectionTestSuite) TestRetryNotFoundAndCrossTenantAreOpa
 		ProjectionID: projection.ID,
 		Caller:       approval.CallerContext{TenantID: "tenant-1"},
 	})
-	s.Require().ErrorIs(err, shared.ErrBindingProjectionNotFound,
+	s.Require().ErrorIs(err, approval.ErrBindingProjectionNotFound,
 		"Cross-tenant projection should be hidden behind the same not-found sentinel")
 }
 

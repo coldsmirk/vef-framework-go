@@ -61,7 +61,7 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 	tenantID := lo.CoalesceOrEmpty(cmd.TenantID, approval.DefaultTenantID)
 
 	if err := cmd.Caller.Authorize(tenantID); err != nil {
-		return nil, shared.ErrFlowNotFound
+		return nil, approval.ErrFlowNotFound
 	}
 
 	if err := validateBindingMode(cmd.BindingMode); err != nil {
@@ -103,7 +103,7 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 	}
 
 	if exists {
-		return nil, shared.ErrFlowCodeExists
+		return nil, approval.ErrFlowCodeExists
 	}
 
 	flow := approval.Flow{

@@ -13,7 +13,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -179,7 +178,7 @@ func (s *AddCCTestSuite) TestAddCCManualNotAllowed() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Manual CC should be rejected when node disallows it")
-	s.Assert().ErrorIs(err, shared.ErrManualCcNotAllowed, "Should return ErrManualCcNotAllowed")
+	s.Assert().ErrorIs(err, approval.ErrManualCcNotAllowed, "Should return ErrManualCcNotAllowed")
 }
 
 func (s *AddCCTestSuite) TestAddCCInstanceNotFound() {
@@ -190,7 +189,7 @@ func (s *AddCCTestSuite) TestAddCCInstanceNotFound() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Adding CC to a missing instance should fail")
-	s.Assert().ErrorIs(err, shared.ErrInstanceNotFound, "Should return ErrInstanceNotFound")
+	s.Assert().ErrorIs(err, approval.ErrInstanceNotFound, "Should return ErrInstanceNotFound")
 }
 
 func (s *AddCCTestSuite) TestAddCCInstanceCompleted() {
@@ -213,7 +212,7 @@ func (s *AddCCTestSuite) TestAddCCInstanceCompleted() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Adding CC to a completed instance should fail")
-	s.Assert().ErrorIs(err, shared.ErrInstanceCompleted, "Should reject adding CC for completed instance")
+	s.Assert().ErrorIs(err, approval.ErrInstanceCompleted, "Should reject adding CC for completed instance")
 }
 
 func (s *AddCCTestSuite) TestAddCCCurrentNodeNotFound() {
@@ -323,7 +322,7 @@ func (s *AddCCTestSuite) TestAddCCShouldRejectUnauthorizedOperator() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Unauthorized operator should not add manual CC")
-	s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should return not-assignee error for unauthorized operator")
+	s.Assert().ErrorIs(err, approval.ErrNotAssignee, "Should return not-assignee error for unauthorized operator")
 }
 
 func (s *AddCCTestSuite) TestAddCCShouldAllowSameUserOnDifferentNodes() {

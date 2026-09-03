@@ -13,7 +13,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -140,7 +139,7 @@ func (s *WithdrawInstanceTestSuite) TestWithdrawNotApplicant() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestWithdrawNotApplicant should return an error")
-	s.Assert().ErrorIs(err, shared.ErrNotApplicant, "Should return ErrNotApplicant")
+	s.Assert().ErrorIs(err, approval.ErrNotApplicant, "Should return ErrNotApplicant")
 }
 
 func (s *WithdrawInstanceTestSuite) TestWithdrawNotAllowed() {
@@ -153,7 +152,7 @@ func (s *WithdrawInstanceTestSuite) TestWithdrawNotAllowed() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestWithdrawNotAllowed should return an error")
-	s.Assert().ErrorIs(err, shared.ErrWithdrawNotAllowed, "Should not allow withdrawal of approved instance")
+	s.Assert().ErrorIs(err, approval.ErrWithdrawNotAllowed, "Should not allow withdrawal of approved instance")
 }
 
 func (s *WithdrawInstanceTestSuite) TestWithdrawReturnedInstance() {
@@ -186,7 +185,7 @@ func (s *WithdrawInstanceTestSuite) TestWithdrawInstanceNotFound() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestWithdrawInstanceNotFound should return an error")
-	s.Assert().ErrorIs(err, shared.ErrInstanceNotFound, "Should return ErrInstanceNotFound")
+	s.Assert().ErrorIs(err, approval.ErrInstanceNotFound, "Should return ErrInstanceNotFound")
 }
 
 func (s *WithdrawInstanceTestSuite) TestWithdrawShouldBeConcurrencySafe() {
@@ -242,7 +241,7 @@ func (s *WithdrawInstanceTestSuite) TestWithdrawShouldBeConcurrencySafe() {
 			continue
 		}
 
-		if errors.Is(err, shared.ErrWithdrawNotAllowed) {
+		if errors.Is(err, approval.ErrWithdrawNotAllowed) {
 			notAllowedCount++
 		}
 	}

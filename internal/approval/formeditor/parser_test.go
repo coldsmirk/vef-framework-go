@@ -11,7 +11,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/formeditor"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 )
 
 // The golden fixtures under testdata/ are the shared TS/Go parity corpus: each
@@ -134,7 +133,7 @@ func TestParseFormFieldsErrors(t *testing.T) {
 
 			require.Error(t, err, "fixture %q must abort the deploy", name)
 			require.Nil(t, got, "fixture %q must project no fields on error", name)
-			require.ErrorIs(t, err, shared.ErrInvalidFormDesign, "fixture %q must surface as an invalid form design", name)
+			require.ErrorIs(t, err, approval.ErrInvalidFormDesign, "fixture %q must surface as an invalid form design", name)
 
 			for _, token := range tokens {
 				require.Contains(t, err.Error(), token, "fixture %q error must name %q", name, token)

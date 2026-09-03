@@ -11,7 +11,6 @@ import (
 	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/schema"
 )
 
@@ -32,14 +31,14 @@ func NewConfigValidator(schemas schema.Service) *ConfigValidator {
 func NormalizeConfig(mode approval.BindingMode, config *approval.BusinessBindingConfig) (*approval.BusinessBindingConfig, error) {
 	if mode != approval.BindingBusiness {
 		if config != nil {
-			return nil, shared.ErrBindingUnexpected
+			return nil, approval.ErrBindingUnexpected
 		}
 
 		return nil, nil
 	}
 
 	if config == nil {
-		return nil, shared.ErrBindingIncomplete
+		return nil, approval.ErrBindingIncomplete
 	}
 
 	normalized := &approval.BusinessBindingConfig{
@@ -60,13 +59,13 @@ func NormalizeConfig(mode approval.BindingMode, config *approval.BusinessBinding
 
 	if normalized.TableName == "" || len(normalized.KeyColumns) == 0 ||
 		normalized.StatusColumn == "" || normalized.InstanceIDColumn == nil {
-		return nil, shared.ErrBindingIncomplete
+		return nil, approval.ErrBindingIncomplete
 	}
 
 	for status, value := range normalized.StatusMapping {
 		trimmed := strings.TrimSpace(value)
 		if !isProjectableStatus(status) || trimmed == "" {
-			return nil, shared.ErrBindingStatusMappingInvalid
+			return nil, approval.ErrBindingStatusMappingInvalid
 		}
 
 		normalized.StatusMapping[status] = trimmed
@@ -79,14 +78,10 @@ func NormalizeConfig(mode approval.BindingMode, config *approval.BusinessBinding
 
 	for _, identifier := range identifiers {
 		if identifier == "" {
-			return nil, shared.ErrBindingIncomplete
+			return nil, approval.ErrBindingIncomplete
 		}
 
 		if err := approval.ValidateBusinessIdentifier(identifier); err != nil {
-			if errors.Is(err, approval.ErrInvalidBusinessIdentifier) {
-				return nil, shared.ErrInvalidBusinessIdentifier
-			}
-
 			return nil, err
 		}
 	}
@@ -94,7 +89,7 @@ func NormalizeConfig(mode approval.BindingMode, config *approval.BusinessBinding
 	seen := collections.NewHashSetWithCapacity[string](len(identifiers) - 1)
 	for _, column := range identifiers[1:] {
 		if !seen.Add(column) {
-			return nil, shared.ErrBindingColumnsConflict
+			return nil, approval.ErrBindingColumnsConflict
 		}
 	}
 
@@ -121,7 +116,7 @@ func (v *ConfigValidator) ValidateSchema(ctx context.Context, config *approval.B
 	table, err := v.schemas.GetTableSchema(ctx, config.TableName)
 	if err != nil {
 		if errors.Is(err, schema.ErrTableMissing) {
-			return shared.ErrBindingTableMissing(config.TableName)
+			return approval.ErrBindingTableMissing(config.TableName)
 		}
 
 		return fmt.Errorf("inspect business binding table %q: %w", config.TableName, err)
@@ -134,13 +129,13 @@ func (v *ConfigValidator) ValidateSchema(ctx context.Context, config *approval.B
 
 	for _, configured := range append(slices.Clone(config.KeyColumns), bindingWriteColumns(config)...) {
 		if _, ok := columns[configured]; !ok {
-			return shared.ErrBindingColumnMissing(configured)
+			return approval.ErrBindingColumnMissing(configured)
 		}
 	}
 
 	for _, keyColumn := range config.KeyColumns {
 		if columns[keyColumn].Nullable {
-			return shared.ErrBindingKeyNotUnique
+			return approval.ErrBindingKeyNotUnique
 		}
 	}
 
@@ -154,7 +149,7 @@ func (v *ConfigValidator) ValidateSchema(ctx context.Context, config *approval.B
 		}
 	}
 
-	return shared.ErrBindingKeyNotUnique
+	return approval.ErrBindingKeyNotUnique
 }
 
 func normalizeOptionalColumn(column *string) *string {

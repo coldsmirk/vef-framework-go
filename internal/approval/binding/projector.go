@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/hashx"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -58,7 +57,7 @@ func (p *Projector) Bind(
 	}
 
 	if instance.BusinessRef == nil || strings.TrimSpace(*instance.BusinessRef) == "" {
-		return shared.ErrBusinessRefRequired
+		return approval.ErrBusinessRefRequired
 	}
 
 	resolvedFlow := *flow
@@ -68,7 +67,7 @@ func (p *Projector) Bind(
 	recordKey, err := p.resolver.ResolveRecordKey(ctx, &resolvedFlow, *instance.BusinessRef)
 	if err != nil {
 		if errors.Is(err, ErrInvalidBusinessRef) {
-			return shared.ErrInvalidBusinessRef
+			return approval.ErrInvalidBusinessRef
 		}
 
 		return fmt.Errorf("resolve business ref for flow version %q: %w", version.ID, err)
@@ -77,7 +76,7 @@ func (p *Projector) Bind(
 	encodedKey, err := encodeRecordKey(binding, recordKey)
 	if err != nil {
 		if errors.Is(err, ErrInvalidBusinessRef) {
-			return shared.ErrInvalidBusinessRef
+			return approval.ErrInvalidBusinessRef
 		}
 
 		return err
@@ -241,7 +240,7 @@ func ensureOwnerCanBeSuperseded(ctx context.Context, db orm.DB, ownerInstanceID 
 	}
 
 	if !owner.Status.IsFinal() {
-		return shared.ErrBindingTargetBusy
+		return approval.ErrBindingTargetBusy
 	}
 
 	return nil

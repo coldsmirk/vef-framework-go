@@ -11,7 +11,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/formeditor"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -232,7 +231,7 @@ func (s *DeployFlowTestSuite) TestDeployFlowNotFound() {
 
 	_, err := s.handler.Handle(s.ctx, cmd)
 	s.Require().Error(err, "Should fail for non-existent flow")
-	s.Assert().ErrorIs(err, shared.ErrFlowNotFound, "Should return ErrFlowNotFound")
+	s.Assert().ErrorIs(err, approval.ErrFlowNotFound, "Should return ErrFlowNotFound")
 }
 
 func (s *DeployFlowTestSuite) TestDeployInvalidFlowDesign() {
@@ -254,7 +253,7 @@ func (s *DeployFlowTestSuite) TestDeployInvalidFlowDesign() {
 
 	_, err := s.handler.Handle(s.ctx, cmd)
 	s.Require().Error(err, "Should fail for invalid flow design")
-	s.Assert().ErrorIs(err, shared.ErrInvalidFlowDesign, "Should return ErrInvalidFlowDesign")
+	s.Assert().ErrorIs(err, approval.ErrInvalidFlowDesign, "Should return ErrInvalidFlowDesign")
 }
 
 func (s *DeployFlowTestSuite) TestDeployInvalidAddAssigneeTypeInNodeData() {
@@ -319,7 +318,7 @@ func (s *DeployFlowTestSuite) TestDeployRejectsDanglingFieldPermission() {
 
 	_, err := s.handler.Handle(s.ctx, cmd)
 	s.Require().Error(err, "Should fail when a field permission references an undefined form field")
-	s.Assert().ErrorIs(err, shared.ErrInvalidFlowDesign, "A dangling field permission must surface as invalid flow design")
+	s.Assert().ErrorIs(err, approval.ErrInvalidFlowDesign, "A dangling field permission must surface as invalid flow design")
 	s.Assert().ErrorContains(err, "ghost", "The error must name the dangling field key")
 
 	count, err := s.db.NewSelect().
@@ -530,7 +529,7 @@ func (s *DeployFlowTestSuite) TestDeployParserErrorAbortsDeploy() {
 		Caller:         approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when the form schema cannot be parsed")
-	s.Assert().ErrorIs(err, shared.ErrInvalidFormDesign, "Parser errors should surface as invalid form design")
+	s.Assert().ErrorIs(err, approval.ErrInvalidFormDesign, "Parser errors should surface as invalid form design")
 
 	// The built-in parser's specific message survives the wrap: a bare context
 	// wrap keeps it first, so the caller sees which field / widget was rejected.
@@ -559,7 +558,7 @@ func (s *DeployFlowTestSuite) TestDeployHostParserBareErrorWrapsAsInvalidFormDes
 		Caller:         approval.SystemCaller,
 	})
 	s.Require().Error(err, "A host parser failure must abort the deploy")
-	s.Assert().ErrorIs(err, shared.ErrInvalidFormDesign, "A bare parser error must be wrapped in the form-design sentinel")
+	s.Assert().ErrorIs(err, approval.ErrInvalidFormDesign, "A bare parser error must be wrapped in the form-design sentinel")
 
 	count, err := s.db.NewSelect().
 		Model((*approval.FlowVersion)(nil)).

@@ -11,7 +11,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -56,7 +55,7 @@ func NewDeployFlowHandler(db orm.DB, flowDefSvc *service.FlowDefinitionService, 
 
 // deriveFormFields runs the injected parser over the host schema and normalizes
 // its failure into a form-design outcome. The built-in parser's faults already
-// carry a result.Error (with shared.ErrCodeInvalidFormDesign), so a plain
+// carry a result.Error (with approval.ErrCodeInvalidFormDesign), so a plain
 // context wrap keeps that specific message first for the API caller. A host
 // parser may return a bare error with no result.Error; wrap it in the form-design
 // sentinel so it still surfaces as an invalid-form-design outcome, not a raw 500.
@@ -67,7 +66,7 @@ func (h *DeployFlowHandler) deriveFormFields(ctx context.Context, schema json.Ra
 			return nil, fmt.Errorf("parse form schema: %w", err)
 		}
 
-		return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFormDesign, err)
+		return nil, fmt.Errorf("%w: %w", approval.ErrInvalidFormDesign, err)
 	}
 
 	return fields, nil
@@ -89,14 +88,14 @@ func loadDeployFlow(
 		WherePK().
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
-			return approval.Flow{}, nil, shared.ErrFlowNotFound
+			return approval.Flow{}, nil, approval.ErrFlowNotFound
 		}
 
 		return approval.Flow{}, nil, fmt.Errorf("load flow: %w", err)
 	}
 
 	if err := caller.Authorize(flow.TenantID); err != nil {
-		return approval.Flow{}, nil, shared.ErrFlowNotFound
+		return approval.Flow{}, nil, approval.ErrFlowNotFound
 	}
 
 	businessBinding, err := binding.NormalizeConfig(flow.BindingMode, flow.BusinessBinding)
@@ -110,7 +109,7 @@ func loadDeployFlow(
 func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*approval.FlowVersion, error) {
 	parsedNodeData, err := h.flowDefSvc.ValidateFlowDefinition(&cmd.FlowDefinition)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFlowDesign, err)
+		return nil, fmt.Errorf("%w: %w", approval.ErrInvalidFlowDesign, err)
 	}
 
 	// Derive the flat field list from the host-owned designer document; the
@@ -121,26 +120,26 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 	}
 
 	if err := h.flowDefSvc.ValidateFormFields(fields); err != nil {
-		return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFormDesign, err)
+		return nil, fmt.Errorf("%w: %w", approval.ErrInvalidFormDesign, err)
 	}
 
 	// Aggregate conditions reference form fields, so they can only be fully
 	// validated where the flow definition and form fields meet.
 	if err := h.flowDefSvc.ValidateConditionAggregates(parsedNodeData, fields); err != nil {
-		return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFlowDesign, err)
+		return nil, fmt.Errorf("%w: %w", approval.ErrInvalidFlowDesign, err)
 	}
 
 	// Field permissions reference form fields the same way aggregate
 	// conditions do, so they are validated at the same point.
 	if err := h.flowDefSvc.ValidateFieldPermissions(parsedNodeData, fields); err != nil {
-		return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFlowDesign, err)
+		return nil, fmt.Errorf("%w: %w", approval.ErrInvalidFlowDesign, err)
 	}
 
 	// An omitted storage mode resolves to the JSON default (the displayed
 	// designer default); any other unrecognized value is a client error.
 	storageMode := cmp.Or(cmd.StorageMode, approval.StorageJSON)
 	if !storageMode.IsValid() {
-		return nil, shared.ErrInvalidStorageMode
+		return nil, approval.ErrInvalidStorageMode
 	}
 
 	// In table mode every form field key becomes a physical column, so reject a
@@ -149,7 +148,7 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 	// deferring the failure to publish, where it would surface opaquely.
 	if storageMode == approval.StorageTable {
 		if err := storage.ValidateTableFormSchema(fields); err != nil {
-			return nil, fmt.Errorf("%w: %w", shared.ErrInvalidFormDesign, err)
+			return nil, fmt.Errorf("%w: %w", approval.ErrInvalidFormDesign, err)
 		}
 	}
 
@@ -270,12 +269,12 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 	for _, edgeDef := range cmd.FlowDefinition.Edges {
 		sourceID, ok := nodeKeyToID[edgeDef.Source]
 		if !ok {
-			return nil, fmt.Errorf("%w: unknown source node key %q", shared.ErrInvalidFlowDesign, edgeDef.Source)
+			return nil, fmt.Errorf("%w: unknown source node key %q", approval.ErrInvalidFlowDesign, edgeDef.Source)
 		}
 
 		targetID, ok := nodeKeyToID[edgeDef.Target]
 		if !ok {
-			return nil, fmt.Errorf("%w: unknown target node key %q", shared.ErrInvalidFlowDesign, edgeDef.Target)
+			return nil, fmt.Errorf("%w: unknown target node key %q", approval.ErrInvalidFlowDesign, edgeDef.Target)
 		}
 
 		edges = append(edges, approval.FlowEdge{

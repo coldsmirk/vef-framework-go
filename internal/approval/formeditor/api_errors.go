@@ -3,19 +3,18 @@ package formeditor
 import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/i18n"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // Projection faults surface to the deploy API caller. They are all "invalid
-// form design" outcomes, so they reuse shared.ErrCodeInvalidFormDesign (and
-// therefore match shared.ErrInvalidFormDesign under errors.Is) while carrying a
+// form design" outcomes, so they reuse approval.ErrCodeInvalidFormDesign (and
+// therefore match approval.ErrInvalidFormDesign under errors.Is) while carrying a
 // specific i18n message that names the offending field key / widget type. Each
 // i18n key is used in exactly one factory, so the key strings are inlined per
 // the module convention rather than promoted to ErrMessage constants.
 
 func projectionError(message string) error {
-	return result.Err(message, result.WithCode(shared.ErrCodeInvalidFormDesign))
+	return result.Err(message, result.WithCode(approval.ErrCodeInvalidFormDesign))
 }
 
 // errUnmappableFieldType rejects a keyed widget whose value shape the approval

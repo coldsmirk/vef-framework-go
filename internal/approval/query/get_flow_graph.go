@@ -53,7 +53,7 @@ func (h *GetFlowGraphHandler) Handle(ctx context.Context, query GetFlowGraphQuer
 		}).
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
-			return nil, shared.ErrFlowNotFound
+			return nil, approval.ErrFlowNotFound
 		}
 
 		return nil, fmt.Errorf("query flow: %w", err)
@@ -63,7 +63,7 @@ func (h *GetFlowGraphHandler) Handle(ctx context.Context, query GetFlowGraphQuer
 		// Indistinguishable from "no such flow" on purpose — see opaque
 		// response policy for query handlers (avoids cross-tenant
 		// existence probing).
-		return nil, shared.ErrFlowNotFound
+		return nil, approval.ErrFlowNotFound
 	}
 
 	var version approval.FlowVersion
@@ -76,7 +76,7 @@ func (h *GetFlowGraphHandler) Handle(ctx context.Context, query GetFlowGraphQuer
 			WherePK().
 			Scan(ctx); err != nil {
 			if result.IsRecordNotFound(err) {
-				return nil, shared.ErrVersionNotFound
+				return nil, approval.ErrVersionNotFound
 			}
 
 			return nil, fmt.Errorf("query version: %w", err)
@@ -85,7 +85,7 @@ func (h *GetFlowGraphHandler) Handle(ctx context.Context, query GetFlowGraphQuer
 		// A version id under a different flow is indistinguishable from a
 		// missing one, so a caller cannot probe versions across flows.
 		if version.FlowID != flow.ID {
-			return nil, shared.ErrVersionNotFound
+			return nil, approval.ErrVersionNotFound
 		}
 	} else if err := db.NewSelect().
 		Model(&version).
@@ -97,7 +97,7 @@ func (h *GetFlowGraphHandler) Handle(ctx context.Context, query GetFlowGraphQuer
 		Limit(1).
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
-			return nil, shared.ErrNoPublishedVersion
+			return nil, approval.ErrNoPublishedVersion
 		}
 
 		return nil, fmt.Errorf("query published version: %w", err)

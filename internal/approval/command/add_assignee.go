@@ -56,15 +56,15 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	node := tc.Node
 
 	if !node.IsAddAssigneeAllowed {
-		return cqrs.Unit{}, shared.ErrAddAssigneeNotAllowed
+		return cqrs.Unit{}, approval.ErrAddAssigneeNotAllowed
 	}
 
 	if !cmd.AddType.IsValid() {
-		return cqrs.Unit{}, shared.ErrInvalidAddAssigneeType
+		return cqrs.Unit{}, approval.ErrInvalidAddAssigneeType
 	}
 
 	if len(node.AddAssigneeTypes) > 0 && !slices.Contains(node.AddAssigneeTypes, cmd.AddType) {
-		return cqrs.Unit{}, shared.ErrInvalidAddAssigneeType
+		return cqrs.Unit{}, approval.ErrInvalidAddAssigneeType
 	}
 
 	sequential := node.ApprovalMethod == approval.ApprovalSequential
@@ -74,12 +74,12 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	// refuses to configure the type; this guards the empty-config default
 	// that allows every type.
 	if sequential && cmd.AddType == approval.AddAssigneeParallel {
-		return cqrs.Unit{}, shared.ErrInvalidAddAssigneeType
+		return cqrs.Unit{}, approval.ErrInvalidAddAssigneeType
 	}
 
 	userIDs := shared.NormalizeUniqueIDs(cmd.UserIDs)
 	if len(userIDs) == 0 {
-		return cqrs.Unit{}, shared.ErrNoUsersSpecified
+		return cqrs.Unit{}, approval.ErrNoUsersSpecified
 	}
 
 	var nodeTasks []approval.Task

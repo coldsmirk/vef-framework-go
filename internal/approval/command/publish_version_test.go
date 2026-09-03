@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/formeditor"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -158,7 +157,7 @@ func (s *PublishVersionTestSuite) TestPublishVersionNotFound() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail for non-existent version")
-	s.Assert().ErrorIs(err, shared.ErrVersionNotFound, "Should return ErrVersionNotFound")
+	s.Assert().ErrorIs(err, approval.ErrVersionNotFound, "Should return ErrVersionNotFound")
 }
 
 func (s *PublishVersionTestSuite) TestPublishAlreadyPublished() {
@@ -179,7 +178,7 @@ func (s *PublishVersionTestSuite) TestPublishAlreadyPublished() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail for already published version")
-	s.Assert().ErrorIs(err, shared.ErrVersionNotDraft, "Should return ErrVersionNotDraft")
+	s.Assert().ErrorIs(err, approval.ErrVersionNotDraft, "Should return ErrVersionNotDraft")
 }
 
 func (s *PublishVersionTestSuite) TestPublishUpdatesFlowCurrentVersion() {

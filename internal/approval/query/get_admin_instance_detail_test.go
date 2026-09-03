@@ -8,7 +8,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -211,5 +210,5 @@ func (s *GetAdminInstanceDetailTestSuite) TestNotFound() {
 		InstanceID: "non-existent-instance",
 		Caller:     approval.SystemCaller,
 	})
-	s.Require().ErrorIs(err, shared.ErrInstanceNotFound, "Should return instance-not-found error")
+	s.Require().ErrorIs(err, approval.ErrInstanceNotFound, "Should return instance-not-found error")
 }

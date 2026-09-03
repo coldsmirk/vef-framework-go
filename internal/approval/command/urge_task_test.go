@@ -11,7 +11,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -138,7 +137,7 @@ func (s *UrgeTaskTestSuite) TestUrgeCooldown() {
 
 	var re result.Error
 	s.Require().ErrorAs(err, &re, "Should be a result.Error")
-	s.Assert().Equal(shared.ErrCodeUrgeCooldown, re.Code, "Should return ErrCodeUrgeCooldown")
+	s.Assert().Equal(approval.ErrCodeUrgeCooldown, re.Code, "Should return ErrCodeUrgeCooldown")
 }
 
 func (s *UrgeTaskTestSuite) TestUrgeTaskNotFound() {
@@ -148,7 +147,7 @@ func (s *UrgeTaskTestSuite) TestUrgeTaskNotFound() {
 		Caller:  approval.SystemCaller,
 	})
 	s.Require().Error(err, "Urging a missing task should fail")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return ErrTaskNotFound")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotFound, "Should return ErrTaskNotFound")
 }
 
 func (s *UrgeTaskTestSuite) TestUrgeShouldDenyNonParticipant() {
@@ -160,7 +159,7 @@ func (s *UrgeTaskTestSuite) TestUrgeShouldDenyNonParticipant() {
 		Caller:  approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should reject non-participant urge request")
-	s.Assert().ErrorIs(err, shared.ErrAccessDenied, "Should return access denied for non-participant")
+	s.Assert().ErrorIs(err, approval.ErrAccessDenied, "Should return access denied for non-participant")
 }
 
 func (s *UrgeTaskTestSuite) TestUrgeCooldownShouldBeConcurrencySafe() {
@@ -217,7 +216,7 @@ func (s *UrgeTaskTestSuite) TestUrgeCooldownShouldBeConcurrencySafe() {
 
 		var re result.Error
 		if s.ErrorAs(err, &re, "Failed urge should return result.Error") {
-			if re.Code == shared.ErrCodeUrgeCooldown {
+			if re.Code == approval.ErrCodeUrgeCooldown {
 				cooldownCount++
 			}
 		}

@@ -139,7 +139,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowLabels() {
 		}
 
 		_, err := s.handler.Handle(s.ctx, cmd)
-		s.Require().ErrorIs(err, shared.ErrInvalidFlowLabel,
+		s.Require().ErrorIs(err, approval.ErrInvalidFlowLabel,
 			"A dotted label key must be rejected at save time — it would silently escape the label filter")
 	})
 }
@@ -180,7 +180,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowDuplicateCode() {
 	cmd.Name = "Second Flow"
 	_, err = s.handler.Handle(s.ctx, cmd)
 	s.Require().Error(err, "Should reject duplicate code")
-	s.Assert().ErrorIs(err, shared.ErrFlowCodeExists, "Should return ErrFlowCodeExists")
+	s.Assert().ErrorIs(err, approval.ErrFlowCodeExists, "Should return ErrFlowCodeExists")
 }
 
 func (s *CreateFlowTestSuite) TestCreateFlowWithInitiators() {
@@ -269,7 +269,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingIncomplete() {
 		Caller:                approval.SystemCaller,
 	})
 	s.Require().Error(err, "An incomplete business binding should be rejected")
-	s.Assert().ErrorIs(err, shared.ErrBindingIncomplete)
+	s.Assert().ErrorIs(err, approval.ErrBindingIncomplete)
 }
 
 func (s *CreateFlowTestSuite) TestCreateFlowLinkageColumns() {
@@ -329,7 +329,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowLinkageColumns() {
 
 		_, err := s.handler.Handle(s.ctx, cmd)
 		s.Require().Error(err, "An unsafe optional identifier must be rejected")
-		s.Assert().ErrorIs(err, shared.ErrInvalidBusinessIdentifier, "Optional columns share the SQL-identifier whitelist")
+		s.Assert().ErrorIs(err, approval.ErrInvalidBusinessIdentifier, "Optional columns share the SQL-identifier whitelist")
 	})
 
 	s.Run("RejectsDuplicateWriteColumns", func() {
@@ -340,7 +340,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowLinkageColumns() {
 
 		_, err := s.handler.Handle(s.ctx, cmd)
 		s.Require().Error(err, "Two binding fields naming the same column must be rejected")
-		s.Assert().ErrorIs(err, shared.ErrBindingColumnsConflict, "Duplicate write columns would render SET col = ?, col = ?")
+		s.Assert().ErrorIs(err, approval.ErrBindingColumnsConflict, "Duplicate write columns would render SET col = ?, col = ?")
 	})
 }
 
@@ -373,7 +373,7 @@ func (s *CreateFlowTestSuite) TestInitiatorPolicyIsExclusive() {
 
 		_, err := s.handler.Handle(s.ctx, cmd)
 		s.Require().Error(err, "Rules on an open flow must be rejected")
-		s.Assert().ErrorIs(err, shared.ErrInitiatorsNotAllowed,
+		s.Assert().ErrorIs(err, approval.ErrInitiatorsNotAllowed,
 			"The rejection must name the exclusivity rule")
 	})
 
@@ -383,7 +383,7 @@ func (s *CreateFlowTestSuite) TestInitiatorPolicyIsExclusive() {
 
 		_, err := s.handler.Handle(s.ctx, cmd)
 		s.Require().Error(err, "A restricted flow with no rules must be rejected")
-		s.Assert().ErrorIs(err, shared.ErrInitiatorsRequired,
+		s.Assert().ErrorIs(err, approval.ErrInitiatorsRequired,
 			"The rejection must name the missing rules")
 	})
 
@@ -400,7 +400,7 @@ func (s *CreateFlowTestSuite) TestInitiatorPolicyIsExclusive() {
 
 		_, err := s.handler.Handle(s.ctx, cmd)
 		s.Require().Error(err, "A rule selecting nobody must be rejected")
-		s.Assert().ErrorIs(err, shared.ErrInitiatorsRequired,
+		s.Assert().ErrorIs(err, approval.ErrInitiatorsRequired,
 			"An empty rule names nobody, so it fails the same requirement as no rules")
 	})
 

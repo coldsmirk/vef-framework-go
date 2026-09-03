@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -280,7 +279,7 @@ func TestWriterWriteBack(t *testing.T) {
 
 		err := writer.WriteBack(t.Context(), nil, flow, newBoundInstance("ord-1", approval.InstanceApproved), approval.BindingTriggerCompleted)
 		require.ErrorIs(t, err, ErrBindingMisconfigured, "Unsafe identifiers must be rejected before interpolation")
-		assert.ErrorIs(t, err, shared.ErrInvalidBusinessIdentifier, "The API-safe identifier error should be preserved in the chain")
+		assert.ErrorIs(t, err, approval.ErrInvalidBusinessIdentifier, "The API-safe identifier error should be preserved in the chain")
 	})
 
 	t.Run("RejectsUnsafeOptionalIdentifiers", func(t *testing.T) {
@@ -289,7 +288,7 @@ func TestWriterWriteBack(t *testing.T) {
 
 		err := writer.WriteBack(t.Context(), nil, flow, newBoundInstance("ord-1", approval.InstanceRunning), approval.BindingTriggerStarted)
 		require.ErrorIs(t, err, ErrBindingMisconfigured, "Optional linkage columns must pass the same identifier whitelist")
-		assert.ErrorIs(t, err, shared.ErrInvalidBusinessIdentifier, "The API-safe identifier error should be preserved in the chain")
+		assert.ErrorIs(t, err, approval.ErrInvalidBusinessIdentifier, "The API-safe identifier error should be preserved in the chain")
 	})
 
 	t.Run("StartedProjectsConfiguredColumns", func(t *testing.T) {

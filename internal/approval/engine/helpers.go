@@ -385,11 +385,11 @@ func taskCreatedEventsFor(pc *ProcessContext, tasks []*approval.Task) []approval
 // createTasksForUsers creates pending tasks for a list of user IDs with sortOrder=0.
 // User names are resolved via pc.UserResolver. Returns a Wait result whose
 // Events field carries one TaskCreatedEvent per inserted task, or
-// shared.ErrNoAssignee if the list is empty.
+// approval.ErrNoAssignee if the list is empty.
 func createTasksForUsers(ctx context.Context, pc *ProcessContext, userIDs []string) (*ProcessResult, error) {
 	normalizedIDs := shared.NormalizeUniqueIDs(userIDs)
 	if len(normalizedIDs) == 0 {
-		return nil, shared.ErrNoAssignee
+		return nil, approval.ErrNoAssignee
 	}
 
 	infos, err := shared.ResolveUserInfoMap(ctx, pc.UserResolver, normalizedIDs)
@@ -437,13 +437,13 @@ func handleEmptyAssignee(ctx context.Context, pc *ProcessContext, assigneeServic
 		}
 
 		if superiorInfo == nil || superiorInfo.ID == "" {
-			return nil, shared.ErrNoAssignee
+			return nil, approval.ErrNoAssignee
 		}
 
 		return createTasksForUsers(ctx, pc, []string{superiorInfo.ID})
 
 	default:
-		return nil, shared.ErrNoAssignee
+		return nil, approval.ErrNoAssignee
 	}
 }
 

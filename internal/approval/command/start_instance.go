@@ -16,7 +16,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -91,7 +90,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		}).
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
-			return nil, shared.ErrFlowNotFound
+			return nil, approval.ErrFlowNotFound
 		}
 
 		return nil, fmt.Errorf("load flow: %w", err)
@@ -102,11 +101,11 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	// CrossTenantAccess) so a probing caller cannot distinguish "no such
 	// flow in your tenant" from "exists but belongs to another tenant".
 	if !cmd.Caller.Allows(flow.TenantID) {
-		return nil, shared.ErrFlowNotFound
+		return nil, approval.ErrFlowNotFound
 	}
 
 	if !flow.IsActive {
-		return nil, shared.ErrFlowNotActive
+		return nil, approval.ErrFlowNotActive
 	}
 
 	if !flow.IsAllInitiationAllowed {
@@ -116,7 +115,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		}
 
 		if !allowed {
-			return nil, shared.ErrNotAllowedInitiate
+			return nil, approval.ErrNotAllowedInitiate
 		}
 	}
 
@@ -129,7 +128,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		}).
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
-			return nil, shared.ErrNoPublishedVersion
+			return nil, approval.ErrNoPublishedVersion
 		}
 
 		return nil, fmt.Errorf("load published version: %w", err)

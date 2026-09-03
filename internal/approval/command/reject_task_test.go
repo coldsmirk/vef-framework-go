@@ -8,7 +8,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -105,7 +104,7 @@ func (s *RejectTaskTestSuite) TestRejectTaskNotFound() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestRejectTaskNotFound should return an error")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return expected error")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotFound, "Should return expected error")
 }
 
 func (s *RejectTaskTestSuite) TestRejectNotAssignee() {
@@ -118,7 +117,7 @@ func (s *RejectTaskTestSuite) TestRejectNotAssignee() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestRejectNotAssignee should return an error")
-	s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should return expected error")
+	s.Assert().ErrorIs(err, approval.ErrNotAssignee, "Should return expected error")
 }
 
 func (s *RejectTaskTestSuite) TestRejectTaskNotCurrentNode() {
@@ -148,7 +147,7 @@ func (s *RejectTaskTestSuite) TestRejectTaskNotCurrentNode() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when rejecting a task not in current node")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should return task not pending for stale node task")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotPending, "Should return task not pending for stale node task")
 }
 
 // TestRejectEnforcesFormDataSizeCap proves the form-data size cap is enforced on
@@ -205,7 +204,7 @@ func (s *RejectTaskTestSuite) TestRejectEnforcesFormDataSizeCap() {
 		FormData: map[string]any{"blob": strings.Repeat("x", 70*1024)},
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().ErrorIs(err, shared.ErrFormDataTooLarge, "Reject must enforce the form-data size cap via PrepareOperation")
+	s.Require().ErrorIs(err, approval.ErrFormDataTooLarge, "Reject must enforce the form-data size cap via PrepareOperation")
 
 	var reloaded approval.Task
 
@@ -263,7 +262,7 @@ func (s *RejectTaskTestSuite) TestRejectRejectsInvalidEditableValue() {
 
 	var re result.Error
 	s.Require().ErrorAs(err, &re, "an editable value below its schema minimum must fail reject")
-	s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "should be a form validation error")
+	s.Assert().Equal(approval.ErrCodeFormValidationFailed, re.Code, "should be a form validation error")
 
 	var reloaded approval.Task
 

@@ -71,12 +71,12 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 	instance, task, node := tc.Instance, tc.Task, tc.Node
 
 	if !node.IsTransferAllowed {
-		return cqrs.Unit{}, shared.ErrTransferNotAllowed
+		return cqrs.Unit{}, approval.ErrTransferNotAllowed
 	}
 
 	transferToID := strings.TrimSpace(cmd.TransferToID)
 	if transferToID == "" || transferToID == task.AssigneeID {
-		return cqrs.Unit{}, shared.ErrInvalidTransferTarget
+		return cqrs.Unit{}, approval.ErrInvalidTransferTarget
 	}
 
 	duplicate, err := hasActiveTaskForAssignee(ctx, db, instance.ID, task.NodeID, transferToID)
@@ -85,7 +85,7 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 	}
 
 	if duplicate {
-		return cqrs.Unit{}, shared.ErrInvalidTransferTarget
+		return cqrs.Unit{}, approval.ErrInvalidTransferTarget
 	}
 
 	if err := h.taskSvc.FinishTask(ctx, db, task, approval.TaskTransferred); err != nil {

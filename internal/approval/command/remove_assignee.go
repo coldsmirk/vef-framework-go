@@ -8,7 +8,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -58,7 +57,7 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 	node := tc.Node
 
 	if !node.IsRemoveAssigneeAllowed {
-		return cqrs.Unit{}, shared.ErrRemoveAssigneeNotAllowed
+		return cqrs.Unit{}, approval.ErrRemoveAssigneeNotAllowed
 	}
 
 	authorized, err := h.taskSvc.IsAuthorizedForNodeOperation(ctx, db, task.InstanceID, task.NodeID, cmd.Operator.ID)
@@ -67,7 +66,7 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 	}
 
 	if !authorized {
-		return cqrs.Unit{}, shared.ErrNotAssignee
+		return cqrs.Unit{}, approval.ErrNotAssignee
 	}
 
 	canRemove, err := h.taskSvc.CanRemoveAssigneeTask(ctx, db, h.engine, node, *task)
@@ -76,7 +75,7 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 	}
 
 	if !canRemove {
-		return cqrs.Unit{}, shared.ErrLastAssigneeRemoval
+		return cqrs.Unit{}, approval.ErrLastAssigneeRemoval
 	}
 
 	if err := h.taskSvc.FinishTask(ctx, db, task, approval.TaskRemoved); err != nil {

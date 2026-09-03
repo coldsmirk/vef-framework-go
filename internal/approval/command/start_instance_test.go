@@ -14,7 +14,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -120,7 +119,7 @@ func (s *StartInstanceTestSuite) TestStartFlowNotFound() {
 		Caller:    approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestStartFlowNotFound should return an error")
-	s.Assert().ErrorIs(err, shared.ErrFlowNotFound, "Should return expected error")
+	s.Assert().ErrorIs(err, approval.ErrFlowNotFound, "Should return expected error")
 }
 
 func (s *StartInstanceTestSuite) TestStartFlowNotActive() {
@@ -147,7 +146,7 @@ func (s *StartInstanceTestSuite) TestStartFlowNotActive() {
 		Caller:    approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestStartFlowNotActive should return an error")
-	s.Assert().ErrorIs(err, shared.ErrFlowNotActive, "Should return expected error")
+	s.Assert().ErrorIs(err, approval.ErrFlowNotActive, "Should return expected error")
 }
 
 func (s *StartInstanceTestSuite) TestStartWithFormData() {
@@ -220,7 +219,7 @@ func (s *StartInstanceTestSuite) TestStartShouldRejectInvalidFormDataBySchema() 
 
 	var re result.Error
 	require.ErrorAs(s.T(), err, &re, "Should return business error")
-	s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
+	s.Assert().Equal(approval.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
 }
 
 // businessBindingForTable builds a complete business binding — full
@@ -438,7 +437,7 @@ func (s *StartInstanceTestSuite) TestBusinessTargetOwnershipAndStaleInstanceFenc
 
 		return startErr
 	})
-	s.Require().ErrorIs(err, shared.ErrBindingTargetBusy,
+	s.Require().ErrorIs(err, approval.ErrBindingTargetBusy,
 		"A non-final owner should block another approval for the same business record")
 
 	count, err := s.db.NewSelect().Model((*approval.Instance)(nil)).

@@ -7,7 +7,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -40,14 +39,14 @@ func (h *ToggleFlowActiveHandler) Handle(ctx context.Context, cmd ToggleFlowActi
 	flow.ID = cmd.FlowID
 	if err := db.NewSelect().Model(&flow).Select("tenant_id", "code", "name").WherePK().Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
-			return cqrs.Unit{}, shared.ErrFlowNotFound
+			return cqrs.Unit{}, approval.ErrFlowNotFound
 		}
 
 		return cqrs.Unit{}, fmt.Errorf("load flow: %w", err)
 	}
 
 	if err := cmd.Caller.Authorize(flow.TenantID); err != nil {
-		return cqrs.Unit{}, shared.ErrFlowNotFound
+		return cqrs.Unit{}, approval.ErrFlowNotFound
 	}
 
 	updateResult, err := db.NewUpdate().
@@ -67,7 +66,7 @@ func (h *ToggleFlowActiveHandler) Handle(ctx context.Context, cmd ToggleFlowActi
 	}
 
 	if affected == 0 {
-		return cqrs.Unit{}, shared.ErrFlowNotFound
+		return cqrs.Unit{}, approval.ErrFlowNotFound
 	}
 
 	behavior.EventCollectorFromContext(ctx).Add(

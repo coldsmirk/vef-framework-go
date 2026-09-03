@@ -8,7 +8,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -75,7 +74,7 @@ func (s *TaskServiceTestSuite) TestFinishTask() {
 	s.Run("InvalidTransition", func() {
 		task := insertTask(s.T(), s.ctx, s.db, s.fixture, approval.TaskApproved)
 		err := s.svc.FinishTask(s.ctx, s.db, task, approval.TaskPending)
-		s.Assert().ErrorIs(err, shared.ErrInvalidTaskTransition, "Should reject invalid transition")
+		s.Assert().ErrorIs(err, approval.ErrInvalidTaskTransition, "Should reject invalid transition")
 	})
 
 	s.Run("StaleTaskStatusShouldFail", func() {
@@ -89,7 +88,7 @@ func (s *TaskServiceTestSuite) TestFinishTask() {
 		s.Require().NoError(err, "Should update task status directly in DB")
 
 		err = s.svc.FinishTask(s.ctx, s.db, task, approval.TaskRejected)
-		s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject stale in-memory task status")
+		s.Assert().ErrorIs(err, approval.ErrTaskNotPending, "Should reject stale in-memory task status")
 	})
 }
 
@@ -344,28 +343,28 @@ func (s *TaskServiceTestSuite) TestPrepareOperation() {
 
 	s.Run("TaskNotFound", func() {
 		_, err := s.svc.PrepareOperation(s.ctx, s.db, "non-existent", approval.UserInfo{ID: "op-user-1"}, approval.SystemCaller, nil)
-		s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return task not found for missing task ID")
+		s.Assert().ErrorIs(err, approval.ErrTaskNotFound, "Should return task not found for missing task ID")
 	})
 
 	s.Run("InstanceCompleted", func() {
 		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceApproved, approval.TaskPending, "op-user-2")
 
 		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "op-user-2"}, approval.SystemCaller, nil)
-		s.Assert().ErrorIs(err, shared.ErrInstanceCompleted, "Should reject operation on completed instance")
+		s.Assert().ErrorIs(err, approval.ErrInstanceCompleted, "Should reject operation on completed instance")
 	})
 
 	s.Run("NotAssignee", func() {
 		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "op-user-3")
 
 		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "wrong-user"}, approval.SystemCaller, nil)
-		s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should reject non-assignee operator")
+		s.Assert().ErrorIs(err, approval.ErrNotAssignee, "Should reject non-assignee operator")
 	})
 
 	s.Run("TaskNotPending", func() {
 		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskApproved, "op-user-4")
 
 		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "op-user-4"}, approval.SystemCaller, nil)
-		s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject non-pending task")
+		s.Assert().ErrorIs(err, approval.ErrTaskNotPending, "Should reject non-pending task")
 	})
 
 	s.Run("TaskNotCurrentNode", func() {
@@ -390,7 +389,7 @@ func (s *TaskServiceTestSuite) TestPrepareOperation() {
 		s.Require().NoError(err, "Should move instance current node away from task node")
 
 		_, err = s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "op-user-5"}, approval.SystemCaller, nil)
-		s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject operations on tasks outside current node")
+		s.Assert().ErrorIs(err, approval.ErrTaskNotPending, "Should reject operations on tasks outside current node")
 	})
 }
 
@@ -460,7 +459,7 @@ func (s *TaskServiceTestSuite) TestPrepareOperationFormValidation() {
 
 		var re result.Error
 		s.Require().ErrorAs(err, &re, "an editable value violating its schema rule must be rejected")
-		s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "should carry the form validation error code")
+		s.Assert().Equal(approval.ErrCodeFormValidationFailed, re.Code, "should carry the form validation error code")
 	})
 
 	s.Run("IgnoresInvalidNonEditableValue", func() {
@@ -481,7 +480,7 @@ func (s *TaskServiceTestSuite) TestPrepareOperationFormValidation() {
 
 		var re result.Error
 		s.Require().ErrorAs(err, &re, "an editable key with no schema field must be rejected")
-		s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "should carry the form validation error code")
+		s.Assert().Equal(approval.ErrCodeFormValidationFailed, re.Code, "should carry the form validation error code")
 	})
 
 	s.Run("AllowsEmptyEditableValue", func() {
@@ -523,7 +522,7 @@ func (s *TaskServiceTestSuite) TestLoadTaskContextForNodeOperation() {
 			RequireCurrentNode:      true,
 			Caller:                  approval.SystemCaller,
 		})
-		s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should reject non-assignee when assignee constraint is enabled")
+		s.Assert().ErrorIs(err, approval.ErrNotAssignee, "Should reject non-assignee when assignee constraint is enabled")
 	})
 }
 

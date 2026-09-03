@@ -169,7 +169,7 @@ func (p *ApprovalProcessor) resolveSuperiorSeat(ctx context.Context, pc *Process
 	}
 
 	if superiorInfo == nil || superiorInfo.ID == "" {
-		return approval.ResolvedAssignee{}, shared.ErrNoAssignee
+		return approval.ResolvedAssignee{}, approval.ErrNoAssignee
 	}
 
 	infos, err := shared.ResolveUserInfoMap(ctx, pc.UserResolver, []string{superiorInfo.ID})

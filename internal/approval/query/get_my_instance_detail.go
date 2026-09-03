@@ -49,7 +49,7 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 	}
 
 	if !isParticipant {
-		return nil, shared.ErrAccessDenied
+		return nil, approval.ErrAccessDenied
 	}
 
 	// Build DTO.

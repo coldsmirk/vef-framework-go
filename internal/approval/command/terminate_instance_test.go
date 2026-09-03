@@ -12,7 +12,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -141,7 +140,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateInstanceNotFound() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestTerminateInstanceNotFound should return an error")
-	s.Assert().ErrorIs(err, shared.ErrInstanceNotFound, "Should return ErrInstanceNotFound")
+	s.Assert().ErrorIs(err, approval.ErrInstanceNotFound, "Should return ErrInstanceNotFound")
 }
 
 func (s *TerminateInstanceTestSuite) TestTerminatePausedInstances() {
@@ -180,7 +179,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateAlreadyCompleted() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestTerminateAlreadyCompleted should return an error")
-	s.Assert().ErrorIs(err, shared.ErrTerminateNotAllowed, "Should not allow terminating approved instance")
+	s.Assert().ErrorIs(err, approval.ErrTerminateNotAllowed, "Should not allow terminating approved instance")
 }
 
 func (s *TerminateInstanceTestSuite) TestSynchronousProjectionFailureRollsBackFinalStatus() {
@@ -264,5 +263,5 @@ func (s *TerminateInstanceTestSuite) TestTerminateAlreadyTerminated() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestTerminateAlreadyTerminated should return an error")
-	s.Assert().ErrorIs(err, shared.ErrTerminateNotAllowed, "Should not allow terminating already terminated instance")
+	s.Assert().ErrorIs(err, approval.ErrTerminateNotAllowed, "Should not allow terminating already terminated instance")
 }

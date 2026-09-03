@@ -7,7 +7,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/admin"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/page"
@@ -48,7 +47,7 @@ func (h *FindAdminActionLogsHandler) Handle(ctx context.Context, query FindAdmin
 		}
 
 		if !exists {
-			return nil, shared.ErrInstanceNotFound
+			return nil, approval.ErrInstanceNotFound
 		}
 	}
 

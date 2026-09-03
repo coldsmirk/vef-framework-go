@@ -7,7 +7,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -58,14 +57,14 @@ func (*InstanceService) LoadForUpdate(
 		WherePK().
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
-			return nil, shared.ErrInstanceNotFound
+			return nil, approval.ErrInstanceNotFound
 		}
 
 		return nil, fmt.Errorf("load instance: %w", err)
 	}
 
 	if !caller.Allows(instance.TenantID) {
-		return nil, shared.ErrInstanceNotFound
+		return nil, approval.ErrInstanceNotFound
 	}
 
 	return instance, nil
@@ -151,7 +150,7 @@ func (s *InstanceService) Transition(
 	// sentinel so callers can branch on a stable error and the API layer
 	// gets the right error code.
 	if errors.Is(err, engine.ErrInvalidTransition) {
-		return shared.ErrInvalidInstanceTransition
+		return approval.ErrInvalidInstanceTransition
 	}
 
 	return fmt.Errorf("apply instance transition: %w", err)

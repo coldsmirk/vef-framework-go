@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -174,7 +173,7 @@ func (s *TransferTaskTestSuite) TestTransferNotAllowed() {
 		Caller:       approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestTransferNotAllowed should return an error")
-	s.Assert().ErrorIs(err, shared.ErrTransferNotAllowed, "Should return expected error")
+	s.Assert().ErrorIs(err, approval.ErrTransferNotAllowed, "Should return expected error")
 }
 
 func (s *TransferTaskTestSuite) TestTransferTaskNotFound() {
@@ -186,7 +185,7 @@ func (s *TransferTaskTestSuite) TestTransferTaskNotFound() {
 		Caller:       approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestTransferTaskNotFound should return an error")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return expected error")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotFound, "Should return expected error")
 }
 
 func (s *TransferTaskTestSuite) TestTransferNotAssignee() {
@@ -200,7 +199,7 @@ func (s *TransferTaskTestSuite) TestTransferNotAssignee() {
 		Caller:       approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestTransferNotAssignee should return an error")
-	s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should return expected error")
+	s.Assert().ErrorIs(err, approval.ErrNotAssignee, "Should return expected error")
 }
 
 func (s *TransferTaskTestSuite) TestTransferTaskNotCurrentNode() {
@@ -231,7 +230,7 @@ func (s *TransferTaskTestSuite) TestTransferTaskNotCurrentNode() {
 		Caller:       approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when transferring a task not in current node")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should return task not pending for stale node task")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotPending, "Should return task not pending for stale node task")
 }
 
 func (s *TransferTaskTestSuite) TestTransferTargetValidation() {
@@ -246,7 +245,7 @@ func (s *TransferTaskTestSuite) TestTransferTargetValidation() {
 			Caller:       approval.SystemCaller,
 		})
 		s.Require().Error(err, "Should fail when transfer target is empty")
-		s.Assert().ErrorIs(err, shared.ErrInvalidTransferTarget, "Should return invalid transfer target for empty target")
+		s.Assert().ErrorIs(err, approval.ErrInvalidTransferTarget, "Should return invalid transfer target for empty target")
 	})
 
 	s.Run("SelfTarget", func() {
@@ -260,7 +259,7 @@ func (s *TransferTaskTestSuite) TestTransferTargetValidation() {
 			Caller:       approval.SystemCaller,
 		})
 		s.Require().Error(err, "Should fail when transferring to self")
-		s.Assert().ErrorIs(err, shared.ErrInvalidTransferTarget, "Should return invalid transfer target for self transfer")
+		s.Assert().ErrorIs(err, approval.ErrInvalidTransferTarget, "Should return invalid transfer target for self transfer")
 	})
 
 	s.Run("DuplicateActiveTarget", func() {
@@ -286,7 +285,7 @@ func (s *TransferTaskTestSuite) TestTransferTargetValidation() {
 			Caller:       approval.SystemCaller,
 		})
 		s.Require().Error(err, "Should fail when target already has active task on node")
-		s.Assert().ErrorIs(err, shared.ErrInvalidTransferTarget, "Should return invalid transfer target for duplicate active assignee")
+		s.Assert().ErrorIs(err, approval.ErrInvalidTransferTarget, "Should return invalid transfer target for duplicate active assignee")
 
 		var original approval.Task
 

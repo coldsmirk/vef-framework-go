@@ -62,7 +62,7 @@ func NewTaskService(opts ...Option) *TaskService {
 func (*TaskService) FinishTask(ctx context.Context, db orm.DB, task *approval.Task, status approval.TaskStatus) error {
 	originalStatus := task.Status
 	if !engine.TaskStateMachine.CanTransition(originalStatus, status) {
-		return shared.ErrInvalidTaskTransition
+		return approval.ErrInvalidTaskTransition
 	}
 
 	finishedAt := timex.Now()
@@ -87,10 +87,10 @@ func (*TaskService) FinishTask(ctx context.Context, db orm.DB, task *approval.Ta
 
 	if affected == 0 {
 		if originalStatus == approval.TaskPending {
-			return shared.ErrTaskNotPending
+			return approval.ErrTaskNotPending
 		}
 
-		return shared.ErrInvalidTaskTransition
+		return approval.ErrInvalidTaskTransition
 	}
 
 	task.Status = status
@@ -716,7 +716,7 @@ func (*TaskService) IsAuthorizedForNodeOperation(ctx context.Context, db orm.DB,
 // organizational situation purely because of how it is stored.
 //
 // DB errors are propagated; a not-found instance maps to
-// shared.ErrInstanceNotFound.
+// approval.ErrInstanceNotFound.
 func isDecisionParticipant(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
 	var instance approval.Instance
 
@@ -728,7 +728,7 @@ func isDecisionParticipant(ctx context.Context, db orm.DB, instanceID, userID st
 		WherePK().
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
-			return false, shared.ErrInstanceNotFound
+			return false, approval.ErrInstanceNotFound
 		}
 
 		return false, fmt.Errorf("load instance: %w", err)
@@ -909,7 +909,7 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID st
 	// not the encoded size. ValidateFormData still enforces the absolute cap at
 	// start / resubmit, where the applicant owns the whole payload.
 	if afterSize > s.formDataMaxBytes && afterSize > beforeSize {
-		return nil, shared.ErrFormDataTooLarge
+		return nil, approval.ErrFormDataTooLarge
 	}
 
 	return tc, nil
@@ -983,7 +983,7 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 		Select("instance_id").
 		WherePK().
 		Scan(ctx); err != nil {
-		return nil, shared.ErrTaskNotFound
+		return nil, approval.ErrTaskNotFound
 	}
 
 	var instance approval.Instance
@@ -995,14 +995,14 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 		WherePK().
 		ForUpdate().
 		Scan(ctx); err != nil {
-		return nil, shared.ErrInstanceNotFound
+		return nil, approval.ErrInstanceNotFound
 	}
 
 	// Tenant guard: cross-tenant callers see a uniform "task not found" so
 	// they can't probe entity existence across tenants. System / super-admin
 	// callers fall through (see approval.CallerContext.Allows).
 	if !options.Caller.Allows(instance.TenantID) {
-		return nil, shared.ErrTaskNotFound
+		return nil, approval.ErrTaskNotFound
 	}
 
 	// Lock task after instance to keep a consistent lock order across command handlers.
@@ -1011,23 +1011,23 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 		WherePK().
 		ForUpdate().
 		Scan(ctx); err != nil {
-		return nil, shared.ErrTaskNotFound
+		return nil, approval.ErrTaskNotFound
 	}
 
 	if instance.Status != approval.InstanceRunning {
-		return nil, shared.ErrInstanceCompleted
+		return nil, approval.ErrInstanceCompleted
 	}
 
 	if options.RequireOperatorAssignee && task.AssigneeID != options.OperatorID {
-		return nil, shared.ErrNotAssignee
+		return nil, approval.ErrNotAssignee
 	}
 
 	if options.RequireTaskPending && task.Status != approval.TaskPending {
-		return nil, shared.ErrTaskNotPending
+		return nil, approval.ErrTaskNotPending
 	}
 
 	if options.RequireCurrentNode && (instance.CurrentNodeID == nil || *instance.CurrentNodeID != task.NodeID) {
-		return nil, shared.ErrTaskNotPending
+		return nil, approval.ErrTaskNotPending
 	}
 
 	var node approval.FlowNode

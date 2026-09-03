@@ -9,7 +9,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -389,7 +388,7 @@ func (s *InstanceResourceTestSuite) TestProcessTask() {
 			"opinion":      "invalid transfer target",
 			"transferToId": "   ",
 		})
-		s.assertErrorCode(res, shared.ErrCodeInvalidTransferTarget, "Should return invalid transfer target error code for blank transferee")
+		s.assertErrorCode(res, approval.ErrCodeInvalidTransferTarget, "Should return invalid transfer target error code for blank transferee")
 	})
 
 	s.Run("HandleOnComplexFlow", func() {
@@ -437,7 +436,7 @@ func (s *InstanceResourceTestSuite) TestProcessTask() {
 
 		// Try to approve again — task is no longer pending
 		res = s.processTask(taskID, "approve", "OK again")
-		s.assertErrorCode(res, shared.ErrCodeTaskNotPending, "Should fail on already processed task")
+		s.assertErrorCode(res, approval.ErrCodeTaskNotPending, "Should fail on already processed task")
 	})
 
 	s.Run("NotAssignee", func() {
@@ -449,7 +448,7 @@ func (s *InstanceResourceTestSuite) TestProcessTask() {
 
 		// Try with other-user who is not the assignee
 		res := s.processTask(tasks[0]["id"].(string), "approve", "Trying", s.otherUserToken)
-		s.assertErrorCode(res, shared.ErrCodeNotAssignee, "Should fail for non-assignee")
+		s.assertErrorCode(res, approval.ErrCodeNotAssignee, "Should fail for non-assignee")
 	})
 
 	s.Run("OpinionRequired", func() {
@@ -461,7 +460,7 @@ func (s *InstanceResourceTestSuite) TestProcessTask() {
 
 		// Submit with empty opinion (approval flow requires opinion)
 		res := s.processTask(tasks[0]["id"].(string), "approve", "")
-		s.assertErrorCode(res, shared.ErrCodeOpinionRequired, "Should fail when opinion is required but empty")
+		s.assertErrorCode(res, approval.ErrCodeOpinionRequired, "Should fail when opinion is required but empty")
 	})
 }
 
@@ -513,7 +512,7 @@ func (s *InstanceResourceTestSuite) TestRollback() {
 			"opinion":      "Try rollback",
 			"targetNodeId": startNodeID,
 		}, s.handler1Token)
-		s.assertErrorCode(res, shared.ErrCodeRollbackNotAllowed, "Should not allow rollback on handle node")
+		s.assertErrorCode(res, approval.ErrCodeRollbackNotAllowed, "Should not allow rollback on handle node")
 	})
 
 	s.Run("InvalidTarget", func() {
@@ -532,7 +531,7 @@ func (s *InstanceResourceTestSuite) TestRollback() {
 			"opinion":      "Rolling back to end",
 			"targetNodeId": endNodeID,
 		})
-		s.assertErrorCode(res, shared.ErrCodeInvalidRollbackTarget, "Should not allow rollback to end node")
+		s.assertErrorCode(res, approval.ErrCodeInvalidRollbackTarget, "Should not allow rollback to end node")
 	})
 
 	s.Run("TargetRequired", func() {
@@ -548,7 +547,7 @@ func (s *InstanceResourceTestSuite) TestRollback() {
 			"opinion":      "Rollback without target",
 			"targetNodeId": "  ",
 		})
-		s.assertErrorCode(res, shared.ErrCodeInvalidRollbackTarget, "Should return invalid rollback target error code when target node is blank")
+		s.assertErrorCode(res, approval.ErrCodeInvalidRollbackTarget, "Should return invalid rollback target error code when target node is blank")
 	})
 }
 
@@ -594,7 +593,7 @@ func (s *InstanceResourceTestSuite) TestWithdraw() {
 			"instanceId": instanceID,
 			"reason":     "Not my instance",
 		}, s.otherUserToken)
-		s.assertErrorCode(res, shared.ErrCodeNotApplicant, "Should fail for non-applicant")
+		s.assertErrorCode(res, approval.ErrCodeNotApplicant, "Should fail for non-applicant")
 	})
 }
 
@@ -644,7 +643,7 @@ func (s *InstanceResourceTestSuite) TestResubmit() {
 			"instanceId": instanceID,
 			"formData":   map[string]any{"test": true},
 		})
-		s.assertErrorCode(res, shared.ErrCodeResubmitNotAllowed, "Should not allow resubmit from running state")
+		s.assertErrorCode(res, approval.ErrCodeResubmitNotAllowed, "Should not allow resubmit from running state")
 	})
 }
 
@@ -719,7 +718,7 @@ func (s *InstanceResourceTestSuite) TestAddAssignee() {
 			"userIds": []string{"parallel-user"},
 			"addType": "parallel",
 		})
-		s.assertErrorCode(res, shared.ErrCodeInvalidAddAssigneeType, "Sequential nodes must reject parallel additions")
+		s.assertErrorCode(res, approval.ErrCodeInvalidAddAssigneeType, "Sequential nodes must reject parallel additions")
 
 		// ...while the parallel flow accepts it and the new task joins the
 		// active group as immediately actionable.
@@ -767,7 +766,7 @@ func (s *InstanceResourceTestSuite) TestAddAssignee() {
 			"userIds": []string{"extra-user"},
 			"addType": "before",
 		}, s.handler1Token)
-		s.assertErrorCode(res, shared.ErrCodeAddAssigneeNotAllowed, "Should not allow add assignee on handle node")
+		s.assertErrorCode(res, approval.ErrCodeAddAssigneeNotAllowed, "Should not allow add assignee on handle node")
 	})
 }
 
@@ -825,7 +824,7 @@ func (s *InstanceResourceTestSuite) TestRemoveAssignee() {
 		res := s.rpcCall("remove_assignee", map[string]any{
 			"taskId": tasks[0]["id"].(string),
 		}, s.handler1Token)
-		s.assertErrorCode(res, shared.ErrCodeRemoveAssigneeNotAllowed, "Should not allow remove assignee on handle node")
+		s.assertErrorCode(res, approval.ErrCodeRemoveAssigneeNotAllowed, "Should not allow remove assignee on handle node")
 	})
 }
 
@@ -872,7 +871,7 @@ func (s *InstanceResourceTestSuite) TestCC() {
 			"instanceId": instanceID,
 			"ccUserIds":  []string{"cc-user-1"},
 		})
-		s.assertErrorCode(res, shared.ErrCodeManualCcNotAllowed, "Should not allow manual CC")
+		s.assertErrorCode(res, approval.ErrCodeManualCcNotAllowed, "Should not allow manual CC")
 	})
 }
 

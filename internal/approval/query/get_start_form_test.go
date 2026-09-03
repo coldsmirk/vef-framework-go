@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -176,7 +175,7 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 			FlowCode: "gsf-restricted",
 			UserID:   "user-z",
 		})
-		s.Require().ErrorIs(err, shared.ErrNotAllowedInitiate, "Non-initiator should be denied")
+		s.Require().ErrorIs(err, approval.ErrNotAllowedInitiate, "Non-initiator should be denied")
 	})
 
 	s.Run("RejectsInactiveFlow", func() {
@@ -185,7 +184,7 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 			FlowCode: "gsf-inactive",
 			UserID:   "user-z",
 		})
-		s.Require().ErrorIs(err, shared.ErrFlowNotActive, "Inactive flow should be rejected")
+		s.Require().ErrorIs(err, approval.ErrFlowNotActive, "Inactive flow should be rejected")
 	})
 
 	s.Run("RejectsUnpublishedFlow", func() {
@@ -194,7 +193,7 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 			FlowCode: "gsf-unpublished",
 			UserID:   "user-z",
 		})
-		s.Require().ErrorIs(err, shared.ErrNoPublishedVersion, "Flow without a published version should be rejected")
+		s.Require().ErrorIs(err, approval.ErrNoPublishedVersion, "Flow without a published version should be rejected")
 	})
 
 	s.Run("RejectsUnknownFlow", func() {
@@ -203,7 +202,7 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 			FlowCode: "gsf-missing",
 			UserID:   "user-z",
 		})
-		s.Require().ErrorIs(err, shared.ErrFlowNotFound, "Unknown flow code should be rejected")
+		s.Require().ErrorIs(err, approval.ErrFlowNotFound, "Unknown flow code should be rejected")
 	})
 
 	s.Run("RejectsCrossTenantCode", func() {
@@ -212,6 +211,6 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 			FlowCode: "gsf-open",
 			UserID:   "user-z",
 		})
-		s.Require().ErrorIs(err, shared.ErrFlowNotFound, "Flow lookup should be tenant-scoped")
+		s.Require().ErrorIs(err, approval.ErrFlowNotFound, "Flow lookup should be tenant-scoped")
 	})
 }

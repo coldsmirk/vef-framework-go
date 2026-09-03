@@ -2,8 +2,10 @@ package shared
 
 // Message IDs for the approval module's i18n keys.
 // Only constants referenced cross-file (template params, factory errors,
-// or mapping tables) are defined here. Single-use sentinel keys are
-// inlined directly at their result.Err definition in api_errors.go.
+// or mapping tables) are defined here — they template dynamic errors built
+// inside the module. Single-use sentinel keys are inlined directly at their
+// result.Err definition in the public approval/api_errors.go, which is also
+// where the ErrCode* constants live so hosts can match Service errors.
 const (
 	// Urge errors. Template parameters:
 	//   {{.minutes}} — cooldown window in minutes

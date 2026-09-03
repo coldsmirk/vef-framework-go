@@ -1,17 +1,89 @@
-package shared
+package approval
 
 import (
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
 
-// Error definitions. Messages are resolved through i18n at package
-// init time using the language selected by VEF_I18N_LANGUAGE.
+// Response codes for approval-domain API errors (40xxx range).
+// 400xx: flow definition; 401xx: instance; 402xx: task; 403xx: assignee
+// resolution; 404xx: form data; 406xx: urge; 407xx: access / admin.
 //
-// These are sentinel values — callers use errors.Is to recognize them,
-// so the Error value must remain stable. Switching i18n language at
-// runtime (e.g. via i18n.SetLanguage in tests) will not update these
-// frozen messages; new translations only take effect on process restart.
+// The React side keys messages by code, so a retired code is never reassigned.
+const (
+	ErrCodeFlowNotFound              = 40001
+	ErrCodeFlowNotActive             = 40002
+	ErrCodeNoPublishedVersion        = 40003
+	ErrCodeVersionNotDraft           = 40004
+	ErrCodeInvalidFlowDesign         = 40005
+	ErrCodeFlowCodeExists            = 40006
+	ErrCodeVersionNotFound           = 40007
+	ErrCodeInvalidBusinessIdentifier = 40008
+	ErrCodeInvalidTitleTemplate      = 40009
+	ErrCodeInvalidFormDesign         = 40010
+	ErrCodeBindingIncomplete         = 40011
+	ErrCodeInvalidBindingMode        = 40012
+	ErrCodeInvalidInitiatorKind      = 40013
+	ErrCodeInvalidStorageMode        = 40014
+	// 40015 is retired (former flow-binding lock); do not reassign it.
+	ErrCodeBindingColumnsConflict      = 40016
+	ErrCodeBindingUnexpected           = 40017
+	ErrCodeBindingSchemaInvalid        = 40018
+	ErrCodeBindingKeyNotUnique         = 40019
+	ErrCodeBindingStatusMappingInvalid = 40020
+	ErrCodeInvalidFlowLabel            = 40021
+	ErrCodeInitiatorsNotAllowed        = 40022
+	ErrCodeInitiatorsRequired          = 40023
+
+	ErrCodeInstanceNotFound          = 40101
+	ErrCodeInstanceCompleted         = 40102
+	ErrCodeNotAllowedInitiate        = 40103
+	ErrCodeWithdrawNotAllowed        = 40104
+	ErrCodeResubmitNotAllowed        = 40105
+	ErrCodeInvalidInstanceTransition = 40106
+	ErrCodeBusinessRefRequired       = 40107
+	ErrCodeBindingTargetBusy         = 40108
+	ErrCodeInvalidBusinessRef        = 40109
+	ErrCodeBindingProjectionNotFound = 40110
+
+	ErrCodeTaskNotFound             = 40201
+	ErrCodeTaskNotPending           = 40202
+	ErrCodeNotAssignee              = 40203
+	ErrCodeInvalidTaskTransition    = 40204
+	ErrCodeRollbackNotAllowed       = 40205
+	ErrCodeAddAssigneeNotAllowed    = 40206
+	ErrCodeTransferNotAllowed       = 40207
+	ErrCodeOpinionRequired          = 40208
+	ErrCodeManualCcNotAllowed       = 40209
+	ErrCodeRemoveAssigneeNotAllowed = 40210
+	ErrCodeInvalidAddAssigneeType   = 40211
+	ErrCodeNotApplicant             = 40212
+	ErrCodeInvalidRollbackTarget    = 40213
+	ErrCodeLastAssigneeRemoval      = 40214
+	ErrCodeInvalidTransferTarget    = 40215
+	ErrCodeNoUsersSpecified         = 40216
+
+	ErrCodeNoAssignee            = 40301
+	ErrCodeAssigneeResolveFailed = 40302
+
+	ErrCodeFormValidationFailed = 40401
+
+	ErrCodeUrgeCooldown = 40601
+
+	ErrCodeAccessDenied        = 40701
+	ErrCodeTerminateNotAllowed = 40702
+)
+
+// Outward-facing error sentinels. Messages are resolved through i18n at
+// package init time using the language selected by VEF_I18N_LANGUAGE.
+//
+// These are sentinel values — callers use errors.Is to recognize them, which
+// result.Error implements by comparing Code, so the values must remain
+// stable. They are public because Service returns them to host code, which
+// must be able to tell "flow not active" from "not allowed to initiate"
+// without comparing numeric codes. Switching i18n language at runtime (e.g.
+// via i18n.SetLanguage in tests) will not update these frozen messages; new
+// translations only take effect on process restart.
 var (
 	ErrFlowNotFound       = result.Err(i18n.T("approval_flow_not_found"), result.WithCode(ErrCodeFlowNotFound))
 	ErrFlowNotActive      = result.Err(i18n.T("approval_flow_not_active"), result.WithCode(ErrCodeFlowNotActive))
@@ -20,8 +92,11 @@ var (
 	ErrInvalidFlowDesign  = result.Err(i18n.T("approval_invalid_flow_design"), result.WithCode(ErrCodeInvalidFlowDesign))
 	ErrFlowCodeExists     = result.Err(i18n.T("approval_flow_code_exists"), result.WithCode(ErrCodeFlowCodeExists))
 	ErrVersionNotFound    = result.Err(i18n.T("approval_version_not_found"), result.WithCode(ErrCodeVersionNotFound))
-	// ErrInvalidBusinessIdentifier rejects dynamic business table / column names
-	// that do not match the strict SQL-identifier policy used by ORM queries.
+	// ErrInvalidBusinessIdentifier rejects dynamic business table / column
+	// names that do not match the SQL-identifier policy enforced by
+	// ValidateBusinessIdentifier, which returns it directly. Flow CRUD
+	// validation surfaces it to operators; the write-back re-checks the same
+	// rule as defense-in-depth.
 	ErrInvalidBusinessIdentifier = result.Err(
 		i18n.T("approval_invalid_business_identifier"),
 		result.WithCode(ErrCodeInvalidBusinessIdentifier),
@@ -31,8 +106,8 @@ var (
 	// broken template cannot silently break every subsequent submission.
 	ErrInvalidTitleTemplate = result.Err(i18n.T("approval_invalid_title_template"), result.WithCode(ErrCodeInvalidTitleTemplate))
 	// ErrInvalidFlowLabel rejects a flow label whose key would silently break
-	// the label equality filter (see validateFlowLabels) or whose value blows
-	// past the storage bound, at flow create / update time.
+	// the label equality filter or whose value blows past the storage bound,
+	// at flow create / update time.
 	ErrInvalidFlowLabel = result.Err(i18n.T("approval_invalid_flow_label"), result.WithCode(ErrCodeInvalidFlowLabel))
 	// ErrInvalidFormDesign rejects a structurally broken form schema at
 	// deploy time (duplicate keys, unknown field kind, uncompilable
@@ -121,9 +196,9 @@ var (
 
 	ErrFormValidationFailed = result.Err(i18n.T("approval_form_validation_failed"), result.WithCode(ErrCodeFormValidationFailed))
 	// ErrFormDataTooLarge rejects submissions whose JSON-encoded form data
-	// would exceed FormDataMaxBytes. Stops malicious clients from blowing
-	// up the JSONB column or driving the runtime into OOM via deeply
-	// nested or massive maps.
+	// would exceed vef.approval.form_data_max_bytes. Stops malicious clients
+	// from blowing up the JSONB column or driving the runtime into OOM via
+	// deeply nested or massive maps.
 	ErrFormDataTooLarge = result.Err(
 		i18n.T("approval_form_data_too_large"),
 		result.WithCode(ErrCodeFormValidationFailed),

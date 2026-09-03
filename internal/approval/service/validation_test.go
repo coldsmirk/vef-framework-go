@@ -9,7 +9,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/config"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -40,13 +39,13 @@ func TestValidateOpinion(t *testing.T) {
 	t.Run("RequiredButEmpty", func(t *testing.T) {
 		node := &approval.FlowNode{IsOpinionRequired: true}
 		err := svc.ValidateOpinion(node, "")
-		assert.ErrorIs(t, err, shared.ErrOpinionRequired, "Should fail when opinion is required but empty")
+		assert.ErrorIs(t, err, approval.ErrOpinionRequired, "Should fail when opinion is required but empty")
 	})
 
 	t.Run("RequiredButWhitespaceOnly", func(t *testing.T) {
 		node := &approval.FlowNode{IsOpinionRequired: true}
 		err := svc.ValidateOpinion(node, "   \t")
-		assert.ErrorIs(t, err, shared.ErrOpinionRequired, "Should fail when opinion is only whitespace")
+		assert.ErrorIs(t, err, approval.ErrOpinionRequired, "Should fail when opinion is only whitespace")
 	})
 
 	t.Run("NotRequiredAndEmpty", func(t *testing.T) {
@@ -212,7 +211,7 @@ func TestValidateFormData(t *testing.T) {
 
 		var re result.Error
 		require.ErrorAs(t, err, &re, "Should return business error")
-		assert.Equal(t, shared.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
+		assert.Equal(t, approval.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
 	})
 
 	t.Run("UnknownField", func(t *testing.T) {
@@ -220,7 +219,7 @@ func TestValidateFormData(t *testing.T) {
 
 		var re result.Error
 		require.ErrorAs(t, err, &re, "Should return business error")
-		assert.Equal(t, shared.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
+		assert.Equal(t, approval.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
 	})
 
 	t.Run("InvalidStringLength", func(t *testing.T) {
@@ -228,7 +227,7 @@ func TestValidateFormData(t *testing.T) {
 
 		var re result.Error
 		require.ErrorAs(t, err, &re, "Should return business error")
-		assert.Equal(t, shared.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
+		assert.Equal(t, approval.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
 	})
 
 	t.Run("InvalidNumberType", func(t *testing.T) {
@@ -236,17 +235,17 @@ func TestValidateFormData(t *testing.T) {
 
 		var re result.Error
 		require.ErrorAs(t, err, &re, "Should return business error")
-		assert.Equal(t, shared.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
+		assert.Equal(t, approval.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
 	})
 
 	t.Run("RejectsPayloadOverTheAbsoluteCap", func(t *testing.T) {
 		err := svc.ValidateFormData(fields, map[string]any{"reason": "Travel", "amount": 20, "blob": strings.Repeat("x", config.DefaultFormDataMaxBytes+1)})
-		require.ErrorIs(t, err, shared.ErrFormDataTooLarge, "Start / resubmit must reject a payload over the absolute size cap")
+		require.ErrorIs(t, err, approval.ErrFormDataTooLarge, "Start / resubmit must reject a payload over the absolute size cap")
 	})
 
 	t.Run("SizeGuardAppliesWithoutSchema", func(t *testing.T) {
 		err := svc.ValidateFormData(nil, map[string]any{"blob": strings.Repeat("x", config.DefaultFormDataMaxBytes+1)})
-		require.ErrorIs(t, err, shared.ErrFormDataTooLarge, "Size guard must apply even when the flow has no form schema")
+		require.ErrorIs(t, err, approval.ErrFormDataTooLarge, "Size guard must apply even when the flow has no form schema")
 	})
 }
 
@@ -262,7 +261,7 @@ func TestFormDataMaxBytesIsConfigurable(t *testing.T) {
 
 	t.Run("DefaultRejectsWhatTheRaisedLimitAccepts", func(t *testing.T) {
 		require.ErrorIs(t, NewValidationService(mustInitiatorCompositeInternal(nil)).ValidateFormData(nil, payload),
-			shared.ErrFormDataTooLarge,
+			approval.ErrFormDataTooLarge,
 			"The default cap must still reject the payload, or this test proves nothing")
 
 		require.NoError(t, NewValidationService(mustInitiatorCompositeInternal(nil), WithFormDataMaxBytes(raised)).ValidateFormData(nil, payload),
@@ -272,7 +271,7 @@ func TestFormDataMaxBytesIsConfigurable(t *testing.T) {
 	t.Run("RaisedLimitStillRejectsBeyondIt", func(t *testing.T) {
 		svc := NewValidationService(mustInitiatorCompositeInternal(nil), WithFormDataMaxBytes(raised))
 		err := svc.ValidateFormData(nil, map[string]any{"blob": strings.Repeat("x", raised+1)})
-		require.ErrorIs(t, err, shared.ErrFormDataTooLarge, "Raising the cap must move the bound, not remove it")
+		require.ErrorIs(t, err, approval.ErrFormDataTooLarge, "Raising the cap must move the bound, not remove it")
 	})
 
 	t.Run("NonPositiveLimitKeepsTheDefault", func(t *testing.T) {
@@ -281,7 +280,7 @@ func TestFormDataMaxBytesIsConfigurable(t *testing.T) {
 		for name, limit := range map[string]int{"Zero": 0, "Negative": -1} {
 			t.Run(name, func(t *testing.T) {
 				svc := NewValidationService(mustInitiatorCompositeInternal(nil), WithFormDataMaxBytes(limit))
-				require.ErrorIs(t, svc.ValidateFormData(nil, payload), shared.ErrFormDataTooLarge,
+				require.ErrorIs(t, svc.ValidateFormData(nil, payload), approval.ErrFormDataTooLarge,
 					"A non-positive limit must fall back to the default, never to unbounded")
 			})
 		}
@@ -452,7 +451,7 @@ func TestValidateRequiredPermissionFields(t *testing.T) {
 
 			var re result.Error
 			require.ErrorAs(t, err, &re, "Should return a business validation error")
-			assert.Equal(t, shared.ErrCodeFormValidationFailed, re.Code, "Should carry the form validation error code")
+			assert.Equal(t, approval.ErrCodeFormValidationFailed, re.Code, "Should carry the form validation error code")
 		})
 	}
 }

@@ -54,7 +54,7 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 		WherePK().
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
-			return cqrs.Unit{}, shared.ErrTaskNotFound
+			return cqrs.Unit{}, approval.ErrTaskNotFound
 		}
 
 		return cqrs.Unit{}, fmt.Errorf("load task: %w", err)
@@ -64,11 +64,11 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 	// gets the same TaskNotFound response as if the task didn't exist at
 	// all — even learning "exists but not pending" would confirm the ID.
 	if !cmd.Caller.Allows(task.TenantID) {
-		return cqrs.Unit{}, shared.ErrTaskNotFound
+		return cqrs.Unit{}, approval.ErrTaskNotFound
 	}
 
 	if task.Status != approval.TaskPending {
-		return cqrs.Unit{}, shared.ErrTaskNotPending
+		return cqrs.Unit{}, approval.ErrTaskNotPending
 	}
 
 	authorized, err := h.taskSvc.IsUrgeAuthorized(ctx, db, task.InstanceID, cmd.UrgerID)
@@ -77,7 +77,7 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 	}
 
 	if !authorized {
-		return cqrs.Unit{}, shared.ErrAccessDenied
+		return cqrs.Unit{}, approval.ErrAccessDenied
 	}
 
 	var node approval.FlowNode
@@ -114,7 +114,7 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 	if existingCount > 0 {
 		return cqrs.Unit{}, result.Err(
 			i18n.T(shared.ErrMessageUrgeTooFrequent, map[string]any{"minutes": cooldownMinutes}),
-			result.WithCode(shared.ErrCodeUrgeCooldown),
+			result.WithCode(approval.ErrCodeUrgeCooldown),
 		)
 	}
 

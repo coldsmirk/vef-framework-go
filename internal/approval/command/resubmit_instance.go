@@ -11,7 +11,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -59,11 +58,11 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 	}
 
 	if instance.ApplicantID != cmd.Operator.ID {
-		return cqrs.Unit{}, shared.ErrNotApplicant
+		return cqrs.Unit{}, approval.ErrNotApplicant
 	}
 
 	if !engine.InstanceStateMachine.CanTransition(instance.Status, approval.InstanceRunning) {
-		return cqrs.Unit{}, shared.ErrResubmitNotAllowed
+		return cqrs.Unit{}, approval.ErrResubmitNotAllowed
 	}
 
 	var version approval.FlowVersion
@@ -98,8 +97,8 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 		ctx, db, instance, approval.InstanceRunning,
 		"form_data", "finished_at",
 	); err != nil {
-		if errors.Is(err, shared.ErrInvalidInstanceTransition) {
-			return cqrs.Unit{}, shared.ErrResubmitNotAllowed
+		if errors.Is(err, approval.ErrInvalidInstanceTransition) {
+			return cqrs.Unit{}, approval.ErrResubmitNotAllowed
 		}
 
 		return cqrs.Unit{}, err

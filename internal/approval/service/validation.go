@@ -68,7 +68,7 @@ func NewValidationService(initiators *strategy.CompositeInitiatorResolver, opts 
 // ValidateOpinion checks if an opinion is required but missing.
 func (*ValidationService) ValidateOpinion(node *approval.FlowNode, opinion string) error {
 	if node.IsOpinionRequired && strings.TrimSpace(opinion) == "" {
-		return shared.ErrOpinionRequired
+		return approval.ErrOpinionRequired
 	}
 
 	return nil
@@ -151,14 +151,14 @@ func (*ValidationService) ValidateRequiredPermissionFields(fields []approval.For
 // ValidateRollbackTarget validates the rollback target node based on the node's RollbackType.
 func (*ValidationService) ValidateRollbackTarget(ctx context.Context, db orm.DB, instance *approval.Instance, currentNode *approval.FlowNode, targetNodeID string) error {
 	if targetNodeID == currentNode.ID {
-		return shared.ErrInvalidRollbackTarget
+		return approval.ErrInvalidRollbackTarget
 	}
 
 	// RollbackNone denies by configuration; an out-of-enum value (deploy
 	// normalization resolves omitted values, so this means corrupt data)
 	// must also deny rather than silently behaving like "any".
 	if currentNode.RollbackType == approval.RollbackNone || !currentNode.RollbackType.IsValid() {
-		return shared.ErrRollbackNotAllowed
+		return approval.ErrRollbackNotAllowed
 	}
 
 	switch currentNode.RollbackType {
@@ -176,7 +176,7 @@ func (*ValidationService) ValidateRollbackTarget(ctx context.Context, db orm.DB,
 		}
 
 		if count == 0 {
-			return shared.ErrInvalidRollbackTarget
+			return approval.ErrInvalidRollbackTarget
 		}
 
 	case approval.RollbackStart:
@@ -191,14 +191,14 @@ func (*ValidationService) ValidateRollbackTarget(ctx context.Context, db orm.DB,
 			}).
 			Scan(ctx); err != nil {
 			if result.IsRecordNotFound(err) {
-				return shared.ErrInvalidRollbackTarget
+				return approval.ErrInvalidRollbackTarget
 			}
 
 			return fmt.Errorf("find start node: %w", err)
 		}
 
 		if startNode.ID != targetNodeID {
-			return shared.ErrInvalidRollbackTarget
+			return approval.ErrInvalidRollbackTarget
 		}
 
 	case approval.RollbackAny:
@@ -219,7 +219,7 @@ func (*ValidationService) ValidateRollbackTarget(ctx context.Context, db orm.DB,
 			}).
 			Scan(ctx); err != nil {
 			if result.IsRecordNotFound(err) {
-				return shared.ErrInvalidRollbackTarget
+				return approval.ErrInvalidRollbackTarget
 			}
 
 			return fmt.Errorf("find rollback target node: %w", err)
@@ -228,7 +228,7 @@ func (*ValidationService) ValidateRollbackTarget(ctx context.Context, db orm.DB,
 		switch targetNode.Kind {
 		case approval.NodeApproval, approval.NodeHandle, approval.NodeStart:
 		default:
-			return shared.ErrInvalidRollbackTarget
+			return approval.ErrInvalidRollbackTarget
 		}
 
 		if err := requireConcludedVisit(ctx, db, instance.ID, targetNodeID); err != nil {
@@ -247,14 +247,14 @@ func (*ValidationService) ValidateRollbackTarget(ctx context.Context, db orm.DB,
 			}).
 			Scan(ctx); err != nil {
 			if result.IsRecordNotFound(err) {
-				return shared.ErrInvalidRollbackTarget
+				return approval.ErrInvalidRollbackTarget
 			}
 
 			return fmt.Errorf("find rollback target: %w", err)
 		}
 
 		if !slices.Contains(currentNode.RollbackTargetKeys, targetNode.Key) {
-			return shared.ErrInvalidRollbackTarget
+			return approval.ErrInvalidRollbackTarget
 		}
 
 		// Deploy validation pins the keys to approval/handle nodes; at
@@ -289,7 +289,7 @@ func requireConcludedVisit(ctx context.Context, db orm.DB, instanceID, nodeID st
 	}
 
 	if !visited {
-		return shared.ErrInvalidRollbackTarget
+		return approval.ErrInvalidRollbackTarget
 	}
 
 	return nil
@@ -555,7 +555,7 @@ func validateSelectField(field approval.FormFieldDefinition, value any) error {
 }
 
 func newFormValidationError(message string) error {
-	return result.Err(message, result.WithCode(shared.ErrCodeFormValidationFailed))
+	return result.Err(message, result.WithCode(approval.ErrCodeFormValidationFailed))
 }
 
 func fieldLabel(field approval.FormFieldDefinition) string {
@@ -617,7 +617,7 @@ func validateFormDataSize(formData map[string]any, maxBytes int) error {
 	}
 
 	if size > maxBytes {
-		return shared.ErrFormDataTooLarge
+		return approval.ErrFormDataTooLarge
 	}
 
 	return nil

@@ -10,7 +10,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -53,15 +52,15 @@ func (h *TerminateInstanceHandler) Handle(ctx context.Context, cmd TerminateInst
 	}
 
 	if !engine.InstanceStateMachine.CanTransition(instance.Status, approval.InstanceTerminated) {
-		return cqrs.Unit{}, shared.ErrTerminateNotAllowed
+		return cqrs.Unit{}, approval.ErrTerminateNotAllowed
 	}
 
 	now := timex.Now()
 	instance.FinishedAt = &now
 
 	if err := h.instanceSvc.Transition(ctx, db, instance, approval.InstanceTerminated, "finished_at"); err != nil {
-		if errors.Is(err, shared.ErrInvalidInstanceTransition) {
-			return cqrs.Unit{}, shared.ErrTerminateNotAllowed
+		if errors.Is(err, approval.ErrInvalidInstanceTransition) {
+			return cqrs.Unit{}, approval.ErrTerminateNotAllowed
 		}
 
 		return cqrs.Unit{}, err

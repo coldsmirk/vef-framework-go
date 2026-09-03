@@ -3,7 +3,7 @@ package service
 import "errors"
 
 // Flow-definition validation sentinels. These are internal errors wrapped
-// into shared.ErrInvalidFlowDesign at the command layer and never surfaced raw.
+// into approval.ErrInvalidFlowDesign at the command layer and never surfaced raw.
 var (
 	errEmptyNodeID        = errors.New("node ID must not be empty")
 	errDuplicateNodeID    = errors.New("duplicate node ID")
@@ -40,7 +40,7 @@ var (
 // enum or dependent-field combination the engine could not execute, so a
 // misconfigured node fails loudly at deploy instead of stalling an instance
 // at runtime. Like the structural sentinels above, they surface wrapped in
-// shared.ErrInvalidFlowDesign.
+// approval.ErrInvalidFlowDesign.
 var (
 	errInvalidExecutionType       = errors.New("invalid execution type")
 	errInvalidApprovalMethod      = errors.New("invalid approval method")
@@ -88,7 +88,7 @@ var (
 // schema attached to a flow version; without them a broken schema (duplicate
 // keys, invalid kind, uncompilable pattern) only surfaces when an applicant
 // submits — misreported as a data error. Surface wrapped in
-// shared.ErrInvalidFormDesign.
+// approval.ErrInvalidFormDesign.
 var (
 	errFormFieldKeyEmpty      = errors.New("form field key must not be empty")
 	errDuplicateFormFieldKey  = errors.New("duplicate form field key")
@@ -104,7 +104,7 @@ var (
 // Field-permission validation sentinels, raised by ValidateFieldPermissions
 // when a node's FieldPermissions matrix disagrees with the deployed form
 // fields or the per-kind vocabulary. Surface wrapped in
-// shared.ErrInvalidFlowDesign.
+// approval.ErrInvalidFlowDesign.
 var (
 	errInvalidFieldPermission      = errors.New("invalid field permission")
 	errFieldPermissionKeyUnknown   = errors.New("field permission key does not exist in the form")

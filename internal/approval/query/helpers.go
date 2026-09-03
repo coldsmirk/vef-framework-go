@@ -8,7 +8,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/admin"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/page"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -75,7 +74,7 @@ type instanceDetailBundle struct {
 // loadInstanceDetailBundle loads the instance identified by instanceID together
 // with every related record set the bundle carries (flow, version snapshots,
 // tasks, action logs, flow nodes plus their name map, visits, CC and urge
-// records). It returns (nil, shared.ErrInstanceNotFound) when the instance does
+// records). It returns (nil, approval.ErrInstanceNotFound) when the instance does
 // not exist, so callers can apply their own auth gate before or after this call.
 func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string) (*instanceDetailBundle, error) {
 	var instance approval.Instance
@@ -84,7 +83,7 @@ func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string)
 
 	if err := db.NewSelect().Model(&instance).WherePK().Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
-			return nil, shared.ErrInstanceNotFound
+			return nil, approval.ErrInstanceNotFound
 		}
 
 		return nil, fmt.Errorf("query instance: %w", err)

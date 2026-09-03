@@ -6,7 +6,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/admin"
 	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -44,7 +43,7 @@ func (h *GetAdminInstanceDetailHandler) Handle(ctx context.Context, query GetAdm
 		// Indistinguishable from "no such instance" on purpose — see
 		// opaque response policy for query handlers (avoids cross-tenant
 		// existence probing).
-		return nil, shared.ErrInstanceNotFound
+		return nil, approval.ErrInstanceNotFound
 	}
 
 	// Build DTO.

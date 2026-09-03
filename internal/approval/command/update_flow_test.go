@@ -190,7 +190,7 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowLabels() {
 		cmd := baseCmd()
 		cmd.Labels = map[string]string{"app.id": "crm"}
 		_, err := s.handler.Handle(s.ctx, cmd)
-		s.Require().ErrorIs(err, shared.ErrInvalidFlowLabel,
+		s.Require().ErrorIs(err, approval.ErrInvalidFlowLabel,
 			"A dotted label key must be rejected at save time — it would silently escape the label filter")
 	})
 }
@@ -207,7 +207,7 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowNotFound() {
 
 	_, err := s.handler.Handle(s.ctx, cmd)
 	s.Require().Error(err, "Should return error for non-existent flow")
-	s.Assert().ErrorIs(err, shared.ErrFlowNotFound, "Should return ErrFlowNotFound")
+	s.Assert().ErrorIs(err, approval.ErrFlowNotFound, "Should return ErrFlowNotFound")
 }
 
 func (s *UpdateFlowTestSuite) TestUpdateFlowBindingDoesNotMutateRunningVersion() {
@@ -353,7 +353,7 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowBusinessBindingIncomplete() {
 		Caller:                 approval.SystemCaller,
 	})
 	s.Require().Error(err, "An incomplete business binding on update should be rejected")
-	s.Assert().ErrorIs(err, shared.ErrBindingIncomplete)
+	s.Assert().ErrorIs(err, approval.ErrBindingIncomplete)
 }
 
 func (s *UpdateFlowTestSuite) TestUpdateFlowBusinessToStandaloneClearsFields() {
@@ -412,7 +412,7 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowRejectsInvalidEnums() {
 			InstanceTitleTemplate:  "t",
 			Caller:                 approval.SystemCaller,
 		})
-		s.Require().ErrorIs(err, shared.ErrInvalidBindingMode,
+		s.Require().ErrorIs(err, approval.ErrInvalidBindingMode,
 			"An out-of-enum binding mode would silently disable the business write-back and must be rejected")
 	})
 
@@ -429,7 +429,7 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowRejectsInvalidEnums() {
 			},
 			Caller: approval.SystemCaller,
 		})
-		s.Require().ErrorIs(err, shared.ErrInvalidInitiatorKind,
+		s.Require().ErrorIs(err, approval.ErrInvalidInitiatorKind,
 			"An initiator kind no resolver is registered for would silently never match and must be rejected")
 	})
 }

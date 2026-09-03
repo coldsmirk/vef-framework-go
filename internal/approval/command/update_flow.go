@@ -66,14 +66,14 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		WherePK().
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
-			return nil, shared.ErrFlowNotFound
+			return nil, approval.ErrFlowNotFound
 		}
 
 		return nil, fmt.Errorf("query flow: %w", err)
 	}
 
 	if err := cmd.Caller.Authorize(flow.TenantID); err != nil {
-		return nil, shared.ErrFlowNotFound
+		return nil, approval.ErrFlowNotFound
 	}
 
 	if err := validateInstanceTitleTemplate(cmd.InstanceTitleTemplate); err != nil {

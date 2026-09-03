@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/schema"
 )
 
@@ -65,7 +64,7 @@ func TestNormalizeConfig(t *testing.T) {
 		t.Parallel()
 
 		_, err := NormalizeConfig(approval.BindingStandalone, testBindingConfig())
-		assert.ErrorIs(t, err, shared.ErrBindingUnexpected, "Standalone flow must reject dead business configuration")
+		assert.ErrorIs(t, err, approval.ErrBindingUnexpected, "Standalone flow must reject dead business configuration")
 	})
 
 	t.Run("Normalizes", func(t *testing.T) {
@@ -96,7 +95,7 @@ func TestNormalizeConfig(t *testing.T) {
 		t.Parallel()
 
 		_, err := NormalizeConfig(approval.BindingBusiness, nil)
-		assert.ErrorIs(t, err, shared.ErrBindingIncomplete, "Business flow requires binding configuration")
+		assert.ErrorIs(t, err, approval.ErrBindingIncomplete, "Business flow requires binding configuration")
 	})
 
 	t.Run("RejectsMissingInstanceIDColumn", func(t *testing.T) {
@@ -106,7 +105,7 @@ func TestNormalizeConfig(t *testing.T) {
 		config.InstanceIDColumn = nil
 
 		_, err := NormalizeConfig(approval.BindingBusiness, config)
-		assert.ErrorIs(t, err, shared.ErrBindingIncomplete, "Business flow requires an instance-ID fencing column")
+		assert.ErrorIs(t, err, approval.ErrBindingIncomplete, "Business flow requires an instance-ID fencing column")
 	})
 
 	t.Run("RejectsInvalidStatusMapping", func(t *testing.T) {
@@ -123,7 +122,7 @@ func TestNormalizeConfig(t *testing.T) {
 				config.StatusMapping = mapping
 
 				_, err := NormalizeConfig(approval.BindingBusiness, config)
-				assert.ErrorIs(t, err, shared.ErrBindingStatusMappingInvalid,
+				assert.ErrorIs(t, err, approval.ErrBindingStatusMappingInvalid,
 					"Invalid status mapping should be rejected")
 			})
 		}
@@ -136,7 +135,7 @@ func TestNormalizeConfig(t *testing.T) {
 		config.TableName = "biz_order; DROP TABLE apv_flow"
 
 		_, err := NormalizeConfig(approval.BindingBusiness, config)
-		assert.ErrorIs(t, err, shared.ErrInvalidBusinessIdentifier, "Unsafe table name should be rejected")
+		assert.ErrorIs(t, err, approval.ErrInvalidBusinessIdentifier, "Unsafe table name should be rejected")
 	})
 
 	t.Run("RejectsKeyWriteOverlap", func(t *testing.T) {
@@ -146,7 +145,7 @@ func TestNormalizeConfig(t *testing.T) {
 		config.StatusColumn = "order_no"
 
 		_, err := NormalizeConfig(approval.BindingBusiness, config)
-		assert.ErrorIs(t, err, shared.ErrBindingColumnsConflict, "A write-back column must never mutate its own lookup key")
+		assert.ErrorIs(t, err, approval.ErrBindingColumnsConflict, "A write-back column must never mutate its own lookup key")
 	})
 }
 
@@ -181,7 +180,7 @@ func TestConfigValidatorValidateSchema(t *testing.T) {
 
 		validator := NewConfigValidator(&stubSchemaService{table: table})
 		err := validator.ValidateSchema(t.Context(), testBindingConfig())
-		assert.ErrorIs(t, err, shared.ErrBindingKeyNotUnique, "Ordinary columns cannot back a one-row binding")
+		assert.ErrorIs(t, err, approval.ErrBindingKeyNotUnique, "Ordinary columns cannot back a one-row binding")
 	})
 
 	t.Run("PartialUnique", func(t *testing.T) {
@@ -192,7 +191,7 @@ func TestConfigValidatorValidateSchema(t *testing.T) {
 
 		validator := NewConfigValidator(&stubSchemaService{table: table})
 		err := validator.ValidateSchema(t.Context(), testBindingConfig())
-		assert.ErrorIs(t, err, shared.ErrBindingKeyNotUnique, "Partial unique index does not guarantee global uniqueness")
+		assert.ErrorIs(t, err, approval.ErrBindingKeyNotUnique, "Partial unique index does not guarantee global uniqueness")
 	})
 
 	t.Run("ExpressionUnique", func(t *testing.T) {
@@ -203,7 +202,7 @@ func TestConfigValidatorValidateSchema(t *testing.T) {
 
 		validator := NewConfigValidator(&stubSchemaService{table: table})
 		err := validator.ValidateSchema(t.Context(), testBindingConfig())
-		assert.ErrorIs(t, err, shared.ErrBindingKeyNotUnique, "Expression index cannot back raw-column equality")
+		assert.ErrorIs(t, err, approval.ErrBindingKeyNotUnique, "Expression index cannot back raw-column equality")
 	})
 
 	t.Run("NullableUnique", func(t *testing.T) {
@@ -214,7 +213,7 @@ func TestConfigValidatorValidateSchema(t *testing.T) {
 
 		validator := NewConfigValidator(&stubSchemaService{table: table})
 		err := validator.ValidateSchema(t.Context(), testBindingConfig())
-		assert.ErrorIs(t, err, shared.ErrBindingKeyNotUnique, "Nullable unique key has dialect-dependent NULL uniqueness")
+		assert.ErrorIs(t, err, approval.ErrBindingKeyNotUnique, "Nullable unique key has dialect-dependent NULL uniqueness")
 	})
 
 	t.Run("MissingColumn", func(t *testing.T) {
@@ -225,7 +224,7 @@ func TestConfigValidatorValidateSchema(t *testing.T) {
 
 		validator := NewConfigValidator(&stubSchemaService{table: table})
 		err := validator.ValidateSchema(t.Context(), testBindingConfig())
-		assert.ErrorIs(t, err, shared.ErrBindingColumnMissing(""), "Every write-back column must exist")
+		assert.ErrorIs(t, err, approval.ErrBindingColumnMissing(""), "Every write-back column must exist")
 		assert.ErrorContains(t, err, "approval_instance_id", "The error must name the missing column")
 	})
 
@@ -234,7 +233,7 @@ func TestConfigValidatorValidateSchema(t *testing.T) {
 
 		validator := NewConfigValidator(&stubSchemaService{err: schema.ErrTableMissing})
 		err := validator.ValidateSchema(t.Context(), testBindingConfig())
-		assert.ErrorIs(t, err, shared.ErrBindingTableMissing(""), "Missing business table should be rejected at flow save time")
+		assert.ErrorIs(t, err, approval.ErrBindingTableMissing(""), "Missing business table should be rejected at flow save time")
 		assert.ErrorContains(t, err, "biz_order", "The error must name the missing table")
 	})
 }

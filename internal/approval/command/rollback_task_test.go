@@ -10,7 +10,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -128,7 +127,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTaskNotFound() {
 		Caller:       approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when task does not exist")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return task not found")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotFound, "Should return task not found")
 }
 
 func (s *RollbackTaskTestSuite) TestRollbackTaskNotCurrentNode() {
@@ -150,7 +149,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTaskNotCurrentNode() {
 		Caller:       approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when rolling back a task not in current node")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should return task not pending for stale node task")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotPending, "Should return task not pending for stale node task")
 }
 
 func (s *RollbackTaskTestSuite) TestRollbackTargetRequired() {
@@ -166,7 +165,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTargetRequired() {
 			Caller:       approval.SystemCaller,
 		})
 		s.Require().Error(err, "Should fail when rollback target is empty")
-		s.Assert().ErrorIs(err, shared.ErrInvalidRollbackTarget, "Should return invalid rollback target for empty input")
+		s.Assert().ErrorIs(err, approval.ErrInvalidRollbackTarget, "Should return invalid rollback target for empty input")
 	})
 
 	s.Run("BlankTarget", func() {
@@ -181,7 +180,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTargetRequired() {
 			Caller:       approval.SystemCaller,
 		})
 		s.Require().Error(err, "Should fail when rollback target is blank")
-		s.Assert().ErrorIs(err, shared.ErrInvalidRollbackTarget, "Should return invalid rollback target for blank input")
+		s.Assert().ErrorIs(err, approval.ErrInvalidRollbackTarget, "Should return invalid rollback target for blank input")
 	})
 }
 
@@ -197,7 +196,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTargetShouldNotBeCurrentNode() {
 		Caller:       approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when rollback target is current node")
-	s.Assert().ErrorIs(err, shared.ErrInvalidRollbackTarget, "Should return invalid rollback target when target equals current node")
+	s.Assert().ErrorIs(err, approval.ErrInvalidRollbackTarget, "Should return invalid rollback target when target equals current node")
 
 	var reloaded approval.Task
 
@@ -506,7 +505,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTargetGuards() {
 			TargetNodeID: endNode.ID,
 			Caller:       approval.SystemCaller,
 		})
-		s.Require().ErrorIs(err, shared.ErrInvalidRollbackTarget,
+		s.Require().ErrorIs(err, approval.ErrInvalidRollbackTarget,
 			"Rolling back to the End node would force-approve the instance and must be rejected")
 	})
 
@@ -519,7 +518,7 @@ func (s *RollbackTaskTestSuite) TestRollbackTargetGuards() {
 			TargetNodeID: freshNode.ID,
 			Caller:       approval.SystemCaller,
 		})
-		s.Require().ErrorIs(err, shared.ErrInvalidRollbackTarget,
+		s.Require().ErrorIs(err, approval.ErrInvalidRollbackTarget,
 			"Rolling back to a node the flow never traversed must be rejected")
 	})
 }

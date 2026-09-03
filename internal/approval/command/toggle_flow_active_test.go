@@ -7,7 +7,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -144,5 +143,5 @@ func (s *ToggleFlowActiveTestSuite) TestNotFound() {
 
 	_, err := s.handler.Handle(s.ctx, cmd)
 	s.Require().Error(err, "Should return error for non-existent flow")
-	s.Assert().ErrorIs(err, shared.ErrFlowNotFound, "Should return ErrFlowNotFound")
+	s.Assert().ErrorIs(err, approval.ErrFlowNotFound, "Should return ErrFlowNotFound")
 }

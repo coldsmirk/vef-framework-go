@@ -12,7 +12,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -215,7 +214,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeSequential() {
 			Operator: operator,
 			Caller:   approval.SystemCaller,
 		})
-		s.Require().ErrorIs(err, shared.ErrInvalidAddAssigneeType,
+		s.Require().ErrorIs(err, approval.ErrInvalidAddAssigneeType,
 			"A sequential queue has no parallel lane, so parallel additions must be rejected")
 
 		queue := s.loadQueue(tasks[0].InstanceID)
@@ -330,7 +329,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeNotAllowed() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Adding assignees should fail when node disallows it")
-	s.Assert().ErrorIs(err, shared.ErrAddAssigneeNotAllowed, "Should return ErrAddAssigneeNotAllowed")
+	s.Assert().ErrorIs(err, approval.ErrAddAssigneeNotAllowed, "Should return ErrAddAssigneeNotAllowed")
 }
 
 func (s *AddAssigneeTestSuite) TestAddAssigneeNotAssignee() {
@@ -345,7 +344,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeNotAssignee() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Non-assignee should be rejected when adding assignees")
-	s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should return ErrNotAssignee")
+	s.Assert().ErrorIs(err, approval.ErrNotAssignee, "Should return ErrNotAssignee")
 }
 
 func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotFound() {
@@ -358,7 +357,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotFound() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Adding assignees to a missing task should fail")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return ErrTaskNotFound")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotFound, "Should return ErrTaskNotFound")
 }
 
 func (s *AddAssigneeTestSuite) TestAddAssigneeInstanceCompleted() {
@@ -395,7 +394,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeInstanceCompleted() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Adding assignees to a completed instance should fail")
-	s.Assert().ErrorIs(err, shared.ErrInstanceCompleted, "Should return ErrInstanceCompleted")
+	s.Assert().ErrorIs(err, approval.ErrInstanceCompleted, "Should return ErrInstanceCompleted")
 }
 
 func (s *AddAssigneeTestSuite) TestAddAssigneeRejectsDisallowedConfiguredType() {
@@ -448,7 +447,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeRejectsDisallowedConfiguredType() 
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should reject disallowed add assignee type")
-	s.Assert().ErrorIs(err, shared.ErrInvalidAddAssigneeType, "Should return ErrInvalidAddAssigneeType")
+	s.Assert().ErrorIs(err, approval.ErrInvalidAddAssigneeType, "Should return ErrInvalidAddAssigneeType")
 }
 
 func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotPending() {
@@ -470,7 +469,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotPending() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Adding assignees to a non-pending task should fail")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject adding assignee for non-pending task")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotPending, "Should reject adding assignee for non-pending task")
 }
 
 func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotCurrentNode() {
@@ -501,7 +500,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeTaskNotCurrentNode() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Adding assignees from a stale node task should fail")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject adding assignee for non-current node task")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotPending, "Should reject adding assignee for non-current node task")
 }
 
 func (s *AddAssigneeTestSuite) TestAddAssigneeShouldStartTimeoutWhenNewTaskIsPending() {

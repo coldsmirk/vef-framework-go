@@ -12,7 +12,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -158,7 +157,7 @@ func (s *ResubmitInstanceTestSuite) TestResubmitShouldBeConcurrencySafe() {
 			continue
 		}
 
-		if errors.Is(err, shared.ErrResubmitNotAllowed) {
+		if errors.Is(err, approval.ErrResubmitNotAllowed) {
 			notAllowedCount++
 		}
 	}
@@ -211,5 +210,5 @@ func (s *ResubmitInstanceTestSuite) TestResubmitShouldRejectInvalidFormDataBySch
 
 	var re result.Error
 	s.Require().ErrorAs(err, &re, "Should return business error")
-	s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
+	s.Assert().Equal(approval.ErrCodeFormValidationFailed, re.Code, "Should return form validation error code")
 }

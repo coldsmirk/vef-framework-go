@@ -61,7 +61,7 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 
 	newAssigneeID := strings.TrimSpace(cmd.NewAssigneeID)
 	if newAssigneeID == "" || newAssigneeID == task.AssigneeID {
-		return cqrs.Unit{}, shared.ErrInvalidTransferTarget
+		return cqrs.Unit{}, approval.ErrInvalidTransferTarget
 	}
 
 	duplicate, err := hasActiveTaskForAssignee(ctx, db, task.InstanceID, task.NodeID, newAssigneeID)
@@ -70,7 +70,7 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 	}
 
 	if duplicate {
-		return cqrs.Unit{}, shared.ErrInvalidTransferTarget
+		return cqrs.Unit{}, approval.ErrInvalidTransferTarget
 	}
 
 	oldAssignee := task.Assignee()

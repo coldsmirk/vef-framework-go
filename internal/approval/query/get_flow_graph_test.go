@@ -7,7 +7,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -113,7 +112,7 @@ func (s *GetFlowGraphTestSuite) TestExplicitVersion() {
 			Caller:    approval.SystemCaller,
 		})
 		s.Require().Error(err, "Missing version must fail")
-		s.Assert().ErrorIs(err, shared.ErrVersionNotFound, "Should return version-not-found")
+		s.Assert().ErrorIs(err, approval.ErrVersionNotFound, "Should return version-not-found")
 	})
 
 	s.Run("VersionOfAnotherFlow", func() {
@@ -125,14 +124,14 @@ func (s *GetFlowGraphTestSuite) TestExplicitVersion() {
 			Caller:    approval.SystemCaller,
 		})
 		s.Require().Error(err, "A version under a different flow must be denied")
-		s.Assert().ErrorIs(err, shared.ErrVersionNotFound, "Cross-flow version must mimic not-found")
+		s.Assert().ErrorIs(err, approval.ErrVersionNotFound, "Cross-flow version must mimic not-found")
 	})
 }
 
 func (s *GetFlowGraphTestSuite) TestFlowNotFound() {
 	_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: "non-existent", Caller: approval.SystemCaller})
 	s.Require().Error(err, "TestFlowNotFound should return an error")
-	s.Assert().ErrorIs(err, shared.ErrFlowNotFound, "Should return expected error")
+	s.Assert().ErrorIs(err, approval.ErrFlowNotFound, "Should return expected error")
 }
 
 func (s *GetFlowGraphTestSuite) TestNoPublishedVersion() {
@@ -147,7 +146,7 @@ func (s *GetFlowGraphTestSuite) TestNoPublishedVersion() {
 
 	_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: fix2.FlowID, Caller: approval.SystemCaller})
 	s.Require().Error(err, "TestNoPublishedVersion should return an error")
-	s.Assert().ErrorIs(err, shared.ErrNoPublishedVersion, "Should return expected error")
+	s.Assert().ErrorIs(err, approval.ErrNoPublishedVersion, "Should return expected error")
 }
 
 func (s *GetFlowGraphTestSuite) TestForeignTenantOpaqueDeny() {
@@ -168,5 +167,5 @@ func (s *GetFlowGraphTestSuite) TestForeignTenantOpaqueDeny() {
 		Caller: approval.CallerContext{TenantID: "t1"},
 	})
 	s.Require().Error(err, "Foreign-tenant flow must be denied")
-	s.Assert().ErrorIs(err, shared.ErrFlowNotFound, "Cross-tenant deny must mimic not-found")
+	s.Assert().ErrorIs(err, approval.ErrFlowNotFound, "Cross-tenant deny must mimic not-found")
 }

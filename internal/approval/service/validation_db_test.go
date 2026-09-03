@@ -7,7 +7,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -267,7 +266,7 @@ func (s *ValidationServiceTestSuite) TestValidateRollbackTarget() {
 		current.ID = nodeAID
 
 		err := svc.ValidateRollbackTarget(s.ctx, s.db, instanceFor(versionID), current, nodeAID)
-		s.Require().ErrorIs(err, shared.ErrInvalidRollbackTarget, "Rolling back to the current node must be rejected")
+		s.Require().ErrorIs(err, approval.ErrInvalidRollbackTarget, "Rolling back to the current node must be rejected")
 	})
 
 	s.Run("RollbackNoneDenies", func() {
@@ -278,7 +277,7 @@ func (s *ValidationServiceTestSuite) TestValidateRollbackTarget() {
 		current.ID = nodeBID
 
 		err := svc.ValidateRollbackTarget(s.ctx, s.db, instanceFor(versionID), current, nodeAID)
-		s.Require().ErrorIs(err, shared.ErrRollbackNotAllowed, "RollbackNone must deny rollback")
+		s.Require().ErrorIs(err, approval.ErrRollbackNotAllowed, "RollbackNone must deny rollback")
 	})
 
 	s.Run("OutOfEnumRollbackTypeDenies", func() {
@@ -289,7 +288,7 @@ func (s *ValidationServiceTestSuite) TestValidateRollbackTarget() {
 		current.ID = nodeBID
 
 		err := svc.ValidateRollbackTarget(s.ctx, s.db, instanceFor(versionID), current, nodeAID)
-		s.Require().ErrorIs(err, shared.ErrRollbackNotAllowed,
+		s.Require().ErrorIs(err, approval.ErrRollbackNotAllowed,
 			"A corrupt out-of-enum rollback type must deny, never behave like 'any'")
 	})
 
@@ -314,7 +313,7 @@ func (s *ValidationServiceTestSuite) TestValidateRollbackTarget() {
 
 		// No start → B edge exists, so B cannot roll back to start.
 		err := svc.ValidateRollbackTarget(s.ctx, s.db, instanceFor(versionID), current, startID)
-		s.Require().ErrorIs(err, shared.ErrInvalidRollbackTarget,
+		s.Require().ErrorIs(err, approval.ErrInvalidRollbackTarget,
 			"Previous rollback to a non-adjacent node must be rejected")
 	})
 
@@ -337,7 +336,7 @@ func (s *ValidationServiceTestSuite) TestValidateRollbackTarget() {
 		current.ID = nodeBID
 
 		err := svc.ValidateRollbackTarget(s.ctx, s.db, instanceFor(versionID), current, nodeAID)
-		s.Require().ErrorIs(err, shared.ErrInvalidRollbackTarget,
+		s.Require().ErrorIs(err, approval.ErrInvalidRollbackTarget,
 			"Start rollback to a non-start node must be rejected")
 	})
 
@@ -360,7 +359,7 @@ func (s *ValidationServiceTestSuite) TestValidateRollbackTarget() {
 		current.ID = nodeBID
 
 		err := svc.ValidateRollbackTarget(s.ctx, s.db, instanceFor(versionID), current, nodeAID)
-		s.Require().ErrorIs(err, shared.ErrInvalidRollbackTarget,
+		s.Require().ErrorIs(err, approval.ErrInvalidRollbackTarget,
 			"Any rollback to a node the instance never traversed must be rejected")
 	})
 
@@ -372,7 +371,7 @@ func (s *ValidationServiceTestSuite) TestValidateRollbackTarget() {
 		current.ID = nodeBID
 
 		err := svc.ValidateRollbackTarget(s.ctx, s.db, instanceFor(versionID), current, "node-from-another-version")
-		s.Require().ErrorIs(err, shared.ErrInvalidRollbackTarget,
+		s.Require().ErrorIs(err, approval.ErrInvalidRollbackTarget,
 			"Any rollback to a node not in the version must be rejected")
 	})
 
@@ -397,7 +396,7 @@ func (s *ValidationServiceTestSuite) TestValidateRollbackTarget() {
 		current.ID = nodeBID
 
 		err := svc.ValidateRollbackTarget(s.ctx, s.db, instanceFor(versionID), current, nodeAID)
-		s.Require().ErrorIs(err, shared.ErrInvalidRollbackTarget,
+		s.Require().ErrorIs(err, approval.ErrInvalidRollbackTarget,
 			"Specified rollback to a target whose key is not whitelisted must be rejected")
 	})
 }

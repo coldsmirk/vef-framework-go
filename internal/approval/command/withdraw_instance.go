@@ -10,7 +10,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -51,19 +50,19 @@ func (h *WithdrawInstanceHandler) Handle(ctx context.Context, cmd WithdrawInstan
 	}
 
 	if instance.ApplicantID != cmd.Operator.ID {
-		return cqrs.Unit{}, shared.ErrNotApplicant
+		return cqrs.Unit{}, approval.ErrNotApplicant
 	}
 
 	if !engine.InstanceStateMachine.CanTransition(instance.Status, approval.InstanceWithdrawn) {
-		return cqrs.Unit{}, shared.ErrWithdrawNotAllowed
+		return cqrs.Unit{}, approval.ErrWithdrawNotAllowed
 	}
 
 	now := timex.Now()
 	instance.FinishedAt = &now
 
 	if err := h.instanceSvc.Transition(ctx, db, instance, approval.InstanceWithdrawn, "finished_at"); err != nil {
-		if errors.Is(err, shared.ErrInvalidInstanceTransition) {
-			return cqrs.Unit{}, shared.ErrWithdrawNotAllowed
+		if errors.Is(err, approval.ErrInvalidInstanceTransition) {
+			return cqrs.Unit{}, approval.ErrWithdrawNotAllowed
 		}
 
 		return cqrs.Unit{}, err

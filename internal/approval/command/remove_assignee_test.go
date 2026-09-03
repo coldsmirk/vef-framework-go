@@ -13,7 +13,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -290,7 +289,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveNotAllowed() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestRemoveNotAllowed should return an error")
-	s.Assert().ErrorIs(err, shared.ErrRemoveAssigneeNotAllowed, "Should return expected error")
+	s.Assert().ErrorIs(err, approval.ErrRemoveAssigneeNotAllowed, "Should return expected error")
 }
 
 func (s *RemoveAssigneeTestSuite) TestRemoveTaskNotFound() {
@@ -301,7 +300,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveTaskNotFound() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestRemoveTaskNotFound should return an error")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return expected error")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotFound, "Should return expected error")
 }
 
 func (s *RemoveAssigneeTestSuite) TestRemoveInstanceCompleted() {
@@ -337,7 +336,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveInstanceCompleted() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestRemoveInstanceCompleted should return an error")
-	s.Assert().ErrorIs(err, shared.ErrInstanceCompleted, "Should reject remove on completed instance")
+	s.Assert().ErrorIs(err, approval.ErrInstanceCompleted, "Should reject remove on completed instance")
 }
 
 func (s *RemoveAssigneeTestSuite) TestRemoveTaskNotCurrentNode() {
@@ -368,7 +367,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveTaskNotCurrentNode() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestRemoveTaskNotCurrentNode should return an error")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should reject remove on non-current node task")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotPending, "Should reject remove on non-current node task")
 }
 
 func (s *RemoveAssigneeTestSuite) TestRemoveAssigneeShouldBeConcurrencySafe() {
@@ -423,7 +422,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveAssigneeShouldBeConcurrencySafe() {
 			continue
 		}
 
-		if errors.Is(err, shared.ErrLastAssigneeRemoval) || errors.Is(err, shared.ErrTaskNotPending) || errors.Is(err, shared.ErrNotAssignee) {
+		if errors.Is(err, approval.ErrLastAssigneeRemoval) || errors.Is(err, approval.ErrTaskNotPending) || errors.Is(err, approval.ErrNotAssignee) {
 			safeRejectedCount++
 
 			continue

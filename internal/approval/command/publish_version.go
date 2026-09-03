@@ -8,7 +8,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -54,14 +53,14 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 		ForUpdate().
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
-			return cqrs.Unit{}, shared.ErrVersionNotFound
+			return cqrs.Unit{}, approval.ErrVersionNotFound
 		}
 
 		return cqrs.Unit{}, fmt.Errorf("load flow version: %w", err)
 	}
 
 	if version.Status != approval.VersionDraft {
-		return cqrs.Unit{}, shared.ErrVersionNotDraft
+		return cqrs.Unit{}, approval.ErrVersionNotDraft
 	}
 
 	// Authorize before any mutations so an unauthorized caller cannot
@@ -76,7 +75,7 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 	}
 
 	if err := cmd.Caller.Authorize(flow.TenantID); err != nil {
-		return cqrs.Unit{}, shared.ErrVersionNotFound
+		return cqrs.Unit{}, approval.ErrVersionNotFound
 	}
 
 	// Capture currently-published versions before archiving so we can

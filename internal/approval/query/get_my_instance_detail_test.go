@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -630,7 +629,7 @@ func (s *GetMyInstanceDetailTestSuite) TestParticipantAccess() {
 			InstanceID: inst.ID,
 			UserID:     "party-outsider",
 		})
-		s.Require().ErrorIs(err, shared.ErrAccessDenied,
+		s.Require().ErrorIs(err, approval.ErrAccessDenied,
 			"Widening the participant set must not open the instance to non-participants")
 	})
 }
@@ -877,7 +876,7 @@ func (s *GetMyInstanceDetailTestSuite) TestAccessDenied() {
 		InstanceID: s.instanceID,
 		UserID:     "user-unrelated",
 	})
-	s.Require().ErrorIs(err, shared.ErrAccessDenied, "Should return access denied for non-participant")
+	s.Require().ErrorIs(err, approval.ErrAccessDenied, "Should return access denied for non-participant")
 }
 
 func (s *GetMyInstanceDetailTestSuite) TestInstanceNotFound() {
@@ -885,5 +884,5 @@ func (s *GetMyInstanceDetailTestSuite) TestInstanceNotFound() {
 		InstanceID: "non-existent",
 		UserID:     "user-a",
 	})
-	s.Require().ErrorIs(err, shared.ErrInstanceNotFound, "Should return instance not found error")
+	s.Require().ErrorIs(err, approval.ErrInstanceNotFound, "Should return instance not found error")
 }

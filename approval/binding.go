@@ -2,7 +2,6 @@ package approval
 
 import (
 	"context"
-	"errors"
 	"regexp"
 	"strings"
 
@@ -98,16 +97,11 @@ const (
 // the same bound across supported databases.
 var businessIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
 
-// ErrInvalidBusinessIdentifier is returned by ValidateBusinessIdentifier
-// for values that do not match a SQL-safe identifier pattern. Flow CRUD
-// validation surfaces it to operators; the write-back re-checks the same
-// rule as defense-in-depth.
-var ErrInvalidBusinessIdentifier = errors.New("approval: invalid business identifier (must match ^[A-Za-z_][A-Za-z0-9_]{0,62}$)")
-
 // ValidateBusinessIdentifier reports whether id is a safe SQL identifier
-// for use as a dynamic table or column name in business binding queries.
-// Empty / whitespace-only strings pass — the caller decides whether absence
-// is itself an error (see Flow validation paths for the policy).
+// for use as a dynamic table or column name in business binding queries,
+// returning ErrInvalidBusinessIdentifier when it is not. Empty /
+// whitespace-only strings pass — the caller decides whether absence is
+// itself an error (see Flow validation paths for the policy).
 func ValidateBusinessIdentifier(id string) error {
 	trimmed := strings.TrimSpace(id)
 	if trimmed == "" {

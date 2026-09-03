@@ -9,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -126,7 +125,7 @@ func (s *ReassignTaskTestSuite) TestReassignTaskNotFound() {
 		Caller:        approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestReassignTaskNotFound should return an error")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return ErrTaskNotFound")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotFound, "Should return ErrTaskNotFound")
 }
 
 func (s *ReassignTaskTestSuite) TestReassignTaskNotPending() {
@@ -140,7 +139,7 @@ func (s *ReassignTaskTestSuite) TestReassignTaskNotPending() {
 		Caller:        approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestReassignTaskNotPending should return an error")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should not allow reassigning non-pending task")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotPending, "Should not allow reassigning non-pending task")
 }
 
 func (s *ReassignTaskTestSuite) TestReassignShouldRejectBlankTarget() {
@@ -154,7 +153,7 @@ func (s *ReassignTaskTestSuite) TestReassignShouldRejectBlankTarget() {
 		Caller:        approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should reject blank reassignment target")
-	s.Assert().ErrorIs(err, shared.ErrInvalidTransferTarget, "Should return invalid target error for blank reassignment target")
+	s.Assert().ErrorIs(err, approval.ErrInvalidTransferTarget, "Should return invalid target error for blank reassignment target")
 }
 
 func (s *ReassignTaskTestSuite) TestReassignShouldRejectSameAssignee() {
@@ -168,7 +167,7 @@ func (s *ReassignTaskTestSuite) TestReassignShouldRejectSameAssignee() {
 		Caller:        approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should reject reassignment to current assignee")
-	s.Assert().ErrorIs(err, shared.ErrInvalidTransferTarget, "Should return invalid target error for self reassignment")
+	s.Assert().ErrorIs(err, approval.ErrInvalidTransferTarget, "Should return invalid target error for self reassignment")
 }
 
 func (s *ReassignTaskTestSuite) TestReassignShouldRejectExistingActiveTarget() {
@@ -194,5 +193,5 @@ func (s *ReassignTaskTestSuite) TestReassignShouldRejectExistingActiveTarget() {
 		Caller:        approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should reject reassignment to assignee with active task on the same node")
-	s.Assert().ErrorIs(err, shared.ErrInvalidTransferTarget, "Should return invalid target error for duplicate active assignee")
+	s.Assert().ErrorIs(err, approval.ErrInvalidTransferTarget, "Should return invalid target error for duplicate active assignee")
 }

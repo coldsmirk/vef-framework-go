@@ -13,7 +13,7 @@ import (
 // write-back.
 func validateBindingMode(mode approval.BindingMode) error {
 	if !mode.IsValid() {
-		return shared.ErrInvalidBindingMode
+		return approval.ErrInvalidBindingMode
 	}
 
 	return nil
@@ -46,14 +46,14 @@ func validateInitiatorRules(
 ) error {
 	if isAllInitiationAllowed {
 		if len(initiators) > 0 {
-			return shared.ErrInitiatorsNotAllowed
+			return approval.ErrInitiatorsNotAllowed
 		}
 
 		return nil
 	}
 
 	if len(initiators) == 0 {
-		return shared.ErrInitiatorsRequired
+		return approval.ErrInitiatorsRequired
 	}
 
 	for _, init := range initiators {
@@ -63,9 +63,9 @@ func validateInitiatorRules(
 		// rejects at boot — so that fault can only mean the vocabulary itself
 		// is misconfigured, which is what the invalid-kind error says.
 		case shared.KindRuleUnknownKind, shared.KindRuleFormFieldRequired:
-			return shared.ErrInvalidInitiatorKind
+			return approval.ErrInvalidInitiatorKind
 		case shared.KindRuleIDsRequired:
-			return shared.ErrInitiatorsRequired
+			return approval.ErrInitiatorsRequired
 		case shared.KindRuleOK:
 		}
 	}
@@ -78,7 +78,7 @@ func validateInitiatorRules(
 // keys or values).
 func validateFlowLabels(labels map[string]string) error {
 	if err := orm.ValidateLabels(labels); err != nil {
-		return shared.ErrInvalidFlowLabel
+		return approval.ErrInvalidFlowLabel
 	}
 
 	return nil
@@ -95,7 +95,7 @@ func validateInstanceTitleTemplate(titleTemplate string) error {
 	}
 
 	if _, err := template.New("title").Parse(titleTemplate); err != nil {
-		return shared.ErrInvalidTitleTemplate
+		return approval.ErrInvalidTitleTemplate
 	}
 
 	return nil

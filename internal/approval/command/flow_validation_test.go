@@ -30,7 +30,7 @@ func TestValidateBindingMode(t *testing.T) {
 	t.Run("Invalid", func(t *testing.T) {
 		t.Parallel()
 
-		assert.ErrorIs(t, validateBindingMode("bogus"), shared.ErrInvalidBindingMode, "Unknown binding mode should be rejected")
+		assert.ErrorIs(t, validateBindingMode("bogus"), approval.ErrInvalidBindingMode, "Unknown binding mode should be rejected")
 	})
 }
 
@@ -50,13 +50,13 @@ func TestValidateInitiatorRules(t *testing.T) {
 		err := validateInitiatorRules(true, []shared.CreateFlowInitiatorCmd{
 			{Kind: approval.InitiatorUser, IDs: []string{"u1"}},
 		}, builtinInitiatorKinds)
-		assert.ErrorIs(t, err, shared.ErrInitiatorsNotAllowed, "Rules alongside open initiation would display a restriction that does not hold")
+		assert.ErrorIs(t, err, approval.ErrInitiatorsNotAllowed, "Rules alongside open initiation would display a restriction that does not hold")
 	})
 
 	t.Run("RestrictedRequiresRules", func(t *testing.T) {
 		t.Parallel()
 
-		assert.ErrorIs(t, validateInitiatorRules(false, nil, builtinInitiatorKinds), shared.ErrInitiatorsRequired,
+		assert.ErrorIs(t, validateInitiatorRules(false, nil, builtinInitiatorKinds), approval.ErrInitiatorsRequired,
 			"A restricted flow with no rules could be started by nobody")
 	})
 
@@ -64,14 +64,14 @@ func TestValidateInitiatorRules(t *testing.T) {
 		t.Parallel()
 
 		err := validateInitiatorRules(false, []shared.CreateFlowInitiatorCmd{{Kind: "bogus", IDs: []string{"x"}}}, builtinInitiatorKinds)
-		assert.ErrorIs(t, err, shared.ErrInvalidInitiatorKind, "A kind nothing resolves should be rejected")
+		assert.ErrorIs(t, err, approval.ErrInvalidInitiatorKind, "A kind nothing resolves should be rejected")
 	})
 
 	t.Run("SelectingKindRequiresIDs", func(t *testing.T) {
 		t.Parallel()
 
 		err := validateInitiatorRules(false, []shared.CreateFlowInitiatorCmd{{Kind: approval.InitiatorUser}}, builtinInitiatorKinds)
-		assert.ErrorIs(t, err, shared.ErrInitiatorsRequired, "A rule that selects nobody matches nobody")
+		assert.ErrorIs(t, err, approval.ErrInitiatorsRequired, "A rule that selects nobody matches nobody")
 	})
 
 	t.Run("BlankIDsDoNotCount", func(t *testing.T) {
@@ -80,7 +80,7 @@ func TestValidateInitiatorRules(t *testing.T) {
 		err := validateInitiatorRules(false, []shared.CreateFlowInitiatorCmd{
 			{Kind: approval.InitiatorUser, IDs: []string{"  ", ""}},
 		}, builtinInitiatorKinds)
-		assert.ErrorIs(t, err, shared.ErrInitiatorsRequired, "Blank IDs select nobody just as an empty list does")
+		assert.ErrorIs(t, err, approval.ErrInitiatorsRequired, "Blank IDs select nobody just as an empty list does")
 	})
 
 	// A host kind that resolves from the applicant alone — "any ward
@@ -138,7 +138,7 @@ func TestValidateFlowLabels(t *testing.T) {
 				t.Parallel()
 
 				err := validateFlowLabels(labels)
-				assert.ErrorIs(t, err, shared.ErrInvalidFlowLabel, "Labels %v should be rejected", labels)
+				assert.ErrorIs(t, err, approval.ErrInvalidFlowLabel, "Labels %v should be rejected", labels)
 			})
 		}
 	})

@@ -9,7 +9,6 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -102,7 +101,7 @@ func (s *ApproveTaskTestSuite) TestApproveTaskNotFound() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestApproveTaskNotFound should return an error")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotFound, "Should return expected error")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotFound, "Should return expected error")
 }
 
 func (s *ApproveTaskTestSuite) TestApproveNotAssignee() {
@@ -115,7 +114,7 @@ func (s *ApproveTaskTestSuite) TestApproveNotAssignee() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestApproveNotAssignee should return an error")
-	s.Assert().ErrorIs(err, shared.ErrNotAssignee, "Should return expected error")
+	s.Assert().ErrorIs(err, approval.ErrNotAssignee, "Should return expected error")
 }
 
 func (s *ApproveTaskTestSuite) TestApproveAlreadyCompleted() {
@@ -136,7 +135,7 @@ func (s *ApproveTaskTestSuite) TestApproveAlreadyCompleted() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "TestApproveAlreadyCompleted should return an error")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should return expected error")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotPending, "Should return expected error")
 }
 
 func (s *ApproveTaskTestSuite) TestApproveTaskNotCurrentNode() {
@@ -166,7 +165,7 @@ func (s *ApproveTaskTestSuite) TestApproveTaskNotCurrentNode() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when approving a task not in current node")
-	s.Assert().ErrorIs(err, shared.ErrTaskNotPending, "Should return task not pending for stale node task")
+	s.Assert().ErrorIs(err, approval.ErrTaskNotPending, "Should return task not pending for stale node task")
 }
 
 func (s *ApproveTaskTestSuite) TestApproveShouldResolveCCFromFormField() {
@@ -285,7 +284,7 @@ func (s *ApproveTaskTestSuite) TestApproveRejectsOversizedFormData() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().Error(err, "Approving with oversized form data should fail")
-	s.Assert().ErrorIs(err, shared.ErrFormDataTooLarge, "Should reject form data exceeding the size cap on the approve path")
+	s.Assert().ErrorIs(err, approval.ErrFormDataTooLarge, "Should reject form data exceeding the size cap on the approve path")
 
 	var reloaded approval.Task
 
@@ -389,7 +388,7 @@ func (s *ApproveTaskTestSuite) TestApproveDoesNotWedgeAlreadyOversizeInstance() 
 			FormData: map[string]any{"blob": strings.Repeat("y", 80*1024)},
 			Caller:   approval.SystemCaller,
 		})
-		s.Require().ErrorIs(err, shared.ErrFormDataTooLarge, "Growing an already-oversize instance further must still be rejected")
+		s.Require().ErrorIs(err, approval.ErrFormDataTooLarge, "Growing an already-oversize instance further must still be rejected")
 
 		var reloaded approval.Task
 
@@ -419,7 +418,7 @@ func (s *ApproveTaskTestSuite) TestApproveEnforcesRequiredPermissionField() {
 
 		var re result.Error
 		s.Require().ErrorAs(err, &re, "approve must be blocked while a required-permission field is empty")
-		s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "should be a form validation error")
+		s.Assert().Equal(approval.ErrCodeFormValidationFailed, re.Code, "should be a form validation error")
 
 		var reloaded approval.Task
 
@@ -470,7 +469,7 @@ func (s *ApproveTaskTestSuite) TestApproveEnforcesRequiredPermissionField() {
 
 		var re result.Error
 		s.Require().ErrorAs(err, &re, "handle must enforce required-permission fields like approve")
-		s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "should be a form validation error")
+		s.Assert().Equal(approval.ErrCodeFormValidationFailed, re.Code, "should be a form validation error")
 	})
 }
 
@@ -494,7 +493,7 @@ func (s *ApproveTaskTestSuite) TestApproveRejectsInvalidEditableValue() {
 
 	var re result.Error
 	s.Require().ErrorAs(err, &re, "an editable value below its schema minimum must fail approve")
-	s.Assert().Equal(shared.ErrCodeFormValidationFailed, re.Code, "should be a form validation error")
+	s.Assert().Equal(approval.ErrCodeFormValidationFailed, re.Code, "should be a form validation error")
 
 	var reloaded approval.Task
 
