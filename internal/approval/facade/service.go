@@ -104,3 +104,7 @@ func (s *Service) MarkCCRead(ctx context.Context, db orm.DB, in approval.MarkCCR
 func (s *Service) UrgeTask(ctx context.Context, db orm.DB, in approval.UrgeTaskInput) error {
 	return s.sendUnit(ctx, db, command.UrgeTaskCmd{UrgeTaskInput: in})
 }
+
+func (s *Service) RetryBusinessProjection(ctx context.Context, db orm.DB, in approval.RetryBusinessProjectionInput) error {
+	return s.sendUnit(ctx, db, command.RetryBusinessProjectionCmd{RetryBusinessProjectionInput: in})
+}

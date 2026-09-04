@@ -99,6 +99,14 @@ type Service interface {
 	// the instance — applicant or anyone a task was opened on — not a mere CC
 	// observer.
 	UrgeTask(ctx context.Context, db orm.DB, in UrgeTaskInput) error
+
+	// RetryBusinessProjection re-applies one eventual business projection
+	// immediately instead of waiting for the worker's next backoff window
+	// (see vef.approval.business_binding.consistency). This is the entry
+	// point for a repair routine draining projections wedged behind a schema
+	// or permission fault. Administrative: only the tenant scope is enforced,
+	// so the caller owns the permission check (see the interface comment).
+	RetryBusinessProjection(ctx context.Context, db orm.DB, in RetryBusinessProjectionInput) error
 }
 
 // StartInstanceInput describes a new instance to start.
@@ -281,4 +289,11 @@ type UrgeTaskInput struct {
 	UrgerID string
 	Message string
 	Caller  CallerContext
+}
+
+// RetryBusinessProjectionInput describes a manual business-projection retry.
+type RetryBusinessProjectionInput struct {
+	// ProjectionID identifies the apv_business_projection row to re-apply.
+	ProjectionID string
+	Caller       CallerContext
 }

@@ -271,6 +271,16 @@ func TestServiceForwardsInputs(t *testing.T) {
 				return svc.UrgeTask(ctx, db, in)
 			})
 	})
+
+	t.Run("RetryBusinessProjection", func(t *testing.T) {
+		in := approval.RetryBusinessProjectionInput{ProjectionID: "p-1", Caller: testCaller}
+
+		assertForwards[command.RetryBusinessProjectionCmd, cqrs.Unit](t, bus, db,
+			command.RetryBusinessProjectionCmd{RetryBusinessProjectionInput: in},
+			func(ctx context.Context, db orm.DB) error {
+				return svc.RetryBusinessProjection(ctx, db, in)
+			})
+	})
 }
 
 // TestServiceTransactionBoundary pins the contract the explicit db parameter

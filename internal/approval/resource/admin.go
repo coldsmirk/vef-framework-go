@@ -8,7 +8,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/admin"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -18,9 +17,9 @@ import (
 )
 
 // AdminResource exposes admin-level approval management endpoints. Queries
-// and the projection retry dispatch on the bus directly; the two runtime
-// operations (terminate, reassign) go through approval.Service like every
-// other runtime action, so they stay one code path with programmatic callers.
+// dispatch on the bus directly; every runtime operation goes through
+// approval.Service, so the request path and a programmatic caller stay one
+// code path.
 type AdminResource struct {
 	api.Resource
 
@@ -338,6 +337,7 @@ type AdminRetryBusinessProjectionParams struct {
 // RetryBusinessProjection immediately retries one eventual projection.
 func (r *AdminResource) RetryBusinessProjection(
 	ctx fiber.Ctx,
+	db orm.DB,
 	principal *security.Principal,
 	params AdminRetryBusinessProjectionParams,
 ) error {
@@ -346,11 +346,10 @@ func (r *AdminResource) RetryBusinessProjection(
 		return err
 	}
 
-	if _, err := cqrs.Send[command.RetryBusinessProjectionCmd, cqrs.Unit](
-		ctx.Context(),
-		r.bus,
-		command.RetryBusinessProjectionCmd{ProjectionID: params.ProjectionID, Caller: caller},
-	); err != nil {
+	if err := r.svc.RetryBusinessProjection(ctx.Context(), db, approval.RetryBusinessProjectionInput{
+		ProjectionID: params.ProjectionID,
+		Caller:       caller,
+	}); err != nil {
 		return err
 	}
 

@@ -16,9 +16,7 @@ import (
 // projection.
 type RetryBusinessProjectionCmd struct {
 	cqrs.BaseCommand
-
-	ProjectionID string
-	Caller       approval.CallerContext
+	approval.RetryBusinessProjectionInput
 }
 
 // RetryBusinessProjectionHandler handles manual projection retries.
