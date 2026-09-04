@@ -41,6 +41,14 @@ func (c *Collector[T]) Items() []T {
 	return c.items
 }
 
+// truncate drops everything appended after mark, undoing the additions of a
+// failed re-entrant dispatch the way a rolled-back savepoint unwinds the
+// commit hooks registered inside it.
+func (c *Collector[T]) truncate(mark int) {
+	clear(c.items[mark:])
+	c.items = c.items[:mark]
+}
+
 func isNil(v any) bool {
 	if v == nil {
 		return true
@@ -58,13 +66,29 @@ func isNil(v any) bool {
 
 type collectorKey[T any] struct{}
 
-// installCollector binds a new empty Collector[T] to ctx and returns the
-// derived context together with the collector handle. The collectorBehavior
-// uses this to bracket each command invocation.
-func installCollector[T any](ctx context.Context) (context.Context, *Collector[T]) {
+// installCollector binds a Collector[T] to ctx and returns the derived
+// context, the collector handle, and whether this call owns the flush.
+//
+// A collector already on the context is reused and ownership declined, which
+// is what keeps a re-entrant dispatch ordered. approval.Service lets host code
+// re-enter the pipeline from inside a running command — an
+// InstanceLifecycleHook fires in-transaction and may itself act on another
+// task — and a fresh inner collector would flush the inner command's events
+// and action logs the moment the inner handler returned, i.e. ahead of the
+// outer command's, publishing an effect before its cause. Appending to the
+// outer buffer instead keeps one ordered sequence flushed once by the
+// outermost invocation, matching how TransactionBehavior joins an already-open
+// transaction rather than nesting a second one. It also gives the two the same
+// failure semantics: the inner items are discarded if the outer command fails,
+// exactly like the writes they describe.
+func installCollector[T any](ctx context.Context) (context.Context, *Collector[T], bool) {
+	if existing, ok := TryCollectorFromContext[T](ctx); ok {
+		return ctx, existing, false
+	}
+
 	collector := new(Collector[T])
 
-	return context.WithValue(ctx, collectorKey[T]{}, collector), collector
+	return context.WithValue(ctx, collectorKey[T]{}, collector), collector, true
 }
 
 // TryCollectorFromContext returns the request-scoped Collector[T] if one is
@@ -114,19 +138,28 @@ type collectorBehavior[T any] struct {
 func (b *collectorBehavior[T]) Order() int { return b.order }
 
 // Handle installs the collector, runs the handler, and flushes on success.
+// A re-entrant dispatch joins the enclosing collector and leaves the flush to
+// it, so the buffered items stay in occurrence order.
 func (b *collectorBehavior[T]) Handle(ctx context.Context, action cqrs.Action, next func(context.Context) (any, error)) (any, error) {
 	if action.Kind() == cqrs.Query {
 		return next(ctx)
 	}
 
-	ctx, collector := installCollector[T](ctx)
+	ctx, collector, owned := installCollector[T](ctx)
+	mark := len(collector.items)
 
 	result, err := next(ctx)
 	if err != nil {
+		// Whatever this dispatch buffered describes writes that are not
+		// happening. Owning the collector, that is the whole buffer; joined to
+		// an enclosing one, it is only what was appended here — the enclosing
+		// command may still succeed, and its own items must survive.
+		collector.truncate(mark)
+
 		return nil, err
 	}
 
-	if len(collector.items) == 0 {
+	if !owned || len(collector.items) == 0 {
 		return result, nil
 	}
 
