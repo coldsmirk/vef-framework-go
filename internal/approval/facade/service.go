@@ -3,6 +3,8 @@ package facade
 import (
 	"context"
 
+	"github.com/gofiber/fiber/v3"
+
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
@@ -30,13 +32,47 @@ func NewService(bus cqrs.Bus) approval.Service {
 	return &Service{bus: bus}
 }
 
-// send binds db to the context and dispatches cmd, returning the handler's
-// result. Binding is what hands the caller's transaction boundary to the
-// pipeline: TransactionBehavior joins the handle when it is an open
-// transaction and opens one on it otherwise, and every handler reads
-// contextx.DB(ctx) rather than its injected primary handle.
+// bindDB validates the caller's handle and binds it to the dispatch context.
+// Binding is what hands the caller's transaction boundary to the pipeline:
+// TransactionBehavior joins the handle when it is an open transaction and
+// opens one on it otherwise, and every handler reads contextx.DB(ctx) rather
+// than its injected primary handle.
+//
+// Two caller mistakes are neutralized here because neither is a compile
+// error and both fail silently rather than loudly:
+//
+//   - A nil handle would leave contextx.DB(ctx) nil and let
+//     TransactionBehavior fall back to its own injected primary handle, so the
+//     operation would commit outside the caller's transaction and attribute
+//     itself to orm.OperatorSystem. It is rejected instead.
+//   - A fiber.Ctx satisfies context.Context, so a host API handler can pass
+//     its request context straight in. contextx.SetDB mutates a fiber.Ctx's
+//     Locals in place instead of deriving a child context, which would leave
+//     the whole request bound to a transaction handle that dies at the
+//     caller's commit; unwrapping first makes every call site safe by
+//     construction.
+func bindDB(ctx context.Context, db orm.DB) (context.Context, error) {
+	if db == nil {
+		return nil, approval.ErrDBRequired
+	}
+
+	if c, ok := ctx.(fiber.Ctx); ok {
+		ctx = c.Context()
+	}
+
+	return contextx.SetDB(ctx, db), nil
+}
+
+// send binds db and dispatches cmd, returning the handler's result.
 func (s *Service) send[TCmd cqrs.Action, TResult any](ctx context.Context, db orm.DB, cmd TCmd) (TResult, error) {
-	return cqrs.Send[TCmd, TResult](contextx.SetDB(ctx, db), s.bus, cmd)
+	ctx, err := bindDB(ctx, db)
+	if err != nil {
+		var zero TResult
+
+		return zero, err
+	}
+
+	return cqrs.Send[TCmd, TResult](ctx, s.bus, cmd)
 }
 
 // sendUnit is send for the operations whose handler returns no value. TResult

@@ -3,9 +3,11 @@ package facade_test
 import (
 	"context"
 	"errors"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -348,4 +350,57 @@ func TestServiceTransactionBoundary(t *testing.T) {
 		require.NoError(t, err, "probing sqlite_master should succeed")
 		assert.Zero(t, count, "work done through the facade must roll back with the caller's transaction")
 	})
+}
+
+// TestServiceRejectsNilHandle pins the fail-closed half of the handle
+// contract. A nil handle leaves contextx.DB(ctx) nil, which TransactionBehavior
+// reads as "no caller handle" and answers with its own injected primary one —
+// so without this check the operation would succeed on a transaction the
+// caller does not control, attributed to orm.OperatorSystem.
+func TestServiceRejectsNilHandle(t *testing.T) {
+	db := testx.NewTestDB(t)
+	bus := newBus(db)
+	svc := facade.NewService(bus)
+	got := capture[command.ApproveTaskCmd, cqrs.Unit](bus)
+
+	err := svc.ApproveTask(context.Background(), nil, approval.ApproveTaskInput{TaskID: "k-1", Operator: testUser, Caller: testCaller})
+
+	require.ErrorIs(t, err, approval.ErrDBRequired, "a nil handle must be rejected, not defaulted to the framework's own")
+	assert.Nil(t, got.db, "the command must not reach the handler at all")
+}
+
+// TestServiceUnwrapsFiberContext pins that passing a request context does not
+// outlive the call. fiber.Ctx satisfies context.Context, so a host handler can
+// pass its own ctx without a compile error, and contextx.SetDB writes into a
+// fiber.Ctx's Locals in place rather than deriving a child context — so an
+// unguarded bind would leave the whole request pointing at a transaction
+// handle that is dead the moment the caller's RunInTx returns.
+func TestServiceUnwrapsFiberContext(t *testing.T) {
+	db := testx.NewTestDB(t)
+	bus := newBus(db)
+	svc := facade.NewService(bus)
+	got := capture[command.WithdrawInstanceCmd, cqrs.Unit](bus)
+	in := approval.WithdrawInstanceInput{InstanceID: "i-1", Operator: testUser, Caller: testCaller}
+
+	app := fiber.New()
+	app.Get("/test", func(c fiber.Ctx) error {
+		// What middleware.Contextual does for every /api request.
+		contextx.SetDB(c, db)
+
+		// The callback context is deliberately ignored in favor of the fiber
+		// one: passing `c` is the mistake under test, and it compiles.
+		err := db.RunInTx(c.Context(), func(_ context.Context, tx orm.DB) error {
+			return svc.WithdrawInstance(c, tx, in)
+		})
+		require.NoError(t, err, "operation should succeed when handed the request context")
+		assert.True(t, got.db.InTx(), "handler must still run on the caller's transaction")
+
+		assert.Same(t, db, contextx.DB(c), "the request-scoped handle must survive the call, not be replaced by the committed transaction")
+
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequestWithContext(context.Background(), fiber.MethodGet, "/test", nil))
+	require.NoError(t, err, "fiber test request should execute")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "handler should return 200")
 }

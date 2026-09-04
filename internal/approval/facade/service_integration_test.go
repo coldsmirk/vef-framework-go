@@ -215,14 +215,19 @@ func (s *ServiceIntegrationTestSuite) countInstances(id string) int64 {
 }
 
 func (s *ServiceIntegrationTestSuite) pendingTask(instanceID string) approval.Task {
-	var task approval.Task
+	// Scanned as a slice rather than a single row: scanning into one struct
+	// takes the first match and reports no error when several exist, so a
+	// regression opening a second seat would surface as an unrelated assertion
+	// failing further down instead of here.
+	var tasks []approval.Task
 
-	err := s.db.NewSelect().Model(&task).Where(func(cb orm.ConditionBuilder) {
+	err := s.db.NewSelect().Model(&tasks).Where(func(cb orm.ConditionBuilder) {
 		cb.Equals("instance_id", instanceID).Equals("status", approval.TaskPending)
 	}).Scan(s.ctx)
-	s.Require().NoError(err, "Instance should have exactly one pending task")
+	s.Require().NoError(err, "Should load the instance's pending tasks")
+	s.Require().Len(tasks, 1, "Instance should have exactly one pending task")
 
-	return task
+	return tasks[0]
 }
 
 func startInput(flowCode string) approval.StartInstanceInput {

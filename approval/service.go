@@ -11,9 +11,16 @@ import (
 // expose, callable from host code without an HTTP principal. The API
 // resources are themselves callers of this interface, so an operation behaves
 // identically whether a request or a host routine triggered it — the same
-// validation, the same permission checks, the same domain events, audit rows,
-// lifecycle hooks and business write-back. Inject it via DI; it is available
-// whenever vef.ApprovalModule is enabled.
+// validation, the same domain events, audit rows, lifecycle hooks and
+// business write-back. Inject it via DI; it is available whenever
+// vef.ApprovalModule is enabled.
+//
+// Authorization is the caller's, not this interface's. The RBAC tokens that
+// gate the HTTP endpoints live on the API operations, so the commands behind
+// them enforce only the tenant scope carried by Caller: TerminateInstance,
+// ReassignTask and RetryBusinessProjection never check that the operator is
+// an administrator. A host putting any of them behind its own endpoint owns
+// that check.
 //
 // Every method takes the orm.DB handle the operation runs on. The handle
 // decides the transaction boundary: pass the handle of an open RunInTx scope
@@ -21,14 +28,40 @@ import (
 // approval action it triggers commit or roll back together; pass a plain
 // handle and the operation opens (and commits) a transaction of its own. The
 // handle is explicit rather than read off the context because orm.DB.RunInTx
-// does not attach the transaction to the context it hands the callback — a
-// method that only took a context would silently open a second, independent
-// transaction inside the caller's. The handle must belong to the primary data
-// source (approval tables live there, and the domain events publish with
-// event.WithTx against it). Audit columns (created_by / updated_by) render
-// the operator bound on the handle: the injected primary orm.DB carries
-// orm.OperatorSystem, and a caller acting on behalf of a person binds that
-// person first with db.WithNamedArg(orm.PlaceholderKeyOperator, userID).
+// does not attach the transaction handle to the context it hands the callback
+// — a method that only took a context would silently open a second,
+// independent transaction inside the caller's. A nil handle is rejected with
+// ErrDBRequired rather than defaulted to the framework's own. The handle must
+// belong to the primary data source (approval tables live there, and the
+// domain events publish with event.WithTx against it).
+//
+// When joining a transaction, pass the context RunInTx hands the callback —
+// not the one you called RunInTx with. RunInTx does put one thing on that
+// context: the commit-hook registry orm.OnCommit reads, through which the
+// tx_memory event transport defers delivery. Under a route that uses
+// tx_memory the outer context therefore fails the publish with
+// orm.ErrNoCommitScope and rolls the whole action back:
+//
+//	db.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error {
+//		if err := writeBusinessRow(txCtx, tx); err != nil {
+//			return err
+//		}
+//
+//		return svc.ApproveTask(txCtx, tx, in)
+//	})
+//
+// Audit columns (created_by / updated_by) render the operator bound on the
+// handle, and orm.DB.WithNamedArg is pool-scoped only — it panics on a
+// transaction handle. Bind the person before opening the transaction and pass
+// the tx that handle yields:
+//
+//	acting := db.WithNamedArg(orm.PlaceholderKeyOperator, userID)
+//	acting.RunInTx(ctx, func(txCtx context.Context, tx orm.DB) error { … })
+//
+// A handle carrying no operator — the injected primary orm.DB — writes
+// orm.OperatorSystem into those columns. The action log records Input.Operator
+// either way, so an unbound handle costs row-level attribution, not the audit
+// trail.
 //
 // Errors are the public sentinels in api_errors.go (ErrFlowNotActive,
 // ErrNotAllowedInitiate, ErrTaskNotPending, …), matchable with errors.Is.
@@ -52,10 +85,11 @@ type Service interface {
 	// behalf of its applicant; the operator must be the applicant.
 	ResubmitInstance(ctx context.Context, db orm.DB, in ResubmitInstanceInput) error
 
-	// TerminateInstance force-closes an instance (an admin operation).
-	// Running, returned and withdrawn instances can all be terminated — the
-	// instance state machine is the single authority on which statuses may
-	// close.
+	// TerminateInstance force-closes an instance. Running, returned and
+	// withdrawn instances can all be terminated — the instance state machine
+	// is the single authority on which statuses may close. Administrative:
+	// only the tenant scope is enforced, so the caller owns the permission
+	// check (see the interface comment).
 	TerminateInstance(ctx context.Context, db orm.DB, in TerminateInstanceInput) error
 
 	// ApproveTask approves a pending approval task, or finishes a pending
@@ -75,8 +109,10 @@ type Service interface {
 	// operator must hold the task and the node must allow rollback.
 	RollbackTask(ctx context.Context, db orm.DB, in RollbackTaskInput) error
 
-	// ReassignTask moves a pending task to a different assignee (an admin
-	// operation — the operator need not hold the task).
+	// ReassignTask moves a pending task to a different assignee; the operator
+	// need not hold the task. Administrative: only the tenant scope is
+	// enforced, so the caller owns the permission check (see the interface
+	// comment).
 	ReassignTask(ctx context.Context, db orm.DB, in ReassignTaskInput) error
 
 	// AddAssignee adds assignees before, after, or alongside a pending task

@@ -91,7 +91,19 @@ func TestBootOptionsGraphResolves(t *testing.T) {
 		options []fx.Option
 	}{
 		{name: "Core"},
-		{name: "Approval", options: []fx.Option{ApprovalModule, approvalHostDependencies()}},
+		{
+			name: "Approval",
+			options: []fx.Option{
+				ApprovalModule,
+				approvalHostDependencies(),
+				// approval.Service is a host-facing contract, so it must reach
+				// the root scope. Nothing else pins that: every in-repo consumer
+				// lives inside the approval module, so adding the fx.Private its
+				// sibling modules carry would leave the framework's own tests
+				// green while every host injecting the Service failed to boot.
+				fx.Invoke(func(approval.Service) {}),
+			},
+		},
 		{name: "Integration", options: []fx.Option{IntegrationModule}},
 		{
 			name:    "AllModules",
