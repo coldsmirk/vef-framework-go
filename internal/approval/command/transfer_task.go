@@ -18,14 +18,7 @@ import (
 // TransferTaskCmd transfers a pending task to another user.
 type TransferTaskCmd struct {
 	cqrs.BaseCommand
-
-	TaskID       string
-	Operator     approval.UserInfo
-	Opinion      string
-	FormData     map[string]any
-	TransferToID string
-	Attachments  []string
-	Caller       approval.CallerContext
+	approval.TransferTaskInput
 }
 
 // TransferTaskHandler handles the TransferTaskCmd command.

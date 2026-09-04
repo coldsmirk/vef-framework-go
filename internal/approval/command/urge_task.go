@@ -20,11 +20,7 @@ import (
 // UrgeTaskCmd sends an urge notification for a pending task.
 type UrgeTaskCmd struct {
 	cqrs.BaseCommand
-
-	TaskID  string
-	UrgerID string
-	Message string
-	Caller  approval.CallerContext
+	approval.UrgeTaskInput
 }
 
 // UrgeTaskHandler handles the UrgeTaskCmd command.

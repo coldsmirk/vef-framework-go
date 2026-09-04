@@ -16,13 +16,7 @@ import (
 // RejectTaskCmd rejects a pending task.
 type RejectTaskCmd struct {
 	cqrs.BaseCommand
-
-	TaskID      string
-	Operator    approval.UserInfo
-	Opinion     string
-	FormData    map[string]any
-	Attachments []string
-	Caller      approval.CallerContext
+	approval.RejectTaskInput
 }
 
 // RejectTaskHandler handles the RejectTaskCmd command.

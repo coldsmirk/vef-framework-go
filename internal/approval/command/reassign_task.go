@@ -17,12 +17,7 @@ import (
 // ReassignTaskCmd reassigns a pending task to a different user (admin operation).
 type ReassignTaskCmd struct {
 	cqrs.BaseCommand
-
-	TaskID        string
-	NewAssigneeID string
-	Operator      approval.UserInfo
-	Reason        string
-	Caller        approval.CallerContext
+	approval.ReassignTaskInput
 }
 
 // ReassignTaskHandler handles the ReassignTaskCmd command.

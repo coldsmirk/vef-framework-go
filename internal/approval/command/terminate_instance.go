@@ -20,11 +20,7 @@ import (
 // state machine is the single authority on which statuses may close.
 type TerminateInstanceCmd struct {
 	cqrs.BaseCommand
-
-	InstanceID string
-	Operator   approval.UserInfo
-	Reason     string
-	Caller     approval.CallerContext
+	approval.TerminateInstanceInput
 }
 
 // TerminateInstanceHandler handles the TerminateInstanceCmd command.

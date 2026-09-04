@@ -18,11 +18,7 @@ import (
 // AddCCCmd adds CC records for an instance.
 type AddCCCmd struct {
 	cqrs.BaseCommand
-
-	InstanceID string
-	CCUserIDs  []string
-	Operator   approval.UserInfo
-	Caller     approval.CallerContext
+	approval.AddCCInput
 }
 
 // AddCCHandler handles the AddCCCmd command.

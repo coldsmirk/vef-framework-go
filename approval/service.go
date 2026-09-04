@@ -130,7 +130,9 @@ type StartInstanceInput struct {
 	// version's form fields.
 	FormData map[string]any
 	// Globals is the host-supplied global-variable snapshot persisted onto the
-	// instance and read by condition routing (see the type comment).
+	// instance (Instance.Globals) and resolved by condition evaluation —
+	// field subjects and expression bindings alike (see the type comment).
+	// Snapshotting at start keeps routing deterministic across re-evaluation.
 	Globals map[string]any
 	// Caller carries the tenant authority of this call (see the type comment).
 	Caller CallerContext

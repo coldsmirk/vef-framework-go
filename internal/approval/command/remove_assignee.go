@@ -15,10 +15,7 @@ import (
 // RemoveAssigneeCmd removes an assignee by canceling their task.
 type RemoveAssigneeCmd struct {
 	cqrs.BaseCommand
-
-	TaskID   string
-	Operator approval.UserInfo
-	Caller   approval.CallerContext
+	approval.RemoveAssigneeInput
 }
 
 // RemoveAssigneeHandler handles the RemoveAssigneeCmd command.

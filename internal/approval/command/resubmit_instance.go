@@ -19,11 +19,7 @@ import (
 // ResubmitInstanceCmd resubmits a returned instance.
 type ResubmitInstanceCmd struct {
 	cqrs.BaseCommand
-
-	InstanceID string
-	Operator   approval.UserInfo
-	FormData   map[string]any
-	Caller     approval.CallerContext
+	approval.ResubmitInstanceInput
 }
 
 // ResubmitInstanceHandler handles the ResubmitInstanceCmd command.

@@ -25,18 +25,7 @@ import (
 // StartInstanceCmd starts a new approval flow instance.
 type StartInstanceCmd struct {
 	cqrs.BaseCommand
-
-	TenantID    string
-	FlowCode    string
-	Applicant   approval.UserInfo
-	BusinessRef *string
-	FormData    map[string]any
-	// Globals is the host-supplied global-variable snapshot persisted onto the
-	// instance (Instance.Globals) and resolved by condition evaluation — field
-	// subjects and expression bindings alike. Snapshotting at start keeps
-	// routing deterministic across re-evaluation.
-	Globals map[string]any
-	Caller  approval.CallerContext
+	approval.StartInstanceInput
 }
 
 // StartInstanceHandler handles the StartInstanceCmd command.

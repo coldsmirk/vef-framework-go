@@ -19,18 +19,18 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// captured is what a stub command handler records: the command it received
+// Captured is what a stub command handler records: the command it received
 // and the DB handle bound to its context, which is how the facade hands the
 // caller's transaction boundary to the pipeline.
-type captured[TCmd any] struct {
+type Captured[TCmd any] struct {
 	cmd TCmd
 	db  orm.DB
 }
 
 // capture registers a stub handler for TCmd on bus that records its input and
 // returns the zero TResult.
-func capture[TCmd cqrs.Action, TResult any](bus cqrs.Bus) *captured[TCmd] {
-	c := new(captured[TCmd])
+func capture[TCmd cqrs.Action, TResult any](bus cqrs.Bus) *Captured[TCmd] {
+	c := new(Captured[TCmd])
 
 	cqrs.Register(bus, cqrs.HandlerFunc[TCmd, TResult](func(ctx context.Context, cmd TCmd) (TResult, error) {
 		c.cmd = cmd
@@ -44,21 +44,31 @@ func capture[TCmd cqrs.Action, TResult any](bus cqrs.Bus) *captured[TCmd] {
 	return c
 }
 
-// requireNoZeroField fails when any field of cmd other than the embedded
-// BaseCommand is left at its zero value. The forwarding assertions compare a
-// captured command with the expected one, so a field the test forgot to
-// populate would pass trivially — this makes such an omission fail instead.
+// requireNoZeroField fails when any exported field reachable from cmd is left
+// at its zero value. The forwarding assertions compare a captured command with
+// the expected one, so a field the test forgot to populate would pass
+// trivially — this makes such an omission fail instead. Embedded structs are
+// walked rather than skipped because a command carries its whole payload that
+// way (command.ApproveTaskCmd embeds approval.ApproveTaskInput).
 func requireNoZeroField(t *testing.T, cmd any) {
 	t.Helper()
+	requireNoZeroFieldValue(t, reflect.ValueOf(cmd))
+}
 
-	v := reflect.ValueOf(cmd)
+func requireNoZeroFieldValue(t *testing.T, v reflect.Value) {
+	t.Helper()
+
 	for i := range v.NumField() {
 		field := v.Type().Field(i)
-		if field.Anonymous {
-			continue
-		}
 
-		require.False(t, v.Field(i).IsZero(), "test input must populate %s.%s so forwarding is actually checked", v.Type().Name(), field.Name)
+		switch {
+		case field.Anonymous && field.Type.Kind() == reflect.Struct:
+			requireNoZeroFieldValue(t, v.Field(i))
+		case !field.IsExported():
+			continue
+		default:
+			require.False(t, v.Field(i).IsZero(), "test input must populate %s.%s so forwarding is actually checked", v.Type().Name(), field.Name)
+		}
 	}
 }
 
@@ -97,8 +107,7 @@ func TestServiceForwardsInputs(t *testing.T) {
 	svc := facade.NewService(bus)
 
 	t.Run("StartInstance", func(t *testing.T) {
-		got := capture[command.StartInstanceCmd, *approval.Instance](bus)
-		want := command.StartInstanceCmd{
+		in := approval.StartInstanceInput{
 			TenantID:    "t-1",
 			FlowCode:    "leave",
 			Applicant:   testUser,
@@ -107,159 +116,159 @@ func TestServiceForwardsInputs(t *testing.T) {
 			Globals:     map[string]any{"region": "cn"},
 			Caller:      testCaller,
 		}
-		requireNoZeroField(t, want)
 
-		_, err := svc.StartInstance(context.Background(), db, approval.StartInstanceInput{
-			TenantID:    "t-1",
-			FlowCode:    "leave",
-			Applicant:   testUser,
-			BusinessRef: new("order-1"),
-			FormData:    testForm,
-			Globals:     map[string]any{"region": "cn"},
-			Caller:      testCaller,
-		})
-		require.NoError(t, err, "StartInstance should dispatch without error")
-		assert.Equal(t, want, got.cmd, "StartInstance must forward every input field")
-		assert.True(t, got.db.InTx(), "handler must run inside a transaction")
+		assertForwards[command.StartInstanceCmd, *approval.Instance](t, bus, db,
+			command.StartInstanceCmd{StartInstanceInput: in},
+			func(ctx context.Context, db orm.DB) error {
+				_, err := svc.StartInstance(ctx, db, in)
+
+				return err
+			})
 	})
 
 	t.Run("WithdrawInstance", func(t *testing.T) {
+		in := approval.WithdrawInstanceInput{InstanceID: "i-1", Operator: testUser, Reason: "changed my mind", Caller: testCaller}
+
 		assertForwards[command.WithdrawInstanceCmd, cqrs.Unit](t, bus, db,
-			command.WithdrawInstanceCmd{InstanceID: "i-1", Operator: testUser, Reason: "changed my mind", Caller: testCaller},
+			command.WithdrawInstanceCmd{WithdrawInstanceInput: in},
 			func(ctx context.Context, db orm.DB) error {
-				return svc.WithdrawInstance(ctx, db, approval.WithdrawInstanceInput{InstanceID: "i-1", Operator: testUser, Reason: "changed my mind", Caller: testCaller})
+				return svc.WithdrawInstance(ctx, db, in)
 			})
 	})
 
 	t.Run("ResubmitInstance", func(t *testing.T) {
+		in := approval.ResubmitInstanceInput{InstanceID: "i-1", Operator: testUser, FormData: testForm, Caller: testCaller}
+
 		assertForwards[command.ResubmitInstanceCmd, cqrs.Unit](t, bus, db,
-			command.ResubmitInstanceCmd{InstanceID: "i-1", Operator: testUser, FormData: testForm, Caller: testCaller},
+			command.ResubmitInstanceCmd{ResubmitInstanceInput: in},
 			func(ctx context.Context, db orm.DB) error {
-				return svc.ResubmitInstance(ctx, db, approval.ResubmitInstanceInput{InstanceID: "i-1", Operator: testUser, FormData: testForm, Caller: testCaller})
+				return svc.ResubmitInstance(ctx, db, in)
 			})
 	})
 
 	t.Run("TerminateInstance", func(t *testing.T) {
+		in := approval.TerminateInstanceInput{InstanceID: "i-1", Operator: testUser, Reason: "order canceled", Caller: testCaller}
+
 		assertForwards[command.TerminateInstanceCmd, cqrs.Unit](t, bus, db,
-			command.TerminateInstanceCmd{InstanceID: "i-1", Operator: testUser, Reason: "order canceled", Caller: testCaller},
+			command.TerminateInstanceCmd{TerminateInstanceInput: in},
 			func(ctx context.Context, db orm.DB) error {
-				return svc.TerminateInstance(ctx, db, approval.TerminateInstanceInput{InstanceID: "i-1", Operator: testUser, Reason: "order canceled", Caller: testCaller})
+				return svc.TerminateInstance(ctx, db, in)
 			})
 	})
 
 	t.Run("ApproveTask", func(t *testing.T) {
+		in := approval.ApproveTaskInput{TaskID: "k-1", Operator: testUser, Opinion: "ok", FormData: testForm, Attachments: testFiles, Caller: testCaller}
+
 		assertForwards[command.ApproveTaskCmd, cqrs.Unit](t, bus, db,
-			command.ApproveTaskCmd{TaskID: "k-1", Operator: testUser, Opinion: "ok", FormData: testForm, Attachments: testFiles, Caller: testCaller},
+			command.ApproveTaskCmd{ApproveTaskInput: in},
 			func(ctx context.Context, db orm.DB) error {
-				return svc.ApproveTask(
-					ctx,
-					db,
-					approval.ApproveTaskInput{TaskID: "k-1", Operator: testUser, Opinion: "ok", FormData: testForm, Attachments: testFiles, Caller: testCaller},
-				)
+				return svc.ApproveTask(ctx, db, in)
 			})
 	})
 
 	t.Run("RejectTask", func(t *testing.T) {
+		in := approval.RejectTaskInput{TaskID: "k-1", Operator: testUser, Opinion: "no", FormData: testForm, Attachments: testFiles, Caller: testCaller}
+
 		assertForwards[command.RejectTaskCmd, cqrs.Unit](t, bus, db,
-			command.RejectTaskCmd{TaskID: "k-1", Operator: testUser, Opinion: "no", FormData: testForm, Attachments: testFiles, Caller: testCaller},
+			command.RejectTaskCmd{RejectTaskInput: in},
 			func(ctx context.Context, db orm.DB) error {
-				return svc.RejectTask(
-					ctx,
-					db,
-					approval.RejectTaskInput{TaskID: "k-1", Operator: testUser, Opinion: "no", FormData: testForm, Attachments: testFiles, Caller: testCaller},
-				)
+				return svc.RejectTask(ctx, db, in)
 			})
 	})
 
 	t.Run("TransferTask", func(t *testing.T) {
+		in := approval.TransferTaskInput{
+			TaskID:       "k-1",
+			Operator:     testUser,
+			Opinion:      "yours",
+			FormData:     testForm,
+			TransferToID: "u-2",
+			Attachments:  testFiles,
+			Caller:       testCaller,
+		}
+
 		assertForwards[command.TransferTaskCmd, cqrs.Unit](t, bus, db,
-			command.TransferTaskCmd{TaskID: "k-1", Operator: testUser, Opinion: "yours", FormData: testForm, TransferToID: "u-2", Attachments: testFiles, Caller: testCaller},
+			command.TransferTaskCmd{TransferTaskInput: in},
 			func(ctx context.Context, db orm.DB) error {
-				return svc.TransferTask(
-					ctx,
-					db,
-					approval.TransferTaskInput{
-						TaskID:       "k-1",
-						Operator:     testUser,
-						Opinion:      "yours",
-						FormData:     testForm,
-						TransferToID: "u-2",
-						Attachments:  testFiles,
-						Caller:       testCaller,
-					},
-				)
+				return svc.TransferTask(ctx, db, in)
 			})
 	})
 
 	t.Run("RollbackTask", func(t *testing.T) {
+		in := approval.RollbackTaskInput{
+			TaskID:       "k-1",
+			Operator:     testUser,
+			Opinion:      "redo",
+			FormData:     testForm,
+			TargetNodeID: "n-1",
+			Attachments:  testFiles,
+			Caller:       testCaller,
+		}
+
 		assertForwards[command.RollbackTaskCmd, cqrs.Unit](t, bus, db,
-			command.RollbackTaskCmd{TaskID: "k-1", Operator: testUser, Opinion: "redo", FormData: testForm, TargetNodeID: "n-1", Attachments: testFiles, Caller: testCaller},
+			command.RollbackTaskCmd{RollbackTaskInput: in},
 			func(ctx context.Context, db orm.DB) error {
-				return svc.RollbackTask(
-					ctx,
-					db,
-					approval.RollbackTaskInput{
-						TaskID:       "k-1",
-						Operator:     testUser,
-						Opinion:      "redo",
-						FormData:     testForm,
-						TargetNodeID: "n-1",
-						Attachments:  testFiles,
-						Caller:       testCaller,
-					},
-				)
+				return svc.RollbackTask(ctx, db, in)
 			})
 	})
 
 	t.Run("ReassignTask", func(t *testing.T) {
+		in := approval.ReassignTaskInput{TaskID: "k-1", NewAssigneeID: "u-2", Operator: testUser, Reason: "left the company", Caller: testCaller}
+
 		assertForwards[command.ReassignTaskCmd, cqrs.Unit](t, bus, db,
-			command.ReassignTaskCmd{TaskID: "k-1", NewAssigneeID: "u-2", Operator: testUser, Reason: "left the company", Caller: testCaller},
+			command.ReassignTaskCmd{ReassignTaskInput: in},
 			func(ctx context.Context, db orm.DB) error {
-				return svc.ReassignTask(ctx, db, approval.ReassignTaskInput{TaskID: "k-1", NewAssigneeID: "u-2", Operator: testUser, Reason: "left the company", Caller: testCaller})
+				return svc.ReassignTask(ctx, db, in)
 			})
 	})
 
 	t.Run("AddAssignee", func(t *testing.T) {
+		in := approval.AddAssigneeInput{TaskID: "k-1", UserIDs: []string{"u-2"}, AddType: approval.AddAssigneeAfter, Operator: testUser, Caller: testCaller}
+
 		assertForwards[command.AddAssigneeCmd, cqrs.Unit](t, bus, db,
-			command.AddAssigneeCmd{TaskID: "k-1", UserIDs: []string{"u-2"}, AddType: approval.AddAssigneeAfter, Operator: testUser, Caller: testCaller},
+			command.AddAssigneeCmd{AddAssigneeInput: in},
 			func(ctx context.Context, db orm.DB) error {
-				return svc.AddAssignee(
-					ctx,
-					db,
-					approval.AddAssigneeInput{TaskID: "k-1", UserIDs: []string{"u-2"}, AddType: approval.AddAssigneeAfter, Operator: testUser, Caller: testCaller},
-				)
+				return svc.AddAssignee(ctx, db, in)
 			})
 	})
 
 	t.Run("RemoveAssignee", func(t *testing.T) {
+		in := approval.RemoveAssigneeInput{TaskID: "k-1", Operator: testUser, Caller: testCaller}
+
 		assertForwards[command.RemoveAssigneeCmd, cqrs.Unit](t, bus, db,
-			command.RemoveAssigneeCmd{TaskID: "k-1", Operator: testUser, Caller: testCaller},
+			command.RemoveAssigneeCmd{RemoveAssigneeInput: in},
 			func(ctx context.Context, db orm.DB) error {
-				return svc.RemoveAssignee(ctx, db, approval.RemoveAssigneeInput{TaskID: "k-1", Operator: testUser, Caller: testCaller})
+				return svc.RemoveAssignee(ctx, db, in)
 			})
 	})
 
 	t.Run("AddCC", func(t *testing.T) {
+		in := approval.AddCCInput{InstanceID: "i-1", CCUserIDs: []string{"u-3"}, Operator: testUser, Caller: testCaller}
+
 		assertForwards[command.AddCCCmd, cqrs.Unit](t, bus, db,
-			command.AddCCCmd{InstanceID: "i-1", CCUserIDs: []string{"u-3"}, Operator: testUser, Caller: testCaller},
+			command.AddCCCmd{AddCCInput: in},
 			func(ctx context.Context, db orm.DB) error {
-				return svc.AddCC(ctx, db, approval.AddCCInput{InstanceID: "i-1", CCUserIDs: []string{"u-3"}, Operator: testUser, Caller: testCaller})
+				return svc.AddCC(ctx, db, in)
 			})
 	})
 
 	t.Run("MarkCCRead", func(t *testing.T) {
+		in := approval.MarkCCReadInput{InstanceID: "i-1", UserID: "u-3", Caller: testCaller}
+
 		assertForwards[command.MarkCCReadCmd, cqrs.Unit](t, bus, db,
-			command.MarkCCReadCmd{InstanceID: "i-1", UserID: "u-3", Caller: testCaller},
+			command.MarkCCReadCmd{MarkCCReadInput: in},
 			func(ctx context.Context, db orm.DB) error {
-				return svc.MarkCCRead(ctx, db, approval.MarkCCReadInput{InstanceID: "i-1", UserID: "u-3", Caller: testCaller})
+				return svc.MarkCCRead(ctx, db, in)
 			})
 	})
 
 	t.Run("UrgeTask", func(t *testing.T) {
+		in := approval.UrgeTaskInput{TaskID: "k-1", UrgerID: "u-1", Message: "please", Caller: testCaller}
+
 		assertForwards[command.UrgeTaskCmd, cqrs.Unit](t, bus, db,
-			command.UrgeTaskCmd{TaskID: "k-1", UrgerID: "u-1", Message: "please", Caller: testCaller},
+			command.UrgeTaskCmd{UrgeTaskInput: in},
 			func(ctx context.Context, db orm.DB) error {
-				return svc.UrgeTask(ctx, db, approval.UrgeTaskInput{TaskID: "k-1", UrgerID: "u-1", Message: "please", Caller: testCaller})
+				return svc.UrgeTask(ctx, db, in)
 			})
 	})
 }
@@ -268,12 +277,16 @@ func TestServiceForwardsInputs(t *testing.T) {
 // exists for: the handle the caller passes is the one the pipeline runs on.
 func TestServiceTransactionBoundary(t *testing.T) {
 	db := testx.NewTestDB(t)
-	bus := newBus(db)
-	svc := facade.NewService(bus)
-	got := capture[command.WithdrawInstanceCmd, cqrs.Unit](bus)
 	in := approval.WithdrawInstanceInput{InstanceID: "i-1", Operator: testUser, Caller: testCaller}
 
+	// Each subtest builds its own bus and captures afresh: a shared recorder
+	// would let a subtest pass on the handle its predecessor left behind,
+	// which is exactly the case where the handler was never reached at all.
 	t.Run("JoinsCallerTransaction", func(t *testing.T) {
+		bus := newBus(db)
+		svc := facade.NewService(bus)
+		got := capture[command.WithdrawInstanceCmd, cqrs.Unit](bus)
+
 		var callerTx orm.DB
 
 		err := db.RunInTx(context.Background(), func(ctx context.Context, tx orm.DB) error {
@@ -286,12 +299,19 @@ func TestServiceTransactionBoundary(t *testing.T) {
 	})
 
 	t.Run("OpensOwnTransactionOnPlainHandle", func(t *testing.T) {
+		bus := newBus(db)
+		svc := facade.NewService(bus)
+		got := capture[command.WithdrawInstanceCmd, cqrs.Unit](bus)
+
 		require.NoError(t, svc.WithdrawInstance(context.Background(), db, in), "operation on a plain handle should succeed")
+		require.NotNil(t, got.db, "handler must see a DB handle bound to its context")
 		assert.NotSame(t, db, got.db, "pipeline must open a transaction rather than run on the pool handle")
 		assert.True(t, got.db.InTx(), "handler must run inside the transaction the pipeline opened")
 	})
 
 	t.Run("CallerRollbackDiscardsTheOperation", func(t *testing.T) {
+		bus := newBus(db)
+		svc := facade.NewService(bus)
 		errAbort := errors.New("abort")
 		joined := false
 
@@ -318,50 +338,4 @@ func TestServiceTransactionBoundary(t *testing.T) {
 		require.NoError(t, err, "probing sqlite_master should succeed")
 		assert.Zero(t, count, "work done through the facade must roll back with the caller's transaction")
 	})
-}
-
-// TestInputCommandParity guards the translation layer against drift: every
-// exported field of an internal command must exist on its public input with
-// the same type, and vice versa, so a field added to one side cannot be
-// silently dropped by the facade.
-func TestInputCommandParity(t *testing.T) {
-	pairs := []struct {
-		input reflect.Type
-		cmd   reflect.Type
-	}{
-		{reflect.TypeFor[approval.StartInstanceInput](), reflect.TypeFor[command.StartInstanceCmd]()},
-		{reflect.TypeFor[approval.WithdrawInstanceInput](), reflect.TypeFor[command.WithdrawInstanceCmd]()},
-		{reflect.TypeFor[approval.ResubmitInstanceInput](), reflect.TypeFor[command.ResubmitInstanceCmd]()},
-		{reflect.TypeFor[approval.TerminateInstanceInput](), reflect.TypeFor[command.TerminateInstanceCmd]()},
-		{reflect.TypeFor[approval.ApproveTaskInput](), reflect.TypeFor[command.ApproveTaskCmd]()},
-		{reflect.TypeFor[approval.RejectTaskInput](), reflect.TypeFor[command.RejectTaskCmd]()},
-		{reflect.TypeFor[approval.TransferTaskInput](), reflect.TypeFor[command.TransferTaskCmd]()},
-		{reflect.TypeFor[approval.RollbackTaskInput](), reflect.TypeFor[command.RollbackTaskCmd]()},
-		{reflect.TypeFor[approval.ReassignTaskInput](), reflect.TypeFor[command.ReassignTaskCmd]()},
-		{reflect.TypeFor[approval.AddAssigneeInput](), reflect.TypeFor[command.AddAssigneeCmd]()},
-		{reflect.TypeFor[approval.RemoveAssigneeInput](), reflect.TypeFor[command.RemoveAssigneeCmd]()},
-		{reflect.TypeFor[approval.AddCCInput](), reflect.TypeFor[command.AddCCCmd]()},
-		{reflect.TypeFor[approval.MarkCCReadInput](), reflect.TypeFor[command.MarkCCReadCmd]()},
-		{reflect.TypeFor[approval.UrgeTaskInput](), reflect.TypeFor[command.UrgeTaskCmd]()},
-	}
-
-	fields := func(typ reflect.Type) map[string]reflect.Type {
-		out := make(map[string]reflect.Type, typ.NumField())
-
-		for f := range typ.Fields() {
-			if f.Anonymous || !f.IsExported() {
-				continue
-			}
-
-			out[f.Name] = f.Type
-		}
-
-		return out
-	}
-
-	for _, pair := range pairs {
-		t.Run(pair.input.Name(), func(t *testing.T) {
-			assert.Equal(t, fields(pair.cmd), fields(pair.input), "%s must mirror %s field for field", pair.input.Name(), pair.cmd.Name())
-		})
-	}
 }

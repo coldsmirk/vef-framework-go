@@ -17,12 +17,7 @@ import (
 // AddAssigneeCmd dynamically adds assignees to a task.
 type AddAssigneeCmd struct {
 	cqrs.BaseCommand
-
-	TaskID   string
-	UserIDs  []string
-	AddType  approval.AddAssigneeType
-	Operator approval.UserInfo
-	Caller   approval.CallerContext
+	approval.AddAssigneeInput
 }
 
 // AddAssigneeHandler handles the AddAssigneeCmd command.

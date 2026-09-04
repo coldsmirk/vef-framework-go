@@ -10,12 +10,17 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// Service implements approval.Service over the CQRS bus. Each method is a pure
-// translation of the public input into the internal command followed by one
-// dispatch, so the command pipeline — transaction, action-log and event
-// collectors, the handler itself — stays the single place where an operation
-// is defined; the API resources call this type too, which is what keeps the
-// request path and the programmatic path one implementation.
+// Service implements approval.Service over the CQRS bus. Each method wraps the
+// public input in its internal command and dispatches once, so the command
+// pipeline — transaction, action-log and event collectors, the handler itself
+// — stays the single place where an operation is defined; the API resources
+// call this type too, which is what keeps the request path and the
+// programmatic path one implementation.
+//
+// The commands embed the public inputs (command.ApproveTaskCmd embeds
+// approval.ApproveTaskInput), so the wrapping is one compiler-checked
+// assignment rather than a field-by-field copy a new field could be forgotten
+// from.
 type Service struct {
 	bus cqrs.Bus
 }
@@ -25,176 +30,77 @@ func NewService(bus cqrs.Bus) approval.Service {
 	return &Service{bus: bus}
 }
 
-// send binds db to the context and dispatches the command. Binding is what
-// hands the caller's transaction boundary to the pipeline: TransactionBehavior
-// joins the handle when it is an open transaction and opens one on it
-// otherwise, and every handler reads contextx.DB(ctx) rather than its injected
-// primary handle.
-func send[TCmd cqrs.Action, TResult any](ctx context.Context, bus cqrs.Bus, db orm.DB, cmd TCmd) (TResult, error) {
-	return cqrs.Send[TCmd, TResult](contextx.SetDB(ctx, db), bus, cmd)
+// send binds db to the context and dispatches cmd, returning the handler's
+// result. Binding is what hands the caller's transaction boundary to the
+// pipeline: TransactionBehavior joins the handle when it is an open
+// transaction and opens one on it otherwise, and every handler reads
+// contextx.DB(ctx) rather than its injected primary handle.
+func (s *Service) send[TCmd cqrs.Action, TResult any](ctx context.Context, db orm.DB, cmd TCmd) (TResult, error) {
+	return cqrs.Send[TCmd, TResult](contextx.SetDB(ctx, db), s.bus, cmd)
+}
+
+// sendUnit is send for the operations whose handler returns no value. TResult
+// is fixed rather than spelled at each call site, so a copy-pasted result type
+// cannot reach cqrs.Send — a mismatch there is only detected after the
+// pipeline has already committed the operation.
+func (s *Service) sendUnit[TCmd cqrs.Action](ctx context.Context, db orm.DB, cmd TCmd) error {
+	_, err := s.send[TCmd, cqrs.Unit](ctx, db, cmd)
+
+	return err
 }
 
 func (s *Service) StartInstance(ctx context.Context, db orm.DB, in approval.StartInstanceInput) (*approval.Instance, error) {
-	return send[command.StartInstanceCmd, *approval.Instance](ctx, s.bus, db, command.StartInstanceCmd{
-		TenantID:    in.TenantID,
-		FlowCode:    in.FlowCode,
-		Applicant:   in.Applicant,
-		BusinessRef: in.BusinessRef,
-		FormData:    in.FormData,
-		Globals:     in.Globals,
-		Caller:      in.Caller,
-	})
+	return s.send[command.StartInstanceCmd, *approval.Instance](ctx, db, command.StartInstanceCmd{StartInstanceInput: in})
 }
 
 func (s *Service) WithdrawInstance(ctx context.Context, db orm.DB, in approval.WithdrawInstanceInput) error {
-	_, err := send[command.WithdrawInstanceCmd, cqrs.Unit](ctx, s.bus, db, command.WithdrawInstanceCmd{
-		InstanceID: in.InstanceID,
-		Operator:   in.Operator,
-		Reason:     in.Reason,
-		Caller:     in.Caller,
-	})
-
-	return err
+	return s.sendUnit(ctx, db, command.WithdrawInstanceCmd{WithdrawInstanceInput: in})
 }
 
 func (s *Service) ResubmitInstance(ctx context.Context, db orm.DB, in approval.ResubmitInstanceInput) error {
-	_, err := send[command.ResubmitInstanceCmd, cqrs.Unit](ctx, s.bus, db, command.ResubmitInstanceCmd{
-		InstanceID: in.InstanceID,
-		Operator:   in.Operator,
-		FormData:   in.FormData,
-		Caller:     in.Caller,
-	})
-
-	return err
+	return s.sendUnit(ctx, db, command.ResubmitInstanceCmd{ResubmitInstanceInput: in})
 }
 
 func (s *Service) TerminateInstance(ctx context.Context, db orm.DB, in approval.TerminateInstanceInput) error {
-	_, err := send[command.TerminateInstanceCmd, cqrs.Unit](ctx, s.bus, db, command.TerminateInstanceCmd{
-		InstanceID: in.InstanceID,
-		Operator:   in.Operator,
-		Reason:     in.Reason,
-		Caller:     in.Caller,
-	})
-
-	return err
+	return s.sendUnit(ctx, db, command.TerminateInstanceCmd{TerminateInstanceInput: in})
 }
 
 func (s *Service) ApproveTask(ctx context.Context, db orm.DB, in approval.ApproveTaskInput) error {
-	_, err := send[command.ApproveTaskCmd, cqrs.Unit](ctx, s.bus, db, command.ApproveTaskCmd{
-		TaskID:      in.TaskID,
-		Operator:    in.Operator,
-		Opinion:     in.Opinion,
-		FormData:    in.FormData,
-		Attachments: in.Attachments,
-		Caller:      in.Caller,
-	})
-
-	return err
+	return s.sendUnit(ctx, db, command.ApproveTaskCmd{ApproveTaskInput: in})
 }
 
 func (s *Service) RejectTask(ctx context.Context, db orm.DB, in approval.RejectTaskInput) error {
-	_, err := send[command.RejectTaskCmd, cqrs.Unit](ctx, s.bus, db, command.RejectTaskCmd{
-		TaskID:      in.TaskID,
-		Operator:    in.Operator,
-		Opinion:     in.Opinion,
-		FormData:    in.FormData,
-		Attachments: in.Attachments,
-		Caller:      in.Caller,
-	})
-
-	return err
+	return s.sendUnit(ctx, db, command.RejectTaskCmd{RejectTaskInput: in})
 }
 
 func (s *Service) TransferTask(ctx context.Context, db orm.DB, in approval.TransferTaskInput) error {
-	_, err := send[command.TransferTaskCmd, cqrs.Unit](ctx, s.bus, db, command.TransferTaskCmd{
-		TaskID:       in.TaskID,
-		Operator:     in.Operator,
-		Opinion:      in.Opinion,
-		FormData:     in.FormData,
-		TransferToID: in.TransferToID,
-		Attachments:  in.Attachments,
-		Caller:       in.Caller,
-	})
-
-	return err
+	return s.sendUnit(ctx, db, command.TransferTaskCmd{TransferTaskInput: in})
 }
 
 func (s *Service) RollbackTask(ctx context.Context, db orm.DB, in approval.RollbackTaskInput) error {
-	_, err := send[command.RollbackTaskCmd, cqrs.Unit](ctx, s.bus, db, command.RollbackTaskCmd{
-		TaskID:       in.TaskID,
-		Operator:     in.Operator,
-		Opinion:      in.Opinion,
-		FormData:     in.FormData,
-		TargetNodeID: in.TargetNodeID,
-		Attachments:  in.Attachments,
-		Caller:       in.Caller,
-	})
-
-	return err
+	return s.sendUnit(ctx, db, command.RollbackTaskCmd{RollbackTaskInput: in})
 }
 
 func (s *Service) ReassignTask(ctx context.Context, db orm.DB, in approval.ReassignTaskInput) error {
-	_, err := send[command.ReassignTaskCmd, cqrs.Unit](ctx, s.bus, db, command.ReassignTaskCmd{
-		TaskID:        in.TaskID,
-		NewAssigneeID: in.NewAssigneeID,
-		Operator:      in.Operator,
-		Reason:        in.Reason,
-		Caller:        in.Caller,
-	})
-
-	return err
+	return s.sendUnit(ctx, db, command.ReassignTaskCmd{ReassignTaskInput: in})
 }
 
 func (s *Service) AddAssignee(ctx context.Context, db orm.DB, in approval.AddAssigneeInput) error {
-	_, err := send[command.AddAssigneeCmd, cqrs.Unit](ctx, s.bus, db, command.AddAssigneeCmd{
-		TaskID:   in.TaskID,
-		UserIDs:  in.UserIDs,
-		AddType:  in.AddType,
-		Operator: in.Operator,
-		Caller:   in.Caller,
-	})
-
-	return err
+	return s.sendUnit(ctx, db, command.AddAssigneeCmd{AddAssigneeInput: in})
 }
 
 func (s *Service) RemoveAssignee(ctx context.Context, db orm.DB, in approval.RemoveAssigneeInput) error {
-	_, err := send[command.RemoveAssigneeCmd, cqrs.Unit](ctx, s.bus, db, command.RemoveAssigneeCmd{
-		TaskID:   in.TaskID,
-		Operator: in.Operator,
-		Caller:   in.Caller,
-	})
-
-	return err
+	return s.sendUnit(ctx, db, command.RemoveAssigneeCmd{RemoveAssigneeInput: in})
 }
 
 func (s *Service) AddCC(ctx context.Context, db orm.DB, in approval.AddCCInput) error {
-	_, err := send[command.AddCCCmd, cqrs.Unit](ctx, s.bus, db, command.AddCCCmd{
-		InstanceID: in.InstanceID,
-		CCUserIDs:  in.CCUserIDs,
-		Operator:   in.Operator,
-		Caller:     in.Caller,
-	})
-
-	return err
+	return s.sendUnit(ctx, db, command.AddCCCmd{AddCCInput: in})
 }
 
 func (s *Service) MarkCCRead(ctx context.Context, db orm.DB, in approval.MarkCCReadInput) error {
-	_, err := send[command.MarkCCReadCmd, cqrs.Unit](ctx, s.bus, db, command.MarkCCReadCmd{
-		InstanceID: in.InstanceID,
-		UserID:     in.UserID,
-		Caller:     in.Caller,
-	})
-
-	return err
+	return s.sendUnit(ctx, db, command.MarkCCReadCmd{MarkCCReadInput: in})
 }
 
 func (s *Service) UrgeTask(ctx context.Context, db orm.DB, in approval.UrgeTaskInput) error {
-	_, err := send[command.UrgeTaskCmd, cqrs.Unit](ctx, s.bus, db, command.UrgeTaskCmd{
-		TaskID:  in.TaskID,
-		UrgerID: in.UrgerID,
-		Message: in.Message,
-		Caller:  in.Caller,
-	})
-
-	return err
+	return s.sendUnit(ctx, db, command.UrgeTaskCmd{UrgeTaskInput: in})
 }

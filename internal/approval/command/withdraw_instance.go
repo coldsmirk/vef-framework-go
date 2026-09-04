@@ -18,11 +18,7 @@ import (
 // WithdrawInstanceCmd withdraws an approval instance.
 type WithdrawInstanceCmd struct {
 	cqrs.BaseCommand
-
-	InstanceID string
-	Operator   approval.UserInfo
-	Reason     string
-	Caller     approval.CallerContext
+	approval.WithdrawInstanceInput
 }
 
 // WithdrawInstanceHandler handles the WithdrawInstanceCmd command.

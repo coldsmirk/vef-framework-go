@@ -19,14 +19,7 @@ import (
 // RollbackTaskCmd rolls back a task to a previous node.
 type RollbackTaskCmd struct {
 	cqrs.BaseCommand
-
-	TaskID       string
-	Operator     approval.UserInfo
-	Opinion      string
-	FormData     map[string]any
-	TargetNodeID string
-	Attachments  []string
-	Caller       approval.CallerContext
+	approval.RollbackTaskInput
 }
 
 // RollbackTaskHandler handles the RollbackTaskCmd command.

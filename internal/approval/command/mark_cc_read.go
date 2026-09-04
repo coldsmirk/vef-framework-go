@@ -17,10 +17,7 @@ import (
 // MarkCCReadCmd marks CC records as read for a user.
 type MarkCCReadCmd struct {
 	cqrs.BaseCommand
-
-	InstanceID string
-	UserID     string
-	Caller     approval.CallerContext
+	approval.MarkCCReadInput
 }
 
 // MarkCCReadHandler handles the MarkCCReadCmd command.
