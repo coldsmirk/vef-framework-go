@@ -138,3 +138,76 @@ func TestValidateFormFieldsTableColumns(t *testing.T) {
 			"a whitespace-only column key sanitizes to an empty identifier at publish and must be rejected at deploy")
 	})
 }
+
+func TestValidateFormFieldsOptionSource(t *testing.T) {
+	svc := new(FlowDefinitionService)
+
+	selectField := func(source *approval.FieldOptionSource) []approval.FormFieldDefinition {
+		return []approval.FormFieldDefinition{
+			{Key: "city", Kind: approval.FieldSelect, Label: "城市", OptionSource: source},
+		}
+	}
+
+	t.Run("AcceptsAbsentSource", func(t *testing.T) {
+		assert.NoError(t, svc.ValidateFormFields(selectField(nil)),
+			"a select with no unresolved source is a static or free-form field and must deploy")
+	})
+
+	t.Run("AcceptsCompleteRemoteSource", func(t *testing.T) {
+		fields := selectField(&approval.FieldOptionSource{
+			Kind:    approval.OptionSourceRemote,
+			Request: &approval.RemoteOptionRequest{Resource: "city", Action: "list"},
+		})
+		assert.NoError(t, svc.ValidateFormFields(fields), "a remote source naming an operation must deploy")
+	})
+
+	t.Run("RejectsUnknownKind", func(t *testing.T) {
+		fields := selectField(&approval.FieldOptionSource{
+			Kind:    approval.OptionSourceKind("graphql"),
+			Request: &approval.RemoteOptionRequest{Resource: "city", Action: "list"},
+		})
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errInvalidOptionSourceKind,
+			"a kind no consumer knows how to resolve must be rejected at deploy")
+	})
+
+	t.Run("RejectsMissingRequest", func(t *testing.T) {
+		fields := selectField(&approval.FieldOptionSource{Kind: approval.OptionSourceRemote})
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errRemoteOptionRequestIncomplete,
+			"a remote source naming no operation resolves nowhere and must be rejected at deploy")
+	})
+
+	t.Run("RejectsBlankResource", func(t *testing.T) {
+		fields := selectField(&approval.FieldOptionSource{
+			Kind:    approval.OptionSourceRemote,
+			Request: &approval.RemoteOptionRequest{Resource: "  ", Action: "list"},
+		})
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errRemoteOptionRequestIncomplete,
+			"a whitespace-only resource addresses nothing and must be rejected at deploy")
+	})
+
+	t.Run("RejectsBlankAction", func(t *testing.T) {
+		fields := selectField(&approval.FieldOptionSource{
+			Kind:    approval.OptionSourceRemote,
+			Request: &approval.RemoteOptionRequest{Resource: "city", Action: ""},
+		})
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errRemoteOptionRequestIncomplete,
+			"a remote source without an action addresses nothing and must be rejected at deploy")
+	})
+
+	t.Run("RejectsBrokenSourceOnTableColumn", func(t *testing.T) {
+		fields := []approval.FormFieldDefinition{{
+			Key: "items", Kind: approval.FieldTable, Label: "明细",
+			Columns: []approval.FormFieldDefinition{{
+				Key: "unit", Kind: approval.FieldSelect,
+				OptionSource: &approval.FieldOptionSource{Kind: approval.OptionSourceRemote},
+			}},
+		}}
+
+		err := svc.ValidateFormFields(fields)
+
+		assert.ErrorIs(t, err, errRemoteOptionRequestIncomplete,
+			"a column's option source is validated exactly like a root field's")
+		assert.Contains(t, err.Error(), "items.unit",
+			"the message must name the table-qualified column path so the designer can find it")
+	})
+}

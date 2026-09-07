@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "dataSources": [
+    {
+      "id": "DS1", "kind": "remote", "name": "units",
+      "request": { "resource": "unit", "action": "list" },
+      "mapping": { "labelKey": "name" }
+    }
+  ],
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "Sub", "type": "subform", "variant": "stack", "key": "items", "label": "明细",
+          "template": [
+            { "id": "C1", "type": "select", "key": "unit", "label": "单位", "dataSource": { "kind": "ref", "dataSourceId": "DS1" } },
+            {
+              "id": "C2", "type": "select", "key": "warehouse", "label": "仓库",
+              "dataSource": { "kind": "remote", "request": { "resource": "warehouse", "action": "list", "params": { "active": true } } }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -42,6 +42,10 @@ func (*FlowDefinitionService) ValidateFormFields(fields []approval.FormFieldDefi
 			return err
 		}
 
+		if err := validateOptionSource(field, field.Key); err != nil {
+			return err
+		}
+
 		if err := validateTableColumns(field); err != nil {
 			return err
 		}
@@ -91,6 +95,34 @@ func validateTableColumns(field approval.FormFieldDefinition) error {
 		if err := validateFieldValidationRule(column); err != nil {
 			return err
 		}
+
+		if err := validateOptionSource(column, field.Key+"."+column.Key); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateOptionSource checks a field's unresolved option source. The framework
+// never resolves one — select validation reads Options and accepts anything when
+// there are none — so a source naming no operation would fail nowhere at deploy
+// and then silently render as a raw value in every consumer that replays it.
+// path is the field key, table-qualified for a detail-table column.
+func validateOptionSource(field approval.FormFieldDefinition, path string) error {
+	source := field.OptionSource
+	if source == nil {
+		return nil
+	}
+
+	if !source.Kind.IsValid() {
+		return fmt.Errorf("%w: %q for field %q", errInvalidOptionSourceKind, source.Kind, path)
+	}
+
+	if source.Request == nil ||
+		strings.TrimSpace(source.Request.Resource) == "" ||
+		strings.TrimSpace(source.Request.Action) == "" {
+		return fmt.Errorf("%w: field %q", errRemoteOptionRequestIncomplete, path)
 	}
 
 	return nil

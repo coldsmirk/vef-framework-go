@@ -99,6 +99,9 @@ var (
 	errTableColumnsRequired   = errors.New("table field requires at least one column")
 	errNestedTableColumn      = errors.New("table columns must not nest another table")
 	errColumnsOnScalarField   = errors.New("only table fields may declare columns")
+
+	errInvalidOptionSourceKind       = errors.New("invalid form field option source kind")
+	errRemoteOptionRequestIncomplete = errors.New("remote option source requires a resource and an action")
 )
 
 // Field-permission validation sentinels, raised by ValidateFieldPermissions

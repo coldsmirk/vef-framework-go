@@ -111,8 +111,13 @@ func projectLeaf(node *richBlock, path string, dataSources map[string]richDataSo
 		field.IsRequired = true
 	}
 
-	if options := resolveOptions(node, dataSources); options != nil {
+	options, optionSource := resolveOptionSource(node, dataSources)
+	if options != nil {
 		field.Options = options
+	}
+
+	if optionSource != nil {
+		field.OptionSource = optionSource
 	}
 
 	if rule != nil {
@@ -203,27 +208,50 @@ func projectSubform(node *richBlock, dataSources map[string]richDataSource) (*ap
 	return field, nil
 }
 
-// resolveOptions returns the static option list for a selection field. An inline
-// static source or a ref to a form-global static source resolves here; a remote
-// source (inline or referenced) and a dangling ref are host-resolved at runtime,
-// so the projection omits options and the server accepts any submitted value.
-func resolveOptions(node *richBlock, dataSources map[string]richDataSource) []approval.FieldOption {
+// resolveOptionSource collapses a selection field's option source into exactly
+// one of two projections: the enumerated option list of a static source, or the
+// descriptor of a remote one. A ref is dereferenced first, so the result is
+// always post-dereference and a consumer never chases a dataSourceId.
+//
+// A remote source is emitted even when its request is missing — that is a broken
+// designer document, and deploy validation names it rather than the projection
+// silently degrading it to a source-less field. A dangling ref, an unknown kind
+// and a field with no source all yield neither: the field carries no options, so
+// the server accepts any submitted value.
+func resolveOptionSource(
+	node *richBlock,
+	dataSources map[string]richDataSource,
+) ([]approval.FieldOption, *approval.FieldOptionSource) {
 	source := node.DataSource
 	if source == nil {
-		return nil
+		return nil, nil
 	}
 
-	if source.Kind == "static" {
-		return source.Options
-	}
+	kind, options, request, mapping := source.Kind, source.Options, source.Request, source.Mapping
 
-	if source.Kind == "ref" {
-		if referenced, ok := dataSources[source.DataSourceID]; ok && referenced.Kind == "static" {
-			return referenced.Options
+	if kind == "ref" {
+		referenced, ok := dataSources[source.DataSourceID]
+		if !ok {
+			return nil, nil
 		}
+
+		kind, options, request, mapping = referenced.Kind, referenced.Options, referenced.Request, referenced.Mapping
 	}
 
-	return nil
+	switch kind {
+	case "static":
+		return options, nil
+
+	case "remote":
+		return nil, &approval.FieldOptionSource{
+			Kind:    approval.OptionSourceRemote,
+			Request: request,
+			Mapping: mapping,
+		}
+
+	default:
+		return nil, nil
+	}
 }
 
 // resolveColumnType is the column type to emit for a leaf field. An explicit

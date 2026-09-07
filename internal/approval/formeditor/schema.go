@@ -74,22 +74,29 @@ type richValidate struct {
 }
 
 // richOptionSource is a selection field's inline option source
-// (`{ kind: "static" | "ref" | "remote", ... }`). Only static and ref-to-static
-// resolve to a projected option list; remote sources are host-resolved at
-// runtime and carry no fields the projector reads.
+// (`{ kind: "static" | "ref" | "remote", ... }`). Static and ref-to-static
+// resolve to a projected option list; a remote source is host-resolved at
+// runtime and projects its request/mapping instead, so a consumer can replay it
+// to render a stored value as its label.
 type richOptionSource struct {
-	Kind         string                 `json:"kind"`
-	Options      []approval.FieldOption `json:"options"`
-	DataSourceID string                 `json:"dataSourceId"`
+	Kind         string                        `json:"kind"`
+	Options      []approval.FieldOption        `json:"options"`
+	DataSourceID string                        `json:"dataSourceId"`
+	Request      *approval.RemoteOptionRequest `json:"request"`
+	Mapping      *approval.RemoteOptionMapping `json:"mapping"`
 }
 
 // richDataSource is a form-global, reusable option source referenced by fields
-// through `{ kind: "ref", dataSourceId }`. It shares the approval FieldOption
-// shape verbatim — the designer's `{ label, value }` is the same wire contract.
+// through `{ kind: "ref", dataSourceId }`. It shares the approval FieldOption,
+// RemoteOptionRequest and RemoteOptionMapping shapes verbatim — the designer's
+// `{ label, value }`, `{ resource, action, ... }` and `{ labelKey, ... }` are
+// the same wire contracts.
 type richDataSource struct {
-	ID      string                 `json:"id"`
-	Kind    string                 `json:"kind"`
-	Options []approval.FieldOption `json:"options"`
+	ID      string                        `json:"id"`
+	Kind    string                        `json:"kind"`
+	Options []approval.FieldOption        `json:"options"`
+	Request *approval.RemoteOptionRequest `json:"request"`
+	Mapping *approval.RemoteOptionMapping `json:"mapping"`
 }
 
 // isLayoutContainer reports whether a node type is a pure-layout container whose
