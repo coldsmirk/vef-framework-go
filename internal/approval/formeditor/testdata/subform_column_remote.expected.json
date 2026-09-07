@@ -15,7 +15,7 @@
         "key": "warehouse", "kind": "select", "label": "仓库",
         "optionSource": {
           "kind": "remote",
-          "request": { "resource": "warehouse", "action": "list", "params": { "active": true } }
+          "request": { "resource": "warehouse", "action": "list", "params": { "active": { "kind": "literal", "value": true } } }
         },
         "sortOrder": 1, "columnType": "text"
       }

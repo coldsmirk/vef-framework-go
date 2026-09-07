@@ -480,6 +480,29 @@ func (k OptionSourceKind) IsValid() bool {
 	return k == OptionSourceRemote
 }
 
+// DynamicParamKind classifies a remote option request's parameter: a value the
+// designer typed, or an expression the form runtime evaluates against the live
+// form before the request is issued.
+type DynamicParamKind string
+
+const (
+	// DynamicParamLiteral is a fixed value, identical for every evaluation.
+	DynamicParamLiteral DynamicParamKind = "literal"
+	// DynamicParamExpression is bound to the form's current values — what makes
+	// a cascading select work ("the wards of the department picked above").
+	DynamicParamExpression DynamicParamKind = "expression"
+)
+
+// IsValid reports whether the dynamic parameter kind is one of the defined values.
+func (k DynamicParamKind) IsValid() bool {
+	switch k {
+	case DynamicParamLiteral, DynamicParamExpression:
+		return true
+	default:
+		return false
+	}
+}
+
 // TimeoutAction represents the action to take when a task times out.
 type TimeoutAction string
 

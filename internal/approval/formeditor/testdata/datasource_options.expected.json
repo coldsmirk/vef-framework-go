@@ -5,7 +5,10 @@
     "key": "remoteInline", "kind": "select", "label": "内联远程",
     "optionSource": {
       "kind": "remote",
-      "request": { "resource": "city", "action": "list", "version": "v1", "params": { "level": 2, "enabled": true } },
+      "request": {
+        "resource": "city", "action": "list", "version": "v1",
+        "params": { "level": { "kind": "literal", "value": 2 }, "enabled": { "kind": "literal", "value": true } }
+      },
       "mapping": { "labelKey": "name", "valueKey": "code", "disabledKey": "frozen", "descriptionKey": "remark" }
     },
     "sortOrder": 2, "columnType": "text"
@@ -21,5 +24,16 @@
   },
   { "key": "dangling", "kind": "select", "label": "悬空引用", "sortOrder": 4, "columnType": "text" },
   { "key": "noSource", "kind": "select", "label": "无来源", "sortOrder": 5, "columnType": "text" },
-  { "key": "remoteNoRequest", "kind": "select", "label": "远程缺请求", "optionSource": { "kind": "remote" }, "sortOrder": 6, "columnType": "text" }
+  { "key": "remoteNoRequest", "kind": "select", "label": "远程缺请求", "optionSource": { "kind": "remote" }, "sortOrder": 6, "columnType": "text" },
+  {
+    "key": "boundRemote", "kind": "select", "label": "级联远程",
+    "optionSource": {
+      "kind": "remote",
+      "request": {
+        "resource": "ward", "action": "list",
+        "params": { "deptId": { "kind": "expression", "source": "formData.dept" }, "active": { "kind": "literal", "value": true } }
+      }
+    },
+    "sortOrder": 7, "columnType": "text"
+  }
 ]

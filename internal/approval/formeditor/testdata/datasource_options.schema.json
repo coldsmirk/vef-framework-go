@@ -17,14 +17,27 @@
           "id": "F3", "type": "select", "key": "remoteInline", "label": "内联远程",
           "dataSource": {
             "kind": "remote",
-            "request": { "resource": "city", "action": "list", "version": "v1", "params": { "level": 2, "enabled": true } },
+            "request": {
+              "resource": "city", "action": "list", "version": "v1",
+              "params": { "level": { "kind": "literal", "value": 2 }, "enabled": { "kind": "literal", "value": true } }
+            },
             "mapping": { "labelKey": "name", "valueKey": "code", "disabledKey": "frozen", "descriptionKey": "remark" }
           }
         },
         { "id": "F4", "type": "select", "key": "refRemote", "label": "引用远程", "dataSource": { "kind": "ref", "dataSourceId": "DS2" } },
         { "id": "F5", "type": "select", "key": "dangling", "label": "悬空引用", "dataSource": { "kind": "ref", "dataSourceId": "missing" } },
         { "id": "F6", "type": "select", "key": "noSource", "label": "无来源" },
-        { "id": "F7", "type": "select", "key": "remoteNoRequest", "label": "远程缺请求", "dataSource": { "kind": "remote" } }
+        { "id": "F7", "type": "select", "key": "remoteNoRequest", "label": "远程缺请求", "dataSource": { "kind": "remote" } },
+        {
+          "id": "F8", "type": "select", "key": "boundRemote", "label": "级联远程",
+          "dataSource": {
+            "kind": "remote",
+            "request": {
+              "resource": "ward", "action": "list",
+              "params": { "deptId": { "kind": "expression", "source": "formData.dept" }, "active": { "kind": "literal", "value": true } }
+            }
+          }
+        }
       ]
     }
   }
