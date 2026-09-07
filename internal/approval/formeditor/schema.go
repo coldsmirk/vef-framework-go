@@ -50,6 +50,9 @@ type richBlock struct {
 	Validate    *richValidate     `json:"validate"`
 	DataSource  *richOptionSource `json:"dataSource"`
 
+	// Upload. MaxCount decides whether the value is one storage key or a list.
+	MaxCount *int `json:"maxCount"`
+
 	// Subform.
 	Template []richBlock `json:"template"`
 	MinRows  *int        `json:"minRows"`

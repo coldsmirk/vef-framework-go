@@ -5,5 +5,7 @@
   { "key": "grade", "kind": "select", "label": "等级", "options": [{ "label": "甲", "value": 1 }], "sortOrder": 3, "columnType": "text" },
   { "key": "day", "kind": "date", "label": "日期", "sortOrder": 4, "columnType": "date" },
   { "key": "moment", "kind": "date", "label": "时刻", "sortOrder": 5, "columnType": "datetime" },
-  { "key": "tags", "kind": "select", "label": "标签", "options": [{ "label": "A", "value": "a" }], "sortOrder": 6, "columnType": "json" }
+  { "key": "tags", "kind": "select", "label": "标签", "options": [{ "label": "A", "value": "a" }], "sortOrder": 6, "columnType": "json" },
+  { "key": "attachment", "kind": "upload", "label": "附件", "sortOrder": 7, "columnType": "text" },
+  { "key": "photos", "kind": "upload", "label": "现场照片", "sortOrder": 8, "columnType": "json" }
 ]

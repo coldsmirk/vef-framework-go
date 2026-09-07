@@ -24,6 +24,7 @@ var kindByType = map[string]approval.FieldKind{
 	"checkbox-group": approval.FieldSelect,
 	"date":           approval.FieldDate,
 	"datetime":       approval.FieldDate,
+	"upload":         approval.FieldUpload,
 }
 
 // unmappableTypes are widget types that bind a value the approval contract
@@ -288,6 +289,20 @@ func inferColumnType(node *richBlock) approval.ColumnDataType {
 		}
 
 		return approval.ColumnInteger
+	}
+
+	// An upload field's value is a storage key: one string when it accepts a
+	// single file, an array of them otherwise — the same array shape
+	// checkbox-group carries, so a multi-file field needs the same JSON column.
+	// It cannot ride columnTypeByWidget because the answer depends on maxCount,
+	// and it must not reach the maxLength fallback below: maxLength bounds a
+	// string's length, while an upload's bound is its file COUNT.
+	if node.Type == "upload" {
+		if node.MaxCount != nil && *node.MaxCount > 1 {
+			return approval.ColumnJSON
+		}
+
+		return approval.ColumnText
 	}
 
 	if mapped, ok := columnTypeByWidget[node.Type]; ok {
