@@ -14,6 +14,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/fiberx"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 )
@@ -38,24 +39,36 @@ const (
 	defaultBodyLimit = "32mib"
 )
 
-// NewBodyEncodingMiddleware decodes an opt-in X-Body-Encoding request body back
-// to raw JSON before the dispatcher parses it, so a client can transport-encode
-// code-shaped payloads (integration adapter scripts, envelope/auth scripts,
-// dry-run bodies) past middleboxes that false-positive on them. The decode is
-// transport-only: storage, content-hash caches and audit all see the raw body.
-// A request without the header is untouched, and only the /api surface is
-// eligible (other surfaces own their body formats).
+// NewBodyEncodingMiddleware manages X-Body-Encoding on the /api surface. With
+// protected body transport disabled it preserves the opt-in request-only
+// base64 and gzip+base64 behavior. With it enabled, JSON request bodies must
+// use the configured authenticated encoding and every JSON response body is
+// encoded with the same marker. Multipart and binary bodies remain untouched.
 //
 // The native Content-Encoding path (gzip/br/deflate/zstd) is handled by Fiber
 // itself with the same body-limit guard; this middleware covers the encodings
 // Fiber does not know — base64 and gzip+base64.
-func NewBodyEncodingMiddleware(cfg *config.AppConfig) app.Middleware {
-	limit := resolveBodyLimit(cfg.BodyLimit)
+func NewBodyEncodingMiddleware(appConfig *config.AppConfig, apiConfig *config.APIConfig) (app.Middleware, error) {
+	limit := resolveBodyLimit(appConfig.BodyLimit)
+
+	var codec *protectedBodyCodec
+	if apiConfig.BodyEncoding.Enabled {
+		var err error
+
+		codec, err = newProtectedBodyCodec(&apiConfig.BodyEncoding)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return &SimpleMiddleware{
 		handler: func(ctx fiber.Ctx) error {
-			if !isAPIPath(ctx.Path()) {
+			if !isAPIPath(ctx.Path()) || ctx.Method() == fiber.MethodOptions {
 				return ctx.Next()
+			}
+
+			if codec != nil {
+				return handleProtectedBody(ctx, codec, limit)
 			}
 
 			encoding := strings.TrimSpace(ctx.Get(api.HeaderXBodyEncoding))
@@ -78,7 +91,66 @@ func NewBodyEncodingMiddleware(cfg *config.AppConfig) app.Middleware {
 		},
 		name:  "body_encoding",
 		order: -750,
+	}, nil
+}
+
+func handleProtectedBody(ctx fiber.Ctx, codec *protectedBodyCodec, limit int) error {
+	raw := ctx.Request().Body()
+	if len(raw) > 0 && fiberx.IsJSON(ctx) {
+		encoding := strings.TrimSpace(ctx.Get(api.HeaderXBodyEncoding))
+		if encoding == "" {
+			return respondWithProtectedError(ctx, codec, api.ErrBodyEncodingRequired)
+		}
+
+		if encoding != string(codec.encoding) {
+			return respondWithProtectedError(ctx, codec, api.ErrUnsupportedBodyEncoding)
+		}
+
+		decoded, err := codec.decode(raw, limit)
+		if err != nil {
+			logRejectedBody(raw, encoding, err)
+
+			return respondWithProtectedError(ctx, codec, err)
+		}
+
+		ctx.Request().SetBody(decoded)
+		ctx.Request().Header.Del(api.HeaderXBodyEncoding)
 	}
+
+	if err := ctx.Next(); err != nil {
+		if handlerErr := ctx.App().ErrorHandler(ctx, err); handlerErr != nil {
+			return handlerErr
+		}
+	}
+
+	return encodeProtectedResponse(ctx, codec)
+}
+
+func respondWithProtectedError(ctx fiber.Ctx, codec *protectedBodyCodec, err error) error {
+	if handlerErr := ctx.App().ErrorHandler(ctx, err); handlerErr != nil {
+		return handlerErr
+	}
+
+	return encodeProtectedResponse(ctx, codec)
+}
+
+func encodeProtectedResponse(ctx fiber.Ctx, codec *protectedBodyCodec) error {
+	body := ctx.Response().Body()
+	contentType := ctx.GetRespHeader(fiber.HeaderContentType)
+
+	if len(body) == 0 || !strings.HasPrefix(strings.ToLower(contentType), fiber.MIMEApplicationJSON) {
+		return nil
+	}
+
+	encoded, err := codec.encode(body)
+	if err != nil {
+		return err
+	}
+
+	ctx.Response().SetBodyRaw(encoded)
+	ctx.Set(api.HeaderXBodyEncoding, string(codec.encoding))
+
+	return nil
 }
 
 // decodeBody reverses the client-applied transport encoding, bounding any

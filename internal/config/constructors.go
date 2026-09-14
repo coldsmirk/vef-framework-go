@@ -20,7 +20,16 @@ func newAppConfig(cfg config.Config) (*config.AppConfig, error) {
 }
 
 func newAPIConfig(cfg config.Config) (*config.APIConfig, error) {
-	return unmarshalConfig(cfg, "vef.api", new(config.APIConfig))
+	apiConfig, err := unmarshalConfig(cfg, "vef.api", new(config.APIConfig))
+	if err != nil {
+		return nil, err
+	}
+
+	if err := apiConfig.Validate(); err != nil {
+		return nil, err
+	}
+
+	return apiConfig, nil
 }
 
 func newCORSConfig(cfg config.Config) (*config.CORSConfig, error) {

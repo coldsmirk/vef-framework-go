@@ -96,6 +96,19 @@ go run main.go
 
 VEF 会从 `./configs`、`.`、`../configs` 或 `VEF_CONFIG_PATH` 指定的位置加载 `application.toml`。
 
+## API Body 保护传输
+
+`/api` 下的 JSON 请求体和响应体可以复用 `X-Body-Encoding` 实现带认证的非明文传输。wire body 是裸 standard Base64 文本，不带 JSON 外壳；每条消息都会生成新的随机 GCM nonce。
+
+```toml
+[vef.api.body_encoding]
+enabled = true
+encoding = "aes-gcm+base64" # 或 "sm4-gcm+base64"
+key = "<standard-base64-key>"
+```
+
+AES key 可以是 16、24 或 32 字节，SM4 key 必须是 16 字节。官方 React 客户端基于浏览器 Web Crypto API 实现 `aes-gcm+base64`；multipart 与二进制 body 保持原格式。该能力不能替代 HTTPS，因为下发到浏览器代码中的 key 可以被提取。
+
 ## 核心概念
 
 - `vef.Run(...)` 会启动框架，并按默认链路装配 config、datasource（数据源注册表与主连接）、middleware、API、security、event、CQRS、cron、redis、mold、storage、sequence、schema、monitor、MCP、app 等模块。

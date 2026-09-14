@@ -77,6 +77,7 @@
   "api_request_action": "Action",
   "api_request_params_invalid_json": "The 'params' field must be valid JSON",
   "api_request_meta_invalid_json": "The 'meta' field must be valid JSON",
+  "api_body_encoding_required": "The request body must use the configured protected encoding",
   "api_body_encoding_unsupported": "Unsupported request body encoding",
   "api_body_decode_failed": "Failed to decode the request body",
   "api_body_too_large": "The decoded request body exceeds the size limit",

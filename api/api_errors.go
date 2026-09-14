@@ -23,6 +23,13 @@ var (
 		result.WithCode(result.ErrCodeBadRequest),
 		result.WithStatus(fiber.StatusBadRequest),
 	)
+	// ErrBodyEncodingRequired rejects a plaintext JSON request body while
+	// protected body transport is enabled.
+	ErrBodyEncodingRequired = result.Err(
+		i18n.T("api_body_encoding_required"),
+		result.WithCode(result.ErrCodeBadRequest),
+		result.WithStatus(fiber.StatusBadRequest),
+	)
 	// ErrUnsupportedBodyEncoding rejects an X-Body-Encoding value the framework
 	// does not implement.
 	ErrUnsupportedBodyEncoding = result.Err(

@@ -6,15 +6,18 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/compress"
 
+	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
 )
 
-func NewCompressionMiddleware() app.Middleware {
+func NewCompressionMiddleware(config *config.APIConfig) app.Middleware {
 	handler := compress.New(compress.Config{
 		Level: compress.LevelDefault,
 		Next: func(c fiber.Ctx) bool {
-			// Skip compression for SSE responses
-			return strings.Contains(c.Get(fiber.HeaderAccept), "text/event-stream")
+			// Protected responses are already high-entropy ciphertext, so HTTP
+			// compression only adds work and can leak length relationships.
+			return (config.BodyEncoding.Enabled && isAPIPath(c.Path())) ||
+				strings.Contains(c.Get(fiber.HeaderAccept), "text/event-stream")
 		},
 	})
 

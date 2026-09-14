@@ -50,7 +50,12 @@ func newBodyEncodingApp(t *testing.T, bodyLimit string) *fiber.App {
 		},
 	})
 
-	NewBodyEncodingMiddleware(&config.AppConfig{BodyLimit: bodyLimit}).Apply(app)
+	middleware, err := NewBodyEncodingMiddleware(
+		&config.AppConfig{BodyLimit: bodyLimit},
+		new(config.APIConfig),
+	)
+	require.NoError(t, err, "body encoding middleware should initialize")
+	middleware.Apply(app)
 
 	echo := func(c fiber.Ctx) error {
 		// Reflect the marker header so the test can prove it was stripped.

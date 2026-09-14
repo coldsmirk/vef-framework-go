@@ -41,6 +41,7 @@ func NewCORSMiddleware(config *config.CORSConfig) app.Middleware {
 		// than plain navigation) needs it exposed.
 		ExposeHeaders: []string{
 			fiber.HeaderContentDisposition,
+			api.HeaderXBodyEncoding,
 		},
 		MaxAge: 7200,
 	})

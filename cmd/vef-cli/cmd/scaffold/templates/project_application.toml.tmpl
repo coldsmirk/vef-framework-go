@@ -2,6 +2,13 @@
 name = "{{ .Name }}"
 port = 8080
 
+# Protected API bodies are opt-in. The key is standard base64 containing an
+# AES key (16, 24, or 32 bytes) or an SM4 key (16 bytes).
+[vef.api.body_encoding]
+enabled = false
+# encoding = "aes-gcm+base64"
+# key = ""
+
 # The primary data source is mandatory. vef-cli new resource inspects it to
 # derive models, so point it at a real database before generating.
 [vef.data_sources.primary]

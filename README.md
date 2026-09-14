@@ -96,6 +96,19 @@ go run main.go
 
 VEF loads `application.toml` from `./configs`, `.`, `../configs`, or the path pointed to by `VEF_CONFIG_PATH`.
 
+## Protected API Bodies
+
+JSON request and response bodies under `/api` can use authenticated, non-plaintext transport through the existing `X-Body-Encoding` header. The wire body is raw standard Base64 text—there is no JSON wrapper—and each message uses a fresh random GCM nonce.
+
+```toml
+[vef.api.body_encoding]
+enabled = true
+encoding = "aes-gcm+base64" # or "sm4-gcm+base64"
+key = "<standard-base64-key>"
+```
+
+AES accepts a 16-, 24-, or 32-byte key; SM4 accepts a 16-byte key. The official React client implements `aes-gcm+base64` with the browser Web Crypto API. Multipart and binary bodies keep their native formats. This feature does not replace HTTPS: a key shipped to browser code is extractable.
+
 ## Core Concepts
 
 - `vef.Run(...)` starts the framework and wires the default module chain: config, data sources (the registry and primary database connection), middleware, API, security, event, CQRS, cron, redis, mold, storage, sequence, schema, monitor, MCP, and app.
