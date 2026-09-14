@@ -14,7 +14,7 @@ const (
 	// Pinned to a release rather than :latest so a CI run reproduces: MinIO's
 	// health endpoints and startup timing have changed between releases, and a
 	// moving tag turns that into an unexplained flake on an unrelated commit.
-	MinIOImage = "minio/minio:RELEASE.2025-09-07T16-13-09Z"
+	MinIOImage = "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
 )
 
 // Database credentials.
