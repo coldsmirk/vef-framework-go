@@ -143,8 +143,29 @@ var internalTokenAuthTypes = collections.NewHashSetFrom(AuthTypeJWTToken, AuthTy
 // shared with ResolveChallenge, whose steps carry the same login mechanism but
 // guess something else — the answer to a challenge, which very much is
 // guessable. A trust-code login's challenge steps therefore stay counted
-// (TestTrustCodeChallengeLockout).
+// (TestTrustCodeChallengeLockout) — under the account being logged into rather
+// than the app ID, for the same reason the login step is exempt (see
+// challengeAttemptIdentity).
 var unguessableAuthTypes = collections.NewHashSetFrom(security.AuthTypeTrustCode)
+
+// challengeAttemptIdentity returns the identity a resolve_challenge step counts
+// brute-force attempts under: the one its login step counts under.
+//
+// A mechanism the login step guards counts under the identifier presented, so a
+// password login's challenge guesses and password guesses share one bucket, and a
+// lockout tripped by either blocks both endpoints. A mechanism exempt at login
+// has no login-step bucket, and the identifier it presents names no account: a
+// trust code presents the initiating system's app ID, so counting under it would
+// let one user's wrong answers lock the challenge step for every user that system
+// hands off — or, under lockout.key = "user_ip", for everyone behind the same
+// address. Its challenge steps count under the account instead.
+func challengeAttemptIdentity(login *security.LoginContext) string {
+	if unguessableAuthTypes.Contains(login.AuthType) {
+		return login.Principal.ID
+	}
+
+	return login.Username
+}
 
 // Login authenticates a user and returns a LoginResult.
 // When challenge providers are configured and applicable, the result contains
@@ -309,7 +330,7 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 	// token, wrong type) are protocol/tampering errors that Login's analogous
 	// infra paths do not audit, so they are deliberately left unguarded.
 	audit := security.LoginEventParams{AuthType: state.AuthType, Username: state.Username, ChallengeType: params.Type}
-	attempt := security.LoginAttempt{Identity: state.Username, ClientIP: fiberx.GetIP(ctx)}
+	attempt := security.LoginAttempt{Identity: challengeAttemptIdentity(&state.LoginContext), ClientIP: fiberx.GetIP(ctx)}
 
 	if locked := a.guardCheck(ctx, audit, attempt); locked != nil {
 		return locked

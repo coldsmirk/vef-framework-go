@@ -2444,19 +2444,45 @@ func (a *StubAuthenticator) Authenticate(context.Context, security.Authenticatio
 	return a.User, nil
 }
 
+// CodeAuthenticator admits the user each code was issued for, standing in for a
+// trust-code exchange whose initiating system hands off more than one user.
+type CodeAuthenticator struct {
+	AuthType string
+	Users    map[string]*security.Principal
+}
+
+func (a *CodeAuthenticator) Supports(authType string) bool {
+	return authType == a.AuthType
+}
+
+func (a *CodeAuthenticator) Authenticate(_ context.Context, authentication security.Authentication) (*security.Principal, error) {
+	code, _ := authentication.Credentials.(string)
+	if user, ok := a.Users[code]; ok {
+		return user, nil
+	}
+
+	return nil, security.ErrTrustCodeInvalid
+}
+
 // TrustCodeChallengeLockoutTestSuite fences where the trust-code lockout
-// exemption lives. Login skips the brute-force guard for a trust code because
-// the code cannot be guessed; the resolve steps of that same login carry the same
-// mechanism, but what they guess is a challenge answer, so they must stay
-// guarded. A stub stands in for the trust-code exchange, since the exemption
-// keys on the mechanism alone.
+// exemption lives, and whose bucket the challenge steps fill. Login skips the
+// brute-force guard for a trust code because the code cannot be guessed; the
+// resolve steps of that same login carry the same mechanism, but what they guess
+// is a challenge answer, so they must stay guarded — under the account being
+// logged into, since every user a system hands off presents that system's app ID.
+// A stub stands in for the trust-code exchange, since both rules key on the
+// mechanism alone, and failures are counted per user, so the address every test
+// request shares cannot hide whose bucket filled.
 type TrustCodeChallengeLockoutTestSuite struct {
 	apptest.Suite
 
 	challengeProvider *MockChallengeProvider
+	userB             *security.Principal
 }
 
 func (s *TrustCodeChallengeLockoutTestSuite) SetupSuite() {
+	s.userB = security.NewUser("user-b", "User B")
+
 	s.challengeProvider = new(MockChallengeProvider)
 	s.challengeProvider.On("Type").Return("totp")
 	s.challengeProvider.On("Order").Return(0).Maybe()
@@ -2464,13 +2490,23 @@ func (s *TrustCodeChallengeLockoutTestSuite) SetupSuite() {
 		Return(&security.LoginChallenge{Type: "totp", Required: true}, nil)
 	s.challengeProvider.On("Resolve", mock.Anything, mock.Anything, "000000").
 		Return((*security.Principal)(nil), security.ErrOTPCodeInvalid)
+	s.challengeProvider.On("Resolve", mock.Anything,
+		mock.MatchedBy(func(login *security.LoginContext) bool { return login.Principal.ID == s.userB.ID }), "123456").
+		Return(s.userB, nil)
 
 	publisher := new(MockPublisher)
 	publisher.On("Publish", mock.Anything).Maybe()
 
 	s.SetupApp(
 		fx.Supply(fx.Annotate(
-			&StubAuthenticator{AuthType: security.AuthTypeTrustCode, User: security.NewUser("user001", "Test User")},
+			&CodeAuthenticator{
+				AuthType: security.AuthTypeTrustCode,
+				Users: map[string]*security.Principal{
+					"trust-code": security.NewUser("user001", "Test User"),
+					"code-a":     security.NewUser("user-a", "User A"),
+					"code-b":     s.userB,
+				},
+			},
 			fx.As(new(security.Authenticator)),
 			fx.ResultTags(`group:"vef:security:authenticators"`),
 		)),
@@ -2490,7 +2526,7 @@ func (s *TrustCodeChallengeLockoutTestSuite) SetupSuite() {
 				RefreshNotBefore: 1 * time.Millisecond,
 				LoginRateLimit:   1000,
 				RefreshRateLimit: 1000,
-				Lockout:          config.LockoutConfig{MaxFailures: 2},
+				Lockout:          config.LockoutConfig{MaxFailures: 2, Key: config.LockoutKeyUser},
 			},
 		),
 	)
@@ -2500,10 +2536,15 @@ func (s *TrustCodeChallengeLockoutTestSuite) TearDownSuite() {
 	s.TearDownApp()
 }
 
-// challengeToken redeems a trust code and returns the token of the challenge the
-// login raises. Each attempt starts a login of its own, so the fence does not
-// hinge on a challenge token staying reusable.
-func (s *TrustCodeChallengeLockoutTestSuite) challengeToken() string {
+func (s *TrustCodeChallengeLockoutTestSuite) SetupTest() {
+	s.challengeProvider.Calls = nil
+}
+
+// challengeToken redeems code as a trust-code login initiated by the system
+// "his" and returns the token of the challenge the login raises. Each attempt
+// starts a login of its own, so the fence does not hinge on a challenge token
+// staying reusable.
+func (s *TrustCodeChallengeLockoutTestSuite) challengeToken(code string) string {
 	s.T().Helper()
 
 	resp := s.MakeRPCRequest(api.Request{
@@ -2513,7 +2554,7 @@ func (s *TrustCodeChallengeLockoutTestSuite) challengeToken() string {
 		Params: map[string]any{
 			"type":        security.AuthTypeTrustCode,
 			"principal":   "his",
-			"credentials": "trust-code",
+			"credentials": code,
 		},
 	})
 	s.Require().Equal(200, resp.StatusCode, "A trust-code login should return HTTP 200")
@@ -2527,9 +2568,9 @@ func (s *TrustCodeChallengeLockoutTestSuite) challengeToken() string {
 	return challengeToken
 }
 
-// wrongAnswer builds a resolve_challenge request answering the challenge behind
-// challengeToken with a wrong code.
-func (*TrustCodeChallengeLockoutTestSuite) wrongAnswer(challengeToken string) api.Request {
+// answer builds a resolve_challenge request answering the challenge behind
+// challengeToken with response.
+func (*TrustCodeChallengeLockoutTestSuite) answer(challengeToken, response string) api.Request {
 	return api.Request{
 		Resource: "security/auth",
 		Action:   "resolve_challenge",
@@ -2537,7 +2578,7 @@ func (*TrustCodeChallengeLockoutTestSuite) wrongAnswer(challengeToken string) ap
 		Params: map[string]any{
 			"challengeToken": challengeToken,
 			"type":           "totp",
-			"response":       "000000",
+			"response":       response,
 		},
 	}
 }
@@ -2547,7 +2588,7 @@ func (*TrustCodeChallengeLockoutTestSuite) wrongAnswer(challengeToken string) ap
 // before the provider runs.
 func (s *TrustCodeChallengeLockoutTestSuite) TestWrongAnswersTripLockout() {
 	for attempt := range 2 {
-		resp := s.MakeRPCRequest(s.wrongAnswer(s.challengeToken()))
+		resp := s.MakeRPCRequest(s.answer(s.challengeToken("trust-code"), "000000"))
 		s.Equal(401, resp.StatusCode, "Attempt %d: a wrong answer below the threshold should return HTTP 401", attempt+1)
 
 		body := s.ReadResult(resp)
@@ -2555,12 +2596,33 @@ func (s *TrustCodeChallengeLockoutTestSuite) TestWrongAnswersTripLockout() {
 			"Attempt %d: below the threshold the provider's error should surface", attempt+1)
 	}
 
-	resp := s.MakeRPCRequest(s.wrongAnswer(s.challengeToken()))
+	resp := s.MakeRPCRequest(s.answer(s.challengeToken("trust-code"), "000000"))
 	s.Equal(429, resp.StatusCode, "Wrong answers to a trust-code login's challenge must be counted and trip the lockout")
 
 	body := s.ReadResult(resp)
 	s.Equal(security.ErrCodeAccountLocked, body.Code, "A tripped lockout should return the account-locked code")
 	s.challengeProvider.AssertNumberOfCalls(s.T(), "Resolve", 2)
+}
+
+// TestLockoutIsPerAccount locks one user of an initiating system out of the
+// challenge step, then has another user of the same system resolve theirs. Both
+// logins present the system's app ID, so a bucket keyed by it would have locked
+// the second user out as well.
+func (s *TrustCodeChallengeLockoutTestSuite) TestLockoutIsPerAccount() {
+	for attempt := range 2 {
+		resp := s.MakeRPCRequest(s.answer(s.challengeToken("code-a"), "000000"))
+		s.Equal(401, resp.StatusCode, "Attempt %d: user A's wrong answer below the threshold should return HTTP 401", attempt+1)
+	}
+
+	resp := s.MakeRPCRequest(s.answer(s.challengeToken("code-a"), "000000"))
+	s.Equal(429, resp.StatusCode, "User A's wrong answers should trip user A's lockout")
+
+	resp = s.MakeRPCRequest(s.answer(s.challengeToken("code-b"), "123456"))
+	s.Require().Equal(200, resp.StatusCode, "User B of the same initiating system should still reach their challenge")
+
+	body := s.ReadResult(resp)
+	s.Require().True(body.IsOk(), "User B's correct answer should be accepted despite user A's lockout")
+	s.NotNil(s.ReadDataAsMap(body.Data)["tokens"], "User B's resolve should complete the login")
 }
 
 func TestTrustCodeChallengeLockout(t *testing.T) {
