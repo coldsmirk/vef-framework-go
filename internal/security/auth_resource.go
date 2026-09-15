@@ -526,15 +526,25 @@ func (a *AuthResource) findProvider(challengeType string) security.ChallengeProv
 // advanceLogin carries an authenticated login to its next step: the next pending
 // challenge that applies, handed to the client under a fresh challenge token, or
 // the issued tokens once no challenge remains.
+//
+// Everything here happens after the credential — and, on a resolve step, the
+// challenge answer — was accepted, so a failure is audited as a failure of the
+// login audit describes but never counted toward lockout: a provider that cannot
+// evaluate, a challenge store that cannot issue, and token issuance refused by
+// session policy (ErrTooManyConcurrentSessions) are none of them a wrong guess.
 func (a *AuthResource) advanceLogin(ctx fiber.Ctx, state *security.ChallengeState, audit security.LoginEventParams) error {
 	challenge, err := a.evaluateNextChallenge(ctx.Context(), state)
 	if err != nil {
+		a.publishLoginFailure(ctx, audit, err)
+
 		return err
 	}
 
 	if challenge != nil {
 		challengeToken, err := a.challengeTokenStore.Generate(ctx.Context(), state)
 		if err != nil {
+			a.publishLoginFailure(ctx, audit, err)
+
 			return err
 		}
 
@@ -546,6 +556,8 @@ func (a *AuthResource) advanceLogin(ctx fiber.Ctx, state *security.ChallengeStat
 
 	tokens, err := a.tokenGenerator.Generate(ctx.Context(), state.Principal, sessionMeta(ctx))
 	if err != nil {
+		a.publishLoginFailure(ctx, audit, err)
+
 		return err
 	}
 

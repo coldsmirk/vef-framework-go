@@ -1652,6 +1652,28 @@ func (m *MockChallengeTokenStore) Parse(ctx context.Context, token string) (*sec
 	return args.Get(0).(*security.ChallengeState), args.Error(1)
 }
 
+type MockLoginGuard struct {
+	mock.Mock
+}
+
+func (m *MockLoginGuard) Check(ctx context.Context, attempt security.LoginAttempt) (security.LoginDecision, error) {
+	args := m.Called(ctx, attempt)
+
+	return args.Get(0).(security.LoginDecision), args.Error(1)
+}
+
+func (m *MockLoginGuard) RecordFailure(ctx context.Context, attempt security.LoginAttempt) (security.LoginDecision, error) {
+	args := m.Called(ctx, attempt)
+
+	return args.Get(0).(security.LoginDecision), args.Error(1)
+}
+
+func (m *MockLoginGuard) RecordSuccess(ctx context.Context, attempt security.LoginAttempt) error {
+	args := m.Called(ctx, attempt)
+
+	return args.Error(0)
+}
+
 // AuthResourceErrorPathTestSuite tests error paths in AuthResource using mocked dependencies.
 type AuthResourceErrorPathTestSuite struct {
 	apptest.Suite
@@ -1659,6 +1681,7 @@ type AuthResourceErrorPathTestSuite struct {
 	authManager         *MockAuthManager
 	tokenGenerator      *MockTokenGenerator
 	challengeTokenStore *MockChallengeTokenStore
+	loginGuard          *MockLoginGuard
 	publisher           *MockPublisher
 	challengeProviderA  *MockChallengeProvider
 	challengeProviderB  *MockChallengeProvider
@@ -1671,6 +1694,7 @@ func (s *AuthResourceErrorPathTestSuite) SetupSuite() {
 	s.authManager = new(MockAuthManager)
 	s.tokenGenerator = new(MockTokenGenerator)
 	s.challengeTokenStore = new(MockChallengeTokenStore)
+	s.loginGuard = new(MockLoginGuard)
 	s.publisher = new(MockPublisher)
 	s.challengeProviderA = new(MockChallengeProvider)
 	s.challengeProviderB = new(MockChallengeProvider)
@@ -1685,6 +1709,7 @@ func (s *AuthResourceErrorPathTestSuite) SetupSuite() {
 		fx.Decorate(func() security.AuthManager { return s.authManager }),
 		fx.Decorate(func() security.TokenGenerator { return s.tokenGenerator }),
 		fx.Decorate(func() security.ChallengeTokenStore { return s.challengeTokenStore }),
+		fx.Decorate(func() security.LoginGuard { return s.loginGuard }),
 		fx.Supply(
 			fx.Annotate(
 				s.challengeProviderA,
@@ -1738,6 +1763,7 @@ func (s *AuthResourceErrorPathTestSuite) SetupTest() {
 	resetMock(&s.authManager.Mock)
 	resetMock(&s.tokenGenerator.Mock)
 	resetMock(&s.challengeTokenStore.Mock)
+	resetMock(&s.loginGuard.Mock)
 	resetMock(&s.challengeProviderA.Mock)
 	resetMock(&s.challengeProviderB.Mock)
 
@@ -1750,6 +1776,32 @@ func (s *AuthResourceErrorPathTestSuite) SetupTest() {
 	s.challengeProviderB.On("Type").Return("sms")
 	s.challengeProviderB.On("Order").Return(20)
 	s.publisher.On("Publish", mock.Anything).Maybe()
+	s.loginGuard.On("Check", mock.Anything, mock.Anything).Return(security.LoginDecision{Allowed: true}, nil).Maybe()
+	s.loginGuard.On("RecordFailure", mock.Anything, mock.Anything).Return(security.LoginDecision{Allowed: true}, nil).Maybe()
+	s.loginGuard.On("RecordSuccess", mock.Anything, mock.Anything).Return(nil).Maybe()
+}
+
+// requireFailureAudited asserts the request raised exactly one login event — a
+// failure of the password login "testuser" started, raised on the challenge step
+// challengeType names (empty for login itself) and carrying code — and counted
+// nothing toward lockout.
+func (s *AuthResourceErrorPathTestSuite) requireFailureAudited(challengeType string, code int) {
+	s.T().Helper()
+
+	events := s.publisher.GetPublishedEvents()
+	s.Require().Len(events, 1, "The failure should raise exactly one login event and no success event")
+
+	loginEvent, ok := events[0].(*security.LoginEvent)
+	s.Require().True(ok, "The published event should be a LoginEvent")
+	s.False(loginEvent.IsOk, "The event should record a failed login")
+	s.Nil(loginEvent.UserID, "A failure event should carry no user ID")
+	s.Equal(security.AuthTypePassword, loginEvent.AuthType, "The event should carry the login mechanism")
+	s.Equal("testuser", loginEvent.Username, "The event should carry the identifier first presented")
+	s.Equal(challengeType, loginEvent.ChallengeType, "The event should name the challenge step it was raised on, if any")
+	s.Equal(code, loginEvent.ErrorCode, "The event should carry the failure's code")
+	s.NotEmpty(loginEvent.FailReason, "The event should carry the failure's reason")
+
+	s.loginGuard.AssertNotCalled(s.T(), "RecordFailure", mock.Anything, mock.Anything)
 }
 
 func (*AuthResourceErrorPathTestSuite) loginRequest() api.Request {
@@ -1809,7 +1861,8 @@ func (s *AuthResourceErrorPathTestSuite) TestLoginNonResultError() {
 }
 
 // TestLoginTokenGenerateError covers the branch where authentication succeeds
-// with no challenges but TokenGenerator.Generate fails.
+// with no challenges but TokenGenerator.Generate fails: the login is audited as
+// a failure, and nothing is counted toward lockout.
 func (s *AuthResourceErrorPathTestSuite) TestLoginTokenGenerateError() {
 	s.authManager.On("Authenticate", mock.Anything, mock.Anything).
 		Return(s.testUser, nil).Once()
@@ -1823,10 +1876,53 @@ func (s *AuthResourceErrorPathTestSuite) TestLoginTokenGenerateError() {
 
 	body := s.ReadResult(resp)
 	s.False(body.IsOk(), "Login token generation failure response should not be ok")
+
+	s.requireFailureAudited("", result.ErrCodeUnknown)
+}
+
+// TestLoginRefusedBySessionPolicy covers token issuance refused by the session
+// concurrency policy (on_exceed = reject): the refusal reaches the audit trail
+// under its own code, and nothing is counted toward lockout.
+func (s *AuthResourceErrorPathTestSuite) TestLoginRefusedBySessionPolicy() {
+	s.authManager.On("Authenticate", mock.Anything, mock.Anything).
+		Return(s.testUser, nil).Once()
+	s.skipChallenges()
+	s.tokenGenerator.On("Generate", mock.Anything, s.testUser, mock.Anything).
+		Return((*security.AuthTokens)(nil), security.ErrTooManyConcurrentSessions).Once()
+
+	resp := s.MakeRPCRequest(s.loginRequest())
+
+	s.Equal(403, resp.StatusCode, "A login refused by session policy should return HTTP 403")
+
+	body := s.ReadResult(resp)
+	s.Equal(security.ErrCodeTooManyConcurrentSessions, body.Code, "The refusal should carry the too-many-sessions code")
+
+	s.requireFailureAudited("", security.ErrCodeTooManyConcurrentSessions)
+}
+
+// TestLoginEvaluateError covers the branch where authentication succeeds but a
+// challenge provider fails to evaluate: the login is audited as a failure, and
+// nothing is counted toward lockout.
+func (s *AuthResourceErrorPathTestSuite) TestLoginEvaluateError() {
+	s.authManager.On("Authenticate", mock.Anything, mock.Anything).
+		Return(s.testUser, nil).Once()
+	s.challengeProviderA.On("Evaluate", mock.Anything, mock.Anything).
+		Return((*security.LoginChallenge)(nil), errors.New("totp service unavailable")).Once()
+
+	resp := s.MakeRPCRequest(s.loginRequest())
+
+	s.Equal(500, resp.StatusCode, "A challenge evaluation failure should return HTTP 500")
+
+	body := s.ReadResult(resp)
+	s.False(body.IsOk(), "A challenge evaluation failure response should not be ok")
+
+	s.requireFailureAudited("", result.ErrCodeUnknown)
+	s.tokenGenerator.AssertNotCalled(s.T(), "Generate", mock.Anything, mock.Anything, mock.Anything)
 }
 
 // TestLoginChallengeStoreError covers the branch where authentication succeeds,
-// a challenge is present, but ChallengeTokenStore.Generate fails.
+// a challenge is present, but ChallengeTokenStore.Generate fails: the login is
+// audited as a failure, and nothing is counted toward lockout.
 func (s *AuthResourceErrorPathTestSuite) TestLoginChallengeStoreError() {
 	s.authManager.On("Authenticate", mock.Anything, mock.Anything).
 		Return(s.testUser, nil).Once()
@@ -1846,6 +1942,8 @@ func (s *AuthResourceErrorPathTestSuite) TestLoginChallengeStoreError() {
 
 	body := s.ReadResult(resp)
 	s.False(body.IsOk(), "Challenge token store failure response should not be ok")
+
+	s.requireFailureAudited("", result.ErrCodeUnknown)
 }
 
 // TestRefreshTokenGenerateError covers the branch where refresh authentication
@@ -1928,11 +2026,13 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeRefusesStateWithout
 }
 
 // TestResolveChallengeTokenGenerateError covers the branch where all challenges
-// are resolved but TokenGenerator.Generate fails.
+// are resolved but TokenGenerator.Generate fails: the step is audited as a
+// failure of the login, and nothing is counted toward lockout.
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeTokenGenerateError() {
 	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
 			AuthType:  security.AuthTypePassword,
+			Username:  "testuser",
 			Principal: s.testUser,
 			Pending:   []string{"totp"},
 		}, nil).Once()
@@ -1947,6 +2047,8 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeTokenGenerateError(
 
 	body := s.ReadResult(resp)
 	s.False(body.IsOk(), "Resolve challenge token generation failure response should not be ok")
+
+	s.requireFailureAudited("totp", result.ErrCodeUnknown)
 }
 
 // TestResolveChallengeMoreRemain covers the branch where resolving one challenge
@@ -1989,7 +2091,8 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeMoreRemain() {
 }
 
 // TestResolveChallengeStoreErrorOnRemain covers the branch where remaining challenges
-// exist but ChallengeTokenStore.Generate fails for the new token.
+// exist but ChallengeTokenStore.Generate fails for the new token: the step is
+// audited as a failure of the login, and nothing is counted toward lockout.
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeStoreErrorOnRemain() {
 	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
@@ -2017,10 +2120,13 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeStoreErrorOnRemain(
 
 	body := s.ReadResult(resp)
 	s.False(body.IsOk(), "Remaining challenge token store failure response should not be ok")
+
+	s.requireFailureAudited("totp", result.ErrCodeUnknown)
 }
 
 // TestResolveChallengeEvaluateErrorOnRemain covers the branch where remaining
-// challenges exist but the next provider.Evaluate fails.
+// challenges exist but the next provider.Evaluate fails: the step is audited as a
+// failure of the login, and nothing is counted toward lockout.
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeEvaluateErrorOnRemain() {
 	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
@@ -2040,6 +2146,9 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeEvaluateErrorOnRema
 
 	body := s.ReadResult(resp)
 	s.False(body.IsOk(), "Remaining challenge evaluation failure response should not be ok")
+
+	s.requireFailureAudited("totp", result.ErrCodeUnknown)
+	s.challengeTokenStore.AssertNotCalled(s.T(), "Generate", mock.Anything, mock.Anything)
 }
 
 // TestResolveChallengeRemainingProviderNotFound covers the skip branch
