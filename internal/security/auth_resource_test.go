@@ -3,6 +3,7 @@ package security_test
 import (
 	"context"
 	"errors"
+	"net/http"
 	"slices"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
 	isecurity "github.com/coldsmirk/vef-framework-go/internal/security"
+	"github.com/coldsmirk/vef-framework-go/lock"
 	"github.com/coldsmirk/vef-framework-go/password"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
@@ -1601,6 +1603,118 @@ func (s *ChallengeFlowTestSuite) TestGetUserInfoNilLoader() {
 	s.Equal(result.ErrCodeNotImplemented, body.Code, "Should return not implemented error")
 }
 
+// resolveRequest builds a resolve_challenge request answering the TOTP challenge
+// behind challengeToken with response.
+func (*ChallengeFlowTestSuite) resolveRequest(challengeToken, response string) api.Request {
+	return api.Request{
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
+		Params: map[string]any{
+			"challengeToken": challengeToken,
+			"type":           "totp",
+			"response":       response,
+		},
+	}
+}
+
+// TestResolveChallengeReplayRefused replays a step that completed the login, with
+// the same token and answer: the replay is refused like an invalid token, never
+// reaches the provider again, and issues and audits nothing.
+func (s *ChallengeFlowTestSuite) TestResolveChallengeReplayRefused() {
+	s.challengeProvider.On("Type").Return("totp").Maybe()
+	s.challengeProvider.On("Evaluate", mock.Anything, mock.Anything).
+		Return(&security.LoginChallenge{Type: "totp", Required: true}, nil).Once()
+	s.challengeProvider.On("Resolve", mock.Anything, mock.Anything, "123456").
+		Return(s.testUser, nil).Once()
+
+	challengeToken := s.loginAndGetResult()["challengeToken"].(string)
+
+	resp := s.MakeRPCRequest(s.resolveRequest(challengeToken, "123456"))
+	s.Require().Equal(200, resp.StatusCode, "The first resolve should complete the login")
+
+	s.publisher.ClearPublishedEvents()
+
+	replay := s.MakeRPCRequest(s.resolveRequest(challengeToken, "123456"))
+	s.Equal(401, replay.StatusCode, "Replaying a resolved step should be refused with HTTP 401")
+
+	body := s.ReadResult(replay)
+	s.Equal(security.ErrCodeChallengeTokenInvalid, body.Code, "A replayed step should be refused like an invalid challenge token")
+	s.Nil(body.Data, "A refused replay must carry no payload, so no tokens can leak")
+
+	s.challengeProvider.AssertNumberOfCalls(s.T(), "Resolve", 1)
+	s.Empty(s.publisher.GetPublishedEvents(), "A refused replay should raise no login event")
+}
+
+// TestResolveChallengeRetryAfterWrongAnswer answers a challenge wrongly and then
+// correctly on the same token: the rejected step gave its claim back, so the
+// retry completes the login.
+func (s *ChallengeFlowTestSuite) TestResolveChallengeRetryAfterWrongAnswer() {
+	s.challengeProvider.On("Type").Return("totp").Maybe()
+	s.challengeProvider.On("Evaluate", mock.Anything, mock.Anything).
+		Return(&security.LoginChallenge{Type: "totp", Required: true}, nil).Once()
+	s.challengeProvider.On("Resolve", mock.Anything, mock.Anything, "000000").
+		Return((*security.Principal)(nil), security.ErrOTPCodeInvalid).Once()
+	s.challengeProvider.On("Resolve", mock.Anything, mock.Anything, "123456").
+		Return(s.testUser, nil).Once()
+
+	challengeToken := s.loginAndGetResult()["challengeToken"].(string)
+
+	wrong := s.MakeRPCRequest(s.resolveRequest(challengeToken, "000000"))
+	s.Equal(security.ErrCodeOTPCodeInvalid, s.ReadResult(wrong).Code, "The wrong answer should be rejected by the provider")
+
+	right := s.MakeRPCRequest(s.resolveRequest(challengeToken, "123456"))
+	s.Require().Equal(200, right.StatusCode, "The right answer on the same token should be accepted")
+	s.NotNil(s.ReadDataAsMap(s.ReadResult(right).Data)["tokens"], "The retry should complete the login")
+}
+
+// TestResolveChallengeConcurrentDuplicate sends a duplicate of a step while the
+// first is still inside the provider: the duplicate finds the token claimed and
+// is refused without reaching the provider, and the first completes the login.
+func (s *ChallengeFlowTestSuite) TestResolveChallengeConcurrentDuplicate() {
+	entered := make(chan struct{})
+	proceed := make(chan struct{})
+
+	s.challengeProvider.On("Type").Return("totp").Maybe()
+	s.challengeProvider.On("Evaluate", mock.Anything, mock.Anything).
+		Return(&security.LoginChallenge{Type: "totp", Required: true}, nil).Once()
+	s.challengeProvider.On("Resolve", mock.Anything, mock.Anything, "123456").
+		Run(func(mock.Arguments) {
+			close(entered)
+			<-proceed
+		}).
+		Return(s.testUser, nil).Once()
+
+	challengeToken := s.loginAndGetResult()["challengeToken"].(string)
+
+	firstDone := make(chan *http.Response, 1)
+
+	go func() {
+		firstDone <- s.MakeRPCRequest(s.resolveRequest(challengeToken, "123456"))
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		close(proceed)
+		s.FailNow("The first resolve should reach the provider")
+	}
+
+	duplicate := s.MakeRPCRequest(s.resolveRequest(challengeToken, "123456"))
+
+	close(proceed)
+
+	first := <-firstDone
+
+	s.Equal(401, duplicate.StatusCode, "A duplicate arriving while the step is in flight should be refused with HTTP 401")
+	s.Equal(security.ErrCodeChallengeTokenInvalid, s.ReadResult(duplicate).Code,
+		"A duplicate in flight should be refused like an invalid challenge token")
+
+	s.Require().Equal(200, first.StatusCode, "The step already in flight should complete the login")
+	s.NotNil(s.ReadDataAsMap(s.ReadResult(first).Data)["tokens"], "The step already in flight should issue tokens")
+	s.challengeProvider.AssertNumberOfCalls(s.T(), "Resolve", 1)
+}
+
 func TestChallengeFlow(t *testing.T) {
 	suite.Run(t, new(ChallengeFlowTestSuite))
 }
@@ -1674,6 +1788,37 @@ func (m *MockLoginGuard) RecordSuccess(ctx context.Context, attempt security.Log
 	return args.Error(0)
 }
 
+type MockLocker struct {
+	mock.Mock
+}
+
+func (m *MockLocker) Acquire(ctx context.Context, name string, opts ...lock.Option) (lock.Lock, error) {
+	return m.TryAcquire(ctx, name, opts...)
+}
+
+func (m *MockLocker) TryAcquire(ctx context.Context, name string, _ ...lock.Option) (lock.Lock, error) {
+	args := m.Called(ctx, name)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).(lock.Lock), args.Error(1)
+}
+
+type MockLock struct {
+	mock.Mock
+}
+
+func (m *MockLock) Release(ctx context.Context) error {
+	return m.Called(ctx).Error(0)
+}
+
+func (*MockLock) Refresh(context.Context) error { return nil }
+
+func (*MockLock) FencingToken() int64 { return 0 }
+
+func (*MockLock) Done() <-chan struct{} { return nil }
+
 // AuthResourceErrorPathTestSuite tests error paths in AuthResource using mocked dependencies.
 type AuthResourceErrorPathTestSuite struct {
 	apptest.Suite
@@ -1681,6 +1826,8 @@ type AuthResourceErrorPathTestSuite struct {
 	authManager         *MockAuthManager
 	tokenGenerator      *MockTokenGenerator
 	challengeTokenStore *MockChallengeTokenStore
+	locker              *MockLocker
+	claim               *MockLock
 	loginGuard          *MockLoginGuard
 	publisher           *MockPublisher
 	challengeProviderA  *MockChallengeProvider
@@ -1694,6 +1841,8 @@ func (s *AuthResourceErrorPathTestSuite) SetupSuite() {
 	s.authManager = new(MockAuthManager)
 	s.tokenGenerator = new(MockTokenGenerator)
 	s.challengeTokenStore = new(MockChallengeTokenStore)
+	s.locker = new(MockLocker)
+	s.claim = new(MockLock)
 	s.loginGuard = new(MockLoginGuard)
 	s.publisher = new(MockPublisher)
 	s.challengeProviderA = new(MockChallengeProvider)
@@ -1709,6 +1858,7 @@ func (s *AuthResourceErrorPathTestSuite) SetupSuite() {
 		fx.Decorate(func() security.AuthManager { return s.authManager }),
 		fx.Decorate(func() security.TokenGenerator { return s.tokenGenerator }),
 		fx.Decorate(func() security.ChallengeTokenStore { return s.challengeTokenStore }),
+		fx.Decorate(func() lock.Locker { return s.locker }),
 		fx.Decorate(func() security.LoginGuard { return s.loginGuard }),
 		fx.Supply(
 			fx.Annotate(
@@ -1763,6 +1913,8 @@ func (s *AuthResourceErrorPathTestSuite) SetupTest() {
 	resetMock(&s.authManager.Mock)
 	resetMock(&s.tokenGenerator.Mock)
 	resetMock(&s.challengeTokenStore.Mock)
+	resetMock(&s.locker.Mock)
+	resetMock(&s.claim.Mock)
 	resetMock(&s.loginGuard.Mock)
 	resetMock(&s.challengeProviderA.Mock)
 	resetMock(&s.challengeProviderB.Mock)
@@ -1776,6 +1928,8 @@ func (s *AuthResourceErrorPathTestSuite) SetupTest() {
 	s.challengeProviderB.On("Type").Return("sms")
 	s.challengeProviderB.On("Order").Return(20)
 	s.publisher.On("Publish", mock.Anything).Maybe()
+	s.locker.On("TryAcquire", mock.Anything, mock.Anything).Return(s.claim, nil).Maybe()
+	s.claim.On("Release", mock.Anything).Return(nil).Maybe()
 	s.loginGuard.On("Check", mock.Anything, mock.Anything).Return(security.LoginDecision{Allowed: true}, nil).Maybe()
 	s.loginGuard.On("RecordFailure", mock.Anything, mock.Anything).Return(security.LoginDecision{Allowed: true}, nil).Maybe()
 	s.loginGuard.On("RecordSuccess", mock.Anything, mock.Anything).Return(nil).Maybe()
@@ -2181,6 +2335,115 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeRemainingProviderNo
 	s.Require().True(ok, "Skipped missing remaining provider should return tokens")
 	s.NotEmpty(tokensRaw["accessToken"], "Provider-not-found challenge flow should return access token")
 	s.NotEmpty(tokensRaw["refreshToken"], "Provider-not-found challenge flow should return refresh token")
+}
+
+// claimableState is the challenge state resolveChallengeRequest's token parses
+// to in the claim tests: one TOTP challenge left, so a successful step issues
+// tokens.
+func (s *AuthResourceErrorPathTestSuite) claimableState() *security.ChallengeState {
+	return &security.ChallengeState{
+		AuthType:  security.AuthTypePassword,
+		Username:  "testuser",
+		Principal: s.testUser,
+		Pending:   []string{"totp"},
+	}
+}
+
+// TestResolveChallengeKeepsClaimOnSuccess covers a step that succeeds: the token
+// is claimed under its reserved lock name, and the claim is kept as the token's
+// spent marker rather than released.
+func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeKeepsClaimOnSuccess() {
+	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
+		Return(s.claimableState(), nil).Once()
+	s.challengeProviderA.On("Resolve", mock.Anything, loginOf(s.testUser), "123456").
+		Return(s.testUser, nil).Once()
+	s.tokenGenerator.On("Generate", mock.Anything, s.testUser, mock.Anything).
+		Return(&security.AuthTokens{AccessToken: "at", RefreshToken: "rt"}, nil).Once()
+
+	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
+
+	s.Equal(200, resp.StatusCode, "A successful step should return HTTP 200")
+	s.locker.AssertCalled(s.T(), "TryAcquire", mock.Anything,
+		"vef:security:challenge:"+security.HashOpaqueToken("valid-challenge-token"))
+	s.claim.AssertNotCalled(s.T(), "Release", mock.Anything)
+}
+
+// TestResolveChallengeRefusesClaimedToken covers a token whose claim is already
+// held — a replay of a step that succeeded, or a duplicate of one in flight. It
+// is refused like an invalid token before the provider runs, and like the other
+// token refusals it is neither audited nor counted, nor clears lockout failures.
+func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeRefusesClaimedToken() {
+	resetMock(&s.locker.Mock)
+	s.locker.On("TryAcquire", mock.Anything, mock.Anything).Return(nil, lock.ErrNotAcquired).Once()
+	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
+		Return(s.claimableState(), nil).Once()
+
+	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
+
+	s.Equal(401, resp.StatusCode, "A claimed token should be refused with HTTP 401")
+
+	body := s.ReadResult(resp)
+	s.Equal(security.ErrCodeChallengeTokenInvalid, body.Code, "A claimed token should be refused like an invalid challenge token")
+
+	s.challengeProviderA.AssertNotCalled(s.T(), "Resolve", mock.Anything, mock.Anything, mock.Anything)
+	s.tokenGenerator.AssertNotCalled(s.T(), "Generate", mock.Anything, mock.Anything, mock.Anything)
+	s.loginGuard.AssertNotCalled(s.T(), "RecordSuccess", mock.Anything, mock.Anything)
+	s.loginGuard.AssertNotCalled(s.T(), "RecordFailure", mock.Anything, mock.Anything)
+	s.Empty(s.publisher.GetPublishedEvents(), "A refused claim should raise no login event")
+}
+
+// TestResolveChallengeClaimErrorFailsClosed covers a lock backend that cannot
+// answer: the step fails closed before the provider runs.
+func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeClaimErrorFailsClosed() {
+	resetMock(&s.locker.Mock)
+	s.locker.On("TryAcquire", mock.Anything, mock.Anything).Return(nil, errors.New("redis unavailable")).Once()
+	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
+		Return(s.claimableState(), nil).Once()
+
+	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
+
+	s.Equal(500, resp.StatusCode, "A lock backend error should fail the step closed with HTTP 500")
+
+	body := s.ReadResult(resp)
+	s.False(body.IsOk(), "A lock backend error must not let the step proceed")
+
+	s.challengeProviderA.AssertNotCalled(s.T(), "Resolve", mock.Anything, mock.Anything, mock.Anything)
+	s.tokenGenerator.AssertNotCalled(s.T(), "Generate", mock.Anything, mock.Anything, mock.Anything)
+	s.loginGuard.AssertNotCalled(s.T(), "RecordSuccess", mock.Anything, mock.Anything)
+}
+
+// TestResolveChallengeReleasesClaimOnFailure covers every way a step can fail
+// once it has claimed its token: each one gives the claim back, so the same
+// token stays usable for another attempt.
+func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeReleasesClaimOnFailure() {
+	failures := []struct {
+		name      string
+		principal *security.Principal
+		err       error
+		code      int
+	}{
+		{name: "RejectedAnswer", err: security.ErrOTPCodeInvalid, code: security.ErrCodeOTPCodeInvalid},
+		{name: "ProviderError", err: errors.New("totp backend unavailable"), code: security.ErrCodeChallengeResolveFailed},
+		{name: "ReservedPrincipal", principal: security.PrincipalSystem, code: security.ErrCodePrincipalInvalid},
+	}
+
+	for _, failure := range failures {
+		s.Run(failure.name, func() {
+			resetMock(&s.claim.Mock)
+			s.claim.On("Release", mock.Anything).Return(nil).Once()
+			s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
+				Return(s.claimableState(), nil).Once()
+			s.challengeProviderA.On("Resolve", mock.Anything, loginOf(s.testUser), "123456").
+				Return(failure.principal, failure.err).Once()
+
+			resp := s.MakeRPCRequest(s.resolveChallengeRequest())
+
+			body := s.ReadResult(resp)
+			s.Equal(failure.code, body.Code, "The failed step should surface its own code")
+			s.claim.AssertNumberOfCalls(s.T(), "Release", 1)
+			s.tokenGenerator.AssertNotCalled(s.T(), "Generate", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
 }
 
 func TestAuthResourceErrorPath(t *testing.T) {
@@ -3025,6 +3288,35 @@ func (s *LoginContextFlowTestSuite) TestHostDefinedLogin() {
 	s.Require().NotNil(loginEvent, "The completed login should be audited")
 	s.Equal(miniProgramAuthType, loginEvent.AuthType, "The success event should carry the host-defined mechanism")
 	s.Equal(everyLoginType, loginEvent.ChallengeType, "The success event should name the challenge whose resolution completed the login")
+}
+
+// TestReplayOfAnAdvancingStep replays a step that advanced the login to its next
+// challenge: the replay is refused like an invalid token before any provider
+// runs again, and the login still completes from the step the first resolve
+// handed back.
+func (s *LoginContextFlowTestSuite) TestReplayOfAnAdvancingStep() {
+	first := s.login(security.AuthTypePassword, "testuser", "password123")
+	second := s.resolve(first)
+	s.Require().Equal(everyLoginType, s.presented(second), "Resolving the first challenge should present the next one")
+
+	resp := s.MakeRPCRequest(api.Request{
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
+		Params: map[string]any{
+			"challengeToken": first["challengeToken"],
+			"type":           passwordOnlyFirstType,
+			"response":       "accepted",
+		},
+	})
+	s.Equal(401, resp.StatusCode, "Replaying a step that already advanced the login should be refused with HTTP 401")
+	s.Equal(security.ErrCodeChallengeTokenInvalid, s.ReadResult(resp).Code,
+		"A replayed step should be refused like an invalid challenge token")
+
+	s.Len(s.passwordOnlyFirst.Resolutions(), 1, "The replay must not reach the provider its step already resolved")
+	s.Len(s.everyLogin.Evaluations(), 1, "The replay must not evaluate the next challenge again")
+
+	s.NotNil(s.resolve(s.resolve(second))["tokens"], "The login should still complete from the step the first resolve handed back")
 }
 
 func TestLoginContextFlow(t *testing.T) {

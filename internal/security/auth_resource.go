@@ -4,8 +4,10 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/coldsmirk/go-collections"
 	"github.com/coldsmirk/go-streams"
@@ -19,6 +21,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/event"
 	"github.com/coldsmirk/vef-framework-go/fiberx"
 	"github.com/coldsmirk/vef-framework-go/i18n"
+	"github.com/coldsmirk/vef-framework-go/lock"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
@@ -30,6 +33,7 @@ type AuthResourceParams struct {
 	AuthManager         security.AuthManager
 	TokenGenerator      security.TokenGenerator
 	ChallengeTokenStore security.ChallengeTokenStore
+	Locker              lock.Locker
 	UserInfoLoader      security.UserInfoLoader `optional:"true"`
 	LoginGuard          security.LoginGuard     `optional:"true"`
 	SessionStore        security.SessionStore
@@ -81,6 +85,7 @@ func NewAuthResource(params AuthResourceParams) api.Resource {
 		authManager:         params.AuthManager,
 		tokenGenerator:      params.TokenGenerator,
 		challengeTokenStore: params.ChallengeTokenStore,
+		locker:              params.Locker,
 		userInfoLoader:      params.UserInfoLoader,
 		loginGuard:          params.LoginGuard,
 		sessionStore:        params.SessionStore,
@@ -102,6 +107,7 @@ type AuthResource struct {
 	authManager         security.AuthManager
 	tokenGenerator      security.TokenGenerator
 	challengeTokenStore security.ChallengeTokenStore
+	locker              lock.Locker
 	userInfoLoader      security.UserInfoLoader
 	loginGuard          security.LoginGuard
 	sessionStore        security.SessionStore
@@ -297,7 +303,8 @@ type ResolveChallengeParams struct {
 
 // ResolveChallenge validates a user's response to a login challenge.
 // On success, either issues real auth tokens (all challenges resolved)
-// or evaluates the next challenge sequentially.
+// or evaluates the next challenge sequentially. A challenge token resolves at
+// most one step, whichever store issued it (see claimChallengeToken).
 //
 // A ChallengeProvider may reject a response by returning a typed result.Error
 // (e.g. security.ErrOTPCodeInvalid) to control the client-facing code; a bare
@@ -336,8 +343,14 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 		return locked
 	}
 
+	claim, err := a.claimChallengeToken(ctx.Context(), params.ChallengeToken)
+	if err != nil {
+		return err
+	}
+
 	principal, err := provider.Resolve(ctx.Context(), &state.LoginContext, params.Response)
 	if err != nil {
+		releaseChallengeClaim(ctx.Context(), claim)
 		a.guardRecordFailure(ctx, attempt)
 
 		// Providers that return a typed result.Error keep their chosen code
@@ -361,11 +374,14 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 	if principal == nil || principal.IsReserved() {
 		logger.Errorf("Challenge rejected: provider %q resolved to a nil or framework-reserved principal", params.Type)
 
+		releaseChallengeClaim(ctx.Context(), claim)
 		a.publishLoginFailure(ctx, audit, security.ErrReservedPrincipal)
 
 		return security.ErrReservedPrincipal
 	}
 
+	// The step succeeded, so its claim is kept: the unreleased lease marks the
+	// token spent from here on (see claimChallengeToken).
 	a.guardRecordSuccess(ctx, attempt)
 
 	state.Principal = principal
@@ -588,4 +604,60 @@ func (a *AuthResource) evaluateNextChallenge(ctx context.Context, state *securit
 	}
 
 	return nil, nil
+}
+
+const (
+	// challengeClaimPrefix reserves the lock namespace a resolve_challenge step
+	// claims its challenge token under.
+	challengeClaimPrefix = "vef:security:challenge:"
+	// challengeClaimTTLBuffer keeps a spent token's claim alive past the token's
+	// own lifetime: the JWT parser accepts a token for its leeway past exp, and
+	// replicas' clocks drift. Same shape as the signature nonce TTL buffer.
+	challengeClaimTTLBuffer = time.Minute
+)
+
+// claimChallengeToken claims the presented challenge token for the
+// resolve_challenge step presenting it, so a token resolves at most one step
+// whichever ChallengeTokenStore issued it. The claim is a lease on the
+// lock.Locker, taken after the protocol checks and the brute-force guard but
+// before the challenge provider runs: a replay of a step that already succeeded,
+// or a duplicate racing one in flight, finds the lease held and is refused as
+// ErrChallengeTokenInvalid before any provider side effect runs again — spending
+// the token only after Resolve would still let a leaked password_change token
+// set the password. Like the other token refusals, it is neither audited nor
+// counted, and clears no lockout failures. A locker backend error fails closed.
+//
+// The caller releases the claim when the step fails, so a mistyped code or a
+// password that fails policy stays retryable on the same token, with the guard
+// bounding those attempts; and it keeps the claim once the step succeeds. The
+// unreleased lease is the spent marker, outliving the token by
+// challengeClaimTTLBuffer, so a failure after it — while advancing the login —
+// leaves the token spent and the user starts over at login.
+//
+// Without Redis the default locker is in-process, so the claim holds per replica
+// only; the lock module warns about that at boot.
+func (a *AuthResource) claimChallengeToken(ctx context.Context, token string) (lock.Lock, error) {
+	claim, err := a.locker.TryAcquire(ctx,
+		challengeClaimPrefix+security.HashOpaqueToken(token),
+		lock.WithTTL(security.ChallengeTokenExpires+challengeClaimTTLBuffer),
+	)
+	if errors.Is(err, lock.ErrNotAcquired) {
+		return nil, security.ErrChallengeTokenInvalid
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to claim challenge token: %w", err)
+	}
+
+	return claim, nil
+}
+
+// releaseChallengeClaim gives back the claim of a step that did not succeed, on a
+// context the request's cancellation cannot abort, since a release lost to a
+// client disconnect would leave the token spent. A failed release is only
+// logged: the lease still expires on its own.
+func releaseChallengeClaim(ctx context.Context, claim lock.Lock) {
+	if err := claim.Release(context.WithoutCancel(ctx)); err != nil {
+		logger.Warnf("Failed to release challenge token claim: %v", err)
+	}
 }

@@ -67,6 +67,14 @@ type ChallengeState struct {
 // Generate and Parse must round-trip every field of the state. The login flow
 // refuses a parsed state without an AuthType exactly as it refuses a token that
 // does not parse, since the challenges still ahead are scoped by it.
+//
+// A store need not make tokens single-use. The login flow claims each token for
+// the resolve_challenge step that presents it — a lease on the application's
+// lock.Locker, taken before the challenge provider runs and kept once the step
+// succeeds — so a replay of a resolved step, or a duplicate racing one in
+// flight, is refused before any provider side effect. Without Redis that locker
+// is in-process and the claim holds per replica, as the lock module warns at
+// boot.
 type ChallengeTokenStore interface {
 	// Generate creates a challenge token carrying state. ctx lets I/O-backed
 	// implementations honor deadlines, cancellation, and trace propagation.
