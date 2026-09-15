@@ -140,9 +140,11 @@ var internalTokenAuthTypes = collections.NewHashSetFrom(AuthTypeJWTToken, AuthTy
 // vef.security.login_rate_limit.
 //
 // This is deliberately not folded into the guard helpers themselves: those are
-// shared with ResolveChallenge, where the type in hand is a challenge type
-// rather than a login mechanism, and a challenge answer very much is guessable.
-var unguessableAuthTypes = collections.NewHashSetFrom(AuthTypeTrustCode)
+// shared with ResolveChallenge, whose steps carry the same login mechanism but
+// guess something else — the answer to a challenge, which very much is
+// guessable. A trust-code login's challenge steps therefore stay counted
+// (TestTrustCodeChallengeLockout).
+var unguessableAuthTypes = collections.NewHashSetFrom(security.AuthTypeTrustCode)
 
 // Login authenticates a user and returns a LoginResult.
 // When challenge providers are configured and applicable, the result contains
@@ -152,11 +154,12 @@ func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
 		return errUnsupportedAuthenticationType(params.Type)
 	}
 
+	audit := security.LoginEventParams{AuthType: params.Type, Username: params.Principal}
 	attempt := security.LoginAttempt{Identity: params.Principal, ClientIP: fiberx.GetIP(ctx)}
 	guarded := !unguessableAuthTypes.Contains(params.Type)
 
 	if guarded {
-		if locked := a.guardCheck(ctx, params.Type, attempt); locked != nil {
+		if locked := a.guardCheck(ctx, audit, attempt); locked != nil {
 			return locked
 		}
 	}
@@ -176,7 +179,7 @@ func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
 			a.guardRecordFailure(ctx, attempt)
 		}
 
-		a.publishLoginFailure(ctx, params.Type, params.Principal, err)
+		a.publishLoginFailure(ctx, audit, err)
 
 		return err
 	}
@@ -190,31 +193,17 @@ func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
 		func(p security.ChallengeProvider) string { return p.Type() },
 	).Collect()
 
-	challenge, pending, err := a.evaluateNextChallenge(ctx.Context(), principal, pending)
-	if err != nil {
-		return err
+	// A memory-backed challenge token store keeps this state for minutes after
+	// the request, yet neither string needs a copy: params are decoded from JSON,
+	// which allocates every string rather than viewing the pooled request buffer.
+	state := &security.ChallengeState{
+		AuthType:  params.Type,
+		Username:  params.Principal,
+		Principal: principal,
+		Pending:   pending,
 	}
 
-	if challenge != nil {
-		challengeToken, err := a.challengeTokenStore.Generate(ctx.Context(), principal, params.Principal, pending, nil)
-		if err != nil {
-			return err
-		}
-
-		return result.Ok(&security.LoginResult{
-			ChallengeToken: challengeToken,
-			Challenge:      challenge,
-		}).Response(ctx)
-	}
-
-	tokens, err := a.tokenGenerator.Generate(ctx.Context(), principal, sessionMeta(ctx))
-	if err != nil {
-		return err
-	}
-
-	a.publishLoginSuccess(ctx, params.Type, params.Principal, principal)
-
-	return result.Ok(&security.LoginResult{Tokens: tokens}).Response(ctx)
+	return a.advanceLogin(ctx, state, audit)
 }
 
 // RefreshParams represents the request parameters for token refresh operation.
@@ -294,8 +283,12 @@ type ResolveChallengeParams struct {
 // error is normalized to security.ErrChallengeResolveFailed (code
 // security.ErrCodeChallengeResolveFailed).
 func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengeParams) error {
+	// A state without its login mechanism is refused like a token that does not
+	// parse, whichever store produced it: every filtered provider would otherwise
+	// be evaluated against a login none of them names, and allow-listed challenges
+	// would be skipped.
 	state, err := a.challengeTokenStore.Parse(ctx.Context(), params.ChallengeToken)
-	if err != nil {
+	if err != nil || state.AuthType == "" {
 		return security.ErrChallengeTokenInvalid
 	}
 
@@ -315,13 +308,14 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 	// only by the endpoint rate limit. The earlier guards (invalid/expired
 	// token, wrong type) are protocol/tampering errors that Login's analogous
 	// infra paths do not audit, so they are deliberately left unguarded.
+	audit := security.LoginEventParams{AuthType: state.AuthType, Username: state.Username, ChallengeType: params.Type}
 	attempt := security.LoginAttempt{Identity: state.Username, ClientIP: fiberx.GetIP(ctx)}
 
-	if locked := a.guardCheck(ctx, params.Type, attempt); locked != nil {
+	if locked := a.guardCheck(ctx, audit, attempt); locked != nil {
 		return locked
 	}
 
-	principal, err := provider.Resolve(ctx.Context(), state.Principal, params.Response)
+	principal, err := provider.Resolve(ctx.Context(), &state.LoginContext, params.Response)
 	if err != nil {
 		a.guardRecordFailure(ctx, attempt)
 
@@ -333,7 +327,7 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 			err = security.ErrChallengeResolveFailed
 		}
 
-		a.publishLoginFailure(ctx, params.Type, state.Username, err)
+		a.publishLoginFailure(ctx, audit, err)
 
 		return err
 	}
@@ -346,41 +340,18 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 	if principal == nil || principal.IsReserved() {
 		logger.Errorf("Challenge rejected: provider %q resolved to a nil or framework-reserved principal", params.Type)
 
-		a.publishLoginFailure(ctx, params.Type, state.Username, security.ErrReservedPrincipal)
+		a.publishLoginFailure(ctx, audit, security.ErrReservedPrincipal)
 
 		return security.ErrReservedPrincipal
 	}
 
 	a.guardRecordSuccess(ctx, attempt)
 
-	resolved := append(state.Resolved, params.Type)
-	remaining := state.Pending[1:]
+	state.Principal = principal
+	state.Resolved = append(state.Resolved, params.Type)
+	state.Pending = state.Pending[1:]
 
-	challenge, remaining, err := a.evaluateNextChallenge(ctx.Context(), principal, remaining)
-	if err != nil {
-		return err
-	}
-
-	if challenge != nil {
-		challengeToken, err := a.challengeTokenStore.Generate(ctx.Context(), principal, state.Username, remaining, resolved)
-		if err != nil {
-			return err
-		}
-
-		return result.Ok(&security.LoginResult{
-			ChallengeToken: challengeToken,
-			Challenge:      challenge,
-		}).Response(ctx)
-	}
-
-	tokens, err := a.tokenGenerator.Generate(ctx.Context(), principal, sessionMeta(ctx))
-	if err != nil {
-		return err
-	}
-
-	a.publishLoginSuccess(ctx, params.Type, state.Username, principal)
-
-	return result.Ok(&security.LoginResult{Tokens: tokens}).Response(ctx)
+	return a.advanceLogin(ctx, state, audit)
 }
 
 // GetUserInfo retrieves user information via UserInfoLoader.
@@ -398,39 +369,32 @@ func (a *AuthResource) GetUserInfo(ctx fiber.Ctx, principal *security.Principal,
 	return result.Ok(userInfo).Response(ctx)
 }
 
-// publishLoginSuccess publishes a successful-login audit event. username is the
-// original login identifier (threaded through the challenge state on MFA flows)
-// so success events carry the same identifier regardless of whether a challenge
-// was involved.
-func (a *AuthResource) publishLoginSuccess(ctx fiber.Ctx, authType, username string, principal *security.Principal) {
-	a.publishLoginEvent(ctx, security.LoginEventParams{
-		AuthType: authType,
-		UserID:   &principal.ID,
-		Username: username,
-		IsOk:     true,
-	})
+// publishLoginSuccess publishes a successful-login audit event for the login
+// audit describes. Each handler builds audit once from the login it serves — the
+// mechanism and the identifier first presented, plus the challenge being
+// resolved on a resolve_challenge step — so every event one login raises, on
+// whichever step, reports that same login.
+func (a *AuthResource) publishLoginSuccess(ctx fiber.Ctx, audit security.LoginEventParams, principal *security.Principal) {
+	audit.UserID = &principal.ID
+	audit.IsOk = true
+
+	a.publishLoginEvent(ctx, audit)
 }
 
-// publishLoginFailure publishes a failed-login audit event, deriving the failure
-// reason and business code from err. It mirrors publishLoginSuccess so password
-// and challenge-step failures land in the same audit pipeline with the same
-// username semantics.
-func (a *AuthResource) publishLoginFailure(ctx fiber.Ctx, authType, username string, err error) {
-	failReason := err.Error()
-	errorCode := result.ErrCodeUnknown
+// publishLoginFailure publishes a failed-login audit event for the login audit
+// describes, deriving the failure reason and business code from err. It mirrors
+// publishLoginSuccess so authentication and challenge-step failures land in the
+// same audit pipeline with the same login semantics.
+func (a *AuthResource) publishLoginFailure(ctx fiber.Ctx, audit security.LoginEventParams, err error) {
+	audit.FailReason = err.Error()
+	audit.ErrorCode = result.ErrCodeUnknown
 
 	if resErr, ok := result.AsErr(err); ok {
-		failReason = resErr.Message
-		errorCode = resErr.Code
+		audit.FailReason = resErr.Message
+		audit.ErrorCode = resErr.Code
 	}
 
-	a.publishLoginEvent(ctx, security.LoginEventParams{
-		AuthType:   authType,
-		Username:   username,
-		IsOk:       false,
-		FailReason: failReason,
-		ErrorCode:  errorCode,
-	})
+	a.publishLoginEvent(ctx, audit)
 }
 
 // publishLoginEvent stamps where the attempt came from and publishes it. This
@@ -452,8 +416,9 @@ func (a *AuthResource) publishLoginEvent(ctx fiber.Ctx, params security.LoginEve
 // non-nil error to abort the login when the identity is currently locked out,
 // and nil to proceed. A nil guard (lockout disabled) or a guard backend failure
 // both fail open so an unavailable counter store never denies every login; the
-// backend error is logged.
-func (a *AuthResource) guardCheck(ctx fiber.Ctx, authType string, attempt security.LoginAttempt) error {
+// backend error is logged. A lockout is audited as a failure of the login audit
+// describes.
+func (a *AuthResource) guardCheck(ctx fiber.Ctx, audit security.LoginEventParams, attempt security.LoginAttempt) error {
 	if a.loginGuard == nil {
 		return nil
 	}
@@ -470,7 +435,7 @@ func (a *AuthResource) guardCheck(ctx fiber.Ctx, authType string, attempt securi
 	}
 
 	lockErr := security.ErrAccountLocked(decision.RetryAfter)
-	a.publishLoginFailure(ctx, authType, attempt.Identity, lockErr)
+	a.publishLoginFailure(ctx, audit, lockErr)
 
 	return lockErr
 }
@@ -537,29 +502,57 @@ func (a *AuthResource) findProvider(challengeType string) security.ChallengeProv
 		GetOrElse(nil)
 }
 
-// evaluateNextChallenge walks pending types sequentially and returns the first
-// applicable challenge. Providers that return nil (challenge not needed) are
-// skipped, and their types are removed from pending.
-func (a *AuthResource) evaluateNextChallenge(ctx context.Context, principal *security.Principal, pending []string) (*security.LoginChallenge, []string, error) {
-	for len(pending) > 0 {
-		provider := a.findProvider(pending[0])
-		if provider == nil {
-			pending = pending[1:]
+// advanceLogin carries an authenticated login to its next step: the next pending
+// challenge that applies, handed to the client under a fresh challenge token, or
+// the issued tokens once no challenge remains.
+func (a *AuthResource) advanceLogin(ctx fiber.Ctx, state *security.ChallengeState, audit security.LoginEventParams) error {
+	challenge, err := a.evaluateNextChallenge(ctx.Context(), state)
+	if err != nil {
+		return err
+	}
 
+	if challenge != nil {
+		challengeToken, err := a.challengeTokenStore.Generate(ctx.Context(), state)
+		if err != nil {
+			return err
+		}
+
+		return result.Ok(&security.LoginResult{
+			ChallengeToken: challengeToken,
+			Challenge:      challenge,
+		}).Response(ctx)
+	}
+
+	tokens, err := a.tokenGenerator.Generate(ctx.Context(), state.Principal, sessionMeta(ctx))
+	if err != nil {
+		return err
+	}
+
+	a.publishLoginSuccess(ctx, audit, state.Principal)
+
+	return result.Ok(&security.LoginResult{Tokens: tokens}).Response(ctx)
+}
+
+// evaluateNextChallenge walks state.Pending in order and returns the first
+// challenge that applies to the login, leaving its type at the head of Pending.
+// Types with no registered provider, or whose provider returns nil (challenge
+// not needed), are dropped from Pending; nil means none applies.
+func (a *AuthResource) evaluateNextChallenge(ctx context.Context, state *security.ChallengeState) (*security.LoginChallenge, error) {
+	for ; len(state.Pending) > 0; state.Pending = state.Pending[1:] {
+		provider := a.findProvider(state.Pending[0])
+		if provider == nil {
 			continue
 		}
 
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, &state.LoginContext)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
 		if challenge != nil {
-			return challenge, pending, nil
+			return challenge, nil
 		}
-
-		pending = pending[1:]
 	}
 
-	return nil, nil, nil
+	return nil, nil
 }

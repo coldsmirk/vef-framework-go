@@ -14,11 +14,11 @@ import (
 // ─── Mock implementations ───
 
 type MockOTPEvaluator struct {
-	EvaluateFn func(ctx context.Context, principal *Principal) (*OTPChallengeData, error)
+	EvaluateFn func(ctx context.Context, login *LoginContext) (*OTPChallengeData, error)
 }
 
-func (m *MockOTPEvaluator) Evaluate(ctx context.Context, principal *Principal) (*OTPChallengeData, error) {
-	return m.EvaluateFn(ctx, principal)
+func (m *MockOTPEvaluator) Evaluate(ctx context.Context, login *LoginContext) (*OTPChallengeData, error) {
+	return m.EvaluateFn(ctx, login)
 }
 
 type MockOTPCodeSender struct {
@@ -61,7 +61,7 @@ func (m *MockOTPCodeDelivery) Deliver(ctx context.Context, principal *Principal,
 // ─── NewOTPChallengeProvider validation ───
 
 func TestNewOTPChallengeProvider(t *testing.T) {
-	validEvaluator := &MockOTPEvaluator{EvaluateFn: func(context.Context, *Principal) (*OTPChallengeData, error) { return nil, nil }}
+	validEvaluator := &MockOTPEvaluator{EvaluateFn: func(context.Context, *LoginContext) (*OTPChallengeData, error) { return nil, nil }}
 	validVerifier := &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return true, nil }}
 
 	t.Run("MissingType", func(t *testing.T) {
@@ -108,7 +108,7 @@ func TestOTPChallengeProviderTypeAndOrder(t *testing.T) {
 	provider := NewOTPChallengeProvider(OTPChallengeProviderConfig{
 		ChallengeType:  "custom_otp",
 		ChallengeOrder: 42,
-		Evaluator:      &MockOTPEvaluator{EvaluateFn: func(context.Context, *Principal) (*OTPChallengeData, error) { return nil, nil }},
+		Evaluator:      &MockOTPEvaluator{EvaluateFn: func(context.Context, *LoginContext) (*OTPChallengeData, error) { return nil, nil }},
 		Verifier:       &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return true, nil }},
 	})
 
@@ -123,7 +123,7 @@ func TestOTPChallengeProviderTypeAndOrder(t *testing.T) {
 	t.Run("DefaultOrder", func(t *testing.T) {
 		provider := NewOTPChallengeProvider(OTPChallengeProviderConfig{
 			ChallengeType: "test",
-			Evaluator:     &MockOTPEvaluator{EvaluateFn: func(context.Context, *Principal) (*OTPChallengeData, error) { return nil, nil }},
+			Evaluator:     &MockOTPEvaluator{EvaluateFn: func(context.Context, *LoginContext) (*OTPChallengeData, error) { return nil, nil }},
 			Verifier:      &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return true, nil }},
 		})
 		assert.Equal(t, 0, provider.Order(), "Should return zero when ChallengeOrder is not set")
@@ -135,12 +135,13 @@ func TestOTPChallengeProviderTypeAndOrder(t *testing.T) {
 func TestOTPChallengeProviderEvaluate(t *testing.T) {
 	ctx := context.Background()
 	principal := NewUser("u1", "Alice")
+	login := &LoginContext{AuthType: AuthTypePassword, Username: "alice", Principal: principal}
 
 	t.Run("ChallengeNotNeeded", func(t *testing.T) {
 		senderCalled := false
 		provider := NewOTPChallengeProvider(OTPChallengeProviderConfig{
 			ChallengeType: "test",
-			Evaluator:     &MockOTPEvaluator{EvaluateFn: func(context.Context, *Principal) (*OTPChallengeData, error) { return nil, nil }},
+			Evaluator:     &MockOTPEvaluator{EvaluateFn: func(context.Context, *LoginContext) (*OTPChallengeData, error) { return nil, nil }},
 			Sender: &MockOTPCodeSender{SendFn: func(context.Context, *Principal) error {
 				senderCalled = true
 
@@ -149,7 +150,7 @@ func TestOTPChallengeProviderEvaluate(t *testing.T) {
 			Verifier: &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return true, nil }},
 		})
 
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, login)
 
 		require.NoError(t, err, "Should not return error when challenge is not needed")
 		assert.Nil(t, challenge, "Should return nil challenge when evaluator returns nil")
@@ -160,11 +161,11 @@ func TestOTPChallengeProviderEvaluate(t *testing.T) {
 		data := &OTPChallengeData{Destination: "Authenticator App"}
 		provider := NewOTPChallengeProvider(OTPChallengeProviderConfig{
 			ChallengeType: "totp",
-			Evaluator:     &MockOTPEvaluator{EvaluateFn: func(context.Context, *Principal) (*OTPChallengeData, error) { return data, nil }},
+			Evaluator:     &MockOTPEvaluator{EvaluateFn: func(context.Context, *LoginContext) (*OTPChallengeData, error) { return data, nil }},
 			Verifier:      &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return true, nil }},
 		})
 
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, login)
 
 		require.NoError(t, err, "Should not return error with nil sender")
 		require.NotNil(t, challenge, "Should return challenge when evaluator returns data")
@@ -178,7 +179,7 @@ func TestOTPChallengeProviderEvaluate(t *testing.T) {
 		data := &OTPChallengeData{Destination: "****1234"}
 		provider := NewOTPChallengeProvider(OTPChallengeProviderConfig{
 			ChallengeType: "sms_otp",
-			Evaluator:     &MockOTPEvaluator{EvaluateFn: func(context.Context, *Principal) (*OTPChallengeData, error) { return data, nil }},
+			Evaluator:     &MockOTPEvaluator{EvaluateFn: func(context.Context, *LoginContext) (*OTPChallengeData, error) { return data, nil }},
 			Sender: &MockOTPCodeSender{SendFn: func(context.Context, *Principal) error {
 				senderCalled = true
 
@@ -187,7 +188,7 @@ func TestOTPChallengeProviderEvaluate(t *testing.T) {
 			Verifier: &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return true, nil }},
 		})
 
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, login)
 
 		require.NoError(t, err, "Should not return error when sender succeeds")
 		require.NotNil(t, challenge, "Should return challenge when sender succeeds")
@@ -199,12 +200,12 @@ func TestOTPChallengeProviderEvaluate(t *testing.T) {
 		data := &OTPChallengeData{Destination: "****1234"}
 		provider := NewOTPChallengeProvider(OTPChallengeProviderConfig{
 			ChallengeType: "sms_otp",
-			Evaluator:     &MockOTPEvaluator{EvaluateFn: func(context.Context, *Principal) (*OTPChallengeData, error) { return data, nil }},
+			Evaluator:     &MockOTPEvaluator{EvaluateFn: func(context.Context, *LoginContext) (*OTPChallengeData, error) { return data, nil }},
 			Sender:        &MockOTPCodeSender{SendFn: func(context.Context, *Principal) error { return sendErr }},
 			Verifier:      &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return true, nil }},
 		})
 
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, login)
 
 		require.ErrorIs(t, err, sendErr, "Should propagate sender error")
 		assert.Nil(t, challenge, "Should return nil challenge on sender error")
@@ -214,14 +215,42 @@ func TestOTPChallengeProviderEvaluate(t *testing.T) {
 		evalErr := errors.New("evaluate failed")
 		provider := NewOTPChallengeProvider(OTPChallengeProviderConfig{
 			ChallengeType: "test",
-			Evaluator:     &MockOTPEvaluator{EvaluateFn: func(context.Context, *Principal) (*OTPChallengeData, error) { return nil, evalErr }},
+			Evaluator:     &MockOTPEvaluator{EvaluateFn: func(context.Context, *LoginContext) (*OTPChallengeData, error) { return nil, evalErr }},
 			Verifier:      &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return true, nil }},
 		})
 
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, login)
 
 		require.ErrorIs(t, err, evalErr, "Should propagate evaluator error")
 		assert.Nil(t, challenge, "Should return nil challenge on evaluator error")
+	})
+
+	t.Run("LoginPassthrough", func(t *testing.T) {
+		var (
+			evaluatorLogin  *LoginContext
+			senderPrincipal *Principal
+		)
+
+		provider := NewOTPChallengeProvider(OTPChallengeProviderConfig{
+			ChallengeType: "sms_otp",
+			Evaluator: &MockOTPEvaluator{EvaluateFn: func(_ context.Context, got *LoginContext) (*OTPChallengeData, error) {
+				evaluatorLogin = got
+
+				return &OTPChallengeData{Destination: "****1234"}, nil
+			}},
+			Sender: &MockOTPCodeSender{SendFn: func(_ context.Context, got *Principal) error {
+				senderPrincipal = got
+
+				return nil
+			}},
+			Verifier: &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return true, nil }},
+		})
+
+		_, err := provider.Evaluate(ctx, login)
+
+		require.NoError(t, err, "Should evaluate without error")
+		assert.Same(t, login, evaluatorLogin, "Should pass the whole login to the evaluator")
+		assert.Same(t, principal, senderPrincipal, "Should pass the login's principal to the sender")
 	})
 }
 
@@ -230,7 +259,8 @@ func TestOTPChallengeProviderEvaluate(t *testing.T) {
 func TestOTPChallengeProviderResolve(t *testing.T) {
 	ctx := context.Background()
 	principal := NewUser("u1", "Alice")
-	noopEvaluator := &MockOTPEvaluator{EvaluateFn: func(context.Context, *Principal) (*OTPChallengeData, error) { return nil, nil }}
+	login := &LoginContext{AuthType: AuthTypePassword, Username: "alice", Principal: principal}
+	noopEvaluator := &MockOTPEvaluator{EvaluateFn: func(context.Context, *LoginContext) (*OTPChallengeData, error) { return nil, nil }}
 
 	t.Run("ValidCode", func(t *testing.T) {
 		provider := NewOTPChallengeProvider(OTPChallengeProviderConfig{
@@ -239,7 +269,7 @@ func TestOTPChallengeProviderResolve(t *testing.T) {
 			Verifier:      &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return true, nil }},
 		})
 
-		resolved, err := provider.Resolve(ctx, principal, "123456")
+		resolved, err := provider.Resolve(ctx, login, "123456")
 
 		require.NoError(t, err, "Should not return error for valid code")
 		assert.Same(t, principal, resolved, "Should return the same principal on success")
@@ -252,7 +282,7 @@ func TestOTPChallengeProviderResolve(t *testing.T) {
 			Verifier:      &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return false, nil }},
 		})
 
-		_, err := provider.Resolve(ctx, principal, "wrong")
+		_, err := provider.Resolve(ctx, login, "wrong")
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error")
@@ -266,7 +296,7 @@ func TestOTPChallengeProviderResolve(t *testing.T) {
 			Verifier:      &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return true, nil }},
 		})
 
-		_, err := provider.Resolve(ctx, principal, 12345)
+		_, err := provider.Resolve(ctx, login, 12345)
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error for non-string response")
@@ -280,7 +310,7 @@ func TestOTPChallengeProviderResolve(t *testing.T) {
 			Verifier:      &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return true, nil }},
 		})
 
-		_, err := provider.Resolve(ctx, principal, nil)
+		_, err := provider.Resolve(ctx, login, nil)
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error for nil response")
@@ -294,7 +324,7 @@ func TestOTPChallengeProviderResolve(t *testing.T) {
 			Verifier:      &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return true, nil }},
 		})
 
-		_, err := provider.Resolve(ctx, principal, "")
+		_, err := provider.Resolve(ctx, login, "")
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error for empty response")
@@ -309,7 +339,7 @@ func TestOTPChallengeProviderResolve(t *testing.T) {
 			Verifier:      &MockOTPCodeVerifier{VerifyFn: func(context.Context, *Principal, string) (bool, error) { return false, verifyErr }},
 		})
 
-		_, err := provider.Resolve(ctx, principal, "123456")
+		_, err := provider.Resolve(ctx, login, "123456")
 
 		require.ErrorIs(t, err, verifyErr, "Should propagate verifier error")
 	})
@@ -327,11 +357,31 @@ func TestOTPChallengeProviderResolve(t *testing.T) {
 			}},
 		})
 
-		resolved, err := provider.Resolve(ctx, principal, "  ")
+		resolved, err := provider.Resolve(ctx, login, "  ")
 
 		require.NoError(t, err, "Should not return error for whitespace-only code")
 		assert.Same(t, principal, resolved, "Should return principal when verifier accepts whitespace code")
 		assert.Equal(t, "  ", receivedCode, "Should pass whitespace code as-is to verifier")
+	})
+
+	t.Run("LoginPassthrough", func(t *testing.T) {
+		var verifierPrincipal *Principal
+
+		provider := NewOTPChallengeProvider(OTPChallengeProviderConfig{
+			ChallengeType: "test",
+			Evaluator:     noopEvaluator,
+			Verifier: &MockOTPCodeVerifier{VerifyFn: func(_ context.Context, got *Principal, _ string) (bool, error) {
+				verifierPrincipal = got
+
+				return true, nil
+			}},
+		})
+
+		resolved, err := provider.Resolve(ctx, login, "123456")
+
+		require.NoError(t, err, "Should not return error for valid code")
+		assert.Same(t, principal, verifierPrincipal, "Should pass the login's principal to the verifier")
+		assert.Same(t, principal, resolved, "Should continue the login with its own principal")
 	})
 }
 
@@ -471,7 +521,7 @@ func TestDeliveredCodeVerifier(t *testing.T) {
 // ─── Convenience constructors ───
 
 func TestNewSMSChallengeProvider(t *testing.T) {
-	evaluator := &MockOTPEvaluator{EvaluateFn: func(context.Context, *Principal) (*OTPChallengeData, error) { return nil, nil }}
+	evaluator := &MockOTPEvaluator{EvaluateFn: func(context.Context, *LoginContext) (*OTPChallengeData, error) { return nil, nil }}
 	store := &MockOTPCodeStore{}
 	delivery := &MockOTPCodeDelivery{}
 
@@ -482,7 +532,7 @@ func TestNewSMSChallengeProvider(t *testing.T) {
 }
 
 func TestNewEmailChallengeProvider(t *testing.T) {
-	evaluator := &MockOTPEvaluator{EvaluateFn: func(context.Context, *Principal) (*OTPChallengeData, error) { return nil, nil }}
+	evaluator := &MockOTPEvaluator{EvaluateFn: func(context.Context, *LoginContext) (*OTPChallengeData, error) { return nil, nil }}
 	store := &MockOTPCodeStore{}
 	delivery := &MockOTPCodeDelivery{}
 

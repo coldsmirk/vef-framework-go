@@ -2,6 +2,7 @@ package security
 
 import (
 	"context"
+	"slices"
 
 	"github.com/coldsmirk/vef-framework-go/cache"
 	"github.com/coldsmirk/vef-framework-go/id"
@@ -20,11 +21,10 @@ func NewMemoryChallengeTokenStore() ChallengeTokenStore {
 	}
 }
 
-func (s *MemoryChallengeTokenStore) Generate(ctx context.Context, principal *Principal, username string, pending, resolved []string) (string, error) {
+func (s *MemoryChallengeTokenStore) Generate(ctx context.Context, state *ChallengeState) (string, error) {
 	token := id.GenerateUUID()
 
-	state := ChallengeState{Principal: principal, Username: username, Pending: pending, Resolved: resolved}
-	if err := s.cache.Set(ctx, token, state, ChallengeTokenExpires); err != nil {
+	if err := s.cache.Set(ctx, token, detachChallengeState(state), ChallengeTokenExpires); err != nil {
 		return "", err
 	}
 
@@ -36,10 +36,25 @@ func (s *MemoryChallengeTokenStore) Parse(ctx context.Context, token string) (*C
 		return nil, ErrTokenInvalid
 	}
 
-	state, ok := s.cache.Get(ctx, token)
+	cached, ok := s.cache.Get(ctx, token)
 	if !ok {
 		return nil, ErrTokenInvalid
 	}
 
+	state := detachChallengeState(&cached)
+
 	return &state, nil
+}
+
+// detachChallengeState copies state onto slices of its own. The cache holds
+// values rather than serialized bytes, so without the copy the cached state and
+// the one handed in or out would share backing arrays: the login flow appending
+// a resolved challenge, or a second resolve racing on the same token, would
+// write through into the other.
+func detachChallengeState(state *ChallengeState) ChallengeState {
+	detached := *state
+	detached.Resolved = slices.Clone(state.Resolved)
+	detached.Pending = slices.Clone(state.Pending)
+
+	return detached
 }

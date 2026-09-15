@@ -252,6 +252,8 @@ func ProvideAuthenticator(constructor any, paramTags ...string) fx.Option {
 // ProvideChallengeProvider provides a login challenge provider to the dependency injection container.
 // The provider will be registered in the "vef:security:challenge_providers" group.
 // The constructor must return security.ChallengeProvider (not a concrete type).
+// A provider applies to every login; to scope one to some login mechanisms,
+// return it wrapped with security.NewFilteredChallengeProvider.
 func ProvideChallengeProvider(constructor any, paramTags ...string) fx.Option {
 	return fx.Provide(
 		fx.Annotate(

@@ -33,21 +33,26 @@ func (s *JWTChallengeTokenStoreTestSuite) SetupSuite() {
 func (s *JWTChallengeTokenStoreTestSuite) TestGenerate() {
 	s.Run("WithPendingAndResolved", func() {
 		principal := NewUser("user1", "Alice", "admin")
-		token, err := s.store.Generate(context.Background(), principal, "", []string{"totp", "department"}, []string{"sms"})
+		token, err := s.store.Generate(context.Background(), &ChallengeState{
+			AuthType:  AuthTypePassword,
+			Principal: principal,
+			Resolved:  []string{"sms"},
+			Pending:   []string{"totp", "department"},
+		})
 		s.Require().NoError(err, "Should generate token without error")
 		s.NotEmpty(token, "Should return a non-empty token")
 	})
 
 	s.Run("WithNilResolved", func() {
 		principal := NewUser("user2", "Bob")
-		token, err := s.store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), &ChallengeState{AuthType: AuthTypePassword, Principal: principal, Pending: []string{"totp"}})
 		s.Require().NoError(err, "Should generate token without error")
 		s.NotEmpty(token, "Should return a non-empty token")
 	})
 
 	s.Run("WithEmptySlices", func() {
 		principal := NewUser("user3", "Charlie")
-		token, err := s.store.Generate(context.Background(), principal, "", []string{}, []string{})
+		token, err := s.store.Generate(context.Background(), &ChallengeState{AuthType: AuthTypePassword, Principal: principal, Resolved: []string{}, Pending: []string{}})
 		s.Require().NoError(err, "Should generate token with empty slices")
 		s.NotEmpty(token, "Should return a non-empty token")
 	})
@@ -56,14 +61,14 @@ func (s *JWTChallengeTokenStoreTestSuite) TestGenerate() {
 		principal := NewUser("user4", "Diana", "editor")
 		principal.Details = map[string]any{"department": "engineering", "level": 3}
 
-		token, err := s.store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), &ChallengeState{AuthType: AuthTypePassword, Principal: principal, Pending: []string{"totp"}})
 		s.Require().NoError(err, "Should generate token with details")
 		s.NotEmpty(token, "Should return a non-empty token")
 	})
 
 	s.Run("WithNoRoles", func() {
 		principal := NewUser("user5", "Eve")
-		token, err := s.store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), &ChallengeState{AuthType: AuthTypePassword, Principal: principal, Pending: []string{"totp"}})
 		s.Require().NoError(err, "Should generate token without roles")
 		s.NotEmpty(token, "Should return a non-empty token")
 	})
@@ -76,13 +81,20 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		pending := []string{"totp", "department"}
 		resolved := []string{"sms"}
 
-		token, err := s.store.Generate(context.Background(), principal, "alice@login", pending, resolved)
+		token, err := s.store.Generate(context.Background(), &ChallengeState{
+			AuthType:  "wechat_mini",
+			Username:  "alice@login",
+			Principal: principal,
+			Resolved:  resolved,
+			Pending:   pending,
+		})
 		s.Require().NoError(err, "Should generate token without error")
 
 		state, err := s.store.Parse(context.Background(), token)
 		s.Require().NoError(err, "Should parse token without error")
 		s.Require().NotNil(state, "Should return non-nil state")
 
+		s.Equal("wechat_mini", state.AuthType, "Should preserve the login mechanism")
 		s.Equal("user1", state.Principal.ID, "Should preserve principal ID")
 		s.Equal("Alice", state.Principal.Name, "Should preserve principal name")
 		s.Equal("alice@login", state.Username, "Should preserve the original login identifier")
@@ -100,7 +112,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 			NewUser(orm.OperatorSystem, "impostor"),
 			NewUser(orm.OperatorCronJob, "impostor"),
 		} {
-			token, err := s.store.Generate(context.Background(), reserved, "", []string{"totp"}, nil)
+			token, err := s.store.Generate(context.Background(), &ChallengeState{AuthType: AuthTypePassword, Principal: reserved, Pending: []string{"totp"}})
 			s.Require().NoError(err, "Generation is not the enforcement point here")
 
 			state, err := s.store.Parse(context.Background(), token)
@@ -111,7 +123,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 	s.Run("WithNilResolved", func() {
 		principal := NewUser("user2", "Bob")
-		token, err := s.store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), &ChallengeState{AuthType: AuthTypePassword, Principal: principal, Pending: []string{"totp"}})
 		s.Require().NoError(err, "Should generate token without error")
 
 		state, err := s.store.Parse(context.Background(), token)
@@ -124,7 +136,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 	s.Run("WithNoRoles", func() {
 		principal := NewUser("user3", "Charlie")
-		token, err := s.store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), &ChallengeState{AuthType: AuthTypePassword, Principal: principal, Pending: []string{"totp"}})
 		s.Require().NoError(err, "Should generate token without error")
 
 		state, err := s.store.Parse(context.Background(), token)
@@ -136,7 +148,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 	s.Run("PreservesExternalAppPrincipalType", func() {
 		principal := NewExternalApp("app1", "Payment API", "service")
-		token, err := s.store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), &ChallengeState{AuthType: AuthTypePassword, Principal: principal, Pending: []string{"totp"}})
 		s.Require().NoError(err, "Should generate token without error")
 
 		state, err := s.store.Parse(context.Background(), token)
@@ -153,7 +165,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		principal := NewUser("user4", "Diana", "admin")
 		principal.Details = map[string]any{"department": "engineering"}
 
-		token, err := s.store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), &ChallengeState{AuthType: AuthTypePassword, Principal: principal, Pending: []string{"totp"}})
 		s.Require().NoError(err, "Should generate token without error")
 
 		state, err := s.store.Parse(context.Background(), token)
@@ -165,7 +177,7 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 
 	s.Run("SubjectWithAtSignInName", func() {
 		principal := NewUser("user5", "user@example.com")
-		token, err := s.store.Generate(context.Background(), principal, "", []string{"totp"}, nil)
+		token, err := s.store.Generate(context.Background(), &ChallengeState{AuthType: AuthTypePassword, Principal: principal, Pending: []string{"totp"}})
 		s.Require().NoError(err, "Should generate token without error")
 
 		state, err := s.store.Parse(context.Background(), token)
@@ -268,6 +280,42 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		resErr, ok := result.AsErr(err)
 		s.Require().True(ok, "Should return a result.Error")
 		s.Equal(ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
+	})
+
+	s.Run("RequiresAuthType", func() {
+		// Otherwise well-formed challenge claims, so the login mechanism alone
+		// decides whether the token parses.
+		claims := func() *JWTClaimsBuilder {
+			return NewJWTClaimsBuilder().
+				WithSubject("user1").
+				WithType(TokenTypeChallenge).
+				WithClaim(ClaimChallengePrincipalType, PrincipalTypeUser).
+				WithClaim(ClaimChallengePrincipalName, "Alice")
+		}
+		parse := func(claimsBuilder *JWTClaimsBuilder) (*ChallengeState, error) {
+			token, err := s.jwt.Generate(claimsBuilder, 5*time.Minute, 0)
+			s.Require().NoError(err, "Should generate token without error")
+
+			return s.store.Parse(context.Background(), token)
+		}
+
+		state, err := parse(claims().WithClaim(ClaimChallengeAuthType, AuthTypePassword))
+		s.Require().NoError(err, "Should parse the claims once they carry the login mechanism")
+		s.Equal(AuthTypePassword, state.AuthType, "Should read the login mechanism from its claim")
+
+		for name, claimsBuilder := range map[string]*JWTClaimsBuilder{
+			"Missing": claims(),
+			"Empty":   claims().WithClaim(ClaimChallengeAuthType, ""),
+		} {
+			s.Run(name, func() {
+				_, err := parse(claimsBuilder)
+				s.Require().Error(err, "Should reject a token without the login mechanism")
+
+				resErr, ok := result.AsErr(err)
+				s.Require().True(ok, "Should return a result.Error")
+				s.Equal(ErrCodeTokenInvalid, resErr.Code, "Should return token invalid error code")
+			})
+		}
 	})
 
 	s.Run("RejectsUnknownPrincipalType", func() {

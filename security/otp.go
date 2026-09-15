@@ -4,11 +4,13 @@ import (
 	"context"
 )
 
-// OTPEvaluator determines whether a user needs OTP verification.
+// OTPEvaluator determines whether a user needs OTP verification. It decides
+// whether the challenge applies, so it sees the whole login; OTPCodeSender and
+// OTPCodeVerifier act on the identity and see only the principal.
 type OTPEvaluator interface {
-	// Evaluate checks the principal and returns challenge data if OTP is required.
+	// Evaluate checks the login and returns challenge data if OTP is required.
 	// Return nil to skip the challenge; non-nil triggers a challenge.
-	Evaluate(ctx context.Context, principal *Principal) (*OTPChallengeData, error)
+	Evaluate(ctx context.Context, login *LoginContext) (*OTPChallengeData, error)
 }
 
 // OTPCodeSender triggers OTP code delivery.
@@ -82,14 +84,14 @@ func NewOTPChallengeProvider(config OTPChallengeProviderConfig) *OTPChallengePro
 func (p *OTPChallengeProvider) Type() string { return p.config.ChallengeType }
 func (p *OTPChallengeProvider) Order() int   { return p.config.ChallengeOrder }
 
-func (p *OTPChallengeProvider) Evaluate(ctx context.Context, principal *Principal) (*LoginChallenge, error) {
-	data, err := p.config.Evaluator.Evaluate(ctx, principal)
+func (p *OTPChallengeProvider) Evaluate(ctx context.Context, login *LoginContext) (*LoginChallenge, error) {
+	data, err := p.config.Evaluator.Evaluate(ctx, login)
 	if err != nil || data == nil {
 		return nil, err
 	}
 
 	if p.config.Sender != nil {
-		if err := p.config.Sender.Send(ctx, principal); err != nil {
+		if err := p.config.Sender.Send(ctx, login.Principal); err != nil {
 			return nil, err
 		}
 	}
@@ -101,13 +103,13 @@ func (p *OTPChallengeProvider) Evaluate(ctx context.Context, principal *Principa
 	}, nil
 }
 
-func (p *OTPChallengeProvider) Resolve(ctx context.Context, principal *Principal, response any) (*Principal, error) {
+func (p *OTPChallengeProvider) Resolve(ctx context.Context, login *LoginContext, response any) (*Principal, error) {
 	code, ok := response.(string)
 	if !ok || code == "" {
 		return nil, ErrOTPCodeRequired
 	}
 
-	valid, err := p.config.Verifier.Verify(ctx, principal, code)
+	valid, err := p.config.Verifier.Verify(ctx, login.Principal, code)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +118,7 @@ func (p *OTPChallengeProvider) Resolve(ctx context.Context, principal *Principal
 		return nil, ErrOTPCodeInvalid
 	}
 
-	return principal, nil
+	return login.Principal, nil
 }
 
 // DeliveredCodeSender orchestrates OTPCodeStore and OTPCodeDelivery to implement OTPCodeSender.

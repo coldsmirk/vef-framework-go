@@ -8,19 +8,17 @@ import (
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
-// AuthTypeTrustCode is the login mechanism that redeems a trust-login code.
-const AuthTypeTrustCode = "trust_code"
-
 // TrustCodeAuthenticator redeems the one-time code the trust-login gateway
 // handed to the browser, completing the second leg of the handoff.
 //
 // It is an ordinary Authenticator on purpose: redeeming the code is the only
 // thing specific to trust login, and routing it through security/auth.login
-// means the handoff inherits the whole pipeline — brute-force guard, the full
-// challenge chain (a forced password change or department selection still runs;
-// the external system authenticated the user, it did not satisfy the
-// application's own login policy), token issuance under the configured
-// mechanism, session concurrency, and the login audit event.
+// means the handoff inherits the whole pipeline except the login step's
+// brute-force guard (see unguessableAuthTypes): the challenge chain — every
+// provider not filtered away from security.AuthTypeTrustCode, since the external
+// system authenticated the user but did not satisfy the application's own login
+// policy — token issuance under the configured mechanism, session concurrency,
+// and the login audit event.
 //
 // The authentication identifier is the app ID that initiated the handoff,
 // checked here against the one the gateway recorded — so what reaches the
@@ -36,7 +34,9 @@ func NewTrustCodeAuthenticator(store security.TrustCodeStore, cfg config.TrustLo
 	return &TrustCodeAuthenticator{store: store, cfg: cfg}
 }
 
-func (*TrustCodeAuthenticator) Supports(authType string) bool { return authType == AuthTypeTrustCode }
+func (*TrustCodeAuthenticator) Supports(authType string) bool {
+	return authType == security.AuthTypeTrustCode
+}
 
 func (a *TrustCodeAuthenticator) Authenticate(ctx context.Context, authentication security.Authentication) (*security.Principal, error) {
 	code, ok := authentication.Credentials.(string)

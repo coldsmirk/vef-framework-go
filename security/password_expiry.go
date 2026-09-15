@@ -35,12 +35,12 @@ func NewExpiryPasswordChangeChecker(loader PasswordMetadataLoader, maxAge time.D
 }
 
 // Check returns the expired challenge when the password's age exceeds maxAge.
-func (c *ExpiryPasswordChangeChecker) Check(ctx context.Context, principal *Principal) (*PasswordChangeChallengeData, error) {
+func (c *ExpiryPasswordChangeChecker) Check(ctx context.Context, login *LoginContext) (*PasswordChangeChallengeData, error) {
 	if c.maxAge <= 0 {
 		return nil, nil
 	}
 
-	changedAt, err := c.loader.PasswordChangedAt(ctx, principal)
+	changedAt, err := c.loader.PasswordChangedAt(ctx, login.Principal)
 	if err != nil {
 		return nil, err
 	}

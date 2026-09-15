@@ -3,6 +3,7 @@ package security_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -112,6 +113,18 @@ func (m *MockPublisher) ClearPublishedEvents() {
 	defer m.mu.Unlock()
 
 	m.publishedEvents = nil
+}
+
+// LastLoginEvent returns the most recently published login event, or nil when
+// none was published.
+func (m *MockPublisher) LastLoginEvent() *security.LoginEvent {
+	for _, evt := range slices.Backward(m.GetPublishedEvents()) {
+		if loginEvent, ok := evt.(*security.LoginEvent); ok {
+			return loginEvent
+		}
+	}
+
+	return nil
 }
 
 // AuthResourceTestSuite is the test suite for AuthResource.
@@ -234,7 +247,7 @@ func (suite *AuthResourceTestSuite) TestLoginSuccess() {
 		Action:   "login",
 		Version:  "v1",
 		Params: map[string]any{
-			"type":        isecurity.AuthTypePassword,
+			"type":        security.AuthTypePassword,
 			"principal":   "testuser",
 			"credentials": "password123",
 		},
@@ -265,7 +278,7 @@ func (suite *AuthResourceTestSuite) TestLoginInvalidCredentials() {
 			Action:   "login",
 			Version:  "v1",
 			Params: map[string]any{
-				"type":        isecurity.AuthTypePassword,
+				"type":        security.AuthTypePassword,
 				"principal":   "testuser",
 				"credentials": "wrongpassword",
 			},
@@ -284,7 +297,7 @@ func (suite *AuthResourceTestSuite) TestLoginInvalidCredentials() {
 			Action:   "login",
 			Version:  "v1",
 			Params: map[string]any{
-				"type":        isecurity.AuthTypePassword,
+				"type":        security.AuthTypePassword,
 				"principal":   "nonexistent",
 				"credentials": "password123",
 			},
@@ -336,7 +349,7 @@ func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 			Action:   "login",
 			Version:  "v1",
 			Params: map[string]any{
-				"type":        isecurity.AuthTypePassword,
+				"type":        security.AuthTypePassword,
 				"credentials": "password123",
 			},
 		})
@@ -354,7 +367,7 @@ func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 			Action:   "login",
 			Version:  "v1",
 			Params: map[string]any{
-				"type":      isecurity.AuthTypePassword,
+				"type":      security.AuthTypePassword,
 				"principal": "testuser",
 			},
 		})
@@ -372,7 +385,7 @@ func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 			Action:   "login",
 			Version:  "v1",
 			Params: map[string]any{
-				"type":        isecurity.AuthTypePassword,
+				"type":        security.AuthTypePassword,
 				"principal":   "testuser",
 				"credentials": "",
 			},
@@ -396,7 +409,7 @@ func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 			Action:   "login",
 			Version:  "v1",
 			Params: map[string]any{
-				"type":        isecurity.AuthTypePassword,
+				"type":        security.AuthTypePassword,
 				"principal":   username,
 				"credentials": "password123",
 			},
@@ -421,7 +434,7 @@ func (suite *AuthResourceTestSuite) TestLoginMissingParameters() {
 			Action:   "login",
 			Version:  "v1",
 			Params: map[string]any{
-				"type":        isecurity.AuthTypePassword,
+				"type":        security.AuthTypePassword,
 				"principal":   username,
 				"credentials": "password123",
 			},
@@ -442,7 +455,7 @@ func (suite *AuthResourceTestSuite) TestRefreshSuccess() {
 		Action:   "login",
 		Version:  "v1",
 		Params: map[string]any{
-			"type":        isecurity.AuthTypePassword,
+			"type":        security.AuthTypePassword,
 			"principal":   "testuser",
 			"credentials": "password123",
 		},
@@ -541,7 +554,7 @@ func (suite *AuthResourceTestSuite) TestRefreshWithAccessToken() {
 		Action:   "login",
 		Version:  "v1",
 		Params: map[string]any{
-			"type":        isecurity.AuthTypePassword,
+			"type":        security.AuthTypePassword,
 			"principal":   "testuser",
 			"credentials": "password123",
 		},
@@ -579,7 +592,7 @@ func (suite *AuthResourceTestSuite) TestRefreshUserNotFound() {
 		Action:   "login",
 		Version:  "v1",
 		Params: map[string]any{
-			"type":        isecurity.AuthTypePassword,
+			"type":        security.AuthTypePassword,
 			"principal":   "ghost",
 			"credentials": "password123",
 		},
@@ -614,7 +627,7 @@ func (suite *AuthResourceTestSuite) TestLogoutSuccess() {
 		Action:   "login",
 		Version:  "v1",
 		Params: map[string]any{
-			"type":        isecurity.AuthTypePassword,
+			"type":        security.AuthTypePassword,
 			"principal":   "testuser",
 			"credentials": "password123",
 		},
@@ -647,7 +660,7 @@ func (suite *AuthResourceTestSuite) TestLoginAndRefreshFlow() {
 		Action:   "login",
 		Version:  "v1",
 		Params: map[string]any{
-			"type":        isecurity.AuthTypePassword,
+			"type":        security.AuthTypePassword,
 			"principal":   "testuser",
 			"credentials": "password123",
 		},
@@ -709,7 +722,7 @@ func (suite *AuthResourceTestSuite) TestTokenDetails() {
 		Action:   "login",
 		Version:  "v1",
 		Params: map[string]any{
-			"type":        isecurity.AuthTypePassword,
+			"type":        security.AuthTypePassword,
 			"principal":   "testuser",
 			"credentials": "password123",
 		},
@@ -738,7 +751,7 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoSuccess() {
 		Action:   "login",
 		Version:  "v1",
 		Params: map[string]any{
-			"type":        isecurity.AuthTypePassword,
+			"type":        security.AuthTypePassword,
 			"principal":   "testuser",
 			"credentials": "password123",
 		},
@@ -842,7 +855,7 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoLoaderError() {
 		Action:   "login",
 		Version:  "v1",
 		Params: map[string]any{
-			"type":        isecurity.AuthTypePassword,
+			"type":        security.AuthTypePassword,
 			"principal":   "testuser",
 			"credentials": "password123",
 		},
@@ -879,7 +892,7 @@ func (suite *AuthResourceTestSuite) TestGetUserInfoWithEmptyMenus() {
 		Action:   "login",
 		Version:  "v1",
 		Params: map[string]any{
-			"type":        isecurity.AuthTypePassword,
+			"type":        security.AuthTypePassword,
 			"principal":   "testuser",
 			"credentials": "password123",
 		},
@@ -941,7 +954,7 @@ func (suite *AuthResourceTestSuite) TestLoginEventPublished() {
 			Action:   "login",
 			Version:  "v1",
 			Params: map[string]any{
-				"type":        isecurity.AuthTypePassword,
+				"type":        security.AuthTypePassword,
 				"principal":   "testuser",
 				"credentials": "password123",
 			},
@@ -966,6 +979,7 @@ func (suite *AuthResourceTestSuite) TestLoginEventPublished() {
 		suite.True(loginEvent.IsOk, "IsOk should be true for successful login")
 		suite.Empty(loginEvent.FailReason, "FailReason should be empty for successful login")
 		suite.Equal(0, loginEvent.ErrorCode, "ErrorCode should be 0 for successful login")
+		suite.Empty(loginEvent.ChallengeType, "An event raised by the authentication should carry no challenge type")
 		suite.NotEmpty(loginEvent.LoginIP, "LoginIP should not be empty")
 		suite.NotEmpty(loginEvent.TraceID, "TraceID should not be empty")
 	})
@@ -978,7 +992,7 @@ func (suite *AuthResourceTestSuite) TestLoginEventPublished() {
 			Action:   "login",
 			Version:  "v1",
 			Params: map[string]any{
-				"type":        isecurity.AuthTypePassword,
+				"type":        security.AuthTypePassword,
 				"principal":   "testuser",
 				"credentials": "wrongpassword",
 			},
@@ -1002,6 +1016,7 @@ func (suite *AuthResourceTestSuite) TestLoginEventPublished() {
 		suite.False(loginEvent.IsOk, "IsOk should be false for failed login")
 		suite.NotEmpty(loginEvent.FailReason, "FailReason should not be empty for failed login")
 		suite.Equal(security.ErrCodeCredentialsInvalid, loginEvent.ErrorCode, "ErrorCode should match")
+		suite.Empty(loginEvent.ChallengeType, "A failure raised by the authentication should carry no challenge type")
 		suite.NotEmpty(loginEvent.LoginIP, "LoginIP should not be empty")
 		suite.NotEmpty(loginEvent.TraceID, "TraceID should not be empty")
 	})
@@ -1014,7 +1029,7 @@ func (suite *AuthResourceTestSuite) TestLoginEventPublished() {
 			Action:   "login",
 			Version:  "v1",
 			Params: map[string]any{
-				"type":        isecurity.AuthTypePassword,
+				"type":        security.AuthTypePassword,
 				"principal":   "nonexistent",
 				"credentials": "password123",
 			},
@@ -1062,8 +1077,8 @@ func (m *MockChallengeProvider) Order() int {
 	return args.Int(0)
 }
 
-func (m *MockChallengeProvider) Evaluate(ctx context.Context, principal *security.Principal) (*security.LoginChallenge, error) {
-	args := m.Called(ctx, principal)
+func (m *MockChallengeProvider) Evaluate(ctx context.Context, login *security.LoginContext) (*security.LoginChallenge, error) {
+	args := m.Called(ctx, login)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -1071,13 +1086,18 @@ func (m *MockChallengeProvider) Evaluate(ctx context.Context, principal *securit
 	return args.Get(0).(*security.LoginChallenge), args.Error(1)
 }
 
-func (m *MockChallengeProvider) Resolve(ctx context.Context, principal *security.Principal, response any) (*security.Principal, error) {
-	args := m.Called(ctx, principal, response)
+func (m *MockChallengeProvider) Resolve(ctx context.Context, login *security.LoginContext, response any) (*security.Principal, error) {
+	args := m.Called(ctx, login, response)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 
 	return args.Get(0).(*security.Principal), args.Error(1)
+}
+
+// loginOf matches the login context of a login that stands at principal.
+func loginOf(principal *security.Principal) any {
+	return mock.MatchedBy(func(login *security.LoginContext) bool { return login.Principal == principal })
 }
 
 // ChallengeFlowTestSuite tests the login challenge flow.
@@ -1168,7 +1188,7 @@ func (s *ChallengeFlowTestSuite) loginAndGetResult() map[string]any {
 		Action:   "login",
 		Version:  "v1",
 		Params: map[string]any{
-			"type":        isecurity.AuthTypePassword,
+			"type":        security.AuthTypePassword,
 			"principal":   "testuser",
 			"credentials": "password123",
 		},
@@ -1311,6 +1331,9 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeRefusesReservedPrincipal() 
 	s.False(loginEvent.IsOk, "The audit event should record a failed login")
 	s.Equal(security.ErrCodePrincipalInvalid, loginEvent.ErrorCode,
 		"The audit event should carry the principal-invalid code")
+	s.Equal(security.AuthTypePassword, loginEvent.AuthType,
+		"The audit event should carry the login mechanism, not the challenge type")
+	s.Equal("totp", loginEvent.ChallengeType, "The audit event should name the challenge being resolved")
 
 	s.challengeProvider.AssertExpectations(s.T())
 }
@@ -1433,7 +1456,8 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeProviderRejectsResponse() {
 	loginEvent, ok := events[0].(*security.LoginEvent)
 	s.Require().True(ok, "Published event should be a LoginEvent")
 	s.False(loginEvent.IsOk, "Challenge rejection event should be marked failed")
-	s.Equal("totp", loginEvent.AuthType, "Challenge rejection event should carry the challenge type")
+	s.Equal(security.AuthTypePassword, loginEvent.AuthType, "Challenge rejection event should carry the login mechanism, not the challenge type")
+	s.Equal("totp", loginEvent.ChallengeType, "Challenge rejection event should name the challenge being resolved")
 	s.Equal("testuser", loginEvent.Username, "Challenge rejection event should carry the original login identifier")
 	s.Equal(security.ErrCodeChallengeResolveFailed, loginEvent.ErrorCode, "Challenge rejection event should carry the resolve-failed code")
 }
@@ -1480,6 +1504,8 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengePlainErrorNormalized() {
 	s.Require().True(ok, "Published event should be a LoginEvent")
 	s.False(loginEvent.IsOk, "Normalized resolve failure event should be marked failed")
 	s.Equal("testuser", loginEvent.Username, "Normalized resolve failure event should carry the original login identifier")
+	s.Equal(security.AuthTypePassword, loginEvent.AuthType, "Normalized resolve failure event should carry the login mechanism")
+	s.Equal("totp", loginEvent.ChallengeType, "Normalized resolve failure event should name the challenge being resolved")
 	s.Equal(security.ErrCodeChallengeResolveFailed, loginEvent.ErrorCode, "Normalized resolve failure event should carry the resolve-failed code")
 }
 
@@ -1521,6 +1547,8 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeSuccessEventUsername() {
 	s.Require().True(ok, "Published event should be a LoginEvent")
 	s.True(loginEvent.IsOk, "Resolved challenge event should be marked successful")
 	s.Equal("testuser", loginEvent.Username, "Success event should carry the login identifier, not the display name")
+	s.Equal(security.AuthTypePassword, loginEvent.AuthType, "Success event should carry the login mechanism, not the challenge type")
+	s.Equal("totp", loginEvent.ChallengeType, "Success event should name the challenge whose resolution completed the login")
 	s.Require().NotNil(loginEvent.UserID, "Success event should carry the user ID")
 	s.Equal("user001", *loginEvent.UserID, "Success event should carry the resolved principal ID")
 }
@@ -1536,7 +1564,7 @@ func (s *ChallengeFlowTestSuite) TestLoginEvaluateChallengeError() {
 		Action:   "login",
 		Version:  "v1",
 		Params: map[string]any{
-			"type":        isecurity.AuthTypePassword,
+			"type":        security.AuthTypePassword,
 			"principal":   "testuser",
 			"credentials": "password123",
 		},
@@ -1609,8 +1637,8 @@ type MockChallengeTokenStore struct {
 	mock.Mock
 }
 
-func (m *MockChallengeTokenStore) Generate(ctx context.Context, principal *security.Principal, username string, pending, resolved []string) (string, error) {
-	args := m.Called(ctx, principal, username, pending, resolved)
+func (m *MockChallengeTokenStore) Generate(ctx context.Context, state *security.ChallengeState) (string, error) {
+	args := m.Called(ctx, state)
 
 	return args.String(0), args.Error(1)
 }
@@ -1804,7 +1832,12 @@ func (s *AuthResourceErrorPathTestSuite) TestLoginChallengeStoreError() {
 		Return(s.testUser, nil).Once()
 	s.challengeProviderA.On("Evaluate", mock.Anything, mock.Anything).
 		Return(&security.LoginChallenge{Type: "totp", Required: true}, nil).Once()
-	s.challengeTokenStore.On("Generate", mock.Anything, s.testUser, "testuser", mock.Anything, mock.Anything).
+	s.challengeTokenStore.On("Generate", mock.Anything, &security.ChallengeState{
+		AuthType:  security.AuthTypePassword,
+		Username:  "testuser",
+		Principal: s.testUser,
+		Pending:   []string{"totp", "sms"},
+	}).
 		Return("", errors.New("store unavailable")).Once()
 
 	resp := s.MakeRPCRequest(s.loginRequest())
@@ -1843,6 +1876,7 @@ func (s *AuthResourceErrorPathTestSuite) TestRefreshTokenGenerateError() {
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeProviderNotFound() {
 	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
+			AuthType:  security.AuthTypePassword,
 			Principal: s.testUser,
 			Pending:   []string{"email"},
 		}, nil).Once()
@@ -1863,15 +1897,46 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeProviderNotFound() 
 	s.Equal(security.ErrCodeChallengeTypeInvalid, body.Code, "Missing challenge provider should return type invalid code")
 }
 
+// TestResolveChallengeRefusesStateWithoutAuthType covers a store handing back a
+// state that lost its login mechanism — a Redis state written by a node from
+// before the field existed, or a host store that does not persist it. Every
+// filtered provider would be evaluated against a login none of them names and
+// allow-listed challenges would be skipped, so the flow refuses the state like a
+// token that does not parse, before a provider, the guard or the audit runs.
+func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeRefusesStateWithoutAuthType() {
+	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
+		Return(&security.ChallengeState{
+			Username:  "testuser",
+			Principal: s.testUser,
+			Pending:   []string{"totp", "sms"},
+		}, nil).Once()
+
+	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
+
+	s.Equal(401, resp.StatusCode, "A state without its login mechanism should be refused with HTTP 401")
+
+	body := s.ReadResult(resp)
+	s.False(body.IsOk(), "A state without its login mechanism must not resolve")
+	s.Equal(security.ErrCodeChallengeTokenInvalid, body.Code,
+		"A state without its login mechanism should be refused like an invalid challenge token")
+
+	s.challengeProviderA.AssertNotCalled(s.T(), "Resolve", mock.Anything, mock.Anything, mock.Anything)
+	s.challengeProviderB.AssertNotCalled(s.T(), "Evaluate", mock.Anything, mock.Anything)
+	s.challengeTokenStore.AssertNotCalled(s.T(), "Generate", mock.Anything, mock.Anything)
+	s.tokenGenerator.AssertNotCalled(s.T(), "Generate", mock.Anything, mock.Anything, mock.Anything)
+	s.Empty(s.publisher.GetPublishedEvents(), "A refused challenge token should raise no login event")
+}
+
 // TestResolveChallengeTokenGenerateError covers the branch where all challenges
 // are resolved but TokenGenerator.Generate fails.
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeTokenGenerateError() {
 	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
+			AuthType:  security.AuthTypePassword,
 			Principal: s.testUser,
 			Pending:   []string{"totp"},
 		}, nil).Once()
-	s.challengeProviderA.On("Resolve", mock.Anything, s.testUser, "123456").
+	s.challengeProviderA.On("Resolve", mock.Anything, loginOf(s.testUser), "123456").
 		Return(s.testUser, nil).Once()
 	s.tokenGenerator.On("Generate", mock.Anything, s.testUser, mock.Anything).
 		Return((*security.AuthTokens)(nil), errors.New("token signing failed")).Once()
@@ -1889,14 +1954,22 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeTokenGenerateError(
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeMoreRemain() {
 	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
+			AuthType:  security.AuthTypePassword,
+			Username:  "testuser",
 			Principal: s.testUser,
 			Pending:   []string{"totp", "sms"},
 		}, nil).Once()
-	s.challengeProviderA.On("Resolve", mock.Anything, s.testUser, "123456").
+	s.challengeProviderA.On("Resolve", mock.Anything, loginOf(s.testUser), "123456").
 		Return(s.testUser, nil).Once()
-	s.challengeProviderB.On("Evaluate", mock.Anything, s.testUser).
+	s.challengeProviderB.On("Evaluate", mock.Anything, loginOf(s.testUser)).
 		Return(&security.LoginChallenge{Type: "sms", Required: true}, nil).Once()
-	s.challengeTokenStore.On("Generate", mock.Anything, s.testUser, "", []string{"sms"}, []string{"totp"}).
+	s.challengeTokenStore.On("Generate", mock.Anything, &security.ChallengeState{
+		AuthType:  security.AuthTypePassword,
+		Username:  "testuser",
+		Principal: s.testUser,
+		Resolved:  []string{"totp"},
+		Pending:   []string{"sms"},
+	}).
 		Return("new-challenge-token", nil).Once()
 
 	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
@@ -1920,14 +1993,22 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeMoreRemain() {
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeStoreErrorOnRemain() {
 	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
+			AuthType:  security.AuthTypePassword,
+			Username:  "testuser",
 			Principal: s.testUser,
 			Pending:   []string{"totp", "sms"},
 		}, nil).Once()
-	s.challengeProviderA.On("Resolve", mock.Anything, s.testUser, "123456").
+	s.challengeProviderA.On("Resolve", mock.Anything, loginOf(s.testUser), "123456").
 		Return(s.testUser, nil).Once()
-	s.challengeProviderB.On("Evaluate", mock.Anything, s.testUser).
+	s.challengeProviderB.On("Evaluate", mock.Anything, loginOf(s.testUser)).
 		Return(&security.LoginChallenge{Type: "sms", Required: true}, nil).Once()
-	s.challengeTokenStore.On("Generate", mock.Anything, s.testUser, "", []string{"sms"}, []string{"totp"}).
+	s.challengeTokenStore.On("Generate", mock.Anything, &security.ChallengeState{
+		AuthType:  security.AuthTypePassword,
+		Username:  "testuser",
+		Principal: s.testUser,
+		Resolved:  []string{"totp"},
+		Pending:   []string{"sms"},
+	}).
 		Return("", errors.New("store failure")).Once()
 
 	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
@@ -1943,12 +2024,14 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeStoreErrorOnRemain(
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeEvaluateErrorOnRemain() {
 	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
+			AuthType:  security.AuthTypePassword,
+			Username:  "testuser",
 			Principal: s.testUser,
 			Pending:   []string{"totp", "sms"},
 		}, nil).Once()
-	s.challengeProviderA.On("Resolve", mock.Anything, s.testUser, "123456").
+	s.challengeProviderA.On("Resolve", mock.Anything, loginOf(s.testUser), "123456").
 		Return(s.testUser, nil).Once()
-	s.challengeProviderB.On("Evaluate", mock.Anything, s.testUser).
+	s.challengeProviderB.On("Evaluate", mock.Anything, loginOf(s.testUser)).
 		Return((*security.LoginChallenge)(nil), errors.New("sms service unavailable")).Once()
 
 	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
@@ -1965,10 +2048,11 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeEvaluateErrorOnRema
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeRemainingProviderNotFound() {
 	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 		Return(&security.ChallengeState{
+			AuthType:  security.AuthTypePassword,
 			Principal: s.testUser,
 			Pending:   []string{"totp", "unknown_type"},
 		}, nil).Once()
-	s.challengeProviderA.On("Resolve", mock.Anything, s.testUser, "123456").
+	s.challengeProviderA.On("Resolve", mock.Anything, loginOf(s.testUser), "123456").
 		Return(s.testUser, nil).Once()
 	s.tokenGenerator.On("Generate", mock.Anything, s.testUser, mock.Anything).
 		Return(&security.AuthTokens{AccessToken: "at", RefreshToken: "rt"}, nil).Once()
@@ -2115,11 +2199,12 @@ func (s *LockoutFlowTestSuite) TestChallengeGuessesTripLockout() {
 	challengeUser := security.NewUser("challenge-user", "Challenge User")
 	s.challengeTokenStore.On("Parse", mock.Anything, "challenge-token").
 		Return(&security.ChallengeState{
-			Principal: challengeUser,
+			AuthType:  security.AuthTypePassword,
 			Username:  "challenge-user",
+			Principal: challengeUser,
 			Pending:   []string{"totp"},
 		}, nil)
-	s.challengeProvider.On("Resolve", mock.Anything, challengeUser, "000000").
+	s.challengeProvider.On("Resolve", mock.Anything, loginOf(challengeUser), "000000").
 		Return((*security.Principal)(nil), security.ErrOTPCodeInvalid).Twice()
 
 	resolveRequest := api.Request{
@@ -2150,6 +2235,12 @@ func (s *LockoutFlowTestSuite) TestChallengeGuessesTripLockout() {
 	s.Equal(security.ErrCodeAccountLocked, body.Code, "A locked challenge resolve should return the account-locked code")
 	s.challengeProvider.AssertNumberOfCalls(s.T(), "Resolve", 2)
 
+	resolveLockEvent := s.publisher.LastLoginEvent()
+	s.Require().NotNil(resolveLockEvent, "The blocked resolve should be audited")
+	s.Equal(security.ErrCodeAccountLocked, resolveLockEvent.ErrorCode, "The blocked resolve should be audited as a lockout")
+	s.Equal(security.AuthTypePassword, resolveLockEvent.AuthType, "A lockout raised while resolving a challenge should carry the login mechanism")
+	s.Equal("totp", resolveLockEvent.ChallengeType, "A lockout raised while resolving a challenge should name that challenge")
+
 	// The lockout keys on the same identity, so a login attempt is blocked too.
 	loginResp := s.MakeRPCRequest(api.Request{
 		Resource: "security/auth",
@@ -2163,6 +2254,12 @@ func (s *LockoutFlowTestSuite) TestChallengeGuessesTripLockout() {
 	})
 	s.Equal(429, loginResp.StatusCode, "The lockout tripped by challenge guesses should also block login")
 	s.authManager.AssertNumberOfCalls(s.T(), "Authenticate", 0)
+
+	loginLockEvent := s.publisher.LastLoginEvent()
+	s.Require().NotNil(loginLockEvent, "The blocked login should be audited")
+	s.Equal(security.ErrCodeAccountLocked, loginLockEvent.ErrorCode, "The blocked login should be audited as a lockout")
+	s.Equal(security.AuthTypePassword, loginLockEvent.AuthType, "A lockout raised by login should carry the login mechanism")
+	s.Empty(loginLockEvent.ChallengeType, "A lockout raised by login should carry no challenge type")
 }
 
 func TestLockoutFlow(t *testing.T) {
@@ -2327,4 +2424,438 @@ func (s *ReservedPrincipalLockoutTestSuite) TestReservedPrincipalLockoutAccounti
 
 func TestReservedPrincipalLockout(t *testing.T) {
 	suite.Run(t, new(ReservedPrincipalLockoutTestSuite))
+}
+
+// --- Trust-code challenge lockout ---
+
+// StubAuthenticator admits its user for one login mechanism without checking a
+// credential, standing in for a mechanism whose own verification is not what a
+// test is about.
+type StubAuthenticator struct {
+	AuthType string
+	User     *security.Principal
+}
+
+func (a *StubAuthenticator) Supports(authType string) bool {
+	return authType == a.AuthType
+}
+
+func (a *StubAuthenticator) Authenticate(context.Context, security.Authentication) (*security.Principal, error) {
+	return a.User, nil
+}
+
+// TrustCodeChallengeLockoutTestSuite fences where the trust-code lockout
+// exemption lives. Login skips the brute-force guard for a trust code because
+// the code cannot be guessed; the resolve steps of that same login carry the same
+// mechanism, but what they guess is a challenge answer, so they must stay
+// guarded. A stub stands in for the trust-code exchange, since the exemption
+// keys on the mechanism alone.
+type TrustCodeChallengeLockoutTestSuite struct {
+	apptest.Suite
+
+	challengeProvider *MockChallengeProvider
+}
+
+func (s *TrustCodeChallengeLockoutTestSuite) SetupSuite() {
+	s.challengeProvider = new(MockChallengeProvider)
+	s.challengeProvider.On("Type").Return("totp")
+	s.challengeProvider.On("Order").Return(0).Maybe()
+	s.challengeProvider.On("Evaluate", mock.Anything, mock.Anything).
+		Return(&security.LoginChallenge{Type: "totp", Required: true}, nil)
+	s.challengeProvider.On("Resolve", mock.Anything, mock.Anything, "000000").
+		Return((*security.Principal)(nil), security.ErrOTPCodeInvalid)
+
+	publisher := new(MockPublisher)
+	publisher.On("Publish", mock.Anything).Maybe()
+
+	s.SetupApp(
+		fx.Supply(fx.Annotate(
+			&StubAuthenticator{AuthType: security.AuthTypeTrustCode, User: security.NewUser("user001", "Test User")},
+			fx.As(new(security.Authenticator)),
+			fx.ResultTags(`group:"vef:security:authenticators"`),
+		)),
+		fx.Supply(fx.Annotate(
+			s.challengeProvider,
+			fx.As(new(security.ChallengeProvider)),
+			fx.ResultTags(`group:"vef:security:challenge_providers"`),
+		)),
+		// PasswordAuthenticator needs a UserLoader in the graph even though a
+		// trust-code login never reaches it.
+		fx.Supply(fx.Annotate(new(MockUserLoader), fx.As(new(security.UserLoader)))),
+		fx.Replace(
+			fx.Annotate(publisher, fx.As(new(event.Bus))),
+			&config.SecurityConfig{
+				Secret:           testJWTSecret,
+				TokenExpires:     24 * time.Hour,
+				RefreshNotBefore: 1 * time.Millisecond,
+				LoginRateLimit:   1000,
+				RefreshRateLimit: 1000,
+				Lockout:          config.LockoutConfig{MaxFailures: 2},
+			},
+		),
+	)
+}
+
+func (s *TrustCodeChallengeLockoutTestSuite) TearDownSuite() {
+	s.TearDownApp()
+}
+
+// challengeToken redeems a trust code and returns the token of the challenge the
+// login raises. Each attempt starts a login of its own, so the fence does not
+// hinge on a challenge token staying reusable.
+func (s *TrustCodeChallengeLockoutTestSuite) challengeToken() string {
+	s.T().Helper()
+
+	resp := s.MakeRPCRequest(api.Request{
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
+		Params: map[string]any{
+			"type":        security.AuthTypeTrustCode,
+			"principal":   "his",
+			"credentials": "trust-code",
+		},
+	})
+	s.Require().Equal(200, resp.StatusCode, "A trust-code login should return HTTP 200")
+
+	body := s.ReadResult(resp)
+	s.Require().True(body.IsOk(), "A trust-code login should succeed")
+
+	challengeToken, ok := s.ReadDataAsMap(body.Data)["challengeToken"].(string)
+	s.Require().True(ok, "A trust-code login should raise the challenge")
+
+	return challengeToken
+}
+
+// wrongAnswer builds a resolve_challenge request answering the challenge behind
+// challengeToken with a wrong code.
+func (*TrustCodeChallengeLockoutTestSuite) wrongAnswer(challengeToken string) api.Request {
+	return api.Request{
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
+		Params: map[string]any{
+			"challengeToken": challengeToken,
+			"type":           "totp",
+			"response":       "000000",
+		},
+	}
+}
+
+// TestWrongAnswersTripLockout answers a trust-code login's challenge wrongly past
+// the threshold: the wrong answers are counted, and the next one is blocked
+// before the provider runs.
+func (s *TrustCodeChallengeLockoutTestSuite) TestWrongAnswersTripLockout() {
+	for attempt := range 2 {
+		resp := s.MakeRPCRequest(s.wrongAnswer(s.challengeToken()))
+		s.Equal(401, resp.StatusCode, "Attempt %d: a wrong answer below the threshold should return HTTP 401", attempt+1)
+
+		body := s.ReadResult(resp)
+		s.Equal(security.ErrCodeOTPCodeInvalid, body.Code,
+			"Attempt %d: below the threshold the provider's error should surface", attempt+1)
+	}
+
+	resp := s.MakeRPCRequest(s.wrongAnswer(s.challengeToken()))
+	s.Equal(429, resp.StatusCode, "Wrong answers to a trust-code login's challenge must be counted and trip the lockout")
+
+	body := s.ReadResult(resp)
+	s.Equal(security.ErrCodeAccountLocked, body.Code, "A tripped lockout should return the account-locked code")
+	s.challengeProvider.AssertNumberOfCalls(s.T(), "Resolve", 2)
+}
+
+func TestTrustCodeChallengeLockout(t *testing.T) {
+	suite.Run(t, new(TrustCodeChallengeLockoutTestSuite))
+}
+
+// --- Login context flow ---
+
+const (
+	miniProgramAuthType   = "wechat_mini"
+	passwordOnlyFirstType = "password_only_first"
+	everyLoginType        = "every_login"
+	passwordOnlyLaterType = "password_only_later"
+)
+
+// LoginView is what a RecordingChallengeProvider keeps of each login context it
+// is handed. The principal is kept by name: every step after login rebuilds it
+// from the challenge token, so its identity is the wrong thing to compare.
+type LoginView struct {
+	AuthType  string
+	Username  string
+	Principal string
+	Resolved  []string
+}
+
+// RecordingChallengeProvider presents its challenge on every login it is
+// evaluated for and accepts any response, recording the login context of every
+// call so a test can read back what each step was handed.
+type RecordingChallengeProvider struct {
+	ChallengeType  string
+	ChallengeOrder int
+	// Enriched, when set, is the principal Resolve continues the login with.
+	Enriched *security.Principal
+
+	mu          sync.Mutex
+	evaluations []LoginView
+	resolutions []LoginView
+}
+
+func (p *RecordingChallengeProvider) Type() string { return p.ChallengeType }
+func (p *RecordingChallengeProvider) Order() int   { return p.ChallengeOrder }
+
+func (p *RecordingChallengeProvider) Evaluate(_ context.Context, login *security.LoginContext) (*security.LoginChallenge, error) {
+	p.record(&p.evaluations, login)
+
+	return &security.LoginChallenge{Type: p.ChallengeType, Required: true}, nil
+}
+
+func (p *RecordingChallengeProvider) Resolve(_ context.Context, login *security.LoginContext, _ any) (*security.Principal, error) {
+	p.record(&p.resolutions, login)
+
+	if p.Enriched != nil {
+		return p.Enriched, nil
+	}
+
+	return login.Principal, nil
+}
+
+// Evaluations returns the logins Evaluate was handed, in call order.
+func (p *RecordingChallengeProvider) Evaluations() []LoginView {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return slices.Clone(p.evaluations)
+}
+
+// Resolutions returns the logins Resolve was handed, in call order.
+func (p *RecordingChallengeProvider) Resolutions() []LoginView {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return slices.Clone(p.resolutions)
+}
+
+// Reset forgets every recorded call.
+func (p *RecordingChallengeProvider) Reset() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.evaluations, p.resolutions = nil, nil
+}
+
+// record keeps a view of login as it stands during the call, with a resolved
+// list of its own and nil for none.
+func (p *RecordingChallengeProvider) record(into *[]LoginView, login *security.LoginContext) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	*into = append(*into, LoginView{
+		AuthType:  login.AuthType,
+		Username:  login.Username,
+		Principal: login.Principal.Name,
+		Resolved:  append([]string(nil), login.Resolved...),
+	})
+}
+
+// LoginContextFlowTestSuite drives whole logins through the real authenticator
+// chain and the real JWT challenge token store, so every step after login reads
+// its context back out of the challenge token. Of its three recording providers,
+// the two password-only ones are filtered to password logins: one is ordered
+// first, so login evaluates it, and one last, so a resolve step does.
+type LoginContextFlowTestSuite struct {
+	apptest.Suite
+
+	userLoader        *MockUserLoader
+	publisher         *MockPublisher
+	testUser          *security.Principal
+	passwordOnlyFirst *RecordingChallengeProvider
+	everyLogin        *RecordingChallengeProvider
+	passwordOnlyLater *RecordingChallengeProvider
+}
+
+func (s *LoginContextFlowTestSuite) SetupSuite() {
+	s.testUser = security.NewUser("user001", "Test User", "admin")
+	s.userLoader = new(MockUserLoader)
+	s.publisher = new(MockPublisher)
+	s.passwordOnlyFirst = &RecordingChallengeProvider{ChallengeType: passwordOnlyFirstType, ChallengeOrder: 10}
+	s.everyLogin = &RecordingChallengeProvider{
+		ChallengeType:  everyLoginType,
+		ChallengeOrder: 20,
+		Enriched:       security.NewUser("user001", "Test User (Engineering)", "admin"),
+	}
+	s.passwordOnlyLater = &RecordingChallengeProvider{ChallengeType: passwordOnlyLaterType, ChallengeOrder: 30}
+
+	hashedPassword, err := password.NewBcryptEncoder().Encode("password123")
+	s.Require().NoError(err, "The test user's password should hash successfully")
+
+	challengeProvider := func(provider security.ChallengeProvider) any {
+		return fx.Annotate(
+			func() security.ChallengeProvider { return provider },
+			fx.ResultTags(`group:"vef:security:challenge_providers"`),
+		)
+	}
+	passwordOnly := security.ForAuthTypes(security.AuthTypePassword)
+
+	s.SetupApp(
+		fx.Supply(fx.Annotate(s.userLoader, fx.As(new(security.UserLoader)))),
+		fx.Supply(fx.Annotate(
+			&StubAuthenticator{AuthType: miniProgramAuthType, User: s.testUser},
+			fx.As(new(security.Authenticator)),
+			fx.ResultTags(`group:"vef:security:authenticators"`),
+		)),
+		fx.Provide(
+			challengeProvider(security.NewFilteredChallengeProvider(s.passwordOnlyFirst, passwordOnly)),
+			challengeProvider(s.everyLogin),
+			challengeProvider(security.NewFilteredChallengeProvider(s.passwordOnlyLater, passwordOnly)),
+		),
+		fx.Replace(
+			fx.Annotate(s.publisher, fx.As(new(event.Bus))),
+			&config.SecurityConfig{
+				Secret:           testJWTSecret,
+				TokenExpires:     24 * time.Hour,
+				RefreshNotBefore: 1 * time.Millisecond,
+				LoginRateLimit:   1000,
+				RefreshRateLimit: 1000,
+			},
+		),
+		fx.Invoke(func() {
+			s.userLoader.On("LoadByUsername", mock.Anything, "testuser").
+				Return(s.testUser, hashedPassword, nil).
+				Maybe()
+			s.publisher.On("Publish", mock.Anything).Maybe()
+		}),
+	)
+}
+
+func (s *LoginContextFlowTestSuite) TearDownSuite() {
+	s.TearDownApp()
+}
+
+func (s *LoginContextFlowTestSuite) SetupTest() {
+	s.passwordOnlyFirst.Reset()
+	s.everyLogin.Reset()
+	s.passwordOnlyLater.Reset()
+	s.publisher.ClearPublishedEvents()
+}
+
+// login starts a login with the given mechanism and returns the step's data.
+func (s *LoginContextFlowTestSuite) login(authType, principal, credentials string) map[string]any {
+	s.T().Helper()
+
+	resp := s.MakeRPCRequest(api.Request{
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
+		Params: map[string]any{
+			"type":        authType,
+			"principal":   principal,
+			"credentials": credentials,
+		},
+	})
+	s.Require().Equal(200, resp.StatusCode, "Login should return HTTP 200")
+
+	body := s.ReadResult(resp)
+	s.Require().True(body.IsOk(), "Login should succeed")
+
+	return s.ReadDataAsMap(body.Data)
+}
+
+// resolve answers the challenge the step in data presents and returns the next
+// step's data.
+func (s *LoginContextFlowTestSuite) resolve(data map[string]any) map[string]any {
+	s.T().Helper()
+
+	resp := s.MakeRPCRequest(api.Request{
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
+		Params: map[string]any{
+			"challengeToken": data["challengeToken"],
+			"type":           s.presented(data),
+			"response":       "accepted",
+		},
+	})
+	s.Require().Equal(200, resp.StatusCode, "Resolving a challenge should return HTTP 200")
+
+	body := s.ReadResult(resp)
+	s.Require().True(body.IsOk(), "Resolving a challenge should succeed")
+
+	return s.ReadDataAsMap(body.Data)
+}
+
+// presented returns the type of the challenge the step in data presents.
+func (s *LoginContextFlowTestSuite) presented(data map[string]any) string {
+	s.T().Helper()
+
+	challenge, ok := data["challenge"].(map[string]any)
+	s.Require().True(ok, "The login step should present a challenge")
+
+	challengeType, ok := challenge["type"].(string)
+	s.Require().True(ok, "The presented challenge should carry its type")
+
+	return challengeType
+}
+
+// TestPasswordLogin walks a password login through all three challenges. Every
+// provider applies to it, and each one sees the same login, one more step
+// resolved than the last, with the principal the previous step left.
+func (s *LoginContextFlowTestSuite) TestPasswordLogin() {
+	data := s.login(security.AuthTypePassword, "testuser", "password123")
+	s.Equal(passwordOnlyFirstType, s.presented(data), "A password login should get the password-only challenge that login evaluates")
+
+	data = s.resolve(data)
+	s.Equal(everyLoginType, s.presented(data), "Resolving the first challenge should present the unfiltered one")
+
+	data = s.resolve(data)
+	s.Equal(passwordOnlyLaterType, s.presented(data), "A password login should get the password-only challenge a resolve step evaluates")
+
+	data = s.resolve(data)
+	s.NotNil(data["tokens"], "Once every challenge is resolved the login should issue tokens")
+
+	s.Equal([]LoginView{
+		{AuthType: security.AuthTypePassword, Username: "testuser", Principal: "Test User"},
+	}, s.passwordOnlyFirst.Evaluations(), "Login should hand the first provider the login as authenticated, nothing resolved yet")
+	s.Equal([]LoginView{
+		{AuthType: security.AuthTypePassword, Username: "testuser", Principal: "Test User", Resolved: []string{passwordOnlyFirstType}},
+	}, s.everyLogin.Evaluations(), "The next provider should see the login read back from the challenge token, first step resolved")
+	s.Equal([]LoginView{
+		{AuthType: security.AuthTypePassword, Username: "testuser", Principal: "Test User (Engineering)", Resolved: []string{passwordOnlyFirstType, everyLoginType}},
+	}, s.passwordOnlyLater.Evaluations(), "The last provider should see both steps resolved and the principal the previous step enriched")
+	s.Equal([]LoginView{
+		{AuthType: security.AuthTypePassword, Username: "testuser", Principal: "Test User (Engineering)", Resolved: []string{passwordOnlyFirstType, everyLoginType}},
+	}, s.passwordOnlyLater.Resolutions(), "Resolve should see the login it resolves, its own step not yet recorded")
+
+	loginEvent := s.publisher.LastLoginEvent()
+	s.Require().NotNil(loginEvent, "The completed login should be audited")
+	s.True(loginEvent.IsOk, "The completed login should be audited as a success")
+	s.Equal(security.AuthTypePassword, loginEvent.AuthType, "The success event should carry the login mechanism")
+	s.Equal(passwordOnlyLaterType, loginEvent.ChallengeType, "The success event should name the challenge whose resolution completed the login")
+	s.Equal("testuser", loginEvent.Username, "The success event should carry the identifier first presented")
+}
+
+// TestHostDefinedLogin logs the same user in through a host-defined mechanism:
+// both password-only providers are skipped without ever being evaluated —
+// the one login evaluates and the one a resolve step does.
+func (s *LoginContextFlowTestSuite) TestHostDefinedLogin() {
+	data := s.login(miniProgramAuthType, "mini-openid", "js-code")
+	s.Equal(everyLoginType, s.presented(data), "Login should skip the password-only challenge for another mechanism")
+
+	data = s.resolve(data)
+	s.Nil(data["challenge"], "A resolve step should skip the password-only challenge for another mechanism")
+	s.NotNil(data["tokens"], "With the password-only challenges skipped, resolving the one left should issue tokens")
+
+	s.Empty(s.passwordOnlyFirst.Evaluations(), "A provider filtered to passwords must not be evaluated by login for another mechanism")
+	s.Empty(s.passwordOnlyLater.Evaluations(), "A provider filtered to passwords must not be evaluated by a resolve step for another mechanism")
+	s.Equal([]LoginView{
+		{AuthType: miniProgramAuthType, Username: "mini-openid", Principal: "Test User"},
+	}, s.everyLogin.Evaluations(), "The unfiltered provider should see the host-defined mechanism")
+
+	loginEvent := s.publisher.LastLoginEvent()
+	s.Require().NotNil(loginEvent, "The completed login should be audited")
+	s.Equal(miniProgramAuthType, loginEvent.AuthType, "The success event should carry the host-defined mechanism")
+	s.Equal(everyLoginType, loginEvent.ChallengeType, "The success event should name the challenge whose resolution completed the login")
+}
+
+func TestLoginContextFlow(t *testing.T) {
+	suite.Run(t, new(LoginContextFlowTestSuite))
 }

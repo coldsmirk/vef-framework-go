@@ -34,8 +34,8 @@ func NewTOTPEvaluator(loader TOTPSecretLoader, opts ...TOTPOption) *TOTPEvaluato
 	return evaluator
 }
 
-func (e *TOTPEvaluator) Evaluate(ctx context.Context, principal *Principal) (*OTPChallengeData, error) {
-	secret, err := e.loader.LoadSecret(ctx, principal)
+func (e *TOTPEvaluator) Evaluate(ctx context.Context, login *LoginContext) (*OTPChallengeData, error) {
+	secret, err := e.loader.LoadSecret(ctx, login.Principal)
 	if err != nil {
 		return nil, err
 	}

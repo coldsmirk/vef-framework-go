@@ -14,10 +14,12 @@ type stubMetadataLoader struct {
 	changedAt time.Time
 	err       error
 	called    bool
+	principal *Principal
 }
 
-func (s *stubMetadataLoader) PasswordChangedAt(context.Context, *Principal) (time.Time, error) {
+func (s *stubMetadataLoader) PasswordChangedAt(_ context.Context, principal *Principal) (time.Time, error) {
 	s.called = true
+	s.principal = principal
 
 	return s.changedAt, s.err
 }
@@ -25,13 +27,14 @@ func (s *stubMetadataLoader) PasswordChangedAt(context.Context, *Principal) (tim
 func TestExpiryPasswordChangeChecker(t *testing.T) {
 	ctx := context.Background()
 	principal := NewUser("u1", "Alice")
+	login := &LoginContext{AuthType: AuthTypePassword, Username: "alice", Principal: principal}
 	maxAge := 90 * 24 * time.Hour
 
 	t.Run("DisabledWhenMaxAgeZero", func(t *testing.T) {
 		loader := &stubMetadataLoader{changedAt: time.Now().Add(-time.Hour)}
 		checker := NewExpiryPasswordChangeChecker(loader, 0)
 
-		data, err := checker.Check(ctx, principal)
+		data, err := checker.Check(ctx, login)
 
 		require.NoError(t, err, "a disabled checker should not error")
 		assert.Nil(t, data, "a disabled checker should never require a change")
@@ -42,7 +45,7 @@ func TestExpiryPasswordChangeChecker(t *testing.T) {
 		loader := &stubMetadataLoader{changedAt: time.Now().Add(-time.Hour)}
 		checker := NewExpiryPasswordChangeChecker(loader, maxAge)
 
-		data, err := checker.Check(ctx, principal)
+		data, err := checker.Check(ctx, login)
 
 		require.NoError(t, err, "a fresh password should not error")
 		assert.Nil(t, data, "a password younger than max age should not require a change")
@@ -53,7 +56,7 @@ func TestExpiryPasswordChangeChecker(t *testing.T) {
 		loader := &stubMetadataLoader{changedAt: changedAt}
 		checker := NewExpiryPasswordChangeChecker(loader, maxAge)
 
-		data, err := checker.Check(ctx, principal)
+		data, err := checker.Check(ctx, login)
 
 		require.NoError(t, err, "an expired password should not error")
 		require.NotNil(t, data, "an expired password should require a change")
@@ -65,7 +68,7 @@ func TestExpiryPasswordChangeChecker(t *testing.T) {
 		loader := &stubMetadataLoader{changedAt: time.Time{}}
 		checker := NewExpiryPasswordChangeChecker(loader, maxAge)
 
-		data, err := checker.Check(ctx, principal)
+		data, err := checker.Check(ctx, login)
 
 		require.NoError(t, err, "an unknown timestamp should not error")
 		assert.Nil(t, data, "an unknown timestamp should not force a change")
@@ -76,9 +79,19 @@ func TestExpiryPasswordChangeChecker(t *testing.T) {
 		loader := &stubMetadataLoader{err: loadErr}
 		checker := NewExpiryPasswordChangeChecker(loader, maxAge)
 
-		_, err := checker.Check(ctx, principal)
+		_, err := checker.Check(ctx, login)
 
 		require.ErrorIs(t, err, loadErr, "a loader error should propagate")
+	})
+
+	t.Run("LoadsTheLoginsPrincipal", func(t *testing.T) {
+		loader := &stubMetadataLoader{changedAt: time.Now().Add(-time.Hour)}
+		checker := NewExpiryPasswordChangeChecker(loader, maxAge)
+
+		_, err := checker.Check(ctx, login)
+
+		require.NoError(t, err, "a fresh password should not error")
+		assert.Same(t, principal, loader.principal, "the loader should be asked about the principal logging in")
 	})
 
 	t.Run("NilLoaderPanics", func(t *testing.T) {

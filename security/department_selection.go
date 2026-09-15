@@ -40,13 +40,15 @@ type DepartmentSelectionChallengeData struct {
 	Meta map[string]any `json:"meta,omitempty"`
 }
 
-// DepartmentLoader loads the department choice presented to a user.
+// DepartmentLoader loads the department choice presented to a user. It decides
+// whether the selection applies, so it sees the whole login; DepartmentSelector
+// acts on the identity afterwards and sees only the principal.
 type DepartmentLoader interface {
-	// LoadDepartments returns the challenge data offered to the user, so the
-	// host controls both the selectable options and the challenge-scoped Meta
-	// around them. Return nil — or data carrying no departments — to skip the
-	// challenge.
-	LoadDepartments(ctx context.Context, principal *Principal) (*DepartmentSelectionChallengeData, error)
+	// LoadDepartments returns the challenge data offered to the user logging in
+	// (login.Principal), so the host controls both the selectable options and
+	// the challenge-scoped Meta around them. Return nil — or data carrying no
+	// departments — to skip the challenge.
+	LoadDepartments(ctx context.Context, login *LoginContext) (*DepartmentSelectionChallengeData, error)
 }
 
 // DepartmentSelector validates the user's department selection and enriches the principal.
@@ -80,8 +82,8 @@ func NewDepartmentSelectionChallengeProvider(loader DepartmentLoader, selector D
 func (*DepartmentSelectionChallengeProvider) Type() string { return ChallengeTypeDepartmentSelection }
 func (*DepartmentSelectionChallengeProvider) Order() int   { return 500 }
 
-func (p *DepartmentSelectionChallengeProvider) Evaluate(ctx context.Context, principal *Principal) (*LoginChallenge, error) {
-	data, err := p.loader.LoadDepartments(ctx, principal)
+func (p *DepartmentSelectionChallengeProvider) Evaluate(ctx context.Context, login *LoginContext) (*LoginChallenge, error) {
+	data, err := p.loader.LoadDepartments(ctx, login)
 	if err != nil {
 		return nil, err
 	}
@@ -101,11 +103,11 @@ func (p *DepartmentSelectionChallengeProvider) Evaluate(ctx context.Context, pri
 	}, nil
 }
 
-func (p *DepartmentSelectionChallengeProvider) Resolve(ctx context.Context, principal *Principal, response any) (*Principal, error) {
+func (p *DepartmentSelectionChallengeProvider) Resolve(ctx context.Context, login *LoginContext, response any) (*Principal, error) {
 	departmentID, ok := response.(string)
 	if !ok || departmentID == "" {
 		return nil, ErrDepartmentRequired
 	}
 
-	return p.selector.SelectDepartment(ctx, principal, departmentID)
+	return p.selector.SelectDepartment(ctx, login.Principal, departmentID)
 }

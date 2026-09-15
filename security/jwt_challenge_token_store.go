@@ -20,6 +20,9 @@ const (
 	// ClaimChallengeUsername stores the original login identifier so audit events
 	// emitted after a challenge report the same identifier as the initial login.
 	ClaimChallengeUsername = "unm"
+	// ClaimChallengeAuthType stores the login mechanism, so every later step is
+	// evaluated, resolved and audited against the login it belongs to.
+	ClaimChallengeAuthType = "atp"
 )
 
 // JWTChallengeTokenStore implements ChallengeTokenStore using stateless JWT tokens.
@@ -34,7 +37,8 @@ func NewJWTChallengeTokenStore(jwt *JWT) ChallengeTokenStore {
 	return &JWTChallengeTokenStore{jwt: jwt}
 }
 
-func (s *JWTChallengeTokenStore) Generate(_ context.Context, principal *Principal, username string, pending, resolved []string) (string, error) {
+func (s *JWTChallengeTokenStore) Generate(_ context.Context, state *ChallengeState) (string, error) {
+	principal := state.Principal
 	claimsBuilder := NewJWTClaimsBuilder().
 		WithID(id.GenerateUUID()).
 		WithSubject(principal.ID).
@@ -43,9 +47,10 @@ func (s *JWTChallengeTokenStore) Generate(_ context.Context, principal *Principa
 		WithType(TokenTypeChallenge).
 		WithClaim(ClaimChallengePrincipalType, principal.Type).
 		WithClaim(ClaimChallengePrincipalName, principal.Name).
-		WithClaim(ClaimChallengeUsername, username).
-		WithClaim(ClaimChallengePending, pending).
-		WithClaim(ClaimChallengeResolved, resolved)
+		WithClaim(ClaimChallengeAuthType, state.AuthType).
+		WithClaim(ClaimChallengeUsername, state.Username).
+		WithClaim(ClaimChallengePending, state.Pending).
+		WithClaim(ClaimChallengeResolved, state.Resolved)
 
 	return s.jwt.Generate(claimsBuilder, ChallengeTokenExpires, 0)
 }
@@ -62,6 +67,11 @@ func (s *JWTChallengeTokenStore) Parse(_ context.Context, token string) (*Challe
 
 	principalID := claimsAccessor.Subject()
 	if principalID == "" {
+		return nil, ErrTokenInvalid
+	}
+
+	authType := cast.ToString(claimsAccessor.Claim(ClaimChallengeAuthType))
+	if authType == "" {
 		return nil, ErrTokenInvalid
 	}
 
@@ -90,9 +100,10 @@ func (s *JWTChallengeTokenStore) Parse(_ context.Context, token string) (*Challe
 	principal.AttemptUnmarshalDetails(claimsAccessor.Details())
 
 	return &ChallengeState{
-		Principal: principal,
+		AuthType:  authType,
 		Username:  cast.ToString(claimsAccessor.Claim(ClaimChallengeUsername)),
-		Pending:   cast.ToStringSlice(claimsAccessor.Claim(ClaimChallengePending)),
+		Principal: principal,
 		Resolved:  cast.ToStringSlice(claimsAccessor.Claim(ClaimChallengeResolved)),
+		Pending:   cast.ToStringSlice(claimsAccessor.Claim(ClaimChallengePending)),
 	}, nil
 }

@@ -20,7 +20,7 @@ type PasswordAuthenticatorTestSuite struct {
 // TestSupports verifies type matching.
 func (s *PasswordAuthenticatorTestSuite) TestSupports() {
 	auth := NewPasswordAuthenticator(nil, nil, nil)
-	s.True(auth.Supports(AuthTypePassword), "Should support password type")
+	s.True(auth.Supports(security.AuthTypePassword), "Should support password type")
 	s.False(auth.Supports("token"), "Should not support token type")
 	s.False(auth.Supports(""), "Should not support empty type")
 }
@@ -33,7 +33,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		auth := NewPasswordAuthenticator(nil, nil, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
-			Type:        AuthTypePassword,
+			Type:        security.AuthTypePassword,
 			Principal:   "alice",
 			Credentials: "password123",
 		})
@@ -50,7 +50,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
-			Type:        AuthTypePassword,
+			Type:        security.AuthTypePassword,
 			Principal:   "",
 			Credentials: "password123",
 		})
@@ -78,7 +78,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 				auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 				_, err := auth.Authenticate(ctx, security.Authentication{
-					Type:        AuthTypePassword,
+					Type:        security.AuthTypePassword,
 					Principal:   tc.principal,
 					Credentials: "password123",
 				})
@@ -97,7 +97,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
-			Type:        AuthTypePassword,
+			Type:        security.AuthTypePassword,
 			Principal:   "alice",
 			Credentials: nil,
 		})
@@ -114,7 +114,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
-			Type:        AuthTypePassword,
+			Type:        security.AuthTypePassword,
 			Principal:   "alice",
 			Credentials: 12345,
 		})
@@ -131,7 +131,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
-			Type:        AuthTypePassword,
+			Type:        security.AuthTypePassword,
 			Principal:   "alice",
 			Credentials: "",
 		})
@@ -153,7 +153,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
-			Type:        AuthTypePassword,
+			Type:        security.AuthTypePassword,
 			Principal:   "alice",
 			Credentials: "password123",
 		})
@@ -180,7 +180,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
-			Type:        AuthTypePassword,
+			Type:        security.AuthTypePassword,
 			Principal:   "alice",
 			Credentials: "password123",
 		})
@@ -204,7 +204,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
-			Type:        AuthTypePassword,
+			Type:        security.AuthTypePassword,
 			Principal:   "alice",
 			Credentials: "password123",
 		})
@@ -227,7 +227,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
-			Type:        AuthTypePassword,
+			Type:        security.AuthTypePassword,
 			Principal:   "alice",
 			Credentials: "password123",
 		})
@@ -251,7 +251,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
-			Type:        AuthTypePassword,
+			Type:        security.AuthTypePassword,
 			Principal:   "alice",
 			Credentials: "password123",
 		})
@@ -274,7 +274,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
-			Type:        AuthTypePassword,
+			Type:        security.AuthTypePassword,
 			Principal:   "alice",
 			Credentials: "wrongpass",
 		})
@@ -297,7 +297,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		auth := NewPasswordAuthenticator(loader, encoder, nil)
 
 		got, err := auth.Authenticate(ctx, security.Authentication{
-			Type:        AuthTypePassword,
+			Type:        security.AuthTypePassword,
 			Principal:   "alice",
 			Credentials: "correct",
 		})
@@ -324,7 +324,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		auth := NewPasswordAuthenticator(loader, encoder, decryptor)
 
 		got, err := auth.Authenticate(ctx, security.Authentication{
-			Type:        AuthTypePassword,
+			Type:        security.AuthTypePassword,
 			Principal:   "alice",
 			Credentials: "rsa-ciphertext",
 		})
@@ -349,7 +349,7 @@ func (s *PasswordAuthenticatorTestSuite) TestAuthenticate() {
 		auth := NewPasswordAuthenticator(loader, encoder, decryptor)
 
 		_, err := auth.Authenticate(ctx, security.Authentication{
-			Type:        AuthTypePassword,
+			Type:        security.AuthTypePassword,
 			Principal:   "alice",
 			Credentials: "garbage",
 		})

@@ -22,9 +22,8 @@ func NewRedisChallengeTokenStore(client *redis.Client) ChallengeTokenStore {
 	return &RedisChallengeTokenStore{client: client}
 }
 
-func (s *RedisChallengeTokenStore) Generate(ctx context.Context, principal *Principal, username string, pending, resolved []string) (string, error) {
+func (s *RedisChallengeTokenStore) Generate(ctx context.Context, state *ChallengeState) (string, error) {
 	token := id.GenerateUUID()
-	state := ChallengeState{Principal: principal, Username: username, Pending: pending, Resolved: resolved}
 
 	data, err := json.Marshal(state)
 	if err != nil {

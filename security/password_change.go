@@ -20,10 +20,13 @@ type PasswordChangeChallengeData struct {
 }
 
 // PasswordChangeChecker determines whether a user must change their password.
+// It decides whether the forced-change challenge applies, so it sees the whole
+// login; PasswordChanger acts on the identity afterwards and sees only the
+// principal.
 type PasswordChangeChecker interface {
-	// Check returns challenge data (including reason) if a password change is required,
-	// or nil if no change is needed.
-	Check(ctx context.Context, principal *Principal) (*PasswordChangeChallengeData, error)
+	// Check returns challenge data (including reason) if the user logging in
+	// (login.Principal) must change their password, or nil if no change is needed.
+	Check(ctx context.Context, login *LoginContext) (*PasswordChangeChallengeData, error)
 }
 
 // NewCompositePasswordChangeChecker runs checkers in order and returns the first
@@ -37,13 +40,13 @@ type compositePasswordChangeChecker struct {
 	checkers []PasswordChangeChecker
 }
 
-func (c *compositePasswordChangeChecker) Check(ctx context.Context, principal *Principal) (*PasswordChangeChallengeData, error) {
+func (c *compositePasswordChangeChecker) Check(ctx context.Context, login *LoginContext) (*PasswordChangeChallengeData, error) {
 	for _, checker := range c.checkers {
 		if checker == nil {
 			continue
 		}
 
-		data, err := checker.Check(ctx, principal)
+		data, err := checker.Check(ctx, login)
 		if err != nil {
 			return nil, err
 		}
@@ -89,8 +92,8 @@ func NewPasswordChangeChallengeProvider(checker PasswordChangeChecker, changer P
 func (*PasswordChangeChallengeProvider) Type() string { return ChallengeTypePasswordChange }
 func (*PasswordChangeChallengeProvider) Order() int   { return 400 }
 
-func (p *PasswordChangeChallengeProvider) Evaluate(ctx context.Context, principal *Principal) (*LoginChallenge, error) {
-	data, err := p.checker.Check(ctx, principal)
+func (p *PasswordChangeChallengeProvider) Evaluate(ctx context.Context, login *LoginContext) (*LoginChallenge, error) {
+	data, err := p.checker.Check(ctx, login)
 	if err != nil || data == nil {
 		return nil, err
 	}
@@ -102,21 +105,21 @@ func (p *PasswordChangeChallengeProvider) Evaluate(ctx context.Context, principa
 	}, nil
 }
 
-func (p *PasswordChangeChallengeProvider) Resolve(ctx context.Context, principal *Principal, response any) (*Principal, error) {
+func (p *PasswordChangeChallengeProvider) Resolve(ctx context.Context, login *LoginContext, response any) (*Principal, error) {
 	newPassword, ok := response.(string)
 	if !ok || newPassword == "" {
 		return nil, ErrNewPasswordRequired
 	}
 
 	if p.validator != nil {
-		if err := p.validator.Validate(ctx, principal, newPassword); err != nil {
+		if err := p.validator.Validate(ctx, login.Principal, newPassword); err != nil {
 			return nil, err
 		}
 	}
 
-	if err := p.changer.ChangePassword(ctx, principal, newPassword); err != nil {
+	if err := p.changer.ChangePassword(ctx, login.Principal, newPassword); err != nil {
 		return nil, err
 	}
 
-	return principal, nil
+	return login.Principal, nil
 }

@@ -50,6 +50,7 @@ func generateValidCode(t *testing.T, secret string) string {
 func TestTOTPEvaluator(t *testing.T) {
 	ctx := context.Background()
 	principal := NewUser("u1", "Alice")
+	login := &LoginContext{AuthType: AuthTypePassword, Username: "alice", Principal: principal}
 
 	t.Run("SecretExists", func(t *testing.T) {
 		key := generateTOTPKey(t)
@@ -57,7 +58,7 @@ func TestTOTPEvaluator(t *testing.T) {
 			LoadSecretFn: func(context.Context, *Principal) (string, error) { return key.Secret(), nil },
 		})
 
-		data, err := evaluator.Evaluate(ctx, principal)
+		data, err := evaluator.Evaluate(ctx, login)
 
 		require.NoError(t, err, "Should not return error when secret exists")
 		require.NotNil(t, data, "Should return challenge data when secret exists")
@@ -69,7 +70,7 @@ func TestTOTPEvaluator(t *testing.T) {
 			LoadSecretFn: func(context.Context, *Principal) (string, error) { return "", nil },
 		})
 
-		data, err := evaluator.Evaluate(ctx, principal)
+		data, err := evaluator.Evaluate(ctx, login)
 
 		require.NoError(t, err, "Should not return error when secret is empty")
 		assert.Nil(t, data, "Should return nil when user has no TOTP configured")
@@ -82,7 +83,7 @@ func TestTOTPEvaluator(t *testing.T) {
 			WithTOTPDestination("Google Authenticator"),
 		)
 
-		data, err := evaluator.Evaluate(ctx, principal)
+		data, err := evaluator.Evaluate(ctx, login)
 
 		require.NoError(t, err, "Should not return error with custom destination")
 		require.NotNil(t, data, "Should return challenge data with custom destination")
@@ -95,7 +96,7 @@ func TestTOTPEvaluator(t *testing.T) {
 			LoadSecretFn: func(context.Context, *Principal) (string, error) { return "", loadErr },
 		})
 
-		data, err := evaluator.Evaluate(ctx, principal)
+		data, err := evaluator.Evaluate(ctx, login)
 
 		require.ErrorIs(t, err, loadErr, "Should propagate loader error")
 		assert.Nil(t, data, "Should return nil data on loader error")
@@ -110,11 +111,28 @@ func TestTOTPEvaluator(t *testing.T) {
 			firstDest, secondDest,
 		)
 
-		data, err := eval.Evaluate(ctx, principal)
+		data, err := eval.Evaluate(ctx, login)
 
 		require.NoError(t, err, "Should not return error with multiple options")
 		require.NotNil(t, data, "Should return challenge data with multiple options")
 		assert.Equal(t, "Second", data.Destination, "Last option should win when multiple options are applied")
+	})
+
+	t.Run("LoadsTheLoginsPrincipal", func(t *testing.T) {
+		var loaded *Principal
+
+		evaluator := NewTOTPEvaluator(&MockTOTPSecretLoader{
+			LoadSecretFn: func(_ context.Context, got *Principal) (string, error) {
+				loaded = got
+
+				return "", nil
+			},
+		})
+
+		_, err := evaluator.Evaluate(ctx, login)
+
+		require.NoError(t, err, "Should not return error when secret is empty")
+		assert.Same(t, principal, loaded, "Should load the secret of the principal logging in")
 	})
 }
 
@@ -190,7 +208,7 @@ func TestNewTOTPChallengeProvider(t *testing.T) {
 		secretLoader := &MockTOTPSecretLoader{LoadSecretFn: func(context.Context, *Principal) (string, error) { return key.Secret(), nil }}
 		provider := NewTOTPChallengeProvider(secretLoader, WithTOTPDestination("1Password"))
 
-		challenge, err := provider.Evaluate(context.Background(), NewUser("u1", "Alice"))
+		challenge, err := provider.Evaluate(context.Background(), &LoginContext{AuthType: AuthTypePassword, Principal: NewUser("u1", "Alice")})
 
 		require.NoError(t, err, "Should not return error with destination option")
 		require.NotNil(t, challenge, "Should return challenge when secret exists")
@@ -203,7 +221,7 @@ func TestNewTOTPChallengeProvider(t *testing.T) {
 		secretLoader := &MockTOTPSecretLoader{LoadSecretFn: func(context.Context, *Principal) (string, error) { return "", nil }}
 		provider := NewTOTPChallengeProvider(secretLoader)
 
-		challenge, err := provider.Evaluate(context.Background(), NewUser("u1", "Alice"))
+		challenge, err := provider.Evaluate(context.Background(), &LoginContext{AuthType: AuthTypePassword, Principal: NewUser("u1", "Alice")})
 
 		require.NoError(t, err, "Should not return error when user has no TOTP secret")
 		assert.Nil(t, challenge, "Should return nil challenge when user has no TOTP configured")
@@ -215,9 +233,10 @@ func TestNewTOTPChallengeProvider(t *testing.T) {
 		provider := NewTOTPChallengeProvider(secretLoader)
 		ctx := context.Background()
 		principal := NewUser("u1", "Alice")
+		login := &LoginContext{AuthType: AuthTypePassword, Username: "alice", Principal: principal}
 
 		// Evaluate should return a challenge
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, login)
 		require.NoError(t, err, "Should evaluate without error")
 		require.NotNil(t, challenge, "Should return a challenge for user with TOTP")
 		assert.Equal(t, ChallengeTypeTOTP, challenge.Type, "Challenge type should be TOTP")
@@ -225,12 +244,12 @@ func TestNewTOTPChallengeProvider(t *testing.T) {
 
 		// Resolve with a valid code should succeed
 		code := generateValidCode(t, key.Secret())
-		resolved, err := provider.Resolve(ctx, principal, code)
+		resolved, err := provider.Resolve(ctx, login, code)
 		require.NoError(t, err, "Should resolve with valid code")
 		assert.Same(t, principal, resolved, "Should return same principal on success")
 
 		// Resolve with an invalid code should fail
-		_, err = provider.Resolve(ctx, principal, "000000")
+		_, err = provider.Resolve(ctx, login, "000000")
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error for invalid code")
 		assert.Equal(t, ErrCodeOTPCodeInvalid, resErr.Code, "Should return OTP code invalid error")

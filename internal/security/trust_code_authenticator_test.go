@@ -63,8 +63,8 @@ func (s *TrustCodeAuthenticatorTestSuite) authenticator(cfg config.TrustLoginCon
 func (s *TrustCodeAuthenticatorTestSuite) TestSupports() {
 	auth := s.authenticator(config.TrustLoginConfig{})
 
-	s.True(auth.Supports(AuthTypeTrustCode), "The authenticator should support its own mechanism")
-	s.False(auth.Supports(AuthTypePassword), "The authenticator should not claim other mechanisms")
+	s.True(auth.Supports(security.AuthTypeTrustCode), "The authenticator should support its own mechanism")
+	s.False(auth.Supports(security.AuthTypePassword), "The authenticator should not claim other mechanisms")
 }
 
 func (s *TrustCodeAuthenticatorTestSuite) TestAuthenticate() {
@@ -74,7 +74,7 @@ func (s *TrustCodeAuthenticatorTestSuite) TestAuthenticate() {
 
 		principal, err := auth.Authenticate(
 			s.requestContext(trustTestUserAgent, trustTestClientIP),
-			security.Authentication{Type: AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code},
+			security.Authentication{Type: security.AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code},
 		)
 
 		s.Require().NoError(err, "A code redeemed by the browser it was issued to should authenticate")
@@ -87,7 +87,7 @@ func (s *TrustCodeAuthenticatorTestSuite) TestAuthenticate() {
 		auth := s.authenticator(config.TrustLoginConfig{})
 		code := s.issue()
 		ctx := s.requestContext(trustTestUserAgent, trustTestClientIP)
-		authentication := security.Authentication{Type: AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code}
+		authentication := security.Authentication{Type: security.AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code}
 
 		_, err := auth.Authenticate(ctx, authentication)
 		s.Require().NoError(err, "The first redemption should succeed")
@@ -101,7 +101,7 @@ func (s *TrustCodeAuthenticatorTestSuite) TestAuthenticate() {
 
 		_, err := auth.Authenticate(
 			s.requestContext(trustTestUserAgent, trustTestClientIP),
-			security.Authentication{Type: AuthTypeTrustCode, Principal: trustTestAppID, Credentials: "never-issued"},
+			security.Authentication{Type: security.AuthTypeTrustCode, Principal: trustTestAppID, Credentials: "never-issued"},
 		)
 		s.ErrorIs(err, security.ErrTrustCodeInvalid, "An unknown code should be rejected")
 	})
@@ -111,7 +111,7 @@ func (s *TrustCodeAuthenticatorTestSuite) TestAuthenticate() {
 
 		_, err := auth.Authenticate(
 			s.requestContext(trustTestUserAgent, trustTestClientIP),
-			security.Authentication{Type: AuthTypeTrustCode, Principal: trustTestAppID, Credentials: map[string]any{"code": "x"}},
+			security.Authentication{Type: security.AuthTypeTrustCode, Principal: trustTestAppID, Credentials: map[string]any{"code": "x"}},
 		)
 		s.ErrorIs(err, security.ErrTrustCodeInvalid, "A credential that is not a code string should be rejected")
 	})
@@ -121,7 +121,7 @@ func (s *TrustCodeAuthenticatorTestSuite) TestAuthenticate() {
 
 		_, err := auth.Authenticate(
 			s.requestContext(trustTestUserAgent, trustTestClientIP),
-			security.Authentication{Type: AuthTypeTrustCode, Principal: trustTestAppID, Credentials: ""},
+			security.Authentication{Type: security.AuthTypeTrustCode, Principal: trustTestAppID, Credentials: ""},
 		)
 		s.ErrorIs(err, security.ErrTrustCodeInvalid, "An empty code should be rejected")
 	})
@@ -134,7 +134,7 @@ func (s *TrustCodeAuthenticatorTestSuite) TestAuthenticate() {
 
 		_, err := auth.Authenticate(
 			s.requestContext(trustTestUserAgent, trustTestClientIP),
-			security.Authentication{Type: AuthTypeTrustCode, Principal: "other-app", Credentials: code},
+			security.Authentication{Type: security.AuthTypeTrustCode, Principal: "other-app", Credentials: code},
 		)
 		s.ErrorIs(err, security.ErrTrustCodeInvalid, "A code presented under another app's ID should be rejected")
 	})
@@ -151,7 +151,7 @@ func (s *TrustCodeAuthenticatorTestSuite) TestBrowserBinding() {
 
 		_, err := auth.Authenticate(
 			s.requestContext("curl/8.0", trustTestClientIP),
-			security.Authentication{Type: AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code},
+			security.Authentication{Type: security.AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code},
 		)
 		s.ErrorIs(err, security.ErrTrustCodeInvalid,
 			"An omitted bind_user_agent must resolve to enabled, so another browser cannot redeem the code")
@@ -163,7 +163,7 @@ func (s *TrustCodeAuthenticatorTestSuite) TestBrowserBinding() {
 
 		_, err := auth.Authenticate(
 			s.requestContext("curl/8.0", trustTestClientIP),
-			security.Authentication{Type: AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code},
+			security.Authentication{Type: security.AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code},
 		)
 		s.NoError(err, "An explicitly disabled user-agent binding should admit a different browser")
 	})
@@ -174,7 +174,7 @@ func (s *TrustCodeAuthenticatorTestSuite) TestBrowserBinding() {
 
 		_, err := auth.Authenticate(
 			s.requestContext(trustTestUserAgent, "10.0.0.1"),
-			security.Authentication{Type: AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code},
+			security.Authentication{Type: security.AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code},
 		)
 		s.NoError(err, "IP binding is off by default so a network change mid-redirect does not break the login")
 	})
@@ -185,7 +185,7 @@ func (s *TrustCodeAuthenticatorTestSuite) TestBrowserBinding() {
 
 		_, err := auth.Authenticate(
 			s.requestContext(trustTestUserAgent, "10.0.0.1"),
-			security.Authentication{Type: AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code},
+			security.Authentication{Type: security.AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code},
 		)
 		s.ErrorIs(err, security.ErrTrustCodeInvalid, "An enabled IP binding should reject a different source address")
 	})
@@ -198,13 +198,13 @@ func (s *TrustCodeAuthenticatorTestSuite) TestBrowserBinding() {
 
 		_, err := auth.Authenticate(
 			s.requestContext("curl/8.0", trustTestClientIP),
-			security.Authentication{Type: AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code},
+			security.Authentication{Type: security.AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code},
 		)
 		s.Require().Error(err, "The mismatched browser should be rejected")
 
 		_, err = auth.Authenticate(
 			s.requestContext(trustTestUserAgent, trustTestClientIP),
-			security.Authentication{Type: AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code},
+			security.Authentication{Type: security.AuthTypeTrustCode, Principal: trustTestAppID, Credentials: code},
 		)
 		s.ErrorIs(err, security.ErrTrustCodeInvalid,
 			"The code was already spent by the rejected attempt and must not work afterwards")

@@ -14,11 +14,11 @@ import (
 // ─── Mock implementations ───
 
 type MockDepartmentLoader struct {
-	LoadDepartmentsFn func(ctx context.Context, principal *Principal) (*DepartmentSelectionChallengeData, error)
+	LoadDepartmentsFn func(ctx context.Context, login *LoginContext) (*DepartmentSelectionChallengeData, error)
 }
 
-func (m *MockDepartmentLoader) LoadDepartments(ctx context.Context, principal *Principal) (*DepartmentSelectionChallengeData, error) {
-	return m.LoadDepartmentsFn(ctx, principal)
+func (m *MockDepartmentLoader) LoadDepartments(ctx context.Context, login *LoginContext) (*DepartmentSelectionChallengeData, error) {
+	return m.LoadDepartmentsFn(ctx, login)
 }
 
 type MockDepartmentSelector struct {
@@ -32,7 +32,7 @@ func (m *MockDepartmentSelector) SelectDepartment(ctx context.Context, principal
 // ─── Constructor validation ───
 
 func TestNewDepartmentSelectionChallengeProvider(t *testing.T) {
-	validLoader := &MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) { return nil, nil }}
+	validLoader := &MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *LoginContext) (*DepartmentSelectionChallengeData, error) { return nil, nil }}
 	validSelector := &MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }}
 
 	t.Run("MissingLoader", func(t *testing.T) {
@@ -58,7 +58,7 @@ func TestNewDepartmentSelectionChallengeProvider(t *testing.T) {
 
 func TestDepartmentSelectionChallengeProviderTypeAndOrder(t *testing.T) {
 	provider := NewDepartmentSelectionChallengeProvider(
-		&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) { return nil, nil }},
+		&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *LoginContext) (*DepartmentSelectionChallengeData, error) { return nil, nil }},
 		&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 	)
 
@@ -76,16 +76,17 @@ func TestDepartmentSelectionChallengeProviderTypeAndOrder(t *testing.T) {
 func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 	ctx := context.Background()
 	principal := NewUser("u1", "Alice")
+	login := &LoginContext{AuthType: AuthTypePassword, Username: "alice", Principal: principal}
 
 	t.Run("NoDepartments", func(t *testing.T) {
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) {
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *LoginContext) (*DepartmentSelectionChallengeData, error) {
 				return &DepartmentSelectionChallengeData{Departments: []DepartmentOption{}}, nil
 			}},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
 
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, login)
 
 		require.NoError(t, err, "Should not return error for empty departments")
 		assert.Nil(t, challenge, "Should return nil challenge for empty departments")
@@ -93,11 +94,11 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 
 	t.Run("NilDepartments", func(t *testing.T) {
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) { return nil, nil }},
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *LoginContext) (*DepartmentSelectionChallengeData, error) { return nil, nil }},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
 
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, login)
 
 		require.NoError(t, err, "Should not return error for nil departments")
 		assert.Nil(t, challenge, "Should return nil challenge for nil departments")
@@ -109,13 +110,13 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 			{ID: "d2", Name: "Marketing"},
 		}
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) {
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *LoginContext) (*DepartmentSelectionChallengeData, error) {
 				return &DepartmentSelectionChallengeData{Departments: departments}, nil
 			}},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
 
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, login)
 
 		require.NoError(t, err, "Should not return error for multiple departments")
 		require.NotNil(t, challenge, "Should return challenge for multiple departments")
@@ -129,13 +130,13 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 	t.Run("SingleDepartment", func(t *testing.T) {
 		departments := []DepartmentOption{{ID: "d1", Name: "Engineering"}}
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) {
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *LoginContext) (*DepartmentSelectionChallengeData, error) {
 				return &DepartmentSelectionChallengeData{Departments: departments}, nil
 			}},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
 
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, login)
 
 		require.NoError(t, err, "Should not return error for single department")
 		require.NotNil(t, challenge, "Should return challenge even for single department")
@@ -148,13 +149,13 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 		// A loader that has nothing to ask may say so with a nil payload
 		// rather than allocating an empty one.
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) {
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *LoginContext) (*DepartmentSelectionChallengeData, error) {
 				return nil, nil
 			}},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
 
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, login)
 
 		require.NoError(t, err, "Should not return error for nil challenge data")
 		assert.Nil(t, challenge, "Should return nil challenge for nil challenge data")
@@ -178,13 +179,13 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 			},
 		}
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) {
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *LoginContext) (*DepartmentSelectionChallengeData, error) {
 				return data, nil
 			}},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
 
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, login)
 
 		require.NoError(t, err, "Should not return error when the loader supplies meta")
 		require.NotNil(t, challenge, "Should return a challenge")
@@ -201,11 +202,11 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 	t.Run("LoaderError", func(t *testing.T) {
 		loadErr := errors.New("load failed")
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) { return nil, loadErr }},
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *LoginContext) (*DepartmentSelectionChallengeData, error) { return nil, loadErr }},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
 
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, login)
 
 		require.ErrorIs(t, err, loadErr, "Should propagate loader error")
 		assert.Nil(t, challenge, "Should return nil challenge on loader error")
@@ -215,13 +216,13 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 		loadErr := errors.New("partial failure")
 		departments := []DepartmentOption{{ID: "d1", Name: "Engineering"}}
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) {
+			&MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *LoginContext) (*DepartmentSelectionChallengeData, error) {
 				return &DepartmentSelectionChallengeData{Departments: departments}, loadErr
 			}},
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
 
-		challenge, err := provider.Evaluate(ctx, principal)
+		challenge, err := provider.Evaluate(ctx, login)
 
 		require.ErrorIs(t, err, loadErr, "Should propagate error even when departments are non-empty")
 		assert.Nil(t, challenge, "Should discard departments when error is present")
@@ -233,7 +234,8 @@ func TestDepartmentSelectionChallengeProviderEvaluate(t *testing.T) {
 func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 	ctx := context.Background()
 	principal := NewUser("u1", "Alice")
-	noopLoader := &MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *Principal) (*DepartmentSelectionChallengeData, error) { return nil, nil }}
+	login := &LoginContext{AuthType: AuthTypePassword, Username: "alice", Principal: principal}
+	noopLoader := &MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *LoginContext) (*DepartmentSelectionChallengeData, error) { return nil, nil }}
 
 	t.Run("ValidSelection", func(t *testing.T) {
 		var receivedDeptID string
@@ -247,7 +249,7 @@ func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 			}},
 		)
 
-		resolved, err := provider.Resolve(ctx, principal, "d1")
+		resolved, err := provider.Resolve(ctx, login, "d1")
 
 		require.NoError(t, err, "Should not return error for valid selection")
 		assert.Same(t, principal, resolved, "Should return principal from selector")
@@ -260,7 +262,7 @@ func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
 
-		_, err := provider.Resolve(ctx, principal, 12345)
+		_, err := provider.Resolve(ctx, login, 12345)
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error for non-string response")
@@ -273,7 +275,7 @@ func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
 
-		_, err := provider.Resolve(ctx, principal, nil)
+		_, err := provider.Resolve(ctx, login, nil)
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error for nil response")
@@ -286,7 +288,7 @@ func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, p *Principal, _ string) (*Principal, error) { return p, nil }},
 		)
 
-		_, err := provider.Resolve(ctx, principal, "")
+		_, err := provider.Resolve(ctx, login, "")
 
 		resErr, ok := result.AsErr(err)
 		require.True(t, ok, "Should return a result.Error for empty response")
@@ -305,7 +307,7 @@ func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 			}},
 		)
 
-		resolved, err := provider.Resolve(ctx, principal, "  ")
+		resolved, err := provider.Resolve(ctx, login, "  ")
 
 		require.NoError(t, err, "Should not return error for whitespace-only department ID")
 		assert.Same(t, principal, resolved, "Should return principal when selector succeeds")
@@ -319,17 +321,20 @@ func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 			&MockDepartmentSelector{SelectDepartmentFn: func(context.Context, *Principal, string) (*Principal, error) { return nil, selectErr }},
 		)
 
-		_, err := provider.Resolve(ctx, principal, "invalid")
+		_, err := provider.Resolve(ctx, login, "invalid")
 
 		require.ErrorIs(t, err, selectErr, "Should propagate selector error")
 	})
 
-	t.Run("PrincipalPassthrough", func(t *testing.T) {
-		var loaderPrincipal, selectorPrincipal *Principal
+	t.Run("LoginPassthrough", func(t *testing.T) {
+		var (
+			loaderLogin       *LoginContext
+			selectorPrincipal *Principal
+		)
 
 		provider := NewDepartmentSelectionChallengeProvider(
-			&MockDepartmentLoader{LoadDepartmentsFn: func(_ context.Context, p *Principal) (*DepartmentSelectionChallengeData, error) {
-				loaderPrincipal = p
+			&MockDepartmentLoader{LoadDepartmentsFn: func(_ context.Context, got *LoginContext) (*DepartmentSelectionChallengeData, error) {
+				loaderLogin = got
 
 				return &DepartmentSelectionChallengeData{
 					Departments: []DepartmentOption{{ID: "d1", Name: "Engineering"}},
@@ -342,11 +347,11 @@ func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 			}},
 		)
 
-		_, _ = provider.Evaluate(ctx, principal)
-		_, _ = provider.Resolve(ctx, principal, "d1")
+		_, _ = provider.Evaluate(ctx, login)
+		_, _ = provider.Resolve(ctx, login, "d1")
 
-		assert.Same(t, principal, loaderPrincipal, "Should pass the same principal to loader")
-		assert.Same(t, principal, selectorPrincipal, "Should pass the same principal to selector")
+		assert.Same(t, login, loaderLogin, "Should pass the whole login to the loader")
+		assert.Same(t, principal, selectorPrincipal, "Should pass the login's principal to the selector")
 	})
 
 	t.Run("PrincipalEnriched", func(t *testing.T) {
@@ -359,7 +364,7 @@ func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 			}},
 		)
 
-		resolved, err := provider.Resolve(ctx, principal, "d1")
+		resolved, err := provider.Resolve(ctx, login, "d1")
 
 		require.NoError(t, err, "Should not return error for valid selection")
 		assert.Same(t, enrichedPrincipal, resolved, "Should return the enriched principal from selector")

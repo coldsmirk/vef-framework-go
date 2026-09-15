@@ -11,10 +11,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
-const (
-	AuthTypePassword = "password"
-)
-
 // dummyComparePlaintext is hashed (lazily, once) with the injected encoder to
 // produce the comparison hash used on the user-not-found path. Deriving it from
 // the real encoder keeps the timing-equalization comparison on the same
@@ -48,7 +44,9 @@ func NewPasswordAuthenticator(
 	}
 }
 
-func (*PasswordAuthenticator) Supports(authType string) bool { return authType == AuthTypePassword }
+func (*PasswordAuthenticator) Supports(authType string) bool {
+	return authType == security.AuthTypePassword
+}
 
 func (p *PasswordAuthenticator) Authenticate(ctx context.Context, authentication security.Authentication) (*security.Principal, error) {
 	if p.loader == nil {

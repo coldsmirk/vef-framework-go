@@ -13,15 +13,16 @@ func TestNewLoginEvent(t *testing.T) {
 	t.Run("AllFieldsPopulated", func(t *testing.T) {
 		userID := "user123"
 		params := LoginEventParams{
-			AuthType:   "password",
-			UserID:     &userID,
-			Username:   "alice",
-			LoginIP:    "192.168.1.1",
-			UserAgent:  "Mozilla/5.0",
-			TraceID:    "trace-abc",
-			IsOk:       true,
-			FailReason: "",
-			ErrorCode:  0,
+			AuthType:      "password",
+			UserID:        &userID,
+			Username:      "alice",
+			LoginIP:       "192.168.1.1",
+			UserAgent:     "Mozilla/5.0",
+			TraceID:       "trace-abc",
+			IsOk:          true,
+			FailReason:    "",
+			ErrorCode:     0,
+			ChallengeType: "totp",
 		}
 
 		evt := NewLoginEvent(params)
@@ -35,6 +36,7 @@ func TestNewLoginEvent(t *testing.T) {
 		assert.True(t, evt.IsOk, "Should preserve IsOk")
 		assert.Empty(t, evt.FailReason, "Should preserve empty FailReason")
 		assert.Equal(t, 0, evt.ErrorCode, "Should preserve ErrorCode")
+		assert.Equal(t, "totp", evt.ChallengeType, "Should preserve ChallengeType")
 	})
 
 	t.Run("FailedLogin", func(t *testing.T) {
