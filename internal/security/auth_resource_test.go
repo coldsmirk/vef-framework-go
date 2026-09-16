@@ -1646,6 +1646,38 @@ func (s *ChallengeFlowTestSuite) TestResolveChallengeReplayRefused() {
 	s.Empty(s.publisher.GetPublishedEvents(), "A refused replay should raise no login event")
 }
 
+// TestResolveChallengeReplayAfterReservedPrincipal replays a step whose provider
+// resolved a reserved identity. Resolve had already run, so the token is spent:
+// the replay is refused like an invalid token and never re-enters the provider,
+// which is what keeping that refusal's claim buys — the provider's side effects
+// are committed by then, and a release would let them run again.
+func (s *ChallengeFlowTestSuite) TestResolveChallengeReplayAfterReservedPrincipal() {
+	s.challengeProvider.On("Type").Return("totp").Maybe()
+	s.challengeProvider.On("Evaluate", mock.Anything, mock.Anything).
+		Return(&security.LoginChallenge{Type: "totp", Required: true}, nil).Once()
+	s.challengeProvider.On("Resolve", mock.Anything, mock.Anything, "123456").
+		Return(security.PrincipalSystem, nil).Once()
+
+	challengeToken := s.loginAndGetResult()["challengeToken"].(string)
+
+	refused := s.MakeRPCRequest(s.resolveRequest(challengeToken, "123456"))
+	s.Require().Equal(security.ErrCodePrincipalInvalid, s.ReadResult(refused).Code,
+		"A step resolving a reserved identity should be refused with the principal-invalid code")
+
+	s.publisher.ClearPublishedEvents()
+
+	replay := s.MakeRPCRequest(s.resolveRequest(challengeToken, "123456"))
+	s.Equal(401, replay.StatusCode, "Replaying a step whose provider already ran should be refused with HTTP 401")
+
+	body := s.ReadResult(replay)
+	s.Equal(security.ErrCodeChallengeTokenInvalid, body.Code,
+		"The replay should be refused like an invalid challenge token")
+	s.Nil(body.Data, "A refused replay must carry no payload")
+
+	s.challengeProvider.AssertNumberOfCalls(s.T(), "Resolve", 1)
+	s.Empty(s.publisher.GetPublishedEvents(), "A refused replay should raise no login event")
+}
+
 // TestResolveChallengeRetryAfterWrongAnswer answers a challenge wrongly and then
 // correctly on the same token: the rejected step gave its claim back, so the
 // retry completes the login.
@@ -2368,6 +2400,30 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeKeepsClaimOnSuccess
 	s.claim.AssertNotCalled(s.T(), "Release", mock.Anything)
 }
 
+// TestResolveChallengeKeepsClaimOnReservedPrincipal covers the one step that
+// fails with its claim kept: Resolve returned a principal, so its side effects
+// are committed and the token is spent even though the framework refuses the
+// reserved identity it resolved. The refusal is still audited and still not
+// counted — the second factor was right, the provider is at fault.
+func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeKeepsClaimOnReservedPrincipal() {
+	s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
+		Return(s.claimableState(), nil).Once()
+	s.challengeProviderA.On("Resolve", mock.Anything, loginOf(s.testUser), "123456").
+		Return(security.PrincipalSystem, nil).Once()
+
+	resp := s.MakeRPCRequest(s.resolveChallengeRequest())
+
+	s.Equal(401, resp.StatusCode, "A reserved-identity refusal should return HTTP 401")
+
+	body := s.ReadResult(resp)
+	s.Equal(security.ErrCodePrincipalInvalid, body.Code, "The refusal should carry the principal-invalid code")
+	s.Nil(body.Data, "A refused step must carry no payload")
+
+	s.claim.AssertNotCalled(s.T(), "Release", mock.Anything)
+	s.tokenGenerator.AssertNotCalled(s.T(), "Generate", mock.Anything, mock.Anything, mock.Anything)
+	s.requireFailureAudited("totp", security.ErrCodePrincipalInvalid)
+}
+
 // TestResolveChallengeRefusesClaimedToken covers a token whose claim is already
 // held — a replay of a step that succeeded, or a duplicate of one in flight. It
 // is refused like an invalid token before the provider runs, and like the other
@@ -2412,19 +2468,19 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeClaimErrorFailsClos
 	s.loginGuard.AssertNotCalled(s.T(), "RecordSuccess", mock.Anything, mock.Anything)
 }
 
-// TestResolveChallengeReleasesClaimOnFailure covers every way a step can fail
-// once it has claimed its token: each one gives the claim back, so the same
-// token stays usable for another attempt.
+// TestResolveChallengeReleasesClaimOnFailure covers the ways provider.Resolve
+// itself can fail once the token is claimed: each one gives the claim back, so
+// the same token stays usable for another attempt. A step that fails after a
+// successful Resolve keeps its claim instead
+// (TestResolveChallengeKeepsClaimOnReservedPrincipal).
 func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeReleasesClaimOnFailure() {
 	failures := []struct {
-		name      string
-		principal *security.Principal
-		err       error
-		code      int
+		name string
+		err  error
+		code int
 	}{
 		{name: "RejectedAnswer", err: security.ErrOTPCodeInvalid, code: security.ErrCodeOTPCodeInvalid},
 		{name: "ProviderError", err: errors.New("totp backend unavailable"), code: security.ErrCodeChallengeResolveFailed},
-		{name: "ReservedPrincipal", principal: security.PrincipalSystem, code: security.ErrCodePrincipalInvalid},
 	}
 
 	for _, failure := range failures {
@@ -2434,7 +2490,7 @@ func (s *AuthResourceErrorPathTestSuite) TestResolveChallengeReleasesClaimOnFail
 			s.challengeTokenStore.On("Parse", mock.Anything, "valid-challenge-token").
 				Return(s.claimableState(), nil).Once()
 			s.challengeProviderA.On("Resolve", mock.Anything, loginOf(s.testUser), "123456").
-				Return(failure.principal, failure.err).Once()
+				Return((*security.Principal)(nil), failure.err).Once()
 
 			resp := s.MakeRPCRequest(s.resolveChallengeRequest())
 

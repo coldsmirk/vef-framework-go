@@ -375,17 +375,20 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 	// path needs its own reserved-identity gate (token issuance downstream stays
 	// as defense in depth). The rejection is audited but not counted toward
 	// lockout: the second factor was correct — the fault is the provider's, not
-	// the caller's.
+	// the caller's. Its claim is kept all the same, because Resolve returned
+	// without error: whatever it did — a password set, a code consumed, a
+	// department chosen — is already committed, so a replay of this token would do
+	// it again, and the retry a release would allow rescues nobody, since the same
+	// provider at the same step resolves the same reserved identity.
 	if principal == nil || principal.IsReserved() {
 		logger.Errorf("Challenge rejected: provider %q resolved to a nil or framework-reserved principal", params.Type)
 
-		releaseChallengeClaim(ctx.Context(), claim)
 		a.publishLoginFailure(ctx, audit, security.ErrReservedPrincipal)
 
 		return security.ErrReservedPrincipal
 	}
 
-	// The step succeeded, so its claim is kept: the unreleased lease marks the
+	// Resolve succeeded, so its claim is kept: the unreleased lease marks the
 	// token spent from here on (see claimChallengeToken). The failures counted
 	// under this identity stay, since a step is not a login: only the step that
 	// completes the login clears them (see guardRecordSuccess).
@@ -646,18 +649,22 @@ const (
 // resolve_challenge step presenting it, so a token resolves at most one step
 // whichever ChallengeTokenStore issued it. The claim is a lease on the
 // lock.Locker, taken after the protocol checks and the brute-force guard but
-// before the challenge provider runs: a replay of a step that already succeeded,
-// or a duplicate racing one in flight, finds the lease held and is refused as
-// ErrChallengeTokenInvalid before any provider side effect runs again — spending
-// the token only after Resolve would still let a leaked password_change token
-// set the password. Like the other token refusals, it is neither audited nor
-// counted, and clears no lockout failures. A locker backend error fails closed.
+// before the challenge provider runs: a replay of a step that already ran the
+// provider, or a duplicate racing one in flight, finds the lease held and is
+// refused as ErrChallengeTokenInvalid before any provider side effect runs
+// again — spending the token only after Resolve would still let a leaked
+// password_change token set the password. Like the other token refusals, it is
+// neither audited nor counted, and clears no lockout failures. A locker backend
+// error fails closed.
 //
-// The caller releases the claim when the step fails, so a mistyped code or a
-// password that fails policy stays retryable on the same token, with the guard
-// bounding those attempts; and it keeps the claim once the step succeeds. The
-// unreleased lease is the spent marker, outliving the token by
-// challengeClaimTTLBuffer, so a failure after it — while advancing the login —
+// The caller releases the claim only when provider.Resolve did not succeed — a
+// rejected answer, a provider error — so a mistyped code or a password that fails
+// policy stays retryable on the same token, with the guard bounding those
+// attempts. Once Resolve has returned a principal the claim is kept whatever the
+// step then makes of it, a reserved-identity refusal included: its side effects
+// are committed by then, and a replay would run them again. The unreleased lease
+// is the spent marker, outliving the token by challengeClaimTTLBuffer, so any
+// failure after Resolve — the refusal, or anything while advancing the login —
 // leaves the token spent and the user starts over at login.
 //
 // Without Redis the default locker is in-process, so the claim holds per replica
@@ -678,10 +685,10 @@ func (a *AuthResource) claimChallengeToken(ctx context.Context, token string) (l
 	return claim, nil
 }
 
-// releaseChallengeClaim gives back the claim of a step that did not succeed, on a
-// context the request's cancellation cannot abort, since a release lost to a
-// client disconnect would leave the token spent. A failed release is only
-// logged: the lease still expires on its own.
+// releaseChallengeClaim gives back the claim of a step whose provider.Resolve did
+// not succeed, on a context the request's cancellation cannot abort, since a
+// release lost to a client disconnect would leave the token spent. A failed
+// release is only logged: the lease still expires on its own.
 func releaseChallengeClaim(ctx context.Context, claim lock.Lock) {
 	if err := claim.Release(context.WithoutCancel(ctx)); err != nil {
 		logger.Warnf("Failed to release challenge token claim: %v", err)
