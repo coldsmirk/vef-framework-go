@@ -70,11 +70,11 @@ type ChallengeState struct {
 //
 // A store need not make tokens single-use. The login flow claims each token for
 // the resolve_challenge step that presents it — a lease on the application's
-// lock.Locker, taken before the challenge provider runs and kept once the step
-// succeeds — so a replay of a resolved step, or a duplicate racing one in
-// flight, is refused before any provider side effect. Without Redis that locker
-// is in-process and the claim holds per replica, as the lock module warns at
-// boot.
+// lock.Locker, taken before the challenge provider runs and kept once it has
+// run — so a replay of a step whose provider already ran, or a duplicate racing
+// one in flight, is refused before any provider side effect. Without Redis that
+// locker is in-process and the claim holds per replica, as the lock module
+// warns at boot.
 type ChallengeTokenStore interface {
 	// Generate creates a challenge token carrying state. ctx lets I/O-backed
 	// implementations honor deadlines, cancellation, and trace propagation.
