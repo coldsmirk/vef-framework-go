@@ -2850,10 +2850,12 @@ type TrustCodeChallengeLockoutTestSuite struct {
 
 	challengeProvider *MockChallengeProvider
 	userB             *security.Principal
+	userC             *security.Principal
 }
 
 func (s *TrustCodeChallengeLockoutTestSuite) SetupSuite() {
 	s.userB = security.NewUser("user-b", "User B")
+	s.userC = security.NewUser("user-c", "User C")
 
 	s.challengeProvider = new(MockChallengeProvider)
 	s.challengeProvider.On("Type").Return("totp")
@@ -2865,6 +2867,9 @@ func (s *TrustCodeChallengeLockoutTestSuite) SetupSuite() {
 	s.challengeProvider.On("Resolve", mock.Anything,
 		mock.MatchedBy(func(login *security.LoginContext) bool { return login.Principal.ID == s.userB.ID }), "123456").
 		Return(s.userB, nil)
+	s.challengeProvider.On("Resolve", mock.Anything,
+		mock.MatchedBy(func(login *security.LoginContext) bool { return login.Principal.ID == s.userC.ID }), "123456").
+		Return(s.userC, nil)
 
 	publisher := new(MockPublisher)
 	publisher.On("Publish", mock.Anything).Maybe()
@@ -2877,6 +2882,7 @@ func (s *TrustCodeChallengeLockoutTestSuite) SetupSuite() {
 					"trust-code": security.NewUser("user001", "Test User"),
 					"code-a":     security.NewUser("user-a", "User A"),
 					"code-b":     s.userB,
+					"code-c":     s.userC,
 				},
 			},
 			fx.As(new(security.Authenticator)),
@@ -2997,8 +3003,350 @@ func (s *TrustCodeChallengeLockoutTestSuite) TestLockoutIsPerAccount() {
 	s.NotNil(s.ReadDataAsMap(body.Data)["tokens"], "User B's resolve should complete the login")
 }
 
+// TestCompletedLoginClearsTheAccountBucket answers one user's challenge wrongly,
+// then completes a login of theirs. Completing is what clears the failures
+// counted under that account, so the guesses after it start from zero and the
+// lockout trips one guess later than the uncleared count would have made it.
+func (s *TrustCodeChallengeLockoutTestSuite) TestCompletedLoginClearsTheAccountBucket() {
+	resp := s.MakeRPCRequest(s.answer(s.challengeToken("code-c"), "000000"))
+	s.Require().Equal(401, resp.StatusCode, "User C's wrong answer below the threshold should return HTTP 401")
+
+	resp = s.MakeRPCRequest(s.answer(s.challengeToken("code-c"), "123456"))
+	s.Require().Equal(200, resp.StatusCode, "User C's correct answer should be accepted")
+
+	body := s.ReadResult(resp)
+	s.Require().True(body.IsOk(), "User C's correct answer should complete the login")
+	s.Require().NotNil(s.ReadDataAsMap(body.Data)["tokens"], "The completing step should issue tokens")
+
+	// The wrong answer before the completed login is cleared, so two more are
+	// tolerated rather than one.
+	for attempt := range 2 {
+		resp = s.MakeRPCRequest(s.answer(s.challengeToken("code-c"), "000000"))
+		s.Equal(401, resp.StatusCode,
+			"Attempt %d after the completed login should return HTTP 401, the count having been cleared", attempt+1)
+	}
+
+	resp = s.MakeRPCRequest(s.answer(s.challengeToken("code-c"), "000000"))
+	s.Equal(429, resp.StatusCode, "Wrong answers counted after a completed login should still trip the lockout")
+	s.Equal(security.ErrCodeAccountLocked, s.ReadResult(resp).Code, "A tripped lockout should return the account-locked code")
+}
+
 func TestTrustCodeChallengeLockout(t *testing.T) {
 	suite.Run(t, new(TrustCodeChallengeLockoutTestSuite))
+}
+
+// --- Lockout clearing ---
+
+const (
+	// lockoutClearingPassword is the password every user of the clearing suite has.
+	lockoutClearingPassword = "password123"
+	// noChallengeUser is challenged by neither provider, so its login completes at
+	// the login step.
+	noChallengeUser = "no-challenge-user"
+	// freshLoginUser guesses a second factor with fresh logins in between.
+	freshLoginUser = "fresh-login-user"
+	// intermediateStepUser resolves one challenge and then guesses the next.
+	intermediateStepUser = "intermediate-step-user"
+	// challengedUser completes a login through both challenges.
+	challengedUser = "challenged-user"
+
+	firstChallengeAnswer  = "first-answer"
+	secondChallengeAnswer = "second-answer"
+)
+
+// GatedChallengeProvider presents its challenge to every login it applies to and
+// accepts one answer, rejecting every other with ErrOTPCodeInvalid. That is what
+// a guessable step needs: RecordingChallengeProvider accepts anything, so no step
+// it serves can fail.
+type GatedChallengeProvider struct {
+	ChallengeType  string
+	ChallengeOrder int
+	// Answer is the only response Resolve accepts.
+	Answer string
+	// NotFor lists the identifiers the challenge does not apply to, so one suite
+	// can drive logins that complete at the login step beside logins that carry
+	// challenges.
+	NotFor []string
+
+	mu       sync.Mutex
+	resolves int
+}
+
+func (p *GatedChallengeProvider) Type() string { return p.ChallengeType }
+func (p *GatedChallengeProvider) Order() int   { return p.ChallengeOrder }
+
+func (p *GatedChallengeProvider) Evaluate(_ context.Context, login *security.LoginContext) (*security.LoginChallenge, error) {
+	if slices.Contains(p.NotFor, login.Username) {
+		return nil, nil
+	}
+
+	return &security.LoginChallenge{Type: p.ChallengeType, Required: true}, nil
+}
+
+func (p *GatedChallengeProvider) Resolve(_ context.Context, login *security.LoginContext, response any) (*security.Principal, error) {
+	p.mu.Lock()
+	p.resolves++
+	p.mu.Unlock()
+
+	if response != p.Answer {
+		return nil, security.ErrOTPCodeInvalid
+	}
+
+	return login.Principal, nil
+}
+
+// Resolves returns how many answers reached the provider.
+func (p *GatedChallengeProvider) Resolves() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return p.resolves
+}
+
+// Reset forgets the answers counted so far.
+func (p *GatedChallengeProvider) Reset() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.resolves = 0
+}
+
+// LockoutClearingTestSuite fences when a login's accumulated failures are
+// cleared: only the step that completes the login clears them, never an
+// authentication or an intermediate challenge step. It drives whole logins
+// against the real password authenticator, the real challenge token store and the
+// real MemoryLoginGuard, since the property is about what the counter holds
+// between requests; its two gated challenges make a login's later steps
+// guessable, and failures are counted per user so every test owns its bucket.
+type LockoutClearingTestSuite struct {
+	apptest.Suite
+
+	userLoader *MockUserLoader
+	first      *GatedChallengeProvider
+	second     *GatedChallengeProvider
+}
+
+func (s *LockoutClearingTestSuite) SetupSuite() {
+	s.userLoader = new(MockUserLoader)
+	s.first = &GatedChallengeProvider{
+		ChallengeType:  "totp",
+		ChallengeOrder: 10,
+		Answer:         firstChallengeAnswer,
+		NotFor:         []string{noChallengeUser},
+	}
+	s.second = &GatedChallengeProvider{
+		ChallengeType:  "department_selection",
+		ChallengeOrder: 20,
+		Answer:         secondChallengeAnswer,
+		NotFor:         []string{noChallengeUser},
+	}
+
+	hashedPassword, err := password.NewBcryptEncoder().Encode(lockoutClearingPassword)
+	s.Require().NoError(err, "The suite's shared password should hash successfully")
+
+	for _, username := range []string{noChallengeUser, freshLoginUser, intermediateStepUser, challengedUser} {
+		s.userLoader.On("LoadByUsername", mock.Anything, username).
+			Return(security.NewUser(username, username), hashedPassword, nil).
+			Maybe()
+	}
+
+	publisher := new(MockPublisher)
+	publisher.On("Publish", mock.Anything).Maybe()
+
+	challengeProvider := func(provider security.ChallengeProvider) any {
+		return fx.Annotate(
+			func() security.ChallengeProvider { return provider },
+			fx.ResultTags(`group:"vef:security:challenge_providers"`),
+		)
+	}
+
+	s.SetupApp(
+		fx.Supply(fx.Annotate(s.userLoader, fx.As(new(security.UserLoader)))),
+		fx.Provide(challengeProvider(s.first), challengeProvider(s.second)),
+		fx.Replace(
+			fx.Annotate(publisher, fx.As(new(event.Bus))),
+			&config.SecurityConfig{
+				Secret:           testJWTSecret,
+				TokenExpires:     24 * time.Hour,
+				RefreshNotBefore: 1 * time.Millisecond,
+				LoginRateLimit:   1000,
+				RefreshRateLimit: 1000,
+				Lockout:          config.LockoutConfig{MaxFailures: 2, Key: config.LockoutKeyUser},
+			},
+		),
+	)
+}
+
+func (s *LockoutClearingTestSuite) TearDownSuite() {
+	s.TearDownApp()
+}
+
+func (s *LockoutClearingTestSuite) SetupTest() {
+	s.first.Reset()
+	s.second.Reset()
+}
+
+// login attempts a password login for username with the given credential.
+func (s *LockoutClearingTestSuite) login(username, credentials string) *http.Response {
+	s.T().Helper()
+
+	return s.MakeRPCRequest(api.Request{
+		Resource: "security/auth",
+		Action:   "login",
+		Version:  "v1",
+		Params: map[string]any{
+			"type":        security.AuthTypePassword,
+			"principal":   username,
+			"credentials": credentials,
+		},
+	})
+}
+
+// startLogin logs username in with the right password and returns the challenge
+// token of the step the login stopped at.
+func (s *LockoutClearingTestSuite) startLogin(username string) string {
+	s.T().Helper()
+
+	resp := s.login(username, lockoutClearingPassword)
+	s.Require().Equal(200, resp.StatusCode, "A login with the right password should return HTTP 200")
+
+	return s.challengeTokenOf(resp)
+}
+
+// answer answers the challenge behind challengeToken.
+func (s *LockoutClearingTestSuite) answer(challengeToken, challengeType, response string) *http.Response {
+	s.T().Helper()
+
+	return s.MakeRPCRequest(api.Request{
+		Resource: "security/auth",
+		Action:   "resolve_challenge",
+		Version:  "v1",
+		Params: map[string]any{
+			"challengeToken": challengeToken,
+			"type":           challengeType,
+			"response":       response,
+		},
+	})
+}
+
+// challengeTokenOf reads the challenge token a step handed back.
+func (s *LockoutClearingTestSuite) challengeTokenOf(resp *http.Response) string {
+	s.T().Helper()
+
+	body := s.ReadResult(resp)
+	s.Require().True(body.IsOk(), "A step presenting a challenge should succeed")
+
+	challengeToken, ok := s.ReadDataAsMap(body.Data)["challengeToken"].(string)
+	s.Require().True(ok, "A step with a challenge left should hand back a challenge token")
+
+	return challengeToken
+}
+
+// requireOutcome asserts the status and business code a step came back with.
+func (s *LockoutClearingTestSuite) requireOutcome(resp *http.Response, status, code int, what string) {
+	s.T().Helper()
+
+	s.Equal(status, resp.StatusCode, "%s should return HTTP %d", what, status)
+	s.Equal(code, s.ReadResult(resp).Code, "%s should carry business code %d", what, code)
+}
+
+// requireCompleted asserts a step completed the login by issuing tokens.
+func (s *LockoutClearingTestSuite) requireCompleted(resp *http.Response) {
+	s.T().Helper()
+
+	s.Require().Equal(200, resp.StatusCode, "A completed login should return HTTP 200")
+
+	body := s.ReadResult(resp)
+	s.Require().True(body.IsOk(), "A completed login should succeed")
+	s.Require().NotNil(s.ReadDataAsMap(body.Data)["tokens"], "A completed login should issue tokens")
+}
+
+// TestFreshLoginDoesNotClearChallengeFailures guesses a second factor, logs in
+// again with the password in between, and guesses on. Authenticating is not
+// completing a login, so both guesses fill one bucket and the next is blocked —
+// where clearing at the password step let anyone holding the password reset the
+// count at will, leaving the second factor bounded only by the rate limit.
+func (s *LockoutClearingTestSuite) TestFreshLoginDoesNotClearChallengeFailures() {
+	resp := s.answer(s.startLogin(freshLoginUser), s.first.ChallengeType, "000000")
+	s.requireOutcome(resp, 401, security.ErrCodeOTPCodeInvalid, "The first wrong answer")
+
+	// The password is known, so a fresh login is always available.
+	challengeToken := s.startLogin(freshLoginUser)
+
+	resp = s.answer(challengeToken, s.first.ChallengeType, "000000")
+	s.requireOutcome(resp, 401, security.ErrCodeOTPCodeInvalid, "A wrong answer after a fresh login")
+
+	resolves := s.first.Resolves()
+
+	resp = s.answer(challengeToken, s.first.ChallengeType, "000000")
+	s.requireOutcome(resp, 429, security.ErrCodeAccountLocked, "The guess past the threshold")
+	s.Equal(resolves, s.first.Resolves(), "The blocked guess must not reach the provider")
+}
+
+// TestIntermediateStepDoesNotClearFailures answers one challenge correctly
+// between guesses at the next. A step that hands back another challenge has not
+// completed the login, so the earlier guess still counts — otherwise an early,
+// easily answered step would reset the guesses of every step behind it.
+func (s *LockoutClearingTestSuite) TestIntermediateStepDoesNotClearFailures() {
+	first := s.startLogin(intermediateStepUser)
+
+	resp := s.answer(first, s.first.ChallengeType, "000000")
+	s.requireOutcome(resp, 401, security.ErrCodeOTPCodeInvalid, "A wrong answer to the first challenge")
+
+	second := s.challengeTokenOf(s.answer(first, s.first.ChallengeType, firstChallengeAnswer))
+	s.Require().NotEmpty(second, "Resolving the first challenge should present the second one")
+
+	resp = s.answer(second, s.second.ChallengeType, "000000")
+	s.requireOutcome(resp, 401, security.ErrCodeOTPCodeInvalid, "A wrong answer to the second challenge")
+
+	resp = s.answer(second, s.second.ChallengeType, "000000")
+	s.requireOutcome(resp, 429, security.ErrCodeAccountLocked, "The guess past the threshold")
+	s.Equal(1, s.second.Resolves(), "The step that resolved the first challenge must not have reset the count")
+}
+
+// TestCompletedLoginWithoutChallengesClearsFailures fails a password login, then
+// completes one: a login that needs no challenge completes at the login step, so
+// that is where its count is cleared.
+func (s *LockoutClearingTestSuite) TestCompletedLoginWithoutChallengesClearsFailures() {
+	resp := s.login(noChallengeUser, "wrong-password")
+	s.requireOutcome(resp, 401, security.ErrCodeCredentialsInvalid, "A wrong password below the threshold")
+
+	s.requireCompleted(s.login(noChallengeUser, lockoutClearingPassword))
+
+	// The count was cleared, so two more wrong passwords are tolerated: with the
+	// failure before the completed login still standing, the second would be 429.
+	s.requireOutcome(s.login(noChallengeUser, "wrong-password"), 401, security.ErrCodeCredentialsInvalid,
+		"The first wrong password after the completed login")
+	s.requireOutcome(s.login(noChallengeUser, "wrong-password"), 401, security.ErrCodeCredentialsInvalid,
+		"The second wrong password after the completed login")
+
+	s.requireOutcome(s.login(noChallengeUser, "wrong-password"), 429, security.ErrCodeAccountLocked,
+		"The wrong password past the threshold")
+}
+
+// TestCompletedLoginWithChallengesClearsFailures walks a login through both
+// challenges after a failed password attempt: the failure is cleared once the
+// last step issues the tokens, not before.
+func (s *LockoutClearingTestSuite) TestCompletedLoginWithChallengesClearsFailures() {
+	resp := s.login(challengedUser, "wrong-password")
+	s.requireOutcome(resp, 401, security.ErrCodeCredentialsInvalid, "A wrong password below the threshold")
+
+	second := s.challengeTokenOf(s.answer(s.startLogin(challengedUser), s.first.ChallengeType, firstChallengeAnswer))
+	s.requireCompleted(s.answer(second, s.second.ChallengeType, secondChallengeAnswer))
+
+	// The count was cleared, so two more wrong passwords are tolerated: with the
+	// failure before the completed login still standing, the second would be 429.
+	s.requireOutcome(s.login(challengedUser, "wrong-password"), 401, security.ErrCodeCredentialsInvalid,
+		"The first wrong password after the completed login")
+	s.requireOutcome(s.login(challengedUser, "wrong-password"), 401, security.ErrCodeCredentialsInvalid,
+		"The second wrong password after the completed login")
+
+	s.requireOutcome(s.login(challengedUser, "wrong-password"), 429, security.ErrCodeAccountLocked,
+		"The wrong password past the threshold")
+}
+
+func TestLockoutClearing(t *testing.T) {
+	suite.Run(t, new(LockoutClearingTestSuite))
 }
 
 // --- Login context flow ---

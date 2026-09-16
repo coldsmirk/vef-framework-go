@@ -211,8 +211,13 @@ func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
 		return err
 	}
 
+	// The failures a login counted are cleared only once it completes, so the
+	// attempt travels with the login instead of being cleared here (see
+	// guardRecordSuccess). A mechanism this step exempts counted nothing under the
+	// identifier it presented, so it has no bucket to clear.
+	var counted *security.LoginAttempt
 	if guarded {
-		a.guardRecordSuccess(ctx, attempt)
+		counted = &attempt
 	}
 
 	pending := streams.MapTo(
@@ -230,7 +235,7 @@ func (a *AuthResource) Login(ctx fiber.Ctx, params LoginParams) error {
 		Pending:   pending,
 	}
 
-	return a.advanceLogin(ctx, state, audit)
+	return a.advanceLogin(ctx, state, audit, counted)
 }
 
 // RefreshParams represents the request parameters for token refresh operation.
@@ -381,14 +386,14 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 	}
 
 	// The step succeeded, so its claim is kept: the unreleased lease marks the
-	// token spent from here on (see claimChallengeToken).
-	a.guardRecordSuccess(ctx, attempt)
-
+	// token spent from here on (see claimChallengeToken). The failures counted
+	// under this identity stay, since a step is not a login: only the step that
+	// completes the login clears them (see guardRecordSuccess).
 	state.Principal = principal
 	state.Resolved = append(state.Resolved, params.Type)
 	state.Pending = state.Pending[1:]
 
-	return a.advanceLogin(ctx, state, audit)
+	return a.advanceLogin(ctx, state, audit, &attempt)
 }
 
 // GetUserInfo retrieves user information via UserInfoLoader.
@@ -490,9 +495,16 @@ func (a *AuthResource) guardRecordFailure(ctx fiber.Ctx, attempt security.LoginA
 	}
 }
 
-// guardRecordSuccess clears accumulated failures once the credential verifies.
-// It runs as soon as the password is accepted, before any second-factor
-// challenge, since the brute-forced credential has already succeeded.
+// guardRecordSuccess clears the failures a login counted, and is called only
+// once that login completes — when its tokens are issued, never when the
+// credential verifies or an intermediate challenge step succeeds.
+//
+// Failures count across the whole login: a wrong password and a wrong challenge
+// answer fill one bucket (see challengeAttemptIdentity), so clearing earlier
+// would leave the second factor bounded by nothing but the endpoint rate limit.
+// Anyone holding the password could reset the count of answer guesses by logging
+// in again, and an early, easily answered step would reset the guesses of every
+// step behind it.
 func (a *AuthResource) guardRecordSuccess(ctx fiber.Ctx, attempt security.LoginAttempt) {
 	if a.loginGuard == nil {
 		return
@@ -548,7 +560,17 @@ func (a *AuthResource) findProvider(challengeType string) security.ChallengeProv
 // login audit describes but never counted toward lockout: a provider that cannot
 // evaluate, a challenge store that cannot issue, and token issuance refused by
 // session policy (ErrTooManyConcurrentSessions) are none of them a wrong guess.
-func (a *AuthResource) advanceLogin(ctx fiber.Ctx, state *security.ChallengeState, audit security.LoginEventParams) error {
+//
+// Issuing the tokens is what completes the login, so it is also where the
+// failures the login counted are cleared: counted names the attempt whose bucket
+// they filled, and is nil for a login that counted none. Handing back a challenge
+// leaves them standing, and so does failing here.
+func (a *AuthResource) advanceLogin(
+	ctx fiber.Ctx,
+	state *security.ChallengeState,
+	audit security.LoginEventParams,
+	counted *security.LoginAttempt,
+) error {
 	challenge, err := a.evaluateNextChallenge(ctx.Context(), state)
 	if err != nil {
 		a.publishLoginFailure(ctx, audit, err)
@@ -575,6 +597,10 @@ func (a *AuthResource) advanceLogin(ctx fiber.Ctx, state *security.ChallengeStat
 		a.publishLoginFailure(ctx, audit, err)
 
 		return err
+	}
+
+	if counted != nil {
+		a.guardRecordSuccess(ctx, *counted)
 	}
 
 	a.publishLoginSuccess(ctx, audit, state.Principal)
