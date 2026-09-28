@@ -24,7 +24,7 @@ func newBuiltinRegistry(t *testing.T) *StrategyRegistry {
 	require.NoError(t, err, "Should build built-in initiator resolvers")
 
 	return NewStrategyRegistry(
-		[]approval.PassRuleStrategy{NewAllPassStrategy(), NewAnyPassStrategy(), NewRatioPassStrategy()},
+		[]approval.PassRuleStrategy{NewAllPassStrategy(), NewAnyPassStrategy(), NewRatioPassStrategy(), NewFixedCountPassStrategy()},
 		[]approval.ConditionEvaluator{NewFieldConditionEvaluator(), NewExpressionConditionEvaluator(nil)},
 		assignees,
 		ccs,
@@ -37,7 +37,7 @@ func TestNewStrategyRegistry(t *testing.T) {
 	t.Run("RegistersAll", func(t *testing.T) {
 		r := newBuiltinRegistry(t)
 
-		assert.Len(t, r.passRules, 3, "Should register 3 pass rule strategies")
+		assert.Len(t, r.passRules, 4, "Should register 4 pass rule strategies")
 		assert.Len(t, r.conditions, 2, "Should register 2 condition evaluators")
 		assert.Len(t, r.Assignees().Descriptors(), len(expectedAssigneeKinds), "Should register every built-in assignee kind")
 		assert.Len(t, r.CCs().Descriptors(), len(expectedCCKinds), "Should register every built-in CC kind")
@@ -60,7 +60,7 @@ func TestValidateBuiltins(t *testing.T) {
 
 	t.Run("MissingPassRule", func(t *testing.T) {
 		r := newBuiltinRegistry(t)
-		delete(r.passRules, approval.PassRatio)
+		delete(r.passRules, approval.PassFixedCount)
 
 		require.ErrorIs(t, r.ValidateBuiltins(), errBuiltinPassRuleMissing, "Should report the missing pass rule")
 	})
@@ -95,7 +95,7 @@ func TestValidateBuiltins(t *testing.T) {
 
 	t.Run("NilComposites", func(t *testing.T) {
 		r := NewStrategyRegistry(
-			[]approval.PassRuleStrategy{NewAllPassStrategy(), NewAnyPassStrategy(), NewRatioPassStrategy()},
+			[]approval.PassRuleStrategy{NewAllPassStrategy(), NewAnyPassStrategy(), NewRatioPassStrategy(), NewFixedCountPassStrategy()},
 			[]approval.ConditionEvaluator{NewFieldConditionEvaluator(), NewExpressionConditionEvaluator(nil)},
 			nil, nil, nil,
 		)

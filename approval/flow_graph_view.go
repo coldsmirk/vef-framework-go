@@ -79,6 +79,7 @@ type FlowGraphNodeData struct {
 	Activities     []Activity         `json:"activities,omitempty"`
 	StartedAt      *timex.DateTime    `json:"startedAt,omitempty"`
 	FinishedAt     *timex.DateTime    `json:"finishedAt,omitempty"`
+	PassCount      *int               `json:"passCount,omitempty"`
 }
 
 // FlowGraphEdge is one React Flow edge connecting two nodes by their ids.

@@ -75,3 +75,31 @@ func (*RatioPassStrategy) Evaluate(ctx approval.PassRuleContext) approval.PassRu
 
 	return approval.PassRulePending
 }
+
+// NewFixedCountPassStrategy creates a new FixedCountPassStrategy.
+func NewFixedCountPassStrategy() approval.PassRuleStrategy {
+	return new(FixedCountPassStrategy)
+}
+
+// FixedCountPassStrategy requires a fixed number of approvals, or all
+// assignees when fewer are available.
+type FixedCountPassStrategy struct{}
+
+func (*FixedCountPassStrategy) Rule() approval.PassRule { return approval.PassFixedCount }
+
+func (*FixedCountPassStrategy) Evaluate(ctx approval.PassRuleContext) approval.PassRuleResult {
+	if ctx.TotalCount == 0 {
+		return approval.PassRulePending
+	}
+
+	required := min(ctx.PassCount, ctx.TotalCount)
+	if ctx.ApprovedCount >= required {
+		return approval.PassRulePassed
+	}
+
+	if ctx.TotalCount-ctx.RejectedCount < required {
+		return approval.PassRuleRejected
+	}
+
+	return approval.PassRulePending
+}

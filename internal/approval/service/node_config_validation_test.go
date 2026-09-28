@@ -54,6 +54,20 @@ func TestValidateNodeConfig(t *testing.T) {
 		})
 	})
 
+	t.Run("PassCount", func(t *testing.T) {
+		for _, count := range []int{0, -1} {
+			data := &approval.ApprovalNodeData{PassRule: approval.PassFixedCount, PassCount: count}
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errPassCountOutOfRange,
+				"Fixed-count rule should reject %d", count)
+		}
+
+		data := &approval.ApprovalNodeData{PassRule: approval.PassFixedCount, PassCount: 3}
+		assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", data),
+			"Positive count should be valid even when the resolved assignee count may be smaller")
+		assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", &approval.ApprovalNodeData{PassRule: approval.PassAll}),
+			"Pass count should not be required for another rule")
+	})
+
 	t.Run("SameApplicantAction", func(t *testing.T) {
 		for _, action := range []approval.SameApplicantAction{
 			approval.SameApplicantAutoPass,

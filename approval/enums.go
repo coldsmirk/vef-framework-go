@@ -117,14 +117,15 @@ func (m ApprovalMethod) IsValid() bool {
 type PassRule string
 
 const (
-	PassAll   PassRule = "all"   // All assignees must approve; any rejection fails the node
-	PassAny   PassRule = "any"   // At least one assignee must approve
-	PassRatio PassRule = "ratio" // A certain percentage of assignees must approve
+	PassAll        PassRule = "all"         // All assignees must approve; any rejection fails the node
+	PassAny        PassRule = "any"         // At least one assignee must approve
+	PassRatio      PassRule = "ratio"       // A certain percentage of assignees must approve
+	PassFixedCount PassRule = "fixed_count" // A fixed number of assignees must approve, capped by the total
 )
 
 // IsValid reports whether the pass rule is one of the defined values.
 func (r PassRule) IsValid() bool {
-	return r == PassAll || r == PassAny || r == PassRatio
+	return r == PassAll || r == PassAny || r == PassRatio || r == PassFixedCount
 }
 
 // EmptyAssigneeAction represents the action when no assignee is found.

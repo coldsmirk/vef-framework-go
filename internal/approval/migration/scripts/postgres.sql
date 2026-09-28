@@ -205,6 +205,7 @@ CREATE TABLE IF NOT EXISTS apv_flow_node (
     consecutive_approver_action VARCHAR(32) NOT NULL DEFAULT 'none',
     is_read_confirm_required BOOLEAN NOT NULL DEFAULT false,
     branches JSONB,
+    pass_count INTEGER NOT NULL DEFAULT 0,
     CONSTRAINT uk_apv_flow_node__flow_version_id_key UNIQUE (flow_version_id, key),
     CONSTRAINT fk_apv_flow_node__flow_version_id FOREIGN KEY (flow_version_id) REFERENCES apv_flow_version(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
@@ -224,6 +225,7 @@ COMMENT ON COLUMN apv_flow_node.execution_type IS 'Exec Type';
 COMMENT ON COLUMN apv_flow_node.approval_method IS 'Method';
 COMMENT ON COLUMN apv_flow_node.pass_rule IS 'Pass Rule';
 COMMENT ON COLUMN apv_flow_node.pass_ratio IS 'Pass Ratio';
+COMMENT ON COLUMN apv_flow_node.pass_count IS 'Pass Count';
 COMMENT ON COLUMN apv_flow_node.empty_assignee_action IS 'Empty Action';
 COMMENT ON COLUMN apv_flow_node.fallback_user_ids IS 'Fallbacks';
 COMMENT ON COLUMN apv_flow_node.admin_user_ids IS 'Admins';

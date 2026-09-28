@@ -52,6 +52,10 @@ func buildInstanceFlowGraph(bundle *instanceDetailBundle) approval.InstanceFlowG
 				data.PassRatio = new(fn.PassRatio)
 			}
 
+			if fn.PassRule == approval.PassFixedCount {
+				data.PassCount = new(fn.PassCount)
+			}
+
 		case approval.NodeHandle:
 			// Handle nodes claim-and-do; approvalMethod / passRule do not apply.
 			data.ExecutionType = string(fn.ExecutionType)

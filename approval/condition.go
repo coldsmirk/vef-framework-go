@@ -168,6 +168,7 @@ type PassRuleContext struct {
 	RejectedCount int
 	TotalCount    int
 	PassRatio     float64
+	PassCount     int
 }
 
 // PassRuleStrategy evaluates whether a node passes based on task results.

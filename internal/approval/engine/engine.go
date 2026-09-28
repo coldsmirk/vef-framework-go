@@ -279,6 +279,7 @@ func buildPassRuleContext(node *approval.FlowNode, tasks []approval.Task) approv
 		// storage convention enforced by deploy validation — and consumed
 		// verbatim by RatioPassStrategy.
 		PassRatio: node.PassRatio.InexactFloat64(),
+		PassCount: node.PassCount,
 	}
 
 	for _, t := range tasks {

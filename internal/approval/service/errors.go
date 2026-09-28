@@ -46,6 +46,7 @@ var (
 	errInvalidApprovalMethod      = errors.New("invalid approval method")
 	errInvalidPassRule            = errors.New("invalid pass rule")
 	errPassRatioOutOfRange        = errors.New("pass ratio must be a percentage within (0, 100]")
+	errPassCountOutOfRange        = errors.New("pass count must be a positive integer")
 	errInvalidEmptyAssigneeAction = errors.New("invalid empty-assignee action")
 	errInvalidSameApplicantAction = errors.New("invalid same-applicant action")
 	errInvalidConsecutiveAction   = errors.New("invalid consecutive-approver action")

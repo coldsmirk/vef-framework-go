@@ -1,6 +1,7 @@
 package migration
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"testing"
@@ -8,8 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/sqlmigration"
+	"github.com/coldsmirk/vef-framework-go/internal/testx"
 )
 
 // TestMigrationScripts is a smoke check that this module's embedded DDL resolves
@@ -35,6 +38,43 @@ func TestMigrationScripts(t *testing.T) {
 		_, err := sqlmigration.LoadScript(scripts, "unknown")
 		require.Error(t, err, "Should error for unsupported database kind")
 		assert.Contains(t, err.Error(), "unsupported database kind", "Should include kind info in error")
+	})
+}
+
+func TestPassCountUpgrade(t *testing.T) {
+	testx.ForEachDB(t, func(t *testing.T, env *testx.DBEnv) {
+		require.NoError(t, Migrate(env.Ctx, env.DB, env.DS.Kind), "Schema should provision")
+
+		keyColumn := "key"
+
+		if env.DS.Kind == config.MySQL {
+			keyColumn = "`key`"
+		}
+
+		for _, statement := range []string{
+			"INSERT INTO apv_flow_category (id, tenant_id, code, name) VALUES ('category-1', 'tenant-1', 'category', 'Category')",
+			"INSERT INTO apv_flow (id, tenant_id, category_id, code, name) VALUES ('flow-1', 'tenant-1', 'category-1', 'flow', 'Flow')",
+			"INSERT INTO apv_flow_version (id, flow_id, version) VALUES ('version-1', 'flow-1', 1)",
+			fmt.Sprintf("INSERT INTO apv_flow_node (id, flow_version_id, %s, kind, name) VALUES ('node-1', 'version-1', 'approval-1', 'approval', 'Review')", keyColumn),
+		} {
+			_, err := env.DB.NewRaw(statement).Exec(env.Ctx)
+			require.NoError(t, err, "Fixture row should insert")
+		}
+
+		_, err := env.DB.NewRaw("ALTER TABLE apv_flow_node DROP COLUMN pass_count").Exec(env.Ctx)
+		require.NoError(t, err, "Fixture should emulate an older node table")
+		assert.ErrorIs(t, Verify(env.Ctx, env.DB, env.DS.Kind), ErrSchemaOutdated,
+			"Old schema should fail verification before migration")
+
+		require.NoError(t, Migrate(env.Ctx, env.DB, env.DS.Kind), "Migration should add the column")
+		require.NoError(t, Migrate(env.Ctx, env.DB, env.DS.Kind), "Migration should be idempotent")
+		require.NoError(t, Verify(env.Ctx, env.DB, env.DS.Kind), "Upgraded schema should verify")
+
+		node := approval.FlowNode{ID: "node-1"}
+		require.NoError(t, env.DB.NewSelect().Model(&node).WherePK().Scan(env.Ctx),
+			"Existing node should survive the upgrade")
+		assert.Equal(t, "Review", node.Name, "Existing node data should be unchanged")
+		assert.Zero(t, node.PassCount, "Old rules should receive an inactive default count")
 	})
 }
 

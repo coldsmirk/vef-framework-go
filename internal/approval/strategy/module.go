@@ -22,6 +22,7 @@ var Module = fx.Module(
 		fx.Annotate(NewAllPassStrategy, fx.ResultTags(`group:"vef:approval:pass_rule_strategies"`)),
 		fx.Annotate(NewAnyPassStrategy, fx.ResultTags(`group:"vef:approval:pass_rule_strategies"`)),
 		fx.Annotate(NewRatioPassStrategy, fx.ResultTags(`group:"vef:approval:pass_rule_strategies"`)),
+		fx.Annotate(NewFixedCountPassStrategy, fx.ResultTags(`group:"vef:approval:pass_rule_strategies"`)),
 
 		// Principal resolvers: framework built-ins overlaid with the host
 		// registrations from vef.ProvideApprovalAssigneeResolver and friends.

@@ -23,6 +23,7 @@ var expectedPassRules = []approval.PassRule{
 	approval.PassAll,
 	approval.PassAny,
 	approval.PassRatio,
+	approval.PassFixedCount,
 }
 
 // expectedAssigneeKinds lists the built-in AssigneeKind values the framework

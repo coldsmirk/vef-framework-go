@@ -11,11 +11,10 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// ErrSchemaOutdated means the approval tables exist but lack a structure the
-// module's correctness depends on. It is fatal at start-up by design: the
-// missing structure cannot be repaired forward (the migration is
-// CREATE TABLE IF NOT EXISTS and never alters an existing table), and running
-// on top of it corrupts data silently rather than loudly.
+// ErrSchemaOutdated means the approval tables lack a structure the module's
+// correctness depends on. The current migration cannot repair the defect, or
+// automatic migration is disabled. Some defects can silently corrupt data, so
+// verification fails at start-up.
 var ErrSchemaOutdated = errors.New("approval schema is outdated")
 
 // primaryKeyColumns is the primary key every approval table must declare.
@@ -82,7 +81,24 @@ func Verify(ctx context.Context, db orm.DB, kind config.DBKind) error {
 		}
 	}
 
+	if err := verifyPassCountColumn(ctx, db, kind); err != nil {
+		return err
+	}
+
 	return verifyKindColumns(ctx, db, kind)
+}
+
+func verifyPassCountColumn(ctx context.Context, db orm.DB, kind config.DBKind) error {
+	columns, err := sqlmigration.LoadTableColumns(ctx, db, kind, "apv_flow_node")
+	if err != nil {
+		return fmt.Errorf("load apv_flow_node columns: %w", err)
+	}
+
+	if _, ok := columns["pass_count"]; !ok {
+		return fmt.Errorf("%w: apv_flow_node.pass_count is missing; enable approval auto_migrate or add the column", ErrSchemaOutdated)
+	}
+
+	return nil
 }
 
 // verifyKindColumns asserts the open-vocabulary kind columns are wide enough
@@ -125,11 +141,11 @@ func verifyKindColumns(ctx context.Context, db orm.DB, kind config.DBKind) error
 	return nil
 }
 
-// outdated builds an ErrSchemaOutdated with the recreation hint appended once,
-// so every diagnostic names the same remedy.
+// outdated builds an ErrSchemaOutdated with the recreation hint appended once
+// for schema defects the migration cannot repair in place.
 func outdated(format string, args ...any) error {
 	return fmt.Errorf(
-		"%w: %s; recreate the approval tables (the migration never alters an existing schema)",
+		"%w: %s; recreate the approval tables (the migration cannot repair this schema in place)",
 		ErrSchemaOutdated,
 		fmt.Sprintf(format, args...),
 	)

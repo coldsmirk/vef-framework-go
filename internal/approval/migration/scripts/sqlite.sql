@@ -153,6 +153,7 @@ CREATE TABLE IF NOT EXISTS apv_flow_node (
     consecutive_approver_action VARCHAR(32) NOT NULL DEFAULT 'none',
     is_read_confirm_required BOOLEAN NOT NULL DEFAULT 0,
     branches TEXT,
+    pass_count INTEGER NOT NULL DEFAULT 0,
     CONSTRAINT uk_apv_flow_node__flow_version_id_key UNIQUE (flow_version_id, key),
     CONSTRAINT fk_apv_flow_node__flow_version_id FOREIGN KEY (flow_version_id) REFERENCES apv_flow_version(id) ON DELETE CASCADE ON UPDATE CASCADE
 );

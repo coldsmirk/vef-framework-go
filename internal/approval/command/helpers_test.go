@@ -397,6 +397,7 @@ func buildTestEngineWithHooks(db orm.DB, hooks *engine.LifecycleHookRunner) *eng
 		strategy.NewAllPassStrategy(),
 		strategy.NewAnyPassStrategy(),
 		strategy.NewRatioPassStrategy(),
+		strategy.NewFixedCountPassStrategy(),
 	}
 
 	registry := strategy.NewStrategyRegistry(passRules, nil, mustAssigneeComposite(), mustCCComposite(), nil)

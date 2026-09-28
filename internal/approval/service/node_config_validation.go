@@ -69,6 +69,10 @@ func (s *FlowDefinitionService) validateApprovalNodeData(nodeID string, data *ap
 		return err
 	}
 
+	if data.PassRule == approval.PassFixedCount && data.PassCount <= 0 {
+		return fmt.Errorf("%w: got %d in node %q", errPassCountOutOfRange, data.PassCount, nodeID)
+	}
+
 	if data.SameApplicantAction != "" && !data.SameApplicantAction.IsValid() {
 		return fmt.Errorf("%w: %q in node %q", errInvalidSameApplicantAction, data.SameApplicantAction, nodeID)
 	}

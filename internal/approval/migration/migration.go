@@ -52,25 +52,49 @@ var obsoleteTables = []string{
 // database kind. Obsolete tables from earlier revisions are dropped
 // before the schema probe so upgrades stay clean.
 //
-// The migration is forward-only: each script is a set of CREATE TABLE IF NOT
-// EXISTS statements guarded by a presence probe (needsMigration), so it
-// provisions missing tables on a fresh or partially-migrated database but never
-// alters an existing table. In-place column changes — an added column, a
-// type/constraint change, or a dropped column — therefore take effect only on a
-// freshly created database; an existing deployment that must adopt them has to
-// be recreated. This is a hard requirement, not graceful degradation: once the
-// code writes or reads an added column, an un-recreated older database errors
-// on that column. The approval module is pre-1.0 and assumes recreation over
-// in-place schema evolution; table removals are the one exception, handled
-// explicitly through dropObsoleteTables.
+// The CREATE TABLE IF NOT EXISTS scripts provision missing tables. The
+// pass_count pre-migration adds that column to an existing node table without
+// discarding published flows; other historical schema changes still require
+// their own migration or a recreated schema.
 func Migrate(ctx context.Context, db orm.DB, kind config.DBKind) error {
 	return sqlmigration.Run(ctx, db, sqlmigration.Plan{
 		Label:          "approval",
 		Kind:           kind,
 		Scripts:        scripts,
 		ExpectedTables: expectedTables,
-		Pre:            []func(ctx context.Context, db orm.DB) error{dropObsoleteTables},
+		Pre: []func(ctx context.Context, db orm.DB) error{
+			dropObsoleteTables,
+			func(ctx context.Context, db orm.DB) error { return addPassCountColumn(ctx, db, kind) },
+		},
 	})
+}
+
+// addPassCountColumn upgrades an existing approval node table under the
+// migration lock. Fresh schemas receive the column from the CREATE script.
+func addPassCountColumn(ctx context.Context, db orm.DB, kind config.DBKind) error {
+	exists, err := sqlmigration.TableExists(ctx, db, kind, "apv_flow_node")
+	if err != nil {
+		return fmt.Errorf("check apv_flow_node: %w", err)
+	}
+
+	if !exists {
+		return nil
+	}
+
+	columns, err := sqlmigration.LoadTableColumns(ctx, db, kind, "apv_flow_node")
+	if err != nil {
+		return fmt.Errorf("load apv_flow_node columns: %w", err)
+	}
+
+	if _, ok := columns["pass_count"]; ok {
+		return nil
+	}
+
+	if _, err := db.NewRaw("ALTER TABLE apv_flow_node ADD COLUMN pass_count INTEGER NOT NULL DEFAULT 0").Exec(ctx); err != nil {
+		return fmt.Errorf("add apv_flow_node.pass_count: %w", err)
+	}
+
+	return nil
 }
 
 // dropObsoleteTables removes tables retired in past schema revisions.

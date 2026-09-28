@@ -164,6 +164,7 @@ type FlowNode struct {
 	ConsecutiveApproverAction ConsecutiveApproverAction `json:"consecutiveApproverAction" bun:"consecutive_approver_action"`
 	IsReadConfirmRequired     bool                      `json:"isReadConfirmRequired" bun:"is_read_confirm_required"`
 	Branches                  []ConditionBranch         `json:"branches" bun:"branches,type:jsonb,nullzero"`
+	PassCount                 int                       `json:"passCount" bun:"pass_count"`
 }
 
 // FlowEdge represents a directed edge between two flow nodes.

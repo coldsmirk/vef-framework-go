@@ -57,4 +57,5 @@ type TimelineEntry struct {
 	Activities     []Activity        `json:"activities,omitempty"`
 	StartedAt      timex.DateTime    `json:"startedAt"`
 	FinishedAt     *timex.DateTime   `json:"finishedAt,omitempty"`
+	PassCount      *int              `json:"passCount,omitempty"`
 }

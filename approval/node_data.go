@@ -181,6 +181,7 @@ type ApprovalNodeData struct {
 	AddAssigneeTypes          []AddAssigneeType         `json:"addAssigneeTypes,omitempty"`
 	IsRemoveAssigneeAllowed   *bool                     `json:"isRemoveAssigneeAllowed,omitempty"`
 	IsManualCCAllowed         *bool                     `json:"isManualCcAllowed,omitempty"`
+	PassCount                 int                       `json:"passCount,omitempty"`
 }
 
 // Kind returns the node kind.
@@ -197,6 +198,7 @@ func (d *ApprovalNodeData) ApplyTo(node *FlowNode) {
 	node.ApprovalMethod = cmp.Or(d.ApprovalMethod, DefaultApprovalMethod)
 	node.PassRule = cmp.Or(d.PassRule, DefaultPassRule)
 	node.PassRatio = d.PassRatio
+	node.PassCount = d.PassCount
 	node.SameApplicantAction = cmp.Or(d.SameApplicantAction, DefaultSameApplicantAction)
 	node.ConsecutiveApproverAction = cmp.Or(d.ConsecutiveApproverAction, DefaultConsecutiveApproverAction)
 	node.RollbackType = cmp.Or(d.RollbackType, DefaultRollbackType)

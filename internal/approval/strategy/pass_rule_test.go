@@ -126,3 +126,29 @@ func TestRatioPassStrategy(t *testing.T) {
 		})
 	}
 }
+
+func TestFixedCountPassStrategy(t *testing.T) {
+	s := NewFixedCountPassStrategy()
+	assert.Equal(t, approval.PassFixedCount, s.Rule(), "Rule should be PassFixedCount")
+
+	tests := []struct {
+		name     string
+		ctx      approval.PassRuleContext
+		expected approval.PassRuleResult
+	}{
+		{"ThreeOfFivePass", approval.PassRuleContext{ApprovedCount: 3, TotalCount: 5, PassCount: 3}, approval.PassRulePassed},
+		{"TwoOfFivePending", approval.PassRuleContext{ApprovedCount: 2, TotalCount: 5, PassCount: 3}, approval.PassRulePending},
+		{"TwoOfFiveWithTwoRejectionsPending", approval.PassRuleContext{ApprovedCount: 2, RejectedCount: 2, TotalCount: 5, PassCount: 3}, approval.PassRulePending},
+		{"TwoOfFiveWithThreeRejectionsFails", approval.PassRuleContext{ApprovedCount: 2, RejectedCount: 3, TotalCount: 5, PassCount: 3}, approval.PassRuleRejected},
+		{"TwoOfTwoPassWhenThresholdIsThree", approval.PassRuleContext{ApprovedCount: 2, TotalCount: 2, PassCount: 3}, approval.PassRulePassed},
+		{"OneOfTwoPendingWhenThresholdIsThree", approval.PassRuleContext{ApprovedCount: 1, TotalCount: 2, PassCount: 3}, approval.PassRulePending},
+		{"OneRejectionFailsWhenThresholdExceedsTotal", approval.PassRuleContext{ApprovedCount: 1, RejectedCount: 1, TotalCount: 2, PassCount: 3}, approval.PassRuleRejected},
+		{"EmptyTasksPending", approval.PassRuleContext{PassCount: 3}, approval.PassRulePending},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, s.Evaluate(tt.ctx), "Fixed-count rule should resolve the vote")
+		})
+	}
+}
