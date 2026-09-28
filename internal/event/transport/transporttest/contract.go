@@ -193,17 +193,14 @@ func testConcurrentPublish(t *testing.T, factory Factory) {
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
-	wg.Add(total)
 
 	for range total {
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			payload := id.GenerateUUID()
 			body, _ := json.Marshal(struct{ ID string }{ID: payload})
 			frame := transport.Frame{ID: payload, Type: "contract.concurrent", Body: body}
 			_ = tp.Publish(ctx, []transport.Frame{frame})
-		}()
+		})
 	}
 
 	wg.Wait()

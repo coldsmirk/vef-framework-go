@@ -138,14 +138,11 @@ func TestOutboxRelayConcurrentPublish(t *testing.T) {
 	require.NoError(t, err, "Concurrent sink subscription should register")
 
 	var wg sync.WaitGroup
-	wg.Add(total)
 
 	var publishErrors atomic.Int32
 
 	for range total {
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			payload := id.GenerateUUID()
 			body, _ := json.Marshal(struct{ ID string }{ID: payload})
 			frame := transport.Frame{ID: payload, Type: "contract.outbox.concurrent", Body: body}
@@ -153,7 +150,7 @@ func TestOutboxRelayConcurrentPublish(t *testing.T) {
 			if err := tp.Publish(ctx, []transport.Frame{frame}); err != nil {
 				publishErrors.Add(1)
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

@@ -100,17 +100,13 @@ func TestAsyncFanInConcurrentEnqueueAndShutdown(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	wg.Add(8)
-
 	for range 8 {
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			deadline := time.Now().Add(200 * time.Millisecond)
 			for time.Now().Before(deadline) {
 				_ = a.Enqueue(asyncJob{ctx: context.Background(), evt: &AsyncTestEvent{}})
 			}
-		}()
+		})
 	}
 
 	// Give producers a head start, then shutdown concurrently.
