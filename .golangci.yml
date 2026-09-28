@@ -66,6 +66,10 @@ linters:
           disabled: true
         - name: multiline-if-init
           disabled: true
+        - name: use-slices-concat
+          disabled: true
+        - name: optimize-operands-order
+          disabled: true
         - name: struct-tag
           arguments:
             [
