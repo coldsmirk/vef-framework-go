@@ -41,12 +41,16 @@ func TestMigrationScripts(t *testing.T) {
 	})
 }
 
-func TestPassCountUpgrade(t *testing.T) {
+// TestAddedColumns emulates a schema an earlier release created — every
+// addedColumn missing from a table that already holds rows — and asserts that
+// Verify refuses it with the forward remedy, Migrate restores the columns
+// without disturbing the rows, and a repeated Migrate is a no-op.
+func TestAddedColumns(t *testing.T) {
 	testx.ForEachDB(t, func(t *testing.T, env *testx.DBEnv) {
 		require.NoError(t, Migrate(env.Ctx, env.DB, env.DS.Kind), "Schema should provision")
+		require.NoError(t, Verify(env.Ctx, env.DB, env.DS.Kind), "A fresh schema should declare every added column")
 
 		keyColumn := "key"
-
 		if env.DS.Kind == config.MySQL {
 			keyColumn = "`key`"
 		}
@@ -61,20 +65,23 @@ func TestPassCountUpgrade(t *testing.T) {
 			require.NoError(t, err, "Fixture row should insert")
 		}
 
-		_, err := env.DB.NewRaw("ALTER TABLE apv_flow_node DROP COLUMN pass_count").Exec(env.Ctx)
-		require.NoError(t, err, "Fixture should emulate an older node table")
-		assert.ErrorIs(t, Verify(env.Ctx, env.DB, env.DS.Kind), ErrSchemaOutdated,
-			"Old schema should fail verification before migration")
+		for _, column := range addedColumns {
+			_, err := env.DB.NewRaw(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", column.Table, column.Name)).Exec(env.Ctx)
+			require.NoError(t, err, "Dropping %s.%s should emulate an older schema", column.Table, column.Name)
+		}
 
-		require.NoError(t, Migrate(env.Ctx, env.DB, env.DS.Kind), "Migration should add the column")
+		err := Verify(env.Ctx, env.DB, env.DS.Kind)
+		require.ErrorIs(t, err, ErrSchemaOutdated, "An older schema should fail verification")
+		assert.ErrorContains(t, err, "auto_migrate", "The error should name the forward remedy, not a recreate")
+
+		require.NoError(t, Migrate(env.Ctx, env.DB, env.DS.Kind), "Migration should add the missing columns")
 		require.NoError(t, Migrate(env.Ctx, env.DB, env.DS.Kind), "Migration should be idempotent")
-		require.NoError(t, Verify(env.Ctx, env.DB, env.DS.Kind), "Upgraded schema should verify")
+		require.NoError(t, Verify(env.Ctx, env.DB, env.DS.Kind), "The upgraded schema should verify")
 
 		node := approval.FlowNode{ID: "node-1"}
-		require.NoError(t, env.DB.NewSelect().Model(&node).WherePK().Scan(env.Ctx),
-			"Existing node should survive the upgrade")
+		require.NoError(t, env.DB.NewSelect().Model(&node).WherePK().Scan(env.Ctx), "The existing node should survive the upgrade")
 		assert.Equal(t, "Review", node.Name, "Existing node data should be unchanged")
-		assert.Zero(t, node.PassCount, "Old rules should receive an inactive default count")
+		assert.Zero(t, node.PassCount, "Existing rows should take the column default")
 	})
 }
 

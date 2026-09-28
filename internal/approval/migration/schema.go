@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/sqlmigration"
@@ -12,9 +13,10 @@ import (
 )
 
 // ErrSchemaOutdated means the approval tables lack a structure the module's
-// correctness depends on. The current migration cannot repair the defect, or
-// automatic migration is disabled. Some defects can silently corrupt data, so
-// verification fails at start-up.
+// correctness depends on — one the migration did not supply, either because it
+// is disabled or because the defect cannot be repaired in place. It is fatal at
+// start-up by design: running on top of such a schema fails, or corrupts data,
+// at the first write that relies on the missing structure instead of at boot.
 var ErrSchemaOutdated = errors.New("approval schema is outdated")
 
 // primaryKeyColumns is the primary key every approval table must declare.
@@ -81,24 +83,38 @@ func Verify(ctx context.Context, db orm.DB, kind config.DBKind) error {
 		}
 	}
 
-	if err := verifyPassCountColumn(ctx, db, kind); err != nil {
+	if err := verifyAddedColumns(ctx, db, kind); err != nil {
 		return err
 	}
 
 	return verifyKindColumns(ctx, db, kind)
 }
 
-func verifyPassCountColumn(ctx context.Context, db orm.DB, kind config.DBKind) error {
-	columns, err := sqlmigration.LoadTableColumns(ctx, db, kind, "apv_flow_node")
+// verifyAddedColumns asserts every addedColumns entry is present. Unlike the
+// primary-key check the remedy is forward — the migration adds a missing column
+// in place — so the message names both ways to apply it.
+func verifyAddedColumns(ctx context.Context, db orm.DB, kind config.DBKind) error {
+	missing, err := sqlmigration.MissingColumns(ctx, db, kind, addedColumns)
 	if err != nil {
-		return fmt.Errorf("load apv_flow_node columns: %w", err)
+		return err
 	}
 
-	if _, ok := columns["pass_count"]; !ok {
-		return fmt.Errorf("%w: apv_flow_node.pass_count is missing; enable approval auto_migrate or add the column", ErrSchemaOutdated)
+	if len(missing) == 0 {
+		return nil
 	}
 
-	return nil
+	names := make([]string, 0, len(missing))
+	statements := make([]string, 0, len(missing))
+
+	for _, column := range missing {
+		names = append(names, column.Table+"."+column.Name)
+		statements = append(statements, column.Statements(kind)...)
+	}
+
+	return fmt.Errorf(
+		"%w: missing %s; enable vef.approval.auto_migrate, or run: %s",
+		ErrSchemaOutdated, strings.Join(names, ", "), strings.Join(statements, "; "),
+	)
 }
 
 // verifyKindColumns asserts the open-vocabulary kind columns are wide enough

@@ -33,12 +33,16 @@ type Plan struct {
 	// needs-migration probe (e.g. dropping obsolete tables left over
 	// from earlier schema revisions). Each hook should be idempotent.
 	Pre []func(ctx context.Context, db orm.DB) error
+	// AddedColumns lists columns introduced after their table first shipped.
+	// After the Pre hooks, Run adds each one an existing table lacks; a table
+	// the migration is about to create gets them from its script.
+	AddedColumns []AddedColumn
 }
 
 // Run executes the supplied Plan under the module's migration lock, so
 // concurrently booting nodes provision a schema exactly once instead of
-// racing the probe. It is a no-op when every expected table is already
-// present and Pre hooks have completed without error.
+// racing the probe. It is a no-op when every expected table and added column
+// is already present and Pre hooks have completed without error.
 func Run(ctx context.Context, db orm.DB, plan Plan) error {
 	return WithLock(ctx, db, plan.Kind, plan.Label, func(ctx context.Context, db orm.DB) error {
 		return runLocked(ctx, db, plan)
@@ -50,6 +54,10 @@ func runLocked(ctx context.Context, db orm.DB, plan Plan) error {
 		if err := hook(ctx, db); err != nil {
 			return fmt.Errorf("%s pre-migration: %w", plan.Label, err)
 		}
+	}
+
+	if err := addMissingColumns(ctx, db, plan); err != nil {
+		return fmt.Errorf("%s: %w", plan.Label, err)
 	}
 
 	needed, err := needsMigration(ctx, db, plan)
