@@ -36,6 +36,14 @@ type IntegrationLogConfig struct {
 	// runs hourly. Zero (the default) keeps rows forever — deletion of the
 	// integration evidence trail is strictly opt-in.
 	Retention time.Duration `config:"retention"`
+	// Replay keeps, beside each recorded entry, the lossless material needed
+	// to re-run it — the unmasked contract input, or the inbound request with
+	// its credentials stripped — sealed with SecretKey. Off by default: the
+	// material is unmasked business data.
+	Replay bool `config:"replay"`
+	// ReplayLimit caps each replay payload in bytes; an invocation whose
+	// payload is larger is recorded without one. Default: 1 MiB.
+	ReplayLimit int `config:"replay_limit"`
 }
 
 // EffectiveMode returns Mode or the errors-only default.
@@ -50,6 +58,11 @@ func (c *IntegrationLogConfig) EffectiveMode() IntegrationLogMode {
 // EffectiveCaptureLimit returns CaptureLimit or its default.
 func (c *IntegrationLogConfig) EffectiveCaptureLimit() int {
 	return coalescePositive(c.CaptureLimit, 4096)
+}
+
+// EffectiveReplayLimit returns ReplayLimit or its default.
+func (c *IntegrationLogConfig) EffectiveReplayLimit() int {
+	return coalescePositive(c.ReplayLimit, 1<<20)
 }
 
 // IntegrationSecretAlgorithm selects the symmetric cipher that seals

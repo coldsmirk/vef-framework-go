@@ -5,9 +5,11 @@ import (
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/id"
 	"github.com/coldsmirk/vef-framework-go/integration"
 	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 var logger = logx.Named("integration")
@@ -42,16 +44,29 @@ func (r *logRecorder) ShouldRecord(kind integration.FailureKind) bool {
 	}
 }
 
-// Record persists one invocation entry when the mode selects it. The insert
-// uses a cancellation-free (but deadline-bounded) context so a timed-out
-// invocation still gets its log row.
-func (r *logRecorder) Record(ctx context.Context, entry *integration.InvocationLog) {
+// Record persists one invocation entry, with its sealed replay payload when
+// one is given, if the mode selects it. The inserts use a cancellation-free
+// (but deadline-bounded) context so a timed-out invocation still gets its log
+// row. The payload is written first, so the entry claims to be replayable only
+// once its payload is stored.
+func (r *logRecorder) Record(ctx context.Context, entry *integration.InvocationLog, replay string) {
 	if !r.ShouldRecord(entry.FailureKind) {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), logInsertTimeout)
 	defer cancel()
+
+	if replay != "" {
+		entry.ID = id.Generate()
+
+		row := &InvocationReplay{ID: entry.ID, Payload: replay, CreatedAt: timex.Now()}
+		if _, err := r.db.NewInsert().Model(row).Exec(ctx); err != nil {
+			logger.Errorf("Failed to record integration replay payload: %v", err)
+		} else {
+			entry.Replayable = true
+		}
+	}
 
 	if _, err := r.db.NewInsert().Model(entry).Exec(ctx); err != nil {
 		logger.Errorf("Failed to record integration invocation log: %v", err)

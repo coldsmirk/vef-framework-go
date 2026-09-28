@@ -26,6 +26,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/integration/exec"
 	"github.com/coldsmirk/vef-framework-go/internal/integration/worker"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
+	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 // PatientInfo is the standard model used by the typed-call assertions.
@@ -55,6 +57,7 @@ type ModuleTestSuite struct {
 	invoker    integration.Invoker
 	concrete   *exec.Invoker
 	receiver   *exec.Receiver
+	replayer   *exec.Replayer
 	codec      *definition.SecretCodec
 	registry   *auth.OutboundRegistry
 	inboundReg *auth.InboundRegistry
@@ -143,7 +146,7 @@ func (s *ModuleTestSuite) SetupSuite() {
 		fx.Replace(&config.IntegrationConfig{
 			AutoMigrate: true,
 			SecretKey:   base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32)),
-			Log:         config.IntegrationLogConfig{Mode: config.IntegrationLogAll},
+			Log:         config.IntegrationLogConfig{Mode: config.IntegrationLogAll, Replay: true},
 			Inbound: config.IntegrationInboundConfig{
 				RateLimit: config.IntegrationInboundRateLimitConfig{Max: 3, Period: time.Minute},
 			},
@@ -160,8 +163,12 @@ func (s *ModuleTestSuite) SetupSuite() {
 			func() integration.InboundHandler { return labHandler("codes.result_received") },
 			fx.ResultTags(`group:"vef:integration:inbound_handlers"`),
 		)),
+		fx.Provide(fx.Annotate(
+			func() integration.InboundHandler { return labHandler("replay.result_received") },
+			fx.ResultTags(`group:"vef:integration:inbound_handlers"`),
+		)),
 		Module,
-		fx.Populate(&s.db, &s.invoker, &s.concrete, &s.receiver, &s.codec, &s.registry, &s.inboundReg),
+		fx.Populate(&s.db, &s.invoker, &s.concrete, &s.receiver, &s.replayer, &s.codec, &s.registry, &s.inboundReg),
 	)
 }
 
@@ -1528,6 +1535,9 @@ func (s *ModuleTestSuite) TestLogRetention() {
 	old := insertLog(48 * time.Hour)
 	fresh := insertLog(0)
 
+	_, err := s.db.NewInsert().Model(&exec.InvocationReplay{ID: old.ID, Payload: "{}", CreatedAt: timex.Now().Add(-48 * time.Hour)}).Exec(s.T().Context())
+	s.Require().NoError(err, "Replay payload seed should insert")
+
 	pruner := worker.NewLogPruner(s.db, &config.IntegrationConfig{
 		Log: config.IntegrationLogConfig{Retention: 24 * time.Hour},
 	})
@@ -1537,4 +1547,188 @@ func (s *ModuleTestSuite) TestLogRetention() {
 	s.Require().Len(remaining, 1, "Only the fresh row should survive the sweep")
 	s.Equal(fresh.ID, remaining[0].ID, "The fresh row should survive")
 	s.NotEqual(old.ID, remaining[0].ID, "The aged row should be pruned")
+
+	exists, err := s.db.NewSelect().Model((*exec.InvocationReplay)(nil)).Where(func(cb orm.ConditionBuilder) {
+		cb.Equals("id", old.ID)
+	}).Exists(s.T().Context())
+	s.Require().NoError(err, "Replay payload lookup should succeed")
+	s.False(exists, "The aged row's replay payload should be pruned with it")
+}
+
+// TestReplay re-runs recorded invocations from their replay payloads: the
+// lossless input reaches the upstream while every capture stays masked, the
+// dry-run path records nothing, and an inbound replay answers each dispatch
+// with the original handler result instead of running business code again.
+func (s *ModuleTestSuite) TestReplay() {
+	ctx := s.T().Context()
+
+	contract := s.createContract("replay.op", patientInputSchema, patientOutputSchema)
+	system := s.createSystem("replay-sys", nil)
+	adapter := s.createAdapter(system, contract, `
+const resp = http.post('/patients/query', { zjhm: input.idCardNo, pwd: input.password })
+const d = resp.json()
+return { name: d.brxm, gender: 'male' }
+`)
+
+	_, err := s.invoker.Invoke(ctx, "replay.op", map[string]any{"idCardNo": "110", "password": "s3cret"}, integration.WithSystem("replay-sys"))
+	s.Require().NoError(err, "The original invocation should succeed")
+
+	logs := s.findLogs("replay.op")
+	s.Require().Len(logs, 1, "The invocation should be recorded")
+	entry := logs[0]
+
+	s.Run("PayloadIsKeptSealed", func() {
+		s.True(entry.Replayable, "A recorded invocation should keep its replay payload")
+		s.Contains(string(entry.Input), integration.MaskedSecret, "The log capture should still mask the sensitive field")
+
+		stored := &exec.InvocationReplay{ID: entry.ID}
+		s.Require().NoError(s.db.NewSelect().Model(stored).WherePK().Scan(ctx), "The replay payload should be stored")
+		s.True(strings.HasPrefix(stored.Payload, "enc:"), "The payload should be sealed with the secret key")
+		s.NotContains(stored.Payload, "s3cret", "The sealed payload should not expose the input")
+	})
+
+	s.Run("OutboundReplaysLosslessInput", func() {
+		s.seenBody = nil
+
+		replay, err := s.replayer.Replay(ctx, entry.ID, "")
+		s.Require().NoError(err, "The replay should run")
+
+		s.Empty(replay.FailureKind, "The replay should succeed")
+		s.Contains(string(s.seenBody), "s3cret", "The upstream should receive the unmasked input")
+		s.Contains(string(replay.Input), integration.MaskedSecret, "The replay result should mask what the log masks")
+		s.NotContains(string(replay.Input), "s3cret", "The replay result should never disclose the masked value")
+		s.JSONEq(string(entry.Output), string(replay.Output), "An unchanged adapter should reproduce the output")
+		s.Require().Len(replay.HTTPTrace, 1, "The replay should carry its wire trace")
+		s.False(replay.DefinitionChanged, "Untouched definitions should not be reported as changed")
+		s.Len(s.findLogs("replay.op"), 1, "A replay should not be recorded to the invocation log")
+	})
+
+	s.Run("ScriptOverrideRunsInsteadOfTheSavedAdapter", func() {
+		replay, err := s.replayer.Replay(ctx, entry.ID, `return { name: input.idCardNo, gender: 'female' }`)
+		s.Require().NoError(err, "The replay should run")
+
+		s.JSONEq(`{"name":"110","gender":"female"}`, string(replay.Output), "The unsaved script should produce the output")
+		s.Empty(replay.HTTPTrace, "The override made no wire call")
+	})
+
+	s.Run("EditedDefinitionIsReported", func() {
+		_, err := s.db.NewUpdate().Model(adapter).
+			Set("updated_at", time.Now().Add(time.Hour)).
+			WherePK().
+			Exec(ctx)
+		s.Require().NoError(err, "The adapter edit should persist")
+
+		replay, err := s.replayer.Replay(ctx, entry.ID, "")
+		s.Require().NoError(err, "The replay should run")
+		s.True(replay.DefinitionChanged, "An adapter edited after the invocation should be reported")
+	})
+
+	s.Run("EntryWithoutPayloadIsRefused", func() {
+		bare := &integration.InvocationLog{SystemCode: "replay-sys", ContractCode: "replay.op"}
+		_, err := s.db.NewInsert().Model(bare).Exec(ctx)
+		s.Require().NoError(err, "Log seed should insert")
+
+		_, err = s.replayer.Replay(ctx, bare.ID, "")
+		s.ErrorIs(err, integration.ErrReplayUnavailable, "An entry recorded without a payload cannot be replayed")
+	})
+
+	s.Run("UnknownEntryIsNotFound", func() {
+		_, err := s.replayer.Replay(ctx, "missing", "")
+		s.ErrorIs(err, result.ErrRecordNotFound, "An unknown entry should be reported as not found")
+	})
+}
+
+// TestInboundReplay re-runs recorded inbound deliveries: the stored request
+// carries no credential, the translation script runs again against it, and the
+// business handler's original results — failures included — answer the
+// dispatches.
+func (s *ModuleTestSuite) TestInboundReplay() {
+	ctx := s.T().Context()
+
+	contract := s.createContract("replay.result_received", labInputSchema, labOutputSchema)
+	system := s.createInboundSystem("lis-replay", &integration.InboundAuthConfig{
+		Scheme: auth.InboundSchemeHeader,
+		Params: map[string]string{"x-api-key": "replay-key-1"},
+	})
+	s.createDirectedAdapter(system, contract, integration.DirectionInbound, labInboundScript)
+
+	deliver := func(rid string) integration.InvocationLog {
+		request := inboundRequest("lis-replay", "replay.result_received", `{"rid":"`+rid+`"}`,
+			map[string]string{"x-api-key": "replay-key-1", "authorization": "Bearer caller-token"})
+		request.Query = map[string]string{"batch": "7"}
+
+		_, _ = s.receiver.Receive(ctx, request)
+
+		logs := s.findLogs("replay.result_received")
+		s.Require().NotEmpty(logs, "The delivery should be recorded")
+
+		for _, entry := range logs {
+			if strings.Contains(string(entry.Input), rid) {
+				return entry
+			}
+		}
+
+		s.FailNow("The delivery of " + rid + " should be recorded")
+
+		return integration.InvocationLog{}
+	}
+
+	s.Run("TraceShowsQueryAndCaller", func() {
+		entry := deliver("R-TRACE")
+
+		s.Require().Len(entry.HTTPTrace, 1, "An inbound delivery should record one exchange")
+		s.Contains(entry.HTTPTrace[0].URL, "batch=7", "The trace should keep the query string")
+		s.Equal("203.0.113.7", entry.HTTPTrace[0].ClientAddr, "The trace should name the caller address")
+	})
+
+	s.Run("StoredRequestCarriesNoCredential", func() {
+		entry := deliver("R-SEALED")
+
+		stored := &exec.InvocationReplay{ID: entry.ID}
+		s.Require().NoError(s.db.NewSelect().Model(stored).WherePK().Scan(ctx), "The replay payload should be stored")
+
+		plain, err := s.codec.DecryptValue(stored.Payload)
+		s.Require().NoError(err, "The payload should open with the secret key")
+		s.NotContains(plain, "replay-key-1", "The verified credential should be scrubbed")
+		s.NotContains(plain, "caller-token", "Credential headers should be dropped")
+	})
+
+	s.Run("ReplayUsesRecordedHandlerResults", func() {
+		entry := deliver("R-OK")
+		s.seenReport = ""
+
+		replay, err := s.replayer.Replay(ctx, entry.ID, "")
+		s.Require().NoError(err, "The replay should run")
+
+		s.Empty(replay.FailureKind, "The replay should succeed")
+		s.Empty(s.seenReport, "The business handler must not run again")
+		s.JSONEq(string(entry.Input), string(replay.Input), "The script should dispatch the same standard input")
+		s.JSONEq(string(entry.Output), string(replay.Output), "The dispatch should be answered with the recorded result")
+		s.Require().Len(replay.HTTPTrace, 1, "The replay should render the delivery as one exchange")
+		s.Contains(replay.HTTPTrace[0].ResponseBody, `"received":true`, "The reply should be shaped from the recorded result")
+	})
+
+	s.Run("ReplayReproducesHandlerFailure", func() {
+		entry := deliver("boom")
+		s.Require().Equal(integration.FailureHandler, entry.FailureKind, "The original delivery should fail in the handler")
+
+		replay, err := s.replayer.Replay(ctx, entry.ID, "")
+		s.Require().NoError(err, "The replay should run")
+
+		s.Equal(integration.FailureHandler, replay.FailureKind, "The recorded handler failure should be reproduced")
+		s.Contains(replay.Error, "laboratory rejected the report", "The recorded failure message should surface")
+	})
+
+	s.Run("EditedScriptDispatchingMoreThanRecordedFails", func() {
+		entry := deliver("R-EXTRA")
+
+		replay, err := s.replayer.Replay(ctx, entry.ID, `
+const doc = JSON.parse(request.body)
+dispatch({ reportId: doc.rid })
+dispatch({ reportId: doc.rid })
+return {}
+`)
+		s.Require().NoError(err, "The replay should run")
+		s.Contains(replay.Error, exec.ErrReplayDispatchUnrecorded.Error(), "A dispatch the delivery never made has no recorded result")
+	})
 }

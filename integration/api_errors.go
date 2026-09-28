@@ -42,6 +42,7 @@ const (
 	ErrCodeUnmappedValue         = 2628
 	ErrCodeInvalidCodeMap        = 2629
 	ErrCodeCodeSetCatalogFailed  = 2630
+	ErrCodeReplayUnavailable     = 2631
 )
 
 // Predefined integration API errors. These are business errors and keep the
@@ -254,6 +255,14 @@ func ErrCodeSetCatalogFailed(detail string) result.Error {
 		result.WithCode(ErrCodeCodeSetCatalogFailed),
 	)
 }
+
+// ErrReplayUnavailable reports an invocation log entry that cannot be re-run:
+// no replay payload was kept for it, or the kept payload can no longer be
+// opened under the configured secret key.
+var ErrReplayUnavailable = result.Err(
+	i18n.T("integration_replay_unavailable"),
+	result.WithCode(ErrCodeReplayUnavailable),
+)
 
 // ErrInboundAuthFailed denies an inbound delivery that failed verification.
 // It is deliberately uniform — missing configuration, missing credentials,

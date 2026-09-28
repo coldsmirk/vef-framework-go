@@ -275,6 +275,9 @@ type InvocationLog struct {
 	HTTPTrace   []HTTPExchange  `json:"httpTrace" bun:"http_trace,type:jsonb,nullzero"`
 	Error       *string         `json:"error" bun:"error,nullzero"`
 	RequestID   string          `json:"requestId" bun:"request_id"`
+	// Replayable reports whether a replay payload was kept for the entry
+	// (vef.integration.log.replay), so it can be re-run.
+	Replayable bool `json:"replayable" bun:"replayable"`
 }
 
 // HTTPExchange is one wire exchange captured while an adapter script ran,
@@ -290,4 +293,7 @@ type HTTPExchange struct {
 	ResponseBody    string            `json:"responseBody,omitempty"`
 	DurationMs      int64             `json:"durationMs"`
 	Error           string            `json:"error,omitempty"`
+	// ClientAddr is the caller's network address; only inbound deliveries
+	// carry one.
+	ClientAddr string `json:"clientAddr,omitempty"`
 }

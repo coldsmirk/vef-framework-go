@@ -38,6 +38,7 @@ type Invoker struct {
 	stats     *statsRecorder
 	recorder  *logRecorder
 	capturer  *capturer
+	codec     *definition.SecretCodec
 }
 
 // NewInvoker assembles the invoker and its caches.
@@ -65,6 +66,7 @@ func NewInvoker(
 		stats:     newStatsRecorder(),
 		recorder:  newLogRecorder(db, cfg),
 		capturer:  newCapturer(&cfg.Log),
+		codec:     codec,
 	}
 }
 
@@ -141,6 +143,7 @@ func (inv *Invoker) Invoke(ctx context.Context, contract string, input any, opts
 		input:     inputValue,
 		output:    output,
 		trace:     trace,
+		replay:    &ReplayPayload{Input: inputValue},
 	})
 
 	if execErr != nil {
@@ -409,11 +412,14 @@ type outcome struct {
 	input     any
 	output    any
 	trace     []integration.HTTPExchange
+	// replay is the material kept to re-run the invocation, stored when
+	// vef.integration.log.replay is on.
+	replay *ReplayPayload
 }
 
 // finish folds one invocation outcome into statistics and the invocation
-// log. The masked captures are only assembled when the log mode will keep
-// them.
+// log. The masked captures and the sealed replay payload are only assembled
+// when the log mode will keep them.
 func (inv *Invoker) finish(ctx context.Context, o *outcome) {
 	message := ""
 	if o.err != nil {
@@ -442,7 +448,7 @@ func (inv *Invoker) finish(ctx context.Context, o *outcome) {
 		entry.Error = &message
 	}
 
-	inv.recorder.Record(ctx, entry)
+	inv.recorder.Record(ctx, entry, inv.sealReplay(o))
 }
 
 // exportOutput converts the script return value into its canonical

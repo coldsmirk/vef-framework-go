@@ -35,6 +35,7 @@ var Module = fx.Module(
 			exec.NewReceiver,
 			fx.ParamTags(``, ``, ``, `group:"vef:integration:inbound_handlers"`),
 		),
+		exec.NewReplayer,
 		fx.Annotate(
 			gateway.NewHTTPGateway,
 			fx.ResultTags(`group:"vef:app:middlewares"`),

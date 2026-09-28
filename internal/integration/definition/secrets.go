@@ -35,6 +35,10 @@ func NewSecretCodec(cfg *config.IntegrationConfig) (*SecretCodec, error) {
 	if cfg.SecretKey == "" {
 		logger.Warn("vef.integration.secret_key is not configured; sensitive auth parameters are stored in plaintext")
 
+		if cfg.Log.Replay {
+			logger.Warn("vef.integration.secret_key is not configured; invocation replay payloads are stored in plaintext")
+		}
+
 		return new(SecretCodec), nil
 	}
 
@@ -209,7 +213,7 @@ func (c *SecretCodec) encryptParams(scheme secretScheme, params, prior map[strin
 			continue
 		}
 
-		encrypted, err := c.encryptValue(value)
+		encrypted, err := c.EncryptValue(value)
 		if err != nil {
 			return fmt.Errorf("integration: encrypt auth parameter %s: %w", name, err)
 		}
@@ -235,7 +239,7 @@ func (c *SecretCodec) decryptParams(scheme secretScheme, params map[string]strin
 			continue
 		}
 
-		plain, err := c.decryptValue(value)
+		plain, err := c.DecryptValue(value)
 		if err != nil {
 			return nil, fmt.Errorf("integration: decrypt auth parameter %s: %w", name, err)
 		}
@@ -279,7 +283,7 @@ func (c *SecretCodec) EncryptDataSource(ds, prior *integration.DataSourceConfig)
 		return nil
 	}
 
-	encrypted, err := c.encryptValue(ds.Password)
+	encrypted, err := c.EncryptValue(ds.Password)
 	if err != nil {
 		return fmt.Errorf("integration: encrypt data source password: %w", err)
 	}
@@ -294,7 +298,7 @@ func (c *SecretCodec) EncryptDataSource(ds, prior *integration.DataSourceConfig)
 func (c *SecretCodec) DecryptDataSource(ds *integration.DataSourceConfig) (integration.DataSourceConfig, error) {
 	decrypted := *ds
 
-	password, err := c.decryptValue(ds.Password)
+	password, err := c.DecryptValue(ds.Password)
 	if err != nil {
 		return integration.DataSourceConfig{}, fmt.Errorf("integration: decrypt data source password: %w", err)
 	}
@@ -319,9 +323,10 @@ func MaskDataSource(ds *integration.DataSourceConfig) *integration.DataSourceCon
 	return &masked
 }
 
-// encryptValue seals one plaintext value; already-encrypted values pass
-// through so re-saving a record never double-encrypts.
-func (c *SecretCodec) encryptValue(value string) (string, error) {
+// EncryptValue seals one plaintext value — without a configured key it passes
+// through as plaintext; already-encrypted values pass through so re-saving a
+// record never double-encrypts.
+func (c *SecretCodec) EncryptValue(value string) (string, error) {
 	if c.cipher == nil || strings.HasPrefix(value, encryptedPrefix) {
 		return value, nil
 	}
@@ -334,11 +339,11 @@ func (c *SecretCodec) encryptValue(value string) (string, error) {
 	return encryptedPrefix + ciphertext, nil
 }
 
-// decryptValue opens one stored value; values without the encryption marker
+// DecryptValue opens one stored value; values without the encryption marker
 // (plaintext from key-less deployments) pass through. Both ciphers seal in
 // GCM mode, so a value stored under a different algorithm or key fails
 // authentication instead of decrypting to garbage.
-func (c *SecretCodec) decryptValue(value string) (string, error) {
+func (c *SecretCodec) DecryptValue(value string) (string, error) {
 	payload, ok := strings.CutPrefix(value, encryptedPrefix)
 	if !ok {
 		return value, nil

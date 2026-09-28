@@ -123,7 +123,16 @@ CREATE TABLE IF NOT EXISTS itg_invocation_log (
     http_trace JSON COMMENT 'HTTP Trace',
     error TEXT COMMENT 'Error',
     request_id VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Request ID',
+    replayable BOOLEAN NOT NULL DEFAULT false COMMENT 'Replayable',
     CONSTRAINT pk_itg_invocation_log PRIMARY KEY (id),
     INDEX idx_itg_invocation_log__created_at (created_at),
     INDEX idx_itg_invocation_log__system_code_contract_code (system_code, contract_code)
 ) COMMENT 'Integration Invocation Log';
+
+CREATE TABLE IF NOT EXISTS itg_invocation_replay (
+    id VARCHAR(32) NOT NULL COMMENT 'Invocation Log ID',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created',
+    payload MEDIUMTEXT NOT NULL COMMENT 'Sealed Replay Payload',
+    CONSTRAINT pk_itg_invocation_replay PRIMARY KEY (id),
+    INDEX idx_itg_invocation_replay__created_at (created_at)
+) COMMENT 'Integration Invocation Replay Payload';

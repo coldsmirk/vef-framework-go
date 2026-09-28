@@ -18,6 +18,11 @@ var (
 	// ErrEnvelopeRequestNotObject rejects a request envelope script that did
 	// not return the request object.
 	ErrEnvelopeRequestNotObject = errors.New("integration: request envelope script must return the request object")
+
+	// ErrReplayDispatchUnrecorded fails a replayed dispatch the original
+	// delivery never reached the business handler with — a script edited to
+	// dispatch more often than the delivery it replays.
+	ErrReplayDispatchUnrecorded = errors.New("integration: the replayed delivery recorded no handler result for this dispatch")
 )
 
 // upstreamError marks a failure the adapter script attributed to the

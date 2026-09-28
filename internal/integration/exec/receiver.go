@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/integration"
@@ -113,11 +114,19 @@ func (r *Receiver) Receive(ctx context.Context, req *integration.InboundRequest)
 	reply, kind, deliverErr := r.run(ctx, delivery, adapter)
 	duration := time.Since(start)
 
-	// The trace exists only for the invocation log; skip its capture work
-	// when the log mode will drop the entry anyway.
-	var trace []integration.HTTPExchange
+	// The trace and the replay payload exist only for the invocation log;
+	// skip their capture work when the log mode will drop the entry anyway.
+	var (
+		trace  []integration.HTTPExchange
+		replay *ReplayPayload
+	)
+
 	if inv.recorder.ShouldRecord(kind) {
 		trace = r.trace(req, reply, redact)
+
+		if inv.cfg.Log.Replay {
+			replay = &ReplayPayload{Request: replayRequest(req, redact), Dispatches: delivery.results}
+		}
 	}
 
 	inv.finish(ctx, &outcome{
@@ -130,6 +139,7 @@ func (r *Receiver) Receive(ctx context.Context, req *integration.InboundRequest)
 		input:     delivery.dispatchedInput(),
 		output:    delivery.dispatchedOutput(),
 		trace:     trace,
+		replay:    replay,
 	})
 
 	if deliverErr != nil {
@@ -181,10 +191,10 @@ func (r *Receiver) recordRejection(req *integration.InboundRequest, err error) {
 }
 
 // delivery is the per-request state of one inbound run: the resolved
-// definitions plus what the script dispatched, for classification and the
-// invocation log. Batch payloads may dispatch more than once; every dispatch
-// is recorded, and the last dispatch failure stays sticky even when the
-// script catches it to shape a partial-success reply.
+// definitions plus what the script dispatched, for classification, the
+// invocation log, and replay. Batch payloads may dispatch more than once;
+// every dispatch is recorded, and the last dispatch failure stays sticky even
+// when the script catches it to shape a partial-success reply.
 type delivery struct {
 	contract *integration.Contract
 	system   *integration.System
@@ -192,6 +202,8 @@ type delivery struct {
 
 	inputs  []any
 	outputs []any
+	// results holds what the business handler returned per call, for replay.
+	results []DispatchResult
 
 	dispatchKind integration.FailureKind
 	dispatchErr  error
@@ -316,12 +328,18 @@ func (r *Receiver) dispatch(ctx context.Context, d *delivery, handler integratio
 
 	output, err := handler.Handle(ctx, input)
 	if err != nil {
+		d.results = append(d.results, DispatchResult{Error: err.Error()})
+
 		return nil, d.fail(integration.FailureHandler, err)
 	}
 
 	if output, err = canonicalize(output); err != nil {
+		d.results = append(d.results, DispatchResult{Error: err.Error()})
+
 		return nil, d.fail(integration.FailureOutputInvalid, integration.ErrOutputInvalid(err.Error()))
 	}
+
+	d.results = append(d.results, DispatchResult{Output: output})
 
 	if err := inv.validateSchema(d.contract.OutputSchema, output); err != nil {
 		return nil, d.fail(integration.FailureOutputInvalid, integration.ErrOutputInvalid(err.Error()))
@@ -411,11 +429,22 @@ func (r *Receiver) runTimeout(adapter *integration.Adapter) time.Duration {
 // scrubbing stay identical to the outbound capture path. Status stays zero —
 // the pipeline is protocol-blind and never interprets the reply.
 func (r *Receiver) trace(req *integration.InboundRequest, reply any, redact []string) []integration.HTTPExchange {
+	target := req.Path
+	if len(req.Query) > 0 {
+		query := make(url.Values, len(req.Query))
+		for name, value := range req.Query {
+			query.Set(name, value)
+		}
+
+		target += "?" + query.Encode()
+	}
+
 	exchange := integration.HTTPExchange{
 		Method:         req.Method,
-		URL:            req.Path,
+		URL:            target,
 		RequestHeaders: req.Headers,
 		RequestBody:    string(req.Body),
+		ClientAddr:     req.ClientAddr,
 	}
 
 	if reply != nil {

@@ -124,9 +124,18 @@ CREATE TABLE IF NOT EXISTS itg_invocation_log (
     output JSONB,
     http_trace JSONB,
     error TEXT,
-    request_id VARCHAR(64) NOT NULL DEFAULT ''
+    request_id VARCHAR(64) NOT NULL DEFAULT '',
+    replayable BOOLEAN NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_itg_invocation_log__created_at ON itg_invocation_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_itg_invocation_log__system_code_contract_code
     ON itg_invocation_log(system_code, contract_code);
+
+CREATE TABLE IF NOT EXISTS itg_invocation_replay (
+    id VARCHAR(32) CONSTRAINT pk_itg_invocation_replay PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime')),
+    payload TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_itg_invocation_replay__created_at ON itg_invocation_replay(created_at);

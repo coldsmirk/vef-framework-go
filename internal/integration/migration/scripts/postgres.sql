@@ -188,7 +188,8 @@ CREATE TABLE IF NOT EXISTS itg_invocation_log (
     output JSONB,
     http_trace JSONB,
     error TEXT,
-    request_id VARCHAR(64) NOT NULL DEFAULT ''
+    request_id VARCHAR(64) NOT NULL DEFAULT '',
+    replayable BOOLEAN NOT NULL DEFAULT false
 );
 
 COMMENT ON TABLE itg_invocation_log IS 'Integration Invocation Log';
@@ -205,7 +206,21 @@ COMMENT ON COLUMN itg_invocation_log.output IS 'Output Capture';
 COMMENT ON COLUMN itg_invocation_log.http_trace IS 'HTTP Trace';
 COMMENT ON COLUMN itg_invocation_log.error IS 'Error';
 COMMENT ON COLUMN itg_invocation_log.request_id IS 'Request ID';
+COMMENT ON COLUMN itg_invocation_log.replayable IS 'Replayable';
 
 CREATE INDEX IF NOT EXISTS idx_itg_invocation_log__created_at ON itg_invocation_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_itg_invocation_log__system_code_contract_code
     ON itg_invocation_log(system_code, contract_code);
+
+CREATE TABLE IF NOT EXISTS itg_invocation_replay (
+    id VARCHAR(32) CONSTRAINT pk_itg_invocation_replay PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT LOCALTIMESTAMP,
+    payload TEXT NOT NULL
+);
+
+COMMENT ON TABLE itg_invocation_replay IS 'Integration Invocation Replay Payload';
+COMMENT ON COLUMN itg_invocation_replay.id IS 'Invocation Log ID';
+COMMENT ON COLUMN itg_invocation_replay.created_at IS 'Created';
+COMMENT ON COLUMN itg_invocation_replay.payload IS 'Sealed Replay Payload';
+
+CREATE INDEX IF NOT EXISTS idx_itg_invocation_replay__created_at ON itg_invocation_replay(created_at);
