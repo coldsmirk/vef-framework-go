@@ -171,6 +171,7 @@ type ApprovalNodeData struct {
 	ApprovalMethod            ApprovalMethod            `json:"approvalMethod,omitempty"`
 	PassRule                  PassRule                  `json:"passRule,omitempty"`
 	PassRatio                 decimal.Decimal           `json:"passRatio"`
+	PassCount                 int                       `json:"passCount,omitempty"`
 	SameApplicantAction       SameApplicantAction       `json:"sameApplicantAction,omitempty"`
 	ConsecutiveApproverAction ConsecutiveApproverAction `json:"consecutiveApproverAction,omitempty"`
 	RollbackType              RollbackType              `json:"rollbackType,omitempty"`
@@ -181,7 +182,6 @@ type ApprovalNodeData struct {
 	AddAssigneeTypes          []AddAssigneeType         `json:"addAssigneeTypes,omitempty"`
 	IsRemoveAssigneeAllowed   *bool                     `json:"isRemoveAssigneeAllowed,omitempty"`
 	IsManualCCAllowed         *bool                     `json:"isManualCcAllowed,omitempty"`
-	PassCount                 int                       `json:"passCount,omitempty"`
 }
 
 // Kind returns the node kind.

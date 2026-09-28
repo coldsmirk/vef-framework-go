@@ -43,11 +43,10 @@ func buildInstanceTimeline(bundle *instanceDetailBundle) []approval.TimelineEntr
 			entry.ApprovalMethod = string(node.ApprovalMethod)
 			entry.PassRule = string(node.PassRule)
 
-			if node.PassRule == approval.PassRatio {
+			switch node.PassRule {
+			case approval.PassRatio:
 				entry.PassRatio = new(node.PassRatio)
-			}
-
-			if node.PassRule == approval.PassFixedCount {
+			case approval.PassFixedCount:
 				entry.PassCount = new(node.PassCount)
 			}
 

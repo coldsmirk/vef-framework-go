@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/decimal"
 )
 
 // flowNode builds an in-memory FlowNode with the given DB id, React Flow key, and kind.
@@ -450,5 +451,33 @@ func TestBuildInstanceFlowGraph(t *testing.T) {
 		assert.Equal(t, approval.NodeProgressPassed, byKey["kA"].Data.Status, "Taken-branch approval node passed")
 		assert.Equal(t, approval.NodeProgressActive, byKey["kM"].Data.Status, "Merge node with the open visit is active")
 		assert.Equal(t, approval.NodeProgressPending, byKey["kB"].Data.Status, "Untaken-branch approval node has no visit → pending")
+	})
+
+	t.Run("PassThresholdFollowsRule", func(t *testing.T) {
+		// Each rule exposes only the threshold it reads, so the detail view
+		// never shows a stale ratio on a fixed-count node or vice versa.
+		for _, tc := range []struct {
+			name      string
+			rule      approval.PassRule
+			wantRatio *decimal.Decimal
+			wantCount *int
+		}{
+			{name: "Ratio", rule: approval.PassRatio, wantRatio: new(decimal.NewFromInt(60))},
+			{name: "FixedCount", rule: approval.PassFixedCount, wantCount: new(3)},
+			{name: "All", rule: approval.PassAll},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				b := linearBundle()
+				b.FlowNodes[1].PassRule = tc.rule
+				b.FlowNodes[1].PassRatio = decimal.NewFromInt(60)
+				b.FlowNodes[1].PassCount = 3
+				b.Visits = []approval.NodeVisit{visit("v1", "na", 1, approval.NodeVisitActive)}
+
+				data := nodesByKey(buildInstanceFlowGraph(b))["kappr"].Data
+
+				assert.Equal(t, tc.wantRatio, data.PassRatio, "Only the ratio rule should expose passRatio")
+				assert.Equal(t, tc.wantCount, data.PassCount, "Only the fixed_count rule should expose passCount")
+			})
+		}
 	})
 }

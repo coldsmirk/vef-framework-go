@@ -142,6 +142,7 @@ type FlowNode struct {
 	ApprovalMethod            ApprovalMethod            `json:"approvalMethod" bun:"approval_method"`
 	PassRule                  PassRule                  `json:"passRule" bun:"pass_rule"`
 	PassRatio                 decimal.Decimal           `json:"passRatio" bun:"pass_ratio,type:numeric(5,2)"`
+	PassCount                 int                       `json:"passCount" bun:"pass_count"`
 	EmptyAssigneeAction       EmptyAssigneeAction       `json:"emptyAssigneeAction" bun:"empty_assignee_action"`
 	FallbackUserIDs           []string                  `json:"fallbackUserIds" bun:"fallback_user_ids,type:jsonb"`
 	AdminUserIDs              []string                  `json:"adminUserIds" bun:"admin_user_ids,type:jsonb"`
@@ -164,7 +165,6 @@ type FlowNode struct {
 	ConsecutiveApproverAction ConsecutiveApproverAction `json:"consecutiveApproverAction" bun:"consecutive_approver_action"`
 	IsReadConfirmRequired     bool                      `json:"isReadConfirmRequired" bun:"is_read_confirm_required"`
 	Branches                  []ConditionBranch         `json:"branches" bun:"branches,type:jsonb,nullzero"`
-	PassCount                 int                       `json:"passCount" bun:"pass_count"`
 }
 
 // FlowEdge represents a directed edge between two flow nodes.

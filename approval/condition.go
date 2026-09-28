@@ -162,13 +162,22 @@ const (
 	PassRuleRejected                       // Node rejected
 )
 
-// PassRuleContext provides context for pass rule evaluation.
+// PassRuleContext provides context for pass rule evaluation: the tallies of
+// the node visit's participating tasks, and the thresholds the node configures.
+// A strategy reads only the threshold its own rule defines.
 type PassRuleContext struct {
+	// ApprovedCount counts approved and handled tasks.
 	ApprovedCount int
+	// RejectedCount counts rejected tasks.
 	RejectedCount int
-	TotalCount    int
-	PassRatio     float64
-	PassCount     int
+	// TotalCount counts every participating task, decided or not; transferred,
+	// canceled, removed, skipped and rolled-back tasks no longer participate.
+	TotalCount int
+	// PassRatio is the ratio rule's threshold, a percentage in (0, 100].
+	PassRatio float64
+	// PassCount is the fixed_count rule's threshold, a positive number of
+	// approvals that the participating task count caps.
+	PassCount int
 }
 
 // PassRuleStrategy evaluates whether a node passes based on task results.

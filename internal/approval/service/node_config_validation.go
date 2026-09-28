@@ -65,12 +65,8 @@ func (s *FlowDefinitionService) validateApprovalNodeData(nodeID string, data *ap
 		return fmt.Errorf("%w: %q in node %q", errInvalidPassRule, data.PassRule, nodeID)
 	}
 
-	if err := validatePassRatio(nodeID, data); err != nil {
+	if err := validatePassThreshold(nodeID, data); err != nil {
 		return err
-	}
-
-	if data.PassRule == approval.PassFixedCount && data.PassCount <= 0 {
-		return fmt.Errorf("%w: got %d in node %q", errPassCountOutOfRange, data.PassCount, nodeID)
 	}
 
 	if data.SameApplicantAction != "" && !data.SameApplicantAction.IsValid() {
@@ -110,20 +106,23 @@ func (s *FlowDefinitionService) validateApprovalNodeData(nodeID string, data *ap
 	return nil
 }
 
-// validatePassRatio requires an explicit, in-range ratio whenever the node
-// resolves to the ratio pass rule. The single storage convention is a
-// percentage in (0, 100] — the engine consumes the stored value verbatim, so
-// anything outside that range could never pass (or always would). Zero is
-// rejected rather than defaulted: a ratio node without a threshold would
-// otherwise pass on the first evaluation regardless of votes.
-func validatePassRatio(nodeID string, data *approval.ApprovalNodeData) error {
-	if data.PassRule != approval.PassRatio {
-		return nil
-	}
+// validatePassThreshold requires an explicit, in-range threshold for a pass
+// rule that reads one: a percentage in (0, 100] for ratio — the single storage
+// convention, consumed verbatim by the engine — and a positive count for
+// fixed_count. Zero is rejected rather than defaulted: a node without a
+// threshold would otherwise pass on the first evaluation regardless of votes.
+// A count above the resolved assignee count is valid; the engine caps it.
+func validatePassThreshold(nodeID string, data *approval.ApprovalNodeData) error {
+	switch data.PassRule {
+	case approval.PassRatio:
+		if ratio := data.PassRatio.InexactFloat64(); ratio <= 0 || ratio > 100 {
+			return fmt.Errorf("%w: got %v in node %q", errPassRatioOutOfRange, data.PassRatio, nodeID)
+		}
 
-	ratio := data.PassRatio.InexactFloat64()
-	if ratio <= 0 || ratio > 100 {
-		return fmt.Errorf("%w: got %v in node %q", errPassRatioOutOfRange, data.PassRatio, nodeID)
+	case approval.PassFixedCount:
+		if data.PassCount <= 0 {
+			return fmt.Errorf("%w: got %d in node %q", errPassCountOutOfRange, data.PassCount, nodeID)
+		}
 	}
 
 	return nil

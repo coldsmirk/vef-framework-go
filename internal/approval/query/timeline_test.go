@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/decimal"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
@@ -320,5 +321,36 @@ func TestBuildInstanceTimeline(t *testing.T) {
 		assert.Equal(t, approval.TimelineEntryTerminate, last.Kind, "Terminate milestone closes the timeline")
 		require.Len(t, last.Activities, 1, "Milestone carries the closing activity")
 		assert.Equal(t, "admin", last.Activities[0].Operator.ID, "Milestone names who terminated")
+	})
+
+	t.Run("PassThresholdFollowsRule", func(t *testing.T) {
+		// Timeline entries carry the same rule-scoped threshold the flow graph
+		// node does.
+		for _, tc := range []struct {
+			name      string
+			rule      approval.PassRule
+			wantRatio *decimal.Decimal
+			wantCount *int
+		}{
+			{name: "Ratio", rule: approval.PassRatio, wantRatio: new(decimal.NewFromInt(60))},
+			{name: "FixedCount", rule: approval.PassFixedCount, wantCount: new(3)},
+			{name: "All", rule: approval.PassAll},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				b := timelineBundle()
+				b.FlowNodes[1].PassRule = tc.rule
+				b.FlowNodes[1].PassRatio = decimal.NewFromInt(60)
+				b.FlowNodes[1].PassCount = 3
+				b.Visits = []approval.NodeVisit{visit("v1", "na", 1, approval.NodeVisitActive)}
+
+				entries := buildInstanceTimeline(b)
+				require.Len(t, entries, 1, "The active approval visit should produce one entry")
+
+				entry := entries[0]
+
+				assert.Equal(t, tc.wantRatio, entry.PassRatio, "Only the ratio rule should expose passRatio")
+				assert.Equal(t, tc.wantCount, entry.PassCount, "Only the fixed_count rule should expose passCount")
+			})
+		}
 	})
 }

@@ -74,12 +74,12 @@ type FlowGraphNodeData struct {
 	ApprovalMethod string             `json:"approvalMethod,omitempty"`
 	PassRule       string             `json:"passRule,omitempty"`
 	PassRatio      *decimal.Decimal   `json:"passRatio,omitempty"`
+	PassCount      *int               `json:"passCount,omitempty"`
 	Participants   []NodeParticipant  `json:"participants,omitempty"`
 	CCRecipients   []CCRecipient      `json:"ccRecipients,omitempty"`
 	Activities     []Activity         `json:"activities,omitempty"`
 	StartedAt      *timex.DateTime    `json:"startedAt,omitempty"`
 	FinishedAt     *timex.DateTime    `json:"finishedAt,omitempty"`
-	PassCount      *int               `json:"passCount,omitempty"`
 }
 
 // FlowGraphEdge is one React Flow edge connecting two nodes by their ids.

@@ -81,8 +81,10 @@ func NewFixedCountPassStrategy() approval.PassRuleStrategy {
 	return new(FixedCountPassStrategy)
 }
 
-// FixedCountPassStrategy requires a fixed number of approvals, or all
-// assignees when fewer are available.
+// FixedCountPassStrategy passes once a fixed number of assignees approve —
+// every participating assignee when fewer take part, so a small panel behaves
+// like the all rule — and rejects as soon as enough assignees reject that the
+// number can no longer be reached.
 type FixedCountPassStrategy struct{}
 
 func (*FixedCountPassStrategy) Rule() approval.PassRule { return approval.PassFixedCount }
