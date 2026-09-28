@@ -64,6 +64,8 @@ linters:
           disabled: true
         - name: add-constant
           disabled: true
+        - name: multiline-if-init
+          disabled: true
         - name: struct-tag
           arguments:
             [
