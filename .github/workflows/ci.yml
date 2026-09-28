@@ -31,19 +31,22 @@ jobs:
 
       - name: Pull Docker images in parallel
         run: |
+          # The test images are declared once, in internal/testx/constants.go;
+          # pulling what it declares keeps this list from drifting behind it.
+          mapfile -t images < <(sed -nE 's/^[[:space:]]*[A-Za-z]+Image[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' internal/testx/constants.go)
+          if [ "${#images[@]}" -eq 0 ]; then
+            echo "No test images found in internal/testx/constants.go" >&2
+            exit 1
+          fi
+          images+=("testcontainers/ryuk:0.13.0")
+
           pull_pids=()
           pull_status=0
 
-          docker pull testcontainers/ryuk:0.13.0 &
-          pull_pids+=("$!")
-          docker pull postgres:18-alpine &
-          pull_pids+=("$!")
-          docker pull mysql:lts &
-          pull_pids+=("$!")
-          docker pull redis:8-alpine &
-          pull_pids+=("$!")
-          docker pull quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z &
-          pull_pids+=("$!")
+          for image in "${images[@]}"; do
+            docker pull "$image" &
+            pull_pids+=("$!")
+          done
 
           for pull_pid in "${pull_pids[@]}"; do
             if ! wait "$pull_pid"; then
