@@ -14,7 +14,9 @@ const (
 	// Pinned to a release rather than :latest so a CI run reproduces: MinIO's
 	// health endpoints and startup timing have changed between releases, and a
 	// moving tag turns that into an unexplained flake on an unrelated commit.
-	MinIOImage = "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+	// MinIO withdrew its own images from Docker Hub and Quay, so this is the
+	// community-maintained build of the same server and image layout.
+	MinIOImage = "pgsty/minio:RELEASE.2026-08-04T00-00-00Z"
 )
 
 // Database credentials.
