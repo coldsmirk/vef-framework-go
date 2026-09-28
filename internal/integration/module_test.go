@@ -1612,8 +1612,10 @@ return { name: d.brxm, gender: 'male' }
 	})
 
 	s.Run("EditedDefinitionIsReported", func() {
+		// Audit columns hold timex wall-clock values; writing a raw time.Time
+		// would store it in UTC and misorder it under a non-UTC TZ.
 		_, err := s.db.NewUpdate().Model(adapter).
-			Set("updated_at", time.Now().Add(time.Hour)).
+			Set("updated_at", timex.Now().Add(time.Hour)).
 			WherePK().
 			Exec(ctx)
 		s.Require().NoError(err, "The adapter edit should persist")
