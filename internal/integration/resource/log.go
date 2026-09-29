@@ -6,7 +6,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/crud"
 	"github.com/coldsmirk/vef-framework-go/integration"
-	"github.com/coldsmirk/vef-framework-go/internal/integration/exec"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
 
@@ -39,11 +38,11 @@ type LogResource struct {
 	crud.FindPage[integration.InvocationLog, LogSearch]
 	crud.FindOne[integration.InvocationLog, LogSearch]
 
-	replayer *exec.Replayer
+	replayer integration.Replayer
 }
 
 // NewLogResource creates the invocation log resource.
-func NewLogResource(replayer *exec.Replayer) api.Resource {
+func NewLogResource(replayer integration.Replayer) api.Resource {
 	return &LogResource{
 		Resource: api.NewRPCResource(
 			"integration/log",

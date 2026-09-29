@@ -42,43 +42,20 @@ type DispatchResult struct {
 	Error  string `json:"error,omitempty"`
 }
 
-// ReplayResult is the outcome of a replay, shaped like the invocation log entry
-// it is compared with. Its captures pass through the same masking and
-// truncation, so the two read side by side and a replay never discloses what
-// the log masked.
-type ReplayResult struct {
-	Input       json.RawMessage            `json:"input"`
-	Output      json.RawMessage            `json:"output"`
-	HTTPTrace   []integration.HTTPExchange `json:"httpTrace"`
-	FailureKind integration.FailureKind    `json:"failureKind,omitempty"`
-	Error       string                     `json:"error,omitempty"`
-	DurationMs  int64                      `json:"durationMs"`
-	// DefinitionChanged reports that the contract, system, or adapter was
-	// modified after the original invocation, so a different outcome may stem
-	// from that edit rather than from the external system.
-	DefinitionChanged bool `json:"definitionChanged"`
-}
-
-// Replayer re-runs recorded invocations from their replay payloads against the
-// current definitions. A replay takes the dry-run path — nothing is cached,
-// counted, or logged, and disabled definitions are accepted — but the wire
-// calls an outbound replay makes are real. An inbound replay skips
-// verification (the operator's permission stands in for the caller's
-// credentials, which were never kept) and answers each dispatch with what the
-// business handler returned originally, so no business code runs twice.
+// Replayer implements integration.Replayer over the engine's two execution
+// flows.
 type Replayer struct {
 	invoker  *Invoker
 	receiver *Receiver
 }
 
 // NewReplayer creates the replayer over the engine's two execution flows.
-func NewReplayer(invoker *Invoker, receiver *Receiver) *Replayer {
+func NewReplayer(invoker *Invoker, receiver *Receiver) integration.Replayer {
 	return &Replayer{invoker: invoker, receiver: receiver}
 }
 
-// Replay re-runs log entry logID. A non-empty script runs in place of the
-// saved adapter's, the way a dry run tests unsaved edits.
-func (rp *Replayer) Replay(ctx context.Context, logID, script string) (*ReplayResult, error) {
+// Replay re-runs log entry logID; see integration.Replayer.
+func (rp *Replayer) Replay(ctx context.Context, logID, script string) (*integration.ReplayResult, error) {
 	db := rp.invoker.db
 
 	entry, err := definition.FindOne[integration.InvocationLog](ctx, db, result.ErrRecordNotFound, byColumn("id", logID))
@@ -122,7 +99,7 @@ func (rp *Replayer) Replay(ctx context.Context, logID, script string) (*ReplayRe
 		adapter.Script = script
 	}
 
-	var replay *ReplayResult
+	var replay *integration.ReplayResult
 	if entry.Direction == integration.DirectionInbound {
 		replay = rp.receiver.replay(ctx, contract, system, adapter, payload)
 	} else {
@@ -142,7 +119,7 @@ func byColumn(column, value string) func(orm.ConditionBuilder) {
 }
 
 // replay re-runs an outbound invocation's input through the adapter.
-func (inv *Invoker) replay(ctx context.Context, contract *integration.Contract, system *integration.System, adapter *integration.Adapter, input any) *ReplayResult {
+func (inv *Invoker) replay(ctx context.Context, contract *integration.Contract, system *integration.System, adapter *integration.Adapter, input any) *integration.ReplayResult {
 	start := time.Now()
 
 	output, trace, kind, err := inv.run(ctx, &execution{
@@ -157,7 +134,7 @@ func (inv *Invoker) replay(ctx context.Context, contract *integration.Contract, 
 }
 
 // replay re-runs an inbound delivery's request through the adapter script.
-func (r *Receiver) replay(ctx context.Context, contract *integration.Contract, system *integration.System, adapter *integration.Adapter, payload *ReplayPayload) *ReplayResult {
+func (r *Receiver) replay(ctx context.Context, contract *integration.Contract, system *integration.System, adapter *integration.Adapter, payload *ReplayPayload) *integration.ReplayResult {
 	d := &delivery{contract: contract, system: system, request: payload.Request}
 	start := time.Now()
 
@@ -174,8 +151,8 @@ func (r *Receiver) replay(ctx context.Context, contract *integration.Contract, s
 }
 
 // replayResult shapes a replay outcome like the log entry it is compared with.
-func (inv *Invoker) replayResult(o *outcome) *ReplayResult {
-	replay := &ReplayResult{
+func (inv *Invoker) replayResult(o *outcome) *integration.ReplayResult {
+	replay := &integration.ReplayResult{
 		Input:       inv.capturer.captureValue(o.input),
 		Output:      inv.capturer.captureValue(o.output),
 		HTTPTrace:   o.trace,

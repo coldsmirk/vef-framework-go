@@ -57,7 +57,7 @@ type ModuleTestSuite struct {
 	invoker    integration.Invoker
 	concrete   *exec.Invoker
 	receiver   *exec.Receiver
-	replayer   *exec.Replayer
+	replayer   integration.Replayer
 	codec      *definition.SecretCodec
 	registry   *auth.OutboundRegistry
 	inboundReg *auth.InboundRegistry
