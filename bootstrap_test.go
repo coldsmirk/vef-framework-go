@@ -52,7 +52,7 @@ func (*StubPrincipalDepartmentResolver) Resolve(
 // StubInstanceNoGenerator satisfies approval.InstanceNoGenerator.
 type StubInstanceNoGenerator struct{}
 
-func (*StubInstanceNoGenerator) Generate(context.Context, string) (string, error) {
+func (*StubInstanceNoGenerator) Generate(context.Context, string, string) (string, error) {
 	return "", nil
 }
 

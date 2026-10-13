@@ -700,39 +700,100 @@ func FilterEditableFormData(formData map[string]any, permissions map[string]appr
 	return filtered
 }
 
-// CheckInitiationPermission reports whether the applicant may start the flow.
-// Rules are evaluated in stored order and the first match admits; an empty
-// rule set admits nobody, which is the fail-closed half of the invariant that
-// makes "no rules" mean "open to everyone" only via Flow.IsAllInitiationAllowed
-// (validateInitiatorRules enforces the other half at save time).
-//
-// Each rule is dispatched to the resolver registered for its kind, so a host
-// initiator kind is checked here exactly like a built-in one.
+// CheckInitiationPermission reports whether the applicant may start the flow
+// in tenantID, the tenant the instance would run in. It is InitiableFlowIDs
+// for one flow, so a start and the available-flow list can never disagree.
 func (s *ValidationService) CheckInitiationPermission(
 	ctx context.Context,
 	db orm.DB,
 	flow *approval.Flow,
+	tenantID string,
 	applicant approval.UserInfo,
 ) (bool, error) {
-	var initiators []approval.FlowInitiator
-
-	if err := db.NewSelect().
-		Model(&initiators).
-		Select("kind", "ids").
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("flow_id", flow.ID)
-		}).
-		Scan(ctx); err != nil {
-		return false, fmt.Errorf("query flow initiators: %w", err)
+	ids, err := s.InitiableFlowIDs(ctx, db, []approval.Flow{*flow}, tenantID, applicant)
+	if err != nil {
+		return false, err
 	}
 
-	if len(initiators) == 0 {
-		return false, nil
+	return len(ids) > 0, nil
+}
+
+// InitiableFlowIDs returns, in the given order, the IDs of the flows the
+// applicant may start in tenantID. A flow open to everyone
+// (Flow.IsAllInitiationAllowed) admits anyone. Any other flow admits when one
+// of its initiator rules does: rules are evaluated in stored order and the
+// first match admits, and an empty rule set admits nobody, which is the
+// fail-closed half of the invariant that makes "no rules" mean "open to
+// everyone" only via IsAllInitiationAllowed (validateInitiatorRules enforces
+// the other half at save time).
+//
+// Each rule is dispatched to the resolver registered for its kind, so a host
+// initiator kind is checked here exactly like a built-in one, and every rule
+// sees tenantID — for a shared flow the tenant it is started in, not the
+// flow's own. The rules of all restricted flows load in one query, and a role
+// membership is asked about once however many flows name the role.
+func (s *ValidationService) InitiableFlowIDs(
+	ctx context.Context,
+	db orm.DB,
+	flows []approval.Flow,
+	tenantID string,
+	applicant approval.UserInfo,
+) ([]string, error) {
+	restrictedIDs := make([]string, 0, len(flows))
+	for _, flow := range flows {
+		if !flow.IsAllInitiationAllowed {
+			restrictedIDs = append(restrictedIDs, flow.ID)
+		}
 	}
 
-	return s.initiators.PermitsAny(ctx, initiators, &approval.InitiatorResolveContext{
-		FlowID:    flow.ID,
-		TenantID:  flow.TenantID,
-		Applicant: applicant,
-	})
+	rulesByFlow := make(map[string][]approval.FlowInitiator, len(restrictedIDs))
+
+	if len(restrictedIDs) > 0 {
+		var initiators []approval.FlowInitiator
+
+		if err := db.NewSelect().
+			Model(&initiators).
+			Select("flow_id", "kind", "ids").
+			Where(func(cb orm.ConditionBuilder) {
+				cb.In("flow_id", restrictedIDs)
+			}).
+			Scan(ctx); err != nil {
+			return nil, fmt.Errorf("query flow initiators: %w", err)
+		}
+
+		for _, initiator := range initiators {
+			rulesByFlow[initiator.FlowID] = append(rulesByFlow[initiator.FlowID], initiator)
+		}
+	}
+
+	ctx = shared.WithRoleMembershipMemo(ctx)
+	permitted := make([]string, 0, len(flows))
+
+	for _, flow := range flows {
+		if flow.IsAllInitiationAllowed {
+			permitted = append(permitted, flow.ID)
+
+			continue
+		}
+
+		rules := rulesByFlow[flow.ID]
+		if len(rules) == 0 {
+			continue
+		}
+
+		admitted, err := s.initiators.PermitsAny(ctx, rules, &approval.InitiatorResolveContext{
+			FlowID:    flow.ID,
+			TenantID:  tenantID,
+			Applicant: applicant,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if admitted {
+			permitted = append(permitted, flow.ID)
+		}
+	}
+
+	return permitted, nil
 }

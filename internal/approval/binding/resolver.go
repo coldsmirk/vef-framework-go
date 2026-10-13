@@ -17,10 +17,12 @@ type identityResolver struct{}
 // NewIdentityResolver constructs the default identity resolver.
 func NewIdentityResolver() approval.BusinessRefResolver { return new(identityResolver) }
 
-func (*identityResolver) ResolveRecordKey(_ context.Context, flow *approval.Flow, businessRef string) (approval.BusinessRecordKey, error) {
+func (*identityResolver) ResolveRecordKey(_ context.Context, flow *approval.Flow, instance *approval.Instance) (approval.BusinessRecordKey, error) {
 	if flow.BusinessBinding == nil || len(flow.BusinessBinding.KeyColumns) == 0 {
 		return nil, fmt.Errorf("%w: flow has no key columns", ErrBindingMisconfigured)
 	}
+
+	businessRef := *instance.BusinessRef
 
 	if len(flow.BusinessBinding.KeyColumns) == 1 {
 		return approval.BusinessRecordKey{flow.BusinessBinding.KeyColumns[0]: businessRef}, nil

@@ -12,7 +12,10 @@ import "context"
 type InitiatorResolveContext struct {
 	// FlowID identifies the flow being started.
 	FlowID string
-	// TenantID is the flow's tenant.
+	// TenantID is the tenant the flow is being started in — the applicant's.
+	// It is the flow's own tenant for a tenant flow, and the starting tenant
+	// for a shared flow, never SharedTenantID, so a rule resolving tenant
+	// membership answers for the tenant the instance will run in.
 	TenantID string
 	// Applicant is the person asking to start the flow. The ID and the
 	// department resolved from their security principal are always present;

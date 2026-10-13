@@ -25,10 +25,27 @@ func init() {
 type CreateFlowTestSuite struct {
 	suite.Suite
 
-	ctx        context.Context
-	db         orm.DB
-	handler    *command.CreateFlowHandler
-	categoryID string
+	ctx         context.Context
+	db          orm.DB
+	handler     *command.CreateFlowHandler
+	categoryID  string
+	categoryIDs map[string]string
+}
+
+// categoryOf returns a category owned by tenantID, inserting it on first use:
+// a flow is only ever created under a category of its own tenant.
+func (s *CreateFlowTestSuite) categoryOf(tenantID string) string {
+	if id, ok := s.categoryIDs[tenantID]; ok {
+		return id
+	}
+
+	category := &approval.FlowCategory{TenantID: tenantID, Code: "test-" + tenantID, Name: "Test Category"}
+	_, err := s.db.NewInsert().Model(category).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert a category of tenant %s", tenantID)
+
+	s.categoryIDs[tenantID] = category.ID
+
+	return category.ID
 }
 
 func (s *CreateFlowTestSuite) SetupSuite() {
@@ -41,6 +58,7 @@ func (s *CreateFlowTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Should insert test category")
 
 	s.categoryID = category.ID
+	s.categoryIDs = map[string]string{approval.DefaultTenantID: category.ID}
 	s.handler = command.NewCreateFlowHandler(s.db, newTestBindingValidator(), mustInitiatorComposite(nil))
 }
 
@@ -63,7 +81,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowSuccess() {
 		TenantID:               "tenant-1",
 		Code:                   "leave",
 		Name:                   "Leave Approval",
-		CategoryID:             s.categoryID,
+		CategoryID:             s.categoryOf("tenant-1"),
 		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "{{.applicantName}}'s leave request",
@@ -78,7 +96,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowSuccess() {
 	s.Assert().Equal("tenant-1", result.TenantID, "Should set TenantID")
 	s.Assert().Equal("leave", result.Code, "Should set Code")
 	s.Assert().Equal("Leave Approval", result.Name, "Should set Name")
-	s.Assert().Equal(s.categoryID, result.CategoryID, "Should set CategoryID")
+	s.Assert().Equal(cmd.CategoryID, result.CategoryID, "Should set CategoryID")
 	s.Assert().Equal(approval.BindingStandalone, result.BindingMode, "Should set BindingMode")
 	s.Assert().True(result.IsAllInitiationAllowed, "Should set IsAllInitiationAllowed")
 	s.Assert().True(result.IsActive, "Should default IsActive to true")
@@ -104,7 +122,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowLabels() {
 			TenantID:               "tenant-1",
 			Code:                   "labeled",
 			Name:                   "Labeled Flow",
-			CategoryID:             s.categoryID,
+			CategoryID:             s.categoryOf("tenant-1"),
 			BindingMode:            approval.BindingStandalone,
 			InstanceTitleTemplate:  "Test",
 			Labels:                 map[string]string{"app": "crm", "mobile": "true"},
@@ -131,7 +149,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowLabels() {
 			TenantID:               "tenant-1",
 			Code:                   "bad-label",
 			Name:                   "Bad Label Flow",
-			CategoryID:             s.categoryID,
+			CategoryID:             s.categoryOf("tenant-1"),
 			BindingMode:            approval.BindingStandalone,
 			InstanceTitleTemplate:  "Test",
 			Labels:                 map[string]string{"app.id": "crm"},
@@ -161,13 +179,73 @@ func (s *CreateFlowTestSuite) TestCreateFlowDefaultTenant() {
 	s.Assert().Equal("default", result.TenantID, "Should default TenantID to 'default'")
 }
 
+// TestCreateFlowCategoryTenancy pins a flow to a category of its own tenant: a
+// shared flow sits under a shared category, a tenant flow under one of its
+// tenant's, and a missing or foreign category gets the same answer.
+func (s *CreateFlowTestSuite) TestCreateFlowCategoryTenancy() {
+	baseCmd := func(tenantID, code, categoryID string) command.CreateFlowCmd {
+		return command.CreateFlowCmd{
+			IsAllInitiationAllowed: true,
+			TenantID:               tenantID,
+			Code:                   code,
+			Name:                   "Category Tenancy Flow",
+			CategoryID:             categoryID,
+			BindingMode:            approval.BindingStandalone,
+			InstanceTitleTemplate:  "Title",
+			Caller:                 approval.SystemCaller,
+		}
+	}
+
+	s.Run("RejectsMissingCategory", func() {
+		_, err := s.handler.Handle(s.ctx, baseCmd("tenant-1", "cat-missing", "no-such-category"))
+		s.Require().ErrorIs(err, approval.ErrCategoryNotFound, "A missing category must be rejected cleanly")
+	})
+
+	s.Run("RejectsCategoryOfAnotherTenant", func() {
+		_, err := s.handler.Handle(s.ctx, baseCmd("tenant-1", "cat-foreign", s.categoryOf("tenant-other")))
+		s.Require().ErrorIs(err, approval.ErrCategoryNotFound,
+			"A category of another tenant must look exactly like a missing one")
+	})
+
+	s.Run("RejectsTenantCategoryForSharedFlow", func() {
+		_, err := s.handler.Handle(s.ctx, baseCmd(approval.SharedTenantID, "cat-shared-foreign", s.categoryID))
+		s.Require().ErrorIs(err, approval.ErrCategoryNotFound,
+			"A shared flow under a tenant category would show that tenant's category to every tenant")
+	})
+
+	s.Run("AcceptsSharedFlowUnderSharedCategory", func() {
+		created, err := s.handler.Handle(s.ctx, baseCmd(approval.SharedTenantID, "cat-shared", s.categoryOf(approval.SharedTenantID)))
+		s.Require().NoError(err, "A privileged caller may create a shared flow under a shared category")
+		s.Assert().Equal(approval.SharedTenantID, created.TenantID, "The flow should be stamped shared")
+	})
+
+	s.Run("PinsOrdinaryCallerToOwnTenant", func() {
+		cmd := baseCmd(approval.SharedTenantID, "cat-pinned", s.categoryOf("tenant-1"))
+		cmd.Caller = approval.CallerContext{TenantID: "tenant-1"}
+
+		created, err := s.handler.Handle(s.ctx, cmd)
+		s.Require().NoError(err, "An ordinary caller creates in its own tenant")
+		s.Assert().Equal("tenant-1", created.TenantID,
+			"Asking for the shared tenant must not make an ordinary caller's flow shared")
+	})
+
+	s.Run("RejectsCallerClaimingSharedTenant", func() {
+		cmd := baseCmd(approval.SharedTenantID, "cat-shared-member", s.categoryOf(approval.SharedTenantID))
+		cmd.Caller = approval.CallerContext{TenantID: approval.SharedTenantID}
+
+		_, err := s.handler.Handle(s.ctx, cmd)
+		s.Require().ErrorIs(err, approval.ErrCrossTenantAccess,
+			"A caller resolved to the shared tenant belongs to no tenant and must be denied")
+	})
+}
+
 func (s *CreateFlowTestSuite) TestCreateFlowDuplicateCode() {
 	cmd := command.CreateFlowCmd{
 		IsAllInitiationAllowed: true,
 		TenantID:               "tenant-dup",
 		Code:                   "unique-code",
 		Name:                   "First Flow",
-		CategoryID:             s.categoryID,
+		CategoryID:             s.categoryOf("tenant-dup"),
 		BindingMode:            approval.BindingStandalone,
 		InstanceTitleTemplate:  "Title Template",
 		Caller:                 approval.SystemCaller,
@@ -188,7 +266,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowWithInitiators() {
 		TenantID:              "tenant-init",
 		Code:                  "with-initiators",
 		Name:                  "Flow With Initiators",
-		CategoryID:            s.categoryID,
+		CategoryID:            s.categoryOf("tenant-init"),
 		BindingMode:           approval.BindingStandalone,
 		InstanceTitleTemplate: "Template",
 		Initiators: []shared.CreateFlowInitiatorCmd{
@@ -231,7 +309,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingComplete() {
 		TenantID:               "tenant-binding",
 		Code:                   "business-complete",
 		Name:                   "Business Bound",
-		CategoryID:             s.categoryID,
+		CategoryID:             s.categoryOf("tenant-binding"),
 		BindingMode:            approval.BindingBusiness,
 		BusinessBinding: &approval.BusinessBindingConfig{
 			TableName:        table,
@@ -259,7 +337,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingIncomplete() {
 		TenantID:               "tenant-binding-bad",
 		Code:                   "business-incomplete",
 		Name:                   "Half Bound",
-		CategoryID:             s.categoryID,
+		CategoryID:             s.categoryOf("tenant-binding-bad"),
 		BindingMode:            approval.BindingBusiness,
 		BusinessBinding: &approval.BusinessBindingConfig{
 			KeyColumns:   []string{pk},
@@ -284,7 +362,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowLinkageColumns() {
 			TenantID:               "tenant-linkage",
 			Code:                   code,
 			Name:                   "Linkage Bound",
-			CategoryID:             s.categoryID,
+			CategoryID:             s.categoryOf("tenant-linkage"),
 			BindingMode:            approval.BindingBusiness,
 			BusinessBinding: &approval.BusinessBindingConfig{
 				TableName:        table,
@@ -357,7 +435,7 @@ func (s *CreateFlowTestSuite) TestInitiatorPolicyIsExclusive() {
 			TenantID:              "tenant-policy",
 			Code:                  code,
 			Name:                  "Initiator Policy Flow",
-			CategoryID:            s.categoryID,
+			CategoryID:            s.categoryOf("tenant-policy"),
 			BindingMode:           approval.BindingStandalone,
 			InstanceTitleTemplate: "Template",
 			Caller:                approval.SystemCaller,

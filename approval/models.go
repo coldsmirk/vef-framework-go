@@ -29,6 +29,10 @@ type Flow struct {
 	orm.BaseModel `bun:"table:apv_flow,alias:af"`
 	orm.FullAuditedModel
 
+	// TenantID is the tenant that owns the definition. SharedTenantID makes it
+	// a shared flow, offered to every tenant beside its own flows; a tenant
+	// flow with the same Code takes its place within that tenant. It never
+	// changes after creation.
 	TenantID    string  `json:"tenantId" bun:"tenant_id"`
 	CategoryID  string  `json:"categoryId" bun:"category_id"`
 	Code        string  `json:"code" bun:"code"`
@@ -55,6 +59,9 @@ type FlowCategory struct {
 	orm.BaseModel `bun:"table:apv_flow_category,alias:afc"`
 	orm.FullAuditedModel
 
+	// TenantID is the tenant that owns the category; SharedTenantID makes it a
+	// shared category, the home of shared flows. A category holds only flows
+	// and child categories of its own tenant, and its tenant never changes.
 	TenantID  string         `json:"tenantId" bun:"tenant_id"`
 	Code      string         `json:"code" bun:"code"`
 	Name      string         `json:"name" bun:"name"`
@@ -222,6 +229,10 @@ type Instance struct {
 	orm.BaseModel `bun:"table:apv_instance,alias:ai"`
 	orm.FullAuditedModel
 
+	// TenantID is the tenant the instance runs in — the applicant's. It equals
+	// the flow's tenant for a tenant flow; for a shared flow it is the tenant
+	// that started it, never SharedTenantID, so tasks, visits, projections and
+	// events inherit an ordinary tenant from it.
 	TenantID string `json:"tenantId" bun:"tenant_id"`
 	FlowID   string `json:"flowId" bun:"flow_id"`
 	// FlowCode snapshots the flow's business code at instance creation, like

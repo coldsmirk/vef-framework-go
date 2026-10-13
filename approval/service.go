@@ -156,10 +156,15 @@ type Service interface {
 // must supply values it trusts rather than forward anything a client sent —
 // globals steer condition branches.
 type StartInstanceInput struct {
-	// TenantID selects the tenant whose flow to start; empty means
-	// DefaultTenantID.
+	// TenantID is the tenant the instance runs in. An ordinary Caller always
+	// starts in its own tenant, so the value only takes effect for SystemCaller
+	// and super-admin callers; left empty, they start in their own tenant when
+	// they carry one, else in DefaultTenantID. SharedTenantID is rejected (as
+	// ErrFlowNotFound): it holds shared definitions, and an instance of a
+	// shared flow runs in a real tenant.
 	TenantID string
-	// FlowCode identifies the flow within the tenant.
+	// FlowCode names the flow: the tenant's own flow with that code, or else
+	// the shared flow with that code (see SharedTenantID).
 	FlowCode string
 	// Applicant is the person the instance is started for. Initiation
 	// permission, the same-applicant node policy and the applicant subjects

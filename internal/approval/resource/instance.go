@@ -139,7 +139,10 @@ func NewInstanceResource(
 type StartParams struct {
 	api.P
 
-	TenantID    string         `json:"tenantId" validate:"required"`
+	// TenantID is the tenant the instance runs in. Only a super-admin's choice
+	// counts — left empty, their own tenant, else DefaultTenantID; everyone
+	// else starts in their own tenant, from its own flows or the shared ones.
+	TenantID    string         `json:"tenantId"`
 	FlowCode    string         `json:"flowCode" validate:"required"`
 	BusinessRef *string        `json:"businessRef" validate:"omitempty,max=512"`
 	FormData    map[string]any `json:"formData"`

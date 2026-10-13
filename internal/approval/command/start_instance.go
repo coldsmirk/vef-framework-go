@@ -8,8 +8,6 @@ import (
 	"text/template"
 	"unicode/utf8"
 
-	"github.com/samber/lo"
-
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
@@ -66,46 +64,31 @@ func NewStartInstanceHandler(
 func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd) (*approval.Instance, error) {
 	db := contextx.DB(ctx, h.db)
 
-	var (
-		tenantID = lo.CoalesceOrEmpty(cmd.TenantID, approval.DefaultTenantID)
-		flow     approval.Flow
-	)
-
-	if err := db.NewSelect().
-		Model(&flow).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("tenant_id", tenantID).
-				Equals("code", cmd.FlowCode)
-		}).
-		Scan(ctx); err != nil {
-		if result.IsRecordNotFound(err) {
-			return nil, approval.ErrFlowNotFound
-		}
-
-		return nil, fmt.Errorf("load flow: %w", err)
+	// Tenant guard: cmd.TenantID is client-supplied, so it only counts for a
+	// privileged caller; everyone else starts in their own tenant. A caller
+	// without one sees FlowNotFound (rather than CrossTenantAccess), the same
+	// answer a missing flow gets, so probing reveals nothing.
+	tenantID, err := service.StartTenant(cmd.Caller, cmd.TenantID)
+	if err != nil {
+		return nil, approval.ErrFlowNotFound
 	}
 
-	// Tenant guard: cmd.TenantID is client-supplied, so the caller must own
-	// or supervise that tenant. Return FlowNotFound (rather than
-	// CrossTenantAccess) so a probing caller cannot distinguish "no such
-	// flow in your tenant" from "exists but belongs to another tenant".
-	if !cmd.Caller.Allows(flow.TenantID) {
-		return nil, approval.ErrFlowNotFound
+	flow, err := service.FindStartFlow(ctx, db, tenantID, cmd.FlowCode)
+	if err != nil {
+		return nil, err
 	}
 
 	if !flow.IsActive {
 		return nil, approval.ErrFlowNotActive
 	}
 
-	if !flow.IsAllInitiationAllowed {
-		allowed, err := h.validationSvc.CheckInitiationPermission(ctx, db, &flow, cmd.Applicant)
-		if err != nil {
-			return nil, fmt.Errorf("check initiation permission: %w", err)
-		}
+	allowed, err := h.validationSvc.CheckInitiationPermission(ctx, db, flow, tenantID, cmd.Applicant)
+	if err != nil {
+		return nil, fmt.Errorf("check initiation permission: %w", err)
+	}
 
-		if !allowed {
-			return nil, approval.ErrNotAllowedInitiate
-		}
+	if !allowed {
+		return nil, approval.ErrNotAllowedInitiate
 	}
 
 	var version approval.FlowVersion
@@ -127,7 +110,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		return nil, err
 	}
 
-	instanceNo, err := h.instanceNoGenerator.Generate(ctx, cmd.FlowCode)
+	instanceNo, err := h.instanceNoGenerator.Generate(ctx, tenantID, flow.Code)
 	if err != nil {
 		return nil, fmt.Errorf("generate instance number: %w", err)
 	}
@@ -155,8 +138,11 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		return nil, fmt.Errorf("render instance title: %w", err)
 	}
 
+	// The instance runs in the starting tenant: for a shared flow that is the
+	// applicant's tenant, never the shared one, so everything the instance
+	// produces stays inside an ordinary tenant boundary.
 	instance := &approval.Instance{
-		TenantID:                flow.TenantID,
+		TenantID:                tenantID,
 		FlowID:                  flow.ID,
 		FlowCode:                flow.Code,
 		FlowVersionID:           version.ID,
@@ -182,7 +168,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	// may already carry configuration for a later version; existing published
 	// versions deliberately keep the snapshot captured at deploy.
 	if version.BusinessBinding != nil {
-		bindingFlow := flow
+		bindingFlow := *flow
 		bindingFlow.BindingMode = approval.BindingBusiness
 		bindingFlow.BusinessBinding = version.BusinessBinding
 

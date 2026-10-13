@@ -34,6 +34,8 @@ const (
 	ErrCodeInvalidFlowLabel            = 40021
 	ErrCodeInitiatorsNotAllowed        = 40022
 	ErrCodeInitiatorsRequired          = 40023
+	ErrCodeSharedFlowNamesPeople       = 40024
+	ErrCodeCategoryNotFound            = 40025
 
 	ErrCodeInstanceNotFound          = 40101
 	ErrCodeInstanceCompleted         = 40102
@@ -72,6 +74,7 @@ const (
 
 	ErrCodeAccessDenied        = 40701
 	ErrCodeTerminateNotAllowed = 40702
+	ErrCodeCrossTenantAccess   = 40703
 )
 
 // Outward-facing error sentinels. Messages are resolved through i18n at
@@ -139,6 +142,19 @@ var (
 	// initiator list unambiguous: it means exactly "open to everyone", so one
 	// query answers who may start a flow.
 	ErrInitiatorsRequired = result.Err(i18n.T("approval_initiators_required"), result.WithCode(ErrCodeInitiatorsRequired))
+	// ErrSharedFlowNamesPeople rejects deploying a shared flow (SharedTenantID)
+	// whose nodes route tasks or CC to specific people. A shared flow runs in
+	// every tenant, while specific users — and the users behind specific roles
+	// and departments — belong to one: routing to them would hand one tenant's
+	// applications to another tenant's people. Rules resolved from the
+	// applicant (superior, department leader, the applicant), from the form, or
+	// from a host catalog stay available.
+	ErrSharedFlowNamesPeople = result.Err(i18n.T("approval_shared_flow_names_people"), result.WithCode(ErrCodeSharedFlowNamesPeople))
+	// ErrCategoryNotFound rejects placing a flow or a category under a category
+	// that does not exist or belongs to another tenant. A flow and its category,
+	// and a category and its parent, always share a tenant, so a shared flow
+	// sits under a shared category and a tenant flow under its own tenant's.
+	ErrCategoryNotFound = result.Err(i18n.T("approval_category_not_found"), result.WithCode(ErrCodeCategoryNotFound))
 	// ErrInvalidStorageMode rejects a deploy whose storage mode is neither
 	// "json" nor "table". The mode is fixed for the version's lifetime and
 	// drives whether a dedicated physical form table is generated at publish,
@@ -209,6 +225,13 @@ var (
 	// has no terminate transition on the instance state machine (already in
 	// a final status).
 	ErrTerminateNotAllowed = result.Err(i18n.T("approval_terminate_not_allowed"), result.WithCode(ErrCodeTerminateNotAllowed))
+	// ErrCrossTenantAccess is what CallerContext answers when a caller without
+	// authority over a tenant — one belonging to another tenant, to none, or
+	// claiming the shared one — acts on that tenant's data. Lookups of a
+	// single entity usually translate it into their not-found error, so a
+	// probing caller cannot tell an entity of another tenant from a missing
+	// one; lists and writes surface it as is.
+	ErrCrossTenantAccess = result.Err(i18n.T("approval_cross_tenant_access"), result.WithCode(ErrCodeCrossTenantAccess))
 )
 
 // ErrBindingTableMissing rejects a binding whose configured table does not

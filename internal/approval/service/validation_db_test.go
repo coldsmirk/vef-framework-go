@@ -7,6 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -55,14 +56,19 @@ func (s *ValidationServiceTestSuite) TearDownSuite() {
 	cleanAllServiceData(s.ctx, s.db)
 }
 
-// seedFlow inserts a category + flow and returns the flow.
+// seedFlow inserts a category + flow of the default tenant and returns the flow.
 func (s *ValidationServiceTestSuite) seedFlow(code string) *approval.Flow {
-	cat := &approval.FlowCategory{TenantID: "default", Code: code + "-cat", Name: "Cat"}
+	return s.seedFlowIn(approval.DefaultTenantID, code)
+}
+
+// seedFlowIn inserts a category + restricted flow owned by tenantID.
+func (s *ValidationServiceTestSuite) seedFlowIn(tenantID, code string) *approval.Flow {
+	cat := &approval.FlowCategory{TenantID: tenantID, Code: code + "-cat", Name: "Cat"}
 	_, err := s.db.NewInsert().Model(cat).Exec(s.ctx)
 	s.Require().NoError(err, "should insert category")
 
 	flow := &approval.Flow{
-		TenantID: "default", CategoryID: cat.ID, Code: code, Name: "Flow",
+		TenantID: tenantID, CategoryID: cat.ID, Code: code, Name: "Flow",
 		BindingMode: approval.BindingStandalone,
 	}
 	_, err = s.db.NewInsert().Model(flow).Exec(s.ctx)
@@ -84,7 +90,7 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 		flow := s.seedFlow("init-empty")
 		svc := service.NewValidationService(mustInitiatorComposite(nil))
 
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{ID: "applicant"})
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, "default", approval.UserInfo{ID: "applicant"})
 		s.Require().NoError(err, "Empty initiators should be a denial, not an error")
 		s.Assert().False(allowed, "No initiator rows must deny everyone")
 	})
@@ -97,7 +103,7 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 
 		svc := service.NewValidationService(mustInitiatorComposite(nil))
 
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{ID: "u2"})
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, "default", approval.UserInfo{ID: "u2"})
 		s.Require().NoError(err, "User match check should not error")
 		s.Assert().True(allowed, "Applicant listed in an InitiatorUser rule is allowed")
 	})
@@ -110,7 +116,7 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 
 		svc := service.NewValidationService(mustInitiatorComposite(nil))
 
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{ID: "stranger"})
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, "default", approval.UserInfo{ID: "stranger"})
 		s.Require().NoError(err, "User no-match check should not error")
 		s.Assert().False(allowed, "Applicant absent from the user rule is denied")
 	})
@@ -123,7 +129,7 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 
 		svc := service.NewValidationService(mustInitiatorComposite(nil))
 
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, "default", approval.UserInfo{
 			ID:           "applicant",
 			DepartmentID: new("dept-1"),
 		})
@@ -141,7 +147,7 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 
 		// A nil applicantDepartmentID must skip the department rule (no panic,
 		// no false match) and fall through to a denial.
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{ID: "applicant"})
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, "default", approval.UserInfo{ID: "applicant"})
 		s.Require().NoError(err, "Nil department must not error")
 		s.Assert().False(allowed, "A nil applicant department cannot satisfy a department rule")
 	})
@@ -156,7 +162,7 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 			usersByRole: map[string][]approval.UserInfo{"role-1": {{ID: "applicant"}}},
 		}))
 
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{ID: "applicant"})
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, "default", approval.UserInfo{ID: "applicant"})
 		s.Require().NoError(err, "Role match check should not error")
 		s.Assert().True(allowed, "Applicant holding a listed role (via GetRoleUsers) is allowed")
 	})
@@ -171,7 +177,7 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 			usersByRole: map[string][]approval.UserInfo{"role-1": {{ID: "someone-else"}}},
 		}))
 
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{ID: "applicant"})
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, "default", approval.UserInfo{ID: "applicant"})
 		s.Require().NoError(err, "Role no-match check should not error")
 		s.Assert().False(allowed, "Applicant not holding any listed role is denied")
 	})
@@ -185,9 +191,128 @@ func (s *ValidationServiceTestSuite) TestCheckInitiationPermission() {
 		// rather than dereferencing a nil service.
 		svc := service.NewValidationService(mustInitiatorComposite(nil))
 
-		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.UserInfo{ID: "applicant"})
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, "default", approval.UserInfo{ID: "applicant"})
 		s.Require().NoError(err, "Role rule without an assignee service must not error")
 		s.Assert().False(allowed, "Without an assignee service the role rule cannot grant access")
+	})
+}
+
+// tenantProbeInitiator is a host initiator kind that admits everyone and
+// records the tenant each check ran for.
+type tenantProbeInitiator struct {
+	tenants []string
+}
+
+func (*tenantProbeInitiator) Describe() approval.KindDescriptor[approval.InitiatorKind] {
+	return approval.KindDescriptor[approval.InitiatorKind]{
+		Kind:      "tenant_probe",
+		Label:     "Tenant probe",
+		Selection: approval.SelectionNone,
+	}
+}
+
+func (p *tenantProbeInitiator) Permits(_ context.Context, rc *approval.InitiatorResolveContext) (bool, error) {
+	p.tenants = append(p.tenants, rc.TenantID)
+
+	return true, nil
+}
+
+// countingRoleService wraps roleStubAssigneeService and counts how often the
+// host is asked for a role's members.
+type countingRoleService struct {
+	roleStubAssigneeService
+
+	calls int
+}
+
+func (s *countingRoleService) GetRoleUsers(ctx context.Context, roleID string) ([]approval.UserInfo, error) {
+	s.calls++
+
+	return s.roleStubAssigneeService.GetRoleUsers(ctx, roleID)
+}
+
+func (s *ValidationServiceTestSuite) TestInitiationGate() {
+	s.Run("OpenFlowAdmitsWithoutRules", func() {
+		defer cleanAllServiceData(s.ctx, s.db)
+
+		flow := s.seedFlow("init-open")
+		flow.IsAllInitiationAllowed = true
+
+		svc := service.NewValidationService(mustInitiatorComposite(nil))
+
+		allowed, err := svc.CheckInitiationPermission(s.ctx, s.db, flow, approval.DefaultTenantID, approval.UserInfo{ID: "anyone"})
+		s.Require().NoError(err, "An open flow should not error")
+		s.Assert().True(allowed, "A flow open to everyone admits any applicant without initiator rules")
+	})
+
+	s.Run("RulesSeeTheStartingTenant", func() {
+		defer cleanAllServiceData(s.ctx, s.db)
+
+		flow := s.seedFlowIn(approval.SharedTenantID, "init-shared")
+		s.seedInitiator(flow.ID, "tenant_probe")
+
+		probe := new(tenantProbeInitiator)
+		composite, err := strategy.NewCompositeInitiatorResolver(
+			strategy.BuiltinInitiatorResolvers(nil),
+			[]approval.InitiatorResolver{probe},
+		)
+		s.Require().NoError(err, "Should register the probe initiator kind")
+
+		allowed, err := service.NewValidationService(composite).
+			CheckInitiationPermission(s.ctx, s.db, flow, "tenant-a", approval.UserInfo{ID: "applicant"})
+		s.Require().NoError(err, "The probe rule should not error")
+		s.Assert().True(allowed, "The probe rule admits")
+		s.Assert().Equal([]string{"tenant-a"}, probe.tenants,
+			"A rule of a shared flow must be evaluated for the tenant it is started in, never the shared tenant")
+	})
+
+	s.Run("BatchKeepsOrderAndAppliesEachFlowsGate", func() {
+		defer cleanAllServiceData(s.ctx, s.db)
+
+		open := s.seedFlow("batch-open")
+		open.IsAllInitiationAllowed = true
+
+		listed := s.seedFlow("batch-listed")
+		s.seedInitiator(listed.ID, approval.InitiatorUser, "applicant")
+
+		unlisted := s.seedFlow("batch-unlisted")
+		s.seedInitiator(unlisted.ID, approval.InitiatorUser, "someone-else")
+
+		ruleless := s.seedFlow("batch-ruleless")
+
+		ids, err := service.NewValidationService(mustInitiatorComposite(nil)).InitiableFlowIDs(
+			s.ctx, s.db,
+			[]approval.Flow{*listed, *unlisted, *ruleless, *open},
+			approval.DefaultTenantID,
+			approval.UserInfo{ID: "applicant"},
+		)
+		s.Require().NoError(err, "The batch gate should not error")
+		s.Assert().Equal([]string{listed.ID, open.ID}, ids,
+			"Only the listed and the open flow admit the applicant, in the order given")
+	})
+
+	s.Run("BatchAsksAboutEachRoleOnce", func() {
+		defer cleanAllServiceData(s.ctx, s.db)
+
+		first := s.seedFlow("batch-role-1")
+		s.seedInitiator(first.ID, approval.InitiatorRole, "role-1")
+
+		second := s.seedFlow("batch-role-2")
+		s.seedInitiator(second.ID, approval.InitiatorRole, "role-1")
+
+		roles := &countingRoleService{
+			usersByRole: map[string][]approval.UserInfo{"role-1": {{ID: "applicant"}}},
+		}
+
+		ids, err := service.NewValidationService(mustInitiatorComposite(roles)).InitiableFlowIDs(
+			s.ctx, s.db,
+			[]approval.Flow{*first, *second},
+			approval.DefaultTenantID,
+			approval.UserInfo{ID: "applicant"},
+		)
+		s.Require().NoError(err, "The batch gate should not error")
+		s.Assert().Equal([]string{first.ID, second.ID}, ids, "Both role-restricted flows admit a role holder")
+		s.Assert().Equal(1, roles.calls, "One evaluation pass asks the host about a role once")
 	})
 }
 

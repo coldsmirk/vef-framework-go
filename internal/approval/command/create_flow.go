@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/samber/lo"
-
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
@@ -14,6 +12,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // CreateFlowCmd creates a new flow with its initiator configurations.
@@ -58,10 +57,13 @@ func NewCreateFlowHandler(db orm.DB, bindingValidator *binding.ConfigValidator, 
 
 func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*approval.Flow, error) {
 	db := contextx.DB(ctx, h.db)
-	tenantID := lo.CoalesceOrEmpty(cmd.TenantID, approval.DefaultTenantID)
 
-	if err := cmd.Caller.Authorize(tenantID); err != nil {
-		return nil, approval.ErrFlowNotFound
+	// The flow's tenant is decided like any new entity's: an ordinary caller
+	// creates in its own tenant whatever it sent, a privileged one where it
+	// asks — the shared tenant included.
+	tenantID, err := cmd.Caller.ResolveWriteTenant(cmd.TenantID)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := validateBindingMode(cmd.BindingMode); err != nil {
@@ -104,6 +106,10 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 
 	if exists {
 		return nil, approval.ErrFlowCodeExists
+	}
+
+	if err := requireTenantCategory(ctx, db, cmd.CategoryID, tenantID); err != nil {
+		return nil, err
 	}
 
 	flow := approval.Flow{
@@ -150,4 +156,34 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 	)
 
 	return &flow, nil
+}
+
+// requireTenantCategory rejects placing a flow of tenantID under a category
+// that is missing or owned by another tenant, with ErrCategoryNotFound either
+// way so the answer reveals nothing about other tenants. A flow and its
+// category always share a tenant: a shared flow sits under a shared category,
+// whose name every tenant may see, and no tenant's category name reaches
+// another tenant through a flow.
+func requireTenantCategory(ctx context.Context, db orm.DB, categoryID, tenantID string) error {
+	var category approval.FlowCategory
+
+	category.ID = categoryID
+
+	if err := db.NewSelect().
+		Model(&category).
+		Select("tenant_id").
+		WherePK().
+		Scan(ctx); err != nil {
+		if result.IsRecordNotFound(err) {
+			return approval.ErrCategoryNotFound
+		}
+
+		return fmt.Errorf("load flow category: %w", err)
+	}
+
+	if category.TenantID != tenantID {
+		return approval.ErrCategoryNotFound
+	}
+
+	return nil
 }

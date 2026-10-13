@@ -4,21 +4,84 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
+
+// roleMembershipMemoKey is the context key of a roleMembershipMemo.
+type roleMembershipMemoKey struct{}
+
+// roleMembershipKey identifies one role-membership question.
+type roleMembershipKey struct {
+	userID string
+	roleID string
+}
+
+// roleMembershipMemo remembers role-membership answers for the life of a
+// context. The mutex makes it safe to share across goroutines.
+type roleMembershipMemo struct {
+	mu      sync.Mutex
+	answers map[roleMembershipKey]bool
+}
+
+// WithRoleMembershipMemo returns a context under which UserHasRole asks the
+// host about each user and role once and answers repeats from memory. It is
+// meant for one evaluation pass over many rules — the available-flow list
+// checks the same applicant against every flow's initiator rules — never for a
+// long-lived context, where a remembered answer would outlive a role change.
+// A context that already carries a memo is returned unchanged.
+func WithRoleMembershipMemo(ctx context.Context) context.Context {
+	if _, ok := ctx.Value(roleMembershipMemoKey{}).(*roleMembershipMemo); ok {
+		return ctx
+	}
+
+	return context.WithValue(ctx, roleMembershipMemoKey{}, &roleMembershipMemo{
+		answers: make(map[roleMembershipKey]bool),
+	})
+}
 
 // UserHasRole reports whether the user currently holds the role. It is the
 // single source of truth for role-membership checks: it prefers the host's
 // direct RoleMembershipChecker capability and falls back to listing the role's
 // members (correct for any host, but linear in role size). Routing every caller
 // through it keeps the read and validation paths from answering the same
-// question two different ways. A nil service reports no membership.
+// question two different ways. A nil service reports no membership. Under
+// WithRoleMembershipMemo a repeated question is answered without the host.
 func UserHasRole(ctx context.Context, svc approval.AssigneeService, userID, roleID string) (bool, error) {
 	if svc == nil {
 		return false, nil
 	}
 
+	memo, _ := ctx.Value(roleMembershipMemoKey{}).(*roleMembershipMemo)
+	key := roleMembershipKey{userID: userID, roleID: roleID}
+
+	if memo != nil {
+		memo.mu.Lock()
+		member, ok := memo.answers[key]
+		memo.mu.Unlock()
+
+		if ok {
+			return member, nil
+		}
+	}
+
+	member, err := askRoleMembership(ctx, svc, userID, roleID)
+	if err != nil {
+		return false, err
+	}
+
+	if memo != nil {
+		memo.mu.Lock()
+		memo.answers[key] = member
+		memo.mu.Unlock()
+	}
+
+	return member, nil
+}
+
+// askRoleMembership puts one role-membership question to the host.
+func askRoleMembership(ctx context.Context, svc approval.AssigneeService, userID, roleID string) (bool, error) {
 	if checker, ok := svc.(approval.RoleMembershipChecker); ok {
 		member, err := checker.UserHasRole(ctx, userID, roleID)
 		if err != nil {

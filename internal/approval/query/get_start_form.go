@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/samber/lo"
-
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/my"
 	"github.com/coldsmirk/vef-framework-go/contextx"
@@ -16,15 +14,18 @@ import (
 )
 
 // GetStartFormQuery loads the published form document of a flow the current
-// user wants to initiate. Applicant is the caller resolved as Start resolves
-// the applicant — the identity the initiation gate checks and the snapshot the
-// form returns.
+// user wants to initiate. Applicant and Caller are resolved as Start resolves
+// them: the applicant is the identity the initiation gate checks and the
+// snapshot the form returns, and the caller decides the tenant the instance
+// would run in — TenantID counts only for a privileged caller, exactly as in
+// StartInstanceInput.
 type GetStartFormQuery struct {
 	cqrs.BaseQuery
 
 	TenantID  string
 	FlowCode  string
 	Applicant approval.UserInfo
+	Caller    approval.CallerContext
 }
 
 // GetStartFormHandler handles the GetStartFormQuery.
@@ -38,42 +39,34 @@ func NewGetStartFormHandler(db orm.DB, validationSvc *service.ValidationService)
 	return &GetStartFormHandler{db: db, validationSvc: validationSvc}
 }
 
-// Handle mirrors the start-instance gate — active flow, initiation
-// permission, published version — so a successful load implies the caller
-// could start this flow with the returned form.
+// Handle mirrors the start-instance gate — the tenant the instance would run
+// in, the flow a code names there, active flow, initiation permission,
+// published version — so a successful load implies the caller could start
+// this flow with the returned form.
 func (h *GetStartFormHandler) Handle(ctx context.Context, query GetStartFormQuery) (*my.StartForm, error) {
 	db := contextx.DB(ctx, h.db)
 
-	tenantID := lo.CoalesceOrEmpty(query.TenantID, approval.DefaultTenantID)
+	tenantID, err := service.StartTenant(query.Caller, query.TenantID)
+	if err != nil {
+		return nil, approval.ErrFlowNotFound
+	}
 
-	var flow approval.Flow
-	if err := db.NewSelect().
-		Model(&flow).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("tenant_id", tenantID).
-				Equals("code", query.FlowCode)
-		}).
-		Scan(ctx); err != nil {
-		if result.IsRecordNotFound(err) {
-			return nil, approval.ErrFlowNotFound
-		}
-
-		return nil, fmt.Errorf("load flow: %w", err)
+	flow, err := service.FindStartFlow(ctx, db, tenantID, query.FlowCode)
+	if err != nil {
+		return nil, err
 	}
 
 	if !flow.IsActive {
 		return nil, approval.ErrFlowNotActive
 	}
 
-	if !flow.IsAllInitiationAllowed {
-		allowed, err := h.validationSvc.CheckInitiationPermission(ctx, db, &flow, query.Applicant)
-		if err != nil {
-			return nil, fmt.Errorf("check initiation permission: %w", err)
-		}
+	allowed, err := h.validationSvc.CheckInitiationPermission(ctx, db, flow, tenantID, query.Applicant)
+	if err != nil {
+		return nil, fmt.Errorf("check initiation permission: %w", err)
+	}
 
-		if !allowed {
-			return nil, approval.ErrNotAllowedInitiate
-		}
+	if !allowed {
+		return nil, approval.ErrNotAllowedInitiate
 	}
 
 	var version approval.FlowVersion

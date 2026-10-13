@@ -59,7 +59,7 @@ type CountingInstanceNoGenerator struct {
 	counter atomic.Int64
 }
 
-func (g *CountingInstanceNoGenerator) Generate(_ context.Context, flowCode string) (string, error) {
+func (g *CountingInstanceNoGenerator) Generate(_ context.Context, _, flowCode string) (string, error) {
 	return fmt.Sprintf("%s-%04d", flowCode, g.counter.Add(1)), nil
 }
 

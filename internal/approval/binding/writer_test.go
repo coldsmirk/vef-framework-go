@@ -21,11 +21,11 @@ import (
 // canonical example of a host resolver for non-single-key refs.
 type compositeRefResolver struct{}
 
-func (*compositeRefResolver) ResolveRecordKey(_ context.Context, _ *approval.Flow, businessRef string) (approval.BusinessRecordKey, error) {
+func (*compositeRefResolver) ResolveRecordKey(_ context.Context, _ *approval.Flow, instance *approval.Instance) (approval.BusinessRecordKey, error) {
 	var ref struct {
 		ID string `json:"id"`
 	}
-	if err := json.Unmarshal([]byte(businessRef), &ref); err != nil {
+	if err := json.Unmarshal([]byte(*instance.BusinessRef), &ref); err != nil {
 		return nil, fmt.Errorf("decode composite ref: %w", err)
 	}
 
@@ -35,14 +35,14 @@ func (*compositeRefResolver) ResolveRecordKey(_ context.Context, _ *approval.Flo
 // failingResolver simulates a host resolver hitting a transient fault.
 type failingResolver struct{ err error }
 
-func (r *failingResolver) ResolveRecordKey(context.Context, *approval.Flow, string) (approval.BusinessRecordKey, error) {
+func (r *failingResolver) ResolveRecordKey(context.Context, *approval.Flow, *approval.Instance) (approval.BusinessRecordKey, error) {
 	return nil, r.err
 }
 
 // emptyResolver resolves every ref to an empty record key.
 type emptyResolver struct{}
 
-func (*emptyResolver) ResolveRecordKey(context.Context, *approval.Flow, string) (approval.BusinessRecordKey, error) {
+func (*emptyResolver) ResolveRecordKey(context.Context, *approval.Flow, *approval.Instance) (approval.BusinessRecordKey, error) {
 	return approval.BusinessRecordKey{}, nil
 }
 
@@ -78,7 +78,7 @@ func (w *testWriter) WriteBack(
 	resolvedFlow := *flow
 	resolvedFlow.BusinessBinding = binding
 
-	recordKey, err := w.resolver.ResolveRecordKey(ctx, &resolvedFlow, *instance.BusinessRef)
+	recordKey, err := w.resolver.ResolveRecordKey(ctx, &resolvedFlow, instance)
 	if err != nil {
 		return err
 	}

@@ -28,13 +28,16 @@ func init() {
 	})
 }
 
-// MockInstanceNoGenerator is a test implementation of InstanceNoGenerator.
+// MockInstanceNoGenerator is a test implementation of InstanceNoGenerator. It
+// records the tenant of every number it hands out.
 type MockInstanceNoGenerator struct {
 	counter int
+	tenants []string
 }
 
-func (g *MockInstanceNoGenerator) Generate(context.Context, string) (string, error) {
+func (g *MockInstanceNoGenerator) Generate(_ context.Context, tenantID, _ string) (string, error) {
 	g.counter++
+	g.tenants = append(g.tenants, tenantID)
 
 	return fmt.Sprintf("TEST-%d", g.counter), nil
 }

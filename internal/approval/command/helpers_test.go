@@ -486,8 +486,22 @@ func setupMinimalFixture(t testing.TB, ctx context.Context, db orm.DB, code stri
 //
 //nolint:revive // t testing.TB is conventionally the first parameter in test helpers
 func deployAndPublishFlow(t testing.TB, ctx context.Context, db orm.DB, code string, def approval.FlowDefinition) *FlowFixture {
+	return deployAndPublishFlowIn(t, ctx, db, approval.DefaultTenantID, code, def)
+}
+
+// deployAndPublishFlowIn is deployAndPublishFlow for a flow — and its
+// category — owned by tenantID; approval.SharedTenantID makes it shared.
+//
+//nolint:revive // t testing.TB is conventionally the first parameter in test helpers
+func deployAndPublishFlowIn(
+	t testing.TB,
+	ctx context.Context,
+	db orm.DB,
+	tenantID, code string,
+	def approval.FlowDefinition,
+) *FlowFixture {
 	category := &approval.FlowCategory{
-		TenantID: "default",
+		TenantID: tenantID,
 		Code:     code + "-cat",
 		Name:     code + " Category",
 	}
@@ -495,7 +509,7 @@ func deployAndPublishFlow(t testing.TB, ctx context.Context, db orm.DB, code str
 	require.NoError(t, err, "Should insert test category")
 
 	flow := &approval.Flow{
-		TenantID:               "default",
+		TenantID:               tenantID,
 		CategoryID:             category.ID,
 		Code:                   code + "-flow",
 		Name:                   code + " Flow",

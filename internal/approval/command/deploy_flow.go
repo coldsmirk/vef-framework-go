@@ -131,7 +131,18 @@ func nextVersionNumber(ctx context.Context, db orm.DB, flowID string) (int, erro
 	return int(latest.Int64) + 1, nil
 }
 
-func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*approval.FlowVersion, error) {
+// deployment is what validating a deploy yields: the parsed node data that
+// deploy persists verbatim, the form fields derived from the schema, and the
+// resolved storage mode.
+type deployment struct {
+	nodeData    map[string]approval.NodeData
+	fields      []approval.FormFieldDefinition
+	storageMode approval.StorageMode
+}
+
+// validate checks a deploy on its own — the graph, the form, and where the two
+// meet — before any row is read or written.
+func (h *DeployFlowHandler) validate(ctx context.Context, cmd DeployFlowCmd) (*deployment, error) {
 	parsedNodeData, err := h.flowDefSvc.ValidateFlowDefinition(&cmd.FlowDefinition)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", approval.ErrInvalidFlowDesign, err)
@@ -177,11 +188,31 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 		}
 	}
 
+	return &deployment{nodeData: parsedNodeData, fields: fields, storageMode: storageMode}, nil
+}
+
+func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*approval.FlowVersion, error) {
+	planned, err := h.validate(ctx, cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	parsedNodeData, fields := planned.nodeData, planned.fields
+
 	db := contextx.DB(ctx, h.db)
 
 	flow, businessBinding, err := loadDeployFlow(ctx, db, cmd.FlowID, cmd.Caller)
 	if err != nil {
 		return nil, err
+	}
+
+	// A shared flow runs in every tenant, so on top of a valid definition it
+	// must not route tasks or CC to one tenant's people. Every version is
+	// deployed through here, which makes this the single gate.
+	if flow.TenantID == approval.SharedTenantID {
+		if err := h.flowDefSvc.ValidateSharedFlowNodes(parsedNodeData); err != nil {
+			return nil, fmt.Errorf("%w: %w", approval.ErrSharedFlowNamesPeople, err)
+		}
 	}
 
 	versionNumber, err := nextVersionNumber(ctx, db, flow.ID)
@@ -194,7 +225,7 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 		Version:         versionNumber,
 		Status:          approval.VersionDraft,
 		Description:     cmd.Description,
-		StorageMode:     storageMode,
+		StorageMode:     planned.storageMode,
 		FlowSchema:      &cmd.FlowDefinition,
 		FormSchema:      cmd.FormSchema,
 		FormFields:      fields,

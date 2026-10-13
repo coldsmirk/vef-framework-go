@@ -53,7 +53,9 @@ func NewFlowResource(bus cqrs.Bus, tenantResolver approval.PrincipalTenantResolv
 type CreateFlowParams struct {
 	api.P
 
-	TenantID               string                          `json:"tenantId" validate:"required"`
+	// TenantID is the tenant the flow is created in, resolved as a category's
+	// is: only a super-admin's choice counts, SharedTenantID included.
+	TenantID               string                          `json:"tenantId"`
 	Code                   string                          `json:"code" validate:"required"`
 	Name                   string                          `json:"name" validate:"required"`
 	CategoryID             string                          `json:"categoryId" validate:"required"`

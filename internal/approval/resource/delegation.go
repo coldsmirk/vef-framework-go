@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/crud"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
@@ -61,7 +62,7 @@ func NewDelegationResource() api.Resource {
 				}
 
 				if principal == nil {
-					return approval.ErrCrossTenantAccess
+					return result.ErrAccessDenied
 				}
 
 				query.Where(func(cb orm.ConditionBuilder) {
@@ -83,7 +84,7 @@ func NewDelegationResource() api.Resource {
 				}
 
 				if principal == nil {
-					return approval.ErrCrossTenantAccess
+					return result.ErrAccessDenied
 				}
 
 				model.DelegatorID = principal.ID
@@ -127,7 +128,7 @@ func authorizeDelegationOwner(ctx fiber.Ctx, model *approval.Delegation) error {
 	}
 
 	if principal == nil || model.DelegatorID != principal.ID {
-		return approval.ErrCrossTenantAccess
+		return result.ErrAccessDenied
 	}
 
 	return nil

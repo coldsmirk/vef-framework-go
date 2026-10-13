@@ -21,6 +21,7 @@ type MyResource struct {
 
 	bus                cqrs.Bus
 	departmentResolver approval.PrincipalDepartmentResolver
+	tenantResolver     approval.PrincipalTenantResolver
 	formGlobals        *service.FormGlobalsService
 }
 
@@ -28,11 +29,13 @@ type MyResource struct {
 func NewMyResource(
 	bus cqrs.Bus,
 	departmentResolver approval.PrincipalDepartmentResolver,
+	tenantResolver approval.PrincipalTenantResolver,
 	formGlobals *service.FormGlobalsService,
 ) api.Resource {
 	return &MyResource{
 		bus:                bus,
 		departmentResolver: departmentResolver,
+		tenantResolver:     tenantResolver,
 		formGlobals:        formGlobals,
 		Resource: api.NewRPCResource(
 			"approval/my",
@@ -54,6 +57,8 @@ func NewMyResource(
 type FindAvailableFlowsParams struct {
 	api.P
 
+	// TenantID is the tenant to list for. Only a super-admin's choice counts;
+	// everyone else is offered their own tenant's flows plus the shared ones.
 	TenantID *string           `json:"tenantId"`
 	Keyword  *string           `json:"keyword"`
 	Labels   map[string]string `json:"labels"`
@@ -68,12 +73,18 @@ func (r *MyResource) FindAvailableFlows(ctx fiber.Ctx, principal *security.Princ
 		return err
 	}
 
+	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
+	if err != nil {
+		return err
+	}
+
 	res, err := cqrs.Send[query.FindAvailableFlowsQuery, *page.Page[my.AvailableFlow]](ctx.Context(), r.bus, query.FindAvailableFlowsQuery{
 		UserID:                principal.ID,
 		TenantID:              params.TenantID,
 		ApplicantDepartmentID: departmentID,
 		Keyword:               params.Keyword,
 		Labels:                params.Labels,
+		Caller:                caller,
 		Page:                  params.Page,
 		Size:                  params.PageSize,
 	})
@@ -88,16 +99,18 @@ func (r *MyResource) FindAvailableFlows(ctx fiber.Ctx, principal *security.Princ
 type GetStartFormParams struct {
 	api.P
 
-	TenantID string `json:"tenantId" validate:"required"`
+	// TenantID is the tenant the instance would run in, honored exactly as
+	// StartParams.TenantID is: only a super-admin's choice counts.
+	TenantID string `json:"tenantId"`
 	FlowCode string `json:"flowCode" validate:"required"`
 }
 
 // GetStartForm loads the published form document for initiating a flow,
-// gated exactly like starting the instance. The applicant snapshot and the
-// form-visible globals are resolved the way Start resolves them, so the form
-// is evaluated against what the instance will record.
+// gated exactly like starting the instance. The applicant snapshot, the
+// tenant, and the form-visible globals are resolved the way Start resolves
+// them, so the form is evaluated against what the instance will record.
 func (r *MyResource) GetStartForm(ctx fiber.Ctx, principal *security.Principal, params GetStartFormParams) error {
-	applicant, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
+	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
@@ -105,7 +118,8 @@ func (r *MyResource) GetStartForm(ctx fiber.Ctx, principal *security.Principal, 
 	form, err := cqrs.Send[query.GetStartFormQuery, *my.StartForm](ctx.Context(), r.bus, query.GetStartFormQuery{
 		TenantID:  params.TenantID,
 		FlowCode:  params.FlowCode,
-		Applicant: applicant,
+		Applicant: actor.Operator,
+		Caller:    actor.Caller,
 	})
 	if err != nil {
 		return err

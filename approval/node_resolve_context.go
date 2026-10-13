@@ -14,7 +14,9 @@ package approval
 type NodeResolveContext struct {
 	// Instance is the running approval instance, including the applicant
 	// snapshot, the tenant, the flow code, and the Globals the host's
-	// InstanceGlobalsResolver captured at initiation.
+	// InstanceGlobalsResolver captured at initiation. Its TenantID is the
+	// tenant the instance runs in, the applicant's — for a shared flow, not
+	// the flow's — which is what a tenant-scoped kind resolves within.
 	Instance *Instance
 	// Node is the flow node being processed. Its Key is the designer-assigned
 	// identifier, stable across deploys of the same step.

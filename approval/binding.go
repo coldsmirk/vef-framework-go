@@ -72,9 +72,14 @@ const (
 //
 // Hosts register an implementation via vef.SupplyBusinessRefResolver.
 type BusinessRefResolver interface {
-	// ResolveRecordKey extracts the configured business record key from
-	// businessRef. Returning an error fails the write-back for this instance.
-	ResolveRecordKey(ctx context.Context, flow *Flow, businessRef string) (BusinessRecordKey, error)
+	// ResolveRecordKey extracts the configured business record key from the
+	// instance's BusinessRef, which is never blank here. The instance carries
+	// the tenant it runs in and the applicant, so a resolver can scope the key
+	// to that tenant — a shared flow's binding serves every tenant, and its
+	// Flow.TenantID is SharedTenantID — and refuse a reference the applicant
+	// may not bind; the ref may come straight from the client. Returning an
+	// error fails the start, ErrInvalidBusinessRef for a malformed reference.
+	ResolveRecordKey(ctx context.Context, flow *Flow, instance *Instance) (BusinessRecordKey, error)
 }
 
 // BindingTrigger identifies the lifecycle moment associated with a failed

@@ -64,7 +64,7 @@ func (p *Projector) Bind(
 	resolvedFlow.BindingMode = approval.BindingBusiness
 	resolvedFlow.BusinessBinding = binding
 
-	recordKey, err := p.resolver.ResolveRecordKey(ctx, &resolvedFlow, *instance.BusinessRef)
+	recordKey, err := p.resolver.ResolveRecordKey(ctx, &resolvedFlow, instance)
 	if err != nil {
 		if errors.Is(err, ErrInvalidBusinessRef) {
 			return approval.ErrInvalidBusinessRef
