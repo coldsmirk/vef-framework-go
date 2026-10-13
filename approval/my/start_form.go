@@ -1,6 +1,10 @@
 package my
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/coldsmirk/vef-framework-go/approval"
+)
 
 // StartForm is the pre-submission view of a flow for an applicant: the
 // identity fields needed to render the initiation header plus the published
@@ -17,4 +21,13 @@ type StartForm struct {
 	VersionID   string          `json:"versionId"`
 	Version     int             `json:"version"`
 	FormSchema  json.RawMessage `json:"formSchema,omitempty"`
+	// Applicant is the snapshot the instance will record if the caller starts
+	// it now, resolved as Start resolves it — the form's `$applicant`, so a
+	// rule about the initiator evaluates at initiation exactly as it does
+	// later on the instance's detail views.
+	Applicant approval.UserInfo `json:"applicant"`
+	// Globals are the form-visible host globals (approval.FormGlobalsExposer)
+	// resolved for the caller — the form's `$globals`. Absent when the flow
+	// exposes none.
+	Globals map[string]any `json:"globals,omitempty"`
 }

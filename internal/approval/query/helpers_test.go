@@ -8,10 +8,33 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
+	"github.com/coldsmirk/vef-framework-go/security"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
+
+// formGlobalsResolver is a host globals resolver exposing the given keys to
+// forms. The detail views only ever filter a stored snapshot, so it never has
+// anything of its own to resolve.
+type formGlobalsResolver struct {
+	keys []string
+}
+
+func (*formGlobalsResolver) Resolve(context.Context, *security.Principal, string) (map[string]any, error) {
+	return nil, nil
+}
+
+func (r *formGlobalsResolver) FormGlobalKeys(string) []string {
+	return r.keys
+}
+
+// formGlobalsExposing builds the form-globals policy of a host whose resolver
+// exposes keys — none at all when called without any.
+func formGlobalsExposing(keys ...string) *service.FormGlobalsService {
+	return service.NewFormGlobalsService(&formGlobalsResolver{keys: keys})
+}
 
 // septemberAt returns a fixed local instant in September 2026, giving the
 // time-range filter tests deterministic timestamps.

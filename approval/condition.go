@@ -145,6 +145,21 @@ type InstanceGlobalsResolver interface {
 	Resolve(ctx context.Context, principal *security.Principal, flowCode string) (map[string]any, error)
 }
 
+// FormGlobalsExposer is an optional extension of InstanceGlobalsResolver: a
+// resolver implementing it names the globals an instance's form may read —
+// `$globals` in the form designer's conditions and expressions. Globals are
+// routing inputs first, resolved server-side so an applicant cannot steer
+// them; shipping one to the browser, where every participant of the instance
+// can read it, is a separate decision. A resolver that does not implement this
+// interface therefore exposes none, and one that does exposes only the keys it
+// names: the start form carries them resolved for the caller, and the detail
+// views carry them from the instance's snapshot.
+type FormGlobalsExposer interface {
+	// FormGlobalKeys returns the keys of the globals the form of an instance
+	// of flowCode may read. A key the resolver does not produce is ignored.
+	FormGlobalKeys(flowCode string) []string
+}
+
 // ConditionEvaluator evaluates branch conditions.
 type ConditionEvaluator interface {
 	// Kind returns the condition kind this evaluator handles.

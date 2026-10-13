@@ -7,6 +7,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/my"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/page"
 	"github.com/coldsmirk/vef-framework-go/result"
@@ -20,13 +21,19 @@ type MyResource struct {
 
 	bus                cqrs.Bus
 	departmentResolver approval.PrincipalDepartmentResolver
+	formGlobals        *service.FormGlobalsService
 }
 
 // NewMyResource creates a new self-service resource.
-func NewMyResource(bus cqrs.Bus, departmentResolver approval.PrincipalDepartmentResolver) api.Resource {
+func NewMyResource(
+	bus cqrs.Bus,
+	departmentResolver approval.PrincipalDepartmentResolver,
+	formGlobals *service.FormGlobalsService,
+) api.Resource {
 	return &MyResource{
 		bus:                bus,
 		departmentResolver: departmentResolver,
+		formGlobals:        formGlobals,
 		Resource: api.NewRPCResource(
 			"approval/my",
 			api.WithOperations(
@@ -86,20 +93,27 @@ type GetStartFormParams struct {
 }
 
 // GetStartForm loads the published form document for initiating a flow,
-// gated exactly like starting the instance.
+// gated exactly like starting the instance. The applicant snapshot and the
+// form-visible globals are resolved the way Start resolves them, so the form
+// is evaluated against what the instance will record.
 func (r *MyResource) GetStartForm(ctx fiber.Ctx, principal *security.Principal, params GetStartFormParams) error {
-	departmentID, _, err := r.departmentResolver.Resolve(ctx.Context(), principal)
+	applicant, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
 	if err != nil {
 		return err
 	}
 
 	form, err := cqrs.Send[query.GetStartFormQuery, *my.StartForm](ctx.Context(), r.bus, query.GetStartFormQuery{
-		TenantID:              params.TenantID,
-		FlowCode:              params.FlowCode,
-		UserID:                principal.ID,
-		ApplicantDepartmentID: departmentID,
+		TenantID:  params.TenantID,
+		FlowCode:  params.FlowCode,
+		Applicant: applicant,
 	})
 	if err != nil {
+		return err
+	}
+
+	// Resolved only past the gate: a caller who may not start the flow never
+	// reaches the host resolver.
+	if form.Globals, err = r.formGlobals.Resolve(ctx.Context(), principal, form.FlowCode); err != nil {
 		return err
 	}
 

@@ -35,7 +35,7 @@ type GetMyInstanceDetailTestSuite struct {
 }
 
 func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
-	s.handler = query.NewGetMyInstanceDetailHandler(s.db, service.NewTaskService())
+	s.handler = query.NewGetMyInstanceDetailHandler(s.db, service.NewTaskService(), formGlobalsExposing("region"))
 
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "mid-flow", 1)
 	s.nodeID = fix.NodeIDs[0]
@@ -66,6 +66,7 @@ func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
 		Title: "Detail Instance", InstanceNo: "MID-001", ApplicantID: "user-a",
 		ApplicantDepartmentName: &department,
 		Status:                  approval.InstanceRunning, CurrentNodeID: &fix.NodeIDs[0],
+		Globals: map[string]any{"region": "north", "quotaLimit": float64(8000)},
 	}
 	_, err = s.db.NewInsert().Model(inst).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert instance")
@@ -152,6 +153,8 @@ func (s *GetMyInstanceDetailTestSuite) TestApplicantAccess() {
 	s.Assert().Equal(s.flowID, detail.Instance.FlowID, "Detail should carry the instance's flow id")
 	s.Assert().Equal("mid-flow", detail.Instance.FlowCode, "Detail should carry the flow code snapshot")
 	s.Assert().Equal(map[string]string{"app": "crm"}, detail.Instance.Labels, "Detail should surface the flow's labels")
+	s.Assert().Equal(map[string]any{"region": "north"}, detail.Instance.Globals,
+		"Detail should carry only the form-visible part of the globals snapshot")
 	s.Assert().Contains(detail.AvailableActions, "withdraw", "Applicant should be able to withdraw")
 	s.Assert().Contains(detail.AvailableActions, "urge", "Applicant should be able to urge when the instance has pending tasks")
 

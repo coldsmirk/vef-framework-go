@@ -16,14 +16,15 @@ import (
 )
 
 // GetStartFormQuery loads the published form document of a flow the current
-// user wants to initiate.
+// user wants to initiate. Applicant is the caller resolved as Start resolves
+// the applicant — the identity the initiation gate checks and the snapshot the
+// form returns.
 type GetStartFormQuery struct {
 	cqrs.BaseQuery
 
-	TenantID              string
-	FlowCode              string
-	UserID                string
-	ApplicantDepartmentID *string
+	TenantID  string
+	FlowCode  string
+	Applicant approval.UserInfo
 }
 
 // GetStartFormHandler handles the GetStartFormQuery.
@@ -65,10 +66,7 @@ func (h *GetStartFormHandler) Handle(ctx context.Context, query GetStartFormQuer
 	}
 
 	if !flow.IsAllInitiationAllowed {
-		allowed, err := h.validationSvc.CheckInitiationPermission(ctx, db, &flow, approval.UserInfo{
-			ID:           query.UserID,
-			DepartmentID: query.ApplicantDepartmentID,
-		})
+		allowed, err := h.validationSvc.CheckInitiationPermission(ctx, db, &flow, query.Applicant)
 		if err != nil {
 			return nil, fmt.Errorf("check initiation permission: %w", err)
 		}
@@ -103,5 +101,6 @@ func (h *GetStartFormHandler) Handle(ctx context.Context, query GetStartFormQuer
 		VersionID:   version.ID,
 		Version:     version.Version,
 		FormSchema:  version.FormSchema,
+		Applicant:   query.Applicant,
 	}, nil
 }

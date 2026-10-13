@@ -32,7 +32,7 @@ type GetAdminInstanceDetailTestSuite struct {
 }
 
 func (s *GetAdminInstanceDetailTestSuite) SetupSuite() {
-	s.handler = query.NewGetAdminInstanceDetailHandler(s.db)
+	s.handler = query.NewGetAdminInstanceDetailHandler(s.db, formGlobalsExposing("region"))
 
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "adid", 0)
 	s.flowID = fix.FlowID
@@ -92,6 +92,7 @@ func (s *GetAdminInstanceDetailTestSuite) SetupSuite() {
 		ApplicantID:             "user-1",
 		ApplicantDepartmentName: &department,
 		Status:                  approval.InstanceRunning,
+		Globals:                 map[string]any{"region": "north", "quotaLimit": float64(8000)},
 	}
 	_, err = s.db.NewInsert().Model(instance).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert instance")
@@ -148,6 +149,8 @@ func (s *GetAdminInstanceDetailTestSuite) TestGetDetailSuccess() {
 	s.Assert().Equal(s.flowID, detail.Instance.FlowID, "Detail should carry the instance's flow id")
 	s.Assert().Equal("adid", detail.Instance.FlowCode, "Detail should carry the flow code snapshot")
 	s.Assert().Equal(map[string]string{"app": "erp"}, detail.Instance.Labels, "Detail should surface the flow's labels")
+	s.Assert().Equal(map[string]any{"region": "north"}, detail.Instance.Globals,
+		"Detail should carry only the form-visible part of the globals snapshot")
 
 	// The flow graph is a React Flow–ready projection: 3 nodes + 2 edges with
 	// positions, and the approval node reporting its open visit as active.

@@ -48,5 +48,6 @@ var Module = fx.Module(
 		},
 		NewNodeService,
 		NewInstanceService,
+		NewFormGlobalsService,
 	),
 )

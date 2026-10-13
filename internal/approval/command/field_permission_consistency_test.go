@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/auth"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
@@ -47,7 +48,7 @@ func (s *ApproveTaskTestSuite) TestProjectionWritePathConsistency() {
 
 	// Projection side (real entry point): resolve the viewer's field permissions
 	// while the task is still pending — capture before the approve consumes it.
-	detailHandler := query.NewGetMyInstanceDetailHandler(s.db, service.NewTaskService())
+	detailHandler := query.NewGetMyInstanceDetailHandler(s.db, service.NewTaskService(), service.NewFormGlobalsService(auth.NewDefaultInstanceGlobalsResolver()))
 	detail, err := detailHandler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: inst.ID,
 		UserID:     "consistency-approver",

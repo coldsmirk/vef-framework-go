@@ -138,9 +138,9 @@ func (s *GetStartFormTestSuite) TearDownSuite() {
 func (s *GetStartFormTestSuite) TestGetStartForm() {
 	s.Run("ReturnsPublishedForm", func() {
 		form, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID: "default",
-			FlowCode: "gsf-open",
-			UserID:   "user-z",
+			TenantID:  "default",
+			FlowCode:  "gsf-open",
+			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
 		})
 		s.Require().NoError(err, "All-allowed flow should be loadable by anyone")
 		s.Assert().Equal("gsf-open", form.FlowCode, "Flow code should round-trip")
@@ -148,12 +148,14 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 		s.Assert().Equal(3, form.Version, "Should surface the published version number")
 		s.Assert().NotEmpty(form.VersionID, "Should surface the published version id")
 		s.Assert().JSONEq(`{"fields": [{"key": "amount"}]}`, string(form.FormSchema), "Form schema should be returned verbatim")
+		s.Assert().Equal(approval.UserInfo{ID: "user-z", Name: "User Z"}, form.Applicant,
+			"Should return the applicant snapshot the instance would record, the form's $applicant")
 	})
 
 	s.Run("DefaultsTenant", func() {
 		form, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			FlowCode: "gsf-open",
-			UserID:   "user-z",
+			FlowCode:  "gsf-open",
+			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
 		})
 		s.Require().NoError(err, "Empty tenant should fall back to the default tenant")
 		s.Assert().Equal("gsf-open", form.FlowCode, "Should resolve the default-tenant flow")
@@ -161,9 +163,9 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 
 	s.Run("AllowsMatchedInitiator", func() {
 		form, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID: "default",
-			FlowCode: "gsf-restricted",
-			UserID:   "user-a",
+			TenantID:  "default",
+			FlowCode:  "gsf-restricted",
+			Applicant: approval.UserInfo{ID: "user-a", Name: "User A"},
 		})
 		s.Require().NoError(err, "Configured initiator should pass the gate")
 		s.Assert().Equal("gsf-restricted", form.FlowCode, "Flow code should round-trip")
@@ -171,45 +173,45 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 
 	s.Run("DeniesUnmatchedInitiator", func() {
 		_, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID: "default",
-			FlowCode: "gsf-restricted",
-			UserID:   "user-z",
+			TenantID:  "default",
+			FlowCode:  "gsf-restricted",
+			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
 		})
 		s.Require().ErrorIs(err, approval.ErrNotAllowedInitiate, "Non-initiator should be denied")
 	})
 
 	s.Run("RejectsInactiveFlow", func() {
 		_, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID: "default",
-			FlowCode: "gsf-inactive",
-			UserID:   "user-z",
+			TenantID:  "default",
+			FlowCode:  "gsf-inactive",
+			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
 		})
 		s.Require().ErrorIs(err, approval.ErrFlowNotActive, "Inactive flow should be rejected")
 	})
 
 	s.Run("RejectsUnpublishedFlow", func() {
 		_, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID: "default",
-			FlowCode: "gsf-unpublished",
-			UserID:   "user-z",
+			TenantID:  "default",
+			FlowCode:  "gsf-unpublished",
+			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
 		})
 		s.Require().ErrorIs(err, approval.ErrNoPublishedVersion, "Flow without a published version should be rejected")
 	})
 
 	s.Run("RejectsUnknownFlow", func() {
 		_, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID: "default",
-			FlowCode: "gsf-missing",
-			UserID:   "user-z",
+			TenantID:  "default",
+			FlowCode:  "gsf-missing",
+			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
 		})
 		s.Require().ErrorIs(err, approval.ErrFlowNotFound, "Unknown flow code should be rejected")
 	})
 
 	s.Run("RejectsCrossTenantCode", func() {
 		_, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID: "tenant-other",
-			FlowCode: "gsf-open",
-			UserID:   "user-z",
+			TenantID:  "tenant-other",
+			FlowCode:  "gsf-open",
+			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
 		})
 		s.Require().ErrorIs(err, approval.ErrFlowNotFound, "Flow lookup should be tenant-scoped")
 	})

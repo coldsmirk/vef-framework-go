@@ -25,13 +25,14 @@ type GetMyInstanceDetailQuery struct {
 
 // GetMyInstanceDetailHandler handles the GetMyInstanceDetailQuery.
 type GetMyInstanceDetailHandler struct {
-	db      orm.DB
-	taskSvc *service.TaskService
+	db          orm.DB
+	taskSvc     *service.TaskService
+	formGlobals *service.FormGlobalsService
 }
 
 // NewGetMyInstanceDetailHandler creates a new GetMyInstanceDetailHandler.
-func NewGetMyInstanceDetailHandler(db orm.DB, taskSvc *service.TaskService) *GetMyInstanceDetailHandler {
-	return &GetMyInstanceDetailHandler{db: db, taskSvc: taskSvc}
+func NewGetMyInstanceDetailHandler(db orm.DB, taskSvc *service.TaskService, formGlobals *service.FormGlobalsService) *GetMyInstanceDetailHandler {
+	return &GetMyInstanceDetailHandler{db: db, taskSvc: taskSvc, formGlobals: formGlobals}
 }
 
 func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInstanceDetailQuery) (*my.InstanceDetail, error) {
@@ -75,6 +76,7 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 			CurrentNodeID: instance.CurrentNodeID,
 			BusinessRef:   instance.BusinessRef,
 			FormData:      stripHiddenFormData(instance.FormData, fieldPermissions),
+			Globals:       h.formGlobals.Visible(instance.FlowCode, instance.Globals),
 			CreatedAt:     instance.CreatedAt,
 			FinishedAt:    instance.FinishedAt,
 		},

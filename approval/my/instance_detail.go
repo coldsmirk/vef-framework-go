@@ -87,6 +87,10 @@ type InstanceInfo struct {
 	CurrentNodeName *string           `json:"currentNodeName,omitempty"`
 	BusinessRef     *string           `json:"businessRef,omitempty"`
 	FormData        map[string]any    `json:"formData,omitempty"`
-	CreatedAt       timex.DateTime    `json:"createdAt"`
-	FinishedAt      *timex.DateTime   `json:"finishedAt,omitempty"`
+	// Globals is the form-visible part of the instance's globals snapshot
+	// (approval.FormGlobalsExposer) — the form's `$globals`, as resolved at
+	// initiation. Absent when the flow exposes none.
+	Globals    map[string]any  `json:"globals,omitempty"`
+	CreatedAt  timex.DateTime  `json:"createdAt"`
+	FinishedAt *timex.DateTime `json:"finishedAt,omitempty"`
 }

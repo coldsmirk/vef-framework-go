@@ -46,6 +46,12 @@ func (r *StubGlobalsResolver) Resolve(_ context.Context, principal *security.Pri
 	return stubGlobals, nil
 }
 
+// FormGlobalKeys exposes "region" — and only it — to instance forms, so the
+// form-facing views must carry region and never quotaLimit.
+func (*StubGlobalsResolver) FormGlobalKeys(string) []string {
+	return []string{"region"}
+}
+
 func (r *StubGlobalsResolver) seen() (flowCode, userID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -128,22 +134,7 @@ func (s *GlobalsResolverOverrideTestSuite) rpcID(resource, action string, params
 func (s *GlobalsResolverOverrideTestSuite) TestStartSnapshotsResolvedGlobals() {
 	const flowCode = "globals-override-flow"
 
-	flowID := s.rpcID("approval/flow", "create", map[string]any{
-		"tenantId":               "default",
-		"code":                   flowCode,
-		"name":                   "Globals Override",
-		"categoryId":             s.categoryID,
-		"bindingMode":            "standalone",
-		"isAllInitiationAllowed": true,
-		"instanceTitleTemplate":  "Globals Override {{.instanceNo}}",
-	})
-
-	versionID := s.rpcID("approval/flow", "deploy", map[string]any{
-		"flowId":         flowID,
-		"flowDefinition": toMap(simpleFlowDef()),
-	})
-
-	s.rpc("approval/flow", "publish_version", map[string]any{"versionId": versionID})
+	s.publishFlow(flowCode)
 
 	instanceID := s.rpcID("approval/instance", "start", map[string]any{
 		"tenantId": "default",
@@ -161,4 +152,62 @@ func (s *GlobalsResolverOverrideTestSuite) TestStartSnapshotsResolvedGlobals() {
 	seenFlowCode, seenUserID := s.resolver.seen()
 	s.Equal(flowCode, seenFlowCode, "The resolver must be told which flow is being started")
 	s.NotEmpty(seenUserID, "The resolver must be handed the authenticated principal, never a nil caller")
+}
+
+// publishFlow creates, deploys, and publishes a standalone flow open to every
+// initiator; callers address it by code.
+func (s *GlobalsResolverOverrideTestSuite) publishFlow(flowCode string) {
+	s.T().Helper()
+
+	flowID := s.rpcID("approval/flow", "create", map[string]any{
+		"tenantId":               "default",
+		"code":                   flowCode,
+		"name":                   flowCode,
+		"categoryId":             s.categoryID,
+		"bindingMode":            "standalone",
+		"isAllInitiationAllowed": true,
+		"instanceTitleTemplate":  flowCode + " {{.instanceNo}}",
+	})
+
+	versionID := s.rpcID("approval/flow", "deploy", map[string]any{
+		"flowId":         flowID,
+		"flowDefinition": toMap(simpleFlowDef()),
+	})
+
+	s.rpc("approval/flow", "publish_version", map[string]any{"versionId": versionID})
+}
+
+func (s *GlobalsResolverOverrideTestSuite) TestStartFormCarriesApplicantAndFormGlobals() {
+	const flowCode = "globals-start-form-flow"
+
+	s.publishFlow(flowCode)
+
+	form := s.ReadDataAsMap(s.rpc("approval/my", "get_start_form", map[string]any{
+		"tenantId": "default",
+		"flowCode": flowCode,
+	}).Data)
+
+	applicant, ok := form["applicant"].(map[string]any)
+	s.Require().True(ok, "The start form should carry the applicant snapshot")
+	s.Equal("test-admin", applicant["id"], "The applicant should be the caller, resolved as Start resolves it")
+	s.Equal(map[string]any{"region": "north"}, form["globals"],
+		"The start form should carry only the globals the resolver exposes to forms")
+}
+
+func (s *GlobalsResolverOverrideTestSuite) TestInstanceDetailCarriesFormGlobals() {
+	const flowCode = "globals-detail-flow"
+
+	s.publishFlow(flowCode)
+
+	instanceID := s.rpcID("approval/instance", "start", map[string]any{
+		"tenantId": "default",
+		"flowCode": flowCode,
+	})
+
+	detail := s.ReadDataAsMap(s.rpc("approval/my", "get_instance_detail", map[string]any{"instanceId": instanceID}).Data)
+
+	instance, ok := detail["instance"].(map[string]any)
+	s.Require().True(ok, "The detail should carry the instance")
+	s.Equal(map[string]any{"region": "north"}, instance["globals"],
+		"The detail should carry the form-visible part of the instance's snapshot, never the routing-only quotaLimit")
 }
