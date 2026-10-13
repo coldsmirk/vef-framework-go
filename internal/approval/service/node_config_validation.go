@@ -149,6 +149,13 @@ func (s *FlowDefinitionService) validateTaskNodeData(nodeID string, data *approv
 		return fmt.Errorf("%w: %q in node %q", errInvalidTimeoutAction, data.TimeoutAction, nodeID)
 	}
 
+	// Without node admins a timeout escalation would only ever degrade to a
+	// timeout notice. A node without a deadline never times out, so the
+	// action is inert there and needs nothing.
+	if data.TimeoutHours > 0 && data.TimeoutAction == approval.TimeoutActionTransferAdmin && len(data.AdminUserIDs) == 0 {
+		return fmt.Errorf("%w: node %q", errTimeoutAdminUsersRequired, nodeID)
+	}
+
 	if err := s.validateAssigneeDefinitions(nodeID, data.Assignees); err != nil {
 		return err
 	}

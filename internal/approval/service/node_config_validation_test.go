@@ -86,6 +86,33 @@ func TestValidateNodeConfig(t *testing.T) {
 		})
 	})
 
+	t.Run("TimeoutToAdmins", func(t *testing.T) {
+		t.Run("RejectsLiveEscalationWithoutAdmins", func(t *testing.T) {
+			data := &approval.ApprovalNodeData{TimeoutHours: 24, TimeoutAction: approval.TimeoutActionTransferAdmin}
+
+			assert.ErrorIs(t, NewFlowDefinitionService().validateNodeConfig("n1", data), errTimeoutAdminUsersRequired,
+				"Escalating to node admins nobody named could only ever degrade to a notice")
+		})
+
+		t.Run("AcceptsEscalationWithAdmins", func(t *testing.T) {
+			data := &approval.ApprovalNodeData{
+				TimeoutHours:  24,
+				TimeoutAction: approval.TimeoutActionTransferAdmin,
+				AdminUserIDs:  []string{"admin-1"},
+			}
+
+			assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", data),
+				"Named node admins make the escalation executable")
+		})
+
+		t.Run("IgnoresInertActionWithoutDeadline", func(t *testing.T) {
+			data := &approval.HandleNodeData{TimeoutAction: approval.TimeoutActionTransferAdmin}
+
+			assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", data),
+				"A node without a deadline never times out, so the action needs nothing")
+		})
+	})
+
 	t.Run("SameApplicantAction", func(t *testing.T) {
 		for _, action := range []approval.SameApplicantAction{
 			approval.SameApplicantAutoPass,

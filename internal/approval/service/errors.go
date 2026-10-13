@@ -62,6 +62,7 @@ var (
 	errCCFormFieldRequired        = errors.New("cc kind 'form_field' requires a form field name")
 	errFallbackUsersRequired      = errors.New("empty-assignee action 'transfer_specified' requires fallbackUserIds")
 	errAdminUsersRequired         = errors.New("empty-assignee action 'transfer_admin' requires adminUserIds")
+	errTimeoutAdminUsersRequired  = errors.New("timeout action 'transfer_admin' requires adminUserIds")
 	errInvalidConditionKind       = errors.New("invalid condition kind")
 	errInvalidConditionOperator   = errors.New("invalid condition operator")
 	errConditionSubjectRequired   = errors.New("field condition requires a subject")
