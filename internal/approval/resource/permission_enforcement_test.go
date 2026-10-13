@@ -10,6 +10,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/config"
 	iapproval "github.com/coldsmirk/vef-framework-go/internal/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -42,7 +43,9 @@ func (s *PermissionEnforcementResourceTestSuite) SetupSuite() {
 
 	s.SetupApp(
 		fx.Replace(
-			pgContainer.DataSource,
+			&config.DataSourcesConfig{Map: map[string]config.DataSourceConfig{
+				config.PrimaryDataSourceName: *pgContainer.DataSource,
+			}},
 			&security.JWTConfig{
 				Secret:   security.DefaultJWTSecret,
 				Audience: "test_app",

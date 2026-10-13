@@ -107,7 +107,12 @@ func setupResourceApp(s *apptest.Suite, extra ...fx.Option) (orm.DB, string) {
 
 	opts := []fx.Option{
 		fx.Replace(
-			pgContainer.DataSource,
+			// The primary data source is read from DataSourcesConfig; replacing a
+			// lone DataSourceConfig would leave the app on the harness's default
+			// in-memory SQLite while the container idled.
+			&config.DataSourcesConfig{Map: map[string]config.DataSourceConfig{
+				config.PrimaryDataSourceName: *pgContainer.DataSource,
+			}},
 			&security.JWTConfig{
 				Secret:   security.DefaultJWTSecret,
 				Audience: "test_app",
