@@ -586,3 +586,60 @@ func (s *DeployFlowTestSuite) TestDeployDoesNotUpdateFlowCurrentVersion() {
 	s.Require().NoError(err, "Should find flow")
 	s.Assert().Equal(0, flow.CurrentVersion, "Deploy should not update flow CurrentVersion")
 }
+
+// TestDeployNumbersAfterEveryVersion pins version numbering to the versions a
+// flow already has, drafts included: deploying twice before publishing yields
+// two drafts instead of reusing a number, and publishing an older draft does
+// not rewind the count. It deploys to a flow of its own so the suite flow's
+// current version stays untouched.
+func (s *DeployFlowTestSuite) TestDeployNumbersAfterEveryVersion() {
+	var flow approval.Flow
+
+	flow.ID = s.flowID
+	s.Require().NoError(s.db.NewSelect().Model(&flow).Select("category_id").WherePK().Scan(s.ctx), "Should load the suite flow")
+
+	numbered := &approval.Flow{
+		TenantID:               "default",
+		CategoryID:             flow.CategoryID,
+		Code:                   "deploy-numbering-flow",
+		Name:                   "Deploy Numbering Flow",
+		BindingMode:            approval.BindingStandalone,
+		IsAllInitiationAllowed: true,
+		InstanceTitleTemplate:  "Test",
+		IsActive:               true,
+	}
+	_, err := s.db.NewInsert().Model(numbered).Exec(s.ctx)
+	s.Require().NoError(err, "Should insert the numbering flow")
+
+	defer func() {
+		_, _ = s.db.NewDelete().Model((*approval.Flow)(nil)).
+			Where(func(cb orm.ConditionBuilder) { cb.PKEquals(numbered.ID) }).
+			Exec(s.ctx)
+	}()
+
+	deploy := func() *approval.FlowVersion {
+		version, err := s.handler.Handle(s.ctx, command.DeployFlowCmd{
+			FlowID:         numbered.ID,
+			FlowDefinition: simpleFlowDef(),
+			Caller:         approval.SystemCaller,
+		})
+		s.Require().NoError(err, "Should deploy")
+
+		return version
+	}
+
+	first := deploy()
+	second := deploy()
+
+	s.Assert().Equal(1, first.Version, "The first deploy should be version 1")
+	s.Assert().Equal(2, second.Version, "A second deploy before publishing must not reuse the draft's number")
+
+	_, err = command.NewPublishVersionHandler(s.db, nil, nil).Handle(s.ctx, command.PublishVersionCmd{
+		VersionID:  first.ID,
+		OperatorID: "admin",
+		Caller:     approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Should publish the first draft")
+
+	s.Assert().Equal(3, deploy().Version, "Publishing an older draft must not rewind the numbering")
+}

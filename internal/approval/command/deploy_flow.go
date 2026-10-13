@@ -3,6 +3,7 @@ package command
 import (
 	"cmp"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -72,6 +73,9 @@ func (h *DeployFlowHandler) deriveFormFields(ctx context.Context, schema json.Ra
 	return fields, nil
 }
 
+// loadDeployFlow loads and authorizes the flow a deploy targets, locking its
+// row for the rest of the transaction so concurrent deploys of one flow number
+// their versions one after the other.
 func loadDeployFlow(
 	ctx context.Context,
 	db orm.DB,
@@ -84,8 +88,9 @@ func loadDeployFlow(
 
 	if err := db.NewSelect().
 		Model(&flow).
-		Select("current_version", "tenant_id", "code", "name", "binding_mode", "business_binding").
+		Select("tenant_id", "code", "name", "binding_mode", "business_binding").
 		WherePK().
+		ForUpdate().
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
 			return approval.Flow{}, nil, approval.ErrFlowNotFound
@@ -104,6 +109,26 @@ func loadDeployFlow(
 	}
 
 	return flow, businessBinding, nil
+}
+
+// nextVersionNumber numbers a new deployment after every version the flow
+// already has, drafts included: a version is immutable once deployed, so
+// deploying again before publishing yields a second draft rather than reusing
+// the number of the first. The caller holds the flow row lock.
+func nextVersionNumber(ctx context.Context, db orm.DB, flowID string) (int, error) {
+	var latest sql.NullInt64
+
+	if err := db.NewSelect().
+		Model((*approval.FlowVersion)(nil)).
+		SelectExpr(func(eb orm.ExprBuilder) any { return eb.MaxColumn("version") }, "latest").
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("flow_id", flowID)
+		}).
+		Scan(ctx, &latest); err != nil {
+		return 0, fmt.Errorf("query latest version: %w", err)
+	}
+
+	return int(latest.Int64) + 1, nil
 }
 
 func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*approval.FlowVersion, error) {
@@ -159,9 +184,14 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 		return nil, err
 	}
 
+	versionNumber, err := nextVersionNumber(ctx, db, flow.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	version := approval.FlowVersion{
 		FlowID:          flow.ID,
-		Version:         flow.CurrentVersion + 1,
+		Version:         versionNumber,
 		Status:          approval.VersionDraft,
 		Description:     cmd.Description,
 		StorageMode:     storageMode,
