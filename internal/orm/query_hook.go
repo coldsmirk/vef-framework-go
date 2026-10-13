@@ -155,13 +155,15 @@ func (qh *queryHook) formatQuery(query string) termenv.Style {
 	return qh.output.String(normalized).Foreground(termenv.ANSIBrightBlack)
 }
 
-func addQueryHook(db *bun.DB, logger logx.Logger, enableGuard bool) {
+// withQueryHook returns a handle on db that logs every query and, when
+// enableGuard is set, screens it through the SQL guard.
+func withQueryHook(db *bun.DB, logger logx.Logger, enableGuard bool) *bun.DB {
 	var guard *sqlguard.Guard
 	if enableGuard {
 		guard = sqlguard.NewGuard(logger)
 	}
 
-	db.AddQueryHook(&queryHook{
+	return db.WithQueryHook(&queryHook{
 		logger:   logger,
 		output:   termenv.DefaultOutput(),
 		sqlGuard: guard,

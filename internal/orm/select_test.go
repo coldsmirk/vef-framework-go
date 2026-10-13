@@ -109,12 +109,6 @@ func (suite *SelectTestSuite) TestCTE() {
 	})
 
 	suite.Run("WithRecursiveCTE", func() {
-		if suite.ds.Kind == config.SQLite {
-			// FRAMEWORK BUG: bun adds extra parentheses in SQLite UNION SQL generation.
-			// TODO: remove this skip when upstream bun SQL generation is fixed.
-			suite.T().Skipf("Skipping for %s: bun framework bug causes extra parentheses in generated UNION SQL", suite.ds.Kind)
-		}
-
 		type CommentHierarchy struct {
 			ID       string `bun:"id"`
 			Content  string `bun:"content"`
@@ -1968,15 +1962,11 @@ func (suite *SelectTestSuite) TestLocking() {
 func (suite *SelectTestSuite) TestSetOperations() {
 	suite.T().Logf("Testing Set Operations for %s", suite.ds.Kind)
 
-	if suite.ds.Kind == config.SQLite {
-		// FRAMEWORK BUG: bun adds extra parentheses in SQLite set-operation SQL generation.
-		// TODO: remove this skip when upstream bun SQL generation is fixed.
-		suite.T().Skipf("Skipping for %s: bun framework bug causes extra parentheses in generated set operation SQL", suite.ds.Kind)
-
-		return
-	}
-
 	suite.Run("Union", func() {
+		if suite.ds.Kind == config.SQLite {
+			suite.T().Skipf("%s rejects ORDER BY / LIMIT on a compound-select member, which this case puts on the first one", suite.ds.Kind)
+		}
+
 		type CombinedResult struct {
 			Name string `bun:"name"`
 			Type string `bun:"type"`
@@ -2015,6 +2005,10 @@ func (suite *SelectTestSuite) TestSetOperations() {
 	})
 
 	suite.Run("UnionAll", func() {
+		if suite.ds.Kind == config.SQLite {
+			suite.T().Skipf("%s rejects ORDER BY / LIMIT on a compound-select member, which this case puts on both", suite.ds.Kind)
+		}
+
 		type CombinedResult struct {
 			Name string `bun:"name"`
 			Type string `bun:"type"`

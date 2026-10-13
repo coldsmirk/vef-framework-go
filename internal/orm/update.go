@@ -282,7 +282,7 @@ func (q *BunUpdateQuery) OrderByExpr(builder func(ExprBuilder) any) UpdateQuery 
 }
 
 func (q *BunUpdateQuery) Limit(limit int) UpdateQuery {
-	q.query.Limit(limit)
+	q.query.Limit(int64(limit))
 
 	return q
 }

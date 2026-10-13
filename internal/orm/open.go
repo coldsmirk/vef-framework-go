@@ -44,8 +44,7 @@ func Open(db *sql.DB, kind config.DBKind, opts ...Option) (DB, error) {
 		opt(&o)
 	}
 
-	bunDB := bun.NewDB(db, dialect, bun.WithDiscardUnknownColumns())
-	addQueryHook(bunDB, logger, o.sqlGuard)
+	bunDB := withQueryHook(bun.NewDB(db, dialect, bun.WithDiscardUnknownColumns()), logger, o.sqlGuard)
 
 	return New(bunDB), nil
 }

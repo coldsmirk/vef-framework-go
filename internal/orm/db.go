@@ -200,7 +200,12 @@ func (d *BunDB) runInTx(ctx context.Context, opts *sql.TxOptions, fn func(contex
 			}
 		}()
 
-		err := d.db.RunInTx(ctx, opts, run)
+		// bun hands a nested callback the context its outermost transaction
+		// began with, which predates the commit-hook collector the enclosing
+		// scope added; keep the caller's own context, which carries it.
+		err := d.db.RunInTx(ctx, opts, func(_ context.Context, tx bun.Tx) error {
+			return run(ctx, tx)
+		})
 		released = err == nil
 
 		return err

@@ -147,7 +147,7 @@ func (q *BunDeleteQuery) ForceDelete() DeleteQuery {
 }
 
 func (q *BunDeleteQuery) Limit(limit int) DeleteQuery {
-	q.query.Limit(limit)
+	q.query.Limit(int64(limit))
 
 	return q
 }

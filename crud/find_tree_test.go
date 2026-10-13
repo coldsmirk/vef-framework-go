@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/api"
-	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/crud"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/orm"
@@ -179,10 +178,6 @@ type FindTreeTestSuite struct {
 
 // SetupSuite runs once before all tests in the suite.
 func (suite *FindTreeTestSuite) SetupSuite() {
-	if suite.ds.Kind == config.SQLite {
-		suite.T().Skipf("Skipping FindTree tests on %s due to Bun recursive CTE syntax issue", suite.ds.Kind)
-	}
-
 	suite.setupBaseSuite(
 		NewDepartmentFindTreeResource,
 		NewFilteredCategoryFindTreeResource,

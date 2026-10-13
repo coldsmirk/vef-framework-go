@@ -8,7 +8,6 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/coldsmirk/vef-framework-go/api"
-	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/crud"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/orm"
@@ -227,10 +226,6 @@ type FindTreeOptionsTestSuite struct {
 
 // SetupSuite runs once before all tests in the suite.
 func (suite *FindTreeOptionsTestSuite) SetupSuite() {
-	if suite.ds.Kind == config.SQLite {
-		suite.T().Skipf("Skipping FindTreeOptions tests on %s due to Bun recursive CTE syntax issue", suite.ds.Kind)
-	}
-
 	suite.setupBaseSuite(
 		NewDepartmentFindTreeOptionsResource,
 		NewCustomFieldCategoryFindTreeOptionsResource,

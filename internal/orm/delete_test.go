@@ -118,12 +118,6 @@ func (suite *DeleteTestSuite) TestCTE() {
 	})
 
 	suite.Run("WithRecursiveCTE", func() {
-		if suite.ds.Kind == config.SQLite {
-			suite.T().Skipf("SQLite recursive CTE with DELETE requires special handling on %s", suite.ds.Kind)
-
-			return
-		}
-
 		testCategories := []*Category{
 			{Name: "Parent Category", Description: nil},
 			{Name: "Child Category 1", Description: nil},

@@ -431,8 +431,7 @@ func TestWorkerRunKeepsHostTableWritesOutOfTheQuietSQLLog(t *testing.T) {
 		dialect, err := internalorm.DialectFor(env.DS.Kind)
 		require.NoError(t, err, "Test setup should resolve the bun dialect")
 
-		bunDB := bun.NewDB(env.RawDB, dialect, bun.WithDiscardUnknownColumns())
-		bunDB.AddQueryHook(hook)
+		bunDB := bun.NewDB(env.RawDB, dialect, bun.WithDiscardUnknownColumns()).WithQueryHook(hook)
 
 		NewWorker(internalorm.New(bunDB), new(SpyBus), NewWriter(), nil).Run(env.Ctx)
 

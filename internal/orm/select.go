@@ -460,13 +460,13 @@ func (q *BunSelectQuery) OrderByExpr(builder func(ExprBuilder) any) SelectQuery 
 }
 
 func (q *BunSelectQuery) Limit(limit int) SelectQuery {
-	q.query.Limit(limit)
+	q.query.Limit(int64(limit))
 
 	return q
 }
 
 func (q *BunSelectQuery) Offset(offset int) SelectQuery {
-	q.query.Offset(offset)
+	q.query.Offset(int64(offset))
 
 	return q
 }
@@ -768,7 +768,7 @@ func (q *BunSelectQuery) ScanAndCount(ctx context.Context, dest ...any) (int64, 
 		return 0, translateNoRows(err)
 	}
 
-	return int64(total), nil
+	return total, nil
 }
 
 func (q *BunSelectQuery) Count(ctx context.Context) (int64, error) {
@@ -776,9 +776,7 @@ func (q *BunSelectQuery) Count(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 
-	total, err := q.query.Count(ctx)
-
-	return int64(total), err
+	return q.query.Count(ctx)
 }
 
 func (q *BunSelectQuery) Exists(ctx context.Context) (bool, error) {
