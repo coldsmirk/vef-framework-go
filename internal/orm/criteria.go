@@ -5,6 +5,8 @@ import (
 
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/schema"
+
+	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 // CriteriaBuilder hosts the shared condition operator methods. Concrete builders
@@ -1450,7 +1452,7 @@ func (cb *CriteriaBuilder) OrUpdatedByNotInSubQuery(builder func(SelectQuery), a
 
 // auditTimestampCompare adds a comparison condition for an audit timestamp column.
 func (*CriteriaBuilder) auditTimestampCompare(addFn func(string, ...any), op, col string, t time.Time, alias ...string) {
-	addFn("? "+op+" ?", buildColumnExpr(col, alias...), t)
+	addFn("? "+op+" ?", buildColumnExpr(col, alias...), auditTimestamp(t))
 }
 
 // auditTimestampBetween adds a BETWEEN/NOT BETWEEN condition for an audit timestamp column.
@@ -1460,7 +1462,15 @@ func (*CriteriaBuilder) auditTimestampBetween(addFn func(string, ...any), negate
 		op = "NOT BETWEEN"
 	}
 
-	addFn("? "+op+" ? AND ?", buildColumnExpr(col, alias...), start, end)
+	addFn("? "+op+" ? AND ?", buildColumnExpr(col, alias...), auditTimestamp(start), auditTimestamp(end))
+}
+
+// auditTimestamp binds t the way the audit columns hold time: as a timex.DateTime, the
+// instant's local wall-clock reading. A bare time.Time would reach the SQL in the dialect's
+// own rendering — PostgreSQL and SQLite write its UTC reading — and compare against the
+// stored local readings off by the zone offset.
+func auditTimestamp(t time.Time) timex.DateTime {
+	return timex.DateTime(t.In(time.Local))
 }
 
 func (cb *CriteriaBuilder) CreatedAtGreaterThan(createdAt time.Time, alias ...string) ConditionBuilder {

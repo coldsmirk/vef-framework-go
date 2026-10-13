@@ -949,6 +949,50 @@ func (suite *CBAuditConditionsTestSuite) TestUpdatedByExtended() {
 	})
 }
 
+// TestAuditTimestampTakesTheInstant pins the audit time conditions to the instant
+// they are given, whatever its zone. The columns hold local wall-clock readings, so
+// a bound that reached the SQL as its UTC reading would sit off by the zone offset.
+func (suite *CBAuditConditionsTestSuite) TestAuditTimestampTakesTheInstant() {
+	var user User
+
+	suite.Require().NoError(suite.selectUsers().Limit(1).Scan(suite.ctx, &user), "Should load a fixture user")
+
+	createdAt := user.CreatedAt.Unwrap()
+	byID := func(cb orm.ConditionBuilder) {
+		cb.PKEquals(user.ID)
+	}
+
+	suite.Run("BoundJustBefore", func() {
+		users := suite.assertQueryReturnsUsers(
+			suite.selectUsers().Where(byID).Where(func(cb orm.ConditionBuilder) {
+				cb.CreatedAtGreaterThan(createdAt.Add(-time.Minute).UTC())
+			}),
+		)
+
+		suite.Len(users, 1, "A row created a minute after the bound should match")
+	})
+
+	suite.Run("BoundJustAfter", func() {
+		users := suite.assertQueryReturnsUsers(
+			suite.selectUsers().Where(byID).Where(func(cb orm.ConditionBuilder) {
+				cb.CreatedAtGreaterThan(createdAt.Add(time.Minute).UTC())
+			}),
+		)
+
+		suite.Empty(users, "A row created a minute before the bound should not match")
+	})
+
+	suite.Run("Between", func() {
+		users := suite.assertQueryReturnsUsers(
+			suite.selectUsers().Where(byID).Where(func(cb orm.ConditionBuilder) {
+				cb.CreatedAtBetween(createdAt.Add(-time.Minute).UTC(), createdAt.Add(time.Minute).UTC())
+			}),
+		)
+
+		suite.Len(users, 1, "A row created inside the window should match")
+	})
+}
+
 // TestCreatedAtExtended tests additional CreatedAt methods.
 func (suite *CBAuditConditionsTestSuite) TestCreatedAtExtended() {
 	suite.T().Logf("Testing CreatedAt extended for %s", suite.ds.Kind)
