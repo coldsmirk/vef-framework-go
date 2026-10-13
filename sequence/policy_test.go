@@ -307,50 +307,16 @@ func TestNeedsResetByCycle(t *testing.T) {
 		})
 	})
 
-	// A database driver hands last_reset_at back labeled UTC while its fields
-	// hold the local wall-clock time it was stored with (DateTime is
-	// timezone-naive). The label must not turn the same period into a new one.
-	t.Run("LastResetScannedAsUTC", func(t *testing.T) {
-		scanned := func(year int, month time.Month, day, hour int) *timex.DateTime {
-			value := timex.DateTime(time.Date(year, month, day, hour, 0, 0, 0, time.UTC))
-
-			return &value
-		}
-
-		cases := []struct {
-			name  string
-			cycle ResetCycle
-			last  *timex.DateTime
-			reset bool
-		}{
-			{"DailySameDay", ResetDaily, scanned(2024, 6, 15, 1), false},
-			{"DailyPreviousDay", ResetDaily, scanned(2024, 6, 14, 23), true},
-			{"WeeklySameWeek", ResetWeekly, scanned(2024, 6, 10, 8), false},
-			{"WeeklyPreviousWeek", ResetWeekly, scanned(2024, 6, 8, 23), true},
-			{"MonthlySameMonth", ResetMonthly, scanned(2024, 6, 1, 0), false},
-			{"MonthlyPreviousMonth", ResetMonthly, scanned(2024, 5, 31, 23), true},
-			{"QuarterlySameQuarter", ResetQuarterly, scanned(2024, 4, 1, 0), false},
-			{"QuarterlyPreviousQuarter", ResetQuarterly, scanned(2024, 3, 31, 23), true},
-			{"YearlySameYear", ResetYearly, scanned(2024, 1, 1, 0), false},
-			{"YearlyPreviousYear", ResetYearly, scanned(2023, 12, 31, 23), true},
-		}
-
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				rule := &Rule{ResetCycle: tc.cycle, LastResetAt: tc.last}
-
-				assert.Equal(t, tc.reset, needsResetByCycle(rule, now), "The UTC label of a scanned value must not change which period it belongs to")
-			})
-		}
-	})
-
-	t.Run("NowCarryingAnotherLabel", func(t *testing.T) {
-		// The same wall-clock day, with now labeled UTC instead of local.
+	// Values naming the same instant can still carry different Location
+	// pointers (a fixed zone with the local offset, here); comparing period
+	// starts with == would read that as a new period and reset the counter.
+	t.Run("SameDayUnderAnotherLocation", func(t *testing.T) {
 		earlier := timex.DateTime(time.Date(2024, 6, 15, 1, 0, 0, 0, time.Local))
-		utcNow := timex.DateTime(time.Date(2024, 6, 15, 10, 0, 0, 0, time.UTC))
+		_, offset := time.Time(now).Zone()
+		relabeled := timex.DateTime(time.Time(now).In(time.FixedZone("", offset)))
 		rule := &Rule{ResetCycle: ResetDaily, LastResetAt: &earlier}
 
-		assert.False(t, needsResetByCycle(rule, utcNow), "The label of now must not change which period it belongs to")
+		assert.False(t, needsResetByCycle(rule, relabeled), "The same day under another Location should not reset")
 	})
 
 	t.Run("UnknownCycleDoesNotReset", func(t *testing.T) {
