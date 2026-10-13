@@ -307,6 +307,52 @@ func TestNeedsResetByCycle(t *testing.T) {
 		})
 	})
 
+	// A database driver hands last_reset_at back labeled UTC while its fields
+	// hold the local wall-clock time it was stored with (DateTime is
+	// timezone-naive). The label must not turn the same period into a new one.
+	t.Run("LastResetScannedAsUTC", func(t *testing.T) {
+		scanned := func(year int, month time.Month, day, hour int) *timex.DateTime {
+			value := timex.DateTime(time.Date(year, month, day, hour, 0, 0, 0, time.UTC))
+
+			return &value
+		}
+
+		cases := []struct {
+			name  string
+			cycle ResetCycle
+			last  *timex.DateTime
+			reset bool
+		}{
+			{"DailySameDay", ResetDaily, scanned(2024, 6, 15, 1), false},
+			{"DailyPreviousDay", ResetDaily, scanned(2024, 6, 14, 23), true},
+			{"WeeklySameWeek", ResetWeekly, scanned(2024, 6, 10, 8), false},
+			{"WeeklyPreviousWeek", ResetWeekly, scanned(2024, 6, 8, 23), true},
+			{"MonthlySameMonth", ResetMonthly, scanned(2024, 6, 1, 0), false},
+			{"MonthlyPreviousMonth", ResetMonthly, scanned(2024, 5, 31, 23), true},
+			{"QuarterlySameQuarter", ResetQuarterly, scanned(2024, 4, 1, 0), false},
+			{"QuarterlyPreviousQuarter", ResetQuarterly, scanned(2024, 3, 31, 23), true},
+			{"YearlySameYear", ResetYearly, scanned(2024, 1, 1, 0), false},
+			{"YearlyPreviousYear", ResetYearly, scanned(2023, 12, 31, 23), true},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				rule := &Rule{ResetCycle: tc.cycle, LastResetAt: tc.last}
+
+				assert.Equal(t, tc.reset, needsResetByCycle(rule, now), "The UTC label of a scanned value must not change which period it belongs to")
+			})
+		}
+	})
+
+	t.Run("NowCarryingAnotherLabel", func(t *testing.T) {
+		// The same wall-clock day, with now labeled UTC instead of local.
+		earlier := timex.DateTime(time.Date(2024, 6, 15, 1, 0, 0, 0, time.Local))
+		utcNow := timex.DateTime(time.Date(2024, 6, 15, 10, 0, 0, 0, time.UTC))
+		rule := &Rule{ResetCycle: ResetDaily, LastResetAt: &earlier}
+
+		assert.False(t, needsResetByCycle(rule, utcNow), "The label of now must not change which period it belongs to")
+	})
+
 	t.Run("UnknownCycleDoesNotReset", func(t *testing.T) {
 		yesterday := timex.DateTime(time.Time(now).AddDate(0, 0, -1))
 		rule := &Rule{ResetCycle: "X", LastResetAt: &yesterday}

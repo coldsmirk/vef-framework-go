@@ -57,18 +57,28 @@ func needsResetByCycle(rule *Rule, now timex.DateTime) bool {
 		return true
 	}
 
-	last := *rule.LastResetAt
+	// Both sides are read as local wall-clock time and their period starts
+	// compared by value. DateTime is timezone-naive: last_reset_at is stored
+	// as a bare local wall-clock string, and drivers hand it back labeled UTC
+	// (pgdriver and MySQL for timestamp columns, the SQLite drivers) while now
+	// is local. Compared as they came — and with !=, which also compares the
+	// Location, so even a server running in UTC saw two different midnights —
+	// every reservation looked like a new period, reset the counter to
+	// StartValue, and reissued the same serial numbers.
+	last := timex.DateTime(rule.LastResetAt.AsLocal())
+	current := timex.DateTime(now.AsLocal())
+
 	switch rule.ResetCycle {
 	case ResetDaily:
-		return last.BeginOfDay() != now.BeginOfDay()
+		return !last.BeginOfDay().Equal(current.BeginOfDay())
 	case ResetWeekly:
-		return last.BeginOfWeek() != now.BeginOfWeek()
+		return !last.BeginOfWeek().Equal(current.BeginOfWeek())
 	case ResetMonthly:
-		return last.BeginOfMonth() != now.BeginOfMonth()
+		return !last.BeginOfMonth().Equal(current.BeginOfMonth())
 	case ResetQuarterly:
-		return last.BeginOfQuarter() != now.BeginOfQuarter()
+		return !last.BeginOfQuarter().Equal(current.BeginOfQuarter())
 	case ResetYearly:
-		return last.Year() != now.Year()
+		return last.Year() != current.Year()
 	default:
 		return false
 	}

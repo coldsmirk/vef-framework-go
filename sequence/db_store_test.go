@@ -237,6 +237,37 @@ func TestDBStore(t *testing.T) {
 				assert.Equal(t, 1, model.CurrentValue, "Persisted counter should be reset then incremented")
 				assert.NotNil(t, model.LastResetAt, "Cycle reset should persist last_reset_at")
 			})
+
+			t.Run("CycleKeepsCountingWithinThePeriod", func(t *testing.T) {
+				// The reset stamp makes a round trip through the database
+				// before the second reservation reads it back — the way a
+				// driver labels a timestamp column must not make the same day
+				// look like a new period.
+				insertTestRule(t, env.Ctx, env.DB, &RuleModel{
+					Key:              "reserve-cycle-same-period",
+					Name:             "Reserve Cycle Same Period",
+					SeqLength:        4,
+					SeqStep:          1,
+					StartValue:       0,
+					OverflowStrategy: OverflowError,
+					ResetCycle:       ResetDaily,
+					IsActive:         true,
+				})
+				defer deleteTestRule(t, env.Ctx, env.DB, "reserve-cycle-same-period")
+
+				// Noon, so the minute between the two reservations can never
+				// straddle midnight.
+				noon := timex.DateTime(time.Date(2026, 6, 15, 12, 0, 0, 0, time.Local))
+
+				_, first, err := store.Reserve(env.Ctx, "reserve-cycle-same-period", 1, noon)
+				require.NoError(t, err, "First reservation should succeed")
+
+				_, second, err := store.Reserve(env.Ctx, "reserve-cycle-same-period", 1, noon.AddMinutes(1))
+				require.NoError(t, err, "Second reservation should succeed")
+
+				assert.Equal(t, 1, first, "The first reservation of a period should start from the start value")
+				assert.Equal(t, 2, second, "A reservation in the same period should continue the counter, not reset it")
+			})
 		})
 
 		t.Run("ConcurrentReserve", func(t *testing.T) {
