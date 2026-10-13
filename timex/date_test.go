@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDateOf(t *testing.T) {
@@ -455,6 +456,14 @@ func TestDateScan(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDateScanReadsInLocalZone(t *testing.T) {
+	var date Date
+
+	require.NoError(t, date.Scan(MakeTimeUTC(2023, 12, 25, 0, 0, 0)), "Should scan a driver-decoded date")
+	assert.Equal(t, time.Local, date.Unwrap().Location(), "Scanned date should read in the local zone")
+	assert.True(t, MakeTime(2023, 12, 25, 0, 0, 0).Equal(date.Unwrap()), "Scanned date should be local midnight of the stored date")
 }
 
 func TestDateJSONRoundTrip(t *testing.T) {

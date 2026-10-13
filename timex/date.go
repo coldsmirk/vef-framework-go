@@ -12,8 +12,8 @@ import (
 //
 // Date is a civil date: Equal, Before, After, Between, and Sub compare by calendar date and
 // ignore the underlying time.Time location, so two Date values for the same day are equal even
-// when constructed from time.Time values in different zones (e.g. a local literal versus a UTC
-// database row). Sub therefore always returns a whole number of 24-hour days.
+// when constructed from time.Time values in different zones (e.g. a local literal versus one built
+// from a UTC time.Time). Sub therefore always returns a whole number of 24-hour days.
 type Date time.Time
 
 // Unwrap returns the underlying time.Time value.

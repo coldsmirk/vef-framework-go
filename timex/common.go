@@ -27,6 +27,14 @@ var (
 
 // scanTimeValue is a generic helper function for scanning time values from database sources.
 // It handles various input types including []byte, string, time.Time and their pointer variants.
+//
+// Whatever the source, the result reads in time.Local, like every other timex value. A string is
+// parsed in the local zone; a time.Time decoded by the driver keeps its wall-clock reading but not
+// the driver's label. For a column without a zone, drivers decode the stored reading as UTC
+// (pgdriver, MySQL with Loc left at UTC, the SQLite drivers, go-mssqldb, go-ora); for a zoned
+// column the reading is in the session zone the database also applied to the bare string Value
+// wrote. Either way the reading is what was written, and only the local label puts it at the
+// right instant for arithmetic against Now.
 func scanTimeValue(src any, parseString func(string) (any, error), convertTime func(time.Time) any, typeName string, dest any) error {
 	switch v := src.(type) {
 	case []byte:
@@ -48,13 +56,13 @@ func scanTimeValue(src any, parseString func(string) (any, error), convertTime f
 		return parseAndAssign(*v, parseString, dest)
 
 	case time.Time:
-		return assignValue(dest, convertTime(v))
+		return assignValue(dest, convertTime(localWallClock(v)))
 	case *time.Time:
 		if v == nil {
 			return nil
 		}
 
-		return assignValue(dest, convertTime(*v))
+		return assignValue(dest, convertTime(localWallClock(*v)))
 
 	default:
 		// All string-like sources are handled above; anything else (numbers, complex,
@@ -62,6 +70,16 @@ func scanTimeValue(src any, parseString func(string) (any, error), convertTime f
 		// directly instead of stringifying it into a guaranteed parse failure.
 		return fmt.Errorf("%w: %s value: %v", ErrFailedScan, typeName, src)
 	}
+}
+
+// localWallClock returns t's wall-clock reading in the local zone. The zero time stays zero: it
+// marks an absent value (a MySQL zero date, say) rather than a reading to carry over.
+func localWallClock(t time.Time) time.Time {
+	if t.IsZero() {
+		return t
+	}
+
+	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.Local)
 }
 
 // parseAndAssign parses a string value and assigns the result to the destination.

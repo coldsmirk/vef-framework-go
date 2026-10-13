@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTimeOf(t *testing.T) {
@@ -354,6 +355,14 @@ func TestTimeScan(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTimeScanReadsInLocalZone(t *testing.T) {
+	var timeOnly Time
+
+	require.NoError(t, timeOnly.Scan(MakeTimeUTC(1, 1, 1, 14, 30, 45)), "Should scan a driver-decoded time of day")
+	assert.Equal(t, time.Local, timeOnly.Unwrap().Location(), "Scanned time should read in the local zone")
+	assert.Equal(t, "14:30:45", timeOnly.String(), "Scanned time should keep the stored clock reading")
 }
 
 func TestTimeJSONRoundTrip(t *testing.T) {

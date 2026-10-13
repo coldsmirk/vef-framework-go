@@ -161,7 +161,7 @@ func (suite *AuditTimestampTestSuite) TestUpdatedAtRefresh() {
 // TestExplicitAuditValueWins asserts the auto-column handlers defer to a caller
 // that assigns an audit column itself — stating a value is stating intent.
 func (suite *AuditTimestampTestSuite) TestExplicitAuditValueWins() {
-	pinned := time.Date(2011, 2, 3, 4, 5, 6, 0, time.UTC)
+	pinned := timex.DateTime(time.Date(2011, 2, 3, 4, 5, 6, 0, time.Local))
 
 	suite.Run("UpdatedAt", func() {
 		user := suite.seedStaleUser("at_probe_explicit_at@test.com")
@@ -177,7 +177,7 @@ func (suite *AuditTimestampTestSuite) TestExplicitAuditValueWins() {
 		suite.Require().NoError(err, "Explicit updated_at update must succeed")
 
 		suite.True(
-			time.Time(suite.reloadUser(user.ID).UpdatedAt).Equal(pinned),
+			suite.reloadUser(user.ID).UpdatedAt.Equal(pinned),
 			"An explicitly set updated_at must not be overwritten by the handler",
 		)
 	})

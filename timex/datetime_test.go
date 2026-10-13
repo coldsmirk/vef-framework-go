@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDateTimeOf(t *testing.T) {
@@ -132,6 +133,8 @@ func TestDateTimeAsLocal(t *testing.T) {
 	native := DateTime(local)
 	assert.True(t, local.Equal(native.AsLocal()),
 		"AsLocal should be a no-op for values already in the local zone")
+
+	assert.True(t, DateTime{}.AsLocal().IsZero(), "AsLocal should keep the zero value zero")
 }
 
 func TestDateTimeEqual(t *testing.T) {
@@ -472,6 +475,38 @@ func TestDateTimeScan(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDateTimeScanReadsInLocalZone(t *testing.T) {
+	stored := MakeTime(2023, 12, 25, 14, 30, 45)
+
+	tests := []struct {
+		name string
+		src  any
+	}{
+		{"DriverUTCLabel", MakeTimeUTC(2023, 12, 25, 14, 30, 45)},
+		{"DriverUTCLabelPointer", new(MakeTimeUTC(2023, 12, 25, 14, 30, 45))},
+		{"SessionOffsetLabel", time.Date(2023, 12, 25, 14, 30, 45, 0, time.FixedZone("", 8*60*60))},
+		{"LocalLabel", stored},
+		{"String", "2023-12-25 14:30:45"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var dt DateTime
+
+			require.NoError(t, dt.Scan(tt.src), "Should scan the value")
+			assert.Equal(t, time.Local, dt.Unwrap().Location(), "Scanned value should read in the local zone")
+			assert.True(t, stored.Equal(dt.Unwrap()), "Scanned value should keep the stored wall-clock reading")
+		})
+	}
+
+	t.Run("ZeroTime", func(t *testing.T) {
+		var dt DateTime
+
+		require.NoError(t, dt.Scan(time.Time{}), "Should scan the zero time")
+		assert.True(t, dt.Unwrap().IsZero(), "Zero time should stay zero rather than become a local reading")
+	})
 }
 
 func TestDateTimeJSONRoundTrip(t *testing.T) {
