@@ -80,6 +80,12 @@ type Principal struct {
 	Roles []string `json:"roles"`
 	// Details is the details of the user.
 	Details any `json:"details"`
+	// SessionChoices records the answers to the login challenges that shape the
+	// session rather than gate it, keyed by challenge type — the department
+	// chosen under ChallengeTypeDepartmentSelection. The login flow fills it as
+	// each SessionChoiceProvider resolves, and the refresh token carries it so a
+	// JWT refresh re-applies the choices instead of losing them.
+	SessionChoices map[string]string `json:"sessionChoices,omitempty"`
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling for Principal.

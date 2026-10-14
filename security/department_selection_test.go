@@ -372,10 +372,81 @@ func TestDepartmentSelectionChallengeProviderResolve(t *testing.T) {
 	})
 }
 
+// ─── Session choice ───
+
+func TestDepartmentSelectionChallengeProviderSessionChoice(t *testing.T) {
+	ctx := context.Background()
+	noopLoader := &MockDepartmentLoader{LoadDepartmentsFn: func(context.Context, *LoginContext) (*DepartmentSelectionChallengeData, error) { return nil, nil }}
+
+	t.Run("KeepsTheChosenDepartment", func(t *testing.T) {
+		provider := NewDepartmentSelectionChallengeProvider(noopLoader, &MockDepartmentSelector{})
+
+		choice, ok := provider.SessionChoice("d2")
+
+		assert.True(t, ok, "A chosen department should be kept for the session")
+		assert.Equal(t, "d2", choice, "The session should keep the chosen department ID")
+	})
+
+	t.Run("KeepsNothingWithoutADepartmentID", func(t *testing.T) {
+		provider := NewDepartmentSelectionChallengeProvider(noopLoader, &MockDepartmentSelector{})
+
+		_, ok := provider.SessionChoice("")
+		assert.False(t, ok, "An empty response should keep no choice")
+
+		_, ok = provider.SessionChoice(42)
+		assert.False(t, ok, "A non-string response should keep no choice")
+	})
+
+	t.Run("ReapplyChoiceSelectsTheDepartmentAgain", func(t *testing.T) {
+		reloaded := NewUser("u1", "Alice")
+		enriched := NewUser("u1", "Alice (d2)")
+
+		var (
+			selectedFor *Principal
+			selectedID  string
+		)
+
+		provider := NewDepartmentSelectionChallengeProvider(
+			noopLoader,
+			&MockDepartmentSelector{SelectDepartmentFn: func(_ context.Context, principal *Principal, departmentID string) (*Principal, error) {
+				selectedFor, selectedID = principal, departmentID
+
+				return enriched, nil
+			}},
+		)
+
+		got, err := provider.ReapplyChoice(ctx, reloaded, "d2")
+
+		require.NoError(t, err, "A department the user still holds should be re-applied")
+		assert.Same(t, enriched, got, "The session should continue with the selector's principal")
+		assert.Same(t, reloaded, selectedFor, "The selector should act on the reloaded principal")
+		assert.Equal(t, "d2", selectedID, "The selector should receive the department chosen at login")
+	})
+
+	t.Run("ReapplyChoicePropagatesARefusal", func(t *testing.T) {
+		refusal := result.Err("department no longer available")
+		provider := NewDepartmentSelectionChallengeProvider(
+			noopLoader,
+			&MockDepartmentSelector{SelectDepartmentFn: func(context.Context, *Principal, string) (*Principal, error) {
+				return nil, refusal
+			}},
+		)
+
+		got, err := provider.ReapplyChoice(ctx, NewUser("u1", "Alice"), "d2")
+
+		require.ErrorIs(t, err, refusal, "A department the user has lost should fail the re-application")
+		assert.Nil(t, got, "A refused choice should continue with no principal")
+	})
+}
+
 // ─── Interface compliance ───
 
 func TestDepartmentSelectionInterfaceCompliance(t *testing.T) {
 	t.Run("ImplementsChallengeProvider", func(*testing.T) {
 		var _ ChallengeProvider = (*DepartmentSelectionChallengeProvider)(nil)
+	})
+
+	t.Run("ImplementsSessionChoiceProvider", func(*testing.T) {
+		var _ SessionChoiceProvider = (*DepartmentSelectionChallengeProvider)(nil)
 	})
 }

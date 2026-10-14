@@ -52,13 +52,20 @@ type DepartmentLoader interface {
 }
 
 // DepartmentSelector validates the user's department selection and enriches the principal.
+//
+// The department is a choice the session is built on, so the selector runs again
+// on every JWT refresh: the refresh reloads the user through UserLoader.LoadByID
+// and hands that principal back here with the department chosen at login. A
+// department the user has since lost is refused the same way as at login, which
+// fails the refresh and sends the user back to choose again.
 type DepartmentSelector interface {
 	// SelectDepartment validates the department choice and returns an enriched principal.
 	SelectDepartment(ctx context.Context, principal *Principal, departmentID string) (*Principal, error)
 }
 
 // DepartmentSelectionChallengeProvider orchestrates department selection evaluation and resolution.
-// It implements the ChallengeProvider interface.
+// It implements SessionChoiceProvider: the department chosen at login is
+// re-applied on every refresh rather than replaced by the user's default.
 type DepartmentSelectionChallengeProvider struct {
 	loader   DepartmentLoader
 	selector DepartmentSelector
@@ -110,4 +117,17 @@ func (p *DepartmentSelectionChallengeProvider) Resolve(ctx context.Context, logi
 	}
 
 	return p.selector.SelectDepartment(ctx, login.Principal, departmentID)
+}
+
+// SessionChoice keeps the chosen department ID for the session.
+func (*DepartmentSelectionChallengeProvider) SessionChoice(response any) (string, bool) {
+	departmentID, ok := response.(string)
+
+	return departmentID, ok && departmentID != ""
+}
+
+// ReapplyChoice selects the department chosen at login again, on the principal a
+// refresh reloaded.
+func (p *DepartmentSelectionChallengeProvider) ReapplyChoice(ctx context.Context, principal *Principal, choice string) (*Principal, error) {
+	return p.selector.SelectDepartment(ctx, principal, choice)
 }

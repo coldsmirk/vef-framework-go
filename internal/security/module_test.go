@@ -31,7 +31,7 @@ func TestNewTokenAuthenticators(t *testing.T) {
 	t.Run("JWTMechanismRegistersAccessAndRefresh", func(t *testing.T) {
 		cfg := &config.SecurityConfig{TokenType: config.TokenTypeJWT}
 
-		authenticators := newTokenAuthenticators(cfg, jwt, nil, store, security.SessionPolicy{})
+		authenticators := newTokenAuthenticators(cfg, jwt, nil, store, security.SessionPolicy{}, nil)
 		require.Len(t, authenticators, 2, "the jwt mechanism should register exactly its access and refresh authenticators")
 		assert.True(t, supported(authenticators, AuthTypeJWTToken), "jwt access tokens must be accepted under jwt_token")
 		assert.True(t, supported(authenticators, AuthTypeRefresh), "refresh tokens must be accepted under jwt_token")
@@ -41,7 +41,7 @@ func TestNewTokenAuthenticators(t *testing.T) {
 	t.Run("OpaqueMechanismRegistersOnlyOpaque", func(t *testing.T) {
 		cfg := &config.SecurityConfig{TokenType: config.TokenTypeOpaque}
 
-		authenticators := newTokenAuthenticators(cfg, jwt, nil, store, security.SessionPolicy{})
+		authenticators := newTokenAuthenticators(cfg, jwt, nil, store, security.SessionPolicy{}, nil)
 		require.Len(t, authenticators, 1, "the opaque mechanism should register exactly its session authenticator")
 		assert.True(t, supported(authenticators, AuthTypeOpaqueToken), "opaque tokens must be accepted under opaque_token")
 		assert.False(t, supported(authenticators, AuthTypeJWTToken), "a leftover jwt access token must not authenticate under opaque_token")

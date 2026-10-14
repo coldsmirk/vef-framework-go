@@ -68,10 +68,14 @@ func (g *JWTTokenGenerator) generateAccessToken(jwtID string, principal *securit
 	return g.jwt.Generate(claimsBuilder, AccessTokenExpires, 0)
 }
 
+// generateRefreshToken carries the principal's session choices, the one part of
+// the session a refresh cannot reload from the user record (see
+// JWTRefreshAuthenticator).
 func (g *JWTTokenGenerator) generateRefreshToken(jwtID string, principal *security.Principal) (string, error) {
 	claimsBuilder := security.NewJWTClaimsBuilder().
 		WithID(jwtID).
 		WithSubject(fmt.Sprintf("%s@%s", principal.ID, principal.Name)).
+		WithSessionChoices(principal.SessionChoices).
 		WithType(security.TokenTypeRefresh)
 
 	return g.jwt.Generate(claimsBuilder, g.refreshExpires, g.refreshNotBefore)

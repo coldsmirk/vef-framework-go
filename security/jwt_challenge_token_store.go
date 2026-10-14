@@ -44,6 +44,7 @@ func (s *JWTChallengeTokenStore) Generate(_ context.Context, state *ChallengeSta
 		WithSubject(principal.ID).
 		WithRoles(principal.Roles).
 		WithDetails(principal.Details).
+		WithSessionChoices(principal.SessionChoices).
 		WithType(TokenTypeChallenge).
 		WithClaim(ClaimChallengePrincipalType, principal.Type).
 		WithClaim(ClaimChallengePrincipalName, principal.Name).
@@ -98,6 +99,7 @@ func (s *JWTChallengeTokenStore) Parse(_ context.Context, token string) (*Challe
 	}
 
 	principal.AttemptUnmarshalDetails(claimsAccessor.Details())
+	principal.SessionChoices = claimsAccessor.SessionChoices()
 
 	return &ChallengeState{
 		AuthType:  authType,

@@ -18,6 +18,7 @@ const (
 	claimType      = "typ" // Token Type
 	claimRoles     = "rls" // User Roles
 	claimDetails   = "det" // User Details
+	claimChoices   = "chs" // Session Choices
 )
 
 // JWTConfig is the configuration for the JWT token.
@@ -90,6 +91,16 @@ func (b *JWTClaimsBuilder) Details() (any, bool) {
 	return details, ok
 }
 
+// WithSessionChoices sets the session choices claim (see
+// Principal.SessionChoices). An empty set leaves the claim out.
+func (b *JWTClaimsBuilder) WithSessionChoices(choices map[string]string) *JWTClaimsBuilder {
+	if len(choices) > 0 {
+		b.claims[claimChoices] = choices
+	}
+
+	return b
+}
+
 func (b *JWTClaimsBuilder) WithType(typ string) *JWTClaimsBuilder {
 	b.claims[claimType] = typ
 
@@ -153,6 +164,17 @@ func (a *JWTClaimsAccessor) Roles() []string {
 // Details returns the details claim.
 func (a *JWTClaimsAccessor) Details() any {
 	return a.claims[claimDetails]
+}
+
+// SessionChoices returns the session choices claim, or nil when the token
+// carries none.
+func (a *JWTClaimsAccessor) SessionChoices() map[string]string {
+	choices, ok := a.claims[claimChoices]
+	if !ok {
+		return nil
+	}
+
+	return cast.ToStringMapString(choices)
 }
 
 // Type returns the token type claim.

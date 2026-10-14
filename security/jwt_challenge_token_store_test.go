@@ -104,6 +104,38 @@ func (s *JWTChallengeTokenStoreTestSuite) TestParse() {
 		s.Equal(resolved, state.Resolved, "Should preserve resolved list")
 	})
 
+	// A choice resolved at one step must reach the tokens the login ends with,
+	// even when another challenge follows it.
+	s.Run("PreservesSessionChoices", func() {
+		principal := NewUser("user1", "Alice")
+		principal.SessionChoices = map[string]string{ChallengeTypeDepartmentSelection: "dept-2"}
+
+		token, err := s.store.Generate(context.Background(), &ChallengeState{
+			AuthType:  AuthTypePassword,
+			Principal: principal,
+			Resolved:  []string{ChallengeTypeDepartmentSelection},
+			Pending:   []string{"password_change"},
+		})
+		s.Require().NoError(err, "Should generate token without error")
+
+		state, err := s.store.Parse(context.Background(), token)
+		s.Require().NoError(err, "Should parse token without error")
+		s.Equal(principal.SessionChoices, state.Principal.SessionChoices, "Should carry the session choices to the next step")
+	})
+
+	s.Run("WithoutSessionChoices", func() {
+		token, err := s.store.Generate(context.Background(), &ChallengeState{
+			AuthType:  AuthTypePassword,
+			Principal: NewUser("user1", "Alice"),
+			Pending:   []string{ChallengeTypeDepartmentSelection},
+		})
+		s.Require().NoError(err, "Should generate token without error")
+
+		state, err := s.store.Parse(context.Background(), token)
+		s.Require().NoError(err, "Should parse token without error")
+		s.Nil(state.Principal.SessionChoices, "A login that chose nothing should carry no session choices")
+	})
+
 	// A challenge token naming a framework-reserved identity has no legitimate
 	// origin, so it must fail at Parse regardless of who minted it.
 	s.Run("RefusesReservedIdentities", func() {

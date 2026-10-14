@@ -155,6 +155,25 @@ func (s *JWTTokenGeneratorTestSuite) TestRefreshTokenClaims() {
 	s.NotEmpty(claims.ID(), "Should have JWT ID")
 	s.Empty(claims.Roles(), "Should not include roles in refresh token")
 	s.Nil(claims.Details(), "Should not include details in refresh token")
+	s.Nil(claims.SessionChoices(), "A session that chose nothing should carry no session choices")
+}
+
+// TestSessionChoicesClaim verifies the session choices ride in the refresh token
+// alone: the refresh re-applies them, while an access token is never refreshed.
+func (s *JWTTokenGeneratorTestSuite) TestSessionChoicesClaim() {
+	principal := security.NewUser("user1", "Alice")
+	principal.SessionChoices = map[string]string{security.ChallengeTypeDepartmentSelection: "dept-2"}
+
+	tokens, err := s.generator.Generate(context.Background(), principal, security.SessionMeta{})
+	s.Require().NoError(err, "Should generate tokens without error")
+
+	refreshClaims, err := s.jwt.Parse(tokens.RefreshToken)
+	s.Require().NoError(err, "Should parse refresh token without error")
+	s.Equal(principal.SessionChoices, refreshClaims.SessionChoices(), "The refresh token should carry the session choices")
+
+	accessClaims, err := s.jwt.Parse(tokens.AccessToken)
+	s.Require().NoError(err, "Should parse access token without error")
+	s.Nil(accessClaims.SessionChoices(), "The access token should not carry the session choices")
 }
 
 // TestTokenTTLs verifies that access and refresh tokens carry the correct expiry durations.

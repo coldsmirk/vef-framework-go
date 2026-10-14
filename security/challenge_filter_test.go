@@ -39,6 +39,26 @@ func (p *StubChallengeProvider) Resolve(_ context.Context, login *LoginContext, 
 	return p.Principal, p.Err
 }
 
+// StubSessionChoiceProvider is a StubChallengeProvider whose answer is a session
+// choice; it records what a filtered provider forwards to it.
+type StubSessionChoiceProvider struct {
+	StubChallengeProvider
+
+	Reapplied []string
+}
+
+func (*StubSessionChoiceProvider) SessionChoice(response any) (string, bool) {
+	choice, ok := response.(string)
+
+	return choice, ok
+}
+
+func (p *StubSessionChoiceProvider) ReapplyChoice(_ context.Context, _ *Principal, choice string) (*Principal, error) {
+	p.Reapplied = append(p.Reapplied, choice)
+
+	return p.Principal, p.Err
+}
+
 func TestLoginFilterMatches(t *testing.T) {
 	const miniProgram = "wechat_mini"
 
@@ -167,5 +187,30 @@ func TestNewFilteredChallengeProvider(t *testing.T) {
 
 		require.ErrorIs(t, err, resolveErr, "Resolve should propagate the wrapped provider's error")
 		assert.Nil(t, resolved, "A rejected response should continue with no principal")
+	})
+
+	t.Run("PlainProviderGainsNoSessionChoice", func(t *testing.T) {
+		provider := NewFilteredChallengeProvider(&StubChallengeProvider{}, ForAuthTypes(AuthTypePassword))
+
+		_, ok := provider.(SessionChoiceProvider)
+		assert.False(t, ok, "Wrapping a provider whose answer is no choice should not make it one")
+	})
+
+	t.Run("KeepsTheSessionChoiceOfTheWrappedProvider", func(t *testing.T) {
+		reapplied := NewUser("u1", "Alice (d2)")
+		inner := &StubSessionChoiceProvider{Principal: reapplied}
+		provider := NewFilteredChallengeProvider(inner, ForAuthTypes(AuthTypePassword))
+
+		chooser, ok := provider.(SessionChoiceProvider)
+		require.True(t, ok, "A wrapped SessionChoiceProvider should stay one, or its choice would not survive a refresh")
+
+		choice, kept := chooser.SessionChoice("d2")
+		assert.True(t, kept, "SessionChoice should be forwarded to the wrapped provider")
+		assert.Equal(t, "d2", choice, "SessionChoice should return the wrapped provider's choice")
+
+		got, err := chooser.ReapplyChoice(ctx, NewUser("u1", "Alice"), "d2")
+		require.NoError(t, err, "ReapplyChoice should not error when the wrapped provider accepts")
+		assert.Same(t, reapplied, got, "ReapplyChoice should return the wrapped provider's principal")
+		assert.Equal(t, []string{"d2"}, inner.Reapplied, "ReapplyChoice should reach the wrapped provider whatever the filters say")
 	})
 }

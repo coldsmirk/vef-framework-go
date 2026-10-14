@@ -57,7 +57,7 @@ var Module = fx.Module(
 		newJWT,
 		fx.Annotate(
 			newTokenAuthenticators,
-			fx.ParamTags(``, ``, `optional:"true"`),
+			fx.ParamTags(``, ``, `optional:"true"`, ``, ``, `group:"vef:security:challenge_providers"`),
 			fx.ResultTags(`group:"vef:security:authenticators,flatten"`),
 		),
 		NewJWTTokenGenerator,
@@ -288,6 +288,7 @@ func newTokenAuthenticators(
 	userLoader security.UserLoader,
 	store security.SessionStore,
 	policy security.SessionPolicy,
+	challengeProviders []security.ChallengeProvider,
 ) []security.Authenticator {
 	if cfg.EffectiveTokenType() == config.TokenTypeOpaque {
 		return []security.Authenticator{NewOpaqueTokenAuthenticator(store, policy)}
@@ -295,7 +296,7 @@ func newTokenAuthenticators(
 
 	return []security.Authenticator{
 		NewJWTAuthenticator(jwt),
-		NewJWTRefreshAuthenticator(jwt, userLoader),
+		NewJWTRefreshAuthenticator(jwt, userLoader, challengeProviders),
 	}
 }
 

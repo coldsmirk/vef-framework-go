@@ -67,13 +67,19 @@ func (f LoginFilter) Matches(login *LoginContext) bool {
 // that already carry equivalent assurance with ExceptAuthTypes, so a login
 // mechanism added later is still challenged instead of silently exempt.
 //
-// No filters returns the provider unchanged.
+// No filters returns the provider unchanged. A SessionChoiceProvider stays one
+// once wrapped, so its choice is still re-applied on refresh.
 func NewFilteredChallengeProvider(provider ChallengeProvider, filters ...LoginFilter) ChallengeProvider {
 	if len(filters) == 0 {
 		return provider
 	}
 
-	return &filteredChallengeProvider{inner: provider, filters: filters}
+	filtered := &filteredChallengeProvider{inner: provider, filters: filters}
+	if chooser, ok := provider.(SessionChoiceProvider); ok {
+		return &filteredSessionChoiceProvider{filteredChallengeProvider: filtered, chooser: chooser}
+	}
+
+	return filtered
 }
 
 type filteredChallengeProvider struct {
@@ -101,4 +107,21 @@ func (p *filteredChallengeProvider) Evaluate(ctx context.Context, login *LoginCo
 // mechanism never changes between its steps.
 func (p *filteredChallengeProvider) Resolve(ctx context.Context, login *LoginContext, response any) (*Principal, error) {
 	return p.inner.Resolve(ctx, login, response)
+}
+
+// filteredSessionChoiceProvider is a filtered SessionChoiceProvider. The filters
+// scope only whether the challenge is presented: a choice recorded at login is
+// recorded and re-applied as the wrapped provider decides.
+type filteredSessionChoiceProvider struct {
+	*filteredChallengeProvider
+
+	chooser SessionChoiceProvider
+}
+
+func (p *filteredSessionChoiceProvider) SessionChoice(response any) (string, bool) {
+	return p.chooser.SessionChoice(response)
+}
+
+func (p *filteredSessionChoiceProvider) ReapplyChoice(ctx context.Context, principal *Principal, choice string) (*Principal, error) {
+	return p.chooser.ReapplyChoice(ctx, principal, choice)
 }

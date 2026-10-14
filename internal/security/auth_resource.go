@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -388,6 +389,14 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 		return security.ErrReservedPrincipal
 	}
 
+	// A choice the session is built on is recorded on the principal, so the
+	// tokens issued at the end of the login carry it and a refresh re-applies it.
+	if chooser, ok := provider.(security.SessionChoiceProvider); ok {
+		if choice, ok := chooser.SessionChoice(params.Response); ok {
+			principal = withSessionChoice(principal, params.Type, choice)
+		}
+	}
+
 	// Resolve succeeded, so its claim is kept: the unreleased lease marks the
 	// token spent from here on (see claimChallengeToken). The failures counted
 	// under this identity stay, since a step is not a login: only the step that
@@ -397,6 +406,22 @@ func (a *AuthResource) ResolveChallenge(ctx fiber.Ctx, params ResolveChallengePa
 	state.Pending = state.Pending[1:]
 
 	return a.advanceLogin(ctx, state, audit, &attempt)
+}
+
+// withSessionChoice returns a copy of principal that also records choice under
+// challengeType. The principal a provider returns may still be held by the
+// challenge token store, so it is left untouched.
+func withSessionChoice(principal *security.Principal, challengeType, choice string) *security.Principal {
+	recorded := *principal
+	recorded.SessionChoices = maps.Clone(principal.SessionChoices)
+
+	if recorded.SessionChoices == nil {
+		recorded.SessionChoices = make(map[string]string, 1)
+	}
+
+	recorded.SessionChoices[challengeType] = choice
+
+	return &recorded
 }
 
 // GetUserInfo retrieves user information via UserInfoLoader.
