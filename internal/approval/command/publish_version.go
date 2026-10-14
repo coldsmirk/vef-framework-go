@@ -21,7 +21,6 @@ type PublishVersionCmd struct {
 
 	VersionID  string
 	OperatorID string
-	Caller     approval.CallerContext
 }
 
 // PublishVersionHandler handles the PublishVersionCmd command.
@@ -63,19 +62,13 @@ func (h *PublishVersionHandler) Handle(ctx context.Context, cmd PublishVersionCm
 		return cqrs.Unit{}, approval.ErrVersionNotDraft
 	}
 
-	// Authorize before any mutations so an unauthorized caller cannot
-	// cause side effects (archive, publish, version bump). Mirrors the
-	// pre-write authorization order used by create_flow, update_flow,
-	// toggle_flow_active, and deploy_flow.
+	// The flow names the published event and the storage the version
+	// provisions.
 	var flow approval.Flow
 
 	flow.ID = version.FlowID
 	if err := db.NewSelect().Model(&flow).Select("tenant_id", "code", "name").WherePK().Scan(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("load flow: %w", err)
-	}
-
-	if err := cmd.Caller.Authorize(flow.TenantID); err != nil {
-		return cqrs.Unit{}, approval.ErrVersionNotFound
 	}
 
 	// Capture currently-published versions before archiving so we can

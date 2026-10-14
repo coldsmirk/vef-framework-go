@@ -18,7 +18,6 @@ type ToggleFlowActiveCmd struct {
 
 	FlowID   string
 	IsActive bool
-	Caller   approval.CallerContext
 }
 
 // ToggleFlowActiveHandler handles the ToggleFlowActiveCmd command.
@@ -43,10 +42,6 @@ func (h *ToggleFlowActiveHandler) Handle(ctx context.Context, cmd ToggleFlowActi
 		}
 
 		return cqrs.Unit{}, fmt.Errorf("load flow: %w", err)
-	}
-
-	if err := cmd.Caller.Authorize(flow.TenantID); err != nil {
-		return cqrs.Unit{}, approval.ErrFlowNotFound
 	}
 
 	updateResult, err := db.NewUpdate().

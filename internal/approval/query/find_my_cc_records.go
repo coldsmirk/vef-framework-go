@@ -18,11 +18,7 @@ type FindMyCCRecordsQuery struct {
 	page.Pageable
 
 	UserID string
-	// TenantID is a self-scoped narrowing filter, NOT an authorization
-	// boundary: rows are already pinned to UserID, so it only narrows the
-	// caller's own CC records and does not gate access.
-	TenantID *string
-	IsRead   *bool
+	IsRead *bool
 }
 
 // FindMyCCRecordsHandler handles the FindMyCCRecordsQuery.
@@ -52,7 +48,6 @@ func (h *FindMyCCRecordsHandler) Handle(ctx context.Context, query FindMyCCRecor
 				}
 			}
 		}).
-		ApplyIf(query.TenantID != nil, scopeCCByTenant(query.TenantID)).
 		OrderByDesc("created_at", "id")
 
 	sq = applyPageable(sq, &query.Pageable)

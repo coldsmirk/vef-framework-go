@@ -16,12 +16,6 @@ type GetMyPendingCountsQuery struct {
 	cqrs.BaseQuery
 
 	UserID string
-	// TenantID is a self-scoped narrowing filter, NOT an authorization
-	// boundary: counts are already pinned to UserID, so it only narrows the
-	// caller's own rows (matching FindMyPendingTasksQuery / FindMyCCRecordsQuery)
-	// and does not gate access. When nil the counts span all tenants the user
-	// has rows in.
-	TenantID *string
 }
 
 // GetMyPendingCountsHandler handles the GetMyPendingCountsQuery.
@@ -41,10 +35,7 @@ func (h *GetMyPendingCountsHandler) Handle(ctx context.Context, query GetMyPendi
 		Model((*approval.Task)(nil)).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("assignee_id", query.UserID).
-				Equals("status", string(approval.TaskPending)).
-				ApplyIf(query.TenantID != nil, func(cb orm.ConditionBuilder) {
-					cb.Equals("tenant_id", *query.TenantID)
-				})
+				Equals("status", string(approval.TaskPending))
 		}).
 		Count(ctx)
 	if err != nil {
@@ -57,7 +48,6 @@ func (h *GetMyPendingCountsHandler) Handle(ctx context.Context, query GetMyPendi
 			cb.Equals("cc_user_id", query.UserID).
 				IsNull("read_at")
 		}).
-		ApplyIf(query.TenantID != nil, scopeCCByTenant(query.TenantID)).
 		Count(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("count unread cc records: %w", err)

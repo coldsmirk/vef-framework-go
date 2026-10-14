@@ -29,7 +29,6 @@ type DeployFlowCmd struct {
 	StorageMode    approval.StorageMode
 	FlowDefinition approval.FlowDefinition
 	FormSchema     json.RawMessage
-	Caller         approval.CallerContext
 }
 
 // assigneeProvider is the interface for accessing assignees from typed node data.
@@ -73,15 +72,10 @@ func (h *DeployFlowHandler) deriveFormFields(ctx context.Context, schema json.Ra
 	return fields, nil
 }
 
-// loadDeployFlow loads and authorizes the flow a deploy targets, locking its
-// row for the rest of the transaction so concurrent deploys of one flow number
-// their versions one after the other.
-func loadDeployFlow(
-	ctx context.Context,
-	db orm.DB,
-	flowID string,
-	caller approval.CallerContext,
-) (approval.Flow, *approval.BusinessBindingConfig, error) {
+// loadDeployFlow loads the flow a deploy targets, locking its row for the rest
+// of the transaction so concurrent deploys of one flow number their versions
+// one after the other.
+func loadDeployFlow(ctx context.Context, db orm.DB, flowID string) (approval.Flow, *approval.BusinessBindingConfig, error) {
 	flow := approval.Flow{
 		ID: flowID,
 	}
@@ -97,10 +91,6 @@ func loadDeployFlow(
 		}
 
 		return approval.Flow{}, nil, fmt.Errorf("load flow: %w", err)
-	}
-
-	if err := caller.Authorize(flow.TenantID); err != nil {
-		return approval.Flow{}, nil, approval.ErrFlowNotFound
 	}
 
 	businessBinding, err := binding.NormalizeConfig(flow.BindingMode, flow.BusinessBinding)
@@ -201,7 +191,7 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 
 	db := contextx.DB(ctx, h.db)
 
-	flow, businessBinding, err := loadDeployFlow(ctx, db, cmd.FlowID, cmd.Caller)
+	flow, businessBinding, err := loadDeployFlow(ctx, db, cmd.FlowID)
 	if err != nil {
 		return nil, err
 	}

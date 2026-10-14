@@ -117,17 +117,6 @@ func (s *FindMyPendingTasksTestSuite) TestFindPendingForUser() {
 	s.Assert().Equal("Task Instance", result.Items[0].InstanceTitle, "Should have correct instance title")
 }
 
-func (s *FindMyPendingTasksTestSuite) TestFilterByTenant() {
-	result, err := s.handler.Handle(s.ctx, query.FindMyPendingTasksQuery{
-		UserID:   "user-a",
-		TenantID: new("t1"),
-		Page:     1,
-		Size:     10,
-	})
-	s.Require().NoError(err, "Should query without error")
-	s.Assert().Equal(int64(1), result.Total, "Should find 1 pending task in tenant t1")
-}
-
 func (s *FindMyPendingTasksTestSuite) TestNoResults() {
 	result, err := s.handler.Handle(s.ctx, query.FindMyPendingTasksQuery{
 		UserID: "non-existent-user",

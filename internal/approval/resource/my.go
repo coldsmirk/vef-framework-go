@@ -57,16 +57,14 @@ func NewMyResource(
 type FindAvailableFlowsParams struct {
 	api.P
 
-	// TenantID is the tenant to list for. Only a super-admin's choice counts;
-	// everyone else is offered their own tenant's flows plus the shared ones.
-	TenantID *string           `json:"tenantId"`
 	Keyword  *string           `json:"keyword"`
 	Labels   map[string]string `json:"labels"`
 	Page     int               `json:"page"`
 	PageSize int               `json:"pageSize"`
 }
 
-// FindAvailableFlows queries flows the current user is allowed to initiate.
+// FindAvailableFlows queries the flows the current user may initiate in the
+// tenant the user acts in: its own flows plus the shared ones.
 func (r *MyResource) FindAvailableFlows(ctx fiber.Ctx, principal *security.Principal, params FindAvailableFlowsParams) error {
 	departmentID, _, err := r.departmentResolver.Resolve(ctx.Context(), principal)
 	if err != nil {
@@ -80,7 +78,6 @@ func (r *MyResource) FindAvailableFlows(ctx fiber.Ctx, principal *security.Princ
 
 	res, err := cqrs.Send[query.FindAvailableFlowsQuery, *page.Page[my.AvailableFlow]](ctx.Context(), r.bus, query.FindAvailableFlowsQuery{
 		UserID:                principal.ID,
-		TenantID:              params.TenantID,
 		ApplicantDepartmentID: departmentID,
 		Keyword:               params.Keyword,
 		Labels:                params.Labels,
@@ -99,9 +96,6 @@ func (r *MyResource) FindAvailableFlows(ctx fiber.Ctx, principal *security.Princ
 type GetStartFormParams struct {
 	api.P
 
-	// TenantID is the tenant the instance would run in, honored exactly as
-	// StartParams.TenantID is: only a super-admin's choice counts.
-	TenantID string `json:"tenantId"`
 	FlowCode string `json:"flowCode" validate:"required"`
 }
 
@@ -116,7 +110,6 @@ func (r *MyResource) GetStartForm(ctx fiber.Ctx, principal *security.Principal, 
 	}
 
 	form, err := cqrs.Send[query.GetStartFormQuery, *my.StartForm](ctx.Context(), r.bus, query.GetStartFormQuery{
-		TenantID:  params.TenantID,
 		FlowCode:  params.FlowCode,
 		Applicant: actor.Operator,
 		Caller:    actor.Caller,
@@ -138,7 +131,6 @@ func (r *MyResource) GetStartForm(ctx fiber.Ctx, principal *security.Principal, 
 type FindInitiatedParams struct {
 	api.P
 
-	TenantID *string                  `json:"tenantId"`
 	Status   *approval.InstanceStatus `json:"status"`
 	Keyword  *string                  `json:"keyword"`
 	Page     int                      `json:"page"`
@@ -148,12 +140,11 @@ type FindInitiatedParams struct {
 // FindInitiated queries instances initiated by the current user.
 func (r *MyResource) FindInitiated(ctx fiber.Ctx, principal *security.Principal, params FindInitiatedParams) error {
 	res, err := cqrs.Send[query.FindMyInitiatedQuery, *page.Page[my.InitiatedInstance]](ctx.Context(), r.bus, query.FindMyInitiatedQuery{
-		UserID:   principal.ID,
-		TenantID: params.TenantID,
-		Status:   params.Status,
-		Keyword:  params.Keyword,
-		Page:     params.Page,
-		Size:     params.PageSize,
+		UserID:  principal.ID,
+		Status:  params.Status,
+		Keyword: params.Keyword,
+		Page:    params.Page,
+		Size:    params.PageSize,
 	})
 	if err != nil {
 		return err
@@ -167,7 +158,6 @@ func (r *MyResource) FindInitiated(ctx fiber.Ctx, principal *security.Principal,
 type FindPendingTasksParams struct {
 	api.P
 
-	TenantID      *string         `json:"tenantId"`
 	Keyword       *string         `json:"keyword"`
 	ApplicantID   *string         `json:"applicantId"`
 	ApplicantName *string         `json:"applicantName"`
@@ -183,7 +173,6 @@ type FindPendingTasksParams struct {
 func (r *MyResource) FindPendingTasks(ctx fiber.Ctx, principal *security.Principal, params FindPendingTasksParams) error {
 	res, err := cqrs.Send[query.FindMyPendingTasksQuery, *page.Page[my.PendingTask]](ctx.Context(), r.bus, query.FindMyPendingTasksQuery{
 		UserID:        principal.ID,
-		TenantID:      params.TenantID,
 		Keyword:       params.Keyword,
 		ApplicantID:   params.ApplicantID,
 		ApplicantName: params.ApplicantName,
@@ -206,7 +195,6 @@ func (r *MyResource) FindPendingTasks(ctx fiber.Ctx, principal *security.Princip
 type FindCompletedTasksParams struct {
 	api.P
 
-	TenantID       *string                  `json:"tenantId"`
 	Keyword        *string                  `json:"keyword"`
 	ApplicantID    *string                  `json:"applicantId"`
 	ApplicantName  *string                  `json:"applicantName"`
@@ -223,7 +211,6 @@ type FindCompletedTasksParams struct {
 func (r *MyResource) FindCompletedTasks(ctx fiber.Ctx, principal *security.Principal, params FindCompletedTasksParams) error {
 	res, err := cqrs.Send[query.FindMyCompletedTasksQuery, *page.Page[my.CompletedTask]](ctx.Context(), r.bus, query.FindMyCompletedTasksQuery{
 		UserID:         principal.ID,
-		TenantID:       params.TenantID,
 		Keyword:        params.Keyword,
 		ApplicantID:    params.ApplicantID,
 		ApplicantName:  params.ApplicantName,
@@ -246,20 +233,18 @@ func (r *MyResource) FindCompletedTasks(ctx fiber.Ctx, principal *security.Princ
 type FindCCRecordsParams struct {
 	api.P
 
-	TenantID *string `json:"tenantId"`
-	IsRead   *bool   `json:"isRead"`
-	Page     int     `json:"page"`
-	PageSize int     `json:"pageSize"`
+	IsRead   *bool `json:"isRead"`
+	Page     int   `json:"page"`
+	PageSize int   `json:"pageSize"`
 }
 
 // FindCCRecords queries CC records addressed to the current user.
 func (r *MyResource) FindCCRecords(ctx fiber.Ctx, principal *security.Principal, params FindCCRecordsParams) error {
 	res, err := cqrs.Send[query.FindMyCCRecordsQuery, *page.Page[my.CCRecord]](ctx.Context(), r.bus, query.FindMyCCRecordsQuery{
-		UserID:   principal.ID,
-		TenantID: params.TenantID,
-		IsRead:   params.IsRead,
-		Page:     params.Page,
-		Size:     params.PageSize,
+		UserID: principal.ID,
+		IsRead: params.IsRead,
+		Page:   params.Page,
+		Size:   params.PageSize,
 	})
 	if err != nil {
 		return err
@@ -268,18 +253,10 @@ func (r *MyResource) FindCCRecords(ctx fiber.Ctx, principal *security.Principal,
 	return result.Ok(res).Response(ctx)
 }
 
-// GetPendingCountsParams contains the parameters for querying pending counts.
-type GetPendingCountsParams struct {
-	api.P
-
-	TenantID *string `json:"tenantId"`
-}
-
 // GetPendingCounts retrieves pending task and unread CC counts for the current user.
-func (r *MyResource) GetPendingCounts(ctx fiber.Ctx, principal *security.Principal, params GetPendingCountsParams) error {
+func (r *MyResource) GetPendingCounts(ctx fiber.Ctx, principal *security.Principal) error {
 	res, err := cqrs.Send[query.GetMyPendingCountsQuery, *my.PendingCounts](ctx.Context(), r.bus, query.GetMyPendingCountsQuery{
-		UserID:   principal.ID,
-		TenantID: params.TenantID,
+		UserID: principal.ID,
 	})
 	if err != nil {
 		return err

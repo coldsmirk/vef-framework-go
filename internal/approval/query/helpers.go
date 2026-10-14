@@ -177,22 +177,6 @@ func loadInstanceDetailBundle(ctx context.Context, db orm.DB, instanceID string)
 	}, nil
 }
 
-// scopeCCByTenant returns the CC→instance tenant-scoping closure shared by the
-// cc-records and pending-counts queries: it joins apv_instance (alias "i") on
-// instance_id and filters i.tenant_id. Apply it via ApplyIf so the nil guard
-// stays at the call site (the closure dereferences tenantID). Keeping the join
-// in one place stops the two queries' tenant-scoping semantics from drifting.
-func scopeCCByTenant(tenantID *string) func(orm.SelectQuery) {
-	return func(sq orm.SelectQuery) {
-		sq.Join((*approval.Instance)(nil), func(cb orm.ConditionBuilder) {
-			cb.EqualsColumn("instance_id", "i.id")
-		}, "i").
-			Where(func(cb orm.ConditionBuilder) {
-				cb.Equals("i.tenant_id", *tenantID)
-			})
-	}
-}
-
 // MyTaskFilter holds the filters the my-pending and my-completed task lists
 // share. Each reads the task's instance, so a handler applies it after
 // joinTaskInstance. Every field is optional; set fields AND together.

@@ -13,13 +13,15 @@ import (
 	iapproval "github.com/coldsmirk/vef-framework-go/internal/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
 	"github.com/coldsmirk/vef-framework-go/internal/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
 )
 
 // CategoryTenancyTestSuite pins the tenant rules of approval/category over the
-// full RPC path: reads stay inside the caller's tenant unless shared categories
-// are asked for, a category never changes tenant, and a tree never spans
-// tenants. It runs on the default in-memory SQLite datasource.
+// full RPC path: categories are managed across tenants, so reads and creates
+// follow the tenant the request names rather than the caller's own, while a
+// category never changes tenant and a tree never spans tenants. It runs on the
+// default in-memory SQLite datasource.
 type CategoryTenancyTestSuite struct {
 	apptest.Suite
 
@@ -126,47 +128,47 @@ func (s *CategoryTenancyTestSuite) mutate(action string, params map[string]any, 
 }
 
 func (s *CategoryTenancyTestSuite) TestReads() {
-	s.Run("MemberReadsOwnTenant", func() {
-		s.Assert().ElementsMatch([]string{"own"}, s.treeIDs(nil, s.memberToken),
-			"A tenant member reads only its own tenant's categories")
+	s.Run("ReadsEveryTenantWithoutATenant", func() {
+		s.Assert().ElementsMatch([]string{"own", "shared", "foreign"}, s.treeIDs(nil, s.memberToken),
+			"A read naming no tenant covers every tenant's categories")
 	})
 
-	s.Run("MemberAsksForSharedCategories", func() {
-		s.Assert().ElementsMatch([]string{"own", "shared"}, s.treeIDs(api.Meta{"includeShared": true}, s.memberToken),
-			"includeShared adds the shared categories to the member's own")
+	s.Run("ReadsTheTenantTheRequestNames", func() {
+		s.Assert().ElementsMatch([]string{"foreign"}, s.treeIDs(api.Meta{"tenantId": "tenant-b"}, s.memberToken),
+			"The read follows the requested tenant, not the caller's own")
 	})
 
-	s.Run("MemberCannotNameAnotherTenant", func() {
-		s.Assert().ElementsMatch([]string{"own"}, s.treeIDs(api.Meta{"tenantId": "tenant-b"}, s.memberToken),
-			"A member naming another tenant still reads its own")
+	s.Run("AddsSharedCategoriesWhenAsked", func() {
+		s.Assert().ElementsMatch([]string{"own", "shared"},
+			s.treeIDs(api.Meta{"tenantId": testTenant, "includeShared": true}, s.memberToken),
+			"includeShared adds the shared categories to the requested tenant's")
 	})
 
-	s.Run("DeniesCallerWithoutTenant", func() {
-		resp := s.MakeRPCRequestWithToken(api.Request{
-			Resource: "approval/category",
-			Action:   "find_tree",
-			Version:  "v1",
-		}, s.GenerateToken(security.NewUser("orphan", "Orphan", "user")))
-
-		body := s.ReadResult(resp)
-		s.Assert().Equal(approval.ErrCodeCrossTenantAccess, body.Code,
-			"A caller with no tenant is denied with the tenant error, not a server error")
+	s.Run("ReadsSharedCategoriesAlone", func() {
+		s.Assert().ElementsMatch([]string{"shared"}, s.treeIDs(api.Meta{"tenantId": approval.SharedTenantID}, s.memberToken),
+			"The shared tenant can be read on its own")
 	})
 
-	s.Run("SuperAdminScopesToSharedCategories", func() {
-		s.Assert().ElementsMatch([]string{"shared"}, s.treeIDs(api.Meta{"tenantId": approval.SharedTenantID}, s.adminToken),
-			"A super-admin may read the shared tenant alone")
+	s.Run("NeedsNoTenantOfTheCallersOwn", func() {
+		s.Assert().ElementsMatch([]string{"own"},
+			s.treeIDs(api.Meta{"tenantId": testTenant}, s.GenerateToken(security.NewUser("orphan", "Orphan", "user"))),
+			"Managing categories is gated by permission, not by the caller's tenant")
 	})
 }
 
 func (s *CategoryTenancyTestSuite) TestWrites() {
-	s.Run("MemberCannotCreateSharedCategory", func() {
+	s.Run("CreatesInTheRequestedTenant", func() {
 		status, _ := s.mutate("create", map[string]any{
 			"id": "member-shared", "tenantId": approval.SharedTenantID, "code": "member-shared", "name": "Member Shared",
 		}, s.memberToken)
 		s.Require().Equal(http.StatusOK, status, "The create itself should succeed")
-		s.Assert().Equal(testTenant, s.loadCategory("member-shared").TenantID,
-			"A member's category is stamped with its own tenant, whatever it asked for")
+		s.Assert().Equal(approval.SharedTenantID, s.loadCategory("member-shared").TenantID,
+			"A category is stamped with the tenant the request names")
+	})
+
+	s.Run("RequiresATenant", func() {
+		_, code := s.mutate("create", map[string]any{"id": "no-tenant", "code": "no-tenant", "name": "No Tenant"}, s.memberToken)
+		s.Assert().Equal(result.ErrCodeBadRequest, code, "A category naming no tenant should fail validation")
 	})
 
 	s.Run("CategoryNeverChangesTenant", func() {

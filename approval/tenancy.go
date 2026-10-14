@@ -20,9 +20,10 @@ const DefaultTenantID = "default"
 // keeps the isolation of an ordinary tenant flow.
 //
 // The shared tenant has no members. A caller whose tenant resolves to it is
-// denied like a caller with no tenant at all, which leaves shared definitions
-// to super-admin and system-internal callers. Hosts must therefore never use
-// "0" as the identifier of a real tenant.
+// denied like a caller with no tenant at all. Definitions themselves — flows
+// and categories, shared or not — are managed across tenants, gated by
+// permission: their tenant is whatever the managing request names. Hosts must
+// therefore never use "0" as the identifier of a real tenant.
 const SharedTenantID = "0"
 
 // SuperAdminRole is the role string that grants cross-tenant access to
@@ -140,13 +141,13 @@ func (c CallerContext) TenantScopeFilter(override string) (*string, error) {
 	return &tenantID, nil
 }
 
-// ResolveWriteTenant returns the tenant a new entity — a flow, a category, an
-// instance — is stamped with. Every caller but a privileged one is pinned to
-// its own tenant whatever it requested, and fails closed with
-// ErrCrossTenantAccess when it has none, so it can never write into another
-// tenant, the shared one included. A super-admin or system-internal caller
-// writes into the requested tenant; naming none, into its own tenant when it
-// has one, else DefaultTenantID.
+// ResolveWriteTenant returns the tenant a new instance is stamped with. Every
+// caller but a privileged one is pinned to its own tenant whatever it
+// requested, and fails closed with ErrCrossTenantAccess when it has none, so it
+// can never write into another tenant, the shared one included. A super-admin
+// or system-internal caller writes into the requested tenant; naming none, into
+// its own tenant when it has one, else DefaultTenantID. Only Service callers
+// request a tenant: the HTTP resources start in the caller's own.
 func (c CallerContext) ResolveWriteTenant(requested string) (string, error) {
 	if c.IsSuperAdmin || c.IsSystemInternal {
 		if requested != "" {

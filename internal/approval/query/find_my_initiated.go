@@ -17,14 +17,9 @@ type FindMyInitiatedQuery struct {
 	cqrs.BaseQuery
 	page.Pageable
 
-	UserID string
-	// TenantID is a self-scoped narrowing filter, NOT an authorization
-	// boundary: rows are already pinned to UserID, so a user can only ever
-	// see their own instances regardless of the tenant value. It applies an
-	// extra WHERE only; it does not gate access.
-	TenantID *string
-	Status   *approval.InstanceStatus
-	Keyword  *string
+	UserID  string
+	Status  *approval.InstanceStatus
+	Keyword *string
 }
 
 // FindMyInitiatedHandler handles the FindMyInitiatedQuery.
@@ -45,9 +40,6 @@ func (h *FindMyInitiatedHandler) Handle(ctx context.Context, query FindMyInitiat
 	sq := db.NewSelect().Model(&instances).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("applicant_id", query.UserID).
-				ApplyIf(query.TenantID != nil, func(cb orm.ConditionBuilder) {
-					cb.Equals("tenant_id", *query.TenantID)
-				}).
 				ApplyIf(query.Status != nil, func(cb orm.ConditionBuilder) {
 					cb.Equals("status", *query.Status)
 				}).

@@ -97,7 +97,6 @@ func (s *DeployFlowTestSuite) TestDeploySuccess() {
 	cmd := command.DeployFlowCmd{
 		FlowID:         s.flowID,
 		FlowDefinition: simpleFlowDef(),
-		Caller:         approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -169,7 +168,6 @@ func (s *DeployFlowTestSuite) TestDeploySnapshotsBusinessBinding() {
 	version, err := s.handler.Handle(s.ctx, command.DeployFlowCmd{
 		FlowID:         s.flowID,
 		FlowDefinition: simpleFlowDef(),
-		Caller:         approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Deploy should snapshot a complete business binding")
 	s.Require().NotNil(version.BusinessBinding, "Deployed version should carry its binding snapshot")
@@ -204,7 +202,6 @@ func (s *DeployFlowTestSuite) TestDeployWithDescription() {
 		FlowID:         s.flowID,
 		Description:    &desc,
 		FlowDefinition: simpleFlowDef(),
-		Caller:         approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -226,7 +223,6 @@ func (s *DeployFlowTestSuite) TestDeployFlowNotFound() {
 	cmd := command.DeployFlowCmd{
 		FlowID:         "non-existent-flow-id",
 		FlowDefinition: simpleFlowDef(),
-		Caller:         approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)
@@ -248,7 +244,6 @@ func (s *DeployFlowTestSuite) TestDeployInvalidFlowDesign() {
 				},
 			},
 		},
-		Caller: approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)
@@ -270,7 +265,6 @@ func (s *DeployFlowTestSuite) TestDeployInvalidAddAssigneeTypeInNodeData() {
 				{ID: "edge-2", Source: "approval-1", Target: "end-1"},
 			},
 		},
-		Caller: approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)
@@ -313,7 +307,6 @@ func (s *DeployFlowTestSuite) TestDeployRejectsDanglingFieldPermission() {
 			},
 		},
 		FormSchema: formEditorSchemaJSON(s.T(), formEditorWidget{Type: "textfield", Key: "reason", Label: "Reason"}),
-		Caller:     approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)
@@ -333,7 +326,6 @@ func (s *DeployFlowTestSuite) TestDeployWithAssigneesAndCCs() {
 	cmd := command.DeployFlowCmd{
 		FlowID:         s.flowID,
 		FlowDefinition: approvalFlowDef(),
-		Caller:         approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -421,7 +413,6 @@ func (s *DeployFlowTestSuite) TestDeployStoresLongKindNames() {
 	result, err := s.handler.Handle(s.ctx, command.DeployFlowCmd{
 		FlowID:         s.flowID,
 		FlowDefinition: definition,
-		Caller:         approval.SystemCaller,
 	})
 	s.Require().NoError(err, "A built-in kind whose name exceeds a narrow column must still deploy")
 
@@ -461,7 +452,6 @@ func (s *DeployFlowTestSuite) TestDeployEdgesWithNodeKeys() {
 	cmd := command.DeployFlowCmd{
 		FlowID:         s.flowID,
 		FlowDefinition: simpleFlowDef(),
-		Caller:         approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -494,7 +484,6 @@ func (s *DeployFlowTestSuite) TestDeployPersistsFormSchemaVerbatimAndDerivesFiel
 		FlowID:         s.flowID,
 		FlowDefinition: simpleFlowDef(),
 		FormSchema:     schema,
-		Caller:         approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should deploy flow with a form schema")
 
@@ -526,7 +515,6 @@ func (s *DeployFlowTestSuite) TestDeployParserErrorAbortsDeploy() {
 		FlowID:         s.flowID,
 		FlowDefinition: simpleFlowDef(),
 		FormSchema:     schema,
-		Caller:         approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail when the form schema cannot be parsed")
 	s.Assert().ErrorIs(err, approval.ErrInvalidFormDesign, "Parser errors should surface as invalid form design")
@@ -555,7 +543,6 @@ func (s *DeployFlowTestSuite) TestDeployHostParserBareErrorWrapsAsInvalidFormDes
 		FlowID:         s.flowID,
 		FlowDefinition: simpleFlowDef(),
 		FormSchema:     json.RawMessage(`{"version":2}`),
-		Caller:         approval.SystemCaller,
 	})
 	s.Require().Error(err, "A host parser failure must abort the deploy")
 	s.Assert().ErrorIs(err, approval.ErrInvalidFormDesign, "A bare parser error must be wrapped in the form-design sentinel")
@@ -572,7 +559,6 @@ func (s *DeployFlowTestSuite) TestDeployDoesNotUpdateFlowCurrentVersion() {
 	cmd := command.DeployFlowCmd{
 		FlowID:         s.flowID,
 		FlowDefinition: simpleFlowDef(),
-		Caller:         approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)
@@ -621,7 +607,6 @@ func (s *DeployFlowTestSuite) TestDeployNumbersAfterEveryVersion() {
 		version, err := s.handler.Handle(s.ctx, command.DeployFlowCmd{
 			FlowID:         numbered.ID,
 			FlowDefinition: simpleFlowDef(),
-			Caller:         approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should deploy")
 
@@ -637,7 +622,6 @@ func (s *DeployFlowTestSuite) TestDeployNumbersAfterEveryVersion() {
 	_, err = command.NewPublishVersionHandler(s.db, nil, nil).Handle(s.ctx, command.PublishVersionCmd{
 		VersionID:  first.ID,
 		OperatorID: "admin",
-		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should publish the first draft")
 

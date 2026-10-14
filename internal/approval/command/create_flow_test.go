@@ -85,7 +85,6 @@ func (s *CreateFlowTestSuite) TestCreateFlowSuccess() {
 		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "{{.applicantName}}'s leave request",
-		Caller:                 approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -126,7 +125,6 @@ func (s *CreateFlowTestSuite) TestCreateFlowLabels() {
 			BindingMode:            approval.BindingStandalone,
 			InstanceTitleTemplate:  "Test",
 			Labels:                 map[string]string{"app": "crm", "mobile": "true"},
-			Caller:                 approval.SystemCaller,
 		}
 
 		created, err := s.handler.Handle(s.ctx, cmd)
@@ -153,30 +151,12 @@ func (s *CreateFlowTestSuite) TestCreateFlowLabels() {
 			BindingMode:            approval.BindingStandalone,
 			InstanceTitleTemplate:  "Test",
 			Labels:                 map[string]string{"app.id": "crm"},
-			Caller:                 approval.SystemCaller,
 		}
 
 		_, err := s.handler.Handle(s.ctx, cmd)
 		s.Require().ErrorIs(err, approval.ErrInvalidFlowLabel,
 			"A dotted label key must be rejected at save time — it would silently escape the label filter")
 	})
-}
-
-func (s *CreateFlowTestSuite) TestCreateFlowDefaultTenant() {
-	cmd := command.CreateFlowCmd{
-		IsAllInitiationAllowed: true,
-		TenantID:               "", // empty → defaults to "default"
-		Code:                   "reimbursement",
-		Name:                   "Reimbursement Approval",
-		CategoryID:             s.categoryID,
-		BindingMode:            approval.BindingStandalone,
-		InstanceTitleTemplate:  "Reimbursement request",
-		Caller:                 approval.SystemCaller,
-	}
-
-	result, err := s.handler.Handle(s.ctx, cmd)
-	s.Require().NoError(err, "Should create flow without error")
-	s.Assert().Equal("default", result.TenantID, "Should default TenantID to 'default'")
 }
 
 // TestCreateFlowCategoryTenancy pins a flow to a category of its own tenant: a
@@ -192,7 +172,6 @@ func (s *CreateFlowTestSuite) TestCreateFlowCategoryTenancy() {
 			CategoryID:             categoryID,
 			BindingMode:            approval.BindingStandalone,
 			InstanceTitleTemplate:  "Title",
-			Caller:                 approval.SystemCaller,
 		}
 	}
 
@@ -215,27 +194,14 @@ func (s *CreateFlowTestSuite) TestCreateFlowCategoryTenancy() {
 
 	s.Run("AcceptsSharedFlowUnderSharedCategory", func() {
 		created, err := s.handler.Handle(s.ctx, baseCmd(approval.SharedTenantID, "cat-shared", s.categoryOf(approval.SharedTenantID)))
-		s.Require().NoError(err, "A privileged caller may create a shared flow under a shared category")
+		s.Require().NoError(err, "A shared flow should be created under a shared category")
 		s.Assert().Equal(approval.SharedTenantID, created.TenantID, "The flow should be stamped shared")
 	})
 
-	s.Run("PinsOrdinaryCallerToOwnTenant", func() {
-		cmd := baseCmd(approval.SharedTenantID, "cat-pinned", s.categoryOf("tenant-1"))
-		cmd.Caller = approval.CallerContext{TenantID: "tenant-1"}
-
-		created, err := s.handler.Handle(s.ctx, cmd)
-		s.Require().NoError(err, "An ordinary caller creates in its own tenant")
-		s.Assert().Equal("tenant-1", created.TenantID,
-			"Asking for the shared tenant must not make an ordinary caller's flow shared")
-	})
-
-	s.Run("RejectsCallerClaimingSharedTenant", func() {
-		cmd := baseCmd(approval.SharedTenantID, "cat-shared-member", s.categoryOf(approval.SharedTenantID))
-		cmd.Caller = approval.CallerContext{TenantID: approval.SharedTenantID}
-
-		_, err := s.handler.Handle(s.ctx, cmd)
-		s.Require().ErrorIs(err, approval.ErrCrossTenantAccess,
-			"A caller resolved to the shared tenant belongs to no tenant and must be denied")
+	s.Run("CreatesInTheRequestedTenant", func() {
+		created, err := s.handler.Handle(s.ctx, baseCmd("tenant-2", "cat-requested", s.categoryOf("tenant-2")))
+		s.Require().NoError(err, "A flow should be created in the tenant the request names")
+		s.Assert().Equal("tenant-2", created.TenantID, "The flow should be stamped with the requested tenant")
 	})
 }
 
@@ -248,7 +214,6 @@ func (s *CreateFlowTestSuite) TestCreateFlowDuplicateCode() {
 		CategoryID:             s.categoryOf("tenant-dup"),
 		BindingMode:            approval.BindingStandalone,
 		InstanceTitleTemplate:  "Title Template",
-		Caller:                 approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)
@@ -273,7 +238,6 @@ func (s *CreateFlowTestSuite) TestCreateFlowWithInitiators() {
 			{Kind: approval.InitiatorUser, IDs: []string{"user-1", "user-2"}},
 			{Kind: approval.InitiatorRole, IDs: []string{"role-admin"}},
 		},
-		Caller: approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -318,7 +282,6 @@ func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingComplete() {
 			InstanceIDColumn: &instanceCol,
 		},
 		InstanceTitleTemplate: "Title",
-		Caller:                approval.SystemCaller,
 	})
 	s.Require().NoError(err, "A complete business binding should be accepted")
 	s.Assert().Equal(approval.BindingBusiness, result.BindingMode)
@@ -344,7 +307,6 @@ func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingIncomplete() {
 			StatusColumn: status,
 		},
 		InstanceTitleTemplate: "Title",
-		Caller:                approval.SystemCaller,
 	})
 	s.Require().Error(err, "An incomplete business binding should be rejected")
 	s.Assert().ErrorIs(err, approval.ErrBindingIncomplete)
@@ -371,7 +333,6 @@ func (s *CreateFlowTestSuite) TestCreateFlowLinkageColumns() {
 				InstanceIDColumn: &instanceCol,
 			},
 			InstanceTitleTemplate: "Title",
-			Caller:                approval.SystemCaller,
 		}
 	}
 
@@ -438,7 +399,6 @@ func (s *CreateFlowTestSuite) TestInitiatorPolicyIsExclusive() {
 			CategoryID:            s.categoryOf("tenant-policy"),
 			BindingMode:           approval.BindingStandalone,
 			InstanceTitleTemplate: "Template",
-			Caller:                approval.SystemCaller,
 		}
 	}
 

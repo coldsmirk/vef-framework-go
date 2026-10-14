@@ -88,7 +88,6 @@ func (s *ToggleFlowActiveTestSuite) TestActivate() {
 	cmd := command.ToggleFlowActiveCmd{
 		FlowID:   s.flowID,
 		IsActive: true,
-		Caller:   approval.SystemCaller,
 	}
 
 	_, err = s.handler.Handle(s.ctx, cmd)
@@ -117,7 +116,6 @@ func (s *ToggleFlowActiveTestSuite) TestDeactivate() {
 	cmd := command.ToggleFlowActiveCmd{
 		FlowID:   s.flowID,
 		IsActive: false,
-		Caller:   approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)
@@ -138,7 +136,6 @@ func (s *ToggleFlowActiveTestSuite) TestNotFound() {
 	cmd := command.ToggleFlowActiveCmd{
 		FlowID:   "non-existent-flow-id",
 		IsActive: true,
-		Caller:   approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)

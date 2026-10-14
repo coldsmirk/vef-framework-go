@@ -114,7 +114,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowSuccess() {
 		Initiators: []shared.CreateFlowInitiatorCmd{
 			{Kind: approval.InitiatorRole, IDs: []string{"role-new"}},
 		},
-		Caller: approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -161,7 +160,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowLabels() {
 			Name:                   "Original Flow",
 			BindingMode:            approval.BindingStandalone,
 			InstanceTitleTemplate:  "Original Template",
-			Caller:                 approval.SystemCaller,
 		}
 	}
 
@@ -202,7 +200,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowNotFound() {
 		Name:                   "Updated Flow",
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Template",
-		Caller:                 approval.SystemCaller,
 	}
 
 	_, err := s.handler.Handle(s.ctx, cmd)
@@ -250,7 +247,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowBindingDoesNotMutateRunningVersion()
 			InstanceIDColumn: &instanceCol,
 		},
 		InstanceTitleTemplate: "Original Template",
-		Caller:                approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Flow binding edits should be allowed while old versions are in use")
 	s.Assert().Equal("Renamed While Running", updated.Name, "Should apply the non-binding edit")
@@ -279,7 +275,6 @@ func (s *UpdateFlowTestSuite) TestUpdateAllFields() {
 			{Kind: approval.InitiatorUser, IDs: []string{"user-all-1"}},
 			{Kind: approval.InitiatorRole, IDs: []string{"role-all-1"}},
 		},
-		Caller: approval.SystemCaller,
 	}
 
 	result, err := s.handler.Handle(s.ctx, cmd)
@@ -324,7 +319,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowToBusinessBinding() {
 		},
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Template",
-		Caller:                 approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should switch to a complete business binding")
 	s.Assert().Equal(approval.BindingBusiness, result.BindingMode)
@@ -350,7 +344,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowBusinessBindingIncomplete() {
 		},
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Template",
-		Caller:                 approval.SystemCaller,
 	})
 	s.Require().Error(err, "An incomplete business binding on update should be rejected")
 	s.Assert().ErrorIs(err, approval.ErrBindingIncomplete)
@@ -378,7 +371,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowBusinessToStandaloneClearsFields() {
 		},
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Template",
-		Caller:                 approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should set the business binding first")
 
@@ -390,7 +382,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowBusinessToStandaloneClearsFields() {
 		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Template",
-		Caller:                 approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should switch back to standalone")
 
@@ -410,7 +401,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowRejectsInvalidEnums() {
 			Name:                   "Enum Guard Flow",
 			IsAllInitiationAllowed: true,
 			InstanceTitleTemplate:  "t",
-			Caller:                 approval.SystemCaller,
 		})
 		s.Require().ErrorIs(err, approval.ErrInvalidBindingMode,
 			"An out-of-enum binding mode would silently disable the business write-back and must be rejected")
@@ -427,7 +417,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowRejectsInvalidEnums() {
 			Initiators: []shared.CreateFlowInitiatorCmd{
 				{Kind: "sideways", IDs: []string{"u1"}},
 			},
-			Caller: approval.SystemCaller,
 		})
 		s.Require().ErrorIs(err, approval.ErrInvalidInitiatorKind,
 			"An initiator kind no resolver is registered for would silently never match and must be rejected")

@@ -73,7 +73,6 @@ func (s *FindFlowInitiatorsTestSuite) TearDownSuite() {
 func (s *FindFlowInitiatorsTestSuite) TestSuccessWithMultipleInitiators() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowInitiatorsQuery{
 		FlowID: s.flowID1,
-		Caller: approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Require().Len(result, 2, "Should find 2 initiators for flow 1")
@@ -90,7 +89,6 @@ func (s *FindFlowInitiatorsTestSuite) TestSuccessWithMultipleInitiators() {
 func (s *FindFlowInitiatorsTestSuite) TestEmpty() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowInitiatorsQuery{
 		FlowID: "non-existent-flow-id",
-		Caller: approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Require().NotNil(result, "Result must be a non-nil empty slice for response-shape uniformity")
@@ -103,35 +101,8 @@ func (s *FindFlowInitiatorsTestSuite) TestEmpty() {
 func (s *FindFlowInitiatorsTestSuite) TestFlowOpenToEveryoneReturnsEmptyNonNil() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowInitiatorsQuery{
 		FlowID: s.flowID3,
-		Caller: approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Querying a rule-less flow must succeed")
 	s.Require().NotNil(result, "An absent rule set must be an empty slice, never nil")
 	s.Assert().Empty(result, "A flow open to everyone has no initiator rules")
-}
-
-func (s *FindFlowInitiatorsTestSuite) TestForeignTenantReturnsEmptyNonNil() {
-	// Fixture flows belong to t1. A non-super-admin caller in t2 must get an
-	// empty (non-nil) slice — opaque, indistinguishable from "no such flow".
-	result, err := s.handler.Handle(s.ctx, query.FindFlowInitiatorsQuery{
-		FlowID: s.flowID1,
-		Caller: approval.CallerContext{TenantID: "t2"},
-	})
-	s.Require().NoError(err, "Cross-tenant access must be an opaque empty result, not an error")
-	s.Require().NotNil(result, "Result must be a non-nil empty slice for response-shape uniformity")
-	s.Assert().Empty(result, "A foreign-tenant caller must see no initiators")
-}
-
-func (s *FindFlowInitiatorsTestSuite) TestMismatchedQueryTenantReturnsEmpty() {
-	// Even an authorized caller (super-admin) gets empty when the explicit
-	// query.TenantID does not match the flow's tenant.
-	mismatch := "t2"
-	result, err := s.handler.Handle(s.ctx, query.FindFlowInitiatorsQuery{
-		FlowID:   s.flowID1,
-		TenantID: &mismatch,
-		Caller:   approval.SystemCaller,
-	})
-	s.Require().NoError(err, "Mismatched tenant filter must not error")
-	s.Require().NotNil(result, "Result must be a non-nil empty slice")
-	s.Assert().Empty(result, "A query.TenantID that does not match the flow's tenant returns no initiators")
 }

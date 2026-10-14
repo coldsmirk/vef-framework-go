@@ -98,7 +98,6 @@ func (s *StorageTableTestSuite) deployTableFlow(tenant, code string, schema json
 		StorageMode:    approval.StorageTable,
 		FlowDefinition: simpleFlowDef(),
 		FormSchema:     schema,
-		Caller:         approval.SystemCaller,
 	})
 	s.Require().NoError(err, "deploy flow")
 	s.Require().Equal(approval.StorageTable, version.StorageMode, "version persists table storage mode")
@@ -108,7 +107,6 @@ func (s *StorageTableTestSuite) deployTableFlow(tenant, code string, schema json
 	_, err = publish.Handle(s.ctx, command.PublishVersionCmd{
 		VersionID:  version.ID,
 		OperatorID: "admin",
-		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "publish version")
 

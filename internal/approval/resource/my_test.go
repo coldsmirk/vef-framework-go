@@ -71,11 +71,11 @@ func (s *MyPendingCountsTestSuite) TearDownSuite() {
 	s.TearDownApp()
 }
 
-// TestTenantIdScopesPendingCounts seeds a single pending task in tenant "t1"
-// for the calling user, then checks that the tenantId param actually narrows
-// the count: the owning tenant and the unscoped call see it, a different tenant
-// does not.
-func (s *MyPendingCountsTestSuite) TestTenantIdScopesPendingCounts() {
+// TestCountsTheCallersOwnTasks seeds a single pending task in tenant "t1" for
+// the calling user, then checks that the counts follow the user alone: a "my"
+// endpoint reads the caller's own work in every tenant, and a tenant sent along
+// changes nothing.
+func (s *MyPendingCountsTestSuite) TestCountsTheCallersOwnTasks() {
 	cleanAllApprovalData(s.ctx, s.db)
 	s.seedPendingTask("t1", "counter")
 
@@ -96,9 +96,9 @@ func (s *MyPendingCountsTestSuite) TestTenantIdScopesPendingCounts() {
 		return s.ReadDataAsMap(body.Data)["pendingTaskCount"].(float64)
 	}
 
-	s.Equal(float64(1), pendingCount(nil), "an unscoped call should count the pending task")
-	s.Equal(float64(1), pendingCount(map[string]any{"tenantId": "t1"}), "the owning tenant should count the pending task")
-	s.Equal(float64(0), pendingCount(map[string]any{"tenantId": "t2"}), "a different tenant must not count the task — proving tenantId threads into the query")
+	s.Equal(float64(1), pendingCount(nil), "the caller's pending task should be counted")
+	s.Equal(float64(1), pendingCount(map[string]any{"tenantId": "t2"}),
+		"a tenant sent along must not narrow the caller's own counts")
 }
 
 // seedPendingTask creates the minimal flow → version → node → instance → task

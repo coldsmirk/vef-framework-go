@@ -168,7 +168,6 @@ func (s *GetStartFormTestSuite) TearDownSuite() {
 func (s *GetStartFormTestSuite) TestGetStartForm() {
 	s.Run("ReturnsPublishedForm", func() {
 		form, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID:  "default",
 			FlowCode:  "gsf-open",
 			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
 			Caller:    defaultTenantCaller,
@@ -195,7 +194,6 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 
 	s.Run("AllowsMatchedInitiator", func() {
 		form, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID:  "default",
 			FlowCode:  "gsf-restricted",
 			Applicant: approval.UserInfo{ID: "user-a", Name: "User A"},
 			Caller:    defaultTenantCaller,
@@ -206,7 +204,6 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 
 	s.Run("DeniesUnmatchedInitiator", func() {
 		_, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID:  "default",
 			FlowCode:  "gsf-restricted",
 			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
 			Caller:    defaultTenantCaller,
@@ -216,7 +213,6 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 
 	s.Run("RejectsInactiveFlow", func() {
 		_, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID:  "default",
 			FlowCode:  "gsf-inactive",
 			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
 			Caller:    defaultTenantCaller,
@@ -226,7 +222,6 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 
 	s.Run("RejectsUnpublishedFlow", func() {
 		_, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID:  "default",
 			FlowCode:  "gsf-unpublished",
 			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
 			Caller:    defaultTenantCaller,
@@ -236,7 +231,6 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 
 	s.Run("RejectsUnknownFlow", func() {
 		_, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID:  "default",
 			FlowCode:  "gsf-missing",
 			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
 			Caller:    defaultTenantCaller,
@@ -253,20 +247,8 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 		s.Require().ErrorIs(err, approval.ErrFlowNotFound, "Flow lookup should be tenant-scoped")
 	})
 
-	s.Run("PinsOrdinaryCallerToOwnTenant", func() {
-		_, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID:  "default",
-			FlowCode:  "gsf-open",
-			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
-			Caller:    approval.CallerContext{TenantID: "tenant-other"},
-		})
-		s.Require().ErrorIs(err, approval.ErrFlowNotFound,
-			"An ordinary caller naming another tenant must still be confined to its own")
-	})
-
 	s.Run("FailsClosedWithoutTenant", func() {
 		_, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID:  "default",
 			FlowCode:  "gsf-open",
 			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
 		})
@@ -299,15 +281,5 @@ func (s *GetStartFormTestSuite) TestGetStartForm() {
 		})
 		s.Require().NoError(err, "A tenant without its own flow of the code still gets the shared one")
 		s.Assert().Equal("Replaced Shared Flow", form.FlowName, "Should resolve the shared flow elsewhere")
-	})
-
-	s.Run("RejectsSharedTenantAsStartTenant", func() {
-		_, err := s.handler.Handle(s.ctx, query.GetStartFormQuery{
-			TenantID:  approval.SharedTenantID,
-			FlowCode:  "gsf-shared",
-			Applicant: approval.UserInfo{ID: "user-z", Name: "User Z"},
-			Caller:    approval.SystemCaller,
-		})
-		s.Require().ErrorIs(err, approval.ErrFlowNotFound, "Nothing starts in the shared tenant")
 	})
 }

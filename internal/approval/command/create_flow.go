@@ -19,6 +19,9 @@ import (
 type CreateFlowCmd struct {
 	cqrs.BaseCommand
 
+	// TenantID is the tenant the flow belongs to, as the request names it —
+	// approval.SharedTenantID for a flow offered to every tenant. Managing flow
+	// definitions is gated by permission, not by the caller's own tenant.
 	TenantID               string
 	Code                   string
 	Name                   string
@@ -32,7 +35,6 @@ type CreateFlowCmd struct {
 	IsAllInitiationAllowed bool
 	InstanceTitleTemplate  string
 	Initiators             []shared.CreateFlowInitiatorCmd
-	Caller                 approval.CallerContext
 }
 
 // CreateFlowHandler handles the CreateFlowCmd command.
@@ -57,14 +59,7 @@ func NewCreateFlowHandler(db orm.DB, bindingValidator *binding.ConfigValidator, 
 
 func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*approval.Flow, error) {
 	db := contextx.DB(ctx, h.db)
-
-	// The flow's tenant is decided like any new entity's: an ordinary caller
-	// creates in its own tenant whatever it sent, a privileged one where it
-	// asks — the shared tenant included.
-	tenantID, err := cmd.Caller.ResolveWriteTenant(cmd.TenantID)
-	if err != nil {
-		return nil, err
-	}
+	tenantID := cmd.TenantID
 
 	if err := validateBindingMode(cmd.BindingMode); err != nil {
 		return nil, err

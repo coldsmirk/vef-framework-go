@@ -18,12 +18,10 @@ import (
 type GetFlowGraphQuery struct {
 	cqrs.BaseQuery
 
-	FlowID   string
-	TenantID string
+	FlowID string
 	// VersionID selects an explicit version of the flow; empty resolves the
 	// latest published version.
 	VersionID string
-	Caller    approval.CallerContext
 }
 
 // GetFlowGraphHandler handles the GetFlowGraphQuery.
@@ -45,25 +43,13 @@ func (h *GetFlowGraphHandler) Handle(ctx context.Context, query GetFlowGraphQuer
 
 	if err := db.NewSelect().
 		Model(&flow).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.PKEquals(query.FlowID).
-				ApplyIf(query.TenantID != "", func(cb orm.ConditionBuilder) {
-					cb.Equals("tenant_id", query.TenantID)
-				})
-		}).
+		WherePK().
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
 			return nil, approval.ErrFlowNotFound
 		}
 
 		return nil, fmt.Errorf("query flow: %w", err)
-	}
-
-	if !query.Caller.Allows(flow.TenantID) {
-		// Indistinguishable from "no such flow" on purpose — see opaque
-		// response policy for query handlers (avoids cross-tenant
-		// existence probing).
-		return nil, approval.ErrFlowNotFound
 	}
 
 	var version approval.FlowVersion

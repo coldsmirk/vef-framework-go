@@ -29,10 +29,6 @@ type FindMyCompletedTasksQuery struct {
 	MyTaskFilter
 
 	UserID string
-	// TenantID is a self-scoped narrowing filter, NOT an authorization
-	// boundary: rows are already pinned to UserID, so it only narrows the
-	// caller's own tasks and does not gate access.
-	TenantID *string
 	// Status matches how the caller finished the task. It narrows within the
 	// completed statuses, so a non-completed status matches nothing.
 	Status *approval.TaskStatus
@@ -63,9 +59,6 @@ func (h *FindMyCompletedTasksHandler) Handle(ctx context.Context, query FindMyCo
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("assignee_id", query.UserID).
 				In("status", completedStatuses).
-				ApplyIf(query.TenantID != nil, func(cb orm.ConditionBuilder) {
-					cb.Equals("tenant_id", *query.TenantID)
-				}).
 				ApplyIf(query.Status != nil, func(cb orm.ConditionBuilder) {
 					cb.Equals("status", string(*query.Status))
 				}).

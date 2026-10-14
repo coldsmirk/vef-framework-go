@@ -139,16 +139,13 @@ func NewInstanceResource(
 type StartParams struct {
 	api.P
 
-	// TenantID is the tenant the instance runs in. Only a super-admin's choice
-	// counts — left empty, their own tenant, else DefaultTenantID; everyone
-	// else starts in their own tenant, from its own flows or the shared ones.
-	TenantID    string         `json:"tenantId"`
 	FlowCode    string         `json:"flowCode" validate:"required"`
 	BusinessRef *string        `json:"businessRef" validate:"omitempty,max=512"`
 	FormData    map[string]any `json:"formData"`
 }
 
-// Start creates a new flow instance.
+// Start creates a new flow instance in the tenant the caller acts in, from that
+// tenant's own flows or the shared ones.
 func (r *InstanceResource) Start(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params StartParams) error {
 	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
@@ -164,7 +161,6 @@ func (r *InstanceResource) Start(ctx fiber.Ctx, db orm.DB, principal *security.P
 	}
 
 	instance, err := r.svc.StartInstance(ctx.Context(), db, approval.StartInstanceInput{
-		TenantID:    params.TenantID,
 		FlowCode:    params.FlowCode,
 		Applicant:   actor.Operator,
 		BusinessRef: params.BusinessRef,

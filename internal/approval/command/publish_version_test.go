@@ -101,7 +101,6 @@ func (s *PublishVersionTestSuite) deployVersion() *approval.FlowVersion {
 	version, err := s.deployHandler.Handle(s.ctx, command.DeployFlowCmd{
 		FlowID:         s.flowID,
 		FlowDefinition: simpleFlowDef(),
-		Caller:         approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should deploy version")
 
@@ -114,7 +113,6 @@ func (s *PublishVersionTestSuite) TestPublishSuccess() {
 	_, err := s.publishHandler.Handle(s.ctx, command.PublishVersionCmd{
 		VersionID:  version.ID,
 		OperatorID: "admin-user",
-		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should publish version without error")
 
@@ -154,7 +152,6 @@ func (s *PublishVersionTestSuite) TestPublishVersionNotFound() {
 	_, err := s.publishHandler.Handle(s.ctx, command.PublishVersionCmd{
 		VersionID:  "non-existent-version-id",
 		OperatorID: "admin-user",
-		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail for non-existent version")
 	s.Assert().ErrorIs(err, approval.ErrVersionNotFound, "Should return ErrVersionNotFound")
@@ -167,7 +164,6 @@ func (s *PublishVersionTestSuite) TestPublishAlreadyPublished() {
 	_, err := s.publishHandler.Handle(s.ctx, command.PublishVersionCmd{
 		VersionID:  version.ID,
 		OperatorID: "admin-user",
-		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should publish version first time")
 
@@ -175,7 +171,6 @@ func (s *PublishVersionTestSuite) TestPublishAlreadyPublished() {
 	_, err = s.publishHandler.Handle(s.ctx, command.PublishVersionCmd{
 		VersionID:  version.ID,
 		OperatorID: "admin-user",
-		Caller:     approval.SystemCaller,
 	})
 	s.Require().Error(err, "Should fail for already published version")
 	s.Assert().ErrorIs(err, approval.ErrVersionNotDraft, "Should return ErrVersionNotDraft")
@@ -187,7 +182,6 @@ func (s *PublishVersionTestSuite) TestPublishUpdatesFlowCurrentVersion() {
 	_, err := s.publishHandler.Handle(s.ctx, command.PublishVersionCmd{
 		VersionID:  version.ID,
 		OperatorID: "admin-user",
-		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should publish version")
 
@@ -206,7 +200,6 @@ func (s *PublishVersionTestSuite) TestPublishArchivesOldVersions() {
 	_, err := s.publishHandler.Handle(s.ctx, command.PublishVersionCmd{
 		VersionID:  v1.ID,
 		OperatorID: "admin-user",
-		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should publish first version")
 
@@ -215,7 +208,6 @@ func (s *PublishVersionTestSuite) TestPublishArchivesOldVersions() {
 	_, err = s.publishHandler.Handle(s.ctx, command.PublishVersionCmd{
 		VersionID:  v2.ID,
 		OperatorID: "admin-user",
-		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should publish second version")
 

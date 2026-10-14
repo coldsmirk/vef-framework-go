@@ -15,9 +15,7 @@ import (
 type FindFlowVersionsQuery struct {
 	cqrs.BaseQuery
 
-	FlowID   string
-	TenantID *string
-	Caller   approval.CallerContext
+	FlowID string
 }
 
 // FindFlowVersionsHandler handles the FindFlowVersionsQuery.
@@ -32,18 +30,6 @@ func NewFindFlowVersionsHandler(db orm.DB) *FindFlowVersionsHandler {
 
 func (h *FindFlowVersionsHandler) Handle(ctx context.Context, query FindFlowVersionsQuery) ([]shared.FlowVersionSummary, error) {
 	db := contextx.DB(ctx, h.db)
-
-	// Authorize before disclosing any data. An empty slice (rather than an
-	// error) for a missing or out-of-tenant flow keeps the response uniform so
-	// callers cannot distinguish "does not exist" from "exists in another tenant".
-	ok, err := authorizeFlowDisclosure(ctx, db, query.FlowID, query.TenantID, query.Caller)
-	if err != nil {
-		return nil, err
-	}
-
-	if !ok {
-		return []shared.FlowVersionSummary{}, nil
-	}
 
 	// The version list renders metadata only, so the definition payloads
 	// (flow_schema / form_schema / form_fields) are never loaded — they grow

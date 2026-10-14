@@ -148,7 +148,6 @@ func (s *ServiceIntegrationTestSuite) publishFlow(code, categoryID string) strin
 		CategoryID:             categoryID,
 		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
-		Caller:                 caller,
 	})
 	s.Require().NoError(err, "Should create flow %s", code)
 
@@ -172,14 +171,12 @@ func (s *ServiceIntegrationTestSuite) publishFlow(code, categoryID string) strin
 				{ID: "edge-2", Source: "approval-1", Target: "end-1"},
 			},
 		},
-		Caller: caller,
 	})
 	s.Require().NoError(err, "Should deploy flow %s", code)
 
 	_, err = cqrs.Send[command.PublishVersionCmd, cqrs.Unit](s.ctx, s.bus, command.PublishVersionCmd{
 		VersionID:  version.ID,
 		OperatorID: "admin",
-		Caller:     caller,
 	})
 	s.Require().NoError(err, "Should publish flow %s", code)
 
@@ -193,7 +190,7 @@ func (s *ServiceIntegrationTestSuite) setFlowActive(code string, active bool) {
 	s.Require().NoError(err, "Should load flow %s", code)
 
 	_, err = cqrs.Send[command.ToggleFlowActiveCmd, cqrs.Unit](s.ctx, s.bus, command.ToggleFlowActiveCmd{
-		FlowID: flow.ID, IsActive: active, Caller: caller,
+		FlowID: flow.ID, IsActive: active,
 	})
 	s.Require().NoError(err, "Should toggle flow %s", code)
 }

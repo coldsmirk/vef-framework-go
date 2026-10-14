@@ -63,7 +63,7 @@ func (s *GetFlowGraphTestSuite) TearDownSuite() {
 }
 
 func (s *GetFlowGraphTestSuite) TestGetGraphSuccess() {
-	graph, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: s.flowID, Caller: approval.SystemCaller})
+	graph, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: s.flowID})
 	s.Require().NoError(err, "Should get flow graph without error")
 	s.Require().NotNil(graph, "TestGetGraphSuccess should return a non-nil value")
 
@@ -97,7 +97,6 @@ func (s *GetFlowGraphTestSuite) TestExplicitVersion() {
 		graph, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{
 			FlowID:    s.flowID,
 			VersionID: draft.ID,
-			Caller:    approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Explicit draft version should resolve")
 		s.Assert().Equal(draft.ID, graph.Version.ID, "Should return the requested version")
@@ -109,7 +108,6 @@ func (s *GetFlowGraphTestSuite) TestExplicitVersion() {
 		_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{
 			FlowID:    s.flowID,
 			VersionID: "non-existent",
-			Caller:    approval.SystemCaller,
 		})
 		s.Require().Error(err, "Missing version must fail")
 		s.Assert().ErrorIs(err, approval.ErrVersionNotFound, "Should return version-not-found")
@@ -121,7 +119,6 @@ func (s *GetFlowGraphTestSuite) TestExplicitVersion() {
 		_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{
 			FlowID:    otherFix.FlowID,
 			VersionID: draft.ID,
-			Caller:    approval.SystemCaller,
 		})
 		s.Require().Error(err, "A version under a different flow must be denied")
 		s.Assert().ErrorIs(err, approval.ErrVersionNotFound, "Cross-flow version must mimic not-found")
@@ -129,7 +126,7 @@ func (s *GetFlowGraphTestSuite) TestExplicitVersion() {
 }
 
 func (s *GetFlowGraphTestSuite) TestFlowNotFound() {
-	_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: "non-existent", Caller: approval.SystemCaller})
+	_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: "non-existent"})
 	s.Require().Error(err, "TestFlowNotFound should return an error")
 	s.Assert().ErrorIs(err, approval.ErrFlowNotFound, "Should return expected error")
 }
@@ -144,28 +141,7 @@ func (s *GetFlowGraphTestSuite) TestNoPublishedVersion() {
 	// Delete the published version so flow has no published version
 	_, _ = s.db.NewDelete().Model((*approval.FlowVersion)(nil)).Where(func(cb orm.ConditionBuilder) { cb.Equals("flow_id", fix2.FlowID) }).Exec(s.ctx)
 
-	_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: fix2.FlowID, Caller: approval.SystemCaller})
+	_, err := s.handler.Handle(s.ctx, query.GetFlowGraphQuery{FlowID: fix2.FlowID})
 	s.Require().Error(err, "TestNoPublishedVersion should return an error")
 	s.Assert().ErrorIs(err, approval.ErrNoPublishedVersion, "Should return expected error")
-}
-
-func (s *GetFlowGraphTestSuite) TestForeignTenantOpaqueDeny() {
-	// Seed a t2-owned flow inline (the suite fixture is "default" tenant).
-	cat := &approval.FlowCategory{TenantID: "t2", Code: "qfg-foreign-cat", Name: "Foreign"}
-	_, err := s.db.NewInsert().Model(cat).Exec(s.ctx)
-	s.Require().NoError(err, "Should insert foreign-tenant category")
-
-	foreignFlow := &approval.Flow{TenantID: "t2", CategoryID: cat.ID, Code: "qfg-foreign", Name: "Foreign Flow"}
-	_, err = s.db.NewInsert().Model(foreignFlow).Exec(s.ctx)
-	s.Require().NoError(err, "Should insert foreign-tenant flow")
-
-	// A non-super-admin caller in t1 must get the opaque ErrFlowNotFound for a
-	// t2-owned flow — never a distinct cross-tenant signal that would let a
-	// caller probe for existence across tenants.
-	_, err = s.handler.Handle(s.ctx, query.GetFlowGraphQuery{
-		FlowID: foreignFlow.ID,
-		Caller: approval.CallerContext{TenantID: "t1"},
-	})
-	s.Require().Error(err, "Foreign-tenant flow must be denied")
-	s.Assert().ErrorIs(err, approval.ErrFlowNotFound, "Cross-tenant deny must mimic not-found")
 }

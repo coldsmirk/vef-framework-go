@@ -17,12 +17,10 @@ import (
 // user wants to initiate. Applicant and Caller are resolved as Start resolves
 // them: the applicant is the identity the initiation gate checks and the
 // snapshot the form returns, and the caller decides the tenant the instance
-// would run in — TenantID counts only for a privileged caller, exactly as in
-// StartInstanceInput.
+// would run in — the one it acts in.
 type GetStartFormQuery struct {
 	cqrs.BaseQuery
 
-	TenantID  string
 	FlowCode  string
 	Applicant approval.UserInfo
 	Caller    approval.CallerContext
@@ -46,7 +44,7 @@ func NewGetStartFormHandler(db orm.DB, validationSvc *service.ValidationService)
 func (h *GetStartFormHandler) Handle(ctx context.Context, query GetStartFormQuery) (*my.StartForm, error) {
 	db := contextx.DB(ctx, h.db)
 
-	tenantID, err := service.StartTenant(query.Caller, query.TenantID)
+	tenantID, err := service.StartTenant(query.Caller, "")
 	if err != nil {
 		return nil, approval.ErrFlowNotFound
 	}

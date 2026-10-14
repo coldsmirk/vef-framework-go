@@ -219,7 +219,6 @@ func (s *SharedFlowTestSuite) TestDeployRule() {
 		_, err := s.deploy.Handle(s.ctx, command.DeployFlowCmd{
 			FlowID:         flowID,
 			FlowDefinition: def,
-			Caller:         approval.SystemCaller,
 		})
 
 		return err

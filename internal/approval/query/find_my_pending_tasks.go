@@ -20,10 +20,6 @@ type FindMyPendingTasksQuery struct {
 	MyTaskFilter
 
 	UserID string
-	// TenantID is a self-scoped narrowing filter, NOT an authorization
-	// boundary: rows are already pinned to UserID, so it only narrows the
-	// caller's own tasks and does not gate access.
-	TenantID *string
 	// IsTimeout keeps only tasks past (true) or within (false) their deadline.
 	IsTimeout *bool
 	// CreatedAtFrom and CreatedAtTo bound when the task arrived, both inclusive.
@@ -51,9 +47,6 @@ func (h *FindMyPendingTasksHandler) Handle(ctx context.Context, query FindMyPend
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("assignee_id", query.UserID).
 				Equals("status", string(approval.TaskPending)).
-				ApplyIf(query.TenantID != nil, func(cb orm.ConditionBuilder) {
-					cb.Equals("tenant_id", *query.TenantID)
-				}).
 				ApplyIf(query.IsTimeout != nil, func(cb orm.ConditionBuilder) {
 					cb.Equals("is_timeout", *query.IsTimeout)
 				}).

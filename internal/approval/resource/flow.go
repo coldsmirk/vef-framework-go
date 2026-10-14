@@ -20,15 +20,15 @@ import (
 type FlowResource struct {
 	api.Resource
 
-	bus            cqrs.Bus
-	tenantResolver approval.PrincipalTenantResolver
+	bus cqrs.Bus
 }
 
-// NewFlowResource creates a new flow resource.
-func NewFlowResource(bus cqrs.Bus, tenantResolver approval.PrincipalTenantResolver) api.Resource {
+// NewFlowResource creates a new flow resource. Flow definitions are managed
+// across tenants: each operation is gated by its permission, and a flow's tenant
+// is whatever the request names.
+func NewFlowResource(bus cqrs.Bus) api.Resource {
 	return &FlowResource{
-		bus:            bus,
-		tenantResolver: tenantResolver,
+		bus: bus,
 		Resource: api.NewRPCResource(
 			"approval/flow",
 			api.WithOperations(
@@ -53,9 +53,9 @@ func NewFlowResource(bus cqrs.Bus, tenantResolver approval.PrincipalTenantResolv
 type CreateFlowParams struct {
 	api.P
 
-	// TenantID is the tenant the flow is created in, resolved as a category's
-	// is: only a super-admin's choice counts, SharedTenantID included.
-	TenantID               string                          `json:"tenantId"`
+	// TenantID is the tenant the flow belongs to — approval.SharedTenantID for
+	// a flow offered to every tenant.
+	TenantID               string                          `json:"tenantId" validate:"required"`
 	Code                   string                          `json:"code" validate:"required"`
 	Name                   string                          `json:"name" validate:"required"`
 	CategoryID             string                          `json:"categoryId" validate:"required"`
@@ -77,12 +77,7 @@ type CreateInitiatorParams struct {
 }
 
 // Create creates a new flow.
-func (r *FlowResource) Create(ctx fiber.Ctx, principal *security.Principal, params CreateFlowParams) error {
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
-	if err != nil {
-		return err
-	}
-
+func (r *FlowResource) Create(ctx fiber.Ctx, params CreateFlowParams) error {
 	initiators := make([]shared.CreateFlowInitiatorCmd, len(params.Initiators))
 	for i, initiator := range params.Initiators {
 		initiators[i] = shared.CreateFlowInitiatorCmd{
@@ -108,7 +103,6 @@ func (r *FlowResource) Create(ctx fiber.Ctx, principal *security.Principal, para
 			IsAllInitiationAllowed: params.IsAllInitiationAllowed,
 			InstanceTitleTemplate:  params.InstanceTitleTemplate,
 			Initiators:             initiators,
-			Caller:                 caller,
 		},
 	)
 	if err != nil {
@@ -132,12 +126,7 @@ type DeployFlowParams struct {
 }
 
 // Deploy deploys a flow definition.
-func (r *FlowResource) Deploy(ctx fiber.Ctx, principal *security.Principal, params DeployFlowParams) error {
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
-	if err != nil {
-		return err
-	}
-
+func (r *FlowResource) Deploy(ctx fiber.Ctx, params DeployFlowParams) error {
 	version, err := cqrs.Send[command.DeployFlowCmd, *approval.FlowVersion](
 		ctx.Context(),
 		r.bus,
@@ -147,7 +136,6 @@ func (r *FlowResource) Deploy(ctx fiber.Ctx, principal *security.Principal, para
 			StorageMode:    params.StorageMode,
 			FlowDefinition: params.FlowDefinition,
 			FormSchema:     params.FormSchema,
-			Caller:         caller,
 		},
 	)
 	if err != nil {
@@ -166,18 +154,12 @@ type PublishVersionParams struct {
 
 // PublishVersion publishes a flow version.
 func (r *FlowResource) PublishVersion(ctx fiber.Ctx, principal *security.Principal, params PublishVersionParams) error {
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
-	if err != nil {
-		return err
-	}
-
 	if _, err := cqrs.Send[command.PublishVersionCmd, cqrs.Unit](
 		ctx.Context(),
 		r.bus,
 		command.PublishVersionCmd{
 			VersionID:  params.VersionID,
 			OperatorID: principal.ID,
-			Caller:     caller,
 		},
 	); err != nil {
 		return err
@@ -191,10 +173,6 @@ type GetGraphParams struct {
 	api.P
 
 	FlowID string `json:"flowId" validate:"required"`
-	// TenantID is an optional pre-filter (matching the *string shape of the
-	// other flow params); the actual cross-tenant gate is Caller.Allows in the
-	// query handler, so this only narrows the lookup.
-	TenantID *string `json:"tenantId"`
 	// VersionID selects an explicit version (a designer resuming from the
 	// newest deployment, published or not); omitted resolves the latest
 	// published version.
@@ -203,17 +181,7 @@ type GetGraphParams struct {
 
 // GetGraph returns the flow graph: the latest published version by default,
 // or an explicit version when versionId is given.
-func (r *FlowResource) GetGraph(ctx fiber.Ctx, principal *security.Principal, params GetGraphParams) error {
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
-	if err != nil {
-		return err
-	}
-
-	tenantID := ""
-	if params.TenantID != nil {
-		tenantID = *params.TenantID
-	}
-
+func (r *FlowResource) GetGraph(ctx fiber.Ctx, params GetGraphParams) error {
 	versionID := ""
 	if params.VersionID != nil {
 		versionID = *params.VersionID
@@ -224,9 +192,7 @@ func (r *FlowResource) GetGraph(ctx fiber.Ctx, principal *security.Principal, pa
 		r.bus,
 		query.GetFlowGraphQuery{
 			FlowID:    params.FlowID,
-			TenantID:  tenantID,
 			VersionID: versionID,
-			Caller:    caller,
 		},
 	)
 	if err != nil {
@@ -240,6 +206,8 @@ func (r *FlowResource) GetGraph(ctx fiber.Ctx, principal *security.Principal, pa
 type FindFlowsParams struct {
 	api.P
 
+	// TenantID narrows the list to one tenant's flows; omitted, every
+	// tenant's are listed.
 	TenantID    *string               `json:"tenantId"`
 	CategoryID  *string               `json:"categoryId"`
 	Keyword     *string               `json:"keyword"`
@@ -251,12 +219,7 @@ type FindFlowsParams struct {
 }
 
 // FindFlows queries flows for admin management.
-func (r *FlowResource) FindFlows(ctx fiber.Ctx, principal *security.Principal, params FindFlowsParams) error {
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
-	if err != nil {
-		return err
-	}
-
+func (r *FlowResource) FindFlows(ctx fiber.Ctx, params FindFlowsParams) error {
 	res, err := cqrs.Send[query.FindFlowsQuery, *page.Page[approval.Flow]](
 		ctx.Context(),
 		r.bus,
@@ -269,7 +232,6 @@ func (r *FlowResource) FindFlows(ctx fiber.Ctx, principal *security.Principal, p
 			BindingMode: params.BindingMode,
 			Page:        params.Page,
 			Size:        params.PageSize,
-			Caller:      caller,
 		},
 	)
 	if err != nil {
@@ -297,12 +259,7 @@ type UpdateFlowParams struct {
 }
 
 // Update updates an existing flow.
-func (r *FlowResource) Update(ctx fiber.Ctx, principal *security.Principal, params UpdateFlowParams) error {
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
-	if err != nil {
-		return err
-	}
-
+func (r *FlowResource) Update(ctx fiber.Ctx, params UpdateFlowParams) error {
 	initiators := make([]shared.CreateFlowInitiatorCmd, len(params.Initiators))
 	for i, initiator := range params.Initiators {
 		initiators[i] = shared.CreateFlowInitiatorCmd{
@@ -326,7 +283,6 @@ func (r *FlowResource) Update(ctx fiber.Ctx, principal *security.Principal, para
 			IsAllInitiationAllowed: params.IsAllInitiationAllowed,
 			InstanceTitleTemplate:  params.InstanceTitleTemplate,
 			Initiators:             initiators,
-			Caller:                 caller,
 		},
 	)
 	if err != nil {
@@ -345,19 +301,13 @@ type ToggleActiveParams struct {
 }
 
 // ToggleActive toggles the active status of a flow.
-func (r *FlowResource) ToggleActive(ctx fiber.Ctx, principal *security.Principal, params ToggleActiveParams) error {
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
-	if err != nil {
-		return err
-	}
-
+func (r *FlowResource) ToggleActive(ctx fiber.Ctx, params ToggleActiveParams) error {
 	if _, err := cqrs.Send[command.ToggleFlowActiveCmd, cqrs.Unit](
 		ctx.Context(),
 		r.bus,
 		command.ToggleFlowActiveCmd{
 			FlowID:   params.FlowID,
 			IsActive: params.IsActive,
-			Caller:   caller,
 		},
 	); err != nil {
 		return err
@@ -370,24 +320,16 @@ func (r *FlowResource) ToggleActive(ctx fiber.Ctx, principal *security.Principal
 type FindVersionsParams struct {
 	api.P
 
-	FlowID   string  `json:"flowId" validate:"required"`
-	TenantID *string `json:"tenantId"`
+	FlowID string `json:"flowId" validate:"required"`
 }
 
 // FindVersions queries flow versions for a specific flow.
-func (r *FlowResource) FindVersions(ctx fiber.Ctx, principal *security.Principal, params FindVersionsParams) error {
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
-	if err != nil {
-		return err
-	}
-
+func (r *FlowResource) FindVersions(ctx fiber.Ctx, params FindVersionsParams) error {
 	versions, err := cqrs.Send[query.FindFlowVersionsQuery, []shared.FlowVersionSummary](
 		ctx.Context(),
 		r.bus,
 		query.FindFlowVersionsQuery{
-			FlowID:   params.FlowID,
-			TenantID: params.TenantID,
-			Caller:   caller,
+			FlowID: params.FlowID,
 		},
 	)
 	if err != nil {
@@ -401,24 +343,16 @@ func (r *FlowResource) FindVersions(ctx fiber.Ctx, principal *security.Principal
 type FindInitiatorsParams struct {
 	api.P
 
-	FlowID   string  `json:"flowId" validate:"required"`
-	TenantID *string `json:"tenantId"`
+	FlowID string `json:"flowId" validate:"required"`
 }
 
 // FindInitiators queries the initiator configurations of a specific flow.
-func (r *FlowResource) FindInitiators(ctx fiber.Ctx, principal *security.Principal, params FindInitiatorsParams) error {
-	caller, err := resolveCaller(ctx.Context(), r.tenantResolver, principal)
-	if err != nil {
-		return err
-	}
-
+func (r *FlowResource) FindInitiators(ctx fiber.Ctx, params FindInitiatorsParams) error {
 	initiators, err := cqrs.Send[query.FindFlowInitiatorsQuery, []approval.FlowInitiator](
 		ctx.Context(),
 		r.bus,
 		query.FindFlowInitiatorsQuery{
-			FlowID:   params.FlowID,
-			TenantID: params.TenantID,
-			Caller:   caller,
+			FlowID: params.FlowID,
 		},
 	)
 	if err != nil {

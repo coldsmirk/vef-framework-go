@@ -14,9 +14,7 @@ import (
 type FindFlowInitiatorsQuery struct {
 	cqrs.BaseQuery
 
-	FlowID   string
-	TenantID *string
-	Caller   approval.CallerContext
+	FlowID string
 }
 
 // FindFlowInitiatorsHandler handles the FindFlowInitiatorsQuery.
@@ -31,18 +29,6 @@ func NewFindFlowInitiatorsHandler(db orm.DB) *FindFlowInitiatorsHandler {
 
 func (h *FindFlowInitiatorsHandler) Handle(ctx context.Context, query FindFlowInitiatorsQuery) ([]approval.FlowInitiator, error) {
 	db := contextx.DB(ctx, h.db)
-
-	// Authorize before disclosing any data. An empty slice (rather than an
-	// error) for a missing or out-of-tenant flow keeps the response uniform so
-	// callers cannot distinguish "does not exist" from "exists in another tenant".
-	ok, err := authorizeFlowDisclosure(ctx, db, query.FlowID, query.TenantID, query.Caller)
-	if err != nil {
-		return nil, err
-	}
-
-	if !ok {
-		return []approval.FlowInitiator{}, nil
-	}
 
 	// Start from an empty slice, never nil: an absent rule set is a meaningful
 	// answer here — it says the flow is open to everyone, which save-time

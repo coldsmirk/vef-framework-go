@@ -448,41 +448,17 @@ func (s *FindAvailableFlowsTestSuite) TestTenancy() {
 		s.Assert().NotContains(ids, s.otherTenantFlowID, "Another tenant's flow must never be offered")
 	})
 
-	s.Run("PinsOrdinaryCallerToOwnTenant", func() {
+	s.Run("OffersTheTenantTheCallerActsIn", func() {
 		ids := s.listFor(query.FindAvailableFlowsQuery{
-			UserID:   "user-z",
-			TenantID: new("tenant-b"),
-			Caller:   defaultTenantCaller,
-		})
-		s.Assert().NotContains(ids, s.otherTenantFlowID,
-			"An ordinary caller naming another tenant is still offered only its own tenant's flows")
-		s.Assert().Contains(ids, s.allAllowedFlowID, "An ordinary caller keeps its own tenant's flows")
-	})
-
-	s.Run("SuperAdminListsTheRequestedTenant", func() {
-		ids := s.listFor(query.FindAvailableFlowsQuery{
-			UserID:   "user-z",
-			TenantID: new("tenant-b"),
-			Caller:   approval.CallerContext{IsSuperAdmin: true},
+			UserID: "user-z",
+			Caller: approval.CallerContext{TenantID: "tenant-b"},
 		})
 		s.Assert().ElementsMatch([]string{s.otherTenantFlowID, s.sharedFlowID, s.shadowedFlowID}, ids,
-			"A super-admin naming a tenant is offered what that tenant would be offered")
+			"A caller acting in another tenant is offered that tenant's flows plus the shared ones")
 	})
 
 	s.Run("FailsClosedWithoutTenant", func() {
 		_, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{UserID: "user-z", Page: 1, Size: 10})
 		s.Require().ErrorIs(err, approval.ErrCrossTenantAccess, "A caller without a tenant must be denied")
-	})
-
-	s.Run("RejectsSharedTenantAsStartTenant", func() {
-		_, err := s.handler.Handle(s.ctx, query.FindAvailableFlowsQuery{
-			UserID:   "user-z",
-			TenantID: new(approval.SharedTenantID),
-			Caller:   approval.SystemCaller,
-			Page:     1,
-			Size:     10,
-		})
-		s.Require().ErrorIs(err, approval.ErrCrossTenantAccess,
-			"Nothing starts in the shared tenant, so nothing is listed for it")
 	})
 }

@@ -26,13 +26,11 @@ type FindAvailableFlowsQuery struct {
 
 	UserID                string
 	ApplicantDepartmentID *string
-	// TenantID is the requested tenant. Like StartInstanceInput.TenantID it
-	// counts only for a privileged Caller: everyone else is offered the flows
-	// of their own tenant (service.StartTenant).
-	TenantID *string
-	Keyword  *string
-	Labels   map[string]string
-	Caller   approval.CallerContext
+	Keyword               *string
+	Labels                map[string]string
+	// Caller decides the tenant the flows are offered in: the one it acts in
+	// (service.StartTenant).
+	Caller approval.CallerContext
 }
 
 // FindAvailableFlowsHandler handles the FindAvailableFlowsQuery.
@@ -49,7 +47,7 @@ func NewFindAvailableFlowsHandler(db orm.DB, validationSvc *service.ValidationSe
 func (h *FindAvailableFlowsHandler) Handle(ctx context.Context, query FindAvailableFlowsQuery) (*page.Page[my.AvailableFlow], error) {
 	db := contextx.DB(ctx, h.db)
 
-	tenantID, err := service.StartTenant(query.Caller, lo.FromPtr(query.TenantID))
+	tenantID, err := service.StartTenant(query.Caller, "")
 	if err != nil {
 		return nil, err
 	}

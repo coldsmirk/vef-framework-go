@@ -69,9 +69,8 @@ func (s *FindFlowsTestSuite) TearDownSuite() {
 
 func (s *FindFlowsTestSuite) TestFindAll() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
-		Page:   1,
-		Size:   10,
-		Caller: approval.SystemCaller,
+		Page: 1,
+		Size: 10,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(4), result.Total, "Should find 4 flows")
@@ -83,7 +82,6 @@ func (s *FindFlowsTestSuite) TestFilterByTenant() {
 		TenantID: new("t1"),
 		Page:     1,
 		Size:     10,
-		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(3), result.Total, "Should find 3 flows in tenant t1")
@@ -94,7 +92,6 @@ func (s *FindFlowsTestSuite) TestFilterByCategory() {
 		CategoryID: new(s.categoryID1),
 		Page:       1,
 		Size:       10,
-		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(2), result.Total, "Should find 2 flows in category 1")
@@ -106,7 +103,6 @@ func (s *FindFlowsTestSuite) TestFilterByIsActive() {
 		IsActive: &isActive,
 		Page:     1,
 		Size:     10,
-		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(3), result.Total, "Should find 3 active flows")
@@ -118,7 +114,6 @@ func (s *FindFlowsTestSuite) TestFilterByBindingMode() {
 			BindingMode: new(approval.BindingStandalone),
 			Page:        1,
 			Size:        10,
-			Caller:      approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Assert().Equal(int64(2), result.Total, "Should find the 2 standalone flows")
@@ -129,7 +124,6 @@ func (s *FindFlowsTestSuite) TestFilterByBindingMode() {
 			BindingMode: new(approval.BindingBusiness),
 			Page:        1,
 			Size:        10,
-			Caller:      approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Require().Equal(int64(2), result.Total, "Should find the 2 business-bound flows")
@@ -143,7 +137,6 @@ func (s *FindFlowsTestSuite) TestFilterByBindingMode() {
 			BindingMode: new(approval.BindingBusiness),
 			Page:        1,
 			Size:        10,
-			Caller:      approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Require().Equal(int64(1), result.Total, "Tenant scope should exclude flow4 from the business match")
@@ -155,7 +148,6 @@ func (s *FindFlowsTestSuite) TestFilterByBindingMode() {
 			BindingMode: new(approval.BindingMode("unknown")),
 			Page:        1,
 			Size:        10,
-			Caller:      approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Assert().Equal(int64(0), result.Total, "An out-of-enum mode should match no flow")
@@ -167,7 +159,6 @@ func (s *FindFlowsTestSuite) TestKeywordSearch() {
 		Keyword: new("Flow"),
 		Page:    1,
 		Size:    10,
-		Caller:  approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(4), result.Total, "Should find 4 flows with 'Flow' in name")
@@ -179,7 +170,6 @@ func (s *FindFlowsTestSuite) TestFilterByLabels() {
 			Labels: map[string]string{"app": "crm"},
 			Page:   1,
 			Size:   10,
-			Caller: approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Assert().Equal(int64(2), result.Total, "app=crm should match flow1 and flow4")
@@ -190,7 +180,6 @@ func (s *FindFlowsTestSuite) TestFilterByLabels() {
 			Labels: map[string]string{"app": "crm", "mobile": "true"},
 			Page:   1,
 			Size:   10,
-			Caller: approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Require().Equal(int64(1), result.Total, "Label pairs must AND-combine, leaving only flow1")
@@ -203,7 +192,6 @@ func (s *FindFlowsTestSuite) TestFilterByLabels() {
 			Labels:   map[string]string{"app": "crm"},
 			Page:     1,
 			Size:     10,
-			Caller:   approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Require().Equal(int64(1), result.Total, "Tenant scope should exclude flow4 from the app=crm match")
@@ -215,7 +203,6 @@ func (s *FindFlowsTestSuite) TestFilterByLabels() {
 			Labels: map[string]string{"beta": ""},
 			Page:   1,
 			Size:   10,
-			Caller: approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Require().Equal(int64(1), result.Total, "Presence-style empty-value label should match flow2")
@@ -227,7 +214,6 @@ func (s *FindFlowsTestSuite) TestFilterByLabels() {
 			Labels: map[string]string{"app": "nonexistent"},
 			Page:   1,
 			Size:   10,
-			Caller: approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Assert().Equal(int64(0), result.Total, "Unmatched label value should exclude every flow, labeled or not")
@@ -238,7 +224,6 @@ func (s *FindFlowsTestSuite) TestFilterByLabels() {
 			Labels: map[string]string{"mobile": "true"},
 			Page:   1,
 			Size:   10,
-			Caller: approval.SystemCaller,
 		})
 		s.Require().NoError(err, "Should query without error")
 		s.Require().Equal(int64(1), result.Total, "mobile=true should match only flow1")
@@ -249,9 +234,8 @@ func (s *FindFlowsTestSuite) TestFilterByLabels() {
 
 func (s *FindFlowsTestSuite) TestPagination() {
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
-		Page:   1,
-		Size:   2,
-		Caller: approval.SystemCaller,
+		Page: 1,
+		Size: 2,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(4), result.Total, "Total should be 4")
@@ -263,27 +247,21 @@ func (s *FindFlowsTestSuite) TestEmpty() {
 		TenantID: new("non-existent-tenant"),
 		Page:     1,
 		Size:     10,
-		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(0), result.Total, "Should find 0 flows")
 	s.Assert().Empty(result.Items, "Should return empty slice")
 }
 
-func (s *FindFlowsTestSuite) TestNonSuperAdminIgnoresForeignTenantOverride() {
-	// A non-super-admin caller in t1 supplying a foreign override (t2) must be
-	// pinned to its own tenant via TenantScopeFilter, so it sees only t1 rows
-	// (3 flows) and never the t2 flow — the override carries no authority.
+func (s *FindFlowsTestSuite) TestListsTheTenantTheRequestNames() {
+	// Flow definitions are managed across tenants: the list reads the tenant
+	// the request names, not the caller's own.
 	result, err := s.handler.Handle(s.ctx, query.FindFlowsQuery{
 		TenantID: new("t2"),
 		Page:     1,
 		Size:     10,
-		Caller:   approval.CallerContext{TenantID: "t1"},
 	})
 	s.Require().NoError(err, "Should query without error")
-	s.Assert().Equal(int64(3), result.Total, "Non-super-admin caller is confined to its own tenant regardless of override")
-
-	for _, flow := range result.Items {
-		s.Assert().Equal("t1", flow.TenantID, "Only own-tenant rows must be returned")
-	}
+	s.Require().Equal(int64(1), result.Total, "Should list the one flow of the requested tenant")
+	s.Assert().Equal("t2", result.Items[0].TenantID, "Only the requested tenant's rows should be returned")
 }
