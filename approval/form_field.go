@@ -17,12 +17,14 @@ type FormFieldDefinition struct {
 	// Options is the list of selectable options (for select, radio, checkbox, etc.).
 	Options []FieldOption `json:"options,omitempty"`
 	// OptionSource describes where a selection field's options come from when
-	// they could not be enumerated into Options — today, a remote source the
-	// host resolves. The framework never resolves it: select validation checks
-	// a submitted value against Options and accepts anything when there are
-	// none. It is carried for consumers that must render a stored value as its
-	// label rather than as the raw value; see RemoteOptionRequest.HasBoundParams
-	// for when that is a single lookup and when it is per-row.
+	// they could not be enumerated into Options: a remote source the host
+	// resolves, or a host data dictionary. The framework never resolves a remote
+	// one — select validation checks a submitted value against Options and
+	// accepts anything when there are none — and carries it for consumers that
+	// must render a stored value as its label rather than as the raw value (see
+	// RemoteOptionRequest.HasBoundParams for when that is a single lookup and
+	// when it is per-row). A data dictionary is checked: with a CodeSetLoader
+	// registered, a submitted value must be one of the dictionary's codes.
 	OptionSource *FieldOptionSource `json:"optionSource,omitempty"`
 	// Validation contains validation rules.
 	Validation *ValidationRule `json:"validation,omitempty"`
@@ -56,15 +58,20 @@ type FieldOption struct {
 // enumerate. It is the post-dereference view: a ref has already been resolved
 // against the form-global sources, so a consumer never has to chase one.
 type FieldOptionSource struct {
-	// Kind classifies the source. Only OptionSourceRemote is currently emitted.
+	// Kind classifies the source.
 	Kind OptionSourceKind `json:"kind"`
-	// Request addresses the operation returning the option records. Deploy
-	// validation rejects an OptionSourceRemote descriptor without one, so a
-	// consumer reading a deployed version's fields can rely on it being set.
+	// Request addresses the operation returning an OptionSourceRemote source's
+	// option records. Deploy validation rejects a remote descriptor without
+	// one, so a consumer reading a deployed version's fields can rely on it
+	// being set.
 	Request *RemoteOptionRequest `json:"request,omitempty"`
 	// Mapping says how to read a label and a value out of each returned record.
 	// Nil means the defaults.
 	Mapping *RemoteOptionMapping `json:"mapping,omitempty"`
+	// CodeSet names the host data dictionary of an OptionSourceCodeSet source —
+	// the code set a mold CodeSetLoader loads and a CodeSetResolver translates.
+	// Deploy validation rejects a code set descriptor without one.
+	CodeSet string `json:"codeSet,omitempty"`
 }
 
 // RemoteOptionRequest addresses the operation that returns a remote source's

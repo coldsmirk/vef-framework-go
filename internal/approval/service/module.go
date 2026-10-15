@@ -6,6 +6,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
+	"github.com/coldsmirk/vef-framework-go/mold"
 )
 
 // Module provides all approval services.
@@ -39,13 +40,20 @@ var Module = fx.Module(
 		// The form-data cap is host policy, so it is resolved from
 		// configuration here rather than baked into the constructors — a flow
 		// whose detail tables carry thousands of rows raises it without a
-		// framework rebuild.
-		func(cfg *config.ApprovalConfig) *TaskService {
-			return NewTaskService(WithFormDataMaxBytes(cfg.EffectiveFormDataMaxBytes()))
-		},
-		func(initiators *strategy.CompositeInitiatorResolver, cfg *config.ApprovalConfig) *ValidationService {
-			return NewValidationService(initiators, WithFormDataMaxBytes(cfg.EffectiveFormDataMaxBytes()))
-		},
+		// framework rebuild. The host's data-dictionary loader is optional: a
+		// host with none accepts any value for a code-set select field.
+		fx.Annotate(
+			func(cfg *config.ApprovalConfig, codeSets mold.CodeSetLoader) *TaskService {
+				return NewTaskService(WithFormDataMaxBytes(cfg.EffectiveFormDataMaxBytes()), WithCodeSetLoader(codeSets))
+			},
+			fx.ParamTags(``, `optional:"true"`),
+		),
+		fx.Annotate(
+			func(initiators *strategy.CompositeInitiatorResolver, cfg *config.ApprovalConfig, codeSets mold.CodeSetLoader) *ValidationService {
+				return NewValidationService(initiators, WithFormDataMaxBytes(cfg.EffectiveFormDataMaxBytes()), WithCodeSetLoader(codeSets))
+			},
+			fx.ParamTags(``, ``, `optional:"true"`),
+		),
 		NewNodeService,
 		NewInstanceService,
 		NewFormGlobalsService,

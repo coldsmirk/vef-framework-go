@@ -77,16 +77,18 @@ type richValidate struct {
 }
 
 // richOptionSource is a selection field's inline option source
-// (`{ kind: "static" | "ref" | "remote", ... }`). Static and ref-to-static
-// resolve to a projected option list; a remote source is host-resolved at
-// runtime and projects its request/mapping instead, so a consumer can replay it
-// to render a stored value as its label.
+// (`{ kind: "static" | "ref" | "remote" | "codeSet", ... }`). Static and
+// ref-to-static resolve to a projected option list; a remote source is
+// host-resolved at runtime and projects its request/mapping instead, so a
+// consumer can replay it to render a stored value as its label; a code set
+// projects the host data dictionary it names.
 type richOptionSource struct {
 	Kind         string                        `json:"kind"`
 	Options      []approval.FieldOption        `json:"options"`
 	DataSourceID string                        `json:"dataSourceId"`
 	Request      *approval.RemoteOptionRequest `json:"request"`
 	Mapping      *approval.RemoteOptionMapping `json:"mapping"`
+	CodeSet      string                        `json:"codeSet"`
 }
 
 // richDataSource is a form-global, reusable option source referenced by fields

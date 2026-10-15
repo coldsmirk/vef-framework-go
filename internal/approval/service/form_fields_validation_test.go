@@ -194,6 +194,17 @@ func TestValidateFormFieldsOptionSource(t *testing.T) {
 			"a remote source without an action addresses nothing and must be rejected at deploy")
 	})
 
+	t.Run("AcceptsCodeSetSource", func(t *testing.T) {
+		fields := selectField(&approval.FieldOptionSource{Kind: approval.OptionSourceCodeSet, CodeSet: "sys.city"})
+		assert.NoError(t, svc.ValidateFormFields(fields), "a code set source naming a dictionary must deploy")
+	})
+
+	t.Run("RejectsBlankCodeSet", func(t *testing.T) {
+		fields := selectField(&approval.FieldOptionSource{Kind: approval.OptionSourceCodeSet, CodeSet: "  "})
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errCodeSetOptionSourceIncomplete,
+			"a code set source naming no dictionary has no options and must be rejected at deploy")
+	})
+
 	t.Run("RejectsBrokenSourceOnTableColumn", func(t *testing.T) {
 		fields := []approval.FormFieldDefinition{{
 			Key: "items", Kind: approval.FieldTable, Label: "明细",

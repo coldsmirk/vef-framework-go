@@ -11,6 +11,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/mold"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -51,11 +52,14 @@ var cancelableTaskStatuses = []string{string(approval.TaskPending), string(appro
 // TaskService provides task-level domain operations.
 type TaskService struct {
 	formDataMaxBytes int
+	codeSets         mold.CodeSetLoader
 }
 
 // NewTaskService creates a new TaskService.
 func NewTaskService(opts ...Option) *TaskService {
-	return &TaskService{formDataMaxBytes: resolveOptions(opts).formDataMaxBytes}
+	resolved := resolveOptions(opts)
+
+	return &TaskService{formDataMaxBytes: resolved.formDataMaxBytes, codeSets: resolved.codeSets}
 }
 
 // FinishTask transitions a task to the given status and sets its FinishedAt timestamp.
@@ -884,6 +888,10 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID st
 	// deferred to the approve/handle required-permission check, not treated as a
 	// value error here.
 	if err := validateEditableFormData(tc.FormFields, formData, tc.Node.FieldPermissions); err != nil {
+		return nil, err
+	}
+
+	if err := validateCodeSetValues(ctx, s.codeSets, tc.FormFields, FilterEditableFormData(formData, tc.Node.FieldPermissions)); err != nil {
 		return nil, err
 	}
 

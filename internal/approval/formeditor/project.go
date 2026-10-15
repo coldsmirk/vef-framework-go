@@ -211,8 +211,10 @@ func projectSubform(node *richBlock, dataSources map[string]richDataSource) (*ap
 
 // resolveOptionSource collapses a selection field's option source into exactly
 // one of two projections: the enumerated option list of a static source, or the
-// descriptor of a remote one. A ref is dereferenced first, so the result is
-// always post-dereference and a consumer never chases a dataSourceId.
+// descriptor of a remote or code set one. A ref is dereferenced first, so the
+// result is always post-dereference and a consumer never chases a dataSourceId
+// (a form-global data source is never a code set: the designer offers code sets
+// inline only).
 //
 // A remote source is emitted even when its request is missing — that is a broken
 // designer document, and deploy validation names it rather than the projection
@@ -248,6 +250,12 @@ func resolveOptionSource(
 			Kind:    approval.OptionSourceRemote,
 			Request: request,
 			Mapping: mapping,
+		}
+
+	case "codeSet":
+		return nil, &approval.FieldOptionSource{
+			Kind:    approval.OptionSourceCodeSet,
+			CodeSet: source.CodeSet,
 		}
 
 	default:

@@ -80,7 +80,7 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 		maps.Copy(instance.FormData, cmd.FormData)
 	}
 
-	if err := h.validationSvc.ValidateFormData(version.FormFields, instance.FormData); err != nil {
+	if err := h.validationSvc.ValidateFormData(ctx, version.FormFields, instance.FormData); err != nil {
 		return cqrs.Unit{}, err
 	}
 

@@ -474,11 +474,16 @@ const (
 	// time to populate the control, and at display time to render a stored
 	// value as its label.
 	OptionSourceRemote OptionSourceKind = "remote"
+	// OptionSourceCodeSet reads a host data dictionary (a mold code set): the
+	// form runtime loads it to populate the control, a consumer translates a
+	// stored value through the host's CodeSetResolver, and a submitted value is
+	// checked against the dictionary when the host registers a CodeSetLoader.
+	OptionSourceCodeSet OptionSourceKind = "codeSet"
 )
 
 // IsValid reports whether the option source kind is one of the defined values.
 func (k OptionSourceKind) IsValid() bool {
-	return k == OptionSourceRemote
+	return k == OptionSourceRemote || k == OptionSourceCodeSet
 }
 
 // DynamicParamKind classifies a remote option request's parameter: a value the

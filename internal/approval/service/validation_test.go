@@ -202,12 +202,12 @@ func TestValidateFormData(t *testing.T) {
 	}
 
 	t.Run("ValidData", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, map[string]any{"reason": "Travel", "amount": 20})
+		err := svc.ValidateFormData(t.Context(), fields, map[string]any{"reason": "Travel", "amount": 20})
 		assert.NoError(t, err, "Should accept valid form data")
 	})
 
 	t.Run("MissingRequiredField", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, map[string]any{"amount": 20})
+		err := svc.ValidateFormData(t.Context(), fields, map[string]any{"amount": 20})
 
 		var re result.Error
 		require.ErrorAs(t, err, &re, "Should return business error")
@@ -215,7 +215,7 @@ func TestValidateFormData(t *testing.T) {
 	})
 
 	t.Run("UnknownField", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, map[string]any{"reason": "Travel", "extra": true})
+		err := svc.ValidateFormData(t.Context(), fields, map[string]any{"reason": "Travel", "extra": true})
 
 		var re result.Error
 		require.ErrorAs(t, err, &re, "Should return business error")
@@ -223,7 +223,7 @@ func TestValidateFormData(t *testing.T) {
 	})
 
 	t.Run("InvalidStringLength", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, map[string]any{"reason": "Go"})
+		err := svc.ValidateFormData(t.Context(), fields, map[string]any{"reason": "Go"})
 
 		var re result.Error
 		require.ErrorAs(t, err, &re, "Should return business error")
@@ -231,7 +231,7 @@ func TestValidateFormData(t *testing.T) {
 	})
 
 	t.Run("InvalidNumberType", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, map[string]any{"reason": "Travel", "amount": "bad"})
+		err := svc.ValidateFormData(t.Context(), fields, map[string]any{"reason": "Travel", "amount": "bad"})
 
 		var re result.Error
 		require.ErrorAs(t, err, &re, "Should return business error")
@@ -239,12 +239,12 @@ func TestValidateFormData(t *testing.T) {
 	})
 
 	t.Run("RejectsPayloadOverTheAbsoluteCap", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, map[string]any{"reason": "Travel", "amount": 20, "blob": strings.Repeat("x", config.DefaultFormDataMaxBytes+1)})
+		err := svc.ValidateFormData(t.Context(), fields, map[string]any{"reason": "Travel", "amount": 20, "blob": strings.Repeat("x", config.DefaultFormDataMaxBytes+1)})
 		require.ErrorIs(t, err, approval.ErrFormDataTooLarge, "Start / resubmit must reject a payload over the absolute size cap")
 	})
 
 	t.Run("SizeGuardAppliesWithoutSchema", func(t *testing.T) {
-		err := svc.ValidateFormData(nil, map[string]any{"blob": strings.Repeat("x", config.DefaultFormDataMaxBytes+1)})
+		err := svc.ValidateFormData(t.Context(), nil, map[string]any{"blob": strings.Repeat("x", config.DefaultFormDataMaxBytes+1)})
 		require.ErrorIs(t, err, approval.ErrFormDataTooLarge, "Size guard must apply even when the flow has no form schema")
 	})
 }
@@ -260,17 +260,17 @@ func TestFormDataMaxBytesIsConfigurable(t *testing.T) {
 	payload := map[string]any{"blob": strings.Repeat("x", config.DefaultFormDataMaxBytes+1)}
 
 	t.Run("DefaultRejectsWhatTheRaisedLimitAccepts", func(t *testing.T) {
-		require.ErrorIs(t, NewValidationService(mustInitiatorCompositeInternal(nil)).ValidateFormData(nil, payload),
+		require.ErrorIs(t, NewValidationService(mustInitiatorCompositeInternal(nil)).ValidateFormData(t.Context(), nil, payload),
 			approval.ErrFormDataTooLarge,
 			"The default cap must still reject the payload, or this test proves nothing")
 
-		require.NoError(t, NewValidationService(mustInitiatorCompositeInternal(nil), WithFormDataMaxBytes(raised)).ValidateFormData(nil, payload),
+		require.NoError(t, NewValidationService(mustInitiatorCompositeInternal(nil), WithFormDataMaxBytes(raised)).ValidateFormData(t.Context(), nil, payload),
 			"A raised cap must accept a payload the default rejects")
 	})
 
 	t.Run("RaisedLimitStillRejectsBeyondIt", func(t *testing.T) {
 		svc := NewValidationService(mustInitiatorCompositeInternal(nil), WithFormDataMaxBytes(raised))
-		err := svc.ValidateFormData(nil, map[string]any{"blob": strings.Repeat("x", raised+1)})
+		err := svc.ValidateFormData(t.Context(), nil, map[string]any{"blob": strings.Repeat("x", raised+1)})
 		require.ErrorIs(t, err, approval.ErrFormDataTooLarge, "Raising the cap must move the bound, not remove it")
 	})
 
@@ -280,7 +280,7 @@ func TestFormDataMaxBytesIsConfigurable(t *testing.T) {
 		for name, limit := range map[string]int{"Zero": 0, "Negative": -1} {
 			t.Run(name, func(t *testing.T) {
 				svc := NewValidationService(mustInitiatorCompositeInternal(nil), WithFormDataMaxBytes(limit))
-				require.ErrorIs(t, svc.ValidateFormData(nil, payload), approval.ErrFormDataTooLarge,
+				require.ErrorIs(t, svc.ValidateFormData(t.Context(), nil, payload), approval.ErrFormDataTooLarge,
 					"A non-positive limit must fall back to the default, never to unbounded")
 			})
 		}
@@ -308,44 +308,44 @@ func TestValidateFormDataTableField(t *testing.T) {
 	valid := func(rows ...any) map[string]any { return map[string]any{"items": rows} }
 
 	t.Run("AcceptsValidRows", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, valid(map[string]any{"name": "hotel", "qty": 2}))
+		err := svc.ValidateFormData(t.Context(), fields, valid(map[string]any{"name": "hotel", "qty": 2}))
 		assert.NoError(t, err, "a well-shaped detail row should validate")
 	})
 
 	t.Run("RequiredMeansAtLeastOneRow", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, map[string]any{"items": []any{}})
+		err := svc.ValidateFormData(t.Context(), fields, map[string]any{"items": []any{}})
 		assert.Error(t, err, "an empty list on a required table is an empty value")
 	})
 
 	t.Run("RejectsNonListValue", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, map[string]any{"items": "oops"})
+		err := svc.ValidateFormData(t.Context(), fields, map[string]any{"items": "oops"})
 		assert.Error(t, err, "a non-list table value must be rejected")
 	})
 
 	t.Run("RejectsNonObjectRow", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, valid("not-a-row"))
+		err := svc.ValidateFormData(t.Context(), fields, valid("not-a-row"))
 		assert.Error(t, err, "a non-object row must be rejected")
 	})
 
 	t.Run("EnforcesRowBounds", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, valid(
+		err := svc.ValidateFormData(t.Context(), fields, valid(
 			map[string]any{"name": "a"}, map[string]any{"name": "b"}, map[string]any{"name": "c"},
 		))
 		assert.Error(t, err, "row count above MaxLength must be rejected")
 	})
 
 	t.Run("EnforcesRequiredColumns", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, valid(map[string]any{"qty": 1}))
+		err := svc.ValidateFormData(t.Context(), fields, valid(map[string]any{"qty": 1}))
 		assert.Error(t, err, "a required column missing in a row must be rejected")
 	})
 
 	t.Run("RejectsUndeclaredRowKeys", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, valid(map[string]any{"name": "ok", "ghost": 1}))
+		err := svc.ValidateFormData(t.Context(), fields, valid(map[string]any{"name": "ok", "ghost": 1}))
 		assert.Error(t, err, "rows are closed like the top-level form — undeclared keys must be rejected")
 	})
 
 	t.Run("ValidatesColumnValuesPerRow", func(t *testing.T) {
-		err := svc.ValidateFormData(fields, valid(map[string]any{"name": "ok", "qty": "NaN"}))
+		err := svc.ValidateFormData(t.Context(), fields, valid(map[string]any{"name": "ok", "qty": "NaN"}))
 		assert.Error(t, err, "a non-numeric value in a number column must be rejected")
 	})
 }

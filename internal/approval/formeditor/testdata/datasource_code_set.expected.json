@@ -1,0 +1,12 @@
+[
+  { "key": "gender", "kind": "select", "label": "性别", "optionSource": { "kind": "codeSet", "codeSet": "sys.user.gender" }, "sortOrder": 0, "columnType": "text" },
+  { "key": "level", "kind": "select", "label": "级别", "optionSource": { "kind": "codeSet", "codeSet": "hr.level" }, "sortOrder": 1, "columnType": "text" },
+  { "key": "skills", "kind": "select", "label": "技能", "optionSource": { "kind": "codeSet", "codeSet": "hr.skill" }, "sortOrder": 2, "columnType": "json" },
+  { "key": "unpicked", "kind": "select", "label": "未选字典", "optionSource": { "kind": "codeSet" }, "sortOrder": 3, "columnType": "text" },
+  {
+    "key": "family", "kind": "table", "label": "家庭成员", "sortOrder": 4,
+    "columns": [
+      { "key": "relation", "kind": "select", "label": "关系", "optionSource": { "kind": "codeSet", "codeSet": "hr.relation" }, "sortOrder": 0, "columnType": "text" }
+    ]
+  }
+]

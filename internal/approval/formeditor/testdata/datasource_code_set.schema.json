@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        { "id": "F1", "type": "select", "key": "gender", "label": "性别", "dataSource": { "kind": "codeSet", "codeSet": "sys.user.gender" } },
+        { "id": "F2", "type": "radio", "key": "level", "label": "级别", "dataSource": { "kind": "codeSet", "codeSet": "hr.level" } },
+        { "id": "F3", "type": "checkbox-group", "key": "skills", "label": "技能", "dataSource": { "kind": "codeSet", "codeSet": "hr.skill" } },
+        { "id": "F4", "type": "select", "key": "unpicked", "label": "未选字典", "dataSource": { "kind": "codeSet", "codeSet": "" } },
+        {
+          "id": "Sub", "type": "subform", "variant": "table", "key": "family", "label": "家庭成员",
+          "template": [
+            { "id": "C1", "type": "select", "key": "relation", "label": "关系", "dataSource": { "kind": "codeSet", "codeSet": "hr.relation" } }
+          ]
+        }
+      ]
+    }
+  }
+}

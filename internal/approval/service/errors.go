@@ -104,6 +104,7 @@ var (
 
 	errInvalidOptionSourceKind       = errors.New("invalid form field option source kind")
 	errRemoteOptionRequestIncomplete = errors.New("remote option source requires a resource and an action")
+	errCodeSetOptionSourceIncomplete = errors.New("code set option source requires a code set")
 )
 
 // Field-permission validation sentinels, raised by ValidateFieldPermissions

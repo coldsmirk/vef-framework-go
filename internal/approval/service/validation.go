@@ -18,6 +18,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
+	"github.com/coldsmirk/vef-framework-go/mold"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
@@ -30,12 +31,20 @@ type Option func(*options)
 
 type options struct {
 	formDataMaxBytes int
+	codeSets         mold.CodeSetLoader
 }
 
 // WithFormDataMaxBytes sets the cap on the JSON-encoded form payload. Values
 // at or below zero keep config.DefaultFormDataMaxBytes.
 func WithFormDataMaxBytes(limit int) Option {
 	return func(o *options) { o.formDataMaxBytes = limit }
+}
+
+// WithCodeSetLoader sets the host's data-dictionary loader, against which a
+// submitted value of a code-set select field is checked. Nil (the default)
+// accepts any value for such a field.
+func WithCodeSetLoader(loader mold.CodeSetLoader) Option {
+	return func(o *options) { o.codeSets = loader }
 }
 
 func resolveOptions(opts []Option) options {
@@ -55,13 +64,17 @@ func resolveOptions(opts []Option) options {
 type ValidationService struct {
 	initiators       *strategy.CompositeInitiatorResolver
 	formDataMaxBytes int
+	codeSets         mold.CodeSetLoader
 }
 
 // NewValidationService creates a new ValidationService.
 func NewValidationService(initiators *strategy.CompositeInitiatorResolver, opts ...Option) *ValidationService {
+	resolved := resolveOptions(opts)
+
 	return &ValidationService{
 		initiators:       initiators,
-		formDataMaxBytes: resolveOptions(opts).formDataMaxBytes,
+		formDataMaxBytes: resolved.formDataMaxBytes,
+		codeSets:         resolved.codeSets,
 	}
 }
 
@@ -75,8 +88,9 @@ func (*ValidationService) ValidateOpinion(node *approval.FlowNode, opinion strin
 }
 
 // ValidateFormData validates submitted form data against the version's parsed
-// form fields (nil = a flow without a form).
-func (s *ValidationService) ValidateFormData(fields []approval.FormFieldDefinition, formData map[string]any) error {
+// form fields (nil = a flow without a form), a code-set select's value against
+// its dictionary included.
+func (s *ValidationService) ValidateFormData(ctx context.Context, fields []approval.FormFieldDefinition, formData map[string]any) error {
 	// Size guard runs first — applies even to flows without a form so
 	// callers cannot bypass the cap by omitting the field list.
 	if err := validateFormDataSize(formData, s.formDataMaxBytes); err != nil {
@@ -117,7 +131,7 @@ func (s *ValidationService) ValidateFormData(fields []approval.FormFieldDefiniti
 		}
 	}
 
-	return nil
+	return validateCodeSetValues(ctx, s.codeSets, fields, formData)
 }
 
 // ValidateRequiredPermissionFields ensures every field the node marks
