@@ -16,16 +16,19 @@ type FindFlowsQuery struct {
 	cqrs.BaseQuery
 	page.Pageable
 
-	// TenantID narrows the list to one tenant's flows —
-	// approval.SharedTenantID for the shared ones — and lists every tenant's
-	// when nil. Managing flow definitions is gated by permission, not by the
-	// caller's own tenant.
-	TenantID    *string
-	CategoryID  *string
-	Keyword     *string
-	IsActive    *bool
-	Labels      map[string]string
-	BindingMode *approval.BindingMode
+	// TenantID narrows the list to one tenant's flows, shared ones included,
+	// and lists every tenant's when nil. Managing flow definitions is gated by
+	// permission, not by the caller's own tenant.
+	TenantID *string
+	// IncludeShared adds to TenantID's flows the shared flows of other tenants
+	// that it has not replaced with a flow of its own — every flow a start by
+	// code would find in that tenant. It has no effect without TenantID.
+	IncludeShared bool
+	CategoryID    *string
+	Keyword       *string
+	IsActive      *bool
+	Labels        map[string]string
+	BindingMode   *approval.BindingMode
 }
 
 // FindFlowsHandler handles the FindFlowsQuery.
@@ -46,7 +49,7 @@ func (h *FindFlowsHandler) Handle(ctx context.Context, query FindFlowsQuery) (*p
 	sq := db.NewSelect().Model(&flows).
 		Where(func(cb orm.ConditionBuilder) {
 			cb.ApplyIf(query.TenantID != nil, func(cb orm.ConditionBuilder) {
-				cb.Equals("tenant_id", *query.TenantID)
+				applyFlowTenant(cb, *query.TenantID, query.IncludeShared)
 			}).
 				ApplyIf(query.CategoryID != nil, func(cb orm.ConditionBuilder) {
 					cb.Equals("category_id", *query.CategoryID)
@@ -75,4 +78,31 @@ func (h *FindFlowsHandler) Handle(ctx context.Context, query FindFlowsQuery) (*p
 	result := page.New(query.Pageable, count, flows)
 
 	return &result, nil
+}
+
+// applyFlowTenant narrows a flow list to the flows of tenantID and, with
+// includeShared, adds the shared flows of other tenants whose code tenantID
+// has not taken for a flow of its own — the flows a start by code would find
+// there (service.FindStartFlow). A shared flow of tenantID itself is among its
+// own flows.
+func applyFlowTenant(cb orm.ConditionBuilder, tenantID string, includeShared bool) {
+	if !includeShared {
+		cb.Equals("tenant_id", tenantID)
+
+		return
+	}
+
+	cb.Group(func(cb orm.ConditionBuilder) {
+		cb.Equals("tenant_id", tenantID).
+			OrGroup(func(cb orm.ConditionBuilder) {
+				cb.IsTrue("is_shared").
+					NotInSubQuery("code", func(sq orm.SelectQuery) {
+						sq.Model((*approval.Flow)(nil)).
+							Select("code").
+							Where(func(cb orm.ConditionBuilder) {
+								cb.Equals("tenant_id", tenantID)
+							})
+					})
+			})
+	})
 }

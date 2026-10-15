@@ -265,3 +265,90 @@ func (s *FindFlowsTestSuite) TestListsTheTenantTheRequestNames() {
 	s.Require().Equal(int64(1), result.Total, "Should list the one flow of the requested tenant")
 	s.Assert().Equal("t2", result.Items[0].TenantID, "Only the requested tenant's rows should be returned")
 }
+
+func init() {
+	registry.Add(func(env *testx.DBEnv) suite.TestingSuite {
+		return &FindFlowsSharedTestSuite{ctx: env.Ctx, db: env.DB}
+	})
+}
+
+// FindFlowsSharedTestSuite pins IncludeShared: a tenant's list gains the
+// flows other tenants share, minus the ones whose code the tenant has taken
+// for a flow of its own — the flows a start by code would find there.
+type FindFlowsSharedTestSuite struct {
+	suite.Suite
+
+	ctx     context.Context
+	db      orm.DB
+	handler *query.FindFlowsHandler
+}
+
+func (s *FindFlowsSharedTestSuite) SetupSuite() {
+	s.handler = query.NewFindFlowsHandler(s.db)
+
+	categories := map[string]string{}
+
+	for _, tenantID := range []string{"s1", "s2"} {
+		category := approval.FlowCategory{TenantID: tenantID, Code: tenantID + "-cat", Name: tenantID + " Category", IsActive: true}
+		_, err := s.db.NewInsert().Model(&category).Exec(s.ctx)
+		s.Require().NoError(err, "Should insert the category of %s", tenantID)
+
+		categories[tenantID] = category.ID
+	}
+
+	for _, flow := range []approval.Flow{
+		{TenantID: "s1", Code: "s1-own", Name: "S1 Own", IsActive: true},
+		{TenantID: "s1", IsShared: true, Code: "s1-shared", Name: "S1 Shared", IsActive: true},
+		// s1 replaces s2's shared flow of this code with an inactive one.
+		{TenantID: "s1", Code: "s2-replaced", Name: "S1 Replacement"},
+		{TenantID: "s2", IsShared: true, Code: "s2-shared", Name: "S2 Shared", IsActive: true},
+		{TenantID: "s2", IsShared: true, Code: "s2-replaced", Name: "S2 Replaced", IsActive: true},
+		{TenantID: "s2", Code: "s2-private", Name: "S2 Private", IsActive: true},
+	} {
+		flow.CategoryID = categories[flow.TenantID]
+		flow.BindingMode = approval.BindingStandalone
+		_, err := s.db.NewInsert().Model(&flow).Exec(s.ctx)
+		s.Require().NoError(err, "Should insert flow %s of %s", flow.Code, flow.TenantID)
+	}
+}
+
+func (s *FindFlowsSharedTestSuite) TearDownSuite() {
+	cleanAllQueryData(s.ctx, s.db)
+}
+
+func (s *FindFlowsSharedTestSuite) list(q query.FindFlowsQuery) []string {
+	q.Page, q.Size = 1, 50
+
+	result, err := s.handler.Handle(s.ctx, q)
+	s.Require().NoError(err, "Should query without error")
+
+	labels := make([]string, len(result.Items))
+	for i, flow := range result.Items {
+		labels[i] = flow.TenantID + "/" + flow.Code
+	}
+
+	return labels
+}
+
+func (s *FindFlowsSharedTestSuite) TestTenantListsItsOwnFlows() {
+	s.Assert().ElementsMatch([]string{"s1/s1-own", "s1/s1-shared", "s1/s2-replaced"},
+		s.list(query.FindFlowsQuery{TenantID: new("s1")}),
+		"Without IncludeShared a tenant lists the flows it owns, its shared ones included")
+}
+
+func (s *FindFlowsSharedTestSuite) TestIncludeSharedAddsOtherTenantsSharedFlows() {
+	s.Assert().ElementsMatch([]string{"s1/s1-own", "s1/s1-shared", "s1/s2-replaced", "s2/s2-shared"},
+		s.list(query.FindFlowsQuery{TenantID: new("s1"), IncludeShared: true}),
+		"IncludeShared adds the flows other tenants share, except the ones the tenant replaced and the unshared ones")
+}
+
+func (s *FindFlowsSharedTestSuite) TestIncludeSharedCombinesWithFilters() {
+	s.Assert().ElementsMatch([]string{"s1/s1-own", "s1/s1-shared", "s2/s2-shared"},
+		s.list(query.FindFlowsQuery{TenantID: new("s1"), IncludeShared: true, IsActive: new(true)}),
+		"The other filters apply to the shared flows too, and an inactive replacement still hides the shared flow")
+}
+
+func (s *FindFlowsSharedTestSuite) TestIncludeSharedNeedsATenant() {
+	s.Assert().Len(s.list(query.FindFlowsQuery{IncludeShared: true}), 6,
+		"Without TenantID every tenant's flows are listed already")
+}

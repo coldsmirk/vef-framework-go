@@ -248,7 +248,8 @@ func (s *ValidationServiceTestSuite) TestInitiationGate() {
 	s.Run("RulesSeeTheStartingTenant", func() {
 		defer cleanAllServiceData(s.ctx, s.db)
 
-		flow := s.seedFlowIn(approval.SharedTenantID, "init-shared")
+		flow := s.seedFlowIn("tenant-owner", "init-shared")
+		flow.IsShared = true
 		s.seedInitiator(flow.ID, "tenant_probe")
 
 		probe := new(tenantProbeInitiator)
@@ -263,7 +264,7 @@ func (s *ValidationServiceTestSuite) TestInitiationGate() {
 		s.Require().NoError(err, "The probe rule should not error")
 		s.Assert().True(allowed, "The probe rule admits")
 		s.Assert().Equal([]string{"tenant-a"}, probe.tenants,
-			"A rule of a shared flow must be evaluated for the tenant it is started in, never the shared tenant")
+			"A rule of a shared flow must be evaluated for the tenant it is started in, never the one owning it")
 	})
 
 	s.Run("BatchKeepsOrderAndAppliesEachFlowsGate", func() {

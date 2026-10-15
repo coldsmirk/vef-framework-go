@@ -165,6 +165,7 @@
   "approval_initiators_required": "A restricted flow must name who may start it; every initiator rule must select at least one entry",
   "approval_shared_flow_names_people": "A shared flow cannot route tasks or CC to specific users, roles or departments, nor hand tasks over to node admins or named fallback users",
   "approval_category_not_found": "Flow category not found",
+  "approval_shared_flow_code_exists": "A shared flow with this code already exists",
   "approval_invalid_storage_mode": "Invalid storage mode; must be \"json\" or \"table\"",
   "approval_binding_columns_conflict": "Business binding key and write-back columns must be distinct",
   "approval_binding_unexpected": "A standalone flow must not configure business binding",

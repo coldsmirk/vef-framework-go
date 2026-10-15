@@ -19,9 +19,8 @@ type CategoryParams struct {
 	api.P
 
 	ID string `json:"id"`
-	// TenantID is the tenant the category belongs to — approval.SharedTenantID
-	// for the home of shared flows. An update never moves a category, whatever
-	// is sent.
+	// TenantID is the tenant the category belongs to. An update never moves a
+	// category, whatever is sent.
 	TenantID  string  `json:"tenantId" validate:"required"`
 	Code      string  `json:"code" validate:"required"`
 	Name      string  `json:"name" validate:"required"`
@@ -38,14 +37,9 @@ type CategorySearch struct {
 
 	Name     string `json:"name" search:"contains"`
 	IsActive *bool  `json:"isActive" search:"eq,column=is_active"`
-	// TenantID narrows the read to one tenant's categories —
-	// approval.SharedTenantID for the shared ones; omitted, every tenant's are
-	// read.
+	// TenantID narrows the read to one tenant's categories; omitted, every
+	// tenant's are read.
 	TenantID string `json:"tenantId" search:"-"`
-	// IncludeShared adds the shared categories to one tenant's. A picker
-	// scoping a delegation needs them, since shared flows sit under shared
-	// categories; managing categories and placing a tenant flow do not.
-	IncludeShared bool `json:"includeShared" search:"-"`
 }
 
 // CategoryResource handles flow category CRUD using standard apis generics.
@@ -75,22 +69,16 @@ func buildFlowCategoryTree(flatCategories []approval.FlowCategory) []approval.Fl
 	return tree.Build(flatCategories, adapter)
 }
 
-// applyCategoryTenant narrows a category read to the tenant the search names,
-// plus the shared categories when IncludeShared asks for them. Flow categories
-// are managed across tenants, gated by permission, so a read naming no tenant
-// covers every tenant.
+// applyCategoryTenant narrows a category read to the tenant the search names.
+// Flow categories are managed across tenants, gated by permission, so a read
+// naming no tenant covers every tenant.
 func applyCategoryTenant(query orm.SelectQuery, search CategorySearch, _ fiber.Ctx) error {
 	if search.TenantID == "" {
 		return nil
 	}
 
-	tenantIDs := []string{search.TenantID}
-	if search.IncludeShared && search.TenantID != approval.SharedTenantID {
-		tenantIDs = append(tenantIDs, approval.SharedTenantID)
-	}
-
 	query.Where(func(cb orm.ConditionBuilder) {
-		cb.In("tenant_id", tenantIDs)
+		cb.Equals("tenant_id", search.TenantID)
 	})
 
 	return nil
@@ -99,8 +87,7 @@ func applyCategoryTenant(query orm.SelectQuery, search CategorySearch, _ fiber.C
 // requireParentInTenant rejects placing a category of tenantID under a parent
 // that is missing or owned by another tenant, with ErrCategoryNotFound either
 // way so the answer reveals nothing about other tenants. A tree never spans
-// tenants: a tenant tree hanging off a shared category would surface under
-// every tenant's shared view, and one tenant's under another's.
+// tenants: one tenant's categories would otherwise surface under another's.
 func requireParentInTenant(ctx context.Context, db orm.DB, parentID *string, tenantID string) error {
 	if parentID == nil || *parentID == "" {
 		return nil
@@ -148,7 +135,7 @@ func NewCategoryResource() api.Resource {
 			WithPreUpdate(func(oldModel, newModel *approval.FlowCategory, _ *CategoryParams, _ orm.UpdateQuery, ctx fiber.Ctx, db orm.DB) error {
 				// A category never changes tenant: the params carry a TenantID
 				// that the merge would otherwise write, moving the category — and
-				// the flows under it — into another tenant or into the shared one.
+				// the flows under it — into another tenant.
 				newModel.TenantID = oldModel.TenantID
 
 				return requireParentInTenant(ctx.Context(), db, newModel.ParentID, oldModel.TenantID)

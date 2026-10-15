@@ -8,7 +8,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
-// ValidateSharedFlowNodes enforces what a shared flow (approval.SharedTenantID)
+// ValidateSharedFlowNodes enforces what a shared flow (approval.Flow.IsShared)
 // adds to a valid definition: it routes no task and no CC to specific people.
 // A shared flow runs in every tenant, while a user — and the users behind a
 // role or a department — belongs to one, so a rule naming them would deliver

@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     created_by VARCHAR(32) NOT NULL DEFAULT 'system',
     updated_by VARCHAR(32) NOT NULL DEFAULT 'system',
     tenant_id VARCHAR(32) NOT NULL,
+    is_shared BOOLEAN NOT NULL DEFAULT 0,
     category_id VARCHAR(32) NOT NULL,
     code VARCHAR(64) NOT NULL,
     name VARCHAR(128) NOT NULL,

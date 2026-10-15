@@ -68,7 +68,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	// privileged caller; everyone else starts in their own tenant. A caller
 	// without one sees FlowNotFound (rather than CrossTenantAccess), the same
 	// answer a missing flow gets, so probing reveals nothing.
-	tenantID, err := service.StartTenant(cmd.Caller, cmd.TenantID)
+	tenantID, err := cmd.Caller.ResolveWriteTenant(cmd.TenantID)
 	if err != nil {
 		return nil, approval.ErrFlowNotFound
 	}
@@ -139,8 +139,8 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	}
 
 	// The instance runs in the starting tenant: for a shared flow that is the
-	// applicant's tenant, never the shared one, so everything the instance
-	// produces stays inside an ordinary tenant boundary.
+	// applicant's tenant, never the one owning the flow, so everything the
+	// instance produces stays inside the tenant the work is done in.
 	instance := &approval.Instance{
 		TenantID:                tenantID,
 		FlowID:                  flow.ID,

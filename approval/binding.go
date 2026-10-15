@@ -76,9 +76,10 @@ type BusinessRefResolver interface {
 	// instance's BusinessRef, which is never blank here. The instance carries
 	// the tenant it runs in and the applicant, so a resolver can scope the key
 	// to that tenant — a shared flow's binding serves every tenant, and its
-	// Flow.TenantID is SharedTenantID — and refuse a reference the applicant
-	// may not bind; the ref may come straight from the client. Returning an
-	// error fails the start, ErrInvalidBusinessRef for a malformed reference.
+	// Flow.TenantID is the owning tenant, not the instance's — and refuse a
+	// reference the applicant may not bind; the ref may come straight from the
+	// client. Returning an error fails the start, ErrInvalidBusinessRef for a
+	// malformed reference.
 	ResolveRecordKey(ctx context.Context, flow *Flow, instance *Instance) (BusinessRecordKey, error)
 }
 

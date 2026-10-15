@@ -82,6 +82,10 @@ func TestAddedColumns(t *testing.T) {
 		require.NoError(t, env.DB.NewSelect().Model(&node).WherePK().Scan(env.Ctx), "The existing node should survive the upgrade")
 		assert.Equal(t, "Review", node.Name, "Existing node data should be unchanged")
 		assert.Zero(t, node.PassCount, "Existing rows should take the column default")
+
+		flow := approval.Flow{ID: "flow-1"}
+		require.NoError(t, env.DB.NewSelect().Model(&flow).WherePK().Scan(env.Ctx), "The existing flow should survive the upgrade")
+		assert.False(t, flow.IsShared, "An existing flow should stay a tenant flow")
 	})
 }
 

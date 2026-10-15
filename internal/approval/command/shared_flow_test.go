@@ -55,7 +55,8 @@ func sharedSafeFlowDef() approval.FlowDefinition {
 // SharedFlowTestSuite covers a shared flow end to end: the tenant its instance
 // runs in, who may act on that instance, how a tenant flow of the same code
 // replaces it, how the starting tenant is resolved, and the deploy rule that
-// keeps its nodes from routing work to one tenant's people.
+// keeps its nodes from routing work to one tenant's people. The shared flows
+// are owned by sharedOwnerTenant.
 type SharedFlowTestSuite struct {
 	suite.Suite
 
@@ -69,13 +70,19 @@ type SharedFlowTestSuite struct {
 	shared         *FlowFixture
 	sharedReplaced *FlowFixture
 	tenantOwn      *FlowFixture
+	ownerOnly      *FlowFixture
 }
 
+// sharedOwnerTenant owns the suite's shared flows.
+const sharedOwnerTenant = "tenant-owner"
+
 func (s *SharedFlowTestSuite) SetupSuite() {
-	s.shared = deployAndPublishFlowIn(s.T(), s.ctx, s.db, approval.SharedTenantID, "shr", sharedSafeFlowDef())
+	s.shared = deployAndPublishFlowIn(s.T(), s.ctx, s.db, sharedOwnerTenant, true, "shr", sharedSafeFlowDef())
 	// The default tenant replaces this shared flow with one of the same code.
-	s.sharedReplaced = deployAndPublishFlowIn(s.T(), s.ctx, s.db, approval.SharedTenantID, "shr-rep", sharedSafeFlowDef())
-	s.tenantOwn = deployAndPublishFlowIn(s.T(), s.ctx, s.db, approval.DefaultTenantID, "shr-rep", sharedSafeFlowDef())
+	s.sharedReplaced = deployAndPublishFlowIn(s.T(), s.ctx, s.db, sharedOwnerTenant, true, "shr-rep", sharedSafeFlowDef())
+	s.tenantOwn = deployAndPublishFlowIn(s.T(), s.ctx, s.db, approval.DefaultTenantID, false, "shr-rep", sharedSafeFlowDef())
+	// A flow the owning tenant keeps to itself.
+	s.ownerOnly = deployAndPublishFlowIn(s.T(), s.ctx, s.db, sharedOwnerTenant, false, "own", sharedSafeFlowDef())
 
 	eng := buildTestEngine(s.db)
 	taskSvc, nodeSvc, validSvc := buildTestServices(eng)
@@ -120,7 +127,7 @@ func (s *SharedFlowTestSuite) TestInstanceRunsInStartingTenant() {
 	s.Require().NoError(err, "A tenant should start a shared flow like one of its own")
 	s.Assert().Equal(s.shared.FlowID, instance.FlowID, "The shared flow should run")
 	s.Assert().Equal("tenant-a", instance.TenantID,
-		"The instance belongs to the starting tenant, never to the shared one")
+		"The instance belongs to the starting tenant, never to the one owning the flow")
 	s.Assert().Equal("tenant-a", s.numbering.tenants[len(s.numbering.tenants)-1],
 		"The instance number is drawn for the starting tenant, so a host can number per tenant")
 
@@ -180,6 +187,15 @@ func (s *SharedFlowTestSuite) TestTenantFlowReplacesSharedFlow() {
 	s.Assert().Equal(s.sharedReplaced.FlowID, shared.FlowID, "Only the replacing tenant loses the shared flow")
 }
 
+func (s *SharedFlowTestSuite) TestUnsharedFlowStaysInItsTenant() {
+	_, err := s.startAs(approval.CallerContext{TenantID: "tenant-a"}, "", "own-flow", "user-a")
+	s.Require().ErrorIs(err, approval.ErrFlowNotFound, "Another tenant must not start a flow its owner did not share")
+
+	instance, err := s.startAs(approval.CallerContext{TenantID: sharedOwnerTenant}, "", "own-flow", "user-o")
+	s.Require().NoError(err, "The owning tenant should start its own flow")
+	s.Assert().Equal(s.ownerOnly.FlowID, instance.FlowID, "The owner's flow should run")
+}
+
 func (s *SharedFlowTestSuite) TestStartTenantResolution() {
 	s.Run("PinsOrdinaryCallerToOwnTenant", func() {
 		instance, err := s.startAs(approval.CallerContext{TenantID: "tenant-x"}, approval.DefaultTenantID, "shr-rep-flow", "user-x")
@@ -195,14 +211,11 @@ func (s *SharedFlowTestSuite) TestStartTenantResolution() {
 		s.Assert().Equal("tenant-c", instance.TenantID, "The requested tenant should be honored")
 	})
 
-	s.Run("RejectsSharedTenant", func() {
-		_, err := s.startAs(approval.SystemCaller, approval.SharedTenantID, "shr-flow", "user-s")
-		s.Require().ErrorIs(err, approval.ErrFlowNotFound, "Nothing runs in the shared tenant")
-	})
-
-	s.Run("RejectsCallerClaimingSharedTenant", func() {
-		_, err := s.startAs(approval.CallerContext{TenantID: approval.SharedTenantID}, "", "shr-flow", "user-s")
-		s.Require().ErrorIs(err, approval.ErrFlowNotFound, "Nobody belongs to the shared tenant")
+	s.Run("OwnerStartsItsSharedFlow", func() {
+		instance, err := s.startAs(approval.CallerContext{TenantID: sharedOwnerTenant}, "", "shr-flow", "user-o")
+		s.Require().NoError(err, "The owning tenant should start its shared flow")
+		s.Assert().Equal(s.shared.FlowID, instance.FlowID, "The owner's shared flow is one of its own flows")
+		s.Assert().Equal(sharedOwnerTenant, instance.TenantID, "The instance runs in the owning tenant")
 	})
 
 	s.Run("FailsClosedWithoutTenant", func() {

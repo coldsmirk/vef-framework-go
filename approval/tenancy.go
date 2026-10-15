@@ -11,21 +11,6 @@ import (
 // an explicit tenant — the conventional single-tenant deployment value.
 const DefaultTenantID = "default"
 
-// SharedTenantID is the reserved tenant of shared definitions. A flow or a
-// flow category stamped with it belongs to no tenant and is available to
-// every tenant: a tenant is offered its own flows plus the shared ones, and
-// starts a shared flow exactly like one of its own. The instance that start
-// creates runs in — and belongs to — the starting tenant, never the shared
-// tenant, so every runtime row (instance, task, visit, projection, event)
-// keeps the isolation of an ordinary tenant flow.
-//
-// The shared tenant has no members. A caller whose tenant resolves to it is
-// denied like a caller with no tenant at all. Definitions themselves — flows
-// and categories, shared or not — are managed across tenants, gated by
-// permission: their tenant is whatever the managing request names. Hosts must
-// therefore never use "0" as the identifier of a real tenant.
-const SharedTenantID = "0"
-
 // SuperAdminRole is the role string that grants cross-tenant access to
 // admin queries and operations. Hosts assign this role to platform-level
 // operators that legitimately need to act across tenants (audit teams,
@@ -59,8 +44,7 @@ type CallerContext struct {
 	// TenantID is the caller's resolved tenant. A super-admin acts across
 	// tenants yet may still belong to one, which is where its writes default
 	// to; system-internal callers carry none. Every other caller must carry a
-	// tenant, and never SharedTenantID — an ordinary caller with either an
-	// empty or the shared tenant is denied everything.
+	// tenant — an ordinary caller with an empty one is denied everything.
 	TenantID string
 	// IsSuperAdmin grants cross-tenant access regardless of TenantID.
 	IsSuperAdmin bool
@@ -87,8 +71,7 @@ var SystemCaller = CallerContext{IsSystemInternal: true}
 // by entityTenantID. Super-admin callers always pass; system-internal
 // callers pass too (no HTTP principal exists, scope is enforced upstream).
 // Every other caller must belong to a tenant that matches the entity tenant
-// exactly — zero-value contexts are rejected, and so are callers claiming the
-// shared tenant, which leaves shared definitions to privileged callers.
+// exactly — zero-value contexts are rejected.
 func (c CallerContext) Authorize(entityTenantID string) error {
 	if c.IsSuperAdmin || c.IsSystemInternal {
 		return nil
@@ -114,11 +97,10 @@ func (c CallerContext) Allows(entityTenantID string) bool {
 // applying the same fail-closed posture as Authorize. A non-nil result scopes
 // the query to that tenant; a nil result means unfiltered cross-tenant access
 // and is only ever returned to super-admin / system-internal callers. An
-// ordinary caller that resolves to no tenant it belongs to — empty, or the
-// shared tenant — fails closed with ErrCrossTenantAccess, so a forgotten or
-// empty PrincipalTenantResolver result can never silently widen a list query
-// to every tenant's rows — mirroring Authorize's rejection of a zero-value
-// context. The override is honored only for privileged callers; ordinary
+// ordinary caller that resolves to no tenant fails closed with
+// ErrCrossTenantAccess, so a forgotten or empty PrincipalTenantResolver result
+// can never silently widen a list query to every tenant's rows — mirroring
+// Authorize's rejection of a zero-value context. The override is honored only for privileged callers; ordinary
 // callers are always pinned to their own tenant regardless of what the client
 // sent. This is the single source of truth for list queries — the resource
 // layer must never read params.TenantID directly.
@@ -144,9 +126,9 @@ func (c CallerContext) TenantScopeFilter(override string) (*string, error) {
 // ResolveWriteTenant returns the tenant a new instance is stamped with. Every
 // caller but a privileged one is pinned to its own tenant whatever it
 // requested, and fails closed with ErrCrossTenantAccess when it has none, so it
-// can never write into another tenant, the shared one included. A super-admin
-// or system-internal caller writes into the requested tenant; naming none, into
-// its own tenant when it has one, else DefaultTenantID. Only Service callers
+// can never write into another tenant. A super-admin or system-internal caller
+// writes into the requested tenant; naming none, into its own tenant when it
+// has one, else DefaultTenantID. Only Service callers
 // request a tenant: the HTTP resources start in the caller's own.
 func (c CallerContext) ResolveWriteTenant(requested string) (string, error) {
 	if c.IsSuperAdmin || c.IsSystemInternal {
@@ -170,14 +152,9 @@ func (c CallerContext) ResolveWriteTenant(requested string) (string, error) {
 }
 
 // memberTenant returns the tenant an ordinary caller acts within. It reports
-// false when there is none: an unresolved (empty) tenant, or the shared
-// tenant, which has no members.
+// false when the tenant is unresolved (empty).
 func (c CallerContext) memberTenant() (string, bool) {
-	if c.TenantID == "" || c.TenantID == SharedTenantID {
-		return "", false
-	}
-
-	return c.TenantID, true
+	return c.TenantID, c.TenantID != ""
 }
 
 // PrincipalTenantResolver extracts the caller's tenant ID from a security
@@ -189,8 +166,7 @@ func (c CallerContext) memberTenant() (string, bool) {
 // system-internal callers, which bypass tenant scoping. For an ordinary
 // authenticated principal an empty tenant fails closed: CallerContext.Authorize
 // returns ErrCrossTenantAccess and TenantScopeFilter / ResolveWriteTenant
-// likewise reject it, rather than waving the request through. Returning
-// SharedTenantID is treated the same way: nobody belongs to the shared tenant.
+// likewise reject it, rather than waving the request through.
 type PrincipalTenantResolver interface {
 	// Resolve returns the tenant identifier for the given principal.
 	Resolve(ctx context.Context, principal *security.Principal) (string, error)

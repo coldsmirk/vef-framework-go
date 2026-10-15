@@ -130,19 +130,20 @@ func (s *GetStartFormTestSuite) SetupSuite() {
 	_, err = s.db.NewInsert().Model(flow4).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert unpublished flow")
 
-	// Shared flows under a shared category: one open everywhere, and one the
-	// default tenant replaces with an inactive flow of the same code.
+	// Flows another tenant shares, under a category of that tenant: one open
+	// everywhere, and one the default tenant replaces with an inactive flow of
+	// the same code.
 	sharedCategory := &approval.FlowCategory{
-		TenantID: approval.SharedTenantID,
+		TenantID: "tenant-owner",
 		Code:     "gsf-shared-cat",
 		Name:     "Shared Start Form Category",
 	}
 	_, err = s.db.NewInsert().Model(sharedCategory).Exec(s.ctx)
-	s.Require().NoError(err, "Should insert shared category")
+	s.Require().NoError(err, "Should insert the sharing tenant's category")
 
 	for _, flow := range []*approval.Flow{
-		{TenantID: approval.SharedTenantID, CategoryID: sharedCategory.ID, Code: "gsf-shared", Name: "Shared Flow", IsActive: true},
-		{TenantID: approval.SharedTenantID, CategoryID: sharedCategory.ID, Code: "gsf-replaced", Name: "Replaced Shared Flow", IsActive: true},
+		{TenantID: "tenant-owner", IsShared: true, CategoryID: sharedCategory.ID, Code: "gsf-shared", Name: "Shared Flow", IsActive: true},
+		{TenantID: "tenant-owner", IsShared: true, CategoryID: sharedCategory.ID, Code: "gsf-replaced", Name: "Replaced Shared Flow", IsActive: true},
 		{TenantID: "default", CategoryID: category.ID, Code: "gsf-replaced", Name: "Tenant Replacement"},
 	} {
 		flow.BindingMode = approval.BindingStandalone

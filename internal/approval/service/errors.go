@@ -117,8 +117,8 @@ var (
 	errRequiredPermissionAutoPass  = errors.New("a node with a required field permission must not use timeout action 'auto_pass'")
 )
 
-// Shared-flow sentinels, raised by ValidateSharedFlowNodes for a flow of
-// approval.SharedTenantID that would route work or notifications to specific
+// Shared-flow sentinels, raised by ValidateSharedFlowNodes for a shared flow
+// (approval.Flow.IsShared) that would route work or notifications to specific
 // people. Surface wrapped in approval.ErrSharedFlowNamesPeople.
 var (
 	errSharedAssigneeNamesPeople = errors.New("assignee rule of a shared flow selects specific users, roles or departments")

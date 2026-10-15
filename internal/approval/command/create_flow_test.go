@@ -28,7 +28,6 @@ type CreateFlowTestSuite struct {
 	ctx         context.Context
 	db          orm.DB
 	handler     *command.CreateFlowHandler
-	categoryID  string
 	categoryIDs map[string]string
 }
 
@@ -57,7 +56,6 @@ func (s *CreateFlowTestSuite) SetupSuite() {
 	_, err := s.db.NewInsert().Model(category).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert test category")
 
-	s.categoryID = category.ID
 	s.categoryIDs = map[string]string{approval.DefaultTenantID: category.ID}
 	s.handler = command.NewCreateFlowHandler(s.db, newTestBindingValidator(), mustInitiatorComposite(nil))
 }
@@ -159,9 +157,9 @@ func (s *CreateFlowTestSuite) TestCreateFlowLabels() {
 	})
 }
 
-// TestCreateFlowCategoryTenancy pins a flow to a category of its own tenant: a
-// shared flow sits under a shared category, a tenant flow under one of its
-// tenant's, and a missing or foreign category gets the same answer.
+// TestCreateFlowCategoryTenancy pins a flow to a category of its own tenant —
+// a shared flow too, under a category of the tenant that owns it — and gives a
+// missing or foreign category the same answer.
 func (s *CreateFlowTestSuite) TestCreateFlowCategoryTenancy() {
 	baseCmd := func(tenantID, code, categoryID string) command.CreateFlowCmd {
 		return command.CreateFlowCmd{
@@ -186,22 +184,61 @@ func (s *CreateFlowTestSuite) TestCreateFlowCategoryTenancy() {
 			"A category of another tenant must look exactly like a missing one")
 	})
 
-	s.Run("RejectsTenantCategoryForSharedFlow", func() {
-		_, err := s.handler.Handle(s.ctx, baseCmd(approval.SharedTenantID, "cat-shared-foreign", s.categoryID))
+	s.Run("RejectsSharedFlowUnderCategoryOfAnotherTenant", func() {
+		cmd := baseCmd("tenant-1", "cat-shared-foreign", s.categoryOf("tenant-other"))
+		cmd.IsShared = true
+
+		_, err := s.handler.Handle(s.ctx, cmd)
 		s.Require().ErrorIs(err, approval.ErrCategoryNotFound,
-			"A shared flow under a tenant category would show that tenant's category to every tenant")
+			"Sharing a flow does not let it sit under another tenant's category")
 	})
 
-	s.Run("AcceptsSharedFlowUnderSharedCategory", func() {
-		created, err := s.handler.Handle(s.ctx, baseCmd(approval.SharedTenantID, "cat-shared", s.categoryOf(approval.SharedTenantID)))
-		s.Require().NoError(err, "A shared flow should be created under a shared category")
-		s.Assert().Equal(approval.SharedTenantID, created.TenantID, "The flow should be stamped shared")
+	s.Run("AcceptsSharedFlowUnderCategoryOfItsTenant", func() {
+		cmd := baseCmd("tenant-3", "cat-shared", s.categoryOf("tenant-3"))
+		cmd.IsShared = true
+
+		created, err := s.handler.Handle(s.ctx, cmd)
+		s.Require().NoError(err, "A shared flow should be created under a category of the tenant owning it")
+		s.Assert().Equal("tenant-3", created.TenantID, "A shared flow is owned by the tenant the request names")
+		s.Assert().True(created.IsShared, "The flow should be stamped shared")
 	})
 
 	s.Run("CreatesInTheRequestedTenant", func() {
 		created, err := s.handler.Handle(s.ctx, baseCmd("tenant-2", "cat-requested", s.categoryOf("tenant-2")))
 		s.Require().NoError(err, "A flow should be created in the tenant the request names")
 		s.Assert().Equal("tenant-2", created.TenantID, "The flow should be stamped with the requested tenant")
+	})
+}
+
+// TestCreateSharedFlowCode keeps a shared flow's code unique among the shared
+// flows of every tenant, while a tenant flow may still take a shared code to
+// replace that shared flow within its tenant.
+func (s *CreateFlowTestSuite) TestCreateSharedFlowCode() {
+	cmd := func(tenantID string, isShared bool) command.CreateFlowCmd {
+		return command.CreateFlowCmd{
+			IsAllInitiationAllowed: true,
+			TenantID:               tenantID,
+			IsShared:               isShared,
+			Code:                   "shared-code",
+			Name:                   "Shared Code Flow",
+			CategoryID:             s.categoryOf(tenantID),
+			BindingMode:            approval.BindingStandalone,
+			InstanceTitleTemplate:  "Title",
+		}
+	}
+
+	_, err := s.handler.Handle(s.ctx, cmd("tenant-share-a", true))
+	s.Require().NoError(err, "The first shared flow should take the code")
+
+	s.Run("RejectsSecondSharedFlowOfTheCode", func() {
+		_, err := s.handler.Handle(s.ctx, cmd("tenant-share-b", true))
+		s.Require().ErrorIs(err, approval.ErrSharedFlowCodeExists,
+			"Another tenant's shared flow of the code would make the code name two flows")
+	})
+
+	s.Run("AcceptsTenantFlowReplacingTheSharedOne", func() {
+		_, err := s.handler.Handle(s.ctx, cmd("tenant-share-c", false))
+		s.Require().NoError(err, "A tenant flow may take a shared code to replace the shared flow in its tenant")
 	})
 }
 

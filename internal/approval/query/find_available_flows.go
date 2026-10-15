@@ -29,7 +29,7 @@ type FindAvailableFlowsQuery struct {
 	Keyword               *string
 	Labels                map[string]string
 	// Caller decides the tenant the flows are offered in: the one it acts in
-	// (service.StartTenant).
+	// (CallerContext.ResolveWriteTenant).
 	Caller approval.CallerContext
 }
 
@@ -47,7 +47,7 @@ func NewFindAvailableFlowsHandler(db orm.DB, validationSvc *service.ValidationSe
 func (h *FindAvailableFlowsHandler) Handle(ctx context.Context, query FindAvailableFlowsQuery) (*page.Page[my.AvailableFlow], error) {
 	db := contextx.DB(ctx, h.db)
 
-	tenantID, err := service.StartTenant(query.Caller, "")
+	tenantID, err := query.Caller.ResolveWriteTenant("")
 	if err != nil {
 		return nil, err
 	}
@@ -131,9 +131,9 @@ func (h *FindAvailableFlowsHandler) Handle(ctx context.Context, query FindAvaila
 
 // loadStartableFlows returns the flows a start in tenantID could run, narrowed
 // by keyword and labels: active flows with a published version, owned by the
-// tenant or shared, minus every shared flow whose code the tenant has taken for
-// a flow of its own — in any state, since that flow is what a start by the
-// code finds.
+// tenant or shared by any tenant, minus every other tenant's shared flow whose
+// code the tenant has taken for a flow of its own — in any state, since that
+// flow is what a start by the code finds.
 func loadStartableFlows(
 	ctx context.Context,
 	db orm.DB,
@@ -147,7 +147,10 @@ func loadStartableFlows(
 		Model(&flows).
 		Select("id", "tenant_id", "code", "is_all_initiation_allowed").
 		Where(func(cb orm.ConditionBuilder) {
-			cb.In("tenant_id", []string{tenantID, approval.SharedTenantID}).
+			cb.Group(func(cb orm.ConditionBuilder) {
+				cb.Equals("tenant_id", tenantID).
+					OrIsTrue("is_shared")
+			}).
 				Equals("is_active", true).
 				ApplyIf(keyword != nil, func(cb orm.ConditionBuilder) {
 					cb.Contains("name", *keyword)
@@ -161,7 +164,7 @@ func loadStartableFlows(
 
 	sharedCodes := make([]string, 0, len(flows))
 	for _, flow := range flows {
-		if flow.TenantID == approval.SharedTenantID {
+		if flow.TenantID != tenantID {
 			sharedCodes = append(sharedCodes, flow.Code)
 		}
 	}
@@ -183,7 +186,7 @@ func loadStartableFlows(
 
 	taken := collections.NewHashSetFrom(takenCodes...)
 	flows = lo.Reject(flows, func(flow approval.Flow, _ int) bool {
-		return flow.TenantID == approval.SharedTenantID && taken.Contains(flow.Code)
+		return flow.TenantID != tenantID && taken.Contains(flow.Code)
 	})
 
 	if len(flows) == 0 {

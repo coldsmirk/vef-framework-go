@@ -69,7 +69,6 @@ func (s *CategoryTenancyTestSuite) SetupTest() {
 	deleteAll(s.ctx, s.db, (*approval.FlowCategory)(nil))
 
 	s.seedCategory("own", testTenant)
-	s.seedCategory("shared", approval.SharedTenantID)
 	s.seedCategory("foreign", "tenant-b")
 }
 
@@ -129,24 +128,13 @@ func (s *CategoryTenancyTestSuite) mutate(action string, params map[string]any, 
 
 func (s *CategoryTenancyTestSuite) TestReads() {
 	s.Run("ReadsEveryTenantWithoutATenant", func() {
-		s.Assert().ElementsMatch([]string{"own", "shared", "foreign"}, s.treeIDs(nil, s.memberToken),
+		s.Assert().ElementsMatch([]string{"own", "foreign"}, s.treeIDs(nil, s.memberToken),
 			"A read naming no tenant covers every tenant's categories")
 	})
 
 	s.Run("ReadsTheTenantTheRequestNames", func() {
 		s.Assert().ElementsMatch([]string{"foreign"}, s.treeIDs(api.Meta{"tenantId": "tenant-b"}, s.memberToken),
 			"The read follows the requested tenant, not the caller's own")
-	})
-
-	s.Run("AddsSharedCategoriesWhenAsked", func() {
-		s.Assert().ElementsMatch([]string{"own", "shared"},
-			s.treeIDs(api.Meta{"tenantId": testTenant, "includeShared": true}, s.memberToken),
-			"includeShared adds the shared categories to the requested tenant's")
-	})
-
-	s.Run("ReadsSharedCategoriesAlone", func() {
-		s.Assert().ElementsMatch([]string{"shared"}, s.treeIDs(api.Meta{"tenantId": approval.SharedTenantID}, s.memberToken),
-			"The shared tenant can be read on its own")
 	})
 
 	s.Run("NeedsNoTenantOfTheCallersOwn", func() {
@@ -159,10 +147,10 @@ func (s *CategoryTenancyTestSuite) TestReads() {
 func (s *CategoryTenancyTestSuite) TestWrites() {
 	s.Run("CreatesInTheRequestedTenant", func() {
 		status, _ := s.mutate("create", map[string]any{
-			"id": "member-shared", "tenantId": approval.SharedTenantID, "code": "member-shared", "name": "Member Shared",
+			"id": "requested", "tenantId": "tenant-c", "code": "requested", "name": "Requested",
 		}, s.memberToken)
 		s.Require().Equal(http.StatusOK, status, "The create itself should succeed")
-		s.Assert().Equal(approval.SharedTenantID, s.loadCategory("member-shared").TenantID,
+		s.Assert().Equal("tenant-c", s.loadCategory("requested").TenantID,
 			"A category is stamped with the tenant the request names")
 	})
 
@@ -174,7 +162,7 @@ func (s *CategoryTenancyTestSuite) TestWrites() {
 	s.Run("CategoryNeverChangesTenant", func() {
 		for _, token := range []string{s.memberToken, s.adminToken} {
 			status, _ := s.mutate("update", map[string]any{
-				"id": "own", "tenantId": approval.SharedTenantID, "code": "own", "name": "Renamed",
+				"id": "own", "tenantId": "tenant-b", "code": "own", "name": "Renamed",
 			}, token)
 			s.Require().Equal(http.StatusOK, status, "The update itself should succeed")
 
@@ -186,9 +174,9 @@ func (s *CategoryTenancyTestSuite) TestWrites() {
 
 	s.Run("RejectsParentOfAnotherTenant", func() {
 		_, code := s.mutate("create", map[string]any{
-			"id": "child-shared", "tenantId": testTenant, "code": "child-shared", "name": "Child", "parentId": "shared",
+			"id": "child-foreign", "tenantId": testTenant, "code": "child-foreign", "name": "Child", "parentId": "foreign",
 		}, s.memberToken)
-		s.Assert().Equal(approval.ErrCodeCategoryNotFound, code, "A tenant category cannot hang off a shared one")
+		s.Assert().Equal(approval.ErrCodeCategoryNotFound, code, "A category cannot hang off another tenant's")
 
 		_, code = s.mutate("update", map[string]any{
 			"id": "own", "tenantId": testTenant, "code": "own", "name": "own", "parentId": "foreign",

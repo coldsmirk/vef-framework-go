@@ -44,7 +44,7 @@ func NewGetStartFormHandler(db orm.DB, validationSvc *service.ValidationService)
 func (h *GetStartFormHandler) Handle(ctx context.Context, query GetStartFormQuery) (*my.StartForm, error) {
 	db := contextx.DB(ctx, h.db)
 
-	tenantID, err := service.StartTenant(query.Caller, "")
+	tenantID, err := query.Caller.ResolveWriteTenant("")
 	if err != nil {
 		return nil, approval.ErrFlowNotFound
 	}

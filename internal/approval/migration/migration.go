@@ -52,6 +52,7 @@ var obsoleteTables = []string{
 // shipped: Migrate adds them to an existing table and Verify requires them.
 var addedColumns = []sqlmigration.AddedColumn{
 	{Table: "apv_flow_node", Name: "pass_count", Definition: "INTEGER NOT NULL DEFAULT 0", Comment: "Pass Count"},
+	{Table: "apv_flow", Name: "is_shared", Definition: "BOOLEAN NOT NULL DEFAULT false", Comment: "Shared"},
 }
 
 // Migrate runs the approval module's DDL migration for the given

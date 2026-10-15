@@ -78,24 +78,6 @@ func TestCallerContextAuthorize(t *testing.T) {
 			entityTenantID: "",
 			wantErr:        true,
 		},
-		{
-			name:           "SharedEntityDeniedToTenantMember",
-			caller:         approval.CallerContext{TenantID: "tenant-a"},
-			entityTenantID: approval.SharedTenantID,
-			wantErr:        true,
-		},
-		{
-			name:           "SharedTenantClaimDenied",
-			caller:         approval.CallerContext{TenantID: approval.SharedTenantID},
-			entityTenantID: approval.SharedTenantID,
-			wantErr:        true,
-		},
-		{
-			name:           "SuperAdminManagesShared",
-			caller:         approval.CallerContext{IsSuperAdmin: true},
-			entityTenantID: approval.SharedTenantID,
-			wantErr:        false,
-		},
 	}
 
 	for _, tc := range cases {
@@ -142,9 +124,6 @@ func TestCallerContextTenantScopeFilter(t *testing.T) {
 		// denied, never collapsed to an unfiltered cross-tenant query.
 		{"ZeroCallerFailsClosed", approval.CallerContext{}, "tenant-x", nil, true},
 		{"EmptyTenantNonSuperFailsClosed", approval.CallerContext{}, "", nil, true},
-		// Nobody belongs to the shared tenant: claiming it is claiming none.
-		{"SharedTenantClaimFailsClosed", approval.CallerContext{TenantID: approval.SharedTenantID}, "", nil, true},
-		{"SuperAdminScopesToShared", approval.CallerContext{IsSuperAdmin: true}, approval.SharedTenantID, new(approval.SharedTenantID), false},
 	}
 
 	for _, tc := range cases {
@@ -178,13 +157,9 @@ func TestCallerContextResolveWriteTenant(t *testing.T) {
 		{"SuperAdminHonorsClient", approval.CallerContext{IsSuperAdmin: true}, "tenant-x", "tenant-x", false},
 		{"SystemHonorsClient", approval.SystemCaller, "tenant-x", "tenant-x", false},
 		{"NonSuperPinsToOwnTenant", approval.CallerContext{TenantID: "tenant-a"}, "tenant-b", "tenant-a", false},
-		{"NonSuperCannotWriteShared", approval.CallerContext{TenantID: "tenant-a"}, approval.SharedTenantID, "tenant-a", false},
 		{"EmptyTenantNonSuperFailsClosed", approval.CallerContext{}, "tenant-b", "", true},
-		{"SharedTenantClaimFailsClosed", approval.CallerContext{TenantID: approval.SharedTenantID}, approval.SharedTenantID, "", true},
-		{"SuperAdminWritesShared", approval.CallerContext{IsSuperAdmin: true}, approval.SharedTenantID, approval.SharedTenantID, false},
 		{"SuperAdminDefaultsToOwnTenant", approval.CallerContext{TenantID: "tenant-a", IsSuperAdmin: true}, "", "tenant-a", false},
 		{"SuperAdminWithoutTenantDefaults", approval.CallerContext{IsSuperAdmin: true}, "", approval.DefaultTenantID, false},
-		{"SuperAdminInSharedTenantDefaults", approval.CallerContext{TenantID: approval.SharedTenantID, IsSuperAdmin: true}, "", approval.DefaultTenantID, false},
 		{"SystemDefaults", approval.SystemCaller, "", approval.DefaultTenantID, false},
 	}
 

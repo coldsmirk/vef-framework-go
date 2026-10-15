@@ -159,12 +159,10 @@ type StartInstanceInput struct {
 	// TenantID is the tenant the instance runs in. An ordinary Caller always
 	// starts in its own tenant, so the value only takes effect for SystemCaller
 	// and super-admin callers; left empty, they start in their own tenant when
-	// they carry one, else in DefaultTenantID. SharedTenantID is rejected (as
-	// ErrFlowNotFound): it holds shared definitions, and an instance of a
-	// shared flow runs in a real tenant.
+	// they carry one, else in DefaultTenantID.
 	TenantID string
 	// FlowCode names the flow: the tenant's own flow with that code, or else
-	// the shared flow with that code (see SharedTenantID).
+	// the shared flow with that code (see Flow.IsShared).
 	FlowCode string
 	// Applicant is the person the instance is started for. Initiation
 	// permission, the same-applicant node policy and the applicant subjects

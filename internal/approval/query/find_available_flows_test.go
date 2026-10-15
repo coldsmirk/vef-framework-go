@@ -167,14 +167,16 @@ func (s *FindAvailableFlowsTestSuite) SetupSuite() {
 		IsActive:               true,
 	}, false)
 
-	// Shared flows, under a shared category: one every tenant is offered, and
-	// one whose code the default tenant has taken for an inactive flow of its
-	// own — which therefore hides the shared one there, and only there.
+	// Flows tenant-c shares, under a category of its own: one every tenant is
+	// offered, and one whose code the default tenant has taken for an inactive
+	// flow of its own — which therefore hides the shared one there, and only
+	// there.
 	s.sharedCategoryName = "Shared Category"
-	sharedCategory := s.insertCategory(approval.SharedTenantID, "maf-shared-cat", s.sharedCategoryName)
+	sharedCategory := s.insertCategory("tenant-c", "maf-shared-cat", s.sharedCategoryName)
 
 	s.sharedFlowID = s.insertFlow(&approval.Flow{
-		TenantID:               approval.SharedTenantID,
+		TenantID:               "tenant-c",
+		IsShared:               true,
 		CategoryID:             sharedCategory,
 		Code:                   "maf-shared",
 		Name:                   "Shared Flow",
@@ -183,7 +185,8 @@ func (s *FindAvailableFlowsTestSuite) SetupSuite() {
 	}, true)
 
 	s.shadowedFlowID = s.insertFlow(&approval.Flow{
-		TenantID:               approval.SharedTenantID,
+		TenantID:               "tenant-c",
+		IsShared:               true,
 		CategoryID:             sharedCategory,
 		Code:                   "maf-shadowed",
 		Name:                   "Shadowed Shared Flow",
@@ -198,7 +201,8 @@ func (s *FindAvailableFlowsTestSuite) SetupSuite() {
 		IsAllInitiationAllowed: true,
 	}, true)
 
-	// Another tenant's open flow, never offered to the default tenant.
+	// Another tenant's open flow it does not share, never offered to the
+	// default tenant.
 	otherCategory := s.insertCategory("tenant-b", "maf-other-cat", "Other Category")
 	s.otherTenantFlowID = s.insertFlow(&approval.Flow{
 		TenantID:               "tenant-b",
@@ -425,7 +429,7 @@ func (s *FindAvailableFlowsTestSuite) TestTenancy() {
 		}
 
 		s.Require().NotNil(shared, "A shared flow should be offered to the tenant")
-		s.Assert().Equal(s.sharedCategoryName, *shared, "A shared flow should carry its shared category")
+		s.Assert().Equal(s.sharedCategoryName, *shared, "A shared flow should carry the category its owner placed it in")
 	})
 
 	s.Run("OffersSharedFlowsToEveryTenant", func() {
@@ -445,7 +449,16 @@ func (s *FindAvailableFlowsTestSuite) TestTenancy() {
 
 	s.Run("HidesOtherTenantsFlows", func() {
 		ids := s.listFor(query.FindAvailableFlowsQuery{UserID: "user-z", Caller: defaultTenantCaller})
-		s.Assert().NotContains(ids, s.otherTenantFlowID, "Another tenant's flow must never be offered")
+		s.Assert().NotContains(ids, s.otherTenantFlowID, "Another tenant's unshared flow must never be offered")
+	})
+
+	s.Run("OffersTheOwnerItsSharedFlows", func() {
+		ids := s.listFor(query.FindAvailableFlowsQuery{
+			UserID: "user-c",
+			Caller: approval.CallerContext{TenantID: "tenant-c"},
+		})
+		s.Assert().ElementsMatch([]string{s.sharedFlowID, s.shadowedFlowID}, ids,
+			"The owning tenant is offered its shared flows as its own")
 	})
 
 	s.Run("OffersTheTenantTheCallerActsIn", func() {

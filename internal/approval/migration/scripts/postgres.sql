@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     created_by VARCHAR(32) NOT NULL DEFAULT 'system',
     updated_by VARCHAR(32) NOT NULL DEFAULT 'system',
     tenant_id VARCHAR(32) NOT NULL,
+    is_shared BOOLEAN NOT NULL DEFAULT false,
     category_id VARCHAR(32) NOT NULL,
     code VARCHAR(64) NOT NULL,
     name VARCHAR(128) NOT NULL,
@@ -76,6 +77,7 @@ COMMENT ON COLUMN apv_flow.updated_at IS 'Updated';
 COMMENT ON COLUMN apv_flow.created_by IS 'Creator';
 COMMENT ON COLUMN apv_flow.updated_by IS 'Updater';
 COMMENT ON COLUMN apv_flow.tenant_id IS 'Tenant';
+COMMENT ON COLUMN apv_flow.is_shared IS 'Shared';
 COMMENT ON COLUMN apv_flow.category_id IS 'Category';
 COMMENT ON COLUMN apv_flow.code IS 'Code';
 COMMENT ON COLUMN apv_flow.name IS 'Name';

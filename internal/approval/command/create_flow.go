@@ -19,10 +19,12 @@ import (
 type CreateFlowCmd struct {
 	cqrs.BaseCommand
 
-	// TenantID is the tenant the flow belongs to, as the request names it —
-	// approval.SharedTenantID for a flow offered to every tenant. Managing flow
-	// definitions is gated by permission, not by the caller's own tenant.
-	TenantID               string
+	// TenantID is the tenant the flow belongs to, as the request names it.
+	// Managing flow definitions is gated by permission, not by the caller's own
+	// tenant.
+	TenantID string
+	// IsShared offers the flow to every tenant (approval.Flow.IsShared).
+	IsShared               bool
 	Code                   string
 	Name                   string
 	CategoryID             string
@@ -103,12 +105,19 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 		return nil, approval.ErrFlowCodeExists
 	}
 
+	if cmd.IsShared {
+		if err := requireFreeSharedCode(ctx, db, cmd.Code); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := requireTenantCategory(ctx, db, cmd.CategoryID, tenantID); err != nil {
 		return nil, err
 	}
 
 	flow := approval.Flow{
 		TenantID:               tenantID,
+		IsShared:               cmd.IsShared,
 		CategoryID:             cmd.CategoryID,
 		Code:                   cmd.Code,
 		Name:                   cmd.Name,
@@ -153,12 +162,33 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 	return &flow, nil
 }
 
+// requireFreeSharedCode rejects a shared flow whose code another shared flow
+// already holds, in whichever tenant: every tenant is offered every shared
+// flow, so a code must name at most one of them.
+func requireFreeSharedCode(ctx context.Context, db orm.DB, code string) error {
+	exists, err := db.NewSelect().
+		Model((*approval.Flow)(nil)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("code", code).
+				IsTrue("is_shared")
+		}).
+		Exists(ctx)
+	if err != nil {
+		return fmt.Errorf("query shared flow by code: %w", err)
+	}
+
+	if exists {
+		return approval.ErrSharedFlowCodeExists
+	}
+
+	return nil
+}
+
 // requireTenantCategory rejects placing a flow of tenantID under a category
 // that is missing or owned by another tenant, with ErrCategoryNotFound either
 // way so the answer reveals nothing about other tenants. A flow and its
-// category always share a tenant: a shared flow sits under a shared category,
-// whose name every tenant may see, and no tenant's category name reaches
-// another tenant through a flow.
+// category always share a tenant, so a shared flow sits under a category of
+// the tenant that owns it.
 func requireTenantCategory(ctx context.Context, db orm.DB, categoryID, tenantID string) error {
 	var category approval.FlowCategory
 

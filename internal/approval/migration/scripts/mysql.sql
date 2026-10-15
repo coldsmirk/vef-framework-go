@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     created_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT 'Creator',
     updated_by VARCHAR(32) NOT NULL DEFAULT 'system' COMMENT 'Updater',
     tenant_id VARCHAR(32) NOT NULL COMMENT 'Tenant',
+    is_shared BOOLEAN NOT NULL DEFAULT false COMMENT 'Shared',
     category_id VARCHAR(32) NOT NULL COMMENT 'Category',
     code VARCHAR(64) NOT NULL COMMENT 'Code',
     name VARCHAR(128) NOT NULL COMMENT 'Name',

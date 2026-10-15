@@ -53,9 +53,11 @@ func NewFlowResource(bus cqrs.Bus) api.Resource {
 type CreateFlowParams struct {
 	api.P
 
-	// TenantID is the tenant the flow belongs to — approval.SharedTenantID for
-	// a flow offered to every tenant.
-	TenantID               string                          `json:"tenantId" validate:"required"`
+	// TenantID is the tenant the flow belongs to.
+	TenantID string `json:"tenantId" validate:"required"`
+	// IsShared offers the flow to every tenant beside its own flows; it is
+	// fixed at creation.
+	IsShared               bool                            `json:"isShared"`
 	Code                   string                          `json:"code" validate:"required"`
 	Name                   string                          `json:"name" validate:"required"`
 	CategoryID             string                          `json:"categoryId" validate:"required"`
@@ -91,6 +93,7 @@ func (r *FlowResource) Create(ctx fiber.Ctx, params CreateFlowParams) error {
 		r.bus,
 		command.CreateFlowCmd{
 			TenantID:               params.TenantID,
+			IsShared:               params.IsShared,
 			Code:                   params.Code,
 			Name:                   params.Name,
 			CategoryID:             params.CategoryID,
@@ -208,14 +211,18 @@ type FindFlowsParams struct {
 
 	// TenantID narrows the list to one tenant's flows; omitted, every
 	// tenant's are listed.
-	TenantID    *string               `json:"tenantId"`
-	CategoryID  *string               `json:"categoryId"`
-	Keyword     *string               `json:"keyword"`
-	IsActive    *bool                 `json:"isActive"`
-	Labels      map[string]string     `json:"labels"`
-	BindingMode *approval.BindingMode `json:"bindingMode"`
-	Page        int                   `json:"page"`
-	PageSize    int                   `json:"pageSize"`
+	TenantID *string `json:"tenantId"`
+	// IncludeShared adds the shared flows of other tenants that TenantID has
+	// not replaced with a flow of its own: what a picker of the flows a tenant
+	// can start needs.
+	IncludeShared bool                  `json:"includeShared"`
+	CategoryID    *string               `json:"categoryId"`
+	Keyword       *string               `json:"keyword"`
+	IsActive      *bool                 `json:"isActive"`
+	Labels        map[string]string     `json:"labels"`
+	BindingMode   *approval.BindingMode `json:"bindingMode"`
+	Page          int                   `json:"page"`
+	PageSize      int                   `json:"pageSize"`
 }
 
 // FindFlows queries flows for admin management.
@@ -224,14 +231,15 @@ func (r *FlowResource) FindFlows(ctx fiber.Ctx, params FindFlowsParams) error {
 		ctx.Context(),
 		r.bus,
 		query.FindFlowsQuery{
-			TenantID:    params.TenantID,
-			CategoryID:  params.CategoryID,
-			Keyword:     params.Keyword,
-			IsActive:    params.IsActive,
-			Labels:      params.Labels,
-			BindingMode: params.BindingMode,
-			Page:        params.Page,
-			Size:        params.PageSize,
+			TenantID:      params.TenantID,
+			IncludeShared: params.IncludeShared,
+			CategoryID:    params.CategoryID,
+			Keyword:       params.Keyword,
+			IsActive:      params.IsActive,
+			Labels:        params.Labels,
+			BindingMode:   params.BindingMode,
+			Page:          params.Page,
+			Size:          params.PageSize,
 		},
 	)
 	if err != nil {
