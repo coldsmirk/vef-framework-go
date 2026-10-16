@@ -34,9 +34,9 @@ const (
 	ErrCodeInvalidFlowLabel            = 40021
 	ErrCodeInitiatorsNotAllowed        = 40022
 	ErrCodeInitiatorsRequired          = 40023
-	ErrCodeSharedFlowNamesPeople       = 40024
-	ErrCodeCategoryNotFound            = 40025
-	ErrCodeSharedFlowCodeExists        = 40026
+	// 40024 is retired (former shared-flow people rule); do not reassign it.
+	ErrCodeCategoryNotFound     = 40025
+	ErrCodeSharedFlowCodeExists = 40026
 
 	ErrCodeInstanceNotFound          = 40101
 	ErrCodeInstanceCompleted         = 40102
@@ -143,14 +143,6 @@ var (
 	// initiator list unambiguous: it means exactly "open to everyone", so one
 	// query answers who may start a flow.
 	ErrInitiatorsRequired = result.Err(i18n.T("approval_initiators_required"), result.WithCode(ErrCodeInitiatorsRequired))
-	// ErrSharedFlowNamesPeople rejects deploying a shared flow (Flow.IsShared)
-	// whose nodes route tasks or CC to specific people. A shared flow runs in
-	// every tenant, while specific users — and the users behind specific roles
-	// and departments — belong to one: routing to them would hand one tenant's
-	// applications to another tenant's people. Rules resolved from the
-	// applicant (superior, department leader, the applicant), from the form, or
-	// from a host catalog stay available.
-	ErrSharedFlowNamesPeople = result.Err(i18n.T("approval_shared_flow_names_people"), result.WithCode(ErrCodeSharedFlowNamesPeople))
 	// ErrCategoryNotFound rejects placing a flow or a category under a category
 	// that does not exist or belongs to another tenant. A flow and its category,
 	// and a category and its parent, always share a tenant — a shared flow sits

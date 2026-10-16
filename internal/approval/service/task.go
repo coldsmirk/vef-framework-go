@@ -32,6 +32,10 @@ type TaskContext struct {
 
 // TaskContextLoadOptions controls validations when loading task operation context.
 type TaskContextLoadOptions struct {
+	// OperatorID is the person doing the work. Naming it also lets them past
+	// the tenant guard when the instance's work was routed to them from
+	// another tenant; an administrative operation leaves it empty and stays
+	// within its caller's tenant.
 	OperatorID              string
 	RequireOperatorAssignee bool
 	RequireTaskPending      bool
@@ -759,6 +763,71 @@ func isDecisionParticipant(ctx context.Context, db orm.DB, instanceID, userID st
 	return hasTask, nil
 }
 
+// AllowsInstanceAccess reports whether caller may act on an instance of
+// instanceTenantID as userID, the person doing the work. A caller of the
+// instance's tenant may; so may a person the work was routed to — the assignee
+// of one of its tasks or a CC recipient — whatever tenant they act in, since a
+// flow spanning tenants hands tasks to people of other tenants than the one
+// the instance runs in. The check is the tenant guard only: what the person may
+// then do (approve, add an assignee, mark a copy read) is still decided by the
+// operation, and administrative operations never pass a userID. An empty userID
+// never matches anyone, so a caller of another tenant is denied.
+func AllowsInstanceAccess(
+	ctx context.Context,
+	db orm.DB,
+	caller approval.CallerContext,
+	instanceID, instanceTenantID, userID string,
+) (bool, error) {
+	if caller.Allows(instanceTenantID) {
+		return true, nil
+	}
+
+	if userID == "" {
+		return false, nil
+	}
+
+	routed, err := isRoutedTo(ctx, db, instanceID, userID)
+	if err != nil {
+		return false, err
+	}
+
+	return caller.AllowsParticipant(instanceTenantID, routed), nil
+}
+
+// isRoutedTo reports whether the instance's work was routed to userID: they are
+// the assignee of one of its tasks or the recipient of one of its CC records.
+// Narrower than IsInstanceParticipant by the applicant and the delegator, who
+// act in the instance's tenant or through the delegate's task.
+func isRoutedTo(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
+	hasTask, err := db.NewSelect().
+		Model((*approval.Task)(nil)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("instance_id", instanceID).
+				Equals("assignee_id", userID)
+		}).
+		Exists(ctx)
+	if err != nil {
+		return false, fmt.Errorf("check task routing: %w", err)
+	}
+
+	if hasTask {
+		return true, nil
+	}
+
+	hasCC, err := db.NewSelect().
+		Model((*approval.CCRecord)(nil)).
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("instance_id", instanceID).
+				Equals("cc_user_id", userID)
+		}).
+		Exists(ctx)
+	if err != nil {
+		return false, fmt.Errorf("check cc routing: %w", err)
+	}
+
+	return hasCC, nil
+}
+
 // IsUrgeAuthorized reports whether userID may dispatch an urge for tasks
 // belonging to instanceID. Narrower than IsInstanceParticipant by exactly one
 // leg: CC recipients are excluded, because they are not on the hook for the
@@ -1008,8 +1077,15 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 
 	// Tenant guard: cross-tenant callers see a uniform "task not found" so
 	// they can't probe entity existence across tenants. System / super-admin
-	// callers fall through (see approval.CallerContext.Allows).
-	if !options.Caller.Allows(instance.TenantID) {
+	// callers fall through (see approval.CallerContext.Allows), and so does a
+	// person the instance's work was routed to when the operation names its
+	// operator (see AllowsInstanceAccess).
+	allowed, err := AllowsInstanceAccess(ctx, db, options.Caller, instance.ID, instance.TenantID, options.OperatorID)
+	if err != nil {
+		return nil, err
+	}
+
+	if !allowed {
 		return nil, approval.ErrTaskNotFound
 	}
 

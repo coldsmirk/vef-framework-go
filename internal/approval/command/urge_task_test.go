@@ -116,6 +116,22 @@ func (s *UrgeTaskTestSuite) TestUrgeSuccess() {
 	s.Assert().Len(s.bus.CapturedByType("approval.task.urged"), 1, "Should publish one urge event")
 }
 
+func (s *UrgeTaskTestSuite) TestUrgeByRoutedUserOfAnotherTenant() {
+	task := s.insertTask("assignee-5")
+	s.insertTask("assignee-6")
+
+	otherTenant := approval.CallerContext{TenantID: "other-tenant"}
+
+	_, err := s.handler.Handle(s.ctx, command.UrgeTaskCmd{TaskID: task.ID, UrgerID: "stranger", Caller: otherTenant})
+	s.Require().ErrorIs(err, approval.ErrTaskNotFound, "A stranger of another tenant must not reach the task")
+
+	_, err = s.handler.Handle(s.ctx, command.UrgeTaskCmd{TaskID: task.ID, UrgerID: "assignee-6", Caller: approval.CallerContext{}})
+	s.Require().ErrorIs(err, approval.ErrTaskNotFound, "A zero caller stays denied even for a participant")
+
+	_, err = s.handler.Handle(s.ctx, command.UrgeTaskCmd{TaskID: task.ID, UrgerID: "assignee-6", Caller: otherTenant})
+	s.Require().NoError(err, "A person holding another task of the instance may urge from the tenant they act in")
+}
+
 func (s *UrgeTaskTestSuite) TestUrgeCooldown() {
 	task := s.insertTask("assignee-2")
 

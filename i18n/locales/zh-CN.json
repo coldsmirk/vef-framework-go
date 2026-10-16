@@ -163,7 +163,6 @@
   "approval_initiator_kind_department": "指定部门",
   "approval_initiators_not_allowed": "流程允许所有人发起时不能配置发起人",
   "approval_initiators_required": "流程限定发起人时必须配置发起人，且每条规则至少选择一项",
-  "approval_shared_flow_names_people": "全局流程不能把审批或抄送派给指定的用户、角色或部门，也不能把任务转交节点管理员或指定人员",
   "approval_category_not_found": "流程分类不存在",
   "approval_shared_flow_code_exists": "已存在相同编码的全局流程",
   "approval_invalid_storage_mode": "存储模式不合法，必须为 json 或 table",

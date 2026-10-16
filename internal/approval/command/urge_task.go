@@ -59,7 +59,14 @@ func (h *UrgeTaskHandler) Handle(ctx context.Context, cmd UrgeTaskCmd) (cqrs.Uni
 	// Tenant guard before any state detail leaks: a cross-tenant caller
 	// gets the same TaskNotFound response as if the task didn't exist at
 	// all — even learning "exists but not pending" would confirm the ID.
-	if !cmd.Caller.Allows(task.TenantID) {
+	// A person of another tenant than the instance's may hold one of its tasks,
+	// so the guard lets a person the work was routed to through.
+	allowed, err := service.AllowsInstanceAccess(ctx, db, cmd.Caller, task.InstanceID, task.TenantID, cmd.UrgerID)
+	if err != nil {
+		return cqrs.Unit{}, err
+	}
+
+	if !allowed {
 		return cqrs.Unit{}, approval.ErrTaskNotFound
 	}
 

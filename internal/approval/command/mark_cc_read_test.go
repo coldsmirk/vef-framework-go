@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 func init() {
@@ -147,6 +148,46 @@ func (s *MarkCCReadTestSuite) TestMarkReadNoRecords() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should not error when no CC records exist")
+}
+
+func (s *MarkCCReadTestSuite) TestMarkReadByRecipientOfAnotherTenant() {
+	instID := s.createInstance("MCC-X01", nil)
+
+	records := []approval.CCRecord{
+		{InstanceID: instID, CCUserID: "cc-user-1", IsManual: false},
+		{InstanceID: instID, CCUserID: "cc-user-2", IsManual: false},
+	}
+	for i := range records {
+		_, err := s.db.NewInsert().Model(&records[i]).Exec(s.ctx)
+		s.Require().NoError(err, "Should insert CC record")
+	}
+
+	readAt := func(userID string) *timex.DateTime {
+		var record approval.CCRecord
+
+		s.Require().NoError(s.db.NewSelect().Model(&record).
+			Where(func(cb orm.ConditionBuilder) {
+				cb.Equals("instance_id", instID).Equals("cc_user_id", userID)
+			}).
+			Scan(s.ctx), "Should load the CC record")
+
+		return record.ReadAt
+	}
+
+	otherTenant := approval.CallerContext{TenantID: "other-tenant"}
+
+	_, err := s.handler.Handle(s.ctx, command.MarkCCReadCmd{InstanceID: instID, UserID: "stranger", Caller: otherTenant})
+	s.Require().NoError(err, "A person nothing was routed to marks nothing, opaquely")
+	s.Assert().Nil(readAt("cc-user-1"), "A stranger of another tenant must not read the instance's copies")
+
+	_, err = s.handler.Handle(s.ctx, command.MarkCCReadCmd{InstanceID: instID, UserID: "cc-user-1", Caller: approval.CallerContext{}})
+	s.Require().NoError(err, "A zero caller marks nothing, opaquely")
+	s.Assert().Nil(readAt("cc-user-1"), "A zero caller stays denied even for the recipient")
+
+	_, err = s.handler.Handle(s.ctx, command.MarkCCReadCmd{InstanceID: instID, UserID: "cc-user-1", Caller: otherTenant})
+	s.Require().NoError(err, "The recipient marks their copy read from the tenant they act in")
+	s.Assert().NotNil(readAt("cc-user-1"), "The recipient's copy should be read")
+	s.Assert().Nil(readAt("cc-user-2"), "Another recipient's copy should stay unread")
 }
 
 func (s *MarkCCReadTestSuite) TestMarkReadIdempotent() {

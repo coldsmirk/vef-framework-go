@@ -82,7 +82,7 @@ func loadDeployFlow(ctx context.Context, db orm.DB, flowID string) (approval.Flo
 
 	if err := db.NewSelect().
 		Model(&flow).
-		Select("is_shared", "code", "name", "binding_mode", "business_binding").
+		Select("code", "name", "binding_mode", "business_binding").
 		WherePK().
 		ForUpdate().
 		Scan(ctx); err != nil {
@@ -194,15 +194,6 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 	flow, businessBinding, err := loadDeployFlow(ctx, db, cmd.FlowID)
 	if err != nil {
 		return nil, err
-	}
-
-	// A shared flow runs in every tenant, so on top of a valid definition it
-	// must not route tasks or CC to one tenant's people. Every version is
-	// deployed through here, which makes this the single gate.
-	if flow.IsShared {
-		if err := h.flowDefSvc.ValidateSharedFlowNodes(parsedNodeData); err != nil {
-			return nil, fmt.Errorf("%w: %w", approval.ErrSharedFlowNamesPeople, err)
-		}
 	}
 
 	versionNumber, err := nextVersionNumber(ctx, db, flow.ID)

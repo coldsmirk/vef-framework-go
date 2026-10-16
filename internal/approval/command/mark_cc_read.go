@@ -52,7 +52,14 @@ func (h *MarkCCReadHandler) Handle(ctx context.Context, cmd MarkCCReadCmd) (cqrs
 		return cqrs.Unit{}, fmt.Errorf("load instance tenant: %w", err)
 	}
 
-	if !cmd.Caller.Allows(instance.TenantID) {
+	// The recipient of a copy may sit in another tenant than the instance's, so
+	// the guard lets a person the work was routed to through.
+	allowed, err := service.AllowsInstanceAccess(ctx, db, cmd.Caller, cmd.InstanceID, instance.TenantID, cmd.UserID)
+	if err != nil {
+		return cqrs.Unit{}, err
+	}
+
+	if !allowed {
 		return cqrs.Unit{}, nil
 	}
 

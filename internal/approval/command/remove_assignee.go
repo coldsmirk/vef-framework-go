@@ -42,6 +42,7 @@ func (h *RemoveAssigneeHandler) Handle(ctx context.Context, cmd RemoveAssigneeCm
 	db := contextx.DB(ctx, h.db)
 
 	tc, err := h.taskSvc.LoadTaskContextForNodeOperation(ctx, db, cmd.TaskID, service.TaskContextLoadOptions{
+		OperatorID:         cmd.Operator.ID,
 		RequireCurrentNode: true,
 		Caller:             cmd.Caller,
 	})

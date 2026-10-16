@@ -42,11 +42,25 @@ func NewInstanceService(hooks *engine.LifecycleHookRunner) *InstanceService {
 // paths always populate it; making the parameter mandatory means "any
 // tenant-scoped load goes through this guard" is a compile-time invariant,
 // not a code-review hope.
-func (*InstanceService) LoadForUpdate(
+func (s *InstanceService) LoadForUpdate(
 	ctx context.Context,
 	db orm.DB,
 	instanceID string,
 	caller approval.CallerContext,
+) (*approval.Instance, error) {
+	return s.LoadForUpdateAs(ctx, db, instanceID, caller, "")
+}
+
+// LoadForUpdateAs is LoadForUpdate for a person doing the work, who passes the
+// tenant guard also when the instance's work was routed to them from another
+// tenant (see AllowsInstanceAccess). Operations that are the applicant's or an
+// administrator's use LoadForUpdate and stay within the caller's tenant.
+func (*InstanceService) LoadForUpdateAs(
+	ctx context.Context,
+	db orm.DB,
+	instanceID string,
+	caller approval.CallerContext,
+	userID string,
 ) (*approval.Instance, error) {
 	instance := &approval.Instance{}
 	instance.ID = instanceID
@@ -63,7 +77,12 @@ func (*InstanceService) LoadForUpdate(
 		return nil, fmt.Errorf("load instance: %w", err)
 	}
 
-	if !caller.Allows(instance.TenantID) {
+	allowed, err := AllowsInstanceAccess(ctx, db, caller, instance.ID, instance.TenantID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if !allowed {
 		return nil, approval.ErrInstanceNotFound
 	}
 

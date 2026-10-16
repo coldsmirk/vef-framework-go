@@ -37,7 +37,7 @@ func NewAddCCHandler(db orm.DB, taskSvc *service.TaskService, instanceSvc *servi
 func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID, cmd.Caller)
+	instance, err := h.instanceSvc.LoadForUpdateAs(ctx, db, cmd.InstanceID, cmd.Caller, cmd.Operator.ID)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}

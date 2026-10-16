@@ -104,6 +104,20 @@ func TestCallerContextAllows(t *testing.T) {
 	assert.False(t, approval.CallerContext{}.Allows("t1"), "Zero caller should deny")
 }
 
+func TestCallerContextAllowsParticipant(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, approval.CallerContext{TenantID: "t1"}.AllowsParticipant("t2", true),
+		"A participant passes whatever tenant they act in")
+	assert.False(t, approval.CallerContext{TenantID: "t1"}.AllowsParticipant("t2", false),
+		"Anyone else is held to the entity's tenant")
+	assert.True(t, approval.CallerContext{TenantID: "t1"}.AllowsParticipant("t1", false),
+		"The entity's own tenant needs no participation")
+	assert.False(t, approval.CallerContext{}.AllowsParticipant("t1", true),
+		"A zero caller stays denied even as a participant")
+	assert.True(t, approval.SystemCaller.AllowsParticipant("t1", false), "System caller should allow any tenant")
+}
+
 func TestCallerContextTenantScopeFilter(t *testing.T) {
 	t.Parallel()
 

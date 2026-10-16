@@ -93,6 +93,23 @@ func (c CallerContext) Allows(entityTenantID string) bool {
 	return c.Authorize(entityTenantID) == nil
 }
 
+// AllowsParticipant is Allows for a person acting on an entity as one of the
+// people it was routed to — the assignee of a task, a CC recipient — which a
+// flow spanning tenants hands to people of another tenant than the one the
+// instance runs in. Such a person passes whatever tenant they act in; that
+// they are one is for the caller to establish (participant), since only it
+// can read the entity. An ordinary caller still has to carry a tenant, so a
+// zero context stays denied here as everywhere else.
+func (c CallerContext) AllowsParticipant(entityTenantID string, participant bool) bool {
+	if c.Allows(entityTenantID) {
+		return true
+	}
+
+	_, member := c.memberTenant()
+
+	return participant && member
+}
+
 // TenantScopeFilter resolves the tenant filter for a LIST / metrics query,
 // applying the same fail-closed posture as Authorize. A non-nil result scopes
 // the query to that tenant; a nil result means unfiltered cross-tenant access
