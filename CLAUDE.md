@@ -10,7 +10,7 @@ This file is the shared, self-contained source of truth for repository-wide agen
 go test ./...                  # Run all tests (required before submitting)
 go test -race ./...            # Race detection
 golangci-lint run              # Lint (auto-fix: golangci-lint run --fix)
-go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./...  # Modernize checks
+go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 -test ./...  # Modernize checks
 go run ./cmd/vef-lint ./...    # Repo-specific analyzers (auto-fix: -fix)
 ```
 
@@ -27,7 +27,7 @@ go run ./cmd/vef-lint ./...    # Repo-specific analyzers (auto-fix: -fix)
 3. **Code review**: after implementation, review code to ensure it hasn't drifted from the task goal.
 4. **Tests**: all general tasks must include corresponding test code. `TESTING.md` has fuller examples, but the critical rules are summarized in this file.
 5. **Simplification**: after each task, do a simplification pass yourself. Prefer smaller, clearer code over extra abstractions.
-6. **Verification**: run the narrowest relevant checks during development, and finish with `go test ./...`, `golangci-lint run`, `go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./...`, and `go run ./cmd/vef-lint ./...` when the task scope allows it. All required checks green = feature complete.
+6. **Verification**: run the narrowest relevant checks during development, and finish with `go test ./...`, `golangci-lint run`, `go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 -test ./...`, and `go run ./cmd/vef-lint ./...` when the task scope allows it. All required checks green = feature complete.
 
 ## Definition of Done
 

@@ -77,7 +77,7 @@ tasks:
   modernize:
     desc: Run the gopls modernize analyzer
     cmds:
-      - go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test ./...
+      - go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 -test ./...
 
   vef-lint:
     desc: Run the repository's own analyzers
