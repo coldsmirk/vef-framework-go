@@ -377,6 +377,65 @@ func (s *DeployFlowTestSuite) TestDeployWithAssigneesAndCCs() {
 	s.Assert().Equal(approval.CCTimingAlways, ccs[0].Timing, "Should set CC timing")
 }
 
+// TestDeployKeepsDesignerOnlyRuleFields pins that the node definition is stored
+// as the designer wrote it: a tenant the designer picked an assignee or CC rule's
+// ids from (a flow spanning tenants picks the tenant first) is no concern of the
+// engine, yet must come back when the version is opened for editing.
+func (s *DeployFlowTestSuite) TestDeployKeepsDesignerOnlyRuleFields() {
+	def := approvalFlowDef()
+
+	for i := range def.Nodes {
+		if def.Nodes[i].Kind != approval.NodeApproval {
+			continue
+		}
+
+		var data map[string]any
+
+		s.Require().NoError(json.Unmarshal(def.Nodes[i].Data, &data), "Should decode the approval node data")
+
+		for _, list := range []string{"assignees", "ccs"} {
+			rules, ok := data[list].([]any)
+			s.Require().True(ok, "The approval node should carry %s", list)
+
+			for _, rule := range rules {
+				rule.(map[string]any)["tenantId"] = "org-1"
+			}
+		}
+
+		def.Nodes[i].Data = mustMarshal(data)
+	}
+
+	version, err := s.handler.Handle(s.ctx, command.DeployFlowCmd{FlowID: s.flowID, FlowDefinition: def})
+	s.Require().NoError(err, "Should deploy rules carrying a designer-only tenant")
+
+	var stored approval.FlowVersion
+
+	stored.ID = version.ID
+	s.Require().NoError(s.db.NewSelect().Model(&stored).WherePK().Scan(s.ctx), "Should reload the version")
+	s.Require().NotNil(stored.FlowSchema, "The version should keep the designer's definition")
+
+	for _, node := range stored.FlowSchema.Nodes {
+		if node.Kind != approval.NodeApproval {
+			continue
+		}
+
+		var data struct {
+			Assignees []struct {
+				TenantID string `json:"tenantId"`
+			} `json:"assignees"`
+			CCs []struct {
+				TenantID string `json:"tenantId"`
+			} `json:"ccs"`
+		}
+
+		s.Require().NoError(json.Unmarshal(node.Data, &data), "Should decode the stored node data")
+		s.Require().NotEmpty(data.Assignees, "The stored node should keep its assignee rules")
+		s.Require().NotEmpty(data.CCs, "The stored node should keep its CC rules")
+		s.Assert().Equal("org-1", data.Assignees[0].TenantID, "The assignee rule should keep the tenant it was picked from")
+		s.Assert().Equal("org-1", data.CCs[0].TenantID, "The CC rule should keep the tenant it was picked from")
+	}
+}
+
 // TestDeployStoresLongKindNames pins that a kind identifier round-trips
 // through the schema. The kind vocabularies are open registries — a host
 // registers "the applicant's head nurse" and the flow that names it must
