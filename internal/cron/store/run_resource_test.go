@@ -78,13 +78,13 @@ func TestRunSearch(t *testing.T) {
 			require.NoError(t, err, "The fallback run fixture should insert")
 		}
 
-		from := second.UnixMilli()
+		fromUnixMs := second.UnixMilli()
 
 		var runs []cron.Run
 		require.NoError(t, db.NewSelect().
 			Model(&runs).
 			Where(func(cb orm.ConditionBuilder) {
-				search.NewFor[RunSearch]().Apply(cb, RunSearch{ScheduledAtFromUnixMs: &from})
+				search.NewFor[RunSearch]().Apply(cb, RunSearch{ScheduledAtFromUnixMs: &fromUnixMs})
 			}).
 			Scan(context.Background()),
 			"The exact range query should succeed")

@@ -184,8 +184,8 @@ func TestPreviewTriggerFires(t *testing.T) {
 		require.Len(t, preview.NextFiresUnixMs, nextFiresPreview, "The preview should project the full window")
 
 		for i, fire := range preview.NextFiresUnixMs {
-			expected := time.Date(2026, 7, 20+i, 3, 0, 0, 0, time.UTC).UnixMilli()
-			assert.Equal(t, expected, fire, "Fire %d should land at 03:00 on consecutive days", i)
+			expectedUnixMs := time.Date(2026, 7, 20+i, 3, 0, 0, 0, time.UTC).UnixMilli()
+			assert.Equal(t, expectedUnixMs, fire, "Fire %d should land at 03:00 on consecutive days", i)
 		}
 	})
 
@@ -222,12 +222,12 @@ func TestPreviewTriggerFires(t *testing.T) {
 	})
 
 	t.Run("WindowBoundsThePreview", func(t *testing.T) {
-		starts := now.Add(24 * time.Hour).UnixMilli()
-		ends := now.Add(50 * time.Hour).UnixMilli()
+		startsAtUnixMs := now.Add(24 * time.Hour).UnixMilli()
+		endsAtUnixMs := now.Add(50 * time.Hour).UnixMilli()
 		preview, err := previewTriggerFires(PreviewFiresParams{
 			Trigger:        trigger(cron.Expr("0 3 * * *", "")),
-			StartsAtUnixMs: &starts,
-			EndsAtUnixMs:   &ends,
+			StartsAtUnixMs: &startsAtUnixMs,
+			EndsAtUnixMs:   &endsAtUnixMs,
 		}, now)
 		require.NoError(t, err, "A bounded window should preview")
 		assert.Equal(t,
@@ -243,12 +243,12 @@ func TestPreviewTriggerFires(t *testing.T) {
 		}, now)
 		require.ErrorIs(t, err, cron.ErrTriggerInvalid(""), "An unparsable expression should be rejected")
 
-		starts := now.Add(2 * time.Hour).UnixMilli()
-		ends := now.Add(time.Hour).UnixMilli()
+		startsAtUnixMs := now.Add(2 * time.Hour).UnixMilli()
+		endsAtUnixMs := now.Add(time.Hour).UnixMilli()
 		_, err = previewTriggerFires(PreviewFiresParams{
 			Trigger:        trigger(cron.Every(time.Hour)),
-			StartsAtUnixMs: &starts,
-			EndsAtUnixMs:   &ends,
+			StartsAtUnixMs: &startsAtUnixMs,
+			EndsAtUnixMs:   &endsAtUnixMs,
 		}, now)
 		require.ErrorIs(t, err, cron.ErrScheduleInvalid(""), "An inverted exact window should be rejected")
 	})

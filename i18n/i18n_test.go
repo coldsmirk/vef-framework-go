@@ -2,7 +2,6 @@ package i18n
 
 import (
 	"embed"
-	"os"
 	"testing"
 	"testing/quick"
 
@@ -98,15 +97,7 @@ func TestSetLanguage(t *testing.T) {
 	})
 
 	t.Run("SetToEmptyStringUsesDefault", func(t *testing.T) {
-		originalEnv := os.Getenv("VEF_I18N_LANGUAGE")
-
-		os.Unsetenv("VEF_I18N_LANGUAGE")
-
-		defer func() {
-			if originalEnv != "" {
-				os.Setenv("VEF_I18N_LANGUAGE", originalEnv)
-			}
-		}()
+		t.Setenv("VEF_I18N_LANGUAGE", "")
 
 		err := SetLanguage("")
 		require.NoError(t, err, "TestSetLanguage should complete without error")
@@ -143,14 +134,7 @@ func TestCurrentLanguage(t *testing.T) {
 		{"EmptyUsesDefault", "", DefaultLanguage},
 	}
 
-	originalEnv := os.Getenv("VEF_I18N_LANGUAGE")
-
-	os.Unsetenv("VEF_I18N_LANGUAGE")
-	t.Cleanup(func() {
-		if originalEnv != "" {
-			os.Setenv("VEF_I18N_LANGUAGE", originalEnv)
-		}
-	})
+	t.Setenv("VEF_I18N_LANGUAGE", "")
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

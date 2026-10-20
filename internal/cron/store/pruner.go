@@ -23,12 +23,12 @@ const (
 // replicas need no coordination; running rows are never touched regardless
 // of age.
 func (e *Engine) pruneJournal(ctx context.Context) {
-	cutoff := e.now().Add(-e.config.RunRetention).UnixMilli()
+	cutoffUnixMs := e.now().Add(-e.config.RunRetention).UnixMilli()
 
 	pruned := int64(0)
 
 	for range pruneBatchesPerSweep {
-		affected, err := e.pruneBatch(ctx, cutoff)
+		affected, err := e.pruneBatch(ctx, cutoffUnixMs)
 		if err != nil {
 			if ctx.Err() == nil {
 				logger.Errorf("Prune run journal: %v", err)
@@ -49,13 +49,13 @@ func (e *Engine) pruneJournal(ctx context.Context) {
 	}
 }
 
-func (e *Engine) pruneBatch(ctx context.Context, cutoff int64) (int64, error) {
+func (e *Engine) pruneBatch(ctx context.Context, cutoffUnixMs int64) (int64, error) {
 	var ids []string
 	if err := e.db.NewSelect().
 		Model((*cron.Run)(nil)).
 		Select("id").
 		Where(func(cb orm.ConditionBuilder) {
-			cb.NotEquals("status", cron.RunRunning).LessThan("finished_at_unix_ms", cutoff)
+			cb.NotEquals("status", cron.RunRunning).LessThan("finished_at_unix_ms", cutoffUnixMs)
 		}).
 		Limit(pruneBatchSize).
 		Scan(ctx, &ids); err != nil {

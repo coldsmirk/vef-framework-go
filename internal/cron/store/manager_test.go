@@ -264,8 +264,8 @@ func (s *ManagerTestSuite) TestUpdate() {
 		created, err := s.manager.Create(s.ctx(), s.validSpec("overdue-edit"))
 		s.Require().NoError(err, "The fixture create should succeed")
 
-		overdue := s.now.Add(-time.Hour).UnixMilli()
-		created.NextFireAtUnixMs = &overdue
+		overdueUnixMs := s.now.Add(-time.Hour).UnixMilli()
+		created.NextFireAtUnixMs = &overdueUnixMs
 		_, err = s.db.NewUpdate().Model(created).
 			Select("next_fire_at_unix_ms").
 			WherePK().
@@ -277,7 +277,7 @@ func (s *ManagerTestSuite) TestUpdate() {
 		updated, err := s.manager.Update(s.ctx(), created.Name, spec)
 		s.Require().NoError(err, "A params-only edit should succeed")
 		s.Require().NotNil(updated.NextFireAtUnixMs, "The pending occurrence must remain armed")
-		s.Equal(overdue, *updated.NextFireAtUnixMs, "A non-timing edit must not move an overdue cursor")
+		s.Equal(overdueUnixMs, *updated.NextFireAtUnixMs, "A non-timing edit must not move an overdue cursor")
 	})
 
 	s.Run("RejectsATimingEditThatWouldKillTheSchedule", func() {

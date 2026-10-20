@@ -727,19 +727,19 @@ func TestSignatureNonceOutlivesReplayWindowEndToEnd(t *testing.T) {
 
 	// Worst case for replay: the timestamp sits a full tolerance in the future,
 	// so it stays valid across [ts-tolerance, ts+tolerance].
-	ts := current.Add(tolerance).Unix()
+	timestampUnixSeconds := current.Add(tolerance).Unix()
 	nonce := "replay-nonce"
-	signature := sig.computeHMAC(sig.buildPayload(SignatureRequest{AppID: "app", Method: testSigMethod, Path: testSigPath}, ts, nonce))
+	signature := sig.computeHMAC(sig.buildPayload(SignatureRequest{AppID: "app", Method: testSigMethod, Path: testSigPath}, timestampUnixSeconds, nonce))
 
-	err = sig.Verify(ctx, SignatureRequest{AppID: "app", Method: testSigMethod, Path: testSigPath}, SignatureCredentials{Timestamp: ts, Nonce: nonce, Signature: signature})
+	err = sig.Verify(ctx, SignatureRequest{AppID: "app", Method: testSigMethod, Path: testSigPath}, SignatureCredentials{Timestamp: timestampUnixSeconds, Nonce: nonce, Signature: signature})
 	require.NoError(t, err, "First request must verify and register the nonce")
 
 	// Jump to the last instant the timestamp is still fresh (ts + tolerance, less
 	// one second so validateTimestamp still accepts it).
-	current = time.Unix(ts, 0).Add(tolerance - time.Second)
-	require.NoError(t, sig.validateTimestamp(ts), "Timestamp must still be valid at the edge of its window")
+	current = time.Unix(timestampUnixSeconds, 0).Add(tolerance - time.Second)
+	require.NoError(t, sig.validateTimestamp(timestampUnixSeconds), "Timestamp must still be valid at the edge of its window")
 
-	err = sig.Verify(ctx, SignatureRequest{AppID: "app", Method: testSigMethod, Path: testSigPath}, SignatureCredentials{Timestamp: ts, Nonce: nonce, Signature: signature})
+	err = sig.Verify(ctx, SignatureRequest{AppID: "app", Method: testSigMethod, Path: testSigPath}, SignatureCredentials{Timestamp: timestampUnixSeconds, Nonce: nonce, Signature: signature})
 	require.ErrorIs(t, err, ErrNonceAlreadyUsed,
 		"Replay at the edge of the timestamp window must be rejected — the nonce must outlive the request's validity")
 }

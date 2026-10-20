@@ -30,7 +30,7 @@ type takeoverResult struct {
 // lane finalizes runs whose schedule has already been deleted.
 func (e *Engine) sweepAbandoned(ctx context.Context) {
 	now := e.now()
-	staleBefore := now.Add(-e.config.EffectiveAbandonedAfter()).UnixMilli()
+	staleBeforeUnixMs := now.Add(-e.config.EffectiveAbandonedAfter()).UnixMilli()
 
 	var (
 		orphans        []cron.Run
@@ -38,7 +38,7 @@ func (e *Engine) sweepAbandoned(ctx context.Context) {
 	)
 
 	err := e.db.RunInTx(ctx, func(ctx context.Context, tx orm.DB) error {
-		schedules, err := lockSchedulesWithStaleRuns(ctx, tx, staleBefore)
+		schedules, err := lockSchedulesWithStaleRuns(ctx, tx, staleBeforeUnixMs)
 		if err != nil {
 			return err
 		}
@@ -62,7 +62,7 @@ func (e *Engine) sweepAbandoned(ctx context.Context) {
 			return nil
 		}
 
-		scheduleless, err := lockSchedulelessStaleRuns(ctx, tx, staleBefore, remaining)
+		scheduleless, err := lockSchedulelessStaleRuns(ctx, tx, staleBeforeUnixMs, remaining)
 		if err != nil {
 			return err
 		}
@@ -98,7 +98,7 @@ func (e *Engine) sweepAbandoned(ctx context.Context) {
 	}
 }
 
-func lockSchedulesWithStaleRuns(ctx context.Context, tx orm.DB, staleBefore int64) ([]cron.Schedule, error) {
+func lockSchedulesWithStaleRuns(ctx context.Context, tx orm.DB, staleBeforeUnixMs int64) ([]cron.Schedule, error) {
 	var schedules []cron.Schedule
 	if err := tx.NewSelect().
 		Model(&schedules).
@@ -106,7 +106,7 @@ func lockSchedulesWithStaleRuns(ctx context.Context, tx orm.DB, staleBefore int6
 			cb.InSubQuery("id", func(sq orm.SelectQuery) {
 				sq.Model((*cron.Run)(nil)).
 					Select("schedule_id").
-					Where(func(cb orm.ConditionBuilder) { staleRunningCondition(cb, staleBefore) }).
+					Where(func(cb orm.ConditionBuilder) { staleRunningCondition(cb, staleBeforeUnixMs) }).
 					GroupBy("schedule_id")
 			})
 		}).
@@ -123,14 +123,14 @@ func lockSchedulesWithStaleRuns(ctx context.Context, tx orm.DB, staleBefore int6
 func lockSchedulelessStaleRuns(
 	ctx context.Context,
 	tx orm.DB,
-	staleBefore int64,
+	staleBeforeUnixMs int64,
 	limit int,
 ) ([]cron.Run, error) {
 	var runs []cron.Run
 	if err := tx.NewSelect().
 		Model(&runs).
 		Where(func(cb orm.ConditionBuilder) {
-			staleRunningCondition(cb, staleBefore)
+			staleRunningCondition(cb, staleBeforeUnixMs)
 			cb.NotInSubQuery("schedule_id", func(sq orm.SelectQuery) {
 				sq.Model((*cron.Schedule)(nil)).Select("id")
 			})
@@ -145,10 +145,10 @@ func lockSchedulelessStaleRuns(
 	return runs, nil
 }
 
-func staleRunningCondition(cb orm.ConditionBuilder, staleBefore int64) {
+func staleRunningCondition(cb orm.ConditionBuilder, staleBeforeUnixMs int64) {
 	cb.Equals("status", cron.RunRunning).
 		Group(func(cb orm.ConditionBuilder) {
-			cb.IsNull("heartbeat_at_unix_ms").OrLessThan("heartbeat_at_unix_ms", staleBefore)
+			cb.IsNull("heartbeat_at_unix_ms").OrLessThan("heartbeat_at_unix_ms", staleBeforeUnixMs)
 		})
 }
 
@@ -189,10 +189,10 @@ func takeOverRunning(
 		return takeoverResult{}, fmt.Errorf("lock running schedules: %w", err)
 	}
 
-	staleBefore := now.Add(-abandonedAfter).UnixMilli()
+	staleBeforeUnixMs := now.Add(-abandonedAfter).UnixMilli()
 	for i := range running {
 		run := &running[i]
-		if run.HeartbeatAtUnixMs != nil && *run.HeartbeatAtUnixMs >= staleBefore {
+		if run.HeartbeatAtUnixMs != nil && *run.HeartbeatAtUnixMs >= staleBeforeUnixMs {
 			result.active.Add(run.ScheduleID)
 
 			continue
