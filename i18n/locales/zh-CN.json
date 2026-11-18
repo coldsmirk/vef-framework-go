@@ -1,6 +1,6 @@
 {
   "calendar_invalid_dates": "日期范围应包含 1 到 366 天。",
-  "calendar_invalid_window_rule": "时间窗口规则无效：{{.reason}}",
+  "calendar_invalid_window_rule": "时间窗口规则无效{{if .reason}}：{{.reason}}{{end}}",
   "ok": "成功",
   "error": "失败",
   "record_not_found": "记录不存在",

@@ -24,10 +24,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/result"
 )
 
-// Option configures the framework policy a service enforces. Policy resolved
-// from configuration is applied at module wiring; every option has a default,
-// so a service constructed without any (test fixtures, direct use) behaves as
-// it would under an empty configuration.
+// Option configures the policy and dependencies a service uses. Direct callers
+// receive the default form policy and can supply a calendar for windowed flows.
 type Option func(*options)
 
 type options struct {

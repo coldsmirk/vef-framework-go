@@ -79,8 +79,6 @@ const (
 	ErrCodeCrossTenantAccess   = 40703
 )
 
-const ErrMessageInitiationWindowClosed = "approval_initiation_window_closed"
-
 // Outward-facing error sentinels. Messages are resolved through i18n at
 // package init time using the language selected by VEF_I18N_LANGUAGE.
 //
@@ -151,7 +149,7 @@ var (
 	// and a category and its parent, always share a tenant — a shared flow sits
 	// under a category of the tenant that owns it.
 	ErrCategoryNotFound       = result.Err(i18n.T("approval_category_not_found"), result.WithCode(ErrCodeCategoryNotFound))
-	ErrInitiationWindowClosed = result.Err(i18n.T(ErrMessageInitiationWindowClosed), result.WithCode(ErrCodeInitiationWindowClosed))
+	ErrInitiationWindowClosed = result.Err(i18n.T("approval_initiation_window_closed"), result.WithCode(ErrCodeInitiationWindowClosed))
 	// ErrSharedFlowCodeExists rejects creating a shared flow whose code another
 	// shared flow already holds, in whichever tenant. Every tenant is offered
 	// every shared flow, so two with one code would leave a code naming two

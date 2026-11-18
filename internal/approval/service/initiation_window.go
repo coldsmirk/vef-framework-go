@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/calendar"
 	"github.com/coldsmirk/vef-framework-go/i18n"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
 
@@ -20,6 +23,10 @@ func WithCalendar(cal calendar.Calendar) Option {
 func (s *ValidationService) EvaluateInitiationWindow(ctx context.Context, rule *calendar.WindowRule, now time.Time) (*calendar.WindowStatus, error) {
 	if rule == nil {
 		return nil, nil
+	}
+
+	if s.calendar == nil {
+		return nil, fmt.Errorf("evaluate initiation window without a calendar: %w", errors.ErrUnsupported)
 	}
 
 	status, err := s.calendar.Evaluate(ctx, *rule, now)
@@ -41,8 +48,28 @@ func (s *ValidationService) CheckInitiationWindow(ctx context.Context, rule *cal
 		return nil, approval.ErrInitiationWindowClosed
 	}
 
+	loc := time.Local
+	if rule.Timezone != "" {
+		loc, err = time.LoadLocation(rule.Timezone)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	next := status.Next.StartsAt.In(loc)
+
+	layout := "2006-01-02 15:04"
+	if next.Second() != 0 {
+		layout = time.DateTime
+	}
+
+	opening := next.Format(layout)
+	if rule.Timezone != "" {
+		opening += " " + rule.Timezone
+	}
+
 	return nil, result.Err(
-		i18n.T(approval.ErrMessageInitiationWindowClosed, map[string]any{"next": status.Next.StartsAt.Format(time.RFC3339)}),
+		i18n.T(shared.ErrMessageInitiationWindowClosed, map[string]any{"next": opening}),
 		result.WithCode(approval.ErrCodeInitiationWindowClosed),
 	)
 }

@@ -2,6 +2,7 @@ package calendar
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +28,9 @@ func TestWindowRuleValidate(t *testing.T) {
 		{"ImpossibleDate", Window{Months: []int{2}, MonthDays: []int{30}}, false},
 		{"EmptyDateIntersection", Window{Dates: &DateRange{monday, monday}, Weekdays: []int{7}}, false},
 		{"ReversedDates", Window{Dates: &DateRange{monday, monday.AddDays(-1)}}, false},
+		{"NoDateBounds", Window{Dates: &DateRange{}}, false},
+		{"NoStartDate", Window{Dates: &DateRange{EndsAt: monday}}, false},
+		{"NoEndDate", Window{Dates: &DateRange{StartsAt: monday}}, false},
 		{"SameDay", Window{Dates: &DateRange{monday, monday}, Weekdays: []int{1}}, true},
 		{"MonthOutOfRange", Window{Months: []int{13}}, false},
 		{"NegativeMonthDayOutOfRange", Window{MonthDays: []int{-32}}, false},
@@ -49,9 +53,25 @@ func TestWindowRuleValidate(t *testing.T) {
 	}
 
 	t.Run("RuleStructure", func(t *testing.T) {
+		message := ErrInvalidWindowRule.Message
+		assert.Equal(t, strings.TrimRight(message, ":： "), message, "the generic message should omit the separator when no reason is given")
+
+		err := (WindowRule{}).Validate()
+		require.ErrorContains(t, err, "windows must contain at least one window", "the concrete validation error should include its reason")
+
 		for _, r := range []WindowRule{{}, {Timezone: "bad/zone", Windows: []Window{{}}}, {Windows: []Window{{}}, Blackouts: []Window{{Months: []int{0}}}}} {
 			require.ErrorIs(t, r.Validate(), ErrInvalidWindowRule, "invalid rule or blackout should be rejected")
 		}
+	})
+
+	t.Run("Timezone", func(t *testing.T) {
+		for _, zone := range []string{"", "UTC", "Asia/Shanghai"} {
+			rule := WindowRule{Timezone: zone, Windows: []Window{{}}}
+			require.NoError(t, rule.Validate(), "empty and IANA timezones should be valid: %q", zone)
+		}
+
+		local := WindowRule{Timezone: "Local", Windows: []Window{{}}}
+		require.ErrorIs(t, local.Validate(), ErrInvalidWindowRule, "Go's Local alias is not an IANA timezone")
 	})
 }
 

@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	// Standalone calendar users can run without a system zoneinfo database.
+	_ "time/tzdata"
+
 	"github.com/coldsmirk/vef-framework-go/internal/calendar/civil"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -102,7 +105,7 @@ func (r WindowRule) Validate() error {
 		return invalidRule("windows must contain at least one window")
 	}
 
-	if _, err := time.LoadLocation(r.Timezone); err != nil {
+	if _, err := time.LoadLocation(r.Timezone); err != nil || r.Timezone == "Local" {
 		return invalidRule("unknown timezone " + r.Timezone)
 	}
 
@@ -149,6 +152,10 @@ func (w Window) invalidReason() string {
 
 	first := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 	if w.Dates != nil {
+		if w.Dates.StartsAt.IsZero() || w.Dates.EndsAt.IsZero() {
+			return "date range requires both endpoints"
+		}
+
 		if w.Dates.StartsAt.After(w.Dates.EndsAt) {
 			return "date range ends before it starts"
 		}

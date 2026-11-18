@@ -4,6 +4,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/calendar"
+	"github.com/coldsmirk/vef-framework-go/i18n"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
@@ -47,16 +49,23 @@ func (s *InstanceResourceTestSuite) TestInitiationWindow() {
 	s.Equal(calendar.ErrCodeInvalidWindowRule, invalid.Code, "create must validate a supplied rule")
 	s.Equal(calendar.ErrCodeInvalidWindowRule, update(empty).Code, "update must validate a supplied rule")
 
-	tomorrow := timex.NowDate().AddDays(2)
-	closed := calendar.WindowRule{Windows: []calendar.Window{{Dates: &calendar.DateRange{StartsAt: tomorrow, EndsAt: tomorrow}}}}
+	today := timex.NowDate()
+	soon, distant := today.AddDays(2), today.AddDays(400)
+	closed := calendar.WindowRule{Windows: []calendar.Window{{Dates: &calendar.DateRange{StartsAt: soon, EndsAt: soon}}}}
+	beyondHorizon := calendar.WindowRule{Windows: []calendar.Window{{Dates: &calendar.DateRange{StartsAt: distant, EndsAt: distant}}}}
 	opened := calendar.WindowRule{Windows: []calendar.Window{{}}}
 
-	var withdrawn string
 	for _, tc := range []struct {
 		name string
 		rule *calendar.WindowRule
 		open bool
-	}{{"Unrestricted", nil, true}, {"Open", &opened, true}, {"Closed", &closed, false}} {
+		next string
+	}{
+		{"Unrestricted", nil, true, ""},
+		{"Open", &opened, true, ""},
+		{"Closed", &closed, false, soon.String() + " 00:00"},
+		{"BeyondHorizon", &beyondHorizon, false, ""},
+	} {
 		s.Run(tc.name, func() {
 			saved := update(tc.rule)
 			s.Require().True(saved.IsOk(), "rule should save: %s", saved.Message)
@@ -79,7 +88,12 @@ func (s *InstanceResourceTestSuite) TestInitiationWindow() {
 			if tc.rule == nil {
 				s.NotContains(item, "initiationWindow", "unrestricted list item omits status")
 			} else {
-				s.Equal(tc.open, s.ReadDataAsMap(item["initiationWindow"])["open"], "list should expose actual availability")
+				status := s.ReadDataAsMap(item["initiationWindow"])
+				s.Equal(tc.open, status["open"], "list should expose actual availability")
+
+				if !tc.open && tc.next == "" {
+					s.NotContains(status, "next", "openings beyond the horizon should be omitted")
+				}
 			}
 
 			form := call("approval/my", "get_start_form", api.Params{"flowCode": flow.FlowCode})
@@ -88,8 +102,11 @@ func (s *InstanceResourceTestSuite) TestInitiationWindow() {
 			if !tc.open {
 				s.Equal(approval.ErrCodeInitiationWindowClosed, form.Code, "closed form must be denied")
 				s.Equal(approval.ErrCodeInitiationWindowClosed, start.Code, "closed start must be denied")
-				s.Contains(start.Message, tomorrow.String(), "message should say when initiation reopens")
-				s.Require().True(s.rpcCall("resubmit", api.Params{"instanceId": withdrawn}).IsOk(), "withdrawn instance may resubmit after the window closes")
+
+				message, err := i18n.Te(shared.ErrMessageInitiationWindowClosed, map[string]any{"next": tc.next})
+				s.Require().NoError(err, "the closed-window message should exist for the active language")
+				s.Equal(message, form.Message, "the form should explain when initiation can reopen")
+				s.Equal(message, start.Message, "starting should return the same localized opening information")
 
 				return
 			}
@@ -103,9 +120,15 @@ func (s *InstanceResourceTestSuite) TestInitiationWindow() {
 				status := s.ReadDataAsMap(s.ReadDataAsMap(form.Data)["initiationWindow"])
 				s.Equal(true, status["open"], "open form should expose status")
 				s.Contains(status, "current", "current interval should expose its closing instant")
-				withdrawn = s.ReadDataAsMap(start.Data)["id"].(string)
-				s.Require().True(s.rpcCall("withdraw", api.Params{"instanceId": withdrawn, "reason": "Revise"}).IsOk(), "open instance should withdraw")
 			}
 		})
 	}
+
+	s.Run("ResubmitWhileClosed", func() {
+		s.Require().True(update(opened).IsOk(), "the flow should be open for the initial submission")
+		instance := s.startInstance(flow.FlowCode, nil)
+		s.Require().True(s.rpcCall("withdraw", api.Params{"instanceId": instance["id"], "reason": "Revise"}).IsOk(), "the applicant should be able to withdraw the instance")
+		s.Require().True(update(closed).IsOk(), "the updated window should close the flow")
+		s.Require().True(s.rpcCall("resubmit", api.Params{"instanceId": instance["id"]}).IsOk(), "the applicant should still be able to resubmit")
+	})
 }

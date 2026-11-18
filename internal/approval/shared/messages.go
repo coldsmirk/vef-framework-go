@@ -7,6 +7,9 @@ package shared
 // result.Err definition in the public approval/api_errors.go, which is also
 // where the ErrCode* constants live so hosts can match Service errors.
 const (
+	// Initiation window errors. {{.next}} is the next opening in the rule's timezone.
+	ErrMessageInitiationWindowClosed = "approval_initiation_window_closed"
+
 	// Urge errors. Template parameters:
 	//   {{.minutes}} — cooldown window in minutes
 	ErrMessageUrgeTooFrequent = "approval_urge_too_frequent"
