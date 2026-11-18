@@ -38,10 +38,12 @@ func (h *MarkCCReadHandler) Handle(ctx context.Context, cmd MarkCCReadCmd) (cqrs
 	// load the instance's tenant_id first and verify the caller can act on
 	// it. Cross-tenant probes get a zero-records response — same shape as
 	// "no unread CC records" so the existence of the instance is opaque.
+	// Acquire the same instance lock as handover before selecting receipts.
+	// A predecessor's concurrent read must not confirm their successor's copy.
 	var instance approval.Instance
 
 	instance.ID = cmd.InstanceID
-	if err := db.NewSelect().Model(&instance).Select("tenant_id").WherePK().Scan(ctx); err != nil {
+	if err := db.NewSelect().Model(&instance).Select("tenant_id").WherePK().ForUpdate().Scan(ctx); err != nil {
 		// A missing instance collapses into the opaque zero-records success,
 		// so a probe cannot learn whether the instance exists. Opacity only
 		// requires hiding not-found — infrastructure failures propagate.
@@ -72,7 +74,7 @@ func (h *MarkCCReadHandler) Handle(ctx context.Context, cmd MarkCCReadCmd) (cqrs
 			cb.Equals("instance_id", cmd.InstanceID).
 				Equals("cc_user_id", cmd.UserID).
 				IsNull("read_at")
-		}).
+		}).ForUpdate().
 		Scan(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("query unread cc records: %w", err)
 	}

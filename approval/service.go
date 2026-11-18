@@ -109,6 +109,9 @@ type Service interface {
 	// operator must hold the task and the node must allow rollback.
 	RollbackTask(ctx context.Context, db orm.DB, in RollbackTaskInput) error
 
+	// ApplyHandovers migrates the specified users' in-flight work within the caller's tenant scope.
+	ApplyHandovers(ctx context.Context, db orm.DB, input ApplyHandoversInput) (*HandoverReport, error)
+
 	// ReassignTask moves a pending task to a different assignee; the operator
 	// need not hold the task. Administrative: only the tenant scope is
 	// enforced, so the caller owns the permission check (see the interface

@@ -76,6 +76,7 @@ const (
 	EventTypeTaskRejected        = "approval.task.rejected"
 	EventTypeTaskCanceled        = "approval.task.canceled"
 	EventTypeTaskTransferred     = "approval.task.transferred"
+	EventTypeTaskHandedOver      = "approval.task.handed_over"
 	EventTypeTaskReassigned      = "approval.task.reassigned"
 	EventTypeTaskTimedOut        = "approval.task.timed_out"
 	EventTypeAssigneesAdded      = "approval.task.assignees_added"
@@ -117,6 +118,7 @@ func AllEventTypes() []string {
 		EventTypeTaskCanceled,
 		EventTypeTaskTransferred,
 		EventTypeTaskReassigned,
+		EventTypeTaskHandedOver,
 		EventTypeTaskTimedOut,
 		EventTypeAssigneesAdded,
 		EventTypeAssigneesRemoved,

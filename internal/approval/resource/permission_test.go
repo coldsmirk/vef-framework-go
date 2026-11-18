@@ -77,6 +77,7 @@ func TestManagementResourceRequiredPermissions(t *testing.T) {
 			"get_metrics":               "approval.metrics.query",
 			"find_business_projections": "approval.binding.query",
 			"terminate_instance":        "approval.instance.terminate",
+			"apply_handovers":           "approval.handover.apply",
 			"reassign_task":             "approval.task.reassign",
 			"retry_business_projection": "approval.binding.retry",
 		}

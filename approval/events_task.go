@@ -68,6 +68,7 @@ const (
 	// TaskActivationReassigned is an existing pending task pointed at a
 	// different assignee by an administrator.
 	TaskActivationReassigned TaskActivationReason = "reassigned"
+	TaskActivationHandedOver TaskActivationReason = "handed_over"
 )
 
 func NewTaskActivatedEvent(instance *Instance, task *Task, node *FlowNode, reason TaskActivationReason) *TaskActivatedEvent {
@@ -255,3 +256,18 @@ func NewAssigneesRemovedEvent(instance *Instance, task *Task, node *FlowNode, as
 }
 
 func (*AssigneesRemovedEvent) EventType() string { return EventTypeAssigneesRemoved }
+
+// TaskHandedOverEvent records the predecessor and successor of an in-flight seat.
+type TaskHandedOverEvent struct {
+	TaskEventBase
+
+	Predecessor UserInfo `json:"predecessor"`
+	Successor   UserInfo `json:"successor"`
+	Reason      string   `json:"reason,omitempty"`
+}
+
+func NewTaskHandedOverEvent(instance *Instance, task *Task, node *FlowNode, predecessor, successor UserInfo, reason string) *TaskHandedOverEvent {
+	return &TaskHandedOverEvent{TaskEventBase: NewTaskEventBase(instance, task, node), Predecessor: predecessor, Successor: successor, Reason: reason}
+}
+
+func (*TaskHandedOverEvent) EventType() string { return EventTypeTaskHandedOver }

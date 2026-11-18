@@ -15,7 +15,8 @@ var (
 	Module = fx.Module(
 		"vef:approval:timeout",
 
-		fx.Provide(NewScanner),
+		fx.Provide(NewScanner, NewHandoverScanner),
+		fx.Invoke(registerHandoverJob),
 		fx.Invoke(registerTimeoutJobs),
 	)
 )

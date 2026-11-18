@@ -41,6 +41,7 @@ func TestRegisterHandlers(t *testing.T) {
 		new(UrgeTaskHandler),
 		new(TerminateInstanceHandler),
 		new(ReassignTaskHandler),
+		new(ApplyHandoversHandler),
 		new(RetryBusinessProjectionHandler),
 	)
 
@@ -181,6 +182,11 @@ func TestRegisterHandlers(t *testing.T) {
 			defer recoverDispatch(&err)
 
 			_, err = cqrs.Send[ReassignTaskCmd, cqrs.Unit](context.Background(), bus, ReassignTaskCmd{})
+
+			return err
+		}},
+		{"ApplyHandovers", func() error {
+			_, err := cqrs.Send[ApplyHandoversCmd, *approval.HandoverReport](context.Background(), bus, ApplyHandoversCmd{})
 
 			return err
 		}},

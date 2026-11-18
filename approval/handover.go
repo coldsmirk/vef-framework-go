@@ -23,3 +23,26 @@ type HandoverResolver interface {
 	// Users absent from the result continue to receive work.
 	ResolveHandovers(ctx context.Context, hc *HandoverContext, userIDs []string) (map[string]Handover, error)
 }
+
+// ApplyHandoversInput selects whose work to move and identifies the operator.
+type ApplyHandoversInput struct {
+	UserIDs  []string
+	Operator UserInfo
+	Caller   CallerContext
+}
+
+// HandoverReport lists moved work, work without successors, and instances awaiting the applicant.
+type HandoverReport struct {
+	Transferred       []HandoverItem `json:"transferred"`
+	Unassigned        []HandoverItem `json:"unassigned"`
+	AwaitingApplicant []string       `json:"awaitingApplicant"`
+}
+
+// HandoverItem identifies a task or read-confirmation receipt and its people.
+type HandoverItem struct {
+	InstanceID  string    `json:"instanceId"`
+	TaskID      *string   `json:"taskId,omitempty"`
+	CCRecordID  *string   `json:"ccRecordId,omitempty"`
+	Predecessor UserInfo  `json:"predecessor"`
+	Successor   *UserInfo `json:"successor,omitempty"`
+}

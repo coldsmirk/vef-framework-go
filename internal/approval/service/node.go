@@ -290,3 +290,40 @@ func (s *NodeService) AdvanceCCNodeIfAllRead(ctx context.Context, db orm.DB, ins
 
 	return nil
 }
+
+// RemoveTask retires one seat and reconciles its queue and pass rule in the
+// same visit. When a handover merges seats, it records the new attribution
+// after retiring the row, before queue evaluation or host lifecycle hooks.
+func (s *NodeService) RemoveTask(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, task *approval.Task, replacement *approval.ResolvedAssignee) error {
+	removed := task.Assignee()
+	if err := s.taskSvc.FinishTask(ctx, db, task, approval.TaskRemoved); err != nil {
+		return err
+	}
+
+	if replacement != nil {
+		if err := ReplaceTaskActor(ctx, db, task, *replacement); err != nil {
+			return err
+		}
+	}
+
+	if err := behavior.EmitEvents(ctx, s.bus, db, approval.NewAssigneesRemovedEvent(instance, task, node, []approval.UserInfo{removed})); err != nil {
+		return err
+	}
+
+	events, err := s.taskSvc.ActivateDependentTasks(ctx, db, instance, node, task)
+	if err != nil {
+		return err
+	}
+
+	decisions, activations := SplitQueueAdvanceDecisions(events)
+	if err := behavior.EmitEvents(ctx, s.bus, db, decisions...); err != nil {
+		return err
+	}
+
+	completed, err := s.HandleNodeCompletion(ctx, db, instance, node)
+	if err != nil {
+		return err
+	}
+
+	return behavior.EmitEvents(ctx, s.bus, db, SuppressSupersededActivations(activations, completed)...)
+}

@@ -3,10 +3,12 @@ package resource_test
 import (
 	"context"
 	"net/http"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
+	vef "github.com/coldsmirk/vef-framework-go"
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
@@ -42,10 +44,11 @@ type FlowSetup struct {
 type InstanceResourceTestSuite struct {
 	apptest.Suite
 
-	ctx        context.Context
-	db         orm.DB
-	token      string
-	categoryID string
+	ctx             context.Context
+	db              orm.DB
+	token           string
+	categoryID      string
+	handoverEnabled atomic.Bool
 
 	// Flow setups
 	simple   FlowSetup // Start → End
@@ -63,13 +66,40 @@ type InstanceResourceTestSuite struct {
 	otherUserToken string // other-user (permission denied tests)
 }
 
+func (s *InstanceResourceTestSuite) ResolveHandovers(context.Context, *approval.HandoverContext, []string) (map[string]approval.Handover, error) {
+	if !s.handoverEnabled.Load() {
+		return nil, nil
+	}
+
+	return map[string]approval.Handover{"approver-2": {Successor: &approval.UserInfo{ID: "manager-1", Name: "Manager"}, Reason: "Changed role"}}, nil
+}
+
+func (s *InstanceResourceTestSuite) TestApplyHandoversRPC() {
+	data := s.startInstance(s.formField.FlowCode, map[string]any{"approver": "approver-2"})
+	instanceID := data["id"].(string)
+
+	s.handoverEnabled.Store(true)
+	defer s.handoverEnabled.Store(false)
+
+	res := s.adminRPCCall("apply_handovers", map[string]any{"userIds": []string{"approver-2"}})
+	s.Require().True(res.IsOk(), "Admin RPC should apply handovers")
+	report := s.ReadDataAsMap(res.Data)
+	s.Len(report["transferred"], 1, "Report must identify the migrated work")
+	s.Empty(report["unassigned"], "No work lacked a successor")
+	s.Empty(report["awaitingApplicant"], "Running instance should not be awaiting applicant")
+	tasks := s.findPendingTasks(instanceID)
+	s.Require().Len(tasks, 1, "Should retain the existing task")
+	s.Equal("manager-1", tasks[0]["assigneeId"], "Host resolver must control the final seat")
+	s.Equal("approver-2", tasks[0]["predecessor"].(map[string]any)["id"], "Task list must report predecessor as a nested person")
+}
+
 func TestInstanceResource(t *testing.T) {
 	suite.Run(t, new(InstanceResourceTestSuite))
 }
 
 func (s *InstanceResourceTestSuite) SetupSuite() {
 	s.ctx = context.Background()
-	s.db, s.token = setupResourceApp(&s.Suite)
+	s.db, s.token = setupResourceApp(&s.Suite, vef.ProvideApprovalHandoverResolver(func() approval.HandoverResolver { return s }))
 
 	// Create shared category
 	cat := &approval.FlowCategory{

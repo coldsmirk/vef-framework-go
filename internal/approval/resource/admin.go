@@ -53,6 +53,7 @@ func NewAdminResource(
 				// Admin write actions: framework-level audit captures who/when/IP
 				// in addition to the business-table action_log.
 				api.OperationSpec{Action: "terminate_instance", RequiredPermission: "approval.instance.terminate", EnableAudit: true},
+				api.OperationSpec{Action: "apply_handovers", RequiredPermission: "approval.handover.apply", EnableAudit: true},
 				api.OperationSpec{Action: "reassign_task", RequiredPermission: "approval.task.reassign", EnableAudit: true},
 				api.OperationSpec{Action: "retry_business_projection", RequiredPermission: "approval.binding.retry", EnableAudit: true},
 			),
@@ -354,4 +355,24 @@ func (r *AdminResource) RetryBusinessProjection(
 	}
 
 	return result.Ok().Response(ctx)
+}
+
+type AdminApplyHandoversParams struct {
+	api.P
+
+	UserIDs []string `json:"userIds" validate:"required,min=1,dive,required"`
+}
+
+func (r *AdminResource) ApplyHandovers(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params AdminApplyHandoversParams) error {
+	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
+	if err != nil {
+		return err
+	}
+
+	report, err := r.svc.ApplyHandovers(ctx.Context(), db, approval.ApplyHandoversInput{UserIDs: params.UserIDs, Operator: actor.Operator, Caller: actor.Caller})
+	if err != nil {
+		return err
+	}
+
+	return result.Ok(report).Response(ctx)
 }

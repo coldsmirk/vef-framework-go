@@ -1127,3 +1127,19 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 
 	return &TaskContext{Instance: &instance, Task: &task, Node: &node}, nil
 }
+
+// ReplaceTaskActor writes the new owner and seat attribution together, preserving the task's deadline.
+func ReplaceTaskActor(ctx context.Context, db orm.DB, task *approval.Task, actor approval.ResolvedAssignee) error {
+	engine.AssignTask(task, actor)
+
+	task.ReadAt = nil
+	if _, err := db.NewUpdate().
+		Model(task).
+		Select("assignee_id", "assignee_name", "assignee_department_id", "assignee_department_name", "delegator_id", "delegator_name", "delegator_department_id", "delegator_department_name", "predecessor_id", "predecessor_name", "predecessor_department_id", "predecessor_department_name", "handover_reason", "read_at").
+		WherePK().
+		Exec(ctx); err != nil {
+		return fmt.Errorf("replace task actor: %w", err)
+	}
+
+	return nil
+}

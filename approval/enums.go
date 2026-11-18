@@ -367,8 +367,9 @@ const (
 	ActionRollback       ActionType = "rollback"
 	ActionAddAssignee    ActionType = "add_assignee"
 	ActionRemoveAssignee ActionType = "remove_assignee"
-	ActionExecute        ActionType = "execute"   // System execution action
-	ActionResubmit       ActionType = "resubmit"  // Resubmit a returned instance
+	ActionExecute        ActionType = "execute"  // System execution action
+	ActionResubmit       ActionType = "resubmit" // Resubmit a returned instance
+	ActionHandover       ActionType = "handover"
 	ActionReassign       ActionType = "reassign"  // Admin reassigned task to a different user
 	ActionTerminate      ActionType = "terminate" // Admin force-terminated an instance
 	ActionAddCC          ActionType = "add_cc"    // Participant added CC recipients

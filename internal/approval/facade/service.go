@@ -144,3 +144,7 @@ func (s *Service) UrgeTask(ctx context.Context, db orm.DB, in approval.UrgeTaskI
 func (s *Service) RetryBusinessProjection(ctx context.Context, db orm.DB, in approval.RetryBusinessProjectionInput) error {
 	return s.sendUnit(ctx, db, command.RetryBusinessProjectionCmd{RetryBusinessProjectionInput: in})
 }
+
+func (s *Service) ApplyHandovers(ctx context.Context, db orm.DB, in approval.ApplyHandoversInput) (*approval.HandoverReport, error) {
+	return s.send[command.ApplyHandoversCmd, *approval.HandoverReport](ctx, db, command.ApplyHandoversCmd{ApplyHandoversInput: in})
+}

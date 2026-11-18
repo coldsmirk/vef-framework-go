@@ -134,6 +134,9 @@ type ApprovalConfig struct {
 
 	// BusinessBinding controls approval-to-business-table state projection.
 	BusinessBinding ApprovalBusinessBindingConfig `config:"business_binding"`
+
+	// HandoverScanInterval controls automatic migration of active approval work. Zero disables polling.
+	HandoverScanInterval time.Duration `config:"handover_scan_interval"`
 }
 
 // DefaultFormDataMaxBytes is the fallback cap on the JSON-encoded approval form
@@ -144,6 +147,11 @@ const DefaultFormDataMaxBytes = 64 * 1024
 // selects the default; a negative value is a typo that would otherwise reject
 // every submission.
 var ErrInvalidApprovalFormDataMaxBytes = errors.New("invalid approval form data max bytes")
+
+// EffectiveHandoverScanInterval returns the configured opt-in scan cadence.
+func (c *ApprovalConfig) EffectiveHandoverScanInterval() time.Duration { return c.HandoverScanInterval }
+
+var ErrInvalidHandoverScanInterval = errors.New("handover_scan_interval must be nonnegative")
 
 // EffectiveFormDataMaxBytes returns FormDataMaxBytes or its default.
 func (c *ApprovalConfig) EffectiveFormDataMaxBytes() int {
@@ -184,6 +192,10 @@ func (c *ApprovalConfig) ApplyDefaults() {
 
 // Validate checks approval configuration invariants.
 func (c *ApprovalConfig) Validate() error {
+	if c.HandoverScanInterval < 0 {
+		return ErrInvalidHandoverScanInterval
+	}
+
 	if c.FormDataMaxBytes < 0 {
 		return fmt.Errorf("%w: form_data_max_bytes must be positive when set", ErrInvalidApprovalFormDataMaxBytes)
 	}
