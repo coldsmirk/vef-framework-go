@@ -96,7 +96,7 @@ func (s *NodeServiceTestSuite) SetupTest() {
 	}
 
 	eng := engine.NewFlowEngine(registry, processors, s.bus, nil, nil,
-		engine.NewFlowCache(s.db, cache.NewMemory[*engine.CompiledFlow]()))
+		engine.NewFlowCache(s.db, cache.NewMemory[*engine.CompiledFlow]()), nil)
 	taskSvc := service.NewTaskService()
 	s.svc = service.NewNodeService(eng, s.bus, taskSvc, nil, mustCCComposite())
 }

@@ -331,7 +331,7 @@ func TestBuildPassRuleContext(t *testing.T) {
 
 // TestPublishEventsNilPublisher tests publishEvents with nil publisher.
 func TestPublishEventsNilPublisher(t *testing.T) {
-	eng := NewFlowEngine(nil, nil, nil, nil, nil, nil)
+	eng := NewFlowEngine(nil, nil, nil, nil, nil, nil, nil)
 
 	t.Run("NilPublisherNoEvents", func(t *testing.T) {
 		err := eng.publishEvents(t.Context(), nil)

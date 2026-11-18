@@ -57,8 +57,10 @@ type RoleMembershipChecker interface {
 // info: User is who receives the task; Delegator is set when the task arrived
 // via delegation and names the original assignee.
 type ResolvedAssignee struct {
-	User      UserInfo
-	Delegator *UserInfo
+	User           UserInfo
+	Delegator      *UserInfo
+	Predecessor    *UserInfo
+	HandoverReason string
 }
 
 // PrincipalDepartmentResolver resolves department info from a security principal.

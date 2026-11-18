@@ -412,7 +412,7 @@ func buildTestEngineWithHooks(db orm.DB, hooks *engine.LifecycleHookRunner) *eng
 	}
 
 	return engine.NewFlowEngine(registry, processors, eventtest.NewFakeBus(), nil, hooks,
-		engine.NewFlowCache(db, cache.NewMemory[*engine.CompiledFlow]()))
+		engine.NewFlowCache(db, cache.NewMemory[*engine.CompiledFlow]()), nil)
 }
 
 // buildTestServices creates the standard service instances for command tests.

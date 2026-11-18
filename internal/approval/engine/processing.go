@@ -27,13 +27,18 @@ type ProcessResult struct {
 
 // ProcessContext provides context for node processing.
 type ProcessContext struct {
-	DB           orm.DB
-	Instance     *approval.Instance
-	Node         *approval.FlowNode
-	Visit        *approval.NodeVisit
-	FormData     approval.FormData
-	UserResolver approval.UserInfoResolver
-	Registry     *strategy.StrategyRegistry
+	DB               orm.DB
+	Instance         *approval.Instance
+	Node             *approval.FlowNode
+	Visit            *approval.NodeVisit
+	FormData         approval.FormData
+	UserResolver     approval.UserInfoResolver
+	Registry         *strategy.StrategyRegistry
+	HandoverResolver approval.HandoverResolver
+}
+
+func (pc *ProcessContext) actors() *ActorResolution {
+	return NewActorResolution(pc.Instance, pc.Node, pc.HandoverResolver)
 }
 
 // NodeResolveContext projects the processing context onto what assignee and CC

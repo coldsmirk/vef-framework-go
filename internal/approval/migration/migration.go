@@ -54,6 +54,11 @@ var addedColumns = []sqlmigration.AddedColumn{
 	{Table: "apv_flow_node", Name: "pass_count", Definition: "INTEGER NOT NULL DEFAULT 0", Comment: "Pass Count"},
 	{Table: "apv_flow", Name: "initiation_window", Definition: "TEXT", DialectDefinitions: map[config.DBKind]string{config.Postgres: "JSONB", config.MySQL: "JSON"}, Comment: "Initiation Window"},
 	{Table: "apv_flow", Name: "is_shared", Definition: "BOOLEAN NOT NULL DEFAULT false", Comment: "Shared"},
+	{Table: "apv_task", Name: "predecessor_id", Definition: "VARCHAR(32)", Comment: "Predecessor"},
+	{Table: "apv_task", Name: "predecessor_name", Definition: "VARCHAR(128)", Comment: "Predecessor Name"},
+	{Table: "apv_task", Name: "predecessor_department_id", Definition: "VARCHAR(32)", Comment: "Predecessor Dept"},
+	{Table: "apv_task", Name: "predecessor_department_name", Definition: "VARCHAR(128)", Comment: "Predecessor Dept Name"},
+	{Table: "apv_task", Name: "handover_reason", Definition: "VARCHAR(64)", Comment: "Handover Reason"},
 }
 
 // Migrate runs the approval module's DDL migration for the given

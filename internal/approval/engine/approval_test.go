@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"context"
+	"github.com/coldsmirk/vef-framework-go/timex"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -822,4 +823,57 @@ func (s *ApprovalProcessorTestSuite) TestDBError() {
 
 	_, err := s.processor.Process(canceledCtx, pc)
 	s.Require().Error(err, "Should return error when context is canceled")
+}
+
+func (s *ApprovalProcessorTestSuite) TestHandoverPipeline() {
+	d := &approval.Delegation{FlowID: &s.FlowID, DelegatorID: "successor", DelegateeID: "delegate", IsActive: true, StartsAt: timex.Now().AddHours(-2), EndsAt: timex.Now().AddHours(2)}
+	_, err := s.DB.NewInsert().Model(d).Exec(s.Ctx)
+	s.Require().NoError(err, "Should create successor's delegation")
+	defer func() {
+		_, err := s.DB.NewDelete().Model(d).WherePK().Exec(s.Ctx)
+		s.Require().NoError(err, "Should clean delegation")
+	}()
+	for _, tc := range []struct {
+		name              string
+		seats             []string
+		changes           handoverMap
+		fallback          bool
+		applicant         string
+		want, predecessor string
+	}{
+		{"CollidingSeats", []string{"A", "B", "departed"}, handoverMap{"A": successor("successor"), "B": successor("successor"), "departed": {}}, false, "applicant", "delegate", "A"},
+		{"DepartedDelegate", []string{"A"}, handoverMap{"A": successor("successor"), "delegate": successor("other")}, false, "applicant", "successor", "A"},
+		{"FallbackGetsDelegation", []string{"departed"}, handoverMap{"departed": {}}, true, "applicant", "delegate", ""},
+		{"SameApplicantAfterDelegation", []string{"A"}, handoverMap{"A": successor("successor")}, false, "delegate", "", ""},
+	} {
+		s.Run(tc.name, func() {
+			defer s.CleanTransientData(s.T())
+			instance := s.NewInstance(s.T(), tc.applicant)
+			s.InsertAssigneeConfig(s.T(), tc.seats)
+			pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
+				n.SameApplicantAction = approval.SameApplicantAutoPass
+				if tc.fallback {
+					n.EmptyAssigneeAction = approval.EmptyAssigneeTransferSpecified
+					n.FallbackUserIDs = []string{"successor"}
+				}
+			}))
+			pc.HandoverResolver = tc.changes
+			_, err := s.processor.Process(s.Ctx, pc)
+			s.Require().NoError(err, "Should route the seats through handover and delegation")
+			tasks := s.QueryTasks(s.T(), instance.ID)
+			if tc.want == "" {
+				s.Empty(tasks, "Final applicant should auto-pass")
+				return
+			}
+			s.Require().Len(tasks, 1, "Should create exactly one task")
+			task := tasks[0]
+			s.Equal(tc.want, task.AssigneeID, "Should assign final actor")
+			if tc.want == "delegate" {
+				s.Equal(new("successor"), task.DelegatorID, "Should retain the successor's delegation")
+			}
+			if tc.predecessor != "" {
+				s.Equal(new(tc.predecessor), task.PredecessorID, "Should attribute the first predecessor")
+			}
+		})
+	}
 }

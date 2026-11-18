@@ -67,7 +67,7 @@ func init() {
 // dispatching, so it cannot run without a database.
 func TestNewFlowEngine(t *testing.T) {
 	t.Run("EmptyProcessors", func(t *testing.T) {
-		eng := engine.NewFlowEngine(nil, nil, nil, nil, nil, nil)
+		eng := engine.NewFlowEngine(nil, nil, nil, nil, nil, nil, nil)
 		require.NotNil(t, eng, "Should create engine with nil processors")
 
 		node := &approval.FlowNode{Kind: approval.NodeStart, Name: "Start"}
@@ -84,7 +84,7 @@ func TestNewFlowEngine(t *testing.T) {
 			engine.NewFlowEngine(nil, []engine.NodeProcessor{
 				&StubProcessor{kind: approval.NodeStart, err: errFirst},
 				&StubProcessor{kind: approval.NodeStart, err: errSecond},
-			}, nil, nil, nil, nil)
+			}, nil, nil, nil, nil, nil)
 		}, "Duplicate node-kind registration must panic to surface the configuration bug")
 	})
 }
@@ -95,7 +95,7 @@ func TestEvaluatePassRuleWithTasks(t *testing.T) {
 		[]approval.PassRuleStrategy{strategy.NewAllPassStrategy()},
 		nil, nil, nil, nil,
 	)
-	eng := engine.NewFlowEngine(reg, nil, nil, nil, nil, nil)
+	eng := engine.NewFlowEngine(reg, nil, nil, nil, nil, nil, nil)
 	node := &approval.FlowNode{PassRule: approval.PassAll, PassRatio: decimal.NewFromInt(0)}
 
 	t.Run("AllApproved", func(t *testing.T) {
@@ -192,7 +192,7 @@ func (s *FlowEngineTestSuite) SetupSuite() {
 		engine.NewStartProcessor(),
 		engine.NewEndProcessor(),
 		engine.NewApprovalProcessor(nil),
-	}, nil, nil, nil, engine.NewFlowCache(s.db, cache.NewMemory[*engine.CompiledFlow]()))
+	}, nil, nil, nil, engine.NewFlowCache(s.db, cache.NewMemory[*engine.CompiledFlow]()), nil)
 
 	// Build FK chain: FlowCategory → Flow → FlowVersion
 	category := &approval.FlowCategory{TenantID: "default", Code: "engine-test", Name: "Engine Test"}

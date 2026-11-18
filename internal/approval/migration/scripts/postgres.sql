@@ -496,6 +496,11 @@ CREATE TABLE IF NOT EXISTS apv_task (
     delegator_name VARCHAR(128),
     delegator_department_id VARCHAR(32),
     delegator_department_name VARCHAR(128),
+    predecessor_id VARCHAR(32),
+    predecessor_name VARCHAR(128),
+    predecessor_department_id VARCHAR(32),
+    predecessor_department_name VARCHAR(128),
+    handover_reason VARCHAR(64),
     sort_order INTEGER NOT NULL DEFAULT 0,
     -- Task status
     status VARCHAR(16) NOT NULL DEFAULT 'pending',
@@ -534,6 +539,11 @@ COMMENT ON COLUMN apv_task.delegator_id IS 'Delegator';
 COMMENT ON COLUMN apv_task.delegator_name IS 'Delegator Name';
 COMMENT ON COLUMN apv_task.delegator_department_id IS 'Delegator Dept';
 COMMENT ON COLUMN apv_task.delegator_department_name IS 'Delegator Dept Name';
+COMMENT ON COLUMN apv_task.predecessor_id IS 'Predecessor';
+COMMENT ON COLUMN apv_task.predecessor_name IS 'Predecessor Name';
+COMMENT ON COLUMN apv_task.predecessor_department_id IS 'Predecessor Dept';
+COMMENT ON COLUMN apv_task.predecessor_department_name IS 'Predecessor Dept Name';
+COMMENT ON COLUMN apv_task.handover_reason IS 'Handover Reason';
 COMMENT ON COLUMN apv_task.sort_order IS 'Sort';
 COMMENT ON COLUMN apv_task.status IS 'Status';
 COMMENT ON COLUMN apv_task.read_at IS 'Read';

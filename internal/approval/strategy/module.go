@@ -18,6 +18,8 @@ var Module = fx.Module(
 	"vef:approval:strategy",
 
 	fx.Provide(
+		newHandoverResolver,
+
 		// Pass rule strategies
 		fx.Annotate(NewAllPassStrategy, fx.ResultTags(`group:"vef:approval:pass_rule_strategies"`)),
 		fx.Annotate(NewAnyPassStrategy, fx.ResultTags(`group:"vef:approval:pass_rule_strategies"`)),

@@ -320,27 +320,32 @@ type Task struct {
 	orm.BaseModel `bun:"table:apv_task,alias:at"`
 	orm.FullAuditedModel
 
-	TenantID                string           `json:"tenantId" bun:"tenant_id"`
-	InstanceID              string           `json:"instanceId" bun:"instance_id"`
-	NodeID                  string           `json:"nodeId" bun:"node_id"`
-	VisitID                 string           `json:"visitId" bun:"visit_id"`
-	AssigneeID              string           `json:"assigneeId" bun:"assignee_id"`
-	AssigneeName            string           `json:"assigneeName" bun:"assignee_name"`
-	AssigneeDepartmentID    *string          `json:"assigneeDepartmentId" bun:"assignee_department_id,nullzero"`
-	AssigneeDepartmentName  *string          `json:"assigneeDepartmentName" bun:"assignee_department_name,nullzero"`
-	DelegatorID             *string          `json:"delegatorId" bun:"delegator_id,nullzero"`
-	DelegatorName           *string          `json:"delegatorName" bun:"delegator_name,nullzero"`
-	DelegatorDepartmentID   *string          `json:"delegatorDepartmentId" bun:"delegator_department_id,nullzero"`
-	DelegatorDepartmentName *string          `json:"delegatorDepartmentName" bun:"delegator_department_name,nullzero"`
-	SortOrder               int              `json:"sortOrder" bun:"sort_order"`
-	Status                  TaskStatus       `json:"status" bun:"status"`
-	ReadAt                  *timex.DateTime  `json:"readAt" bun:"read_at,nullzero"`
-	ParentTaskID            *string          `json:"parentTaskId" bun:"parent_task_id,nullzero"`
-	AddAssigneeType         *AddAssigneeType `json:"addAssigneeType" bun:"add_assignee_type,nullzero"`
-	Deadline                *timex.DateTime  `json:"deadline" bun:"deadline,nullzero"`
-	IsTimeout               bool             `json:"isTimeout" bun:"is_timeout"`
-	IsPreWarningSent        bool             `json:"isPreWarningSent" bun:"is_pre_warning_sent"`
-	FinishedAt              *timex.DateTime  `json:"finishedAt" bun:"finished_at,nullzero"`
+	TenantID                  string           `json:"tenantId" bun:"tenant_id"`
+	InstanceID                string           `json:"instanceId" bun:"instance_id"`
+	NodeID                    string           `json:"nodeId" bun:"node_id"`
+	VisitID                   string           `json:"visitId" bun:"visit_id"`
+	AssigneeID                string           `json:"assigneeId" bun:"assignee_id"`
+	AssigneeName              string           `json:"assigneeName" bun:"assignee_name"`
+	AssigneeDepartmentID      *string          `json:"assigneeDepartmentId" bun:"assignee_department_id,nullzero"`
+	AssigneeDepartmentName    *string          `json:"assigneeDepartmentName" bun:"assignee_department_name,nullzero"`
+	DelegatorID               *string          `json:"delegatorId" bun:"delegator_id,nullzero"`
+	DelegatorName             *string          `json:"delegatorName" bun:"delegator_name,nullzero"`
+	DelegatorDepartmentID     *string          `json:"delegatorDepartmentId" bun:"delegator_department_id,nullzero"`
+	DelegatorDepartmentName   *string          `json:"delegatorDepartmentName" bun:"delegator_department_name,nullzero"`
+	SortOrder                 int              `json:"sortOrder" bun:"sort_order"`
+	Status                    TaskStatus       `json:"status" bun:"status"`
+	ReadAt                    *timex.DateTime  `json:"readAt" bun:"read_at,nullzero"`
+	ParentTaskID              *string          `json:"parentTaskId" bun:"parent_task_id,nullzero"`
+	AddAssigneeType           *AddAssigneeType `json:"addAssigneeType" bun:"add_assignee_type,nullzero"`
+	Deadline                  *timex.DateTime  `json:"deadline" bun:"deadline,nullzero"`
+	IsTimeout                 bool             `json:"isTimeout" bun:"is_timeout"`
+	IsPreWarningSent          bool             `json:"isPreWarningSent" bun:"is_pre_warning_sent"`
+	FinishedAt                *timex.DateTime  `json:"finishedAt" bun:"finished_at,nullzero"`
+	PredecessorID             *string          `json:"predecessorId" bun:"predecessor_id,nullzero"`
+	PredecessorName           *string          `json:"predecessorName" bun:"predecessor_name,nullzero"`
+	PredecessorDepartmentID   *string          `json:"predecessorDepartmentId" bun:"predecessor_department_id,nullzero"`
+	PredecessorDepartmentName *string          `json:"predecessorDepartmentName" bun:"predecessor_department_name,nullzero"`
+	HandoverReason            *string          `json:"handoverReason,omitempty" bun:"handover_reason,nullzero"`
 }
 
 // Assignee returns the task assignee as a person snapshot.
@@ -368,6 +373,26 @@ func (t *Task) Delegator() *UserInfo {
 
 	if t.DelegatorName != nil {
 		info.Name = *t.DelegatorName
+	}
+
+	return &info
+}
+
+// Predecessor returns the predecessor as a person snapshot, or nil when the
+// task did not arrive via handover.
+func (t *Task) Predecessor() *UserInfo {
+	if t.PredecessorID == nil {
+		return nil
+	}
+
+	info := UserInfo{
+		ID:             *t.PredecessorID,
+		DepartmentID:   t.PredecessorDepartmentID,
+		DepartmentName: t.PredecessorDepartmentName,
+	}
+
+	if t.PredecessorName != nil {
+		info.Name = *t.PredecessorName
 	}
 
 	return &info

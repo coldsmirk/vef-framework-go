@@ -24,6 +24,7 @@ type FlowEngine struct {
 	userResolver approval.UserInfoResolver
 	hooks        *LifecycleHookRunner
 	flowCache    *FlowCache
+	handovers    approval.HandoverResolver
 }
 
 // NewFlowEngine creates a new flow engine. Duplicate NodeKind registrations
@@ -41,6 +42,7 @@ func NewFlowEngine(
 	userResolver approval.UserInfoResolver,
 	hooks *LifecycleHookRunner,
 	flowCache *FlowCache,
+	handovers approval.HandoverResolver,
 ) *FlowEngine {
 	engine := &FlowEngine{
 		registry:     registry,
@@ -49,6 +51,7 @@ func NewFlowEngine(
 		userResolver: userResolver,
 		hooks:        hooks,
 		flowCache:    flowCache,
+		handovers:    handovers,
 	}
 
 	for _, p := range processors {
@@ -113,13 +116,14 @@ func (e *FlowEngine) ProcessNode(ctx context.Context, db orm.DB, instance *appro
 	}
 
 	pc := &ProcessContext{
-		DB:           db,
-		Instance:     instance,
-		Node:         node,
-		Visit:        visit,
-		FormData:     approval.NewFormData(instance.FormData),
-		UserResolver: e.userResolver,
-		Registry:     e.registry,
+		DB:               db,
+		Instance:         instance,
+		Node:             node,
+		Visit:            visit,
+		FormData:         approval.NewFormData(instance.FormData),
+		UserResolver:     e.userResolver,
+		HandoverResolver: e.handovers,
+		Registry:         e.registry,
 	}
 
 	result, err := processor.Process(ctx, pc)

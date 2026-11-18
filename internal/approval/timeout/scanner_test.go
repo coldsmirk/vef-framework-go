@@ -95,7 +95,7 @@ func (s *ScannerTestSuite) SetupSuite() {
 		engine.NewApprovalProcessor(nil),
 		engine.NewHandleProcessor(nil),
 		engine.NewCCProcessor(mustCCComposite()),
-	}, s.bus, nil, nil, engine.NewFlowCache(s.db, cache.NewMemory[*engine.CompiledFlow]()))
+	}, s.bus, nil, nil, engine.NewFlowCache(s.db, cache.NewMemory[*engine.CompiledFlow]()), nil)
 	taskSvc := service.NewTaskService()
 	nodeSvc := service.NewNodeService(eng, s.bus, taskSvc, nil, mustCCComposite())
 
@@ -105,7 +105,7 @@ func (s *ScannerTestSuite) SetupSuite() {
 	s.taskSvc = taskSvc
 	s.nodeSvc = nodeSvc
 	s.cfg = cfg
-	s.scanner = timeout.NewScanner(s.db, s.bus, taskSvc, nodeSvc, nil, cfg)
+	s.scanner = timeout.NewScanner(s.db, s.bus, taskSvc, nodeSvc, nil, cfg, nil)
 }
 
 func (s *ScannerTestSuite) TearDownTest() {
@@ -918,7 +918,7 @@ func (s *ScannerTestSuite) TestTimeoutProcessingShouldClearTheQuietSQLLogMarkFor
 	s.setNodeAdmins(task.NodeID, "admin-1")
 
 	resolver := new(QuietMarkRecordingUserResolver)
-	scanner := timeout.NewScanner(s.db, s.bus, s.taskSvc, s.nodeSvc, resolver, s.cfg)
+	scanner := timeout.NewScanner(s.db, s.bus, s.taskSvc, s.nodeSvc, resolver, s.cfg, nil)
 
 	// A marked caller must not be able to smuggle the mark into host code
 	// either, so the scan starts from an already-quiet context.

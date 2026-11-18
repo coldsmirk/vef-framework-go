@@ -621,6 +621,11 @@ func ProvideApprovalGlobalsResolver(constructor any, paramTags ...string) fx.Opt
 	)
 }
 
+// ProvideApprovalHandoverResolver replaces the default resolver with the host's approval.HandoverResolver.
+func ProvideApprovalHandoverResolver(constructor any, paramTags ...string) fx.Option {
+	return fx.Decorate(fx.Annotate(constructor, fx.ParamTags(paramTags...)))
+}
+
 // ProvideCalendarDayLoader replaces the built-in data source. The constructor returns calendar.DayLoader.
 func ProvideCalendarDayLoader(constructor any, paramTags ...string) fx.Option {
 	return fx.Decorate(fx.Annotate(constructor, fx.ParamTags(paramTags...)))

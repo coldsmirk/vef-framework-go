@@ -324,6 +324,11 @@ CREATE TABLE IF NOT EXISTS apv_task (
     delegator_name VARCHAR(128),
     delegator_department_id VARCHAR(32),
     delegator_department_name VARCHAR(128),
+    predecessor_id VARCHAR(32),
+    predecessor_name VARCHAR(128),
+    predecessor_department_id VARCHAR(32),
+    predecessor_department_name VARCHAR(128),
+    handover_reason VARCHAR(64),
     sort_order INTEGER NOT NULL DEFAULT 0,
     -- Task status
     status VARCHAR(16) NOT NULL DEFAULT 'pending',

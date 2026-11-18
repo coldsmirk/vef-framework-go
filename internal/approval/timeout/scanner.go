@@ -28,6 +28,7 @@ type Scanner struct {
 	nodeSvc      *service.NodeService
 	userResolver approval.UserInfoResolver
 	cfg          *config.ApprovalConfig
+	handovers    approval.HandoverResolver
 }
 
 // NewScanner creates a new timeout scanner.
@@ -38,6 +39,7 @@ func NewScanner(
 	nodeSvc *service.NodeService,
 	userResolver approval.UserInfoResolver,
 	cfg *config.ApprovalConfig,
+	handovers approval.HandoverResolver,
 ) *Scanner {
 	return &Scanner{
 		db:           db,
@@ -46,6 +48,7 @@ func NewScanner(
 		nodeSvc:      nodeSvc,
 		userResolver: userResolver,
 		cfg:          cfg,
+		handovers:    handovers,
 	}
 }
 
@@ -335,8 +338,17 @@ func (s *Scanner) autoFinishTask(
 // the signal to intervene.
 func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval.Task, instance *approval.Instance, node *approval.FlowNode) ([]approval.DomainEvent, error) {
 	targetAdminIDs := shared.NormalizeUniqueIDs(node.AdminUserIDs)
+	infos := shared.ResolveUserInfoMapSilent(ctx, s.userResolver, targetAdminIDs)
+	actors, err := engine.NewActorResolution(instance, node, s.handovers).Actors(ctx, tx, engine.Seats(targetAdminIDs, infos), s.userResolver)
+	if err != nil {
+		return nil, err
+	}
+	targetAdminIDs = targetAdminIDs[:0]
+	for _, actor := range actors {
+		targetAdminIDs = append(targetAdminIDs, actor.User.ID)
+	}
 	if len(targetAdminIDs) == 0 {
-		logger.Warnf("Node %q configured transfer_admin timeout but has no admin users; marking task %s timeout only", node.Key, task.ID)
+		logger.Warnf("Node %q configured transfer_admin timeout but has no eligible admin users; marking task %s timeout only", node.Key, task.ID)
 
 		return recordTimeoutNotify(task, instance, node)
 	}
@@ -350,7 +362,7 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 		Select("assignee_id").
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("instance_id", task.InstanceID).
-				Equals("node_id", task.NodeID).
+				Equals("visit_id", task.VisitID).
 				In("status", []approval.TaskStatus{approval.TaskPending, approval.TaskWaiting}).
 				In("assignee_id", targetAdminIDs)
 		}).
@@ -360,14 +372,14 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 
 	existingSet := collections.NewHashSetFrom(existingAssigneeIDs...)
 
-	var eligibleAdminIDs []string
-	for _, id := range targetAdminIDs {
-		if !existingSet.Contains(id) {
-			eligibleAdminIDs = append(eligibleAdminIDs, id)
+	var eligible []approval.ResolvedAssignee
+	for _, actor := range actors {
+		if !existingSet.Contains(actor.User.ID) {
+			eligible = append(eligible, actor)
 		}
 	}
 
-	if len(eligibleAdminIDs) == 0 {
+	if len(eligible) == 0 {
 		logger.Warnf("All admin users of node %q already hold active tasks; marking task %s timeout only", node.Key, task.ID)
 
 		return recordTimeoutNotify(task, instance, node)
@@ -380,39 +392,33 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 		return nil, fmt.Errorf("finish transferred task: %w", err)
 	}
 
-	events := make([]approval.DomainEvent, 0, len(eligibleAdminIDs)*2)
+	events := make([]approval.DomainEvent, 0, len(eligible)*2)
 	pendingDeadline := shared.ComputeTaskDeadline(node.TimeoutHours)
-
-	adminInfos := shared.ResolveUserInfoMapSilent(ctx, s.userResolver, eligibleAdminIDs)
 
 	// standInTaskID is the first admin replacement; the timed-out task's active
 	// "after" children are re-parented onto it (below) so they are not orphaned.
 	var standInTaskID string
 
 	// Create new tasks for eligible admin users
-	for _, adminID := range eligibleAdminIDs {
-		admin := adminInfos[adminID]
-		admin.ID = adminID
+	for _, actor := range eligible {
+		admin := actor.User
 
 		// Each replacement inherits the timed-out task's parent link, sort
 		// order, and visit binding, so auto-transferring a "before"
 		// add-assignee child still reactivates its suspended parent once an
 		// admin acts (mirrors the user-initiated transfer path).
 		newTask := &approval.Task{
-			TenantID:               task.TenantID,
-			InstanceID:             task.InstanceID,
-			NodeID:                 task.NodeID,
-			VisitID:                task.VisitID,
-			AssigneeID:             admin.ID,
-			AssigneeName:           admin.Name,
-			AssigneeDepartmentID:   admin.DepartmentID,
-			AssigneeDepartmentName: admin.DepartmentName,
-			SortOrder:              task.SortOrder,
-			Status:                 approval.TaskPending,
-			Deadline:               pendingDeadline,
-			ParentTaskID:           task.ParentTaskID,
-			AddAssigneeType:        task.AddAssigneeType,
+			TenantID:        task.TenantID,
+			InstanceID:      task.InstanceID,
+			NodeID:          task.NodeID,
+			VisitID:         task.VisitID,
+			SortOrder:       task.SortOrder,
+			Status:          approval.TaskPending,
+			Deadline:        pendingDeadline,
+			ParentTaskID:    task.ParentTaskID,
+			AddAssigneeType: task.AddAssigneeType,
 		}
+		engine.AssignTask(newTask, actor)
 		if _, err := tx.NewInsert().
 			Model(newTask).
 			Exec(ctx); err != nil {

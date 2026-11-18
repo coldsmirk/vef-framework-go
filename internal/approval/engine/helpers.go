@@ -114,27 +114,14 @@ func saveFormSnapshot(ctx context.Context, pc *ProcessContext) error {
 	return nil
 }
 
-// resolveNodeAssignees is the single assignee-resolution pipeline for task
-// nodes: load configs, resolve to concrete users, deduplicate, apply
-// delegation, then deduplicate again. The second pass matters because two
-// distinct assignees may delegate to the same person; without it the
-// delegatee would receive duplicate tasks and double-count in pass-rule
-// totals. When delegations collide, the first delegation chain (by assignee
-// order) wins and keeps its delegator attribution.
+// resolveNodeAssignees maps configured seats through the shared actor pipeline.
 func resolveNodeAssignees(ctx context.Context, pc *ProcessContext) ([]approval.ResolvedAssignee, error) {
 	assignees, err := resolveAssignees(ctx, pc)
 	if err != nil {
 		return nil, err
 	}
 
-	assignees = deduplicateAssignees(assignees)
-
-	assignees, err = applyDelegation(ctx, pc.DB, pc.Instance.FlowID, assignees, pc.UserResolver)
-	if err != nil {
-		return nil, err
-	}
-
-	return deduplicateAssignees(assignees), nil
+	return pc.actors().Actors(ctx, pc.DB, assignees, pc.UserResolver)
 }
 
 // resolveAssignees loads the node's assignee configs and resolves them to concrete users.
@@ -246,7 +233,7 @@ func findPreviousApprovalApprovers(ctx context.Context, db orm.DB, instance *app
 // applyDelegation resolves delegation chains for each assignee, replacing
 // delegators with delegatees. A delegated entry keeps the original assignee as
 // Delegator so the task can attribute both parties.
-func applyDelegation(ctx context.Context, db orm.DB, flowID string, assignees []approval.ResolvedAssignee, userResolver approval.UserInfoResolver) ([]approval.ResolvedAssignee, error) {
+func (r *ActorResolution) applyDelegation(ctx context.Context, db orm.DB, flowID string, assignees []approval.ResolvedAssignee, userResolver approval.UserInfoResolver) ([]approval.ResolvedAssignee, error) {
 	categoryID, err := loadFlowCategoryID(ctx, db, flowID)
 	if err != nil {
 		return nil, err
@@ -257,7 +244,7 @@ func applyDelegation(ctx context.Context, db orm.DB, flowID string, assignees []
 	var delegateeIDs []string
 
 	for i, assignee := range assignees {
-		delegateeID, _, err := resolveDelegationChain(ctx, db, assignee.User.ID, flowID, categoryID)
+		delegateeID, _, err := r.resolveDelegationChain(ctx, db, assignee.User.ID, flowID, categoryID)
 		if err != nil {
 			return nil, err
 		}
@@ -282,10 +269,10 @@ func applyDelegation(ctx context.Context, db orm.DB, flowID string, assignees []
 			delegatee := delegateeInfos[delegateeID]
 			delegatee.ID = delegateeID
 			delegator := assignee.User
-			result[i] = approval.ResolvedAssignee{User: delegatee, Delegator: &delegator}
-		} else {
-			result[i] = assignee
+			assignee.User = delegatee
+			assignee.Delegator = &delegator
 		}
+		result[i] = assignee
 	}
 
 	return result, nil
@@ -296,25 +283,16 @@ func applyDelegation(ctx context.Context, db orm.DB, flowID string, assignees []
 // node visit that created it — every task belongs to exactly one visit.
 func buildTask(pc *ProcessContext, assignee approval.ResolvedAssignee, deadline *timex.DateTime) *approval.Task {
 	task := &approval.Task{
-		TenantID:               pc.Instance.TenantID,
-		InstanceID:             pc.Instance.ID,
-		NodeID:                 pc.Node.ID,
-		VisitID:                pc.Visit.ID,
-		AssigneeID:             assignee.User.ID,
-		AssigneeName:           assignee.User.Name,
-		AssigneeDepartmentID:   assignee.User.DepartmentID,
-		AssigneeDepartmentName: assignee.User.DepartmentName,
-		SortOrder:              0,
-		Status:                 approval.TaskPending,
-		Deadline:               deadline,
+		TenantID:   pc.Instance.TenantID,
+		InstanceID: pc.Instance.ID,
+		NodeID:     pc.Node.ID,
+		VisitID:    pc.Visit.ID,
+		SortOrder:  0,
+		Status:     approval.TaskPending,
+		Deadline:   deadline,
 	}
 
-	if assignee.Delegator != nil {
-		task.DelegatorID = new(assignee.Delegator.ID)
-		task.DelegatorName = new(assignee.Delegator.Name)
-		task.DelegatorDepartmentID = assignee.Delegator.DepartmentID
-		task.DelegatorDepartmentName = assignee.Delegator.DepartmentName
-	}
+	AssignTask(task, assignee)
 
 	return task
 }
@@ -397,21 +375,18 @@ func createTasksForUsers(ctx context.Context, pc *ProcessContext, userIDs []stri
 		return nil, fmt.Errorf("resolve user info: %w", err)
 	}
 
-	deadline := computeDeadline(pc.Node)
-
-	tasks := make([]*approval.Task, len(normalizedIDs))
-
-	for i, uid := range normalizedIDs {
-		info := infos[uid]
-		info.ID = uid
-		tasks[i] = buildTask(pc, approval.ResolvedAssignee{User: info}, deadline)
+	actors, err := pc.actors().Actors(ctx, pc.DB, Seats(normalizedIDs, infos), pc.UserResolver)
+	if err != nil {
+		return nil, err
 	}
-
-	if _, err := pc.DB.NewInsert().Model(&tasks).Exec(ctx); err != nil {
-		return nil, fmt.Errorf("create tasks: %w", err)
+	if len(actors) == 0 {
+		return nil, approval.ErrNoAssignee
 	}
-
-	return &ProcessResult{Action: NodeActionWait, Events: taskCreatedEventsFor(pc, tasks)}, nil
+	events, err := createTasksWithDelegation(ctx, pc, actors)
+	if err != nil {
+		return nil, err
+	}
+	return &ProcessResult{Action: NodeActionWait, Events: events}, nil
 }
 
 // handleEmptyAssignee handles the case when no assignees are resolved.
@@ -504,7 +479,7 @@ func loadFlowCategoryID(ctx context.Context, db orm.DB, flowID string) (string, 
 
 // resolveDelegationChain resolves a delegation chain A->B->C with cycle detection.
 // Matching priority: flow-specific > category-specific > global (by created_at DESC).
-func resolveDelegationChain(ctx context.Context, db orm.DB, userID, flowID, flowCategoryID string) (delegateeID, originalUserID string, err error) {
+func (r *ActorResolution) resolveDelegationChain(ctx context.Context, db orm.DB, userID, flowID, flowCategoryID string) (delegateeID, originalUserID string, err error) {
 	const maxDepth = 10
 
 	var (
@@ -541,6 +516,13 @@ func resolveDelegationChain(ctx context.Context, db orm.DB, userID, flowID, flow
 
 		nextID := matched.DelegateeID
 		if visited.Contains(nextID) {
+			break
+		}
+
+		if err := r.load(ctx, []string{nextID}); err != nil {
+			return "", "", err
+		}
+		if r.records[nextID] != nil {
 			break
 		}
 

@@ -334,6 +334,11 @@ CREATE TABLE IF NOT EXISTS apv_task (
     delegator_name VARCHAR(128) COMMENT 'Delegator Name',
     delegator_department_id VARCHAR(32) COMMENT 'Delegator Dept',
     delegator_department_name VARCHAR(128) COMMENT 'Delegator Dept Name',
+    predecessor_id VARCHAR(32) COMMENT 'Predecessor',
+    predecessor_name VARCHAR(128) COMMENT 'Predecessor Name',
+    predecessor_department_id VARCHAR(32) COMMENT 'Predecessor Dept',
+    predecessor_department_name VARCHAR(128) COMMENT 'Predecessor Dept Name',
+    handover_reason VARCHAR(64) COMMENT 'Handover Reason',
     sort_order INTEGER NOT NULL DEFAULT 0 COMMENT 'Sort',
     -- Task status
     status VARCHAR(16) NOT NULL DEFAULT 'pending' COMMENT 'Status',
