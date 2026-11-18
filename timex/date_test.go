@@ -9,6 +9,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestEndOfMonthFromLastDay(t *testing.T) {
+	for _, start := range []time.Time{
+		MakeTime(2025, 1, 31, 15, 0, 0),
+		MakeTime(2024, 2, 29, 15, 0, 0),
+		MakeTime(2025, 12, 31, 15, 0, 0),
+	} {
+		t.Run(start.Format(time.DateOnly), func(t *testing.T) {
+			midnight := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
+			assert.True(t, DateOf(start).EndOfMonth().Unwrap().Equal(midnight), "a month's last date stays in that month")
+			want := midnight.AddDate(0, 0, 1).Add(-time.Nanosecond)
+			assert.True(t, Of(start).EndOfMonth().Unwrap().Equal(want), "the last instant belongs to the original month")
+		})
+	}
+}
+
 func TestDateOf(t *testing.T) {
 	now := MakeTime(2023, 12, 25, 14, 30, 45)
 	date := DateOf(now)

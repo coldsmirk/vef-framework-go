@@ -187,9 +187,7 @@ func beginOfMonth(t time.Time) time.Time {
 
 // firstOfNextMonth returns midnight on the first day of the month after t's.
 func firstOfNextMonth(t time.Time) time.Time {
-	next := t.AddDate(0, 1, 0)
-
-	return time.Date(next.Year(), next.Month(), 1, 0, 0, 0, 0, t.Location())
+	return time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, t.Location())
 }
 
 // quarterStartMonth returns the first calendar month (1, 4, 7, 10) of the
