@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     description VARCHAR(512),
     labels TEXT,
     -- Data binding
-    binding_mode VARCHAR(16) NOT NULL DEFAULT 'standalone',
+    business_kind VARCHAR(64),
     business_binding TEXT,
     -- Permission config
     admin_user_ids TEXT NOT NULL DEFAULT '[]',
@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS apv_flow_version (
     -- Publish info
     published_at TIMESTAMP,
     published_by VARCHAR(32),
+    business_kind VARCHAR(64),
     business_binding TEXT,
     CONSTRAINT uk_apv_flow_version__flow_id_version UNIQUE (flow_id, version),
     CONSTRAINT fk_apv_flow_version__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE
@@ -233,6 +234,7 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     current_node_id VARCHAR(32),
     finished_at TIMESTAMP,
     -- Business association
+    business_kind VARCHAR(64),
     business_ref VARCHAR(512),
     -- Form data
     form_data TEXT,

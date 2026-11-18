@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     description VARCHAR(512) COMMENT 'Description',
     labels JSON COMMENT 'Labels',
     -- Data binding
-    binding_mode VARCHAR(16) NOT NULL DEFAULT 'standalone' COMMENT 'Binding Mode',
+    business_kind VARCHAR(64) COMMENT 'Business Kind',
     business_binding JSON COMMENT 'Business Binding',
     -- Permission config
     admin_user_ids JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Admins',
@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS apv_flow_version (
     -- Publish info
     published_at DATETIME NULL COMMENT 'Published',
     published_by VARCHAR(32) COMMENT 'Publisher',
+    business_kind VARCHAR(64) COMMENT 'Business Kind',
     business_binding JSON COMMENT 'Business Binding Snapshot',
     -- Generated flag for partial unique semantics: at most one published version per flow
     is_published_flag TINYINT AS (CASE WHEN status = 'published' THEN 1 ELSE NULL END) STORED,
@@ -234,6 +235,7 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     current_node_id VARCHAR(32) COMMENT 'Current Node',
     finished_at DATETIME NULL COMMENT 'Finished',
     -- Business association
+    business_kind VARCHAR(64) COMMENT 'Business Kind',
     business_ref VARCHAR(512) COMMENT 'Biz Ref',
     -- Form data
     form_data JSON COMMENT 'Form Data',

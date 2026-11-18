@@ -50,7 +50,6 @@ type Flow struct {
 	// Keys are restricted at save time to a JSON-path-safe charset — see
 	// validateFlowLabels.
 	Labels                 map[string]string      `json:"labels,omitempty" bun:"labels,type:jsonb,nullzero"`
-	BindingMode            BindingMode            `json:"bindingMode" bun:"binding_mode"`
 	BusinessBinding        *BusinessBindingConfig `json:"businessBinding,omitempty" bun:"business_binding,type:jsonb,nullzero"`
 	AdminUserIDs           []string               `json:"adminUserIds" bun:"admin_user_ids,type:jsonb"`
 	IsAllInitiationAllowed bool                   `json:"isAllInitiationAllowed" bun:"is_all_initiation_allowed"`
@@ -58,6 +57,7 @@ type Flow struct {
 	IsActive               bool                   `json:"isActive" bun:"is_active"`
 	CurrentVersion         int                    `json:"currentVersion" bun:"current_version"`
 	InitiationWindow       *calendar.WindowRule   `json:"initiationWindow,omitempty" bun:"initiation_window,type:jsonb,nullzero"`
+	BusinessKind           *BusinessKind          `json:"businessKind,omitempty" bun:"business_kind,nullzero"`
 }
 
 // FlowCategory represents a category for grouping flows.
@@ -103,6 +103,7 @@ type FlowVersion struct {
 	// BusinessBinding is the immutable binding snapshot captured when the
 	// version is deployed. Runtime instances never read the mutable Flow copy.
 	BusinessBinding *BusinessBindingConfig `json:"businessBinding,omitempty" bun:"business_binding,type:jsonb,nullzero"`
+	BusinessKind    *BusinessKind          `json:"businessKind,omitempty" bun:"business_kind,nullzero"`
 }
 
 // FormTable records the dedicated physical table generated for a published
@@ -272,7 +273,8 @@ type Instance struct {
 	// BusinessProjectionID identifies the durable target state claimed at
 	// instance start. Every later transition writes through that state so flow
 	// edits and stale workers cannot redirect or overwrite the binding.
-	BusinessProjectionID *string `json:"businessProjectionId,omitempty" bun:"business_projection_id,nullzero"`
+	BusinessProjectionID *string       `json:"businessProjectionId,omitempty" bun:"business_projection_id,nullzero"`
+	BusinessKind         *BusinessKind `json:"businessKind,omitempty" bun:"business_kind,nullzero"`
 }
 
 // BusinessProjection stores the latest desired business-table state for one

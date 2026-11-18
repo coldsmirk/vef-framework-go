@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     description VARCHAR(512),
     labels JSONB,
     -- Data binding
-    binding_mode VARCHAR(16) NOT NULL DEFAULT 'standalone',
+    business_kind VARCHAR(64),
     business_binding JSONB,
     -- Permission config
     admin_user_ids JSONB NOT NULL DEFAULT '[]',
@@ -85,7 +85,7 @@ COMMENT ON COLUMN apv_flow.name IS 'Name';
 COMMENT ON COLUMN apv_flow.icon IS 'Icon';
 COMMENT ON COLUMN apv_flow.description IS 'Description';
 COMMENT ON COLUMN apv_flow.labels IS 'Labels';
-COMMENT ON COLUMN apv_flow.binding_mode IS 'Binding Mode';
+COMMENT ON COLUMN apv_flow.business_kind IS 'Business Kind';
 COMMENT ON COLUMN apv_flow.business_binding IS 'Business Binding';
 COMMENT ON COLUMN apv_flow.admin_user_ids IS 'Admins';
 COMMENT ON COLUMN apv_flow.is_all_initiation_allowed IS 'Open Start';
@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS apv_flow_version (
     -- Publish info
     published_at TIMESTAMP,
     published_by VARCHAR(32),
+    business_kind VARCHAR(64),
     business_binding JSONB,
     CONSTRAINT uk_apv_flow_version__flow_id_version UNIQUE (flow_id, version),
     CONSTRAINT fk_apv_flow_version__flow_id FOREIGN KEY (flow_id) REFERENCES apv_flow(id) ON DELETE RESTRICT ON UPDATE CASCADE
@@ -153,6 +154,7 @@ COMMENT ON COLUMN apv_flow_version.storage_mode IS 'Storage Mode';
 COMMENT ON COLUMN apv_flow_version.flow_schema IS 'Flow Schema';
 COMMENT ON COLUMN apv_flow_version.form_schema IS 'Form Schema (host designer document, verbatim)';
 COMMENT ON COLUMN apv_flow_version.form_fields IS 'Form Fields (derived at deploy)';
+COMMENT ON COLUMN apv_flow_version.business_kind IS 'Business Kind';
 COMMENT ON COLUMN apv_flow_version.business_binding IS 'Business Binding Snapshot';
 COMMENT ON COLUMN apv_flow_version.published_at IS 'Published';
 COMMENT ON COLUMN apv_flow_version.published_by IS 'Publisher';
@@ -352,6 +354,7 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     current_node_id VARCHAR(32),
     finished_at TIMESTAMP,
     -- Business association
+    business_kind VARCHAR(64),
     business_ref VARCHAR(512),
     -- Form data
     form_data JSONB,
@@ -382,6 +385,7 @@ COMMENT ON COLUMN apv_instance.applicant_department_name IS 'Dept Name';
 COMMENT ON COLUMN apv_instance.status IS 'Status';
 COMMENT ON COLUMN apv_instance.current_node_id IS 'Current Node';
 COMMENT ON COLUMN apv_instance.finished_at IS 'Finished';
+COMMENT ON COLUMN apv_instance.business_kind IS 'Business Kind';
 COMMENT ON COLUMN apv_instance.business_ref IS 'Biz Ref';
 COMMENT ON COLUMN apv_instance.business_projection_id IS 'Business Projection';
 COMMENT ON COLUMN apv_instance.form_data IS 'Form Data';

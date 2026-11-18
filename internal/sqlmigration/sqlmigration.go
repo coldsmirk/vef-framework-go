@@ -14,6 +14,9 @@ import (
 // no migration script or schema lookup query for the supplied Plan.
 var ErrUnsupportedDBKind = errors.New("sqlmigration: unsupported database kind")
 
+// RetiredColumn names a column that an upgrade removes when present.
+type RetiredColumn struct{ Table, Name string }
+
 // Plan describes one module's migration. Label appears in error
 // messages so logs identify which module is being migrated.
 type Plan struct {
@@ -37,6 +40,8 @@ type Plan struct {
 	// After the Pre hooks, Run adds each one an existing table lacks; a table
 	// the migration is about to create gets them from its script.
 	AddedColumns []AddedColumn
+	// RetiredColumns names obsolete columns removed from existing tables after additions.
+	RetiredColumns []RetiredColumn
 }
 
 // Run executes the supplied Plan under the module's migration lock, so
@@ -60,6 +65,17 @@ func runLocked(ctx context.Context, db orm.DB, plan Plan) error {
 		return fmt.Errorf("%s: %w", plan.Label, err)
 	}
 
+	for _, c := range plan.RetiredColumns {
+		columns, err := LoadTableColumns(ctx, db, plan.Kind, c.Table)
+		if err != nil {
+			return fmt.Errorf("%s: inspect retired column %s.%s: %w", plan.Label, c.Table, c.Name, err)
+		}
+		if _, exists := columns[c.Name]; exists {
+			if _, err := db.NewRaw("ALTER TABLE ? DROP COLUMN ?", orm.Ident(c.Table), orm.Ident(c.Name)).Exec(ctx); err != nil {
+				return fmt.Errorf("%s: retire %s.%s: %w", plan.Label, c.Table, c.Name, err)
+			}
+		}
+	}
 	needed, err := needsMigration(ctx, db, plan)
 	if err != nil {
 		return fmt.Errorf("%s: check migration status: %w", plan.Label, err)

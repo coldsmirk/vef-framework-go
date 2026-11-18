@@ -51,6 +51,9 @@ var obsoleteTables = []string{
 // addedColumns are the approval columns introduced after their table first
 // shipped: Migrate adds them to an existing table and Verify requires them.
 var addedColumns = []sqlmigration.AddedColumn{
+	{Table: "apv_flow", Name: "business_kind", Definition: "VARCHAR(64)", Comment: "Business Kind"},
+	{Table: "apv_flow_version", Name: "business_kind", Definition: "VARCHAR(64)", Comment: "Business Kind"},
+	{Table: "apv_instance", Name: "business_kind", Definition: "VARCHAR(64)", Comment: "Business Kind"},
 	{Table: "apv_flow_node", Name: "pass_count", Definition: "INTEGER NOT NULL DEFAULT 0", Comment: "Pass Count"},
 	{Table: "apv_flow", Name: "initiation_window", Definition: "TEXT", DialectDefinitions: map[config.DBKind]string{config.Postgres: "JSONB", config.MySQL: "JSON"}, Comment: "Initiation Window"},
 	{Table: "apv_flow", Name: "is_shared", Definition: "BOOLEAN NOT NULL DEFAULT false", Comment: "Shared"},
@@ -77,6 +80,7 @@ func Migrate(ctx context.Context, db orm.DB, kind config.DBKind) error {
 		ExpectedTables: expectedTables,
 		Pre:            []func(ctx context.Context, db orm.DB) error{dropObsoleteTables},
 		AddedColumns:   addedColumns,
+		RetiredColumns: []sqlmigration.RetiredColumn{{Table: "apv_flow", Name: "binding_mode"}},
 	})
 }
 

@@ -19,6 +19,7 @@ type InstanceEventBase struct {
 	BusinessRef  *string        `json:"businessRef,omitempty"`
 	Applicant    UserInfo       `json:"applicant"`
 	OccurredTime timex.DateTime `json:"occurredTime"`
+	BusinessKind *BusinessKind  `json:"businessKind,omitempty"`
 }
 
 // instanceEventBase exposes the embedded envelope to the closed
@@ -37,6 +38,7 @@ func NewInstanceEventBase(instance *Instance) InstanceEventBase {
 		FlowID:       instance.FlowID,
 		FlowCode:     instance.FlowCode,
 		BusinessRef:  instance.BusinessRef,
+		BusinessKind: instance.BusinessKind,
 		Applicant:    instance.Applicant(),
 		OccurredTime: timex.Now(),
 	}
