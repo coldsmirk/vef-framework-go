@@ -77,7 +77,7 @@ func (s *WithdrawInstanceTestSuite) insertInstance(applicantID string, status ap
 	return inst
 }
 
-func (s *WithdrawInstanceTestSuite) insertTask(instanceID string, status approval.TaskStatus) {
+func (s *WithdrawInstanceTestSuite) insertTask(instanceID string, status approval.TaskStatus) *approval.Task {
 	task := &approval.Task{
 		TenantID:   "default",
 		InstanceID: instanceID,
@@ -89,11 +89,13 @@ func (s *WithdrawInstanceTestSuite) insertTask(instanceID string, status approva
 	}
 	_, err := s.db.NewInsert().Model(task).Exec(s.ctx)
 	s.Require().NoError(err, "Withdraw should complete without error")
+	return task
 }
 
 func (s *WithdrawInstanceTestSuite) TestWithdrawSuccess() {
 	inst := s.insertInstance("applicant-1", approval.InstanceRunning)
-	s.insertTask(inst.ID, approval.TaskPending)
+	task := s.insertTask(inst.ID, approval.TaskPending)
+	draft := seedTaskDraft(s.T(), s.ctx, s.db, task)
 
 	operator := approval.UserInfo{ID: "applicant-1", Name: "Applicant"}
 	_, err := s.handler.Handle(s.ctx, command.WithdrawInstanceCmd{
@@ -102,6 +104,7 @@ func (s *WithdrawInstanceTestSuite) TestWithdrawSuccess() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should withdraw instance without error")
+	requireNoteStatus(s.T(), s.ctx, s.db, draft, approval.AnnotationDiscarded)
 
 	// Verify instance status
 	var updated approval.Instance

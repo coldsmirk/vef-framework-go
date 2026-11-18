@@ -76,7 +76,7 @@ func (s *TerminateInstanceTestSuite) insertInstance(status approval.InstanceStat
 	return inst
 }
 
-func (s *TerminateInstanceTestSuite) insertTask(instanceID, assigneeID string, status approval.TaskStatus) {
+func (s *TerminateInstanceTestSuite) insertTask(instanceID, assigneeID string, status approval.TaskStatus) *approval.Task {
 	task := &approval.Task{
 		TenantID:   "default",
 		InstanceID: instanceID,
@@ -88,11 +88,13 @@ func (s *TerminateInstanceTestSuite) insertTask(instanceID, assigneeID string, s
 	}
 	_, err := s.db.NewInsert().Model(task).Exec(s.ctx)
 	s.Require().NoError(err, "Terminate instance should complete without error")
+	return task
 }
 
 func (s *TerminateInstanceTestSuite) TestTerminateSuccess() {
 	inst := s.insertInstance(approval.InstanceRunning)
-	s.insertTask(inst.ID, "approver-1", approval.TaskPending)
+	task := s.insertTask(inst.ID, "approver-1", approval.TaskPending)
+	draft := seedTaskDraft(s.T(), s.ctx, s.db, task)
 	s.insertTask(inst.ID, "approver-2", approval.TaskWaiting)
 
 	operator := approval.UserInfo{ID: "admin-1", Name: "Admin"}
@@ -103,6 +105,7 @@ func (s *TerminateInstanceTestSuite) TestTerminateSuccess() {
 		Caller:     approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should terminate instance without error")
+	requireNoteStatus(s.T(), s.ctx, s.db, draft, approval.AnnotationDiscarded)
 
 	// Verify instance status
 	var updated approval.Instance

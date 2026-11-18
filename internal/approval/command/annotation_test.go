@@ -50,6 +50,7 @@ func (s *ApproveTaskTestSuite) TestAnnotationDrafts() {
 		s.Require().NoError(err, "A cross-tenant routed task owner can save a draft")
 		s.Equal(&task.VisitID, a.VisitID, "The draft binds its exact visit")
 		s.Equal(approval.AudienceParticipants, a.Audience.Scope, "Audience defaults to all participants")
+		s.False(a.CreatedAt.IsZero(), "The returned view includes its persisted creation time")
 		s.Equal(task.Assignee(), a.Author, "The author is snapshotted")
 		in.ID = a.ID
 		in.Content = "Updated"
@@ -185,6 +186,11 @@ func (s *EventOrderTestSuite) TestAnnotationViews() {
 	d, err = admin.Handle(s.ctx, query.GetAdminInstanceDetailQuery{InstanceID: inst.ID, Caller: approval.SystemCaller})
 	s.Require().NoError(err, "Admin can view publication")
 	s.Len(d.Annotations, 4, "Admin sees all and only published notes")
+	_, err = s.db.NewUpdate().Model((*approval.Task)(nil)).Set("assignee_id", "new-owner").Where(func(cb orm.ConditionBuilder) { cb.PKEquals(peerID) }).Exec(s.ctx)
+	s.Require().NoError(err, "Should remove the former assignee's only participation")
+	_, err = my.Handle(s.ctx, query.GetMyInstanceDetailQuery{InstanceID: inst.ID, Viewer: approval.UserInfo{ID: "any-2"}})
+	s.ErrorIs(err, approval.ErrAccessDenied, "A discarded draft cannot grant its author access to the instance")
+	s.ElementsMatch([]string{"all", "node"}, view("new-owner"), "A later participant on an audience node sees its published notes")
 	err = editor.Delete(s.ctx, s.db, approval.DeleteAnnotationInput{ID: byContent["all"], Caller: approval.SystemCaller, Operator: approval.UserInfo{ID: "any-1"}})
 	s.ErrorIs(err, approval.ErrAnnotationNotEditable, "Published notes are immutable")
 }
@@ -206,7 +212,9 @@ func (s *EventOrderTestSuite) TestResponseDraftRules() {
 			editor := service.NewAnnotationEditor(tasks, instances, nil)
 			ctx, db := s.ctx, s.db
 			author := approval.UserInfo{ID: "any-1"}
-			parent, err := editor.Save(ctx, db, approval.SaveAnnotationInput{TaskID: taskID, Operator: author, Content: "Clarify", Audience: &approval.AnnotationAudience{Scope: approval.AudienceApplicant}, Caller: approval.SystemCaller})
+			setPublishedFormFields(s.T(), ctx, db, inst.FlowVersionID, []approval.FormFieldDefinition{{Key: "amount", Kind: approval.FieldNumber}})
+			defer setPublishedFormFields(s.T(), ctx, db, inst.FlowVersionID, nil)
+			parent, err := editor.Save(ctx, db, approval.SaveAnnotationInput{TaskID: taskID, Operator: author, Anchor: json.RawMessage(`{"field":"amount"}`), Content: "Clarify", Audience: &approval.AnnotationAudience{Scope: approval.AudienceApplicant}, Caller: approval.SystemCaller})
 			s.Require().NoError(err, "Should save a note for the applicant")
 			hidden, err := editor.Save(ctx, db, approval.SaveAnnotationInput{TaskID: taskID, Operator: author, Content: "Private", Audience: &approval.AnnotationAudience{Scope: approval.AudienceUsers, UserIDs: []string{"any-2"}}, Caller: approval.SystemCaller})
 			s.Require().NoError(err, "Should save a restricted note")
@@ -243,11 +251,21 @@ func (s *EventOrderTestSuite) TestResponseDraftRules() {
 			_, err = editor.Save(ctx, db, in)
 			s.ErrorIs(err, approval.ErrAnnotationAnchorInvalid, "A response cannot redefine its anchor")
 			in = response
+			_, err = db.NewInsert().Model(&approval.CCRecord{InstanceID: inst.ID, CCUserID: inst.ApplicantID, CCUserName: inst.ApplicantName}).Exec(ctx)
+			s.Require().NoError(err, "Should route a copy of the instance to its applicant")
 			in.Caller = approval.CallerContext{TenantID: "elsewhere"}
 			_, err = editor.Save(ctx, db, in)
 			s.ErrorIs(err, approval.ErrAnnotationNotFound, "Applicants respond only in the instance tenant")
 			note, err := editor.Save(ctx, db, response)
 			s.Require().NoError(err, "The applicant can respond to the visible parent")
+			s.JSONEq(`{"field":"amount"}`, string(note.Anchor), "Responses inherit the parent's field anchor")
+			foreign := response
+			foreign.ID = note.ID
+			foreign.Caller = approval.CallerContext{TenantID: "elsewhere"}
+			_, err = editor.Save(ctx, db, foreign)
+			s.ErrorIs(err, approval.ErrAnnotationNotFound, "Response edits stay within the instance tenant")
+			err = editor.Delete(ctx, db, approval.DeleteAnnotationInput{ID: note.ID, Operator: inst.Applicant(), Caller: foreign.Caller})
+			s.ErrorIs(err, approval.ErrAnnotationNotFound, "Response deletes stay within the instance tenant")
 			s.Equal(parent.Audience, note.Audience, "Responses inherit the parent's audience")
 			// Publish one response to check inheritance, and leave a second in draft.
 			s.Require().NoError(tasks.PublishDrafts(ctx, db, inst, nil, inst.Applicant()), "Should publish the first response")
