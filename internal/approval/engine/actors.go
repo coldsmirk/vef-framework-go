@@ -3,11 +3,13 @@ package engine
 import (
 	"context"
 	"fmt"
-	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"slices"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
+	"github.com/coldsmirk/vef-framework-go/internal/logx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
@@ -35,6 +37,7 @@ func (r *ActorResolution) load(ctx context.Context, ids []string) error {
 			missing = append(missing, id)
 		}
 	}
+
 	if len(missing) == 0 || r.resolver == nil {
 		return nil
 	}
@@ -43,13 +46,23 @@ func (r *ActorResolution) load(ctx context.Context, ids []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve approval handovers: %w", err)
 	}
+
 	for _, id := range missing {
 		if h, ok := resolved[id]; ok {
+			if h.Successor != nil && strings.TrimSpace(h.Successor.ID) == "" {
+				return fmt.Errorf("%w for user %s: empty successor ID", ErrInvalidHandover, id)
+			}
+
+			if utf8.RuneCountInString(h.Reason) > 64 {
+				return fmt.Errorf("%w for user %s: reason exceeds 64 characters", ErrInvalidHandover, id)
+			}
+
 			r.records[id] = &h
 		} else {
 			r.records[id] = nil
 		}
 	}
+
 	return nil
 }
 
@@ -57,12 +70,15 @@ func (r *ActorResolution) load(ctx context.Context, ids []string) error {
 // predecessor's reason. Each round asks the host only about unseen identities.
 func (r *ActorResolution) Handovers(ctx context.Context, ids []string) (map[string]approval.Handover, error) {
 	const maxHops = 10
+
 	frontier := ids
+
 	explored := make(map[string]bool)
 	for depth := 0; depth <= maxHops && len(frontier) > 0; depth++ {
 		if err := r.load(ctx, frontier); err != nil {
 			return nil, err
 		}
+
 		var next []string
 		for _, id := range frontier {
 			explored[id] = true
@@ -72,37 +88,49 @@ func (r *ActorResolution) Handovers(ctx context.Context, ids []string) (map[stri
 				}
 			}
 		}
+
 		frontier = shared.NormalizeUniqueIDs(next)
 	}
+
 	result := make(map[string]approval.Handover)
 	for _, id := range ids {
 		first := r.records[id]
 		if first == nil {
 			continue
 		}
+
 		h := *first
 		chain := []string{id}
+
 		people := []*approval.UserInfo{{ID: id}}
 		for h.Successor != nil {
 			next := h.Successor
+			if len(chain) > maxHops {
+				return nil, fmt.Errorf("%w for user %s: %v", ErrHandoverDepth, id, append(chain, next.ID))
+			}
+
 			if index := slices.Index(chain, next.ID); index >= 0 {
 				h.Successor = people[max(index-1, 0)]
 				actorLogger.Warnf("Approval handover cycle %v; keeping user %s", append(chain, next.ID), h.Successor.ID)
+
 				break
 			}
+
 			chain = append(chain, next.ID)
-			if len(chain)-1 > maxHops {
-				return nil, fmt.Errorf("%w for user %s: %v", ErrHandoverDepth, id, chain)
-			}
+
 			people = append(people, next)
+
 			link := r.records[next.ID]
 			if link == nil {
 				break
 			}
+
 			h.Successor = link.Successor
 		}
+
 		result[id] = h
 	}
+
 	return result, nil
 }
 
@@ -110,36 +138,44 @@ func (r *ActorResolution) Handovers(ctx context.Context, ids []string) (map[stri
 // collision the first seat retains its attribution.
 func (r *ActorResolution) Actors(ctx context.Context, db orm.DB, seats []approval.ResolvedAssignee, users approval.UserInfoResolver) ([]approval.ResolvedAssignee, error) {
 	seats = deduplicateAssignees(seats)
+
 	ids := make([]string, len(seats))
 	for i, s := range seats {
 		ids[i] = s.User.ID
 	}
+
 	changes, err := r.Handovers(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
+
 	actors := make([]approval.ResolvedAssignee, 0, len(seats))
 	for _, seat := range seats {
 		if h, ok := changes[seat.User.ID]; ok {
 			if h.Successor == nil {
 				continue
 			}
+
 			if h.Successor.ID != seat.User.ID {
 				seat.Predecessor = new(seat.User)
 				seat.HandoverReason = h.Reason
 				seat.User = *h.Successor
 			}
 		}
+
 		actors = append(actors, seat)
 	}
+
 	actors = deduplicateAssignees(actors)
 	if len(actors) == 0 {
 		return actors, nil
 	}
+
 	actors, err = r.applyDelegation(ctx, db, r.scope.Instance.FlowID, actors, users)
 	if err != nil {
 		return nil, err
 	}
+
 	return deduplicateAssignees(actors), nil
 }
 
@@ -149,6 +185,7 @@ func Seats(ids []string, infos map[string]approval.UserInfo) []approval.Resolved
 	for i, user := range shared.UserInfos(ids, infos) {
 		seats[i].User = user
 	}
+
 	return seats
 }
 
@@ -160,6 +197,7 @@ func AssignTask(task *approval.Task, actor approval.ResolvedAssignee) {
 	task.AssigneeDepartmentName = actor.User.DepartmentName
 	task.DelegatorID, task.DelegatorName, task.DelegatorDepartmentID, task.DelegatorDepartmentName = personFields(actor.Delegator)
 	task.PredecessorID, task.PredecessorName, task.PredecessorDepartmentID, task.PredecessorDepartmentName = personFields(actor.Predecessor)
+
 	task.HandoverReason = nil
 	if actor.HandoverReason != "" {
 		task.HandoverReason = new(actor.HandoverReason)
@@ -170,5 +208,6 @@ func personFields(u *approval.UserInfo) (id, name, departmentID, departmentName 
 	if u == nil {
 		return nil, nil, nil, nil
 	}
+
 	return new(u.ID), new(u.Name), u.DepartmentID, u.DepartmentName
 }

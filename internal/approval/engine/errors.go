@@ -15,7 +15,8 @@ var (
 	// Approval node errors.
 	ErrAssigneeServiceNotConfigured = errors.New("assignee service is not configured")
 
-	ErrHandoverDepth = errors.New("approval handover exceeds ten successors")
+	ErrInvalidHandover = errors.New("invalid approval handover")
+	ErrHandoverDepth   = errors.New("approval handover exceeds ten successors")
 
 	// Condition node errors.
 	ErrNoBranches       = errors.New("condition node has no branches")

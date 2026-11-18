@@ -372,6 +372,35 @@ func (s *ScannerTestSuite) TestAutoRejectTimeoutShouldCompleteFlowAsRejected() {
 	s.Assert().Equal(approval.InstanceRejected, updatedInstance.Status, "Instance should become rejected after timeout auto-reject")
 }
 
+type adminHandover map[string]approval.Handover
+
+func (m adminHandover) ResolveHandovers(context.Context, *approval.HandoverContext, []string) (map[string]approval.Handover, error) {
+	return m, nil
+}
+
+func (s *ScannerTestSuite) TestTransferAdminAfterHandover() {
+	_, task := s.createTimeoutScenarioWithTaskStatus(approval.TimeoutActionTransferAdmin, approval.TaskPending)
+	s.setNodeAdmins(task.NodeID, "admin", "retired", "already")
+	scanner := timeout.NewScanner(
+		s.db,
+		s.bus,
+		s.taskSvc,
+		s.nodeSvc,
+		nil,
+		s.cfg,
+		adminHandover{
+			"admin":   {Successor: &approval.UserInfo{ID: "replacement", Name: "New Admin"}, Reason: "Changed role"},
+			"retired": {},
+			"already": {Successor: &approval.UserInfo{ID: task.AssigneeID}},
+		},
+	)
+	scanner.ScanTimeouts(s.ctx)
+	replacement := s.taskByAssignee(task.InstanceID, "replacement")
+	s.Equal(new("admin"), replacement.PredecessorID, "Eligible administrator should keep original seat attribution")
+	s.Equal(task.VisitID, replacement.VisitID, "Replacement should stay in original visit")
+	s.Len(s.bus.CapturedByType(approval.EventTypeTaskTransferred), 1, "Departed and occupied administrator seats must be skipped")
+}
+
 func (s *ScannerTestSuite) TestTransferAdminTimeoutShouldAlignCreatedTasksWithTransferEventsAndLogs() {
 	_, task := s.createTimeoutScenarioWithTaskStatus(approval.TimeoutActionTransferAdmin, approval.TaskPending)
 

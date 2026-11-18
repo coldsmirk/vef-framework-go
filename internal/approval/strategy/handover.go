@@ -8,8 +8,8 @@ import (
 
 type noHandovers struct{}
 
-func (noHandovers) ResolveHandovers(context.Context, *approval.HandoverContext, []string) (map[string]approval.Handover, error) {
+func (*noHandovers) ResolveHandovers(context.Context, *approval.HandoverContext, []string) (map[string]approval.Handover, error) {
 	return nil, nil
 }
 
-func newHandoverResolver() approval.HandoverResolver { return noHandovers{} }
+func newHandoverResolver() approval.HandoverResolver { return new(noHandovers) }

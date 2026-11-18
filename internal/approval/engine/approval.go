@@ -110,7 +110,7 @@ func (*ApprovalProcessor) createApprovalTasks(ctx context.Context, pc *ProcessCo
 // that emptied the set and fell back to EmptyAssigneeAction). Auto-pass over a
 // mixed set is settled per task after creation — see entryAutoPassRule.
 func (p *ApprovalProcessor) applySameApplicantPolicy(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) ([]approval.ResolvedAssignee, *ProcessResult, error) {
-	if !containsApplicant(assignees, pc.Instance.ApplicantID) {
+	if !containsAssignee(assignees, pc.Instance.ApplicantID) {
 		return assignees, nil, nil
 	}
 
@@ -141,16 +141,19 @@ func (p *ApprovalProcessor) applySameApplicantPolicy(ctx context.Context, pc *Pr
 			return nil, nil, err
 		}
 		// Existing seats retain their attribution when the replacement collides.
-		if len(actors) == 0 || actors[0].User.ID == pc.Instance.ApplicantID || containsApplicant(assignees, actors[0].User.ID) {
+		if len(actors) == 0 || actors[0].User.ID == pc.Instance.ApplicantID || containsAssignee(assignees, actors[0].User.ID) {
 			return p.excludeApplicant(ctx, pc, assignees)
 		}
+
 		replaced := slices.Clone(assignees)
 		for i := range replaced {
 			if replaced[i].User.ID == pc.Instance.ApplicantID {
 				replaced[i] = actors[0]
+
 				break
 			}
 		}
+
 		return replaced, nil, nil
 
 	default: // SameApplicantSelfApprove and unrecognized values: the applicant approves like any other assignee.
@@ -163,7 +166,9 @@ func (p *ApprovalProcessor) excludeApplicant(ctx context.Context, pc *ProcessCon
 	if len(remaining) > 0 {
 		return remaining, nil, nil
 	}
+
 	result, err := handleEmptyAssignee(ctx, pc, p.assigneeService)
+
 	return nil, result, err
 }
 
@@ -202,7 +207,7 @@ type autoPassRule func(assigneeID string) (reason string, ok bool)
 func (*ApprovalProcessor) entryAutoPassRule(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) (autoPassRule, error) {
 	var rules []autoPassRule
 
-	if pc.Node.SameApplicantAction == approval.SameApplicantAutoPass && containsApplicant(assignees, pc.Instance.ApplicantID) {
+	if pc.Node.SameApplicantAction == approval.SameApplicantAutoPass && containsAssignee(assignees, pc.Instance.ApplicantID) {
 		rules = append(rules, func(assigneeID string) (string, bool) {
 			return AutoPassReasonSameApplicant, assigneeID == pc.Instance.ApplicantID
 		})
@@ -451,10 +456,9 @@ func cancelRemainingEntryTasks(ctx context.Context, pc *ProcessContext, tasks []
 	return events, nil
 }
 
-// containsApplicant reports whether the applicant holds a seat in the resolved
-// assignee set, judged by the resolved actor.
-func containsApplicant(assignees []approval.ResolvedAssignee, applicantID string) bool {
+// containsAssignee reports whether the user holds a resolved seat.
+func containsAssignee(assignees []approval.ResolvedAssignee, userID string) bool {
 	return slices.ContainsFunc(assignees, func(a approval.ResolvedAssignee) bool {
-		return a.User.ID == applicantID
+		return a.User.ID == userID
 	})
 }

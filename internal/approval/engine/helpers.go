@@ -233,7 +233,13 @@ func findPreviousApprovalApprovers(ctx context.Context, db orm.DB, instance *app
 // applyDelegation resolves delegation chains for each assignee, replacing
 // delegators with delegatees. A delegated entry keeps the original assignee as
 // Delegator so the task can attribute both parties.
-func (r *ActorResolution) applyDelegation(ctx context.Context, db orm.DB, flowID string, assignees []approval.ResolvedAssignee, userResolver approval.UserInfoResolver) ([]approval.ResolvedAssignee, error) {
+func (r *ActorResolution) applyDelegation(
+	ctx context.Context,
+	db orm.DB,
+	flowID string,
+	assignees []approval.ResolvedAssignee,
+	userResolver approval.UserInfoResolver,
+) ([]approval.ResolvedAssignee, error) {
 	categoryID, err := loadFlowCategoryID(ctx, db, flowID)
 	if err != nil {
 		return nil, err
@@ -272,6 +278,7 @@ func (r *ActorResolution) applyDelegation(ctx context.Context, db orm.DB, flowID
 			assignee.User = delegatee
 			assignee.Delegator = &delegator
 		}
+
 		result[i] = assignee
 	}
 
@@ -379,13 +386,16 @@ func createTasksForUsers(ctx context.Context, pc *ProcessContext, userIDs []stri
 	if err != nil {
 		return nil, err
 	}
+
 	if len(actors) == 0 {
 		return nil, approval.ErrNoAssignee
 	}
+
 	events, err := createTasksWithDelegation(ctx, pc, actors)
 	if err != nil {
 		return nil, err
 	}
+
 	return &ProcessResult{Action: NodeActionWait, Events: events}, nil
 }
 
@@ -522,6 +532,7 @@ func (r *ActorResolution) resolveDelegationChain(ctx context.Context, db orm.DB,
 		if err := r.load(ctx, []string{nextID}); err != nil {
 			return "", "", err
 		}
+
 		if r.records[nextID] != nil {
 			break
 		}

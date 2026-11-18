@@ -339,14 +339,17 @@ func (s *Scanner) autoFinishTask(
 func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval.Task, instance *approval.Instance, node *approval.FlowNode) ([]approval.DomainEvent, error) {
 	targetAdminIDs := shared.NormalizeUniqueIDs(node.AdminUserIDs)
 	infos := shared.ResolveUserInfoMapSilent(ctx, s.userResolver, targetAdminIDs)
+
 	actors, err := engine.NewActorResolution(instance, node, s.handovers).Actors(ctx, tx, engine.Seats(targetAdminIDs, infos), s.userResolver)
 	if err != nil {
 		return nil, err
 	}
+
 	targetAdminIDs = targetAdminIDs[:0]
 	for _, actor := range actors {
 		targetAdminIDs = append(targetAdminIDs, actor.User.ID)
 	}
+
 	if len(targetAdminIDs) == 0 {
 		logger.Warnf("Node %q configured transfer_admin timeout but has no eligible admin users; marking task %s timeout only", node.Key, task.ID)
 
@@ -419,6 +422,7 @@ func (s *Scanner) transferToAdmin(ctx context.Context, tx orm.DB, task *approval
 			AddAssigneeType: task.AddAssigneeType,
 		}
 		engine.AssignTask(newTask, actor)
+
 		if _, err := tx.NewInsert().
 			Model(newTask).
 			Exec(ctx); err != nil {

@@ -42,7 +42,8 @@ func NewTransferTaskHandler(
 	userResolver approval.UserInfoResolver,
 	formStorage *storage.Dispatcher, handovers approval.HandoverResolver,
 ) *TransferTaskHandler {
-	return &TransferTaskHandler{handovers: handovers,
+	return &TransferTaskHandler{
+		handovers:     handovers,
 		db:            db,
 		taskSvc:       taskSvc,
 		validationSvc: validationSvc,

@@ -923,8 +923,18 @@ func (s *AddAssigneeTestSuite) TestExplicitHandoverTarget() {
 	_, task := s.setupData("operator")
 	for _, target := range []string{"moved", "departed"} {
 		s.Run(target, func() {
-			_, err := s.handler.Handle(s.ctx, command.AddAssigneeCmd{TaskID: task.ID, UserIDs: []string{target}, AddType: approval.AddAssigneeParallel, Operator: approval.UserInfo{ID: "operator"}, Caller: approval.SystemCaller})
+			_, err := s.handler.Handle(
+				s.ctx,
+				command.AddAssigneeCmd{
+					TaskID:   task.ID,
+					UserIDs:  []string{target},
+					AddType:  approval.AddAssigneeParallel,
+					Operator: approval.UserInfo{ID: "operator"},
+					Caller:   approval.SystemCaller,
+				},
+			)
 			s.Require().ErrorIs(err, approval.ErrUserHandedOver, "Should refuse explicit picks with 40028")
+
 			if target == "moved" {
 				s.ErrorContains(err, "Morgan", "Should identify successor")
 			}

@@ -902,17 +902,28 @@ func (s *ApprovalProcessorTestSuite) TestSuperiorSeatHandover() {
 	} {
 		s.Run(tc.name, func() {
 			defer s.CleanTransientData(s.T())
+
 			mockSvc := new(engine.MockAssigneeService)
 			mockSvc.On("GetSuperior", mock.Anything, "applicant").Return(&approval.UserInfo{ID: "boss"}, nil).Once()
+
 			if tc.delegateToApplicant {
-				d := &approval.Delegation{FlowID: &s.FlowID, DelegatorID: "boss", DelegateeID: "applicant", IsActive: true, StartsAt: timex.Now().AddHours(-1), EndsAt: timex.Now().AddHours(1)}
+				d := &approval.Delegation{
+					FlowID:      &s.FlowID,
+					DelegatorID: "boss",
+					DelegateeID: "applicant",
+					IsActive:    true,
+					StartsAt:    timex.Now().AddHours(-1),
+					EndsAt:      timex.Now().AddHours(1),
+				}
 				_, err := s.DB.NewInsert().Model(d).Exec(s.Ctx)
+
 				s.Require().NoError(err, "Should create superior delegation")
 				defer func() {
 					_, err := s.DB.NewDelete().Model(d).WherePK().Exec(s.Ctx)
 					s.Require().NoError(err, "Should clean delegation")
 				}()
 			}
+
 			inst := s.NewInstance(s.T(), "applicant")
 			s.InsertAssigneeConfig(s.T(), tc.seats)
 			pc := s.NewProcessContext(s.T(), inst, s.NewNode(func(n *approval.FlowNode) {
@@ -926,9 +937,11 @@ func (s *ApprovalProcessorTestSuite) TestSuperiorSeatHandover() {
 			tasks := s.QueryTasks(s.T(), inst.ID)
 			s.Require().Len(tasks, 1, "Only the eligible seat should remain")
 			s.Equal(tc.want, tasks[0].AssigneeID, "Should select eligible superior or fallback")
+
 			if tc.predecessor != "" {
 				s.Equal(new(tc.predecessor), tasks[0].PredecessorID, "Surviving seat keeps its predecessor")
 			}
+
 			mockSvc.AssertExpectations(s.T())
 		})
 	}
