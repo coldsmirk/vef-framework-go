@@ -52,12 +52,15 @@ func (c *Core) Preview(ctx context.Context, db orm.DB, in approval.VoidInstanceI
 		}
 
 		req := &approval.Instance{ID: *rec.RequestInstanceID}
-		if err := db.NewSelect().Model(req).WherePK().Scan(ctx); err != nil {
+		if err := db.NewSelect().Model(req).Select("status", "flow_code", "applicant_id").WherePK().Scan(ctx); err != nil {
 			return nil, err
 		}
 
 		if req.Status != approval.InstanceReturned || req.ApplicantID != in.Operator.ID {
 			return nil, approval.ErrVoidRequestPending
+		}
+		if req.FlowCode != *vc.Flow.VoidFlowCode {
+			return nil, approval.ErrVoidNotAllowed
 		}
 	} else if policy == approval.VoidApproval {
 		if err := CheckInitiation(ctx, db, validator, vc.Instance.TenantID, *vc.Flow.VoidFlowCode, in.Operator); err != nil {

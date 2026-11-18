@@ -185,6 +185,11 @@ func (s *InstanceResourceTestSuite) TestVoidLifecycle() {
 			s.Equal("void", s.ReadDataAsMap(tl[len(tl)-1])["kind"], "Void appears after the completed flow")
 		}
 
+		listed := s.adminRPCCall("find_instances", api.Params{"tenantId": testTenant, "flowId": target.FlowID, "status": "voided"})
+		s.Require().True(listed.IsOk(), "Voided is a valid instance status filter")
+		items := s.ReadDataAsSlice(s.ReadDataAsMap(listed.Data)["items"])
+		s.Require().Len(items, 1, "The reversed target matches the status filter")
+		s.Equal(id, s.ReadDataAsMap(items[0])["instanceId"], "The voided list links to the target")
 		s.Equal(approval.ErrCodeInstanceNotVoidable, direct(id).Code, "A void cannot be repeated")
 		s.Equal(approval.ErrCodeInstanceNotVoidable, preview("admin", id, s.token).Code, "A voided target cannot be previewed")
 	})
@@ -274,6 +279,10 @@ func (s *InstanceResourceTestSuite) TestVoidLifecycle() {
 			s.Require().True(v.IsOk(), "Should update the window: %v", v)
 		}
 		setWindow(api.Params{"windows": []any{api.Params{"dates": api.Params{"startsAt": tomorrow, "endsAt": tomorrow}}}})
+		changed := s.voidRPC("flow", "update", api.Params{"flowId": target.FlowID, "name": "Booking", "businessKind": "booking", "instanceTitleTemplate": "Booking", "isAllInitiationAllowed": true, "voidPolicy": "approval", "voidFlowCode": alt.FlowCode}, s.token)
+		s.Require().True(changed.IsOk(), "Administrator can change the required approval flow")
+		s.Equal(approval.ErrCodeVoidNotAllowed, preview("my", id, s.token).Code, "The returned applicant remains subject to the configured flow code")
+		update(approval.VoidApproval)
 		s.True(preview("my", id, s.token).IsOk(), "Returned applicant can preview outside the window")
 		s.Equal(approval.ErrCodeVoidRequestPending, preview("my", id, s.manager1Token).Code, "Other callers cannot bypass an existing request")
 		r = s.rpcCall("resubmit", api.Params{"instanceId": reqID, "formData": api.Params{"targetInstanceId": id, "reason": "Corrected reason", "options": api.Params{"release": true}}})
@@ -335,6 +344,15 @@ func (s *InstanceResourceTestSuite) TestVoidLifecycle() {
 			s.Equal("dismissed", s.ReadDataAsMap(bv["record"])["status"], "The audit row survives dismissal")
 			update(approval.VoidApproval)
 			s.NotContains(detail("admin", id), "voidRequest", "Dismissal clears the lock")
+			if end == "withdraw" {
+				r = s.rpcCall("resubmit", api.Params{"instanceId": reqID, "formData": api.Params{"targetInstanceId": id, "reason": "Reconsidered"}})
+				s.Require().True(r.IsOk(), "A withdrawn applicant may resubmit the same request: %v", r)
+				reopened := s.ReadDataAsMap(detail("admin", reqID)["businessView"])
+				s.Equal(s.ReadDataAsMap(bv["record"])["id"], s.ReadDataAsMap(reopened["record"])["id"], "Resubmitting reopens the original record")
+				s.Equal("requested", s.ReadDataAsMap(reopened["record"])["status"], "The resubmission reserves the target again")
+				r = s.rpcCall("withdraw", api.Params{"instanceId": reqID, "reason": "Cancel"})
+				s.Require().True(r.IsOk(), "Withdrawing again releases the reservation")
+			}
 			r = requester(id, request.FlowCode, "Replacement")
 			s.Require().True(r.IsOk(), "A dismissed request permits a fresh request: %v", r)
 		})
