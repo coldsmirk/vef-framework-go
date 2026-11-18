@@ -119,7 +119,7 @@ func modelJSONMap[M any](model *M) (map[string]any, error) {
 	return data, err
 }
 
-func (h *modelBusinessHandler[M, P]) project(model *M) (map[string]any, error) {
+func (h *modelBusinessHandler[M, P]) project(model *M, fields []FormFieldDefinition) (map[string]any, error) {
 	if h.snapshot != nil {
 		return h.snapshot(model), nil
 	}
@@ -129,8 +129,8 @@ func (h *modelBusinessHandler[M, P]) project(model *M) (map[string]any, error) {
 		return nil, err
 	}
 
-	projected := make(map[string]any, len(h.descriptor.FormFields))
-	for _, f := range h.descriptor.FormFields {
+	projected := make(map[string]any, len(fields))
+	for _, f := range fields {
 		if val, ok := data[f.Key]; ok {
 			projected[f.Key] = val
 		}
@@ -185,7 +185,11 @@ func (h *modelBusinessHandler[M, P]) Submit(ctx context.Context, db orm.DB, sc *
 		return nil, err
 	}
 
-	data, err := h.project(model)
+	fields := h.descriptor.FormFields
+	if sc.Version != nil {
+		fields = sc.Version.FormFields
+	}
+	data, err := h.project(model, fields)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +234,15 @@ func (h *modelBusinessHandler[M, P]) OnTaskAction(ctx context.Context, db orm.DB
 		return nil, err
 	}
 
-	data, err := h.project(model)
+	fields := h.descriptor.FormFields
+	if h.snapshot == nil && ac.Instance.FlowVersionID != "" {
+		version := FlowVersion{ID: ac.Instance.FlowVersionID}
+		if err := db.NewSelect().Model(&version).Select("form_fields").WherePK().Scan(ctx); err != nil {
+			return nil, err
+		}
+		fields = version.FormFields
+	}
+	data, err := h.project(model, fields)
 	if err != nil {
 		return nil, err
 	}

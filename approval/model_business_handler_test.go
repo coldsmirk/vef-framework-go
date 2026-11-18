@@ -76,11 +76,13 @@ func TestModelBusinessHandler(t *testing.T) {
 		require.Equal(t, "one", result.BusinessRef, "The input cannot replace the existing primary key")
 		require.Equal(t, map[string]any{"summary": "second"}, result.FormData, "Should use the custom snapshot")
 
+		sc.Version = &approval.FlowVersion{FormFields: []approval.FormFieldDefinition{{Key: "id"}}}
 		inst := &approval.Instance{BusinessRef: sc.BusinessRef}
 		sc.Instance = inst
 		sc.FormData["title"] = "resubmitted"
-		_, err = h.Submit(ctx, db, sc)
+		result, err = h.Submit(ctx, db, sc)
 		require.NoError(t, err, "The returned instance can update its record")
+		require.Equal(t, map[string]any{"id": "one"}, result.FormData, "A previously deployed catalog must survive descriptor changes")
 
 		ac := &approval.TaskActionContext{
 			Instance:         inst,
