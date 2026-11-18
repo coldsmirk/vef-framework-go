@@ -31,8 +31,7 @@ type InstanceLifecycleHook interface {
 	// Returning an error rolls back start_instance.
 	OnInstanceCreated(ctx context.Context, db orm.DB, instance *Instance) error
 	// OnInstanceTransition runs inside the same transaction as every
-	// instance status transition — completion (to.IsFinal()), return,
-	// withdrawal, resubmission, termination — after the engine-owned
+	// instance status transition, including approved to voided, after the engine-owned
 	// business projection has recorded (and, in synchronous mode, applied)
 	// the new state, so the hook observes the business table as the
 	// transition leaves it. instance.Status already carries to. Returning

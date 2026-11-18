@@ -13,13 +13,11 @@ func NewInstanceCreatedEvent(instance *Instance) *InstanceCreatedEvent {
 
 func (*InstanceCreatedEvent) EventType() string { return EventTypeInstanceCreated }
 
-// InstanceCompletedEvent fired when instance reaches a final status.
+// InstanceCompletedEvent reports the original approval, rejection or termination.
 type InstanceCompletedEvent struct {
 	InstanceEventBase
 
-	// FinalStatus is always one of the IsFinal() statuses — approved,
-	// rejected, or terminated. Paused states (returned / withdrawn) never
-	// fire this event.
+	// FinalStatus is approved, rejected or terminated. A later void publishes InstanceVoidedEvent.
 	FinalStatus InstanceStatus `json:"finalStatus"`
 	FinishedAt  timex.DateTime `json:"finishedAt"`
 
