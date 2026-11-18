@@ -177,7 +177,7 @@ func insertTaskWithAssignee(t testing.TB, ctx context.Context, db orm.DB, instan
 }
 
 //nolint:revive // t testing.TB is conventionally the first parameter in test helpers
-func setupPrepareOperationData(
+func setupPrepareDecisionData(
 	t testing.TB,
 	ctx context.Context,
 	db orm.DB,

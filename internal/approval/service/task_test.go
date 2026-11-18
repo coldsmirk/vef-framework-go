@@ -328,11 +328,11 @@ func (s *TaskServiceTestSuite) loadTaskStatus(instanceID, assigneeID string) app
 	return task.Status
 }
 
-// --- PrepareOperation ---
+// --- PrepareDecision ---
 
 func (s *TaskServiceTestSuite) TestPrepareDecision() {
 	s.Run("Success", func() {
-		nodeID, instanceID, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "op-user-1")
+		nodeID, instanceID, taskID := setupPrepareDecisionData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "op-user-1")
 
 		tc, err := s.svc.PrepareDecision(
 			s.ctx,
@@ -363,7 +363,7 @@ func (s *TaskServiceTestSuite) TestPrepareDecision() {
 	})
 
 	s.Run("InstanceCompleted", func() {
-		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceApproved, approval.TaskPending, "op-user-2")
+		_, _, taskID := setupPrepareDecisionData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceApproved, approval.TaskPending, "op-user-2")
 
 		_, err := s.svc.PrepareDecision(
 			s.ctx,
@@ -378,7 +378,7 @@ func (s *TaskServiceTestSuite) TestPrepareDecision() {
 	})
 
 	s.Run("NotAssignee", func() {
-		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "op-user-3")
+		_, _, taskID := setupPrepareDecisionData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "op-user-3")
 
 		_, err := s.svc.PrepareDecision(
 			s.ctx,
@@ -393,7 +393,7 @@ func (s *TaskServiceTestSuite) TestPrepareDecision() {
 	})
 
 	s.Run("TaskNotPending", func() {
-		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskApproved, "op-user-4")
+		_, _, taskID := setupPrepareDecisionData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskApproved, "op-user-4")
 
 		_, err := s.svc.PrepareDecision(
 			s.ctx,
@@ -408,7 +408,7 @@ func (s *TaskServiceTestSuite) TestPrepareDecision() {
 	})
 
 	s.Run("TaskNotCurrentNode", func() {
-		nodeID, instanceID, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "op-user-5")
+		nodeID, instanceID, taskID := setupPrepareDecisionData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "op-user-5")
 
 		otherNode := &approval.FlowNode{
 			FlowVersionID: s.fixture.VersionID,
@@ -441,12 +441,12 @@ func (s *TaskServiceTestSuite) TestPrepareDecision() {
 	})
 }
 
-// --- PrepareOperation: submitted-value validation ---
+// --- PrepareDecision: submitted-value validation ---
 
 // setupFormValidationTask seeds a draft version carrying the given form schema,
 // a node carrying the given field permissions, and a running instance + pending
 // task on it, returning the task ID. A draft version sidesteps the one-published-
-// version-per-flow unique index while still exercising PrepareOperation's schema
+// version-per-flow unique index while still exercising PrepareDecision's schema
 // load, which reads form_fields regardless of version status.
 func (s *TaskServiceTestSuite) setupFormValidationTask(
 	fields []approval.FormFieldDefinition,
@@ -576,7 +576,7 @@ func (s *TaskServiceTestSuite) TestPrepareDecisionFormValidation() {
 
 func (s *TaskServiceTestSuite) TestLoadTaskContextForNodeOperation() {
 	s.Run("AllowWaitingTaskWhenPendingNotRequired", func() {
-		nodeID, instanceID, taskID := setupPrepareOperationData(
+		nodeID, instanceID, taskID := setupPrepareDecisionData(
 			s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskWaiting, "node-op-user-1",
 		)
 
@@ -591,7 +591,7 @@ func (s *TaskServiceTestSuite) TestLoadTaskContextForNodeOperation() {
 	})
 
 	s.Run("RequireAssigneeShouldRejectNonAssignee", func() {
-		_, _, taskID := setupPrepareOperationData(
+		_, _, taskID := setupPrepareDecisionData(
 			s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "node-op-user-2",
 		)
 
@@ -783,7 +783,7 @@ func (s *TaskServiceTestSuite) TestCanRemoveAssigneeTask() {
 }
 
 func (s *TaskServiceTestSuite) TestParticipationReader() {
-	nodeID, inst, id := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "operator")
+	nodeID, inst, id := setupPrepareDecisionData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "operator")
 	_, err := s.db.NewUpdate().Model((*approval.Task)(nil)).Set("delegator_id", "delegator").Where(func(cb orm.ConditionBuilder) { cb.PKEquals(id) }).Exec(s.ctx)
 	s.Require().NoError(err, "Should assign a delegator")
 	_, err = s.db.NewInsert().Model(&approval.CCRecord{InstanceID: inst, NodeID: &nodeID, CCUserID: "observer"}).Exec(s.ctx)

@@ -635,7 +635,7 @@ func encodedFormDataSize(formData map[string]any) (int, error) {
 // validateFormDataSize enforces the resolved form-data cap on the JSON-encoded
 // payload. It guards ValidateFormData (start / resubmit), where the applicant
 // owns the whole payload, so the absolute cap applies. Task actions instead
-// enforce the cap on the growth they introduce (see PrepareOperation) so a
+// enforce the cap on the growth they introduce (see PrepareDecision) so a
 // pre-existing oversize instance is not wedged.
 func validateFormDataSize(formData map[string]any, maxBytes int) error {
 	size, err := encodedFormDataSize(formData)

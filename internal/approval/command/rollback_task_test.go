@@ -443,7 +443,7 @@ func (s *RollbackTaskTestSuite) TestRollbackToIntermediateNodeKeepsSnapshot() {
 
 // TestRollbackClearIsNotWedgedByOversizeFormData proves the size-cap delta and
 // rollback-clear compose: an instance whose stored form data is already over the
-// cap can still be rolled back (the no-op-merge passes PrepareOperation's growth
+// cap can still be rolled back (the no-op-merge passes PrepareDecision's growth
 // check) and the clear then wipes it — it is not wedged.
 func (s *RollbackTaskTestSuite) TestRollbackClearIsNotWedgedByOversizeFormData() {
 	startNode := s.seedStartNode("oversize-clear-start")

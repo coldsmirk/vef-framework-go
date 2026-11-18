@@ -152,7 +152,7 @@ func (s *RejectTaskTestSuite) TestRejectTaskNotCurrentNode() {
 
 // TestRejectEnforcesFormDataSizeCap proves the form-data size cap is enforced on
 // the reject path too, not only approve: every task action shares the
-// PrepareOperation chokepoint, so growing the instance past the cap via reject's
+// PrepareDecision chokepoint, so growing the instance past the cap via reject's
 // form data is rejected before any state change.
 func (s *RejectTaskTestSuite) TestRejectEnforcesFormDataSizeCap() {
 	// blob is an unconstrained text field, so value validation passes and the
@@ -204,7 +204,7 @@ func (s *RejectTaskTestSuite) TestRejectEnforcesFormDataSizeCap() {
 		FormData: map[string]any{"blob": strings.Repeat("x", 70*1024)},
 		Caller:   approval.SystemCaller,
 	})
-	s.Require().ErrorIs(err, approval.ErrFormDataTooLarge, "Reject must enforce the form-data size cap via PrepareOperation")
+	s.Require().ErrorIs(err, approval.ErrFormDataTooLarge, "Reject must enforce the form-data size cap via PrepareDecision")
 
 	var reloaded approval.Task
 

@@ -801,7 +801,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeShouldBeConcurrencySafe() {
 	s.Assert().Len(activeTasks, 1, "Concurrent add-assignee should create only one active task for the same assignee")
 }
 
-func (s *AddAssigneeTestSuite) TestAddAssigneeAndPrepareOperationShouldAvoidDeadlock() {
+func (s *AddAssigneeTestSuite) TestAddAssigneeAndPrepareDecisionShouldAvoidDeadlock() {
 	_, task := s.setupData("operator-lock-order")
 	taskSvc := service.NewTaskService()
 
@@ -878,9 +878,9 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeAndPrepareOperationShouldAvoidDead
 
 	select {
 	case err := <-prepareDone:
-		s.Require().NoError(err, "PrepareOperation should complete without deadlock")
+		s.Require().NoError(err, "PrepareDecision should complete without deadlock")
 	case <-time.After(5 * time.Second):
-		s.FailNow("PrepareOperation should not block indefinitely")
+		s.FailNow("PrepareDecision should not block indefinitely")
 	}
 }
 

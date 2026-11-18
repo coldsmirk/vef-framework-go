@@ -9,9 +9,8 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// LifecycleHookRunner aggregates host-registered InstanceLifecycleHook
-// implementations and invokes each of them; the order is unspecified (FX
-// value groups carry no ordering), so hooks must not depend on one another.
+// LifecycleHookRunner invokes the matching business handler's lifecycle hook
+// first, then the global hooks. FX value groups leave the global order unspecified.
 // A non-nil error short-circuits the remaining hooks so the caller can roll
 // back the surrounding transaction.
 //

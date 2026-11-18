@@ -23,11 +23,8 @@ type TaskContext struct {
 	Instance *approval.Instance
 	Task     *approval.Task
 	Node     *approval.FlowNode
-	// FormFields is the flow version's parsed form fields. PrepareDecision
-	// loads them (only when the node grants field permissions) so submitted-value
-	// validation and the approve/handle required-permission check share one
-	// query; nil for permission-less nodes and for contexts loaded directly via
-	// LoadTaskContextForNodeOperation.
+	// FormFields holds the frozen version catalog for validating business
+	// snapshots and node-level form edits, including required fields.
 	FormFields []approval.FormFieldDefinition
 }
 
@@ -882,9 +879,8 @@ func (s *TaskService) PrepareDecision(
 			return nil, err
 		}
 	}
-	// A permission-less node exposes nothing for editing and demands no required
-	// value, so both the editable-subset validation and the approve-side required
-	// check are no-ops — skip the form_fields load entirely (tc.FormFields stays nil).
+	// Business snapshots always use the frozen catalog. Form-only decisions
+	// need it when their node grants field permissions.
 	if tc.Instance.BusinessKind != nil || len(tc.Node.FieldPermissions) > 0 {
 		// Load the version's parsed form fields so submitted edits validate against
 		// them, and expose them on the context so the approve/handle

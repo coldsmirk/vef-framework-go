@@ -173,7 +173,7 @@ func (s *ApproveTaskTestSuite) TestApproveShouldResolveCCFromFormField() {
 
 	ccField := "ccUsers"
 	// The approver submits ccUsers as an editable field, so it must be part of
-	// the version's form schema or PrepareOperation rejects it as undefined.
+	// the version's form schema or PrepareDecision rejects it as undefined.
 	setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, []approval.FormFieldDefinition{
 		{Key: ccField, Kind: approval.FieldSelect, Label: "CC Users"},
 	})
