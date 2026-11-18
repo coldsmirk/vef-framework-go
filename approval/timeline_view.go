@@ -7,7 +7,7 @@ import (
 
 // TimelineEntryKind classifies one entry of an instance timeline. Node-visit
 // entries reuse the node-kind vocabulary (start / approval / handle / cc / end);
-// instance-level milestones (withdraw / terminate) carry their action name.
+// instance-level milestones (withdraw / terminate / void) carry their action name.
 // Condition never appears — a branch routes without anything to narrate.
 //
 // The end entry is the timeline's closing marker: reaching the end node is the
@@ -44,7 +44,7 @@ const (
 // and timing-based CC configured on approval/handle nodes), and Activities for
 // side actions that happened at the node (transfer, rollback, add/remove
 // assignee, manual CC, urge, system execution — and submit/resubmit on start
-// entries). Milestone entries (withdraw / terminate) hold a single activity
+// entries). Milestone entries (withdraw / terminate / void) hold a single activity
 // describing who closed the instance and why.
 type TimelineEntry struct {
 	Kind           TimelineEntryKind `json:"kind"`

@@ -6,7 +6,7 @@ import "github.com/coldsmirk/vef-framework-go/approval"
 // node-by-node account of the path the instance actually took: one entry per
 // node visit (in traversal order, ending at the node currently in progress
 // while the instance is executing) interleaved with instance-level milestones
-// (withdraw / terminate) at their time positions. Everything a transit-record
+// (withdraw / terminate / void) at their time positions. Everything a transit-record
 // view renders is assembled by the shared visit index — participants fused
 // from tasks and their finishing logs, CC recipients with read receipts, and
 // side-action activities — so the client displays the list verbatim. Condition
@@ -65,7 +65,7 @@ func buildInstanceTimeline(bundle *instanceDetailBundle) []approval.TimelineEntr
 	return mergeMilestones(entries, idx.milestones)
 }
 
-// milestoneEntry wraps an instance-level closing action (withdraw / terminate)
+// milestoneEntry wraps an instance-level closing action (withdraw / terminate / void)
 // as a standalone timeline entry holding a single activity that names who
 // closed the instance and why.
 func milestoneEntry(log approval.ActionLog) approval.TimelineEntry {
@@ -89,7 +89,8 @@ func mergeMilestones(entries, milestones []approval.TimelineEntry) []approval.Ti
 	next := 0
 
 	for _, entry := range entries {
-		for next < len(milestones) && !milestones[next].StartedAt.After(entry.StartedAt) {
+		// A final milestone always follows every visit, including visits in the same clock tick.
+ for next < len(milestones) && milestones[next].Kind == approval.TimelineEntryWithdraw && !milestones[next].StartedAt.After(entry.StartedAt) {
 			merged = append(merged, milestones[next])
 			next++
 		}

@@ -318,9 +318,9 @@ func TestBuildInstanceTimeline(t *testing.T) {
 		b.Instance.Status = approval.InstanceTerminated
 		b.Visits = []approval.NodeVisit{
 			visitEntered("v1", "ns", 1, approval.NodeVisitPassed, at(0), new(at(0))),
-			visitEntered("v2", "na", 2, approval.NodeVisitCanceled, at(0), new(at(30))),
+			visitEntered("v2", "na", 2, approval.NodeVisitCanceled, at(0), new(at(0))),
 		}
-		terminate := logAt("l1", approval.ActionTerminate, "admin", at(30))
+		terminate := logAt("l1", approval.ActionTerminate, "admin", at(0))
 		terminate.Opinion = new("force close")
 		b.ActionLogs = []approval.ActionLog{terminate}
 
