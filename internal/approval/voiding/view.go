@@ -2,6 +2,7 @@ package voiding
 
 import (
 	"context"
+	"errors"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -53,12 +54,33 @@ func (h *RequestHandler) View(ctx context.Context, db orm.DB, view *approval.Vie
 		return nil, err
 	}
 
-	plan, err := h.core.plan(ctx, db, vc)
+	plan, err := h.viewPlan(ctx, db, vc, rec)
 	if err != nil {
 		return nil, err
 	}
 
 	return makeRequestView(vc, rec, plan, view.FieldPermissions), nil
+}
+
+func (h *RequestHandler) viewPlan(ctx context.Context, db orm.DB, vc *approval.VoidContext, rec *approval.VoidRecord) (*approval.VoidPlan, error) {
+	switch rec.Status {
+	case approval.VoidVoided:
+		return &approval.VoidPlan{Reversals: rec.Reversals, FollowUps: rec.FollowUps}, nil
+	case approval.VoidRequested:
+		if vc.Instance.Status != approval.InstanceApproved {
+			return &approval.VoidPlan{Blockers: []string{approval.ErrInstanceNotVoidable.Message}}, nil
+		}
+
+		plan, err := h.core.plan(ctx, db, vc)
+		if errors.Is(err, approval.ErrVoidNotAllowed) {
+			return &approval.VoidPlan{Blockers: []string{approval.ErrVoidNotAllowed.Message}}, nil
+		}
+
+		return plan, err
+
+	default:
+		return &approval.VoidPlan{}, nil
+	}
 }
 
 func makeRequestView(vc *approval.VoidContext, rec *approval.VoidRecord, plan *approval.VoidPlan, perms map[string]approval.Permission) requestView {

@@ -50,7 +50,7 @@ type InstanceResourceTestSuite struct {
 	token           string
 	categoryID      string
 	handoverEnabled atomic.Bool
-	voidBooking     bookingHandler
+	voidBooking     BookingHandler
 
 	// Flow setups
 	simple   FlowSetup // Start → End

@@ -9,6 +9,31 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
+func TestRequestViewPlanWithoutVoider(t *testing.T) {
+	h := &RequestHandler{core: NewCore(nil, nil, nil)}
+	reversals, followUps := []string{"Release booking"}, []string{"Notify guest"}
+
+	for _, tc := range []struct {
+		name   string
+		record approval.VoidStatus
+		target approval.InstanceStatus
+		want   approval.VoidPlan
+	}{
+		{"Executed", approval.VoidVoided, approval.InstanceVoided, approval.VoidPlan{Reversals: reversals, FollowUps: followUps}},
+		{"DismissedBeforeLaterVoid", approval.VoidDismissed, approval.InstanceVoided, approval.VoidPlan{}},
+		{"PendingIneligibleTarget", approval.VoidRequested, approval.InstanceVoided, approval.VoidPlan{Blockers: []string{approval.ErrInstanceNotVoidable.Message}}},
+		{"PendingMissingVoider", approval.VoidRequested, approval.InstanceApproved, approval.VoidPlan{Blockers: []string{approval.ErrVoidNotAllowed.Message}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			vc := &approval.VoidContext{Instance: &approval.Instance{Status: tc.target, BusinessKind: new(approval.BusinessKind("booking"))}}
+			record := &approval.VoidRecord{Status: tc.record, Reversals: reversals, FollowUps: followUps}
+			got, err := h.viewPlan(t.Context(), nil, vc, record)
+			require.NoError(t, err, "A request should remain readable after the target voider is removed")
+			require.Equal(t, &tc.want, got, "The plan must reflect the request's outcome and the target's eligibility")
+		})
+	}
+}
+
 func TestRequestViewPermissions(t *testing.T) {
 	vc := &approval.VoidContext{
 		Instance: &approval.Instance{

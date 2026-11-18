@@ -3,6 +3,7 @@ package resource_test
 import (
 	"context"
 	"net/http"
+	"sync"
 	"sync/atomic"
 
 	"github.com/coldsmirk/vef-framework-go/api"
@@ -12,25 +13,32 @@ import (
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
-type bookingHandler struct{ blocked atomic.Bool }
+type BookingHandler struct {
+	blocked  atomic.Bool
+	released sync.Map
+}
 
-func (*bookingHandler) Describe() approval.BusinessKindDescriptor {
+func (*BookingHandler) Describe() approval.BusinessKindDescriptor {
 	return approval.BusinessKindDescriptor{Kind: "booking", Label: "Booking"}
 }
 
-func (*bookingHandler) Submit(_ context.Context, _ orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
+func (*BookingHandler) Submit(_ context.Context, _ orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
 	return &approval.Submission{BusinessRef: sc.InstanceID}, nil
 }
 
-func (*bookingHandler) View(context.Context, orm.DB, *approval.ViewContext) (any, error) {
+func (*BookingHandler) View(context.Context, orm.DB, *approval.ViewContext) (any, error) {
 	return nil, nil
 }
 
-func (*bookingHandler) OnTaskAction(context.Context, orm.DB, *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
+func (*BookingHandler) OnTaskAction(context.Context, orm.DB, *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
 	return nil, nil
 }
 
-func (h *bookingHandler) PlanVoid(_ context.Context, _ orm.DB, vc *approval.VoidContext) (*approval.VoidPlan, error) {
+func (h *BookingHandler) PlanVoid(_ context.Context, _ orm.DB, vc *approval.VoidContext) (*approval.VoidPlan, error) {
+	if _, ok := h.released.Load(vc.Instance.ID); ok {
+		return &approval.VoidPlan{Blockers: []string{"Booking already released"}}, nil
+	}
+
 	p := &approval.VoidPlan{Reversals: []string{"Release booking"}, FollowUps: []string{"Notify guest"}}
 	if h.blocked.Load() {
 		p.Blockers = []string{"Already checked in"}
@@ -42,7 +50,12 @@ func (h *bookingHandler) PlanVoid(_ context.Context, _ orm.DB, vc *approval.Void
 
 	return p, nil
 }
-func (*bookingHandler) Void(context.Context, orm.DB, *approval.VoidContext) error { return nil }
+
+func (h *BookingHandler) Void(_ context.Context, _ orm.DB, vc *approval.VoidContext) error {
+	h.released.Store(vc.Instance.ID, true)
+
+	return nil
+}
 
 func (s *InstanceResourceTestSuite) voidRPC(resource, action string, params api.Params, token string) result.Result {
 	res := s.MakeRPCRequestWithToken(api.Request{Resource: "approval/" + resource, Action: action, Version: "v1", Params: params}, token)
@@ -330,6 +343,43 @@ func (s *InstanceResourceTestSuite) TestVoidLifecycle() {
 		s.Equal(reqID, rec["requestInstanceId"], "Approval promotes the same request record")
 		s.Equal("Corrected reason", rec["reason"], "The approved revision is retained")
 		s.Equal(approval.InstanceApproved, s.loadInstance(reqID).Status, "Request and target commit together")
+		_, released := s.voidBooking.released.Load(id)
+		s.Require().True(released, "The host booking was released by Void")
+
+		for _, role := range []string{"my", "admin"} {
+			view := s.ReadDataAsMap(detail(role, reqID)["businessView"])
+			plan := s.ReadDataAsMap(view["plan"])
+			s.Empty(plan["blockers"], "A released booking should not block reading the approved request")
+			s.Equal([]any{"Release booking", "Release deposit"}, plan["reversals"], "History shows the reversals that were executed")
+			s.Equal([]any{"Notify guest"}, plan["followUps"], "History keeps the follow-ups recorded at execution")
+		}
+	})
+
+	s.Run("MissingVoider", func() {
+		update(approval.VoidApproval)
+
+		id := s.startInstance(target.FlowCode, nil)["id"].(string)
+		r := requester(id, request.FlowCode, "Release booking")
+		s.Require().True(r.IsOk(), "Should start the request while the voider is available")
+		reqID := s.ReadDataAsMap(r.Data)["id"].(string)
+
+		// Model an existing request whose target kind no longer implements BusinessVoider.
+		inst := &approval.Instance{ID: id}
+		_, err := s.db.NewUpdate().Model(inst).Set("business_kind", "invoice").WherePK().Exec(s.ctx)
+		s.Require().NoError(err, "Should bind the target to the registered handler without a voider")
+
+		for _, role := range []string{"my", "admin"} {
+			view := s.ReadDataAsMap(detail(role, reqID)["businessView"])
+			s.Equal([]any{approval.ErrVoidNotAllowed.Message}, s.ReadDataAsMap(view["plan"])["blockers"], "The detail explains the unavailable voider")
+		}
+
+		task := taskID(reqID)
+		s.Equal(approval.ErrCodeVoidNotAllowed, s.processTask(task, "approve", "Try reversal").Code, "Approval still requires a voider")
+		r = s.processTask(task, "reject", "Reversal unavailable")
+		s.Require().True(r.IsOk(), "The approver can reject the blocked request")
+		view := s.ReadDataAsMap(detail("my", reqID)["businessView"])
+		s.Equal("dismissed", s.ReadDataAsMap(view["record"])["status"], "Rejection dismisses the request")
+		s.Empty(s.ReadDataAsMap(view["plan"])["blockers"], "A dismissed request needs no current voider")
 	})
 
 	for _, end := range []string{"reject", "withdraw", "terminate"} {
