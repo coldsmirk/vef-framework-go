@@ -10,8 +10,10 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -42,7 +44,7 @@ type AddAssigneeTestSuite struct {
 
 func (s *AddAssigneeTestSuite) SetupSuite() {
 	s.bus = eventtest.NewFakeBus()
-	s.handler = wrapWithBus(s.bus, command.NewAddAssigneeHandler(s.db, service.NewTaskService(), nil, explicitHandoverResolver{}))
+	s.handler = wrapWithBus(s.bus, command.NewAddAssigneeHandler(s.db, service.NewTaskService(), explicitHandoverResolver{}, explicitHandoverResolver{}))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "add-assignee")
 
 	node := &approval.FlowNode{
@@ -915,19 +917,23 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeSkipsDecidedUserInOpenVisit() {
 
 type explicitHandoverResolver struct{}
 
+func (explicitHandoverResolver) ResolveUsers(context.Context, []string) (map[string]approval.UserInfo, error) {
+	return map[string]approval.UserInfo{"moved": {ID: "moved", Name: "Robin"}}, nil
+}
+
 func (explicitHandoverResolver) ResolveHandovers(context.Context, *approval.HandoverContext, []string) (map[string]approval.Handover, error) {
-	return map[string]approval.Handover{"moved": {Successor: &approval.UserInfo{ID: "next", Name: "Morgan"}}, "departed": {}}, nil
+	return map[string]approval.Handover{"moved": {Successor: &approval.UserInfo{ID: "next", Name: "Morgan"}}, "departed": {}, "cycle": {Successor: &approval.UserInfo{ID: "cycle"}}}, nil
 }
 
 func (s *AddAssigneeTestSuite) TestExplicitHandoverTarget() {
 	_, task := s.setupData("operator")
-	for _, target := range []string{"moved", "departed"} {
+	for _, target := range []string{"moved", "departed", "cycle"} {
 		s.Run(target, func() {
 			_, err := s.handler.Handle(
 				s.ctx,
 				command.AddAssigneeCmd{
 					TaskID:   task.ID,
-					UserIDs:  []string{target},
+					UserIDs:  []string{"active", target},
 					AddType:  approval.AddAssigneeParallel,
 					Operator: approval.UserInfo{ID: "operator"},
 					Caller:   approval.SystemCaller,
@@ -935,9 +941,12 @@ func (s *AddAssigneeTestSuite) TestExplicitHandoverTarget() {
 			)
 			s.Require().ErrorIs(err, approval.ErrUserHandedOver, "Should refuse explicit picks with 40028")
 
+			params := map[string]any{"user": target}
 			if target == "moved" {
-				s.ErrorContains(err, "Morgan", "Should identify successor")
+				params["user"], params["successor"] = "Robin", "Morgan"
 			}
+
+			s.Equal(i18n.T(shared.ErrMessageUserHandedOver, params), err.Error(), "Should name the rejected pick and only a distinct successor")
 		})
 	}
 }

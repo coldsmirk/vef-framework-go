@@ -10,6 +10,10 @@ const (
 	// Initiation window errors. {{.next}} is the next opening in the rule's timezone.
 	ErrMessageInitiationWindowClosed = "approval_initiation_window_closed"
 
+	// Explicit handover picks. {{.user}} identifies the rejected user and
+	// {{.successor}} names their successor when one exists.
+	ErrMessageUserHandedOver = "approval_user_handed_over"
+
 	// Urge errors. Template parameters:
 	//   {{.minutes}} — cooldown window in minutes
 	ErrMessageUrgeTooFrequent = "approval_urge_too_frequent"

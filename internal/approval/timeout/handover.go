@@ -15,12 +15,13 @@ import (
 // HandoverScanner discovers eligible instances and delegates migration to the
 // same transactional command as the service. Each dispatch locks one instance.
 type HandoverScanner struct {
-	db  orm.DB
-	bus cqrs.Bus
+	db        orm.DB
+	bus       cqrs.Bus
+	handovers approval.HandoverResolver
 }
 
-func NewHandoverScanner(db orm.DB, bus cqrs.Bus) *HandoverScanner {
-	return &HandoverScanner{db: db, bus: bus}
+func NewHandoverScanner(db orm.DB, bus cqrs.Bus, handovers approval.HandoverResolver) *HandoverScanner {
+	return &HandoverScanner{db: db, bus: bus, handovers: handovers}
 }
 
 func registerHandoverJob(scheduler cron.Scheduler, scanner *HandoverScanner, cfg *config.ApprovalConfig) error {
@@ -40,17 +41,28 @@ func (s *HandoverScanner) Scan(ctx context.Context) {
 
 	var cursor string
 	for {
-		var ids []string
-
-		err := command.HandoverCandidates(s.db, nil).Select("id").Where(func(cb orm.ConditionBuilder) { cb.GreaterThan("id", cursor) }).Limit(scanBatchSize).Scan(ctx, &ids)
+		page, err := command.FindHandoverScanPage(ctx, s.db, cursor, scanBatchSize)
 		if err != nil {
 			logger.Errorf("Scan approval handover candidates: %v", err)
 
 			return
 		}
 
-		for _, id := range ids {
-			_, err := cqrs.Send[command.ApplyHandoversCmd, *approval.HandoverReport](
+		for _, c := range page {
+			id := c.Instance.ID
+
+			ready, err := c.NeedsMigration(ctx, s.handovers)
+			if err != nil {
+				logger.Errorf("Check handovers for instance %s: %v", id, err)
+
+				continue
+			}
+
+			if !ready {
+				continue
+			}
+
+			_, err = cqrs.Send[command.ApplyHandoversCmd, *approval.HandoverReport](
 				workCtx,
 				s.bus,
 				command.ApplyHandoversCmd{ScanInstanceID: id, Operator: shared.SystemOperator, Caller: approval.SystemCaller},
@@ -60,10 +72,10 @@ func (s *HandoverScanner) Scan(ctx context.Context) {
 			}
 		}
 
-		if len(ids) < scanBatchSize {
+		if len(page) < scanBatchSize {
 			return
 		}
 
-		cursor = ids[len(ids)-1]
+		cursor = page[len(page)-1].Instance.ID
 	}
 }

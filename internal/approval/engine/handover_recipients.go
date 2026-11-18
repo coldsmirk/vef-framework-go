@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -10,7 +11,7 @@ import (
 )
 
 // CheckPicks rejects an explicitly selected user who has handed over the work.
-func (r *ActorResolution) CheckPicks(ctx context.Context, ids []string) error {
+func (r *ActorResolution) CheckPicks(ctx context.Context, ids []string, users approval.UserInfoResolver) error {
 	changes, err := r.Handovers(ctx, ids)
 	if err != nil {
 		return err
@@ -18,16 +19,14 @@ func (r *ActorResolution) CheckPicks(ctx context.Context, ids []string) error {
 
 	for _, id := range ids {
 		if h, ok := changes[id]; ok {
-			if h.Successor == nil {
-				return approval.ErrUserHandedOver
+			user := shared.ResolveUserInfo(ctx, users, id)
+
+			params := map[string]any{"user": cmp.Or(user.Name, id)}
+			if h.Successor != nil && h.Successor.ID != id {
+				params["successor"] = cmp.Or(h.Successor.Name, h.Successor.ID)
 			}
 
-			name := h.Successor.Name
-			if name == "" {
-				name = h.Successor.ID
-			}
-
-			return result.Err(i18n.T(approval.ErrMessageUserHandedOver, map[string]any{"successor": name}), result.WithCode(approval.ErrCodeUserHandedOver))
+			return result.Err(i18n.T(shared.ErrMessageUserHandedOver, params), result.WithCode(approval.ErrCodeUserHandedOver))
 		}
 	}
 

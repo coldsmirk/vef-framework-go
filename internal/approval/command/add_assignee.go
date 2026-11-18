@@ -79,7 +79,7 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 		return cqrs.Unit{}, approval.ErrNoUsersSpecified
 	}
 
-	if err := engine.NewActorResolution(instance, node, h.handovers).CheckPicks(ctx, userIDs); err != nil {
+	if err := engine.NewActorResolution(instance, node, h.handovers).CheckPicks(ctx, userIDs, h.userResolver); err != nil {
 		return cqrs.Unit{}, err
 	}
 

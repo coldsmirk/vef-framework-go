@@ -61,7 +61,7 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 		return cqrs.Unit{}, approval.ErrInvalidTransferTarget
 	}
 
-	if err := engine.NewActorResolution(instance, node, h.handovers).CheckPicks(ctx, []string{newAssigneeID}); err != nil {
+	if err := engine.NewActorResolution(instance, node, h.handovers).CheckPicks(ctx, []string{newAssigneeID}, h.userResolver); err != nil {
 		return cqrs.Unit{}, err
 	}
 

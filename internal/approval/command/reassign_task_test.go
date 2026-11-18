@@ -202,6 +202,7 @@ func (s *ReassignTaskTestSuite) TestExplicitHandoverTarget() {
 		s.Run(target, func() {
 			_, err := s.handler.Handle(s.ctx, command.ReassignTaskCmd{TaskID: task.ID, NewAssigneeID: target, Operator: approval.UserInfo{ID: "operator"}, Caller: approval.SystemCaller})
 			s.Require().ErrorIs(err, approval.ErrUserHandedOver, "Should refuse explicit picks with 40028")
+			s.ErrorContains(err, target, "Should identify the rejected assignee")
 
 			if target == "moved" {
 				s.ErrorContains(err, "Morgan", "Should identify successor")

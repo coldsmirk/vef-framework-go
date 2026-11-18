@@ -430,9 +430,10 @@ func (s *AddCCTestSuite) TestExplicitHandoverTarget() {
 		s.Run(target, func() {
 			_, err := s.handler.Handle(
 				s.ctx,
-				command.AddCCCmd{InstanceID: inst.ID, CCUserIDs: []string{target}, Operator: approval.UserInfo{ID: "operator"}, Caller: approval.SystemCaller},
+				command.AddCCCmd{InstanceID: inst.ID, CCUserIDs: []string{"active", target}, Operator: approval.UserInfo{ID: "operator"}, Caller: approval.SystemCaller},
 			)
 			s.Require().ErrorIs(err, approval.ErrUserHandedOver, "Should refuse explicit picks with 40028")
+			s.ErrorContains(err, target, "Should identify the rejected CC recipient when its display name is unavailable")
 
 			if target == "moved" {
 				s.ErrorContains(err, "Morgan", "Should identify successor")

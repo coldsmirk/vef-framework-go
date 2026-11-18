@@ -2,8 +2,11 @@ package command
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"slices"
+
+	"github.com/samber/lo"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
@@ -62,9 +65,9 @@ func handoverReceipts(q orm.SelectQuery, ids []string) orm.SelectQuery {
 		})
 }
 
-// HandoverCandidates selects instances with eligible work. An empty user set is
+// handoverCandidates selects instances with eligible work. An empty user set is
 // reserved for the scanner and selects active work only.
-func HandoverCandidates(db orm.DB, ids []string) orm.SelectQuery {
+func handoverCandidates(db orm.DB, ids []string) orm.SelectQuery {
 	return db.NewSelect().Model((*approval.Instance)(nil)).Where(func(cb orm.ConditionBuilder) {
 		cb.Group(func(cb orm.ConditionBuilder) {
 			cb.InSubQuery("id", func(q orm.SelectQuery) { handoverTasks(q, ids).Select("instance_id") }).
@@ -97,7 +100,7 @@ func (h *ApplyHandoversHandler) Handle(ctx context.Context, cmd ApplyHandoversCm
 		ctx = orm.WithQuietSQLLog(ctx)
 	}
 
-	q := HandoverCandidates(db, ids)
+	q := handoverCandidates(db, ids)
 	if tenant != nil {
 		q.Where(func(cb orm.ConditionBuilder) { cb.Equals("tenant_id", *tenant) })
 	}
@@ -113,7 +116,12 @@ func (h *ApplyHandoversHandler) Handle(ctx context.Context, cmd ApplyHandoversCm
 
 	batch := handoverBatch{db: db, operator: cmd.Operator, report: report}
 	for i := range instances {
-		if err := h.applyInstance(ctx, &batch, &instances[i], ids); err != nil {
+		candidates, err := loadHandoverWork(ctx, db, instances[i:i+1], ids, true)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := h.applyInstance(ctx, &batch, &candidates[0], ids); err != nil {
 			return nil, fmt.Errorf("apply handovers to instance %s: %w", instances[i].ID, err)
 		}
 	}
@@ -127,69 +135,161 @@ type handoverBatch struct {
 	report   *approval.HandoverReport
 }
 
-// applyInstance runs after locking the instance. A running instance has one
-// active node. Tasks are grouped by their own node to retain their resolver scope.
-func (h *ApplyHandoversHandler) applyInstance(ctx context.Context, batch *handoverBatch, inst *approval.Instance, ids []string) error {
-	db := batch.db
+// HandoverCandidate groups one instance's eligible work by resolver scope.
+type HandoverCandidate struct {
+	Instance *approval.Instance
+	groups   []*handoverWork
+}
+
+type handoverWork struct {
+	node      *approval.FlowNode
+	tasks     []*approval.Task
+	receipts  []*approval.CCRecord
+	applicant bool
+}
+
+// FindHandoverScanPage reads a keyset page of candidates without opening a
+// transaction. Work and node snapshots are loaded in batches for the whole page.
+func FindHandoverScanPage(ctx context.Context, db orm.DB, cursor string, limit int) ([]HandoverCandidate, error) {
+	var instances []approval.Instance
+	if err := handoverCandidates(db, nil).Where(func(cb orm.ConditionBuilder) { cb.GreaterThan("id", cursor) }).Limit(limit).Scan(ctx, &instances); err != nil {
+		return nil, err
+	}
+
+	return loadHandoverWork(ctx, db, instances, nil, false)
+}
+
+func loadHandoverWork(ctx context.Context, db orm.DB, instances []approval.Instance, ids []string, lock bool) ([]HandoverCandidate, error) {
+	if len(instances) == 0 {
+		return nil, nil
+	}
+
+	candidates := make([]HandoverCandidate, len(instances))
+	byInstance := make(map[string]*HandoverCandidate, len(instances))
+
+	instanceIDs := make([]string, len(instances))
+	for i := range instances {
+		candidates[i].Instance = &instances[i]
+		instanceIDs[i] = instances[i].ID
+		byInstance[instanceIDs[i]] = &candidates[i]
+	}
+
+	tq := handoverTasks(db.NewSelect(), ids).Where(func(cb orm.ConditionBuilder) { cb.In("instance_id", instanceIDs) }).OrderBy("sort_order", "id")
+
+	rq := handoverReceipts(db.NewSelect(), ids).Where(func(cb orm.ConditionBuilder) { cb.In("acr.instance_id", instanceIDs) }).OrderBy("acr.id")
+	if lock {
+		tq.ForUpdate()
+		rq.SelectModelColumns().ForUpdate((*approval.CCRecord)(nil))
+	} else {
+		// Discovery needs only the resolver scope and the users holding work.
+		tq.Select("instance_id", "node_id", "assignee_id", "delegator_id")
+		rq.Select("acr.instance_id", "acr.node_id", "acr.cc_user_id")
+	}
 
 	var tasks []approval.Task
-	if err := handoverTasks(db.NewSelect(), ids).Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", inst.ID) }).OrderBy("sort_order", "id").ForUpdate().Scan(ctx, &tasks); err != nil {
-		return err
+	if err := tq.Scan(ctx, &tasks); err != nil {
+		return nil, err
 	}
 
 	var receipts []approval.CCRecord
-	if err := handoverReceipts(
-		db.NewSelect(),
-		ids,
-	).SelectModelColumns().
-		Where(func(cb orm.ConditionBuilder) { cb.Equals("acr.instance_id", inst.ID) }).
-		OrderBy("acr.id").ForUpdate((*approval.CCRecord)(nil)).
-		Scan(ctx, &receipts); err != nil {
-		return err
+	if err := rq.Scan(ctx, &receipts); err != nil {
+		return nil, err
 	}
 
-	byNode := make(map[string]*handoverWork)
+	type scope struct{ instanceID, nodeID string }
+
+	groups := make(map[scope]*handoverWork)
 	nodeIDs := shared.NewOrderedUnique[string](len(tasks) + len(receipts))
 
-	group := func(id string) *handoverWork {
-		if nodeIDs.Add(id) {
-			byNode[id] = &handoverWork{}
+	group := func(instanceID, nodeID string) *handoverWork {
+		key := scope{instanceID, nodeID}
+		if g := groups[key]; g != nil {
+			return g
 		}
 
-		return byNode[id]
+		g := &handoverWork{}
+		groups[key] = g
+		c := byInstance[instanceID]
+		c.groups = append(c.groups, g)
+
+		if nodeID != "" {
+			nodeIDs.Add(nodeID)
+		}
+
+		return g
 	}
 	for i := range tasks {
-		g := group(tasks[i].NodeID)
+		g := group(tasks[i].InstanceID, tasks[i].NodeID)
 		g.tasks = append(g.tasks, &tasks[i])
 	}
 
 	for i := range receipts {
-		g := group(*receipts[i].NodeID)
+		g := group(receipts[i].InstanceID, *receipts[i].NodeID)
 		g.receipts = append(g.receipts, &receipts[i])
 	}
 
-	if (inst.Status == approval.InstanceReturned || inst.Status == approval.InstanceWithdrawn) && slices.Contains(ids, inst.ApplicantID) {
-		var nodeID string
-		if inst.CurrentNodeID != nil {
-			nodeID = *inst.CurrentNodeID
+	for _, inst := range instances {
+		if (inst.Status == approval.InstanceReturned || inst.Status == approval.InstanceWithdrawn) && slices.Contains(ids, inst.ApplicantID) {
+			group(inst.ID, lo.FromPtr(inst.CurrentNodeID)).applicant = true
 		}
-
-		group(nodeID).applicant = true
 	}
 
-	for _, nodeID := range nodeIDs.ToSlice() {
-		var node *approval.FlowNode
-		if nodeID != "" {
-			node = &approval.FlowNode{ID: nodeID}
-			if err := db.NewSelect().Model(node).WherePK().Scan(ctx); err != nil {
-				return err
+	if nodes := nodeIDs.ToSlice(); len(nodes) > 0 {
+		var rows []approval.FlowNode
+		if err := db.NewSelect().Model(&rows).Where(func(cb orm.ConditionBuilder) { cb.In("id", nodes) }).Scan(ctx); err != nil {
+			return nil, err
+		}
+
+		if len(rows) != len(nodes) {
+			return nil, fmt.Errorf("load handover nodes: %w", sql.ErrNoRows)
+		}
+
+		byNode := make(map[string]*approval.FlowNode, len(rows))
+		for i := range rows {
+			byNode[rows[i].ID] = &rows[i]
+		}
+
+		for key, g := range groups {
+			g.node = byNode[key.nodeID]
+		}
+	}
+
+	return candidates, nil
+}
+
+// NeedsMigration checks the read-only snapshot. The command resolves fresh
+// handovers after taking locks before it makes any change.
+func (c *HandoverCandidate) NeedsMigration(ctx context.Context, handovers approval.HandoverResolver) (bool, error) {
+	for _, g := range c.groups {
+		r := engine.NewActorResolution(c.Instance, g.node, handovers)
+
+		changes, err := r.Handovers(ctx, g.userIDs(c.Instance))
+		if err != nil {
+			return false, err
+		}
+
+		for _, task := range g.tasks {
+			if move := planTaskHandover(task, changes, nil); move != nil && move.actionable() {
+				return true, nil
 			}
 		}
 
-		g := byNode[nodeID]
-		r := engine.NewActorResolution(inst, node, h.handovers)
+		for _, receipt := range g.receipts {
+			if successor := changes[receipt.CCUserID].Successor; successor != nil && successor.ID != receipt.CCUserID {
+				return true, nil
+			}
+		}
+	}
 
-		changes, err := r.Handovers(ctx, g.userIDs(inst, ids))
+	return false, nil
+}
+
+func (h *ApplyHandoversHandler) applyInstance(ctx context.Context, batch *handoverBatch, candidate *HandoverCandidate, ids []string) error {
+	inst := candidate.Instance
+	for _, g := range candidate.groups {
+		r := engine.NewActorResolution(inst, g.node, h.handovers)
+
+		changes, err := r.Handovers(ctx, g.userIDs(inst))
 		if err != nil {
 			return err
 		}
@@ -201,15 +301,8 @@ func (h *ApplyHandoversHandler) applyInstance(ctx context.Context, batch *handov
 		}
 
 		for _, task := range g.tasks {
-			predecessor := task.Assignee()
-			if delegator := task.Delegator(); delegator != nil {
-				if _, ok := changes[delegator.ID]; ok {
-					predecessor = *delegator
-				}
-			}
-
-			if change, ok := changes[predecessor.ID]; ok {
-				if err := h.moveTask(ctx, batch, inst, node, task, predecessor, change, r); err != nil {
+			if move := planTaskHandover(task, changes, ids); move != nil {
+				if err := h.moveTask(ctx, batch, inst, g.node, task, move, r); err != nil {
 					return err
 				}
 			}
@@ -217,7 +310,7 @@ func (h *ApplyHandoversHandler) applyInstance(ctx context.Context, batch *handov
 
 		for _, receipt := range g.receipts {
 			if change, ok := changes[receipt.CCUserID]; ok {
-				if err := h.moveReceipt(ctx, batch, inst, node, receipt, change); err != nil {
+				if err := h.moveReceipt(ctx, batch, inst, g.node, receipt, change); err != nil {
 					return err
 				}
 			}
@@ -227,37 +320,63 @@ func (h *ApplyHandoversHandler) applyInstance(ctx context.Context, batch *handov
 	return nil
 }
 
-type handoverWork struct {
-	tasks     []*approval.Task
-	receipts  []*approval.CCRecord
-	applicant bool
-}
-
-func (g *handoverWork) userIDs(inst *approval.Instance, filter []string) []string {
+func (g *handoverWork) userIDs(inst *approval.Instance) []string {
 	users := shared.NewOrderedUnique[string](len(g.tasks)*2 + len(g.receipts) + 1)
-
-	add := func(id string) {
-		if len(filter) == 0 || slices.Contains(filter, id) {
-			users.Add(id)
-		}
-	}
 	for _, t := range g.tasks {
-		add(t.AssigneeID)
+		users.Add(t.AssigneeID)
 
 		if t.DelegatorID != nil {
-			add(*t.DelegatorID)
+			users.Add(*t.DelegatorID)
 		}
 	}
 
 	for _, r := range g.receipts {
-		add(r.CCUserID)
+		users.Add(r.CCUserID)
 	}
 
 	if g.applicant {
-		add(inst.ApplicantID)
+		users.Add(inst.ApplicantID)
 	}
 
 	return users.ToSlice()
+}
+
+type taskHandover struct {
+	seat, from approval.UserInfo
+	change     approval.Handover
+}
+
+// A delegate's departure unwinds their personal delegation even when they
+// have no successor. A seat's own departure requires an HR successor.
+func (m *taskHandover) actionable() bool {
+	return m.from.ID != m.seat.ID || m.change.Successor != nil
+}
+
+func planTaskHandover(task *approval.Task, changes map[string]approval.Handover, ids []string) *taskHandover {
+	assignee := task.Assignee()
+
+	seat := assignee
+	if d := task.Delegator(); d != nil {
+		seat = *d
+	}
+
+	seatChange, seatDeparted := changes[seat.ID]
+	actorChange, actorDeparted := changes[assignee.ID]
+
+	selected := len(ids) == 0 || seatDeparted && slices.Contains(ids, seat.ID) || actorDeparted && slices.Contains(ids, assignee.ID)
+	if !selected {
+		return nil
+	}
+
+	if seatDeparted && (seatChange.Successor == nil || seatChange.Successor.ID != seat.ID) {
+		return &taskHandover{seat: seat, from: seat, change: seatChange}
+	}
+
+	if assignee.ID != seat.ID && actorDeparted {
+		return &taskHandover{seat: seat, from: assignee, change: actorChange}
+	}
+
+	return nil
 }
 
 func (h *ApplyHandoversHandler) moveTask(
@@ -265,42 +384,46 @@ func (h *ApplyHandoversHandler) moveTask(
 	batch *handoverBatch,
 	inst *approval.Instance,
 	node *approval.FlowNode,
-	task *approval.Task,
-	predecessor approval.UserInfo,
-	change approval.Handover,
+	snapshot *approval.Task,
+	move *taskHandover,
 	r *engine.ActorResolution,
 ) error {
 	db, report := batch.db, batch.report
-	// A previous removal in this batch may have promoted or canceled this seat.
+	// Queue advancement or a re-entrant command can change a later task.
+	// Only apply the plan if the active seat still has the owners we resolved.
+	task := &approval.Task{ID: snapshot.ID}
 	if err := db.NewSelect().Model(task).WherePK().ForUpdate().Scan(ctx); err != nil {
 		return err
 	}
 
-	if !slices.Contains(activeHandoverTasks, task.Status) || (task.AssigneeID != predecessor.ID && (task.DelegatorID == nil || *task.DelegatorID != predecessor.ID)) {
+	if !slices.Contains(activeHandoverTasks, task.Status) || task.AssigneeID != snapshot.AssigneeID || lo.FromPtr(task.DelegatorID) != lo.FromPtr(snapshot.DelegatorID) {
 		return nil
 	}
 
-	item := approval.HandoverItem{InstanceID: inst.ID, TaskID: &task.ID, Predecessor: predecessor, Successor: change.Successor}
-	if change.Successor == nil {
+	item := approval.HandoverItem{InstanceID: inst.ID, TaskID: &task.ID, Predecessor: move.from, Successor: move.change.Successor}
+	if !move.actionable() {
 		report.Unassigned = append(report.Unassigned, item)
 
 		return nil
 	}
 
-	if change.Successor.ID == predecessor.ID {
-		return nil
-	}
-
 	ctx = orm.WithoutQuietSQLLog(ctx)
+	seat := approval.ResolvedAssignee{User: move.seat, Predecessor: task.Predecessor(), HandoverReason: lo.FromPtr(task.HandoverReason)}
 
-	actors, err := r.Actors(ctx, db, []approval.ResolvedAssignee{{User: predecessor}}, h.users)
+	actors, err := r.Actors(ctx, db, []approval.ResolvedAssignee{seat}, h.users)
 	if err != nil {
 		return err
 	}
 
 	actor := actors[0]
-	// A successor's delegate may already be the actor on this very task.
-	// The seat still changed hands, so update the delegator and predecessor.
+	if actor.User.ID == task.AssigneeID && lo.FromPtr(actor.Delegator).ID == lo.FromPtr(task.DelegatorID) && lo.FromPtr(actor.Predecessor).ID == lo.FromPtr(task.PredecessorID) {
+		return nil
+	}
+
+	if move.from.ID != move.seat.ID {
+		// Work returns to the last active delegate or to the seat holder.
+		item.Successor = &actor.User
+	}
 
 	duplicate, err := db.NewSelect().Model((*approval.Task)(nil)).Where(func(cb orm.ConditionBuilder) {
 		cb.Equals("visit_id", task.VisitID).Equals("assignee_id", actor.User.ID).NotEquals("id", task.ID).In("status", activeHandoverTasks)
@@ -309,7 +432,7 @@ func (h *ApplyHandoversHandler) moveTask(
 		return err
 	}
 
-	logHandover(ctx, item, node.ID, change.Reason, batch.operator)
+	logHandover(ctx, item, node.ID, move.change.Reason, batch.operator)
 
 	if duplicate {
 		if err := h.nodes.RemoveTask(ctx, db, inst, node, task, &actor); err != nil {
@@ -321,7 +444,7 @@ func (h *ApplyHandoversHandler) moveTask(
 		}
 
 		events := []approval.DomainEvent{
-			approval.NewTaskHandedOverEvent(inst, task, node, predecessor, *change.Successor, change.Reason),
+			approval.NewTaskHandedOverEvent(inst, task, node, item.Predecessor, *item.Successor, move.change.Reason),
 		}
 		if task.Status == approval.TaskPending {
 			events = append(events, approval.NewTaskActivatedEvent(inst, task, node, approval.TaskActivationHandedOver))
@@ -408,9 +531,5 @@ func logHandover(ctx context.Context, item approval.HandoverItem, nodeID, reason
 	entry.TransferToDepartmentName = item.Successor.DepartmentName
 
 	entry.Opinion = new(reason)
-	if item.CCRecordID != nil {
-		entry.CCUsers = []approval.UserInfo{item.Predecessor}
-	}
-
 	behavior.ActionLogCollectorFromContext(ctx).Add(entry)
 }

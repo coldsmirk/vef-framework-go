@@ -75,7 +75,7 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 		return cqrs.Unit{}, approval.ErrInvalidTransferTarget
 	}
 
-	if err := engine.NewActorResolution(instance, node, h.handovers).CheckPicks(ctx, []string{transferToID}); err != nil {
+	if err := engine.NewActorResolution(instance, node, h.handovers).CheckPicks(ctx, []string{transferToID}, h.userResolver); err != nil {
 		return cqrs.Unit{}, err
 	}
 

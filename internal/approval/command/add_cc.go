@@ -81,7 +81,7 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 		return cqrs.Unit{}, nil
 	}
 
-	if err := engine.NewActorResolution(instance, &node, h.handovers).CheckPicks(ctx, userIDs); err != nil {
+	if err := engine.NewActorResolution(instance, &node, h.handovers).CheckPicks(ctx, userIDs, h.userResolver); err != nil {
 		return cqrs.Unit{}, err
 	}
 

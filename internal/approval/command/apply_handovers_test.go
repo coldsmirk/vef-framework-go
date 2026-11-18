@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/stretchr/testify/suite"
@@ -142,6 +143,99 @@ func (s *HandoverTestSuite) TestRewriteDelegatedSeat() {
 	s.ErrorIs(err, approval.ErrAccessDenied, "Predecessor must not urge")
 }
 
+func (s *HandoverTestSuite) TestDelegateeDeparture() {
+	for _, tc := range []struct {
+		name             string
+		changes          map[string]string
+		chain            []string
+		wantActor        string
+		wantDelegator    *string
+		wantPredecessor  string
+		from, to, reason string
+		unassigned       bool
+	}{
+		{"DelegateeWithSuccessor", map[string]string{"B": "C"}, []string{"A", "B"}, "A", nil, "prior", "B", "A", "B left", false},
+		{"DelegateeWithoutSuccessor", map[string]string{"B": ""}, []string{"A", "B"}, "A", nil, "prior", "B", "A", "B left", false},
+		{"IntermediateDelegate", map[string]string{"B": "C"}, []string{"A", "D", "B"}, "D", new("A"), "prior", "B", "D", "B left", false},
+		{"SeatCycle", map[string]string{"A": "X", "X": "A", "B": "C"}, []string{"A", "B"}, "A", nil, "prior", "B", "A", "B left", false},
+		{"BothDeparted", map[string]string{"A": "S", "B": "C"}, []string{"A", "B"}, "S", nil, "A", "A", "S", "A left", false},
+		{"SeatWithoutSuccessor", map[string]string{"A": "", "B": "C"}, []string{"A", "B"}, "B", new("A"), "prior", "A", "", "", true},
+		{"OnlyUnselectedSeatDeparted", map[string]string{"A": "S"}, []string{"A", "B"}, "B", new("A"), "prior", "", "", "", false},
+	} {
+		s.Run(tc.name, func() {
+			defer s.TearDownTest()
+
+			_, task := setupRunningInstance(s.T(), s.ctx, s.db, s.fixture, "B")
+			task.DelegatorID, task.DelegatorName = new("A"), new("Seat owner")
+			task.PredecessorID, task.PredecessorName = new("prior"), new("Prior owner")
+			task.PredecessorDepartmentID, task.HandoverReason = new("dept"), new("Prior transfer")
+			_, err := s.db.NewUpdate().Model(task).WherePK().Exec(s.ctx)
+			s.Require().NoError(err, "Should seed an already handed-over, delegated seat")
+
+			now := timex.Now()
+			for i := 1; i < len(tc.chain); i++ {
+				d := &approval.Delegation{DelegatorID: tc.chain[i-1], DelegateeID: tc.chain[i], StartsAt: now.AddHours(-1), EndsAt: now.AddHours(1), IsActive: true}
+				_, err := s.db.NewInsert().Model(d).Exec(s.ctx)
+				s.Require().NoError(err, "Should seed the delegation chain")
+				s.T().Cleanup(func() {
+					_, err := s.db.NewDelete().Model(d).WherePK().Exec(s.ctx)
+					s.Require().NoError(err, "Should clear this delegation")
+				})
+			}
+
+			for from, to := range tc.changes {
+				change := approval.Handover{Reason: from + " left"}
+				if to != "" {
+					change.Successor = &approval.UserInfo{ID: to}
+				}
+
+				s.resolver[from] = change
+			}
+
+			report := s.apply("B")
+			task = &approval.Task{ID: task.ID}
+			s.Require().NoError(s.db.NewSelect().Model(task).WherePK().Scan(s.ctx), "Should reload the seat")
+			s.Equal(tc.wantActor, task.AssigneeID, "Delegation should stop before the departed delegate")
+			s.Equal(tc.wantDelegator, task.DelegatorID, "Should keep only the active delegation")
+			s.Equal(new(tc.wantPredecessor), task.PredecessorID, "Predecessor should describe the seat")
+
+			if tc.wantPredecessor == "prior" {
+				s.Equal(new("Prior owner"), task.PredecessorName, "Should retain the seat predecessor snapshot")
+				s.Equal(new("dept"), task.PredecessorDepartmentID, "Should retain the predecessor department")
+				s.Equal(new("Prior transfer"), task.HandoverReason, "The delegate's departure should not replace the seat's reason")
+			}
+
+			if tc.unassigned {
+				s.Require().Len(report.Unassigned, 1, "The departed seat owner has no successor")
+				s.Equal(tc.from, report.Unassigned[0].Predecessor.ID, "Should name the unassigned seat owner")
+			} else {
+				s.Empty(report.Unassigned, "A delegate's departure alone cannot leave the seat unassigned")
+			}
+
+			if tc.to == "" {
+				s.Empty(report.Transferred, "An unchanged seat should not be reported as moved")
+				s.Empty(s.events.Captured(), "An unchanged seat should produce no events")
+
+				return
+			}
+
+			s.Require().Len(report.Transferred, 1, "Should report one actual transfer")
+			s.Equal(tc.from, report.Transferred[0].Predecessor.ID, "The report should identify whose departure caused the move")
+			s.Equal(tc.to, report.Transferred[0].Successor.ID, "The report should identify who took the work")
+			s.Equal([]string{approval.EventTypeTaskHandedOver, approval.EventTypeTaskActivated}, s.eventTypes(), "Migration should precede activation")
+			evt := s.events.Captured()[0].(*approval.TaskHandedOverEvent)
+			s.Equal(tc.from, evt.Predecessor.ID, "The event should identify the departed user")
+			s.Equal(tc.to, evt.Successor.ID, "The event should identify the recipient")
+			s.Equal(tc.reason, evt.Reason, "The event should give the departure reason")
+
+			var log approval.ActionLog
+			s.Require().NoError(s.db.NewSelect().Model(&log).Where(func(cb orm.ConditionBuilder) { cb.Equals("task_id", task.ID) }).Scan(s.ctx), "Should load handover log")
+			s.Equal(new(tc.to), log.TransferToID, "The log should name the actual recipient")
+			s.Equal(new(tc.reason), log.Opinion, "The log should give the reason for this move")
+		})
+	}
+}
+
 func (s *HandoverTestSuite) TestDuplicateSeat() {
 	for _, complete := range []bool{false, true} {
 		s.Run(fmt.Sprintf("Complete%t", complete), func() {
@@ -250,8 +344,26 @@ func (s *HandoverTestSuite) TestReportsAndTenantScope() {
 
 func (s *HandoverTestSuite) TestConcurrentScannersAndCycles() {
 	_, task := setupRunningInstance(s.T(), s.ctx, s.db, s.fixture, "old")
+
+	var dispatches atomic.Int32
+
+	bus := cqrs.NewBus(nil)
+	cqrs.Register(bus, cqrs.HandlerFunc[command.ApplyHandoversCmd, *approval.HandoverReport](func(ctx context.Context, cmd command.ApplyHandoversCmd) (*approval.HandoverReport, error) {
+		dispatches.Add(1)
+
+		return cqrs.Send[command.ApplyHandoversCmd, *approval.HandoverReport](ctx, s.bus, cmd)
+	}))
+	scanner := timeout.NewHandoverScanner(s.db, bus, s.resolver)
+	scanner.Scan(s.ctx)
+	s.Zero(dispatches.Load(), "Active seats without handovers must never dispatch a write transaction")
+	s.change("old", "")
+
+	for range 2 {
+		scanner.Scan(s.ctx)
+	}
+
+	s.Zero(dispatches.Load(), "Repeated scans of unassigned seats must stay read-only")
 	s.change("old", "next")
-	scanner := timeout.NewHandoverScanner(s.db, s.bus)
 
 	var group sync.WaitGroup
 	for range 2 {
@@ -262,6 +374,9 @@ func (s *HandoverTestSuite) TestConcurrentScannersAndCycles() {
 	s.Require().NoError(s.db.NewSelect().Model(task).WherePK().Scan(s.ctx), "Should read scanned task")
 	s.Equal("next", task.AssigneeID, "Scanner should apply the same migration as manual calls")
 	s.Equal([]string{approval.EventTypeTaskHandedOver, approval.EventTypeTaskActivated}, s.eventTypes(), "Replicas must migrate a seat only once")
+
+	afterMove := dispatches.Load()
+	s.Positive(afterMove, "An actionable handover must dispatch a migration")
 	s.change("next", "B")
 	s.change("B", "C")
 	s.change("C", "B")
@@ -270,6 +385,7 @@ func (s *HandoverTestSuite) TestConcurrentScannersAndCycles() {
 		scanner.Scan(s.ctx)
 	}
 
+	s.Equal(afterMove, dispatches.Load(), "Stable cycles should not reopen write transactions")
 	r := s.apply("next")
 	s.Empty(r.Transferred, "Cycle that resolves to the current actor must be a no-op")
 	s.Empty(r.Unassigned, "A cycle is not a departure without successor")
@@ -279,6 +395,24 @@ func (s *HandoverTestSuite) TestConcurrentScannersAndCycles() {
 	s.Require().NoError(s.db.NewSelect().Model(&logs).Where(func(cb orm.ConditionBuilder) { cb.Equals("task_id", task.ID) }).Scan(s.ctx), "Should find scanner logs")
 	s.Require().Len(logs, 1, "Repeated scans should not log a no-op")
 	s.Equal(orm.OperatorSystem, logs[0].OperatorID, "Scanner acts as system")
+}
+
+func (s *HandoverTestSuite) TestScannerRechecksDelegateeDeparture() {
+	_, task := setupRunningInstance(s.T(), s.ctx, s.db, s.fixture, "delegate")
+	_, err := s.db.NewUpdate().Model(task).Set("delegator_id", "seat").WherePK().Exec(s.ctx)
+	s.Require().NoError(err, "Should seed delegated task")
+
+	// Discovery sees a departure without a successor. The first locked
+	// recheck sees that HR has withdrawn it, the next one confirms it.
+	discovery := scopedHandovers{"delegate": {}}
+	scanner := timeout.NewHandoverScanner(s.db, s.bus, discovery)
+	scanner.Scan(s.ctx)
+	s.Empty(s.events.Captured(), "An obsolete read-only discovery must not move the task")
+	s.change("delegate", "")
+	scanner.Scan(s.ctx)
+	s.Require().NoError(s.db.NewSelect().Model(task).WherePK().Scan(s.ctx), "Should read the restored seat")
+	s.Equal("seat", task.AssigneeID, "A delegate with no successor should still trigger a return to the seat")
+	s.Equal([]string{approval.EventTypeTaskHandedOver, approval.EventTypeTaskActivated}, s.eventTypes(), "Only the confirmed change should emit events")
 }
 
 func (s *HandoverTestSuite) TestReadConfirmationReceipts() {
@@ -323,9 +457,21 @@ func (s *HandoverTestSuite) TestReadConfirmationReceipts() {
 	s.Require().NoError(s.db.NewSelect().Model(pending).WherePK().Scan(s.ctx), "Should reload receipt")
 	s.Equal("first", pending.CCUserID, "Recipient changes in place")
 	s.Equal(new("dept"), pending.CCUserDepartmentID, "Should capture successor department")
+
+	var log approval.ActionLog
+	s.Require().NoError(s.db.NewSelect().Model(&log).Where(func(cb orm.ConditionBuilder) {
+		cb.Equals("instance_id", inst.ID).Equals("action", approval.ActionHandover)
+	}).Scan(s.ctx), "Should load receipt migration log")
+	s.Empty(log.CCUsers, "A handover log should not describe the departed person as an added CC recipient")
+	s.Equal(new("first"), log.TransferToID, "Receipt migration should identify the new recipient")
+
+	s.change("first", "middle")
+	timeout.NewHandoverScanner(s.db, s.bus, s.resolver).Scan(s.ctx)
+	s.Require().NoError(s.db.NewSelect().Model(pending).WherePK().Scan(s.ctx), "Should reload the receipt after discovery and migration")
+	s.Equal("middle", pending.CCUserID, "An instance with only an actionable receipt must be scanned")
 	receipt(current, "final", new(timex.Now()))
-	s.change("first", "final")
-	report = s.apply("first")
+	s.change("middle", "final")
+	report = s.apply("middle")
 	s.Len(report.Transferred, 1, "Should merge with existing read receipt")
 	exists, err := s.db.NewSelect().Model(pending).WherePK().Exists(s.ctx)
 	s.Require().NoError(err, "Should check old receipt")
