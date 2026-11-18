@@ -16,7 +16,7 @@ import (
 )
 
 type projectionVoider struct {
-	testBusinessHandler
+	StubBusinessHandler
 
 	order     []string
 	veto      error
@@ -157,7 +157,7 @@ func (s *EventOrderTestSuite) TestVoidFormsAndUnsupportedKinds() {
 	target := s.startOn("order-auto-flow", "owner")
 	_, err := s.db.NewUpdate().Model((*approval.Flow)(nil)).Set("void_policy", approval.VoidDirect).Where(func(cb orm.ConditionBuilder) { cb.PKEquals(target.FlowID) }).Exec(s.ctx)
 	s.Require().NoError(err, "Should set the live form policy")
-	core := voiding.NewCore(service.NewInstanceService(nil), testRegistry(testBusinessHandler{}), s.bus)
+	core := voiding.NewCore(service.NewInstanceService(nil), testRegistry(StubBusinessHandler{}), s.bus)
 	in := approval.VoidInstanceInput{InstanceID: target.ID, Caller: approval.SystemCaller, Reason: "Closed twice", Operator: target.Applicant()}
 	run := func() error {
 		return s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error { return core.Direct(ctx, tx, in) })

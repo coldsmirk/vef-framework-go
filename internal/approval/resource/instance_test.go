@@ -105,7 +105,7 @@ func (s *InstanceResourceTestSuite) SetupSuite() {
 		&s.Suite,
 		vef.ProvideApprovalHandoverResolver(func() approval.HandoverResolver { return s }),
 		vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return &s.voidBooking }),
-		vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{kind: "invoice"} }),
+		vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return OrderHandler{kind: "invoice"} }),
 	)
 
 	// Create shared category
