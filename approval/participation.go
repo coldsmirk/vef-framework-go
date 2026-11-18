@@ -2,8 +2,9 @@ package approval
 
 import (
 	"context"
-	"github.com/coldsmirk/vef-framework-go/orm"
 	"slices"
+
+	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
 type ParticipantRole string

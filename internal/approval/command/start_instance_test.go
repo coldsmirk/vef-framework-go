@@ -3,7 +3,6 @@ package command_test
 import (
 	"context"
 	"fmt"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -12,6 +11,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
@@ -45,6 +45,7 @@ func (g *MockInstanceNoGenerator) Generate(_ context.Context, tenantID, _ string
 
 type testBusinessHandler struct {
 	approval.BusinessHandler
+
 	descriptor approval.BusinessKindDescriptor
 	action     func(context.Context, orm.DB, *approval.TaskActionContext) (*approval.TaskActionOutcome, error)
 	view       func(context.Context, orm.DB, *approval.ViewContext) (any, error)
@@ -55,28 +56,36 @@ func (h testBusinessHandler) Describe() approval.BusinessKindDescriptor {
 	if h.descriptor.Kind != "" {
 		return h.descriptor
 	}
+
 	return approval.BusinessKindDescriptor{Kind: "order", Label: "Order"}
 }
+
 func (h testBusinessHandler) Submit(ctx context.Context, db orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
 	if h.submit != nil {
 		return h.submit(ctx, db, sc)
 	}
+
 	if sc.BusinessRef == nil {
 		return nil, approval.ErrBusinessRefRequired
 	}
+
 	return &approval.Submission{BusinessRef: *sc.BusinessRef, FormData: sc.FormData}, nil
 }
+
 func (h testBusinessHandler) OnTaskAction(ctx context.Context, db orm.DB, ac *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
 	return h.action(ctx, db, ac)
 }
+
 func (h testBusinessHandler) View(ctx context.Context, db orm.DB, vc *approval.ViewContext) (any, error) {
 	return h.view(ctx, db, vc)
 }
+
 func testRegistry(h approval.BusinessHandler) *business.Registry {
 	r, err := business.NewRegistry([]approval.BusinessHandler{h}, service.NewFlowDefinitionService().ValidateFormFields)
 	if err != nil {
 		panic(err)
 	}
+
 	return r
 }
 
@@ -373,6 +382,7 @@ func (s *StartInstanceTestSuite) TestBusinessHandlerAllocatesReference() {
 			service.NewValidationService(nil),
 			testRegistry(testBusinessHandler{submit: func(_ context.Context, _ orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
 				s.NotEmpty(sc.InstanceID, "ID must be allocated before submission")
+
 				return &approval.Submission{BusinessRef: "ord-provider"}, nil
 			}}),
 			s.projector,

@@ -57,6 +57,7 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 	db := contextx.DB(ctx, h.db)
 
 	action := &approval.TaskActionContext{Action: approval.ActionRollback, Operator: cmd.Operator, Opinion: cmd.Opinion, FormData: cmd.FormData}
+
 	tc, err := h.taskSvc.PrepareDecision(ctx, db, cmd.TaskID, cmd.Caller, action, h.validationSvc, func(ac *approval.TaskActionContext) error {
 		if !ac.Node.IsRollbackAllowed {
 			return approval.ErrRollbackNotAllowed
@@ -70,12 +71,15 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 		if err := h.validationSvc.ValidateRollbackTarget(ctx, db, ac.Instance, ac.Node, targetNodeID); err != nil {
 			return err
 		}
+
 		ac.TargetNodeID = targetNodeID
+
 		return nil
 	})
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
+
 	instance, task, node := tc.Instance, tc.Task, tc.Node
 	targetNodeID := action.TargetNodeID
 

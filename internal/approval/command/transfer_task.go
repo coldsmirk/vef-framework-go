@@ -56,6 +56,7 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 	db := contextx.DB(ctx, h.db)
 
 	action := &approval.TaskActionContext{Action: approval.ActionTransfer, Operator: cmd.Operator, Opinion: cmd.Opinion, FormData: cmd.FormData}
+
 	tc, err := h.taskSvc.PrepareDecision(ctx, db, cmd.TaskID, cmd.Caller, action, h.validationSvc, func(ac *approval.TaskActionContext) error {
 		if !ac.Node.IsTransferAllowed {
 			return approval.ErrTransferNotAllowed
@@ -78,12 +79,15 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 		if duplicate {
 			return approval.ErrInvalidTransferTarget
 		}
+
 		ac.TransferTo = new(shared.ResolveUserInfo(ctx, h.userResolver, transferToID))
+
 		return nil
 	})
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
+
 	instance, task, node := tc.Instance, tc.Task, tc.Node
 	transferTo := *action.TransferTo
 

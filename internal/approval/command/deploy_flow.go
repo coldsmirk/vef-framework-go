@@ -6,12 +6,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
@@ -150,26 +150,32 @@ func (h *DeployFlowHandler) validate(ctx context.Context, cmd DeployFlowCmd, flo
 		if err != nil {
 			return nil, err
 		}
+
 		if (len(cmd.FormSchema) > 0 && string(cmd.FormSchema) != "null") || cmp.Or(cmd.StorageMode, approval.StorageJSON) != approval.StorageJSON {
 			return nil, approval.ErrInvalidFlowDesign
 		}
+
 		for _, node := range cmd.FlowDefinition.Nodes {
 			if len(node.Data) == 0 {
 				continue
 			}
+
 			var data map[string]json.RawMessage
 			if err := json.Unmarshal(node.Data, &data); err != nil {
 				return nil, fmt.Errorf("%w: node %q: %w", approval.ErrInvalidFlowDesign, node.ID, err)
 			}
+
 			if _, present := data["rollbackDataStrategy"]; present {
 				return nil, fmt.Errorf("%w: node %q: rollbackDataStrategy cannot be set on a business flow", approval.ErrInvalidFlowDesign, node.ID)
 			}
 		}
+
 		fields = handler.Describe().FormFields
 	} else {
 		if flow.BusinessBinding != nil {
 			return nil, approval.ErrBusinessKindRequired
 		}
+
 		fields, err = h.deriveFormFields(ctx, cmd.FormSchema)
 		if err != nil {
 			return nil, err

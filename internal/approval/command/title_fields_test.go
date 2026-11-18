@@ -3,8 +3,9 @@ package command
 import (
 	"testing"
 
-	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/stretchr/testify/require"
+
+	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
 func TestValidateTitleFields(t *testing.T) {
@@ -13,7 +14,8 @@ func TestValidateTitleFields(t *testing.T) {
 		name, source string
 		valid        bool
 	}{
-		{"Known", "{{.formData.items}}", true}, {"Missing", "{{.formData.unknown}}", false},
+		{"Known", "{{.formData.items}}", true},
+		{"Missing", "{{.formData.unknown}}", false},
 		{"Condition", "{{if eq .formData.missing 5}}yes{{end}}", false},
 		{"Quoted", "{{printf \".formData.unknown\"}}", true},
 		{"ItemScope", "{{range .formData.items}}{{.formData.itemProperty}}{{end}}", true},

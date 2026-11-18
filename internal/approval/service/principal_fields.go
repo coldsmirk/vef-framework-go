@@ -2,25 +2,30 @@ package service
 
 import (
 	"fmt"
-	"github.com/coldsmirk/vef-framework-go/approval"
 	"strings"
+
+	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
 // ValidatePrincipalFields checks selection rules whose resolver reads user IDs
 // from a deployed field, including host-defined kinds with that selection mode.
 func (s *FlowDefinitionService) ValidatePrincipalFields(nodes map[string]approval.NodeData, fields []approval.FormFieldDefinition) error {
 	keys := formFieldKeySet(fields)
+
 	check := func(node string, mode approval.SelectionMode, field *string) error {
 		if !mode.RequiresFormField() {
 			return nil
 		}
+
 		name := ""
 		if field != nil {
 			name = strings.TrimSpace(*field)
 		}
+
 		if !keys.Contains(name) {
 			return fmt.Errorf("%w: %q in node %q", errUnknownPrincipalField, name, node)
 		}
+
 		return nil
 	}
 	for id, node := range nodes {
@@ -34,6 +39,7 @@ func (s *FlowDefinitionService) ValidatePrincipalFields(nodes map[string]approva
 				}
 			}
 		}
+
 		if rules, ok := node.(interface {
 			// GetCCs returns the node's CC recipient definitions.
 			GetCCs() []approval.CCDefinition
@@ -45,5 +51,6 @@ func (s *FlowDefinitionService) ValidatePrincipalFields(nodes map[string]approva
 			}
 		}
 	}
+
 	return nil
 }

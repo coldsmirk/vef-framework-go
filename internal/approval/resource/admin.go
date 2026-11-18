@@ -168,6 +168,7 @@ func (r *AdminResource) GetInstanceDetail(ctx fiber.Ctx, principal *security.Pri
 	if err != nil {
 		return err
 	}
+
 	detail, err := cqrs.Send[query.GetAdminInstanceDetailQuery, *admin.InstanceDetail](ctx.Context(), r.bus, query.GetAdminInstanceDetailQuery{
 		InstanceID: params.InstanceID,
 		Viewer:     viewer,

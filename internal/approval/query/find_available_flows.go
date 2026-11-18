@@ -214,6 +214,7 @@ func loadStartableFlows(
 	return lo.FilterMap(flows, func(f approval.Flow, _ int) (approval.Flow, bool) {
 		kind, ok := published[f.ID]
 		f.BusinessKind = kind
+
 		return f, ok
 	}), nil
 }

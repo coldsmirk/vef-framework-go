@@ -3,7 +3,6 @@ package command
 import (
 	"context"
 	"fmt"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"reflect"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -11,6 +10,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"

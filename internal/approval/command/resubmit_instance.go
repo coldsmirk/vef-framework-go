@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"maps"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
@@ -78,11 +78,23 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 		if err := db.NewSelect().Model(flow).WherePK().Scan(ctx); err != nil {
 			return cqrs.Unit{}, err
 		}
-		sc := &approval.SubmissionContext{InstanceID: instance.ID, Instance: instance, Flow: flow, Version: &version, TenantID: instance.TenantID, Applicant: instance.Applicant(), BusinessRef: instance.BusinessRef, FormData: cmd.FormData}
+
+		sc := &approval.SubmissionContext{
+			InstanceID:  instance.ID,
+			Instance:    instance,
+			Flow:        flow,
+			Version:     &version,
+			TenantID:    instance.TenantID,
+			Applicant:   instance.Applicant(),
+			BusinessRef: instance.BusinessRef,
+			FormData:    cmd.FormData,
+		}
+
 		submission, err := h.business.Submit(ctx, db, sc)
 		if err != nil {
 			return cqrs.Unit{}, err
 		}
+
 		instance.FormData = submission.FormData
 	} else {
 		if instance.FormData == nil {

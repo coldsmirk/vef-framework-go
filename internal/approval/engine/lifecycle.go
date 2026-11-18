@@ -3,9 +3,9 @@ package engine
 import (
 	"context"
 	"fmt"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
@@ -42,8 +42,10 @@ func (r *LifecycleHookRunner) scoped(instance *approval.Instance) approval.Insta
 	if instance.BusinessKind == nil {
 		return nil
 	}
+
 	h, _ := r.business.Lookup(*instance.BusinessKind)
 	hook, _ := h.(approval.InstanceLifecycleHook)
+
 	return hook
 }
 
@@ -54,6 +56,7 @@ func (r *LifecycleHookRunner) OnInstanceCreated(ctx context.Context, db orm.DB, 
 			return fmt.Errorf("business lifecycle on creation: %w", err)
 		}
 	}
+
 	for i, h := range r.hooks {
 		if err := h.OnInstanceCreated(ctx, db, instance); err != nil {
 			return fmt.Errorf("lifecycle hook[%d].OnInstanceCreated: %w", i, err)
@@ -82,6 +85,7 @@ func (r *LifecycleHookRunner) OnInstanceTransition(ctx context.Context, db orm.D
 			return fmt.Errorf("business lifecycle on transition: %w", err)
 		}
 	}
+
 	for i, h := range r.hooks {
 		if err := h.OnInstanceTransition(ctx, db, instance, from, to); err != nil {
 			return fmt.Errorf("lifecycle hook[%d].OnInstanceTransition: %w", i, err)

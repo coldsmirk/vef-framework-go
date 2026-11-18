@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	vef "github.com/coldsmirk/vef-framework-go"
 	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
+	vef "github.com/coldsmirk/vef-framework-go"
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
@@ -32,15 +32,21 @@ func TestFlowResource(t *testing.T) {
 
 type orderHandler struct {
 	approval.BusinessHandler
+
 	kind approval.BusinessKind
 }
 
 func (h orderHandler) Describe() approval.BusinessKindDescriptor {
 	return approval.BusinessKindDescriptor{Kind: h.kind, Label: string(h.kind)}
 }
+
 func (s *FlowResourceTestSuite) SetupSuite() {
 	s.ctx = context.Background()
-	s.db, s.token = setupResourceApp(&s.Suite, vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{kind: "order"} }), vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{kind: "meeting"} }))
+	s.db, s.token = setupResourceApp(
+		&s.Suite,
+		vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{kind: "order"} }),
+		vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{kind: "meeting"} }),
+	)
 
 	// Insert a shared category for flow tests
 	cat := &approval.FlowCategory{

@@ -3,7 +3,6 @@ package approval
 import (
 	"context"
 	"fmt"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 
 	"go.uber.org/fx"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/auth"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/facade"

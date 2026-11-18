@@ -384,6 +384,7 @@ func loadPublishedKinds(ctx context.Context, db orm.DB, flowIDs []string) (map[s
 	for _, v := range versions {
 		kinds[v.FlowID] = v.BusinessKind
 	}
+
 	return kinds, nil
 }
 

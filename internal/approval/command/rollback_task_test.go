@@ -525,8 +525,10 @@ func (s *RollbackTaskTestSuite) TestRollbackTargetGuards() {
 
 func (s *RollbackTaskTestSuite) TestBusinessRollbackSnapshots() {
 	fields := []approval.FormFieldDefinition{{Key: "summary", Kind: approval.FieldInput, Label: "Summary"}}
+
 	setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, fields)
 	defer setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, nil)
+
 	for _, tc := range []struct {
 		name string
 		out  *approval.TaskActionOutcome
@@ -541,14 +543,24 @@ func (s *RollbackTaskTestSuite) TestBusinessRollbackSnapshots() {
 			_, err := s.db.NewUpdate().Model(inst).Select("business_kind", "form_data").WherePK().Exec(s.ctx)
 			s.Require().NoError(err, "Should bind the running business record")
 			insertConcludedVisit(s.T(), s.ctx, s.db, inst.TenantID, inst.ID, s.targetNode.ID)
+
 			calls := 0
 			reg := testRegistry(testBusinessHandler{action: func(_ context.Context, _ orm.DB, ac *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
 				calls++
+
 				s.Equal(approval.ActionRollback, ac.Action, "The handler must see the rollback decision")
 				s.Equal(s.targetNode.ID, ac.TargetNodeID, "Should deliver the validated target")
+
 				return tc.out, nil
 			}})
-			h := command.NewRollbackTaskHandler(s.db, service.NewTaskService(service.WithBusinessRegistry(reg)), service.NewInstanceService(nil), service.NewValidationService(nil), buildTestEngine(s.db), nil)
+			h := command.NewRollbackTaskHandler(
+				s.db,
+				service.NewTaskService(service.WithBusinessRegistry(reg)),
+				service.NewInstanceService(nil),
+				service.NewValidationService(nil),
+				buildTestEngine(s.db),
+				nil,
+			)
 			_, err = h.Handle(s.ctx, command.RollbackTaskCmd{TaskID: task.ID, Operator: task.Assignee(), TargetNodeID: s.targetNode.ID, Caller: approval.SystemCaller})
 			s.Require().NoError(err, "Business rollback should complete on the earlier node")
 			s.Equal(1, calls, "The decision should reach the handler once")

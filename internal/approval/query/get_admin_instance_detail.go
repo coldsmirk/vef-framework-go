@@ -2,11 +2,11 @@ package query
 
 import (
 	"context"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/admin"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -91,5 +91,6 @@ func (h *GetAdminInstanceDetailHandler) Handle(ctx context.Context, query GetAdm
 	if err != nil {
 		return nil, err
 	}
+
 	return detail, nil
 }

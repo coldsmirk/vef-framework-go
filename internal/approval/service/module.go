@@ -1,12 +1,12 @@
 package service
 
 import (
-	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/calendar"
 	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/mold"
 )

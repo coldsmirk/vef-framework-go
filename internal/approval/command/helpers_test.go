@@ -395,6 +395,7 @@ func buildTestEngine(db orm.DB) *engine.FlowEngine {
 func buildTestEngineWithHooks(db orm.DB, hooks *engine.LifecycleHookRunner) *engine.FlowEngine {
 	return buildTestEngineWithUsers(db, hooks, nil)
 }
+
 func buildTestEngineWithUsers(db orm.DB, hooks *engine.LifecycleHookRunner, users approval.UserInfoResolver) *engine.FlowEngine {
 	passRules := []approval.PassRuleStrategy{
 		strategy.NewAllPassStrategy(),

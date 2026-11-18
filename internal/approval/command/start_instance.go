@@ -4,16 +4,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/coldsmirk/vef-framework-go/id"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"text/template"
 	"time"
 	"unicode/utf8"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/id"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
@@ -114,15 +114,29 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 
 	instanceID := id.Generate()
 	if version.BusinessKind != nil {
-		submission, err := h.businessRegistry.Submit(ctx, db, &approval.SubmissionContext{InstanceID: instanceID, Flow: flow, Version: &version, TenantID: tenantID, Applicant: cmd.Applicant, BusinessRef: cmd.BusinessRef, FormData: cmd.FormData})
+		submission, err := h.businessRegistry.Submit(
+			ctx,
+			db,
+			&approval.SubmissionContext{
+				InstanceID:  instanceID,
+				Flow:        flow,
+				Version:     &version,
+				TenantID:    tenantID,
+				Applicant:   cmd.Applicant,
+				BusinessRef: cmd.BusinessRef,
+				FormData:    cmd.FormData,
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
+
 		cmd.FormData = submission.FormData
 		cmd.BusinessRef = &submission.BusinessRef
 	} else if version.BusinessBinding != nil {
 		return nil, approval.ErrBusinessKindRequired
 	}
+
 	if err := h.validationSvc.ValidateFormData(ctx, version.FormFields, cmd.FormData); err != nil {
 		return nil, err
 	}

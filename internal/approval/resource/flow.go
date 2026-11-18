@@ -405,5 +405,6 @@ func (r *FlowResource) ListBusinessKinds(ctx fiber.Ctx, _ ListBusinessKindsParam
 	if err != nil {
 		return err
 	}
+
 	return result.Ok(kinds).Response(ctx)
 }

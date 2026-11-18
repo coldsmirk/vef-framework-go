@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"slices"
 
 	"github.com/coldsmirk/go-collections"
@@ -10,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/my"
 	"github.com/coldsmirk/vef-framework-go/contextx"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -47,6 +47,7 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 
 	// Check participant membership.
 	hasCC := slices.ContainsFunc(bundle.CCRecords, func(record approval.CCRecord) bool { return record.CCUserID == query.Viewer.ID })
+
 	participation := service.ResolveParticipation(&bundle.Instance, bundle.Tasks, hasCC, query.Viewer.ID)
 	if !participation.IsParticipant() {
 		return nil, approval.ErrAccessDenied
@@ -98,6 +99,7 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 	if err != nil {
 		return nil, err
 	}
+
 	return detail, nil
 }
 

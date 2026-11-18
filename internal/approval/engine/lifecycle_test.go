@@ -3,13 +3,13 @@ package engine
 import (
 	"context"
 	"errors"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
@@ -193,6 +193,7 @@ type scopedHook struct {
 func (scopedHook) Describe() approval.BusinessKindDescriptor {
 	return approval.BusinessKindDescriptor{Kind: "order", Label: "Order"}
 }
+
 func TestScopedLifecycleHook(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -205,8 +206,13 @@ func TestScopedLifecycleHook(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var log []string
-			r, err := business.NewRegistry([]approval.BusinessHandler{scopedHook{RecordingHook: &RecordingHook{name: "scoped", log: &log}}}, func([]approval.FormFieldDefinition) error { return nil })
+
+			r, err := business.NewRegistry(
+				[]approval.BusinessHandler{scopedHook{RecordingHook: &RecordingHook{name: "scoped", log: &log}}},
+				func([]approval.FormFieldDefinition) error { return nil },
+			)
 			require.NoError(t, err, "Should register a handler with lifecycle hooks")
+
 			runner := NewLifecycleHookRunner(nil, []approval.InstanceLifecycleHook{&RecordingHook{name: "global", log: &log}}, r)
 			inst := &approval.Instance{BusinessKind: tc.kind}
 			require.NoError(t, runner.OnInstanceCreated(t.Context(), nil, inst), "Should dispatch creation")

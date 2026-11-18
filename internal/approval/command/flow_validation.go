@@ -1,10 +1,10 @@
 package command
 
 import (
-	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"text/template"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -12,11 +12,14 @@ import (
 func validateBusinessKind(registry *business.Registry, kind *approval.BusinessKind, binding *approval.BusinessBindingConfig) error {
 	if kind != nil {
 		_, err := registry.Require(*kind)
+
 		return err
 	}
+
 	if binding != nil {
 		return approval.ErrBusinessKindRequired
 	}
+
 	return nil
 }
 

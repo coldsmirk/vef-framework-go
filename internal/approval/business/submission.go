@@ -3,9 +3,10 @@ package business
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"strings"
 )
 
 // Submit runs the version's handler and enforces a stable business reference.
@@ -14,23 +15,29 @@ func (r *Registry) Submit(ctx context.Context, db orm.DB, sc *approval.Submissio
 	if sc.Instance != nil {
 		kind = sc.Instance.BusinessKind
 	}
+
 	if kind == nil {
 		return nil, approval.ErrBusinessKindRequired
 	}
+
 	h, err := r.Require(*kind)
 	if err != nil {
 		return nil, err
 	}
+
 	result, err := h.Submit(ctx, db, sc)
 	if err != nil {
 		return nil, fmt.Errorf("submit business kind %q: %w", *kind, err)
 	}
+
 	if result == nil || strings.TrimSpace(result.BusinessRef) == "" {
 		return nil, ErrEmptyReference
 	}
+
 	if sc.IsResubmission() && (sc.BusinessRef == nil || *sc.BusinessRef != result.BusinessRef) {
 		return nil, ErrChangedReference
 	}
+
 	return &approval.Submission{BusinessRef: result.BusinessRef, FormData: Snapshot(sc.Version.FormFields, result.FormData)}, nil
 }
 
@@ -42,5 +49,6 @@ func Snapshot(fields []approval.FormFieldDefinition, data map[string]any) map[st
 			out[f.Key] = v
 		}
 	}
+
 	return out
 }

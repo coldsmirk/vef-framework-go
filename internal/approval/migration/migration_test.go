@@ -53,9 +53,11 @@ func TestAddedColumns(t *testing.T) {
 		fresh, err := sqlmigration.LoadTableColumns(env.Ctx, env.DB, env.DS.Kind, "apv_flow")
 		require.NoError(t, err, "Should inspect fresh schema")
 		require.NotContains(t, fresh, "binding_mode", "Fresh schemas omit retired columns")
+
 		_, err = env.DB.NewRaw("ALTER TABLE apv_flow ADD COLUMN binding_mode VARCHAR(16) NOT NULL DEFAULT 'standalone'").Exec(env.Ctx)
 		require.NoError(t, err, "Should emulate a legacy flow")
 		require.NoError(t, Verify(env.Ctx, env.DB, env.DS.Kind), "A remaining legacy column must not prevent startup")
+
 		keyColumn := "key"
 		if env.DS.Kind == config.MySQL {
 			keyColumn = "`key`"
@@ -87,6 +89,7 @@ func TestAddedColumns(t *testing.T) {
 		upgraded, err := sqlmigration.LoadTableColumns(env.Ctx, env.DB, env.DS.Kind, "apv_flow")
 		require.NoError(t, err, "Should inspect upgraded schema")
 		assert.Equal(t, fresh, upgraded, "Upgrade should reproduce fresh flow columns")
+
 		node := approval.FlowNode{ID: "node-1"}
 		require.NoError(t, env.DB.NewSelect().Model(&node).WherePK().Scan(env.Ctx), "The existing node should survive the upgrade")
 		assert.Equal(t, "Review", node.Name, "Existing node data should be unchanged")

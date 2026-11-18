@@ -3,13 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"slices"
 
 	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/mold"
@@ -785,6 +785,7 @@ func isRoutedTo(ctx context.Context, db orm.DB, instanceID, userID string) (bool
 // is, and the per-(task, urger) cooldown is what bounds the volume.
 func (s *TaskService) IsUrgeAuthorized(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
 	p, err := s.Participation(ctx, db, approval.ParticipationInput{InstanceID: instanceID, UserID: userID, Caller: approval.SystemCaller})
+
 	return p.Has(approval.ParticipantApplicant) || p.Has(approval.ParticipantAssignee) || p.Has(approval.ParticipantDelegator), err
 }
 
@@ -805,6 +806,7 @@ func (s *TaskService) IsUrgeAuthorized(ctx context.Context, db orm.DB, instanceI
 // finds every form field stripped.
 func (s *TaskService) IsInstanceParticipant(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
 	p, err := s.Participation(ctx, db, approval.ParticipationInput{InstanceID: instanceID, UserID: userID, Caller: approval.SystemCaller})
+
 	return p.IsParticipant(), err
 }
 
@@ -850,20 +852,31 @@ func (*TaskService) CanRemoveAssigneeTask(ctx context.Context, db orm.DB, eng *e
 
 // PrepareDecision locks the instance and task, checks the operator, and applies
 // the human decision to the business record and its approval snapshot.
-func (s *TaskService) PrepareDecision(ctx context.Context, db orm.DB, taskID string, caller approval.CallerContext, action *approval.TaskActionContext, validation *ValidationService, check func(*approval.TaskActionContext) error) (*TaskContext, error) {
+func (s *TaskService) PrepareDecision(
+	ctx context.Context,
+	db orm.DB,
+	taskID string,
+	caller approval.CallerContext,
+	action *approval.TaskActionContext,
+	validation *ValidationService,
+	check func(*approval.TaskActionContext) error,
+) (*TaskContext, error) {
 	tc, err := s.LoadTaskContextForNodeOperation(ctx, db, taskID, decisionOptions(action.Operator.ID, caller))
 	if err != nil {
 		return nil, err
 	}
 
 	action.Instance, action.Task, action.Node = tc.Instance, tc.Task, tc.Node
+
 	action.FieldPermissions = tc.Node.FieldPermissions
 	if action.Action == approval.ActionApprove && tc.Node.Kind == approval.NodeHandle {
 		action.Action = approval.ActionHandle
 	}
+
 	if err := validation.ValidateOpinion(tc.Node, action.Opinion); err != nil {
 		return nil, err
 	}
+
 	if check != nil {
 		if err := check(action); err != nil {
 			return nil, err
@@ -905,24 +918,29 @@ func (s *TaskService) PrepareDecision(ctx context.Context, db orm.DB, taskID str
 		if err != nil {
 			return nil, err
 		}
+
 		outcome, err := h.OnTaskAction(ctx, db, action)
 		if err != nil {
 			return nil, fmt.Errorf("business task action %s: %w", action.Action, err)
 		}
+
 		if outcome != nil && outcome.FormData != nil {
 			snapshot := business.Snapshot(tc.FormFields, outcome.FormData)
 			if err := validation.validateFormValues(ctx, tc.FormFields, snapshot); err != nil {
 				return nil, err
 			}
+
 			tc.Instance.FormData = snapshot
 		}
 	} else {
 		if err := validateEditableFormData(tc.FormFields, action.FormData, tc.Node.FieldPermissions); err != nil {
 			return nil, err
 		}
+
 		if err := validateCodeSetValues(ctx, s.codeSets, tc.FormFields, FilterEditableFormData(action.FormData, tc.Node.FieldPermissions)); err != nil {
 			return nil, err
 		}
+
 		MergeFormData(tc.Instance, action.FormData, tc.Node.FieldPermissions)
 	}
 
@@ -944,6 +962,7 @@ func (s *TaskService) PrepareDecision(ctx context.Context, db orm.DB, taskID str
 			return nil, err
 		}
 	}
+
 	if err := persistDecisionSnapshot(ctx, db, tc.Instance); err != nil {
 		return nil, err
 	}

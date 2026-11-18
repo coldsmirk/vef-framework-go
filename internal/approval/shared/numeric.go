@@ -10,6 +10,7 @@ func ToFloat64(value any) (float64, bool) {
 	switch typed := value.(type) {
 	case json.Number:
 		number, err := typed.Float64()
+
 		return number, err == nil
 	case int:
 		return float64(typed), true

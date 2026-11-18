@@ -29,6 +29,7 @@ func TestValidateBusinessKind(t *testing.T) {
 		assert.ErrorIs(t, validateBusinessKind(nil, nil, new(approval.BusinessBindingConfig)), approval.ErrBusinessKindRequired, "Bindings need a registered business kind")
 	})
 }
+
 func TestValidateInitiatorRules(t *testing.T) {
 	t.Parallel()
 

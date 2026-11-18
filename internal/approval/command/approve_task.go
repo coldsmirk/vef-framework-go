@@ -51,10 +51,12 @@ func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cq
 	db := contextx.DB(ctx, h.db)
 
 	action := &approval.TaskActionContext{Action: approval.ActionApprove, Operator: cmd.Operator, Opinion: cmd.Opinion, FormData: cmd.FormData}
+
 	tc, err := h.taskSvc.PrepareDecision(ctx, db, cmd.TaskID, cmd.Caller, action, h.validationSvc, nil)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
+
 	instance, task, node := tc.Instance, tc.Task, tc.Node
 
 	isHandle := node.Kind == approval.NodeHandle

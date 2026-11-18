@@ -51,10 +51,12 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 	db := contextx.DB(ctx, h.db)
 
 	action := &approval.TaskActionContext{Action: approval.ActionReject, Operator: cmd.Operator, Opinion: cmd.Opinion, FormData: cmd.FormData}
+
 	tc, err := h.taskSvc.PrepareDecision(ctx, db, cmd.TaskID, cmd.Caller, action, h.validationSvc, nil)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
+
 	instance, task, node := tc.Instance, tc.Task, tc.Node
 
 	if err := h.taskSvc.FinishTask(ctx, db, task, approval.TaskRejected); err != nil {

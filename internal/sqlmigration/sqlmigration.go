@@ -70,12 +70,14 @@ func runLocked(ctx context.Context, db orm.DB, plan Plan) error {
 		if err != nil {
 			return fmt.Errorf("%s: inspect retired column %s.%s: %w", plan.Label, c.Table, c.Name, err)
 		}
+
 		if _, exists := columns[c.Name]; exists {
 			if _, err := db.NewDropColumn().Table(c.Table).Column(c.Name).Exec(ctx); err != nil {
 				return fmt.Errorf("%s: retire %s.%s: %w", plan.Label, c.Table, c.Name, err)
 			}
 		}
 	}
+
 	needed, err := needsMigration(ctx, db, plan)
 	if err != nil {
 		return fmt.Errorf("%s: check migration status: %w", plan.Label, err)

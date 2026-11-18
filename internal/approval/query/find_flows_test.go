@@ -53,8 +53,24 @@ func (s *FindFlowsTestSuite) SetupSuite() {
 			Labels:     map[string]string{"app": "crm", "mobile": "true"},
 		},
 		{TenantID: "t1", CategoryID: s.categoryID1, Code: "flow2", Name: "Expense Flow", IsActive: false, Labels: map[string]string{"beta": ""}},
-		{TenantID: "t1", CategoryID: s.categoryID2, Code: "flow3", Name: "Travel Flow", IsActive: true, BusinessKind: new(approval.BusinessKind("order")), Labels: map[string]string{"app": "erp"}},
-		{TenantID: "t2", CategoryID: s.categoryID2, Code: "flow4", Name: "Purchase Flow", IsActive: true, BusinessKind: new(approval.BusinessKind("order")), Labels: map[string]string{"app": "crm"}},
+		{
+			TenantID:     "t1",
+			CategoryID:   s.categoryID2,
+			Code:         "flow3",
+			Name:         "Travel Flow",
+			IsActive:     true,
+			BusinessKind: new(approval.BusinessKind("order")),
+			Labels:       map[string]string{"app": "erp"},
+		},
+		{
+			TenantID:     "t2",
+			CategoryID:   s.categoryID2,
+			Code:         "flow4",
+			Name:         "Purchase Flow",
+			IsActive:     true,
+			BusinessKind: new(approval.BusinessKind("order")),
+			Labels:       map[string]string{"app": "crm"},
+		},
 	}
 	for i := range flows {
 		_, err := s.db.NewInsert().Model(&flows[i]).Exec(s.ctx)
