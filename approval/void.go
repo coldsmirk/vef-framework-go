@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 type VoidPolicy string
@@ -54,4 +55,29 @@ func (p VoidPlan) MarshalJSON() ([]byte, error) {
 		p.FollowUps = []string{}
 	}
 	return json.Marshal(wire(p))
+}
+
+type VoidStatus string
+
+const (
+	VoidRequested VoidStatus = "requested"
+	VoidVoided    VoidStatus = "voided"
+	VoidDismissed VoidStatus = "dismissed"
+)
+
+type VoidRecord struct {
+	orm.BaseModel `bun:"table:apv_void_record,alias:avr"`
+	orm.FullAuditedModel
+
+	TenantID          string          `json:"tenantId"`
+	InstanceID        string          `json:"instanceId"`
+	Status            VoidStatus      `json:"status"`
+	RequestInstanceID *string         `json:"requestInstanceId,omitempty"`
+	Operator          UserInfo        `json:"operator" bun:"embed:operator_"`
+	Reason            string          `json:"reason"`
+	Attachments       []string        `json:"attachments,omitempty" bun:"type:jsonb,nullzero"`
+	Options           map[string]any  `json:"options,omitempty" bun:"type:jsonb,nullzero"`
+	Reversals         []string        `json:"reversals" bun:"type:jsonb"`
+	FollowUps         []string        `json:"followUps" bun:"type:jsonb"`
+	VoidedAt          *timex.DateTime `json:"voidedAt,omitempty"`
 }

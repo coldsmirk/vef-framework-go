@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     labels JSON COMMENT 'Labels',
     -- Data binding
     business_kind VARCHAR(64) COMMENT 'Business Kind',
+    void_policy VARCHAR(16) NOT NULL DEFAULT 'disabled',
+    void_flow_code VARCHAR(64),
     business_binding JSON COMMENT 'Business Binding',
     -- Permission config
     admin_user_ids JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Admins',
@@ -573,3 +575,30 @@ CREATE TABLE IF NOT EXISTS apv_annotation (
     INDEX idx_apv_annotation__task_id (task_id),
     INDEX idx_apv_annotation__parent_id (parent_id)
 ) COMMENT 'Annotation';
+
+CREATE TABLE IF NOT EXISTS apv_void_record (
+    id VARCHAR(32) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    updated_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    tenant_id VARCHAR(32) NOT NULL,
+    instance_id VARCHAR(32) NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    request_instance_id VARCHAR(32),
+    operator_id VARCHAR(32) NOT NULL,
+    operator_name VARCHAR(128) NOT NULL,
+    operator_department_id VARCHAR(32),
+    operator_department_name VARCHAR(128),
+    reason VARCHAR(2000) NOT NULL,
+    attachments JSON,
+    options JSON,
+    reversals JSON NOT NULL,
+    follow_ups JSON NOT NULL,
+    voided_at DATETIME,
+    CONSTRAINT pk_apv_void_record PRIMARY KEY (id),
+    CONSTRAINT fk_apv_void_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    INDEX idx_apv_void_record__instance_id_status (instance_id, status),
+    INDEX idx_apv_void_record__request_instance_id (request_instance_id),
+    INDEX idx_apv_void_record__tenant_id_status (tenant_id, status)
+) COMMENT 'Void Record';

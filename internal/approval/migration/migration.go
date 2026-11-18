@@ -33,6 +33,7 @@ var expectedTables = []string{
 	"apv_form_snapshot",
 	"apv_urge_record",
 	"apv_annotation",
+	"apv_void_record",
 	"apv_form_table",
 	"apv_form_table_column",
 }
@@ -52,6 +53,8 @@ var obsoleteTables = []string{
 // addedColumns are the approval columns introduced after their table first
 // shipped: Migrate adds them to an existing table and Verify requires them.
 var addedColumns = []sqlmigration.AddedColumn{
+	{Table: "apv_flow", Name: "void_policy", Definition: "VARCHAR(16) NOT NULL DEFAULT 'disabled'", Comment: "Void Policy"},
+	{Table: "apv_flow", Name: "void_flow_code", Definition: "VARCHAR(64)", Comment: "Void Request Flow Code"},
 	{Table: "apv_flow", Name: "business_kind", Definition: "VARCHAR(64)", Comment: "Business Kind"},
 	{Table: "apv_flow_version", Name: "business_kind", Definition: "VARCHAR(64)", Comment: "Business Kind"},
 	{Table: "apv_instance", Name: "business_kind", Definition: "VARCHAR(64)", Comment: "Business Kind"},

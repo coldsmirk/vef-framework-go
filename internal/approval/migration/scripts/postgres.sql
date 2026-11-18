@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     labels JSONB,
     -- Data binding
     business_kind VARCHAR(64),
+    void_policy VARCHAR(16) NOT NULL DEFAULT 'disabled',
+    void_flow_code VARCHAR(64),
     business_binding JSONB,
     -- Permission config
     admin_user_ids JSONB NOT NULL DEFAULT '[]',
@@ -870,3 +872,30 @@ CREATE TABLE IF NOT EXISTS apv_annotation (
 CREATE INDEX IF NOT EXISTS idx_apv_annotation__instance_id_status ON apv_annotation(instance_id, status);
 CREATE INDEX IF NOT EXISTS idx_apv_annotation__task_id ON apv_annotation(task_id);
 CREATE INDEX IF NOT EXISTS idx_apv_annotation__parent_id ON apv_annotation(parent_id);
+
+CREATE TABLE IF NOT EXISTS apv_void_record (
+    id VARCHAR(32) CONSTRAINT pk_apv_void_record PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT LOCALTIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT LOCALTIMESTAMP,
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    updated_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    tenant_id VARCHAR(32) NOT NULL,
+    instance_id VARCHAR(32) NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    request_instance_id VARCHAR(32),
+    operator_id VARCHAR(32) NOT NULL,
+    operator_name VARCHAR(128) NOT NULL,
+    operator_department_id VARCHAR(32),
+    operator_department_name VARCHAR(128),
+    reason VARCHAR(2000) NOT NULL,
+    attachments JSONB,
+    options JSONB,
+    reversals JSONB NOT NULL,
+    follow_ups JSONB NOT NULL,
+    voided_at TIMESTAMP,
+    CONSTRAINT fk_apv_void_record__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_apv_void_record__instance_id_status ON apv_void_record(instance_id, status);
+CREATE INDEX IF NOT EXISTS idx_apv_void_record__request_instance_id ON apv_void_record(request_instance_id);
+CREATE INDEX IF NOT EXISTS idx_apv_void_record__tenant_id_status ON apv_void_record(tenant_id, status);
