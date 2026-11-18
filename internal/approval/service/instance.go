@@ -19,6 +19,8 @@ import (
 // host-registered lifecycle hooks fire together. Direct UPDATE statements
 // against apv_instance.status are a bug.
 type InstanceService struct {
+	AnnotationService
+
 	hooks *engine.LifecycleHookRunner
 }
 
@@ -160,8 +162,12 @@ func (s *InstanceService) Transition(
 	to approval.InstanceStatus,
 	extraCols ...string,
 ) error {
+	from := instance.Status
 	err := engine.ApplyInstanceTransitionWithHooks(ctx, db, instance, to, s.hooks, extraCols...)
 	if err == nil {
+		if from == approval.InstanceReturned && (to == approval.InstanceWithdrawn || to == approval.InstanceTerminated) {
+			return s.discardResponses(ctx, db, instance.ID)
+		}
 		return nil
 	}
 

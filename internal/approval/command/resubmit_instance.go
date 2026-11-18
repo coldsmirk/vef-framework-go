@@ -110,6 +110,10 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 		return cqrs.Unit{}, err
 	}
 
+	if err := h.instanceSvc.PublishDrafts(ctx, db, instance, nil, cmd.Operator); err != nil {
+		return cqrs.Unit{}, err
+	}
+
 	// State machine transition: returned|withdrawn -> running. The same
 	// UPDATE persists the merged form data and clears finished_at; the
 	// engine handles any further status changes during StartProcess

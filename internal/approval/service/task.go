@@ -53,6 +53,8 @@ var cancelableTaskStatuses = []string{string(approval.TaskPending), string(appro
 
 // TaskService provides task-level domain operations.
 type TaskService struct {
+	AnnotationService
+
 	business         *business.Registry
 	formDataMaxBytes int
 	codeSets         mold.CodeSetLoader
@@ -66,7 +68,7 @@ func NewTaskService(opts ...Option) *TaskService {
 }
 
 // FinishTask transitions a task to the given status and sets its FinishedAt timestamp.
-func (*TaskService) FinishTask(ctx context.Context, db orm.DB, task *approval.Task, status approval.TaskStatus) error {
+func (s *TaskService) FinishTask(ctx context.Context, db orm.DB, task *approval.Task, status approval.TaskStatus) error {
 	originalStatus := task.Status
 	if !engine.TaskStateMachine.CanTransition(originalStatus, status) {
 		return approval.ErrInvalidTaskTransition
@@ -103,7 +105,7 @@ func (*TaskService) FinishTask(ctx context.Context, db orm.DB, task *approval.Ta
 	task.Status = status
 	task.FinishedAt = &finishedAt
 
-	return nil
+	return s.DiscardTaskDrafts(ctx, db, task.ID)
 }
 
 func persistDecisionSnapshot(ctx context.Context, db orm.DB, instance *approval.Instance) error {
@@ -557,7 +559,7 @@ func (s *TaskService) CancelInstanceTasks(ctx context.Context, db orm.DB, instan
 // returns their cancellation events in load order. Canceled tasks may span
 // several nodes (instance-wide cancellation), so node names for the events
 // are batch-loaded by ID.
-func (*TaskService) cancelActiveTasks(ctx context.Context, db orm.DB, instance *approval.Instance, reason string, filter func(orm.ConditionBuilder)) ([]approval.DomainEvent, error) {
+func (s *TaskService) cancelActiveTasks(ctx context.Context, db orm.DB, instance *approval.Instance, reason string, filter func(orm.ConditionBuilder)) ([]approval.DomainEvent, error) {
 	var tasks []approval.Task
 
 	if err := db.NewSelect().
@@ -588,6 +590,10 @@ func (*TaskService) cancelActiveTasks(ctx context.Context, db orm.DB, instance *
 		}).
 		Exec(ctx); err != nil {
 		return nil, fmt.Errorf("cancel tasks: %w", err)
+	}
+
+	if err := s.DiscardTaskDrafts(ctx, db, taskIDs...); err != nil {
+		return nil, err
 	}
 
 	nodeByID, err := loadNodesByID(ctx, db, tasks)
@@ -967,7 +973,9 @@ func (s *TaskService) PrepareDecision(
 		}
 	}
 
-	// Publish this operator's decision drafts here, after validation and before task completion.
+	if err := s.PublishDrafts(ctx, db, tc.Instance, &tc.Task.ID, action.Operator); err != nil {
+		return nil, err
+	}
 	return tc, nil
 }
 

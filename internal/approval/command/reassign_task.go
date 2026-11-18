@@ -90,6 +90,10 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 		return cqrs.Unit{}, fmt.Errorf("update task assignee: %w", err)
 	}
 
+	if err := h.taskSvc.DiscardTaskDrafts(ctx, db, task.ID); err != nil {
+		return cqrs.Unit{}, err
+	}
+
 	actionLog := cmd.Operator.NewActionLog(task.InstanceID, approval.ActionReassign)
 	actionLog.TaskID = &task.ID
 	actionLog.NodeID = &task.NodeID

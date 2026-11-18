@@ -84,7 +84,8 @@ const (
 	EventTypeTaskDeadlineWarning = "approval.task.deadline_warning"
 	EventTypeTaskUrged           = "approval.task.urged"
 
-	EventTypeCCNotified = "approval.cc.notified"
+	EventTypeAnnotationPublished = "approval.annotation.published"
+	EventTypeCCNotified          = "approval.cc.notified"
 
 	EventTypeFlowCreated   = "approval.flow.created"
 	EventTypeFlowUpdated   = "approval.flow.updated"
@@ -124,6 +125,7 @@ func AllEventTypes() []string {
 		EventTypeAssigneesRemoved,
 		EventTypeTaskDeadlineWarning,
 		EventTypeTaskUrged,
+		EventTypeAnnotationPublished,
 		EventTypeCCNotified,
 		EventTypeFlowCreated,
 		EventTypeFlowUpdated,
