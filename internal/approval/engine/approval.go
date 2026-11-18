@@ -128,17 +128,7 @@ func (p *ApprovalProcessor) applySameApplicantPolicy(ctx context.Context, pc *Pr
 	case approval.SameApplicantExclude:
 		recordSystemActionLog(ctx, pc, nil, excludeReasonSameApplicant)
 
-		remaining := slices.DeleteFunc(slices.Clone(assignees), func(a approval.ResolvedAssignee) bool {
-			return a.User.ID == pc.Instance.ApplicantID
-		})
-
-		if len(remaining) == 0 {
-			result, err := handleEmptyAssignee(ctx, pc, p.assigneeService)
-
-			return nil, result, err
-		}
-
-		return remaining, nil, nil
+		return p.excludeApplicant(ctx, pc, assignees)
 
 	case approval.SameApplicantTransferSuperior:
 		superior, err := p.resolveSuperiorSeat(ctx, pc)
@@ -146,18 +136,35 @@ func (p *ApprovalProcessor) applySameApplicantPolicy(ctx context.Context, pc *Pr
 			return nil, nil, err
 		}
 
+		actors, err := pc.actors().Actors(ctx, pc.DB, []approval.ResolvedAssignee{superior}, pc.UserResolver)
+		if err != nil {
+			return nil, nil, err
+		}
+		// Existing seats retain their attribution when the replacement collides.
+		if len(actors) == 0 || actors[0].User.ID == pc.Instance.ApplicantID || containsApplicant(assignees, actors[0].User.ID) {
+			return p.excludeApplicant(ctx, pc, assignees)
+		}
 		replaced := slices.Clone(assignees)
 		for i := range replaced {
 			if replaced[i].User.ID == pc.Instance.ApplicantID {
-				replaced[i] = superior
+				replaced[i] = actors[0]
+				break
 			}
 		}
-
-		return deduplicateAssignees(replaced), nil, nil
+		return replaced, nil, nil
 
 	default: // SameApplicantSelfApprove and unrecognized values: the applicant approves like any other assignee.
 		return assignees, nil, nil
 	}
+}
+
+func (p *ApprovalProcessor) excludeApplicant(ctx context.Context, pc *ProcessContext, assignees []approval.ResolvedAssignee) ([]approval.ResolvedAssignee, *ProcessResult, error) {
+	remaining := slices.DeleteFunc(slices.Clone(assignees), func(seat approval.ResolvedAssignee) bool { return seat.User.ID == pc.Instance.ApplicantID })
+	if len(remaining) > 0 {
+		return remaining, nil, nil
+	}
+	result, err := handleEmptyAssignee(ctx, pc, p.assigneeService)
+	return nil, result, err
 }
 
 // resolveSuperiorSeat resolves the applicant's superior into a seat, with the

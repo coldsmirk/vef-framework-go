@@ -2,7 +2,6 @@ package engine_test
 
 import (
 	"context"
-	"github.com/coldsmirk/vef-framework-go/timex"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -11,6 +10,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
+	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 func init() {
@@ -828,11 +828,13 @@ func (s *ApprovalProcessorTestSuite) TestDBError() {
 func (s *ApprovalProcessorTestSuite) TestHandoverPipeline() {
 	d := &approval.Delegation{FlowID: &s.FlowID, DelegatorID: "successor", DelegateeID: "delegate", IsActive: true, StartsAt: timex.Now().AddHours(-2), EndsAt: timex.Now().AddHours(2)}
 	_, err := s.DB.NewInsert().Model(d).Exec(s.Ctx)
+
 	s.Require().NoError(err, "Should create successor's delegation")
 	defer func() {
 		_, err := s.DB.NewDelete().Model(d).WherePK().Exec(s.Ctx)
 		s.Require().NoError(err, "Should clean delegation")
 	}()
+
 	for _, tc := range []struct {
 		name              string
 		seats             []string
@@ -848,6 +850,7 @@ func (s *ApprovalProcessorTestSuite) TestHandoverPipeline() {
 	} {
 		s.Run(tc.name, func() {
 			defer s.CleanTransientData(s.T())
+
 			instance := s.NewInstance(s.T(), tc.applicant)
 			s.InsertAssigneeConfig(s.T(), tc.seats)
 			pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
@@ -860,20 +863,73 @@ func (s *ApprovalProcessorTestSuite) TestHandoverPipeline() {
 			pc.HandoverResolver = tc.changes
 			_, err := s.processor.Process(s.Ctx, pc)
 			s.Require().NoError(err, "Should route the seats through handover and delegation")
+
 			tasks := s.QueryTasks(s.T(), instance.ID)
 			if tc.want == "" {
 				s.Empty(tasks, "Final applicant should auto-pass")
+
 				return
 			}
+
 			s.Require().Len(tasks, 1, "Should create exactly one task")
 			task := tasks[0]
 			s.Equal(tc.want, task.AssigneeID, "Should assign final actor")
+
 			if tc.want == "delegate" {
 				s.Equal(new("successor"), task.DelegatorID, "Should retain the successor's delegation")
 			}
+
 			if tc.predecessor != "" {
 				s.Equal(new(tc.predecessor), task.PredecessorID, "Should attribute the first predecessor")
 			}
+		})
+	}
+}
+
+func (s *ApprovalProcessorTestSuite) TestSuperiorSeatHandover() {
+	for _, tc := range []struct {
+		name                string
+		seats               []string
+		changes             handoverMap
+		delegateToApplicant bool
+		want, predecessor   string
+	}{
+		{"Successor", []string{"applicant"}, handoverMap{"boss": successor("new-boss")}, false, "new-boss", "boss"},
+		{"Departure", []string{"applicant"}, handoverMap{"boss": {}}, false, "fallback", ""},
+		{"SuccessorIsApplicant", []string{"applicant"}, handoverMap{"boss": successor("applicant")}, false, "fallback", ""},
+		{"DelegateIsApplicant", []string{"applicant"}, handoverMap{}, true, "fallback", ""},
+		{"ExistingSeatRetainsPredecessor", []string{"applicant", "peer"}, handoverMap{"boss": successor("new-boss"), "peer": successor("new-boss")}, false, "new-boss", "peer"},
+	} {
+		s.Run(tc.name, func() {
+			defer s.CleanTransientData(s.T())
+			mockSvc := new(engine.MockAssigneeService)
+			mockSvc.On("GetSuperior", mock.Anything, "applicant").Return(&approval.UserInfo{ID: "boss"}, nil).Once()
+			if tc.delegateToApplicant {
+				d := &approval.Delegation{FlowID: &s.FlowID, DelegatorID: "boss", DelegateeID: "applicant", IsActive: true, StartsAt: timex.Now().AddHours(-1), EndsAt: timex.Now().AddHours(1)}
+				_, err := s.DB.NewInsert().Model(d).Exec(s.Ctx)
+				s.Require().NoError(err, "Should create superior delegation")
+				defer func() {
+					_, err := s.DB.NewDelete().Model(d).WherePK().Exec(s.Ctx)
+					s.Require().NoError(err, "Should clean delegation")
+				}()
+			}
+			inst := s.NewInstance(s.T(), "applicant")
+			s.InsertAssigneeConfig(s.T(), tc.seats)
+			pc := s.NewProcessContext(s.T(), inst, s.NewNode(func(n *approval.FlowNode) {
+				n.SameApplicantAction = approval.SameApplicantTransferSuperior
+				n.EmptyAssigneeAction = approval.EmptyAssigneeTransferSpecified
+				n.FallbackUserIDs = []string{"fallback"}
+			}))
+			pc.HandoverResolver = tc.changes
+			_, err := engine.NewApprovalProcessor(mockSvc).Process(s.Ctx, pc)
+			s.Require().NoError(err, "Should apply superior policy once")
+			tasks := s.QueryTasks(s.T(), inst.ID)
+			s.Require().Len(tasks, 1, "Only the eligible seat should remain")
+			s.Equal(tc.want, tasks[0].AssigneeID, "Should select eligible superior or fallback")
+			if tc.predecessor != "" {
+				s.Equal(new(tc.predecessor), tasks[0].PredecessorID, "Surviving seat keeps its predecessor")
+			}
+			mockSvc.AssertExpectations(s.T())
 		})
 	}
 }
