@@ -117,3 +117,5 @@ var (
 	errCCFieldPermissionNotAllowed = errors.New("cc nodes only support field permissions 'visible' and 'hidden'")
 	errRequiredPermissionAutoPass  = errors.New("a node with a required field permission must not use timeout action 'auto_pass'")
 )
+
+var errUnknownPrincipalField = errors.New("unknown form field in principal selection")

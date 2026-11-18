@@ -684,3 +684,42 @@ func (s *DeployFlowTestSuite) TestDeployNumbersAfterEveryVersion() {
 
 	s.Assert().Equal(3, deploy().Version, "Publishing an older draft must not rewind the numbering")
 }
+
+func (s *DeployFlowTestSuite) TestBusinessCatalog() {
+	descriptor := approval.BusinessKindDescriptor{Kind: "order", Label: "Order", FormFields: []approval.FormFieldDefinition{{Key: "reason", Kind: approval.FieldInput, Label: "Reason"}}}
+	h := command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser(), testRegistry(testBusinessHandler{descriptor: descriptor}))
+	flow := &approval.Flow{ID: s.flowID, BusinessKind: &descriptor.Kind, InstanceTitleTemplate: "{{.formData.reason}}"}
+	_, err := s.db.NewUpdate().Model(flow).Select("business_kind", "instance_title_template").WherePK().Exec(s.ctx)
+	s.Require().NoError(err, "Should configure the handler kind")
+	defer func() {
+		_, _ = s.db.NewUpdate().Model(flow).Set("business_kind", nil).Set("instance_title_template", "Test").WherePK().Exec(s.ctx)
+	}()
+	cmd := command.DeployFlowCmd{FlowID: s.flowID, FlowDefinition: simpleFlowDef()}
+	v, err := h.Handle(s.ctx, cmd)
+	s.Require().NoError(err, "The deployed catalog should validate the title")
+	s.Equal(&descriptor.Kind, v.BusinessKind, "Should pin the handler to the version")
+	s.Equal(descriptor.FormFields, v.FormFields, "Should freeze the handler catalog")
+	for _, tc := range []struct {
+		name   string
+		schema json.RawMessage
+		mode   approval.StorageMode
+	}{
+		{"Schema", json.RawMessage(`{}`), approval.StorageJSON}, {"Table", nil, approval.StorageTable},
+	} {
+		s.Run(tc.name, func() {
+			bad := cmd
+			bad.FormSchema = tc.schema
+			bad.StorageMode = tc.mode
+			_, err := h.Handle(s.ctx, bad)
+			s.ErrorIs(err, approval.ErrInvalidFlowDesign, "Business versions use JSON storage and the registered schema")
+		})
+	}
+	_, err = s.db.NewUpdate().Model(flow).Set("instance_title_template", "{{.formData.typo}}").WherePK().Exec(s.ctx)
+	s.Require().NoError(err, "Should configure an unknown title field")
+	_, err = h.Handle(s.ctx, cmd)
+	s.ErrorIs(err, approval.ErrInvalidTitleTemplate, "A business flow must reject unknown title fields")
+	_, err = s.db.NewUpdate().Model(flow).Set("business_kind", nil).WherePK().Exec(s.ctx)
+	s.Require().NoError(err, "Should switch to an ordinary form")
+	_, err = h.Handle(s.ctx, cmd)
+	s.ErrorIs(err, approval.ErrInvalidTitleTemplate, "An ordinary flow must reject unknown title fields too")
+}

@@ -34,11 +34,13 @@ type DeployFlowCmd struct {
 
 // assigneeProvider is the interface for accessing assignees from typed node data.
 type assigneeProvider interface {
+	// GetAssignees returns this node's assignee definitions.
 	GetAssignees() []approval.AssigneeDefinition
 }
 
 // ccProvider is the interface for accessing CC list from typed node data.
 type ccProvider interface {
+	// GetCCs returns this node's CC definitions.
 	GetCCs() []approval.CCDefinition
 }
 
@@ -133,7 +135,7 @@ type deployment struct {
 }
 
 // validate checks a deploy on its own — the graph, the form, and where the two
-// meet — before any row is read or written.
+// meet — before creating the version.
 func (h *DeployFlowHandler) validate(ctx context.Context, cmd DeployFlowCmd, flow *approval.Flow) (*deployment, error) {
 	parsedNodeData, err := h.flowDefSvc.ValidateFlowDefinition(&cmd.FlowDefinition)
 	if err != nil {
@@ -173,6 +175,10 @@ func (h *DeployFlowHandler) validate(ctx context.Context, cmd DeployFlowCmd, flo
 	// Aggregate conditions reference form fields, so they can only be fully
 	// validated where the flow definition and form fields meet.
 	if err := h.flowDefSvc.ValidateConditionAggregates(parsedNodeData, fields); err != nil {
+		return nil, fmt.Errorf("%w: %w", approval.ErrInvalidFlowDesign, err)
+	}
+
+	if err := h.flowDefSvc.ValidatePrincipalFields(parsedNodeData, fields); err != nil {
 		return nil, fmt.Errorf("%w: %w", approval.ErrInvalidFlowDesign, err)
 	}
 
