@@ -31,11 +31,16 @@ func loadVoidDetail(ctx context.Context, db orm.DB, inst *approval.Instance) (*a
 
 	var req approval.Instance
 
-	err := db.NewSelect().Model(&req).Select("id", "instance_no", "applicant_id", "applicant_name", "applicant_department_id", "applicant_department_name", "status", "created_at").Join((*approval.VoidRecord)(nil), func(cb orm.ConditionBuilder) {
-		cb.EqualsColumn("id", "r.request_instance_id")
-	}, "r").Where(func(cb orm.ConditionBuilder) {
-		cb.Equals("r.instance_id", inst.ID).Equals("r.status", approval.VoidRequested)
-	}).Scan(ctx)
+	err := db.NewSelect().
+		Model(&req).
+		Select("id", "instance_no", "applicant_id", "applicant_name", "applicant_department_id", "applicant_department_name", "status", "created_at").
+		Join((*approval.VoidRecord)(nil), func(cb orm.ConditionBuilder) {
+			cb.EqualsColumn("id", "r.request_instance_id")
+		}, "r").
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("r.instance_id", inst.ID).Equals("r.status", approval.VoidRequested)
+		}).
+		Scan(ctx)
 	if result.IsRecordNotFound(err) {
 		return nil, nil, nil
 	}
@@ -67,8 +72,10 @@ func canRequestVoid(ctx context.Context, db orm.DB, validation *service.Validati
 		if errors.Is(err, approval.ErrCrossTenantAccess) {
 			return false, nil
 		}
+
 		return false, err
 	}
+
 	if tenant != bundle.Instance.TenantID || bundle.Flow.VoidFlowCode == nil {
 		return false, nil
 	}

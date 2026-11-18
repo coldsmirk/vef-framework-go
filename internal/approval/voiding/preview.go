@@ -59,6 +59,7 @@ func (c *Core) Preview(ctx context.Context, db orm.DB, in approval.VoidInstanceI
 		if req.Status != approval.InstanceReturned || req.ApplicantID != in.Operator.ID {
 			return nil, approval.ErrVoidRequestPending
 		}
+
 		if req.FlowCode != *vc.Flow.VoidFlowCode {
 			return nil, approval.ErrVoidNotAllowed
 		}

@@ -12,6 +12,7 @@ import (
 
 type Runtime struct {
 	fx.Out
+
 	Registry  *business.Registry
 	Hooks     *engine.LifecycleHookRunner
 	Instances *service.InstanceService
@@ -22,12 +23,15 @@ type Runtime struct {
 // it. An approved request can then reverse its target inside the decision transaction.
 func NewRuntime(hosts []approval.BusinessHandler, defs *service.FlowDefinitionService, projector engine.InstanceProjector, hooks []approval.InstanceLifecycleHook, bus event.Bus) (Runtime, error) {
 	request := &RequestHandler{}
+
 	registry, err := business.NewRegistry(hosts, defs.ValidateFormFields, request)
 	if err != nil {
 		return Runtime{}, err
 	}
+
 	runner := engine.NewLifecycleHookRunner(projector, hooks, registry)
 	instances := service.NewInstanceService(runner)
 	request.core = NewCore(instances, registry, bus)
+
 	return Runtime{Registry: registry, Hooks: runner, Instances: instances, Core: request.core}, nil
 }

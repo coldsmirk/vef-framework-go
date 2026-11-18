@@ -51,17 +51,21 @@ func TestVerify(t *testing.T) {
 
 		t.Run("UpgradesVoidPolicy", func(t *testing.T) {
 			const table = "apv_flow"
+
 			fresh, err := sqlmigration.LoadTableColumns(env.Ctx, env.DB, env.DS.Kind, table)
 			require.NoError(t, err, "Should inspect freshly created policies")
+
 			for _, name := range []string{"void_policy", "void_flow_code"} {
 				require.Contains(t, fresh, name, "Fresh schema must contain %s", name)
 				_, err = env.DB.NewRaw("ALTER TABLE apv_flow DROP COLUMN " + name).Exec(env.Ctx)
 				require.NoError(t, err, "Should recreate the schema before %s", name)
 			}
+
 			require.ErrorIs(t, Verify(env.Ctx, env.DB, env.DS.Kind), ErrSchemaOutdated, "Both missing policy columns require an upgrade")
 			require.NoError(t, Migrate(env.Ctx, env.DB, env.DS.Kind), "Should add the live policy to existing flows")
 			upgraded, err := sqlmigration.LoadTableColumns(env.Ctx, env.DB, env.DS.Kind, table)
 			require.NoError(t, err, "Should inspect upgraded policies")
+
 			for _, name := range []string{"void_policy", "void_flow_code"} {
 				require.Equal(t, fresh[name], upgraded[name], "Upgraded and fresh %s definitions must agree", name)
 			}

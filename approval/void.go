@@ -45,6 +45,7 @@ func (p *VoidPlan) IsBlocked() bool { return len(p.Blockers) > 0 }
 // MarshalJSON represents an empty list of effects as an array on every wire path.
 func (p VoidPlan) MarshalJSON() ([]byte, error) {
 	type wire VoidPlan
+
 	v := wire(p)
 
 	if v.Blockers == nil {

@@ -104,7 +104,19 @@ func (s *InstanceResourceTestSuite) TestVoidPolicy() {
 	items := s.ReadDataAsSlice(s.ReadDataAsMap(r.Data)["items"])
 	s.Require().Len(items, 1, "The selected request flow matches")
 	s.Equal(req.FlowID, s.ReadDataAsMap(items[0])["id"], "Only the requested kind and code should match")
-	r = s.voidRPC("flow", "update", api.Params{"flowId": req.FlowID, "name": "Converted request", "voidPolicy": "approval", "voidFlowCode": req.FlowCode, "isAllInitiationAllowed": true, "instanceTitleTemplate": "New form"}, s.token)
+	r = s.voidRPC(
+		"flow",
+		"update",
+		api.Params{
+			"flowId":                 req.FlowID,
+			"name":                   "Converted request",
+			"voidPolicy":             "approval",
+			"voidFlowCode":           req.FlowCode,
+			"isAllInitiationAllowed": true,
+			"instanceTitleTemplate":  "New form",
+		},
+		s.token,
+	)
 	s.Equal(approval.ErrCodeVoidPolicyInvalid, r.Code, "An edited request cannot authorize itself using its previous kind")
 }
 
@@ -279,7 +291,21 @@ func (s *InstanceResourceTestSuite) TestVoidLifecycle() {
 			s.Require().True(v.IsOk(), "Should update the window: %v", v)
 		}
 		setWindow(api.Params{"windows": []any{api.Params{"dates": api.Params{"startsAt": tomorrow, "endsAt": tomorrow}}}})
-		changed := s.voidRPC("flow", "update", api.Params{"flowId": target.FlowID, "name": "Booking", "businessKind": "booking", "instanceTitleTemplate": "Booking", "isAllInitiationAllowed": true, "voidPolicy": "approval", "voidFlowCode": alt.FlowCode}, s.token)
+
+		changed := s.voidRPC(
+			"flow",
+			"update",
+			api.Params{
+				"flowId":                 target.FlowID,
+				"name":                   "Booking",
+				"businessKind":           "booking",
+				"instanceTitleTemplate":  "Booking",
+				"isAllInitiationAllowed": true,
+				"voidPolicy":             "approval",
+				"voidFlowCode":           alt.FlowCode,
+			},
+			s.token,
+		)
 		s.Require().True(changed.IsOk(), "Administrator can change the required approval flow")
 		s.Equal(approval.ErrCodeVoidNotAllowed, preview("my", id, s.token).Code, "The returned applicant remains subject to the configured flow code")
 		update(approval.VoidApproval)
@@ -344,6 +370,7 @@ func (s *InstanceResourceTestSuite) TestVoidLifecycle() {
 			s.Equal("dismissed", s.ReadDataAsMap(bv["record"])["status"], "The audit row survives dismissal")
 			update(approval.VoidApproval)
 			s.NotContains(detail("admin", id), "voidRequest", "Dismissal clears the lock")
+
 			if end == "withdraw" {
 				r = s.rpcCall("resubmit", api.Params{"instanceId": reqID, "formData": api.Params{"targetInstanceId": id, "reason": "Reconsidered"}})
 				s.Require().True(r.IsOk(), "A withdrawn applicant may resubmit the same request: %v", r)
@@ -353,6 +380,7 @@ func (s *InstanceResourceTestSuite) TestVoidLifecycle() {
 				r = s.rpcCall("withdraw", api.Params{"instanceId": reqID, "reason": "Cancel"})
 				s.Require().True(r.IsOk(), "Withdrawing again releases the reservation")
 			}
+
 			r = requester(id, request.FlowCode, "Replacement")
 			s.Require().True(r.IsOk(), "A dismissed request permits a fresh request: %v", r)
 		})
