@@ -578,7 +578,7 @@ func deleteAll(ctx context.Context, db orm.DB, models ...any) {
 // Used in TearDownTest for suites that operate on runtime data.
 func cleanRuntimeData(ctx context.Context, db orm.DB) {
 	deleteAll(ctx, db,
-
+		(*approval.VoidRecord)(nil),
 		(*approval.ActionLog)(nil),
 		(*approval.UrgeRecord)(nil),
 		(*approval.CCRecord)(nil),

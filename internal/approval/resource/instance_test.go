@@ -50,6 +50,7 @@ type InstanceResourceTestSuite struct {
 	token           string
 	categoryID      string
 	handoverEnabled atomic.Bool
+	voidBooking     bookingHandler
 
 	// Flow setups
 	simple   FlowSetup // Start → End
@@ -100,7 +101,7 @@ func TestInstanceResource(t *testing.T) {
 
 func (s *InstanceResourceTestSuite) SetupSuite() {
 	s.ctx = context.Background()
-	s.db, s.token = setupResourceApp(&s.Suite, vef.ProvideApprovalHandoverResolver(func() approval.HandoverResolver { return s }))
+	s.db, s.token = setupResourceApp(&s.Suite, vef.ProvideApprovalHandoverResolver(func() approval.HandoverResolver { return s }), vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return &s.voidBooking }), vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{kind: "invoice"} }))
 
 	// Create shared category
 	cat := &approval.FlowCategory{
@@ -145,21 +146,19 @@ func (s *InstanceResourceTestSuite) TearDownTest() {
 // --- Suite-local RPC helpers ---
 
 // createAndPublishFlow creates, deploys, and publishes a flow via RPC calls.
-func (s *InstanceResourceTestSuite) createAndPublishFlow(code, name string, def approval.FlowDefinition, schema json.RawMessage) FlowSetup {
-	// Create flow
-	resp := s.MakeRPCRequestWithToken(api.Request{
-		Resource: "approval/flow",
-		Action:   "create",
-		Version:  "v1",
-		Params: map[string]any{
-			"tenantId":               "default",
-			"code":                   code,
-			"name":                   name,
-			"categoryId":             s.categoryID,
-			"isAllInitiationAllowed": true,
-			"instanceTitleTemplate":  name + " {{.instanceNo}}",
-		},
-	}, s.token)
+func (s *InstanceResourceTestSuite) createAndPublishFlow(code, name string, def approval.FlowDefinition, schema json.RawMessage, kind ...approval.BusinessKind) FlowSetup {
+	params := map[string]any{
+		"tenantId":               "default",
+		"code":                   code,
+		"name":                   name,
+		"categoryId":             s.categoryID,
+		"isAllInitiationAllowed": true,
+		"instanceTitleTemplate":  name + " {{.instanceNo}}",
+	}
+	if len(kind) > 0 {
+		params["businessKind"] = kind[0]
+	}
+	resp := s.MakeRPCRequestWithToken(api.Request{Resource: "approval/flow", Action: "create", Version: "v1", Params: params}, s.token)
 	s.Require().Equal(http.StatusOK, resp.StatusCode, "Create flow RPC should return HTTP 200")
 	res := s.ReadResult(resp)
 	s.Require().True(res.IsOk(), "Should create flow: "+code)
