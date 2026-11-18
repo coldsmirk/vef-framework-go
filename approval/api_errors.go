@@ -35,10 +35,12 @@ const (
 	ErrCodeInitiatorsNotAllowed        = 40022
 	ErrCodeInitiatorsRequired          = 40023
 	// 40024 is retired (former shared-flow people rule); do not reassign it.
-	ErrCodeCategoryNotFound       = 40025
-	ErrCodeSharedFlowCodeExists   = 40026
-	ErrCodeInitiationWindowClosed = 40027
-	ErrCodeUserHandedOver         = 40028
+	ErrCodeCategoryNotFound          = 40025
+	ErrCodeSharedFlowCodeExists      = 40026
+	ErrCodeInitiationWindowClosed    = 40027
+	ErrCodeBusinessKindRequired      = 40030
+	ErrCodeBusinessKindNotRegistered = 40029
+	ErrCodeUserHandedOver            = 40028
 
 	ErrCodeInstanceNotFound          = 40101
 	ErrCodeInstanceCompleted         = 40102
@@ -149,9 +151,11 @@ var (
 	// that does not exist or belongs to another tenant. A flow and its category,
 	// and a category and its parent, always share a tenant — a shared flow sits
 	// under a category of the tenant that owns it.
-	ErrCategoryNotFound       = result.Err(i18n.T("approval_category_not_found"), result.WithCode(ErrCodeCategoryNotFound))
-	ErrUserHandedOver         = result.Err(i18n.T("approval_user_handed_over"), result.WithCode(ErrCodeUserHandedOver))
-	ErrInitiationWindowClosed = result.Err(i18n.T("approval_initiation_window_closed"), result.WithCode(ErrCodeInitiationWindowClosed))
+	ErrCategoryNotFound          = result.Err(i18n.T("approval_category_not_found"), result.WithCode(ErrCodeCategoryNotFound))
+	ErrBusinessKindNotRegistered = result.Err(i18n.T("approval_business_kind_not_registered"), result.WithCode(ErrCodeBusinessKindNotRegistered))
+	ErrBusinessKindRequired      = result.Err(i18n.T("approval_business_kind_required"), result.WithCode(ErrCodeBusinessKindRequired))
+	ErrUserHandedOver            = result.Err(i18n.T("approval_user_handed_over"), result.WithCode(ErrCodeUserHandedOver))
+	ErrInitiationWindowClosed    = result.Err(i18n.T("approval_initiation_window_closed"), result.WithCode(ErrCodeInitiationWindowClosed))
 	// ErrSharedFlowCodeExists rejects creating a shared flow whose code another
 	// shared flow already holds, in whichever tenant. Every tenant is offered
 	// every shared flow, so two with one code would leave a code naming two

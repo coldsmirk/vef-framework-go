@@ -458,6 +458,11 @@ func SupplyBusinessRefResolver(constructor any) fx.Option {
 	return fx.Decorate(constructor)
 }
 
+// ProvideApprovalBusinessHandler registers a handler for one business kind.
+func ProvideApprovalBusinessHandler(constructor any, paramTags ...string) fx.Option {
+	return fx.Provide(fx.Annotate(constructor, fx.ParamTags(paramTags...), fx.ResultTags(`group:"vef:approval:business_handlers"`)))
+}
+
 // ProvideApprovalLifecycleHook registers a synchronous
 // approval.InstanceLifecycleHook into the FX container. Hooks run inside
 // the engine transaction for OnInstanceCreated / OnInstanceTransition, so

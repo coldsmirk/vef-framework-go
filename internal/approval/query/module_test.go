@@ -47,6 +47,7 @@ func TestRegisterHandlers(t *testing.T) {
 		new(FindFlowsHandler),
 		new(FindFlowVersionsHandler),
 		new(FindFlowInitiatorsHandler),
+		new(ListBusinessKindsHandler),
 		new(ListKindOptionsHandler),
 		new(GetMetricsHandler),
 	)

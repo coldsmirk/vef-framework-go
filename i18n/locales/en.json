@@ -166,6 +166,8 @@
   "approval_initiators_not_allowed": "A flow open to everyone cannot define initiators",
   "approval_initiators_required": "A restricted flow must name who may start it; every initiator rule must select at least one entry",
   "approval_category_not_found": "Flow category not found",
+  "approval_business_kind_not_registered": "Approval business kind is not registered",
+  "approval_business_kind_required": "Select a business kind and redeploy the flow to use a business binding",
   "approval_user_handed_over": "{{if .user}}{{.user}}{{else}}This user{{end}} no longer receives approval work.{{if .successor}} Their successor is {{.successor}}.{{end}}",
   "approval_initiation_window_closed": "Initiation is closed. {{if .next}}Next opening: {{.next}}.{{else}}No opening in the near future.{{end}}",
   "approval_shared_flow_code_exists": "A shared flow with this code already exists",

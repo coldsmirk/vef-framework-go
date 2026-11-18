@@ -44,6 +44,7 @@ func NewFlowResource(bus cqrs.Bus) api.Resource {
 				api.OperationSpec{Action: "find_flows", RequiredPermission: "approval.flow.query"},
 				api.OperationSpec{Action: "find_versions", RequiredPermission: "approval.flow.query"},
 				api.OperationSpec{Action: "find_initiators", RequiredPermission: "approval.flow.query"},
+				api.OperationSpec{Action: "list_business_kinds", RequiredPermission: "approval.flow.query"},
 				api.OperationSpec{Action: "list_kind_options", RequiredPermission: "approval.flow.query"},
 			),
 		),
@@ -394,4 +395,15 @@ func (r *FlowResource) ListKindOptions(ctx fiber.Ctx, _ ListKindOptionsParams) e
 	}
 
 	return result.Ok(options).Response(ctx)
+}
+
+type ListBusinessKindsParams struct{ api.P }
+
+// ListBusinessKinds lists the registered handlers' current localized descriptors.
+func (r *FlowResource) ListBusinessKinds(ctx fiber.Ctx, _ ListBusinessKindsParams) error {
+	kinds, err := cqrs.Send[query.ListBusinessKindsQuery, []approval.BusinessKindDescriptor](ctx.Context(), r.bus, query.ListBusinessKindsQuery{})
+	if err != nil {
+		return err
+	}
+	return result.Ok(kinds).Response(ctx)
 }

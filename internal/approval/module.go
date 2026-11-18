@@ -3,6 +3,7 @@ package approval
 import (
 	"context"
 	"fmt"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 
 	"go.uber.org/fx"
 
@@ -31,6 +32,9 @@ var Module = fx.Module(
 	// The built-in form-schema parser (vef-framework-react form-editor);
 	// hosts replace it wholesale with vef.ProvideApprovalFormSchemaParser.
 	fx.Provide(formeditor.NewParser),
+	fx.Provide(fx.Annotate(func(handlers []approval.BusinessHandler, defs *service.FlowDefinitionService) (*business.Registry, error) {
+		return business.NewRegistry(handlers, defs.ValidateFormFields)
+	}, fx.ParamTags(`group:"vef:approval:business_handlers"`))),
 
 	auth.Module,
 	strategy.Module,
