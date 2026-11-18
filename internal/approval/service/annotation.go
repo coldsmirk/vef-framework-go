@@ -13,7 +13,7 @@ import (
 type AnnotationService struct{}
 
 // PublishDrafts publishes the author's task drafts, or their response drafts on resubmission.
-func (AnnotationService) PublishDrafts(ctx context.Context, db orm.DB, instance *approval.Instance, taskID *string, author approval.UserInfo) error {
+func (*AnnotationService) PublishDrafts(ctx context.Context, db orm.DB, instance *approval.Instance, taskID *string, author approval.UserInfo) error {
 	var drafts []approval.Annotation
 	if err := db.NewSelect().Model(&drafts).Select("id", "node_id").Where(func(cb orm.ConditionBuilder) {
 		cb.Equals("instance_id", instance.ID).Equals("author_id", author.ID).Equals("status", approval.AnnotationDraft)
@@ -54,7 +54,7 @@ func (AnnotationService) PublishDrafts(ctx context.Context, db orm.DB, instance 
 }
 
 // DiscardTaskDrafts retires unpublished drafts when their original seat is lost.
-func (AnnotationService) DiscardTaskDrafts(ctx context.Context, db orm.DB, taskIDs ...string) error {
+func (*AnnotationService) DiscardTaskDrafts(ctx context.Context, db orm.DB, taskIDs ...string) error {
 	if len(taskIDs) == 0 {
 		return nil
 	}
@@ -68,7 +68,7 @@ func (AnnotationService) DiscardTaskDrafts(ctx context.Context, db orm.DB, taskI
 	return err
 }
 
-func (AnnotationService) discardResponses(ctx context.Context, db orm.DB, instanceID string) error {
+func (*AnnotationService) discardResponses(ctx context.Context, db orm.DB, instanceID string) error {
 	_, err := db.NewUpdate().Model((*approval.Annotation)(nil)).Set("status", approval.AnnotationDiscarded).Where(func(cb orm.ConditionBuilder) {
 		cb.Equals("instance_id", instanceID).IsNotNull("parent_id").Equals("status", approval.AnnotationDraft)
 	}).Exec(ctx)

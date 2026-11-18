@@ -30,13 +30,13 @@ func requireNoteStatus(t *testing.T, ctx context.Context, db orm.DB, id string, 
 	}
 }
 
-type anchorHandler struct {
-	testBusinessHandler
+type AnchorHandler struct {
+	StubBusinessHandler
 
 	validate func(*approval.AnchorContext) error
 }
 
-func (h anchorHandler) ValidateAnchor(_ context.Context, _ orm.DB, ac *approval.AnchorContext) error {
+func (h AnchorHandler) ValidateAnchor(_ context.Context, _ orm.DB, ac *approval.AnchorContext) error {
 	return h.validate(ac)
 }
 
@@ -133,12 +133,12 @@ func (s *ApproveTaskTestSuite) TestAnnotationDrafts() {
 
 		in := draft
 		in.Anchor = json.RawMessage(`{"offset":12}`)
-		edit := service.NewAnnotationEditor(service.NewTaskService(), service.NewInstanceService(nil), testRegistry(testBusinessHandler{}))
+		edit := service.NewAnnotationEditor(service.NewTaskService(), service.NewInstanceService(nil), testRegistry(StubBusinessHandler{}))
 		_, err = edit.Save(s.ctx, s.db, in)
 		s.ErrorIs(err, approval.ErrAnnotationAnchorInvalid, "An opaque anchor needs a capable handler")
 
 		veto := errors.New("unknown offset")
-		edit = service.NewAnnotationEditor(service.NewTaskService(), service.NewInstanceService(nil), testRegistry(anchorHandler{validate: func(ac *approval.AnchorContext) error {
+		edit = service.NewAnnotationEditor(service.NewTaskService(), service.NewInstanceService(nil), testRegistry(AnchorHandler{validate: func(ac *approval.AnchorContext) error {
 			s.Equal(inst.ID, ac.Instance.ID, "Handler should receive the locked instance")
 			s.Equal(task.ID, ac.Task.ID, "Handler should receive the held task")
 			s.Equal(in.Operator, ac.Author, "Handler should receive the author")

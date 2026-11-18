@@ -53,7 +53,7 @@ var cancelableTaskStatuses = []string{string(approval.TaskPending), string(appro
 
 // TaskService provides task-level domain operations.
 type TaskService struct {
-	AnnotationService
+	*AnnotationService
 
 	business         *business.Registry
 	formDataMaxBytes int
@@ -64,7 +64,12 @@ type TaskService struct {
 func NewTaskService(opts ...Option) *TaskService {
 	resolved := resolveOptions(opts)
 
-	return &TaskService{business: resolved.business, formDataMaxBytes: resolved.formDataMaxBytes, codeSets: resolved.codeSets}
+	return &TaskService{
+		AnnotationService: new(AnnotationService),
+		business:          resolved.business,
+		formDataMaxBytes:  resolved.formDataMaxBytes,
+		codeSets:          resolved.codeSets,
+	}
 }
 
 // FinishTask transitions a task to the given status and sets its FinishedAt timestamp.

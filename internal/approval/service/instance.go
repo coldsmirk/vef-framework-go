@@ -19,7 +19,7 @@ import (
 // host-registered lifecycle hooks fire together. Direct UPDATE statements
 // against apv_instance.status are a bug.
 type InstanceService struct {
-	AnnotationService
+	*AnnotationService
 
 	hooks *engine.LifecycleHookRunner
 }
@@ -30,7 +30,7 @@ type InstanceService struct {
 // projection and invokes registered extensions inside the same tx as the
 // status change.
 func NewInstanceService(hooks *engine.LifecycleHookRunner) *InstanceService {
-	return &InstanceService{hooks: hooks}
+	return &InstanceService{AnnotationService: new(AnnotationService), hooks: hooks}
 }
 
 // LoadForUpdate loads an instance by ID with a row-level lock and asserts
