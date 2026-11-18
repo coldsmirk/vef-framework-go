@@ -531,3 +531,33 @@ CREATE TABLE IF NOT EXISTS apv_form_table_column (
 );
 
 CREATE INDEX IF NOT EXISTS idx_apv_form_table_column__form_table_id ON apv_form_table_column(form_table_id);
+
+-- Annotations and applicant responses
+CREATE TABLE IF NOT EXISTS apv_annotation (
+    id VARCHAR(32) CONSTRAINT pk_apv_annotation PRIMARY KEY,
+    created_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime')),
+    updated_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime')),
+    created_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    updated_by VARCHAR(32) NOT NULL DEFAULT 'system',
+    tenant_id VARCHAR(32) NOT NULL,
+    instance_id VARCHAR(32) NOT NULL,
+    node_id VARCHAR(32) NOT NULL,
+    visit_id VARCHAR(32),
+    task_id VARCHAR(32),
+    author_id VARCHAR(32) NOT NULL,
+    author_name VARCHAR(128) NOT NULL,
+    author_department_id VARCHAR(32),
+    author_department_name VARCHAR(128),
+    status VARCHAR(16) NOT NULL,
+    anchor TEXT,
+    content TEXT NOT NULL,
+    audience TEXT NOT NULL,
+    parent_id VARCHAR(32),
+    resolution VARCHAR(16),
+    published_at TIMESTAMP,
+    CONSTRAINT fk_apv_annotation__instance_id FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_apv_annotation__instance_id_status ON apv_annotation(instance_id, status);
+CREATE INDEX IF NOT EXISTS idx_apv_annotation__task_id ON apv_annotation(task_id);
+CREATE INDEX IF NOT EXISTS idx_apv_annotation__parent_id ON apv_annotation(parent_id);

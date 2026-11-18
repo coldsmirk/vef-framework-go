@@ -32,6 +32,7 @@ var expectedTables = []string{
 	"apv_delegation",
 	"apv_form_snapshot",
 	"apv_urge_record",
+	"apv_annotation",
 	"apv_form_table",
 	"apv_form_table_column",
 }

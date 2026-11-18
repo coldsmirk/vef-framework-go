@@ -41,6 +41,11 @@ const (
 	ErrCodeUserHandedOver            = 40028
 	ErrCodeBusinessKindNotRegistered = 40029
 	ErrCodeBusinessKindRequired      = 40030
+	ErrCodeAnnotationNotFound        = 40031
+	ErrCodeAnnotationNotEditable     = 40032
+	ErrCodeAnnotationAnchorInvalid   = 40033
+	ErrCodeAnnotationAudienceInvalid = 40034
+	ErrCodeAnnotationNotAllowed      = 40035
 
 	ErrCodeInstanceNotFound          = 40101
 	ErrCodeInstanceCompleted         = 40102
@@ -148,6 +153,11 @@ var (
 	// under a category of the tenant that owns it.
 	ErrCategoryNotFound          = result.Err(i18n.T("approval_category_not_found"), result.WithCode(ErrCodeCategoryNotFound))
 	ErrBusinessKindNotRegistered = result.Err(i18n.T("approval_business_kind_not_registered"), result.WithCode(ErrCodeBusinessKindNotRegistered))
+	ErrAnnotationNotFound        = result.Err(i18n.T("approval_annotation_not_found"), result.WithCode(ErrCodeAnnotationNotFound))
+	ErrAnnotationNotEditable     = result.Err(i18n.T("approval_annotation_not_editable"), result.WithCode(ErrCodeAnnotationNotEditable))
+	ErrAnnotationAnchorInvalid   = result.Err(i18n.T("approval_annotation_anchor_invalid"), result.WithCode(ErrCodeAnnotationAnchorInvalid))
+	ErrAnnotationAudienceInvalid = result.Err(i18n.T("approval_annotation_audience_invalid"), result.WithCode(ErrCodeAnnotationAudienceInvalid))
+	ErrAnnotationNotAllowed      = result.Err(i18n.T("approval_annotation_not_allowed"), result.WithCode(ErrCodeAnnotationNotAllowed))
 	ErrBusinessKindRequired      = result.Err(i18n.T("approval_business_kind_required"), result.WithCode(ErrCodeBusinessKindRequired))
 	ErrUserHandedOver            = result.Err(i18n.T("approval_user_handed_over"), result.WithCode(ErrCodeUserHandedOver))
 	ErrInitiationWindowClosed    = result.Err(i18n.T("approval_initiation_window_closed"), result.WithCode(ErrCodeInitiationWindowClosed))
