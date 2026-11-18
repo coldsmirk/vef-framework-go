@@ -119,7 +119,12 @@ func (s *InstanceResourceTestSuite) SetupSuite() {
 	s.complex = s.createAndPublishFlow("res-complex", "Complex Flow", complexFlowDef(), nil)
 	s.parallel = s.createAndPublishFlow("res-parallel", "Parallel Flow", parallelApprovalFlowDef(), nil)
 	s.noCC = s.createAndPublishFlow("res-no-cc", "No CC Flow", noManualCCFlowDef(), nil)
-	s.formField = s.createAndPublishFlow("res-form-field", "Form Field Flow", formFieldFlowDef(), json.RawMessage(`{"version":2,"presentations":{"pc":{"children":[{"id":"F1","type":"textfield","key":"approver","label":"Approver"}]}}}`))
+	s.formField = s.createAndPublishFlow(
+		"res-form-field",
+		"Form Field Flow",
+		formFieldFlowDef(),
+		json.RawMessage(`{"version":2,"presentations":{"pc":{"children":[{"id":"F1","type":"textfield","key":"approver","label":"Approver"}]}}}`),
+	)
 
 	// Generate tokens for multiple users
 	s.approver2Token = s.GenerateToken(newTenantUser("approver-2", "Approver 2"))

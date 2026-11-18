@@ -189,6 +189,7 @@ func (h *modelBusinessHandler[M, P]) Submit(ctx context.Context, db orm.DB, sc *
 	if sc.Version != nil {
 		fields = sc.Version.FormFields
 	}
+
 	data, err := h.project(model, fields)
 	if err != nil {
 		return nil, err
@@ -240,8 +241,10 @@ func (h *modelBusinessHandler[M, P]) OnTaskAction(ctx context.Context, db orm.DB
 		if err := db.NewSelect().Model(&version).Select("form_fields").WherePK().Scan(ctx); err != nil {
 			return nil, err
 		}
+
 		fields = version.FormFields
 	}
+
 	data, err := h.project(model, fields)
 	if err != nil {
 		return nil, err
