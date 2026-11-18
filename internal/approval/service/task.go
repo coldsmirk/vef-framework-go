@@ -1039,7 +1039,10 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 		Select("instance_id").
 		WherePK().
 		Scan(ctx); err != nil {
-		return nil, approval.ErrTaskNotFound
+		if result.IsRecordNotFound(err) {
+			return nil, approval.ErrTaskNotFound
+		}
+		return nil, fmt.Errorf("locate task: %w", err)
 	}
 
 	var instance approval.Instance
@@ -1051,7 +1054,10 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 		WherePK().
 		ForUpdate().
 		Scan(ctx); err != nil {
-		return nil, approval.ErrInstanceNotFound
+		if result.IsRecordNotFound(err) {
+			return nil, approval.ErrInstanceNotFound
+		}
+		return nil, fmt.Errorf("lock task instance: %w", err)
 	}
 
 	// Tenant guard: cross-tenant callers see a uniform "task not found" so
@@ -1074,7 +1080,10 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 		WherePK().
 		ForUpdate().
 		Scan(ctx); err != nil {
-		return nil, approval.ErrTaskNotFound
+		if result.IsRecordNotFound(err) {
+			return nil, approval.ErrTaskNotFound
+		}
+		return nil, fmt.Errorf("lock task: %w", err)
 	}
 
 	if err := validateTaskState(&instance, &task, options); err != nil {
