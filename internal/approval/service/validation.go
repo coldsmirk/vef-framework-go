@@ -687,14 +687,14 @@ func validateEditableFormData(fields []approval.FormFieldDefinition, formData ma
 }
 
 // MergeFormData filters editable form data and merges it into the instance.
-func MergeFormData(instance *approval.Instance, formData map[string]any, permissions map[string]approval.Permission) {
+func MergeFormData(instance *approval.Instance, formData map[string]any, permissions map[string]approval.Permission) bool {
 	if len(formData) == 0 {
-		return
+		return false
 	}
 
 	editableData := FilterEditableFormData(formData, permissions)
 	if len(editableData) == 0 {
-		return
+		return false
 	}
 
 	if instance.FormData == nil {
@@ -702,6 +702,8 @@ func MergeFormData(instance *approval.Instance, formData map[string]any, permiss
 	}
 
 	maps.Copy(instance.FormData, editableData)
+
+	return true
 }
 
 // FilterEditableFormData filters form data to only include fields that are editable or required

@@ -909,6 +909,7 @@ func (s *TaskService) PrepareDecision(
 		return nil, err
 	}
 
+	var hasSnapshot bool
 	if tc.Instance.BusinessKind != nil {
 		h, err := s.business.Require(*tc.Instance.BusinessKind)
 		if err != nil {
@@ -927,6 +928,7 @@ func (s *TaskService) PrepareDecision(
 			}
 
 			tc.Instance.FormData = snapshot
+			hasSnapshot = true
 		}
 	} else {
 		if err := validateEditableFormData(tc.FormFields, action.FormData, tc.Node.FieldPermissions); err != nil {
@@ -937,7 +939,7 @@ func (s *TaskService) PrepareDecision(
 			return nil, err
 		}
 
-		MergeFormData(tc.Instance, action.FormData, tc.Node.FieldPermissions)
+		hasSnapshot = MergeFormData(tc.Instance, action.FormData, tc.Node.FieldPermissions)
 	}
 
 	afterSize, err := encodedFormDataSize(tc.Instance.FormData)
@@ -959,9 +961,12 @@ func (s *TaskService) PrepareDecision(
 		}
 	}
 
-	if err := persistDecisionSnapshot(ctx, db, tc.Instance); err != nil {
-		return nil, err
+	if hasSnapshot {
+		if err := persistDecisionSnapshot(ctx, db, tc.Instance); err != nil {
+			return nil, err
+		}
 	}
+
 	// Publish this operator's decision drafts here, after validation and before task completion.
 	return tc, nil
 }
