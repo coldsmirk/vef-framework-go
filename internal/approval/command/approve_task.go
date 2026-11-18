@@ -113,14 +113,6 @@ func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cq
 	actionLog := h.taskSvc.BuildActionLog(instance.ID, task, cmd.Operator, actionType, service.ActionLogParams{Opinion: cmd.Opinion, Attachments: cmd.Attachments})
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
-	// Status / current_node_id / finished_at are already persisted by the
-	// state machine through HandleNodeCompletion → ApplyInstanceTransition
-	// (or by the engine's NodeActionComplete / NodeActionWait paths). Only
-	// form_data — mutated locally via MergeFormData — still needs writing.
-	if err := h.taskSvc.PersistInstanceFormData(ctx, db, instance); err != nil {
-		return cqrs.Unit{}, err
-	}
-
 	// Keep the table-mode physical projection in lockstep with the form_data
 	// just written — an approver can edit the fields a node grants them, and
 	// those edits must reach the projection too. JSON mode is a no-op.

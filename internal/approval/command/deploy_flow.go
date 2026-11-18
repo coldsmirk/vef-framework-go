@@ -153,6 +153,18 @@ func (h *DeployFlowHandler) validate(ctx context.Context, cmd DeployFlowCmd, flo
 		if (len(cmd.FormSchema) > 0 && string(cmd.FormSchema) != "null") || cmp.Or(cmd.StorageMode, approval.StorageJSON) != approval.StorageJSON {
 			return nil, approval.ErrInvalidFlowDesign
 		}
+		for _, node := range cmd.FlowDefinition.Nodes {
+			if len(node.Data) == 0 {
+				continue
+			}
+			var data map[string]json.RawMessage
+			if err := json.Unmarshal(node.Data, &data); err != nil {
+				return nil, fmt.Errorf("%w: node %q: %w", approval.ErrInvalidFlowDesign, node.ID, err)
+			}
+			if _, present := data["rollbackDataStrategy"]; present {
+				return nil, fmt.Errorf("%w: node %q: rollbackDataStrategy cannot be set on a business flow", approval.ErrInvalidFlowDesign, node.ID)
+			}
+		}
 		fields = handler.Describe().FormFields
 	} else {
 		if flow.BusinessBinding != nil {

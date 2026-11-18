@@ -109,12 +109,7 @@ func (*TaskService) FinishTask(ctx context.Context, db orm.DB, task *approval.Ta
 	return nil
 }
 
-// PersistInstanceFormData writes back only the instance's form_data column.
-// Task-action handlers (approve / reject / transfer) mutate form_data locally
-// via MergeFormData while the state machine already persists status /
-// current_node_id / finished_at, so this is the single column those handlers
-// still need to flush — shared here so the verbatim UPDATE is not copy-pasted.
-func (*TaskService) PersistInstanceFormData(ctx context.Context, db orm.DB, instance *approval.Instance) error {
+func persistDecisionSnapshot(ctx context.Context, db orm.DB, instance *approval.Instance) error {
 	if _, err := db.NewUpdate().
 		Model(instance).
 		Select("form_data").
@@ -948,6 +943,9 @@ func (s *TaskService) PrepareDecision(ctx context.Context, db orm.DB, taskID str
 		if err := validation.ValidateRequiredPermissionFields(tc.FormFields, tc.Node.FieldPermissions, tc.Instance.FormData); err != nil {
 			return nil, err
 		}
+	}
+	if err := persistDecisionSnapshot(ctx, db, tc.Instance); err != nil {
+		return nil, err
 	}
 	// Publish this operator's decision drafts here, after validation and before task completion.
 	return tc, nil

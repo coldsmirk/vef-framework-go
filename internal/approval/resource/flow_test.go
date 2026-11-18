@@ -30,14 +30,17 @@ func TestFlowResource(t *testing.T) {
 	suite.Run(t, new(FlowResourceTestSuite))
 }
 
-type orderHandler struct{ approval.BusinessHandler }
+type orderHandler struct {
+	approval.BusinessHandler
+	kind approval.BusinessKind
+}
 
-func (orderHandler) Describe() approval.BusinessKindDescriptor {
-	return approval.BusinessKindDescriptor{Kind: "order", Label: "Order"}
+func (h orderHandler) Describe() approval.BusinessKindDescriptor {
+	return approval.BusinessKindDescriptor{Kind: h.kind, Label: string(h.kind)}
 }
 func (s *FlowResourceTestSuite) SetupSuite() {
 	s.ctx = context.Background()
-	s.db, s.token = setupResourceApp(&s.Suite, vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{} }))
+	s.db, s.token = setupResourceApp(&s.Suite, vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{kind: "order"} }), vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{kind: "meeting"} }))
 
 	// Insert a shared category for flow tests
 	cat := &approval.FlowCategory{
@@ -338,4 +341,14 @@ func (s *FlowResourceTestSuite) TestDeployInvalidDefinition() {
 	s.Assert().Equal(http.StatusOK, resp.StatusCode, "Deploy RPC should return HTTP 200 even for invalid definitions (error in result body)")
 	res := s.ReadResult(resp)
 	s.Assert().False(res.IsOk(), "Should fail to deploy with invalid definition")
+}
+
+func (s *FlowResourceTestSuite) TestListBusinessKinds() {
+	resp := s.MakeRPCRequestWithToken(api.Request{Resource: "approval/flow", Action: "list_business_kinds", Version: "v1"}, s.token)
+	res := s.ReadResult(resp)
+	s.Require().True(res.IsOk(), "The flow reader should see the business catalog")
+	items := s.ReadDataAsSlice(res.Data)
+	s.Require().Len(items, 2, "Both registered handlers should be listed")
+	s.Equal("meeting", s.ReadDataAsMap(items[0])["kind"], "Descriptors should be sorted by kind")
+	s.Equal("order", s.ReadDataAsMap(items[1])["kind"], "The later kind should follow")
 }

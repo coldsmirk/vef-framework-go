@@ -3,9 +3,11 @@ package engine
 import (
 	"context"
 	"errors"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -181,4 +183,35 @@ func TestLifecycleHookRunnerOnInstanceTransition(t *testing.T) {
 		err := runner.OnInstanceTransition(context.Background(), nil, new(approval.Instance), approval.InstanceRunning, approval.InstanceApproved)
 		assert.NoError(t, err, "A nil runner must be callable so fixtures can pass hooks=nil")
 	})
+}
+
+type scopedHook struct {
+	approval.BusinessHandler
+	*RecordingHook
+}
+
+func (scopedHook) Describe() approval.BusinessKindDescriptor {
+	return approval.BusinessKindDescriptor{Kind: "order", Label: "Order"}
+}
+func TestScopedLifecycleHook(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		kind *approval.BusinessKind
+		want []string
+	}{
+		{"Matching", new(approval.BusinessKind("order")), []string{"scoped:created", "global:created", "scoped:transition", "global:transition"}},
+		{"Other", new(approval.BusinessKind("meeting")), []string{"global:created", "global:transition"}},
+		{"Form", nil, []string{"global:created", "global:transition"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var log []string
+			r, err := business.NewRegistry([]approval.BusinessHandler{scopedHook{RecordingHook: &RecordingHook{name: "scoped", log: &log}}}, func([]approval.FormFieldDefinition) error { return nil })
+			require.NoError(t, err, "Should register a handler with lifecycle hooks")
+			runner := NewLifecycleHookRunner(nil, []approval.InstanceLifecycleHook{&RecordingHook{name: "global", log: &log}}, r)
+			inst := &approval.Instance{BusinessKind: tc.kind}
+			require.NoError(t, runner.OnInstanceCreated(t.Context(), nil, inst), "Should dispatch creation")
+			require.NoError(t, runner.OnInstanceTransition(t.Context(), nil, inst, approval.InstanceRunning, approval.InstanceApproved), "Should dispatch transition")
+			require.Equal(t, tc.want, log, "Scoped hooks run once, before global hooks and only on matching instances")
+		})
+	}
 }

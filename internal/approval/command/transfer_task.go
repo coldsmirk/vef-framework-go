@@ -140,10 +140,6 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 	)
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
-	if err := h.taskSvc.PersistInstanceFormData(ctx, db, instance); err != nil {
-		return cqrs.Unit{}, err
-	}
-
 	// Keep the table-mode physical projection in lockstep with the form_data
 	// just written — a transferring user can edit the fields a node grants them, and
 	// those edits must reach the projection too. JSON mode is a no-op.

@@ -46,6 +46,8 @@ func (g *MockInstanceNoGenerator) Generate(_ context.Context, tenantID, _ string
 type testBusinessHandler struct {
 	approval.BusinessHandler
 	descriptor approval.BusinessKindDescriptor
+	action     func(context.Context, orm.DB, *approval.TaskActionContext) (*approval.TaskActionOutcome, error)
+	view       func(context.Context, orm.DB, *approval.ViewContext) (any, error)
 	submit     func(context.Context, orm.DB, *approval.SubmissionContext) (*approval.Submission, error)
 }
 
@@ -63,6 +65,12 @@ func (h testBusinessHandler) Submit(ctx context.Context, db orm.DB, sc *approval
 		return nil, approval.ErrBusinessRefRequired
 	}
 	return &approval.Submission{BusinessRef: *sc.BusinessRef, FormData: sc.FormData}, nil
+}
+func (h testBusinessHandler) OnTaskAction(ctx context.Context, db orm.DB, ac *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
+	return h.action(ctx, db, ac)
+}
+func (h testBusinessHandler) View(ctx context.Context, db orm.DB, vc *approval.ViewContext) (any, error) {
+	return h.view(ctx, db, vc)
 }
 func testRegistry(h approval.BusinessHandler) *business.Registry {
 	r, err := business.NewRegistry([]approval.BusinessHandler{h}, service.NewFlowDefinitionService().ValidateFormFields)
@@ -278,7 +286,6 @@ func (s *StartInstanceTestSuite) flipFlowToBusinessBinding(table string) func() 
 	return func() {
 		_, _ = s.db.NewUpdate().
 			Model((*approval.Flow)(nil)).
-			Set("business_kind", nil).
 			Set("business_kind", nil).Set("business_binding", nil).
 			Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.fixture.FlowID) }).
 			Exec(s.ctx)

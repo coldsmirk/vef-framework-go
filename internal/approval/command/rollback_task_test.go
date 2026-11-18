@@ -522,3 +522,38 @@ func (s *RollbackTaskTestSuite) TestRollbackTargetGuards() {
 			"Rolling back to a node the flow never traversed must be rejected")
 	})
 }
+
+func (s *RollbackTaskTestSuite) TestBusinessRollbackSnapshots() {
+	fields := []approval.FormFieldDefinition{{Key: "summary", Kind: approval.FieldInput, Label: "Summary"}}
+	setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, fields)
+	defer setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, nil)
+	for _, tc := range []struct {
+		name string
+		out  *approval.TaskActionOutcome
+		want string
+	}{
+		{"Nil", nil, "prior"}, {"Updated", &approval.TaskActionOutcome{FormData: map[string]any{"summary": "revised"}}, "revised"},
+	} {
+		s.Run(tc.name, func() {
+			inst, task := s.setupData("rollback-actor")
+			inst.BusinessKind = new(approval.BusinessKind("order"))
+			inst.FormData = map[string]any{"summary": "prior"}
+			_, err := s.db.NewUpdate().Model(inst).Select("business_kind", "form_data").WherePK().Exec(s.ctx)
+			s.Require().NoError(err, "Should bind the running business record")
+			insertConcludedVisit(s.T(), s.ctx, s.db, inst.TenantID, inst.ID, s.targetNode.ID)
+			calls := 0
+			reg := testRegistry(testBusinessHandler{action: func(_ context.Context, _ orm.DB, ac *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
+				calls++
+				s.Equal(approval.ActionRollback, ac.Action, "The handler must see the rollback decision")
+				s.Equal(s.targetNode.ID, ac.TargetNodeID, "Should deliver the validated target")
+				return tc.out, nil
+			}})
+			h := command.NewRollbackTaskHandler(s.db, service.NewTaskService(service.WithBusinessRegistry(reg)), service.NewInstanceService(nil), service.NewValidationService(nil), buildTestEngine(s.db), nil)
+			_, err = h.Handle(s.ctx, command.RollbackTaskCmd{TaskID: task.ID, Operator: task.Assignee(), TargetNodeID: s.targetNode.ID, Caller: approval.SystemCaller})
+			s.Require().NoError(err, "Business rollback should complete on the earlier node")
+			s.Equal(1, calls, "The decision should reach the handler once")
+			s.Require().NoError(s.db.NewSelect().Model(inst).WherePK().Scan(s.ctx), "Should load the rolled-back instance")
+			s.Equal(tc.want, inst.FormData["summary"], "The handler owns the business snapshot despite the node's clear strategy")
+		})
+	}
+}

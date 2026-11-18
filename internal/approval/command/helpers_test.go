@@ -393,6 +393,9 @@ func buildTestEngine(db orm.DB) *engine.FlowEngine {
 // buildTestEngineWithHooks is the production-shaped variant used by tests that
 // exercise engine-owned transition hooks such as business projection.
 func buildTestEngineWithHooks(db orm.DB, hooks *engine.LifecycleHookRunner) *engine.FlowEngine {
+	return buildTestEngineWithUsers(db, hooks, nil)
+}
+func buildTestEngineWithUsers(db orm.DB, hooks *engine.LifecycleHookRunner, users approval.UserInfoResolver) *engine.FlowEngine {
 	passRules := []approval.PassRuleStrategy{
 		strategy.NewAllPassStrategy(),
 		strategy.NewAnyPassStrategy(),
@@ -400,7 +403,7 @@ func buildTestEngineWithHooks(db orm.DB, hooks *engine.LifecycleHookRunner) *eng
 		strategy.NewFixedCountPassStrategy(),
 	}
 
-	registry := strategy.NewStrategyRegistry(passRules, nil, mustAssigneeComposite(), mustCCComposite(), nil)
+	registry := strategy.NewStrategyRegistry(passRules, []approval.ConditionEvaluator{strategy.NewFieldConditionEvaluator()}, mustAssigneeComposite(), mustCCComposite(), nil)
 
 	processors := []engine.NodeProcessor{
 		engine.NewStartProcessor(),
@@ -411,7 +414,7 @@ func buildTestEngineWithHooks(db orm.DB, hooks *engine.LifecycleHookRunner) *eng
 		engine.NewCCProcessor(mustCCComposite()),
 	}
 
-	return engine.NewFlowEngine(registry, processors, eventtest.NewFakeBus(), nil, hooks,
+	return engine.NewFlowEngine(registry, processors, eventtest.NewFakeBus(), users, hooks,
 		engine.NewFlowCache(db, cache.NewMemory[*engine.CompiledFlow]()), nil)
 }
 

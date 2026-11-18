@@ -96,8 +96,10 @@ func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (
 	}
 
 	// Resolve form data per the node's rollback data strategy (keep / clear).
-	if err := h.instanceSvc.ApplyRollbackFormData(ctx, db, instance, targetNodeID, node.RollbackDataStrategy); err != nil {
-		return cqrs.Unit{}, err
+	if instance.BusinessKind == nil {
+		if err := h.instanceSvc.ApplyRollbackFormData(ctx, db, instance, targetNodeID, node.RollbackDataStrategy); err != nil {
+			return cqrs.Unit{}, err
+		}
 	}
 
 	instance.CurrentNodeID = new(targetNodeID)

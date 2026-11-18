@@ -98,13 +98,6 @@ func (h *RejectTaskHandler) Handle(ctx context.Context, cmd RejectTaskCmd) (cqrs
 	actionLog := h.taskSvc.BuildActionLog(instance.ID, task, cmd.Operator, approval.ActionReject, service.ActionLogParams{Opinion: cmd.Opinion, Attachments: cmd.Attachments})
 	behavior.ActionLogCollectorFromContext(ctx).Add(actionLog)
 
-	// Status / current_node_id / finished_at are already persisted by the
-	// state machine through HandleNodeCompletion → ApplyInstanceTransition.
-	// Only form_data — mutated locally via MergeFormData — still needs writing.
-	if err := h.taskSvc.PersistInstanceFormData(ctx, db, instance); err != nil {
-		return cqrs.Unit{}, err
-	}
-
 	// Keep the table-mode physical projection in lockstep with the form_data
 	// just written — a rejecter can edit the fields a node grants them, and
 	// those edits must reach the projection too. JSON mode is a no-op.

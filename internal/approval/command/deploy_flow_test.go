@@ -714,6 +714,45 @@ func (s *DeployFlowTestSuite) TestBusinessCatalog() {
 			s.ErrorIs(err, approval.ErrInvalidFlowDesign, "Business versions use JSON storage and the registered schema")
 		})
 	}
+	for _, tc := range []struct {
+		name  string
+		actor bool
+		cc    bool
+		valid bool
+	}{{"Assignee", true, false, false}, {"CC", false, true, false}, {"Valid", true, true, true}} {
+		s.Run(tc.name, func() {
+			key := "absent"
+			if tc.valid {
+				key = "reason"
+			}
+			data := approval.ApprovalNodeData{Name: "Decision", Assignees: []approval.AssigneeDefinition{{Kind: approval.AssigneeSelf}}}
+			if tc.actor {
+				data.Assignees = []approval.AssigneeDefinition{{Kind: approval.AssigneeFormField, FormField: &key}}
+			}
+			if tc.cc {
+				data.CCs = []approval.CCDefinition{{Kind: approval.CCFormField, FormField: &key}}
+			}
+			testCmd := cmd
+			testCmd.FlowDefinition = approvalFlowDef()
+			testCmd.FlowDefinition.Nodes[1].Data = mustMarshal(data)
+			_, err := h.Handle(s.ctx, testCmd)
+			if tc.valid {
+				s.NoError(err, "Both selections may refer to a catalog field")
+			} else {
+				s.ErrorIs(err, approval.ErrInvalidFlowDesign, "Unknown principal fields must fail deployment")
+			}
+		})
+	}
+	for _, strategy := range []any{"keep", "clear", nil} {
+		bad := cmd
+		bad.FlowDefinition = approvalFlowDef()
+		var data map[string]any
+		s.Require().NoError(json.Unmarshal(bad.FlowDefinition.Nodes[1].Data, &data), "Should read the task node")
+		data["rollbackDataStrategy"] = strategy
+		bad.FlowDefinition.Nodes[1].Data = mustMarshal(data)
+		_, err := h.Handle(s.ctx, bad)
+		s.ErrorIs(err, approval.ErrInvalidFlowDesign, "An explicit rollback data strategy is inapplicable to business flows")
+	}
 	_, err = s.db.NewUpdate().Model(flow).Set("instance_title_template", "{{.formData.typo}}").WherePK().Exec(s.ctx)
 	s.Require().NoError(err, "Should configure an unknown title field")
 	_, err = h.Handle(s.ctx, cmd)
