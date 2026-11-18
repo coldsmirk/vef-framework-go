@@ -7,29 +7,43 @@ import (
 	"slices"
 )
 
-// AnnotationVisible applies the audience after the instance participant gate.
-// Responses inherit their parent's audience and remain visible to the parent author.
-func AnnotationVisible(a *approval.Annotation, applicant, viewer, parentAuthor string, tasks []approval.Task) bool {
-	if a.Author.ID == viewer {
+// AnnotationViewer evaluates audiences using the instance roles already loaded for the detail.
+type AnnotationViewer struct {
+	UserID      string
+	applicantID string
+	nodes       map[string]bool
+}
+
+func NewAnnotationViewer(applicantID, userID string, tasks []approval.Task) *AnnotationViewer {
+	v := &AnnotationViewer{UserID: userID, applicantID: applicantID, nodes: make(map[string]bool)}
+	for _, t := range tasks {
+		if t.AssigneeID == userID || t.DelegatorID != nil && *t.DelegatorID == userID {
+			v.nodes[t.NodeID] = true
+		}
+	}
+	return v
+}
+
+// CanSee checks an annotation after the calling participant gate.
+func (v *AnnotationViewer) CanSee(a *approval.Annotation, parentAuthor string) bool {
+	if a.Author.ID == v.UserID {
 		return true
 	}
 	if a.Status != approval.AnnotationPublished {
 		return false
 	}
-	if a.ParentID != nil && viewer == parentAuthor {
+	if a.ParentID != nil && v.UserID == parentAuthor {
 		return true
 	}
 	switch a.Audience.Scope {
 	case approval.AudienceParticipants:
 		return true
 	case approval.AudienceApplicant:
-		return viewer == applicant
-	case approval.AudienceUsers:
-		return slices.Contains(a.Audience.UserIDs, viewer)
+		return v.UserID == v.applicantID
 	case approval.AudienceNodes:
-		return slices.ContainsFunc(tasks, func(t approval.Task) bool {
-			return (t.AssigneeID == viewer || t.DelegatorID != nil && *t.DelegatorID == viewer) && slices.Contains(a.Audience.NodeIDs, t.NodeID)
-		})
+		return slices.ContainsFunc(a.Audience.NodeIDs, func(id string) bool { return v.nodes[id] })
+	case approval.AudienceUsers:
+		return slices.Contains(a.Audience.UserIDs, v.UserID)
 	default:
 		return false
 	}

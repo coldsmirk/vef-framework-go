@@ -148,7 +148,7 @@ func annotationAccessible(ctx context.Context, db orm.DB, a *approval.Annotation
 		}
 		parentAuthor = parent.Author.ID
 	}
-	return AnnotationVisible(a, inst.ApplicantID, userID, parentAuthor, tasks), nil
+	return NewAnnotationViewer(inst.ApplicantID, userID, tasks).CanSee(a, parentAuthor), nil
 }
 func (e *AnnotationEditor) taskContext(ctx context.Context, db orm.DB, taskID, userID string, caller approval.CallerContext, denied error) (*TaskContext, error) {
 	tc, err := e.tasks.LoadTaskContextForNodeOperation(ctx, db, taskID, decisionOptions(userID, caller))

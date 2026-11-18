@@ -29,8 +29,9 @@ type InstanceDetail struct {
 	// process_task should target plus the node-level configuration the client
 	// needs to build the action UI without re-deriving engine semantics. Nil
 	// when the viewer holds no pending task on this instance.
-	MyTask       *ViewerTask `json:"myTask,omitempty"`
-	BusinessView any         `json:"businessView,omitempty"`
+	MyTask       *ViewerTask               `json:"myTask,omitempty"`
+	BusinessView any                       `json:"businessView,omitempty"`
+	Annotations  []approval.AnnotationView `json:"annotations"`
 }
 
 // ViewerTask is the viewer's pending task within a detail view, with the

@@ -87,6 +87,10 @@ func (h *GetAdminInstanceDetailHandler) Handle(ctx context.Context, query GetAdm
 		}
 	}
 
+	detail.Annotations, err = loadAnnotations(ctx, db, bundle, nil)
+	if err != nil {
+		return nil, err
+	}
 	detail.BusinessView, err = h.registry.View(ctx, db, &approval.ViewContext{Instance: &instance, Viewer: query.Viewer})
 	if err != nil {
 		return nil, err

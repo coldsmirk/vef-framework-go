@@ -19,6 +19,7 @@ type InstanceDetail struct {
 	Timeline     []approval.TimelineEntry   `json:"timeline"`
 	FlowGraph    approval.InstanceFlowGraph `json:"flowGraph"`
 	BusinessView any                        `json:"businessView,omitempty"`
+	Annotations  []approval.AnnotationView  `json:"annotations"`
 }
 
 // InstanceDetailInfo carries the instance's runtime state within an admin
