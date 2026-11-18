@@ -50,23 +50,11 @@ func NewApproveTaskHandler(
 func (h *ApproveTaskHandler) Handle(ctx context.Context, cmd ApproveTaskCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	tc, err := h.taskSvc.PrepareOperation(ctx, db, cmd.TaskID, cmd.Operator, cmd.Caller, cmd.FormData)
+	action := &approval.TaskActionContext{Action: approval.ActionApprove, Operator: cmd.Operator, Opinion: cmd.Opinion, FormData: cmd.FormData}
+	tc, err := h.taskSvc.PrepareDecision(ctx, db, cmd.TaskID, cmd.Caller, action, h.validationSvc, nil)
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
-
-	if err := h.validationSvc.ValidateOpinion(tc.Node, cmd.Opinion); err != nil {
-		return cqrs.Unit{}, err
-	}
-
-	// Approve / handle complete the node's decision, so every field the node
-	// marks required must be filled by now — against the merged form data, so an
-	// earlier participant's value counts. Reject / transfer / rollback stay
-	// exempt (they do not complete the decision).
-	if err := h.validationSvc.ValidateRequiredPermissionFields(tc.FormFields, tc.Node.FieldPermissions, tc.Instance.FormData); err != nil {
-		return cqrs.Unit{}, err
-	}
-
 	instance, task, node := tc.Instance, tc.Task, tc.Node
 
 	isHandle := node.Kind == approval.NodeHandle

@@ -166,7 +166,6 @@ func (s *ScannerTestSuite) createTimeoutScenarioWithTaskStatus(
 		CategoryID:             category.ID,
 		Code:                   s.nextCode("timeout-flow"),
 		Name:                   "Timeout Flow",
-		BindingMode:            approval.BindingStandalone,
 		InstanceTitleTemplate:  "Timeout Instance",
 		IsAllInitiationAllowed: true,
 		IsActive:               true,

@@ -49,7 +49,6 @@ func (s *ToggleFlowActiveTestSuite) SetupSuite() {
 		CategoryID:             s.categoryID,
 		Code:                   "toggle-flow",
 		Name:                   "Toggle Flow",
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Template",
 		IsActive:               true,

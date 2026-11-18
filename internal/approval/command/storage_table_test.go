@@ -84,7 +84,6 @@ func (s *StorageTableTestSuite) deployTableFlow(tenant, code string, schema json
 		CategoryID:             category.ID,
 		Code:                   code,
 		Name:                   code + " Flow",
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  code + " {{.instanceNo}}",
 		IsActive:               true,
@@ -92,7 +91,7 @@ func (s *StorageTableTestSuite) deployTableFlow(tenant, code string, schema json
 	_, err = s.db.NewInsert().Model(flow).Exec(s.ctx)
 	s.Require().NoError(err, "insert flow")
 
-	deploy := command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser())
+	deploy := command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser(), nil)
 	version, err := deploy.Handle(s.ctx, command.DeployFlowCmd{
 		FlowID:         flow.ID,
 		StorageMode:    approval.StorageTable,
@@ -120,7 +119,7 @@ func (s *StorageTableTestSuite) startTableInstance(code string, formData map[str
 	start := wrapWithBusAndDB(s.db, eventtest.NewFakeBus(),
 		command.NewStartInstanceHandler(
 			s.db, eng, &MockInstanceNoGenerator{}, service.NewValidationService(nil),
-			binding.NewNoopRefProvider(), binding.NewProjector(binding.NewIdentityResolver(), binding.NewWriter(), nil), s.dispatcher,
+			nil, binding.NewProjector(binding.NewIdentityResolver(), binding.NewWriter(), nil), s.dispatcher,
 		))
 
 	instance, err := start.Handle(s.ctx, command.StartInstanceCmd{

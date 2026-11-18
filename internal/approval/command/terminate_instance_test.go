@@ -204,7 +204,7 @@ func (s *TerminateInstanceTestSuite) TestSynchronousProjectionFailureRollsBackFi
 		StatusColumn:     "approval_status",
 		InstanceIDColumn: &instanceIDColumn,
 	}
-	flow := &approval.Flow{BindingMode: approval.BindingBusiness, BusinessBinding: businessBinding}
+	flow := &approval.Flow{BusinessKind: new(approval.BusinessKind("order")), BusinessBinding: businessBinding}
 	flow.ID = s.fixture.FlowID
 	version := &approval.FlowVersion{BusinessBinding: businessBinding}
 	version.ID = s.fixture.VersionID
@@ -216,7 +216,7 @@ func (s *TerminateInstanceTestSuite) TestSynchronousProjectionFailureRollsBackFi
 	_, err = s.db.NewRaw(`DROP TABLE biz_terminate_projection`).Exec(s.ctx)
 	s.Require().NoError(err, "Test setup should make the final business write fail")
 
-	hooks := engine.NewLifecycleHookRunner(projector, nil)
+	hooks := engine.NewLifecycleHookRunner(projector, nil, nil)
 	handler := command.NewTerminateInstanceHandler(
 		s.db,
 		service.NewTaskService(),

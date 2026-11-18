@@ -56,7 +56,6 @@ func (s *DeployFlowTestSuite) SetupSuite() {
 		CategoryID:             category.ID,
 		Code:                   "deploy-test-flow",
 		Name:                   "Deploy Test Flow",
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Test",
 		IsActive:               true,
@@ -66,7 +65,7 @@ func (s *DeployFlowTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Should insert test flow")
 
 	s.flowID = flow.ID
-	s.handler = command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser())
+	s.handler = command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser(), testRegistry(testBusinessHandler{}))
 }
 
 func (s *DeployFlowTestSuite) TearDownTest() {
@@ -153,14 +152,14 @@ func (s *DeployFlowTestSuite) TestDeploySnapshotsBusinessBinding() {
 			approval.InstanceRunning: "  in_review  ",
 		},
 	}
-	flow := &approval.Flow{BindingMode: approval.BindingBusiness, BusinessBinding: bindingConfig}
+	flow := &approval.Flow{BusinessKind: new(approval.BusinessKind("order")), BusinessBinding: bindingConfig}
 	flow.ID = s.flowID
-	_, err := s.db.NewUpdate().Model(flow).Select("binding_mode", "business_binding").WherePK().Exec(s.ctx)
+	_, err := s.db.NewUpdate().Model(flow).Select("business_kind", "business_binding").WherePK().Exec(s.ctx)
 
 	s.Require().NoError(err, "Should configure the mutable flow binding before deploy")
 	defer func() {
 		_, _ = s.db.NewUpdate().Model((*approval.Flow)(nil)).
-			Set("binding_mode", approval.BindingStandalone).
+			Set("business_kind", nil).
 			Set("business_binding", nil).
 			Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.flowID) }).Exec(s.ctx)
 	}()
@@ -596,7 +595,7 @@ func (s *DeployFlowTestSuite) TestDeployParserErrorAbortsDeploy() {
 // form-design sentinel so it surfaces as an invalid-form-design outcome rather
 // than a raw 500.
 func (s *DeployFlowTestSuite) TestDeployHostParserBareErrorWrapsAsInvalidFormDesign() {
-	handler := command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), new(BoomFormParser))
+	handler := command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), new(BoomFormParser), nil)
 
 	_, err := handler.Handle(s.ctx, command.DeployFlowCmd{
 		FlowID:         s.flowID,
@@ -648,7 +647,6 @@ func (s *DeployFlowTestSuite) TestDeployNumbersAfterEveryVersion() {
 		CategoryID:             flow.CategoryID,
 		Code:                   "deploy-numbering-flow",
 		Name:                   "Deploy Numbering Flow",
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Test",
 		IsActive:               true,

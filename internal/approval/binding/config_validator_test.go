@@ -55,16 +55,9 @@ func TestNormalizeConfig(t *testing.T) {
 	t.Run("Standalone", func(t *testing.T) {
 		t.Parallel()
 
-		config, err := NormalizeConfig(approval.BindingStandalone, nil)
+		config, err := NormalizeConfig(nil)
 		require.NoError(t, err, "Standalone flow without business binding should pass")
 		assert.Nil(t, config, "Standalone flow should keep a nil binding")
-	})
-
-	t.Run("StandaloneRejectsBinding", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := NormalizeConfig(approval.BindingStandalone, testBindingConfig())
-		assert.ErrorIs(t, err, approval.ErrBindingUnexpected, "Standalone flow must reject dead business configuration")
 	})
 
 	t.Run("Normalizes", func(t *testing.T) {
@@ -79,7 +72,7 @@ func TestNormalizeConfig(t *testing.T) {
 			approval.InstanceRunning: "  in_review  ",
 		}
 
-		normalized, err := NormalizeConfig(approval.BindingBusiness, config)
+		normalized, err := NormalizeConfig(config)
 		require.NoError(t, err, "Complete business binding should normalize")
 		assert.Equal(t, "biz_order", normalized.TableName, "Table name should be trimmed")
 		assert.Equal(t, []string{"order_no", "tenant_id"}, normalized.KeyColumns, "Key columns should be sorted and trimmed")
@@ -91,20 +84,13 @@ func TestNormalizeConfig(t *testing.T) {
 		assert.Equal(t, "in_review", normalized.StatusMapping[approval.InstanceRunning], "Normalized status mapping should not alias request input")
 	})
 
-	t.Run("RejectsMissing", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := NormalizeConfig(approval.BindingBusiness, nil)
-		assert.ErrorIs(t, err, approval.ErrBindingIncomplete, "Business flow requires binding configuration")
-	})
-
 	t.Run("RejectsMissingInstanceIDColumn", func(t *testing.T) {
 		t.Parallel()
 
 		config := testBindingConfig()
 		config.InstanceIDColumn = nil
 
-		_, err := NormalizeConfig(approval.BindingBusiness, config)
+		_, err := NormalizeConfig(config)
 		assert.ErrorIs(t, err, approval.ErrBindingIncomplete, "Business flow requires an instance-ID fencing column")
 	})
 
@@ -121,7 +107,7 @@ func TestNormalizeConfig(t *testing.T) {
 				config := testBindingConfig()
 				config.StatusMapping = mapping
 
-				_, err := NormalizeConfig(approval.BindingBusiness, config)
+				_, err := NormalizeConfig(config)
 				assert.ErrorIs(t, err, approval.ErrBindingStatusMappingInvalid,
 					"Invalid status mapping should be rejected")
 			})
@@ -134,7 +120,7 @@ func TestNormalizeConfig(t *testing.T) {
 		config := testBindingConfig()
 		config.TableName = "biz_order; DROP TABLE apv_flow"
 
-		_, err := NormalizeConfig(approval.BindingBusiness, config)
+		_, err := NormalizeConfig(config)
 		assert.ErrorIs(t, err, approval.ErrInvalidBusinessIdentifier, "Unsafe table name should be rejected")
 	})
 
@@ -144,7 +130,7 @@ func TestNormalizeConfig(t *testing.T) {
 		config := testBindingConfig()
 		config.StatusColumn = "order_no"
 
-		_, err := NormalizeConfig(approval.BindingBusiness, config)
+		_, err := NormalizeConfig(config)
 		assert.ErrorIs(t, err, approval.ErrBindingColumnsConflict, "A write-back column must never mutate its own lookup key")
 	})
 }

@@ -51,7 +51,7 @@ func (p *Projector) Bind(
 		return nil
 	}
 
-	binding, err := NormalizeConfig(approval.BindingBusiness, version.BusinessBinding)
+	binding, err := NormalizeConfig(version.BusinessBinding)
 	if err != nil {
 		return fmt.Errorf("%w: flow version %q: %w", ErrBindingMisconfigured, version.ID, err)
 	}
@@ -61,7 +61,7 @@ func (p *Projector) Bind(
 	}
 
 	resolvedFlow := *flow
-	resolvedFlow.BindingMode = approval.BindingBusiness
+	resolvedFlow.BusinessKind = version.BusinessKind
 	resolvedFlow.BusinessBinding = binding
 
 	recordKey, err := p.resolver.ResolveRecordKey(ctx, &resolvedFlow, instance)

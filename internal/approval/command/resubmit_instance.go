@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"maps"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -24,6 +25,7 @@ type ResubmitInstanceCmd struct {
 
 // ResubmitInstanceHandler handles the ResubmitInstanceCmd command.
 type ResubmitInstanceHandler struct {
+	business      *business.Registry
 	db            orm.DB
 	engine        *engine.FlowEngine
 	validationSvc *service.ValidationService
@@ -40,9 +42,9 @@ func NewResubmitInstanceHandler(
 	eng *engine.FlowEngine,
 	validationSvc *service.ValidationService,
 	instanceSvc *service.InstanceService,
-	formStorage *storage.Dispatcher,
+	formStorage *storage.Dispatcher, registry *business.Registry,
 ) *ResubmitInstanceHandler {
-	return &ResubmitInstanceHandler{db: db, engine: eng, validationSvc: validationSvc, instanceSvc: instanceSvc, formStorage: formStorage}
+	return &ResubmitInstanceHandler{business: registry, db: db, engine: eng, validationSvc: validationSvc, instanceSvc: instanceSvc, formStorage: formStorage}
 }
 
 func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstanceCmd) (cqrs.Unit, error) {
@@ -66,18 +68,30 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 	version.ID = instance.FlowVersionID
 	if err := db.NewSelect().
 		Model(&version).
-		Select("form_fields", "storage_mode").
 		WherePK().
 		Scan(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("load flow version: %w", err)
 	}
 
-	if instance.FormData == nil {
-		instance.FormData = make(map[string]any, len(cmd.FormData))
-	}
+	if instance.BusinessKind != nil {
+		flow := &approval.Flow{ID: instance.FlowID}
+		if err := db.NewSelect().Model(flow).WherePK().Scan(ctx); err != nil {
+			return cqrs.Unit{}, err
+		}
+		sc := &approval.SubmissionContext{InstanceID: instance.ID, Instance: instance, Flow: flow, Version: &version, TenantID: instance.TenantID, Applicant: instance.Applicant(), BusinessRef: instance.BusinessRef, FormData: cmd.FormData}
+		submission, err := h.business.Submit(ctx, db, sc)
+		if err != nil {
+			return cqrs.Unit{}, err
+		}
+		instance.FormData = submission.FormData
+	} else {
+		if instance.FormData == nil {
+			instance.FormData = make(map[string]any, len(cmd.FormData))
+		}
 
-	if len(cmd.FormData) > 0 {
-		maps.Copy(instance.FormData, cmd.FormData)
+		if len(cmd.FormData) > 0 {
+			maps.Copy(instance.FormData, cmd.FormData)
+		}
 	}
 
 	if err := h.validationSvc.ValidateFormData(ctx, version.FormFields, instance.FormData); err != nil {

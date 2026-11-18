@@ -47,7 +47,6 @@ func (s *UpdateFlowTestSuite) SetupSuite() {
 		CategoryID:             s.categoryID,
 		Code:                   "original-flow",
 		Name:                   "Original Flow",
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: false,
 		InstanceTitleTemplate:  "Original Template",
 		IsActive:               true,
@@ -64,7 +63,7 @@ func (s *UpdateFlowTestSuite) SetupSuite() {
 	_, err = s.db.NewInsert().Model(initiator).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert test initiator")
 
-	s.handler = command.NewUpdateFlowHandler(s.db, newTestBindingValidator(), mustInitiatorComposite(nil))
+	s.handler = command.NewUpdateFlowHandler(s.db, newTestBindingValidator(), mustInitiatorComposite(nil), testRegistry(testBusinessHandler{}))
 }
 
 func (s *UpdateFlowTestSuite) TearDownTest() {
@@ -78,7 +77,7 @@ func (s *UpdateFlowTestSuite) TearDownTest() {
 		Set("admin_user_ids", nil).
 		Set("is_all_initiation_allowed", false).
 		Set("instance_title_template", "Original Template").
-		Set("binding_mode", approval.BindingStandalone).
+		Set("business_kind", nil).
 		Set("business_binding", nil).
 		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.flowID) }).
 		Exec(s.ctx)
@@ -103,7 +102,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowSuccess() {
 	desc := "Updated description"
 
 	cmd := command.UpdateFlowCmd{
-		BindingMode:            approval.BindingStandalone,
 		FlowID:                 s.flowID,
 		Name:                   "Updated Flow",
 		Icon:                   &icon,
@@ -158,7 +156,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowLabels() {
 			IsAllInitiationAllowed: true,
 			FlowID:                 s.flowID,
 			Name:                   "Original Flow",
-			BindingMode:            approval.BindingStandalone,
 			InstanceTitleTemplate:  "Original Template",
 		}
 	}
@@ -195,7 +192,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowLabels() {
 
 func (s *UpdateFlowTestSuite) TestUpdateFlowNotFound() {
 	cmd := command.UpdateFlowCmd{
-		BindingMode:            approval.BindingStandalone,
 		FlowID:                 "non-existent-flow-id",
 		Name:                   "Updated Flow",
 		IsAllInitiationAllowed: true,
@@ -239,7 +235,7 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowBindingDoesNotMutateRunningVersion()
 		IsAllInitiationAllowed: true,
 		FlowID:                 s.flowID,
 		Name:                   "Renamed While Running",
-		BindingMode:            approval.BindingBusiness,
+		BusinessKind:           new(approval.BusinessKind("order")),
 		BusinessBinding: &approval.BusinessBindingConfig{
 			TableName:        table,
 			KeyColumns:       []string{pk},
@@ -263,7 +259,6 @@ func (s *UpdateFlowTestSuite) TestUpdateAllFields() {
 	desc := "All fields description"
 
 	cmd := command.UpdateFlowCmd{
-		BindingMode:            approval.BindingStandalone,
 		FlowID:                 s.flowID,
 		Name:                   "All Fields Updated",
 		Icon:                   &icon,
@@ -308,9 +303,9 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowToBusinessBinding() {
 	instanceCol := "apv_instance_id"
 
 	result, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
-		FlowID:      s.flowID,
-		Name:        "Now Business Bound",
-		BindingMode: approval.BindingBusiness,
+		FlowID:       s.flowID,
+		Name:         "Now Business Bound",
+		BusinessKind: new(approval.BusinessKind("order")),
 		BusinessBinding: &approval.BusinessBindingConfig{
 			TableName:        table,
 			KeyColumns:       []string{pk},
@@ -321,13 +316,13 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowToBusinessBinding() {
 		InstanceTitleTemplate:  "Template",
 	})
 	s.Require().NoError(err, "Should switch to a complete business binding")
-	s.Assert().Equal(approval.BindingBusiness, result.BindingMode)
+	s.Assert().Equal(new(approval.BusinessKind("order")), result.BusinessKind)
 
 	var flow approval.Flow
 
 	flow.ID = s.flowID
 	s.Require().NoError(s.db.NewSelect().Model(&flow).WherePK().Scan(s.ctx))
-	s.Assert().Equal(approval.BindingBusiness, flow.BindingMode, "binding_mode should persist")
+	s.Assert().Equal(new(approval.BusinessKind("order")), flow.BusinessKind, "business_kind should persist")
 	s.Require().NotNil(flow.BusinessBinding)
 	s.Assert().Equal("approval_status", flow.BusinessBinding.StatusColumn, "statusColumn should persist")
 }
@@ -336,9 +331,9 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowBusinessBindingIncomplete() {
 	status := "approval_status"
 
 	_, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
-		FlowID:      s.flowID,
-		Name:        "Half Bound",
-		BindingMode: approval.BindingBusiness,
+		FlowID:       s.flowID,
+		Name:         "Half Bound",
+		BusinessKind: new(approval.BusinessKind("order")),
 		BusinessBinding: &approval.BusinessBindingConfig{
 			StatusColumn: status,
 		},
@@ -358,9 +353,9 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowBusinessToStandaloneClearsFields() {
 	finishedCol := "apv_finished_at"
 
 	_, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
-		FlowID:      s.flowID,
-		Name:        "Business",
-		BindingMode: approval.BindingBusiness,
+		FlowID:       s.flowID,
+		Name:         "Business",
+		BusinessKind: new(approval.BusinessKind("order")),
 		BusinessBinding: &approval.BusinessBindingConfig{
 			TableName:        table,
 			KeyColumns:       []string{pk},
@@ -379,7 +374,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowBusinessToStandaloneClearsFields() {
 	_, err = s.handler.Handle(s.ctx, command.UpdateFlowCmd{
 		FlowID:                 s.flowID,
 		Name:                   "Back To Standalone",
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Template",
 	})
@@ -389,20 +383,20 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowBusinessToStandaloneClearsFields() {
 
 	flow.ID = s.flowID
 	s.Require().NoError(s.db.NewSelect().Model(&flow).WherePK().Scan(s.ctx))
-	s.Assert().Equal(approval.BindingStandalone, flow.BindingMode)
+	s.Assert().Nil(flow.BusinessKind, "Form flow has no business kind")
 	s.Assert().Nil(flow.BusinessBinding, "business_binding should clear to NULL")
 }
 
 func (s *UpdateFlowTestSuite) TestUpdateFlowRejectsInvalidEnums() {
-	s.Run("BindingMode", func() {
+	s.Run("BusinessKind", func() {
 		_, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
 			FlowID:                 s.flowID,
-			BindingMode:            "bogus",
+			BusinessKind:           new(approval.BusinessKind("bogus")),
 			Name:                   "Enum Guard Flow",
 			IsAllInitiationAllowed: true,
 			InstanceTitleTemplate:  "t",
 		})
-		s.Require().ErrorIs(err, approval.ErrInvalidBindingMode,
+		s.Require().ErrorIs(err, approval.ErrBusinessKindNotRegistered,
 			"An out-of-enum binding mode would silently disable the business write-back and must be rejected")
 	})
 
@@ -411,7 +405,6 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowRejectsInvalidEnums() {
 	s.Run("InitiatorKind", func() {
 		_, err := s.handler.Handle(s.ctx, command.UpdateFlowCmd{
 			FlowID:                s.flowID,
-			BindingMode:           approval.BindingStandalone,
 			Name:                  "Enum Guard Flow",
 			InstanceTitleTemplate: "t",
 			Initiators: []shared.CreateFlowInitiatorCmd{

@@ -43,7 +43,7 @@ func (s *ResubmitInstanceTestSuite) SetupSuite() {
 		buildTestEngine(s.db),
 		service.NewValidationService(mustInitiatorComposite(nil)),
 		service.NewInstanceService(nil),
-		nil,
+		nil, nil,
 	))
 }
 

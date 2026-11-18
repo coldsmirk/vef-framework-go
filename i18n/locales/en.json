@@ -147,7 +147,6 @@
   "approval_invalid_flow_label": "Invalid flow label; keys must match ^[A-Za-z0-9]([A-Za-z0-9_-]*[A-Za-z0-9])?$ with at most 63 characters, values at most 256 characters",
   "approval_invalid_form_design": "Invalid form definition",
   "approval_binding_incomplete": "A business-bound flow must configure the business table, key columns, status column, and instance ID column",
-  "approval_invalid_binding_mode": "Invalid flow binding mode",
   "approval_invalid_initiator_kind": "Invalid flow initiator kind",
   "approval_assignee_kind_user": "Specified users",
   "approval_assignee_kind_role": "Specified roles",

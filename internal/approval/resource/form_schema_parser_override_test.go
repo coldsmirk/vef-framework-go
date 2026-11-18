@@ -79,11 +79,11 @@ func (s *FormSchemaParserOverrideTestSuite) createFlow(code, name string) string
 		Action:   "create",
 		Version:  "v1",
 		Params: map[string]any{
-			"tenantId":               "default",
-			"code":                   code,
-			"name":                   name,
-			"categoryId":             s.categoryID,
-			"bindingMode":            "standalone",
+			"tenantId":   "default",
+			"code":       code,
+			"name":       name,
+			"categoryId": s.categoryID,
+
 			"isAllInitiationAllowed": true,
 			"instanceTitleTemplate":  name + " {{.instanceNo}}",
 		},

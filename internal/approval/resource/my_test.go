@@ -114,7 +114,6 @@ func (s *MyPendingCountsTestSuite) seedPendingTask(tenant, assignee string) {
 		CategoryID:            category.ID,
 		Code:                  "mpc-flow",
 		Name:                  "MPC Flow",
-		BindingMode:           approval.BindingStandalone,
 		InstanceTitleTemplate: "Test",
 		IsActive:              true,
 	}
@@ -314,7 +313,6 @@ func (s *MyTaskListFiltersTestSuite) seedInstance(code string, inst *approval.In
 		CategoryID:            category.ID,
 		Code:                  code,
 		Name:                  code + " Flow",
-		BindingMode:           approval.BindingStandalone,
 		InstanceTitleTemplate: "Test",
 		IsActive:              true,
 	}

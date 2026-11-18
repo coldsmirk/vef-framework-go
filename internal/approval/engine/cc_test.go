@@ -60,7 +60,6 @@ func (s *CCProcessorTestSuite) SetupSuite() {
 		CategoryID:            category.ID,
 		Code:                  "cc-test-flow",
 		Name:                  "CC Test Flow",
-		BindingMode:           approval.BindingStandalone,
 		InstanceTitleTemplate: "test",
 	}
 	_, err = s.db.NewInsert().Model(flow).Exec(s.ctx)

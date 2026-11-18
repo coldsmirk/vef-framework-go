@@ -24,7 +24,7 @@ func (*Writer) Write(ctx context.Context, db orm.DB, projection *approval.Busine
 		return fmt.Errorf("%w: projection has no binding", ErrProjectionStateInvalid)
 	}
 
-	config, err := NormalizeConfig(approval.BindingBusiness, projection.Binding)
+	config, err := NormalizeConfig(projection.Binding)
 	if err != nil {
 		return fmt.Errorf("%w: projection %q: %w", ErrBindingMisconfigured, projection.ID, err)
 	}

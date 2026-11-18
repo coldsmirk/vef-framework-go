@@ -56,29 +56,28 @@ func NewRollbackTaskHandler(
 func (h *RollbackTaskHandler) Handle(ctx context.Context, cmd RollbackTaskCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	tc, err := h.taskSvc.PrepareOperation(ctx, db, cmd.TaskID, cmd.Operator, cmd.Caller, cmd.FormData)
+	action := &approval.TaskActionContext{Action: approval.ActionRollback, Operator: cmd.Operator, Opinion: cmd.Opinion, FormData: cmd.FormData}
+	tc, err := h.taskSvc.PrepareDecision(ctx, db, cmd.TaskID, cmd.Caller, action, h.validationSvc, func(ac *approval.TaskActionContext) error {
+		if !ac.Node.IsRollbackAllowed {
+			return approval.ErrRollbackNotAllowed
+		}
+
+		targetNodeID := strings.TrimSpace(cmd.TargetNodeID)
+		if targetNodeID == "" {
+			return approval.ErrInvalidRollbackTarget
+		}
+
+		if err := h.validationSvc.ValidateRollbackTarget(ctx, db, ac.Instance, ac.Node, targetNodeID); err != nil {
+			return err
+		}
+		ac.TargetNodeID = targetNodeID
+		return nil
+	})
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
-
-	if err := h.validationSvc.ValidateOpinion(tc.Node, cmd.Opinion); err != nil {
-		return cqrs.Unit{}, err
-	}
-
 	instance, task, node := tc.Instance, tc.Task, tc.Node
-
-	if !node.IsRollbackAllowed {
-		return cqrs.Unit{}, approval.ErrRollbackNotAllowed
-	}
-
-	targetNodeID := strings.TrimSpace(cmd.TargetNodeID)
-	if targetNodeID == "" {
-		return cqrs.Unit{}, approval.ErrInvalidRollbackTarget
-	}
-
-	if err := h.validationSvc.ValidateRollbackTarget(ctx, db, instance, node, targetNodeID); err != nil {
-		return cqrs.Unit{}, err
-	}
+	targetNodeID := action.TargetNodeID
 
 	if err := h.taskSvc.FinishTask(ctx, db, task, approval.TaskRolledBack); err != nil {
 		return cqrs.Unit{}, err

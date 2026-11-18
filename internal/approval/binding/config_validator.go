@@ -28,17 +28,9 @@ func NewConfigValidator(schemas schema.Service) *ConfigValidator {
 // NormalizeConfig validates the mode-dependent shape and SQL identifiers and
 // returns a detached, canonical configuration. Key column order is normalized
 // because equality predicates are order-independent.
-func NormalizeConfig(mode approval.BindingMode, config *approval.BusinessBindingConfig) (*approval.BusinessBindingConfig, error) {
-	if mode != approval.BindingBusiness {
-		if config != nil {
-			return nil, approval.ErrBindingUnexpected
-		}
-
-		return nil, nil
-	}
-
+func NormalizeConfig(config *approval.BusinessBindingConfig) (*approval.BusinessBindingConfig, error) {
 	if config == nil {
-		return nil, approval.ErrBindingIncomplete
+		return nil, nil
 	}
 
 	normalized := &approval.BusinessBindingConfig{

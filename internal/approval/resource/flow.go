@@ -66,7 +66,7 @@ type CreateFlowParams struct {
 	Icon                   *string                         `json:"icon"`
 	Description            *string                         `json:"description"`
 	Labels                 map[string]string               `json:"labels"`
-	BindingMode            approval.BindingMode            `json:"bindingMode" validate:"required"`
+	BusinessKind           *approval.BusinessKind          `json:"businessKind"`
 	BusinessBinding        *approval.BusinessBindingConfig `json:"businessBinding"`
 	AdminUserIDs           []string                        `json:"adminUserIds"`
 	IsAllInitiationAllowed bool                            `json:"isAllInitiationAllowed"`
@@ -103,7 +103,7 @@ func (r *FlowResource) Create(ctx fiber.Ctx, params CreateFlowParams) error {
 			Icon:                   params.Icon,
 			Description:            params.Description,
 			Labels:                 params.Labels,
-			BindingMode:            params.BindingMode,
+			BusinessKind:           params.BusinessKind,
 			BusinessBinding:        params.BusinessBinding,
 			AdminUserIDs:           params.AdminUserIDs,
 			IsAllInitiationAllowed: params.IsAllInitiationAllowed,
@@ -219,14 +219,14 @@ type FindFlowsParams struct {
 	// IncludeShared adds the shared flows of other tenants that TenantID has
 	// not replaced with a flow of its own: what a picker of the flows a tenant
 	// can start needs.
-	IncludeShared bool                  `json:"includeShared"`
-	CategoryID    *string               `json:"categoryId"`
-	Keyword       *string               `json:"keyword"`
-	IsActive      *bool                 `json:"isActive"`
-	Labels        map[string]string     `json:"labels"`
-	BindingMode   *approval.BindingMode `json:"bindingMode"`
-	Page          int                   `json:"page"`
-	PageSize      int                   `json:"pageSize"`
+	IncludeShared bool                   `json:"includeShared"`
+	CategoryID    *string                `json:"categoryId"`
+	Keyword       *string                `json:"keyword"`
+	IsActive      *bool                  `json:"isActive"`
+	Labels        map[string]string      `json:"labels"`
+	BusinessKind  *approval.BusinessKind `json:"businessKind"`
+	Page          int                    `json:"page"`
+	PageSize      int                    `json:"pageSize"`
 }
 
 // FindFlows queries flows for admin management.
@@ -241,7 +241,7 @@ func (r *FlowResource) FindFlows(ctx fiber.Ctx, params FindFlowsParams) error {
 			Keyword:       params.Keyword,
 			IsActive:      params.IsActive,
 			Labels:        params.Labels,
-			BindingMode:   params.BindingMode,
+			BusinessKind:  params.BusinessKind,
 			Page:          params.Page,
 			Size:          params.PageSize,
 		},
@@ -262,7 +262,7 @@ type UpdateFlowParams struct {
 	Icon                   *string                         `json:"icon"`
 	Description            *string                         `json:"description"`
 	Labels                 map[string]string               `json:"labels"`
-	BindingMode            approval.BindingMode            `json:"bindingMode" validate:"required"`
+	BusinessKind           *approval.BusinessKind          `json:"businessKind"`
 	BusinessBinding        *approval.BusinessBindingConfig `json:"businessBinding"`
 	AdminUserIDs           []string                        `json:"adminUserIds"`
 	IsAllInitiationAllowed bool                            `json:"isAllInitiationAllowed"`
@@ -290,7 +290,7 @@ func (r *FlowResource) Update(ctx fiber.Ctx, params UpdateFlowParams) error {
 			Icon:                   params.Icon,
 			Description:            params.Description,
 			Labels:                 params.Labels,
-			BindingMode:            params.BindingMode,
+			BusinessKind:           params.BusinessKind,
 			BusinessBinding:        params.BusinessBinding,
 			AdminUserIDs:           params.AdminUserIDs,
 			IsAllInitiationAllowed: params.IsAllInitiationAllowed,

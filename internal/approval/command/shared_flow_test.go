@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
+
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/formeditor"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
@@ -101,10 +101,10 @@ func (s *SharedFlowTestSuite) SetupSuite() {
 
 	s.numbering = new(MockInstanceNoGenerator)
 	s.start = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(),
-		command.NewStartInstanceHandler(s.db, eng, s.numbering, validSvc, binding.NewNoopRefProvider(), nil, nil))
+		command.NewStartInstanceHandler(s.db, eng, s.numbering, validSvc, nil, nil, nil))
 	s.approve = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(),
 		command.NewApproveTaskHandler(s.db, taskSvc, nodeSvc, validSvc, nil))
-	s.deploy = command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser())
+	s.deploy = command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser(), nil)
 	s.reassign = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewReassignTaskHandler(s.db, taskSvc, nil, nil))
 }
 

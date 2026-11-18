@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"fmt"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"reflect"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -26,7 +27,7 @@ type UpdateFlowCmd struct {
 	Icon                   *string
 	Description            *string
 	Labels                 map[string]string
-	BindingMode            approval.BindingMode
+	BusinessKind           *approval.BusinessKind
 	BusinessBinding        *approval.BusinessBindingConfig
 	AdminUserIDs           []string
 	IsAllInitiationAllowed bool
@@ -37,6 +38,7 @@ type UpdateFlowCmd struct {
 
 // UpdateFlowHandler handles the UpdateFlowCmd command.
 type UpdateFlowHandler struct {
+	business         *business.Registry
 	db               orm.DB
 	bindingValidator *binding.ConfigValidator
 	// initiatorKinds is the boot-registered initiator vocabulary with the
@@ -47,9 +49,9 @@ type UpdateFlowHandler struct {
 }
 
 // NewUpdateFlowHandler creates a new UpdateFlowHandler.
-func NewUpdateFlowHandler(db orm.DB, bindingValidator *binding.ConfigValidator, initiators *strategy.CompositeInitiatorResolver) *UpdateFlowHandler {
+func NewUpdateFlowHandler(db orm.DB, bindingValidator *binding.ConfigValidator, initiators *strategy.CompositeInitiatorResolver, registry *business.Registry) *UpdateFlowHandler {
 	return &UpdateFlowHandler{
-		db:               db,
+		db: db, business: registry,
 		bindingValidator: bindingValidator,
 		initiatorKinds:   shared.SelectionIndex(initiators.Descriptors()),
 	}
@@ -77,7 +79,7 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		return nil, err
 	}
 
-	if err := validateBindingMode(cmd.BindingMode); err != nil {
+	if err := validateBusinessKind(h.business, cmd.BusinessKind, cmd.BusinessBinding); err != nil {
 		return nil, err
 	}
 
@@ -95,13 +97,13 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		return nil, err
 	}
 
-	businessBinding, err := binding.NormalizeConfig(cmd.BindingMode, cmd.BusinessBinding)
+	businessBinding, err := binding.NormalizeConfig(cmd.BusinessBinding)
 	if err != nil {
 		return nil, err
 	}
 
 	cmd.BusinessBinding = businessBinding
-	bindingChanged := flow.BindingMode != cmd.BindingMode || !reflect.DeepEqual(flow.BusinessBinding, businessBinding)
+	bindingChanged := !reflect.DeepEqual(flow.BusinessKind, cmd.BusinessKind) || !reflect.DeepEqual(flow.BusinessBinding, businessBinding)
 
 	// Published versions own immutable binding snapshots, so changing the flow
 	// only affects the next deployed version and cannot redirect live instances.
@@ -116,7 +118,7 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 	flow.Icon = cmd.Icon
 	flow.Description = cmd.Description
 	flow.Labels = cmd.Labels
-	flow.BindingMode = cmd.BindingMode
+	flow.BusinessKind = cmd.BusinessKind
 	flow.BusinessBinding = businessBinding
 	flow.AdminUserIDs = cmd.AdminUserIDs
 	flow.IsAllInitiationAllowed = cmd.IsAllInitiationAllowed
@@ -126,7 +128,7 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		Model(&flow).
 		Select(
 			"name", "icon", "description", "labels",
-			"binding_mode", "business_binding",
+			"business_kind", "business_binding",
 			"admin_user_ids", "is_all_initiation_allowed", "initiation_window", "instance_title_template",
 		).
 		WherePK().

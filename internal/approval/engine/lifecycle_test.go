@@ -74,7 +74,7 @@ func TestLifecycleHookRunnerOnInstanceCreated(t *testing.T) {
 		runner := NewLifecycleHookRunner(nil, []approval.InstanceLifecycleHook{
 			&RecordingHook{name: "a", log: &log},
 			&RecordingHook{name: "b", log: &log},
-		})
+		}, nil)
 		err := runner.OnInstanceCreated(context.Background(), nil, &approval.Instance{})
 
 		assert.NoError(t, err, "Should run without error")
@@ -90,7 +90,7 @@ func TestLifecycleHookRunnerOnInstanceCreated(t *testing.T) {
 		runner := NewLifecycleHookRunner(nil, []approval.InstanceLifecycleHook{
 			&RecordingHook{name: "a", log: &log, createdErr: boom},
 			&RecordingHook{name: "b", log: &log},
-		})
+		}, nil)
 		err := runner.OnInstanceCreated(context.Background(), nil, &approval.Instance{})
 
 		assert.ErrorIs(t, err, boom, "Should propagate first error")
@@ -114,7 +114,7 @@ func TestLifecycleHookRunnerOnInstanceTransition(t *testing.T) {
 		runner := NewLifecycleHookRunner(&RecordingProjector{log: &log}, []approval.InstanceLifecycleHook{
 			&RecordingHook{name: "a", log: &log, lastFrom: &seenFrom, lastTo: &seenTo, lastInstanceID: &seenID},
 			&RecordingHook{name: "b", log: &log},
-		})
+		}, nil)
 
 		instance := new(approval.Instance)
 		instance.ID = "inst-1"
@@ -136,7 +136,7 @@ func TestLifecycleHookRunnerOnInstanceTransition(t *testing.T) {
 		boom := errors.New("projection failed")
 		runner := NewLifecycleHookRunner(&RecordingProjector{log: &log, err: boom}, []approval.InstanceLifecycleHook{
 			&RecordingHook{name: "a", log: &log},
-		})
+		}, nil)
 
 		err := runner.OnInstanceTransition(context.Background(), nil, new(approval.Instance), approval.InstanceRunning, approval.InstanceApproved)
 		assert.ErrorIs(t, err, boom, "Projection failure should abort the caller transaction")
@@ -152,7 +152,7 @@ func TestLifecycleHookRunnerOnInstanceTransition(t *testing.T) {
 		runner := NewLifecycleHookRunner(nil, []approval.InstanceLifecycleHook{
 			&RecordingHook{name: "a", log: &log, transitionErr: boom},
 			&RecordingHook{name: "b", log: &log},
-		})
+		}, nil)
 
 		err := runner.OnInstanceTransition(context.Background(), nil, new(approval.Instance), approval.InstanceRunning, approval.InstanceReturned)
 		assert.ErrorIs(t, err, boom, "Should propagate first error")
@@ -166,7 +166,7 @@ func TestLifecycleHookRunnerOnInstanceTransition(t *testing.T) {
 
 		runner := NewLifecycleHookRunner(nil, []approval.InstanceLifecycleHook{
 			&RecordingHook{name: "a", log: &log},
-		})
+		}, nil)
 
 		err := runner.OnInstanceTransition(context.Background(), nil, new(approval.Instance), approval.InstanceReturned, approval.InstanceRunning)
 		assert.NoError(t, err, "Missing projector should be a no-op for non-binding test fixtures")

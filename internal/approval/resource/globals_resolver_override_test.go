@@ -160,11 +160,11 @@ func (s *GlobalsResolverOverrideTestSuite) publishFlow(flowCode string) {
 	s.T().Helper()
 
 	flowID := s.rpcID("approval/flow", "create", map[string]any{
-		"tenantId":               "default",
-		"code":                   flowCode,
-		"name":                   flowCode,
-		"categoryId":             s.categoryID,
-		"bindingMode":            "standalone",
+		"tenantId":   "default",
+		"code":       flowCode,
+		"name":       flowCode,
+		"categoryId": s.categoryID,
+
 		"isAllInitiationAllowed": true,
 		"instanceTitleTemplate":  flowCode + " {{.instanceNo}}",
 	})

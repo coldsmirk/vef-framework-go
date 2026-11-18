@@ -50,7 +50,6 @@ func (s *PublishVersionTestSuite) SetupSuite() {
 		CategoryID:             category.ID,
 		Code:                   "publish-test-flow",
 		Name:                   "Publish Test Flow",
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Test",
 		IsActive:               true,
@@ -61,7 +60,7 @@ func (s *PublishVersionTestSuite) SetupSuite() {
 
 	s.flowID = flow.ID
 	s.bus = eventtest.NewFakeBus()
-	s.deployHandler = wrapWithBus(s.bus, command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser()))
+	s.deployHandler = wrapWithBus(s.bus, command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser(), nil))
 	s.publishHandler = wrapWithBus(s.bus, command.NewPublishVersionHandler(s.db, nil, nil))
 }
 

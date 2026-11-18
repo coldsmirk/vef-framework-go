@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"strings"
+	"github.com/coldsmirk/vef-framework-go/id"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"text/template"
 	"time"
 	"unicode/utf8"
@@ -33,7 +34,7 @@ type StartInstanceHandler struct {
 	engine              *engine.FlowEngine
 	instanceNoGenerator approval.InstanceNoGenerator
 	validationSvc       *service.ValidationService
-	refProvider         approval.BusinessRefProvider
+	businessRegistry    *business.Registry
 	bindingProjector    *binding.Projector
 	formStorage         *storage.Dispatcher
 }
@@ -47,7 +48,7 @@ func NewStartInstanceHandler(
 	engine *engine.FlowEngine,
 	instanceNoGenerator approval.InstanceNoGenerator,
 	validationSvc *service.ValidationService,
-	refProvider approval.BusinessRefProvider,
+	businessRegistry *business.Registry,
 	bindingProjector *binding.Projector,
 	formStorage *storage.Dispatcher,
 ) *StartInstanceHandler {
@@ -56,7 +57,7 @@ func NewStartInstanceHandler(
 		engine:              engine,
 		instanceNoGenerator: instanceNoGenerator,
 		validationSvc:       validationSvc,
-		refProvider:         refProvider,
+		businessRegistry:    businessRegistry,
 		bindingProjector:    bindingProjector,
 		formStorage:         formStorage,
 	}
@@ -111,6 +112,17 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		return nil, fmt.Errorf("load published version: %w", err)
 	}
 
+	instanceID := id.Generate()
+	if version.BusinessKind != nil {
+		submission, err := h.businessRegistry.Submit(ctx, db, &approval.SubmissionContext{InstanceID: instanceID, Flow: flow, Version: &version, TenantID: tenantID, Applicant: cmd.Applicant, BusinessRef: cmd.BusinessRef, FormData: cmd.FormData})
+		if err != nil {
+			return nil, err
+		}
+		cmd.FormData = submission.FormData
+		cmd.BusinessRef = &submission.BusinessRef
+	} else if version.BusinessBinding != nil {
+		return nil, approval.ErrBusinessKindRequired
+	}
 	if err := h.validationSvc.ValidateFormData(ctx, version.FormFields, cmd.FormData); err != nil {
 		return nil, err
 	}
@@ -147,6 +159,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	// applicant's tenant, never the one owning the flow, so everything the
 	// instance produces stays inside the tenant the work is done in.
 	instance := &approval.Instance{
+		ID: instanceID, BusinessKind: version.BusinessKind,
 		TenantID:                tenantID,
 		FlowID:                  flow.ID,
 		FlowCode:                flow.Code,
@@ -172,32 +185,9 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	// Resolve and claim the version-pinned business binding. The mutable flow
 	// may already carry configuration for a later version; existing published
 	// versions deliberately keep the snapshot captured at deploy.
-	if version.BusinessBinding != nil {
-		bindingFlow := *flow
-		bindingFlow.BindingMode = approval.BindingBusiness
-		bindingFlow.BusinessBinding = version.BusinessBinding
-
-		businessRef, err := h.refProvider.OnInstanceCreated(ctx, db, &bindingFlow, instance)
-		if err != nil {
-			return nil, fmt.Errorf("business binding on create: %w", err)
-		}
-
-		trimmed := strings.TrimSpace(businessRef)
-		if trimmed != "" && (instance.BusinessRef == nil || strings.TrimSpace(*instance.BusinessRef) == "") {
-			instance.BusinessRef = &trimmed
-			if _, err := db.NewUpdate().
-				Model(instance).
-				Select("business_ref").
-				WherePK().
-				Exec(ctx); err != nil {
-				return nil, fmt.Errorf("persist business_ref: %w", err)
-			}
-		}
-
-		if h.bindingProjector != nil {
-			if err := h.bindingProjector.Bind(ctx, db, &bindingFlow, &version, instance); err != nil {
-				return nil, fmt.Errorf("bind business projection on start: %w", err)
-			}
+	if version.BusinessBinding != nil && h.bindingProjector != nil {
+		if err := h.bindingProjector.Bind(ctx, db, flow, &version, instance); err != nil {
+			return nil, fmt.Errorf("bind business projection on start: %w", err)
 		}
 	}
 

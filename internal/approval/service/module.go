@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -44,8 +45,8 @@ var Module = fx.Module(
 		// framework rebuild. The host's data-dictionary loader is optional: a
 		// host with none accepts any value for a code-set select field.
 		fx.Annotate(
-			func(cfg *config.ApprovalConfig, codeSets mold.CodeSetLoader) *TaskService {
-				return NewTaskService(WithFormDataMaxBytes(cfg.EffectiveFormDataMaxBytes()), WithCodeSetLoader(codeSets))
+			func(cfg *config.ApprovalConfig, codeSets mold.CodeSetLoader, biz *business.Registry) *TaskService {
+				return NewTaskService(WithBusinessRegistry(biz), WithFormDataMaxBytes(cfg.EffectiveFormDataMaxBytes()), WithCodeSetLoader(codeSets))
 			},
 			fx.ParamTags(``, `optional:"true"`),
 		),

@@ -85,11 +85,11 @@ func (s *PermissionEnforcementResourceTestSuite) TestFlowCreateShouldReturn403()
 		Action:   "create",
 		Version:  "v1",
 		Params: map[string]any{
-			"tenantId":               "default",
-			"code":                   "perm-flow",
-			"name":                   "Permission Flow",
-			"categoryId":             "some-category-id",
-			"bindingMode":            "standalone",
+			"tenantId":   "default",
+			"code":       "perm-flow",
+			"name":       "Permission Flow",
+			"categoryId": "some-category-id",
+
 			"isAllInitiationAllowed": true,
 			"instanceTitleTemplate":  "Test",
 		},

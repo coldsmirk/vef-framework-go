@@ -172,12 +172,10 @@ type StartInstanceInput struct {
 	// of condition routing all read it, so fill the department fields when
 	// the flow routes or resolves assignees by department.
 	Applicant UserInfo
-	// BusinessRef is the optional opaque handle of the business record the
-	// instance belongs to. A business-bound flow may also allocate it through
-	// its BusinessRefProvider, in which case a non-empty value here wins.
+	// BusinessRef names an existing record for a business handler to authorize and submit.
+	// A form flow may carry an opaque reference.
 	BusinessRef *string
-	// FormData is the submitted form, validated against the published
-	// version's form fields.
+	// FormData is the submitted form. A business handler validates it and returns the approval snapshot.
 	FormData map[string]any
 	// Globals is the host-supplied global-variable snapshot persisted onto the
 	// instance (Instance.Globals) and resolved by condition evaluation —

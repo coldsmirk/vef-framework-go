@@ -52,7 +52,7 @@ func setupSvcFixture(t testing.TB, ctx context.Context, db orm.DB) *SvcFixture {
 
 	flow := &approval.Flow{
 		TenantID: "default", CategoryID: cat.ID, Code: "svc-test-flow", Name: "Svc Test Flow",
-		BindingMode: approval.BindingStandalone, IsAllInitiationAllowed: true, IsActive: true,
+		IsAllInitiationAllowed: true, IsActive: true,
 	}
 	_, err = db.NewInsert().Model(flow).Exec(ctx)
 	require.NoError(t, err, "should insert flow")

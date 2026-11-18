@@ -9,14 +9,13 @@ import (
 )
 
 // Module provides version-pinned business projection, its default reference
-// provider/resolver, and the durable eventual-consistency worker. Hosts can
-// replace the provider or resolver; projection ownership and write-back remain
+// resolver, and the durable eventual-consistency worker. Hosts can
+// replace the resolver; projection ownership and write-back remain
 // engine-owned.
 var Module = fx.Module(
 	"vef:approval:binding",
 
 	fx.Provide(
-		NewNoopRefProvider,
 		NewIdentityResolver,
 		NewConfigValidator,
 		NewWriter,

@@ -182,11 +182,11 @@ func (s *PrincipalResolverOverrideTestSuite) TestHostAssigneeKindIsOfferedAndExe
 	s.Equal("病区管理组", describedCC["label"], "The CC catalog must carry the label the resolver describes")
 
 	flowID := s.rpcID("approval/flow", "create", map[string]any{
-		"tenantId":               "default",
-		"code":                   flowCode,
-		"name":                   "Host Kind",
-		"categoryId":             s.categoryID,
-		"bindingMode":            "standalone",
+		"tenantId":   "default",
+		"code":       flowCode,
+		"name":       "Host Kind",
+		"categoryId": s.categoryID,
+
 		"isAllInitiationAllowed": true,
 		"instanceTitleTemplate":  "Host Kind {{.instanceNo}}",
 	})

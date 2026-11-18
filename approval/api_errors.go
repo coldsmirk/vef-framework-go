@@ -22,9 +22,9 @@ const (
 	ErrCodeInvalidTitleTemplate      = 40009
 	ErrCodeInvalidFormDesign         = 40010
 	ErrCodeBindingIncomplete         = 40011
-	ErrCodeInvalidBindingMode        = 40012
-	ErrCodeInvalidInitiatorKind      = 40013
-	ErrCodeInvalidStorageMode        = 40014
+
+	ErrCodeInvalidInitiatorKind = 40013
+	ErrCodeInvalidStorageMode   = 40014
 	// 40015 is retired (former flow-binding lock); do not reassign it.
 	ErrCodeBindingColumnsConflict      = 40016
 	ErrCodeBindingUnexpected           = 40017
@@ -122,14 +122,9 @@ var (
 	// validation pattern) so configuration faults never surface as data
 	// errors to the applicant.
 	ErrInvalidFormDesign = result.Err(i18n.T("approval_invalid_form_design"), result.WithCode(ErrCodeInvalidFormDesign))
-	// ErrBindingIncomplete rejects a BindingMode=business flow missing its table,
+	// ErrBindingIncomplete rejects a business binding missing its table,
 	// key columns, status column, or instance-ID fencing column at save time.
 	ErrBindingIncomplete = result.Err(i18n.T("approval_binding_incomplete"), result.WithCode(ErrCodeBindingIncomplete))
-
-	// ErrInvalidBindingMode rejects an out-of-enum flow binding mode at save
-	// time — an unknown value would silently behave like "standalone" and
-	// disable the business write-back.
-	ErrInvalidBindingMode = result.Err(i18n.T("approval_invalid_binding_mode"), result.WithCode(ErrCodeInvalidBindingMode))
 
 	// ErrInvalidInitiatorKind rejects an out-of-enum initiator kind at save
 	// time — an unknown value would silently never match any user.

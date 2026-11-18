@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	vef "github.com/coldsmirk/vef-framework-go"
 	"net/http"
 	"testing"
 
@@ -29,9 +30,14 @@ func TestFlowResource(t *testing.T) {
 	suite.Run(t, new(FlowResourceTestSuite))
 }
 
+type orderHandler struct{ approval.BusinessHandler }
+
+func (orderHandler) Describe() approval.BusinessKindDescriptor {
+	return approval.BusinessKindDescriptor{Kind: "order", Label: "Order"}
+}
 func (s *FlowResourceTestSuite) SetupSuite() {
 	s.ctx = context.Background()
-	s.db, s.token = setupResourceApp(&s.Suite)
+	s.db, s.token = setupResourceApp(&s.Suite, vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{} }))
 
 	// Insert a shared category for flow tests
 	cat := &approval.FlowCategory{
@@ -80,11 +86,11 @@ func (s *FlowResourceTestSuite) createFlow(code, name string) string {
 		Action:   "create",
 		Version:  "v1",
 		Params: map[string]any{
-			"tenantId":               "default",
-			"code":                   code,
-			"name":                   name,
-			"categoryId":             s.categoryID,
-			"bindingMode":            "standalone",
+			"tenantId":   "default",
+			"code":       code,
+			"name":       name,
+			"categoryId": s.categoryID,
+
 			"isAllInitiationAllowed": true,
 			"instanceTitleTemplate":  fmt.Sprintf("%s {{.instanceNo}}", name),
 		},
@@ -130,11 +136,11 @@ func (s *FlowResourceTestSuite) TestCreateFlow() {
 		Action:   "create",
 		Version:  "v1",
 		Params: map[string]any{
-			"tenantId":               "default",
-			"code":                   "test-flow-create",
-			"name":                   "Test Flow",
-			"categoryId":             s.categoryID,
-			"bindingMode":            "standalone",
+			"tenantId":   "default",
+			"code":       "test-flow-create",
+			"name":       "Test Flow",
+			"categoryId": s.categoryID,
+
 			"isAllInitiationAllowed": true,
 			"instanceTitleTemplate":  "Test {{.instanceNo}}",
 		},
@@ -160,7 +166,7 @@ func (s *FlowResourceTestSuite) TestCreateBusinessBoundFlow() {
 			"code":                   "test-flow-business-binding",
 			"name":                   "Business Binding Flow",
 			"categoryId":             s.categoryID,
-			"bindingMode":            "business",
+			"businessKind":           "order",
 			"isAllInitiationAllowed": true,
 			"businessBinding": map[string]any{
 				"tableName":        "resource_binding_order",

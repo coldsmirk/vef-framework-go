@@ -852,7 +852,7 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeAndPrepareOperationShouldAvoidDead
 	go func() {
 		prepareDone <- s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error {
 			txCtx := contextx.SetDB(ctx, tx)
-			_, err := taskSvc.PrepareOperation(txCtx, tx, task.ID, approval.UserInfo{ID: "operator-lock-order"}, approval.SystemCaller, nil)
+			_, err := taskSvc.PrepareDecision(txCtx, tx, task.ID, approval.SystemCaller, &approval.TaskActionContext{Action: approval.ActionReject, Operator: approval.UserInfo{ID: "operator-lock-order"}, FormData: nil}, service.NewValidationService(nil), nil)
 
 			return err
 		})

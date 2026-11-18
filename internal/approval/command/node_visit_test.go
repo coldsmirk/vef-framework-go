@@ -56,7 +56,7 @@ func (s *NodeVisitTrailTestSuite) SetupSuite() {
 			eng,
 			&MockInstanceNoGenerator{},
 			validSvc,
-			binding.NewNoopRefProvider(),
+			nil,
 			binding.NewProjector(binding.NewIdentityResolver(), binding.NewWriter(), nil),
 			nil,
 		),
@@ -64,7 +64,7 @@ func (s *NodeVisitTrailTestSuite) SetupSuite() {
 	s.approve = wrapWithBusAndDB(s.db, bus, command.NewApproveTaskHandler(s.db, taskSvc, nodeSvc, validSvc, nil))
 	s.reject = wrapWithBusAndDB(s.db, bus, command.NewRejectTaskHandler(s.db, taskSvc, nodeSvc, validSvc, nil))
 	s.rollback = wrapWithBusAndDB(s.db, bus, command.NewRollbackTaskHandler(s.db, taskSvc, instanceSvc, validSvc, eng, nil))
-	s.resubmit = wrapWithBusAndDB(s.db, bus, command.NewResubmitInstanceHandler(s.db, eng, validSvc, instanceSvc, nil))
+	s.resubmit = wrapWithBusAndDB(s.db, bus, command.NewResubmitInstanceHandler(s.db, eng, validSvc, instanceSvc, nil, nil))
 	s.withdraw = wrapWithBusAndDB(s.db, bus, command.NewWithdrawInstanceHandler(s.db, taskSvc, instanceSvc))
 	s.terminate = wrapWithBusAndDB(s.db, bus, command.NewTerminateInstanceHandler(s.db, taskSvc, instanceSvc))
 }

@@ -58,7 +58,6 @@ func (s *GetStartFormTestSuite) SetupSuite() {
 		CategoryID:             category.ID,
 		Code:                   "gsf-open",
 		Name:                   "Open Flow",
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Test",
 		IsActive:               true,
@@ -80,7 +79,6 @@ func (s *GetStartFormTestSuite) SetupSuite() {
 		CategoryID:             category.ID,
 		Code:                   "gsf-restricted",
 		Name:                   "Restricted Flow",
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: false,
 		InstanceTitleTemplate:  "Test",
 		IsActive:               true,
@@ -108,7 +106,6 @@ func (s *GetStartFormTestSuite) SetupSuite() {
 		CategoryID:             category.ID,
 		Code:                   "gsf-inactive",
 		Name:                   "Inactive Flow",
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Test",
 		IsActive:               false,
@@ -122,7 +119,6 @@ func (s *GetStartFormTestSuite) SetupSuite() {
 		CategoryID:             category.ID,
 		Code:                   "gsf-unpublished",
 		Name:                   "Unpublished Flow",
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Test",
 		IsActive:               true,
@@ -146,7 +142,7 @@ func (s *GetStartFormTestSuite) SetupSuite() {
 		{TenantID: "tenant-owner", IsShared: true, CategoryID: sharedCategory.ID, Code: "gsf-replaced", Name: "Replaced Shared Flow", IsActive: true},
 		{TenantID: "default", CategoryID: category.ID, Code: "gsf-replaced", Name: "Tenant Replacement"},
 	} {
-		flow.BindingMode = approval.BindingStandalone
+		flow.BusinessKind = nil
 		flow.IsAllInitiationAllowed = true
 		flow.InstanceTitleTemplate = "Test"
 

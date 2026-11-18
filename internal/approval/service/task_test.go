@@ -330,11 +330,11 @@ func (s *TaskServiceTestSuite) loadTaskStatus(instanceID, assigneeID string) app
 
 // --- PrepareOperation ---
 
-func (s *TaskServiceTestSuite) TestPrepareOperation() {
+func (s *TaskServiceTestSuite) TestPrepareDecision() {
 	s.Run("Success", func() {
 		nodeID, instanceID, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "op-user-1")
 
-		tc, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "op-user-1"}, approval.SystemCaller, nil)
+		tc, err := s.svc.PrepareDecision(s.ctx, s.db, taskID, approval.SystemCaller, &approval.TaskActionContext{Action: approval.ActionReject, Operator: approval.UserInfo{ID: "op-user-1"}, FormData: nil}, service.NewValidationService(nil), nil)
 		s.Require().NoError(err, "Should prepare operation context")
 		s.Assert().Equal(instanceID, tc.Instance.ID, "Prepared instance ID should match")
 		s.Assert().Equal(taskID, tc.Task.ID, "Prepared task ID should match")
@@ -342,28 +342,28 @@ func (s *TaskServiceTestSuite) TestPrepareOperation() {
 	})
 
 	s.Run("TaskNotFound", func() {
-		_, err := s.svc.PrepareOperation(s.ctx, s.db, "non-existent", approval.UserInfo{ID: "op-user-1"}, approval.SystemCaller, nil)
+		_, err := s.svc.PrepareDecision(s.ctx, s.db, "non-existent", approval.SystemCaller, &approval.TaskActionContext{Action: approval.ActionReject, Operator: approval.UserInfo{ID: "op-user-1"}, FormData: nil}, service.NewValidationService(nil), nil)
 		s.Assert().ErrorIs(err, approval.ErrTaskNotFound, "Should return task not found for missing task ID")
 	})
 
 	s.Run("InstanceCompleted", func() {
 		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceApproved, approval.TaskPending, "op-user-2")
 
-		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "op-user-2"}, approval.SystemCaller, nil)
+		_, err := s.svc.PrepareDecision(s.ctx, s.db, taskID, approval.SystemCaller, &approval.TaskActionContext{Action: approval.ActionReject, Operator: approval.UserInfo{ID: "op-user-2"}, FormData: nil}, service.NewValidationService(nil), nil)
 		s.Assert().ErrorIs(err, approval.ErrInstanceCompleted, "Should reject operation on completed instance")
 	})
 
 	s.Run("NotAssignee", func() {
 		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "op-user-3")
 
-		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "wrong-user"}, approval.SystemCaller, nil)
+		_, err := s.svc.PrepareDecision(s.ctx, s.db, taskID, approval.SystemCaller, &approval.TaskActionContext{Action: approval.ActionReject, Operator: approval.UserInfo{ID: "wrong-user"}, FormData: nil}, service.NewValidationService(nil), nil)
 		s.Assert().ErrorIs(err, approval.ErrNotAssignee, "Should reject non-assignee operator")
 	})
 
 	s.Run("TaskNotPending", func() {
 		_, _, taskID := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskApproved, "op-user-4")
 
-		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "op-user-4"}, approval.SystemCaller, nil)
+		_, err := s.svc.PrepareDecision(s.ctx, s.db, taskID, approval.SystemCaller, &approval.TaskActionContext{Action: approval.ActionReject, Operator: approval.UserInfo{ID: "op-user-4"}, FormData: nil}, service.NewValidationService(nil), nil)
 		s.Assert().ErrorIs(err, approval.ErrTaskNotPending, "Should reject non-pending task")
 	})
 
@@ -388,7 +388,7 @@ func (s *TaskServiceTestSuite) TestPrepareOperation() {
 			Exec(s.ctx)
 		s.Require().NoError(err, "Should move instance current node away from task node")
 
-		_, err = s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "op-user-5"}, approval.SystemCaller, nil)
+		_, err = s.svc.PrepareDecision(s.ctx, s.db, taskID, approval.SystemCaller, &approval.TaskActionContext{Action: approval.ActionReject, Operator: approval.UserInfo{ID: "op-user-5"}, FormData: nil}, service.NewValidationService(nil), nil)
 		s.Assert().ErrorIs(err, approval.ErrTaskNotPending, "Should reject operations on tasks outside current node")
 	})
 }
@@ -445,7 +445,7 @@ func (s *TaskServiceTestSuite) setupFormValidationTask(
 	return task.ID
 }
 
-func (s *TaskServiceTestSuite) TestPrepareOperationFormValidation() {
+func (s *TaskServiceTestSuite) TestPrepareDecisionFormValidation() {
 	fields := []approval.FormFieldDefinition{
 		{Key: "reason", Kind: approval.FieldInput, Label: "Reason", Validation: &approval.ValidationRule{MinLength: new(3)}},
 		{Key: "locked", Kind: approval.FieldInput, Label: "Locked", Validation: &approval.ValidationRule{MinLength: new(3)}},
@@ -455,7 +455,7 @@ func (s *TaskServiceTestSuite) TestPrepareOperationFormValidation() {
 	s.Run("RejectsInvalidEditableValue", func() {
 		taskID := s.setupFormValidationTask(fields, editable, nil, "form-val-invalid")
 
-		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "form-val-invalid"}, approval.SystemCaller, map[string]any{"reason": "no"})
+		_, err := s.svc.PrepareDecision(s.ctx, s.db, taskID, approval.SystemCaller, &approval.TaskActionContext{Action: approval.ActionReject, Operator: approval.UserInfo{ID: "form-val-invalid"}, FormData: map[string]any{"reason": "no"}}, service.NewValidationService(nil), nil)
 
 		var re result.Error
 		s.Require().ErrorAs(err, &re, "an editable value violating its schema rule must be rejected")
@@ -467,7 +467,7 @@ func (s *TaskServiceTestSuite) TestPrepareOperationFormValidation() {
 
 		// "locked" is submitted but not granted editable permission, so it is
 		// filtered out before validation — and never merged.
-		tc, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "form-val-noneditable"}, approval.SystemCaller, map[string]any{"locked": "no"})
+		tc, err := s.svc.PrepareDecision(s.ctx, s.db, taskID, approval.SystemCaller, &approval.TaskActionContext{Action: approval.ActionReject, Operator: approval.UserInfo{ID: "form-val-noneditable"}, FormData: map[string]any{"locked": "no"}}, service.NewValidationService(nil), nil)
 		s.Require().NoError(err, "a non-editable submitted key is filtered before validation")
 		s.Assert().NotContains(tc.Instance.FormData, "locked", "the non-editable value must not be merged")
 	})
@@ -476,7 +476,7 @@ func (s *TaskServiceTestSuite) TestPrepareOperationFormValidation() {
 		perms := map[string]approval.Permission{"ghost": approval.PermissionEditable}
 		taskID := s.setupFormValidationTask(fields, perms, nil, "form-val-unknown")
 
-		_, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "form-val-unknown"}, approval.SystemCaller, map[string]any{"ghost": "value"})
+		_, err := s.svc.PrepareDecision(s.ctx, s.db, taskID, approval.SystemCaller, &approval.TaskActionContext{Action: approval.ActionReject, Operator: approval.UserInfo{ID: "form-val-unknown"}, FormData: map[string]any{"ghost": "value"}}, service.NewValidationService(nil), nil)
 
 		var re result.Error
 		s.Require().ErrorAs(err, &re, "an editable key with no schema field must be rejected")
@@ -486,7 +486,7 @@ func (s *TaskServiceTestSuite) TestPrepareOperationFormValidation() {
 	s.Run("AllowsEmptyEditableValue", func() {
 		taskID := s.setupFormValidationTask(fields, editable, nil, "form-val-empty")
 
-		tc, err := s.svc.PrepareOperation(s.ctx, s.db, taskID, approval.UserInfo{ID: "form-val-empty"}, approval.SystemCaller, map[string]any{"reason": ""})
+		tc, err := s.svc.PrepareDecision(s.ctx, s.db, taskID, approval.SystemCaller, &approval.TaskActionContext{Action: approval.ActionReject, Operator: approval.UserInfo{ID: "form-val-empty"}, FormData: map[string]any{"reason": ""}}, service.NewValidationService(nil), nil)
 		s.Require().NoError(err, "emptiness is deferred to the required-permission check, not rejected at this layer")
 		s.Assert().Equal("", tc.Instance.FormData["reason"], "the empty editable value is still merged")
 	})

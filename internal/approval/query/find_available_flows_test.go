@@ -229,7 +229,7 @@ func (s *FindAvailableFlowsTestSuite) insertCategory(tenantID, code, name string
 func (s *FindAvailableFlowsTestSuite) insertFlow(flow *approval.Flow, published bool) string {
 	s.T().Helper()
 
-	flow.BindingMode = approval.BindingStandalone
+	flow.BusinessKind = nil
 	flow.InstanceTitleTemplate = "Test"
 
 	_, err := s.db.NewInsert().Model(flow).Exec(s.ctx)

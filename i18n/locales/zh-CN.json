@@ -147,7 +147,6 @@
   "approval_invalid_flow_label": "流程标签不合法：键必须匹配 ^[A-Za-z0-9]([A-Za-z0-9_-]*[A-Za-z0-9])?$ 且不超过 63 个字符，值不超过 256 个字符",
   "approval_invalid_form_design": "表单定义不合法",
   "approval_binding_incomplete": "业务绑定流程必须配置业务表、键列、状态列和审批实例 ID 列",
-  "approval_invalid_binding_mode": "无效的流程绑定模式",
   "approval_invalid_initiator_kind": "无效的发起人类型",
   "approval_assignee_kind_user": "指定用户",
   "approval_assignee_kind_role": "指定角色",

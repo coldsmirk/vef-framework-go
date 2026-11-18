@@ -69,7 +69,6 @@ func (s *ValidationServiceTestSuite) seedFlowIn(tenantID, code string) *approval
 
 	flow := &approval.Flow{
 		TenantID: tenantID, CategoryID: cat.ID, Code: code, Name: "Flow",
-		BindingMode: approval.BindingStandalone,
 	}
 	_, err = s.db.NewInsert().Model(flow).Exec(s.ctx)
 	s.Require().NoError(err, "should insert flow")

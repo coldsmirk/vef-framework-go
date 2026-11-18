@@ -458,7 +458,6 @@ func setupMinimalFixture(t testing.TB, ctx context.Context, db orm.DB, code stri
 		CategoryID:             category.ID,
 		Code:                   code,
 		Name:                   code + " Flow",
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Test",
 		IsActive:               true,
@@ -516,7 +515,6 @@ func deployAndPublishFlowIn(
 		CategoryID:             category.ID,
 		Code:                   code + "-flow",
 		Name:                   code + " Flow",
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  code + " {{.instanceNo}}",
 		IsActive:               true,
@@ -524,7 +522,7 @@ func deployAndPublishFlowIn(
 	_, err = db.NewInsert().Model(flow).Exec(ctx)
 	require.NoError(t, err, "Should insert test flow")
 
-	deployHandler := command.NewDeployFlowHandler(db, service.NewFlowDefinitionService(), formeditor.NewParser())
+	deployHandler := command.NewDeployFlowHandler(db, service.NewFlowDefinitionService(), formeditor.NewParser(), nil)
 	version, err := deployHandler.Handle(ctx, command.DeployFlowCmd{
 		FlowID:         flow.ID,
 		FlowDefinition: def,

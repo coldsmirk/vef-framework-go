@@ -55,14 +55,14 @@ func (s *PassRuleVisitScopeTestSuite) SetupSuite() {
 			eng,
 			&MockInstanceNoGenerator{},
 			validSvc,
-			binding.NewNoopRefProvider(),
+			nil,
 			binding.NewProjector(binding.NewIdentityResolver(), binding.NewWriter(), nil),
 			nil,
 		),
 	)
 	s.approve = wrapWithBusAndDB(s.db, bus, command.NewApproveTaskHandler(s.db, taskSvc, nodeSvc, validSvc, nil))
 	s.rollback = wrapWithBusAndDB(s.db, bus, command.NewRollbackTaskHandler(s.db, taskSvc, instanceSvc, validSvc, eng, nil))
-	s.resubmit = wrapWithBusAndDB(s.db, bus, command.NewResubmitInstanceHandler(s.db, eng, validSvc, instanceSvc, nil))
+	s.resubmit = wrapWithBusAndDB(s.db, bus, command.NewResubmitInstanceHandler(s.db, eng, validSvc, instanceSvc, nil, nil))
 }
 
 func (s *PassRuleVisitScopeTestSuite) TearDownTest() {

@@ -145,7 +145,7 @@ func (s *CompiledFlowTestSuite) seedVersion(code string) string {
 	_, err := s.db.NewInsert().Model(cat).Exec(s.ctx)
 	s.Require().NoError(err, "should insert category")
 
-	flow := &approval.Flow{TenantID: "default", CategoryID: cat.ID, Code: code, Name: "Flow", BindingMode: approval.BindingStandalone}
+	flow := &approval.Flow{TenantID: "default", CategoryID: cat.ID, Code: code, Name: "Flow"}
 	_, err = s.db.NewInsert().Model(flow).Exec(s.ctx)
 	s.Require().NoError(err, "should insert flow")
 

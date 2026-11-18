@@ -18,22 +18,17 @@ var builtinInitiatorKinds = map[approval.InitiatorKind]approval.SelectionMode{
 	approval.InitiatorDepartment: approval.SelectionDepartment,
 }
 
-func TestValidateBindingMode(t *testing.T) {
-	t.Parallel()
-
-	t.Run("Valid", func(t *testing.T) {
-		t.Parallel()
-
-		assert.NoError(t, validateBindingMode(approval.BindingStandalone), "Known binding mode should pass")
+func TestValidateBusinessKind(t *testing.T) {
+	t.Run("FormFlow", func(t *testing.T) {
+		assert.NoError(t, validateBusinessKind(nil, nil, nil), "Form flows need no handler")
 	})
-
-	t.Run("Invalid", func(t *testing.T) {
-		t.Parallel()
-
-		assert.ErrorIs(t, validateBindingMode("bogus"), approval.ErrInvalidBindingMode, "Unknown binding mode should be rejected")
+	t.Run("UnknownKind", func(t *testing.T) {
+		assert.ErrorIs(t, validateBusinessKind(nil, new(approval.BusinessKind("unknown")), nil), approval.ErrBusinessKindNotRegistered, "Unknown kinds must fail")
+	})
+	t.Run("BindingRequiresKind", func(t *testing.T) {
+		assert.ErrorIs(t, validateBusinessKind(nil, nil, new(approval.BusinessBindingConfig)), approval.ErrBusinessKindRequired, "Bindings need a registered business kind")
 	})
 }
-
 func TestValidateInitiatorRules(t *testing.T) {
 	t.Parallel()
 

@@ -204,7 +204,6 @@ func (s *FlowEngineTestSuite) SetupSuite() {
 		CategoryID:            category.ID,
 		Code:                  "engine-test-flow",
 		Name:                  "Engine Test Flow",
-		BindingMode:           approval.BindingStandalone,
 		InstanceTitleTemplate: "test",
 	}
 	_, err = s.db.NewInsert().Model(flow).Exec(s.ctx)

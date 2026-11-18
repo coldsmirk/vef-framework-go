@@ -146,11 +146,11 @@ func (s *InstanceResourceTestSuite) createAndPublishFlow(code, name string, def 
 		Action:   "create",
 		Version:  "v1",
 		Params: map[string]any{
-			"tenantId":               "default",
-			"code":                   code,
-			"name":                   name,
-			"categoryId":             s.categoryID,
-			"bindingMode":            "standalone",
+			"tenantId":   "default",
+			"code":       code,
+			"name":       name,
+			"categoryId": s.categoryID,
+
 			"isAllInitiationAllowed": true,
 			"instanceTitleTemplate":  name + " {{.instanceNo}}",
 		},

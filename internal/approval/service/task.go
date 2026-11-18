@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"slices"
 
 	"github.com/coldsmirk/go-collections"
@@ -22,7 +23,7 @@ type TaskContext struct {
 	Instance *approval.Instance
 	Task     *approval.Task
 	Node     *approval.FlowNode
-	// FormFields is the flow version's parsed form fields. PrepareOperation
+	// FormFields is the flow version's parsed form fields. PrepareDecision
 	// loads them (only when the node grants field permissions) so submitted-value
 	// validation and the approve/handle required-permission check share one
 	// query; nil for permission-less nodes and for contexts loaded directly via
@@ -55,6 +56,7 @@ var cancelableTaskStatuses = []string{string(approval.TaskPending), string(appro
 
 // TaskService provides task-level domain operations.
 type TaskService struct {
+	business         *business.Registry
 	formDataMaxBytes int
 	codeSets         mold.CodeSetLoader
 }
@@ -63,7 +65,7 @@ type TaskService struct {
 func NewTaskService(opts ...Option) *TaskService {
 	resolved := resolveOptions(opts)
 
-	return &TaskService{formDataMaxBytes: resolved.formDataMaxBytes, codeSets: resolved.codeSets}
+	return &TaskService{business: resolved.business, formDataMaxBytes: resolved.formDataMaxBytes, codeSets: resolved.codeSets}
 }
 
 // FinishTask transitions a task to the given status and sets its FinishedAt timestamp.
@@ -917,11 +919,11 @@ func (*TaskService) CanRemoveAssigneeTask(ctx context.Context, db orm.DB, eng *e
 	return evalResult != approval.PassRulePending, nil
 }
 
-// PrepareOperation loads task context and merges editable form data.
-// Callers that require opinion validation should invoke ValidateOpinion separately.
-func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID string, operator approval.UserInfo, caller approval.CallerContext, formData map[string]any) (*TaskContext, error) {
+// PrepareDecision locks the instance and task, checks the operator, and applies
+// the human decision to the business record and its approval snapshot.
+func (s *TaskService) PrepareDecision(ctx context.Context, db orm.DB, taskID string, caller approval.CallerContext, action *approval.TaskActionContext, validation *ValidationService, check func(*approval.TaskActionContext) error) (*TaskContext, error) {
 	tc, err := s.LoadTaskContextForNodeOperation(ctx, db, taskID, TaskContextLoadOptions{
-		OperatorID:              operator.ID,
+		OperatorID:              action.Operator.ID,
 		RequireOperatorAssignee: true,
 		RequireTaskPending:      true,
 		RequireCurrentNode:      true,
@@ -931,10 +933,23 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID st
 		return nil, err
 	}
 
+	action.Instance, action.Task, action.Node = tc.Instance, tc.Task, tc.Node
+	action.FieldPermissions = tc.Node.FieldPermissions
+	if action.Action == approval.ActionApprove && tc.Node.Kind == approval.NodeHandle {
+		action.Action = approval.ActionHandle
+	}
+	if err := validation.ValidateOpinion(tc.Node, action.Opinion); err != nil {
+		return nil, err
+	}
+	if check != nil {
+		if err := check(action); err != nil {
+			return nil, err
+		}
+	}
 	// A permission-less node exposes nothing for editing and demands no required
 	// value, so both the editable-subset validation and the approve-side required
 	// check are no-ops — skip the form_fields load entirely (tc.FormFields stays nil).
-	if len(tc.Node.FieldPermissions) > 0 {
+	if tc.Instance.BusinessKind != nil || len(tc.Node.FieldPermissions) > 0 {
 		// Load the version's parsed form fields so submitted edits validate against
 		// them, and expose them on the context so the approve/handle
 		// required-permission check reuses the same field list without a second query.
@@ -952,18 +967,6 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID st
 		tc.FormFields = version.FormFields
 	}
 
-	// Validate the submitted editable subset against the schema before merging,
-	// so a malformed approver edit is rejected instead of persisted. Emptiness is
-	// deferred to the approve/handle required-permission check, not treated as a
-	// value error here.
-	if err := validateEditableFormData(tc.FormFields, formData, tc.Node.FieldPermissions); err != nil {
-		return nil, err
-	}
-
-	if err := validateCodeSetValues(ctx, s.codeSets, tc.FormFields, FilterEditableFormData(formData, tc.Node.FieldPermissions)); err != nil {
-		return nil, err
-	}
-
 	// Capture the pre-merge size so the cap is enforced on the growth this
 	// action introduces, not on the standing payload. An instance whose stored
 	// form data already exceeds the cap (created before the cap existed, or
@@ -974,7 +977,31 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID st
 		return nil, err
 	}
 
-	MergeFormData(tc.Instance, formData, tc.Node.FieldPermissions)
+	if tc.Instance.BusinessKind != nil {
+		h, err := s.business.Require(*tc.Instance.BusinessKind)
+		if err != nil {
+			return nil, err
+		}
+		outcome, err := h.OnTaskAction(ctx, db, action)
+		if err != nil {
+			return nil, fmt.Errorf("business task action %s: %w", action.Action, err)
+		}
+		if outcome != nil && outcome.FormData != nil {
+			snapshot := business.Snapshot(tc.FormFields, outcome.FormData)
+			if err := validation.validateFormValues(ctx, tc.FormFields, snapshot); err != nil {
+				return nil, err
+			}
+			tc.Instance.FormData = snapshot
+		}
+	} else {
+		if err := validateEditableFormData(tc.FormFields, action.FormData, tc.Node.FieldPermissions); err != nil {
+			return nil, err
+		}
+		if err := validateCodeSetValues(ctx, s.codeSets, tc.FormFields, FilterEditableFormData(action.FormData, tc.Node.FieldPermissions)); err != nil {
+			return nil, err
+		}
+		MergeFormData(tc.Instance, action.FormData, tc.Node.FieldPermissions)
+	}
 
 	afterSize, err := encodedFormDataSize(tc.Instance.FormData)
 	if err != nil {
@@ -989,6 +1016,12 @@ func (s *TaskService) PrepareOperation(ctx context.Context, db orm.DB, taskID st
 		return nil, approval.ErrFormDataTooLarge
 	}
 
+	if action.Action == approval.ActionApprove || action.Action == approval.ActionHandle {
+		if err := validation.ValidateRequiredPermissionFields(tc.FormFields, tc.Node.FieldPermissions, tc.Instance.FormData); err != nil {
+			return nil, err
+		}
+	}
+	// Publish this operator's decision drafts here, after validation and before task completion.
 	return tc, nil
 }
 

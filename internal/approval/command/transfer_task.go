@@ -55,44 +55,41 @@ func NewTransferTaskHandler(
 func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	tc, err := h.taskSvc.PrepareOperation(ctx, db, cmd.TaskID, cmd.Operator, cmd.Caller, cmd.FormData)
+	action := &approval.TaskActionContext{Action: approval.ActionTransfer, Operator: cmd.Operator, Opinion: cmd.Opinion, FormData: cmd.FormData}
+	tc, err := h.taskSvc.PrepareDecision(ctx, db, cmd.TaskID, cmd.Caller, action, h.validationSvc, func(ac *approval.TaskActionContext) error {
+		if !ac.Node.IsTransferAllowed {
+			return approval.ErrTransferNotAllowed
+		}
+
+		transferToID := strings.TrimSpace(cmd.TransferToID)
+		if transferToID == "" || transferToID == ac.Task.AssigneeID {
+			return approval.ErrInvalidTransferTarget
+		}
+
+		if err := engine.NewActorResolution(ac.Instance, ac.Node, h.handovers).CheckPicks(ctx, []string{transferToID}, h.userResolver); err != nil {
+			return err
+		}
+
+		duplicate, err := hasActiveTaskForAssignee(ctx, db, ac.Instance.ID, ac.Task.NodeID, transferToID)
+		if err != nil {
+			return fmt.Errorf("query transfer target active task: %w", err)
+		}
+
+		if duplicate {
+			return approval.ErrInvalidTransferTarget
+		}
+		ac.TransferTo = new(shared.ResolveUserInfo(ctx, h.userResolver, transferToID))
+		return nil
+	})
 	if err != nil {
 		return cqrs.Unit{}, err
 	}
-
-	if err := h.validationSvc.ValidateOpinion(tc.Node, cmd.Opinion); err != nil {
-		return cqrs.Unit{}, err
-	}
-
 	instance, task, node := tc.Instance, tc.Task, tc.Node
-
-	if !node.IsTransferAllowed {
-		return cqrs.Unit{}, approval.ErrTransferNotAllowed
-	}
-
-	transferToID := strings.TrimSpace(cmd.TransferToID)
-	if transferToID == "" || transferToID == task.AssigneeID {
-		return cqrs.Unit{}, approval.ErrInvalidTransferTarget
-	}
-
-	if err := engine.NewActorResolution(instance, node, h.handovers).CheckPicks(ctx, []string{transferToID}, h.userResolver); err != nil {
-		return cqrs.Unit{}, err
-	}
-
-	duplicate, err := hasActiveTaskForAssignee(ctx, db, instance.ID, task.NodeID, transferToID)
-	if err != nil {
-		return cqrs.Unit{}, fmt.Errorf("query transfer target active task: %w", err)
-	}
-
-	if duplicate {
-		return cqrs.Unit{}, approval.ErrInvalidTransferTarget
-	}
+	transferTo := *action.TransferTo
 
 	if err := h.taskSvc.FinishTask(ctx, db, task, approval.TaskTransferred); err != nil {
 		return cqrs.Unit{}, err
 	}
-
-	transferTo := shared.ResolveUserInfo(ctx, h.userResolver, transferToID)
 
 	// The replacement stands in for the original in the add-assignee dependency
 	// graph: it inherits the original's parent link (so transferring a "before"

@@ -28,7 +28,7 @@ type FindFlowsQuery struct {
 	Keyword       *string
 	IsActive      *bool
 	Labels        map[string]string
-	BindingMode   *approval.BindingMode
+	BusinessKind  *approval.BusinessKind
 }
 
 // FindFlowsHandler handles the FindFlowsQuery.
@@ -60,8 +60,8 @@ func (h *FindFlowsHandler) Handle(ctx context.Context, query FindFlowsQuery) (*p
 				ApplyIf(query.Keyword != nil, func(cb orm.ConditionBuilder) {
 					cb.Contains("name", *query.Keyword)
 				}).
-				ApplyIf(query.BindingMode != nil, func(cb orm.ConditionBuilder) {
-					cb.Equals("binding_mode", *query.BindingMode)
+				ApplyIf(query.BusinessKind != nil, func(cb orm.ConditionBuilder) {
+					cb.Equals("business_kind", *query.BusinessKind)
 				})
 
 			applyLabelsFilter(cb, query.Labels)

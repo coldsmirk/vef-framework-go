@@ -146,7 +146,6 @@ func (s *ServiceIntegrationTestSuite) publishFlow(code, categoryID string) strin
 		Code:                   code,
 		Name:                   code,
 		CategoryID:             categoryID,
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 	})
 	s.Require().NoError(err, "Should create flow %s", code)

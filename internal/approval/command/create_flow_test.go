@@ -57,7 +57,7 @@ func (s *CreateFlowTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Should insert test category")
 
 	s.categoryIDs = map[string]string{approval.DefaultTenantID: category.ID}
-	s.handler = command.NewCreateFlowHandler(s.db, newTestBindingValidator(), mustInitiatorComposite(nil))
+	s.handler = command.NewCreateFlowHandler(s.db, newTestBindingValidator(), mustInitiatorComposite(nil), testRegistry(testBusinessHandler{}))
 }
 
 func (s *CreateFlowTestSuite) TearDownSuite() {
@@ -80,7 +80,6 @@ func (s *CreateFlowTestSuite) TestCreateFlowSuccess() {
 		Code:                   "leave",
 		Name:                   "Leave Approval",
 		CategoryID:             s.categoryOf("tenant-1"),
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "{{.applicantName}}'s leave request",
 	}
@@ -94,7 +93,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowSuccess() {
 	s.Assert().Equal("leave", result.Code, "Should set Code")
 	s.Assert().Equal("Leave Approval", result.Name, "Should set Name")
 	s.Assert().Equal(cmd.CategoryID, result.CategoryID, "Should set CategoryID")
-	s.Assert().Equal(approval.BindingStandalone, result.BindingMode, "Should set BindingMode")
+	s.Assert().Nil(result.BusinessKind, "Form flow has no business kind")
 	s.Assert().True(result.IsAllInitiationAllowed, "Should set IsAllInitiationAllowed")
 	s.Assert().True(result.IsActive, "Should default IsActive to true")
 	s.Assert().Equal(0, result.CurrentVersion, "Should default CurrentVersion to 0")
@@ -120,7 +119,6 @@ func (s *CreateFlowTestSuite) TestCreateFlowLabels() {
 			Code:                   "labeled",
 			Name:                   "Labeled Flow",
 			CategoryID:             s.categoryOf("tenant-1"),
-			BindingMode:            approval.BindingStandalone,
 			InstanceTitleTemplate:  "Test",
 			Labels:                 map[string]string{"app": "crm", "mobile": "true"},
 		}
@@ -146,7 +144,6 @@ func (s *CreateFlowTestSuite) TestCreateFlowLabels() {
 			Code:                   "bad-label",
 			Name:                   "Bad Label Flow",
 			CategoryID:             s.categoryOf("tenant-1"),
-			BindingMode:            approval.BindingStandalone,
 			InstanceTitleTemplate:  "Test",
 			Labels:                 map[string]string{"app.id": "crm"},
 		}
@@ -168,7 +165,6 @@ func (s *CreateFlowTestSuite) TestCreateFlowCategoryTenancy() {
 			Code:                   code,
 			Name:                   "Category Tenancy Flow",
 			CategoryID:             categoryID,
-			BindingMode:            approval.BindingStandalone,
 			InstanceTitleTemplate:  "Title",
 		}
 	}
@@ -222,7 +218,6 @@ func (s *CreateFlowTestSuite) TestCreateSharedFlowCode() {
 			Code:                   "shared-code",
 			Name:                   "Shared Code Flow",
 			CategoryID:             s.categoryOf(tenantID),
-			BindingMode:            approval.BindingStandalone,
 			InstanceTitleTemplate:  "Title",
 		}
 	}
@@ -249,7 +244,6 @@ func (s *CreateFlowTestSuite) TestCreateFlowDuplicateCode() {
 		Code:                   "unique-code",
 		Name:                   "First Flow",
 		CategoryID:             s.categoryOf("tenant-dup"),
-		BindingMode:            approval.BindingStandalone,
 		InstanceTitleTemplate:  "Title Template",
 	}
 
@@ -269,7 +263,6 @@ func (s *CreateFlowTestSuite) TestCreateFlowWithInitiators() {
 		Code:                  "with-initiators",
 		Name:                  "Flow With Initiators",
 		CategoryID:            s.categoryOf("tenant-init"),
-		BindingMode:           approval.BindingStandalone,
 		InstanceTitleTemplate: "Template",
 		Initiators: []shared.CreateFlowInitiatorCmd{
 			{Kind: approval.InitiatorUser, IDs: []string{"user-1", "user-2"}},
@@ -311,7 +304,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingComplete() {
 		Code:                   "business-complete",
 		Name:                   "Business Bound",
 		CategoryID:             s.categoryOf("tenant-binding"),
-		BindingMode:            approval.BindingBusiness,
+		BusinessKind:           new(approval.BusinessKind("order")),
 		BusinessBinding: &approval.BusinessBindingConfig{
 			TableName:        table,
 			KeyColumns:       []string{pk},
@@ -321,7 +314,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingComplete() {
 		InstanceTitleTemplate: "Title",
 	})
 	s.Require().NoError(err, "A complete business binding should be accepted")
-	s.Assert().Equal(approval.BindingBusiness, result.BindingMode)
+	s.Assert().Equal(new(approval.BusinessKind("order")), result.BusinessKind)
 	s.Require().NotNil(result.BusinessBinding)
 	s.Assert().Equal("t_leave", result.BusinessBinding.TableName)
 }
@@ -338,7 +331,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowBusinessBindingIncomplete() {
 		Code:                   "business-incomplete",
 		Name:                   "Half Bound",
 		CategoryID:             s.categoryOf("tenant-binding-bad"),
-		BindingMode:            approval.BindingBusiness,
+		BusinessKind:           new(approval.BusinessKind("order")),
 		BusinessBinding: &approval.BusinessBindingConfig{
 			KeyColumns:   []string{pk},
 			StatusColumn: status,
@@ -362,7 +355,7 @@ func (s *CreateFlowTestSuite) TestCreateFlowLinkageColumns() {
 			Code:                   code,
 			Name:                   "Linkage Bound",
 			CategoryID:             s.categoryOf("tenant-linkage"),
-			BindingMode:            approval.BindingBusiness,
+			BusinessKind:           new(approval.BusinessKind("order")),
 			BusinessBinding: &approval.BusinessBindingConfig{
 				TableName:        table,
 				KeyColumns:       []string{pk},
@@ -434,7 +427,6 @@ func (s *CreateFlowTestSuite) TestInitiatorPolicyIsExclusive() {
 			Code:                  code,
 			Name:                  "Initiator Policy Flow",
 			CategoryID:            s.categoryOf("tenant-policy"),
-			BindingMode:           approval.BindingStandalone,
 			InstanceTitleTemplate: "Template",
 		}
 	}

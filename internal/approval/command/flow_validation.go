@@ -1,6 +1,7 @@
 package command
 
 import (
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"text/template"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -8,14 +9,14 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-// validateBindingMode rejects an out-of-enum binding mode at save time. A
-// typo'd mode would silently behave like "standalone" and disable the business
-// write-back.
-func validateBindingMode(mode approval.BindingMode) error {
-	if !mode.IsValid() {
-		return approval.ErrInvalidBindingMode
+func validateBusinessKind(registry *business.Registry, kind *approval.BusinessKind, binding *approval.BusinessBindingConfig) error {
+	if kind != nil {
+		_, err := registry.Require(*kind)
+		return err
 	}
-
+	if binding != nil {
+		return approval.ErrBusinessKindRequired
+	}
 	return nil
 }
 

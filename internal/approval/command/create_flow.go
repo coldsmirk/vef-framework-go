@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"fmt"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/calendar"
@@ -32,7 +33,7 @@ type CreateFlowCmd struct {
 	Icon                   *string
 	Description            *string
 	Labels                 map[string]string
-	BindingMode            approval.BindingMode
+	BusinessKind           *approval.BusinessKind
 	BusinessBinding        *approval.BusinessBindingConfig
 	AdminUserIDs           []string
 	IsAllInitiationAllowed bool
@@ -43,6 +44,7 @@ type CreateFlowCmd struct {
 
 // CreateFlowHandler handles the CreateFlowCmd command.
 type CreateFlowHandler struct {
+	business         *business.Registry
 	db               orm.DB
 	bindingValidator *binding.ConfigValidator
 	// initiatorKinds is the boot-registered initiator vocabulary with the
@@ -53,9 +55,9 @@ type CreateFlowHandler struct {
 }
 
 // NewCreateFlowHandler creates a new CreateFlowHandler.
-func NewCreateFlowHandler(db orm.DB, bindingValidator *binding.ConfigValidator, initiators *strategy.CompositeInitiatorResolver) *CreateFlowHandler {
+func NewCreateFlowHandler(db orm.DB, bindingValidator *binding.ConfigValidator, initiators *strategy.CompositeInitiatorResolver, registry *business.Registry) *CreateFlowHandler {
 	return &CreateFlowHandler{
-		db:               db,
+		db: db, business: registry,
 		bindingValidator: bindingValidator,
 		initiatorKinds:   shared.SelectionIndex(initiators.Descriptors()),
 	}
@@ -65,7 +67,7 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 	db := contextx.DB(ctx, h.db)
 	tenantID := cmd.TenantID
 
-	if err := validateBindingMode(cmd.BindingMode); err != nil {
+	if err := validateBusinessKind(h.business, cmd.BusinessKind, cmd.BusinessBinding); err != nil {
 		return nil, err
 	}
 
@@ -83,7 +85,7 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 		return nil, err
 	}
 
-	businessBinding, err := binding.NormalizeConfig(cmd.BindingMode, cmd.BusinessBinding)
+	businessBinding, err := binding.NormalizeConfig(cmd.BusinessBinding)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +134,7 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 		Icon:                   cmd.Icon,
 		Description:            cmd.Description,
 		Labels:                 cmd.Labels,
-		BindingMode:            cmd.BindingMode,
+		BusinessKind:           cmd.BusinessKind,
 		BusinessBinding:        businessBinding,
 		AdminUserIDs:           cmd.AdminUserIDs,
 		IsAllInitiationAllowed: cmd.IsAllInitiationAllowed,

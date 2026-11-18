@@ -400,8 +400,8 @@ func (s *GetMyInstanceDetailTestSuite) TestFieldPermissionsProjection() {
 
 	flow := &approval.Flow{
 		TenantID: "default", CategoryID: category.ID, Code: "perm-flow", Name: "Perm Flow",
-		BindingMode: approval.BindingStandalone, IsAllInitiationAllowed: true,
-		InstanceTitleTemplate: "Test", IsActive: true,
+		IsAllInitiationAllowed: true,
+		InstanceTitleTemplate:  "Test", IsActive: true,
 	}
 	_, err = s.db.NewInsert().Model(flow).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert flow")
@@ -487,8 +487,8 @@ func (s *GetMyInstanceDetailTestSuite) TestParticipantAccess() {
 
 	flow := &approval.Flow{
 		TenantID: "default", CategoryID: category.ID, Code: "party-flow", Name: "Participant Flow",
-		BindingMode: approval.BindingStandalone, IsAllInitiationAllowed: true,
-		InstanceTitleTemplate: "Test", IsActive: true,
+		IsAllInitiationAllowed: true,
+		InstanceTitleTemplate:  "Test", IsActive: true,
 	}
 	_, err = s.db.NewInsert().Model(flow).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert flow")
@@ -652,8 +652,8 @@ func (s *GetMyInstanceDetailTestSuite) TestTableFieldHiddenStripped() {
 
 	flow := &approval.Flow{
 		TenantID: "default", CategoryID: category.ID, Code: "tbl-hidden-flow", Name: "Table Hidden Flow",
-		BindingMode: approval.BindingStandalone, IsAllInitiationAllowed: true,
-		InstanceTitleTemplate: "Test", IsActive: true,
+		IsAllInitiationAllowed: true,
+		InstanceTitleTemplate:  "Test", IsActive: true,
 	}
 	_, err = s.db.NewInsert().Model(flow).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert flow")

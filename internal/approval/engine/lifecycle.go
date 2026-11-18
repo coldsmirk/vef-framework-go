@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -19,6 +20,7 @@ import (
 // hooks are reserved for cases that must run inside the business
 // transaction.
 type LifecycleHookRunner struct {
+	business  *business.Registry
 	projector InstanceProjector
 	hooks     []approval.InstanceLifecycleHook
 }
@@ -32,12 +34,26 @@ type InstanceProjector interface {
 
 // NewLifecycleHookRunner constructs a runner from the engine projector and FX
 // group of host hooks.
-func NewLifecycleHookRunner(projector InstanceProjector, hooks []approval.InstanceLifecycleHook) *LifecycleHookRunner {
-	return &LifecycleHookRunner{projector: projector, hooks: hooks}
+func NewLifecycleHookRunner(projector InstanceProjector, hooks []approval.InstanceLifecycleHook, registry *business.Registry) *LifecycleHookRunner {
+	return &LifecycleHookRunner{business: registry, projector: projector, hooks: hooks}
+}
+
+func (r *LifecycleHookRunner) scoped(instance *approval.Instance) approval.InstanceLifecycleHook {
+	if instance.BusinessKind == nil {
+		return nil
+	}
+	h, _ := r.business.Lookup(*instance.BusinessKind)
+	hook, _ := h.(approval.InstanceLifecycleHook)
+	return hook
 }
 
 // OnInstanceCreated invokes every registered hook's OnInstanceCreated.
 func (r *LifecycleHookRunner) OnInstanceCreated(ctx context.Context, db orm.DB, instance *approval.Instance) error {
+	if hook := r.scoped(instance); hook != nil {
+		if err := hook.OnInstanceCreated(ctx, db, instance); err != nil {
+			return fmt.Errorf("business lifecycle on creation: %w", err)
+		}
+	}
 	for i, h := range r.hooks {
 		if err := h.OnInstanceCreated(ctx, db, instance); err != nil {
 			return fmt.Errorf("lifecycle hook[%d].OnInstanceCreated: %w", i, err)
@@ -61,6 +77,11 @@ func (r *LifecycleHookRunner) OnInstanceTransition(ctx context.Context, db orm.D
 		}
 	}
 
+	if hook := r.scoped(instance); hook != nil {
+		if err := hook.OnInstanceTransition(ctx, db, instance, from, to); err != nil {
+			return fmt.Errorf("business lifecycle on transition: %w", err)
+		}
+	}
 	for i, h := range r.hooks {
 		if err := h.OnInstanceTransition(ctx, db, instance, from, to); err != nil {
 			return fmt.Errorf("lifecycle hook[%d].OnInstanceTransition: %w", i, err)

@@ -20,9 +20,9 @@ func (s *InstanceResourceTestSuite) TestInitiationWindow() {
 			"approval/flow",
 			"update",
 			api.Params{
-				"flowId":                 flow.FlowID,
-				"name":                   "Approval Flow",
-				"bindingMode":            "standalone",
+				"flowId": flow.FlowID,
+				"name":   "Approval Flow",
+
 				"isAllInitiationAllowed": true,
 				"instanceTitleTemplate":  "Approval Flow {{.instanceNo}}",
 				"initiationWindow":       rule,
@@ -36,11 +36,11 @@ func (s *InstanceResourceTestSuite) TestInitiationWindow() {
 		"approval/flow",
 		"create",
 		api.Params{
-			"tenantId":               "default",
-			"categoryId":             s.categoryID,
-			"code":                   "invalid-window",
-			"name":                   "Invalid window",
-			"bindingMode":            "standalone",
+			"tenantId":   "default",
+			"categoryId": s.categoryID,
+			"code":       "invalid-window",
+			"name":       "Invalid window",
+
 			"isAllInitiationAllowed": true,
 			"instanceTitleTemplate":  "Window",
 			"initiationWindow":       empty,

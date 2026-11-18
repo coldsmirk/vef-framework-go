@@ -62,7 +62,7 @@ func (w *testWriter) WriteBack(
 	instance *approval.Instance,
 	_ approval.BindingTrigger,
 ) error {
-	if flow.BindingMode != approval.BindingBusiness {
+	if flow.BusinessBinding == nil {
 		return nil
 	}
 
@@ -70,7 +70,7 @@ func (w *testWriter) WriteBack(
 		return nil
 	}
 
-	binding, err := NormalizeConfig(flow.BindingMode, flow.BusinessBinding)
+	binding, err := NormalizeConfig(flow.BusinessBinding)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrBindingMisconfigured, err)
 	}
@@ -118,7 +118,7 @@ func (w *testWriter) WriteBack(
 func newBusinessFlow(table, pk, status string) *approval.Flow {
 	instanceIDColumn := "apv_instance_id"
 	flow := &approval.Flow{
-		BindingMode: approval.BindingBusiness,
+		BusinessKind: new(approval.BusinessKind("order")),
 		BusinessBinding: &approval.BusinessBindingConfig{
 			TableName:        table,
 			KeyColumns:       []string{pk},
@@ -246,7 +246,7 @@ func fetchOrder(t *testing.T, db orm.DB) orderRow {
 func TestWriterWriteBack(t *testing.T) {
 	t.Run("SkipsStandaloneFlows", func(t *testing.T) {
 		writer := newTestWriter(NewIdentityResolver())
-		flow := &approval.Flow{BindingMode: approval.BindingStandalone}
+		flow := &approval.Flow{}
 
 		err := writer.WriteBack(t.Context(), nil, flow, newBoundInstance("ord-1", approval.InstanceApproved), approval.BindingTriggerCompleted)
 		assert.NoError(t, err, "Standalone flows must skip the write-back without touching the DB")
@@ -473,7 +473,7 @@ func TestWriterWriteBack(t *testing.T) {
 		db := testx.NewTestDB(t)
 		table := setupCompositeBusinessTable(t, db, true)
 		flow := &approval.Flow{
-			BindingMode: approval.BindingBusiness,
+			BusinessKind: new(approval.BusinessKind("order")),
 			BusinessBinding: &approval.BusinessBindingConfig{
 				TableName:        table,
 				KeyColumns:       []string{"tenant_id", "order_no"},
@@ -519,7 +519,7 @@ func TestWriterWriteBack(t *testing.T) {
 		require.NoError(t, err, "test setup: seed duplicate business row")
 
 		flow := &approval.Flow{
-			BindingMode: approval.BindingBusiness,
+			BusinessKind: new(approval.BusinessKind("order")),
 			BusinessBinding: &approval.BusinessBindingConfig{
 				TableName:        table,
 				KeyColumns:       []string{"tenant_id", "order_no"},

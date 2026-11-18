@@ -414,31 +414,6 @@ func ProvideEventErrorSink(constructor any, paramTags ...string) fx.Option {
 	)
 }
 
-// SupplyBusinessRefProvider replaces the default no-op
-// approval.BusinessRefProvider with a host implementation that resolves or
-// allocates the business row during start_instance, inside the same
-// transaction. Register one when the business record must come into
-// existence together with the instance; callers that already know the
-// reference can simply pass businessRef in the start parameters instead.
-//
-// The engine-owned write-back of approval outcomes is not affected by this
-// hook and cannot be replaced — hosts extend around it with
-// ProvideApprovalLifecycleHook or event subscriptions.
-//
-// constructor is an fx-style factory that returns approval.BusinessRefProvider
-// (or a type implementing it). It may declare any dependencies already
-// registered in the fx graph.
-//
-// Example:
-//
-//	fx.New(
-//	    vef.Module,
-//	    vef.SupplyBusinessRefProvider(newOrderRefProvider),
-//	)
-func SupplyBusinessRefProvider(constructor any) fx.Option {
-	return fx.Decorate(constructor)
-}
-
 // SupplyBusinessRefResolver replaces the default approval.BusinessRefResolver.
 // The default handles a bare single-column key and a composite key encoded as
 // a JSON object. Register a replacement when Instance.BusinessRef uses another

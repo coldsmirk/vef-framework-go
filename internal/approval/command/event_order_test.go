@@ -58,7 +58,7 @@ func (s *EventOrderTestSuite) SetupSuite() {
 
 	s.start = wrapWithBusAndDB(s.db, s.bus, command.NewStartInstanceHandler(
 		s.db, eng, &MockInstanceNoGenerator{}, validSvc,
-		binding.NewNoopRefProvider(),
+		nil,
 		binding.NewProjector(binding.NewIdentityResolver(), binding.NewWriter(), nil),
 		nil,
 	))

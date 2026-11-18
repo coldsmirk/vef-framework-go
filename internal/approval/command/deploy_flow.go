@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
@@ -43,14 +44,15 @@ type ccProvider interface {
 
 // DeployFlowHandler handles the DeployFlowCmd command.
 type DeployFlowHandler struct {
+	business   *business.Registry
 	db         orm.DB
 	flowDefSvc *service.FlowDefinitionService
 	formParser approval.FormSchemaParser
 }
 
 // NewDeployFlowHandler creates a new DeployFlowHandler.
-func NewDeployFlowHandler(db orm.DB, flowDefSvc *service.FlowDefinitionService, formParser approval.FormSchemaParser) *DeployFlowHandler {
-	return &DeployFlowHandler{db: db, flowDefSvc: flowDefSvc, formParser: formParser}
+func NewDeployFlowHandler(db orm.DB, flowDefSvc *service.FlowDefinitionService, formParser approval.FormSchemaParser, registry *business.Registry) *DeployFlowHandler {
+	return &DeployFlowHandler{business: registry, db: db, flowDefSvc: flowDefSvc, formParser: formParser}
 }
 
 // deriveFormFields runs the injected parser over the host schema and normalizes
@@ -82,7 +84,7 @@ func loadDeployFlow(ctx context.Context, db orm.DB, flowID string) (approval.Flo
 
 	if err := db.NewSelect().
 		Model(&flow).
-		Select("code", "name", "binding_mode", "business_binding").
+		Select("code", "name", "instance_title_template", "business_kind", "business_binding").
 		WherePK().
 		ForUpdate().
 		Scan(ctx); err != nil {
@@ -93,7 +95,7 @@ func loadDeployFlow(ctx context.Context, db orm.DB, flowID string) (approval.Flo
 		return approval.Flow{}, nil, fmt.Errorf("load flow: %w", err)
 	}
 
-	businessBinding, err := binding.NormalizeConfig(flow.BindingMode, flow.BusinessBinding)
+	businessBinding, err := binding.NormalizeConfig(flow.BusinessBinding)
 	if err != nil {
 		return approval.Flow{}, nil, fmt.Errorf("normalize business binding snapshot: %w", err)
 	}
@@ -132,7 +134,7 @@ type deployment struct {
 
 // validate checks a deploy on its own — the graph, the form, and where the two
 // meet — before any row is read or written.
-func (h *DeployFlowHandler) validate(ctx context.Context, cmd DeployFlowCmd) (*deployment, error) {
+func (h *DeployFlowHandler) validate(ctx context.Context, cmd DeployFlowCmd, flow *approval.Flow) (*deployment, error) {
 	parsedNodeData, err := h.flowDefSvc.ValidateFlowDefinition(&cmd.FlowDefinition)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", approval.ErrInvalidFlowDesign, err)
@@ -140,9 +142,24 @@ func (h *DeployFlowHandler) validate(ctx context.Context, cmd DeployFlowCmd) (*d
 
 	// Derive the flat field list from the host-owned designer document; the
 	// schema itself stays opaque and is persisted verbatim below.
-	fields, err := h.deriveFormFields(ctx, cmd.FormSchema)
-	if err != nil {
-		return nil, err
+	var fields []approval.FormFieldDefinition
+	if flow.BusinessKind != nil {
+		handler, err := h.business.Require(*flow.BusinessKind)
+		if err != nil {
+			return nil, err
+		}
+		if (len(cmd.FormSchema) > 0 && string(cmd.FormSchema) != "null") || cmp.Or(cmd.StorageMode, approval.StorageJSON) != approval.StorageJSON {
+			return nil, approval.ErrInvalidFlowDesign
+		}
+		fields = handler.Describe().FormFields
+	} else {
+		if flow.BusinessBinding != nil {
+			return nil, approval.ErrBusinessKindRequired
+		}
+		fields, err = h.deriveFormFields(ctx, cmd.FormSchema)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if err := h.flowDefSvc.ValidateFormFields(fields); err != nil {
@@ -182,19 +199,19 @@ func (h *DeployFlowHandler) validate(ctx context.Context, cmd DeployFlowCmd) (*d
 }
 
 func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*approval.FlowVersion, error) {
-	planned, err := h.validate(ctx, cmd)
-	if err != nil {
-		return nil, err
-	}
-
-	parsedNodeData, fields := planned.nodeData, planned.fields
-
 	db := contextx.DB(ctx, h.db)
 
 	flow, businessBinding, err := loadDeployFlow(ctx, db, cmd.FlowID)
 	if err != nil {
 		return nil, err
 	}
+
+	planned, err := h.validate(ctx, cmd, &flow)
+	if err != nil {
+		return nil, err
+	}
+
+	parsedNodeData, fields := planned.nodeData, planned.fields
 
 	versionNumber, err := nextVersionNumber(ctx, db, flow.ID)
 	if err != nil {
@@ -211,6 +228,7 @@ func (h *DeployFlowHandler) Handle(ctx context.Context, cmd DeployFlowCmd) (*app
 		FormSchema:      cmd.FormSchema,
 		FormFields:      fields,
 		BusinessBinding: businessBinding,
+		BusinessKind:    flow.BusinessKind,
 	}
 	if _, err := db.NewInsert().
 		Model(&version).

@@ -6,20 +6,6 @@ import (
 	"fmt"
 )
 
-// BindingMode represents the mode of binding with business data.
-// It defines how the approval workflow stores and associates form data.
-type BindingMode string
-
-const (
-	BindingStandalone BindingMode = "standalone" // Standalone: form data is stored in the approval workflow's own table
-	BindingBusiness   BindingMode = "business"   // Business: links to existing business data table
-)
-
-// IsValid checks if the BindingMode is a valid value.
-func (m BindingMode) IsValid() bool {
-	return m == BindingStandalone || m == BindingBusiness
-}
-
 // VersionStatus represents the status of a flow version.
 type VersionStatus string
 
@@ -44,7 +30,6 @@ const (
 // StorageMode represents the storage mode of form data at the FlowVersion level.
 // It determines the physical storage location and format of form data, chosen
 // when the version is created at deploy and fixed for the version's lifetime.
-// This is different from BindingMode (Flow-level), which controls how the workflow integrates with business systems.
 //
 // Usage scenarios:
 //   - JSON mode: Flexible schema, suitable for frequently changing form fields, limited query capabilities

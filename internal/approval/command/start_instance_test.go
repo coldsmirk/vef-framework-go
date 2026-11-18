@@ -3,6 +3,7 @@ package command_test
 import (
 	"context"
 	"fmt"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -42,18 +43,33 @@ func (g *MockInstanceNoGenerator) Generate(_ context.Context, tenantID, _ string
 	return fmt.Sprintf("TEST-%d", g.counter), nil
 }
 
-// FixedBusinessRefProvider returns one configured business reference.
-type FixedBusinessRefProvider struct {
-	Ref string
+type testBusinessHandler struct {
+	approval.BusinessHandler
+	descriptor approval.BusinessKindDescriptor
+	submit     func(context.Context, orm.DB, *approval.SubmissionContext) (*approval.Submission, error)
 }
 
-func (p *FixedBusinessRefProvider) OnInstanceCreated(
-	context.Context,
-	orm.DB,
-	*approval.Flow,
-	*approval.Instance,
-) (string, error) {
-	return p.Ref, nil
+func (h testBusinessHandler) Describe() approval.BusinessKindDescriptor {
+	if h.descriptor.Kind != "" {
+		return h.descriptor
+	}
+	return approval.BusinessKindDescriptor{Kind: "order", Label: "Order"}
+}
+func (h testBusinessHandler) Submit(ctx context.Context, db orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
+	if h.submit != nil {
+		return h.submit(ctx, db, sc)
+	}
+	if sc.BusinessRef == nil {
+		return nil, approval.ErrBusinessRefRequired
+	}
+	return &approval.Submission{BusinessRef: *sc.BusinessRef, FormData: sc.FormData}, nil
+}
+func testRegistry(h approval.BusinessHandler) *business.Registry {
+	r, err := business.NewRegistry([]approval.BusinessHandler{h}, service.NewFlowDefinitionService().ValidateFormFields)
+	if err != nil {
+		panic(err)
+	}
+	return r
 }
 
 // StartInstanceTestSuite tests the StartInstanceHandler.
@@ -78,7 +94,7 @@ func (s *StartInstanceTestSuite) SetupSuite() {
 		s.db,
 		eventtest.NewFakeBus(),
 		command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, validSvc,
-			binding.NewNoopRefProvider(), s.projector, nil),
+			testRegistry(testBusinessHandler{}), s.projector, nil),
 	)
 }
 
@@ -246,15 +262,15 @@ func (s *StartInstanceTestSuite) flipFlowToBusinessBinding(table string) func() 
 	s.T().Helper()
 
 	flow := &approval.Flow{
-		BindingMode:     approval.BindingBusiness,
+		BusinessKind:    new(approval.BusinessKind("order")),
 		BusinessBinding: businessBindingForTable(table),
 	}
 	flow.ID = s.fixture.FlowID
-	_, err := s.db.NewUpdate().Model(flow).Select("binding_mode", "business_binding").WherePK().Exec(s.ctx)
+	_, err := s.db.NewUpdate().Model(flow).Select("business_kind", "business_binding").WherePK().Exec(s.ctx)
 	s.Require().NoError(err, "Should flip the fixture flow to a business binding")
 	_, err = s.db.NewUpdate().
 		Model((*approval.FlowVersion)(nil)).
-		Set("business_binding", flow.BusinessBinding).
+		Set("business_kind", flow.BusinessKind).Set("business_binding", flow.BusinessBinding).
 		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.fixture.VersionID) }).
 		Exec(s.ctx)
 	s.Require().NoError(err, "Should set the published version binding snapshot")
@@ -262,13 +278,13 @@ func (s *StartInstanceTestSuite) flipFlowToBusinessBinding(table string) func() 
 	return func() {
 		_, _ = s.db.NewUpdate().
 			Model((*approval.Flow)(nil)).
-			Set("binding_mode", approval.BindingStandalone).
-			Set("business_binding", nil).
+			Set("business_kind", nil).
+			Set("business_kind", nil).Set("business_binding", nil).
 			Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.fixture.FlowID) }).
 			Exec(s.ctx)
 		_, _ = s.db.NewUpdate().
 			Model((*approval.FlowVersion)(nil)).
-			Set("business_binding", nil).
+			Set("business_kind", nil).Set("business_binding", nil).
 			Where(func(cb orm.ConditionBuilder) { cb.PKEquals(s.fixture.VersionID) }).
 			Exec(s.ctx)
 	}
@@ -321,7 +337,7 @@ func (s *StartInstanceTestSuite) TestStartBusinessLinkageWriteBack() {
 	s.Assert().True(finishedAtNull, "The finish time left by the previous round should be cleared")
 }
 
-func (s *StartInstanceTestSuite) TestBusinessRefProviderReplacesBlankInput() {
+func (s *StartInstanceTestSuite) TestBusinessHandlerAllocatesReference() {
 	_, err := s.db.NewRaw(`CREATE TABLE biz_provider_order (
 		id VARCHAR(64) PRIMARY KEY,
 		approval_status VARCHAR(32),
@@ -348,7 +364,10 @@ func (s *StartInstanceTestSuite) TestBusinessRefProviderReplacesBlankInput() {
 			buildTestEngine(s.db),
 			new(MockInstanceNoGenerator),
 			service.NewValidationService(nil),
-			&FixedBusinessRefProvider{Ref: "ord-provider"},
+			testRegistry(testBusinessHandler{submit: func(_ context.Context, _ orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
+				s.NotEmpty(sc.InstanceID, "ID must be allocated before submission")
+				return &approval.Submission{BusinessRef: "ord-provider"}, nil
+			}}),
 			s.projector,
 			nil,
 		),
@@ -508,9 +527,9 @@ func (s *StartInstanceTestSuite) TestPublishedVersionKeepsBindingSnapshotAfterFl
 	restore := s.flipFlowToBusinessBinding("biz_snapshot_old")
 	defer restore()
 
-	flow := &approval.Flow{BindingMode: approval.BindingBusiness, BusinessBinding: businessBindingForTable("biz_snapshot_new")}
+	flow := &approval.Flow{BusinessKind: new(approval.BusinessKind("order")), BusinessBinding: businessBindingForTable("biz_snapshot_new")}
 	flow.ID = s.fixture.FlowID
-	_, err := s.db.NewUpdate().Model(flow).Select("binding_mode", "business_binding").WherePK().Exec(s.ctx)
+	_, err := s.db.NewUpdate().Model(flow).Select("business_kind", "business_binding").WherePK().Exec(s.ctx)
 	s.Require().NoError(err, "Should edit the mutable flow binding without touching its published version")
 
 	ref := "ord-snapshot"
@@ -549,12 +568,12 @@ func (s *StartInstanceTestSuite) TestEventualImmediateCompletionProjectsOnlyLate
 
 	fixture := deployAndPublishFlow(s.T(), s.ctx, s.db, "binding-eventual-final", simpleFlowDef())
 	businessBinding := businessBindingForTable("biz_eventual_final")
-	flow := &approval.Flow{BindingMode: approval.BindingBusiness, BusinessBinding: businessBinding}
+	flow := &approval.Flow{BusinessKind: new(approval.BusinessKind("order")), BusinessBinding: businessBinding}
 	flow.ID = fixture.FlowID
-	_, err = s.db.NewUpdate().Model(flow).Select("binding_mode", "business_binding").WherePK().Exec(s.ctx)
+	_, err = s.db.NewUpdate().Model(flow).Select("business_kind", "business_binding").WherePK().Exec(s.ctx)
 	s.Require().NoError(err, "Should configure the immediate-completion flow binding")
 	_, err = s.db.NewUpdate().Model((*approval.FlowVersion)(nil)).
-		Set("business_binding", businessBinding).
+		Set("business_kind", flow.BusinessKind).Set("business_binding", businessBinding).
 		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(fixture.VersionID) }).Exec(s.ctx)
 	s.Require().NoError(err, "Should configure the published binding snapshot")
 
@@ -563,14 +582,14 @@ func (s *StartInstanceTestSuite) TestEventualImmediateCompletionProjectsOnlyLate
 		BatchSize:   10,
 	}}
 	projector := binding.NewProjector(binding.NewIdentityResolver(), binding.NewWriter(), cfg)
-	hooks := engine.NewLifecycleHookRunner(projector, nil)
+	hooks := engine.NewLifecycleHookRunner(projector, nil, nil)
 	eng := buildTestEngineWithHooks(s.db, hooks)
 	start := wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewStartInstanceHandler(
 		s.db,
 		eng,
 		&MockInstanceNoGenerator{},
 		service.NewValidationService(nil),
-		binding.NewNoopRefProvider(),
+		testRegistry(testBusinessHandler{}),
 		projector,
 		nil,
 	))

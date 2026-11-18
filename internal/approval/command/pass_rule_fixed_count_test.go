@@ -85,7 +85,7 @@ func (s *PassRuleFixedCountTestSuite) SetupSuite() {
 			eng,
 			&MockInstanceNoGenerator{},
 			validSvc,
-			binding.NewNoopRefProvider(),
+			nil,
 			binding.NewProjector(binding.NewIdentityResolver(), binding.NewWriter(), nil),
 			nil,
 		),

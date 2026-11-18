@@ -4,32 +4,7 @@ import (
 	"context"
 	"regexp"
 	"strings"
-
-	"github.com/coldsmirk/vef-framework-go/orm"
 )
-
-// BusinessRefProvider supplies the business reference for a newly created
-// instance when Flow.BindingMode is BindingBusiness. It exists for the one
-// binding step the engine cannot do generically — resolving or allocating
-// the business row — and runs inside the start_instance transaction, so
-// returning an error rolls back the entire instance creation.
-//
-// The write-back of approval outcomes onto the business table is NOT part
-// of this contract: it is engine-owned, configuration-driven, and not
-// overridable. Hosts needing deeper integration register an
-// InstanceLifecycleHook or subscribe to instance events — extensions add
-// what the engine does not do; they do not replace what it does.
-//
-// Hosts register an implementation via vef.SupplyBusinessRefProvider.
-type BusinessRefProvider interface {
-	// OnInstanceCreated resolves or creates the business row bound to the
-	// instance and returns its reference (see Instance.BusinessRef for the
-	// shape contract). Returning an empty string indicates the host has
-	// nothing to bind — e.g. the caller already supplied businessRef in the
-	// start parameters. Runs inside the start_instance transaction; an
-	// error rolls back instance creation.
-	OnInstanceCreated(ctx context.Context, db orm.DB, flow *Flow, instance *Instance) (businessRef string, err error)
-}
 
 // BusinessBindingConfig describes the business row targeted by a flow and the
 // columns that receive approval lifecycle state. KeyColumns must exactly match

@@ -65,7 +65,6 @@ func (b *ProcessorTestBase) InitFKChain(t require.TestingT, code string, nodeKin
 		CategoryID:            category.ID,
 		Code:                  code + "-flow",
 		Name:                  nodeName + " Test Flow",
-		BindingMode:           approval.BindingStandalone,
 		InstanceTitleTemplate: "test",
 	}
 	_, err = b.DB.NewInsert().Model(flow).Exec(b.Ctx)

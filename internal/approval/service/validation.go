@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"maps"
 	"math"
 	"regexp"
@@ -29,9 +30,15 @@ import (
 type Option func(*options)
 
 type options struct {
+	business         *business.Registry
 	formDataMaxBytes int
 	codeSets         mold.CodeSetLoader
 	calendar         calendar.Calendar
+}
+
+// WithBusinessRegistry enables business task actions for registered kinds.
+func WithBusinessRegistry(registry *business.Registry) Option {
+	return func(o *options) { o.business = registry }
 }
 
 // WithFormDataMaxBytes sets the cap on the JSON-encoded form payload. Values
@@ -99,6 +106,10 @@ func (s *ValidationService) ValidateFormData(ctx context.Context, fields []appro
 		return err
 	}
 
+	return s.validateFormValues(ctx, fields, formData)
+}
+
+func (s *ValidationService) validateFormValues(ctx context.Context, fields []approval.FormFieldDefinition, formData map[string]any) error {
 	if len(fields) == 0 {
 		return nil
 	}

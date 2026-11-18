@@ -120,7 +120,6 @@ func setupQueryFixture(t testing.TB, ctx context.Context, db orm.DB, code string
 		CategoryID:             category.ID,
 		Code:                   code,
 		Name:                   code + " Flow",
-		BindingMode:            approval.BindingStandalone,
 		IsAllInitiationAllowed: true,
 		InstanceTitleTemplate:  "Test",
 		IsActive:               true,
