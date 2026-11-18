@@ -10,6 +10,7 @@ type Task struct {
 	TaskID        string             `json:"taskId"`
 	InstanceID    string             `json:"instanceId"`
 	InstanceTitle string             `json:"instanceTitle"`
+	InstanceNo    string             `json:"instanceNo"`
 	FlowName      string             `json:"flowName"`
 	NodeName      string             `json:"nodeName"`
 	Assignee      approval.UserInfo  `json:"assignee"`

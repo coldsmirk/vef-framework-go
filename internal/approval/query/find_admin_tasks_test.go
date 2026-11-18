@@ -67,6 +67,11 @@ func (s *FindAdminTasksTestSuite) TestFindAll() {
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(3), result.Total, "Should find 3 tasks")
 	s.Assert().Len(result.Items, 3, "Should return 3 items")
+
+	for _, item := range result.Items {
+		s.Assert().Equal("Admin Task Instance", item.InstanceTitle, "Should carry the instance title")
+		s.Assert().Equal("ADT-001", item.InstanceNo, "Should carry the instance number")
+	}
 }
 
 func (s *FindAdminTasksTestSuite) TestFilterByAssignee() {

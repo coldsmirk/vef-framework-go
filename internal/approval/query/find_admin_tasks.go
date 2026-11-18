@@ -97,6 +97,8 @@ func (h *FindAdminTasksHandler) Handle(ctx context.Context, query FindAdminTasks
 		}
 		if inst := instanceMap[t.InstanceID]; inst != nil {
 			item.InstanceTitle = inst.Title
+			item.InstanceNo = inst.InstanceNo
+
 			if flow := flowMap[inst.FlowID]; flow != nil {
 				item.FlowName = flow.Name
 			}
