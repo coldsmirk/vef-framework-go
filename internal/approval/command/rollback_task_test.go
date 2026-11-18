@@ -545,7 +545,7 @@ func (s *RollbackTaskTestSuite) TestBusinessRollbackSnapshots() {
 			insertConcludedVisit(s.T(), s.ctx, s.db, inst.TenantID, inst.ID, s.targetNode.ID)
 
 			calls := 0
-			reg := testRegistry(testBusinessHandler{action: func(_ context.Context, _ orm.DB, ac *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
+			reg := testRegistry(StubBusinessHandler{action: func(_ context.Context, _ orm.DB, ac *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
 				calls++
 
 				s.Equal(approval.ActionRollback, ac.Action, "The handler must see the rollback decision")

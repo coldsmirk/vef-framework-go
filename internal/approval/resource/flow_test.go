@@ -30,13 +30,13 @@ func TestFlowResource(t *testing.T) {
 	suite.Run(t, new(FlowResourceTestSuite))
 }
 
-type orderHandler struct {
+type OrderHandler struct {
 	approval.BusinessHandler
 
 	kind approval.BusinessKind
 }
 
-func (h orderHandler) Describe() approval.BusinessKindDescriptor {
+func (h OrderHandler) Describe() approval.BusinessKindDescriptor {
 	return approval.BusinessKindDescriptor{Kind: h.kind, Label: string(h.kind)}
 }
 
@@ -44,8 +44,8 @@ func (s *FlowResourceTestSuite) SetupSuite() {
 	s.ctx = context.Background()
 	s.db, s.token = setupResourceApp(
 		&s.Suite,
-		vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{kind: "order"} }),
-		vef.ProvideApprovalBusinessHandler(func(approval.ParticipationReader) approval.BusinessHandler { return orderHandler{kind: "meeting"} }),
+		vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return OrderHandler{kind: "order"} }),
+		vef.ProvideApprovalBusinessHandler(func(approval.ParticipationReader) approval.BusinessHandler { return OrderHandler{kind: "meeting"} }),
 	)
 
 	// Insert a shared category for flow tests

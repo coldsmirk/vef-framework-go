@@ -65,7 +65,7 @@ func (s *DeployFlowTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Should insert test flow")
 
 	s.flowID = flow.ID
-	s.handler = command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser(), testRegistry(testBusinessHandler{}))
+	s.handler = command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser(), testRegistry(StubBusinessHandler{}))
 }
 
 func (s *DeployFlowTestSuite) TearDownTest() {
@@ -687,7 +687,7 @@ func (s *DeployFlowTestSuite) TestDeployNumbersAfterEveryVersion() {
 
 func (s *DeployFlowTestSuite) TestBusinessCatalog() {
 	descriptor := approval.BusinessKindDescriptor{Kind: "order", Label: "Order", FormFields: []approval.FormFieldDefinition{{Key: "reason", Kind: approval.FieldInput, Label: "Reason"}}}
-	h := command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser(), testRegistry(testBusinessHandler{descriptor: descriptor}))
+	h := command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser(), testRegistry(StubBusinessHandler{descriptor: descriptor}))
 	flow := &approval.Flow{ID: s.flowID, BusinessKind: &descriptor.Kind, InstanceTitleTemplate: "{{.formData.reason}}"}
 	_, err := s.db.NewUpdate().Model(flow).Select("business_kind", "instance_title_template").WherePK().Exec(s.ctx)
 

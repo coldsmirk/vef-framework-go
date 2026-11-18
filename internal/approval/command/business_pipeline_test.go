@@ -19,9 +19,9 @@ import (
 	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
-type pipelineUsers struct{}
+type PipelineUsers struct{}
 
-func (pipelineUsers) ResolveUsers(context.Context, []string) (map[string]approval.UserInfo, error) {
+func (*PipelineUsers) ResolveUsers(context.Context, []string) (map[string]approval.UserInfo, error) {
 	return map[string]approval.UserInfo{"resolved": {ID: "resolved", Name: "Reviewer"}}, nil
 }
 
@@ -32,7 +32,7 @@ func (s *StartInstanceTestSuite) TestBusinessPipeline() {
 
 	var allocated string
 
-	h := testBusinessHandler{
+	h := StubBusinessHandler{
 		descriptor: approval.BusinessKindDescriptor{Kind: "order", Label: "Order", FormFields: fields},
 		submit: func(ctx context.Context, db orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
 			calls++
@@ -105,7 +105,7 @@ func (s *StartInstanceTestSuite) TestBusinessPipeline() {
 
 		return inst, err
 	}
-	eng := buildTestEngineWithUsers(s.db, nil, pipelineUsers{})
+	eng := buildTestEngineWithUsers(s.db, nil, new(PipelineUsers))
 	s.Run("HandlerAndValidationRollBack", func() {
 		for _, data := range []map[string]any{{"reviewer": "raw", "veto": true}, {"reviewer": "raw", "output": nil}} {
 			_, err := start(reg, eng, data)
@@ -131,7 +131,7 @@ func (s *StartInstanceTestSuite) TestBusinessPipeline() {
 				Exec(s.ctx)
 		}()
 
-		_, err = start(reg, buildTestEngineWithUsers(s.db, nil, pipelineUsers{}), map[string]any{"reviewer": "raw", "output": "resolved"})
+		_, err = start(reg, buildTestEngineWithUsers(s.db, nil, new(PipelineUsers)), map[string]any{"reviewer": "raw", "output": "resolved"})
 		s.Require().Error(err, "An unavailable assignee resolver should fail engine traversal")
 		exists, err := s.db.NewSelect().Model((*approval.FlowCategory)(nil)).Where(func(cb orm.ConditionBuilder) { cb.Equals("code", allocated) }).Exists(s.ctx)
 		s.Require().NoError(err, "Should query business writes")
@@ -193,7 +193,7 @@ func (s *ResubmitInstanceTestSuite) TestBusinessResubmit() {
 	defer setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, nil)
 
 	for _, ref := range []string{"changed", "original"} {
-		reg := testRegistry(testBusinessHandler{submit: func(_ context.Context, _ orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
+		reg := testRegistry(StubBusinessHandler{submit: func(_ context.Context, _ orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
 			s.True(sc.IsResubmission(), "Submit should identify a resubmission")
 			s.Equal(inst.ID, sc.InstanceID, "Should reuse the instance ID")
 			s.Equal("original", *sc.BusinessRef, "The reference is pinned to the instance")
@@ -246,7 +246,7 @@ func (s *ApproveTaskTestSuite) TestBusinessDecisions() {
 
 			calls := 0
 			veto := errors.New("veto decision")
-			reg := testRegistry(testBusinessHandler{action: func(ctx context.Context, db orm.DB, ac *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
+			reg := testRegistry(StubBusinessHandler{action: func(ctx context.Context, db orm.DB, ac *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
 				calls++
 
 				s.Equal(which, ac.Action, "Should dispatch the actual human decision")
@@ -331,7 +331,7 @@ func (s *ApproveTaskTestSuite) TestBusinessViews() {
 	var seen *approval.ViewContext
 
 	failure := errors.New("view unavailable")
-	reg := testRegistry(testBusinessHandler{view: func(_ context.Context, _ orm.DB, vc *approval.ViewContext) (any, error) {
+	reg := testRegistry(StubBusinessHandler{view: func(_ context.Context, _ orm.DB, vc *approval.ViewContext) (any, error) {
 		seen = vc
 		if vc.Viewer.Name == "failed" {
 			return nil, failure
@@ -397,7 +397,7 @@ func (s *ApproveTaskTestSuite) TestSeatChangesSkipBusinessDecision() {
 	s.Require().NoError(err, "Should allow parallel seat changes")
 	eng := buildTestEngine(s.db)
 	svc := service.NewTaskService(
-		service.WithBusinessRegistry(testRegistry(testBusinessHandler{action: func(context.Context, orm.DB, *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
+		service.WithBusinessRegistry(testRegistry(StubBusinessHandler{action: func(context.Context, orm.DB, *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
 			s.Fail("Seat changes must not call OnTaskAction")
 
 			return nil, nil

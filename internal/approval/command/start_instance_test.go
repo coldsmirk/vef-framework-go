@@ -43,7 +43,7 @@ func (g *MockInstanceNoGenerator) Generate(_ context.Context, tenantID, _ string
 	return fmt.Sprintf("TEST-%d", g.counter), nil
 }
 
-type testBusinessHandler struct {
+type StubBusinessHandler struct {
 	approval.BusinessHandler
 
 	descriptor approval.BusinessKindDescriptor
@@ -52,7 +52,7 @@ type testBusinessHandler struct {
 	submit     func(context.Context, orm.DB, *approval.SubmissionContext) (*approval.Submission, error)
 }
 
-func (h testBusinessHandler) Describe() approval.BusinessKindDescriptor {
+func (h StubBusinessHandler) Describe() approval.BusinessKindDescriptor {
 	if h.descriptor.Kind != "" {
 		return h.descriptor
 	}
@@ -60,7 +60,7 @@ func (h testBusinessHandler) Describe() approval.BusinessKindDescriptor {
 	return approval.BusinessKindDescriptor{Kind: "order", Label: "Order"}
 }
 
-func (h testBusinessHandler) Submit(ctx context.Context, db orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
+func (h StubBusinessHandler) Submit(ctx context.Context, db orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
 	if h.submit != nil {
 		return h.submit(ctx, db, sc)
 	}
@@ -72,11 +72,11 @@ func (h testBusinessHandler) Submit(ctx context.Context, db orm.DB, sc *approval
 	return &approval.Submission{BusinessRef: *sc.BusinessRef, FormData: sc.FormData}, nil
 }
 
-func (h testBusinessHandler) OnTaskAction(ctx context.Context, db orm.DB, ac *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
+func (h StubBusinessHandler) OnTaskAction(ctx context.Context, db orm.DB, ac *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
 	return h.action(ctx, db, ac)
 }
 
-func (h testBusinessHandler) View(ctx context.Context, db orm.DB, vc *approval.ViewContext) (any, error) {
+func (h StubBusinessHandler) View(ctx context.Context, db orm.DB, vc *approval.ViewContext) (any, error) {
 	return h.view(ctx, db, vc)
 }
 
@@ -111,7 +111,7 @@ func (s *StartInstanceTestSuite) SetupSuite() {
 		s.db,
 		eventtest.NewFakeBus(),
 		command.NewStartInstanceHandler(s.db, eng, &MockInstanceNoGenerator{}, validSvc,
-			testRegistry(testBusinessHandler{}), s.projector, nil),
+			testRegistry(StubBusinessHandler{}), s.projector, nil),
 	)
 }
 
@@ -380,7 +380,7 @@ func (s *StartInstanceTestSuite) TestBusinessHandlerAllocatesReference() {
 			buildTestEngine(s.db),
 			new(MockInstanceNoGenerator),
 			service.NewValidationService(nil),
-			testRegistry(testBusinessHandler{submit: func(_ context.Context, _ orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
+			testRegistry(StubBusinessHandler{submit: func(_ context.Context, _ orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
 				s.NotEmpty(sc.InstanceID, "ID must be allocated before submission")
 
 				return &approval.Submission{BusinessRef: "ord-provider"}, nil
@@ -606,7 +606,7 @@ func (s *StartInstanceTestSuite) TestEventualImmediateCompletionProjectsOnlyLate
 		eng,
 		&MockInstanceNoGenerator{},
 		service.NewValidationService(nil),
-		testRegistry(testBusinessHandler{}),
+		testRegistry(StubBusinessHandler{}),
 		projector,
 		nil,
 	))

@@ -11,17 +11,17 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 )
 
-type described struct {
+type DescribedHandler struct {
 	approval.BusinessHandler
 
 	d approval.BusinessKindDescriptor
 }
 
-func (h *described) Describe() approval.BusinessKindDescriptor { return h.d }
+func (h *DescribedHandler) Describe() approval.BusinessKindDescriptor { return h.d }
 func TestRegistry(t *testing.T) {
 	validate := service.NewFlowDefinitionService().ValidateFormFields
-	h := func(k approval.BusinessKind) *described {
-		return &described{d: approval.BusinessKindDescriptor{Kind: k, Label: "Label"}}
+	h := func(k approval.BusinessKind) *DescribedHandler {
+		return &DescribedHandler{d: approval.BusinessKindDescriptor{Kind: k, Label: "Label"}}
 	}
 	t.Run("RejectsInvalidRegistrations", func(t *testing.T) {
 		for _, k := range []approval.BusinessKind{"A", "a..b", "approval.reserved", approval.BusinessKind(strings.Repeat("a", 65))} {

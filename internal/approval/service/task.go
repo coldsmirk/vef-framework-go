@@ -781,7 +781,7 @@ func isRoutedTo(ctx context.Context, db orm.DB, instanceID, userID string) (bool
 // nodes back is as entitled to ask why the instance is stuck as the applicant
 // is, and the per-(task, urger) cooldown is what bounds the volume.
 func (*TaskService) IsUrgeAuthorized(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
-	p, err := (participationReader{}).Participation(ctx, db, approval.ParticipationInput{InstanceID: instanceID, UserID: userID, Caller: approval.SystemCaller})
+	p, err := new(participationReader).Participation(ctx, db, approval.ParticipationInput{InstanceID: instanceID, UserID: userID, Caller: approval.SystemCaller})
 
 	return p.Has(approval.ParticipantApplicant) || p.Has(approval.ParticipantAssignee) || p.Has(approval.ParticipantDelegator), err
 }
@@ -802,7 +802,7 @@ func (*TaskService) IsUrgeAuthorized(ctx context.Context, db orm.DB, instanceID,
 // of this participant set — otherwise the new viewer reaches the detail and
 // finds every form field stripped.
 func (*TaskService) IsInstanceParticipant(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
-	p, err := (participationReader{}).Participation(ctx, db, approval.ParticipationInput{InstanceID: instanceID, UserID: userID, Caller: approval.SystemCaller})
+	p, err := new(participationReader).Participation(ctx, db, approval.ParticipationInput{InstanceID: instanceID, UserID: userID, Caller: approval.SystemCaller})
 
 	return p.IsParticipant(), err
 }

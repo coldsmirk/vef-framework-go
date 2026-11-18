@@ -185,12 +185,12 @@ func TestLifecycleHookRunnerOnInstanceTransition(t *testing.T) {
 	})
 }
 
-type scopedHook struct {
+type ScopedHook struct {
 	approval.BusinessHandler
 	*RecordingHook
 }
 
-func (scopedHook) Describe() approval.BusinessKindDescriptor {
+func (ScopedHook) Describe() approval.BusinessKindDescriptor {
 	return approval.BusinessKindDescriptor{Kind: "order", Label: "Order"}
 }
 
@@ -208,7 +208,7 @@ func TestScopedLifecycleHook(t *testing.T) {
 			var log []string
 
 			r, err := business.NewRegistry(
-				[]approval.BusinessHandler{scopedHook{RecordingHook: &RecordingHook{name: "scoped", log: &log}}},
+				[]approval.BusinessHandler{ScopedHook{RecordingHook: &RecordingHook{name: "scoped", log: &log}}},
 				func([]approval.FormFieldDefinition) error { return nil },
 			)
 			require.NoError(t, err, "Should register a handler with lifecycle hooks")

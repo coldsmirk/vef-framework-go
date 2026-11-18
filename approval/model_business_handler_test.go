@@ -11,14 +11,14 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-type orderRecord struct {
+type OrderRecord struct {
 	orm.BaseModel `bun:"table:test_business_order"`
 
 	ID         string `json:"id" bun:",pk"`
 	Title      string `json:"title"`
 	Restricted string `json:"secret" bun:"private_note"`
 }
-type orderParams struct {
+type OrderParams struct {
 	ID         string `json:"id"`
 	Title      string `json:"title" validate:"required"`
 	Restricted string `json:"secret"`
@@ -27,19 +27,19 @@ type orderParams struct {
 func TestModelBusinessHandler(t *testing.T) {
 	descriptor := approval.BusinessKindDescriptor{Kind: "order", Label: "Order", FormFields: []approval.FormFieldDefinition{{Key: "title"}, {Key: "secret"}}}
 	t.Run("CompositeKey", func(t *testing.T) {
-		type composite struct {
+		type Composite struct {
 			Tenant string `bun:",pk"`
 			ID     string `bun:",pk"`
 		}
 
-		_, err := approval.NewModelBusinessHandler[composite, orderParams](descriptor)
+		_, err := approval.NewModelBusinessHandler[Composite, OrderParams](descriptor)
 		require.Error(t, err, "Composite primary keys need a custom handler")
 	})
 	testx.ForEachDB(t, func(t *testing.T, env *testx.DBEnv) {
 		ctx, db := env.Ctx, env.DB
-		_, err := db.NewCreateTable().Model((*orderRecord)(nil)).Exec(ctx)
+		_, err := db.NewCreateTable().Model((*OrderRecord)(nil)).Exec(ctx)
 		require.NoError(t, err, "Should create the host table")
-		h, err := approval.NewModelBusinessHandler[orderRecord, orderParams](descriptor)
+		h, err := approval.NewModelBusinessHandler[OrderRecord, OrderParams](descriptor)
 		require.NoError(t, err, "A single string primary key should be supported")
 
 		sc := &approval.SubmissionContext{FormData: map[string]any{"id": "one", "title": "first", "secret": "private"}}
@@ -54,9 +54,9 @@ func TestModelBusinessHandler(t *testing.T) {
 		require.ErrorIs(t, err, approval.ErrInvalidBusinessRef, "An existing reference requires authorization")
 
 		accessCalled := false
-		custom, err := approval.NewModelBusinessHandler[orderRecord, orderParams](
+		custom, err := approval.NewModelBusinessHandler[OrderRecord, OrderParams](
 			descriptor,
-			approval.WithRecordAccess(func(_ context.Context, _ orm.DB, in *approval.SubmissionContext, m *orderRecord) error {
+			approval.WithRecordAccess(func(_ context.Context, _ orm.DB, in *approval.SubmissionContext, m *OrderRecord) error {
 				accessCalled = true
 
 				require.Same(t, sc, in, "Access should receive the current submitter's context")
@@ -64,8 +64,8 @@ func TestModelBusinessHandler(t *testing.T) {
 
 				return nil
 			}),
-			approval.WithSnapshot(func(m *orderRecord) map[string]any { return map[string]any{"summary": m.Title} }),
-			approval.WithView(func(_ context.Context, _ orm.DB, vc *approval.ViewContext, m *orderRecord) (any, error) {
+			approval.WithSnapshot(func(m *OrderRecord) map[string]any { return map[string]any{"summary": m.Title} }),
+			approval.WithView(func(_ context.Context, _ orm.DB, vc *approval.ViewContext, m *OrderRecord) (any, error) {
 				return vc.Viewer.ID + "/" + m.Title, nil
 			}),
 		)

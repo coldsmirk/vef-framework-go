@@ -63,7 +63,7 @@ func (s *UpdateFlowTestSuite) SetupSuite() {
 	_, err = s.db.NewInsert().Model(initiator).Exec(s.ctx)
 	s.Require().NoError(err, "Should insert test initiator")
 
-	s.handler = command.NewUpdateFlowHandler(s.db, newTestBindingValidator(), mustInitiatorComposite(nil), testRegistry(testBusinessHandler{}))
+	s.handler = command.NewUpdateFlowHandler(s.db, newTestBindingValidator(), mustInitiatorComposite(nil), testRegistry(StubBusinessHandler{}))
 }
 
 func (s *UpdateFlowTestSuite) TearDownTest() {
