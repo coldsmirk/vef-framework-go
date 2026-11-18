@@ -397,7 +397,7 @@ func (s *UpdateFlowTestSuite) TestUpdateFlowRejectsInvalidEnums() {
 			InstanceTitleTemplate:  "t",
 		})
 		s.Require().ErrorIs(err, approval.ErrBusinessKindNotRegistered,
-			"An out-of-enum binding mode would silently disable the business write-back and must be rejected")
+			"Saving an unregistered business kind must fail")
 	})
 
 	// A restricted flow is what reaches the per-rule checks: rules alongside
