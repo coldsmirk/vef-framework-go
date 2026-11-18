@@ -3,7 +3,6 @@ package approval
 import (
 	"context"
 	"fmt"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/voiding"
 
 	"go.uber.org/fx"
 
@@ -23,6 +22,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/timeout"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/voiding"
 )
 
 // Module is the approval workflow engine module.

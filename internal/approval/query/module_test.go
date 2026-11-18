@@ -61,7 +61,9 @@ func TestRegisterHandlers(t *testing.T) {
 	}{
 		{"PlanVoid", func() (err error) {
 			defer recoverDispatch(&err)
+
 			_, err = cqrs.Send[PlanVoidQuery, *approval.VoidPreview](context.Background(), bus, PlanVoidQuery{})
+
 			return err
 		}},
 		{"GetFlowGraph", func() (err error) {

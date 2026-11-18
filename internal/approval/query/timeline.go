@@ -90,7 +90,7 @@ func mergeMilestones(entries, milestones []approval.TimelineEntry) []approval.Ti
 
 	for _, entry := range entries {
 		// A final milestone always follows every visit, including visits in the same clock tick.
- for next < len(milestones) && milestones[next].Kind == approval.TimelineEntryWithdraw && !milestones[next].StartedAt.After(entry.StartedAt) {
+		for next < len(milestones) && milestones[next].Kind == approval.TimelineEntryWithdraw && !milestones[next].StartedAt.After(entry.StartedAt) {
 			merged = append(merged, milestones[next])
 			next++
 		}

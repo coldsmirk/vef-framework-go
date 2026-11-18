@@ -77,7 +77,9 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	if err != nil {
 		return nil, err
 	}
+
 	flow, version := start.Flow, start.Version
+
 	instanceID := id.Generate()
 	if version.BusinessKind != nil {
 		submission, err := h.businessRegistry.Submit(

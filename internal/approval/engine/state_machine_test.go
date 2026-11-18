@@ -178,7 +178,8 @@ func TestInstanceStateMachine(t *testing.T) {
 			name   string
 			status approval.InstanceStatus
 		}{
-			{"Voided", approval.InstanceVoided}, {"Terminated", approval.InstanceTerminated},
+			{"Voided", approval.InstanceVoided},
+			{"Terminated", approval.InstanceTerminated},
 			{"Rejected", approval.InstanceRejected},
 		}
 

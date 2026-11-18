@@ -92,10 +92,12 @@ func (h *GetAdminInstanceDetailHandler) Handle(ctx context.Context, query GetAdm
 	if err != nil {
 		return nil, err
 	}
+
 	detail.AvailableActions = []string{}
 	if canOfferVoid(bundle, h.registry, detail.VoidRequest, approval.VoidDirect) {
 		detail.AvailableActions = append(detail.AvailableActions, "void")
 	}
+
 	detail.Annotations, err = loadAnnotations(ctx, db, bundle, nil)
 	if err != nil {
 		return nil, err

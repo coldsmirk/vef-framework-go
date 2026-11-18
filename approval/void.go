@@ -45,16 +45,21 @@ func (p *VoidPlan) IsBlocked() bool { return len(p.Blockers) > 0 }
 // MarshalJSON represents an empty list of effects as an array on every wire path.
 func (p VoidPlan) MarshalJSON() ([]byte, error) {
 	type wire VoidPlan
-	if p.Blockers == nil {
-		p.Blockers = []string{}
+	v := wire(p)
+
+	if v.Blockers == nil {
+		v.Blockers = []string{}
 	}
-	if p.Reversals == nil {
-		p.Reversals = []string{}
+
+	if v.Reversals == nil {
+		v.Reversals = []string{}
 	}
-	if p.FollowUps == nil {
-		p.FollowUps = []string{}
+
+	if v.FollowUps == nil {
+		v.FollowUps = []string{}
 	}
-	return json.Marshal(wire(p))
+
+	return json.Marshal(v)
 }
 
 type VoidStatus string
@@ -112,6 +117,7 @@ type VoidPreview struct {
 
 type InstanceVoidedEvent struct {
 	InstanceEventBase
+
 	Operator          UserInfo `json:"operator"`
 	Reason            string   `json:"reason"`
 	RequestInstanceID *string  `json:"requestInstanceId,omitempty"`

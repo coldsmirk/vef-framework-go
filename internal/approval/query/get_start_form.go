@@ -51,7 +51,9 @@ func (h *GetStartFormHandler) Handle(ctx context.Context, query GetStartFormQuer
 	if err != nil {
 		return nil, err
 	}
+
 	flow, version := start.Flow, start.Version
+
 	return &my.StartForm{
 		FlowID:           flow.ID,
 		FlowCode:         flow.Code,

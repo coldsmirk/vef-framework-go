@@ -102,15 +102,18 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 	if err != nil {
 		return nil, err
 	}
+
 	if canOfferVoid(bundle, h.registry, detail.VoidRequest, approval.VoidApproval) {
 		ok, err := canRequestVoid(ctx, db, h.validation, bundle, query)
 		if err != nil {
 			return nil, err
 		}
+
 		if ok {
 			detail.AvailableActions = append(detail.AvailableActions, "request_void")
 		}
 	}
+
 	detail.Annotations, err = loadAnnotations(ctx, db, bundle, service.NewAnnotationViewer(instance.ApplicantID, query.Viewer.ID, bundle.Tasks))
 	if err != nil {
 		return nil, err

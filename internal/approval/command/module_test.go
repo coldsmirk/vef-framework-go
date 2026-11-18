@@ -69,7 +69,9 @@ func TestRegisterHandlers(t *testing.T) {
 		}},
 		{"VoidInstance", func() (err error) {
 			defer recoverDispatch(&err)
+
 			_, err = cqrs.Send[VoidInstanceCmd, cqrs.Unit](context.Background(), bus, VoidInstanceCmd{})
+
 			return err
 		}},
 		{"CreateFlow", func() (err error) {

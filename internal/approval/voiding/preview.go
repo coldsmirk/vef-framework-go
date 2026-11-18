@@ -2,6 +2,7 @@ package voiding
 
 import (
 	"context"
+
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -13,9 +14,11 @@ func CheckInitiation(ctx context.Context, db orm.DB, validator *service.Validati
 	if err != nil {
 		return err
 	}
+
 	if start.Version.BusinessKind == nil || *start.Version.BusinessKind != approval.BusinessKindVoidRequest {
 		return approval.ErrVoidNotAllowed
 	}
+
 	return nil
 }
 
@@ -25,27 +28,34 @@ func (c *Core) Preview(ctx context.Context, db orm.DB, in approval.VoidInstanceI
 		if err != nil {
 			return nil, approval.ErrInstanceNotFound
 		}
+
 		in.Caller = approval.CallerContext{TenantID: tenant}
 	}
+
 	vc, err := c.target(ctx, db, in, false)
 	if err != nil {
 		return nil, err
 	}
+
 	if err := c.eligible(vc, policy, ""); err != nil {
 		return nil, err
 	}
+
 	rec, err := pending(ctx, db, in.InstanceID, false)
 	if err != nil {
 		return nil, err
 	}
+
 	if rec != nil {
 		if policy != approval.VoidApproval || rec.RequestInstanceID == nil {
 			return nil, approval.ErrVoidRequestPending
 		}
+
 		req := &approval.Instance{ID: *rec.RequestInstanceID}
 		if err := db.NewSelect().Model(req).WherePK().Scan(ctx); err != nil {
 			return nil, err
 		}
+
 		if req.Status != approval.InstanceReturned || req.ApplicantID != in.Operator.ID {
 			return nil, approval.ErrVoidRequestPending
 		}
@@ -54,9 +64,11 @@ func (c *Core) Preview(ctx context.Context, db orm.DB, in approval.VoidInstanceI
 			return nil, err
 		}
 	}
+
 	p, err := c.plan(ctx, db, vc)
 	if err != nil {
 		return nil, err
 	}
+
 	return &approval.VoidPreview{Policy: policy, VoidFlowCode: vc.Flow.VoidFlowCode, Plan: p}, nil
 }

@@ -51,6 +51,7 @@ func TestVerify(t *testing.T) {
 
 		t.Run("UpgradesVoidRecords", func(t *testing.T) {
 			const table = "apv_void_record"
+
 			fresh, err := sqlmigration.LoadTableColumns(env.Ctx, env.DB, env.DS.Kind, table)
 			require.NoError(t, err, "Should inspect fresh void records")
 			_, err = env.DB.NewRaw("DROP TABLE apv_void_record").Exec(env.Ctx)
@@ -60,8 +61,10 @@ func TestVerify(t *testing.T) {
 			upgraded, err := sqlmigration.LoadTableColumns(env.Ctx, env.DB, env.DS.Kind, table)
 			require.NoError(t, err, "Should inspect upgraded records")
 			assert.Equal(t, fresh, upgraded, "Fresh and upgraded void records must agree")
+
 			indexes, err := sqlmigration.LoadTableIndexes(env.Ctx, env.DB, env.DS.Kind, table)
 			require.NoError(t, err, "Should inspect void record indexes")
+
 			for _, cols := range [][]string{{"instance_id", "status"}, {"request_instance_id"}, {"tenant_id", "status"}} {
 				assert.True(t, slices.ContainsFunc(indexes, func(i sqlmigration.Index) bool { return slices.Equal(i.Columns, cols) }), "Should index %v", cols)
 			}

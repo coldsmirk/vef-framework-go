@@ -101,7 +101,12 @@ func TestInstanceResource(t *testing.T) {
 
 func (s *InstanceResourceTestSuite) SetupSuite() {
 	s.ctx = context.Background()
-	s.db, s.token = setupResourceApp(&s.Suite, vef.ProvideApprovalHandoverResolver(func() approval.HandoverResolver { return s }), vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return &s.voidBooking }), vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{kind: "invoice"} }))
+	s.db, s.token = setupResourceApp(
+		&s.Suite,
+		vef.ProvideApprovalHandoverResolver(func() approval.HandoverResolver { return s }),
+		vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return &s.voidBooking }),
+		vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{kind: "invoice"} }),
+	)
 
 	// Create shared category
 	cat := &approval.FlowCategory{
@@ -158,6 +163,7 @@ func (s *InstanceResourceTestSuite) createAndPublishFlow(code, name string, def 
 	if len(kind) > 0 {
 		params["businessKind"] = kind[0]
 	}
+
 	resp := s.MakeRPCRequestWithToken(api.Request{Resource: "approval/flow", Action: "create", Version: "v1", Params: params}, s.token)
 	s.Require().Equal(http.StatusOK, resp.StatusCode, "Create flow RPC should return HTTP 200")
 	res := s.ReadResult(resp)

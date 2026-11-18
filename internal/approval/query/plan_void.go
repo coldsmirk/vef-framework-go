@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
@@ -12,6 +13,7 @@ import (
 
 type PlanVoidQuery struct {
 	cqrs.BaseQuery
+
 	InstanceID string
 	Operator   approval.UserInfo
 	Options    map[string]any
@@ -27,6 +29,7 @@ type PlanVoidHandler struct {
 func NewPlanVoidHandler(db orm.DB, c *voiding.Core, v *service.ValidationService) *PlanVoidHandler {
 	return &PlanVoidHandler{db: db, core: c, validation: v}
 }
+
 func (h *PlanVoidHandler) Handle(ctx context.Context, q PlanVoidQuery) (*approval.VoidPreview, error) {
 	return h.core.Preview(ctx, contextx.DB(ctx, h.db), approval.VoidInstanceInput{InstanceID: q.InstanceID, Options: q.Options, Operator: q.Operator, Caller: q.Caller}, q.Policy, h.validation)
 }
