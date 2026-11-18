@@ -621,6 +621,11 @@ func ProvideApprovalGlobalsResolver(constructor any, paramTags ...string) fx.Opt
 	)
 }
 
+// ProvideCalendarDayLoader replaces the built-in data source. The constructor returns calendar.DayLoader.
+func ProvideCalendarDayLoader(constructor any, paramTags ...string) fx.Option {
+	return fx.Decorate(fx.Annotate(constructor, fx.ParamTags(paramTags...)))
+}
+
 // SupplyURLKeyMapper replaces the framework-provided default
 // storage.URLKeyMapper (storage.ProxyURLKeyMapper) with a
 // business-specific implementation. The default mapper strips and

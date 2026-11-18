@@ -92,6 +92,15 @@ func newIntegrationConfig(cfg config.Config) (*config.IntegrationConfig, error) 
 	return integrationConfig, nil
 }
 
+func newCalendarConfig(cfg config.Config) (*config.CalendarConfig, error) {
+	c, err := unmarshalConfig(cfg, "vef.calendar", new(config.CalendarConfig))
+	if err != nil {
+		return nil, err
+	}
+
+	return c, c.Validate()
+}
+
 func newCronConfig(cfg config.Config) (*config.CronConfig, error) {
 	cronConfig, err := unmarshalConfig(cfg, "vef.cron", new(config.CronConfig))
 	if err != nil {

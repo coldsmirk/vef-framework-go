@@ -14,6 +14,7 @@ import (
 func TestWindowRuleValidate(t *testing.T) {
 	midnight := timex.Time{}
 	noon := timex.TimeOf(time.Date(2000, 1, 1, 12, 0, 0, 0, time.UTC))
+
 	monday := timex.DateOf(time.Date(2100, 3, 1, 0, 0, 0, 0, time.UTC))
 	for _, tc := range []struct {
 		name  string
@@ -46,17 +47,42 @@ func TestWindowRuleValidate(t *testing.T) {
 			}
 		})
 	}
+
 	t.Run("RuleStructure", func(t *testing.T) {
 		for _, r := range []WindowRule{{}, {Timezone: "bad/zone", Windows: []Window{{}}}, {Windows: []Window{{}}, Blackouts: []Window{{Months: []int{0}}}}} {
 			require.ErrorIs(t, r.Validate(), ErrInvalidWindowRule, "invalid rule or blackout should be rejected")
 		}
 	})
 }
+
 func TestIntervalJSON(t *testing.T) {
+	t.Run("UnboundedAndEpoch", func(t *testing.T) {
+		epoch := time.UnixMilli(0)
+		for _, tc := range []struct {
+			wire     string
+			value    Interval
+			contains bool
+		}{
+			{"{}", Interval{}, true},
+			{`{"startsAtUnixMs":0}`, Interval{StartsAt: epoch}, true},
+			{`{"endsAtUnixMs":0}`, Interval{EndsAt: epoch}, false},
+		} {
+			data, err := json.Marshal(tc.value)
+			require.NoError(t, err, "unbounded interval should encode")
+			assert.JSONEq(t, tc.wire, string(data), "only present endpoints should be encoded")
+
+			got := Interval{StartsAt: epoch, EndsAt: epoch}
+			require.NoError(t, json.Unmarshal(data, &got), "unbounded interval should decode")
+			assert.Equal(t, tc.value, got, "absent bounds should clear existing values")
+			assert.Equal(t, tc.contains, got.Contains(epoch), "contains should respect half-open and unbounded ends")
+		}
+	})
+
 	i := Interval{time.UnixMilli(-10), time.UnixMilli(100)}
 	data, err := json.Marshal(i)
 	require.NoError(t, err, "interval should encode")
 	assert.JSONEq(t, `{"startsAtUnixMs":-10,"endsAtUnixMs":100}`, string(data), "wire endpoints should be milliseconds")
+
 	var got Interval
 	require.NoError(t, json.Unmarshal(data, &got), "wire interval should decode")
 	assert.Equal(t, i, got, "instants should survive the round trip")

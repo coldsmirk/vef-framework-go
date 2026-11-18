@@ -1,4 +1,5 @@
 {
+  "calendar_invalid_dates": "Choose a date range of 1 to 366 days.",
   "calendar_invalid_window_rule": "Invalid window rule: {{.reason}}",
   "ok": "Success",
   "error": "Error",

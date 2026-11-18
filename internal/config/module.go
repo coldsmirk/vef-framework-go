@@ -22,5 +22,6 @@ var Module = fx.Module(
 		newEventConfig,
 		newIntegrationConfig,
 		newCronConfig,
+		newCalendarConfig,
 	),
 )

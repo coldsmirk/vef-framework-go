@@ -22,9 +22,9 @@ func (k DayKind) IsValid() bool { return k == Workday || k == RestDay || k == Ho
 
 // Day describes one date and, for an override, its optional label.
 type Day struct {
-	Date timex.Date `json:"date"`
-	Kind DayKind    `json:"kind"`
-	Name string     `json:"name,omitempty"`
+	Date timex.Date `json:"date" validate:"required"`
+	Kind DayKind    `json:"kind" validate:"required,oneof=workday rest_day holiday"`
+	Name string     `json:"name,omitempty" validate:"max=64"`
 }
 
 // DayOverride records an exception to the configured weekly baseline.

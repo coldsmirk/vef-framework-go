@@ -39,20 +39,35 @@ type DateRange struct {
 	EndsAt   timex.Date `json:"endsAt"`
 }
 
-// Interval is a half-open span of instants, serialized as Unix milliseconds.
+// Interval is a half-open span of instants. A zero endpoint is unbounded on
+// that side and is omitted from the Unix-millisecond wire representation.
 type Interval struct {
 	StartsAt time.Time
 	EndsAt   time.Time
 }
 
+// Contains reports whether t lies in the interval, honoring unbounded sides.
+func (i Interval) Contains(t time.Time) bool {
+	return (i.StartsAt.IsZero() || !t.Before(i.StartsAt)) && (i.EndsAt.IsZero() || t.Before(i.EndsAt))
+}
+
 type wireInterval struct {
-	StartsAtUnixMs int64 `json:"startsAtUnixMs"`
-	EndsAtUnixMs   int64 `json:"endsAtUnixMs"`
+	StartsAtUnixMs *int64 `json:"startsAtUnixMs,omitempty"`
+	EndsAtUnixMs   *int64 `json:"endsAtUnixMs,omitempty"`
 }
 
 // MarshalJSON encodes both instants in Unix milliseconds.
 func (i Interval) MarshalJSON() ([]byte, error) {
-	return json.Marshal(wireInterval{i.StartsAt.UnixMilli(), i.EndsAt.UnixMilli()})
+	var w wireInterval
+	if !i.StartsAt.IsZero() {
+		w.StartsAtUnixMs = new(i.StartsAt.UnixMilli())
+	}
+
+	if !i.EndsAt.IsZero() {
+		w.EndsAtUnixMs = new(i.EndsAt.UnixMilli())
+	}
+
+	return json.Marshal(w)
 }
 
 // UnmarshalJSON decodes both instants from Unix milliseconds.
@@ -61,7 +76,16 @@ func (i *Interval) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &w); err != nil {
 		return err
 	}
-	*i = Interval{time.UnixMilli(w.StartsAtUnixMs), time.UnixMilli(w.EndsAtUnixMs)}
+
+	*i = Interval{}
+	if w.StartsAtUnixMs != nil {
+		i.StartsAt = time.UnixMilli(*w.StartsAtUnixMs)
+	}
+
+	if w.EndsAtUnixMs != nil {
+		i.EndsAt = time.UnixMilli(*w.EndsAtUnixMs)
+	}
+
 	return nil
 }
 
@@ -77,9 +101,11 @@ func (r WindowRule) Validate() error {
 	if len(r.Windows) == 0 {
 		return invalidRule("windows must contain at least one window")
 	}
+
 	if _, err := time.LoadLocation(r.Timezone); err != nil {
 		return invalidRule("unknown timezone " + r.Timezone)
 	}
+
 	for _, group := range []struct {
 		name    string
 		windows []Window
@@ -90,6 +116,7 @@ func (r WindowRule) Validate() error {
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -107,21 +134,25 @@ func (w Window) invalidReason() string {
 			}
 		}
 	}
+
 	for _, k := range w.DayKinds {
 		if !k.IsValid() {
 			return fmt.Sprintf("unknown day kind %q", k)
 		}
 	}
+
 	for _, span := range w.Times {
 		if span.StartsAt.Equal(span.EndsAt) {
 			return "time range endpoints must differ"
 		}
 	}
+
 	first := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 	if w.Dates != nil {
 		if w.Dates.StartsAt.After(w.Dates.EndsAt) {
 			return "date range ends before it starts"
 		}
+
 		d := w.Dates.StartsAt
 		first = time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
 	}
@@ -129,16 +160,19 @@ func (w Window) invalidReason() string {
 	end := first.AddDate(400, 0, 0)
 	if w.Dates != nil {
 		d := w.Dates.EndsAt
+
 		bound := time.Date(d.Year(), d.Month(), d.Day()+1, 0, 0, 0, 0, time.UTC)
 		if bound.Before(end) {
 			end = bound
 		}
 	}
+
 	filter := civil.NewFilter(w.Months, w.Weekdays, w.MonthDays)
 	for d := first; d.Before(end); d = d.AddDate(0, 0, 1) {
 		if filter.Matches(d) {
 			return ""
 		}
 	}
+
 	return "no date matches the window"
 }

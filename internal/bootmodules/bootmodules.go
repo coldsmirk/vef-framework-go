@@ -7,6 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/internal/api"
 	"github.com/coldsmirk/vef-framework-go/internal/app"
+	"github.com/coldsmirk/vef-framework-go/internal/calendar"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/cron"
 	"github.com/coldsmirk/vef-framework-go/internal/event"
@@ -67,6 +68,7 @@ func core() []fx.Option {
 		mold.Module,
 		storage.Module,
 		sequence.Module,
+		calendar.Module,
 		event.TxMemoryTransportModule,
 		event.OutboxModule,
 		event.RedisStreamTransportModule,
