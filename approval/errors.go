@@ -17,3 +17,8 @@ var (
 	// that cannot carry IDs — neither a string nor a list of them.
 	ErrUnsupportedFieldValueType = errors.New("approval: unsupported form field value type")
 )
+
+var (
+	errModelBusinessTypes = errors.New("approval: business model and parameters must be structs")
+	errModelBusinessKey   = errors.New("approval: business model must have one string primary key")
+)

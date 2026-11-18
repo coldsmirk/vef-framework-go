@@ -1,11 +1,16 @@
 package shared
 
+import "encoding/json"
+
 // ToFloat64 normalizes any JSON-decoded or Go-native numeric value to
 // float64. It is the shared numeric bridge for form-data handling: condition
 // evaluation and form validation both compare user-supplied numbers, and both
 // must accept the full spread of types a decoder or caller may produce.
 func ToFloat64(value any) (float64, bool) {
 	switch typed := value.(type) {
+	case json.Number:
+		number, err := typed.Float64()
+		return number, err == nil
 	case int:
 		return float64(typed), true
 	case int8:
