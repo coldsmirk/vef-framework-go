@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"slices"
+	"strings"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -73,4 +74,78 @@ func viewerRows(ctx context.Context, db orm.DB, instanceID, userID string) ([]ap
 	}
 
 	return tasks, ccs, nil
+}
+
+func annotationAccessible(ctx context.Context, db orm.DB, a *approval.Annotation, inst *approval.Instance, userID string) (bool, error) {
+	if a.Status != approval.AnnotationPublished {
+		return false, nil
+	}
+
+	tasks, ccs, err := viewerRows(ctx, db, inst.ID, userID)
+	if err != nil {
+		return false, err
+	}
+
+	p := ResolveParticipation(inst, tasks, len(ccs) > 0, userID)
+	if !p.IsParticipant() {
+		return false, nil
+	}
+
+	parentAuthor := ""
+	if a.ParentID != nil {
+		parent := approval.Annotation{ID: *a.ParentID}
+		if err := db.NewSelect().Model(&parent).Select("author_id").WherePK().Scan(ctx); err != nil {
+			return false, annotationReadError(err)
+		}
+
+		parentAuthor = parent.Author.ID
+	}
+
+	return NewAnnotationViewer(inst.ApplicantID, userID, tasks).CanSee(a, parentAuthor), nil
+}
+
+func annotationAudience(ctx context.Context, db orm.DB, versionID string, input *approval.AnnotationAudience) (approval.AnnotationAudience, error) {
+	a := approval.AnnotationAudience{Scope: approval.AudienceParticipants}
+	if input == nil {
+		return a, nil
+	}
+
+	a = *input
+	if a.Scope == "" {
+		a.Scope = approval.AudienceParticipants
+	}
+
+	switch a.Scope {
+	case approval.AudienceParticipants, approval.AudienceApplicant:
+		if len(a.NodeIDs)+len(a.UserIDs) != 0 {
+			return a, approval.ErrAnnotationAudienceInvalid
+		}
+	case approval.AudienceNodes:
+		if len(a.NodeIDs) == 0 || len(a.UserIDs) != 0 {
+			return a, approval.ErrAnnotationAudienceInvalid
+		}
+
+		a.NodeIDs = slices.Compact(slices.Sorted(slices.Values(a.NodeIDs)))
+
+		n, err := db.NewSelect().Model((*approval.FlowNode)(nil)).Where(func(cb orm.ConditionBuilder) { cb.Equals("flow_version_id", versionID).In("id", a.NodeIDs) }).Count(ctx)
+		if err != nil {
+			return a, err
+		}
+
+		if int64(len(a.NodeIDs)) != n {
+			return a, approval.ErrAnnotationAudienceInvalid
+		}
+
+	case approval.AudienceUsers:
+		if len(a.UserIDs) == 0 || len(a.NodeIDs) != 0 || slices.ContainsFunc(a.UserIDs, func(s string) bool { return strings.TrimSpace(s) == "" }) {
+			return a, approval.ErrAnnotationAudienceInvalid
+		}
+
+		a.UserIDs = slices.Compact(slices.Sorted(slices.Values(a.UserIDs)))
+
+	default:
+		return a, approval.ErrAnnotationAudienceInvalid
+	}
+
+	return a, nil
 }

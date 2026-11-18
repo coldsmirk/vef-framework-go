@@ -1,11 +1,6 @@
 package service
 
-import (
-	"errors"
-
-	"github.com/coldsmirk/vef-framework-go/i18n"
-	"github.com/coldsmirk/vef-framework-go/result"
-)
+import "errors"
 
 // Flow-definition validation sentinels. These are internal errors wrapped
 // into approval.ErrInvalidFlowDesign at the command layer and never surfaced raw.
@@ -124,5 +119,3 @@ var (
 )
 
 var errUnknownPrincipalField = errors.New("unknown form field in principal selection")
-
-var errAnnotationContent = result.Err(i18n.T("approval_annotation_content_invalid"), result.WithCode(result.ErrCodeBadRequest))

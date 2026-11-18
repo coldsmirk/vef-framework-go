@@ -313,6 +313,7 @@ func (s *EventOrderTestSuite) TestAnnotationPublication() {
 					_, err := h.Handle(ctx, command.TransferTaskCmd{TaskID: taskID, TransferToID: "next-writer", Operator: actor, Caller: approval.SystemCaller})
 
 					return err
+
 				default:
 					h := wrapWithBusAndDB(s.db, s.bus, command.NewRollbackTaskHandler(s.db, tasks, instances, valid, eng, nil))
 					_, err := h.Handle(ctx, command.RollbackTaskCmd{TaskID: taskID, TargetNodeID: fixture.NodeIDs["start-1"], Operator: actor, Caller: approval.SystemCaller})

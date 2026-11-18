@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -27,17 +26,21 @@ func NewAnnotationEditor(tasks *TaskService, instances *InstanceService, registr
 
 func (e *AnnotationEditor) Save(ctx context.Context, db orm.DB, in approval.SaveAnnotationInput) (*approval.AnnotationView, error) {
 	a := &approval.Annotation{Author: in.Operator, Status: approval.AnnotationDraft}
+
+	var (
+		inst *approval.Instance
+		err  error
+	)
 	if in.ID != "" {
-		existing, err := e.editable(ctx, db, in.ID, in.Operator.ID, in.Caller)
+		a, inst, err = e.lockDraft(ctx, db, in.ID, in.Operator.ID, in.Caller)
 		if err != nil {
 			return nil, err
 		}
 
-		if in.TaskID != "" && (existing.TaskID == nil || *existing.TaskID != in.TaskID) || in.ParentID != "" && (existing.ParentID == nil || *existing.ParentID != in.ParentID) {
+		if in.TaskID != "" && (a.TaskID == nil || *a.TaskID != in.TaskID) || in.ParentID != "" && (a.ParentID == nil || *a.ParentID != in.ParentID) {
 			return nil, approval.ErrAnnotationNotEditable
 		}
 
-		a = existing
 		if a.TaskID != nil {
 			in.TaskID = *a.TaskID
 		}
@@ -53,14 +56,11 @@ func (e *AnnotationEditor) Save(ctx context.Context, db orm.DB, in approval.Save
 
 	a.Content = in.Content
 
-	var (
-		nodeName string
-		err      error
-	)
+	var nodeName string
 	if in.ParentID != "" {
-		nodeName, err = e.prepareResponse(ctx, db, in, a)
+		nodeName, err = e.prepareResponse(ctx, db, in, a, inst)
 	} else {
-		nodeName, err = e.prepareRoot(ctx, db, in, a)
+		nodeName, err = e.prepareRoot(ctx, db, in, a, inst)
 	}
 
 	if err != nil {
@@ -83,9 +83,15 @@ func (e *AnnotationEditor) Save(ctx context.Context, db orm.DB, in approval.Save
 }
 
 func (e *AnnotationEditor) Delete(ctx context.Context, db orm.DB, in approval.DeleteAnnotationInput) error {
-	a, err := e.editable(ctx, db, in.ID, in.Operator.ID, in.Caller)
+	a, inst, err := e.lockDraft(ctx, db, in.ID, in.Operator.ID, in.Caller)
 	if err != nil {
 		return err
+	}
+
+	if a.TaskID != nil {
+		if _, err := e.taskContext(ctx, db, inst, *a.TaskID, in.Operator.ID, in.Caller); err != nil {
+			return err
+		}
 	}
 
 	_, err = db.NewDelete().Model(a).WherePK().Exec(ctx)
@@ -125,70 +131,52 @@ func annotationReadError(err error) error {
 	return err
 }
 
-func (e *AnnotationEditor) editable(ctx context.Context, db orm.DB, id, userID string, caller approval.CallerContext) (*approval.Annotation, error) {
+func (e *AnnotationEditor) lockDraft(ctx context.Context, db orm.DB, id, userID string, caller approval.CallerContext) (*approval.Annotation, *approval.Instance, error) {
 	a, inst, err := e.locked(ctx, db, id, userID, caller, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if a.Author.ID != userID {
 		visible, err := annotationAccessible(ctx, db, a, inst, userID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		if !visible {
-			return nil, approval.ErrAnnotationNotFound
+			return nil, nil, approval.ErrAnnotationNotFound
 		}
 
-		return nil, approval.ErrAnnotationNotEditable
+		return nil, nil, approval.ErrAnnotationNotEditable
 	}
 
 	if a.Status != approval.AnnotationDraft {
-		return nil, approval.ErrAnnotationNotEditable
+		return nil, nil, approval.ErrAnnotationNotEditable
 	}
 
-	if a.TaskID != nil {
-		if _, err := e.taskContext(ctx, db, *a.TaskID, userID, caller, approval.ErrAnnotationNotEditable); err != nil {
-			return nil, err
-		}
-	} else if inst.Status != approval.InstanceReturned || inst.ApplicantID != userID {
-		return nil, approval.ErrAnnotationNotEditable
+	if a.TaskID == nil && (inst.Status != approval.InstanceReturned || inst.ApplicantID != userID) {
+		return nil, nil, approval.ErrAnnotationNotEditable
 	}
 
-	return a, nil
+	return a, inst, nil
 }
 
-func annotationAccessible(ctx context.Context, db orm.DB, a *approval.Annotation, inst *approval.Instance, userID string) (bool, error) {
-	if a.Status != approval.AnnotationPublished {
-		return false, nil
+func (e *AnnotationEditor) taskContext(ctx context.Context, db orm.DB, locked *approval.Instance, taskID, userID string, caller approval.CallerContext) (*TaskContext, error) {
+	opts := decisionOptions(userID, caller)
+
+	var (
+		tc  *TaskContext
+		err error
+	)
+
+	denied := approval.ErrAnnotationNotAllowed
+	if locked == nil {
+		tc, err = e.tasks.LoadTaskContextForNodeOperation(ctx, db, taskID, opts)
+	} else {
+		tc, err = lockTaskContext(ctx, db, locked, taskID, opts)
+		denied = approval.ErrAnnotationNotEditable
 	}
 
-	tasks, ccs, err := viewerRows(ctx, db, inst.ID, userID)
-	if err != nil {
-		return false, err
-	}
-
-	p := ResolveParticipation(inst, tasks, len(ccs) > 0, userID)
-	if !p.IsParticipant() {
-		return false, nil
-	}
-
-	parentAuthor := ""
-	if a.ParentID != nil {
-		parent := approval.Annotation{ID: *a.ParentID}
-		if err := db.NewSelect().Model(&parent).Select("author_id").WherePK().Scan(ctx); err != nil {
-			return false, annotationReadError(err)
-		}
-
-		parentAuthor = parent.Author.ID
-	}
-
-	return NewAnnotationViewer(inst.ApplicantID, userID, tasks).CanSee(a, parentAuthor), nil
-}
-
-func (e *AnnotationEditor) taskContext(ctx context.Context, db orm.DB, taskID, userID string, caller approval.CallerContext, denied error) (*TaskContext, error) {
-	tc, err := e.tasks.LoadTaskContextForNodeOperation(ctx, db, taskID, decisionOptions(userID, caller))
 	if errors.Is(err, approval.ErrNotAssignee) || errors.Is(err, approval.ErrInstanceCompleted) || errors.Is(err, approval.ErrTaskNotPending) {
 		return nil, denied
 	}
@@ -196,12 +184,12 @@ func (e *AnnotationEditor) taskContext(ctx context.Context, db orm.DB, taskID, u
 	return tc, annotationReadError(err)
 }
 
-func (e *AnnotationEditor) prepareRoot(ctx context.Context, db orm.DB, in approval.SaveAnnotationInput, a *approval.Annotation) (string, error) {
+func (e *AnnotationEditor) prepareRoot(ctx context.Context, db orm.DB, in approval.SaveAnnotationInput, a *approval.Annotation, inst *approval.Instance) (string, error) {
 	if in.TaskID == "" || in.Resolution != nil {
 		return "", approval.ErrAnnotationNotAllowed
 	}
 
-	tc, err := e.taskContext(ctx, db, in.TaskID, in.Operator.ID, in.Caller, approval.ErrAnnotationNotAllowed)
+	tc, err := e.taskContext(ctx, db, inst, in.TaskID, in.Operator.ID, in.Caller)
 	if err != nil {
 		return "", err
 	}
@@ -231,14 +219,17 @@ func (e *AnnotationEditor) prepareRoot(ctx context.Context, db orm.DB, in approv
 	return tc.Node.Name, nil
 }
 
-func (e *AnnotationEditor) prepareResponse(ctx context.Context, db orm.DB, in approval.SaveAnnotationInput, a *approval.Annotation) (string, error) {
-	parent, inst, err := e.locked(ctx, db, in.ParentID, in.Operator.ID, in.Caller, true)
-	if err != nil {
-		return "", err
-	}
+func (e *AnnotationEditor) prepareResponse(ctx context.Context, db orm.DB, in approval.SaveAnnotationInput, a *approval.Annotation, inst *approval.Instance) (string, error) {
+	parent := &approval.Annotation{ID: in.ParentID}
+	if inst == nil {
+		var err error
 
-	if inst.ApplicantID != in.Operator.ID {
-		return "", approval.ErrAnnotationNotAllowed
+		parent, inst, err = e.locked(ctx, db, in.ParentID, in.Operator.ID, in.Caller, true)
+		if err != nil {
+			return "", err
+		}
+	} else if err := db.NewSelect().Model(parent).WherePK().ForUpdate().Scan(ctx); err != nil {
+		return "", annotationReadError(err)
 	}
 
 	visible, err := annotationAccessible(ctx, db, parent, inst, in.Operator.ID)
@@ -250,7 +241,7 @@ func (e *AnnotationEditor) prepareResponse(ctx context.Context, db orm.DB, in ap
 		return "", approval.ErrAnnotationNotFound
 	}
 
-	if inst.Status != approval.InstanceReturned || in.TaskID != "" || parent.ParentID != nil || in.Resolution == nil ||
+	if inst.ApplicantID != in.Operator.ID || inst.Status != approval.InstanceReturned || in.TaskID != "" || parent.ParentID != nil || in.Resolution == nil ||
 		(*in.Resolution != approval.ResolutionAddressed && *in.Resolution != approval.ResolutionDeclined) {
 		return "", approval.ErrAnnotationNotAllowed
 	}
@@ -279,50 +270,4 @@ func (e *AnnotationEditor) prepareResponse(ctx context.Context, db orm.DB, in ap
 	a.Audience = parent.Audience
 
 	return node.Name, nil
-}
-
-func annotationAudience(ctx context.Context, db orm.DB, versionID string, input *approval.AnnotationAudience) (approval.AnnotationAudience, error) {
-	a := approval.AnnotationAudience{Scope: approval.AudienceParticipants}
-	if input == nil {
-		return a, nil
-	}
-
-	a = *input
-	if a.Scope == "" {
-		a.Scope = approval.AudienceParticipants
-	}
-
-	switch a.Scope {
-	case approval.AudienceParticipants, approval.AudienceApplicant:
-		if len(a.NodeIDs)+len(a.UserIDs) != 0 {
-			return a, approval.ErrAnnotationAudienceInvalid
-		}
-	case approval.AudienceNodes:
-		if len(a.NodeIDs) == 0 || len(a.UserIDs) != 0 {
-			return a, approval.ErrAnnotationAudienceInvalid
-		}
-
-		a.NodeIDs = slices.Compact(slices.Sorted(slices.Values(a.NodeIDs)))
-
-		n, err := db.NewSelect().Model((*approval.FlowNode)(nil)).Where(func(cb orm.ConditionBuilder) { cb.Equals("flow_version_id", versionID).In("id", a.NodeIDs) }).Count(ctx)
-		if err != nil {
-			return a, err
-		}
-
-		if int64(len(a.NodeIDs)) != n {
-			return a, approval.ErrAnnotationAudienceInvalid
-		}
-
-	case approval.AudienceUsers:
-		if len(a.UserIDs) == 0 || len(a.NodeIDs) != 0 || slices.ContainsFunc(a.UserIDs, func(s string) bool { return strings.TrimSpace(s) == "" }) {
-			return a, approval.ErrAnnotationAudienceInvalid
-		}
-
-		a.UserIDs = slices.Compact(slices.Sorted(slices.Values(a.UserIDs)))
-
-	default:
-		return a, approval.ErrAnnotationAudienceInvalid
-	}
-
-	return a, nil
 }

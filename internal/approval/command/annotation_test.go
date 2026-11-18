@@ -304,6 +304,10 @@ func (s *EventOrderTestSuite) TestResponseDraftRules() {
 			_, err = editor.Save(ctx, db, in)
 			s.ErrorIs(err, approval.ErrAnnotationNotAllowed, "Only the applicant can reply")
 
+			in.Operator.ID = "unrelated"
+			_, err = editor.Save(ctx, db, in)
+			s.ErrorIs(err, approval.ErrAnnotationNotFound, "An unrelated caller cannot discover a private parent by replying")
+
 			in = response
 			in.Content = ""
 			_, err = editor.Save(ctx, db, in)

@@ -1085,10 +1085,18 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 		return nil, approval.ErrTaskNotFound
 	}
 
+	return lockTaskContext(ctx, db, &instance, taskID, options)
+}
+
+// lockTaskContext completes the task and node lookup once the caller has locked
+// the instance and authorized access to it.
+func lockTaskContext(ctx context.Context, db orm.DB, instance *approval.Instance, taskID string, options TaskContextLoadOptions) (*TaskContext, error) {
+	task := approval.Task{ID: taskID}
+
 	// Lock task after instance to keep a consistent lock order across command handlers.
 	if err := db.NewSelect().
 		Model(&task).
-		WherePK().
+		Where(func(cb orm.ConditionBuilder) { cb.PKEquals(taskID).Equals("instance_id", instance.ID) }).
 		ForUpdate().
 		Scan(ctx); err != nil {
 		if result.IsRecordNotFound(err) {
@@ -1098,7 +1106,7 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 		return nil, fmt.Errorf("lock task: %w", err)
 	}
 
-	if err := validateTaskState(&instance, &task, options); err != nil {
+	if err := validateTaskState(instance, &task, options); err != nil {
 		return nil, err
 	}
 
@@ -1113,7 +1121,7 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 		return nil, fmt.Errorf("load node: %w", err)
 	}
 
-	return &TaskContext{Instance: &instance, Task: &task, Node: &node}, nil
+	return &TaskContext{Instance: instance, Task: &task, Node: &node}, nil
 }
 
 // ReplaceTaskActor writes the new owner and seat attribution together, preserving the task's deadline.
