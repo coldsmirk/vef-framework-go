@@ -29,6 +29,7 @@ func buildInstanceTimeline(bundle *instanceDetailBundle) []approval.TimelineEntr
 		entry := approval.TimelineEntry{
 			Kind:         approval.TimelineEntryKind(node.Kind),
 			NodeID:       new(visit.NodeID),
+			VisitID:      new(visit.ID),
 			Name:         node.Name,
 			Status:       visit.Status,
 			StartedAt:    visit.CreatedAt,

@@ -35,6 +35,8 @@ const (
 // re-entered after a rollback produces a second entry. Entries end at the node
 // currently in progress — unreached nodes are not predicted.
 //
+// VisitID identifies each traversal, including repeated visits to the same node.
+// Instance-level milestones omit it.
 // Node entries carry the node's display config and the people involved:
 // Participants for approval/handle entries (one per task, fused with the log
 // that finished it), CCRecipients for delivered carbon copies (both cc nodes
@@ -58,4 +60,5 @@ type TimelineEntry struct {
 	Activities     []Activity        `json:"activities,omitempty"`
 	StartedAt      timex.DateTime    `json:"startedAt"`
 	FinishedAt     *timex.DateTime   `json:"finishedAt,omitempty"`
+	VisitID        *string           `json:"visitId,omitempty"`
 }

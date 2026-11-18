@@ -1,6 +1,7 @@
 package query
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -188,6 +189,10 @@ func TestBuildInstanceTimeline(t *testing.T) {
 		assert.Equal(t, approval.NodeVisitCanceled, entries[1].Status, "Withdrawn visit renders canceled")
 
 		milestone := entries[2]
+		assert.Nil(t, milestone.VisitID, "An instance-level milestone has no visit")
+		wire, err := json.Marshal(milestone)
+		require.NoError(t, err, "The milestone must serialize")
+		assert.NotContains(t, string(wire), `"visitId"`, "Milestones omit the visit identifier on the wire")
 		assert.Equal(t, approval.TimelineEntryWithdraw, milestone.Kind, "Withdraw milestone sits between the two rounds")
 		require.Len(t, milestone.Activities, 1, "Milestone carries the closing activity")
 		assert.Equal(t, "applicant", milestone.Activities[0].Operator.ID, "Milestone names who withdrew")
@@ -226,6 +231,7 @@ func TestBuildInstanceTimeline(t *testing.T) {
 		require.Len(t, entries, 3, "Each traversal of the node is its own entry")
 
 		returned := entries[1]
+		assert.Equal(t, new("v2"), returned.VisitID, "Annotations from the first visit attach to the returned round")
 		assert.Equal(t, approval.NodeVisitReturned, returned.Status, "First round concluded by sending the flow back")
 		require.Len(t, returned.Participants, 1, "First round keeps only its own participant")
 		assert.Equal(t, "t1", returned.Participants[0].TaskID, "First round participant is the rolled-back task")
@@ -233,6 +239,10 @@ func TestBuildInstanceTimeline(t *testing.T) {
 		require.NotNil(t, returned.Activities[0].RollbackToNodeName, "Rollback target name resolves from the node map")
 
 		redo := entries[2]
+		assert.Equal(t, new("v3"), redo.VisitID, "Annotations from the second visit attach to the reopened round")
+		wire, err := json.Marshal(redo)
+		require.NoError(t, err, "The reopened visit must serialize")
+		assert.Contains(t, string(wire), `"visitId":"v3"`, "The client can identify this visit on the wire")
 		assert.Equal(t, approval.NodeVisitActive, redo.Status, "Second round is open")
 		require.Len(t, redo.Participants, 1, "Second round keeps only its own participant")
 		assert.Equal(t, "t2", redo.Participants[0].TaskID, "Second round participant is the fresh task")
