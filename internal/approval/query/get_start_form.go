@@ -2,8 +2,6 @@ package query
 
 import (
 	"context"
-	"fmt"
-	"time"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/my"
@@ -11,7 +9,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // GetStartFormQuery loads the published form document of a flow the current
@@ -50,45 +47,11 @@ func (h *GetStartFormHandler) Handle(ctx context.Context, query GetStartFormQuer
 		return nil, approval.ErrFlowNotFound
 	}
 
-	flow, err := service.FindStartFlow(ctx, db, tenantID, query.FlowCode)
+	start, err := h.validationSvc.LoadInitiableFlow(ctx, db, tenantID, query.FlowCode, query.Applicant, "id", "version", "form_schema", "business_kind")
 	if err != nil {
 		return nil, err
 	}
-
-	if !flow.IsActive {
-		return nil, approval.ErrFlowNotActive
-	}
-
-	allowed, err := h.validationSvc.CheckInitiationPermission(ctx, db, flow, tenantID, query.Applicant)
-	if err != nil {
-		return nil, fmt.Errorf("check initiation permission: %w", err)
-	}
-
-	if !allowed {
-		return nil, approval.ErrNotAllowedInitiate
-	}
-
-	status, err := h.validationSvc.CheckInitiationWindow(ctx, flow.InitiationWindow, time.Now())
-	if err != nil {
-		return nil, err
-	}
-
-	var version approval.FlowVersion
-	if err := db.NewSelect().
-		Model(&version).
-		Select("id", "version", "form_schema", "business_kind").
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("flow_id", flow.ID).
-				Equals("status", approval.VersionPublished)
-		}).
-		Scan(ctx); err != nil {
-		if result.IsRecordNotFound(err) {
-			return nil, approval.ErrNoPublishedVersion
-		}
-
-		return nil, fmt.Errorf("load published version: %w", err)
-	}
-
+	flow, version := start.Flow, start.Version
 	return &my.StartForm{
 		FlowID:           flow.ID,
 		FlowCode:         flow.Code,
@@ -100,6 +63,6 @@ func (h *GetStartFormHandler) Handle(ctx context.Context, query GetStartFormQuer
 		FormSchema:       version.FormSchema,
 		BusinessKind:     version.BusinessKind,
 		Applicant:        query.Applicant,
-		InitiationWindow: status,
+		InitiationWindow: start.Window,
 	}, nil
 }

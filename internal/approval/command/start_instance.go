@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"text/template"
-	"time"
 	"unicode/utf8"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -19,7 +18,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // StartInstanceCmd starts a new approval flow instance.
@@ -75,43 +73,11 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		return nil, approval.ErrFlowNotFound
 	}
 
-	flow, err := service.FindStartFlow(ctx, db, tenantID, cmd.FlowCode)
+	start, err := h.validationSvc.LoadInitiableFlow(ctx, db, tenantID, cmd.FlowCode, cmd.Applicant)
 	if err != nil {
 		return nil, err
 	}
-
-	if !flow.IsActive {
-		return nil, approval.ErrFlowNotActive
-	}
-
-	allowed, err := h.validationSvc.CheckInitiationPermission(ctx, db, flow, tenantID, cmd.Applicant)
-	if err != nil {
-		return nil, fmt.Errorf("check initiation permission: %w", err)
-	}
-
-	if !allowed {
-		return nil, approval.ErrNotAllowedInitiate
-	}
-
-	if _, err := h.validationSvc.CheckInitiationWindow(ctx, flow.InitiationWindow, time.Now()); err != nil {
-		return nil, err
-	}
-
-	var version approval.FlowVersion
-	if err := db.NewSelect().
-		Model(&version).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("flow_id", flow.ID).
-				Equals("status", approval.VersionPublished)
-		}).
-		Scan(ctx); err != nil {
-		if result.IsRecordNotFound(err) {
-			return nil, approval.ErrNoPublishedVersion
-		}
-
-		return nil, fmt.Errorf("load published version: %w", err)
-	}
-
+	flow, version := start.Flow, start.Version
 	instanceID := id.Generate()
 	if version.BusinessKind != nil {
 		submission, err := h.businessRegistry.Submit(
@@ -120,7 +86,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 			&approval.SubmissionContext{
 				InstanceID:  instanceID,
 				Flow:        flow,
-				Version:     &version,
+				Version:     version,
 				TenantID:    tenantID,
 				Applicant:   cmd.Applicant,
 				BusinessRef: cmd.BusinessRef,
@@ -200,7 +166,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 	// may already carry configuration for a later version; existing published
 	// versions deliberately keep the snapshot captured at deploy.
 	if version.BusinessBinding != nil && h.bindingProjector != nil {
-		if err := h.bindingProjector.Bind(ctx, db, flow, &version, instance); err != nil {
+		if err := h.bindingProjector.Bind(ctx, db, flow, version, instance); err != nil {
 			return nil, fmt.Errorf("bind business projection on start: %w", err)
 		}
 	}

@@ -5,40 +5,15 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/coldsmirk/vef-framework-go/result"
-	"time"
 )
 
 // CheckInitiation evaluates the same live flow, initiation rules, window and published kind that a new request would use.
 func CheckInitiation(ctx context.Context, db orm.DB, validator *service.ValidationService, tenant, code string, user approval.UserInfo) error {
-	flow, err := service.FindStartFlow(ctx, db, tenant, code)
+	start, err := validator.LoadInitiableFlow(ctx, db, tenant, code, user, "business_kind")
 	if err != nil {
 		return err
 	}
-	if !flow.IsActive {
-		return approval.ErrFlowNotActive
-	}
-	allowed, err := validator.CheckInitiationPermission(ctx, db, flow, tenant, user)
-	if err != nil {
-		return err
-	}
-	if !allowed {
-		return approval.ErrNotAllowedInitiate
-	}
-	if _, err := validator.CheckInitiationWindow(ctx, flow.InitiationWindow, time.Now()); err != nil {
-		return err
-	}
-	var version approval.FlowVersion
-	err = db.NewSelect().Model(&version).Select("business_kind").Where(func(cb orm.ConditionBuilder) {
-		cb.Equals("flow_id", flow.ID).Equals("status", approval.VersionPublished)
-	}).Scan(ctx)
-	if result.IsRecordNotFound(err) {
-		return approval.ErrNoPublishedVersion
-	}
-	if err != nil {
-		return err
-	}
-	if version.BusinessKind == nil || *version.BusinessKind != approval.BusinessKindVoidRequest {
+	if start.Version.BusinessKind == nil || *start.Version.BusinessKind != approval.BusinessKindVoidRequest {
 		return approval.ErrVoidNotAllowed
 	}
 	return nil
