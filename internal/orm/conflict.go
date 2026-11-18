@@ -96,9 +96,9 @@ func (b *InsertQueryConflictUpdateBuilder) Set(column string, value ...any) Conf
 	if len(value) > 0 {
 		valueExpr = value[0]
 	} else {
-		// MySQL uses column name reference; PostgreSQL/SQLite use EXCLUDED.column
+		// Reference the incoming row on each dialect, as bun's default upsert does.
 		eb.ExecByDialect(DialectExecs{
-			MySQL:   func() { valueExpr = col },
+			MySQL:   func() { valueExpr = eb.Expr("VALUES(?)", col) },
 			Default: func() { valueExpr = eb.Expr("EXCLUDED.?", col) },
 		})
 	}

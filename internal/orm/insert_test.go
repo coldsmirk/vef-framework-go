@@ -477,7 +477,7 @@ func (suite *InsertTestSuite) TestConflictHandling() {
 			Model(update).
 			OnConflict(func(cb orm.ConflictBuilder) {
 				cb.Columns("email").DoUpdate().
-					Set("name", "Update Modified").
+					Set("name").
 					Set("age", 35).
 					Set("is_active", false)
 			}).
