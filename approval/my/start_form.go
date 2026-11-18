@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/calendar"
 )
 
 // StartForm is the pre-submission view of a flow for an applicant: the
@@ -29,5 +30,6 @@ type StartForm struct {
 	// Globals are the form-visible host globals (approval.FormGlobalsExposer)
 	// resolved for the caller — the form's `$globals`. Absent when the flow
 	// exposes none.
-	Globals map[string]any `json:"globals,omitempty"`
+	Globals          map[string]any         `json:"globals,omitempty"`
+	InitiationWindow *calendar.WindowStatus `json:"initiationWindow,omitempty"`
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"text/template"
+	"time"
 	"unicode/utf8"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
@@ -89,6 +90,10 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 
 	if !allowed {
 		return nil, approval.ErrNotAllowedInitiate
+	}
+
+	if _, err := h.validationSvc.CheckInitiationWindow(ctx, flow.InitiationWindow, time.Now()); err != nil {
+		return nil, err
 	}
 
 	var version approval.FlowVersion

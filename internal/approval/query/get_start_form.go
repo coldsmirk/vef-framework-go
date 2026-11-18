@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/my"
@@ -67,6 +68,11 @@ func (h *GetStartFormHandler) Handle(ctx context.Context, query GetStartFormQuer
 		return nil, approval.ErrNotAllowedInitiate
 	}
 
+	status, err := h.validationSvc.CheckInitiationWindow(ctx, flow.InitiationWindow, time.Now())
+	if err != nil {
+		return nil, err
+	}
+
 	var version approval.FlowVersion
 	if err := db.NewSelect().
 		Model(&version).
@@ -84,14 +90,15 @@ func (h *GetStartFormHandler) Handle(ctx context.Context, query GetStartFormQuer
 	}
 
 	return &my.StartForm{
-		FlowID:      flow.ID,
-		FlowCode:    flow.Code,
-		FlowName:    flow.Name,
-		FlowIcon:    flow.Icon,
-		Description: flow.Description,
-		VersionID:   version.ID,
-		Version:     version.Version,
-		FormSchema:  version.FormSchema,
-		Applicant:   query.Applicant,
+		FlowID:           flow.ID,
+		FlowCode:         flow.Code,
+		FlowName:         flow.Name,
+		FlowIcon:         flow.Icon,
+		Description:      flow.Description,
+		VersionID:        version.ID,
+		Version:          version.Version,
+		FormSchema:       version.FormSchema,
+		Applicant:        query.Applicant,
+		InitiationWindow: status,
 	}, nil
 }

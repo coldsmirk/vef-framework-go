@@ -3,6 +3,7 @@ package approval
 import (
 	"encoding/json"
 
+	"github.com/coldsmirk/vef-framework-go/calendar"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/decimal"
 	"github.com/coldsmirk/vef-framework-go/orm"
@@ -56,6 +57,7 @@ type Flow struct {
 	InstanceTitleTemplate  string                 `json:"instanceTitleTemplate" bun:"instance_title_template"`
 	IsActive               bool                   `json:"isActive" bun:"is_active"`
 	CurrentVersion         int                    `json:"currentVersion" bun:"current_version"`
+	InitiationWindow       *calendar.WindowRule   `json:"initiationWindow,omitempty" bun:"initiation_window,type:jsonb,nullzero"`
 }
 
 // FlowCategory represents a category for grouping flows.

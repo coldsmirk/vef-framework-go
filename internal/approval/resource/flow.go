@@ -7,6 +7,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/calendar"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -70,6 +71,7 @@ type CreateFlowParams struct {
 	IsAllInitiationAllowed bool                            `json:"isAllInitiationAllowed"`
 	InstanceTitleTemplate  string                          `json:"instanceTitleTemplate"`
 	Initiators             []CreateInitiatorParams         `json:"initiators"`
+	InitiationWindow       *calendar.WindowRule            `json:"initiationWindow"`
 }
 
 // CreateInitiatorParams contains the parameters for a flow initiator.
@@ -106,6 +108,7 @@ func (r *FlowResource) Create(ctx fiber.Ctx, params CreateFlowParams) error {
 			IsAllInitiationAllowed: params.IsAllInitiationAllowed,
 			InstanceTitleTemplate:  params.InstanceTitleTemplate,
 			Initiators:             initiators,
+			InitiationWindow:       params.InitiationWindow,
 		},
 	)
 	if err != nil {
@@ -264,6 +267,7 @@ type UpdateFlowParams struct {
 	IsAllInitiationAllowed bool                            `json:"isAllInitiationAllowed"`
 	InstanceTitleTemplate  string                          `json:"instanceTitleTemplate" validate:"required"`
 	Initiators             []CreateInitiatorParams         `json:"initiators"`
+	InitiationWindow       *calendar.WindowRule            `json:"initiationWindow"`
 }
 
 // Update updates an existing flow.
@@ -291,6 +295,7 @@ func (r *FlowResource) Update(ctx fiber.Ctx, params UpdateFlowParams) error {
 			IsAllInitiationAllowed: params.IsAllInitiationAllowed,
 			InstanceTitleTemplate:  params.InstanceTitleTemplate,
 			Initiators:             initiators,
+			InitiationWindow:       params.InitiationWindow,
 		},
 	)
 	if err != nil {

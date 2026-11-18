@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/coldsmirk/go-collections"
 	"github.com/samber/lo"
@@ -106,16 +107,24 @@ func (h *FindAvailableFlowsHandler) Handle(ctx context.Context, query FindAvaila
 		return nil, err
 	}
 
+	now := time.Now()
+
 	items := make([]my.AvailableFlow, len(flows))
 	for i, f := range flows {
+		status, err := h.validationSvc.EvaluateInitiationWindow(ctx, f.InitiationWindow, now)
+		if err != nil {
+			return nil, err
+		}
+
 		item := my.AvailableFlow{
-			FlowID:      f.ID,
-			FlowCode:    f.Code,
-			FlowName:    f.Name,
-			FlowIcon:    f.Icon,
-			Description: f.Description,
-			Labels:      f.Labels,
-			CategoryID:  f.CategoryID,
+			InitiationWindow: status,
+			FlowID:           f.ID,
+			FlowCode:         f.Code,
+			FlowName:         f.Name,
+			FlowIcon:         f.Icon,
+			Description:      f.Description,
+			Labels:           f.Labels,
+			CategoryID:       f.CategoryID,
 		}
 		if cat := categoryMap[f.CategoryID]; cat != nil {
 			item.CategoryName = cat.Name

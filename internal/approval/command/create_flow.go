@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/calendar"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
@@ -37,6 +38,7 @@ type CreateFlowCmd struct {
 	IsAllInitiationAllowed bool
 	InstanceTitleTemplate  string
 	Initiators             []shared.CreateFlowInitiatorCmd
+	InitiationWindow       *calendar.WindowRule
 }
 
 // CreateFlowHandler handles the CreateFlowCmd command.
@@ -69,6 +71,12 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 
 	if err := validateInitiatorRules(cmd.IsAllInitiationAllowed, cmd.Initiators, h.initiatorKinds); err != nil {
 		return nil, err
+	}
+
+	if cmd.InitiationWindow != nil {
+		if err := cmd.InitiationWindow.Validate(); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := validateFlowLabels(cmd.Labels); err != nil {
@@ -128,6 +136,7 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 		BusinessBinding:        businessBinding,
 		AdminUserIDs:           cmd.AdminUserIDs,
 		IsAllInitiationAllowed: cmd.IsAllInitiationAllowed,
+		InitiationWindow:       cmd.InitiationWindow,
 		InstanceTitleTemplate:  cmd.InstanceTitleTemplate,
 		IsActive:               true,
 		CurrentVersion:         0,

@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     admin_user_ids JSON NOT NULL DEFAULT (JSON_ARRAY()) COMMENT 'Admins',
     is_all_initiation_allowed BOOLEAN NOT NULL DEFAULT true COMMENT 'Open Start',
     -- Other
+    initiation_window JSON COMMENT 'Initiation Window',
     instance_title_template VARCHAR(256) NOT NULL DEFAULT '{{.flowName}}-{{.instanceNo}}' COMMENT 'Title Template',
     is_active BOOLEAN NOT NULL DEFAULT false COMMENT 'Active',
     current_version INTEGER NOT NULL DEFAULT 0 COMMENT 'Version',

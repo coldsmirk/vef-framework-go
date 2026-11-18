@@ -14,6 +14,7 @@ import (
 	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/calendar"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/i18n"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
@@ -32,6 +33,7 @@ type Option func(*options)
 type options struct {
 	formDataMaxBytes int
 	codeSets         mold.CodeSetLoader
+	calendar         calendar.Calendar
 }
 
 // WithFormDataMaxBytes sets the cap on the JSON-encoded form payload. Values
@@ -65,6 +67,7 @@ type ValidationService struct {
 	initiators       *strategy.CompositeInitiatorResolver
 	formDataMaxBytes int
 	codeSets         mold.CodeSetLoader
+	calendar         calendar.Calendar
 }
 
 // NewValidationService creates a new ValidationService.
@@ -75,6 +78,7 @@ func NewValidationService(initiators *strategy.CompositeInitiatorResolver, opts 
 		initiators:       initiators,
 		formDataMaxBytes: resolved.formDataMaxBytes,
 		codeSets:         resolved.codeSets,
+		calendar:         resolved.calendar,
 	}
 }
 

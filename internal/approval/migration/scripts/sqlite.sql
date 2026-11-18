@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     admin_user_ids TEXT NOT NULL DEFAULT '[]',
     is_all_initiation_allowed BOOLEAN NOT NULL DEFAULT 1,
     -- Other
+    initiation_window TEXT,
     instance_title_template VARCHAR(256) NOT NULL DEFAULT '{{.flowName}}-{{.instanceNo}}',
     is_active BOOLEAN NOT NULL DEFAULT 0,
     current_version INTEGER NOT NULL DEFAULT 0,

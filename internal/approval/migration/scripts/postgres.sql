@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS apv_flow (
     admin_user_ids JSONB NOT NULL DEFAULT '[]',
     is_all_initiation_allowed BOOLEAN NOT NULL DEFAULT true,
     -- Other
+    initiation_window JSONB,
     instance_title_template VARCHAR(256) NOT NULL DEFAULT '{{.flowName}}-{{.instanceNo}}',
     is_active BOOLEAN NOT NULL DEFAULT false,
     current_version INTEGER NOT NULL DEFAULT 0,
@@ -88,6 +89,7 @@ COMMENT ON COLUMN apv_flow.binding_mode IS 'Binding Mode';
 COMMENT ON COLUMN apv_flow.business_binding IS 'Business Binding';
 COMMENT ON COLUMN apv_flow.admin_user_ids IS 'Admins';
 COMMENT ON COLUMN apv_flow.is_all_initiation_allowed IS 'Open Start';
+COMMENT ON COLUMN apv_flow.initiation_window IS 'Initiation Window';
 COMMENT ON COLUMN apv_flow.instance_title_template IS 'Title Template';
 COMMENT ON COLUMN apv_flow.is_active IS 'Active';
 COMMENT ON COLUMN apv_flow.current_version IS 'Version';

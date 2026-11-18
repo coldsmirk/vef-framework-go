@@ -4,6 +4,7 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/calendar"
 	"github.com/coldsmirk/vef-framework-go/config"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/strategy"
 	"github.com/coldsmirk/vef-framework-go/mold"
@@ -49,8 +50,8 @@ var Module = fx.Module(
 			fx.ParamTags(``, `optional:"true"`),
 		),
 		fx.Annotate(
-			func(initiators *strategy.CompositeInitiatorResolver, cfg *config.ApprovalConfig, codeSets mold.CodeSetLoader) *ValidationService {
-				return NewValidationService(initiators, WithFormDataMaxBytes(cfg.EffectiveFormDataMaxBytes()), WithCodeSetLoader(codeSets))
+			func(initiators *strategy.CompositeInitiatorResolver, cfg *config.ApprovalConfig, codeSets mold.CodeSetLoader, cal calendar.Calendar) *ValidationService {
+				return NewValidationService(initiators, WithCalendar(cal), WithFormDataMaxBytes(cfg.EffectiveFormDataMaxBytes()), WithCodeSetLoader(codeSets))
 			},
 			fx.ParamTags(``, ``, `optional:"true"`),
 		),

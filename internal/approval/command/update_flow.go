@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/calendar"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
@@ -31,6 +32,7 @@ type UpdateFlowCmd struct {
 	IsAllInitiationAllowed bool
 	InstanceTitleTemplate  string
 	Initiators             []shared.CreateFlowInitiatorCmd
+	InitiationWindow       *calendar.WindowRule
 }
 
 // UpdateFlowHandler handles the UpdateFlowCmd command.
@@ -83,6 +85,12 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		return nil, err
 	}
 
+	if cmd.InitiationWindow != nil {
+		if err := cmd.InitiationWindow.Validate(); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := validateFlowLabels(cmd.Labels); err != nil {
 		return nil, err
 	}
@@ -103,6 +111,7 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		}
 	}
 
+	flow.InitiationWindow = cmd.InitiationWindow
 	flow.Name = cmd.Name
 	flow.Icon = cmd.Icon
 	flow.Description = cmd.Description
@@ -118,7 +127,7 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		Select(
 			"name", "icon", "description", "labels",
 			"binding_mode", "business_binding",
-			"admin_user_ids", "is_all_initiation_allowed", "instance_title_template",
+			"admin_user_ids", "is_all_initiation_allowed", "initiation_window", "instance_title_template",
 		).
 		WherePK().
 		Exec(ctx); err != nil {
