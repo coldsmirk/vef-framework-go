@@ -3,6 +3,9 @@ package command_test
 import (
 	"context"
 	"errors"
+	"github.com/coldsmirk/vef-framework-go/config"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/timeout"
+	"github.com/coldsmirk/vef-framework-go/timex"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
@@ -12,6 +15,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/formeditor"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
+	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
@@ -360,4 +364,46 @@ func (s *ApproveTaskTestSuite) TestBusinessViews() {
 	s.Equal("admin", full.BusinessView, "The host receives the administrative viewer")
 	s.Nil(seen.FieldPermissions, "Administrative view is unrestricted")
 	s.Nil(seen.Participation, "Administrative access is separate from participation")
+}
+
+func (s *ApproveTaskTestSuite) TestSeatChangesSkipBusinessDecision() {
+	inst, task := s.newRunningInstance("seat-owner")
+	inst.BusinessKind = new(approval.BusinessKind("order"))
+	_, err := s.db.NewUpdate().Model(inst).Select("business_kind").WherePK().Exec(s.ctx)
+	s.Require().NoError(err, "Should bind the business instance")
+	savedNode := approval.FlowNode{ID: task.NodeID}
+	s.Require().NoError(s.db.NewSelect().Model(&savedNode).WherePK().Scan(s.ctx), "Should read the node configuration")
+	defer func() {
+		_, err := s.db.NewUpdate().Model(&savedNode).Select("approval_method", "add_assignee_types", "is_add_assignee_allowed", "is_remove_assignee_allowed", "timeout_action").WherePK().Exec(s.ctx)
+		s.NoError(err, "Should restore the fixture configuration")
+	}()
+	node := approval.FlowNode{ID: task.NodeID, IsAddAssigneeAllowed: true, AddAssigneeTypes: []approval.AddAssigneeType{approval.AddAssigneeParallel}, IsRemoveAssigneeAllowed: true, ApprovalMethod: approval.ApprovalParallel}
+	_, err = s.db.NewUpdate().Model(&node).Select("is_add_assignee_allowed", "add_assignee_types", "is_remove_assignee_allowed", "approval_method").WherePK().Exec(s.ctx)
+	s.Require().NoError(err, "Should allow parallel seat changes")
+	eng := buildTestEngine(s.db)
+	svc := service.NewTaskService(service.WithBusinessRegistry(testRegistry(testBusinessHandler{action: func(context.Context, orm.DB, *approval.TaskActionContext) (*approval.TaskActionOutcome, error) {
+		s.Fail("Seat changes must not call OnTaskAction")
+		return nil, nil
+	}})))
+	events := eventtest.NewFakeBus()
+	nodes := service.NewNodeService(eng, events, svc, nil, mustCCComposite(), nil)
+	_, err = command.NewAddAssigneeHandler(s.db, svc, nil, nil).Handle(s.ctx, command.AddAssigneeCmd{TaskID: task.ID, UserIDs: []string{"extra"}, AddType: approval.AddAssigneeParallel, Operator: task.Assignee(), Caller: approval.SystemCaller})
+	s.Require().NoError(err, "Adding a seat should bypass business decisions")
+	var extra approval.Task
+	err = s.db.NewSelect().Model(&extra).Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", inst.ID).Equals("assignee_id", "extra") }).Scan(s.ctx)
+	s.Require().NoError(err, "Should find the new seat")
+	_, err = command.NewRemoveAssigneeHandler(s.db, svc, nodes, eng).Handle(s.ctx, command.RemoveAssigneeCmd{TaskID: extra.ID, Operator: task.Assignee(), Caller: approval.SystemCaller})
+	s.Require().NoError(err, "Removing a seat should bypass business decisions")
+	_, err = command.NewReassignTaskHandler(s.db, svc, nil, nil).Handle(s.ctx, command.ReassignTaskCmd{TaskID: task.ID, NewAssigneeID: "replacement", Operator: approval.UserInfo{ID: "admin"}, Caller: approval.SystemCaller})
+	s.Require().NoError(err, "Reassignment should bypass business decisions")
+	report, err := command.NewApplyHandoversHandler(s.db, scopedHandovers{"replacement": {Successor: &approval.UserInfo{ID: "successor"}}}, nil, nodes, events).Handle(s.ctx, command.ApplyHandoversCmd{UserIDs: []string{"replacement"}, Operator: approval.UserInfo{ID: "admin"}, Caller: approval.SystemCaller})
+	s.Require().NoError(err, "Handover should bypass business decisions")
+	s.Require().Len(report.Transferred, 1, "The pending seat should move")
+	_, err = s.db.NewUpdate().Model(&node).Set("timeout_action", approval.TimeoutActionAutoPass).WherePK().Exec(s.ctx)
+	s.Require().NoError(err, "Should configure a system approval")
+	_, err = s.db.NewUpdate().Model(task).Set("deadline", timex.Now().AddHours(-1)).WherePK().Exec(s.ctx)
+	s.Require().NoError(err, "Should expire the pending task")
+	timeout.NewScanner(s.db, events, svc, nodes, nil, new(config.ApprovalConfig), nil).ScanTimeouts(s.ctx)
+	s.Require().NoError(s.db.NewSelect().Model(task).WherePK().Scan(s.ctx), "Should observe the system decision")
+	s.Equal(approval.TaskApproved, task.Status, "System approval should finish the task without invoking the human hook")
 }
