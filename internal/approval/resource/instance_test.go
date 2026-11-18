@@ -2,6 +2,7 @@ package resource_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"sync/atomic"
 	"testing"
@@ -113,12 +114,12 @@ func (s *InstanceResourceTestSuite) SetupSuite() {
 	s.categoryID = cat.ID
 
 	// Pre-build flows
-	s.simple = s.createAndPublishFlow("res-simple", "Simple Flow", simpleFlowDef())
-	s.approval = s.createAndPublishFlow("res-approval", "Approval Flow", approvalFlowDef())
-	s.complex = s.createAndPublishFlow("res-complex", "Complex Flow", complexFlowDef())
-	s.parallel = s.createAndPublishFlow("res-parallel", "Parallel Flow", parallelApprovalFlowDef())
-	s.noCC = s.createAndPublishFlow("res-no-cc", "No CC Flow", noManualCCFlowDef())
-	s.formField = s.createAndPublishFlow("res-form-field", "Form Field Flow", formFieldFlowDef())
+	s.simple = s.createAndPublishFlow("res-simple", "Simple Flow", simpleFlowDef(), nil)
+	s.approval = s.createAndPublishFlow("res-approval", "Approval Flow", approvalFlowDef(), nil)
+	s.complex = s.createAndPublishFlow("res-complex", "Complex Flow", complexFlowDef(), nil)
+	s.parallel = s.createAndPublishFlow("res-parallel", "Parallel Flow", parallelApprovalFlowDef(), nil)
+	s.noCC = s.createAndPublishFlow("res-no-cc", "No CC Flow", noManualCCFlowDef(), nil)
+	s.formField = s.createAndPublishFlow("res-form-field", "Form Field Flow", formFieldFlowDef(), json.RawMessage(`{"version":2,"presentations":{"pc":{"children":[{"id":"F1","type":"textfield","key":"approver","label":"Approver"}]}}}`))
 
 	// Generate tokens for multiple users
 	s.approver2Token = s.GenerateToken(newTenantUser("approver-2", "Approver 2"))
@@ -139,18 +140,17 @@ func (s *InstanceResourceTestSuite) TearDownTest() {
 // --- Suite-local RPC helpers ---
 
 // createAndPublishFlow creates, deploys, and publishes a flow via RPC calls.
-func (s *InstanceResourceTestSuite) createAndPublishFlow(code, name string, def approval.FlowDefinition) FlowSetup {
+func (s *InstanceResourceTestSuite) createAndPublishFlow(code, name string, def approval.FlowDefinition, schema json.RawMessage) FlowSetup {
 	// Create flow
 	resp := s.MakeRPCRequestWithToken(api.Request{
 		Resource: "approval/flow",
 		Action:   "create",
 		Version:  "v1",
 		Params: map[string]any{
-			"tenantId":   "default",
-			"code":       code,
-			"name":       name,
-			"categoryId": s.categoryID,
-
+			"tenantId":               "default",
+			"code":                   code,
+			"name":                   name,
+			"categoryId":             s.categoryID,
 			"isAllInitiationAllowed": true,
 			"instanceTitleTemplate":  name + " {{.instanceNo}}",
 		},
@@ -169,6 +169,7 @@ func (s *InstanceResourceTestSuite) createAndPublishFlow(code, name string, def 
 		Params: map[string]any{
 			"flowId":         flowID,
 			"flowDefinition": toMap(def),
+			"formSchema":     schema,
 		},
 	}, s.token)
 	s.Require().Equal(http.StatusOK, resp.StatusCode, "Deploy flow RPC should return HTTP 200")
