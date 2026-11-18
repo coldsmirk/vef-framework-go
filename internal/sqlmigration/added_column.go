@@ -26,13 +26,20 @@ type AddedColumn struct {
 	// applied the way each dialect's script applies it, so an upgraded table
 	// matches a freshly created one.
 	Comment string
+	// DialectDefinitions overrides Definition for the named dialects.
+	DialectDefinitions map[config.DBKind]string
 }
 
 // Statements renders the DDL adding the column on the given dialect — also
 // the remedy a module's schema verification can quote when the column is
 // missing and automatic migration is off.
 func (c AddedColumn) Statements(kind config.DBKind) []string {
-	add := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", c.Table, c.Name, c.Definition)
+	definition, ok := c.DialectDefinitions[kind]
+	if !ok {
+		definition = c.Definition
+	}
+
+	add := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", c.Table, c.Name, definition)
 	if c.Comment == "" {
 		return []string{add}
 	}

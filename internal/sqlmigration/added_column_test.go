@@ -34,6 +34,12 @@ func TestAddedColumnStatements(t *testing.T) {
 		},
 	}
 
+	for kind, definition := range map[config.DBKind]string{config.Postgres: "JSONB", config.MySQL: "JSON", config.SQLite: "TEXT"} {
+		t.Run(string(kind)+"Definition", func(t *testing.T) {
+			c := AddedColumn{Table: "t", Name: "rule", Definition: "TEXT", DialectDefinitions: map[config.DBKind]string{config.Postgres: "JSONB", config.MySQL: "JSON"}}
+			assert.Equal(t, []string{"ALTER TABLE t ADD COLUMN rule " + definition}, c.Statements(kind), "DDL should use the dialect-specific type or its fallback")
+		})
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, tt.column.Statements(tt.kind), "The dialect's DDL should add the column the way its scripts declare it")
@@ -50,7 +56,7 @@ func TestRunAddsMissingColumns(t *testing.T) {
 
 		added := []AddedColumn{
 			{Table: "smig_added", Name: "pass_count", Definition: "INTEGER NOT NULL DEFAULT 0", Comment: "Pass Count"},
-			{Table: "smig_added", Name: "label", Definition: "VARCHAR(64)"},
+			{Table: "smig_added", Name: "label", Definition: "TEXT", DialectDefinitions: map[config.DBKind]string{config.Postgres: "JSONB", config.MySQL: "JSON"}},
 			// A table the script has yet to create is left to that script.
 			{Table: "smig_not_created", Name: "extra", Definition: "INTEGER"},
 		}
