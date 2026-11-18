@@ -40,6 +40,7 @@ func TestAddedColumnStatements(t *testing.T) {
 			assert.Equal(t, []string{"ALTER TABLE t ADD COLUMN rule " + definition}, c.Statements(kind), "DDL should use the dialect-specific type or its fallback")
 		})
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, tt.column.Statements(tt.kind), "The dialect's DDL should add the column the way its scripts declare it")
@@ -77,6 +78,16 @@ func TestRunAddsMissingColumns(t *testing.T) {
 		missing, err = MissingColumns(env.Ctx, env.DB, env.DS.Kind, added)
 		require.NoError(t, err, "Missing columns should be computed after the upgrade")
 		assert.Empty(t, missing, "Every column of an existing table should now be present")
+
+		columns, err := LoadTableColumns(env.Ctx, env.DB, env.DS.Kind, "smig_added")
+		require.NoError(t, err, "The upgraded column types should be readable")
+
+		wantKind := ColumnJSON
+		if env.DS.Kind == config.SQLite {
+			wantKind = ColumnText
+		}
+
+		assert.Equal(t, wantKind, columns["label"].Kind, "The migration should install the dialect-specific definition")
 
 		var count int
 		require.NoError(t, env.DB.NewRaw("SELECT pass_count FROM smig_added WHERE id = 'row-1'").Scan(env.Ctx, &count),
