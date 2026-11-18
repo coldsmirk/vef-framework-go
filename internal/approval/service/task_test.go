@@ -701,3 +701,29 @@ func (s *TaskServiceTestSuite) TestCanRemoveAssigneeTask() {
 		s.Assert().True(canRemove, "Should allow removal when other actionable tasks exist")
 	})
 }
+
+func (s *TaskServiceTestSuite) TestParticipationReader() {
+	nodeID, inst, id := setupPrepareOperationData(s.T(), s.ctx, s.db, s.fixture, approval.InstanceRunning, approval.TaskPending, "operator")
+	_, err := s.db.NewUpdate().Model((*approval.Task)(nil)).Set("delegator_id", "delegator").Where(func(cb orm.ConditionBuilder) { cb.PKEquals(id) }).Exec(s.ctx)
+	s.Require().NoError(err, "Should assign a delegator")
+	_, err = s.db.NewInsert().Model(&approval.CCRecord{InstanceID: inst, NodeID: &nodeID, CCUserID: "observer"}).Exec(s.ctx)
+	s.Require().NoError(err, "Should seed an observer")
+	var instance approval.Instance
+	instance.ID = inst
+	s.Require().NoError(s.db.NewSelect().Model(&instance).WherePK().Scan(s.ctx), "Should read applicant")
+	for _, c := range []struct {
+		user string
+		role approval.ParticipantRole
+		act  bool
+	}{{"operator", approval.ParticipantAssignee, true}, {"delegator", approval.ParticipantDelegator, false}, {"observer", approval.ParticipantCCRecipient, false}, {instance.ApplicantID, approval.ParticipantApplicant, false}, {"stranger", "", false}} {
+		p, err := s.svc.Participation(s.ctx, s.db, approval.ParticipationInput{InstanceID: inst, UserID: c.user, Caller: approval.SystemCaller})
+		s.Require().NoError(err, "Should resolve participation")
+		s.Equal(c.role != "", p.IsParticipant(), "Each role grants participation")
+		if c.role != "" {
+			s.True(p.Has(c.role), "Resolved role must identify participation")
+		}
+		s.Equal(c.act, p.CanAct(id), "Only current task owner may act")
+	}
+	_, err = s.svc.Participation(s.ctx, s.db, approval.ParticipationInput{InstanceID: inst, UserID: "operator", Caller: approval.CallerContext{TenantID: "other"}})
+	s.ErrorIs(err, approval.ErrInstanceNotFound, "Reader hides another tenant's instance")
+}

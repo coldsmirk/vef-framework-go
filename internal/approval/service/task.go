@@ -713,58 +713,6 @@ func (*TaskService) IsAuthorizedForNodeOperation(ctx context.Context, db orm.DB,
 	return slices.Contains(flow.AdminUserIDs, operatorID), nil
 }
 
-// isDecisionParticipant reports whether userID carries responsibility for the
-// instance's decision: the applicant, or anyone a task on the instance was ever
-// opened on — held directly (assignee_id) or handed to a delegate while the
-// slot stayed theirs (delegator_id). Observers are excluded; CC recipients are
-// deliberately not part of this set.
-//
-// Both handoff shapes must land here. A transfer opens a new task on the
-// transferee and leaves the original row's assignee_id intact, so the person
-// who handed the work on still matches; a delegation instead moves them to
-// delegator_id, so matching assignee_id alone would deny the same
-// organizational situation purely because of how it is stored.
-//
-// DB errors are propagated; a not-found instance maps to
-// approval.ErrInstanceNotFound.
-func isDecisionParticipant(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
-	var instance approval.Instance
-
-	instance.ID = instanceID
-
-	if err := db.NewSelect().
-		Model(&instance).
-		Select("applicant_id").
-		WherePK().
-		Scan(ctx); err != nil {
-		if result.IsRecordNotFound(err) {
-			return false, approval.ErrInstanceNotFound
-		}
-
-		return false, fmt.Errorf("load instance: %w", err)
-	}
-
-	if instance.ApplicantID == userID {
-		return true, nil
-	}
-
-	hasTask, err := db.NewSelect().
-		Model((*approval.Task)(nil)).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", instanceID).
-				Group(func(cb orm.ConditionBuilder) {
-					cb.Equals("assignee_id", userID).
-						OrEquals("delegator_id", userID)
-				})
-		}).
-		Exists(ctx)
-	if err != nil {
-		return false, fmt.Errorf("check task participation: %w", err)
-	}
-
-	return hasTask, nil
-}
-
 // AllowsInstanceAccess reports whether caller may act on an instance of
 // instanceTenantID as userID, the person doing the work. A caller of the
 // instance's tenant may; so may a person the work was routed to — the assignee
@@ -840,8 +788,9 @@ func isRoutedTo(ctx context.Context, db orm.DB, instanceID, userID string) (bool
 // pending task on the instance, not only the one they hold. An approver two
 // nodes back is as entitled to ask why the instance is stuck as the applicant
 // is, and the per-(task, urger) cooldown is what bounds the volume.
-func (*TaskService) IsUrgeAuthorized(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
-	return isDecisionParticipant(ctx, db, instanceID, userID)
+func (s *TaskService) IsUrgeAuthorized(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
+	p, err := s.Participation(ctx, db, approval.ParticipationInput{InstanceID: instanceID, UserID: userID, Caller: approval.SystemCaller})
+	return p.Has(approval.ParticipantApplicant) || p.Has(approval.ParticipantAssignee) || p.Has(approval.ParticipantDelegator), err
 }
 
 // IsInstanceParticipant checks whether the user is related to the instance as
@@ -859,24 +808,9 @@ func (*TaskService) IsUrgeAuthorized(ctx context.Context, db orm.DB, instanceID,
 // query.resolveViewerFieldPermissions, whose contexts have to stay a superset
 // of this participant set — otherwise the new viewer reaches the detail and
 // finds every form field stripped.
-func (*TaskService) IsInstanceParticipant(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
-	ok, err := isDecisionParticipant(ctx, db, instanceID, userID)
-	if err != nil || ok {
-		return ok, err
-	}
-
-	hasCC, err := db.NewSelect().
-		Model((*approval.CCRecord)(nil)).
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", instanceID).
-				Equals("cc_user_id", userID)
-		}).
-		Exists(ctx)
-	if err != nil {
-		return false, fmt.Errorf("check cc participation: %w", err)
-	}
-
-	return hasCC, nil
+func (s *TaskService) IsInstanceParticipant(ctx context.Context, db orm.DB, instanceID, userID string) (bool, error) {
+	p, err := s.Participation(ctx, db, approval.ParticipationInput{InstanceID: instanceID, UserID: userID, Caller: approval.SystemCaller})
+	return p.IsParticipant(), err
 }
 
 // CanRemoveAssigneeTask determines whether removing a task can still drive the
@@ -922,13 +856,7 @@ func (*TaskService) CanRemoveAssigneeTask(ctx context.Context, db orm.DB, eng *e
 // PrepareDecision locks the instance and task, checks the operator, and applies
 // the human decision to the business record and its approval snapshot.
 func (s *TaskService) PrepareDecision(ctx context.Context, db orm.DB, taskID string, caller approval.CallerContext, action *approval.TaskActionContext, validation *ValidationService, check func(*approval.TaskActionContext) error) (*TaskContext, error) {
-	tc, err := s.LoadTaskContextForNodeOperation(ctx, db, taskID, TaskContextLoadOptions{
-		OperatorID:              action.Operator.ID,
-		RequireOperatorAssignee: true,
-		RequireTaskPending:      true,
-		RequireCurrentNode:      true,
-		Caller:                  caller,
-	})
+	tc, err := s.LoadTaskContextForNodeOperation(ctx, db, taskID, decisionOptions(action.Operator.ID, caller))
 	if err != nil {
 		return nil, err
 	}
@@ -1131,20 +1059,8 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 		return nil, approval.ErrTaskNotFound
 	}
 
-	if instance.Status != approval.InstanceRunning {
-		return nil, approval.ErrInstanceCompleted
-	}
-
-	if options.RequireOperatorAssignee && task.AssigneeID != options.OperatorID {
-		return nil, approval.ErrNotAssignee
-	}
-
-	if options.RequireTaskPending && task.Status != approval.TaskPending {
-		return nil, approval.ErrTaskNotPending
-	}
-
-	if options.RequireCurrentNode && (instance.CurrentNodeID == nil || *instance.CurrentNodeID != task.NodeID) {
-		return nil, approval.ErrTaskNotPending
+	if err := validateTaskState(&instance, &task, options); err != nil {
+		return nil, err
 	}
 
 	var node approval.FlowNode

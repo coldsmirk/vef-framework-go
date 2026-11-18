@@ -56,6 +56,7 @@ var Module = fx.Module(
 			},
 			fx.ParamTags(``, ``, `optional:"true"`),
 		),
+		func(s *TaskService) approval.ParticipationReader { return s },
 		NewNodeService,
 		NewInstanceService,
 		NewFormGlobalsService,
