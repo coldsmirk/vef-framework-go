@@ -168,6 +168,7 @@
   "approval_annotation_content_invalid": "Enter up to 4000 characters. Only an addressed response can be empty.",
   "approval_void_not_allowed": "This void policy does not allow the operation",
   "approval_instance_not_voidable": "Only an approved instance can be voided",
+  "approval_void_input_invalid": "Enter a target, a reason of up to 2000 characters, and at most 20 attachments.",
   "approval_void_blocked": "Voiding is blocked{{if .blockers}}: {{.blockers}}{{end}}",
   "approval_void_request_pending": "A void request is pending",
   "approval_void_policy_invalid": "Invalid void policy or void request flow",

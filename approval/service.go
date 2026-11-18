@@ -85,6 +85,9 @@ type Service interface {
 	// behalf of its applicant; the operator must be the applicant.
 	ResubmitInstance(ctx context.Context, db orm.DB, in ResubmitInstanceInput) error
 
+	// VoidInstance reverses an approved instance under its flow's direct policy.
+	VoidInstance(ctx context.Context, db orm.DB, in VoidInstanceInput) error
+
 	// TerminateInstance force-closes an instance. Running, returned and
 	// withdrawn instances can all be terminated — the instance state machine
 	// is the single authority on which statuses may close. Administrative:

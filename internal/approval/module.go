@@ -3,6 +3,7 @@ package approval
 import (
 	"context"
 	"fmt"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/voiding"
 
 	"go.uber.org/fx"
 
@@ -36,6 +37,7 @@ var Module = fx.Module(
 		return business.NewRegistry(handlers, defs.ValidateFormFields)
 	}, fx.ParamTags(`group:"vef:approval:business_handlers"`))),
 
+	fx.Provide(voiding.NewCore),
 	auth.Module,
 	strategy.Module,
 	behavior.Module,

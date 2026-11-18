@@ -49,7 +49,7 @@ func TestRegisterHandlers(t *testing.T) {
 		new(FindFlowInitiatorsHandler),
 		new(ListBusinessKindsHandler),
 		new(ListKindOptionsHandler),
-		new(GetMetricsHandler),
+		new(PlanVoidHandler), new(GetMetricsHandler),
 	)
 
 	// For each expected query type, send a zero-value query and confirm the bus
@@ -59,6 +59,11 @@ func TestRegisterHandlers(t *testing.T) {
 		name string
 		send func() error
 	}{
+		{"PlanVoid", func() (err error) {
+			defer recoverDispatch(&err)
+			_, err = cqrs.Send[PlanVoidQuery, *approval.VoidPreview](context.Background(), bus, PlanVoidQuery{})
+			return err
+		}},
 		{"GetFlowGraph", func() (err error) {
 			defer recoverDispatch(&err)
 

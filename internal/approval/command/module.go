@@ -33,6 +33,7 @@ var Module = fx.Module(
 		NewAddAssigneeHandler,
 		NewRemoveAssigneeHandler,
 		NewUrgeTaskHandler,
+		NewVoidInstanceHandler,
 		NewTerminateInstanceHandler,
 		NewReassignTaskHandler,
 		NewApplyHandoversHandler,
@@ -63,6 +64,7 @@ func registerHandlers(
 	addAssignee *AddAssigneeHandler,
 	removeAssignee *RemoveAssigneeHandler,
 	urgeTask *UrgeTaskHandler,
+	voidInstance *VoidInstanceHandler,
 	terminateInstance *TerminateInstanceHandler,
 	reassignTask *ReassignTaskHandler,
 	applyHandovers *ApplyHandoversHandler,
@@ -92,6 +94,7 @@ func registerHandlers(
 	cqrs.Register(bus, addAssignee)
 	cqrs.Register(bus, removeAssignee)
 	cqrs.Register(bus, urgeTask)
+	cqrs.Register(bus, voidInstance)
 	cqrs.Register(bus, terminateInstance)
 	cqrs.Register(bus, reassignTask)
 	cqrs.Register(bus, applyHandovers)

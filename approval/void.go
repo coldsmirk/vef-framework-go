@@ -81,3 +81,30 @@ type VoidRecord struct {
 	FollowUps         []string        `json:"followUps" bun:"type:jsonb"`
 	VoidedAt          *timex.DateTime `json:"voidedAt,omitempty"`
 }
+
+type VoidInstanceInput struct {
+	InstanceID  string
+	Operator    UserInfo
+	Reason      string
+	Attachments []string
+	Options     map[string]any
+	Caller      CallerContext
+}
+
+// VoidPreview describes a direct void or a request under the flow's live policy.
+type VoidPreview struct {
+	Policy       VoidPolicy `json:"policy"`
+	VoidFlowCode *string    `json:"voidFlowCode,omitempty"`
+	Plan         *VoidPlan  `json:"plan"`
+}
+
+type InstanceVoidedEvent struct {
+	InstanceEventBase
+	Operator          UserInfo `json:"operator"`
+	Reason            string   `json:"reason"`
+	RequestInstanceID *string  `json:"requestInstanceId,omitempty"`
+	Reversals         []string `json:"reversals"`
+	FollowUps         []string `json:"followUps"`
+}
+
+func (*InstanceVoidedEvent) EventType() string { return EventTypeInstanceVoided }

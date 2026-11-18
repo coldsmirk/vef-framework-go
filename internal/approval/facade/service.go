@@ -156,3 +156,7 @@ func (s *Service) SaveAnnotation(ctx context.Context, db orm.DB, in approval.Sav
 func (s *Service) DeleteAnnotation(ctx context.Context, db orm.DB, in approval.DeleteAnnotationInput) error {
 	return s.sendUnit(ctx, db, command.DeleteAnnotationCmd{DeleteAnnotationInput: in})
 }
+
+func (s *Service) VoidInstance(ctx context.Context, db orm.DB, in approval.VoidInstanceInput) error {
+	return s.sendUnit(ctx, db, command.VoidInstanceCmd{VoidInstanceInput: in})
+}

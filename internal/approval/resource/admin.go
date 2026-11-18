@@ -52,6 +52,8 @@ func NewAdminResource(
 				api.OperationSpec{Action: "find_business_projections", RequiredPermission: "approval.binding.query"},
 				// Admin write actions: framework-level audit captures who/when/IP
 				// in addition to the business-table action_log.
+				api.OperationSpec{Action: "plan_void", RequiredPermission: "approval.instance.void"},
+				api.OperationSpec{Action: "void_instance", RequiredPermission: "approval.instance.void", EnableAudit: true},
 				api.OperationSpec{Action: "terminate_instance", RequiredPermission: "approval.instance.terminate", EnableAudit: true},
 				api.OperationSpec{Action: "apply_handovers", RequiredPermission: "approval.handover.apply", EnableAudit: true},
 				api.OperationSpec{Action: "reassign_task", RequiredPermission: "approval.task.reassign", EnableAudit: true},

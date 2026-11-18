@@ -41,6 +41,7 @@ func NewMyResource(
 			"approval/my",
 			api.WithOperations(
 				api.OperationSpec{Action: "find_available_flows"},
+				api.OperationSpec{Action: "plan_void"},
 				api.OperationSpec{Action: "get_start_form"},
 				api.OperationSpec{Action: "find_initiated"},
 				api.OperationSpec{Action: "find_pending_tasks"},

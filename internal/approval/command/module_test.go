@@ -40,7 +40,7 @@ func TestRegisterHandlers(t *testing.T) {
 		new(AddAssigneeHandler),
 		new(RemoveAssigneeHandler),
 		new(UrgeTaskHandler),
-		new(TerminateInstanceHandler),
+		new(VoidInstanceHandler), new(TerminateInstanceHandler),
 		new(ReassignTaskHandler),
 		new(ApplyHandoversHandler),
 		new(RetryBusinessProjectionHandler),
@@ -65,6 +65,11 @@ func TestRegisterHandlers(t *testing.T) {
 
 			_, err = cqrs.Send[DeleteAnnotationCmd, cqrs.Unit](context.Background(), bus, DeleteAnnotationCmd{})
 
+			return err
+		}},
+		{"VoidInstance", func() (err error) {
+			defer recoverDispatch(&err)
+			_, err = cqrs.Send[VoidInstanceCmd, cqrs.Unit](context.Background(), bus, VoidInstanceCmd{})
 			return err
 		}},
 		{"CreateFlow", func() (err error) {

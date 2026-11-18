@@ -60,6 +60,7 @@ type DomainEvent interface {
 // reference them by symbol rather than risking a typo on the wire string.
 const (
 	EventTypeInstanceCreated       = "approval.instance.created"
+	EventTypeInstanceVoided        = "approval.instance.voided"
 	EventTypeInstanceCompleted     = "approval.instance.completed"
 	EventTypeInstanceWithdrawn     = "approval.instance.withdrawn"
 	EventTypeInstanceRolledBack    = "approval.instance.rolled_back"
@@ -105,6 +106,7 @@ func AllEventTypes() []string {
 	return []string{
 		EventTypeInstanceCreated,
 		EventTypeInstanceCompleted,
+		EventTypeInstanceVoided,
 		EventTypeInstanceWithdrawn,
 		EventTypeInstanceRolledBack,
 		EventTypeInstanceReturned,
