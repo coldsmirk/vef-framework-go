@@ -57,6 +57,7 @@ var Module = fx.Module(
 			fx.ParamTags(``, ``, `optional:"true"`),
 		),
 		NewParticipationReader,
+		NewAnnotationEditor,
 		NewNodeService,
 		NewInstanceService,
 		NewFormGlobalsService,

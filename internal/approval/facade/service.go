@@ -148,3 +148,10 @@ func (s *Service) RetryBusinessProjection(ctx context.Context, db orm.DB, in app
 func (s *Service) ApplyHandovers(ctx context.Context, db orm.DB, in approval.ApplyHandoversInput) (*approval.HandoverReport, error) {
 	return s.send[command.ApplyHandoversCmd, *approval.HandoverReport](ctx, db, command.ApplyHandoversCmd{ApplyHandoversInput: in})
 }
+
+func (s *Service) SaveAnnotation(ctx context.Context, db orm.DB, in approval.SaveAnnotationInput) (*approval.AnnotationView, error) {
+	return s.send[command.SaveAnnotationCmd, *approval.AnnotationView](ctx, db, command.SaveAnnotationCmd{SaveAnnotationInput: in})
+}
+func (s *Service) DeleteAnnotation(ctx context.Context, db orm.DB, in approval.DeleteAnnotationInput) error {
+	return s.sendUnit(ctx, db, command.DeleteAnnotationCmd{DeleteAnnotationInput: in})
+}

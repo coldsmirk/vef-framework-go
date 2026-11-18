@@ -28,6 +28,7 @@ var Module = fx.Module(
 		NewWithdrawInstanceHandler,
 		NewResubmitInstanceHandler,
 		NewAddCCHandler,
+		NewSaveAnnotationHandler, NewDeleteAnnotationHandler,
 		NewMarkCCReadHandler,
 		NewAddAssigneeHandler,
 		NewRemoveAssigneeHandler,
@@ -57,6 +58,7 @@ func registerHandlers(
 	withdraw *WithdrawInstanceHandler,
 	resubmit *ResubmitInstanceHandler,
 	addCC *AddCCHandler,
+	saveAnnotation *SaveAnnotationHandler, deleteAnnotation *DeleteAnnotationHandler,
 	markCCRead *MarkCCReadHandler,
 	addAssignee *AddAssigneeHandler,
 	removeAssignee *RemoveAssigneeHandler,
@@ -84,6 +86,8 @@ func registerHandlers(
 	cqrs.Register(bus, withdraw)
 	cqrs.Register(bus, resubmit)
 	cqrs.Register(bus, addCC)
+	cqrs.Register(bus, saveAnnotation)
+	cqrs.Register(bus, deleteAnnotation)
 	cqrs.Register(bus, markCCRead)
 	cqrs.Register(bus, addAssignee)
 	cqrs.Register(bus, removeAssignee)

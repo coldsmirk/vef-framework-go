@@ -94,3 +94,20 @@ type AnchorContext struct {
 	Author   UserInfo
 	Anchor   json.RawMessage
 }
+
+type SaveAnnotationInput struct {
+	ID         string
+	TaskID     string
+	ParentID   string
+	Anchor     json.RawMessage
+	Content    string
+	Audience   *AnnotationAudience
+	Resolution *AnnotationResolution
+	Operator   UserInfo
+	Caller     CallerContext
+}
+type DeleteAnnotationInput struct {
+	ID       string
+	Operator UserInfo
+	Caller   CallerContext
+}

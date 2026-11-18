@@ -146,6 +146,11 @@ type Service interface {
 	// or permission fault. Administrative: only the tenant scope is enforced,
 	// so the caller owns the permission check (see the interface comment).
 	RetryBusinessProjection(ctx context.Context, db orm.DB, in RetryBusinessProjectionInput) error
+
+	// SaveAnnotation creates or edits a held task draft or an applicant's response.
+	SaveAnnotation(ctx context.Context, db orm.DB, in SaveAnnotationInput) (*AnnotationView, error)
+	// DeleteAnnotation removes the author's still-editable draft.
+	DeleteAnnotation(ctx context.Context, db orm.DB, in DeleteAnnotationInput) error
 }
 
 // StartInstanceInput describes a new instance to start.

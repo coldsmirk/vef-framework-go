@@ -118,6 +118,8 @@ func NewInstanceResource(
 				api.OperationSpec{Action: "process_task", RequiredPermission: "approval.task.process", EnableAudit: true},
 				api.OperationSpec{Action: "withdraw", RequiredPermission: "approval.instance.withdraw", EnableAudit: true},
 				api.OperationSpec{Action: "resubmit", RequiredPermission: "approval.instance.resubmit", EnableAudit: true},
+				api.OperationSpec{Action: "save_annotation", RequiredPermission: "approval.annotation.write"},
+				api.OperationSpec{Action: "delete_annotation", RequiredPermission: "approval.annotation.write"},
 				api.OperationSpec{Action: "add_cc", RequiredPermission: "approval.instance.cc", EnableAudit: true},
 				// mark_cc_read is a self-service read receipt — low impact, no audit.
 				api.OperationSpec{Action: "mark_cc_read", RequiredPermission: "approval.instance.cc"},

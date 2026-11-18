@@ -165,6 +165,7 @@
   "approval_initiators_not_allowed": "流程允许所有人发起时不能配置发起人",
   "approval_initiators_required": "流程限定发起人时必须配置发起人，且每条规则至少选择一项",
   "approval_category_not_found": "流程分类不存在",
+  "approval_annotation_content_invalid": "批注内容最多 4000 个字符，仅已修改的回应可以留空。",
   "approval_annotation_not_found": "批注不存在或不可见",
   "approval_annotation_not_editable": "无法编辑该批注草稿",
   "approval_annotation_anchor_invalid": "批注锚点无效",
