@@ -20,6 +20,8 @@ func TestValidateTitleFields(t *testing.T) {
 		{"Quoted", "{{printf \".formData.unknown\"}}", true},
 		{"ItemScope", "{{range .formData.items}}{{.formData.itemProperty}}{{end}}", true},
 		{"RootInRange", "{{range .formData.items}}{{$.formData.unknown}}{{end}}", false},
+		{"RootRestoredInRange", "{{range .formData.items}}{{with $}}{{.formData.unknown}}{{end}}{{end}}", false},
+		{"WithRootDeclaration", "{{with $ctx := .}}{{.formData.unknown}}{{end}}", false},
 		{"CalledTemplate", "{{define \"field\"}}{{.formData.unknown}}{{end}}{{template \"field\" .}}", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

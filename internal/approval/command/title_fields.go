@@ -100,7 +100,8 @@ func (v *titleFieldValidator) branch(x *parse.BranchNode, root bool) error {
 		return err
 	}
 
-	if err := v.walk(x.List, root && (x.Type() == parse.NodeIf || (x.Type() == parse.NodeWith && x.Pipe.String() == "."))); err != nil {
+	bodyIsRoot := (x.Type() == parse.NodeIf && root) || (x.Type() == parse.NodeWith && titlePipeIsRoot(x.Pipe, root))
+	if err := v.walk(x.List, bodyIsRoot); err != nil {
 		return err
 	}
 
@@ -112,7 +113,7 @@ func (v *titleFieldValidator) named(x *parse.TemplateNode, root bool) error {
 		return err
 	}
 
-	if x.Pipe != nil && (x.Pipe.String() == "$" || (x.Pipe.String() == "." && root)) && !v.visited[x.Name] {
+	if titlePipeIsRoot(x.Pipe, root) && !v.visited[x.Name] {
 		v.visited[x.Name] = true
 		if sub := v.tmpl.Lookup(x.Name); sub != nil {
 			return v.walk(sub.Root, true)
@@ -120,4 +121,21 @@ func (v *titleFieldValidator) named(x *parse.TemplateNode, root bool) error {
 	}
 
 	return nil
+}
+
+func titlePipeIsRoot(pipe *parse.PipeNode, dotIsRoot bool) bool {
+	if pipe == nil || len(pipe.Cmds) != 1 || len(pipe.Cmds[0].Args) != 1 {
+		return false
+	}
+
+	switch arg := pipe.Cmds[0].Args[0].(type) {
+	case *parse.DotNode:
+		return dotIsRoot
+	case *parse.VariableNode:
+		return len(arg.Ident) == 1 && arg.Ident[0] == "$"
+	case *parse.PipeNode:
+		return titlePipeIsRoot(arg, dotIsRoot)
+	default:
+		return false
+	}
 }
