@@ -22,12 +22,6 @@ var Module = fx.Module(
 		// context every processor shares.
 		fx.Annotate(NewCCProcessor, fx.As(new(NodeProcessor)), fx.ResultTags(`group:"vef:approval:node_processors"`)),
 
-		// Lifecycle hooks aggregator: collects host-registered hooks via FX group.
-		fx.Annotate(
-			NewLifecycleHookRunner,
-			fx.ParamTags(``, `group:"vef:approval:lifecycle_hooks"`),
-		),
-
 		// CompiledFlow cache backed by the in-process memory store. Hosts
 		// that need cross-node sharing (rare for immutable flow versions)
 		// can fx.Replace with a cache.NewRedis[*CompiledFlow](...).

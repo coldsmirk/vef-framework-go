@@ -354,7 +354,10 @@ func (s *FlowResourceTestSuite) TestListBusinessKinds() {
 	res := s.ReadResult(resp)
 	s.Require().True(res.IsOk(), "The flow reader should see the business catalog")
 	items := s.ReadDataAsSlice(res.Data)
-	s.Require().Len(items, 2, "Both registered handlers should be listed")
-	s.Equal("meeting", s.ReadDataAsMap(items[0])["kind"], "Descriptors should be sorted by kind")
-	s.Equal("order", s.ReadDataAsMap(items[1])["kind"], "The later kind should follow")
+	s.Require().Len(items, 3, "Both host handlers and the framework void request should be listed")
+	builtin := s.ReadDataAsMap(items[0])
+	s.Equal("approval.void_request", builtin["kind"], "The reserved kind should be discoverable")
+	s.Equal(false, builtin["isVoidable"], "A void request cannot be voided")
+	s.Equal("meeting", s.ReadDataAsMap(items[1])["kind"], "Descriptors should be sorted by kind")
+	s.Equal("order", s.ReadDataAsMap(items[2])["kind"], "The later kind should follow")
 }

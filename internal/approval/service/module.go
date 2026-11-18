@@ -59,7 +59,6 @@ var Module = fx.Module(
 		NewParticipationReader,
 		NewAnnotationEditor,
 		NewNodeService,
-		NewInstanceService,
 		NewFormGlobalsService,
 	),
 )

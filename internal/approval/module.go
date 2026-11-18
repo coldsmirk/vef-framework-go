@@ -12,7 +12,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/auth"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/facade"
@@ -33,11 +32,7 @@ var Module = fx.Module(
 	// The built-in form-schema parser (vef-framework-react form-editor);
 	// hosts replace it wholesale with vef.ProvideApprovalFormSchemaParser.
 	fx.Provide(formeditor.NewParser),
-	fx.Provide(fx.Annotate(func(handlers []approval.BusinessHandler, defs *service.FlowDefinitionService) (*business.Registry, error) {
-		return business.NewRegistry(handlers, defs.ValidateFormFields)
-	}, fx.ParamTags(`group:"vef:approval:business_handlers"`))),
-
-	fx.Provide(voiding.NewCore),
+	fx.Provide(fx.Annotate(voiding.NewRuntime, fx.ParamTags(`group:"vef:approval:business_handlers"`, ``, ``, `group:"vef:approval:lifecycle_hooks"`))),
 	auth.Module,
 	strategy.Module,
 	behavior.Module,

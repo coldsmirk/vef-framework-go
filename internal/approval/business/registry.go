@@ -19,11 +19,11 @@ type Registry struct {
 	ordered  []approval.BusinessKind
 }
 
-func NewRegistry(handlers []approval.BusinessHandler, validate func([]approval.FormFieldDefinition) error) (*Registry, error) {
+func NewRegistry(handlers []approval.BusinessHandler, validate func([]approval.FormFieldDefinition) error, builtins ...approval.BusinessHandler) (*Registry, error) {
 	byKind := make(map[approval.BusinessKind]approval.BusinessHandler, len(handlers))
-	for _, h := range handlers {
+	for i, h := range slices.Concat(handlers, builtins) {
 		d := h.Describe()
-		if len(d.Kind) > 64 || !kindPattern.MatchString(string(d.Kind)) || strings.HasPrefix(string(d.Kind), "approval.") || strings.TrimSpace(d.Label) == "" {
+		if len(d.Kind) > 64 || !kindPattern.MatchString(string(d.Kind)) || strings.HasPrefix(string(d.Kind), "approval.") != (i >= len(handlers)) || strings.TrimSpace(d.Label) == "" {
 			return nil, fmt.Errorf("%w: %q", ErrInvalidDescriptor, d.Kind)
 		}
 

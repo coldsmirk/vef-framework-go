@@ -407,7 +407,7 @@ type ListBusinessKindsParams struct{ api.P }
 
 // ListBusinessKinds lists the registered handlers' current localized descriptors.
 func (r *FlowResource) ListBusinessKinds(ctx fiber.Ctx, _ ListBusinessKindsParams) error {
-	kinds, err := cqrs.Send[query.ListBusinessKindsQuery, []approval.BusinessKindDescriptor](ctx.Context(), r.bus, query.ListBusinessKindsQuery{})
+	kinds, err := cqrs.Send[query.ListBusinessKindsQuery, []query.BusinessKindOption](ctx.Context(), r.bus, query.ListBusinessKindsQuery{})
 	if err != nil {
 		return err
 	}

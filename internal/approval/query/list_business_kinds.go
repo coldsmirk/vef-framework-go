@@ -17,6 +17,18 @@ func NewListBusinessKindsHandler(r *business.Registry) *ListBusinessKindsHandler
 	return &ListBusinessKindsHandler{registry: r}
 }
 
-func (h *ListBusinessKindsHandler) Handle(context.Context, ListBusinessKindsQuery) ([]approval.BusinessKindDescriptor, error) {
-	return h.registry.Descriptors(), nil
+type BusinessKindOption struct {
+	approval.BusinessKindDescriptor
+	IsVoidable bool `json:"isVoidable"`
+}
+
+func (h *ListBusinessKindsHandler) Handle(context.Context, ListBusinessKindsQuery) ([]BusinessKindOption, error) {
+	ds := h.registry.Descriptors()
+	options := make([]BusinessKindOption, len(ds))
+	for i, d := range ds {
+		handler, _ := h.registry.Lookup(d.Kind)
+		_, ok := handler.(approval.BusinessVoider)
+		options[i] = BusinessKindOption{BusinessKindDescriptor: d, IsVoidable: ok}
+	}
+	return options, nil
 }
