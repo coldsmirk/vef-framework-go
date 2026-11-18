@@ -72,12 +72,13 @@ func (h *FindMyInitiatedHandler) Handle(ctx context.Context, query FindMyInitiat
 		flow := flowMap[inst.FlowID]
 
 		item := my.InitiatedInstance{
-			InstanceID: inst.ID,
-			InstanceNo: inst.InstanceNo,
-			Title:      inst.Title,
-			Status:     string(inst.Status),
-			CreatedAt:  inst.CreatedAt,
-			FinishedAt: inst.FinishedAt,
+			BusinessKind: inst.BusinessKind,
+			InstanceID:   inst.ID,
+			InstanceNo:   inst.InstanceNo,
+			Title:        inst.Title,
+			Status:       string(inst.Status),
+			CreatedAt:    inst.CreatedAt,
+			FinishedAt:   inst.FinishedAt,
 		}
 		if flow != nil {
 			item.FlowName = flow.Name

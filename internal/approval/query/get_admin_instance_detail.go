@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/approval/admin"
@@ -20,17 +21,19 @@ type GetAdminInstanceDetailQuery struct {
 
 	InstanceID string
 	Caller     approval.CallerContext
+	Viewer     approval.UserInfo
 }
 
 // GetAdminInstanceDetailHandler handles the GetAdminInstanceDetailQuery.
 type GetAdminInstanceDetailHandler struct {
 	db          orm.DB
+	registry    *business.Registry
 	formGlobals *service.FormGlobalsService
 }
 
 // NewGetAdminInstanceDetailHandler creates a new GetAdminInstanceDetailHandler.
-func NewGetAdminInstanceDetailHandler(db orm.DB, formGlobals *service.FormGlobalsService) *GetAdminInstanceDetailHandler {
-	return &GetAdminInstanceDetailHandler{db: db, formGlobals: formGlobals}
+func NewGetAdminInstanceDetailHandler(db orm.DB, formGlobals *service.FormGlobalsService, registry *business.Registry) *GetAdminInstanceDetailHandler {
+	return &GetAdminInstanceDetailHandler{db: db, registry: registry, formGlobals: formGlobals}
 }
 
 func (h *GetAdminInstanceDetailHandler) Handle(ctx context.Context, query GetAdminInstanceDetailQuery) (*admin.InstanceDetail, error) {
@@ -67,6 +70,7 @@ func (h *GetAdminInstanceDetailHandler) Handle(ctx context.Context, query GetAdm
 			Status:        string(instance.Status),
 			CurrentNodeID: instance.CurrentNodeID,
 			BusinessRef:   instance.BusinessRef,
+			BusinessKind:  instance.BusinessKind,
 			FormData:      instance.FormData,
 			Globals:       h.formGlobals.Visible(instance.FlowCode, instance.Globals),
 			CreatedAt:     instance.CreatedAt,
@@ -83,5 +87,9 @@ func (h *GetAdminInstanceDetailHandler) Handle(ctx context.Context, query GetAdm
 		}
 	}
 
+	detail.BusinessView, err = h.registry.View(ctx, db, &approval.ViewContext{Instance: &instance, Viewer: query.Viewer})
+	if err != nil {
+		return nil, err
+	}
 	return detail, nil
 }

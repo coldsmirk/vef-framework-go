@@ -14,10 +14,11 @@ import (
 // the node-by-node timeline, and the progress-annotated flow graph. The raw
 // audit trail stays available through the paginated admin action-log query.
 type InstanceDetail struct {
-	Instance   InstanceDetailInfo         `json:"instance"`
-	FormSchema json.RawMessage            `json:"formSchema,omitempty"`
-	Timeline   []approval.TimelineEntry   `json:"timeline"`
-	FlowGraph  approval.InstanceFlowGraph `json:"flowGraph"`
+	Instance     InstanceDetailInfo         `json:"instance"`
+	FormSchema   json.RawMessage            `json:"formSchema,omitempty"`
+	Timeline     []approval.TimelineEntry   `json:"timeline"`
+	FlowGraph    approval.InstanceFlowGraph `json:"flowGraph"`
+	BusinessView any                        `json:"businessView,omitempty"`
 }
 
 // InstanceDetailInfo carries the instance's runtime state within an admin
@@ -44,9 +45,10 @@ type InstanceDetailInfo struct {
 	// Globals is the form-visible part of the instance's globals snapshot
 	// (approval.FormGlobalsExposer) — the form's `$globals`, as resolved at
 	// initiation. Absent when the flow exposes none.
-	Globals    map[string]any  `json:"globals,omitempty"`
-	CreatedAt  timex.DateTime  `json:"createdAt"`
-	FinishedAt *timex.DateTime `json:"finishedAt,omitempty"`
+	Globals      map[string]any         `json:"globals,omitempty"`
+	CreatedAt    timex.DateTime         `json:"createdAt"`
+	FinishedAt   *timex.DateTime        `json:"finishedAt,omitempty"`
+	BusinessKind *approval.BusinessKind `json:"businessKind,omitempty"`
 }
 
 // ActionLog represents an action log entry in the admin audit view. Person

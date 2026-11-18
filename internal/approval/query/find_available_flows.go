@@ -107,6 +107,7 @@ func (h *FindAvailableFlowsHandler) Handle(ctx context.Context, query FindAvaila
 		return nil, err
 	}
 
+	kinds := lo.SliceToMap(candidates, func(f approval.Flow) (string, *approval.BusinessKind) { return f.ID, f.BusinessKind })
 	now := time.Now()
 
 	items := make([]my.AvailableFlow, len(flows))
@@ -119,6 +120,7 @@ func (h *FindAvailableFlowsHandler) Handle(ctx context.Context, query FindAvaila
 		item := my.AvailableFlow{
 			InitiationWindow: status,
 			FlowID:           f.ID,
+			BusinessKind:     kinds[f.ID],
 			FlowCode:         f.Code,
 			FlowName:         f.Name,
 			FlowIcon:         f.Icon,
@@ -202,16 +204,16 @@ func loadStartableFlows(
 		return nil, nil
 	}
 
-	publishedIDs, err := loadPublishedFlowIDs(ctx, db, lo.Map(flows, func(flow approval.Flow, _ int) string {
+	published, err := loadPublishedKinds(ctx, db, lo.Map(flows, func(flow approval.Flow, _ int) string {
 		return flow.ID
 	}))
 	if err != nil {
 		return nil, err
 	}
 
-	published := collections.NewHashSetFrom(publishedIDs...)
-
-	return lo.Filter(flows, func(flow approval.Flow, _ int) bool {
-		return published.Contains(flow.ID)
+	return lo.FilterMap(flows, func(f approval.Flow, _ int) (approval.Flow, bool) {
+		kind, ok := published[f.ID]
+		f.BusinessKind = kind
+		return f, ok
 	}), nil
 }

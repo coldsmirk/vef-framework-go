@@ -32,4 +32,5 @@ type StartForm struct {
 	// exposes none.
 	Globals          map[string]any         `json:"globals,omitempty"`
 	InitiationWindow *calendar.WindowStatus `json:"initiationWindow,omitempty"`
+	BusinessKind     *approval.BusinessKind `json:"businessKind,omitempty"`
 }

@@ -48,10 +48,10 @@ func (s *ApproveTaskTestSuite) TestProjectionWritePathConsistency() {
 
 	// Projection side (real entry point): resolve the viewer's field permissions
 	// while the task is still pending — capture before the approve consumes it.
-	detailHandler := query.NewGetMyInstanceDetailHandler(s.db, service.NewTaskService(), service.NewFormGlobalsService(auth.NewDefaultInstanceGlobalsResolver()))
+	detailHandler := query.NewGetMyInstanceDetailHandler(s.db, nil, service.NewFormGlobalsService(auth.NewDefaultInstanceGlobalsResolver()))
 	detail, err := detailHandler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: inst.ID,
-		UserID:     "consistency-approver",
+		Viewer:     approval.UserInfo{ID: "consistency-approver"},
 	})
 	s.Require().NoError(err, "Pending approver should resolve instance detail")
 	s.Require().Len(detail.FieldPermissions, len(fields), "Projection should carry an entry for every top-level field")

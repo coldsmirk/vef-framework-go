@@ -164,8 +164,13 @@ func (r *AdminResource) GetInstanceDetail(ctx fiber.Ctx, principal *security.Pri
 		return err
 	}
 
+	viewer, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
+	if err != nil {
+		return err
+	}
 	detail, err := cqrs.Send[query.GetAdminInstanceDetailQuery, *admin.InstanceDetail](ctx.Context(), r.bus, query.GetAdminInstanceDetailQuery{
 		InstanceID: params.InstanceID,
+		Viewer:     viewer,
 		Caller:     caller,
 	})
 	if err != nil {

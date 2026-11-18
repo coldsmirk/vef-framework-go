@@ -1,6 +1,9 @@
 package my
 
-import "github.com/coldsmirk/vef-framework-go/calendar"
+import (
+	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/calendar"
+)
 
 // AvailableFlow describes a flow the current user is allowed to initiate.
 type AvailableFlow struct {
@@ -13,4 +16,5 @@ type AvailableFlow struct {
 	CategoryID       string                 `json:"categoryId"`
 	CategoryName     string                 `json:"categoryName"`
 	InitiationWindow *calendar.WindowStatus `json:"initiationWindow,omitempty"`
+	BusinessKind     *approval.BusinessKind `json:"businessKind,omitempty"`
 }

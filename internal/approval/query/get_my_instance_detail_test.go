@@ -8,7 +8,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
+
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -35,7 +35,7 @@ type GetMyInstanceDetailTestSuite struct {
 }
 
 func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
-	s.handler = query.NewGetMyInstanceDetailHandler(s.db, service.NewTaskService(), formGlobalsExposing("region"))
+	s.handler = query.NewGetMyInstanceDetailHandler(s.db, nil, formGlobalsExposing("region"))
 
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "mid-flow", 1)
 	s.nodeID = fix.NodeIDs[0]
@@ -146,7 +146,7 @@ func (s *GetMyInstanceDetailTestSuite) TearDownSuite() {
 func (s *GetMyInstanceDetailTestSuite) TestApplicantAccess() {
 	detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: s.instanceID,
-		UserID:     "user-a",
+		Viewer:     approval.UserInfo{ID: "user-a"},
 	})
 	s.Require().NoError(err, "Should get detail without error")
 	s.Assert().Equal(s.instanceID, detail.Instance.InstanceID, "Should return correct instance")
@@ -188,7 +188,7 @@ func (s *GetMyInstanceDetailTestSuite) TestApplicantAccess() {
 func (s *GetMyInstanceDetailTestSuite) TestProjectsTimelineDetails() {
 	detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: s.instanceID,
-		UserID:     "user-a",
+		Viewer:     approval.UserInfo{ID: "user-a"},
 	})
 	s.Require().NoError(err, "Applicant should get detail")
 
@@ -251,7 +251,7 @@ func (s *GetMyInstanceDetailTestSuite) TestProjectsTimelineDetails() {
 func (s *GetMyInstanceDetailTestSuite) TestAssigneeAccess() {
 	detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: s.instanceID,
-		UserID:     "user-b",
+		Viewer:     approval.UserInfo{ID: "user-b"},
 	})
 	s.Require().NoError(err, "Assignee should have access")
 	s.Assert().Contains(detail.AvailableActions, "approve", "Assignee should be able to approve")
@@ -265,7 +265,7 @@ func (s *GetMyInstanceDetailTestSuite) TestAssigneeAccess() {
 func (s *GetMyInstanceDetailTestSuite) TestDelegatorAccess() {
 	detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: s.instanceID,
-		UserID:     "user-deleg",
+		Viewer:     approval.UserInfo{ID: "user-deleg"},
 	})
 	s.Require().NoError(err, "Delegator should have access")
 	s.Assert().Contains(detail.AvailableActions, "urge",
@@ -279,7 +279,7 @@ func (s *GetMyInstanceDetailTestSuite) TestDelegatorAccess() {
 func (s *GetMyInstanceDetailTestSuite) TestCCAccess() {
 	detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: s.instanceID,
-		UserID:     "user-c",
+		Viewer:     approval.UserInfo{ID: "user-c"},
 	})
 	s.Require().NoError(err, "CC user should have access")
 	s.Assert().Equal(s.instanceID, detail.Instance.InstanceID, "Should return correct instance")
@@ -332,7 +332,7 @@ func (s *GetMyInstanceDetailTestSuite) TestAssigneeConditionalActions() {
 
 	detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: inst.ID,
-		UserID:     "user-conditional",
+		Viewer:     approval.UserInfo{ID: "user-conditional"},
 	})
 	s.Require().NoError(err, "Should get detail for conditional assignee")
 	s.Assert().Contains(detail.AvailableActions, "transfer", "Assignee should see transfer when node allows transfer")
@@ -383,7 +383,7 @@ func (s *GetMyInstanceDetailTestSuite) TestHandleNodeShouldExposeHandleAction() 
 
 	detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: inst.ID,
-		UserID:     "user-handle",
+		Viewer:     approval.UserInfo{ID: "user-handle"},
 	})
 	s.Require().NoError(err, "Should get detail for handle assignee")
 	s.Assert().Contains(detail.AvailableActions, "handle", "Handle node should expose handle action")
@@ -441,7 +441,7 @@ func (s *GetMyInstanceDetailTestSuite) TestFieldPermissionsProjection() {
 
 	detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: inst.ID,
-		UserID:     "perm-approver",
+		Viewer:     approval.UserInfo{ID: "perm-approver"},
 	})
 	s.Require().NoError(err, "Pending approver should get detail")
 
@@ -608,7 +608,7 @@ func (s *GetMyInstanceDetailTestSuite) TestParticipantAccess() {
 		s.Run(tc.name, func() {
 			detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 				InstanceID: inst.ID,
-				UserID:     tc.userID,
+				Viewer:     approval.UserInfo{ID: tc.userID},
 			})
 			s.Require().NoError(err, "%s must reach the detail — %s", tc.name, tc.why)
 			s.Assert().Equal(inst.ID, detail.Instance.InstanceID, "%s should get the requested instance", tc.name)
@@ -634,7 +634,7 @@ func (s *GetMyInstanceDetailTestSuite) TestParticipantAccess() {
 	s.Run("OutsiderStillDenied", func() {
 		_, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 			InstanceID: inst.ID,
-			UserID:     "party-outsider",
+			Viewer:     approval.UserInfo{ID: "party-outsider"},
 		})
 		s.Require().ErrorIs(err, approval.ErrAccessDenied,
 			"Widening the participant set must not open the instance to non-participants")
@@ -700,7 +700,7 @@ func (s *GetMyInstanceDetailTestSuite) TestTableFieldHiddenStripped() {
 
 	detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: inst.ID,
-		UserID:     "tbl-approver",
+		Viewer:     approval.UserInfo{ID: "tbl-approver"},
 	})
 	s.Require().NoError(err, "Pending approver should get detail")
 
@@ -818,7 +818,7 @@ func (s *GetMyInstanceDetailTestSuite) TestViewerTaskContext() {
 	s.Run("PackagesNodeConfig", func() {
 		detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 			InstanceID: inst.ID,
-			UserID:     "user-vt",
+			Viewer:     approval.UserInfo{ID: "user-vt"},
 		})
 		s.Require().NoError(err, "Assignee should load the detail")
 		s.Require().NotNil(detail.MyTask, "Pending assignee should get a viewer task context")
@@ -835,7 +835,7 @@ func (s *GetMyInstanceDetailTestSuite) TestViewerTaskContext() {
 	s.Run("RollbackTargetsFollowVisitTrail", func() {
 		detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 			InstanceID: inst.ID,
-			UserID:     "user-vt",
+			Viewer:     approval.UserInfo{ID: "user-vt"},
 		})
 		s.Require().NoError(err, "Assignee should load the detail")
 		s.Require().NotNil(detail.MyTask, "Pending assignee should get a viewer task context")
@@ -847,7 +847,7 @@ func (s *GetMyInstanceDetailTestSuite) TestViewerTaskContext() {
 	s.Run("RemovableAssigneesFollowVisitAndStatus", func() {
 		detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 			InstanceID: inst.ID,
-			UserID:     "user-vt",
+			Viewer:     approval.UserInfo{ID: "user-vt"},
 		})
 		s.Require().NoError(err, "Assignee should load the detail")
 		s.Require().NotNil(detail.MyTask, "Pending assignee should get a viewer task context")
@@ -871,7 +871,7 @@ func (s *GetMyInstanceDetailTestSuite) TestViewerTaskContext() {
 	s.Run("NilWithoutPendingTask", func() {
 		detail, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 			InstanceID: inst.ID,
-			UserID:     "user-vt-applicant",
+			Viewer:     approval.UserInfo{ID: "user-vt-applicant"},
 		})
 		s.Require().NoError(err, "Applicant should load the detail")
 		s.Assert().Nil(detail.MyTask, "A viewer without a pending task gets no task context")
@@ -881,7 +881,7 @@ func (s *GetMyInstanceDetailTestSuite) TestViewerTaskContext() {
 func (s *GetMyInstanceDetailTestSuite) TestAccessDenied() {
 	_, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: s.instanceID,
-		UserID:     "user-unrelated",
+		Viewer:     approval.UserInfo{ID: "user-unrelated"},
 	})
 	s.Require().ErrorIs(err, approval.ErrAccessDenied, "Should return access denied for non-participant")
 }
@@ -889,7 +889,7 @@ func (s *GetMyInstanceDetailTestSuite) TestAccessDenied() {
 func (s *GetMyInstanceDetailTestSuite) TestInstanceNotFound() {
 	_, err := s.handler.Handle(s.ctx, query.GetMyInstanceDetailQuery{
 		InstanceID: "non-existent",
-		UserID:     "user-a",
+		Viewer:     approval.UserInfo{ID: "user-a"},
 	})
 	s.Require().ErrorIs(err, approval.ErrInstanceNotFound, "Should return instance not found error")
 }

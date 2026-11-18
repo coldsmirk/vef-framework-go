@@ -2,6 +2,8 @@ package query
 
 import (
 	"context"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
+	"slices"
 
 	"github.com/coldsmirk/go-collections"
 
@@ -20,19 +22,19 @@ type GetMyInstanceDetailQuery struct {
 	cqrs.BaseQuery
 
 	InstanceID string
-	UserID     string
+	Viewer     approval.UserInfo
 }
 
 // GetMyInstanceDetailHandler handles the GetMyInstanceDetailQuery.
 type GetMyInstanceDetailHandler struct {
 	db          orm.DB
-	taskSvc     *service.TaskService
+	registry    *business.Registry
 	formGlobals *service.FormGlobalsService
 }
 
 // NewGetMyInstanceDetailHandler creates a new GetMyInstanceDetailHandler.
-func NewGetMyInstanceDetailHandler(db orm.DB, taskSvc *service.TaskService, formGlobals *service.FormGlobalsService) *GetMyInstanceDetailHandler {
-	return &GetMyInstanceDetailHandler{db: db, taskSvc: taskSvc, formGlobals: formGlobals}
+func NewGetMyInstanceDetailHandler(db orm.DB, registry *business.Registry, formGlobals *service.FormGlobalsService) *GetMyInstanceDetailHandler {
+	return &GetMyInstanceDetailHandler{db: db, registry: registry, formGlobals: formGlobals}
 }
 
 func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInstanceDetailQuery) (*my.InstanceDetail, error) {
@@ -44,12 +46,9 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 	}
 
 	// Check participant membership.
-	isParticipant, err := h.taskSvc.IsInstanceParticipant(ctx, db, query.InstanceID, query.UserID)
-	if err != nil {
-		return nil, err
-	}
-
-	if !isParticipant {
+	hasCC := slices.ContainsFunc(bundle.CCRecords, func(record approval.CCRecord) bool { return record.CCUserID == query.Viewer.ID })
+	participation := service.ResolveParticipation(&bundle.Instance, bundle.Tasks, hasCC, query.Viewer.ID)
+	if !participation.IsParticipant() {
 		return nil, approval.ErrAccessDenied
 	}
 
@@ -59,7 +58,7 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 
 	// Resolve the viewer-scoped field permissions once — they both ship in the
 	// DTO and gate which form-data fields this viewer is allowed to see.
-	fieldPermissions := resolveViewerFieldPermissions(bundle, query.UserID)
+	fieldPermissions := resolveViewerFieldPermissions(bundle, query.Viewer.ID)
 
 	detail := &my.InstanceDetail{
 		Instance: my.InstanceInfo{
@@ -75,6 +74,7 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 			Status:        string(instance.Status),
 			CurrentNodeID: instance.CurrentNodeID,
 			BusinessRef:   instance.BusinessRef,
+			BusinessKind:  instance.BusinessKind,
 			FormData:      stripHiddenFormData(instance.FormData, fieldPermissions),
 			Globals:       h.formGlobals.Visible(instance.FlowCode, instance.Globals),
 			CreatedAt:     instance.CreatedAt,
@@ -83,9 +83,9 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 		FormSchema:       bundle.FormSchema,
 		Timeline:         buildInstanceTimeline(bundle),
 		FlowGraph:        buildInstanceFlowGraph(bundle),
-		AvailableActions: h.computeActions(instance, bundle.Tasks, bundle.FlowNodes, query.UserID),
+		AvailableActions: h.computeActions(instance, bundle.Tasks, bundle.FlowNodes, query.Viewer.ID),
 		FieldPermissions: fieldPermissions,
-		MyTask:           buildViewerTask(bundle, query.UserID),
+		MyTask:           buildViewerTask(bundle, query.Viewer.ID),
 	}
 
 	if instance.CurrentNodeID != nil {
@@ -94,6 +94,10 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 		}
 	}
 
+	detail.BusinessView, err = h.registry.View(ctx, db, &approval.ViewContext{Instance: &instance, Viewer: query.Viewer, Participation: participation, FieldPermissions: fieldPermissions})
+	if err != nil {
+		return nil, err
+	}
 	return detail, nil
 }
 

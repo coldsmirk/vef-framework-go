@@ -76,7 +76,7 @@ func (h *GetStartFormHandler) Handle(ctx context.Context, query GetStartFormQuer
 	var version approval.FlowVersion
 	if err := db.NewSelect().
 		Model(&version).
-		Select("id", "version", "form_schema").
+		Select("id", "version", "form_schema", "business_kind").
 		Where(func(cb orm.ConditionBuilder) {
 			cb.Equals("flow_id", flow.ID).
 				Equals("status", approval.VersionPublished)
@@ -98,6 +98,7 @@ func (h *GetStartFormHandler) Handle(ctx context.Context, query GetStartFormQuer
 		VersionID:        version.ID,
 		Version:          version.Version,
 		FormSchema:       version.FormSchema,
+		BusinessKind:     version.BusinessKind,
 		Applicant:        query.Applicant,
 		InitiationWindow: status,
 	}, nil

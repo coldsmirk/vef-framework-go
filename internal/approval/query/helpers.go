@@ -365,25 +365,26 @@ func loadInstanceEnrichment(ctx context.Context, db orm.DB, instances []approval
 	return flowMap, nodeMap, nil
 }
 
-// loadPublishedFlowIDs returns the subset of flowIDs that have at least one
-// published version. Uses Distinct to avoid duplicates when a flow has multiple
-// published versions.
-func loadPublishedFlowIDs(ctx context.Context, db orm.DB, flowIDs []string) ([]string, error) {
-	var publishedFlowIDs []string
+// loadPublishedKinds maps each published flow to its frozen business kind.
+func loadPublishedKinds(ctx context.Context, db orm.DB, flowIDs []string) (map[string]*approval.BusinessKind, error) {
+	var versions []approval.FlowVersion
 
 	if err := db.NewSelect().
-		Model((*approval.FlowVersion)(nil)).
-		Distinct().
-		Select("flow_id").
+		Model(&versions).
+		Select("flow_id", "business_kind").
 		Where(func(cb orm.ConditionBuilder) {
 			cb.In("flow_id", flowIDs).
 				Equals("status", approval.VersionPublished)
 		}).
-		Scan(ctx, &publishedFlowIDs); err != nil {
+		Scan(ctx); err != nil {
 		return nil, fmt.Errorf("query published flow versions: %w", err)
 	}
 
-	return publishedFlowIDs, nil
+	kinds := make(map[string]*approval.BusinessKind, len(versions))
+	for _, v := range versions {
+		kinds[v.FlowID] = v.BusinessKind
+	}
+	return kinds, nil
 }
 
 // loadCategoryMap loads flow categories by IDs and returns a map keyed by category ID.

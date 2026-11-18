@@ -29,7 +29,8 @@ type InstanceDetail struct {
 	// process_task should target plus the node-level configuration the client
 	// needs to build the action UI without re-deriving engine semantics. Nil
 	// when the viewer holds no pending task on this instance.
-	MyTask *ViewerTask `json:"myTask,omitempty"`
+	MyTask       *ViewerTask `json:"myTask,omitempty"`
+	BusinessView any         `json:"businessView,omitempty"`
 }
 
 // ViewerTask is the viewer's pending task within a detail view, with the
@@ -90,7 +91,8 @@ type InstanceInfo struct {
 	// Globals is the form-visible part of the instance's globals snapshot
 	// (approval.FormGlobalsExposer) — the form's `$globals`, as resolved at
 	// initiation. Absent when the flow exposes none.
-	Globals    map[string]any  `json:"globals,omitempty"`
-	CreatedAt  timex.DateTime  `json:"createdAt"`
-	FinishedAt *timex.DateTime `json:"finishedAt,omitempty"`
+	Globals      map[string]any         `json:"globals,omitempty"`
+	CreatedAt    timex.DateTime         `json:"createdAt"`
+	FinishedAt   *timex.DateTime        `json:"finishedAt,omitempty"`
+	BusinessKind *approval.BusinessKind `json:"businessKind,omitempty"`
 }

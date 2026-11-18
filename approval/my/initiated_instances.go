@@ -1,6 +1,9 @@
 package my
 
-import "github.com/coldsmirk/vef-framework-go/timex"
+import (
+	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/timex"
+)
 
 // InitiatedInstance represents an approval instance submitted by the current user.
 type InitiatedInstance struct {
@@ -12,9 +15,10 @@ type InitiatedInstance struct {
 	// Labels are the flow's host-owned selection metadata, read from the
 	// mutable flow row rather than the instance's version snapshot — so a
 	// relabelled flow reads consistently across every list that carries them.
-	Labels          map[string]string `json:"labels,omitempty"`
-	Status          string            `json:"status"`
-	CurrentNodeName *string           `json:"currentNodeName,omitempty"`
-	CreatedAt       timex.DateTime    `json:"createdAt"`
-	FinishedAt      *timex.DateTime   `json:"finishedAt,omitempty"`
+	Labels          map[string]string      `json:"labels,omitempty"`
+	Status          string                 `json:"status"`
+	CurrentNodeName *string                `json:"currentNodeName,omitempty"`
+	CreatedAt       timex.DateTime         `json:"createdAt"`
+	FinishedAt      *timex.DateTime        `json:"finishedAt,omitempty"`
+	BusinessKind    *approval.BusinessKind `json:"businessKind,omitempty"`
 }

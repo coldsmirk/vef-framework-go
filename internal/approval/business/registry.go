@@ -1,8 +1,10 @@
 package business
 
 import (
+	"context"
 	"fmt"
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/orm"
 	"maps"
 	"regexp"
 	"slices"
@@ -59,4 +61,15 @@ func (r *Registry) Descriptors() []approval.BusinessKindDescriptor {
 		ds = append(ds, d)
 	}
 	return ds
+}
+
+func (r *Registry) View(ctx context.Context, db orm.DB, vc *approval.ViewContext) (any, error) {
+	if vc.Instance.BusinessKind == nil {
+		return nil, nil
+	}
+	h, err := r.Require(*vc.Instance.BusinessKind)
+	if err != nil {
+		return nil, err
+	}
+	return h.View(ctx, db, vc)
 }

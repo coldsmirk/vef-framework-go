@@ -32,7 +32,7 @@ type GetAdminInstanceDetailTestSuite struct {
 }
 
 func (s *GetAdminInstanceDetailTestSuite) SetupSuite() {
-	s.handler = query.NewGetAdminInstanceDetailHandler(s.db, formGlobalsExposing("region"))
+	s.handler = query.NewGetAdminInstanceDetailHandler(s.db, formGlobalsExposing("region"), nil)
 
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "adid", 0)
 	s.flowID = fix.FlowID
