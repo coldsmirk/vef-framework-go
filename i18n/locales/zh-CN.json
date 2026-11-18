@@ -172,7 +172,6 @@
   "approval_shared_flow_code_exists": "已存在相同编码的全局流程",
   "approval_invalid_storage_mode": "存储模式不合法，必须为 json 或 table",
   "approval_binding_columns_conflict": "业务绑定的键列和写回列必须互不重复",
-  "approval_binding_unexpected": "独立流程不能配置业务绑定",
   "approval_binding_table_missing": "业务绑定配置的表不存在: {{.table}}",
   "approval_binding_column_missing": "业务绑定配置的列不存在: {{.column}}",
   "approval_binding_key_not_unique": "业务绑定键列必须完整匹配非空主键或唯一键",

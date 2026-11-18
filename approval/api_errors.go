@@ -26,8 +26,8 @@ const (
 	ErrCodeInvalidInitiatorKind = 40013
 	ErrCodeInvalidStorageMode   = 40014
 	// 40015 is retired (former flow-binding lock); do not reassign it.
-	ErrCodeBindingColumnsConflict      = 40016
-	ErrCodeBindingUnexpected           = 40017
+	ErrCodeBindingColumnsConflict = 40016
+	// 40017 is retired with the flow binding mode; do not reassign it.
 	ErrCodeBindingSchemaInvalid        = 40018
 	ErrCodeBindingKeyNotUnique         = 40019
 	ErrCodeBindingStatusMappingInvalid = 40020
@@ -164,9 +164,6 @@ var (
 	// ErrBindingColumnsConflict rejects duplicate key/write-back columns, which
 	// could otherwise mutate the lookup key or assign one column twice.
 	ErrBindingColumnsConflict = result.Err(i18n.T("approval_binding_columns_conflict"), result.WithCode(ErrCodeBindingColumnsConflict))
-	// ErrBindingUnexpected is the former error for configuring a binding on a form flow.
-	// Deprecated: current flow definitions return ErrBusinessKindRequired.
-	ErrBindingUnexpected = result.Err(i18n.T("approval_binding_unexpected"), result.WithCode(ErrCodeBindingUnexpected))
 	// ErrBindingKeyNotUnique rejects key columns that are not backed by one
 	// complete, non-null primary or unique key.
 	ErrBindingKeyNotUnique = result.Err(i18n.T("approval_binding_key_not_unique"), result.WithCode(ErrCodeBindingKeyNotUnique))
