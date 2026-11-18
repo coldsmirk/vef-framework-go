@@ -96,6 +96,7 @@ func TestInstanceStateMachine(t *testing.T) {
 			from approval.InstanceStatus
 			to   approval.InstanceStatus
 		}{
+			{"ApprovedToVoided", approval.InstanceApproved, approval.InstanceVoided},
 			{"RunningToApproved", approval.InstanceRunning, approval.InstanceApproved},
 			{"RunningToRejected", approval.InstanceRunning, approval.InstanceRejected},
 			{"RunningToWithdrawn", approval.InstanceRunning, approval.InstanceWithdrawn},
@@ -120,6 +121,9 @@ func TestInstanceStateMachine(t *testing.T) {
 			from approval.InstanceStatus
 			to   approval.InstanceStatus
 		}{
+			{"RunningToVoided", approval.InstanceRunning, approval.InstanceVoided},
+			{"ReturnedToVoided", approval.InstanceReturned, approval.InstanceVoided},
+			{"WithdrawnToVoided", approval.InstanceWithdrawn, approval.InstanceVoided},
 			{"ApprovedToRunning", approval.InstanceApproved, approval.InstanceRunning},
 			{"RejectedToApproved", approval.InstanceRejected, approval.InstanceApproved},
 			{"ApprovedToRejected", approval.InstanceApproved, approval.InstanceRejected},
@@ -160,7 +164,9 @@ func TestInstanceStateMachine(t *testing.T) {
 	})
 
 	t.Run("TerminalStatesBlockAll", func(t *testing.T) {
+		assert.True(t, approval.InstanceVoided.IsFinal(), "Voided is final for projection ownership")
 		allStatuses := []approval.InstanceStatus{
+			approval.InstanceVoided, approval.InstanceTerminated,
 			approval.InstanceRunning,
 			approval.InstanceApproved,
 			approval.InstanceRejected,
@@ -172,7 +178,7 @@ func TestInstanceStateMachine(t *testing.T) {
 			name   string
 			status approval.InstanceStatus
 		}{
-			{"Approved", approval.InstanceApproved},
+			{"Voided", approval.InstanceVoided}, {"Terminated", approval.InstanceTerminated},
 			{"Rejected", approval.InstanceRejected},
 		}
 

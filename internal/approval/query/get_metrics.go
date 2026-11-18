@@ -125,6 +125,7 @@ func (h *GetMetricsHandler) Handle(ctx context.Context, query GetMetricsQuery) (
 				string(approval.InstanceApproved),
 				string(approval.InstanceRejected),
 				string(approval.InstanceTerminated),
+				string(approval.InstanceVoided),
 			}).IsNotNull("finished_at").
 				ApplyIf(query.TenantID != "", func(cb orm.ConditionBuilder) {
 					cb.Equals("tenant_id", query.TenantID)

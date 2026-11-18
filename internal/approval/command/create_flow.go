@@ -39,6 +39,8 @@ type CreateFlowCmd struct {
 	IsAllInitiationAllowed bool
 	InstanceTitleTemplate  string
 	Initiators             []shared.CreateFlowInitiatorCmd
+	VoidPolicy             approval.VoidPolicy
+	VoidFlowCode           *string
 	InitiationWindow       *calendar.WindowRule
 }
 
@@ -68,6 +70,11 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 	tenantID := cmd.TenantID
 
 	if err := validateBusinessKind(h.business, cmd.BusinessKind, cmd.BusinessBinding); err != nil {
+		return nil, err
+	}
+
+	policy, err := normalizeVoidPolicy(ctx, db, h.business, tenantID, cmd.BusinessKind, cmd.VoidPolicy, cmd.VoidFlowCode)
+	if err != nil {
 		return nil, err
 	}
 
@@ -126,14 +133,15 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 	}
 
 	flow := approval.Flow{
-		TenantID:               tenantID,
-		IsShared:               cmd.IsShared,
-		CategoryID:             cmd.CategoryID,
-		Code:                   cmd.Code,
-		Name:                   cmd.Name,
-		Icon:                   cmd.Icon,
-		Description:            cmd.Description,
-		Labels:                 cmd.Labels,
+		TenantID:    tenantID,
+		IsShared:    cmd.IsShared,
+		CategoryID:  cmd.CategoryID,
+		Code:        cmd.Code,
+		Name:        cmd.Name,
+		Icon:        cmd.Icon,
+		Description: cmd.Description,
+		Labels:      cmd.Labels,
+		VoidPolicy:  policy, VoidFlowCode: cmd.VoidFlowCode,
 		BusinessKind:           cmd.BusinessKind,
 		BusinessBinding:        businessBinding,
 		AdminUserIDs:           cmd.AdminUserIDs,

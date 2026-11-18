@@ -33,6 +33,8 @@ type UpdateFlowCmd struct {
 	IsAllInitiationAllowed bool
 	InstanceTitleTemplate  string
 	Initiators             []shared.CreateFlowInitiatorCmd
+	VoidPolicy             approval.VoidPolicy
+	VoidFlowCode           *string
 	InitiationWindow       *calendar.WindowRule
 }
 
@@ -83,6 +85,11 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		return nil, err
 	}
 
+	policy, err := normalizeVoidPolicy(ctx, db, h.business, flow.TenantID, cmd.BusinessKind, cmd.VoidPolicy, cmd.VoidFlowCode)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := validateInitiatorRules(cmd.IsAllInitiationAllowed, cmd.Initiators, h.initiatorKinds); err != nil {
 		return nil, err
 	}
@@ -113,6 +120,8 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		}
 	}
 
+	flow.VoidPolicy = policy
+	flow.VoidFlowCode = cmd.VoidFlowCode
 	flow.InitiationWindow = cmd.InitiationWindow
 	flow.Name = cmd.Name
 	flow.Icon = cmd.Icon
@@ -128,7 +137,7 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		Model(&flow).
 		Select(
 			"name", "icon", "description", "labels",
-			"business_kind", "business_binding",
+			"business_kind", "business_binding", "void_policy", "void_flow_code",
 			"admin_user_ids", "is_all_initiation_allowed", "initiation_window", "instance_title_template",
 		).
 		WherePK().

@@ -281,11 +281,12 @@ const (
 	InstanceWithdrawn  InstanceStatus = "withdrawn"
 	InstanceReturned   InstanceStatus = "returned"
 	InstanceTerminated InstanceStatus = "terminated"
+	InstanceVoided     InstanceStatus = "voided"
 )
 
 func (s InstanceStatus) String() string { return string(s) }
 func (s InstanceStatus) IsFinal() bool {
-	return s == InstanceApproved || s == InstanceRejected || s == InstanceTerminated
+	return s == InstanceApproved || s == InstanceRejected || s == InstanceTerminated || s == InstanceVoided
 }
 
 // TaskStatus represents the status of an approval task.

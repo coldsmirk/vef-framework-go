@@ -56,6 +56,7 @@ var InstanceStateMachine = buildInstanceStateMachine()
 
 func buildInstanceStateMachine() *StateMachine[approval.InstanceStatus] {
 	sm := NewStateMachine[approval.InstanceStatus]("instance")
+	sm.AddTransition(approval.InstanceApproved, approval.InstanceVoided)
 	sm.AddTransition(approval.InstanceRunning, approval.InstanceApproved)
 	sm.AddTransition(approval.InstanceRunning, approval.InstanceRejected)
 	sm.AddTransition(approval.InstanceRunning, approval.InstanceWithdrawn)

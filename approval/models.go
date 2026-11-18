@@ -58,6 +58,8 @@ type Flow struct {
 	CurrentVersion         int                    `json:"currentVersion" bun:"current_version"`
 	InitiationWindow       *calendar.WindowRule   `json:"initiationWindow,omitempty" bun:"initiation_window,type:jsonb,nullzero"`
 	BusinessKind           *BusinessKind          `json:"businessKind,omitempty" bun:"business_kind,nullzero"`
+	VoidPolicy             VoidPolicy             `json:"voidPolicy" bun:"void_policy,notnull,default:'disabled'"`
+	VoidFlowCode           *string                `json:"voidFlowCode,omitempty" bun:"void_flow_code,nullzero"`
 }
 
 // FlowCategory represents a category for grouping flows.

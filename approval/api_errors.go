@@ -47,6 +47,12 @@ const (
 	ErrCodeAnnotationAudienceInvalid = 40034
 	ErrCodeAnnotationNotAllowed      = 40035
 
+	ErrCodeVoidNotAllowed      = 40036
+	ErrCodeInstanceNotVoidable = 40037
+	ErrCodeVoidBlocked         = 40038
+	ErrCodeVoidRequestPending  = 40039
+	ErrCodeVoidPolicyInvalid   = 40040
+
 	ErrCodeInstanceNotFound          = 40101
 	ErrCodeInstanceCompleted         = 40102
 	ErrCodeNotAllowedInitiate        = 40103
@@ -86,6 +92,8 @@ const (
 	ErrCodeTerminateNotAllowed = 40702
 	ErrCodeCrossTenantAccess   = 40703
 )
+
+const ErrMessageVoidBlocked = "approval_void_blocked"
 
 // Outward-facing error sentinels. Messages are resolved through i18n at
 // package init time using the language selected by VEF_I18N_LANGUAGE.
@@ -153,6 +161,11 @@ var (
 	// under a category of the tenant that owns it.
 	ErrCategoryNotFound          = result.Err(i18n.T("approval_category_not_found"), result.WithCode(ErrCodeCategoryNotFound))
 	ErrBusinessKindNotRegistered = result.Err(i18n.T("approval_business_kind_not_registered"), result.WithCode(ErrCodeBusinessKindNotRegistered))
+	ErrVoidNotAllowed            = result.Err(i18n.T("approval_void_not_allowed"), result.WithCode(ErrCodeVoidNotAllowed))
+	ErrInstanceNotVoidable       = result.Err(i18n.T("approval_instance_not_voidable"), result.WithCode(ErrCodeInstanceNotVoidable))
+	ErrVoidBlocked               = result.Err(i18n.T(ErrMessageVoidBlocked), result.WithCode(ErrCodeVoidBlocked))
+	ErrVoidRequestPending        = result.Err(i18n.T("approval_void_request_pending"), result.WithCode(ErrCodeVoidRequestPending))
+	ErrVoidPolicyInvalid         = result.Err(i18n.T("approval_void_policy_invalid"), result.WithCode(ErrCodeVoidPolicyInvalid))
 	ErrAnnotationNotFound        = result.Err(i18n.T("approval_annotation_not_found"), result.WithCode(ErrCodeAnnotationNotFound))
 	ErrAnnotationNotEditable     = result.Err(i18n.T("approval_annotation_not_editable"), result.WithCode(ErrCodeAnnotationNotEditable))
 	ErrAnnotationAnchorInvalid   = result.Err(i18n.T("approval_annotation_anchor_invalid"), result.WithCode(ErrCodeAnnotationAnchorInvalid))

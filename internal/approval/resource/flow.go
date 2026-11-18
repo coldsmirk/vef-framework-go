@@ -72,6 +72,8 @@ type CreateFlowParams struct {
 	IsAllInitiationAllowed bool                            `json:"isAllInitiationAllowed"`
 	InstanceTitleTemplate  string                          `json:"instanceTitleTemplate"`
 	Initiators             []CreateInitiatorParams         `json:"initiators"`
+	VoidPolicy             approval.VoidPolicy             `json:"voidPolicy"`
+	VoidFlowCode           *string                         `json:"voidFlowCode"`
 	InitiationWindow       *calendar.WindowRule            `json:"initiationWindow"`
 }
 
@@ -109,7 +111,8 @@ func (r *FlowResource) Create(ctx fiber.Ctx, params CreateFlowParams) error {
 			IsAllInitiationAllowed: params.IsAllInitiationAllowed,
 			InstanceTitleTemplate:  params.InstanceTitleTemplate,
 			Initiators:             initiators,
-			InitiationWindow:       params.InitiationWindow,
+			VoidPolicy:             params.VoidPolicy, VoidFlowCode: params.VoidFlowCode,
+			InitiationWindow: params.InitiationWindow,
 		},
 	)
 	if err != nil {
@@ -268,6 +271,8 @@ type UpdateFlowParams struct {
 	IsAllInitiationAllowed bool                            `json:"isAllInitiationAllowed"`
 	InstanceTitleTemplate  string                          `json:"instanceTitleTemplate" validate:"required"`
 	Initiators             []CreateInitiatorParams         `json:"initiators"`
+	VoidPolicy             approval.VoidPolicy             `json:"voidPolicy"`
+	VoidFlowCode           *string                         `json:"voidFlowCode"`
 	InitiationWindow       *calendar.WindowRule            `json:"initiationWindow"`
 }
 
@@ -296,7 +301,8 @@ func (r *FlowResource) Update(ctx fiber.Ctx, params UpdateFlowParams) error {
 			IsAllInitiationAllowed: params.IsAllInitiationAllowed,
 			InstanceTitleTemplate:  params.InstanceTitleTemplate,
 			Initiators:             initiators,
-			InitiationWindow:       params.InitiationWindow,
+			VoidPolicy:             params.VoidPolicy, VoidFlowCode: params.VoidFlowCode,
+			InitiationWindow: params.InitiationWindow,
 		},
 	)
 	if err != nil {

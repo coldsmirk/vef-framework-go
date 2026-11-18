@@ -307,7 +307,7 @@ func projectionTrigger(projection *approval.BusinessProjection) approval.Binding
 		return approval.BindingTriggerReturned
 	case approval.InstanceWithdrawn:
 		return approval.BindingTriggerWithdrawn
-	case approval.InstanceApproved, approval.InstanceRejected, approval.InstanceTerminated:
+	case approval.InstanceApproved, approval.InstanceRejected, approval.InstanceTerminated, approval.InstanceVoided:
 		return approval.BindingTriggerCompleted
 	default:
 		if projection.AppliedOwnerInstanceID == nil || *projection.AppliedOwnerInstanceID != projection.OwnerInstanceID {

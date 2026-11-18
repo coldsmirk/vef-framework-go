@@ -95,7 +95,7 @@ func isProjectableStatus(status approval.InstanceStatus) bool {
 		approval.InstanceRejected,
 		approval.InstanceWithdrawn,
 		approval.InstanceReturned,
-		approval.InstanceTerminated:
+		approval.InstanceTerminated, approval.InstanceVoided:
 		return true
 	default:
 		return false
