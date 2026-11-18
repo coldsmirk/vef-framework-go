@@ -3,6 +3,7 @@ package command_test
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
@@ -150,4 +151,66 @@ func (s *EventOrderTestSuite) TestVoidFormsAndUnsupportedKinds() {
 	running := s.startOn("order-all-flow", "applicant")
 	in.InstanceID = running.ID
 	s.ErrorIs(run(), approval.ErrInstanceNotVoidable, "A running instance must complete before it can be voided")
+}
+
+func (s *EventOrderTestSuite) TestVoidRequestEventOrder() {
+	target := s.startOn("order-auto-flow", "target-owner")
+	fixture := deployAndPublishFlow(s.T(), s.ctx, s.db, "auto-void", simpleFlowDef())
+	const code = "auto-void-flow"
+	_, err := s.db.NewUpdate().Model((*approval.Flow)(nil)).Set("void_policy", approval.VoidApproval).Set("void_flow_code", code).Where(func(cb orm.ConditionBuilder) { cb.PKEquals(target.FlowID) }).Exec(s.ctx)
+	s.Require().NoError(err, "Target requires approval through the named request")
+	_, err = s.db.NewUpdate().Model((*approval.FlowVersion)(nil)).Set("business_kind", approval.BusinessKindVoidRequest).Where(func(cb orm.ConditionBuilder) { cb.PKEquals(fixture.VersionID) }).Exec(s.ctx)
+	s.Require().NoError(err, "Should attach the built-in request handler to the published request")
+	registry, hooks, _, _, err := voiding.NewRuntime(nil, service.NewFlowDefinitionService(), nil, nil, s.bus)
+	s.Require().NoError(err, "Should build the nested transaction runtime")
+	h := wrapWithBusAndDB(s.db, s.bus, command.NewStartInstanceHandler(s.db, buildTestEngineWithHooks(s.db, hooks), &MockInstanceNoGenerator{counter: 9000}, service.NewValidationService(nil), registry, nil, nil))
+	operator := approval.UserInfo{ID: "requester", Name: "Requester"}
+	s.bus.Reset()
+	var req *approval.Instance
+	err = s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error {
+		var err error
+		req, err = h.Handle(contextx.SetDB(ctx, tx), command.StartInstanceCmd{Caller: approval.SystemCaller, FlowCode: code, Applicant: operator, FormData: map[string]any{"targetInstanceId": target.ID, "reason": "Duplicate"}})
+		return err
+	})
+	s.Require().NoError(err, "Approval of the request should void the target atomically")
+	s.requireEmittedInOrder(approval.EventTypeInstanceCreated, approval.EventTypeInstanceVoided, approval.EventTypeInstanceCompleted)
+	ev := s.bus.CapturedByType(approval.EventTypeInstanceVoided)[0].(*approval.InstanceVoidedEvent)
+	s.Equal(target.ID, ev.InstanceID, "The void event identifies the reversed target")
+	s.Equal(&req.ID, ev.RequestInstanceID, "The event links to the authorizing request")
+	s.Equal(operator, ev.Operator, "The request applicant is the void operator")
+	completion := s.bus.CapturedByType(approval.EventTypeInstanceCompleted)[0].(*approval.InstanceCompletedEvent)
+	s.Equal(req.ID, completion.InstanceID, "Only the request completes")
+}
+
+func (s *EventOrderTestSuite) TestConcurrentDirectVoids() {
+	target := s.startOn("order-auto-flow", "owner")
+	_, err := s.db.NewUpdate().Model((*approval.Flow)(nil)).Set("void_policy", approval.VoidDirect).Where(func(cb orm.ConditionBuilder) { cb.PKEquals(target.FlowID) }).Exec(s.ctx)
+	s.Require().NoError(err, "Should enable direct void")
+	core := voiding.NewCore(service.NewInstanceService(nil), nil, s.bus)
+	s.bus.Reset()
+	in := approval.VoidInstanceInput{InstanceID: target.ID, Caller: approval.SystemCaller, Reason: "Duplicate", Operator: target.Applicant()}
+	start := make(chan struct{})
+	var group sync.WaitGroup
+	var outcomes [2]error
+	for i := range outcomes {
+		group.Go(func() {
+			<-start
+			outcomes[i] = s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error { return core.Direct(ctx, tx, in) })
+		})
+	}
+	close(start)
+	group.Wait()
+	successes := 0
+	for _, err := range outcomes {
+		if err == nil {
+			successes++
+		}
+	}
+	s.Equal(1, successes, "Only one concurrent transaction can reverse the target: %v", outcomes)
+	n, err := s.db.NewSelect().Model((*approval.VoidRecord)(nil)).Where(func(cb orm.ConditionBuilder) {
+		cb.Equals("instance_id", target.ID).Equals("status", approval.VoidVoided)
+	}).Count(s.ctx)
+	s.Require().NoError(err, "Should count committed reversals")
+	s.Equal(int64(1), int64(n), "One reversal record survives")
+	s.requireEmittedInOrder(approval.EventTypeInstanceVoided)
 }
