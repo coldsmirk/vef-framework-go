@@ -799,7 +799,7 @@ func (s *TaskServiceTestSuite) TestParticipationReader() {
 		role approval.ParticipantRole
 		act  bool
 	}{{"operator", approval.ParticipantAssignee, true}, {"delegator", approval.ParticipantDelegator, false}, {"observer", approval.ParticipantCCRecipient, false}, {instance.ApplicantID, approval.ParticipantApplicant, false}, {"stranger", "", false}} {
-		p, err := s.svc.Participation(s.ctx, s.db, approval.ParticipationInput{InstanceID: inst, UserID: c.user, Caller: approval.SystemCaller})
+		p, err := service.NewParticipationReader().Participation(s.ctx, s.db, approval.ParticipationInput{InstanceID: inst, UserID: c.user, Caller: approval.SystemCaller})
 		s.Require().NoError(err, "Should resolve participation")
 		s.Equal(c.role != "", p.IsParticipant(), "Each role grants participation")
 
@@ -810,6 +810,6 @@ func (s *TaskServiceTestSuite) TestParticipationReader() {
 		s.Equal(c.act, p.CanAct(id), "Only current task owner may act")
 	}
 
-	_, err = s.svc.Participation(s.ctx, s.db, approval.ParticipationInput{InstanceID: inst, UserID: "operator", Caller: approval.CallerContext{TenantID: "other"}})
+	_, err = service.NewParticipationReader().Participation(s.ctx, s.db, approval.ParticipationInput{InstanceID: inst, UserID: "operator", Caller: approval.CallerContext{TenantID: "other"}})
 	s.ErrorIs(err, approval.ErrInstanceNotFound, "Reader hides another tenant's instance")
 }

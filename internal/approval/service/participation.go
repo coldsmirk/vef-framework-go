@@ -78,7 +78,12 @@ func ResolveParticipation(inst *approval.Instance, tasks []approval.Task, hasCC 
 	return p
 }
 
-func (*TaskService) Participation(ctx context.Context, db orm.DB, in approval.ParticipationInput) (*approval.Participation, error) {
+type participationReader struct{}
+
+// NewParticipationReader supplies a query-only reader, including to handler constructors.
+func NewParticipationReader() approval.ParticipationReader { return participationReader{} }
+
+func (participationReader) Participation(ctx context.Context, db orm.DB, in approval.ParticipationInput) (*approval.Participation, error) {
 	if db == nil {
 		return nil, approval.ErrDBRequired
 	}

@@ -45,7 +45,7 @@ func (s *FlowResourceTestSuite) SetupSuite() {
 	s.db, s.token = setupResourceApp(
 		&s.Suite,
 		vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{kind: "order"} }),
-		vef.ProvideApprovalBusinessHandler(func() approval.BusinessHandler { return orderHandler{kind: "meeting"} }),
+		vef.ProvideApprovalBusinessHandler(func(approval.ParticipationReader) approval.BusinessHandler { return orderHandler{kind: "meeting"} }),
 	)
 
 	// Insert a shared category for flow tests
