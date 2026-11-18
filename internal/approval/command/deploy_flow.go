@@ -166,6 +166,10 @@ func (h *DeployFlowHandler) validate(ctx context.Context, cmd DeployFlowCmd, flo
 		return nil, fmt.Errorf("%w: %w", approval.ErrInvalidFormDesign, err)
 	}
 
+	if err := validateTitleFields(flow.InstanceTitleTemplate, fields); err != nil {
+		return nil, err
+	}
+
 	// Aggregate conditions reference form fields, so they can only be fully
 	// validated where the flow definition and form fields meet.
 	if err := h.flowDefSvc.ValidateConditionAggregates(parsedNodeData, fields); err != nil {
