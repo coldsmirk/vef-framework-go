@@ -26,8 +26,7 @@ func (h *ListBusinessKindsHandler) Handle(context.Context, ListBusinessKindsQuer
 	ds := h.registry.Descriptors()
 	options := make([]BusinessKindOption, len(ds))
 	for i, d := range ds {
-		handler, _ := h.registry.Lookup(d.Kind)
-		_, ok := handler.(approval.BusinessVoider)
+		_, ok := h.registry.Voider(d.Kind)
 		options[i] = BusinessKindOption{BusinessKindDescriptor: d, IsVoidable: ok}
 	}
 	return options, nil

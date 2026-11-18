@@ -51,6 +51,12 @@ func (r *Registry) Lookup(kind approval.BusinessKind) (approval.BusinessHandler,
 	return h, ok
 }
 
+func (r *Registry) Voider(kind approval.BusinessKind) (approval.BusinessVoider, bool) {
+	h, _ := r.Lookup(kind)
+	v, ok := h.(approval.BusinessVoider)
+	return v, ok
+}
+
 func (r *Registry) Require(kind approval.BusinessKind) (approval.BusinessHandler, error) {
 	if h, ok := r.Lookup(kind); ok {
 		return h, nil

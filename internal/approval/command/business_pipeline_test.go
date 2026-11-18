@@ -340,7 +340,7 @@ func (s *ApproveTaskTestSuite) TestBusinessViews() {
 		return vc.Viewer.ID, nil
 	}})
 	globals := service.NewFormGlobalsService(nil)
-	my := query.NewGetMyInstanceDetailHandler(s.db, reg, globals)
+	my := query.NewGetMyInstanceDetailHandler(s.db, reg, globals, nil)
 	viewer := task.Assignee()
 	req := query.GetMyInstanceDetailQuery{InstanceID: inst.ID, Viewer: viewer}
 	detail, err := my.Handle(s.ctx, req)

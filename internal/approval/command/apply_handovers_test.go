@@ -139,7 +139,7 @@ func (s *HandoverTestSuite) TestRewriteDelegatedSeat() {
 	s.Equal(new("Changed role"), logs[0].Opinion, "Log records resolver reason")
 
 	tasks := service.NewTaskService()
-	_, err = query.NewGetMyInstanceDetailHandler(s.db, nil, nil).Handle(s.ctx, query.GetMyInstanceDetailQuery{InstanceID: inst.ID, Viewer: approval.UserInfo{ID: "old"}})
+	_, err = query.NewGetMyInstanceDetailHandler(s.db, nil, nil, nil).Handle(s.ctx, query.GetMyInstanceDetailQuery{InstanceID: inst.ID, Viewer: approval.UserInfo{ID: "old"}})
 	s.ErrorIs(err, approval.ErrAccessDenied, "Predecessor must not see instance details")
 	_, err = command.NewUrgeTaskHandler(s.db, tasks, nil).Handle(s.ctx, command.UrgeTaskCmd{TaskID: task.ID, UrgerID: "old", Caller: approval.SystemCaller})
 	s.ErrorIs(err, approval.ErrAccessDenied, "Predecessor must not urge")

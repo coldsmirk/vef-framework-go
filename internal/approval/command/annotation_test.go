@@ -181,7 +181,7 @@ func (s *EventOrderTestSuite) TestAnnotationViews() {
 	save(taskID, "any-1", "user", &approval.AnnotationAudience{Scope: approval.AudienceUsers, UserIDs: []string{"delegator"}})
 	save(peerID, "any-2", "peer draft", nil)
 
-	my := query.NewGetMyInstanceDetailHandler(s.db, nil, service.NewFormGlobalsService(nil))
+	my := query.NewGetMyInstanceDetailHandler(s.db, nil, service.NewFormGlobalsService(nil), nil)
 	admin := query.NewGetAdminInstanceDetailHandler(s.db, service.NewFormGlobalsService(nil), nil)
 	names := func(rows []approval.AnnotationView) []string {
 		out := make([]string, 0, len(rows))
@@ -392,7 +392,7 @@ func (s *EventOrderTestSuite) TestResponseDraftRules() {
 			// Publish one response to check inheritance, and leave a second in draft.
 			s.Require().NoError(tasks.PublishDrafts(ctx, db, inst, nil, inst.Applicant()), "Should publish the first response")
 
-			my := query.NewGetMyInstanceDetailHandler(db, nil, service.NewFormGlobalsService(nil))
+			my := query.NewGetMyInstanceDetailHandler(db, nil, service.NewFormGlobalsService(nil), nil)
 			for _, tc := range []struct {
 				user    string
 				visible bool

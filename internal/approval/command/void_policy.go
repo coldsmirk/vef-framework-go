@@ -40,8 +40,7 @@ func normalizeVoidPolicy(ctx context.Context, db orm.DB, registry *business.Regi
 		return "", approval.ErrVoidPolicyInvalid
 	}
 	if kind != nil {
-		handler, _ := registry.Lookup(*kind)
-		if _, ok := handler.(approval.BusinessVoider); !ok || *kind == approval.BusinessKindVoidRequest {
+		if _, ok := registry.Voider(*kind); !ok || *kind == approval.BusinessKindVoidRequest {
 			return "", approval.ErrVoidPolicyInvalid
 		}
 	}

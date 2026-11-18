@@ -63,8 +63,7 @@ func (c *Core) voider(inst *approval.Instance) (approval.BusinessVoider, error) 
 	if inst.BusinessKind == nil {
 		return nil, nil
 	}
-	h, _ := c.registry.Lookup(*inst.BusinessKind)
-	if v, ok := h.(approval.BusinessVoider); ok {
+	if v, ok := c.registry.Voider(*inst.BusinessKind); ok {
 		return v, nil
 	}
 	return nil, approval.ErrVoidNotAllowed

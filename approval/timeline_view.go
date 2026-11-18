@@ -26,6 +26,7 @@ const (
 	TimelineEntryEnd       TimelineEntryKind = "end"
 	TimelineEntryWithdraw  TimelineEntryKind = "withdraw"
 	TimelineEntryTerminate TimelineEntryKind = "terminate"
+	TimelineEntryVoid      TimelineEntryKind = "void"
 )
 
 // TimelineEntry is one step of the instance timeline — the chronological,

@@ -23,6 +23,7 @@ type GetMyInstanceDetailQuery struct {
 
 	InstanceID string
 	Viewer     approval.UserInfo
+	Caller     approval.CallerContext
 }
 
 // GetMyInstanceDetailHandler handles the GetMyInstanceDetailQuery.
@@ -30,11 +31,12 @@ type GetMyInstanceDetailHandler struct {
 	db          orm.DB
 	registry    *business.Registry
 	formGlobals *service.FormGlobalsService
+	validation  *service.ValidationService
 }
 
 // NewGetMyInstanceDetailHandler creates a new GetMyInstanceDetailHandler.
-func NewGetMyInstanceDetailHandler(db orm.DB, registry *business.Registry, formGlobals *service.FormGlobalsService) *GetMyInstanceDetailHandler {
-	return &GetMyInstanceDetailHandler{db: db, registry: registry, formGlobals: formGlobals}
+func NewGetMyInstanceDetailHandler(db orm.DB, registry *business.Registry, formGlobals *service.FormGlobalsService, validation *service.ValidationService) *GetMyInstanceDetailHandler {
+	return &GetMyInstanceDetailHandler{db: db, registry: registry, formGlobals: formGlobals, validation: validation}
 }
 
 func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInstanceDetailQuery) (*my.InstanceDetail, error) {
@@ -76,10 +78,11 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 			CurrentNodeID: instance.CurrentNodeID,
 			BusinessRef:   instance.BusinessRef,
 			BusinessKind:  instance.BusinessKind,
-			FormData:      stripHiddenFormData(instance.FormData, fieldPermissions),
-			Globals:       h.formGlobals.Visible(instance.FlowCode, instance.Globals),
-			CreatedAt:     instance.CreatedAt,
-			FinishedAt:    instance.FinishedAt,
+			VoidPolicy:    flow.VoidPolicy, VoidFlowCode: flow.VoidFlowCode,
+			FormData:   stripHiddenFormData(instance.FormData, fieldPermissions),
+			Globals:    h.formGlobals.Visible(instance.FlowCode, instance.Globals),
+			CreatedAt:  instance.CreatedAt,
+			FinishedAt: instance.FinishedAt,
 		},
 		FormSchema:       bundle.FormSchema,
 		Timeline:         buildInstanceTimeline(bundle),
@@ -95,6 +98,19 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 		}
 	}
 
+	detail.VoidRecord, detail.VoidRequest, err = loadVoidDetail(ctx, db, &instance)
+	if err != nil {
+		return nil, err
+	}
+	if canOfferVoid(bundle, h.registry, detail.VoidRequest, approval.VoidApproval) {
+		ok, err := canRequestVoid(ctx, db, h.validation, bundle, query)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			detail.AvailableActions = append(detail.AvailableActions, "request_void")
+		}
+	}
 	detail.Annotations, err = loadAnnotations(ctx, db, bundle, service.NewAnnotationViewer(instance.ApplicantID, query.Viewer.ID, bundle.Tasks))
 	if err != nil {
 		return nil, err

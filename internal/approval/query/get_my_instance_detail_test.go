@@ -34,7 +34,7 @@ type GetMyInstanceDetailTestSuite struct {
 }
 
 func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
-	s.handler = query.NewGetMyInstanceDetailHandler(s.db, nil, formGlobalsExposing("region"))
+	s.handler = query.NewGetMyInstanceDetailHandler(s.db, nil, formGlobalsExposing("region"), nil)
 
 	fix := setupQueryFixture(s.T(), s.ctx, s.db, "mid-flow", 1)
 	s.nodeID = fix.NodeIDs[0]

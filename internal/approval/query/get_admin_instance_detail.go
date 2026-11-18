@@ -71,10 +71,11 @@ func (h *GetAdminInstanceDetailHandler) Handle(ctx context.Context, query GetAdm
 			CurrentNodeID: instance.CurrentNodeID,
 			BusinessRef:   instance.BusinessRef,
 			BusinessKind:  instance.BusinessKind,
-			FormData:      instance.FormData,
-			Globals:       h.formGlobals.Visible(instance.FlowCode, instance.Globals),
-			CreatedAt:     instance.CreatedAt,
-			FinishedAt:    instance.FinishedAt,
+			VoidPolicy:    flow.VoidPolicy, VoidFlowCode: flow.VoidFlowCode,
+			FormData:   instance.FormData,
+			Globals:    h.formGlobals.Visible(instance.FlowCode, instance.Globals),
+			CreatedAt:  instance.CreatedAt,
+			FinishedAt: instance.FinishedAt,
 		},
 		FormSchema: bundle.FormSchema,
 		Timeline:   buildInstanceTimeline(bundle),
@@ -87,6 +88,14 @@ func (h *GetAdminInstanceDetailHandler) Handle(ctx context.Context, query GetAdm
 		}
 	}
 
+	detail.VoidRecord, detail.VoidRequest, err = loadVoidDetail(ctx, db, &instance)
+	if err != nil {
+		return nil, err
+	}
+	detail.AvailableActions = []string{}
+	if canOfferVoid(bundle, h.registry, detail.VoidRequest, approval.VoidDirect) {
+		detail.AvailableActions = append(detail.AvailableActions, "void")
+	}
 	detail.Annotations, err = loadAnnotations(ctx, db, bundle, nil)
 	if err != nil {
 		return nil, err

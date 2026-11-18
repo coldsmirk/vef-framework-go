@@ -82,6 +82,18 @@ type VoidRecord struct {
 	VoidedAt          *timex.DateTime `json:"voidedAt,omitempty"`
 }
 
+// VoidRecordView is the executed reversal shown on the target instance.
+type VoidRecordView = VoidRecord
+
+// VoidRequestView identifies the pending request and its current workflow state.
+type VoidRequestView struct {
+	RequestInstanceID string         `json:"requestInstanceId"`
+	RequestInstanceNo string         `json:"requestInstanceNo"`
+	RequestStatus     InstanceStatus `json:"requestStatus"`
+	Applicant         UserInfo       `json:"applicant"`
+	CreatedAt         timex.DateTime `json:"createdAt"`
+}
+
 type VoidInstanceInput struct {
 	InstanceID  string
 	Operator    UserInfo

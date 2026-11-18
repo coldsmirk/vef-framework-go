@@ -32,6 +32,8 @@ type InstanceDetail struct {
 	MyTask       *ViewerTask               `json:"myTask,omitempty"`
 	BusinessView any                       `json:"businessView,omitempty"`
 	Annotations  []approval.AnnotationView `json:"annotations"`
+	VoidRecord   *approval.VoidRecordView  `json:"voidRecord,omitempty"`
+	VoidRequest  *approval.VoidRequestView `json:"voidRequest,omitempty"`
 }
 
 // ViewerTask is the viewer's pending task within a detail view, with the
@@ -96,4 +98,6 @@ type InstanceInfo struct {
 	CreatedAt    timex.DateTime         `json:"createdAt"`
 	FinishedAt   *timex.DateTime        `json:"finishedAt,omitempty"`
 	BusinessKind *approval.BusinessKind `json:"businessKind,omitempty"`
+	VoidPolicy   approval.VoidPolicy    `json:"voidPolicy"`
+	VoidFlowCode *string                `json:"voidFlowCode"`
 }

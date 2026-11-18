@@ -14,12 +14,15 @@ import (
 // the node-by-node timeline, and the progress-annotated flow graph. The raw
 // audit trail stays available through the paginated admin action-log query.
 type InstanceDetail struct {
-	Instance     InstanceDetailInfo         `json:"instance"`
-	FormSchema   json.RawMessage            `json:"formSchema,omitempty"`
-	Timeline     []approval.TimelineEntry   `json:"timeline"`
-	FlowGraph    approval.InstanceFlowGraph `json:"flowGraph"`
-	BusinessView any                        `json:"businessView,omitempty"`
-	Annotations  []approval.AnnotationView  `json:"annotations"`
+	Instance         InstanceDetailInfo         `json:"instance"`
+	FormSchema       json.RawMessage            `json:"formSchema,omitempty"`
+	Timeline         []approval.TimelineEntry   `json:"timeline"`
+	FlowGraph        approval.InstanceFlowGraph `json:"flowGraph"`
+	BusinessView     any                        `json:"businessView,omitempty"`
+	Annotations      []approval.AnnotationView  `json:"annotations"`
+	VoidRecord       *approval.VoidRecordView   `json:"voidRecord,omitempty"`
+	VoidRequest      *approval.VoidRequestView  `json:"voidRequest,omitempty"`
+	AvailableActions []string                   `json:"availableActions"`
 }
 
 // InstanceDetailInfo carries the instance's runtime state within an admin
@@ -50,6 +53,8 @@ type InstanceDetailInfo struct {
 	CreatedAt    timex.DateTime         `json:"createdAt"`
 	FinishedAt   *timex.DateTime        `json:"finishedAt,omitempty"`
 	BusinessKind *approval.BusinessKind `json:"businessKind,omitempty"`
+	VoidPolicy   approval.VoidPolicy    `json:"voidPolicy"`
+	VoidFlowCode *string                `json:"voidFlowCode"`
 }
 
 // ActionLog represents an action log entry in the admin audit view. Person

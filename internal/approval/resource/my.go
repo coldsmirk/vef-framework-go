@@ -275,14 +275,14 @@ type GetInstanceDetailParams struct {
 
 // GetInstanceDetail retrieves instance detail with access control for the current user.
 func (r *MyResource) GetInstanceDetail(ctx fiber.Ctx, principal *security.Principal, params GetInstanceDetailParams) error {
-	viewer, err := resolveOperator(ctx.Context(), r.departmentResolver, principal)
+	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
 
 	detail, err := cqrs.Send[query.GetMyInstanceDetailQuery, *my.InstanceDetail](ctx.Context(), r.bus, query.GetMyInstanceDetailQuery{
 		InstanceID: params.InstanceID,
-		Viewer:     viewer,
+		Viewer:     actor.Operator, Caller: actor.Caller,
 	})
 	if err != nil {
 		return err

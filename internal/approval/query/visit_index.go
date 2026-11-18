@@ -97,7 +97,7 @@ func newVisitIndex(bundle *instanceDetailBundle) *visitIndex {
 			// Instance-level: each one caused a start-node visit; zipped below.
 			startLogs = append(startLogs, log)
 
-		case approval.ActionWithdraw, approval.ActionTerminate:
+		case approval.ActionWithdraw, approval.ActionTerminate, approval.ActionVoid:
 			idx.milestones = append(idx.milestones, milestoneEntry(log))
 
 		case approval.ActionApprove, approval.ActionHandle, approval.ActionReject:
