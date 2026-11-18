@@ -55,12 +55,16 @@ func TestRegisterHandlers(t *testing.T) {
 	}{
 		{"SaveAnnotation", func() (err error) {
 			defer recoverDispatch(&err)
+
 			_, err = cqrs.Send[SaveAnnotationCmd, *approval.AnnotationView](context.Background(), bus, SaveAnnotationCmd{})
+
 			return err
 		}},
 		{"DeleteAnnotation", func() (err error) {
 			defer recoverDispatch(&err)
+
 			_, err = cqrs.Send[DeleteAnnotationCmd, cqrs.Unit](context.Background(), bus, DeleteAnnotationCmd{})
+
 			return err
 		}},
 		{"CreateFlow", func() (err error) {

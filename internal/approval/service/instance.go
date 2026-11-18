@@ -163,11 +163,13 @@ func (s *InstanceService) Transition(
 	extraCols ...string,
 ) error {
 	from := instance.Status
+
 	err := engine.ApplyInstanceTransitionWithHooks(ctx, db, instance, to, s.hooks, extraCols...)
 	if err == nil {
 		if from == approval.InstanceReturned && (to == approval.InstanceWithdrawn || to == approval.InstanceTerminated) {
 			return s.discardResponses(ctx, db, instance.ID)
 		}
+
 		return nil
 	}
 

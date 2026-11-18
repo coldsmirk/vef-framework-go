@@ -976,6 +976,7 @@ func (s *TaskService) PrepareDecision(
 	if err := s.PublishDrafts(ctx, db, tc.Instance, &tc.Task.ID, action.Operator); err != nil {
 		return nil, err
 	}
+
 	return tc, nil
 }
 
@@ -1050,6 +1051,7 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 		if result.IsRecordNotFound(err) {
 			return nil, approval.ErrTaskNotFound
 		}
+
 		return nil, fmt.Errorf("locate task: %w", err)
 	}
 
@@ -1065,6 +1067,7 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 		if result.IsRecordNotFound(err) {
 			return nil, approval.ErrInstanceNotFound
 		}
+
 		return nil, fmt.Errorf("lock task instance: %w", err)
 	}
 
@@ -1091,6 +1094,7 @@ func (*TaskService) loadContext(ctx context.Context, db orm.DB, taskID string, o
 		if result.IsRecordNotFound(err) {
 			return nil, approval.ErrTaskNotFound
 		}
+
 		return nil, fmt.Errorf("lock task: %w", err)
 	}
 

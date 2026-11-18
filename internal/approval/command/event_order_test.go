@@ -3,15 +3,15 @@ package command_test
 import (
 	"context"
 	"errors"
-	"github.com/coldsmirk/vef-framework-go/contextx"
-	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"slices"
 
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
 	"github.com/coldsmirk/vef-framework-go/internal/eventtest"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
@@ -262,18 +262,25 @@ func (s *EventOrderTestSuite) TestAnnotationPublication() {
 		action approval.ActionType
 		event  string
 	}{
-		{approval.ActionApprove, approval.EventTypeTaskApproved}, {approval.ActionHandle, approval.EventTypeTaskHandled}, {approval.ActionReject, approval.EventTypeTaskRejected},
-		{approval.ActionTransfer, approval.EventTypeTaskTransferred}, {approval.ActionRollback, approval.EventTypeInstanceReturned},
+		{approval.ActionApprove, approval.EventTypeTaskApproved},
+		{approval.ActionHandle, approval.EventTypeTaskHandled},
+		{approval.ActionReject, approval.EventTypeTaskRejected},
+		{approval.ActionTransfer, approval.EventTypeTaskTransferred},
+		{approval.ActionRollback, approval.EventTypeInstanceReturned},
 	} {
 		s.Run(string(tc.action), func() {
 			code := "draft-" + string(tc.action)
 			def := approvalFlowDef()
 			assignees := []approval.AssigneeDefinition{{Kind: approval.AssigneeUser, IDs: []string{"writer"}}}
-			def.Nodes[1].Data = mustMarshal(approval.ApprovalNodeData{Name: "Review", Assignees: assignees, IsRollbackAllowed: new(true), RollbackType: approval.RollbackStart, IsTransferAllowed: new(true)})
+
+			def.Nodes[1].Data = mustMarshal(
+				approval.ApprovalNodeData{Name: "Review", Assignees: assignees, IsRollbackAllowed: new(true), RollbackType: approval.RollbackStart, IsTransferAllowed: new(true)},
+			)
 			if tc.action == approval.ActionHandle {
 				def.Nodes[1].Kind = approval.NodeHandle
 				def.Nodes[1].Data = mustMarshal(approval.HandleNodeData{Name: "Handle", Assignees: assignees})
 			}
+
 			fixture := deployAndPublishFlow(s.T(), s.ctx, s.db, code, def)
 			inst := s.startOn(code+"-flow", "author")
 			taskID := s.pendingTaskID(inst.ID, "writer")
@@ -282,27 +289,34 @@ func (s *EventOrderTestSuite) TestAnnotationPublication() {
 			tasks, _, valid := buildTestServices(eng)
 			instances := service.NewInstanceService(nil)
 			editor := service.NewAnnotationEditor(tasks, instances, nil)
+
 			var ids []string
 			for _, content := range []string{"First note", "Second note"} {
 				note, err := editor.Save(s.ctx, s.db, approval.SaveAnnotationInput{TaskID: taskID, Content: content, Operator: actor, Caller: approval.SystemCaller})
 				s.Require().NoError(err, "The task owner can draft a note")
+
 				ids = append(ids, note.ID)
 			}
+
 			decide := func(ctx context.Context) error {
 				switch tc.action {
 				case approval.ActionApprove, approval.ActionHandle:
 					_, err := s.approve.Handle(ctx, command.ApproveTaskCmd{TaskID: taskID, Operator: actor, Caller: approval.SystemCaller})
+
 					return err
 				case approval.ActionReject:
 					_, err := s.reject.Handle(ctx, command.RejectTaskCmd{TaskID: taskID, Operator: actor, Caller: approval.SystemCaller})
+
 					return err
 				case approval.ActionTransfer:
 					h := wrapWithBusAndDB(s.db, s.bus, command.NewTransferTaskHandler(s.db, tasks, valid, nil, nil, nil))
 					_, err := h.Handle(ctx, command.TransferTaskCmd{TaskID: taskID, TransferToID: "next-writer", Operator: actor, Caller: approval.SystemCaller})
+
 					return err
 				default:
 					h := wrapWithBusAndDB(s.db, s.bus, command.NewRollbackTaskHandler(s.db, tasks, instances, valid, eng, nil))
 					_, err := h.Handle(ctx, command.RollbackTaskCmd{TaskID: taskID, TargetNodeID: fixture.NodeIDs["start-1"], Operator: actor, Caller: approval.SystemCaller})
+
 					return err
 				}
 			}
@@ -311,12 +325,15 @@ func (s *EventOrderTestSuite) TestAnnotationPublication() {
 				if err := decide(contextx.SetDB(ctx, tx)); err != nil {
 					return err
 				}
+
 				return veto
 			})
 			s.Require().ErrorIs(err, veto, "The outer transaction should veto the action after publication")
+
 			for _, id := range ids {
 				requireNoteStatus(s.T(), s.ctx, s.db, id, approval.AnnotationDraft)
 			}
+
 			s.bus.Reset()
 			err = s.db.RunInTx(s.ctx, func(ctx context.Context, tx orm.DB) error { return decide(contextx.SetDB(ctx, tx)) })
 			s.Require().NoError(err, "A committed decision should publish its drafts")
@@ -326,11 +343,17 @@ func (s *EventOrderTestSuite) TestAnnotationPublication() {
 			s.Equal(inst.ID, event.InstanceID, "Event should identify the instance")
 			s.Equal(&taskID, event.TaskID, "Event should identify the decided task")
 			s.Equal(actor, event.Author, "Event should record the decision author")
+
 			for _, id := range ids {
 				requireNoteStatus(s.T(), s.ctx, s.db, id, approval.AnnotationPublished)
 			}
+
 			if tc.action == approval.ActionRollback {
-				response, err := editor.Save(s.ctx, s.db, approval.SaveAnnotationInput{ParentID: ids[0], Resolution: new(approval.ResolutionAddressed), Operator: inst.Applicant(), Caller: approval.SystemCaller})
+				response, err := editor.Save(
+					s.ctx,
+					s.db,
+					approval.SaveAnnotationInput{ParentID: ids[0], Resolution: new(approval.ResolutionAddressed), Operator: inst.Applicant(), Caller: approval.SystemCaller},
+				)
 				s.Require().NoError(err, "The returned applicant can acknowledge a published note")
 				s.Nil(response.TaskID, "Responses have no task")
 				s.Nil(response.VisitID, "Responses have no decision visit")

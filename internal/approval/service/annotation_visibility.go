@@ -2,9 +2,10 @@ package service
 
 import (
 	"context"
+	"slices"
+
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"slices"
 )
 
 // AnnotationViewer evaluates audiences using the instance roles already loaded for the detail.
@@ -21,6 +22,7 @@ func NewAnnotationViewer(applicantID, userID string, tasks []approval.Task) *Ann
 			v.nodes[t.NodeID] = true
 		}
 	}
+
 	return v
 }
 
@@ -29,12 +31,15 @@ func (v *AnnotationViewer) CanSee(a *approval.Annotation, parentAuthor string) b
 	if a.Author.ID == v.UserID {
 		return true
 	}
+
 	if a.Status != approval.AnnotationPublished {
 		return false
 	}
+
 	if a.ParentID != nil && v.UserID == parentAuthor {
 		return true
 	}
+
 	switch a.Audience.Scope {
 	case approval.AudienceParticipants:
 		return true
@@ -57,9 +62,15 @@ func viewerRows(ctx context.Context, db orm.DB, instanceID, userID string) ([]ap
 	}).Scan(ctx); err != nil {
 		return nil, nil, err
 	}
+
 	var ccs []approval.CCRecord
-	if err := db.NewSelect().Model(&ccs).Select("node_id", "cc_user_id").Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instanceID).Equals("cc_user_id", userID) }).Scan(ctx); err != nil {
+	if err := db.NewSelect().
+		Model(&ccs).
+		Select("node_id", "cc_user_id").
+		Where(func(cb orm.ConditionBuilder) { cb.Equals("instance_id", instanceID).Equals("cc_user_id", userID) }).
+		Scan(ctx); err != nil {
 		return nil, nil, err
 	}
+
 	return tasks, ccs, nil
 }

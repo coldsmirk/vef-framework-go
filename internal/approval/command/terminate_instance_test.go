@@ -88,6 +88,7 @@ func (s *TerminateInstanceTestSuite) insertTask(instanceID, assigneeID string, s
 	}
 	_, err := s.db.NewInsert().Model(task).Exec(s.ctx)
 	s.Require().NoError(err, "Terminate instance should complete without error")
+
 	return task
 }
 

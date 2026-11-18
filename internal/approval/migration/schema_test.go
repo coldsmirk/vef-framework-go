@@ -24,12 +24,15 @@ func TestVerify(t *testing.T) {
 
 		t.Run("UpgradesTheAnnotationTable", func(t *testing.T) {
 			const table = "apv_annotation"
+
 			fresh, err := sqlmigration.LoadTableColumns(env.Ctx, env.DB, env.DS.Kind, table)
 			require.NoError(t, err, "Should inspect a fresh annotation table")
+
 			for _, col := range []string{"visit_id", "task_id", "anchor", "parent_id", "resolution", "published_at", "author_department_id", "author_department_name"} {
 				require.Contains(t, fresh, col, "Schema must declare %s", col)
 				assert.True(t, fresh[col].Nullable, "%s must allow NULL", col)
 			}
+
 			_, err = env.DB.NewRaw("DROP TABLE apv_annotation").Exec(env.Ctx)
 			require.NoError(t, err, "Should emulate the schema before annotations")
 			require.ErrorIs(t, Verify(env.Ctx, env.DB, env.DS.Kind), ErrSchemaOutdated, "Missing annotations must fail verification")
@@ -37,8 +40,10 @@ func TestVerify(t *testing.T) {
 			upgraded, err := sqlmigration.LoadTableColumns(env.Ctx, env.DB, env.DS.Kind, table)
 			require.NoError(t, err, "Should inspect the upgraded table")
 			assert.Equal(t, fresh, upgraded, "Fresh and upgraded annotation columns must agree")
+
 			indexes, err := sqlmigration.LoadTableIndexes(env.Ctx, env.DB, env.DS.Kind, table)
 			require.NoError(t, err, "Should inspect annotation indexes")
+
 			for _, cols := range [][]string{{"instance_id", "status"}, {"task_id"}, {"parent_id"}} {
 				assert.True(t, slices.ContainsFunc(indexes, func(i sqlmigration.Index) bool { return slices.Equal(i.Columns, cols) }), "Should index %v", cols)
 			}

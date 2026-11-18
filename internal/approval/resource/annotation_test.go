@@ -35,7 +35,10 @@ func (s *InstanceResourceTestSuite) TestAnnotationWrites() {
 func (s *PermissionEnforcementResourceTestSuite) TestAnnotationPermission() {
 	for _, action := range []string{"save_annotation", "delete_annotation"} {
 		s.Run(action, func() {
-			resp := s.MakeRPCRequestWithToken(api.Request{Resource: "approval/instance", Action: action, Version: "v1", Params: map[string]any{"id": "private", "content": "draft"}}, s.token)
+			resp := s.MakeRPCRequestWithToken(
+				api.Request{Resource: "approval/instance", Action: action, Version: "v1", Params: map[string]any{"id": "private", "content": "draft"}},
+				s.token,
+			)
 			s.Require().Equal(http.StatusForbidden, resp.StatusCode, "The permission middleware must reject the write")
 			s.Equal(result.ErrCodeAccessDenied, s.ReadResult(resp).Code, "The write requires approval.annotation.write")
 		})

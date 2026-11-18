@@ -46,7 +46,14 @@ func strongerPermission(a, b approval.Permission) approval.Permission {
 // handler, whose participant set (applicant / assignee / delegator / CC) MUST
 // stay a subset of the contexts recognized here — if the two ever diverge, the
 // failure mode is now "sees nothing" instead of the former "sees everything".
-func ResolveViewerFieldPermissions(inst *approval.Instance, fields []approval.FormFieldDefinition, nodes []approval.FlowNode, tasks []approval.Task, ccs []approval.CCRecord, userID string) map[string]approval.Permission {
+func ResolveViewerFieldPermissions(
+	inst *approval.Instance,
+	fields []approval.FormFieldDefinition,
+	nodes []approval.FlowNode,
+	tasks []approval.Task,
+	ccs []approval.CCRecord,
+	userID string,
+) map[string]approval.Permission {
 	if len(fields) == 0 {
 		return nil
 	}

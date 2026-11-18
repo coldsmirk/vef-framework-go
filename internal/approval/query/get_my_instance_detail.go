@@ -99,6 +99,7 @@ func (h *GetMyInstanceDetailHandler) Handle(ctx context.Context, query GetMyInst
 	if err != nil {
 		return nil, err
 	}
+
 	detail.BusinessView, err = h.registry.View(ctx, db, &approval.ViewContext{Instance: &instance, Viewer: query.Viewer, Participation: participation, FieldPermissions: fieldPermissions})
 	if err != nil {
 		return nil, err

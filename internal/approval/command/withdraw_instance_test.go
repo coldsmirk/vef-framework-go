@@ -89,6 +89,7 @@ func (s *WithdrawInstanceTestSuite) insertTask(instanceID string, status approva
 	}
 	_, err := s.db.NewInsert().Model(task).Exec(s.ctx)
 	s.Require().NoError(err, "Withdraw should complete without error")
+
 	return task
 }
 

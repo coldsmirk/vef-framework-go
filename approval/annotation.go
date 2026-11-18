@@ -80,7 +80,23 @@ type AnnotationView struct {
 }
 
 func (a *Annotation) View(nodeName string) AnnotationView {
-	return AnnotationView{ID: a.ID, InstanceID: a.InstanceID, NodeID: a.NodeID, NodeName: nodeName, VisitID: a.VisitID, TaskID: a.TaskID, Author: a.Author, Status: a.Status, Anchor: a.Anchor, Content: a.Content, Audience: a.Audience, ParentID: a.ParentID, Resolution: a.Resolution, PublishedAt: a.PublishedAt, CreatedAt: a.CreatedAt}
+	return AnnotationView{
+		ID:          a.ID,
+		InstanceID:  a.InstanceID,
+		NodeID:      a.NodeID,
+		NodeName:    nodeName,
+		VisitID:     a.VisitID,
+		TaskID:      a.TaskID,
+		Author:      a.Author,
+		Status:      a.Status,
+		Anchor:      a.Anchor,
+		Content:     a.Content,
+		Audience:    a.Audience,
+		ParentID:    a.ParentID,
+		Resolution:  a.Resolution,
+		PublishedAt: a.PublishedAt,
+		CreatedAt:   a.CreatedAt,
+	}
 }
 
 type AnnotationAnchorValidator interface {

@@ -7,19 +7,22 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/orm"
-	"github.com/stretchr/testify/require"
 )
 
 func requireNoteStatus(t *testing.T, ctx context.Context, db orm.DB, id string, status approval.AnnotationStatus) {
 	t.Helper()
+
 	a := approval.Annotation{ID: id}
 	require.NoError(t, db.NewSelect().Model(&a).WherePK().Scan(ctx), "Should reload the annotation")
 	require.Equal(t, status, a.Status, "The annotation should have followed the seat lifecycle")
+
 	if status == approval.AnnotationPublished {
 		require.NotNil(t, a.PublishedAt, "Published notes have a publication time")
 	} else {
@@ -29,6 +32,7 @@ func requireNoteStatus(t *testing.T, ctx context.Context, db orm.DB, id string, 
 
 type anchorHandler struct {
 	testBusinessHandler
+
 	validate func(*approval.AnchorContext) error
 }
 
@@ -37,8 +41,14 @@ func (h anchorHandler) ValidateAnchor(_ context.Context, _ orm.DB, ac *approval.
 }
 
 func (s *ApproveTaskTestSuite) TestAnnotationDrafts() {
-	fields := []approval.FormFieldDefinition{{Key: "title", Kind: approval.FieldInput}, {Key: "secret", Kind: approval.FieldInput}, {Key: "lines", Kind: approval.FieldTable, Columns: []approval.FormFieldDefinition{{Key: "price", Kind: approval.FieldNumber}}}}
+	fields := []approval.FormFieldDefinition{
+		{Key: "title", Kind: approval.FieldInput},
+		{Key: "secret", Kind: approval.FieldInput},
+		{Key: "lines", Kind: approval.FieldTable, Columns: []approval.FormFieldDefinition{{Key: "price", Kind: approval.FieldNumber}}},
+	}
+
 	defer setPublishedFormFields(s.T(), s.ctx, s.db, s.fixture.VersionID, nil)
+
 	inst, task := setupFormFieldInstance(s.T(), s.ctx, s.db, s.fixture, approval.NodeApproval, map[string]approval.Permission{"secret": approval.PermissionHidden}, fields, nil, "routed-writer")
 	editor := service.NewAnnotationEditor(service.NewTaskService(), service.NewInstanceService(nil), nil)
 	otherTenant := approval.CallerContext{TenantID: "outside"}
@@ -57,12 +67,14 @@ func (s *ApproveTaskTestSuite) TestAnnotationDrafts() {
 		a, err = editor.Save(s.ctx, s.db, in)
 		s.Require().NoError(err, "The routed owner can edit their draft")
 		s.Equal("Updated", a.Content, "Save returns the revised view")
+
 		outsider := in
 		outsider.Operator.ID = "stranger"
 		_, err = editor.Save(s.ctx, s.db, outsider)
 		s.ErrorIs(err, approval.ErrAnnotationNotFound, "An unrouted foreign editor cannot discover a draft")
 		err = editor.Delete(s.ctx, s.db, approval.DeleteAnnotationInput{ID: a.ID, Operator: outsider.Operator, Caller: otherTenant})
 		s.ErrorIs(err, approval.ErrAnnotationNotFound, "An unrouted foreign deleter cannot discover a draft")
+
 		outsider.ID = ""
 		_, err = editor.Save(s.ctx, s.db, outsider)
 		s.ErrorIs(err, approval.ErrAnnotationNotFound, "Unrouted users cannot start an annotation across tenants")
@@ -78,12 +90,14 @@ func (s *ApproveTaskTestSuite) TestAnnotationDrafts() {
 			_, err := editor.Save(s.ctx, s.db, in)
 			s.ErrorIs(err, approval.ErrAnnotationAnchorInvalid, "Should reject invalid anchor %s", anchor)
 		}
+
 		for _, aud := range []approval.AnnotationAudience{{Scope: "everyone"}, {Scope: approval.AudienceParticipants, UserIDs: []string{"x"}}, {Scope: approval.AudienceNodes, NodeIDs: []string{"foreign-node"}}, {Scope: approval.AudienceUsers}, {Scope: approval.AudienceUsers, UserIDs: []string{" "}}} {
 			in := draft
 			in.Audience = &aud
 			_, err := editor.Save(s.ctx, s.db, in)
 			s.ErrorIs(err, approval.ErrAnnotationAudienceInvalid, "Scope and audience selectors must agree")
 		}
+
 		in := draft
 		in.Content = strings.Repeat("a", 4001)
 		_, err := editor.Save(s.ctx, s.db, in)
@@ -115,24 +129,29 @@ func (s *ApproveTaskTestSuite) TestAnnotationDrafts() {
 	s.Run("BusinessAnchors", func() {
 		_, err := s.db.NewUpdate().Model(inst).Set("business_kind", "order").WherePK().Exec(s.ctx)
 		s.Require().NoError(err, "Should bind a business handler")
+
 		in := draft
 		in.Anchor = json.RawMessage(`{"offset":12}`)
 		edit := service.NewAnnotationEditor(service.NewTaskService(), service.NewInstanceService(nil), testRegistry(testBusinessHandler{}))
 		_, err = edit.Save(s.ctx, s.db, in)
 		s.ErrorIs(err, approval.ErrAnnotationAnchorInvalid, "An opaque anchor needs a capable handler")
+
 		veto := errors.New("unknown offset")
 		edit = service.NewAnnotationEditor(service.NewTaskService(), service.NewInstanceService(nil), testRegistry(anchorHandler{validate: func(ac *approval.AnchorContext) error {
 			s.Equal(inst.ID, ac.Instance.ID, "Handler should receive the locked instance")
 			s.Equal(task.ID, ac.Task.ID, "Handler should receive the held task")
 			s.Equal(in.Operator, ac.Author, "Handler should receive the author")
+
 			if string(ac.Anchor) == `{"offset":12}` {
 				return veto
 			}
+
 			return nil
 		}}))
 		_, err = edit.Save(s.ctx, s.db, in)
 		s.ErrorIs(err, approval.ErrAnnotationAnchorInvalid, "A host veto should surface the anchor code")
 		s.ErrorIs(err, veto, "Preserve the host cause")
+
 		in.Anchor = json.RawMessage(`{"offset":1}`)
 		_, err = edit.Save(s.ctx, s.db, in)
 		s.NoError(err, "The host can accept a business-specific anchor")
@@ -146,10 +165,12 @@ func (s *EventOrderTestSuite) TestAnnotationViews() {
 	editor := service.NewAnnotationEditor(service.NewTaskService(), service.NewInstanceService(nil), nil)
 	_, err := s.db.NewUpdate().Model((*approval.Task)(nil)).Set("delegator_id", "delegator").Where(func(cb orm.ConditionBuilder) { cb.PKEquals(peerID) }).Exec(s.ctx)
 	s.Require().NoError(err, "Should bind a delegated participant")
+
 	byContent := map[string]string{}
 	save := func(task, user, content string, aud *approval.AnnotationAudience) {
 		a, err := editor.Save(s.ctx, s.db, approval.SaveAnnotationInput{TaskID: task, Content: content, Audience: aud, Operator: approval.UserInfo{ID: user}, Caller: approval.SystemCaller})
 		s.Require().NoError(err, "Should save the note")
+
 		byContent[content] = a.ID
 	}
 	save(taskID, "any-1", "all", nil)
@@ -157,6 +178,7 @@ func (s *EventOrderTestSuite) TestAnnotationViews() {
 	save(taskID, "any-1", "node", &approval.AnnotationAudience{Scope: approval.AudienceNodes, NodeIDs: []string{*inst.CurrentNodeID}})
 	save(taskID, "any-1", "user", &approval.AnnotationAudience{Scope: approval.AudienceUsers, UserIDs: []string{"delegator"}})
 	save(peerID, "any-2", "peer draft", nil)
+
 	my := query.NewGetMyInstanceDetailHandler(s.db, nil, service.NewFormGlobalsService(nil))
 	admin := query.NewGetAdminInstanceDetailHandler(s.db, service.NewFormGlobalsService(nil), nil)
 	names := func(rows []approval.AnnotationView) []string {
@@ -165,11 +187,13 @@ func (s *EventOrderTestSuite) TestAnnotationViews() {
 			s.NotEmpty(a.NodeName, "Every note is enriched with its node name")
 			out = append(out, a.Content)
 		}
+
 		return out
 	}
 	view := func(user string) []string {
 		d, err := my.Handle(s.ctx, query.GetMyInstanceDetailQuery{InstanceID: inst.ID, Viewer: approval.UserInfo{ID: user}})
 		s.Require().NoError(err, "A participant can view the instance")
+
 		return names(d.Annotations)
 	}
 	s.ElementsMatch([]string{"peer draft"}, view("any-2"), "Other authors' drafts must stay private")
@@ -197,11 +221,24 @@ func (s *EventOrderTestSuite) TestAnnotationViews() {
 
 func seedTaskDraft(t *testing.T, ctx context.Context, db orm.DB, task *approval.Task) string {
 	t.Helper()
-	a := &approval.Annotation{InstanceID: task.InstanceID, TenantID: task.TenantID, NodeID: task.NodeID, TaskID: &task.ID, VisitID: &task.VisitID, Author: task.Assignee(), Status: approval.AnnotationDraft, Audience: approval.AnnotationAudience{Scope: approval.AudienceParticipants}, Content: "Unfinished"}
+
+	a := &approval.Annotation{
+		InstanceID: task.InstanceID,
+		TenantID:   task.TenantID,
+		NodeID:     task.NodeID,
+		TaskID:     &task.ID,
+		VisitID:    &task.VisitID,
+		Author:     task.Assignee(),
+		Status:     approval.AnnotationDraft,
+		Audience:   approval.AnnotationAudience{Scope: approval.AudienceParticipants},
+		Content:    "Unfinished",
+	}
 	_, err := db.NewInsert().Model(a).Exec(ctx)
 	require.NoError(t, err, "Should persist the held seat's draft")
+
 	return a.ID
 }
+
 func (s *EventOrderTestSuite) TestResponseDraftRules() {
 	for _, end := range []string{"withdraw", "terminate"} {
 		s.Run(end, func() {
@@ -212,13 +249,43 @@ func (s *EventOrderTestSuite) TestResponseDraftRules() {
 			editor := service.NewAnnotationEditor(tasks, instances, nil)
 			ctx, db := s.ctx, s.db
 			author := approval.UserInfo{ID: "any-1"}
+
 			setPublishedFormFields(s.T(), ctx, db, inst.FlowVersionID, []approval.FormFieldDefinition{{Key: "amount", Kind: approval.FieldNumber}})
 			defer setPublishedFormFields(s.T(), ctx, db, inst.FlowVersionID, nil)
-			parent, err := editor.Save(ctx, db, approval.SaveAnnotationInput{TaskID: taskID, Operator: author, Anchor: json.RawMessage(`{"field":"amount"}`), Content: "Clarify", Audience: &approval.AnnotationAudience{Scope: approval.AudienceApplicant}, Caller: approval.SystemCaller})
+
+			parent, err := editor.Save(
+				ctx,
+				db,
+				approval.SaveAnnotationInput{
+					TaskID:   taskID,
+					Operator: author,
+					Anchor:   json.RawMessage(`{"field":"amount"}`),
+					Content:  "Clarify",
+					Audience: &approval.AnnotationAudience{Scope: approval.AudienceApplicant},
+					Caller:   approval.SystemCaller,
+				},
+			)
 			s.Require().NoError(err, "Should save a note for the applicant")
-			hidden, err := editor.Save(ctx, db, approval.SaveAnnotationInput{TaskID: taskID, Operator: author, Content: "Private", Audience: &approval.AnnotationAudience{Scope: approval.AudienceUsers, UserIDs: []string{"any-2"}}, Caller: approval.SystemCaller})
+			hidden, err := editor.Save(
+				ctx,
+				db,
+				approval.SaveAnnotationInput{
+					TaskID:   taskID,
+					Operator: author,
+					Content:  "Private",
+					Audience: &approval.AnnotationAudience{Scope: approval.AudienceUsers, UserIDs: []string{"any-2"}},
+					Caller:   approval.SystemCaller,
+				},
+			)
 			s.Require().NoError(err, "Should save a restricted note")
-			response := approval.SaveAnnotationInput{ParentID: parent.ID, Resolution: new(approval.ResolutionDeclined), Content: "Cannot change", Operator: inst.Applicant(), Caller: approval.SystemCaller}
+
+			response := approval.SaveAnnotationInput{
+				ParentID:   parent.ID,
+				Resolution: new(approval.ResolutionDeclined),
+				Content:    "Cannot change",
+				Operator:   inst.Applicant(),
+				Caller:     approval.SystemCaller,
+			}
 			_, err = editor.Save(ctx, db, response)
 			s.ErrorIs(err, approval.ErrAnnotationNotFound, "Unpublished parent drafts cannot receive a response")
 			s.Require().NoError(tasks.PublishDrafts(ctx, db, inst, &taskID, author), "Should publish both parent notes")
@@ -226,39 +293,48 @@ func (s *EventOrderTestSuite) TestResponseDraftRules() {
 			s.ErrorIs(err, approval.ErrAnnotationNotAllowed, "Only a returned instance accepts responses")
 			_, err = db.NewUpdate().Model(inst).Set("status", approval.InstanceReturned).Set("current_node_id", s.anyOf.NodeIDs["start-1"]).WherePK().Exec(ctx)
 			s.Require().NoError(err, "Should establish a returned instance")
+
 			in := response
 			in.ParentID = hidden.ID
 			_, err = editor.Save(ctx, db, in)
 			s.ErrorIs(err, approval.ErrAnnotationNotFound, "The applicant cannot respond to a hidden parent")
+
 			in = response
 			in.Operator = author
 			_, err = editor.Save(ctx, db, in)
 			s.ErrorIs(err, approval.ErrAnnotationNotAllowed, "Only the applicant can reply")
+
 			in = response
 			in.Content = ""
 			_, err = editor.Save(ctx, db, in)
 			s.Error(err, "Declining a suggestion requires an explanation")
+
 			in = response
 			in.Resolution = nil
 			_, err = editor.Save(ctx, db, in)
 			s.ErrorIs(err, approval.ErrAnnotationNotAllowed, "Responses require a resolution")
+
 			in = response
 			in.Audience = &approval.AnnotationAudience{Scope: approval.AudienceParticipants}
 			_, err = editor.Save(ctx, db, in)
 			s.ErrorIs(err, approval.ErrAnnotationAudienceInvalid, "A response cannot widen its audience")
+
 			in = response
 			in.Anchor = json.RawMessage(`{"field":"other"}`)
 			_, err = editor.Save(ctx, db, in)
 			s.ErrorIs(err, approval.ErrAnnotationAnchorInvalid, "A response cannot redefine its anchor")
+
 			in = response
 			_, err = db.NewInsert().Model(&approval.CCRecord{InstanceID: inst.ID, CCUserID: inst.ApplicantID, CCUserName: inst.ApplicantName}).Exec(ctx)
 			s.Require().NoError(err, "Should route a copy of the instance to its applicant")
+
 			in.Caller = approval.CallerContext{TenantID: "elsewhere"}
 			_, err = editor.Save(ctx, db, in)
 			s.ErrorIs(err, approval.ErrAnnotationNotFound, "Applicants respond only in the instance tenant")
 			note, err := editor.Save(ctx, db, response)
 			s.Require().NoError(err, "The applicant can respond to the visible parent")
 			s.JSONEq(`{"field":"amount"}`, string(note.Anchor), "Responses inherit the parent's field anchor")
+
 			foreign := response
 			foreign.ID = note.ID
 			foreign.Caller = approval.CallerContext{TenantID: "elsewhere"}
@@ -269,6 +345,7 @@ func (s *EventOrderTestSuite) TestResponseDraftRules() {
 			s.Equal(parent.Audience, note.Audience, "Responses inherit the parent's audience")
 			// Publish one response to check inheritance, and leave a second in draft.
 			s.Require().NoError(tasks.PublishDrafts(ctx, db, inst, nil, inst.Applicant()), "Should publish the first response")
+
 			my := query.NewGetMyInstanceDetailHandler(db, nil, service.NewFormGlobalsService(nil))
 			for _, tc := range []struct {
 				user    string
@@ -276,19 +353,26 @@ func (s *EventOrderTestSuite) TestResponseDraftRules() {
 			}{{"any-1", true}, {"any-2", false}, {"applicant", true}} {
 				d, err := my.Handle(ctx, query.GetMyInstanceDetailQuery{InstanceID: inst.ID, Viewer: approval.UserInfo{ID: tc.user}})
 				s.Require().NoError(err, "The participant may view the instance")
+
 				found := false
 				for _, a := range d.Annotations {
 					found = found || a.ID == note.ID
 				}
+
 				s.Equal(tc.visible, found, "The parent author and applicant share the response")
 			}
+
 			draft, err := editor.Save(ctx, db, response)
 			s.Require().NoError(err, "Should create the remaining response draft")
+
 			if end == "withdraw" {
-				_, err = command.NewWithdrawInstanceHandler(db, tasks, instances).Handle(ctx, command.WithdrawInstanceCmd{InstanceID: inst.ID, Operator: inst.Applicant(), Caller: approval.SystemCaller})
+				_, err = command.NewWithdrawInstanceHandler(db, tasks, instances).
+					Handle(ctx, command.WithdrawInstanceCmd{InstanceID: inst.ID, Operator: inst.Applicant(), Caller: approval.SystemCaller})
 			} else {
-				_, err = command.NewTerminateInstanceHandler(db, tasks, instances).Handle(ctx, command.TerminateInstanceCmd{InstanceID: inst.ID, Operator: approval.UserInfo{ID: "admin"}, Caller: approval.SystemCaller})
+				_, err = command.NewTerminateInstanceHandler(db, tasks, instances).
+					Handle(ctx, command.TerminateInstanceCmd{InstanceID: inst.ID, Operator: approval.UserInfo{ID: "admin"}, Caller: approval.SystemCaller})
 			}
+
 			s.Require().NoError(err, "Closing the returned instance should succeed")
 			requireNoteStatus(s.T(), ctx, db, draft.ID, approval.AnnotationDiscarded)
 			requireNoteStatus(s.T(), ctx, db, note.ID, approval.AnnotationPublished)
