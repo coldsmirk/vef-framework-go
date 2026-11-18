@@ -50,12 +50,6 @@ func (e *AnnotationEditor) Save(ctx context.Context, db orm.DB, in approval.Save
 		}
 	}
 
-	if utf8.RuneCountInString(in.Content) > 4000 || (strings.TrimSpace(in.Content) == "" && (in.ParentID == "" || in.Resolution == nil || *in.Resolution != approval.ResolutionAddressed)) {
-		return nil, errAnnotationContent
-	}
-
-	a.Content = in.Content
-
 	var nodeName string
 	if in.ParentID != "" {
 		nodeName, err = e.prepareResponse(ctx, db, in, a, inst)
@@ -66,6 +60,8 @@ func (e *AnnotationEditor) Save(ctx context.Context, db orm.DB, in approval.Save
 	if err != nil {
 		return nil, err
 	}
+
+	a.Content = in.Content
 
 	if in.ID == "" {
 		_, err = db.NewInsert().Model(a).Exec(ctx)
@@ -185,12 +181,20 @@ func (e *AnnotationEditor) taskContext(ctx context.Context, db orm.DB, locked *a
 }
 
 func (e *AnnotationEditor) prepareRoot(ctx context.Context, db orm.DB, in approval.SaveAnnotationInput, a *approval.Annotation, inst *approval.Instance) (string, error) {
-	if in.TaskID == "" || in.Resolution != nil {
+	if in.TaskID == "" {
 		return "", approval.ErrAnnotationNotAllowed
 	}
 
 	tc, err := e.taskContext(ctx, db, inst, in.TaskID, in.Operator.ID, in.Caller)
 	if err != nil {
+		return "", err
+	}
+
+	if in.Resolution != nil {
+		return "", approval.ErrAnnotationNotAllowed
+	}
+
+	if err := validateAnnotationContent(in.Content, false); err != nil {
 		return "", err
 	}
 
@@ -246,6 +250,10 @@ func (e *AnnotationEditor) prepareResponse(ctx context.Context, db orm.DB, in ap
 		return "", approval.ErrAnnotationNotAllowed
 	}
 
+	if err := validateAnnotationContent(in.Content, *in.Resolution == approval.ResolutionAddressed); err != nil {
+		return "", err
+	}
+
 	if in.Audience != nil {
 		return "", approval.ErrAnnotationAudienceInvalid
 	}
@@ -270,4 +278,12 @@ func (e *AnnotationEditor) prepareResponse(ctx context.Context, db orm.DB, in ap
 	a.Audience = parent.Audience
 
 	return node.Name, nil
+}
+
+func validateAnnotationContent(content string, allowEmpty bool) error {
+	if utf8.RuneCountInString(content) > 4000 || (!allowEmpty && strings.TrimSpace(content) == "") {
+		return errAnnotationContent
+	}
+
+	return nil
 }

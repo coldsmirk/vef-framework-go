@@ -76,6 +76,7 @@ func (s *ApproveTaskTestSuite) TestAnnotationDrafts() {
 		s.ErrorIs(err, approval.ErrAnnotationNotFound, "An unrouted foreign deleter cannot discover a draft")
 
 		outsider.ID = ""
+		outsider.Content = ""
 		_, err = editor.Save(s.ctx, s.db, outsider)
 		s.ErrorIs(err, approval.ErrAnnotationNotFound, "Unrouted users cannot start an annotation across tenants")
 		err = editor.Delete(s.ctx, s.db, approval.DeleteAnnotationInput{ID: a.ID, Operator: in.Operator, Caller: otherTenant})

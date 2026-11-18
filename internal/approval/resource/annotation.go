@@ -19,7 +19,7 @@ type SaveAnnotationParams struct {
 	TaskID     string                         `json:"taskId"`
 	ParentID   string                         `json:"parentId"`
 	Anchor     json.RawMessage                `json:"anchor"`
-	Content    string                         `json:"content" validate:"max=4000"`
+	Content    string                         `json:"content"`
 	Audience   *approval.AnnotationAudience   `json:"audience"`
 	Resolution *approval.AnnotationResolution `json:"resolution"`
 }

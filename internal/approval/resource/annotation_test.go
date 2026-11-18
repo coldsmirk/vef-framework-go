@@ -2,8 +2,10 @@ package resource_test
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/coldsmirk/vef-framework-go/api"
+	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/result"
 )
 
@@ -18,6 +20,13 @@ func (s *InstanceResourceTestSuite) TestAnnotationWrites() {
 		"content":  "Please confirm the approver",
 		"operator": map[string]any{"id": "forged"},
 	}
+
+	outsider := newTenantUser("foreign-writer", "Unrouted Writer")
+	outsider.Details = map[string]any{"tenant_id": "foreign"}
+
+	outside := s.rpcCall("save_annotation", map[string]any{"taskId": tasks[0]["id"], "content": strings.Repeat("a", 4001)}, s.GenerateToken(outsider))
+	s.assertErrorCode(outside, approval.ErrCodeAnnotationNotFound, "Unrouted foreign writes are concealed before content validation")
+
 	res := s.rpcCall("save_annotation", params, s.approver2Token)
 	s.Require().True(res.IsOk(), "The current task holder can save a draft: %v", res)
 	a := s.ReadDataAsMap(res.Data)
