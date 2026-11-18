@@ -12,6 +12,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/business"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/timex"
@@ -147,7 +148,7 @@ func (c *Core) executablePlan(ctx context.Context, db orm.DB, vc *approval.VoidC
 	}
 
 	if p.IsBlocked() {
-		return nil, result.Err(i18n.T(approval.ErrMessageVoidBlocked, map[string]any{"blockers": strings.Join(p.Blockers, ", ")}), result.WithCode(approval.ErrCodeVoidBlocked))
+		return nil, result.Err(i18n.T(shared.ErrMessageVoidBlocked, map[string]any{"blockers": strings.Join(p.Blockers, ", ")}), result.WithCode(approval.ErrCodeVoidBlocked))
 	}
 
 	return p, nil

@@ -94,6 +94,7 @@ func TestInstanceStatusIsFinal(t *testing.T) {
 		expected bool
 	}{
 		{"Approved", approval.InstanceApproved, true},
+		{"Voided", approval.InstanceVoided, true},
 		{"Rejected", approval.InstanceRejected, true},
 		{"Withdrawn", approval.InstanceWithdrawn, false},
 		{"Running", approval.InstanceRunning, false},

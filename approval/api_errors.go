@@ -93,8 +93,6 @@ const (
 	ErrCodeCrossTenantAccess   = 40703
 )
 
-const ErrMessageVoidBlocked = "approval_void_blocked"
-
 // Outward-facing error sentinels. Messages are resolved through i18n at
 // package init time using the language selected by VEF_I18N_LANGUAGE.
 //
@@ -163,7 +161,7 @@ var (
 	ErrBusinessKindNotRegistered = result.Err(i18n.T("approval_business_kind_not_registered"), result.WithCode(ErrCodeBusinessKindNotRegistered))
 	ErrVoidNotAllowed            = result.Err(i18n.T("approval_void_not_allowed"), result.WithCode(ErrCodeVoidNotAllowed))
 	ErrInstanceNotVoidable       = result.Err(i18n.T("approval_instance_not_voidable"), result.WithCode(ErrCodeInstanceNotVoidable))
-	ErrVoidBlocked               = result.Err(i18n.T(ErrMessageVoidBlocked), result.WithCode(ErrCodeVoidBlocked))
+	ErrVoidBlocked               = result.Err(i18n.T("approval_void_blocked"), result.WithCode(ErrCodeVoidBlocked))
 	ErrVoidRequestPending        = result.Err(i18n.T("approval_void_request_pending"), result.WithCode(ErrCodeVoidRequestPending))
 	ErrVoidPolicyInvalid         = result.Err(i18n.T("approval_void_policy_invalid"), result.WithCode(ErrCodeVoidPolicyInvalid))
 	ErrAnnotationNotFound        = result.Err(i18n.T("approval_annotation_not_found"), result.WithCode(ErrCodeAnnotationNotFound))

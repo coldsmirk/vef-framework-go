@@ -145,8 +145,9 @@ func (*InstanceService) ApplyRollbackFormData(
 
 // Transition validates the instance status transition through the state
 // machine, applies it atomically with an optimistic-lock UPDATE, and runs
-// the business projection plus lifecycle hooks for every transition
-// (final-state logic in a hook checks to.IsFinal()).
+// the business projection plus lifecycle hooks for every transition.
+// Hooks for successful approval check running → approved. IsFinal also
+// includes voided, which is reached after approval.
 //
 // extraCols lists additional columns the caller pre-populated on instance
 // and wants persisted in the same UPDATE (e.g. "finished_at",

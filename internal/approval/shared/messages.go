@@ -14,6 +14,9 @@ const (
 	// {{.successor}} names their successor when one exists.
 	ErrMessageUserHandedOver = "approval_user_handed_over"
 
+	// Void errors. {{.blockers}} lists the reasons a reversal cannot proceed.
+	ErrMessageVoidBlocked = "approval_void_blocked"
+
 	// Urge errors. Template parameters:
 	//   {{.minutes}} — cooldown window in minutes
 	ErrMessageUrgeTooFrequent = "approval_urge_too_frequent"

@@ -15,7 +15,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
 
-type projectionVoider struct {
+type ProjectionVoider struct {
 	StubBusinessHandler
 
 	order     []string
@@ -24,24 +24,24 @@ type projectionVoider struct {
 	projected string
 }
 
-func (h *projectionVoider) PlanVoid(context.Context, orm.DB, *approval.VoidContext) (*approval.VoidPlan, error) {
+func (h *ProjectionVoider) PlanVoid(context.Context, orm.DB, *approval.VoidContext) (*approval.VoidPlan, error) {
 	h.order = append(h.order, "plan")
 
 	return &approval.VoidPlan{Reversals: []string{"Release funds"}, FollowUps: []string{"Notify bank"}}, nil
 }
 
-func (h *projectionVoider) Void(ctx context.Context, db orm.DB, vc *approval.VoidContext) error {
+func (h *ProjectionVoider) Void(ctx context.Context, db orm.DB, vc *approval.VoidContext) error {
 	h.order = append(h.order, string(vc.Instance.Status))
 	_, err := db.NewRaw("UPDATE biz_void_projection SET released = 1 WHERE id = ?", *vc.Instance.BusinessRef).Exec(ctx)
 
 	return err
 }
 
-func (*projectionVoider) OnInstanceCreated(context.Context, orm.DB, *approval.Instance) error {
+func (*ProjectionVoider) OnInstanceCreated(context.Context, orm.DB, *approval.Instance) error {
 	return nil
 }
 
-func (h *projectionVoider) OnInstanceTransition(ctx context.Context, db orm.DB, inst *approval.Instance, from, to approval.InstanceStatus) error {
+func (h *ProjectionVoider) OnInstanceTransition(ctx context.Context, db orm.DB, inst *approval.Instance, from, to approval.InstanceStatus) error {
 	h.order = append(h.order, "hook")
 
 	h.from, h.to = from, to
@@ -77,7 +77,7 @@ func (s *EventOrderTestSuite) TestVoidProjectionAndEvent() {
 	initial := &approval.BusinessProjection{ID: *target.BusinessProjectionID}
 	s.Require().NoError(s.db.NewSelect().Model(initial).WherePK().Scan(s.ctx), "Should load the projection as persisted at approval")
 
-	host := new(projectionVoider)
+	host := new(ProjectionVoider)
 	rt, err := voiding.NewRuntime([]approval.BusinessHandler{host}, service.NewFlowDefinitionService(), projector, nil, s.bus)
 	s.Require().NoError(err, "The host kind and request kind should register together")
 	h := wrapWithBusAndDB(s.db, s.bus, command.NewVoidInstanceHandler(s.db, rt.Core))
