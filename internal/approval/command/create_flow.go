@@ -73,7 +73,7 @@ func (h *CreateFlowHandler) Handle(ctx context.Context, cmd CreateFlowCmd) (*app
 		return nil, err
 	}
 
-	policy, err := normalizeVoidPolicy(ctx, db, h.business, tenantID, cmd.BusinessKind, cmd.VoidPolicy, cmd.VoidFlowCode)
+	policy, err := normalizeVoidPolicy(ctx, db, h.business, tenantID, cmd.Code, cmd.BusinessKind, cmd.VoidPolicy, cmd.VoidFlowCode)
 	if err != nil {
 		return nil, err
 	}

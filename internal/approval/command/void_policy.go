@@ -15,7 +15,7 @@ func normalizeVoidPolicy(
 	ctx context.Context,
 	db orm.DB,
 	registry *business.Registry,
-	tenant string,
+	tenant, targetCode string,
 	kind *approval.BusinessKind,
 	policy approval.VoidPolicy,
 	flowCode *string,
@@ -34,7 +34,8 @@ func normalizeVoidPolicy(
 			return "", approval.ErrVoidPolicyInvalid
 		}
 	case approval.VoidApproval:
-		if flowCode == nil || strings.TrimSpace(*flowCode) == "" {
+		// Saving the target would resolve its own code to this flow, including when it shadows a shared request flow.
+		if flowCode == nil || strings.TrimSpace(*flowCode) == "" || *flowCode == targetCode {
 			return "", approval.ErrVoidPolicyInvalid
 		}
 

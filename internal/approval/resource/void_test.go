@@ -104,6 +104,8 @@ func (s *InstanceResourceTestSuite) TestVoidPolicy() {
 	items := s.ReadDataAsSlice(s.ReadDataAsMap(r.Data)["items"])
 	s.Require().Len(items, 1, "The selected request flow matches")
 	s.Equal(req.FlowID, s.ReadDataAsMap(items[0])["id"], "Only the requested kind and code should match")
+	r = s.voidRPC("flow", "update", api.Params{"flowId": req.FlowID, "name": "Converted request", "voidPolicy": "approval", "voidFlowCode": req.FlowCode, "isAllInitiationAllowed": true, "instanceTitleTemplate": "New form"}, s.token)
+	s.Equal(approval.ErrCodeVoidPolicyInvalid, r.Code, "An edited request cannot authorize itself using its previous kind")
 }
 
 func (s *InstanceResourceTestSuite) TestVoidLifecycle() {

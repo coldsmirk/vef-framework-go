@@ -85,7 +85,7 @@ func (h *UpdateFlowHandler) Handle(ctx context.Context, cmd UpdateFlowCmd) (*app
 		return nil, err
 	}
 
-	policy, err := normalizeVoidPolicy(ctx, db, h.business, flow.TenantID, cmd.BusinessKind, cmd.VoidPolicy, cmd.VoidFlowCode)
+	policy, err := normalizeVoidPolicy(ctx, db, h.business, flow.TenantID, flow.Code, cmd.BusinessKind, cmd.VoidPolicy, cmd.VoidFlowCode)
 	if err != nil {
 		return nil, err
 	}
