@@ -87,6 +87,7 @@ func (s *ReassignTaskTestSuite) insertInstanceAndTask(assigneeID string, taskSta
 
 func (s *ReassignTaskTestSuite) TestReassignSuccess() {
 	_, task := s.insertInstanceAndTask("original-user", approval.TaskPending)
+	draftID := seedTaskDraft(s.T(), s.ctx, s.db, task)
 
 	operator := approval.UserInfo{ID: "admin-1", Name: "Admin"}
 	_, err := s.handler.Handle(s.ctx, command.ReassignTaskCmd{
@@ -97,6 +98,7 @@ func (s *ReassignTaskTestSuite) TestReassignSuccess() {
 		Caller:        approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should reassign task without error")
+	requireNoteStatus(s.T(), s.ctx, s.db, draftID, approval.AnnotationDiscarded)
 
 	// Verify task assignee updated
 	var updated approval.Task

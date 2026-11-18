@@ -280,8 +280,13 @@ func (s *ScannerTestSuite) insertActiveVisit(instanceID, nodeID string) *approva
 
 func (s *ScannerTestSuite) TestAutoPassTimeoutShouldAdvanceFlow() {
 	instance, task := s.createTimeoutScenario(approval.TimeoutActionAutoPass)
+	draft := &approval.Annotation{InstanceID: instance.ID, TenantID: instance.TenantID, NodeID: task.NodeID, TaskID: &task.ID, VisitID: &task.VisitID, Author: task.Assignee(), Status: approval.AnnotationDraft, Audience: approval.AnnotationAudience{Scope: approval.AudienceParticipants}, Content: "Unfinished review"}
+	_, err := s.db.NewInsert().Model(draft).Exec(s.ctx)
+	s.Require().NoError(err, "Should persist the task owner's draft")
 
 	s.scanner.ScanTimeouts(s.ctx)
+	s.Require().NoError(s.db.NewSelect().Model(draft).WherePK().Scan(s.ctx), "Should reload the timed-out draft")
+	s.Equal(approval.AnnotationDiscarded, draft.Status, "An automatic approval cannot publish the human draft")
 
 	var updatedTask approval.Task
 

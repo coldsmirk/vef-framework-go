@@ -112,7 +112,9 @@ func (s *HandoverTestSuite) TestRewriteDelegatedSeat() {
 	}()
 
 	s.change("old", "new")
+	draftID := seedTaskDraft(s.T(), s.ctx, s.db, task)
 	report := s.apply("old")
+	requireNoteStatus(s.T(), s.ctx, s.db, draftID, approval.AnnotationDiscarded)
 	s.Require().Len(report.Transferred, 1, "One seat should move")
 	item := report.Transferred[0]
 	s.Equal(task.ID, *item.TaskID, "Task identity should remain stable")

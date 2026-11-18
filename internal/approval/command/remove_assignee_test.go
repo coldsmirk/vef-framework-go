@@ -112,6 +112,7 @@ func (s *RemoveAssigneeTestSuite) setupData() (inst *approval.Instance, task1, t
 func (s *RemoveAssigneeTestSuite) TestRemoveSuccess() {
 	_, _, task2 := s.setupData()
 
+	draftID := seedTaskDraft(s.T(), s.ctx, s.db, task2)
 	// assignee-1 removes assignee-2 (peer operation)
 	operator := approval.UserInfo{ID: "assignee-1", Name: "Assignee 1"}
 	_, err := s.handler.Handle(s.ctx, command.RemoveAssigneeCmd{
@@ -120,6 +121,7 @@ func (s *RemoveAssigneeTestSuite) TestRemoveSuccess() {
 		Caller:   approval.SystemCaller,
 	})
 	s.Require().NoError(err, "Should remove assignee without error")
+	requireNoteStatus(s.T(), s.ctx, s.db, draftID, approval.AnnotationDiscarded)
 
 	// Verify task2 is removed
 	var updated approval.Task
