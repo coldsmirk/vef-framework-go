@@ -53,7 +53,7 @@ func (*AnnotationService) PublishDrafts(ctx context.Context, db orm.DB, instance
 	)
 }
 
-// DiscardTaskDrafts retires unpublished drafts when their original seat is lost.
+// DiscardTaskDrafts retires unpublished drafts when their author stops holding the task.
 func (*AnnotationService) DiscardTaskDrafts(ctx context.Context, db orm.DB, taskIDs ...string) error {
 	if len(taskIDs) == 0 {
 		return nil

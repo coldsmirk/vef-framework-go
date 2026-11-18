@@ -439,8 +439,10 @@ func (h *ApplyHandoversHandler) moveTask(
 			return err
 		}
 	} else {
-		if err := new(service.AnnotationService).DiscardTaskDrafts(ctx, db, task.ID); err != nil {
-			return err
+		if task.AssigneeID != actor.User.ID {
+			if err := new(service.AnnotationService).DiscardTaskDrafts(ctx, db, task.ID); err != nil {
+				return err
+			}
 		}
 
 		if err := service.ReplaceTaskActor(ctx, db, task, actor); err != nil {

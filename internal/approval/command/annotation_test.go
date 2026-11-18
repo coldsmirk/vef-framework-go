@@ -14,6 +14,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/timex"
 )
 
 func requireNoteStatus(t *testing.T, ctx context.Context, db orm.DB, id string, status approval.AnnotationStatus) {
@@ -238,6 +239,46 @@ func seedTaskDraft(t *testing.T, ctx context.Context, db orm.DB, task *approval.
 	require.NoError(t, err, "Should persist the held seat's draft")
 
 	return a.ID
+}
+
+func (s *HandoverTestSuite) TestDraftFollowsContinuousTaskOwnership() {
+	t, ctx, db := s.T(), s.ctx, s.db
+	inst, task := setupRunningInstance(t, ctx, db, s.fixture, "delegate")
+	_, err := db.NewUpdate().Model(task).Set("delegator_id", "first").WherePK().Exec(ctx)
+	s.Require().NoError(err, "Should attribute the pending task to the first delegator")
+
+	now := timex.Now()
+	for _, owner := range []string{"first", "second"} {
+		delegation := &approval.Delegation{
+			DelegatorID: owner,
+			DelegateeID: task.AssigneeID,
+			FlowID:      &inst.FlowID,
+			StartsAt:    now.AddHours(-1),
+			EndsAt:      now.AddHours(1),
+			IsActive:    true,
+		}
+		_, err := db.NewInsert().Model(delegation).Exec(ctx)
+		s.Require().NoError(err, "Both seat holders must delegate to the same person")
+		t.Cleanup(func() {
+			_, err := db.NewDelete().Model(delegation).WherePK().Exec(ctx)
+			require.NoError(t, err, "Should remove the test delegation")
+		})
+	}
+
+	draftID := seedTaskDraft(t, ctx, db, task)
+
+	s.change("first", "second")
+	s.Require().Len(s.apply("first").Transferred, 1, "The handover must transfer the seat")
+	s.Require().NoError(db.NewSelect().Model(task).WherePK().Scan(ctx), "Should reload the transferred seat")
+	s.Equal(new("second"), task.DelegatorID, "The successor should now delegate the task")
+	s.Equal("delegate", task.AssigneeID, "The active delegate still holds the same task")
+	requireNoteStatus(t, ctx, db, draftID, approval.AnnotationDraft)
+
+	s.change("second", "third")
+	s.Require().Len(s.apply("second").Transferred, 1, "The next handover must move the task to its new holder")
+	s.Require().NoError(db.NewSelect().Model(task).WherePK().Scan(ctx), "Should reload the new assignee")
+	s.Equal("third", task.AssigneeID, "The final successor handles the task personally")
+	requireNoteStatus(t, ctx, db, draftID, approval.AnnotationDiscarded)
 }
 
 func (s *EventOrderTestSuite) TestResponseDraftRules() {
