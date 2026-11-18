@@ -194,12 +194,17 @@ func buildParticipants(tasks []approval.Task, finisherLogs map[string]approval.A
 
 	for i, task := range tasks {
 		participant := approval.NodeParticipant{
-			TaskID:    task.ID,
-			User:      task.Assignee(),
-			Delegator: task.Delegator(),
-			Status:    string(task.Status),
-			Deadline:  task.Deadline,
-			IsTimeout: task.IsTimeout,
+			TaskID:      task.ID,
+			User:        task.Assignee(),
+			Delegator:   task.Delegator(),
+			Predecessor: task.Predecessor(),
+			Status:      string(task.Status),
+			Deadline:    task.Deadline,
+			IsTimeout:   task.IsTimeout,
+		}
+
+		if task.HandoverReason != nil {
+			participant.HandoverReason = *task.HandoverReason
 		}
 
 		if log, ok := finisherLogs[task.ID]; ok {

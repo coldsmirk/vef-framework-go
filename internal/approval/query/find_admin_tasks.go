@@ -85,14 +85,15 @@ func (h *FindAdminTasksHandler) Handle(ctx context.Context, query FindAdminTasks
 	items := make([]admin.Task, len(tasks))
 	for i, t := range tasks {
 		item := admin.Task{
-			TaskID:     t.ID,
-			InstanceID: t.InstanceID,
-			NodeName:   nodeMap[t.NodeID],
-			Assignee:   t.Assignee(),
-			Status:     string(t.Status),
-			CreatedAt:  t.CreatedAt,
-			Deadline:   t.Deadline,
-			FinishedAt: t.FinishedAt,
+			Predecessor: t.Predecessor(),
+			TaskID:      t.ID,
+			InstanceID:  t.InstanceID,
+			NodeName:    nodeMap[t.NodeID],
+			Assignee:    t.Assignee(),
+			Status:      string(t.Status),
+			CreatedAt:   t.CreatedAt,
+			Deadline:    t.Deadline,
+			FinishedAt:  t.FinishedAt,
 		}
 		if inst := instanceMap[t.InstanceID]; inst != nil {
 			item.InstanceTitle = inst.Title

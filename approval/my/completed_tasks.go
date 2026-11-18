@@ -19,4 +19,5 @@ type CompletedTask struct {
 	NodeName       string                  `json:"nodeName"`
 	Status         string                  `json:"status"`
 	FinishedAt     *timex.DateTime         `json:"finishedAt,omitempty"`
+	Predecessor    *approval.UserInfo      `json:"predecessor,omitempty"`
 }

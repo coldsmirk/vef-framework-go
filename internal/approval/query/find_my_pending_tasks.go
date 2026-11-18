@@ -90,11 +90,12 @@ func (h *FindMyPendingTasksHandler) Handle(ctx context.Context, query FindMyPend
 	items := make([]my.PendingTask, len(tasks))
 	for i, t := range tasks {
 		item := my.PendingTask{
-			TaskID:    t.ID,
-			NodeName:  nodeMap[t.NodeID],
-			CreatedAt: t.CreatedAt,
-			Deadline:  t.Deadline,
-			IsTimeout: t.IsTimeout,
+			Predecessor: t.Predecessor(),
+			TaskID:      t.ID,
+			NodeName:    nodeMap[t.NodeID],
+			CreatedAt:   t.CreatedAt,
+			Deadline:    t.Deadline,
+			IsTimeout:   t.IsTimeout,
 		}
 		if inst := instanceMap[t.InstanceID]; inst != nil {
 			item.InstanceID = inst.ID

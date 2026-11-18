@@ -17,16 +17,18 @@ const ActivityUrge = "urge"
 // the flow-graph projections so the two views can never disagree about who did
 // what.
 type NodeParticipant struct {
-	TaskID      string          `json:"taskId"`
-	User        UserInfo        `json:"user"`
-	Delegator   *UserInfo       `json:"delegator,omitempty"`
-	Status      string          `json:"status"`
-	Deadline    *timex.DateTime `json:"deadline,omitempty"`
-	IsTimeout   bool            `json:"isTimeout,omitempty"`
-	Opinion     *string         `json:"opinion,omitempty"`
-	Attachments []string        `json:"attachments,omitempty"`
-	ActionTime  *timex.DateTime `json:"actionTime,omitempty"`
-	TransferTo  *UserInfo       `json:"transferTo,omitempty"`
+	TaskID         string          `json:"taskId"`
+	User           UserInfo        `json:"user"`
+	Delegator      *UserInfo       `json:"delegator,omitempty"`
+	Status         string          `json:"status"`
+	Deadline       *timex.DateTime `json:"deadline,omitempty"`
+	IsTimeout      bool            `json:"isTimeout,omitempty"`
+	Opinion        *string         `json:"opinion,omitempty"`
+	Attachments    []string        `json:"attachments,omitempty"`
+	ActionTime     *timex.DateTime `json:"actionTime,omitempty"`
+	TransferTo     *UserInfo       `json:"transferTo,omitempty"`
+	Predecessor    *UserInfo       `json:"predecessor,omitempty"`
+	HandoverReason string          `json:"handoverReason,omitempty"`
 }
 
 // Activity is a side action recorded at a node: who did what, when, and the

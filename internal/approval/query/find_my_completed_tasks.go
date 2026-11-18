@@ -104,10 +104,11 @@ func (h *FindMyCompletedTasksHandler) Handle(ctx context.Context, query FindMyCo
 	items := make([]my.CompletedTask, len(tasks))
 	for i, t := range tasks {
 		item := my.CompletedTask{
-			TaskID:     t.ID,
-			NodeName:   nodeMap[t.NodeID],
-			Status:     string(t.Status),
-			FinishedAt: t.FinishedAt,
+			Predecessor: t.Predecessor(),
+			TaskID:      t.ID,
+			NodeName:    nodeMap[t.NodeID],
+			Status:      string(t.Status),
+			FinishedAt:  t.FinishedAt,
 		}
 		if inst := instanceMap[t.InstanceID]; inst != nil {
 			item.InstanceID = inst.ID

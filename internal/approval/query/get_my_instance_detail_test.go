@@ -88,6 +88,7 @@ func (s *GetMyInstanceDetailTestSuite) SetupSuite() {
 			TenantID: "t1", InstanceID: inst.ID, NodeID: fix.NodeIDs[0], VisitID: nodeVisit.ID,
 			AssigneeID: "user-b", SortOrder: 1, Status: approval.TaskPending,
 			DelegatorID: &delegatorID, DelegatorName: &delegatorName, DelegatorDepartmentName: &delegatorDept,
+			PredecessorID: new("old-seat"), PredecessorName: new("Previous Owner"), HandoverReason: new("Changed role"),
 			Deadline: &deadline, IsTimeout: true,
 		},
 	}
@@ -202,6 +203,9 @@ func (s *GetMyInstanceDetailTestSuite) TestProjectsTimelineDetails() {
 	s.Require().Len(entry.Participants, 1, "Entry should list the single participant")
 	participant := entry.Participants[0]
 	s.Assert().Equal("user-b", participant.User.ID, "Participant should be the assignee")
+	s.Require().NotNil(participant.Predecessor, "Timeline should include the predecessor snapshot")
+	s.Equal("Previous Owner", participant.Predecessor.Name, "Should retain predecessor name")
+	s.Equal("Changed role", participant.HandoverReason, "Should show the reason beside the predecessor")
 	s.Require().NotNil(participant.Delegator, "Participant should carry the delegator snapshot")
 	s.Assert().Equal("Delegator D", participant.Delegator.Name, "Delegator name should pass through")
 	s.Require().NotNil(participant.Delegator.DepartmentName, "Delegator department should pass through")
