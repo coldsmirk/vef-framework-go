@@ -40,6 +40,7 @@ func (v *titleFieldValidator) check(path []string) error {
 
 	return nil
 }
+
 func (v *titleFieldValidator) walk(n parse.Node, root bool) error {
 	switch x := n.(type) {
 	case *parse.FieldNode:
@@ -90,6 +91,7 @@ func (v *titleFieldValidator) walk(n parse.Node, root bool) error {
 	case *parse.TemplateNode:
 		return v.named(x, root)
 	}
+
 	return nil
 }
 
@@ -103,7 +105,6 @@ func (v *titleFieldValidator) branch(x *parse.BranchNode, root bool) error {
 	}
 
 	return v.walk(x.ElseList, root)
-
 }
 
 func (v *titleFieldValidator) named(x *parse.TemplateNode, root bool) error {
