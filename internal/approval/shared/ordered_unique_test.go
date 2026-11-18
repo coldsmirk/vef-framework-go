@@ -8,6 +8,9 @@ import (
 )
 
 func TestOrderedUniqueMaintainsFirstSeenOrder(t *testing.T) {
+	t.Run("EmptyCollection", func(t *testing.T) {
+		assert.Equal(t, []string{}, NewOrderedUnique[string](0).ToSlice(), "An initialized empty collection should serialize as an array")
+	})
 	t.Run("MaintainFirstSeenOrder", func(t *testing.T) {
 		u := NewOrderedUnique[string](0)
 		added := u.AddAll("u2", "u1", "u2", "u3", "u1")

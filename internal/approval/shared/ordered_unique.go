@@ -1,6 +1,10 @@
 package shared
 
-import "github.com/coldsmirk/go-collections"
+import (
+	"slices"
+
+	"github.com/coldsmirk/go-collections"
+)
 
 // OrderedUnique stores unique values while preserving first-seen order.
 type OrderedUnique[T comparable] struct {
@@ -46,7 +50,7 @@ func (o *OrderedUnique[T]) AddAll(values ...T) int {
 
 // ToSlice returns a copy of ordered unique values.
 func (o *OrderedUnique[T]) ToSlice() []T {
-	return append([]T(nil), o.items...)
+	return slices.Clone(o.items)
 }
 
 // Len returns the number of unique values.
