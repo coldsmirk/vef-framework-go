@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/storage"
@@ -23,6 +24,7 @@ type TransferTaskCmd struct {
 
 // TransferTaskHandler handles the TransferTaskCmd command.
 type TransferTaskHandler struct {
+	handovers     approval.HandoverResolver
 	db            orm.DB
 	taskSvc       *service.TaskService
 	validationSvc *service.ValidationService
@@ -38,9 +40,9 @@ func NewTransferTaskHandler(
 	taskSvc *service.TaskService,
 	validationSvc *service.ValidationService,
 	userResolver approval.UserInfoResolver,
-	formStorage *storage.Dispatcher,
+	formStorage *storage.Dispatcher, handovers approval.HandoverResolver,
 ) *TransferTaskHandler {
-	return &TransferTaskHandler{
+	return &TransferTaskHandler{handovers: handovers,
 		db:            db,
 		taskSvc:       taskSvc,
 		validationSvc: validationSvc,
@@ -70,6 +72,10 @@ func (h *TransferTaskHandler) Handle(ctx context.Context, cmd TransferTaskCmd) (
 	transferToID := strings.TrimSpace(cmd.TransferToID)
 	if transferToID == "" || transferToID == task.AssigneeID {
 		return cqrs.Unit{}, approval.ErrInvalidTransferTarget
+	}
+
+	if err := engine.NewActorResolution(instance, node, h.handovers).CheckPicks(ctx, []string{transferToID}); err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	duplicate, err := hasActiveTaskForAssignee(ctx, db, instance.ID, task.NodeID, transferToID)

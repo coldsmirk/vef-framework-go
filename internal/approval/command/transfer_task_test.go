@@ -37,7 +37,7 @@ type TransferTaskTestSuite struct {
 func (s *TransferTaskTestSuite) SetupSuite() {
 	taskSvc := service.NewTaskService()
 	validSvc := service.NewValidationService(mustInitiatorComposite(nil))
-	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewTransferTaskHandler(s.db, taskSvc, validSvc, nil, nil))
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewTransferTaskHandler(s.db, taskSvc, validSvc, nil, nil, explicitHandoverResolver{}))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "transfer")
 
 	node := &approval.FlowNode{
@@ -296,4 +296,17 @@ func (s *TransferTaskTestSuite) TestTransferTargetValidation() {
 		)
 		s.Assert().Equal(approval.TaskPending, original.Status, "Original task should remain pending on validation failure")
 	})
+}
+
+func (s *TransferTaskTestSuite) TestExplicitHandoverTarget() {
+	_, task := s.setupData("operator")
+	for _, target := range []string{"moved", "departed"} {
+		s.Run(target, func() {
+			_, err := s.handler.Handle(s.ctx, command.TransferTaskCmd{TaskID: task.ID, TransferToID: target, Opinion: "Transfer", Operator: approval.UserInfo{ID: "operator"}, Caller: approval.SystemCaller})
+			s.Require().ErrorIs(err, approval.ErrUserHandedOver, "Should refuse explicit picks with 40028")
+			if target == "moved" {
+				s.ErrorContains(err, "Morgan", "Should identify successor")
+			}
+		})
+	}
 }

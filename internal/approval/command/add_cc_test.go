@@ -40,7 +40,7 @@ type AddCCTestSuite struct {
 
 func (s *AddCCTestSuite) SetupSuite() {
 	s.bus = eventtest.NewFakeBus()
-	s.handler = wrapWithBus(s.bus, command.NewAddCCHandler(s.db, service.NewTaskService(), service.NewInstanceService(nil), nil))
+	s.handler = wrapWithBus(s.bus, command.NewAddCCHandler(s.db, service.NewTaskService(), service.NewInstanceService(nil), nil, explicitHandoverResolver{}))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "cc")
 
 	node := &approval.FlowNode{
@@ -422,4 +422,17 @@ func (s *AddCCTestSuite) TestAddCCShouldBeConcurrencySafe() {
 		Count(s.ctx)
 	s.Require().NoError(err, "Should count inserted CC records")
 	s.Assert().Equal(int64(1), count, "Concurrent add-cc should insert only one record for same user on same node")
+}
+
+func (s *AddCCTestSuite) TestExplicitHandoverTarget() {
+	inst := s.insertInstance(s.nodeID, "operator")
+	for _, target := range []string{"moved", "departed"} {
+		s.Run(target, func() {
+			_, err := s.handler.Handle(s.ctx, command.AddCCCmd{InstanceID: inst.ID, CCUserIDs: []string{target}, Operator: approval.UserInfo{ID: "operator"}, Caller: approval.SystemCaller})
+			s.Require().ErrorIs(err, approval.ErrUserHandedOver, "Should refuse explicit picks with 40028")
+			if target == "moved" {
+				s.ErrorContains(err, "Morgan", "Should identify successor")
+			}
+		})
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
@@ -22,14 +23,15 @@ type AddAssigneeCmd struct {
 
 // AddAssigneeHandler handles the AddAssigneeCmd command.
 type AddAssigneeHandler struct {
+	handovers    approval.HandoverResolver
 	db           orm.DB
 	taskSvc      *service.TaskService
 	userResolver approval.UserInfoResolver
 }
 
 // NewAddAssigneeHandler creates a new AddAssigneeHandler.
-func NewAddAssigneeHandler(db orm.DB, taskSvc *service.TaskService, userResolver approval.UserInfoResolver) *AddAssigneeHandler {
-	return &AddAssigneeHandler{db: db, taskSvc: taskSvc, userResolver: userResolver}
+func NewAddAssigneeHandler(db orm.DB, taskSvc *service.TaskService, userResolver approval.UserInfoResolver, handovers approval.HandoverResolver) *AddAssigneeHandler {
+	return &AddAssigneeHandler{handovers: handovers, db: db, taskSvc: taskSvc, userResolver: userResolver}
 }
 
 func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cqrs.Unit, error) {
@@ -75,6 +77,10 @@ func (h *AddAssigneeHandler) Handle(ctx context.Context, cmd AddAssigneeCmd) (cq
 	userIDs := shared.NormalizeUniqueIDs(cmd.UserIDs)
 	if len(userIDs) == 0 {
 		return cqrs.Unit{}, approval.ErrNoUsersSpecified
+	}
+
+	if err := engine.NewActorResolution(instance, node, h.handovers).CheckPicks(ctx, userIDs); err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	var nodeTasks []approval.Task

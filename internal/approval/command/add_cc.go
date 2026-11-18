@@ -23,6 +23,7 @@ type AddCCCmd struct {
 
 // AddCCHandler handles the AddCCCmd command.
 type AddCCHandler struct {
+	handovers    approval.HandoverResolver
 	db           orm.DB
 	taskSvc      *service.TaskService
 	instanceSvc  *service.InstanceService
@@ -30,8 +31,8 @@ type AddCCHandler struct {
 }
 
 // NewAddCCHandler creates a new AddCCHandler.
-func NewAddCCHandler(db orm.DB, taskSvc *service.TaskService, instanceSvc *service.InstanceService, userResolver approval.UserInfoResolver) *AddCCHandler {
-	return &AddCCHandler{db: db, taskSvc: taskSvc, instanceSvc: instanceSvc, userResolver: userResolver}
+func NewAddCCHandler(db orm.DB, taskSvc *service.TaskService, instanceSvc *service.InstanceService, userResolver approval.UserInfoResolver, handovers approval.HandoverResolver) *AddCCHandler {
+	return &AddCCHandler{handovers: handovers, db: db, taskSvc: taskSvc, instanceSvc: instanceSvc, userResolver: userResolver}
 }
 
 func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, error) {
@@ -52,7 +53,6 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 
 	if err := db.NewSelect().
 		Model(&node).
-		Select("name", "is_manual_cc_allowed").
 		WherePK().
 		Scan(ctx); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("load current node: %w", err)
@@ -79,6 +79,10 @@ func (h *AddCCHandler) Handle(ctx context.Context, cmd AddCCCmd) (cqrs.Unit, err
 	userIDs := shared.NormalizeUniqueIDs(cmd.CCUserIDs)
 	if len(userIDs) == 0 {
 		return cqrs.Unit{}, nil
+	}
+
+	if err := engine.NewActorResolution(instance, &node, h.handovers).CheckPicks(ctx, userIDs); err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	ccUserInfos := shared.ResolveUserInfoMapSilent(ctx, h.userResolver, userIDs)

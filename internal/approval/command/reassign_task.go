@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/engine"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 	"github.com/coldsmirk/vef-framework-go/internal/cqrs"
@@ -22,6 +23,7 @@ type ReassignTaskCmd struct {
 
 // ReassignTaskHandler handles the ReassignTaskCmd command.
 type ReassignTaskHandler struct {
+	handovers    approval.HandoverResolver
 	db           orm.DB
 	taskSvc      *service.TaskService
 	userResolver approval.UserInfoResolver
@@ -31,9 +33,9 @@ type ReassignTaskHandler struct {
 func NewReassignTaskHandler(
 	db orm.DB,
 	taskSvc *service.TaskService,
-	userResolver approval.UserInfoResolver,
+	userResolver approval.UserInfoResolver, handovers approval.HandoverResolver,
 ) *ReassignTaskHandler {
-	return &ReassignTaskHandler{db: db, taskSvc: taskSvc, userResolver: userResolver}
+	return &ReassignTaskHandler{handovers: handovers, db: db, taskSvc: taskSvc, userResolver: userResolver}
 }
 
 func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (cqrs.Unit, error) {
@@ -57,6 +59,10 @@ func (h *ReassignTaskHandler) Handle(ctx context.Context, cmd ReassignTaskCmd) (
 	newAssigneeID := strings.TrimSpace(cmd.NewAssigneeID)
 	if newAssigneeID == "" || newAssigneeID == task.AssigneeID {
 		return cqrs.Unit{}, approval.ErrInvalidTransferTarget
+	}
+
+	if err := engine.NewActorResolution(instance, node, h.handovers).CheckPicks(ctx, []string{newAssigneeID}); err != nil {
+		return cqrs.Unit{}, err
 	}
 
 	duplicate, err := hasActiveTaskForAssignee(ctx, db, task.InstanceID, task.NodeID, newAssigneeID)

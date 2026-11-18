@@ -105,7 +105,7 @@ func (s *SharedFlowTestSuite) SetupSuite() {
 	s.approve = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(),
 		command.NewApproveTaskHandler(s.db, taskSvc, nodeSvc, validSvc, nil))
 	s.deploy = command.NewDeployFlowHandler(s.db, service.NewFlowDefinitionService(), formeditor.NewParser())
-	s.reassign = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewReassignTaskHandler(s.db, taskSvc, nil))
+	s.reassign = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewReassignTaskHandler(s.db, taskSvc, nil, nil))
 }
 
 func (s *SharedFlowTestSuite) TearDownTest() {

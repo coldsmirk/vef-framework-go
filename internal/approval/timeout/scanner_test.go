@@ -97,7 +97,7 @@ func (s *ScannerTestSuite) SetupSuite() {
 		engine.NewCCProcessor(mustCCComposite()),
 	}, s.bus, nil, nil, engine.NewFlowCache(s.db, cache.NewMemory[*engine.CompiledFlow]()), nil)
 	taskSvc := service.NewTaskService()
-	nodeSvc := service.NewNodeService(eng, s.bus, taskSvc, nil, mustCCComposite())
+	nodeSvc := service.NewNodeService(eng, s.bus, taskSvc, nil, mustCCComposite(), nil)
 
 	cfg := new(config.ApprovalConfig)
 	cfg.ApplyDefaults()

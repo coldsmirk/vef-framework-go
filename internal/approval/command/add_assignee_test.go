@@ -42,7 +42,7 @@ type AddAssigneeTestSuite struct {
 
 func (s *AddAssigneeTestSuite) SetupSuite() {
 	s.bus = eventtest.NewFakeBus()
-	s.handler = wrapWithBus(s.bus, command.NewAddAssigneeHandler(s.db, service.NewTaskService(), nil))
+	s.handler = wrapWithBus(s.bus, command.NewAddAssigneeHandler(s.db, service.NewTaskService(), nil, explicitHandoverResolver{}))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "add-assignee")
 
 	node := &approval.FlowNode{
@@ -911,4 +911,23 @@ func (s *AddAssigneeTestSuite) TestAddAssigneeSkipsDecidedUserInOpenVisit() {
 	queue := s.loadQueue(inst.ID)
 	s.Assert().Len(queue, 2,
 		"No task may be inserted for a user who already decided in the open visit — pass rules count per task")
+}
+
+type explicitHandoverResolver struct{}
+
+func (explicitHandoverResolver) ResolveHandovers(context.Context, *approval.HandoverContext, []string) (map[string]approval.Handover, error) {
+	return map[string]approval.Handover{"moved": {Successor: &approval.UserInfo{ID: "next", Name: "Morgan"}}, "departed": {}}, nil
+}
+
+func (s *AddAssigneeTestSuite) TestExplicitHandoverTarget() {
+	_, task := s.setupData("operator")
+	for _, target := range []string{"moved", "departed"} {
+		s.Run(target, func() {
+			_, err := s.handler.Handle(s.ctx, command.AddAssigneeCmd{TaskID: task.ID, UserIDs: []string{target}, AddType: approval.AddAssigneeParallel, Operator: approval.UserInfo{ID: "operator"}, Caller: approval.SystemCaller})
+			s.Require().ErrorIs(err, approval.ErrUserHandedOver, "Should refuse explicit picks with 40028")
+			if target == "moved" {
+				s.ErrorContains(err, "Morgan", "Should identify successor")
+			}
+		})
+	}
 }

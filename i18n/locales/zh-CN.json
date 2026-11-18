@@ -166,6 +166,7 @@
   "approval_initiators_not_allowed": "流程允许所有人发起时不能配置发起人",
   "approval_initiators_required": "流程限定发起人时必须配置发起人，且每条规则至少选择一项",
   "approval_category_not_found": "流程分类不存在",
+  "approval_user_handed_over": "该用户已不再承接审批工作。{{if .successor}}接手人：{{.successor}}。{{end}}",
   "approval_initiation_window_closed": "当前不在发起时段。{{if .next}}下次开放时间：{{.next}}。{{else}}近期无开放时段。{{end}}",
   "approval_shared_flow_code_exists": "已存在相同编码的全局流程",
   "approval_invalid_storage_mode": "存储模式不合法，必须为 json 或 table",

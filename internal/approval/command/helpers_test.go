@@ -418,7 +418,7 @@ func buildTestEngineWithHooks(db orm.DB, hooks *engine.LifecycleHookRunner) *eng
 // buildTestServices creates the standard service instances for command tests.
 func buildTestServices(eng *engine.FlowEngine) (*service.TaskService, *service.NodeService, *service.ValidationService) {
 	taskSvc := service.NewTaskService()
-	nodeSvc := service.NewNodeService(eng, eventtest.NewFakeBus(), taskSvc, nil, mustCCComposite())
+	nodeSvc := service.NewNodeService(eng, eventtest.NewFakeBus(), taskSvc, nil, mustCCComposite(), nil)
 	validSvc := service.NewValidationService(mustInitiatorComposite(nil))
 
 	return taskSvc, nodeSvc, validSvc

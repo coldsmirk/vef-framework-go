@@ -34,7 +34,7 @@ type ReassignTaskTestSuite struct {
 }
 
 func (s *ReassignTaskTestSuite) SetupSuite() {
-	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewReassignTaskHandler(s.db, service.NewTaskService(), nil))
+	s.handler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewReassignTaskHandler(s.db, service.NewTaskService(), nil, explicitHandoverResolver{}))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "reassign")
 
 	node := &approval.FlowNode{
@@ -194,4 +194,17 @@ func (s *ReassignTaskTestSuite) TestReassignShouldRejectExistingActiveTarget() {
 	})
 	s.Require().Error(err, "Should reject reassignment to assignee with active task on the same node")
 	s.Assert().ErrorIs(err, approval.ErrInvalidTransferTarget, "Should return invalid target error for duplicate active assignee")
+}
+
+func (s *ReassignTaskTestSuite) TestExplicitHandoverTarget() {
+	_, task := s.insertInstanceAndTask("original", approval.TaskPending)
+	for _, target := range []string{"moved", "departed"} {
+		s.Run(target, func() {
+			_, err := s.handler.Handle(s.ctx, command.ReassignTaskCmd{TaskID: task.ID, NewAssigneeID: target, Operator: approval.UserInfo{ID: "operator"}, Caller: approval.SystemCaller})
+			s.Require().ErrorIs(err, approval.ErrUserHandedOver, "Should refuse explicit picks with 40028")
+			if target == "moved" {
+				s.ErrorContains(err, "Morgan", "Should identify successor")
+			}
+		})
+	}
 }

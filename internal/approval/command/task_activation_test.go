@@ -48,9 +48,9 @@ func (s *TaskActivationTestSuite) SetupSuite() {
 
 	s.bus = eventtest.NewFakeBus()
 	s.approve = wrapWithBusAndDB(s.db, s.bus, command.NewApproveTaskHandler(s.db, taskSvc, nodeSvc, validSvc, nil))
-	s.transfer = wrapWithBusAndDB(s.db, s.bus, command.NewTransferTaskHandler(s.db, taskSvc, validSvc, nil, nil))
-	s.reassign = wrapWithBusAndDB(s.db, s.bus, command.NewReassignTaskHandler(s.db, taskSvc, nil))
-	s.addAssignee = wrapWithBusAndDB(s.db, s.bus, command.NewAddAssigneeHandler(s.db, taskSvc, nil))
+	s.transfer = wrapWithBusAndDB(s.db, s.bus, command.NewTransferTaskHandler(s.db, taskSvc, validSvc, nil, nil, nil))
+	s.reassign = wrapWithBusAndDB(s.db, s.bus, command.NewReassignTaskHandler(s.db, taskSvc, nil, nil))
+	s.addAssignee = wrapWithBusAndDB(s.db, s.bus, command.NewAddAssigneeHandler(s.db, taskSvc, nil, nil))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "task-activation")
 
 	node := &approval.FlowNode{

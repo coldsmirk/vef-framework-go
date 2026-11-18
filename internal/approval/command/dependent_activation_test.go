@@ -48,10 +48,10 @@ func (s *DependentActivationTestSuite) SetupSuite() {
 	eng := buildTestEngine(s.db)
 	taskSvc, nodeSvc, validSvc := buildTestServices(eng)
 
-	s.addHandler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewAddAssigneeHandler(s.db, taskSvc, nil))
+	s.addHandler = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewAddAssigneeHandler(s.db, taskSvc, nil, nil))
 	s.approve = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewApproveTaskHandler(s.db, taskSvc, nodeSvc, validSvc, nil))
 	s.reject = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewRejectTaskHandler(s.db, taskSvc, nodeSvc, validSvc, nil))
-	s.transfer = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewTransferTaskHandler(s.db, taskSvc, validSvc, nil, nil))
+	s.transfer = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewTransferTaskHandler(s.db, taskSvc, validSvc, nil, nil, nil))
 	s.remove = wrapWithBusAndDB(s.db, eventtest.NewFakeBus(), command.NewRemoveAssigneeHandler(s.db, taskSvc, nodeSvc, eng))
 	s.fixture = setupMinimalFixture(s.T(), s.ctx, s.db, "dep-activation")
 

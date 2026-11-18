@@ -84,7 +84,10 @@ func (p *CCProcessor) createCCRecords(ctx context.Context, pc *ProcessContext) (
 	// Display-info lookup is likewise best-effort: a resolution failure must
 	// not roll back the approval (matches the timing-based CC path in
 	// NodeService.TriggerNodeCC).
-	ccUserInfos := shared.ResolveUserInfoMapSilent(ctx, pc.UserResolver, resolved)
+	resolved, ccUserInfos, err := pc.actors().CCRecipients(ctx, resolved, pc.UserResolver)
+	if err != nil {
+		return nil, err
+	}
 
 	insertedUserIDs, err := shared.InsertAutoCCRecords(ctx, pc.DB, pc.Instance.ID, pc.Node.ID, pc.Visit.ID, resolved, ccUserInfos)
 	if err != nil {

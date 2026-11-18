@@ -673,3 +673,22 @@ func (s *CCProcessorTestSuite) TestRedoVisitGetsFreshCycle() {
 		"A redo round must wait for its own read confirmation, not be satisfied by the prior round's")
 	s.Require().Len(result.Events, 1, "A redo round must re-notify its recipients")
 }
+
+func (s *CCProcessorTestSuite) TestCCHandovers() {
+	inst := s.newInstance()
+	pc := &engine.ProcessContext{DB: s.db, Instance: inst, Node: s.newNode(true), Visit: s.newVisit(inst, 1, approval.NodeVisitActive), HandoverResolver: handoverMap{"old": successor("next"), "departed": {}}}
+	d := &approval.Delegation{DelegatorID: "next", DelegateeID: "delegate", IsActive: true, StartsAt: timex.Now().AddHours(-1), EndsAt: timex.Now().AddHours(1)}
+	_, err := s.db.NewInsert().Model(d).Exec(s.ctx)
+	s.Require().NoError(err, "Should create successor's delegation")
+	defer func() {
+		_, err := s.db.NewDelete().Model(d).WherePK().Exec(s.ctx)
+		s.Require().NoError(err, "Should clean delegation")
+	}()
+	s.insertCCConfig([]string{"old", "departed", "next"})
+	_, err = s.processor.Process(s.ctx, pc)
+	s.Require().NoError(err, "Should map automatic receipts")
+	var recipients []string
+	err = s.db.NewSelect().Model((*approval.CCRecord)(nil)).Select("cc_user_id").Where(func(cb orm.ConditionBuilder) { cb.Equals("visit_id", pc.Visit.ID) }).Scan(s.ctx, &recipients)
+	s.Require().NoError(err, "Should load stored recipients")
+	s.Equal([]string{"next"}, recipients, "Successor should receive one notification directly")
+}

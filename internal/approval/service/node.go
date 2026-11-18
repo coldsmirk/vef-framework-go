@@ -21,6 +21,7 @@ type NodeService struct {
 	taskSvc      *TaskService
 	userResolver approval.UserInfoResolver
 	ccResolver   *strategy.CompositeCCResolver
+	handovers    approval.HandoverResolver
 }
 
 // NewNodeService creates a new NodeService.
@@ -30,6 +31,7 @@ func NewNodeService(
 	taskSvc *TaskService,
 	userResolver approval.UserInfoResolver,
 	ccResolver *strategy.CompositeCCResolver,
+	handovers approval.HandoverResolver,
 ) *NodeService {
 	return &NodeService{
 		engine:       engine,
@@ -37,6 +39,7 @@ func NewNodeService(
 		taskSvc:      taskSvc,
 		userResolver: userResolver,
 		ccResolver:   ccResolver,
+		handovers:    handovers,
 	}
 }
 
@@ -181,7 +184,10 @@ func (s *NodeService) TriggerNodeCC(ctx context.Context, db orm.DB, instance *ap
 		return nil
 	}
 
-	ccUserInfos := shared.ResolveUserInfoMapSilent(ctx, s.userResolver, resolved)
+	resolved, ccUserInfos, err := engine.NewActorResolution(instance, node, s.handovers).CCRecipients(ctx, resolved, s.userResolver)
+	if err != nil {
+		return err
+	}
 
 	// Completion-timing CC belongs to the traversal being concluded; the
 	// visit is still open here (HandleNodeCompletion concludes it after).
