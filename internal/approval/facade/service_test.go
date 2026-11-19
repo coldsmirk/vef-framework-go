@@ -110,13 +110,14 @@ func TestServiceForwardsInputs(t *testing.T) {
 
 	t.Run("StartInstance", func(t *testing.T) {
 		in := approval.StartInstanceInput{
-			TenantID:    "t-1",
-			FlowCode:    "leave",
-			Applicant:   testUser,
-			BusinessRef: new("order-1"),
-			FormData:    testForm,
-			Globals:     map[string]any{"region": "cn"},
-			Caller:      testCaller,
+			TenantID:       "t-1",
+			FlowCode:       "leave",
+			Applicant:      testUser,
+			BusinessRef:    new("order-1"),
+			FormData:       testForm,
+			Globals:        map[string]any{"region": "cn"},
+			Caller:         testCaller,
+			IdempotencyKey: "start-order",
 		}
 
 		assertForwards[command.StartInstanceCmd, *approval.Instance](t, bus, db,
@@ -139,7 +140,7 @@ func TestServiceForwardsInputs(t *testing.T) {
 	})
 
 	t.Run("ResubmitInstance", func(t *testing.T) {
-		in := approval.ResubmitInstanceInput{InstanceID: "i-1", Operator: testUser, FormData: testForm, Caller: testCaller}
+		in := approval.ResubmitInstanceInput{InstanceID: "i-1", Operator: testUser, FormData: testForm, Caller: testCaller, IdempotencyKey: "resubmit-order"}
 
 		assertForwards[command.ResubmitInstanceCmd, cqrs.Unit](t, bus, db,
 			command.ResubmitInstanceCmd{ResubmitInstanceInput: in},
