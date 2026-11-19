@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"maps"
 
+	"github.com/uptrace/bun/dialect"
+
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/behavior"
@@ -54,6 +56,8 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 		key   *submissionKey
 		fresh bool
 	)
+
+	reserveFirst := cmd.IdempotencyKey != "" && db.NewSelect().Dialect().Name() == dialect.SQLite
 	if cmd.IdempotencyKey != "" {
 		tenant, err := cmd.Caller.TenantScopeFilter("")
 		if err != nil {
@@ -69,9 +73,11 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 			return cqrs.Unit{}, err
 		}
 
-		fresh, err = key.reserve(ctx, db, tenant, cmd.InstanceID)
-		if err != nil {
-			return cqrs.Unit{}, err
+		if reserveFirst {
+			fresh, err = key.reserveSQLiteResubmission(ctx, db, tenant, cmd.InstanceID)
+			if err != nil {
+				return cqrs.Unit{}, err
+			}
 		}
 	}
 
@@ -82,6 +88,13 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 
 	if key != nil {
 		key.TenantID = instance.TenantID
+		if !reserveFirst {
+			fresh, err = key.reserve(ctx, db)
+			if err != nil {
+				return cqrs.Unit{}, err
+			}
+		}
+
 		if !fresh {
 			_, err := key.replay(ctx, db)
 

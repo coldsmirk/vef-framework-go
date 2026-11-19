@@ -2,13 +2,16 @@ package command_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun/dialect"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/contextx"
@@ -16,6 +19,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 type VerifiedSubmission struct {
@@ -279,4 +283,186 @@ func raceSubmission[T any](t *testing.T, entered, release chan struct{}, run fun
 	}
 
 	return results
+}
+
+// MySQL hosts can supply a REPEATABLE READ transaction. RunInTx itself uses
+// READ COMMITTED; using it for MySQL would hide stale consistent reads.
+func runSubmissionTx(ctx context.Context, db orm.DB, fn func(context.Context, orm.DB) error) error {
+	if db.NewSelect().Dialect().Name() != dialect.MySQL {
+		return db.RunInTx(ctx, fn)
+	}
+
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := fn(ctx, tx); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (s *StartInstanceTestSuite) TestKeyedResubmissionRace() {
+	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+	defer cancel()
+
+	instSvc := service.NewInstanceService(nil)
+	withdraw := command.NewWithdrawInstanceHandler(s.db, service.NewTaskService(), instSvc)
+	resubmit := command.NewResubmitInstanceHandler(s.db, buildTestEngine(s.db), service.NewValidationService(nil), instSvc, nil, nil)
+	start := command.StartInstanceCmd{FlowCode: "apv-cmd-test-flow", Applicant: approval.UserInfo{ID: "author"}, Caller: approval.SystemCaller}
+
+	for _, tc := range []struct{ name, first, second string }{
+		{"SameKey", "same", "same"}, {"DistinctKeys", "one", "two"},
+	} {
+		s.Run(tc.name, func() {
+			inst, err := s.handler.Handle(ctx, start)
+			s.Require().NoError(err, "Should start a fresh instance")
+			_, err = withdraw.Handle(ctx, command.WithdrawInstanceCmd{InstanceID: inst.ID, Operator: start.Applicant, Caller: start.Caller})
+			s.Require().NoError(err, "Should withdraw before the competing resubmissions")
+
+			ready := make(chan struct{}, 2)
+			begin := make(chan struct{})
+
+			done := make(chan error, 2)
+			for _, key := range []string{tc.first, tc.second} {
+				go func() {
+					done <- runSubmissionTx(ctx, s.db, func(ctx context.Context, tx orm.DB) error {
+						ready <- struct{}{}
+
+						select {
+						case <-begin:
+						case <-ctx.Done():
+							return ctx.Err()
+						}
+
+						_, err := resubmit.Handle(contextx.SetDB(ctx, tx), command.ResubmitInstanceCmd{
+							InstanceID: inst.ID, IdempotencyKey: key, Operator: start.Applicant, Caller: start.Caller,
+						})
+
+						return err
+					})
+				}()
+			}
+
+			for range 2 {
+				select {
+				case <-ready:
+				case err := <-done:
+					s.Require().FailNow("Transaction ended before the race", "%v", err)
+				case <-ctx.Done():
+					s.Require().FailNow("Timed out waiting for both transactions")
+				}
+			}
+
+			close(begin)
+
+			errorsSeen := []error{<-done, <-done}
+			if tc.first == tc.second {
+				s.Equal([]error{nil, nil}, errorsSeen, "The winner and duplicate should both succeed")
+			} else {
+				s.ElementsMatch([]error{nil, approval.ErrResubmitNotAllowed}, errorsSeen, "Only the already-running transition may refuse the losing key")
+			}
+		})
+	}
+}
+
+func (s *StartInstanceTestSuite) TestSubmissionReplayWithPriorRead() {
+	ctx := s.ctx
+	input := command.StartInstanceCmd{
+		FlowCode: "apv-cmd-test-flow", IdempotencyKey: "snapshot-start", Applicant: approval.UserInfo{ID: "author"}, Caller: approval.SystemCaller,
+	}
+
+	var inst *approval.Instance
+	// Keep the caller's read transaction open while a competing request
+	// starts and commits. The same schedule covers both operations.
+	checkReplay := func(act func(context.Context, orm.DB) error) {
+		s.T().Helper()
+		err := runSubmissionTx(ctx, s.db, func(ctx context.Context, tx orm.DB) error {
+			_, err := tx.NewSelect().Model((*approval.Instance)(nil)).Count(ctx)
+			if err != nil {
+				return err
+			}
+
+			if err = runSubmissionTx(ctx, s.db, act); err != nil {
+				return err
+			}
+
+			return act(ctx, tx)
+		})
+
+		if s.db.NewSelect().Dialect().Name() == dialect.SQLite {
+			// The old WAL snapshot cannot become a writer. A host that has
+			// read before submission must retry its entire transaction.
+			if coded, ok := errors.AsType[interface{ Code() int }](err); ok {
+				s.Equal(517, coded.Code(), "A competing commit invalidated the read snapshot (SQLITE_BUSY_SNAPSHOT)")
+			} else {
+				// The cgo SQLite driver exposes the code as a field instead of a method.
+				s.Require().ErrorContains(err, "database is locked", "The stale reader cannot upgrade to a writer")
+			}
+
+			err = runSubmissionTx(ctx, s.db, act)
+		}
+
+		s.Require().NoError(err, "Replaying a committed key should succeed")
+	}
+
+	s.Run("Start", func() {
+		checkReplay(func(ctx context.Context, tx orm.DB) error {
+			current, err := s.handler.Handle(contextx.SetDB(ctx, tx), input)
+			if err == nil {
+				if inst == nil {
+					inst = current
+				} else {
+					s.Equal(inst.ID, current.ID, "The duplicate must return the winner's instance")
+				}
+			}
+
+			return err
+		})
+	})
+	s.Require().NotNil(inst, "The competing start must commit an instance")
+
+	instSvc := service.NewInstanceService(nil)
+	withdraw := command.NewWithdrawInstanceHandler(s.db, service.NewTaskService(), instSvc)
+	_, err := withdraw.Handle(ctx, command.WithdrawInstanceCmd{InstanceID: inst.ID, Operator: input.Applicant, Caller: input.Caller})
+	s.Require().NoError(err, "Should make the instance resubmittable")
+
+	resubmit := command.NewResubmitInstanceHandler(s.db, buildTestEngine(s.db), service.NewValidationService(nil), instSvc, nil, nil)
+	s.Run("Resubmit", func() {
+		checkReplay(func(ctx context.Context, tx orm.DB) error {
+			_, err := resubmit.Handle(contextx.SetDB(ctx, tx), command.ResubmitInstanceCmd{
+				InstanceID: inst.ID, IdempotencyKey: "snapshot-resubmit", Operator: input.Applicant, Caller: input.Caller,
+			})
+
+			return err
+		})
+	})
+}
+
+func (s *StartInstanceTestSuite) TestSubmissionKeyBoundaries() {
+	start := func(key string) (*approval.Instance, error) {
+		return s.handler.Handle(s.ctx, command.StartInstanceCmd{
+			FlowCode: "apv-cmd-test-flow", IdempotencyKey: key, Applicant: approval.UserInfo{ID: "author"}, Caller: approval.SystemCaller,
+		})
+	}
+	for _, key := range []string{strings.Repeat("审", 129), "ab\x00cd", string([]byte{0xff})} {
+		_, err := start(key)
+		bad, ok := result.AsErr(err)
+		s.Require().True(ok, "Invalid keys must return a business error")
+		s.Equal(result.ErrCodeBadRequest, bad.Code, "Invalid keys must be rejected before reaching the database")
+	}
+
+	seen := make(map[string]bool)
+	for _, key := range []string{strings.Repeat("审", 128), strings.Repeat("📄", 128), "Key", "key", "key "} {
+		instance, err := start(key)
+		s.Require().NoError(err, "A valid key should start the flow")
+		s.False(seen[instance.ID], "Each byte-distinct key should claim a new instance")
+		seen[instance.ID] = true
+		replay, err := start(key)
+		s.Require().NoError(err, "Same key should replay")
+		s.Equal(instance.ID, replay.ID, "Only identical keys replay the same instance")
+	}
 }

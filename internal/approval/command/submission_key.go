@@ -12,8 +12,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/uptrace/bun/dialect"
-
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/orm"
 )
@@ -109,36 +107,12 @@ func exactSubmissionNumber(number string) string {
 	return coefficient + "e" + scale.String()
 }
 
-// reserve inserts before any host hook or state check. On resubmit the single
-// insert-select derives the authoritative tenant from the target, including for
-// a system caller. As the first statement it can also wait for a SQLite writer
-// without trying to upgrade a stale read transaction.
-func (s *submissionKey) reserve(ctx context.Context, db orm.DB, tenant *string, target string) (bool, error) {
-	source := " VALUES (?, ?, ?, ?)"
-
-	var args []any
-	if s.Operation == "start" {
-		args = []any{*tenant, s.Key, s.Operation, s.Fingerprint}
-	} else {
-		source = " SELECT tenant_id, ?, ?, ? FROM apv_instance WHERE id = ?"
-
-		args = []any{s.Key, s.Operation, s.Fingerprint, target}
-		if tenant != nil {
-			source += " AND tenant_id = ?"
-
-			args = append(args, *tenant)
-		}
-	}
-
-	prefix := "INSERT INTO "
-
-	suffix := " ON CONFLICT (tenant_id, idempotency_key) DO NOTHING"
-	if db.NewSelect().Dialect().Name() == dialect.MySQL {
-		prefix = "INSERT IGNORE INTO "
-		suffix = ""
-	}
-
-	res, err := db.NewRaw(prefix+"apv_submission_key (tenant_id, idempotency_key, operation, fingerprint)"+source+suffix, args...).Exec(ctx)
+// reserve claims a key in the authoritative tenant before the handler runs.
+func (s *submissionKey) reserve(ctx context.Context, db orm.DB) (bool, error) {
+	res, err := db.NewInsert().Model(s).
+		Select("tenant_id", "idempotency_key", "operation", "fingerprint").
+		OnConflict(func(cb orm.ConflictBuilder) { cb.Columns("tenant_id", "idempotency_key").DoNothing() }).
+		ReturningNone().Exec(ctx)
 	if err != nil {
 		return false, fmt.Errorf("reserve submission key: %w", err)
 	}
@@ -148,9 +122,34 @@ func (s *submissionKey) reserve(ctx context.Context, db orm.DB, tenant *string, 
 	return count == 1, err
 }
 
+// SQLite's deferred transaction must begin with a write. Derive the tenant
+// from the target in the reservation itself, before reading the instance.
+func (s *submissionKey) reserveSQLiteResubmission(ctx context.Context, db orm.DB, tenant *string, target string) (bool, error) {
+	query := "INSERT INTO apv_submission_key (tenant_id, idempotency_key, operation, fingerprint) " +
+		"SELECT tenant_id, ?, ?, ? FROM apv_instance WHERE id = ?"
+
+	args := []any{s.Key, s.Operation, s.Fingerprint, target}
+	if tenant != nil {
+		query += " AND tenant_id = ?"
+
+		args = append(args, *tenant)
+	}
+
+	res, err := db.NewRaw(query+" ON CONFLICT (tenant_id, idempotency_key) DO NOTHING", args...).Exec(ctx)
+	if err != nil {
+		return false, fmt.Errorf("reserve resubmission key: %w", err)
+	}
+
+	count, err := res.RowsAffected()
+
+	return count == 1, err
+}
+
 func (s *submissionKey) replay(ctx context.Context, db orm.DB) (string, error) {
 	saved := submissionKey{TenantID: s.TenantID, Key: s.Key}
-	if err := db.NewSelect().Model(&saved).WherePK().Scan(ctx); err != nil {
+	// The competing writer may have committed after the caller's MySQL
+	// repeatable-read snapshot. Both the key and its instance need current reads.
+	if err := db.NewSelect().Model(&saved).WherePK().ForShare().Scan(ctx); err != nil {
 		return "", fmt.Errorf("read submission key: %w", err)
 	}
 

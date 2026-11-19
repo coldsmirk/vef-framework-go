@@ -90,7 +90,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 
 		key.TenantID = tenantID
 
-		fresh, err := key.reserve(ctx, db, &tenantID, "")
+		fresh, err := key.reserve(ctx, db)
 		if err != nil {
 			return nil, err
 		}
@@ -102,7 +102,7 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 			}
 
 			inst := &approval.Instance{ID: instanceID}
-			if err = db.NewSelect().Model(inst).WherePK().Scan(ctx); err != nil {
+			if err = db.NewSelect().Model(inst).WherePK().ForShare().Scan(ctx); err != nil {
 				return nil, fmt.Errorf("load replayed instance: %w", err)
 			}
 
