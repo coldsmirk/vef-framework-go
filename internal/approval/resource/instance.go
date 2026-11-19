@@ -159,12 +159,24 @@ func (r *InstanceResource) Start(ctx fiber.Ctx, db orm.DB, principal *security.P
 	// Globals participate in condition routing, so they are resolved
 	// server-side from the principal — never accepted from the request body,
 	// where an applicant could forge them to steer the flow.
-	globals, err := r.globalsResolver.Resolve(ctx.Context(), principal, params.FlowCode)
-	if err != nil {
-		return fmt.Errorf("resolve instance globals: %w", err)
+	resolveGlobals := func(ctx context.Context) (map[string]any, error) {
+		globals, err := r.globalsResolver.Resolve(ctx, principal, params.FlowCode)
+		if err != nil {
+			return nil, fmt.Errorf("resolve instance globals: %w", err)
+		}
+
+		return globals, nil
 	}
 
-	submissionCtx := command.WithSubmissionForm(ctx.Context(), params.IdempotencyKey, raw["formData"])
+	var globals map[string]any
+	if params.IdempotencyKey == "" {
+		globals, err = resolveGlobals(ctx.Context())
+		if err != nil {
+			return err
+		}
+	}
+
+	submissionCtx := command.WithRPCSubmission(ctx.Context(), params.IdempotencyKey, raw["formData"], resolveGlobals)
 
 	instance, err := r.svc.StartInstance(submissionCtx, db, approval.StartInstanceInput{
 		IdempotencyKey: params.IdempotencyKey,
@@ -331,7 +343,7 @@ func (r *InstanceResource) Resubmit(ctx fiber.Ctx, db orm.DB, principal *securit
 		return err
 	}
 
-	submissionCtx := command.WithSubmissionForm(ctx.Context(), params.IdempotencyKey, raw["formData"])
+	submissionCtx := command.WithRPCSubmission(ctx.Context(), params.IdempotencyKey, raw["formData"], nil)
 	if err := r.svc.ResubmitInstance(submissionCtx, db, approval.ResubmitInstanceInput{
 		IdempotencyKey: params.IdempotencyKey,
 		InstanceID:     params.InstanceID,

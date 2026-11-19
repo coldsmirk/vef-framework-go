@@ -75,11 +75,15 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 
 	var key *submissionKey
 	if cmd.IdempotencyKey != "" {
-		var form map[string]any
+		var submission rpcSubmission
 
-		ctx, form = takeSubmissionForm(ctx, cmd.FormData)
+		ctx, submission = takeRPCSubmission(ctx, cmd.FormData)
 
-		key, err = newSubmissionKey(cmd.IdempotencyKey, "start", submissionRequest{ApplicantID: cmd.Applicant.ID, FlowCode: cmd.FlowCode, BusinessRef: cmd.BusinessRef, FormData: form})
+		key, err = newSubmissionKey(
+			cmd.IdempotencyKey,
+			"start",
+			submissionRequest{ApplicantID: cmd.Applicant.ID, FlowCode: cmd.FlowCode, BusinessRef: cmd.BusinessRef, FormData: submission.form},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -103,6 +107,13 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 			}
 
 			return inst, nil
+		}
+
+		if submission.resolveGlobals != nil {
+			cmd.Globals, err = submission.resolveGlobals(ctx)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 

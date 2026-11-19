@@ -31,6 +31,7 @@ type StubGlobalsResolver struct {
 	mu           sync.Mutex
 	seenFlowCode string
 	seenUserID   string
+	calls        int
 }
 
 func (r *StubGlobalsResolver) Resolve(_ context.Context, principal *security.Principal, flowCode string) (map[string]any, error) {
@@ -38,6 +39,7 @@ func (r *StubGlobalsResolver) Resolve(_ context.Context, principal *security.Pri
 	defer r.mu.Unlock()
 
 	r.seenFlowCode = flowCode
+	r.calls++
 
 	if principal != nil {
 		r.seenUserID = principal.ID
@@ -52,11 +54,11 @@ func (*StubGlobalsResolver) FormGlobalKeys(string) []string {
 	return []string{"region"}
 }
 
-func (r *StubGlobalsResolver) seen() (flowCode, userID string) {
+func (r *StubGlobalsResolver) seen() (flowCode, userID string, calls int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	return r.seenFlowCode, r.seenUserID
+	return r.seenFlowCode, r.seenUserID, r.calls
 }
 
 // GlobalsResolverOverrideTestSuite proves vef.ProvideApprovalGlobalsResolver
@@ -149,9 +151,19 @@ func (s *GlobalsResolverOverrideTestSuite) TestStartSnapshotsResolvedGlobals() {
 	s.Equal(stubGlobals, instance.Globals,
 		"Start must snapshot what the overridden resolver returned, proving vef.ProvideApprovalGlobalsResolver replaced the framework's no-op resolver")
 
-	seenFlowCode, seenUserID := s.resolver.seen()
+	seenFlowCode, seenUserID, _ := s.resolver.seen()
 	s.Equal(flowCode, seenFlowCode, "The resolver must be told which flow is being started")
 	s.NotEmpty(seenUserID, "The resolver must be handed the authenticated principal, never a nil caller")
+
+	s.Run("ReplayUsesTheOriginalSnapshot", func() {
+		params := map[string]any{"flowCode": flowCode, "idempotencyKey": "snapshot-once"}
+		_, _, before := s.resolver.seen()
+		first := s.rpcID("approval/instance", "start", params)
+		replay := s.rpcID("approval/instance", "start", params)
+		_, _, after := s.resolver.seen()
+		s.Equal(first, replay, "Should return the first instance")
+		s.Equal(before+1, after, "Only the winning submission should resolve globals")
+	})
 }
 
 // publishFlow creates, deploys, and publishes a standalone flow open to every

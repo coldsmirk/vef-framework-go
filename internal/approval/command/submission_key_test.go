@@ -224,6 +224,16 @@ func (s *StartInstanceTestSuite) TestVerifiedSubmissionReplay() {
 		recreated, err := start(input)
 		s.Require().NoError(err, "Deleting an instance must release its submission key")
 		s.NotEqual(inst.ID, recreated.ID, "The released key identifies a fresh submission")
+
+		_, err = db.NewUpdate().Model(&approval.Flow{ID: direct.FlowID}).Set("is_shared", true).WherePK().Exec(ctx)
+		s.Require().NoError(err, "Should make the same flow available in another tenant")
+
+		foreign := input
+		foreign.TenantID = "other-tenant"
+		other, err := start(foreign)
+		s.Require().NoError(err, "Two tenants can use the same key independently")
+		s.Equal(foreign.TenantID, other.TenantID, "A shared flow uses the instance tenant's key space")
+		s.NotEqual(recreated.ID, other.ID, "A tenant must never replay another tenant's instance")
 	})
 }
 

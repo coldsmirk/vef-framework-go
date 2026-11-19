@@ -26,28 +26,6 @@ type submissionRequest struct {
 	FormData    map[string]any
 }
 
-type wireFormKey struct{}
-
-// WithSubmissionForm preserves the original RPC numbers for a keyed submission.
-// Ordinary handler inputs retain the API's documented float64 representation.
-func WithSubmissionForm(ctx context.Context, key string, form any) context.Context {
-	if data, ok := form.(map[string]any); key != "" && ok {
-		return context.WithValue(ctx, wireFormKey{}, data)
-	}
-
-	return ctx
-}
-
-// takeSubmissionForm limits wire metadata to its own command. Any command
-// dispatched by a host hook computes its fingerprint from its own submission.
-func takeSubmissionForm(ctx context.Context, form map[string]any) (context.Context, map[string]any) {
-	if raw, ok := ctx.Value(wireFormKey{}).(map[string]any); ok {
-		return context.WithValue(ctx, wireFormKey{}, nil), raw
-	}
-
-	return ctx, form
-}
-
 type submissionKey struct {
 	orm.BaseModel `bun:"table:apv_submission_key,alias:ask"`
 

@@ -60,11 +60,11 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 			return cqrs.Unit{}, approval.ErrInstanceNotFound
 		}
 
-		var form map[string]any
+		var submission rpcSubmission
 
-		ctx, form = takeSubmissionForm(ctx, cmd.FormData)
+		ctx, submission = takeRPCSubmission(ctx, cmd.FormData)
 
-		key, err = newSubmissionKey(cmd.IdempotencyKey, "resubmit", submissionRequest{ApplicantID: cmd.Operator.ID, InstanceID: cmd.InstanceID, FormData: form})
+		key, err = newSubmissionKey(cmd.IdempotencyKey, "resubmit", submissionRequest{ApplicantID: cmd.Operator.ID, InstanceID: cmd.InstanceID, FormData: submission.form})
 		if err != nil {
 			return cqrs.Unit{}, err
 		}
