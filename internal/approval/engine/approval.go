@@ -249,16 +249,12 @@ func (*ApprovalProcessor) entryAutoPassRule(ctx context.Context, pc *ProcessCont
 func (*ApprovalProcessor) autoPassEligibleTasks(ctx context.Context, pc *ProcessContext, creationEvents []approval.DomainEvent, rule autoPassRule) (*ProcessResult, error) {
 	var tasks []approval.Task
 
-	// FOR UPDATE serializes concurrent writers on the same node so the
-	// in-memory task[] view used by the cascading-activation loop below
-	// stays consistent with the database; without it, a parallel update
-	// could change task[j] between our activate attempt and our retry,
-	// causing us to skip an assignee that should auto-pass.
+	// Lock this visit's seats for the cascade and the pass-rule count.
+	// Earlier visits to the same node retain their own decisions.
 	if err := pc.DB.NewSelect().
 		Model(&tasks).
 		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", pc.Instance.ID).
-				Equals("node_id", pc.Node.ID)
+			cb.Equals("visit_id", pc.Visit.ID)
 		}).
 		OrderBy("sort_order").
 		ForUpdate().

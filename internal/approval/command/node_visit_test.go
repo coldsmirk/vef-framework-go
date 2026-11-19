@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/decimal"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/binding"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/internal/approval/service"
@@ -254,4 +255,62 @@ func (s *NodeVisitTrailTestSuite) TestTerminateCancelsOpenVisits() {
 	visits := s.loadVisits(instance.ID)
 	s.Require().Len(visits, 2, "Terminate does not extend the trail")
 	s.assertVisit(visits[1], "approval-1", 2, approval.NodeVisitCanceled)
+}
+
+func (s *NodeVisitTrailTestSuite) startTwoStepFlow(code string, a, b approval.ApprovalNodeData) (*FlowFixture, *approval.Instance) {
+	def := approval.FlowDefinition{
+		Nodes: []approval.NodeDefinition{
+			{ID: "start", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "Start"})},
+			{ID: "a", Kind: approval.NodeApproval, Data: mustMarshal(a)},
+			{ID: "b", Kind: approval.NodeApproval, Data: mustMarshal(b)},
+			{ID: "end", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "End"})},
+		},
+		Edges: []approval.EdgeDefinition{
+			{ID: "sa", Source: "start", Target: "a"},
+			{ID: "ab", Source: "a", Target: "b"},
+			{ID: "be", Source: "b", Target: "end"},
+		},
+	}
+	flow := deployAndPublishFlow(s.T(), s.ctx, s.db, code, def)
+	instance, err := s.start.Handle(s.ctx, command.StartInstanceCmd{
+		FlowCode: code + "-flow", Applicant: approval.UserInfo{ID: "applicant"}, Caller: approval.SystemCaller,
+	})
+	s.Require().NoError(err, "Should start the two-step flow")
+
+	return flow, instance
+}
+
+func (s *NodeVisitTrailTestSuite) approvePending(instanceID, user string) {
+	task := s.pendingTask(instanceID, user)
+	_, err := s.approve.Handle(s.ctx, command.ApproveTaskCmd{
+		TaskID: task.ID, Operator: task.Assignee(), Caller: approval.SystemCaller,
+	})
+	s.Require().NoError(err, "The pending seat of %s should approve", user)
+}
+
+func (s *NodeVisitTrailTestSuite) rollBackPending(instanceID, user, targetID string) {
+	task := s.pendingTask(instanceID, user)
+	_, err := s.rollback.Handle(s.ctx, command.RollbackTaskCmd{
+		TaskID: task.ID, Operator: task.Assignee(), TargetNodeID: targetID, Caller: approval.SystemCaller,
+	})
+	s.Require().NoError(err, "The pending seat of %s should roll back", user)
+}
+
+func (s *NodeVisitTrailTestSuite) TestEntryAutoPassCountsCurrentVisit() {
+	flow, instance := s.startTwoStepFlow("visit-ratio", approval.ApprovalNodeData{
+		Name: "A", Assignees: []approval.AssigneeDefinition{{Kind: approval.AssigneeUser, IDs: []string{"applicant", "x", "y"}}},
+		PassRule: approval.PassRatio, PassRatio: decimal.NewFromInt(60), SameApplicantAction: approval.SameApplicantAutoPass,
+	}, approval.ApprovalNodeData{
+		Name: "B", Assignees: []approval.AssigneeDefinition{{Kind: approval.AssigneeUser, IDs: []string{"z"}}},
+	})
+
+	s.approvePending(instance.ID, "x")
+	s.rollBackPending(instance.ID, "z", flow.NodeIDs["a"])
+	visits := s.loadVisits(instance.ID)
+	s.Require().Len(visits, 4, "One auto-pass out of three on A's second visit must leave it open")
+	s.Equal(approval.NodeVisitPassed, visits[1].Status, "Two approvals passed A's first visit")
+	s.Equal(approval.NodeVisitActive, visits[3].Status, "Historical approvals must not meet the new visit's threshold")
+	s.Equal(visits[3].ID, s.pendingTask(instance.ID, "x").VisitID, "The prior approver must decide again")
+	s.approvePending(instance.ID, "y")
+	s.Equal(flow.NodeIDs["b"], s.pendingTask(instance.ID, "z").NodeID, "Two current approvals should advance")
 }
