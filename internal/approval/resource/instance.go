@@ -9,6 +9,7 @@ import (
 
 	"github.com/coldsmirk/vef-framework-go/api"
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/command"
 	"github.com/coldsmirk/vef-framework-go/orm"
 	"github.com/coldsmirk/vef-framework-go/result"
 	"github.com/coldsmirk/vef-framework-go/security"
@@ -149,7 +150,7 @@ type StartParams struct {
 
 // Start creates a new flow instance in the tenant the caller acts in, from that
 // tenant's own flows or the shared ones.
-func (r *InstanceResource) Start(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params StartParams) error {
+func (r *InstanceResource) Start(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params StartParams, raw api.Params) error {
 	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
@@ -163,7 +164,9 @@ func (r *InstanceResource) Start(ctx fiber.Ctx, db orm.DB, principal *security.P
 		return fmt.Errorf("resolve instance globals: %w", err)
 	}
 
-	instance, err := r.svc.StartInstance(ctx.Context(), db, approval.StartInstanceInput{
+	submissionCtx := command.WithSubmissionForm(ctx.Context(), params.IdempotencyKey, raw["formData"])
+
+	instance, err := r.svc.StartInstance(submissionCtx, db, approval.StartInstanceInput{
 		IdempotencyKey: params.IdempotencyKey,
 		FlowCode:       params.FlowCode,
 		Applicant:      actor.Operator,
@@ -322,13 +325,14 @@ type ResubmitParams struct {
 }
 
 // Resubmit resubmits a returned instance.
-func (r *InstanceResource) Resubmit(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params ResubmitParams) error {
+func (r *InstanceResource) Resubmit(ctx fiber.Ctx, db orm.DB, principal *security.Principal, params ResubmitParams, raw api.Params) error {
 	actor, err := resolveActor(ctx.Context(), r.departmentResolver, r.tenantResolver, principal)
 	if err != nil {
 		return err
 	}
 
-	if err := r.svc.ResubmitInstance(ctx.Context(), db, approval.ResubmitInstanceInput{
+	submissionCtx := command.WithSubmissionForm(ctx.Context(), params.IdempotencyKey, raw["formData"])
+	if err := r.svc.ResubmitInstance(submissionCtx, db, approval.ResubmitInstanceInput{
 		IdempotencyKey: params.IdempotencyKey,
 		InstanceID:     params.InstanceID,
 		Operator:       actor.Operator,

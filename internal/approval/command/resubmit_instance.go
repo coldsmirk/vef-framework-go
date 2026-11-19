@@ -50,22 +50,31 @@ func NewResubmitInstanceHandler(
 func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstanceCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
-	var key *submissionKey
-	var fresh bool
+	var (
+		key   *submissionKey
+		fresh bool
+	)
 	if cmd.IdempotencyKey != "" {
 		tenant, err := cmd.Caller.TenantScopeFilter("")
 		if err != nil {
 			return cqrs.Unit{}, approval.ErrInstanceNotFound
 		}
-		key, err = newSubmissionKey(cmd.IdempotencyKey, "resubmit", submissionRequest{ApplicantID: cmd.Operator.ID, InstanceID: cmd.InstanceID, FormData: cmd.FormData})
+
+		var form map[string]any
+
+		ctx, form = takeSubmissionForm(ctx, cmd.FormData)
+
+		key, err = newSubmissionKey(cmd.IdempotencyKey, "resubmit", submissionRequest{ApplicantID: cmd.Operator.ID, InstanceID: cmd.InstanceID, FormData: form})
 		if err != nil {
 			return cqrs.Unit{}, err
 		}
+
 		fresh, err = key.reserve(ctx, db, tenant, cmd.InstanceID)
 		if err != nil {
 			return cqrs.Unit{}, err
 		}
 	}
+
 	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID, cmd.Caller)
 	if err != nil {
 		return cqrs.Unit{}, err
@@ -75,6 +84,7 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 		key.TenantID = instance.TenantID
 		if !fresh {
 			_, err := key.replay(ctx, db)
+
 			return cqrs.Unit{}, err
 		}
 	}
@@ -179,5 +189,6 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 	if key != nil {
 		return cqrs.Unit{}, key.link(ctx, db, instance.ID)
 	}
+
 	return cqrs.Unit{}, nil
 }

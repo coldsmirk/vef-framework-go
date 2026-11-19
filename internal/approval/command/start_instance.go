@@ -75,24 +75,33 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 
 	var key *submissionKey
 	if cmd.IdempotencyKey != "" {
-		key, err = newSubmissionKey(cmd.IdempotencyKey, "start", submissionRequest{ApplicantID: cmd.Applicant.ID, FlowCode: cmd.FlowCode, BusinessRef: cmd.BusinessRef, FormData: cmd.FormData})
+		var form map[string]any
+
+		ctx, form = takeSubmissionForm(ctx, cmd.FormData)
+
+		key, err = newSubmissionKey(cmd.IdempotencyKey, "start", submissionRequest{ApplicantID: cmd.Applicant.ID, FlowCode: cmd.FlowCode, BusinessRef: cmd.BusinessRef, FormData: form})
 		if err != nil {
 			return nil, err
 		}
+
 		key.TenantID = tenantID
+
 		fresh, err := key.reserve(ctx, db, &tenantID, "")
 		if err != nil {
 			return nil, err
 		}
+
 		if !fresh {
 			instanceID, err := key.replay(ctx, db)
 			if err != nil {
 				return nil, err
 			}
+
 			inst := &approval.Instance{ID: instanceID}
 			if err = db.NewSelect().Model(inst).WherePK().Scan(ctx); err != nil {
 				return nil, fmt.Errorf("load replayed instance: %w", err)
 			}
+
 			return inst, nil
 		}
 	}

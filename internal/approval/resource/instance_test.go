@@ -343,7 +343,7 @@ func (s *InstanceResourceTestSuite) TestStartApprovalFlowRunning() {
 }
 
 func (s *InstanceResourceTestSuite) TestIdempotentRPC() {
-	start := map[string]any{"flowCode": s.approval.FlowCode, "idempotencyKey": "start-rpc"}
+	start := map[string]any{"flowCode": s.approval.FlowCode, "idempotencyKey": "start-rpc", "formData": map[string]any{"number": json.Number("9007199254740992")}}
 	first := s.rpcCall("start", start)
 	s.Require().True(first.IsOk(), "Keyed start should succeed")
 	id := s.ReadDataAsMap(first.Data)["id"]
@@ -352,12 +352,19 @@ func (s *InstanceResourceTestSuite) TestIdempotentRPC() {
 	s.Require().True(retry.IsOk(), "Keyed start should replay")
 	s.Equal(id, s.ReadDataAsMap(retry.Data)["id"], "Start replay should return the original instance")
 	s.Equal("withdrawn", s.ReadDataAsMap(retry.Data)["status"], "Start replay returns the current status")
-	resubmit := map[string]any{"instanceId": id, "idempotencyKey": "resubmit-rpc"}
+
+	start["formData"] = map[string]any{"number": json.Number("9007199254740993")}
+	s.assertErrorCode(s.rpcCall("start", start), approval.ErrCodeIdempotencyConflict, "Distinct integers that round to the same float must conflict")
+
+	resubmit := map[string]any{"instanceId": id, "idempotencyKey": "resubmit-rpc", "formData": map[string]any{"number": json.Number("100.10")}}
 	for range 2 {
 		response := s.rpcCall("resubmit", resubmit)
 		s.Require().True(response.IsOk(), "Both resubmissions should succeed")
 		s.Nil(response.Data, "Resubmit keeps its empty success response")
+
+		resubmit["formData"] = map[string]any{"number": json.Number("1.001e2")}
 	}
+
 	resubmit["formData"] = map[string]any{"changed": true}
 	s.assertErrorCode(s.rpcCall("resubmit", resubmit), approval.ErrCodeIdempotencyConflict, "Changing an existing submission is a conflict")
 }
