@@ -29,6 +29,7 @@ type FindFlowsQuery struct {
 	IsActive      *bool
 	Labels        map[string]string
 	BusinessKind  *approval.BusinessKind
+	FormOnly      bool
 }
 
 // FindFlowsHandler handles the FindFlowsQuery.
@@ -42,6 +43,10 @@ func NewFindFlowsHandler(db orm.DB) *FindFlowsHandler {
 }
 
 func (h *FindFlowsHandler) Handle(ctx context.Context, query FindFlowsQuery) (*page.Page[approval.Flow], error) {
+	if query.FormOnly && query.BusinessKind != nil {
+		return nil, errConflictingFlowFilters
+	}
+
 	db := contextx.DB(ctx, h.db)
 
 	var flows []approval.Flow
@@ -62,7 +67,7 @@ func (h *FindFlowsHandler) Handle(ctx context.Context, query FindFlowsQuery) (*p
 				}).
 				ApplyIf(query.BusinessKind != nil, func(cb orm.ConditionBuilder) {
 					cb.Equals("business_kind", *query.BusinessKind)
-				})
+				}).ApplyIf(query.FormOnly, func(cb orm.ConditionBuilder) { cb.IsNull("business_kind") })
 
 			applyLabelsFilter(cb, query.Labels)
 		}).

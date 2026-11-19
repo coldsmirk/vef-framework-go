@@ -230,6 +230,8 @@ type FindFlowsParams struct {
 	BusinessKind  *approval.BusinessKind `json:"businessKind"`
 	Page          int                    `json:"page"`
 	PageSize      int                    `json:"pageSize"`
+	// FormOnly selects flows with no business kind. It is mutually exclusive with BusinessKind.
+	FormOnly bool `json:"formOnly"`
 }
 
 // FindFlows queries flows for admin management.
@@ -245,6 +247,7 @@ func (r *FlowResource) FindFlows(ctx fiber.Ctx, params FindFlowsParams) error {
 			IsActive:      params.IsActive,
 			Labels:        params.Labels,
 			BusinessKind:  params.BusinessKind,
+			FormOnly:      params.FormOnly,
 			Page:          params.Page,
 			Size:          params.PageSize,
 		},

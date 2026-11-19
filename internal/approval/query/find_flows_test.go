@@ -9,6 +9,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/query"
 	"github.com/coldsmirk/vef-framework-go/internal/testx"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 func init() {
@@ -90,6 +91,24 @@ func (s *FindFlowsTestSuite) TestFindAll() {
 	s.Require().NoError(err, "Should query without error")
 	s.Assert().Equal(int64(4), result.Total, "Should find 4 flows")
 	s.Assert().Len(result.Items, 4, "Should return 4 items")
+}
+
+func (s *FindFlowsTestSuite) TestFormOnlyPages() {
+	q := query.FindFlowsQuery{FormOnly: true, TenantID: new("t1"), IncludeShared: true, Page: 1, Size: 1}
+	for idx, code := range []string{"flow2", "flow1"} {
+		q.Page = idx + 1
+		page, err := s.handler.Handle(s.ctx, q)
+		s.Require().NoError(err, "Should list tenant form flows")
+		s.EqualValues(2, page.Total, "Filtering must precede counting and paging")
+		s.Require().Len(page.Items, 1, "Should return one form flow per page")
+		s.Equal(code, page.Items[0].Code, "Form flows should follow the requested page")
+		s.Nil(page.Items[0].BusinessKind, "A form flow has no business kind")
+	}
+	q.BusinessKind = new(approval.BusinessKind("order"))
+	_, err := s.handler.Handle(s.ctx, q)
+	re, ok := result.AsErr(err)
+	s.Require().True(ok, "Conflicting filters must produce a request error")
+	s.Equal(result.ErrCodeBadRequest, re.Code, "Mutually exclusive filters are invalid input")
 }
 
 func (s *FindFlowsTestSuite) TestFilterByTenant() {

@@ -14,6 +14,7 @@ import (
 	"github.com/coldsmirk/vef-framework-go/approval"
 	"github.com/coldsmirk/vef-framework-go/internal/apptest"
 	"github.com/coldsmirk/vef-framework-go/orm"
+	"github.com/coldsmirk/vef-framework-go/result"
 )
 
 // FlowResourceTestSuite tests the flow resource operations via HTTP.
@@ -360,4 +361,25 @@ func (s *FlowResourceTestSuite) TestListBusinessKinds() {
 	s.Equal(false, builtin["isVoidable"], "A void request cannot be voided")
 	s.Equal("meeting", s.ReadDataAsMap(items[1])["kind"], "Descriptors should be sorted by kind")
 	s.Equal("order", s.ReadDataAsMap(items[2])["kind"], "The later kind should follow")
+}
+
+func (s *FlowResourceTestSuite) TestFormOnlyFilter() {
+	for _, kind := range []*approval.BusinessKind{nil, new(approval.BusinessKind("order"))} {
+		name := "form"
+		if kind != nil {
+			name = "business"
+		}
+		f := &approval.Flow{TenantID: "default", CategoryID: s.categoryID, Name: "filter fixture " + name, Code: "picker-" + name, BusinessKind: kind}
+		_, err := s.db.NewInsert().Model(f).Exec(s.ctx)
+		s.Require().NoError(err, "Should seed the picker")
+	}
+	req := api.Request{Resource: "approval/flow", Action: "find_flows", Version: "v1", Params: api.Params{"formOnly": true, "tenantId": "default", "includeShared": true, "keyword": "filter fixture", "page": 1, "pageSize": 1}}
+	r := s.ReadResult(s.MakeRPCRequestWithToken(req, s.token))
+	s.Require().True(r.IsOk(), "A form-only picker should succeed")
+	items := s.ReadDataAsSlice(s.ReadDataAsMap(r.Data)["items"])
+	s.Require().Len(items, 1, "Only the form flow should be listed")
+	s.Equal("picker-form", s.ReadDataAsMap(items[0])["code"], "Should exclude business flows on the wire")
+	req.Params["businessKind"] = "order"
+	r = s.ReadResult(s.MakeRPCRequestWithToken(req, s.token))
+	s.Equal(result.ErrCodeBadRequest, r.Code, "Combining the filters should report a request error")
 }
