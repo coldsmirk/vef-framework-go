@@ -48,7 +48,7 @@ func (s *StartInstanceTestSuite) TestVerifiedSubmissionReplay() {
 	)
 
 	handler := VerifiedSubmission{
-		StubBusinessHandler: StubBusinessHandler{submit: func(ctx context.Context, tx orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
+		submit: func(ctx context.Context, tx orm.DB, sc *approval.SubmissionContext) (*approval.Submission, error) {
 			calls.Add(1)
 
 			_, err := tx.NewInsert().Model(&approval.FlowCategory{TenantID: sc.TenantID, Code: id.Generate(), Name: "host write"}).Exec(ctx)
@@ -65,7 +65,7 @@ func (s *StartInstanceTestSuite) TestVerifiedSubmissionReplay() {
 			}
 
 			return &approval.Submission{BusinessRef: "host-reference"}, nil
-		}},
+		},
 		verify: func(entry *approval.StartVerification) error {
 			entries = append(entries, entry)
 
