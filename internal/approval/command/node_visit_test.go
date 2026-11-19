@@ -314,3 +314,44 @@ func (s *NodeVisitTrailTestSuite) TestEntryAutoPassCountsCurrentVisit() {
 	s.approvePending(instance.ID, "y")
 	s.Equal(flow.NodeIDs["b"], s.pendingTask(instance.ID, "z").NodeID, "Two current approvals should advance")
 }
+
+func (s *NodeVisitTrailTestSuite) TestConsecutiveApproversFollowVisitTrail() {
+	for _, tc := range []struct{ name, target string }{
+		{"Rollback", "a"},
+		{"Resubmit", "start"},
+	} {
+		s.Run(tc.name, func() {
+			flow, instance := s.startTwoStepFlow("consecutive-"+tc.target, approval.ApprovalNodeData{
+				Name: "A", Assignees: []approval.AssigneeDefinition{{Kind: approval.AssigneeUser, IDs: []string{"x", "y"}}},
+				PassRule: approval.PassAny, ConsecutiveApproverAction: approval.ConsecutiveApproverAutoPass,
+			}, approval.ApprovalNodeData{
+				Name: "B", Assignees: []approval.AssigneeDefinition{{Kind: approval.AssigneeUser, IDs: []string{"x", "y", "z"}}},
+				PassRule: approval.PassAll, ConsecutiveApproverAction: approval.ConsecutiveApproverAutoPass, RollbackType: approval.RollbackAny,
+			})
+			s.approvePending(instance.ID, "x")
+			s.approvePending(instance.ID, "y")
+			s.rollBackPending(instance.ID, "z", flow.NodeIDs[tc.target])
+
+			if tc.target == "start" {
+				_, err := s.resubmit.Handle(s.ctx, command.ResubmitInstanceCmd{
+					InstanceID: instance.ID, Operator: instance.Applicant(), Caller: approval.SystemCaller,
+				})
+				s.Require().NoError(err, "Applicant should re-enter the flow")
+			}
+
+			visits := s.loadVisits(instance.ID)
+			s.Equal(approval.NodeVisitReturned, visits[2].Status, "B's partial approvals belong to a returned visit")
+			current := visits[len(visits)-1]
+			s.Require().Equal(flow.NodeIDs["a"], current.NodeID, "A should await a fresh decision after the return")
+			s.Equal(current.ID, s.pendingTask(instance.ID, "x").VisitID, "The previous automatic approval must not carry back")
+			s.Equal(current.ID, s.pendingTask(instance.ID, "y").VisitID, "The previous manual approval must not carry back")
+
+			s.approvePending(instance.ID, "y")
+			s.Equal(flow.NodeIDs["b"], s.pendingTask(instance.ID, "x").NodeID, "X approved only an older visit to A")
+			s.approvePending(instance.ID, "x")
+			s.approvePending(instance.ID, "z")
+			visits = s.loadVisits(instance.ID)
+			s.Equal(flow.NodeIDs["end"], visits[len(visits)-1].NodeID, "Y's approval on A's latest visit should auto-pass its seat on B")
+		})
+	}
+}

@@ -214,7 +214,7 @@ func (*ApprovalProcessor) entryAutoPassRule(ctx context.Context, pc *ProcessCont
 	}
 
 	if pc.Node.ConsecutiveApproverAction == approval.ConsecutiveApproverAutoPass {
-		prevApprovers, err := findPreviousApprovalApprovers(ctx, pc.DB, pc.Instance, pc.Node.ID)
+		prevApprovers, err := findPreviousApprovalApprovers(ctx, pc.DB, pc.Visit)
 		if err != nil {
 			return nil, err
 		}

@@ -162,69 +162,46 @@ func deduplicateAssignees(assignees []approval.ResolvedAssignee) []approval.Reso
 	return result
 }
 
-// findPreviousApprovalApprovers returns the set of assignee IDs who approved in the
-// most recent approval node before the current one within the same instance.
-//
-// Assumption: the instance advances through a single active path in an acyclic flow.
-// Under that model, the latest created task among prior approval nodes belongs to the
-// immediately preceding approval node. Returns an empty set if no previous approval
-// node exists.
-func findPreviousApprovalApprovers(ctx context.Context, db orm.DB, instance *approval.Instance, currentNodeID string) (collections.Set[string], error) {
-	// Step 1: Find all approval node IDs in this flow version (excluding current node)
-	var approvalNodeIDs []string
+// findPreviousApprovalApprovers uses the immediately preceding concluded
+// approval visit. A return, rejection, or cancellation breaks the chain even
+// when some peers approved before the visit ended.
+func findPreviousApprovalApprovers(ctx context.Context, db orm.DB, current *approval.NodeVisit) (collections.Set[string], error) {
+	var previous approval.NodeVisit
 
-	if err := db.NewSelect().
-		Model((*approval.FlowNode)(nil)).
-		Select("id").
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("flow_version_id", instance.FlowVersionID).
-				Equals("kind", string(approval.NodeApproval)).
-				NotEquals("id", currentNodeID)
+	err := db.NewSelect().
+		Model(&previous).
+		Select("id", "status").
+		Join((*approval.FlowNode)(nil), func(cb orm.ConditionBuilder) {
+			cb.EqualsColumn("afn.id", "anv.node_id")
 		}).
-		Scan(ctx, &approvalNodeIDs); err != nil {
-		return nil, fmt.Errorf("find approval nodes: %w", err)
+		Where(func(cb orm.ConditionBuilder) {
+			cb.Equals("instance_id", current.InstanceID).
+				LessThan("sequence", current.Sequence).
+				NotEquals("status", approval.NodeVisitActive).
+				Equals("afn.kind", approval.NodeApproval)
+		}).
+		OrderByDesc("sequence").
+		Limit(1).
+		Scan(ctx)
+	if err != nil && !result.IsRecordNotFound(err) {
+		return nil, fmt.Errorf("find previous approval visit: %w", err)
 	}
 
-	if len(approvalNodeIDs) == 0 {
+	if previous.Status != approval.NodeVisitPassed {
 		return collections.NewHashSet[string](), nil
 	}
 
-	// Step 2: Under the single-active-path assumption above, the latest task
-	// created for any prior approval node identifies the immediately preceding
-	// approval node in this instance.
-	var prevNodeID string
-
-	if err := db.NewSelect().
-		Model((*approval.Task)(nil)).
-		Select("node_id").
-		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", instance.ID).
-				In("node_id", approvalNodeIDs)
-		}).
-		OrderByDesc("created_at").
-		Limit(1).
-		Scan(ctx, &prevNodeID); err != nil {
-		if result.IsRecordNotFound(err) {
-			// No previous approval node has been processed yet
-			return collections.NewHashSet[string](), nil
-		}
-
-		return nil, fmt.Errorf("find previous approval node: %w", err)
-	}
-
-	// Step 3: Get assignee IDs of approved tasks in the previous approval node
 	var approvedAssigneeIDs []string
 
 	if err := db.NewSelect().
 		Model((*approval.Task)(nil)).
 		Select("assignee_id").
 		Where(func(cb orm.ConditionBuilder) {
-			cb.Equals("instance_id", instance.ID).
-				Equals("node_id", prevNodeID).
-				Equals("status", string(approval.TaskApproved))
+			cb.Equals("visit_id", previous.ID).
+				Equals("status", approval.TaskApproved)
 		}).
 		Scan(ctx, &approvedAssigneeIDs); err != nil {
-		return nil, fmt.Errorf("find approved assignees in previous node: %w", err)
+		return nil, fmt.Errorf("find approved assignees in previous visit: %w", err)
 	}
 
 	return collections.NewHashSetFrom(approvedAssigneeIDs...), nil

@@ -806,6 +806,48 @@ func (s *ApprovalProcessorTestSuite) TestConsecutiveApproverAutoPass() {
 	})
 }
 
+func (s *ApprovalProcessorTestSuite) TestPreviousVisitOutcomes() {
+	for _, tc := range []struct {
+		name       string
+		nodeKind   approval.NodeKind
+		status     approval.NodeVisitStatus
+		wantAction engine.NodeAction
+	}{
+		{"Rejected", approval.NodeApproval, approval.NodeVisitRejected, engine.NodeActionWait},
+		{"Canceled", approval.NodeApproval, approval.NodeVisitCanceled, engine.NodeActionWait},
+		{"PassedWithoutSeats", approval.NodeApproval, approval.NodeVisitPassed, engine.NodeActionWait},
+		{"InterveningHandle", approval.NodeHandle, approval.NodeVisitPassed, engine.NodeActionContinue},
+	} {
+		s.Run(tc.name, func() {
+			defer s.CleanTransientData(s.T())
+
+			instance := s.NewInstance(s.T(), "applicant")
+			first := s.InsertPreviousApprovalNode(s.T(), "first-"+tc.name)
+			s.InsertApprovedTasks(s.T(), instance.ID, first, []string{"x"})
+			second := &approval.FlowNode{FlowVersionID: s.FlowVersionID, Key: "second-" + tc.name, Kind: tc.nodeKind, Name: tc.name}
+			_, err := s.DB.NewInsert().Model(second).Exec(s.Ctx)
+			s.Require().NoError(err, "Should insert the intervening node")
+
+			visit := s.EnsureVisit(s.T(), instance.ID, second.ID, tc.status)
+			if tc.status != approval.NodeVisitPassed {
+				_, err = s.DB.NewInsert().Model(&approval.Task{
+					TenantID: instance.TenantID, InstanceID: instance.ID, NodeID: second.ID, VisitID: visit.ID,
+					AssigneeID: "x", Status: approval.TaskApproved,
+				}).Exec(s.Ctx)
+				s.Require().NoError(err, "A peer may have approved before the visit ended")
+			}
+
+			s.InsertAssigneeConfig(s.T(), []string{"x"})
+			pc := s.NewProcessContext(s.T(), instance, s.NewNode(func(n *approval.FlowNode) {
+				n.ConsecutiveApproverAction = approval.ConsecutiveApproverAutoPass
+			}))
+			result, err := s.processor.Process(s.Ctx, pc)
+			s.Require().NoError(err, "Should look up the previous approval visit")
+			s.Equal(tc.wantAction, result.Action, "Only the most recent concluded approval visit can supply a vote")
+		})
+	}
+}
+
 func (s *ApprovalProcessorTestSuite) TestDBError() {
 	instance := s.NewInstance(s.T(), "applicant-1")
 	s.InsertAssigneeConfig(s.T(), []string{"user-1"})
