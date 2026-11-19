@@ -396,7 +396,8 @@ func (s *StartInstanceTestSuite) TestSubmissionReplayWithPriorRead() {
 		if s.db.NewSelect().Dialect().Name() == dialect.SQLite {
 			// The old WAL snapshot cannot become a writer. A host that has
 			// read before submission must retry its entire transaction.
-			if coded, ok := errors.AsType[interface{ Code() int }](err); ok {
+			var coded interface{ Code() int }
+			if errors.As(err, &coded) {
 				s.Equal(517, coded.Code(), "A competing commit invalidated the read snapshot (SQLITE_BUSY_SNAPSHOT)")
 			} else {
 				// The cgo SQLite driver exposes the code as a field instead of a method.
