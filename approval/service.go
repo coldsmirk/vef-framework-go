@@ -74,7 +74,8 @@ type Service interface {
 	// StartInstanceInput.FlowCode and returns it after the engine has
 	// traversed the start node — a flow whose start node reaches an end node
 	// without stopping comes back already completed. Initiation permission is
-	// enforced against the applicant exactly as for a request.
+	// enforced against the applicant exactly as for a request. A matching
+	// idempotent retry returns the current state of the original instance.
 	StartInstance(ctx context.Context, db orm.DB, in StartInstanceInput) (*Instance, error)
 
 	// WithdrawInstance withdraws a running or returned instance on behalf of
@@ -82,7 +83,8 @@ type Service interface {
 	WithdrawInstance(ctx context.Context, db orm.DB, in WithdrawInstanceInput) error
 
 	// ResubmitInstance resubmits a returned instance with new form data on
-	// behalf of its applicant; the operator must be the applicant.
+	// behalf of its applicant; the operator must be the applicant. A matching
+	// idempotent retry returns nil even after the instance has moved on.
 	ResubmitInstance(ctx context.Context, db orm.DB, in ResubmitInstanceInput) error
 
 	// VoidInstance reverses an approved instance under its flow's direct policy.

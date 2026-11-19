@@ -67,7 +67,8 @@ func (h *FindFlowsHandler) Handle(ctx context.Context, query FindFlowsQuery) (*p
 				}).
 				ApplyIf(query.BusinessKind != nil, func(cb orm.ConditionBuilder) {
 					cb.Equals("business_kind", *query.BusinessKind)
-				}).ApplyIf(query.FormOnly, func(cb orm.ConditionBuilder) { cb.IsNull("business_kind") })
+				}).
+				ApplyIf(query.FormOnly, func(cb orm.ConditionBuilder) { cb.IsNull("business_kind") })
 
 			applyLabelsFilter(cb, query.Labels)
 		}).

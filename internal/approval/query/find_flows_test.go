@@ -104,6 +104,7 @@ func (s *FindFlowsTestSuite) TestFormOnlyPages() {
 		s.Equal(code, page.Items[0].Code, "Form flows should follow the requested page")
 		s.Nil(page.Items[0].BusinessKind, "A form flow has no business kind")
 	}
+
 	q.BusinessKind = new(approval.BusinessKind("order"))
 	_, err := s.handler.Handle(s.ctx, q)
 	re, ok := result.AsErr(err)

@@ -146,7 +146,15 @@ func (e *FlowEngine) processNode(ctx context.Context, db orm.DB, instance *appro
 	return e.handleProcessResult(ctx, db, instance, node, visit, result, visits)
 }
 
-func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, visit *approval.NodeVisit, result *ProcessResult, visits *[]string) error {
+func (e *FlowEngine) handleProcessResult(
+	ctx context.Context,
+	db orm.DB,
+	instance *approval.Instance,
+	node *approval.FlowNode,
+	visit *approval.NodeVisit,
+	result *ProcessResult,
+	visits *[]string,
+) error {
 	if err := e.publishEvents(ctx, db, result.Events...); err != nil {
 		return fmt.Errorf("publish processor events: %w", err)
 	}

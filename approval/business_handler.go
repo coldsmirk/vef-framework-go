@@ -102,6 +102,7 @@ type StartVerifier interface {
 	VerifyStart(ctx context.Context, db orm.DB, entry *StartVerification) error
 }
 
+// StartVerification describes the persisted outcome of a single flow entry.
 type StartVerification struct {
 	Instance *Instance
 	Version  *FlowVersion // The instance's pinned version.

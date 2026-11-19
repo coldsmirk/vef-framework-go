@@ -15,20 +15,30 @@ func (e *FlowEngine) EnterInstance(ctx context.Context, db orm.DB, reg *business
 	if instance.BusinessKind == nil {
 		return e.StartProcess(ctx, db, instance)
 	}
+
 	h, _ := reg.Lookup(*instance.BusinessKind)
+
 	verifier, ok := h.(approval.StartVerifier)
 	if !ok {
 		return e.StartProcess(ctx, db, instance)
 	}
+
 	var visits []string
 	if err := e.startProcess(ctx, db, instance, &visits); err != nil {
 		return err
 	}
+
 	tasks := []approval.Task{}
-	err := db.NewSelect().Model(&tasks).Join((*approval.NodeVisit)(nil), func(cb orm.ConditionBuilder) { cb.EqualsColumn("anv.id", "at.visit_id") }).
-		Where(func(cb orm.ConditionBuilder) { cb.In("at.visit_id", visits) }).OrderBy("anv.sequence", "at.sort_order", "at.id").Scan(ctx)
+
+	err := db.NewSelect().
+		Model(&tasks).
+		Join((*approval.NodeVisit)(nil), func(cb orm.ConditionBuilder) { cb.EqualsColumn("anv.id", "at.visit_id") }).
+		Where(func(cb orm.ConditionBuilder) { cb.In("at.visit_id", visits) }).
+		OrderBy("anv.sequence", "at.sort_order", "at.id").
+		Scan(ctx)
 	if err != nil {
 		return fmt.Errorf("load tasks for start verification: %w", err)
 	}
+
 	return verifier.VerifyStart(ctx, db, &approval.StartVerification{Instance: instance, Version: version, Tasks: tasks, IsResubmission: resubmission})
 }

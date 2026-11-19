@@ -80,6 +80,7 @@ func Verify(ctx context.Context, db orm.DB, kind config.DBKind) error {
 		if table == "apv_submission_key" {
 			expected = []string{"tenant_id", "idempotency_key"}
 		}
+
 		if !slices.Equal(primaryKey, expected) {
 			return outdated(
 				"table %s is keyed by %v, expected %v", table, primaryKey, expected,
