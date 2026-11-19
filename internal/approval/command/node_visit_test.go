@@ -257,12 +257,12 @@ func (s *NodeVisitTrailTestSuite) TestTerminateCancelsOpenVisits() {
 	s.assertVisit(visits[1], "approval-1", 2, approval.NodeVisitCanceled)
 }
 
-func (s *NodeVisitTrailTestSuite) startTwoStepFlow(code string, a, b approval.ApprovalNodeData) (*FlowFixture, *approval.Instance) {
+func (s *NodeVisitTrailTestSuite) startTwoStepFlow(code string, a approval.ApprovalNodeData, b approval.NodeData) (*FlowFixture, *approval.Instance) {
 	def := approval.FlowDefinition{
 		Nodes: []approval.NodeDefinition{
 			{ID: "start", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "Start"})},
 			{ID: "a", Kind: approval.NodeApproval, Data: mustMarshal(a)},
-			{ID: "b", Kind: approval.NodeApproval, Data: mustMarshal(b)},
+			{ID: "b", Kind: b.Kind(), Data: mustMarshal(b)},
 			{ID: "end", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "End"})},
 		},
 		Edges: []approval.EdgeDefinition{
@@ -300,7 +300,7 @@ func (s *NodeVisitTrailTestSuite) TestEntryAutoPassCountsCurrentVisit() {
 	flow, instance := s.startTwoStepFlow("visit-ratio", approval.ApprovalNodeData{
 		Name: "A", Assignees: []approval.AssigneeDefinition{{Kind: approval.AssigneeUser, IDs: []string{"applicant", "x", "y"}}},
 		PassRule: approval.PassRatio, PassRatio: decimal.NewFromInt(60), SameApplicantAction: approval.SameApplicantAutoPass,
-	}, approval.ApprovalNodeData{
+	}, &approval.ApprovalNodeData{
 		Name: "B", Assignees: []approval.AssigneeDefinition{{Kind: approval.AssigneeUser, IDs: []string{"z"}}},
 	})
 
@@ -324,7 +324,7 @@ func (s *NodeVisitTrailTestSuite) TestConsecutiveApproversFollowVisitTrail() {
 			flow, instance := s.startTwoStepFlow("consecutive-"+tc.target, approval.ApprovalNodeData{
 				Name: "A", Assignees: []approval.AssigneeDefinition{{Kind: approval.AssigneeUser, IDs: []string{"x", "y"}}},
 				PassRule: approval.PassAny, ConsecutiveApproverAction: approval.ConsecutiveApproverAutoPass,
-			}, approval.ApprovalNodeData{
+			}, &approval.ApprovalNodeData{
 				Name: "B", Assignees: []approval.AssigneeDefinition{{Kind: approval.AssigneeUser, IDs: []string{"x", "y", "z"}}},
 				PassRule: approval.PassAll, ConsecutiveApproverAction: approval.ConsecutiveApproverAutoPass, RollbackType: approval.RollbackAny,
 			})
@@ -352,6 +352,42 @@ func (s *NodeVisitTrailTestSuite) TestConsecutiveApproversFollowVisitTrail() {
 			s.approvePending(instance.ID, "z")
 			visits = s.loadVisits(instance.ID)
 			s.Equal(flow.NodeIDs["end"], visits[len(visits)-1].NodeID, "Y's approval on A's latest visit should auto-pass its seat on B")
+		})
+	}
+}
+
+func (s *NodeVisitTrailTestSuite) TestHandleInterruptsConsecutiveApproval() {
+	for _, tc := range []struct{ name, target string }{
+		{"RollbackToApproval", "a"},
+		{"RollbackToStart", "start"},
+		{"WithdrawAndResubmit", ""},
+	} {
+		s.Run(tc.name, func() {
+			flow, instance := s.startTwoStepFlow("handle-"+tc.target, approval.ApprovalNodeData{
+				Name: "Review", Assignees: []approval.AssigneeDefinition{{Kind: approval.AssigneeUser, IDs: []string{"x"}}},
+				ConsecutiveApproverAction: approval.ConsecutiveApproverAutoPass,
+			}, &approval.HandleNodeData{
+				Name: "Handle", Assignees: []approval.AssigneeDefinition{{Kind: approval.AssigneeUser, IDs: []string{"h"}}},
+			})
+			s.approvePending(instance.ID, "x")
+
+			if tc.target == "" {
+				_, err := s.withdraw.Handle(s.ctx, command.WithdrawInstanceCmd{InstanceID: instance.ID, Operator: instance.Applicant(), Caller: approval.SystemCaller})
+				s.Require().NoError(err, "Should withdraw at an active handle visit")
+			} else {
+				// HandleNodeData has no designer rollback options; exercise a persisted handle that permits rollback.
+				_, err := s.db.NewUpdate().Model(&approval.FlowNode{ID: flow.NodeIDs["b"]}).
+					Set("is_rollback_allowed", true).Set("rollback_type", approval.RollbackAny).WherePK().Exec(s.ctx)
+				s.Require().NoError(err, "Should enable rollback on the persisted handle node")
+				s.rollBackPending(instance.ID, "h", flow.NodeIDs[tc.target])
+			}
+
+			if tc.target != "a" {
+				_, err := s.resubmit.Handle(s.ctx, command.ResubmitInstanceCmd{InstanceID: instance.ID, Operator: instance.Applicant(), Caller: approval.SystemCaller})
+				s.Require().NoError(err, "Applicant should be able to resubmit")
+			}
+
+			s.Equal(flow.NodeIDs["a"], s.pendingTask(instance.ID, "x").NodeID, "An interrupted handle visit cannot pass the earlier reviewer's seat")
 		})
 	}
 }

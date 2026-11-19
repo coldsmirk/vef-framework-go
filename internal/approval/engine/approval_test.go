@@ -817,6 +817,9 @@ func (s *ApprovalProcessorTestSuite) TestPreviousVisitOutcomes() {
 		{"Canceled", approval.NodeApproval, approval.NodeVisitCanceled, engine.NodeActionWait},
 		{"PassedWithoutSeats", approval.NodeApproval, approval.NodeVisitPassed, engine.NodeActionWait},
 		{"InterveningHandle", approval.NodeHandle, approval.NodeVisitPassed, engine.NodeActionContinue},
+		{"InterveningCC", approval.NodeCC, approval.NodeVisitPassed, engine.NodeActionContinue},
+		{"InterveningStart", approval.NodeStart, approval.NodeVisitPassed, engine.NodeActionWait},
+		{"CanceledCC", approval.NodeCC, approval.NodeVisitCanceled, engine.NodeActionWait},
 	} {
 		s.Run(tc.name, func() {
 			defer s.CleanTransientData(s.T())
@@ -829,7 +832,7 @@ func (s *ApprovalProcessorTestSuite) TestPreviousVisitOutcomes() {
 			s.Require().NoError(err, "Should insert the intervening node")
 
 			visit := s.EnsureVisit(s.T(), instance.ID, second.ID, tc.status)
-			if tc.status != approval.NodeVisitPassed {
+			if tc.nodeKind == approval.NodeApproval && tc.status != approval.NodeVisitPassed {
 				_, err = s.DB.NewInsert().Model(&approval.Task{
 					TenantID: instance.TenantID, InstanceID: instance.ID, NodeID: second.ID, VisitID: visit.ID,
 					AssigneeID: "x", Status: approval.TaskApproved,

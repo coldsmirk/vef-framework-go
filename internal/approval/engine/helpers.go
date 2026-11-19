@@ -162,15 +162,18 @@ func deduplicateAssignees(assignees []approval.ResolvedAssignee) []approval.Reso
 	return result
 }
 
-// findPreviousApprovalApprovers uses the immediately preceding concluded
-// approval visit. A return, rejection, or cancellation breaks the chain even
-// when some peers approved before the visit ended.
+// Passed transit nodes preserve consecutive approval. A new start or any
+// unsuccessful visit breaks the chain, even if an earlier approver voted.
 func findPreviousApprovalApprovers(ctx context.Context, db orm.DB, current *approval.NodeVisit) (collections.Set[string], error) {
-	var previous approval.NodeVisit
+	var previous struct {
+		ID     string
+		Status approval.NodeVisitStatus
+		Kind   approval.NodeKind
+	}
 
 	err := db.NewSelect().
-		Model(&previous).
-		Select("id", "status").
+		Model((*approval.NodeVisit)(nil)).
+		Select("id", "status", "afn.kind").
 		Join((*approval.FlowNode)(nil), func(cb orm.ConditionBuilder) {
 			cb.EqualsColumn("afn.id", "anv.node_id")
 		}).
@@ -178,16 +181,19 @@ func findPreviousApprovalApprovers(ctx context.Context, db orm.DB, current *appr
 			cb.Equals("instance_id", current.InstanceID).
 				LessThan("sequence", current.Sequence).
 				NotEquals("status", approval.NodeVisitActive).
-				Equals("afn.kind", approval.NodeApproval)
+				Group(func(cb orm.ConditionBuilder) {
+					cb.NotEquals("status", approval.NodeVisitPassed).
+						OrIn("afn.kind", []approval.NodeKind{approval.NodeApproval, approval.NodeStart})
+				})
 		}).
 		OrderByDesc("sequence").
 		Limit(1).
-		Scan(ctx)
+		Scan(ctx, &previous)
 	if err != nil && !result.IsRecordNotFound(err) {
 		return nil, fmt.Errorf("find previous approval visit: %w", err)
 	}
 
-	if previous.Status != approval.NodeVisitPassed {
+	if previous.Kind != approval.NodeApproval || previous.Status != approval.NodeVisitPassed {
 		return collections.NewHashSet[string](), nil
 	}
 
