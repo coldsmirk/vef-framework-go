@@ -192,6 +192,11 @@ type StartInstanceInput struct {
 	Globals map[string]any
 	// Caller carries the tenant authority of this call (see the type comment).
 	Caller CallerContext
+	// IdempotencyKey optionally identifies this submission within the instance tenant.
+	// A nonempty key (up to 128 characters) is bound to the applicant, operation and
+	// submitted input. A matching retry skips submission and traversal; conflicting
+	// reuse returns ErrIdempotencyConflict.
+	IdempotencyKey string
 }
 
 // WithdrawInstanceInput describes an instance withdrawal.
@@ -214,6 +219,11 @@ type ResubmitInstanceInput struct {
 	// the published version's form fields.
 	FormData map[string]any
 	Caller   CallerContext
+	// IdempotencyKey optionally identifies this submission within the instance tenant.
+	// A nonempty key (up to 128 characters) is bound to the applicant, operation and
+	// submitted input. A matching retry skips submission and traversal; conflicting
+	// reuse returns ErrIdempotencyConflict.
+	IdempotencyKey string
 }
 
 // TerminateInstanceInput describes a forced instance closure.

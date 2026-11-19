@@ -93,3 +93,20 @@ type ViewContext struct {
 	// (the same map the detail returns); nil on an administrative view.
 	FieldPermissions map[string]Permission
 }
+
+// StartVerifier is an optional business-handler capability. VerifyStart runs after
+// flow entry in the same transaction on start and resubmit, including immediate
+// completion. A failure rolls back the business writes, instance and traversal.
+type StartVerifier interface {
+	// VerifyStart inspects the result of this entry before the transaction commits.
+	VerifyStart(ctx context.Context, db orm.DB, entry *StartVerification) error
+}
+
+type StartVerification struct {
+	Instance *Instance
+	Version  *FlowVersion // The instance's pinned version.
+	// Tasks contains all seats created by this traversal, including sequential
+	// waiting seats, in visit and queue order. A taskless entry has an empty slice.
+	Tasks          []Task
+	IsResubmission bool
+}

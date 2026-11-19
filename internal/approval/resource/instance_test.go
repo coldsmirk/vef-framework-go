@@ -342,6 +342,26 @@ func (s *InstanceResourceTestSuite) TestStartApprovalFlowRunning() {
 	s.Assert().NotEmpty(tasks, "Approval flow should create pending tasks")
 }
 
+func (s *InstanceResourceTestSuite) TestIdempotentRPC() {
+	start := map[string]any{"flowCode": s.approval.FlowCode, "idempotencyKey": "start-rpc"}
+	first := s.rpcCall("start", start)
+	s.Require().True(first.IsOk(), "Keyed start should succeed")
+	id := s.ReadDataAsMap(first.Data)["id"]
+	s.Require().True(s.rpcCall("withdraw", map[string]any{"instanceId": id, "reason": "Revise"}).IsOk(), "Should change the state before retry")
+	retry := s.rpcCall("start", start)
+	s.Require().True(retry.IsOk(), "Keyed start should replay")
+	s.Equal(id, s.ReadDataAsMap(retry.Data)["id"], "Start replay should return the original instance")
+	s.Equal("withdrawn", s.ReadDataAsMap(retry.Data)["status"], "Start replay returns the current status")
+	resubmit := map[string]any{"instanceId": id, "idempotencyKey": "resubmit-rpc"}
+	for range 2 {
+		response := s.rpcCall("resubmit", resubmit)
+		s.Require().True(response.IsOk(), "Both resubmissions should succeed")
+		s.Nil(response.Data, "Resubmit keeps its empty success response")
+	}
+	resubmit["formData"] = map[string]any{"changed": true}
+	s.assertErrorCode(s.rpcCall("resubmit", resubmit), approval.ErrCodeIdempotencyConflict, "Changing an existing submission is a conflict")
+}
+
 func (s *InstanceResourceTestSuite) TestStartFlowNotFound() {
 	res := s.rpcCall("start", map[string]any{
 		"tenantId": "default",

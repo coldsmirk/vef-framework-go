@@ -50,9 +50,33 @@ func NewResubmitInstanceHandler(
 func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstanceCmd) (cqrs.Unit, error) {
 	db := contextx.DB(ctx, h.db)
 
+	var key *submissionKey
+	var fresh bool
+	if cmd.IdempotencyKey != "" {
+		tenant, err := cmd.Caller.TenantScopeFilter("")
+		if err != nil {
+			return cqrs.Unit{}, approval.ErrInstanceNotFound
+		}
+		key, err = newSubmissionKey(cmd.IdempotencyKey, "resubmit", submissionRequest{ApplicantID: cmd.Operator.ID, InstanceID: cmd.InstanceID, FormData: cmd.FormData})
+		if err != nil {
+			return cqrs.Unit{}, err
+		}
+		fresh, err = key.reserve(ctx, db, tenant, cmd.InstanceID)
+		if err != nil {
+			return cqrs.Unit{}, err
+		}
+	}
 	instance, err := h.instanceSvc.LoadForUpdate(ctx, db, cmd.InstanceID, cmd.Caller)
 	if err != nil {
 		return cqrs.Unit{}, err
+	}
+
+	if key != nil {
+		key.TenantID = instance.TenantID
+		if !fresh {
+			_, err := key.replay(ctx, db)
+			return cqrs.Unit{}, err
+		}
 	}
 
 	if instance.ApplicantID != cmd.Operator.ID {
@@ -141,7 +165,7 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 		}
 	}
 
-	if err := h.engine.StartProcess(ctx, db, instance); err != nil {
+	if err := h.engine.EnterInstance(ctx, db, h.business, instance, &version, true); err != nil {
 		return cqrs.Unit{}, fmt.Errorf("start process on resubmit: %w", err)
 	}
 
@@ -152,5 +176,8 @@ func (h *ResubmitInstanceHandler) Handle(ctx context.Context, cmd ResubmitInstan
 		approval.NewInstanceResubmittedEvent(instance, cmd.Operator),
 	)
 
+	if key != nil {
+		return cqrs.Unit{}, key.link(ctx, db, instance.ID)
+	}
 	return cqrs.Unit{}, nil
 }

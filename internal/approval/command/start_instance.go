@@ -73,6 +73,30 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		return nil, approval.ErrFlowNotFound
 	}
 
+	var key *submissionKey
+	if cmd.IdempotencyKey != "" {
+		key, err = newSubmissionKey(cmd.IdempotencyKey, "start", submissionRequest{ApplicantID: cmd.Applicant.ID, FlowCode: cmd.FlowCode, BusinessRef: cmd.BusinessRef, FormData: cmd.FormData})
+		if err != nil {
+			return nil, err
+		}
+		key.TenantID = tenantID
+		fresh, err := key.reserve(ctx, db, &tenantID, "")
+		if err != nil {
+			return nil, err
+		}
+		if !fresh {
+			instanceID, err := key.replay(ctx, db)
+			if err != nil {
+				return nil, err
+			}
+			inst := &approval.Instance{ID: instanceID}
+			if err = db.NewSelect().Model(inst).WherePK().Scan(ctx); err != nil {
+				return nil, fmt.Errorf("load replayed instance: %w", err)
+			}
+			return inst, nil
+		}
+	}
+
 	start, err := h.validationSvc.LoadInitiableFlow(ctx, db, tenantID, cmd.FlowCode, cmd.Applicant)
 	if err != nil {
 		return nil, err
@@ -203,8 +227,14 @@ func (h *StartInstanceHandler) Handle(ctx context.Context, cmd StartInstanceCmd)
 		approval.NewInstanceCreatedEvent(instance),
 	)
 
-	if err := h.engine.StartProcess(ctx, db, instance); err != nil {
+	if err := h.engine.EnterInstance(ctx, db, h.businessRegistry, instance, version, false); err != nil {
 		return nil, fmt.Errorf("start process: %w", err)
+	}
+
+	if key != nil {
+		if err := key.link(ctx, db, instance.ID); err != nil {
+			return nil, err
+		}
 	}
 
 	return instance, nil

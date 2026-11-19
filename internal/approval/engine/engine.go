@@ -81,6 +81,10 @@ func (e *FlowEngine) publishEvents(ctx context.Context, db orm.DB, events ...app
 
 // StartProcess starts a flow process by finding the start node and processing it.
 func (e *FlowEngine) StartProcess(ctx context.Context, db orm.DB, instance *approval.Instance) error {
+	return e.startProcess(ctx, db, instance, nil)
+}
+
+func (e *FlowEngine) startProcess(ctx context.Context, db orm.DB, instance *approval.Instance, visits *[]string) error {
 	compiled, err := e.flowCache.Get(ctx, instance.FlowVersionID)
 	if err != nil {
 		return fmt.Errorf("compile flow: %w", err)
@@ -90,11 +94,15 @@ func (e *FlowEngine) StartProcess(ctx context.Context, db orm.DB, instance *appr
 		return fmt.Errorf("%w: %s", ErrFlowMissingStartNode, instance.FlowVersionID)
 	}
 
-	return e.ProcessNode(ctx, db, instance, compiled.StartNode)
+	return e.processNode(ctx, db, instance, compiled.StartNode, visits)
 }
 
 // ProcessNode dispatches a node to the appropriate processor.
 func (e *FlowEngine) ProcessNode(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode) error {
+	return e.processNode(ctx, db, instance, node, nil)
+}
+
+func (e *FlowEngine) processNode(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, visits *[]string) error {
 	depth, _ := ctx.Value(nodeDepthKey{}).(int)
 	if depth >= maxNodeDepth {
 		return fmt.Errorf("%w: depth=%d, node=%s", ErrMaxNodeDepth, depth, node.ID)
@@ -115,6 +123,10 @@ func (e *FlowEngine) ProcessNode(ctx context.Context, db orm.DB, instance *appro
 		return err
 	}
 
+	if visits != nil {
+		*visits = append(*visits, visit.ID)
+	}
+
 	pc := &ProcessContext{
 		DB:               db,
 		Instance:         instance,
@@ -131,10 +143,10 @@ func (e *FlowEngine) ProcessNode(ctx context.Context, db orm.DB, instance *appro
 		return err
 	}
 
-	return e.handleProcessResult(ctx, db, instance, node, visit, result)
+	return e.handleProcessResult(ctx, db, instance, node, visit, result, visits)
 }
 
-func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, visit *approval.NodeVisit, result *ProcessResult) error {
+func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instance *approval.Instance, node *approval.FlowNode, visit *approval.NodeVisit, result *ProcessResult, visits *[]string) error {
 	if err := e.publishEvents(ctx, db, result.Events...); err != nil {
 		return fmt.Errorf("publish processor events: %w", err)
 	}
@@ -156,7 +168,7 @@ func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instanc
 			return err
 		}
 
-		return e.AdvanceToNextNode(ctx, db, instance, node, result.BranchID)
+		return e.advanceToNextNode(ctx, db, instance, node, result.BranchID, visits)
 
 	case NodeActionComplete:
 		// An end node completes the instance as approved (visit passed); an
@@ -201,6 +213,10 @@ func (e *FlowEngine) handleProcessResult(ctx context.Context, db orm.DB, instanc
 // AdvanceToNextNode finds the matching edge from the current node and advances to the next one.
 // BranchID is used by condition nodes to select the edge matching the branch.
 func (e *FlowEngine) AdvanceToNextNode(ctx context.Context, db orm.DB, instance *approval.Instance, fromNode *approval.FlowNode, branchID *string) error {
+	return e.advanceToNextNode(ctx, db, instance, fromNode, branchID, nil)
+}
+
+func (e *FlowEngine) advanceToNextNode(ctx context.Context, db orm.DB, instance *approval.Instance, fromNode *approval.FlowNode, branchID *string, visits *[]string) error {
 	compiled, err := e.flowCache.Get(ctx, instance.FlowVersionID)
 	if err != nil {
 		return fmt.Errorf("compile flow: %w", err)
@@ -216,7 +232,7 @@ func (e *FlowEngine) AdvanceToNextNode(ctx context.Context, db orm.DB, instance 
 		return fmt.Errorf("%w: %s", ErrFlowMissingTargetNode, edge.TargetNodeID)
 	}
 
-	return e.ProcessNode(ctx, db, instance, nextNode)
+	return e.processNode(ctx, db, instance, nextNode, visits)
 }
 
 // EvaluateNodeCompletion evaluates whether a node is complete based on its

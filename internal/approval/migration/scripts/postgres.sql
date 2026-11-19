@@ -402,6 +402,19 @@ CREATE INDEX IF NOT EXISTS idx_apv_instance__flow_id_status_created_at ON apv_in
 CREATE INDEX IF NOT EXISTS idx_apv_instance__applicant_id_status_created_at ON apv_instance(applicant_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_apv_instance__current_node_id ON apv_instance(current_node_id);
 
+-- Tenant-scoped reservation. The instance is linked before the transaction commits.
+CREATE TABLE IF NOT EXISTS apv_submission_key (
+    tenant_id VARCHAR(32) NOT NULL,
+    idempotency_key VARCHAR(128) NOT NULL,
+    operation VARCHAR(16) NOT NULL,
+    fingerprint CHAR(64) NOT NULL,
+    instance_id VARCHAR(32),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, idempotency_key),
+    FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_apv_submission_key__instance_id ON apv_submission_key (instance_id);
+
 -- Durable desired state for one business-table target
 CREATE TABLE IF NOT EXISTS apv_business_projection (
     id VARCHAR(32) CONSTRAINT pk_apv_business_projection PRIMARY KEY,

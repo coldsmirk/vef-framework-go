@@ -52,6 +52,7 @@ const (
 	ErrCodeVoidBlocked         = 40038
 	ErrCodeVoidRequestPending  = 40039
 	ErrCodeVoidPolicyInvalid   = 40040
+	ErrCodeIdempotencyConflict = 40041
 
 	ErrCodeInstanceNotFound          = 40101
 	ErrCodeInstanceCompleted         = 40102
@@ -163,6 +164,7 @@ var (
 	ErrInstanceNotVoidable       = result.Err(i18n.T("approval_instance_not_voidable"), result.WithCode(ErrCodeInstanceNotVoidable))
 	ErrVoidBlocked               = result.Err(i18n.T("approval_void_blocked"), result.WithCode(ErrCodeVoidBlocked))
 	ErrVoidRequestPending        = result.Err(i18n.T("approval_void_request_pending"), result.WithCode(ErrCodeVoidRequestPending))
+	ErrIdempotencyConflict       = result.Err(i18n.T("approval_idempotency_conflict"), result.WithCode(ErrCodeIdempotencyConflict))
 	ErrVoidPolicyInvalid         = result.Err(i18n.T("approval_void_policy_invalid"), result.WithCode(ErrCodeVoidPolicyInvalid))
 	ErrAnnotationNotFound        = result.Err(i18n.T("approval_annotation_not_found"), result.WithCode(ErrCodeAnnotationNotFound))
 	ErrAnnotationNotEditable     = result.Err(i18n.T("approval_annotation_not_editable"), result.WithCode(ErrCodeAnnotationNotEditable))

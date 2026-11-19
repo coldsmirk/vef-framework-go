@@ -22,6 +22,18 @@ func TestVerify(t *testing.T) {
 				"A schema this migration just created must verify for %s", env.DS.Kind)
 		})
 
+		t.Run("UpgradesSubmissionKeys", func(t *testing.T) {
+			_, err := env.DB.NewRaw("DROP TABLE apv_submission_key").Exec(env.Ctx)
+			require.NoError(t, err, "Should emulate a previous installation")
+			require.ErrorIs(t, Verify(env.Ctx, env.DB, env.DS.Kind), ErrSchemaOutdated, "A missing reservation table must fail verification")
+			for range 2 {
+				require.NoError(t, Migrate(env.Ctx, env.DB, env.DS.Kind), "Reservation migration must be replayable")
+			}
+			pk, err := sqlmigration.LoadTablePrimaryKey(env.Ctx, env.DB, env.DS.Kind, "apv_submission_key")
+			require.NoError(t, err, "Should read the reservation key")
+			assert.Equal(t, []string{"tenant_id", "idempotency_key"}, pk, "The tenant/key pair must be unique")
+			require.NoError(t, Verify(env.Ctx, env.DB, env.DS.Kind), "The upgraded schema should verify")
+		})
 		t.Run("UpgradesTheAnnotationTable", func(t *testing.T) {
 			const table = "apv_annotation"
 

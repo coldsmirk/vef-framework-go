@@ -258,6 +258,19 @@ CREATE TABLE IF NOT EXISTS apv_instance (
     INDEX idx_apv_instance__current_node_id (current_node_id)
 ) COMMENT 'Instance';
 
+-- Tenant-scoped reservation. The instance is linked before the transaction commits.
+CREATE TABLE IF NOT EXISTS apv_submission_key (
+    tenant_id VARCHAR(32) NOT NULL,
+    idempotency_key VARBINARY(512) NOT NULL,
+    operation VARCHAR(16) NOT NULL,
+    fingerprint CHAR(64) NOT NULL,
+    instance_id VARCHAR(32),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, idempotency_key),
+    FOREIGN KEY (instance_id) REFERENCES apv_instance(id) ON DELETE CASCADE,
+    INDEX idx_apv_submission_key__instance_id (instance_id)
+);
+
 -- Durable desired state for one business-table target
 CREATE TABLE IF NOT EXISTS apv_business_projection (
     id VARCHAR(32) NOT NULL COMMENT 'ID',

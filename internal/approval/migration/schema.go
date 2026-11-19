@@ -20,7 +20,7 @@ import (
 var ErrSchemaOutdated = errors.New("approval schema is outdated")
 
 // primaryKeyColumns is the primary key every approval table must declare.
-// All of them are keyed by the generated XID in `id`.
+// Submission reservations use the submitting tenant and opaque key instead.
 var primaryKeyColumns = []string{"id"}
 
 // kindColumnTables are the tables whose `kind` column stores an
@@ -76,9 +76,13 @@ func Verify(ctx context.Context, db orm.DB, kind config.DBKind) error {
 			)
 		}
 
-		if !slices.Equal(primaryKey, primaryKeyColumns) {
+		expected := primaryKeyColumns
+		if table == "apv_submission_key" {
+			expected = []string{"tenant_id", "idempotency_key"}
+		}
+		if !slices.Equal(primaryKey, expected) {
 			return outdated(
-				"table %s is keyed by %v, expected %v", table, primaryKey, primaryKeyColumns,
+				"table %s is keyed by %v, expected %v", table, primaryKey, expected,
 			)
 		}
 	}

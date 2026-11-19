@@ -141,9 +141,10 @@ func NewInstanceResource(
 type StartParams struct {
 	api.P
 
-	FlowCode    string         `json:"flowCode" validate:"required"`
-	BusinessRef *string        `json:"businessRef" validate:"omitempty,max=512"`
-	FormData    map[string]any `json:"formData"`
+	FlowCode       string         `json:"flowCode" validate:"required"`
+	BusinessRef    *string        `json:"businessRef" validate:"omitempty,max=512"`
+	FormData       map[string]any `json:"formData"`
+	IdempotencyKey string         `json:"idempotencyKey" validate:"max=128"`
 }
 
 // Start creates a new flow instance in the tenant the caller acts in, from that
@@ -163,12 +164,13 @@ func (r *InstanceResource) Start(ctx fiber.Ctx, db orm.DB, principal *security.P
 	}
 
 	instance, err := r.svc.StartInstance(ctx.Context(), db, approval.StartInstanceInput{
-		FlowCode:    params.FlowCode,
-		Applicant:   actor.Operator,
-		BusinessRef: params.BusinessRef,
-		FormData:    params.FormData,
-		Globals:     globals,
-		Caller:      actor.Caller,
+		IdempotencyKey: params.IdempotencyKey,
+		FlowCode:       params.FlowCode,
+		Applicant:      actor.Operator,
+		BusinessRef:    params.BusinessRef,
+		FormData:       params.FormData,
+		Globals:        globals,
+		Caller:         actor.Caller,
 	})
 	if err != nil {
 		return err
@@ -314,8 +316,9 @@ func (r *InstanceResource) Withdraw(ctx fiber.Ctx, db orm.DB, principal *securit
 type ResubmitParams struct {
 	api.P
 
-	InstanceID string         `json:"instanceId" validate:"required"`
-	FormData   map[string]any `json:"formData"`
+	InstanceID     string         `json:"instanceId" validate:"required"`
+	FormData       map[string]any `json:"formData"`
+	IdempotencyKey string         `json:"idempotencyKey" validate:"max=128"`
 }
 
 // Resubmit resubmits a returned instance.
@@ -326,10 +329,11 @@ func (r *InstanceResource) Resubmit(ctx fiber.Ctx, db orm.DB, principal *securit
 	}
 
 	if err := r.svc.ResubmitInstance(ctx.Context(), db, approval.ResubmitInstanceInput{
-		InstanceID: params.InstanceID,
-		Operator:   actor.Operator,
-		FormData:   params.FormData,
-		Caller:     actor.Caller,
+		IdempotencyKey: params.IdempotencyKey,
+		InstanceID:     params.InstanceID,
+		Operator:       actor.Operator,
+		FormData:       params.FormData,
+		Caller:         actor.Caller,
 	}); err != nil {
 		return err
 	}
