@@ -84,6 +84,7 @@ var (
 	errAggregateSubjectNotTable   = errors.New("aggregate subject must reference a table field")
 	errAggregateColumnUnknown     = errors.New("aggregate column does not exist in the table field")
 	errAggregateColumnNotNumeric  = errors.New("aggregate column must be a number field")
+	errOperatorNotForField        = errors.New("condition operator is not valid for the field's kind and multiplicity")
 )
 
 // Form-definition validation sentinels. Deploy-time guards over the form

@@ -77,7 +77,7 @@ func validateScalarConditionOperator(
 
 	if !approval.IsOperatorValidForField(field, cond.Operator) {
 		return fmt.Errorf("%w: operator %q is not valid for field %q in branch %q of node %q",
-			approval.ErrInvalidConditionOperator, cond.Operator, cond.Subject, branchID, nodeID)
+			errOperatorNotForField, cond.Operator, cond.Subject, branchID, nodeID)
 	}
 
 	return nil

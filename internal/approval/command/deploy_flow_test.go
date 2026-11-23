@@ -819,7 +819,7 @@ func (s *DeployFlowTestSuite) TestDeployConditionOperatorValidation() {
 			FormSchema:     formSchema,
 		})
 		s.Require().Error(err, "eq on a multi-select field must fail deploy")
-		s.Assert().ErrorIs(err, approval.ErrInvalidConditionOperator, "Must surface ErrInvalidConditionOperator")
+		s.Assert().ErrorIs(err, approval.ErrInvalidFlowDesign, "Must surface as an invalid flow design")
 	})
 
 	s.Run("AcceptsContainsOnMultiSelectField", func() {

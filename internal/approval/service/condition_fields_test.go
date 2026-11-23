@@ -105,20 +105,20 @@ func TestValidateConditionFields(t *testing.T) {
 			approval.OperatorNotIn,
 		} {
 			cond := approval.Condition{Kind: approval.ConditionField, Subject: "tags", Operator: op, Value: "a"}
-			assert.ErrorIs(t, svc.ValidateConditionFields(nodes(cond), form), approval.ErrInvalidConditionOperator,
+			assert.ErrorIs(t, svc.ValidateConditionFields(nodes(cond), form), errOperatorNotForField,
 				"multi-select field must reject %q", op)
 		}
 	})
 
 	t.Run("RejectsContainsOnSingleSelect", func(t *testing.T) {
 		cond := approval.Condition{Kind: approval.ConditionField, Subject: "category", Operator: approval.OperatorContains, Value: "a"}
-		assert.ErrorIs(t, svc.ValidateConditionFields(nodes(cond), form), approval.ErrInvalidConditionOperator,
+		assert.ErrorIs(t, svc.ValidateConditionFields(nodes(cond), form), errOperatorNotForField,
 			"single-select field must reject contains")
 	})
 
 	t.Run("RejectsEqualsOnUpload", func(t *testing.T) {
 		cond := approval.Condition{Kind: approval.ConditionField, Subject: "attachment", Operator: approval.OperatorEquals, Value: "file.pdf"}
-		assert.ErrorIs(t, svc.ValidateConditionFields(nodes(cond), form), approval.ErrInvalidConditionOperator,
+		assert.ErrorIs(t, svc.ValidateConditionFields(nodes(cond), form), errOperatorNotForField,
 			"upload field only supports emptiness operators")
 	})
 
@@ -127,7 +127,7 @@ func TestValidateConditionFields(t *testing.T) {
 		assert.NoError(t, svc.ValidateConditionFields(nodes(cond), form))
 
 		bad := approval.Condition{Kind: approval.ConditionField, Subject: "moment", Operator: approval.OperatorContains, Value: "2026"}
-		assert.ErrorIs(t, svc.ValidateConditionFields(nodes(bad), form), approval.ErrInvalidConditionOperator)
+		assert.ErrorIs(t, svc.ValidateConditionFields(nodes(bad), form), errOperatorNotForField)
 	})
 
 	t.Run("AcceptsEmptinessOnDateRangeAndRejectsOrdering", func(t *testing.T) {
@@ -136,7 +136,7 @@ func TestValidateConditionFields(t *testing.T) {
 
 		for _, op := range []approval.ConditionOperator{approval.OperatorEquals, approval.OperatorGreater, approval.OperatorContains} {
 			bad := approval.Condition{Kind: approval.ConditionField, Subject: "span", Operator: op, Value: "2026-04"}
-			assert.ErrorIs(t, svc.ValidateConditionFields(nodes(bad), form), approval.ErrInvalidConditionOperator,
+			assert.ErrorIs(t, svc.ValidateConditionFields(nodes(bad), form), errOperatorNotForField,
 				"daterange must reject %q", op)
 		}
 	})

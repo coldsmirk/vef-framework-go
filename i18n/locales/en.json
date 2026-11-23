@@ -181,7 +181,6 @@
   "approval_void_request_pending": "A void request is pending",
   "approval_flow_filters_conflict": "formOnly and businessKind cannot be used together.",
   "approval_idempotency_conflict": "This idempotency key has already been used for a different submission.",
-  "approval_invalid_condition_operator": "Condition operator is not valid for this field type",
   "approval_idempotency_key_invalid": "The idempotency key must contain at most 128 characters and no null character.",
   "approval_void_policy_invalid": "Invalid void policy or void request flow",
   "approval_annotation_not_found": "Annotation not found",
