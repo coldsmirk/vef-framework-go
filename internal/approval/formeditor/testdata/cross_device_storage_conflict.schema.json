@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "P1",
+          "type": "number",
+          "key": "amount",
+          "label": "金额",
+          "precision": 2
+        }
+      ]
+    },
+    "mobile": {
+      "children": [
+        {
+          "id": "M1",
+          "type": "number",
+          "key": "amount",
+          "label": "金额",
+          "precision": 4
+        }
+      ]
+    }
+  }
+}

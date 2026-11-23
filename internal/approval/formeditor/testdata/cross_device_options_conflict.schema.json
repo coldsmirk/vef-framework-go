@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "P1",
+          "type": "select",
+          "key": "city",
+          "label": "城市",
+          "dataSource": {
+            "kind": "static",
+            "options": [
+              { "label": "北京", "value": "bj" },
+              { "label": "上海", "value": "sh" }
+            ]
+          }
+        }
+      ]
+    },
+    "mobile": {
+      "children": [
+        {
+          "id": "M1",
+          "type": "select",
+          "key": "city",
+          "label": "城市",
+          "dataSource": {
+            "kind": "static",
+            "options": [
+              { "label": "北京", "value": "bj" },
+              { "label": "广州", "value": "gz" }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

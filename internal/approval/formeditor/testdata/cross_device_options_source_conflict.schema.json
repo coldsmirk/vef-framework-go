@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "P1",
+          "type": "select",
+          "key": "gender",
+          "label": "性别",
+          "dataSource": {
+            "kind": "codeSet",
+            "codeSet": "sys.user.gender"
+          }
+        }
+      ]
+    },
+    "mobile": {
+      "children": [
+        {
+          "id": "M1",
+          "type": "select",
+          "key": "gender",
+          "label": "性别",
+          "dataSource": {
+            "kind": "codeSet",
+            "codeSet": "hr.employee.gender"
+          }
+        }
+      ]
+    }
+  }
+}

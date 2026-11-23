@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "P1",
+          "type": "textfield",
+          "key": "phone",
+          "label": "手机号",
+          "validate": {
+            "required": true,
+            "pattern": "^1\\d{10}$"
+          }
+        }
+      ]
+    },
+    "mobile": {
+      "children": [
+        {
+          "id": "M1",
+          "type": "textfield",
+          "key": "phone",
+          "label": "手机号",
+          "validate": {
+            "required": false,
+            "pattern": "^1\\d{10}$"
+          }
+        }
+      ]
+    }
+  }
+}

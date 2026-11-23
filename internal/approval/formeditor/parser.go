@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/coldsmirk/go-collections"
+
 	"github.com/coldsmirk/vef-framework-go/approval"
 )
 
@@ -25,10 +27,11 @@ type parser struct{}
 
 // ParseFormFields walks both device presentations (pc first, then mobile),
 // projecting every root-scope keyed node into a flat field definition and
-// deduplicating by key across devices. A cross-device kind or table-shape
-// conflict, an unmappable / unknown widget, a nested subform, or an empty detail
-// table aborts with an outward-facing error; a nil, empty, or null document
-// yields no fields.
+// deduplicating by key across devices. When a key appears on both devices, both
+// sides are projected and their data contracts (stripping display-only fields)
+// are compared structurally so any divergence aborts the deploy. An unmappable
+// / unknown widget, a nested subform, or an empty detail table also aborts with
+// an outward-facing error; a nil, empty, or null document yields no fields.
 //
 // The parser is pure, so it ignores ctx; the parameter exists for host parsers
 // that resolve remote sources while deriving fields (see FormSchemaParser).
@@ -43,31 +46,22 @@ func (*parser) ParseFormFields(_ context.Context, schema json.RawMessage) ([]app
 	}
 
 	dataSources := indexDataSources(doc.DataSources)
-
-	// key → what the first (pc-winning) sighting projected, enough to detect a
-	// cross-device contract conflict on a later sighting without re-projecting.
-	seen := make(map[string]seenProjection)
+	pcFields := make(map[string]*approval.FormFieldDefinition)
 
 	var fields []approval.FormFieldDefinition
 
-	for _, layer := range []*richLayer{doc.Presentations.PC, doc.Presentations.Mobile} {
-		if layer == nil {
-			continue
-		}
+	if doc.Presentations.PC != nil {
+		pcSeen := collections.NewHashSet[string]()
 
-		err := walkRootKeyed(layer.Children, func(node *richBlock) error {
-			// Classify the widget BEFORE the seen check so an unmappable / unknown
-			// type aborts identically regardless of sighting order or device. Were
-			// this deferred to projectNode (first sighting only), a conflicting type
-			// on the second device would be silently deduped and the losing device
-			// would submit values the deployed definition rejects — the exact hazard
-			// the cross-device check exists to prevent.
+		err := walkRootKeyed(doc.Presentations.PC.Children, func(node *richBlock) error {
+			// Classify the widget BEFORE per-device dedupe so an unmappable /
+			// unknown type aborts consistently regardless of sighting order.
 			if err := classifyWidget(node); err != nil {
 				return err
 			}
 
-			if prev, ok := seen[node.Key]; ok {
-				return checkCrossDevice(node, prev)
+			if !pcSeen.Add(node.Key) {
+				return nil
 			}
 
 			projected, err := projectNode(node, dataSources)
@@ -77,7 +71,38 @@ func (*parser) ParseFormFields(_ context.Context, schema json.RawMessage) ([]app
 
 			projected.SortOrder = len(fields)
 			fields = append(fields, *projected)
-			seen[node.Key] = newSeenProjection(node, projected.Kind, projected.IsMultiple, peekGranularity(node))
+			pcFields[node.Key] = projected
+
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if doc.Presentations.Mobile != nil {
+		mobileSeen := collections.NewHashSet[string]()
+
+		err := walkRootKeyed(doc.Presentations.Mobile.Children, func(node *richBlock) error {
+			if err := classifyWidget(node); err != nil {
+				return err
+			}
+
+			if !mobileSeen.Add(node.Key) {
+				return nil
+			}
+
+			projected, err := projectNode(node, dataSources)
+			if err != nil {
+				return err
+			}
+
+			if pcField, exists := pcFields[node.Key]; exists {
+				return compareFieldContracts(node.Key, pcField, projected)
+			}
+
+			projected.SortOrder = len(fields)
+			fields = append(fields, *projected)
 
 			return nil
 		})
@@ -87,54 +112,6 @@ func (*parser) ParseFormFields(_ context.Context, schema json.RawMessage) ([]app
 	}
 
 	return fields, nil
-}
-
-// seenProjection records what an already-projected key resolved to, so a later
-// cross-device sighting can be checked for a contract conflict.
-type seenProjection struct {
-	kind        approval.FieldKind
-	isMultiple  bool
-	granularity approval.DateGranularity
-	// tableSignature is the column signature of a table field, nil for scalars.
-	tableSignature *string
-}
-
-func newSeenProjection(node *richBlock, kind approval.FieldKind, isMultiple bool, granularity approval.DateGranularity) seenProjection {
-	seen := seenProjection{kind: kind, isMultiple: isMultiple, granularity: granularity}
-	if node.Type == "subform" {
-		signature := peekTableSignature(node)
-		seen.tableSignature = &signature
-	}
-
-	return seen
-}
-
-// checkCrossDevice reports whether a second sighting of an already-projected key
-// would deploy a contract the first sighting's device cannot submit against. The
-// submitted data contract is shared across devices, so a differing kind,
-// selection multiplicity, date granularity, or table column-set is an error,
-// not a preference. classifyWidget has already rejected unmappable / unknown
-// types before this runs, so peekKind resolves to a real kind here; a
-// same-kind options / validation divergence is not detected (documented
-// limitation).
-func checkCrossDevice(node *richBlock, prev seenProjection) error {
-	kind := peekKind(node)
-	isMultiple := multiValueSelectTypes.Contains(node.Type)
-	granularity := peekGranularity(node)
-
-	if kind != prev.kind || isMultiple != prev.isMultiple || granularity != prev.granularity {
-		return errCrossDeviceKindMismatch(
-			node.Key,
-			describeFieldShape(prev.kind, prev.isMultiple, prev.granularity),
-			describeFieldShape(kind, isMultiple, granularity),
-		)
-	}
-
-	if kind == approval.FieldTable && prev.tableSignature != nil && peekTableSignature(node) != *prev.tableSignature {
-		return errCrossDeviceTableMismatch(node.Key)
-	}
-
-	return nil
 }
 
 // indexDataSources keys the form-global data sources by id for ref resolution.

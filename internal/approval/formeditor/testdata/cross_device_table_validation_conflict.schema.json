@@ -1,0 +1,43 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "Sub-pc",
+          "type": "subform",
+          "variant": "table",
+          "key": "items",
+          "label": "明细",
+          "rows": {
+            "mode": "dynamic",
+            "min": 1,
+            "max": 5
+          },
+          "template": [
+            { "id": "pc-a", "type": "textfield", "key": "note", "label": "说明" }
+          ]
+        }
+      ]
+    },
+    "mobile": {
+      "children": [
+        {
+          "id": "Sub-m",
+          "type": "subform",
+          "variant": "stack",
+          "key": "items",
+          "label": "明细",
+          "rows": {
+            "mode": "dynamic",
+            "min": 2,
+            "max": 5
+          },
+          "template": [
+            { "id": "m-a", "type": "textfield", "key": "note", "label": "说明" }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,187 @@
+{
+  "version": 2,
+  "dataSources": [
+    {
+      "id": "ds_cities",
+      "kind": "static",
+      "name": "城市",
+      "options": [
+        { "label": "北京", "value": "bj" },
+        { "label": "上海", "value": "sh" }
+      ]
+    }
+  ],
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "P1",
+          "type": "textfield",
+          "key": "title",
+          "label": "PC 标题",
+          "placeholder": "请输入 PC 标题",
+          "validate": {
+            "required": true,
+            "maxLength": 50,
+            "message": "PC 提示语"
+          }
+        },
+        {
+          "id": "P2",
+          "type": "select",
+          "key": "city",
+          "label": "PC 城市",
+          "placeholder": "请选择城市",
+          "dataSource": {
+            "kind": "static",
+            "options": [
+              { "label": "北京", "value": "bj" },
+              { "label": "上海", "value": "sh" }
+            ]
+          }
+        },
+        {
+          "id": "P3",
+          "type": "subform",
+          "variant": "table",
+          "key": "checks",
+          "label": "PC 自查表",
+          "rows": {
+            "mode": "fixed",
+            "itemKey": "item",
+            "headerLabel": "PC 检查项",
+            "headerWidth": 240,
+            "required": true,
+            "source": {
+              "kind": "static",
+              "options": [{ "label": "项1", "value": "1" }]
+            }
+          },
+          "template": [
+            {
+              "id": "P3-C1",
+              "type": "select",
+              "key": "result",
+              "label": "PC 结果",
+              "dataSource": {
+                "kind": "static",
+                "options": [{ "label": "合格", "value": "ok" }]
+              }
+            },
+            {
+              "id": "P3-C2",
+              "type": "textfield",
+              "key": "remark",
+              "label": "PC 备注",
+              "placeholder": "PC 填写备注"
+            }
+          ]
+        },
+        {
+          "id": "P4",
+          "type": "subform",
+          "variant": "table",
+          "key": "lines",
+          "label": "PC 明细",
+          "rows": {
+            "mode": "dynamic",
+            "min": 1,
+            "max": 5,
+            "addLabel": "添加明细"
+          },
+          "template": [
+            {
+              "id": "P4-C1",
+              "type": "number",
+              "key": "qty",
+              "label": "PC 数量"
+            }
+          ]
+        }
+      ]
+    },
+    "mobile": {
+      "children": [
+        {
+          "id": "M3",
+          "type": "subform",
+          "variant": "stack",
+          "key": "checks",
+          "label": "手机自查表",
+          "rows": {
+            "mode": "fixed",
+            "itemKey": "item",
+            "headerLabel": "手机检查项",
+            "required": true,
+            "source": {
+              "kind": "static",
+              "options": [{ "label": "项1", "value": "1" }]
+            }
+          },
+          "template": [
+            {
+              "id": "M3-C2",
+              "type": "textfield",
+              "key": "remark",
+              "label": "手机备注",
+              "placeholder": "手机填写"
+            },
+            {
+              "id": "M3-C1",
+              "type": "radio",
+              "key": "result",
+              "label": "手机结果",
+              "dataSource": {
+                "kind": "static",
+                "options": [{ "label": "合格", "value": "ok" }]
+              }
+            }
+          ]
+        },
+        {
+          "id": "M2",
+          "type": "radio",
+          "key": "city",
+          "label": "手机城市",
+          "dataSource": {
+            "kind": "ref",
+            "dataSourceId": "ds_cities"
+          }
+        },
+        {
+          "id": "M1",
+          "type": "textfield",
+          "key": "title",
+          "label": "手机标题",
+          "placeholder": "填写标题",
+          "validate": {
+            "required": true,
+            "maxLength": 50,
+            "message": "手机提示语"
+          }
+        },
+        {
+          "id": "M4",
+          "type": "subform",
+          "variant": "stack",
+          "key": "lines",
+          "label": "手机明细",
+          "rows": {
+            "mode": "dynamic",
+            "min": 1,
+            "max": 5,
+            "addLabel": "新增"
+          },
+          "template": [
+            {
+              "id": "M4-C1",
+              "type": "number",
+              "key": "qty",
+              "label": "手机数量"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

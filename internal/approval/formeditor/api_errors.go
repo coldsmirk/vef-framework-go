@@ -77,9 +77,9 @@ func errTableFixedRowsSourceInvalid(path string) error {
 	return projectionError(i18n.T("approval_form_table_fixed_rows_source_invalid", map[string]any{"field": path}))
 }
 
-// errCrossDeviceKindMismatch rejects a key that projects to different kinds or
-// value multiplicities on pc and mobile — the losing device would submit a
-// value the definition rejects.
+// errCrossDeviceKindMismatch rejects a key that projects to different kinds,
+// selection multiplicities, or date granularities on pc and mobile — the losing
+// device would submit a value shape the definition rejects.
 func errCrossDeviceKindMismatch(path, pc, mobile string) error {
 	return projectionError(i18n.T("approval_form_cross_device_kind_mismatch", map[string]any{
 		"field":  path,
@@ -88,10 +88,42 @@ func errCrossDeviceKindMismatch(path, pc, mobile string) error {
 	}))
 }
 
-// errCrossDeviceTableMismatch rejects a detail table whose column set differs
-// across pc and mobile — one device would submit rows with undefined columns.
+// errCrossDeviceOptionsMismatch rejects a field whose projected option source
+// (static option list, code set, or remote request/mapping) differs across pc
+// and mobile.
+func errCrossDeviceOptionsMismatch(path string) error {
+	return projectionError(i18n.T("approval_form_cross_device_options_mismatch", map[string]any{"field": path}))
+}
+
+// errCrossDeviceValidationMismatch rejects a field or table whose projected
+// validation constraints (required, length/value bounds, pattern) differ across
+// pc and mobile.
+func errCrossDeviceValidationMismatch(path string) error {
+	return projectionError(i18n.T("approval_form_cross_device_validation_mismatch", map[string]any{"field": path}))
+}
+
+// errCrossDeviceStorageMismatch rejects a field whose projected storage column
+// type or decimal scale differs across pc and mobile.
+func errCrossDeviceStorageMismatch(path, pc, mobile string) error {
+	return projectionError(i18n.T("approval_form_cross_device_storage_mismatch", map[string]any{
+		"field":  path,
+		"pc":     pc,
+		"mobile": mobile,
+	}))
+}
+
+// errCrossDeviceTableMismatch rejects a detail table whose template column set
+// differs across pc and mobile — one device would submit rows with undefined
+// columns.
 func errCrossDeviceTableMismatch(path string) error {
 	return projectionError(i18n.T("approval_form_cross_device_table_mismatch", map[string]any{"field": path}))
+}
+
+// errCrossDeviceTableRowsMismatch rejects a detail table whose row mode
+// (dynamic vs fixed) or fixed-row contract (itemKey, static items, or source)
+// differs across pc and mobile.
+func errCrossDeviceTableRowsMismatch(path string) error {
+	return projectionError(i18n.T("approval_form_cross_device_table_rows_mismatch", map[string]any{"field": path}))
 }
 
 // errSchemaMalformed rejects a form schema that is not valid JSON.

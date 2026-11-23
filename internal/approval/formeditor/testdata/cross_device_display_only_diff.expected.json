@@ -1,0 +1,80 @@
+[
+  {
+    "key": "title",
+    "kind": "input",
+    "label": "PC 标题",
+    "placeholder": "请输入 PC 标题",
+    "isRequired": true,
+    "validation": {
+      "maxLength": 50,
+      "message": "PC 提示语"
+    },
+    "sortOrder": 0,
+    "columnType": "string"
+  },
+  {
+    "key": "city",
+    "kind": "select",
+    "label": "PC 城市",
+    "placeholder": "请选择城市",
+    "options": [
+      { "label": "北京", "value": "bj" },
+      { "label": "上海", "value": "sh" }
+    ],
+    "sortOrder": 1,
+    "columnType": "text"
+  },
+  {
+    "key": "checks",
+    "kind": "table",
+    "label": "PC 自查表",
+    "isRequired": true,
+    "sortOrder": 2,
+    "columns": [
+      {
+        "key": "result",
+        "kind": "select",
+        "label": "PC 结果",
+        "options": [
+          { "label": "合格", "value": "ok" }
+        ],
+        "sortOrder": 0,
+        "columnType": "text"
+      },
+      {
+        "key": "remark",
+        "kind": "input",
+        "label": "PC 备注",
+        "placeholder": "PC 填写备注",
+        "sortOrder": 1,
+        "columnType": "text"
+      }
+    ],
+    "fixedRows": {
+      "itemKey": "item",
+      "headerLabel": "PC 检查项",
+      "items": [
+        { "label": "项1", "value": "1" }
+      ]
+    }
+  },
+  {
+    "key": "lines",
+    "kind": "table",
+    "label": "PC 明细",
+    "isRequired": true,
+    "validation": {
+      "minLength": 1,
+      "maxLength": 5
+    },
+    "sortOrder": 3,
+    "columns": [
+      {
+        "key": "qty",
+        "kind": "number",
+        "label": "PC 数量",
+        "sortOrder": 0
+      }
+    ]
+  }
+]

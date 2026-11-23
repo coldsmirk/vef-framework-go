@@ -1,0 +1,37 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "P1",
+          "type": "radio",
+          "key": "level",
+          "label": "级别",
+          "dataSource": {
+            "kind": "static",
+            "options": [
+              { "label": "高", "value": "high" }
+            ]
+          }
+        }
+      ]
+    },
+    "mobile": {
+      "children": [
+        {
+          "id": "M1",
+          "type": "radio",
+          "key": "level",
+          "label": "级别",
+          "dataSource": {
+            "kind": "static",
+            "options": [
+              { "label": "紧急", "value": "high" }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
