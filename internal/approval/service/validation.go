@@ -438,7 +438,9 @@ func validateFixedTableRowItem(field approval.FormFieldDefinition, row map[strin
 
 	if len(fixed.Items) > 0 {
 		expected := fixed.Items[rowIndex]
-		if itemValue != fmt.Sprint(expected.Value) || itemLabel != expected.Label {
+		expectedValue, expectedOk := shared.FormatFixedRowItemValue(expected.Value)
+
+		if !expectedOk || itemValue != expectedValue || itemLabel != expected.Label {
 			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldTableCell, map[string]any{
 				"field": fieldLabel(field), "row": rowIndex + 1,
 				"message": i18n.T(shared.ErrMessageFormFieldFixedRowItemMismatch, map[string]any{"field": headerName}),
@@ -484,7 +486,7 @@ func extractFixedRowItem(row map[string]any, itemKey string) (value, label strin
 		return "", "", false
 	}
 
-	formattedVal, valOk := formatFixedRowItemValue(rawVal)
+	formattedVal, valOk := shared.FormatFixedRowItemValue(rawVal)
 	labelStr, labelOk := rawLabel.(string)
 
 	if !valOk || !labelOk {
@@ -492,38 +494,6 @@ func extractFixedRowItem(row map[string]any, itemKey string) (value, label strin
 	}
 
 	return formattedVal, labelStr, true
-}
-
-func formatFixedRowItemValue(raw any) (string, bool) {
-	switch v := raw.(type) {
-	case string:
-		if strings.TrimSpace(v) == "" {
-			return "", false
-		}
-
-		return v, true
-
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return fmt.Sprint(v), true
-
-	case float32:
-		f := float64(v)
-		if math.IsNaN(f) || math.IsInf(f, 0) {
-			return "", false
-		}
-
-		return fmt.Sprint(v), true
-
-	case float64:
-		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return "", false
-		}
-
-		return fmt.Sprint(v), true
-
-	default:
-		return "", false
-	}
 }
 
 // validateTableRow applies each column definition to one row, mirroring the

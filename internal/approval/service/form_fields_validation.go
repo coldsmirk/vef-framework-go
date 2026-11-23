@@ -8,6 +8,7 @@ import (
 	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 )
 
 // ValidateFormFields validates the structural integrity of the parsed form
@@ -148,7 +149,7 @@ func validateTableFixedRows(field approval.FormFieldDefinition, columnKeys colle
 
 	seenValues := collections.NewHashSetWithCapacity[string](len(fixed.Items))
 	for _, item := range fixed.Items {
-		val, ok := formatFixedRowItemValue(item.Value)
+		val, ok := shared.FormatFixedRowItemValue(item.Value)
 		if !ok {
 			return fmt.Errorf("%w: table %q", errFixedRowsInvalidItem, field.Key)
 		}

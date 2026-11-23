@@ -1,13 +1,12 @@
 package formeditor
 
 import (
-	"fmt"
-	"math"
 	"strings"
 
 	"github.com/coldsmirk/go-collections"
 
 	"github.com/coldsmirk/vef-framework-go/approval"
+	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 )
 
 // kindByType maps a designer widget type to the approval field kind whose
@@ -310,45 +309,13 @@ func isValidStaticFixedRowItems(items []approval.FieldOption) bool {
 
 	seen := collections.NewHashSetWithCapacity[string](len(items))
 	for _, item := range items {
-		val, ok := formatFixedItemValue(item.Value)
+		val, ok := shared.FormatFixedRowItemValue(item.Value)
 		if !ok || !seen.Add(val) {
 			return false
 		}
 	}
 
 	return true
-}
-
-func formatFixedItemValue(raw any) (string, bool) {
-	switch v := raw.(type) {
-	case string:
-		if strings.TrimSpace(v) == "" {
-			return "", false
-		}
-
-		return v, true
-
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return fmt.Sprint(v), true
-
-	case float32:
-		f := float64(v)
-		if math.IsNaN(f) || math.IsInf(f, 0) {
-			return "", false
-		}
-
-		return fmt.Sprint(v), true
-
-	case float64:
-		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return "", false
-		}
-
-		return fmt.Sprint(v), true
-
-	default:
-		return "", false
-	}
 }
 
 // resolveOptionSource collapses a selection field's option source into exactly

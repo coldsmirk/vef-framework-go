@@ -66,14 +66,13 @@ type richBlock struct {
 }
 
 // richSubformRows mirrors the form-editor SubformRows discriminated union
-// (`{ mode: "dynamic", min, max, addLabel }` | `{ mode: "fixed", source, itemKey, headerLabel, required }`).
-// Visual-only properties (headerWidth) do not participate in the approval contract
-// and are ignored at unmarshal time.
+// (`{ mode: "dynamic", min, max }` | `{ mode: "fixed", source, itemKey, headerLabel, required }`).
+// Visual-only properties (addLabel, headerWidth) do not participate in the approval
+// contract and are ignored at unmarshal time.
 type richSubformRows struct {
 	Mode        string            `json:"mode"`
 	Min         *int              `json:"min"`
 	Max         *int              `json:"max"`
-	AddLabel    string            `json:"addLabel"`
 	Source      *richOptionSource `json:"source"`
 	ItemKey     string            `json:"itemKey"`
 	HeaderLabel string            `json:"headerLabel"`

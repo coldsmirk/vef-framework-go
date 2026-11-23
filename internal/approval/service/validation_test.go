@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -403,6 +404,34 @@ func TestValidateFormDataFixedRowsTable(t *testing.T) {
 			},
 		})
 		assert.NoError(t, err, "rows matching frozen static items in order, value and label must validate")
+	})
+
+	t.Run("StaticAcceptsJSONNumberValue", func(t *testing.T) {
+		err := svc.ValidateFormData(t.Context(), staticFields, map[string]any{
+			"checks": []any{
+				row("c1", "虚构手术收费（8分）", "no", "张三"),
+				row(json.Number("2"), "使用非卫生技术人员（10分）", "yes", "李四"),
+			},
+		})
+		assert.NoError(t, err, "json.Number values decoded with UseNumber must match numeric static items")
+
+		err = svc.ValidateFormData(t.Context(), staticFields, map[string]any{
+			"checks": []any{
+				row("c1", "虚构手术收费（8分）", "no", "张三"),
+				row(json.Number("2.0"), "使用非卫生技术人员（10分）", "yes", "李四"),
+			},
+		})
+		assert.NoError(t, err, "json.Number whole-number float representation must match numeric static items")
+	})
+
+	t.Run("RemoteAcceptsJSONNumberValue", func(t *testing.T) {
+		err := svc.ValidateFormData(t.Context(), remoteFields, map[string]any{
+			"checks": []any{
+				row(json.Number("101"), "接口项一", "no", "王五"),
+				row(json.Number("102"), "接口项二", "yes", "赵六"),
+			},
+		})
+		assert.NoError(t, err, "remote fixed rows with unique json.Number values must validate")
 	})
 
 	t.Run("StaticRejectsWrongRowCount", func(t *testing.T) {
