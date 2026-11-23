@@ -11,12 +11,6 @@ import (
 	"github.com/coldsmirk/vef-framework-go/internal/approval/shared"
 )
 
-// Condition subjects resolved from the evaluation context instead of form data.
-const (
-	subjectApplicantID           = "applicantId"
-	subjectApplicantDepartmentID = "applicantDepartmentId"
-)
-
 // NewFieldConditionEvaluator creates the evaluator for structured field
 // conditions. Aggregators extend it with detail-table folds (sum / count /
 // avg and any host-registered kind); an evaluator built without them only
@@ -164,9 +158,9 @@ func extractNumericColumn(rows []map[string]any, column string) ([]float64, erro
 // resolves against form data alone (see evaluateAggregate).
 func resolveSubjectValue(subject string, ec *approval.EvaluationContext) any {
 	switch subject {
-	case subjectApplicantID:
+	case approval.SubjectApplicantID:
 		return ec.ApplicantID
-	case subjectApplicantDepartmentID:
+	case approval.SubjectApplicantDepartmentID:
 		if ec.ApplicantDepartmentID == nil {
 			return nil
 		}

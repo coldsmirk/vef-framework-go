@@ -181,6 +181,7 @@
   "approval_void_request_pending": "已有作废申请正在审批中",
   "approval_flow_filters_conflict": "formOnly 与 businessKind 不能同时使用。",
   "approval_idempotency_conflict": "此幂等键已用于其他提交。",
+  "approval_invalid_condition_operator": "条件运算符不适用于该字段类型",
   "approval_idempotency_key_invalid": "幂等键最多包含 128 个字符，且不能包含空字符。",
   "approval_void_policy_invalid": "作废策略或作废申请流程无效",
   "approval_annotation_not_found": "批注不存在或不可见",

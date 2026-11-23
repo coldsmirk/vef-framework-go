@@ -773,3 +773,72 @@ func (s *DeployFlowTestSuite) TestBusinessCatalog() {
 	_, err = h.Handle(s.ctx, cmd)
 	s.ErrorIs(err, approval.ErrInvalidTitleTemplate, "An ordinary flow must reject unknown title fields too")
 }
+
+func (s *DeployFlowTestSuite) TestDeployConditionOperatorValidation() {
+	conditionFlow := func(cond approval.Condition) approval.FlowDefinition {
+		b1 := "b1"
+		bd := "bd"
+
+		return approval.FlowDefinition{
+			Nodes: []approval.NodeDefinition{
+				{ID: "start-1", Kind: approval.NodeStart, Data: mustMarshal(approval.StartNodeData{Name: "开始"})},
+				{
+					ID:   "cond-1",
+					Kind: approval.NodeCondition,
+					Data: mustMarshal(approval.ConditionNodeData{
+						Name: "分支",
+						Branches: []approval.ConditionBranch{
+							{
+								ID:              b1,
+								Label:           "命中",
+								Priority:        1,
+								ConditionGroups: []approval.ConditionGroup{{Conditions: []approval.Condition{cond}}},
+							},
+							{ID: bd, Label: "默认", Priority: 99, IsDefault: true},
+						},
+					}),
+				},
+				{ID: "end-1", Kind: approval.NodeEnd, Data: mustMarshal(approval.EndNodeData{Name: "结束"})},
+			},
+			Edges: []approval.EdgeDefinition{
+				{ID: "e1", Source: "start-1", Target: "cond-1"},
+				{ID: "e2", Source: "cond-1", Target: "end-1", SourceHandle: &b1},
+				{ID: "e3", Source: "cond-1", Target: "end-1", SourceHandle: &bd},
+			},
+		}
+	}
+
+	formSchema := formEditorSchemaJSON(s.T(),
+		formEditorWidget{Type: "multi-select", Key: "skills", Label: "技能"},
+	)
+
+	s.Run("RejectsEqualsOnMultiSelectField", func() {
+		_, err := s.handler.Handle(s.ctx, command.DeployFlowCmd{
+			FlowID:         s.flowID,
+			FlowDefinition: conditionFlow(approval.Condition{Kind: approval.ConditionField, Subject: "skills", Operator: approval.OperatorEquals, Value: "go"}),
+			FormSchema:     formSchema,
+		})
+		s.Require().Error(err, "eq on a multi-select field must fail deploy")
+		s.Assert().ErrorIs(err, approval.ErrInvalidConditionOperator, "Must surface ErrInvalidConditionOperator")
+	})
+
+	s.Run("AcceptsContainsOnMultiSelectField", func() {
+		version, err := s.handler.Handle(s.ctx, command.DeployFlowCmd{
+			FlowID:         s.flowID,
+			FlowDefinition: conditionFlow(approval.Condition{Kind: approval.ConditionField, Subject: "skills", Operator: approval.OperatorContains, Value: "go"}),
+			FormSchema:     formSchema,
+		})
+		s.Require().NoError(err, "contains on a multi-select field must deploy cleanly")
+		s.Assert().NotNil(version, "Should return deployed version")
+	})
+
+	s.Run("SkipsHostGlobalSubject", func() {
+		version, err := s.handler.Handle(s.ctx, command.DeployFlowCmd{
+			FlowID:         s.flowID,
+			FlowDefinition: conditionFlow(approval.Condition{Kind: approval.ConditionField, Subject: "tenantTier", Operator: approval.OperatorEquals, Value: "vip"}),
+			FormSchema:     formSchema,
+		})
+		s.Require().NoError(err, "A host global subject absent from form_fields must not be rejected")
+		s.Assert().NotNil(version, "Should return deployed version")
+	})
+}

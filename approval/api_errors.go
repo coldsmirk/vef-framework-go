@@ -47,12 +47,13 @@ const (
 	ErrCodeAnnotationAudienceInvalid = 40034
 	ErrCodeAnnotationNotAllowed      = 40035
 
-	ErrCodeVoidNotAllowed      = 40036
-	ErrCodeInstanceNotVoidable = 40037
-	ErrCodeVoidBlocked         = 40038
-	ErrCodeVoidRequestPending  = 40039
-	ErrCodeVoidPolicyInvalid   = 40040
-	ErrCodeIdempotencyConflict = 40041
+	ErrCodeVoidNotAllowed           = 40036
+	ErrCodeInstanceNotVoidable      = 40037
+	ErrCodeVoidBlocked              = 40038
+	ErrCodeVoidRequestPending       = 40039
+	ErrCodeVoidPolicyInvalid        = 40040
+	ErrCodeIdempotencyConflict      = 40041
+	ErrCodeInvalidConditionOperator = 40042
 
 	ErrCodeInstanceNotFound          = 40101
 	ErrCodeInstanceCompleted         = 40102
@@ -165,6 +166,14 @@ var (
 	ErrVoidBlocked               = result.Err(i18n.T("approval_void_blocked"), result.WithCode(ErrCodeVoidBlocked))
 	ErrVoidRequestPending        = result.Err(i18n.T("approval_void_request_pending"), result.WithCode(ErrCodeVoidRequestPending))
 	ErrIdempotencyConflict       = result.Err(i18n.T("approval_idempotency_conflict"), result.WithCode(ErrCodeIdempotencyConflict))
+	// ErrInvalidConditionOperator rejects a field condition whose operator does
+	// not match the target form field's kind or multiplicity (for example eq
+	// against a multi-select field, which would compare the slice via fmt.Sprint
+	// and silently misroute).
+	ErrInvalidConditionOperator = result.Err(
+		i18n.T("approval_invalid_condition_operator"),
+		result.WithCode(ErrCodeInvalidConditionOperator),
+	)
 	ErrVoidPolicyInvalid         = result.Err(i18n.T("approval_void_policy_invalid"), result.WithCode(ErrCodeVoidPolicyInvalid))
 	ErrAnnotationNotFound        = result.Err(i18n.T("approval_annotation_not_found"), result.WithCode(ErrCodeAnnotationNotFound))
 	ErrAnnotationNotEditable     = result.Err(i18n.T("approval_annotation_not_editable"), result.WithCode(ErrCodeAnnotationNotEditable))

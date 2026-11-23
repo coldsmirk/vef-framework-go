@@ -19,7 +19,7 @@ import (
 //
 // The structural per-node checks (enum validity of every other node field)
 // live in validateNodeConfig; this pass adds what only the form schema can
-// answer, so — like ValidateConditionAggregates — it runs at deploy, the one
+// answer, so — like ValidateConditionFields — it runs at deploy, the one
 // place the flow definition and the form fields meet.
 func (*FlowDefinitionService) ValidateFieldPermissions(nodeData map[string]approval.NodeData, fields []approval.FormFieldDefinition) error {
 	fieldKeys := formFieldKeySet(fields)

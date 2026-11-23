@@ -190,9 +190,15 @@ func (h *DeployFlowHandler) validate(ctx context.Context, cmd DeployFlowCmd, flo
 		return nil, err
 	}
 
-	// Aggregate conditions reference form fields, so they can only be fully
-	// validated where the flow definition and form fields meet.
-	if err := h.flowDefSvc.ValidateConditionAggregates(parsedNodeData, fields); err != nil {
+	// Field conditions reference form fields (aggregates over tables and scalar
+	// operator compatibility against each field's kind and multiplicity), so
+	// they can only be fully validated where the flow definition and form
+	// fields meet.
+	if err := h.flowDefSvc.ValidateConditionFields(parsedNodeData, fields); err != nil {
+		if _, ok := result.AsErr(err); ok {
+			return nil, err
+		}
+
 		return nil, fmt.Errorf("%w: %w", approval.ErrInvalidFlowDesign, err)
 	}
 

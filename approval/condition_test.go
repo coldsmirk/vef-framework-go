@@ -25,3 +25,122 @@ func TestAggregateKindFoldsColumn(t *testing.T) {
 	assert.True(t, approval.AggregateKind("median").FoldsColumn(),
 		"unknown kinds default to column-folding — the safe shape for host aggregates")
 }
+
+func TestConditionOperatorsForField(t *testing.T) {
+	cases := []struct {
+		name  string
+		field approval.FormFieldDefinition
+		want  []approval.ConditionOperator
+	}{
+		{
+			name:  "Input",
+			field: approval.FormFieldDefinition{Kind: approval.FieldInput},
+			want: []approval.ConditionOperator{
+				approval.OperatorEquals, approval.OperatorNotEquals,
+				approval.OperatorContains, approval.OperatorNotContains, approval.OperatorStartsWith, approval.OperatorEndsWith,
+				approval.OperatorIn, approval.OperatorNotIn,
+				approval.OperatorIsEmpty, approval.OperatorIsNotEmpty,
+			},
+		},
+		{
+			name:  "Textarea",
+			field: approval.FormFieldDefinition{Kind: approval.FieldTextarea},
+			want: []approval.ConditionOperator{
+				approval.OperatorEquals, approval.OperatorNotEquals,
+				approval.OperatorContains, approval.OperatorNotContains, approval.OperatorStartsWith, approval.OperatorEndsWith,
+				approval.OperatorIsEmpty, approval.OperatorIsNotEmpty,
+			},
+		},
+		{
+			name:  "Number",
+			field: approval.FormFieldDefinition{Kind: approval.FieldNumber},
+			want: []approval.ConditionOperator{
+				approval.OperatorEquals, approval.OperatorNotEquals,
+				approval.OperatorGreater, approval.OperatorGreaterOrEq, approval.OperatorLess, approval.OperatorLessOrEq,
+				approval.OperatorIsEmpty, approval.OperatorIsNotEmpty,
+			},
+		},
+		{
+			name:  "Date",
+			field: approval.FormFieldDefinition{Kind: approval.FieldDate},
+			want: []approval.ConditionOperator{
+				approval.OperatorEquals, approval.OperatorNotEquals,
+				approval.OperatorGreater, approval.OperatorGreaterOrEq, approval.OperatorLess, approval.OperatorLessOrEq,
+				approval.OperatorIsEmpty, approval.OperatorIsNotEmpty,
+			},
+		},
+		{
+			name:  "SingleSelect",
+			field: approval.FormFieldDefinition{Kind: approval.FieldSelect},
+			want: []approval.ConditionOperator{
+				approval.OperatorEquals, approval.OperatorNotEquals,
+				approval.OperatorIn, approval.OperatorNotIn,
+				approval.OperatorIsEmpty, approval.OperatorIsNotEmpty,
+			},
+		},
+		{
+			name:  "MultiSelect",
+			field: approval.FormFieldDefinition{Kind: approval.FieldSelect, IsMultiple: true},
+			want: []approval.ConditionOperator{
+				approval.OperatorContains, approval.OperatorNotContains,
+				approval.OperatorIsEmpty, approval.OperatorIsNotEmpty,
+			},
+		},
+		{
+			name:  "Upload",
+			field: approval.FormFieldDefinition{Kind: approval.FieldUpload},
+			want: []approval.ConditionOperator{
+				approval.OperatorIsEmpty, approval.OperatorIsNotEmpty,
+			},
+		},
+		{
+			name:  "Table",
+			field: approval.FormFieldDefinition{Kind: approval.FieldTable},
+			want:  nil,
+		},
+		{
+			name:  "UnknownKind",
+			field: approval.FormFieldDefinition{Kind: approval.FieldKind("unknown")},
+			want:  nil,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := approval.ConditionOperatorsForField(tc.field)
+			assert.Equal(t, tc.want, got, "operators for %s must match the contract", tc.name)
+
+			for _, op := range tc.want {
+				assert.True(t, approval.IsOperatorValidForField(tc.field, op),
+					"operator %q must be accepted for %s", op, tc.name)
+			}
+		})
+	}
+
+	t.Run("RejectsMismatchedOperators", func(t *testing.T) {
+		multi := approval.FormFieldDefinition{Kind: approval.FieldSelect, IsMultiple: true}
+		for _, op := range []approval.ConditionOperator{
+			approval.OperatorEquals, approval.OperatorNotEquals,
+			approval.OperatorIn, approval.OperatorNotIn,
+			approval.OperatorGreater,
+		} {
+			assert.False(t, approval.IsOperatorValidForField(multi, op),
+				"multi-select must reject %q", op)
+		}
+
+		single := approval.FormFieldDefinition{Kind: approval.FieldSelect}
+		assert.False(t, approval.IsOperatorValidForField(single, approval.OperatorContains),
+			"single-select must reject contains")
+		assert.False(t, approval.IsOperatorValidForField(single, approval.OperatorGreater),
+			"single-select must reject ordering operators")
+	})
+
+	t.Run("ReturnsDefensiveCopy", func(t *testing.T) {
+		multi := approval.FormFieldDefinition{Kind: approval.FieldSelect, IsMultiple: true}
+		ops := approval.ConditionOperatorsForField(multi)
+		ops[0] = approval.OperatorEquals
+
+		assert.Equal(t, approval.OperatorContains, approval.ConditionOperatorsForField(multi)[0],
+			"mutating the returned slice must not alter the shared contract table")
+	})
+}

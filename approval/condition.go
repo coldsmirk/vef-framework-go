@@ -2,8 +2,17 @@ package approval
 
 import (
 	"context"
+	"slices"
 
 	"github.com/coldsmirk/vef-framework-go/security"
+)
+
+// Built-in condition subjects resolved from the instance context before host
+// globals and form data. They shadow any same-named form field on scalar field
+// conditions.
+const (
+	SubjectApplicantID           = "applicantId"
+	SubjectApplicantDepartmentID = "applicantDepartmentId"
 )
 
 // ConditionOperator enumerates the comparison operators a field condition may
@@ -41,6 +50,85 @@ func (o ConditionOperator) IsValid() bool {
 	default:
 		return false
 	}
+}
+
+// fieldConditionOperators maps each FieldKind to the condition operators valid
+// for a scalar (single-valued) field condition targeting that kind. Lockstep
+// twin of OPERATORS_BY_KIND in @vef-framework-react/approval-flow-editor
+// (src/shared/condition-operators.ts) — any change here must land in both repos.
+var fieldConditionOperators = map[FieldKind][]ConditionOperator{
+	FieldInput: {
+		OperatorEquals, OperatorNotEquals,
+		OperatorContains, OperatorNotContains, OperatorStartsWith, OperatorEndsWith,
+		OperatorIn, OperatorNotIn,
+		OperatorIsEmpty, OperatorIsNotEmpty,
+	},
+	FieldTextarea: {
+		OperatorEquals, OperatorNotEquals,
+		OperatorContains, OperatorNotContains, OperatorStartsWith, OperatorEndsWith,
+		OperatorIsEmpty, OperatorIsNotEmpty,
+	},
+	FieldNumber: {
+		OperatorEquals, OperatorNotEquals,
+		OperatorGreater, OperatorGreaterOrEq, OperatorLess, OperatorLessOrEq,
+		OperatorIsEmpty, OperatorIsNotEmpty,
+	},
+	FieldDate: {
+		OperatorEquals, OperatorNotEquals,
+		OperatorGreater, OperatorGreaterOrEq, OperatorLess, OperatorLessOrEq,
+		OperatorIsEmpty, OperatorIsNotEmpty,
+	},
+	FieldSelect: {
+		OperatorEquals, OperatorNotEquals,
+		OperatorIn, OperatorNotIn,
+		OperatorIsEmpty, OperatorIsNotEmpty,
+	},
+	FieldUpload: {
+		OperatorIsEmpty, OperatorIsNotEmpty,
+	},
+	// Table subjects always compare through an aggregate (see
+	// validateConditionAggregateShape); scalar comparison has no valid operators.
+	FieldTable: nil,
+}
+
+// multiSelectConditionOperators is the condition operator set for a multi-value
+// selection field (Kind == FieldSelect && IsMultiple). Its runtime value is a
+// slice of chosen option values, so element membership (contains / not_contains)
+// replaces scalar equality / set membership (eq / ne / in / not_in), which
+// would otherwise format the slice via fmt.Sprint and silently misroute.
+// Lockstep twin of MULTI_SELECT_OPERATORS in
+// @vef-framework-react/approval-flow-editor (src/shared/condition-operators.ts).
+var multiSelectConditionOperators = []ConditionOperator{
+	OperatorContains, OperatorNotContains,
+	OperatorIsEmpty, OperatorIsNotEmpty,
+}
+
+// ConditionOperatorsForField returns the condition operators valid for a scalar
+// field condition targeting field (by its Kind and IsMultiple shape). Returns a
+// fresh copy so callers cannot mutate the contract table, and nil for an
+// unknown kind or a table field (which requires an aggregate condition).
+//
+// Lockstep twin of getOperatorsForField in
+// @vef-framework-react/approval-flow-editor (src/shared/condition-operators.ts).
+func ConditionOperatorsForField(field FormFieldDefinition) []ConditionOperator {
+	return slices.Clone(conditionOperatorsForField(field))
+}
+
+// IsOperatorValidForField reports whether operator is valid for a scalar field
+// condition targeting field.
+//
+// Lockstep twin of isOperatorValidForField in
+// @vef-framework-react/approval-flow-editor (src/shared/condition-operators.ts).
+func IsOperatorValidForField(field FormFieldDefinition, operator ConditionOperator) bool {
+	return slices.Contains(conditionOperatorsForField(field), operator)
+}
+
+func conditionOperatorsForField(field FormFieldDefinition) []ConditionOperator {
+	if field.Kind == FieldSelect && field.IsMultiple {
+		return multiSelectConditionOperators
+	}
+
+	return fieldConditionOperators[field.Kind]
 }
 
 // AggregateKind enumerates the aggregations a field condition may apply

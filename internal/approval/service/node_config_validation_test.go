@@ -344,7 +344,7 @@ func TestValidateNodeConfig(t *testing.T) {
 
 		t.Run("AcceptsUnknownKindStructurally", func(t *testing.T) {
 			// Kind registration is a service-level concern checked by
-			// ValidateConditionAggregates against the boot-registered set — a
+			// ValidateConditionFields against the boot-registered set — a
 			// closed gate here would break host-supplied aggregates.
 			cond := approval.Condition{Kind: approval.ConditionField, Subject: "items", Aggregate: "median", Column: "qty", Operator: approval.OperatorGreater, Value: 1}
 			assert.NoError(t, NewFlowDefinitionService().validateNodeConfig("n1", aggBranches(cond)),

@@ -290,14 +290,14 @@ func validateCondition(nodeID, branchID string, cond approval.Condition) error {
 // from AggregateKind.FoldsColumn, so a new kind declares its shape once).
 // Whether the kind is registered, the subject is a table field, and the
 // column a numeric column all need service state or the form schema and are
-// checked by ValidateConditionAggregates at deploy.
+// checked by ValidateConditionFields at deploy.
 func validateConditionAggregateShape(nodeID, branchID string, cond approval.Condition) error {
 	if cond.Aggregate == "" {
 		return nil
 	}
 
 	// Whether the kind is REGISTERED is a service-level concern checked by
-	// ValidateConditionAggregates against the boot-registered aggregator set
+	// ValidateConditionFields against the boot-registered aggregator set
 	// — a closed enum gate here would break host-supplied aggregates.
 	switch cond.Operator {
 	case approval.OperatorEquals, approval.OperatorNotEquals,
