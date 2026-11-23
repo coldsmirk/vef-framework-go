@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": { "children": [ { "id": "P1", "type": "select", "key": "tags", "label": "标签" } ] },
+    "mobile": { "children": [ { "id": "M1", "type": "multi-select", "key": "tags", "label": "标签" } ] }
+  }
+}

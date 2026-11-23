@@ -11,7 +11,8 @@
         { "id": "F5", "type": "datetime", "key": "moment", "label": "时刻" },
         { "id": "F6", "type": "checkbox-group", "key": "tags", "label": "标签", "dataSource": { "kind": "static", "options": [{ "label": "A", "value": "a" }] } },
         { "id": "F8", "type": "upload", "key": "attachment", "label": "附件" },
-        { "id": "F9", "type": "upload", "key": "photos", "label": "现场照片", "maxCount": 5 }
+        { "id": "F9", "type": "upload", "key": "photos", "label": "现场照片", "maxCount": 5 },
+        { "id": "F10", "type": "multi-select", "key": "skills", "label": "技能", "maxCount": 3, "dataSource": { "kind": "static", "options": [{ "label": "Go", "value": "go" }] } }
       ]
     }
   }

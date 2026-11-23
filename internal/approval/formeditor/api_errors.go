@@ -46,13 +46,14 @@ func errTableColumnsEmpty(path string) error {
 	return projectionError(i18n.T("approval_form_table_columns_empty", map[string]any{"field": path}))
 }
 
-// errCrossDeviceKindMismatch rejects a key that projects to different kinds on
-// pc and mobile — the losing device would submit a value the definition rejects.
-func errCrossDeviceKindMismatch(path string, pc, mobile approval.FieldKind) error {
+// errCrossDeviceKindMismatch rejects a key that projects to different kinds or
+// value multiplicities on pc and mobile — the losing device would submit a
+// value the definition rejects.
+func errCrossDeviceKindMismatch(path, pc, mobile string) error {
 	return projectionError(i18n.T("approval_form_cross_device_kind_mismatch", map[string]any{
 		"field":  path,
-		"pc":     string(pc),
-		"mobile": string(mobile),
+		"pc":     pc,
+		"mobile": mobile,
 	}))
 }
 

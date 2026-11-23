@@ -33,14 +33,15 @@ import (
 // stable token to assert (malformed JSON). Every error fixture in testdata/ must
 // have an entry here; enumerateSchemas fails the error test otherwise.
 var errorTokens = map[string][]string{
-	"unmappable_switch":           {"flag", "switch"},
-	"unmappable_daterange":        {"span", "daterange"},
-	"unknown_type":                {"score", "rating"},
-	"nested_subform":              {"items.parts"},
-	"table_columns_empty":         {"items"},
-	"unmappable_column":           {"items.flag", "switch"},
-	"cross_device_kind_conflict":  {"amount", "input", "number"},
-	"cross_device_table_conflict": {"items"},
+	"unmappable_switch":                {"flag", "switch"},
+	"unmappable_daterange":             {"span", "daterange"},
+	"unknown_type":                     {"score", "rating"},
+	"nested_subform":                   {"items.parts"},
+	"table_columns_empty":              {"items"},
+	"unmappable_column":                {"items.flag", "switch"},
+	"cross_device_kind_conflict":       {"amount", "input", "number"},
+	"cross_device_select_multiplicity": {"tags", "select", "select (multiple)"},
+	"cross_device_table_conflict":      {"items"},
 	// A key valid on pc (textfield) but unmappable on mobile (switch) must fail
 	// regardless of sighting order — the second sighting is classified, not
 	// silently deduped.

@@ -14,6 +14,10 @@ type FormFieldDefinition struct {
 	DefaultValue any `json:"defaultValue,omitempty"`
 	// IsRequired indicates whether this field is required.
 	IsRequired bool `json:"isRequired,omitempty"`
+	// IsMultiple indicates whether a selection field (Kind == FieldSelect) holds
+	// multiple chosen values as a list (e.g., checkbox-group, multi-select).
+	// Drives condition operator validation and the flow designer's operator picker.
+	IsMultiple bool `json:"isMultiple,omitempty"`
 	// Options is the list of selectable options (for select, radio, checkbox, etc.).
 	Options []FieldOption `json:"options,omitempty"`
 	// OptionSource describes where a selection field's options come from when

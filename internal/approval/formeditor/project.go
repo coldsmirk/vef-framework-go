@@ -20,12 +20,19 @@ var kindByType = map[string]approval.FieldKind{
 	"textarea":       approval.FieldTextarea,
 	"number":         approval.FieldNumber,
 	"select":         approval.FieldSelect,
+	"multi-select":   approval.FieldSelect,
 	"radio":          approval.FieldSelect,
 	"checkbox-group": approval.FieldSelect,
 	"date":           approval.FieldDate,
 	"datetime":       approval.FieldDate,
 	"upload":         approval.FieldUpload,
 }
+
+// multiValueSelectTypes are the selection widgets whose runtime value is a list
+// of chosen option values rather than a single scalar. Projected with
+// FormFieldDefinition.IsMultiple = true so deploy validation and the flow
+// designer offer element-membership operators instead of scalar equality.
+var multiValueSelectTypes = collections.NewHashSetFrom("checkbox-group", "multi-select")
 
 // unmappableTypes are widget types that bind a value the approval contract
 // cannot carry (as opposed to unknown consumer-registered types).
@@ -42,6 +49,7 @@ var columnTypeByWidget = map[string]approval.ColumnDataType{
 	"date":           approval.ColumnDate,
 	"datetime":       approval.ColumnDatetime,
 	"checkbox-group": approval.ColumnJSON,
+	"multi-select":   approval.ColumnJSON,
 	"daterange":      approval.ColumnJSON,
 	"textarea":       approval.ColumnText,
 	"code-editor":    approval.ColumnText,
@@ -110,6 +118,10 @@ func projectLeaf(node *richBlock, path string, dataSources map[string]richDataSo
 
 	if isRequired {
 		field.IsRequired = true
+	}
+
+	if multiValueSelectTypes.Contains(node.Type) {
+		field.IsMultiple = true
 	}
 
 	options, optionSource := resolveOptionSource(node, dataSources)
@@ -372,6 +384,18 @@ func peekKind(node *richBlock) approval.FieldKind {
 	return ""
 }
 
+// describeFieldShape formats a projected kind + multiplicity for cross-device
+// comparison and error messages. Single-valued kinds stay their bare kind name;
+// a multi-value select is distinguished so single vs multi on the same key is
+// caught as a value-shape conflict.
+func describeFieldShape(kind approval.FieldKind, isMultiple bool) string {
+	if kind == approval.FieldSelect && isMultiple {
+		return string(kind) + " (multiple)"
+	}
+
+	return string(kind)
+}
+
 // peekTableSignature is the contract signature of a subform's column set — the
 // ordered, deduplicated key:kind pairs of its template's root-scope keyed leaves
 // (layout containers transparent, matching the projection walk). Two devices
@@ -390,7 +414,7 @@ func peekTableSignature(node *richBlock) string {
 		if child.Type == "subform" {
 			kind = string(approval.FieldTable)
 		} else if mapped, ok := kindByType[child.Type]; ok {
-			kind = string(mapped)
+			kind = describeFieldShape(mapped, multiValueSelectTypes.Contains(child.Type))
 		}
 
 		parts = append(parts, child.Key+":"+kind)
