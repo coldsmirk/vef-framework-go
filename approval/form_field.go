@@ -51,10 +51,40 @@ type FormFieldDefinition struct {
 	// Columns defines the row shape of a table field (Kind == FieldTable):
 	// each column is itself a field definition and reuses the same kinds and
 	// validation rules, except that a column must not be another table —
-	// detail tables are single-level by design. For a table field itself,
-	// Validation.MinLength / MaxLength bound the ROW COUNT, and IsRequired
-	// means "at least one row".
+	// detail tables are single-level by design. For a dynamic table field
+	// (FixedRows == nil), Validation.MinLength / MaxLength bound the ROW COUNT,
+	// and IsRequired means "at least one row". For a fixed-row table
+	// (FixedRows != nil), the read-only header cell under FixedRows.ItemKey is
+	// kept out of Columns.
 	Columns []FormFieldDefinition `json:"columns,omitempty"`
+	// FixedRows describes fixed-row (matrix/checklist) semantics for a table
+	// field (Kind == FieldTable). Nil means dynamic rows (the applicant adds
+	// and removes rows freely). Valid only on FieldTable; deploy validation
+	// rejects it on any other kind.
+	FixedRows *TableFixedRows `json:"fixedRows,omitempty"`
+}
+
+// TableFixedRows describes the fixed-row contract of a FieldTable field.
+// Exactly one of Items or Source is populated:
+//   - Static (inline or dereferenced ref-to-static) enumerates Items in order;
+//     submission validation requires submitted rows to match Items exactly
+//     (count, order, value and label).
+//   - CodeSet sets Source{Kind: OptionSourceCodeSet, CodeSet}; submission
+//     validation checks each row's item value against the host's CodeSetLoader
+//     (when registered) and enforces unique values.
+//   - Remote sets Source{Kind: OptionSourceRemote, Request, Mapping};
+//     submission validation checks row item shape and unique values only.
+type TableFixedRows struct {
+	// ItemKey is the row key holding the snapshotted {value, label} item cell.
+	// It is never listed in FormFieldDefinition.Columns and is read-only for the
+	// applicant.
+	ItemKey string `json:"itemKey"`
+	// HeaderLabel is the display title of the row-header column.
+	HeaderLabel string `json:"headerLabel,omitempty"`
+	// Items holds the frozen static row items in display order.
+	Items []FieldOption `json:"items,omitempty"`
+	// Source describes a non-static item source (codeSet or remote), post-dereference.
+	Source *FieldOptionSource `json:"source,omitempty"`
 }
 
 // FieldOption represents a selectable option for select/radio/checkbox fields.

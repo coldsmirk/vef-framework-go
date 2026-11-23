@@ -169,21 +169,23 @@ func validateColumnField(field approval.FormFieldDefinition, seen map[string]str
 			ErrInvalidColumnType, field.Key, field.ColumnType)
 	}
 
-	column := sanitizeForIdentifier(field.Key)
+	return validateGeneratedColumnName(field.Key, sanitizeForIdentifier(field.Key), seen)
+}
 
+func validateGeneratedColumnName(sourceKey, column string, seen map[string]struct{}) error {
 	if err := approval.ValidateBusinessIdentifier(column); err != nil {
 		return fmt.Errorf("%w: field key %q maps to invalid column %q: %w",
-			ErrInvalidGeneratedIdentifier, field.Key, column, err)
+			ErrInvalidGeneratedIdentifier, sourceKey, column, err)
 	}
 
 	if _, reserved := reservedColumns[column]; reserved {
 		return fmt.Errorf("%w: field key %q collides with built-in column %q",
-			ErrReservedColumnName, field.Key, column)
+			ErrReservedColumnName, sourceKey, column)
 	}
 
 	if _, dup := seen[column]; dup {
 		return fmt.Errorf("%w: field key %q maps to already-used column %q",
-			ErrDuplicateColumnName, field.Key, column)
+			ErrDuplicateColumnName, sourceKey, column)
 	}
 
 	seen[column] = struct{}{}
@@ -191,10 +193,20 @@ func validateColumnField(field approval.FormFieldDefinition, seen map[string]str
 	return nil
 }
 
+// fixedRowColumnNames derives the two physical columns materialized for a
+// fixed-row table's {value, label} item header cell so SQL reports can group
+// and display by item directly without parsing JSON.
+func fixedRowColumnNames(itemKey string) (valueCol, labelCol string) {
+	base := sanitizeForIdentifier(itemKey)
+
+	return base + "_value", base + "_label"
+}
+
 // validateChildTableSchema checks a detail-table field's physical mapping:
 // the sanitized table key (the child table's name suffix) must be a safe,
-// unique identifier, and every column must map safely within the child
-// table's own pool.
+// unique identifier, and every column (including the materialized fixed-row
+// value/label header columns when FixedRows is set) must map safely within
+// the child table's own pool.
 func validateChildTableSchema(field approval.FormFieldDefinition, childNames map[string]struct{}) error {
 	// De-dupe on the SAME truncated suffix generation will emit — two long
 	// keys sharing a prefix must collide here, at deploy, not silently at
@@ -214,6 +226,18 @@ func validateChildTableSchema(field approval.FormFieldDefinition, childNames map
 	childNames[suffix] = struct{}{}
 
 	pool := reservedColumnPool()
+
+	if field.FixedRows != nil {
+		valueCol, labelCol := fixedRowColumnNames(field.FixedRows.ItemKey)
+		if err := validateGeneratedColumnName(field.FixedRows.ItemKey+".value", valueCol, pool); err != nil {
+			return fmt.Errorf("in table %q: %w", field.Key, err)
+		}
+
+		if err := validateGeneratedColumnName(field.FixedRows.ItemKey+".label", labelCol, pool); err != nil {
+			return fmt.Errorf("in table %q: %w", field.Key, err)
+		}
+	}
+
 	for _, column := range field.Columns {
 		if err := validateColumnField(column, pool); err != nil {
 			return fmt.Errorf("in table %q: %w", field.Key, err)
@@ -305,6 +329,27 @@ func buildChildTableSpec(kind config.DBKind, t sqlTypes, versionID string, field
 	)
 
 	sortOrder := 3
+
+	if field.FixedRows != nil {
+		valueCol, labelCol := fixedRowColumnNames(field.FixedRows.ItemKey)
+		child.Columns = append(child.Columns,
+			columnSpec{
+				Name:           valueCol,
+				Type:           t.text,
+				IsNullable:     false,
+				SourceFieldKey: new(field.FixedRows.ItemKey + ".value"),
+				SortOrder:      sortOrder,
+			},
+			columnSpec{
+				Name:           labelCol,
+				Type:           t.text,
+				IsNullable:     false,
+				SourceFieldKey: new(field.FixedRows.ItemKey + ".label"),
+				SortOrder:      sortOrder + 1,
+			},
+		)
+		sortOrder += 2
+	}
 
 	for _, column := range field.Columns {
 		key := column.Key

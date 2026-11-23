@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "Sub",
+          "type": "subform",
+          "variant": "table",
+          "key": "checks",
+          "label": "自查表",
+          "rows": {
+            "mode": "fixed",
+            "itemKey": "item",
+            "source": { "kind": "static", "options": [{ "label": "项1", "value": "1" }] }
+          },
+          "template": [{ "id": "C1", "type": "textfield", "key": "item", "label": "说明" }]
+        }
+      ]
+    }
+  }
+}

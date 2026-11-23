@@ -330,7 +330,7 @@ func rowValues(columns []approval.FormTableColumn, instanceID string, rowIndex i
 		case column.ColumnName == "row_index" && column.SourceFieldKey == nil:
 			value = rowIndex
 		case column.SourceFieldKey != nil:
-			raw, present := data[*column.SourceFieldKey]
+			raw, present := lookupRowValue(data, *column.SourceFieldKey)
 			if !present {
 				value = nil
 			} else {
@@ -355,6 +355,29 @@ func rowValues(columns []approval.FormTableColumn, instanceID string, rowIndex i
 	}
 
 	return args, nil
+}
+
+// lookupRowValue reads a column's value from a form row. Direct keys are tried
+// first; dotted keys (e.g. "<itemKey>.value" / "<itemKey>.label" emitted for
+// fixed-row table headers) traverse one nested object level.
+func lookupRowValue(data map[string]any, sourceKey string) (any, bool) {
+	if raw, ok := data[sourceKey]; ok {
+		return raw, true
+	}
+
+	parent, child, hasDot := strings.Cut(sourceKey, ".")
+	if !hasDot {
+		return nil, false
+	}
+
+	nested, ok := data[parent].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+
+	raw, present := nested[child]
+
+	return raw, present
 }
 
 // coerceValue converts a decoded JSON form value into something the database

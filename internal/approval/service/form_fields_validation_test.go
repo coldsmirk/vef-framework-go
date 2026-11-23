@@ -282,3 +282,111 @@ func TestValidateFormFieldsDateGranularity(t *testing.T) {
 		assert.Contains(t, err.Error(), "items.period")
 	})
 }
+
+func TestValidateFormFieldsTableFixedRows(t *testing.T) {
+	svc := new(FlowDefinitionService)
+
+	columns := []approval.FormFieldDefinition{
+		{Key: "result", Kind: approval.FieldSelect, Label: "结果"},
+		{Key: "owner", Kind: approval.FieldInput, Label: "责任人"},
+	}
+
+	tableWithFixed := func(fixed *approval.TableFixedRows) []approval.FormFieldDefinition {
+		return []approval.FormFieldDefinition{{
+			Key: "checks", Kind: approval.FieldTable, Label: "自查表",
+			Columns:   columns,
+			FixedRows: fixed,
+		}}
+	}
+
+	t.Run("AcceptsStaticCodeSetAndRemoteFixedRows", func(t *testing.T) {
+		assert.NoError(t, svc.ValidateFormFields(tableWithFixed(&approval.TableFixedRows{
+			ItemKey:     "item",
+			HeaderLabel: "自查内容",
+			Items: []approval.FieldOption{
+				{Value: "c1", Label: "项1"},
+				{Value: 2, Label: "项2"},
+			},
+		})), "static fixed rows with unique non-empty values must deploy")
+
+		assert.NoError(t, svc.ValidateFormFields(tableWithFixed(&approval.TableFixedRows{
+			ItemKey: "item",
+			Source:  &approval.FieldOptionSource{Kind: approval.OptionSourceCodeSet, CodeSet: "hosp.check"},
+		})), "codeSet fixed rows must deploy")
+
+		assert.NoError(t, svc.ValidateFormFields(tableWithFixed(&approval.TableFixedRows{
+			ItemKey: "item",
+			Source: &approval.FieldOptionSource{
+				Kind:    approval.OptionSourceRemote,
+				Request: &approval.RemoteOptionRequest{Resource: "hosp/check", Action: "list"},
+			},
+		})), "remote fixed rows with complete request must deploy")
+	})
+
+	t.Run("RejectsFixedRowsOnScalarField", func(t *testing.T) {
+		fields := []approval.FormFieldDefinition{{
+			Key: "title", Kind: approval.FieldInput,
+			FixedRows: &approval.TableFixedRows{
+				ItemKey: "item",
+				Items:   []approval.FieldOption{{Value: "a", Label: "A"}},
+			},
+		}}
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errFixedRowsOnScalarField,
+			"only table fields may declare fixed rows")
+	})
+
+	t.Run("RejectsEmptyItemKey", func(t *testing.T) {
+		err := svc.ValidateFormFields(tableWithFixed(&approval.TableFixedRows{
+			ItemKey: "   ",
+			Items:   []approval.FieldOption{{Value: "a", Label: "A"}},
+		}))
+		assert.ErrorIs(t, err, errFixedRowsItemKeyEmpty, "whitespace itemKey must be rejected")
+	})
+
+	t.Run("RejectsItemKeyCollidingWithColumn", func(t *testing.T) {
+		err := svc.ValidateFormFields(tableWithFixed(&approval.TableFixedRows{
+			ItemKey: "owner",
+			Items:   []approval.FieldOption{{Value: "a", Label: "A"}},
+		}))
+		assert.ErrorIs(t, err, errFixedRowsItemKeyConflict, "itemKey must not collide with any template column key")
+	})
+
+	t.Run("RejectsMissingOrAmbiguousSource", func(t *testing.T) {
+		assert.ErrorIs(t, svc.ValidateFormFields(tableWithFixed(&approval.TableFixedRows{
+			ItemKey: "item",
+		})), errFixedRowsSourceRequired, "fixed rows without items or source must be rejected")
+
+		assert.ErrorIs(t, svc.ValidateFormFields(tableWithFixed(&approval.TableFixedRows{
+			ItemKey: "item",
+			Items:   []approval.FieldOption{{Value: "a", Label: "A"}},
+			Source:  &approval.FieldOptionSource{Kind: approval.OptionSourceCodeSet, CodeSet: "hosp.check"},
+		})), errFixedRowsSourceAmbiguous, "fixed rows cannot declare both static items and a dynamic source")
+	})
+
+	t.Run("RejectsBlankOrDuplicateStaticItemValues", func(t *testing.T) {
+		assert.ErrorIs(t, svc.ValidateFormFields(tableWithFixed(&approval.TableFixedRows{
+			ItemKey: "item",
+			Items:   []approval.FieldOption{{Value: "  ", Label: "空值"}},
+		})), errFixedRowsInvalidItem, "blank static item value must be rejected")
+
+		assert.ErrorIs(t, svc.ValidateFormFields(tableWithFixed(&approval.TableFixedRows{
+			ItemKey: "item",
+			Items: []approval.FieldOption{
+				{Value: "dup", Label: "项1"},
+				{Value: "dup", Label: "项2"},
+			},
+		})), errFixedRowsDuplicateItem, "duplicate static item values must be rejected")
+	})
+
+	t.Run("RejectsIncompleteDynamicSource", func(t *testing.T) {
+		assert.ErrorIs(t, svc.ValidateFormFields(tableWithFixed(&approval.TableFixedRows{
+			ItemKey: "item",
+			Source:  &approval.FieldOptionSource{Kind: approval.OptionSourceCodeSet, CodeSet: " "},
+		})), errCodeSetOptionSourceIncomplete, "blank codeSet must be rejected")
+
+		assert.ErrorIs(t, svc.ValidateFormFields(tableWithFixed(&approval.TableFixedRows{
+			ItemKey: "item",
+			Source:  &approval.FieldOptionSource{Kind: approval.OptionSourceRemote},
+		})), errRemoteOptionRequestIncomplete, "remote source without request must be rejected")
+	})
+}

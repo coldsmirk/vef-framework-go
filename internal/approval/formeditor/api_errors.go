@@ -46,6 +46,37 @@ func errTableColumnsEmpty(path string) error {
 	return projectionError(i18n.T("approval_form_table_columns_empty", map[string]any{"field": path}))
 }
 
+// errTableRowsModeInvalid rejects a detail table whose rows.mode is neither
+// "dynamic" nor "fixed".
+func errTableRowsModeInvalid(path, mode string) error {
+	return projectionError(i18n.T("approval_form_table_rows_mode_invalid", map[string]any{
+		"field": path,
+		"mode":  mode,
+	}))
+}
+
+// errTableFixedRowsItemKeyEmpty rejects a fixed-row detail table whose itemKey
+// is missing or whitespace-only.
+func errTableFixedRowsItemKeyEmpty(path string) error {
+	return projectionError(i18n.T("approval_form_table_fixed_rows_item_key_empty", map[string]any{"field": path}))
+}
+
+// errTableFixedRowsItemKeyConflict rejects a fixed-row detail table whose
+// itemKey collides with one of its template column keys.
+func errTableFixedRowsItemKeyConflict(path, itemKey string) error {
+	return projectionError(i18n.T("approval_form_table_fixed_rows_item_key_conflict", map[string]any{
+		"field":   path,
+		"itemKey": itemKey,
+	}))
+}
+
+// errTableFixedRowsSourceInvalid rejects a fixed-row detail table whose item
+// source is absent, dangling, or a static list with no items, blank values, or
+// duplicate values.
+func errTableFixedRowsSourceInvalid(path string) error {
+	return projectionError(i18n.T("approval_form_table_fixed_rows_source_invalid", map[string]any{"field": path}))
+}
+
 // errCrossDeviceKindMismatch rejects a key that projects to different kinds or
 // value multiplicities on pc and mobile — the losing device would submit a
 // value the definition rejects.

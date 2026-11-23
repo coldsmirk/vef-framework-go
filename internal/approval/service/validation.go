@@ -366,27 +366,40 @@ func validateFormField(field approval.FormFieldDefinition, value any) error {
 
 // validateTableField checks a detail-table value: a list of row objects,
 // each row validated column by column with the same rules scalar fields
-// use. For the table itself, Validation.MinLength / MaxLength bound the
-// row count; "required = at least one row" is enforced by the caller's
-// shared empty-value check (an empty list is an empty value).
+// use. For a dynamic table (FixedRows == nil), Validation.MinLength / MaxLength
+// bound the row count. For a fixed-row table (FixedRows != nil), each row's
+// header cell under FixedRows.ItemKey is validated according to the source
+// kind: static items require exact count, order, value and label; codeSet and
+// remote sources require valid item shape and unique values (codeSet membership
+// is checked afterward in validateCodeSetValues). "Required = at least one row"
+// is enforced by the caller's shared empty-value check.
 func validateTableField(field approval.FormFieldDefinition, value any) error {
 	rows, ok := value.([]any)
 	if !ok {
 		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMustBeRowList, map[string]any{"field": fieldLabel(field)}))
 	}
 
-	if field.Validation != nil {
-		if field.Validation.MinLength != nil && len(rows) < *field.Validation.MinLength {
-			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMinRows, map[string]any{
-				"field": fieldLabel(field), "min": *field.Validation.MinLength,
-			}))
-		}
+	if field.FixedRows == nil {
+		if field.Validation != nil {
+			if field.Validation.MinLength != nil && len(rows) < *field.Validation.MinLength {
+				return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMinRows, map[string]any{
+					"field": fieldLabel(field), "min": *field.Validation.MinLength,
+				}))
+			}
 
-		if field.Validation.MaxLength != nil && len(rows) > *field.Validation.MaxLength {
-			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMaxRows, map[string]any{
-				"field": fieldLabel(field), "max": *field.Validation.MaxLength,
-			}))
+			if field.Validation.MaxLength != nil && len(rows) > *field.Validation.MaxLength {
+				return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMaxRows, map[string]any{
+					"field": fieldLabel(field), "max": *field.Validation.MaxLength,
+				}))
+			}
 		}
+	} else if len(field.FixedRows.Items) > 0 && len(rows) != len(field.FixedRows.Items) {
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldFixedRowsMismatch, map[string]any{"field": fieldLabel(field)}))
+	}
+
+	var seenItemValues collections.Set[string]
+	if field.FixedRows != nil && len(field.FixedRows.Items) == 0 {
+		seenItemValues = collections.NewHashSetWithCapacity[string](len(rows))
 	}
 
 	for i, raw := range rows {
@@ -397,6 +410,12 @@ func validateTableField(field approval.FormFieldDefinition, value any) error {
 			}))
 		}
 
+		if field.FixedRows != nil {
+			if err := validateFixedTableRowItem(field, row, i, seenItemValues); err != nil {
+				return err
+			}
+		}
+
 		if err := validateTableRow(field, row, i+1); err != nil {
 			return err
 		}
@@ -405,18 +424,130 @@ func validateTableField(field approval.FormFieldDefinition, value any) error {
 	return nil
 }
 
+func validateFixedTableRowItem(field approval.FormFieldDefinition, row map[string]any, rowIndex int, seenValues collections.Set[string]) error {
+	fixed := field.FixedRows
+	headerName := fixedRowsHeaderLabel(fixed)
+
+	itemValue, itemLabel, ok := extractFixedRowItem(row, fixed.ItemKey)
+	if !ok {
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldTableCell, map[string]any{
+			"field": fieldLabel(field), "row": rowIndex + 1,
+			"message": i18n.T(shared.ErrMessageFormFieldInvalidRowItem, map[string]any{"field": headerName}),
+		}))
+	}
+
+	if len(fixed.Items) > 0 {
+		expected := fixed.Items[rowIndex]
+		if itemValue != fmt.Sprint(expected.Value) || itemLabel != expected.Label {
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldTableCell, map[string]any{
+				"field": fieldLabel(field), "row": rowIndex + 1,
+				"message": i18n.T(shared.ErrMessageFormFieldFixedRowItemMismatch, map[string]any{"field": headerName}),
+			}))
+		}
+
+		return nil
+	}
+
+	if !seenValues.Add(itemValue) {
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldTableCell, map[string]any{
+			"field": fieldLabel(field), "row": rowIndex + 1,
+			"message": i18n.T(shared.ErrMessageFormFieldDuplicateRowItem, map[string]any{"field": headerName}),
+		}))
+	}
+
+	return nil
+}
+
+func fixedRowsHeaderLabel(fixed *approval.TableFixedRows) string {
+	if strings.TrimSpace(fixed.HeaderLabel) != "" {
+		return fixed.HeaderLabel
+	}
+
+	return fixed.ItemKey
+}
+
+func extractFixedRowItem(row map[string]any, itemKey string) (value, label string, ok bool) {
+	rawItem, exists := row[itemKey]
+	if !exists {
+		return "", "", false
+	}
+
+	itemMap, isMap := rawItem.(map[string]any)
+	if !isMap {
+		return "", "", false
+	}
+
+	rawVal, hasVal := itemMap["value"]
+	rawLabel, hasLabel := itemMap["label"]
+
+	if !hasVal || !hasLabel {
+		return "", "", false
+	}
+
+	formattedVal, valOk := formatFixedRowItemValue(rawVal)
+	labelStr, labelOk := rawLabel.(string)
+
+	if !valOk || !labelOk {
+		return "", "", false
+	}
+
+	return formattedVal, labelStr, true
+}
+
+func formatFixedRowItemValue(raw any) (string, bool) {
+	switch v := raw.(type) {
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return "", false
+		}
+
+		return v, true
+
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprint(v), true
+
+	case float32:
+		f := float64(v)
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return "", false
+		}
+
+		return fmt.Sprint(v), true
+
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return "", false
+		}
+
+		return fmt.Sprint(v), true
+
+	default:
+		return "", false
+	}
+}
+
 // validateTableRow applies each column definition to one row, mirroring the
 // top-level required/empty handling before delegating to the scalar checks.
-// Rows are closed like the top-level form: a key with no matching column is
-// rejected instead of silently accumulating in the stored form data.
+// Rows are closed like the top-level form: a key with no matching column (or
+// FixedRows.ItemKey for fixed-row tables) is rejected instead of silently
+// accumulating in the stored form data.
 func validateTableRow(field approval.FormFieldDefinition, row map[string]any, rowNumber int) error {
-	columnKeys := collections.NewHashSetWithCapacity[string](len(field.Columns))
+	extra := 0
+	if field.FixedRows != nil {
+		extra = 1
+	}
+
+	allowedKeys := collections.NewHashSetWithCapacity[string](len(field.Columns) + extra)
 	for _, column := range field.Columns {
-		columnKeys.Add(column.Key)
+		allowedKeys.Add(column.Key)
+	}
+
+	if field.FixedRows != nil {
+		allowedKeys.Add(field.FixedRows.ItemKey)
 	}
 
 	for key := range row {
-		if !columnKeys.Contains(key) {
+		if !allowedKeys.Contains(key) {
 			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldTableCell, map[string]any{
 				"field": fieldLabel(field), "row": rowNumber,
 				"message": i18n.T(shared.ErrMessageFormFieldNotDefined, map[string]any{"field": key}),

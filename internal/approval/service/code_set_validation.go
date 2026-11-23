@@ -61,13 +61,43 @@ type codeSetChecker struct {
 	loaded map[string]map[string]string
 }
 
-// checkRows applies check to every code-set column of a detail table's rows,
-// naming the row of a value the dictionary does not hold.
+// checkRows applies check to a fixed-row table's code-set header items (when
+// sourced from a data dictionary) and to every code-set column of a detail
+// table's rows, naming the row of a value the dictionary does not hold.
 func (c *codeSetChecker) checkRows(ctx context.Context, field approval.FormFieldDefinition, value any) error {
 	rows, _ := value.([]any)
 
+	var fixedRowCodes map[string]string
+
+	hasFixedCodeSet := field.FixedRows != nil && field.FixedRows.Source != nil && field.FixedRows.Source.Kind == approval.OptionSourceCodeSet
+	if hasFixedCodeSet {
+		var err error
+
+		fixedRowCodes, err = c.codes(ctx, field.FixedRows.Source.CodeSet)
+		if err != nil {
+			return err
+		}
+	}
+
 	for i, raw := range rows {
 		row, _ := raw.(map[string]any)
+
+		if hasFixedCodeSet {
+			itemValue, _, ok := extractFixedRowItem(row, field.FixedRows.ItemKey)
+			if !ok {
+				return newFormValidationError(i18n.T(shared.ErrMessageFormFieldTableCell, map[string]any{
+					"field": fieldLabel(field), "row": i + 1,
+					"message": i18n.T(shared.ErrMessageFormFieldInvalidRowItem, map[string]any{"field": fixedRowsHeaderLabel(field.FixedRows)}),
+				}))
+			}
+
+			if _, exists := fixedRowCodes[itemValue]; !exists {
+				return newFormValidationError(i18n.T(shared.ErrMessageFormFieldTableCell, map[string]any{
+					"field": fieldLabel(field), "row": i + 1,
+					"message": i18n.T(shared.ErrMessageFormFieldInvalidValue, map[string]any{"field": fixedRowsHeaderLabel(field.FixedRows)}),
+				}))
+			}
+		}
 
 		for _, column := range field.Columns {
 			cell, exists := row[column.Key]

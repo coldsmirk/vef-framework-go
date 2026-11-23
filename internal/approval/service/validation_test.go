@@ -350,6 +350,150 @@ func TestValidateFormDataTableField(t *testing.T) {
 	})
 }
 
+func TestValidateFormDataFixedRowsTable(t *testing.T) {
+	svc := NewValidationService(mustInitiatorCompositeInternal(nil))
+
+	columns := []approval.FormFieldDefinition{
+		{Key: "hasIssue", Kind: approval.FieldSelect, Label: "存在问题", IsRequired: true, Options: []approval.FieldOption{
+			{Value: "no", Label: "无"},
+			{Value: "yes", Label: "有"},
+		}},
+		{Key: "owner", Kind: approval.FieldInput, Label: "责任人"},
+	}
+
+	staticFields := []approval.FormFieldDefinition{{
+		Key: "checks", Kind: approval.FieldTable, Label: "自查表", IsRequired: true,
+		Columns: columns,
+		FixedRows: &approval.TableFixedRows{
+			ItemKey:     "item",
+			HeaderLabel: "自查内容",
+			Items: []approval.FieldOption{
+				{Value: "c1", Label: "虚构手术收费（8分）"},
+				{Value: 2, Label: "使用非卫生技术人员（10分）"},
+			},
+		},
+	}}
+
+	remoteFields := []approval.FormFieldDefinition{{
+		Key: "checks", Kind: approval.FieldTable, Label: "动态自查表", IsRequired: true,
+		Columns: columns,
+		FixedRows: &approval.TableFixedRows{
+			ItemKey:     "item",
+			HeaderLabel: "自查内容",
+			Source: &approval.FieldOptionSource{
+				Kind:    approval.OptionSourceRemote,
+				Request: &approval.RemoteOptionRequest{Resource: "hosp/check", Action: "list"},
+			},
+		},
+	}}
+
+	row := func(val any, label, issue, owner string) map[string]any {
+		return map[string]any{
+			"item":     map[string]any{"value": val, "label": label},
+			"hasIssue": issue,
+			"owner":    owner,
+		}
+	}
+
+	t.Run("StaticAcceptsExactMatch", func(t *testing.T) {
+		err := svc.ValidateFormData(t.Context(), staticFields, map[string]any{
+			"checks": []any{
+				row("c1", "虚构手术收费（8分）", "no", "张三"),
+				row(float64(2), "使用非卫生技术人员（10分）", "yes", "李四"),
+			},
+		})
+		assert.NoError(t, err, "rows matching frozen static items in order, value and label must validate")
+	})
+
+	t.Run("StaticRejectsWrongRowCount", func(t *testing.T) {
+		err := svc.ValidateFormData(t.Context(), staticFields, map[string]any{
+			"checks": []any{row("c1", "虚构手术收费（8分）", "no", "")},
+		})
+		requireFormValidationError(t, err)
+	})
+
+	t.Run("StaticRejectsSwappedOrder", func(t *testing.T) {
+		err := svc.ValidateFormData(t.Context(), staticFields, map[string]any{
+			"checks": []any{
+				row(float64(2), "使用非卫生技术人员（10分）", "no", ""),
+				row("c1", "虚构手术收费（8分）", "no", ""),
+			},
+		})
+		requireFormValidationError(t, err)
+	})
+
+	t.Run("StaticRejectsTamperedLabel", func(t *testing.T) {
+		err := svc.ValidateFormData(t.Context(), staticFields, map[string]any{
+			"checks": []any{
+				row("c1", "被篡改的条款文本", "no", ""),
+				row(float64(2), "使用非卫生技术人员（10分）", "no", ""),
+			},
+		})
+		requireFormValidationError(t, err)
+	})
+
+	t.Run("StaticRejectsTamperedValue", func(t *testing.T) {
+		err := svc.ValidateFormData(t.Context(), staticFields, map[string]any{
+			"checks": []any{
+				row("wrong", "虚构手术收费（8分）", "no", ""),
+				row(float64(2), "使用非卫生技术人员（10分）", "no", ""),
+			},
+		})
+		requireFormValidationError(t, err)
+	})
+
+	t.Run("RejectsUnknownRowKeysAlongsideHeader", func(t *testing.T) {
+		r := row("c1", "虚构手术收费（8分）", "no", "")
+		r["extra"] = "sneaky"
+		err := svc.ValidateFormData(t.Context(), staticFields, map[string]any{
+			"checks": []any{r, row(float64(2), "使用非卫生技术人员（10分）", "no", "")},
+		})
+		requireFormValidationError(t, err)
+	})
+
+	t.Run("RequiredBlocksEmptyFixedTable", func(t *testing.T) {
+		err := svc.ValidateFormData(t.Context(), remoteFields, map[string]any{"checks": []any{}})
+		requireFormValidationError(t, err)
+	})
+
+	t.Run("RemoteAcceptsValidUniqueItems", func(t *testing.T) {
+		err := svc.ValidateFormData(t.Context(), remoteFields, map[string]any{
+			"checks": []any{
+				row("r1", "接口项一", "no", "王五"),
+				row("r2", "接口项二", "yes", "赵六"),
+			},
+		})
+		assert.NoError(t, err, "remote fixed rows with valid shape and unique values must validate")
+	})
+
+	t.Run("RemoteRejectsDuplicateValues", func(t *testing.T) {
+		err := svc.ValidateFormData(t.Context(), remoteFields, map[string]any{
+			"checks": []any{
+				row("r1", "接口项一", "no", ""),
+				row("r1", "接口项一重复", "yes", ""),
+			},
+		})
+		requireFormValidationError(t, err)
+	})
+
+	t.Run("RemoteRejectsMalformedItemCell", func(t *testing.T) {
+		badCells := []any{
+			"not-an-object",
+			map[string]any{"value": "", "label": "空值"},
+			map[string]any{"value": "r1", "label": 123},
+			map[string]any{"value": "r1"},
+			map[string]any{"label": "缺值"},
+		}
+
+		for _, cell := range badCells {
+			err := svc.ValidateFormData(t.Context(), remoteFields, map[string]any{
+				"checks": []any{map[string]any{"item": cell, "hasIssue": "no"}},
+			})
+			requireFormValidationError(t, err)
+		}
+	})
+}
+
 func TestValidateRequiredPermissionFields(t *testing.T) {
 	svc := NewValidationService(mustInitiatorCompositeInternal(nil))
 

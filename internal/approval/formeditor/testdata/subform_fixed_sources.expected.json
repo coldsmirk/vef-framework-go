@@ -1,0 +1,66 @@
+[
+  {
+    "key": "dictCheck",
+    "kind": "table",
+    "label": "字典检查表",
+    "isRequired": true,
+    "sortOrder": 0,
+    "columns": [
+      { "key": "detail", "kind": "input", "label": "问题描述", "sortOrder": 0, "columnType": "text" }
+    ],
+    "fixedRows": {
+      "itemKey": "item",
+      "headerLabel": "检查项",
+      "source": { "kind": "codeSet", "codeSet": "hosp.self_check" }
+    }
+  },
+  {
+    "key": "remoteCheck",
+    "kind": "table",
+    "label": "接口检查表",
+    "sortOrder": 1,
+    "columns": [
+      { "key": "measure", "kind": "input", "label": "整改措施", "sortOrder": 0, "columnType": "text" }
+    ],
+    "fixedRows": {
+      "itemKey": "item",
+      "headerLabel": "自查内容",
+      "source": {
+        "kind": "remote",
+        "request": {
+          "resource": "hosp/checklist",
+          "action": "find_items",
+          "version": "v1",
+          "params": {
+            "dept": { "kind": "expression", "source": "formData.dept" },
+            "active": { "kind": "literal", "value": true }
+          }
+        },
+        "mapping": { "labelKey": "title", "valueKey": "id" }
+      }
+    }
+  },
+  {
+    "key": "refRemoteCheck",
+    "kind": "table",
+    "label": "引用接口检查表",
+    "sortOrder": 2,
+    "columns": [
+      { "key": "result", "kind": "input", "label": "整改效果", "sortOrder": 0, "columnType": "text" }
+    ],
+    "fixedRows": {
+      "itemKey": "checkItem",
+      "source": {
+        "kind": "remote",
+        "request": {
+          "resource": "inspection",
+          "action": "list_items",
+          "params": {
+            "deptId": { "kind": "expression", "source": "formData.dept" }
+          }
+        },
+        "mapping": { "labelKey": "content", "valueKey": "code" }
+      }
+    }
+  }
+]

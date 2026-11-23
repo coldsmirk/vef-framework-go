@@ -59,15 +59,20 @@ func (*FlowDefinitionService) ValidateFormFields(fields []approval.FormFieldDefi
 }
 
 // validateTableColumns checks the row shape of a table field: at least one
-// column, column keys unique within the table, known column kinds, and no
-// nested tables — detail tables are single-level by design (deep structures
-// belong to business tables reached via the business binding). Column
-// validation rules reuse the scalar-field checks. Scalar fields must not
-// declare columns at all; silently ignoring them would hide a designer bug.
+// column, column keys unique within the table, known column kinds, no nested
+// tables — detail tables are single-level by design (deep structures belong to
+// business tables reached via the business binding) — and valid fixed-row
+// configuration when declared. Column validation rules reuse the scalar-field
+// checks. Scalar fields must not declare columns or fixed rows; silently
+// ignoring them would hide a designer bug.
 func validateTableColumns(field approval.FormFieldDefinition) error {
 	if field.Kind != approval.FieldTable {
 		if len(field.Columns) > 0 {
 			return fmt.Errorf("%w: field %q", errColumnsOnScalarField, field.Key)
+		}
+
+		if field.FixedRows != nil {
+			return fmt.Errorf("%w: field %q", errFixedRowsOnScalarField, field.Key)
 		}
 
 		return nil
@@ -109,6 +114,50 @@ func validateTableColumns(field approval.FormFieldDefinition) error {
 		}
 	}
 
+	return validateTableFixedRows(field, keys)
+}
+
+func validateTableFixedRows(field approval.FormFieldDefinition, columnKeys collections.Set[string]) error {
+	fixed := field.FixedRows
+	if fixed == nil {
+		return nil
+	}
+
+	if strings.TrimSpace(fixed.ItemKey) == "" {
+		return fmt.Errorf("%w: table %q", errFixedRowsItemKeyEmpty, field.Key)
+	}
+
+	if columnKeys.Contains(fixed.ItemKey) {
+		return fmt.Errorf("%w: itemKey %q in table %q", errFixedRowsItemKeyConflict, fixed.ItemKey, field.Key)
+	}
+
+	hasItems := len(fixed.Items) > 0
+	hasSource := fixed.Source != nil
+
+	if hasItems && hasSource {
+		return fmt.Errorf("%w: table %q", errFixedRowsSourceAmbiguous, field.Key)
+	}
+
+	if !hasItems && !hasSource {
+		return fmt.Errorf("%w: table %q", errFixedRowsSourceRequired, field.Key)
+	}
+
+	if hasSource {
+		return validateOptionSourceSpec(fixed.Source, field.Key)
+	}
+
+	seenValues := collections.NewHashSetWithCapacity[string](len(fixed.Items))
+	for _, item := range fixed.Items {
+		val, ok := formatFixedRowItemValue(item.Value)
+		if !ok {
+			return fmt.Errorf("%w: table %q", errFixedRowsInvalidItem, field.Key)
+		}
+
+		if !seenValues.Add(val) {
+			return fmt.Errorf("%w: %q in table %q", errFixedRowsDuplicateItem, val, field.Key)
+		}
+	}
+
 	return nil
 }
 
@@ -119,7 +168,10 @@ func validateTableColumns(field approval.FormFieldDefinition) error {
 // dictionary would leave its field with no options at all.
 // path is the field key, table-qualified for a detail-table column.
 func validateOptionSource(field approval.FormFieldDefinition, path string) error {
-	source := field.OptionSource
+	return validateOptionSourceSpec(field.OptionSource, path)
+}
+
+func validateOptionSourceSpec(source *approval.FieldOptionSource, path string) error {
 	if source == nil {
 		return nil
 	}

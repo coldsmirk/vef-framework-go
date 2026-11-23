@@ -548,3 +548,84 @@ func TestValidateTableFormSchemaDeduplicatesTruncatedSuffixes(t *testing.T) {
 	assert.ErrorIs(t, ValidateTableFormSchema(fields), ErrDuplicateColumnName,
 		"keys colliding after suffix truncation must fail at deploy, not silently share one physical table at publish")
 }
+
+func TestBuildTableSpecsFixedRowsChildColumns(t *testing.T) {
+	fields := []approval.FormFieldDefinition{
+		{Key: "dept", Kind: approval.FieldSelect},
+		{
+			Key: "checks", Kind: approval.FieldTable,
+			FixedRows: &approval.TableFixedRows{
+				ItemKey:     "checkItem",
+				HeaderLabel: "自查内容",
+				Items:       []approval.FieldOption{{Value: "c1", Label: "项1"}},
+			},
+			Columns: []approval.FormFieldDefinition{
+				{Key: "hasIssue", Kind: approval.FieldSelect, IsRequired: true},
+				{Key: "owner", Kind: approval.FieldInput},
+			},
+		},
+	}
+
+	tables, err := buildTableSpecs(config.Postgres, "self_check", "d95k65k5cmcbd4737ag0", fields)
+	require.NoError(t, err, "fixed-row table specs should resolve")
+	require.Len(t, tables, 2, "one main table plus one child table")
+
+	child := tables[1]
+
+	colNames := make([]string, len(child.Columns))
+	for i, c := range child.Columns {
+		colNames[i] = c.Name
+	}
+
+	assert.Equal(t,
+		[]string{"id", "instance_id", "row_index", "checkitem_value", "checkitem_label", "hasissue", "owner", "created_at"},
+		colNames,
+		"fixed-row child tables materialize <itemKey>_value and <itemKey>_label after row_index",
+	)
+
+	byName := columnsByName(child.Columns)
+	assert.Equal(t, "TEXT", byName["checkitem_value"].Type)
+	assert.False(t, byName["checkitem_value"].IsNullable, "header item value column must be NOT NULL")
+	require.NotNil(t, byName["checkitem_value"].SourceFieldKey)
+	assert.Equal(t, "checkItem.value", *byName["checkitem_value"].SourceFieldKey)
+
+	assert.Equal(t, "TEXT", byName["checkitem_label"].Type)
+	assert.False(t, byName["checkitem_label"].IsNullable, "header item label column must be NOT NULL")
+	require.NotNil(t, byName["checkitem_label"].SourceFieldKey)
+	assert.Equal(t, "checkItem.label", *byName["checkitem_label"].SourceFieldKey)
+
+	createSQL, err := renderCreateTable(config.Postgres, child)
+	require.NoError(t, err, "child CREATE TABLE should render")
+	assert.Contains(t, createSQL, "checkitem_value TEXT NOT NULL")
+	assert.Contains(t, createSQL, "checkitem_label TEXT NOT NULL")
+}
+
+func TestValidateTableFormSchemaFixedRowsCollisions(t *testing.T) {
+	t.Run("RejectsTemplateColumnCollidingWithMaterializedHeaderColumn", func(t *testing.T) {
+		fields := []approval.FormFieldDefinition{{
+			Key: "checks", Kind: approval.FieldTable,
+			FixedRows: &approval.TableFixedRows{
+				ItemKey: "item",
+				Items:   []approval.FieldOption{{Value: "1", Label: "A"}},
+			},
+			Columns: []approval.FormFieldDefinition{
+				{Key: "item_value", Kind: approval.FieldInput},
+			},
+		}}
+		assert.ErrorIs(t, ValidateTableFormSchema(fields), ErrDuplicateColumnName,
+			"a template column colliding with <itemKey>_value must be rejected at deploy")
+	})
+
+	t.Run("RejectsUnmappableFixedRowItemKey", func(t *testing.T) {
+		fields := []approval.FormFieldDefinition{{
+			Key: "checks", Kind: approval.FieldTable,
+			FixedRows: &approval.TableFixedRows{
+				ItemKey: "123item",
+				Items:   []approval.FieldOption{{Value: "1", Label: "A"}},
+			},
+			Columns: []approval.FormFieldDefinition{{Key: "note", Kind: approval.FieldInput}},
+		}}
+		assert.ErrorIs(t, ValidateTableFormSchema(fields), ErrInvalidGeneratedIdentifier,
+			"a fixed-row itemKey that sanitizes to an invalid SQL identifier must be rejected")
+	})
+}

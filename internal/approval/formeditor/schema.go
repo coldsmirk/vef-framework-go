@@ -57,13 +57,27 @@ type richBlock struct {
 	Granularity string `json:"granularity"`
 
 	// Subform.
-	Template []richBlock `json:"template"`
-	MinRows  *int        `json:"minRows"`
-	MaxRows  *int        `json:"maxRows"`
+	Template []richBlock      `json:"template"`
+	Rows     *richSubformRows `json:"rows"`
 
 	// Layout containers.
 	Children []richBlock `json:"children"`
 	Tabs     []richTab   `json:"tabs"`
+}
+
+// richSubformRows mirrors the form-editor SubformRows discriminated union
+// (`{ mode: "dynamic", min, max, addLabel }` | `{ mode: "fixed", source, itemKey, headerLabel, required }`).
+// Visual-only properties (headerWidth) do not participate in the approval contract
+// and are ignored at unmarshal time.
+type richSubformRows struct {
+	Mode        string            `json:"mode"`
+	Min         *int              `json:"min"`
+	Max         *int              `json:"max"`
+	AddLabel    string            `json:"addLabel"`
+	Source      *richOptionSource `json:"source"`
+	ItemKey     string            `json:"itemKey"`
+	HeaderLabel string            `json:"headerLabel"`
+	Required    *bool             `json:"required"`
 }
 
 // richValidate mirrors the form-editor Validatable mixin. Numeric bounds are

@@ -173,3 +173,48 @@ func TestBuildInsertStringifiesNumericValueForTextColumn(t *testing.T) {
 	require.Len(t, args, 3, "id, instance_id, and grade should be bound")
 	assert.Equal(t, "2", args[2], "numeric option value must bind as its fmt.Sprint text form")
 }
+
+func TestBuildInsertExtractsFixedRowHeaderCell(t *testing.T) {
+	columns := []approval.FormTableColumn{
+		{ColumnName: "id", SortOrder: 0},
+		{ColumnName: "instance_id", SortOrder: 1},
+		{ColumnName: "row_index", SortOrder: 2},
+		{ColumnName: "item_value", SourceFieldKey: new("item.value"), ColumnType: "TEXT", SortOrder: 3},
+		{ColumnName: "item_label", SourceFieldKey: new("item.label"), ColumnType: "TEXT", SortOrder: 4},
+		{ColumnName: "has_issue", SourceFieldKey: new("has_issue"), ColumnType: "TEXT", SortOrder: 5},
+		{ColumnName: "created_at", SortOrder: 6},
+	}
+
+	rows := []map[string]any{
+		{
+			"item":      map[string]any{"value": "c1", "label": "虚构手术收费（8分）"},
+			"has_issue": "yes",
+		},
+		{
+			"item":      map[string]any{"value": float64(2), "label": ""},
+			"has_issue": "no",
+		},
+	}
+
+	sql, args, err := buildInsert("apv_form_v1__checks", "inst-99", columns, rows)
+	require.NoError(t, err, "fixed-row child insert should build cleanly")
+	assert.Equal(t,
+		"INSERT INTO apv_form_v1__checks (id, instance_id, row_index, item_value, item_label, has_issue) VALUES (?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?)",
+		sql,
+	)
+	require.Len(t, args, 12, "two rows of six columns each")
+
+	// Row 0
+	assert.Equal(t, "inst-99", args[1])
+	assert.Equal(t, 0, args[2])
+	assert.Equal(t, "c1", args[3])
+	assert.Equal(t, "虚构手术收费（8分）", args[4])
+	assert.Equal(t, "yes", args[5])
+
+	// Row 1 — numeric item value stringifies for TEXT; empty string label stays ""
+	assert.Equal(t, "inst-99", args[7])
+	assert.Equal(t, 1, args[8])
+	assert.Equal(t, "2", args[9])
+	assert.Equal(t, "", args[10])
+	assert.Equal(t, "no", args[11])
+}

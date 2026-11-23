@@ -1,6 +1,8 @@
 package formeditor
 
 import (
+	"fmt"
+	"math"
 	"strings"
 
 	"github.com/coldsmirk/go-collections"
@@ -170,8 +172,13 @@ func projectLeaf(node *richBlock, path string, dataSources map[string]richDataSo
 // projectSubform projects a root-scope subform into a single-level table field.
 // The template is walked with root-scope semantics: layout containers are
 // transparent, a nested subform is a contract violation, and every keyed
-// template leaf becomes a column via projectLeaf. isRequired mirrors minRows>=1;
-// the table-level validation bounds the row count from minRows / maxRows.
+// template leaf becomes a column via projectLeaf.
+//
+// In dynamic mode (default when rows is omitted), isRequired mirrors min >= 1
+// and table-level validation bounds the row count from min / max. In fixed mode
+// (matrix/checklist table), FixedRows carries the itemKey, optional headerLabel,
+// and either frozen static Items or a post-dereference Source (codeSet/remote),
+// while isRequired mirrors rows.required.
 func projectSubform(node *richBlock, dataSources map[string]richDataSource) (*approval.FormFieldDefinition, error) {
 	var columns []approval.FormFieldDefinition
 
@@ -213,28 +220,135 @@ func projectSubform(node *richBlock, dataSources map[string]richDataSource) (*ap
 		Columns: columns,
 	}
 
-	if node.MinRows != nil && *node.MinRows >= 1 {
+	rows := node.Rows
+	if rows == nil || rows.Mode == "" || rows.Mode == "dynamic" {
+		applyDynamicSubformRows(field, rows)
+
+		return field, nil
+	}
+
+	if rows.Mode != "fixed" {
+		return nil, errTableRowsModeInvalid(node.Key, rows.Mode)
+	}
+
+	if err := applyFixedSubformRows(field, rows, seen, dataSources); err != nil {
+		return nil, err
+	}
+
+	return field, nil
+}
+
+func applyDynamicSubformRows(field *approval.FormFieldDefinition, rows *richSubformRows) {
+	if rows == nil {
+		return
+	}
+
+	if rows.Min != nil && *rows.Min >= 1 {
 		field.IsRequired = true
 	}
 
 	rule := new(approval.ValidationRule)
 	hasRule := false
 
-	if node.MinRows != nil && *node.MinRows > 0 {
-		rule.MinLength = node.MinRows
+	if rows.Min != nil && *rows.Min > 0 {
+		rule.MinLength = rows.Min
 		hasRule = true
 	}
 
-	if node.MaxRows != nil {
-		rule.MaxLength = node.MaxRows
+	if rows.Max != nil {
+		rule.MaxLength = rows.Max
 		hasRule = true
 	}
 
 	if hasRule {
 		field.Validation = rule
 	}
+}
 
-	return field, nil
+func applyFixedSubformRows(
+	field *approval.FormFieldDefinition,
+	rows *richSubformRows,
+	columnKeys collections.Set[string],
+	dataSources map[string]richDataSource,
+) error {
+	if strings.TrimSpace(rows.ItemKey) == "" {
+		return errTableFixedRowsItemKeyEmpty(field.Key)
+	}
+
+	if columnKeys.Contains(rows.ItemKey) {
+		return errTableFixedRowsItemKeyConflict(field.Key, rows.ItemKey)
+	}
+
+	items, source := resolveOptionSourceValue(rows.Source, dataSources)
+	if source == nil && !isValidStaticFixedRowItems(items) {
+		return errTableFixedRowsSourceInvalid(field.Key)
+	}
+
+	fixed := &approval.TableFixedRows{
+		ItemKey:     rows.ItemKey,
+		HeaderLabel: rows.HeaderLabel,
+	}
+	if source != nil {
+		fixed.Source = source
+	} else {
+		fixed.Items = items
+	}
+
+	field.FixedRows = fixed
+
+	if rows.Required != nil && *rows.Required {
+		field.IsRequired = true
+	}
+
+	return nil
+}
+
+func isValidStaticFixedRowItems(items []approval.FieldOption) bool {
+	if len(items) == 0 {
+		return false
+	}
+
+	seen := collections.NewHashSetWithCapacity[string](len(items))
+	for _, item := range items {
+		val, ok := formatFixedItemValue(item.Value)
+		if !ok || !seen.Add(val) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func formatFixedItemValue(raw any) (string, bool) {
+	switch v := raw.(type) {
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return "", false
+		}
+
+		return v, true
+
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprint(v), true
+
+	case float32:
+		f := float64(v)
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return "", false
+		}
+
+		return fmt.Sprint(v), true
+
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return "", false
+		}
+
+		return fmt.Sprint(v), true
+
+	default:
+		return "", false
+	}
 }
 
 // resolveOptionSource collapses a selection field's option source into exactly
@@ -253,7 +367,13 @@ func resolveOptionSource(
 	node *richBlock,
 	dataSources map[string]richDataSource,
 ) ([]approval.FieldOption, *approval.FieldOptionSource) {
-	source := node.DataSource
+	return resolveOptionSourceValue(node.DataSource, dataSources)
+}
+
+func resolveOptionSourceValue(
+	source *richOptionSource,
+	dataSources map[string]richDataSource,
+) ([]approval.FieldOption, *approval.FieldOptionSource) {
 	if source == nil {
 		return nil, nil
 	}
@@ -435,11 +555,24 @@ func describeFieldShape(kind approval.FieldKind, isMultiple bool, granularity ap
 	return string(kind)
 }
 
-// peekTableSignature is the contract signature of a subform's column set — the
-// ordered, deduplicated key:kind pairs of its template's root-scope keyed leaves
-// (layout containers transparent, matching the projection walk). Two devices
-// whose signatures differ deploy a row shape at least one of them cannot submit.
+// peekTableSignature is the contract signature of a subform's row shape: its
+// row mode (dynamic vs fixed + itemKey) and the ordered, deduplicated key:kind
+// pairs of its template's root-scope keyed leaves (layout containers
+// transparent, matching the projection walk). Two devices whose signatures
+// differ deploy a row shape at least one of them cannot submit.
 func peekTableSignature(node *richBlock) string {
+	modePrefix := "dynamic|"
+	if node.Rows != nil {
+		switch node.Rows.Mode {
+		case "", "dynamic":
+			modePrefix = "dynamic|"
+		case "fixed":
+			modePrefix = "fixed:" + node.Rows.ItemKey + "|"
+		default:
+			modePrefix = "invalid:" + node.Rows.Mode + "|"
+		}
+	}
+
 	var parts []string
 
 	seen := collections.NewHashSet[string]()
@@ -461,5 +594,5 @@ func peekTableSignature(node *richBlock) string {
 		return nil
 	})
 
-	return strings.Join(parts, ",")
+	return modePrefix + strings.Join(parts, ",")
 }

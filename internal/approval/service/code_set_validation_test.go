@@ -125,3 +125,92 @@ func TestValidateFormDataCodeSet(t *testing.T) {
 		assert.NotErrorAs(t, err, &re, "A load failure is not the submitter's validation error")
 	})
 }
+
+func TestValidateFormDataFixedRowsCodeSet(t *testing.T) {
+	newService := func(loader mold.CodeSetLoader) *ValidationService {
+		return NewValidationService(mustInitiatorCompositeInternal(nil), WithCodeSetLoader(loader))
+	}
+
+	fields := []approval.FormFieldDefinition{{
+		Key: "checks", Kind: approval.FieldTable, Label: "自查表", IsRequired: true,
+		Columns: []approval.FormFieldDefinition{
+			codeSetSelect("gender", "sys.gender"),
+			{Key: "note", Kind: approval.FieldInput, Label: "说明"},
+		},
+		FixedRows: &approval.TableFixedRows{
+			ItemKey:     "item",
+			HeaderLabel: "自查内容",
+			Source:      &approval.FieldOptionSource{Kind: approval.OptionSourceCodeSet, CodeSet: "hr.skill"},
+		},
+	}}
+
+	t.Run("AcceptsTopLevelDictionaryCodesAndChecksColumns", func(t *testing.T) {
+		loader := newRecordingLoader()
+		err := newService(loader).ValidateFormData(t.Context(), fields, map[string]any{
+			"checks": []any{
+				map[string]any{"item": map[string]any{"value": "go", "label": "Go"}, "gender": "M", "note": "ok"},
+				map[string]any{"item": map[string]any{"value": "ts", "label": "TypeScript"}, "gender": "F", "note": "ok"},
+			},
+		})
+		require.NoError(t, err, "top-level dictionary codes in fixed rows must pass")
+		assert.Equal(t, 1, loader.loads["hr.skill"], "dictionary should be loaded once per call")
+		assert.Equal(t, 1, loader.loads["sys.gender"], "column dictionary should be loaded once per call")
+	})
+
+	t.Run("RejectsCodeNotInDictionary", func(t *testing.T) {
+		err := newService(newRecordingLoader()).ValidateFormData(t.Context(), fields, map[string]any{
+			"checks": []any{
+				map[string]any{"item": map[string]any{"value": "go", "label": "Go"}},
+				map[string]any{"item": map[string]any{"value": "rust", "label": "Rust"}},
+			},
+		})
+		requireFormValidationError(t, err)
+	})
+
+	t.Run("RejectsUnknownEmptyDictionary", func(t *testing.T) {
+		unknownFields := []approval.FormFieldDefinition{{
+			Key: "checks", Kind: approval.FieldTable, Label: "自查表",
+			Columns: []approval.FormFieldDefinition{{Key: "note", Kind: approval.FieldInput}},
+			FixedRows: &approval.TableFixedRows{
+				ItemKey: "item",
+				Source:  &approval.FieldOptionSource{Kind: approval.OptionSourceCodeSet, CodeSet: "missing.dict"},
+			},
+		}}
+		err := newService(newRecordingLoader()).ValidateFormData(t.Context(), unknownFields, map[string]any{
+			"checks": []any{map[string]any{"item": map[string]any{"value": "a", "label": "A"}}},
+		})
+		requireFormValidationError(t, err)
+	})
+
+	t.Run("RejectsDuplicateDictionaryValues", func(t *testing.T) {
+		err := newService(newRecordingLoader()).ValidateFormData(t.Context(), fields, map[string]any{
+			"checks": []any{
+				map[string]any{"item": map[string]any{"value": "go", "label": "Go"}},
+				map[string]any{"item": map[string]any{"value": "go", "label": "Go"}},
+			},
+		})
+		requireFormValidationError(t, err)
+	})
+
+	t.Run("AcceptsWithoutLoader", func(t *testing.T) {
+		err := newService(nil).ValidateFormData(t.Context(), fields, map[string]any{
+			"checks": []any{
+				map[string]any{"item": map[string]any{"value": "anything", "label": "Any"}},
+			},
+		})
+		assert.NoError(t, err, "without a CodeSetLoader any unique valid item shape is accepted")
+	})
+
+	t.Run("SurfacesLoaderFailure", func(t *testing.T) {
+		loader := newRecordingLoader()
+		loader.err = errors.New("dictionary store unavailable")
+
+		err := newService(loader).ValidateFormData(t.Context(), fields, map[string]any{
+			"checks": []any{map[string]any{"item": map[string]any{"value": "go", "label": "Go"}}},
+		})
+		require.ErrorIs(t, err, loader.err, "loader errors must surface as system errors")
+
+		var re result.Error
+		assert.NotErrorAs(t, err, &re, "a load failure is not the submitter's validation error")
+	})
+}

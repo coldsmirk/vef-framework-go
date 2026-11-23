@@ -1,0 +1,73 @@
+{
+  "version": 2,
+  "dataSources": [
+    {
+      "id": "DS_CHECKLIST",
+      "kind": "static",
+      "name": "自查条款",
+      "options": [
+        { "label": "执业许可证在有效期内（5分）", "value": "lic_valid" },
+        { "label": "诊疗科目与核准登记一致（5分）", "value": "scope_match" }
+      ]
+    }
+  ],
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "Sub1",
+          "type": "subform",
+          "variant": "table",
+          "key": "qualCheck",
+          "label": "医疗机构资质自查",
+          "rows": {
+            "mode": "fixed",
+            "itemKey": "item",
+            "headerLabel": "自查内容",
+            "headerWidth": 320,
+            "required": true,
+            "source": {
+              "kind": "static",
+              "options": [
+                { "label": "虚构不存在手术加收患者费用的（8分）", "value": "fee_fake" },
+                { "label": "使用非卫生技术人员从事诊疗工作的（10分）", "value": "non_licensed" }
+              ]
+            }
+          },
+          "template": [
+            {
+              "id": "C1",
+              "type": "select",
+              "key": "hasIssue",
+              "label": "存在问题",
+              "validate": { "required": true },
+              "dataSource": {
+                "kind": "static",
+                "options": [
+                  { "label": "无", "value": "no" },
+                  { "label": "有", "value": "yes" }
+                ]
+              }
+            },
+            { "id": "C2", "type": "textfield", "key": "owner", "label": "责任人" }
+          ]
+        },
+        {
+          "id": "Sub2",
+          "type": "subform",
+          "variant": "stack",
+          "key": "refCheck",
+          "label": "引用条款自查",
+          "rows": {
+            "mode": "fixed",
+            "itemKey": "clause",
+            "source": { "kind": "ref", "dataSourceId": "DS_CHECKLIST" }
+          },
+          "template": [
+            { "id": "C3", "type": "textfield", "key": "remark", "label": "整改措施" }
+          ]
+        }
+      ]
+    }
+  }
+}

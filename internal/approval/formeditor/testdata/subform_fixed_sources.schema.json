@@ -1,0 +1,84 @@
+{
+  "version": 2,
+  "dataSources": [
+    {
+      "id": "DS_DEPT_ITEMS",
+      "kind": "remote",
+      "name": "科室检查项",
+      "request": {
+        "resource": "inspection",
+        "action": "list_items",
+        "params": {
+          "deptId": { "kind": "expression", "source": "formData.dept" }
+        }
+      },
+      "mapping": { "labelKey": "content", "valueKey": "code" }
+    }
+  ],
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "Sub1",
+          "type": "subform",
+          "variant": "table",
+          "key": "dictCheck",
+          "label": "字典检查表",
+          "rows": {
+            "mode": "fixed",
+            "itemKey": "item",
+            "headerLabel": "检查项",
+            "required": true,
+            "source": { "kind": "codeSet", "codeSet": "hosp.self_check" }
+          },
+          "template": [
+            { "id": "C1", "type": "textfield", "key": "detail", "label": "问题描述" }
+          ]
+        },
+        {
+          "id": "Sub2",
+          "type": "subform",
+          "variant": "table",
+          "key": "remoteCheck",
+          "label": "接口检查表",
+          "rows": {
+            "mode": "fixed",
+            "itemKey": "item",
+            "headerLabel": "自查内容",
+            "source": {
+              "kind": "remote",
+              "request": {
+                "resource": "hosp/checklist",
+                "action": "find_items",
+                "version": "v1",
+                "params": {
+                  "dept": { "kind": "expression", "source": "formData.dept" },
+                  "active": { "kind": "literal", "value": true }
+                }
+              },
+              "mapping": { "labelKey": "title", "valueKey": "id" }
+            }
+          },
+          "template": [
+            { "id": "C2", "type": "textfield", "key": "measure", "label": "整改措施" }
+          ]
+        },
+        {
+          "id": "Sub3",
+          "type": "subform",
+          "variant": "table",
+          "key": "refRemoteCheck",
+          "label": "引用接口检查表",
+          "rows": {
+            "mode": "fixed",
+            "itemKey": "checkItem",
+            "source": { "kind": "ref", "dataSourceId": "DS_DEPT_ITEMS" }
+          },
+          "template": [
+            { "id": "C3", "type": "textfield", "key": "result", "label": "整改效果" }
+          ]
+        }
+      ]
+    }
+  }
+}

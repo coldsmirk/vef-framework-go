@@ -1,0 +1,60 @@
+[
+  {
+    "key": "qualCheck",
+    "kind": "table",
+    "label": "医疗机构资质自查",
+    "isRequired": true,
+    "sortOrder": 0,
+    "columns": [
+      {
+        "key": "hasIssue",
+        "kind": "select",
+        "label": "存在问题",
+        "isRequired": true,
+        "options": [
+          { "label": "无", "value": "no" },
+          { "label": "有", "value": "yes" }
+        ],
+        "sortOrder": 0,
+        "columnType": "text"
+      },
+      {
+        "key": "owner",
+        "kind": "input",
+        "label": "责任人",
+        "sortOrder": 1,
+        "columnType": "text"
+      }
+    ],
+    "fixedRows": {
+      "itemKey": "item",
+      "headerLabel": "自查内容",
+      "items": [
+        { "label": "虚构不存在手术加收患者费用的（8分）", "value": "fee_fake" },
+        { "label": "使用非卫生技术人员从事诊疗工作的（10分）", "value": "non_licensed" }
+      ]
+    }
+  },
+  {
+    "key": "refCheck",
+    "kind": "table",
+    "label": "引用条款自查",
+    "sortOrder": 1,
+    "columns": [
+      {
+        "key": "remark",
+        "kind": "input",
+        "label": "整改措施",
+        "sortOrder": 0,
+        "columnType": "text"
+      }
+    ],
+    "fixedRows": {
+      "itemKey": "clause",
+      "items": [
+        { "label": "执业许可证在有效期内（5分）", "value": "lic_valid" },
+        { "label": "诊疗科目与核准登记一致（5分）", "value": "scope_match" }
+      ]
+    }
+  }
+]
