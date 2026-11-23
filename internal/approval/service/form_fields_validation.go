@@ -38,6 +38,10 @@ func (*FlowDefinitionService) ValidateFormFields(fields []approval.FormFieldDefi
 			return fmt.Errorf("%w: %q for field %q", errInvalidFormFieldKind, field.Kind, field.Key)
 		}
 
+		if err := validateDateGranularity(field, field.Key); err != nil {
+			return err
+		}
+
 		if err := validateFieldValidationRule(field); err != nil {
 			return err
 		}
@@ -92,6 +96,10 @@ func validateTableColumns(field approval.FormFieldDefinition) error {
 			return fmt.Errorf("%w: %q for column %q in table %q", errInvalidFormFieldKind, column.Kind, column.Key, field.Key)
 		}
 
+		if err := validateDateGranularity(column, field.Key+"."+column.Key); err != nil {
+			return err
+		}
+
 		if err := validateFieldValidationRule(column); err != nil {
 			return err
 		}
@@ -131,6 +139,24 @@ func validateOptionSource(field approval.FormFieldDefinition, path string) error
 
 	default:
 		return fmt.Errorf("%w: %q for field %q", errInvalidOptionSourceKind, source.Kind, path)
+	}
+
+	return nil
+}
+
+// validateDateGranularity checks that Granularity is only declared on date and
+// daterange fields and uses a known value. Empty means day and is always valid.
+func validateDateGranularity(field approval.FormFieldDefinition, path string) error {
+	if field.Granularity == "" {
+		return nil
+	}
+
+	if field.Kind != approval.FieldDate && field.Kind != approval.FieldDateRange {
+		return fmt.Errorf("%w: %q on %s field %q", errGranularityNotAllowed, field.Granularity, field.Kind, path)
+	}
+
+	if !field.Granularity.IsValid() {
+		return fmt.Errorf("%w: %q for field %q", errInvalidDateGranularity, field.Granularity, path)
 	}
 
 	return nil

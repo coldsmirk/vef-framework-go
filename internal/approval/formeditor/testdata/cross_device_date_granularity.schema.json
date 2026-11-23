@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": { "children": [{ "id": "P1", "type": "date", "key": "period", "label": "期间", "granularity": "month" }] },
+    "mobile": { "children": [{ "id": "M1", "type": "date", "key": "period", "label": "期间" }] }
+  }
+}

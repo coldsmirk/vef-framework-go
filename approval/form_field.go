@@ -4,7 +4,7 @@ package approval
 type FormFieldDefinition struct {
 	// Key is the unique identifier for this field (used in form data keys).
 	Key string `json:"key"`
-	// Kind is the field type (e.g., "input", "textarea", "select", "number", "date", "upload", "table").
+	// Kind is the field type (e.g., "input", "textarea", "select", "number", "date", "datetime", "daterange", "upload", "table").
 	Kind FieldKind `json:"kind"`
 	// Label is the display label.
 	Label string `json:"label"`
@@ -18,6 +18,11 @@ type FormFieldDefinition struct {
 	// multiple chosen values as a list (e.g., checkbox-group, multi-select).
 	// Drives condition operator validation and the flow designer's operator picker.
 	IsMultiple bool `json:"isMultiple,omitempty"`
+	// Granularity specifies the calendar granularity of a date or daterange field
+	// ("year", "quarter", "month", or "day"; empty defaults to "day"). Valid only
+	// on FieldDate and FieldDateRange; deploy validation rejects it on any other
+	// kind or with an unrecognized value.
+	Granularity DateGranularity `json:"granularity,omitempty"`
 	// Options is the list of selectable options (for select, radio, checkbox, etc.).
 	Options []FieldOption `json:"options,omitempty"`
 	// OptionSource describes where a selection field's options come from when

@@ -455,3 +455,148 @@ func TestValidateRequiredPermissionFields(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateFormDataTemporalFields(t *testing.T) {
+	svc := NewValidationService(mustInitiatorCompositeInternal(nil))
+
+	assertRejected := func(t *testing.T, fields []approval.FormFieldDefinition, data map[string]any, msg string) {
+		t.Helper()
+
+		err := svc.ValidateFormData(t.Context(), fields, data)
+
+		var re result.Error
+		require.ErrorAs(t, err, &re, msg)
+		assert.Equal(t, approval.ErrCodeFormValidationFailed, re.Code, msg)
+	}
+
+	t.Run("DateGranularities", func(t *testing.T) {
+		cases := []struct {
+			name        string
+			granularity approval.DateGranularity
+			valid       []string
+			invalid     []any
+		}{
+			{
+				name:        "DefaultDay",
+				granularity: "",
+				valid:       []string{"2026-04-15", "2024-02-29"},
+				invalid:     []any{"2026-02-29", "2026-04-31", "2026-4-5", "2026-04", "2026-04-15 08:30:00", " 2026-04-15", 20260415},
+			},
+			{
+				name:        "ExplicitDay",
+				granularity: approval.DateGranularityDay,
+				valid:       []string{"2026-12-31"},
+				invalid:     []any{"2026-13-01", "2026-Q4"},
+			},
+			{
+				name:        "Month",
+				granularity: approval.DateGranularityMonth,
+				valid:       []string{"2026-01", "2026-12"},
+				invalid:     []any{"2026-00", "2026-13", "2026-4", "2026-04-01", "2026", "2026-Q1"},
+			},
+			{
+				name:        "Quarter",
+				granularity: approval.DateGranularityQuarter,
+				valid:       []string{"2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4"},
+				invalid:     []any{"2026-Q0", "2026-Q5", "2026-q1", "2026Q1", "2026-04", "2026-04-01"},
+			},
+			{
+				name:        "Year",
+				granularity: approval.DateGranularityYear,
+				valid:       []string{"2026", "1999"},
+				invalid:     []any{"26", "20260", "202a", "2026-01", "+202", 2026},
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				fields := []approval.FormFieldDefinition{{Key: "d", Kind: approval.FieldDate, Granularity: tc.granularity, Label: "日期"}}
+				for _, v := range tc.valid {
+					assert.NoError(t, svc.ValidateFormData(t.Context(), fields, map[string]any{"d": v}), "valid value %q must pass", v)
+				}
+
+				for _, v := range tc.invalid {
+					assertRejected(t, fields, map[string]any{"d": v}, "invalid value must fail")
+				}
+			})
+		}
+	})
+
+	t.Run("Datetime", func(t *testing.T) {
+		fields := []approval.FormFieldDefinition{{Key: "at", Kind: approval.FieldDatetime, Label: "时间"}}
+		assert.NoError(t, svc.ValidateFormData(t.Context(), fields, map[string]any{"at": "2026-04-15 08:30:00"}))
+		assert.NoError(t, svc.ValidateFormData(t.Context(), fields, map[string]any{"at": "2024-02-29 23:59:59"}))
+
+		for _, bad := range []any{
+			"2026-04-15",
+			"2026-04-15T08:30:00",
+			"2026-04-15 08:30:00Z",
+			"2026-02-29 08:30:00",
+			"2026-04-15 24:00:00",
+			"2026-4-15 8:30:00",
+			12345,
+		} {
+			assertRejected(t, fields, map[string]any{"at": bad}, "malformed datetime must fail")
+		}
+	})
+
+	t.Run("DateRange", func(t *testing.T) {
+		dayFields := []approval.FormFieldDefinition{{Key: "span", Kind: approval.FieldDateRange, Label: "区间"}}
+		reqDayFields := []approval.FormFieldDefinition{{Key: "span", Kind: approval.FieldDateRange, Label: "区间", IsRequired: true}}
+		quarterFields := []approval.FormFieldDefinition{{Key: "qspan", Kind: approval.FieldDateRange, Granularity: approval.DateGranularityQuarter, Label: "季度区间"}}
+
+		// Valid ranges including equal endpoints and both []any and []string slices.
+		assert.NoError(t, svc.ValidateFormData(t.Context(), dayFields, map[string]any{"span": []any{"2026-04-01", "2026-04-15"}}))
+		assert.NoError(t, svc.ValidateFormData(t.Context(), dayFields, map[string]any{"span": []string{"2026-04-15", "2026-04-15"}}))
+		assert.NoError(t, svc.ValidateFormData(t.Context(), quarterFields, map[string]any{"qspan": []any{"2026-Q1", "2026-Q4"}}))
+		assert.NoError(t, svc.ValidateFormData(t.Context(), quarterFields, map[string]any{"qspan": []any{"2026-Q2", "2026-Q2"}}))
+
+		// Empty slice is treated as empty: optional skips, required rejects.
+		assert.NoError(t, svc.ValidateFormData(t.Context(), dayFields, map[string]any{"span": []any{}}))
+		assertRejected(t, reqDayFields, map[string]any{"span": []any{}}, "empty list must fail required check")
+		assertRejected(t, reqDayFields, map[string]any{"span": []string{}}, "empty string slice must fail required check")
+
+		// Wrong shape, length, malformed end, or reversed order.
+		for _, bad := range []any{
+			"2026-04-01",
+			[]any{"2026-04-01"},
+			[]any{"2026-04-01", "2026-04-02", "2026-04-03"},
+			[]any{"", ""},
+			[]any{"2026-04-01", 20260415},
+			[]any{"2026-02-29", "2026-04-01"},
+			[]any{"2026-04-15", "2026-04-01"},
+		} {
+			assertRejected(t, dayFields, map[string]any{"span": bad}, "invalid day range must fail")
+		}
+
+		assertRejected(t, quarterFields, map[string]any{"qspan": []any{"2026-Q4", "2026-Q1"}}, "reversed quarter range must fail")
+		assertRejected(t, quarterFields, map[string]any{"qspan": []any{"2026-01-01", "2026-04-01"}}, "wrong granularity in quarter range must fail")
+	})
+
+	t.Run("DetailTableTemporalColumns", func(t *testing.T) {
+		fields := []approval.FormFieldDefinition{{
+			Key: "items", Kind: approval.FieldTable, Label: "明细",
+			Columns: []approval.FormFieldDefinition{
+				{Key: "month", Kind: approval.FieldDate, Granularity: approval.DateGranularityMonth, Label: "月份"},
+				{Key: "at", Kind: approval.FieldDatetime, Label: "时刻"},
+				{Key: "span", Kind: approval.FieldDateRange, Granularity: approval.DateGranularityYear, Label: "年度区间"},
+			},
+		}}
+
+		assert.NoError(t, svc.ValidateFormData(t.Context(), fields, map[string]any{
+			"items": []any{
+				map[string]any{"month": "2026-04", "at": "2026-04-15 09:00:00", "span": []any{"2025", "2026"}},
+			},
+		}))
+		assertRejected(t, fields, map[string]any{
+			"items": []any{
+				map[string]any{"month": "2026-04-15"},
+			},
+		}, "malformed temporal table cell must fail")
+		assertRejected(t, fields, map[string]any{
+			"items": []any{
+				map[string]any{"span": []any{"2027", "2026"}},
+			},
+		}, "reversed range table cell must fail")
+	})
+}

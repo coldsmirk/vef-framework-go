@@ -50,4 +50,8 @@ const (
 	ErrMessageFormFieldMinRows           = "approval_form_field_min_rows"
 	ErrMessageFormFieldMaxRows           = "approval_form_field_max_rows"
 	ErrMessageFormFieldTableCell         = "approval_form_field_table_cell"
+	ErrMessageFormFieldInvalidDate       = "approval_form_field_invalid_date"
+	ErrMessageFormFieldInvalidDatetime   = "approval_form_field_invalid_datetime"
+	ErrMessageFormFieldMustBeDateRange   = "approval_form_field_must_be_date_range"
+	ErrMessageFormFieldInvalidDateRange  = "approval_form_field_invalid_date_range"
 )

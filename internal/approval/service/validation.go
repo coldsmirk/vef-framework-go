@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/coldsmirk/go-collections"
@@ -324,13 +325,22 @@ func requireConcludedVisit(ctx context.Context, db orm.DB, instanceID, nodeID st
 
 func validateFormField(field approval.FormFieldDefinition, value any) error {
 	switch field.Kind {
-	case approval.FieldInput, approval.FieldTextarea, approval.FieldDate:
+	case approval.FieldInput, approval.FieldTextarea:
 		text, ok := value.(string)
 		if !ok {
 			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMustBeString, map[string]any{"field": fieldLabel(field)}))
 		}
 
 		return validateStringRule(field, text)
+
+	case approval.FieldDate:
+		return validateDateField(field, value)
+
+	case approval.FieldDatetime:
+		return validateDatetimeField(field, value)
+
+	case approval.FieldDateRange:
+		return validateDateRangeField(field, value)
 
 	case approval.FieldUpload:
 		return validateUploadField(field, value)
@@ -502,6 +512,151 @@ func validateNumberRule(field approval.FormFieldDefinition, value float64) error
 	}
 
 	return nil
+}
+
+func validateDateField(field approval.FormFieldDefinition, value any) error {
+	text, ok := value.(string)
+	if !ok {
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMustBeString, map[string]any{"field": fieldLabel(field)}))
+	}
+
+	if !isValidDateString(text, field.Granularity) {
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldInvalidDate, map[string]any{
+			"field":  fieldLabel(field),
+			"format": field.Granularity.FormatLabel(),
+		}))
+	}
+
+	return validateStringRule(field, text)
+}
+
+func validateDatetimeField(field approval.FormFieldDefinition, value any) error {
+	text, ok := value.(string)
+	if !ok {
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMustBeString, map[string]any{"field": fieldLabel(field)}))
+	}
+
+	if !isValidDatetimeString(text) {
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldInvalidDatetime, map[string]any{
+			"field": fieldLabel(field),
+		}))
+	}
+
+	return validateStringRule(field, text)
+}
+
+func validateDateRangeField(field approval.FormFieldDefinition, value any) error {
+	var start, end string
+
+	switch items := value.(type) {
+	case []string:
+		if len(items) != 2 {
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMustBeDateRange, map[string]any{"field": fieldLabel(field)}))
+		}
+
+		start, end = items[0], items[1]
+
+	case []any:
+		if len(items) != 2 {
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMustBeDateRange, map[string]any{"field": fieldLabel(field)}))
+		}
+
+		s0, ok0 := items[0].(string)
+		s1, ok1 := items[1].(string)
+
+		if !ok0 || !ok1 {
+			return newFormValidationError(i18n.T(shared.ErrMessageFormFieldInvalidDate, map[string]any{
+				"field":  fieldLabel(field),
+				"format": field.Granularity.FormatLabel(),
+			}))
+		}
+
+		start, end = s0, s1
+
+	default:
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldMustBeDateRange, map[string]any{"field": fieldLabel(field)}))
+	}
+
+	if !isValidDateString(start, field.Granularity) || !isValidDateString(end, field.Granularity) {
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldInvalidDate, map[string]any{
+			"field":  fieldLabel(field),
+			"format": field.Granularity.FormatLabel(),
+		}))
+	}
+
+	// All four canonical granularity formats are fixed-width big-endian strings,
+	// so lexicographical order is chronological order.
+	if start > end {
+		return newFormValidationError(i18n.T(shared.ErrMessageFormFieldInvalidDateRange, map[string]any{
+			"field": fieldLabel(field),
+		}))
+	}
+
+	return nil
+}
+
+func isValidDateString(value string, granularity approval.DateGranularity) bool {
+	switch granularity.Effective() {
+	case approval.DateGranularityYear:
+		return len(value) == 4 && isASCIIDigits(value)
+
+	case approval.DateGranularityQuarter:
+		return len(value) == 7 &&
+			isASCIIDigits(value[:4]) &&
+			value[4] == '-' &&
+			value[5] == 'Q' &&
+			value[6] >= '1' && value[6] <= '4'
+
+	case approval.DateGranularityMonth:
+		if len(value) != 7 || !isASCIIDigits(value[:4]) || value[4] != '-' || !isASCIIDigits(value[5:7]) {
+			return false
+		}
+
+		_, err := time.Parse("2006-01", value)
+
+		return err == nil
+
+	case approval.DateGranularityDay:
+		if len(value) != 10 ||
+			!isASCIIDigits(value[:4]) || value[4] != '-' ||
+			!isASCIIDigits(value[5:7]) || value[7] != '-' ||
+			!isASCIIDigits(value[8:10]) {
+			return false
+		}
+
+		_, err := time.Parse(time.DateOnly, value)
+
+		return err == nil
+
+	default:
+		return false
+	}
+}
+
+func isValidDatetimeString(value string) bool {
+	if len(value) != 19 ||
+		!isASCIIDigits(value[:4]) || value[4] != '-' ||
+		!isASCIIDigits(value[5:7]) || value[7] != '-' ||
+		!isASCIIDigits(value[8:10]) || value[10] != ' ' ||
+		!isASCIIDigits(value[11:13]) || value[13] != ':' ||
+		!isASCIIDigits(value[14:16]) || value[16] != ':' ||
+		!isASCIIDigits(value[17:19]) {
+		return false
+	}
+
+	_, err := time.Parse(time.DateTime, value)
+
+	return err == nil
+}
+
+func isASCIIDigits(s string) bool {
+	for i := range len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+
+	return len(s) > 0
 }
 
 func validateUploadField(field approval.FormFieldDefinition, value any) error {

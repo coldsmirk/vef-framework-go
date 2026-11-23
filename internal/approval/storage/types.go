@@ -186,11 +186,19 @@ func columnTypeFor(kind config.DBKind, t sqlTypes, field approval.FormFieldDefin
 
 	switch field.ColumnType {
 	case approval.ColumnString:
-		// VARCHAR(maxLength) when a bound is declared; otherwise falls through to
-		// the lossless TEXT fallback below.
+		// VARCHAR(maxLength) when a bound is declared (explicit validation
+		// maxLength, or fixed length derived from a non-day date granularity);
+		// otherwise falls through to the lossless TEXT fallback below.
 		if field.Validation != nil && field.Validation.MaxLength != nil && *field.Validation.MaxLength > 0 {
 			return varcharType(kind, *field.Validation.MaxLength)
 		}
+
+		if field.Kind == approval.FieldDate {
+			if length := field.Granularity.MaxLength(); length > 0 {
+				return varcharType(kind, length)
+			}
+		}
+
 	case approval.ColumnInteger:
 		return t.integer
 	case approval.ColumnDecimal:
@@ -223,15 +231,19 @@ func columnTypeFor(kind config.DBKind, t sqlTypes, field approval.FormFieldDefin
 // kind the storage layer does not recognize still produces a valid, lossless
 // column rather than failing generation.
 func sqlTypeForKind(t sqlTypes, kind approval.FieldKind) string {
-	if kind == approval.FieldNumber {
+	switch kind {
+	case approval.FieldNumber:
 		return t.number
+	case approval.FieldDateRange:
+		return t.json
+	default:
+		// Every other field kind — input/textarea/select/upload/date/datetime and
+		// any kind the storage layer does not recognize — projects into a TEXT
+		// column. Date/datetime values in particular are validated and bound as
+		// plain ISO strings (exactly how apv_instance.form_data holds them), so
+		// TEXT is lossless, identical cross-dialect, and free of the
+		// empty-string-vs-temporal-column rejection a real DATE/TIMESTAMP type
+		// would impose on an optional, unfilled value.
+		return t.text
 	}
-
-	// Every other field kind — input/textarea/select/upload/date and any kind the
-	// storage layer does not recognize — projects into a TEXT column. Date values
-	// in particular are validated and bound as plain ISO strings (exactly how
-	// apv_instance.form_data holds them), so TEXT is lossless, identical
-	// cross-dialect, and free of the empty-string-vs-temporal-column rejection a
-	// real DATE/TIMESTAMP type would impose on an optional, unfilled date.
-	return t.text
 }

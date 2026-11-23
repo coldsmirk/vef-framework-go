@@ -70,6 +70,22 @@ func TestConditionOperatorsForField(t *testing.T) {
 			},
 		},
 		{
+			name:  "Datetime",
+			field: approval.FormFieldDefinition{Kind: approval.FieldDatetime},
+			want: []approval.ConditionOperator{
+				approval.OperatorEquals, approval.OperatorNotEquals,
+				approval.OperatorGreater, approval.OperatorGreaterOrEq, approval.OperatorLess, approval.OperatorLessOrEq,
+				approval.OperatorIsEmpty, approval.OperatorIsNotEmpty,
+			},
+		},
+		{
+			name:  "DateRange",
+			field: approval.FormFieldDefinition{Kind: approval.FieldDateRange},
+			want: []approval.ConditionOperator{
+				approval.OperatorIsEmpty, approval.OperatorIsNotEmpty,
+			},
+		},
+		{
 			name:  "SingleSelect",
 			field: approval.FormFieldDefinition{Kind: approval.FieldSelect},
 			want: []approval.ConditionOperator{
@@ -133,6 +149,20 @@ func TestConditionOperatorsForField(t *testing.T) {
 			"single-select must reject contains")
 		assert.False(t, approval.IsOperatorValidForField(single, approval.OperatorGreater),
 			"single-select must reject ordering operators")
+
+		dateRange := approval.FormFieldDefinition{Kind: approval.FieldDateRange}
+		for _, op := range []approval.ConditionOperator{
+			approval.OperatorEquals, approval.OperatorGreater, approval.OperatorContains, approval.OperatorIn,
+		} {
+			assert.False(t, approval.IsOperatorValidForField(dateRange, op),
+				"daterange must reject %q", op)
+		}
+
+		dt := approval.FormFieldDefinition{Kind: approval.FieldDatetime}
+		assert.False(t, approval.IsOperatorValidForField(dt, approval.OperatorContains),
+			"datetime must reject contains")
+		assert.False(t, approval.IsOperatorValidForField(dt, approval.OperatorIn),
+			"datetime must reject in")
 	})
 
 	t.Run("ReturnsDefensiveCopy", func(t *testing.T) {

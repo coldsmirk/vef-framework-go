@@ -78,6 +78,14 @@ var fieldConditionOperators = map[FieldKind][]ConditionOperator{
 		OperatorGreater, OperatorGreaterOrEq, OperatorLess, OperatorLessOrEq,
 		OperatorIsEmpty, OperatorIsNotEmpty,
 	},
+	FieldDatetime: {
+		OperatorEquals, OperatorNotEquals,
+		OperatorGreater, OperatorGreaterOrEq, OperatorLess, OperatorLessOrEq,
+		OperatorIsEmpty, OperatorIsNotEmpty,
+	},
+	FieldDateRange: {
+		OperatorIsEmpty, OperatorIsNotEmpty,
+	},
 	FieldSelect: {
 		OperatorEquals, OperatorNotEquals,
 		OperatorIn, OperatorNotIn,

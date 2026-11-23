@@ -18,7 +18,7 @@ func projectionError(message string) error {
 }
 
 // errUnmappableFieldType rejects a keyed widget whose value shape the approval
-// contract cannot carry (switch / daterange).
+// contract cannot carry (switch).
 func errUnmappableFieldType(path, widgetType string) error {
 	return projectionError(i18n.T("approval_form_unmappable_field_type", map[string]any{
 		"field": path,

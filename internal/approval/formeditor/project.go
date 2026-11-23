@@ -10,10 +10,9 @@ import (
 
 // kindByType maps a designer widget type to the approval field kind whose
 // runtime value validation accepts the widget's submitted value (string for
-// input / textarea / date, JSON number for number, scalar-or-array for select).
-// switch (boolean) and daterange ([start, end]) are deliberately absent: the Go
-// runtime validates input / date values as strings, so both would deploy fine
-// and then reject every submission — they surface as unmappable errors instead.
+// input / textarea / date / datetime, [start, end] pair for daterange, JSON
+// number for number, scalar-or-array for select). switch (boolean) is
+// deliberately absent: it surfaces as an unmappable error instead.
 var kindByType = map[string]approval.FieldKind{
 	"textfield":      approval.FieldInput,
 	"code-editor":    approval.FieldTextarea,
@@ -24,7 +23,8 @@ var kindByType = map[string]approval.FieldKind{
 	"radio":          approval.FieldSelect,
 	"checkbox-group": approval.FieldSelect,
 	"date":           approval.FieldDate,
-	"datetime":       approval.FieldDate,
+	"datetime":       approval.FieldDatetime,
+	"daterange":      approval.FieldDateRange,
 	"upload":         approval.FieldUpload,
 }
 
@@ -36,17 +36,16 @@ var multiValueSelectTypes = collections.NewHashSetFrom("checkbox-group", "multi-
 
 // unmappableTypes are widget types that bind a value the approval contract
 // cannot carry (as opposed to unknown consumer-registered types).
-var unmappableTypes = collections.NewHashSetFrom("switch", "daterange")
+var unmappableTypes = collections.NewHashSetFrom("switch")
 
 // columnTypeByWidget is the deterministic widget → storage column type. number
-// (integer/decimal by precision) and the string family (textfield / select /
+// (integer/decimal by precision), date (date vs sized string by granularity),
+// upload (text vs json by maxCount), and the string family (textfield / select /
 // radio, sized by maxLength) are resolved separately in inferColumnType, so they
-// are absent here. The switch / daterange entries mirror the form-editor table
-// verbatim but are never reached through projectLeaf — both fail the unmappable
-// check before column inference runs.
+// are absent here. The switch entry mirrors the form-editor table verbatim but
+// is never reached through projectLeaf — it fails the unmappable check first.
 var columnTypeByWidget = map[string]approval.ColumnDataType{
 	"switch":         approval.ColumnBoolean,
-	"date":           approval.ColumnDate,
 	"datetime":       approval.ColumnDatetime,
 	"checkbox-group": approval.ColumnJSON,
 	"multi-select":   approval.ColumnJSON,
@@ -56,10 +55,10 @@ var columnTypeByWidget = map[string]approval.ColumnDataType{
 }
 
 // classifyWidget reports the projection-blocking fault of a root-scope keyed
-// node's widget type: an unmappable (switch / daterange) or unknown type. A
-// subform (table) and every mapped leaf widget pass. The parser runs this on
-// every sighting before the cross-device dedupe, so a type conflict fails
-// identically no matter which device sees the key first.
+// node's widget type: an unmappable (switch) or unknown type. A subform (table)
+// and every mapped leaf widget pass. The parser runs this on every sighting
+// before the cross-device dedupe, so a type conflict fails identically no
+// matter which device sees the key first.
 //
 // The TS twin (@vef-framework-react/approval-form-bridge, project.ts) must
 // mirror this order — classify before dedupe — or the two projectors disagree
@@ -122,6 +121,23 @@ func projectLeaf(node *richBlock, path string, dataSources map[string]richDataSo
 
 	if multiValueSelectTypes.Contains(node.Type) {
 		field.IsMultiple = true
+	}
+
+	if (node.Type == "date" || node.Type == "daterange") && node.Granularity != "" {
+		field.Granularity = approval.DateGranularity(node.Granularity)
+	}
+
+	// Non-day date granularities store fixed-length strings (4 for year, 7 for
+	// quarter/month) in a VARCHAR column; carry the length bound on Validation so
+	// table DDL renders VARCHAR(4)/VARCHAR(7) and parity mirrors column-type.ts.
+	if node.Type == "date" && columnType == approval.ColumnString {
+		if length := field.Granularity.MaxLength(); length > 0 && (rule == nil || rule.MaxLength == nil) {
+			if rule == nil {
+				rule = new(approval.ValidationRule)
+			}
+
+			rule.MaxLength = &length
+		}
 	}
 
 	options, optionSource := resolveOptionSource(node, dataSources)
@@ -311,6 +327,14 @@ func inferColumnType(node *richBlock) approval.ColumnDataType {
 		return approval.ColumnInteger
 	}
 
+	if node.Type == "date" {
+		if approval.DateGranularity(node.Granularity).Effective() == approval.DateGranularityDay {
+			return approval.ColumnDate
+		}
+
+		return approval.ColumnString
+	}
+
 	// An upload field's value is a storage key: one string when it accepts a
 	// single file, an array of them otherwise — the same array shape
 	// checkbox-group carries, so a multi-file field needs the same JSON column.
@@ -384,13 +408,28 @@ func peekKind(node *richBlock) approval.FieldKind {
 	return ""
 }
 
-// describeFieldShape formats a projected kind + multiplicity for cross-device
-// comparison and error messages. Single-valued kinds stay their bare kind name;
-// a multi-value select is distinguished so single vs multi on the same key is
-// caught as a value-shape conflict.
-func describeFieldShape(kind approval.FieldKind, isMultiple bool) string {
+// peekGranularity returns the effective granularity of a date or daterange
+// widget for cross-device comparison (empty resolves to day), or "" for other
+// widget types.
+func peekGranularity(node *richBlock) approval.DateGranularity {
+	if node.Type == "date" || node.Type == "daterange" {
+		return approval.DateGranularity(node.Granularity).Effective()
+	}
+
+	return ""
+}
+
+// describeFieldShape formats a projected kind + multiplicity / granularity for
+// cross-device comparison and error messages. Single-valued / default-day kinds
+// stay their bare kind name; multi-value selects and non-day date / daterange
+// fields are distinguished so value-shape conflicts across devices are caught.
+func describeFieldShape(kind approval.FieldKind, isMultiple bool, granularity approval.DateGranularity) string {
 	if kind == approval.FieldSelect && isMultiple {
 		return string(kind) + " (multiple)"
+	}
+
+	if (kind == approval.FieldDate || kind == approval.FieldDateRange) && granularity != "" && granularity != approval.DateGranularityDay {
+		return string(kind) + " (" + string(granularity) + ")"
 	}
 
 	return string(kind)
@@ -414,7 +453,7 @@ func peekTableSignature(node *richBlock) string {
 		if child.Type == "subform" {
 			kind = string(approval.FieldTable)
 		} else if mapped, ok := kindByType[child.Type]; ok {
-			kind = describeFieldShape(mapped, multiValueSelectTypes.Contains(child.Type))
+			kind = describeFieldShape(mapped, multiValueSelectTypes.Contains(child.Type), peekGranularity(child))
 		}
 
 		parts = append(parts, child.Key+":"+kind)

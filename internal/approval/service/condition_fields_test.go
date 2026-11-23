@@ -15,6 +15,8 @@ func TestValidateConditionFields(t *testing.T) {
 		{Key: "amount", Kind: approval.FieldNumber},
 		{Key: "category", Kind: approval.FieldSelect},
 		{Key: "tags", Kind: approval.FieldSelect, IsMultiple: true},
+		{Key: "moment", Kind: approval.FieldDatetime},
+		{Key: "span", Kind: approval.FieldDateRange, Granularity: approval.DateGranularityMonth},
 		{Key: "attachment", Kind: approval.FieldUpload},
 		// Colliding with a built-in applicant subject: runtime resolves
 		// applicantId from the evaluation context before form data, so deploy
@@ -118,6 +120,25 @@ func TestValidateConditionFields(t *testing.T) {
 		cond := approval.Condition{Kind: approval.ConditionField, Subject: "attachment", Operator: approval.OperatorEquals, Value: "file.pdf"}
 		assert.ErrorIs(t, svc.ValidateConditionFields(nodes(cond), form), approval.ErrInvalidConditionOperator,
 			"upload field only supports emptiness operators")
+	})
+
+	t.Run("AcceptsOrderingOnDatetimeAndRejectsContains", func(t *testing.T) {
+		cond := approval.Condition{Kind: approval.ConditionField, Subject: "moment", Operator: approval.OperatorGreaterOrEq, Value: "2026-04-15 08:30:00"}
+		assert.NoError(t, svc.ValidateConditionFields(nodes(cond), form))
+
+		bad := approval.Condition{Kind: approval.ConditionField, Subject: "moment", Operator: approval.OperatorContains, Value: "2026"}
+		assert.ErrorIs(t, svc.ValidateConditionFields(nodes(bad), form), approval.ErrInvalidConditionOperator)
+	})
+
+	t.Run("AcceptsEmptinessOnDateRangeAndRejectsOrdering", func(t *testing.T) {
+		cond := approval.Condition{Kind: approval.ConditionField, Subject: "span", Operator: approval.OperatorIsNotEmpty}
+		assert.NoError(t, svc.ValidateConditionFields(nodes(cond), form))
+
+		for _, op := range []approval.ConditionOperator{approval.OperatorEquals, approval.OperatorGreater, approval.OperatorContains} {
+			bad := approval.Condition{Kind: approval.ConditionField, Subject: "span", Operator: op, Value: "2026-04"}
+			assert.ErrorIs(t, svc.ValidateConditionFields(nodes(bad), form), approval.ErrInvalidConditionOperator,
+				"daterange must reject %q", op)
+		}
 	})
 
 	t.Run("SkipsApplicantSubjects", func(t *testing.T) {

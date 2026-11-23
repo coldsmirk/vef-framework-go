@@ -155,7 +155,10 @@ func TestBuildColumnSpecsPreciseColumnTypes(t *testing.T) {
 		{Key: "price", Kind: approval.FieldNumber, ColumnType: approval.ColumnDecimal, Scale: &scale},
 		{Key: "active", Kind: approval.FieldInput, ColumnType: approval.ColumnBoolean},
 		{Key: "birthday", Kind: approval.FieldDate, ColumnType: approval.ColumnDate},
-		{Key: "created", Kind: approval.FieldDate, ColumnType: approval.ColumnDatetime},
+		{Key: "fiscal_year", Kind: approval.FieldDate, Granularity: approval.DateGranularityYear, ColumnType: approval.ColumnString},
+		{Key: "fiscal_quarter", Kind: approval.FieldDate, Granularity: approval.DateGranularityQuarter, ColumnType: approval.ColumnString},
+		{Key: "created", Kind: approval.FieldDatetime, ColumnType: approval.ColumnDatetime},
+		{Key: "span", Kind: approval.FieldDateRange},
 		{Key: "tags", Kind: approval.FieldSelect, ColumnType: approval.ColumnJSON},
 	}
 
@@ -172,7 +175,10 @@ func TestBuildColumnSpecsPreciseColumnTypes(t *testing.T) {
 	assert.Equal(t, "NUMERIC(38,2)", byName["price"].Type)
 	assert.Equal(t, "BOOLEAN", byName["active"].Type)
 	assert.Equal(t, "DATE", byName["birthday"].Type)
+	assert.Equal(t, "VARCHAR(4)", byName["fiscal_year"].Type)
+	assert.Equal(t, "VARCHAR(7)", byName["fiscal_quarter"].Type)
 	assert.Equal(t, "TIMESTAMP", byName["created"].Type)
+	assert.Equal(t, "JSONB", byName["span"].Type)
 	assert.Equal(t, "JSONB", byName["tags"].Type)
 }
 

@@ -391,12 +391,14 @@ func (t CCTiming) IsValid() bool {
 type FieldKind string
 
 const (
-	FieldInput    FieldKind = "input"
-	FieldTextarea FieldKind = "textarea"
-	FieldSelect   FieldKind = "select"
-	FieldNumber   FieldKind = "number"
-	FieldDate     FieldKind = "date"
-	FieldUpload   FieldKind = "upload"
+	FieldInput     FieldKind = "input"
+	FieldTextarea  FieldKind = "textarea"
+	FieldSelect    FieldKind = "select"
+	FieldNumber    FieldKind = "number"
+	FieldDate      FieldKind = "date"
+	FieldDatetime  FieldKind = "datetime"
+	FieldDateRange FieldKind = "daterange"
+	FieldUpload    FieldKind = "upload"
 	// FieldTable is a single-level detail table: its value is a list of rows,
 	// each row an object keyed by the field's Columns. Columns must not nest
 	// another table — approval forms are applications, not data models; deep
@@ -407,10 +409,70 @@ const (
 // IsValid reports whether the field kind is one of the defined values.
 func (k FieldKind) IsValid() bool {
 	switch k {
-	case FieldInput, FieldTextarea, FieldSelect, FieldNumber, FieldDate, FieldUpload, FieldTable:
+	case FieldInput, FieldTextarea, FieldSelect, FieldNumber,
+		FieldDate, FieldDatetime, FieldDateRange, FieldUpload, FieldTable:
 		return true
 	default:
 		return false
+	}
+}
+
+// DateGranularity specifies the calendar granularity of a FieldDate or
+// FieldDateRange field. An empty granularity defaults to DateGranularityDay.
+type DateGranularity string
+
+const (
+	DateGranularityYear    DateGranularity = "year"
+	DateGranularityQuarter DateGranularity = "quarter"
+	DateGranularityMonth   DateGranularity = "month"
+	DateGranularityDay     DateGranularity = "day"
+)
+
+// IsValid reports whether the granularity is one of the defined values.
+func (g DateGranularity) IsValid() bool {
+	switch g {
+	case DateGranularityYear, DateGranularityQuarter, DateGranularityMonth, DateGranularityDay:
+		return true
+	default:
+		return false
+	}
+}
+
+// Effective returns the granularity, resolving an omitted value to day.
+func (g DateGranularity) Effective() DateGranularity {
+	if g == "" {
+		return DateGranularityDay
+	}
+
+	return g
+}
+
+// FormatLabel returns the canonical string pattern for this granularity,
+// used in validation diagnostics.
+func (g DateGranularity) FormatLabel() string {
+	switch g.Effective() {
+	case DateGranularityYear:
+		return "YYYY"
+	case DateGranularityQuarter:
+		return "YYYY-Qn"
+	case DateGranularityMonth:
+		return "YYYY-MM"
+	default:
+		return "YYYY-MM-DD"
+	}
+}
+
+// MaxLength returns the fixed character length for non-day granularities stored
+// in a VARCHAR column (4 for year, 7 for quarter/month), or 0 for day (which
+// projects to a DATE column rather than VARCHAR).
+func (g DateGranularity) MaxLength() int {
+	switch g.Effective() {
+	case DateGranularityYear:
+		return 4
+	case DateGranularityQuarter, DateGranularityMonth:
+		return 7
+	default:
+		return 0
 	}
 }
 

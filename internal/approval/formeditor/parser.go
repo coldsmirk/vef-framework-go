@@ -77,7 +77,7 @@ func (*parser) ParseFormFields(_ context.Context, schema json.RawMessage) ([]app
 
 			projected.SortOrder = len(fields)
 			fields = append(fields, *projected)
-			seen[node.Key] = newSeenProjection(node, projected.Kind, projected.IsMultiple)
+			seen[node.Key] = newSeenProjection(node, projected.Kind, projected.IsMultiple, peekGranularity(node))
 
 			return nil
 		})
@@ -92,14 +92,15 @@ func (*parser) ParseFormFields(_ context.Context, schema json.RawMessage) ([]app
 // seenProjection records what an already-projected key resolved to, so a later
 // cross-device sighting can be checked for a contract conflict.
 type seenProjection struct {
-	kind       approval.FieldKind
-	isMultiple bool
+	kind        approval.FieldKind
+	isMultiple  bool
+	granularity approval.DateGranularity
 	// tableSignature is the column signature of a table field, nil for scalars.
 	tableSignature *string
 }
 
-func newSeenProjection(node *richBlock, kind approval.FieldKind, isMultiple bool) seenProjection {
-	seen := seenProjection{kind: kind, isMultiple: isMultiple}
+func newSeenProjection(node *richBlock, kind approval.FieldKind, isMultiple bool, granularity approval.DateGranularity) seenProjection {
+	seen := seenProjection{kind: kind, isMultiple: isMultiple, granularity: granularity}
 	if node.Type == "subform" {
 		signature := peekTableSignature(node)
 		seen.tableSignature = &signature
@@ -111,19 +112,21 @@ func newSeenProjection(node *richBlock, kind approval.FieldKind, isMultiple bool
 // checkCrossDevice reports whether a second sighting of an already-projected key
 // would deploy a contract the first sighting's device cannot submit against. The
 // submitted data contract is shared across devices, so a differing kind,
-// selection multiplicity, or table column-set is an error, not a preference.
-// classifyWidget has already rejected unmappable / unknown types before this
-// runs, so peekKind resolves to a real kind here; a same-kind options /
-// validation divergence is not detected (documented limitation).
+// selection multiplicity, date granularity, or table column-set is an error,
+// not a preference. classifyWidget has already rejected unmappable / unknown
+// types before this runs, so peekKind resolves to a real kind here; a
+// same-kind options / validation divergence is not detected (documented
+// limitation).
 func checkCrossDevice(node *richBlock, prev seenProjection) error {
 	kind := peekKind(node)
 	isMultiple := multiValueSelectTypes.Contains(node.Type)
+	granularity := peekGranularity(node)
 
-	if kind != prev.kind || isMultiple != prev.isMultiple {
+	if kind != prev.kind || isMultiple != prev.isMultiple || granularity != prev.granularity {
 		return errCrossDeviceKindMismatch(
 			node.Key,
-			describeFieldShape(prev.kind, prev.isMultiple),
-			describeFieldShape(kind, isMultiple),
+			describeFieldShape(prev.kind, prev.isMultiple, prev.granularity),
+			describeFieldShape(kind, isMultiple, granularity),
 		)
 	}
 

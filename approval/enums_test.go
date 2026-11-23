@@ -162,13 +162,36 @@ func TestTaskStatusIsFinal(t *testing.T) {
 func TestFieldKindIsValid(t *testing.T) {
 	valid := []approval.FieldKind{
 		approval.FieldInput, approval.FieldTextarea, approval.FieldSelect,
-		approval.FieldNumber, approval.FieldDate, approval.FieldUpload, approval.FieldTable,
+		approval.FieldNumber, approval.FieldDate, approval.FieldDatetime,
+		approval.FieldDateRange, approval.FieldUpload, approval.FieldTable,
 	}
 	for _, kind := range valid {
 		assert.True(t, kind.IsValid(), "field kind %q should be valid", kind)
 	}
 
 	assert.False(t, approval.FieldKind("subform").IsValid(), "unknown field kinds are rejected")
+}
+
+func TestDateGranularity(t *testing.T) {
+	valid := []approval.DateGranularity{
+		approval.DateGranularityYear,
+		approval.DateGranularityQuarter,
+		approval.DateGranularityMonth,
+		approval.DateGranularityDay,
+	}
+	for _, g := range valid {
+		assert.True(t, g.IsValid(), "granularity %q should be valid", g)
+	}
+
+	assert.False(t, approval.DateGranularity("").IsValid(), "empty granularity is not an explicit valid value")
+	assert.False(t, approval.DateGranularity("week").IsValid(), "unknown granularity must be rejected")
+	assert.Equal(t, approval.DateGranularityDay, approval.DateGranularity("").Effective(), "empty defaults to day")
+	assert.Equal(t, approval.DateGranularityQuarter, approval.DateGranularityQuarter.Effective())
+	assert.Equal(t, 4, approval.DateGranularityYear.MaxLength())
+	assert.Equal(t, 7, approval.DateGranularityQuarter.MaxLength())
+	assert.Equal(t, 7, approval.DateGranularityMonth.MaxLength())
+	assert.Equal(t, 0, approval.DateGranularityDay.MaxLength())
+	assert.Equal(t, 0, approval.DateGranularity("").MaxLength())
 }
 
 func TestPermissionIsValid(t *testing.T) {

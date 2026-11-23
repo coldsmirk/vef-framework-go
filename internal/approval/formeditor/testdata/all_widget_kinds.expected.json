@@ -4,9 +4,14 @@
   { "key": "remark", "kind": "textarea", "label": "备注", "sortOrder": 2, "columnType": "text" },
   { "key": "grade", "kind": "select", "label": "等级", "options": [{ "label": "甲", "value": 1 }], "sortOrder": 3, "columnType": "text" },
   { "key": "day", "kind": "date", "label": "日期", "sortOrder": 4, "columnType": "date" },
-  { "key": "moment", "kind": "date", "label": "时刻", "sortOrder": 5, "columnType": "datetime" },
-  { "key": "tags", "kind": "select", "label": "标签", "isMultiple": true, "options": [{ "label": "A", "value": "a" }], "sortOrder": 6, "columnType": "json" },
-  { "key": "attachment", "kind": "upload", "label": "附件", "sortOrder": 7, "columnType": "text" },
-  { "key": "photos", "kind": "upload", "label": "现场照片", "sortOrder": 8, "columnType": "json" },
-  { "key": "skills", "kind": "select", "label": "技能", "isMultiple": true, "options": [{ "label": "Go", "value": "go" }], "sortOrder": 9, "columnType": "json" }
+  { "key": "fiscalYear", "kind": "date", "label": "年度", "granularity": "year", "validation": { "maxLength": 4 }, "sortOrder": 5, "columnType": "string" },
+  { "key": "fiscalQuarter", "kind": "date", "label": "季度", "granularity": "quarter", "validation": { "maxLength": 7 }, "sortOrder": 6, "columnType": "string" },
+  { "key": "billingMonth", "kind": "date", "label": "月份", "granularity": "month", "validation": { "maxLength": 7 }, "sortOrder": 7, "columnType": "string" },
+  { "key": "moment", "kind": "datetime", "label": "时刻", "sortOrder": 8, "columnType": "datetime" },
+  { "key": "span", "kind": "daterange", "label": "日期区间", "sortOrder": 9, "columnType": "json" },
+  { "key": "quarterSpan", "kind": "daterange", "label": "季度区间", "granularity": "quarter", "sortOrder": 10, "columnType": "json" },
+  { "key": "tags", "kind": "select", "label": "标签", "isMultiple": true, "options": [{ "label": "A", "value": "a" }], "sortOrder": 11, "columnType": "json" },
+  { "key": "attachment", "kind": "upload", "label": "附件", "sortOrder": 12, "columnType": "text" },
+  { "key": "photos", "kind": "upload", "label": "现场照片", "sortOrder": 13, "columnType": "json" },
+  { "key": "skills", "kind": "select", "label": "技能", "isMultiple": true, "options": [{ "label": "Go", "value": "go" }], "sortOrder": 14, "columnType": "json" }
 ]

@@ -222,3 +222,63 @@ func TestValidateFormFieldsOptionSource(t *testing.T) {
 			"the message must name the table-qualified column path so the designer can find it")
 	})
 }
+
+func TestValidateFormFieldsDateGranularity(t *testing.T) {
+	svc := new(FlowDefinitionService)
+
+	t.Run("AcceptsValidGranularitiesOnDateAndDateRange", func(t *testing.T) {
+		for _, kind := range []approval.FieldKind{approval.FieldDate, approval.FieldDateRange} {
+			for _, gran := range []approval.DateGranularity{
+				"",
+				approval.DateGranularityYear,
+				approval.DateGranularityQuarter,
+				approval.DateGranularityMonth,
+				approval.DateGranularityDay,
+			} {
+				fields := []approval.FormFieldDefinition{{Key: "d", Kind: kind, Granularity: gran}}
+				assert.NoError(t, svc.ValidateFormFields(fields), "kind=%q granularity=%q should deploy", kind, gran)
+			}
+		}
+	})
+
+	t.Run("AcceptsDatetimeAndDateRangeAsTableColumns", func(t *testing.T) {
+		fields := []approval.FormFieldDefinition{{
+			Key: "items", Kind: approval.FieldTable,
+			Columns: []approval.FormFieldDefinition{
+				{Key: "at", Kind: approval.FieldDatetime},
+				{Key: "span", Kind: approval.FieldDateRange, Granularity: approval.DateGranularityQuarter},
+			},
+		}}
+		assert.NoError(t, svc.ValidateFormFields(fields), "datetime and daterange columns must deploy consistently with projector")
+	})
+
+	t.Run("RejectsUnknownGranularity", func(t *testing.T) {
+		fields := []approval.FormFieldDefinition{{Key: "d", Kind: approval.FieldDate, Granularity: approval.DateGranularity("week")}}
+		assert.ErrorIs(t, svc.ValidateFormFields(fields), errInvalidDateGranularity)
+	})
+
+	t.Run("RejectsGranularityOnNonDateKinds", func(t *testing.T) {
+		for _, kind := range []approval.FieldKind{
+			approval.FieldInput,
+			approval.FieldDatetime,
+			approval.FieldNumber,
+			approval.FieldSelect,
+		} {
+			fields := []approval.FormFieldDefinition{{Key: "f", Kind: kind, Granularity: approval.DateGranularityMonth}}
+			assert.ErrorIs(t, svc.ValidateFormFields(fields), errGranularityNotAllowed,
+				"granularity must be rejected on %q", kind)
+		}
+	})
+
+	t.Run("RejectsInvalidGranularityOnTableColumn", func(t *testing.T) {
+		fields := []approval.FormFieldDefinition{{
+			Key: "items", Kind: approval.FieldTable,
+			Columns: []approval.FormFieldDefinition{
+				{Key: "period", Kind: approval.FieldDate, Granularity: approval.DateGranularity("hour")},
+			},
+		}}
+		err := svc.ValidateFormFields(fields)
+		assert.ErrorIs(t, err, errInvalidDateGranularity)
+		assert.Contains(t, err.Error(), "items.period")
+	})
+}

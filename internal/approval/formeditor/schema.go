@@ -53,6 +53,9 @@ type richBlock struct {
 	// Upload. MaxCount decides whether the value is one storage key or a list.
 	MaxCount *int `json:"maxCount"`
 
+	// Date / DateRange calendar granularity ("year", "quarter", "month", "day").
+	Granularity string `json:"granularity"`
+
 	// Subform.
 	Template []richBlock `json:"template"`
 	MinRows  *int        `json:"minRows"`

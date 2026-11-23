@@ -105,6 +105,8 @@ var (
 	errInvalidOptionSourceKind       = errors.New("invalid form field option source kind")
 	errRemoteOptionRequestIncomplete = errors.New("remote option source requires a resource and an action")
 	errCodeSetOptionSourceIncomplete = errors.New("code set option source requires a code set")
+	errInvalidDateGranularity        = errors.New("invalid date granularity")
+	errGranularityNotAllowed         = errors.New("granularity is only allowed on date and daterange fields")
 )
 
 // Field-permission validation sentinels, raised by ValidateFieldPermissions
