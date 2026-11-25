@@ -35,6 +35,12 @@ func newRecordingLoader() *recordingLoader {
 		dictionaries: map[string]map[string]string{
 			"sys.gender": {"M": "男", "F": "女"},
 			"hr.skill":   {"go": "Go", "ts": "TypeScript"},
+			"common.region": {
+				"east": "华东大区",
+				"zj":   "浙江省",
+				"hz":   "杭州市",
+				"sh":   "上海市",
+			},
 		},
 		loads: make(map[string]int),
 	}
@@ -123,6 +129,32 @@ func TestValidateFormDataCodeSet(t *testing.T) {
 
 		var re result.Error
 		assert.NotErrorAs(t, err, &re, "A load failure is not the submitter's validation error")
+	})
+
+	t.Run("AcceptsHierarchicalCodeSetScalarAndMultiWithoutEnforcingLeafOnly", func(t *testing.T) {
+		treeFields := []approval.FormFieldDefinition{
+			codeSetSelect("region", "common.region"),
+			{
+				Key:          "regions",
+				Kind:         approval.FieldSelect,
+				Label:        "覆盖区域",
+				IsMultiple:   true,
+				OptionSource: &approval.FieldOptionSource{Kind: approval.OptionSourceCodeSet, CodeSet: "common.region"},
+			},
+		}
+
+		// Both branch ("east") and leaf ("hz", "sh") codes are valid because
+		// backend validation checks against the whole dictionary without leafOnly.
+		err := newService(newRecordingLoader()).ValidateFormData(t.Context(), treeFields, map[string]any{
+			"region":  "east",
+			"regions": []any{"east", "hz", "sh"},
+		})
+		require.NoError(t, err, "Should accept both branch and leaf codes from a hierarchical code set")
+
+		err = newService(newRecordingLoader()).ValidateFormData(t.Context(), treeFields, map[string]any{
+			"regions": []any{"hz", "unknown_region"},
+		})
+		requireFormValidationError(t, err)
 	})
 }
 

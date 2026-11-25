@@ -15,25 +15,32 @@ import (
 // number for number, scalar-or-array for select). switch (boolean) is
 // deliberately absent: it surfaces as an unmappable error instead.
 var kindByType = map[string]approval.FieldKind{
-	"textfield":      approval.FieldInput,
-	"code-editor":    approval.FieldTextarea,
-	"textarea":       approval.FieldTextarea,
-	"number":         approval.FieldNumber,
-	"select":         approval.FieldSelect,
-	"multi-select":   approval.FieldSelect,
-	"radio":          approval.FieldSelect,
-	"checkbox-group": approval.FieldSelect,
-	"date":           approval.FieldDate,
-	"datetime":       approval.FieldDatetime,
-	"daterange":      approval.FieldDateRange,
-	"upload":         approval.FieldUpload,
+	"textfield":         approval.FieldInput,
+	"code-editor":       approval.FieldTextarea,
+	"textarea":          approval.FieldTextarea,
+	"number":            approval.FieldNumber,
+	"select":            approval.FieldSelect,
+	"multi-select":      approval.FieldSelect,
+	"tree-select":       approval.FieldSelect,
+	"tree-multi-select": approval.FieldSelect,
+	"radio":             approval.FieldSelect,
+	"checkbox-group":    approval.FieldSelect,
+	"date":              approval.FieldDate,
+	"datetime":          approval.FieldDatetime,
+	"daterange":         approval.FieldDateRange,
+	"upload":            approval.FieldUpload,
 }
 
 // multiValueSelectTypes are the selection widgets whose runtime value is a list
 // of chosen option values rather than a single scalar. Projected with
 // FormFieldDefinition.IsMultiple = true so deploy validation and the flow
 // designer offer element-membership operators instead of scalar equality.
-var multiValueSelectTypes = collections.NewHashSetFrom("checkbox-group", "multi-select")
+var multiValueSelectTypes = collections.NewHashSetFrom("checkbox-group", "multi-select", "tree-multi-select")
+
+// treeSelectTypes are the hierarchical selection widgets whose static options
+// are flattened in pre-order (respecting LeafOnly) rather than truncated to the
+// top level.
+var treeSelectTypes = collections.NewHashSetFrom("tree-select", "tree-multi-select")
 
 // unmappableTypes are widget types that bind a value the approval contract
 // cannot carry (as opposed to unknown consumer-registered types).
@@ -42,17 +49,19 @@ var unmappableTypes = collections.NewHashSetFrom("switch")
 // columnTypeByWidget is the deterministic widget → storage column type. number
 // (integer/decimal by precision), date (date vs sized string by granularity),
 // upload (text vs json by maxCount), and the string family (textfield / select /
-// radio, sized by maxLength) are resolved separately in inferColumnType, so they
-// are absent here. The switch entry mirrors the form-editor table verbatim but
-// is never reached through projectLeaf — it fails the unmappable check first.
+// tree-select / radio, sized by maxLength) are resolved separately in
+// inferColumnType, so they are absent here. The switch entry mirrors the
+// form-editor table verbatim but is never reached through projectLeaf — it fails
+// the unmappable check first.
 var columnTypeByWidget = map[string]approval.ColumnDataType{
-	"switch":         approval.ColumnBoolean,
-	"datetime":       approval.ColumnDatetime,
-	"checkbox-group": approval.ColumnJSON,
-	"multi-select":   approval.ColumnJSON,
-	"daterange":      approval.ColumnJSON,
-	"textarea":       approval.ColumnText,
-	"code-editor":    approval.ColumnText,
+	"switch":            approval.ColumnBoolean,
+	"datetime":          approval.ColumnDatetime,
+	"checkbox-group":    approval.ColumnJSON,
+	"multi-select":      approval.ColumnJSON,
+	"tree-multi-select": approval.ColumnJSON,
+	"daterange":         approval.ColumnJSON,
+	"textarea":          approval.ColumnText,
+	"code-editor":       approval.ColumnText,
 }
 
 // classifyWidget reports the projection-blocking fault of a root-scope keyed
@@ -278,7 +287,7 @@ func applyFixedSubformRows(
 		return errTableFixedRowsItemKeyConflict(field.Key, rows.ItemKey)
 	}
 
-	items, source := resolveOptionSourceValue(rows.Source, dataSources)
+	items, source := resolveOptionSourceValue(rows.Source, dataSources, false, false)
 	if source == nil && !isValidStaticFixedRowItems(items) {
 		return errTableFixedRowsSourceInvalid(field.Key)
 	}
@@ -334,12 +343,15 @@ func resolveOptionSource(
 	node *richBlock,
 	dataSources map[string]richDataSource,
 ) ([]approval.FieldOption, *approval.FieldOptionSource) {
-	return resolveOptionSourceValue(node.DataSource, dataSources)
+	flattenTree := treeSelectTypes.Contains(node.Type)
+
+	return resolveOptionSourceValue(node.DataSource, dataSources, flattenTree, flattenTree && node.LeafOnly)
 }
 
 func resolveOptionSourceValue(
 	source *richOptionSource,
 	dataSources map[string]richDataSource,
+	flattenTree, leafOnly bool,
 ) ([]approval.FieldOption, *approval.FieldOptionSource) {
 	if source == nil {
 		return nil, nil
@@ -358,13 +370,13 @@ func resolveOptionSourceValue(
 
 	switch kind {
 	case "static":
-		return options, nil
+		return projectStaticOptions(options, flattenTree, leafOnly), nil
 
 	case "remote":
 		return nil, &approval.FieldOptionSource{
 			Kind:    approval.OptionSourceRemote,
 			Request: request,
-			Mapping: mapping,
+			Mapping: normalizeOptionMapping(mapping),
 		}
 
 	case "codeSet":
@@ -376,6 +388,66 @@ func resolveOptionSourceValue(
 	default:
 		return nil, nil
 	}
+}
+
+func projectStaticOptions(options []richFieldOption, flattenTree, leafOnly bool) []approval.FieldOption {
+	if options == nil {
+		return nil
+	}
+
+	if !flattenTree {
+		projected := make([]approval.FieldOption, len(options))
+		for i, option := range options {
+			projected[i] = approval.FieldOption{
+				Label: option.Label,
+				Value: option.Value,
+			}
+		}
+
+		return projected
+	}
+
+	projected := make([]approval.FieldOption, 0, len(options))
+	appendFlattenedOptions(&projected, options, leafOnly)
+
+	return projected
+}
+
+func appendFlattenedOptions(dst *[]approval.FieldOption, options []richFieldOption, leafOnly bool) {
+	for _, option := range options {
+		hasChildren := len(option.Children) > 0
+		if !leafOnly || !hasChildren {
+			*dst = append(*dst, approval.FieldOption{
+				Label: option.Label,
+				Value: option.Value,
+			})
+		}
+
+		if hasChildren {
+			appendFlattenedOptions(dst, option.Children, leafOnly)
+		}
+	}
+}
+
+func normalizeOptionMapping(mapping *approval.RemoteOptionMapping) *approval.RemoteOptionMapping {
+	if mapping == nil {
+		return nil
+	}
+
+	normalized := approval.RemoteOptionMapping{
+		LabelKey:       strings.TrimSpace(mapping.LabelKey),
+		ValueKey:       strings.TrimSpace(mapping.ValueKey),
+		DisabledKey:    strings.TrimSpace(mapping.DisabledKey),
+		DescriptionKey: strings.TrimSpace(mapping.DescriptionKey),
+		ChildrenKey:    strings.TrimSpace(mapping.ChildrenKey),
+		ParentKey:      strings.TrimSpace(mapping.ParentKey),
+	}
+
+	if normalized == (approval.RemoteOptionMapping{}) {
+		return nil
+	}
+
+	return &normalized
 }
 
 // resolveColumnType is the column type to emit for a leaf field. An explicit

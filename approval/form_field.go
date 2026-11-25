@@ -173,8 +173,9 @@ type DynamicParam struct {
 }
 
 // RemoteOptionMapping says which keys of a returned record carry an option's
-// label and value. An empty field falls back to its default: "label" for the
-// label, "value" for the value.
+// fields and hierarchy. An empty field falls back to its default: "label",
+// "value", "disabled", "description", "children". Setting ParentKey tells
+// consumers to assemble flat records into a tree and ignore ChildrenKey.
 type RemoteOptionMapping struct {
 	// LabelKey is the record key holding the display label.
 	LabelKey string `json:"labelKey,omitempty"`
@@ -184,6 +185,11 @@ type RemoteOptionMapping struct {
 	DisabledKey string `json:"disabledKey,omitempty"`
 	// DescriptionKey is the record key holding a secondary description.
 	DescriptionKey string `json:"descriptionKey,omitempty"`
+	// ChildrenKey is the record key holding nested child records (defaults to "children").
+	ChildrenKey string `json:"childrenKey,omitempty"`
+	// ParentKey is the record key holding a flat record's parent value; when set,
+	// consumers build the tree from it and ignore ChildrenKey.
+	ParentKey string `json:"parentKey,omitempty"`
 }
 
 // ValidationRule contains validation constraints for a form field.

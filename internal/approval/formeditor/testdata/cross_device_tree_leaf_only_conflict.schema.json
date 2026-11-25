@@ -1,0 +1,50 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "P1",
+          "type": "tree-select",
+          "key": "region",
+          "label": "区域",
+          "leafOnly": true,
+          "dataSource": {
+            "kind": "static",
+            "options": [
+              {
+                "label": "华东",
+                "value": "east",
+                "children": [
+                  { "label": "上海", "value": "sh" }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "mobile": {
+      "children": [
+        {
+          "id": "M1",
+          "type": "tree-select",
+          "key": "region",
+          "label": "区域",
+          "dataSource": {
+            "kind": "static",
+            "options": [
+              {
+                "label": "华东",
+                "value": "east",
+                "children": [
+                  { "label": "上海", "value": "sh" }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

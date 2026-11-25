@@ -1,0 +1,187 @@
+{
+  "version": 2,
+  "dataSources": [
+    {
+      "id": "DS_TREE_STATIC",
+      "kind": "static",
+      "name": "行政区域",
+      "options": [
+        {
+          "label": "华东大区",
+          "value": "east",
+          "description": "华东片区",
+          "children": [
+            {
+              "label": "浙江省",
+              "value": "zj",
+              "children": [
+                { "label": "杭州市", "value": "hz", "description": "省会城市" },
+                { "label": "宁波市", "value": "nb", "disabled": true }
+              ]
+            },
+            { "label": "上海市", "value": "sh", "description": "直辖市" }
+          ]
+        },
+        { "label": "华北大区", "value": "north" }
+      ]
+    },
+    {
+      "id": "DS_TREE_REMOTE",
+      "kind": "remote",
+      "name": "平铺部门",
+      "request": { "resource": "md/department", "action": "find_flat_options" },
+      "mapping": {
+        "labelKey": "name",
+        "valueKey": "id",
+        "parentKey": "parentId",
+        "disabledKey": "inactive",
+        "descriptionKey": "remark"
+      }
+    }
+  ],
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "F1",
+          "type": "tree-select",
+          "key": "orgAny",
+          "label": "所属组织",
+          "dataSource": {
+            "kind": "static",
+            "options": [
+              {
+                "label": "研发中心",
+                "value": "rd",
+                "description": "核心研发部门",
+                "children": [
+                  { "label": "平台组", "value": "platform" },
+                  { "label": "基础架构组", "value": "infra", "disabled": true }
+                ]
+              },
+              { "label": "运营中心", "value": "ops" }
+            ]
+          }
+        },
+        {
+          "id": "F2",
+          "type": "tree-select",
+          "key": "regionLeaf",
+          "label": "目标区域",
+          "leafOnly": true,
+          "dataSource": { "kind": "ref", "dataSourceId": "DS_TREE_STATIC" }
+        },
+        {
+          "id": "F3",
+          "type": "tree-multi-select",
+          "key": "regionsMulti",
+          "label": "覆盖区域",
+          "leafOnly": true,
+          "dataSource": { "kind": "ref", "dataSourceId": "DS_TREE_STATIC" }
+        },
+        {
+          "id": "F4",
+          "type": "select",
+          "key": "flatRegion",
+          "label": "顶层片区",
+          "dataSource": { "kind": "ref", "dataSourceId": "DS_TREE_STATIC" }
+        },
+        {
+          "id": "F5",
+          "type": "tree-select",
+          "key": "deptCode",
+          "label": "部门编号",
+          "columnType": "integer",
+          "dataSource": {
+            "kind": "static",
+            "options": [
+              {
+                "label": "总部",
+                "value": 1,
+                "children": [
+                  { "label": "分部", "value": 101 }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "F6",
+          "type": "tree-select",
+          "key": "dictRegion",
+          "label": "字典区域",
+          "leafOnly": true,
+          "dataSource": { "kind": "codeSet", "codeSet": "common.region" }
+        },
+        {
+          "id": "F7",
+          "type": "tree-select",
+          "key": "remoteNestedDept",
+          "label": "远程嵌套部门",
+          "dataSource": {
+            "kind": "remote",
+            "request": { "resource": "md/department", "action": "find_tree_options" },
+            "mapping": {
+              "labelKey": "title",
+              "valueKey": "code",
+              "disabledKey": "inactive",
+              "descriptionKey": "note",
+              "childrenKey": "sub"
+            }
+          }
+        },
+        {
+          "id": "F8",
+          "type": "tree-multi-select",
+          "key": "remoteFlatDepts",
+          "label": "远程平铺部门",
+          "dataSource": { "kind": "ref", "dataSourceId": "DS_TREE_REMOTE" }
+        }
+      ]
+    },
+    "mobile": {
+      "children": [
+        {
+          "id": "M2",
+          "type": "tree-select",
+          "key": "regionLeaf",
+          "label": "目标区域",
+          "leafOnly": true,
+          "dataSource": { "kind": "ref", "dataSourceId": "DS_TREE_STATIC" }
+        },
+        {
+          "id": "M3",
+          "type": "tree-multi-select",
+          "key": "regionsMulti",
+          "label": "覆盖区域",
+          "leafOnly": true,
+          "dataSource": { "kind": "ref", "dataSourceId": "DS_TREE_STATIC" }
+        },
+        {
+          "id": "M7",
+          "type": "tree-select",
+          "key": "remoteNestedDept",
+          "label": "远程嵌套部门",
+          "dataSource": {
+            "kind": "remote",
+            "request": { "resource": "md/department", "action": "find_tree_options" },
+            "mapping": {
+              "labelKey": "title",
+              "valueKey": "code",
+              "disabledKey": "inactive",
+              "descriptionKey": "note",
+              "childrenKey": "sub"
+            }
+          }
+        },
+        {
+          "id": "M8",
+          "type": "tree-multi-select",
+          "key": "remoteFlatDepts",
+          "label": "远程平铺部门",
+          "dataSource": { "kind": "ref", "dataSourceId": "DS_TREE_REMOTE" }
+        }
+      ]
+    }
+  }
+}

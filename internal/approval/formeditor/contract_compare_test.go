@@ -220,4 +220,49 @@ func TestCompareFieldContracts(t *testing.T) {
 		require.Contains(t, err.Error(), "json", "error should name pc column type")
 		require.Contains(t, err.Error(), "text", "error should name mobile column type")
 	})
+
+	t.Run("RemoteOptionsCompareTreeMappingKeys", func(t *testing.T) {
+		withMapping := func(mapping *approval.RemoteOptionMapping) *approval.FormFieldDefinition {
+			return &approval.FormFieldDefinition{
+				Key:  "dept",
+				Kind: approval.FieldSelect,
+				OptionSource: &approval.FieldOptionSource{
+					Kind: approval.OptionSourceRemote,
+					Request: &approval.RemoteOptionRequest{
+						Resource: "md/department",
+						Action:   "find_flat_options",
+					},
+					Mapping: mapping,
+				},
+			}
+		}
+
+		sameA := withMapping(&approval.RemoteOptionMapping{LabelKey: "name", ValueKey: "id", ParentKey: "parentId"})
+		sameB := withMapping(&approval.RemoteOptionMapping{LabelKey: "name", ValueKey: "id", ParentKey: "parentId"})
+		diffParent := withMapping(&approval.RemoteOptionMapping{LabelKey: "name", ValueKey: "id", ParentKey: "pid"})
+		diffChildren := withMapping(&approval.RemoteOptionMapping{LabelKey: "name", ValueKey: "id", ChildrenKey: "sub"})
+
+		require.NoError(t, compareFieldContracts("dept", sameA, sameB), "identical parentKey mappings should match")
+		require.ErrorIs(t, compareFieldContracts("dept", sameA, diffParent), approval.ErrInvalidFormDesign, "different parentKey must fail")
+		require.ErrorIs(t, compareFieldContracts("dept", sameA, diffChildren), approval.ErrInvalidFormDesign, "parentKey vs childrenKey must fail")
+	})
+
+	t.Run("TreeSelectMultiplicityDivergenceFailsKindCompare", func(t *testing.T) {
+		pc := &approval.FormFieldDefinition{
+			Key:        "region",
+			Kind:       approval.FieldSelect,
+			IsMultiple: false,
+			ColumnType: approval.ColumnText,
+		}
+		mobile := &approval.FormFieldDefinition{
+			Key:        "region",
+			Kind:       approval.FieldSelect,
+			IsMultiple: true,
+			ColumnType: approval.ColumnJSON,
+		}
+
+		err := compareFieldContracts("region", pc, mobile)
+		require.ErrorIs(t, err, approval.ErrInvalidFormDesign, "single vs multi tree select must fail")
+		require.Contains(t, err.Error(), "region", "error should name field key")
+	})
 }

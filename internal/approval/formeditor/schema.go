@@ -49,6 +49,8 @@ type richBlock struct {
 	Precision   *int              `json:"precision"`
 	Validate    *richValidate     `json:"validate"`
 	DataSource  *richOptionSource `json:"dataSource"`
+	// LeafOnly restricts tree-select / tree-multi-select to leaf options.
+	LeafOnly bool `json:"leafOnly"`
 
 	// Upload. MaxCount decides whether the value is one storage key or a list.
 	MaxCount *int `json:"maxCount"`
@@ -92,6 +94,15 @@ type richValidate struct {
 	Message   string   `json:"message"`
 }
 
+// richFieldOption mirrors the form-editor hierarchical FieldOption wire shape.
+// Approval's flat FieldOption carries no children; the projector flattens or
+// strips children to plain { label, value } pairs according to the widget type.
+type richFieldOption struct {
+	Label    string            `json:"label"`
+	Value    any               `json:"value"`
+	Children []richFieldOption `json:"children"`
+}
+
 // richOptionSource is a selection field's inline option source
 // (`{ kind: "static" | "ref" | "remote" | "codeSet", ... }`). Static and
 // ref-to-static resolve to a projected option list; a remote source is
@@ -100,7 +111,7 @@ type richValidate struct {
 // projects the host data dictionary it names.
 type richOptionSource struct {
 	Kind         string                        `json:"kind"`
-	Options      []approval.FieldOption        `json:"options"`
+	Options      []richFieldOption             `json:"options"`
 	DataSourceID string                        `json:"dataSourceId"`
 	Request      *approval.RemoteOptionRequest `json:"request"`
 	Mapping      *approval.RemoteOptionMapping `json:"mapping"`
@@ -108,14 +119,11 @@ type richOptionSource struct {
 }
 
 // richDataSource is a form-global, reusable option source referenced by fields
-// through `{ kind: "ref", dataSourceId }`. It shares the approval FieldOption,
-// RemoteOptionRequest and RemoteOptionMapping shapes verbatim — the designer's
-// `{ label, value }`, `{ resource, action, ... }` and `{ labelKey, ... }` are
-// the same wire contracts.
+// through `{ kind: "ref", dataSourceId }`.
 type richDataSource struct {
 	ID      string                        `json:"id"`
 	Kind    string                        `json:"kind"`
-	Options []approval.FieldOption        `json:"options"`
+	Options []richFieldOption             `json:"options"`
 	Request *approval.RemoteOptionRequest `json:"request"`
 	Mapping *approval.RemoteOptionMapping `json:"mapping"`
 }

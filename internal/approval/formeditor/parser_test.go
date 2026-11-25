@@ -52,6 +52,8 @@ var errorTokens = map[string][]string{
 	"cross_device_fixed_rows_source_conflict":    {"checks"},
 	"cross_device_fixed_rows_item_key_conflict":  {"checks"},
 	"cross_device_table_column_options_conflict": {"checks.result"},
+	"cross_device_tree_leaf_only_conflict":       {"region"},
+	"cross_device_tree_mapping_conflict":         {"dept"},
 	"subform_fixed_item_key_empty":               {"checks"},
 	"subform_fixed_item_key_conflict":            {"checks", "item"},
 	"subform_fixed_source_empty":                 {"checks"},

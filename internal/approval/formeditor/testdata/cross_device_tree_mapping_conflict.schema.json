@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "presentations": {
+    "pc": {
+      "children": [
+        {
+          "id": "P1",
+          "type": "tree-select",
+          "key": "dept",
+          "label": "部门",
+          "dataSource": {
+            "kind": "remote",
+            "request": { "resource": "md/department", "action": "find_flat_options" },
+            "mapping": {
+              "parentKey": "parentId"
+            }
+          }
+        }
+      ]
+    },
+    "mobile": {
+      "children": [
+        {
+          "id": "M1",
+          "type": "tree-select",
+          "key": "dept",
+          "label": "部门",
+          "dataSource": {
+            "kind": "remote",
+            "request": { "resource": "md/department", "action": "find_flat_options" },
+            "mapping": {
+              "childrenKey": "sub"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

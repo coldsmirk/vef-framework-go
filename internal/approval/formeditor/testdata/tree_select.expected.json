@@ -1,0 +1,112 @@
+[
+  {
+    "key": "orgAny",
+    "kind": "select",
+    "label": "所属组织",
+    "options": [
+      { "label": "研发中心", "value": "rd" },
+      { "label": "平台组", "value": "platform" },
+      { "label": "基础架构组", "value": "infra" },
+      { "label": "运营中心", "value": "ops" }
+    ],
+    "sortOrder": 0,
+    "columnType": "text"
+  },
+  {
+    "key": "regionLeaf",
+    "kind": "select",
+    "label": "目标区域",
+    "options": [
+      { "label": "杭州市", "value": "hz" },
+      { "label": "宁波市", "value": "nb" },
+      { "label": "上海市", "value": "sh" },
+      { "label": "华北大区", "value": "north" }
+    ],
+    "sortOrder": 1,
+    "columnType": "text"
+  },
+  {
+    "key": "regionsMulti",
+    "kind": "select",
+    "label": "覆盖区域",
+    "isMultiple": true,
+    "options": [
+      { "label": "杭州市", "value": "hz" },
+      { "label": "宁波市", "value": "nb" },
+      { "label": "上海市", "value": "sh" },
+      { "label": "华北大区", "value": "north" }
+    ],
+    "sortOrder": 2,
+    "columnType": "json"
+  },
+  {
+    "key": "flatRegion",
+    "kind": "select",
+    "label": "顶层片区",
+    "options": [
+      { "label": "华东大区", "value": "east" },
+      { "label": "华北大区", "value": "north" }
+    ],
+    "sortOrder": 3,
+    "columnType": "text"
+  },
+  {
+    "key": "deptCode",
+    "kind": "select",
+    "label": "部门编号",
+    "options": [
+      { "label": "总部", "value": 1 },
+      { "label": "分部", "value": 101 }
+    ],
+    "sortOrder": 4,
+    "columnType": "integer"
+  },
+  {
+    "key": "dictRegion",
+    "kind": "select",
+    "label": "字典区域",
+    "optionSource": {
+      "kind": "codeSet",
+      "codeSet": "common.region"
+    },
+    "sortOrder": 5,
+    "columnType": "text"
+  },
+  {
+    "key": "remoteNestedDept",
+    "kind": "select",
+    "label": "远程嵌套部门",
+    "optionSource": {
+      "kind": "remote",
+      "request": { "resource": "md/department", "action": "find_tree_options" },
+      "mapping": {
+        "labelKey": "title",
+        "valueKey": "code",
+        "disabledKey": "inactive",
+        "descriptionKey": "note",
+        "childrenKey": "sub"
+      }
+    },
+    "sortOrder": 6,
+    "columnType": "text"
+  },
+  {
+    "key": "remoteFlatDepts",
+    "kind": "select",
+    "label": "远程平铺部门",
+    "isMultiple": true,
+    "optionSource": {
+      "kind": "remote",
+      "request": { "resource": "md/department", "action": "find_flat_options" },
+      "mapping": {
+        "labelKey": "name",
+        "valueKey": "id",
+        "disabledKey": "inactive",
+        "descriptionKey": "remark",
+        "parentKey": "parentId"
+      }
+    },
+    "sortOrder": 7,
+    "columnType": "json"
+  }
+]
