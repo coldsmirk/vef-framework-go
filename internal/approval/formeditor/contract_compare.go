@@ -196,11 +196,14 @@ func dynamicParamEqual(a, b approval.DynamicParam) bool {
 	case approval.DynamicParamLiteral:
 		return equalJSONValue(a.Value, b.Value)
 
+	case approval.DynamicParamReference:
+		return a.Path == b.Path
+
 	case approval.DynamicParamExpression:
 		return a.Source == b.Source
 
 	default:
-		return a.Source == b.Source && equalJSONValue(a.Value, b.Value)
+		return a.Path == b.Path && a.Source == b.Source && equalJSONValue(a.Value, b.Value)
 	}
 }
 

@@ -35,5 +35,16 @@
       }
     },
     "sortOrder": 7, "columnType": "text"
+  },
+  {
+    "key": "referencedRemote", "kind": "select", "label": "引用远程参数",
+    "optionSource": {
+      "kind": "remote",
+      "request": {
+        "resource": "ward", "action": "list",
+        "params": { "deptId": { "kind": "reference", "path": "$applicant.departmentId" } }
+      }
+    },
+    "sortOrder": 8, "columnType": "text"
   }
 ]

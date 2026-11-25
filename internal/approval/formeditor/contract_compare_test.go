@@ -99,6 +99,29 @@ func TestCompareFieldContracts(t *testing.T) {
 		require.Contains(t, err.Error(), "dept", "error should name field key")
 	})
 
+	t.Run("RemoteOptionsCompareReferenceParamsByPath", func(t *testing.T) {
+		withReference := func(path string) *approval.FormFieldDefinition {
+			return &approval.FormFieldDefinition{
+				Key:  "dept",
+				Kind: approval.FieldSelect,
+				OptionSource: &approval.FieldOptionSource{
+					Kind: approval.OptionSourceRemote,
+					Request: &approval.RemoteOptionRequest{
+						Resource: "org/dept",
+						Action:   "list",
+						Params: map[string]approval.DynamicParam{
+							"orgId": {Kind: approval.DynamicParamReference, Path: path},
+						},
+					},
+				},
+			}
+		}
+
+		require.NoError(t, compareFieldContracts("dept", withReference("org"), withReference("org")), "one path is one contract")
+		require.ErrorIs(t, compareFieldContracts("dept", withReference("org"), withReference("$applicant.orgId")), approval.ErrInvalidFormDesign,
+			"references reading different paths must fail")
+	})
+
 	t.Run("NumericOptionValuesCompareEqualAcrossNumericTypesButNotStrings", func(t *testing.T) {
 		pc := &approval.FormFieldDefinition{
 			Key:  "grade",

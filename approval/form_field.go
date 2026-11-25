@@ -127,26 +127,27 @@ type RemoteOptionRequest struct {
 	Action string `json:"action"`
 	// Version is the resource version (e.g. "v1"). Empty means the default.
 	Version string `json:"version,omitempty"`
-	// Params are the request parameters the designer configured, each either a
-	// fixed value or an expression the form runtime evaluates before issuing the
-	// request. They are carried unevaluated: the framework holds no form values
-	// to evaluate them against, and a consumer replaying the request owns that
-	// step.
+	// Params are the request parameters the designer configured, each a fixed
+	// value, or a scope path or expression the form runtime resolves before
+	// issuing the request. They are carried unevaluated: the framework holds no
+	// form values to evaluate them against, and a consumer replaying the request
+	// owns that step.
 	Params map[string]DynamicParam `json:"params,omitempty"`
 }
 
-// HasBoundParams reports whether any parameter is an expression bound to the
-// live form. A request with none resolves identically for every row, so one
-// call builds a value-to-label map for a whole column; a bound one resolves per
-// row, and a consumer translating a list must either evaluate it per row or
-// leave that field untranslated.
+// HasBoundParams reports whether any parameter is bound to the live form, by
+// reference or by expression. A request with none resolves identically for
+// every row, so one call builds a value-to-label map for a whole column; a
+// bound one resolves per row, and a consumer translating a list must either
+// evaluate it per row or leave that field untranslated.
 func (r *RemoteOptionRequest) HasBoundParams() bool {
 	if r == nil {
 		return false
 	}
 
 	for _, param := range r.Params {
-		if param.Kind == DynamicParamExpression {
+		switch param.Kind {
+		case DynamicParamReference, DynamicParamExpression:
 			return true
 		}
 	}
@@ -154,8 +155,9 @@ func (r *RemoteOptionRequest) HasBoundParams() bool {
 	return false
 }
 
-// DynamicParam is one remote-request parameter. Exactly one of the two payload
-// fields is meaningful, per Kind: Value for a literal, Source for an expression.
+// DynamicParam is one remote-request parameter. Exactly one of the payload
+// fields is meaningful, per Kind: Value for a literal, Path for a reference,
+// Source for an expression.
 type DynamicParam struct {
 	// Kind says which payload field carries the parameter.
 	Kind DynamicParamKind `json:"kind"`
@@ -163,6 +165,8 @@ type DynamicParam struct {
 	// literal false, 0 or "" is a value the designer chose, and dropping it on
 	// the way to storage would silently change the request.
 	Value any `json:"value"`
+	// Path is a reference parameter's scope path, read by the form runtime.
+	Path string `json:"path,omitempty"`
 	// Source is an expression parameter's source text, evaluated by the form
 	// runtime against the current form values.
 	Source string `json:"source,omitempty"`

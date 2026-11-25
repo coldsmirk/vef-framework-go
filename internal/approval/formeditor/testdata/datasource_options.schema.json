@@ -37,6 +37,16 @@
               "params": { "deptId": { "kind": "expression", "source": "formData.dept" }, "active": { "kind": "literal", "value": true } }
             }
           }
+        },
+        {
+          "id": "F9", "type": "select", "key": "referencedRemote", "label": "引用远程参数",
+          "dataSource": {
+            "kind": "remote",
+            "request": {
+              "resource": "ward", "action": "list",
+              "params": { "deptId": { "kind": "reference", "path": "$applicant.departmentId" } }
+            }
+          }
         }
       ]
     }

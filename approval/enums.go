@@ -537,13 +537,16 @@ func (k OptionSourceKind) IsValid() bool {
 }
 
 // DynamicParamKind classifies a remote option request's parameter: a value the
-// designer typed, or an expression the form runtime evaluates against the live
-// form before the request is issued.
+// designer typed, or one the form runtime reads off the live form — by scope
+// path or by expression — before the request is issued.
 type DynamicParamKind string
 
 const (
 	// DynamicParamLiteral is a fixed value, identical for every evaluation.
 	DynamicParamLiteral DynamicParamKind = "literal"
+	// DynamicParamReference is read from the form runtime's scope by path: a form
+	// field's key, or a context path such as "$applicant.departmentId".
+	DynamicParamReference DynamicParamKind = "reference"
 	// DynamicParamExpression is bound to the form's current values — what makes
 	// a cascading select work ("the wards of the department picked above").
 	DynamicParamExpression DynamicParamKind = "expression"
@@ -552,7 +555,7 @@ const (
 // IsValid reports whether the dynamic parameter kind is one of the defined values.
 func (k DynamicParamKind) IsValid() bool {
 	switch k {
-	case DynamicParamLiteral, DynamicParamExpression:
+	case DynamicParamLiteral, DynamicParamReference, DynamicParamExpression:
 		return true
 	default:
 		return false

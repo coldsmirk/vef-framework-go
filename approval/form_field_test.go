@@ -52,6 +52,17 @@ func TestRemoteOptionRequestHasBoundParams(t *testing.T) {
 			},
 			expected: true,
 		},
+		{
+			name: "OneReferenceAmongLiterals",
+			request: &approval.RemoteOptionRequest{
+				Resource: "ward", Action: "list",
+				Params: map[string]approval.DynamicParam{
+					"active": literal(true),
+					"deptId": {Kind: approval.DynamicParamReference, Path: "$applicant.departmentId"},
+				},
+			},
+			expected: true,
+		},
 	}
 
 	for _, tc := range tests {
