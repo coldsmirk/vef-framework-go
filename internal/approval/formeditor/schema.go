@@ -178,7 +178,7 @@ func walkRootKeyed(blocks []richBlock, visit func(*richBlock) error) error {
 
 		// A subform is a keyed root node projected as a table; a keyed leaf is
 		// projected as a scalar field. Non-keyed presentation nodes (button,
-		// divider, alert-block, paragraph) bind no value and are skipped.
+		// divider, alert-block, heading, paragraph) bind no value and are skipped.
 		if isKeyed(node) {
 			if err := visit(node); err != nil {
 				return err
