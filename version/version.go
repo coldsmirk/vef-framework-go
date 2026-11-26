@@ -1,4 +1,4 @@
 package version
 
 // VEFVersion is the current version of the VEF Framework (semver format).
-const VEFVersion = "v0.67.0"
+const VEFVersion = "v0.68.0"
